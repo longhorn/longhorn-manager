@@ -131,35 +131,37 @@ const (
 	LonghornLabelRecurringJobKeyPrefixFmt = "recurring-%s.longhorn.io"
 	LonghornLabelVolumeSettingKeyPrefix   = "setting.longhorn.io"
 
-	LonghornLabelEngineImage              = "engine-image"
-	LonghornLabelInstanceManager          = "instance-manager"
-	LonghornLabelNode                     = "node"
-	LonghornLabelDiskUUID                 = "disk-uuid"
-	LonghornLabelInstanceManagerType      = "instance-manager-type"
-	LonghornLabelInstanceManagerImage     = "instance-manager-image"
-	LonghornLabelVolume                   = "longhornvolume"
-	LonghornLabelShareManager             = "share-manager"
-	LonghornLabelShareManagerImage        = "share-manager-image"
-	LonghornLabelShareManagerConfigMap    = "share-manager-configmap"
-	LonghornLabelBackingImage             = "backing-image"
-	LonghornLabelBackingImageManager      = "backing-image-manager"
-	LonghornLabelManagedBy                = "managed-by"
-	LonghornLabelSnapshotForCloningVolume = "for-cloning-volume"
-	LonghornLabelBackingImageDataSource   = "backing-image-data-source"
-	LonghornLabelBackupVolume             = "backup-volume"
-	LonghornLabelRecurringJob             = "job"
-	LonghornLabelRecurringJobGroup        = "job-group"
-	LonghornLabelOrphan                   = "orphan"
-	LonghornLabelOrphanType               = "orphan-type"
-	LonghornLabelRecoveryBackend          = "recovery-backend"
-	LonghornLabelCRDAPIVersion            = "crd-api-version"
-	LonghornLabelVolumeAccessMode         = "volume-access-mode"
-	LonghornLabelFollowGlobalSetting      = "follow-global-setting"
-	LonghornLabelSystemRestore            = "system-restore"
-	LonghornLabelLastSystemRestore        = "last-system-restored"
-	LonghornLabelLastSystemRestoreAt      = "last-system-restored-at"
-	LonghornLabelLastSystemRestoreBackup  = "last-system-restored-backup"
-	LonghornLabelVersion                  = "version"
+	LonghornLabelEngineImage                = "engine-image"
+	LonghornLabelInstanceManager            = "instance-manager"
+	LonghornLabelNode                       = "node"
+	LonghornLabelDiskUUID                   = "disk-uuid"
+	LonghornLabelInstanceManagerType        = "instance-manager-type"
+	LonghornLabelInstanceManagerImage       = "instance-manager-image"
+	LonghornLabelVolume                     = "longhornvolume"
+	LonghornLabelShareManager               = "share-manager"
+	LonghornLabelShareManagerImage          = "share-manager-image"
+	LonghornLabelShareManagerConfigMap      = "share-manager-configmap"
+	LonghornLabelBackingImage               = "backing-image"
+	LonghornLabelBackingImageManager        = "backing-image-manager"
+	LonghornLabelManagedBy                  = "managed-by"
+	LonghornLabelSnapshotForCloningVolume   = "for-cloning-volume"
+	LonghornLabelBackingImageDataSource     = "backing-image-data-source"
+	LonghornLabelBackupVolume               = "backup-volume"
+	LonghornLabelRecurringJob               = "job"
+	LonghornLabelRecurringJobGroup          = "job-group"
+	LonghornLabelOrphan                     = "orphan"
+	LonghornLabelOrphanType                 = "orphan-type"
+	LonghornLabelRecoveryBackend            = "recovery-backend"
+	LonghornLabelCRDAPIVersion              = "crd-api-version"
+	LonghornLabelVolumeAccessMode           = "volume-access-mode"
+	LonghornLabelFollowGlobalSetting        = "follow-global-setting"
+	LonghornLabelSystemRestore              = "system-restore"
+	LonghornLabelLastSkippedSystemRestore   = "last-skipped-system-restored"
+	LonghornLabelLastSkippedSystemRestoreAt = "last-skipped-system-restored-at"
+	LonghornLabelLastSystemRestore          = "last-system-restored"
+	LonghornLabelLastSystemRestoreAt        = "last-system-restored-at"
+	LonghornLabelLastSystemRestoreBackup    = "last-system-restored-backup"
+	LonghornLabelVersion                    = "version"
 
 	LonghornLabelValueEnabled = "enabled"
 	LonghornLabelValueIgnored = "ignored"
@@ -536,6 +538,14 @@ func GetLastSystemRestoreLabelKey() string {
 
 func GetLastSystemRestoreAtLabelKey() string {
 	return GetLonghornLabelKey(LonghornLabelLastSystemRestoreAt)
+}
+
+func GetLastSkippedSystemRestoreLabelKey() string {
+	return GetLonghornLabelKey(LonghornLabelLastSkippedSystemRestore)
+}
+
+func GetLastSkippedSystemRestoreAtLabelKey() string {
+	return GetLonghornLabelKey(LonghornLabelLastSkippedSystemRestoreAt)
 }
 
 func GetLastSystemRestoreBackupLabelKey() string {

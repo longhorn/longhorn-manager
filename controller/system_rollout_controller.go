@@ -63,7 +63,7 @@ const (
 	SystemRolloutMsgUnpackedFmt         = "Unpacked %v"
 	SystemRolloutMsgCompleted           = "System rollout completed"
 	SystemRolloutMsgCreating            = "System rollout creating"
-	SystemRolloutMsgIgnoreItem          = "System rollout ignoring item: %v"
+	SystemRolloutMsgIgnoreItemFmt       = "System rollout ignoring item: %v"
 	SystemRolloutMsgUpdating            = "System rollout updating"
 )
 
@@ -803,11 +803,7 @@ func (c *SystemRolloutController) restoreClusterRoles() (err error) {
 			return err
 		}
 
-		if err = tagLonghornLastSystemRestoreAnnotation(
-			systemBackupURL,
-			time.Now().UTC().Format(time.RFC3339),
-			exist,
-		); err != nil {
+		if err = tagLonghornLastSystemRestoreAnnotation(systemBackupURL, time.Now().UTC().Format(time.RFC3339), exist, false); err != nil {
 			return err
 		}
 
@@ -854,11 +850,7 @@ func (c *SystemRolloutController) restoreClusterRoleBindings() (err error) {
 		if err != nil {
 			return err
 		}
-		if err = tagLonghornLastSystemRestoreAnnotation(
-			systemBackupURL,
-			time.Now().UTC().Format(time.RFC3339),
-			exist,
-		); err != nil {
+		if err = tagLonghornLastSystemRestoreAnnotation(systemBackupURL, time.Now().UTC().Format(time.RFC3339), exist, false); err != nil {
 			return err
 		}
 
@@ -906,11 +898,7 @@ func (c *SystemRolloutController) restoreConfigMaps() (err error) {
 			return err
 		}
 
-		if err = tagLonghornLastSystemRestoreAnnotation(
-			systemBackupURL,
-			time.Now().UTC().Format(time.RFC3339),
-			exist,
-		); err != nil {
+		if err = tagLonghornLastSystemRestoreAnnotation(systemBackupURL, time.Now().UTC().Format(time.RFC3339), exist, false); err != nil {
 			return err
 		}
 
@@ -993,11 +981,7 @@ func (c *SystemRolloutController) restoreCustomResourceDefinitions() (err error)
 			return err
 		}
 
-		err = tagLonghornLastSystemRestoreAnnotation(
-			systemBackupURL,
-			time.Now().UTC().Format(time.RFC3339),
-			updateExist,
-		)
+		err = tagLonghornLastSystemRestoreAnnotation(systemBackupURL, time.Now().UTC().Format(time.RFC3339), updateExist, false)
 		if err != nil {
 			return err
 		}
@@ -1045,11 +1029,7 @@ func (c *SystemRolloutController) restoreEngineImages() (err error) {
 			return err
 		}
 
-		err = tagLonghornLastSystemRestoreAnnotation(
-			systemBackupURL,
-			time.Now().UTC().Format(time.RFC3339),
-			exist,
-		)
+		err = tagLonghornLastSystemRestoreAnnotation(systemBackupURL, time.Now().UTC().Format(time.RFC3339), exist, false)
 		if err != nil {
 			return err
 		}
@@ -1097,11 +1077,7 @@ func (c *SystemRolloutController) restoreDaemonSets() (err error) {
 			return err
 		}
 
-		err = tagLonghornLastSystemRestoreAnnotation(
-			systemBackupURL,
-			time.Now().UTC().Format(time.RFC3339),
-			exist,
-		)
+		err = tagLonghornLastSystemRestoreAnnotation(systemBackupURL, time.Now().UTC().Format(time.RFC3339), exist, false)
 		if err != nil {
 			return err
 		}
@@ -1149,11 +1125,7 @@ func (c *SystemRolloutController) restoreDeployments() (err error) {
 			return err
 		}
 
-		err = tagLonghornLastSystemRestoreAnnotation(
-			systemBackupURL,
-			time.Now().UTC().Format(time.RFC3339),
-			exist,
-		)
+		err = tagLonghornLastSystemRestoreAnnotation(systemBackupURL, time.Now().UTC().Format(time.RFC3339), exist, false)
 		if err != nil {
 			return err
 		}
@@ -1180,6 +1152,7 @@ func (c *SystemRolloutController) restorePersistentVolumes() (err error) {
 	for _, restore := range c.persistentVolumeList.Items {
 		log := c.logger.WithField(types.KubernetesKindPersistentVolume, restore.Name)
 
+		isSkipped := true
 		exist, err := c.ds.GetPersistentVolume(restore.Name)
 		if err != nil {
 			if !datastore.ErrorIsNotFound(err) {
@@ -1210,6 +1183,8 @@ func (c *SystemRolloutController) restorePersistentVolumes() (err error) {
 			if err != nil && !apierrors.IsAlreadyExists(err) {
 				return err
 			}
+
+			isSkipped = false
 		}
 
 		systemBackupURL, err := systembackupstore.GetSystemBackupURL(c.systemRestore.Spec.SystemBackup, c.systemRestoreVersion, c.backupTargetURL)
@@ -1217,19 +1192,9 @@ func (c *SystemRolloutController) restorePersistentVolumes() (err error) {
 			return err
 		}
 
-		err = tagLonghornLastSystemRestoreAnnotation(
-			systemBackupURL,
-			time.Now().UTC().Format(time.RFC3339),
-			exist,
-		)
+		err = tagLonghornLastSystemRestoreAnnotation(systemBackupURL, time.Now().UTC().Format(time.RFC3339), exist, isSkipped)
 		if err != nil {
 			return err
-		}
-
-		restore.Spec.ClaimRef = exist.Spec.ClaimRef
-		if !reflect.DeepEqual(exist.Spec, restore.Spec) {
-			log.Info(SystemRolloutMsgUpdating)
-			exist.Spec = restore.Spec
 		}
 
 		_, err = c.ds.UpdatePersistentVolume(exist)
@@ -1249,6 +1214,7 @@ func (c *SystemRolloutController) restorePersistentVolumeClaims() (err error) {
 	for _, restore := range c.persistentVolumeClaimList.Items {
 		log := c.logger.WithField(types.KubernetesKindPersistentVolumeClaim, restore.Name)
 
+		isSkipped := true
 		exist, err := c.ds.GetPersistentVolumeClaim(restore.Namespace, restore.Name)
 		if err != nil {
 			if !datastore.ErrorIsNotFound(err) {
@@ -1268,6 +1234,8 @@ func (c *SystemRolloutController) restorePersistentVolumeClaims() (err error) {
 			if err != nil && !apierrors.IsAlreadyExists(err) {
 				return err
 			}
+
+			isSkipped = false
 		}
 
 		systemBackupURL, err := systembackupstore.GetSystemBackupURL(c.systemRestore.Spec.SystemBackup, c.systemRestoreVersion, c.backupTargetURL)
@@ -1275,17 +1243,10 @@ func (c *SystemRolloutController) restorePersistentVolumeClaims() (err error) {
 			return err
 		}
 
-		err = tagLonghornLastSystemRestoreAnnotation(
-			systemBackupURL,
-			time.Now().UTC().Format(time.RFC3339),
-			exist,
-		)
+		err = tagLonghornLastSystemRestoreAnnotation(systemBackupURL, time.Now().UTC().Format(time.RFC3339), exist, isSkipped)
 		if err != nil {
 			return err
 		}
-
-		// PersistentVolumeClaim spec is immutable after creation except resources.requests for bound claims
-		c.syncPersistentVolumeClaims(exist, &restore, log)
 
 		_, err = c.ds.UpdatePersistentVolumeClaim(restore.Namespace, exist)
 		if err != nil {
@@ -1294,33 +1255,6 @@ func (c *SystemRolloutController) restorePersistentVolumeClaims() (err error) {
 	}
 
 	return nil
-}
-
-func (c *SystemRolloutController) syncPersistentVolumeClaims(exist *corev1.PersistentVolumeClaim, restore *corev1.PersistentVolumeClaim, log logrus.FieldLogger) {
-	if exist.Spec.Resources.Requests == nil {
-		return
-	}
-
-	if restore.Spec.Resources.Requests == nil {
-		restore.Spec.Resources.Requests = corev1.ResourceList{}
-	}
-
-	_, foundInExist := exist.Spec.Resources.Requests[corev1.ResourceStorage]
-	_, foundInRestore := restore.Spec.Resources.Requests[corev1.ResourceStorage]
-	if !foundInExist {
-		if foundInRestore {
-			delete(restore.Spec.Resources.Requests, corev1.ResourceStorage)
-			log.Debugf("Removing PersistentVolumeClaim resource request for %v", corev1.ResourceStorage)
-		}
-		return
-	}
-
-	if restore.Spec.Resources.Requests[corev1.ResourceStorage] == exist.Spec.Resources.Requests[corev1.ResourceStorage] {
-		return
-	}
-
-	log.Debugf("Retaining existing PersistentVolumeClaim resource request for %v", corev1.ResourceStorage)
-	restore.Spec.Resources.Requests[corev1.ResourceStorage] = exist.Spec.Resources.Requests[corev1.ResourceStorage]
 }
 
 func (c *SystemRolloutController) restorePodSecurityPolicies() (err error) {
@@ -1352,11 +1286,7 @@ func (c *SystemRolloutController) restorePodSecurityPolicies() (err error) {
 			return err
 		}
 
-		err = tagLonghornLastSystemRestoreAnnotation(
-			systemBackupURL,
-			time.Now().UTC().Format(time.RFC3339),
-			exist,
-		)
+		err = tagLonghornLastSystemRestoreAnnotation(systemBackupURL, time.Now().UTC().Format(time.RFC3339), exist, false)
 		if err != nil {
 			return err
 		}
@@ -1404,11 +1334,7 @@ func (c *SystemRolloutController) restoreRecurringJobs() (err error) {
 			return err
 		}
 
-		err = tagLonghornLastSystemRestoreAnnotation(
-			systemBackupURL,
-			time.Now().UTC().Format(time.RFC3339),
-			exist,
-		)
+		err = tagLonghornLastSystemRestoreAnnotation(systemBackupURL, time.Now().UTC().Format(time.RFC3339), exist, false)
 		if err != nil {
 			return err
 		}
@@ -1457,11 +1383,7 @@ func (c *SystemRolloutController) restoreRoles() (err error) {
 			return err
 		}
 
-		err = tagLonghornLastSystemRestoreAnnotation(
-			systemBackupURL,
-			time.Now().UTC().Format(time.RFC3339),
-			exist,
-		)
+		err = tagLonghornLastSystemRestoreAnnotation(systemBackupURL, time.Now().UTC().Format(time.RFC3339), exist, false)
 		if err != nil {
 			return err
 		}
@@ -1509,11 +1431,7 @@ func (c *SystemRolloutController) restoreRoleBindings() (err error) {
 			return err
 		}
 
-		err = tagLonghornLastSystemRestoreAnnotation(
-			systemBackupURL,
-			time.Now().UTC().Format(time.RFC3339),
-			exist,
-		)
+		err = tagLonghornLastSystemRestoreAnnotation(systemBackupURL, time.Now().UTC().Format(time.RFC3339), exist, false)
 		if err != nil {
 			return err
 		}
@@ -1562,7 +1480,7 @@ func (c *SystemRolloutController) restoreService() (err error) {
 			return err
 		}
 
-		err = tagLonghornLastSystemRestoreAnnotation(systemBackupURL, time.Now().UTC().Format(time.RFC3339), exist)
+		err = tagLonghornLastSystemRestoreAnnotation(systemBackupURL, time.Now().UTC().Format(time.RFC3339), exist, false)
 		if err != nil {
 			return err
 		}
@@ -1610,7 +1528,7 @@ func (c *SystemRolloutController) restoreServiceAccounts() (err error) {
 			return err
 		}
 
-		err = tagLonghornLastSystemRestoreAnnotation(systemBackupURL, time.Now().UTC().Format(time.RFC3339), exist)
+		err = tagLonghornLastSystemRestoreAnnotation(systemBackupURL, time.Now().UTC().Format(time.RFC3339), exist, false)
 		if err != nil {
 			return err
 		}
@@ -1647,7 +1565,7 @@ func (c *SystemRolloutController) restoreSettings() (err error) {
 		log := c.logger.WithField(types.LonghornKindSetting, restore.Name)
 
 		if isSystemRolloutIgnoredSetting(restore.Name) {
-			log.Infof(SystemRolloutMsgIgnoreItem, "this configurable setting persists through the restore")
+			log.Infof(SystemRolloutMsgIgnoreItemFmt, "this configurable setting persists through the restore")
 			continue
 		}
 
@@ -1672,11 +1590,7 @@ func (c *SystemRolloutController) restoreSettings() (err error) {
 			return err
 		}
 
-		err = tagLonghornLastSystemRestoreAnnotation(
-			systemBackupURL,
-			time.Now().UTC().Format(time.RFC3339),
-			exist,
-		)
+		err = tagLonghornLastSystemRestoreAnnotation(systemBackupURL, time.Now().UTC().Format(time.RFC3339), exist, false)
 		if err != nil {
 			return err
 		}
@@ -1724,11 +1638,7 @@ func (c *SystemRolloutController) restoreStorageClasses() (err error) {
 			return err
 		}
 
-		err = tagLonghornLastSystemRestoreAnnotation(
-			systemBackupURL,
-			time.Now().UTC().Format(time.RFC3339),
-			exist,
-		)
+		err = tagLonghornLastSystemRestoreAnnotation(systemBackupURL, time.Now().UTC().Format(time.RFC3339), exist, false)
 		if err != nil {
 			return err
 		}
@@ -1773,6 +1683,7 @@ func (c *SystemRolloutController) restoreVolumes() (err error) {
 		log := c.logger.WithField(types.LonghornKindVolume, restore.Name)
 		log = getLoggerForVolume(log, &restore)
 
+		isSkipped := true
 		exist, err := c.ds.GetVolume(restore.Name)
 		if err == nil && exist != nil && exist.Spec.NodeID != "" {
 			log.Warn("Cannot restore attached volume")
@@ -1802,6 +1713,7 @@ func (c *SystemRolloutController) restoreVolumes() (err error) {
 				return err
 			}
 
+			isSkipped = false
 		}
 
 		systemBackupURL, err := systembackupstore.GetSystemBackupURL(c.systemRestore.Spec.SystemBackup, c.systemRestoreVersion, c.backupTargetURL)
@@ -1809,22 +1721,9 @@ func (c *SystemRolloutController) restoreVolumes() (err error) {
 			return err
 		}
 
-		err = tagLonghornLastSystemRestoreAnnotation(
-			systemBackupURL,
-			time.Now().UTC().Format(time.RFC3339),
-			exist,
-		)
+		err = tagLonghornLastSystemRestoreAnnotation(systemBackupURL, time.Now().UTC().Format(time.RFC3339), exist, isSkipped)
 		if err != nil {
 			return err
-		}
-
-		restore.Spec.NodeID = exist.Spec.NodeID
-		restore.Spec.FromBackup = exist.Spec.FromBackup
-		restore.Spec.Size = exist.Spec.Size
-
-		if !reflect.DeepEqual(exist.Spec, restore.Spec) {
-			log.Info(SystemRolloutMsgUpdating)
-			exist.Spec = restore.Spec
 		}
 
 		_, err = c.ds.UpdateVolume(exist)
@@ -1836,7 +1735,7 @@ func (c *SystemRolloutController) restoreVolumes() (err error) {
 	return nil
 }
 
-func tagLonghornLastSystemRestoreAnnotation(systemRestoredURL, systemRestoredAt string, obj runtime.Object) error {
+func tagLonghornLastSystemRestoreAnnotation(systemRestoredURL, systemRestoredAt string, obj runtime.Object, isSkipped bool) error {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
 		return err
@@ -1846,8 +1745,21 @@ func tagLonghornLastSystemRestoreAnnotation(systemRestoredURL, systemRestoredAt 
 	if annos == nil {
 		annos = map[string]string{}
 	}
-	annos[types.GetLastSystemRestoreLabelKey()] = systemRestoredURL
-	annos[types.GetLastSystemRestoreAtLabelKey()] = systemRestoredAt
+
+	if isSkipped {
+		delete(annos, types.GetLastSystemRestoreLabelKey())
+		delete(annos, types.GetLastSystemRestoreAtLabelKey())
+
+		annos[types.GetLastSkippedSystemRestoreLabelKey()] = systemRestoredURL
+		annos[types.GetLastSkippedSystemRestoreAtLabelKey()] = systemRestoredAt
+	} else {
+		delete(annos, types.GetLastSkippedSystemRestoreLabelKey())
+		delete(annos, types.GetLastSkippedSystemRestoreAtLabelKey())
+
+		annos[types.GetLastSystemRestoreLabelKey()] = systemRestoredURL
+		annos[types.GetLastSystemRestoreAtLabelKey()] = systemRestoredAt
+	}
+
 	metadata.SetAnnotations(annos)
 	return nil
 }
