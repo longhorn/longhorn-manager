@@ -866,6 +866,39 @@ func fakeSystemRolloutBackupTargetDefault(c *C, informerFactory lhinformers.Shar
 	c.Assert(err, IsNil)
 }
 
+func fakeSystemRolloutServices(fakeObjs map[SystemRolloutCRName]*corev1.Service, c *C, informerFactory informers.SharedInformerFactory, client *fake.Clientset) {
+	indexer := informerFactory.Core().V1().Services().Informer().GetIndexer()
+
+	clientInterface := client.CoreV1().Services(TestNamespace)
+
+	exists, err := clientInterface.List(context.TODO(), metav1.ListOptions{})
+	c.Assert(err, IsNil)
+
+	for _, exist := range exists.Items {
+		exist, err := clientInterface.Get(context.TODO(), exist.Name, metav1.GetOptions{})
+		c.Assert(err, IsNil)
+
+		err = clientInterface.Delete(context.TODO(), exist.Name, metav1.DeleteOptions{})
+		c.Assert(err, IsNil)
+
+		err = indexer.Delete(exist)
+		c.Assert(err, IsNil)
+	}
+
+	for k, fakeObj := range fakeObjs {
+		name := string(k)
+		if strings.HasSuffix(name, TestIgnoreSuffix) {
+			continue
+		}
+
+		exist, err := clientInterface.Create(context.TODO(), newService(name, fakeObj.Spec.Ports), metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+
+		err = indexer.Add(exist)
+		c.Assert(err, IsNil)
+	}
+}
+
 func fakeSystemRolloutServiceAccounts(fakeObjs map[SystemRolloutCRName]*corev1.ServiceAccount, c *C, informerFactory informers.SharedInformerFactory, client *fake.Clientset) {
 	indexer := informerFactory.Core().V1().ServiceAccounts().Informer().GetIndexer()
 
