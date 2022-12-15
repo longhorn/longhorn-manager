@@ -256,3 +256,7 @@ func (e *EngineSimulator) SnapshotHashStatus(engine *longhorn.Engine, snapshotNa
 func (e *EngineSimulator) ReplicaModeUpdate(engine *longhorn.Engine, url, mode string) error {
 	return fmt.Errorf(ErrNotImplement)
 }
+
+func (e *EngineSimulator) MetricsGet(*longhorn.Engine) (*Metrics, error) {
+	return nil, fmt.Errorf(ErrNotImplement)
+}
