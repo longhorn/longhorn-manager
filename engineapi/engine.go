@@ -300,3 +300,7 @@ func (e *EngineBinary) ReplicaModeUpdate(engine *longhorn.Engine, url, mode stri
 	}
 	return nil
 }
+
+func (e *EngineBinary) MetricsGet(*longhorn.Engine) (*Metrics, error) {
+	return nil, fmt.Errorf(ErrNotImplement)
+}
