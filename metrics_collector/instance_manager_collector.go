@@ -136,7 +136,7 @@ func (imc *InstanceManagerCollector) Collect(ch chan<- prometheus.Metric) {
 func (imc *InstanceManagerCollector) collectActualUsage(ch chan<- prometheus.Metric) {
 	defer func() {
 		if err := recover(); err != nil {
-			imc.logger.WithField("error", err).Warn("panic during collecting metrics")
+			imc.logger.WithField("error", err).Warn("Panic during collecting metrics")
 		}
 	}()
 
@@ -144,7 +144,7 @@ func (imc *InstanceManagerCollector) collectActualUsage(ch chan<- prometheus.Met
 		LabelSelector: makeInstanceManagerLabelSelector(imc.currentNodeID),
 	})
 	if err != nil {
-		imc.logger.WithError(err).Warn("error during scrape")
+		imc.logger.WithError(err).Warn("Error during scrape")
 		return
 	}
 
@@ -181,13 +181,13 @@ func getInstanceManagerTypeFromInstanceManagerName(imName string) string {
 func (imc *InstanceManagerCollector) collectRequestValues(ch chan<- prometheus.Metric) {
 	defer func() {
 		if err := recover(); err != nil {
-			imc.logger.WithField("error", err).Warn("panic during collecting metrics")
+			imc.logger.WithField("error", err).Warn("Panic during collecting metrics")
 		}
 	}()
 
 	podList, err := imc.ds.ListPodsRO(imc.namespace)
 	if err != nil {
-		imc.logger.WithError(err).Warn("error during scrape")
+		imc.logger.WithError(err).Warn("Error during scrape")
 		return
 	}
 
@@ -215,13 +215,13 @@ func (imc *InstanceManagerCollector) collectRequestValues(ch chan<- prometheus.M
 func (imc *InstanceManagerCollector) collectGrpcConnection(ch chan<- prometheus.Metric) {
 	defer func() {
 		if err := recover(); err != nil {
-			imc.logger.WithField("error", err).Warn("panic during collecting metrics")
+			imc.logger.WithField("error", err).Warn("Panic during collecting metrics")
 		}
 	}()
 
 	engineInstanceManagers, err := imc.ds.ListInstanceManagersByNode(imc.currentNodeID, longhorn.InstanceManagerTypeEngine)
 	if err != nil {
-		imc.logger.WithError(err).Warn("error during scrape")
+		imc.logger.WithError(err).Warn("Error during scrape")
 		return
 	}
 
@@ -229,12 +229,12 @@ func (imc *InstanceManagerCollector) collectGrpcConnection(ch chan<- prometheus.
 		imPod, err := imc.ds.GetPod(im.Name)
 		if err != nil {
 			if datastore.ErrorIsNotFound(err) {
-				logrus.WithError(err).Debugf("resetting proxy gRPC connection counter for %v", im.Name)
+				logrus.WithError(err).Debugf("Resetting proxy gRPC connection counter for %v", im.Name)
 				imc.proxyConnCounter.ResetCount()
 				continue
 			}
 
-			logrus.WithError(err).Errorf("failed to get instance manager pod from %v", im.Name)
+			logrus.WithError(err).Errorf("Failed to get instance manager pod from %v", im.Name)
 			return
 		}
 
