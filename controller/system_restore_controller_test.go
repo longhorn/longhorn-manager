@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"strings"
 	"time"
 
@@ -22,7 +21,6 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	systembackupstore "github.com/longhorn/backupstore/systembackup"
@@ -228,22 +226,11 @@ func fakeSystemRolloutClusterRoles(fakeObjs map[SystemRolloutCRName]*rbacv1.Clus
 			continue
 		}
 
-		exist, err := clientInterface.Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil && apierrors.IsNotFound(err) {
-			exist, err := clientInterface.Create(context.TODO(), newClusterRole(name, fakeObj.Rules), metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-
-			err = indexer.Add(exist)
-			c.Assert(err, IsNil)
-			continue
-		}
+		exist, err := clientInterface.Create(context.TODO(), newClusterRole(name, fakeObj.Rules), metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
-		if !reflect.DeepEqual(exist.Rules, fakeObj.Rules) {
-			exist.Rules = fakeObj.Rules
-			_, err := clientInterface.Update(context.TODO(), exist, metav1.UpdateOptions{})
-			c.Assert(err, IsNil)
-		}
+		err = indexer.Add(exist)
+		c.Assert(err, IsNil)
 	}
 }
 
@@ -272,23 +259,11 @@ func fakeSystemRolloutClusterRoleBindings(fakeObjs map[SystemRolloutCRName]*rbac
 			continue
 		}
 
-		exist, err := clientInterface.Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil && apierrors.IsNotFound(err) {
-			exist, err := clientInterface.Create(context.TODO(), newClusterRoleBinding(name, fakeObj.Subjects, fakeObj.RoleRef), metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-
-			err = indexer.Add(exist)
-			c.Assert(err, IsNil)
-			continue
-		}
+		exist, err := clientInterface.Create(context.TODO(), newClusterRoleBinding(name, fakeObj.Subjects, fakeObj.RoleRef), metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
-		if !reflect.DeepEqual(exist.Subjects, fakeObj.Subjects) || !reflect.DeepEqual(exist.RoleRef, fakeObj.RoleRef) {
-			exist.Subjects = fakeObj.Subjects
-			exist.RoleRef = fakeObj.RoleRef
-			_, err := clientInterface.Update(context.TODO(), exist, metav1.UpdateOptions{})
-			c.Assert(err, IsNil)
-		}
+		err = indexer.Add(exist)
+		c.Assert(err, IsNil)
 	}
 }
 
@@ -317,22 +292,11 @@ func fakeSystemRolloutConfigMaps(fakeObjs map[SystemRolloutCRName]*corev1.Config
 			continue
 		}
 
-		exist, err := clientInterface.Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil && apierrors.IsNotFound(err) {
-			exist, err := clientInterface.Create(context.TODO(), newConfigMap(name, fakeObj.Data), metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-
-			err = indexer.Add(exist)
-			c.Assert(err, IsNil)
-			continue
-		}
+		exist, err := clientInterface.Create(context.TODO(), newConfigMap(name, fakeObj.Data), metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
-		if !reflect.DeepEqual(exist.Data, fakeObj.Data) {
-			exist.Data = fakeObj.Data
-			_, err := clientInterface.Update(context.TODO(), exist, metav1.UpdateOptions{})
-			c.Assert(err, IsNil)
-		}
+		err = indexer.Add(exist)
+		c.Assert(err, IsNil)
 	}
 }
 
@@ -361,22 +325,11 @@ func fakeSystemRolloutCustomResourceDefinitions(fakeObjs map[SystemRolloutCRName
 			continue
 		}
 
-		exist, err := clientInterface.Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil && apierrors.IsNotFound(err) {
-			exist, err := clientInterface.Create(context.TODO(), newCustomResourceDefinition(name, fakeObj.Spec), metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-
-			err = indexer.Add(exist)
-			c.Assert(err, IsNil)
-			continue
-		}
+		exist, err := clientInterface.Create(context.TODO(), newCustomResourceDefinition(name, fakeObj.Spec), metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
-		if !reflect.DeepEqual(exist.Spec, fakeObj.Spec) {
-			exist.Spec = fakeObj.Spec
-			_, err := clientInterface.Update(context.TODO(), exist, metav1.UpdateOptions{})
-			c.Assert(err, IsNil)
-		}
+		err = indexer.Add(exist)
+		c.Assert(err, IsNil)
 	}
 }
 
@@ -405,22 +358,11 @@ func fakeSystemRolloutDaemonSets(fakeObjs map[SystemRolloutCRName]*appsv1.Daemon
 			continue
 		}
 
-		exist, err := clientInterface.Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil && apierrors.IsNotFound(err) {
-			exist, err := clientInterface.Create(context.TODO(), newDaemonSet(name, fakeObj.Spec, fakeObj.Labels), metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-
-			err = indexer.Add(exist)
-			c.Assert(err, IsNil)
-			continue
-		}
+		exist, err := clientInterface.Create(context.TODO(), newDaemonSet(name, fakeObj.Spec, fakeObj.Labels), metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
-		if !reflect.DeepEqual(exist.Spec, fakeObj.Spec) {
-			exist.Spec = fakeObj.Spec
-			_, err := clientInterface.Update(context.TODO(), exist, metav1.UpdateOptions{})
-			c.Assert(err, IsNil)
-		}
+		err = indexer.Add(exist)
+		c.Assert(err, IsNil)
 	}
 }
 
@@ -449,22 +391,11 @@ func fakeSystemRolloutDeployments(fakeObjs map[SystemRolloutCRName]*appsv1.Deplo
 			continue
 		}
 
-		exist, err := clientInterface.Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil && apierrors.IsNotFound(err) {
-			exist, err := clientInterface.Create(context.TODO(), newDeployment(name, fakeObj.Spec), metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-
-			err = indexer.Add(exist)
-			c.Assert(err, IsNil)
-			continue
-		}
+		exist, err := clientInterface.Create(context.TODO(), newDeployment(name, fakeObj.Spec), metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
-		if !reflect.DeepEqual(exist.Spec, fakeObj.Spec) {
-			exist.Spec = fakeObj.Spec
-			_, err := clientInterface.Update(context.TODO(), exist, metav1.UpdateOptions{})
-			c.Assert(err, IsNil)
-		}
+		err = indexer.Add(exist)
+		c.Assert(err, IsNil)
 	}
 }
 
@@ -493,24 +424,13 @@ func fakeSystemRolloutEngineImages(fakeObjs map[SystemRolloutCRName]*longhorn.En
 			continue
 		}
 
-		exist, err := clientInterface.Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil && apierrors.IsNotFound(err) {
-			engineImage := newEngineImage(fakeObj.Spec.Image, fakeObj.Status.State)
-			engineImage.Name = name
-			exist, err := clientInterface.Create(context.TODO(), engineImage, metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-
-			err = indexer.Add(exist)
-			c.Assert(err, IsNil)
-			continue
-		}
+		engineImage := newEngineImage(fakeObj.Spec.Image, fakeObj.Status.State)
+		engineImage.Name = name
+		exist, err := clientInterface.Create(context.TODO(), engineImage, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
-		if !reflect.DeepEqual(exist.Spec, fakeObj.Spec) {
-			exist.Spec = fakeObj.Spec
-			_, err := clientInterface.Update(context.TODO(), exist, metav1.UpdateOptions{})
-			c.Assert(err, IsNil)
-		}
+		err = indexer.Add(exist)
+		c.Assert(err, IsNil)
 	}
 }
 
@@ -539,27 +459,15 @@ func fakeSystemRolloutPersistentVolumes(fakeObjs map[SystemRolloutCRName]*corev1
 			continue
 		}
 
-		exist, err := clientInterface.Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil && apierrors.IsNotFound(err) {
-			persistentVolume := newPV()
-			persistentVolume.Name = name
-			persistentVolume.Spec.ClaimRef = fakeObj.Spec.ClaimRef
-			persistentVolume.Spec.StorageClassName = fakeObj.Spec.StorageClassName
-			exist, err := clientInterface.Create(context.TODO(), persistentVolume, metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-
-			err = indexer.Add(exist)
-			c.Assert(err, IsNil)
-			continue
-		}
+		persistentVolume := newPV()
+		persistentVolume.Name = name
+		persistentVolume.Spec.ClaimRef = fakeObj.Spec.ClaimRef
+		persistentVolume.Spec.StorageClassName = fakeObj.Spec.StorageClassName
+		exist, err := clientInterface.Create(context.TODO(), persistentVolume, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
-		if !reflect.DeepEqual(exist.Spec.ClaimRef, fakeObj.Spec.ClaimRef) || exist.Spec.StorageClassName != fakeObj.Spec.StorageClassName {
-			exist.Spec.ClaimRef = fakeObj.Spec.ClaimRef
-			exist.Spec.StorageClassName = fakeObj.Spec.StorageClassName
-			_, err := clientInterface.Update(context.TODO(), exist, metav1.UpdateOptions{})
-			c.Assert(err, IsNil)
-		}
+		err = indexer.Add(exist)
+		c.Assert(err, IsNil)
 	}
 }
 
@@ -588,31 +496,16 @@ func fakeSystemRolloutPersistentVolumeClaims(fakeObjs map[SystemRolloutCRName]*c
 			continue
 		}
 
-		exist, err := clientInterface.Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil && apierrors.IsNotFound(err) {
-			persistentVolumeClaim := newPVC()
-			persistentVolumeClaim.Name = name
-			persistentVolumeClaim.Spec.VolumeName = fakeObj.Spec.VolumeName
-			persistentVolumeClaim.Spec.Resources = fakeObj.Spec.Resources
-			persistentVolumeClaim.Spec.StorageClassName = fakeObj.Spec.StorageClassName
-			exist, err := clientInterface.Create(context.TODO(), persistentVolumeClaim, metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-
-			err = indexer.Add(exist)
-			c.Assert(err, IsNil)
-			continue
-		}
+		persistentVolumeClaim := newPVC()
+		persistentVolumeClaim.Name = name
+		persistentVolumeClaim.Spec.VolumeName = fakeObj.Spec.VolumeName
+		persistentVolumeClaim.Spec.Resources = fakeObj.Spec.Resources
+		persistentVolumeClaim.Spec.StorageClassName = fakeObj.Spec.StorageClassName
+		exist, err := clientInterface.Create(context.TODO(), persistentVolumeClaim, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
-		if !reflect.DeepEqual(exist.Spec.Resources, fakeObj.Spec.Resources) ||
-			exist.Spec.VolumeName != fakeObj.Spec.VolumeName ||
-			exist.Spec.StorageClassName != fakeObj.Spec.StorageClassName {
-			exist.Spec.Resources = fakeObj.Spec.Resources
-			exist.Spec.VolumeName = fakeObj.Spec.VolumeName
-			exist.Spec.StorageClassName = fakeObj.Spec.StorageClassName
-			_, err := clientInterface.Update(context.TODO(), exist, metav1.UpdateOptions{})
-			c.Assert(err, IsNil)
-		}
+		err = indexer.Add(exist)
+		c.Assert(err, IsNil)
 	}
 }
 
@@ -641,22 +534,11 @@ func fakeSystemRolloutPodSecurityPolicies(fakeObjs map[SystemRolloutCRName]*poli
 			continue
 		}
 
-		exist, err := clientInterface.Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil && apierrors.IsNotFound(err) {
-			exist, err := clientInterface.Create(context.TODO(), newPodSecurityPolicy(fakeObj.Spec), metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-
-			err = indexer.Add(exist)
-			c.Assert(err, IsNil)
-			continue
-		}
+		exist, err := clientInterface.Create(context.TODO(), newPodSecurityPolicy(fakeObj.Spec), metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
-		if !reflect.DeepEqual(exist.Spec, fakeObj.Spec) {
-			exist.Spec = fakeObj.Spec
-			_, err := clientInterface.Update(context.TODO(), exist, metav1.UpdateOptions{})
-			c.Assert(err, IsNil)
-		}
+		err = indexer.Add(exist)
+		c.Assert(err, IsNil)
 	}
 }
 
@@ -685,22 +567,11 @@ func fakeSystemRolloutRecurringJobs(fakeObjs map[SystemRolloutCRName]*longhorn.R
 			continue
 		}
 
-		exist, err := clientInterface.Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil && apierrors.IsNotFound(err) {
-			exist, err := clientInterface.Create(context.TODO(), newRecurringJob(name, fakeObj.Spec), metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-
-			err = indexer.Add(exist)
-			c.Assert(err, IsNil)
-			continue
-		}
+		exist, err := clientInterface.Create(context.TODO(), newRecurringJob(name, fakeObj.Spec), metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
-		if !reflect.DeepEqual(exist.Spec, fakeObj.Spec) {
-			exist.Spec = fakeObj.Spec
-			_, err := clientInterface.Update(context.TODO(), exist, metav1.UpdateOptions{})
-			c.Assert(err, IsNil)
-		}
+		err = indexer.Add(exist)
+		c.Assert(err, IsNil)
 	}
 }
 
@@ -729,22 +600,11 @@ func fakeSystemRolloutRoles(fakeObjs map[SystemRolloutCRName]*rbacv1.Role, c *C,
 			continue
 		}
 
-		exist, err := clientInterface.Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil && apierrors.IsNotFound(err) {
-			exist, err := clientInterface.Create(context.TODO(), newRole(name, fakeObj.Rules), metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-
-			err = indexer.Add(exist)
-			c.Assert(err, IsNil)
-			continue
-		}
+		exist, err := clientInterface.Create(context.TODO(), newRole(name, fakeObj.Rules), metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
-		if !reflect.DeepEqual(exist.Rules, fakeObj.Rules) {
-			exist.Rules = fakeObj.Rules
-			_, err := clientInterface.Update(context.TODO(), exist, metav1.UpdateOptions{})
-			c.Assert(err, IsNil)
-		}
+		err = indexer.Add(exist)
+		c.Assert(err, IsNil)
 	}
 }
 
@@ -773,22 +633,12 @@ func fakeSystemRolloutRoleBindings(fakeObjs map[SystemRolloutCRName]*rbacv1.Role
 			continue
 		}
 
-		exist, err := clientInterface.Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil && apierrors.IsNotFound(err) {
-			exist, err := clientInterface.Create(context.TODO(), newRoleBinding(name, fakeObj.Subjects), metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-
-			err = indexer.Add(exist)
-			c.Assert(err, IsNil)
-			continue
-		}
+		exist, err := clientInterface.Create(context.TODO(), newRoleBinding(name, fakeObj.Subjects), metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
-		if !reflect.DeepEqual(exist.Subjects, fakeObj.Subjects) {
-			exist.Subjects = fakeObj.Subjects
-			_, err := clientInterface.Update(context.TODO(), exist, metav1.UpdateOptions{})
-			c.Assert(err, IsNil)
-		}
+		err = indexer.Add(exist)
+		c.Assert(err, IsNil)
+		continue
 	}
 }
 
@@ -817,23 +667,12 @@ func fakeSystemRolloutVolumes(fakeObjs map[SystemRolloutCRName]*longhorn.Volume,
 			continue
 		}
 
-		exist, err := clientInterface.Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil && apierrors.IsNotFound(err) {
-			volume := newVolume(name, fakeObj.Spec.NumberOfReplicas)
-			exist, err := clientInterface.Create(context.TODO(), volume, metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-
-			err = indexer.Add(exist)
-			c.Assert(err, IsNil)
-			continue
-		}
+		volume := newVolume(name, fakeObj.Spec.NumberOfReplicas)
+		exist, err := clientInterface.Create(context.TODO(), volume, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
-		if !reflect.DeepEqual(exist.Spec, fakeObj.Spec) {
-			exist.Spec = fakeObj.Spec
-			_, err := clientInterface.Update(context.TODO(), exist, metav1.UpdateOptions{})
-			c.Assert(err, IsNil)
-		}
+		err = indexer.Add(exist)
+		c.Assert(err, IsNil)
 	}
 }
 
@@ -918,28 +757,17 @@ func fakeSystemRolloutServiceAccounts(fakeObjs map[SystemRolloutCRName]*corev1.S
 		c.Assert(err, IsNil)
 	}
 
-	for k, fakeObj := range fakeObjs {
+	for k := range fakeObjs {
 		name := string(k)
 		if strings.HasSuffix(name, TestIgnoreSuffix) {
 			continue
 		}
 
-		exist, err := clientInterface.Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil && apierrors.IsNotFound(err) {
-			exist, err := clientInterface.Create(context.TODO(), newServiceAccount(name), metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-
-			err = indexer.Add(exist)
-			c.Assert(err, IsNil)
-			continue
-		}
+		exist, err := clientInterface.Create(context.TODO(), newServiceAccount(name), metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
-		if !reflect.DeepEqual(exist.Secrets, fakeObj.Secrets) {
-			exist.Secrets = fakeObj.Secrets
-			_, err := clientInterface.Update(context.TODO(), exist, metav1.UpdateOptions{})
-			c.Assert(err, IsNil)
-		}
+		err = indexer.Add(exist)
+		c.Assert(err, IsNil)
 	}
 }
 
@@ -970,22 +798,11 @@ func fakeSystemRolloutSettings(fakeObjs map[SystemRolloutCRName]*longhorn.Settin
 
 		value := string(fakeObj.Value)
 
-		exist, err := clientInterface.Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil && apierrors.IsNotFound(err) {
-			exist, err := clientInterface.Create(context.TODO(), initSettingsNameValue(name, value), metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-
-			err = indexer.Add(exist)
-			c.Assert(err, IsNil)
-			continue
-		}
+		exist, err := clientInterface.Create(context.TODO(), initSettingsNameValue(name, value), metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
-		if exist.Value != value {
-			exist.Value = value
-			_, err := clientInterface.Update(context.TODO(), exist, metav1.UpdateOptions{})
-			c.Assert(err, IsNil)
-		}
+		err = indexer.Add(exist)
+		c.Assert(err, IsNil)
 	}
 }
 
@@ -1021,15 +838,10 @@ func fakeSystemRolloutStorageClasses(fakeObjs map[SystemRolloutCRName]*storagev1
 			continue
 		}
 
-		_, err := clientInterface.Get(context.TODO(), name, metav1.GetOptions{})
-		if err != nil && apierrors.IsNotFound(err) {
-			exist, err := clientInterface.Create(context.TODO(), newStorageClass(name), metav1.CreateOptions{})
-			c.Assert(err, IsNil)
+		exist, err := clientInterface.Create(context.TODO(), newStorageClass(name), metav1.CreateOptions{})
+		c.Assert(err, IsNil)
 
-			err = indexer.Add(exist)
-			c.Assert(err, IsNil)
-			continue
-		}
+		err = indexer.Add(exist)
 		c.Assert(err, IsNil)
 	}
 }
