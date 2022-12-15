@@ -548,6 +548,17 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 				SystemRolloutCRName(TestPVName): {
 					Spec: corev1.PersistentVolumeSpec{
 						ClaimRef: &corev1.ObjectReference{
+							Name:      TestPVCName,
+							Namespace: TestNamespace,
+						},
+						StorageClassName: TestStorageClassName,
+					},
+				},
+			},
+			backupPersistentVolumes: map[SystemRolloutCRName]*corev1.PersistentVolume{
+				SystemRolloutCRName(TestPVName): {
+					Spec: corev1.PersistentVolumeSpec{
+						ClaimRef: &corev1.ObjectReference{
 							Name:      TestPVCName + TestDiffSuffix,
 							Namespace: TestNamespace,
 						},
@@ -603,7 +614,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 					},
 				},
 			},
-			expectRestoredPersistentVolumeClaims: map[SystemRolloutCRName]*corev1.PersistentVolumeClaim{
+			backupPersistentVolumeClaims: map[SystemRolloutCRName]*corev1.PersistentVolumeClaim{
 				SystemRolloutCRName(TestPVCName): {
 					Spec: corev1.PersistentVolumeClaimSpec{
 						StorageClassName: &testStorageClassName,
@@ -611,6 +622,19 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 						Resources: corev1.ResourceRequirements{
 							Requests: corev1.ResourceList{
 								corev1.ResourceStorage: request200Mi,
+							},
+						},
+					},
+				},
+			},
+			expectRestoredPersistentVolumeClaims: map[SystemRolloutCRName]*corev1.PersistentVolumeClaim{
+				SystemRolloutCRName(TestPVCName): {
+					Spec: corev1.PersistentVolumeClaimSpec{
+						StorageClassName: &testStorageClassName,
+						VolumeName:       TestVolumeName,
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceStorage: request100Mi,
 							},
 						},
 					},
@@ -846,10 +870,17 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 					},
 				},
 			},
-			expectRestoredVolumes: map[SystemRolloutCRName]*longhorn.Volume{
+			backupVolumes: map[SystemRolloutCRName]*longhorn.Volume{
 				SystemRolloutCRName(TestVolumeName): {
 					Spec: longhorn.VolumeSpec{
 						NumberOfReplicas: 5,
+					},
+				},
+			},
+			expectRestoredVolumes: map[SystemRolloutCRName]*longhorn.Volume{
+				SystemRolloutCRName(TestVolumeName): {
+					Spec: longhorn.VolumeSpec{
+						NumberOfReplicas: 3,
 					},
 				},
 			},
@@ -1038,15 +1069,15 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			assertRolloutDaemonSets(tc.expectRestoredDaemonSets, c, kubeClient)
 			assertRolloutDeployments(tc.expectRestoredDeployments, c, kubeClient)
 			assertRolloutEngineImages(tc.expectRestoredEngineImages, c, lhClient)
-			assertRolloutPersistentVolumes(tc.expectRestoredPersistentVolumes, tc.existPersistentVolumes, c, kubeClient)
-			assertRolloutPersistentVolumeClaims(tc.expectRestoredPersistentVolumeClaims, tc.existPersistentVolumeClaims, c, kubeClient)
+			assertRolloutPersistentVolumes(tc.expectRestoredPersistentVolumes, tc.backupPersistentVolumes, c, kubeClient)
+			assertRolloutPersistentVolumeClaims(tc.expectRestoredPersistentVolumeClaims, tc.backupPersistentVolumeClaims, c, kubeClient)
 			assertRolloutPodSecurityPolicies(tc.expectRestoredPodSecurityPolicies, c, kubeClient)
 			assertRolloutRecurringJobs(tc.expectRestoredRecurringJobs, c, lhClient)
 			assertRolloutRoles(tc.expectRestoredRoles, c, kubeClient)
 			assertRolloutRoleBindings(tc.expectRestoredRoleBindings, c, kubeClient)
 			assertRolloutServices(tc.expectRestoredServices, c, kubeClient)
 			assertRolloutServiceAccounts(tc.expectRestoredServiceAccounts, c, kubeClient)
-			assertRolloutVolumes(tc.expectRestoredVolumes, c, lhClient)
+			assertRolloutVolumes(tc.expectRestoredVolumes, tc.backupVolumes, c, lhClient)
 			assertRolloutSettings(tc.expectRestoredSettings, tc.existSettings, c, lhClient)
 		}
 
@@ -1518,7 +1549,7 @@ func assertRolloutEngineImages(expectRestored map[SystemRolloutCRName]*longhorn.
 	}
 }
 
-func assertRolloutPersistentVolumes(expectRestored map[SystemRolloutCRName]*corev1.PersistentVolume, tcExists map[SystemRolloutCRName]*corev1.PersistentVolume, c *C, client *fake.Clientset) {
+func assertRolloutPersistentVolumes(expectRestored map[SystemRolloutCRName]*corev1.PersistentVolume, backups map[SystemRolloutCRName]*corev1.PersistentVolume, c *C, client *fake.Clientset) {
 	objList, err := client.CoreV1().PersistentVolumes().List(context.TODO(), metav1.ListOptions{})
 	c.Assert(err, IsNil)
 	c.Assert(len(objList.Items), Equals, len(expectRestored))
@@ -1532,21 +1563,21 @@ func assertRolloutPersistentVolumes(expectRestored map[SystemRolloutCRName]*core
 		exist, found := exists[name]
 		c.Assert(found, Equals, true)
 		c.Assert(exist.Spec.StorageClassName, Equals, restored.Spec.StorageClassName)
+	}
 
-		if _, prepared := tcExists[name]; !prepared {
-			c.Assert(exist.Spec.ClaimRef, Equals, (*corev1.ObjectReference)(nil))
+	for name, backup := range backups {
+		exist, found := exists[name]
+		c.Assert(found, Equals, true)
+		if exist.Spec.StorageClassName != backup.Spec.StorageClassName {
+			assertAnnotateSkippedLastSystemRestore(exist.Annotations, c)
 		}
 	}
 }
 
-func assertRolloutPersistentVolumeClaims(expectRestored map[SystemRolloutCRName]*corev1.PersistentVolumeClaim, tcExists map[SystemRolloutCRName]*corev1.PersistentVolumeClaim, c *C, client *fake.Clientset) {
+func assertRolloutPersistentVolumeClaims(expectRestored map[SystemRolloutCRName]*corev1.PersistentVolumeClaim, backups map[SystemRolloutCRName]*corev1.PersistentVolumeClaim, c *C, client *fake.Clientset) {
 	objList, err := client.CoreV1().PersistentVolumeClaims(TestNamespace).List(context.TODO(), metav1.ListOptions{})
 	c.Assert(err, IsNil)
 
-	// Longhorn does not restore the requested storage size of existing PVC to avoid data lose.
-	if len(tcExists) != 0 {
-		expectRestored = tcExists
-	}
 	c.Assert(len(objList.Items), Equals, len(expectRestored))
 
 	exists := map[SystemRolloutCRName]corev1.PersistentVolumeClaim{}
@@ -1558,6 +1589,14 @@ func assertRolloutPersistentVolumeClaims(expectRestored map[SystemRolloutCRName]
 		exist, found := exists[name]
 		c.Assert(found, Equals, true)
 		c.Assert(reflect.DeepEqual(exist.Spec.Resources.Requests, restored.Spec.Resources.Requests), Equals, true)
+	}
+
+	for name, backup := range backups {
+		exist, found := exists[name]
+		c.Assert(found, Equals, true)
+		if !reflect.DeepEqual(exist.Spec.Resources.Requests, backup.Spec.Resources.Requests) {
+			assertAnnotateSkippedLastSystemRestore(exist.Annotations, c)
+		}
 	}
 }
 
@@ -1685,7 +1724,7 @@ func assertRolloutSettings(expectRestored map[SystemRolloutCRName]*longhorn.Sett
 	}
 }
 
-func assertRolloutVolumes(expectRestored map[SystemRolloutCRName]*longhorn.Volume, c *C, client *lhfake.Clientset) {
+func assertRolloutVolumes(expectRestored map[SystemRolloutCRName]*longhorn.Volume, backups map[SystemRolloutCRName]*longhorn.Volume, c *C, client *lhfake.Clientset) {
 	objList, err := client.LonghornV1beta2().Volumes(TestNamespace).List(context.TODO(), metav1.ListOptions{})
 	c.Assert(err, IsNil)
 	c.Assert(len(objList.Items), Equals, len(expectRestored))
@@ -1700,4 +1739,20 @@ func assertRolloutVolumes(expectRestored map[SystemRolloutCRName]*longhorn.Volum
 		c.Assert(found, Equals, true)
 		c.Assert(exist.Spec.NumberOfReplicas, Equals, restored.Spec.NumberOfReplicas)
 	}
+
+	for name, backup := range backups {
+		exist, found := exists[name]
+		c.Assert(found, Equals, true)
+		if exist.Spec.NumberOfReplicas != backup.Spec.NumberOfReplicas {
+			assertAnnotateSkippedLastSystemRestore(exist.Annotations, c)
+		}
+	}
+}
+
+func assertAnnotateSkippedLastSystemRestore(annos map[string]string, c *C) {
+	_, ok := annos[types.GetLastSkippedSystemRestoreLabelKey()]
+	c.Assert(ok, Equals, true)
+
+	_, ok = annos[types.GetLastSkippedSystemRestoreAtLabelKey()]
+	c.Assert(ok, Equals, true)
 }
