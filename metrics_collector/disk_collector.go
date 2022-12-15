@@ -71,13 +71,13 @@ func (dc *DiskCollector) Collect(ch chan<- prometheus.Metric) {
 func (dc *DiskCollector) collectDiskStorage(ch chan<- prometheus.Metric) {
 	defer func() {
 		if err := recover(); err != nil {
-			dc.logger.WithField("error", err).Warn("panic during collecting metrics")
+			dc.logger.WithField("error", err).Warn("Panic during collecting metrics")
 		}
 	}()
 
 	node, err := dc.ds.GetNodeRO(dc.currentNodeID)
 	if err != nil {
-		dc.logger.WithError(err).Warn("error during scrape")
+		dc.logger.WithError(err).Warn("Error during scrape")
 		return
 	}
 

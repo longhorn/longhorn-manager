@@ -187,13 +187,13 @@ func (nc *NodeCollector) Collect(ch chan<- prometheus.Metric) {
 func (nc *NodeCollector) collectNodeStatus(ch chan<- prometheus.Metric) {
 	defer func() {
 		if err := recover(); err != nil {
-			nc.logger.WithField("error", err).Warn("panic during collecting metrics")
+			nc.logger.WithField("error", err).Warn("Panic during collecting metrics")
 		}
 	}()
 
 	nodeList, err := nc.ds.ListNodesRO()
 	if err != nil {
-		nc.logger.WithError(err).Warn("error during scrape")
+		nc.logger.WithError(err).Warn("Error during scrape")
 		return
 	}
 
@@ -222,13 +222,13 @@ func (nc *NodeCollector) collectNodeStatus(ch chan<- prometheus.Metric) {
 func (nc *NodeCollector) collectTotalNumberOfNodes(ch chan<- prometheus.Metric) {
 	defer func() {
 		if err := recover(); err != nil {
-			nc.logger.WithField("error", err).Warn("panic during collecting metrics")
+			nc.logger.WithField("error", err).Warn("Panic during collecting metrics")
 		}
 	}()
 
 	nodeList, err := nc.ds.ListNodesRO()
 	if err != nil {
-		nc.logger.WithError(err).Warn("error during scrape")
+		nc.logger.WithError(err).Warn("Error during scrape")
 		return
 	}
 
@@ -238,7 +238,7 @@ func (nc *NodeCollector) collectTotalNumberOfNodes(ch chan<- prometheus.Metric) 
 func (nc *NodeCollector) collectNodeActualCPUMemoryUsage(ch chan<- prometheus.Metric) {
 	defer func() {
 		if err := recover(); err != nil {
-			nc.logger.WithField("error", err).Warn("panic during collecting metrics")
+			nc.logger.WithField("error", err).Warn("Panic during collecting metrics")
 		}
 	}()
 
@@ -246,7 +246,7 @@ func (nc *NodeCollector) collectNodeActualCPUMemoryUsage(ch chan<- prometheus.Me
 		FieldSelector: "metadata.name=" + nc.currentNodeID,
 	})
 	if err != nil {
-		nc.logger.WithError(err).Warn("error during scrape")
+		nc.logger.WithError(err).Warn("Error during scrape")
 		return
 	}
 
@@ -261,13 +261,13 @@ func (nc *NodeCollector) collectNodeActualCPUMemoryUsage(ch chan<- prometheus.Me
 func (nc *NodeCollector) collectNodeCPUMemoryCapacity(ch chan<- prometheus.Metric) {
 	defer func() {
 		if err := recover(); err != nil {
-			nc.logger.WithField("error", err).Warn("panic during collecting metrics")
+			nc.logger.WithField("error", err).Warn("Panic during collecting metrics")
 		}
 	}()
 
 	kubeNodeList, err := nc.ds.ListKubeNodesRO()
 	if err != nil {
-		nc.logger.WithError(err).Warn("error during scrape")
+		nc.logger.WithError(err).Warn("Error during scrape")
 		return
 	}
 
@@ -285,13 +285,13 @@ func (nc *NodeCollector) collectNodeCPUMemoryCapacity(ch chan<- prometheus.Metri
 func (nc *NodeCollector) collectNodeStorage(ch chan<- prometheus.Metric) {
 	defer func() {
 		if err := recover(); err != nil {
-			nc.logger.WithField("error", err).Warn("panic during collecting metrics")
+			nc.logger.WithField("error", err).Warn("Panic during collecting metrics")
 		}
 	}()
 
 	node, err := nc.ds.GetNodeRO(nc.currentNodeID)
 	if err != nil {
-		nc.logger.WithError(err).Warn("error during scrape")
+		nc.logger.WithError(err).Warn("Error during scrape")
 		return
 	}
 
