@@ -53,6 +53,15 @@ type Controller struct {
 	NodeID string
 }
 
+type Metrics struct {
+	ReadThroughput  uint64
+	WriteThroughput uint64
+	ReadLatency     uint64
+	WriteLatency    uint64
+	ReadIOPS        uint64
+	WriteIOPS       uint64
+}
+
 type EngineClient interface {
 	VersionGet(engine *longhorn.Engine, clientOnly bool) (*EngineVersion, error)
 
@@ -86,6 +95,8 @@ type EngineClient interface {
 
 	BackupRestore(engine *longhorn.Engine, backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string) error
 	BackupRestoreStatus(engine *longhorn.Engine) (map[string]*longhorn.RestoreStatus, error)
+
+	MetricsGet(engine *longhorn.Engine) (*Metrics, error)
 }
 
 type EngineClientRequest struct {
