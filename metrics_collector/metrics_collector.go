@@ -19,20 +19,22 @@ import (
 )
 
 func InitMetricsCollectorSystem(logger logrus.FieldLogger, currentNodeID string, ds *datastore.DataStore, kubeconfigPath string, proxyConnCounter util.Counter) {
+	logger.Info("Initializing metrics collector system")
+
 	vc := NewVolumeCollector(logger, currentNodeID, ds)
 	dc := NewDiskCollector(logger, currentNodeID, ds)
 	bc := NewBackupCollector(logger, currentNodeID, ds)
 
 	if err := registry.Register(vc); err != nil {
-		logger.WithField("collector", subsystemVolume).WithError(err).Warn("failed to register collector")
+		logger.WithField("collector", subsystemVolume).WithError(err).Warn("Failed to register collector")
 	}
 
 	if err := registry.Register(dc); err != nil {
-		logger.WithField("collector", subsystemDisk).WithError(err).Warn("failed to register collector")
+		logger.WithField("collector", subsystemDisk).WithError(err).Warn("Failed to register collector")
 	}
 
 	if err := registry.Register(bc); err != nil {
-		logger.WithField("collector", subsystemBackup).WithError(err).Warn("failed to register collector")
+		logger.WithField("collector", subsystemBackup).WithError(err).Warn("Failed to register collector")
 	}
 
 	namespace := os.Getenv(types.EnvPodNamespace)
@@ -43,20 +45,20 @@ func InitMetricsCollectorSystem(logger logrus.FieldLogger, currentNodeID string,
 	}
 
 	if kubeMetricsClient, err := buildMetricClientFromConfigPath(kubeconfigPath); err != nil {
-		logger.WithError(err).Warn("skip instantiating InstanceManagerCollector, ManagerCollector, and NodeCollector")
+		logger.WithError(err).Warn("Skipped instantiating InstanceManagerCollector, ManagerCollector, and NodeCollector")
 	} else {
 		imc := NewInstanceManagerCollector(logger, currentNodeID, ds, proxyConnCounter, kubeMetricsClient, namespace)
 		nc := NewNodeCollector(logger, currentNodeID, ds, kubeMetricsClient)
 		mc := NewManagerCollector(logger, currentNodeID, ds, kubeMetricsClient, namespace)
 
 		if err := registry.Register(imc); err != nil {
-			logger.WithField("collector", subsystemInstanceManager).WithError(err).Warn("failed to register collector")
+			logger.WithField("collector", subsystemInstanceManager).WithError(err).Warn("Failed to register collector")
 		}
 		if err := registry.Register(nc); err != nil {
-			logger.WithField("collector", subsystemNode).WithError(err).Warn("failed to register collector")
+			logger.WithField("collector", subsystemNode).WithError(err).Warn("Failed to register collector")
 		}
 		if err := registry.Register(mc); err != nil {
-			logger.WithField("collector", subsystemManager).WithError(err).Warn("failed to register collector")
+			logger.WithField("collector", subsystemManager).WithError(err).Warn("Failed to register collector")
 		}
 	}
 

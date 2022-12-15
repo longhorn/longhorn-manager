@@ -68,14 +68,14 @@ func (mc *ManagerCollector) Describe(ch chan<- *prometheus.Desc) {
 func (mc *ManagerCollector) Collect(ch chan<- prometheus.Metric) {
 	defer func() {
 		if err := recover(); err != nil {
-			mc.logger.WithField("error", err).Warn("panic during collecting metrics")
+			mc.logger.WithField("error", err).Warn("Panic during collecting metrics")
 		}
 	}()
 
 	// This code is running on the manager pod and os hostname always guarantees to be the manager pod name.
 	managerPodName, err := os.Hostname()
 	if err != nil {
-		mc.logger.WithError(err).Warn("error during scrape")
+		mc.logger.WithError(err).Warn("Error during scrape")
 		return
 	}
 
@@ -83,7 +83,7 @@ func (mc *ManagerCollector) Collect(ch chan<- prometheus.Metric) {
 		FieldSelector: "metadata.name=" + managerPodName,
 	})
 	if err != nil {
-		mc.logger.WithError(err).Warn("error during scrape")
+		mc.logger.WithError(err).Warn("Error during scrape")
 		return
 	}
 
