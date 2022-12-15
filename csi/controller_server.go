@@ -196,43 +196,6 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	// TODO: this is for the recurringJobs in volume spec and recurringJobs in
-	// storageClass. Should be removed when recurringJobs gets removed from
-	// storageClass parameters.
-	for _, recurringJob := range vol.RecurringJobs {
-		recurringJob.Concurrency = types.DefaultRecurringJobConcurrency
-
-		if err := datastore.ValidateRecurringJob(longhorn.RecurringJobSpec{
-			Name:        recurringJob.Name,
-			Groups:      recurringJob.Groups,
-			Task:        longhorn.RecurringJobType(recurringJob.Task),
-			Cron:        recurringJob.Cron,
-			Retain:      int(recurringJob.Retain),
-			Concurrency: int(recurringJob.Concurrency),
-			Labels:      recurringJob.Labels,
-		}); err != nil {
-			continue
-		}
-
-		_, err := cs.apiClient.RecurringJob.ById(recurringJob.Name)
-		if err != nil {
-			if !strings.Contains(err.Error(), "not found") {
-				return nil, status.Error(codes.Internal, err.Error())
-			}
-			if _, err := cs.apiClient.RecurringJob.Create(&recurringJob); err != nil {
-				return nil, status.Error(codes.Internal, err.Error())
-			}
-		}
-
-		vol.RecurringJobSelector = append(
-			vol.RecurringJobSelector,
-			longhornclient.VolumeRecurringJob{
-				Name:    recurringJob.Name,
-				IsGroup: false,
-			},
-		)
-	}
-
 	vol.Name = volumeID
 	vol.Size = fmt.Sprintf("%d", reqVolSizeBytes)
 

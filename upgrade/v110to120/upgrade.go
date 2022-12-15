@@ -293,32 +293,6 @@ func (run *recurringJobUpgrade) translateVolumeRecurringJobs() (err error) {
 		}
 		return errors.Wrap(err, "failed to list volumes")
 	}
-	for _, volume := range run.volumes.Items {
-		addVolumeLabels := map[string]string{}
-		for _, recurringJob := range volume.Spec.RecurringJobs {
-			recurringJobSpec := longhorn.RecurringJobSpec{
-				Name:        recurringJob.Name,
-				Task:        recurringJob.Task,
-				Cron:        recurringJob.Cron,
-				Retain:      recurringJob.Retain,
-				Concurrency: types.DefaultRecurringJobConcurrency,
-				Labels:      recurringJob.Labels,
-			}
-			id, err := createRecurringJobID(recurringJobSpec)
-			if err != nil {
-				return errors.Wrapf(err, "failed to create ID for recurring job %v", recurringJob)
-			}
-			if _, exist := run.recurringJobMapSpec[id]; !exist {
-				recurringJobSpec.Name = id
-				run.recurringJobMapSpec[id] = &recurringJobSpec
-			}
-			key := types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJob, id)
-			addVolumeLabels[key] = types.LonghornLabelValueEnabled
-		}
-		if len(addVolumeLabels) != 0 {
-			run.volumeMapLabels[volume.Name] = addVolumeLabels
-		}
-	}
 	if err := run.createRecurringJobCRs(); err != nil {
 		return err
 	}
@@ -358,7 +332,6 @@ func (run *recurringJobUpgrade) convertToVolumeLabels() (err error) {
 			volumeLabels[key] = value
 		}
 		volume.Labels = volumeLabels
-		volume.Spec.RecurringJobs = nil
 		run.log.Infof(upgradeLogPrefix+"Updating %v volume labels to %v", volume.Name, volume.Labels)
 		_, err = volumeClient.Update(context.TODO(), volume, metav1.UpdateOptions{})
 		if err != nil {

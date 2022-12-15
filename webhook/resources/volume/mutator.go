@@ -66,19 +66,6 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/nodeSelector", "value": []}`)
 	}
 
-	if volume.Spec.RecurringJobs == nil {
-		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/recurringJobs", "value": []}`)
-	}
-
-	for id, job := range volume.Spec.RecurringJobs {
-		if job.Groups == nil {
-			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/recurringJobs/%d/groups", "value": []}`, id))
-		}
-		if job.Labels == nil {
-			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/recurringJobs/%d/labels", "value": {}}`, id))
-		}
-	}
-
 	if volume.Spec.NumberOfReplicas == 0 {
 		numberOfReplicas, err := v.getDefaultReplicaCount()
 		if err != nil {
@@ -231,17 +218,6 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 	}
 	if volume.Spec.NodeSelector == nil {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/nodeSelector", "value": []}`)
-	}
-	if volume.Spec.RecurringJobs == nil {
-		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/recurringJobs", "value": []}`)
-	}
-	for id, job := range volume.Spec.RecurringJobs {
-		if job.Groups == nil {
-			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/recurringJobs/%d/groups", "value": []}`, id))
-		}
-		if job.Labels == nil {
-			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/recurringJobs/%d/labels", "value": {}}`, id))
-		}
 	}
 	if volume.Spec.UnmapMarkSnapChainRemoved == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/unmapMarkSnapChainRemoved", "value": "%s"}`, longhorn.UnmapMarkSnapChainRemovedIgnored))

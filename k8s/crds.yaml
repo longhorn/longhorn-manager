@@ -3276,34 +3276,6 @@ spec:
                 type: array
               numberOfReplicas:
                 type: integer
-              recurringJobs:
-                description: Deprecated. Replaced by a separate resource named "RecurringJob"
-                items:
-                  description: 'VolumeRecurringJobSpec is a deprecated struct. TODO: Should be removed when recurringJobs gets removed from the volume       spec.'
-                  properties:
-                    concurrency:
-                      type: integer
-                    cron:
-                      type: string
-                    groups:
-                      items:
-                        type: string
-                      type: array
-                    labels:
-                      additionalProperties:
-                        type: string
-                      type: object
-                    name:
-                      type: string
-                    retain:
-                      type: integer
-                    task:
-                      enum:
-                      - snapshot
-                      - backup
-                      type: string
-                  type: object
-                type: array
               replicaAutoBalance:
                 enum:
                 - ignored
