@@ -97,6 +97,7 @@ type extractedResources struct {
 	configMapList             *corev1.ConfigMapList
 	persistentVolumeList      *corev1.PersistentVolumeList
 	persistentVolumeClaimList *corev1.PersistentVolumeClaimList
+	serviceList               *corev1.ServiceList
 	serviceAccountList        *corev1.ServiceAccountList
 
 	storageClassList *storagev1.StorageClassList
@@ -405,6 +406,7 @@ func (c *SystemRolloutController) systemRollout() error {
 
 		wg := &sync.WaitGroup{}
 		restoreFns := map[string]func() error{
+			types.KubernetesKindServiceList:               c.restoreService,
 			types.KubernetesKindServiceAccountList:        c.restoreServiceAccounts,
 			types.KubernetesKindClusterRoleList:           c.restoreClusterRoles,
 			types.KubernetesKindClusterRoleBindingList:    c.restoreClusterRoleBindings,
@@ -625,6 +627,8 @@ func (c *SystemRolloutController) cacheResourcesFromDirectory(name string, schem
 			c.persistentVolumeClaimList = obj.(*corev1.PersistentVolumeClaimList)
 		case types.KubernetesKindServiceAccountList:
 			c.serviceAccountList = obj.(*corev1.ServiceAccountList)
+		case types.KubernetesKindServiceList:
+			c.serviceList = obj.(*corev1.ServiceList)
 		case types.KubernetesKindConfigMapList:
 			c.configMapList = obj.(*corev1.ConfigMapList)
 		// Kubernetes Storage
@@ -1521,6 +1525,54 @@ func (c *SystemRolloutController) restoreRoleBindings() (err error) {
 		}
 
 		_, err = c.ds.UpdateRoleBinding(exist)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *SystemRolloutController) restoreService() (err error) {
+	if c.serviceList == nil {
+		return nil
+	}
+
+	for _, restore := range c.serviceList.Items {
+		log := c.logger.WithField(types.KubernetesKindService, restore.Name)
+
+		exist, err := c.ds.GetService(restore.Namespace, restore.Name)
+		if err != nil {
+			if !datastore.ErrorIsNotFound(err) {
+				return err
+			}
+
+			restore.ResourceVersion = ""
+
+			log.Info(SystemRolloutMsgCreating)
+
+			exist, err = c.ds.CreateService(restore.Namespace, &restore)
+			if err != nil && !apierrors.IsAlreadyExists(err) {
+				return err
+			}
+		}
+
+		systemBackupURL, err := systembackupstore.GetSystemBackupURL(c.systemRestore.Spec.SystemBackup, c.systemRestoreVersion, c.backupTargetURL)
+		if err != nil {
+			return err
+		}
+
+		err = tagLonghornLastSystemRestoreAnnotation(systemBackupURL, time.Now().UTC().Format(time.RFC3339), exist)
+		if err != nil {
+			return err
+		}
+
+		if !reflect.DeepEqual(exist.Spec, restore.Spec) {
+			log.Info(SystemRolloutMsgUpdating)
+			exist.Spec = restore.Spec
+		}
+
+		_, err = c.ds.UpdateService(exist.Namespace, exist)
 		if err != nil {
 			return err
 		}
