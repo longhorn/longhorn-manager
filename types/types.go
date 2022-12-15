@@ -46,6 +46,7 @@ const (
 	KubernetesKindPodSecurityPolicy     = "PodSecurityPolicy"
 	KubernetesKindRole                  = "Role"
 	KubernetesKindRoleBinding           = "RoleBinding"
+	KubernetesKindService               = "Service"
 	KubernetesKindServiceAccount        = "ServiceAccount"
 	KubernetesKindStorageClass          = "StorageClass"
 
@@ -59,6 +60,7 @@ const (
 	KubernetesKindPodSecurityPolicyList     = "PodSecurityPolicyList"
 	KubernetesKindRoleList                  = "RoleList"
 	KubernetesKindRoleBindingList           = "RoleBindingList"
+	KubernetesKindServiceList               = "ServiceList"
 	KubernetesKindServiceAccountList        = "ServiceAccountList"
 	KubernetesKindStorageClassList          = "StorageClassList"
 
