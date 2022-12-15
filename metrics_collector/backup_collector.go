@@ -59,13 +59,13 @@ func (vc *BackupCollector) Describe(ch chan<- *prometheus.Desc) {
 func (vc *BackupCollector) Collect(ch chan<- prometheus.Metric) {
 	defer func() {
 		if err := recover(); err != nil {
-			vc.logger.WithField("error", err).Warn("panic during collecting metrics")
+			vc.logger.WithField("error", err).Warn("Panic during collecting metrics")
 		}
 	}()
 
 	backupLists, err := vc.ds.ListBackupsRO()
 	if err != nil {
-		vc.logger.WithError(err).Warn("error during scrape")
+		vc.logger.WithError(err).Warn("Error during scrape")
 		return
 	}
 
@@ -73,11 +73,11 @@ func (vc *BackupCollector) Collect(ch chan<- prometheus.Metric) {
 		if v.Status.OwnerID == vc.currentNodeID {
 			var size float64
 			if size, err = strconv.ParseFloat(v.Status.Size, 64); err != nil {
-				vc.logger.WithError(err).Warn("error get size")
+				vc.logger.WithError(err).Warn("Error get size")
 			}
 			backupVolumeName, ok := v.Labels[types.LonghornLabelBackupVolume]
 			if !ok {
-				vc.logger.WithError(err).Warn("error get backup volume label")
+				vc.logger.WithError(err).Warn("Error get backup volume label")
 			}
 			ch <- prometheus.MustNewConstMetric(vc.sizeMetric.Desc, vc.sizeMetric.Type, size, backupVolumeName, v.Name)
 			ch <- prometheus.MustNewConstMetric(vc.stateMetric.Desc, vc.stateMetric.Type, float64(getBackupStateValue(v)), backupVolumeName, v.Name)
