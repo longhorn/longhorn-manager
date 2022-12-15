@@ -59,6 +59,7 @@ type SystemRolloutTestCase struct {
 	backupRecurringJobs          map[SystemRolloutCRName]*longhorn.RecurringJob
 	backupRoles                  map[SystemRolloutCRName]*rbacv1.Role
 	backupRoleBindings           map[SystemRolloutCRName]*rbacv1.RoleBinding
+	backupServices               map[SystemRolloutCRName]*corev1.Service
 	backupServiceAccounts        map[SystemRolloutCRName]*corev1.ServiceAccount
 	backupSettings               map[SystemRolloutCRName]*longhorn.Setting
 	backupStorageClasses         map[SystemRolloutCRName]*storagev1.StorageClass
@@ -77,6 +78,7 @@ type SystemRolloutTestCase struct {
 	existRecurringJobs          map[SystemRolloutCRName]*longhorn.RecurringJob
 	existRoles                  map[SystemRolloutCRName]*rbacv1.Role
 	existRoleBindings           map[SystemRolloutCRName]*rbacv1.RoleBinding
+	existServices               map[SystemRolloutCRName]*corev1.Service
 	existServiceAccounts        map[SystemRolloutCRName]*corev1.ServiceAccount
 	existSettings               map[SystemRolloutCRName]*longhorn.Setting
 	existStorageClasses         map[SystemRolloutCRName]*storagev1.StorageClass
@@ -95,6 +97,7 @@ type SystemRolloutTestCase struct {
 	expectRestoredRecurringJobs          map[SystemRolloutCRName]*longhorn.RecurringJob
 	expectRestoredRoles                  map[SystemRolloutCRName]*rbacv1.Role
 	expectRestoredRoleBindings           map[SystemRolloutCRName]*rbacv1.RoleBinding
+	expectRestoredServices               map[SystemRolloutCRName]*corev1.Service
 	expectRestoredServiceAccounts        map[SystemRolloutCRName]*corev1.ServiceAccount
 	expectRestoredSettings               map[SystemRolloutCRName]*longhorn.Setting
 	expectRestoredStorageClasses         map[SystemRolloutCRName]*storagev1.StorageClass
@@ -865,6 +868,59 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 				},
 			},
 		},
+		"system rollout Service exist in cluster": {
+			state:        longhorn.SystemRestoreStateRestoring,
+			isInProgress: true,
+			expectState:  longhorn.SystemRestoreStateCompleted,
+
+			existServices: map[SystemRolloutCRName]*corev1.Service{
+				SystemRolloutCRName(TestServiceName): {
+					Spec: corev1.ServiceSpec{
+						Ports: []corev1.ServicePort{
+							{
+								Name: TestServicePortName + TestDiffSuffix,
+								Port: 123,
+							},
+							{
+								Name: TestServicePortName,
+								Port: 456,
+							},
+						},
+					},
+				},
+			},
+			expectRestoredServices: map[SystemRolloutCRName]*corev1.Service{
+				SystemRolloutCRName(TestServiceName): {
+					Spec: corev1.ServiceSpec{
+						Ports: []corev1.ServicePort{
+							{
+								Name: TestServicePortName,
+								Port: 123,
+							},
+						},
+					},
+				},
+			},
+		},
+		"system rollout Service not exist in cluster": {
+			state:        longhorn.SystemRestoreStateRestoring,
+			isInProgress: true,
+			expectState:  longhorn.SystemRestoreStateCompleted,
+
+			existServices: nil,
+			expectRestoredServices: map[SystemRolloutCRName]*corev1.Service{
+				SystemRolloutCRName(TestServiceName): {
+					Spec: corev1.ServiceSpec{
+						Ports: []corev1.ServicePort{
+							{
+								Name: TestServicePortName,
+								Port: 123,
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for name, tc := range testCases {
@@ -897,6 +953,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 		fakeSystemRolloutRecurringJobs(tc.backupRecurringJobs, c, lhInformerFactory, lhClient)
 		fakeSystemRolloutRoles(tc.backupRoles, c, kubeInformerFactory, kubeClient)
 		fakeSystemRolloutRoleBindings(tc.backupRoleBindings, c, kubeInformerFactory, kubeClient)
+		fakeSystemRolloutServices(tc.backupServices, c, kubeInformerFactory, kubeClient)
 		fakeSystemRolloutServiceAccounts(tc.backupServiceAccounts, c, kubeInformerFactory, kubeClient)
 		fakeSystemRolloutStorageClasses(tc.backupStorageClasses, c, kubeInformerFactory, kubeClient)
 		fakeSystemRolloutVolumes(tc.backupVolumes, c, lhInformerFactory, lhClient)
@@ -945,6 +1002,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 		fakeSystemRolloutRecurringJobs(tc.existRecurringJobs, c, lhInformerFactory, lhClient)
 		fakeSystemRolloutRoles(tc.existRoles, c, kubeInformerFactory, kubeClient)
 		fakeSystemRolloutRoleBindings(tc.existRoleBindings, c, kubeInformerFactory, kubeClient)
+		fakeSystemRolloutServices(tc.existServices, c, kubeInformerFactory, kubeClient)
 		fakeSystemRolloutServiceAccounts(tc.existServiceAccounts, c, kubeInformerFactory, kubeClient)
 		fakeSystemRolloutSettings(tc.existSettings, c, lhInformerFactory, lhClient)
 		fakeSystemRolloutVolumes(tc.existVolumes, c, lhInformerFactory, lhClient)
@@ -986,6 +1044,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			assertRolloutRecurringJobs(tc.expectRestoredRecurringJobs, c, lhClient)
 			assertRolloutRoles(tc.expectRestoredRoles, c, kubeClient)
 			assertRolloutRoleBindings(tc.expectRestoredRoleBindings, c, kubeClient)
+			assertRolloutServices(tc.expectRestoredServices, c, kubeClient)
 			assertRolloutServiceAccounts(tc.expectRestoredServiceAccounts, c, kubeClient)
 			assertRolloutVolumes(tc.expectRestoredVolumes, c, lhClient)
 			assertRolloutSettings(tc.expectRestoredSettings, tc.existSettings, c, lhClient)
@@ -1236,6 +1295,17 @@ func (tc *SystemRolloutTestCase) initTestCase() {
 	}
 	if tc.backupRoleBindings == nil {
 		tc.backupRoleBindings = tc.expectRestoredRoleBindings
+	}
+
+	// init Services
+	if tc.existServices == nil {
+		tc.existServices = map[SystemRolloutCRName]*corev1.Service{}
+	}
+	if tc.expectRestoredServices == nil {
+		tc.expectRestoredServices = tc.existServices
+	}
+	if tc.backupServices == nil {
+		tc.backupServices = tc.expectRestoredServices
 	}
 
 	// init ServiceAccounts
@@ -1556,6 +1626,23 @@ func assertRolloutRoleBindings(expectRestored map[SystemRolloutCRName]*rbacv1.Ro
 		exist, found := exists[name]
 		c.Assert(found, Equals, true)
 		c.Assert(reflect.DeepEqual(exist.Subjects, restored.Subjects), Equals, true)
+	}
+}
+
+func assertRolloutServices(expectRestored map[SystemRolloutCRName]*corev1.Service, c *C, client *fake.Clientset) {
+	objList, err := client.CoreV1().Services(TestNamespace).List(context.TODO(), metav1.ListOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(len(objList.Items), Equals, len(expectRestored))
+
+	exists := map[SystemRolloutCRName]corev1.Service{}
+	for _, obj := range objList.Items {
+		exists[SystemRolloutCRName(obj.Name)] = obj
+	}
+
+	for name, restored := range expectRestored {
+		exist, found := exists[name]
+		c.Assert(found, Equals, true)
+		c.Assert(reflect.DeepEqual(exist.Spec, restored.Spec), Equals, true)
 	}
 }
 

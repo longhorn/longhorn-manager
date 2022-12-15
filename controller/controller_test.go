@@ -72,6 +72,8 @@ const (
 	TestPodSecurityPolicyName  = "test-pod-security-policy"
 	TestRoleName               = "test-role"
 	TestRoleBindingName        = "test-role-binding"
+	TestServiceName            = "test-service"
+	TestServicePortName        = "test-service-port"
 
 	TestTimeNow = "2015-01-02T00:00:00Z"
 
@@ -389,6 +391,18 @@ func newSystemBackup(name, currentOwnerID, longhornVersion string, state longhor
 			OwnerID: currentOwnerID,
 			State:   state,
 			Version: TestSystemBackupLonghornVersion,
+		},
+	}
+}
+
+func newService(name string, ports []corev1.ServicePort) *corev1.Service {
+	return &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+		},
+		Spec: corev1.ServiceSpec{
+			Ports: ports,
 		},
 	}
 }
