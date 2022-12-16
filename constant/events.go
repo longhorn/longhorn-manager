@@ -1,17 +1,17 @@
 package constant
 
 const (
-	EventReasonCreate         = "Create"
-	EventReasonFailedCreating = "FailedCreating"
-	EventReasonCreated        = "Created"
-	EventReasonDelete         = "Delete"
-	EventReasonDeleting       = "Deleting"
-	EventReasonFailedDeleting = "FailedDeleting"
-	EventReasonStart          = "Start"
-	EventReasonFailedStarting = "FailedStarting"
-	EventReasonStop           = "Stop"
-	EventReasonFailedStopping = "FailedStopping"
-	EventReasonUpdate         = "Update"
+	EventReasonCreate            = "Create"
+	EventReasonFailedCreatingFmt = "Failed Creating %v %v"
+	EventReasonCreated           = "Created"
+	EventReasonDelete            = "Delete"
+	EventReasonDeleting          = "Deleting"
+	EventReasonFailedDeleting    = "FailedDeleting"
+	EventReasonStart             = "Start"
+	EventReasonFailedStarting    = "FailedStarting"
+	EventReasonStop              = "Stop"
+	EventReasonFailedStopping    = "FailedStopping"
+	EventReasonUpdate            = "Update"
 
 	EventReasonRebuilt          = "Rebuilt"
 	EventReasonRebuilding       = "Rebuilding"
