@@ -54,6 +54,7 @@ type SystemRolloutCRValue string
 type SystemRestoreTestCase struct {
 	controllerID string
 
+	name       string
 	state      longhorn.SystemRestoreState
 	notExist   bool
 	isDeleting bool
@@ -64,7 +65,6 @@ type SystemRestoreTestCase struct {
 }
 
 func (s *TestSuite) TestReconcileSystemRestore(c *C) {
-	systemRestoreName := TestSystemRestoreName
 	systemRestoreOwnerID := TestNode1
 	backupTargetClient := &FakeSystemBackupTargetClient{}
 	testCases := map[string]SystemRestoreTestCase{
@@ -90,11 +90,19 @@ func (s *TestSuite) TestReconcileSystemRestore(c *C) {
 			isDeleting:     true,
 			expectJobExist: false,
 		},
+		"system restore missing backup config file": {
+			name:        TestSystemBackupNameGetConfigFailed,
+			expectState: longhorn.SystemRestoreStateError,
+		},
 	}
 
 	for name, tc := range testCases {
 		if tc.controllerID == "" {
 			tc.controllerID = systemRestoreOwnerID
+		}
+
+		if tc.name == "" {
+			tc.name = TestSystemRestoreName
 		}
 
 		fmt.Printf("testing %v\n", name)
@@ -123,33 +131,35 @@ func (s *TestSuite) TestReconcileSystemRestore(c *C) {
 				tc.state = longhorn.SystemRestoreStateNone
 			}
 
-			systemRestore := fakeSystemRestore(systemRestoreName, systemRestoreOwnerID, false, tc.isDeleting, tc.state, c, lhInformerFactory, lhClient, systemRestoreController.ds)
+			systemRestore := fakeSystemRestore(tc.name, systemRestoreOwnerID, false, tc.isDeleting, tc.state, c, lhInformerFactory, lhClient, systemRestoreController.ds)
 			if tc.isDeleting {
 				err := systemRestoreController.CreateSystemRestoreJob(systemRestore, backupTargetClient)
 				c.Assert(err, IsNil)
 			}
 		}
 
-		err := systemRestoreController.reconcile(systemRestoreName, backupTargetClient)
+		err := systemRestoreController.reconcile(tc.name, backupTargetClient)
 		if tc.expectError {
 			c.Assert(err, NotNil)
 		} else {
 			c.Assert(err, IsNil)
 		}
 
-		systemRolloutName := getSystemRolloutName(systemRestoreName)
+		systemRolloutName := getSystemRolloutName(tc.name)
 		job, err := kubeClient.BatchV1().Jobs(TestNamespace).Get(context.TODO(), systemRolloutName, metav1.GetOptions{})
 		if tc.expectJobExist {
 			c.Assert(err, IsNil)
 			c.Assert(job.Spec.Template.Spec.Containers[0].Image, Equals, TestManagerImage)
 			c.Assert(strings.HasPrefix(job.Name, SystemRolloutNamePrefix), Equals, true)
 			c.Assert(strings.HasPrefix(job.Spec.Template.Spec.Containers[0].Name, SystemRolloutNamePrefix), Equals, true)
+		} else if tc.expectState == longhorn.SystemRestoreStateError {
+			c.Assert(err, IsNil)
 		} else {
 			c.Assert(err, NotNil)
 		}
 
 		if tc.expectState != "" {
-			systemRestore, err := lhClient.LonghornV1beta2().SystemRestores(TestNamespace).Get(context.TODO(), systemRestoreName, metav1.GetOptions{})
+			systemRestore, err := lhClient.LonghornV1beta2().SystemRestores(TestNamespace).Get(context.TODO(), tc.name, metav1.GetOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(systemRestore.Status.State, Equals, tc.expectState)
 		}
