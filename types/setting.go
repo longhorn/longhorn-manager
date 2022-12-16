@@ -995,8 +995,7 @@ var (
 	SettingDefinitionRemoveSnapshotsDuringFilesystemTrim = SettingDefinition{
 		DisplayName: "Remove Snapshots During Filesystem Trim",
 		Description: "This setting allows Longhorn filesystem trim feature to automatically mark the latest snapshot and its ancestors as removed and stops at the snapshot containing multiple children.\n\n" +
-			"Since Longhorn filesystem trim feature can be applied to the volume head and the followed continuous removed or system snapshots only.\n\n" +
-			"Notice that trying to trim a removed files from a valid snapshot will do nothing but the filesystem will discard this kind of in-memory trimmable file info. " +
+			"Since Longhorn filesystem trim feature can be applied to the volume head and the followed continuous removed or system snapshots only, trying to trim a removed file from a valid snapshot will do nothing but the filesystem will discard this kind of in-memory trimmable file info. " +
 			"Later on if you mark the snapshot as removed and want to retry the trim, you may need to unmount and remount the filesystem so that the filesystem can recollect the trimmable file info.",
 		Category: SettingCategoryGeneral,
 		Type:     SettingTypeBool,
