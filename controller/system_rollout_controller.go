@@ -54,9 +54,10 @@ const (
 	SystemRolloutControllerName = "longhorn-system-rollout"
 	SystemRolloutNamePrefix     = "longhorn-system-rollout-"
 
+	SystemRolloutErrFailedToCreateFmt = "failed to create item: %v %v"
+
 	SystemRolloutMsgDownloadedFmt       = "Downloaded from %v"
 	SystemRolloutMsgInitializedFmt      = "Initialized system rollout for %v"
-	SystemRolloutMsgRestoredFmt         = "Restored %v"
 	SystemRolloutMsgRestoringFmt        = "Restoring %v"
 	SystemRolloutMsgRequeueNextPhaseFmt = "Requeue for next phase: %v"
 	SystemRolloutMsgRequeueDueToFmt     = "Requeue due to %v"
@@ -64,6 +65,7 @@ const (
 	SystemRolloutMsgCompleted           = "System rollout completed"
 	SystemRolloutMsgCreating            = "System rollout creating"
 	SystemRolloutMsgIgnoreItemFmt       = "System rollout ignoring item: %v"
+	SystemRolloutMsgRestoredFmt         = "System rollout restored %v"
 	SystemRolloutMsgUpdating            = "System rollout updating"
 )
 
@@ -1711,7 +1713,13 @@ func (c *SystemRolloutController) restoreVolumes() (err error) {
 
 			exist, err = c.ds.CreateVolume(&restore)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
-				return err
+				err = errors.Wrapf(err, SystemRolloutErrFailedToCreateFmt, types.LonghornKindVolume, restore.Name)
+				message := util.CapitalizeFirstLetter(err.Error())
+				log.Warn(message)
+
+				reason := fmt.Sprintf(constant.EventReasonFailedCreatingFmt, types.LonghornKindVolume, restore.Name)
+				c.eventRecorder.Event(c.systemRestore, corev1.EventTypeWarning, reason, message)
+				continue
 			}
 
 			isSkipped = false
