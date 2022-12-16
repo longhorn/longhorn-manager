@@ -54,10 +54,10 @@ type SystemRolloutCRValue string
 type SystemRestoreTestCase struct {
 	controllerID string
 
-	name       string
-	state      longhorn.SystemRestoreState
-	notExist   bool
-	isDeleting bool
+	systemBackupName string
+	state            longhorn.SystemRestoreState
+	notExist         bool
+	isDeleting       bool
 
 	expectError    bool
 	expectJobExist bool
@@ -65,6 +65,7 @@ type SystemRestoreTestCase struct {
 }
 
 func (s *TestSuite) TestReconcileSystemRestore(c *C) {
+	systemRestoreName := TestSystemRestoreName
 	systemRestoreOwnerID := TestNode1
 	backupTargetClient := &FakeSystemBackupTargetClient{}
 	testCases := map[string]SystemRestoreTestCase{
@@ -91,8 +92,9 @@ func (s *TestSuite) TestReconcileSystemRestore(c *C) {
 			expectJobExist: false,
 		},
 		"system restore missing backup config file": {
-			name:        TestSystemBackupNameGetConfigFailed,
-			expectState: longhorn.SystemRestoreStateError,
+			systemBackupName: TestSystemBackupNameGetConfigFailed,
+			expectState:      longhorn.SystemRestoreStateError,
+			expectJobExist:   false,
 		},
 	}
 
@@ -101,8 +103,8 @@ func (s *TestSuite) TestReconcileSystemRestore(c *C) {
 			tc.controllerID = systemRestoreOwnerID
 		}
 
-		if tc.name == "" {
-			tc.name = TestSystemRestoreName
+		if tc.systemBackupName == "" {
+			tc.systemBackupName = TestSystemBackupName
 		}
 
 		fmt.Printf("testing %v\n", name)
@@ -116,7 +118,7 @@ func (s *TestSuite) TestReconcileSystemRestore(c *C) {
 		fakeSystemRolloutManagerPod(c, kubeInformerFactory, kubeClient)
 		fakeSystemRolloutSettingDefaultEngineImage(c, lhInformerFactory, lhClient)
 		fakeSystemRolloutBackupTargetDefault(c, lhInformerFactory, lhClient)
-		fakeSystemBackup(TestSystemBackupName, systemRestoreOwnerID, "", false, longhorn.SystemBackupStateGenerating, c, lhInformerFactory, lhClient)
+		fakeSystemBackup(tc.systemBackupName, systemRestoreOwnerID, "", false, longhorn.SystemBackupStateGenerating, c, lhInformerFactory, lhClient)
 
 		extensionsClient := apiextensionsfake.NewSimpleClientset()
 
@@ -131,35 +133,33 @@ func (s *TestSuite) TestReconcileSystemRestore(c *C) {
 				tc.state = longhorn.SystemRestoreStateNone
 			}
 
-			systemRestore := fakeSystemRestore(tc.name, systemRestoreOwnerID, false, tc.isDeleting, tc.state, c, lhInformerFactory, lhClient, systemRestoreController.ds)
+			systemRestore := fakeSystemRestore(systemRestoreName, systemRestoreOwnerID, false, tc.isDeleting, tc.state, c, lhInformerFactory, lhClient, systemRestoreController.ds)
 			if tc.isDeleting {
-				err := systemRestoreController.CreateSystemRestoreJob(systemRestore, backupTargetClient)
+				_, err := systemRestoreController.CreateSystemRestoreJob(systemRestore, backupTargetClient)
 				c.Assert(err, IsNil)
 			}
 		}
 
-		err := systemRestoreController.reconcile(tc.name, backupTargetClient)
+		err := systemRestoreController.reconcile(systemRestoreName, backupTargetClient)
 		if tc.expectError {
 			c.Assert(err, NotNil)
 		} else {
 			c.Assert(err, IsNil)
 		}
 
-		systemRolloutName := getSystemRolloutName(tc.name)
+		systemRolloutName := getSystemRolloutName(systemRestoreName)
 		job, err := kubeClient.BatchV1().Jobs(TestNamespace).Get(context.TODO(), systemRolloutName, metav1.GetOptions{})
 		if tc.expectJobExist {
 			c.Assert(err, IsNil)
 			c.Assert(job.Spec.Template.Spec.Containers[0].Image, Equals, TestManagerImage)
 			c.Assert(strings.HasPrefix(job.Name, SystemRolloutNamePrefix), Equals, true)
 			c.Assert(strings.HasPrefix(job.Spec.Template.Spec.Containers[0].Name, SystemRolloutNamePrefix), Equals, true)
-		} else if tc.expectState == longhorn.SystemRestoreStateError {
-			c.Assert(err, IsNil)
 		} else {
 			c.Assert(err, NotNil)
 		}
 
 		if tc.expectState != "" {
-			systemRestore, err := lhClient.LonghornV1beta2().SystemRestores(TestNamespace).Get(context.TODO(), tc.name, metav1.GetOptions{})
+			systemRestore, err := lhClient.LonghornV1beta2().SystemRestores(TestNamespace).Get(context.TODO(), systemRestoreName, metav1.GetOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(systemRestore.Status.State, Equals, tc.expectState)
 		}
