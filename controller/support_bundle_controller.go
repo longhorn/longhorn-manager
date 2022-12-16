@@ -367,7 +367,8 @@ func (c *SupportBundleController) reconcile(name string) (err error) {
 		if err != nil {
 			return c.updateSupportBundleRecord(record,
 				supportBundleRecordError, longhorn.SupportBundleStateError,
-				constant.EventReasonFailedCreating, err.Error(),
+				fmt.Sprintf(constant.EventReasonFailedCreatingFmt, types.LonghornKindSupportBundle, supportBundle.Name),
+				err.Error(),
 			)
 		}
 
