@@ -22,9 +22,11 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -33,7 +35,27 @@ const (
 	SystemRestoreControllerName = "longhorn-system-restore"
 
 	RestoreJobBackoffLimit = 3
+
+	SystemRestoreErrJobCreate     = "failed to create system restore Job"
+	SystemRestoreMsgJobCreatedFmt = "Created system restore Job %v"
+	SystemRestoreMsgDeleting      = "Deleting SystemRestore"
 )
+
+type systemRestoreRecordType string
+
+const (
+	systemRestoreRecordTypeError  = systemRestoreRecordType("error")
+	systemRestoreRecordTypeNone   = systemRestoreRecordType("")
+	systemRestoreRecordTypeNormal = systemRestoreRecordType("normal")
+)
+
+type systemRestoreRecord struct {
+	nextState longhorn.SystemRestoreState
+
+	recordType systemRestoreRecordType
+	message    string
+	reason     string
+}
 
 type SystemRestoreController struct {
 	*baseController
@@ -156,6 +178,16 @@ func (c *SystemRestoreController) getLoggerForSystemRestore(name string) *logrus
 	return c.logger.WithField("systemRestore", name)
 }
 
+func (c *SystemRestoreController) LogErrorState(record *systemRestoreRecord, systemRestore *longhorn.SystemRestore, log logrus.FieldLogger) {
+	log.Error(record.message)
+	c.eventRecorder.Eventf(systemRestore, corev1.EventTypeWarning, constant.EventReasonFailed, util.CapitalizeFirstLetter(record.message))
+}
+
+func (c *SystemRestoreController) LogNormalState(record *systemRestoreRecord, systemRestore *longhorn.SystemRestore, log logrus.FieldLogger) {
+	log.Info(record.message)
+	c.eventRecorder.Eventf(systemRestore, corev1.EventTypeNormal, record.reason, record.message)
+}
+
 func (c *SystemRestoreController) syncSystemRestore(key string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "%v: fail to sync SystemRestore %v", c.name, key)
@@ -211,21 +243,17 @@ func (c *SystemRestoreController) reconcile(name string, backupTargetClient engi
 		log.Infof("Picked up by SystemRestore Controller %v", c.controllerID)
 	}
 
+	record := &systemRestoreRecord{}
 	existingSystemRestore := systemRestore.DeepCopy()
 	defer func() {
-		if err == nil && !reflect.DeepEqual(existingSystemRestore.Status, systemRestore.Status) {
-			_, err = c.ds.UpdateSystemRestoreStatus(systemRestore)
-		}
-
-		if apierrors.IsConflict(errors.Cause(err)) {
-			log.WithError(err).Debugf("Requeue %v due to conflict", name)
-			c.enqueueSystemRestore(systemRestore)
-			err = nil
-		}
+		c.handleStatusUpdate(record, systemRestore, existingSystemRestore, err, log)
 	}()
 
 	if !systemRestore.DeletionTimestamp.IsZero() && systemRestore.Status.State != longhorn.SystemRestoreStateDeleting {
-		systemRestore.Status.State = longhorn.SystemRestoreStateDeleting
+		c.updateSystemRestoreRecord(record,
+			systemRestoreRecordTypeNormal, longhorn.SystemRestoreStateDeleting,
+			constant.EventReasonDeleting, SystemRestoreMsgDeleting,
+		)
 		return
 	}
 
@@ -253,22 +281,21 @@ func (c *SystemRestoreController) reconcile(name string, backupTargetClient engi
 			return err
 		}
 
-		existing := systemRestore.DeepCopy()
-		defer func() {
-			if err == nil && !reflect.DeepEqual(existing.Status, systemRestore.Status) {
-				_, err = c.ds.UpdateSystemRestoreStatus(systemRestore)
-			}
+		job, err := c.CreateSystemRestoreJob(systemRestore, backupTargetClient)
+		if err != nil {
+			err = errors.Wrapf(err, SystemRestoreErrJobCreate)
+			c.updateSystemRestoreRecord(record,
+				systemRestoreRecordTypeError, longhorn.SystemRestoreStateError,
+				constant.EventReasonFailedCreating, err.Error(),
+			)
+			return nil
+		}
 
-			if apierrors.IsConflict(errors.Cause(err)) {
-				log.WithError(err).Debugf("Requeue %v due to conflict", name)
-				c.enqueueSystemRestore(systemRestore)
-				err = nil
-			}
-		}()
-
-		systemRestore.Status.State = longhorn.SystemRestoreStatePending
-
-		return c.CreateSystemRestoreJob(systemRestore, backupTargetClient)
+		c.updateSystemRestoreRecord(record,
+			systemRestoreRecordTypeNormal, longhorn.SystemRestoreStatePending,
+			constant.EventReasonCreated, fmt.Sprintf(SystemRestoreMsgJobCreatedFmt, job.Name),
+		)
+		return nil
 
 	default:
 		// The system-rollout controller will handle the rest of the state
@@ -278,32 +305,80 @@ func (c *SystemRestoreController) reconcile(name string, backupTargetClient engi
 	return nil
 }
 
-func (c *SystemRestoreController) CreateSystemRestoreJob(systemRestore *longhorn.SystemRestore, backupTargetClient engineapi.SystemBackupOperationInterface) error {
-	log := c.getLoggerForSystemRestore(systemRestore.Name)
+func (c *SystemRestoreController) handleStatusUpdate(record *systemRestoreRecord, systemRestore *longhorn.SystemRestore, existingSystemRestore *longhorn.SystemRestore, err error, log logrus.FieldLogger) {
+	switch record.recordType {
+	case systemRestoreRecordTypeError:
+		c.recordErrorState(record, systemRestore)
+	case systemRestoreRecordTypeNormal:
+		c.recordNormalState(record, systemRestore)
+	default:
+		return
+	}
 
+	if !reflect.DeepEqual(existingSystemRestore.Status, systemRestore.Status) {
+		updated, err := c.ds.UpdateSystemRestoreStatus(systemRestore)
+		if err != nil {
+			log.WithError(err).Debugf("Requeue %v due to error", systemRestore.Name)
+			c.enqueueSystemRestore(systemRestore)
+			err = nil
+			return
+		}
+		systemRestore = updated
+	}
+
+	switch record.recordType {
+	case systemRestoreRecordTypeError:
+		c.LogErrorState(record, systemRestore, log)
+	case systemRestoreRecordTypeNormal:
+		c.LogNormalState(record, systemRestore, log)
+	default:
+		return
+	}
+
+	if systemRestore.Status.State != existingSystemRestore.Status.State {
+		log.Infof(SystemRolloutMsgRequeueNextPhaseFmt, systemRestore.Status.State)
+	}
+}
+
+func (c *SystemRestoreController) recordErrorState(record *systemRestoreRecord, systemRestore *longhorn.SystemRestore) {
+	systemRestore.Status.State = longhorn.SystemRestoreStateError
+	systemRestore.Status.Conditions = types.SetCondition(
+		systemRestore.Status.Conditions,
+		longhorn.SystemBackupConditionTypeError,
+		longhorn.ConditionStatusTrue,
+		record.reason,
+		record.message,
+	)
+}
+
+func (c *SystemRestoreController) recordNormalState(record *systemRestoreRecord, systemRestore *longhorn.SystemRestore) {
+	systemRestore.Status.State = record.nextState
+}
+
+func (c *SystemRestoreController) updateSystemRestoreRecord(record *systemRestoreRecord, recordType systemRestoreRecordType, nextState longhorn.SystemRestoreState, reason, message string) {
+	record.recordType = recordType
+	record.nextState = nextState
+	record.reason = reason
+	record.message = message
+}
+
+func (c *SystemRestoreController) CreateSystemRestoreJob(systemRestore *longhorn.SystemRestore, backupTargetClient engineapi.SystemBackupOperationInterface) (*batchv1.Job, error) {
 	systemBackup, err := c.ds.GetSystemBackupRO(systemRestore.Spec.SystemBackup)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	cfg, err := backupTargetClient.GetSystemBackupConfig(systemBackup.Name, systemBackup.Status.Version)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	serviceAccountName, err := c.getLonghornServiceAccountName()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	job, err := c.ds.CreateJob(c.newSystemRestoreJob(systemRestore.Name, c.namespace, cfg.ManagerImage, serviceAccountName))
-	if err != nil {
-		return err
-	}
-
-	log.Infof("Created system restore job %v", job.Name)
-
-	return nil
+	return c.ds.CreateJob(c.newSystemRestoreJob(systemRestore.Name, c.namespace, cfg.ManagerImage, serviceAccountName))
 }
 
 func (c *SystemRestoreController) newSystemRestoreJob(systemRestoreName, namespace, managerImage, serviceAccount string) *batchv1.Job {
