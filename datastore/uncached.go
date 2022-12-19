@@ -217,6 +217,40 @@ func (s *DataStore) GetAllLonghornStorageClassList() (runtime.Object, error) {
 	return scList, nil
 }
 
+// GetAllPersistentVolumeClaimsByPersistentVolumeProvisioner returns an uncached
+// list of PersistentVolumeClaims with the StorageClass of the PersistentVolumes
+// with provisioner "driver.longhorn.io".
+// This is directly from the API server. Using cached informers should be
+// preferred but current lister doesn't have a field selector.
+// Direct retrieval from the API server should only be used for one-shot tasks.
+func (s *DataStore) GetAllPersistentVolumeClaimsByPersistentVolumeProvisioner() (runtime.Object, error) {
+	pvcList, err := s.kubeClient.CoreV1().PersistentVolumeClaims("").List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	storageClassNames, err := s.ListStorageClassesInPersistentVolumesWithLonghornProvisioner()
+	if err != nil {
+		return nil, err
+	}
+
+	storageClassPVCs := []corev1.PersistentVolumeClaim{}
+	for _, pvc := range pvcList.Items {
+		if pvc.Spec.StorageClassName == nil {
+			continue
+		}
+
+		if !util.Contains(storageClassNames, *pvc.Spec.StorageClassName) {
+			continue
+		}
+
+		storageClassPVCs = append(storageClassPVCs, pvc)
+	}
+
+	pvcList.Items = storageClassPVCs
+	return pvcList, nil
+}
+
 // GetAllPersistentVolumeClaimsByStorageClass returns an uncached list of
 // PersistentVolumeClaims of the given storage class name directly from the API
 // server.
@@ -246,28 +280,28 @@ func (s *DataStore) GetAllPersistentVolumeClaimsByStorageClass(storageClassNames
 	return pvcList, nil
 }
 
-// GetAllPersistentVolumesByStorageClasses returns an uncached list of
-// PersistentVolumes of the given storage class name directly from the API
+// GetAllPersistentVolumesWithLonghornProvisioner returns an uncached list of
+// PersistentVolumes with provisioner "driver.longhorn.io" directly from the API
 // server.
 // Using cached informers should be preferred but current lister doesn't have a
 // field selector.
 // Direct retrieval from the API server should only be used for one-shot tasks.
-func (s *DataStore) GetAllPersistentVolumesByStorageClasses(storageClassNames []string) (runtime.Object, error) {
+func (s *DataStore) GetAllPersistentVolumesWithLonghornProvisioner() (runtime.Object, error) {
 	pvList, err := s.kubeClient.CoreV1().PersistentVolumes().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	storageClassPVs := []corev1.PersistentVolume{}
+	longhornPVs := []corev1.PersistentVolume{}
 	for _, pv := range pvList.Items {
-		if !util.Contains(storageClassNames, pv.Spec.StorageClassName) {
+		if pv.Spec.CSI.Driver != types.LonghornDriverName {
 			continue
 		}
 
-		storageClassPVs = append(storageClassPVs, pv)
+		longhornPVs = append(longhornPVs, pv)
 	}
 
-	pvList.Items = storageClassPVs
+	pvList.Items = longhornPVs
 	return pvList, nil
 }
 

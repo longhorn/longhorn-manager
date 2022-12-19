@@ -264,6 +264,26 @@ func (s *DataStore) GetStorageClass(name string) (*storagev1.StorageClass, error
 	return resultRO.DeepCopy(), nil
 }
 
+// ListStorageClassesInPersistentVolumesWithLonghornProvisioner returns a list
+// of StorageClasses used by PersistenVolumes with provisioner "driver.longhorn.io".
+func (s *DataStore) ListStorageClassesInPersistentVolumesWithLonghornProvisioner() ([]string, error) {
+	pvList, err := s.ListPersistentVolumesRO()
+	if err != nil {
+		return nil, err
+	}
+
+	scList := []string{}
+	for _, pv := range pvList {
+		if pv.Spec.CSI.Driver != types.LonghornDriverName {
+			continue
+		}
+
+		scList = append(scList, pv.Spec.StorageClassName)
+	}
+
+	return scList, nil
+}
+
 // DeleteStorageClass deletes StorageClass with the given name
 func (s *DataStore) DeleteStorageClass(scName string) error {
 	return s.kubeClient.StorageV1().StorageClasses().Delete(context.TODO(), scName, metav1.DeleteOptions{})
@@ -539,6 +559,13 @@ func (s *DataStore) GetPersistentVolume(pvName string) (*corev1.PersistentVolume
 	}
 	// Cannot use cached object from lister
 	return resultRO.DeepCopy(), nil
+}
+
+// ListPersistentVolumesRO gets a list of PersistentVolumes.
+// This function returns direct reference to the internal cache object and should not be mutated.
+// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
+func (s *DataStore) ListPersistentVolumesRO() ([]*corev1.PersistentVolume, error) {
+	return s.pvLister.List(labels.Everything())
 }
 
 // CreatePersistentVolumeClaim creates a PersistentVolumeClaim resource
