@@ -923,25 +923,32 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		existingEngine = engine.DeepCopy()
 	}
 
-	if cliAPIVersion >= engineapi.MinCLIVersion {
-		// Cannot continue to start restoration if expansion is not complete
-		if engine.Spec.VolumeSize > engine.Status.CurrentSize {
-			if !engine.Status.IsExpanding && !m.expansionBackoff.IsInBackOffSince(engine.Name, time.Now()) {
-				m.logger.Infof("Starting engine expansion from %v to %v", engine.Status.CurrentSize, engine.Spec.VolumeSize)
-				// The error info and the backoff interval will be updated later.
-				if err := engineClientProxy.VolumeExpand(engine); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-		if engine.Spec.VolumeSize < engine.Status.CurrentSize {
-			return fmt.Errorf("BUG: The expected size %v of engine %v should not be smaller than the current size %v", engine.Spec.VolumeSize, engine.Name, engine.Status.CurrentSize)
-		}
+	im, err := m.ds.GetInstanceManagerRO(engine.Status.InstanceManagerName)
+	if err != nil {
+		return err
+	}
 
-		// engine.Spec.VolumeSize == engine.Status.CurrentSize.
-		// This means expansion is complete/unnecessary, and it's safe to clean up the backoff entry if exists.
+	requireExpansion, err := IsValidForExpansion(engine, cliAPIVersion, im.Status.APIVersion)
+	if err != nil {
+		engine.Status.LastExpansionError = err.Error()
+		engine.Status.LastExpansionFailedAt = time.Now().String()
+	}
+	if requireExpansion {
+		// Cannot continue to start restoration if expansion is not complete
+		if !m.expansionBackoff.IsInBackOffSince(engine.Name, time.Now()) {
+			m.logger.Infof("Starting engine expansion from %v to %v", engine.Status.CurrentSize, engine.Spec.VolumeSize)
+			// The error info and the backoff interval will be updated later.
+			if err := engineClientProxy.VolumeExpand(engine); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	// This means expansion is complete/unnecessary, and it's safe to clean up the backoff entry as well as the error info if exists.
+	if engine.Spec.VolumeSize == engine.Status.CurrentSize {
 		m.expansionBackoff.DeleteEntry(engine.Name)
+		engine.Status.LastExpansionError = ""
+		engine.Status.LastExpansionFailedAt = ""
 	}
 
 	rsMap, err := engineClientProxy.BackupRestoreStatus(engine)
@@ -1123,6 +1130,32 @@ func (ec *EngineController) syncSnapshotCRs(engine *longhorn.Engine) error {
 	}
 
 	return nil
+}
+
+func IsValidForExpansion(engine *longhorn.Engine, cliAPIVersion, imAPIVersion int) (bool, error) {
+	if engine.Status.IsExpanding {
+		return false, nil
+	}
+	if engine.Spec.VolumeSize == engine.Status.CurrentSize {
+		return false, nil
+	}
+	if engine.Spec.VolumeSize < engine.Status.CurrentSize {
+		return false, fmt.Errorf("BUG: The expected size %v of engine %v should not be smaller than the current size %v", engine.Spec.VolumeSize, engine.Name, engine.Status.CurrentSize)
+	}
+	if cliAPIVersion < engineapi.MinCLIVersion {
+		return false, nil
+	}
+	if !engineapi.IsEndpointTGTBlockDev(engine.Status.Endpoint) {
+		return true, nil
+	}
+	if cliAPIVersion < 7 {
+		return false, fmt.Errorf("cannot do online expansion for the old engine %v with cli API version %v", engine.Name, cliAPIVersion)
+	}
+	if imAPIVersion < 3 {
+		return false, fmt.Errorf("cannot do online expansion for the engine %v in the instance manager with API version %v", engine.Name, imAPIVersion)
+	}
+
+	return true, nil
 }
 
 func preRestoreCheckAndSync(log logrus.FieldLogger, engine *longhorn.Engine,
