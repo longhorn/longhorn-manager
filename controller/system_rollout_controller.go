@@ -272,7 +272,7 @@ func (c *SystemRolloutController) handleErr(err error, key interface{}) {
 	c.queue.AddRateLimited(key)
 }
 
-func (c *SystemRolloutController) handleStatusUpdate(record *systemRolloutRecord, systemRestore *longhorn.SystemRestore, existing *longhorn.SystemRestore, err error, log logrus.FieldLogger) {
+func (c *SystemRolloutController) handleStatusUpdate(record *systemRolloutRecord, existing *longhorn.SystemRestore, err error, log logrus.FieldLogger) {
 	if err != nil {
 		c.cacheErrors.Append(util.NewMultiError(err.Error()))
 	}
@@ -290,14 +290,14 @@ func (c *SystemRolloutController) handleStatusUpdate(record *systemRolloutRecord
 			record.message = longhorn.SystemRestoreConditionMessageFailed
 		}
 
-		c.recordErrorState(record, systemRestore, c.cacheErrors.Join(), log)
+		c.recordErrorState(record, c.systemRestore, c.cacheErrors.Join(), log)
 
 	} else if record.recordType == systemRolloutRecordTypeNormal {
-		c.recordNormalState(record, systemRestore, c.cacheErrors.Join(), log)
+		c.recordNormalState(record, c.systemRestore, c.cacheErrors.Join(), log)
 	}
 
-	if !reflect.DeepEqual(existing.Status, systemRestore.Status) {
-		_, err = c.ds.UpdateSystemRestoreStatus(systemRestore)
+	if !reflect.DeepEqual(existing.Status, c.systemRestore.Status) {
+		_, err = c.ds.UpdateSystemRestoreStatus(c.systemRestore)
 		if err != nil {
 			log.WithError(err).Warnf(SystemRolloutMsgRequeueDueToFmt, "failed to update SystemRestore status")
 			c.enqueue()
@@ -355,23 +355,24 @@ func (c *SystemRolloutController) systemRollout() error {
 	if err != nil {
 		return err
 	}
+	c.systemRestore = systemRestore
 
 	record := &systemRolloutRecord{}
-	existingSystemRestore := systemRestore.DeepCopy()
+	existingSystemRestore := c.systemRestore.DeepCopy()
 	defer func() {
-		c.handleStatusUpdate(record, systemRestore, existingSystemRestore, err, log)
+		c.handleStatusUpdate(record, existingSystemRestore, err, log)
 	}()
 
-	switch systemRestore.Status.State {
+	switch c.systemRestore.Status.State {
 	case longhorn.SystemRestoreStatePending:
-		systemRestore, err = c.initializeSystemRollout(systemRestore, log)
+		err = c.initializeSystemRollout(log)
 		if err != nil {
 			return errors.Wrap(err, "failed to initialize system rollout")
 		}
 
 		c.updateSystemRolloutRecord(record,
 			systemRolloutRecordTypeNormal, longhorn.SystemRestoreStateDownloading,
-			constant.EventReasonStart, fmt.Sprintf(SystemRolloutMsgInitializedFmt, systemRestore.Spec.SystemBackup),
+			constant.EventReasonStart, fmt.Sprintf(SystemRolloutMsgInitializedFmt, c.systemRestore.Spec.SystemBackup),
 		)
 
 	case longhorn.SystemRestoreStateDownloading:
@@ -444,22 +445,22 @@ func (c *SystemRolloutController) systemRollout() error {
 	return nil
 }
 
-func (c *SystemRolloutController) initializeSystemRollout(systemRestore *longhorn.SystemRestore, log logrus.FieldLogger) (*longhorn.SystemRestore, error) {
-	systemRestore.Status.OwnerID = c.controllerID
-	systemRestore.Status.State = longhorn.SystemRestoreStateInitializing
+func (c *SystemRolloutController) initializeSystemRollout(log logrus.FieldLogger) error {
+	c.systemRestore.Status.OwnerID = c.controllerID
+	c.systemRestore.Status.State = longhorn.SystemRestoreStateInitializing
 
 	systemBackupURL, err := c.GetSystemBackupURL()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	systemRestore.Status.SourceURL = systemBackupURL
+	c.systemRestore.Status.SourceURL = systemBackupURL
 
-	systemRestore, err = c.ds.UpdateSystemRestore(systemRestore)
+	c.systemRestore, err = c.ds.UpdateSystemRestore(c.systemRestore)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to update SystemRestore")
+		return errors.Wrap(err, "failed to update SystemRestore")
 	}
 
-	return systemRestore, nil
+	return nil
 }
 
 func (c *SystemRolloutController) syncController() error {
