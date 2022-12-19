@@ -26,6 +26,7 @@ const (
 	EventReasonFailedSnapshotPurge         = "FailedSnapshotPurge"
 
 	EventReasonRestored      = "Restored"
+	EventReasonRestoredFmt   = "Restored %v"
 	EventReasonFailedRestore = "FailedRestore"
 
 	EventReasonFailedExpansion    = "FailedExpansion"

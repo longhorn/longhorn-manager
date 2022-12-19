@@ -774,7 +774,7 @@ func (c *SystemRolloutController) postRestoreHandle(kind string, restoreError er
 
 	restoredMessage := fmt.Sprintf(SystemRolloutMsgRestoredFmt, kind)
 	log.Info(restoredMessage)
-	c.eventRecorder.Eventf(systemRestore, corev1.EventTypeNormal, constant.EventReasonRestored, restoredMessage)
+	c.eventRecorder.Event(systemRestore, corev1.EventTypeNormal, fmt.Sprintf(constant.EventReasonRestoredFmt, kind), restoredMessage)
 }
 
 func (c *SystemRolloutController) restoreClusterRoles() (err error) {
