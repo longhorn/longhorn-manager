@@ -28,8 +28,9 @@ const (
 	BackingImageDataSourceDefaultPort = 8000
 	BackingImageSyncServerDefaultPort = 8001
 
-	DefaultISCSIPort = "3260"
-	DefaultISCSILUN  = "1"
+	EndpointISCSIPrefix = "iscsi://"
+	DefaultISCSIPort    = "3260"
+	DefaultISCSILUN     = "1"
 
 	// MaxPollCount, MinPollCount, PollInterval determines how often
 	// we sync with othersq
@@ -263,8 +264,20 @@ func GetEngineEndpoint(volume *Volume, ip string) (string, error) {
 
 		// it will looks like this in the end
 		// iscsi://10.42.0.12:3260/iqn.2014-09.com.rancher:vol-name/1
-		return "iscsi://" + ip + ":" + DefaultISCSIPort + "/" + volume.Endpoint + "/" + DefaultISCSILUN, nil
+		return EndpointISCSIPrefix + ip + ":" + DefaultISCSIPort + "/" + volume.Endpoint + "/" + DefaultISCSILUN, nil
 	}
 
 	return "", fmt.Errorf("unknown frontend %v", volume.Frontend)
+}
+
+func IsEndpointTGTBlockDev(endpoint string) bool {
+	if endpoint == "" {
+		return false
+	}
+
+	if strings.Contains(endpoint, EndpointISCSIPrefix) {
+		return false
+	}
+
+	return true
 }
