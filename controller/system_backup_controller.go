@@ -21,7 +21,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -776,40 +775,12 @@ func (c *SystemBackupController) generateSystemBackupYAMLsForKubernetes(dir stri
 		return
 	}
 
-	err = c.generateSystemBackupYAMLsForStorageClasseResources(dir, "persistentvolumes", c.ds.GetAllPersistentVolumesByStorageClasses, scheme)
+	err = getObjectsAndPrintToYAML(dir, "persistentvolumes", c.ds.GetAllPersistentVolumesWithLonghornProvisioner, scheme)
 	if err != nil {
 		return
 	}
 
-	return c.generateSystemBackupYAMLsForStorageClasseResources(dir, "persistentvolumeclaims", c.ds.GetAllPersistentVolumeClaimsByStorageClass, scheme)
-}
-
-type GetResourcesByStorageClass func(storageClassNames []string) (runtime.Object, error)
-
-func (c *SystemBackupController) generateSystemBackupYAMLsForStorageClasseResources(
-	dir, name string, getResourcesByStorageClassFunc GetResourcesByStorageClass, scheme *runtime.Scheme) (err error) {
-	obj, err := c.ds.GetAllLonghornStorageClassList()
-	if err != nil && !apierrors.IsNotFound(err) {
-		return errors.Wrap(err, "failed to get all Longhorn storageClasses")
-
-	}
-
-	storageClassList, ok := obj.(*storagev1.StorageClassList)
-	if !ok {
-		return errors.Wrap(err, "failed to convert to storageClassList object")
-	}
-
-	if len(storageClassList.Items) == 0 {
-		return fmt.Errorf("cannot find Longhorn storage class")
-	}
-
-	storageClassNames := []string{}
-	for _, storageClass := range storageClassList.Items {
-		storageClassNames = append(storageClassNames, storageClass.Name)
-	}
-	return getObjectsAndPrintToYAML(dir, name, func() (runtime.Object, error) {
-		return getResourcesByStorageClassFunc(storageClassNames)
-	}, scheme)
+	return getObjectsAndPrintToYAML(dir, "persistentvolumeclaims", c.ds.GetAllPersistentVolumeClaimsByPersistentVolumeProvisioner, scheme)
 }
 
 func (c *SystemBackupController) generateSystemBackupYAMLsForServices(dir, name string, scheme *runtime.Scheme) (err error) {
