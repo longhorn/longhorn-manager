@@ -128,6 +128,10 @@ func (kc *KubernetesPodController) handleErr(err error, key interface{}) {
 	utilruntime.HandleError(err)
 }
 
+func getLoggerForPod(logger logrus.FieldLogger, pod *v1.Pod) *logrus.Entry {
+	return logger.WithField("pod", pod.Name)
+}
+
 func (kc *KubernetesPodController) syncHandler(key string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "%v: failed to sync %v", controllerAgentName, key)
@@ -426,6 +430,7 @@ func (kc *KubernetesPodController) getAssociatedPersistentVolume(pvc *v1.Persist
 }
 
 func (kc *KubernetesPodController) getAssociatedVolumes(pod *v1.Pod) ([]*longhorn.Volume, error) {
+	log := getLoggerForPod(kc.logger, pod)
 	var volumeList []*longhorn.Volume
 	for _, v := range pod.Spec.Volumes {
 		if v.VolumeSource.PersistentVolumeClaim == nil {
@@ -434,6 +439,7 @@ func (kc *KubernetesPodController) getAssociatedVolumes(pod *v1.Pod) ([]*longhor
 
 		pvc, err := kc.ds.GetPersistentVolumeClaimRO(pod.Namespace, v.VolumeSource.PersistentVolumeClaim.ClaimName)
 		if datastore.ErrorIsNotFound(err) {
+			log.WithError(err).Debugf("Cannot auto-delete Pod when the associated PersistentVolumeClaim is not found")
 			continue
 		}
 		if err != nil {
@@ -442,6 +448,7 @@ func (kc *KubernetesPodController) getAssociatedVolumes(pod *v1.Pod) ([]*longhor
 
 		pv, err := kc.getAssociatedPersistentVolume(pvc)
 		if datastore.ErrorIsNotFound(err) {
+			log.WithError(err).Debugf("Cannot auto-delete Pod when the associated PersistentVolume is not found")
 			continue
 		}
 		if err != nil {
@@ -450,6 +457,10 @@ func (kc *KubernetesPodController) getAssociatedVolumes(pod *v1.Pod) ([]*longhor
 
 		if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == types.LonghornDriverName {
 			vol, err := kc.ds.GetVolume(pv.GetName())
+			if datastore.ErrorIsNotFound(err) {
+				log.WithError(err).Debugf("Cannot auto-delete Pod when the associated Volume is not found")
+				continue
+			}
 			if err != nil {
 				return nil, err
 			}
