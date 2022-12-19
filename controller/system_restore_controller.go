@@ -286,7 +286,8 @@ func (c *SystemRestoreController) reconcile(name string, backupTargetClient engi
 			err = errors.Wrapf(err, SystemRestoreErrJobCreate)
 			c.updateSystemRestoreRecord(record,
 				systemRestoreRecordTypeError, longhorn.SystemRestoreStateError,
-				constant.EventReasonFailedCreating, err.Error(),
+				fmt.Sprintf(constant.EventReasonFailedCreatingFmt, types.KubernetesKindJob, "for "+systemRestore.Name),
+				err.Error(),
 			)
 			return nil
 		}
