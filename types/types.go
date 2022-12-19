@@ -41,6 +41,7 @@ const (
 	KubernetesKindConfigMap             = "ConfigMap"
 	KubernetesKindDaemonSet             = "DaemonSet"
 	KubernetesKindDeployment            = "Deployment"
+	KubernetesKindJob                   = "Job"
 	KubernetesKindPersistentVolume      = "PersistentVolume"
 	KubernetesKindPersistentVolumeClaim = "PersistentVolumeClaim"
 	KubernetesKindPodSecurityPolicy     = "PodSecurityPolicy"
