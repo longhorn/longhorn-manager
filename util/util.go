@@ -659,10 +659,7 @@ func DeleteDiskPathReplicaSubdirectoryAndDiskCfgFile(
 }
 
 func IsKubernetesDefaultToleration(toleration v1.Toleration) bool {
-	if strings.Contains(toleration.Key, DefaultKubernetesTolerationKey) {
-		return true
-	}
-	return false
+	return strings.Contains(toleration.Key, DefaultKubernetesTolerationKey)
 }
 
 func GetAnnotation(obj runtime.Object, annotationKey string) (string, error) {
