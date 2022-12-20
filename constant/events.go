@@ -2,7 +2,7 @@ package constant
 
 const (
 	EventReasonCreate            = "Create"
-	EventReasonFailedCreatingFmt = "Failed Creating %v %v"
+	EventReasonFailedCreatingFmt = "FailedCreating: %v %v"
 	EventReasonCreated           = "Created"
 	EventReasonDelete            = "Delete"
 	EventReasonDeleting          = "Deleting"
@@ -57,4 +57,6 @@ const (
 	EventReasonFailed   = "Failed"
 	EventReasonReady    = "Ready"
 	EventReasonUploaded = "Uploaded"
+
+	EventReasonRolloutSkippedFmt = "RolloutSkipped: %v %v"
 )

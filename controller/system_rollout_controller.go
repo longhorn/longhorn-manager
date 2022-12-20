@@ -54,21 +54,28 @@ const (
 	SystemRolloutControllerName = "longhorn-system-rollout"
 	SystemRolloutNamePrefix     = "longhorn-system-rollout-"
 
-	SystemRolloutErrFailedToCreateFmt    = "failed to create item: %v %v"
-	SystemRolloutErrMissingDependencyFmt = "cannot rollout %v due to missing dependency: %v %v"
+	SystemRolloutErrFailedConvertToObjectFmt = "failed converting %v to %v object"
+	SystemRolloutErrFailedToCreateFmt        = "failed to create item: %v %v"
+	SystemRolloutErrMissingDependencyFmt     = "cannot rollout %v due to missing dependency: %v %v"
 
 	SystemRolloutMsgDownloadedFmt       = "Downloaded from %v"
+	SystemRolloutMsgIdentical           = "identical"
 	SystemRolloutMsgInitializedFmt      = "Initialized system rollout for %v"
 	SystemRolloutMsgRestoringFmt        = "Restoring %v"
 	SystemRolloutMsgRequeueNextPhaseFmt = "Requeue for next phase: %v"
 	SystemRolloutMsgRequeueDueToFmt     = "Requeue due to %v"
 	SystemRolloutMsgUnpackedFmt         = "Unpacked %v"
 
-	SystemRolloutMsgCompleted     = "System rollout completed"
-	SystemRolloutMsgCreating      = "System rollout creating"
-	SystemRolloutMsgIgnoreItemFmt = "System rollout ignoring item: %v"
-	SystemRolloutMsgRestoredFmt   = "System rollout restored %v"
-	SystemRolloutMsgUpdating      = "System rollout updating"
+	SystemRolloutMsgCompleted       = "System rollout completed"
+	SystemRolloutMsgCreating        = "System rollout creating"
+	SystemRolloutMsgIgnoreItemFmt   = "System rollout ignoring item: %v"
+	SystemRolloutMsgRestoredItem    = "System rollout restored item"
+	SystemRolloutMsgRestoredKindFmt = "System rollout restored Kind: %v"
+	SystemRolloutMsgUpdating        = "System rollout updating"
+)
+
+var (
+	SystemRolloutMsgSkipIdentical = fmt.Sprintf(SystemRolloutMsgIgnoreItemFmt, SystemRolloutMsgIdentical)
 )
 
 type systemRolloutRecordType string
@@ -337,7 +344,7 @@ func (c *SystemRolloutController) recordErrorState(record *systemRolloutRecord, 
 	)
 
 	log.WithError(fmt.Errorf(err)).Error(record.message)
-	c.eventRecorder.Eventf(systemRestore, corev1.EventTypeWarning, constant.EventReasonFailed, util.CapitalizeFirstLetter(record.message))
+	c.eventRecorder.Event(systemRestore, corev1.EventTypeWarning, constant.EventReasonFailed, util.CapitalizeFirstLetter(record.message))
 
 	c.cacheErrors.Reset()
 }
@@ -345,7 +352,7 @@ func (c *SystemRolloutController) recordErrorState(record *systemRolloutRecord, 
 func (c *SystemRolloutController) recordNormalState(record *systemRolloutRecord, systemRestore *longhorn.SystemRestore, err string, log logrus.FieldLogger) {
 	systemRestore.Status.State = record.nextState
 	log.Info(record.message)
-	c.eventRecorder.Eventf(systemRestore, corev1.EventTypeNormal, record.reason, record.message)
+	c.eventRecorder.Event(systemRestore, corev1.EventTypeNormal, record.reason, record.message)
 }
 
 func (c *SystemRolloutController) updateSystemRolloutRecord(record *systemRolloutRecord, recordType systemRolloutRecordType, nextState longhorn.SystemRestoreState, reason, message string) {
@@ -530,10 +537,12 @@ func (c *SystemRolloutController) syncController() error {
 			return err
 		}
 
-		c.logger.WithField("engineImage", engineImage.Name).Info("Creating engine image for system rollout")
-
 		engineImageName := types.GetEngineImageChecksumName(systemBackupCfg.EngineImage)
-		engineImage, err = c.ds.CreateEngineImage(&longhorn.EngineImage{
+
+		log := c.logger.WithField(types.LonghornKindEngineImage, engineImage.Name)
+		log.Info("Creating EngineImage for system rollout")
+
+		newEngineImage := &longhorn.EngineImage{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   types.GetEngineImageChecksumName(systemBackupCfg.EngineImage),
 				Labels: types.GetEngineImageLabels(engineImageName),
@@ -541,8 +550,16 @@ func (c *SystemRolloutController) syncController() error {
 			Spec: longhorn.EngineImageSpec{
 				Image: systemBackupCfg.EngineImage,
 			},
-		})
-		if err != nil {
+		}
+		fnCreate := func(restore runtime.Object) (runtime.Object, error) {
+			obj, ok := restore.(*longhorn.EngineImage)
+			if !ok {
+				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.LonghornKindEngineImage)
+			}
+			return c.ds.CreateEngineImage(obj)
+		}
+		_, err = c.rolloutResource(newEngineImage, fnCreate, false, log, SystemRolloutMsgRestoredItem)
+		if err != nil && !apierrors.IsAlreadyExists(err) {
 			return err
 		}
 	}
@@ -787,9 +804,21 @@ func (c *SystemRolloutController) postRestoreHandle(kind string, restoreError er
 		return
 	}
 
-	restoredMessage := fmt.Sprintf(SystemRolloutMsgRestoredFmt, kind)
+	restoredMessage := fmt.Sprintf(SystemRolloutMsgRestoredKindFmt, kind)
 	log.Info(restoredMessage)
 	c.eventRecorder.Event(systemRestore, corev1.EventTypeNormal, fmt.Sprintf(constant.EventReasonRestoredFmt, kind), restoredMessage)
+}
+
+func (c *SystemRolloutController) rolloutResource(obj runtime.Object, fnRollout func(runtime.Object) (runtime.Object, error), isSkipped bool, log logrus.FieldLogger, message string) (runtime.Object, error) {
+	err := c.tagLonghornLastSystemRestoreAnnotation(obj, isSkipped, log, message)
+	if err != nil {
+		if types.ErrorAlreadyExists(err) {
+			return obj, nil
+		}
+		return nil, err
+	}
+
+	return fnRollout(obj)
 }
 
 func (c *SystemRolloutController) restoreClusterRoles() (err error) {
@@ -810,23 +839,35 @@ func (c *SystemRolloutController) restoreClusterRoles() (err error) {
 
 			log.Info(SystemRolloutMsgCreating)
 
-			exist, err = c.ds.CreateClusterRole(&restore)
+			fnCreate := func(restore runtime.Object) (runtime.Object, error) {
+				obj, ok := restore.(*rbacv1.ClusterRole)
+				if !ok {
+					return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.KubernetesKindClusterRole)
+				}
+				return c.ds.CreateClusterRole(obj)
+			}
+			_, err := c.rolloutResource(&restore, fnCreate, false, log, SystemRolloutMsgRestoredItem)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
 				return err
 			}
+			continue
 		}
 
-		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil && !types.ErrorAlreadyExists(err) {
-			return err
-		}
-
+		isSkipped := true
 		if !reflect.DeepEqual(exist.Rules, restore.Rules) {
 			log.Info(SystemRolloutMsgUpdating)
 			exist.Rules = restore.Rules
-		}
 
-		_, err = c.ds.UpdateClusterRole(exist)
+			isSkipped = false
+		}
+		fnUpdate := func(exist runtime.Object) (runtime.Object, error) {
+			obj, ok := exist.(*rbacv1.ClusterRole)
+			if !ok {
+				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.KubernetesKindClusterRole)
+			}
+			return c.ds.UpdateClusterRole(obj)
+		}
+		_, err = c.rolloutResource(exist, fnUpdate, isSkipped, log, SystemRolloutMsgSkipIdentical)
 		if err != nil {
 			return err
 		}
@@ -853,25 +894,36 @@ func (c *SystemRolloutController) restoreClusterRoleBindings() (err error) {
 
 			log.Info(SystemRolloutMsgCreating)
 
-			exist, err = c.ds.CreateClusterRoleBinding(&restore)
+			fnCreate := func(restore runtime.Object) (runtime.Object, error) {
+				obj, ok := restore.(*rbacv1.ClusterRoleBinding)
+				if !ok {
+					return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.KubernetesKindClusterRoleBinding)
+				}
+				return c.ds.CreateClusterRoleBinding(obj)
+			}
+			_, err := c.rolloutResource(&restore, fnCreate, false, log, SystemRolloutMsgRestoredItem)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
 				return err
 			}
-
+			continue
 		}
 
-		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil && !types.ErrorAlreadyExists(err) {
-			return err
-		}
-
+		isSkipped := true
 		if !reflect.DeepEqual(exist.RoleRef, restore.RoleRef) || !reflect.DeepEqual(exist.Subjects, restore.Subjects) {
 			log.Info(SystemRolloutMsgUpdating)
 			exist.RoleRef = restore.RoleRef
 			exist.Subjects = restore.Subjects
-		}
 
-		_, err = c.ds.UpdateClusterRoleBinding(exist)
+			isSkipped = false
+		}
+		fnUpdate := func(exist runtime.Object) (runtime.Object, error) {
+			obj, ok := exist.(*rbacv1.ClusterRoleBinding)
+			if !ok {
+				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.KubernetesKindClusterRoleBinding)
+			}
+			return c.ds.UpdateClusterRoleBinding(obj)
+		}
+		_, err = c.rolloutResource(exist, fnUpdate, isSkipped, log, SystemRolloutMsgSkipIdentical)
 		if err != nil {
 			return err
 		}
@@ -898,23 +950,35 @@ func (c *SystemRolloutController) restoreConfigMaps() (err error) {
 
 			log.Info(SystemRolloutMsgCreating)
 
-			exist, err = c.ds.CreateConfigMap(&restore)
+			fnCreate := func(restore runtime.Object) (runtime.Object, error) {
+				obj, ok := restore.(*corev1.ConfigMap)
+				if !ok {
+					return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.KubernetesKindConfigMap)
+				}
+				return c.ds.CreateConfigMap(obj)
+			}
+			_, err := c.rolloutResource(&restore, fnCreate, false, log, SystemRolloutMsgRestoredItem)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
 				return err
 			}
+			continue
 		}
 
-		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil && !types.ErrorAlreadyExists(err) {
-			return err
-		}
-
+		isSkipped := true
 		if !reflect.DeepEqual(exist.Data, restore.Data) {
 			log.Info(SystemRolloutMsgUpdating)
 			exist.Data = restore.Data
-		}
 
-		_, err = c.ds.UpdateConfigMap(exist)
+			isSkipped = false
+		}
+		fnUpdate := func(exist runtime.Object) (runtime.Object, error) {
+			obj, ok := exist.(*corev1.ConfigMap)
+			if !ok {
+				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.KubernetesKindConfigMap)
+			}
+			return c.ds.UpdateConfigMap(obj)
+		}
+		_, err = c.rolloutResource(exist, fnUpdate, isSkipped, log, SystemRolloutMsgSkipIdentical)
 		if err != nil {
 			return err
 		}
@@ -941,10 +1005,18 @@ func (c *SystemRolloutController) restoreCustomResourceDefinitions() (err error)
 
 			log.Info(SystemRolloutMsgCreating)
 
-			exist, err = c.ds.CreateCustomResourceDefinition(&restore)
+			fnCreate := func(restore runtime.Object) (runtime.Object, error) {
+				obj, ok := restore.(*apiextensionsv1.CustomResourceDefinition)
+				if !ok {
+					return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.APIExtensionsKindCustomResourceDefinition)
+				}
+				return c.ds.CreateCustomResourceDefinition(obj)
+			}
+			_, err := c.rolloutResource(&restore, fnCreate, false, log, SystemRolloutMsgRestoredItem)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
 				return err
 			}
+			continue
 		}
 
 		existVersions := map[string]apiextensionsv1.CustomResourceDefinitionVersion{}
@@ -983,20 +1055,23 @@ func (c *SystemRolloutController) restoreCustomResourceDefinitions() (err error)
 			}
 		}
 
-		err = c.tagLonghornLastSystemRestoreAnnotation(updateExist, false)
-		if err != nil && !types.ErrorAlreadyExists(err) {
-			return err
-		}
-
+		isSkipped := true
 		if !reflect.DeepEqual(exist.Spec.Versions, updateExist.Spec.Versions) {
 			log.Info(SystemRolloutMsgUpdating)
-		}
 
-		_, err = c.ds.UpdateCustomResourceDefinition(updateExist)
+			isSkipped = false
+		}
+		fnUpdate := func(updateExist runtime.Object) (runtime.Object, error) {
+			obj, ok := updateExist.(*apiextensionsv1.CustomResourceDefinition)
+			if !ok {
+				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.APIExtensionsKindCustomResourceDefinition)
+			}
+			return c.ds.UpdateCustomResourceDefinition(obj)
+		}
+		_, err = c.rolloutResource(updateExist, fnUpdate, isSkipped, log, SystemRolloutMsgSkipIdentical)
 		if err != nil {
 			return err
 		}
-
 	}
 
 	return nil
@@ -1020,23 +1095,36 @@ func (c *SystemRolloutController) restoreEngineImages() (err error) {
 
 			log.Info(SystemRolloutMsgCreating)
 
-			exist, err = c.ds.CreateEngineImage(&restore)
+			fnCreate := func(restore runtime.Object) (runtime.Object, error) {
+				obj, ok := restore.(*longhorn.EngineImage)
+				if !ok {
+					return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.LonghornKindEngineImage)
+				}
+				return c.ds.CreateEngineImage(obj)
+			}
+			_, err := c.rolloutResource(&restore, fnCreate, false, log, SystemRolloutMsgRestoredItem)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
 				return err
 			}
+			continue
 		}
 
-		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil && !types.ErrorAlreadyExists(err) {
-			return err
-		}
-
+		isSkipped := true
 		if !reflect.DeepEqual(exist.Spec, restore.Spec) {
 			log.Info(SystemRolloutMsgUpdating)
 			exist.Spec = restore.Spec
+
+			isSkipped = false
 		}
 
-		_, err = c.ds.UpdateEngineImage(exist)
+		fnUpdate := func(exist runtime.Object) (runtime.Object, error) {
+			obj, ok := exist.(*longhorn.EngineImage)
+			if !ok {
+				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.LonghornKindEngineImage)
+			}
+			return c.ds.UpdateEngineImage(obj)
+		}
+		_, err = c.rolloutResource(exist, fnUpdate, isSkipped, log, SystemRolloutMsgSkipIdentical)
 		if err != nil {
 			return err
 		}
@@ -1063,23 +1151,36 @@ func (c *SystemRolloutController) restoreDaemonSets() (err error) {
 
 			log.Info(SystemRolloutMsgCreating)
 
-			exist, err = c.ds.CreateDaemonSet(&restore)
+			fnCreate := func(restore runtime.Object) (runtime.Object, error) {
+				obj, ok := restore.(*appsv1.DaemonSet)
+				if !ok {
+					return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.KubernetesKindDaemonSet)
+				}
+				return c.ds.CreateDaemonSet(obj)
+			}
+			_, err := c.rolloutResource(&restore, fnCreate, false, log, SystemRolloutMsgRestoredItem)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
 				return err
 			}
+
+			continue
 		}
 
-		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil && !types.ErrorAlreadyExists(err) {
-			return err
-		}
-
+		isSkipped := true
 		if !reflect.DeepEqual(exist.Spec, restore.Spec) {
 			log.Info(SystemRolloutMsgUpdating)
 			exist.Spec = restore.Spec
-		}
 
-		_, err = c.ds.UpdateDaemonSet(exist)
+			isSkipped = false
+		}
+		fnUpdate := func(exist runtime.Object) (runtime.Object, error) {
+			obj, ok := exist.(*appsv1.DaemonSet)
+			if !ok {
+				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.KubernetesKindDaemonSet)
+			}
+			return c.ds.UpdateDaemonSet(obj)
+		}
+		_, err = c.rolloutResource(exist, fnUpdate, isSkipped, log, SystemRolloutMsgSkipIdentical)
 		if err != nil {
 			return err
 		}
@@ -1106,23 +1207,35 @@ func (c *SystemRolloutController) restoreDeployments() (err error) {
 
 			log.Info(SystemRolloutMsgCreating)
 
-			exist, err = c.ds.CreateDeployment(&restore)
+			fnCreate := func(restore runtime.Object) (runtime.Object, error) {
+				obj, ok := restore.(*appsv1.Deployment)
+				if !ok {
+					return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.KubernetesKindDeployment)
+				}
+				return c.ds.CreateDeployment(obj)
+			}
+			_, err := c.rolloutResource(&restore, fnCreate, false, log, SystemRolloutMsgRestoredItem)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
 				return err
 			}
+			continue
 		}
 
-		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil && !types.ErrorAlreadyExists(err) {
-			return err
-		}
-
+		isSkipped := true
 		if !reflect.DeepEqual(exist.Spec, restore.Spec) {
 			log.Info(SystemRolloutMsgUpdating)
 			exist.Spec = restore.Spec
-		}
 
-		_, err = c.ds.UpdateDeployment(exist)
+			isSkipped = false
+		}
+		fnUpdate := func(exist runtime.Object) (runtime.Object, error) {
+			obj, ok := exist.(*appsv1.Deployment)
+			if !ok {
+				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.KubernetesKindDeployment)
+			}
+			return c.ds.UpdateDeployment(obj)
+		}
+		_, err = c.rolloutResource(exist, fnUpdate, isSkipped, log, SystemRolloutMsgSkipIdentical)
 		if err != nil {
 			return err
 		}
@@ -1173,24 +1286,28 @@ func (c *SystemRolloutController) restorePersistentVolumes() (err error) {
 
 			log.Info(SystemRolloutMsgCreating)
 
-			err = c.tagLonghornLastSystemRestoreAnnotation(&restore, false)
-			if err != nil && !types.ErrorAlreadyExists(err) {
-				return err
+			fnCreate := func(restore runtime.Object) (runtime.Object, error) {
+				obj, ok := restore.(*corev1.PersistentVolume)
+				if !ok {
+					return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.KubernetesKindPersistentVolume)
+				}
+				return c.ds.CreatePersistentVolume(obj)
 			}
-
-			_, err = c.ds.CreatePersistentVolume(&restore)
+			_, err = c.rolloutResource(&restore, fnCreate, false, log, SystemRolloutMsgRestoredItem)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
 				return err
 			}
 			continue
 		}
 
-		err = c.tagLonghornLastSystemRestoreAnnotation(exist, true)
-		if err != nil && !types.ErrorAlreadyExists(err) {
-			return err
+		fnUpdate := func(exist runtime.Object) (runtime.Object, error) {
+			obj, ok := exist.(*corev1.PersistentVolume)
+			if !ok {
+				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.KubernetesKindPersistentVolume)
+			}
+			return c.ds.UpdatePersistentVolume(obj)
 		}
-
-		_, err = c.ds.UpdatePersistentVolume(exist)
+		_, err = c.rolloutResource(exist, fnUpdate, true, log, SystemRolloutMsgSkipIdentical)
 		if err != nil {
 			return err
 		}
@@ -1230,24 +1347,28 @@ func (c *SystemRolloutController) restorePersistentVolumeClaims() (err error) {
 
 			log.Info(SystemRolloutMsgCreating)
 
-			err = c.tagLonghornLastSystemRestoreAnnotation(&restore, false)
-			if err != nil && !types.ErrorAlreadyExists(err) {
-				return err
+			fnCreate := func(restore runtime.Object) (runtime.Object, error) {
+				obj, ok := restore.(*corev1.PersistentVolumeClaim)
+				if !ok {
+					return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.KubernetesKindPersistentVolumeClaim)
+				}
+				return c.ds.CreatePersistentVolumeClaim(obj.GetNamespace(), obj)
 			}
-
-			_, err = c.ds.CreatePersistentVolumeClaim(restore.Namespace, &restore)
+			_, err = c.rolloutResource(&restore, fnCreate, false, log, SystemRolloutMsgRestoredItem)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
 				return err
 			}
 			continue
 		}
 
-		err = c.tagLonghornLastSystemRestoreAnnotation(exist, true)
-		if err != nil && !types.ErrorAlreadyExists(err) {
-			return err
+		fnUpdate := func(exist runtime.Object) (runtime.Object, error) {
+			obj, ok := exist.(*corev1.PersistentVolumeClaim)
+			if !ok {
+				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.KubernetesKindPersistentVolumeClaim)
+			}
+			return c.ds.UpdatePersistentVolumeClaim(obj.GetNamespace(), obj)
 		}
-
-		_, err = c.ds.UpdatePersistentVolumeClaim(restore.Namespace, exist)
+		_, err = c.rolloutResource(exist, fnUpdate, true, log, SystemRolloutMsgSkipIdentical)
 		if err != nil {
 			return err
 		}
@@ -1274,23 +1395,35 @@ func (c *SystemRolloutController) restorePodSecurityPolicies() (err error) {
 
 			log.Info(SystemRolloutMsgCreating)
 
-			exist, err = c.ds.CreatePodSecurityPolicy(&restore)
+			fnCreate := func(restore runtime.Object) (runtime.Object, error) {
+				obj, ok := restore.(*policyv1beta1.PodSecurityPolicy)
+				if !ok {
+					return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.KubernetesKindPodSecurityPolicy)
+				}
+				return c.ds.CreatePodSecurityPolicy(obj)
+			}
+			_, err := c.rolloutResource(&restore, fnCreate, false, log, SystemRolloutMsgRestoredItem)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
 				return err
 			}
+			continue
 		}
 
-		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil && !types.ErrorAlreadyExists(err) {
-			return err
-		}
-
+		isSkipped := true
 		if !reflect.DeepEqual(exist.Spec, restore.Spec) {
 			log.Info(SystemRolloutMsgUpdating)
 			exist.Spec = restore.Spec
-		}
 
-		_, err = c.ds.UpdatePodSecurityPolicy(exist)
+			isSkipped = false
+		}
+		fnUpdate := func(exist runtime.Object) (runtime.Object, error) {
+			obj, ok := exist.(*policyv1beta1.PodSecurityPolicy)
+			if !ok {
+				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.KubernetesKindPodSecurityPolicy)
+			}
+			return c.ds.UpdatePodSecurityPolicy(obj)
+		}
+		_, err = c.rolloutResource(exist, fnUpdate, isSkipped, log, SystemRolloutMsgSkipIdentical)
 		if err != nil {
 			return err
 		}
@@ -1317,23 +1450,35 @@ func (c *SystemRolloutController) restoreRecurringJobs() (err error) {
 
 			log.Info(SystemRolloutMsgCreating)
 
-			exist, err = c.ds.CreateRecurringJob(&restore)
+			fnCreate := func(restore runtime.Object) (runtime.Object, error) {
+				obj, ok := restore.(*longhorn.RecurringJob)
+				if !ok {
+					return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.LonghornKindRecurringJob)
+				}
+				return c.ds.CreateRecurringJob(obj)
+			}
+			_, err := c.rolloutResource(&restore, fnCreate, false, log, SystemRolloutMsgRestoredItem)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
 				return err
 			}
+			continue
 		}
 
-		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil && !types.ErrorAlreadyExists(err) {
-			return err
-		}
-
+		isSkipped := true
 		if !reflect.DeepEqual(exist.Spec, restore.Spec) {
 			log.Info(SystemRolloutMsgUpdating)
 			exist.Spec = restore.Spec
-		}
 
-		_, err = c.ds.UpdateRecurringJob(exist)
+			isSkipped = false
+		}
+		fnUpdate := func(exist runtime.Object) (runtime.Object, error) {
+			obj, ok := exist.(*longhorn.RecurringJob)
+			if !ok {
+				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.LonghornKindRecurringJob)
+			}
+			return c.ds.UpdateRecurringJob(obj)
+		}
+		_, err = c.rolloutResource(exist, fnUpdate, isSkipped, log, SystemRolloutMsgSkipIdentical)
 		if err != nil {
 			return err
 		}
@@ -1360,24 +1505,35 @@ func (c *SystemRolloutController) restoreRoles() (err error) {
 
 			log.Info(SystemRolloutMsgCreating)
 
-			exist, err = c.ds.CreateRole(&restore)
+			fnCreate := func(restore runtime.Object) (runtime.Object, error) {
+				obj, ok := restore.(*rbacv1.Role)
+				if !ok {
+					return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.KubernetesKindRole)
+				}
+				return c.ds.CreateRole(obj)
+			}
+			_, err := c.rolloutResource(&restore, fnCreate, false, log, SystemRolloutMsgRestoredItem)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
 				return err
 			}
-
+			continue
 		}
 
-		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil && !types.ErrorAlreadyExists(err) {
-			return err
-		}
-
+		isSkipped := true
 		if !reflect.DeepEqual(exist.Rules, restore.Rules) {
 			log.Info(SystemRolloutMsgUpdating)
 			exist.Rules = restore.Rules
-		}
 
-		_, err = c.ds.UpdateRole(exist)
+			isSkipped = false
+		}
+		fnUpdate := func(exist runtime.Object) (runtime.Object, error) {
+			obj, ok := exist.(*rbacv1.Role)
+			if !ok {
+				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.KubernetesKindRole)
+			}
+			return c.ds.UpdateRole(obj)
+		}
+		_, err = c.rolloutResource(exist, fnUpdate, isSkipped, log, SystemRolloutMsgSkipIdentical)
 		if err != nil {
 			return err
 		}
@@ -1404,24 +1560,37 @@ func (c *SystemRolloutController) restoreRoleBindings() (err error) {
 
 			log.Info(SystemRolloutMsgCreating)
 
-			exist, err = c.ds.CreateRoleBinding(&restore)
+			fnCreate := func(restore runtime.Object) (runtime.Object, error) {
+				obj, ok := restore.(*rbacv1.RoleBinding)
+				if !ok {
+					return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.KubernetesKindRoleBinding)
+				}
+				return c.ds.CreateRoleBinding(obj)
+			}
+			_, err := c.rolloutResource(&restore, fnCreate, false, log, SystemRolloutMsgRestoredItem)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
 				return err
 			}
+			continue
 		}
 
-		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil && !types.ErrorAlreadyExists(err) {
-			return err
-		}
-
+		isSkipped := true
 		if !reflect.DeepEqual(exist.RoleRef, restore.RoleRef) || !reflect.DeepEqual(exist.Subjects, restore.Subjects) {
 			log.Info(SystemRolloutMsgUpdating)
 			exist.RoleRef = restore.RoleRef
 			exist.Subjects = restore.Subjects
+
+			isSkipped = false
 		}
 
-		_, err = c.ds.UpdateRoleBinding(exist)
+		fnUpdate := func(exist runtime.Object) (runtime.Object, error) {
+			obj, ok := exist.(*rbacv1.RoleBinding)
+			if !ok {
+				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.KubernetesKindRoleBinding)
+			}
+			return c.ds.UpdateRoleBinding(obj)
+		}
+		_, err = c.rolloutResource(exist, fnUpdate, isSkipped, log, SystemRolloutMsgSkipIdentical)
 		if err != nil {
 			return err
 		}
@@ -1448,23 +1617,36 @@ func (c *SystemRolloutController) restoreService() (err error) {
 
 			log.Info(SystemRolloutMsgCreating)
 
-			exist, err = c.ds.CreateService(restore.Namespace, &restore)
+			fnCreate := func(restore runtime.Object) (runtime.Object, error) {
+				obj, ok := restore.(*corev1.Service)
+				if !ok {
+					return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.KubernetesKindService)
+				}
+				return c.ds.CreateService(obj.GetNamespace(), obj)
+			}
+			_, err := c.rolloutResource(&restore, fnCreate, false, log, SystemRolloutMsgRestoredItem)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
 				return err
 			}
+			continue
 		}
 
-		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil && !types.ErrorAlreadyExists(err) {
-			return err
-		}
-
+		isSkipped := true
 		if !reflect.DeepEqual(exist.Spec, restore.Spec) {
 			log.Info(SystemRolloutMsgUpdating)
 			exist.Spec = restore.Spec
+
+			isSkipped = false
 		}
 
-		_, err = c.ds.UpdateService(exist.Namespace, exist)
+		fnUpdate := func(exist runtime.Object) (runtime.Object, error) {
+			obj, ok := exist.(*corev1.Service)
+			if !ok {
+				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.KubernetesKindService)
+			}
+			return c.ds.UpdateService(obj.GetNamespace(), obj)
+		}
+		_, err = c.rolloutResource(exist, fnUpdate, isSkipped, log, SystemRolloutMsgSkipIdentical)
 		if err != nil {
 			return err
 		}
@@ -1491,18 +1673,28 @@ func (c *SystemRolloutController) restoreServiceAccounts() (err error) {
 
 			log.Info(SystemRolloutMsgCreating)
 
-			exist, err = c.ds.CreateServiceAccount(&restore)
+			fnCreate := func(restore runtime.Object) (runtime.Object, error) {
+				obj, ok := restore.(*corev1.ServiceAccount)
+				if !ok {
+					return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.KubernetesKindServiceAccount)
+				}
+				return c.ds.CreateServiceAccount(obj)
+			}
+			_, err := c.rolloutResource(&restore, fnCreate, false, log, SystemRolloutMsgRestoredItem)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
 				return err
 			}
+			continue
 		}
 
-		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil && !types.ErrorAlreadyExists(err) {
-			return err
+		fnUpdate := func(exist runtime.Object) (runtime.Object, error) {
+			obj, ok := exist.(*corev1.ServiceAccount)
+			if !ok {
+				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.KubernetesKindServiceAccount)
+			}
+			return c.ds.UpdateServiceAccount(obj)
 		}
-
-		_, err = c.ds.UpdateServiceAccount(exist)
+		_, err = c.rolloutResource(exist, fnUpdate, true, log, SystemRolloutMsgSkipIdentical)
 		if err != nil {
 			return err
 		}
@@ -1548,23 +1740,35 @@ func (c *SystemRolloutController) restoreSettings() (err error) {
 
 			log.Info(SystemRolloutMsgCreating)
 
-			exist, err = c.ds.CreateSetting(&restore)
+			fnCreate := func(restore runtime.Object) (runtime.Object, error) {
+				obj, ok := restore.(*longhorn.Setting)
+				if !ok {
+					return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.LonghornKindSetting)
+				}
+				return c.ds.CreateSetting(obj)
+			}
+			_, err := c.rolloutResource(&restore, fnCreate, false, log, SystemRolloutMsgRestoredItem)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
 				return err
 			}
+			continue
 		}
 
-		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil && !types.ErrorAlreadyExists(err) {
-			return err
-		}
-
+		isSkipped := true
 		if exist.Value != restore.Value {
 			log.Info(SystemRolloutMsgUpdating)
 			exist.Value = restore.Value
-		}
 
-		_, err = c.ds.UpdateSetting(exist)
+			isSkipped = false
+		}
+		fnUpdate := func(exist runtime.Object) (runtime.Object, error) {
+			obj, ok := exist.(*longhorn.Setting)
+			if !ok {
+				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.LonghornKindSetting)
+			}
+			return c.ds.UpdateSetting(obj)
+		}
+		_, err = c.rolloutResource(exist, fnUpdate, isSkipped, log, SystemRolloutMsgSkipIdentical)
 		if err != nil {
 			return err
 		}
@@ -1591,18 +1795,28 @@ func (c *SystemRolloutController) restoreStorageClasses() (err error) {
 
 			log.Info(SystemRolloutMsgCreating)
 
-			exist, err = c.ds.CreateStorageClass(&restore)
+			fnCreate := func(restore runtime.Object) (runtime.Object, error) {
+				obj, ok := restore.(*storagev1.StorageClass)
+				if !ok {
+					return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.KubernetesKindStorageClass)
+				}
+				return c.ds.CreateStorageClass(obj)
+			}
+			_, err = c.rolloutResource(&restore, fnCreate, false, log, SystemRolloutMsgRestoredItem)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
 				return err
 			}
+			continue
 		}
 
-		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil && !types.ErrorAlreadyExists(err) {
-			return err
+		fnUpdate := func(exist runtime.Object) (runtime.Object, error) {
+			obj, ok := exist.(*storagev1.StorageClass)
+			if !ok {
+				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.KubernetesKindStorageClass)
+			}
+			return c.ds.UpdateStorageClass(obj)
 		}
-
-		_, err = c.ds.UpdateStorageClass(exist)
+		_, err = c.rolloutResource(exist, fnUpdate, true, log, SystemRolloutMsgSkipIdentical)
 		if err != nil {
 			return err
 		}
@@ -1642,7 +1856,6 @@ func (c *SystemRolloutController) restoreVolumes() (err error) {
 		log := c.logger.WithField(types.LonghornKindVolume, restore.Name)
 		log = getLoggerForVolume(log, &restore)
 
-		isSkipped := true
 		exist, err := c.ds.GetVolume(restore.Name)
 		if err == nil && exist != nil && exist.Spec.NodeID != "" {
 			log.Warn("Cannot restore attached volume")
@@ -1667,7 +1880,14 @@ func (c *SystemRolloutController) restoreVolumes() (err error) {
 
 			log.Info(SystemRolloutMsgCreating)
 
-			exist, err = c.ds.CreateVolume(&restore)
+			fnCreate := func(restore runtime.Object) (runtime.Object, error) {
+				obj, ok := restore.(*longhorn.Volume)
+				if !ok {
+					return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.LonghornKindVolume)
+				}
+				return c.ds.CreateVolume(obj)
+			}
+			_, err := c.rolloutResource(&restore, fnCreate, false, log, SystemRolloutMsgRestoredItem)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
 				err = errors.Wrapf(err, SystemRolloutErrFailedToCreateFmt, types.LonghornKindVolume, restore.Name)
 				message := util.CapitalizeFirstLetter(err.Error())
@@ -1683,19 +1903,18 @@ func (c *SystemRolloutController) restoreVolumes() (err error) {
 				if err = c.ignorePersistenVolumeClaimDueToMissingVolume(&restore); err != nil {
 					return err
 				}
-
-				continue
 			}
-
-			isSkipped = false
+			continue
 		}
 
-		err = c.tagLonghornLastSystemRestoreAnnotation(exist, isSkipped)
-		if err != nil && !types.ErrorAlreadyExists(err) {
-			return err
+		fnUpdate := func(exist runtime.Object) (runtime.Object, error) {
+			obj, ok := exist.(*longhorn.Volume)
+			if !ok {
+				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.LonghornKindVolume)
+			}
+			return c.ds.UpdateVolume(obj)
 		}
-
-		_, err = c.ds.UpdateVolume(exist)
+		_, err = c.rolloutResource(exist, fnUpdate, true, log, SystemRolloutMsgSkipIdentical)
 		if err != nil {
 			return err
 		}
@@ -1708,18 +1927,16 @@ func (c *SystemRolloutController) ignorePersistenVolumeDueToMissingVolume(volume
 	newPersistentVolumeListItems := []corev1.PersistentVolume{}
 	for _, persistenVolume := range c.persistentVolumeList.Items {
 		if persistenVolume.Spec.CSI.VolumeHandle == volume.Name {
-			err := c.tagLonghornLastSystemRestoreAnnotation(&persistenVolume, true)
-			if err != nil && !types.ErrorAlreadyExists(err) {
-				return err
-			}
-
 			log := c.logger.WithField(types.KubernetesKindPersistentVolume, persistenVolume.Name)
 			message := fmt.Sprintf(SystemRolloutMsgIgnoreItemFmt,
 				fmt.Sprintf(SystemRolloutErrMissingDependencyFmt, persistenVolume.Name, types.LonghornKindVolume, volume.Name),
 			)
-			log.Warn(message)
+			err := c.tagLonghornLastSystemRestoreAnnotation(&persistenVolume, true, log, message)
+			if err != nil && !types.ErrorAlreadyExists(err) {
+				return err
+			}
 
-			reason := fmt.Sprintf(constant.EventReasonFailedCreatingFmt, types.KubernetesKindPersistentVolume, persistenVolume.Name)
+			reason := fmt.Sprintf(constant.EventReasonRolloutSkippedFmt, types.KubernetesKindPersistentVolume, persistenVolume.Name)
 			c.eventRecorder.Event(c.systemRestore, corev1.EventTypeWarning, reason, message)
 		}
 		newPersistentVolumeListItems = append(newPersistentVolumeListItems, persistenVolume)
@@ -1733,18 +1950,16 @@ func (c *SystemRolloutController) ignorePersistenVolumeClaimDueToMissingVolume(v
 	newPersistentVolumeClaimListItems := []corev1.PersistentVolumeClaim{}
 	for _, persistenVolumeClaim := range c.persistentVolumeClaimList.Items {
 		if persistenVolumeClaim.Spec.VolumeName == volume.Name {
-			err := c.tagLonghornLastSystemRestoreAnnotation(&persistenVolumeClaim, true)
-			if err != nil && !types.ErrorAlreadyExists(err) {
-				return err
-			}
-
 			log := c.logger.WithField(types.KubernetesKindPersistentVolumeClaim, persistenVolumeClaim.Name)
 			message := fmt.Sprintf(SystemRolloutMsgIgnoreItemFmt,
 				fmt.Sprintf(SystemRolloutErrMissingDependencyFmt, persistenVolumeClaim.Name, types.LonghornKindVolume, volume.Name),
 			)
-			log.Warn(message)
+			err := c.tagLonghornLastSystemRestoreAnnotation(&persistenVolumeClaim, true, log, message)
+			if err != nil && !types.ErrorAlreadyExists(err) {
+				return err
+			}
 
-			reason := fmt.Sprintf(constant.EventReasonFailedCreatingFmt, types.KubernetesKindPersistentVolumeClaim, persistenVolumeClaim.Name)
+			reason := fmt.Sprintf(constant.EventReasonRolloutSkippedFmt, types.KubernetesKindPersistentVolumeClaim, persistenVolumeClaim.Name)
 			c.eventRecorder.Event(c.systemRestore, corev1.EventTypeWarning, reason, message)
 		}
 		newPersistentVolumeClaimListItems = append(newPersistentVolumeClaimListItems, persistenVolumeClaim)
@@ -1773,7 +1988,7 @@ func (c *SystemRolloutController) isResourceHasCurrentRolloutAnnotation(obj runt
 	return false, nil
 }
 
-func (c *SystemRolloutController) tagLonghornLastSystemRestoreAnnotation(obj runtime.Object, isSkipped bool) error {
+func (c *SystemRolloutController) tagLonghornLastSystemRestoreAnnotation(obj runtime.Object, isSkipped bool, log logrus.FieldLogger, message string) error {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
 		return err
@@ -1806,6 +2021,7 @@ func (c *SystemRolloutController) tagLonghornLastSystemRestoreAnnotation(obj run
 		annos[types.GetLastSystemRestoreAtLabelKey()] = c.systemRestoredAt
 	}
 
+	log.Debug(message)
 	metadata.SetAnnotations(annos)
 	return nil
 }
