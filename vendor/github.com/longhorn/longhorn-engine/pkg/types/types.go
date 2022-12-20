@@ -45,6 +45,17 @@ const (
 	DataServerProtocolUNIX = DataServerProtocol("unix")
 )
 
+type ReplicaState string
+
+const (
+	ReplicaStateInitial    = ReplicaState("initial")
+	ReplicaStateOpen       = ReplicaState("open")
+	ReplicaStateClosed     = ReplicaState("closed")
+	ReplicaStateDirty      = ReplicaState("dirty")
+	ReplicaStateRebuilding = ReplicaState("rebuilding")
+	ReplicaStateError      = ReplicaState("error")
+)
+
 type ReaderWriterUnmapperAt interface {
 	io.ReaderAt
 	io.WriterAt
@@ -141,8 +152,8 @@ const (
 )
 
 type Metrics struct {
-	Bandwidth    RWMetrics // in byte
-	TotalLatency RWMetrics // in microsecond(us)
+	Throughput   RWMetrics // in byte
+	TotalLatency RWMetrics // in nanoseconds
 	IOPS         RWMetrics
 }
 

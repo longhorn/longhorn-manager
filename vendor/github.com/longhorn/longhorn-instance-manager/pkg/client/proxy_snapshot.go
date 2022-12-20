@@ -95,7 +95,7 @@ func (c *ProxyClient) SnapshotList(serviceAddress string) (snapshotDiskInfo map[
 	return snapshotDiskInfo, nil
 }
 
-func (c *ProxyClient) SnapshotClone(serviceAddress, name, fromController string) (err error) {
+func (c *ProxyClient) SnapshotClone(serviceAddress, name, fromController string, fileSyncHTTPClientTimeout int) (err error) {
 	input := map[string]string{
 		"serviceAddress": serviceAddress,
 		"name":           name,
@@ -116,6 +116,7 @@ func (c *ProxyClient) SnapshotClone(serviceAddress, name, fromController string)
 		FromController:            fromController,
 		SnapshotName:              name,
 		ExportBackingImageIfExist: false,
+		FileSyncHttpClientTimeout: int32(fileSyncHTTPClientTimeout),
 	}
 	_, err = c.service.SnapshotClone(getContextWithGRPCLongTimeout(c.ctx), req)
 	if err != nil {
