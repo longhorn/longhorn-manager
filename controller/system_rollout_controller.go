@@ -54,7 +54,8 @@ const (
 	SystemRolloutControllerName = "longhorn-system-rollout"
 	SystemRolloutNamePrefix     = "longhorn-system-rollout-"
 
-	SystemRolloutErrFailedToCreateFmt = "failed to create item: %v %v"
+	SystemRolloutErrFailedToCreateFmt    = "failed to create item: %v %v"
+	SystemRolloutErrMissingDependencyFmt = "cannot rollout %v due to missing dependency: %v %v"
 
 	SystemRolloutMsgDownloadedFmt       = "Downloaded from %v"
 	SystemRolloutMsgInitializedFmt      = "Initialized system rollout for %v"
@@ -62,11 +63,12 @@ const (
 	SystemRolloutMsgRequeueNextPhaseFmt = "Requeue for next phase: %v"
 	SystemRolloutMsgRequeueDueToFmt     = "Requeue due to %v"
 	SystemRolloutMsgUnpackedFmt         = "Unpacked %v"
-	SystemRolloutMsgCompleted           = "System rollout completed"
-	SystemRolloutMsgCreating            = "System rollout creating"
-	SystemRolloutMsgIgnoreItemFmt       = "System rollout ignoring item: %v"
-	SystemRolloutMsgRestoredFmt         = "System rollout restored %v"
-	SystemRolloutMsgUpdating            = "System rollout updating"
+
+	SystemRolloutMsgCompleted     = "System rollout completed"
+	SystemRolloutMsgCreating      = "System rollout creating"
+	SystemRolloutMsgIgnoreItemFmt = "System rollout ignoring item: %v"
+	SystemRolloutMsgRestoredFmt   = "System rollout restored %v"
+	SystemRolloutMsgUpdating      = "System rollout updating"
 )
 
 type systemRolloutRecordType string
@@ -814,7 +816,8 @@ func (c *SystemRolloutController) restoreClusterRoles() (err error) {
 			}
 		}
 
-		if err = c.tagLonghornLastSystemRestoreAnnotation(exist, false); err != nil {
+		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
+		if err != nil && !types.ErrorAlreadyExists(err) {
 			return err
 		}
 
@@ -857,7 +860,8 @@ func (c *SystemRolloutController) restoreClusterRoleBindings() (err error) {
 
 		}
 
-		if err = c.tagLonghornLastSystemRestoreAnnotation(exist, false); err != nil {
+		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
+		if err != nil && !types.ErrorAlreadyExists(err) {
 			return err
 		}
 
@@ -900,7 +904,8 @@ func (c *SystemRolloutController) restoreConfigMaps() (err error) {
 			}
 		}
 
-		if err = c.tagLonghornLastSystemRestoreAnnotation(exist, false); err != nil {
+		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
+		if err != nil && !types.ErrorAlreadyExists(err) {
 			return err
 		}
 
@@ -979,7 +984,7 @@ func (c *SystemRolloutController) restoreCustomResourceDefinitions() (err error)
 		}
 
 		err = c.tagLonghornLastSystemRestoreAnnotation(updateExist, false)
-		if err != nil {
+		if err != nil && !types.ErrorAlreadyExists(err) {
 			return err
 		}
 
@@ -1022,7 +1027,7 @@ func (c *SystemRolloutController) restoreEngineImages() (err error) {
 		}
 
 		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil {
+		if err != nil && !types.ErrorAlreadyExists(err) {
 			return err
 		}
 
@@ -1065,7 +1070,7 @@ func (c *SystemRolloutController) restoreDaemonSets() (err error) {
 		}
 
 		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil {
+		if err != nil && !types.ErrorAlreadyExists(err) {
 			return err
 		}
 
@@ -1108,7 +1113,7 @@ func (c *SystemRolloutController) restoreDeployments() (err error) {
 		}
 
 		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil {
+		if err != nil && !types.ErrorAlreadyExists(err) {
 			return err
 		}
 
@@ -1132,9 +1137,16 @@ func (c *SystemRolloutController) restorePersistentVolumes() (err error) {
 	}
 
 	for _, restore := range c.persistentVolumeList.Items {
+		notResourceRestoreRequired, err := c.isResourceHasCurrentRolloutAnnotation(&restore)
+		if err != nil {
+			return err
+		}
+		if notResourceRestoreRequired {
+			continue
+		}
+
 		log := c.logger.WithField(types.KubernetesKindPersistentVolume, restore.Name)
 
-		isSkipped := true
 		exist, err := c.ds.GetPersistentVolume(restore.Name)
 		if err != nil {
 			if !datastore.ErrorIsNotFound(err) {
@@ -1161,16 +1173,20 @@ func (c *SystemRolloutController) restorePersistentVolumes() (err error) {
 
 			log.Info(SystemRolloutMsgCreating)
 
-			exist, err = c.ds.CreatePersistentVolume(&restore)
-			if err != nil && !apierrors.IsAlreadyExists(err) {
+			err = c.tagLonghornLastSystemRestoreAnnotation(&restore, false)
+			if err != nil && !types.ErrorAlreadyExists(err) {
 				return err
 			}
 
-			isSkipped = false
+			_, err = c.ds.CreatePersistentVolume(&restore)
+			if err != nil && !apierrors.IsAlreadyExists(err) {
+				return err
+			}
+			continue
 		}
 
-		err = c.tagLonghornLastSystemRestoreAnnotation(exist, isSkipped)
-		if err != nil {
+		err = c.tagLonghornLastSystemRestoreAnnotation(exist, true)
+		if err != nil && !types.ErrorAlreadyExists(err) {
 			return err
 		}
 
@@ -1189,9 +1205,16 @@ func (c *SystemRolloutController) restorePersistentVolumeClaims() (err error) {
 	}
 
 	for _, restore := range c.persistentVolumeClaimList.Items {
+		notResourceRestoreRequired, err := c.isResourceHasCurrentRolloutAnnotation(&restore)
+		if err != nil {
+			return err
+		}
+		if notResourceRestoreRequired {
+			continue
+		}
+
 		log := c.logger.WithField(types.KubernetesKindPersistentVolumeClaim, restore.Name)
 
-		isSkipped := true
 		exist, err := c.ds.GetPersistentVolumeClaim(restore.Namespace, restore.Name)
 		if err != nil {
 			if !datastore.ErrorIsNotFound(err) {
@@ -1207,16 +1230,20 @@ func (c *SystemRolloutController) restorePersistentVolumeClaims() (err error) {
 
 			log.Info(SystemRolloutMsgCreating)
 
-			exist, err = c.ds.CreatePersistentVolumeClaim(restore.Namespace, &restore)
-			if err != nil && !apierrors.IsAlreadyExists(err) {
+			err = c.tagLonghornLastSystemRestoreAnnotation(&restore, false)
+			if err != nil && !types.ErrorAlreadyExists(err) {
 				return err
 			}
 
-			isSkipped = false
+			_, err = c.ds.CreatePersistentVolumeClaim(restore.Namespace, &restore)
+			if err != nil && !apierrors.IsAlreadyExists(err) {
+				return err
+			}
+			continue
 		}
 
-		err = c.tagLonghornLastSystemRestoreAnnotation(exist, isSkipped)
-		if err != nil {
+		err = c.tagLonghornLastSystemRestoreAnnotation(exist, true)
+		if err != nil && !types.ErrorAlreadyExists(err) {
 			return err
 		}
 
@@ -1254,7 +1281,7 @@ func (c *SystemRolloutController) restorePodSecurityPolicies() (err error) {
 		}
 
 		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil {
+		if err != nil && !types.ErrorAlreadyExists(err) {
 			return err
 		}
 
@@ -1297,7 +1324,7 @@ func (c *SystemRolloutController) restoreRecurringJobs() (err error) {
 		}
 
 		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil {
+		if err != nil && !types.ErrorAlreadyExists(err) {
 			return err
 		}
 
@@ -1341,7 +1368,7 @@ func (c *SystemRolloutController) restoreRoles() (err error) {
 		}
 
 		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil {
+		if err != nil && !types.ErrorAlreadyExists(err) {
 			return err
 		}
 
@@ -1384,7 +1411,7 @@ func (c *SystemRolloutController) restoreRoleBindings() (err error) {
 		}
 
 		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil {
+		if err != nil && !types.ErrorAlreadyExists(err) {
 			return err
 		}
 
@@ -1428,7 +1455,7 @@ func (c *SystemRolloutController) restoreService() (err error) {
 		}
 
 		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil {
+		if err != nil && !types.ErrorAlreadyExists(err) {
 			return err
 		}
 
@@ -1471,7 +1498,7 @@ func (c *SystemRolloutController) restoreServiceAccounts() (err error) {
 		}
 
 		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil {
+		if err != nil && !types.ErrorAlreadyExists(err) {
 			return err
 		}
 
@@ -1528,7 +1555,7 @@ func (c *SystemRolloutController) restoreSettings() (err error) {
 		}
 
 		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil {
+		if err != nil && !types.ErrorAlreadyExists(err) {
 			return err
 		}
 
@@ -1571,7 +1598,7 @@ func (c *SystemRolloutController) restoreStorageClasses() (err error) {
 		}
 
 		err = c.tagLonghornLastSystemRestoreAnnotation(exist, false)
-		if err != nil {
+		if err != nil && !types.ErrorAlreadyExists(err) {
 			return err
 		}
 
@@ -1648,6 +1675,15 @@ func (c *SystemRolloutController) restoreVolumes() (err error) {
 
 				reason := fmt.Sprintf(constant.EventReasonFailedCreatingFmt, types.LonghornKindVolume, restore.Name)
 				c.eventRecorder.Event(c.systemRestore, corev1.EventTypeWarning, reason, message)
+
+				if err = c.ignorePersistenVolumeDueToMissingVolume(&restore); err != nil {
+					return err
+				}
+
+				if err = c.ignorePersistenVolumeClaimDueToMissingVolume(&restore); err != nil {
+					return err
+				}
+
 				continue
 			}
 
@@ -1655,7 +1691,7 @@ func (c *SystemRolloutController) restoreVolumes() (err error) {
 		}
 
 		err = c.tagLonghornLastSystemRestoreAnnotation(exist, isSkipped)
-		if err != nil {
+		if err != nil && !types.ErrorAlreadyExists(err) {
 			return err
 		}
 
@@ -1668,6 +1704,75 @@ func (c *SystemRolloutController) restoreVolumes() (err error) {
 	return nil
 }
 
+func (c *SystemRolloutController) ignorePersistenVolumeDueToMissingVolume(volume *longhorn.Volume) error {
+	newPersistentVolumeListItems := []corev1.PersistentVolume{}
+	for _, persistenVolume := range c.persistentVolumeList.Items {
+		if persistenVolume.Spec.CSI.VolumeHandle == volume.Name {
+			err := c.tagLonghornLastSystemRestoreAnnotation(&persistenVolume, true)
+			if err != nil && !types.ErrorAlreadyExists(err) {
+				return err
+			}
+
+			log := c.logger.WithField(types.KubernetesKindPersistentVolume, persistenVolume.Name)
+			message := fmt.Sprintf(SystemRolloutMsgIgnoreItemFmt,
+				fmt.Sprintf(SystemRolloutErrMissingDependencyFmt, persistenVolume.Name, types.LonghornKindVolume, volume.Name),
+			)
+			log.Warn(message)
+
+			reason := fmt.Sprintf(constant.EventReasonFailedCreatingFmt, types.KubernetesKindPersistentVolume, persistenVolume.Name)
+			c.eventRecorder.Event(c.systemRestore, corev1.EventTypeWarning, reason, message)
+		}
+		newPersistentVolumeListItems = append(newPersistentVolumeListItems, persistenVolume)
+	}
+
+	c.persistentVolumeList.Items = newPersistentVolumeListItems
+	return nil
+}
+
+func (c *SystemRolloutController) ignorePersistenVolumeClaimDueToMissingVolume(volume *longhorn.Volume) error {
+	newPersistentVolumeClaimListItems := []corev1.PersistentVolumeClaim{}
+	for _, persistenVolumeClaim := range c.persistentVolumeClaimList.Items {
+		if persistenVolumeClaim.Spec.VolumeName == volume.Name {
+			err := c.tagLonghornLastSystemRestoreAnnotation(&persistenVolumeClaim, true)
+			if err != nil && !types.ErrorAlreadyExists(err) {
+				return err
+			}
+
+			log := c.logger.WithField(types.KubernetesKindPersistentVolumeClaim, persistenVolumeClaim.Name)
+			message := fmt.Sprintf(SystemRolloutMsgIgnoreItemFmt,
+				fmt.Sprintf(SystemRolloutErrMissingDependencyFmt, persistenVolumeClaim.Name, types.LonghornKindVolume, volume.Name),
+			)
+			log.Warn(message)
+
+			reason := fmt.Sprintf(constant.EventReasonFailedCreatingFmt, types.KubernetesKindPersistentVolumeClaim, persistenVolumeClaim.Name)
+			c.eventRecorder.Event(c.systemRestore, corev1.EventTypeWarning, reason, message)
+		}
+		newPersistentVolumeClaimListItems = append(newPersistentVolumeClaimListItems, persistenVolumeClaim)
+	}
+
+	c.persistentVolumeClaimList.Items = newPersistentVolumeClaimListItems
+	return nil
+}
+
+func (c *SystemRolloutController) isResourceHasCurrentRolloutAnnotation(obj runtime.Object) (bool, error) {
+	keys := []string{
+		types.GetLastSystemRestoreAtLabelKey(),
+		types.GetLastSkippedSystemRestoreAtLabelKey(),
+	}
+
+	for _, key := range keys {
+		systemRestoreAt, err := util.GetAnnotation(obj, key)
+		if err != nil {
+			return false, err
+		}
+
+		if systemRestoreAt == c.systemRestoredAt {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (c *SystemRolloutController) tagLonghornLastSystemRestoreAnnotation(obj runtime.Object, isSkipped bool) error {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
@@ -1677,6 +1782,14 @@ func (c *SystemRolloutController) tagLonghornLastSystemRestoreAnnotation(obj run
 	annos := metadata.GetAnnotations()
 	if annos == nil {
 		annos = map[string]string{}
+	}
+
+	isAnnotated, err := c.isResourceHasCurrentRolloutAnnotation(obj)
+	if err != nil {
+		return err
+	}
+	if isAnnotated {
+		return fmt.Errorf("system restore annotation already exists")
 	}
 
 	if isSkipped {
