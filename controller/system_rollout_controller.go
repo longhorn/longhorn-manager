@@ -531,37 +531,13 @@ func (c *SystemRolloutController) syncController() error {
 		return err
 	}
 
-	engineImage, err := c.ds.GetEngineImageByImage(systemBackupCfg.EngineImage)
-	if err != nil {
-		if !types.ErrorIsNotFound(err) {
-			return err
-		}
-
-		engineImageName := types.GetEngineImageChecksumName(systemBackupCfg.EngineImage)
-
-		log := c.logger.WithField(types.LonghornKindEngineImage, engineImage.Name)
-		log.Info("Creating EngineImage for system rollout")
-
-		newEngineImage := &longhorn.EngineImage{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   types.GetEngineImageChecksumName(systemBackupCfg.EngineImage),
-				Labels: types.GetEngineImageLabels(engineImageName),
-			},
-			Spec: longhorn.EngineImageSpec{
-				Image: systemBackupCfg.EngineImage,
-			},
-		}
-		fnCreate := func(restore runtime.Object) (runtime.Object, error) {
-			obj, ok := restore.(*longhorn.EngineImage)
-			if !ok {
-				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.LonghornKindEngineImage)
-			}
-			return c.ds.CreateEngineImage(obj)
-		}
-		_, err = c.rolloutResource(newEngineImage, fnCreate, false, log, SystemRolloutMsgRestoredItem)
-		if err != nil && !apierrors.IsAlreadyExists(err) {
-			return err
-		}
+	obj, err := c.createSystemBackupEngineImage(systemBackupCfg.EngineImage)
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		return err
+	}
+	engineImage, ok := obj.(*longhorn.EngineImage)
+	if !ok {
+		return fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, obj.GetObjectKind(), types.LonghornKindEngineImage)
 	}
 
 	if engineImage.Status.State != longhorn.EngineImageStateDeployed {
@@ -581,6 +557,41 @@ func (c *SystemRolloutController) syncController() error {
 	c.cacheErrors = util.MultiError{}
 
 	return nil
+}
+
+func (c *SystemRolloutController) createSystemBackupEngineImage(engineImage string) (runtime.Object, error) {
+	obj, err := c.ds.GetEngineImageByImage(engineImage)
+	if err != nil {
+		if !types.ErrorIsNotFound(err) {
+			return nil, err
+		}
+	}
+	if obj != nil {
+		return obj, nil
+	}
+
+	engineImageName := types.GetEngineImageChecksumName(engineImage)
+
+	log := c.logger.WithField(types.LonghornKindEngineImage, engineImageName)
+	log.Info("Creating EngineImage for system rollout")
+
+	newEngineImage := &longhorn.EngineImage{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   engineImageName,
+			Labels: types.GetEngineImageLabels(engineImageName),
+		},
+		Spec: longhorn.EngineImageSpec{
+			Image: engineImage,
+		},
+	}
+	fnCreate := func(restore runtime.Object) (runtime.Object, error) {
+		obj, ok := restore.(*longhorn.EngineImage)
+		if !ok {
+			return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.LonghornKindEngineImage)
+		}
+		return c.ds.CreateEngineImage(obj)
+	}
+	return c.rolloutResource(newEngineImage, fnCreate, false, log, SystemRolloutMsgRestoredItem)
 }
 
 func (c *SystemRolloutController) cacheKubernetesResources() error {
