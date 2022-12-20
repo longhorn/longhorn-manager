@@ -9,7 +9,7 @@ import (
 	eptypes "github.com/longhorn/longhorn-engine/proto/ptypes"
 )
 
-func (c *ProxyClient) ReplicaAdd(serviceAddress, replicaAddress string, restore bool, size, currentSize int64, fastSync bool) (err error) {
+func (c *ProxyClient) ReplicaAdd(serviceAddress, replicaAddress string, restore bool, size, currentSize int64, fileSyncHTTPClientTimeout int, fastSync bool) (err error) {
 	input := map[string]string{
 		"serviceAddress": serviceAddress,
 		"replicaAddress": replicaAddress,
@@ -30,11 +30,12 @@ func (c *ProxyClient) ReplicaAdd(serviceAddress, replicaAddress string, restore 
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
 			Address: serviceAddress,
 		},
-		ReplicaAddress: replicaAddress,
-		Restore:        restore,
-		Size:           size,
-		CurrentSize:    currentSize,
-		FastSync:       fastSync,
+		ReplicaAddress:            replicaAddress,
+		Restore:                   restore,
+		Size:                      size,
+		CurrentSize:               currentSize,
+		FastSync:                  fastSync,
+		FileSyncHttpClientTimeout: int32(fileSyncHTTPClientTimeout),
 	}
 	_, err = c.service.ReplicaAdd(getContextWithGRPCLongTimeout(c.ctx), req)
 	if err != nil {

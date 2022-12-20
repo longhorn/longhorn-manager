@@ -116,6 +116,7 @@ message EngineSnapshotCloneRequest {
 	string from_controller = 2;
 	string snapshot_name = 3;
 	bool export_backing_image_if_exist = 4;
+	int32 file_sync_http_client_timeout = 5;
 }
 
 message EngineSnapshotCloneStatusProxyResponse {
@@ -201,6 +202,7 @@ message EngineReplicaAddRequest {
 	int64 size = 4;
 	int64 current_size = 5;
 	bool fast_sync = 6;
+	int32 file_sync_http_client_timeout = 7;
 }
 
 message EngineReplicaListProxyResponse {
