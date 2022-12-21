@@ -99,6 +99,7 @@ const (
 	SettingNameRestoreVolumeRecurringJobs                               = SettingName("restore-volume-recurring-jobs")
 	SettingNameRemoveSnapshotsDuringFilesystemTrim                      = SettingName("remove-snapshots-during-filesystem-trim")
 	SettingNameFastReplicaRebuildEnabled                                = SettingName("fast-replica-rebuild-enabled")
+	SettingNameReplicaFileSyncHTTPClientTimeout                         = SettingName("replica-file-sync-http-client-timeout")
 )
 
 var (
@@ -166,6 +167,7 @@ var (
 		SettingNameRestoreVolumeRecurringJobs,
 		SettingNameRemoveSnapshotsDuringFilesystemTrim,
 		SettingNameFastReplicaRebuildEnabled,
+		SettingNameReplicaFileSyncHTTPClientTimeout,
 	}
 )
 
@@ -258,6 +260,7 @@ var (
 		SettingNameRestoreVolumeRecurringJobs:                               SettingDefinitionRestoreVolumeRecurringJobs,
 		SettingNameRemoveSnapshotsDuringFilesystemTrim:                      SettingDefinitionRemoveSnapshotsDuringFilesystemTrim,
 		SettingNameFastReplicaRebuildEnabled:                                SettingDefinitionFastReplicaRebuildEnabled,
+		SettingNameReplicaFileSyncHTTPClientTimeout:                         SettingDefinitionReplicaFileSyncHTTPClientTimeout,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -1013,6 +1016,16 @@ var (
 		ReadOnly:    false,
 		Default:     "true",
 	}
+
+	SettingDefinitionReplicaFileSyncHTTPClientTimeout = SettingDefinition{
+		DisplayName: "Timeout of HTTP Client to Replica File Sync Server",
+		Description: "In seconds. The setting specifies the HTTP client timeout to the file sync server.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "30",
+	}
 )
 
 type NodeDownPodDeletionPolicy string
@@ -1196,6 +1209,15 @@ func ValidateSetting(name, value string) (err error) {
 		}
 		if failedJobsHistLimit < 0 {
 			return fmt.Errorf("the value %v shouldn't be less than 0", value)
+		}
+	case SettingNameReplicaFileSyncHTTPClientTimeout:
+		timeout, err := strconv.Atoi(value)
+		if err != nil {
+			return errors.Wrapf(err, "value %v is not a number", value)
+		}
+
+		if timeout < 5 || timeout > 120 {
+			return fmt.Errorf("the value %v should be between 5 and 120", value)
 		}
 	case SettingNameEngineReplicaTimeout:
 		timeout, err := strconv.Atoi(value)
