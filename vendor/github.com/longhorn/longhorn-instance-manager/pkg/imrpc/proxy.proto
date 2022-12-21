@@ -37,6 +37,8 @@ service ProxyEngineService {
 	rpc ReplicaVerifyRebuild(EngineReplicaVerifyRebuildRequest) returns (google.protobuf.Empty);
 	rpc ReplicaRemove(EngineReplicaRemoveRequest) returns (google.protobuf.Empty);
 	rpc ReplicaModeUpdate(EngineReplicaModeUpdateRequest) returns (google.protobuf.Empty);
+
+	rpc MetricsGet(ProxyEngineRequest) returns (EngineMetricsGetProxyResponse);
 }
 
 message ProxyEngineRequest{
@@ -247,4 +249,8 @@ message EngineSnapshotHashStatusRequest {
 
 message EngineSnapshotHashStatusProxyResponse {
 	map<string, ptypes.SnapshotHashStatusResponse> status = 1;
+}
+
+message EngineMetricsGetProxyResponse {
+	ptypes.Metrics metrics = 1;
 }

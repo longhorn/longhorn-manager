@@ -80,3 +80,12 @@ type SnapshotHashStatus struct {
 	Error             string
 	SilentlyCorrupted bool
 }
+
+type Metrics struct {
+	ReadThroughput  uint64
+	WriteThroughput uint64
+	ReadLatency     uint64
+	WriteLatency    uint64
+	ReadIOPS        uint64
+	WriteIOPS       uint64
+}
