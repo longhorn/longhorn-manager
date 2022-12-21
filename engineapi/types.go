@@ -64,7 +64,7 @@ type EngineClient interface {
 	VolumeUnmapMarkSnapChainRemovedSet(engine *longhorn.Engine) error
 
 	ReplicaList(*longhorn.Engine) (map[string]*Replica, error)
-	ReplicaAdd(engine *longhorn.Engine, url string, isRestoreVolume, fastSync bool) error
+	ReplicaAdd(engine *longhorn.Engine, url string, isRestoreVolume, fastSync bool, replicaFileSyncHTTPClientTimeout int64) error
 	ReplicaRemove(engine *longhorn.Engine, url string) error
 	ReplicaRebuildStatus(*longhorn.Engine) (map[string]*longhorn.RebuildStatus, error)
 	ReplicaRebuildVerify(engine *longhorn.Engine, url string) error
@@ -80,7 +80,7 @@ type EngineClient interface {
 	SnapshotBackup(engine *longhorn.Engine, backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (string, string, error)
 	SnapshotBackupStatus(engine *longhorn.Engine, backupName, replicaAddress string) (*longhorn.EngineBackupStatus, error)
 	SnapshotCloneStatus(engine *longhorn.Engine) (map[string]*longhorn.SnapshotCloneStatus, error)
-	SnapshotClone(engine *longhorn.Engine, snapshotName, fromControllerAddress string) error
+	SnapshotClone(engine *longhorn.Engine, snapshotName, fromControllerAddress string, fileSyncHTTPClientTimeout int64) error
 	SnapshotHash(engine *longhorn.Engine, snapshotName string, rehash bool) error
 	SnapshotHashStatus(engine *longhorn.Engine, snapshotName string) (map[string]*longhorn.HashStatus, error)
 

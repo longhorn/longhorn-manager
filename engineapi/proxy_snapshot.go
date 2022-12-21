@@ -30,8 +30,8 @@ func (p *Proxy) SnapshotGet(e *longhorn.Engine, name string) (snapshot *longhorn
 	return recv[name], nil
 }
 
-func (p *Proxy) SnapshotClone(e *longhorn.Engine, name, fromController string) (err error) {
-	return p.grpcClient.SnapshotClone(p.DirectToURL(e), name, fromController)
+func (p *Proxy) SnapshotClone(e *longhorn.Engine, name, fromController string, fileSyncHTTPClientTimeout int64) (err error) {
+	return p.grpcClient.SnapshotClone(p.DirectToURL(e), name, fromController, int(fileSyncHTTPClientTimeout))
 }
 
 func (p *Proxy) SnapshotCloneStatus(e *longhorn.Engine) (status map[string]*longhorn.SnapshotCloneStatus, err error) {
