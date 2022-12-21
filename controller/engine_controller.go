@@ -443,6 +443,11 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		return nil, err
 	}
 
+	fileSyncHTTPClientTimeout, err := ec.ds.GetSettingAsInt(types.SettingNameReplicaFileSyncHTTPClientTimeout)
+	if err != nil {
+		return nil, err
+	}
+
 	v, err := ec.ds.GetVolume(e.Spec.VolumeName)
 	if err != nil {
 		return nil, err
@@ -453,7 +458,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		return nil, err
 	}
 
-	return c.EngineProcessCreate(e, frontend, engineReplicaTimeout, v.Spec.DataLocality, engineCLIAPIVersion)
+	return c.EngineProcessCreate(e, frontend, engineReplicaTimeout, fileSyncHTTPClientTimeout, v.Spec.DataLocality, engineCLIAPIVersion)
 }
 
 func (ec *EngineController) DeleteInstance(obj interface{}) error {
@@ -1442,8 +1447,14 @@ func cloneSnapshot(engine *longhorn.Engine, engineClientProxy engineapi.EngineCl
 	for _, e := range sourceEngines {
 		sourceEngine = e
 	}
+
+	fileSyncHTTPClientTimeout, err := ds.GetSettingAsInt(types.SettingNameReplicaFileSyncHTTPClientTimeout)
+	if err != nil {
+		return err
+	}
+
 	sourceEngineControllerURL := imutil.GetURL(sourceEngine.Status.StorageIP, sourceEngine.Status.Port)
-	if err := engineClientProxy.SnapshotClone(engine, snapshotName, sourceEngineControllerURL); err != nil {
+	if err := engineClientProxy.SnapshotClone(engine, snapshotName, sourceEngineControllerURL, fileSyncHTTPClientTimeout); err != nil {
 		// There is only 1 replica during volume cloning,
 		// so if the cloning failed, it must be that the replica failed to clone.
 		for _, status := range engine.Status.CloneStatus {
@@ -1602,6 +1613,12 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 			return
 		}
 
+		fileSyncHTTPClientTimeout, err := ec.ds.GetSettingAsInt(types.SettingNameReplicaFileSyncHTTPClientTimeout)
+		if err != nil {
+			log.WithError(err).Errorf("Failed to get %v setting", types.SettingNameReplicaFileSyncHTTPClientTimeout)
+			return
+		}
+
 		engineClientProxy, err := ec.getEngineClientProxy(e, e.Status.CurrentImage)
 		if err != nil {
 			log.WithError(err).Errorf("Failed rebuilding of replica %v", addr)
@@ -1665,12 +1682,12 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 			if e.Spec.NodeID != "" {
 				ec.eventRecorder.Eventf(e, v1.EventTypeNormal, constant.EventReasonRebuilding,
 					"Start rebuilding replica %v with Address %v for restore engine %v and volume %v", replica, addr, e.Name, e.Spec.VolumeName)
-				err = engineClientProxy.ReplicaAdd(e, replicaURL, true, fastReplicaRebuild)
+				err = engineClientProxy.ReplicaAdd(e, replicaURL, true, fastReplicaRebuild, fileSyncHTTPClientTimeout)
 			}
 		} else {
 			ec.eventRecorder.Eventf(e, v1.EventTypeNormal, constant.EventReasonRebuilding,
 				"Start rebuilding replica %v with Address %v for normal engine %v and volume %v", replica, addr, e.Name, e.Spec.VolumeName)
-			err = engineClientProxy.ReplicaAdd(e, replicaURL, false, fastReplicaRebuild)
+			err = engineClientProxy.ReplicaAdd(e, replicaURL, false, fastReplicaRebuild, fileSyncHTTPClientTimeout)
 		}
 		if err != nil {
 			log.WithError(err).Errorf("Failed rebuilding of replica %v", addr)
@@ -1797,6 +1814,11 @@ func (ec *EngineController) UpgradeEngineProcess(e *longhorn.Engine) error {
 		return err
 	}
 
+	fileSyncHTTPClientTimeout, err := ec.ds.GetSettingAsInt(types.SettingNameReplicaFileSyncHTTPClientTimeout)
+	if err != nil {
+		return err
+	}
+
 	v, err := ec.ds.GetVolume(e.Spec.VolumeName)
 	if err != nil {
 		return err
@@ -1807,7 +1829,7 @@ func (ec *EngineController) UpgradeEngineProcess(e *longhorn.Engine) error {
 		return err
 	}
 
-	engineProcess, err := c.EngineProcessUpgrade(e, frontend, engineReplicaTimeout, v.Spec.DataLocality, engineCLIAPIVersion)
+	engineProcess, err := c.EngineProcessUpgrade(e, frontend, engineReplicaTimeout, fileSyncHTTPClientTimeout, v.Spec.DataLocality, engineCLIAPIVersion)
 	if err != nil {
 		return err
 	}
