@@ -147,8 +147,13 @@ github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
 github.com/longhorn/longhorn-engine/proto/ptypes
+<<<<<<< HEAD
 # github.com/longhorn/longhorn-instance-manager v0.0.0-20221212032439-5b141bdfb924
 ## explicit; go 1.13
+=======
+# github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20221221073735-d0293f46aab0
+## explicit; go 1.17
+>>>>>>> 73554e65 (vendor: update longhorn-engine and longhorn-instance-manager)
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
 github.com/longhorn/longhorn-instance-manager/pkg/imrpc
