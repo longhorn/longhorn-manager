@@ -912,17 +912,20 @@ func TrimFilesystem(volumeName string) error {
 		return err
 	}
 
-	mountOutput, err := nsExec.Execute("bash", []string{"-c", fmt.Sprintf("mount | grep /dev/longhorn/%s | awk '{print $3}'", volumeName)})
+	mountOutput, err := nsExec.Execute("bash", []string{"-c", fmt.Sprintf("cat /proc/mounts | grep /dev/longhorn/%s | awk '{print $2}'", volumeName)})
 	if err != nil {
 		return fmt.Errorf("cannot find volume %v mount info on host: %v", volumeName, err)
 	}
 
 	mountList := strings.Split(strings.TrimSpace(mountOutput), "\n")
-	if len(mountList) != 1 {
-		return fmt.Errorf("zero or multiple mount points for volume %s: %+v", volumeName, mountList)
+
+	var mountpoint string
+	for _, m := range mountList {
+		mountpoint = m
+		break
 	}
 
-	_, err = nsExec.Execute("fstrim", mountList)
+	_, err = nsExec.Execute("fstrim", []string{mountpoint})
 	if err != nil {
 		return fmt.Errorf("cannot find volume %v mount info on host: %v", volumeName, err)
 	}
