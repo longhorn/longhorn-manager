@@ -921,8 +921,16 @@ func TrimFilesystem(volumeName string) error {
 
 	var mountpoint string
 	for _, m := range mountList {
-		mountpoint = m
-		break
+		_, err = nsExec.Execute("stat", []string{m})
+		if err == nil {
+			mountpoint = m
+			break
+		}
+
+		logrus.WithError(err).Warnf("failed to get volume %v mountpoint %v info", volumeName, m)
+	}
+	if mountpoint == "" {
+		return fmt.Errorf("cannot find a valid mountpoint for volume %v", volumeName)
 	}
 
 	_, err = nsExec.Execute("fstrim", []string{mountpoint})
