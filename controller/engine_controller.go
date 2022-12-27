@@ -870,12 +870,12 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 				engine.Status.LastExpansionFailedAt != volumeInfo.LastExpansionFailedAt) {
 			m.eventRecorder.Eventf(engine, v1.EventTypeWarning, constant.EventReasonFailedExpansion,
 				"Failed to expand the engine at %v: %v", volumeInfo.LastExpansionFailedAt, volumeInfo.LastExpansionError)
+			engine.Status.LastExpansionError = volumeInfo.LastExpansionError
+			engine.Status.LastExpansionFailedAt = volumeInfo.LastExpansionFailedAt
 			m.expansionBackoff.Next(engine.Name, time.Now())
 		}
 		engine.Status.CurrentSize = volumeInfo.Size
 		engine.Status.IsExpanding = volumeInfo.IsExpanding
-		engine.Status.LastExpansionError = volumeInfo.LastExpansionError
-		engine.Status.LastExpansionFailedAt = volumeInfo.LastExpansionFailedAt
 
 		if engine.Status.Endpoint == "" && !engine.Spec.DisableFrontend && engine.Spec.Frontend != longhorn.VolumeFrontendEmpty {
 			m.logger.Infof("Preparing to start frontend %v", engine.Spec.Frontend)
