@@ -427,6 +427,8 @@ func (c *SystemRolloutController) systemRollout() error {
 
 	case longhorn.SystemRestoreStateRestoring:
 		c.restore(types.APIExtensionsKindCustomResourceDefinitionList, c.restoreCustomResourceDefinitions, log)
+		c.restore(types.KubernetesKindDaemonSetList, c.restoreDaemonSets, log)
+		c.restore(types.LonghornKindEngineImageList, c.restoreEngineImages, log)
 		c.restore(types.LonghornKindSettingList, c.restoreSettings, log)
 
 		wg := &sync.WaitGroup{}
@@ -441,8 +443,6 @@ func (c *SystemRolloutController) systemRollout() error {
 			types.KubernetesKindStorageClassList:          c.restoreStorageClasses,
 			types.KubernetesKindConfigMapList:             c.restoreConfigMaps,
 			types.KubernetesKindDeploymentList:            c.restoreDeployments,
-			types.KubernetesKindDaemonSetList:             c.restoreDaemonSets,
-			types.LonghornKindEngineImageList:             c.restoreEngineImages,
 			types.LonghornKindVolumeList:                  c.restoreVolumes,
 			types.KubernetesKindPersistentVolumeList:      c.restorePersistentVolumes,
 			types.KubernetesKindPersistentVolumeClaimList: c.restorePersistentVolumeClaims,
