@@ -43,8 +43,13 @@ require (
 	github.com/longhorn/backing-image-manager v0.0.0-20220609065820-a08f7f47442f
 	github.com/longhorn/backupstore v0.0.0-20221206091653-a8c2a47673e2
 	github.com/longhorn/go-iscsi-helper v0.0.0-20221219041640-6c94fb0d483a
+<<<<<<< HEAD
 	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20221221100445-de0b00d3f819
 	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20221221101916-127010de64c3
+=======
+	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20221221061015-35357e3c051d
+	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20221227032035-a2efd12a5bfe
+>>>>>>> ec3755f3 (vendor: Update longhorn/longhorn-instance-manager for the API version bump)
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.1
 	github.com/rancher/dynamiclistener v0.3.1
