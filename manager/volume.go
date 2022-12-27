@@ -669,7 +669,7 @@ func (m *VolumeManager) TrimFilesystem(name string) (v *longhorn.Volume, err err
 		return nil, fmt.Errorf("volume frontend is disabled")
 	}
 
-	return v, util.TrimFilesystem(name)
+	return v, util.TrimFilesystem(name, v.Spec.Encrypted)
 }
 
 func (m *VolumeManager) AddVolumeRecurringJob(volumeName string, name string, isGroup bool) (volumeRecurringJob map[string]*longhorn.VolumeRecurringJob, err error) {
