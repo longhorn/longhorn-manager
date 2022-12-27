@@ -2,7 +2,7 @@ package meta
 
 const (
 	// InstanceManagerAPIVersion used to communicate with the user e.g. longhorn-manager
-	InstanceManagerAPIVersion    = 2
+	InstanceManagerAPIVersion    = 3
 	InstanceManagerAPIMinVersion = 1
 
 	// InstanceManagerProxyAPIVersion is used for compatibility check for longhorn-manager
