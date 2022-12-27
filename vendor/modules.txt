@@ -147,7 +147,7 @@ github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
 github.com/longhorn/longhorn-engine/proto/ptypes
-# github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20221221073735-d0293f46aab0
+# github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20221227032035-a2efd12a5bfe
 ## explicit; go 1.17
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
