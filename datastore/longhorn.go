@@ -3705,8 +3705,8 @@ func ValidateRecurringJob(job longhorn.RecurringJobSpec) error {
 	if job.Cron == "" || job.Task == "" || job.Name == "" || job.Retain == 0 {
 		return fmt.Errorf("invalid job %+v", job)
 	}
-	if job.Task != longhorn.RecurringJobTypeBackup && job.Task != longhorn.RecurringJobTypeSnapshot {
-		return fmt.Errorf("recurring job type %v is not valid", job.Task)
+	if !isValidRecurringJobTask(job.Task) {
+		return fmt.Errorf("recurring job task %v is not valid", job.Task)
 	}
 	if job.Concurrency == 0 {
 		job.Concurrency = types.DefaultRecurringJobConcurrency
@@ -3728,6 +3728,13 @@ func ValidateRecurringJob(job longhorn.RecurringJobSpec) error {
 		}
 	}
 	return nil
+}
+
+func isValidRecurringJobTask(task longhorn.RecurringJobType) bool {
+	return task == longhorn.RecurringJobTypeBackup ||
+		task == longhorn.RecurringJobTypeSnapshot ||
+		task == longhorn.RecurringJobTypeSnapshotCleanup ||
+		task == longhorn.RecurringJobTypeSnapshotDelete
 }
 
 func ValidateRecurringJobs(jobs []longhorn.RecurringJobSpec) error {
