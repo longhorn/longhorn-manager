@@ -1277,7 +1277,7 @@ func (c *SystemRolloutController) restorePersistentVolumes() (err error) {
 				return err
 			}
 
-			volume, err := c.ds.GetVolumeRO(restore.Name)
+			volume, err := c.ds.GetVolumeRO(restore.Spec.CSI.VolumeHandle)
 			if err != nil {
 				return err
 			}
