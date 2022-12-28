@@ -174,8 +174,8 @@ func (c *SystemRestoreController) handleErr(err error, key interface{}) {
 	c.queue.Forget(key)
 }
 
-func (c *SystemRestoreController) getLoggerForSystemRestore(name string) *logrus.Entry {
-	return c.logger.WithField("systemRestore", name)
+func getLoggerForSystemRestore(logger logrus.FieldLogger, systemRestore *longhorn.SystemRestore) *logrus.Entry {
+	return logger.WithField("systemRestore", systemRestore.Name)
 }
 
 func (c *SystemRestoreController) LogErrorState(record *systemRestoreRecord, systemRestore *longhorn.SystemRestore, log logrus.FieldLogger) {
@@ -224,7 +224,7 @@ func (c *SystemRestoreController) reconcile(name string, backupTargetClient engi
 		return err
 	}
 
-	log := c.getLoggerForSystemRestore(systemRestore.Name)
+	log := getLoggerForSystemRestore(c.logger, systemRestore)
 
 	if !c.isResponsibleFor(systemRestore) {
 		return nil
@@ -263,12 +263,6 @@ func (c *SystemRestoreController) reconcile(name string, backupTargetClient engi
 		return err
 
 	case longhorn.SystemRestoreStateDeleting:
-		defer func() {
-			if err == nil {
-				err = c.ds.RemoveFinalizerForSystemRestore(systemRestore)
-			}
-		}()
-
 		return c.cleanupSystemRestore(systemRestore)
 
 	case longhorn.SystemRestoreStateNone:
@@ -379,35 +373,36 @@ func (c *SystemRestoreController) CreateSystemRestoreJob(systemRestore *longhorn
 		return nil, err
 	}
 
-	return c.ds.CreateJob(c.newSystemRestoreJob(systemRestore.Name, c.namespace, cfg.ManagerImage, serviceAccountName))
+	return c.ds.CreateJob(c.newSystemRestoreJob(systemRestore, c.namespace, cfg.ManagerImage, serviceAccountName))
 }
 
-func (c *SystemRestoreController) newSystemRestoreJob(systemRestoreName, namespace, managerImage, serviceAccount string) *batchv1.Job {
+func (c *SystemRestoreController) newSystemRestoreJob(systemRestore *longhorn.SystemRestore, namespace, managerImage, serviceAccount string) *batchv1.Job {
 	backoffLimit := int32(RestoreJobBackoffLimit)
 
 	// This is required for the NFS mount to access the backup store
 	privileged := true
 
 	cmd := []string{
-		"longhorn-manager", "system-rollout", systemRestoreName,
+		"longhorn-manager", "system-rollout", systemRestore.Name,
 	}
 
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      getSystemRolloutName(systemRestoreName),
-			Namespace: namespace,
+			Name:            getSystemRolloutName(systemRestore.Name),
+			Namespace:       namespace,
+			OwnerReferences: datastore.GetOwnerReferencesForSystemRestore(systemRestore),
 		},
 		Spec: batchv1.JobSpec{
 			BackoffLimit: &backoffLimit,
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: systemRestoreName,
+					Name: systemRestore.Name,
 				},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: serviceAccount,
 					Containers: []corev1.Container{
 						{
-							Name:    getSystemRolloutName(systemRestoreName),
+							Name:    getSystemRolloutName(systemRestore.Name),
 							Image:   managerImage,
 							Command: cmd,
 							Env: []corev1.EnvVar{
@@ -474,7 +469,7 @@ func (c *SystemRestoreController) isResponsibleFor(systemRestore *longhorn.Syste
 }
 
 func (c *SystemRestoreController) cleanupSystemRestore(systemRestore *longhorn.SystemRestore) (err error) {
-	log := c.getLoggerForSystemRestore(systemRestore.Name)
+	log := getLoggerForSystemRestore(c.logger, systemRestore)
 
 	defer func() {
 		if err == nil {
