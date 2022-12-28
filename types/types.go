@@ -28,6 +28,7 @@ const (
 	LonghornKindRecurringJob        = "RecurringJob"
 	LonghornKindSetting             = "Setting"
 	LonghornKindSupportBundle       = "SupportBundle"
+	LonghornKindSystemRestore       = "SystemRestore"
 
 	LonghornKindBackingImageDataSource = "BackingImageDataSource"
 
