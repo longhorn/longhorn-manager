@@ -518,6 +518,13 @@ func (c *UninstallController) deleteCRDs() (bool, error) {
 		return true, c.deleteOrphans(orphans)
 	}
 
+	if systemRestores, err := c.ds.ListSystemRestores(); err != nil {
+		return true, err
+	} else if len(systemRestores) > 0 {
+		c.logger.Infof("Found %d SystemRestores remaining", len(systemRestores))
+		return true, c.deleteSystemRestores(systemRestores)
+	}
+
 	return false, nil
 }
 
@@ -842,6 +849,22 @@ func (c *UninstallController) deleteOrphans(orphans map[string]*longhorn.Orphan)
 		log := getLoggerForOrphan(c.logger, orphan)
 		if orphan.DeletionTimestamp == nil {
 			if err = c.ds.DeleteOrphan(orphan.Name); err != nil {
+				return errors.Wrap(err, "failed to mark for deletion")
+			}
+			log.Info("Marked for deletion")
+		}
+	}
+	return nil
+}
+
+func (c *UninstallController) deleteSystemRestores(systemRestores map[string]*longhorn.SystemRestore) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to delete SystemRestores")
+	}()
+	for _, systemRestore := range systemRestores {
+		log := getLoggerForSystemRestore(c.logger, systemRestore)
+		if systemRestore.DeletionTimestamp == nil {
+			if err = c.ds.DeleteSystemRestore(systemRestore.Name); err != nil {
 				return errors.Wrap(err, "failed to mark for deletion")
 			}
 			log.Info("Marked for deletion")
