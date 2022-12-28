@@ -552,6 +552,11 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 							Namespace: TestNamespace,
 						},
 						StorageClassName: TestStorageClassName,
+						PersistentVolumeSource: corev1.PersistentVolumeSource{
+							CSI: &corev1.CSIPersistentVolumeSource{
+								VolumeHandle: TestVolumeName,
+							},
+						},
 					},
 				},
 			},
@@ -563,6 +568,11 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 							Namespace: TestNamespace,
 						},
 						StorageClassName: TestStorageClassName,
+						PersistentVolumeSource: corev1.PersistentVolumeSource{
+							CSI: &corev1.CSIPersistentVolumeSource{
+								VolumeHandle: TestVolumeName,
+							},
+						},
 					},
 				},
 			},
@@ -574,6 +584,11 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 							Namespace: TestNamespace,
 						},
 						StorageClassName: TestStorageClassName,
+						PersistentVolumeSource: corev1.PersistentVolumeSource{
+							CSI: &corev1.CSIPersistentVolumeSource{
+								VolumeHandle: TestVolumeName,
+							},
+						},
 					},
 				},
 			},
@@ -592,6 +607,11 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 							Namespace: TestNamespace,
 						},
 						StorageClassName: TestStorageClassName,
+						PersistentVolumeSource: corev1.PersistentVolumeSource{
+							CSI: &corev1.CSIPersistentVolumeSource{
+								VolumeHandle: TestVolumeName,
+							},
+						},
 					},
 				},
 			},
@@ -1240,10 +1260,15 @@ func (tc *SystemRolloutTestCase) initTestCase() {
 		tc.expectRestoredPersistentVolumes[volumeName] = &corev1.PersistentVolume{
 			Spec: corev1.PersistentVolumeSpec{
 				ClaimRef: &corev1.ObjectReference{
-					Name:      string(volumeName),
+					Name:      pvc.Name,
 					Namespace: TestNamespace,
 				},
 				StorageClassName: *pvc.Spec.StorageClassName,
+				PersistentVolumeSource: corev1.PersistentVolumeSource{
+					CSI: &corev1.CSIPersistentVolumeSource{
+						VolumeHandle: string(volumeName),
+					},
+				},
 			},
 		}
 		tc.backupPersistentVolumes[volumeName] = tc.expectRestoredPersistentVolumes[volumeName]
@@ -1399,18 +1424,19 @@ func (tc *SystemRolloutTestCase) initTestCase() {
 	if tc.backupVolumes == nil {
 		tc.backupVolumes = tc.expectRestoredVolumes
 	}
-	for pvName := range tc.expectRestoredPersistentVolumes {
-		_, found := tc.backupVolumes[pvName]
+	for _, pv := range tc.expectRestoredPersistentVolumes {
+		volumeName := SystemRolloutCRName(pv.Spec.CSI.VolumeHandle)
+		_, found := tc.backupVolumes[volumeName]
 		if found {
 			continue
 		}
 
-		tc.expectRestoredVolumes[pvName] = &longhorn.Volume{
+		tc.expectRestoredVolumes[volumeName] = &longhorn.Volume{
 			Spec: longhorn.VolumeSpec{
 				NumberOfReplicas: 3,
 			},
 		}
-		tc.backupVolumes[pvName] = tc.expectRestoredVolumes[pvName]
+		tc.backupVolumes[volumeName] = tc.expectRestoredVolumes[volumeName]
 	}
 }
 
