@@ -214,11 +214,6 @@ func NewJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName stri
 		return nil, errors.Wrapf(err, "could not create longhorn-manager api client")
 	}
 
-	// must at least retain 1 of course
-	if retain == 0 {
-		retain = 1
-	}
-
 	logger = logger.WithFields(logrus.Fields{
 		"namespace":    namespace,
 		"volumeName":   volumeName,
@@ -339,17 +334,23 @@ func (job *Job) run() (err error) {
 
 func (job *Job) doRecurringSnapshot() (err error) {
 	defer func() {
+		err = errors.Wrapf(err, "failed recurring snapshot")
 		if err == nil {
 			job.logger.Info("Finished recurring snapshot")
 		}
 	}()
 
-	err = job.doSnapshot()
-	if err != nil {
-		return err
+	switch job.task {
+	case longhorn.RecurringJobTypeSnapshot:
+		if err = job.doSnapshot(); err != nil {
+			return err
+		}
+		fallthrough
+	case longhorn.RecurringJobTypeSnapshotDelete:
+		return job.doSnapshotCleanup(false)
+	default:
+		return errors.Errorf("Unsupported task: %v", job.task)
 	}
-
-	return job.doSnapshotCleanup(false)
 }
 
 func (job *Job) doSnapshot() (err error) {
@@ -385,16 +386,13 @@ func (job *Job) doSnapshotCleanup(backupDone bool) (err error) {
 		return err
 	}
 
-	cleanupSnapshotNames := job.listSnapshotNamesForCleanup(collection.Data, backupDone)
-	for _, snapshot := range cleanupSnapshotNames {
-		if _, err := volumeAPI.ActionSnapshotDelete(volume, &longhornclient.SnapshotInput{
-			Name: snapshot,
-		}); err != nil {
-			return err
-		}
-		job.logger.Debugf("Cleaned up snapshot %v for %v", snapshot, volumeName)
+	deleteSnapshotNames := job.listSnapshotNamesToCleanup(collection.Data, backupDone)
+	if err := job.deleteSnapshots(deleteSnapshotNames, volume, volumeAPI); err != nil {
+		return err
 	}
-	if len(cleanupSnapshotNames) > 0 {
+
+	shouldPurgeSnapshots := len(deleteSnapshotNames) > 0 || job.task == longhorn.RecurringJobTypeSnapshotDelete
+	if shouldPurgeSnapshots {
 		if _, err := volumeAPI.ActionSnapshotPurge(volume); err != nil {
 			return err
 		}
@@ -422,10 +420,22 @@ func (job *Job) doSnapshotCleanup(backupDone bool) (err error) {
 					}
 					job.logger.Warn("Encountered one or more errors while purging snapshots")
 				}
+				job.logger.WithField("volume", volume.Name).Debug("Purged snapshots")
 				return nil
 			}
 			time.Sleep(SnapshotPurgeStatusInterval)
 		}
+	}
+	return nil
+}
+
+func (job *Job) deleteSnapshots(names []string, volume *longhornclient.Volume, volumeAPI longhornclient.VolumeOperations) error {
+	for _, name := range names {
+		_, err := volumeAPI.ActionSnapshotDelete(volume, &longhornclient.SnapshotInput{Name: name})
+		if err != nil {
+			return err
+		}
+		job.logger.WithField("volume", volume.Name).Debugf("Deleted snapshot %v", name)
 	}
 	return nil
 }
@@ -435,7 +445,16 @@ type NameWithTimestamp struct {
 	Timestamp time.Time
 }
 
-func (job *Job) listSnapshotNamesForCleanup(snapshots []longhornclient.Snapshot, backupDone bool) []string {
+func (job *Job) listSnapshotNamesToCleanup(snapshots []longhornclient.Snapshot, backupDone bool) []string {
+	switch job.task {
+	case longhorn.RecurringJobTypeSnapshotDelete:
+		return job.filterExpiredSnapshots(snapshots)
+	default:
+		return job.filterExpiredSnapshotsOfCurrentRecurringJob(snapshots, backupDone)
+	}
+}
+
+func (job *Job) filterExpiredSnapshotsOfCurrentRecurringJob(snapshots []longhornclient.Snapshot, backupDone bool) []string {
 	jobLabel, found := job.labels[types.RecurringJobLabel]
 	if !found {
 		return []string{}
@@ -457,6 +476,10 @@ func (job *Job) listSnapshotNamesForCleanup(snapshots []longhornclient.Snapshot,
 		}
 	}
 	return snapshotsToNames(filterSnapshotsNotInTargets(snapshots, retainingSnapshots))
+}
+
+func (job *Job) filterExpiredSnapshots(snapshots []longhornclient.Snapshot) []string {
+	return filterExpiredItems(snapshotsToNameWithTimestamps(snapshots), job.retain)
 }
 
 func (job *Job) doRecurringBackup() (err error) {
@@ -777,6 +800,10 @@ func filterExpiredItems(nts []NameWithTimestamp, retainCount int) []string {
 func snapshotsToNameWithTimestamps(snapshots []longhornclient.Snapshot) []NameWithTimestamp {
 	result := []NameWithTimestamp{}
 	for _, snapshot := range snapshots {
+		if snapshot.Name == "volume-head" {
+			continue
+		}
+
 		t, err := time.Parse(time.RFC3339, snapshot.Created)
 		if err != nil {
 			logrus.Errorf("Failed to parse datetime %v for snapshot %v",
