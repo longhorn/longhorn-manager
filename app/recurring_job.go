@@ -29,13 +29,6 @@ import (
 )
 
 const (
-	FlagSnapshotName = "snapshot-name"
-	FlagGroups       = "groups"
-	FlagLabels       = "labels"
-	FlagRetain       = "retain"
-	FlagConcurrent   = "concurrent"
-	FlagBackup       = "backup"
-
 	HTTPClientTimout = 1 * time.Minute
 
 	SnapshotPurgeStatusInterval = 5 * time.Second
@@ -276,12 +269,7 @@ func NewJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName stri
 func (job *Job) handleVolumeDetachment() {
 	volumeAPI := job.api.Volume
 	volumeName := job.volumeName
-	jobName, _ := job.labels[types.RecurringJobLabel]
-	if jobName == "" {
-		job.logger.Warn("Missing RecurringJob label")
-		return
-	}
-
+	jobName := job.labels[types.RecurringJobLabel]
 	for {
 		volume, err := volumeAPI.ById(volumeName)
 		if err == nil {
@@ -313,10 +301,6 @@ func (job *Job) run() (err error) {
 
 	volumeAPI := job.api.Volume
 	volumeName := job.volumeName
-	jobName, _ := job.labels[types.RecurringJobLabel]
-	if jobName == "" {
-		return fmt.Errorf("missing RecurringJob label")
-	}
 	volume, err := volumeAPI.ById(volumeName)
 	if err != nil {
 		return errors.Wrapf(err, "could not get volume %v", volumeName)
@@ -340,11 +324,12 @@ func (job *Job) run() (err error) {
 			return errors.Wrapf(err, "cannot do auto attaching for volume %v", volumeName)
 		}
 
+		jobName := job.labels[types.RecurringJobLabel]
 		// Automatically attach the volume
 		// Disable the volume's frontend make sure that pod cannot use the volume during the recurring job.
 		// This is necessary so that we can safely detach the volume when finishing the job.
 		job.logger.Infof("Automatically attach volume %v to node %v", volumeName, nodeToAttach)
-		if volume, err = volumeAPI.ActionAttach(volume, &longhornclient.AttachInput{
+		if _, err = volumeAPI.ActionAttach(volume, &longhornclient.AttachInput{
 			DisableFrontend: true,
 			HostId:          nodeToAttach,
 			AttachedBy:      jobName,
@@ -519,7 +504,7 @@ func (job *Job) listSnapshotNamesForCleanup(snapshots []longhornclient.Snapshot,
 	}
 
 	// For the recurring backup job, only keep the snapshot of the last backup and the current snapshot
-	retainingSnapshots := map[string]struct{}{job.snapshotName: struct{}{}}
+	retainingSnapshots := map[string]struct{}{job.snapshotName: {}}
 	if !backupDone {
 		lastBackup, err := job.getLastBackup()
 		if err == nil && lastBackup != nil {
