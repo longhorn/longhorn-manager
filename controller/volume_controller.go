@@ -2853,6 +2853,13 @@ func (vc *VolumeController) checkForAutoDetachment(v *longhorn.Volume, e *longho
 	}
 
 	if v.Status.ExpansionRequired {
+		_, err := vc.ds.GetNodeRO(v.Status.CurrentNodeID)
+		if err == nil || (err != nil && !datastore.ErrorIsNotFound(err)) {
+			return nil
+		}
+
+		log.Infof("Preparing to do auto-detachment of expanding volume %v, because the node %v is unavailable", v.Name, v.Status.CurrentNodeID)
+		v.Status.CurrentNodeID = ""
 		return nil
 	}
 
