@@ -64,7 +64,7 @@ func RecurringJobCmd() cli.Command {
 		},
 		Action: func(c *cli.Context) {
 			if err := recurringJob(c); err != nil {
-				logrus.Fatalf("Error taking snapshot: %v", err)
+				logrus.WithError(err).Fatal("Failed to snapshot")
 			}
 		},
 	}
@@ -173,12 +173,12 @@ func recurringJob(c *cli.Context) error {
 				jobRetain,
 				doBackup)
 			if err != nil {
-				log.WithError(err).Error("failed to create new job for volume")
+				log.WithError(err).Error("Failed to create new job for volume")
 				return
 			}
 			err = job.run()
 			if err != nil {
-				log.WithError(err).Errorf("failed to run job for volume")
+				log.WithError(err).Errorf("Failed to run job for volume")
 				return
 			}
 
@@ -353,7 +353,7 @@ func (job *Job) run() (err error) {
 func (job *Job) doRecurringSnapshot() (err error) {
 	defer func() {
 		if err == nil {
-			job.logger.Info("Finish running recurring snapshot")
+			job.logger.Info("Finished recurring snapshot")
 		}
 	}()
 
@@ -431,9 +431,9 @@ func (job *Job) doSnapshotCleanup(backupDone bool) (err error) {
 			if done {
 				if len(errorList) != 0 {
 					for replica, errMsg := range errorList {
-						job.logger.Warnf("error purging snapshots on replica %v: %v", replica, errMsg)
+						job.logger.Warnf("Error purging snapshots on replica %v: %v", replica, errMsg)
 					}
-					job.logger.Warnf("encountered one or more errors while purging snapshots")
+					job.logger.Warn("Encountered one or more errors while purging snapshots")
 				}
 				return nil
 			}
@@ -475,7 +475,7 @@ func (job *Job) listSnapshotNamesForCleanup(snapshots []longhornclient.Snapshot,
 func (job *Job) doRecurringBackup() (err error) {
 	defer func() {
 		if err == nil {
-			job.logger.Info("Finish running recurring backup")
+			job.logger.Info("Finished recurring backup")
 		}
 	}()
 	backupAPI := job.api.BackupVolume
@@ -563,7 +563,7 @@ func (job *Job) doRecurringBackup() (err error) {
 
 	defer func() {
 		if err != nil {
-			job.logger.Warnf("created backup successfully but errored on cleanup for %v: %v", volumeName, err)
+			job.logger.WithError(err).Warnf("Created backup successfully but errored on cleanup for %v", volumeName)
 			err = nil
 		}
 	}()
