@@ -20,7 +20,6 @@ import (
 	"k8s.io/client-go/rest"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
-	"github.com/longhorn/longhorn-manager/engineapi"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	"github.com/longhorn/longhorn-manager/types"
@@ -447,46 +446,6 @@ func (job *Job) doSnapshotCleanup(backupDone bool) (err error) {
 type NameWithTimestamp struct {
 	Name      string
 	Timestamp time.Time
-}
-
-// getLastSnapshot return the last snapshot of the volume exclude the volume-head
-// return nil, nil if volume doesn't have any snapshot other than the volume-head
-func (job *Job) getLastSnapshot(volume *longhornclient.Volume) (*longhornclient.Snapshot, error) {
-	volumeHead, err := job.api.Volume.ActionSnapshotGet(volume, &longhornclient.SnapshotInput{
-		Name: engineapi.VolumeHeadName,
-	})
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not get volume-head for volume %v", job.volumeName)
-	}
-
-	if volumeHead.Parent == "" {
-		return nil, nil
-	}
-
-	lastSnapshot, err := job.api.Volume.ActionSnapshotGet(volume, &longhornclient.SnapshotInput{
-		Name: volumeHead.Parent,
-	})
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not get parent of volume-head for volume %v", job.volumeName)
-	}
-
-	return lastSnapshot, nil
-}
-
-// getVolumeHeadSize return the size of volume-head snapshot
-func (job *Job) getVolumeHeadSize(volume *longhornclient.Volume) (int64, error) {
-	volumeHead, err := job.api.Volume.ActionSnapshotGet(volume, &longhornclient.SnapshotInput{
-		Name: engineapi.VolumeHeadName,
-	})
-	if err != nil {
-		return 0, errors.Wrapf(err, "could not get volume-head for volume %v", job.volumeName)
-	}
-	volumeHeadSize, err := strconv.ParseInt(volumeHead.Size, 10, 64)
-	if err != nil {
-		return 0, err
-	}
-
-	return volumeHeadSize, nil
 }
 
 func (job *Job) listSnapshotNamesForCleanup(snapshots []longhornclient.Snapshot, backupDone bool) []string {
