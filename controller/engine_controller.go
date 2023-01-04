@@ -102,6 +102,8 @@ type EngineMonitor struct {
 	expansionBackoff *flowcontrol.Backoff
 	restoreBackoff   *flowcontrol.Backoff
 
+	expansionUpdateTime time.Time
+
 	controllerID string
 	// used to notify the controller that monitoring has stopped
 	monitorVoluntaryStopCh chan struct{}
@@ -868,14 +870,26 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		if volumeInfo.LastExpansionError != "" && volumeInfo.LastExpansionFailedAt != "" &&
 			(engine.Status.LastExpansionError != volumeInfo.LastExpansionError ||
 				engine.Status.LastExpansionFailedAt != volumeInfo.LastExpansionFailedAt) {
-			m.eventRecorder.Eventf(engine, v1.EventTypeWarning, constant.EventReasonFailedExpansion,
-				"Failed to expand the engine at %v: %v", volumeInfo.LastExpansionFailedAt, volumeInfo.LastExpansionError)
-			m.expansionBackoff.Next(engine.Name, time.Now())
+			isLatestErrorInfo := true
+			if expansionFailureTime, err := time.Parse(time.RFC3339Nano, volumeInfo.LastExpansionFailedAt); err == nil && m.expansionUpdateTime.After(expansionFailureTime) {
+				isLatestErrorInfo = false
+			}
+			if isLatestErrorInfo {
+				m.eventRecorder.Eventf(engine, v1.EventTypeWarning, constant.EventReasonFailedExpansion,
+					"Engine failed or partially failed to expand the size at %v: %v", volumeInfo.LastExpansionFailedAt, volumeInfo.LastExpansionError)
+				engine.Status.LastExpansionError = volumeInfo.LastExpansionError
+				engine.Status.LastExpansionFailedAt = volumeInfo.LastExpansionFailedAt
+				m.expansionUpdateTime = time.Now()
+				m.expansionBackoff.Next(engine.Name, time.Now())
+			}
+		}
+		if engine.Status.CurrentSize != 0 && engine.Status.CurrentSize != volumeInfo.Size {
+			m.eventRecorder.Eventf(engine, v1.EventTypeNormal, constant.EventReasonSucceededExpansion,
+				"Engine successfully expand size from %v to %v", engine.Status.CurrentSize, volumeInfo.Size)
+			m.expansionUpdateTime = time.Now()
 		}
 		engine.Status.CurrentSize = volumeInfo.Size
 		engine.Status.IsExpanding = volumeInfo.IsExpanding
-		engine.Status.LastExpansionError = volumeInfo.LastExpansionError
-		engine.Status.LastExpansionFailedAt = volumeInfo.LastExpansionFailedAt
 
 		if engine.Status.Endpoint == "" && !engine.Spec.DisableFrontend && engine.Spec.Frontend != longhorn.VolumeFrontendEmpty {
 			m.logger.Infof("Preparing to start frontend %v", engine.Spec.Frontend)
@@ -931,13 +945,16 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	requireExpansion, err := IsValidForExpansion(engine, cliAPIVersion, im.Status.APIVersion)
 	if err != nil {
 		engine.Status.LastExpansionError = err.Error()
-		engine.Status.LastExpansionFailedAt = time.Now().String()
+		engine.Status.LastExpansionFailedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	}
 	if requireExpansion {
 		// Cannot continue to start restoration if expansion is not complete
-		if !m.expansionBackoff.IsInBackOffSince(engine.Name, time.Now()) {
+		if m.expansionBackoff.IsInBackOffSinceUpdate(engine.Name, time.Now()) {
+			m.logger.Infof("Cannot start engine expansion since it is in the back-off window")
+		} else {
 			m.logger.Infof("Starting engine expansion from %v to %v", engine.Status.CurrentSize, engine.Spec.VolumeSize)
 			// The error info and the backoff interval will be updated later.
+			m.expansionUpdateTime = time.Now()
 			if err := engineClientProxy.VolumeExpand(engine); err != nil {
 				return err
 			}
@@ -947,6 +964,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	// This means expansion is complete/unnecessary, and it's safe to clean up the backoff entry as well as the error info if exists.
 	if engine.Spec.VolumeSize == engine.Status.CurrentSize {
 		m.expansionBackoff.DeleteEntry(engine.Name)
+		m.expansionUpdateTime = time.Now()
 		engine.Status.LastExpansionError = ""
 		engine.Status.LastExpansionFailedAt = ""
 	}
