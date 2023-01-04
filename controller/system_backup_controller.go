@@ -275,8 +275,8 @@ func (c *SystemBackupController) syncSystemBackup(key string) (err error) {
 	return c.reconcile(name, backupTargetClient)
 }
 
-func getLoggerForSystemBackup(logger logrus.FieldLogger, name string) *logrus.Entry {
-	return logger.WithField("systemBackup", name)
+func getLoggerForSystemBackup(logger logrus.FieldLogger, systemBackup *longhorn.SystemBackup) *logrus.Entry {
+	return logger.WithField("systemBackup", systemBackup.Name)
 }
 
 func (c *SystemBackupController) LogErrorState(record *systemBackupRecord, systemBackup *longhorn.SystemBackup, log logrus.FieldLogger) {
@@ -324,7 +324,7 @@ func (c *SystemBackupController) reconcile(name string, backupTargetClient engin
 		return nil
 	}
 
-	log := getLoggerForSystemBackup(c.logger, systemBackup.Name)
+	log := getLoggerForSystemBackup(c.logger, systemBackup)
 
 	if systemBackup.Status.OwnerID != c.controllerID {
 		systemBackup.Status.OwnerID = c.controllerID
@@ -494,7 +494,7 @@ func (c *SystemBackupController) InitSystemBackup(systemBackup *longhorn.SystemB
 }
 
 func (c *SystemBackupController) UploadSystemBackup(systemBackup *longhorn.SystemBackup, archievePath, tempDir string, backupTargetClient engineapi.SystemBackupOperationInterface) {
-	log := getLoggerForSystemBackup(c.logger, systemBackup.Name)
+	log := getLoggerForSystemBackup(c.logger, systemBackup)
 
 	var recordErr error
 	existingSystemBackup := systemBackup.DeepCopy()
@@ -629,7 +629,7 @@ func (c *SystemBackupController) newSystemBackupMeta(systemBackup *longhorn.Syst
 }
 
 func (c *SystemBackupController) GenerateSystemBackup(systemBackup *longhorn.SystemBackup, archievePath, tempDir string) {
-	log := getLoggerForSystemBackup(c.logger, systemBackup.Name)
+	log := getLoggerForSystemBackup(c.logger, systemBackup)
 
 	var err error
 	var errMessage string

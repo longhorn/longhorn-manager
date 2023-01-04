@@ -2685,6 +2685,8 @@ func (s *DataStore) ResetMonitoringEngineStatus(e *longhorn.Engine) (*longhorn.E
 	e.Status.RestoreStatus = nil
 	e.Status.PurgeStatus = nil
 	e.Status.RebuildStatus = nil
+	e.Status.LastExpansionFailedAt = ""
+	e.Status.LastExpansionError = ""
 	ret, err := s.UpdateEngineStatus(e)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to reset engine status for %v", e.Name)
@@ -4146,30 +4148,31 @@ func (s *DataStore) CreateSystemRestore(systemRestore *longhorn.SystemRestore) (
 }
 
 // DeleteSystemRestore won't result in immediately deletion since finalizer was set by default
+// The dependents will be deleted in the foreground
 func (s *DataStore) DeleteSystemRestore(name string) error {
-	return s.lhClient.LonghornV1beta2().SystemRestores(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+	propagation := metav1.DeletePropagationForeground
+	return s.lhClient.LonghornV1beta2().SystemRestores(s.namespace).Delete(
+		context.TODO(),
+		name,
+		metav1.DeleteOptions{PropagationPolicy: &propagation},
+	)
 }
 
-// RemoveFinalizerForSystemRestore will result in deletion if DeletionTimestamp was set
-func (s *DataStore) RemoveFinalizerForSystemRestore(obj *longhorn.SystemRestore) error {
-	if !util.FinalizerExists(longhornFinalizerKey, obj) {
-		// finalizer already removed
-		return nil
+// GetOwnerReferencesForSystemRestore returns OwnerReference for the given
+// SystemRestore
+func GetOwnerReferencesForSystemRestore(systemRestore *longhorn.SystemRestore) []metav1.OwnerReference {
+	controller := true
+	blockOwnerDeletion := true
+	return []metav1.OwnerReference{
+		{
+			APIVersion:         longhorn.SchemeGroupVersion.String(),
+			Kind:               types.LonghornKindSystemRestore,
+			Name:               systemRestore.Name,
+			UID:                systemRestore.UID,
+			Controller:         &controller,
+			BlockOwnerDeletion: &blockOwnerDeletion,
+		},
 	}
-
-	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
-		return err
-	}
-
-	_, err := s.lhClient.LonghornV1beta2().SystemRestores(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
-	if err != nil {
-		// workaround `StorageError: invalid object, Code: 4` due to empty object
-		if obj.DeletionTimestamp != nil {
-			return nil
-		}
-		return errors.Wrapf(err, "unable to remove finalizer for SystemRestore %v", obj.Name)
-	}
-	return nil
 }
 
 // RemoveSystemRestoreLabel removed the system-restore label and updates the SystemRestore. Longhorn labels

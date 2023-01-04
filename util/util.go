@@ -52,7 +52,8 @@ const (
 
 	HostProcPath                 = "/host/proc"
 	ReplicaDirectory             = "/replicas/"
-	DeviceDirectory              = "/dev/longhorn/"
+	RegularDeviceDirectory       = "/dev/longhorn/"
+	EncryptedDeviceDirectory     = "/dev/mapper/"
 	TemporaryMountPointDirectory = "/tmp/mnt/"
 
 	DefaultKubernetesTolerationKey = "kubernetes.io"
@@ -905,14 +906,19 @@ func GetPodIP(pod *v1.Pod) (string, error) {
 	return pod.Status.PodIP, nil
 }
 
-func TrimFilesystem(volumeName string) error {
+func TrimFilesystem(volumeName string, isEncryptedDevice bool) error {
 	nsPath := iscsi_util.GetHostNamespacePath(HostProcPath)
 	nsExec, err := iscsi_util.NewNamespaceExecutor(nsPath)
 	if err != nil {
 		return err
 	}
 
-	mountOutput, err := nsExec.Execute("bash", []string{"-c", fmt.Sprintf("cat /proc/mounts | grep /dev/longhorn/%s | awk '{print $2}'", volumeName)})
+	deviceDir := RegularDeviceDirectory
+	if isEncryptedDevice {
+		deviceDir = EncryptedDeviceDirectory
+	}
+
+	mountOutput, err := nsExec.Execute("bash", []string{"-c", fmt.Sprintf("cat /proc/mounts | grep %s%s | awk '{print $2}'", deviceDir, volumeName)})
 	if err != nil {
 		return fmt.Errorf("cannot find volume %v mount info on host: %v", volumeName, err)
 	}
