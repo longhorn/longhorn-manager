@@ -35,9 +35,6 @@ const (
 	DetachingWaitInterval     = 10 * time.Second
 	VolumeAttachTimeout       = 300 // 5 minutes
 	BackupProcessStartTimeout = 90  // 1.5 minutes
-
-	jobTypeSnapshot = string("snapshot")
-	jobTypeBackup   = string("backup")
 )
 
 type Job struct {
@@ -47,7 +44,7 @@ type Job struct {
 	volumeName   string
 	snapshotName string
 	retain       int
-	jobType      string
+	task         longhorn.RecurringJobType
 	labels       map[string]string
 
 	api *longhornclient.RancherClient
@@ -99,7 +96,6 @@ func recurringJob(c *cli.Context) error {
 	}
 
 	var jobGroups []string = recurringJob.Spec.Groups
-	var jobTask string = string(recurringJob.Spec.Task)
 	var jobRetain int = recurringJob.Spec.Retain
 	var jobConcurrent int = recurringJob.Spec.Concurrency
 
@@ -111,11 +107,6 @@ func recurringJob(c *cli.Context) error {
 	labelJSON, err := json.Marshal(jobLabelMap)
 	if err != nil {
 		return errors.Wrap(err, "failed to get JSON encoding for labels")
-	}
-
-	var doBackup bool = false
-	if jobTask == string(longhorn.RecurringJobTypeBackup) {
-		doBackup = true
 	}
 
 	allowDetachedSetting := types.SettingNameAllowRecurringJobWhileVolumeDetached
@@ -155,7 +146,7 @@ func recurringJob(c *cli.Context) error {
 			log := logger.WithFields(logrus.Fields{
 				"job":        jobName,
 				"volume":     volumeName,
-				"task":       jobTask,
+				"task":       recurringJob.Spec.Task,
 				"retain":     jobRetain,
 				"concurrent": jobConcurrent,
 				"groups":     strings.Join(jobGroups, ","),
@@ -171,7 +162,7 @@ func recurringJob(c *cli.Context) error {
 				snapshotName,
 				jobLabelMap,
 				jobRetain,
-				doBackup)
+				recurringJob.Spec.Task)
 			if err != nil {
 				log.WithError(err).Error("Failed to create new job for volume")
 				return
@@ -199,7 +190,7 @@ func sliceStringSafely(s string, begin, end int) string {
 	return s[begin:end]
 }
 
-func NewJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName string, labels map[string]string, retain int, backup bool) (*Job, error) {
+func NewJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName string, labels map[string]string, retain int, task longhorn.RecurringJobType) (*Job, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		return nil, fmt.Errorf("cannot detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
@@ -228,18 +219,13 @@ func NewJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName stri
 		retain = 1
 	}
 
-	jobType := jobTypeSnapshot
-	if backup {
-		jobType = jobTypeBackup
-	}
-
 	logger = logger.WithFields(logrus.Fields{
 		"namespace":    namespace,
 		"volumeName":   volumeName,
 		"snapshotName": snapshotName,
 		"labels":       labels,
 		"retain":       retain,
-		"jobType":      jobType,
+		"task":         task,
 	})
 
 	return &Job{
@@ -250,7 +236,7 @@ func NewJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName stri
 		snapshotName: snapshotName,
 		labels:       labels,
 		retain:       retain,
-		jobType:      jobType,
+		task:         task,
 		api:          apiClient,
 	}, nil
 }
@@ -342,7 +328,7 @@ func (job *Job) run() (err error) {
 		job.logger.Infof("Volume %v is in state %v", volumeName, volume.State)
 	}
 
-	if job.jobType == jobTypeBackup {
+	if job.task == longhorn.RecurringJobTypeBackup {
 		job.logger.Infof("Running recurring backup for volume %v", volumeName)
 		return job.doRecurringBackup()
 	}
@@ -457,7 +443,7 @@ func (job *Job) listSnapshotNamesForCleanup(snapshots []longhornclient.Snapshot,
 	// Only consider deleting the snapshots that were created by our current job
 	snapshots = filterSnapshotsWithLabel(snapshots, types.RecurringJobLabel, jobLabel)
 
-	if job.jobType == jobTypeSnapshot {
+	if job.task == longhorn.RecurringJobTypeSnapshot {
 		return filterExpiredItems(snapshotsToNameWithTimestamps(snapshots), job.retain)
 	}
 
