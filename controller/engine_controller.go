@@ -1389,16 +1389,21 @@ func (m *EngineMonitor) restoreBackup(engine *longhorn.Engine, rsMap map[string]
 		return nil
 	}
 
+	concurrentLimit, err := m.ds.GetSettingAsInt(types.SettingNameRestoreConcurrentLimit)
+	if err != nil {
+		return errors.Wrapf(err, "failed to assert %v value", types.SettingNameRestoreConcurrentLimit)
+	}
+
 	mlog.Info("Preparing to restore backup")
 	if cliAPIVersion < engineapi.CLIVersionFour {
 		// For compatible engines, `LastRestoredBackup` is required to indicate if the restore is incremental restore
-		if err = engineClientProxy.BackupRestore(engine, backupTargetClient.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, engine.Status.LastRestoredBackup, backupTargetClient.Credential); err != nil {
+		if err = engineClientProxy.BackupRestore(engine, backupTargetClient.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, engine.Status.LastRestoredBackup, backupTargetClient.Credential, int(concurrentLimit)); err != nil {
 			if extraErr := handleRestoreErrorForCompatibleEngine(mlog, engine, rsMap, m.restoreBackoff, err); extraErr != nil {
 				return extraErr
 			}
 		}
 	} else {
-		if err = engineClientProxy.BackupRestore(engine, backupTargetClient.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, "", backupTargetClient.Credential); err != nil {
+		if err = engineClientProxy.BackupRestore(engine, backupTargetClient.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, "", backupTargetClient.Credential, int(concurrentLimit)); err != nil {
 			if extraErr := handleRestoreError(mlog, engine, rsMap, m.restoreBackoff, err); extraErr != nil {
 				return extraErr
 			}
