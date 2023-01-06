@@ -143,7 +143,14 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 	}
 
 	if err := datastore.CheckVolume(newVolume); err != nil {
-		return err
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
+	if oldVolume.Spec.BackupCompressionMethod != "" {
+		if oldVolume.Spec.BackupCompressionMethod != newVolume.Spec.BackupCompressionMethod {
+			err := fmt.Errorf("changing backup compression method for volume %v is not supported", oldVolume.Name)
+			return werror.NewInvalidError(err.Error(), "")
+		}
 	}
 
 	return nil

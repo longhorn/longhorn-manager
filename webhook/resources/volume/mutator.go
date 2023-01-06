@@ -212,6 +212,14 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/engineImage", "value": "%s"}`, defaultEngineImage))
 
+	if volume.Spec.BackupCompressionMethod == "" {
+		defaultCompressionMethod, _ := v.ds.GetSettingValueExisted(types.SettingNameBackupCompressionMethod)
+		if defaultCompressionMethod == "" {
+			return nil, werror.NewInvalidError("BUG: Invalid empty Setting.BackupCompressionMethod", "")
+		}
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupCompressionMethod", "value": "%s"}`, defaultCompressionMethod))
+	}
+
 	return patchOps, nil
 }
 
