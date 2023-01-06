@@ -238,6 +238,9 @@ type VolumeSpec struct {
 	// Deprecated. Replaced by a separate resource named "RecurringJob"
 	// +optional
 	RecurringJobs []VolumeRecurringJobSpec `json:"recurringJobs,omitempty"`
+	// +kubebuilder:validation:Enum=none;lz4;gzip
+	// +optional
+	BackupCompressionMethod BackupCompressionMethod `json:"backupCompressionMethod"`
 }
 
 // VolumeStatus defines the observed state of the Longhorn volume
