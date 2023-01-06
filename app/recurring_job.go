@@ -346,7 +346,7 @@ func (job *Job) doRecurringSnapshot() (err error) {
 			return err
 		}
 		fallthrough
-	case longhorn.RecurringJobTypeSnapshotDelete:
+	case longhorn.RecurringJobTypeSnapshotCleanup, longhorn.RecurringJobTypeSnapshotDelete:
 		return job.doSnapshotCleanup(false)
 	default:
 		return errors.Errorf("Unsupported task: %v", job.task)
@@ -391,7 +391,7 @@ func (job *Job) doSnapshotCleanup(backupDone bool) (err error) {
 		return err
 	}
 
-	shouldPurgeSnapshots := len(deleteSnapshotNames) > 0 || job.task == longhorn.RecurringJobTypeSnapshotDelete
+	shouldPurgeSnapshots := len(deleteSnapshotNames) > 0 || job.task == longhorn.RecurringJobTypeSnapshotCleanup || job.task == longhorn.RecurringJobTypeSnapshotDelete
 	if shouldPurgeSnapshots {
 		if _, err := volumeAPI.ActionSnapshotPurge(volume); err != nil {
 			return err
@@ -449,6 +449,8 @@ func (job *Job) listSnapshotNamesToCleanup(snapshots []longhornclient.Snapshot, 
 	switch job.task {
 	case longhorn.RecurringJobTypeSnapshotDelete:
 		return job.filterExpiredSnapshots(snapshots)
+	case longhorn.RecurringJobTypeSnapshotCleanup:
+		return []string{}
 	default:
 		return job.filterExpiredSnapshotsOfCurrentRecurringJob(snapshots, backupDone)
 	}
