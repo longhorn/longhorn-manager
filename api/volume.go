@@ -175,6 +175,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		DiskSelector:              volume.DiskSelector,
 		NodeSelector:              volume.NodeSelector,
 		SnapshotDataIntegrity:     volume.SnapshotDataIntegrity,
+		BackupCompressionMethod:   volume.BackupCompressionMethod,
 		UnmapMarkSnapChainRemoved: volume.UnmapMarkSnapChainRemoved,
 	}, volume.RecurringJobSelector)
 	if err != nil {
@@ -360,6 +361,29 @@ func (s *Server) VolumeUpdateSnapshotDataIntegrity(rw http.ResponseWriter, req *
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
 		return s.m.UpdateSnapshotDataIntegrity(id, input.SnapshotDataIntegrity)
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+	}
+
+	return s.responseWithVolume(rw, req, "", v)
+}
+
+func (s *Server) VolumeUpdateBackupCompressionMethod(rw http.ResponseWriter, req *http.Request) error {
+	var input UpdateBackupCompressionMethodInput
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrapf(err, "error reading backupCompressionMethod")
+	}
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.UpdateBackupCompressionMethod(id, input.BackupCompressionMethod)
 	})
 	if err != nil {
 		return err

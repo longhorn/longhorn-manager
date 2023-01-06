@@ -46,6 +46,7 @@ type Volume struct {
 	RevisionCounterDisabled   bool                                   `json:"revisionCounterDisabled"`
 	SnapshotDataIntegrity     longhorn.SnapshotDataIntegrity         `json:"snapshotDataIntegrity"`
 	UnmapMarkSnapChainRemoved longhorn.UnmapMarkSnapChainRemoved     `json:"unmapMarkSnapChainRemoved"`
+	BackupCompressionMethod   longhorn.BackupCompressionMethod       `json:"backupCompressionMethod"`
 
 	DiskSelector         []string                      `json:"diskSelector"`
 	NodeSelector         []string                      `json:"nodeSelector"`
@@ -119,6 +120,7 @@ type Backup struct {
 	VolumeSize             string               `json:"volumeSize"`
 	VolumeCreated          string               `json:"volumeCreated"`
 	VolumeBackingImageName string               `json:"volumeBackingImageName"`
+	CompressionMethod      string               `json:"compressionMethod"`
 }
 
 type Setting struct {
@@ -239,6 +241,10 @@ type UpdateAccessModeInput struct {
 
 type UpdateSnapshotDataIntegrityInput struct {
 	SnapshotDataIntegrity string `json:"snapshotDataIntegrity"`
+}
+
+type UpdateBackupCompressionMethodInput struct {
+	BackupCompressionMethod string `json:"backupCompressionMethod"`
 }
 
 type UpdateUnmapMarkSnapChainRemovedInput struct {
@@ -468,6 +474,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("UpdateDataLocalityInput", UpdateDataLocalityInput{})
 	schemas.AddType("UpdateAccessModeInput", UpdateAccessModeInput{})
 	schemas.AddType("UpdateSnapshotDataIntegrityInput", UpdateSnapshotDataIntegrityInput{})
+	schemas.AddType("UpdateBackupCompressionInput", UpdateBackupCompressionMethodInput{})
 	schemas.AddType("UpdateUnmapMarkSnapChainRemovedInput", UpdateUnmapMarkSnapChainRemovedInput{})
 	schemas.AddType("workloadStatus", longhorn.WorkloadStatus{})
 	schemas.AddType("cloneStatus", longhorn.VolumeCloneStatus{})
@@ -799,6 +806,10 @@ func volumeSchema(volume *client.Schema) {
 			Input: "UpdateSnapshotDataIntegrityInput",
 		},
 
+		"updateBackupCompressionMethod": {
+			Input: "UpdateBackupCompressionMethodInput",
+		},
+
 		"updateUnmapMarkSnapChainRemoved": {
 			Input: "UpdateUnmapMarkSnapChainRemovedInput",
 		},
@@ -867,6 +878,11 @@ func volumeSchema(volume *client.Schema) {
 	volumeSnapshotDataIntegrity.Create = true
 	volumeSnapshotDataIntegrity.Default = longhorn.SnapshotDataIntegrityIgnored
 	volume.ResourceFields["snapshotDataIntegrity"] = volumeSnapshotDataIntegrity
+
+	volumeBackupCompressionMethod := volume.ResourceFields["backupCompressionMethod"]
+	volumeBackupCompressionMethod.Create = true
+	volumeBackupCompressionMethod.Default = longhorn.BackupCompressionMethodLz4
+	volume.ResourceFields["backupCompressionMethod"] = volumeBackupCompressionMethod
 
 	volumeAccessMode := volume.ResourceFields["accessMode"]
 	volumeAccessMode.Create = true
@@ -1184,6 +1200,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		ReplicaAutoBalance:        v.Spec.ReplicaAutoBalance,
 		DataLocality:              v.Spec.DataLocality,
 		SnapshotDataIntegrity:     v.Spec.SnapshotDataIntegrity,
+		BackupCompressionMethod:   v.Spec.BackupCompressionMethod,
 		StaleReplicaTimeout:       v.Spec.StaleReplicaTimeout,
 		Created:                   v.CreationTimestamp.String(),
 		EngineImage:               v.Spec.EngineImage,
@@ -1247,6 +1264,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["updateReplicaAutoBalance"] = struct{}{}
 			actions["updateUnmapMarkSnapChainRemoved"] = struct{}{}
 			actions["updateSnapshotDataIntegrity"] = struct{}{}
+			actions["updateBackupCompressionMethod"] = struct{}{}
 			actions["recurringJobAdd"] = struct{}{}
 			actions["recurringJobDelete"] = struct{}{}
 			actions["recurringJobList"] = struct{}{}
@@ -1272,6 +1290,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["updateReplicaAutoBalance"] = struct{}{}
 			actions["updateUnmapMarkSnapChainRemoved"] = struct{}{}
 			actions["updateSnapshotDataIntegrity"] = struct{}{}
+			actions["updateBackupCompressionMethod"] = struct{}{}
 			actions["pvCreate"] = struct{}{}
 			actions["pvcCreate"] = struct{}{}
 			actions["cancelExpansion"] = struct{}{}
@@ -1444,6 +1463,7 @@ func toBackupResource(b *longhorn.Backup) *Backup {
 		VolumeSize:             b.Status.VolumeSize,
 		VolumeCreated:          b.Status.VolumeCreated,
 		VolumeBackingImageName: b.Status.VolumeBackingImageName,
+		CompressionMethod:      string(b.Status.CompressionMethod),
 	}
 	// Set the volume name from backup CR's label if it's empty.
 	// This field is empty probably because the backup state is not Ready

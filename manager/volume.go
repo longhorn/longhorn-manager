@@ -171,6 +171,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			NodeSelector:              spec.NodeSelector,
 			RevisionCounterDisabled:   spec.RevisionCounterDisabled,
 			SnapshotDataIntegrity:     spec.SnapshotDataIntegrity,
+			BackupCompressionMethod:   spec.BackupCompressionMethod,
 			UnmapMarkSnapChainRemoved: spec.UnmapMarkSnapChainRemoved,
 		},
 	}
@@ -899,6 +900,27 @@ func (m *VolumeManager) UpdateSnapshotDataIntegrity(name string, value string) (
 		return nil, err
 	}
 	logrus.Debugf("Updated volume %v snapshot data integrity from %v to %v", v.Name, oldValue, v.Spec.SnapshotDataIntegrity)
+	return v, nil
+}
+
+func (m *VolumeManager) UpdateBackupCompressionMethod(name string, value string) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to update backup compression method for volume %v", name)
+	}()
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+
+	oldValue := v.Spec.BackupCompressionMethod
+	v.Spec.BackupCompressionMethod = longhorn.BackupCompressionMethod(value)
+
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+	logrus.Debugf("Updated volume %v backup compression method from %v to %v", v.Name, oldValue, v.Spec.BackupCompressionMethod)
 	return v, nil
 }
 
