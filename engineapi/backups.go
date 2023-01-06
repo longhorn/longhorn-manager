@@ -286,9 +286,8 @@ func (btc *BackupTargetClient) BackupDelete(backupURL string, credential map[str
 
 // SnapshotBackup calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
-func (e *EngineBinary) SnapshotBackup(engine *longhorn.Engine,
-	snapName, backupName, backupTarget,
-	backingImageName, backingImageChecksum string,
+func (e *EngineBinary) SnapshotBackup(engine *longhorn.Engine, snapName, backupName, backupTarget,
+	backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int,
 	labels, credential map[string]string) (string, string, error) {
 	if snapName == etypes.VolumeHeadName {
 		return "", "", fmt.Errorf("invalid operation: cannot backup %v", etypes.VolumeHeadName)
@@ -378,7 +377,8 @@ func ConvertEngineBackupState(state string) longhorn.BackupState {
 
 // BackupRestore calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
-func (e *EngineBinary) BackupRestore(engine *longhorn.Engine, backupTarget, backupName, backupVolumeName, lastRestored string, credential map[string]string) error {
+func (e *EngineBinary) BackupRestore(engine *longhorn.Engine, backupTarget, backupName, backupVolumeName,
+	lastRestored string, credential map[string]string, concurrentLimit int) error {
 	backup := backupstore.EncodeBackupURL(backupName, backupVolumeName, backupTarget)
 
 	// get environment variables if backup for s3

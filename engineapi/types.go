@@ -87,14 +87,14 @@ type EngineClient interface {
 	SnapshotRevert(engine *longhorn.Engine, name string) error
 	SnapshotPurge(engine *longhorn.Engine) error
 	SnapshotPurgeStatus(engine *longhorn.Engine) (map[string]*longhorn.PurgeStatus, error)
-	SnapshotBackup(engine *longhorn.Engine, backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (string, string, error)
+	SnapshotBackup(engine *longhorn.Engine, backupName, snapName, backupTarget, backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int, labels, credential map[string]string) (string, string, error)
 	SnapshotBackupStatus(engine *longhorn.Engine, backupName, replicaAddress string) (*longhorn.EngineBackupStatus, error)
 	SnapshotCloneStatus(engine *longhorn.Engine) (map[string]*longhorn.SnapshotCloneStatus, error)
 	SnapshotClone(engine *longhorn.Engine, snapshotName, fromControllerAddress string, fileSyncHTTPClientTimeout int64) error
 	SnapshotHash(engine *longhorn.Engine, snapshotName string, rehash bool) error
 	SnapshotHashStatus(engine *longhorn.Engine, snapshotName string) (map[string]*longhorn.HashStatus, error)
 
-	BackupRestore(engine *longhorn.Engine, backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string) error
+	BackupRestore(engine *longhorn.Engine, backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string, concurrentLimit int) error
 	BackupRestoreStatus(engine *longhorn.Engine) (map[string]*longhorn.RestoreStatus, error)
 
 	MetricsGet(engine *longhorn.Engine) (*Metrics, error)
@@ -160,6 +160,7 @@ type Backup struct {
 	VolumeCreated          string               `json:"volumeCreated"`
 	VolumeBackingImageName string               `json:"volumeBackingImageName"`
 	Messages               map[string]string    `json:"messages"`
+	CompressionMethod      string               `json:"compressionMethod"`
 }
 
 type ConfigMetadata struct {
