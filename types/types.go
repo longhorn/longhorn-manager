@@ -251,7 +251,8 @@ const (
 )
 
 // SettingsRelatedToVolume should match the items in datastore.GetLabelsForVolumesFollowsGlobalSettings
-//   TODO: May need to add the data locality check
+//
+//	TODO: May need to add the data locality check
 var SettingsRelatedToVolume = map[string]string{
 	string(SettingNameReplicaAutoBalance):                  LonghornLabelValueIgnored,
 	string(SettingNameSnapshotDataIntegrity):               LonghornLabelValueIgnored,
@@ -716,6 +717,15 @@ func ValidateSnapshotDataIntegrity(mode string) error {
 	return nil
 }
 
+func ValidateBackupCompressionMethod(method string) error {
+	if method != string(longhorn.BackupCompressionMethodNone) &&
+		method != string(longhorn.BackupCompressionMethodLz4) &&
+		method != string(longhorn.BackupCompressionMethodGzip) {
+		return fmt.Errorf("invalid backup compression method: %v", method)
+	}
+	return nil
+}
+
 func ValidateUnmapMarkSnapChainRemoved(unmapValue longhorn.UnmapMarkSnapChainRemoved) error {
 	if unmapValue != longhorn.UnmapMarkSnapChainRemovedIgnored && unmapValue != longhorn.UnmapMarkSnapChainRemovedEnabled && unmapValue != longhorn.UnmapMarkSnapChainRemovedDisabled {
 		return fmt.Errorf("invalid UnmapMarkSnapChainRemoved setting: %v", unmapValue)
@@ -819,7 +829,8 @@ type DiskSpecWithName struct {
 
 // UnmarshalToDisks input format should be:
 // `[{"path":"/mnt/disk1","allowScheduling":false},
-//   {"path":"/mnt/disk2","allowScheduling":false,"storageReserved":1024,"tags":["ssd","fast"]}]`
+//
+//	{"path":"/mnt/disk2","allowScheduling":false,"storageReserved":1024,"tags":["ssd","fast"]}]`
 func UnmarshalToDisks(s string) (ret []DiskSpecWithName, err error) {
 	if err := json.Unmarshal([]byte(s), &ret); err != nil {
 		return nil, err
