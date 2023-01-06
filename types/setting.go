@@ -100,6 +100,9 @@ const (
 	SettingNameRemoveSnapshotsDuringFilesystemTrim                      = SettingName("remove-snapshots-during-filesystem-trim")
 	SettingNameFastReplicaRebuildEnabled                                = SettingName("fast-replica-rebuild-enabled")
 	SettingNameReplicaFileSyncHTTPClientTimeout                         = SettingName("replica-file-sync-http-client-timeout")
+	SettingNameBackupCompressionMethod                                  = SettingName("backup-compression-method")
+	SettingNameBackupConcurrentLimit                                    = SettingName("backup-concurrent-limit")
+	SettingNameRestoreConcurrentLimit                                   = SettingName("restore-concurrent-limit")
 )
 
 var (
@@ -168,6 +171,9 @@ var (
 		SettingNameRemoveSnapshotsDuringFilesystemTrim,
 		SettingNameFastReplicaRebuildEnabled,
 		SettingNameReplicaFileSyncHTTPClientTimeout,
+		SettingNameBackupCompressionMethod,
+		SettingNameBackupConcurrentLimit,
+		SettingNameRestoreConcurrentLimit,
 	}
 )
 
@@ -261,6 +267,9 @@ var (
 		SettingNameRemoveSnapshotsDuringFilesystemTrim:                      SettingDefinitionRemoveSnapshotsDuringFilesystemTrim,
 		SettingNameFastReplicaRebuildEnabled:                                SettingDefinitionFastReplicaRebuildEnabled,
 		SettingNameReplicaFileSyncHTTPClientTimeout:                         SettingDefinitionReplicaFileSyncHTTPClientTimeout,
+		SettingNameBackupCompressionMethod:                                  SettingDefinitionBackupCompressionMethod,
+		SettingNameBackupConcurrentLimit:                                    SettingDefinitionBackupConcurrentLimit,
+		SettingNameRestoreConcurrentLimit:                                   SettingDefinitionRestoreConcurrentLimit,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -592,7 +601,7 @@ var (
 
 	SettingDefinitionAutoSalvage = SettingDefinition{
 		DisplayName: "Automatic salvage",
-		Description: "If enabled, volumes will be automatically salvaged when all the replicas become faulty e.g. due to network disconnection. Longhorn will try to figure out which replica(s) are usable, then use them for the volume.",
+		Description: "If enabled, volumes will be automatically salvaged when all the replicas become faulty e.g. due to network disconnection. Longhorn will try to figure out which replica(s) are usable, then use them for the volume.",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeBool,
 		Required:    true,
@@ -1026,6 +1035,45 @@ var (
 		ReadOnly:    false,
 		Default:     "30",
 	}
+
+	SettingDefinitionBackupCompressionMethod = SettingDefinition{
+		DisplayName: "Backup Compression Method",
+		Description: "This setting allows users to specify backup compression method.\n\n" +
+			"Available options are: \n\n" +
+			"- **none**: Disable the compression method. Suitable for multimedia data such as encoded images and videos. \n\n" +
+			"- **lz4**: Fast compression method. Suitable for flat files. \n\n" +
+			"- **gzip**: A bit of higher compression ratio but relatively slow.",
+		Category: SettingCategoryBackup,
+		Type:     SettingTypeString,
+		Required: true,
+		ReadOnly: false,
+		Default:  string(longhorn.BackupCompressionMethodLz4),
+		Choices: []string{
+			string(longhorn.BackupCompressionMethodNone),
+			string(longhorn.BackupCompressionMethodLz4),
+			string(longhorn.BackupCompressionMethodGzip),
+		},
+	}
+
+	SettingDefinitionBackupConcurrentLimit = SettingDefinition{
+		DisplayName: "Backup Concurrent Limit Per Backup",
+		Description: "This setting controls how many worker threads per backup concurrently.",
+		Category:    SettingCategoryBackup,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "5",
+	}
+
+	SettingDefinitionRestoreConcurrentLimit = SettingDefinition{
+		DisplayName: "Restore Concurrent Limit Per Backup",
+		Description: "This setting controls how many worker threads per restore concurrently.",
+		Category:    SettingCategoryBackup,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "5",
+	}
 )
 
 type NodeDownPodDeletionPolicy string
@@ -1167,19 +1215,17 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameSupportBundleFailedHistoryLimit:
 		fallthrough
 	case SettingNameBackupstorePollInterval:
+		fallthrough
+	case SettingNameRecurringSuccessfulJobsHistoryLimit:
+		fallthrough
+	case SettingNameRecurringFailedJobsHistoryLimit:
+		fallthrough
+	case SettingNameFailedBackupTTL:
 		value, err := strconv.Atoi(value)
 		if err != nil {
 			errors.Wrapf(err, "value %v is not a number", value)
 		}
 		if value < 0 {
-			return fmt.Errorf("the value %v shouldn't be less than 0", value)
-		}
-	case SettingNameFailedBackupTTL:
-		interval, err := strconv.Atoi(value)
-		if err != nil {
-			errors.Wrapf(err, "value %v is not a number", value)
-		}
-		if interval < 0 {
 			return fmt.Errorf("the value %v shouldn't be less than 0", value)
 		}
 	case SettingNameTaintToleration:
@@ -1193,22 +1239,6 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameStorageNetwork:
 		if err = ValidateStorageNetwork(value); err != nil {
 			return errors.Wrapf(err, "the value of %v is invalid", sName)
-		}
-	case SettingNameRecurringSuccessfulJobsHistoryLimit:
-		successJobsHistLimit, err := strconv.Atoi(value)
-		if err != nil {
-			return errors.Wrapf(err, "value %v is not a number", value)
-		}
-		if successJobsHistLimit < 0 {
-			return fmt.Errorf("the value %v shouldn't be less than 0", value)
-		}
-	case SettingNameRecurringFailedJobsHistoryLimit:
-		failedJobsHistLimit, err := strconv.Atoi(value)
-		if err != nil {
-			return errors.Wrapf(err, "value %v is not a number", value)
-		}
-		if failedJobsHistLimit < 0 {
-			return fmt.Errorf("the value %v shouldn't be less than 0", value)
 		}
 	case SettingNameReplicaFileSyncHTTPClientTimeout:
 		timeout, err := strconv.Atoi(value)
@@ -1228,8 +1258,23 @@ func ValidateSetting(name, value string) (err error) {
 		if timeout < 8 || timeout > 30 {
 			return fmt.Errorf("the value %v should be between 8 and 30", value)
 		}
+	case SettingNameBackupConcurrentLimit:
+		fallthrough
+	case SettingNameRestoreConcurrentLimit:
+		val, err := strconv.Atoi(value)
+		if err != nil {
+			return errors.Wrapf(err, "value %v is not a number", value)
+		}
+
+		if val < 1 {
+			return fmt.Errorf("the value %v shouldn't be less than 1", value)
+		}
 	case SettingNameSnapshotDataIntegrity:
 		if err = ValidateSnapshotDataIntegrity(value); err != nil {
+			return errors.Wrapf(err, "the value of %v is invalid", sName)
+		}
+	case SettingNameBackupCompressionMethod:
+		if err = ValidateBackupCompressionMethod(value); err != nil {
 			return errors.Wrapf(err, "the value of %v is invalid", sName)
 		}
 	case SettingNameSnapshotDataIntegrityCronJob:
