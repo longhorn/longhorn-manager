@@ -190,7 +190,9 @@ func (e *EngineSimulator) SnapshotPurgeStatus(*longhorn.Engine) (map[string]*lon
 	return nil, fmt.Errorf(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SnapshotBackup(engine *longhorn.Engine, backupName, snapName, backupTarget, backingImageName, backingImageChecksum string, labels, credential map[string]string) (string, string, error) {
+func (e *EngineSimulator) SnapshotBackup(engine *longhorn.Engine, backupName, snapName, backupTarget,
+	backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int,
+	labels, credential map[string]string) (string, string, error) {
 	return "", "", fmt.Errorf(ErrNotImplement)
 }
 
@@ -210,7 +212,7 @@ func (e *EngineSimulator) VolumeExpand(*longhorn.Engine) error {
 	return fmt.Errorf(ErrNotImplement)
 }
 
-func (e *EngineSimulator) BackupRestore(engine *longhorn.Engine, backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string) error {
+func (e *EngineSimulator) BackupRestore(engine *longhorn.Engine, backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string, concurrentLimit int) error {
 	return fmt.Errorf(ErrNotImplement)
 }
 
