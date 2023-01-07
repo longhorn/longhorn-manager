@@ -223,7 +223,8 @@ const (
 	EnvPodIP          = "POD_IP"
 	EnvServiceAccount = "SERVICE_ACCOUNT"
 
-	BackupStoreTypeS3 = "s3"
+	BackupStoreTypeS3   = "s3"
+	BackupStoreTypeCIFS = "cifs"
 
 	AWSIAMRoleAnnotation = "iam.amazonaws.com/role"
 	AWSIAMRoleArn        = "AWS_IAM_ROLE_ARN"
@@ -231,6 +232,9 @@ const (
 	AWSSecretKey         = "AWS_SECRET_ACCESS_KEY"
 	AWSEndPoint          = "AWS_ENDPOINTS"
 	AWSCert              = "AWS_CERT"
+
+	CIFSUsername = "CIFS_USERNAME"
+	CIFSPassword = "CIFS_PASSWORD"
 
 	HTTPSProxy = "HTTPS_PROXY"
 	HTTPProxy  = "HTTP_PROXY"
@@ -897,4 +901,8 @@ func CreateCniAnnotationFromSetting(storageNetwork *longhorn.Setting) string {
 
 	storageNetworkSplit := strings.Split(storageNetwork.Value, "/")
 	return fmt.Sprintf("[{\"namespace\": \"%s\", \"name\": \"%s\", \"interface\": \"%s\"}]", storageNetworkSplit[0], storageNetworkSplit[1], StorageNetworkInterface)
+}
+
+func BackupStoreRequireCredential(backupType string) bool {
+	return backupType == BackupStoreTypeS3 || backupType == BackupStoreTypeCIFS
 }

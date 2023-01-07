@@ -54,9 +54,9 @@ func (v *systemBackupValidator) Create(request *admission.Request, newObj runtim
 		return werror.NewBadRequest(err.Error())
 	}
 
-	if backupType == types.BackupStoreTypeS3 {
+	if types.BackupStoreRequireCredential(backupType) {
 		if backupTarget.Spec.CredentialSecret == "" {
-			return werror.NewBadRequest(fmt.Sprintf("cannot access %s without credential secret", types.BackupStoreTypeS3))
+			return werror.NewBadRequest(fmt.Sprintf("cannot access %s without credential secret", backupType))
 		}
 	}
 	return nil
