@@ -170,8 +170,8 @@ func (ks *KubernetesSecretController) reconcileSecret(namespace, secretName stri
 	}
 
 	backupType, err := util.CheckBackupType(backupTarget.Spec.BackupTargetURL)
-	if err != nil || backupType != types.BackupStoreTypeS3 || backupTarget.Spec.CredentialSecret != secretName {
-		// We only focus on backup target S3 and the credential secret setting matches to the current secret name
+	if err != nil || !types.BackupStoreRequireCredential(backupType) || backupTarget.Spec.CredentialSecret != secretName {
+		// We only focus on backup target S3 or CIFS and the credential secret setting matches to the current secret name
 		return nil
 	}
 

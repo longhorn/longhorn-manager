@@ -284,6 +284,8 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			types.AWSSecretKey,
 			types.AWSEndPoint,
 			types.AWSCert,
+			types.CIFSUsername,
+			types.CIFSPassword,
 			types.HTTPSProxy,
 			types.HTTPProxy,
 			types.NOProxy,
@@ -496,6 +498,8 @@ func (s *DataStore) GetCredentialFromSecret(secretName string) (map[string]strin
 	credentialSecret[types.AWSSecretKey] = string(secret.Data[types.AWSSecretKey])
 	credentialSecret[types.AWSEndPoint] = string(secret.Data[types.AWSEndPoint])
 	credentialSecret[types.AWSCert] = string(secret.Data[types.AWSCert])
+	credentialSecret[types.CIFSUsername] = string(secret.Data[types.CIFSUsername])
+	credentialSecret[types.CIFSPassword] = string(secret.Data[types.CIFSPassword])
 	credentialSecret[types.HTTPSProxy] = string(secret.Data[types.HTTPSProxy])
 	credentialSecret[types.HTTPProxy] = string(secret.Data[types.HTTPProxy])
 	credentialSecret[types.NOProxy] = string(secret.Data[types.NOProxy])

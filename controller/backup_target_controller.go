@@ -242,9 +242,9 @@ func newBackupTargetClient(ds *datastore.DataStore, backupTarget *longhorn.Backu
 	}
 
 	var credential map[string]string
-	if backupType == types.BackupStoreTypeS3 {
+	if types.BackupStoreRequireCredential(backupType) {
 		if backupTarget.Spec.CredentialSecret == "" {
-			return nil, fmt.Errorf("could not access %s without credential secret", types.BackupStoreTypeS3)
+			return nil, fmt.Errorf("could not access %s without credential secret", backupType)
 		}
 		credential, err = ds.GetCredentialFromSecret(backupTarget.Spec.CredentialSecret)
 		if err != nil {
