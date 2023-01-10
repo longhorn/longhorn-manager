@@ -23,7 +23,7 @@ func NewMutator(ds *datastore.DataStore) admission.Mutator {
 	return &volumeAttachmentMutator{ds: ds}
 }
 
-func (o *volumeAttachmentMutator) Resource() admission.Resource {
+func (m *volumeAttachmentMutator) Resource() admission.Resource {
 	return admission.Resource{
 		Name:       "volumeattachments",
 		Scope:      admissionregv1.NamespacedScope,
@@ -36,7 +36,7 @@ func (o *volumeAttachmentMutator) Resource() admission.Resource {
 	}
 }
 
-func (s *volumeAttachmentMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
+func (m *volumeAttachmentMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
 	var patchOps admission.PatchOps
 
 	va, ok := newObj.(*longhorn.VolumeAttachment)
@@ -44,7 +44,7 @@ func (s *volumeAttachmentMutator) Create(request *admission.Request, newObj runt
 		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.VolumeAttachment", newObj), "")
 	}
 
-	volume, err := s.ds.GetVolumeRO(va.Spec.Volume)
+	volume, err := m.ds.GetVolumeRO(va.Spec.Volume)
 	if err != nil {
 		err = errors.Wrapf(err, "failed to get volume %v", va.Spec.Volume)
 		return nil, werror.NewInvalidError(err.Error(), "spec.Volume")

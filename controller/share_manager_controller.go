@@ -423,14 +423,34 @@ func (c *ShareManagerController) detachShareManagerVolume(sm *longhorn.ShareMana
 		return nil
 	}
 
+	vaName := types.GetLHVolumeAttachmentNameFromVolumeName(volume.Name)
+	va, err := c.ds.GetLHVolumeAttachment(vaName)
+	if err != nil {
+		return err
+	}
+
+	existingVA := va.DeepCopy()
+	defer func() {
+		if err != nil {
+			return
+		}
+		if reflect.DeepEqual(existingVA.Spec, va.Spec) {
+			return
+		}
+
+		if _, err = c.ds.UpdateLHVolumeAttachmet(va); err != nil {
+			return
+		}
+	}()
+
+	shareManagerAttachmentID := longhorn.GetAttachmentID(longhorn.AttacherTypeShareManagerController, sm.Name)
+
 	// we don't want to detach volumes that we don't control
 	isMaintenanceMode := volume.Spec.DisableFrontend || volume.Status.FrontendDisabled
-	shouldDetach := !isMaintenanceMode && volume.Spec.AccessMode == longhorn.AccessModeReadWriteMany && volume.Spec.NodeID != ""
+	shouldDetach := !isMaintenanceMode && volume.Spec.AccessMode == longhorn.AccessModeReadWriteMany
 	if shouldDetach {
-		log.Infof("requesting Volume detach from node %v", volume.Spec.NodeID)
-		volume.Spec.NodeID = ""
-		volume, err = c.ds.UpdateVolume(volume)
-		return err
+		log.Infof("removing volume attachment: %v to detach the volume %v", shareManagerAttachmentID, volume.Name)
+		delete(va.Spec.Attachments, shareManagerAttachmentID)
 	}
 
 	return nil
@@ -515,19 +535,49 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 		if err = c.detachShareManagerVolume(sm); err != nil {
 			return err
 		}
+		return nil
 	}
 
-	// TODO: #2527 this detach/attach is so brittle, we really need to fix the volume controller
-	// 	we need to wait till the volume is completely detached even though the state might be detached
-	// 	it might still have a current node id set, which will then block reattachment forever
-	shouldAttach := volume.Status.State == longhorn.VolumeStateDetached && volume.Spec.NodeID == "" && volume.Status.CurrentNodeID == ""
-	if shouldAttach {
-		log.WithField("volume", volume.Name).Info("Requesting Volume attach to share manager node")
-		volume.Spec.NodeID = sm.Status.OwnerID
-		if volume, err = c.ds.UpdateVolume(volume); err != nil {
-			return err
+	vaName := types.GetLHVolumeAttachmentNameFromVolumeName(volume.Name)
+	va, err := c.ds.GetLHVolumeAttachment(vaName)
+	if err != nil {
+		return err
+	}
+	existingVA := va.DeepCopy()
+	defer func() {
+		if err != nil {
+			return
+		}
+		if reflect.DeepEqual(existingVA.Spec, va.Spec) {
+			return
+		}
+
+		if _, err = c.ds.UpdateLHVolumeAttachmet(va); err != nil {
+			return
+		}
+	}()
+
+	shareManagerAttachmentID := longhorn.GetAttachmentID(longhorn.AttacherTypeShareManagerController, sm.Name)
+	if va.Spec.Attachments == nil {
+		va.Spec.Attachments = make(map[string]*longhorn.Attachment)
+	}
+
+	shareManagerAttachment, ok := va.Spec.Attachments[shareManagerAttachmentID]
+	if !ok {
+		//create new one
+		shareManagerAttachment = &longhorn.Attachment{
+			ID:     shareManagerAttachmentID,
+			Type:   longhorn.AttacherTypeShareManagerController,
+			NodeID: sm.Status.OwnerID,
+			Parameters: map[string]string{
+				"disableFrontend": "false",
+			},
 		}
 	}
+	if shareManagerAttachment.NodeID != sm.Status.OwnerID {
+		shareManagerAttachment.NodeID = sm.Status.OwnerID
+	}
+	va.Spec.Attachments[shareManagerAttachmentID] = shareManagerAttachment
 
 	return nil
 }

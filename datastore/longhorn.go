@@ -3987,7 +3987,7 @@ func (s *DataStore) GetSupportBundle(name string) (*longhorn.SupportBundle, erro
 	return resultRO.DeepCopy(), nil
 }
 
-// CreateOrphan creates a Longhorn Orphan resource and verifies creation
+// CreateLHVolumeAttachment creates a Longhorn volume attachment resource and verifies creation
 func (s *DataStore) CreateLHVolumeAttachment(va *longhorn.VolumeAttachment) (*longhorn.VolumeAttachment, error) {
 	ret, err := s.lhClient.LonghornV1beta2().VolumeAttachments(s.namespace).Create(context.TODO(), va, metav1.CreateOptions{})
 	if err != nil {

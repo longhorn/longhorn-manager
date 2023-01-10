@@ -48,6 +48,8 @@ type RancherClient struct {
 	InstanceManager                    InstanceManagerOperations
 	BackingImageDiskFileStatus         BackingImageDiskFileStatusOperations
 	BackingImageCleanupInput           BackingImageCleanupInputOperations
+	Attachment                         AttachmentOperations
+	VolumeAttachment                   VolumeAttachmentOperations
 	Volume                             VolumeOperations
 	Snapshot                           SnapshotOperations
 	SnapshotCR                         SnapshotCROperations
@@ -115,6 +117,8 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.InstanceManager = newInstanceManagerClient(client)
 	client.BackingImageDiskFileStatus = newBackingImageDiskFileStatusClient(client)
 	client.BackingImageCleanupInput = newBackingImageCleanupInputClient(client)
+	client.Attachment = newAttachmentClient(client)
+	client.VolumeAttachment = newVolumeAttachmentClient(client)
 	client.Volume = newVolumeClient(client)
 	client.Snapshot = newSnapshotClient(client)
 	client.SnapshotCR = newSnapshotCRClient(client)

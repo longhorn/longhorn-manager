@@ -75,6 +75,9 @@ const (
 	TrueValue  = "true"
 	FalseValue = "false"
 	AnyValue   = "any"
+
+	AttachmentParameterDisableFrontend = "disableFrontend"
+	AttachmentParameterLastAttachedBy  = "lastAttachedBy"
 )
 
 func GetAttacherPriorityLevel(t AttacherType) int {

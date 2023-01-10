@@ -21,7 +21,7 @@ func NewValidator(ds *datastore.DataStore) admission.Validator {
 	return &volumeAttachmentValidator{ds: ds}
 }
 
-func (o *volumeAttachmentValidator) Resource() admission.Resource {
+func (v *volumeAttachmentValidator) Resource() admission.Resource {
 	return admission.Resource{
 		Name:       "volumeattachments",
 		Scope:      admissionregv1.NamespacedScope,
@@ -35,7 +35,7 @@ func (o *volumeAttachmentValidator) Resource() admission.Resource {
 	}
 }
 
-func (o *volumeAttachmentValidator) Create(request *admission.Request, newObj runtime.Object) error {
+func (v *volumeAttachmentValidator) Create(request *admission.Request, newObj runtime.Object) error {
 	_, ok := newObj.(*longhorn.VolumeAttachment)
 	if !ok {
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.VolumeAttachment", newObj), "")
@@ -44,7 +44,7 @@ func (o *volumeAttachmentValidator) Create(request *admission.Request, newObj ru
 	return nil
 }
 
-func (o *volumeAttachmentValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
+func (v *volumeAttachmentValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
 	oldVA, ok := oldObj.(*longhorn.VolumeAttachment)
 	if !ok {
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.VolumeAttachment", oldObj), "")

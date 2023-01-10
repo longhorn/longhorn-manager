@@ -54,8 +54,12 @@ func (s *Server) volumeList(apiContext *api.ApiContext) (*client.GenericCollecti
 		if err != nil {
 			return nil, err
 		}
+		volumeAttachment, err := s.m.GetLHVolumeAttachment(v.Name)
+		if err != nil {
+			return nil, err
+		}
 
-		resp.Data = append(resp.Data, toVolumeResource(v, controllers, replicas, backups, apiContext))
+		resp.Data = append(resp.Data, toVolumeResource(v, controllers, replicas, backups, volumeAttachment, apiContext))
 	}
 	resp.ResourceType = "volume"
 	resp.CreateTypes = map[string]string{
@@ -101,8 +105,12 @@ func (s *Server) responseWithVolume(rw http.ResponseWriter, req *http.Request, i
 	if err != nil {
 		return err
 	}
+	volumeAttachment, err := s.m.GetLHVolumeAttachment(v.Name)
+	if err != nil {
+		return err
+	}
 
-	apiContext.Write(toVolumeResource(v, controllers, replicas, backups, apiContext))
+	apiContext.Write(toVolumeResource(v, controllers, replicas, backups, volumeAttachment, apiContext))
 	return nil
 }
 
@@ -206,7 +214,7 @@ func (s *Server) VolumeAttach(rw http.ResponseWriter, req *http.Request) error {
 	id := mux.Vars(req)["name"]
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
-		return s.m.Attach(id, input.HostID, input.DisableFrontend, input.AttachedBy)
+		return s.m.Attach(id, input.HostID, input.DisableFrontend, input.AttachedBy, input.AttacherType, input.AttachmentID)
 	})
 	if err != nil {
 		return err
@@ -225,13 +233,12 @@ func (s *Server) VolumeDetach(rw http.ResponseWriter, req *http.Request) error {
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
 		// HACK: for ui detach requests that don't send a body
-		// This is the same as previous behavior where detach is requested from all nodes
-		input.HostID = ""
+		input.AttachmentID = ""
 	}
 	id := mux.Vars(req)["name"]
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
-		return s.m.Detach(id, input.HostID)
+		return s.m.Detach(id, input.AttachmentID, input.ForceDetach)
 	})
 	if err != nil {
 		return err

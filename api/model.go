@@ -9,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	v1 "k8s.io/api/core/v1"
+	utilpointer "k8s.io/utils/pointer"
 
 	"github.com/longhorn/longhorn-manager/controller"
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -74,12 +75,13 @@ type Volume struct {
 
 	Encrypted bool `json:"encrypted"`
 
-	Replicas      []Replica       `json:"replicas"`
-	Controllers   []Controller    `json:"controllers"`
-	BackupStatus  []BackupStatus  `json:"backupStatus"`
-	RestoreStatus []RestoreStatus `json:"restoreStatus"`
-	PurgeStatus   []PurgeStatus   `json:"purgeStatus"`
-	RebuildStatus []RebuildStatus `json:"rebuildStatus"`
+	Replicas         []Replica        `json:"replicas"`
+	Controllers      []Controller     `json:"controllers"`
+	BackupStatus     []BackupStatus   `json:"backupStatus"`
+	RestoreStatus    []RestoreStatus  `json:"restoreStatus"`
+	PurgeStatus      []PurgeStatus    `json:"purgeStatus"`
+	RebuildStatus    []RebuildStatus  `json:"rebuildStatus"`
+	VolumeAttachment VolumeAttachment `json:"volumeAttachment"`
 }
 
 type Snapshot struct {
@@ -188,6 +190,21 @@ type Replica struct {
 	FailedAt string `json:"failedAt"`
 }
 
+type Attachment struct {
+	AttachmentID string            `json:"attachmentID"`
+	AttacherType string            `json:"attacherType"`
+	NodeID       string            `json:"nodeID"`
+	Parameters   map[string]string `json:"parameters"`
+	Attached     bool              `json:"attached,omitempty"`
+	AttachError  string            `json:"attachError,omitempty"`
+	DetachError  string            `json:"detachError,omitempty"`
+}
+
+type VolumeAttachment struct {
+	VolumeAttachmentSpec   map[string]Attachment `json:"volumeAttachmentSpec"`
+	VolumeAttachmentStatus map[string]Attachment `json:"volumeAttachmentStatus"`
+}
+
 type EngineImage struct {
 	client.Resource
 
@@ -222,10 +239,12 @@ type AttachInput struct {
 	DisableFrontend bool   `json:"disableFrontend"`
 	AttachedBy      string `json:"attachedBy"`
 	AttacherType    string `json:"attacherType"`
+	AttachmentID    string `json:"attachmentID"`
 }
 
 type DetachInput struct {
-	HostID string `json:"hostId"`
+	AttachmentID string `json:"attachmentID"`
+	ForceDetach  bool   `json:"forceDetach"`
 }
 
 type SnapshotInput struct {
@@ -560,6 +579,8 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("backingImageDiskFileStatus", longhorn.BackingImageDiskFileStatus{})
 	schemas.AddType("backingImageCleanupInput", BackingImageCleanupInput{})
 
+	schemas.AddType("attachment", Attachment{})
+	volumeAttachmentSchema(schemas.AddType("volumeAttachment", VolumeAttachment{}))
 	volumeSchema(schemas.AddType("volume", Volume{}))
 	snapshotSchema(schemas.AddType("snapshot", Snapshot{}))
 	snapshotCRSchema(schemas.AddType("snapshotCR", SnapshotCR{}))
@@ -1062,6 +1083,10 @@ func volumeSchema(volume *client.Schema) {
 	rebuildStatus := volume.ResourceFields["rebuildStatus"]
 	rebuildStatus.Type = "array[rebuildStatus]"
 	volume.ResourceFields["rebuildStatus"] = rebuildStatus
+
+	volumeAttachment := volume.ResourceFields["volumeAttachment"]
+	volumeAttachment.Type = "volumeAttachment"
+	volume.ResourceFields["volumeAttachment"] = volumeAttachment
 }
 
 func snapshotSchema(snapshot *client.Schema) {
@@ -1121,6 +1146,16 @@ func snapshotCRListOutputSchema(snapshotList *client.Schema) {
 	snapshotList.ResourceFields["data"] = data
 }
 
+func volumeAttachmentSchema(volumeAttachment *client.Schema) {
+	volumeAttachmentSpec := volumeAttachment.ResourceFields["volumeAttachmentSpec"]
+	volumeAttachmentSpec.Type = "map[string]attachment"
+	volumeAttachment.ResourceFields["volumeAttachmentSpec"] = volumeAttachmentSpec
+
+	volumeAttachmentStatus := volumeAttachment.ResourceFields["volumeAttachmentStatus"]
+	volumeAttachmentStatus.Type = "map[string]attachment"
+	volumeAttachment.ResourceFields["volumeAttachmentStatus"] = volumeAttachmentStatus
+}
+
 func toEmptyResource() *Empty {
 	return &Empty{
 		Resource: client.Resource{
@@ -1153,13 +1188,17 @@ func toSettingCollection(settings []*longhorn.Setting) *client.GenericCollection
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "setting"}}
 }
 
-func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhorn.Replica, backups []*longhorn.Backup, apiContext *api.ApiContext) *Volume {
+func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhorn.Replica, backups []*longhorn.Backup, lhVolumeAttachment *longhorn.VolumeAttachment, apiContext *api.ApiContext) *Volume {
 	var ve *longhorn.Engine
 	controllers := []Controller{}
 	backupStatus := []BackupStatus{}
 	restoreStatus := []RestoreStatus{}
 	var purgeStatuses []PurgeStatus
 	rebuildStatuses := []RebuildStatus{}
+	volumeAttachment := VolumeAttachment{
+		VolumeAttachmentSpec:   make(map[string]Attachment),
+		VolumeAttachmentStatus: make(map[string]Attachment),
+	}
 	for _, e := range ves {
 		actualSize := int64(0)
 		snapshots := e.Status.Snapshots
@@ -1280,6 +1319,32 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		})
 	}
 
+	if lhVolumeAttachment != nil {
+		for k, v := range lhVolumeAttachment.Spec.Attachments {
+			if v != nil {
+				volumeAttachment.VolumeAttachmentSpec[k] = Attachment{
+					AttachmentID: v.ID,
+					AttacherType: string(v.Type),
+					NodeID:       v.NodeID,
+					Parameters:   v.Parameters,
+				}
+			}
+		}
+		for k, v := range lhVolumeAttachment.Status.Attachments {
+			if v != nil {
+				volumeAttachment.VolumeAttachmentStatus[k] = Attachment{
+					AttachmentID: v.ID,
+					AttacherType: string(v.Type),
+					NodeID:       v.NodeID,
+					Parameters:   v.Parameters,
+					Attached:     utilpointer.BoolDeref(v.Attached, false),
+					AttachError:  VolumeErrorDeref(v.AttachError),
+					DetachError:  VolumeErrorDeref(v.DetachError),
+				}
+			}
+		}
+	}
+
 	// The volume is not ready for workloads if:
 	//   1. It's auto attached.
 	//   2. It fails to schedule replicas during the volume creation,
@@ -1350,12 +1415,13 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		KubernetesStatus: v.Status.KubernetesStatus,
 		CloneStatus:      v.Status.CloneStatus,
 
-		Controllers:   controllers,
-		Replicas:      replicas,
-		BackupStatus:  backupStatus,
-		RestoreStatus: restoreStatus,
-		PurgeStatus:   purgeStatuses,
-		RebuildStatus: rebuildStatuses,
+		Controllers:      controllers,
+		Replicas:         replicas,
+		BackupStatus:     backupStatus,
+		RestoreStatus:    restoreStatus,
+		PurgeStatus:      purgeStatuses,
+		RebuildStatus:    rebuildStatuses,
+		VolumeAttachment: volumeAttachment,
 	}
 
 	// api attach & detach calls are always allowed
@@ -1434,6 +1500,13 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	}
 
 	return r
+}
+
+func VolumeErrorDeref(volumeErr *longhorn.VolumeError) string {
+	if volumeErr == nil {
+		return ""
+	}
+	return volumeErr.Message
 }
 
 func toSnapshotCRResource(s *longhorn.Snapshot) *SnapshotCR {

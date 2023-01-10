@@ -11,6 +11,8 @@ type AttachInput struct {
 
 	AttacherType string `json:"attacherType,omitempty" yaml:"attacher_type,omitempty"`
 
+	AttachmentID string `json:"attachmentID,omitempty" yaml:"attachment_id,omitempty"`
+
 	DisableFrontend bool `json:"disableFrontend,omitempty" yaml:"disable_frontend,omitempty"`
 
 	HostId string `json:"hostId,omitempty" yaml:"host_id,omitempty"`
