@@ -3,6 +3,8 @@ package recurringjob
 import (
 	"fmt"
 
+	"github.com/sirupsen/logrus"
+
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -51,6 +53,28 @@ func (r *recurringJobMutator) Create(request *admission.Request, newObj runtime.
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/labels", "value": {}}`)
 	}
 
+	log := logrus.WithFields(logrus.Fields{
+		"recurringJob": recurringjob.Name,
+		"task":         recurringjob.Spec.Task,
+	})
+	switch recurringjob.Spec.Task {
+	case longhorn.RecurringJobTypeSnapshotCleanup:
+		if recurringjob.Spec.Retain != 0 {
+			log.Debugf("Replacing ineffective retain value in RecurringJob: from %v to 0", recurringjob.Spec.Retain)
+			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/retain", "value": 0}`)
+		}
+	case longhorn.RecurringJobTypeSnapshotDelete:
+		if recurringjob.Spec.Retain < 0 {
+			log.Debugf("Replacing ineffective retain value in RecurringJob: from %v to 0", recurringjob.Spec.Retain)
+			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/retain", "value": 0}`)
+		}
+	default:
+		if recurringjob.Spec.Retain < 1 {
+			log.Debugf("Replacing invalid retain value in RecurringJob: from %v to 1", recurringjob.Spec.Retain)
+			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/retain", "value": 1}`)
+		}
+	}
+
 	return patchOps, nil
 }
 
@@ -67,6 +91,28 @@ func (r *recurringJobMutator) Update(request *admission.Request, oldObj runtime.
 	}
 	if newRecurringjob.Spec.Labels == nil {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/labels", "value": {}}`)
+	}
+
+	log := logrus.WithFields(logrus.Fields{
+		"recurringJob": newRecurringjob.Name,
+		"task":         newRecurringjob.Spec.Task,
+	})
+	switch newRecurringjob.Spec.Task {
+	case longhorn.RecurringJobTypeSnapshotCleanup:
+		if newRecurringjob.Spec.Retain != 0 {
+			log.Debugf("Replacing ineffective retain value in RecurringJob: from %v to 0", newRecurringjob.Spec.Retain)
+			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/retain", "value": 0}`)
+		}
+	case longhorn.RecurringJobTypeSnapshotDelete:
+		if newRecurringjob.Spec.Retain < 0 {
+			log.Debugf("Replacing ineffective retain value in RecurringJob: from %v to 0", newRecurringjob.Spec.Retain)
+			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/retain", "value": 0}`)
+		}
+	default:
+		if newRecurringjob.Spec.Retain < 1 {
+			log.Debugf("Replacing invalid retain value in RecurringJob: from %v to 1", newRecurringjob.Spec.Retain)
+			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/retain", "value": 1}`)
+		}
 	}
 
 	return patchOps, nil
