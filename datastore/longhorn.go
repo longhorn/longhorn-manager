@@ -3625,7 +3625,7 @@ func (s *DataStore) DeleteRecurringJob(name string) error {
 }
 
 func ValidateRecurringJob(job longhorn.RecurringJobSpec) error {
-	if job.Cron == "" || job.Task == "" || job.Name == "" || job.Retain == 0 {
+	if job.Cron == "" || job.Task == "" || job.Name == "" {
 		return fmt.Errorf("invalid job %+v", job)
 	}
 	if !isValidRecurringJobTask(job.Task) {
