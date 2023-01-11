@@ -369,3 +369,8 @@ func (s *DataStore) GetAllLonghornCustomResourceDefinitions() (runtime.Object, e
 	crdList.Items = longhornCRDs
 	return crdList, nil
 }
+
+// GetConfigMapWithoutCache return a new ConfigMap via Kubernetes client object for the given namespace and name
+func (s *DataStore) GetConfigMapWithoutCache(namespace, name string) (*corev1.ConfigMap, error) {
+	return s.kubeClient.CoreV1().ConfigMaps(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
