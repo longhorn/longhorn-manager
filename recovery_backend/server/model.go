@@ -18,6 +18,10 @@ type RecoveryBackendStatus struct {
 func NewSchema() *client.Schemas {
 	schemas := &client.Schemas{}
 
+	schemas.AddType("apiVersion", client.Resource{})
+	schemas.AddType("schema", client.Schema{})
+	schemas.AddType("error", client.ServerApiError{})
+
 	schemas.AddType("recoveryBackendInput", RecoveryBackendInput{})
 	schemas.AddType("recoveryBackendStatus", RecoveryBackendStatus{})
 

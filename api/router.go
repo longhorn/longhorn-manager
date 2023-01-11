@@ -30,7 +30,7 @@ func HandleError(s *client.Schemas, t HandleFuncWithError) http.Handler {
 			if !apierrors.IsConflict(errors.Cause(err)) {
 				break
 			}
-			logrus.Warnf("Retry API call due to conflict")
+			logrus.WithError(err).Warn("Retry API call due to conflict")
 			time.Sleep(RetryInterval)
 		}
 		if err != nil {
