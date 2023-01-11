@@ -13,6 +13,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 )
 
 type ClientID string
@@ -58,7 +59,7 @@ func (rb *RecoveryBackend) CreateConfigMap(hostname, version string) error {
 			return errors.Wrapf(err, "failed to create a configmap %v", configMapName)
 		}
 
-		cm, err := rb.Datastore.GetConfigMap(rb.Namespace, configMapName)
+		cm, err := rb.Datastore.GetConfigMapWithoutCache(rb.Namespace, configMapName)
 		if err != nil {
 			return errors.Wrapf(err, "failed to get the configmap %v", configMapName)
 		}
@@ -74,22 +75,25 @@ func (rb *RecoveryBackend) CreateConfigMap(hostname, version string) error {
 
 func (rb *RecoveryBackend) EndGrace(hostname, version string) error {
 	configMapName := types.GetConfigMapNameFromHostname(hostname)
-	cm, err := rb.Datastore.GetConfigMap(rb.Namespace, configMapName)
-	if err != nil {
-		return errors.Wrapf(err, "failed to get the configmap %v", configMapName)
-	}
 
-	oldVersion := cm.Annotations["version"]
+	_, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		cm, err := rb.Datastore.GetConfigMapWithoutCache(rb.Namespace, configMapName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get the configmap %v", configMapName)
+		}
 
-	// Switch to latest version
-	annotations := map[string]string{
-		"version": version,
-	}
-	cm.ObjectMeta.Annotations = annotations
+		oldVersion := cm.Annotations["version"]
 
-	// Remove old data
-	delete(cm.Data, oldVersion)
-	_, err = rb.Datastore.UpdateConfigMap(cm)
+		// Switch to latest version
+		annotations := map[string]string{
+			"version": version,
+		}
+		cm.ObjectMeta.Annotations = annotations
+
+		// Remove old data
+		delete(cm.Data, oldVersion)
+		return rb.Datastore.UpdateConfigMap(cm)
+	})
 
 	return err
 }
@@ -97,82 +101,86 @@ func (rb *RecoveryBackend) EndGrace(hostname, version string) error {
 func (rb *RecoveryBackend) AddClientID(hostname, version string, clientID ClientID) error {
 	configMapName := types.GetConfigMapNameFromHostname(hostname)
 
-	logrus.Infof("Add client '%v' in recovery backend %v (version %v)", clientID, configMapName, version)
+	logrus.Infof("Adding client '%v' in recovery backend %v (version %v)", clientID, configMapName, version)
 
-	cm, err := rb.Datastore.GetConfigMap(rb.Namespace, configMapName)
-	if err != nil {
-		return errors.Wrapf(err, "failed to get configmap %v", configMapName)
-	}
+	_, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		cm, err := rb.Datastore.GetConfigMapWithoutCache(rb.Namespace, configMapName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get configmap %v", configMapName)
+		}
 
-	dataStr := cm.Data[version]
-	if dataStr == "" {
-		return errors.Wrapf(err, "failed to get data from recovery backend %v (version %v)", configMapName, version)
-	}
+		dataStr := cm.Data[version]
+		if dataStr == "" {
+			return nil, errors.Wrapf(err, "failed to get data from recovery backend %v (version %v)", configMapName, version)
+		}
 
-	data := map[ClientID][]RevokeFileHandle{}
-	if err := json.Unmarshal([]byte(dataStr), &data); err != nil {
-		return errors.Wrapf(err, "unable to decode data from recovery backend %v (version %v)", configMapName, version)
-	}
+		data := map[ClientID][]RevokeFileHandle{}
+		if err := json.Unmarshal([]byte(dataStr), &data); err != nil {
+			return nil, errors.Wrapf(err, "unable to decode data from recovery backend %v (version %v)", configMapName, version)
+		}
 
-	if _, ok := data[clientID]; ok {
-		logrus.Infof("client %v is existing in recovery backend %v", clientID, configMapName)
-		return nil
-	}
+		if _, ok := data[clientID]; ok {
+			logrus.Infof("Client %v is existing in recovery backend %v", clientID, configMapName)
+			return nil, nil
+		}
 
-	data[clientID] = []RevokeFileHandle{}
-	dataByte, err := json.Marshal(data)
-	if err != nil {
-		return errors.Wrapf(err, "unable to encode data (recovery backend=%v, version %v)", configMapName, version)
-	}
+		data[clientID] = []RevokeFileHandle{}
+		dataByte, err := json.Marshal(data)
+		if err != nil {
+			return nil, errors.Wrapf(err, "unable to encode data (recovery backend=%v, version %v)", configMapName, version)
+		}
 
-	cm.Data[version] = string(dataByte)
-	_, err = rb.Datastore.UpdateConfigMap(cm)
+		cm.Data[version] = string(dataByte)
+		return rb.Datastore.UpdateConfigMap(cm)
+	})
 
 	return err
 }
 
 func (rb *RecoveryBackend) RemoveClientID(hostname string, clientID ClientID) error {
 	configMapName := types.GetConfigMapNameFromHostname(hostname)
-	logrus.Infof("Remove client '%v' in recovery backend %v", clientID, configMapName)
+	logrus.Infof("Removing client '%v' in recovery backend %v", clientID, configMapName)
 
-	cm, err := rb.Datastore.GetConfigMap(rb.Namespace, configMapName)
-	if err != nil {
-		return errors.Wrapf(err, "failed to get configmap %v", configMapName)
-	}
+	_, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		cm, err := rb.Datastore.GetConfigMapWithoutCache(rb.Namespace, configMapName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get configmap %v", configMapName)
+		}
 
-	version, ok := cm.Annotations["version"]
-	if !ok {
-		return errors.Wrapf(err, "failed to get version from configmap %v", configMapName)
-	}
+		version, ok := cm.Annotations["version"]
+		if !ok {
+			return nil, errors.Wrapf(err, "failed to get version from configmap %v", configMapName)
+		}
 
-	dataStr := cm.Data[version]
-	if dataStr == "" {
-		return errors.Wrapf(err, "failed to get data from recovery backend %v (version %v)", configMapName, version)
-	}
+		dataStr := cm.Data[version]
+		if dataStr == "" {
+			return nil, errors.Wrapf(err, "failed to get data from recovery backend %v (version %v)", configMapName, version)
+		}
 
-	data := map[ClientID][]RevokeFileHandle{}
-	if err := json.Unmarshal([]byte(dataStr), &data); err != nil {
-		return errors.Wrapf(err, "unable to decode data from recovery backend %v (version %v)", configMapName, version)
-	}
+		data := map[ClientID][]RevokeFileHandle{}
+		if err := json.Unmarshal([]byte(dataStr), &data); err != nil {
+			return nil, errors.Wrapf(err, "unable to decode data from recovery backend %v (version %v)", configMapName, version)
+		}
 
-	delete(data, clientID)
+		delete(data, clientID)
 
-	dataByte, err := json.Marshal(data)
-	if err != nil {
-		return errors.Wrapf(err, "unable to encode data (recovery backend=%v, version %v)", configMapName, version)
-	}
+		dataByte, err := json.Marshal(data)
+		if err != nil {
+			return nil, errors.Wrapf(err, "unable to encode data (recovery backend=%v, version %v)", configMapName, version)
+		}
 
-	cm.Data[version] = string(dataByte)
-	_, err = rb.Datastore.UpdateConfigMap(cm)
+		cm.Data[version] = string(dataByte)
+		return rb.Datastore.UpdateConfigMap(cm)
+	})
 
 	return err
 }
 
 func (rb *RecoveryBackend) ReadClientIDs(hostname string) ([]string, error) {
 	configMapName := types.GetConfigMapNameFromHostname(hostname)
-	logrus.Infof("Read clients from recovery backend %v", configMapName)
+	logrus.Infof("Reading clients from recovery backend %v", configMapName)
 
-	cm, err := rb.Datastore.GetConfigMap(rb.Namespace, configMapName)
+	cm, err := rb.Datastore.GetConfigMapWithoutCache(rb.Namespace, configMapName)
 	if err != nil {
 		return []string{}, errors.Wrapf(err, "failed to get configmap %v", configMapName)
 	}
@@ -203,42 +211,44 @@ func (rb *RecoveryBackend) ReadClientIDs(hostname string) ([]string, error) {
 
 func (rb *RecoveryBackend) AddRevokeFilehandle(hostname, version string, clientID ClientID, revokeFilehandle RevokeFileHandle) error {
 	configMapName := types.GetConfigMapNameFromHostname(hostname)
-	logrus.Infof("Add client %v revoke filehandle %v into recovery backend %v (version %v)",
+	logrus.Infof("Adding client %v revoke filehandle %v into recovery backend %v (version %v)",
 		clientID, revokeFilehandle, configMapName, version)
 
-	cm, err := rb.Datastore.GetConfigMap(rb.Namespace, configMapName)
-	if err != nil {
-		return errors.Wrapf(err, "failed to get configmap %v", configMapName)
-	}
+	_, err := util.RetryOnConflictCause(func() (interface{}, error) {
 
-	dataStr := cm.Data[version]
-	if dataStr == "" {
-		return errors.Wrapf(err, "failed to get data from recovery backend %v (version %v)", configMapName, version)
-	}
+		cm, err := rb.Datastore.GetConfigMapWithoutCache(rb.Namespace, configMapName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get configmap %v", configMapName)
+		}
 
-	data := map[ClientID][]RevokeFileHandle{}
-	if err := json.Unmarshal([]byte(dataStr), &data); err != nil {
-		return errors.Wrapf(err, "unable to decode data from recovery backend %v (version %v)", configMapName, version)
-	}
+		dataStr := cm.Data[version]
+		if dataStr == "" {
+			return nil, errors.Wrapf(err, "failed to get data from recovery backend %v (version %v)", configMapName, version)
+		}
 
-	if _, ok := data[clientID]; !ok {
-		return fmt.Errorf("client %v is not existing in recovery backend %v (version %v)", clientID, configMapName, version)
-	}
+		data := map[ClientID][]RevokeFileHandle{}
+		if err := json.Unmarshal([]byte(dataStr), &data); err != nil {
+			return nil, errors.Wrapf(err, "unable to decode data from recovery backend %v (version %v)", configMapName, version)
+		}
 
-	revokeFilehandles := data[clientID]
-	if len(revokeFilehandles) == 0 {
-		revokeFilehandles = []RevokeFileHandle{}
-	}
-	revokeFilehandles = append(revokeFilehandles, revokeFilehandle)
-	data[clientID] = revokeFilehandles
+		if _, ok := data[clientID]; !ok {
+			return nil, fmt.Errorf("client %v is not existing in recovery backend %v (version %v)", clientID, configMapName, version)
+		}
 
-	dataByte, err := json.Marshal(data)
-	if err != nil {
-		return errors.Wrapf(err, "unable to encode data (recovery backend %v, version %v)", configMapName, version)
-	}
+		revokeFilehandles := data[clientID]
+		if len(revokeFilehandles) == 0 {
+			revokeFilehandles = []RevokeFileHandle{}
+		}
+		revokeFilehandles = append(revokeFilehandles, revokeFilehandle)
+		data[clientID] = revokeFilehandles
 
-	cm.Data[version] = string(dataByte)
-	_, err = rb.Datastore.UpdateConfigMap(cm)
+		dataByte, err := json.Marshal(data)
+		if err != nil {
+			return nil, errors.Wrapf(err, "unable to encode data (recovery backend %v, version %v)", configMapName, version)
+		}
 
+		cm.Data[version] = string(dataByte)
+		return rb.Datastore.UpdateConfigMap(cm)
+	})
 	return err
 }
