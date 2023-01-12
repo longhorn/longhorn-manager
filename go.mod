@@ -35,16 +35,16 @@ require (
 	github.com/docker/go-connections v0.4.0
 	github.com/golang/protobuf v1.5.2
 	github.com/google/uuid v1.3.0
-	github.com/gorilla/handlers v1.4.2
+	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v0.0.0-20220609065820-a08f7f47442f
-	github.com/longhorn/backupstore v0.0.0-20221206091653-a8c2a47673e2
-	github.com/longhorn/go-iscsi-helper v0.0.0-20221219041640-6c94fb0d483a
-	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20221221061015-35357e3c051d
-	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20221227032035-a2efd12a5bfe
+	github.com/longhorn/backupstore v0.0.0-20230116054423-7eaab31c108a
+	github.com/longhorn/go-iscsi-helper v0.0.0-20230109055134-88c602ba3096
+	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230116072142-8a47bd0e0204
+	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230116082056-a6b25bfae679
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.1
 	github.com/rancher/dynamiclistener v0.3.1
@@ -72,6 +72,11 @@ require (
 	k8s.io/utils v0.0.0-20211116205334-6203023598ed
 	sigs.k8s.io/controller-runtime v0.10.1
 	sigs.k8s.io/yaml v1.3.0
+)
+
+require (
+	github.com/felixge/httpsnoop v1.0.1 // indirect
+	github.com/pierrec/lz4/v4 v4.1.17 // indirect
 )
 
 require (
@@ -124,7 +129,7 @@ require (
 	github.com/willf/bitset v1.1.10 // indirect
 	golang.org/x/crypto v0.0.0-20220214200702-86341886e292 // indirect
 	golang.org/x/oauth2 v0.0.0-20210819190943-2bc19b11175f // indirect
-	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
+	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4 // indirect
 	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
 	golang.org/x/text v0.4.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect

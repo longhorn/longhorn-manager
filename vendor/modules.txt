@@ -39,6 +39,9 @@ github.com/docker/go-connections/sockets
 # github.com/evanphx/json-patch v4.12.0+incompatible
 ## explicit
 github.com/evanphx/json-patch
+# github.com/felixge/httpsnoop v1.0.1
+## explicit; go 1.13
+github.com/felixge/httpsnoop
 # github.com/glycerine/go-unsnap-stream v0.0.0-20181221182339-f9677308dec2
 ## explicit
 github.com/glycerine/go-unsnap-stream
@@ -92,8 +95,8 @@ github.com/googleapis/gnostic/openapiv2
 # github.com/gorilla/context v1.1.1
 ## explicit
 github.com/gorilla/context
-# github.com/gorilla/handlers v1.4.2
-## explicit
+# github.com/gorilla/handlers v1.5.1
+## explicit; go 1.14
 github.com/gorilla/handlers
 # github.com/gorilla/mux v1.8.0
 ## explicit; go 1.12
@@ -130,25 +133,25 @@ github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/rpc
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20221206091653-a8c2a47673e2
+# github.com/longhorn/backupstore v0.0.0-20230116054423-7eaab31c108a
 ## explicit; go 1.13
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-iscsi-helper v0.0.0-20221219041640-6c94fb0d483a
+# github.com/longhorn/go-iscsi-helper v0.0.0-20230109055134-88c602ba3096
 ## explicit; go 1.13
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20221221061015-35357e3c051d
+# github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230116072142-8a47bd0e0204
 ## explicit; go 1.13
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
 github.com/longhorn/longhorn-engine/proto/ptypes
-# github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20221227032035-a2efd12a5bfe
+# github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230116082056-a6b25bfae679
 ## explicit; go 1.17
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -187,6 +190,13 @@ github.com/opencontainers/runc/libcontainer/utils
 # github.com/philhofer/fwd v1.0.0
 ## explicit
 github.com/philhofer/fwd
+# github.com/pierrec/lz4/v4 v4.1.17
+## explicit; go 1.14
+github.com/pierrec/lz4/v4
+github.com/pierrec/lz4/v4/internal/lz4block
+github.com/pierrec/lz4/v4/internal/lz4errors
+github.com/pierrec/lz4/v4/internal/lz4stream
+github.com/pierrec/lz4/v4/internal/xxh32
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors
@@ -322,7 +332,7 @@ golang.org/x/net/trace
 ## explicit; go 1.11
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
-# golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
+# golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4
 ## explicit
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore

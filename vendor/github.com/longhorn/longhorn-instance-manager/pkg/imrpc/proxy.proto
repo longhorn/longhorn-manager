@@ -142,6 +142,8 @@ message EngineSnapshotBackupRequest {
 	string backing_image_name = 5;
 	string backing_image_checksum = 6;
 	map<string, string> labels = 7;
+	string compression_method = 9;
+	int32 concurrent_limit = 10;
 }
 
 message EngineSnapshotBackupProxyResponse {
@@ -175,6 +177,7 @@ message EngineBackupRestoreRequest {
 	string url = 3;
 	string target = 4;
 	string volume_name = 5;
+	int32 concurrent_limit = 6;
 }
 
 message EngineBackupRestoreProxyResponse {
