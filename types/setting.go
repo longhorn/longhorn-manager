@@ -280,7 +280,7 @@ var (
 
 	SettingDefinitionBackupTarget = SettingDefinition{
 		DisplayName: "Backup Target",
-		Description: "The endpoint used to access the backupstore. NFS and S3 are supported.",
+		Description: "The endpoint used to access the backupstore. NFS, CIFS and S3 are supported.",
 		Category:    SettingCategoryBackup,
 		Type:        SettingTypeString,
 		Required:    false,
