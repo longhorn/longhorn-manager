@@ -8,9 +8,8 @@ import (
 	rpc "github.com/longhorn/longhorn-instance-manager/pkg/imrpc"
 )
 
-func (c *ProxyClient) SnapshotBackup(serviceAddress,
-	backupName, snapshotName, backupTarget,
-	backingImageName, backingImageChecksum string,
+func (c *ProxyClient) SnapshotBackup(serviceAddress, backupName, snapshotName, backupTarget,
+	backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int,
 	labels map[string]string, envs []string) (backupID, replicaAddress string, err error) {
 	input := map[string]string{
 		"serviceAddress": serviceAddress,
@@ -33,6 +32,8 @@ func (c *ProxyClient) SnapshotBackup(serviceAddress,
 		BackupTarget:         backupTarget,
 		BackingImageName:     backingImageName,
 		BackingImageChecksum: backingImageChecksum,
+		CompressionMethod:    compressionMethod,
+		ConcurrentLimit:      int32(concurrentLimit),
 		Labels:               labels,
 	}
 	recv, err := c.service.SnapshotBackup(getContextWithGRPCTimeout(c.ctx), req)
@@ -79,7 +80,7 @@ func (c *ProxyClient) SnapshotBackupStatus(serviceAddress, backupName, replicaAd
 	return status, nil
 }
 
-func (c *ProxyClient) BackupRestore(serviceAddress, url, target, volumeName string, envs []string) (err error) {
+func (c *ProxyClient) BackupRestore(serviceAddress, url, target, volumeName string, envs []string, concurrentLimit int) (err error) {
 	input := map[string]string{
 		"serviceAddress": serviceAddress,
 		"url":            url,
@@ -102,10 +103,11 @@ func (c *ProxyClient) BackupRestore(serviceAddress, url, target, volumeName stri
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
 			Address: serviceAddress,
 		},
-		Envs:       envs,
-		Url:        url,
-		Target:     target,
-		VolumeName: volumeName,
+		Envs:            envs,
+		Url:             url,
+		Target:          target,
+		VolumeName:      volumeName,
+		ConcurrentLimit: int32(concurrentLimit),
 	}
 	recv, err := c.service.BackupRestore(getContextWithGRPCTimeout(c.ctx), req)
 	if err != nil {
