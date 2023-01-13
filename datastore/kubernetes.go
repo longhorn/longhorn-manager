@@ -274,6 +274,9 @@ func (s *DataStore) ListStorageClassesInPersistentVolumesWithLonghornProvisioner
 
 	scList := []string{}
 	for _, pv := range pvList {
+		if pv.Spec.CSI == nil {
+			continue
+		}
 		if pv.Spec.CSI.Driver != types.LonghornDriverName {
 			continue
 		}
