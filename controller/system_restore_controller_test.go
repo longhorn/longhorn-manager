@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -473,6 +474,9 @@ func fakeSystemRolloutPersistentVolumes(fakeObjs map[SystemRolloutCRName]*corev1
 		persistentVolume.Name = name
 		persistentVolume.Spec.ClaimRef = fakeObj.Spec.ClaimRef
 		persistentVolume.Spec.StorageClassName = fakeObj.Spec.StorageClassName
+		if !reflect.DeepEqual(fakeObj.Spec.PersistentVolumeSource, corev1.PersistentVolumeSource{}) {
+			persistentVolume.Spec.PersistentVolumeSource = fakeObj.Spec.PersistentVolumeSource
+		}
 		exist, err := clientInterface.Create(context.TODO(), persistentVolume, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
@@ -842,13 +846,13 @@ func fakeSystemRolloutStorageClasses(fakeObjs map[SystemRolloutCRName]*storagev1
 		c.Assert(err, IsNil)
 	}
 
-	for k := range fakeObjs {
+	for k, obj := range fakeObjs {
 		name := string(k)
 		if strings.HasSuffix(name, TestIgnoreSuffix) {
 			continue
 		}
 
-		exist, err := clientInterface.Create(context.TODO(), newStorageClass(name), metav1.CreateOptions{})
+		exist, err := clientInterface.Create(context.TODO(), newStorageClass(name, obj.Provisioner), metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
 		err = indexer.Add(exist)

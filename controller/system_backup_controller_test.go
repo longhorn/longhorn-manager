@@ -54,13 +54,15 @@ type SystemBackupTestCase struct {
 	systemBackupName    string
 	systemBackupVersion string
 
+	existPersistentVolumes map[SystemRolloutCRName]*corev1.PersistentVolume
+
 	expectError                 bool
 	expectErrorConditionMessage string
 	expectState                 longhorn.SystemBackupState
 	expectRemove                bool
 }
 
-func (s *TestSuite) TestReconcileRolloutSave(c *C) {
+func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 	datastore.SystemBackupTimeout = 10 // 10 seconds
 
 	rolloutOwnerID := TestNode1
@@ -139,6 +141,27 @@ func (s *TestSuite) TestReconcileRolloutSave(c *C) {
 			expectState:     longhorn.SystemBackupStateNone,
 			isExistInRemote: true,
 		},
+		"system backup PersistentVolume source not from CSI": {
+			state:       longhorn.SystemBackupStateGenerating,
+			expectState: longhorn.SystemBackupStateUploading,
+
+			existPersistentVolumes: map[SystemRolloutCRName]*corev1.PersistentVolume{
+				SystemRolloutCRName(TestPVName): {
+					Spec: corev1.PersistentVolumeSpec{
+						ClaimRef: &corev1.ObjectReference{
+							Name:      TestPVCName,
+							Namespace: TestNamespace,
+						},
+						StorageClassName: TestStorageClassName,
+						PersistentVolumeSource: corev1.PersistentVolumeSource{
+							HostPath: &corev1.HostPathVolumeSource{
+								Path: "/fake",
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for name, tc := range testCases {
@@ -173,6 +196,8 @@ func (s *TestSuite) TestReconcileRolloutSave(c *C) {
 		fakeSystemRolloutSettingDefaultEngineImage(c, lhInformerFactory, lhClient)
 		fakeSystemRolloutBackupTargetDefault(c, lhInformerFactory, lhClient)
 		fakeSystemRolloutStorageClassesDefault(c, kubeInformerFactory, kubeClient)
+
+		fakeSystemRolloutPersistentVolumes(tc.existPersistentVolumes, c, kubeInformerFactory, kubeClient)
 
 		extensionsClient := apiextensionsfake.NewSimpleClientset()
 
