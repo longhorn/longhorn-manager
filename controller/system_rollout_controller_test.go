@@ -551,12 +551,8 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 							Name:      TestPVCName,
 							Namespace: TestNamespace,
 						},
-						StorageClassName: TestStorageClassName,
-						PersistentVolumeSource: corev1.PersistentVolumeSource{
-							CSI: &corev1.CSIPersistentVolumeSource{
-								VolumeHandle: TestVolumeName,
-							},
-						},
+						StorageClassName:       TestStorageClassName,
+						PersistentVolumeSource: newPVSourceCSI(),
 					},
 				},
 			},
@@ -567,12 +563,8 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 							Name:      TestPVCName + TestDiffSuffix,
 							Namespace: TestNamespace,
 						},
-						StorageClassName: TestStorageClassName,
-						PersistentVolumeSource: corev1.PersistentVolumeSource{
-							CSI: &corev1.CSIPersistentVolumeSource{
-								VolumeHandle: TestVolumeName,
-							},
-						},
+						StorageClassName:       TestStorageClassName,
+						PersistentVolumeSource: newPVSourceCSI(),
 					},
 				},
 			},
@@ -583,12 +575,8 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 							Name:      TestPVCName,
 							Namespace: TestNamespace,
 						},
-						StorageClassName: TestStorageClassName,
-						PersistentVolumeSource: corev1.PersistentVolumeSource{
-							CSI: &corev1.CSIPersistentVolumeSource{
-								VolumeHandle: TestVolumeName,
-							},
-						},
+						StorageClassName:       TestStorageClassName,
+						PersistentVolumeSource: newPVSourceCSI(),
 					},
 				},
 			},
@@ -606,12 +594,8 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 							Name:      TestPVCName,
 							Namespace: TestNamespace,
 						},
-						StorageClassName: TestStorageClassName,
-						PersistentVolumeSource: corev1.PersistentVolumeSource{
-							CSI: &corev1.CSIPersistentVolumeSource{
-								VolumeHandle: TestVolumeName,
-							},
-						},
+						StorageClassName:       TestStorageClassName,
+						PersistentVolumeSource: newPVSourceCSI(),
 					},
 				},
 			},
@@ -1263,12 +1247,8 @@ func (tc *SystemRolloutTestCase) initTestCase() {
 					Name:      pvc.Name,
 					Namespace: TestNamespace,
 				},
-				StorageClassName: *pvc.Spec.StorageClassName,
-				PersistentVolumeSource: corev1.PersistentVolumeSource{
-					CSI: &corev1.CSIPersistentVolumeSource{
-						VolumeHandle: string(volumeName),
-					},
-				},
+				StorageClassName:       *pvc.Spec.StorageClassName,
+				PersistentVolumeSource: newPVSourceCSI(),
 			},
 		}
 		tc.backupPersistentVolumes[volumeName] = tc.expectRestoredPersistentVolumes[volumeName]
