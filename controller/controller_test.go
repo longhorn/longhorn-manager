@@ -416,12 +416,15 @@ func newServiceAccount(name string) *corev1.ServiceAccount {
 	}
 }
 
-func newStorageClass(name string) *storagev1.StorageClass {
+func newStorageClass(name, provisioner string) *storagev1.StorageClass {
+	if provisioner == "" {
+		provisioner = types.LonghornDriverName
+	}
 	return &storagev1.StorageClass{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Provisioner: types.LonghornDriverName,
+		Provisioner: provisioner,
 	}
 }
 

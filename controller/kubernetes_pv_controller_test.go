@@ -71,18 +71,8 @@ func newPV() *corev1.PersistentVolume {
 			Capacity: corev1.ResourceList{
 				corev1.ResourceStorage: *resource.NewQuantity(1, resource.BinarySI),
 			},
-			VolumeMode: &pvcFilesystemMode,
-			PersistentVolumeSource: corev1.PersistentVolumeSource{
-				CSI: &corev1.CSIPersistentVolumeSource{
-					Driver: types.LonghornDriverName,
-					FSType: "ext4",
-					VolumeAttributes: map[string]string{
-						"numberOfReplicas":    "3",
-						"staleReplicaTimeout": "30",
-					},
-					VolumeHandle: TestVolumeName,
-				},
-			},
+			VolumeMode:             &pvcFilesystemMode,
+			PersistentVolumeSource: newPVSourceCSI(),
 			ClaimRef: &corev1.ObjectReference{
 				Name:      TestPVCName,
 				Namespace: TestNamespace,
@@ -91,6 +81,20 @@ func newPV() *corev1.PersistentVolume {
 		},
 		Status: corev1.PersistentVolumeStatus{
 			Phase: corev1.VolumeBound,
+		},
+	}
+}
+
+func newPVSourceCSI() corev1.PersistentVolumeSource {
+	return corev1.PersistentVolumeSource{
+		CSI: &corev1.CSIPersistentVolumeSource{
+			Driver: types.LonghornDriverName,
+			FSType: "ext4",
+			VolumeAttributes: map[string]string{
+				"numberOfReplicas":    "3",
+				"staleReplicaTimeout": "30",
+			},
+			VolumeHandle: TestVolumeName,
 		},
 	}
 }
