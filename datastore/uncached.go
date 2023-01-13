@@ -294,6 +294,9 @@ func (s *DataStore) GetAllPersistentVolumesWithLonghornProvisioner() (runtime.Ob
 
 	longhornPVs := []corev1.PersistentVolume{}
 	for _, pv := range pvList.Items {
+		if pv.Spec.CSI == nil {
+			continue
+		}
 		if pv.Spec.CSI.Driver != types.LonghornDriverName {
 			continue
 		}
