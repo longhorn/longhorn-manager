@@ -852,6 +852,10 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 
 	// TODO: find a more advanced way to handle invocations for incompatible running engines
+	im, err := m.ds.GetInstanceManagerRO(engine.Status.InstanceManagerName)
+	if err != nil {
+		return err
+	}
 	cliAPIVersion, err := m.ds.GetEngineImageCLIAPIVersion(engine.Status.CurrentImage)
 	if err != nil {
 		return err
@@ -905,12 +909,15 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		}
 		engine.Status.RebuildStatus = rebuildStatus
 
-		// Check and correct flag UnmapMarkSnapChainRemoved for the engine and replicas
-		engine.Status.UnmapMarkSnapChainRemovedEnabled = volumeInfo.UnmapMarkSnapChainRemoved
-		if engine.Spec.UnmapMarkSnapChainRemovedEnabled != volumeInfo.UnmapMarkSnapChainRemoved {
-			if err := engineClientProxy.VolumeUnmapMarkSnapChainRemovedSet(engine); err != nil {
-				return errors.Wrapf(err, "failed to correct flag UnmapMarkSnapChainRemoved from %v to %v",
-					volumeInfo.UnmapMarkSnapChainRemoved, engine.Spec.UnmapMarkSnapChainRemovedEnabled)
+		// It's meaningless to sync the trim related field for old engines or engines in old engine instance managers
+		if cliAPIVersion >= 7 && im.Status.APIVersion >= 3 {
+			// Check and correct flag UnmapMarkSnapChainRemoved for the engine and replicas
+			engine.Status.UnmapMarkSnapChainRemovedEnabled = volumeInfo.UnmapMarkSnapChainRemoved
+			if engine.Spec.UnmapMarkSnapChainRemovedEnabled != volumeInfo.UnmapMarkSnapChainRemoved {
+				if err := engineClientProxy.VolumeUnmapMarkSnapChainRemovedSet(engine); err != nil {
+					return errors.Wrapf(err, "failed to correct flag UnmapMarkSnapChainRemoved from %v to %v",
+						volumeInfo.UnmapMarkSnapChainRemoved, engine.Spec.UnmapMarkSnapChainRemovedEnabled)
+				}
 			}
 		}
 	} else {
@@ -935,11 +942,6 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			return err
 		}
 		existingEngine = engine.DeepCopy()
-	}
-
-	im, err := m.ds.GetInstanceManagerRO(engine.Status.InstanceManagerName)
-	if err != nil {
-		return err
 	}
 
 	requireExpansion, err := IsValidForExpansion(engine, cliAPIVersion, im.Status.APIVersion)
