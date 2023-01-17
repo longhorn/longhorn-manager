@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"os"
 	"sort"
 	"strconv"
@@ -23,8 +22,6 @@ import (
 	typedv1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
-
-	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	"github.com/longhorn/longhorn-manager/constant"
@@ -274,46 +271,6 @@ func createEventBroadcaster(config *rest.Config) (record.EventBroadcaster, error
 	return eventBroadcaster, nil
 }
 
-// handleVolumeDetachment decides whether the current recurring job should detach the volume.
-// It should detach the volume when:
-// 1. The volume is attached by this recurring job
-// 2. The volume state is VolumeStateAttached
-// NOTE:
-//
-//	The volume could remain attached when the recurring job pod gets force
-//	terminated and unable to complete detachment within the grace period. Thus
-//	there is a workaround in the recurring job controller to handle the
-//	detachment again (detachVolumeAutoAttachedByRecurringJob).
-func (job *Job) handleVolumeDetachment() {
-	volumeAPI := job.api.Volume
-	volumeName := job.volumeName
-	jobName := job.labels[types.RecurringJobLabel]
-	for {
-		volume, err := volumeAPI.ById(volumeName)
-		if err == nil {
-			if volume.LastAttachedBy != jobName {
-				return
-			}
-			// !volume.DisableFrontend condition makes sure that volume is detached by this recurring job,
-			// not by the auto-reattachment feature.
-			if volume.State == string(longhorn.VolumeStateDetached) && !volume.DisableFrontend {
-				job.logger.Infof("Volume %v is detached", volumeName)
-				return
-			}
-			if volume.State == string(longhorn.VolumeStateAttached) {
-				job.logger.Infof("Attempting to detach volume %v from all nodes", volumeName)
-				if _, err := volumeAPI.ActionDetach(volume, &longhornclient.DetachInput{HostId: ""}); err != nil {
-					job.logger.WithError(err).Info("Volume detach request failed")
-				}
-			}
-
-		} else {
-			job.logger.WithError(err).Infof("Could not get volume %v", volumeName)
-		}
-		time.Sleep(DetachingWaitInterval)
-	}
-}
-
 func (job *Job) run() (err error) {
 	job.logger.Info("job starts running")
 
@@ -328,38 +285,8 @@ func (job *Job) run() (err error) {
 		return fmt.Errorf("cannot run job for volume %v that is using %v engines", volume.Name, len(volume.Controllers))
 	}
 
-	defer job.handleVolumeDetachment()
-
 	if volume.State != string(longhorn.VolumeStateAttached) && volume.State != string(longhorn.VolumeStateDetached) {
 		return fmt.Errorf("volume %v is in an invalid state for recurring job: %v. Volume must be in state Attached or Detached", volumeName, volume.State)
-	}
-
-	if volume.State == string(longhorn.VolumeStateDetached) {
-		// Find a random ready node to attach the volume
-		// For load balancing purpose, the node need to be random
-		nodeToAttach, err := job.findARandomReadyNode(volume)
-		if err != nil {
-			return errors.Wrapf(err, "cannot do auto attaching for volume %v", volumeName)
-		}
-
-		jobName := job.labels[types.RecurringJobLabel]
-		// Automatically attach the volume
-		// Disable the volume's frontend make sure that pod cannot use the volume during the recurring job.
-		// This is necessary so that we can safely detach the volume when finishing the job.
-		job.logger.Infof("Automatically attach volume %v to node %v", volumeName, nodeToAttach)
-		if _, err = volumeAPI.ActionAttach(volume, &longhornclient.AttachInput{
-			DisableFrontend: true,
-			HostId:          nodeToAttach,
-			AttachedBy:      jobName,
-		}); err != nil {
-			return err
-		}
-
-		volume, err = job.waitForVolumeState(string(longhorn.VolumeStateAttached), VolumeAttachTimeout)
-		if err != nil {
-			return err
-		}
-		job.logger.Infof("Volume %v is in state %v", volumeName, volume.State)
 	}
 
 	// only recurring job types `snapshot` and `backup` need to check if old snapshots can be deleted or not before creating
@@ -414,14 +341,66 @@ func (job *Job) doSnapshot() (err error) {
 		return errors.Wrapf(err, "could not get volume %v", volumeName)
 	}
 
-	if _, err := volumeAPI.ActionSnapshotCreate(volume, &longhornclient.SnapshotInput{
-		Labels: job.labels,
-		Name:   job.snapshotName,
-	}); err != nil {
+	// get all snapshot CR belong to this recurring job
+	snapshotCRList, err := job.api.Volume.ActionSnapshotCRList(volume)
+	if err != nil {
 		return err
 	}
 
-	job.logger.Infof("Created the snapshot %v", job.snapshotName)
+	snapshotCRs := filterSnapshotCRsWithLabel(snapshotCRList.Data, types.RecurringJobLabel, job.labels[types.RecurringJobLabel])
+
+	// Check if the latest snapshot of this recurring job is pending creation
+	// If yes, update the snapshot name to be that snapshot
+	// If no, create a new one with new snapshot job name
+	var latestSnapshotCR longhornclient.SnapshotCR
+	var latestSnapshotCRCreationTime time.Time
+	for _, snapshotCR := range snapshotCRs {
+		requestCreateNewSnapshot := snapshotCR.CreateSnapshot
+		if !requestCreateNewSnapshot {
+			// This snapshot was created by old snapshot API (AKA old recurring job).
+			// So we skip considering it
+			continue
+		}
+		t, err := time.Parse(time.RFC3339, snapshotCR.CrCreationTime)
+		if err != nil {
+			logrus.Errorf("Failed to parse datetime %v for snapshot %v",
+				snapshotCR.CrCreationTime, snapshotCR.Name)
+			continue
+		}
+		if t.After(latestSnapshotCRCreationTime) {
+			latestSnapshotCRCreationTime = t
+			latestSnapshotCR = snapshotCR
+		}
+	}
+
+	alreadyCreatedBefore := latestSnapshotCR.CreationTime != ""
+	if latestSnapshotCR.Name != "" && !alreadyCreatedBefore {
+		job.snapshotName = latestSnapshotCR.Name
+	} else {
+		_, err = job.api.Volume.ActionSnapshotCRCreate(volume, &longhornclient.SnapshotCRInput{
+			Labels: job.labels,
+			Name:   job.snapshotName,
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	// wait for the snapshot to be completed
+	for {
+		existSnapshotCR, err := job.api.Volume.ActionSnapshotCRGet(volume, &longhornclient.SnapshotCRInput{
+			Name: job.snapshotName,
+		})
+		if err != nil {
+			return fmt.Errorf("error while waiting for snapshot %v to be ready: %v", job.snapshotName, err)
+		}
+		if existSnapshotCR.ReadyToUse {
+			break
+		}
+		time.Sleep(WaitInterval)
+	}
+
+	job.logger.Infof("Complete creating the snapshot %v", job.snapshotName)
 
 	return nil
 }
@@ -436,29 +415,27 @@ func (job *Job) doSnapshotCleanup(backupDone bool) (err error) {
 		}
 	}()
 
-	volumeAPI := job.api.Volume
 	volumeName := job.volumeName
-	volume, err := volumeAPI.ById(volumeName)
+	volume, err := job.api.Volume.ById(volumeName)
 	if err != nil {
 		return errors.Wrapf(err, "could not get volume %v", volumeName)
 	}
 
-	collection, err := volumeAPI.ActionSnapshotList(volume)
+	collection, err := job.api.Volume.ActionSnapshotCRList(volume)
 	if err != nil {
 		return err
 	}
 
-	deleteSnapshotNames := job.listSnapshotNamesToCleanup(collection.Data, backupDone)
-	if err := job.deleteSnapshots(deleteSnapshotNames, volume, volumeAPI); err != nil {
-		return err
-	}
-
-	shouldPurgeSnapshots := len(deleteSnapshotNames) > 0 || job.task == longhorn.RecurringJobTypeSnapshotCleanup || job.task == longhorn.RecurringJobTypeSnapshotDelete
-	if shouldPurgeSnapshots {
-		if err := job.purgeSnapshots(volume, volumeAPI); err != nil {
+	cleanupSnapshotNames := job.listSnapshotNamesToCleanup(collection.Data, backupDone)
+	for _, snapshotName := range cleanupSnapshotNames {
+		if _, err := job.api.Volume.ActionSnapshotCRDelete(volume, &longhornclient.SnapshotCRInput{
+			Name: snapshotName,
+		}); err != nil {
 			return err
 		}
+		job.logger.Debugf("Cleaned up snapshot CR %v for %v", snapshotName, volumeName)
 	}
+
 	return nil
 }
 
@@ -543,43 +520,43 @@ type NameWithTimestamp struct {
 	Timestamp time.Time
 }
 
-func (job *Job) listSnapshotNamesToCleanup(snapshots []longhornclient.Snapshot, backupDone bool) []string {
+func (job *Job) listSnapshotNamesToCleanup(snapshotCRs []longhornclient.SnapshotCR, backupDone bool) []string {
 	switch job.task {
 	case longhorn.RecurringJobTypeSnapshotDelete:
-		return job.filterExpiredSnapshots(snapshots)
+		return job.filterExpiredSnapshots(snapshotCRs)
 	case longhorn.RecurringJobTypeSnapshotCleanup:
 		return []string{}
 	default:
-		return job.filterExpiredSnapshotsOfCurrentRecurringJob(snapshots, backupDone)
+		return job.filterExpiredSnapshotsOfCurrentRecurringJob(snapshotCRs, backupDone)
 	}
 }
 
-func (job *Job) filterExpiredSnapshotsOfCurrentRecurringJob(snapshots []longhornclient.Snapshot, backupDone bool) []string {
+func (job *Job) filterExpiredSnapshotsOfCurrentRecurringJob(snapshotCRs []longhornclient.SnapshotCR, backupDone bool) []string {
 	jobLabel, found := job.labels[types.RecurringJobLabel]
 	if !found {
 		return []string{}
 	}
 
 	// Only consider deleting the snapshots that were created by our current job
-	snapshots = filterSnapshotsWithLabel(snapshots, types.RecurringJobLabel, jobLabel)
+	snapshotCRs = filterSnapshotCRsWithLabel(snapshotCRs, types.RecurringJobLabel, jobLabel)
 
 	if job.task == longhorn.RecurringJobTypeSnapshot || job.task == longhorn.RecurringJobTypeSnapshotForceCreate {
-		return filterExpiredItems(snapshotsToNameWithTimestamps(snapshots), job.retain)
+		return filterExpiredItems(snapshotCRsToNameWithTimestamps(snapshotCRs), job.retain)
 	}
 
 	// For the recurring backup job, only keep the snapshot of the last backup and the current snapshot
-	retainingSnapshots := map[string]struct{}{job.snapshotName: {}}
+	retainingSnapshotCRs := map[string]struct{}{job.snapshotName: {}}
 	if !backupDone {
 		lastBackup, err := job.getLastBackup()
 		if err == nil && lastBackup != nil {
-			retainingSnapshots[lastBackup.SnapshotName] = struct{}{}
+			retainingSnapshotCRs[lastBackup.SnapshotName] = struct{}{}
 		}
 	}
-	return snapshotsToNames(filterSnapshotsNotInTargets(snapshots, retainingSnapshots))
+	return snapshotCRsToNames(filterSnapshotCRsNotInTargets(snapshotCRs, retainingSnapshotCRs))
 }
 
-func (job *Job) filterExpiredSnapshots(snapshots []longhornclient.Snapshot) []string {
-	return filterExpiredItems(snapshotsToNameWithTimestamps(snapshots), job.retain)
+func (job *Job) filterExpiredSnapshots(snapshotCRs []longhornclient.SnapshotCR) []string {
+	return filterExpiredItems(snapshotCRsToNameWithTimestamps(snapshotCRs), job.retain)
 }
 
 func (job *Job) doRecurringBackup() (err error) {
@@ -588,27 +565,23 @@ func (job *Job) doRecurringBackup() (err error) {
 			job.logger.Info("Finished recurring backup")
 		}
 	}()
-	backupAPI := job.api.BackupVolume
-	volumeAPI := job.api.Volume
-	snapshot := job.snapshotName
-	volumeName := job.volumeName
 
 	defer func() {
-		err = errors.Wrapf(err, "failed to complete backupAndCleanup for %v", volumeName)
+		err = errors.Wrapf(err, "failed to complete backupAndCleanup for %v", job.volumeName)
 	}()
 
-	volume, err := volumeAPI.ById(volumeName)
+	volume, err := job.api.Volume.ById(job.volumeName)
 	if err != nil {
-		return errors.Wrapf(err, "could not get volume %v", volumeName)
+		return errors.Wrapf(err, "could not get volume %v", job.volumeName)
 	}
 
 	if err := job.doSnapshot(); err != nil {
 		return err
 	}
 
-	if _, err := volumeAPI.ActionSnapshotBackup(volume, &longhornclient.SnapshotInput{
+	if _, err := job.api.Volume.ActionSnapshotBackup(volume, &longhornclient.SnapshotInput{
 		Labels: job.labels,
-		Name:   snapshot,
+		Name:   job.snapshotName,
 	}); err != nil {
 		return err
 	}
@@ -619,32 +592,21 @@ func (job *Job) doRecurringBackup() (err error) {
 
 	// Wait for backup creation complete
 	for {
-		volume, err := volumeAPI.ById(volumeName)
+		volume, err := job.api.Volume.ById(job.volumeName)
 		if err != nil {
 			return err
 		}
 
-		hasRunningController := false // controller is the engine process
-		for _, controller := range volume.Controllers {
-			if controller.Running {
-				hasRunningController = true
-				break
-			}
-		}
-		if !hasRunningController {
-			return fmt.Errorf("the volume %v is detached on the middle of the backup process", volumeName)
-		}
-
 		var info *longhornclient.BackupStatus
 		for _, status := range volume.BackupStatus {
-			if status.Snapshot == snapshot {
+			if status.Snapshot == job.snapshotName {
 				info = &status
 				break
 			}
 		}
 
 		if info == nil {
-			return fmt.Errorf("cannot find the status of the backup for snapshot %v. It might because the engine has restarted", snapshot)
+			return fmt.Errorf("cannot find the status of the backup for snapshot %v. It might because the engine has restarted", job.snapshotName)
 		}
 
 		complete := false
@@ -669,27 +631,27 @@ func (job *Job) doRecurringBackup() (err error) {
 
 	defer func() {
 		if err != nil {
-			job.logger.WithError(err).Warnf("Created backup successfully but errored on cleanup for %v", volumeName)
+			job.logger.WithError(err).Warnf("Created backup successfully but errored on cleanup for %v", job.volumeName)
 			err = nil
 		}
 	}()
 
-	backupVolume, err := backupAPI.ById(volumeName)
+	backupVolume, err := job.api.BackupVolume.ById(job.volumeName)
 	if err != nil {
 		return err
 	}
-	backups, err := backupAPI.ActionBackupList(backupVolume)
+	backups, err := job.api.BackupVolume.ActionBackupList(backupVolume)
 	if err != nil {
 		return err
 	}
 	cleanupBackups := job.listBackupsForCleanup(backups.Data)
 	for _, backup := range cleanupBackups {
-		if _, err := backupAPI.ActionBackupDelete(backupVolume, &longhornclient.BackupInput{
+		if _, err := job.api.BackupVolume.ActionBackupDelete(backupVolume, &longhornclient.BackupInput{
 			Name: backup,
 		}); err != nil {
-			return fmt.Errorf("cleaned up backup %v failed for %v: %v", backup, volumeName, err)
+			return fmt.Errorf("cleaned up backup %v failed for %v: %v", backup, job.volumeName, err)
 		}
-		job.logger.Debugf("Cleaned up backup %v for %v", backup, volumeName)
+		job.logger.Debugf("Cleaned up backup %v for %v", backup, job.volumeName)
 	}
 
 	if err := job.doSnapshotCleanup(true); err != nil {
@@ -816,79 +778,28 @@ func (job *Job) waitForVolumeState(state string, timeout int) (*longhornclient.V
 	return nil, fmt.Errorf("timeout waiting for volume %v to be in state %v", volumeName, state)
 }
 
-// findARandomReadyNode return a random ready node to attach the volume
-// return error if there is no ready node
-func (job *Job) findARandomReadyNode(v *longhornclient.Volume) (string, error) {
-	nodeCollection, err := job.api.Node.List(longhornclient.NewListOpts())
-	if err != nil {
-		return "", err
-	}
-
-	engineImage, err := job.GetEngineImage(types.GetEngineImageChecksumName(v.CurrentImage))
-	if err != nil {
-		return "", err
-	}
-	if engineImage.Status.State != longhorn.EngineImageStateDeployed && engineImage.Status.State != longhorn.EngineImageStateDeploying {
-		return "", fmt.Errorf("error: the volume's engine image %v is in state: %v", engineImage.Name, engineImage.Status.State)
-	}
-
-	var readyNodeList []string
-	for _, node := range nodeCollection.Data {
-		var readyConditionInterface map[string]interface{}
-		for i := range node.Conditions {
-			con := node.Conditions[i].(map[string]interface{})
-			if con["type"] == longhorn.NodeConditionTypeReady {
-				readyConditionInterface = con
-			}
-		}
-
-		if readyConditionInterface != nil {
-			// convert the interface to json
-			jsonString, err := json.Marshal(readyConditionInterface)
-			if err != nil {
-				return "", err
-			}
-
-			readyCondition := longhorn.Condition{}
-
-			if err := json.Unmarshal(jsonString, &readyCondition); err != nil {
-				return "", err
-			}
-
-			if readyCondition.Status == longhorn.ConditionStatusTrue && engineImage.Status.NodeDeploymentMap[node.Name] {
-				readyNodeList = append(readyNodeList, node.Name)
-			}
-		}
-	}
-
-	if len(readyNodeList) == 0 {
-		return "", fmt.Errorf("cannot find a ready node")
-	}
-	return readyNodeList[rand.Intn(len(readyNodeList))], nil
-}
-
-func filterSnapshots(snapshots []longhornclient.Snapshot, predicate func(snapshot longhornclient.Snapshot) bool) []longhornclient.Snapshot {
-	filtered := []longhornclient.Snapshot{}
-	for _, snapshot := range snapshots {
-		if predicate(snapshot) {
-			filtered = append(filtered, snapshot)
+func filterSnapshotCRs(snapshotCRs []longhornclient.SnapshotCR, predicate func(snapshot longhornclient.SnapshotCR) bool) []longhornclient.SnapshotCR {
+	filtered := []longhornclient.SnapshotCR{}
+	for _, snapshotCR := range snapshotCRs {
+		if predicate(snapshotCR) {
+			filtered = append(filtered, snapshotCR)
 		}
 	}
 	return filtered
 }
 
-// filterSnapshotsWithLabel return snapshots that have LabelKey and LabelValue
-func filterSnapshotsWithLabel(snapshots []longhornclient.Snapshot, labelKey, labelValue string) []longhornclient.Snapshot {
-	return filterSnapshots(snapshots, func(snapshot longhornclient.Snapshot) bool {
-		snapshotLabelValue, found := snapshot.Labels[labelKey]
+// filterSnapshotCRsWithLabel return snapshotCRs that have LabelKey and LabelValue
+func filterSnapshotCRsWithLabel(snapshotCRs []longhornclient.SnapshotCR, labelKey, labelValue string) []longhornclient.SnapshotCR {
+	return filterSnapshotCRs(snapshotCRs, func(snapshotCR longhornclient.SnapshotCR) bool {
+		snapshotLabelValue, found := snapshotCR.Labels[labelKey]
 		return found && labelValue == snapshotLabelValue
 	})
 }
 
-// filterSnapshotsNotInTargets returns snapshots that are not in the Targets
-func filterSnapshotsNotInTargets(snapshots []longhornclient.Snapshot, targets map[string]struct{}) []longhornclient.Snapshot {
-	return filterSnapshots(snapshots, func(snapshot longhornclient.Snapshot) bool {
-		if _, ok := targets[snapshot.Name]; !ok {
+// filterSnapshotCRsNotInTargets returns snapshots that are not in the Targets
+func filterSnapshotCRsNotInTargets(snapshotCRs []longhornclient.SnapshotCR, targets map[string]struct{}) []longhornclient.SnapshotCR {
+	return filterSnapshotCRs(snapshotCRs, func(snapshotCR longhornclient.SnapshotCR) bool {
+		if _, ok := targets[snapshotCR.Name]; !ok {
 			return true
 		}
 		return false
@@ -908,31 +819,27 @@ func filterExpiredItems(nts []NameWithTimestamp, retainCount int) []string {
 	return ret
 }
 
-func snapshotsToNameWithTimestamps(snapshots []longhornclient.Snapshot) []NameWithTimestamp {
+func snapshotCRsToNameWithTimestamps(snapshotCRs []longhornclient.SnapshotCR) []NameWithTimestamp {
 	result := []NameWithTimestamp{}
-	for _, snapshot := range snapshots {
-		if snapshot.Name == etypes.VolumeHeadName {
-			continue
-		}
-
-		t, err := time.Parse(time.RFC3339, snapshot.Created)
+	for _, snapshotCR := range snapshotCRs {
+		t, err := time.Parse(time.RFC3339, snapshotCR.CrCreationTime)
 		if err != nil {
-			logrus.Errorf("Failed to parse datetime %v for snapshot %v",
-				snapshot.Created, snapshot.Name)
+			logrus.Errorf("Failed to parse datetime %v for snapshot CR %v",
+				snapshotCR.CrCreationTime, snapshotCR.Name)
 			continue
 		}
 		result = append(result, NameWithTimestamp{
-			Name:      snapshot.Name,
+			Name:      snapshotCR.Name,
 			Timestamp: t,
 		})
 	}
 	return result
 }
 
-func snapshotsToNames(snapshots []longhornclient.Snapshot) []string {
+func snapshotCRsToNames(snapshotCRs []longhornclient.SnapshotCR) []string {
 	result := []string{}
-	for _, snapshot := range snapshots {
-		result = append(result, snapshot.Name)
+	for _, snapshotCR := range snapshotCRs {
+		result = append(result, snapshotCR.Name)
 	}
 	return result
 }
@@ -944,10 +851,12 @@ func filterVolumesForJob(allowDetached bool, volumes []longhorn.Volume, filterNa
 		if util.Contains(*filterNames, volume.Name) {
 			continue
 		}
+
 		if volume.Status.RestoreRequired {
 			logger.Debugf("Bypassed to create job for %v volume during restoring from the backup", volume.Name)
 			continue
 		}
+
 		if volume.Status.Robustness != longhorn.VolumeRobustnessFaulted &&
 			(volume.Status.State == longhorn.VolumeStateAttached || allowDetached) {
 			*filterNames = append(*filterNames, volume.Name)

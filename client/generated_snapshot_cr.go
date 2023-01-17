@@ -11,6 +11,8 @@ type SnapshotCR struct {
 
 	Children map[string]interface{} `json:"children,omitempty" yaml:"children,omitempty"`
 
+	CrCreationTime string `json:"crCreationTime,omitempty" yaml:"cr_creation_time,omitempty"`
+
 	CreateSnapshot bool `json:"createSnapshot,omitempty" yaml:"create_snapshot,omitempty"`
 
 	CreationTime string `json:"creationTime,omitempty" yaml:"creation_time,omitempty"`
