@@ -3,68 +3,71 @@ package client
 type RancherClient struct {
 	RancherBaseClient
 
-	ApiVersion                         ApiVersionOperations
-	Error                              ErrorOperations
-	AttachInput                        AttachInputOperations
-	DetachInput                        DetachInputOperations
-	SnapshotInput                      SnapshotInputOperations
-	SnapshotCRInput                    SnapshotCRInputOperations
-	BackupTarget                       BackupTargetOperations
-	Backup                             BackupOperations
-	BackupInput                        BackupInputOperations
-	BackupStatus                       BackupStatusOperations
-	Orphan                             OrphanOperations
-	RestoreStatus                      RestoreStatusOperations
-	PurgeStatus                        PurgeStatusOperations
-	RebuildStatus                      RebuildStatusOperations
-	ReplicaRemoveInput                 ReplicaRemoveInputOperations
-	SalvageInput                       SalvageInputOperations
-	ActivateInput                      ActivateInputOperations
-	ExpandInput                        ExpandInputOperations
-	EngineUpgradeInput                 EngineUpgradeInputOperations
-	Replica                            ReplicaOperations
-	Controller                         ControllerOperations
-	DiskUpdate                         DiskUpdateOperations
-	UpdateReplicaCountInput            UpdateReplicaCountInputOperations
-	UpdateReplicaAutoBalanceInput      UpdateReplicaAutoBalanceInputOperations
-	UpdateDataLocalityInput            UpdateDataLocalityInputOperations
-	UpdateAccessModeInput              UpdateAccessModeInputOperations
-	UpdateSnapshotDataIntegrityInput   UpdateSnapshotDataIntegrityInputOperations
-	UpdateBackupCompressionMethodInput UpdateBackupCompressionMethodInputOperations
-	WorkloadStatus                     WorkloadStatusOperations
-	CloneStatus                        CloneStatusOperations
-	Empty                              EmptyOperations
-	VolumeRecurringJob                 VolumeRecurringJobOperations
-	VolumeRecurringJobInput            VolumeRecurringJobInputOperations
-	PVCreateInput                      PVCreateInputOperations
-	PVCCreateInput                     PVCCreateInputOperations
-	SettingDefinition                  SettingDefinitionOperations
-	VolumeCondition                    VolumeConditionOperations
-	NodeCondition                      NodeConditionOperations
-	DiskCondition                      DiskConditionOperations
-	SupportBundle                      SupportBundleOperations
-	SupportBundleInitateInput          SupportBundleInitateInputOperations
-	Tag                                TagOperations
-	InstanceManager                    InstanceManagerOperations
-	BackingImageDiskFileStatus         BackingImageDiskFileStatusOperations
-	BackingImageCleanupInput           BackingImageCleanupInputOperations
-	Attachment                         AttachmentOperations
-	VolumeAttachment                   VolumeAttachmentOperations
-	Volume                             VolumeOperations
-	Snapshot                           SnapshotOperations
-	SnapshotCR                         SnapshotCROperations
-	BackupVolume                       BackupVolumeOperations
-	Setting                            SettingOperations
-	RecurringJob                       RecurringJobOperations
-	EngineImage                        EngineImageOperations
-	BackingImage                       BackingImageOperations
-	Node                               NodeOperations
-	DiskUpdateInput                    DiskUpdateInputOperations
-	DiskInfo                           DiskInfoOperations
-	KubernetesStatus                   KubernetesStatusOperations
-	BackupListOutput                   BackupListOutputOperations
-	SnapshotListOutput                 SnapshotListOutputOperations
-	SnapshotCRListOutput               SnapshotCRListOutputOperations
+	ApiVersion                           ApiVersionOperations
+	Error                                ErrorOperations
+	AttachInput                          AttachInputOperations
+	DetachInput                          DetachInputOperations
+	SnapshotInput                        SnapshotInputOperations
+	SnapshotCRInput                      SnapshotCRInputOperations
+	BackupTarget                         BackupTargetOperations
+	Backup                               BackupOperations
+	BackupInput                          BackupInputOperations
+	BackupStatus                         BackupStatusOperations
+	Orphan                               OrphanOperations
+	RestoreStatus                        RestoreStatusOperations
+	PurgeStatus                          PurgeStatusOperations
+	RebuildStatus                        RebuildStatusOperations
+	ReplicaRemoveInput                   ReplicaRemoveInputOperations
+	SalvageInput                         SalvageInputOperations
+	ActivateInput                        ActivateInputOperations
+	ExpandInput                          ExpandInputOperations
+	EngineUpgradeInput                   EngineUpgradeInputOperations
+	Replica                              ReplicaOperations
+	Controller                           ControllerOperations
+	DiskUpdate                           DiskUpdateOperations
+	UpdateReplicaCountInput              UpdateReplicaCountInputOperations
+	UpdateReplicaAutoBalanceInput        UpdateReplicaAutoBalanceInputOperations
+	UpdateDataLocalityInput              UpdateDataLocalityInputOperations
+	UpdateAccessModeInput                UpdateAccessModeInputOperations
+	UpdateSnapshotDataIntegrityInput     UpdateSnapshotDataIntegrityInputOperations
+	UpdateBackupCompressionInput         UpdateBackupCompressionInputOperations
+	UpdateUnmapMarkSnapChainRemovedInput UpdateUnmapMarkSnapChainRemovedInputOperations
+	WorkloadStatus                       WorkloadStatusOperations
+	CloneStatus                          CloneStatusOperations
+	Empty                                EmptyOperations
+	VolumeRecurringJob                   VolumeRecurringJobOperations
+	VolumeRecurringJobInput              VolumeRecurringJobInputOperations
+	PVCreateInput                        PVCreateInputOperations
+	PVCCreateInput                       PVCCreateInputOperations
+	SettingDefinition                    SettingDefinitionOperations
+	VolumeCondition                      VolumeConditionOperations
+	NodeCondition                        NodeConditionOperations
+	DiskCondition                        DiskConditionOperations
+	SupportBundle                        SupportBundleOperations
+	SupportBundleInitateInput            SupportBundleInitateInputOperations
+	Tag                                  TagOperations
+	InstanceManager                      InstanceManagerOperations
+	BackingImageDiskFileStatus           BackingImageDiskFileStatusOperations
+	BackingImageCleanupInput             BackingImageCleanupInputOperations
+	Attachment                           AttachmentOperations
+	VolumeAttachment                     VolumeAttachmentOperations
+	Volume                               VolumeOperations
+	Snapshot                             SnapshotOperations
+	SnapshotCR                           SnapshotCROperations
+	BackupVolume                         BackupVolumeOperations
+	Setting                              SettingOperations
+	RecurringJob                         RecurringJobOperations
+	EngineImage                          EngineImageOperations
+	BackingImage                         BackingImageOperations
+	Node                                 NodeOperations
+	DiskUpdateInput                      DiskUpdateInputOperations
+	DiskInfo                             DiskInfoOperations
+	KubernetesStatus                     KubernetesStatusOperations
+	BackupListOutput                     BackupListOutputOperations
+	SnapshotListOutput                   SnapshotListOutputOperations
+	SystemBackup                         SystemBackupOperations
+	SystemRestore                        SystemRestoreOperations
+	SnapshotCRListOutput                 SnapshotCRListOutputOperations
 }
 
 func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
@@ -99,7 +102,8 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.UpdateDataLocalityInput = newUpdateDataLocalityInputClient(client)
 	client.UpdateAccessModeInput = newUpdateAccessModeInputClient(client)
 	client.UpdateSnapshotDataIntegrityInput = newUpdateSnapshotDataIntegrityInputClient(client)
-	client.UpdateBackupCompressionMethodInput = newUpdateBackupCompressionMethodInputClient(client)
+	client.UpdateBackupCompressionInput = newUpdateBackupCompressionInputClient(client)
+	client.UpdateUnmapMarkSnapChainRemovedInput = newUpdateUnmapMarkSnapChainRemovedInputClient(client)
 	client.WorkloadStatus = newWorkloadStatusClient(client)
 	client.CloneStatus = newCloneStatusClient(client)
 	client.Empty = newEmptyClient(client)
@@ -133,6 +137,8 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.KubernetesStatus = newKubernetesStatusClient(client)
 	client.BackupListOutput = newBackupListOutputClient(client)
 	client.SnapshotListOutput = newSnapshotListOutputClient(client)
+	client.SystemBackup = newSystemBackupClient(client)
+	client.SystemRestore = newSystemRestoreClient(client)
 	client.SnapshotCRListOutput = newSnapshotCRListOutputClient(client)
 
 	return client

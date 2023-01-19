@@ -50,7 +50,7 @@ func (m *volumeAttachmentMutator) Create(request *admission.Request, newObj runt
 		return nil, werror.NewInvalidError(err.Error(), "spec.Volume")
 	}
 
-	patchOp, err := common.GetLonghornLabelsPatchOp(va, types.GetVolumeLabels(volume.Name))
+	patchOp, err := common.GetLonghornLabelsPatchOp(va, types.GetVolumeLabels(volume.Name), nil)
 	if err != nil {
 		err := errors.Wrapf(err, "failed to get labels patch for VolumeAttachment %v", va.Name)
 		return nil, werror.NewInvalidError(err.Error(), "")

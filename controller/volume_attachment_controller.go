@@ -255,7 +255,7 @@ func (vac *VolumeAttachmentController) handleVolumeDetachment(va *longhorn.Volum
 
 func shouldDoDetach(va *longhorn.VolumeAttachment, vol *longhorn.Volume) bool {
 	// For auto salvage logic
-	// TODO: create Auto Salvage controller to hanlde this logic instead of AD controller
+	// TODO: create Auto Salvage controller to handle this logic instead of AD controller
 	if vol.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 		return true
 	}
@@ -278,7 +278,7 @@ func (vac *VolumeAttachmentController) handleVolumeAttachment(va *longhorn.Volum
 	}
 
 	// For auto salvage logic
-	// TODO: create Auto Salvage controller to hanlde this logic instead of AD controller
+	// TODO: create Auto Salvage controller to handle this logic instead of AD controller
 	if vol.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 		return
 	}

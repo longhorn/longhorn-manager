@@ -35,6 +35,11 @@ func (in *Attachment) DeepCopyInto(out *Attachment) {
 			(*out)[key] = val
 		}
 	}
+	if in.Attached != nil {
+		in, out := &in.Attached, &out.Attached
+		*out = new(bool)
+		**out = **in
+	}
 	if in.AttachError != nil {
 		in, out := &in.AttachError, &out.AttachError
 		*out = new(VolumeError)

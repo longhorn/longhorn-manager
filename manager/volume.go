@@ -303,7 +303,7 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 	//	return nil, err
 	//}
 
-	// TODO: specical case for attachment by UI
+	// TODO: special case for attachment by UI
 
 	va, err := m.ds.GetLHVolumeAttachment(types.GetLHVolumeAttachmentNameFromVolumeName(v.Name))
 	if err != nil {
@@ -367,7 +367,7 @@ func (m *VolumeManager) Detach(name, attachmentID string, forceDetach bool) (v *
 	//	return v, nil
 	//}
 
-	// TODO: hanlde volume migration feature
+	// TODO: handle volume migration feature
 
 	//isMigratingVolume := v.Spec.Migratable && v.Spec.MigrationNodeID != "" && v.Spec.NodeID != ""
 	//isMigrationConfirmation := isMigratingVolume && nodeID == v.Spec.NodeID

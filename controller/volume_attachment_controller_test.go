@@ -9,6 +9,7 @@ import (
 	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
 	"github.com/sirupsen/logrus"
 	. "gopkg.in/check.v1"
+	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
@@ -327,9 +328,10 @@ func (s *TestSuite) TestVolumeAttachmentLifeCycle(c *C) {
 func (s *TestSuite) runVolumeAttachmentTestCase(c *C, tc *volumeAttachmentTestCase) {
 	kubeClient := fake.NewSimpleClientset()
 	lhClient := lhfake.NewSimpleClientset()
+	extensionsClient := apiextensionsfake.NewSimpleClientset()
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
 	lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, 0)
-	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, TestNamespace)
+	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, extensionsClient, TestNamespace)
 	logger := logrus.StandardLogger()
 
 	volumeIndexer := lhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()

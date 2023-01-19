@@ -11,6 +11,8 @@ type Volume struct {
 
 	BackingImage string `json:"backingImage,omitempty" yaml:"backing_image,omitempty"`
 
+	BackupCompressionMethod string `json:"backupCompressionMethod,omitempty" yaml:"backup_compression_method,omitempty"`
+
 	BackupStatus []BackupStatus `json:"backupStatus,omitempty" yaml:"backup_status,omitempty"`
 
 	CloneStatus CloneStatus `json:"cloneStatus,omitempty" yaml:"clone_status,omitempty"`
@@ -76,6 +78,8 @@ type Volume struct {
 	RestoreRequired bool `json:"restoreRequired,omitempty" yaml:"restore_required,omitempty"`
 
 	RestoreStatus []RestoreStatus `json:"restoreStatus,omitempty" yaml:"restore_status,omitempty"`
+
+	RestoreVolumeRecurringJob string `json:"restoreVolumeRecurringJob,omitempty" yaml:"restore_volume_recurring_job,omitempty"`
 
 	RevisionCounterDisabled bool `json:"revisionCounterDisabled,omitempty" yaml:"revision_counter_disabled,omitempty"`
 
@@ -163,9 +167,9 @@ type VolumeOperations interface {
 
 	ActionSnapshotRevert(*Volume, *SnapshotInput) (*Snapshot, error)
 
-	ActionUpdateAccessMode(*Volume, *UpdateAccessModeInput) (*Volume, error)
-
 	ActionTrimFilesystem(*Volume) (*Volume, error)
+
+	ActionUpdateAccessMode(*Volume, *UpdateAccessModeInput) (*Volume, error)
 }
 
 func newVolumeClient(rancherClient *RancherClient) *VolumeClient {
@@ -425,20 +429,20 @@ func (c *VolumeClient) ActionSnapshotRevert(resource *Volume, input *SnapshotInp
 	return resp, err
 }
 
-func (c *VolumeClient) ActionUpdateAccessMode(resource *Volume, input *UpdateAccessModeInput) (*Volume, error) {
-
-	resp := &Volume{}
-
-	err := c.rancherClient.doAction(VOLUME_TYPE, "updateAccessMode", &resource.Resource, input, resp)
-
-	return resp, err
-}
-
 func (c *VolumeClient) ActionTrimFilesystem(resource *Volume) (*Volume, error) {
 
 	resp := &Volume{}
 
 	err := c.rancherClient.doAction(VOLUME_TYPE, "trimFilesystem", &resource.Resource, nil, resp)
+
+	return resp, err
+}
+
+func (c *VolumeClient) ActionUpdateAccessMode(resource *Volume, input *UpdateAccessModeInput) (*Volume, error) {
+
+	resp := &Volume{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "updateAccessMode", &resource.Resource, input, resp)
 
 	return resp, err
 }
