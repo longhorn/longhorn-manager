@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/pkg/errors"
@@ -27,6 +28,8 @@ import (
 const (
 	// defaultStaleReplicaTimeout set to 48 hours (2880 minutes)
 	defaultStaleReplicaTimeout = 2880
+
+	defaultForceUmountTimeout = 30 * time.Second
 )
 
 // NewForcedParamsExec creates a osExecutor that allows for adding additional params to later occurring Run calls
@@ -247,8 +250,16 @@ func ensureMountPoint(targetPath string, mounter mount.Interface) (bool, error) 
 }
 
 func unmount(targetPath string, mounter mount.Interface) error {
-	logrus.Debugf("trying to unmount potential mount point %v", targetPath)
-	err := mounter.Unmount(targetPath)
+	var err error
+
+	forceUnmounter, ok := mounter.(mount.MounterForceUnmounter)
+	if ok {
+		logrus.Debugf("Trying to force unmount potential mount point %v", targetPath)
+		err = forceUnmounter.UnmountWithForce(targetPath, defaultForceUmountTimeout)
+	} else {
+		logrus.Debugf("Trying to unmount potential mount point %v", targetPath)
+		err = mounter.Unmount(targetPath)
+	}
 	if err == nil {
 		return nil
 	}
@@ -329,7 +340,7 @@ func makeFile(pathname string) error {
 	return nil
 }
 
-//requiresSharedAccess checks if the volume is requested to be multi node capable
+// requiresSharedAccess checks if the volume is requested to be multi node capable
 // a volume that is already in shared access mode, must be used via shared access
 // even if single node access is requested.
 func requiresSharedAccess(vol *longhornclient.Volume, cap *csi.VolumeCapability) bool {
