@@ -49,7 +49,7 @@ require (
 	github.com/prometheus/client_golang v1.11.1
 	github.com/rancher/dynamiclistener v0.3.1
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
-	github.com/rancher/wrangler v1.0.0
+	github.com/rancher/wrangler v1.0.2
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.8.1
@@ -57,7 +57,7 @@ require (
 	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4
 	golang.org/x/net v0.0.0-20220722155237-a158d28d115b
 	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f
-	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac
+	golang.org/x/time v0.0.0-20220210224613-90d013bbcef8
 	google.golang.org/grpc v1.51.0
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f
 	gopkg.in/yaml.v2 v2.4.0
@@ -69,13 +69,14 @@ require (
 	k8s.io/kubernetes v1.23.6
 	k8s.io/metrics v0.23.6
 	k8s.io/mount-utils v0.23.6
-	k8s.io/utils v0.0.0-20211116205334-6203023598ed
+	k8s.io/utils v0.0.0-20220210201930-3a6ce19ff2f9
 	sigs.k8s.io/controller-runtime v0.10.1
 	sigs.k8s.io/yaml v1.3.0
 )
 
 require (
 	github.com/felixge/httpsnoop v1.0.1 // indirect
+	github.com/google/gnostic v0.5.7-v3refs // indirect
 	github.com/pierrec/lz4/v4 v4.1.17 // indirect
 )
 
@@ -128,7 +129,7 @@ require (
 	github.com/tinylib/msgp v1.1.1-0.20190612170807-0573788bc2a8 // indirect
 	github.com/willf/bitset v1.1.10 // indirect
 	golang.org/x/crypto v0.0.0-20220214200702-86341886e292 // indirect
-	golang.org/x/oauth2 v0.0.0-20210819190943-2bc19b11175f // indirect
+	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8 // indirect
 	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4 // indirect
 	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
 	golang.org/x/text v0.4.0 // indirect
@@ -141,9 +142,9 @@ require (
 	k8s.io/component-base v0.23.6 // indirect
 	k8s.io/component-helpers v0.23.6 // indirect
 	k8s.io/klog v1.0.0 // indirect
-	k8s.io/klog/v2 v2.30.0 // indirect
+	k8s.io/klog/v2 v2.60.1 // indirect
 	k8s.io/kube-aggregator v0.24.0 // indirect
-	k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65 // indirect
-	sigs.k8s.io/json v0.0.0-20211020170558-c049b76a60c6 // indirect
+	k8s.io/kube-openapi v0.0.0-20220328201542-3ee0da9b0b42 // indirect
+	sigs.k8s.io/json v0.0.0-20211208200746-9f7c6b3444d2 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.1 // indirect
 )
