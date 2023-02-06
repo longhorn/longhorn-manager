@@ -822,7 +822,7 @@ var (
 		DisplayName: "Guaranteed Engine Manager CPU",
 		Description: "This integer value indicates how many percentage of the total allocatable CPU on each node will be reserved for each engine manager Pod. For example, 10 means 10% of the total CPU on a node will be allocated to each engine manager pod on this node. This will help maintain engine stability during high node workload. \n\n" +
 			"In order to prevent unexpected volume engine crash as well as guarantee a relative acceptable IO performance, you can use the following formula to calculate a value for this setting: \n\n" +
-			"Guaranteed Engine Manager CPU = The estimated max Longhorn volume engine count on a node * 0.1 / The total allocatable CPUs on the node * 100. \n\n" +
+			"`Guaranteed Engine Manager CPU = The estimated max Longhorn volume engine count on a node * 0.1 / The total allocatable CPUs on the node * 100` \n\n" +
 			"The result of above calculation doesn't mean that's the maximum CPU resources the Longhorn workloads require. To fully exploit the Longhorn volume I/O performance, you can allocate/guarantee more CPU resources via this setting. \n\n" +
 			"If it's hard to estimate the usage now, you can leave it with the default value, which is 12%. Then you can tune it when there is no running workload using Longhorn volumes. \n\n" +
 			"WARNING: \n\n" +
@@ -842,7 +842,7 @@ var (
 		DisplayName: "Guaranteed Replica Manager CPU",
 		Description: "This integer value indicates how many percentage of the total allocatable CPU on each node will be reserved for each replica manager Pod. 10 means 10% of the total CPU on a node will be allocated to each replica manager pod on this node. This will help maintain replica stability during high node workload. \n\n" +
 			"In order to prevent unexpected volume replica crash as well as guarantee a relative acceptable IO performance, you can use the following formula to calculate a value for this setting: \n\n" +
-			"Guaranteed Replica Manager CPU = The estimated max Longhorn volume replica count on a node * 0.1 / The total allocatable CPUs on the node * 100. \n\n" +
+			"`Guaranteed Replica Manager CPU = The estimated max Longhorn volume replica count on a node * 0.1 / The total allocatable CPUs on the node * 100` \n\n" +
 			"The result of above calculation doesn't mean that's the maximum CPU resources the Longhorn workloads require. To fully exploit the Longhorn volume I/O performance, you can allocate/guarantee more CPU resources via this setting. \n\n" +
 			"If it's hard to estimate the usage now, you can leave it with the default value, which is 12%. Then you can tune it when there is no running workload using Longhorn volumes. \n\n" +
 			"WARNING: \n\n" +
