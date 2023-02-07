@@ -1573,18 +1573,16 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			if err != nil {
 				return err
 			}
-			if !canIMLaunchReplica {
+			if canIMLaunchReplica {
+				if r.Spec.FailedAt == "" && r.Spec.EngineImage == v.Status.CurrentImage {
+					if r.Status.CurrentState == longhorn.InstanceStateStopped {
+						r.Spec.DesireState = longhorn.InstanceStateRunning
+					}
+				}
+			} else {
 				// wait for IM is starting when volume is upgrading
 				if vc.isVolumeUpgrading(v) {
 					continue
-				}
-				if r.Spec.FailedAt == "" {
-					r.Spec.FailedAt = vc.nowHandler()
-				}
-				r.Spec.DesireState = longhorn.InstanceStateStopped
-			} else if r.Spec.FailedAt == "" && r.Spec.EngineImage == v.Status.CurrentImage {
-				if r.Status.CurrentState == longhorn.InstanceStateStopped {
-					r.Spec.DesireState = longhorn.InstanceStateRunning
 				}
 			}
 			rs[r.Name] = r
