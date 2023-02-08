@@ -806,7 +806,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	for _, r := range tc.expectReplicas {
 		if r.Spec.NodeID == TestNode2 {
 			r.Spec.DesireState = longhorn.InstanceStateStopped
-			r.Spec.FailedAt = getTestNow()
 		} else {
 			r.Spec.DesireState = longhorn.InstanceStateRunning
 		}
