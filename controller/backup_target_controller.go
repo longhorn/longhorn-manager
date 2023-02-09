@@ -583,8 +583,7 @@ func (btc *BackupTargetController) cleanupSystemBackups() error {
 }
 
 // parseSystemBackupURI and return version and name.
-// ex: backupstore/system-backups/v1.4.0/sample-system-backup
-//     returns v1.4.0, sample-system-backup, nil
+// Ex: v1.4.0, sample-system-backup, nil = parseSystemBackupURI("backupstore/system-backups/v1.4.0/sample-system-backup")
 func parseSystemBackupURI(uri string) (version, name string, err error) {
 	split := strings.Split(uri, "/")
 	if len(split) < 2 {

@@ -246,10 +246,11 @@ func NewJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName stri
 // 1. The volume is attached by this recurring job
 // 2. The volume state is VolumeStateAttached
 // NOTE:
-//   The volume could remain attached when the recurring job pod gets force
-//   terminated and unable to complete detachment within the grace period. Thus
-//   there is a workaround in the recurring job controller to handle the
-//   detachment again (detachVolumeAutoAttachedByRecurringJob).
+//
+//	The volume could remain attached when the recurring job pod gets force
+//	terminated and unable to complete detachment within the grace period. Thus
+//	there is a workaround in the recurring job controller to handle the
+//	detachment again (detachVolumeAutoAttachedByRecurringJob).
 func (job *Job) handleVolumeDetachment() {
 	volumeAPI := job.api.Volume
 	volumeName := job.volumeName
