@@ -464,12 +464,13 @@ func limitAutomaticEngineUpgradePerNode(candidates, inProgress map[string][]*lon
 // and map of volumes that are upgrading engine image
 // A volume is qualified for engine image upgrading if it meets one of the following case:
 // Case 1:
-//   1. Volume is in detached state
-//   2. newEngineImageResource is deployed on the all volume's replicas' nodes
+//  1. Volume is in detached state
+//  2. newEngineImageResource is deployed on the all volume's replicas' nodes
+//
 // Case 2:
-//   1. Volume is not in engine upgrading process
-//   2. newEngineImageResource is deployed on attaching node and the all volume's replicas' nodes
-//   3. Volume is in attached state and it is able to do live upgrade
+//  1. Volume is not in engine upgrading process
+//  2. newEngineImageResource is deployed on attaching node and the all volume's replicas' nodes
+//  3. Volume is in attached state and it is able to do live upgrade
 func (ic *EngineImageController) getVolumesForEngineImageUpgrading(volumes map[string]*longhorn.Volume, newEngineImageResource *longhorn.EngineImage) (candidates, inProgress map[string][]*longhorn.Volume) {
 	candidates = make(map[string][]*longhorn.Volume)
 	inProgress = make(map[string][]*longhorn.Volume)
@@ -497,11 +498,11 @@ func (ic *EngineImageController) canDoOfflineEngineImageUpgrade(v *longhorn.Volu
 
 // canDoLiveEngineImageUpgrade check if it is possible to do live engine upgrade for a volume
 // A volume can do live engine upgrade when:
-//   1. Volume is attached AND
-//   2. Volume's robustness is healthy AND
-//   3. Volume is not a DR volume AND
-//   4. Volume is not expanding AND
-//   5. The current volume's engine image is compatible with the new engine image
+//  1. Volume is attached AND
+//  2. Volume's robustness is healthy AND
+//  3. Volume is not a DR volume AND
+//  4. Volume is not expanding AND
+//  5. The current volume's engine image is compatible with the new engine image
 func (ic *EngineImageController) canDoLiveEngineImageUpgrade(v *longhorn.Volume, newEngineImageResource *longhorn.EngineImage) bool {
 	if v.Status.State != longhorn.VolumeStateAttached {
 		return false
