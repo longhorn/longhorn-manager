@@ -483,11 +483,11 @@ func (rcs *ReplicaScheduler) CheckAndReuseFailedReplica(replicas map[string]*lon
 // If creating new replica immediately is necessary, returns 0.
 // Otherwise, returns the duration that the caller should recheck.
 // A new replica needs to be created when:
-//   1. the volume is a new volume (volume.Status.Robustness is Empty)
-//   2. data locality is required (hardNodeAffinity is not Empty and volume.Status.Robustness is Healthy)
-//   3. replica eviction happens (volume.Status.Robustness is Healthy)
-//   4. there is no potential reusable replica
-//   5. there is potential reusable replica but the replica replenishment wait interval is passed.
+//  1. the volume is a new volume (volume.Status.Robustness is Empty)
+//  2. data locality is required (hardNodeAffinity is not Empty and volume.Status.Robustness is Healthy)
+//  3. replica eviction happens (volume.Status.Robustness is Healthy)
+//  4. there is no potential reusable replica
+//  5. there is potential reusable replica but the replica replenishment wait interval is passed.
 func (rcs *ReplicaScheduler) RequireNewReplica(replicas map[string]*longhorn.Replica, volume *longhorn.Volume, hardNodeAffinity string) time.Duration {
 	if volume.Status.Robustness != longhorn.VolumeRobustnessDegraded {
 		return 0
