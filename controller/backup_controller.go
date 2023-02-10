@@ -2,7 +2,6 @@ package controller
 
 import (
 	"fmt"
-	utilpointer "k8s.io/utils/pointer"
 	"reflect"
 	"strconv"
 	"strings"
@@ -271,7 +270,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 
 	// Examine DeletionTimestamp to determine if object is under deletion
 	if !backup.DeletionTimestamp.IsZero() {
-		if err := bc.handleAttachmentDeletion(backup, backupVolumeName); err != nil {
+		if err := bc.handleAttachmentTicketDeletion(backup, backupVolumeName); err != nil {
 			return err
 		}
 
@@ -338,7 +337,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 
 	defer func() {
 		if !backup.Status.LastSyncedAt.IsZero() || backup.Spec.SnapshotName == "" {
-			err = bc.handleAttachmentDeletion(backup, backupVolumeName)
+			err = bc.handleAttachmentTicketDeletion(backup, backupVolumeName)
 		}
 	}()
 
@@ -363,7 +362,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			return nil // Ignore error to prevent enqueue
 		}
 
-		if err := bc.handleAttachmentCreation(backup, backupVolumeName); err != nil {
+		if err := bc.handleAttachmentTicketCreation(backup, backupVolumeName); err != nil {
 			return err
 		}
 
@@ -440,10 +439,10 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	return nil
 }
 
-// handleAttachmentDeletion check and delete attachment so that the source volume is detached if needed
-func (bc *BackupController) handleAttachmentDeletion(backup *longhorn.Backup, volumeName string) (err error) {
+// handleAttachmentTicketDeletion check and delete attachment so that the source volume is detached if needed
+func (bc *BackupController) handleAttachmentTicketDeletion(backup *longhorn.Backup, volumeName string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "handleAttachmentDeletion: failed to clean up attachment")
+		err = errors.Wrapf(err, "handleAttachmentTicketDeletion: failed to clean up attachment")
 	}()
 
 	vol, err := bc.ds.GetVolume(volumeName)
@@ -462,11 +461,11 @@ func (bc *BackupController) handleAttachmentDeletion(backup *longhorn.Backup, vo
 		return err
 	}
 
-	attachmentID := longhorn.GetAttachmentID(longhorn.AttacherTypeBackupController, backup.Name)
+	attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackupController, backup.Name)
 
-	if _, ok := va.Spec.Attachments[attachmentID]; ok {
-		delete(va.Spec.Attachments, attachmentID)
-		if _, err = bc.ds.UpdateLHVolumeAttachmet(va); err != nil {
+	if _, ok := va.Spec.AttachmentTickets[attachmentTicketID]; ok {
+		delete(va.Spec.AttachmentTickets, attachmentTicketID)
+		if _, err = bc.ds.UpdateLHVolumeAttachment(va); err != nil {
 			return err
 		}
 	}
@@ -474,10 +473,10 @@ func (bc *BackupController) handleAttachmentDeletion(backup *longhorn.Backup, vo
 	return nil
 }
 
-// handleAttachmentCreation check and create attachment so that the source volume is attached if needed
-func (bc *BackupController) handleAttachmentCreation(backup *longhorn.Backup, volumeName string) (err error) {
+// handleAttachmentTicketCreation check and create attachment so that the source volume is attached if needed
+func (bc *BackupController) handleAttachmentTicketCreation(backup *longhorn.Backup, volumeName string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "handleAttachmentCreation: failed to create/update attachment")
+		err = errors.Wrapf(err, "handleAttachmentTicketCreation: failed to create/update attachment")
 	}()
 
 	vol, err := bc.ds.GetVolume(volumeName)
@@ -499,22 +498,22 @@ func (bc *BackupController) handleAttachmentCreation(backup *longhorn.Backup, vo
 			return
 		}
 
-		if _, err = bc.ds.UpdateLHVolumeAttachmet(va); err != nil {
+		if _, err = bc.ds.UpdateLHVolumeAttachment(va); err != nil {
 			return
 		}
 	}()
 
-	if va.Spec.Attachments == nil {
-		va.Spec.Attachments = make(map[string]*longhorn.Attachment)
+	if va.Spec.AttachmentTickets == nil {
+		va.Spec.AttachmentTickets = make(map[string]*longhorn.AttachmentTicket)
 	}
 
-	attachmentID := longhorn.GetAttachmentID(longhorn.AttacherTypeBackupController, backup.Name)
+	attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackupController, backup.Name)
 
-	attachment, ok := va.Spec.Attachments[attachmentID]
+	attachmentTicket, ok := va.Spec.AttachmentTickets[attachmentTicketID]
 	if !ok {
 		//create new one
-		attachment = &longhorn.Attachment{
-			ID:     attachmentID,
+		attachmentTicket = &longhorn.AttachmentTicket{
+			ID:     attachmentTicketID,
 			Type:   longhorn.AttacherTypeBackupController,
 			NodeID: vol.Status.OwnerID,
 			Parameters: map[string]string{
@@ -522,15 +521,15 @@ func (bc *BackupController) handleAttachmentCreation(backup *longhorn.Backup, vo
 			},
 		}
 	}
-	if attachment.NodeID != vol.Status.OwnerID {
-		attachment.NodeID = vol.Status.OwnerID
+	if attachmentTicket.NodeID != vol.Status.OwnerID {
+		attachmentTicket.NodeID = vol.Status.OwnerID
 	}
-	va.Spec.Attachments[attachment.ID] = attachment
+	va.Spec.AttachmentTickets[attachmentTicket.ID] = attachmentTicket
 
 	return nil
 }
 
-// VerifyAttachment check and create attachment so that the source volume is attached if needed
+// VerifyAttachment check the volume attachment ticket for this backup is satisified
 func (bc *BackupController) VerifyAttachment(backup *longhorn.Backup, volumeName string) (bool, error) {
 	var err error
 	defer func() {
@@ -547,15 +546,9 @@ func (bc *BackupController) VerifyAttachment(backup *longhorn.Backup, volumeName
 		return false, err
 	}
 
-	attachmentID := longhorn.GetAttachmentID(longhorn.AttacherTypeBackupController, backup.Name)
+	attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackupController, backup.Name)
 
-	attachment, ok := va.Status.Attachments[attachmentID]
-
-	if !ok {
-		return false, nil
-	}
-
-	return utilpointer.BoolDeref(attachment.Attached, false), nil
+	return longhorn.IsAttachmentTicketSatisfied(attachmentTicketID, va), nil
 }
 
 func (bc *BackupController) isResponsibleFor(b *longhorn.Backup, defaultEngineImage string) (bool, error) {
@@ -654,7 +647,7 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 		return nil, err
 	}
 	if !ok {
-		return nil, fmt.Errorf("waiting for attachment %v to be attached before enabling backup monitor", longhorn.GetAttachmentID(longhorn.AttacherTypeBackupController, backup.Name))
+		return nil, fmt.Errorf("waiting for attachment %v to be attached before enabling backup monitor", longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackupController, backup.Name))
 	}
 
 	engineClientProxy, backupTargetClient, err := getBackupTarget(bc.controllerID, backupTarget, bc.ds, bc.logger, bc.proxyConnCounter)

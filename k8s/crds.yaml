@@ -3230,33 +3230,13 @@ spec:
           spec:
             description: VolumeAttachmentSpec defines the desired state of Longhorn VolumeAttachment
             properties:
-              attachments:
+              attachmentTickets:
                 additionalProperties:
                   properties:
-                    attachError:
-                      description: VolumeError captures an error encountered during a volume operation.
-                      properties:
-                        message:
-                          description: String detailing the error encountered during Attach or Detach operation. This string may be logged, so it should not contain sensitive information.
-                          type: string
-                        time:
-                          description: Time the error was encountered.
-                          format: date-time
-                          type: string
-                      type: object
-                    attached:
-                      type: boolean
-                    detachError:
-                      description: VolumeError captures an error encountered during a volume operation.
-                      properties:
-                        message:
-                          description: String detailing the error encountered during Attach or Detach operation. This string may be logged, so it should not contain sensitive information.
-                          type: string
-                        time:
-                          description: Time the error was encountered.
-                          format: date-time
-                          type: string
-                      type: object
+                    generation:
+                      description: A sequence number representing a specific generation of the desired state. Populated by the system. Read-only.
+                      format: int64
+                      type: integer
                     id:
                       description: The unique ID of this attachment. Used to differentiate different attachments of the same volume.
                       type: string
@@ -3281,46 +3261,47 @@ spec:
           status:
             description: VolumeAttachmentStatus defines the observed state of Longhorn VolumeAttachment
             properties:
-              attachments:
+              attachmentTicketStatuses:
                 additionalProperties:
                   properties:
-                    attachError:
-                      description: VolumeError captures an error encountered during a volume operation.
-                      properties:
-                        message:
-                          description: String detailing the error encountered during Attach or Detach operation. This string may be logged, so it should not contain sensitive information.
-                          type: string
-                        time:
-                          description: Time the error was encountered.
-                          format: date-time
-                          type: string
-                      type: object
-                    attached:
-                      type: boolean
-                    detachError:
-                      description: VolumeError captures an error encountered during a volume operation.
-                      properties:
-                        message:
-                          description: String detailing the error encountered during Attach or Detach operation. This string may be logged, so it should not contain sensitive information.
-                          type: string
-                        time:
-                          description: Time the error was encountered.
-                          format: date-time
-                          type: string
-                      type: object
+                    conditions:
+                      description: Record any error when trying to fulfill this attachment
+                      items:
+                        properties:
+                          lastProbeTime:
+                            description: Last time we probed the condition.
+                            type: string
+                          lastTransitionTime:
+                            description: Last time the condition transitioned from one status to another.
+                            type: string
+                          message:
+                            description: Human-readable message indicating details about last transition.
+                            type: string
+                          reason:
+                            description: Unique, one-word, CamelCase reason for the condition's last transition.
+                            type: string
+                          status:
+                            description: Status is the status of the condition. Can be True, False, Unknown.
+                            type: string
+                          type:
+                            description: Type is the type of the condition.
+                            type: string
+                        type: object
+                      nullable: true
+                      type: array
+                    generation:
+                      description: A sequence number representing a specific generation of the desired state. Populated by the system. Read-only.
+                      format: int64
+                      type: integer
                     id:
                       description: The unique ID of this attachment. Used to differentiate different attachments of the same volume.
                       type: string
-                    nodeID:
-                      description: The node that this attachment is requesting
-                      type: string
-                    parameters:
-                      additionalProperties:
-                        type: string
-                      description: Optional additional parameter for this attachment
-                      type: object
-                    type:
-                      type: string
+                    satisfied:
+                      description: Indicate whether this attachment ticket has been satisfied
+                      type: boolean
+                  required:
+                  - conditions
+                  - satisfied
                   type: object
                 type: object
             type: object
@@ -3587,7 +3568,6 @@ spec:
               staleReplicaTimeout:
                 type: integer
               unmapMarkSnapChainRemoved:
-                description: Deprecated
                 enum:
                 - ignored
                 - disabled

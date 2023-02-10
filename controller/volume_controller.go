@@ -541,8 +541,8 @@ func (vc *VolumeController) handleVolumeAttachmentCreation(v *longhorn.Volume) e
 				Labels: types.GetVolumeLabels(v.Name),
 			},
 			Spec: longhorn.VolumeAttachmentSpec{
-				Attachments: make(map[string]*longhorn.Attachment),
-				Volume:      v.Name,
+				AttachmentTickets: make(map[string]*longhorn.AttachmentTicket),
+				Volume:            v.Name,
 			},
 		}
 		if _, err := vc.ds.CreateLHVolumeAttachment(&va); err != nil {
@@ -3011,6 +3011,7 @@ func (vc *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume) (err err
 		return err
 	}
 	// Wait for the source volume to be attach
+	// TODO: do we need to check the status of volume-clone AD ticket ???
 	if sourceVol.Status.State != longhorn.VolumeStateAttached {
 		return nil
 	}

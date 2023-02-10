@@ -350,7 +350,7 @@ func (c *BackingImageDataSourceController) cleanup(bids *longhorn.BackingImageDa
 		c.stopMonitoring(bids.Name)
 	}
 
-	if err := c.handleAttachmentDeletion(bids); err != nil {
+	if err := c.handleAttachmentTicketDeletion(bids); err != nil {
 		return err
 	}
 
@@ -519,7 +519,7 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 
 		if newBackingImageDataSource ||
 			(isValidTypeForRetry && !isInBackoffWindow) {
-			if err := c.handleAttachmentCreation(bids); err != nil {
+			if err := c.handleAttachmentTicketCreation(bids); err != nil {
 				return err
 			}
 			// For recovering the backing image exported from volumes, the controller needs to update the state regardless of the pod being created immediately.
@@ -539,8 +539,8 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 	return nil
 }
 
-// handleAttachmentDeletion check and delete attachment so that the source volume is detached if needed
-func (c *BackingImageDataSourceController) handleAttachmentDeletion(bids *longhorn.BackingImageDataSource) (err error) {
+// handleAttachmentTicketDeletion check and delete attachment so that the source volume is detached if needed
+func (c *BackingImageDataSourceController) handleAttachmentTicketDeletion(bids *longhorn.BackingImageDataSource) (err error) {
 	if bids.Spec.SourceType != longhorn.BackingImageDataSourceTypeExportFromVolume {
 		return nil
 	}
@@ -562,11 +562,11 @@ func (c *BackingImageDataSourceController) handleAttachmentDeletion(bids *longho
 		return err
 	}
 
-	attachmentID := longhorn.GetAttachmentID(longhorn.AttacherTypeBackingImageDataSourceController, bids.Name)
+	attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackingImageDataSourceController, bids.Name)
 
-	if _, ok := va.Spec.Attachments[attachmentID]; ok {
-		delete(va.Spec.Attachments, attachmentID)
-		if _, err = c.ds.UpdateLHVolumeAttachmet(va); err != nil {
+	if _, ok := va.Spec.AttachmentTickets[attachmentTicketID]; ok {
+		delete(va.Spec.AttachmentTickets, attachmentTicketID)
+		if _, err = c.ds.UpdateLHVolumeAttachment(va); err != nil {
 			return err
 		}
 	}
@@ -574,8 +574,8 @@ func (c *BackingImageDataSourceController) handleAttachmentDeletion(bids *longho
 	return nil
 }
 
-// handleAttachmentCreation check and create attachment so that the source volume is attached if needed
-func (c *BackingImageDataSourceController) handleAttachmentCreation(bids *longhorn.BackingImageDataSource) (err error) {
+// handleAttachmentTicketCreation check and create attachment so that the source volume is attached if needed
+func (c *BackingImageDataSourceController) handleAttachmentTicketCreation(bids *longhorn.BackingImageDataSource) (err error) {
 	if bids.Spec.SourceType != longhorn.BackingImageDataSourceTypeExportFromVolume {
 		return nil
 	}
@@ -600,33 +600,33 @@ func (c *BackingImageDataSourceController) handleAttachmentCreation(bids *longho
 			return
 		}
 
-		if _, err = c.ds.UpdateLHVolumeAttachmet(va); err != nil {
+		if _, err = c.ds.UpdateLHVolumeAttachment(va); err != nil {
 			return
 		}
 	}()
 
-	if va.Spec.Attachments == nil {
-		va.Spec.Attachments = make(map[string]*longhorn.Attachment)
+	if va.Spec.AttachmentTickets == nil {
+		va.Spec.AttachmentTickets = make(map[string]*longhorn.AttachmentTicket)
 	}
 
-	attachmentID := longhorn.GetAttachmentID(longhorn.AttacherTypeBackingImageDataSourceController, bids.Name)
+	attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackingImageDataSourceController, bids.Name)
 
-	attachment, ok := va.Spec.Attachments[attachmentID]
+	attachmentTicket, ok := va.Spec.AttachmentTickets[attachmentTicketID]
 	if !ok {
 		//create new one
-		attachment = &longhorn.Attachment{
-			ID:     attachmentID,
+		attachmentTicket = &longhorn.AttachmentTicket{
+			ID:     attachmentTicketID,
 			Type:   longhorn.AttacherTypeBackingImageDataSourceController,
 			NodeID: vol.Status.OwnerID,
 			Parameters: map[string]string{
-				"disableFrontend": longhorn.AnyValue,
+				longhorn.AttachmentParameterDisableFrontend: longhorn.AnyValue,
 			},
 		}
 	}
-	if attachment.NodeID != vol.Status.OwnerID {
-		attachment.NodeID = vol.Status.OwnerID
+	if attachmentTicket.NodeID != vol.Status.OwnerID {
+		attachmentTicket.NodeID = vol.Status.OwnerID
 	}
-	va.Spec.Attachments[attachment.ID] = attachment
+	va.Spec.AttachmentTickets[attachmentTicket.ID] = attachmentTicket
 
 	return nil
 }

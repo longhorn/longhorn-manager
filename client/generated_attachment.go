@@ -7,19 +7,17 @@ const (
 type Attachment struct {
 	Resource `yaml:"-"`
 
-	AttachError string `json:"attachError,omitempty" yaml:"attach_error,omitempty"`
-
-	Attached bool `json:"attached,omitempty" yaml:"attached,omitempty"`
-
-	AttacherType string `json:"attacherType,omitempty" yaml:"attacher_type,omitempty"`
-
 	AttachmentID string `json:"attachmentID,omitempty" yaml:"attachment_id,omitempty"`
 
-	DetachError string `json:"detachError,omitempty" yaml:"detach_error,omitempty"`
+	AttachmentType string `json:"attachmentType,omitempty" yaml:"attachment_type,omitempty"`
+
+	Conditions []LonghornCondition `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 
 	NodeID string `json:"nodeID,omitempty" yaml:"node_id,omitempty"`
 
 	Parameters map[string]string `json:"parameters,omitempty" yaml:"parameters,omitempty"`
+
+	Satisfied bool `json:"satisfied,omitempty" yaml:"satisfied,omitempty"`
 }
 
 type AttachmentCollection struct {

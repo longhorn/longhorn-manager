@@ -322,7 +322,7 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 			return sc.ds.RemoveFinalizerForSnapshot(snapshot)
 		}
 
-		if err := sc.handleAttachmentCreation(snapshot); err != nil {
+		if err := sc.handleAttachmentTicketCreation(snapshot); err != nil {
 			return err
 		}
 
@@ -347,7 +347,7 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 		}
 		snapshotInfo, ok := engine.Status.Snapshots[snapshot.Name]
 		if !ok {
-			if err = sc.handleAttachmentDeletion(snapshot); err != nil {
+			if err = sc.handleAttachmentTicketDeletion(snapshot); err != nil {
 				return err
 			}
 			log.Infof("Removing finalizer for snapshot %v", snapshot.Name)
@@ -366,7 +366,7 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 
 	defer func() {
 		if !requestCreateNewSnapshot || alreadyCreatedBefore {
-			err = sc.handleAttachmentDeletion(snapshot)
+			err = sc.handleAttachmentTicketDeletion(snapshot)
 		}
 	}()
 
@@ -377,7 +377,7 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 
 	// newly created snapshotCR by user
 	if requestCreateNewSnapshot && !alreadyCreatedBefore {
-		if err := sc.handleAttachmentCreation(snapshot); err != nil {
+		if err := sc.handleAttachmentTicketCreation(snapshot); err != nil {
 			return err
 		}
 		if engine.Status.CurrentState != longhorn.InstanceStateRunning {
@@ -415,10 +415,10 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 	return nil
 }
 
-// handleAttachmentDeletion check and delete attachment so that the source volume is detached if needed
-func (sc *SnapshotController) handleAttachmentDeletion(snap *longhorn.Snapshot) (err error) {
+// handleAttachmentTicketDeletion check and delete attachment so that the source volume is detached if needed
+func (sc *SnapshotController) handleAttachmentTicketDeletion(snap *longhorn.Snapshot) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "handleAttachmentDeletion: failed to clean up attachment")
+		err = errors.Wrapf(err, "handleAttachmentTicketDeletion: failed to clean up attachment")
 	}()
 
 	vol, err := sc.ds.GetVolume(snap.Spec.Volume)
@@ -437,11 +437,11 @@ func (sc *SnapshotController) handleAttachmentDeletion(snap *longhorn.Snapshot) 
 		return err
 	}
 
-	attachmentID := longhorn.GetAttachmentID(longhorn.AttacherTypeSnapshotController, snap.Name)
+	attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeSnapshotController, snap.Name)
 
-	if _, ok := va.Spec.Attachments[attachmentID]; ok {
-		delete(va.Spec.Attachments, attachmentID)
-		if _, err = sc.ds.UpdateLHVolumeAttachmet(va); err != nil {
+	if _, ok := va.Spec.AttachmentTickets[attachmentTicketID]; ok {
+		delete(va.Spec.AttachmentTickets, attachmentTicketID)
+		if _, err = sc.ds.UpdateLHVolumeAttachment(va); err != nil {
 			return err
 		}
 	}
@@ -449,10 +449,10 @@ func (sc *SnapshotController) handleAttachmentDeletion(snap *longhorn.Snapshot) 
 	return nil
 }
 
-// handleAttachmentCreation check and create attachment so that the source volume is attached if needed
-func (sc *SnapshotController) handleAttachmentCreation(snap *longhorn.Snapshot) (err error) {
+// handleAttachmentTicketCreation check and create attachment so that the source volume is attached if needed
+func (sc *SnapshotController) handleAttachmentTicketCreation(snap *longhorn.Snapshot) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "handleAttachmentCreation: failed to create/update attachment")
+		err = errors.Wrapf(err, "handleAttachmentTicketCreation: failed to create/update attachment")
 	}()
 
 	vol, err := sc.ds.GetVolume(snap.Spec.Volume)
@@ -474,33 +474,33 @@ func (sc *SnapshotController) handleAttachmentCreation(snap *longhorn.Snapshot) 
 			return
 		}
 
-		if _, err = sc.ds.UpdateLHVolumeAttachmet(va); err != nil {
+		if _, err = sc.ds.UpdateLHVolumeAttachment(va); err != nil {
 			return
 		}
 	}()
 
-	if va.Spec.Attachments == nil {
-		va.Spec.Attachments = make(map[string]*longhorn.Attachment)
+	if va.Spec.AttachmentTickets == nil {
+		va.Spec.AttachmentTickets = make(map[string]*longhorn.AttachmentTicket)
 	}
 
-	attachmentID := longhorn.GetAttachmentID(longhorn.AttacherTypeSnapshotController, snap.Name)
+	attachmentID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeSnapshotController, snap.Name)
 
-	attachment, ok := va.Spec.Attachments[attachmentID]
+	attachment, ok := va.Spec.AttachmentTickets[attachmentID]
 	if !ok {
 		//create new one
-		attachment = &longhorn.Attachment{
+		attachment = &longhorn.AttachmentTicket{
 			ID:     attachmentID,
 			Type:   longhorn.AttacherTypeSnapshotController,
 			NodeID: vol.Status.OwnerID,
 			Parameters: map[string]string{
-				"disableFrontend": longhorn.AnyValue,
+				longhorn.AttachmentParameterDisableFrontend: longhorn.AnyValue,
 			},
 		}
 	}
 	if attachment.NodeID != vol.Status.OwnerID {
 		attachment.NodeID = vol.Status.OwnerID
 	}
-	va.Spec.Attachments[attachment.ID] = attachment
+	va.Spec.AttachmentTickets[attachment.ID] = attachment
 
 	return nil
 }

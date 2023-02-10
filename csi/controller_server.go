@@ -459,20 +459,18 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 
 	return cs.publishVolume(volume, nodeID, attachmentID, func() error {
 		checkVolumePublished := func(vol *longhornclient.Volume) bool {
-			if isVolumeShareAvailable(vol) {
-				return true
-			}
-			attachment, ok := vol.VolumeAttachment.VolumeAttachmentStatus[attachmentID]
-			if !ok {
-				return false
-			}
-			return attachment.AttachError == "" && attachment.Attached && isEngineOnNodeAvailable(vol, nodeID)
+			attachment, ok := vol.VolumeAttachment.Attachments[attachmentID]
+			return ok && attachment.Satisfied
 		}
 		if !cs.waitForVolumeState(volumeID, "volume published", checkVolumePublished, false, false) {
 			// check if there is error while attaching
 			if existVol, err := cs.apiClient.Volume.ById(volumeID); err == nil && existVol != nil {
-				if attachment, ok := existVol.VolumeAttachment.VolumeAttachmentStatus[attachmentID]; ok && attachment.AttachError != "" {
-					return status.Errorf(codes.Internal, "volume %v failed to attach to node %v with attachmentID %v: %v", volumeID, nodeID, attachmentID, attachment.AttachError)
+				if attachment, ok := existVol.VolumeAttachment.Attachments[attachmentID]; ok {
+					for _, condition := range attachment.Conditions {
+						if condition.Type == longhorn.AttachmentStatusConditionTypeSatisfied && condition.Status == string(longhorn.ConditionStatusFalse) && condition.Message != "" {
+							return status.Errorf(codes.Internal, "volume %v failed to attach to node %v with attachmentID %v: %v", volumeID, nodeID, attachmentID, condition.Message)
+						}
+					}
 				}
 			}
 			return status.Errorf(codes.DeadlineExceeded, "volume %v failed to attach to node %v with attachmentID %v", volumeID, nodeID, attachmentID)
@@ -553,13 +551,15 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 
 	attachmentID := generateAttachmentID(volumeID, nodeID)
 
+	// TODO: hadndle cases in which NodeID is empty. Should we detach the volume from all nodes???
+
 	return cs.unpublishVolume(volume, nodeID, attachmentID, func() error {
-		isSharedVolume := requiresSharedAccess(volume, nil) && !volume.Migratable
+		//isSharedVolume := requiresSharedAccess(volume, nil) && !volume.Migratable
 		checkVolumeUnpublished := func(vol *longhornclient.Volume) bool {
-			if isSharedVolume {
-				return true
-			}
-			_, ok := vol.VolumeAttachment.VolumeAttachmentStatus[attachmentID]
+			//if isSharedVolume {
+			//	return true
+			//}
+			_, ok := vol.VolumeAttachment.Attachments[attachmentID]
 			return !ok
 		}
 

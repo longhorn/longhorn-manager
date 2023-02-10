@@ -7,9 +7,9 @@ const (
 type VolumeAttachment struct {
 	Resource `yaml:"-"`
 
-	VolumeAttachmentSpec map[string]Attachment `json:"volumeAttachmentSpec,omitempty" yaml:"volume_attachment_spec,omitempty"`
+	Attachments map[string]Attachment `json:"attachments,omitempty" yaml:"attachments,omitempty"`
 
-	VolumeAttachmentStatus map[string]Attachment `json:"volumeAttachmentStatus,omitempty" yaml:"volume_attachment_status,omitempty"`
+	Volume string `json:"volume,omitempty" yaml:"volume,omitempty"`
 }
 
 type VolumeAttachmentCollection struct {

@@ -367,7 +367,7 @@ func (c *ShareManagerController) syncShareManagerEndpoint(sm *longhorn.ShareMana
 
 // isShareManagerRequiredForVolume checks if a share manager should export a volume
 // a nil volume does not require a share manager
-func (c *ShareManagerController) isShareManagerRequiredForVolume(volume *longhorn.Volume) bool {
+func (c *ShareManagerController) isShareManagerRequiredForVolume(volume *longhorn.Volume, va *longhorn.VolumeAttachment) bool {
 	if volume == nil {
 		return false
 	}
@@ -396,12 +396,13 @@ func (c *ShareManagerController) isShareManagerRequiredForVolume(volume *longhor
 		return false
 	}
 
-	// no active workload, there is no need to keep the share manager around
-	if !hasActiveWorkload(volume) {
-		return false
+	for _, attachmentTicket := range va.Spec.AttachmentTickets {
+		if isCSIAttacherTicketOfRegularRWXVolume(attachmentTicket, volume) {
+			return true
+		}
 	}
 
-	return true
+	return false
 }
 
 func hasActiveWorkload(vol *longhorn.Volume) bool {
@@ -413,47 +414,14 @@ func hasActiveWorkload(vol *longhorn.Volume) bool {
 		len(vol.Status.KubernetesStatus.WorkloadsStatus) > 0
 }
 
-func (c *ShareManagerController) detachShareManagerVolume(sm *longhorn.ShareManager) error {
+func (c *ShareManagerController) detachShareManagerVolume(sm *longhorn.ShareManager, va *longhorn.VolumeAttachment) {
 	log := getLoggerForShareManager(c.logger, sm)
-	volume, err := c.ds.GetVolume(sm.Name)
-	if err != nil && !apierrors.IsNotFound(err) {
-		log.WithError(err).Error("failed to retrieve volume for share manager from datastore")
-		return err
-	} else if volume == nil {
-		return nil
-	}
 
-	vaName := types.GetLHVolumeAttachmentNameFromVolumeName(volume.Name)
-	va, err := c.ds.GetLHVolumeAttachment(vaName)
-	if err != nil {
-		return err
-	}
+	shareManagerAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeShareManagerController, sm.Name)
+	log.Infof("removing volume attachment ticket: %v to detach the volume %v", shareManagerAttachmentTicketID, va.Name)
+	delete(va.Spec.AttachmentTickets, shareManagerAttachmentTicketID)
 
-	existingVA := va.DeepCopy()
-	defer func() {
-		if err != nil {
-			return
-		}
-		if reflect.DeepEqual(existingVA.Spec, va.Spec) {
-			return
-		}
-
-		if _, err = c.ds.UpdateLHVolumeAttachmet(va); err != nil {
-			return
-		}
-	}()
-
-	shareManagerAttachmentID := longhorn.GetAttachmentID(longhorn.AttacherTypeShareManagerController, sm.Name)
-
-	// we don't want to detach volumes that we don't control
-	isMaintenanceMode := volume.Spec.DisableFrontend || volume.Status.FrontendDisabled
-	shouldDetach := !isMaintenanceMode && volume.Spec.AccessMode == longhorn.AccessModeReadWriteMany
-	if shouldDetach {
-		log.Infof("removing volume attachment: %v to detach the volume %v", shareManagerAttachmentID, volume.Name)
-		delete(va.Spec.Attachments, shareManagerAttachmentID)
-	}
-
-	return nil
+	return
 }
 
 // syncShareManagerVolume controls volume attachment and provides the following state transitions
@@ -463,30 +431,44 @@ func (c *ShareManagerController) detachShareManagerVolume(sm *longhorn.ShareMana
 // starting, running, error -> stopped (no longer required, volume detachment)
 // controls transitions to starting, stopped
 func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManager) (err error) {
-	var isNotNeeded bool
-	defer func() {
-		// ensure volume gets detached if share manager needs to be cleaned up and hasn't stopped yet
-		// we need the isNotNeeded var so we don't accidentally detach manually attached volumes,
-		// while the share manager is no longer running (only run cleanup once)
-		if isNotNeeded && sm.Status.State != longhorn.ShareManagerStateStopping && sm.Status.State != longhorn.ShareManagerStateStopped {
-			getLoggerForShareManager(c.logger, sm).Info("stopping share manager")
-			if err = c.detachShareManagerVolume(sm); err == nil {
-				sm.Status.State = longhorn.ShareManagerStateStopping
-			}
-		}
-	}()
-
 	log := getLoggerForShareManager(c.logger, sm)
 	volume, err := c.ds.GetVolume(sm.Name)
-	if err != nil && !apierrors.IsNotFound(err) {
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			if sm.Status.State != longhorn.ShareManagerStateStopped {
+				getLoggerForShareManager(c.logger, sm).Infof("stopping share manager because the volume %v is not found", sm.Name)
+				sm.Status.State = longhorn.ShareManagerStateStopping
+			}
+			return nil
+		}
 		log.WithError(err).Error("failed to retrieve volume for share manager from datastore")
 		return err
 	}
 
-	if !c.isShareManagerRequiredForVolume(volume) {
-		if sm.Status.State != longhorn.ShareManagerStateStopping && sm.Status.State != longhorn.ShareManagerStateStopped {
-			log.Info("share manager is no longer required")
-			isNotNeeded = true
+	vaName := types.GetLHVolumeAttachmentNameFromVolumeName(volume.Name)
+	va, err := c.ds.GetLHVolumeAttachment(vaName)
+	if err != nil {
+		return err
+	}
+	existingVA := va.DeepCopy()
+	defer func() {
+		if err != nil {
+			return
+		}
+		if reflect.DeepEqual(existingVA.Spec, va.Spec) {
+			return
+		}
+
+		if _, err = c.ds.UpdateLHVolumeAttachment(va); err != nil {
+			return
+		}
+	}()
+
+	if !c.isShareManagerRequiredForVolume(volume, va) {
+		c.detachShareManagerVolume(sm, va)
+		if sm.Status.State != longhorn.ShareManagerStateStopped {
+			log.Info("share manager is no longer required. Stopping it.")
+			sm.Status.State = longhorn.ShareManagerStateStopping
 		}
 		return nil
 	} else if sm.Status.State == longhorn.ShareManagerStateRunning {
@@ -498,9 +480,10 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 	// we only check for running, since we don't want to nuke valid pods, not schedulable only means no new pods.
 	// in the case of a drain kubernetes will terminate the running pod, which we will mark as error in the sync pod method
 	if !c.ds.IsNodeSchedulable(sm.Status.OwnerID) {
-		if sm.Status.State != longhorn.ShareManagerStateStopping && sm.Status.State != longhorn.ShareManagerStateStopped {
+		c.detachShareManagerVolume(sm, va)
+		if sm.Status.State != longhorn.ShareManagerStateStopped {
 			log.Info("cannot start share manager, node is not schedulable")
-			isNotNeeded = true
+			sm.Status.State = longhorn.ShareManagerStateStopping
 		}
 		return nil
 	}
@@ -518,66 +501,28 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 		sm.Status.State = longhorn.ShareManagerStateStarting
 	}
 
-	// TODO: #2527 at the moment the consumer needs to control the state transitions of the volume
-	//  since it's not possible to just specify the desired state, we should fix that down the line.
-	//  for the actual state transition we need to request detachment then wait for detachment
-	//  afterwards we can request attachment to the new node.
-	isDown, err := c.ds.IsNodeDownOrDeleted(volume.Spec.NodeID)
-	if volume.Spec.NodeID != "" && err != nil {
-		log.WithError(err).Warnf("Failed to check IsNodeDownOrDeleted(%v) when syncShareManagerVolume", volume.Spec.NodeID)
+	shareManagerAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeShareManagerController, sm.Name)
+	if va.Spec.AttachmentTickets == nil {
+		va.Spec.AttachmentTickets = make(map[string]*longhorn.AttachmentTicket)
 	}
 
-	nodeSwitch := volume.Spec.NodeID != "" && volume.Spec.NodeID != sm.Status.OwnerID
-	buggedVolume := volume.Spec.NodeID != "" && volume.Spec.NodeID == sm.Status.OwnerID && volume.Status.CurrentNodeID != "" && volume.Status.CurrentNodeID != volume.Spec.NodeID
-	shouldDetach := isDown || buggedVolume || nodeSwitch
-	if shouldDetach {
-		log.Infof("Requesting Volume detach from node %v attached node %v", volume.Spec.NodeID, volume.Status.CurrentNodeID)
-		if err = c.detachShareManagerVolume(sm); err != nil {
-			return err
-		}
-		return nil
-	}
-
-	vaName := types.GetLHVolumeAttachmentNameFromVolumeName(volume.Name)
-	va, err := c.ds.GetLHVolumeAttachment(vaName)
-	if err != nil {
-		return err
-	}
-	existingVA := va.DeepCopy()
-	defer func() {
-		if err != nil {
-			return
-		}
-		if reflect.DeepEqual(existingVA.Spec, va.Spec) {
-			return
-		}
-
-		if _, err = c.ds.UpdateLHVolumeAttachmet(va); err != nil {
-			return
-		}
-	}()
-
-	shareManagerAttachmentID := longhorn.GetAttachmentID(longhorn.AttacherTypeShareManagerController, sm.Name)
-	if va.Spec.Attachments == nil {
-		va.Spec.Attachments = make(map[string]*longhorn.Attachment)
-	}
-
-	shareManagerAttachment, ok := va.Spec.Attachments[shareManagerAttachmentID]
+	shareManagerAttachmentTicket, ok := va.Spec.AttachmentTickets[shareManagerAttachmentTicketID]
 	if !ok {
 		//create new one
-		shareManagerAttachment = &longhorn.Attachment{
-			ID:     shareManagerAttachmentID,
+		shareManagerAttachmentTicket = &longhorn.AttachmentTicket{
+			ID:     shareManagerAttachmentTicketID,
 			Type:   longhorn.AttacherTypeShareManagerController,
 			NodeID: sm.Status.OwnerID,
 			Parameters: map[string]string{
-				"disableFrontend": "false",
+				longhorn.AttachmentParameterDisableFrontend: longhorn.FalseValue,
 			},
 		}
 	}
-	if shareManagerAttachment.NodeID != sm.Status.OwnerID {
-		shareManagerAttachment.NodeID = sm.Status.OwnerID
+	if shareManagerAttachmentTicket.NodeID != sm.Status.OwnerID {
+		log.Infof("attachment ticket %v request a new node %v from old node %v", shareManagerAttachmentTicket.ID, shareManagerAttachmentTicket.NodeID, sm.Status.OwnerID)
+		shareManagerAttachmentTicket.NodeID = sm.Status.OwnerID
 	}
-	va.Spec.Attachments[shareManagerAttachmentID] = shareManagerAttachment
+	va.Spec.AttachmentTickets[shareManagerAttachmentTicketID] = shareManagerAttachmentTicket
 
 	return nil
 }

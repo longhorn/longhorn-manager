@@ -9,15 +9,13 @@ import (
 	"github.com/rancher/go-rancher/client"
 	"github.com/sirupsen/logrus"
 
-	v1 "k8s.io/api/core/v1"
-	utilpointer "k8s.io/utils/pointer"
-
 	"github.com/longhorn/longhorn-manager/controller"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
+	v1 "k8s.io/api/core/v1"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -193,18 +191,18 @@ type Replica struct {
 }
 
 type Attachment struct {
-	AttachmentID string            `json:"attachmentID"`
-	AttacherType string            `json:"attacherType"`
-	NodeID       string            `json:"nodeID"`
-	Parameters   map[string]string `json:"parameters"`
-	Attached     bool              `json:"attached,omitempty"`
-	AttachError  string            `json:"attachError,omitempty"`
-	DetachError  string            `json:"detachError,omitempty"`
+	AttachmentID   string            `json:"attachmentID"`
+	AttachmentType string            `json:"attachmentType"`
+	NodeID         string            `json:"nodeID"`
+	Parameters     map[string]string `json:"parameters"`
+	// Indicate whether this attachment ticket has been satisfied
+	Satisfied  bool                 `json:"satisfied"`
+	Conditions []longhorn.Condition `json:"conditions"`
 }
 
 type VolumeAttachment struct {
-	VolumeAttachmentSpec   map[string]Attachment `json:"volumeAttachmentSpec"`
-	VolumeAttachmentStatus map[string]Attachment `json:"volumeAttachmentStatus"`
+	Attachments map[string]Attachment `json:"attachments"`
+	Volume      string                `json:"volume"`
 }
 
 type EngineImage struct {
@@ -568,6 +566,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("volumeCondition", longhorn.Condition{})
 	schemas.AddType("nodeCondition", longhorn.Condition{})
 	schemas.AddType("diskCondition", longhorn.Condition{})
+	schemas.AddType("longhornCondition", longhorn.Condition{})
 
 	schemas.AddType("event", Event{})
 	schemas.AddType("supportBundle", SupportBundle{})
@@ -581,7 +580,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("backingImageDiskFileStatus", longhorn.BackingImageDiskFileStatus{})
 	schemas.AddType("backingImageCleanupInput", BackingImageCleanupInput{})
 
-	schemas.AddType("attachment", Attachment{})
+	attachmentSchema(schemas.AddType("attachment", Attachment{}))
 	volumeAttachmentSchema(schemas.AddType("volumeAttachment", VolumeAttachment{}))
 	volumeSchema(schemas.AddType("volume", Volume{}))
 	snapshotSchema(schemas.AddType("snapshot", Snapshot{}))
@@ -1148,14 +1147,16 @@ func snapshotCRListOutputSchema(snapshotList *client.Schema) {
 	snapshotList.ResourceFields["data"] = data
 }
 
-func volumeAttachmentSchema(volumeAttachment *client.Schema) {
-	volumeAttachmentSpec := volumeAttachment.ResourceFields["volumeAttachmentSpec"]
-	volumeAttachmentSpec.Type = "map[string]attachment"
-	volumeAttachment.ResourceFields["volumeAttachmentSpec"] = volumeAttachmentSpec
+func attachmentSchema(attachment *client.Schema) {
+	conditions := attachment.ResourceFields["conditions"]
+	conditions.Type = "array[longhornCondition]"
+	attachment.ResourceFields["conditions"] = conditions
+}
 
-	volumeAttachmentStatus := volumeAttachment.ResourceFields["volumeAttachmentStatus"]
-	volumeAttachmentStatus.Type = "map[string]attachment"
-	volumeAttachment.ResourceFields["volumeAttachmentStatus"] = volumeAttachmentStatus
+func volumeAttachmentSchema(volumeAttachment *client.Schema) {
+	attachments := volumeAttachment.ResourceFields["attachments"]
+	attachments.Type = "map[attachment]"
+	volumeAttachment.ResourceFields["attachments"] = attachments
 }
 
 func toEmptyResource() *Empty {
@@ -1198,8 +1199,8 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	var purgeStatuses []PurgeStatus
 	rebuildStatuses := []RebuildStatus{}
 	volumeAttachment := VolumeAttachment{
-		VolumeAttachmentSpec:   make(map[string]Attachment),
-		VolumeAttachmentStatus: make(map[string]Attachment),
+		Attachments: make(map[string]Attachment),
+		Volume:      v.Name,
 	}
 	for _, e := range ves {
 		actualSize := int64(0)
@@ -1322,28 +1323,27 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	}
 
 	if lhVolumeAttachment != nil {
-		for k, v := range lhVolumeAttachment.Spec.Attachments {
+		for k, v := range lhVolumeAttachment.Spec.AttachmentTickets {
 			if v != nil {
-				volumeAttachment.VolumeAttachmentSpec[k] = Attachment{
-					AttachmentID: v.ID,
-					AttacherType: string(v.Type),
-					NodeID:       v.NodeID,
-					Parameters:   v.Parameters,
+				volumeAttachment.Attachments[k] = Attachment{
+					AttachmentID:   v.ID,
+					AttachmentType: string(v.Type),
+					NodeID:         v.NodeID,
+					Parameters:     v.Parameters,
 				}
 			}
 		}
-		for k, v := range lhVolumeAttachment.Status.Attachments {
-			if v != nil {
-				volumeAttachment.VolumeAttachmentStatus[k] = Attachment{
-					AttachmentID: v.ID,
-					AttacherType: string(v.Type),
-					NodeID:       v.NodeID,
-					Parameters:   v.Parameters,
-					Attached:     utilpointer.BoolDeref(v.Attached, false),
-					AttachError:  VolumeErrorDeref(v.AttachError),
-					DetachError:  VolumeErrorDeref(v.DetachError),
-				}
+		for k, v := range lhVolumeAttachment.Status.AttachmentTicketStatuses {
+			if v == nil {
+				continue
 			}
+			attachment, ok := volumeAttachment.Attachments[k]
+			if !ok {
+				continue
+			}
+			attachment.Satisfied = longhorn.IsAttachmentTicketSatisfied(attachment.AttachmentID, lhVolumeAttachment)
+			attachment.Conditions = v.Conditions
+			volumeAttachment.Attachments[k] = attachment
 		}
 	}
 
@@ -1502,13 +1502,6 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	}
 
 	return r
-}
-
-func VolumeErrorDeref(volumeErr *longhorn.VolumeError) string {
-	if volumeErr == nil {
-		return ""
-	}
-	return volumeErr.Message
 }
 
 func toSnapshotCRResource(s *longhorn.Snapshot) *SnapshotCR {

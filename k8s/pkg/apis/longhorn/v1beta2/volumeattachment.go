@@ -4,7 +4,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-type Attachment struct {
+type AttachmentTicket struct {
 	// The unique ID of this attachment. Used to differentiate different attachments of the same volume.
 	// +optional
 	ID string `json:"id"`
@@ -16,25 +16,25 @@ type Attachment struct {
 	// Optional additional parameter for this attachment
 	// +optional
 	Parameters map[string]string `json:"parameters"`
+	// A sequence number representing a specific generation of the desired state.
+	// Populated by the system. Read-only.
 	// +optional
-	Attached *bool `json:"attached,omitempty"`
-	// +optional
-	AttachError *VolumeError `json:"attachError,omitempty"`
-	// +optional
-	DetachError *VolumeError `json:"detachError,omitempty"`
+	Generation int64 `json:"generation"`
 }
 
-// VolumeError captures an error encountered during a volume operation.
-type VolumeError struct {
-	// Time the error was encountered.
+type AttachmentTicketStatus struct {
+	// The unique ID of this attachment. Used to differentiate different attachments of the same volume.
 	// +optional
-	Time metav1.Time `json:"time,omitempty"`
-
-	// String detailing the error encountered during Attach or Detach operation.
-	// This string may be logged, so it should not contain sensitive
-	// information.
+	ID string `json:"id"`
+	// Indicate whether this attachment ticket has been satisfied
+	Satisfied bool `json:"satisfied"`
+	// Record any error when trying to fulfill this attachment
+	// +nullable
+	Conditions []Condition `json:"conditions"`
+	// A sequence number representing a specific generation of the desired state.
+	// Populated by the system. Read-only.
 	// +optional
-	Message string `json:"message,omitempty"`
+	Generation int64 `json:"generation"`
 }
 
 type AttacherType string
@@ -80,6 +80,10 @@ const (
 	AttachmentParameterLastAttachedBy  = "lastAttachedBy"
 )
 
+const (
+	AttachmentStatusConditionTypeSatisfied = "Satisfied"
+)
+
 func GetAttacherPriorityLevel(t AttacherType) int {
 	switch t {
 	case AttacherTypeCSIAttacher:
@@ -113,7 +117,7 @@ func GetAttacherPriorityLevel(t AttacherType) int {
 	}
 }
 
-func GetAttachmentID(attacherType AttacherType, id string) string {
+func GetAttachmentTicketID(attacherType AttacherType, id string) string {
 	retID := string(attacherType) + "-" + id
 	if len(retID) > 253 {
 		return retID[:253]
@@ -121,10 +125,26 @@ func GetAttachmentID(attacherType AttacherType, id string) string {
 	return retID
 }
 
+func IsAttachmentTicketSatisfied(attachmentID string, va *VolumeAttachment) bool {
+	if va == nil {
+		return false
+	}
+	attachmentTicket, ok := va.Spec.AttachmentTickets[attachmentID]
+	if !ok {
+		return false
+	}
+	attachmentTicketStatus, ok := va.Status.AttachmentTicketStatuses[attachmentID]
+	if !ok {
+		return false
+	}
+
+	return attachmentTicket.Generation == attachmentTicketStatus.Generation && attachmentTicketStatus.Satisfied
+}
+
 // VolumeAttachmentSpec defines the desired state of Longhorn VolumeAttachment
 type VolumeAttachmentSpec struct {
 	// +optional
-	Attachments map[string]*Attachment `json:"attachments"`
+	AttachmentTickets map[string]*AttachmentTicket `json:"attachmentTickets"`
 	// The name of Longhorn volume of this VolumeAttachment
 	Volume string `json:"volume"`
 }
@@ -132,7 +152,7 @@ type VolumeAttachmentSpec struct {
 // VolumeAttachmentStatus defines the observed state of Longhorn VolumeAttachment
 type VolumeAttachmentStatus struct {
 	// +optional
-	Attachments map[string]*Attachment `json:"attachments"`
+	AttachmentTicketStatuses map[string]*AttachmentTicketStatus `json:"attachmentTicketStatuses"`
 }
 
 // +genclient

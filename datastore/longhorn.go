@@ -4440,8 +4440,8 @@ func (s *DataStore) ListSystemRestores() (map[string]*longhorn.SystemRestore, er
 	return s.listSystemRestores(labels.Everything())
 }
 
-// UpdateLHVolumeAttachmet updates the given Longhorn VolumeAttachment in the VolumeAttachment CR and verifies update
-func (s *DataStore) UpdateLHVolumeAttachmet(va *longhorn.VolumeAttachment) (*longhorn.VolumeAttachment, error) {
+// UpdateLHVolumeAttachment updates the given Longhorn VolumeAttachment in the VolumeAttachment CR and verifies update
+func (s *DataStore) UpdateLHVolumeAttachment(va *longhorn.VolumeAttachment) (*longhorn.VolumeAttachment, error) {
 	obj, err := s.lhClient.LonghornV1beta2().VolumeAttachments(s.namespace).Update(context.TODO(), va, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
@@ -4452,8 +4452,8 @@ func (s *DataStore) UpdateLHVolumeAttachmet(va *longhorn.VolumeAttachment) (*lon
 	return obj, nil
 }
 
-// UpdateLHVolumeAttachmetStatus updates the given Longhorn VolumeAttachment status in the VolumeAttachment CR status and verifies update
-func (s *DataStore) UpdateLHVolumeAttachmetStatus(va *longhorn.VolumeAttachment) (*longhorn.VolumeAttachment, error) {
+// UpdateLHVolumeAttachmentStatus updates the given Longhorn VolumeAttachment status in the VolumeAttachment CR status and verifies update
+func (s *DataStore) UpdateLHVolumeAttachmentStatus(va *longhorn.VolumeAttachment) (*longhorn.VolumeAttachment, error) {
 	obj, err := s.lhClient.LonghornV1beta2().VolumeAttachments(s.namespace).UpdateStatus(context.TODO(), va, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
