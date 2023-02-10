@@ -101,10 +101,7 @@ const (
 	VolumeConditionReasonTooManySnapshots              = "TooManySnapshots"
 )
 
-// VolumeRecurringJobSpec is a deprecated struct.
-// TODO: Should be removed when recurringJobs gets removed from the volume
-//
-//	spec.
+// Deprecated: This field is useless.
 type VolumeRecurringJobSpec struct {
 	Name        string            `json:"name"`
 	Groups      []string          `json:"groups,omitempty"`
