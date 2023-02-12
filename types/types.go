@@ -20,6 +20,9 @@ import (
 const (
 	LonghornKindNode                = "Node"
 	LonghornKindVolume              = "Volume"
+	LonghornKindEngine              = "Engine"
+	LonghornKindReplica             = "Replica"
+	LonghornKindBackup              = "Backup"
 	LonghornKindEngineImage         = "EngineImage"
 	LonghornKindInstanceManager     = "InstanceManager"
 	LonghornKindShareManager        = "ShareManager"
