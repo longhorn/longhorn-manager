@@ -18,6 +18,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	"github.com/longhorn/longhorn-manager/types"
@@ -31,17 +32,17 @@ const (
 	longhornFinalizerKey = "longhorn.io"
 )
 
-func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) error {
-	if err := upgradeRecurringJobs(namespace, lhClient, kubeClient); err != nil {
+func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) error {
+	if err := upgradeRecurringJobs(namespace, lhClient, kubeClient, resourceMaps); err != nil {
 		return err
 	}
-	if err := upgradeInstanceManagers(namespace, lhClient, kubeClient); err != nil {
+	if err := upgradeInstanceManagers(namespace, lhClient, kubeClient, resourceMaps); err != nil {
 		return err
 	}
 	return nil
 }
 
-func upgradeInstanceManagers(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) (err error) {
+func upgradeInstanceManagers(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade instance managers failed")
 	}()
@@ -54,7 +55,7 @@ func upgradeInstanceManagers(namespace string, lhClient *lhclientset.Clientset, 
 	}
 	for _, imPod := range imPodList {
 		if imPod.OwnerReferences == nil || len(imPod.OwnerReferences) == 0 {
-			im, err := lhClient.LonghornV1beta2().InstanceManagers(namespace).Get(context.TODO(), imPod.Name, metav1.GetOptions{})
+			im, err := upgradeutil.GetInstanceManagerFromProvidedCache(namespace, lhClient, resourceMaps, imPod.Name)
 			if err != nil {
 				logrus.Errorf("cannot find the instance manager CR for the instance manager pod %v that has no owner reference during v1.2.0 upgrade: %v", imPod.Name, err)
 				continue
@@ -73,20 +74,17 @@ func upgradeInstanceManagers(namespace string, lhClient *lhclientset.Clientset, 
 		}
 	}
 
-	imList, err := lhClient.LonghornV1beta2().InstanceManagers(namespace).List(context.TODO(), metav1.ListOptions{})
+	imMap, err := upgradeutil.ListAndUpdateInstanceManagersInProvidedCache(namespace, lhClient, resourceMaps)
 	if err != nil {
 		return err
 	}
-	for _, im := range imList.Items {
-		if !util.FinalizerExists(longhornFinalizerKey, &im) {
+	for _, im := range imMap {
+		if !util.FinalizerExists(longhornFinalizerKey, im) {
 			// finalizer already removed
 			// skip updating this instance manager
 			continue
 		}
-		if err := util.RemoveFinalizer(longhornFinalizerKey, &im); err != nil {
-			return err
-		}
-		if _, err := lhClient.LonghornV1beta2().InstanceManagers(namespace).Update(context.TODO(), &im, metav1.UpdateOptions{}); err != nil {
+		if err := util.RemoveFinalizer(longhornFinalizerKey, im); err != nil {
 			return err
 		}
 	}
@@ -108,7 +106,7 @@ type recurringJobUpgrade struct {
 	storageClass          *storagev1.StorageClass
 	storageClassConfigMap *corev1.ConfigMap
 
-	volumes *longhorn.VolumeList
+	volumeMap map[string]*v1beta2.Volume
 }
 
 type recurringJobSelector struct {
@@ -131,19 +129,19 @@ func newRecurringJobUpgrade(namespace string, lhClient *lhclientset.Clientset, k
 // storageClass and volumes spec.
 // Here will also translates the storageClass recurringJobs to
 // recurringJobSelector and volume.spec recurringJobs to volume labels.
-func upgradeRecurringJobs(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) (err error) {
+func upgradeRecurringJobs(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade recurring jobs failed")
 	}()
 
 	run := newRecurringJobUpgrade(namespace, lhClient, kubeClient)
 
-	err = run.translateStorageClassRecurringJobs()
+	err = run.translateStorageClassRecurringJobs(resourceMaps)
 	if err != nil {
 		return err
 	}
 
-	err = run.translateVolumeRecurringJobs()
+	err = run.translateVolumeRecurringJobs(resourceMaps)
 	if err != nil {
 		return err
 	}
@@ -155,7 +153,7 @@ func upgradeRecurringJobs(namespace string, lhClient *lhclientset.Clientset, kub
 	return nil
 }
 
-func (run *recurringJobUpgrade) translateStorageClassRecurringJobs() (err error) {
+func (run *recurringJobUpgrade) translateStorageClassRecurringJobs(resourceMaps map[string]interface{}) (err error) {
 	revertLog := run.log
 	defer func() {
 		if err == nil {
@@ -209,7 +207,7 @@ func (run *recurringJobUpgrade) translateStorageClassRecurringJobs() (err error)
 			recurringJobIDs = append(recurringJobIDs, id)
 		}
 	}
-	if err := run.createRecurringJobCRs(); err != nil {
+	if err := run.createRecurringJobCRs(resourceMaps); err != nil {
 		return err
 	}
 	if err := run.convertToSelectors(recurringJobIDs); err != nil {
@@ -271,7 +269,7 @@ func (run *recurringJobUpgrade) convertToSelectors(recurringJobIDs []string) (er
 	return nil
 }
 
-func (run *recurringJobUpgrade) translateVolumeRecurringJobs() (err error) {
+func (run *recurringJobUpgrade) translateVolumeRecurringJobs(resourceMaps map[string]interface{}) (err error) {
 	revertLog := run.log
 	defer func() {
 		if err == nil {
@@ -285,7 +283,7 @@ func (run *recurringJobUpgrade) translateVolumeRecurringJobs() (err error) {
 	run.log = run.log.WithField("translate", "volume-recurring-jobs")
 	run.log.Info(upgradeLogPrefix + "Starting volume recurring job translation")
 
-	run.volumes, err = run.lhClient.LonghornV1beta2().Volumes(run.namespace).List(context.TODO(), metav1.ListOptions{})
+	run.volumeMap, err = upgradeutil.ListAndUpdateVolumesInProvidedCache(run.namespace, run.lhClient, resourceMaps)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			run.log.Debug(upgradeLogPrefix + "Found 0 volume")
@@ -293,7 +291,7 @@ func (run *recurringJobUpgrade) translateVolumeRecurringJobs() (err error) {
 		}
 		return errors.Wrap(err, "failed to list volumes")
 	}
-	for _, volume := range run.volumes.Items {
+	for _, volume := range run.volumeMap {
 		addVolumeLabels := map[string]string{}
 		for _, recurringJob := range volume.Spec.RecurringJobs {
 			recurringJobSpec := longhorn.RecurringJobSpec{
@@ -319,17 +317,17 @@ func (run *recurringJobUpgrade) translateVolumeRecurringJobs() (err error) {
 			run.volumeMapLabels[volume.Name] = addVolumeLabels
 		}
 	}
-	if err := run.createRecurringJobCRs(); err != nil {
+	if err := run.createRecurringJobCRs(resourceMaps); err != nil {
 		return err
 	}
-	if err := run.convertToVolumeLabels(); err != nil {
+	if err := run.convertToVolumeLabels(resourceMaps); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (run *recurringJobUpgrade) convertToVolumeLabels() (err error) {
+func (run *recurringJobUpgrade) convertToVolumeLabels(resourceMaps map[string]interface{}) (err error) {
 	revertLog := run.log
 	defer func() {
 		run.log = revertLog
@@ -337,12 +335,11 @@ func (run *recurringJobUpgrade) convertToVolumeLabels() (err error) {
 	}()
 	run.log = run.log.WithField("action", "convert-volume-recurring-jobs-to-labels")
 
-	volumeClient := run.lhClient.LonghornV1beta2().Volumes(run.namespace)
 	for volumeName, labels := range run.volumeMapLabels {
 		if len(labels) == 0 {
 			continue
 		}
-		volume, err := volumeClient.Get(context.TODO(), volumeName, metav1.GetOptions{})
+		volume, err := upgradeutil.GetVolumeFromProvidedCache(run.namespace, run.lhClient, resourceMaps, volumeName)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				run.log.Debug(upgradeLogPrefix + "Cannot find volume, could be removed")
@@ -360,10 +357,6 @@ func (run *recurringJobUpgrade) convertToVolumeLabels() (err error) {
 		volume.Labels = volumeLabels
 		volume.Spec.RecurringJobs = nil
 		run.log.Infof(upgradeLogPrefix+"Updating %v volume labels to %v", volume.Name, volume.Labels)
-		_, err = volumeClient.Update(context.TODO(), volume, metav1.UpdateOptions{})
-		if err != nil {
-			return errors.Wrapf(err, "failed to update %v volume", volume.Name)
-		}
 	}
 	return nil
 }
@@ -382,7 +375,7 @@ func (run *recurringJobUpgrade) cleanupAppliedVolumeCronJobs() (err error) {
 
 	propagation := metav1.DeletePropagationForeground
 	cronJobClient := run.kubeClient.BatchV1().CronJobs(run.namespace)
-	for _, v := range run.volumes.Items {
+	for _, v := range run.volumeMap {
 		run.log.Debugf(upgradeLogPrefix+"Listing all cron jobs for volume %v", v.Name)
 		appliedCronJobROs, err := listVolumeCronJobROs(v.Name, run.namespace, run.kubeClient)
 		if err != nil {
@@ -401,7 +394,7 @@ func (run *recurringJobUpgrade) cleanupAppliedVolumeCronJobs() (err error) {
 	return nil
 }
 
-func (run *recurringJobUpgrade) createRecurringJobCRs() (err error) {
+func (run *recurringJobUpgrade) createRecurringJobCRs(resourceMaps map[string]interface{}) (err error) {
 	revertLog := run.log
 	defer func() {
 		run.log = revertLog
@@ -414,7 +407,6 @@ func (run *recurringJobUpgrade) createRecurringJobCRs() (err error) {
 		return nil
 	}
 
-	recurringJobClient := run.lhClient.LonghornV1beta2().RecurringJobs(run.namespace)
 	for recurringJobName, spec := range run.recurringJobMapSpec {
 		run.log.Infof(upgradeLogPrefix+"Creating %v recurring job CR", recurringJobName)
 		newRecurringJob := &longhorn.RecurringJob{
@@ -424,7 +416,7 @@ func (run *recurringJobUpgrade) createRecurringJobCRs() (err error) {
 			Spec: *spec,
 		}
 		run.log.Debugf(upgradeLogPrefix+"Checking if %v recurring job CR already exists", recurringJobName)
-		obj, err := recurringJobClient.Get(context.TODO(), newRecurringJob.Name, metav1.GetOptions{})
+		obj, err := upgradeutil.GetRecurringJobFromProvidedCache(run.namespace, run.lhClient, resourceMaps, newRecurringJob.Name)
 		if err == nil {
 			run.log.Debugf(upgradeLogPrefix+"Recurring job CR already exists %v", obj)
 			continue
@@ -432,7 +424,7 @@ func (run *recurringJobUpgrade) createRecurringJobCRs() (err error) {
 		if !apierrors.IsNotFound(err) {
 			return errors.Wrapf(err, "failed to get recurring job %v", recurringJobName)
 		}
-		_, err = recurringJobClient.Create(context.TODO(), newRecurringJob, metav1.CreateOptions{})
+		_, err = upgradeutil.CreateAndUpdateRecurringJobInProvidedCache(run.namespace, run.lhClient, resourceMaps, newRecurringJob)
 		if err != nil {
 			return errors.Wrapf(err, "failed to create recurring job CR with %v", spec)
 		}

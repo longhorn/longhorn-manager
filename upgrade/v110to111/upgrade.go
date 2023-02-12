@@ -34,18 +34,18 @@ const (
 // deprecating the old setting automatically:
 // https://github.com/longhorn/longhorn/issues/2207
 
-func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) (err error) {
+func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) (err error) {
 	// Upgrade Longhorn resources
-	if err := upgradeLonghornNodes(namespace, lhClient); err != nil {
+	if err := upgradeLonghornNodes(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
-	if err := upgradeInstanceManagers(namespace, lhClient); err != nil {
+	if err := upgradeInstanceManagers(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
-	if err := upgradeShareManagers(namespace, lhClient); err != nil {
+	if err := upgradeShareManagers(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
-	if err := upgradeEngineImages(namespace, lhClient); err != nil {
+	if err := upgradeEngineImages(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
 
@@ -53,7 +53,7 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 	if err := upgradeInstanceManagerPods(namespace, kubeClient); err != nil {
 		return err
 	}
-	if err := upgradeShareManagerPods(namespace, lhClient, kubeClient); err != nil {
+	if err := upgradeShareManagerPods(namespace, lhClient, kubeClient, resourceMaps); err != nil {
 		return err
 	}
 	if err := upgradeCSIServicesLabels(kubeClient, namespace); err != nil {
@@ -78,12 +78,12 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 	return nil
 }
 
-func upgradeLonghornNodes(namespace string, lhClient *lhclientset.Clientset) (err error) {
+func upgradeLonghornNodes(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade longhorn node failed")
 	}()
 
-	deprecatedCPUSetting, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameGuaranteedEngineCPU), metav1.GetOptions{})
+	deprecatedCPUSetting, err := upgradeutil.GetSettingFromProvidedCache(namespace, lhClient, resourceMaps, string(types.SettingNameGuaranteedEngineCPU))
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -101,7 +101,7 @@ func upgradeLonghornNodes(namespace string, lhClient *lhclientset.Clientset) (er
 	// Convert to milli value
 	requestedMilliCPU := int(math.Round(requestedCPU * 1000))
 
-	nodeList, err := lhClient.LonghornV1beta2().Nodes(namespace).List(context.TODO(), metav1.ListOptions{})
+	nodeMap, err := upgradeutil.ListAndUpdateNodesInProvidedCache(namespace, lhClient, resourceMaps)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -109,43 +109,32 @@ func upgradeLonghornNodes(namespace string, lhClient *lhclientset.Clientset) (er
 		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing Longhorn nodes")
 	}
 
-	for _, node := range nodeList.Items {
-		updateRequired := false
+	for _, node := range nodeMap {
 		if node.Spec.EngineManagerCPURequest == 0 {
 			node.Spec.EngineManagerCPURequest = requestedMilliCPU
-			updateRequired = true
 		}
 		if node.Spec.ReplicaManagerCPURequest == 0 {
 			node.Spec.ReplicaManagerCPURequest = requestedMilliCPU
-			updateRequired = true
-		}
-		if updateRequired {
-			if _, err := lhClient.LonghornV1beta2().Nodes(namespace).Update(context.TODO(), &node, metav1.UpdateOptions{}); err != nil {
-				return err
-			}
 		}
 	}
 
 	deprecatedCPUSetting.Value = ""
-	if _, err := lhClient.LonghornV1beta2().Settings(namespace).Update(context.TODO(), deprecatedCPUSetting, metav1.UpdateOptions{}); err != nil {
-		return err
-	}
 
 	return nil
 }
 
-func upgradeInstanceManagers(namespace string, lhClient *lhclientset.Clientset) (err error) {
+func upgradeInstanceManagers(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade instance manager failed")
 	}()
 
-	imList, err := lhClient.LonghornV1beta2().InstanceManagers(namespace).List(context.TODO(), metav1.ListOptions{})
+	imMap, err := upgradeutil.ListAndUpdateInstanceManagersInProvidedCache(namespace, lhClient, resourceMaps)
 	if err != nil {
 		return err
 	}
 
-	for _, im := range imList.Items {
-		if err := upgradeLabelsForInstanceManager(&im, lhClient, namespace); err != nil {
+	for _, im := range imMap {
+		if err := upgradeLabelsForInstanceManager(im, lhClient, namespace); err != nil {
 			return err
 		}
 	}
@@ -164,24 +153,20 @@ func upgradeLabelsForInstanceManager(im *longhorn.InstanceManager, lhClient *lhc
 	if reflect.DeepEqual(instanceManagerLabels, newInstanceManagerLabels) {
 		return nil
 	}
-
 	metadata.SetLabels(newInstanceManagerLabels)
-	if _, err := lhClient.LonghornV1beta2().InstanceManagers(namespace).Update(context.TODO(), im, metav1.UpdateOptions{}); err != nil {
-		return errors.Wrapf(err, upgradeLogPrefix+"failed to update the spec for instance manager %v during the instance managers upgrade", im.Name)
-	}
 	return nil
 }
 
-func upgradeShareManagers(namespace string, lhClient *lhclientset.Clientset) (err error) {
+func upgradeShareManagers(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade share manager failed")
 	}()
-	smList, err := lhClient.LonghornV1beta2().ShareManagers(namespace).List(context.TODO(), metav1.ListOptions{})
+	smMap, err := upgradeutil.ListAndUpdateShareManagersInProvidedCache(namespace, lhClient, resourceMaps)
 	if err != nil {
 		return err
 	}
-	for _, sm := range smList.Items {
-		if err := upgradeLabelsForShareManager(&sm, lhClient, namespace); err != nil {
+	for _, sm := range smMap {
+		if err := upgradeLabelsForShareManager(sm, lhClient, namespace); err != nil {
 			return err
 		}
 	}
@@ -202,23 +187,20 @@ func upgradeLabelsForShareManager(sm *longhorn.ShareManager, lhClient *lhclients
 		return nil
 	}
 	metadata.SetLabels(newShareManagerLabels)
-	if _, err := lhClient.LonghornV1beta2().ShareManagers(namespace).Update(context.TODO(), sm, metav1.UpdateOptions{}); err != nil {
-		return err
-	}
 	return nil
 }
 
-func upgradeEngineImages(namespace string, lhClient *lhclientset.Clientset) (err error) {
+func upgradeEngineImages(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade engine image failed")
 	}()
 
-	eiList, err := lhClient.LonghornV1beta2().EngineImages(namespace).List(context.TODO(), metav1.ListOptions{})
+	eiMap, err := upgradeutil.ListAndUpdateEngineImagesInProvidedCache(namespace, lhClient, resourceMaps)
 	if err != nil {
 		return err
 	}
-	for _, ei := range eiList.Items {
-		if err := upgradeLabelsForEngineImage(&ei, lhClient, namespace); err != nil {
+	for _, ei := range eiMap {
+		if err := upgradeLabelsForEngineImage(ei, lhClient, namespace); err != nil {
 			return err
 		}
 	}
@@ -239,13 +221,10 @@ func upgradeLabelsForEngineImage(ei *longhorn.EngineImage, lhClient *lhclientset
 		return nil
 	}
 	metadata.SetLabels(newEngineImageLabels)
-	if _, err := lhClient.LonghornV1beta2().EngineImages(namespace).Update(context.TODO(), ei, metav1.UpdateOptions{}); err != nil {
-		return err
-	}
 	return nil
 }
 
-func upgradeShareManagerPods(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) (err error) {
+func upgradeShareManagerPods(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade share manager pods failed")
 	}()
@@ -254,7 +233,7 @@ func upgradeShareManagerPods(namespace string, lhClient *lhclientset.Clientset, 
 		return err
 	}
 	for _, pod := range smPods {
-		sm, err := lhClient.LonghornV1beta2().ShareManagers(namespace).Get(context.TODO(), types.GetShareManagerNameFromShareManagerPodName(pod.Name), metav1.GetOptions{})
+		sm, err := upgradeutil.GetShareManagerFromProvidedCache(namespace, lhClient, resourceMaps, types.GetShareManagerNameFromShareManagerPodName(pod.Name))
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				continue

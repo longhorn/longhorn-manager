@@ -31,20 +31,20 @@ const (
 	upgradeLogPrefix = "upgrade from v1.0.2 to v1.1.0: "
 )
 
-func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) error {
-	if err := upgradeVolumes(namespace, lhClient); err != nil {
+func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) error {
+	if err := upgradeVolumes(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
-	if err := upgradeReplicas(namespace, lhClient); err != nil {
+	if err := upgradeReplicas(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
-	if err := upgradeInstanceManagerPods(namespace, kubeClient); err != nil {
+	if err := upgradeInstanceManagerPods(namespace, kubeClient, resourceMaps); err != nil {
 		return err
 	}
 	return nil
 }
 
-func upgradeInstanceManagerPods(namespace string, kubeClient *clientset.Clientset) (err error) {
+func upgradeInstanceManagerPods(namespace string, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade instance manager pods failed")
 	}()
@@ -92,12 +92,12 @@ func upgradeInstanceMangerPodOwnerRef(pod *v1.Pod, kubeClient *clientset.Clients
 	return nil
 }
 
-func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset) (err error) {
+func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade volume failed")
 	}()
 
-	volumeList, err := lhClient.LonghornV1beta2().Volumes(namespace).List(context.TODO(), metav1.ListOptions{})
+	volumeMap, err := upgradeutil.ListAndUpdateVolumesInProvidedCache(namespace, lhClient, resourceMaps)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -105,35 +105,27 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset) (err erro
 		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing Longhorn volumes during the volume upgrade")
 	}
 
-	for _, v := range volumeList.Items {
+	for _, v := range volumeMap {
 		// in pr https://github.com/longhorn/longhorn-manager/pull/789
 		// we added a new access mode field, that is exposed to the ui
 		// so we add the previously only supported rwo access mode
 		if v.Spec.AccessMode == "" {
 			v.Spec.AccessMode = longhorn.AccessModeReadWriteOnce
-			updatedVolume, err := lhClient.LonghornV1beta2().Volumes(namespace).Update(context.TODO(), &v, metav1.UpdateOptions{})
-			if err != nil {
-				return err
-			}
-			v = *updatedVolume
 		}
 
 		if v.Status.Robustness == longhorn.VolumeRobustnessDegraded && v.Status.LastDegradedAt == "" {
 			v.Status.LastDegradedAt = util.Now()
-			if _, err := lhClient.LonghornV1beta2().Volumes(namespace).UpdateStatus(context.TODO(), &v, metav1.UpdateOptions{}); err != nil {
-				return err
-			}
 		}
 	}
 	return nil
 }
 
-func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset) (err error) {
+func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade replica failed")
 	}()
 
-	replicaList, err := lhClient.LonghornV1beta2().Replicas(namespace).List(context.TODO(), metav1.ListOptions{})
+	replicaMap, err := upgradeutil.ListAndUpdateReplicasInProvidedCache(namespace, lhClient, resourceMaps)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -141,14 +133,14 @@ func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset) (err err
 		return errors.Wrapf(err, "failed to list all existing Longhorn replicas during the replica upgrade")
 	}
 
-	for _, r := range replicaList.Items {
+	for _, r := range replicaMap {
 		if r.Spec.DataPath == "" || r.Spec.NodeID == "" {
 			continue
 		}
 		isFailedReplica := false
-		node, err := lhClient.LonghornV1beta2().Nodes(namespace).Get(context.TODO(), r.Spec.NodeID, metav1.GetOptions{})
+		node, err := upgradeutil.GetNodeFromProvidedCache(namespace, lhClient, resourceMaps, r.Spec.NodeID)
 		if err != nil {
-			logrus.Errorf("%vFailed to get node %v during the replica %v upgrade: %v", upgradeLogPrefix, r.Spec.NodeID, r.Name, err)
+			logrus.WithError(err).Errorf("%vFailed to get node %v during the replica %v upgrade", upgradeLogPrefix, r.Spec.NodeID, r.Name)
 			isFailedReplica = true
 		} else {
 			if diskStatus, exists := node.Status.DiskStatus[r.Spec.DiskID]; !exists {
@@ -177,9 +169,6 @@ func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset) (err err
 			r.Spec.FailedAt = util.Now()
 		}
 		r.Spec.DataPath = ""
-		if _, err := lhClient.LonghornV1beta2().Replicas(namespace).Update(context.TODO(), &r, metav1.UpdateOptions{}); err != nil {
-			return err
-		}
 	}
 	return nil
 }
