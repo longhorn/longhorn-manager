@@ -29,24 +29,24 @@ const (
 	upgradeLogPrefix = "upgrade from v1.0.0 to v1.0.1: "
 )
 
-func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) error {
-	if err := doInstanceManagerUpgrade(namespace, lhClient); err != nil {
+func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) error {
+	if err := doInstanceManagerUpgrade(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
 
-	if err := doInstanceManagerPodUpgrade(namespace, lhClient, kubeClient); err != nil {
+	if err := doInstanceManagerPodUpgrade(namespace, lhClient, kubeClient, resourceMaps); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func doInstanceManagerUpgrade(namespace string, lhClient *lhclientset.Clientset) (err error) {
+func doInstanceManagerUpgrade(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade instance manager failed")
 	}()
 
-	imList, err := lhClient.LonghornV1beta2().InstanceManagers(namespace).List(context.TODO(), metav1.ListOptions{})
+	imMap, err := upgradeutil.ListAndUpdateInstanceManagersInProvidedCache(namespace, lhClient, resourceMaps)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -54,8 +54,8 @@ func doInstanceManagerUpgrade(namespace string, lhClient *lhclientset.Clientset)
 		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing instance managers during the instance managers upgrade")
 	}
 
-	for _, im := range imList.Items {
-		if err := upgradeInstanceManagersLabels(&im, lhClient, namespace); err != nil {
+	for _, im := range imMap {
+		if err := upgradeInstanceManagersLabels(im, lhClient, namespace); err != nil {
 			return err
 		}
 	}
@@ -76,18 +76,15 @@ func upgradeInstanceManagersLabels(im *longhorn.InstanceManager, lhClient *lhcli
 	}
 
 	metadata.SetLabels(newInstanceManagerLabels)
-	if im, err = lhClient.LonghornV1beta2().InstanceManagers(namespace).Update(context.TODO(), im, metav1.UpdateOptions{}); err != nil {
-		return errors.Wrapf(err, upgradeLogPrefix+"failed to update the spec for instance manager %v during the instance managers upgrade", im.Name)
-	}
 	return nil
 }
 
-func doInstanceManagerPodUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset) (err error) {
+func doInstanceManagerPodUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade instance manager pods failed")
 	}()
 
-	imList, err := lhClient.LonghornV1beta2().InstanceManagers(namespace).List(context.TODO(), metav1.ListOptions{})
+	imMap, err := upgradeutil.ListAndUpdateInstanceManagersInProvidedCache(namespace, lhClient, resourceMaps)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -95,7 +92,7 @@ func doInstanceManagerPodUpgrade(namespace string, lhClient *lhclientset.Clients
 		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing instance managers during the instance managers pods upgrade")
 	}
 
-	for _, im := range imList.Items {
+	for _, im := range imMap {
 		imPodsList, err := kubeClient.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{
 			FieldSelector: "metadata.name=" + im.Name,
 		})
@@ -106,7 +103,7 @@ func doInstanceManagerPodUpgrade(namespace string, lhClient *lhclientset.Clients
 			return errors.Wrapf(err, upgradeLogPrefix+"failed to find pod for instance manager %v during the instance managers pods upgrade", im.Name)
 		}
 		for _, pod := range imPodsList.Items {
-			if err := upgradeInstanceMangerPodLabel(&pod, &im, kubeClient, namespace); err != nil {
+			if err := upgradeInstanceMangerPodLabel(&pod, im, kubeClient, namespace); err != nil {
 				return err
 			}
 		}

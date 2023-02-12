@@ -1,70 +1,58 @@
 package v122to123
 
 import (
-	"context"
-	"reflect"
-
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/engineapi"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	"github.com/longhorn/longhorn-manager/types"
-	"github.com/longhorn/longhorn-manager/upgrade/util"
+	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
 )
 
 const (
 	upgradeLogPrefix = "upgrade from v1.2.2 to v1.2.3: "
 )
 
-func UpgradeResources(namespace string, lhClient *lhclientset.Clientset) (err error) {
-	if err := upgradeBackups(namespace, lhClient); err != nil {
+func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	if err := upgradeBackups(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
-	if err := upgradeEngines(namespace, lhClient); err != nil {
+	if err := upgradeEngines(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
 	return nil
 }
 
-func upgradeBackups(namespace string, lhClient *lhclientset.Clientset) (err error) {
+func upgradeBackups(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade backups failed")
 	}()
 
 	// Copy backupStatus from engine CRs to backup CRs
-	backups, err := lhClient.LonghornV1beta2().Backups(namespace).List(context.TODO(), metav1.ListOptions{})
+	backupMap, err := upgradeutil.ListAndUpdateBackupsInProvidedCache(namespace, lhClient, resourceMaps)
 	if err != nil {
 		return err
 	}
 
-	engines, err := lhClient.LonghornV1beta2().Engines(namespace).List(context.TODO(), metav1.ListOptions{})
+	engineMap, err := upgradeutil.ListAndUpdateEnginesInProvidedCache(namespace, lhClient, resourceMaps)
 	if err != nil {
 		return err
 	}
 	volumeNameToEngines := make(map[string][]*longhorn.Engine)
-	for i := range engines.Items {
-		e := engines.Items[i]
-		volumeNameToEngines[e.Labels[types.LonghornLabelVolume]] = append(volumeNameToEngines[e.Labels[types.LonghornLabelVolume]], &e)
+	for _, e := range engineMap {
+		volumeNameToEngines[e.Labels[types.LonghornLabelVolume]] = append(volumeNameToEngines[e.Labels[types.LonghornLabelVolume]], e)
 	}
 
-	volumes, err := lhClient.LonghornV1beta2().Volumes(namespace).List(context.TODO(), metav1.ListOptions{})
+	volumeMap, err := upgradeutil.ListAndUpdateVolumesInProvidedCache(namespace, lhClient, resourceMaps)
 	if err != nil {
 		return err
 	}
-	volumeMap := make(map[string]*longhorn.Volume)
-	for i := range volumes.Items {
-		v := volumes.Items[i]
-		volumeMap[v.Name] = &v
-	}
 
-	progressMonitor := util.NewProgressMonitor("upgradeBackups", 0, len(backups.Items))
+	progressMonitor := upgradeutil.NewProgressMonitor("upgradeBackups", 0, len(backupMap))
 	// Loop all the backup CRs
-	for _, backup := range backups.Items {
+	for _, backup := range backupMap {
 		progressMonitor.Inc()
 		// Get volume name from label
 		volumeName, exist := backup.Labels[types.LonghornLabelBackupVolume]
@@ -103,76 +91,57 @@ func upgradeBackups(namespace string, lhClient *lhclientset.Clientset) (err erro
 			continue
 		}
 
-		existingBackup := backup.DeepCopy()
-
 		backup.Status.Progress = backupStatus.Progress
 		backup.Status.URL = backupStatus.BackupURL
 		backup.Status.Error = backupStatus.Error
 		backup.Status.SnapshotName = backupStatus.SnapshotName
 		backup.Status.State = engineapi.ConvertEngineBackupState(backupStatus.State)
 		backup.Status.ReplicaAddress = backupStatus.ReplicaAddress
-
-		if reflect.DeepEqual(existingBackup.Status, backup.Status) {
-			continue
-		}
-		if _, err = lhClient.LonghornV1beta2().Backups(namespace).UpdateStatus(context.TODO(), &backup, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-			return err
-		}
 	}
 	return nil
 }
 
-func upgradeEngines(namespace string, lhClient *lhclientset.Clientset) (err error) {
+func upgradeEngines(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade engines failed")
 	}()
 
 	// Do the field update separately to avoid messing up.
 
-	if err := checkAndRemoveEngineBackupStatus(namespace, lhClient); err != nil {
+	if err := checkAndRemoveEngineBackupStatus(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
 
-	if err := checkAndUpdateEngineActiveState(namespace, lhClient); err != nil {
+	if err := checkAndUpdateEngineActiveState(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func checkAndRemoveEngineBackupStatus(namespace string, lhClient *lhclientset.Clientset) error {
-	engines, err := lhClient.LonghornV1beta2().Engines(namespace).List(context.TODO(), metav1.ListOptions{})
+func checkAndRemoveEngineBackupStatus(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) error {
+	engineMap, err := upgradeutil.ListAndUpdateEnginesInProvidedCache(namespace, lhClient, resourceMaps)
 	if err != nil {
 		return err
 	}
 
-	progressMonitor := util.NewProgressMonitor("checkAndRemoveEngineBackupStatus", 0, len(engines.Items))
-	for _, engine := range engines.Items {
+	progressMonitor := upgradeutil.NewProgressMonitor("checkAndRemoveEngineBackupStatus", 0, len(engineMap))
+	for _, engine := range engineMap {
 		progressMonitor.Inc()
-		existingEngine := engine.DeepCopy()
-
 		engine.Status.BackupStatus = nil
-
-		if reflect.DeepEqual(existingEngine.Status, engine.Status) {
-			continue
-		}
-		if _, err := lhClient.LonghornV1beta2().Engines(namespace).UpdateStatus(context.TODO(), &engine, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-			return err
-		}
 	}
 
 	return nil
 }
 
-func checkAndUpdateEngineActiveState(namespace string, lhClient *lhclientset.Clientset) error {
-	engines, err := lhClient.LonghornV1beta2().Engines(namespace).List(context.TODO(), metav1.ListOptions{})
+func checkAndUpdateEngineActiveState(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) error {
+	engineMap, err := upgradeutil.ListAndUpdateEnginesInProvidedCache(namespace, lhClient, resourceMaps)
 	if err != nil {
 		return err
 	}
 
 	volumeEngineMap := map[string][]*longhorn.Engine{}
-	for i := range engines.Items {
-		e := &engines.Items[i]
+	for _, e := range engineMap {
 		if e.Spec.VolumeName == "" {
 			// Cannot do anything in the upgrade path if there is really an orphan engine CR.
 			continue
@@ -180,7 +149,7 @@ func checkAndUpdateEngineActiveState(namespace string, lhClient *lhclientset.Cli
 		volumeEngineMap[e.Spec.VolumeName] = append(volumeEngineMap[e.Spec.VolumeName], e)
 	}
 
-	progressMonitor := util.NewProgressMonitor("checkAndUpdateEngineActiveState", 0, len(volumeEngineMap))
+	progressMonitor := upgradeutil.NewProgressMonitor("checkAndUpdateEngineActiveState", 0, len(volumeEngineMap))
 	for volumeName, engineList := range volumeEngineMap {
 		progressMonitor.Inc()
 		skip := false
@@ -198,7 +167,7 @@ func checkAndUpdateEngineActiveState(namespace string, lhClient *lhclientset.Cli
 		if len(engineList) == 1 {
 			currentEngine = engineList[0]
 		} else {
-			v, err := lhClient.LonghornV1beta2().Volumes(namespace).Get(context.TODO(), volumeName, metav1.GetOptions{})
+			v, err := upgradeutil.GetVolumeFromProvidedCache(namespace, lhClient, resourceMaps, volumeName)
 			if err != nil {
 				return err
 			}
@@ -212,13 +181,10 @@ func checkAndUpdateEngineActiveState(namespace string, lhClient *lhclientset.Cli
 			}
 		}
 		if currentEngine == nil {
-			logrus.Errorf("failed to get the current engine for volume %v during upgrade, will ignore it and continue", volumeName)
+			logrus.Errorf("Failed to get the current engine for volume %v during upgrade, will ignore it and continue", volumeName)
 			continue
 		}
 		currentEngine.Spec.Active = true
-		if _, err := lhClient.LonghornV1beta2().Engines(namespace).Update(context.TODO(), currentEngine, metav1.UpdateOptions{}); err != nil {
-			return err
-		}
 	}
 
 	return nil
