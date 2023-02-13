@@ -679,6 +679,10 @@ func (c *SupportBundleController) newSupportBundleManager(supportBundle *longhor
 									Name:  "SUPPORT_BUNDLE_IMAGE_PULL_POLICY",
 									Value: string(api.PullAlways),
 								},
+								{
+									Name:  "SUPPORT_BUNDLE_REQUEST_PURPOSE",
+									Value: "longhorn",
+								},
 							},
 							Ports: []corev1.ContainerPort{
 								{
