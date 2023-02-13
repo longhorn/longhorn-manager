@@ -683,6 +683,10 @@ func (c *SupportBundleController) newSupportBundleManager(supportBundle *longhor
 									Name:  "SUPPORT_BUNDLE_REGISTRY_SECRET",
 									Value: string(registrySecret),
 								},
+								{
+									Name:  "SUPPORT_BUNDLE_COLLECTOR",
+									Value: "longhorn",
+								},
 							},
 							Ports: []corev1.ContainerPort{
 								{
