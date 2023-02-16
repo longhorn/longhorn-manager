@@ -714,7 +714,7 @@ func (rc *ReplicaController) enqueueInstanceManagerChange(obj interface{}) {
 	}
 
 	imType, err := datastore.CheckInstanceManagerType(im)
-	if err != nil || imType != longhorn.InstanceManagerTypeReplica {
+	if err != nil || (imType != longhorn.InstanceManagerTypeReplica && imType != longhorn.InstanceManagerTypeAllInOne) {
 		return
 	}
 

@@ -394,7 +394,7 @@ func (ec *EngineController) enqueueInstanceManagerChange(obj interface{}) {
 	}
 
 	imType, err := datastore.CheckInstanceManagerType(im)
-	if err != nil || imType != longhorn.InstanceManagerTypeEngine {
+	if err != nil || (imType != longhorn.InstanceManagerTypeEngine && imType != longhorn.InstanceManagerTypeAllInOne) {
 		return
 	}
 

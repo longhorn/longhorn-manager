@@ -932,7 +932,10 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 		return err
 	}
 
-	imTypes := []longhorn.InstanceManagerType{longhorn.InstanceManagerTypeEngine}
+	imTypes := []longhorn.InstanceManagerType{
+		longhorn.InstanceManagerTypeAllInOne,
+		longhorn.InstanceManagerTypeEngine,
+	}
 
 	// Clean up all replica managers if there is no disk on the node
 	if len(node.Spec.Disks) == 0 {
@@ -984,7 +987,7 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 				}
 			}
 		}
-		if !defaultInstanceManagerCreated {
+		if !defaultInstanceManagerCreated && imType == longhorn.InstanceManagerTypeAllInOne {
 			imName, err := types.GetInstanceManagerName(imType, node.Name, defaultInstanceManagerImage)
 			if err != nil {
 				return err
