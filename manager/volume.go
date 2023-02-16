@@ -3,6 +3,7 @@ package manager
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -471,23 +472,10 @@ func (m *VolumeManager) Activate(volumeName string, frontend string) (v *longhor
 		return nil, err
 	}
 
-	var engine *longhorn.Engine
-	es, err := m.ds.ListVolumeEngines(v.Name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list engines for volume %v: %v", v.Name, err)
-	}
-	if len(es) != 1 {
-		return nil, fmt.Errorf("found more than 1 engines for volume %v", v.Name)
-	}
-	for _, e := range es {
-		engine = e
-	}
-
-	if v.Status.LastBackup != engine.Status.LastRestoredBackup || engine.Spec.RequestedBackupRestore != engine.Status.LastRestoredBackup {
-		logrus.Infof("Standby volume %v will be activated after finishing restoration, "+
-			"backup volume's latest backup: %v, "+
-			"engine requested backup restore: %v, engine last restored backup: %v",
-			v.Name, v.Status.LastBackup, engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
+	// Trigger a backup volume update to get the latest backup
+	// and will confirm recovery completion in volume state reconciliation
+	if err := m.triggerBackupVolumeToSync(v); err != nil {
+		return nil, err
 	}
 
 	v.Spec.Frontend = longhorn.VolumeFrontend(frontend)
@@ -499,6 +487,25 @@ func (m *VolumeManager) Activate(volumeName string, frontend string) (v *longhor
 
 	logrus.Debugf("Activating volume %v with frontend %v", v.Name, frontend)
 	return v, nil
+}
+
+func (m *VolumeManager) triggerBackupVolumeToSync(volume *longhorn.Volume) error {
+	backupVolumeName, isExist := volume.Labels[types.LonghornLabelBackupVolume]
+	if !isExist || backupVolumeName == "" {
+		return errors.Errorf("cannot find the backup volume label for volume: %v", volume.Name)
+	}
+
+	backupVolume, err := m.ds.GetBackupVolume(backupVolumeName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get backup volume: %v", backupVolumeName)
+	}
+	requestSyncTime := metav1.Time{Time: time.Now().UTC()}
+	backupVolume.Spec.SyncRequestedAt = requestSyncTime
+	if _, err = m.ds.UpdateBackupVolume(backupVolume); err != nil {
+		return errors.Wrapf(err, "failed to update backup volume: %v", backupVolumeName)
+	}
+
+	return nil
 }
 
 func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volume, err error) {
