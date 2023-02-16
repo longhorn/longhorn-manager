@@ -622,12 +622,16 @@ func GetInstanceManagerName(imType longhorn.InstanceManagerType, nodeName, image
 		return engineManagerPrefix + hashedSuffix, nil
 	case longhorn.InstanceManagerTypeReplica:
 		return replicaManagerPrefix + hashedSuffix, nil
+	case longhorn.InstanceManagerTypeAllInOne:
+		return instanceManagerPrefix + hashedSuffix, nil
 	}
 	return "", fmt.Errorf("cannot generate name for unknown instance manager type %v", imType)
 }
 
 func GetInstanceManagerPrefix(imType longhorn.InstanceManagerType) string {
 	switch imType {
+	case longhorn.InstanceManagerTypeAllInOne:
+		return instanceManagerPrefix
 	case longhorn.InstanceManagerTypeEngine:
 		return engineManagerPrefix
 	case longhorn.InstanceManagerTypeReplica:
@@ -911,4 +915,14 @@ func CreateCniAnnotationFromSetting(storageNetwork *longhorn.Setting) string {
 
 func BackupStoreRequireCredential(backupType string) bool {
 	return backupType == BackupStoreTypeS3 || backupType == BackupStoreTypeCIFS
+}
+
+func ConsolidateInstanceManagers(instanceManagerMaps ...map[string]*longhorn.InstanceManager) map[string]*longhorn.InstanceManager {
+	consolidated := make(map[string]*longhorn.InstanceManager)
+	for _, instanceManagers := range instanceManagerMaps {
+		for name, instanceManager := range instanceManagers {
+			consolidated[name] = instanceManager
+		}
+	}
+	return consolidated
 }
