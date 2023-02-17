@@ -175,39 +175,33 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 		return nil, err
 	}
 
-	allocatableMilliCPU := float64(kubeNode.Status.Allocatable.Cpu().MilliValue())
+	cpuRequest := 0
+	guaranteedCPUSettingName := types.SettingName("")
 	switch im.Spec.Type {
 	case longhorn.InstanceManagerTypeEngine:
-		emCPURequest := lhNode.Spec.EngineManagerCPURequest
-		if emCPURequest == 0 {
-			emCPUSetting, err := ds.GetSetting(types.SettingNameGuaranteedEngineManagerCPU)
-			if err != nil {
-				return nil, err
-			}
-			emCPUPercentage, err := strconv.ParseFloat(emCPUSetting.Value, 64)
-			if err != nil {
-				return nil, err
-			}
-			emCPURequest = int(math.Round(allocatableMilliCPU * emCPUPercentage / 100.0))
-		}
-		return ParseResourceRequirement(fmt.Sprintf("%dm", emCPURequest))
+		cpuRequest = lhNode.Spec.EngineManagerCPURequest
+		guaranteedCPUSettingName = types.SettingNameGuaranteedEngineManagerCPU
 	case longhorn.InstanceManagerTypeReplica:
-		rmCPURequest := lhNode.Spec.ReplicaManagerCPURequest
-		if rmCPURequest == 0 {
-			rmCPUSetting, err := ds.GetSetting(types.SettingNameGuaranteedReplicaManagerCPU)
-			if err != nil {
-				return nil, err
-			}
-			rmCPUPercentage, err := strconv.ParseFloat(rmCPUSetting.Value, 64)
-			if err != nil {
-				return nil, err
-			}
-			rmCPURequest = int(math.Round(allocatableMilliCPU * rmCPUPercentage / 100.0))
-		}
-		return ParseResourceRequirement(fmt.Sprintf("%dm", rmCPURequest))
+		cpuRequest = lhNode.Spec.ReplicaManagerCPURequest
+		guaranteedCPUSettingName = types.SettingNameGuaranteedReplicaManagerCPU
 	default:
 		return nil, fmt.Errorf("instance manager %v has unknown type %v", im.Name, im.Spec.Type)
 	}
+
+	guaranteedCPURequest := 0
+	if cpuRequest == 0 {
+		guaranteedCPUSetting, err := ds.GetSetting(guaranteedCPUSettingName)
+		if err != nil {
+			return nil, err
+		}
+		guaranteedCPUPercentage, err := strconv.ParseFloat(guaranteedCPUSetting.Value, 64)
+		if err != nil {
+			return nil, err
+		}
+		allocatableMilliCPU := float64(kubeNode.Status.Allocatable.Cpu().MilliValue())
+		guaranteedCPURequest = int(math.Round(allocatableMilliCPU * guaranteedCPUPercentage / 100.0))
+	}
+	return ParseResourceRequirement(fmt.Sprintf("%dm", guaranteedCPURequest))
 }
 
 func isControllerResponsibleFor(controllerID string, ds *datastore.DataStore, name, preferredOwnerID, currentOwnerID string) bool {
