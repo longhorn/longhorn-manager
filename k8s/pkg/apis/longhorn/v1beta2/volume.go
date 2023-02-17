@@ -129,7 +129,7 @@ const (
 	RestoreVolumeRecurringJobDisabled = RestoreVolumeRecurringJobType("disabled")
 )
 
-// Deprecated: This field is useless. Replace by the RecurringJob CRD
+// Deprecated: This field is useless and has been replaced by the RecurringJob CRD
 type VolumeRecurringJobSpec struct {
 	// +optional
 	Name string `json:"name"`
