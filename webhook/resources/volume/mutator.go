@@ -96,6 +96,8 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 			return nil, werror.NewInvalidError(err.Error(), "")
 		}
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataLocality", "value": "%s"}`, defaultDataLocality))
+	} else if volume.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
+		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/revisionCounterDisabled", "value": true}`)
 	}
 
 	if string(volume.Spec.SnapshotDataIntegrity) == "" {
@@ -258,6 +260,10 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 	size := util.RoundUpSize(volume.Spec.Size)
 	if size != volume.Spec.Size {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/size", "value": "%s"}`, strconv.FormatInt(size, 10)))
+	}
+
+	if volume.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
+		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/revisionCounterDisabled", "value": true}`)
 	}
 
 	labels := volume.Labels
