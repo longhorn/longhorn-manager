@@ -188,7 +188,6 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 		return nil, fmt.Errorf("instance manager %v has unknown type %v", im.Name, im.Spec.Type)
 	}
 
-	guaranteedCPURequest := 0
 	if cpuRequest == 0 {
 		guaranteedCPUSetting, err := ds.GetSetting(guaranteedCPUSettingName)
 		if err != nil {
@@ -199,9 +198,9 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 			return nil, err
 		}
 		allocatableMilliCPU := float64(kubeNode.Status.Allocatable.Cpu().MilliValue())
-		guaranteedCPURequest = int(math.Round(allocatableMilliCPU * guaranteedCPUPercentage / 100.0))
+		cpuRequest = int(math.Round(allocatableMilliCPU * guaranteedCPUPercentage / 100.0))
 	}
-	return ParseResourceRequirement(fmt.Sprintf("%dm", guaranteedCPURequest))
+	return ParseResourceRequirement(fmt.Sprintf("%dm", cpuRequest))
 }
 
 func isControllerResponsibleFor(controllerID string, ds *datastore.DataStore, name, preferredOwnerID, currentOwnerID string) bool {
