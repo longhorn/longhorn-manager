@@ -2,6 +2,20 @@ package v1beta2
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+const (
+	// error messages captured from the gRPC error code
+	ReplicaRebuildFailedCanceledErrorMSG         = "rpc error: code = Canceled"
+	ReplicaRebuildFailedDeadlineExceededErrorMSG = "rpc error: code = DeadlineExceeded"
+	ReplicaRebuildFailedUnavailableErrorMSG      = "rpc error: code = Unavailable"
+)
+
+const (
+	ReplicaConditionTypeRebuildFailed = "RebuildFailed"
+
+	ReplicaConditionReasonRebuildFailedDisconnection = "Disconnection"
+	ReplicaConditionReasonRebuildFailedGeneral       = "General"
+)
+
 // ReplicaSpec defines the desired state of the Longhorn replica
 type ReplicaSpec struct {
 	InstanceSpec `json:""`
