@@ -1257,6 +1257,22 @@ func IsAvailableHealthyReplica(r *longhorn.Replica) bool {
 	return true
 }
 
+// IsReplicaRebuildingFailed returns true if the rebuilding replica failed not caused by network issues.
+func IsReplicaRebuildingFailed(reusableFailedReplica *longhorn.Replica) bool {
+	replicaRebuildFailedCondition := types.GetCondition(reusableFailedReplica.Status.Conditions, longhorn.ReplicaConditionTypeRebuildFailed)
+
+	if replicaRebuildFailedCondition.Status != longhorn.ConditionStatusTrue {
+		return true
+	}
+
+	switch replicaRebuildFailedCondition.Reason {
+	case longhorn.ReplicaConditionReasonRebuildFailedDisconnection, longhorn.NodeConditionReasonManagerPodDown, longhorn.NodeConditionReasonKubernetesNodeGone, longhorn.NodeConditionReasonKubernetesNodeNotReady:
+		return false
+	default:
+		return true
+	}
+}
+
 // GetOwnerReferencesForEngineImage returns OwnerReference for the given
 // Longhorn EngineImage name and UID
 func GetOwnerReferencesForEngineImage(ei *longhorn.EngineImage) []metav1.OwnerReference {
