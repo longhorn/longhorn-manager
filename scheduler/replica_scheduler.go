@@ -515,6 +515,7 @@ func (rcs *ReplicaScheduler) RequireNewReplica(replicas map[string]*longhorn.Rep
 	}
 	waitInterval := time.Duration(settingValue) * time.Second
 	lastDegradedAt, err := util.ParseTime(volume.Status.LastDegradedAt)
+
 	if err != nil {
 		logrus.Errorf("Failed to get parse volume last degraded timestamp %v, will directly replenish a new replica: %v", volume.Status.LastDegradedAt, err)
 		return 0

@@ -1627,9 +1627,9 @@ func doesAddressExistInEngine(e *longhorn.Engine, addr string, engineClientProxy
 	return false, nil
 }
 
-func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr string) (err error) {
+func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, addr string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "failed to start rebuild for %v of %v", replica, e.Name)
+		err = errors.Wrapf(err, "failed to start rebuild for %v of %v", replicaName, e.Name)
 	}()
 
 	log := ec.logger.WithFields(logrus.Fields{"volume": e.Spec.VolumeName, "engine": e.Name})
@@ -1648,7 +1648,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 	}
 	// replica has already been added to the engine
 	if alreadyExists {
-		ec.logger.Debugf("Replica %v address %v has been added to the engine already", replica, addr)
+		ec.logger.Debugf("Replica %v address %v has been added to the engine already", replicaName, addr)
 		return nil
 	}
 
@@ -1730,19 +1730,34 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 			log.Debug("Finished snapshot purge, will start rebuilding then")
 		}
 
+		replica, err := ec.ds.GetReplica(replicaName)
+		if err != nil {
+			log.WithError(err).Errorf("Failed to get replica %v unable to mark failed rebuild", replica)
+			return
+		}
+
+		// check and reset replica rebuild failed condition
+		replica, err = ec.updateReplicaRebuildFailedCondition(replica, "")
+		if err != nil {
+			log.WithError(err).Errorf("Failed to update rebuild status information on replica %v", replicaName)
+			return
+		}
+
 		// start rebuild
 		if e.Spec.RequestedBackupRestore != "" {
 			if e.Spec.NodeID != "" {
 				ec.eventRecorder.Eventf(e, v1.EventTypeNormal, constant.EventReasonRebuilding,
-					"Start rebuilding replica %v with Address %v for restore engine %v and volume %v", replica, addr, e.Name, e.Spec.VolumeName)
+					"Start rebuilding replica %v with Address %v for restore engine %v and volume %v", replicaName, addr, e.Name, e.Spec.VolumeName)
 				err = engineClientProxy.ReplicaAdd(e, replicaURL, true, fastReplicaRebuild, fileSyncHTTPClientTimeout)
 			}
 		} else {
 			ec.eventRecorder.Eventf(e, v1.EventTypeNormal, constant.EventReasonRebuilding,
-				"Start rebuilding replica %v with Address %v for normal engine %v and volume %v", replica, addr, e.Name, e.Spec.VolumeName)
+				"Start rebuilding replica %v with Address %v for normal engine %v and volume %v", replicaName, addr, e.Name, e.Spec.VolumeName)
 			err = engineClientProxy.ReplicaAdd(e, replicaURL, false, fastReplicaRebuild, fileSyncHTTPClientTimeout)
 		}
 		if err != nil {
+			replicaRebuildErrMsg := err.Error()
+
 			log.WithError(err).Errorf("Failed rebuilding of replica %v", addr)
 			ec.eventRecorder.Eventf(e, v1.EventTypeWarning, constant.EventReasonFailedRebuilding, "Failed rebuilding replica with Address %v: %v", addr, err)
 			// we've sent out event to notify user. we don't want to
@@ -1754,7 +1769,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 				log.WithError(err).Errorf("Failed to remove rebuilding replica %v", addr)
 				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, constant.EventReasonFailedDeleting,
 					"Failed to remove rebuilding replica %v with address %v for engine %v and volume %v due to rebuilding failure: %v",
-					replica, addr, e.Name, e.Spec.VolumeName, err)
+					replicaName, addr, e.Name, e.Spec.VolumeName, err)
 			} else {
 				log.Infof("Removed failed rebuilding replica %v", addr)
 			}
@@ -1763,30 +1778,31 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 			// it is past the Backoff period, we'll try to mark the Replica as Failed and increase the Backoff period
 			// for the next failure.
 			if !ec.backoff.IsInBackOffSinceUpdate(e.Name, time.Now()) {
-				rep, err := ec.ds.GetReplica(replica)
+				replica, err = ec.updateReplicaRebuildFailedCondition(replica, replicaRebuildErrMsg)
 				if err != nil {
-					log.WithError(err).Errorf("Failed to get replica %v unable to mark failed rebuild", replica)
+					log.WithError(err).Errorf("Failed to update rebuild status information on replica %v", replicaName)
 					return
 				}
-				rep.Spec.FailedAt = util.Now()
-				rep.Spec.DesireState = longhorn.InstanceStateStopped
-				if _, err := ec.ds.UpdateReplica(rep); err != nil {
-					log.WithError(err).Errorf("Unable to mark failed rebuild on replica %v", replica)
+
+				replica.Spec.FailedAt = util.Now()
+				replica.Spec.DesireState = longhorn.InstanceStateStopped
+				if _, err := ec.ds.UpdateReplica(replica); err != nil {
+					log.WithError(err).Errorf("Unable to mark failed rebuild on replica %v", replicaName)
 					return
 				}
 				// Now that the Replica can actually be recreated, we can move up the Backoff.
 				ec.backoff.Next(e.Name, time.Now())
 				backoffTime := ec.backoff.Get(e.Name).Seconds()
-				log.Infof("Marked failed rebuild on replica %v, backoff period is now %v seconds", replica, backoffTime)
+				log.Infof("Marked failed rebuild on replica %v, backoff period is now %v seconds", replicaName, backoffTime)
 				return
 			}
-			log.Infof("Engine is still in backoff for replica %v rebuild failure", replica)
+			log.Infof("Engine is still in backoff for replica %v rebuild failure", replicaName)
 			return
 		}
 		// Replica rebuild succeeded, clear Backoff.
 		ec.backoff.DeleteEntry(e.Name)
 		ec.eventRecorder.Eventf(e, v1.EventTypeNormal, constant.EventReasonRebuilt,
-			"Replica %v with Address %v has been rebuilt for volume %v", replica, addr, e.Spec.VolumeName)
+			"Replica %v with Address %v has been rebuilt for volume %v", replicaName, addr, e.Spec.VolumeName)
 
 		// If enabled, call SnapshotPurge to clean up system generated snapshot after rebuilding.
 		if autoCleanupSystemGeneratedSnapshot {
@@ -1807,6 +1823,58 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 		return err
 	}
 	return nil
+}
+
+// updateReplicaRebuildFailedCondition updates the rebuild failed condition if replica rebuilding failed
+func (ec *EngineController) updateReplicaRebuildFailedCondition(replica *longhorn.Replica, errMsg string) (*longhorn.Replica, error) {
+	replicaRebuildFailedReason, conditionStatus, err := ec.getReplicaRebuildFailedReason(replica.Spec.NodeID, errMsg)
+	if err != nil {
+		return nil, err
+	}
+
+	replica.Status.Conditions = types.SetCondition(
+		replica.Status.Conditions,
+		longhorn.ReplicaConditionTypeRebuildFailed,
+		conditionStatus,
+		replicaRebuildFailedReason,
+		errMsg)
+
+	replica, err = ec.ds.UpdateReplicaStatus(replica)
+
+	return replica, err
+}
+
+func (ec *EngineController) getReplicaRebuildFailedReason(replicaNodeID, errMsg string) (failedReason string, conditionStatus longhorn.ConditionStatus, err error) {
+	failedReason, conditionStatus, isRebuildingFailedByNetwork := getReplicaRebuildFailedReasonFromError(errMsg)
+	if isRebuildingFailedByNetwork {
+		replicaNode, err := ec.ds.GetNodeRO(replicaNodeID)
+		if err != nil {
+			return "", "", err
+		}
+
+		replicaRebuildFailedCondition := types.GetCondition(replicaNode.Status.Conditions, longhorn.NodeConditionTypeReady)
+		switch replicaRebuildFailedCondition.Reason {
+		case longhorn.NodeConditionReasonManagerPodDown, longhorn.NodeConditionReasonKubernetesNodeGone, longhorn.NodeConditionReasonKubernetesNodeNotReady:
+			failedReason = replicaRebuildFailedCondition.Reason
+		}
+	}
+
+	return failedReason, conditionStatus, nil
+}
+
+func getReplicaRebuildFailedReasonFromError(errMsg string) (string, longhorn.ConditionStatus, bool) {
+	switch {
+	case strings.Contains(errMsg, longhorn.ReplicaRebuildFailedCanceledErrorMSG):
+		fallthrough
+	case strings.Contains(errMsg, longhorn.ReplicaRebuildFailedDeadlineExceededErrorMSG):
+		fallthrough
+	case strings.Contains(errMsg, longhorn.ReplicaRebuildFailedUnavailableErrorMSG):
+		return longhorn.ReplicaConditionReasonRebuildFailedDisconnection, longhorn.ConditionStatusTrue, true
+	case errMsg == "":
+		return "", longhorn.ConditionStatusFalse, false
+	default:
+		return longhorn.ReplicaConditionReasonRebuildFailedGeneral, longhorn.ConditionStatusTrue, false
+	}
 }
 
 func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
