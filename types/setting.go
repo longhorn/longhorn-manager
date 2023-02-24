@@ -50,6 +50,7 @@ const (
 	SettingNameReplicaAutoBalance                                       = SettingName("replica-auto-balance")
 	SettingNameStorageOverProvisioningPercentage                        = SettingName("storage-over-provisioning-percentage")
 	SettingNameStorageMinimalAvailablePercentage                        = SettingName("storage-minimal-available-percentage")
+	SettingNameStorageReservedPercentage                                = SettingName("storage-reserved-percentage")
 	SettingNameUpgradeChecker                                           = SettingName("upgrade-checker")
 	SettingNameCurrentLonghornVersion                                   = SettingName("current-longhorn-version")
 	SettingNameLatestLonghornVersion                                    = SettingName("latest-longhorn-version")
@@ -121,6 +122,7 @@ var (
 		SettingNameReplicaAutoBalance,
 		SettingNameStorageOverProvisioningPercentage,
 		SettingNameStorageMinimalAvailablePercentage,
+		SettingNameStorageReservedPercentage,
 		SettingNameUpgradeChecker,
 		SettingNameCurrentLonghornVersion,
 		SettingNameLatestLonghornVersion,
@@ -217,6 +219,7 @@ var (
 		SettingNameReplicaAutoBalance:                                       SettingDefinitionReplicaAutoBalance,
 		SettingNameStorageOverProvisioningPercentage:                        SettingDefinitionStorageOverProvisioningPercentage,
 		SettingNameStorageMinimalAvailablePercentage:                        SettingDefinitionStorageMinimalAvailablePercentage,
+		SettingNameStorageReservedPercentage:                                SettingDefinitionStorageReservedPercentage,
 		SettingNameUpgradeChecker:                                           SettingDefinitionUpgradeChecker,
 		SettingNameCurrentLonghornVersion:                                   SettingDefinitionCurrentLonghornVersion,
 		SettingNameLatestLonghornVersion:                                    SettingDefinitionLatestLonghornVersion,
@@ -460,6 +463,16 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "25",
+	}
+
+	SettingDefinitionStorageReservedPercentage = SettingDefinition{
+		DisplayName: "Storage Reserved Percentage",
+		Description: "The reserved percentage determines what percentage of disk space will not be used on a newly created Longhorn node.",
+		Category:    SettingCategoryScheduling,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "30",
 	}
 
 	SettingDefinitionUpgradeChecker = SettingDefinition{
@@ -1172,6 +1185,8 @@ func ValidateSetting(name, value string) (err error) {
 		if value < 0 {
 			return fmt.Errorf("value %v should be positive", value)
 		}
+	case SettingNameStorageReservedPercentage:
+		fallthrough
 	case SettingNameStorageMinimalAvailablePercentage:
 		if _, err := strconv.Atoi(value); err != nil {
 			return errors.Wrapf(err, "value %v is not a number", value)
