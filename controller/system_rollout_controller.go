@@ -951,6 +951,11 @@ func (c *SystemRolloutController) restoreConfigMaps() (err error) {
 	for _, restore := range c.configMapList.Items {
 		log := c.logger.WithField(types.KubernetesKindConfigMap, restore.Name)
 
+		if restore.Name == types.DefaultDefaultSettingConfigMapName {
+			log.Infof(SystemRolloutMsgIgnoreItemFmt, types.DefaultDefaultSettingConfigMapName)
+			continue
+		}
+
 		exist, err := c.ds.GetConfigMapRO(restore.Namespace, restore.Name)
 		if err != nil {
 			if !datastore.ErrorIsNotFound(err) {
