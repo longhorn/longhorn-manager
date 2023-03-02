@@ -679,6 +679,10 @@ func (c *SupportBundleController) newSupportBundleManager(supportBundle *longhor
 									Name:  "SUPPORT_BUNDLE_IMAGE_PULL_POLICY",
 									Value: string(api.PullAlways),
 								},
+								{
+									Name:  "SUPPORT_BUNDLE_REGISTRY_SECRET",
+									Value: string(registrySecret),
+								},
 							},
 							Ports: []corev1.ContainerPort{
 								{
