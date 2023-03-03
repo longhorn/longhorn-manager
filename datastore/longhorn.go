@@ -336,6 +336,15 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 	case types.SettingNameGuaranteedEngineManagerCPU:
 		fallthrough
 	case types.SettingNameGuaranteedReplicaManagerCPU:
+		fallthrough
+	case types.SettingNameGuaranteedInstanceManagerCPU:
+		guaranteedInstanceManagerCPU, err := s.GetSetting(types.SettingNameGuaranteedInstanceManagerCPU)
+		if err != nil {
+			return err
+		}
+		if sName == types.SettingNameGuaranteedInstanceManagerCPU {
+			guaranteedInstanceManagerCPU.Value = value
+		}
 		guaranteedEngineManagerCPU, err := s.GetSetting(types.SettingNameGuaranteedEngineManagerCPU)
 		if err != nil {
 			return err
@@ -350,7 +359,7 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 		if sName == types.SettingNameGuaranteedReplicaManagerCPU {
 			guaranteedReplicaManagerCPU.Value = value
 		}
-		if err := types.ValidateCPUReservationValues(guaranteedEngineManagerCPU.Value, guaranteedReplicaManagerCPU.Value); err != nil {
+		if err := types.ValidateCPUReservationValues(guaranteedEngineManagerCPU.Value, guaranteedReplicaManagerCPU.Value, guaranteedInstanceManagerCPU.Value); err != nil {
 			return err
 		}
 	case types.SettingNameStorageNetwork:

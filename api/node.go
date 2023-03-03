@@ -77,6 +77,7 @@ func (s *Server) NodeUpdate(rw http.ResponseWriter, req *http.Request) error {
 		node.Spec.Tags = n.Tags
 		node.Spec.EngineManagerCPURequest = n.EngineManagerCPURequest
 		node.Spec.ReplicaManagerCPURequest = n.ReplicaManagerCPURequest
+		node.Spec.InstanceManagerCPURequest = n.InstanceManagerCPURequest
 
 		return s.m.UpdateNode(node)
 	})
