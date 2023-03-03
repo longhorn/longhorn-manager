@@ -207,17 +207,17 @@ func getLoggerForBackup(logger logrus.FieldLogger, backup *longhorn.Backup) *log
 	)
 }
 
-func (bc *BackupController) isBackupBeingUsedForVolumeRestore(backupName, backupVolumeName string) error {
+func (bc *BackupController) isBackupBeingUsedForVolumeRestore(backupName, backupVolumeName string) (bool, error) {
 	volumes, err := bc.ds.ListVolumesByBackupVolumeRO(backupVolumeName)
 	if err != nil {
-		return err
+		return false, err
 	}
 	for _, v := range volumes {
 		if v.Status.RestoreRequired {
-			return fmt.Errorf("backup %v cannot be deleted due to the ongoing volume %v restoration", backupName, v.Name)
+			return true, fmt.Errorf("backup %v cannot be deleted due to the ongoing volume %v restoration", backupName, v.Name)
 		}
 	}
-	return nil
+	return false, nil
 }
 
 func (bc *BackupController) reconcile(backupName string) (err error) {
@@ -291,9 +291,9 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 				return nil // Ignore error to prevent enqueue
 			}
 
-			if err := bc.isBackupBeingUsedForVolumeRestore(backup.Name, backupVolumeName); err != nil {
-				log.WithError(err).Warnf("Unable to delete remote backup %v", backup.Name)
-				return err
+			if used, err := bc.isBackupBeingUsedForVolumeRestore(backup.Name, backupVolumeName); used || err != nil {
+				log.WithError(err).Warnf("Unable to delete remote backup")
+				return nil
 			}
 
 			backupURL := backupstore.EncodeBackupURL(backup.Name, backupVolumeName, backupTargetClient.URL)
