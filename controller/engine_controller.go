@@ -25,7 +25,6 @@ import (
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/controller"
 
-	"github.com/longhorn/backupstore"
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
@@ -40,8 +39,10 @@ import (
 )
 
 const (
-	unknownReplicaPrefix    = "UNKNOWN-"
-	restoreGetLockFailedMsg = "error initiating full backup restore: failed lock"
+	unknownReplicaPrefix            = "UNKNOWN-"
+	restoreGetLockFailedMsg         = "error initiating full backup restore: failed lock"
+	restoreAlreadyInProgressMsg     = "already in progress"
+	restoreAlreadyRestoredBackupMsg = "already restored backup"
 )
 
 var (
@@ -1007,7 +1008,6 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	if err != nil {
 		return err
 	}
-
 	// Incremental restoration will implicitly expand the DR volume once the backup volume is expanded
 	if needRestore {
 		if m.restoreBackoff.IsInBackOffSinceUpdate(engine.Name, time.Now()) {
@@ -1197,7 +1197,6 @@ func preRestoreCheckAndSync(log logrus.FieldLogger, engine *longhorn.Engine,
 	}
 	if cliAPIVersion < engineapi.CLIVersionFour {
 		isRestoring, isConsensual := syncWithRestoreStatusForCompatibleEngine(log, engine, rsMap)
-
 		if isRestoring || !isConsensual || engine.Spec.RequestedBackupRestore == "" || engine.Spec.RequestedBackupRestore == engine.Status.LastRestoredBackup {
 			return false, nil
 		}
@@ -1353,13 +1352,12 @@ func checkSizeBeforeRestoration(log logrus.FieldLogger, engine *longhorn.Engine,
 }
 
 func (m *EngineMonitor) restoreBackup(engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, cliAPIVersion int, engineClientProxy engineapi.EngineClientProxy) error {
-	// Get default backup target
 	backupTarget, err := m.ds.GetBackupTargetRO(types.DefaultBackupTargetName)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return err
 		}
-		return fmt.Errorf("cannot found the %s backup target", types.DefaultBackupTargetName)
+		return fmt.Errorf("cannot find the backup target %s", types.DefaultBackupTargetName)
 	}
 
 	backupTargetClient, err := newBackupTargetClientFromDefaultEngineImage(m.ds, backupTarget)
@@ -1374,6 +1372,7 @@ func (m *EngineMonitor) restoreBackup(engine *longhorn.Engine, rsMap map[string]
 		"lastRestoredBackupName":      engine.Status.LastRestoredBackup,
 	})
 
+<<<<<<< HEAD
 	// check if backup exists
 	backupURL := backupstore.EncodeBackupURL(engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, backupTargetClient.URL)
 	backupInfo, err := backupTargetClient.BackupGet(backupURL, backupTargetClient.Credential)
@@ -1387,6 +1386,11 @@ func (m *EngineMonitor) restoreBackup(engine *longhorn.Engine, rsMap map[string]
 			status.Error = "remote backup not found"
 		}
 		return nil
+=======
+	concurrentLimit, err := m.ds.GetSettingAsInt(types.SettingNameRestoreConcurrentLimit)
+	if err != nil {
+		return errors.Wrapf(err, "failed to assert %v value", types.SettingNameRestoreConcurrentLimit)
+>>>>>>> 6b179a83 (Remove the check of backup existence)
 	}
 
 	mlog.Info("Preparing to restore backup")
@@ -1428,21 +1432,27 @@ func handleRestoreError(log logrus.FieldLogger, engine *longhorn.Engine, rsMap m
 	}
 
 	for _, re := range taskErr.ReplicaErrors {
-		if status, exists := rsMap[re.Address]; exists {
-			if strings.Contains(re.Error(), restoreGetLockFailedMsg) {
-				// Register the name with a restore backoff entry
-				log.WithError(re).Debugf("Ignored failed locked restore error from replica %v", re.Address)
-				backoff.Next(engine.Name, time.Now())
-				continue
-			} else {
-				backoff.DeleteEntry(engine.Name)
-			}
-			if strings.Contains(re.Error(), "already in progress") || strings.Contains(re.Error(), "already restored backup") {
-				log.WithError(re).Debugf("Ignored restore error from replica %v", re.Address)
-				continue
-			}
-			status.Error = re.Error()
+		status, exists := rsMap[re.Address]
+		if !exists {
+			continue
 		}
+
+		if strings.Contains(re.Error(), restoreGetLockFailedMsg) {
+			log.WithError(re).Debugf("Ignored failed locked restore error from replica %v", re.Address)
+			// Register the name with a restore backoff entry
+			backoff.Next(engine.Name, time.Now())
+			continue
+		}
+
+		backoff.DeleteEntry(engine.Name)
+
+		if strings.Contains(re.Error(), restoreAlreadyInProgressMsg) ||
+			strings.Contains(re.Error(), restoreAlreadyRestoredBackupMsg) {
+			log.WithError(re).Debugf("Ignored restore error from replica %v", re.Address)
+			continue
+		}
+
+		status.Error = re.Error()
 	}
 
 	return nil
@@ -1456,16 +1466,20 @@ func handleRestoreErrorForCompatibleEngine(log logrus.FieldLogger, engine *longh
 	}
 
 	for _, re := range taskErr.ReplicaErrors {
-		if status, exists := rsMap[re.Address]; exists {
-			if strings.Contains(re.Error(), restoreGetLockFailedMsg) {
-				log.WithError(re).Debugf("Ignored failed lock restore error from replica %v", re.Address)
-				// Register the name with a restore backoff entry
-				backoff.Next(engine.Name, time.Now())
-				continue
-			}
-			backoff.DeleteEntry(engine.Name)
-			status.Error = re.Error()
+		status, exists := rsMap[re.Address]
+		if !exists {
+			continue
 		}
+
+		if strings.Contains(re.Error(), restoreGetLockFailedMsg) {
+			log.WithError(re).Debugf("Ignored failed locked restore error from replica %v", re.Address)
+			// Register the name with a restore backoff entry
+			backoff.Next(engine.Name, time.Now())
+			continue
+		}
+
+		backoff.DeleteEntry(engine.Name)
+		status.Error = re.Error()
 	}
 	log.WithError(taskErr).Warnf("Some replicas of the compatible engine failed to start restoring backup %v with last restored backup %v in engine monitor",
 		engine.Spec.RequestedBackupRestore, engine.Status.LastRestoredBackup)
