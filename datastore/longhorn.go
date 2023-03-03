@@ -792,6 +792,83 @@ func (s *DataStore) ListVolumesByLabelSelector(selector labels.Selector) (map[st
 	return itemMap, nil
 }
 
+<<<<<<< HEAD
+=======
+// ListVolumesFollowsGlobalSettingsRO returns an object contains all Volumes
+// that don't apply specific spec and follow the global settings
+func (s *DataStore) ListVolumesFollowsGlobalSettingsRO(followedSettingNames map[string]bool) (map[string]*longhorn.Volume, error) {
+	itemMap := make(map[string]*longhorn.Volume)
+
+	followedGlobalSettingsLabels := map[string]string{}
+	for sName := range followedSettingNames {
+		if types.SettingsRelatedToVolume[sName] != types.LonghornLabelValueIgnored {
+			continue
+		}
+		followedGlobalSettingsLabels[types.GetVolumeSettingLabelKey(sName)] = types.LonghornLabelValueIgnored
+	}
+	selectors, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: followedGlobalSettingsLabels,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	list, err := s.ListVolumesBySelectorRO(selectors)
+	if err != nil {
+		return nil, err
+	}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO
+	}
+
+	return itemMap, nil
+}
+
+// ListVolumesByBackupVolumeRO returns an object contains all Volumes with the specified backup-volume label
+func (s *DataStore) ListVolumesByBackupVolumeRO(backupVolumeName string) (map[string]*longhorn.Volume, error) {
+	itemMap := make(map[string]*longhorn.Volume)
+
+	labels := map[string]string{
+		types.LonghornLabelBackupVolume: backupVolumeName,
+	}
+
+	selectors, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: labels,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	list, err := s.ListVolumesBySelectorRO(selectors)
+	if err != nil {
+		return nil, err
+	}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO
+	}
+
+	return itemMap, nil
+}
+
+// GetLabelsForVolumesFollowsGlobalSettings returns a label map in which
+// contains all global settings the volume follows
+func GetLabelsForVolumesFollowsGlobalSettings(volume *longhorn.Volume) map[string]string {
+	followedGlobalSettingsLabels := map[string]string{}
+	// The items here should match types.SettingsRelatedToVolume
+	if volume.Spec.ReplicaAutoBalance == longhorn.ReplicaAutoBalanceIgnored {
+		followedGlobalSettingsLabels[types.GetVolumeSettingLabelKey(string(types.SettingNameReplicaAutoBalance))] = types.LonghornLabelValueIgnored
+	}
+	if volume.Spec.SnapshotDataIntegrity == longhorn.SnapshotDataIntegrityIgnored {
+		followedGlobalSettingsLabels[types.GetVolumeSettingLabelKey(string(types.SettingNameSnapshotDataIntegrity))] = types.LonghornLabelValueIgnored
+	}
+	if volume.Spec.UnmapMarkSnapChainRemoved == longhorn.UnmapMarkSnapChainRemovedIgnored {
+		followedGlobalSettingsLabels[types.GetVolumeSettingLabelKey(string(types.SettingNameRemoveSnapshotsDuringFilesystemTrim))] = types.LonghornLabelValueIgnored
+	}
+
+	return followedGlobalSettingsLabels
+}
+
+>>>>>>> 503567e7 (Ensure that the backup is not being used for restoration before deleting it)
 func checkEngine(engine *longhorn.Engine) error {
 	if engine.Name == "" || engine.Spec.VolumeName == "" {
 		return fmt.Errorf("BUG: missing required field %+v", engine)
