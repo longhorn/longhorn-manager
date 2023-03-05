@@ -207,17 +207,28 @@ func getLoggerForBackup(logger logrus.FieldLogger, backup *longhorn.Backup) *log
 	)
 }
 
-func (bc *BackupController) isBackupBeingUsedForVolumeRestore(backupName, backupVolumeName string) (bool, error) {
+func (bc *BackupController) isBackupNotBeingUsedForVolumeRestore(backupName, backupVolumeName string) (bool, error) {
 	volumes, err := bc.ds.ListVolumesByBackupVolumeRO(backupVolumeName)
 	if err != nil {
-		return false, err
+		return false, errors.Wrapf(err, "failed to list volumes for backup volume %v for checking restore status", backupVolumeName)
 	}
 	for _, v := range volumes {
-		if v.Status.RestoreRequired {
-			return true, fmt.Errorf("backup %v cannot be deleted due to the ongoing volume %v restoration", backupName, v.Name)
+		if !v.Status.RestoreRequired {
+			continue
+		}
+		engines, err := bc.ds.ListVolumeEngines(v.Name)
+		if err != nil {
+			return false, errors.Wrapf(err, "failed to list engines for volume %v for checking restore status", v.Name)
+		}
+		for _, e := range engines {
+			for _, status := range e.Status.RestoreStatus {
+				if status.IsRestoring {
+					return false, errors.Wrapf(err, "backup %v cannot be deleted due to the ongoing volume %v restoration", backupName, v.Name)
+				}
+			}
 		}
 	}
-	return false, nil
+	return true, nil
 }
 
 func (bc *BackupController) reconcile(backupName string) (err error) {
@@ -291,7 +302,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 				return nil // Ignore error to prevent enqueue
 			}
 
-			if used, err := bc.isBackupBeingUsedForVolumeRestore(backup.Name, backupVolumeName); used || err != nil {
+			if unused, err := bc.isBackupNotBeingUsedForVolumeRestore(backup.Name, backupVolumeName); !unused {
 				log.WithError(err).Warnf("Unable to delete remote backup")
 				return nil
 			}
