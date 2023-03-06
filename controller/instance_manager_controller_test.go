@@ -231,6 +231,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		err = kubeNodeIndexer.Add(kubeNode2)
 		c.Assert(err, IsNil)
 		_, err = kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode2, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
 
 		lhNode2 := newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue, "")
 		err = lhNodeIndexer.Add(lhNode2)
