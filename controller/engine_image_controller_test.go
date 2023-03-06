@@ -78,7 +78,7 @@ func getEngineImageControllerTestTemplate() *EngineImageControllerTestCase {
 	tc := &EngineImageControllerTestCase{
 		node:                newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, ""),
 		volume:              newVolume(TestVolumeName, 2),
-		engine:              newEngine(TestEngineName, TestEngineImage, TestEngineManagerName, TestNode1, TestIP1, 0, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
+		engine:              newEngine(TestEngineName, TestEngineImage, TestInstanceManagerName, TestNode1, TestIP1, 0, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
 		upgradedEngineImage: newEngineImage(TestUpgradedEngineImage, longhorn.EngineImageStateDeployed),
 
 		defaultEngineImage: TestEngineImage,

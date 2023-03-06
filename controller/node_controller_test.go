@@ -39,17 +39,15 @@ var (
 )
 
 type NodeTestCase struct {
-	nodes           map[string]*longhorn.Node
-	pods            map[string]*v1.Pod
-	replicas        []*longhorn.Replica
-	kubeNodes       map[string]*v1.Node
-	engineManagers  map[string]*longhorn.InstanceManager
-	replicaManagers map[string]*longhorn.InstanceManager
+	nodes            map[string]*longhorn.Node
+	pods             map[string]*v1.Pod
+	replicas         []*longhorn.Replica
+	kubeNodes        map[string]*v1.Node
+	instanceManagers map[string]*longhorn.InstanceManager
 
-	expectNodeStatus      map[string]longhorn.NodeStatus
-	expectEngineManagers  map[string]*longhorn.InstanceManager
-	expectReplicaManagers map[string]*longhorn.InstanceManager
-	expectOrphans         []*longhorn.Orphan
+	expectNodeStatus       map[string]longhorn.NodeStatus
+	expectInstanceManagers map[string]*longhorn.InstanceManager
+	expectOrphans          []*longhorn.Orphan
 }
 
 func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
@@ -499,6 +497,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 	tc.nodes = map[string]*longhorn.Node{
 		TestNode1: node1,
 	}
+
 	tc.expectNodeStatus = map[string]longhorn.NodeStatus{
 		TestNode1: {
 			Conditions: []longhorn.Condition{
@@ -520,12 +519,17 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			},
 		},
 	}
-	tc.expectEngineManagers = map[string]*longhorn.InstanceManager{
-		TestEngineManagerName: newInstanceManager(TestEngineManagerName, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
+
+	tc.expectInstanceManagers = map[string]*longhorn.InstanceManager{
+		TestInstanceManagerName: newInstanceManager(
+			TestInstanceManagerName, longhorn.InstanceManagerStateRunning,
+			TestOwnerID1, TestNode1, TestIP1,
+			map[string]longhorn.InstanceProcess{},
+			map[string]longhorn.InstanceProcess{},
+			false,
+		),
 	}
-	tc.expectReplicaManagers = map[string]*longhorn.InstanceManager{
-		TestReplicaManagerName: newInstanceManager(TestReplicaManagerName, longhorn.InstanceManagerTypeReplica, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
-	}
+
 	tc.expectOrphans = []*longhorn.Orphan{
 		{
 			Spec: longhorn.OrphanSpec{
@@ -582,7 +586,9 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			},
 		},
 	}
-	extraEngineManager := newInstanceManager("extra-engine-manger-name", longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
+	extraInstanceManager := newInstanceManager(
+		"extra-instance-manger-name", longhorn.InstanceManagerStateRunning,
+		TestOwnerID1, TestNode1, TestIP1,
 		map[string]longhorn.InstanceProcess{
 			ExistingInstance: {
 				Spec: longhorn.InstanceProcessSpec{
@@ -593,25 +599,34 @@ func (s *TestSuite) TestSyncNode(c *C) {
 					PortStart: TestPort1,
 				},
 			},
-		}, false)
-	extraEngineManager.Spec.Image = TestExtraInstanceManagerImage
-	extraReplicaManager := newInstanceManager("extra-replica-manger-name", longhorn.InstanceManagerTypeReplica, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false)
-	extraReplicaManager.Spec.Image = TestExtraInstanceManagerImage
-	tc.engineManagers = map[string]*longhorn.InstanceManager{
-		TestEngineManagerName:      newInstanceManager(TestEngineManagerName, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
-		"extra-engine-manger-name": extraEngineManager,
+		},
+		map[string]longhorn.InstanceProcess{},
+		false,
+	)
+	extraInstanceManager.Spec.Image = TestExtraInstanceManagerImage
+
+	tc.instanceManagers = map[string]*longhorn.InstanceManager{
+		TestInstanceManagerName: newInstanceManager(
+			TestInstanceManagerName, longhorn.InstanceManagerStateRunning,
+			TestOwnerID1, TestNode1, TestIP1,
+			map[string]longhorn.InstanceProcess{},
+			map[string]longhorn.InstanceProcess{},
+			false,
+		),
+		"extra-instance-manger-name": extraInstanceManager,
 	}
-	tc.replicaManagers = map[string]*longhorn.InstanceManager{
-		TestReplicaManagerName:      newInstanceManager(TestReplicaManagerName, longhorn.InstanceManagerTypeReplica, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
-		"extra-replica-manger-name": extraReplicaManager,
+
+	tc.expectInstanceManagers = map[string]*longhorn.InstanceManager{
+		TestInstanceManagerName: newInstanceManager(
+			TestInstanceManagerName, longhorn.InstanceManagerStateRunning,
+			TestOwnerID1, TestNode1, TestIP1,
+			map[string]longhorn.InstanceProcess{},
+			map[string]longhorn.InstanceProcess{},
+			false,
+		),
+		"extra-instance-manger-name": extraInstanceManager,
 	}
-	tc.expectEngineManagers = map[string]*longhorn.InstanceManager{
-		TestEngineManagerName:      newInstanceManager(TestEngineManagerName, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
-		"extra-engine-manger-name": extraEngineManager,
-	}
-	tc.expectReplicaManagers = map[string]*longhorn.InstanceManager{
-		TestReplicaManagerName: newInstanceManager(TestReplicaManagerName, longhorn.InstanceManagerTypeReplica, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
-	}
+
 	tc.expectOrphans = []*longhorn.Orphan{
 		{
 			Spec: longhorn.OrphanSpec{
@@ -650,7 +665,10 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			DiskStatus: map[string]*longhorn.DiskStatus{},
 		},
 	}
-	extraReplicaManager = newInstanceManager("extra-replica-manger-name", longhorn.InstanceManagerTypeReplica, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
+	extraInstanceManager = newInstanceManager(
+		"extra-instance-manger-name", longhorn.InstanceManagerStateRunning,
+		TestOwnerID1, TestNode1, TestIP1,
+		map[string]longhorn.InstanceProcess{},
 		map[string]longhorn.InstanceProcess{
 			ExistingInstance: {
 				Spec: longhorn.InstanceProcessSpec{
@@ -662,20 +680,29 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				},
 			},
 		}, false)
-	extraReplicaManager.Spec.Image = TestExtraInstanceManagerImage
-	tc.engineManagers = map[string]*longhorn.InstanceManager{
-		TestEngineManagerName: newInstanceManager(TestEngineManagerName, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
+	extraInstanceManager.Spec.Image = TestExtraInstanceManagerImage
+
+	tc.instanceManagers = map[string]*longhorn.InstanceManager{
+		TestInstanceManagerName: newInstanceManager(
+			TestInstanceManagerName, longhorn.InstanceManagerStateRunning,
+			TestOwnerID1, TestNode1, TestIP1,
+			map[string]longhorn.InstanceProcess{},
+			map[string]longhorn.InstanceProcess{},
+			false,
+		),
 	}
-	tc.replicaManagers = map[string]*longhorn.InstanceManager{
-		TestReplicaManagerName:      newInstanceManager(TestReplicaManagerName, longhorn.InstanceManagerTypeReplica, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
-		"extra-replica-manger-name": extraReplicaManager,
+
+	tc.expectInstanceManagers = map[string]*longhorn.InstanceManager{
+		TestInstanceManagerName: newInstanceManager(
+			TestInstanceManagerName, longhorn.InstanceManagerStateRunning,
+			TestOwnerID1, TestNode1, TestIP1,
+			map[string]longhorn.InstanceProcess{},
+			map[string]longhorn.InstanceProcess{},
+			false,
+		),
 	}
-	tc.expectEngineManagers = map[string]*longhorn.InstanceManager{
-		TestEngineManagerName: newInstanceManager(TestEngineManagerName, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
-	}
-	tc.expectReplicaManagers = map[string]*longhorn.InstanceManager{}
 	tc.expectOrphans = []*longhorn.Orphan{}
-	testCases["clean up all replica managers if there is no disk on the node"] = tc
+	testCases["clean up all instance managers if there is no disk on the node"] = tc
 
 	for name, tc := range testCases {
 		fmt.Printf("testing %v\n", name)
@@ -740,19 +767,12 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			c.Assert(err, IsNil)
 		}
 		// create instance managers
-		for _, em := range tc.engineManagers {
-			em, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), em, metav1.CreateOptions{})
+		for _, instanceManager := range tc.instanceManagers {
+			em, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), instanceManager, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			err = imIndexer.Add(em)
 			c.Assert(err, IsNil)
 		}
-		for _, rm := range tc.replicaManagers {
-			rm, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), rm, metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-			err = imIndexer.Add(rm)
-			c.Assert(err, IsNil)
-		}
-
 		// sync node status
 		for nodeName, node := range tc.nodes {
 			if nc.controllerID == node.Name {
@@ -788,20 +808,13 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			}
 		}
 
-		for emName := range tc.engineManagers {
-			em, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Get(context.TODO(), emName, metav1.GetOptions{})
-			if expectEM, exist := tc.expectEngineManagers[emName]; !exist {
+		for name := range tc.instanceManagers {
+			instanceManager, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Get(context.TODO(), name, metav1.GetOptions{})
+			c.Assert(err, IsNil)
+			if expectInstanceManager, exist := tc.expectInstanceManagers[name]; !exist {
 				c.Assert(datastore.ErrorIsNotFound(err), Equals, true)
 			} else {
-				c.Assert(em.Spec, DeepEquals, expectEM.Spec)
-			}
-		}
-		for rmName := range tc.replicaManagers {
-			rm, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Get(context.TODO(), rmName, metav1.GetOptions{})
-			if expectRM, exist := tc.expectReplicaManagers[rmName]; !exist {
-				c.Assert(datastore.ErrorIsNotFound(err), Equals, true)
-			} else {
-				c.Assert(rm.Spec, DeepEquals, expectRM.Spec)
+				c.Assert(instanceManager.Spec, DeepEquals, expectInstanceManager.Spec)
 			}
 		}
 
