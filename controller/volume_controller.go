@@ -1521,6 +1521,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 				// In the attached mode, we can determine whether the replica can fail by relying on the data plane's
 				// connectivity status.
 				if v.Status.State != longhorn.VolumeStateAttached {
+					log.WithField("replica", r.Name).Warnf("Replica %v is marked as failed since the volume %v is not attached because the instance manager is unable to launch the replica", r.Name, v.Name)
 					if r.Spec.FailedAt == "" {
 						r.Spec.FailedAt = vc.nowHandler()
 					}
