@@ -41,22 +41,22 @@ require (
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v0.0.0-20220609065820-a08f7f47442f
-	github.com/longhorn/backupstore v0.0.0-20221206091653-a8c2a47673e2
-	github.com/longhorn/go-iscsi-helper v0.0.0-20221219041640-6c94fb0d483a
-	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20221221100445-de0b00d3f819
-	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20221227032035-a2efd12a5bfe
+	github.com/longhorn/backupstore v0.0.0-20230306041950-1879d9f064bb
+	github.com/longhorn/go-iscsi-helper v0.0.0-20230215054929-acb305e1031b
+	github.com/longhorn/longhorn-engine v1.4.1-rc1.0.20230306062607-ef48312781d9
+	github.com/longhorn/longhorn-instance-manager v1.4.1-rc1.0.20230306071558-69d5a52ed37e
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.1
 	github.com/rancher/dynamiclistener v0.3.1
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
 	github.com/rancher/wrangler v0.8.10
 	github.com/robfig/cron v1.2.0
-	github.com/sirupsen/logrus v1.8.1
+	github.com/sirupsen/logrus v1.9.0
 	github.com/stretchr/testify v1.8.1
 	github.com/urfave/cli v1.22.2
 	golang.org/x/mod v0.5.1
 	golang.org/x/net v0.0.0-20211209124913-491a49abca63
-	golang.org/x/sys v0.0.0-20210831042530-f4d43177bf5e
+	golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac
 	google.golang.org/grpc v1.40.0
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f

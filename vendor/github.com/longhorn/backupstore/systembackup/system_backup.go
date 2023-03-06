@@ -1,13 +1,14 @@
 package systembackup
 
 import (
-	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/pkg/errors"
 
 	"github.com/longhorn/backupstore"
 	"github.com/longhorn/backupstore/util"
@@ -55,7 +56,7 @@ func Upload(localFilePath string, cfg *Config) error {
 
 	cfgURI := getSystemBackupConfigURI(cfg)
 	if err := backupstore.SaveConfigInBackupStore(cfgURI, driver, cfg); err != nil {
-		log.WithError(err).Errorf("failed to upload system backup config %v", cfg.Name)
+		log.WithError(err).Errorf("Failed to upload system backup config %v", cfg.Name)
 		return err
 	}
 	log.Debugf("Uploaded system backup config %v", cfg.Name)
@@ -85,7 +86,7 @@ func Download(localFilePath string, cfg *Config) error {
 
 	sha512sum, err := util.GetFileChecksum(localFilePath)
 	if err != nil {
-		return fmt.Errorf("failed to get %v checksum: %w", localFilePath, err)
+		return errors.Wrapf(err, "failed to get %v checksum", localFilePath)
 	}
 
 	if sha512sum != cfg.Checksum {
@@ -182,7 +183,7 @@ func getSystemBackups(driver backupstore.BackupStoreDriver) (SystemBackups, erro
 	systemBackupURI := filepath.Join(backupstore.GetBackupstoreBase(), SubDirectory)
 	lv1Dirs, err := driver.List(systemBackupURI)
 	if err != nil {
-		log.WithError(err).Warnf("failed to list 1st level directory %v", systemBackupURI)
+		log.WithError(err).Warnf("Failed to list 1st level directory %v", systemBackupURI)
 		return nil, err
 	}
 
@@ -192,7 +193,7 @@ func getSystemBackups(driver backupstore.BackupStoreDriver) (SystemBackups, erro
 		path := filepath.Join(systemBackupURI, longhornVersion)
 		lv2Dirs, err := driver.List(path)
 		if err != nil {
-			log.WithError(err).Warnf("failed to list 2nd level directory %v", path)
+			log.WithError(err).Warnf("Failed to list 2nd level directory %v", path)
 			return nil, err
 		}
 
