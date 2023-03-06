@@ -127,7 +127,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 		// 1. keep stopped
 		"engine keeps stopped": {
 			longhorn.InstanceManagerTypeEngine,
-			newInstanceManager(TestInstanceManagerName1, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
+			newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
 			newEngine(NonExistingInstance, "", "", "", "", 0, false, longhorn.InstanceStateStopped, longhorn.InstanceStateStopped),
 			newEngine(NonExistingInstance, "", "", "", "", 0, false, longhorn.InstanceStateStopped, longhorn.InstanceStateStopped),
 			false,
@@ -135,7 +135,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 		// 2. desire state becomes running
 		"engine desire state becomes running": {
 			longhorn.InstanceManagerTypeEngine,
-			newInstanceManager(TestInstanceManagerName1, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
+			newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
 			newEngine(NonExistingInstance, "", "", TestNode1, "", 0, false, longhorn.InstanceStateStopped, longhorn.InstanceStateRunning),
 			newEngine(NonExistingInstance, "", "", TestNode1, "", 0, false, longhorn.InstanceStateStopped, longhorn.InstanceStateRunning),
 			false,
@@ -143,7 +143,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 		// 3.1.1. become starting
 		"engine becomes starting": {
 			longhorn.InstanceManagerTypeEngine,
-			newInstanceManager(TestInstanceManagerName1, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
+			newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
 				map[string]longhorn.InstanceProcess{
 					ExistingInstance: {
 						Spec: longhorn.InstanceProcessSpec{
@@ -156,13 +156,13 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 					},
 				}, false),
 			newEngine(ExistingInstance, "", "", TestNode1, "", 0, false, longhorn.InstanceStateStopped, longhorn.InstanceStateRunning),
-			newEngine(ExistingInstance, "", TestInstanceManagerName1, TestNode1, "", 0, false, longhorn.InstanceStateStarting, longhorn.InstanceStateRunning),
+			newEngine(ExistingInstance, "", TestInstanceManagerName, TestNode1, "", 0, false, longhorn.InstanceStateStarting, longhorn.InstanceStateRunning),
 			false,
 		},
 		// 3.1.3. become running from starting
 		"engine becomes running from starting state": {
 			longhorn.InstanceManagerTypeEngine,
-			newInstanceManager(TestInstanceManagerName1, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
+			newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
 				map[string]longhorn.InstanceProcess{
 					ExistingInstance: {
 						Spec: longhorn.InstanceProcessSpec{
@@ -174,14 +174,14 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 						},
 					},
 				}, false),
-			newEngine(ExistingInstance, "", TestInstanceManagerName1, TestNode1, "", 0, false, longhorn.InstanceStateStarting, longhorn.InstanceStateRunning),
-			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
+			newEngine(ExistingInstance, "", TestInstanceManagerName, TestNode1, "", 0, false, longhorn.InstanceStateStarting, longhorn.InstanceStateRunning),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
 			false,
 		},
 		// 3.2. become running from stopped
 		"engine becomes running from stopped state": {
 			longhorn.InstanceManagerTypeEngine,
-			newInstanceManager(TestInstanceManagerName1, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
+			newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
 				map[string]longhorn.InstanceProcess{
 					ExistingInstance: {
 						Spec: longhorn.InstanceProcessSpec{
@@ -194,13 +194,13 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 					},
 				}, false),
 			newEngine(ExistingInstance, "", "", TestNode1, "", 0, false, longhorn.InstanceStateStopped, longhorn.InstanceStateRunning),
-			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
 			false,
 		},
 		// 4. keep running
 		"engine keeps running": {
 			longhorn.InstanceManagerTypeEngine,
-			newInstanceManager(TestInstanceManagerName1, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
+			newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
 				map[string]longhorn.InstanceProcess{
 					ExistingInstance: {
 						Spec: longhorn.InstanceProcessSpec{
@@ -212,14 +212,14 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 						},
 					},
 				}, false),
-			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
-			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
 			false,
 		},
 		// 5. desire state becomes stopped
 		"engine desire state becomes stopped": {
 			longhorn.InstanceManagerTypeEngine,
-			newInstanceManager(TestInstanceManagerName1, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
+			newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
 				map[string]longhorn.InstanceProcess{
 					ExistingInstance: {
 						Spec: longhorn.InstanceProcessSpec{
@@ -231,14 +231,14 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 						},
 					},
 				}, false),
-			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, "", TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateStopped),
-			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, "", TestIP1, TestPort1, false, longhorn.InstanceStateRunning, longhorn.InstanceStateStopped),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, "", TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateStopped),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, "", TestIP1, TestPort1, false, longhorn.InstanceStateRunning, longhorn.InstanceStateStopped),
 			false,
 		},
 		// 6. wait for update
 		"stopping engine waits for im update": {
 			longhorn.InstanceManagerTypeEngine,
-			newInstanceManager(TestInstanceManagerName1, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
+			newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
 				map[string]longhorn.InstanceProcess{
 					ExistingInstance: {
 						Spec: longhorn.InstanceProcessSpec{
@@ -250,14 +250,14 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 						},
 					},
 				}, false),
-			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, "", TestIP1, TestPort1, false, longhorn.InstanceStateRunning, longhorn.InstanceStateStopped),
-			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, "", TestIP1, TestPort1, false, longhorn.InstanceStateRunning, longhorn.InstanceStateStopped),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, "", TestIP1, TestPort1, false, longhorn.InstanceStateRunning, longhorn.InstanceStateStopped),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, "", TestIP1, TestPort1, false, longhorn.InstanceStateRunning, longhorn.InstanceStateStopped),
 			false,
 		},
 		// 7.1.1. become stopping
 		"engine becomes stopping": {
 			longhorn.InstanceManagerTypeEngine,
-			newInstanceManager(TestInstanceManagerName1, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
+			newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
 				map[string]longhorn.InstanceProcess{
 					ExistingInstance: {
 						Spec: longhorn.InstanceProcessSpec{
@@ -269,14 +269,14 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 						},
 					},
 				}, false),
-			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, "", TestIP1, TestPort1, false, longhorn.InstanceStateRunning, longhorn.InstanceStateStopped),
-			newEngine(ExistingInstance, "", TestInstanceManagerName1, "", "", 0, false, longhorn.InstanceStateStopping, longhorn.InstanceStateStopped),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, "", TestIP1, TestPort1, false, longhorn.InstanceStateRunning, longhorn.InstanceStateStopped),
+			newEngine(ExistingInstance, "", TestInstanceManagerName, "", "", 0, false, longhorn.InstanceStateStopping, longhorn.InstanceStateStopped),
 			false,
 		},
 		// 7.1.2. still stopping
 		"engine is still stopping": {
 			longhorn.InstanceManagerTypeEngine,
-			newInstanceManager(TestInstanceManagerName1, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
+			newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
 				map[string]longhorn.InstanceProcess{
 					ExistingInstance: {
 						Spec: longhorn.InstanceProcessSpec{
@@ -288,23 +288,23 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 						},
 					},
 				}, false),
-			newEngine(ExistingInstance, "", TestInstanceManagerName1, "", "", 0, false, longhorn.InstanceStateStopping, longhorn.InstanceStateStopped),
-			newEngine(ExistingInstance, "", TestInstanceManagerName1, "", "", 0, false, longhorn.InstanceStateStopping, longhorn.InstanceStateStopped),
+			newEngine(ExistingInstance, "", TestInstanceManagerName, "", "", 0, false, longhorn.InstanceStateStopping, longhorn.InstanceStateStopped),
+			newEngine(ExistingInstance, "", TestInstanceManagerName, "", "", 0, false, longhorn.InstanceStateStopping, longhorn.InstanceStateStopped),
 			false,
 		},
 		// 7.1.3. become stopped from stopping
 		"engine becomes stopped from stopping state": {
 			longhorn.InstanceManagerTypeEngine,
-			newInstanceManager(TestInstanceManagerName1, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
-			newEngine(NonExistingInstance, "", TestInstanceManagerName1, "", "", 0, false, longhorn.InstanceStateStopping, longhorn.InstanceStateStopped),
+			newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
+			newEngine(NonExistingInstance, "", TestInstanceManagerName, "", "", 0, false, longhorn.InstanceStateStopping, longhorn.InstanceStateStopped),
 			newEngine(NonExistingInstance, "", "", "", "", 0, false, longhorn.InstanceStateStopped, longhorn.InstanceStateStopped),
 			false,
 		},
 		// 7.2. become stopped from running
 		"engine becomes stopped from running state": {
 			longhorn.InstanceManagerTypeEngine,
-			newInstanceManager(TestInstanceManagerName1, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
-			newEngine(NonExistingInstance, TestEngineImage, TestInstanceManagerName1, "", TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateStopped),
+			newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
+			newEngine(NonExistingInstance, TestEngineImage, TestInstanceManagerName, "", TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateStopped),
 			newEngine(NonExistingInstance, "", "", "", "", 0, false, longhorn.InstanceStateStopped, longhorn.InstanceStateStopped),
 			false,
 		},
@@ -312,7 +312,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 		// corner case1: invalid desireState
 		"engine gets invalid desire state": {
 			longhorn.InstanceManagerTypeEngine,
-			newInstanceManager(TestInstanceManagerName1, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
+			newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
 			newEngine(NonExistingInstance, "", "", "", "", 0, false, longhorn.InstanceStateStopped, longhorn.InstanceStateStopping),
 			newEngine(NonExistingInstance, "", "", "", "", 0, false, longhorn.InstanceStateStopped, longhorn.InstanceStateStopping),
 			true,
@@ -320,7 +320,7 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 		// corner case2: the instance currentState is running but the related instance manager is being deleting
 		"engine keeps running but instance manager is being deleting": {
 			longhorn.InstanceManagerTypeEngine,
-			newInstanceManager(TestInstanceManagerName1, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
+			newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1,
 				map[string]longhorn.InstanceProcess{
 					ExistingInstance: {
 						Spec: longhorn.InstanceProcessSpec{
@@ -332,14 +332,14 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 						},
 					},
 				}, true),
-			newEngine(NonExistingInstance, TestEngineImage, TestInstanceManagerName1, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
-			newEngine(NonExistingInstance, "", TestInstanceManagerName1, TestNode1, "", 0, true, longhorn.InstanceStateError, longhorn.InstanceStateRunning),
+			newEngine(NonExistingInstance, TestEngineImage, TestInstanceManagerName, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
+			newEngine(NonExistingInstance, "", TestInstanceManagerName, TestNode1, "", 0, true, longhorn.InstanceStateError, longhorn.InstanceStateRunning),
 			false,
 		},
 		// corner case3: the instance is stopped and the related instance manager is being deleting
 		"engine keeps stopped and instance manager is being deleting": {
 			longhorn.InstanceManagerTypeEngine,
-			newInstanceManager(TestInstanceManagerName1, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, true),
+			newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, true),
 			newEngine(NonExistingInstance, "", "", "", "", 0, false, longhorn.InstanceStateStopped, longhorn.InstanceStateStopped),
 			newEngine(NonExistingInstance, "", "", "", "", 0, false, longhorn.InstanceStateStopped, longhorn.InstanceStateStopped),
 			false,
@@ -347,15 +347,15 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 		// corner case4: the instance currentState is running but the related instance manager is starting
 		"engine keeps running but instance manager somehow is starting": {
 			longhorn.InstanceManagerTypeEngine,
-			newInstanceManager(TestInstanceManagerName1, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateStarting, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
-			newEngine(NonExistingInstance, TestEngineImage, TestInstanceManagerName1, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
-			newEngine(NonExistingInstance, "", TestInstanceManagerName1, TestNode1, "", 0, true, longhorn.InstanceStateError, longhorn.InstanceStateRunning),
+			newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateStarting, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
+			newEngine(NonExistingInstance, TestEngineImage, TestInstanceManagerName, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
+			newEngine(NonExistingInstance, "", TestInstanceManagerName, TestNode1, "", 0, true, longhorn.InstanceStateError, longhorn.InstanceStateRunning),
 			false,
 		},
 		// corner case5: the node is down
 		"engine node is down": {
 			longhorn.InstanceManagerTypeEngine,
-			newInstanceManager(TestInstanceManagerName1, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateUnknown, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{
+			newInstanceManager(TestInstanceManagerName, longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerStateUnknown, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{
 				ExistingInstance: {
 					Spec: longhorn.InstanceProcessSpec{
 						Name: ExistingInstance,
@@ -366,23 +366,23 @@ func (s *TestSuite) TestReconcileInstanceState(c *C) {
 					},
 				},
 			}, false),
-			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
-			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName1, TestNode1, "", 0, true, longhorn.InstanceStateUnknown, longhorn.InstanceStateRunning),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestNode1, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
+			newEngine(ExistingInstance, TestEngineImage, TestInstanceManagerName, TestNode1, "", 0, true, longhorn.InstanceStateUnknown, longhorn.InstanceStateRunning),
 			false,
 		},
 		// corner case6: engine node is deleted
 		"engine keeps running but the node is deleted": {
 			longhorn.InstanceManagerTypeEngine,
 			nil,
-			newEngine(NonExistingInstance, TestEngineImage, TestInstanceManagerName1, TestNode2, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
-			newEngine(NonExistingInstance, TestEngineImage, TestInstanceManagerName1, TestNode2, "", 0, true, longhorn.InstanceStateUnknown, longhorn.InstanceStateRunning),
+			newEngine(NonExistingInstance, TestEngineImage, TestInstanceManagerName, TestNode2, TestIP1, TestPort1, true, longhorn.InstanceStateRunning, longhorn.InstanceStateRunning),
+			newEngine(NonExistingInstance, TestEngineImage, TestInstanceManagerName, TestNode2, "", 0, true, longhorn.InstanceStateUnknown, longhorn.InstanceStateRunning),
 			false,
 		},
 		// corner case7
 		"engine desire state becomes stopped after the node is deleted": {
 			longhorn.InstanceManagerTypeEngine,
 			nil,
-			newEngine(NonExistingInstance, "", TestInstanceManagerName1, "", "", 0, true, longhorn.InstanceStateUnknown, longhorn.InstanceStateStopped),
+			newEngine(NonExistingInstance, "", TestInstanceManagerName, "", "", 0, true, longhorn.InstanceStateUnknown, longhorn.InstanceStateStopped),
 			newEngine(NonExistingInstance, "", "", "", "", 0, false, longhorn.InstanceStateStopped, longhorn.InstanceStateStopped),
 			false,
 		},

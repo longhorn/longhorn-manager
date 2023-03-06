@@ -47,9 +47,9 @@ const (
 
 	TestBackingImage = "test-backing-image"
 
-	TestInstanceManagerName1 = "instance-manager-engine-image-name-1"
-	TestEngineManagerName    = "instance-manager-e-test-name"
-	TestReplicaManagerName   = "instance-manager-r-test-name"
+	TestInstanceManagerName = "instance-manager-test-name"
+	TestEngineManagerName   = "instance-manager-e-test-name"
+	TestReplicaManagerName  = "instance-manager-r-test-name"
 
 	TestPod1 = "test-pod-name-1"
 	TestPod2 = "test-pod-name-2"

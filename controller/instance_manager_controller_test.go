@@ -243,7 +243,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		if tc.currentState == longhorn.InstanceManagerStateRunning || tc.currentState == longhorn.InstanceManagerStateStarting {
 			currentIP = TestIP1
 		}
-		im := newInstanceManager(TestInstanceManagerName1, tc.expectedType, tc.currentState, tc.currentOwnerID, tc.nodeID, currentIP, nil, false)
+		im := newInstanceManager(TestInstanceManagerName, tc.expectedType, tc.currentState, tc.currentOwnerID, tc.nodeID, currentIP, nil, false)
 		err = imIndexer.Add(im)
 		c.Assert(err, IsNil)
 		_, err = lhClient.LonghornV1beta2().InstanceManagers(im.Namespace).Create(context.TODO(), im, metav1.CreateOptions{})
