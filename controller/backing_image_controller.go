@@ -212,6 +212,14 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 			log.Info("Need to wait for all replicas stopping using this backing image before removing the finalizer")
 			return nil
 		}
+		log.Info("Try to clean up backing image data source tmp file before cleaning up backing image manager")
+		cleanUpTmpFileFinished, err := bic.cleanupBackingImageDataSourceTmpFile(backingImage)
+		if err != nil {
+			return err
+		}
+		if !cleanUpTmpFileFinished {
+			return nil
+		}
 		log.Info("No replica is using this backing image, will clean up the record for backing image managers and remove the finalizer then")
 		if err := bic.cleanupBackingImageManagers(backingImage); err != nil {
 			return err
@@ -277,6 +285,32 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 	}
 
 	return nil
+}
+
+func (bic *BackingImageController) cleanupBackingImageDataSourceTmpFile(bi *longhorn.BackingImage) (finished bool, err error) {
+	bids, err := bic.ds.GetBackingImageDataSource(bi.Name)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return false, err
+	}
+
+	// if bids is transferred or it is not in progress, there is no tmp file left on the host.
+	fileProcessingStarted :=
+		bids.Status.CurrentState == longhorn.BackingImageStateStarting ||
+			bids.Status.CurrentState == longhorn.BackingImageStateInProgress
+
+	if bids.Spec.FileTransferred || !fileProcessingStarted ||
+		bids.Status.CurrentState == longhorn.BackingImageStateFailedAndCleanUp ||
+		bids.Status.CurrentState == longhorn.BackingImageStateUnknown {
+		return true, nil
+	}
+
+	// mark the status to failed so manager can clean up the orphan tmp file
+	bids.Status.Message = "backing image is deleted, try to cleaning up the tmp file of data source"
+	bids.Status.CurrentState = longhorn.BackingImageStateFailed
+	if _, err = bic.ds.UpdateBackingImageDataSourceStatus(bids); err != nil {
+		return false, err
+	}
+	return false, nil
 }
 
 func (bic *BackingImageController) cleanupBackingImageManagers(bi *longhorn.BackingImage) (err error) {
