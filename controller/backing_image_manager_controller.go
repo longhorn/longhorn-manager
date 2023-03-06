@@ -676,6 +676,20 @@ func (c *BackingImageManagerController) prepareBackingImageFiles(currentBIM *lon
 
 		// Manager waits and fetches the 1st available file from BackingImageDataSource
 		if !bids.Spec.FileTransferred {
+
+			// If bids is failed and not transferred, orphan tmp file might be left on the host.
+			// Clean up and set the state to failed-and-cleanup
+			if bids.Status.CurrentState == longhorn.BackingImageStateFailed {
+				if err := cli.Delete(bi.Name, bi.Status.UUID); err != nil {
+					return err
+				}
+				bids.Status.CurrentState = longhorn.BackingImageStateFailedAndCleanUp
+				if _, err = c.ds.UpdateBackingImageDataSourceStatus(bids); err != nil {
+					return err
+				}
+				continue
+			}
+
 			if bids.Status.CurrentState != longhorn.BackingImageStateReadyForTransfer {
 				continue
 			}
