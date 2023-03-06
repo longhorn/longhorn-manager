@@ -437,7 +437,8 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 	} else {
 		bids.Status.StorageIP = ""
 		bids.Status.IP = ""
-		if bids.Status.CurrentState != longhorn.BackingImageStateFailed {
+		if bids.Status.CurrentState != longhorn.BackingImageStateFailed &&
+			bids.Status.CurrentState != longhorn.BackingImageStateFailedAndCleanUp {
 			if podFailed {
 				podLog := ""
 				podLogBytes, err := c.ds.GetPodContainerLog(podName, BackingImageDataSourcePodContainerName)
@@ -471,7 +472,8 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 		}
 	}
 
-	if bids.Status.CurrentState == longhorn.BackingImageStateFailed {
+	if bids.Status.CurrentState == longhorn.BackingImageStateFailed ||
+		bids.Status.CurrentState == longhorn.BackingImageStateFailedAndCleanUp {
 		if err := c.cleanup(bids); err != nil {
 			return err
 		}
