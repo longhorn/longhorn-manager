@@ -37,7 +37,6 @@ type InstanceManagerTestCase struct {
 
 	expectedPodCount int
 	expectedStatus   longhorn.InstanceManagerStatus
-	expectedType     longhorn.InstanceManagerType
 }
 
 func newTolerationSetting() *longhorn.Setting {
@@ -89,7 +88,6 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 				APIMinVersion: engineapi.MinInstanceManagerAPIVersion,
 				APIVersion:    engineapi.CurrentInstanceManagerAPIVersion,
 			},
-			longhorn.InstanceManagerTypeEngine,
 		},
 		"instance manager error then restart immediately": {
 			TestNode1, false, TestNode1,
@@ -102,7 +100,6 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 				APIMinVersion: 0,
 				APIVersion:    0,
 			},
-			longhorn.InstanceManagerTypeEngine,
 		},
 		"instance manager node down": {
 			TestNode2, true, TestNode1,
@@ -115,7 +112,6 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 				APIMinVersion: engineapi.MinInstanceManagerAPIVersion,
 				APIVersion:    engineapi.CurrentInstanceManagerAPIVersion,
 			},
-			longhorn.InstanceManagerTypeEngine,
 		},
 		"instance manager restarting after error": {
 			TestNode1, false, TestNode1,
@@ -127,7 +123,6 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 				APIMinVersion: 0,
 				APIVersion:    0,
 			},
-			longhorn.InstanceManagerTypeEngine,
 		},
 		"instance manager running": {
 			TestNode1, false, TestNode1,
@@ -140,7 +135,6 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 				APIMinVersion: engineapi.MinInstanceManagerAPIVersion,
 				APIVersion:    engineapi.CurrentInstanceManagerAPIVersion,
 			},
-			longhorn.InstanceManagerTypeEngine,
 		},
 		"instance manager starting engine": {
 			TestNode1, false, TestNode1,
@@ -152,7 +146,6 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 				APIMinVersion: 0,
 				APIVersion:    0,
 			},
-			longhorn.InstanceManagerTypeEngine,
 		},
 		"instance manager starting replica": {
 			TestNode1, false, TestNode1,
@@ -164,7 +157,6 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 				APIMinVersion: 0,
 				APIVersion:    0,
 			},
-			longhorn.InstanceManagerTypeReplica,
 		},
 		"instance manager sync IP": {
 			TestNode1, false, TestNode1,
@@ -177,7 +169,6 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 				APIMinVersion: engineapi.MinInstanceManagerAPIVersion,
 				APIVersion:    engineapi.CurrentInstanceManagerAPIVersion,
 			},
-			longhorn.InstanceManagerTypeReplica,
 		},
 	}
 
@@ -243,7 +234,12 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		if tc.currentState == longhorn.InstanceManagerStateRunning || tc.currentState == longhorn.InstanceManagerStateStarting {
 			currentIP = TestIP1
 		}
-		im := newInstanceManager(TestInstanceManagerName, tc.expectedType, tc.currentState, tc.currentOwnerID, tc.nodeID, currentIP, nil, false)
+		im := newInstanceManager(
+			TestInstanceManagerName, tc.currentState,
+			tc.currentOwnerID, tc.nodeID, currentIP,
+			nil, nil,
+			false,
+		)
 		err = imIndexer.Add(im)
 		c.Assert(err, IsNil)
 		_, err = lhClient.LonghornV1beta2().InstanceManagers(im.Namespace).Create(context.TODO(), im, metav1.CreateOptions{})
@@ -267,12 +263,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		if tc.currentPodStatus == nil {
 			pod, err := kubeClient.CoreV1().Pods(im.Namespace).Get(context.TODO(), im.Name, metav1.GetOptions{})
 			c.Assert(err, IsNil)
-			switch im.Spec.Type {
-			case longhorn.InstanceManagerTypeEngine:
-				c.Assert(pod.Spec.Containers[0].Name, Equals, "engine-manager")
-			case longhorn.InstanceManagerTypeReplica:
-				c.Assert(pod.Spec.Containers[0].Name, Equals, "replica-manager")
-			}
+			c.Assert(pod.Spec.Containers[0].Name, Equals, "instance-manager")
 		}
 
 		// Skip checking imc.instanceManagerMonitorMap since the monitor doesn't work in the unit test.

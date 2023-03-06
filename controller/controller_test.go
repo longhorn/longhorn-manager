@@ -48,8 +48,6 @@ const (
 	TestBackingImage = "test-backing-image"
 
 	TestInstanceManagerName = "instance-manager-test-name"
-	TestEngineManagerName   = "instance-manager-e-test-name"
-	TestReplicaManagerName  = "instance-manager-r-test-name"
 
 	TestPod1 = "test-pod-name-1"
 	TestPod2 = "test-pod-name-2"
@@ -150,7 +148,7 @@ func newEngineImage(image string, state longhorn.EngineImageState) *longhorn.Eng
 				Version:   "latest",
 				GitCommit: "latest",
 
-				CLIAPIVersion:           4,
+				CLIAPIVersion:           8,
 				CLIAPIMinVersion:        3,
 				ControllerAPIVersion:    3,
 				ControllerAPIMinVersion: 3,
@@ -221,10 +219,10 @@ func newPod(status *corev1.PodStatus, name, namespace, nodeID string) *corev1.Po
 
 func newInstanceManager(
 	name string,
-	imType longhorn.InstanceManagerType,
 	currentState longhorn.InstanceManagerState,
 	currentOwnerID, nodeID, ip string,
-	instances map[string]longhorn.InstanceProcess,
+	instanceEngines map[string]longhorn.InstanceProcess,
+	instanceReplicas map[string]longhorn.InstanceProcess,
 	isDeleting bool) *longhorn.InstanceManager {
 
 	im := &longhorn.InstanceManager{
@@ -232,18 +230,19 @@ func newInstanceManager(
 			Name:      name,
 			Namespace: TestNamespace,
 			UID:       uuid.NewUUID(),
-			Labels:    types.GetInstanceManagerLabels(nodeID, TestInstanceManagerImage, imType),
+			Labels:    types.GetInstanceManagerLabels(nodeID, TestInstanceManagerImage, longhorn.InstanceManagerTypeAllInOne),
 		},
 		Spec: longhorn.InstanceManagerSpec{
 			Image:  TestInstanceManagerImage,
 			NodeID: nodeID,
-			Type:   imType,
+			Type:   longhorn.InstanceManagerTypeAllInOne,
 		},
 		Status: longhorn.InstanceManagerStatus{
-			OwnerID:      currentOwnerID,
-			CurrentState: currentState,
-			IP:           ip,
-			Instances:    instances,
+			OwnerID:          currentOwnerID,
+			CurrentState:     currentState,
+			IP:               ip,
+			InstanceEngines:  instanceEngines,
+			InstanceReplicas: instanceReplicas,
 		},
 	}
 
