@@ -361,18 +361,26 @@ func (job *Job) run() (err error) {
 	}
 
 	// only recurring job types `snapshot` and `backup` need to check if old snapshots can be deleted or not before creating
-	if job.task == longhorn.RecurringJobTypeSnapshot || job.task == longhorn.RecurringJobTypeBackup {
+	switch job.task {
+	case longhorn.RecurringJobTypeSnapshot, longhorn.RecurringJobTypeBackup:
 		if err := job.doSnapshotCleanup(false); err != nil {
 			return err
 		}
 	}
 
-	if job.task == longhorn.RecurringJobTypeBackup || job.task == longhorn.RecurringJobTypeBackupForceCreate {
+	switch job.task {
+	case longhorn.RecurringJobTypeFilesystemTrim:
+		job.logger.Infof("Running recurring filesystem trim for volume %v", volumeName)
+		return job.doRecurringFilesystemTrim(volume)
+
+	case longhorn.RecurringJobTypeBackup, longhorn.RecurringJobTypeBackupForceCreate:
 		job.logger.Infof("Running recurring backup for volume %v", volumeName)
 		return job.doRecurringBackup()
+
+	default:
+		job.logger.Infof("Running recurring snapshot for volume %v", volumeName)
+		return job.doRecurringSnapshot()
 	}
-	job.logger.Infof("Running recurring snapshot for volume %v", volumeName)
-	return job.doRecurringSnapshot()
 }
 
 func (job *Job) doRecurringSnapshot() (err error) {
@@ -445,37 +453,8 @@ func (job *Job) doSnapshotCleanup(backupDone bool) (err error) {
 
 	shouldPurgeSnapshots := len(deleteSnapshotNames) > 0 || job.task == longhorn.RecurringJobTypeSnapshotCleanup || job.task == longhorn.RecurringJobTypeSnapshotDelete
 	if shouldPurgeSnapshots {
-		if _, err := volumeAPI.ActionSnapshotPurge(volume); err != nil {
+		if err := job.purgeSnapshots(volume, volumeAPI); err != nil {
 			return err
-		}
-		for {
-			done := true
-			errorList := map[string]string{}
-			volume, err := volumeAPI.ById(volumeName)
-			if err != nil {
-				return err
-			}
-
-			for _, status := range volume.PurgeStatus {
-				if status.IsPurging {
-					done = false
-					break
-				}
-				if status.Error != "" {
-					errorList[status.Replica] = status.Error
-				}
-			}
-			if done {
-				if len(errorList) != 0 {
-					for replica, errMsg := range errorList {
-						job.logger.Warnf("Error purging snapshots on replica %v: %v", replica, errMsg)
-					}
-					job.logger.Warn("Encountered one or more errors while purging snapshots")
-				}
-				job.logger.WithField("volume", volume.Name).Debug("Purged snapshots")
-				return nil
-			}
-			time.Sleep(SnapshotPurgeStatusInterval)
 		}
 	}
 	return nil
@@ -504,6 +483,41 @@ func (job *Job) deleteSnapshots(names []string, volume *longhornclient.Volume, v
 		job.logger.WithField("volume", volume.Name).Debugf("Deleted snapshot %v", name)
 	}
 	return nil
+}
+
+func (job *Job) purgeSnapshots(volume *longhornclient.Volume, volumeAPI longhornclient.VolumeOperations) error {
+	if _, err := volumeAPI.ActionSnapshotPurge(volume); err != nil {
+		return err
+	}
+	for {
+		done := true
+		errorList := map[string]string{}
+		volume, err := volumeAPI.ById(volume.Name)
+		if err != nil {
+			return err
+		}
+
+		for _, status := range volume.PurgeStatus {
+			if status.IsPurging {
+				done = false
+				break
+			}
+			if status.Error != "" {
+				errorList[status.Replica] = status.Error
+			}
+		}
+		if done {
+			if len(errorList) != 0 {
+				for replica, errMsg := range errorList {
+					job.logger.Warnf("Error purging snapshots on replica %v: %v", replica, errMsg)
+				}
+				job.logger.Warn("Encountered one or more errors while purging snapshots")
+			}
+			job.logger.WithField("volume", volume.Name).Debug("Purged snapshots")
+			return nil
+		}
+		time.Sleep(SnapshotPurgeStatusInterval)
+	}
 }
 
 type NameWithTimestamp struct {
@@ -664,6 +678,21 @@ func (job *Job) doRecurringBackup() (err error) {
 		return err
 	}
 	return nil
+}
+
+func (job *Job) doRecurringFilesystemTrim(volume *longhornclient.Volume) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to complete filesystem-trim for %v", volume.Name)
+		if err == nil {
+			job.logger.Info("Finished recurring filesystem trim")
+		}
+	}()
+	volumeAPI := job.api.Volume
+	volume, err = volumeAPI.ActionTrimFilesystem(volume)
+	if err != nil {
+		return err
+	}
+	return job.purgeSnapshots(volume, volumeAPI)
 }
 
 // waitForBackupProcessStart timeout in second
