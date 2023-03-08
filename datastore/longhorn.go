@@ -2081,7 +2081,11 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		disks, err := types.CreateDefaultDisk(dataPath)
+		storageReservedPercentageForDefaultDisk, err := s.GetSettingAsInt(types.SettingNameStorageReservedPercentageForDefaultDisk)
+		if err != nil {
+			return nil, err
+		}
+		disks, err := types.CreateDefaultDisk(dataPath, storageReservedPercentageForDefaultDisk)
 		if err != nil {
 			return nil, err
 		}
