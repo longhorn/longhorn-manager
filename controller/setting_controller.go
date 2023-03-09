@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/mod/semver"
+
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
@@ -81,6 +83,7 @@ type Version struct {
 	Name        string // must be in semantic versioning
 	ReleaseDate string
 	Tags        []string
+	ExtraInfo   map[string]string
 }
 
 type CheckUpgradeRequest struct {
@@ -825,6 +828,14 @@ func (sc *SettingController) syncUpgradeChecker() error {
 	if err != nil {
 		return err
 	}
+	k8sLatestLonghornVersion, err := sc.ds.GetSetting(types.SettingNameLatestLonghornSupportedK8sVersions)
+	if err != nil {
+		return err
+	}
+	k8sStableLonghornVersions, err := sc.ds.GetSetting(types.SettingNameStableLonghornSupportedK8sVersions)
+	if err != nil {
+		return err
+	}
 
 	if !upgradeCheckerEnabled {
 		if latestLonghornVersion.Value != "" {
@@ -839,20 +850,52 @@ func (sc *SettingController) syncUpgradeChecker() error {
 				return err
 			}
 		}
+		if k8sLatestLonghornVersion.Value != "" {
+			k8sLatestLonghornVersion.Value = ""
+			if _, err := sc.ds.UpdateSetting(k8sLatestLonghornVersion); err != nil {
+				return err
+			}
+		}
+		if k8sStableLonghornVersions.Value != "" {
+			k8sStableLonghornVersions.Value = ""
+			if _, err := sc.ds.UpdateSetting(k8sStableLonghornVersions); err != nil {
+				return err
+			}
+		}
 		// reset timestamp so it can be triggered immediately when
 		// setting changes next time
 		sc.lastUpgradeCheckedTimestamp = time.Time{}
 		return nil
 	}
 
+	return sc.UpdateLonghornVersionsAndK8sVersions(latestLonghornVersion, stableLonghornVersions, k8sLatestLonghornVersion, k8sStableLonghornVersions)
+}
+
+func (sc *SettingController) UpdateLonghornVersionsAndK8sVersions(latestLonghornVersion *longhorn.Setting, stableLonghornVersions *longhorn.Setting, k8sLatestLonghornVersion *longhorn.Setting, k8sStableLonghornVersions *longhorn.Setting) error {
 	now := time.Now()
 	if now.Before(sc.lastUpgradeCheckedTimestamp.Add(upgradeCheckInterval)) {
 		return nil
 	}
 
+	// only update k8s version when it is empty, because it will be cleared when upgrading
+	k8sCurrentLonghornVersion, err := sc.ds.GetSetting(types.SettingNameCurrentLonghornSupportedK8sVersions)
+	if err != nil {
+		return err
+	}
+	if k8sCurrentLonghornVersion.Value == "" {
+		err := sc.UpdateK8sForCurrentLonghornVersions(k8sCurrentLonghornVersion)
+		if err != nil {
+			sc.logger.WithError(err).Debug("Cannot update k8s version for the current Longhorn version")
+			return nil
+		}
+	}
+
+	// get Longhorn version and K8s version from upgrade checker, update if different from current value
 	currentLatestVersion := latestLonghornVersion.Value
 	currentStableVersions := stableLonghornVersions.Value
-	latestLonghornVersion.Value, stableLonghornVersions.Value, err = sc.CheckLatestAndStableLonghornVersions()
+	currentK8sLatestVersion := k8sLatestLonghornVersion.Value
+	currentK8sStableVersion := k8sStableLonghornVersions.Value
+	latestLonghornVersion.Value, stableLonghornVersions.Value, k8sLatestLonghornVersion.Value, k8sStableLonghornVersions.Value, err = sc.CheckLatestAndStableLonghornVersions()
 	if err != nil {
 		// non-critical error, don't retry
 		sc.logger.WithError(err).Debug("Failed to check for the latest and stable Longhorn versions")
@@ -877,18 +920,44 @@ func (sc *SettingController) syncUpgradeChecker() error {
 			return nil
 		}
 	}
-
+	if k8sLatestLonghornVersion.Value != currentK8sLatestVersion {
+		sc.logger.Infof("K8s versions for latest Longhorn version is %v", k8sLatestLonghornVersion.Value)
+		if _, err := sc.ds.UpdateSetting(k8sLatestLonghornVersion); err != nil {
+			// non-critical error, don't retry
+			sc.logger.WithError(err).Debug("Cannot update k8s version for latest Longhorn version")
+			return nil
+		}
+	}
+	if k8sStableLonghornVersions.Value != currentK8sStableVersion {
+		sc.logger.Infof("K8s versions for stable Longhorn version is %v", k8sStableLonghornVersions.Value)
+		if _, err := sc.ds.UpdateSetting(k8sStableLonghornVersions); err != nil {
+			// non-critical error, don't retry
+			sc.logger.WithError(err).Debug("Cannot update k8s versions for stable Longhorn versions")
+			return nil
+		}
+	}
 	return nil
 }
 
-func (sc *SettingController) CheckLatestAndStableLonghornVersions() (string, string, error) {
+// UpdateK8sForCurrentLonghornVersions update the k8s version for current Longhorn version
+func (sc *SettingController) UpdateK8sForCurrentLonghornVersions(k8sCurrentLonghornVersion *longhorn.Setting) error {
 	var (
 		resp    CheckUpgradeResponse
 		content bytes.Buffer
 	)
+
+	currentLonghornVersion, err := sc.ds.GetSetting(types.SettingNameCurrentLonghornVersion)
+	if err != nil {
+		return err
+	}
+
+	if currentLonghornVersion.Value == "" {
+		return fmt.Errorf("failed to get current Longhorn version: empty value")
+	}
+
 	kubeVersion, err := sc.kubeClient.Discovery().ServerVersion()
 	if err != nil {
-		return "", "", errors.Wrap(err, "failed to get Kubernetes server version")
+		return errors.Wrap(err, "failed to get Kubernetes server version")
 	}
 
 	req := &CheckUpgradeRequest{
@@ -896,11 +965,11 @@ func (sc *SettingController) CheckLatestAndStableLonghornVersions() (string, str
 		ExtraInfo:  map[string]string{"kubernetesVersion": kubeVersion.GitVersion},
 	}
 	if err := json.NewEncoder(&content).Encode(req); err != nil {
-		return "", "", err
+		return err
 	}
 	r, err := http.Post(checkUpgradeURL, "application/json", &content)
 	if err != nil {
-		return "", "", err
+		return err
 	}
 	defer r.Body.Close()
 	if r.StatusCode != http.StatusOK {
@@ -911,29 +980,95 @@ func (sc *SettingController) CheckLatestAndStableLonghornVersions() (string, str
 		} else {
 			message = string(messageBytes)
 		}
-		return "", "", fmt.Errorf("query return status code %v, message %v", r.StatusCode, message)
+		return fmt.Errorf("query return status code %v, message %v", r.StatusCode, message)
 	}
 	if err := json.NewDecoder(r.Body).Decode(&resp); err != nil {
-		return "", "", err
+		return err
+	}
+
+	// Find the version number closest to the current version
+	var curClosetVersion Version
+	for _, v := range resp.Versions {
+		// Continue if the closest version found is greater than the verInfo.Name
+		if semver.Compare(curClosetVersion.Name, v.Name) > 0 {
+			continue
+		}
+		// If the current version is greater than or equal to the verInfo.Name, then stored temporarily
+		if semver.Compare(currentLonghornVersion.Value, v.Name) > 0 ||
+			strings.Contains(currentLonghornVersion.Value, v.Name) {
+			curClosetVersion = v
+		}
+	}
+
+	k8sCurrentLonghornVersion.Value = curClosetVersion.ExtraInfo["SupportedK8sVersions"]
+	if _, err := sc.ds.UpdateSetting(k8sCurrentLonghornVersion); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (sc *SettingController) CheckLatestAndStableLonghornVersions() (string, string, string, string, error) {
+	var (
+		resp    CheckUpgradeResponse
+		content bytes.Buffer
+	)
+	kubeVersion, err := sc.kubeClient.Discovery().ServerVersion()
+	if err != nil {
+		return "", "", "", "", errors.Wrap(err, "failed to get Kubernetes server version")
+	}
+
+	req := &CheckUpgradeRequest{
+		AppVersion: sc.version,
+		ExtraInfo:  map[string]string{"kubernetesVersion": kubeVersion.GitVersion},
+	}
+	if err := json.NewEncoder(&content).Encode(req); err != nil {
+		return "", "", "", "", err
+	}
+	r, err := http.Post(checkUpgradeURL, "application/json", &content)
+	if err != nil {
+		return "", "", "", "", err
+	}
+	defer r.Body.Close()
+	if r.StatusCode != http.StatusOK {
+		message := ""
+		messageBytes, err := io.ReadAll(r.Body)
+		if err != nil {
+			message = err.Error()
+		} else {
+			message = string(messageBytes)
+		}
+		return "", "", "", "", fmt.Errorf("query return status code %v, message %v", r.StatusCode, message)
+	}
+	if err := json.NewDecoder(r.Body).Decode(&resp); err != nil {
+		return "", "", "", "", err
 	}
 
 	latestVersion := ""
 	stableVersions := []string{}
+	k8sLatestVersion := ""
+	k8sStableVersions := []string{}
 	for _, v := range resp.Versions {
 		for _, tag := range v.Tags {
 			if tag == VersionTagLatest {
 				latestVersion = v.Name
+				if SupportedK8sVersions, ok := v.ExtraInfo["SupportedK8sVersions"]; ok {
+					k8sLatestVersion = SupportedK8sVersions
+				}
 			}
 			if tag == VersionTagStable {
 				stableVersions = append(stableVersions, v.Name)
+				if SupportedK8sVersions, ok := v.ExtraInfo["SupportedK8sVersions"]; ok {
+					k8sStableVersions = append(k8sStableVersions, fmt.Sprintf("%s (%s)", SupportedK8sVersions, v.Name))
+				}
 			}
 		}
 	}
 	if latestVersion == "" {
-		return "", "", fmt.Errorf("cannot find latest Longhorn version during CheckLatestAndStableLonghornVersions")
+		return "", "", "", "", fmt.Errorf("cannot find latest Longhorn version during CheckLatestAndStableLonghornVersions")
 	}
 	sort.Strings(stableVersions)
-	return latestVersion, strings.Join(stableVersions, ","), nil
+	return latestVersion, strings.Join(stableVersions, ","), k8sLatestVersion, strings.Join(k8sStableVersions, ","), nil
 }
 
 func (sc *SettingController) enqueueSetting(obj interface{}) {

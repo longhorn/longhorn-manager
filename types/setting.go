@@ -53,8 +53,11 @@ const (
 	SettingNameStorageReservedPercentageForDefaultDisk                  = SettingName("storage-reserved-percentage-for-default-disk")
 	SettingNameUpgradeChecker                                           = SettingName("upgrade-checker")
 	SettingNameCurrentLonghornVersion                                   = SettingName("current-longhorn-version")
+	SettingNameCurrentLonghornSupportedK8sVersions                      = SettingName("current-longhorn-supported-k8s-versions")
 	SettingNameLatestLonghornVersion                                    = SettingName("latest-longhorn-version")
+	SettingNameLatestLonghornSupportedK8sVersions                       = SettingName("latest-longhorn-supported-k8s-versions")
 	SettingNameStableLonghornVersions                                   = SettingName("stable-longhorn-versions")
+	SettingNameStableLonghornSupportedK8sVersions                       = SettingName("stable-longhorn-supported-k8s-versions")
 	SettingNameDefaultReplicaCount                                      = SettingName("default-replica-count")
 	SettingNameDefaultDataLocality                                      = SettingName("default-data-locality")
 	SettingNameGuaranteedEngineCPU                                      = SettingName("guaranteed-engine-cpu")
@@ -126,8 +129,11 @@ var (
 		SettingNameStorageReservedPercentageForDefaultDisk,
 		SettingNameUpgradeChecker,
 		SettingNameCurrentLonghornVersion,
+		SettingNameCurrentLonghornSupportedK8sVersions,
 		SettingNameLatestLonghornVersion,
+		SettingNameLatestLonghornSupportedK8sVersions,
 		SettingNameStableLonghornVersions,
+		SettingNameStableLonghornSupportedK8sVersions,
 		SettingNameDefaultReplicaCount,
 		SettingNameDefaultDataLocality,
 		SettingNameGuaranteedEngineCPU,
@@ -224,8 +230,11 @@ var (
 		SettingNameStorageReservedPercentageForDefaultDisk:                  SettingDefinitionStorageReservedPercentageForDefaultDisk,
 		SettingNameUpgradeChecker:                                           SettingDefinitionUpgradeChecker,
 		SettingNameCurrentLonghornVersion:                                   SettingDefinitionCurrentLonghornVersion,
+		SettingNameCurrentLonghornSupportedK8sVersions:                      SettingDefinitionCurrentLonghornSupportedK8sVersions,
 		SettingNameLatestLonghornVersion:                                    SettingDefinitionLatestLonghornVersion,
+		SettingNameLatestLonghornSupportedK8sVersions:                       SettingDefinitionLatestLonghornSupportedK8sVersions,
 		SettingNameStableLonghornVersions:                                   SettingDefinitionStableLonghornVersions,
+		SettingNameStableLonghornSupportedK8sVersions:                       SettingDefinitionStableLonghornSupportedK8sVersions,
 		SettingNameDefaultReplicaCount:                                      SettingDefinitionDefaultReplicaCount,
 		SettingNameDefaultDataLocality:                                      SettingDefinitionDefaultDataLocality,
 		SettingNameGuaranteedEngineCPU:                                      SettingDefinitionGuaranteedEngineCPU,
@@ -498,6 +507,15 @@ var (
 		Default:     meta.Version,
 	}
 
+	SettingDefinitionCurrentLonghornSupportedK8sVersions = SettingDefinition{
+		DisplayName: "Kubernetes Versions Supported By Current Longhorn Version",
+		Description: "The Kubernetes versions supported by current Longhorn version.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    false,
+		ReadOnly:    true,
+	}
+
 	SettingDefinitionLatestLonghornVersion = SettingDefinition{
 		DisplayName: "Latest Longhorn Version",
 		Description: "The latest version of Longhorn available. Updated by Upgrade Checker automatically",
@@ -507,9 +525,27 @@ var (
 		ReadOnly:    true,
 	}
 
+	SettingDefinitionLatestLonghornSupportedK8sVersions = SettingDefinition{
+		DisplayName: "Kubernetes Versions Supported By Latest Longhorn Version",
+		Description: "The Kubernetes versions supported by latest Longhorn version.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    false,
+		ReadOnly:    true,
+	}
+
 	SettingDefinitionStableLonghornVersions = SettingDefinition{
 		DisplayName: "Stable Longhorn Versions",
 		Description: "The latest stable version of every minor release line. Updated by Upgrade Checker automatically",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    false,
+		ReadOnly:    true,
+	}
+
+	SettingDefinitionStableLonghornSupportedK8sVersions = SettingDefinition{
+		DisplayName: "Kubernetes Versions Supported By Stable Longhorn Version",
+		Description: "The Kubernetes versions supported by stable Longhorn version in <kubernetes versions> (<Longhorn version>) format.",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeString,
 		Required:    false,
