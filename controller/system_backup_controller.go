@@ -46,7 +46,7 @@ const (
 
 	SystemBackupTempDir = "/tmp"
 
-	SystemBackupErrArchieve      = "failed to archieve system backup file"
+	SystemBackupErrArchive       = "failed to archive system backup file"
 	SystemBackupErrDelete        = "failed to delete system backup in backup target"
 	SystemBackupErrGenerate      = "failed to generate system backup file"
 	SystemBackupErrGetFmt        = "failed to get %v"
@@ -672,7 +672,7 @@ func (c *SystemBackupController) GenerateSystemBackup(systemBackup *longhorn.Sys
 	cmd.Dir = filepath.Dir(tempDir)
 	err = cmd.Run()
 	if err != nil {
-		errMessage = fmt.Sprint(errors.Wrap(err, SystemBackupErrArchieve))
+		errMessage = fmt.Sprint(errors.Wrap(err, SystemBackupErrArchive))
 		return
 	}
 
