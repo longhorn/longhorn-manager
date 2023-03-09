@@ -475,15 +475,38 @@ func (ec *EngineController) DeleteInstance(obj interface{}) error {
 		}
 	}
 
-	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
-		return nil
+	v, err := ec.ds.GetVolumeRO(e.Spec.VolumeName)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return err
+		}
 	}
+
+	isRWXVolume := false
+	if v != nil && v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !v.Spec.Migratable {
+		isRWXVolume = true
+	}
+
+	// For a RWX volume, the node down, for example, caused by kubelet restart, leads to share-manager pod deletion/recreation
+	// and volume detachment/attachment.
+	// Then, the newly created share-manager pod blindly mounts the longhorn volume inside /dev/longhorn/<pvc-name> and exports it.
+	// To avoid mounting a dead and orphaned volume, try to clean up the engine process as well as the orphaned iscsi device
+	// regardless of the instance-manager status.
+	if !isRWXVolume {
+		if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+			logrus.Infof("Skip deleting engine %v since instance manager is in %v state", e.Name, im.Status.CurrentState)
+			return nil
+		}
+	}
+
+	logrus.Infof("Deleting engine instance %v", e.Name)
 
 	// For the engine process in instance manager v0.7.0, we need to use the cmdline to delete the process
 	// and stop the iscsi
 	if im.Status.APIVersion == engineapi.IncompatibleInstanceManagerAPIVersion {
 		url := imutil.GetURL(im.Status.IP, engineapi.InstanceManagerDefaultPort)
 		args := []string{"--url", url, "engine", "delete", "--name", e.Name}
+
 		if _, err := util.ExecuteWithoutTimeout([]string{}, engineapi.GetDeprecatedInstanceManagerBinary(e.Status.CurrentImage), args...); err != nil && !types.ErrorIsNotFound(err) {
 			return err
 		}
