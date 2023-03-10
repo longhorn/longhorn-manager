@@ -58,7 +58,7 @@ func (r *recurringJobMutator) Create(request *admission.Request, newObj runtime.
 		"task":         recurringjob.Spec.Task,
 	})
 	switch recurringjob.Spec.Task {
-	case longhorn.RecurringJobTypeSnapshotCleanup:
+	case longhorn.RecurringJobTypeSnapshotCleanup, longhorn.RecurringJobTypeFilesystemTrim:
 		if recurringjob.Spec.Retain != 0 {
 			log.Debugf("Replacing ineffective retain value in RecurringJob: from %v to 0", recurringjob.Spec.Retain)
 			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/retain", "value": 0}`)
@@ -98,7 +98,7 @@ func (r *recurringJobMutator) Update(request *admission.Request, oldObj runtime.
 		"task":         newRecurringjob.Spec.Task,
 	})
 	switch newRecurringjob.Spec.Task {
-	case longhorn.RecurringJobTypeSnapshotCleanup:
+	case longhorn.RecurringJobTypeSnapshotCleanup, longhorn.RecurringJobTypeFilesystemTrim:
 		if newRecurringjob.Spec.Retain != 0 {
 			log.Debugf("Replacing ineffective retain value in RecurringJob: from %v to 0", newRecurringjob.Spec.Retain)
 			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/retain", "value": 0}`)
