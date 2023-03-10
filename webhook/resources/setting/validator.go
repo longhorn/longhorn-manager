@@ -55,7 +55,7 @@ func (v *settingValidator) validateSetting(newObj runtime.Object) error {
 	// TODO: https://github.com/longhorn/longhorn/issues/5018
 	//       This is a work around for the setting restoration blocking.
 	if types.ErrorIsNotSupport(err) {
-		if systemRestore, err := v.ds.GetSystemRestoreInProgress(""); err != nil && !datastore.ErrorIsNotFound(err) {
+		if systemRestore, e := v.ds.GetSystemRestoreInProgress(""); e != nil && !datastore.ErrorIsNotFound(e) {
 			return werror.NewInvalidError(err.Error(), "")
 		} else if systemRestore != nil {
 			return nil
