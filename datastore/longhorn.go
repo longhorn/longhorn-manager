@@ -822,6 +822,32 @@ func (s *DataStore) ListVolumesFollowsGlobalSettingsRO(followedSettingNames map[
 	return itemMap, nil
 }
 
+// ListVolumesByBackupVolumeRO returns an object contains all Volumes with the specified backup-volume label
+func (s *DataStore) ListVolumesByBackupVolumeRO(backupVolumeName string) (map[string]*longhorn.Volume, error) {
+	itemMap := make(map[string]*longhorn.Volume)
+
+	labels := map[string]string{
+		types.LonghornLabelBackupVolume: backupVolumeName,
+	}
+
+	selectors, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: labels,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	list, err := s.ListVolumesBySelectorRO(selectors)
+	if err != nil {
+		return nil, err
+	}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO
+	}
+
+	return itemMap, nil
+}
+
 // GetLabelsForVolumesFollowsGlobalSettings returns a label map in which
 // contains all global settings the volume follows
 func GetLabelsForVolumesFollowsGlobalSettings(volume *longhorn.Volume) map[string]string {
@@ -2055,7 +2081,11 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		disks, err := types.CreateDefaultDisk(dataPath)
+		storageReservedPercentageForDefaultDisk, err := s.GetSettingAsInt(types.SettingNameStorageReservedPercentageForDefaultDisk)
+		if err != nil {
+			return nil, err
+		}
+		disks, err := types.CreateDefaultDisk(dataPath, storageReservedPercentageForDefaultDisk)
 		if err != nil {
 			return nil, err
 		}

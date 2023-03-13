@@ -1584,6 +1584,17 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 				if vc.isVolumeUpgrading(v) {
 					continue
 				}
+
+				// Whenever the engine isn't attached, if the node goes down, the replica can be marked as failed.
+				// In the attached mode, we can determine whether the replica can fail by relying on the data plane's
+				// connectivity status.
+				if v.Status.State != longhorn.VolumeStateAttached {
+					log.WithField("replica", r.Name).Warnf("Replica %v is marked as failed since the volume %v is not attached because the instance manager is unable to launch the replica", r.Name, v.Name)
+					if r.Spec.FailedAt == "" {
+						r.Spec.FailedAt = vc.nowHandler()
+					}
+					r.Spec.DesireState = longhorn.InstanceStateStopped
+				}
 			}
 			rs[r.Name] = r
 		}

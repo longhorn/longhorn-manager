@@ -851,7 +851,7 @@ func UnmarshalToNodeTags(s string) ([]string, error) {
 	return res, nil
 }
 
-func CreateDefaultDisk(dataPath string) (map[string]longhorn.DiskSpec, error) {
+func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[string]longhorn.DiskSpec, error) {
 	if err := util.CreateDiskPathReplicaSubdirectory(dataPath); err != nil {
 		return nil, err
 	}
@@ -864,7 +864,7 @@ func CreateDefaultDisk(dataPath string) (map[string]longhorn.DiskSpec, error) {
 			Path:              diskStat.Path,
 			AllowScheduling:   true,
 			EvictionRequested: false,
-			StorageReserved:   diskStat.StorageMaximum * 30 / 100,
+			StorageReserved:   diskStat.StorageMaximum * storageReservedPercentage / 100,
 			Tags:              []string{},
 		},
 	}, nil
