@@ -597,6 +597,11 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 		}
 	}
 
+	if pod.Spec.NodeName == "" {
+		log.Debugf("Pod %v spec.nodeName is not assigned", pod.Name)
+		return nil
+	}
+
 	// If the node where the pod is running on become defective, we clean up the pod by setting sm.Status.State to STOPPED or ERROR
 	// A new pod will be recreated by the share manager controller.
 	isDown, err := c.ds.IsNodeDownOrDeleted(pod.Spec.NodeName)
