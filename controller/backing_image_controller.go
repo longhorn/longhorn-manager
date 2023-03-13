@@ -212,12 +212,12 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 			log.Info("Need to wait for all replicas stopping using this backing image before removing the finalizer")
 			return nil
 		}
-		log.Info("Try to clean up backing image data source tmp file before cleaning up backing image manager")
-		cleanUpTmpFileFinished, err := bic.cleanupBackingImageDataSourceTmpFile(backingImage)
+		cleanUpTmpFileFinished, err := bic.IsBackingImageDataSourceCleanup(backingImage)
 		if err != nil {
 			return err
 		}
 		if !cleanUpTmpFileFinished {
+			log.Info("Requesting to clean up Backing Image Data Source first before cleaning up Backing Image Manager")
 			return nil
 		}
 		log.Info("No replica is using this backing image, will clean up the record for backing image managers and remove the finalizer then")
@@ -287,20 +287,20 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 	return nil
 }
 
-func (bic *BackingImageController) cleanupBackingImageDataSourceTmpFile(bi *longhorn.BackingImage) (finished bool, err error) {
+func (bic *BackingImageController) IsBackingImageDataSourceCleanup(bi *longhorn.BackingImage) (finished bool, err error) {
 	bids, err := bic.ds.GetBackingImageDataSource(bi.Name)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return false, err
 	}
 
-	// if bids is transferred or it is not in progress, there is no tmp file left on the host.
-	fileProcessingStarted :=
-		bids.Status.CurrentState == longhorn.BackingImageStateStarting ||
-			bids.Status.CurrentState == longhorn.BackingImageStateInProgress
+	if bids.Spec.FileTransferred {
+		return true, nil
+	}
 
-	if bids.Spec.FileTransferred || !fileProcessingStarted ||
-		bids.Status.CurrentState == longhorn.BackingImageStateFailedAndCleanUp ||
-		bids.Status.CurrentState == longhorn.BackingImageStateUnknown {
+	// when bids status is ready or ready for transfer, there is already no tmp file left
+	if bids.Status.CurrentState == longhorn.BackingImageStateFailedAndCleanUp ||
+		bids.Status.CurrentState == longhorn.BackingImageStateReady ||
+		bids.Status.CurrentState == longhorn.BackingImageStateReadyForTransfer {
 		return true, nil
 	}
 
