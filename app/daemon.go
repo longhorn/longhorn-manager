@@ -12,7 +12,7 @@ import (
 	"github.com/urfave/cli"
 
 	"github.com/longhorn/go-iscsi-helper/iscsi"
-	iscsi_util "github.com/longhorn/go-iscsi-helper/util"
+	iscsiutil "github.com/longhorn/go-iscsi-helper/util"
 
 	"github.com/longhorn/longhorn-manager/api"
 	"github.com/longhorn/longhorn-manager/controller"
@@ -207,8 +207,8 @@ func startManager(c *cli.Context) error {
 }
 
 func environmentCheck() error {
-	initiatorNSPath := iscsi_util.GetHostNamespacePath(util.HostProcPath)
-	namespace, err := iscsi_util.NewNamespaceExecutor(initiatorNSPath)
+	initiatorNSPath := iscsiutil.GetHostNamespacePath(util.HostProcPath)
+	namespace, err := iscsiutil.NewNamespaceExecutor(initiatorNSPath)
 	if err != nil {
 		return err
 	}
