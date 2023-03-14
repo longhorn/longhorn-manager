@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	iscsi_util "github.com/longhorn/go-iscsi-helper/util"
+	iscsiutil "github.com/longhorn/go-iscsi-helper/util"
 )
 
 const hostProcPath = "/proc" // we use hostPID for the csi plugin
@@ -51,7 +51,7 @@ func cryptSetup(args ...string) (stdout string, err error) {
 func cryptSetupWithPassphrase(passphrase string, args ...string) (stdout string, err error) {
 	// NOTE: cryptsetup needs to be run in the host IPC/MNT
 	// if you only use MNT the binary will not return but still do the appropriate action.
-	ns := iscsi_util.GetHostNamespacePath(hostProcPath)
+	ns := iscsiutil.GetHostNamespacePath(hostProcPath)
 	nsArgs := prepareCommandArgs(ns, "cryptsetup", args)
 	ctx, cancel := context.WithTimeout(context.TODO(), luksTimeout)
 	defer cancel()
