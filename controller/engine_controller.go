@@ -464,19 +464,19 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 	return c.EngineProcessCreate(e, frontend, engineReplicaTimeout, fileSyncHTTPClientTimeout, v.Spec.DataLocality, engineCLIAPIVersion)
 }
 
-func (ec *EngineController) DeleteInstance(obj interface{}) error {
+func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
 		return fmt.Errorf("BUG: invalid object for engine process deletion: %v", obj)
 	}
 	log := getLoggerForEngine(ec.logger, e)
 
-	if err := ec.deleteInstanceWithCLIAPIVersionOne(e); err != nil {
+	err = ec.deleteInstanceWithCLIAPIVersionOne(e)
+	if err != nil {
 		return err
 	}
 
 	var im *longhorn.InstanceManager
-	var err error
 	// Not assigned or not updated, try best to delete
 	if e.Status.InstanceManagerName == "" {
 		if e.Spec.NodeID == "" {
@@ -527,19 +527,41 @@ func (ec *EngineController) DeleteInstance(obj interface{}) error {
 
 	logrus.Infof("Deleting engine instance %v", e.Name)
 
+	defer func() {
+		logrus.WithError(err).Warnf("Failed to delete engine %v for volume %v", e.Name, v.Name)
+		if isRWXVolume && im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+			// Try the best to delete engine instance.
+			// To prevent that the volume is stuck at detaching state, ignore the error when volume is
+			// a RWX volume and the instance manager is not running.
+			//
+			// If the engine instance of a RWX volume is not deleted successfully:
+			// If a RWX volume is on node A and the network of this node is partitioned,
+			// the owner of the share manager (SM) is transferred to node B. The engine instance and
+			// the block device (/dev/longhorn/pvc-xxx) on the node A become orphaned.
+			// If the network of the node A gets back to normal, the SM can be shifted back to node A.
+			// After shifting to node A, the first reattachment fail due to the IO error resulting from the
+			// orphaned engine instance and block device. Then, the detachment will trigger the teardown of the
+			// problematic engine process and block device. The next reattachment then will succeed.
+			logrus.Warnf("Ignore the failure of deleting engine %v for volume %v", e.Name, v.Name)
+			err = nil
+		}
+	}()
+
 	// For the engine process in instance manager v0.7.0, we need to use the cmdline to delete the process
 	// and stop the iscsi
 	if im.Status.APIVersion == engineapi.IncompatibleInstanceManagerAPIVersion {
 		url := imutil.GetURL(im.Status.IP, engineapi.InstanceManagerDefaultPort)
 		args := []string{"--url", url, "engine", "delete", "--name", e.Name}
 
-		if _, err := util.ExecuteWithoutTimeout([]string{}, engineapi.GetDeprecatedInstanceManagerBinary(e.Status.CurrentImage), args...); err != nil && !types.ErrorIsNotFound(err) {
+		_, err = util.ExecuteWithoutTimeout([]string{}, engineapi.GetDeprecatedInstanceManagerBinary(e.Status.CurrentImage), args...)
+		if err != nil && !types.ErrorIsNotFound(err) {
 			return err
 		}
 
 		// Directly remove the instance from the map. Best effort.
 		delete(im.Status.Instances, e.Name)
-		if _, err := ec.ds.UpdateInstanceManagerStatus(im); err != nil {
+		_, err = ec.ds.UpdateInstanceManagerStatus(im)
+		if err != nil {
 			return err
 		}
 		return nil
@@ -550,7 +572,9 @@ func (ec *EngineController) DeleteInstance(obj interface{}) error {
 		return err
 	}
 	defer c.Close()
-	if err := c.ProcessDelete(e.Name); err != nil && !types.ErrorIsNotFound(err) {
+
+	err = c.ProcessDelete(e.Name)
+	if err != nil && !types.ErrorIsNotFound(err) {
 		return err
 	}
 
