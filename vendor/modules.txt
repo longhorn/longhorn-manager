@@ -120,7 +120,7 @@ github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/rpc
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20220913112826-5f5c95274f2a
+# github.com/longhorn/backupstore v0.0.0-20230306022849-8d5e216c3b33
 ## explicit; go 1.13
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/logging
