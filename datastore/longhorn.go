@@ -2415,6 +2415,25 @@ func (s *DataStore) IsNodeDownOrDeleted(name string) (bool, error) {
 	return false, nil
 }
 
+// IsNodeDeleted checks whether the node does not exist by passing in the node name
+func (s *DataStore) IsNodeDeleted(name string) (bool, error) {
+	if name == "" {
+		return false, errors.New("no node name provided to check node down or deleted")
+	}
+
+	node, err := s.GetNodeRO(name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return true, nil
+		}
+		return false, err
+	}
+
+	cond := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
+
+	return cond.Status == longhorn.ConditionStatusFalse && cond.Reason == longhorn.NodeConditionReasonKubernetesNodeGone, nil
+}
+
 func (s *DataStore) IsNodeSchedulable(name string) bool {
 	node, err := s.GetNodeRO(name)
 	if err != nil {
