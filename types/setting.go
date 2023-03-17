@@ -66,6 +66,7 @@ const (
 	SettingNameReplicaZoneSoftAntiAffinity                  = SettingName("replica-zone-soft-anti-affinity")
 	SettingNameNodeDownPodDeletionPolicy                    = SettingName("node-down-pod-deletion-policy")
 	SettingNameAllowNodeDrainWithLastHealthyReplica         = SettingName("allow-node-drain-with-last-healthy-replica")
+	SettingNameNodeDrainPolicy                              = SettingName("node-drain-policy")
 	SettingNameMkfsExt4Parameters                           = SettingName("mkfs-ext4-parameters")
 	SettingNamePriorityClass                                = SettingName("priority-class")
 	SettingNameDisableRevisionCounter                       = SettingName("disable-revision-counter")
@@ -120,6 +121,7 @@ var (
 		SettingNameReplicaZoneSoftAntiAffinity,
 		SettingNameNodeDownPodDeletionPolicy,
 		SettingNameAllowNodeDrainWithLastHealthyReplica,
+		SettingNameNodeDrainPolicy,
 		SettingNameMkfsExt4Parameters,
 		SettingNamePriorityClass,
 		SettingNameDisableRevisionCounter,
@@ -198,6 +200,7 @@ var (
 		SettingNameReplicaZoneSoftAntiAffinity:                  SettingDefinitionReplicaZoneSoftAntiAffinity,
 		SettingNameNodeDownPodDeletionPolicy:                    SettingDefinitionNodeDownPodDeletionPolicy,
 		SettingNameAllowNodeDrainWithLastHealthyReplica:         SettingDefinitionAllowNodeDrainWithLastHealthyReplica,
+		SettingNameNodeDrainPolicy:                              SettingDefinitionNodeDrainPolicy,
 		SettingNameMkfsExt4Parameters:                           SettingDefinitionMkfsExt4Parameters,
 		SettingNamePriorityClass:                                SettingDefinitionPriorityClass,
 		SettingNameDisableRevisionCounter:                       SettingDefinitionDisableRevisionCounter,
@@ -600,6 +603,24 @@ var (
 		Default:  "false",
 	}
 
+	SettingDefinitionNodeDrainPolicy = SettingDefinition{
+		DisplayName: "Node Drain Policy",
+		Description: "Define the policy to use when a node with the last healthy replica of a volume is drained. \n" +
+			"- **block-if-contains-last-replica** Longhorn will block the drain when the node contains the last healthy replica of a volume.\n" +
+			"- **allow-if-replica-is-stopped** Longhorn will allow the drain when the node contains the last healthy replica of a volume but the replica is stopped. WARNING: possible data loss if the node is removed after draining. Select this option if you want to drain the node and do in-place upgrade/maintenance.\n" +
+			"- **always-allow** Longhorn will allow the drain even though the node contains the last healthy replica of a volume. WARNING: possible data loss if the node is removed after draining. Also possible data corruption if the last replica was running during the draining.\n",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeString,
+		Required: true,
+		ReadOnly: false,
+		Default:  string(NodeDrainPolicyBlockIfContainsLastReplica),
+		Choices: []string{
+			string(NodeDrainPolicyBlockIfContainsLastReplica),
+			string(NodeDrainPolicyAllowIfReplicaIsStopped),
+			string(NodeDrainPolicyAlwaysAllow),
+		},
+	}
+
 	SettingDefinitionMkfsExt4Parameters = SettingDefinition{
 		DisplayName: "Custom mkfs.ext4 parameters",
 		Description: "Allows setting additional filesystem creation parameters for ext4. For older host kernels it might be necessary to disable the optional ext4 metadata_csum feature by specifying `-O ^64bit,^metadata_csum`",
@@ -826,6 +847,14 @@ const (
 	NodeDownPodDeletionPolicyDeleteBothStatefulsetAndDeploymentPod = NodeDownPodDeletionPolicy("delete-both-statefulset-and-deployment-pod")
 )
 
+type NodeWithLastHealthyReplicaDrainPolicy string
+
+const (
+	NodeDrainPolicyBlockIfContainsLastReplica = NodeWithLastHealthyReplicaDrainPolicy("block-if-contains-last-replica")
+	NodeDrainPolicyAllowIfReplicaIsStopped    = NodeWithLastHealthyReplicaDrainPolicy("allow-if-replica-is-stopped")
+	NodeDrainPolicyAlwaysAllow                = NodeWithLastHealthyReplicaDrainPolicy("always-allow")
+)
+
 type SystemManagedPodsImagePullPolicy string
 
 const (
@@ -970,6 +999,8 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameNodeDownPodDeletionPolicy:
 		fallthrough
 	case SettingNameDefaultDataLocality:
+		fallthrough
+	case SettingNameNodeDrainPolicy:
 		fallthrough
 	case SettingNameSystemManagedPodsImagePullPolicy:
 		definition, _ := GetSettingDefinition(sName)
