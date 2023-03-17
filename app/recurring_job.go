@@ -358,6 +358,12 @@ func (job *Job) run() (err error) {
 		job.logger.Infof("Volume %v is in state %v", volumeName, volume.State)
 	}
 
+	if job.task == longhorn.RecurringJobTypeSnapshot || job.task == longhorn.RecurringJobTypeBackup {
+		if err := job.doSnapshotCleanup(false); err != nil {
+			return err
+		}
+	}
+
 	if job.task == longhorn.RecurringJobTypeBackup {
 		job.logger.Infof("Running recurring backup for volume %v", volumeName)
 		return job.doRecurringBackup()
