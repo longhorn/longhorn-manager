@@ -399,7 +399,7 @@ func (s *DataStore) AreAllVolumesDetached() (bool, error) {
 
 		instanceManagers := types.ConsolidateInstanceManagers(engineInstanceManagers, aioInstanceManagers)
 		for _, instanceManager := range instanceManagers {
-			if len(instanceManager.Status.Instances) > 0 {
+			if len(instanceManager.Status.InstanceEngines)+len(instanceManager.Status.Instances) > 0 {
 				return false, nil
 			}
 		}

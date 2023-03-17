@@ -562,8 +562,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 
 		// Directly remove the instance from the map. Best effort.
 		delete(im.Status.Instances, e.Name)
-		_, err = ec.ds.UpdateInstanceManagerStatus(im)
-		if err != nil {
+		if _, err := ec.ds.UpdateInstanceManagerStatus(im); err != nil {
 			return err
 		}
 		return nil

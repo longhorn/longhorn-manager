@@ -660,7 +660,7 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 	// it means that all volumes are detached.
 	// We can delete the PodDisruptionBudget for the engine instance manager.
 	if im.Spec.Type == longhorn.InstanceManagerTypeEngine {
-		if len(im.Status.Instances) == 0 {
+		if len(im.Status.InstanceEngines)+len(im.Status.Instances) == 0 {
 			return true, nil
 		}
 		return false, nil
@@ -826,7 +826,7 @@ func (imc *InstanceManagerController) areAllInstanceRemovedFromNodeByType(nodeNa
 	}
 
 	for _, im := range ims {
-		if len(im.Status.Instances) > 0 {
+		if len(im.Status.InstanceEngines)+len(im.Status.Instances) > 0 {
 			return false, nil
 		}
 	}
@@ -1356,10 +1356,9 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() (needStop bool) {
 		return false
 	}
 
-	if reflect.DeepEqual(im.Status.Instances, resp) {
+	if !m.updateInstanceMap(im, resp) {
 		return false
 	}
-	im.Status.Instances = resp
 	if _, err := m.ds.UpdateInstanceManagerStatus(im); err != nil {
 		utilruntime.HandleError(errors.Wrapf(err, "failed to update instance map for instance manager %v", m.Name))
 		return false
@@ -1388,6 +1387,35 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() (needStop bool) {
 	}
 
 	return false
+}
+
+func (m *InstanceManagerMonitor) updateInstanceMap(im *longhorn.InstanceManager, resp map[string]longhorn.InstanceProcess) bool {
+	switch {
+	case im.Status.APIVersion < 4:
+		if reflect.DeepEqual(im.Status.Instances, resp) {
+			return false
+		}
+
+		im.Status.Instances = resp
+	default:
+		engineProcess := map[string]longhorn.InstanceProcess{}
+		replicaProcess := map[string]longhorn.InstanceProcess{}
+		for name, process := range resp {
+			switch process.Status.Type {
+			case longhorn.InstanceTypeEngine:
+				engineProcess[name] = process
+			case longhorn.InstanceTypeReplica:
+				replicaProcess[name] = process
+			}
+		}
+		if reflect.DeepEqual(im.Status.InstanceEngines, engineProcess) && reflect.DeepEqual(im.Status.InstanceReplicas, replicaProcess) {
+			return false
+		}
+
+		im.Status.InstanceEngines = engineProcess
+		im.Status.InstanceReplicas = replicaProcess
+	}
+	return true
 }
 
 func (m *InstanceManagerMonitor) CheckMonitorStoppedWithLock() bool {
