@@ -681,11 +681,20 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 		return false, nil
 	}
 
+	// TODO: this setting is deprecated and will be replaced by nodeDrainingPolicy in the future
 	allowDrainingNodeWithLastReplica, err := imc.ds.GetSettingAsBool(types.SettingNameAllowNodeDrainWithLastHealthyReplica)
 	if err != nil {
 		return false, err
 	}
 	if allowDrainingNodeWithLastReplica {
+		return true, nil
+	}
+
+	nodeDrainingPolicy, err := imc.ds.GetSettingValueExisted(types.SettingNameNodeDrainPolicy)
+	if err != nil {
+		return false, err
+	}
+	if nodeDrainingPolicy == string(types.NodeDrainPolicyAlwaysAllow) {
 		return true, nil
 	}
 
@@ -697,10 +706,21 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 		return false, err
 	}
 
-	// For each replica process in the current node,
+	targetReplicas := []*longhorn.Replica{}
+	if nodeDrainingPolicy == string(types.NodeDrainPolicyAllowIfReplicaIsStopped) {
+		for _, replica := range replicasOnCurrentNode {
+			if replica.Spec.DesireState != longhorn.InstanceStateStopped || replica.Status.CurrentState != longhorn.InstanceStateStopped {
+				targetReplicas = append(targetReplicas, replica)
+			}
+		}
+	} else {
+		targetReplicas = replicasOnCurrentNode
+	}
+
+	// For each replica in the target replica list,
 	// find out whether there is a PDB protected healthy replica of the same
 	// volume on another schedulable node.
-	for _, replica := range replicasOnCurrentNode {
+	for _, replica := range targetReplicas {
 		vol, err := imc.ds.GetVolume(replica.Spec.VolumeName)
 		if err != nil {
 			return false, err
