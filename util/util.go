@@ -42,7 +42,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/version"
 	clientset "k8s.io/client-go/kubernetes"
 
-	iscsi_util "github.com/longhorn/go-iscsi-helper/util"
+	iscsiutil "github.com/longhorn/go-iscsi-helper/util"
 )
 
 const (
@@ -437,7 +437,7 @@ func GetDiskStat(directory string) (stat *DiskStat, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "cannot get disk stat of directory %v", directory)
 	}()
-	initiatorNSPath := iscsi_util.GetHostNamespacePath(HostProcPath)
+	initiatorNSPath := iscsiutil.GetHostNamespacePath(HostProcPath)
 	mountPath := fmt.Sprintf("--mount=%s/mnt", initiatorNSPath)
 	output, err := Execute([]string{}, "nsenter", mountPath, "stat", "-fc", "{\"path\":\"%n\",\"fsid\":\"%i\",\"type\":\"%T\",\"freeBlock\":%f,\"totalBlock\":%b,\"blockSize\":%S}", directory)
 	if err != nil {
@@ -499,8 +499,8 @@ func RemoveHostDirectoryContent(directory string) (err error) {
 	if strings.Count(dir, "/") < 2 {
 		return fmt.Errorf("prohibit removing the top level of directory %v", dir)
 	}
-	initiatorNSPath := iscsi_util.GetHostNamespacePath(HostProcPath)
-	nsExec, err := iscsi_util.NewNamespaceExecutor(initiatorNSPath)
+	initiatorNSPath := iscsiutil.GetHostNamespacePath(HostProcPath)
+	nsExec, err := iscsiutil.NewNamespaceExecutor(initiatorNSPath)
 	if err != nil {
 		return err
 	}
@@ -532,8 +532,8 @@ func CopyHostDirectoryContent(src, dest string) (err error) {
 		return fmt.Errorf("prohibit copying the content for the top level of directory %v or %v", srcDir, destDir)
 	}
 
-	initiatorNSPath := iscsi_util.GetHostNamespacePath(HostProcPath)
-	nsExec, err := iscsi_util.NewNamespaceExecutor(initiatorNSPath)
+	initiatorNSPath := iscsiutil.GetHostNamespacePath(HostProcPath)
+	nsExec, err := iscsiutil.NewNamespaceExecutor(initiatorNSPath)
 	if err != nil {
 		return err
 	}
@@ -623,8 +623,8 @@ func ValidateTags(inputTags []string) ([]string, error) {
 }
 
 func CreateDiskPathReplicaSubdirectory(path string) error {
-	nsPath := iscsi_util.GetHostNamespacePath(HostProcPath)
-	nsExec, err := iscsi_util.NewNamespaceExecutor(nsPath)
+	nsPath := iscsiutil.GetHostNamespacePath(HostProcPath)
+	nsExec, err := iscsiutil.NewNamespaceExecutor(nsPath)
 	if err != nil {
 		return err
 	}
@@ -636,7 +636,7 @@ func CreateDiskPathReplicaSubdirectory(path string) error {
 }
 
 func DeleteDiskPathReplicaSubdirectoryAndDiskCfgFile(
-	nsExec *iscsi_util.NamespaceExecutor, path string) error {
+	nsExec *iscsiutil.NamespaceExecutor, path string) error {
 
 	var err error
 	dirPath := filepath.Join(path, ReplicaDirectory)
@@ -731,8 +731,8 @@ type DiskConfig struct {
 }
 
 func GetDiskConfig(path string) (*DiskConfig, error) {
-	nsPath := iscsi_util.GetHostNamespacePath(HostProcPath)
-	nsExec, err := iscsi_util.NewNamespaceExecutor(nsPath)
+	nsPath := iscsiutil.GetHostNamespacePath(HostProcPath)
+	nsExec, err := iscsiutil.NewNamespaceExecutor(nsPath)
 	if err != nil {
 		return nil, err
 	}
@@ -758,8 +758,8 @@ func GenerateDiskConfig(path string) (*DiskConfig, error) {
 		return nil, fmt.Errorf("BUG: Cannot marshal %+v: %v", cfg, err)
 	}
 
-	nsPath := iscsi_util.GetHostNamespacePath(HostProcPath)
-	nsExec, err := iscsi_util.NewNamespaceExecutor(nsPath)
+	nsPath := iscsiutil.GetHostNamespacePath(HostProcPath)
+	nsExec, err := iscsiutil.NewNamespaceExecutor(nsPath)
 	if err != nil {
 		return nil, err
 	}
@@ -829,7 +829,7 @@ func GetPossibleReplicaDirectoryNames(diskPath string) (replicaDirectoryNames ma
 
 	directory := filepath.Join(diskPath, "replicas")
 
-	initiatorNSPath := iscsi_util.GetHostNamespacePath(HostProcPath)
+	initiatorNSPath := iscsiutil.GetHostNamespacePath(HostProcPath)
 	mountPath := fmt.Sprintf("--mount=%s/mnt", initiatorNSPath)
 	command := fmt.Sprintf("find %s -type d -maxdepth 1 -mindepth 1 -regextype posix-extended -regex \".*-[a-zA-Z0-9]{8}$\" -exec basename {} \\;", directory)
 	output, err := Execute([]string{}, "nsenter", mountPath, "sh", "-c", command)
@@ -854,7 +854,7 @@ func DeleteReplicaDirectoryName(diskPath, replicaDirectoryName string) (err erro
 
 	path := filepath.Join(diskPath, "replicas", replicaDirectoryName)
 
-	initiatorNSPath := iscsi_util.GetHostNamespacePath(HostProcPath)
+	initiatorNSPath := iscsiutil.GetHostNamespacePath(HostProcPath)
 	mountPath := fmt.Sprintf("--mount=%s/mnt", initiatorNSPath)
 	_, err = Execute([]string{}, "nsenter", mountPath, "rm", "-rf", path)
 	if err != nil {
@@ -877,8 +877,8 @@ type VolumeMeta struct {
 }
 
 func GetVolumeMeta(path string) (*VolumeMeta, error) {
-	nsPath := iscsi_util.GetHostNamespacePath(HostProcPath)
-	nsExec, err := iscsi_util.NewNamespaceExecutor(nsPath)
+	nsPath := iscsiutil.GetHostNamespacePath(HostProcPath)
+	nsExec, err := iscsiutil.NewNamespaceExecutor(nsPath)
 	if err != nil {
 		return nil, err
 	}
@@ -907,8 +907,8 @@ func GetPodIP(pod *v1.Pod) (string, error) {
 }
 
 func TrimFilesystem(volumeName string, isEncryptedDevice bool) error {
-	nsPath := iscsi_util.GetHostNamespacePath(HostProcPath)
-	nsExec, err := iscsi_util.NewNamespaceExecutor(nsPath)
+	nsPath := iscsiutil.GetHostNamespacePath(HostProcPath)
+	nsExec, err := iscsiutil.NewNamespaceExecutor(nsPath)
 	if err != nil {
 		return err
 	}
