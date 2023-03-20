@@ -33,7 +33,7 @@ spec:
         - --instance-manager-image
         - longhornio/longhorn-instance-manager:v1_20230317
         - --share-manager-image
-        - longhornio/longhorn-share-manager:v1_20221003_patch1
+        - longhornio/longhorn-share-manager:v1_20230320
         - --backing-image-manager-image
         - longhornio/backing-image-manager:v3_20230320
         - --manager-image
