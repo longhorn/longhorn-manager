@@ -358,6 +358,7 @@ func (job *Job) run() (err error) {
 		job.logger.Infof("Volume %v is in state %v", volumeName, volume.State)
 	}
 
+	// only recurring job types `snapshot` and `backup` need to check if old snapshots can be deleted or not before creating
 	if job.task == longhorn.RecurringJobTypeSnapshot || job.task == longhorn.RecurringJobTypeBackup {
 		if err := job.doSnapshotCleanup(false); err != nil {
 			return err
@@ -381,7 +382,7 @@ func (job *Job) doRecurringSnapshot() (err error) {
 	}()
 
 	switch job.task {
-	case longhorn.RecurringJobTypeSnapshot:
+	case longhorn.RecurringJobTypeSnapshot, longhorn.RecurringJobTypeSnapshotForceCreate:
 		if err = job.doSnapshot(); err != nil {
 			return err
 		}
@@ -528,7 +529,7 @@ func (job *Job) filterExpiredSnapshotsOfCurrentRecurringJob(snapshots []longhorn
 	// Only consider deleting the snapshots that were created by our current job
 	snapshots = filterSnapshotsWithLabel(snapshots, types.RecurringJobLabel, jobLabel)
 
-	if job.task == longhorn.RecurringJobTypeSnapshot {
+	if job.task == longhorn.RecurringJobTypeSnapshot || job.task == longhorn.RecurringJobTypeSnapshotForceCreate {
 		return filterExpiredItems(snapshotsToNameWithTimestamps(snapshots), job.retain)
 	}
 
