@@ -365,7 +365,7 @@ func (job *Job) run() (err error) {
 		}
 	}
 
-	if job.task == longhorn.RecurringJobTypeBackup {
+	if job.task == longhorn.RecurringJobTypeBackup || job.task == longhorn.RecurringJobTypeBackupForceCreate {
 		job.logger.Infof("Running recurring backup for volume %v", volumeName)
 		return job.doRecurringBackup()
 	}
@@ -569,10 +569,6 @@ func (job *Job) doRecurringBackup() (err error) {
 	}
 
 	if err := job.doSnapshot(); err != nil {
-		return err
-	}
-
-	if err := job.doSnapshotCleanup(false); err != nil {
 		return err
 	}
 
