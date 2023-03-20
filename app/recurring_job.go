@@ -16,12 +16,18 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	clientset "k8s.io/client-go/kubernetes"
+	typedv1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/record"
 
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
+	"github.com/longhorn/longhorn-manager/constant"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	"github.com/longhorn/longhorn-manager/types"
@@ -48,6 +54,8 @@ type Job struct {
 	retain       int
 	task         longhorn.RecurringJobType
 	labels       map[string]string
+
+	eventRecorder record.EventRecorder
 
 	api *longhornclient.RancherClient
 }
@@ -225,6 +233,16 @@ func NewJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName stri
 		"task":         task,
 	})
 
+	scheme := runtime.NewScheme()
+	if err := longhorn.SchemeBuilder.AddToScheme(scheme); err != nil {
+		return nil, errors.Wrap(err, "unable to create scheme")
+	}
+
+	eventBroadcaster, err := createEventBroadcaster(config)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Job{
 		logger:       logger,
 		lhClient:     lhClient,
@@ -235,7 +253,23 @@ func NewJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName stri
 		retain:       retain,
 		task:         task,
 		api:          apiClient,
+
+		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-recurring-job"}),
 	}, nil
+}
+
+func createEventBroadcaster(config *rest.Config) (record.EventBroadcaster, error) {
+	kubeClient, err := clientset.NewForConfig(config)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to get k8s client")
+	}
+
+	eventBroadcaster := record.NewBroadcaster()
+	eventBroadcaster.StartLogging(logrus.Infof)
+	// TODO: remove the wrapper when every clients have moved to use the clientset.
+	eventBroadcaster.StartRecordingToSink(&typedv1core.EventSinkImpl{Interface: typedv1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
+
+	return eventBroadcaster, nil
 }
 
 // handleVolumeDetachment decides whether the current recurring job should detach the volume.
@@ -376,6 +410,15 @@ func (job *Job) doSnapshot() (err error) {
 }
 
 func (job *Job) doSnapshotCleanup(backupDone bool) (err error) {
+	defer func() {
+		if err != nil {
+			errMessage := errors.Wrapf(err, "failed to clean up old snapshots of volume %v", job.volumeName).Error()
+			if err := job.eventCreate(corev1.EventTypeWarning, constant.EventReasonFailedDeleting, errMessage); err != nil {
+				job.logger.WithError(err).Warn("failed to create an event log")
+			}
+		}
+	}()
+
 	volumeAPI := job.api.Volume
 	volumeName := job.volumeName
 	volume, err := volumeAPI.ById(volumeName)
@@ -428,6 +471,20 @@ func (job *Job) doSnapshotCleanup(backupDone bool) (err error) {
 			time.Sleep(SnapshotPurgeStatusInterval)
 		}
 	}
+	return nil
+}
+
+func (job *Job) eventCreate(eventType, eventReason, message string) error {
+	jobName, found := job.labels[types.RecurringJobLabel]
+	if !found || jobName == "" {
+		return fmt.Errorf("missing RecurringJob label")
+	}
+	recurringJob, err := job.lhClient.LonghornV1beta2().RecurringJobs(job.namespace).Get(context.TODO(), jobName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	job.eventRecorder.Eventf(recurringJob, eventType, eventReason, message)
+
 	return nil
 }
 
