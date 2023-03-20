@@ -3774,6 +3774,7 @@ func ValidateRecurringJob(job longhorn.RecurringJobSpec) error {
 
 func isValidRecurringJobTask(task longhorn.RecurringJobType) bool {
 	return task == longhorn.RecurringJobTypeBackup ||
+		task == longhorn.RecurringJobTypeBackupForceCreate ||
 		task == longhorn.RecurringJobTypeSnapshot ||
 		task == longhorn.RecurringJobTypeSnapshotForceCreate ||
 		task == longhorn.RecurringJobTypeSnapshotCleanup ||
