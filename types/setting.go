@@ -105,6 +105,7 @@ const (
 	SettingNameBackupCompressionMethod                                  = SettingName("backup-compression-method")
 	SettingNameBackupConcurrentLimit                                    = SettingName("backup-concurrent-limit")
 	SettingNameRestoreConcurrentLimit                                   = SettingName("restore-concurrent-limit")
+	SettingNameSupportFilesystemTrimOnEncryptedVolume                   = SettingName("support-filesystem-trim-on-encrypted-volume")
 )
 
 var (
@@ -178,6 +179,7 @@ var (
 		SettingNameBackupCompressionMethod,
 		SettingNameBackupConcurrentLimit,
 		SettingNameRestoreConcurrentLimit,
+		SettingNameSupportFilesystemTrimOnEncryptedVolume,
 	}
 )
 
@@ -276,6 +278,7 @@ var (
 		SettingNameBackupCompressionMethod:                                  SettingDefinitionBackupCompressionMethod,
 		SettingNameBackupConcurrentLimit:                                    SettingDefinitionBackupConcurrentLimit,
 		SettingNameRestoreConcurrentLimit:                                   SettingDefinitionRestoreConcurrentLimit,
+		SettingNameSupportFilesystemTrimOnEncryptedVolume:                   SettingDefinitionSupportFilesystemTrimOnEncryptedVolume,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -1125,6 +1128,17 @@ var (
 		ReadOnly:    false,
 		Default:     "5",
 	}
+
+	SettingDefinitionSupportFilesystemTrimOnEncryptedVolume = SettingDefinition{
+		DisplayName: "Support Filesystem Trim On Encrypted Volume",
+		Description: "This setting enables the filesystem trim on encrypted volumes. \n\n" +
+			"Enabling this functionality may pose security risks. For further details, please consult the official documentation.",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeBool,
+		Required: true,
+		ReadOnly: false,
+		Default:  "false",
+	}
 )
 
 type NodeDownPodDeletionPolicy string
@@ -1213,6 +1227,8 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameRemoveSnapshotsDuringFilesystemTrim:
 		fallthrough
 	case SettingNameFastReplicaRebuildEnabled:
+		fallthrough
+	case SettingNameSupportFilesystemTrimOnEncryptedVolume:
 		fallthrough
 	case SettingNameUpgradeChecker:
 		if value != "true" && value != "false" {
