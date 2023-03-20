@@ -12,11 +12,14 @@ import (
 	iscsiutil "github.com/longhorn/go-iscsi-helper/util"
 )
 
-const hostProcPath = "/proc" // we use hostPID for the csi plugin
-const luksTimeout = time.Minute
+const (
+	hostProcPathForCsiPlugin = "/proc" // we use hostPID for the csi plugin
+
+	luksTimeout = time.Minute
+)
 
 func luksOpen(volume, devicePath, passphrase string) (stdout string, err error) {
-	return cryptSetupWithPassphrase(passphrase,
+	return cryptSetupWithPassphrase(hostProcPathForCsiPlugin, passphrase,
 		"luksOpen", devicePath, volume, "-d", "/dev/stdin")
 }
 
@@ -25,13 +28,13 @@ func luksClose(volume string) (stdout string, err error) {
 }
 
 func luksFormat(devicePath, passphrase string, cryptoParams *EncryptParams) (stdout string, err error) {
-	return cryptSetupWithPassphrase(passphrase,
+	return cryptSetupWithPassphrase(hostProcPathForCsiPlugin, passphrase,
 		"-q", "luksFormat", "--type", "luks2", "--cipher", cryptoParams.GetKeyCipher(), "--hash", cryptoParams.GetKeyHash(), "--key-size", cryptoParams.GetKeySize(), "--pbkdf", cryptoParams.GetPBKDF(),
 		devicePath, "-d", "/dev/stdin")
 }
 
 func luksResize(volume, passphrase string) (stdout string, err error) {
-	return cryptSetupWithPassphrase(passphrase,
+	return cryptSetupWithPassphrase(hostProcPathForCsiPlugin, passphrase,
 		"resize", volume)
 }
 
@@ -40,7 +43,7 @@ func luksStatus(volume string) (stdout string, err error) {
 }
 
 func cryptSetup(args ...string) (stdout string, err error) {
-	return cryptSetupWithPassphrase("", args...)
+	return cryptSetupWithPassphrase(hostProcPathForCsiPlugin, "", args...)
 }
 
 // cryptSetupWithPassphrase runs cryptsetup via nsenter inside of the host namespaces
@@ -48,7 +51,7 @@ func cryptSetup(args ...string) (stdout string, err error) {
 // 1 wrong parameters, 2 no permission (bad passphrase),
 // 3 out of memory, 4 wrong device specified,
 // 5 device already exists or device is busy.
-func cryptSetupWithPassphrase(passphrase string, args ...string) (stdout string, err error) {
+func cryptSetupWithPassphrase(hostProcPath, passphrase string, args ...string) (stdout string, err error) {
 	// NOTE: cryptsetup needs to be run in the host IPC/MNT
 	// if you only use MNT the binary will not return but still do the appropriate action.
 	ns := iscsiutil.GetHostNamespacePath(hostProcPath)

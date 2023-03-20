@@ -5,6 +5,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/longhorn/longhorn-manager/util"
 	"github.com/sirupsen/logrus"
 )
 
@@ -70,6 +71,15 @@ func EncryptVolume(devicePath, passphrase string, cryptoParams *EncryptParams) e
 		return fmt.Errorf("failed to encrypt device %s with LUKS: %w", devicePath, err)
 	}
 	return nil
+}
+
+// EnableDiscardsOnEncryptedVolume enable the discards support on the give encrypted volume.
+func EnableDiscardsOnEncryptedVolume(passphrase, volume string) error {
+	logrus.Debugf("Enabling discards on encrypted device %s", volume)
+
+	_, err := cryptSetupWithPassphrase(util.HostProcPath, passphrase,
+		"--allow-discards", "--persistent", "refresh", volume, "-d", "/dev/stdin")
+	return err
 }
 
 // OpenVolume opens volume so that it can be used by the client.

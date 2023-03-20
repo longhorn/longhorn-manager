@@ -12,6 +12,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/longhorn/longhorn-manager/csi"
+	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -649,6 +651,36 @@ func (m *VolumeManager) CancelExpansion(volumeName string) (v *longhorn.Volume, 
 	return v, nil
 }
 
+func (m *VolumeManager) GetPassphraseForEnablingDiscardsOnEncryptedVolume(v *longhorn.Volume) string {
+	if v.Status.KubernetesStatus.PVName == "" {
+		logrus.Errorf("Empty v.Status.KubernetesStatus.PVName for volume %v", v.Name)
+		return ""
+	}
+
+	pv, err := m.ds.GetPersistentVolumeRO(v.Status.KubernetesStatus.PVName)
+	if err != nil {
+		logrus.WithError(err).Errorf("Failed to get persistent volume %v", v.Status.KubernetesStatus.PVName)
+		return ""
+	}
+
+	if pv.Spec.CSI.NodeStageSecretRef == nil {
+		logrus.WithError(err).Errorf("Empty pv.Spec.CSI.NodeStageSecretRef for volume %v", pv.Name)
+		return ""
+	}
+
+	secret, err := m.ds.GetSecretRO(pv.Spec.CSI.NodeStageSecretRef.Namespace, pv.Spec.CSI.NodeStageSecretRef.Name)
+	if err != nil {
+		logrus.WithError(err).Errorf("Failed to get secret %v/%v", pv.Spec.CSI.NodeStageSecretRef.Namespace, pv.Spec.CSI.NodeStageSecretRef.Name)
+		return ""
+	}
+
+	if _, ok := secret.Data[csi.CryptoKeyValue]; !ok {
+		return ""
+	}
+
+	return string(secret.Data[csi.CryptoKeyValue])
+}
+
 func (m *VolumeManager) TrimFilesystem(name string) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to trim filesystem for volume %v", name)
@@ -663,6 +695,22 @@ func (m *VolumeManager) TrimFilesystem(name string) (v *longhorn.Volume, err err
 	}
 	if v.Status.FrontendDisabled {
 		return nil, fmt.Errorf("volume frontend is disabled")
+	}
+
+	if v.Spec.Encrypted {
+		enabled, err := m.ds.GetSettingAsBool(types.SettingNameSupportFilesystemTrimOnEncryptedVolume)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get setting %v", types.SettingNameSupportFilesystemTrimOnEncryptedVolume)
+		}
+		if enabled {
+			passphrase := m.GetPassphraseForEnablingDiscardsOnEncryptedVolume(v)
+			logrus.Infof("Enabling discards on encrypted volume %v", v.Name)
+
+			err := crypto.EnableDiscardsOnEncryptedVolume(passphrase, v.Name)
+			if err != nil {
+				logrus.WithError(err).Errorf("Failed to enable discards on encrypted volume %v", v.Name)
+			}
+		}
 	}
 
 	if v.Spec.AccessMode == longhorn.AccessModeReadWriteMany {
@@ -684,6 +732,7 @@ func (m *VolumeManager) trimRWXVolumeFilesystem(volumeName string, encryptedDevi
 	if err != nil {
 		return errors.Wrapf(err, "failed to get share manager pod for trimming volume %v in namespae", volumeName)
 	}
+
 	client, err := engineapi.NewShareManagerClient(sm, pod)
 	if err != nil {
 		return errors.Wrapf(err, "failed to launch gRPC client for share manager before trimming volume %v", volumeName)
