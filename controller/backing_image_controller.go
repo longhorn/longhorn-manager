@@ -209,16 +209,12 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 			return err
 		}
 		if len(replicas) != 0 {
-			log.Info("Need to wait for all replicas stopping using this backing image before removing the finalizer")
+			log.Warn("Need to wait for all replicas stopping using this backing image before removing the finalizer")
 			return nil
 		}
-		cleanUpTmpFileFinished, err := bic.IsBackingImageDataSourceCleanup(backingImage)
-		if err != nil {
+		if _, err := bic.IsBackingImageDataSourceCleaned(backingImage); err != nil {
+			log.Warn("Need to wait until backing image data source is cleaned before removing the finalizer")
 			return err
-		}
-		if !cleanUpTmpFileFinished {
-			log.Info("Requesting to clean up Backing Image Data Source first before cleaning up Backing Image Manager")
-			return nil
 		}
 		log.Info("No replica is using this backing image, will clean up the record for backing image managers and remove the finalizer then")
 		if err := bic.cleanupBackingImageManagers(backingImage); err != nil {
@@ -287,9 +283,15 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 	return nil
 }
 
-func (bic *BackingImageController) IsBackingImageDataSourceCleanup(bi *longhorn.BackingImage) (finished bool, err error) {
+func (bic *BackingImageController) IsBackingImageDataSourceCleaned(bi *longhorn.BackingImage) (cleaned bool, err error) {
+	log := getLoggerForBackingImage(bic.logger, bi)
+
 	bids, err := bic.ds.GetBackingImageDataSource(bi.Name)
-	if err != nil && !apierrors.IsNotFound(err) {
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Warn("can not get backing image data source, return cleaned so the controller won't wait until bids become failed-and-cleanup")
+			return true, nil
+		}
 		return false, err
 	}
 
@@ -297,20 +299,11 @@ func (bic *BackingImageController) IsBackingImageDataSourceCleanup(bi *longhorn.
 		return true, nil
 	}
 
-	// when bids status is ready or ready for transfer, there is already no tmp file left
-	if bids.Status.CurrentState == longhorn.BackingImageStateFailedAndCleanUp ||
-		bids.Status.CurrentState == longhorn.BackingImageStateReady ||
-		bids.Status.CurrentState == longhorn.BackingImageStateReadyForTransfer {
+	if bids.Status.CurrentState == longhorn.BackingImageStateFailedAndCleanUp {
 		return true, nil
 	}
 
-	// mark the status to failed so manager can clean up the orphan tmp file
-	bids.Status.Message = "backing image is deleted, try to cleaning up the tmp file of data source"
-	bids.Status.CurrentState = longhorn.BackingImageStateFailed
-	if _, err = bic.ds.UpdateBackingImageDataSourceStatus(bids); err != nil {
-		return false, err
-	}
-	return false, nil
+	return false, fmt.Errorf("backing image data source status is %v not %v", bids.Status.CurrentState, longhorn.BackingImageStateFailedAndCleanUp)
 }
 
 func (bic *BackingImageController) cleanupBackingImageManagers(bi *longhorn.BackingImage) (err error) {
