@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/scheduler"
 	"github.com/longhorn/longhorn-manager/types"
@@ -680,7 +681,31 @@ func (m *VolumeManager) TrimFilesystem(name string) (v *longhorn.Volume, err err
 		return nil, fmt.Errorf("volume frontend is disabled")
 	}
 
-	return v, util.TrimFilesystem(name, v.Spec.Encrypted)
+	if v.Spec.AccessMode == longhorn.AccessModeReadWriteMany {
+		return v, m.trimRWXVolumeFilesystem(name, v.Spec.Encrypted)
+	}
+	return v, m.trimNonRWXVolumeFilesystem(name, v.Spec.Encrypted)
+}
+
+func (m *VolumeManager) trimNonRWXVolumeFilesystem(volumeName string, encryptedDevice bool) error {
+	return util.TrimFilesystem(volumeName, encryptedDevice)
+}
+
+func (m *VolumeManager) trimRWXVolumeFilesystem(volumeName string, encryptedDevice bool) error {
+	sm, err := m.ds.GetShareManager(volumeName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get share manager for trimming volume %v", volumeName)
+	}
+	pod, err := m.ds.GetPodRO(sm.Namespace, types.GetShareManagerPodNameFromShareManagerName(sm.Name))
+	if err != nil {
+		return errors.Wrapf(err, "failed to get share manager pod for trimming volume %v in namespae", volumeName)
+	}
+	client, err := engineapi.NewShareManagerClient(sm, pod)
+	if err != nil {
+		return errors.Wrapf(err, "failed to launch gRPC client for share manager before trimming volume %v", volumeName)
+	}
+	defer client.Close()
+	return client.FilesystemTrim(encryptedDevice)
 }
 
 func (m *VolumeManager) AddVolumeRecurringJob(volumeName string, name string, isGroup bool) (volumeRecurringJob map[string]*longhorn.VolumeRecurringJob, err error) {
