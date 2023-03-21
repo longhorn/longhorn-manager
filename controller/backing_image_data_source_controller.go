@@ -275,6 +275,25 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSource(key string
 		if err := c.cleanup(bids); err != nil {
 			return err
 		}
+
+		// if it is not transferred, we need to wait until it is failed-and-cleanup
+		if !bids.Spec.FileTransferred {
+			if bids.Status.CurrentState == longhorn.BackingImageStateFailedAndCleanUp {
+				return c.ds.RemoveFinalizerForBackingImageDataSource(bids)
+			}
+
+			// if bids is not transferred
+			// mark the status to failed so manager can clean up the tmp file and mark it as failed-and-cleanup
+			bids.Status.Message = "backing image is deleted, requesting manager to clean up the tmp file of backing image data source"
+			bids.Status.CurrentState = longhorn.BackingImageStateFailed
+			if _, err = c.ds.UpdateBackingImageDataSourceStatus(bids); err != nil {
+				return err
+			}
+
+			return nil
+		}
+
+		// if it is transferred, we don't need to clean up
 		return c.ds.RemoveFinalizerForBackingImageDataSource(bids)
 	}
 
