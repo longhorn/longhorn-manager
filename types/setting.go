@@ -1395,7 +1395,7 @@ func ValidateAndUnmarshalToleration(s string) (*v1.Toleration, error) {
 
 	if strings.Contains(parts[0], "=") {
 		pair := strings.Split(parts[0], "=")
-		if len(parts) != 2 {
+		if len(pair) != 2 {
 			return nil, fmt.Errorf("invalid toleration setting %v: invalid key/value pair", parts[0])
 		}
 		toleration.Key = strings.Trim(pair[0], " ")
