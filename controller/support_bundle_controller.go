@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -615,6 +616,7 @@ func (c *SupportBundleController) createSupportBundleManagerDeployment(supportBu
 func (c *SupportBundleController) newSupportBundleManager(supportBundle *longhorn.SupportBundle,
 	nodeSelector map[string]string, tolerations []corev1.Toleration,
 	imagePullPolicy corev1.PullPolicy, priorityClass, registrySecret string) *appsv1.Deployment {
+
 	supportBundleManagerName := GetSupportBundleManagerName(supportBundle)
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -687,6 +689,10 @@ func (c *SupportBundleController) newSupportBundleManager(supportBundle *longhor
 									Name:  "SUPPORT_BUNDLE_COLLECTOR",
 									Value: "longhorn",
 								},
+								{
+									Name:  "SUPPORT_BUNDLE_NODE_SELECTOR",
+									Value: c.getNodeSelectorString(nodeSelector),
+								},
 							},
 							Ports: []corev1.ContainerPort{
 								{
@@ -709,4 +715,12 @@ func (c *SupportBundleController) newSupportBundleManager(supportBundle *longhor
 	}
 
 	return deployment
+}
+
+func (c *SupportBundleController) getNodeSelectorString(nodeSelector map[string]string) string {
+	list := make([]string, 0, len(nodeSelector))
+	for k, v := range nodeSelector {
+		list = append(list, k+"="+v)
+	}
+	return strings.Join(list, ",")
 }
