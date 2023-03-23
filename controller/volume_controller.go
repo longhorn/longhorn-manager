@@ -2515,7 +2515,7 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[st
 	}
 
 	if err := vc.switchActiveReplicas(rs, func(r *longhorn.Replica, engineImage string) bool {
-		return r.Spec.EngineImage == engineImage && !r.DeletionTimestamp.IsZero()
+		return r.Spec.EngineImage == engineImage && r.DeletionTimestamp.IsZero()
 	}, v.Spec.EngineImage); err != nil {
 		return err
 	}
