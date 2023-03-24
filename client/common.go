@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -57,7 +56,7 @@ func IsNotFound(err error) bool {
 }
 
 func newApiError(resp *http.Response, url string) *ApiError {
-	contents, err := ioutil.ReadAll(resp.Body)
+	contents, err := io.ReadAll(resp.Body)
 	var body string
 	if err != nil {
 		body = "Unreadable body."
@@ -197,7 +196,7 @@ func setupRancherBaseClient(rancherClient *RancherBaseClientImpl, opts *ClientOp
 	}
 
 	var schemas Schemas
-	bytes, err := ioutil.ReadAll(resp.Body)
+	bytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}
@@ -249,7 +248,7 @@ func (rancherClient *RancherBaseClientImpl) doDelete(url string) error {
 	}
 	defer resp.Body.Close()
 
-	_, err = io.Copy(ioutil.Discard, resp.Body)
+	_, err = io.Copy(io.Discard, resp.Body)
 	if err != nil {
 		return err
 	}
@@ -306,7 +305,7 @@ func (rancherClient *RancherBaseClientImpl) doGet(url string, opts *ListOpts, re
 		return newApiError(resp, url)
 	}
 
-	byteContent, err := ioutil.ReadAll(resp.Body)
+	byteContent, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}
@@ -392,7 +391,7 @@ func (rancherClient *RancherBaseClientImpl) doModify(method string, url string, 
 		return newApiError(resp, url)
 	}
 
-	byteContent, err := ioutil.ReadAll(resp.Body)
+	byteContent, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}
@@ -587,7 +586,7 @@ func (rancherClient *RancherBaseClientImpl) doAction(schemaType string, action s
 		return newApiError(resp, actionUrl)
 	}
 
-	byteContent, err := ioutil.ReadAll(resp.Body)
+	byteContent, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}
