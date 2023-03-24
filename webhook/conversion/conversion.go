@@ -3,7 +3,7 @@ package conversion
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 
 	"github.com/sirupsen/logrus"
@@ -42,7 +42,7 @@ func NewHandler() (*Handler, error) {
 func (h *Handler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	var body []byte
 	if req.Body != nil {
-		if data, err := ioutil.ReadAll(req.Body); err == nil {
+		if data, err := io.ReadAll(req.Body); err == nil {
 			body = data
 		}
 	}
