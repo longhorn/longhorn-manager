@@ -20,6 +20,7 @@ func New(namespace string, ds *datastore.DataStore) *RecoveryBackendServer {
 		rb: &backend.RecoveryBackend{
 			Namespace: namespace,
 			Datastore: ds,
+			Logger:    logrus.StandardLogger().WithField("service", "recoveryBackend"),
 		},
 	}
 }

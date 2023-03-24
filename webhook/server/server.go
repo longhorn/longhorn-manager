@@ -127,7 +127,7 @@ func (s *WebhookServer) runAdmissionWebhookListenAndServe(client *client.Client,
 			return nil, nil
 		}
 
-		port := int32(types.DefaultWebhookServerPort)
+		port := int32(types.DefaultAdmissionWebhookPort)
 
 		logrus.Info("Building validation rules...")
 		validationRules := s.buildRules(validationResources)
@@ -189,7 +189,7 @@ func (s *WebhookServer) runAdmissionWebhookListenAndServe(client *client.Client,
 
 	tlsName := fmt.Sprintf("%s.%s.svc", admissionWebhookServiceName, s.namespace)
 
-	return server.ListenAndServe(s.context, types.DefaultWebhookServerPort, 0, handler, &server.ListenOpts{
+	return server.ListenAndServe(s.context, types.DefaultAdmissionWebhookPort, 0, handler, &server.ListenOpts{
 		Secrets:       client.Core.Secret(),
 		CertNamespace: s.namespace,
 		CertName:      certName,
@@ -209,7 +209,7 @@ func (s *WebhookServer) runConversionWebhookListenAndServe(client *client.Client
 			return nil, nil
 		}
 
-		port := int32(types.DefaultWebhookServerPort)
+		port := int32(types.DefaultConversionWebhookPort)
 
 		logrus.Infof("Building conversion rules...")
 		for _, name := range conversionResources {
@@ -248,7 +248,7 @@ func (s *WebhookServer) runConversionWebhookListenAndServe(client *client.Client
 
 	tlsName := fmt.Sprintf("%s.%s.svc", conversionWebhookServiceName, s.namespace)
 
-	return server.ListenAndServe(s.context, types.DefaultWebhookServerPort, 0, handler, &server.ListenOpts{
+	return server.ListenAndServe(s.context, types.DefaultConversionWebhookPort, 0, handler, &server.ListenOpts{
 		Secrets:       client.Core.Secret(),
 		CertNamespace: s.namespace,
 		CertName:      certName,
