@@ -1,15 +1,22 @@
 package app
 
 import (
+	"context"
+	"crypto/tls"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
+	"time"
 
 	_ "net/http/pprof" // for runtime profiling
 
 	"github.com/gorilla/handlers"
+	"github.com/rancher/wrangler/pkg/signals"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/longhorn/go-iscsi-helper/iscsi"
 	iscsiutil "github.com/longhorn/go-iscsi-helper/util"
@@ -20,9 +27,12 @@ import (
 	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/meta"
 	metricsCollector "github.com/longhorn/longhorn-manager/metrics_collector"
+	recoveryBackendServer "github.com/longhorn/longhorn-manager/recovery_backend/server"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/upgrade"
 	"github.com/longhorn/longhorn-manager/util"
+	"github.com/longhorn/longhorn-manager/util/client"
+	webhookServer "github.com/longhorn/longhorn-manager/webhook/server"
 )
 
 const (
@@ -132,9 +142,20 @@ func startManager(c *cli.Context) error {
 		return fmt.Errorf("BUG: failed to detect the node IP")
 	}
 
-	done := make(chan struct{})
+	ctx := signals.SetupSignalContext()
 
 	logger := logrus.StandardLogger().WithField("node", currentNodeID)
+
+	webhookTypes := []string{types.WebhookTypeConversion, types.WebhookTypeAdmission}
+	for _, webhookType := range webhookTypes {
+		if err := startWebhook(ctx, serviceAccount, kubeconfigPath, webhookType); err != nil {
+			return err
+		}
+	}
+
+	if err := startRecoveryBackend(ctx, serviceAccount, kubeconfigPath); err != nil {
+		return err
+	}
 
 	if err := upgrade.Upgrade(kubeconfigPath, currentNodeID); err != nil {
 		return err
@@ -142,7 +163,7 @@ func startManager(c *cli.Context) error {
 
 	proxyConnCounter := util.NewAtomicCounter()
 
-	ds, wsc, err := controller.StartControllers(logger, done, currentNodeID, serviceAccount, managerImage, kubeconfigPath, meta.Version, proxyConnCounter)
+	ds, wsc, err := controller.StartControllers(logger, ctx.Done(), currentNodeID, serviceAccount, managerImage, kubeconfigPath, meta.Version, proxyConnCounter)
 	if err != nil {
 		return err
 	}
@@ -201,8 +222,7 @@ func startManager(c *cli.Context) error {
 		}
 	}()
 
-	util.RegisterShutdownChannel(done)
-	<-done
+	<-ctx.Done()
 	return nil
 }
 
@@ -215,6 +235,97 @@ func environmentCheck() error {
 	if err := iscsi.CheckForInitiatorExistence(namespace); err != nil {
 		return err
 	}
+	return nil
+}
+
+func startWebhook(ctx context.Context, serviceAccount, kubeconfigPath, webhookType string) error {
+	logrus.Infof("Starting longhorn %s webhook server", webhookType)
+
+	var webhookPort int
+	switch webhookType {
+	case "admission":
+		webhookPort = types.DefaultAdmissionWebhookPort
+	case "conversion":
+		webhookPort = types.DefaultConversionWebhookPort
+	default:
+		return fmt.Errorf("unexpected webhook server type %v", webhookType)
+	}
+
+	namespace := os.Getenv(types.EnvPodNamespace)
+	if namespace == "" {
+		logrus.Warnf("Failed to detect pod namespace, environment variable %v is missing, "+
+			"using default namespace", types.EnvPodNamespace)
+		namespace = corev1.NamespaceDefault
+	}
+
+	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	if err != nil {
+		return fmt.Errorf("unable to get client config: %v", err)
+	}
+
+	s := webhookServer.New(ctx, cfg, namespace, webhookType)
+	go s.ListenAndServe()
+	logrus.Infof("Waiting for %v webhook to become ready", webhookType)
+
+	cli := http.Client{
+		Timeout: time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+	webhookHealthEndpoint := fmt.Sprintf("https://localhost:%d/v1/healthz", webhookPort)
+	for {
+		resp, err := cli.Get(webhookHealthEndpoint)
+		if err != nil {
+			logrus.WithError(err).Warnf("Error getting webhook health endpoint %v", webhookHealthEndpoint)
+		} else if resp.StatusCode == 200 {
+			logrus.Infof("Webhook %v is ready", webhookType)
+			break
+		} else {
+			bodyBytes, err := io.ReadAll(resp.Body)
+			if err != nil {
+				logrus.Warnf("Webhook health endpoint return %d not 200: cannot read the body", resp.StatusCode)
+			}
+			bodyString := string(bodyBytes)
+			logrus.Warnf("Webhook health endpoint return %d not 200: %v", resp.StatusCode, bodyString)
+		}
+
+		time.Sleep(2 * time.Second)
+	}
+
+	logrus.Warnf("Started longhorn %s webhook server", webhookType)
+	return nil
+}
+
+func startRecoveryBackend(ctx context.Context, serviceAccount, kubeconfigPath string) error {
+	logrus.Info("Starting longhorn recovery-backend server")
+
+	namespace := os.Getenv(types.EnvPodNamespace)
+	if namespace == "" {
+		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, "+
+			"using default namespace", types.EnvPodNamespace)
+		namespace = corev1.NamespaceDefault
+	}
+
+	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	if err != nil {
+		return fmt.Errorf("unable to get client config: %v", err)
+	}
+
+	client, err := client.NewClient(ctx, cfg, namespace, true)
+	if err != nil {
+		return err
+	}
+
+	if err := client.Start(ctx); err != nil {
+		return err
+	}
+
+	s := recoveryBackendServer.New(namespace, client.Datastore)
+	router := http.Handler(recoveryBackendServer.NewRouter(s))
+	go s.ListenAndServe(router)
+	logrus.Info("Started longhorn recovery-backend server")
+
 	return nil
 }
 

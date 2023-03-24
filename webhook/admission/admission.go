@@ -50,6 +50,7 @@ type Admitter interface {
 type Handler struct {
 	admitter      Admitter
 	admissionType string
+	logger        logrus.FieldLogger
 }
 
 func NewHandler(admitter Admitter, admissionType string) *Handler {
@@ -59,6 +60,7 @@ func NewHandler(admitter Admitter, admissionType string) *Handler {
 	return &Handler{
 		admitter:      admitter,
 		admissionType: admissionType,
+		logger:        logrus.StandardLogger().WithField("service", "admissionWebhook"),
 	}
 }
 
@@ -68,11 +70,9 @@ func (v *Handler) Admit(response *webhook.Response, request *webhook.Request) er
 }
 
 func (v *Handler) admit(response *webhook.Response, req *Request) {
-	logrus.Debugf("%s admitting %s", req, v.admissionType)
-
 	oldObj, newObj, err := req.DecodeObjects()
 	if err != nil {
-		logrus.Errorf("%s failed to decode objects: %s", req, err)
+		v.logger.Errorf("%s failed to decode objects: %s", req, err)
 		response.Result = werror.NewInternalError(err.Error()).AsResult()
 		response.Allowed = false
 		return
@@ -102,7 +102,7 @@ func (v *Handler) admit(response *webhook.Response, req *Request) {
 		}
 		response.Allowed = false
 		response.Result = admitErr.AsResult()
-		logrus.Debugf("%s operation is rejected: %s", req, admitErr)
+		v.logger.WithError(admitErr).Warn("Rejected operation: %s", req)
 		return
 	}
 
@@ -111,10 +111,9 @@ func (v *Handler) admit(response *webhook.Response, req *Request) {
 		patchData := fmt.Sprintf("[%s]", strings.Join(patchOps, ","))
 		response.PatchType = &patchType
 		response.Patch = []byte(patchData)
-		logrus.Debugf("%s patchOps: %s", req, patchData)
+		v.logger.Infof("%s patchOps: %s", req, patchData)
 	}
 
-	logrus.Debugf("%s operation is allowed", req)
 	response.Allowed = true
 }
 

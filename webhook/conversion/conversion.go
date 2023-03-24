@@ -22,6 +22,7 @@ import (
 type Handler struct {
 	scheme  *runtime.Scheme
 	decoder *Decoder
+	logger  logrus.FieldLogger
 }
 
 func NewHandler() (*Handler, error) {
@@ -36,6 +37,7 @@ func NewHandler() (*Handler, error) {
 	return &Handler{
 		scheme:  scheme,
 		decoder: NewDecoder(scheme),
+		logger:  logrus.StandardLogger().WithField("service", "conversionWebhook"),
 	}, nil
 }
 
@@ -50,7 +52,7 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	err := h.decoder.DecodeInto(body, &convertReview)
 	if err != nil {
-		logrus.WithError(err).Error("error decoding conversion request")
+		h.logger.WithError(err).Error("Failed to decode conversion request")
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -60,7 +62,7 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	err = json.NewEncoder(rw).Encode(&convertReview)
 	if err != nil {
-		logrus.WithError(err).Error("error encoding conversion request")
+		h.logger.WithError(err).Error("Failed to encode conversion request")
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -72,18 +74,17 @@ func (h *Handler) handleConvertRequest(req *apiextv1.ConversionRequest) *apiextv
 	for _, obj := range req.Objects {
 		src, gvk, err := h.decoder.Decode(obj.Raw)
 		if err != nil {
-			logrus.WithError(err).Error("error decoding src object")
+			h.logger.WithError(err).Error("Failed to decode src object")
 		}
-		logrus.Debugf("decoding incoming obj: src %v gvk %v src type %v", src, gvk, fmt.Sprintf("%T", src))
 
 		dst, err := getTargetObject(h.scheme, req.DesiredAPIVersion, gvk.Kind)
 		if err != nil {
-			logrus.WithError(err).Error("error getting destination object")
+			h.logger.WithError(err).Error("Failed to get destination object")
 			return conversionResponseFailureWithMessagef("error converting object")
 		}
 		err = h.convertObject(src, dst)
 		if err != nil {
-			logrus.WithError(err).Error("error converting object")
+			h.logger.WithError(err).Error("Failed to convert object")
 			return conversionResponseFailureWithMessagef("error converting object")
 		}
 		convertedObjects = append(convertedObjects, runtime.RawExtension{Object: dst})

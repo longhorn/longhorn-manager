@@ -80,8 +80,9 @@ const (
 )
 
 const (
-	DefaultAPIPort           = 9500
-	DefaultWebhookServerPort = 9443
+	DefaultAPIPort               = 9500
+	DefaultConversionWebhookPort = 9443
+	DefaultAdmissionWebhookPort  = 8443
 
 	WebhookTypeConversion = "conversion"
 	WebhookTypeAdmission  = "admission"
