@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -337,7 +337,7 @@ func (m *fakeSupportBundleHTTPClient) Do(req *http.Request) (*http.Response, err
 		return nil, errors.Wrapf(err, "failed to marshal from mocked client")
 	}
 	if req.URL.Path == "/status" {
-		responseBody := ioutil.NopCloser(bytes.NewBuffer(statusByte))
+		responseBody := io.NopCloser(bytes.NewBuffer(statusByte))
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Body:       responseBody,
