@@ -102,7 +102,7 @@ func (v *Handler) admit(response *webhook.Response, req *Request) {
 		}
 		response.Allowed = false
 		response.Result = admitErr.AsResult()
-		v.logger.WithError(admitErr).Warn("Rejected operation: %s", req)
+		v.logger.WithError(admitErr).Warnf("Rejected operation: %s", req)
 		return
 	}
 
