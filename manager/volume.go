@@ -572,7 +572,7 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 		return nil, err
 	}
 
-	logrus.Infof("Volume %v expansion from %v to %v requested", v.Name, v.Spec.Size, size)
+	previousSize := v.Spec.Size
 	v.Spec.Size = size
 
 	// Support off-line expansion only.
@@ -582,6 +582,8 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 	if err != nil {
 		return nil, err
 	}
+
+	logrus.Infof("Expanding volume %v from %v to %v requested", v.Name, previousSize, size)
 
 	return v, nil
 }
@@ -674,13 +676,14 @@ func (m *VolumeManager) CancelExpansion(volumeName string) (v *longhorn.Volume, 
 		return nil, fmt.Errorf("the engine expansion is already complete")
 	}
 
+	previousSize := v.Spec.Size
 	v.Spec.Size = engine.Status.CurrentSize
 	v, err = m.ds.UpdateVolume(v)
 	if err != nil {
 		return nil, err
 	}
 
-	logrus.Debugf("Canceling expansion for volume %v", v.Name)
+	logrus.Infof("Canceling volume %v expansion from %v to %v requested", v.Name, previousSize, v.Spec.Size)
 	return v, nil
 }
 
