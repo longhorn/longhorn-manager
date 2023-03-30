@@ -314,7 +314,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		syncReplicaAddressMap = true
 	}
 	if syncReplicaAddressMap && !reflect.DeepEqual(engine.Status.CurrentReplicaAddressMap, engine.Spec.ReplicaAddressMap) {
-		log.Debug("Updating engine current replica address map")
+		log.Infof("Updating engine current replica address map to %+v", engine.Spec.ReplicaAddressMap)
 		engine.Status.CurrentReplicaAddressMap = engine.Spec.ReplicaAddressMap
 		// Make sure the CurrentReplicaAddressMap persist in the etcd before continue
 		return nil
@@ -502,7 +502,9 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 	logrus.Infof("Deleting engine instance %v", e.Name)
 
 	defer func() {
-		logrus.WithError(err).Warnf("Failed to delete engine %v for volume %v", e.Name, v.Name)
+		if err != nil {
+			logrus.WithError(err).Warnf("Failed to delete engine %v for volume %v", e.Name, v.Name)
+		}
 		if isRWXVolume && im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
 			// Try the best to delete engine instance.
 			// To prevent that the volume is stuck at detaching state, ignore the error when volume is
@@ -516,7 +518,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 			// After shifting to node A, the first reattachment fail due to the IO error resulting from the
 			// orphaned engine instance and block device. Then, the detachment will trigger the teardown of the
 			// problematic engine process and block device. The next reattachment then will succeed.
-			logrus.Warnf("Ignore the failure of deleting engine %v for volume %v", e.Name, v.Name)
+			logrus.Warnf("Ignored the failure of deleting engine %v for volume %v", e.Name, v.Name)
 			err = nil
 		}
 	}()
