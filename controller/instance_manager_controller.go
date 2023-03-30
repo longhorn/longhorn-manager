@@ -846,7 +846,7 @@ func (imc *InstanceManagerController) generateInstanceManagerPDBManifest(im *lon
 		},
 		Spec: policyv1beta1.PodDisruptionBudgetSpec{
 			Selector: &metav1.LabelSelector{
-				MatchLabels: types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, im.Spec.Type),
+				MatchLabels: types.GetInstanceManagerLabels(im.Spec.NodeID, im.Spec.Image, im.Spec.Type),
 			},
 			MinAvailable: &intstr.IntOrString{IntVal: 1},
 		},
