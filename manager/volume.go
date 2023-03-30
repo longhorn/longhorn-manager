@@ -240,6 +240,7 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 		return v, nil
 	}
 
+	logrus.Infof("=======================> 1")
 	//if v.Spec.AccessMode != longhorn.AccessModeReadWriteMany && v.Status.State != longhorn.VolumeStateDetached {
 	//	return nil, fmt.Errorf("invalid state %v to attach RWO volume %v", v.Status.State, name)
 	//}
@@ -310,6 +311,8 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 		return nil, err
 	}
 
+	logrus.Infof("=======================> 2")
+
 	if va.Spec.AttachmentTickets == nil {
 		va.Spec.AttachmentTickets = make(map[string]*longhorn.AttachmentTicket)
 	}
@@ -323,10 +326,14 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 			longhorn.AttachmentParameterLastAttachedBy:  attachedBy,
 		},
 	}
+	logrus.Infof("=======================> 3 %+v", va.Spec.AttachmentTickets[attachmentID])
+	logrus.Infof("=======================> 4 %+v", va.Spec)
 
 	if _, err := m.ds.UpdateLHVolumeAttachment(va); err != nil {
 		return nil, err
 	}
+
+	logrus.Infof("=======================> 5")
 
 	return v, nil
 }

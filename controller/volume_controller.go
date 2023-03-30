@@ -675,7 +675,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es m
 	}
 
 	// Cannot continue evicting or replenishing replicas during engine migration.
-	isMigratingDone := !vc.isVolumeMigrating(v) && len(es) == 1
+	isMigratingDone := !isVolumeMigrating(v) && len(es) == 1
 
 	oldRobustness := v.Status.Robustness
 	if healthyCount == 0 { // no healthy replica exists, going to faulted
@@ -822,7 +822,7 @@ func (vc *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*l
 	// 	then during cleanupExtraHealthyReplicas the condition `healthyCount > v.Spec.NumberOfReplicas` will be true
 	//  which can lead to incorrect deletion of replicas.
 	//  Allow to delete replicas in `cleanupCorruptedOrStaleReplicas` marked as failed before IM-r started during engine image update.
-	if vc.isVolumeMigrating(v) {
+	if isVolumeMigrating(v) {
 		return nil
 	}
 
@@ -853,7 +853,7 @@ func (vc *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*l
 
 func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
 	healthyCount := getHealthyAndActiveReplicaCount(rs)
-	cleanupLeftoverReplicas := !vc.isVolumeUpgrading(v) && !vc.isVolumeMigrating(v)
+	cleanupLeftoverReplicas := !vc.isVolumeUpgrading(v) && !isVolumeMigrating(v)
 	log := getLoggerForVolume(vc.logger, v)
 
 	for _, r := range rs {
@@ -1505,7 +1505,7 @@ func (vc *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume
 			}
 			if v.Spec.NodeID != v.Status.CurrentNodeID {
 				switch v.Status.State {
-				case longhorn.VolumeStateDetached, longhorn.VolumeStateAttached, longhorn.VolumeStateAttaching:
+				case longhorn.VolumeStateDetached, longhorn.VolumeStateAttaching:
 					vc.closeVolumeDependentResources(v, e, rs)
 					v.Status.State = longhorn.VolumeStateDetaching
 				case longhorn.VolumeStateDetaching:
@@ -1514,6 +1514,18 @@ func (vc *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume
 						v.Status.CurrentNodeID = ""
 						v.Status.State = longhorn.VolumeStateDetached
 						vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
+					}
+				case longhorn.VolumeStateAttached:
+					if v.Spec.Migratable && v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && v.Status.CurrentMigrationNodeID != "" {
+						if err := vc.openVolumeDependentResources(v, e, rs, log); err != nil {
+							return err
+						}
+						if !vc.verifyVolumeDependentResourcesOpened(e, rs) {
+							log.Warnf("volume is attached but dependent resources are not opened")
+						}
+					} else {
+						vc.closeVolumeDependentResources(v, e, rs)
+						v.Status.State = longhorn.VolumeStateDetaching
 					}
 				}
 				return nil
@@ -2028,7 +2040,7 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 		return nil
 	}
 
-	if vc.isVolumeMigrating(v) {
+	if isVolumeMigrating(v) {
 		return nil
 	}
 
@@ -3571,8 +3583,8 @@ func (vc *VolumeController) isVolumeUpgrading(v *longhorn.Volume) bool {
 	return v.Status.CurrentImage != v.Spec.EngineImage
 }
 
-func (vc *VolumeController) isVolumeMigrating(v *longhorn.Volume) bool {
-	return v.Spec.MigrationNodeID != ""
+func isVolumeMigrating(v *longhorn.Volume) bool {
+	return v.Spec.MigrationNodeID != "" || v.Status.CurrentMigrationNodeID != ""
 }
 
 func (vc *VolumeController) getEngineImage(image string) (*longhorn.EngineImage, error) {
@@ -3662,7 +3674,7 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 		err = errors.Wrapf(err, "failed to process migration for %v", v.Name)
 	}()
 
-	if !v.Spec.Migratable || v.Spec.AccessMode != longhorn.AccessModeReadWriteMany {
+	if !isMigratableVolume(v) {
 		return nil
 	}
 
@@ -3685,7 +3697,7 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 
 	// the only time there should be more then 1 engines is when we are migrating or upgrading
 	// if there are more then 1 and we no longer have a migration id set we can cleanup the extra engine
-	if !vc.isVolumeMigrating(v) {
+	if v.Spec.MigrationNodeID == "" {
 		if len(es) < 2 {
 			return nil
 		}
@@ -3726,7 +3738,16 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 			return err
 		}
 
+		// migration rollback or confirmation finished
+		v.Status.CurrentMigrationNodeID = ""
+
 		return nil
+	}
+
+	// init the volume migration
+	// TODO: make webhook to prevent the changing v.Spec.MigrationNodeID when v.Status.CurrentMigrationNodeID != ""
+	if v.Status.CurrentMigrationNodeID == "" {
+		v.Status.CurrentMigrationNodeID = v.Spec.MigrationNodeID
 	}
 
 	revertRequired := false
@@ -3754,7 +3775,6 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 		}
 	}()
 
-	// volume is migrating
 	currentEngine, extras, err := datastore.GetCurrentEngineAndExtras(v, es)
 	if err != nil {
 		return err
@@ -3813,6 +3833,10 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 
 	log.Info("volume migration engine is ready")
 	return nil
+}
+
+func isMigratableVolume(v *longhorn.Volume) bool {
+	return v.Spec.Migratable && v.Spec.AccessMode == longhorn.AccessModeReadWriteMany
 }
 
 func (vc *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Volume, currentEngine, migrationEngine *longhorn.Engine, rs map[string]*longhorn.Replica) (ready, revertRequired bool, err error) {

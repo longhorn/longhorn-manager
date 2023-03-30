@@ -289,6 +289,8 @@ type VolumeStatus struct {
 	// +optional
 	PendingNodeID string `json:"pendingNodeID"`
 	// +optional
+	CurrentMigrationNodeID string `json:"currentMigrationNodeID"`
+	// +optional
 	FrontendDisabled bool `json:"frontendDisabled"`
 	// +optional
 	RestoreRequired bool `json:"restoreRequired"`

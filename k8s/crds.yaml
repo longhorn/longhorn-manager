@@ -3615,6 +3615,8 @@ spec:
                 type: array
               currentImage:
                 type: string
+              currentMigrationNodeID:
+                type: string
               currentNodeID:
                 type: string
               expansionRequired:
