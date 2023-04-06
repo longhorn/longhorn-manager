@@ -46,6 +46,14 @@ const (
 	MaxMonitorRetryCount = 10
 )
 
+const (
+	ProcessStateInProgress = "in_progress"
+	ProcessStateComplete   = "complete"
+	ProcessStateError      = "error"
+	ProcessStatePending    = "pending"
+	ProcessStateStarting   = "starting"
+)
+
 type Replica struct {
 	URL  string
 	Mode longhorn.ReplicaMode

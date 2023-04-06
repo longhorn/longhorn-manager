@@ -17,12 +17,7 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 )
 
-// Should be the same values as in https://github.com/longhorn/longhorn-engine/blob/master/pkg/types/types.go
 const (
-	ProcessStateInProgress = "in_progress"
-	ProcessStateComplete   = "complete"
-	ProcessStateError      = "error"
-
 	ErrNotImplement = "not implemented"
 )
 

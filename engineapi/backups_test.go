@@ -225,15 +225,15 @@ func TestConvertEngineBackupState(t *testing.T) {
 		expectState longhorn.BackupState
 	}{
 		{
-			inputState:  backupStateInProgress,
+			inputState:  ProcessStateInProgress,
 			expectState: longhorn.BackupStateInProgress,
 		},
 		{
-			inputState:  backupStateComplete,
+			inputState:  ProcessStateComplete,
 			expectState: longhorn.BackupStateCompleted,
 		},
 		{
-			inputState:  backupStateError,
+			inputState:  ProcessStateError,
 			expectState: longhorn.BackupStateError,
 		},
 		{
