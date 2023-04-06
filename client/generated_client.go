@@ -53,6 +53,7 @@ type RancherClient struct {
 	RecurringJob                       RecurringJobOperations
 	EngineImage                        EngineImageOperations
 	BackingImage                       BackingImageOperations
+	ShareManager                       ShareManagerOperations
 	Node                               NodeOperations
 	DiskUpdateInput                    DiskUpdateInputOperations
 	DiskInfo                           DiskInfoOperations
@@ -76,6 +77,7 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.BackupInput = newBackupInputClient(client)
 	client.BackupStatus = newBackupStatusClient(client)
 	client.Orphan = newOrphanClient(client)
+	client.ShareManager = newShareManagerClient(client)
 	client.RestoreStatus = newRestoreStatusClient(client)
 	client.PurgeStatus = newPurgeStatusClient(client)
 	client.RebuildStatus = newRebuildStatusClient(client)

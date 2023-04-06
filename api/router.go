@@ -147,6 +147,9 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("GET").Path("/v1/orphans/{name}").Handler(f(schemas, s.OrphanGet))
 	r.Methods("DELETE").Path("/v1/orphans/{name}").Handler(f(schemas, s.OrphanDelete))
 
+	r.Methods("GET").Path("/v1/sharemanagers").Handler(f(schemas, s.ShareManagerList))
+	r.Methods("GET").Path("/v1/sharemanagers/{name}").Handler(f(schemas, s.ShareManagerGet))
+
 	r.Methods("POST").Path("/v1/supportbundles").Handler(f(schemas, s.SupportBundleCreate))
 	r.Methods("GET").Path("/v1/supportbundles").Handler(f(schemas, s.SupportBundleList))
 	r.Methods("GET").Path("/v1/supportbundles/{name}/{bundleName}").Handler(f(schemas,
@@ -181,6 +184,10 @@ func NewRouter(s *Server) *mux.Router {
 	orphanListStream := NewStreamHandlerFunc("orphans", s.wsc.NewWatcher("orphan"), s.orphanList)
 	r.Path("/v1/ws/orphans").Handler(f(schemas, orphanListStream))
 	r.Path("/v1/ws/{period}/orphans").Handler(f(schemas, orphanListStream))
+
+	shareManagerListStream := NewStreamHandlerFunc("sharemanagers", s.wsc.NewWatcher("shareManager"), s.shareManagerList)
+	r.Path("/v1/ws/sharemanagers").Handler(f(schemas, shareManagerListStream))
+	r.Path("/v1/ws/{period}/sharemanagers").Handler(f(schemas, shareManagerListStream))
 
 	nodeListStream := NewStreamHandlerFunc("nodes", s.wsc.NewWatcher("node"), s.nodeList)
 	r.Path("/v1/ws/nodes").Handler(f(schemas, nodeListStream))

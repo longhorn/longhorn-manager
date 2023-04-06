@@ -188,6 +188,14 @@ type BackingImage struct {
 	DeletionTimestamp string `json:"deletionTimestamp"`
 }
 
+type ShareManager struct {
+	client.Resource
+
+	Name  string `json:"name"`
+	Image string `json:"image"`
+	longhorn.ShareManagerStatus
+}
+
 type BackingImageCleanupInput struct {
 	Disks []string `json:"disks"`
 }
@@ -458,6 +466,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("backupInput", BackupInput{})
 	schemas.AddType("backupStatus", BackupStatus{})
 	schemas.AddType("orphan", Orphan{})
+	schemas.AddType("shareManager", ShareManager{})
 	schemas.AddType("restoreStatus", RestoreStatus{})
 	schemas.AddType("purgeStatus", PurgeStatus{})
 	schemas.AddType("rebuildStatus", RebuildStatus{})
@@ -1560,6 +1569,27 @@ func toBackingImageCollection(bis []*longhorn.BackingImage, apiContext *api.ApiC
 		data = append(data, toBackingImageResource(bi, apiContext))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "backingImage"}}
+}
+
+func toShareManagerResource(sm *longhorn.ShareManager, apiContext *api.ApiContext) *ShareManager {
+	return &ShareManager{
+		Resource: client.Resource{
+			Id:    sm.Name,
+			Type:  "shareManager",
+			Links: map[string]string{},
+		},
+		Name:               sm.Name,
+		Image:              sm.Spec.Image,
+		ShareManagerStatus: sm.Status,
+	}
+}
+
+func toShareManagerCollection(sms []*longhorn.ShareManager, apiContext *api.ApiContext) *client.GenericCollection {
+	data := []interface{}{}
+	for _, sm := range sms {
+		data = append(data, toShareManagerResource(sm, apiContext))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "shareManager"}}
 }
 
 type Server struct {
