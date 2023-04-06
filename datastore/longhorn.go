@@ -30,7 +30,7 @@ const (
 	// NameMaximumLength restricted the length due to Kubernetes name limitation
 	NameMaximumLength = 40
 
-	MaxRecurringJobRetain = 50
+	MaxRecurringJobRetain = 100
 )
 
 var (
