@@ -17,7 +17,7 @@ type ShareManagerClient struct {
 }
 
 func NewShareManagerClient(sm *longhorn.ShareManager, pod *v1.Pod) (*ShareManagerClient, error) {
-	if sm.Status.State != longhorn.ShareManagerStateRunning {
+	if sm.Status.State != longhorn.ShareManagerStateStarting {
 		return nil, fmt.Errorf("invalid Share Manager %v, state: %v", sm.Name, sm.Status.State)
 	}
 
@@ -41,4 +41,20 @@ func (c *ShareManagerClient) Close() error {
 
 func (c *ShareManagerClient) FilesystemTrim(encryptedDevice bool) error {
 	return c.grpcClient.FilesystemTrim(encryptedDevice)
+}
+
+func (c *ShareManagerClient) FilesystemMount() error {
+	return c.grpcClient.FilesystemMount()
+}
+
+func (c *ShareManagerClient) FilesystemMountStatus() (*longhorn.ShareManagerMountStatus, error) {
+	resp, err := c.grpcClient.FilesystemMountStatus()
+	if err != nil {
+		return nil, err
+	}
+
+	return &longhorn.ShareManagerMountStatus{
+		State: resp.State,
+		Error: resp.Error,
+	}, nil
 }

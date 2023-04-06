@@ -13,6 +13,13 @@ const (
 	ShareManagerStateError    = ShareManagerState("error")
 )
 
+type ShareManagerMountStatus struct {
+	// +optional
+	State string `json:"state"`
+	// +optional
+	Error string `json:"error"`
+}
+
 // ShareManagerSpec defines the desired state of the Longhorn share manager
 type ShareManagerSpec struct {
 	// Share manager image used for creating a share manager pod
