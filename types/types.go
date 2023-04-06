@@ -80,17 +80,16 @@ const (
 )
 
 const (
-	DefaultAPIPort               = 9500
-	DefaultConversionWebhookPort = 9443
-	DefaultAdmissionWebhookPort  = 8443
+	DefaultAPIPort                   = 9500
+	DefaultConversionWebhookPort     = 9501
+	DefaultAdmissionWebhookPort      = 9502
+	DefaultRecoveryBackendServerPort = 9503
 
 	WebhookTypeConversion = "conversion"
 	WebhookTypeAdmission  = "admission"
 
 	ValidatingWebhookName = "longhorn-webhook-validator"
 	MutatingWebhookName   = "longhorn-webhook-mutator"
-
-	DefaultRecoveryBackendServerPort = 9600
 
 	EngineBinaryDirectoryInContainer = "/engine-binaries/"
 	EngineBinaryDirectoryOnHost      = "/var/lib/longhorn/engine-binaries/"
