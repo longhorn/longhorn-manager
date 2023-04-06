@@ -4,9 +4,16 @@ import "google/protobuf/empty.proto";
 
 service ShareManagerService {
 	rpc FilesystemTrim(FilesystemTrimRequest) returns (google.protobuf.Empty) {}
+	rpc FilesystemMount(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+	rpc FilesystemMountStatus(google.protobuf.Empty) returns (FilesystemMountStatusResponse) {}
 }
 
 message FilesystemTrimRequest {
 	bool encrypted_device = 1;
+}
+
+message FilesystemMountStatusResponse {
+	string state = 1;
+	string error = 2;
 }
   

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/pkg/errors"
@@ -16,14 +17,14 @@ import (
 	"github.com/longhorn/longhorn-share-manager/pkg/volume"
 )
 
-const waitBetweenChecks = time.Second * 5
 const healthCheckInterval = time.Second * 10
 const configPath = "/tmp/vfs.conf"
 
 type ShareManager struct {
 	logger logrus.FieldLogger
 
-	volume volume.Volume
+	volume      volume.Volume
+	mountStatus MountStatus
 
 	context  context.Context
 	shutdown context.CancelFunc
@@ -31,11 +32,22 @@ type ShareManager struct {
 	nfsServer *nfs.Server
 }
 
+type MountStatus struct {
+	State types.ProgressState
+	Error string
+}
+
+// NewShareManager creates a new ShareManager
 func NewShareManager(logger logrus.FieldLogger, volume volume.Volume) (*ShareManager, error) {
 	m := &ShareManager{
 		volume: volume,
 		logger: logger.WithField("volume", volume.Name).WithField("encrypted", volume.IsEncrypted()),
+		mountStatus: MountStatus{
+			State: types.ProgressStatePending,
+			Error: "",
+		},
 	}
+
 	m.context, m.shutdown = context.WithCancel(context.Background())
 
 	nfsServer, err := nfs.NewServer(logger, configPath, types.ExportPath, volume.Name)
@@ -46,69 +58,143 @@ func NewShareManager(logger logrus.FieldLogger, volume volume.Volume) (*ShareMan
 	return m, nil
 }
 
+// GetVolumeName returns the name of the volume
 func (m *ShareManager) GetVolumeName() string {
 	return m.volume.Name
 }
 
+// SetMountStatus sets the mount status
+func (m *ShareManager) SetMountStatus(state types.ProgressState, err string) {
+	m.mountStatus.State = state
+	m.mountStatus.Error = err
+}
+
+// GetMountStatus returns the mount status
+func (m *ShareManager) GetMountStatus() (types.ProgressState, string) {
+	return m.mountStatus.State, m.mountStatus.Error
+}
+
+// Run checks if the volume is valid, mounts it, and exports it by reloading the NFS server
 func (m *ShareManager) Run() error {
-	vol := m.volume
-	mountPath := types.GetMountPath(vol.Name)
-	devicePath := types.GetVolumeDevicePath(vol.Name, false)
+	var err error
 
 	defer func() {
-		// if the server is exiting, try to unmount & teardown device before we terminate the container
+		if err != nil {
+			m.SetMountStatus(types.ProgressStateError, err.Error())
+		}
+	}()
+
+	m.SetMountStatus(types.ProgressStateStarting, "")
+
+	vol := m.volume
+	err = m.nfsServer.CreateExport(vol.Name)
+	if err != nil {
+		m.logger.WithError(err).Error("Failed to create NFS export")
+		return err
+	}
+
+	go func() {
+		var err error
+
+		m.SetMountStatus(types.ProgressStateInProgress, "")
+
+		defer func() {
+			if err != nil {
+				m.SetMountStatus(types.ProgressStateError, err.Error())
+			} else {
+				m.SetMountStatus(types.ProgressStateComplete, "")
+			}
+		}()
+
+		mountPath := types.GetMountPath(vol.Name)
+		devicePath := types.GetVolumeDevicePath(vol.Name, false)
+
+		if !volume.CheckDeviceValid(devicePath) {
+			err = fmt.Errorf("volume %v is not valid", vol.Name)
+			return
+		}
+
+		m.logger.Infof("Setting up volume")
+		devicePath, err = setupDevice(m.logger, vol, devicePath)
+		if err != nil {
+			return
+		}
+
+		err = mountVolume(m.logger, vol, devicePath, mountPath)
+		if err != nil {
+			m.logger.WithError(err).Warn("Failed to mount volume")
+			return
+		}
+
+		err = resizeVolume(m.logger, devicePath, mountPath)
+		if err != nil {
+			m.logger.WithError(err).Warn("Failed to resize volume after mount")
+			return
+		}
+
+		err = volume.SetPermissions(mountPath, 0777)
+		if err != nil {
+			m.logger.WithError(err).Error("Failed to set permissions for volume")
+			return
+		}
+
+		// Reload the config to pick up the new export
+		err = m.nfsServer.ReloadExports()
+		if err != nil {
+			m.logger.WithError(err).Error("Failed to reload NFS exports")
+			return
+		}
+
+		go m.runHealthCheck()
+	}()
+
+	return nil
+}
+
+// StartNfsServer starts the NFS server and blocks until it exits.
+func (m *ShareManager) StartNfsServer() error {
+	m.logger.Info("Starting NFS server")
+
+	defer func() {
+		mountPath := types.GetMountPath(m.GetVolumeName())
+
+		m.logger.Info("Unmounting volume")
 		if err := volume.UnmountVolume(mountPath); err != nil {
 			m.logger.WithError(err).Error("Failed to unmount volume")
 		}
 
-		if err := tearDownDevice(m.logger, vol); err != nil {
-			m.logger.WithError(err).Error("Failed to tear down volume")
+		m.logger.Info("Tearing down device")
+		if err := tearDownDevice(m.logger, m.volume); err != nil {
+			m.logger.WithError(err).Error("Failed to tear down device")
 		}
-
-		m.Shutdown()
 	}()
 
-	for ; ; time.Sleep(waitBetweenChecks) {
-		select {
-		case <-m.context.Done():
-			m.logger.Info("NFS server is shutting down")
-			return nil
-		default:
-			if !volume.CheckDeviceValid(devicePath) {
-				m.logger.Warn("Waiting with nfs server start, volume is not attached")
-				break
-			}
+	err := m.nfsServer.Run(m.context)
+	if err != nil {
+		m.logger.WithError(err).Error("NFS server exited with error")
+	}
+	return err
+}
 
-			devicePath, err := setupDevice(m.logger, vol, devicePath)
-			if err != nil {
-				return err
-			}
+// StopNfsServer stops the NFS server.
+func (m *ShareManager) StopNfsServer() error {
+	m.logger.Info("Stopping NFS server")
 
-			if err := mountVolume(m.logger, vol, devicePath, mountPath); err != nil {
-				m.logger.WithError(err).Warn("Failed to mount volume")
-				return err
-			}
+	cmd := m.nfsServer.GetCommand()
+	if cmd == nil {
+		return nil
+	}
 
-			if err := resizeVolume(m.logger, devicePath, mountPath); err != nil {
-				m.logger.WithError(err).Warn("Failed to resize volume after mount")
-				return err
-			}
-
-			if err := volume.SetPermissions(mountPath, 0777); err != nil {
-				m.logger.WithError(err).Error("Failed to set permissions for volume")
-				return err
-			}
-
-			m.logger.Info("Starting nfs server, volume is ready for export")
-			go m.runHealthCheck()
-
-			// This blocks until server exist
-			if err := m.nfsServer.Run(m.context); err != nil {
-				m.logger.WithError(err).Error("NFS server exited with error")
-			}
-			return err
+	m.logger.Info("Sending SIGTERM to NFS server")
+	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		m.logger.WithError(err).Error("Failed to send SIGTERM to NFS server, sending SIGKILL instead")
+		if err := cmd.Process.Kill(); err != nil {
+			m.logger.WithError(err).Error("Failed to send SIGKILL to NFS server")
 		}
 	}
+
+	_, err := cmd.Process.Wait()
+	return err
 }
 
 // setupDevice will return a path where the device file can be found
@@ -117,9 +203,9 @@ func (m *ShareManager) Run() error {
 func setupDevice(logger logrus.FieldLogger, vol volume.Volume, devicePath string) (string, error) {
 	diskFormat, err := volume.GetDiskFormat(devicePath)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to determine filesystem format of volume error")
+		return "", errors.Wrap(err, "failed to determine filesystem format")
 	}
-	logger.Debugf("Volume %v device %v contains filesystem of format %v", vol.Name, devicePath, diskFormat)
+	logger.Infof("Volume %v device %v contains filesystem of format %v", vol.Name, devicePath, diskFormat)
 
 	if vol.IsEncrypted() || diskFormat == "luks" {
 		if vol.Passphrase == "" {
@@ -206,7 +292,7 @@ func (m *ShareManager) runHealthCheck() {
 	for {
 		select {
 		case <-m.context.Done():
-			m.logger.Info("NFS server is shutting down")
+			m.logger.Info("Stopping health check since NFS server is shut down")
 			return
 		case <-ticker.C:
 			if !m.hasHealthyVolume() {
@@ -219,11 +305,18 @@ func (m *ShareManager) runHealthCheck() {
 }
 
 func (m *ShareManager) hasHealthyVolume() bool {
-	mountPath := types.GetMountPath(m.volume.Name)
+	mountPath := types.GetMountPath(m.GetVolumeName())
 	err := exec.CommandContext(m.context, "ls", mountPath).Run()
 	return err == nil
 }
 
+// Shutdown shuts down the NFS server and cancels the share manager context.
 func (m *ShareManager) Shutdown() {
+	m.logger.Info("Gracefully shutting down NFS server")
+	if err := m.StopNfsServer(); err != nil {
+		m.logger.WithError(err).Error("Failed to stop NFS server")
+	}
+
+	m.logger.Info("Canceling share manager context")
 	m.shutdown()
 }

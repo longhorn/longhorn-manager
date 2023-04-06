@@ -15,8 +15,18 @@ const (
 	ExportPath = "/export"
 )
 
-func GetVolumeDevicePath(volumeName string, EncryptedDevice bool) string {
-	if EncryptedDevice {
+type ProgressState string
+
+const (
+	ProgressStatePending    = ProgressState("pending")
+	ProgressStateStarting   = ProgressState("starting")
+	ProgressStateInProgress = ProgressState("in_progress")
+	ProgressStateComplete   = ProgressState("complete")
+	ProgressStateError      = ProgressState("error")
+)
+
+func GetVolumeDevicePath(volumeName string, encryptedDevice bool) string {
+	if encryptedDevice {
 		return path.Join(MapperDevPath, volumeName)
 	}
 	return filepath.Join(DevPath, "longhorn", volumeName)

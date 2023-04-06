@@ -88,6 +88,31 @@ func (s *ShareManagerServer) FilesystemTrim(ctx context.Context, req *Filesystem
 	return &empty.Empty{}, nil
 }
 
+func (s *ShareManagerServer) FilesystemMount(ctx context.Context, req *empty.Empty) (resp *empty.Empty, err error) {
+	volumeName := s.manager.GetVolumeName()
+	mountPath := types.GetMountPath(volumeName)
+	devicePath := types.GetVolumeDevicePath(volumeName, false)
+
+	logrus.Infof("Mounting volume %v on %v", devicePath, mountPath)
+
+	err = s.manager.Run()
+	if err != nil {
+		logrus.WithError(err).Errorf("failed to mount volume %v on %v", devicePath, mountPath)
+		return &empty.Empty{}, grpcstatus.Error(grpccodes.Internal, err.Error())
+	}
+
+	return &empty.Empty{}, nil
+}
+
+func (s *ShareManagerServer) FilesystemMountStatus(ctx context.Context, req *empty.Empty) (*FilesystemMountStatusResponse, error) {
+	state, errMsg := s.manager.GetMountStatus()
+
+	return &FilesystemMountStatusResponse{
+		State: string(state),
+		Error: errMsg,
+	}, nil
+}
+
 type ShareManagerHealthCheckServer struct {
 	srv *ShareManagerServer
 }

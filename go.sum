@@ -177,6 +177,8 @@ github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSs
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/daviddengcn/go-colortext v0.0.0-20160507010035-511bcaf42ccd/go.mod h1:dv4zxwHi5C/8AeI+4gX4dCWOIvNi7I6JCSX0HvlKPgE=
+github.com/derekbit/longhorn-share-manager v0.0.0-20230406155135-0635faef9810 h1:n38jrfDwElcTTAT4lVfbOIc9RSYR2Znopye25Gsyeoo=
+github.com/derekbit/longhorn-share-manager v0.0.0-20230406155135-0635faef9810/go.mod h1:15jIjFqyOr95VPRtZVJ7up6wseYpI/9mZByQIANc9Ts=
 github.com/dgrijalva/jwt-go v3.2.0+incompatible/go.mod h1:E3ru+11k8xSBh+hMPgOLZmtrrCbhqsmaPHjLKYnJCaQ=
 github.com/dgryski/go-sip13 v0.0.0-20181026042036-e10d5fee7954/go.mod h1:vAd38F8PWV+bWy6jNmig1y/TA+kYO4g3RSRF0IAv0no=
 github.com/dnaeon/go-vcr v1.0.1/go.mod h1:aBB1+wY4s93YsC3HHjMBMrwTj2R9FHDzUr9KyGc8n1E=
@@ -517,8 +519,6 @@ github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230317063250-735a7f5fddc3 h1:
 github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230317063250-735a7f5fddc3/go.mod h1:Wf+cU+gM3oJs+8QwMkQFFkkas3bMIWuM4caU1r1wF9o=
 github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230307055833-15b0fed1ba66 h1:QeGolaAFqEwPXgjNwGlpggTsK7d5dy5PY8AOKwS4RIs=
 github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230307055833-15b0fed1ba66/go.mod h1:qrYFm/gJfhiHMkTRMkhiUWqjuntYR7nosOUTlpOFS8I=
-github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20230406134224-54b3892cf95a h1:X0L/E7pTKg6r6nRrAbHVEk2rdyWW/TC+8Z/BAuzi7ns=
-github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20230406134224-54b3892cf95a/go.mod h1:15jIjFqyOr95VPRtZVJ7up6wseYpI/9mZByQIANc9Ts=
 github.com/longhorn/nsfilelock v0.0.0-20200723175406-fa7c83ad0003/go.mod h1:0CLeXlf59Lg6C0kjLSDf47ft73Dh37CwymYRKWwAn04=
 github.com/longhorn/sparse-tools v0.0.0-20210729195155-a0fb4226a960/go.mod h1:BWM7yTPb1DulG18EE/Jy20LVIySzIYoZpiOYFtAGwZo=
 github.com/longhorn/sparse-tools v0.0.0-20211229004436-663d2f697e2a/go.mod h1:BWM7yTPb1DulG18EE/Jy20LVIySzIYoZpiOYFtAGwZo=

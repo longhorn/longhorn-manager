@@ -64,25 +64,78 @@ func (m *FilesystemTrimRequest) GetEncryptedDevice() bool {
 	return false
 }
 
+type FilesystemMountStatusResponse struct {
+	State                string   `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`
+	Error                string   `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *FilesystemMountStatusResponse) Reset()         { *m = FilesystemMountStatusResponse{} }
+func (m *FilesystemMountStatusResponse) String() string { return proto.CompactTextString(m) }
+func (*FilesystemMountStatusResponse) ProtoMessage()    {}
+func (*FilesystemMountStatusResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_754d325a94992d5d, []int{1}
+}
+
+func (m *FilesystemMountStatusResponse) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_FilesystemMountStatusResponse.Unmarshal(m, b)
+}
+func (m *FilesystemMountStatusResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_FilesystemMountStatusResponse.Marshal(b, m, deterministic)
+}
+func (m *FilesystemMountStatusResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_FilesystemMountStatusResponse.Merge(m, src)
+}
+func (m *FilesystemMountStatusResponse) XXX_Size() int {
+	return xxx_messageInfo_FilesystemMountStatusResponse.Size(m)
+}
+func (m *FilesystemMountStatusResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_FilesystemMountStatusResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_FilesystemMountStatusResponse proto.InternalMessageInfo
+
+func (m *FilesystemMountStatusResponse) GetState() string {
+	if m != nil {
+		return m.State
+	}
+	return ""
+}
+
+func (m *FilesystemMountStatusResponse) GetError() string {
+	if m != nil {
+		return m.Error
+	}
+	return ""
+}
+
 func init() {
 	proto.RegisterType((*FilesystemTrimRequest)(nil), "FilesystemTrimRequest")
+	proto.RegisterType((*FilesystemMountStatusResponse)(nil), "FilesystemMountStatusResponse")
 }
 
 func init() { proto.RegisterFile("smrpc.proto", fileDescriptor_754d325a94992d5d) }
 
 var fileDescriptor_754d325a94992d5d = []byte{
-	// 169 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0x2e, 0xce, 0x2d, 0x2a,
-	0x48, 0xd6, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x97, 0x92, 0x4e, 0xcf, 0xcf, 0x4f, 0xcf, 0x49, 0xd5,
-	0x07, 0xf3, 0x92, 0x4a, 0xd3, 0xf4, 0x53, 0x73, 0x0b, 0x4a, 0x2a, 0x21, 0x92, 0x4a, 0x4e, 0x5c,
-	0xa2, 0x6e, 0x99, 0x39, 0xa9, 0xc5, 0x95, 0xc5, 0x25, 0xa9, 0xb9, 0x21, 0x45, 0x99, 0xb9, 0x41,
-	0xa9, 0x85, 0xa5, 0xa9, 0xc5, 0x25, 0x42, 0x9a, 0x5c, 0x02, 0xa9, 0x79, 0xc9, 0x45, 0x95, 0x05,
-	0x25, 0xa9, 0x29, 0xf1, 0x29, 0xa9, 0x65, 0x99, 0xc9, 0xa9, 0x12, 0x8c, 0x0a, 0x8c, 0x1a, 0x1c,
-	0x41, 0xfc, 0x70, 0x71, 0x17, 0xb0, 0xb0, 0x51, 0x24, 0x97, 0x70, 0x70, 0x46, 0x62, 0x51, 0xaa,
-	0x6f, 0x62, 0x5e, 0x62, 0x7a, 0x6a, 0x51, 0x70, 0x6a, 0x11, 0x48, 0x58, 0xc8, 0x89, 0x8b, 0x0f,
-	0xd5, 0x68, 0x21, 0x31, 0x3d, 0xac, 0x76, 0x49, 0x89, 0xe9, 0x41, 0x9c, 0xa8, 0x07, 0x73, 0xa2,
-	0x9e, 0x2b, 0xc8, 0x89, 0x4a, 0x0c, 0x49, 0x6c, 0x60, 0x11, 0x63, 0x40, 0x00, 0x00, 0x00, 0xff,
-	0xff, 0x6f, 0xdd, 0x3d, 0x37, 0xd1, 0x00, 0x00, 0x00,
+	// 247 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x7c, 0x90, 0xcf, 0x4a, 0xc3, 0x40,
+	0x18, 0xc4, 0x1b, 0x41, 0xd1, 0x15, 0xac, 0xac, 0x5a, 0x4a, 0x45, 0x91, 0x9c, 0xf4, 0xb2, 0x05,
+	0x7d, 0x83, 0xfa, 0xe7, 0x22, 0x3d, 0x98, 0x78, 0x97, 0x6d, 0x3a, 0xc6, 0x40, 0x93, 0x5d, 0xbf,
+	0xef, 0x8b, 0x90, 0xc7, 0xf6, 0x0d, 0x24, 0x59, 0xd4, 0x2a, 0x6d, 0x8f, 0x33, 0xbb, 0x3b, 0x3b,
+	0xbf, 0x51, 0xfb, 0x5c, 0x92, 0xcf, 0x8c, 0x27, 0x27, 0x6e, 0x74, 0x9a, 0x3b, 0x97, 0x2f, 0x30,
+	0xee, 0xd4, 0xac, 0x7e, 0x1d, 0xa3, 0xf4, 0xd2, 0x84, 0xc3, 0x78, 0xa2, 0x4e, 0x1e, 0x8a, 0x05,
+	0xb8, 0x61, 0x41, 0xf9, 0x4c, 0x45, 0x99, 0xe0, 0xbd, 0x06, 0x8b, 0xbe, 0x52, 0x87, 0xa8, 0x32,
+	0x6a, 0xbc, 0x60, 0xfe, 0x32, 0xc7, 0x47, 0x91, 0x61, 0x18, 0x5d, 0x44, 0x97, 0xbb, 0x49, 0xff,
+	0xc7, 0xbf, 0xeb, 0xec, 0xf8, 0x51, 0x9d, 0xfd, 0x66, 0x4c, 0x5d, 0x5d, 0x49, 0x2a, 0x56, 0x6a,
+	0x4e, 0xc0, 0xde, 0x55, 0x0c, 0x7d, 0xac, 0xb6, 0x59, 0xac, 0x84, 0x80, 0xbd, 0x24, 0x88, 0xd6,
+	0x05, 0x91, 0xa3, 0xe1, 0x56, 0x70, 0x3b, 0x71, 0xfd, 0x19, 0xa9, 0xa3, 0xf4, 0xcd, 0x12, 0xa6,
+	0xb6, 0xb2, 0x39, 0x28, 0x05, 0xb5, 0x9f, 0xe8, 0x89, 0x3a, 0xf8, 0x5b, 0x54, 0x0f, 0xcc, 0xca,
+	0xe6, 0xa3, 0x81, 0x09, 0xc0, 0xe6, 0x1b, 0xd8, 0xdc, 0xb7, 0xc0, 0x71, 0x4f, 0xdf, 0xaa, 0xfe,
+	0xbf, 0xa2, 0x7a, 0xcd, 0xe5, 0x0d, 0x21, 0x4f, 0xcb, 0x8b, 0x2d, 0xd1, 0xae, 0x8d, 0x3a, 0x37,
+	0x1b, 0xd7, 0x89, 0x7b, 0xb3, 0x9d, 0xee, 0xc5, 0xcd, 0x57, 0x00, 0x00, 0x00, 0xff, 0xff, 0x5a,
+	0x43, 0x90, 0xab, 0xb7, 0x01, 0x00, 0x00,
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -98,6 +151,8 @@ const _ = grpc.SupportPackageIsVersion4
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type ShareManagerServiceClient interface {
 	FilesystemTrim(ctx context.Context, in *FilesystemTrimRequest, opts ...grpc.CallOption) (*empty.Empty, error)
+	FilesystemMount(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*empty.Empty, error)
+	FilesystemMountStatus(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*FilesystemMountStatusResponse, error)
 }
 
 type shareManagerServiceClient struct {
@@ -117,9 +172,29 @@ func (c *shareManagerServiceClient) FilesystemTrim(ctx context.Context, in *File
 	return out, nil
 }
 
+func (c *shareManagerServiceClient) FilesystemMount(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*empty.Empty, error) {
+	out := new(empty.Empty)
+	err := c.cc.Invoke(ctx, "/ShareManagerService/FilesystemMount", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *shareManagerServiceClient) FilesystemMountStatus(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*FilesystemMountStatusResponse, error) {
+	out := new(FilesystemMountStatusResponse)
+	err := c.cc.Invoke(ctx, "/ShareManagerService/FilesystemMountStatus", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ShareManagerServiceServer is the server API for ShareManagerService service.
 type ShareManagerServiceServer interface {
 	FilesystemTrim(context.Context, *FilesystemTrimRequest) (*empty.Empty, error)
+	FilesystemMount(context.Context, *empty.Empty) (*empty.Empty, error)
+	FilesystemMountStatus(context.Context, *empty.Empty) (*FilesystemMountStatusResponse, error)
 }
 
 // UnimplementedShareManagerServiceServer can be embedded to have forward compatible implementations.
@@ -128,6 +203,12 @@ type UnimplementedShareManagerServiceServer struct {
 
 func (*UnimplementedShareManagerServiceServer) FilesystemTrim(ctx context.Context, req *FilesystemTrimRequest) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FilesystemTrim not implemented")
+}
+func (*UnimplementedShareManagerServiceServer) FilesystemMount(ctx context.Context, req *empty.Empty) (*empty.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FilesystemMount not implemented")
+}
+func (*UnimplementedShareManagerServiceServer) FilesystemMountStatus(ctx context.Context, req *empty.Empty) (*FilesystemMountStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FilesystemMountStatus not implemented")
 }
 
 func RegisterShareManagerServiceServer(s *grpc.Server, srv ShareManagerServiceServer) {
@@ -152,6 +233,42 @@ func _ShareManagerService_FilesystemTrim_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ShareManagerService_FilesystemMount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(empty.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ShareManagerServiceServer).FilesystemMount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/ShareManagerService/FilesystemMount",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ShareManagerServiceServer).FilesystemMount(ctx, req.(*empty.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ShareManagerService_FilesystemMountStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(empty.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ShareManagerServiceServer).FilesystemMountStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/ShareManagerService/FilesystemMountStatus",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ShareManagerServiceServer).FilesystemMountStatus(ctx, req.(*empty.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var _ShareManagerService_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "ShareManagerService",
 	HandlerType: (*ShareManagerServiceServer)(nil),
@@ -159,6 +276,14 @@ var _ShareManagerService_serviceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "FilesystemTrim",
 			Handler:    _ShareManagerService_FilesystemTrim_Handler,
+		},
+		{
+			MethodName: "FilesystemMount",
+			Handler:    _ShareManagerService_FilesystemMount_Handler,
+		},
+		{
+			MethodName: "FilesystemMountStatus",
+			Handler:    _ShareManagerService_FilesystemMountStatus_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

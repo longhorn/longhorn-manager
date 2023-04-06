@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 
+	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 
@@ -43,4 +44,19 @@ func (c *ShareManagerClient) FilesystemTrim(encryptedDevice bool) error {
 
 	_, err := c.client.FilesystemTrim(ctx, &rpc.FilesystemTrimRequest{EncryptedDevice: encryptedDevice})
 	return err
+}
+
+func (c *ShareManagerClient) FilesystemMount() error {
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	_, err := c.client.FilesystemMount(ctx, &empty.Empty{})
+	return err
+}
+
+func (c *ShareManagerClient) FilesystemMountStatus() (*rpc.FilesystemMountStatusResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	return c.client.FilesystemMountStatus(ctx, &empty.Empty{})
 }

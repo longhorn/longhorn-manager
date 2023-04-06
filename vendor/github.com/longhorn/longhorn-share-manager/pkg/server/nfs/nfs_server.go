@@ -78,6 +78,7 @@ Export_defaults
 `)
 
 type Server struct {
+	cmd        *exec.Cmd
 	logger     logrus.FieldLogger
 	configPath string
 	exportPath string
@@ -100,10 +101,6 @@ func NewServer(logger logrus.FieldLogger, configPath, exportPath, volume string)
 		return nil, errors.Wrap(err, "error creating nfs exporter")
 	}
 
-	if _, err := exporter.CreateExport(volume); err != nil {
-		return nil, err
-	}
-
 	return &Server{
 		logger:     logger,
 		configPath: configPath,
@@ -112,13 +109,38 @@ func NewServer(logger logrus.FieldLogger, configPath, exportPath, volume string)
 	}, nil
 }
 
-func (s *Server) Run(ctx context.Context) error {
-	// Start ganesha.nfsd
-	s.logger.Info("Running NFS server!")
-	cmd := exec.CommandContext(ctx, "ganesha.nfsd", "-F", "-p", defaultPidFile, "-f", s.configPath)
+func (s *Server) GetCommand() *exec.Cmd {
+	return s.cmd
+}
 
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("ganesha.nfsd failed with error: %v, output: %s", err, out)
+func (s *Server) ReloadExports() error {
+	if s.cmd == nil {
+		return fmt.Errorf("nfs server is not running")
+	}
+
+	return s.cmd.Process.Signal(syscall.SIGHUP)
+}
+
+func (s *Server) CreateExport(volume string) error {
+	_, err := s.exporter.CreateExport(volume)
+	return err
+}
+
+func (s *Server) DeleteExport(volume string) error {
+	return s.exporter.DeleteExport(volume)
+}
+
+func (s *Server) Run(ctx context.Context) error {
+	defer func() {
+		s.cmd = nil
+	}()
+
+	s.logger.Info("Running NFS server")
+
+	s.cmd = exec.Command("ganesha.nfsd", "-F", "-p", defaultPidFile, "-f", s.configPath)
+
+	if out, err := s.cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("ganesha.nfsd failed with error: %v, ou0put: %s", err, out)
 	}
 
 	return nil
@@ -130,7 +152,7 @@ func setRlimitNOFILE(logger logrus.FieldLogger) error {
 	if err != nil {
 		return errors.Wrap(err, "error getting RLIMIT_NOFILE")
 	}
-	logger.Infof("starting RLIMIT_NOFILE rlimit.Cur %d, rlimit.Max %d", rlimit.Cur, rlimit.Max)
+	logger.Infof("Starting RLIMIT_NOFILE rlimit.Cur %d, rlimit.Max %d", rlimit.Cur, rlimit.Max)
 	rlimit.Max = 1024 * 1024
 	rlimit.Cur = 1024 * 1024
 	err = syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rlimit)
