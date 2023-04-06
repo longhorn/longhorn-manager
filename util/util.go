@@ -693,6 +693,16 @@ func SetAnnotation(obj runtime.Object, annotationKey, annotationValue string) er
 	return nil
 }
 
+func GetNamespace(key string) string {
+	namespace := os.Getenv(key)
+	if namespace == "" {
+		logrus.Warnf("Failed to detect pod namespace, environment variable %v is missing, "+
+			"using default namespace", key)
+		namespace = v1.NamespaceDefault
+	}
+	return namespace
+}
+
 func GetDistinctTolerations(tolerationList []v1.Toleration) []v1.Toleration {
 	res := []v1.Toleration{}
 	tolerationMap := TolerationListToMap(tolerationList)
