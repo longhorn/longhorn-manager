@@ -21,9 +21,9 @@ import (
 
 const (
 	DefaultCSIAttacherImage            = "longhornio/csi-attacher:v4.2.0"
-	DefaultCSIProvisionerImage         = "longhornio/csi-provisioner:v2.1.2"
+	DefaultCSIProvisionerImage         = "longhornio/csi-provisioner:v3.4.1"
 	DefaultCSIResizerImage             = "longhornio/csi-resizer:v1.7.0"
-	DefaultCSISnapshotterImage         = "longhornio/csi-snapshotter:v5.0.1"
+	DefaultCSISnapshotterImage         = "longhornio/csi-snapshotter:v6.2.1"
 	DefaultCSINodeDriverRegistrarImage = "longhornio/csi-node-driver-registrar:v2.7.0"
 	DefaultCSILivenessProbeImage       = "longhornio/livenessprobe:v2.9.0"
 
