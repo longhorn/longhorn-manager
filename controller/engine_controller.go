@@ -1997,7 +1997,7 @@ func (ec *EngineController) UpgradeEngineProcess(e *longhorn.Engine, log *logrus
 
 	processBinary, err := c.ProcessGetBinary(e.Name)
 	if err != nil {
-		return errors.Wrapf(err, "fail to get the binary of the current engine process")
+		return errors.Wrapf(err, "failed to get the binary of the current engine process")
 	}
 	if strings.Contains(processBinary, types.GetImageCanonicalName(e.Spec.EngineImage)) {
 		log.Infof("The existing engine process already has the new engine image %v", e.Spec.EngineImage)
