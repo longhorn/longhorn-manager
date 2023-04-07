@@ -316,7 +316,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 
 	syncReplicaAddressMap := false
 	if len(engine.Spec.UpgradedReplicaAddressMap) != 0 && engine.Status.CurrentImage != engine.Spec.EngineImage {
-		if err := ec.Upgrade(engine); err != nil {
+		if err := ec.Upgrade(engine, log); err != nil {
 			// Engine live upgrade failure shouldn't block the following engine state update.
 			log.WithError(err).Error("failed to run engine live upgrade")
 			// Sync replica address map as usual when the upgrade fails.
@@ -326,7 +326,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		syncReplicaAddressMap = true
 	}
 	if syncReplicaAddressMap && !reflect.DeepEqual(engine.Status.CurrentReplicaAddressMap, engine.Spec.ReplicaAddressMap) {
-		log.Debug("Updating engine current replica address map")
+		log.Infof("Updating engine current replica address map to %+v", engine.Spec.ReplicaAddressMap)
 		engine.Status.CurrentReplicaAddressMap = engine.Spec.ReplicaAddressMap
 		// Make sure the CurrentReplicaAddressMap persist in the etcd before continue
 		return nil
@@ -528,7 +528,9 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 	logrus.Infof("Deleting engine instance %v", e.Name)
 
 	defer func() {
-		logrus.WithError(err).Warnf("Failed to delete engine %v for volume %v", e.Name, v.Name)
+		if err != nil {
+			logrus.WithError(err).Warnf("Failed to delete engine %v for volume %v", e.Name, v.Name)
+		}
 		if isRWXVolume && im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
 			// Try the best to delete engine instance.
 			// To prevent that the volume is stuck at detaching state, ignore the error when volume is
@@ -542,7 +544,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 			// After shifting to node A, the first reattachment fail due to the IO error resulting from the
 			// orphaned engine instance and block device. Then, the detachment will trigger the teardown of the
 			// problematic engine process and block device. The next reattachment then will succeed.
-			logrus.Warnf("Ignore the failure of deleting engine %v for volume %v", e.Name, v.Name)
+			logrus.Warnf("Ignored the failure of deleting engine %v for volume %v", e.Name, v.Name)
 			err = nil
 		}
 	}()
@@ -1922,12 +1924,10 @@ func getReplicaRebuildFailedReasonFromError(errMsg string) (string, longhorn.Con
 	}
 }
 
-func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
+func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "cannot live upgrade image for %v", e.Name)
 	}()
-
-	log := ec.logger.WithField("volume", e.Spec.VolumeName)
 
 	engineClientProxy, err := ec.getEngineClientProxy(e, e.Spec.EngineImage)
 	if err != nil {
@@ -1945,7 +1945,7 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 	if version.ClientVersion.GitCommit != version.ServerVersion.GitCommit {
 		log.Debugf("Trying to upgrade engine from %v to %v",
 			e.Status.CurrentImage, e.Spec.EngineImage)
-		if err := ec.UpgradeEngineProcess(e); err != nil {
+		if err := ec.UpgradeEngineProcess(e, log); err != nil {
 			return err
 		}
 	}
@@ -1959,7 +1959,7 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine) (err error) {
 	return nil
 }
 
-func (ec *EngineController) UpgradeEngineProcess(e *longhorn.Engine) error {
+func (ec *EngineController) UpgradeEngineProcess(e *longhorn.Engine, log *logrus.Entry) error {
 	frontend := e.Spec.Frontend
 	if e.Spec.DisableFrontend {
 		frontend = longhorn.VolumeFrontendEmpty
@@ -1993,6 +1993,15 @@ func (ec *EngineController) UpgradeEngineProcess(e *longhorn.Engine) error {
 	engineCLIAPIVersion, err := ec.ds.GetEngineImageCLIAPIVersion(e.Spec.EngineImage)
 	if err != nil {
 		return err
+	}
+
+	processBinary, err := c.ProcessGetBinary(e.Name)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get the binary of the current engine process")
+	}
+	if strings.Contains(processBinary, types.GetImageCanonicalName(e.Spec.EngineImage)) {
+		log.Infof("The existing engine process already has the new engine image %v", e.Spec.EngineImage)
+		return nil
 	}
 
 	engineProcess, err := c.EngineProcessUpgrade(e, frontend, engineReplicaTimeout, fileSyncHTTPClientTimeout, v.Spec.DataLocality, engineCLIAPIVersion)

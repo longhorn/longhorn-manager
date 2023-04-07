@@ -500,7 +500,7 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 	//  afterwards we can request attachment to the new node.
 	isDown, err := c.ds.IsNodeDownOrDeleted(volume.Spec.NodeID)
 	if volume.Spec.NodeID != "" && err != nil {
-		log.WithError(err).Warnf("cannot check IsNodeDownOrDeleted(%v) when syncShareManagerVolume", volume.Spec.NodeID)
+		log.WithError(err).Warnf("Failed to check IsNodeDownOrDeleted(%v) when syncShareManagerVolume", volume.Spec.NodeID)
 	}
 
 	nodeSwitch := volume.Spec.NodeID != "" && volume.Spec.NodeID != sm.Status.OwnerID
@@ -546,7 +546,7 @@ func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManage
 	}
 
 	if nodeFailed, _ := c.ds.IsNodeDownOrDeleted(pod.Spec.NodeName); nodeFailed {
-		log.Debug("node of share manager pod is down, force deleting pod to allow fail over")
+		log.Debug("Node of share manager pod is down, force deleting pod to allow fail over")
 		gracePeriod := int64(0)
 		err := c.kubeClient.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{GracePeriodSeconds: &gracePeriod})
 		if err != nil && !apierrors.IsNotFound(err) {
@@ -567,7 +567,8 @@ func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManage
 // controls transitions to running, error
 func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) (err error) {
 	defer func() {
-		if sm.Status.State == longhorn.ShareManagerStateStopping || sm.Status.State == longhorn.ShareManagerStateStopped ||
+		if sm.Status.State == longhorn.ShareManagerStateStopping ||
+			sm.Status.State == longhorn.ShareManagerStateStopped ||
 			sm.Status.State == longhorn.ShareManagerStateError {
 			err = c.cleanupShareManagerPod(sm)
 		}
@@ -585,7 +586,6 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 		log.WithError(err).Error("failed to retrieve pod for share manager from datastore")
 		return err
 	} else if pod == nil {
-
 		if sm.Status.State == longhorn.ShareManagerStateStopping {
 			log.Debug("Share Manager pod is gone, transitioning to stopped state for share manager stopped, before starting")
 			sm.Status.State = longhorn.ShareManagerStateStopped
@@ -610,10 +610,11 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 	// A new pod will be recreated by the share manager controller.
 	isDown, err := c.ds.IsNodeDownOrDeleted(pod.Spec.NodeName)
 	if err != nil {
-		log.WithError(err).Warnf("cannot check IsNodeDownOrDeleted(%v) when syncShareManagerPod", pod.Spec.NodeName)
+		log.WithError(err).Warnf("Failed to check IsNodeDownOrDeleted(%v) when syncShareManagerPod", pod.Spec.NodeName)
+	} else if isDown {
+		log.Infof("Node %v is down", pod.Spec.NodeName)
 	}
 	if pod.DeletionTimestamp != nil || isDown {
-
 		// if we just transitioned to the starting state, while the prior cleanup is still in progress we will switch to error state
 		// which will lead to a bad loop of starting (new workload) -> error (remount) -> stopped (cleanup sm)
 		if sm.Status.State == longhorn.ShareManagerStateStopping {
@@ -657,7 +658,6 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 		} else if sm.Status.State != longhorn.ShareManagerStateRunning {
 			sm.Status.State = longhorn.ShareManagerStateError
 		}
-
 	default:
 		sm.Status.State = longhorn.ShareManagerStateError
 	}
