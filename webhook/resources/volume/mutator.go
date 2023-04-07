@@ -249,6 +249,12 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 	if volume.Spec.UnmapMarkSnapChainRemoved == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/unmapMarkSnapChainRemoved", "value": "%s"}`, longhorn.UnmapMarkSnapChainRemovedIgnored))
 	}
+	if string(volume.Spec.SnapshotDataIntegrity) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/snapshotDataIntegrity", "value": "%s"}`, longhorn.SnapshotDataIntegrityIgnored))
+	}
+	if string(volume.Spec.RestoreVolumeRecurringJob) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/restoreVolumeRecurringJob", "value": "%s"}`, longhorn.RestoreVolumeRecurringJobDefault))
+	}
 
 	size := util.RoundUpSize(volume.Spec.Size)
 	if size != volume.Spec.Size {
