@@ -20,8 +20,8 @@ github.com/cespare/xxhash/v2
 # github.com/container-storage-interface/spec v1.5.0
 ## explicit; go 1.16
 github.com/container-storage-interface/spec/lib/go/csi
-# github.com/cpuguy83/go-md2man/v2 v2.0.0
-## explicit; go 1.12
+# github.com/cpuguy83/go-md2man/v2 v2.0.2
+## explicit; go 1.11
 github.com/cpuguy83/go-md2man/v2/md2man
 # github.com/cyphar/filepath-securejoin v0.2.3
 ## explicit; go 1.13
@@ -164,6 +164,16 @@ github.com/longhorn/longhorn-instance-manager/pkg/imrpc
 github.com/longhorn/longhorn-instance-manager/pkg/meta
 github.com/longhorn/longhorn-instance-manager/pkg/types
 github.com/longhorn/longhorn-instance-manager/pkg/util
+# github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20230406134224-54b3892cf95a
+## explicit; go 1.17
+github.com/longhorn/longhorn-share-manager/pkg/client
+github.com/longhorn/longhorn-share-manager/pkg/crypto
+github.com/longhorn/longhorn-share-manager/pkg/rpc
+github.com/longhorn/longhorn-share-manager/pkg/server
+github.com/longhorn/longhorn-share-manager/pkg/server/nfs
+github.com/longhorn/longhorn-share-manager/pkg/types
+github.com/longhorn/longhorn-share-manager/pkg/util
+github.com/longhorn/longhorn-share-manager/pkg/volume
 # github.com/matttproud/golang_protobuf_extensions v1.0.2-0.20181231171920-c182affec369
 ## explicit; go 1.9
 github.com/matttproud/golang_protobuf_extensions/pbutil
@@ -192,6 +202,11 @@ github.com/opencontainers/go-digest
 ## explicit; go 1.16
 github.com/opencontainers/runc/libcontainer/apparmor
 github.com/opencontainers/runc/libcontainer/utils
+# github.com/opencontainers/selinux v1.10.0
+## explicit; go 1.13
+github.com/opencontainers/selinux/go-selinux
+github.com/opencontainers/selinux/pkg/pwalk
+github.com/opencontainers/selinux/pkg/pwalkdir
 # github.com/philhofer/fwd v1.0.0
 ## explicit
 github.com/philhofer/fwd
@@ -289,12 +304,9 @@ github.com/robfig/cron
 # github.com/robfig/cron/v3 v3.0.1
 ## explicit; go 1.12
 github.com/robfig/cron/v3
-# github.com/russross/blackfriday/v2 v2.0.1
+# github.com/russross/blackfriday/v2 v2.1.0
 ## explicit
 github.com/russross/blackfriday/v2
-# github.com/shurcooL/sanitized_anchor_name v1.0.0
-## explicit
-github.com/shurcooL/sanitized_anchor_name
 # github.com/sirupsen/logrus v1.9.0
 ## explicit; go 1.13
 github.com/sirupsen/logrus
@@ -308,7 +320,7 @@ github.com/stretchr/testify/require
 # github.com/tinylib/msgp v1.1.1-0.20190612170807-0573788bc2a8
 ## explicit
 github.com/tinylib/msgp/msgp
-# github.com/urfave/cli v1.22.5
+# github.com/urfave/cli v1.22.12
 ## explicit; go 1.11
 github.com/urfave/cli
 # github.com/willf/bitset v1.1.10
@@ -396,6 +408,7 @@ google.golang.org/grpc/credentials/insecure
 google.golang.org/grpc/encoding
 google.golang.org/grpc/encoding/proto
 google.golang.org/grpc/grpclog
+google.golang.org/grpc/health/grpc_health_v1
 google.golang.org/grpc/internal
 google.golang.org/grpc/internal/backoff
 google.golang.org/grpc/internal/balancer/gracefulswitch
@@ -930,7 +943,9 @@ k8s.io/kubernetes/pkg/kubelet/types
 k8s.io/kubernetes/pkg/security/apparmor
 k8s.io/kubernetes/pkg/util/hash
 k8s.io/kubernetes/pkg/util/parsers
+k8s.io/kubernetes/pkg/util/selinux
 k8s.io/kubernetes/pkg/util/taints
+k8s.io/kubernetes/pkg/volume/util/hostutil
 # k8s.io/metrics v0.23.6 => k8s.io/metrics v0.23.6
 ## explicit; go 1.16
 k8s.io/metrics/pkg/apis/metrics
