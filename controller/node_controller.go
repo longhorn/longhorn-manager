@@ -178,6 +178,60 @@ func (nc *NodeController) isResponsibleForReplica(obj interface{}) bool {
 	return replica.Spec.NodeID == nc.controllerID
 }
 
+<<<<<<< HEAD
+=======
+func (nc *NodeController) isResponsibleForSnapshot(obj interface{}) bool {
+	snapshot, ok := obj.(*longhorn.Snapshot)
+	if !ok {
+		return false
+	}
+	volumeName, ok := snapshot.Labels[types.LonghornLabelVolume]
+	if !ok {
+		logrus.Warnf("Cannot find volume name from snapshot %v", snapshot.Name)
+		return false
+	}
+	volume, err := nc.ds.GetVolumeRO(volumeName)
+	if err != nil {
+		logrus.WithError(err).Warnf("Failed to get volume for snapshot %v", snapshot.Name)
+		return false
+	}
+	if volume.Status.OwnerID != nc.controllerID {
+		return false
+	}
+
+	return nc.snapshotHashRequired(volume)
+}
+
+func (nc *NodeController) snapshotHashRequired(volume *longhorn.Volume) bool {
+	dataIntegrityImmediateChecking, err := nc.ds.GetSettingAsBool(types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation)
+	if err != nil {
+		logrus.WithError(err).Warnf("Failed to get %v setting", types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation)
+		return false
+	}
+	if !dataIntegrityImmediateChecking {
+		return false
+	}
+
+	if volume.Spec.SnapshotDataIntegrity == longhorn.SnapshotDataIntegrityDisabled {
+		return false
+	}
+
+	if volume.Spec.SnapshotDataIntegrity == longhorn.SnapshotDataIntegrityIgnored {
+		dataIntegrity, err := nc.ds.GetSettingValueExisted(types.SettingNameSnapshotDataIntegrity)
+		if err != nil {
+			logrus.Warnf("failed to get %v setting since %v", types.SettingNameSnapshotDataIntegrity, err)
+			return false
+		}
+
+		if longhorn.SnapshotDataIntegrity(dataIntegrity) == longhorn.SnapshotDataIntegrityDisabled {
+			return false
+		}
+	}
+
+	return true
+}
+
+>>>>>>> 9893e969 (Fix wrong log messages)
 func isManagerPod(obj interface{}) bool {
 	pod, ok := obj.(*v1.Pod)
 	if !ok {
