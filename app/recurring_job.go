@@ -38,6 +38,8 @@ const (
 	HTTPClientTimout = 1 * time.Minute
 
 	SnapshotPurgeStatusInterval = 5 * time.Second
+	// SnapshotPurgeStatusTimeout is set to 24 hours because we don't know the appropriate value.
+	SnapshotPurgeStatusTimeout = 24 * time.Hour
 
 	WaitInterval              = 5 * time.Second
 	DetachingWaitInterval     = 10 * time.Second
@@ -486,17 +488,25 @@ func (job *Job) deleteSnapshots(names []string, volume *longhornclient.Volume, v
 }
 
 func (job *Job) purgeSnapshots(volume *longhornclient.Volume, volumeAPI longhornclient.VolumeOperations) error {
+	// Trigger snapshot purge of the volume
 	if _, err := volumeAPI.ActionSnapshotPurge(volume); err != nil {
 		return err
 	}
-	for {
-		done := true
-		errorList := map[string]string{}
+
+	startTime := time.Now()
+	ticker := time.NewTicker(SnapshotPurgeStatusInterval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		// Retrieve the latest volume state
 		volume, err := volumeAPI.ById(volume.Name)
 		if err != nil {
 			return err
 		}
 
+		// Check if snapshot purge is completed
+		done := true
+		errorList := map[string]string{}
 		for _, status := range volume.PurgeStatus {
 			if status.IsPurging {
 				done = false
@@ -506,6 +516,8 @@ func (job *Job) purgeSnapshots(volume *longhornclient.Volume, volumeAPI longhorn
 				errorList[status.Replica] = status.Error
 			}
 		}
+
+		// Log encountered errors when snapshot purge completes
 		if done {
 			if len(errorList) != 0 {
 				for replica, errMsg := range errorList {
@@ -516,8 +528,14 @@ func (job *Job) purgeSnapshots(volume *longhornclient.Volume, volumeAPI longhorn
 			job.logger.WithField("volume", volume.Name).Debug("Purged snapshots")
 			return nil
 		}
-		time.Sleep(SnapshotPurgeStatusInterval)
+
+		// Return error when snapshot exceeds timeout
+		if time.Since(startTime) > SnapshotPurgeStatusTimeout {
+			return fmt.Errorf("timed out waiting for snapshot purge to complete")
+		}
 	}
+	// This should never be reached, return this error just in case.
+	return fmt.Errorf("unexpected error: stopped waiting for snapshot purge without completing or timing out")
 }
 
 type NameWithTimestamp struct {
