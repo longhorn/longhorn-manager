@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"net"
 	"net/http"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -45,14 +44,18 @@ func NewListener(l net.Listener, storage TLSStorage, caCert *x509.Certificate, c
 	if config.TLSConfig == nil {
 		config.TLSConfig = &tls.Config{}
 	}
+	if config.ExpirationDaysCheck == 0 {
+		config.ExpirationDaysCheck = 90
+	}
 
 	dynamicListener := &listener{
 		factory: &factory.TLS{
-			CACert:       caCert,
-			CAKey:        caKey,
-			CN:           config.CN,
-			Organization: config.Organization,
-			FilterCN:     allowDefaultSANs(config.SANs, config.FilterCN),
+			CACert:              caCert,
+			CAKey:               caKey,
+			CN:                  config.CN,
+			Organization:        config.Organization,
+			FilterCN:            allowDefaultSANs(config.SANs, config.FilterCN),
+			ExpirationDaysCheck: config.ExpirationDaysCheck,
 		},
 		Listener:  l,
 		storage:   &nonNil{storage: storage},
@@ -80,10 +83,6 @@ func NewListener(l net.Listener, storage TLSStorage, caCert *x509.Certificate, c
 		if err := dynamicListener.regenerateCerts(); err != nil {
 			return nil, nil, err
 		}
-	}
-
-	if config.ExpirationDaysCheck == 0 {
-		config.ExpirationDaysCheck = 30
 	}
 
 	tlsListener := tls.NewListener(dynamicListener.WrapExpiration(config.ExpirationDaysCheck), dynamicListener.tlsConfig)
@@ -163,15 +162,15 @@ type listener struct {
 func (l *listener) WrapExpiration(days int) net.Listener {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		// busy-wait for certificate preload to complete
+		// loop on short sleeps until certificate preload completes
 		for l.cert == nil {
-			runtime.Gosched()
+			time.Sleep(time.Millisecond)
 		}
 
 		for {
 			wait := 6 * time.Hour
 			if err := l.checkExpiration(days); err != nil {
-				logrus.Errorf("failed to check and renew dynamic cert: %v", err)
+				logrus.Errorf("dynamiclistener %s: failed to check and renew dynamic cert: %v", l.Addr(), err)
 				// Don't go into short retry loop if we're using a static (user-provided) cert.
 				// We will still check and print an error every six hours until the user updates the secret with
 				// a cert that is not about to expire. Hopefully this will prompt them to take action.
@@ -263,12 +262,18 @@ func (l *listener) Accept() (net.Conn, error) {
 	l.init.Do(func() {
 		if len(l.sans) > 0 {
 			if err := l.updateCert(l.sans...); err != nil {
-				logrus.Errorf("failed to update cert with configured SANs: %v", err)
+				logrus.Errorf("dynamiclistener %s: failed to update cert with configured SANs: %v", l.Addr(), err)
 				return
 			}
-			if _, err := l.loadCert(nil); err != nil {
-				logrus.Errorf("failed to preload certificate: %v", err)
-			}
+		}
+		if cert, err := l.loadCert(nil); err != nil {
+			logrus.Errorf("dynamiclistener %s: failed to preload certificate: %v", l.Addr(), err)
+		} else if cert == nil {
+			// This should only occur on the first startup when no SANs are configured in the listener config, in which
+			// case no certificate can be created, as dynamiclistener will not create certificates until at least one IP
+			// or DNS SAN is set. It will also occur when using the Kubernetes storage without a local File cache.
+			// For reliable serving of requests, callers should configure a local cache and/or a default set of SANs.
+			logrus.Warnf("dynamiclistener %s: no cached certificate available for preload - deferring certificate load until storage initialization or first client request", l.Addr())
 		}
 	})
 
@@ -284,14 +289,12 @@ func (l *listener) Accept() (net.Conn, error) {
 
 	host, _, err := net.SplitHostPort(addr.String())
 	if err != nil {
-		logrus.Errorf("failed to parse network %s: %v", addr.Network(), err)
+		logrus.Errorf("dynamiclistener %s: failed to parse connection local address %s: %v", l.Addr(), addr, err)
 		return conn, nil
 	}
 
-	if !strings.Contains(host, ":") {
-		if err := l.updateCert(host); err != nil {
-			logrus.Errorf("failed to update cert with listener address: %v", err)
-		}
+	if err := l.updateCert(host); err != nil {
+		logrus.Errorf("dynamiclistener %s: failed to update cert with connection local address: %v", l.Addr(), err)
 	}
 
 	if l.conns != nil {
@@ -338,12 +341,24 @@ func (l *listener) getCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate,
 	newConn := hello.Conn
 	if hello.ServerName != "" {
 		if err := l.updateCert(hello.ServerName); err != nil {
-			logrus.Errorf("failed to update cert with TLS ServerName: %v", err)
+			logrus.Errorf("dynamiclistener %s: failed to update cert with TLS ServerName: %v", l.Addr(), err)
 			return nil, err
 		}
 	}
-
-	return l.loadCert(newConn)
+	connCert, err := l.loadCert(newConn)
+	if connCert != nil && err == nil && newConn != nil && l.conns != nil {
+		// if we were successfully able to load a cert and are closing connections on cert changes, mark newConn ready
+		// this will allow us to close the connection if a future connection forces the cert to re-load
+		wrapper, ok := newConn.(*closeWrapper)
+		if !ok {
+			logrus.Debugf("will not mark non-close wrapper connection from %s to %s as ready", newConn.RemoteAddr(), newConn.LocalAddr())
+			return connCert, err
+		}
+		l.connLock.Lock()
+		l.conns[wrapper.id].ready = true
+		l.connLock.Unlock()
+	}
+	return connCert, err
 }
 
 func (l *listener) updateCert(cn ...string) error {
@@ -408,6 +423,9 @@ func (l *listener) loadCert(currentConn net.Conn) (*tls.Certificate, error) {
 	if err != nil {
 		return nil, err
 	}
+	if !cert.IsValidTLSSecret(secret) {
+		return l.cert, nil
+	}
 	if l.cert != nil && l.version == secret.ResourceVersion && secret.ResourceVersion != "" {
 		return l.cert, nil
 	}
@@ -427,7 +445,6 @@ func (l *listener) loadCert(currentConn net.Conn) (*tls.Certificate, error) {
 			}
 			_ = conn.close()
 		}
-		l.conns[currentConn.(*closeWrapper).id].ready = true
 		l.connLock.Unlock()
 	}
 
@@ -452,7 +469,7 @@ func (l *listener) cacheHandler() http.Handler {
 			}
 
 			if err := l.updateCert(h); err != nil {
-				logrus.Errorf("failed to update cert with HTTP request Host header: %v", err)
+				logrus.Errorf("dynamiclistener %s: failed to update cert with HTTP request Host header: %v", l.Addr(), err)
 			}
 		}
 	})

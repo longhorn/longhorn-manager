@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/rancher/dynamiclistener/cert"
 	"github.com/sirupsen/logrus"
@@ -32,11 +33,12 @@ var (
 )
 
 type TLS struct {
-	CACert       *x509.Certificate
-	CAKey        crypto.Signer
-	CN           string
-	Organization []string
-	FilterCN     func(...string) []string
+	CACert              *x509.Certificate
+	CAKey               crypto.Signer
+	CN                  string
+	Organization        []string
+	FilterCN            func(...string) []string
+	ExpirationDaysCheck int
 }
 
 func cns(secret *v1.Secret) (cns []string) {
@@ -72,7 +74,8 @@ func collectCNs(secret *v1.Secret) (domains []string, ips []net.IP, err error) {
 
 // Merge combines the SAN lists from the target and additional Secrets, and
 // returns a potentially modified Secret, along with a bool indicating if the
-// returned Secret is not the same as the target Secret.
+// returned Secret is not the same as the target Secret. Secrets with expired
+// certificates will never be returned.
 //
 // If the merge would not add any CNs to the additional Secret, the additional
 // Secret is returned, to allow for certificate rotation/regeneration.
@@ -93,17 +96,17 @@ func (t *TLS) Merge(target, additional *v1.Secret) (*v1.Secret, bool, error) {
 
 	// if the additional secret already has all the CNs, use it in preference to the
 	// current one. This behavior is required to allow for renewal or regeneration.
-	if !NeedsUpdate(0, additional, mergedCNs...) {
+	if !NeedsUpdate(0, additional, mergedCNs...) && !t.IsExpired(additional) {
 		return additional, true, nil
 	}
 
 	// if the target secret already has all the CNs, continue using it. The additional
 	// cert had only a subset of the current CNs, so nothing needs to be added.
-	if !NeedsUpdate(0, target, mergedCNs...) {
+	if !NeedsUpdate(0, target, mergedCNs...) && !t.IsExpired(target) {
 		return target, false, nil
 	}
 
-	// neither cert currently has all the necessary CNs; generate a new one.
+	// neither cert currently has all the necessary CNs or is unexpired; generate a new one.
 	return t.generateCert(target, mergedCNs...)
 }
 
@@ -154,6 +157,10 @@ func (t *TLS) generateCert(secret *v1.Secret, cn ...string) (*v1.Secret, bool, e
 		secret = &v1.Secret{}
 	}
 
+	if err := t.Verify(secret); err != nil {
+		logrus.Warnf("unable to verify existing certificate: %v - signing operation may change certificate issuer", err)
+	}
+
 	secret = populateCN(secret, cn...)
 
 	privateKey, err := getPrivateKey(secret)
@@ -171,7 +178,7 @@ func (t *TLS) generateCert(secret *v1.Secret, cn ...string) (*v1.Secret, bool, e
 		return nil, false, err
 	}
 
-	certBytes, keyBytes, err := Marshal(newCert, privateKey)
+	keyBytes, certBytes, err := MarshalChain(privateKey, newCert, t.CACert)
 	if err != nil {
 		return nil, false, err
 	}
@@ -179,11 +186,50 @@ func (t *TLS) generateCert(secret *v1.Secret, cn ...string) (*v1.Secret, bool, e
 	if secret.Data == nil {
 		secret.Data = map[string][]byte{}
 	}
+	secret.Type = v1.SecretTypeTLS
 	secret.Data[v1.TLSCertKey] = certBytes
 	secret.Data[v1.TLSPrivateKeyKey] = keyBytes
 	secret.Annotations[fingerprint] = fmt.Sprintf("SHA1=%X", sha1.Sum(newCert.Raw))
 
 	return secret, true, nil
+}
+
+func (t *TLS) IsExpired(secret *v1.Secret) bool {
+	certsPem := secret.Data[v1.TLSCertKey]
+	if len(certsPem) == 0 {
+		return false
+	}
+
+	certificates, err := cert.ParseCertsPEM(certsPem)
+	if err != nil || len(certificates) == 0 {
+		return false
+	}
+
+	expirationDays := time.Duration(t.ExpirationDaysCheck) * time.Hour * 24
+	return time.Now().Add(expirationDays).After(certificates[0].NotAfter)
+}
+
+func (t *TLS) Verify(secret *v1.Secret) error {
+	certsPem := secret.Data[v1.TLSCertKey]
+	if len(certsPem) == 0 {
+		return nil
+	}
+
+	certificates, err := cert.ParseCertsPEM(certsPem)
+	if err != nil || len(certificates) == 0 {
+		return err
+	}
+
+	verifyOpts := x509.VerifyOptions{
+		Roots: x509.NewCertPool(),
+		KeyUsages: []x509.ExtKeyUsage{
+			x509.ExtKeyUsageAny,
+		},
+	}
+	verifyOpts.Roots.AddCert(t.CACert)
+
+	_, err = certificates[0].Verify(verifyOpts)
+	return err
 }
 
 func (t *TLS) newCert(domains []string, ips []net.IP, privateKey crypto.Signer) (*x509.Certificate, error) {
@@ -249,14 +295,33 @@ func getPrivateKey(secret *v1.Secret) (crypto.Signer, error) {
 	return NewPrivateKey()
 }
 
+// MarshalChain returns given key and certificates as byte slices.
+func MarshalChain(privateKey crypto.Signer, certs ...*x509.Certificate) (keyBytes, certChainBytes []byte, err error) {
+	keyBytes, err = cert.MarshalPrivateKeyToPEM(privateKey)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for _, cert := range certs {
+		if cert != nil {
+			certBlock := pem.Block{
+				Type:  CertificateBlockType,
+				Bytes: cert.Raw,
+			}
+			certChainBytes = append(certChainBytes, pem.EncodeToMemory(&certBlock)...)
+		}
+	}
+	return keyBytes, certChainBytes, nil
+}
+
 // Marshal returns the given cert and key as byte slices.
-func Marshal(x509Cert *x509.Certificate, privateKey crypto.Signer) ([]byte, []byte, error) {
+func Marshal(x509Cert *x509.Certificate, privateKey crypto.Signer) (certBytes, keyBytes []byte, err error) {
 	certBlock := pem.Block{
 		Type:  CertificateBlockType,
 		Bytes: x509Cert.Raw,
 	}
 
-	keyBytes, err := cert.MarshalPrivateKeyToPEM(privateKey)
+	keyBytes, err = cert.MarshalPrivateKeyToPEM(privateKey)
 	if err != nil {
 		return nil, nil, err
 	}
