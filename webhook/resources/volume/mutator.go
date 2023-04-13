@@ -209,7 +209,7 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	if newSize != size {
 		logrus.Infof("Rounding up the volume spec size from %d to %d in the create mutator", size, newSize)
 	}
-	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/size", "value": "%v"}`, strconv.FormatInt(size, 10)))
+	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/size", "value": "%v"}`, strconv.FormatInt(newSize, 10)))
 
 	defaultEngineImage, _ := v.ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 	if defaultEngineImage == "" {
