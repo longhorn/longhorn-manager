@@ -664,7 +664,7 @@ var (
 	}
 
 	SettingDefinitionAllowNodeDrainWithLastHealthyReplica = SettingDefinition{
-		DisplayName: "Allow Node Drain with the Last Healthy Replica",
+		DisplayName: "Allow Node Drain with the Last Healthy Replica (Deprecated)",
 		Description: "By default, Longhorn will block `kubectl drain` action on a node if the node contains the last healthy replica of a volume.\n\n" +
 			"If this setting is enabled, Longhorn will **not** block `kubectl drain` action on a node even if the node contains the last healthy replica of a volume.",
 		Category: SettingCategoryGeneral,
