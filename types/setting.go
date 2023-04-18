@@ -54,6 +54,7 @@ const (
 	SettingNameStorageMinimalAvailablePercentage                        = SettingName("storage-minimal-available-percentage")
 	SettingNameStorageReservedPercentageForDefaultDisk                  = SettingName("storage-reserved-percentage-for-default-disk")
 	SettingNameUpgradeChecker                                           = SettingName("upgrade-checker")
+	SettingNameAllowCollectingLonghornUsage                             = SettingName("allow-collecting-longhorn-usage-metrics")
 	SettingNameCurrentLonghornVersion                                   = SettingName("current-longhorn-version")
 	SettingNameLatestLonghornVersion                                    = SettingName("latest-longhorn-version")
 	SettingNameStableLonghornVersions                                   = SettingName("stable-longhorn-versions")
@@ -124,6 +125,7 @@ var (
 		SettingNameStorageMinimalAvailablePercentage,
 		SettingNameStorageReservedPercentageForDefaultDisk,
 		SettingNameUpgradeChecker,
+		SettingNameAllowCollectingLonghornUsage,
 		SettingNameCurrentLonghornVersion,
 		SettingNameLatestLonghornVersion,
 		SettingNameStableLonghornVersions,
@@ -220,6 +222,7 @@ var (
 		SettingNameStorageMinimalAvailablePercentage:                        SettingDefinitionStorageMinimalAvailablePercentage,
 		SettingNameStorageReservedPercentageForDefaultDisk:                  SettingDefinitionStorageReservedPercentageForDefaultDisk,
 		SettingNameUpgradeChecker:                                           SettingDefinitionUpgradeChecker,
+		SettingNameAllowCollectingLonghornUsage:                             SettingDefinitionAllowCollectingLonghornUsageMetrics,
 		SettingNameCurrentLonghornVersion:                                   SettingDefinitionCurrentLonghornVersion,
 		SettingNameLatestLonghornVersion:                                    SettingDefinitionLatestLonghornVersion,
 		SettingNameStableLonghornVersions:                                   SettingDefinitionStableLonghornVersions,
@@ -472,6 +475,17 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "true",
+	}
+
+	SettingDefinitionAllowCollectingLonghornUsageMetrics = SettingDefinition{
+		DisplayName: "Allow Collecting Longhorn Usage Metrics",
+		Description: "Enabling this setting will allow Longhorn to provide additional usage metrics to https://metrics.longhorn.io/.\n" +
+			"This information will help us better understand how Longhorn is being used, which will ultimately contribute to future improvements.\n",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeBool,
+		Required: true,
+		ReadOnly: false,
+		Default:  "true",
 	}
 
 	SettingDefinitionCurrentLonghornVersion = SettingDefinition{
@@ -1165,6 +1179,8 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameUpgradeChecker:
 		fallthrough
 	case SettingNameSpdk:
+		fallthrough
+	case SettingNameAllowCollectingLonghornUsage:
 		if value != "true" && value != "false" {
 			return fmt.Errorf("value %v of setting %v should be true or false", value, sName)
 		}

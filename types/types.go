@@ -1015,14 +1015,14 @@ func GetKubernetesProviderNameFromURL(providerURL string) string {
 	return scheme
 }
 
-func GetBackupTargetSchemeFrom(backupTargetURL string) string {
+func GetBackupTargetSchemeFromURL(backupTargetURL string) string {
 	if backupTargetURL == "" {
 		return ValueEmpty
 	}
 
 	scheme := util.GetSchemeFromURL(backupTargetURL)
 	switch scheme {
-	case "cifs", "nfs", "s3":
+	case "azblob", "cifs", "nfs", "s3":
 		return scheme
 	default:
 		return ValueUnknown
