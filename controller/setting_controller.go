@@ -1124,6 +1124,15 @@ func (sc *SettingController) GetCheckUpgradeRequestExtraInfo() (CheckUpgradeRequ
 	}
 	clusterInfo.structFields.Append(ClusterInfoKubernetesVersion, kubeVersion.GitVersion)
 
+	allowCollectingUsage, err := sc.ds.GetSettingAsBool(types.SettingNameAllowCollectingLonghornUsage)
+	if err != nil {
+		return nil, err
+	}
+
+	if !allowCollectingUsage {
+		return clusterInfo.structFields.NewStruct(), nil
+	}
+
 	clusterInfo.collectNodeScope()
 
 	responsibleNodeID, err := getResponsibleNodeID(sc.ds)
@@ -1354,7 +1363,7 @@ func (info *ClusterInfo) collectSettings() error {
 		switch {
 		// Setting that require extra processing to identify their general purpose
 		case settingName == types.SettingNameBackupTarget:
-			settingMap[setting.Name] = types.GetBackupTargetSchemeFrom(setting.Value)
+			settingMap[setting.Name] = types.GetBackupTargetSchemeFromURL(setting.Value)
 
 		// Setting that should be collected as boolean (true if configured, false if not)
 		case includeAsBoolean[settingName]:
