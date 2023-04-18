@@ -114,6 +114,10 @@ func ConvertSize(size interface{}) (int64, error) {
 	return 0, errors.Errorf("could not parse size '%v'", size)
 }
 
+func ConvertFirstCharToLower(input string) string {
+	return strings.ToLower(input[:1]) + input[1:]
+}
+
 func RoundUpSize(size int64) int64 {
 	if size <= 0 {
 		return SizeAlignment

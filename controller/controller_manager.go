@@ -19,6 +19,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/workqueue"
+	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -69,6 +70,11 @@ func StartControllers(logger logrus.FieldLogger, stopCh <-chan struct{},
 		return nil, nil, errors.Wrap(err, "unable to get k8s extension client")
 	}
 
+	metricsClient, err := metricsclientset.NewForConfig(config)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "unable to get metrics client")
+	}
+
 	scheme := runtime.NewScheme()
 	if err := longhorn.SchemeBuilder.AddToScheme(scheme); err != nil {
 		return nil, nil, errors.Wrap(err, "unable to create scheme")
@@ -91,7 +97,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh <-chan struct{},
 	ic := NewEngineImageController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount)
 	nc := NewNodeController(logger, ds, scheme, kubeClient, namespace, controllerID)
 	ws := NewWebsocketController(logger, ds)
-	sc := NewSettingController(logger, ds, scheme, kubeClient, namespace, controllerID, version)
+	sc := NewSettingController(logger, ds, scheme, kubeClient, metricsClient, namespace, controllerID, version)
 	btc := NewBackupTargetController(logger, ds, scheme, kubeClient, controllerID, namespace, proxyConnCounter)
 	bvc := NewBackupVolumeController(logger, ds, scheme, kubeClient, controllerID, namespace, proxyConnCounter)
 	bc := NewBackupController(logger, ds, scheme, kubeClient, controllerID, namespace, proxyConnCounter)
