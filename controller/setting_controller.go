@@ -22,6 +22,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
+	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -55,6 +56,7 @@ type SettingController struct {
 	controllerID string
 
 	kubeClient    clientset.Interface
+	metricsClient metricsclientset.Interface
 	eventRecorder record.EventRecorder
 
 	ds *datastore.DataStore
@@ -85,8 +87,11 @@ type Version struct {
 }
 
 type CheckUpgradeRequest struct {
-	AppVersion string            `json:"appVersion"`
-	ExtraInfo  map[string]string `json:"extraInfo"`
+	AppVersion string                       `json:"appVersion"`
+	ExtraInfo  CheckUpgradeRequestExtraInfo `json:"extraInfo"`
+}
+
+type CheckUpgradeRequestExtraInfo interface {
 }
 
 type CheckUpgradeResponse struct {
@@ -98,6 +103,7 @@ func NewSettingController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
+	metricsClient metricsclientset.Interface,
 	namespace, controllerID, version string) *SettingController {
 
 	eventBroadcaster := record.NewBroadcaster()
@@ -112,6 +118,7 @@ func NewSettingController(
 		controllerID: controllerID,
 
 		kubeClient:    kubeClient,
+		metricsClient: metricsClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-setting-controller"}),
 
 		ds: ds,
@@ -938,14 +945,14 @@ func (sc *SettingController) CheckLatestAndStableLonghornVersions() (string, str
 		resp    CheckUpgradeResponse
 		content bytes.Buffer
 	)
-	kubeVersion, err := sc.kubeClient.Discovery().ServerVersion()
-	if err != nil {
-		return "", "", errors.Wrap(err, "failed to get Kubernetes server version")
-	}
 
+	checkUpgradeRequestExtraInfo, err := sc.GetCheckUpgradeRequestExtraInfo()
+	if err != nil {
+		return "", "", errors.Wrap(err, "failed to get extra info for upgrade checker")
+	}
 	req := &CheckUpgradeRequest{
 		AppVersion: sc.version,
-		ExtraInfo:  map[string]string{"kubernetesVersion": kubeVersion.GitVersion},
+		ExtraInfo:  checkUpgradeRequestExtraInfo,
 	}
 	if err := json.NewEncoder(&content).Encode(req); err != nil {
 		return "", "", err
@@ -1095,4 +1102,64 @@ func (sc *SettingController) cleanupFailedSupportBundles() error {
 	}
 
 	return nil
+}
+
+func (sc *SettingController) GetCheckUpgradeRequestExtraInfo() (CheckUpgradeRequestExtraInfo, error) {
+	clusterInfo := &ClusterInfo{
+		logger:        sc.logger,
+		ds:            sc.ds,
+		kubeClient:    sc.kubeClient,
+		metricsClient: sc.metricsClient,
+		structFields:  util.StructFields{},
+		controllerID:  sc.controllerID,
+		namespace:     sc.namespace,
+	}
+
+	kubeVersion, err := sc.kubeClient.Discovery().ServerVersion()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get Kubernetes server version")
+	}
+	clusterInfo.structFields.Append(ClusterInfoKubernetesVersion, kubeVersion.GitVersion)
+
+	clusterInfo.collectNodeScope()
+
+	responsibleNodeID, err := getResponsibleNodeID(sc.ds)
+	if err != nil {
+		sc.logger.WithError(err).Warn("Failed to select node to get extra info")
+	}
+	if responsibleNodeID == sc.controllerID {
+		clusterInfo.collectClusterScope()
+	}
+
+	return clusterInfo.structFields.NewStruct(), nil
+}
+
+// Cluster Scope Info: will be sent from one of the Longhorn cluster nodes
+const ()
+
+// Node Scope Info: will be sent from all Longhorn cluster nodes
+const (
+	ClusterInfoKubernetesVersion = util.StructName("KubernetesVersion")
+)
+
+// ClusterInfo struct is used to collect information about the cluster.
+// This provides additional usage metrics to https://metrics.longhorn.io.
+type ClusterInfo struct {
+	logger logrus.FieldLogger
+
+	ds *datastore.DataStore
+
+	kubeClient    clientset.Interface
+	metricsClient metricsclientset.Interface
+
+	structFields util.StructFields
+
+	controllerID string
+	namespace    string
+}
+
+func (info *ClusterInfo) collectClusterScope() {
+}
+
+func (info *ClusterInfo) collectNodeScope() {
 }
