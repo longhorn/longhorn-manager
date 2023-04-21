@@ -407,7 +407,7 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 							},
 						},
 						{
-							Name: "longhorn-csi-plugin",
+							Name: types.CSIPluginName,
 							SecurityContext: &v1.SecurityContext{
 								Privileged: pointer.BoolPtr(true),
 								Capabilities: &v1.Capabilities{
