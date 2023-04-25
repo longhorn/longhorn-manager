@@ -1276,7 +1276,7 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 		done:                   false,
 		monitorVoluntaryStopCh: monitorVoluntaryStopCh,
 		// notify monitor to update the instance map
-		updateNotification: false,
+		updateNotification: true,
 		client:             client,
 
 		nodeCallback: imc.enqueueKubernetesNode,
