@@ -1459,6 +1459,9 @@ func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (is
 	}
 	undeployedNodes := []string{}
 	for _, node := range nodes {
+		if node == "" {
+			continue
+		}
 		if _, ok := nodesHaveEngineImage[node]; !ok {
 			undeployedNodes = append(undeployedNodes, node)
 		}
