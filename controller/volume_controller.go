@@ -2474,6 +2474,9 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[st
 
 	volumeAndReplicaNodes := []string{v.Status.CurrentNodeID}
 	for _, r := range rs {
+		if r.Spec.NodeID == "" {
+			continue
+		}
 		volumeAndReplicaNodes = append(volumeAndReplicaNodes, r.Spec.NodeID)
 	}
 
