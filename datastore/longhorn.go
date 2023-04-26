@@ -2275,23 +2275,6 @@ func (s *DataStore) ListReadyNodesWithEngineImage(image string) (map[string]*lon
 	return readyNodes, nil
 }
 
-// ListReadyNodesWithReadyEngineImage returns list of ready nodes that have the corresponding engine image deployed
-func (s *DataStore) ListReadyNodesWithReadyEngineImage(image string) (map[string]*longhorn.Node, error) {
-	ei, err := s.GetEngineImage(types.GetEngineImageChecksumName(image))
-	if err != nil {
-		return nil, fmt.Errorf("unable to get engine image %v: %v", image, err)
-	}
-	if ei.Status.State != longhorn.EngineImageStateDeployed {
-		return map[string]*longhorn.Node{}, nil
-	}
-	nodes, err := s.ListNodesWithEngineImage(ei)
-	if err != nil {
-		return nil, err
-	}
-	readyNodes := filterReadyNodes(nodes)
-	return readyNodes, nil
-}
-
 // GetRandomReadyNode gets a list of all Node in the given namespace and
 // returns the first Node marked with condition ready and allow scheduling
 func (s *DataStore) GetRandomReadyNode() (*longhorn.Node, error) {
