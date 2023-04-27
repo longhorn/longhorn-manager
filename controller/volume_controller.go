@@ -1829,7 +1829,6 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 	if (!newVolume && replenishCount > 0) || hardNodeAffinity != "" {
 		replenishCount = 1
 	}
-
 	for i := 0; i < replenishCount; i++ {
 		reusableFailedReplica, err := vc.scheduler.CheckAndReuseFailedReplica(rs, v, hardNodeAffinity)
 		if err != nil {
@@ -2220,7 +2219,7 @@ func (vc *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map
 			continue
 		}
 		// Skip the replica has been requested eviction.
-		if r.Spec.FailedAt == "" && (!r.Status.EvictionRequested) {
+		if r.Spec.FailedAt == "" && (!r.Status.EvictionRequested) && r.Spec.Active {
 			usableCount++
 		}
 	}
@@ -2391,7 +2390,7 @@ func (vc *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volu
 func (vc *VolumeController) hasEngineStatusSynced(e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {
 	connectedReplicaCount := 0
 	for _, r := range rs {
-		if r.Spec.FailedAt == "" && r.Spec.NodeID != "" {
+		if r.Spec.FailedAt == "" && r.Spec.NodeID != "" && r.Spec.Active {
 			connectedReplicaCount++
 		}
 	}
@@ -2475,6 +2474,9 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[st
 
 	volumeAndReplicaNodes := []string{v.Status.CurrentNodeID}
 	for _, r := range rs {
+		if r.Spec.NodeID == "" {
+			continue
+		}
 		volumeAndReplicaNodes = append(volumeAndReplicaNodes, r.Spec.NodeID)
 	}
 

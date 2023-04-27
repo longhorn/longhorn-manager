@@ -517,15 +517,6 @@ func (btc *BackupTargetController) isResponsibleFor(bt *longhorn.BackupTarget, d
 
 	isResponsible := isControllerResponsibleFor(btc.controllerID, btc.ds, bt.Name, "", bt.Status.OwnerID)
 
-	readyNodesWithReadyEI, err := btc.ds.ListReadyNodesWithReadyEngineImage(defaultEngineImage)
-	if err != nil {
-		return false, err
-	}
-	// No node in the system has the default engine image in ready state
-	if len(readyNodesWithReadyEI) == 0 {
-		return false, nil
-	}
-
 	currentOwnerEngineAvailable, err := btc.ds.CheckEngineImageReadiness(defaultEngineImage, bt.Status.OwnerID)
 	if err != nil {
 		return false, err

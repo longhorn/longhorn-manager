@@ -30,7 +30,7 @@ const (
 	// NameMaximumLength restricted the length due to Kubernetes name limitation
 	NameMaximumLength = 40
 
-	MaxRecurringJobRetain = 50
+	MaxRecurringJobRetain = 100
 )
 
 var (
@@ -1463,6 +1463,9 @@ func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (is
 	}
 	undeployedNodes := []string{}
 	for _, node := range nodes {
+		if node == "" {
+			continue
+		}
 		if _, ok := nodesHaveEngineImage[node]; !ok {
 			undeployedNodes = append(undeployedNodes, node)
 		}
@@ -2270,23 +2273,6 @@ func (s *DataStore) ListReadyNodesWithEngineImage(image string) (map[string]*lon
 		return nil, fmt.Errorf("unable to get engine image %v: %v", image, err)
 	}
 	if ei.Status.State != longhorn.EngineImageStateDeployed && ei.Status.State != longhorn.EngineImageStateDeploying {
-		return map[string]*longhorn.Node{}, nil
-	}
-	nodes, err := s.ListNodesWithEngineImage(ei)
-	if err != nil {
-		return nil, err
-	}
-	readyNodes := filterReadyNodes(nodes)
-	return readyNodes, nil
-}
-
-// ListReadyNodesWithReadyEngineImage returns list of ready nodes that have the corresponding engine image deployed
-func (s *DataStore) ListReadyNodesWithReadyEngineImage(image string) (map[string]*longhorn.Node, error) {
-	ei, err := s.GetEngineImage(types.GetEngineImageChecksumName(image))
-	if err != nil {
-		return nil, fmt.Errorf("unable to get engine image %v: %v", image, err)
-	}
-	if ei.Status.State != longhorn.EngineImageStateDeployed {
 		return map[string]*longhorn.Node{}, nil
 	}
 	nodes, err := s.ListNodesWithEngineImage(ei)

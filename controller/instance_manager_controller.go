@@ -526,7 +526,7 @@ func (imc *InstanceManagerController) syncInstanceManagerPDB(im *longhorn.Instan
 		return nil
 	}
 
-	unschedulable, err := imc.ds.IsKubeNodeUnschedulable(imc.controllerID)
+	unschedulable, err := imc.ds.IsKubeNodeUnschedulable(im.Spec.NodeID)
 	if err != nil {
 		return err
 	}
@@ -673,7 +673,7 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 	// Must wait for all volumes detached from the current node first.
 	// This also means that we must wait until the PDB of engine instance manager
 	// on the current node is deleted
-	allVolumeDetached, err := imc.areAllVolumesDetachedFromCurrentNode()
+	allVolumeDetached, err := imc.areAllVolumesDetachedFromNode(im.Spec.NodeID)
 	if err != nil {
 		return false, err
 	}
@@ -698,7 +698,7 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 		return true, nil
 	}
 
-	replicasOnCurrentNode, err := imc.ds.ListReplicasByNodeRO(imc.controllerID)
+	replicasOnCurrentNode, err := imc.ds.ListReplicasByNodeRO(im.Spec.NodeID)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
 			return true, nil
@@ -734,7 +734,7 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 		hasPDBOnAnotherNode := false
 		isUnusedReplicaOnCurrentNode := false
 		for _, r := range replicas {
-			hasOtherHealthyReplicas := r.Spec.HealthyAt != "" && r.Spec.FailedAt == "" && r.Spec.NodeID != imc.controllerID
+			hasOtherHealthyReplicas := r.Spec.HealthyAt != "" && r.Spec.FailedAt == "" && r.Spec.NodeID != im.Spec.NodeID
 			if hasOtherHealthyReplicas {
 				unschedulable, err := imc.ds.IsKubeNodeUnschedulable(r.Spec.NodeID)
 				if err != nil {
@@ -767,7 +767,7 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 			// Hence Longhorn doesn't need to block the PDB removal for the replica.
 			// This case typically happens on a newly created volume that hasn't been attached to any node.
 			// https://github.com/longhorn/longhorn/issues/2673
-			isUnusedReplicaOnCurrentNode = r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" && r.Spec.NodeID == imc.controllerID
+			isUnusedReplicaOnCurrentNode = r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" && r.Spec.NodeID == im.Spec.NodeID
 			if isUnusedReplicaOnCurrentNode {
 				break
 			}
@@ -799,16 +799,16 @@ func (imc *InstanceManagerController) getRunningReplicaInstancManager(r *longhor
 	return im, nil
 }
 
-func (imc *InstanceManagerController) areAllVolumesDetachedFromCurrentNode() (bool, error) {
-	detached, err := imc.areAllInstanceRemovedFromCurrentNodeByType(longhorn.InstanceManagerTypeEngine)
+func (imc *InstanceManagerController) areAllVolumesDetachedFromNode(nodeName string) (bool, error) {
+	detached, err := imc.areAllInstanceRemovedFromNodeByType(nodeName, longhorn.InstanceManagerTypeEngine)
 	if err != nil {
 		return false, err
 	}
 	return detached, nil
 }
 
-func (imc *InstanceManagerController) areAllInstanceRemovedFromCurrentNodeByType(imType longhorn.InstanceManagerType) (bool, error) {
-	ims, err := imc.ds.ListInstanceManagersByNode(imc.controllerID, imType)
+func (imc *InstanceManagerController) areAllInstanceRemovedFromNodeByType(nodeName string, imType longhorn.InstanceManagerType) (bool, error) {
+	ims, err := imc.ds.ListInstanceManagersByNode(nodeName, imType)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
 			return true, nil
@@ -846,7 +846,7 @@ func (imc *InstanceManagerController) generateInstanceManagerPDBManifest(im *lon
 		},
 		Spec: policyv1.PodDisruptionBudgetSpec{
 			Selector: &metav1.LabelSelector{
-				MatchLabels: types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, im.Spec.Type),
+				MatchLabels: types.GetInstanceManagerLabels(im.Spec.NodeID, im.Spec.Image, im.Spec.Type),
 			},
 			MinAvailable: &intstr.IntOrString{IntVal: 1},
 		},
