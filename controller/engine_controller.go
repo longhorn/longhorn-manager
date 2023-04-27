@@ -1558,7 +1558,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedStartingSnapshotPurge, "Failed to start snapshot purge for engine %v and volume %v before rebuilding: %v", e.Name, e.Spec.VolumeName, err)
 				return
 			}
-			logrus.Debug("Started snapshot purge before rebuilding, will wait for the purge complete")
+			log.Debug("Started snapshot purge before rebuilding, will wait for the purge complete")
 
 			purgeDone := false
 			endTime := time.Now().Add(time.Duration(purgeWaitIntervalInSecond) * time.Second)
@@ -1595,6 +1595,27 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 				return
 			}
 			log.Debug("Finished snapshot purge, will start rebuilding then")
+		}
+
+		// It has been at least 10 seconds (2 * EnginePollInterval) since we were asked to rebuild.
+		// Should we still communicate with addr?
+		updatedEngine, err := ec.ds.GetEngineRO(e.Name)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				log.Warn("Cannot proceed to rebuild since engine is not found")
+				return
+			}
+			log.WithError(err).Error("Failed to get latest engine spec before rebuilding")
+			return
+		}
+		updatedAddr, ok := updatedEngine.Spec.ReplicaAddressMap[replica]
+		if !ok {
+			log.Warnf("Refusing to rebuild since replica %v is no longer in the replicaAddressMap", replica)
+			return
+		}
+		if addr != updatedAddr {
+			log.Warnf("Refusing to rebuild since the address for replica %v has been updated from %v to %v", replica, addr, updatedAddr)
+			return
 		}
 
 		// start rebuild
@@ -1659,7 +1680,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replica, addr st
 				ec.eventRecorder.Eventf(e, v1.EventTypeWarning, EventReasonFailedStartingSnapshotPurge, "Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", e.Name, e.Spec.VolumeName, err)
 				return
 			}
-			logrus.Debug("Started snapshot purge after rebuilding")
+			log.Debug("Started snapshot purge after rebuilding")
 		}
 	}()
 
