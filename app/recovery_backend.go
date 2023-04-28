@@ -1,66 +1,26 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"net/http"
-	"os"
-
-	"github.com/pkg/errors"
-	"github.com/rancher/wrangler/pkg/signals"
-	"github.com/sirupsen/logrus"
-	"github.com/urfave/cli"
-
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/longhorn/longhorn-manager/recovery_backend/server"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/util/client"
+	"github.com/sirupsen/logrus"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
-func RecoveryBackendServiceCommand() cli.Command {
-	return cli.Command{
-		Name: "recovery-backend",
-		Flags: []cli.Flag{
-			cli.StringFlag{
-				Name:  FlagServiceAccount,
-				Usage: "Specify service account for recovery-backend service",
-			},
-			cli.StringFlag{
-				Name:  FlagKubeConfig,
-				Usage: "Specify path to kube config (optional)",
-			},
-		},
-		Action: func(c *cli.Context) {
-			if err := runRecoveryBackendServer(c); err != nil {
-				logrus.Fatalf("Failed to start longhorn recovery-backend server: %v", err)
-			}
-		},
-	}
-}
+func startRecoveryBackend(ctx context.Context, serviceAccount, kubeconfigPath string) error {
+	logrus.Info("Starting longhorn recovery-backend server")
 
-func runRecoveryBackendServer(c *cli.Context) error {
-	logrus.Infof("Starting longhorn recovery-backend server")
-
-	ctx := signals.SetupSignalContext()
-
-	serviceAccount := c.String(FlagServiceAccount)
-	if serviceAccount == "" {
-		return fmt.Errorf("require %v", FlagServiceAccount)
-	}
-
-	kubeconfigPath := c.String(FlagKubeConfig)
-
-	namespace := os.Getenv(types.EnvPodNamespace)
-	if namespace == "" {
-		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, "+
-			"using default namespace", types.EnvPodNamespace)
-		namespace = corev1.NamespaceDefault
-	}
+	namespace := util.GetNamespace(types.EnvPodNamespace)
 
 	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
-		return errors.Wrap(err, "unable to get client config")
+		return fmt.Errorf("unable to get client config: %v", err)
 	}
 
 	client, err := client.NewClient(ctx, cfg, namespace, true)
@@ -72,13 +32,14 @@ func runRecoveryBackendServer(c *cli.Context) error {
 		return err
 	}
 
-	srv := server.New(namespace, client.Datastore)
-	router := http.Handler(server.NewRouter(srv))
+	s := server.New(namespace, client.Datastore)
+	router := http.Handler(server.NewRouter(s))
+	go func() {
+		if err := s.ListenAndServe(router); err != nil {
+			logrus.Fatalf("Error recovery backend server failed: %v", err)
+		}
+	}()
+	logrus.Info("Started longhorn recovery-backend server")
 
-	if err := srv.ListenAndServe(router); err != nil {
-		return err
-	}
-
-	<-ctx.Done()
 	return nil
 }
