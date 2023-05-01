@@ -71,7 +71,6 @@ const (
 	SettingNameNodeDownPodDeletionPolicy                                = SettingName("node-down-pod-deletion-policy")
 	SettingNameAllowNodeDrainWithLastHealthyReplica                     = SettingName("allow-node-drain-with-last-healthy-replica")
 	SettingNameNodeDrainPolicy                                          = SettingName("node-drain-policy")
-	SettingNameMkfsExt4Parameters                                       = SettingName("mkfs-ext4-parameters")
 	SettingNamePriorityClass                                            = SettingName("priority-class")
 	SettingNameDisableRevisionCounter                                   = SettingName("disable-revision-counter")
 	SettingNameDisableReplicaRebuild                                    = SettingName("disable-replica-rebuild")
@@ -144,7 +143,6 @@ var (
 		SettingNameNodeDownPodDeletionPolicy,
 		SettingNameAllowNodeDrainWithLastHealthyReplica,
 		SettingNameNodeDrainPolicy,
-		SettingNameMkfsExt4Parameters,
 		SettingNamePriorityClass,
 		SettingNameDisableRevisionCounter,
 		SettingNameDisableReplicaRebuild,
@@ -242,7 +240,6 @@ var (
 		SettingNameNodeDownPodDeletionPolicy:                                SettingDefinitionNodeDownPodDeletionPolicy,
 		SettingNameAllowNodeDrainWithLastHealthyReplica:                     SettingDefinitionAllowNodeDrainWithLastHealthyReplica,
 		SettingNameNodeDrainPolicy:                                          SettingDefinitionNodeDrainPolicy,
-		SettingNameMkfsExt4Parameters:                                       SettingDefinitionMkfsExt4Parameters,
 		SettingNamePriorityClass:                                            SettingDefinitionPriorityClass,
 		SettingNameDisableRevisionCounter:                                   SettingDefinitionDisableRevisionCounter,
 		SettingNameDisableReplicaRebuild:                                    SettingDefinitionDisableReplicaRebuild,
@@ -647,6 +644,7 @@ var (
 		ReadOnly:    false,
 		Default:     "",
 	}
+
 	SettingDefinitionDisableSchedulingOnCordonedNode = SettingDefinition{
 		DisplayName: "Disable Scheduling On Cordoned Node",
 		Description: `Disable Longhorn manager to schedule replica on Kubernetes cordoned node`,
@@ -656,6 +654,7 @@ var (
 		ReadOnly:    false,
 		Default:     "true",
 	}
+
 	SettingDefinitionReplicaZoneSoftAntiAffinity = SettingDefinition{
 		DisplayName: "Replica Zone Level Soft Anti-Affinity",
 		Description: "Allow scheduling new Replicas of Volume to the Nodes in the same Zone as existing healthy Replicas. Nodes don't belong to any Zone will be treated as in the same Zone. Notice that Longhorn relies on label `topology.kubernetes.io/zone=<Zone name of the node>` in the Kubernetes node object to identify the zone.",
@@ -665,6 +664,7 @@ var (
 		ReadOnly:    false,
 		Default:     "true",
 	}
+
 	SettingDefinitionNodeDownPodDeletionPolicy = SettingDefinition{
 		DisplayName: "Pod Deletion Policy When Node is Down",
 		Description: "Defines the Longhorn action when a Volume is stuck with a StatefulSet/Deployment Pod on a node that is down.\n" +
@@ -714,14 +714,6 @@ var (
 		},
 	}
 
-	SettingDefinitionMkfsExt4Parameters = SettingDefinition{
-		DisplayName: "Custom mkfs.ext4 parameters",
-		Description: "Allows setting additional filesystem creation parameters for ext4. For older host kernels it might be necessary to disable the optional ext4 metadata_csum feature by specifying `-O ^64bit,^metadata_csum`",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeString,
-		Required:    false,
-		ReadOnly:    false,
-	}
 	SettingDefinitionPriorityClass = SettingDefinition{
 		DisplayName: "Priority Class",
 		Description: "The name of the Priority Class to set on the Longhorn components. This can help prevent Longhorn components from being evicted under Node Pressure. \n" +
@@ -733,6 +725,7 @@ var (
 		Required: false,
 		ReadOnly: false,
 	}
+
 	SettingDefinitionDisableRevisionCounter = SettingDefinition{
 		DisplayName: "Disable Revision Counter",
 		Description: "This setting is only for volumes created by UI. By default, this is false meaning there will be a revision counter file to track every write to the volume. During salvage recovering Longhorn will pick the repica with largest revision counter as candidate to recover the whole volume. If revision counter is disabled, Longhorn will not track every write to the volume. During the salvage recovering, Longhorn will use the 'volume-head-xxx.img' file last modification time and file size to pick the replica candidate to recover the whole volume.",
@@ -742,6 +735,7 @@ var (
 		ReadOnly:    false,
 		Default:     "false",
 	}
+
 	SettingDefinitionDisableReplicaRebuild = SettingDefinition{
 		DisplayName: "Disable Replica Rebuild",
 		Description: "This setting disable replica rebuild cross the whole cluster, eviction and data locality feature won't work if this setting is true. But doesn't have any impact to any current replica rebuild and restore disaster recovery volume.",

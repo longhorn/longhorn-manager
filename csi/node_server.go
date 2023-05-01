@@ -24,7 +24,6 @@ import (
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	"github.com/longhorn/longhorn-manager/csi/crypto"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
-	"github.com/longhorn/longhorn-manager/types"
 )
 
 const (
@@ -733,14 +732,6 @@ func (ns *NodeServer) getMounter(volume *longhornclient.Volume, volumeCapability
 		//If the user specifies parameters in the storage class, the parameters are appended after the default value.
 		if mkfsParams, ok := volumeContext["mkfsParams"]; ok && mkfsParams != "" {
 			params += " " + mkfsParams
-		}
-
-		// We allow the user to provide additional params for ext4 filesystem creation.
-		// This allows an ext4 fs to be mounted on older kernels, see https://github.com/longhorn/longhorn/issues/1208
-		if fsType == defaultFsType {
-			if userParams, _ := ns.apiClient.Setting.ById(string(types.SettingNameMkfsExt4Parameters)); userParams != nil && userParams.Value != "" {
-				params += " " + userParams.Value
-			}
 		}
 
 		mounter := &mount.SafeFormatAndMount{Interface: mount.New(""), Exec: utilexec.New()}
