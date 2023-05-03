@@ -10,6 +10,8 @@ import (
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -55,7 +57,7 @@ func (s *Server) volumeList(apiContext *api.ApiContext) (*client.GenericCollecti
 			return nil, err
 		}
 		volumeAttachment, err := s.m.GetLHVolumeAttachment(v.Name)
-		if err != nil {
+		if err != nil && !apierrors.IsNotFound(err) {
 			return nil, err
 		}
 
@@ -106,7 +108,7 @@ func (s *Server) responseWithVolume(rw http.ResponseWriter, req *http.Request, i
 		return err
 	}
 	volumeAttachment, err := s.m.GetLHVolumeAttachment(v.Name)
-	if err != nil {
+	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
 
