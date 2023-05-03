@@ -176,6 +176,15 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		}
 	}
 
+	// prevent the changing v.Spec.MigrationNodeID to different node when the volume is doing live migration (when v.Status.CurrentMigrationNodeID != "")
+	if newVolume.Status.CurrentMigrationNodeID != "" &&
+		newVolume.Spec.MigrationNodeID != oldVolume.Spec.MigrationNodeID &&
+		newVolume.Spec.MigrationNodeID != newVolume.Status.CurrentMigrationNodeID &&
+		newVolume.Spec.MigrationNodeID != "" {
+		err := fmt.Errorf("cannot change v.Spec.MigrationNodeID to node %v when the volume is doing live migration to node %v ", newVolume.Spec.MigrationNodeID, newVolume.Status.CurrentMigrationNodeID)
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
 	return nil
 }
 

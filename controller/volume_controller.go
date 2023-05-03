@@ -3745,7 +3745,6 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 	}
 
 	// init the volume migration
-	// TODO: make webhook to prevent the changing v.Spec.MigrationNodeID when v.Status.CurrentMigrationNodeID != ""
 	if v.Status.CurrentMigrationNodeID == "" {
 		v.Status.CurrentMigrationNodeID = v.Spec.MigrationNodeID
 	}

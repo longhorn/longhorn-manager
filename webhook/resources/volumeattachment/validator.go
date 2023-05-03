@@ -36,9 +36,13 @@ func (v *volumeAttachmentValidator) Resource() admission.Resource {
 }
 
 func (v *volumeAttachmentValidator) Create(request *admission.Request, newObj runtime.Object) error {
-	_, ok := newObj.(*longhorn.VolumeAttachment)
+	va, ok := newObj.(*longhorn.VolumeAttachment)
 	if !ok {
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.VolumeAttachment", newObj), "")
+	}
+
+	if err := verifyAttachmentTicketIDConsistency(va.Spec.AttachmentTickets); err != nil {
+		return err
 	}
 
 	return nil
@@ -66,5 +70,18 @@ func (v *volumeAttachmentValidator) Update(request *admission.Request, oldObj ru
 		return werror.NewInvalidError(fmt.Sprintf("label %v is immutable", types.LonghornLabelVolume), "metadata.labels")
 	}
 
+	if err := verifyAttachmentTicketIDConsistency(newVA.Spec.AttachmentTickets); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func verifyAttachmentTicketIDConsistency(attachmentTickets map[string]*longhorn.AttachmentTicket) error {
+	for ticketID, ticket := range attachmentTickets {
+		if ticketID != ticket.ID {
+			return werror.NewInvalidError(fmt.Sprintf("the attachmentTickets map contains inconsistent attachment ticket ID: %v vs %v", ticketID, ticket.ID), "")
+		}
+	}
 	return nil
 }
