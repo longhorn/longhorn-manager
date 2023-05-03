@@ -42,9 +42,9 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v0.0.0-20220609065820-a08f7f47442f
 	github.com/longhorn/backupstore v0.0.0-20230503020833-d16486b28076
-	github.com/longhorn/go-iscsi-helper v0.0.0-20230215054929-acb305e1031b
-	github.com/longhorn/longhorn-engine v1.4.1-rc1.0.20230306062607-ef48312781d9
-	github.com/longhorn/longhorn-instance-manager v1.4.1-rc1.0.20230306071558-69d5a52ed37e
+	github.com/longhorn/go-iscsi-helper v0.0.0-20230425064248-72f136f48524
+	github.com/longhorn/longhorn-engine v1.4.2-0.20230503093729-78d58c7e1536
+	github.com/longhorn/longhorn-instance-manager v1.4.2-0.20230503095019-d050022b93c7
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.1
 	github.com/rancher/dynamiclistener v0.3.1
@@ -56,7 +56,7 @@ require (
 	github.com/urfave/cli v1.22.5
 	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4
 	golang.org/x/net v0.7.0
-	golang.org/x/sys v0.5.0
+	golang.org/x/sys v0.7.0
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac
 	google.golang.org/grpc v1.40.0
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f
@@ -69,7 +69,7 @@ require (
 	k8s.io/kubernetes v1.23.6
 	k8s.io/metrics v0.23.6
 	k8s.io/mount-utils v0.26.3
-	k8s.io/utils v0.0.0-20221107191617-1a15be271d1d
+	k8s.io/utils v0.0.0-20230313181309-38a27ef9d749
 	sigs.k8s.io/controller-runtime v0.4.0
 	sigs.k8s.io/yaml v1.2.0
 )
@@ -135,14 +135,14 @@ require (
 	golang.org/x/text v0.7.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20210831024726-fe130286e0e2 // indirect
-	google.golang.org/protobuf v1.28.1 // indirect
+	google.golang.org/protobuf v1.30.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/apiserver v0.23.6 // indirect
 	k8s.io/component-base v0.23.6 // indirect
 	k8s.io/component-helpers v0.23.6 // indirect
 	k8s.io/klog v1.0.0 // indirect
-	k8s.io/klog/v2 v2.80.1 // indirect
+	k8s.io/klog/v2 v2.90.1 // indirect
 	k8s.io/kube-aggregator v0.18.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65 // indirect
 	sigs.k8s.io/json v0.0.0-20211020170558-c049b76a60c6 // indirect
