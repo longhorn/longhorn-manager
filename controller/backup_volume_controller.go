@@ -219,6 +219,12 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 
 	// Examine DeletionTimestamp to determine if object is under deletion
 	if !backupVolume.DeletionTimestamp.IsZero() {
+
+		if unused, err := bvc.isBackupNotBeingUsedForVolumeRestore(backupVolumeName); !unused {
+			log.WithError(err).Warnf("Unable to delete backups of the backup volume")
+			return nil
+		}
+
 		if err := bvc.ds.DeleteAllBackupsForBackupVolume(backupVolumeName); err != nil {
 			log.WithError(err).Error("Error deleting backups")
 			return err
@@ -431,4 +437,17 @@ func (bvc *BackupVolumeController) isResponsibleFor(bv *longhorn.BackupVolume, d
 	requiresNewOwner := currentNodeEngineAvailable && !currentOwnerEngineAvailable
 
 	return isPreferredOwner || continueToBeOwner || requiresNewOwner, nil
+}
+
+func (bvc *BackupVolumeController) isBackupNotBeingUsedForVolumeRestore(backupVolumeName string) (bool, error) {
+	volumes, err := bvc.ds.ListVolumesByBackupVolumeRO(backupVolumeName)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to list volumes for backup volume %v for checking restore status", backupVolumeName)
+	}
+	for _, v := range volumes {
+		if types.GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeRestore).Status == longhorn.ConditionStatusTrue {
+			return false, fmt.Errorf("backups cannot be deleted due to the ongoing volume %v restoration", v.Name)
+		}
+	}
+	return true, nil
 }
