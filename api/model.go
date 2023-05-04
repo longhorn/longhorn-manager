@@ -91,22 +91,23 @@ type Snapshot struct {
 
 type SnapshotCR struct {
 	client.Resource
-	Name           string            `json:"name"`
-	CRCreationTime string            `json:"crCreationTime"`
-	Volume         string            `json:"volume"`
-	CreateSnapshot bool              `json:"createSnapshot"`
-	Parent         string            `json:"parent"`
-	Children       map[string]bool   `json:"children"`
-	MarkRemoved    bool              `json:"markRemoved"`
-	UserCreated    bool              `json:"userCreated"`
-	CreationTime   string            `json:"creationTime"`
-	Size           int64             `json:"size"`
-	Labels         map[string]string `json:"labels"`
-	OwnerID        string            `json:"ownerID"`
-	Error          string            `json:"error,omitempty"`
-	RestoreSize    int64             `json:"restoreSize"`
-	ReadyToUse     bool              `json:"readyToUse"`
-	Checksum       string            `json:"checksum"`
+	Name           string `json:"name"`
+	CRCreationTime string `json:"crCreationTime"`
+	Volume         string `json:"volume"`
+	CreateSnapshot bool   `json:"createSnapshot"`
+
+	Parent       string            `json:"parent"`
+	Children     map[string]bool   `json:"children"`
+	MarkRemoved  bool              `json:"markRemoved"`
+	UserCreated  bool              `json:"userCreated"`
+	CreationTime string            `json:"creationTime"`
+	Size         int64             `json:"size"`
+	Labels       map[string]string `json:"labels"`
+	OwnerID      string            `json:"ownerID"`
+	Error        string            `json:"error,omitempty"`
+	RestoreSize  int64             `json:"restoreSize"`
+	ReadyToUse   bool              `json:"readyToUse"`
+	Checksum     string            `json:"checksum"`
 }
 
 type BackupTarget struct {

@@ -42,6 +42,7 @@ const (
 	DetachingWaitInterval     = 10 * time.Second
 	VolumeAttachTimeout       = 300 // 5 minutes
 	BackupProcessStartTimeout = 90  // 1.5 minutes
+	SnapshotReadyTimeout      = 390 // 6.5 minutes
 )
 
 type Job struct {
@@ -355,8 +356,7 @@ func (job *Job) doSnapshot() (err error) {
 	var latestSnapshotCR longhornclient.SnapshotCR
 	var latestSnapshotCRCreationTime time.Time
 	for _, snapshotCR := range snapshotCRs {
-		requestCreateNewSnapshot := snapshotCR.CreateSnapshot
-		if !requestCreateNewSnapshot {
+		if !snapshotCR.CreateSnapshot {
 			// This snapshot was created by old snapshot API (AKA old recurring job).
 			// So we skip considering it
 			continue
@@ -386,8 +386,17 @@ func (job *Job) doSnapshot() (err error) {
 		}
 	}
 
-	// wait for the snapshot to be completed
-	for {
+	if err := job.waitForSnaphotReady(volume, SnapshotReadyTimeout); err != nil {
+		return err
+	}
+
+	job.logger.Infof("Complete creating the snapshot %v", job.snapshotName)
+
+	return nil
+}
+
+func (job *Job) waitForSnaphotReady(volume *longhornclient.Volume, timeout int) error {
+	for i := 0; i < timeout; i++ {
 		existSnapshotCR, err := job.api.Volume.ActionSnapshotCRGet(volume, &longhornclient.SnapshotCRInput{
 			Name: job.snapshotName,
 		})
@@ -395,14 +404,11 @@ func (job *Job) doSnapshot() (err error) {
 			return fmt.Errorf("error while waiting for snapshot %v to be ready: %v", job.snapshotName, err)
 		}
 		if existSnapshotCR.ReadyToUse {
-			break
+			return nil
 		}
 		time.Sleep(WaitInterval)
 	}
-
-	job.logger.Infof("Complete creating the snapshot %v", job.snapshotName)
-
-	return nil
+	return fmt.Errorf("timeouted waiting for the the snapshot %v of volume %v to be ready", job.snapshotName, volume.Name)
 }
 
 func (job *Job) doSnapshotCleanup(backupDone bool) (err error) {
