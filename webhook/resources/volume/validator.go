@@ -2,9 +2,12 @@ package volume
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/pkg/errors"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -110,6 +113,10 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 	oldVolume := oldObj.(*longhorn.Volume)
 	newVolume := newObj.(*longhorn.Volume)
 
+	if err := v.validateExpansionSize(oldVolume, newVolume); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
 	if err := validateDataLocalityUpdate(oldVolume, newVolume); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
@@ -144,6 +151,50 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 
 	if err := datastore.CheckVolume(newVolume); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (v *volumeValidator) validateExpansionSize(oldVolume *longhorn.Volume, newVolume *longhorn.Volume) error {
+	oldSize := oldVolume.Spec.Size
+	newSize := newVolume.Spec.Size
+	if newSize == oldSize {
+		return nil
+	}
+	if newSize < oldSize && !newVolume.Status.ExpansionRequired {
+		return fmt.Errorf("shrinking volume %v size from %v to %v is not supported", newVolume.Name, oldSize, newSize)
+	}
+
+	newKubernetesStatus := &newVolume.Status.KubernetesStatus
+	namespace := newKubernetesStatus.Namespace
+	pvcName := newKubernetesStatus.PVCName
+	if pvcName == "" || newKubernetesStatus.LastPVCRefAt != "" {
+		return nil
+	}
+
+	pvc, err := v.ds.GetPersistentVolumeClaim(namespace, pvcName)
+	if err != nil {
+		return err
+	}
+
+	pvcSCName := *pvc.Spec.StorageClassName
+	pvcStorageClass, err := v.ds.GetStorageClassRO(pvcSCName)
+	if err != nil {
+		return err
+	}
+	if pvcStorageClass.AllowVolumeExpansion != nil && !*pvcStorageClass.AllowVolumeExpansion {
+		return fmt.Errorf("storage class %v of PVC %v does not allow the volume expansion", pvcSCName, pvcName)
+	}
+
+	pvcSpecValue, ok := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
+	if !ok {
+		return fmt.Errorf("cannot get request storage of PVC %v", pvcName)
+	}
+
+	requestedSize := resource.MustParse(strconv.FormatInt(newSize, 10))
+	if pvcSpecValue.Cmp(requestedSize) < 0 {
+		return fmt.Errorf("PVC %v size should be expanded from %v to %v first", pvcName, pvcSpecValue.Value(), requestedSize.Value())
 	}
 
 	return nil
