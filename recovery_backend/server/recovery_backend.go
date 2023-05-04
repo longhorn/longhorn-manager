@@ -7,7 +7,6 @@ import (
 
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
-	"github.com/sirupsen/logrus"
 
 	"github.com/longhorn/longhorn-manager/recovery_backend/backend"
 )
@@ -20,7 +19,7 @@ func (r *RecoveryBackendServer) Create(rw http.ResponseWriter, req *http.Request
 		return err
 	}
 
-	logrus.Infof("Creating a recovery backend %v (version %v)", input.Hostname, input.Version)
+	r.rb.Logger.Infof("Creating a recovery backend %v (version %v)", input.Hostname, input.Version)
 	return r.rb.CreateConfigMap(input.Hostname, input.Version)
 }
 
@@ -34,7 +33,7 @@ func (r *RecoveryBackendServer) EndGrace(rw http.ResponseWriter, req *http.Reque
 
 	hostname := mux.Vars(req)["hostname"]
 
-	logrus.Infof("Ending grace for recovery backend %v (version %v)", hostname, input.Version)
+	r.rb.Logger.Infof("Ending grace for recovery backend %v (version %v)", hostname, input.Version)
 	return r.rb.EndGrace(hostname, input.Version)
 }
 
@@ -49,7 +48,7 @@ func (r *RecoveryBackendServer) AddClientID(rw http.ResponseWriter, req *http.Re
 	hostname := mux.Vars(req)["hostname"]
 	clientID := mux.Vars(req)["clientid"]
 
-	logrus.Infof("Adding client '%v' to the recovery backend %v (version %v)", clientID, hostname, input.Version)
+	r.rb.Logger.Infof("Adding client '%v' to the recovery backend %v (version %v)", clientID, hostname, input.Version)
 	return r.rb.AddClientID(hostname, input.Version, backend.ClientID(clientID))
 }
 
@@ -57,7 +56,7 @@ func (r *RecoveryBackendServer) RemoveClientID(rw http.ResponseWriter, req *http
 	hostname := mux.Vars(req)["hostname"]
 	clientID := mux.Vars(req)["clientid"]
 
-	logrus.Infof("Removing client '%v' from the recovery backend %v", clientID, hostname)
+	r.rb.Logger.Infof("Removing client '%v' from the recovery backend %v", clientID, hostname)
 	return r.rb.RemoveClientID(hostname, backend.ClientID(clientID))
 }
 
@@ -66,7 +65,7 @@ func (r *RecoveryBackendServer) RecoveryBackendReadClientIDs(rw http.ResponseWri
 
 	hostname := mux.Vars(req)["hostname"]
 
-	logrus.Infof("Reading clients from recovery backend %v", hostname)
+	r.rb.Logger.Infof("Reading clients from recovery backend %v", hostname)
 	clients, err := r.rb.ReadClientIDs(hostname)
 	if err != nil {
 		return err
@@ -98,7 +97,7 @@ func (r *RecoveryBackendServer) AddRevokeFilehandle(rw http.ResponseWriter, req 
 	clientID := mux.Vars(req)["clientid"]
 	revokeFilehandle := mux.Vars(req)["revokeFilehandle"]
 
-	logrus.Infof("Adding client '%v' revoke filehandle '%v' to the recovery backend %v with version %v",
+	r.rb.Logger.Infof("Adding client '%v' revoke filehandle '%v' to the recovery backend %v with version %v",
 		clientID, revokeFilehandle, hostname, input.Version)
 	return r.rb.AddRevokeFilehandle(hostname, input.Version, backend.ClientID(clientID), backend.RevokeFileHandle(revokeFilehandle))
 }

@@ -236,6 +236,20 @@ func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string
 }
 
 func needToUpdateImage(existingObj, newObj runtime.Object) bool {
+	_, isDeploy := existingObj.(*appsv1.Deployment)
+	if isDeploy {
+		return needToUpdateDeployImage(existingObj, newObj)
+	}
+
+	_, isDaemonSet := existingObj.(*appsv1.DaemonSet)
+	if isDaemonSet {
+		return needToUpdateDaemonSetImage(existingObj, newObj)
+	}
+
+	return false
+}
+
+func needToUpdateDeployImage(existingObj, newObj runtime.Object) bool {
 	existingDeployment, ok := existingObj.(*appsv1.Deployment)
 	if !ok {
 		return false
@@ -253,6 +267,30 @@ func needToUpdateImage(existingObj, newObj runtime.Object) bool {
 
 	newImages := make(map[string]bool)
 	for _, container := range newDeployment.Spec.Template.Spec.Containers {
+		newImages[container.Image] = true
+	}
+
+	return !reflect.DeepEqual(existingImages, newImages)
+}
+
+func needToUpdateDaemonSetImage(existingObj, newObj runtime.Object) bool {
+	existingDaemonSet, ok := existingObj.(*appsv1.DaemonSet)
+	if !ok {
+		return false
+	}
+
+	newDaemonSet, ok := newObj.(*appsv1.DaemonSet)
+	if !ok {
+		return false
+	}
+
+	existingImages := make(map[string]bool)
+	for _, container := range existingDaemonSet.Spec.Template.Spec.Containers {
+		existingImages[container.Image] = true
+	}
+
+	newImages := make(map[string]bool)
+	for _, container := range newDaemonSet.Spec.Template.Spec.Containers {
 		newImages[container.Image] = true
 	}
 

@@ -49,6 +49,10 @@ func (n *nodeValidator) Create(request *admission.Request, newObj runtime.Object
 		return werror.NewInvalidError("replicaManagerCPURequest should be greater than or equal to 0", "")
 	}
 
+	if node.Spec.InstanceManagerCPURequest < 0 {
+		return werror.NewInvalidError("instanceManagerCPURequest should be greater than or equal to 0", "")
+	}
+
 	return nil
 }
 
@@ -62,6 +66,10 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 
 	if newNode.Spec.ReplicaManagerCPURequest < 0 {
 		return werror.NewInvalidError("replicaManagerCPURequest should be greater than or equal to 0", "")
+	}
+
+	if newNode.Spec.InstanceManagerCPURequest < 0 {
+		return werror.NewInvalidError("instanceManagerCPURequest should be greater than or equal to 0", "")
 	}
 
 	// Only scheduling disabled node can be evicted
@@ -82,7 +90,7 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
-	if newNode.Spec.EngineManagerCPURequest != 0 || newNode.Spec.ReplicaManagerCPURequest != 0 {
+	if newNode.Spec.EngineManagerCPURequest != 0 || newNode.Spec.ReplicaManagerCPURequest != 0 || newNode.Spec.InstanceManagerCPURequest != 0 {
 		kubeNode, err := n.ds.GetKubernetesNode(oldNode.Name)
 		if err != nil {
 			if !datastore.ErrorIsNotFound(err) {
@@ -109,7 +117,15 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 			if newNode.Spec.ReplicaManagerCPURequest > 0 {
 				replicaManagerCPUInPercentage = fmt.Sprintf("%.0f", math.Round(float64(newNode.Spec.ReplicaManagerCPURequest)/allocatableCPU*100.0))
 			}
-			if err := types.ValidateCPUReservationValues(engineManagerCPUInPercentage, replicaManagerCPUInPercentage); err != nil {
+			instanceManagerCPUSetting, err := n.ds.GetSetting(types.SettingNameGuaranteedInstanceManagerCPU)
+			if err != nil {
+				return werror.NewInvalidError(err.Error(), "")
+			}
+			instanceManagerCPUInPercentage := instanceManagerCPUSetting.Value
+			if newNode.Spec.InstanceManagerCPURequest > 0 {
+				instanceManagerCPUInPercentage = fmt.Sprintf("%.0f", math.Round(float64(newNode.Spec.InstanceManagerCPURequest)/allocatableCPU*100.0))
+			}
+			if err := types.ValidateCPUReservationValues(engineManagerCPUInPercentage, replicaManagerCPUInPercentage, instanceManagerCPUInPercentage); err != nil {
 				return werror.NewInvalidError(err.Error(), "")
 			}
 		}

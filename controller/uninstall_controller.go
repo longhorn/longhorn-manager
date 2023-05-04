@@ -296,17 +296,6 @@ func (c *UninstallController) uninstall() error {
 		return err
 	}
 
-	deployments := []string{
-		types.LonghornRecoveryBackendDeploymentName,
-		types.LonghornAdmissionWebhookDeploymentName,
-		types.LonghornConversionWebhookDeploymentName,
-	}
-	for _, deployment := range deployments {
-		if waitForUpdate, err := c.deleteDeployment(deployment); err != nil || waitForUpdate {
-			return err
-		}
-	}
-
 	if err := c.deleteWebhookConfiguration(); err != nil {
 		return err
 	}
