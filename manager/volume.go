@@ -9,7 +9,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -568,21 +567,6 @@ func (m *VolumeManager) checkAndExpandPVC(namespace string, pvcName string, size
 	pvc, err := m.ds.GetPersistentVolumeClaim(namespace, pvcName)
 	if err != nil {
 		return false, -1, err
-	}
-
-	longhornStaticStorageClass, err := m.ds.GetSettingValueExisted(types.SettingNameDefaultLonghornStaticStorageClass)
-	if err != nil {
-		return false, -1, err
-	}
-
-	pvcSCName := *pvc.Spec.StorageClassName
-	if pvcSCName == longhornStaticStorageClass {
-		if _, err := m.ds.GetStorageClassRO(pvcSCName); err != nil {
-			if !apierrors.IsNotFound(err) {
-				return false, -1, err
-			}
-			return false, size, nil
-		}
 	}
 
 	// TODO: Should check for pvc.Spec.Resources.Requests.Storage() here, once upgrade API to v0.18.x.
