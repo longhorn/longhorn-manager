@@ -23,10 +23,8 @@ import (
 )
 
 var targetingDeployment map[string]bool = map[string]bool{
-	types.CSIAttacherName:                         true,
-	types.CSIProvisionerName:                      true,
-	types.LonghornAdmissionWebhookDeploymentName:  true,
-	types.LonghornConversionWebhookDeploymentName: true,
+	types.CSIAttacherName:    true,
+	types.CSIProvisionerName: true,
 }
 
 type KubernetesPDBController struct {

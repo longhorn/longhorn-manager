@@ -274,17 +274,21 @@ type ExpandInput struct {
 
 type Node struct {
 	client.Resource
-	Name                     string                        `json:"name"`
-	Address                  string                        `json:"address"`
-	AllowScheduling          bool                          `json:"allowScheduling"`
-	EvictionRequested        bool                          `json:"evictionRequested"`
-	Disks                    map[string]DiskInfo           `json:"disks"`
-	Conditions               map[string]longhorn.Condition `json:"conditions"`
-	Tags                     []string                      `json:"tags"`
-	Region                   string                        `json:"region"`
-	Zone                     string                        `json:"zone"`
-	EngineManagerCPURequest  int                           `json:"engineManagerCPURequest"`
-	ReplicaManagerCPURequest int                           `json:"replicaManagerCPURequest"`
+	Name                      string                        `json:"name"`
+	Address                   string                        `json:"address"`
+	AllowScheduling           bool                          `json:"allowScheduling"`
+	EvictionRequested         bool                          `json:"evictionRequested"`
+	Disks                     map[string]DiskInfo           `json:"disks"`
+	Conditions                map[string]longhorn.Condition `json:"conditions"`
+	Tags                      []string                      `json:"tags"`
+	Region                    string                        `json:"region"`
+	Zone                      string                        `json:"zone"`
+	InstanceManagerCPURequest int                           `json:"instanceManagerCPURequest"`
+
+	// Deprecated: Replaced by InstanceManagerCPURequest
+	EngineManagerCPURequest int `json:"engineManagerCPURequest"`
+	// Deprecated: Replaced by InstanceManagerCPURequest
+	ReplicaManagerCPURequest int `json:"replicaManagerCPURequest"`
 }
 
 type DiskStatus struct {
@@ -406,12 +410,17 @@ type RebuildStatus struct {
 
 type InstanceManager struct {
 	client.Resource
-	CurrentState longhorn.InstanceManagerState       `json:"currentState"`
-	Image        string                              `json:"image"`
-	Name         string                              `json:"name"`
-	NodeID       string                              `json:"nodeID"`
-	ManagerType  string                              `json:"managerType"`
-	Instances    map[string]longhorn.InstanceProcess `json:"instances"`
+	CurrentState longhorn.InstanceManagerState `json:"currentState"`
+	Image        string                        `json:"image"`
+	Name         string                        `json:"name"`
+	NodeID       string                        `json:"nodeID"`
+	ManagerType  string                        `json:"managerType"`
+
+	InstanceEngines  map[string]longhorn.InstanceProcess `json:"instanceEngines"`
+	InstanceReplicas map[string]longhorn.InstanceProcess `json:"instanceReplicas"`
+
+	// Deprecated
+	Instances map[string]longhorn.InstanceProcess `json:"instances"`
 }
 
 type RecurringJob struct {
@@ -1585,16 +1594,17 @@ func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiCont
 			Actions: map[string]string{},
 			Links:   map[string]string{},
 		},
-		Name:                     node.Name,
-		Address:                  address,
-		AllowScheduling:          node.Spec.AllowScheduling,
-		EvictionRequested:        node.Spec.EvictionRequested,
-		Conditions:               sliceToMap(node.Status.Conditions),
-		Tags:                     node.Spec.Tags,
-		Region:                   node.Status.Region,
-		Zone:                     node.Status.Zone,
-		EngineManagerCPURequest:  node.Spec.EngineManagerCPURequest,
-		ReplicaManagerCPURequest: node.Spec.ReplicaManagerCPURequest,
+		Name:                      node.Name,
+		Address:                   address,
+		AllowScheduling:           node.Spec.AllowScheduling,
+		EvictionRequested:         node.Spec.EvictionRequested,
+		Conditions:                sliceToMap(node.Status.Conditions),
+		Tags:                      node.Spec.Tags,
+		Region:                    node.Status.Region,
+		Zone:                      node.Status.Zone,
+		EngineManagerCPURequest:   node.Spec.EngineManagerCPURequest,
+		ReplicaManagerCPURequest:  node.Spec.ReplicaManagerCPURequest,
+		InstanceManagerCPURequest: node.Spec.InstanceManagerCPURequest,
 	}
 
 	disks := map[string]DiskInfo{}
@@ -1769,12 +1779,14 @@ func toInstanceManagerResource(im *longhorn.InstanceManager) *InstanceManager {
 			Id:   im.Name,
 			Type: "instanceManager",
 		},
-		CurrentState: im.Status.CurrentState,
-		Image:        im.Spec.Image,
-		Name:         im.Name,
-		NodeID:       im.Spec.NodeID,
-		ManagerType:  string(im.Spec.Type),
-		Instances:    im.Status.Instances,
+		CurrentState:     im.Status.CurrentState,
+		Image:            im.Spec.Image,
+		Name:             im.Name,
+		NodeID:           im.Spec.NodeID,
+		ManagerType:      string(im.Spec.Type),
+		InstanceEngines:  im.Status.InstanceEngines,
+		InstanceReplicas: im.Status.InstanceReplicas,
+		Instances:        im.Status.Instances,
 	}
 }
 

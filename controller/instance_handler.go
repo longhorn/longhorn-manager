@@ -46,7 +46,7 @@ func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler Instance
 	}
 }
 
-func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceManager, instanceName string, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus) {
+func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceManager, instanceName string, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus, instances map[string]longhorn.InstanceProcess) {
 	defer func() {
 		if status.CurrentState == longhorn.InstanceStateStopped {
 			status.InstanceManagerName = ""
@@ -101,7 +101,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		return
 	}
 
-	instance, exists := im.Status.Instances[instanceName]
+	instance, exists := instances[instanceName]
 	if !exists {
 		if status.Started {
 			if status.CurrentState != longhorn.InstanceStateError {
@@ -278,6 +278,13 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		longhorn.InstanceConditionTypeInstanceCreation, longhorn.ConditionStatusTrue,
 		"", "")
 
+	instances := map[string]longhorn.InstanceProcess{}
+	if im != nil {
+		instances, err = h.getInstancesFromInstanceManager(runtimeObj, im)
+		if err != nil {
+			return err
+		}
+	}
 	// do nothing for incompatible instance except for deleting
 	switch spec.DesireState {
 	case longhorn.InstanceStateRunning:
@@ -289,7 +296,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 			break
 		}
 
-		if i, exists := im.Status.Instances[instanceName]; exists && i.Status.State == longhorn.InstanceStateRunning {
+		if i, exists := instances[instanceName]; exists && i.Status.State == longhorn.InstanceStateRunning {
 			status.Started = true
 			break
 		}
@@ -328,7 +335,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		if im != nil && im.DeletionTimestamp == nil {
 			// there is a delay between deleteInstance() invocation and state/InstanceManager update,
 			// deleteInstance() may be called multiple times.
-			if _, exists := im.Status.Instances[instanceName]; exists {
+			if _, exists := instances[instanceName]; exists {
 				if err := h.deleteInstance(instanceName, runtimeObj); err != nil {
 					return err
 				}
@@ -341,7 +348,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 
 	oldState := status.CurrentState
 
-	h.syncStatusWithInstanceManager(im, instanceName, spec, status)
+	h.syncStatusWithInstanceManager(im, instanceName, spec, status, instances)
 
 	if oldState != status.CurrentState {
 		logrus.Debugf("Instance handler updated instance %v state, old state %v, new state %v", instanceName, oldState, status.CurrentState)
@@ -365,7 +372,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		if im == nil {
 			break
 		}
-		if instance, exists := im.Status.Instances[instanceName]; exists {
+		if instance, exists := instances[instanceName]; exists {
 			// If instance is in error state and the ErrorMsg contains 61 (ENODATA) error code, then it indicates
 			// the creation of engine process failed because there is no available backend (replica).
 			if spec.DesireState == longhorn.InstanceStateRunning {
@@ -383,6 +390,16 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		}
 	}
 	return nil
+}
+
+func (h *InstanceHandler) getInstancesFromInstanceManager(obj runtime.Object, instanceManager *longhorn.InstanceManager) (map[string]longhorn.InstanceProcess, error) {
+	switch obj.(type) {
+	case *longhorn.Engine:
+		return types.ConsolidateInstances(instanceManager.Status.InstanceEngines, instanceManager.Status.Instances), nil
+	case *longhorn.Replica:
+		return types.ConsolidateInstances(instanceManager.Status.InstanceReplicas, instanceManager.Status.Instances), nil
+	}
+	return nil, fmt.Errorf("unknown type for getInstancesFromInstanceManager: %+v", obj)
 }
 
 func (h *InstanceHandler) printInstanceLogs(instanceName string, obj runtime.Object) error {

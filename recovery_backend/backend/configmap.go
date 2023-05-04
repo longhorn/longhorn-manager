@@ -22,6 +22,7 @@ type RevokeFileHandle string
 type RecoveryBackend struct {
 	Namespace string
 	Datastore *datastore.DataStore
+	Logger    logrus.FieldLogger
 }
 
 func (rb *RecoveryBackend) newConfigMap(namespace, name, version, smPodName string) (*v1.ConfigMap, error) {
@@ -101,7 +102,7 @@ func (rb *RecoveryBackend) EndGrace(hostname, version string) error {
 func (rb *RecoveryBackend) AddClientID(hostname, version string, clientID ClientID) error {
 	configMapName := types.GetConfigMapNameFromHostname(hostname)
 
-	logrus.Infof("Adding client '%v' in recovery backend %v (version %v)", clientID, configMapName, version)
+	rb.Logger.Infof("Adding client '%v' in recovery backend %v (version %v)", clientID, configMapName, version)
 
 	_, err := util.RetryOnConflictCause(func() (interface{}, error) {
 		cm, err := rb.Datastore.GetConfigMapWithoutCache(rb.Namespace, configMapName)
@@ -120,7 +121,7 @@ func (rb *RecoveryBackend) AddClientID(hostname, version string, clientID Client
 		}
 
 		if _, ok := data[clientID]; ok {
-			logrus.Infof("Client %v is existing in recovery backend %v", clientID, configMapName)
+			rb.Logger.Infof("Client %v is existing in recovery backend %v", clientID, configMapName)
 			return nil, nil
 		}
 
@@ -139,7 +140,7 @@ func (rb *RecoveryBackend) AddClientID(hostname, version string, clientID Client
 
 func (rb *RecoveryBackend) RemoveClientID(hostname string, clientID ClientID) error {
 	configMapName := types.GetConfigMapNameFromHostname(hostname)
-	logrus.Infof("Removing client '%v' in recovery backend %v", clientID, configMapName)
+	rb.Logger.Infof("Removing client '%v' in recovery backend %v", clientID, configMapName)
 
 	_, err := util.RetryOnConflictCause(func() (interface{}, error) {
 		cm, err := rb.Datastore.GetConfigMapWithoutCache(rb.Namespace, configMapName)
@@ -178,7 +179,7 @@ func (rb *RecoveryBackend) RemoveClientID(hostname string, clientID ClientID) er
 
 func (rb *RecoveryBackend) ReadClientIDs(hostname string) ([]string, error) {
 	configMapName := types.GetConfigMapNameFromHostname(hostname)
-	logrus.Infof("Reading clients from recovery backend %v", configMapName)
+	rb.Logger.Infof("Reading clients from recovery backend %v", configMapName)
 
 	cm, err := rb.Datastore.GetConfigMapWithoutCache(rb.Namespace, configMapName)
 	if err != nil {
@@ -187,7 +188,7 @@ func (rb *RecoveryBackend) ReadClientIDs(hostname string) ([]string, error) {
 
 	version, ok := cm.Annotations["version"]
 	if !ok {
-		logrus.Infof("Annotation version is not existing in recovery backend %v", configMapName)
+		rb.Logger.Infof("Annotation version is not existing in recovery backend %v", configMapName)
 		return []string{}, nil
 	}
 
@@ -211,7 +212,7 @@ func (rb *RecoveryBackend) ReadClientIDs(hostname string) ([]string, error) {
 
 func (rb *RecoveryBackend) AddRevokeFilehandle(hostname, version string, clientID ClientID, revokeFilehandle RevokeFileHandle) error {
 	configMapName := types.GetConfigMapNameFromHostname(hostname)
-	logrus.Infof("Adding client %v revoke filehandle %v into recovery backend %v (version %v)",
+	rb.Logger.Infof("Adding client %v revoke filehandle %v into recovery backend %v (version %v)",
 		clientID, revokeFilehandle, configMapName, version)
 
 	_, err := util.RetryOnConflictCause(func() (interface{}, error) {

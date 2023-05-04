@@ -1,77 +1,84 @@
 package app
 
 import (
+	"context"
+	"crypto/tls"
 	"fmt"
-	"os"
+	"io"
+	"net/http"
+	"time"
 
-	"github.com/pkg/errors"
-	"github.com/rancher/wrangler/pkg/signals"
 	"github.com/sirupsen/logrus"
-	"github.com/urfave/cli"
-
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/server"
 )
 
-func AdmissionWebhookServerCommand() cli.Command {
-	return webhookServerCommand(types.WebhookTypeAdmission)
-}
+var (
+	defaultStartTimeout = 60 * time.Second
+)
 
-func ConversionWebhookServerCommand() cli.Command {
-	return webhookServerCommand(types.WebhookTypeConversion)
-}
-
-func webhookServerCommand(webhookType string) cli.Command {
-	return cli.Command{
-		Name: fmt.Sprintf("%v-webhook", webhookType),
-		Flags: []cli.Flag{
-			cli.StringFlag{
-				Name:  FlagServiceAccount,
-				Usage: fmt.Sprintf("Specify service account for %v webhook", webhookType),
-			},
-			cli.StringFlag{
-				Name:  FlagKubeConfig,
-				Usage: "Specify path to kube config (optional)",
-			},
-		},
-		Action: func(c *cli.Context) {
-			if err := runWebhookServer(c, webhookType); err != nil {
-				logrus.Fatalf("Error starting longhorn %v webhook server: %v", webhookType, err)
-			}
-		},
-	}
-}
-
-func runWebhookServer(c *cli.Context, webhookType string) error {
+func startWebhook(ctx context.Context, serviceAccount, kubeconfigPath, webhookType string) error {
 	logrus.Infof("Starting longhorn %s webhook server", webhookType)
 
-	ctx := signals.SetupSignalContext()
-
-	serviceAccount := c.String(FlagServiceAccount)
-	if serviceAccount == "" {
-		return fmt.Errorf("require %v", FlagServiceAccount)
+	var webhookPort int
+	switch webhookType {
+	case types.WebhookTypeAdmission:
+		webhookPort = types.DefaultAdmissionWebhookPort
+	case types.WebhookTypeConversion:
+		webhookPort = types.DefaultConversionWebhookPort
+	default:
+		return fmt.Errorf("unexpected webhook server type %v", webhookType)
 	}
-	kubeconfigPath := c.String(FlagKubeConfig)
 
-	namespace := os.Getenv(types.EnvPodNamespace)
-	if namespace == "" {
-		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, "+
-			"using default namespace", types.EnvPodNamespace)
-		namespace = corev1.NamespaceDefault
-	}
+	namespace := util.GetNamespace(types.EnvPodNamespace)
 
 	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
-		return errors.Wrap(err, "unable to get client config")
+		return fmt.Errorf("unable to get client config: %v", err)
 	}
 
 	s := server.New(ctx, cfg, namespace, webhookType)
-	if err := s.ListenAndServe(); err != nil {
-		return err
+	go func() {
+		if err := s.ListenAndServe(); err != nil {
+			logrus.Fatalf("Error %v webhook server failed: %v", webhookType, err)
+		}
+	}()
+
+	logrus.Infof("Waiting for %v webhook to become ready", webhookType)
+	cli := http.Client{
+		Timeout: time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
 	}
-	<-ctx.Done()
+	webhookHealthEndpoint := fmt.Sprintf("https://localhost:%d/v1/healthz", webhookPort)
+	running := false
+	for start := time.Now(); time.Since(start) < defaultStartTimeout; {
+		resp, err := cli.Get(webhookHealthEndpoint)
+		if err != nil {
+			logrus.WithError(err).Warnf("Error getting webhook health endpoint %v", webhookHealthEndpoint)
+		} else if resp.StatusCode == 200 {
+			logrus.Infof("Webhook %v is ready", webhookType)
+			running = true
+			break
+		} else {
+			bodyBytes, err := io.ReadAll(resp.Body)
+			if err != nil {
+				logrus.Warnf("Webhook health endpoint return %d not 200: cannot read the body", resp.StatusCode)
+			}
+			bodyString := string(bodyBytes)
+			logrus.Warnf("Webhook health endpoint return %d not 200: %v", resp.StatusCode, bodyString)
+		}
+
+		time.Sleep(2 * time.Second)
+	}
+	if !running {
+		return fmt.Errorf("%v webhook is not ready after %v sec", webhookType, defaultStartTimeout)
+	}
+
+	logrus.Warnf("Started longhorn %s webhook server", webhookType)
 	return nil
 }

@@ -80,16 +80,16 @@ const (
 )
 
 const (
-	DefaultAPIPort           = 9500
-	DefaultWebhookServerPort = 9443
+	DefaultAPIPort                   = 9500
+	DefaultConversionWebhookPort     = 9501
+	DefaultAdmissionWebhookPort      = 9502
+	DefaultRecoveryBackendServerPort = 9503
 
 	WebhookTypeConversion = "conversion"
 	WebhookTypeAdmission  = "admission"
 
 	ValidatingWebhookName = "longhorn-webhook-validator"
 	MutatingWebhookName   = "longhorn-webhook-mutator"
-
-	DefaultRecoveryBackendServerPort = 9600
 
 	EngineBinaryDirectoryInContainer = "/engine-binaries/"
 	EngineBinaryDirectoryOnHost      = "/var/lib/longhorn/engine-binaries/"
@@ -622,12 +622,16 @@ func GetInstanceManagerName(imType longhorn.InstanceManagerType, nodeName, image
 		return engineManagerPrefix + hashedSuffix, nil
 	case longhorn.InstanceManagerTypeReplica:
 		return replicaManagerPrefix + hashedSuffix, nil
+	case longhorn.InstanceManagerTypeAllInOne:
+		return instanceManagerPrefix + hashedSuffix, nil
 	}
 	return "", fmt.Errorf("cannot generate name for unknown instance manager type %v", imType)
 }
 
 func GetInstanceManagerPrefix(imType longhorn.InstanceManagerType) string {
 	switch imType {
+	case longhorn.InstanceManagerTypeAllInOne:
+		return instanceManagerPrefix
 	case longhorn.InstanceManagerTypeEngine:
 		return engineManagerPrefix
 	case longhorn.InstanceManagerTypeReplica:
@@ -874,7 +878,7 @@ func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[st
 	}, nil
 }
 
-func ValidateCPUReservationValues(engineManagerCPUStr, replicaManagerCPUStr string) error {
+func ValidateCPUReservationValues(engineManagerCPUStr, replicaManagerCPUStr, instanceManagerCPUStr string) error {
 	engineManagerCPU, err := strconv.Atoi(engineManagerCPUStr)
 	if err != nil {
 		return fmt.Errorf("guaranteed/requested engine manager CPU value %v is not int: %v", engineManagerCPUStr, err)
@@ -883,8 +887,14 @@ func ValidateCPUReservationValues(engineManagerCPUStr, replicaManagerCPUStr stri
 	if err != nil {
 		return fmt.Errorf("guaranteed/requested replica manager CPU value %v is not int: %v", replicaManagerCPUStr, err)
 	}
-	if engineManagerCPU+replicaManagerCPU < 0 || engineManagerCPU+replicaManagerCPU > 40 {
-		return fmt.Errorf("the requested engine manager CPU and replica manager CPU are %v%% and %v%% of a node total CPU, respectively. The sum should not be smaller than 0%% or greater than 40%%", engineManagerCPU, replicaManagerCPU)
+	instanceManagerCPU, err := strconv.Atoi(instanceManagerCPUStr)
+	if err != nil {
+		return fmt.Errorf("guaranteed/requested instance manager CPU value %v is not int: %v", replicaManagerCPUStr, err)
+	}
+	isUnderLimit := engineManagerCPU+replicaManagerCPU < 0 || instanceManagerCPU < 0
+	isOverLimit := engineManagerCPU+replicaManagerCPU > 40 || instanceManagerCPU > 40
+	if isUnderLimit || isOverLimit {
+		return fmt.Errorf("invalid requested instance manager CPUs. Valid instance manager CPU range between 0%% - 40%%")
 	}
 	return nil
 }
@@ -905,4 +915,24 @@ func CreateCniAnnotationFromSetting(storageNetwork *longhorn.Setting) string {
 
 func BackupStoreRequireCredential(backupType string) bool {
 	return backupType == BackupStoreTypeS3 || backupType == BackupStoreTypeCIFS
+}
+
+func ConsolidateInstances(instancesMaps ...map[string]longhorn.InstanceProcess) map[string]longhorn.InstanceProcess {
+	consolidated := make(map[string]longhorn.InstanceProcess)
+	for _, instances := range instancesMaps {
+		for name, instance := range instances {
+			consolidated[name] = instance
+		}
+	}
+	return consolidated
+}
+
+func ConsolidateInstanceManagers(instanceManagerMaps ...map[string]*longhorn.InstanceManager) map[string]*longhorn.InstanceManager {
+	consolidated := make(map[string]*longhorn.InstanceManager)
+	for _, instanceManagers := range instanceManagerMaps {
+		for name, instanceManager := range instanceManagers {
+			consolidated[name] = instanceManager
+		}
+	}
+	return consolidated
 }
