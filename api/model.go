@@ -23,30 +23,32 @@ import (
 type Volume struct {
 	client.Resource
 
-	Name                      string                                 `json:"name"`
-	Size                      string                                 `json:"size"`
-	Frontend                  longhorn.VolumeFrontend                `json:"frontend"`
-	DisableFrontend           bool                                   `json:"disableFrontend"`
-	FromBackup                string                                 `json:"fromBackup"`
-	RestoreVolumeRecurringJob longhorn.RestoreVolumeRecurringJobType `json:"restoreVolumeRecurringJob"`
-	DataSource                longhorn.VolumeDataSource              `json:"dataSource"`
-	DataLocality              longhorn.DataLocality                  `json:"dataLocality"`
-	StaleReplicaTimeout       int                                    `json:"staleReplicaTimeout"`
-	State                     longhorn.VolumeState                   `json:"state"`
-	Robustness                longhorn.VolumeRobustness              `json:"robustness"`
-	EngineImage               string                                 `json:"engineImage"`
-	CurrentImage              string                                 `json:"currentImage"`
-	BackingImage              string                                 `json:"backingImage"`
-	Created                   string                                 `json:"created"`
-	LastBackup                string                                 `json:"lastBackup"`
-	LastBackupAt              string                                 `json:"lastBackupAt"`
-	LastAttachedBy            string                                 `json:"lastAttachedBy"`
-	Standby                   bool                                   `json:"standby"`
-	RestoreRequired           bool                                   `json:"restoreRequired"`
-	RevisionCounterDisabled   bool                                   `json:"revisionCounterDisabled"`
-	SnapshotDataIntegrity     longhorn.SnapshotDataIntegrity         `json:"snapshotDataIntegrity"`
-	UnmapMarkSnapChainRemoved longhorn.UnmapMarkSnapChainRemoved     `json:"unmapMarkSnapChainRemoved"`
-	BackupCompressionMethod   longhorn.BackupCompressionMethod       `json:"backupCompressionMethod"`
+	Name                        string                                 `json:"name"`
+	Size                        string                                 `json:"size"`
+	Frontend                    longhorn.VolumeFrontend                `json:"frontend"`
+	DisableFrontend             bool                                   `json:"disableFrontend"`
+	FromBackup                  string                                 `json:"fromBackup"`
+	RestoreVolumeRecurringJob   longhorn.RestoreVolumeRecurringJobType `json:"restoreVolumeRecurringJob"`
+	DataSource                  longhorn.VolumeDataSource              `json:"dataSource"`
+	DataLocality                longhorn.DataLocality                  `json:"dataLocality"`
+	StaleReplicaTimeout         int                                    `json:"staleReplicaTimeout"`
+	State                       longhorn.VolumeState                   `json:"state"`
+	Robustness                  longhorn.VolumeRobustness              `json:"robustness"`
+	EngineImage                 string                                 `json:"engineImage"`
+	CurrentImage                string                                 `json:"currentImage"`
+	BackingImage                string                                 `json:"backingImage"`
+	Created                     string                                 `json:"created"`
+	LastBackup                  string                                 `json:"lastBackup"`
+	LastBackupAt                string                                 `json:"lastBackupAt"`
+	LastAttachedBy              string                                 `json:"lastAttachedBy"`
+	Standby                     bool                                   `json:"standby"`
+	RestoreRequired             bool                                   `json:"restoreRequired"`
+	RevisionCounterDisabled     bool                                   `json:"revisionCounterDisabled"`
+	SnapshotDataIntegrity       longhorn.SnapshotDataIntegrity         `json:"snapshotDataIntegrity"`
+	UnmapMarkSnapChainRemoved   longhorn.UnmapMarkSnapChainRemoved     `json:"unmapMarkSnapChainRemoved"`
+	BackupCompressionMethod     longhorn.BackupCompressionMethod       `json:"backupCompressionMethod"`
+	ReplicaSoftAntiAffinity     longhorn.ReplicaSoftAntiAffinity       `json:"replicaSoftAntiAffinity"`
+	ReplicaZoneSoftAntiAffinity longhorn.ReplicaZoneSoftAntiAffinity   `json:"replicaZoneSoftAntiAffinity"`
 
 	DiskSelector         []string                      `json:"diskSelector"`
 	NodeSelector         []string                      `json:"nodeSelector"`
@@ -249,6 +251,14 @@ type UpdateBackupCompressionMethodInput struct {
 
 type UpdateUnmapMarkSnapChainRemovedInput struct {
 	UnmapMarkSnapChainRemoved string `json:"unmapMarkSnapChainRemoved"`
+}
+
+type UpdateReplicaSoftAntiAffinityInput struct {
+	ReplicaSoftAntiAffinity string `json:"replicaSoftAntiAffinity"`
+}
+
+type UpdateReplicaZoneSoftAntiAffinityInput struct {
+	ReplicaZoneSoftAntiAffinity string `json:"replicaZoneSoftAntiAffinity"`
 }
 
 type PVCreateInput struct {
@@ -485,6 +495,8 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("UpdateSnapshotDataIntegrityInput", UpdateSnapshotDataIntegrityInput{})
 	schemas.AddType("UpdateBackupCompressionInput", UpdateBackupCompressionMethodInput{})
 	schemas.AddType("UpdateUnmapMarkSnapChainRemovedInput", UpdateUnmapMarkSnapChainRemovedInput{})
+	schemas.AddType("UpdateReplicaSoftAntiAffinityInput", UpdateReplicaSoftAntiAffinityInput{})
+	schemas.AddType("UpdateReplicaZoneSoftAntiAffinityInput", UpdateReplicaZoneSoftAntiAffinityInput{})
 	schemas.AddType("workloadStatus", longhorn.WorkloadStatus{})
 	schemas.AddType("cloneStatus", longhorn.VolumeCloneStatus{})
 
@@ -823,6 +835,14 @@ func volumeSchema(volume *client.Schema) {
 			Input: "UpdateUnmapMarkSnapChainRemovedInput",
 		},
 
+		"updateReplicaSoftAntiAffinity": {
+			Input: "UpdateReplicaSoftAntiAffinityInput",
+		},
+
+		"updateReplicaZoneSoftAntiAffinity": {
+			Input: "UpdateReplicaZoneSoftAntiAffinityInput",
+		},
+
 		"pvCreate": {
 			Input:  "PVCreateInput",
 			Output: "volume",
@@ -937,8 +957,20 @@ func volumeSchema(volume *client.Schema) {
 	unmapMarkSnapChainRemoved := volume.ResourceFields["unmapMarkSnapChainRemoved"]
 	unmapMarkSnapChainRemoved.Required = true
 	unmapMarkSnapChainRemoved.Create = true
-	unmapMarkSnapChainRemoved.Default = false
+	unmapMarkSnapChainRemoved.Default = longhorn.UnmapMarkSnapChainRemovedIgnored
 	volume.ResourceFields["unmapMarkSnapChainRemoved"] = unmapMarkSnapChainRemoved
+
+	replicaSoftAntiAffinity := volume.ResourceFields["replicaSoftAntiAffinity"]
+	replicaSoftAntiAffinity.Required = true
+	replicaSoftAntiAffinity.Create = true
+	replicaSoftAntiAffinity.Default = longhorn.ReplicaSoftAntiAffinityDefault
+	volume.ResourceFields["replicaSoftAntiAffinity"] = replicaSoftAntiAffinity
+
+	replicaZoneSoftAntiAffinity := volume.ResourceFields["replicaZoneSoftAntiAffinity"]
+	replicaZoneSoftAntiAffinity.Required = true
+	replicaZoneSoftAntiAffinity.Create = true
+	replicaZoneSoftAntiAffinity.Default = longhorn.ReplicaZoneSoftAntiAffinityDefault
+	volume.ResourceFields["replicaZoneSoftAntiAffinity"] = replicaZoneSoftAntiAffinity
 
 	conditions := volume.ResourceFields["conditions"]
 	conditions.Type = "map[volumeCondition]"
@@ -1219,15 +1251,17 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		NodeSelector:              v.Spec.NodeSelector,
 		RestoreVolumeRecurringJob: v.Spec.RestoreVolumeRecurringJob,
 
-		State:                     v.Status.State,
-		Robustness:                v.Status.Robustness,
-		CurrentImage:              v.Status.CurrentImage,
-		LastBackup:                v.Status.LastBackup,
-		LastBackupAt:              v.Status.LastBackupAt,
-		RestoreRequired:           v.Status.RestoreRequired,
-		RevisionCounterDisabled:   v.Spec.RevisionCounterDisabled,
-		UnmapMarkSnapChainRemoved: v.Spec.UnmapMarkSnapChainRemoved,
-		Ready:                     ready,
+		State:                       v.Status.State,
+		Robustness:                  v.Status.Robustness,
+		CurrentImage:                v.Status.CurrentImage,
+		LastBackup:                  v.Status.LastBackup,
+		LastBackupAt:                v.Status.LastBackupAt,
+		RestoreRequired:             v.Status.RestoreRequired,
+		RevisionCounterDisabled:     v.Spec.RevisionCounterDisabled,
+		UnmapMarkSnapChainRemoved:   v.Spec.UnmapMarkSnapChainRemoved,
+		ReplicaSoftAntiAffinity:     v.Spec.ReplicaSoftAntiAffinity,
+		ReplicaZoneSoftAntiAffinity: v.Spec.ReplicaZoneSoftAntiAffinity,
+		Ready:                       ready,
 
 		AccessMode:    v.Spec.AccessMode,
 		ShareEndpoint: v.Status.ShareEndpoint,
@@ -1274,6 +1308,8 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["updateUnmapMarkSnapChainRemoved"] = struct{}{}
 			actions["updateSnapshotDataIntegrity"] = struct{}{}
 			actions["updateBackupCompressionMethod"] = struct{}{}
+			actions["updateReplicaSoftAntiAffinity"] = struct{}{}
+			actions["updateReplicaZoneSoftAntiAffinity"] = struct{}{}
 			actions["recurringJobAdd"] = struct{}{}
 			actions["recurringJobDelete"] = struct{}{}
 			actions["recurringJobList"] = struct{}{}
@@ -1300,6 +1336,8 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["updateUnmapMarkSnapChainRemoved"] = struct{}{}
 			actions["updateSnapshotDataIntegrity"] = struct{}{}
 			actions["updateBackupCompressionMethod"] = struct{}{}
+			actions["updateReplicaSoftAntiAffinity"] = struct{}{}
+			actions["updateReplicaZoneSoftAntiAffinity"] = struct{}{}
 			actions["pvCreate"] = struct{}{}
 			actions["pvcCreate"] = struct{}{}
 			actions["cancelExpansion"] = struct{}{}

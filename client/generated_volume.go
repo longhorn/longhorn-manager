@@ -67,6 +67,10 @@ type Volume struct {
 
 	ReplicaAutoBalance string `json:"replicaAutoBalance,omitempty" yaml:"replica_auto_balance,omitempty"`
 
+	ReplicaSoftAntiAffinity string `json:"replicaSoftAntiAffinity,omitempty" yaml:"replica_soft_anti_affinity,omitempty"`
+
+	ReplicaZoneSoftAntiAffinity string `json:"replicaZoneSoftAntiAffinity,omitempty" yaml:"replica_zone_soft_anti_affinity,omitempty"`
+
 	Replicas []Replica `json:"replicas,omitempty" yaml:"replicas,omitempty"`
 
 	RestoreRequired bool `json:"restoreRequired,omitempty" yaml:"restore_required,omitempty"`
