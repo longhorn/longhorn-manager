@@ -157,26 +157,28 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 	}
 
 	v, err := s.m.Create(volume.Name, &longhorn.VolumeSpec{
-		Size:                      size,
-		AccessMode:                volume.AccessMode,
-		Migratable:                volume.Migratable,
-		Encrypted:                 volume.Encrypted,
-		Frontend:                  volume.Frontend,
-		FromBackup:                volume.FromBackup,
-		RestoreVolumeRecurringJob: volume.RestoreVolumeRecurringJob,
-		DataSource:                volume.DataSource,
-		NumberOfReplicas:          volume.NumberOfReplicas,
-		ReplicaAutoBalance:        volume.ReplicaAutoBalance,
-		DataLocality:              volume.DataLocality,
-		StaleReplicaTimeout:       volume.StaleReplicaTimeout,
-		BackingImage:              volume.BackingImage,
-		Standby:                   volume.Standby,
-		RevisionCounterDisabled:   volume.RevisionCounterDisabled,
-		DiskSelector:              volume.DiskSelector,
-		NodeSelector:              volume.NodeSelector,
-		SnapshotDataIntegrity:     volume.SnapshotDataIntegrity,
-		BackupCompressionMethod:   volume.BackupCompressionMethod,
-		UnmapMarkSnapChainRemoved: volume.UnmapMarkSnapChainRemoved,
+		Size:                        size,
+		AccessMode:                  volume.AccessMode,
+		Migratable:                  volume.Migratable,
+		Encrypted:                   volume.Encrypted,
+		Frontend:                    volume.Frontend,
+		FromBackup:                  volume.FromBackup,
+		RestoreVolumeRecurringJob:   volume.RestoreVolumeRecurringJob,
+		DataSource:                  volume.DataSource,
+		NumberOfReplicas:            volume.NumberOfReplicas,
+		ReplicaAutoBalance:          volume.ReplicaAutoBalance,
+		DataLocality:                volume.DataLocality,
+		StaleReplicaTimeout:         volume.StaleReplicaTimeout,
+		BackingImage:                volume.BackingImage,
+		Standby:                     volume.Standby,
+		RevisionCounterDisabled:     volume.RevisionCounterDisabled,
+		DiskSelector:                volume.DiskSelector,
+		NodeSelector:                volume.NodeSelector,
+		SnapshotDataIntegrity:       volume.SnapshotDataIntegrity,
+		BackupCompressionMethod:     volume.BackupCompressionMethod,
+		UnmapMarkSnapChainRemoved:   volume.UnmapMarkSnapChainRemoved,
+		ReplicaSoftAntiAffinity:     volume.ReplicaSoftAntiAffinity,
+		ReplicaZoneSoftAntiAffinity: volume.ReplicaZoneSoftAntiAffinity,
 	}, volume.RecurringJobSelector)
 	if err != nil {
 		return errors.Wrap(err, "unable to create volume")
@@ -474,6 +476,50 @@ func (s *Server) VolumeUpdateUnmapMarkSnapChainRemoved(rw http.ResponseWriter, r
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
 		return s.m.UpdateUnmapMarkSnapChainRemoved(id, longhorn.UnmapMarkSnapChainRemoved(input.UnmapMarkSnapChainRemoved))
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+	}
+	return s.responseWithVolume(rw, req, "", v)
+}
+
+func (s *Server) VolumeUpdateReplicaSoftAntiAffinity(rw http.ResponseWriter, req *http.Request) error {
+	var input UpdateReplicaSoftAntiAffinityInput
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrap(err, "error reading ReplicaSoftAntiAffinity input")
+	}
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.UpdateReplicaSoftAntiAffinity(id, longhorn.ReplicaSoftAntiAffinity(input.ReplicaSoftAntiAffinity))
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+	}
+	return s.responseWithVolume(rw, req, "", v)
+}
+
+func (s *Server) VolumeUpdateReplicaZoneSoftAntiAffinity(rw http.ResponseWriter, req *http.Request) error {
+	var input UpdateReplicaZoneSoftAntiAffinityInput
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrap(err, "error reading ReplicaZoneSoftAntiAffinity input")
+	}
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.UpdateReplicaZoneSoftAntiAffinity(id, longhorn.ReplicaZoneSoftAntiAffinity(input.ReplicaZoneSoftAntiAffinity))
 	})
 	if err != nil {
 		return err

@@ -153,27 +153,29 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			Labels: labels,
 		},
 		Spec: longhorn.VolumeSpec{
-			Size:                      spec.Size,
-			AccessMode:                spec.AccessMode,
-			Migratable:                spec.Migratable,
-			Encrypted:                 spec.Encrypted,
-			Frontend:                  spec.Frontend,
-			EngineImage:               "",
-			FromBackup:                spec.FromBackup,
-			RestoreVolumeRecurringJob: spec.RestoreVolumeRecurringJob,
-			DataSource:                spec.DataSource,
-			NumberOfReplicas:          spec.NumberOfReplicas,
-			ReplicaAutoBalance:        spec.ReplicaAutoBalance,
-			DataLocality:              spec.DataLocality,
-			StaleReplicaTimeout:       spec.StaleReplicaTimeout,
-			BackingImage:              spec.BackingImage,
-			Standby:                   spec.Standby,
-			DiskSelector:              spec.DiskSelector,
-			NodeSelector:              spec.NodeSelector,
-			RevisionCounterDisabled:   spec.RevisionCounterDisabled,
-			SnapshotDataIntegrity:     spec.SnapshotDataIntegrity,
-			BackupCompressionMethod:   spec.BackupCompressionMethod,
-			UnmapMarkSnapChainRemoved: spec.UnmapMarkSnapChainRemoved,
+			Size:                        spec.Size,
+			AccessMode:                  spec.AccessMode,
+			Migratable:                  spec.Migratable,
+			Encrypted:                   spec.Encrypted,
+			Frontend:                    spec.Frontend,
+			EngineImage:                 "",
+			FromBackup:                  spec.FromBackup,
+			RestoreVolumeRecurringJob:   spec.RestoreVolumeRecurringJob,
+			DataSource:                  spec.DataSource,
+			NumberOfReplicas:            spec.NumberOfReplicas,
+			ReplicaAutoBalance:          spec.ReplicaAutoBalance,
+			DataLocality:                spec.DataLocality,
+			StaleReplicaTimeout:         spec.StaleReplicaTimeout,
+			BackingImage:                spec.BackingImage,
+			Standby:                     spec.Standby,
+			DiskSelector:                spec.DiskSelector,
+			NodeSelector:                spec.NodeSelector,
+			RevisionCounterDisabled:     spec.RevisionCounterDisabled,
+			SnapshotDataIntegrity:       spec.SnapshotDataIntegrity,
+			BackupCompressionMethod:     spec.BackupCompressionMethod,
+			UnmapMarkSnapChainRemoved:   spec.UnmapMarkSnapChainRemoved,
+			ReplicaSoftAntiAffinity:     spec.ReplicaSoftAntiAffinity,
+			ReplicaZoneSoftAntiAffinity: spec.ReplicaZoneSoftAntiAffinity,
 		},
 	}
 
@@ -1048,6 +1050,58 @@ func (m *VolumeManager) UpdateUnmapMarkSnapChainRemoved(name string, unmapMarkSn
 	}
 
 	logrus.Infof("Updated volume %v field UnmapMarkSnapChainRemoved from %v to %v", v.Name, oldUnmapMarkSnapChainRemoved, unmapMarkSnapChainRemoved)
+	return v, nil
+}
+
+func (m *VolumeManager) UpdateReplicaSoftAntiAffinity(name string, replicaSoftAntiAffinity longhorn.ReplicaSoftAntiAffinity) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to update field ReplicaSoftAntiAffinity for volume %v", name)
+	}()
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if v.Spec.ReplicaSoftAntiAffinity == replicaSoftAntiAffinity {
+		logrus.Debugf("Volume %v already set field ReplicaSoftAntiAffinity to %v", v.Name, replicaSoftAntiAffinity)
+		return v, nil
+	}
+
+	oldReplicaSoftAntiAffinity := v.Spec.ReplicaSoftAntiAffinity
+	v.Spec.ReplicaSoftAntiAffinity = replicaSoftAntiAffinity
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+
+	logrus.Infof("Updated volume %v field ReplicaSoftAntiAffinity from %v to %v", v.Name, oldReplicaSoftAntiAffinity, replicaSoftAntiAffinity)
+	return v, nil
+}
+
+func (m *VolumeManager) UpdateReplicaZoneSoftAntiAffinity(name string, replicaZoneSoftAntiAffinity longhorn.ReplicaZoneSoftAntiAffinity) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to update field ReplicaZoneSoftAntiAffinity for volume %v", name)
+	}()
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if v.Spec.ReplicaZoneSoftAntiAffinity == replicaZoneSoftAntiAffinity {
+		logrus.Debugf("Volume %v already set field ReplicaZoneSoftAntiAffinity to %v", v.Name, replicaZoneSoftAntiAffinity)
+		return v, nil
+	}
+
+	oldReplicaZoneSoftAntiAffinity := v.Spec.ReplicaZoneSoftAntiAffinity
+	v.Spec.ReplicaZoneSoftAntiAffinity = replicaZoneSoftAntiAffinity
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+
+	logrus.Infof("Updated volume %v field ReplicaZoneSoftAntiAffinity from %v to %v", v.Name, oldReplicaZoneSoftAntiAffinity, replicaZoneSoftAntiAffinity)
 	return v, nil
 }
 
