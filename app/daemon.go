@@ -8,6 +8,7 @@ import (
 	_ "net/http/pprof" // for runtime profiling
 
 	"github.com/gorilla/handlers"
+	"github.com/rancher/wrangler/pkg/signals"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
@@ -132,9 +133,20 @@ func startManager(c *cli.Context) error {
 		return fmt.Errorf("BUG: failed to detect the node IP")
 	}
 
-	done := make(chan struct{})
+	ctx := signals.SetupSignalContext()
 
 	logger := logrus.StandardLogger().WithField("node", currentNodeID)
+
+	webhookTypes := []string{types.WebhookTypeConversion, types.WebhookTypeAdmission}
+	for _, webhookType := range webhookTypes {
+		if err := startWebhook(ctx, serviceAccount, kubeconfigPath, webhookType); err != nil {
+			return err
+		}
+	}
+
+	if err := startRecoveryBackend(ctx, serviceAccount, kubeconfigPath); err != nil {
+		return err
+	}
 
 	if err := upgrade.Upgrade(kubeconfigPath, currentNodeID); err != nil {
 		return err
@@ -142,7 +154,7 @@ func startManager(c *cli.Context) error {
 
 	proxyConnCounter := util.NewAtomicCounter()
 
-	ds, wsc, err := controller.StartControllers(logger, done, currentNodeID, serviceAccount, managerImage, kubeconfigPath, meta.Version, proxyConnCounter)
+	ds, wsc, err := controller.StartControllers(logger, ctx.Done(), currentNodeID, serviceAccount, managerImage, kubeconfigPath, meta.Version, proxyConnCounter)
 	if err != nil {
 		return err
 	}
@@ -190,7 +202,11 @@ func startManager(c *cli.Context) error {
 	listen := types.GetAPIServerAddressFromIP(currentIP)
 	logger.Infof("Listening on %s", listen)
 
-	go http.ListenAndServe(listen, router)
+	go func() {
+		if err := http.ListenAndServe(listen, router); err != nil {
+			logrus.Fatalf("Error longhorn backend server failed: %v", err)
+		}
+	}()
 
 	go func() {
 		debugAddress := "127.0.0.1:6060"
@@ -201,8 +217,7 @@ func startManager(c *cli.Context) error {
 		}
 	}()
 
-	util.RegisterShutdownChannel(done)
-	<-done
+	<-ctx.Done()
 	return nil
 }
 

@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	CurrentInstanceManagerAPIVersion = 3
+	CurrentInstanceManagerAPIVersion = 4
 	MinInstanceManagerAPIVersion     = 1
 	UnknownInstanceManagerAPIVersion = 0
 
@@ -130,6 +130,11 @@ func (c *InstanceManagerClient) parseProcess(p *imapi.Process) *longhorn.Instanc
 		return nil
 	}
 
+	processType := longhorn.InstanceTypeReplica
+	if p.PortCount == DefaultEnginePortCount {
+		processType = longhorn.InstanceTypeEngine
+	}
+
 	return &longhorn.InstanceProcess{
 		Spec: longhorn.InstanceProcessSpec{
 			Name: p.Name,
@@ -139,9 +144,9 @@ func (c *InstanceManagerClient) parseProcess(p *imapi.Process) *longhorn.Instanc
 			ErrorMsg:  p.ProcessStatus.ErrorMsg,
 			PortStart: p.ProcessStatus.PortStart,
 			PortEnd:   p.ProcessStatus.PortEnd,
+			Type:      processType,
 
 			// These fields are not used, maybe we can deprecate them later.
-			Type:     "",
 			Listen:   "",
 			Endpoint: "",
 		},
@@ -256,6 +261,17 @@ func (c *InstanceManagerClient) ProcessGet(name string) (*longhorn.InstanceProce
 		return nil, err
 	}
 	return c.parseProcess(process), nil
+}
+
+func (c *InstanceManagerClient) ProcessGetBinary(name string) (string, error) {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
+		return "", err
+	}
+	process, err := c.grpcClient.ProcessGet(name)
+	if err != nil {
+		return "", err
+	}
+	return process.Binary, nil
 }
 
 // ProcessLog returns a grpc stream that will be closed when the passed context is cancelled or the underlying grpc client is closed

@@ -35,7 +35,7 @@ var (
 	longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
 )
 
-func StartControllers(logger logrus.FieldLogger, stopCh chan struct{}, controllerID, serviceAccount, managerImage, kubeconfigPath, version string, proxyConnCounter util.Counter) (*datastore.DataStore, *WebsocketController, error) {
+func StartControllers(logger logrus.FieldLogger, stopCh <-chan struct{}, controllerID, serviceAccount, managerImage, kubeconfigPath, version string, proxyConnCounter util.Counter) (*datastore.DataStore, *WebsocketController, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, "+
@@ -186,6 +186,9 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 	case longhorn.InstanceManagerTypeReplica:
 		cpuRequest = lhNode.Spec.ReplicaManagerCPURequest
 		guaranteedCPUSettingName = types.SettingNameGuaranteedReplicaManagerCPU
+	case longhorn.InstanceManagerTypeAllInOne:
+		cpuRequest = lhNode.Spec.InstanceManagerCPURequest
+		guaranteedCPUSettingName = types.SettingNameGuaranteedInstanceManagerCPU
 	default:
 		return nil, fmt.Errorf("instance manager %v has unknown type %v", im.Name, im.Spec.Type)
 	}

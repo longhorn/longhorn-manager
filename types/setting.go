@@ -71,7 +71,6 @@ const (
 	SettingNameNodeDownPodDeletionPolicy                                = SettingName("node-down-pod-deletion-policy")
 	SettingNameAllowNodeDrainWithLastHealthyReplica                     = SettingName("allow-node-drain-with-last-healthy-replica")
 	SettingNameNodeDrainPolicy                                          = SettingName("node-drain-policy")
-	SettingNameMkfsExt4Parameters                                       = SettingName("mkfs-ext4-parameters")
 	SettingNamePriorityClass                                            = SettingName("priority-class")
 	SettingNameDisableRevisionCounter                                   = SettingName("disable-revision-counter")
 	SettingNameDisableReplicaRebuild                                    = SettingName("disable-replica-rebuild")
@@ -86,6 +85,7 @@ const (
 	SettingNameBackingImageRecoveryWaitInterval                         = SettingName("backing-image-recovery-wait-interval")
 	SettingNameGuaranteedEngineManagerCPU                               = SettingName("guaranteed-engine-manager-cpu")
 	SettingNameGuaranteedReplicaManagerCPU                              = SettingName("guaranteed-replica-manager-cpu")
+	SettingNameGuaranteedInstanceManagerCPU                             = SettingName("guaranteed-instance-manager-cpu")
 	SettingNameKubernetesClusterAutoscalerEnabled                       = SettingName("kubernetes-cluster-autoscaler-enabled")
 	SettingNameOrphanAutoDeletion                                       = SettingName("orphan-auto-deletion")
 	SettingNameStorageNetwork                                           = SettingName("storage-network")
@@ -144,7 +144,6 @@ var (
 		SettingNameNodeDownPodDeletionPolicy,
 		SettingNameAllowNodeDrainWithLastHealthyReplica,
 		SettingNameNodeDrainPolicy,
-		SettingNameMkfsExt4Parameters,
 		SettingNamePriorityClass,
 		SettingNameDisableRevisionCounter,
 		SettingNameDisableReplicaRebuild,
@@ -159,6 +158,7 @@ var (
 		SettingNameBackingImageRecoveryWaitInterval,
 		SettingNameGuaranteedEngineManagerCPU,
 		SettingNameGuaranteedReplicaManagerCPU,
+		SettingNameGuaranteedInstanceManagerCPU,
 		SettingNameKubernetesClusterAutoscalerEnabled,
 		SettingNameOrphanAutoDeletion,
 		SettingNameStorageNetwork,
@@ -242,7 +242,6 @@ var (
 		SettingNameNodeDownPodDeletionPolicy:                                SettingDefinitionNodeDownPodDeletionPolicy,
 		SettingNameAllowNodeDrainWithLastHealthyReplica:                     SettingDefinitionAllowNodeDrainWithLastHealthyReplica,
 		SettingNameNodeDrainPolicy:                                          SettingDefinitionNodeDrainPolicy,
-		SettingNameMkfsExt4Parameters:                                       SettingDefinitionMkfsExt4Parameters,
 		SettingNamePriorityClass:                                            SettingDefinitionPriorityClass,
 		SettingNameDisableRevisionCounter:                                   SettingDefinitionDisableRevisionCounter,
 		SettingNameDisableReplicaRebuild:                                    SettingDefinitionDisableReplicaRebuild,
@@ -257,6 +256,7 @@ var (
 		SettingNameBackingImageRecoveryWaitInterval:                         SettingDefinitionBackingImageRecoveryWaitInterval,
 		SettingNameGuaranteedEngineManagerCPU:                               SettingDefinitionGuaranteedEngineManagerCPU,
 		SettingNameGuaranteedReplicaManagerCPU:                              SettingDefinitionGuaranteedReplicaManagerCPU,
+		SettingNameGuaranteedInstanceManagerCPU:                             SettingDefinitionGuaranteedInstanceManagerCPU,
 		SettingNameKubernetesClusterAutoscalerEnabled:                       SettingDefinitionKubernetesClusterAutoscalerEnabled,
 		SettingNameOrphanAutoDeletion:                                       SettingDefinitionOrphanAutoDeletion,
 		SettingNameStorageNetwork:                                           SettingDefinitionStorageNetwork,
@@ -647,6 +647,7 @@ var (
 		ReadOnly:    false,
 		Default:     "",
 	}
+
 	SettingDefinitionDisableSchedulingOnCordonedNode = SettingDefinition{
 		DisplayName: "Disable Scheduling On Cordoned Node",
 		Description: `Disable Longhorn manager to schedule replica on Kubernetes cordoned node`,
@@ -656,6 +657,7 @@ var (
 		ReadOnly:    false,
 		Default:     "true",
 	}
+
 	SettingDefinitionReplicaZoneSoftAntiAffinity = SettingDefinition{
 		DisplayName: "Replica Zone Level Soft Anti-Affinity",
 		Description: "Allow scheduling new Replicas of Volume to the Nodes in the same Zone as existing healthy Replicas. Nodes don't belong to any Zone will be treated as in the same Zone. Notice that Longhorn relies on label `topology.kubernetes.io/zone=<Zone name of the node>` in the Kubernetes node object to identify the zone.",
@@ -665,6 +667,7 @@ var (
 		ReadOnly:    false,
 		Default:     "true",
 	}
+
 	SettingDefinitionNodeDownPodDeletionPolicy = SettingDefinition{
 		DisplayName: "Pod Deletion Policy When Node is Down",
 		Description: "Defines the Longhorn action when a Volume is stuck with a StatefulSet/Deployment Pod on a node that is down.\n" +
@@ -714,14 +717,6 @@ var (
 		},
 	}
 
-	SettingDefinitionMkfsExt4Parameters = SettingDefinition{
-		DisplayName: "Custom mkfs.ext4 parameters",
-		Description: "Allows setting additional filesystem creation parameters for ext4. For older host kernels it might be necessary to disable the optional ext4 metadata_csum feature by specifying `-O ^64bit,^metadata_csum`",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeString,
-		Required:    false,
-		ReadOnly:    false,
-	}
 	SettingDefinitionPriorityClass = SettingDefinition{
 		DisplayName: "Priority Class",
 		Description: "The name of the Priority Class to set on the Longhorn components. This can help prevent Longhorn components from being evicted under Node Pressure. \n" +
@@ -733,6 +728,7 @@ var (
 		Required: false,
 		ReadOnly: false,
 	}
+
 	SettingDefinitionDisableRevisionCounter = SettingDefinition{
 		DisplayName: "Disable Revision Counter",
 		Description: "This setting is only for volumes created by UI. By default, this is false meaning there will be a revision counter file to track every write to the volume. During salvage recovering Longhorn will pick the repica with largest revision counter as candidate to recover the whole volume. If revision counter is disabled, Longhorn will not track every write to the volume. During the salvage recovering, Longhorn will use the 'volume-head-xxx.img' file last modification time and file size to pick the replica candidate to recover the whole volume.",
@@ -742,6 +738,7 @@ var (
 		ReadOnly:    false,
 		Default:     "false",
 	}
+
 	SettingDefinitionDisableReplicaRebuild = SettingDefinition{
 		DisplayName: "Disable Replica Rebuild",
 		Description: "This setting disable replica rebuild cross the whole cluster, eviction and data locality feature won't work if this setting is true. But doesn't have any impact to any current replica rebuild and restore disaster recovery volume.",
@@ -862,7 +859,7 @@ var (
 	}
 
 	SettingDefinitionGuaranteedEngineManagerCPU = SettingDefinition{
-		DisplayName: "Guaranteed Engine Manager CPU",
+		DisplayName: "Guaranteed Engine Manager CPU (Deprecated)",
 		Description: "This integer value indicates how many percentage of the total allocatable CPU on each node will be reserved for each engine manager Pod. For example, 10 means 10% of the total CPU on a node will be allocated to each engine manager pod on this node. This will help maintain engine stability during high node workload. \n\n" +
 			"In order to prevent unexpected volume engine crash as well as guarantee a relative acceptable IO performance, you can use the following formula to calculate a value for this setting: \n\n" +
 			"`Guaranteed Engine Manager CPU = The estimated max Longhorn volume engine count on a node * 0.1 / The total allocatable CPUs on the node * 100` \n\n" +
@@ -875,14 +872,14 @@ var (
 			"  - This global setting will be ignored for a node if the field \"EngineManagerCPURequest\" on the node is set. \n\n" +
 			"  - After this setting is changed, all engine manager pods using this global setting on all the nodes will be automatically restarted. In other words, DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. \n\n",
 		Category: SettingCategoryDangerZone,
-		Type:     SettingTypeString,
+		Type:     SettingTypeDeprecated,
 		Required: true,
 		ReadOnly: false,
 		Default:  "12",
 	}
 
 	SettingDefinitionGuaranteedReplicaManagerCPU = SettingDefinition{
-		DisplayName: "Guaranteed Replica Manager CPU",
+		DisplayName: "Guaranteed Replica Manager CPU (Deprecated)",
 		Description: "This integer value indicates how many percentage of the total allocatable CPU on each node will be reserved for each replica manager Pod. 10 means 10% of the total CPU on a node will be allocated to each replica manager pod on this node. This will help maintain replica stability during high node workload. \n\n" +
 			"In order to prevent unexpected volume replica crash as well as guarantee a relative acceptable IO performance, you can use the following formula to calculate a value for this setting: \n\n" +
 			"`Guaranteed Replica Manager CPU = The estimated max Longhorn volume replica count on a node * 0.1 / The total allocatable CPUs on the node * 100` \n\n" +
@@ -894,6 +891,26 @@ var (
 			"  - One more set of instance manager pods may need to be deployed when the Longhorn system is upgraded. If current available CPUs of the nodes are not enough for the new instance manager pods, you need to detach the volumes using the oldest instance manager pods so that Longhorn can clean up the old pods automatically and release the CPU resources. And the new pods with the latest instance manager image will be launched then. \n\n" +
 			"  - This global setting will be ignored for a node if the field \"ReplicaManagerCPURequest\" on the node is set. \n\n" +
 			"  - After this setting is changed, all replica manager pods using this global setting on all the nodes will be automatically restarted. In other words, DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. \n\n",
+		Category: SettingCategoryDangerZone,
+		Type:     SettingTypeDeprecated,
+		Required: true,
+		ReadOnly: false,
+		Default:  "12",
+	}
+
+	SettingDefinitionGuaranteedInstanceManagerCPU = SettingDefinition{
+		DisplayName: "Guaranteed Instance Manager CPU",
+		Description: "This integer value indicates how many percentage of the total allocatable CPU on each node will be reserved for each instance manager Pod. For example, 10 means 10% of the total CPU on a node will be allocated to each instance manager pod on this node. This will help maintain engine and replica stability during high node workload. \n\n" +
+			"In order to prevent unexpected volume instance (engine/replica) crash as well as guarantee a relative acceptable IO performance, you can use the following formula to calculate a value for this setting: \n\n" +
+			"`Guaranteed Instance Manager CPU = The estimated max Longhorn volume engine and replica count on a node * 0.1 / The total allocatable CPUs on the node * 100` \n\n" +
+			"The result of above calculation doesn't mean that's the maximum CPU resources the Longhorn workloads require. To fully exploit the Longhorn volume I/O performance, you can allocate/guarantee more CPU resources via this setting. \n\n" +
+			"If it's hard to estimate the usage now, you can leave it with the default value, which is 12%. Then you can tune it when there is no running workload using Longhorn volumes. \n\n" +
+			"WARNING: \n\n" +
+			"  - Value 0 means unsetting CPU requests for instance manager pods. \n\n" +
+			"  - Considering the possible new instance manager pods in the further system upgrade, this integer value is range from 0 to 40. \n\n" +
+			"  - One more set of instance manager pods may need to be deployed when the Longhorn system is upgraded. If current available CPUs of the nodes are not enough for the new instance manager pods, you need to detach the volumes using the oldest instance manager pods so that Longhorn can clean up the old pods automatically and release the CPU resources. And the new pods with the latest instance manager image will be launched then. \n\n" +
+			"  - This global setting will be ignored for a node if the field \"InstanceManagerCPURequest\" on the node is set. \n\n" +
+			"  - After this setting is changed, all instance manager pods using this global setting on all the nodes will be automatically restarted. In other words, DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. \n\n",
 		Category: SettingCategoryDangerZone,
 		Type:     SettingTypeString,
 		Required: true,
@@ -1348,12 +1365,14 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameGuaranteedEngineManagerCPU:
 		fallthrough
 	case SettingNameGuaranteedReplicaManagerCPU:
+		fallthrough
+	case SettingNameGuaranteedInstanceManagerCPU:
 		i, err := strconv.Atoi(value)
 		if err != nil {
-			return errors.Wrapf(err, "guaranteed engine/replica cpu value %v is not a valid integer", value)
+			return errors.Wrapf(err, "guaranteed instance manager cpu value %v is not a valid integer", value)
 		}
 		if i < 0 || i > 40 {
-			return fmt.Errorf("guaranteed engine/replica cpu value %v should be between 0 to 40", value)
+			return fmt.Errorf("guaranteed instance manager cpu value %v should be between 0 to 40", value)
 		}
 	}
 	return nil
@@ -1417,7 +1436,11 @@ func GetCustomizedDefaultSettings(defaultSettingCM *v1.ConfigMap) (defaultSettin
 	if defaultSettings[string(SettingNameGuaranteedReplicaManagerCPU)] != "" {
 		guaranteedReplicaManagerCPU = defaultSettings[string(SettingNameGuaranteedReplicaManagerCPU)]
 	}
-	if err := ValidateCPUReservationValues(guaranteedEngineManagerCPU, guaranteedReplicaManagerCPU); err != nil {
+	guaranteedInstanceManagerCPU := SettingDefinitionGuaranteedInstanceManagerCPU.Default
+	if defaultSettings[string(SettingNameGuaranteedInstanceManagerCPU)] != "" {
+		guaranteedInstanceManagerCPU = defaultSettings[string(SettingNameGuaranteedInstanceManagerCPU)]
+	}
+	if err := ValidateCPUReservationValues(guaranteedEngineManagerCPU, guaranteedReplicaManagerCPU, guaranteedInstanceManagerCPU); err != nil {
 		logrus.Errorf("Customized settings GuaranteedEngineManagerCPU and GuaranteedReplicaManagerCPU are invalid, will give up using them: %v", err)
 		defaultSettings = map[string]string{}
 	}
@@ -1437,54 +1460,55 @@ func getDefaultSettingFromYAML(defaultSettingYAMLData []byte) (map[string]string
 	return defaultSettings, nil
 }
 
-func ValidateAndUnmarshalToleration(s string) (*v1.Toleration, error) {
-	toleration := &v1.Toleration{}
+func UnmarshalTolerations(tolerationSetting string) ([]v1.Toleration, error) {
+	tolerations := []v1.Toleration{}
 
-	// The schema should be `key=value:effect` or `key:effect`
-	s = strings.Trim(s, " ")
-	parts := strings.Split(s, ":")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid toleration setting %v: should contain both effect and key/value pair", s)
+	tolerationSetting = strings.ReplaceAll(tolerationSetting, " ", "")
+	if tolerationSetting == "" {
+		return tolerations, nil
 	}
 
-	effect := v1.TaintEffect(strings.Trim(parts[1], " "))
-	if effect != v1.TaintEffectNoExecute && effect != v1.TaintEffectNoSchedule && effect != v1.TaintEffectPreferNoSchedule && effect != v1.TaintEffect("") {
-		return nil, fmt.Errorf("invalid toleration setting %v: invalid effect", parts[1])
-	}
-	toleration.Effect = effect
-
-	if strings.Contains(parts[0], "=") {
-		pair := strings.Split(parts[0], "=")
-		if len(pair) != 2 {
-			return nil, fmt.Errorf("invalid toleration setting %v: invalid key/value pair", parts[0])
+	tolerationList := strings.Split(tolerationSetting, ";")
+	for _, toleration := range tolerationList {
+		toleration, err := parseToleration(toleration)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to parse toleration: %s", toleration)
 		}
-		toleration.Key = strings.Trim(pair[0], " ")
-		toleration.Value = strings.Trim(pair[1], " ")
-		toleration.Operator = v1.TolerationOpEqual
-	} else {
-		toleration.Key = strings.Trim(parts[0], " ")
-		toleration.Operator = v1.TolerationOpExists
+		tolerations = append(tolerations, *toleration)
 	}
-
-	return toleration, nil
+	return tolerations, nil
 }
 
-func UnmarshalTolerations(tolerationSetting string) ([]v1.Toleration, error) {
-	res := []v1.Toleration{}
-
-	tolerationSetting = strings.Trim(tolerationSetting, " ")
-	if tolerationSetting != "" {
-		tolerationList := strings.Split(tolerationSetting, ";")
-		for _, t := range tolerationList {
-			toleration, err := ValidateAndUnmarshalToleration(t)
-			if err != nil {
-				return nil, err
-			}
-			res = append(res, *toleration)
-		}
+func parseToleration(taintToleration string) (*v1.Toleration, error) {
+	// The schema should be `key=value:effect` or `key:effect`
+	parts := strings.Split(taintToleration, ":")
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("missing key/value and effect pair")
 	}
 
-	return res, nil
+	// parse `key=value` or `key`
+	key, value, operator := "", "", v1.TolerationOperator("")
+	pair := strings.Split(parts[0], "=")
+	switch len(pair) {
+	case 1:
+		key, value, operator = parts[0], "", v1.TolerationOpExists
+	case 2:
+		key, value, operator = pair[0], pair[1], v1.TolerationOpEqual
+	}
+
+	effect := v1.TaintEffect(parts[1])
+	switch effect {
+	case "", v1.TaintEffectNoExecute, v1.TaintEffectNoSchedule, v1.TaintEffectPreferNoSchedule:
+	default:
+		return nil, fmt.Errorf("invalid effect: %v", parts[1])
+	}
+
+	return &v1.Toleration{
+		Key:      key,
+		Value:    value,
+		Operator: operator,
+		Effect:   effect,
+	}, nil
 }
 
 func validateAndUnmarshalLabel(label string) (key, value string, err error) {

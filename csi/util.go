@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
@@ -230,7 +229,7 @@ func ensureMountPoint(targetPath string, mounter mount.Interface) (bool, error) 
 	IsCorruptedMnt := mount.IsCorruptedMnt(err)
 	if !IsCorruptedMnt {
 		logrus.Debugf("mount point %v try reading dir to make sure it's healthy", targetPath)
-		if _, err := ioutil.ReadDir(targetPath); err != nil {
+		if _, err := os.ReadDir(targetPath); err != nil {
 			logrus.Debugf("mount point %v was identified as corrupt by ReadDir", targetPath)
 			IsCorruptedMnt = true
 		}

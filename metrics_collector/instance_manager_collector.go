@@ -169,13 +169,14 @@ func makeInstanceManagerLabelSelector(nodeID string) string {
 
 func getInstanceManagerTypeFromInstanceManagerName(imName string) string {
 	switch {
-	case strings.Contains(imName, types.GetInstanceManagerPrefix(longhorn.InstanceManagerTypeEngine)):
+	case strings.HasPrefix(imName, types.GetInstanceManagerPrefix(longhorn.InstanceManagerTypeEngine)):
 		return string(longhorn.InstanceManagerTypeEngine)
-	case strings.Contains(imName, types.GetInstanceManagerPrefix(longhorn.InstanceManagerTypeReplica)):
+	case strings.HasPrefix(imName, types.GetInstanceManagerPrefix(longhorn.InstanceManagerTypeReplica)):
 		return string(longhorn.InstanceManagerTypeReplica)
-	default:
-		return ""
+	case strings.HasPrefix(imName, types.GetInstanceManagerPrefix(longhorn.InstanceManagerTypeAllInOne)):
+		return string(longhorn.InstanceManagerTypeAllInOne)
 	}
+	return ""
 }
 
 func (imc *InstanceManagerCollector) collectRequestValues(ch chan<- prometheus.Metric) {

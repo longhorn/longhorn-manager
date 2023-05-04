@@ -212,12 +212,12 @@ func getLoggerForBackupTarget(logger logrus.FieldLogger, backupTarget *longhorn.
 }
 
 func getBackupTarget(controllerID string, backupTarget *longhorn.BackupTarget, ds *datastore.DataStore, log logrus.FieldLogger, proxyConnCounter util.Counter) (engineClientProxy engineapi.EngineClientProxy, backupTargetClient *engineapi.BackupTargetClient, err error) {
-	engineIM, err := ds.GetDefaultEngineInstanceManagerByNode(controllerID)
+	instanceManager, err := ds.GetDefaultInstanceManagerByNode(controllerID)
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "failed to get default engine instance manager for proxy client")
 	}
 
-	engineClientProxy, err = engineapi.NewEngineClientProxy(engineIM, log, proxyConnCounter)
+	engineClientProxy, err = engineapi.NewEngineClientProxy(instanceManager, log, proxyConnCounter)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -534,15 +534,6 @@ func (btc *BackupTargetController) isResponsibleFor(bt *longhorn.BackupTarget, d
 	}()
 
 	isResponsible := isControllerResponsibleFor(btc.controllerID, btc.ds, bt.Name, "", bt.Status.OwnerID)
-
-	readyNodesWithReadyEI, err := btc.ds.ListReadyNodesWithReadyEngineImage(defaultEngineImage)
-	if err != nil {
-		return false, err
-	}
-	// No node in the system has the default engine image in ready state
-	if len(readyNodesWithReadyEI) == 0 {
-		return false, nil
-	}
 
 	currentOwnerEngineAvailable, err := btc.ds.CheckEngineImageReadiness(defaultEngineImage, bt.Status.OwnerID)
 	if err != nil {

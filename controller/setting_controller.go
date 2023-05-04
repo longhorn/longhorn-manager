@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"reflect"
 	"sort"
@@ -220,7 +220,10 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 			return err
 		}
 	case string(types.SettingNameGuaranteedEngineManagerCPU):
+		fallthrough
 	case string(types.SettingNameGuaranteedReplicaManagerCPU):
+		fallthrough
+	case string(types.SettingNameGuaranteedInstanceManagerCPU):
 		if err := sc.updateInstanceManagerCPURequest(); err != nil {
 			return err
 		}
@@ -905,7 +908,7 @@ func (sc *SettingController) CheckLatestAndStableLonghornVersions() (string, str
 	defer r.Body.Close()
 	if r.StatusCode != http.StatusOK {
 		message := ""
-		messageBytes, err := ioutil.ReadAll(r.Body)
+		messageBytes, err := io.ReadAll(r.Body)
 		if err != nil {
 			message = err.Error()
 		} else {
@@ -954,6 +957,7 @@ func (sc *SettingController) enqueueSettingForNode(obj interface{}) {
 
 	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameGuaranteedEngineManagerCPU))
 	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameGuaranteedReplicaManagerCPU))
+	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameGuaranteedInstanceManagerCPU))
 	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameBackupTarget))
 }
 

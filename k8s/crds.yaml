@@ -1678,6 +1678,7 @@ spec:
                 type: string
               type:
                 enum:
+                - aio
                 - engine
                 - replica
                 type: string
@@ -1691,6 +1692,72 @@ spec:
                 type: integer
               currentState:
                 type: string
+              instanceEngines:
+                additionalProperties:
+                  properties:
+                    spec:
+                      properties:
+                        name:
+                          type: string
+                      type: object
+                    status:
+                      properties:
+                        endpoint:
+                          type: string
+                        errorMsg:
+                          type: string
+                        listen:
+                          type: string
+                        portEnd:
+                          format: int32
+                          type: integer
+                        portStart:
+                          format: int32
+                          type: integer
+                        resourceVersion:
+                          format: int64
+                          type: integer
+                        state:
+                          type: string
+                        type:
+                          type: string
+                      type: object
+                  type: object
+                nullable: true
+                type: object
+              instanceReplicas:
+                additionalProperties:
+                  properties:
+                    spec:
+                      properties:
+                        name:
+                          type: string
+                      type: object
+                    status:
+                      properties:
+                        endpoint:
+                          type: string
+                        errorMsg:
+                          type: string
+                        listen:
+                          type: string
+                        portEnd:
+                          format: int32
+                          type: integer
+                        portStart:
+                          format: int32
+                          type: integer
+                        resourceVersion:
+                          format: int64
+                          type: integer
+                        state:
+                          type: string
+                        type:
+                          type: string
+                      type: object
+                  type: object
+                nullable: true
+                type: object
               instances:
                 additionalProperties:
                   properties:
@@ -1722,6 +1789,7 @@ spec:
                           type: string
                       type: object
                   type: object
+                description: 'Deprecated: Replaced by InstanceEngines and InstanceReplicas'
                 nullable: true
                 type: object
               ip:
@@ -1868,12 +1936,16 @@ spec:
                   type: object
                 type: object
               engineManagerCPURequest:
+                description: 'Deprecated: Replaced by InstanceManagerCPURequest'
                 type: integer
               evictionRequested:
                 type: boolean
+              instanceManagerCPURequest:
+                type: integer
               name:
                 type: string
               replicaManagerCPURequest:
+                description: 'Deprecated: Replaced by InstanceManagerCPURequest'
                 type: integer
               tags:
                 items:
@@ -2151,7 +2223,7 @@ spec:
       jsonPath: .spec.groups
       name: Groups
       type: string
-    - description: Should be one of "snapshot", "snapshot-force-create", "snapshot-cleanup", "snapshot-delete", "backup" or "backup-force-create".
+    - description: Should be one of "snapshot", "snapshot-force-create", "snapshot-cleanup", "snapshot-delete", "backup", "backup-force-create" or "filesystem-trim"
       jsonPath: .spec.task
       name: Task
       type: string
@@ -2213,7 +2285,7 @@ spec:
                 description: The retain count of the snapshot/backup.
                 type: integer
               task:
-                description: The recurring job task. Can be "snapshot", "snapshot-force-create", "snapshot-cleanup", "snapshot-delete", "backup" or "backup-force-create".
+                description: The recurring job task. Can be "snapshot", "snapshot-force-create", "snapshot-cleanup", "snapshot-delete", "backup", "backup-force-create" or "filesystem-trim"
                 enum:
                 - snapshot
                 - snapshot-force-create
@@ -2221,6 +2293,7 @@ spec:
                 - snapshot-delete
                 - backup
                 - backup-force-create
+                - filesystem-trim
                 type: string
             type: object
           status:
@@ -2626,16 +2699,20 @@ spec:
             description: ShareManagerSpec defines the desired state of the Longhorn share manager
             properties:
               image:
+                description: Share manager image used for creating a share manager pod
                 type: string
             type: object
           status:
             description: ShareManagerStatus defines the observed state of the Longhorn share manager
             properties:
               endpoint:
+                description: NFS endpoint that can access the mounted filesystem of the volume
                 type: string
               ownerID:
+                description: The node ID on which the controller is responsible to reconcile this share manager resource
                 type: string
               state:
+                description: The state of the share manager resource
                 type: string
             type: object
         type: object
@@ -3318,6 +3395,7 @@ spec:
                       - snapshot-delete
                       - backup
                       - backup-force-create
+                      - filesystem-trim
                       type: string
                   type: object
                 type: array

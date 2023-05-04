@@ -93,7 +93,12 @@ type NodeSpec struct {
 	// +optional
 	Tags []string `json:"tags"`
 	// +optional
+	InstanceManagerCPURequest int `json:"instanceManagerCPURequest"`
+
+	// Deprecated: Replaced by InstanceManagerCPURequest
+	// +optional
 	EngineManagerCPURequest int `json:"engineManagerCPURequest"`
+	// Deprecated: Replaced by InstanceManagerCPURequest
 	// +optional
 	ReplicaManagerCPURequest int `json:"replicaManagerCPURequest"`
 }

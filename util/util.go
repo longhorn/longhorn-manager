@@ -693,6 +693,16 @@ func SetAnnotation(obj runtime.Object, annotationKey, annotationValue string) er
 	return nil
 }
 
+func GetNamespace(key string) string {
+	namespace := os.Getenv(key)
+	if namespace == "" {
+		logrus.Warnf("Failed to detect pod namespace, environment variable %v is missing, "+
+			"using default namespace", key)
+		namespace = v1.NamespaceDefault
+	}
+	return namespace
+}
+
 func GetDistinctTolerations(tolerationList []v1.Toleration) []v1.Toleration {
 	res := []v1.Toleration{}
 	tolerationMap := TolerationListToMap(tolerationList)
@@ -906,7 +916,7 @@ func GetPodIP(pod *v1.Pod) (string, error) {
 	return pod.Status.PodIP, nil
 }
 
-func TrimFilesystem(volumeName string, isEncryptedDevice bool) error {
+func TrimFilesystem(volumeName string, encryptedDevice bool) error {
 	nsPath := iscsiutil.GetHostNamespacePath(HostProcPath)
 	nsExec, err := iscsiutil.NewNamespaceExecutor(nsPath)
 	if err != nil {
@@ -914,13 +924,13 @@ func TrimFilesystem(volumeName string, isEncryptedDevice bool) error {
 	}
 
 	deviceDir := RegularDeviceDirectory
-	if isEncryptedDevice {
+	if encryptedDevice {
 		deviceDir = EncryptedDeviceDirectory
 	}
 
 	mountOutput, err := nsExec.Execute("bash", []string{"-c", fmt.Sprintf("cat /proc/mounts | grep %s%s | awk '{print $2}'", deviceDir, volumeName)})
 	if err != nil {
-		return fmt.Errorf("cannot find volume %v mount info on host: %v", volumeName, err)
+		return errors.Wrapf(err, "cannot find volume %v mount info on host", volumeName)
 	}
 
 	mountList := strings.Split(strings.TrimSpace(mountOutput), "\n")
@@ -933,15 +943,15 @@ func TrimFilesystem(volumeName string, isEncryptedDevice bool) error {
 			break
 		}
 
-		logrus.WithError(err).Warnf("failed to get volume %v mountpoint %v info", volumeName, m)
+		logrus.WithError(err).Warnf("Failed to get volume %v mount point %v info", volumeName, m)
 	}
 	if mountpoint == "" {
-		return fmt.Errorf("cannot find a valid mountpoint for volume %v", volumeName)
+		return fmt.Errorf("cannot find a valid mount point for volume %v", volumeName)
 	}
 
 	_, err = nsExec.Execute("fstrim", []string{mountpoint})
 	if err != nil {
-		return fmt.Errorf("cannot find volume %v mount info on host: %v", volumeName, err)
+		return errors.Wrapf(err, "cannot find volume %v mount info on host", volumeName)
 	}
 
 	return nil

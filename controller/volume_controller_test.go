@@ -1336,22 +1336,34 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		err = eiIndexer.Add(ei)
 		c.Assert(err, IsNil)
 
-		rm1, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(
+		instanceManager1, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(
 			context.TODO(),
-			newInstanceManager(TestReplicaManagerName+"-"+TestNode1, longhorn.InstanceManagerTypeReplica, longhorn.InstanceManagerStateRunning, TestOwnerID1, TestNode1, TestIP1, map[string]longhorn.InstanceProcess{}, false),
+			newInstanceManager(
+				TestInstanceManagerName+"-"+TestNode1, longhorn.InstanceManagerStateRunning,
+				TestOwnerID1, TestNode1, TestIP1,
+				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
+				false,
+			),
 			metav1.CreateOptions{},
 		)
 		c.Assert(err, IsNil)
-		rm2, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(
+		instanceManager2, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(
 			context.TODO(),
-			newInstanceManager(TestReplicaManagerName+"-"+TestNode2, longhorn.InstanceManagerTypeReplica, longhorn.InstanceManagerStateRunning, TestOwnerID2, TestNode2, TestIP1, map[string]longhorn.InstanceProcess{}, false),
+			newInstanceManager(
+				TestInstanceManagerName+"-"+TestNode2, longhorn.InstanceManagerStateRunning,
+				TestOwnerID2, TestNode2, TestIP1,
+				map[string]longhorn.InstanceProcess{},
+				map[string]longhorn.InstanceProcess{},
+				false,
+			),
 			metav1.CreateOptions{},
 		)
 		c.Assert(err, IsNil)
 		imIndexer := lhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
-		err = imIndexer.Add(rm1)
+		err = imIndexer.Add(instanceManager1)
 		c.Assert(err, IsNil)
-		err = imIndexer.Add(rm2)
+		err = imIndexer.Add(instanceManager2)
 		c.Assert(err, IsNil)
 
 		if tc.volume.Spec.FromBackup != "" {

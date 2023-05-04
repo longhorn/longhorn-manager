@@ -205,8 +205,11 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 	patchOps = append(patchOps, patchOp)
 
-	size = util.RoundUpSize(size)
-	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/size", "value": "%v"}`, strconv.FormatInt(size, 10)))
+	newSize := util.RoundUpSize(size)
+	if newSize != size {
+		logrus.Infof("Rounding up the volume spec size from %d to %d in the create mutator", size, newSize)
+	}
+	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/size", "value": "%v"}`, strconv.FormatInt(newSize, 10)))
 
 	defaultEngineImage, _ := v.ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 	if defaultEngineImage == "" {
@@ -256,9 +259,16 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 	if volume.Spec.UnmapMarkSnapChainRemoved == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/unmapMarkSnapChainRemoved", "value": "%s"}`, longhorn.UnmapMarkSnapChainRemovedIgnored))
 	}
+	if string(volume.Spec.SnapshotDataIntegrity) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/snapshotDataIntegrity", "value": "%s"}`, longhorn.SnapshotDataIntegrityIgnored))
+	}
+	if string(volume.Spec.RestoreVolumeRecurringJob) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/restoreVolumeRecurringJob", "value": "%s"}`, longhorn.RestoreVolumeRecurringJobDefault))
+	}
 
 	size := util.RoundUpSize(volume.Spec.Size)
 	if size != volume.Spec.Size {
+		logrus.Infof("Rounding up the requested volume spec size from %d to %d in the update mutator", volume.Spec.Size, size)
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/size", "value": "%s"}`, strconv.FormatInt(size, 10)))
 	}
 

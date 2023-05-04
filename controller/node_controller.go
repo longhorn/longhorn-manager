@@ -205,12 +205,12 @@ func (nc *NodeController) isResponsibleForSnapshot(obj interface{}) bool {
 	}
 	volumeName, ok := snapshot.Labels[types.LonghornLabelVolume]
 	if !ok {
-		logrus.Warnf("cannot get volume name from snapshot %v", snapshot.Name)
+		logrus.Warnf("Cannot find volume name from snapshot %v", snapshot.Name)
 		return false
 	}
 	volume, err := nc.ds.GetVolumeRO(volumeName)
 	if err != nil {
-		logrus.Warnf("failed to get volume %v since %v", snapshot.Name, err)
+		logrus.WithError(err).Warnf("Failed to get volume for snapshot %v", snapshot.Name)
 		return false
 	}
 	if volume.Status.OwnerID != nc.controllerID {
@@ -223,7 +223,7 @@ func (nc *NodeController) isResponsibleForSnapshot(obj interface{}) bool {
 func (nc *NodeController) snapshotHashRequired(volume *longhorn.Volume) bool {
 	dataIntegrityImmediateChecking, err := nc.ds.GetSettingAsBool(types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation)
 	if err != nil {
-		logrus.Warnf("failed to get %v setting since %v", types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation, err)
+		logrus.WithError(err).Warnf("Failed to get %v setting", types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation)
 		return false
 	}
 	if !dataIntegrityImmediateChecking {
@@ -932,7 +932,10 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 		return err
 	}
 
-	imTypes := []longhorn.InstanceManagerType{longhorn.InstanceManagerTypeEngine}
+	imTypes := []longhorn.InstanceManagerType{
+		longhorn.InstanceManagerTypeAllInOne,
+		longhorn.InstanceManagerTypeEngine,
+	}
 
 	// Clean up all replica managers if there is no disk on the node
 	if len(node.Spec.Disks) == 0 {
@@ -969,7 +972,7 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 			} else {
 				// Clean up old instance managers if there is no running instance.
 				if im.Status.CurrentState == longhorn.InstanceManagerStateRunning && im.DeletionTimestamp == nil {
-					for _, instance := range im.Status.Instances {
+					for _, instance := range types.ConsolidateInstances(im.Status.InstanceEngines, im.Status.InstanceReplicas, im.Status.Instances) {
 						if instance.Status.State == longhorn.InstanceStateRunning || instance.Status.State == longhorn.InstanceStateStarting {
 							cleanupRequired = false
 							break
@@ -984,7 +987,7 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 				}
 			}
 		}
-		if !defaultInstanceManagerCreated {
+		if !defaultInstanceManagerCreated && imType == longhorn.InstanceManagerTypeAllInOne {
 			imName, err := types.GetInstanceManagerName(imType, node.Name, defaultInstanceManagerImage)
 			if err != nil {
 				return err
