@@ -1778,6 +1778,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 
 		// It has been at least 10 seconds (2 * EnginePollInterval) since we were asked to rebuild.
 		// Should we still communicate with addr?
+		// TODO: Remove this check in versions that include a completed longhorn/longhorn#5845.
 		updatedEngine, err := ec.ds.GetEngineRO(e.Name)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
