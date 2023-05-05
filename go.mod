@@ -41,10 +41,10 @@ require (
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v0.0.0-20220609065820-a08f7f47442f
-	github.com/longhorn/backupstore v0.0.0-20230503020833-d16486b28076
+	github.com/longhorn/backupstore v0.0.0-20230505043341-f871cdfdf2fc
 	github.com/longhorn/go-iscsi-helper v0.0.0-20230425064248-72f136f48524
-	github.com/longhorn/longhorn-engine v1.4.2-0.20230503093729-78d58c7e1536
-	github.com/longhorn/longhorn-instance-manager v1.4.2-0.20230503095019-d050022b93c7
+	github.com/longhorn/longhorn-engine v1.4.2-0.20230505032747-3343bb5fba06
+	github.com/longhorn/longhorn-instance-manager v1.4.2-0.20230505034424-c9378d6b7c65
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.1
 	github.com/rancher/dynamiclistener v0.3.1
@@ -56,26 +56,25 @@ require (
 	github.com/urfave/cli v1.22.5
 	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4
 	golang.org/x/net v0.7.0
-	golang.org/x/sys v0.7.0
+	golang.org/x/sys v0.8.0
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac
 	google.golang.org/grpc v1.40.0
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.23.6
 	k8s.io/apiextensions-apiserver v0.18.0
-	k8s.io/apimachinery v0.26.3
+	k8s.io/apimachinery v0.27.1
 	k8s.io/cli-runtime v0.23.6
 	k8s.io/client-go v0.23.6
 	k8s.io/kubernetes v1.23.6
 	k8s.io/metrics v0.23.6
-	k8s.io/mount-utils v0.26.3
-	k8s.io/utils v0.0.0-20230313181309-38a27ef9d749
+	k8s.io/mount-utils v0.27.1
+	k8s.io/utils v0.0.0-20230406110748-d93618cff8a2
 	sigs.k8s.io/controller-runtime v0.4.0
 	sigs.k8s.io/yaml v1.2.0
 )
 
 require (
-	github.com/google/fscrypt v0.3.4 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
 )
@@ -94,7 +93,7 @@ require (
 	github.com/evanphx/json-patch v4.12.0+incompatible // indirect
 	github.com/glycerine/go-unsnap-stream v0.0.0-20181221182339-f9677308dec2 // indirect
 	github.com/go-co-op/gocron v1.18.0
-	github.com/go-logr/logr v1.2.3 // indirect
+	github.com/go-logr/logr v1.2.4 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/snappy v0.0.1 // indirect
@@ -142,7 +141,7 @@ require (
 	k8s.io/component-base v0.23.6 // indirect
 	k8s.io/component-helpers v0.23.6 // indirect
 	k8s.io/klog v1.0.0 // indirect
-	k8s.io/klog/v2 v2.90.1 // indirect
+	k8s.io/klog/v2 v2.100.1 // indirect
 	k8s.io/kube-aggregator v0.18.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65 // indirect
 	sigs.k8s.io/json v0.0.0-20211020170558-c049b76a60c6 // indirect
