@@ -3,7 +3,9 @@ package v1beta2
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 const (
-	DataSourceTypeDownloadParameterURL = "url"
+	DataSourceTypeDownloadParameterURL      = "url"
+	DataSourceTypeExportParameterExportType = "export-type"
+	DataSourceTypeExportParameterVolumeName = "volume-name"
 )
 
 // +kubebuilder:validation:Enum=download;upload;export-from-volume
