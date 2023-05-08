@@ -76,7 +76,7 @@ func Upgrade(kubeconfigPath, currentNodeID string) error {
 		return errors.Wrap(err, "unable to create scheme")
 	}
 
-	if err := upgradeLocalNode(); err != nil {
+	if err := upgradeutil.CheckUpgradePathSupported(namespace, lhClient); err != nil {
 		return err
 	}
 
@@ -216,16 +216,6 @@ func doAPIVersionUpgrade(namespace string, config *restclient.Config, lhClient *
 		return fmt.Errorf("don't support upgrade from %v to %v", crdAPIVersion, types.CurrentCRDAPIVersion)
 	}
 
-	return nil
-}
-
-func upgradeLocalNode() (err error) {
-	defer func() {
-		err = errors.Wrap(err, "upgrade local node failed")
-	}()
-	if err := v070to080.UpgradeLocalNode(); err != nil {
-		return err
-	}
 	return nil
 }
 
