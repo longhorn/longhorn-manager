@@ -1139,7 +1139,8 @@ const (
 	ClusterInfoNamespaceUID = util.StructName("LonghornNamespaceUid")
 	ClusterInfoNodeCount    = util.StructName("LonghornNodeCount")
 
-	ClusterInfoVolumeAccessModeCountFmt = "LonghornVolumeAccessMode%sCount"
+	ClusterInfoVolumeAccessModeCountFmt   = "LonghornVolumeAccessMode%sCount"
+	ClusterInfoVolumeDataLocalityCountFmt = "LonghornVolumeDataLocality%sCount"
 )
 
 // Node Scope Info: will be sent from all Longhorn cluster nodes
@@ -1208,14 +1209,22 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	}
 
 	accessModeCountStruct := make(map[util.StructName]int)
+	dataLocalityCountStruct := make(map[util.StructName]int)
 	for _, volume := range volumesRO {
 		accessMode := types.ValueUnknown
 		if volume.Spec.AccessMode != "" {
 			accessMode = util.ConvertToCamel(string(volume.Spec.AccessMode), "-")
 		}
 		accessModeCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeAccessModeCountFmt, accessMode))]++
+
+		dataLocality := types.ValueUnknown
+		if volume.Spec.DataLocality != "" {
+			dataLocality = util.ConvertToCamel(string(volume.Spec.DataLocality), "-")
+		}
+		dataLocalityCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeDataLocalityCountFmt, dataLocality))]++
 	}
 	info.structFields.AppendCounted(accessModeCountStruct)
+	info.structFields.AppendCounted(dataLocalityCountStruct)
 
 	return nil
 }
