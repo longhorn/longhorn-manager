@@ -23,6 +23,7 @@ import (
 const (
 	DefaultSettingYAMLFileName = "default-setting.yaml"
 
+	ValueEmpty   = "none"
 	ValueUnknown = "unknown"
 )
 

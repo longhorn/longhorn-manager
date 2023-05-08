@@ -1139,7 +1139,8 @@ const ()
 
 // Node Scope Info: will be sent from all Longhorn cluster nodes
 const (
-	ClusterInfoKubernetesVersion = util.StructName("KubernetesVersion")
+	ClusterInfoKubernetesVersion      = util.StructName("KubernetesVersion")
+	ClusterInfoKubernetesNodeProvider = util.StructName("KubernetesNodeProvider")
 
 	ClusterInfoHostKernelRelease = util.StructName("HostKernelRelease")
 	ClusterInfoHostOsDistro      = util.StructName("HostOsDistro")
@@ -1180,6 +1181,10 @@ func (info *ClusterInfo) collectNodeScope() {
 	if err := info.collectNodeDiskCount(); err != nil {
 		info.logger.WithError(err).Debug("Failed to collect number of node disks")
 	}
+
+	if err := info.collectKubernetesNodeProvider(); err != nil {
+		info.logger.WithError(err).Debug("Failed to collect node provider")
+	}
 }
 
 func (info *ClusterInfo) collectHostKernelRelease() error {
@@ -1199,6 +1204,15 @@ func (info *ClusterInfo) collectHostOSDistro() (err error) {
 	}
 	info.structFields.Append(ClusterInfoHostOsDistro, info.osDistro)
 	return nil
+}
+
+func (info *ClusterInfo) collectKubernetesNodeProvider() error {
+	node, err := info.ds.GetKubernetesNode(info.controllerID)
+	if err == nil {
+		scheme := types.GetKubernetesProviderNameFromURL(node.Spec.ProviderID)
+		info.structFields.Append(ClusterInfoKubernetesNodeProvider, scheme)
+	}
+	return err
 }
 
 func (info *ClusterInfo) collectNodeDiskCount() error {

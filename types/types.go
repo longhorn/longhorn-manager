@@ -1008,3 +1008,15 @@ func IsSelectorsInTags(tags, selectors []string) bool {
 
 	return true
 }
+
+func GetKubernetesProviderNameFromURL(providerURL string) string {
+	if providerURL == "" {
+		return ValueEmpty
+	}
+
+	scheme := util.GetSchemeFromURL(providerURL)
+	if scheme == "" {
+		scheme = ValueUnknown
+	}
+	return scheme
+}
