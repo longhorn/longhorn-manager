@@ -52,6 +52,7 @@ const (
 	TestVolumeSize         = 1073741824
 	TestVolumeStaleTimeout = 60
 	TestEngineName         = "test-volume-engine"
+	TestReplicaName        = "test-volume-replica"
 
 	TestPVName  = "test-pv"
 	TestPVCName = "test-pvc"
