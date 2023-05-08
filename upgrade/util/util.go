@@ -5,7 +5,11 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"strconv"
+	"strings"
 	"sync"
+
+	"golang.org/x/mod/semver"
 
 	"github.com/jinzhu/copier"
 	"github.com/pkg/errors"
@@ -22,6 +26,12 @@ import (
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	"github.com/longhorn/longhorn-manager/meta"
 	"github.com/longhorn/longhorn-manager/types"
+)
+
+const (
+	// LonghornV1ToV2MinorVersionNum v1 minimal minor version when the upgrade path is from v1.x to v2.0
+	// TODO: decide the v1 minimum version that could be upgraded to v2.0
+	LonghornV1ToV2MinorVersionNum = 30
 )
 
 type ProgressMonitor struct {
@@ -112,7 +122,7 @@ func MergeStringMaps(baseMap, overwriteMap map[string]string) map[string]string 
 	return result
 }
 
-func GetCurrentLonghornVersion(namespace string, lhClient *lhclientset.Clientset) (string, error) {
+func GetCurrentLonghornVersion(namespace string, lhClient lhclientset.Interface) (string, error) {
 	currentLHVersionSetting, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameCurrentLonghornVersion), metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -147,6 +157,99 @@ func CreateOrUpdateLonghornVersionSetting(namespace string, lhClient *lhclientse
 		return err
 	}
 	return nil
+}
+
+// CheckUpgradePathSupported returns if the upgrade path from lhCurrentVersion to meta.Version is supported.
+//
+//	For example: upgrade path is from x.y.z to a.b.c,
+//	0 <= a-x <= 1 is supported, and y should be after a specific version if a-x == 1
+//	0 <= b-y <= 1 is supported when a-x == 0
+//	all downgrade is not supported
+func CheckUpgradePathSupported(namespace string, lhClient lhclientset.Interface) error {
+	lhCurrentVersion, err := GetCurrentLonghornVersion(namespace, lhClient)
+	if err != nil {
+		return err
+	}
+
+	if lhCurrentVersion == "" {
+		return nil
+	}
+
+	logrus.Infof("Checking if the upgrade path from %v to %v is supported", lhCurrentVersion, meta.Version)
+
+	if !semver.IsValid(meta.Version) {
+		return fmt.Errorf("failed to upgrade since upgrading version %v is not valid", meta.Version)
+	}
+
+	lhNewMajorVersion := semver.Major(meta.Version)
+	lhCurrentMajorVersion := semver.Major(lhCurrentVersion)
+
+	lhNewMajorVersionNum, lhNewMinorVersionNum, err := getMajorMinorInt(meta.Version)
+	if err != nil {
+		return errors.Wrapf(err, "failed to parse upgrading %v major/minor version", meta.Version)
+	}
+
+	lhCurrentMajorVersionNum, lhCurrentMinorVersionNum, err := getMajorMinorInt(lhCurrentVersion)
+	if err != nil {
+		return errors.Wrapf(err, "failed to parse current %v major/minor version", meta.Version)
+	}
+
+	if semver.Compare(lhCurrentMajorVersion, lhNewMajorVersion) > 0 {
+		return fmt.Errorf("failed to upgrade since downgrading from %v to %v for major version is not supported", lhCurrentVersion, meta.Version)
+	}
+
+	if semver.Compare(lhCurrentMajorVersion, lhNewMajorVersion) < 0 {
+		if (lhNewMajorVersionNum - lhCurrentMajorVersionNum) > 1 {
+			return fmt.Errorf("failed to upgrade since upgrading from %v to %v for major version is not supported", lhCurrentVersion, meta.Version)
+		}
+		if lhCurrentMinorVersionNum < LonghornV1ToV2MinorVersionNum {
+			return fmt.Errorf("failed to upgrade since upgrading major version with minor version under %v is not supported", LonghornV1ToV2MinorVersionNum)
+		}
+		return nil
+	}
+
+	if (lhNewMinorVersionNum - lhCurrentMinorVersionNum) > 1 {
+		return fmt.Errorf("failed to upgrade since upgrading from %v to %v for minor version is not supported", lhCurrentVersion, meta.Version)
+	}
+
+	if (lhNewMinorVersionNum - lhCurrentMinorVersionNum) == 1 {
+		return nil
+	}
+
+	if semver.Compare(lhCurrentVersion, meta.Version) > 0 {
+		return fmt.Errorf("failed to upgrade since downgrading from %v to %v is not supported", lhCurrentVersion, meta.Version)
+	}
+
+	return nil
+}
+
+func getMajorMinorInt(v string) (int, int, error) {
+	majorNum, err := getMajorInt(v)
+	if err != nil {
+		return -1, -1, err
+	}
+	minorNum, err := getMinorInt(v)
+	if err != nil {
+		return -1, -1, err
+	}
+	return majorNum, minorNum, nil
+}
+
+func getMajorInt(v string) (int, error) {
+	versionStr := removeFirstChar(v)
+	return strconv.Atoi(strings.Split(versionStr, ".")[0])
+}
+
+func getMinorInt(v string) (int, error) {
+	versionStr := removeFirstChar(v)
+	return strconv.Atoi(strings.Split(versionStr, ".")[1])
+}
+
+func removeFirstChar(v string) string {
+	if v[0] == 'v' {
+		return v[1:]
+	}
+	return v
 }
 
 // ListAndUpdateSettingsInProvidedCache list all settings and save them into the provided cached `resourceMap`. This method is not thread-safe.
