@@ -1138,6 +1138,8 @@ func (sc *SettingController) GetCheckUpgradeRequestExtraInfo() (CheckUpgradeRequ
 const (
 	ClusterInfoNamespaceUID = util.StructName("LonghornNamespaceUid")
 	ClusterInfoNodeCount    = util.StructName("LonghornNodeCount")
+
+	ClusterInfoVolumeAccessModeCountFmt = "LonghornVolumeAccessMode%sCount"
 )
 
 // Node Scope Info: will be sent from all Longhorn cluster nodes
@@ -1177,6 +1179,10 @@ func (info *ClusterInfo) collectClusterScope() {
 	if err := info.collectNodeCount(); err != nil {
 		info.logger.WithError(err).Debug("Failed to collect number of Longhorn nodes")
 	}
+
+	if err := info.collectVolumesInfo(); err != nil {
+		info.logger.WithError(err).Debug("Failed to collect Longhorn Volumes info")
+	}
 }
 
 func (info *ClusterInfo) collectNamespace() error {
@@ -1193,6 +1199,25 @@ func (info *ClusterInfo) collectNodeCount() error {
 		info.structFields.Append(ClusterInfoNodeCount, fmt.Sprint(len(nodesRO)))
 	}
 	return err
+}
+
+func (info *ClusterInfo) collectVolumesInfo() error {
+	volumesRO, err := info.ds.ListVolumesRO()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list Longhorn Volumes")
+	}
+
+	accessModeCountStruct := make(map[util.StructName]int)
+	for _, volume := range volumesRO {
+		accessMode := types.ValueUnknown
+		if volume.Spec.AccessMode != "" {
+			accessMode = util.ConvertToCamel(string(volume.Spec.AccessMode), "-")
+		}
+		accessModeCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeAccessModeCountFmt, accessMode))]++
+	}
+	info.structFields.AppendCounted(accessModeCountStruct)
+
+	return nil
 }
 
 func (info *ClusterInfo) collectNodeScope() {

@@ -30,6 +30,8 @@ import (
 	"github.com/gorilla/handlers"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 	"gopkg.in/yaml.v2"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -112,6 +114,15 @@ func ConvertSize(size interface{}) (int64, error) {
 		return quantity.Value(), nil
 	}
 	return 0, errors.Errorf("could not parse size '%v'", size)
+}
+
+func ConvertToCamel(input, separator string) string {
+	words := strings.Split(input, separator)
+	caser := cases.Title(language.English)
+	for i := 0; i < len(words); i++ {
+		words[i] = caser.String(words[i])
+	}
+	return strings.Join(words, "")
 }
 
 func ConvertFirstCharToLower(input string) string {
