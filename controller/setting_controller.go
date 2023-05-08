@@ -1143,6 +1143,8 @@ const (
 
 	ClusterInfoHostKernelRelease = util.StructName("HostKernelRelease")
 	ClusterInfoHostOsDistro      = util.StructName("HostOsDistro")
+
+	ClusterInfoNodeDiskCountFmt = "LonghornNodeDisk%sCount"
 )
 
 // ClusterInfo struct is used to collect information about the cluster.
@@ -1174,6 +1176,10 @@ func (info *ClusterInfo) collectNodeScope() {
 	if err := info.collectHostOSDistro(); err != nil {
 		info.logger.WithError(err).Debug("Failed to collect host OS distro")
 	}
+
+	if err := info.collectNodeDiskCount(); err != nil {
+		info.logger.WithError(err).Debug("Failed to collect number of node disks")
+	}
 }
 
 func (info *ClusterInfo) collectHostKernelRelease() error {
@@ -1192,5 +1198,27 @@ func (info *ClusterInfo) collectHostOSDistro() (err error) {
 		}
 	}
 	info.structFields.Append(ClusterInfoHostOsDistro, info.osDistro)
+	return nil
+}
+
+func (info *ClusterInfo) collectNodeDiskCount() error {
+	node, err := info.ds.GetNodeRO(info.controllerID)
+	if err != nil {
+		return err
+	}
+
+	structMap := make(map[util.StructName]int)
+	for _, disk := range node.Spec.Disks {
+		deviceType, err := types.GetDeviceTypeOf(disk.Path)
+		if err != nil {
+			info.logger.WithError(err).Debugf("Failed to get device type of %v", disk.Path)
+			deviceType = types.ValueUnknown
+		}
+		structMap[util.StructName(fmt.Sprintf(ClusterInfoNodeDiskCountFmt, strings.ToUpper(deviceType)))]++
+	}
+	for structName, value := range structMap {
+		info.structFields.Append(structName, fmt.Sprint(value))
+	}
+
 	return nil
 }
