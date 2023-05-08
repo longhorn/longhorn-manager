@@ -1143,6 +1143,7 @@ const (
 	ClusterInfoVolumeAvgActualSize    = util.StructName("LonghornVolumeAverageActualSize")
 	ClusterInfoVolumeAvgSize          = util.StructName("LonghornVolumeAverageSize")
 	ClusterInfoVolumeAvgSnapshotCount = util.StructName("LonghornVolumeAverageSnapshotCount")
+	ClusterInfoVolumeAvgNumOfReplicas = util.StructName("LonghornVolumeAverageNumberOfReplicas")
 
 	ClusterInfoVolumeAccessModeCountFmt   = "LonghornVolumeAccessMode%sCount"
 	ClusterInfoVolumeDataLocalityCountFmt = "LonghornVolumeDataLocality%sCount"
@@ -1216,12 +1217,14 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 
 	var totalVolumeSize int
 	var totalVolumeActualSize int
+	var totalVolumeNumOfReplicas int
 	accessModeCountStruct := make(map[util.StructName]int)
 	dataLocalityCountStruct := make(map[util.StructName]int)
 	frontendCountStruct := make(map[util.StructName]int)
 	for _, volume := range volumesRO {
 		totalVolumeSize += int(volume.Spec.Size)
 		totalVolumeActualSize += int(volume.Status.ActualSize)
+		totalVolumeNumOfReplicas += volume.Spec.NumberOfReplicas
 
 		accessMode := types.ValueUnknown
 		if volume.Spec.AccessMode != "" {
@@ -1247,10 +1250,12 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	var avgVolumeSnapshotCount int
 	var avgVolumeSize int
 	var avgVolumeActualSize int
+	var avgVolumeNumOfReplicas int
 	volumeCount := len(volumesRO)
 	if volumeCount > 0 {
 		avgVolumeSize = totalVolumeSize / volumeCount
 		avgVolumeActualSize = totalVolumeActualSize / volumeCount
+		avgVolumeNumOfReplicas = totalVolumeNumOfReplicas / volumeCount
 
 		snapshotsRO, err := info.ds.ListSnapshotsRO(labels.Everything())
 		if err != nil {
@@ -1261,6 +1266,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	info.structFields.Append(ClusterInfoVolumeAvgSize, info.getSizeRange(avgVolumeSize))
 	info.structFields.Append(ClusterInfoVolumeAvgActualSize, info.getSizeRange(avgVolumeActualSize))
 	info.structFields.Append(ClusterInfoVolumeAvgSnapshotCount, fmt.Sprint(avgVolumeSnapshotCount))
+	info.structFields.Append(ClusterInfoVolumeAvgNumOfReplicas, fmt.Sprint(avgVolumeNumOfReplicas))
 
 	return nil
 }
