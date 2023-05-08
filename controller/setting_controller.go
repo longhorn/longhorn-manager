@@ -1135,7 +1135,9 @@ func (sc *SettingController) GetCheckUpgradeRequestExtraInfo() (CheckUpgradeRequ
 }
 
 // Cluster Scope Info: will be sent from one of the Longhorn cluster nodes
-const ()
+const (
+	ClusterInfoNamespaceUID = util.StructName("LonghornNamespaceUid")
+)
 
 // Node Scope Info: will be sent from all Longhorn cluster nodes
 const (
@@ -1167,6 +1169,17 @@ type ClusterInfo struct {
 }
 
 func (info *ClusterInfo) collectClusterScope() {
+	if err := info.collectNamespace(); err != nil {
+		info.logger.WithError(err).Debug("Failed to collect Longhorn namespace")
+	}
+}
+
+func (info *ClusterInfo) collectNamespace() error {
+	namespace, err := info.ds.GetNamespace(info.namespace)
+	if err == nil {
+		info.structFields.Append(ClusterInfoNamespaceUID, string(namespace.UID))
+	}
+	return err
 }
 
 func (info *ClusterInfo) collectNodeScope() {
