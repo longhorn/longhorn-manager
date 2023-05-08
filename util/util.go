@@ -984,3 +984,7 @@ func VerifySnapshotLabels(labels map[string]string) error {
 	}
 	return nil
 }
+
+func RemoveNewlines(input string) string {
+	return strings.Replace(input, "\n", "", -1)
+}

@@ -1140,6 +1140,8 @@ const ()
 // Node Scope Info: will be sent from all Longhorn cluster nodes
 const (
 	ClusterInfoKubernetesVersion = util.StructName("KubernetesVersion")
+
+	ClusterInfoHostKernelRelease = util.StructName("HostKernelRelease")
 )
 
 // ClusterInfo struct is used to collect information about the cluster.
@@ -1162,4 +1164,15 @@ func (info *ClusterInfo) collectClusterScope() {
 }
 
 func (info *ClusterInfo) collectNodeScope() {
+	if err := info.collectHostKernelRelease(); err != nil {
+		info.logger.WithError(err).Debug("Failed to collect host kernel release")
+	}
+}
+
+func (info *ClusterInfo) collectHostKernelRelease() error {
+	kernelRelease, err := util.GetHostKernelRelease()
+	if err == nil {
+		info.structFields.Append(ClusterInfoHostKernelRelease, kernelRelease)
+	}
+	return err
 }
