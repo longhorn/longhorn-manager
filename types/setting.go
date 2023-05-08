@@ -22,6 +22,8 @@ import (
 
 const (
 	DefaultSettingYAMLFileName = "default-setting.yaml"
+
+	ValueUnknown = "unknown"
 )
 
 type SettingType string
