@@ -34,6 +34,7 @@ type InstanceManagerTestCase struct {
 	currentPodStatus *v1.PodStatus
 	currentOwnerID   string
 	currentState     longhorn.InstanceManagerState
+	currentInstances map[string]longhorn.InstanceProcess
 
 	expectedPodCount int
 	expectedStatus   longhorn.InstanceManagerStatus
@@ -81,7 +82,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		"instance manager change ownership": {
 			TestNode1, false, TestNode1,
 			&v1.PodStatus{PodIP: TestIP1, Phase: v1.PodRunning},
-			TestNode2, longhorn.InstanceManagerStateUnknown, 1,
+			TestNode2, longhorn.InstanceManagerStateUnknown, nil, 1,
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
 				CurrentState:  longhorn.InstanceManagerStateRunning,
@@ -94,20 +95,33 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		"instance manager error then restart immediately": {
 			TestNode1, false, TestNode1,
 			&v1.PodStatus{PodIP: "", Phase: v1.PodFailed},
-			TestNode1, longhorn.InstanceManagerStateRunning, 1,
+			TestNode1, longhorn.InstanceManagerStateRunning,
+			map[string]longhorn.InstanceProcess{ // Process information will be erased in the next reconcile loop.
+				TestReplicaName: {
+					Spec: longhorn.InstanceProcessSpec{
+						Name: TestReplicaName,
+					},
+					Status: longhorn.InstanceProcessStatus{
+						State:     longhorn.InstanceStateRunning,
+						PortStart: 1000,
+					},
+				},
+			},
+			1,
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
 				CurrentState:  longhorn.InstanceManagerStateError, // The state will become InstanceManagerStateStarting in the next reconcile loop
 				IP:            TestIP1,
 				APIMinVersion: 0,
 				APIVersion:    0,
+				Instances:     nil, // Transition to InstanceManagerStateError erases process information.
 			},
 			longhorn.InstanceManagerTypeEngine,
 		},
 		"instance manager node down": {
 			TestNode2, true, TestNode1,
 			&v1.PodStatus{PodIP: TestIP1, Phase: v1.PodRunning},
-			TestNode2, longhorn.InstanceManagerStateRunning, 1,
+			TestNode2, longhorn.InstanceManagerStateRunning, nil, 1,
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode2,
 				CurrentState:  longhorn.InstanceManagerStateUnknown,
@@ -120,7 +134,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		"instance manager restarting after error": {
 			TestNode1, false, TestNode1,
 			&v1.PodStatus{PodIP: TestIP1, Phase: v1.PodPending},
-			TestNode1, longhorn.InstanceManagerStateError, 1,
+			TestNode1, longhorn.InstanceManagerStateError, nil, 1,
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
 				CurrentState:  longhorn.InstanceManagerStateStarting,
@@ -132,7 +146,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		"instance manager running": {
 			TestNode1, false, TestNode1,
 			&v1.PodStatus{PodIP: TestIP1, Phase: v1.PodRunning},
-			TestNode1, longhorn.InstanceManagerStateStarting, 1,
+			TestNode1, longhorn.InstanceManagerStateStarting, nil, 1,
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
 				CurrentState:  longhorn.InstanceManagerStateRunning,
@@ -145,7 +159,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		"instance manager starting engine": {
 			TestNode1, false, TestNode1,
 			nil,
-			TestNode1, longhorn.InstanceManagerStateStopped, 1,
+			TestNode1, longhorn.InstanceManagerStateStopped, nil, 1,
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
 				CurrentState:  longhorn.InstanceManagerStateStopped, // The state will become InstanceManagerStateStarting in the next reconcile loop
@@ -157,7 +171,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		"instance manager starting replica": {
 			TestNode1, false, TestNode1,
 			nil,
-			TestNode1, longhorn.InstanceManagerStateStopped, 1,
+			TestNode1, longhorn.InstanceManagerStateStopped, nil, 1,
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
 				CurrentState:  longhorn.InstanceManagerStateStopped, // The state will become InstanceManagerStateStarting in the next reconcile loop
@@ -169,7 +183,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		"instance manager sync IP": {
 			TestNode1, false, TestNode1,
 			&v1.PodStatus{PodIP: TestIP2, Phase: v1.PodRunning},
-			TestNode1, longhorn.InstanceManagerStateRunning, 1,
+			TestNode1, longhorn.InstanceManagerStateRunning, nil, 1,
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
 				CurrentState:  longhorn.InstanceManagerStateRunning,
@@ -243,7 +257,10 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		if tc.currentState == longhorn.InstanceManagerStateRunning || tc.currentState == longhorn.InstanceManagerStateStarting {
 			currentIP = TestIP1
 		}
-		im := newInstanceManager(TestInstanceManagerName1, tc.expectedType, tc.currentState, tc.currentOwnerID, tc.nodeID, currentIP, nil, false)
+		im := newInstanceManager(
+			TestInstanceManagerName1, tc.expectedType, tc.currentState,
+			tc.currentOwnerID, tc.nodeID, currentIP, tc.currentInstances, false,
+		)
 		err = imIndexer.Add(im)
 		c.Assert(err, IsNil)
 		_, err = lhClient.LonghornV1beta2().InstanceManagers(im.Namespace).Create(context.TODO(), im, metav1.CreateOptions{})
