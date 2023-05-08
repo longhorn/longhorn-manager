@@ -394,12 +394,6 @@ func GetEIDaemonSetLabelSelector(engineImageName string) map[string]string {
 	return labels
 }
 
-func GetEngineImageComponentLabel() map[string]string {
-	return map[string]string{
-		GetLonghornLabelComponentKey(): LonghornLabelEngineImage,
-	}
-}
-
 func GetInstanceManagerLabels(node, instanceManagerImage string, managerType longhorn.InstanceManagerType) map[string]string {
 	labels := GetBaseLabelsForSystemManagedComponent()
 	labels[GetLonghornLabelComponentKey()] = LonghornLabelInstanceManager

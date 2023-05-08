@@ -1148,6 +1148,7 @@ const (
 	ClusterInfoVolumeAvgNumOfReplicas = util.StructName("LonghornVolumeAverageNumberOfReplicas")
 
 	ClusterInfoPodAvgCPUUsageFmt          = "Longhorn%sAverageCpuUsageCore"
+	ClusterInfoPodAvgMemoryUsageFmt       = "Longhorn%sAverageMemoryUsageMib"
 	ClusterInfoVolumeAccessModeCountFmt   = "LonghornVolumeAccessMode%sCount"
 	ClusterInfoVolumeDataLocalityCountFmt = "LonghornVolumeDataLocality%sCount"
 	ClusterInfoVolumeFrontendCountFmt     = "LonghornVolumeFrontend%sCount"
@@ -1243,6 +1244,7 @@ func (info *ClusterInfo) collectResourceUsage() error {
 		}
 
 		var totalCPUUsage resource.Quantity
+		var totalMemoryUsage resource.Quantity
 		for _, pod := range pods {
 			podMetrics, err := metricsClient.PodMetricses(info.namespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
 			if err != nil && !apierrors.IsNotFound(err) {
@@ -1251,12 +1253,19 @@ func (info *ClusterInfo) collectResourceUsage() error {
 			}
 			for _, container := range podMetrics.Containers {
 				totalCPUUsage.Add(*container.Usage.Cpu())
+				totalMemoryUsage.Add(*container.Usage.Memory())
 			}
 		}
 
 		avgCPUUsageMilli := totalCPUUsage.MilliValue() / int64(len(pods))
 		cpuStruct := util.StructName(fmt.Sprintf(ClusterInfoPodAvgCPUUsageFmt, component))
 		info.structFields.Append(cpuStruct, info.getCPURange(avgCPUUsageMilli))
+
+		avgMemoryUsageBytes := totalMemoryUsage.Value() / int64(len(pods))
+		avgMemoryUsageMiB := float64(avgMemoryUsageBytes) / (1024 * 1024)
+		avgMemoryUsage := resource.NewQuantity(int64(avgMemoryUsageMiB), resource.BinarySI).String()
+		memStruct := util.StructName(fmt.Sprintf(ClusterInfoPodAvgMemoryUsageFmt, component))
+		info.structFields.Append(memStruct, avgMemoryUsage)
 	}
 
 	return nil
