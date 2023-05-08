@@ -1142,6 +1142,7 @@ const (
 	ClusterInfoKubernetesVersion = util.StructName("KubernetesVersion")
 
 	ClusterInfoHostKernelRelease = util.StructName("HostKernelRelease")
+	ClusterInfoHostOsDistro      = util.StructName("HostOsDistro")
 )
 
 // ClusterInfo struct is used to collect information about the cluster.
@@ -1158,6 +1159,8 @@ type ClusterInfo struct {
 
 	controllerID string
 	namespace    string
+
+	osDistro string
 }
 
 func (info *ClusterInfo) collectClusterScope() {
@@ -1167,6 +1170,10 @@ func (info *ClusterInfo) collectNodeScope() {
 	if err := info.collectHostKernelRelease(); err != nil {
 		info.logger.WithError(err).Debug("Failed to collect host kernel release")
 	}
+
+	if err := info.collectHostOSDistro(); err != nil {
+		info.logger.WithError(err).Debug("Failed to collect host OS distro")
+	}
 }
 
 func (info *ClusterInfo) collectHostKernelRelease() error {
@@ -1175,4 +1182,15 @@ func (info *ClusterInfo) collectHostKernelRelease() error {
 		info.structFields.Append(ClusterInfoHostKernelRelease, kernelRelease)
 	}
 	return err
+}
+
+func (info *ClusterInfo) collectHostOSDistro() (err error) {
+	if info.osDistro == "" {
+		info.osDistro, err = util.GetHostOSDistro()
+		if err != nil {
+			return err
+		}
+	}
+	info.structFields.Append(ClusterInfoHostOsDistro, info.osDistro)
+	return nil
 }
