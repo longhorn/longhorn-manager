@@ -1141,6 +1141,7 @@ const (
 
 	ClusterInfoVolumeAccessModeCountFmt   = "LonghornVolumeAccessMode%sCount"
 	ClusterInfoVolumeDataLocalityCountFmt = "LonghornVolumeDataLocality%sCount"
+	ClusterInfoVolumeFrontendCountFmt     = "LonghornVolumeFrontend%sCount"
 )
 
 // Node Scope Info: will be sent from all Longhorn cluster nodes
@@ -1210,6 +1211,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 
 	accessModeCountStruct := make(map[util.StructName]int)
 	dataLocalityCountStruct := make(map[util.StructName]int)
+	frontendCountStruct := make(map[util.StructName]int)
 	for _, volume := range volumesRO {
 		accessMode := types.ValueUnknown
 		if volume.Spec.AccessMode != "" {
@@ -1222,9 +1224,15 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 			dataLocality = util.ConvertToCamel(string(volume.Spec.DataLocality), "-")
 		}
 		dataLocalityCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeDataLocalityCountFmt, dataLocality))]++
+
+		if volume.Spec.Frontend != "" {
+			frontend := util.ConvertToCamel(string(volume.Spec.Frontend), "-")
+			frontendCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeFrontendCountFmt, frontend))]++
+		}
 	}
 	info.structFields.AppendCounted(accessModeCountStruct)
 	info.structFields.AppendCounted(dataLocalityCountStruct)
+	info.structFields.AppendCounted(frontendCountStruct)
 
 	return nil
 }
