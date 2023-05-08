@@ -1137,6 +1137,7 @@ func (sc *SettingController) GetCheckUpgradeRequestExtraInfo() (CheckUpgradeRequ
 // Cluster Scope Info: will be sent from one of the Longhorn cluster nodes
 const (
 	ClusterInfoNamespaceUID = util.StructName("LonghornNamespaceUid")
+	ClusterInfoNodeCount    = util.StructName("LonghornNodeCount")
 )
 
 // Node Scope Info: will be sent from all Longhorn cluster nodes
@@ -1172,12 +1173,24 @@ func (info *ClusterInfo) collectClusterScope() {
 	if err := info.collectNamespace(); err != nil {
 		info.logger.WithError(err).Debug("Failed to collect Longhorn namespace")
 	}
+
+	if err := info.collectNodeCount(); err != nil {
+		info.logger.WithError(err).Debug("Failed to collect number of Longhorn nodes")
+	}
 }
 
 func (info *ClusterInfo) collectNamespace() error {
 	namespace, err := info.ds.GetNamespace(info.namespace)
 	if err == nil {
 		info.structFields.Append(ClusterInfoNamespaceUID, string(namespace.UID))
+	}
+	return err
+}
+
+func (info *ClusterInfo) collectNodeCount() error {
+	nodesRO, err := info.ds.ListNodesRO()
+	if err == nil {
+		info.structFields.Append(ClusterInfoNodeCount, fmt.Sprint(len(nodesRO)))
 	}
 	return err
 }
