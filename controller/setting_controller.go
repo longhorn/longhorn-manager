@@ -1149,6 +1149,7 @@ const (
 
 	ClusterInfoPodAvgCPUUsageFmt          = "Longhorn%sAverageCpuUsageCore"
 	ClusterInfoPodAvgMemoryUsageFmt       = "Longhorn%sAverageMemoryUsageMib"
+	ClusterInfoSettingFmt                 = "LonghornSetting%s"
 	ClusterInfoVolumeAccessModeCountFmt   = "LonghornVolumeAccessMode%sCount"
 	ClusterInfoVolumeDataLocalityCountFmt = "LonghornVolumeDataLocality%sCount"
 	ClusterInfoVolumeFrontendCountFmt     = "LonghornVolumeFrontend%sCount"
@@ -1198,6 +1199,10 @@ func (info *ClusterInfo) collectClusterScope() {
 
 	if err := info.collectVolumesInfo(); err != nil {
 		info.logger.WithError(err).Debug("Failed to collect Longhorn Volumes info")
+	}
+
+	if err := info.collectSettings(); err != nil {
+		info.logger.WithError(err).Debug("Failed to collect Longhorn settings")
 	}
 }
 
@@ -1278,6 +1283,98 @@ func (info *ClusterInfo) getMemoryRange(bytes int64) string {
 	mib := float64(bytes) / 1024 / 1024
 	min, max := util.GetRange(mib, 50.0)
 	return fmt.Sprintf("%.0f-%.0f", min, max)
+}
+
+func (info *ClusterInfo) collectSettings() error {
+	includeAsBoolean := map[types.SettingName]bool{
+		types.SettingNameTaintToleration:                     true,
+		types.SettingNameSystemManagedComponentsNodeSelector: true,
+		types.SettingNameRegistrySecret:                      true,
+		types.SettingNamePriorityClass:                       true,
+		types.SettingNameStorageNetwork:                      true,
+	}
+
+	include := map[types.SettingName]bool{
+		types.SettingNameAllowRecurringJobWhileVolumeDetached:                     true,
+		types.SettingNameAllowVolumeCreationWithDegradedAvailability:              true,
+		types.SettingNameAutoCleanupSystemGeneratedSnapshot:                       true,
+		types.SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly:              true,
+		types.SettingNameAutoSalvage:                                              true,
+		types.SettingNameBackingImageCleanupWaitInterval:                          true,
+		types.SettingNameBackingImageRecoveryWaitInterval:                         true,
+		types.SettingNameBackupCompressionMethod:                                  true,
+		types.SettingNameBackupstorePollInterval:                                  true,
+		types.SettingNameBackupConcurrentLimit:                                    true,
+		types.SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit:             true,
+		types.SettingNameConcurrentBackupRestorePerNodeLimit:                      true,
+		types.SettingNameConcurrentReplicaRebuildPerNodeLimit:                     true,
+		types.SettingNameCRDAPIVersion:                                            true,
+		types.SettingNameCreateDefaultDiskLabeledNodes:                            true,
+		types.SettingNameDefaultDataLocality:                                      true,
+		types.SettingNameDefaultReplicaCount:                                      true,
+		types.SettingNameDisableRevisionCounter:                                   true,
+		types.SettingNameDisableSchedulingOnCordonedNode:                          true,
+		types.SettingNameEngineReplicaTimeout:                                     true,
+		types.SettingNameFailedBackupTTL:                                          true,
+		types.SettingNameFastReplicaRebuildEnabled:                                true,
+		types.SettingNameGuaranteedInstanceManagerCPU:                             true,
+		types.SettingNameKubernetesClusterAutoscalerEnabled:                       true,
+		types.SettingNameNodeDownPodDeletionPolicy:                                true,
+		types.SettingNameNodeDrainPolicy:                                          true,
+		types.SettingNameOrphanAutoDeletion:                                       true,
+		types.SettingNameRecurringFailedJobsHistoryLimit:                          true,
+		types.SettingNameRecurringSuccessfulJobsHistoryLimit:                      true,
+		types.SettingNameRemoveSnapshotsDuringFilesystemTrim:                      true,
+		types.SettingNameReplicaAutoBalance:                                       true,
+		types.SettingNameReplicaFileSyncHTTPClientTimeout:                         true,
+		types.SettingNameReplicaReplenishmentWaitInterval:                         true,
+		types.SettingNameReplicaSoftAntiAffinity:                                  true,
+		types.SettingNameReplicaZoneSoftAntiAffinity:                              true,
+		types.SettingNameRestoreConcurrentLimit:                                   true,
+		types.SettingNameRestoreVolumeRecurringJobs:                               true,
+		types.SettingNameSnapshotDataIntegrity:                                    true,
+		types.SettingNameSnapshotDataIntegrityCronJob:                             true,
+		types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation: true,
+		types.SettingNameStorageMinimalAvailablePercentage:                        true,
+		types.SettingNameStorageOverProvisioningPercentage:                        true,
+		types.SettingNameStorageReservedPercentageForDefaultDisk:                  true,
+		types.SettingNameSupportBundleFailedHistoryLimit:                          true,
+		types.SettingNameSystemManagedPodsImagePullPolicy:                         true,
+	}
+
+	settings, err := info.ds.ListSettings()
+	if err != nil {
+		return err
+	}
+
+	settingMap := make(map[string]string)
+	for _, setting := range settings {
+		settingName := types.SettingName(setting.Name)
+
+		switch {
+		// Setting that require extra processing to identify their general purpose
+		case settingName == types.SettingNameBackupTarget:
+			settingMap[setting.Name] = types.GetBackupTargetSchemeFrom(setting.Value)
+
+		// Setting that should be collected as boolean (true if configured, false if not)
+		case includeAsBoolean[settingName]:
+			settingMap[setting.Name] = fmt.Sprint(setting.Value != "")
+
+		// Setting value
+		case include[settingName]:
+			settingMap[setting.Name] = setting.Value
+		}
+
+		if value, ok := settingMap[setting.Name]; ok && value == "" {
+			settingMap[setting.Name] = types.ValueEmpty
+		}
+	}
+
+	for name, value := range settingMap {
+		structName := util.StructName(fmt.Sprintf(ClusterInfoSettingFmt, util.ConvertToCamel(name, "-")))
+		info.structFields.Append(structName, value)
+	}
+	return nil
 }
 
 func (info *ClusterInfo) collectVolumesInfo() error {
