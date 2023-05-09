@@ -53,6 +53,7 @@ func main() {
 		app.RecurringJobCmd(),
 		app.DeployDriverCmd(),
 		app.CSICommand(),
+		app.PreUpgradeCmd(),
 		app.PostUpgradeCmd(),
 		app.UninstallCmd(),
 		app.SystemRolloutCmd(),
