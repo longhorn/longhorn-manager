@@ -44,10 +44,7 @@ func (m *volumeAttachmentMutator) Resource() admission.Resource {
 func (m *volumeAttachmentMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
 	var patchOps admission.PatchOps
 
-	va, ok := newObj.(*longhorn.VolumeAttachment)
-	if !ok {
-		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.VolumeAttachment", newObj), "")
-	}
+	va := newObj.(*longhorn.VolumeAttachment)
 
 	volume, err := m.ds.GetVolumeRO(va.Spec.Volume)
 	if err != nil {
@@ -85,13 +82,11 @@ func (m *volumeAttachmentMutator) Create(request *admission.Request, newObj runt
 func (m *volumeAttachmentMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
 	var patchOps admission.PatchOps
 
-	oldVa, ok := oldObj.(*longhorn.VolumeAttachment)
-	if !ok {
-		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.VolumeAttachment", oldObj), "")
-	}
-	newVa, ok := newObj.(*longhorn.VolumeAttachment)
-	if !ok {
-		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.VolumeAttachment", newObj), "")
+	oldVa := oldObj.(*longhorn.VolumeAttachment)
+	newVa := newObj.(*longhorn.VolumeAttachment)
+
+	if newVa.Spec.AttachmentTickets == nil {
+		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/attachmentTickets", "value": {}}`)
 	}
 
 	attachmentTickets := map[string]*longhorn.AttachmentTicket{}

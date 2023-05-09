@@ -2,7 +2,6 @@ package manager
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -82,10 +81,8 @@ func (m *VolumeManager) CreateSnapshot(snapshotName string, labels map[string]st
 		return nil, fmt.Errorf("volume name required")
 	}
 
-	for k, v := range labels {
-		if strings.Contains(k, "=") || strings.Contains(v, "=") {
-			return nil, fmt.Errorf("labels cannot contain '='")
-		}
+	if err := util.VerifySnapshotLabels(labels); err != nil {
+		return nil, err
 	}
 
 	if err := m.checkVolumeNotInMigration(volumeName); err != nil {

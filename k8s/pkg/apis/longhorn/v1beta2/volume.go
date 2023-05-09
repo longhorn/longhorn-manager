@@ -286,8 +286,10 @@ type VolumeStatus struct {
 	LastBackup string `json:"lastBackup"`
 	// +optional
 	LastBackupAt string `json:"lastBackupAt"`
+	// Deprecated.
 	// +optional
 	PendingNodeID string `json:"pendingNodeID"`
+	// the node that this volume is currently migrating to
 	// +optional
 	CurrentMigrationNodeID string `json:"currentMigrationNodeID"`
 	// +optional

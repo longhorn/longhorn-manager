@@ -2,12 +2,12 @@ package controller
 
 import (
 	"fmt"
-	"github.com/longhorn/longhorn-manager/constant"
-	"github.com/longhorn/longhorn-manager/datastore"
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
-	"github.com/longhorn/longhorn-manager/types"
+	"reflect"
+	"time"
+
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -17,8 +17,11 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
-	"reflect"
-	"time"
+
+	"github.com/longhorn/longhorn-manager/constant"
+	"github.com/longhorn/longhorn-manager/datastore"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	"github.com/longhorn/longhorn-manager/types"
 )
 
 type VolumeCloneController struct {
@@ -241,10 +244,6 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 }
 
 func (vcc *VolumeCloneController) createOrUpdateAttachmentTicket(attachmentID string, nodeID string, va *longhorn.VolumeAttachment, disableFrontend string) {
-	if va.Spec.AttachmentTickets == nil {
-		va.Spec.AttachmentTickets = make(map[string]*longhorn.AttachmentTicket)
-	}
-
 	attachmentTicket, ok := va.Spec.AttachmentTickets[attachmentID]
 	if !ok {
 		// Create new one

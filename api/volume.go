@@ -56,7 +56,7 @@ func (s *Server) volumeList(apiContext *api.ApiContext) (*client.GenericCollecti
 		if err != nil {
 			return nil, err
 		}
-		volumeAttachment, err := s.m.GetLHVolumeAttachment(v.Name)
+		volumeAttachment, err := s.m.GetVolumeAttachment(v.Name)
 		if err != nil && !apierrors.IsNotFound(err) {
 			return nil, err
 		}
@@ -107,7 +107,7 @@ func (s *Server) responseWithVolume(rw http.ResponseWriter, req *http.Request, i
 	if err != nil {
 		return err
 	}
-	volumeAttachment, err := s.m.GetLHVolumeAttachment(v.Name)
+	volumeAttachment, err := s.m.GetVolumeAttachment(v.Name)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}

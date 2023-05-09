@@ -2,14 +2,16 @@ package volumeattachment
 
 import (
 	"fmt"
+	"reflect"
+
+	admissionregv1 "k8s.io/api/admissionregistration/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
-	admissionregv1 "k8s.io/api/admissionregistration/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"reflect"
 )
 
 type volumeAttachmentValidator struct {
@@ -36,10 +38,7 @@ func (v *volumeAttachmentValidator) Resource() admission.Resource {
 }
 
 func (v *volumeAttachmentValidator) Create(request *admission.Request, newObj runtime.Object) error {
-	va, ok := newObj.(*longhorn.VolumeAttachment)
-	if !ok {
-		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.VolumeAttachment", newObj), "")
-	}
+	va := newObj.(*longhorn.VolumeAttachment)
 
 	if err := verifyAttachmentTicketIDConsistency(va.Spec.AttachmentTickets); err != nil {
 		return err
@@ -49,14 +48,8 @@ func (v *volumeAttachmentValidator) Create(request *admission.Request, newObj ru
 }
 
 func (v *volumeAttachmentValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
-	oldVA, ok := oldObj.(*longhorn.VolumeAttachment)
-	if !ok {
-		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.VolumeAttachment", oldObj), "")
-	}
-	newVA, ok := newObj.(*longhorn.VolumeAttachment)
-	if !ok {
-		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.VolumeAttachment", newObj), "")
-	}
+	oldVA := oldObj.(*longhorn.VolumeAttachment)
+	newVA := newObj.(*longhorn.VolumeAttachment)
 
 	if newVA.Spec.Volume != oldVA.Spec.Volume {
 		return werror.NewInvalidError(fmt.Sprintf("spec.volume field is immutable"), "spec.volume")

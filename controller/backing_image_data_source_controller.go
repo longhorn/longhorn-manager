@@ -605,10 +605,6 @@ func (c *BackingImageDataSourceController) handleAttachmentTicketCreation(bids *
 		}
 	}()
 
-	if va.Spec.AttachmentTickets == nil {
-		va.Spec.AttachmentTickets = make(map[string]*longhorn.AttachmentTicket)
-	}
-
 	attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackingImageDataSourceController, bids.Name)
 
 	attachmentTicket, ok := va.Spec.AttachmentTickets[attachmentTicketID]

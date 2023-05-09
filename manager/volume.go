@@ -313,9 +313,6 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 
 	logrus.Infof("=======================> 2")
 
-	if va.Spec.AttachmentTickets == nil {
-		va.Spec.AttachmentTickets = make(map[string]*longhorn.AttachmentTicket)
-	}
 	va.Spec.AttachmentTickets[attachmentID] = &longhorn.AttachmentTicket{
 		ID: attachmentID,
 		// TODO: validate attacher type

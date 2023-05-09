@@ -5,6 +5,6 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 )
 
-func (m *VolumeManager) GetLHVolumeAttachment(volumeName string) (*longhorn.VolumeAttachment, error) {
+func (m *VolumeManager) GetVolumeAttachment(volumeName string) (*longhorn.VolumeAttachment, error) {
 	return m.ds.GetLHVolumeAttachment(types.GetLHVolumeAttachmentNameFromVolumeName(volumeName))
 }

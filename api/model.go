@@ -83,12 +83,14 @@ type Volume struct {
 	VolumeAttachment VolumeAttachment `json:"volumeAttachment"`
 }
 
+// Snapshot struct is used for the snapshot* actions
 type Snapshot struct {
 	client.Resource
 	longhorn.SnapshotInfo
 	Checksum string `json:"checksum"`
 }
 
+// SnapshotCR struct is used for the snapshotCR* actions
 type SnapshotCR struct {
 	client.Resource
 	Name           string `json:"name"`

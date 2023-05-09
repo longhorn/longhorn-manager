@@ -2,7 +2,6 @@ package controller
 
 import (
 	"fmt"
-	"github.com/longhorn/longhorn-manager/types"
 	"reflect"
 	"strconv"
 	"time"
@@ -24,6 +23,7 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 )
 
@@ -478,10 +478,6 @@ func (sc *SnapshotController) handleAttachmentTicketCreation(snap *longhorn.Snap
 			return
 		}
 	}()
-
-	if va.Spec.AttachmentTickets == nil {
-		va.Spec.AttachmentTickets = make(map[string]*longhorn.AttachmentTicket)
-	}
 
 	attachmentID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeSnapshotController, snap.Name)
 

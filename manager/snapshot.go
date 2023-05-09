@@ -2,11 +2,14 @@ package manager
 
 import (
 	"fmt"
+
+	"github.com/sirupsen/logrus"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	bsutil "github.com/longhorn/backupstore/util"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
-	"github.com/sirupsen/logrus"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"strings"
+	"github.com/longhorn/longhorn-manager/util"
 )
 
 func (m *VolumeManager) ListSnapshotsCR(volumeName string) (map[string]*longhorn.Snapshot, error) {
@@ -26,10 +29,8 @@ func (m *VolumeManager) CreateSnapshotCR(snapshotName string, labels map[string]
 		return nil, fmt.Errorf("volume name required")
 	}
 
-	for k, v := range labels {
-		if strings.Contains(k, "=") || strings.Contains(v, "=") {
-			return nil, fmt.Errorf("labels cannot contain '='")
-		}
+	if err := util.VerifySnapshotLabels(labels); err != nil {
+		return nil, err
 	}
 
 	if err := m.checkVolumeNotInMigration(volumeName); err != nil {

@@ -3616,6 +3616,7 @@ spec:
               currentImage:
                 type: string
               currentMigrationNodeID:
+                description: the node that this volume is currently migrating to
                 type: string
               currentNodeID:
                 type: string
@@ -3665,6 +3666,7 @@ spec:
               ownerID:
                 type: string
               pendingNodeID:
+                description: Deprecated.
                 type: string
               remountRequestedAt:
                 type: string

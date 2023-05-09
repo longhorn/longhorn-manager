@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/rancher/lasso/pkg/log"
 	"reflect"
 	"strings"
 	"time"
@@ -405,6 +406,28 @@ func (c *ShareManagerController) isShareManagerRequiredForVolume(volume *longhor
 	return false
 }
 
+func (c *ShareManagerController) createShareManagerAttachmentTicket(sm *longhorn.ShareManager, va *longhorn.VolumeAttachment) {
+	shareManagerAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeShareManagerController, sm.Name)
+	shareManagerAttachmentTicket, ok := va.Spec.AttachmentTickets[shareManagerAttachmentTicketID]
+	if !ok {
+		//create new one
+		shareManagerAttachmentTicket = &longhorn.AttachmentTicket{
+			ID:     shareManagerAttachmentTicketID,
+			Type:   longhorn.AttacherTypeShareManagerController,
+			NodeID: sm.Status.OwnerID,
+			Parameters: map[string]string{
+				longhorn.AttachmentParameterDisableFrontend: longhorn.FalseValue,
+			},
+		}
+	}
+	if shareManagerAttachmentTicket.NodeID != sm.Status.OwnerID {
+		log.Infof("attachment ticket %v request a new node %v from old node %v", shareManagerAttachmentTicket.ID, shareManagerAttachmentTicket.NodeID, sm.Status.OwnerID)
+		shareManagerAttachmentTicket.NodeID = sm.Status.OwnerID
+	}
+
+	va.Spec.AttachmentTickets[shareManagerAttachmentTicketID] = shareManagerAttachmentTicket
+}
+
 func hasActiveWorkload(vol *longhorn.Volume) bool {
 	if vol == nil {
 		return false
@@ -501,28 +524,12 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 		sm.Status.State = longhorn.ShareManagerStateStarting
 	}
 
-	shareManagerAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeShareManagerController, sm.Name)
-	if va.Spec.AttachmentTickets == nil {
-		va.Spec.AttachmentTickets = make(map[string]*longhorn.AttachmentTicket)
-	}
-
-	shareManagerAttachmentTicket, ok := va.Spec.AttachmentTickets[shareManagerAttachmentTicketID]
-	if !ok {
-		//create new one
-		shareManagerAttachmentTicket = &longhorn.AttachmentTicket{
-			ID:     shareManagerAttachmentTicketID,
-			Type:   longhorn.AttacherTypeShareManagerController,
-			NodeID: sm.Status.OwnerID,
-			Parameters: map[string]string{
-				longhorn.AttachmentParameterDisableFrontend: longhorn.FalseValue,
-			},
-		}
-	}
-	if shareManagerAttachmentTicket.NodeID != sm.Status.OwnerID {
-		log.Infof("attachment ticket %v request a new node %v from old node %v", shareManagerAttachmentTicket.ID, shareManagerAttachmentTicket.NodeID, sm.Status.OwnerID)
-		shareManagerAttachmentTicket.NodeID = sm.Status.OwnerID
-	}
-	va.Spec.AttachmentTickets[shareManagerAttachmentTicketID] = shareManagerAttachmentTicket
+	// For the RWX volume attachment, VolumeAttachment controller will not directly handle
+	// the tickets from the CSI plugin. Instead, ShareManager controller will add a
+	// AttacherTypeShareManagerController ticket (as the summarization of CSI tickets) then
+	// the VolumeAttachment controller is responsible for handling the AttacherTypeShareManagerController
+	// tickets only. See more at https://github.com/longhorn/longhorn-manager/pull/1541#issuecomment-1429044946
+	c.createShareManagerAttachmentTicket(sm, va)
 
 	return nil
 }
