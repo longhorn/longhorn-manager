@@ -2947,10 +2947,10 @@ func (vc *VolumeController) checkForAutoDetachment(v *longhorn.Volume, e *longho
 	// so that the engine restores with the latest backup before the volume is detached
 	if backupVolumeName, isExist := v.Labels[types.LonghornLabelBackupVolume]; isExist && backupVolumeName != "" {
 		backupVolume, err := vc.ds.GetBackupVolumeRO(backupVolumeName)
-		if err != nil {
+		if err != nil && !datastore.ErrorIsNotFound(err) {
 			return errors.Wrapf(err, "failed to get backup volume: %v", v.Name)
 		}
-		if backupVolume.Status.LastSyncedAt.Before(&backupVolume.Spec.SyncRequestedAt) {
+		if backupVolume != nil && backupVolume.Status.LastSyncedAt.Before(&backupVolume.Spec.SyncRequestedAt) {
 			return nil
 		}
 	}
