@@ -540,9 +540,22 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 		return nil, err
 	}
 
+	// get storage class of the pvc binding with the volume
+	kubernetesStatus := &volume.Status.KubernetesStatus
+	storageClassName := ""
+	if kubernetesStatus.PVCName != "" && kubernetesStatus.LastPVCRefAt == "" {
+		pvc, _ := bc.ds.GetPersistentVolumeClaim(kubernetesStatus.Namespace, kubernetesStatus.PVCName)
+		logrus.Infof("====[DEBUG]==== Namespace: %v PVCName: %v", kubernetesStatus.Namespace, kubernetesStatus.PVCName)
+		if pvc != nil {
+			storageClassName = *pvc.Spec.StorageClassName
+		}
+		logrus.Infof("====[DEBUG]==== storageClassName %v", storageClassName)
+	}
+	logrus.Infof("====[DEBUG]==== storageClassName %v", storageClassName)
+
 	// Enable the backup monitor
 	monitor, err := bc.enableBackupMonitor(backup, volume, backupTargetClient, biChecksum,
-		volume.Spec.BackupCompressionMethod, int(concurrentLimit), engineClientProxy)
+		volume.Spec.BackupCompressionMethod, int(concurrentLimit), storageClassName, engineClientProxy)
 	if err != nil {
 		backup.Status.Error = err.Error()
 		backup.Status.State = longhorn.BackupStateError
@@ -619,7 +632,7 @@ func (bc *BackupController) hasMonitor(backupName string) *engineapi.BackupMonit
 }
 
 func (bc *BackupController) enableBackupMonitor(backup *longhorn.Backup, volume *longhorn.Volume, backupTargetClient *engineapi.BackupTargetClient,
-	biChecksum string, compressionMethod longhorn.BackupCompressionMethod, concurrentLimit int,
+	biChecksum string, compressionMethod longhorn.BackupCompressionMethod, concurrentLimit int, storageClassName string,
 	engineClientProxy engineapi.EngineClientProxy) (*engineapi.BackupMonitor, error) {
 	monitor := bc.hasMonitor(backup.Name)
 	if monitor != nil {
@@ -635,7 +648,7 @@ func (bc *BackupController) enableBackupMonitor(backup *longhorn.Backup, volume 
 	}
 
 	monitor, err = engineapi.NewBackupMonitor(bc.logger, bc.ds, backup, volume, backupTargetClient,
-		biChecksum, compressionMethod, concurrentLimit, engine, engineClientProxy, bc.enqueueBackupForMonitor)
+		biChecksum, compressionMethod, concurrentLimit, storageClassName, engine, engineClientProxy, bc.enqueueBackupForMonitor)
 	if err != nil {
 		return nil, err
 	}

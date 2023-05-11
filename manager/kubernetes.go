@@ -38,6 +38,13 @@ func (m *VolumeManager) PVCreate(name, pvName, fsType, secretNamespace, secretNa
 	if err != nil {
 		return nil, fmt.Errorf("failed to get longhorn static storage class name for PV %v creation: %v", pvName, err)
 	}
+	if backupVolumeName, isExist := v.Labels[types.LonghornLabelBackupVolume]; isExist && backupVolumeName != "" {
+		backupVolume, err := m.ds.GetBackupVolumeRO(backupVolumeName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get backup volume %v of volume %v", backupVolumeName, v.Name)
+		}
+		storageClassName = backupVolume.Status.StorageClassName
+	}
 
 	if fsType == "" {
 		fsType = "ext4"

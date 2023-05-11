@@ -89,7 +89,7 @@ type EngineClient interface {
 	SnapshotRevert(engine *longhorn.Engine, name string) error
 	SnapshotPurge(engine *longhorn.Engine) error
 	SnapshotPurgeStatus(engine *longhorn.Engine) (map[string]*longhorn.PurgeStatus, error)
-	SnapshotBackup(engine *longhorn.Engine, backupName, snapName, backupTarget, backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int, labels, credential map[string]string) (string, string, error)
+	SnapshotBackup(engine *longhorn.Engine, backupName, snapName, backupTarget, backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int, storageClassName string, labels, credential map[string]string) (string, string, error)
 	SnapshotBackupStatus(engine *longhorn.Engine, backupName, replicaAddress string) (*longhorn.EngineBackupStatus, error)
 	SnapshotCloneStatus(engine *longhorn.Engine) (map[string]*longhorn.SnapshotCloneStatus, error)
 	SnapshotClone(engine *longhorn.Engine, snapshotName, fromControllerAddress string, fileSyncHTTPClientTimeout int64) error
@@ -146,6 +146,7 @@ type BackupVolume struct {
 	Backups              map[string]*Backup `json:"backups"`
 	BackingImageName     string             `json:"backingImageName"`
 	BackingImageChecksum string             `json:"backingImageChecksum"`
+	StorageClassName     string             `json:"storageClassName"`
 }
 
 type Backup struct {
