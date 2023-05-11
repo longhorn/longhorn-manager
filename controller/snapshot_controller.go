@@ -322,18 +322,38 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 			return sc.ds.RemoveFinalizerForSnapshot(snapshot)
 		}
 
-		if err := sc.handleAttachmentTicketCreation(snapshot); err != nil {
-			return err
-		}
-
 		engine, err := sc.getTheOnlyEngineCRforSnapshot(snapshot)
 		if err != nil {
 			return err
 		}
+
+		defer func() {
+			engine, err = sc.ds.GetEngineRO(engine.Name)
+			if err != nil {
+				return
+			}
+			if snapshotInfo, ok := engine.Status.Snapshots[snapshot.Name]; ok {
+				if err := syncSnapshotWithSnapshotInfo(snapshot, snapshotInfo, engine.Spec.VolumeSize); err != nil {
+					return
+				}
+			}
+		}()
+
+		if _, ok := snapshot.Status.Children["volume-head"]; ok && snapshot.Status.MarkRemoved {
+			// This snapshot is the parent of volume-head, so it cannot be purged immediately.
+			// We do not want to keep the volume stuck in attached state.
+			if err = sc.handleAttachmentTicketDeletion(snapshot); err != nil {
+				return err
+			}
+			return nil
+		}
+
+		if err := sc.handleAttachmentTicketCreation(snapshot); err != nil {
+			return err
+		}
+
 		if engine.Status.CurrentState != longhorn.InstanceStateRunning {
-			// TODO: how to prevent duplicated event here
-			sc.eventRecorder.Eventf(snapshot, v1.EventTypeWarning, "SnapshotDeleteError", "cannot delete snapshot because the volume engine %v is not running", engine.Name)
-			return fmt.Errorf("cannot delete snapshot because the volume engine %v is not running", engine.Name)
+			return fmt.Errorf("cannot delete snapshot because the volume engine %v is not running. Will reenqueue and retry later", engine.Name)
 		}
 		// Delete the snapshot from engine process
 		if err := sc.handleSnapshotDeletion(snapshot, engine); err != nil {
@@ -345,17 +365,12 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 		if err != nil {
 			return err
 		}
-		snapshotInfo, ok := engine.Status.Snapshots[snapshot.Name]
-		if !ok {
+		if _, ok := engine.Status.Snapshots[snapshot.Name]; !ok {
 			if err = sc.handleAttachmentTicketDeletion(snapshot); err != nil {
 				return err
 			}
 			log.Infof("Removing finalizer for snapshot %v", snapshot.Name)
 			return sc.ds.RemoveFinalizerForSnapshot(snapshot)
-		}
-
-		if err := syncSnapshotWithSnapshotInfo(snapshot, snapshotInfo, engine.Spec.VolumeSize); err != nil {
-			return err
 		}
 
 		return nil

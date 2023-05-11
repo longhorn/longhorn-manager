@@ -305,6 +305,9 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 	//}
 
 	// TODO: special case for attachment by UI
+	if attacherType == "" {
+		attacherType = string(longhorn.AttacherTypeLonghornAPI)
+	}
 
 	va, err := m.ds.GetLHVolumeAttachment(types.GetLHVolumeAttachmentNameFromVolumeName(v.Name))
 	if err != nil {

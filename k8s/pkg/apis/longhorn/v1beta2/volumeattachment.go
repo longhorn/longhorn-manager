@@ -47,7 +47,6 @@ const (
 	AttacherTypeVolumeCloneController            = AttacherType("volume-clone-controller")
 	AttacherTypeSalvageController                = AttacherType("salvage-controller")
 	AttacherTypeShareManagerController           = AttacherType("share-manager-controller")
-	AttacherTypeLiveMigrationController          = AttacherType("live-migration-controller")
 	AttacherTypeVolumeRestoreController          = AttacherType("volume-restore-controller")
 	AttacherTypeVolumeEvictionController         = AttacherType("volume-eviction-controller")
 	AttacherTypeVolumeExpansionController        = AttacherType("volume-expansion-controller")
@@ -63,7 +62,6 @@ const (
 	AttacherPriorityLevelSalvageController                = 900
 	AttacherPriorityLevelShareManagerController           = 900
 	AttacherPriorityLevelLonghornUpgrader                 = 900
-	AttacherPriorityLevelLiveMigrationController          = 800
 	AttacherPriorityLevelSnapshotController               = 800
 	AttacherPriorityLevelBackupController                 = 800
 	AttacherPriorityLevelVolumeCloneController            = 800
@@ -102,8 +100,6 @@ func GetAttacherPriorityLevel(t AttacherType) int {
 		return AttacherPriorityLevelSalvageController
 	case AttacherTypeShareManagerController:
 		return AttacherPriorityLevelShareManagerController
-	case AttacherTypeLiveMigrationController:
-		return AttacherPriorityLevelLiveMigrationController
 	case AttacherTypeLonghornUpgrader:
 		return AttacherPriorityLevelLonghornUpgrader
 	case AttacherTypeVolumeRestoreController:
