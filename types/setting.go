@@ -73,7 +73,6 @@ const (
 	SettingNameNodeDrainPolicy                                          = SettingName("node-drain-policy")
 	SettingNamePriorityClass                                            = SettingName("priority-class")
 	SettingNameDisableRevisionCounter                                   = SettingName("disable-revision-counter")
-	SettingNameDisableReplicaRebuild                                    = SettingName("disable-replica-rebuild")
 	SettingNameReplicaReplenishmentWaitInterval                         = SettingName("replica-replenishment-wait-interval")
 	SettingNameConcurrentReplicaRebuildPerNodeLimit                     = SettingName("concurrent-replica-rebuild-per-node-limit")
 	SettingNameConcurrentBackupRestorePerNodeLimit                      = SettingName("concurrent-volume-backup-restore-per-node-limit")
@@ -146,7 +145,6 @@ var (
 		SettingNameNodeDrainPolicy,
 		SettingNamePriorityClass,
 		SettingNameDisableRevisionCounter,
-		SettingNameDisableReplicaRebuild,
 		SettingNameReplicaReplenishmentWaitInterval,
 		SettingNameConcurrentReplicaRebuildPerNodeLimit,
 		SettingNameConcurrentBackupRestorePerNodeLimit,
@@ -244,7 +242,6 @@ var (
 		SettingNameNodeDrainPolicy:                                          SettingDefinitionNodeDrainPolicy,
 		SettingNamePriorityClass:                                            SettingDefinitionPriorityClass,
 		SettingNameDisableRevisionCounter:                                   SettingDefinitionDisableRevisionCounter,
-		SettingNameDisableReplicaRebuild:                                    SettingDefinitionDisableReplicaRebuild,
 		SettingNameReplicaReplenishmentWaitInterval:                         SettingDefinitionReplicaReplenishmentWaitInterval,
 		SettingNameConcurrentReplicaRebuildPerNodeLimit:                     SettingDefinitionConcurrentReplicaRebuildPerNodeLimit,
 		SettingNameConcurrentBackupRestorePerNodeLimit:                      SettingDefinitionConcurrentVolumeBackupRestorePerNodeLimit,
@@ -734,16 +731,6 @@ var (
 		Description: "This setting is only for volumes created by UI. By default, this is false meaning there will be a revision counter file to track every write to the volume. During salvage recovering Longhorn will pick the repica with largest revision counter as candidate to recover the whole volume. If revision counter is disabled, Longhorn will not track every write to the volume. During the salvage recovering, Longhorn will use the 'volume-head-xxx.img' file last modification time and file size to pick the replica candidate to recover the whole volume.",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeBool,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "false",
-	}
-
-	SettingDefinitionDisableReplicaRebuild = SettingDefinition{
-		DisplayName: "Disable Replica Rebuild",
-		Description: "This setting disable replica rebuild cross the whole cluster, eviction and data locality feature won't work if this setting is true. But doesn't have any impact to any current replica rebuild and restore disaster recovery volume.",
-		Category:    SettingCategoryDangerZone,
-		Type:        SettingTypeDeprecated,
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "false",
