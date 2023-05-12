@@ -614,9 +614,6 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornBackingImage(req *csi.C
 	if vol == nil {
 		return nil, status.Errorf(codes.NotFound, "volume %s not found", csiVolumeName)
 	}
-	if vol.State != string(longhorn.VolumeStateAttached) {
-		return nil, status.Errorf(codes.FailedPrecondition, "volume %s invalid state %v for taking snapshot. Volume must be in %v state to take snapshot", vol.Name, vol.State, longhorn.VolumeStateAttached)
-	}
 
 	var backingImage *longhornclient.BackingImage
 	backingImageListOutput, err := cs.apiClient.BackingImage.List(&longhornclient.ListOpts{})
