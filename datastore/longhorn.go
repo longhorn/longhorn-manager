@@ -337,8 +337,6 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 				return fmt.Errorf("cannot modify priority class setting before all volumes are detached")
 			}
 		}
-	case types.SettingNameGuaranteedEngineManagerCPU:
-		fallthrough
 	case types.SettingNameGuaranteedReplicaManagerCPU:
 		fallthrough
 	case types.SettingNameGuaranteedInstanceManagerCPU:
@@ -349,13 +347,7 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 		if sName == types.SettingNameGuaranteedInstanceManagerCPU {
 			guaranteedInstanceManagerCPU.Value = value
 		}
-		guaranteedEngineManagerCPU, err := s.GetSetting(types.SettingNameGuaranteedEngineManagerCPU)
-		if err != nil {
-			return err
-		}
-		if sName == types.SettingNameGuaranteedEngineManagerCPU {
-			guaranteedEngineManagerCPU.Value = value
-		}
+
 		guaranteedReplicaManagerCPU, err := s.GetSetting(types.SettingNameGuaranteedReplicaManagerCPU)
 		if err != nil {
 			return err
@@ -363,7 +355,7 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 		if sName == types.SettingNameGuaranteedReplicaManagerCPU {
 			guaranteedReplicaManagerCPU.Value = value
 		}
-		if err := types.ValidateCPUReservationValues(guaranteedEngineManagerCPU.Value, guaranteedReplicaManagerCPU.Value, guaranteedInstanceManagerCPU.Value); err != nil {
+		if err := types.ValidateCPUReservationValues(guaranteedReplicaManagerCPU.Value, guaranteedInstanceManagerCPU.Value); err != nil {
 			return err
 		}
 	case types.SettingNameStorageNetwork:
