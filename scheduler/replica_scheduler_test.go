@@ -161,10 +161,12 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 			},
 		},
 		Spec: longhorn.VolumeSpec{
-			NumberOfReplicas:    replicaCount,
-			Size:                TestVolumeSize,
-			StaleReplicaTimeout: TestVolumeStaleTimeout,
-			EngineImage:         TestEngineImage,
+			NumberOfReplicas:            replicaCount,
+			Size:                        TestVolumeSize,
+			StaleReplicaTimeout:         TestVolumeStaleTimeout,
+			EngineImage:                 TestEngineImage,
+			ReplicaSoftAntiAffinity:     longhorn.ReplicaSoftAntiAffinityDefault,
+			ReplicaZoneSoftAntiAffinity: longhorn.ReplicaZoneSoftAntiAffinityDefault,
 		},
 		Status: longhorn.VolumeStatus{
 			OwnerID: TestOwnerID1,

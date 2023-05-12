@@ -175,6 +175,20 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 		vol.UnmapMarkSnapChainRemoved = unmapMarkSnapChainRemoved
 	}
 
+	if replicaSoftAntiAffinity, ok := volOptions["replicaSoftAntiAffinity"]; ok {
+		if err := types.ValidateReplicaSoftAntiAffinity(longhorn.ReplicaSoftAntiAffinity(replicaSoftAntiAffinity)); err != nil {
+			return nil, errors.Wrap(err, "Invalid parameter replicaSoftAntiAffinity")
+		}
+		vol.ReplicaSoftAntiAffinity = replicaSoftAntiAffinity
+	}
+
+	if replicaZoneSoftAntiAffinity, ok := volOptions["replicaZoneSoftAntiAffinity"]; ok {
+		if err := types.ValidateReplicaZoneSoftAntiAffinity(longhorn.ReplicaZoneSoftAntiAffinity(replicaZoneSoftAntiAffinity)); err != nil {
+			return nil, errors.Wrap(err, "Invalid parameter replicaZoneSoftAntiAffinity")
+		}
+		vol.ReplicaZoneSoftAntiAffinity = replicaZoneSoftAntiAffinity
+	}
+
 	if fromBackup, ok := volOptions["fromBackup"]; ok {
 		vol.FromBackup = fromBackup
 	}

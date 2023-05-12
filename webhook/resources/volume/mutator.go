@@ -112,6 +112,14 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/unmapMarkSnapChainRemoved", "value": "%s"}`, longhorn.UnmapMarkSnapChainRemovedIgnored))
 	}
 
+	if string(volume.Spec.ReplicaSoftAntiAffinity) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaSoftAntiAffinityDefault))
+	}
+
+	if string(volume.Spec.ReplicaZoneSoftAntiAffinity) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaZoneSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaZoneSoftAntiAffinityDefault))
+	}
+
 	if string(volume.Spec.AccessMode) == "" {
 		accessModeFromBackup := longhorn.AccessModeReadWriteOnce
 		if volume.Spec.FromBackup != "" {
@@ -264,6 +272,12 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 	}
 	if string(volume.Spec.RestoreVolumeRecurringJob) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/restoreVolumeRecurringJob", "value": "%s"}`, longhorn.RestoreVolumeRecurringJobDefault))
+	}
+	if string(volume.Spec.ReplicaSoftAntiAffinity) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaSoftAntiAffinityDefault))
+	}
+	if string(volume.Spec.ReplicaZoneSoftAntiAffinity) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaZoneSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaZoneSoftAntiAffinityDefault))
 	}
 
 	size := util.RoundUpSize(volume.Spec.Size)
