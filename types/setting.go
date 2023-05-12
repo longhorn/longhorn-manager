@@ -57,7 +57,6 @@ const (
 	SettingNameStableLonghornVersions                                   = SettingName("stable-longhorn-versions")
 	SettingNameDefaultReplicaCount                                      = SettingName("default-replica-count")
 	SettingNameDefaultDataLocality                                      = SettingName("default-data-locality")
-	SettingNameGuaranteedEngineCPU                                      = SettingName("guaranteed-engine-cpu")
 	SettingNameDefaultLonghornStaticStorageClass                        = SettingName("default-longhorn-static-storage-class")
 	SettingNameBackupstorePollInterval                                  = SettingName("backupstore-poll-interval")
 	SettingNameTaintToleration                                          = SettingName("taint-toleration")
@@ -130,7 +129,6 @@ var (
 		SettingNameStableLonghornVersions,
 		SettingNameDefaultReplicaCount,
 		SettingNameDefaultDataLocality,
-		SettingNameGuaranteedEngineCPU,
 		SettingNameDefaultLonghornStaticStorageClass,
 		SettingNameBackupstorePollInterval,
 		SettingNameTaintToleration,
@@ -228,7 +226,6 @@ var (
 		SettingNameStableLonghornVersions:                                   SettingDefinitionStableLonghornVersions,
 		SettingNameDefaultReplicaCount:                                      SettingDefinitionDefaultReplicaCount,
 		SettingNameDefaultDataLocality:                                      SettingDefinitionDefaultDataLocality,
-		SettingNameGuaranteedEngineCPU:                                      SettingDefinitionGuaranteedEngineCPU,
 		SettingNameDefaultLonghornStaticStorageClass:                        SettingDefinitionDefaultLonghornStaticStorageClass,
 		SettingNameBackupstorePollInterval:                                  SettingDefinitionBackupstorePollInterval,
 		SettingNameTaintToleration:                                          SettingDefinitionTaintToleration,
@@ -544,17 +541,6 @@ var (
 			string(longhorn.DataLocalityBestEffort),
 			string(longhorn.DataLocalityStrictLocal),
 		},
-	}
-
-	SettingDefinitionGuaranteedEngineCPU = SettingDefinition{
-		DisplayName: "Guaranteed Engine CPU (Deprecated)",
-		Description: "This setting is replaced by 2 new settings \"Guaranteed Engine Manager CPU\" and \"Guaranteed Replica Manager CPU\" since Longhorn version v1.1.1. \n" +
-			"This setting was used to control the CPU requests of all Longhorn Instance Manager pods. \n",
-		Category: SettingCategoryDangerZone,
-		Type:     SettingTypeDeprecated,
-		Required: false,
-		ReadOnly: true,
-		Default:  "",
 	}
 
 	SettingDefinitionDefaultLonghornStaticStorageClass = SettingDefinition{
@@ -1256,10 +1242,6 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameReplicaAutoBalance:
 		if err := ValidateReplicaAutoBalance(longhorn.ReplicaAutoBalance(value)); err != nil {
 			return errors.Wrapf(err, "failed to validate replica auto balance: %v", value)
-		}
-	case SettingNameGuaranteedEngineCPU:
-		if value != "" {
-			return fmt.Errorf("cannot set a value %v for the deprecated setting %v", value, sName)
 		}
 	case SettingNameBackingImageCleanupWaitInterval:
 		fallthrough
