@@ -899,15 +899,15 @@ func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[st
 func ValidateCPUReservationValues(engineManagerCPUStr, replicaManagerCPUStr, instanceManagerCPUStr string) error {
 	engineManagerCPU, err := strconv.Atoi(engineManagerCPUStr)
 	if err != nil {
-		return fmt.Errorf("guaranteed/requested engine manager CPU value %v is not int: %v", engineManagerCPUStr, err)
+		return errors.Wrapf(err, "invalid guaranteed/requested engine manager CPU value (%v)", engineManagerCPUStr)
 	}
 	replicaManagerCPU, err := strconv.Atoi(replicaManagerCPUStr)
 	if err != nil {
-		return fmt.Errorf("guaranteed/requested replica manager CPU value %v is not int: %v", replicaManagerCPUStr, err)
+		return errors.Wrapf(err, "invalid guaranteed/requested replica manager CPU value (%v)", replicaManagerCPUStr)
 	}
 	instanceManagerCPU, err := strconv.Atoi(instanceManagerCPUStr)
 	if err != nil {
-		return fmt.Errorf("guaranteed/requested instance manager CPU value %v is not int: %v", instanceManagerCPUStr, err)
+		return errors.Wrapf(err, "invalid guaranteed/requested instance manager CPU value (%v)", instanceManagerCPUStr)
 	}
 	isUnderLimit := engineManagerCPU+replicaManagerCPU < 0 || instanceManagerCPU < 0
 	isOverLimit := engineManagerCPU+replicaManagerCPU > 40 || instanceManagerCPU > 40
