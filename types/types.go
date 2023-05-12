@@ -907,7 +907,7 @@ func ValidateCPUReservationValues(engineManagerCPUStr, replicaManagerCPUStr, ins
 	}
 	instanceManagerCPU, err := strconv.Atoi(instanceManagerCPUStr)
 	if err != nil {
-		return fmt.Errorf("guaranteed/requested instance manager CPU value %v is not int: %v", replicaManagerCPUStr, err)
+		return fmt.Errorf("guaranteed/requested instance manager CPU value %v is not int: %v", instanceManagerCPUStr, err)
 	}
 	isUnderLimit := engineManagerCPU+replicaManagerCPU < 0 || instanceManagerCPU < 0
 	isOverLimit := engineManagerCPU+replicaManagerCPU > 40 || instanceManagerCPU > 40
