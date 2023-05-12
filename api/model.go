@@ -346,11 +346,6 @@ type Node struct {
 	Region                    string                        `json:"region"`
 	Zone                      string                        `json:"zone"`
 	InstanceManagerCPURequest int                           `json:"instanceManagerCPURequest"`
-
-	// Deprecated: Replaced by InstanceManagerCPURequest
-	EngineManagerCPURequest int `json:"engineManagerCPURequest"`
-	// Deprecated: Replaced by InstanceManagerCPURequest
-	ReplicaManagerCPURequest int `json:"replicaManagerCPURequest"`
 }
 
 type DiskStatus struct {
@@ -640,19 +635,6 @@ func nodeSchema(node *client.Schema) {
 	tags := node.ResourceFields["tags"]
 	tags.Create = true
 	node.ResourceFields["tags"] = tags
-
-	engineManagerCPURequest := node.ResourceFields["engineManagerCPURequest"]
-	engineManagerCPURequest.Required = true
-	engineManagerCPURequest.Unique = false
-	engineManagerCPURequest.Default = -1
-	node.ResourceFields["engineManagerCPURequest"] = engineManagerCPURequest
-
-	replicaManagerCPURequest := node.ResourceFields["replicaManagerCPURequest"]
-	replicaManagerCPURequest.Required = true
-	replicaManagerCPURequest.Unique = false
-	replicaManagerCPURequest.Default = -1
-	node.ResourceFields["replicaManagerCPURequest"] = replicaManagerCPURequest
-
 }
 
 func diskSchema(diskUpdateInput *client.Schema) {
@@ -1840,8 +1822,6 @@ func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiCont
 		Tags:                      node.Spec.Tags,
 		Region:                    node.Status.Region,
 		Zone:                      node.Status.Zone,
-		EngineManagerCPURequest:   node.Spec.EngineManagerCPURequest,
-		ReplicaManagerCPURequest:  node.Spec.ReplicaManagerCPURequest,
 		InstanceManagerCPURequest: node.Spec.InstanceManagerCPURequest,
 	}
 

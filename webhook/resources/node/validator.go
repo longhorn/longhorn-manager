@@ -40,15 +40,6 @@ func (n *nodeValidator) Resource() admission.Resource {
 
 func (n *nodeValidator) Create(request *admission.Request, newObj runtime.Object) error {
 	node := newObj.(*longhorn.Node)
-
-	if node.Spec.EngineManagerCPURequest < 0 {
-		return werror.NewInvalidError("engineManagerCPURequest should be greater than or equal to 0", "")
-	}
-
-	if node.Spec.ReplicaManagerCPURequest < 0 {
-		return werror.NewInvalidError("replicaManagerCPURequest should be greater than or equal to 0", "")
-	}
-
 	if node.Spec.InstanceManagerCPURequest < 0 {
 		return werror.NewInvalidError("instanceManagerCPURequest should be greater than or equal to 0", "")
 	}
@@ -59,14 +50,6 @@ func (n *nodeValidator) Create(request *admission.Request, newObj runtime.Object
 func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
 	oldNode := oldObj.(*longhorn.Node)
 	newNode := newObj.(*longhorn.Node)
-
-	if newNode.Spec.EngineManagerCPURequest < 0 {
-		return werror.NewInvalidError("engineManagerCPURequest should be greater than or equal to 0", "")
-	}
-
-	if newNode.Spec.ReplicaManagerCPURequest < 0 {
-		return werror.NewInvalidError("replicaManagerCPURequest should be greater than or equal to 0", "")
-	}
 
 	if newNode.Spec.InstanceManagerCPURequest < 0 {
 		return werror.NewInvalidError("instanceManagerCPURequest should be greater than or equal to 0", "")
@@ -90,7 +73,7 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
-	if newNode.Spec.EngineManagerCPURequest != 0 || newNode.Spec.ReplicaManagerCPURequest != 0 || newNode.Spec.InstanceManagerCPURequest != 0 {
+	if newNode.Spec.InstanceManagerCPURequest != 0 {
 		kubeNode, err := n.ds.GetKubernetesNode(oldNode.Name)
 		if err != nil {
 			if !datastore.ErrorIsNotFound(err) {

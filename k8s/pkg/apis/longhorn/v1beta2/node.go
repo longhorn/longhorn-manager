@@ -94,13 +94,6 @@ type NodeSpec struct {
 	Tags []string `json:"tags"`
 	// +optional
 	InstanceManagerCPURequest int `json:"instanceManagerCPURequest"`
-
-	// Deprecated: Replaced by InstanceManagerCPURequest
-	// +optional
-	EngineManagerCPURequest int `json:"engineManagerCPURequest"`
-	// Deprecated: Replaced by InstanceManagerCPURequest
-	// +optional
-	ReplicaManagerCPURequest int `json:"replicaManagerCPURequest"`
 }
 
 // NodeStatus defines the observed state of the Longhorn node

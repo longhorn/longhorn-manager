@@ -2075,8 +2075,6 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 			AllowScheduling:           true,
 			EvictionRequested:         false,
 			Tags:                      []string{},
-			EngineManagerCPURequest:   0,
-			ReplicaManagerCPURequest:  0,
 			InstanceManagerCPURequest: 0,
 		},
 	}
