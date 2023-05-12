@@ -1735,7 +1735,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 					"Failed to start snapshot purge for engine %v and volume %v before rebuilding: %v", e.Name, e.Spec.VolumeName, err)
 				return
 			}
-			logrus.Debug("Started snapshot purge before rebuilding, will wait for the purge complete")
+			log.Debug("Started snapshot purge before rebuilding, will wait for the purge complete")
 
 			purgeDone := false
 			endTime := time.Now().Add(time.Duration(purgeWaitIntervalInSecond) * time.Second)
@@ -1774,6 +1774,28 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 				return
 			}
 			log.Debug("Finished snapshot purge, will start rebuilding then")
+		}
+
+		// It has been at least 10 seconds (2 * EnginePollInterval) since we were asked to rebuild.
+		// Should we still communicate with addr?
+		// TODO: Remove this check in versions that include a completed longhorn/longhorn#5845.
+		updatedEngine, err := ec.ds.GetEngineRO(e.Name)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				log.Warn("Cannot proceed to rebuild since engine is not found")
+				return
+			}
+			log.WithError(err).Error("Failed to get latest engine spec before rebuilding")
+			return
+		}
+		updatedAddr, ok := updatedEngine.Spec.ReplicaAddressMap[replicaName]
+		if !ok {
+			log.Warnf("Refusing to rebuild since replica %v is no longer in the replicaAddressMap", replicaName)
+			return
+		}
+		if addr != updatedAddr {
+			log.Warnf("Refusing to rebuild since the address for replica %v has been updated from %v to %v", replicaName, addr, updatedAddr)
+			return
 		}
 
 		replica, err := ec.ds.GetReplica(replicaName)
@@ -1858,7 +1880,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 					"Failed to start snapshot purge for engine %v and volume %v after rebuilding: %v", e.Name, e.Spec.VolumeName, err)
 				return
 			}
-			logrus.Debug("Started snapshot purge after rebuilding")
+			log.Debug("Started snapshot purge after rebuilding")
 		}
 	}()
 

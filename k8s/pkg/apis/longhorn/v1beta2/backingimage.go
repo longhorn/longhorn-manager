@@ -2,6 +2,13 @@ package v1beta2
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+const (
+	BackingImageParameterName                 = "backingImage"
+	BackingImageParameterDataSourceType       = "backingImageDataSourceType"
+	BackingImageParameterChecksum             = "backingImageChecksum"
+	BackingImageParameterDataSourceParameters = "backingImageDataSourceParameters"
+)
+
 // BackingImageDownloadState is replaced by BackingImageState.
 type BackingImageDownloadState string
 

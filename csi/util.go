@@ -73,6 +73,20 @@ func (e *forcedParamsOsExec) LookPath(file string) (string, error) {
 	return e.exec.LookPath(file)
 }
 
+func updateVolumeParamsForBackingImage(volumeParameters map[string]string, backingImageParameters map[string]string) {
+	BackingImageInfoFields := []string{
+		longhorn.BackingImageParameterName,
+		longhorn.BackingImageParameterDataSourceType,
+		longhorn.BackingImageParameterChecksum,
+	}
+	for _, v := range BackingImageInfoFields {
+		volumeParameters[v] = backingImageParameters[v]
+		delete(backingImageParameters, v)
+	}
+	backingImageParametersStr, _ := json.Marshal(backingImageParameters)
+	volumeParameters[longhorn.BackingImageParameterDataSourceParameters] = string(backingImageParametersStr)
+}
+
 func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, error) {
 	vol := &longhornclient.Volume{}
 
@@ -183,7 +197,7 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 		vol.DataSource = dataSource
 	}
 
-	if backingImage, ok := volOptions["backingImage"]; ok {
+	if backingImage, ok := volOptions[longhorn.BackingImageParameterName]; ok {
 		vol.BackingImage = backingImage
 	}
 

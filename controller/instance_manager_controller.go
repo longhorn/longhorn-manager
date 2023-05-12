@@ -334,6 +334,10 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		return err
 	}
 
+	if err := imc.syncInstanceStatus(im); err != nil {
+		return err
+	}
+
 	if err := imc.handlePod(im); err != nil {
 		return err
 	}
@@ -409,6 +413,22 @@ func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceMan
 		im.Status.CurrentState = longhorn.InstanceManagerStateError
 	}
 
+	return nil
+}
+
+// syncInstanceStatus sets the status of instances in special cases independent of InstanceManagerMonitor (e.g. when
+// InstanceManagerMonitor isn't running yet).
+func (imc *InstanceManagerController) syncInstanceStatus(im *longhorn.InstanceManager) error {
+	if im.Status.CurrentState == longhorn.InstanceManagerStateStopped ||
+		im.Status.CurrentState == longhorn.InstanceManagerStateError ||
+		im.Status.CurrentState == longhorn.InstanceManagerStateStarting {
+		// In these states, instance processes either are not running or will soon not be running.
+		// This step prevents other controllers from being confused by stale information.
+		// InstanceManagerMonitor will change this when/if it polls.
+		im.Status.Instances = nil
+		im.Status.InstanceEngines = nil
+		im.Status.InstanceReplicas = nil
+	}
 	return nil
 }
 

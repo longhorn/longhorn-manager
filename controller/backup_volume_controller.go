@@ -219,6 +219,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 
 	// Examine DeletionTimestamp to determine if object is under deletion
 	if !backupVolume.DeletionTimestamp.IsZero() {
+
 		if err := bvc.ds.DeleteAllBackupsForBackupVolume(backupVolumeName); err != nil {
 			log.WithError(err).Error("Error deleting backups")
 			return err

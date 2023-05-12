@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -33,6 +34,7 @@ const (
 	backupStateCompleted    = "Completed"
 
 	csiSnapshotTypeLonghornSnapshot         = "snap"
+	csiSnapshotTypeLonghornBackingImage     = "bi"
 	csiSnapshotTypeLonghornBackup           = "bak"
 	deprecatedCSISnapshotTypeLonghornBackup = "bs"
 )
@@ -95,29 +97,40 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		case *csi.VolumeContentSource_Snapshot:
 			if snapshot := volumeSource.GetSnapshot(); snapshot != nil {
 				csiSnapshotType, sourceVolumeName, id := decodeSnapshotID(snapshot.SnapshotId)
-				if id == "" {
-					return nil, status.Errorf(codes.NotFound, "volume source snapshot %v is not found", snapshot.SnapshotId)
-				}
-				if csiSnapshotType == csiSnapshotTypeLonghornSnapshot {
+				switch csiSnapshotType {
+				case csiSnapshotTypeLonghornBackingImage:
+					backingImageParameters := decodeSnapshoBackingImageID(snapshot.SnapshotId)
+					if backingImageParameters[longhorn.BackingImageParameterName] == "" || backingImageParameters[longhorn.BackingImageParameterDataSourceType] == "" {
+						return nil, status.Errorf(codes.InvalidArgument, "invalid CSI snapshotHandle %v for backing image", snapshot.SnapshotId)
+					}
+					updateVolumeParamsForBackingImage(volumeParameters, backingImageParameters)
+				case csiSnapshotTypeLonghornSnapshot:
+					if id == "" {
+						return nil, status.Errorf(codes.NotFound, "volume source snapshot %v is not found", snapshot.SnapshotId)
+					}
 					dataSource, _ := types.NewVolumeDataSource(longhorn.VolumeDataSourceTypeSnapshot, map[string]string{types.VolumeNameKey: sourceVolumeName, types.SnapshotNameKey: id})
 					volumeParameters["dataSource"] = string(dataSource)
-				} else if csiSnapshotType == csiSnapshotTypeLonghornBackup {
+				case csiSnapshotTypeLonghornBackup:
+					if id == "" {
+						return nil, status.Errorf(codes.NotFound, "volume source snapshot %v is not found", snapshot.SnapshotId)
+					}
 					backupVolume, backupName := sourceVolumeName, id
 					bv, err := cs.apiClient.BackupVolume.ById(backupVolume)
 					if err != nil {
-						return nil, status.Errorf(codes.NotFound, "cannot restore csi snapshot %s backup volume %s unavailable", snapshot.SnapshotId, backupVolume)
+						return nil, status.Errorf(codes.NotFound, "cannot restore CSI snapshot %s backup volume %s unavailable", snapshot.SnapshotId, backupVolume)
 					}
 
 					backup, err := cs.apiClient.BackupVolume.ActionBackupGet(bv, &longhornclient.BackupInput{Name: backupName})
 					if err != nil {
-						return nil, status.Errorf(codes.NotFound, "cannot restore csi snapshot %v backup %s unavailable", snapshot.SnapshotId, backupName)
+						return nil, status.Errorf(codes.NotFound, "cannot restore CSI snapshot %v backup %s unavailable", snapshot.SnapshotId, backupName)
 					}
 
 					// use the fromBackup method for the csi snapshot restores as well
 					// the same parameter was previously only used for restores based on the storage class
 					volumeParameters["fromBackup"] = backup.Url
-				} else {
-					return nil, status.Errorf(codes.InvalidArgument, "invalid csi snapshot type: %v. Must be %v or %v", csiSnapshotType, csiSnapshotTypeLonghornSnapshot, csiSnapshotTypeLonghornBackup)
+				default:
+					return nil, status.Errorf(codes.InvalidArgument, "invalid CSI snapshot type: %v. Must be %v, %v or %v",
+						csiSnapshotType, csiSnapshotTypeLonghornSnapshot, csiSnapshotTypeLonghornBackup, csiSnapshotTypeLonghornBackingImage)
 				}
 			}
 		case *csi.VolumeContentSource_Volume:
@@ -268,10 +281,10 @@ func (cs *ControllerServer) checkAndPrepareBackingImage(volumeName, backingImage
 		return nil
 	}
 
-	bidsType := strings.ToLower(volumeParameters["backingImageDataSourceType"])
+	bidsType := volumeParameters[longhorn.BackingImageParameterDataSourceType]
+	biChecksum := volumeParameters[longhorn.BackingImageParameterChecksum]
 	bidsParameters := map[string]string{}
-	biChecksum := volumeParameters["backingImageChecksum"]
-	if bidsParametersStr := volumeParameters["backingImageDataSourceParameters"]; bidsParametersStr != "" {
+	if bidsParametersStr := volumeParameters[longhorn.BackingImageParameterDataSourceParameters]; bidsParametersStr != "" {
 		if err := json.Unmarshal([]byte(bidsParametersStr), &bidsParameters); err != nil {
 			return fmt.Errorf("volume %s is unable to create missing backing image with parameters %s: %v", volumeName, bidsParametersStr, err)
 		}
@@ -282,20 +295,24 @@ func (cs *ControllerServer) checkAndPrepareBackingImage(volumeName, backingImage
 	if err != nil && !strings.Contains(err.Error(), "not found") {
 		return fmt.Errorf("volume %s is unable to retrieve backing image %s: %v", volumeName, backingImageName, err)
 	}
-	// A new backing image will be created automatically only if:
-	//   1. There is no existing backing image named `backingImage`.
-	//   2. The data source is valid for CSI. Notice that the CSI plugin cannot create a backing image with type `upload`.
+	// A new backing image will be created automatically
+	// if there is no existing backing image with the name and the type is `download` or `export-from-volume`.
 	if existingBackingImage == nil || existingBackingImage.Name == "" {
-		switch bidsType {
-		case string(longhorn.BackingImageDataSourceTypeUpload):
-			return fmt.Errorf("cannot upload backing image %v via CSI", backingImageName)
-		case "":
-			// backward compatibility
-			if volumeParameters["backingImageURL"] == "" {
-				return fmt.Errorf("volume %s missing backing image %v unable to create volume", volumeName, backingImageName)
+		switch longhorn.BackingImageDataSourceType(bidsType) {
+		case longhorn.BackingImageDataSourceTypeUpload:
+			return fmt.Errorf("volume %s backing image type %v is not supported via CSI", volumeName, bidsType)
+		case longhorn.BackingImageDataSourceTypeDownload:
+			if bidsParameters[longhorn.DataSourceTypeDownloadParameterURL] == "" {
+				return fmt.Errorf("volume %s missing parameters %v for preparing backing image",
+					volumeName, longhorn.DataSourceTypeDownloadParameterURL)
 			}
-			bidsType = string(longhorn.BackingImageDataSourceTypeDownload)
-			bidsParameters[longhorn.DataSourceTypeDownloadParameterURL] = volumeParameters["backingImageURL"]
+		case longhorn.BackingImageDataSourceTypeExportFromVolume:
+			if bidsParameters[longhorn.DataSourceTypeExportParameterExportType] == "" || bidsParameters[longhorn.DataSourceTypeExportParameterVolumeName] == "" {
+				return fmt.Errorf("volume %s missing parameters %v or %v for preparing backing image",
+					volumeName, longhorn.DataSourceTypeExportParameterExportType, longhorn.DataSourceTypeExportParameterVolumeName)
+			}
+		default:
+			return fmt.Errorf("volume %s backing image type %v is not supported via CSI", volumeName, bidsType)
 		}
 
 		_, err = cs.apiClient.BackingImage.Create(&longhornclient.BackingImage{
@@ -566,16 +583,75 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 	}()
 
 	csiSnapshotType := normalizeCSISnapshotType(req.Parameters["type"])
-	if csiSnapshotType == csiSnapshotTypeLonghornSnapshot {
+	switch csiSnapshotType {
+	case csiSnapshotTypeLonghornSnapshot:
 		rsp, err = cs.createCSISnapshotTypeLonghornSnapshot(req)
-	} else if csiSnapshotType == "" || csiSnapshotType == csiSnapshotTypeLonghornBackup {
+	case csiSnapshotTypeLonghornBackingImage:
+		rsp, err = cs.createCSISnapshotTypeLonghornBackingImage(req)
+	case "", csiSnapshotTypeLonghornBackup:
 		// For backward compatibility, empty type is considered as csiSnapshotTypeLonghornBackup
 		rsp, err = cs.createCSISnapshotTypeLonghornBackup(req)
-	} else {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid csi snapshot type: %v. Must be %v or %v or \"\"", csiSnapshotType, csiSnapshotTypeLonghornSnapshot, csiSnapshotTypeLonghornBackup)
+	default:
+		return nil, status.Errorf(codes.InvalidArgument, "invalid CSI snapshot type: %v. Must be %v or %v or \"\"", csiSnapshotType, csiSnapshotTypeLonghornSnapshot, csiSnapshotTypeLonghornBackup)
 	}
 
 	return rsp, err
+}
+
+func (cs *ControllerServer) createCSISnapshotTypeLonghornBackingImage(req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
+	csiSnapshotName := req.GetName()
+	csiVolumeName := req.GetSourceVolumeId()
+	if len(csiVolumeName) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Volume name must be provided")
+	} else if len(csiSnapshotName) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "Snapshot name must be provided")
+	}
+
+	vol, err := cs.apiClient.Volume.ById(csiVolumeName)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	if vol == nil {
+		return nil, status.Errorf(codes.NotFound, "volume %s not found", csiVolumeName)
+	}
+	if vol.State != string(longhorn.VolumeStateAttached) {
+		return nil, status.Errorf(codes.FailedPrecondition, "volume %s invalid state %v for taking snapshot. Volume must be in %v state to take snapshot", vol.Name, vol.State, longhorn.VolumeStateAttached)
+	}
+
+	var backingImage *longhornclient.BackingImage
+	backingImageListOutput, err := cs.apiClient.BackingImage.List(&longhornclient.ListOpts{})
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	for _, bi := range backingImageListOutput.Data {
+		if bi.Name == csiSnapshotName {
+			backingImage = &bi
+			logrus.Infof("createSnapshotTypeBackingImage: BackingImage %s already exists", csiSnapshotName)
+			break
+		}
+	}
+
+	exportType, exist := req.Parameters["export-type"]
+	if !exist {
+		exportType = "raw"
+	}
+	biParameters := map[string]string{
+		longhorn.DataSourceTypeExportParameterVolumeName: csiVolumeName,
+		longhorn.DataSourceTypeExportParameterExportType: exportType,
+	}
+	if backingImage == nil {
+		logrus.Infof("createSnapshotTypeBackingImage: create BackingImage %v exported from volume %s", csiSnapshotName, vol.Name)
+		backingImage, err = cs.apiClient.BackingImage.Create(&longhornclient.BackingImage{
+			Name:       csiSnapshotName,
+			SourceType: string(longhorn.BackingImageDataSourceTypeExportFromVolume),
+			Parameters: biParameters,
+		})
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+	}
+	snapshotID := encodeSnapshotBackingImageID(backingImage.Name, exportType, vol.Name)
+	return createSnapshotResponse(vol.Name, snapshotID, time.Now().UTC().Format(time.RFC3339), vol.Size, true), nil
 }
 
 func (cs *ControllerServer) createCSISnapshotTypeLonghornSnapshot(req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
@@ -625,7 +701,6 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornSnapshot(req *csi.Creat
 	}
 	snapshotID := encodeSnapshotID(csiSnapshotTypeLonghornSnapshot, vol.Name, snapshot.Name)
 	return createSnapshotResponse(vol.Name, snapshotID, snapshot.Created, vol.Size, true), nil
-
 }
 
 func (cs *ControllerServer) createCSISnapshotTypeLonghornBackup(req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
@@ -725,7 +800,7 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornBackup(req *csi.CreateS
 func createSnapshotResponse(sourceVolumeName, snapshotID, snapshotTime, sourceVolumeSize string, readyToUse bool) *csi.CreateSnapshotResponse {
 	creationTime, err := toProtoTimestamp(snapshotTime)
 	if err != nil {
-		logrus.Errorf("Failed to parse creation time %v for csi snapshot %v", snapshotTime, snapshotID)
+		logrus.Errorf("Failed to parse creation time %v for CSI snapshot %v", snapshotTime, snapshotID)
 	}
 
 	size, _ := util.ConvertSize(sourceVolumeSize)
@@ -756,6 +831,10 @@ func decodeSnapshotID(snapshotID string) (csiSnapshotType, sourceVolumeName, id 
 		return "", "", ""
 	}
 	csiSnapshotType = split[0]
+	if normalizeCSISnapshotType(csiSnapshotType) == csiSnapshotTypeLonghornBackingImage {
+		return csiSnapshotTypeLonghornBackingImage, "", ""
+	}
+
 	split = strings.Split(split[1], "/")
 	if len(split) < 2 {
 		return "", "", ""
@@ -763,6 +842,28 @@ func decodeSnapshotID(snapshotID string) (csiSnapshotType, sourceVolumeName, id 
 	sourceVolumeName = split[0]
 	id = split[1]
 	return normalizeCSISnapshotType(csiSnapshotType), sourceVolumeName, id
+}
+
+func encodeSnapshotBackingImageID(id, exportType, volumeName string) string {
+	return fmt.Sprintf("bi://backing?%v=%v&%v=%v&%v=%v&%v=%v",
+		longhorn.BackingImageParameterName, id,
+		longhorn.BackingImageParameterDataSourceType, longhorn.BackingImageDataSourceTypeExportFromVolume,
+		longhorn.DataSourceTypeExportParameterExportType, exportType,
+		longhorn.DataSourceTypeExportParameterVolumeName, volumeName,
+	)
+}
+
+func decodeSnapshoBackingImageID(snapshotID string) (parameters map[string]string) {
+	parameters = make(map[string]string)
+	u, err := url.Parse(snapshotID)
+	if err != nil {
+		return
+	}
+	queries := u.Query()
+	for key, value := range queries {
+		parameters[key] = value[0]
+	}
+	return
 }
 
 // normalizeCSISnapshotType coverts the deprecated CSISnapshotType to the its new value
@@ -780,37 +881,73 @@ func (cs *ControllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteS
 	}
 
 	csiSnapshotType, sourceVolumeName, id := decodeSnapshotID(snapshotID)
-	if id == "" {
-		return nil, status.Errorf(codes.NotFound, "volume source snapshot %v is not found", snapshotID)
-	}
-	if csiSnapshotType == csiSnapshotTypeLonghornSnapshot {
-		volume, err := cs.apiClient.Volume.ById(sourceVolumeName)
-		if err != nil {
+	switch csiSnapshotType {
+	case csiSnapshotTypeLonghornBackingImage:
+		if err := cs.cleanupBackingImage(snapshotID); err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
-		if volume != nil {
-			if _, err := cs.apiClient.Volume.ActionSnapshotDelete(volume, &longhornclient.SnapshotInput{
-				Name: id,
-			}); err != nil {
-				return nil, status.Error(codes.Internal, err.Error())
-			}
+	case csiSnapshotTypeLonghornSnapshot:
+		if id == "" {
+			return nil, status.Errorf(codes.NotFound, "volume source snapshot %v is not found", snapshotID)
 		}
-	} else if csiSnapshotType == csiSnapshotTypeLonghornBackup {
-		backupVolumeName, backupName := sourceVolumeName, id
-		backupVolume, err := cs.apiClient.BackupVolume.ById(backupVolumeName)
-		if err != nil {
+		if err := cs.cleanupSnapshot(sourceVolumeName, id); err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
-
-		if backupVolume != nil && backupVolume.Name != "" {
-			backupVolume, err = cs.apiClient.BackupVolume.ActionBackupDelete(backupVolume, &longhornclient.BackupInput{Name: backupName})
-			if err != nil {
-				return nil, status.Error(codes.Internal, err.Error())
-			}
+	case csiSnapshotTypeLonghornBackup:
+		if id == "" {
+			return nil, status.Errorf(codes.NotFound, "volume source snapshot %v is not found", snapshotID)
+		}
+		if err := cs.cleanupBackupVolume(sourceVolumeName, id); err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
 		}
 	}
 
 	return &csi.DeleteSnapshotResponse{}, nil
+}
+
+func (cs *ControllerServer) cleanupBackingImage(snapshotID string) error {
+	backingImageParameters := decodeSnapshoBackingImageID(snapshotID)
+	backingImage, err := cs.apiClient.BackingImage.ById(backingImageParameters[longhorn.BackingImageParameterName])
+	if err != nil {
+		return err
+	}
+	if backingImage != nil {
+		if err := cs.apiClient.BackingImage.Delete(backingImage); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (cs *ControllerServer) cleanupSnapshot(sourceVolumeName, id string) error {
+	volume, err := cs.apiClient.Volume.ById(sourceVolumeName)
+	if err != nil {
+		return err
+	}
+	if volume != nil {
+		if _, err := cs.apiClient.Volume.ActionSnapshotDelete(volume, &longhornclient.SnapshotInput{
+			Name: id,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (cs *ControllerServer) cleanupBackupVolume(sourceVolumeName, id string) error {
+	backupVolumeName, backupName := sourceVolumeName, id
+	backupVolume, err := cs.apiClient.BackupVolume.ById(backupVolumeName)
+	if err != nil {
+		return err
+	}
+	if backupVolume != nil && backupVolume.Name != "" {
+		if _, err = cs.apiClient.BackupVolume.ActionBackupDelete(backupVolume, &longhornclient.BackupInput{
+			Name: backupName,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (cs *ControllerServer) ListSnapshots(context.Context, *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
