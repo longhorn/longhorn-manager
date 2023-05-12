@@ -101,14 +101,6 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 
 		if err == nil {
 			allocatableCPU := float64(kubeNode.Status.Allocatable.Cpu().MilliValue())
-			replicaManagerCPUSetting, err := n.ds.GetSetting(types.SettingNameGuaranteedReplicaManagerCPU)
-			if err != nil {
-				return werror.NewInvalidError(err.Error(), "")
-			}
-			replicaManagerCPUInPercentage := replicaManagerCPUSetting.Value
-			if newNode.Spec.ReplicaManagerCPURequest > 0 {
-				replicaManagerCPUInPercentage = fmt.Sprintf("%.0f", math.Round(float64(newNode.Spec.ReplicaManagerCPURequest)/allocatableCPU*100.0))
-			}
 			instanceManagerCPUSetting, err := n.ds.GetSetting(types.SettingNameGuaranteedInstanceManagerCPU)
 			if err != nil {
 				return werror.NewInvalidError(err.Error(), "")
@@ -117,7 +109,7 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 			if newNode.Spec.InstanceManagerCPURequest > 0 {
 				instanceManagerCPUInPercentage = fmt.Sprintf("%.0f", math.Round(float64(newNode.Spec.InstanceManagerCPURequest)/allocatableCPU*100.0))
 			}
-			if err := types.ValidateCPUReservationValues(replicaManagerCPUInPercentage, instanceManagerCPUInPercentage); err != nil {
+			if err := types.ValidateCPUReservationValues(instanceManagerCPUInPercentage); err != nil {
 				return werror.NewInvalidError(err.Error(), "")
 			}
 		}
