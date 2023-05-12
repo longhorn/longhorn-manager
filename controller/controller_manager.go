@@ -187,22 +187,8 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 		return nil, err
 	}
 
-	cpuRequest := 0
-	guaranteedCPUSettingName := types.SettingName("")
-	switch im.Spec.Type {
-	case longhorn.InstanceManagerTypeEngine:
-		cpuRequest = lhNode.Spec.EngineManagerCPURequest
-		guaranteedCPUSettingName = types.SettingNameGuaranteedEngineManagerCPU
-	case longhorn.InstanceManagerTypeReplica:
-		cpuRequest = lhNode.Spec.ReplicaManagerCPURequest
-		guaranteedCPUSettingName = types.SettingNameGuaranteedReplicaManagerCPU
-	case longhorn.InstanceManagerTypeAllInOne:
-		cpuRequest = lhNode.Spec.InstanceManagerCPURequest
-		guaranteedCPUSettingName = types.SettingNameGuaranteedInstanceManagerCPU
-	default:
-		return nil, fmt.Errorf("instance manager %v has unknown type %v", im.Name, im.Spec.Type)
-	}
-
+	cpuRequest := lhNode.Spec.InstanceManagerCPURequest
+	guaranteedCPUSettingName := types.SettingNameGuaranteedInstanceManagerCPU
 	if cpuRequest == 0 {
 		guaranteedCPUSetting, err := ds.GetSetting(guaranteedCPUSettingName)
 		if err != nil {

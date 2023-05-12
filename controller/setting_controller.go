@@ -219,8 +219,6 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		if err := sc.updateNodeSelector(); err != nil {
 			return err
 		}
-	case string(types.SettingNameGuaranteedEngineManagerCPU):
-		fallthrough
 	case string(types.SettingNameGuaranteedReplicaManagerCPU):
 		fallthrough
 	case string(types.SettingNameGuaranteedInstanceManagerCPU):
@@ -974,7 +972,6 @@ func (sc *SettingController) enqueueSettingForNode(obj interface{}) {
 		return
 	}
 
-	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameGuaranteedEngineManagerCPU))
 	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameGuaranteedReplicaManagerCPU))
 	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameGuaranteedInstanceManagerCPU))
 	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameBackupTarget))
