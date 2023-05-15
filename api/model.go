@@ -47,6 +47,7 @@ type Volume struct {
 	LastAttachedBy              string                                 `json:"lastAttachedBy"`
 	Standby                     bool                                   `json:"standby"`
 	RestoreRequired             bool                                   `json:"restoreRequired"`
+	RestoreInitiated            bool                                   `json:"restoreInitiated"`
 	RevisionCounterDisabled     bool                                   `json:"revisionCounterDisabled"`
 	SnapshotDataIntegrity       longhorn.SnapshotDataIntegrity         `json:"snapshotDataIntegrity"`
 	UnmapMarkSnapChainRemoved   longhorn.UnmapMarkSnapChainRemoved     `json:"unmapMarkSnapChainRemoved"`
@@ -1402,6 +1403,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		LastBackup:                  v.Status.LastBackup,
 		LastBackupAt:                v.Status.LastBackupAt,
 		RestoreRequired:             v.Status.RestoreRequired,
+		RestoreInitiated:            v.Status.RestoreInitiated,
 		RevisionCounterDisabled:     v.Spec.RevisionCounterDisabled,
 		UnmapMarkSnapChainRemoved:   v.Spec.UnmapMarkSnapChainRemoved,
 		ReplicaSoftAntiAffinity:     v.Spec.ReplicaSoftAntiAffinity,

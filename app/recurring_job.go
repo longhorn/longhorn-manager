@@ -442,6 +442,12 @@ func (job *Job) doSnapshotCleanup(backupDone bool) (err error) {
 		job.logger.Debugf("Cleaned up snapshot CR %v for %v", snapshotName, volumeName)
 	}
 
+	if job.task == longhorn.RecurringJobTypeSnapshotCleanup {
+		if err := job.purgeSnapshots(volume, job.api.Volume); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
