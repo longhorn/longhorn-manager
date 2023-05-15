@@ -156,7 +156,6 @@ func (vcc *VolumeCloneController) handleErr(err error, key interface{}) {
 
 	vcc.logger.WithError(err).Warnf("Error syncing Longhorn volume %v", key)
 	vcc.queue.AddRateLimited(key)
-	return
 }
 
 func (vcc *VolumeCloneController) syncHandler(key string) (err error) {

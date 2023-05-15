@@ -40,11 +40,7 @@ func (v *volumeAttachmentValidator) Resource() admission.Resource {
 func (v *volumeAttachmentValidator) Create(request *admission.Request, newObj runtime.Object) error {
 	va := newObj.(*longhorn.VolumeAttachment)
 
-	if err := verifyAttachmentTicketIDConsistency(va.Spec.AttachmentTickets); err != nil {
-		return err
-	}
-
-	return nil
+	return verifyAttachmentTicketIDConsistency(va.Spec.AttachmentTickets)
 }
 
 func (v *volumeAttachmentValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
@@ -63,11 +59,7 @@ func (v *volumeAttachmentValidator) Update(request *admission.Request, oldObj ru
 		return werror.NewInvalidError(fmt.Sprintf("label %v is immutable", types.LonghornLabelVolume), "metadata.labels")
 	}
 
-	if err := verifyAttachmentTicketIDConsistency(newVA.Spec.AttachmentTickets); err != nil {
-		return err
-	}
-
-	return nil
+	return verifyAttachmentTicketIDConsistency(newVA.Spec.AttachmentTickets)
 }
 
 func verifyAttachmentTicketIDConsistency(attachmentTickets map[string]*longhorn.AttachmentTicket) error {

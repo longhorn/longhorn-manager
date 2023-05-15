@@ -135,7 +135,6 @@ func (vec *VolumeEvictionController) handleErr(err error, key interface{}) {
 
 	vec.logger.WithError(err).Warnf("Error syncing Longhorn volume %v", key)
 	vec.queue.AddRateLimited(key)
-	return
 }
 
 func (vec *VolumeEvictionController) syncHandler(key string) (err error) {

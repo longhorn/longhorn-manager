@@ -199,7 +199,6 @@ func (vac *VolumeAttachmentController) handleErr(err error, key interface{}) {
 
 	vac.logger.WithError(err).Warnf("Error syncing Longhorn VolumeAttachment %v", key)
 	vac.queue.AddRateLimited(key)
-	return
 }
 
 func (vac *VolumeAttachmentController) syncHandler(key string) (err error) {
@@ -285,8 +284,6 @@ func (vac *VolumeAttachmentController) handleVolumeMigration(va *longhorn.Volume
 	vac.handleVolumeMigrationStart(va, vol)
 	vac.handleVolumeMigrationConfirmation(va, vol)
 	vac.handleVolumeMigrationRollback(va, vol)
-
-	return
 }
 
 func (vac *VolumeAttachmentController) handleVolumeMigrationStart(va *longhorn.VolumeAttachment, vol *longhorn.Volume) {
@@ -350,8 +347,6 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationConfirmation(va *lon
 		vol.Spec.NodeID = vol.Status.CurrentMigrationNodeID
 		vol.Spec.MigrationNodeID = ""
 	}
-
-	return
 }
 
 func (vac *VolumeAttachmentController) handleVolumeMigrationRollback(va *longhorn.VolumeAttachment, vol *longhorn.Volume) {
@@ -373,8 +368,6 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationRollback(va *longhor
 	if !hasCSIAttachmentTicketRequestingMigratingNode {
 		vol.Spec.MigrationNodeID = ""
 	}
-
-	return
 }
 
 func (vac *VolumeAttachmentController) handleVolumeDetachment(va *longhorn.VolumeAttachment, vol *longhorn.Volume) {
@@ -394,7 +387,6 @@ func (vac *VolumeAttachmentController) handleVolumeDetachment(va *longhorn.Volum
 	vol.Spec.NodeID = ""
 	// reset the attachment parameter for vol
 	setAttachmentParameter(map[string]string{}, vol)
-	return
 }
 
 func shouldDoDetach(va *longhorn.VolumeAttachment, vol *longhorn.Volume) bool {
@@ -443,7 +435,6 @@ func (vac *VolumeAttachmentController) handleVolumeAttachment(va *longhorn.Volum
 
 	vol.Spec.NodeID = attachmentTicket.NodeID
 	setAttachmentParameter(attachmentTicket.Parameters, vol)
-	return
 }
 
 func selectAttachmentTicketToAttach(va *longhorn.VolumeAttachment, vol *longhorn.Volume) *longhorn.AttachmentTicket {
@@ -628,7 +619,6 @@ func (vac *VolumeAttachmentController) updateStatusForDesiredAttachingAttachment
 			"",
 		)
 	}
-	return
 }
 
 func verifyAttachmentParameters(parameters map[string]string, vol *longhorn.Volume) bool {

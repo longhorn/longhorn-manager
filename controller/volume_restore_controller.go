@@ -133,7 +133,6 @@ func (vrsc *VolumeRestoreController) handleErr(err error, key interface{}) {
 
 	vrsc.logger.WithError(err).Warnf("Error syncing Longhorn volume %v", key)
 	vrsc.queue.AddRateLimited(key)
-	return
 }
 
 func (vrsc *VolumeRestoreController) syncHandler(key string) (err error) {

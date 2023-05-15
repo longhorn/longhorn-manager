@@ -443,8 +443,6 @@ func (c *ShareManagerController) detachShareManagerVolume(sm *longhorn.ShareMana
 	shareManagerAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeShareManagerController, sm.Name)
 	log.Infof("removing volume attachment ticket: %v to detach the volume %v", shareManagerAttachmentTicketID, va.Name)
 	delete(va.Spec.AttachmentTickets, shareManagerAttachmentTicketID)
-
-	return
 }
 
 // syncShareManagerVolume controls volume attachment and provides the following state transitions

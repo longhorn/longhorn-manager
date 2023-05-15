@@ -341,10 +341,7 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 		if _, ok := snapshot.Status.Children["volume-head"]; ok && snapshot.Status.MarkRemoved {
 			// This snapshot is the parent of volume-head, so it cannot be purged immediately.
 			// We do not want to keep the volume stuck in attached state.
-			if err = sc.handleAttachmentTicketDeletion(snapshot); err != nil {
-				return err
-			}
-			return nil
+			return sc.handleAttachmentTicketDeletion(snapshot)
 		}
 
 		if err := sc.handleAttachmentTicketCreation(snapshot); err != nil {

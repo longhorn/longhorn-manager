@@ -162,7 +162,6 @@ func (bc *BackupController) handleErr(err error, key interface{}) {
 
 	bc.logger.WithError(err).Warnf("Error syncing Longhorn backup %v", key)
 	bc.queue.AddRateLimited(key)
-	return
 }
 
 func (bc *BackupController) syncHandler(key string) (err error) {
@@ -517,7 +516,7 @@ func (bc *BackupController) handleAttachmentTicketCreation(backup *longhorn.Back
 	return nil
 }
 
-// VerifyAttachment check the volume attachment ticket for this backup is satisified
+// VerifyAttachment check the volume attachment ticket for this backup is satisfied
 func (bc *BackupController) VerifyAttachment(backup *longhorn.Backup, volumeName string) (bool, error) {
 	var err error
 	defer func() {

@@ -1315,11 +1315,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		}
 	}
 
-	if err := vc.checkAndFinishVolumeRestore(v, e, rs); err != nil {
-		return err
-	}
-
-	return nil
+	return vc.checkAndFinishVolumeRestore(v, e, rs)
 }
 
 func (vc *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, isNewVolume bool, log *logrus.Entry) error {
@@ -1774,7 +1770,6 @@ func (vc *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e 
 		}
 	}
 
-	return
 }
 
 func (vc *VolumeController) verifyVolumeDependentResourcesClosed(e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {
