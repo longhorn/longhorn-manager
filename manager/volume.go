@@ -230,91 +230,20 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 		return nil, fmt.Errorf("volume %v is pending restoring", name)
 	}
 
-	//if v.Spec.NodeID == nodeID {
-	//	logrus.Debugf("Volume %v is already attached to node %v", v.Name, v.Spec.NodeID)
-	//	return v, nil
-	//}
-
 	if v.Spec.MigrationNodeID == node.Name {
 		logrus.Debugf("Volume %v is already migrating to node %v from node %v", v.Name, node.Name, v.Spec.NodeID)
 		return v, nil
 	}
-
-	logrus.Infof("=======================> 1")
-	//if v.Spec.AccessMode != longhorn.AccessModeReadWriteMany && v.Status.State != longhorn.VolumeStateDetached {
-	//	return nil, fmt.Errorf("invalid state %v to attach RWO volume %v", v.Status.State, name)
-	//}
-
-	//isVolumeShared := v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !v.Spec.Migratable
-	////isVolumeDetached := v.Spec.NodeID == ""
-	//
-	//// regular RWX volume
-	//if isVolumeShared {
-	//	// only handle attachment for regular RWX volume in maintenance mode (i.g., DisableFrontend is true)
-	//	if !disableFrontend {
-	//		return v, nil
-	//	}
-	//}
-
-	// TODO: handle live migration for migratable volume
-
-	//if isVolumeDetached {
-	//	if !isVolumeShared || disableFrontend {
-	//		v.Spec.NodeID = nodeID
-	//		logrus.Infof("Volume %v attachment to %v with disableFrontend %v requested", v.Name, v.Spec.NodeID, disableFrontend)
-	//	}
-	//} else if isVolumeShared {
-	//	// shared volumes only need to be attached if maintenance mode is requested
-	//	// otherwise we just set the disabled frontend and last attached by states
-	//	logrus.Debugf("No need to attach volume %v since it's shared via %v", v.Name, v.Status.ShareEndpoint)
-	//} else {
-	//	// non shared volume that is already attached needs to be migratable
-	//	// to be able to attach to a new node, without detaching from the previous node
-	//	if !v.Spec.Migratable {
-	//		return nil, fmt.Errorf("non migratable volume %v cannot attach to node %v is already attached to node %v", v.Name, input.HostID, v.Spec.NodeID)
-	//	}
-	//	if v.Spec.MigrationNodeID != "" && v.Spec.MigrationNodeID != input.HostID {
-	//		return nil, fmt.Errorf("unable to migrate volume %v from %v to %v since it's already migrating to %v",
-	//			v.Name, v.Spec.NodeID, input.HostID, v.Spec.MigrationNodeID)
-	//	}
-	//	if v.Status.State != longhorn.VolumeStateAttached {
-	//		return nil, fmt.Errorf("invalid volume state to start migration %v", v.Status.State)
-	//	}
-	//	if v.Status.Robustness != longhorn.VolumeRobustnessHealthy && v.Status.Robustness != longhorn.VolumeRobustnessDegraded {
-	//		return nil, fmt.Errorf("volume must be healthy or degraded to start migration")
-	//	}
-	//	if v.Spec.EngineImage != v.Status.CurrentImage {
-	//		return nil, fmt.Errorf("upgrading in process for volume, cannot start migration")
-	//	}
-	//	if v.Spec.Standby || v.Status.IsStandby {
-	//		return nil, fmt.Errorf("dr volume migration is not supported")
-	//	}
-	//	if v.Status.ExpansionRequired {
-	//		return nil, fmt.Errorf("cannot migrate volume while an expansion is required")
-	//	}
-	//
-	//	v.Spec.MigrationNodeID = input.HostID
-	//	logrus.Infof("Volume %v migration from %v to %v requested", v.Name, v.Spec.NodeID, input.HostID)
-	//}
-	//
-	//v.Spec.DisableFrontend = input.DisableFrontend
-	//v.Spec.LastAttachedBy = input.AttachedBy
-	//v, err = m.ds.UpdateVolume(v)
-	//if err != nil {
-	//	return nil, err
-	//}
 
 	// TODO: special case for attachment by UI
 	if attacherType == "" {
 		attacherType = string(longhorn.AttacherTypeLonghornAPI)
 	}
 
-	va, err := m.ds.GetLHVolumeAttachment(types.GetLHVolumeAttachmentNameFromVolumeName(v.Name))
+	va, err := m.ds.GetLHVolumeAttachmentByVolumeName(v.Name)
 	if err != nil {
 		return nil, err
 	}
-
-	logrus.Infof("=======================> 2")
 
 	va.Spec.AttachmentTickets[attachmentID] = &longhorn.AttachmentTicket{
 		ID: attachmentID,
@@ -326,14 +255,10 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 			longhorn.AttachmentParameterLastAttachedBy:  attachedBy,
 		},
 	}
-	logrus.Infof("=======================> 3 %+v", va.Spec.AttachmentTickets[attachmentID])
-	logrus.Infof("=======================> 4 %+v", va.Spec)
 
 	if _, err := m.ds.UpdateLHVolumeAttachment(va); err != nil {
 		return nil, err
 	}
-
-	logrus.Infof("=======================> 5")
 
 	return v, nil
 }
@@ -354,7 +279,7 @@ func (m *VolumeManager) Detach(name, attachmentID string, forceDetach bool) (v *
 		return nil, fmt.Errorf("cannot detach standby volume %v", v.Name)
 	}
 
-	va, err := m.ds.GetLHVolumeAttachment(types.GetLHVolumeAttachmentNameFromVolumeName(v.Name))
+	va, err := m.ds.GetLHVolumeAttachmentByVolumeName(v.Name)
 	if err != nil {
 		return nil, err
 	}

@@ -1387,7 +1387,7 @@ func (vc *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume
 				if err := vc.openVolumeDependentResources(v, e, rs, log); err != nil {
 					return err
 				}
-				if vc.verifyVolumeDependentResourcesOpened(e, rs) {
+				if vc.areVolumeDependentResourcesOpened(e, rs) {
 					v.Status.CurrentNodeID = v.Spec.NodeID
 					v.Status.State = longhorn.VolumeStateAttached
 					vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonAttached, "volume %v has been attached to %v", v.Name, v.Status.CurrentNodeID)
@@ -1415,7 +1415,7 @@ func (vc *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume
 					if err := vc.openVolumeDependentResources(v, e, rs, log); err != nil {
 						return err
 					}
-					if !vc.verifyVolumeDependentResourcesOpened(e, rs) {
+					if !vc.areVolumeDependentResourcesOpened(e, rs) {
 						log.Warnf("volume is attached but dependent resources are not opened")
 					}
 				}
@@ -1438,7 +1438,7 @@ func (vc *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume
 						if err := vc.openVolumeDependentResources(v, e, rs, log); err != nil {
 							return err
 						}
-						if !vc.verifyVolumeDependentResourcesOpened(e, rs) {
+						if !vc.areVolumeDependentResourcesOpened(e, rs) {
 							log.Warnf("volume is attached but dependent resources are not opened")
 						}
 					} else {
@@ -1697,7 +1697,7 @@ func (vc *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *
 	return nil
 }
 
-func (vc *VolumeController) verifyVolumeDependentResourcesOpened(e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {
+func (vc *VolumeController) areVolumeDependentResourcesOpened(e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {
 	// At least 1 replica should be running
 	hasRunningReplica := false
 	for _, r := range rs {

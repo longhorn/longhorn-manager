@@ -546,15 +546,7 @@ func (c *BackingImageDataSourceController) handleAttachmentTicketDeletion(bids *
 	}
 
 	volumeName := bids.Spec.Parameters[DataSourceTypeExportFromVolumeParameterVolumeName]
-	vol, err := c.ds.GetVolume(volumeName)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-
-	va, err := c.ds.GetLHVolumeAttachment(types.GetLHVolumeAttachmentNameFromVolumeName(vol.Name))
+	va, err := c.ds.GetLHVolumeAttachmentByVolumeName(volumeName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -586,7 +578,7 @@ func (c *BackingImageDataSourceController) handleAttachmentTicketCreation(bids *
 		return err
 	}
 
-	va, err := c.ds.GetLHVolumeAttachment(types.GetLHVolumeAttachmentNameFromVolumeName(vol.Name))
+	va, err := c.ds.GetLHVolumeAttachmentByVolumeName(vol.Name)
 	if err != nil {
 		return err
 	}

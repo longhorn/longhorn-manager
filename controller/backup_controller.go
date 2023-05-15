@@ -445,7 +445,7 @@ func (bc *BackupController) handleAttachmentTicketDeletion(backup *longhorn.Back
 		err = errors.Wrapf(err, "handleAttachmentTicketDeletion: failed to clean up attachment")
 	}()
 
-	va, err := bc.ds.GetLHVolumeAttachment(types.GetLHVolumeAttachmentNameFromVolumeName(volumeName))
+	va, err := bc.ds.GetLHVolumeAttachmentByVolumeName(volumeName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -476,7 +476,7 @@ func (bc *BackupController) handleAttachmentTicketCreation(backup *longhorn.Back
 		return err
 	}
 
-	va, err := bc.ds.GetLHVolumeAttachment(types.GetLHVolumeAttachmentNameFromVolumeName(vol.Name))
+	va, err := bc.ds.GetLHVolumeAttachmentByVolumeName(vol.Name)
 	if err != nil {
 		return err
 	}
@@ -529,7 +529,7 @@ func (bc *BackupController) VerifyAttachment(backup *longhorn.Backup, volumeName
 		return false, err
 	}
 
-	va, err := bc.ds.GetLHVolumeAttachment(types.GetLHVolumeAttachmentNameFromVolumeName(vol.Name))
+	va, err := bc.ds.GetLHVolumeAttachmentByVolumeName(vol.Name)
 	if err != nil {
 		return false, err
 	}

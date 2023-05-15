@@ -4026,6 +4026,11 @@ func (s *DataStore) GetLHVolumeAttachment(name string) (*longhorn.VolumeAttachme
 	return resultRO.DeepCopy(), nil
 }
 
+func (s *DataStore) GetLHVolumeAttachmentByVolumeName(volName string) (*longhorn.VolumeAttachment, error) {
+	vaName := types.GetLHVolumeAttachmentNameFromVolumeName(volName)
+	return s.GetLHVolumeAttachment(vaName)
+}
+
 // ListSupportBundles returns an object contains all SupportBundles
 func (s *DataStore) ListSupportBundles() (map[string]*longhorn.SupportBundle, error) {
 	itemMap := make(map[string]*longhorn.SupportBundle)
@@ -4478,7 +4483,6 @@ func (s *DataStore) ListLonghornVolumeAttachmentByVolumeRO(name string) ([]*long
 // RemoveFinalizerForLHVolumeAttachment will result in deletion if DeletionTimestamp was set
 func (s *DataStore) RemoveFinalizerForLHVolumeAttachment(va *longhorn.VolumeAttachment) error {
 	if !util.FinalizerExists(longhornFinalizerKey, va) {
-		// finalizer already removed
 		return nil
 	}
 	if err := util.RemoveFinalizer(longhornFinalizerKey, va); err != nil {

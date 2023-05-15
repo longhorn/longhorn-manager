@@ -187,7 +187,7 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 		return nil
 	}
 
-	va, err := vcc.ds.GetLHVolumeAttachment(types.GetLHVolumeAttachmentNameFromVolumeName(volName))
+	va, err := vcc.ds.GetLHVolumeAttachmentByVolumeName(volName)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return err

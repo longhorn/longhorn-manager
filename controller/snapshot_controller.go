@@ -23,7 +23,6 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
-	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 )
 
@@ -436,15 +435,7 @@ func (sc *SnapshotController) handleAttachmentTicketDeletion(snap *longhorn.Snap
 		err = errors.Wrapf(err, "handleAttachmentTicketDeletion: failed to clean up attachment")
 	}()
 
-	vol, err := sc.ds.GetVolume(snap.Spec.Volume)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-
-	va, err := sc.ds.GetLHVolumeAttachment(types.GetLHVolumeAttachmentNameFromVolumeName(vol.Name))
+	va, err := sc.ds.GetLHVolumeAttachmentByVolumeName(snap.Spec.Volume)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -475,7 +466,7 @@ func (sc *SnapshotController) handleAttachmentTicketCreation(snap *longhorn.Snap
 		return err
 	}
 
-	va, err := sc.ds.GetLHVolumeAttachment(types.GetLHVolumeAttachmentNameFromVolumeName(vol.Name))
+	va, err := sc.ds.GetLHVolumeAttachmentByVolumeName(vol.Name)
 	if err != nil {
 		return err
 	}

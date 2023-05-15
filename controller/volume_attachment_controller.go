@@ -297,8 +297,6 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationStart(va *longhorn.V
 	// if the volume is currently attached by a csi attachment ticket and there is another
 	// csi attachment ticket requesting a different node
 	if vol.Status.State != longhorn.VolumeStateAttached ||
-		vol.Status.CurrentNodeID == "" ||
-		vol.Spec.NodeID == "" ||
 		vol.Status.CurrentNodeID != vol.Spec.NodeID {
 		return
 	}
@@ -325,7 +323,6 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationStart(va *longhorn.V
 		// Found one csi attachmentTicket that is requesting volume to attach to a different node
 		if attachmentTicket.NodeID != vol.Spec.NodeID {
 			vol.Spec.MigrationNodeID = attachmentTicket.NodeID
-			// TODO: do we need to remember the migrating ticket?
 		}
 	}
 
@@ -449,13 +446,6 @@ func (vac *VolumeAttachmentController) handleVolumeAttachment(va *longhorn.Volum
 	return
 }
 
-func isVolumeFullyDetached(vol *longhorn.Volume) bool {
-	return vol.Spec.NodeID == "" &&
-		vol.Spec.MigrationNodeID == "" &&
-		vol.Status.PendingNodeID == "" &&
-		vol.Status.State == longhorn.VolumeStateDetached
-}
-
 func selectAttachmentTicketToAttach(va *longhorn.VolumeAttachment, vol *longhorn.Volume) *longhorn.AttachmentTicket {
 	ticketCandidates := []*longhorn.AttachmentTicket{}
 	for _, attachmentTicket := range va.Spec.AttachmentTickets {
@@ -511,9 +501,7 @@ func (vac *VolumeAttachmentController) handleVAStatusUpdate(va *longhorn.VolumeA
 
 	// Attachment that requests to attach
 	for _, attachmentTicket := range va.Spec.AttachmentTickets {
-		if err := vac.updateStatusForDesiredAttachingAttachmentTicket(attachmentTicket.ID, va, vol); err != nil {
-			return err
-		}
+		vac.updateStatusForDesiredAttachingAttachmentTicket(attachmentTicket.ID, va, vol)
 	}
 	return nil
 }
@@ -522,7 +510,7 @@ func (vac *VolumeAttachmentController) updateStatusForDesiredDetachingAttachment
 	delete(va.Status.AttachmentTicketStatuses, attachmentTicketID)
 }
 
-func (vac *VolumeAttachmentController) updateStatusForDesiredAttachingAttachmentTicket(attachmentTicketID string, va *longhorn.VolumeAttachment, vol *longhorn.Volume) error {
+func (vac *VolumeAttachmentController) updateStatusForDesiredAttachingAttachmentTicket(attachmentTicketID string, va *longhorn.VolumeAttachment, vol *longhorn.Volume) {
 	log := getLoggerForLHVolumeAttachment(vac.logger, va)
 
 	if _, ok := va.Status.AttachmentTicketStatuses[attachmentTicketID]; !ok {
@@ -549,7 +537,7 @@ func (vac *VolumeAttachmentController) updateStatusForDesiredAttachingAttachment
 				"",
 				"The attachment ticket is satisfied",
 			)
-			return nil
+			return
 		}
 		attachmentTicketStatus.Satisfied = false
 		attachmentTicketStatus.Conditions = types.SetCondition(
@@ -560,7 +548,7 @@ func (vac *VolumeAttachmentController) updateStatusForDesiredAttachingAttachment
 			"Waiting for volume share to be available",
 		)
 
-		return nil
+		return
 	}
 
 	if isMigratingCSIAttacherTicket(attachmentTicket, vol) {
@@ -573,7 +561,7 @@ func (vac *VolumeAttachmentController) updateStatusForDesiredAttachingAttachment
 				"",
 				"The migrating attachment ticket is satisfied",
 			)
-			return nil
+			return
 		}
 		attachmentTicketStatus.Satisfied = false
 		attachmentTicketStatus.Conditions = types.SetCondition(
@@ -584,7 +572,7 @@ func (vac *VolumeAttachmentController) updateStatusForDesiredAttachingAttachment
 			fmt.Sprintf("waiting for volume to migrate to node %v", attachmentTicket.NodeID),
 		)
 
-		return nil
+		return
 	}
 
 	if vol.Status.CurrentNodeID == "" || vol.Status.State != longhorn.VolumeStateAttached {
@@ -600,7 +588,7 @@ func (vac *VolumeAttachmentController) updateStatusForDesiredAttachingAttachment
 		// TODO: check if the engine image is ready on the node
 		// check if the node is down
 		// to set the condition for the client to consume
-		return nil
+		return
 	}
 
 	if attachmentTicket.NodeID != vol.Status.CurrentNodeID {
@@ -612,7 +600,7 @@ func (vac *VolumeAttachmentController) updateStatusForDesiredAttachingAttachment
 			"",
 			fmt.Sprintf("the volume is currently attached to different node %v ", vol.Status.CurrentNodeID),
 		)
-		return nil
+		return
 	}
 
 	if vol.Status.CurrentNodeID == attachmentTicket.NodeID && vol.Status.State == longhorn.VolumeStateAttached {
@@ -629,7 +617,7 @@ func (vac *VolumeAttachmentController) updateStatusForDesiredAttachingAttachment
 				longhorn.AttachmentStatusConditionReasonAttachedWithIncompatibleParameters,
 				fmt.Sprintf("volume %v has already attached to node %v with incompatible parameters", vol.Name, vol.Status.CurrentNodeID),
 			)
-			return nil
+			return
 		}
 		attachmentTicketStatus.Satisfied = true
 		attachmentTicketStatus.Conditions = types.SetCondition(
@@ -640,7 +628,7 @@ func (vac *VolumeAttachmentController) updateStatusForDesiredAttachingAttachment
 			"",
 		)
 	}
-	return nil
+	return
 }
 
 func verifyAttachmentParameters(parameters map[string]string, vol *longhorn.Volume) bool {

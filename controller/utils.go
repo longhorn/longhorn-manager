@@ -44,3 +44,10 @@ func (vc *VolumeController) isSourceVolumeOfCloning(v *longhorn.Volume) (bool, e
 	}
 	return false, nil
 }
+
+func isVolumeFullyDetached(vol *longhorn.Volume) bool {
+	return vol.Spec.NodeID == "" &&
+		vol.Spec.MigrationNodeID == "" &&
+		vol.Status.PendingNodeID == "" &&
+		vol.Status.State == longhorn.VolumeStateDetached
+}

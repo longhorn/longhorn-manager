@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/rancher/lasso/pkg/log"
 	"reflect"
 	"strings"
 	"time"
@@ -407,6 +406,7 @@ func (c *ShareManagerController) isShareManagerRequiredForVolume(volume *longhor
 }
 
 func (c *ShareManagerController) createShareManagerAttachmentTicket(sm *longhorn.ShareManager, va *longhorn.VolumeAttachment) {
+	log := getLoggerForShareManager(c.logger, sm)
 	shareManagerAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeShareManagerController, sm.Name)
 	shareManagerAttachmentTicket, ok := va.Spec.AttachmentTickets[shareManagerAttachmentTicketID]
 	if !ok {
@@ -468,8 +468,7 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 		return err
 	}
 
-	vaName := types.GetLHVolumeAttachmentNameFromVolumeName(volume.Name)
-	va, err := c.ds.GetLHVolumeAttachment(vaName)
+	va, err := c.ds.GetLHVolumeAttachmentByVolumeName(volume.Name)
 	if err != nil {
 		return err
 	}

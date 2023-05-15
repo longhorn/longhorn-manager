@@ -21,7 +21,6 @@ import (
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
-	"github.com/longhorn/longhorn-manager/types"
 )
 
 type VolumeExpansionController struct {
@@ -165,8 +164,7 @@ func (vec *VolumeExpansionController) reconcile(volName string) (err error) {
 		return nil
 	}
 
-	vaName := types.GetLHVolumeAttachmentNameFromVolumeName(volName)
-	va, err := vec.ds.GetLHVolumeAttachment(vaName)
+	va, err := vec.ds.GetLHVolumeAttachmentByVolumeName(volName)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return err

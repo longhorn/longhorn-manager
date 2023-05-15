@@ -21,7 +21,6 @@ import (
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
-	"github.com/longhorn/longhorn-manager/types"
 )
 
 type VolumeRestoreController struct {
@@ -165,8 +164,7 @@ func (vrsc *VolumeRestoreController) reconcile(volName string) (err error) {
 		return nil
 	}
 
-	vaName := types.GetLHVolumeAttachmentNameFromVolumeName(volName)
-	va, err := vrsc.ds.GetLHVolumeAttachment(vaName)
+	va, err := vrsc.ds.GetLHVolumeAttachmentByVolumeName(volName)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return err
