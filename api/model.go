@@ -997,12 +997,6 @@ func volumeSchema(volume *client.Schema) {
 	replicas.Type = "array[replica]"
 	volume.ResourceFields["replicas"] = replicas
 
-	recurringJobs := volume.ResourceFields["recurringJobs"]
-	recurringJobs.Create = true
-	recurringJobs.Default = nil
-	recurringJobs.Type = "array[recurringJob]"
-	volume.ResourceFields["recurringJobs"] = recurringJobs
-
 	recurringJobSelector := volume.ResourceFields["recurringJobSelector"]
 	recurringJobSelector.Create = true
 	recurringJobSelector.Default = nil
