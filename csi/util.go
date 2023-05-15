@@ -201,14 +201,6 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 		vol.BackingImage = backingImage
 	}
 
-	if jsonRecurringJobs, ok := volOptions["recurringJobs"]; ok {
-		recurringJobs, err := parseJSONRecurringJobs(jsonRecurringJobs)
-		if err != nil {
-			return nil, errors.Wrap(err, "Invalid parameter recurringJobs")
-		}
-		vol.RecurringJobs = recurringJobs
-	}
-
 	recurringJobSelector := []longhornclient.VolumeRecurringJob{}
 	if jsonRecurringJobSelector, ok := volOptions["recurringJobSelector"]; ok {
 		err := json.Unmarshal([]byte(jsonRecurringJobSelector), &recurringJobSelector)

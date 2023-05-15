@@ -147,24 +147,6 @@ const (
 	ReplicaZoneSoftAntiAffinityDisabled = ReplicaZoneSoftAntiAffinity("disabled")
 )
 
-// Deprecated: This field is useless and has been replaced by the RecurringJob CRD
-type VolumeRecurringJobSpec struct {
-	// +optional
-	Name string `json:"name"`
-	// +optional
-	Groups []string `json:"groups,omitempty"`
-	// +optional
-	Task RecurringJobType `json:"task"`
-	// +optional
-	Cron string `json:"cron"`
-	// +optional
-	Retain int `json:"retain"`
-	// +optional
-	Concurrency int `json:"concurrency"`
-	// +optional
-	Labels map[string]string `json:"labels,omitempty"`
-}
-
 type KubernetesStatus struct {
 	// +optional
 	PVName string `json:"pvName"`
@@ -257,9 +239,6 @@ type VolumeSpec struct {
 	// Deprecated. Rename to BackingImage
 	// +optional
 	BaseImage string `json:"baseImage"`
-	// Deprecated. Replaced by a separate resource named "RecurringJob"
-	// +optional
-	RecurringJobs []VolumeRecurringJobSpec `json:"recurringJobs,omitempty"`
 	// +kubebuilder:validation:Enum=none;lz4;gzip
 	// +optional
 	BackupCompressionMethod BackupCompressionMethod `json:"backupCompressionMethod"`
