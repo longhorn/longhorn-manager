@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/pkg/errors"
 
@@ -195,19 +194,6 @@ const (
 
 	CniNetworkNone          = ""
 	StorageNetworkInterface = "lhnet1"
-)
-
-const (
-	SupportBundleNameFmt = "support-bundle-%v"
-
-	SupportBundleManagerApp      = "support-bundle-manager"
-	SupportBundleManagerLabelKey = "rancher/supportbundle"
-
-	SupportBundleURLPort        = 8080
-	SupportBundleURLStatusFmt   = "http://%s:%v/status"
-	SupportBundleURLDownloadFmt = "http://%s:%v/bundle"
-
-	SupportBundleDownloadTimeout = 5 * time.Minute
 )
 
 const (
