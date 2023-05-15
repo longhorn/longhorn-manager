@@ -233,5 +233,9 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 		return err
 	}
 
+	if err := upgradeutil.DeleteRemovedSettings(namespace, lhClient); err != nil {
+		return err
+	}
+
 	return upgradeutil.CreateOrUpdateLonghornVersionSetting(namespace, lhClient)
 }

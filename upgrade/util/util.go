@@ -223,6 +223,33 @@ func CheckUpgradePathSupported(namespace string, lhClient lhclientset.Interface)
 	return nil
 }
 
+func DeleteRemovedSettings(namespace string, lhClient *lhclientset.Clientset) error {
+	isKnownSetting := func(knownSettingNames []types.SettingName, name types.SettingName) bool {
+		for _, knownSettingName := range knownSettingNames {
+			if name == knownSettingName {
+				return true
+			}
+		}
+		return false
+	}
+
+	existingSettingList, err := lhClient.LonghornV1beta2().Settings(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+
+	for _, existingSetting := range existingSettingList.Items {
+		if !isKnownSetting(types.SettingNameList, types.SettingName(existingSetting.Name)) {
+			logrus.Infof("Deleting removed setting: %v", existingSetting.Name)
+			if err = lhClient.LonghornV1beta2().Settings(namespace).Delete(context.TODO(), existingSetting.Name, metav1.DeleteOptions{}); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 func getMajorMinorInt(v string) (int, int, error) {
 	majorNum, err := getMajorInt(v)
 	if err != nil {
