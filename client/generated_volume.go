@@ -65,8 +65,6 @@ type Volume struct {
 
 	RecurringJobSelector []VolumeRecurringJob `json:"recurringJobSelector,omitempty" yaml:"recurring_job_selector,omitempty"`
 
-	RecurringJobs []RecurringJob `json:"recurringJobs,omitempty" yaml:"recurring_jobs,omitempty"`
-
 	ReplicaAutoBalance string `json:"replicaAutoBalance,omitempty" yaml:"replica_auto_balance,omitempty"`
 
 	ReplicaSoftAntiAffinity string `json:"replicaSoftAntiAffinity,omitempty" yaml:"replica_soft_anti_affinity,omitempty"`
