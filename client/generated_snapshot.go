@@ -7,6 +7,8 @@ const (
 type Snapshot struct {
 	Resource `yaml:"-"`
 
+	Checksum string `json:"checksum,omitempty" yaml:"checksum,omitempty"`
+
 	Children map[string]interface{} `json:"children,omitempty" yaml:"children,omitempty"`
 
 	Created string `json:"created,omitempty" yaml:"created,omitempty"`
@@ -22,8 +24,6 @@ type Snapshot struct {
 	Size string `json:"size,omitempty" yaml:"size,omitempty"`
 
 	Usercreated bool `json:"usercreated,omitempty" yaml:"usercreated,omitempty"`
-
-	Checksum string `json:"checksum,omitempty" yaml:"checksum,omitempty"`
 }
 
 type SnapshotCollection struct {

@@ -7,7 +7,9 @@ const (
 type DetachInput struct {
 	Resource `yaml:"-"`
 
-	HostId string `json:"hostId,omitempty" yaml:"host_id,omitempty"`
+	AttachmentID string `json:"attachmentID,omitempty" yaml:"attachment_id,omitempty"`
+
+	ForceDetach bool `json:"forceDetach,omitempty" yaml:"force_detach,omitempty"`
 }
 
 type DetachInputCollection struct {

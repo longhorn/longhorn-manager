@@ -1005,3 +1005,12 @@ func EncodeToYAMLFile(obj interface{}, path string) (err error) {
 
 	return nil
 }
+
+func VerifySnapshotLabels(labels map[string]string) error {
+	for k, v := range labels {
+		if strings.Contains(k, "=") || strings.Contains(v, "=") {
+			return fmt.Errorf("labels cannot contain '='")
+		}
+	}
+	return nil
+}

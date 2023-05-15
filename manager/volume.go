@@ -195,7 +195,7 @@ func (m *VolumeManager) Delete(name string) error {
 	return nil
 }
 
-func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attachedBy string) (v *longhorn.Volume, err error) {
+func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attachedBy, attacherType, attachmentID string) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to attach volume %v to %v", name, nodeID)
 	}()
@@ -214,7 +214,7 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 		return nil, err
 	}
 
-	if isReady, err := m.ds.CheckEngineImageReadyOnAtLeastOneVolumeReplica(v.Spec.EngineImage, v.Name, nodeID, v.Spec.DataLocality); !isReady {
+	if isReady, err := m.ds.CheckEngineImageReadyOnAtLeastOneVolumeReplica(v.Spec.EngineImage, v.Name, node.Name, v.Spec.DataLocality); !isReady {
 		if err != nil {
 			return nil, errors.Wrapf(err, "cannot attach volume %v with image %v", v.Name, v.Spec.EngineImage)
 		}
@@ -230,73 +230,42 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 		return nil, fmt.Errorf("volume %v is pending restoring", name)
 	}
 
-	if v.Spec.NodeID == nodeID {
-		logrus.Debugf("Volume %v is already attached to node %v", v.Name, v.Spec.NodeID)
+	if v.Spec.MigrationNodeID == node.Name {
+		logrus.Debugf("Volume %v is already migrating to node %v from node %v", v.Name, node.Name, v.Spec.NodeID)
 		return v, nil
 	}
 
-	if v.Spec.MigrationNodeID == nodeID {
-		logrus.Debugf("Volume %v is already migrating to node %v from node %v", v.Name, nodeID, v.Spec.NodeID)
-		return v, nil
+	// TODO: special case for attachment by UI
+	if attacherType == "" {
+		attacherType = string(longhorn.AttacherTypeLonghornAPI)
 	}
 
-	if v.Spec.AccessMode != longhorn.AccessModeReadWriteMany && v.Status.State != longhorn.VolumeStateDetached {
-		return nil, fmt.Errorf("invalid state %v to attach RWO volume %v", v.Status.State, name)
-	}
-
-	isVolumeShared := v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !v.Spec.Migratable
-	isVolumeDetached := v.Spec.NodeID == ""
-	if isVolumeDetached {
-		if !isVolumeShared || disableFrontend {
-			v.Spec.NodeID = nodeID
-			logrus.Infof("Volume %v attachment to %v with disableFrontend %v requested", v.Name, v.Spec.NodeID, disableFrontend)
-		}
-	} else if isVolumeShared {
-		// shared volumes only need to be attached if maintenance mode is requested
-		// otherwise we just set the disabled frontend and last attached by states
-		logrus.Debugf("No need to attach volume %v since it's shared via %v", v.Name, v.Status.ShareEndpoint)
-	} else {
-		// non shared volume that is already attached needs to be migratable
-		// to be able to attach to a new node, without detaching from the previous node
-		if !v.Spec.Migratable {
-			return nil, fmt.Errorf("non migratable volume %v cannot attach to node %v is already attached to node %v", v.Name, nodeID, v.Spec.NodeID)
-		}
-		if v.Spec.MigrationNodeID != "" && v.Spec.MigrationNodeID != nodeID {
-			return nil, fmt.Errorf("unable to migrate volume %v from %v to %v since it's already migrating to %v",
-				v.Name, v.Spec.NodeID, nodeID, v.Spec.MigrationNodeID)
-		}
-		if v.Status.State != longhorn.VolumeStateAttached {
-			return nil, fmt.Errorf("invalid volume state to start migration %v", v.Status.State)
-		}
-		if v.Status.Robustness != longhorn.VolumeRobustnessHealthy && v.Status.Robustness != longhorn.VolumeRobustnessDegraded {
-			return nil, fmt.Errorf("volume must be healthy or degraded to start migration")
-		}
-		if v.Spec.EngineImage != v.Status.CurrentImage {
-			return nil, fmt.Errorf("upgrading in process for volume, cannot start migration")
-		}
-		if v.Spec.Standby || v.Status.IsStandby {
-			return nil, fmt.Errorf("dr volume migration is not supported")
-		}
-		if v.Status.ExpansionRequired {
-			return nil, fmt.Errorf("cannot migrate volume while an expansion is required")
-		}
-
-		v.Spec.MigrationNodeID = nodeID
-		logrus.Infof("Volume %v migration from %v to %v requested", v.Name, v.Spec.NodeID, nodeID)
-	}
-
-	v.Spec.DisableFrontend = disableFrontend
-	v.Spec.LastAttachedBy = attachedBy
-	v, err = m.ds.UpdateVolume(v)
+	va, err := m.ds.GetLHVolumeAttachmentByVolumeName(v.Name)
 	if err != nil {
 		return nil, err
 	}
+
+	va.Spec.AttachmentTickets[attachmentID] = &longhorn.AttachmentTicket{
+		ID: attachmentID,
+		// TODO: validate attacher type
+		Type:   longhorn.AttacherType(attacherType),
+		NodeID: node.Name,
+		Parameters: map[string]string{
+			longhorn.AttachmentParameterDisableFrontend: strconv.FormatBool(disableFrontend),
+			longhorn.AttachmentParameterLastAttachedBy:  attachedBy,
+		},
+	}
+
+	if _, err := m.ds.UpdateLHVolumeAttachment(va); err != nil {
+		return nil, err
+	}
+
 	return v, nil
 }
 
 // Detach will handle regular detachment as well as volume migration confirmation/rollback
 // if nodeID is not specified, the volume will be detached from all nodes
-func (m *VolumeManager) Detach(name, nodeID string) (v *longhorn.Volume, err error) {
+func (m *VolumeManager) Detach(name, attachmentID string, forceDetach bool) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to detach volume %v", name)
 	}()
@@ -310,50 +279,59 @@ func (m *VolumeManager) Detach(name, nodeID string) (v *longhorn.Volume, err err
 		return nil, fmt.Errorf("cannot detach standby volume %v", v.Name)
 	}
 
-	if v.Spec.NodeID == "" && v.Spec.MigrationNodeID == "" {
-		logrus.Infof("No need to detach volume %v is already detached from all nodes", v.Name)
-		return v, nil
-	}
-
-	// shared volumes only need to be detached if they are attached in maintenance mode
-	if v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !v.Spec.Migratable && !v.Spec.DisableFrontend {
-		logrus.Infof("No need to detach volume %v since it's shared via %v", v.Name, v.Status.ShareEndpoint)
-		return v, nil
-	}
-
-	if nodeID != "" && nodeID != v.Spec.NodeID && nodeID != v.Spec.MigrationNodeID {
-		logrus.Infof("No need to detach volume %v since it's not attached to node %v", v.Name, nodeID)
-		return v, nil
-	}
-
-	isMigratingVolume := v.Spec.Migratable && v.Spec.MigrationNodeID != "" && v.Spec.NodeID != ""
-	isMigrationConfirmation := isMigratingVolume && nodeID == v.Spec.NodeID
-	isMigrationRollback := isMigratingVolume && nodeID == v.Spec.MigrationNodeID
-
-	// Since all invalid/unexcepted cases have been handled above, we only need to take care of regular detach or migration here.
-	if isMigrationConfirmation {
-		// Need to make sure both engines are running.
-		// If the old one crashes, the volume will fall into the auto reattachment flow. Then allowing migration confirmation will mess up the volume.
-		if !m.isVolumeAvailableOnNode(name, v.Spec.MigrationNodeID) || !m.isVolumeAvailableOnNode(name, v.Spec.NodeID) {
-			return nil, fmt.Errorf("migration is not ready yet")
-		}
-		v.Spec.NodeID = v.Spec.MigrationNodeID
-		v.Spec.MigrationNodeID = ""
-		logrus.Infof("Volume %v migration from %v to %v confirmed", v.Name, nodeID, v.Spec.NodeID)
-	} else if isMigrationRollback {
-		v.Spec.MigrationNodeID = ""
-		logrus.Infof("Volume %v migration from %v to %v rollback", v.Name, nodeID, v.Spec.NodeID)
-	} else {
-		v.Spec.NodeID = ""
-		v.Spec.MigrationNodeID = ""
-		logrus.Infof("Volume %v detachment from node %v requested", v.Name, nodeID)
-	}
-
-	v.Spec.DisableFrontend = false
-	v, err = m.ds.UpdateVolume(v)
+	va, err := m.ds.GetLHVolumeAttachmentByVolumeName(v.Name)
 	if err != nil {
 		return nil, err
 	}
+
+	// if force detach, detach from all nodes by clearing the volumeattachment spec
+	if forceDetach {
+		va.Spec.AttachmentTickets = make(map[string]*longhorn.AttachmentTicket)
+		if _, err := m.ds.UpdateLHVolumeAttachment(va); err != nil {
+			return nil, err
+		}
+		return v, nil
+	}
+
+	//// shared volumes only need to be detached if they are attached in maintenance mode
+	//if v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !v.Spec.Migratable && !v.Spec.DisableFrontend {
+	//	logrus.Infof("No need to detach volume %v since it's shared via %v", v.Name, v.Status.ShareEndpoint)
+	//	return v, nil
+	//}
+
+	// TODO: handle volume migration feature
+
+	//isMigratingVolume := v.Spec.Migratable && v.Spec.MigrationNodeID != "" && v.Spec.NodeID != ""
+	//isMigrationConfirmation := isMigratingVolume && nodeID == v.Spec.NodeID
+	//isMigrationRollback := isMigratingVolume && nodeID == v.Spec.MigrationNodeID
+	//
+	//// Since all invalid/unexcepted cases have been handled above, we only need to take care of regular detach or migration here.
+	//if isMigrationConfirmation {
+	//	// Need to make sure both engines are running.
+	//	// If the old one crashes, the volume will fall into the auto reattachment flow. Then allowing migration confirmation will mess up the volume.
+	//	if !m.isVolumeAvailableOnNode(name, v.Spec.MigrationNodeID) || !m.isVolumeAvailableOnNode(name, v.Spec.NodeID) {
+	//		return nil, fmt.Errorf("migration is not ready yet")
+	//	}
+	//	v.Spec.NodeID = v.Spec.MigrationNodeID
+	//	v.Spec.MigrationNodeID = ""
+	//	logrus.Infof("Volume %v migration from %v to %v confirmed", v.Name, nodeID, v.Spec.NodeID)
+	//} else if isMigrationRollback {
+	//	v.Spec.MigrationNodeID = ""
+	//	logrus.Infof("Volume %v migration from %v to %v rollback", v.Name, nodeID, v.Spec.NodeID)
+	//} else {
+	//	v.Spec.NodeID = ""
+	//	v.Spec.MigrationNodeID = ""
+	//	logrus.Infof("Volume %v detachment from node %v requested", v.Name, nodeID)
+	//}
+	//
+	//v.Spec.DisableFrontend = false
+
+	// else remove the ticket from volume attachment spec
+	delete(va.Spec.AttachmentTickets, attachmentID)
+	if _, err := m.ds.UpdateLHVolumeAttachment(va); err != nil {
+		return nil, err
+	}
+
 	return v, nil
 }
 
@@ -1125,8 +1103,12 @@ func (m *VolumeManager) verifyDataSourceForVolumeCreation(dataSource longhorn.Vo
 		}
 
 		if snapName := types.GetSnapshotName(dataSource); snapName != "" {
-			if _, err := m.GetSnapshotInfo(snapName, srcVolName); err != nil {
+			snapshotCR, err := m.GetSnapshotCR(snapName)
+			if err != nil {
 				return err
+			}
+			if !snapshotCR.Status.ReadyToUse {
+				return fmt.Errorf("snapshot %v is not ready to use", snapshotCR.Name)
 			}
 		}
 	}
