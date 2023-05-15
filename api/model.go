@@ -3,12 +3,11 @@ package api
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
 	"github.com/sirupsen/logrus"
-
-	v1 "k8s.io/api/core/v1"
 
 	"github.com/longhorn/longhorn-manager/controller"
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -16,9 +15,14 @@ import (
 	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
+	v1 "k8s.io/api/core/v1"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
+
+type Empty struct {
+	client.Resource
+}
 
 type Volume struct {
 	client.Resource
@@ -43,6 +47,7 @@ type Volume struct {
 	LastAttachedBy              string                                 `json:"lastAttachedBy"`
 	Standby                     bool                                   `json:"standby"`
 	RestoreRequired             bool                                   `json:"restoreRequired"`
+	RestoreInitiated            bool                                   `json:"restoreInitiated"`
 	RevisionCounterDisabled     bool                                   `json:"revisionCounterDisabled"`
 	SnapshotDataIntegrity       longhorn.SnapshotDataIntegrity         `json:"snapshotDataIntegrity"`
 	UnmapMarkSnapChainRemoved   longhorn.UnmapMarkSnapChainRemoved     `json:"unmapMarkSnapChainRemoved"`
@@ -70,18 +75,42 @@ type Volume struct {
 
 	Encrypted bool `json:"encrypted"`
 
-	Replicas      []Replica       `json:"replicas"`
-	Controllers   []Controller    `json:"controllers"`
-	BackupStatus  []BackupStatus  `json:"backupStatus"`
-	RestoreStatus []RestoreStatus `json:"restoreStatus"`
-	PurgeStatus   []PurgeStatus   `json:"purgeStatus"`
-	RebuildStatus []RebuildStatus `json:"rebuildStatus"`
+	Replicas         []Replica        `json:"replicas"`
+	Controllers      []Controller     `json:"controllers"`
+	BackupStatus     []BackupStatus   `json:"backupStatus"`
+	RestoreStatus    []RestoreStatus  `json:"restoreStatus"`
+	PurgeStatus      []PurgeStatus    `json:"purgeStatus"`
+	RebuildStatus    []RebuildStatus  `json:"rebuildStatus"`
+	VolumeAttachment VolumeAttachment `json:"volumeAttachment"`
 }
 
+// Snapshot struct is used for the snapshot* actions
 type Snapshot struct {
 	client.Resource
 	longhorn.SnapshotInfo
 	Checksum string `json:"checksum"`
+}
+
+// SnapshotCR struct is used for the snapshotCR* actions
+type SnapshotCR struct {
+	client.Resource
+	Name           string `json:"name"`
+	CRCreationTime string `json:"crCreationTime"`
+	Volume         string `json:"volume"`
+	CreateSnapshot bool   `json:"createSnapshot"`
+
+	Parent       string            `json:"parent"`
+	Children     map[string]bool   `json:"children"`
+	MarkRemoved  bool              `json:"markRemoved"`
+	UserCreated  bool              `json:"userCreated"`
+	CreationTime string            `json:"creationTime"`
+	Size         int64             `json:"size"`
+	Labels       map[string]string `json:"labels"`
+	OwnerID      string            `json:"ownerID"`
+	Error        string            `json:"error,omitempty"`
+	RestoreSize  int64             `json:"restoreSize"`
+	ReadyToUse   bool              `json:"readyToUse"`
+	Checksum     string            `json:"checksum"`
 }
 
 type BackupTarget struct {
@@ -165,6 +194,21 @@ type Replica struct {
 	FailedAt string `json:"failedAt"`
 }
 
+type Attachment struct {
+	AttachmentID   string            `json:"attachmentID"`
+	AttachmentType string            `json:"attachmentType"`
+	NodeID         string            `json:"nodeID"`
+	Parameters     map[string]string `json:"parameters"`
+	// Indicate whether this attachment ticket has been satisfied
+	Satisfied  bool                 `json:"satisfied"`
+	Conditions []longhorn.Condition `json:"conditions"`
+}
+
+type VolumeAttachment struct {
+	Attachments map[string]Attachment `json:"attachments"`
+	Volume      string                `json:"volume"`
+}
+
 type EngineImage struct {
 	client.Resource
 
@@ -198,13 +242,21 @@ type AttachInput struct {
 	HostID          string `json:"hostId"`
 	DisableFrontend bool   `json:"disableFrontend"`
 	AttachedBy      string `json:"attachedBy"`
+	AttacherType    string `json:"attacherType"`
+	AttachmentID    string `json:"attachmentID"`
 }
 
 type DetachInput struct {
-	HostID string `json:"hostId"`
+	AttachmentID string `json:"attachmentID"`
+	ForceDetach  bool   `json:"forceDetach"`
 }
 
 type SnapshotInput struct {
+	Name   string            `json:"name"`
+	Labels map[string]string `json:"labels"`
+}
+
+type SnapshotCRInput struct {
 	Name   string            `json:"name"`
 	Labels map[string]string `json:"labels"`
 }
@@ -463,6 +515,11 @@ type SnapshotListOutput struct {
 	Type string     `json:"type"`
 }
 
+type SnapshotCRListOutput struct {
+	Data []SnapshotCR `json:"data"`
+	Type string       `json:"type"`
+}
+
 func NewSchema() *client.Schemas {
 	schemas := &client.Schemas{}
 
@@ -472,6 +529,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("attachInput", AttachInput{})
 	schemas.AddType("detachInput", DetachInput{})
 	schemas.AddType("snapshotInput", SnapshotInput{})
+	schemas.AddType("snapshotCRInput", SnapshotCRInput{})
 	schemas.AddType("backupTarget", BackupTarget{})
 	schemas.AddType("backup", Backup{})
 	schemas.AddType("backupInput", BackupInput{})
@@ -499,6 +557,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("UpdateReplicaZoneSoftAntiAffinityInput", UpdateReplicaZoneSoftAntiAffinityInput{})
 	schemas.AddType("workloadStatus", longhorn.WorkloadStatus{})
 	schemas.AddType("cloneStatus", longhorn.VolumeCloneStatus{})
+	schemas.AddType("empty", Empty{})
 
 	schemas.AddType("volumeRecurringJob", VolumeRecurringJob{})
 	schemas.AddType("volumeRecurringJobInput", VolumeRecurringJobInput{})
@@ -511,6 +570,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("volumeCondition", longhorn.Condition{})
 	schemas.AddType("nodeCondition", longhorn.Condition{})
 	schemas.AddType("diskCondition", longhorn.Condition{})
+	schemas.AddType("longhornCondition", longhorn.Condition{})
 
 	schemas.AddType("event", Event{})
 	schemas.AddType("supportBundle", SupportBundle{})
@@ -524,8 +584,11 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("backingImageDiskFileStatus", longhorn.BackingImageDiskFileStatus{})
 	schemas.AddType("backingImageCleanupInput", BackingImageCleanupInput{})
 
+	attachmentSchema(schemas.AddType("attachment", Attachment{}))
+	volumeAttachmentSchema(schemas.AddType("volumeAttachment", VolumeAttachment{}))
 	volumeSchema(schemas.AddType("volume", Volume{}))
 	snapshotSchema(schemas.AddType("snapshot", Snapshot{}))
+	snapshotCRSchema(schemas.AddType("snapshotCR", SnapshotCR{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
 	settingSchema(schemas.AddType("setting", Setting{}))
 	recurringJobSchema(schemas.AddType("recurringJob", RecurringJob{}))
@@ -539,6 +602,7 @@ func NewSchema() *client.Schemas {
 	snapshotListOutputSchema(schemas.AddType("snapshotListOutput", SnapshotListOutput{}))
 	systemBackupSchema(schemas.AddType("systemBackup", SystemBackup{}))
 	systemRestoreSchema(schemas.AddType("systemRestore", SystemRestore{}))
+	snapshotCRListOutputSchema(schemas.AddType("snapshotCRListOutput", SnapshotCRListOutput{}))
 
 	return schemas
 }
@@ -793,6 +857,22 @@ func volumeSchema(volume *client.Schema) {
 			Output: "volume",
 		},
 
+		"snapshotCRCreate": {
+			Input:  "snapshotCRInput",
+			Output: "snapshotCR",
+		},
+		"snapshotCRGet": {
+			Input:  "snapshotCRInput",
+			Output: "snapshotCR",
+		},
+		"snapshotCRList": {
+			Output: "snapshotCRListOutput",
+		},
+		"snapshotCRDelete": {
+			Input:  "snapshotCRInput",
+			Output: "empty",
+		},
+
 		"recurringJobAdd": {
 			Input:  "volumeRecurringJobInput",
 			Output: "volumeRecurringJob",
@@ -820,7 +900,8 @@ func volumeSchema(volume *client.Schema) {
 		},
 
 		"updateAccessMode": {
-			Input: "UpdateAccessModeInput",
+			Input:  "UpdateAccessModeInput",
+			Output: "volume",
 		},
 
 		"updateSnapshotDataIntegrity": {
@@ -1007,12 +1088,22 @@ func volumeSchema(volume *client.Schema) {
 	rebuildStatus := volume.ResourceFields["rebuildStatus"]
 	rebuildStatus.Type = "array[rebuildStatus]"
 	volume.ResourceFields["rebuildStatus"] = rebuildStatus
+
+	volumeAttachment := volume.ResourceFields["volumeAttachment"]
+	volumeAttachment.Type = "volumeAttachment"
+	volume.ResourceFields["volumeAttachment"] = volumeAttachment
 }
 
 func snapshotSchema(snapshot *client.Schema) {
 	children := snapshot.ResourceFields["children"]
 	children.Type = "map[bool]"
 	snapshot.ResourceFields["children"] = children
+}
+
+func snapshotCRSchema(snapshotCR *client.Schema) {
+	children := snapshotCR.ResourceFields["children"]
+	children.Type = "map[bool]"
+	snapshotCR.ResourceFields["children"] = children
 }
 
 func backupListOutputSchema(backupList *client.Schema) {
@@ -1054,6 +1145,32 @@ func systemRestoreSchema(systemRestore *client.Schema) {
 	systemRestore.ResourceFields["systemBackup"] = systemBackup
 }
 
+func snapshotCRListOutputSchema(snapshotList *client.Schema) {
+	data := snapshotList.ResourceFields["data"]
+	data.Type = "array[snapshotCR]"
+	snapshotList.ResourceFields["data"] = data
+}
+
+func attachmentSchema(attachment *client.Schema) {
+	conditions := attachment.ResourceFields["conditions"]
+	conditions.Type = "array[longhornCondition]"
+	attachment.ResourceFields["conditions"] = conditions
+}
+
+func volumeAttachmentSchema(volumeAttachment *client.Schema) {
+	attachments := volumeAttachment.ResourceFields["attachments"]
+	attachments.Type = "map[attachment]"
+	volumeAttachment.ResourceFields["attachments"] = attachments
+}
+
+func toEmptyResource() *Empty {
+	return &Empty{
+		Resource: client.Resource{
+			Type: "empty",
+		},
+	}
+}
+
 func toSettingResource(setting *longhorn.Setting) *Setting {
 	definition, _ := types.GetSettingDefinition(types.SettingName(setting.Name))
 
@@ -1078,13 +1195,17 @@ func toSettingCollection(settings []*longhorn.Setting) *client.GenericCollection
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "setting"}}
 }
 
-func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhorn.Replica, backups []*longhorn.Backup, apiContext *api.ApiContext) *Volume {
+func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhorn.Replica, backups []*longhorn.Backup, lhVolumeAttachment *longhorn.VolumeAttachment, apiContext *api.ApiContext) *Volume {
 	var ve *longhorn.Engine
 	controllers := []Controller{}
 	backupStatus := []BackupStatus{}
 	restoreStatus := []RestoreStatus{}
 	var purgeStatuses []PurgeStatus
 	rebuildStatuses := []RebuildStatus{}
+	volumeAttachment := VolumeAttachment{
+		Attachments: make(map[string]Attachment),
+		Volume:      v.Name,
+	}
 	for _, e := range ves {
 		actualSize := int64(0)
 		snapshots := e.Status.Snapshots
@@ -1205,6 +1326,31 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		})
 	}
 
+	if lhVolumeAttachment != nil {
+		for k, v := range lhVolumeAttachment.Spec.AttachmentTickets {
+			if v != nil {
+				volumeAttachment.Attachments[k] = Attachment{
+					AttachmentID:   v.ID,
+					AttachmentType: string(v.Type),
+					NodeID:         v.NodeID,
+					Parameters:     v.Parameters,
+				}
+			}
+		}
+		for k, v := range lhVolumeAttachment.Status.AttachmentTicketStatuses {
+			if v == nil {
+				continue
+			}
+			attachment, ok := volumeAttachment.Attachments[k]
+			if !ok {
+				continue
+			}
+			attachment.Satisfied = longhorn.IsAttachmentTicketSatisfied(attachment.AttachmentID, lhVolumeAttachment)
+			attachment.Conditions = v.Conditions
+			volumeAttachment.Attachments[k] = attachment
+		}
+	}
+
 	// The volume is not ready for workloads if:
 	//   1. It's auto attached.
 	//   2. It fails to schedule replicas during the volume creation,
@@ -1257,6 +1403,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		LastBackup:                  v.Status.LastBackup,
 		LastBackupAt:                v.Status.LastBackupAt,
 		RestoreRequired:             v.Status.RestoreRequired,
+		RestoreInitiated:            v.Status.RestoreInitiated,
 		RevisionCounterDisabled:     v.Spec.RevisionCounterDisabled,
 		UnmapMarkSnapChainRemoved:   v.Spec.UnmapMarkSnapChainRemoved,
 		ReplicaSoftAntiAffinity:     v.Spec.ReplicaSoftAntiAffinity,
@@ -1275,12 +1422,13 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		KubernetesStatus: v.Status.KubernetesStatus,
 		CloneStatus:      v.Status.CloneStatus,
 
-		Controllers:   controllers,
-		Replicas:      replicas,
-		BackupStatus:  backupStatus,
-		RestoreStatus: restoreStatus,
-		PurgeStatus:   purgeStatuses,
-		RebuildStatus: rebuildStatuses,
+		Controllers:      controllers,
+		Replicas:         replicas,
+		BackupStatus:     backupStatus,
+		RestoreStatus:    restoreStatus,
+		PurgeStatus:      purgeStatuses,
+		RebuildStatus:    rebuildStatuses,
+		VolumeAttachment: volumeAttachment,
 	}
 
 	// api attach & detach calls are always allowed
@@ -1293,6 +1441,13 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 		actions["salvage"] = struct{}{}
 	} else {
+
+		actions["snapshotCRCreate"] = struct{}{}
+		actions["snapshotCRGet"] = struct{}{}
+		actions["snapshotCRList"] = struct{}{}
+		actions["snapshotCRDelete"] = struct{}{}
+		actions["snapshotBackup"] = struct{}{}
+
 		switch v.Status.State {
 		case longhorn.VolumeStateDetached:
 			actions["activate"] = struct{}{}
@@ -1327,7 +1482,6 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["snapshotGet"] = struct{}{}
 			actions["snapshotDelete"] = struct{}{}
 			actions["snapshotRevert"] = struct{}{}
-			actions["snapshotBackup"] = struct{}{}
 			actions["replicaRemove"] = struct{}{}
 			actions["engineUpgrade"] = struct{}{}
 			actions["updateReplicaCount"] = struct{}{}
@@ -1353,6 +1507,52 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	}
 
 	return r
+}
+
+func toSnapshotCRResource(s *longhorn.Snapshot) *SnapshotCR {
+	if s == nil {
+		logrus.Warn("weird: nil snapshot")
+		return nil
+	}
+
+	getLabels := func() map[string]string {
+		if len(s.Spec.Labels) > 0 {
+			return s.Spec.Labels
+		}
+		return s.Status.Labels
+	}
+
+	return &SnapshotCR{
+		Resource: client.Resource{
+			Id:   s.Name,
+			Type: "snapshotCR",
+		},
+		Name:           s.Name,
+		CRCreationTime: s.CreationTimestamp.Format(time.RFC3339),
+		Volume:         s.Spec.Volume,
+		CreateSnapshot: s.Spec.CreateSnapshot,
+		Parent:         s.Status.Parent,
+		Children:       s.Status.Children,
+		MarkRemoved:    s.Status.MarkRemoved,
+		UserCreated:    s.Status.UserCreated,
+		CreationTime:   s.Status.CreationTime,
+		Size:           s.Status.Size,
+		Labels:         getLabels(),
+		OwnerID:        s.Status.OwnerID,
+		Error:          s.Status.Error,
+		RestoreSize:    s.Status.RestoreSize,
+		ReadyToUse:     s.Status.ReadyToUse,
+		Checksum:       s.Status.Checksum,
+	}
+}
+
+func toSnapshotCRCollection(snapCRs map[string]*longhorn.Snapshot) *client.GenericCollection {
+	data := []interface{}{}
+
+	for _, v := range snapCRs {
+		data = append(data, toSnapshotCRResource(v))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "snapshotCR"}}
 }
 
 func toSnapshotResource(s *longhorn.SnapshotInfo, checksum string) *Snapshot {

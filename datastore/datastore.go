@@ -76,6 +76,8 @@ type DataStore struct {
 	SystemBackupInformer           cache.SharedInformer
 	srLister                       lhlisters.SystemRestoreLister
 	SystemRestoreInformer          cache.SharedInformer
+	lhVALister                     lhlisters.VolumeAttachmentLister
+	LHVolumeAttachmentInformer     cache.SharedInformer
 
 	kubeClient                    clientset.Interface
 	pLister                       corelisters.PodLister
@@ -163,6 +165,8 @@ func NewDataStore(
 	cacheSyncs = append(cacheSyncs, systemBackupInformer.Informer().HasSynced)
 	systemRestoreInformer := lhInformerFactory.Longhorn().V1beta2().SystemRestores()
 	cacheSyncs = append(cacheSyncs, systemRestoreInformer.Informer().HasSynced)
+	lhVAInformer := lhInformerFactory.Longhorn().V1beta2().VolumeAttachments()
+	cacheSyncs = append(cacheSyncs, lhVAInformer.Informer().HasSynced)
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	cacheSyncs = append(cacheSyncs, podInformer.Informer().HasSynced)
@@ -241,6 +245,8 @@ func NewDataStore(
 		SystemBackupInformer:           systemBackupInformer.Informer(),
 		srLister:                       systemRestoreInformer.Lister(),
 		SystemRestoreInformer:          systemRestoreInformer.Informer(),
+		lhVALister:                     lhVAInformer.Lister(),
+		LHVolumeAttachmentInformer:     lhVAInformer.Informer(),
 
 		kubeClient:                    kubeClient,
 		pLister:                       podInformer.Lister(),

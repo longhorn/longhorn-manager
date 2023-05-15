@@ -160,28 +160,8 @@ func (bc *BackupController) handleErr(err error, key interface{}) {
 		return
 	}
 
-	// The resync period of the backup is one hour and the maxRetries is 3.
-	// Thus, the deletion failure of the backup in error state is caused by the shutdown of the replica during backing up,
-	// if the lock hold by the backup job is not released.
-	// The workaround is to increase the maxRetries number and to retry the deletion until the lock acquisition
-	// of the backup is timeout after 150 seconds.
-	if strings.Contains(err.Error(), "failed lock") {
-		if bc.queue.NumRequeues(key) < maxRetriesOnAcquireLockError {
-			bc.logger.WithError(err).Warnf("Error syncing Longhorn backup %v because of the failure of lock acquisition", key)
-			bc.queue.AddRateLimited(key)
-			return
-		}
-	} else {
-		if bc.queue.NumRequeues(key) < maxRetries {
-			bc.logger.WithError(err).Warnf("Error syncing Longhorn backup %v", key)
-			bc.queue.AddRateLimited(key)
-			return
-		}
-	}
-
-	utilruntime.HandleError(err)
-	bc.logger.WithError(err).Warnf("Dropping Longhorn backup %v out of the queue", key)
-	bc.queue.Forget(key)
+	bc.logger.WithError(err).Warnf("Error syncing Longhorn backup %v", key)
+	bc.queue.AddRateLimited(key)
 }
 
 func (bc *BackupController) syncHandler(key string) (err error) {
@@ -289,6 +269,10 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 
 	// Examine DeletionTimestamp to determine if object is under deletion
 	if !backup.DeletionTimestamp.IsZero() {
+		if err := bc.handleAttachmentTicketDeletion(backup, backupVolumeName); err != nil {
+			return err
+		}
+
 		backupVolume, err := bc.ds.GetBackupVolume(backupVolumeName)
 		if err != nil && !apierrors.IsNotFound(err) {
 			return err
@@ -350,6 +334,12 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		}
 	}()
 
+	defer func() {
+		if !backup.Status.LastSyncedAt.IsZero() || backup.Spec.SnapshotName == "" {
+			err = bc.handleAttachmentTicketDeletion(backup, backupVolumeName)
+		}
+	}()
+
 	// Perform backup snapshot to the remote backup target
 	// If the Backup CR is created by the user/API layer (spec.snapshotName != "") and has not been synced (status.lastSyncedAt == ""),
 	// it means creating a backup from a volume snapshot is required.
@@ -369,6 +359,10 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			backup.Status.State = longhorn.BackupStateError
 			backup.Status.LastSyncedAt = syncTime
 			return nil // Ignore error to prevent enqueue
+		}
+
+		if err := bc.handleAttachmentTicketCreation(backup, backupVolumeName); err != nil {
+			return err
 		}
 
 		if backup.Status.SnapshotCreatedAt == "" || backup.Status.VolumeSize == "" {
@@ -442,6 +436,106 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	backup.Status.CompressionMethod = longhorn.BackupCompressionMethod(backupInfo.CompressionMethod)
 	backup.Status.LastSyncedAt = syncTime
 	return nil
+}
+
+// handleAttachmentTicketDeletion check and delete attachment so that the source volume is detached if needed
+func (bc *BackupController) handleAttachmentTicketDeletion(backup *longhorn.Backup, volumeName string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "handleAttachmentTicketDeletion: failed to clean up attachment")
+	}()
+
+	va, err := bc.ds.GetLHVolumeAttachmentByVolumeName(volumeName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackupController, backup.Name)
+
+	if _, ok := va.Spec.AttachmentTickets[attachmentTicketID]; ok {
+		delete(va.Spec.AttachmentTickets, attachmentTicketID)
+		if _, err = bc.ds.UpdateLHVolumeAttachment(va); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// handleAttachmentTicketCreation check and create attachment so that the source volume is attached if needed
+func (bc *BackupController) handleAttachmentTicketCreation(backup *longhorn.Backup, volumeName string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "handleAttachmentTicketCreation: failed to create/update attachment")
+	}()
+
+	vol, err := bc.ds.GetVolume(volumeName)
+	if err != nil {
+		return err
+	}
+
+	va, err := bc.ds.GetLHVolumeAttachmentByVolumeName(vol.Name)
+	if err != nil {
+		return err
+	}
+
+	existingVA := va.DeepCopy()
+	defer func() {
+		if err != nil {
+			return
+		}
+		if reflect.DeepEqual(existingVA.Spec, va.Spec) {
+			return
+		}
+
+		if _, err = bc.ds.UpdateLHVolumeAttachment(va); err != nil {
+			return
+		}
+	}()
+
+	attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackupController, backup.Name)
+
+	attachmentTicket, ok := va.Spec.AttachmentTickets[attachmentTicketID]
+	if !ok {
+		//create new one
+		attachmentTicket = &longhorn.AttachmentTicket{
+			ID:     attachmentTicketID,
+			Type:   longhorn.AttacherTypeBackupController,
+			NodeID: vol.Status.OwnerID,
+			Parameters: map[string]string{
+				"disableFrontend": longhorn.AnyValue,
+			},
+		}
+	}
+	if attachmentTicket.NodeID != vol.Status.OwnerID {
+		attachmentTicket.NodeID = vol.Status.OwnerID
+	}
+	va.Spec.AttachmentTickets[attachmentTicket.ID] = attachmentTicket
+
+	return nil
+}
+
+// VerifyAttachment check the volume attachment ticket for this backup is satisfied
+func (bc *BackupController) VerifyAttachment(backup *longhorn.Backup, volumeName string) (bool, error) {
+	var err error
+	defer func() {
+		err = errors.Wrapf(err, "VerifyAttachment: failed to verify attachment")
+	}()
+
+	vol, err := bc.ds.GetVolume(volumeName)
+	if err != nil {
+		return false, err
+	}
+
+	va, err := bc.ds.GetLHVolumeAttachmentByVolumeName(vol.Name)
+	if err != nil {
+		return false, err
+	}
+
+	attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackupController, backup.Name)
+
+	return longhorn.IsAttachmentTicketSatisfied(attachmentTicketID, va), nil
 }
 
 func (bc *BackupController) isResponsibleFor(b *longhorn.Backup, defaultEngineImage string) (bool, error) {
@@ -534,10 +628,27 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to assert %v value", types.SettingNameBackupConcurrentLimit)
 	}
+	// check if my ticket is satisfied
+	ok, err := bc.VerifyAttachment(backup, volume.Name)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("waiting for attachment %v to be attached before enabling backup monitor", longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackupController, backup.Name))
+	}
 
 	engineClientProxy, backupTargetClient, err := getBackupTarget(bc.controllerID, backupTarget, bc.ds, bc.logger, bc.proxyConnCounter)
 	if err != nil {
 		return nil, err
+	}
+
+	engine, err := bc.ds.GetVolumeCurrentEngine(volume.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	if engine.Status.CurrentState != longhorn.InstanceStateRunning {
+		return nil, fmt.Errorf("waiting for engine %v to be running before enabling backup monitor", engine.Name)
 	}
 
 	// Enable the backup monitor

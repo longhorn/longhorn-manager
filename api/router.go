@@ -77,6 +77,11 @@ func NewRouter(s *Server) *mux.Router {
 		"snapshotRevert": s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(OwnerIDFromVolume(s.m)), s.SnapshotRevert),
 		"snapshotBackup": s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(OwnerIDFromVolume(s.m)), s.SnapshotBackup),
 
+		"snapshotCRCreate": s.SnapshotCRCreate,
+		"snapshotCRList":   s.SnapshotCRList,
+		"snapshotCRGet":    s.SnapshotCRGet,
+		"snapshotCRDelete": s.SnapshotCRDelete,
+
 		"pvCreate":  s.PVCreate,
 		"pvcCreate": s.PVCCreate,
 

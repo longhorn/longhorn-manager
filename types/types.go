@@ -940,3 +940,7 @@ func ConsolidateInstanceManagers(instanceManagerMaps ...map[string]*longhorn.Ins
 	}
 	return consolidated
 }
+
+func GetLHVolumeAttachmentNameFromVolumeName(volName string) string {
+	return volName
+}

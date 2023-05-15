@@ -2,6 +2,7 @@ package csi
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -32,6 +33,10 @@ const (
 	timeoutBackupInitiation = 60 * time.Second
 	tickBackupInitiation    = 5 * time.Second
 	backupStateCompleted    = "Completed"
+	timeoutSnapshotCreation = 90 * time.Second
+	tickSnapshotCreation    = 2 * time.Second
+	timeoutSnapshotDeletion = 90 * time.Second
+	tickSnapshotDeletion    = 2 * time.Second
 
 	csiSnapshotTypeLonghornSnapshot         = "snap"
 	csiSnapshotTypeLonghornBackingImage     = "bi"
@@ -450,35 +455,47 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 		return nil, status.Errorf(codes.Aborted, "volume %s is not ready for workloads", volumeID)
 	}
 
-	// TODO: JM if volume is already attached to a different node, return code `codes.FailedPrecondition`
-	//  this should be handled by the processing of the api return code
-	if !requiresSharedAccess(volume, volumeCapability) &&
-		volume.State == string(longhorn.VolumeStateAttached) &&
-		len(volume.Controllers) > 0 && volume.Controllers[0].HostId != nodeID {
-		return nil, status.Errorf(codes.FailedPrecondition, "volume %s cannot be attached to node %s is already attached to node %s",
-			volumeID, nodeID, volume.Controllers[0].HostId)
-	}
+	attachmentID := generateAttachmentID(volumeID, nodeID)
 
-	return cs.publishVolume(volume, nodeID, func() error {
+	return cs.publishVolume(volume, nodeID, attachmentID, func() error {
 		checkVolumePublished := func(vol *longhornclient.Volume) bool {
-			return isVolumeAvailableOn(vol, nodeID) || isVolumeShareAvailable(vol)
+			attachment, ok := vol.VolumeAttachment.Attachments[attachmentID]
+			return ok && attachment.Satisfied
 		}
 		if !cs.waitForVolumeState(volumeID, "volume published", checkVolumePublished, false, false) {
-			return status.Errorf(codes.DeadlineExceeded, "volume %s failed to attach to node %s", volumeID, nodeID)
+			// check if there is error while attaching
+			if existVol, err := cs.apiClient.Volume.ById(volumeID); err == nil && existVol != nil {
+				if attachment, ok := existVol.VolumeAttachment.Attachments[attachmentID]; ok {
+					for _, condition := range attachment.Conditions {
+						if condition.Type == longhorn.AttachmentStatusConditionTypeSatisfied && condition.Status == string(longhorn.ConditionStatusFalse) && condition.Message != "" {
+							return status.Errorf(codes.Internal, "volume %v failed to attach to node %v with attachmentID %v: %v", volumeID, nodeID, attachmentID, condition.Message)
+						}
+					}
+				}
+			}
+			return status.Errorf(codes.DeadlineExceeded, "volume %v failed to attach to node %v with attachmentID %v", volumeID, nodeID, attachmentID)
 		}
 		return nil
 	})
 }
 
+// We pick the same name as the volume attachment object at
+// https://github.com/kubernetes/kubernetes/blob/f1e74f77ff88abb7acf0fb0e86ba21bc0f2395c9/pkg/volume/csi/csi_attacher.go#L653-L656
+func generateAttachmentID(volName, nodeID string) string {
+	result := sha256.Sum256([]byte(fmt.Sprintf("%s%s%s", volName, types.LonghornDriverName, nodeID)))
+	return fmt.Sprintf("csi-%x", result)
+}
+
 // publishVolume sends the actual attach request to the longhorn api and executes the passed waitForResult func
-func (cs *ControllerServer) publishVolume(volume *longhornclient.Volume, nodeID string, waitForResult func() error) (*csi.ControllerPublishVolumeResponse, error) {
-	logrus.Debugf("ControllerPublishVolume: volume %s is ready to be attached, and the requested node is %s", volume.Name, nodeID)
+func (cs *ControllerServer) publishVolume(volume *longhornclient.Volume, nodeID, attachmentID string, waitForResult func() error) (*csi.ControllerPublishVolumeResponse, error) {
 	input := &longhornclient.AttachInput{
 		HostId:          nodeID,
 		DisableFrontend: false,
+		AttacherType:    string(longhorn.AttacherTypeCSIAttacher),
+		AttachmentID:    attachmentID,
 	}
 
-	logrus.Infof("ControllerPublishVolume: volume %s with accessMode %s requesting publishing to %s", volume.Name, volume.AccessMode, nodeID)
+	logrus.Infof("ControllerPublishVolume: volume %v with accessMode %v requesting publishing with attachInput %+v", volume.Name, volume.AccessMode, input)
 	if _, err := cs.apiClient.Volume.ActionAttach(volume, input); err != nil {
 		// TODO: JM process the returned error and return the correct error responses for kubernetes
 		//  i.e. FailedPrecondition if the RWO volume is already attached to a different node
@@ -518,7 +535,6 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
 	}
 
-	// if nodeID == "" means to detach from all nodes
 	nodeID := req.GetNodeId()
 
 	volume, err := cs.apiClient.Volume.ById(volumeID)
@@ -533,10 +549,18 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 		return &csi.ControllerUnpublishVolumeResponse{}, nil
 	}
 
-	return cs.unpublishVolume(volume, nodeID, func() error {
-		isSharedVolume := requiresSharedAccess(volume, nil) && !volume.Migratable
+	attachmentID := generateAttachmentID(volumeID, nodeID)
+
+	// TODO: hadndle cases in which NodeID is empty. Should we detach the volume from all nodes???
+
+	return cs.unpublishVolume(volume, nodeID, attachmentID, func() error {
+		//isSharedVolume := requiresSharedAccess(volume, nil) && !volume.Migratable
 		checkVolumeUnpublished := func(vol *longhornclient.Volume) bool {
-			return isSharedVolume || isVolumeUnavailableOn(vol, nodeID)
+			//if isSharedVolume {
+			//	return true
+			//}
+			_, ok := vol.VolumeAttachment.Attachments[attachmentID]
+			return !ok
 		}
 
 		if !cs.waitForVolumeState(volumeID, "volume unpublished", checkVolumeUnpublished, false, true) {
@@ -547,9 +571,14 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 }
 
 // unpublishVolume sends the actual detach request to the longhorn api and executes the passed waitForResult func
-func (cs *ControllerServer) unpublishVolume(volume *longhornclient.Volume, nodeID string, waitForResult func() error) (*csi.ControllerUnpublishVolumeResponse, error) {
-	logrus.Debugf("requesting Volume %s detachment for %s", volume.Name, nodeID)
-	_, err := cs.apiClient.Volume.ActionDetach(volume, &longhornclient.DetachInput{HostId: nodeID})
+func (cs *ControllerServer) unpublishVolume(volume *longhornclient.Volume, nodeID, attachmentID string, waitForResult func() error) (*csi.ControllerUnpublishVolumeResponse, error) {
+	logrus.Debugf("requesting Volume %v detachment for %v with attachmentID %v ", volume.Name, nodeID, attachmentID)
+	detachInput := &longhornclient.DetachInput{
+		AttachmentID: attachmentID,
+		// if nodeID == "" means to detach from all nodes
+		ForceDetach: nodeID == "",
+	}
+	_, err := cs.apiClient.Volume.ActionDetach(volume, detachInput)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -648,7 +677,7 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornBackingImage(req *csi.C
 		}
 	}
 	snapshotID := encodeSnapshotBackingImageID(backingImage.Name, exportType, vol.Name)
-	return createSnapshotResponse(vol.Name, snapshotID, time.Now().UTC().Format(time.RFC3339), vol.Size, true), nil
+	return createSnapshotResponseForSnapshotTypeLonghornBackingImage(vol.Name, snapshotID, time.Now().UTC().Format(time.RFC3339), vol.Size, true), nil
 }
 
 func (cs *ControllerServer) createCSISnapshotTypeLonghornSnapshot(req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
@@ -668,27 +697,23 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornSnapshot(req *csi.Creat
 	if vol == nil {
 		return nil, status.Errorf(codes.NotFound, "volume %s not found", csiVolumeName)
 	}
-	// TODO: we may want to support taking snapshot of a detached volume in future
-	if vol.State != string(longhorn.VolumeStateAttached) {
-		return nil, status.Errorf(codes.FailedPrecondition, "volume %s invalid state %v for taking snapshot. Volume must be in %v state to take snapshot", vol.Name, vol.State, longhorn.VolumeStateAttached)
-	}
 
-	var snapshot *longhornclient.Snapshot
-	snapshotListOutput, err := cs.apiClient.Volume.ActionSnapshotList(vol)
+	var snapshotCR *longhornclient.SnapshotCR
+	snapshotCRs, err := cs.apiClient.Volume.ActionSnapshotCRList(vol)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	for _, snap := range snapshotListOutput.Data {
-		if snap.Name == csiSnapshotName {
-			snapshot = &snap
-			logrus.Infof("createSnapshotTypeSnapshot: snapshot %s already exists in volume %s", csiSnapshotName, vol.Name)
+	for _, snapCR := range snapshotCRs.Data {
+		if snapCR.Name == csiSnapshotName {
+			snapshotCR = &snapCR
+			logrus.Infof("createSnapshotTypeSnapshot: snapshot CR %s already exists in volume %s", csiSnapshotName, vol.Name)
 			break
 		}
 	}
 
-	if snapshot == nil {
+	if snapshotCR == nil {
 		logrus.Infof("createSnapshotTypeSnapshot: volume %s creating snapshot %s", vol.Name, csiSnapshotName)
-		snapshot, err = cs.apiClient.Volume.ActionSnapshotCreate(vol, &longhornclient.SnapshotInput{
+		snapshotCR, err = cs.apiClient.Volume.ActionSnapshotCRCreate(vol, &longhornclient.SnapshotCRInput{
 			Labels: csiLabels,
 			Name:   csiSnapshotName,
 		})
@@ -696,8 +721,15 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornSnapshot(req *csi.Creat
 			return nil, status.Error(codes.Internal, err.Error())
 		}
 	}
-	snapshotID := encodeSnapshotID(csiSnapshotTypeLonghornSnapshot, vol.Name, snapshot.Name)
-	return createSnapshotResponse(vol.Name, snapshotID, snapshot.Created, vol.Size, true), nil
+
+	// wait for the snapshot creation to be fully finished
+	snapshotCR, err = cs.waitForSnapshotToBeReady(snapshotCR.Name, vol.Name)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	snapshotID := encodeSnapshotID(csiSnapshotTypeLonghornSnapshot, vol.Name, snapshotCR.Name)
+	return createSnapshotResponseForSnapshotTypeLonghornSnapshot(vol.Name, snapshotID, snapshotCR), nil
 }
 
 func (cs *ControllerServer) createCSISnapshotTypeLonghornBackup(req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
@@ -732,7 +764,7 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornBackup(req *csi.CreateS
 
 	if backup != nil {
 		snapshotID := encodeSnapshotID(csiSnapshotTypeLonghornBackup, backup.VolumeName, backup.Name)
-		rsp := createSnapshotResponse(backup.VolumeName, snapshotID, backup.SnapshotCreated, backup.VolumeSize, backup.State == string(longhorn.BackupStateCompleted))
+		rsp := createSnapshotResponseForSnapshotTypeLonghornBackup(backup.VolumeName, snapshotID, backup.SnapshotCreated, backup.VolumeSize, backup.State == string(longhorn.BackupStateCompleted))
 		return rsp, nil
 	}
 
@@ -744,30 +776,35 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornBackup(req *csi.CreateS
 		return nil, status.Errorf(codes.NotFound, "volume %s not found", csiVolumeName)
 	}
 
-	var snapshot *longhornclient.Snapshot
-	snapshotListOutput, err := cs.apiClient.Volume.ActionSnapshotList(existVol)
+	var snapshotCR *longhornclient.SnapshotCR
+	snapshotCRs, err := cs.apiClient.Volume.ActionSnapshotCRList(existVol)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	for _, snap := range snapshotListOutput.Data {
+	for _, snap := range snapshotCRs.Data {
 		if snap.Name == csiSnapshotName {
-			snapshot = &snap
+			snapshotCR = &snap
 			break
 		}
 	}
 
 	// no existing backup and no local snapshot, create a new one
-	if snapshot == nil {
+	if snapshotCR == nil {
 		logrus.Infof("createCSISnapshotTypeLonghornBackup: volume %s initiating snapshot %s", existVol.Name, csiSnapshotName)
-		snapshot, err = cs.apiClient.Volume.ActionSnapshotCreate(existVol, &longhornclient.SnapshotInput{
+		snapshotCR, err = cs.apiClient.Volume.ActionSnapshotCRCreate(existVol, &longhornclient.SnapshotCRInput{
 			Labels: csiLabels,
 			Name:   csiSnapshotName,
 		})
-
 		// failed to create snapshot, so there is no way to backup
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
+	}
+
+	// wait for the snapshot creation to be fully finished
+	snapshotCR, err = cs.waitForSnapshotToBeReady(snapshotCR.Name, existVol.Name)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	// create backup based on local volume snapshot
@@ -790,11 +827,47 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornBackup(req *csi.CreateS
 
 	logrus.Infof("createCSISnapshotTypeLonghornBackup: volume %s backup %s of snapshot %s in progress", existVol.Name, backupStatus.Id, csiSnapshotName)
 	snapshotID := encodeSnapshotID(csiSnapshotTypeLonghornBackup, existVol.Name, backupStatus.Id)
-	rsp := createSnapshotResponse(existVol.Name, snapshotID, snapshot.Created, existVol.Size, backupStatus.State == string(longhorn.BackupStateCompleted))
+	rsp := createSnapshotResponseForSnapshotTypeLonghornBackup(existVol.Name, snapshotID, snapshotCR.CreationTime, existVol.Size, backupStatus.State == string(longhorn.BackupStateCompleted))
 	return rsp, nil
 }
 
-func createSnapshotResponse(sourceVolumeName, snapshotID, snapshotTime, sourceVolumeSize string, readyToUse bool) *csi.CreateSnapshotResponse {
+func createSnapshotResponseForSnapshotTypeLonghornSnapshot(sourceVolumeName, snapshotID string, snapshotCR *longhornclient.SnapshotCR) *csi.CreateSnapshotResponse {
+	creationTime, err := toProtoTimestamp(snapshotCR.CreationTime)
+	if err != nil {
+		logrus.Errorf("Failed to parse creation time %v for csi snapshot %v", snapshotCR.CreationTime, snapshotID)
+	}
+
+	return &csi.CreateSnapshotResponse{
+		Snapshot: &csi.Snapshot{
+			SizeBytes:      snapshotCR.RestoreSize,
+			SnapshotId:     snapshotID,
+			SourceVolumeId: sourceVolumeName,
+			CreationTime:   creationTime,
+			ReadyToUse:     snapshotCR.ReadyToUse,
+		},
+	}
+}
+
+func createSnapshotResponseForSnapshotTypeLonghornBackup(sourceVolumeName, snapshotID, snapshotTime, sourceVolumeSize string, readyToUse bool) *csi.CreateSnapshotResponse {
+	creationTime, err := toProtoTimestamp(snapshotTime)
+	if err != nil {
+		logrus.Errorf("Failed to parse creation time %v for CSI snapshot %v", snapshotTime, snapshotID)
+	}
+
+	size, _ := util.ConvertSize(sourceVolumeSize)
+	size = util.RoundUpSize(size)
+	return &csi.CreateSnapshotResponse{
+		Snapshot: &csi.Snapshot{
+			SizeBytes:      size,
+			SnapshotId:     snapshotID,
+			SourceVolumeId: sourceVolumeName,
+			CreationTime:   creationTime,
+			ReadyToUse:     readyToUse,
+		},
+	}
+}
+
+func createSnapshotResponseForSnapshotTypeLonghornBackingImage(sourceVolumeName, snapshotID, snapshotTime, sourceVolumeSize string, readyToUse bool) *csi.CreateSnapshotResponse {
 	creationTime, err := toProtoTimestamp(snapshotTime)
 	if err != nil {
 		logrus.Errorf("Failed to parse creation time %v for CSI snapshot %v", snapshotTime, snapshotID)
@@ -922,7 +995,7 @@ func (cs *ControllerServer) cleanupSnapshot(sourceVolumeName, id string) error {
 		return err
 	}
 	if volume != nil {
-		if _, err := cs.apiClient.Volume.ActionSnapshotDelete(volume, &longhornclient.SnapshotInput{
+		if _, err := cs.apiClient.Volume.ActionSnapshotCRDelete(volume, &longhornclient.SnapshotCRInput{
 			Name: id,
 		}); err != nil {
 			return err
@@ -1219,4 +1292,43 @@ func toProtoTimestamp(s string) (*timestamp.Timestamp, error) {
 	}
 
 	return ptypes.TimestampProto(t)
+}
+
+func (cs *ControllerServer) waitForSnapshotToBeReady(snapshotName, volumeName string) (*longhornclient.SnapshotCR, error) {
+	timer := time.NewTimer(timeoutSnapshotCreation)
+	defer timer.Stop()
+	timeout := timer.C
+
+	ticker := time.NewTicker(tickSnapshotCreation)
+	defer ticker.Stop()
+	tick := ticker.C
+
+	var existSnapshotCR *longhornclient.SnapshotCR
+	for {
+		select {
+		case <-timeout:
+			if existSnapshotCR != nil && existSnapshotCR.Error != "" {
+				return nil, fmt.Errorf("waitForSnapshotToBeReady: timeout while waiting for snapshot %v to be ready: %v", snapshotName, existSnapshotCR.Error)
+			}
+			return nil, fmt.Errorf("waitForSnapshotToBeReady: timeout while waiting for snapshot %v to be ready", snapshotName)
+		case <-tick:
+			logrus.Debugf("Polling snapshot CR %v at %v", snapshotName, time.Now().String())
+			vol, err := cs.apiClient.Volume.ById(volumeName)
+			if err != nil {
+				return nil, fmt.Errorf("waitForSnapshotToBeReady: fail to get source volume %v: %v", volumeName, err)
+			}
+			if vol == nil {
+				return nil, fmt.Errorf("waitForSnapshotToBeReady: volume %s not found", volumeName)
+			}
+			existSnapshotCR, err = cs.apiClient.Volume.ActionSnapshotCRGet(vol, &longhornclient.SnapshotCRInput{
+				Name: snapshotName,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("waitForSnapshotToBeReady: error while waiting for snapshot %v to be ready: %v", snapshotName, err)
+			}
+			if existSnapshotCR.ReadyToUse {
+				return existSnapshotCR, nil
+			}
+		}
+	}
 }

@@ -10,8 +10,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
 
-	bsutil "github.com/longhorn/backupstore/util"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
+	bsutil "github.com/longhorn/backupstore/util"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -59,7 +60,7 @@ func (s *Server) SnapshotList(w http.ResponseWriter, req *http.Request) (err err
 		return err
 	}
 
-	snapListRO, _ := s.m.ListSnapshots(volName)
+	snapListRO, _ := s.m.ListSnapshotsCR(volName)
 	api.GetApiContext(req).Write(toSnapshotCollection(snapList, snapListRO))
 
 	return nil
@@ -84,7 +85,7 @@ func (s *Server) SnapshotGet(w http.ResponseWriter, req *http.Request) (err erro
 	}
 
 	checksum := ""
-	if snapRO, err := s.m.GetSnapshot(snap.Name); err == nil {
+	if snapRO, err := s.m.GetSnapshotCR(snap.Name); err == nil {
 		checksum = snapRO.Status.Checksum
 	}
 
@@ -209,4 +210,103 @@ func (s *Server) SnapshotPurge(w http.ResponseWriter, req *http.Request) (err er
 	}
 
 	return s.responseWithVolume(w, req, volName, nil)
+}
+
+func (s *Server) SnapshotCRCreate(w http.ResponseWriter, req *http.Request) (err error) {
+	defer func() {
+		err = errors.Wrap(err, "failed to create snapshot CR")
+	}()
+	var input SnapshotCRInput
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return err
+	}
+
+	volName := mux.Vars(req)["name"]
+
+	vol, err := s.m.Get(volName)
+	if err != nil {
+		return errors.Wrap(err, "unable to get volume")
+	}
+
+	if vol.Status.IsStandby {
+		return fmt.Errorf("cannot create snapshot for standby volume %v", vol.Name)
+	}
+
+	snapshot, err := s.m.CreateSnapshotCR(input.Name, input.Labels, volName)
+	if err != nil {
+		return err
+	}
+	apiContext.Write(toSnapshotCRResource(snapshot))
+	return nil
+}
+
+func (s *Server) SnapshotCRList(w http.ResponseWriter, req *http.Request) (err error) {
+	defer func() {
+		err = errors.Wrap(err, "failed to list snapshot CRs")
+	}()
+
+	volName := mux.Vars(req)["name"]
+
+	snapCRsRO, err := s.m.ListSnapshotsCR(volName)
+	if err != nil {
+		return err
+	}
+	api.GetApiContext(req).Write(toSnapshotCRCollection(snapCRsRO))
+
+	return nil
+}
+
+func (s *Server) SnapshotCRGet(w http.ResponseWriter, req *http.Request) (err error) {
+	defer func() {
+		err = errors.Wrap(err, "failed to get snapshot CR")
+	}()
+
+	var input SnapshotCRInput
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return err
+	}
+
+	snapRO, err := s.m.GetSnapshotCR(input.Name)
+	if err != nil {
+		return err
+	}
+
+	api.GetApiContext(req).Write(toSnapshotCRResource(snapRO))
+	return nil
+}
+
+func (s *Server) SnapshotCRDelete(w http.ResponseWriter, req *http.Request) (err error) {
+	defer func() {
+		err = errors.Wrap(err, "failed to delete snapshot CR")
+	}()
+
+	var input SnapshotCRInput
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return err
+	}
+
+	volName := mux.Vars(req)["name"]
+
+	vol, err := s.m.Get(volName)
+	if err != nil {
+		return errors.Wrap(err, "unable to get volume")
+	}
+
+	if vol.Status.IsStandby {
+		return fmt.Errorf("cannot delete snapshot for standby volume %v", vol.Name)
+	}
+
+	err = s.m.DeleteSnapshotCR(input.Name)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+
+	api.GetApiContext(req).Write(toEmptyResource())
+	return nil
 }

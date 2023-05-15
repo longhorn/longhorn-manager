@@ -350,6 +350,10 @@ func (c *BackingImageDataSourceController) cleanup(bids *longhorn.BackingImageDa
 		c.stopMonitoring(bids.Name)
 	}
 
+	if err := c.handleAttachmentTicketDeletion(bids); err != nil {
+		return err
+	}
+
 	pod, err := c.ds.GetPod(types.GetBackingImageDataSourcePodName(bids.Name))
 	if err != nil {
 		return errors.Wrapf(err, "failed to get pod for backing image data source %v", bids.Name)
@@ -515,6 +519,9 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 
 		if newBackingImageDataSource ||
 			(isValidTypeForRetry && !isInBackoffWindow) {
+			if err := c.handleAttachmentTicketCreation(bids); err != nil {
+				return err
+			}
 			// For recovering the backing image exported from volumes, the controller needs to update the state regardless of the pod being created immediately.
 			// Otherwise, the backing image data source will stay in state failed/unknown then the volume controller won't do auto attachment.
 			bids.Status.CurrentState = ""
@@ -528,6 +535,86 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 			c.backoff.Next(bids.Name, time.Now())
 		}
 	}
+
+	return nil
+}
+
+// handleAttachmentTicketDeletion check and delete attachment so that the source volume is detached if needed
+func (c *BackingImageDataSourceController) handleAttachmentTicketDeletion(bids *longhorn.BackingImageDataSource) (err error) {
+	if bids.Spec.SourceType != longhorn.BackingImageDataSourceTypeExportFromVolume {
+		return nil
+	}
+
+	volumeName := bids.Spec.Parameters[DataSourceTypeExportFromVolumeParameterVolumeName]
+	va, err := c.ds.GetLHVolumeAttachmentByVolumeName(volumeName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackingImageDataSourceController, bids.Name)
+
+	if _, ok := va.Spec.AttachmentTickets[attachmentTicketID]; ok {
+		delete(va.Spec.AttachmentTickets, attachmentTicketID)
+		if _, err = c.ds.UpdateLHVolumeAttachment(va); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// handleAttachmentTicketCreation check and create attachment so that the source volume is attached if needed
+func (c *BackingImageDataSourceController) handleAttachmentTicketCreation(bids *longhorn.BackingImageDataSource) (err error) {
+	if bids.Spec.SourceType != longhorn.BackingImageDataSourceTypeExportFromVolume {
+		return nil
+	}
+
+	volumeName := bids.Spec.Parameters[DataSourceTypeExportFromVolumeParameterVolumeName]
+	vol, err := c.ds.GetVolume(volumeName)
+	if err != nil {
+		return err
+	}
+
+	va, err := c.ds.GetLHVolumeAttachmentByVolumeName(vol.Name)
+	if err != nil {
+		return err
+	}
+
+	existingVA := va.DeepCopy()
+	defer func() {
+		if err != nil {
+			return
+		}
+		if reflect.DeepEqual(existingVA.Spec, va.Spec) {
+			return
+		}
+
+		if _, err = c.ds.UpdateLHVolumeAttachment(va); err != nil {
+			return
+		}
+	}()
+
+	attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackingImageDataSourceController, bids.Name)
+
+	attachmentTicket, ok := va.Spec.AttachmentTickets[attachmentTicketID]
+	if !ok {
+		//create new one
+		attachmentTicket = &longhorn.AttachmentTicket{
+			ID:     attachmentTicketID,
+			Type:   longhorn.AttacherTypeBackingImageDataSourceController,
+			NodeID: vol.Status.OwnerID,
+			Parameters: map[string]string{
+				longhorn.AttachmentParameterDisableFrontend: longhorn.AnyValue,
+			},
+		}
+	}
+	if attachmentTicket.NodeID != vol.Status.OwnerID {
+		attachmentTicket.NodeID = vol.Status.OwnerID
+	}
+	va.Spec.AttachmentTickets[attachmentTicket.ID] = attachmentTicket
 
 	return nil
 }
