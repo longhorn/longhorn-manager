@@ -320,6 +320,8 @@ type PVCreateInput struct {
 
 	SecretName      string `json:"secretName"`
 	SecretNamespace string `json:"secretNamespace"`
+
+	StorageClassName string `json:"storageClassName"`
 }
 
 type PVCCreateInput struct {

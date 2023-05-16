@@ -654,7 +654,7 @@ func (s *Server) PVCreate(rw http.ResponseWriter, req *http.Request) error {
 	}
 
 	_, err = util.RetryOnConflictCause(func() (interface{}, error) {
-		return s.m.PVCreate(id, input.PVName, input.FSType, input.SecretNamespace, input.SecretName)
+		return s.m.PVCreate(id, input.PVName, input.FSType, input.SecretNamespace, input.SecretName, input.StorageClassName)
 	})
 	if err != nil {
 		return err
