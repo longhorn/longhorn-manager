@@ -47,15 +47,17 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("DELETE").Path("/v1/volumes/{name}").Handler(f(schemas, s.VolumeDelete))
 	r.Methods("POST").Path("/v1/volumes").Handler(f(schemas, s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.VolumeCreate)))
 	volumeActions := map[string]func(http.ResponseWriter, *http.Request) error{
-		"attach":                          s.VolumeAttach,
-		"detach":                          s.VolumeDetach,
-		"salvage":                         s.VolumeSalvage,
-		"updateDataLocality":              s.VolumeUpdateDataLocality,
-		"updateAccessMode":                s.VolumeUpdateAccessMode,
-		"updateUnmapMarkSnapChainRemoved": s.VolumeUpdateUnmapMarkSnapChainRemoved,
-		"activate":                        s.VolumeActivate,
-		"expand":                          s.VolumeExpand,
-		"cancelExpansion":                 s.VolumeCancelExpansion,
+		"attach":                            s.VolumeAttach,
+		"detach":                            s.VolumeDetach,
+		"salvage":                           s.VolumeSalvage,
+		"updateDataLocality":                s.VolumeUpdateDataLocality,
+		"updateAccessMode":                  s.VolumeUpdateAccessMode,
+		"updateUnmapMarkSnapChainRemoved":   s.VolumeUpdateUnmapMarkSnapChainRemoved,
+		"updateReplicaSoftAntiAffinity":     s.VolumeUpdateReplicaSoftAntiAffinity,
+		"updateReplicaZoneSoftAntiAffinity": s.VolumeUpdateReplicaZoneSoftAntiAffinity,
+		"activate":                          s.VolumeActivate,
+		"expand":                            s.VolumeExpand,
+		"cancelExpansion":                   s.VolumeCancelExpansion,
 
 		"updateReplicaCount":            s.VolumeUpdateReplicaCount,
 		"updateReplicaAutoBalance":      s.VolumeUpdateReplicaAutoBalance,
@@ -74,6 +76,11 @@ func NewRouter(s *Server) *mux.Router {
 		"snapshotDelete": s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(OwnerIDFromVolume(s.m)), s.SnapshotDelete),
 		"snapshotRevert": s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(OwnerIDFromVolume(s.m)), s.SnapshotRevert),
 		"snapshotBackup": s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(OwnerIDFromVolume(s.m)), s.SnapshotBackup),
+
+		"snapshotCRCreate": s.SnapshotCRCreate,
+		"snapshotCRList":   s.SnapshotCRList,
+		"snapshotCRGet":    s.SnapshotCRGet,
+		"snapshotCRDelete": s.SnapshotCRDelete,
 
 		"pvCreate":  s.PVCreate,
 		"pvcCreate": s.PVCCreate,

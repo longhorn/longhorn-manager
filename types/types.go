@@ -744,6 +744,24 @@ func ValidateUnmapMarkSnapChainRemoved(unmapValue longhorn.UnmapMarkSnapChainRem
 	return nil
 }
 
+func ValidateReplicaSoftAntiAffinity(value longhorn.ReplicaSoftAntiAffinity) error {
+	if value != longhorn.ReplicaSoftAntiAffinityDefault &&
+		value != longhorn.ReplicaSoftAntiAffinityEnabled &&
+		value != longhorn.ReplicaSoftAntiAffinityDisabled {
+		return fmt.Errorf("invalid ReplicaSoftAntiAffinity setting: %v", value)
+	}
+	return nil
+}
+
+func ValidateReplicaZoneSoftAntiAffinity(value longhorn.ReplicaZoneSoftAntiAffinity) error {
+	if value != longhorn.ReplicaZoneSoftAntiAffinityDefault &&
+		value != longhorn.ReplicaZoneSoftAntiAffinityEnabled &&
+		value != longhorn.ReplicaZoneSoftAntiAffinityDisabled {
+		return fmt.Errorf("invalid ReplicaZoneSoftAntiAffinity setting: %v", value)
+	}
+	return nil
+}
+
 func GetDaemonSetNameFromEngineImageName(engineImageName string) string {
 	return "engine-image-" + engineImageName
 }
@@ -935,4 +953,8 @@ func ConsolidateInstanceManagers(instanceManagerMaps ...map[string]*longhorn.Ins
 		}
 	}
 	return consolidated
+}
+
+func GetLHVolumeAttachmentNameFromVolumeName(volName string) string {
+	return volName
 }

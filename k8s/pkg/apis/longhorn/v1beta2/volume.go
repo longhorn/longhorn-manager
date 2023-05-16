@@ -129,6 +129,24 @@ const (
 	RestoreVolumeRecurringJobDisabled = RestoreVolumeRecurringJobType("disabled")
 )
 
+// +kubebuilder:validation:Enum=ignored;enabled;disabled
+type ReplicaSoftAntiAffinity string
+
+const (
+	ReplicaSoftAntiAffinityDefault  = ReplicaSoftAntiAffinity("ignored")
+	ReplicaSoftAntiAffinityEnabled  = ReplicaSoftAntiAffinity("enabled")
+	ReplicaSoftAntiAffinityDisabled = ReplicaSoftAntiAffinity("disabled")
+)
+
+// +kubebuilder:validation:Enum=ignored;enabled;disabled
+type ReplicaZoneSoftAntiAffinity string
+
+const (
+	ReplicaZoneSoftAntiAffinityDefault  = ReplicaZoneSoftAntiAffinity("ignored")
+	ReplicaZoneSoftAntiAffinityEnabled  = ReplicaZoneSoftAntiAffinity("enabled")
+	ReplicaZoneSoftAntiAffinityDisabled = ReplicaZoneSoftAntiAffinity("disabled")
+)
+
 // Deprecated: This field is useless and has been replaced by the RecurringJob CRD
 type VolumeRecurringJobSpec struct {
 	// +optional
@@ -215,6 +233,12 @@ type VolumeSpec struct {
 	RevisionCounterDisabled bool `json:"revisionCounterDisabled"`
 	// +optional
 	UnmapMarkSnapChainRemoved UnmapMarkSnapChainRemoved `json:"unmapMarkSnapChainRemoved"`
+	// Replica soft anti affinity of the volume. Set enabled to allow replicas to be scheduled on the same node
+	// +optional
+	ReplicaSoftAntiAffinity ReplicaSoftAntiAffinity `json:"replicaSoftAntiAffinity"`
+	// Replica zone soft anti affinity of the volume. Set enabled to allow replicas to be scheduled in the same zone
+	// +optional
+	ReplicaZoneSoftAntiAffinity ReplicaZoneSoftAntiAffinity `json:"replicaZoneSoftAntiAffinity"`
 	// +optional
 	LastAttachedBy string `json:"lastAttachedBy"`
 	// +optional
@@ -262,8 +286,12 @@ type VolumeStatus struct {
 	LastBackup string `json:"lastBackup"`
 	// +optional
 	LastBackupAt string `json:"lastBackupAt"`
+	// Deprecated.
 	// +optional
 	PendingNodeID string `json:"pendingNodeID"`
+	// the node that this volume is currently migrating to
+	// +optional
+	CurrentMigrationNodeID string `json:"currentMigrationNodeID"`
 	// +optional
 	FrontendDisabled bool `json:"frontendDisabled"`
 	// +optional

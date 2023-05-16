@@ -146,16 +146,23 @@ func getNodesWithEvictingReplicas(replicas map[string]*longhorn.Replica, nodeInf
 func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Node, nodeDisksMap map[string]map[string]struct{}, replicas map[string]*longhorn.Replica, volume *longhorn.Volume, requireSchedulingCheck bool) (map[string]*Disk, util.MultiError) {
 	multiError := util.NewMultiError()
 
-	nodeSoftAntiAffinity, err :=
-		rcs.ds.GetSettingAsBool(types.SettingNameReplicaSoftAntiAffinity)
+	nodeSoftAntiAffinity, err := rcs.ds.GetSettingAsBool(types.SettingNameReplicaSoftAntiAffinity)
 	if err != nil {
 		logrus.Errorf("error getting replica soft anti-affinity setting: %v", err)
 	}
 
-	zoneSoftAntiAffinity, err :=
-		rcs.ds.GetSettingAsBool(types.SettingNameReplicaZoneSoftAntiAffinity)
+	if volume.Spec.ReplicaSoftAntiAffinity != longhorn.ReplicaSoftAntiAffinityDefault &&
+		volume.Spec.ReplicaSoftAntiAffinity != "" {
+		nodeSoftAntiAffinity = volume.Spec.ReplicaSoftAntiAffinity == longhorn.ReplicaSoftAntiAffinityEnabled
+	}
+
+	zoneSoftAntiAffinity, err := rcs.ds.GetSettingAsBool(types.SettingNameReplicaZoneSoftAntiAffinity)
 	if err != nil {
 		logrus.Errorf("Error getting replica zone soft anti-affinity setting: %v", err)
+	}
+	if volume.Spec.ReplicaZoneSoftAntiAffinity != longhorn.ReplicaZoneSoftAntiAffinityDefault &&
+		volume.Spec.ReplicaZoneSoftAntiAffinity != "" {
+		zoneSoftAntiAffinity = volume.Spec.ReplicaZoneSoftAntiAffinity == longhorn.ReplicaZoneSoftAntiAffinityEnabled
 	}
 
 	getDiskCandidatesFromNodes := func(nodes map[string]*longhorn.Node) (diskCandidates map[string]*Disk, multiError util.MultiError) {

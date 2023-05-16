@@ -3987,6 +3987,50 @@ func (s *DataStore) GetSupportBundle(name string) (*longhorn.SupportBundle, erro
 	return resultRO.DeepCopy(), nil
 }
 
+// CreateLHVolumeAttachment creates a Longhorn volume attachment resource and verifies creation
+func (s *DataStore) CreateLHVolumeAttachment(va *longhorn.VolumeAttachment) (*longhorn.VolumeAttachment, error) {
+	ret, err := s.lhClient.LonghornV1beta2().VolumeAttachments(s.namespace).Create(context.TODO(), va, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(ret.Name, "Longhorn VolumeAttachment", func(name string) (runtime.Object, error) {
+		return s.GetLHVolumeAttachmentRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.VolumeAttachment)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for Longhorn VolumeAttachment")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// GetLHVolumeAttachmentRO returns the VolumeAttachment with the given name in the cluster
+func (s *DataStore) GetLHVolumeAttachmentRO(name string) (*longhorn.VolumeAttachment, error) {
+	return s.lhVALister.VolumeAttachments(s.namespace).Get(name)
+}
+
+// GetLHVolumeAttachment returns a copy of VolumeAttachment with the given name in the cluster
+func (s *DataStore) GetLHVolumeAttachment(name string) (*longhorn.VolumeAttachment, error) {
+	resultRO, err := s.GetLHVolumeAttachmentRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+func (s *DataStore) GetLHVolumeAttachmentByVolumeName(volName string) (*longhorn.VolumeAttachment, error) {
+	vaName := types.GetLHVolumeAttachmentNameFromVolumeName(volName)
+	return s.GetLHVolumeAttachment(vaName)
+}
+
 // ListSupportBundles returns an object contains all SupportBundles
 func (s *DataStore) ListSupportBundles() (map[string]*longhorn.SupportBundle, error) {
 	itemMap := make(map[string]*longhorn.SupportBundle)
@@ -4399,4 +4443,63 @@ func (s *DataStore) listSystemRestores(selector labels.Selector) (map[string]*lo
 // ListSystemRestores returns an object contains all SystemRestores
 func (s *DataStore) ListSystemRestores() (map[string]*longhorn.SystemRestore, error) {
 	return s.listSystemRestores(labels.Everything())
+}
+
+// UpdateLHVolumeAttachment updates the given Longhorn VolumeAttachment in the VolumeAttachment CR and verifies update
+func (s *DataStore) UpdateLHVolumeAttachment(va *longhorn.VolumeAttachment) (*longhorn.VolumeAttachment, error) {
+	obj, err := s.lhClient.LonghornV1beta2().VolumeAttachments(s.namespace).Update(context.TODO(), va, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(va.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetLHVolumeAttachmentRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateLHVolumeAttachmentStatus updates the given Longhorn VolumeAttachment status in the VolumeAttachment CR status and verifies update
+func (s *DataStore) UpdateLHVolumeAttachmentStatus(va *longhorn.VolumeAttachment) (*longhorn.VolumeAttachment, error) {
+	obj, err := s.lhClient.LonghornV1beta2().VolumeAttachments(s.namespace).UpdateStatus(context.TODO(), va, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(va.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetLHVolumeAttachmentRO(name)
+	})
+	return obj, nil
+}
+
+// ListLonghornVolumeAttachmentByVolumeRO returns a list of all Longhorn VolumeAttachments of a volume.
+// The list contains direct references to the internal cache objects and should not be mutated.
+// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
+func (s *DataStore) ListLonghornVolumeAttachmentByVolumeRO(name string) ([]*longhorn.VolumeAttachment, error) {
+	volumeSelector, err := getVolumeSelector(name)
+	if err != nil {
+		return nil, err
+	}
+	return s.lhVALister.VolumeAttachments(s.namespace).List(volumeSelector)
+}
+
+// RemoveFinalizerForLHVolumeAttachment will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForLHVolumeAttachment(va *longhorn.VolumeAttachment) error {
+	if !util.FinalizerExists(longhornFinalizerKey, va) {
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, va); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta2().VolumeAttachments(s.namespace).Update(context.TODO(), va, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if va.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for VolumeAttachment %s", va.Name)
+	}
+	return nil
+}
+
+// DeleteLHVolumeAttachment won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteLHVolumeAttachment(vaName string) error {
+	return s.lhClient.LonghornV1beta2().VolumeAttachments(s.namespace).Delete(context.TODO(), vaName, metav1.DeleteOptions{})
 }

@@ -455,7 +455,7 @@ var (
 		Type:        SettingTypeInt,
 		Required:    true,
 		ReadOnly:    false,
-		Default:     "200",
+		Default:     "100",
 	}
 
 	SettingDefinitionStorageMinimalAvailablePercentage = SettingDefinition{

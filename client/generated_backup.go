@@ -7,6 +7,8 @@ const (
 type Backup struct {
 	Resource `yaml:"-"`
 
+	CompressionMethod string `json:"compressionMethod,omitempty" yaml:"compression_method,omitempty"`
+
 	Created string `json:"created,omitempty" yaml:"created,omitempty"`
 
 	Error string `json:"error,omitempty" yaml:"error,omitempty"`

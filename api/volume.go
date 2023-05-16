@@ -10,6 +10,8 @@ import (
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -54,8 +56,12 @@ func (s *Server) volumeList(apiContext *api.ApiContext) (*client.GenericCollecti
 		if err != nil {
 			return nil, err
 		}
+		volumeAttachment, err := s.m.GetVolumeAttachment(v.Name)
+		if err != nil && !apierrors.IsNotFound(err) {
+			return nil, err
+		}
 
-		resp.Data = append(resp.Data, toVolumeResource(v, controllers, replicas, backups, apiContext))
+		resp.Data = append(resp.Data, toVolumeResource(v, controllers, replicas, backups, volumeAttachment, apiContext))
 	}
 	resp.ResourceType = "volume"
 	resp.CreateTypes = map[string]string{
@@ -101,8 +107,12 @@ func (s *Server) responseWithVolume(rw http.ResponseWriter, req *http.Request, i
 	if err != nil {
 		return err
 	}
+	volumeAttachment, err := s.m.GetVolumeAttachment(v.Name)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
 
-	apiContext.Write(toVolumeResource(v, controllers, replicas, backups, apiContext))
+	apiContext.Write(toVolumeResource(v, controllers, replicas, backups, volumeAttachment, apiContext))
 	return nil
 }
 
@@ -157,26 +167,28 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 	}
 
 	v, err := s.m.Create(volume.Name, &longhorn.VolumeSpec{
-		Size:                      size,
-		AccessMode:                volume.AccessMode,
-		Migratable:                volume.Migratable,
-		Encrypted:                 volume.Encrypted,
-		Frontend:                  volume.Frontend,
-		FromBackup:                volume.FromBackup,
-		RestoreVolumeRecurringJob: volume.RestoreVolumeRecurringJob,
-		DataSource:                volume.DataSource,
-		NumberOfReplicas:          volume.NumberOfReplicas,
-		ReplicaAutoBalance:        volume.ReplicaAutoBalance,
-		DataLocality:              volume.DataLocality,
-		StaleReplicaTimeout:       volume.StaleReplicaTimeout,
-		BackingImage:              volume.BackingImage,
-		Standby:                   volume.Standby,
-		RevisionCounterDisabled:   volume.RevisionCounterDisabled,
-		DiskSelector:              volume.DiskSelector,
-		NodeSelector:              volume.NodeSelector,
-		SnapshotDataIntegrity:     volume.SnapshotDataIntegrity,
-		BackupCompressionMethod:   volume.BackupCompressionMethod,
-		UnmapMarkSnapChainRemoved: volume.UnmapMarkSnapChainRemoved,
+		Size:                        size,
+		AccessMode:                  volume.AccessMode,
+		Migratable:                  volume.Migratable,
+		Encrypted:                   volume.Encrypted,
+		Frontend:                    volume.Frontend,
+		FromBackup:                  volume.FromBackup,
+		RestoreVolumeRecurringJob:   volume.RestoreVolumeRecurringJob,
+		DataSource:                  volume.DataSource,
+		NumberOfReplicas:            volume.NumberOfReplicas,
+		ReplicaAutoBalance:          volume.ReplicaAutoBalance,
+		DataLocality:                volume.DataLocality,
+		StaleReplicaTimeout:         volume.StaleReplicaTimeout,
+		BackingImage:                volume.BackingImage,
+		Standby:                     volume.Standby,
+		RevisionCounterDisabled:     volume.RevisionCounterDisabled,
+		DiskSelector:                volume.DiskSelector,
+		NodeSelector:                volume.NodeSelector,
+		SnapshotDataIntegrity:       volume.SnapshotDataIntegrity,
+		BackupCompressionMethod:     volume.BackupCompressionMethod,
+		UnmapMarkSnapChainRemoved:   volume.UnmapMarkSnapChainRemoved,
+		ReplicaSoftAntiAffinity:     volume.ReplicaSoftAntiAffinity,
+		ReplicaZoneSoftAntiAffinity: volume.ReplicaZoneSoftAntiAffinity,
 	}, volume.RecurringJobSelector)
 	if err != nil {
 		return errors.Wrap(err, "unable to create volume")
@@ -204,7 +216,7 @@ func (s *Server) VolumeAttach(rw http.ResponseWriter, req *http.Request) error {
 	id := mux.Vars(req)["name"]
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
-		return s.m.Attach(id, input.HostID, input.DisableFrontend, input.AttachedBy)
+		return s.m.Attach(id, input.HostID, input.DisableFrontend, input.AttachedBy, input.AttacherType, input.AttachmentID)
 	})
 	if err != nil {
 		return err
@@ -223,13 +235,12 @@ func (s *Server) VolumeDetach(rw http.ResponseWriter, req *http.Request) error {
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
 		// HACK: for ui detach requests that don't send a body
-		// This is the same as previous behavior where detach is requested from all nodes
-		input.HostID = ""
+		input.AttachmentID = ""
 	}
 	id := mux.Vars(req)["name"]
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
-		return s.m.Detach(id, input.HostID)
+		return s.m.Detach(id, input.AttachmentID, input.ForceDetach)
 	})
 	if err != nil {
 		return err
@@ -474,6 +485,50 @@ func (s *Server) VolumeUpdateUnmapMarkSnapChainRemoved(rw http.ResponseWriter, r
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
 		return s.m.UpdateUnmapMarkSnapChainRemoved(id, longhorn.UnmapMarkSnapChainRemoved(input.UnmapMarkSnapChainRemoved))
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+	}
+	return s.responseWithVolume(rw, req, "", v)
+}
+
+func (s *Server) VolumeUpdateReplicaSoftAntiAffinity(rw http.ResponseWriter, req *http.Request) error {
+	var input UpdateReplicaSoftAntiAffinityInput
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrap(err, "error reading ReplicaSoftAntiAffinity input")
+	}
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.UpdateReplicaSoftAntiAffinity(id, longhorn.ReplicaSoftAntiAffinity(input.ReplicaSoftAntiAffinity))
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+	}
+	return s.responseWithVolume(rw, req, "", v)
+}
+
+func (s *Server) VolumeUpdateReplicaZoneSoftAntiAffinity(rw http.ResponseWriter, req *http.Request) error {
+	var input UpdateReplicaZoneSoftAntiAffinityInput
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrap(err, "error reading ReplicaZoneSoftAntiAffinity input")
+	}
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.UpdateReplicaZoneSoftAntiAffinity(id, longhorn.ReplicaZoneSoftAntiAffinity(input.ReplicaZoneSoftAntiAffinity))
 	})
 	if err != nil {
 		return err

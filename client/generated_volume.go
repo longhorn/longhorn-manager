@@ -11,6 +11,8 @@ type Volume struct {
 
 	BackingImage string `json:"backingImage,omitempty" yaml:"backing_image,omitempty"`
 
+	BackupCompressionMethod string `json:"backupCompressionMethod,omitempty" yaml:"backup_compression_method,omitempty"`
+
 	BackupStatus []BackupStatus `json:"backupStatus,omitempty" yaml:"backup_status,omitempty"`
 
 	CloneStatus CloneStatus `json:"cloneStatus,omitempty" yaml:"clone_status,omitempty"`
@@ -67,11 +69,17 @@ type Volume struct {
 
 	ReplicaAutoBalance string `json:"replicaAutoBalance,omitempty" yaml:"replica_auto_balance,omitempty"`
 
+	ReplicaSoftAntiAffinity string `json:"replicaSoftAntiAffinity,omitempty" yaml:"replica_soft_anti_affinity,omitempty"`
+
+	ReplicaZoneSoftAntiAffinity string `json:"replicaZoneSoftAntiAffinity,omitempty" yaml:"replica_zone_soft_anti_affinity,omitempty"`
+
 	Replicas []Replica `json:"replicas,omitempty" yaml:"replicas,omitempty"`
 
 	RestoreRequired bool `json:"restoreRequired,omitempty" yaml:"restore_required,omitempty"`
 
 	RestoreStatus []RestoreStatus `json:"restoreStatus,omitempty" yaml:"restore_status,omitempty"`
+
+	RestoreVolumeRecurringJob string `json:"restoreVolumeRecurringJob,omitempty" yaml:"restore_volume_recurring_job,omitempty"`
 
 	RevisionCounterDisabled bool `json:"revisionCounterDisabled,omitempty" yaml:"revision_counter_disabled,omitempty"`
 
@@ -83,6 +91,8 @@ type Volume struct {
 
 	Size string `json:"size,omitempty" yaml:"size,omitempty"`
 
+	SnapshotDataIntegrity string `json:"snapshotDataIntegrity,omitempty" yaml:"snapshot_data_integrity,omitempty"`
+
 	StaleReplicaTimeout int64 `json:"staleReplicaTimeout,omitempty" yaml:"stale_replica_timeout,omitempty"`
 
 	Standby bool `json:"standby,omitempty" yaml:"standby,omitempty"`
@@ -90,6 +100,8 @@ type Volume struct {
 	State string `json:"state,omitempty" yaml:"state,omitempty"`
 
 	UnmapMarkSnapChainRemoved string `json:"unmapMarkSnapChainRemoved,omitempty" yaml:"unmap_mark_snap_chain_removed,omitempty"`
+
+	VolumeAttachment VolumeAttachment `json:"volumeAttachment,omitempty" yaml:"volume_attachment,omitempty"`
 }
 
 type VolumeCollection struct {
@@ -135,6 +147,14 @@ type VolumeOperations interface {
 
 	ActionSnapshotBackup(*Volume, *SnapshotInput) (*Volume, error)
 
+	ActionSnapshotCRCreate(*Volume, *SnapshotCRInput) (*SnapshotCR, error)
+
+	ActionSnapshotCRDelete(*Volume, *SnapshotCRInput) (*Empty, error)
+
+	ActionSnapshotCRGet(*Volume, *SnapshotCRInput) (*SnapshotCR, error)
+
+	ActionSnapshotCRList(*Volume) (*SnapshotCRListOutput, error)
+
 	ActionSnapshotCreate(*Volume, *SnapshotInput) (*Snapshot, error)
 
 	ActionSnapshotDelete(*Volume, *SnapshotInput) (*Volume, error)
@@ -147,9 +167,9 @@ type VolumeOperations interface {
 
 	ActionSnapshotRevert(*Volume, *SnapshotInput) (*Snapshot, error)
 
-	ActionUpdateAccessMode(*Volume, *UpdateAccessModeInput) (*Volume, error)
-
 	ActionTrimFilesystem(*Volume) (*Volume, error)
+
+	ActionUpdateAccessMode(*Volume, *UpdateAccessModeInput) (*Volume, error)
 }
 
 func newVolumeClient(rancherClient *RancherClient) *VolumeClient {
@@ -319,6 +339,42 @@ func (c *VolumeClient) ActionSnapshotBackup(resource *Volume, input *SnapshotInp
 	return resp, err
 }
 
+func (c *VolumeClient) ActionSnapshotCRCreate(resource *Volume, input *SnapshotCRInput) (*SnapshotCR, error) {
+
+	resp := &SnapshotCR{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "snapshotCRCreate", &resource.Resource, input, resp)
+
+	return resp, err
+}
+
+func (c *VolumeClient) ActionSnapshotCRDelete(resource *Volume, input *SnapshotCRInput) (*Empty, error) {
+
+	resp := &Empty{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "snapshotCRDelete", &resource.Resource, input, resp)
+
+	return resp, err
+}
+
+func (c *VolumeClient) ActionSnapshotCRGet(resource *Volume, input *SnapshotCRInput) (*SnapshotCR, error) {
+
+	resp := &SnapshotCR{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "snapshotCRGet", &resource.Resource, input, resp)
+
+	return resp, err
+}
+
+func (c *VolumeClient) ActionSnapshotCRList(resource *Volume) (*SnapshotCRListOutput, error) {
+
+	resp := &SnapshotCRListOutput{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "snapshotCRList", &resource.Resource, nil, resp)
+
+	return resp, err
+}
+
 func (c *VolumeClient) ActionSnapshotCreate(resource *Volume, input *SnapshotInput) (*Snapshot, error) {
 
 	resp := &Snapshot{}
@@ -373,20 +429,20 @@ func (c *VolumeClient) ActionSnapshotRevert(resource *Volume, input *SnapshotInp
 	return resp, err
 }
 
-func (c *VolumeClient) ActionUpdateAccessMode(resource *Volume, input *UpdateAccessModeInput) (*Volume, error) {
-
-	resp := &Volume{}
-
-	err := c.rancherClient.doAction(VOLUME_TYPE, "updateAccessMode", &resource.Resource, input, resp)
-
-	return resp, err
-}
-
 func (c *VolumeClient) ActionTrimFilesystem(resource *Volume) (*Volume, error) {
 
 	resp := &Volume{}
 
 	err := c.rancherClient.doAction(VOLUME_TYPE, "trimFilesystem", &resource.Resource, nil, resp)
+
+	return resp, err
+}
+
+func (c *VolumeClient) ActionUpdateAccessMode(resource *Volume, input *UpdateAccessModeInput) (*Volume, error) {
+
+	resp := &Volume{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "updateAccessMode", &resource.Resource, input, resp)
 
 	return resp, err
 }

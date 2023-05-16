@@ -74,6 +74,14 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
+	if err := types.ValidateReplicaSoftAntiAffinity(volume.Spec.ReplicaSoftAntiAffinity); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
+	if err := types.ValidateReplicaZoneSoftAntiAffinity(volume.Spec.ReplicaZoneSoftAntiAffinity); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
 	if volume.Spec.BackingImage != "" {
 		if _, err := v.ds.GetBackingImage(volume.Spec.BackingImage); err != nil {
 			return werror.NewInvalidError(err.Error(), "")
@@ -137,6 +145,14 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
+	if err := types.ValidateReplicaSoftAntiAffinity(newVolume.Spec.ReplicaSoftAntiAffinity); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
+	if err := types.ValidateReplicaZoneSoftAntiAffinity(newVolume.Spec.ReplicaZoneSoftAntiAffinity); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
 	if newVolume.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
 		// Check if the strict-local volume can attach to newVolume.Spec.NodeID
 		if oldVolume.Spec.NodeID != newVolume.Spec.NodeID && newVolume.Spec.NodeID != "" {
@@ -158,6 +174,15 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 			err := fmt.Errorf("changing backup compression method for volume %v is not supported", oldVolume.Name)
 			return werror.NewInvalidError(err.Error(), "")
 		}
+	}
+
+	// prevent the changing v.Spec.MigrationNodeID to different node when the volume is doing live migration (when v.Status.CurrentMigrationNodeID != "")
+	if newVolume.Status.CurrentMigrationNodeID != "" &&
+		newVolume.Spec.MigrationNodeID != oldVolume.Spec.MigrationNodeID &&
+		newVolume.Spec.MigrationNodeID != newVolume.Status.CurrentMigrationNodeID &&
+		newVolume.Spec.MigrationNodeID != "" {
+		err := fmt.Errorf("cannot change v.Spec.MigrationNodeID to node %v when the volume is doing live migration to node %v ", newVolume.Spec.MigrationNodeID, newVolume.Status.CurrentMigrationNodeID)
+		return werror.NewInvalidError(err.Error(), "")
 	}
 
 	return nil
