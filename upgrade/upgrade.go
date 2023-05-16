@@ -26,16 +26,6 @@ import (
 	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
 
 	"github.com/longhorn/longhorn-manager/meta"
-	"github.com/longhorn/longhorn-manager/upgrade/v070to080"
-	"github.com/longhorn/longhorn-manager/upgrade/v100to101"
-	"github.com/longhorn/longhorn-manager/upgrade/v102to110"
-	"github.com/longhorn/longhorn-manager/upgrade/v110to111"
-	"github.com/longhorn/longhorn-manager/upgrade/v110to120"
-	"github.com/longhorn/longhorn-manager/upgrade/v111to120"
-	"github.com/longhorn/longhorn-manager/upgrade/v120to121"
-	"github.com/longhorn/longhorn-manager/upgrade/v122to123"
-	"github.com/longhorn/longhorn-manager/upgrade/v12xto130"
-	"github.com/longhorn/longhorn-manager/upgrade/v13xto140"
 	"github.com/longhorn/longhorn-manager/upgrade/v14xto150"
 	"github.com/longhorn/longhorn-manager/upgrade/v1beta1"
 )
@@ -231,66 +221,7 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 
 	resourceMaps := map[string]interface{}{}
 
-	if semver.Compare(lhVersionBeforeUpgrade, "v0.8.0") < 0 {
-		logrus.Debugf("Walking through the upgrade path v0.7.0 to v0.8.0")
-		if err := v070to080.UpgradeResources(namespace, lhClient, resourceMaps); err != nil {
-			return err
-		}
-	}
-	if semver.Compare(lhVersionBeforeUpgrade, "v1.0.1") < 0 {
-		logrus.Debugf("Walking through the upgrade path v1.0.0 to v1.0.1")
-		if err := v100to101.UpgradeResources(namespace, lhClient, kubeClient, resourceMaps); err != nil {
-			return err
-		}
-	}
-	if semver.Compare(lhVersionBeforeUpgrade, "v1.1.0") < 0 {
-		logrus.Debugf("Walking through the upgrade path v1.0.2 to v1.1.0")
-		if err := v102to110.UpgradeResources(namespace, lhClient, kubeClient, resourceMaps); err != nil {
-			return err
-		}
-	}
-	if semver.Compare(lhVersionBeforeUpgrade, "v1.1.1") < 0 {
-		logrus.Debugf("Walking through the upgrade path v1.1.0 to v1.1.1")
-		if err := v110to111.UpgradeResources(namespace, lhClient, kubeClient, resourceMaps); err != nil {
-			return err
-		}
-	}
-	if semver.Compare(lhVersionBeforeUpgrade, "v1.2.0") < 0 {
-		logrus.Debugf("Walking through the upgrade path v1.1.0 to v1.2.0")
-		if err := v110to120.UpgradeResources(namespace, lhClient, kubeClient, resourceMaps); err != nil {
-			return err
-		}
-	}
-	if semver.Compare(lhVersionBeforeUpgrade, "v1.2.0") < 0 {
-		logrus.Debugf("Walking through the upgrade path v1.1.1 to v1.2.0")
-		if err := v111to120.UpgradeResources(namespace, lhClient, resourceMaps); err != nil {
-			return err
-		}
-	}
-	if semver.Compare(lhVersionBeforeUpgrade, "v1.2.1") < 0 {
-		logrus.Debugf("Walking through the upgrade path v1.2.0 to v1.2.1")
-		if err := v120to121.UpgradeResources(namespace, lhClient, resourceMaps); err != nil {
-			return err
-		}
-	}
-	if semver.Compare(lhVersionBeforeUpgrade, "v1.2.3") < 0 {
-		logrus.Debugf("Walking through the upgrade path v1.2.2 to v1.2.3")
-		if err := v122to123.UpgradeResources(namespace, lhClient, resourceMaps); err != nil {
-			return err
-		}
-	}
-	if semver.Compare(lhVersionBeforeUpgrade, "v1.3.0") < 0 {
-		logrus.Debugf("Walking through the upgrade path v1.2.x to v1.3.0")
-		if err := v12xto130.UpgradeResources(namespace, lhClient, kubeClient, resourceMaps); err != nil {
-			return err
-		}
-	}
-	if semver.Compare(lhVersionBeforeUpgrade, "v1.4.0") < 0 {
-		logrus.Debugf("Walking through the upgrade path v1.3.x to v1.4.0")
-		if err := v13xto140.UpgradeResources(namespace, lhClient, kubeClient, resourceMaps); err != nil {
-			return err
-		}
-	}
+	// When lhVersionBeforeUpgrade < v1.5.0, it is v1.4.x. The `CheckUpgradePathSupported` method would have failed us out earlier if it was not v1.4.x.
 	if semver.Compare(lhVersionBeforeUpgrade, "v1.5.0") < 0 {
 		logrus.Debugf("Walking through the upgrade path v1.4.x to v1.5.0")
 		if err := v14xto150.UpgradeResources(namespace, lhClient, kubeClient, resourceMaps); err != nil {
