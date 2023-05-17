@@ -3469,19 +3469,46 @@ func (c *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) {
 	}()
 
 	existingVolume := v.DeepCopy()
+
+	if err := c.syncPVCRecurringJobLabels(v); err != nil {
+		return errors.Wrapf(err, "failed attempting to sync PVC recurring job labels from Volume %v", v.Name)
+	}
+
 	if err = datastore.FixupRecurringJob(v); err != nil {
 		return err
 	}
+
 	// DR volume will not restore volume recurring jobs/groups configuration.
 	if c.shouldRestoreRecurringJobs(v) {
 		if err := c.restoreVolumeRecurringJobs(v); err != nil {
 			c.logger.WithError(err).Warn("Failed to restore the volume recurring jobs/groups")
 		}
 	}
+
 	if err == nil && !reflect.DeepEqual(existingVolume.Labels, v.Labels) {
 		_, err = c.ds.UpdateVolume(v)
 	}
 
+	return nil
+}
+
+func (c *VolumeController) syncPVCRecurringJobLabels(volume *longhorn.Volume) error {
+	kubeStatus := volume.Status.KubernetesStatus
+	if kubeStatus.PVCName == "" || kubeStatus.LastPVCRefAt != "" {
+		return nil
+	}
+
+	pvc, err := c.ds.GetPersistentVolumeClaim(kubeStatus.Namespace, kubeStatus.PVCName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	if err := syncRecurringJobLabelsToTargetResource(types.LonghornKindVolume, volume, pvc, c.logger); err != nil {
+		return errors.Wrapf(err, "failed to sync recurring job labels from PVC %v to Volume %v", pvc.Name, volume.Name)
+	}
 	return nil
 }
 
