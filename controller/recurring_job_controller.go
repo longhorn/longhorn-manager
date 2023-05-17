@@ -278,16 +278,24 @@ func (control *RecurringJobController) cleanupVolumeRecurringJob(recurringJob *l
 				if !util.Contains(rmGroups, jobName) {
 					continue
 				}
-				control.logger.Debugf("Clean up volume recurring job-group %v for %v", jobName, vol.Name)
-				if _, err := control.ds.DeleteVolumeRecurringJob(jobName, true, vol); err != nil {
+				control.logger.Debugf("Clean up recurring job-group %v for %v", jobName, vol.Name)
+				labelKey := types.GetRecurringJobLabelKeyByType(jobName, true)
+				vol, err = control.ds.RemoveRecurringJobLabelFromVolume(vol, labelKey)
+				if err != nil {
 					return err
 				}
 			} else if jobName == recurringJob.Name {
-				control.logger.Debugf("Clean up volume recurring job %v for %v", jobName, vol.Name)
-				if _, err := control.ds.DeleteVolumeRecurringJob(jobName, false, vol); err != nil {
+				control.logger.Debugf("Clean up recurring job %v for %v", jobName, vol.Name)
+				labelKey := types.GetRecurringJobLabelKeyByType(jobName, false)
+				vol, err = control.ds.RemoveRecurringJobLabelFromVolume(vol, labelKey)
+				if err != nil {
 					return err
 				}
 			}
+		}
+
+		if _, err := control.ds.UpdateVolume(vol); err != nil {
+			return err
 		}
 	}
 	return nil

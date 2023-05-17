@@ -501,6 +501,13 @@ func GetVolumeLabels(volumeName string) map[string]string {
 	}
 }
 
+func GetRecurringJobLabelKeyByType(name string, isGroup bool) string {
+	if isGroup {
+		return GetRecurringJobLabelKey(LonghornLabelRecurringJobGroup, name)
+	}
+	return GetRecurringJobLabelKey(LonghornLabelRecurringJob, name)
+}
+
 func GetRecurringJobLabelKey(labelType, recurringJobName string) string {
 	prefix := fmt.Sprintf(LonghornLabelRecurringJobKeyPrefixFmt, labelType)
 	return fmt.Sprintf("%s/%s", prefix, recurringJobName)
