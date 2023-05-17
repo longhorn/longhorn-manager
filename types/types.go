@@ -519,6 +519,13 @@ func GetRecurringJobLabelValueMap(labelType, recurringJobName string) map[string
 	}
 }
 
+// IsRecurringJobLabel checks if the given key is a recurring job label.
+func IsRecurringJobLabel(key string) bool {
+	jobPrefix := fmt.Sprintf(LonghornLabelRecurringJobKeyPrefixFmt, LonghornLabelRecurringJob)
+	groupPrefix := fmt.Sprintf(LonghornLabelRecurringJobKeyPrefixFmt, LonghornLabelRecurringJobGroup)
+	return strings.HasPrefix(key, jobPrefix) || strings.HasPrefix(key, groupPrefix)
+}
+
 func GetOrphanLabelsForOrphanedDirectory(nodeID, diskUUID string) map[string]string {
 	labels := GetBaseLabelsForSystemManagedComponent()
 	labels[GetLonghornLabelComponentKey()] = LonghornLabelOrphan

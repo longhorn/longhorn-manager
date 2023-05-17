@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
@@ -506,4 +507,53 @@ func (c *RecurringJobController) newCronJob(recurringJob *longhorn.RecurringJob)
 	}
 
 	return cronJob, nil
+}
+
+func syncRecurringJobLabelsToTargetResource(targetKind string, targetObj, sourceObj runtime.Object, log logrus.FieldLogger) error {
+	sourceMeta, err := meta.Accessor(sourceObj)
+	if err != nil {
+		return errors.Wrap(err, "failed to get source object accessor")
+	}
+	targetMeta, err := meta.Accessor(targetObj)
+	if err != nil {
+		return errors.Wrap(err, "failed to get target object accessor")
+	}
+
+	sourceLabels := sourceMeta.GetLabels()
+	if sourceLabels == nil {
+		sourceLabels = map[string]string{}
+	}
+	targetLabels := targetMeta.GetLabels()
+	if targetLabels == nil {
+		targetLabels = map[string]string{}
+	}
+
+	for key, value := range targetLabels {
+		if !types.IsRecurringJobLabel(key) {
+			continue
+		}
+
+		if sourceLabelValue, exist := sourceLabels[key]; exist && sourceLabelValue == value {
+			continue
+		}
+
+		log.Debugf("Removing %v %v recurring job label %v", targetKind, targetMeta.GetName(), key)
+		delete(targetLabels, key)
+	}
+
+	for key, value := range sourceLabels {
+		if !types.IsRecurringJobLabel(key) {
+			continue
+		}
+
+		if targetLabelValue := targetLabels[key]; targetLabelValue == value {
+			continue
+		}
+
+		log.Debugf("Adding %v %v recurring job label %v: %v", targetKind, targetMeta.GetName(), key, value)
+		targetLabels[key] = value
+	}
+
+	targetMeta.SetLabels(targetLabels)
+	return nil
 }
