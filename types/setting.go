@@ -104,6 +104,7 @@ const (
 	SettingNameBackupCompressionMethod                                  = SettingName("backup-compression-method")
 	SettingNameBackupConcurrentLimit                                    = SettingName("backup-concurrent-limit")
 	SettingNameRestoreConcurrentLimit                                   = SettingName("restore-concurrent-limit")
+	SettingNameLogLevel                                                 = SettingName("log-level")
 )
 
 var (
@@ -176,6 +177,7 @@ var (
 		SettingNameBackupCompressionMethod,
 		SettingNameBackupConcurrentLimit,
 		SettingNameRestoreConcurrentLimit,
+		SettingNameLogLevel,
 	}
 )
 
@@ -273,6 +275,7 @@ var (
 		SettingNameBackupCompressionMethod:                                  SettingDefinitionBackupCompressionMethod,
 		SettingNameBackupConcurrentLimit:                                    SettingDefinitionBackupConcurrentLimit,
 		SettingNameRestoreConcurrentLimit:                                   SettingDefinitionRestoreConcurrentLimit,
+		SettingNameLogLevel:                                                 SettingDefinitionLogLevel,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -1112,6 +1115,16 @@ var (
 		ReadOnly:    false,
 		Default:     "5",
 	}
+
+	SettingDefinitionLogLevel = SettingDefinition{
+		DisplayName: "Log Level",
+		Description: "The log level Panic, Fatal, Error, Warn, Info, Debug, Trace used in longhorn manager. By default Info.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "Info",
+	}
 )
 
 type NodeDownPodDeletionPolicy string
@@ -1360,6 +1373,10 @@ func ValidateSetting(name, value string) (err error) {
 		}
 		if i < 0 || i > 40 {
 			return fmt.Errorf("guaranteed instance manager cpu value %v should be between 0 to 40", value)
+		}
+	case SettingNameLogLevel:
+		if err := ValidateLogLevel(value); err != nil {
+			return errors.Wrapf(err, "failed to validate log level %v", value)
 		}
 	}
 	return nil

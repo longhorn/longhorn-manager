@@ -243,6 +243,10 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		if err := sc.cleanupFailedSupportBundles(); err != nil {
 			return err
 		}
+	case string(types.SettingNameLogLevel):
+		if err := sc.updateLogLevel(); err != nil {
+			return err
+		}
 	default:
 	}
 
@@ -674,6 +678,21 @@ func (sc *SettingController) updateCNI() error {
 		}
 	}
 
+	return nil
+}
+
+func (sc *SettingController) updateLogLevel() error {
+	setting, err := sc.ds.GetSetting(types.SettingNameLogLevel)
+	if err != nil {
+		return err
+	}
+	oldLevel := logrus.GetLevel()
+	newLevel, err := logrus.ParseLevel(setting.Value)
+	if err != nil {
+		return err
+	}
+	logrus.Infof("Update log level from %v to %v", oldLevel, newLevel)
+	logrus.SetLevel(newLevel)
 	return nil
 }
 
