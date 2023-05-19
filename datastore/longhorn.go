@@ -760,7 +760,7 @@ func (s *DataStore) DeleteVolumeRecurringJob(name string, isGroup bool, v *longh
 		if err != nil {
 			return nil, err
 		}
-		logrus.Debugf("Updated volume %v labels to %+v", v.Name, v.Labels)
+		logrus.Debugf("Removed volume %v recurring job label %v", v.Name, key)
 	}
 	return v, nil
 }

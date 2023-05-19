@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/util"
@@ -676,6 +677,13 @@ func ErrorAlreadyExists(err error) bool {
 func ValidateReplicaCount(count int) error {
 	if count < 1 || count > 20 {
 		return fmt.Errorf("replica count value must between 1 to 20")
+	}
+	return nil
+}
+
+func ValidateLogLevel(level string) error {
+	if _, err := logrus.ParseLevel(level); err != nil {
+		return fmt.Errorf("log level is invalid")
 	}
 	return nil
 }
