@@ -41,10 +41,10 @@ require (
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v0.0.0-20220609065820-a08f7f47442f
-	github.com/longhorn/backupstore v0.0.0-20230505042557-0f585f513869
+	github.com/longhorn/backupstore v0.0.0-20230518134155-aa42d35366e3
 	github.com/longhorn/go-iscsi-helper v0.0.0-20230425064248-72f136f48524
-	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230505031224-c02fde759c53
-	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230505033346-9228ec0ee161
+	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230518180217-e9f40c98d84c
+	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230519015737-23af7f034c53
 	github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20230406134224-54b3892cf95a
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.15.0
@@ -72,7 +72,6 @@ require (
 	k8s.io/mount-utils v0.27.1
 	k8s.io/utils v0.0.0-20230406110748-d93618cff8a2
 	sigs.k8s.io/controller-runtime v0.10.1
-	sigs.k8s.io/yaml v1.3.0
 )
 
 require (
@@ -87,6 +86,7 @@ require (
 	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/slok/goresilience v0.2.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
+	sigs.k8s.io/yaml v1.3.0 // indirect
 )
 
 require (
