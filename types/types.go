@@ -224,8 +224,9 @@ const (
 	EnvPodIP          = "POD_IP"
 	EnvServiceAccount = "SERVICE_ACCOUNT"
 
-	BackupStoreTypeS3   = "s3"
-	BackupStoreTypeCIFS = "cifs"
+	BackupStoreTypeS3     = "s3"
+	BackupStoreTypeCIFS   = "cifs"
+	BackupStoreTypeAZBlob = "azblob"
 
 	AWSIAMRoleAnnotation = "iam.amazonaws.com/role"
 	AWSIAMRoleArn        = "AWS_IAM_ROLE_ARN"
@@ -236,6 +237,11 @@ const (
 
 	CIFSUsername = "CIFS_USERNAME"
 	CIFSPassword = "CIFS_PASSWORD"
+
+	AZBlobAccountName = "AZBLOB_ACCOUNT_NAME"
+	AZBlobAccountKey  = "AZBLOB_ACCOUNT_KEY"
+	AZBlobEndpoint    = "AZBLOB_ENDPOINT"
+	AZBlobCert        = "AZBLOB_CERT"
 
 	HTTPSProxy = "HTTPS_PROXY"
 	HTTPProxy  = "HTTP_PROXY"
@@ -940,7 +946,7 @@ func CreateCniAnnotationFromSetting(storageNetwork *longhorn.Setting) string {
 }
 
 func BackupStoreRequireCredential(backupType string) bool {
-	return backupType == BackupStoreTypeS3 || backupType == BackupStoreTypeCIFS
+	return backupType == BackupStoreTypeS3 || backupType == BackupStoreTypeCIFS || backupType == BackupStoreTypeAZBlob
 }
 
 func ConsolidateInstances(instancesMaps ...map[string]longhorn.InstanceProcess) map[string]longhorn.InstanceProcess {

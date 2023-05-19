@@ -286,6 +286,10 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			types.AWSCert,
 			types.CIFSUsername,
 			types.CIFSPassword,
+			types.AZBlobAccountName,
+			types.AZBlobAccountKey,
+			types.AZBlobEndpoint,
+			types.AZBlobCert,
 			types.HTTPSProxy,
 			types.HTTPProxy,
 			types.NOProxy,
@@ -512,6 +516,10 @@ func (s *DataStore) GetCredentialFromSecret(secretName string) (map[string]strin
 	credentialSecret[types.AWSCert] = string(secret.Data[types.AWSCert])
 	credentialSecret[types.CIFSUsername] = string(secret.Data[types.CIFSUsername])
 	credentialSecret[types.CIFSPassword] = string(secret.Data[types.CIFSPassword])
+	credentialSecret[types.AZBlobAccountName] = string(secret.Data[types.AZBlobAccountName])
+	credentialSecret[types.AZBlobAccountKey] = string(secret.Data[types.AZBlobAccountKey])
+	credentialSecret[types.AZBlobEndpoint] = string(secret.Data[types.AZBlobEndpoint])
+	credentialSecret[types.AZBlobCert] = string(secret.Data[types.AZBlobCert])
 	credentialSecret[types.HTTPSProxy] = string(secret.Data[types.HTTPSProxy])
 	credentialSecret[types.HTTPProxy] = string(secret.Data[types.HTTPProxy])
 	credentialSecret[types.NOProxy] = string(secret.Data[types.NOProxy])
