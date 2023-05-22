@@ -64,6 +64,10 @@ func (rb *RecoveryBackend) CreateConfigMap(hostname, version string) error {
 			return errors.Wrapf(err, "failed to get the configmap %v", configMapName)
 		}
 
+		if cm.Data == nil {
+			cm.Data = map[string]string{}
+		}
+
 		cm.Data[version] = "{}"
 		if _, err = rb.Datastore.UpdateConfigMap(cm); err != nil {
 			return errors.Wrapf(err, "failed to update the configmap %v", configMapName)
