@@ -1,0 +1,45 @@
+name: Copy-Crds
+on:
+  push:
+    branches:
+      - master
+      - "v*.*.*"
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v2
+        with:
+          # Checkout as many commits as needed for the diff
+          fetch-depth: 2
+      - name: Diff Commits
+        # Give an id to the step, so we can reference it later
+        id: diff-commits
+        run: |
+          # Diff HEAD with the previous commit
+          diff=$(git diff --name-only HEAD^ HEAD)
+          echo "$diff"
+          # Check if k8s/crds.yaml has been changed
+          changed=$(echo $diff | grep k8s/crds.yaml || true)
+          echo "$changed"
+          echo "changed=$changed" >> $GITHUB_OUTPUT
+          message=$(git log --format=%s -n 1)
+          echo "message=$message" >> $GITHUB_OUTPUT
+          hash=$(git rev-parse --short HEAD)
+          echo "hash=$hash" >> $GITHUB_OUTPUT
+      # Run the step only with "changed" equals "True"
+      - name: Create Pull Request
+        if: steps.diff-commits.outputs.changed
+        uses: longhorn/bot/copy-files-and-create-pr-action@master
+        env:
+          API_TOKEN_GITHUB: ${{ secrets.CUSTOM_GITHUB_TOKEN }}
+        with:
+          source: k8s/crds.yaml
+          destination_repo: 'longhorn/longhorn'
+          destination: chart/templates/crds.yaml
+          destination_base_branch: ${{ github.ref_name }}
+          destination_head_branch: copy-crds-${{ steps.diff-commits.outputs.hash }}
+          pull_request_reviewers: 'longhorn/dev'
+          pr_title: ${{ steps.diff-commits.outputs.message }}
+          commit_msg: ${{ steps.diff-commits.outputs.message }}
