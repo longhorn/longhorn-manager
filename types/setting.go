@@ -73,7 +73,6 @@ const (
 	SettingNameNodeDrainPolicy                                          = SettingName("node-drain-policy")
 	SettingNamePriorityClass                                            = SettingName("priority-class")
 	SettingNameDisableRevisionCounter                                   = SettingName("disable-revision-counter")
-	SettingNameDisableReplicaRebuild                                    = SettingName("disable-replica-rebuild")
 	SettingNameReplicaReplenishmentWaitInterval                         = SettingName("replica-replenishment-wait-interval")
 	SettingNameConcurrentReplicaRebuildPerNodeLimit                     = SettingName("concurrent-replica-rebuild-per-node-limit")
 	SettingNameConcurrentBackupRestorePerNodeLimit                      = SettingName("concurrent-volume-backup-restore-per-node-limit")
@@ -105,6 +104,7 @@ const (
 	SettingNameBackupCompressionMethod                                  = SettingName("backup-compression-method")
 	SettingNameBackupConcurrentLimit                                    = SettingName("backup-concurrent-limit")
 	SettingNameRestoreConcurrentLimit                                   = SettingName("restore-concurrent-limit")
+	SettingNameLogLevel                                                 = SettingName("log-level")
 )
 
 var (
@@ -146,7 +146,6 @@ var (
 		SettingNameNodeDrainPolicy,
 		SettingNamePriorityClass,
 		SettingNameDisableRevisionCounter,
-		SettingNameDisableReplicaRebuild,
 		SettingNameReplicaReplenishmentWaitInterval,
 		SettingNameConcurrentReplicaRebuildPerNodeLimit,
 		SettingNameConcurrentBackupRestorePerNodeLimit,
@@ -178,6 +177,7 @@ var (
 		SettingNameBackupCompressionMethod,
 		SettingNameBackupConcurrentLimit,
 		SettingNameRestoreConcurrentLimit,
+		SettingNameLogLevel,
 	}
 )
 
@@ -244,7 +244,6 @@ var (
 		SettingNameNodeDrainPolicy:                                          SettingDefinitionNodeDrainPolicy,
 		SettingNamePriorityClass:                                            SettingDefinitionPriorityClass,
 		SettingNameDisableRevisionCounter:                                   SettingDefinitionDisableRevisionCounter,
-		SettingNameDisableReplicaRebuild:                                    SettingDefinitionDisableReplicaRebuild,
 		SettingNameReplicaReplenishmentWaitInterval:                         SettingDefinitionReplicaReplenishmentWaitInterval,
 		SettingNameConcurrentReplicaRebuildPerNodeLimit:                     SettingDefinitionConcurrentReplicaRebuildPerNodeLimit,
 		SettingNameConcurrentBackupRestorePerNodeLimit:                      SettingDefinitionConcurrentVolumeBackupRestorePerNodeLimit,
@@ -276,6 +275,7 @@ var (
 		SettingNameBackupCompressionMethod:                                  SettingDefinitionBackupCompressionMethod,
 		SettingNameBackupConcurrentLimit:                                    SettingDefinitionBackupConcurrentLimit,
 		SettingNameRestoreConcurrentLimit:                                   SettingDefinitionRestoreConcurrentLimit,
+		SettingNameLogLevel:                                                 SettingDefinitionLogLevel,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -739,16 +739,6 @@ var (
 		Default:     "false",
 	}
 
-	SettingDefinitionDisableReplicaRebuild = SettingDefinition{
-		DisplayName: "Disable Replica Rebuild",
-		Description: "This setting disable replica rebuild cross the whole cluster, eviction and data locality feature won't work if this setting is true. But doesn't have any impact to any current replica rebuild and restore disaster recovery volume.",
-		Category:    SettingCategoryDangerZone,
-		Type:        SettingTypeDeprecated,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "false",
-	}
-
 	SettingDefinitionReplicaReplenishmentWaitInterval = SettingDefinition{
 		DisplayName: "Replica Replenishment Wait Interval",
 		Description: "In seconds. The interval determines how long Longhorn will wait at least in order to reuse the existing data on a failed replica rather than directly creating a new replica for a degraded volume.\n" +
@@ -1125,6 +1115,16 @@ var (
 		ReadOnly:    false,
 		Default:     "5",
 	}
+
+	SettingDefinitionLogLevel = SettingDefinition{
+		DisplayName: "Log Level",
+		Description: "The log level Panic, Fatal, Error, Warn, Info, Debug, Trace used in longhorn manager. By default Info.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "Info",
+	}
 )
 
 type NodeDownPodDeletionPolicy string
@@ -1373,6 +1373,10 @@ func ValidateSetting(name, value string) (err error) {
 		}
 		if i < 0 || i > 40 {
 			return fmt.Errorf("guaranteed instance manager cpu value %v should be between 0 to 40", value)
+		}
+	case SettingNameLogLevel:
+		if err := ValidateLogLevel(value); err != nil {
+			return errors.Wrapf(err, "failed to validate log level %v", value)
 		}
 	}
 	return nil

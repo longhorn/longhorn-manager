@@ -9,9 +9,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/util"
@@ -201,19 +201,6 @@ const (
 )
 
 const (
-	SupportBundleNameFmt = "support-bundle-%v"
-
-	SupportBundleManagerApp      = "support-bundle-manager"
-	SupportBundleManagerLabelKey = "rancher/supportbundle"
-
-	SupportBundleURLPort        = 8080
-	SupportBundleURLStatusFmt   = "http://%s:%v/status"
-	SupportBundleURLDownloadFmt = "http://%s:%v/bundle"
-
-	SupportBundleDownloadTimeout = 5 * time.Minute
-)
-
-const (
 	KubernetesMinVersion = "v1.18.0"
 )
 
@@ -223,8 +210,9 @@ const (
 	EnvPodIP          = "POD_IP"
 	EnvServiceAccount = "SERVICE_ACCOUNT"
 
-	BackupStoreTypeS3   = "s3"
-	BackupStoreTypeCIFS = "cifs"
+	BackupStoreTypeS3     = "s3"
+	BackupStoreTypeCIFS   = "cifs"
+	BackupStoreTypeAZBlob = "azblob"
 
 	AWSIAMRoleAnnotation = "iam.amazonaws.com/role"
 	AWSIAMRoleArn        = "AWS_IAM_ROLE_ARN"
@@ -235,6 +223,11 @@ const (
 
 	CIFSUsername = "CIFS_USERNAME"
 	CIFSPassword = "CIFS_PASSWORD"
+
+	AZBlobAccountName = "AZBLOB_ACCOUNT_NAME"
+	AZBlobAccountKey  = "AZBLOB_ACCOUNT_KEY"
+	AZBlobEndpoint    = "AZBLOB_ENDPOINT"
+	AZBlobCert        = "AZBLOB_CERT"
 
 	HTTPSProxy = "HTTPS_PROXY"
 	HTTPProxy  = "HTTP_PROXY"
@@ -674,6 +667,13 @@ func ValidateReplicaCount(count int) error {
 	return nil
 }
 
+func ValidateLogLevel(level string) error {
+	if _, err := logrus.ParseLevel(level); err != nil {
+		return fmt.Errorf("log level is invalid")
+	}
+	return nil
+}
+
 func ValidateDataLocalityAndReplicaCount(mode longhorn.DataLocality, count int) error {
 	if mode == longhorn.DataLocalityStrictLocal && count != 1 {
 		return fmt.Errorf("replica count should be 1 in data locality %v mode", longhorn.DataLocalityStrictLocal)
@@ -932,7 +932,7 @@ func CreateCniAnnotationFromSetting(storageNetwork *longhorn.Setting) string {
 }
 
 func BackupStoreRequireCredential(backupType string) bool {
-	return backupType == BackupStoreTypeS3 || backupType == BackupStoreTypeCIFS
+	return backupType == BackupStoreTypeS3 || backupType == BackupStoreTypeCIFS || backupType == BackupStoreTypeAZBlob
 }
 
 func ConsolidateInstances(instancesMaps ...map[string]longhorn.InstanceProcess) map[string]longhorn.InstanceProcess {

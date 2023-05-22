@@ -694,7 +694,7 @@ func (m *VolumeManager) AddVolumeRecurringJob(volumeName string, name string, is
 		if err != nil {
 			return nil, err
 		}
-		logrus.Debugf("Updated volume %v recurring jobs to %+v", v.Name, volumeRecurringJob)
+		logrus.Debugf("Added volume %v recurring job label %v", v.Name, key)
 	}
 	volumeRecurringJob, err = m.ListVolumeRecurringJob(volumeName)
 	if err != nil {
