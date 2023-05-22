@@ -37,10 +37,12 @@ import (
 )
 
 const (
-	TestSupportBundleName             = "support-bundle"
-	TestSupportBundleNameFailSuffix   = "-fail"
-	TestSupportBundleNamePurgeSuffix  = "-purge"
-	TestSupportBundleNameDeleteSuffix = "-delete"
+	TestSupportBundleName              = "support-bundle"
+	TestSupportBundleNameFailSuffix    = "-fail"
+	TestSupportBundleNamePurgeSuffix   = "-purge"
+	TestSupportBundleNameDeleteSuffix  = "-delete"
+	TestSupportBundleNameReadySuffix   = "-ready"
+	TestSupportBundleNameReplaceSuffix = "-replace"
 
 	TestSupportBundleManagerPodIP   = "10.10.10.10"
 	TestSupportBundleManagerPodName = "support-bundle-manager"
@@ -74,6 +76,14 @@ func (s *TestSuite) TestReconcileSupportBundle(c *C) {
 	testCases := map[string]SupportBundleTestCase{
 		"support bundle create": {
 			state:         longhorn.SupportBundleStateNone,
+			expectedState: longhorn.SupportBundleStateStarted,
+		},
+		"support bundle create while ready support bundle exists": {
+			state: longhorn.SupportBundleStateNone,
+			supportBundleNames: []string{
+				TestSupportBundleName,
+				TestSupportBundleName + TestSupportBundleNameReadySuffix,
+			},
 			expectedState: longhorn.SupportBundleStateStarted,
 		},
 		"support bundle start deploy support bundle manager": {
@@ -113,6 +123,13 @@ func (s *TestSuite) TestReconcileSupportBundle(c *C) {
 			state: longhorn.SupportBundleStatePurging,
 			supportBundleNames: []string{
 				TestSupportBundleName + TestSupportBundleNamePurgeSuffix,
+			},
+			expectedNotExist: true,
+		},
+		"support bundle replaced": {
+			state: longhorn.SupportBundleStateReplaced,
+			supportBundleNames: []string{
+				TestSupportBundleName + TestSupportBundleNameReplaceSuffix,
 			},
 			expectedNotExist: true,
 		},
@@ -179,14 +196,22 @@ func (s *TestSuite) TestReconcileSupportBundle(c *C) {
 
 		for _, supportBundleName := range tc.supportBundleNames {
 			supportBundle, err = lhClient.LonghornV1beta2().SupportBundles(TestNamespace).Get(context.TODO(), supportBundleName, metav1.GetOptions{})
-			if tc.state == longhorn.SupportBundleStatePurging && strings.HasSuffix(supportBundleName, TestSupportBundleNamePurgeSuffix) {
+			isPurged := tc.state == longhorn.SupportBundleStatePurging && strings.HasSuffix(supportBundleName, TestSupportBundleNamePurgeSuffix)
+			isReplaced := tc.state == longhorn.SupportBundleStateReplaced && strings.HasSuffix(supportBundleName, TestSupportBundleNameReplaceSuffix)
+			if isPurged || isReplaced {
 				c.Assert(err, NotNil)
 				c.Assert(apierrors.IsNotFound(err), Equals, tc.expectedNotExist)
 				continue
-			} else {
-				c.Assert(err, IsNil)
-				c.Assert(supportBundle.Status.State, Equals, tc.expectedState)
 			}
+
+			if tc.state == longhorn.SupportBundleStateNone && strings.HasSuffix(supportBundleName, TestSupportBundleNameReadySuffix) {
+				c.Assert(err, IsNil)
+				c.Assert(supportBundle.Status.State, Equals, longhorn.SupportBundleStateReplaced)
+				continue
+			}
+
+			c.Assert(err, IsNil)
+			c.Assert(supportBundle.Status.State, Equals, tc.expectedState)
 
 			isFinalizer := util.FinalizerExists(longhornFinalizerKey, supportBundle) == !tc.expectedNotExist
 			c.Assert(isFinalizer, Equals, true)
@@ -221,6 +246,10 @@ func newFakeSupportBundleController(
 func fakeSupportBundle(name, currentOwnerID string, state longhorn.SupportBundleState, c *C, informerFactory lhinformers.SharedInformerFactory, client *lhfake.Clientset) *longhorn.SupportBundle {
 	if strings.HasSuffix(name, TestSupportBundleNameFailSuffix) {
 		state = longhorn.SupportBundleStateError
+	}
+
+	if strings.HasSuffix(name, TestSupportBundleNameReadySuffix) {
+		state = longhorn.SupportBundleStateReady
 	}
 
 	var deletionTimestamp metav1.Time

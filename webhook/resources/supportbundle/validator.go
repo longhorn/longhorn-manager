@@ -48,18 +48,28 @@ func (v *supportBundleValidator) Create(request *admission.Request, newObj runti
 		return werror.NewForbiddenError(fmt.Sprintf("failed to get %v setting", types.SettingNameSupportBundleFailedHistoryLimit))
 	}
 
-	// Comparing to all SupportBundles here because we are expecting all successful SupportBundles has been
-	// downloaded and cleaned up. The existing SupportBundles should be failed or still in progress.
-	if failedLimit > 0 && len(supportBundles) >= int(failedLimit) {
-		return werror.NewForbiddenError(fmt.Sprintf("exceeded %v setting value %v, please increase the limit or remove some failed SupportBundles. You can also set the limit to 0 to automatically clean up all the failed SupportBundles", types.SettingNameSupportBundleFailedHistoryLimit, failedLimit))
-	}
-
+	failedSupportBundleCount := 0
 	for _, supportBundle := range supportBundles {
 		if supportBundle.Status.State == longhorn.SupportBundleStateError {
+			failedSupportBundleCount++
+			continue
+		}
+
+		if types.IsSupportBundleControllerDeleting(supportBundle) {
+			continue
+		}
+
+		// Any ongoing SupportBundle should ultimately reach either the Error or ReadyForDownload state.
+		// The Support Bundle Controller will be responsible for replacing any existing ReadyForDownload SupportBundles.
+		if supportBundle.Status.State == longhorn.SupportBundleStateReady {
 			continue
 		}
 
 		return werror.NewForbiddenError(fmt.Sprintf("please try again later. Another %v is in %v phase", supportBundles[0].Name, supportBundle.Status.State))
+	}
+
+	if failedLimit > 0 && failedSupportBundleCount >= int(failedLimit) {
+		return werror.NewForbiddenError(fmt.Sprintf("exceeded %v setting value %v, please increase the limit or remove some failed SupportBundles. You can also set the limit to 0 to automatically clean up all the failed SupportBundles", types.SettingNameSupportBundleFailedHistoryLimit, failedLimit))
 	}
 
 	return nil
