@@ -2882,22 +2882,12 @@ func (vc *VolumeController) checkForAutoDetachment(v *longhorn.Volume, e *longho
 		!v.Spec.Standby) {
 		return nil
 	}
-	allScheduledReplicasIncluded := true
-	for _, r := range rs {
-		// skip unscheduled replicas
-		if r.Spec.NodeID == "" {
-			continue
-		}
-		if isDownOrDeleted, err := vc.ds.IsNodeDownOrDeleted(r.Spec.NodeID); err != nil {
-			return err
-		} else if isDownOrDeleted {
-			continue
-		}
-		if mode := e.Status.ReplicaModeMap[r.Name]; mode != longhorn.ReplicaModeRW {
-			allScheduledReplicasIncluded = false
-			break
-		}
+
+	allScheduledReplicasIncluded, err := vc.checkAllScheduledReplicasIncluded(v, e, rs)
+	if err != nil {
+		return err
 	}
+
 	if (cliAPIVersion >= engineapi.CLIVersionFour && !isPurging && (v.Status.Robustness == longhorn.VolumeRobustnessHealthy || v.Status.Robustness == longhorn.VolumeRobustnessDegraded) && allScheduledReplicasIncluded) ||
 		(cliAPIVersion < engineapi.CLIVersionFour && (v.Status.Robustness == longhorn.VolumeRobustnessHealthy || v.Status.Robustness == longhorn.VolumeRobustnessDegraded)) {
 		log.Info("Prepare to do auto detachment for restore/DR volume")
@@ -2907,6 +2897,30 @@ func (vc *VolumeController) checkForAutoDetachment(v *longhorn.Volume, e *longho
 	}
 
 	return nil
+}
+
+func (vc *VolumeController) checkAllScheduledReplicasIncluded(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (bool, error) {
+	healthReplicaCount := 0
+	hasReplicaNotIncluded := false
+
+	for _, r := range rs {
+		// skip unscheduled replicas
+		if r.Spec.NodeID == "" {
+			continue
+		}
+		if isDownOrDeleted, err := vc.ds.IsNodeDownOrDeleted(r.Spec.NodeID); err != nil {
+			return false, err
+		} else if isDownOrDeleted {
+			continue
+		}
+		if mode := e.Status.ReplicaModeMap[r.Name]; mode == longhorn.ReplicaModeRW {
+			healthReplicaCount++
+		} else {
+			hasReplicaNotIncluded = true
+		}
+	}
+
+	return healthReplicaCount != 0 && (healthReplicaCount >= v.Spec.NumberOfReplicas || !hasReplicaNotIncluded), nil
 }
 
 func (vc *VolumeController) getInfoFromBackupURL(v *longhorn.Volume) (string, string, error) {
