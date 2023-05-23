@@ -155,6 +155,7 @@ const (
 	LonghornLabelBackupVolume               = "backup-volume"
 	LonghornLabelRecurringJob               = "job"
 	LonghornLabelRecurringJobGroup          = "job-group"
+	LonghornLabelRecurringJobSource         = "source"
 	LonghornLabelOrphan                     = "orphan"
 	LonghornLabelOrphanType                 = "orphan-type"
 	LonghornLabelRecoveryBackend            = "recovery-backend"
@@ -513,6 +514,12 @@ func GetRecurringJobLabelKey(labelType, recurringJobName string) string {
 	return fmt.Sprintf("%s/%s", prefix, recurringJobName)
 }
 
+// GetRecurringJobSourceLabelKey returns "recurring-job.longhorn.io/source"
+func GetRecurringJobSourceLabelKey() string {
+	prefix := fmt.Sprintf(LonghornLabelRecurringJobKeyPrefixFmt, LonghornLabelRecurringJob)
+	return fmt.Sprintf("%s/%s", prefix, LonghornLabelRecurringJobSource)
+}
+
 func GetRecurringJobLabelValueMap(labelType, recurringJobName string) map[string]string {
 	return map[string]string{
 		GetRecurringJobLabelKey(labelType, recurringJobName): LonghornLabelValueEnabled,
@@ -521,9 +528,18 @@ func GetRecurringJobLabelValueMap(labelType, recurringJobName string) map[string
 
 // IsRecurringJobLabel checks if the given key is a recurring job label.
 func IsRecurringJobLabel(key string) bool {
+	if IsRecurringJobSourceLabel(key) {
+		return false
+	}
+
 	jobPrefix := fmt.Sprintf(LonghornLabelRecurringJobKeyPrefixFmt, LonghornLabelRecurringJob)
 	groupPrefix := fmt.Sprintf(LonghornLabelRecurringJobKeyPrefixFmt, LonghornLabelRecurringJobGroup)
 	return strings.HasPrefix(key, jobPrefix) || strings.HasPrefix(key, groupPrefix)
+}
+
+// IsRecurringJobSourceLabel checks if the given key is the recurring job source label.
+func IsRecurringJobSourceLabel(key string) bool {
+	return key == GetRecurringJobSourceLabelKey()
 }
 
 func GetOrphanLabelsForOrphanedDirectory(nodeID, diskUUID string) map[string]string {

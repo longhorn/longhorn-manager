@@ -3506,6 +3506,16 @@ func (c *VolumeController) syncPVCRecurringJobLabels(volume *longhorn.Volume) er
 		return err
 	}
 
+	hasSourceLabel, err := hasRecurringJobSourceLabel(pvc)
+	if err != nil {
+		return errors.Wrapf(err, "failed to check recurring job source")
+	}
+
+	if !hasSourceLabel {
+		c.logger.Debugf("Ignoring recurring job labels on PVC %v due to missing source label", pvc.Name, volume.Name)
+		return nil
+	}
+
 	if err := syncRecurringJobLabelsToTargetResource(types.LonghornKindVolume, volume, pvc, c.logger); err != nil {
 		return errors.Wrapf(err, "failed to sync recurring job labels from PVC %v to Volume %v", pvc.Name, volume.Name)
 	}

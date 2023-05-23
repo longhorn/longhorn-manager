@@ -604,3 +604,26 @@ func syncRecurringJobLabelsToTargetResource(targetKind string, targetObj, source
 	targetMeta.SetLabels(targetLabels)
 	return nil
 }
+
+func hasRecurringJobSourceLabel(obj runtime.Object) (bool, error) {
+	objMeta, err := meta.Accessor(obj)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to get object accessor")
+	}
+
+	objLabels := objMeta.GetLabels()
+	if objLabels == nil {
+		objLabels = map[string]string{}
+	}
+
+	for key, value := range objLabels {
+		if !types.IsRecurringJobSourceLabel(key) {
+			continue
+		}
+
+		if value == types.LonghornLabelValueEnabled {
+			return true, nil
+		}
+	}
+	return false, nil
+}
