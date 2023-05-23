@@ -217,7 +217,7 @@ func (c *RecurringJobController) syncRecurringJob(key string) (err error) {
 	}
 
 	if recurringJob.DeletionTimestamp != nil {
-		return c.cleanupVolumeRecurringJob(recurringJob)
+		return c.cleanupRecurringJobLabelInVolumesAndPVCs(recurringJob)
 	}
 
 	existingRecurringJob := recurringJob.DeepCopy()
@@ -244,32 +244,21 @@ func (c *RecurringJobController) syncRecurringJob(key string) (err error) {
 	return nil
 }
 
-func (c *RecurringJobController) cleanupVolumeRecurringJob(recurringJob *longhorn.RecurringJob) error {
+func (c *RecurringJobController) cleanupRecurringJobLabelInVolumesAndPVCs(recurringJob *longhorn.RecurringJob) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to cleanup recurring job label %v in Volumes and PVCs", recurringJob.Name)
+	}()
+
 	// Check if each group of the recurring job contains other recurring jobs.
 	// If No, it means the recurring job is the last job of the group then
 	// Longhorn will clean up this group labels for all volumes.
-	checkRecurringJobs, err := c.ds.ListRecurringJobs()
+	recurringJobs, err := c.ds.ListRecurringJobs()
 	if err != nil {
 		return err
 	}
-	rmGroups := []string{}
-	for _, group := range recurringJob.Spec.Groups {
-		inUse := false
-		for _, checkRecurringJob := range checkRecurringJobs {
-			if checkRecurringJob.Name == recurringJob.Name {
-				continue
-			}
-			if util.Contains(checkRecurringJob.Spec.Groups, group) {
-				inUse = true
-				break
-			}
-		}
-		if !inUse {
-			rmGroups = append(rmGroups, group)
-		}
-	}
+	unusedGroups := c.getUnusedRecurringJobGroupInfo(recurringJob, recurringJobs)
 
-	// delete volume labels
+	// delete PVC or Volume labels
 	volumes, err := c.ds.ListVolumes()
 	if err != nil {
 		return err
@@ -278,28 +267,86 @@ func (c *RecurringJobController) cleanupVolumeRecurringJob(recurringJob *longhor
 		jobs := datastore.MarshalLabelToVolumeRecurringJob(vol.Labels)
 		for jobName, job := range jobs {
 			if job.IsGroup {
-				if !util.Contains(rmGroups, jobName) {
+				if !unusedGroups[jobName] {
 					continue
 				}
 				c.logger.Debugf("Clean up recurring job-group %v for %v", jobName, vol.Name)
 				labelKey := types.GetRecurringJobLabelKeyByType(jobName, true)
-				vol, err = c.ds.RemoveRecurringJobLabelFromVolume(vol, labelKey)
-				if err != nil {
-					return err
-				}
+				vol = c.removeRecurringJobLabelInVolume(vol, labelKey)
 			} else if jobName == recurringJob.Name {
 				c.logger.Debugf("Clean up recurring job %v for %v", jobName, vol.Name)
 				labelKey := types.GetRecurringJobLabelKeyByType(jobName, false)
-				vol, err = c.ds.RemoveRecurringJobLabelFromVolume(vol, labelKey)
-				if err != nil {
-					return err
-				}
+				vol = c.removeRecurringJobLabelInVolume(vol, labelKey)
 			}
+		}
+
+		if err := c.updatePVCRecurringJobLabelsFromVolume(vol); err != nil {
+			return err
 		}
 
 		if _, err := c.ds.UpdateVolume(vol); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func (c *RecurringJobController) removeRecurringJobLabelInVolume(volume *longhorn.Volume, labelKey string) *longhorn.Volume {
+	if _, exist := volume.Labels[labelKey]; exist {
+		delete(volume.Labels, labelKey)
+		logrus.Debugf("Removing volume %v recurring job label %v", volume.Name, labelKey)
+	}
+	return volume
+}
+
+// getUnusedRecurringJobGroupInfo retrieves the information about unused recurring job groups in relation to the given recurring job.
+// It returns a map where the keys represent the recurring job groups, and the values indicate whether each group is unused by other RecurringJobs.
+func (c *RecurringJobController) getUnusedRecurringJobGroupInfo(recurringJob *longhorn.RecurringJob, existingRecurringJobs map[string]*longhorn.RecurringJob) map[string]bool {
+	unusedGroupInfo := make(map[string]bool, len(recurringJob.Spec.Groups))
+
+	// Initialize the unusedGroupInfo map
+	for _, group := range recurringJob.Spec.Groups {
+		unusedGroupInfo[group] = true
+	}
+
+	// Check if each group is unused in any other RecurringJobs
+	for _, group := range recurringJob.Spec.Groups {
+		for _, existingRecurringJob := range existingRecurringJobs {
+			if existingRecurringJob.Name == recurringJob.Name {
+				continue
+			}
+
+			// If the group is found in another recurring job, mark it as used
+			if util.Contains(existingRecurringJob.Spec.Groups, group) {
+				unusedGroupInfo[group] = false
+				break
+			}
+		}
+	}
+	return unusedGroupInfo
+}
+
+func (c *RecurringJobController) updatePVCRecurringJobLabelsFromVolume(volume *longhorn.Volume) (err error) {
+	kubeStatus := volume.Status.KubernetesStatus
+	if kubeStatus.PVCName == "" || kubeStatus.LastPVCRefAt != "" {
+		return nil
+	}
+
+	pvc, err := c.ds.GetPersistentVolumeClaim(kubeStatus.Namespace, kubeStatus.PVCName)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		err = errors.Wrapf(err, "failed to update recurring job labels from Volume %v to PVC %v", volume.Name, pvc.Name)
+	}()
+
+	if err := syncRecurringJobLabelsToTargetResource(types.KubernetesKindPersistentVolumeClaim, pvc, volume, c.logger); err != nil {
+		return errors.Wrapf(err, "failed to sync recurring job labels to PVC %v", pvc.Name)
+	}
+
+	if _, err := c.ds.UpdatePersistentVolumeClaim(kubeStatus.Namespace, pvc); err != nil {
+		return err
 	}
 	return nil
 }
