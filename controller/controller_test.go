@@ -380,7 +380,9 @@ func newSystemRestore(name, currentOwnerID string, state longhorn.SystemRestoreS
 	}
 }
 
-func newSystemBackup(name, currentOwnerID, longhornVersion string, state longhorn.SystemBackupState) *longhorn.SystemBackup {
+func newSystemBackup(name, currentOwnerID, longhornVersion string,
+	volumeBackupPolicy longhorn.SystemBackupCreateVolumeBackupPolicy,
+	state longhorn.SystemBackupState) *longhorn.SystemBackup {
 	return &longhorn.SystemBackup{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -388,6 +390,9 @@ func newSystemBackup(name, currentOwnerID, longhornVersion string, state longhor
 			Labels: map[string]string{
 				types.GetVersionLabelKey(): longhornVersion,
 			},
+		},
+		Spec: longhorn.SystemBackupSpec{
+			VolumeBackupPolicy: volumeBackupPolicy,
 		},
 		Status: longhorn.SystemBackupStatus{
 			OwnerID: currentOwnerID,
@@ -427,6 +432,15 @@ func newStorageClass(name, provisioner string) *storagev1.StorageClass {
 			Name: name,
 		},
 		Provisioner: provisioner,
+	}
+}
+
+func newBackup(name string) *longhorn.Backup {
+	return &longhorn.Backup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+		},
 	}
 }
 
