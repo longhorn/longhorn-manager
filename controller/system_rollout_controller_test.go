@@ -1428,7 +1428,7 @@ func fakeSystemBackupArchieve(c *C, systemBackupName, systemRolloutOwnerID, roll
 	fakeSystemRolloutNamespace(c, kubeInformerFactory, kubeClient)
 
 	systemBackupController := newFakeSystemBackupController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, extensionsClient, rolloutControllerID)
-	systemBackup := fakeSystemBackup(systemBackupName, systemRolloutOwnerID, "", false, longhorn.SystemBackupStateGenerating, c, lhInformerFactory, lhClient)
+	systemBackup := fakeSystemBackup(systemBackupName, systemRolloutOwnerID, "", false, "", longhorn.SystemBackupStateGenerating, c, lhInformerFactory, lhClient)
 
 	systemBackupController.GenerateSystemBackup(systemBackup, downloadPath, tempDir)
 	systemBackup, err := lhClient.LonghornV1beta2().SystemBackups(TestNamespace).Get(context.TODO(), systemBackupName, metav1.GetOptions{})
