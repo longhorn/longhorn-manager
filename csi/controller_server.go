@@ -422,8 +422,12 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 
 	return cs.publishVolume(volume, nodeID, attachmentID, func() error {
 		checkVolumePublished := func(vol *longhornclient.Volume) bool {
+			isRegularRWXVolume := vol.AccessMode == string(longhorn.AccessModeReadWriteMany) && !vol.Migratable
 			attachment, ok := vol.VolumeAttachment.Attachments[attachmentID]
-			return ok && attachment.Satisfied
+			if isRegularRWXVolume {
+				return ok && attachment.Satisfied
+			}
+			return ok && attachment.Satisfied && isVolumeAvailableOn(vol, nodeID)
 		}
 		if !cs.waitForVolumeState(volumeID, "volume published", checkVolumePublished, false, false) {
 			// check if there is error while attaching
@@ -517,11 +521,7 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 	// TODO: hadndle cases in which NodeID is empty. Should we detach the volume from all nodes???
 
 	return cs.unpublishVolume(volume, nodeID, attachmentID, func() error {
-		//isSharedVolume := requiresSharedAccess(volume, nil) && !volume.Migratable
 		checkVolumeUnpublished := func(vol *longhornclient.Volume) bool {
-			//if isSharedVolume {
-			//	return true
-			//}
 			_, ok := vol.VolumeAttachment.Attachments[attachmentID]
 			return !ok
 		}
