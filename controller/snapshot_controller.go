@@ -483,23 +483,7 @@ func (sc *SnapshotController) handleAttachmentTicketCreation(snap *longhorn.Snap
 	}()
 
 	attachmentID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeSnapshotController, snap.Name)
-
-	attachment, ok := va.Spec.AttachmentTickets[attachmentID]
-	if !ok {
-		//create new one
-		attachment = &longhorn.AttachmentTicket{
-			ID:     attachmentID,
-			Type:   longhorn.AttacherTypeSnapshotController,
-			NodeID: vol.Status.OwnerID,
-			Parameters: map[string]string{
-				longhorn.AttachmentParameterDisableFrontend: longhorn.AnyValue,
-			},
-		}
-	}
-	if attachment.NodeID != vol.Status.OwnerID {
-		attachment.NodeID = vol.Status.OwnerID
-	}
-	va.Spec.AttachmentTickets[attachment.ID] = attachment
+	createOrUpdateAttachmentTicket(va, attachmentID, vol.Status.OwnerID, longhorn.AnyValue, longhorn.AttacherTypeSnapshotController)
 
 	return nil
 }

@@ -188,22 +188,7 @@ func (vrsc *VolumeRestoreController) reconcile(volName string) (err error) {
 	restoringAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeRestoreController, volName)
 
 	if vol.Status.RestoreRequired {
-		restoringAttachmentTicket, ok := va.Spec.AttachmentTickets[restoringAttachmentTicketID]
-		if !ok {
-			//create new one
-			restoringAttachmentTicket = &longhorn.AttachmentTicket{
-				ID:     restoringAttachmentTicketID,
-				Type:   longhorn.AttacherTypeVolumeRestoreController,
-				NodeID: vol.Status.OwnerID,
-				Parameters: map[string]string{
-					longhorn.AttachmentParameterDisableFrontend: longhorn.TrueValue,
-				},
-			}
-		}
-		if restoringAttachmentTicket.NodeID != vol.Status.OwnerID {
-			restoringAttachmentTicket.NodeID = vol.Status.OwnerID
-		}
-		va.Spec.AttachmentTickets[restoringAttachmentTicket.ID] = restoringAttachmentTicket
+		createOrUpdateAttachmentTicket(va, restoringAttachmentTicketID, vol.Status.OwnerID, longhorn.TrueValue, longhorn.AttacherTypeVolumeRestoreController)
 	} else {
 		delete(va.Spec.AttachmentTickets, restoringAttachmentTicketID)
 	}
