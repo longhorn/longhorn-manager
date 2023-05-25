@@ -37,3 +37,22 @@ func isVolumeFullyDetached(vol *longhorn.Volume) bool {
 		vol.Status.PendingNodeID == "" &&
 		vol.Status.State == longhorn.VolumeStateDetached
 }
+
+func createOrUpdateAttachmentTicket(va *longhorn.VolumeAttachment, ticketID, nodeID, disableFrontend string, attacherType longhorn.AttacherType) {
+	attachmentTicket, ok := va.Spec.AttachmentTickets[ticketID]
+	if !ok {
+		// Create new one
+		attachmentTicket = &longhorn.AttachmentTicket{
+			ID:     ticketID,
+			Type:   attacherType,
+			NodeID: nodeID,
+			Parameters: map[string]string{
+				longhorn.AttachmentParameterDisableFrontend: disableFrontend,
+			},
+		}
+	}
+	if attachmentTicket.NodeID != nodeID {
+		attachmentTicket.NodeID = nodeID
+	}
+	va.Spec.AttachmentTickets[attachmentTicket.ID] = attachmentTicket
+}

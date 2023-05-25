@@ -188,22 +188,7 @@ func (vec *VolumeExpansionController) reconcile(volName string) (err error) {
 	expandingAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeExpansionController, volName)
 
 	if vol.Status.ExpansionRequired {
-		expandingAttachmentTicket, ok := va.Spec.AttachmentTickets[expandingAttachmentTicketID]
-		if !ok {
-			//create new one
-			expandingAttachmentTicket = &longhorn.AttachmentTicket{
-				ID:     expandingAttachmentTicketID,
-				Type:   longhorn.AttacherTypeVolumeExpansionController,
-				NodeID: vol.Status.OwnerID,
-				Parameters: map[string]string{
-					longhorn.AttachmentParameterDisableFrontend: longhorn.FalseValue,
-				},
-			}
-		}
-		if expandingAttachmentTicket.NodeID != vol.Status.OwnerID {
-			expandingAttachmentTicket.NodeID = vol.Status.OwnerID
-		}
-		va.Spec.AttachmentTickets[expandingAttachmentTicket.ID] = expandingAttachmentTicket
+		createOrUpdateAttachmentTicket(va, expandingAttachmentTicketID, vol.Status.OwnerID, longhorn.FalseValue, longhorn.AttacherTypeVolumeExpansionController)
 	} else {
 		delete(va.Spec.AttachmentTickets, expandingAttachmentTicketID)
 	}

@@ -492,23 +492,7 @@ func (bc *BackupController) handleAttachmentTicketCreation(backup *longhorn.Back
 	}()
 
 	attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackupController, backup.Name)
-
-	attachmentTicket, ok := va.Spec.AttachmentTickets[attachmentTicketID]
-	if !ok {
-		//create new one
-		attachmentTicket = &longhorn.AttachmentTicket{
-			ID:     attachmentTicketID,
-			Type:   longhorn.AttacherTypeBackupController,
-			NodeID: vol.Status.OwnerID,
-			Parameters: map[string]string{
-				"disableFrontend": longhorn.AnyValue,
-			},
-		}
-	}
-	if attachmentTicket.NodeID != vol.Status.OwnerID {
-		attachmentTicket.NodeID = vol.Status.OwnerID
-	}
-	va.Spec.AttachmentTickets[attachmentTicket.ID] = attachmentTicket
+	createOrUpdateAttachmentTicket(va, attachmentTicketID, vol.Status.OwnerID, longhorn.AnyValue, longhorn.AttacherTypeBackupController)
 
 	return nil
 }
