@@ -108,6 +108,14 @@ func getBackupCredentialEnv(backupTarget string, credential map[string]string) (
 	case types.BackupStoreTypeCIFS:
 		envs = append(envs, fmt.Sprintf("%s=%s", types.CIFSUsername, credential[types.CIFSUsername]))
 		envs = append(envs, fmt.Sprintf("%s=%s", types.CIFSPassword, credential[types.CIFSPassword]))
+	case types.BackupStoreTypeAZBlob:
+		envs = append(envs, fmt.Sprintf("%s=%s", types.AZBlobAccountName, credential[types.AZBlobAccountName]))
+		envs = append(envs, fmt.Sprintf("%s=%s", types.AZBlobAccountKey, credential[types.AZBlobAccountKey]))
+		envs = append(envs, fmt.Sprintf("%s=%s", types.AZBlobEndpoint, credential[types.AZBlobEndpoint]))
+		envs = append(envs, fmt.Sprintf("%s=%s", types.AZBlobCert, credential[types.AZBlobCert]))
+		envs = append(envs, fmt.Sprintf("%s=%s", types.HTTPSProxy, credential[types.HTTPSProxy]))
+		envs = append(envs, fmt.Sprintf("%s=%s", types.HTTPProxy, credential[types.HTTPProxy]))
+		envs = append(envs, fmt.Sprintf("%s=%s", types.NOProxy, credential[types.NOProxy]))
 	}
 	return envs, nil
 }

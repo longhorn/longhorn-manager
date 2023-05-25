@@ -11,6 +11,10 @@ type InstanceManager struct {
 
 	Image string `json:"image,omitempty" yaml:"image,omitempty"`
 
+	InstanceEngines map[string]string `json:"instanceEngines,omitempty" yaml:"instance_engines,omitempty"`
+
+	InstanceReplicas map[string]string `json:"instanceReplicas,omitempty" yaml:"instance_replicas,omitempty"`
+
 	Instances map[string]string `json:"instances,omitempty" yaml:"instances,omitempty"`
 
 	ManagerType string `json:"managerType,omitempty" yaml:"manager_type,omitempty"`

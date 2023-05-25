@@ -57,7 +57,6 @@ const (
 	SettingNameStableLonghornVersions                                   = SettingName("stable-longhorn-versions")
 	SettingNameDefaultReplicaCount                                      = SettingName("default-replica-count")
 	SettingNameDefaultDataLocality                                      = SettingName("default-data-locality")
-	SettingNameGuaranteedEngineCPU                                      = SettingName("guaranteed-engine-cpu")
 	SettingNameDefaultLonghornStaticStorageClass                        = SettingName("default-longhorn-static-storage-class")
 	SettingNameBackupstorePollInterval                                  = SettingName("backupstore-poll-interval")
 	SettingNameTaintToleration                                          = SettingName("taint-toleration")
@@ -73,7 +72,6 @@ const (
 	SettingNameNodeDrainPolicy                                          = SettingName("node-drain-policy")
 	SettingNamePriorityClass                                            = SettingName("priority-class")
 	SettingNameDisableRevisionCounter                                   = SettingName("disable-revision-counter")
-	SettingNameDisableReplicaRebuild                                    = SettingName("disable-replica-rebuild")
 	SettingNameReplicaReplenishmentWaitInterval                         = SettingName("replica-replenishment-wait-interval")
 	SettingNameConcurrentReplicaRebuildPerNodeLimit                     = SettingName("concurrent-replica-rebuild-per-node-limit")
 	SettingNameConcurrentBackupRestorePerNodeLimit                      = SettingName("concurrent-volume-backup-restore-per-node-limit")
@@ -83,8 +81,6 @@ const (
 	SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit             = SettingName("concurrent-automatic-engine-upgrade-per-node-limit")
 	SettingNameBackingImageCleanupWaitInterval                          = SettingName("backing-image-cleanup-wait-interval")
 	SettingNameBackingImageRecoveryWaitInterval                         = SettingName("backing-image-recovery-wait-interval")
-	SettingNameGuaranteedEngineManagerCPU                               = SettingName("guaranteed-engine-manager-cpu")
-	SettingNameGuaranteedReplicaManagerCPU                              = SettingName("guaranteed-replica-manager-cpu")
 	SettingNameGuaranteedInstanceManagerCPU                             = SettingName("guaranteed-instance-manager-cpu")
 	SettingNameKubernetesClusterAutoscalerEnabled                       = SettingName("kubernetes-cluster-autoscaler-enabled")
 	SettingNameOrphanAutoDeletion                                       = SettingName("orphan-auto-deletion")
@@ -105,6 +101,7 @@ const (
 	SettingNameBackupCompressionMethod                                  = SettingName("backup-compression-method")
 	SettingNameBackupConcurrentLimit                                    = SettingName("backup-concurrent-limit")
 	SettingNameRestoreConcurrentLimit                                   = SettingName("restore-concurrent-limit")
+	SettingNameLogLevel                                                 = SettingName("log-level")
 )
 
 var (
@@ -130,7 +127,6 @@ var (
 		SettingNameStableLonghornVersions,
 		SettingNameDefaultReplicaCount,
 		SettingNameDefaultDataLocality,
-		SettingNameGuaranteedEngineCPU,
 		SettingNameDefaultLonghornStaticStorageClass,
 		SettingNameBackupstorePollInterval,
 		SettingNameTaintToleration,
@@ -146,7 +142,6 @@ var (
 		SettingNameNodeDrainPolicy,
 		SettingNamePriorityClass,
 		SettingNameDisableRevisionCounter,
-		SettingNameDisableReplicaRebuild,
 		SettingNameReplicaReplenishmentWaitInterval,
 		SettingNameConcurrentReplicaRebuildPerNodeLimit,
 		SettingNameConcurrentBackupRestorePerNodeLimit,
@@ -156,8 +151,6 @@ var (
 		SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit,
 		SettingNameBackingImageCleanupWaitInterval,
 		SettingNameBackingImageRecoveryWaitInterval,
-		SettingNameGuaranteedEngineManagerCPU,
-		SettingNameGuaranteedReplicaManagerCPU,
 		SettingNameGuaranteedInstanceManagerCPU,
 		SettingNameKubernetesClusterAutoscalerEnabled,
 		SettingNameOrphanAutoDeletion,
@@ -178,6 +171,7 @@ var (
 		SettingNameBackupCompressionMethod,
 		SettingNameBackupConcurrentLimit,
 		SettingNameRestoreConcurrentLimit,
+		SettingNameLogLevel,
 	}
 )
 
@@ -228,7 +222,6 @@ var (
 		SettingNameStableLonghornVersions:                                   SettingDefinitionStableLonghornVersions,
 		SettingNameDefaultReplicaCount:                                      SettingDefinitionDefaultReplicaCount,
 		SettingNameDefaultDataLocality:                                      SettingDefinitionDefaultDataLocality,
-		SettingNameGuaranteedEngineCPU:                                      SettingDefinitionGuaranteedEngineCPU,
 		SettingNameDefaultLonghornStaticStorageClass:                        SettingDefinitionDefaultLonghornStaticStorageClass,
 		SettingNameBackupstorePollInterval:                                  SettingDefinitionBackupstorePollInterval,
 		SettingNameTaintToleration:                                          SettingDefinitionTaintToleration,
@@ -244,7 +237,6 @@ var (
 		SettingNameNodeDrainPolicy:                                          SettingDefinitionNodeDrainPolicy,
 		SettingNamePriorityClass:                                            SettingDefinitionPriorityClass,
 		SettingNameDisableRevisionCounter:                                   SettingDefinitionDisableRevisionCounter,
-		SettingNameDisableReplicaRebuild:                                    SettingDefinitionDisableReplicaRebuild,
 		SettingNameReplicaReplenishmentWaitInterval:                         SettingDefinitionReplicaReplenishmentWaitInterval,
 		SettingNameConcurrentReplicaRebuildPerNodeLimit:                     SettingDefinitionConcurrentReplicaRebuildPerNodeLimit,
 		SettingNameConcurrentBackupRestorePerNodeLimit:                      SettingDefinitionConcurrentVolumeBackupRestorePerNodeLimit,
@@ -254,8 +246,6 @@ var (
 		SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit:             SettingDefinitionConcurrentAutomaticEngineUpgradePerNodeLimit,
 		SettingNameBackingImageCleanupWaitInterval:                          SettingDefinitionBackingImageCleanupWaitInterval,
 		SettingNameBackingImageRecoveryWaitInterval:                         SettingDefinitionBackingImageRecoveryWaitInterval,
-		SettingNameGuaranteedEngineManagerCPU:                               SettingDefinitionGuaranteedEngineManagerCPU,
-		SettingNameGuaranteedReplicaManagerCPU:                              SettingDefinitionGuaranteedReplicaManagerCPU,
 		SettingNameGuaranteedInstanceManagerCPU:                             SettingDefinitionGuaranteedInstanceManagerCPU,
 		SettingNameKubernetesClusterAutoscalerEnabled:                       SettingDefinitionKubernetesClusterAutoscalerEnabled,
 		SettingNameOrphanAutoDeletion:                                       SettingDefinitionOrphanAutoDeletion,
@@ -276,6 +266,7 @@ var (
 		SettingNameBackupCompressionMethod:                                  SettingDefinitionBackupCompressionMethod,
 		SettingNameBackupConcurrentLimit:                                    SettingDefinitionBackupConcurrentLimit,
 		SettingNameRestoreConcurrentLimit:                                   SettingDefinitionRestoreConcurrentLimit,
+		SettingNameLogLevel:                                                 SettingDefinitionLogLevel,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -546,17 +537,6 @@ var (
 		},
 	}
 
-	SettingDefinitionGuaranteedEngineCPU = SettingDefinition{
-		DisplayName: "Guaranteed Engine CPU (Deprecated)",
-		Description: "This setting is replaced by 2 new settings \"Guaranteed Engine Manager CPU\" and \"Guaranteed Replica Manager CPU\" since Longhorn version v1.1.1. \n" +
-			"This setting was used to control the CPU requests of all Longhorn Instance Manager pods. \n",
-		Category: SettingCategoryDangerZone,
-		Type:     SettingTypeDeprecated,
-		Required: false,
-		ReadOnly: true,
-		Default:  "",
-	}
-
 	SettingDefinitionDefaultLonghornStaticStorageClass = SettingDefinition{
 		DisplayName: "Default Longhorn Static StorageClass Name",
 		Description: "The 'storageClassName' is given to PVs and PVCs that are created for an existing Longhorn volume. The StorageClass name can also be used as a label, so it is possible to use a Longhorn StorageClass to bind a workload to an existing PV without creating a Kubernetes StorageClass object.",
@@ -739,16 +719,6 @@ var (
 		Default:     "false",
 	}
 
-	SettingDefinitionDisableReplicaRebuild = SettingDefinition{
-		DisplayName: "Disable Replica Rebuild",
-		Description: "This setting disable replica rebuild cross the whole cluster, eviction and data locality feature won't work if this setting is true. But doesn't have any impact to any current replica rebuild and restore disaster recovery volume.",
-		Category:    SettingCategoryDangerZone,
-		Type:        SettingTypeDeprecated,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "false",
-	}
-
 	SettingDefinitionReplicaReplenishmentWaitInterval = SettingDefinition{
 		DisplayName: "Replica Replenishment Wait Interval",
 		Description: "In seconds. The interval determines how long Longhorn will wait at least in order to reuse the existing data on a failed replica rather than directly creating a new replica for a degraded volume.\n" +
@@ -856,46 +826,6 @@ var (
 		Required: true,
 		ReadOnly: false,
 		Default:  "300",
-	}
-
-	SettingDefinitionGuaranteedEngineManagerCPU = SettingDefinition{
-		DisplayName: "Guaranteed Engine Manager CPU (Deprecated)",
-		Description: "This integer value indicates how many percentage of the total allocatable CPU on each node will be reserved for each engine manager Pod. For example, 10 means 10% of the total CPU on a node will be allocated to each engine manager pod on this node. This will help maintain engine stability during high node workload. \n\n" +
-			"In order to prevent unexpected volume engine crash as well as guarantee a relative acceptable IO performance, you can use the following formula to calculate a value for this setting: \n\n" +
-			"`Guaranteed Engine Manager CPU = The estimated max Longhorn volume engine count on a node * 0.1 / The total allocatable CPUs on the node * 100` \n\n" +
-			"The result of above calculation doesn't mean that's the maximum CPU resources the Longhorn workloads require. To fully exploit the Longhorn volume I/O performance, you can allocate/guarantee more CPU resources via this setting. \n\n" +
-			"If it's hard to estimate the usage now, you can leave it with the default value, which is 12%. Then you can tune it when there is no running workload using Longhorn volumes. \n\n" +
-			"WARNING: \n\n" +
-			"  - Value 0 means unsetting CPU requests for engine manager pods. \n\n" +
-			"  - Considering the possible new instance manager pods in the further system upgrade, this integer value is range from 0 to 40. And the sum with setting 'Guaranteed Engine Manager CPU' should not be greater than 40. \n\n" +
-			"  - One more set of instance manager pods may need to be deployed when the Longhorn system is upgraded. If current available CPUs of the nodes are not enough for the new instance manager pods, you need to detach the volumes using the oldest instance manager pods so that Longhorn can clean up the old pods automatically and release the CPU resources. And the new pods with the latest instance manager image will be launched then. \n\n" +
-			"  - This global setting will be ignored for a node if the field \"EngineManagerCPURequest\" on the node is set. \n\n" +
-			"  - After this setting is changed, all engine manager pods using this global setting on all the nodes will be automatically restarted. In other words, DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. \n\n",
-		Category: SettingCategoryDangerZone,
-		Type:     SettingTypeDeprecated,
-		Required: true,
-		ReadOnly: false,
-		Default:  "12",
-	}
-
-	SettingDefinitionGuaranteedReplicaManagerCPU = SettingDefinition{
-		DisplayName: "Guaranteed Replica Manager CPU (Deprecated)",
-		Description: "This integer value indicates how many percentage of the total allocatable CPU on each node will be reserved for each replica manager Pod. 10 means 10% of the total CPU on a node will be allocated to each replica manager pod on this node. This will help maintain replica stability during high node workload. \n\n" +
-			"In order to prevent unexpected volume replica crash as well as guarantee a relative acceptable IO performance, you can use the following formula to calculate a value for this setting: \n\n" +
-			"`Guaranteed Replica Manager CPU = The estimated max Longhorn volume replica count on a node * 0.1 / The total allocatable CPUs on the node * 100` \n\n" +
-			"The result of above calculation doesn't mean that's the maximum CPU resources the Longhorn workloads require. To fully exploit the Longhorn volume I/O performance, you can allocate/guarantee more CPU resources via this setting. \n\n" +
-			"If it's hard to estimate the usage now, you can leave it with the default value, which is 12%. Then you can tune it when there is no running workload using Longhorn volumes. \n\n" +
-			"WARNING: \n\n" +
-			"  - Value 0 means unsetting CPU requests for replica manager pods. \n\n" +
-			"  - Considering the possible new instance manager pods in the further system upgrade, this integer value is range from 0 to 40. And the sum with setting 'Guaranteed Replica Manager CPU' should not be greater than 40. \n\n" +
-			"  - One more set of instance manager pods may need to be deployed when the Longhorn system is upgraded. If current available CPUs of the nodes are not enough for the new instance manager pods, you need to detach the volumes using the oldest instance manager pods so that Longhorn can clean up the old pods automatically and release the CPU resources. And the new pods with the latest instance manager image will be launched then. \n\n" +
-			"  - This global setting will be ignored for a node if the field \"ReplicaManagerCPURequest\" on the node is set. \n\n" +
-			"  - After this setting is changed, all replica manager pods using this global setting on all the nodes will be automatically restarted. In other words, DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. \n\n",
-		Category: SettingCategoryDangerZone,
-		Type:     SettingTypeDeprecated,
-		Required: true,
-		ReadOnly: false,
-		Default:  "12",
 	}
 
 	SettingDefinitionGuaranteedInstanceManagerCPU = SettingDefinition{
@@ -1125,6 +1055,16 @@ var (
 		ReadOnly:    false,
 		Default:     "5",
 	}
+
+	SettingDefinitionLogLevel = SettingDefinition{
+		DisplayName: "Log Level",
+		Description: "The log level Panic, Fatal, Error, Warn, Info, Debug, Trace used in longhorn manager. By default Info.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "Info",
+	}
 )
 
 type NodeDownPodDeletionPolicy string
@@ -1257,10 +1197,6 @@ func ValidateSetting(name, value string) (err error) {
 		if err := ValidateReplicaAutoBalance(longhorn.ReplicaAutoBalance(value)); err != nil {
 			return errors.Wrapf(err, "failed to validate replica auto balance: %v", value)
 		}
-	case SettingNameGuaranteedEngineCPU:
-		if value != "" {
-			return fmt.Errorf("cannot set a value %v for the deprecated setting %v", value, sName)
-		}
 	case SettingNameBackingImageCleanupWaitInterval:
 		fallthrough
 	case SettingNameBackingImageRecoveryWaitInterval:
@@ -1362,10 +1298,6 @@ func ValidateSetting(name, value string) (err error) {
 		if !isValidChoice(choices, value) {
 			return fmt.Errorf("value %v is not a valid choice, available choices %v", value, choices)
 		}
-	case SettingNameGuaranteedEngineManagerCPU:
-		fallthrough
-	case SettingNameGuaranteedReplicaManagerCPU:
-		fallthrough
 	case SettingNameGuaranteedInstanceManagerCPU:
 		i, err := strconv.Atoi(value)
 		if err != nil {
@@ -1373,6 +1305,10 @@ func ValidateSetting(name, value string) (err error) {
 		}
 		if i < 0 || i > 40 {
 			return fmt.Errorf("guaranteed instance manager cpu value %v should be between 0 to 40", value)
+		}
+	case SettingNameLogLevel:
+		if err := ValidateLogLevel(value); err != nil {
+			return errors.Wrapf(err, "failed to validate log level %v", value)
 		}
 	}
 	return nil
@@ -1414,34 +1350,26 @@ func GetCustomizedDefaultSettings(defaultSettingCM *v1.ConfigMap) (defaultSettin
 		if definition.Type == SettingTypeBool {
 			result, err := strconv.ParseBool(value)
 			if err != nil {
-				logrus.Errorf("Invalid value %v for the boolean setting %v: %v", value, name, err)
+				logrus.WithError(err).Errorf("Invalid value %v for the boolean setting %v", value, name)
 				defaultSettings = map[string]string{}
 				break
 			}
 			value = strconv.FormatBool(result)
 		}
 		if err := ValidateSetting(name, value); err != nil {
-			logrus.Errorf("Customized settings are invalid, will give up using them: the value of customized setting %v is invalid: %v", name, err)
+			logrus.WithError(err).Errorf("Customized settings are invalid, will give up using them: the value of customized setting %v is invalid", name)
 			defaultSettings = map[string]string{}
 			break
 		}
 		defaultSettings[name] = value
 	}
 
-	guaranteedEngineManagerCPU := SettingDefinitionGuaranteedEngineManagerCPU.Default
-	if defaultSettings[string(SettingNameGuaranteedEngineManagerCPU)] != "" {
-		guaranteedEngineManagerCPU = defaultSettings[string(SettingNameGuaranteedEngineManagerCPU)]
-	}
-	guaranteedReplicaManagerCPU := SettingDefinitionGuaranteedReplicaManagerCPU.Default
-	if defaultSettings[string(SettingNameGuaranteedReplicaManagerCPU)] != "" {
-		guaranteedReplicaManagerCPU = defaultSettings[string(SettingNameGuaranteedReplicaManagerCPU)]
-	}
 	guaranteedInstanceManagerCPU := SettingDefinitionGuaranteedInstanceManagerCPU.Default
 	if defaultSettings[string(SettingNameGuaranteedInstanceManagerCPU)] != "" {
 		guaranteedInstanceManagerCPU = defaultSettings[string(SettingNameGuaranteedInstanceManagerCPU)]
 	}
-	if err := ValidateCPUReservationValues(guaranteedEngineManagerCPU, guaranteedReplicaManagerCPU, guaranteedInstanceManagerCPU); err != nil {
-		logrus.Errorf("Customized settings GuaranteedEngineManagerCPU and GuaranteedReplicaManagerCPU are invalid, will give up using them: %v", err)
+	if err := ValidateCPUReservationValues(guaranteedInstanceManagerCPU); err != nil {
+		logrus.WithError(err).Error("Customized settings GuaranteedInstanceManagerCPU is invalid, will give up using it")
 		defaultSettings = map[string]string{}
 	}
 
@@ -1452,8 +1380,7 @@ func getDefaultSettingFromYAML(defaultSettingYAMLData []byte) (map[string]string
 	defaultSettings := map[string]string{}
 
 	if err := yaml.Unmarshal(defaultSettingYAMLData, &defaultSettings); err != nil {
-		logrus.Errorf("Failed to unmarshal customized default settings from yaml data %v, will give up using them: %v",
-			string(defaultSettingYAMLData), err)
+		logrus.WithError(err).Errorf("Failed to unmarshal customized default settings from yaml data %v, will give up using them", string(defaultSettingYAMLData))
 		defaultSettings = map[string]string{}
 	}
 

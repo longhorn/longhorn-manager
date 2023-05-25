@@ -286,6 +286,10 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			types.AWSCert,
 			types.CIFSUsername,
 			types.CIFSPassword,
+			types.AZBlobAccountName,
+			types.AZBlobAccountKey,
+			types.AZBlobEndpoint,
+			types.AZBlobCert,
 			types.HTTPSProxy,
 			types.HTTPProxy,
 			types.NOProxy,
@@ -333,10 +337,6 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 				return fmt.Errorf("cannot modify priority class setting before all volumes are detached")
 			}
 		}
-	case types.SettingNameGuaranteedEngineManagerCPU:
-		fallthrough
-	case types.SettingNameGuaranteedReplicaManagerCPU:
-		fallthrough
 	case types.SettingNameGuaranteedInstanceManagerCPU:
 		guaranteedInstanceManagerCPU, err := s.GetSetting(types.SettingNameGuaranteedInstanceManagerCPU)
 		if err != nil {
@@ -345,21 +345,7 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 		if sName == types.SettingNameGuaranteedInstanceManagerCPU {
 			guaranteedInstanceManagerCPU.Value = value
 		}
-		guaranteedEngineManagerCPU, err := s.GetSetting(types.SettingNameGuaranteedEngineManagerCPU)
-		if err != nil {
-			return err
-		}
-		if sName == types.SettingNameGuaranteedEngineManagerCPU {
-			guaranteedEngineManagerCPU.Value = value
-		}
-		guaranteedReplicaManagerCPU, err := s.GetSetting(types.SettingNameGuaranteedReplicaManagerCPU)
-		if err != nil {
-			return err
-		}
-		if sName == types.SettingNameGuaranteedReplicaManagerCPU {
-			guaranteedReplicaManagerCPU.Value = value
-		}
-		if err := types.ValidateCPUReservationValues(guaranteedEngineManagerCPU.Value, guaranteedReplicaManagerCPU.Value, guaranteedInstanceManagerCPU.Value); err != nil {
+		if err := types.ValidateCPUReservationValues(guaranteedInstanceManagerCPU.Value); err != nil {
 			return err
 		}
 	case types.SettingNameStorageNetwork:
@@ -512,6 +498,10 @@ func (s *DataStore) GetCredentialFromSecret(secretName string) (map[string]strin
 	credentialSecret[types.AWSCert] = string(secret.Data[types.AWSCert])
 	credentialSecret[types.CIFSUsername] = string(secret.Data[types.CIFSUsername])
 	credentialSecret[types.CIFSPassword] = string(secret.Data[types.CIFSPassword])
+	credentialSecret[types.AZBlobAccountName] = string(secret.Data[types.AZBlobAccountName])
+	credentialSecret[types.AZBlobAccountKey] = string(secret.Data[types.AZBlobAccountKey])
+	credentialSecret[types.AZBlobEndpoint] = string(secret.Data[types.AZBlobEndpoint])
+	credentialSecret[types.AZBlobCert] = string(secret.Data[types.AZBlobCert])
 	credentialSecret[types.HTTPSProxy] = string(secret.Data[types.HTTPSProxy])
 	credentialSecret[types.HTTPProxy] = string(secret.Data[types.HTTPProxy])
 	credentialSecret[types.NOProxy] = string(secret.Data[types.NOProxy])
@@ -752,7 +742,7 @@ func (s *DataStore) DeleteVolumeRecurringJob(name string, isGroup bool, v *longh
 		if err != nil {
 			return nil, err
 		}
-		logrus.Debugf("Updated volume %v labels to %+v", v.Name, v.Labels)
+		logrus.Debugf("Removed volume %v recurring job label %v", v.Name, key)
 	}
 	return v, nil
 }
@@ -2085,8 +2075,6 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 			AllowScheduling:           true,
 			EvictionRequested:         false,
 			Tags:                      []string{},
-			EngineManagerCPURequest:   0,
-			ReplicaManagerCPURequest:  0,
 			InstanceManagerCPURequest: 0,
 		},
 	}

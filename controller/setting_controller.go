@@ -219,10 +219,6 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		if err := sc.updateNodeSelector(); err != nil {
 			return err
 		}
-	case string(types.SettingNameGuaranteedEngineManagerCPU):
-		fallthrough
-	case string(types.SettingNameGuaranteedReplicaManagerCPU):
-		fallthrough
 	case string(types.SettingNameGuaranteedInstanceManagerCPU):
 		if err := sc.updateInstanceManagerCPURequest(); err != nil {
 			return err
@@ -241,6 +237,10 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		}
 	case string(types.SettingNameSupportBundleFailedHistoryLimit):
 		if err := sc.cleanupFailedSupportBundles(); err != nil {
+			return err
+		}
+	case string(types.SettingNameLogLevel):
+		if err := sc.updateLogLevel(); err != nil {
 			return err
 		}
 	default:
@@ -677,6 +677,21 @@ func (sc *SettingController) updateCNI() error {
 	return nil
 }
 
+func (sc *SettingController) updateLogLevel() error {
+	setting, err := sc.ds.GetSetting(types.SettingNameLogLevel)
+	if err != nil {
+		return err
+	}
+	oldLevel := logrus.GetLevel()
+	newLevel, err := logrus.ParseLevel(setting.Value)
+	if err != nil {
+		return err
+	}
+	logrus.Infof("Update log level from %v to %v", oldLevel, newLevel)
+	logrus.SetLevel(newLevel)
+	return nil
+}
+
 func getFinalTolerations(existingTolerations, lastAppliedTolerations, newTolerations map[string]v1.Toleration) []v1.Toleration {
 	resultMap := make(map[string]v1.Toleration)
 
@@ -955,8 +970,6 @@ func (sc *SettingController) enqueueSettingForNode(obj interface{}) {
 		return
 	}
 
-	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameGuaranteedEngineManagerCPU))
-	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameGuaranteedReplicaManagerCPU))
 	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameGuaranteedInstanceManagerCPU))
 	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameBackupTarget))
 }
