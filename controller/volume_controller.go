@@ -1265,10 +1265,6 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 				}
 				if salvaged {
 					// remount the reattached volume later if possible
-					// For the auto-salvaged volume, `v.Status.CurrentNodeID` is empty but `v.Spec.NodeID` shouldn't be empty.
-					// There shouldn't be any problems if v.Spec.NodeID is empty, since the volume is desired to be detached
-					// so we just unset PendingNodeID.
-					//v.Status.PendingNodeID = v.Spec.NodeID
 					v.Status.RemountRequestedAt = c.nowHandler()
 					msg := fmt.Sprintf("Volume %v requested remount at %v after automatically salvaging replicas", v.Name, v.Status.RemountRequestedAt)
 					c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonRemount, msg)
@@ -3039,6 +3035,20 @@ func (c *VolumeController) checkForAutoAttachment(v *longhorn.Volume, e *longhor
 	}
 
 	return nil
+}
+
+// isSourceVolumeOfCloning checks if the input volume is the source volume of an on-going cloning process
+func (c *VolumeController) isSourceVolumeOfCloning(v *longhorn.Volume) (bool, error) {
+	vols, err := c.ds.ListVolumes()
+	if err != nil {
+		return false, err
+	}
+	for _, vol := range vols {
+		if isTargetVolumeOfCloning(vol) && types.GetVolumeName(vol.Spec.DataSource) == v.Name {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (c *VolumeController) checkForAutoDetachment(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {

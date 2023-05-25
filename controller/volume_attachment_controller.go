@@ -310,7 +310,7 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationStart(va *longhorn.V
 
 	hasCSIAttachmentTicket := false
 	for _, attachmentTicket := range va.Spec.AttachmentTickets {
-		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
+		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher && attachmentTicket.Type != longhorn.AttacherTypeLonghornUpgrader {
 			continue
 		}
 		// Found one csi attachmentTicket that is requesting volume to attach to the current node
@@ -324,7 +324,7 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationStart(va *longhorn.V
 	}
 
 	for _, attachmentTicket := range va.Spec.AttachmentTickets {
-		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
+		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher && attachmentTicket.Type != longhorn.AttacherTypeLonghornUpgrader {
 			continue
 		}
 		// Found one csi attachmentTicket that is requesting volume to attach to a different node
@@ -343,7 +343,7 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationConfirmation(va *lon
 
 	hasCSIAttachmentTicketRequestingPrevNode := false
 	for _, attachmentTicket := range va.Spec.AttachmentTickets {
-		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
+		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher && attachmentTicket.Type != longhorn.AttacherTypeLonghornUpgrader {
 			continue
 		}
 		// Found one csi attachmentTicket that is requesting volume to attach to the current node
@@ -418,7 +418,7 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationRollback(va *longhor
 
 	hasCSIAttachmentTicketRequestingMigratingNode := false
 	for _, attachmentTicket := range va.Spec.AttachmentTickets {
-		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
+		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher && attachmentTicket.Type != longhorn.AttacherTypeLonghornUpgrader {
 			continue
 		}
 		// Found one csi attachmentTicket that is requesting volume to attach to the current node

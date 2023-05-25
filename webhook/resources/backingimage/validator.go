@@ -6,7 +6,6 @@ import (
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
-	"github.com/longhorn/longhorn-manager/controller"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -60,7 +59,7 @@ func (b *backingImageValidator) Create(request *admission.Request, newObj runtim
 		}
 	case longhorn.BackingImageDataSourceTypeUpload:
 	case longhorn.BackingImageDataSourceTypeExportFromVolume:
-		volumeName := backingImage.Spec.SourceParameters[controller.DataSourceTypeExportFromVolumeParameterVolumeName]
+		volumeName := backingImage.Spec.SourceParameters[longhorn.DataSourceTypeExportFromVolumeParameterVolumeName]
 		if volumeName == "" {
 			return werror.NewInvalidError(fmt.Sprintf("invalid parameter %+v for source type %v", backingImage.Spec.SourceParameters, backingImage.Spec.SourceType), "")
 		}
