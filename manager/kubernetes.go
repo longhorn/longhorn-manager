@@ -35,15 +35,18 @@ func (m *VolumeManager) PVCreate(name, pvName, fsType, secretNamespace, secretNa
 	}
 
 	if storageClassName == "" {
-		storageClassName, err = m.ds.GetSettingValueExisted(types.SettingNameDefaultLonghornStaticStorageClass)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get longhorn static storage class name for PV %v creation: %v", pvName, err)
-		}
-		if backupVolumeName, isExist := v.Labels[types.LonghornLabelBackupVolume]; isExist && backupVolumeName != "" {
+		if backupVolumeName := v.Labels[types.LonghornLabelBackupVolume]; backupVolumeName != "" {
 			backupVolume, _ := m.ds.GetBackupVolumeRO(backupVolumeName)
 			if backupVolume != nil {
 				storageClassName = backupVolume.Status.StorageClassName
 			}
+		}
+	}
+
+	if storageClassName == "" {
+		storageClassName, err = m.ds.GetSettingValueExisted(types.SettingNameDefaultLonghornStaticStorageClass)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get longhorn default static storage class name for PV %v creation: %v", pvName, err)
 		}
 	}
 

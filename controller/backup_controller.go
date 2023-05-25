@@ -647,13 +647,10 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 	storageClassName := ""
 	if kubernetesStatus.PVCName != "" && kubernetesStatus.LastPVCRefAt == "" {
 		pvc, _ := bc.ds.GetPersistentVolumeClaim(kubernetesStatus.Namespace, kubernetesStatus.PVCName)
-		logrus.Infof("====[DEBUG]==== Namespace: %v PVCName: %v", kubernetesStatus.Namespace, kubernetesStatus.PVCName)
 		if pvc != nil {
 			storageClassName = *pvc.Spec.StorageClassName
 		}
-		logrus.Infof("====[DEBUG]==== storageClassName %v", storageClassName)
 	}
-	logrus.Infof("====[DEBUG]==== storageClassName %v", storageClassName)
 
 	engine, err := bc.ds.GetVolumeCurrentEngine(volume.Name)
 	if err != nil {

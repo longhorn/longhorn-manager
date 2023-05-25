@@ -248,7 +248,6 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		if err != nil {
 			return
 		}
-		logrus.Infof("=====[DEBUG before update]==== backupVolume.Status: %v", backupVolume.Status)
 		if reflect.DeepEqual(existingBackupVolume.Status, backupVolume.Status) {
 			return
 		}
@@ -396,8 +395,6 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		}
 	}
 
-	logrus.Infof("=====[DEBUG get volume]==== backupVolumeInfo: %v", backupVolumeInfo)
-
 	// Update BackupVolume CR status
 	backupVolume.Status.LastModificationTime = metav1.Time{Time: configMetadata.ModificationTime}
 	backupVolume.Status.Size = backupVolumeInfo.Size
@@ -411,7 +408,6 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	backupVolume.Status.BackingImageChecksum = backupVolumeInfo.BackingImageChecksum
 	backupVolume.Status.StorageClassName = backupVolumeInfo.StorageClassName
 	backupVolume.Status.LastSyncedAt = syncTime
-	logrus.Infof("=====[DEBUG get volume]==== backupVolume.Status.StorageClassName: %v", backupVolume.Status.StorageClassName)
 	return nil
 }
 
