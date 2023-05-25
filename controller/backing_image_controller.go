@@ -421,7 +421,7 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 			bids.Spec.Parameters = map[string]string{}
 		}
 		if bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeExportFromVolume {
-			bids.Labels = map[string]string{types.GetLonghornLabelKey(types.LonghornLabelExportFromVolume): bids.Spec.Parameters[DataSourceTypeExportFromVolumeParameterVolumeName]}
+			bids.Labels = map[string]string{types.GetLonghornLabelKey(types.LonghornLabelExportFromVolume): bids.Spec.Parameters[longhorn.DataSourceTypeExportFromVolumeParameterVolumeName]}
 		}
 		if bids, err = bic.ds.CreateBackingImageDataSource(bids); err != nil {
 			return err

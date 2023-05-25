@@ -538,6 +538,7 @@ func (cs *ControllerServer) unpublishVolume(volume *longhornclient.Volume, nodeI
 	logrus.Debugf("requesting Volume %v detachment for %v with attachmentID %v ", volume.Name, nodeID, attachmentID)
 	detachInput := &longhornclient.DetachInput{
 		AttachmentID: attachmentID,
+		HostId:       nodeID,
 		// if nodeID == "" means to detach from all nodes
 		ForceDetach: nodeID == "",
 	}

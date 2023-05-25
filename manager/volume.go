@@ -263,9 +263,8 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 	return v, nil
 }
 
-// Detach will handle regular detachment as well as volume migration confirmation/rollback
-// if nodeID is not specified, the volume will be detached from all nodes
-func (m *VolumeManager) Detach(name, attachmentID string, forceDetach bool) (v *longhorn.Volume, err error) {
+// Detach will handle regular detachment as well as cleaning up attachment Ticket created by upgrade path
+func (m *VolumeManager) Detach(name, attachmentID, hostID string, forceDetach bool) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to detach volume %v", name)
 	}()
@@ -293,41 +292,25 @@ func (m *VolumeManager) Detach(name, attachmentID string, forceDetach bool) (v *
 		return v, nil
 	}
 
-	//// shared volumes only need to be detached if they are attached in maintenance mode
-	//if v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !v.Spec.Migratable && !v.Spec.DisableFrontend {
-	//	logrus.Infof("No need to detach volume %v since it's shared via %v", v.Name, v.Status.ShareEndpoint)
-	//	return v, nil
-	//}
-
-	// TODO: handle volume migration feature
-
-	//isMigratingVolume := v.Spec.Migratable && v.Spec.MigrationNodeID != "" && v.Spec.NodeID != ""
-	//isMigrationConfirmation := isMigratingVolume && nodeID == v.Spec.NodeID
-	//isMigrationRollback := isMigratingVolume && nodeID == v.Spec.MigrationNodeID
-	//
-	//// Since all invalid/unexcepted cases have been handled above, we only need to take care of regular detach or migration here.
-	//if isMigrationConfirmation {
-	//	// Need to make sure both engines are running.
-	//	// If the old one crashes, the volume will fall into the auto reattachment flow. Then allowing migration confirmation will mess up the volume.
-	//	if !m.isVolumeAvailableOnNode(name, v.Spec.MigrationNodeID) || !m.isVolumeAvailableOnNode(name, v.Spec.NodeID) {
-	//		return nil, fmt.Errorf("migration is not ready yet")
-	//	}
-	//	v.Spec.NodeID = v.Spec.MigrationNodeID
-	//	v.Spec.MigrationNodeID = ""
-	//	logrus.Infof("Volume %v migration from %v to %v confirmed", v.Name, nodeID, v.Spec.NodeID)
-	//} else if isMigrationRollback {
-	//	v.Spec.MigrationNodeID = ""
-	//	logrus.Infof("Volume %v migration from %v to %v rollback", v.Name, nodeID, v.Spec.NodeID)
-	//} else {
-	//	v.Spec.NodeID = ""
-	//	v.Spec.MigrationNodeID = ""
-	//	logrus.Infof("Volume %v detachment from node %v requested", v.Name, nodeID)
-	//}
-	//
-	//v.Spec.DisableFrontend = false
-
-	// else remove the ticket from volume attachment spec
 	delete(va.Spec.AttachmentTickets, attachmentID)
+
+	// Cleanup the attachment ticket created by longhorn-upgrade process if existed
+	if hostID == "" {
+		// This might be the request from UI which doesn't usually send information about hostID.
+		// Cleanup all tickets created by longhorn-upgrade process
+		ticketsToDelete := []string{}
+		for _, ticket := range va.Spec.AttachmentTickets {
+			if ticket.Type == longhorn.AttacherTypeLonghornUpgrader {
+				ticketsToDelete = append(ticketsToDelete, ticket.ID)
+			}
+		}
+		for _, ticketID := range ticketsToDelete {
+			delete(va.Spec.AttachmentTickets, ticketID)
+		}
+	} else {
+		delete(va.Spec.AttachmentTickets, longhorn.GetAttachmentTicketID(longhorn.AttacherTypeLonghornUpgrader, hostID))
+	}
+
 	if _, err := m.ds.UpdateLHVolumeAttachment(va); err != nil {
 		return nil, err
 	}

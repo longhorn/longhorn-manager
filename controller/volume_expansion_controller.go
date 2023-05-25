@@ -196,7 +196,7 @@ func (vec *VolumeExpansionController) reconcile(volName string) (err error) {
 				Type:   longhorn.AttacherTypeVolumeExpansionController,
 				NodeID: vol.Status.OwnerID,
 				Parameters: map[string]string{
-					longhorn.AttachmentParameterDisableFrontend: longhorn.AnyValue,
+					longhorn.AttachmentParameterDisableFrontend: longhorn.FalseValue,
 				},
 			}
 		}
