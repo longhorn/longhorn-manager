@@ -36,6 +36,7 @@ type BackingImageController struct {
 	// use as the OwnerID of the backing image
 	controllerID   string
 	serviceAccount string
+	bimImageName   string
 
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
@@ -50,7 +51,7 @@ func NewBackingImageController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
-	namespace string, controllerID, serviceAccount string) *BackingImageController {
+	namespace string, controllerID, serviceAccount, backingImageManagerImage string) *BackingImageController {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -63,6 +64,7 @@ func NewBackingImageController(
 		namespace:      namespace,
 		controllerID:   controllerID,
 		serviceAccount: serviceAccount,
+		bimImageName:   backingImageManagerImage,
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-backing-image-controller"}),
@@ -307,11 +309,6 @@ func (bic *BackingImageController) IsBackingImageDataSourceCleaned(bi *longhorn.
 }
 
 func (bic *BackingImageController) cleanupBackingImageManagers(bi *longhorn.BackingImage) (err error) {
-	defaultImage, err := bic.ds.GetSettingValueExisted(types.SettingNameDefaultBackingImageManagerImage)
-	if err != nil {
-		return err
-	}
-
 	log := getLoggerForBackingImage(bic.logger, bi)
 
 	bimMap, err := bic.ds.ListBackingImageManagers()
@@ -325,7 +322,7 @@ func (bic *BackingImageController) cleanupBackingImageManagers(bi *longhorn.Back
 		bimLog := log.WithField("backingImageManager", bim.Name)
 		// Directly clean up old backing image managers (including incompatible managers).
 		// New backing image managers can detect and reuse the existing backing image files if necessary.
-		if bim.Spec.Image != defaultImage {
+		if bim.Spec.Image != bic.bimImageName {
 			bimLog.Info("Deleting old/non-default backing image manager")
 			if err := bic.ds.DeleteBackingImageManager(bim.Name); err != nil && !apierrors.IsNotFound(err) {
 				return err
@@ -334,7 +331,6 @@ func (bic *BackingImageController) cleanupBackingImageManagers(bi *longhorn.Back
 			bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, constant.EventReasonDelete, "deleted old/non-default backing image manager %v in disk %v on node %v", bim.Name, bim.Spec.DiskUUID, bim.Spec.NodeID)
 			continue
 		}
-
 		// This sync loop cares about the backing image managers related to the current backing image only.
 		if _, isRelatedToCurrentBI := bim.Spec.BackingImages[bi.Name]; !isRelatedToCurrentBI {
 			continue
@@ -556,11 +552,6 @@ func (bic *BackingImageController) handleBackingImageManagers(bi *longhorn.Backi
 		return err
 	}
 
-	defaultImage, err := bic.ds.GetSettingValueExisted(types.SettingNameDefaultBackingImageManagerImage)
-	if err != nil {
-		return err
-	}
-
 	for diskUUID := range bi.Spec.Disks {
 		noDefaultBIM := true
 		requiredBIs := map[string]string{}
@@ -570,8 +561,8 @@ func (bic *BackingImageController) handleBackingImageManagers(bi *longhorn.Backi
 			return err
 		}
 		for _, bim := range bimMap {
-			// Add current backing image record to the default manager
-			if bim.DeletionTimestamp == nil && bim.Spec.Image == defaultImage {
+			// Add current backing image record to the backing image manager
+			if bim.DeletionTimestamp == nil && bim.Spec.Image == bic.bimImageName {
 				if uuidInManager, exists := bim.Spec.BackingImages[bi.Name]; !exists || uuidInManager != bi.Status.UUID {
 					bim.Spec.BackingImages[bi.Name] = bi.Status.UUID
 					if bim, err = bic.ds.UpdateBackingImageManager(bim); err != nil {
@@ -599,7 +590,7 @@ func (bic *BackingImageController) handleBackingImageManagers(bi *longhorn.Backi
 				continue
 			}
 			requiredBIs[bi.Name] = bi.Status.UUID
-			manifest := bic.generateBackingImageManagerManifest(node, diskName, defaultImage, requiredBIs)
+			manifest := bic.generateBackingImageManagerManifest(node, diskName, requiredBIs)
 			bim, err := bic.ds.CreateBackingImageManager(manifest)
 			if err != nil {
 				return err
@@ -755,14 +746,14 @@ func (bic *BackingImageController) updateDiskLastReferenceMap(bi *longhorn.Backi
 	return nil
 }
 
-func (bic *BackingImageController) generateBackingImageManagerManifest(node *longhorn.Node, diskName, defaultImage string, requiredBackingImages map[string]string) *longhorn.BackingImageManager {
+func (bic *BackingImageController) generateBackingImageManagerManifest(node *longhorn.Node, diskName string, requiredBackingImages map[string]string) *longhorn.BackingImageManager {
 	return &longhorn.BackingImageManager{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: types.GetBackingImageManagerLabels(node.Name, node.Status.DiskStatus[diskName].DiskUUID),
-			Name:   types.GetBackingImageManagerName(defaultImage, node.Status.DiskStatus[diskName].DiskUUID),
+			Name:   types.GetBackingImageManagerName(bic.bimImageName, node.Status.DiskStatus[diskName].DiskUUID),
 		},
 		Spec: longhorn.BackingImageManagerSpec{
-			Image:         defaultImage,
+			Image:         bic.bimImageName,
 			NodeID:        node.Name,
 			DiskUUID:      node.Status.DiskStatus[diskName].DiskUUID,
 			DiskPath:      node.Spec.Disks[diskName].Path,

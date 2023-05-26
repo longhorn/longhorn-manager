@@ -390,7 +390,7 @@ var (
 		DisplayName: "Default Backing Image Manager Image",
 		Description: "The default backing image manager image used by the manager. Can be changed on the manager starting command line only",
 		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeString,
+		Type:        SettingTypeDeprecated,
 		Required:    true,
 		ReadOnly:    true,
 	}
