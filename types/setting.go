@@ -43,7 +43,6 @@ const (
 	SettingNameDefaultDataPath                                          = SettingName("default-data-path")
 	SettingNameDefaultEngineImage                                       = SettingName("default-engine-image")
 	SettingNameDefaultInstanceManagerImage                              = SettingName("default-instance-manager-image")
-	SettingNameDefaultShareManagerImage                                 = SettingName("default-share-manager-image")
 	SettingNameDefaultBackingImageManagerImage                          = SettingName("default-backing-image-manager-image")
 	SettingNameSupportBundleManagerImage                                = SettingName("support-bundle-manager-image")
 	SettingNameReplicaSoftAntiAffinity                                  = SettingName("replica-soft-anti-affinity")
@@ -113,7 +112,6 @@ var (
 		SettingNameDefaultDataPath,
 		SettingNameDefaultEngineImage,
 		SettingNameDefaultInstanceManagerImage,
-		SettingNameDefaultShareManagerImage,
 		SettingNameDefaultBackingImageManagerImage,
 		SettingNameSupportBundleManagerImage,
 		SettingNameReplicaSoftAntiAffinity,
@@ -208,7 +206,6 @@ var (
 		SettingNameDefaultDataPath:                                          SettingDefinitionDefaultDataPath,
 		SettingNameDefaultEngineImage:                                       SettingDefinitionDefaultEngineImage,
 		SettingNameDefaultInstanceManagerImage:                              SettingDefinitionDefaultInstanceManagerImage,
-		SettingNameDefaultShareManagerImage:                                 SettingDefinitionDefaultShareManagerImage,
 		SettingNameDefaultBackingImageManagerImage:                          SettingDefinitionDefaultBackingImageManagerImage,
 		SettingNameSupportBundleManagerImage:                                SettingDefinitionSupportBundleManagerImage,
 		SettingNameReplicaSoftAntiAffinity:                                  SettingDefinitionReplicaSoftAntiAffinity,
@@ -371,15 +368,6 @@ var (
 	SettingDefinitionDefaultInstanceManagerImage = SettingDefinition{
 		DisplayName: "Default Instance Manager Image",
 		Description: "The default instance manager image used by the manager. Can be changed on the manager starting command line only",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeString,
-		Required:    true,
-		ReadOnly:    true,
-	}
-
-	SettingDefinitionDefaultShareManagerImage = SettingDefinition{
-		DisplayName: "Default Share Manager Image",
-		Description: "The default share manager image used by the manager. Can be changed on the manager starting command line only",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeString,
 		Required:    true,

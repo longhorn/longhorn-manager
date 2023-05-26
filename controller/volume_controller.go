@@ -62,6 +62,8 @@ type VolumeController struct {
 	namespace string
 	// use as the OwnerID of the controller
 	controllerID string
+	// use as the default image of the share manager
+	smImage string
 
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
@@ -86,7 +88,7 @@ func NewVolumeController(
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
 	namespace,
-	controllerID string,
+	controllerID, shareManagerImage string,
 	proxyConnCounter util.Counter,
 ) *VolumeController {
 
@@ -101,6 +103,7 @@ func NewVolumeController(
 		ds:           ds,
 		namespace:    namespace,
 		controllerID: controllerID,
+		smImage:      shareManagerImage,
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-volume-controller"}),
@@ -3990,28 +3993,23 @@ func (vc *VolumeController) ReconcileShareManagerState(volume *longhorn.Volume) 
 		return nil
 	}
 
-	image, err := vc.ds.GetSettingValueExisted(types.SettingNameDefaultShareManagerImage)
-	if err != nil {
-		return err
-	}
-
 	// no ShareManager create a new one
 	if sm == nil {
-		sm, err = vc.createShareManagerForVolume(volume, image)
+		sm, err = vc.createShareManagerForVolume(volume, vc.smImage)
 		if err != nil {
 			log.WithError(err).Errorf("Failed to create share manager %v", volume.Name)
 			return err
 		}
 	}
 
-	if image != "" && sm.Spec.Image != image {
-		sm.Spec.Image = image
-		sm.ObjectMeta.Labels = types.GetShareManagerLabels(volume.Name, image)
+	if sm.Spec.Image != vc.smImage {
+		sm.Spec.Image = vc.smImage
+		sm.ObjectMeta.Labels = types.GetShareManagerLabels(volume.Name, vc.smImage)
 		if sm, err = vc.ds.UpdateShareManager(sm); err != nil {
 			return err
 		}
 
-		log.Infof("Updated image for share manager from %v to %v", sm.Spec.Image, image)
+		log.Infof("Updated image for share manager from %v to %v", sm.Spec.Image, vc.smImage)
 	}
 
 	// kill the workload pods, when the share manager goes into error state
