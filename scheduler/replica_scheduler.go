@@ -202,7 +202,7 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 
 	for nodeName, node := range nodeInfo {
 		// Filter Nodes. If the Nodes don't match the tags, don't bother marking them as candidates.
-		if !util.IsTagsEqual(node.Spec.Tags, volume.Spec.NodeSelector) {
+		if !types.IsSelectorsInTags(node.Spec.Tags, volume.Spec.NodeSelector) {
 			continue
 		}
 		if _, ok := usedNodes[nodeName]; !ok {
@@ -335,7 +335,7 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 		}
 
 		// Check if the Disk's Tags are valid.
-		if !util.IsTagsEqual(diskSpec.Tags, volume.Spec.DiskSelector) {
+		if !types.IsSelectorsInTags(diskSpec.Tags, volume.Spec.DiskSelector) {
 			multiError.Append(util.NewMultiError(longhorn.ErrorReplicaScheduleTagsNotFulfilled))
 			continue
 		}
@@ -580,7 +580,7 @@ func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *lon
 			if !diskSpec.AllowScheduling || diskSpec.EvictionRequested {
 				return false
 			}
-			if !util.IsTagsEqual(diskSpec.Tags, v.Spec.DiskSelector) {
+			if !types.IsSelectorsInTags(diskSpec.Tags, v.Spec.DiskSelector) {
 				return false
 			}
 		}
