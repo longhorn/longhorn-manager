@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -949,4 +950,23 @@ func ConsolidateInstanceManagers(instanceManagerMaps ...map[string]*longhorn.Ins
 
 func GetLHVolumeAttachmentNameFromVolumeName(volName string) string {
 	return volName
+}
+
+// IsSelectorsInTags checks if all the selectors are present in the tags slice.
+// It returns true if all selectors are found, false otherwise.
+func IsSelectorsInTags(tags, selectors []string) bool {
+	if !sort.StringsAreSorted(tags) {
+		logrus.Debug("BUG: Tags are not sorted, sorting now")
+		sort.Strings(tags)
+	}
+
+	for _, selector := range selectors {
+		index := sort.SearchStrings(tags, selector)
+		// If the selector is not found or the index is out of bounds, return false.
+		if index >= len(tags) || tags[index] != selector {
+			return false
+		}
+	}
+
+	return true
 }
