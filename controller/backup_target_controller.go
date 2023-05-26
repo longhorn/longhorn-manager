@@ -134,8 +134,8 @@ func (btc *BackupTargetController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer btc.queue.ShutDown()
 
-	btc.logger.Infof("Starting Longhorn Backup Target controller")
-	defer btc.logger.Infof("Shut down Longhorn Backup Target controller")
+	btc.logger.Info("Starting Longhorn Backup Target controller")
+	defer btc.logger.Info("Shut down Longhorn Backup Target controller")
 
 	if !cache.WaitForNamedCacheSync(btc.name, stopCh, btc.cacheSyncs...) {
 		return
@@ -214,7 +214,7 @@ func getLoggerForBackupTarget(logger logrus.FieldLogger, backupTarget *longhorn.
 func getBackupTarget(controllerID string, backupTarget *longhorn.BackupTarget, ds *datastore.DataStore, log logrus.FieldLogger, proxyConnCounter util.Counter) (engineClientProxy engineapi.EngineClientProxy, backupTargetClient *engineapi.BackupTargetClient, err error) {
 	instanceManager, err := ds.GetDefaultInstanceManagerByNode(controllerID)
 	if err != nil {
-		return nil, nil, errors.Wrapf(err, "failed to get default engine instance manager for proxy client")
+		return nil, nil, errors.Wrap(err, "failed to get default engine instance manager for proxy client")
 	}
 
 	engineClientProxy, err = engineapi.NewEngineClientProxy(instanceManager, log, proxyConnCounter)
@@ -338,16 +338,12 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 		backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
 			longhorn.BackupTargetConditionTypeUnavailable, longhorn.ConditionStatusTrue,
 			longhorn.BackupTargetConditionReasonUnavailable, "backup target URL is empty")
-		// Clean up all BackupVolume CRs
 		if err := btc.cleanupBackupVolumes(); err != nil {
-			log.WithError(err).Error("failed to clean up BackupVolumes")
-			return err
+			return errors.Wrap(err, "failed to clean up BackupVolumes")
 		}
 
-		// Clean up all SystemBackup CRs
 		if err := btc.cleanupSystemBackups(); err != nil {
-			log.WithError(err).Error("failed to clean up SystemBackups")
-			return err
+			return errors.Wrap(err, "failed to clean up SystemBackups")
 		}
 
 		return nil
@@ -360,7 +356,7 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 		backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
 			longhorn.BackupTargetConditionTypeUnavailable, longhorn.ConditionStatusTrue,
 			longhorn.BackupTargetConditionReasonUnavailable, err.Error())
-		log.WithError(err).Error("Error init backup target clients")
+		log.WithError(err).Error("Failed to init backup target clients")
 		return nil // Ignore error to allow status update as well as preventing enqueue
 	}
 	defer engineClientProxy.Close()
@@ -398,7 +394,7 @@ func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.Backu
 		backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
 			longhorn.BackupTargetConditionTypeUnavailable, longhorn.ConditionStatusTrue,
 			longhorn.BackupTargetConditionReasonUnavailable, err.Error())
-		log.WithError(err).Error("Error listing backup volumes from backup target")
+		log.WithError(err).Error("Failed to list backup volumes from backup target")
 		return nil // Ignore error to allow status update as well as preventing enqueue
 	}
 	backupStoreBackupVolumes := sets.NewString(res...)
@@ -406,7 +402,7 @@ func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.Backu
 	// Get a list of all the backup volumes that exist as custom resources in the cluster
 	clusterBackupVolumes, err := btc.ds.ListBackupVolumes()
 	if err != nil {
-		log.WithError(err).Error("Error listing backup volumes in the cluster")
+		log.WithError(err).Error("Failed to list backup volumes in the cluster")
 		return err
 	}
 
@@ -429,7 +425,7 @@ func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.Backu
 			},
 		}
 		if _, err = btc.ds.CreateBackupVolume(backupVolume); err != nil && !apierrors.IsAlreadyExists(err) {
-			log.WithError(err).Errorf("Error creating backup volume %s into cluster", backupVolumeName)
+			log.WithError(err).Errorf("Failed to create backup volume %s in the cluster", backupVolumeName)
 			return err
 		}
 	}
@@ -442,9 +438,9 @@ func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.Backu
 		log.Infof("Found %d backup volumes in the backup target that do not exist in the backup target and need to be deleted", count)
 	}
 	for backupVolumeName := range backupVolumesToDelete {
-		log.WithField("backupVolume", backupVolumeName).Info("Attempting to delete backup volume from cluster")
+		log.WithField("backupVolume", backupVolumeName).Info("Deleting backup volume from cluster")
 		if err = btc.ds.DeleteBackupVolume(backupVolumeName); err != nil {
-			log.WithError(err).Errorf("Error deleting backup volume %s from cluster", backupVolumeName)
+			log.WithError(err).Errorf("Failed to delete backup volume %s from cluster", backupVolumeName)
 			return err
 		}
 	}
@@ -454,7 +450,7 @@ func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.Backu
 	for backupVolumeName, backupVolume := range clusterBackupVolumes {
 		backupVolume.Spec.SyncRequestedAt = syncTime
 		if _, err = btc.ds.UpdateBackupVolume(backupVolume); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-			log.WithError(err).Errorf("Error updating backup volume %s spec", backupVolumeName)
+			log.WithError(err).Errorf("Failed to update backup volume %s spec", backupVolumeName)
 		}
 	}
 
@@ -496,6 +492,7 @@ func (btc *BackupTargetController) syncSystemBackup(backupTargetClient *engineap
 			return errors.Wrapf(err, "failed to parse system backup URI: %v", systemBackupURI)
 		}
 
+		log.WithField("systemBackup", name).Info("Creating SystemBackup from remote backup target")
 		systemBackup := &longhorn.SystemBackup{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: name,
@@ -511,17 +508,15 @@ func (btc *BackupTargetController) syncSystemBackup(backupTargetClient *engineap
 			return errors.Wrapf(err, "failed to create SystemBackup %v from remote backup target", name)
 		}
 
-		log.WithField("systemBackup", name).Info("Created SystemBackup from remote backup target")
 	}
 
 	// Delete ready SystemBackup that doesn't exist in the backup store.
 	delSystemBackupsInCluster := clusterReadySystemBackupNames.Difference(backupstoreSystemBackupNames)
 	for name := range delSystemBackupsInCluster {
+		log.WithField("systemBackup", name).Info("Deleting SystemBackup not exist in backupstore")
 		if err = btc.ds.DeleteSystemBackup(name); err != nil {
 			return errors.Wrapf(err, "failed to delete SystemBackup %v not exist in backupstore", name)
 		}
-
-		log.WithField("systemBackup", name).Info("Deleted SystemBackup not exist in backupstore")
 	}
 
 	return nil

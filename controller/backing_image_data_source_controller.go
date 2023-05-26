@@ -245,12 +245,10 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSource(key string
 
 	bids, err := c.ds.GetBackingImageDataSource(name)
 	if err != nil {
-		if !datastore.ErrorIsNotFound(err) {
-			c.logger.WithField("backingImageDataSource", name).WithError(err).Error("Failed to retrieve backing image data source from datastore")
-			return err
+		if datastore.ErrorIsNotFound(err) {
+			return nil
 		}
-		c.logger.WithField("backingImageDataSource", name).Warn("Failed to find backing image data source, may have been deleted")
-		return nil
+		return errors.Wrap(err, "failed to get backing image data source")
 	}
 
 	log := getLoggerForBackingImageDataSource(c.logger, bids)
@@ -308,7 +306,7 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSource(key string
 			_, err = c.ds.UpdateBackingImageDataSourceStatus(bids)
 		}
 		if apierrors.IsConflict(errors.Cause(err)) {
-			log.WithError(err).Warnf("Requeue %v due to conflict", key)
+			log.WithError(err).Debugf("Requeue %v due to conflict", key)
 			c.enqueueBackingImageDataSource(bids)
 			err = nil
 		}
@@ -402,7 +400,7 @@ func (c *BackingImageDataSourceController) syncBackingImage(bids *longhorn.Backi
 
 func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *longhorn.BackingImageDataSource) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "failed to sync backing image data source pod")
+		err = errors.Wrap(err, "failed to sync backing image data source pod")
 	}()
 	log := getLoggerForBackingImageDataSource(c.logger, bids)
 
@@ -513,7 +511,7 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 				isInBackoffWindow = false
 				log.Infof("Preparing to recreate pod for image data source %v since the backoff window is already passed", bids.Name)
 			} else {
-				log.Infof("Failed backing image data source %v is still in the backoff window, Longhorn cannot recreate pod for it", bids.Name)
+				log.Debugf("Failed backing image data source %v is still in the backoff window, Longhorn cannot recreate pod for it", bids.Name)
 			}
 		}
 
@@ -635,8 +633,6 @@ func (c *BackingImageDataSourceController) createBackingImageDataSourcePod(bids 
 	if _, err := c.ds.CreatePod(podManifest); err != nil && !apierrors.IsAlreadyExists(err) {
 		return err
 	}
-
-	log.Info("Created backing image data source pod")
 
 	return nil
 }
@@ -1033,14 +1029,11 @@ func (c *BackingImageDataSourceController) stopMonitoring(bidsName string) {
 	log := c.logger.WithField("backingImageDataSource", bidsName)
 	stopCh, ok := c.monitorMap[bidsName]
 	if !ok {
-		log.Warn("No monitor goroutine for stopping")
 		return
 	}
 	log.Info("Stopping monitoring")
 	close(stopCh)
 	delete(c.monitorMap, bidsName)
-	log.Info("Stopped monitoring")
-
 }
 
 func (c *BackingImageDataSourceController) startMonitoring(bids *longhorn.BackingImageDataSource) {
@@ -1050,12 +1043,11 @@ func (c *BackingImageDataSourceController) startMonitoring(bids *longhorn.Backin
 	defer c.lock.Unlock()
 
 	if _, ok := c.monitorMap[bids.Name]; ok {
-		log.Error("Monitor goroutine already exists")
 		return
 	}
 
 	if bids.Status.IP == "" {
-		log.Errorf("Failed to get backing image data source pod IP before launching the monitor")
+		log.Error("Failed to get backing image data source pod IP before launching the monitor")
 		return
 	}
 
