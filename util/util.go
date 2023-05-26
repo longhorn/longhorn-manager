@@ -1014,19 +1014,3 @@ func VerifySnapshotLabels(labels map[string]string) error {
 	}
 	return nil
 }
-
-func IsTagsEqual(tags1, tags2 []string) bool {
-	if !sort.StringsAreSorted(tags1) {
-		logrus.Warn("BUG: Tags are not sorted, sorting now")
-		sort.Strings(tags1)
-	}
-
-	for _, tag := range tags2 {
-		index := sort.SearchStrings(tags1, tag)
-		if index >= len(tags1) || tags1[index] != tag {
-			return false
-		}
-	}
-
-	return true
-}
