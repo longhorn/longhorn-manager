@@ -7,10 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/util"
@@ -869,4 +871,23 @@ func CreateCniAnnotationFromSetting(storageNetwork *longhorn.Setting) string {
 
 	storageNetworkSplit := strings.Split(storageNetwork.Value, "/")
 	return fmt.Sprintf("[{\"namespace\": \"%s\", \"name\": \"%s\", \"interface\": \"%s\"}]", storageNetworkSplit[0], storageNetworkSplit[1], StorageNetworkInterface)
+}
+
+// IsSelectorsInTags checks if all the selectors are present in the tags slice.
+// It returns true if all selectors are found, false otherwise.
+func IsSelectorsInTags(tags, selectors []string) bool {
+	if !sort.StringsAreSorted(tags) {
+		logrus.Debug("BUG: Tags are not sorted, sorting now")
+		sort.Strings(tags)
+	}
+
+	for _, selector := range selectors {
+		index := sort.SearchStrings(tags, selector)
+		// If the selector is not found or the index is out of bounds, return false.
+		if index >= len(tags) || tags[index] != selector {
+			return false
+		}
+	}
+
+	return true
 }
