@@ -1811,29 +1811,6 @@ func (s *DataStore) ListBackingImageManagersByDiskUUID(diskUUID string) (map[str
 	return s.listBackingImageManagers(diskSelector)
 }
 
-// ListDefaultBackingImageManagers gets a list of BackingImageManager
-// using default image with the given namespace.
-func (s *DataStore) ListDefaultBackingImageManagers() (map[string]*longhorn.BackingImageManager, error) {
-	defaultImage, err := s.GetSettingValueExisted(types.SettingNameDefaultBackingImageManagerImage)
-	if err != nil {
-		return nil, err
-	}
-
-	itemMap := map[string]*longhorn.BackingImageManager{}
-	list, err := s.bimLister.BackingImageManagers(s.namespace).List(labels.Everything())
-	if err != nil {
-		return nil, err
-	}
-	for _, itemRO := range list {
-		if itemRO.Spec.Image != defaultImage {
-			continue
-		}
-		// Cannot use cached object from lister
-		itemMap[itemRO.Name] = itemRO.DeepCopy()
-	}
-	return itemMap, nil
-}
-
 // GetOwnerReferencesForBackingImageManager returns OwnerReference for the given
 // // backing image manager name and UID
 func GetOwnerReferencesForBackingImageManager(backingImageManager *longhorn.BackingImageManager) []metav1.OwnerReference {
