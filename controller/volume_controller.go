@@ -2031,7 +2031,7 @@ func (vc *VolumeController) listReadySchedulableAndScheduledNodes(volume *longho
 	filteredReadyNodes := readyNodes
 	if len(volume.Spec.NodeSelector) != 0 {
 		for nodeName, node := range readyNodes {
-			if !util.IsTagsEqual(node.Spec.Tags, volume.Spec.NodeSelector) {
+			if !types.IsSelectorsInTags(node.Spec.Tags, volume.Spec.NodeSelector) {
 				delete(filteredReadyNodes, nodeName)
 			}
 		}
