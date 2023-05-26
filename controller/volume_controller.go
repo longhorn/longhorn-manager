@@ -12,21 +12,23 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	v1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	clientset "k8s.io/client-go/kubernetes"
-	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/controller"
 
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clientset "k8s.io/client-go/kubernetes"
+	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
+
 	"github.com/longhorn/backupstore"
+
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/constant"
@@ -106,7 +108,7 @@ func NewVolumeController(
 		smImage:      shareManagerImage,
 
 		kubeClient:    kubeClient,
-		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-volume-controller"}),
+		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-volume-controller"}),
 
 		backoff: flowcontrol.NewBackOff(time.Minute, time.Minute*3),
 
@@ -323,7 +325,7 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 			if err != nil {
 				return err
 			}
-			vc.eventRecorder.Eventf(volume, v1.EventTypeNormal, constant.EventReasonDelete, "Deleting volume %v", volume.Name)
+			vc.eventRecorder.Eventf(volume, corev1.EventTypeNormal, constant.EventReasonDelete, "Deleting volume %v", volume.Name)
 		}
 
 		if volume.Spec.AccessMode == longhorn.AccessModeReadWriteMany {
@@ -520,7 +522,7 @@ func (vc *VolumeController) EvictReplicas(v *longhorn.Volume,
 	if healthyNonEvictingCount < v.Spec.NumberOfReplicas && !hasNewReplica {
 		if err := vc.replenishReplicas(v, e, rs, ""); err != nil {
 			log.WithError(err).Error("Failed to create new replica for replica eviction")
-			vc.eventRecorder.Eventf(v, v1.EventTypeWarning,
+			vc.eventRecorder.Eventf(v, corev1.EventTypeWarning,
 				constant.EventReasonFailedEviction,
 				"volume %v failed to create one more replica", v.Name)
 			return err
@@ -578,7 +580,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es m
 	if e.Status.CurrentState == longhorn.InstanceStateUnknown {
 		if v.Status.Robustness != longhorn.VolumeRobustnessUnknown {
 			v.Status.Robustness = longhorn.VolumeRobustnessUnknown
-			vc.eventRecorder.Eventf(v, v1.EventTypeWarning, constant.EventReasonUnknown, "volume %v robustness is unknown", v.Name)
+			vc.eventRecorder.Eventf(v, corev1.EventTypeWarning, constant.EventReasonUnknown, "volume %v robustness is unknown", v.Name)
 		}
 		return nil
 	}
@@ -640,10 +642,10 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es m
 			(restoreStatus != nil && restoreStatus.Error != "") ||
 			(purgeStatus != nil && purgeStatus.Error != "") {
 			if restoreStatus != nil && restoreStatus.Error != "" {
-				vc.eventRecorder.Eventf(v, v1.EventTypeWarning, constant.EventReasonFailedRestore, "replica %v failed the restore: %s", r.Name, restoreStatus.Error)
+				vc.eventRecorder.Eventf(v, corev1.EventTypeWarning, constant.EventReasonFailedRestore, "replica %v failed the restore: %s", r.Name, restoreStatus.Error)
 			}
 			if purgeStatus != nil && purgeStatus.Error != "" {
-				vc.eventRecorder.Eventf(v, v1.EventTypeWarning, constant.EventReasonFailedSnapshotPurge, "replica %v failed the snapshot purge: %s", r.Name, purgeStatus.Error)
+				vc.eventRecorder.Eventf(v, corev1.EventTypeWarning, constant.EventReasonFailedSnapshotPurge, "replica %v failed the snapshot purge: %s", r.Name, purgeStatus.Error)
 			}
 			if r.Spec.FailedAt == "" {
 				log.Warnf("Replica %v is marked as failed, current state %v, mode %v, engine name %v, active %v", r.Name, r.Status.CurrentState, mode, r.Spec.EngineName, r.Spec.Active)
@@ -687,7 +689,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es m
 	} else if healthyCount >= v.Spec.NumberOfReplicas {
 		v.Status.Robustness = longhorn.VolumeRobustnessHealthy
 		if oldRobustness == longhorn.VolumeRobustnessDegraded {
-			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonHealthy, "volume %v became healthy", v.Name)
+			vc.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonHealthy, "volume %v became healthy", v.Name)
 		}
 
 		if isMigratingDone {
@@ -720,7 +722,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es m
 		v.Status.Robustness = longhorn.VolumeRobustnessDegraded
 		if oldRobustness != longhorn.VolumeRobustnessDegraded {
 			v.Status.LastDegradedAt = vc.nowHandler()
-			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonDegraded, "volume %v became degraded", v.Name)
+			vc.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDegraded, "volume %v became degraded", v.Name)
 		}
 
 		cliAPIVersion, err := vc.ds.GetEngineImageCLIAPIVersion(e.Status.CurrentImage)
@@ -748,12 +750,12 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es m
 
 		if status.State == engineapi.ProcessStateComplete && v.Status.CloneStatus.State != longhorn.VolumeCloneStateCompleted {
 			v.Status.CloneStatus.State = longhorn.VolumeCloneStateCompleted
-			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonVolumeCloneCompleted,
+			vc.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonVolumeCloneCompleted,
 				"finished cloning snapshot %v from source volume %v",
 				v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume)
 		} else if status.State == engineapi.ProcessStateError && v.Status.CloneStatus.State != longhorn.VolumeCloneStateFailed {
 			v.Status.CloneStatus.State = longhorn.VolumeCloneStateFailed
-			vc.eventRecorder.Eventf(v, v1.EventTypeWarning, constant.EventReasonVolumeCloneFailed,
+			vc.eventRecorder.Eventf(v, corev1.EventTypeWarning, constant.EventReasonVolumeCloneFailed,
 				"failed to clone snapshot %v from source volume %v: %v",
 				v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume, status.Error)
 		}
@@ -970,7 +972,7 @@ func (vc *VolumeController) cleanupEvictionRequestedReplicas(v *longhorn.Volume,
 			continue
 		}
 		if err := vc.deleteReplica(r, rs); err != nil {
-			vc.eventRecorder.Eventf(v, v1.EventTypeWarning,
+			vc.eventRecorder.Eventf(v, corev1.EventTypeWarning,
 				constant.EventReasonFailedEviction,
 				"volume %v failed to evict replica %v",
 				v.Name, r.Name)
@@ -1253,7 +1255,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 						r.Spec.FailedAt = ""
 						log.WithField("replica", r.Name).Warn("Automatically salvaging volume replica")
 						msg := fmt.Sprintf("Replica %v of volume %v will be automatically salvaged", r.Name, v.Name)
-						vc.eventRecorder.Event(v, v1.EventTypeWarning, constant.EventReasonAutoSalvaged, msg)
+						vc.eventRecorder.Event(v, corev1.EventTypeWarning, constant.EventReasonAutoSalvaged, msg)
 						salvaged = true
 					}
 				}
@@ -1265,7 +1267,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 					//v.Status.PendingNodeID = v.Spec.NodeID
 					v.Status.RemountRequestedAt = vc.nowHandler()
 					msg := fmt.Sprintf("Volume %v requested remount at %v after automatically salvaging replicas", v.Name, v.Status.RemountRequestedAt)
-					vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonRemount, msg)
+					vc.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonRemount, msg)
 					v.Status.Robustness = longhorn.VolumeRobustnessUnknown
 					return nil
 				}
@@ -1278,7 +1280,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			// Therefore, we set RemountRequestedAt so that KubernetesPodController restarts the workload pod
 			v.Status.RemountRequestedAt = vc.nowHandler()
 			msg := fmt.Sprintf("Volume %v requested remount at %v", v.Name, v.Status.RemountRequestedAt)
-			vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonRemount, msg)
+			vc.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonRemount, msg)
 			return nil
 		}
 
@@ -1286,7 +1288,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		if e.Status.CurrentState == longhorn.InstanceStateError && v.Status.CurrentNodeID != "" {
 			log.Warn("Engine of volume dead unexpectedly, reattach the volume")
 			msg := fmt.Sprintf("Engine of volume %v dead unexpectedly, reattach the volume", v.Name)
-			vc.eventRecorder.Event(v, v1.EventTypeWarning, constant.EventReasonDetachedUnexpectly, msg)
+			vc.eventRecorder.Event(v, corev1.EventTypeWarning, constant.EventReasonDetachedUnexpectly, msg)
 			e.Spec.LogRequested = true
 			for _, r := range rs {
 				if r.Status.CurrentState == longhorn.InstanceStateRunning {
@@ -1339,7 +1341,7 @@ func (vc *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume
 				vc.closeVolumeDependentResources(v, e, rs)
 				if vc.verifyVolumeDependentResourcesClosed(e, rs) {
 					v.Status.State = longhorn.VolumeStateDetached
-					vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
+					vc.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 				}
 			case longhorn.VolumeStateDetached:
 				// This is a stable state.
@@ -1358,7 +1360,7 @@ func (vc *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume
 				if vc.verifyVolumeDependentResourcesClosed(e, rs) {
 					v.Status.CurrentNodeID = ""
 					v.Status.State = longhorn.VolumeStateDetached
-					vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
+					vc.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 				}
 			}
 			return nil
@@ -1375,7 +1377,7 @@ func (vc *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume
 				vc.closeVolumeDependentResources(v, e, rs)
 				if vc.verifyVolumeDependentResourcesClosed(e, rs) {
 					v.Status.State = longhorn.VolumeStateDetached
-					vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
+					vc.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 				}
 			case longhorn.VolumeStateDetached:
 				if err := vc.openVolumeDependentResources(v, e, rs, log); err != nil {
@@ -1389,7 +1391,7 @@ func (vc *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume
 				if vc.areVolumeDependentResourcesOpened(e, rs) {
 					v.Status.CurrentNodeID = v.Spec.NodeID
 					v.Status.State = longhorn.VolumeStateAttached
-					vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonAttached, "volume %v has been attached to %v", v.Name, v.Status.CurrentNodeID)
+					vc.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonAttached, "volume %v has been attached to %v", v.Name, v.Status.CurrentNodeID)
 				}
 			}
 			return nil
@@ -1406,7 +1408,7 @@ func (vc *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume
 					if vc.verifyVolumeDependentResourcesClosed(e, rs) {
 						v.Status.CurrentNodeID = ""
 						v.Status.State = longhorn.VolumeStateDetached
-						vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
+						vc.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 					}
 				case longhorn.VolumeStateAttached:
 					// This is a stable state
@@ -1430,7 +1432,7 @@ func (vc *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume
 					if vc.verifyVolumeDependentResourcesClosed(e, rs) {
 						v.Status.CurrentNodeID = ""
 						v.Status.State = longhorn.VolumeStateDetached
-						vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
+						vc.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
 					}
 				case longhorn.VolumeStateAttached:
 					if v.Spec.Migratable && v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && v.Status.CurrentMigrationNodeID != "" {
@@ -1813,7 +1815,7 @@ func (vc *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.
 	// The expansion is canceled or hasn't been started
 	if e.Status.CurrentSize == v.Spec.Size {
 		v.Status.ExpansionRequired = false
-		vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonCanceledExpansion,
+		vc.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonCanceledExpansion,
 			"Canceled expanding the volume %v, will automatically detach it", v.Name)
 	} else {
 		if diskScheduleMultiError, err := vc.scheduler.CheckReplicasSizeExpansion(v, e.Spec.VolumeSize, v.Spec.Size); err != nil {
@@ -2953,7 +2955,7 @@ func (vc *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume) (err err
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
 			v.Status.CloneStatus.State = longhorn.VolumeCloneStateFailed
-			vc.eventRecorder.Eventf(v, v1.EventTypeWarning, constant.EventReasonVolumeCloneFailed, "cannot find the source volume %v", sourceVolName)
+			vc.eventRecorder.Eventf(v, corev1.EventTypeWarning, constant.EventReasonVolumeCloneFailed, "cannot find the source volume %v", sourceVolName)
 			return nil
 		}
 		return err
@@ -2983,7 +2985,7 @@ func (vc *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume) (err err
 	v.Status.CloneStatus.SourceVolume = sourceVolName
 	v.Status.CloneStatus.Snapshot = snapshotName
 	v.Status.CloneStatus.State = longhorn.VolumeCloneStateInitiated
-	vc.eventRecorder.Eventf(v, v1.EventTypeNormal, constant.EventReasonVolumeCloneInitiated, "source volume %v, snapshot %v", sourceVolName, snapshotName)
+	vc.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonVolumeCloneInitiated, "source volume %v, snapshot %v", sourceVolName, snapshotName)
 
 	return nil
 }
@@ -4027,7 +4029,7 @@ func (vc *VolumeController) ReconcileShareManagerState(volume *longhorn.Volume) 
 	if sm.Status.State == longhorn.ShareManagerStateError || sm.Status.State == longhorn.ShareManagerStateUnknown {
 		volume.Status.RemountRequestedAt = vc.nowHandler()
 		msg := fmt.Sprintf("Volume %v requested remount at %v", volume.Name, volume.Status.RemountRequestedAt)
-		vc.eventRecorder.Eventf(volume, v1.EventTypeNormal, constant.EventReasonRemount, msg)
+		vc.eventRecorder.Eventf(volume, corev1.EventTypeNormal, constant.EventReasonRemount, msg)
 	}
 
 	// sync the share state and endpoint
