@@ -154,7 +154,9 @@ func startManager(c *cli.Context) error {
 
 	proxyConnCounter := util.NewAtomicCounter()
 
-	ds, wsc, err := controller.StartControllers(logger, ctx.Done(), currentNodeID, serviceAccount, managerImage, backingImageManagerImage, shareManagerImage, kubeconfigPath, meta.Version, proxyConnCounter)
+	ds, wsc, err := controller.StartControllers(logger, ctx.Done(),
+		currentNodeID, serviceAccount, managerImage, backingImageManagerImage, shareManagerImage,
+		kubeconfigPath, meta.Version, proxyConnCounter)
 	if err != nil {
 		return err
 	}

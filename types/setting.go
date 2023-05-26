@@ -369,7 +369,7 @@ var (
 		DisplayName: "Default Instance Manager Image",
 		Description: "The default instance manager image used by the manager. Can be changed on the manager starting command line only",
 		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeString,
+		Type:        SettingTypeDeprecated,
 		Required:    true,
 		ReadOnly:    true,
 	}
