@@ -13,6 +13,7 @@ import (
 )
 
 const (
+	TestErrErrorFmt  = "Unexpected error for test case: %s: %v"
 	TestErrResultFmt = "Unexpected result for test case: %s"
 )
 
@@ -27,7 +28,7 @@ func (s *TestSuite) SetUpTest(c *C) {
 	logrus.SetLevel(logrus.DebugLevel)
 }
 
-func TestParseToleration(t *testing.T) {
+func (s *TestSuite) TestParseToleration(c *C) {
 	type testCase struct {
 		input string
 
@@ -106,17 +107,17 @@ func TestParseToleration(t *testing.T) {
 		},
 	}
 
-	for name, test := range testCases {
-		fmt.Printf("testing %v\n", name)
+	for testName, testCase := range testCases {
+		fmt.Printf("testing %v\n", testName)
 
-		toleration, err := UnmarshalTolerations(test.input)
-		if !reflect.DeepEqual(toleration, test.expectedToleration) {
-			t.Errorf("unexpected toleration:\nGot: %v\nWant: %v", toleration, test.expectedToleration)
+		toleration, err := UnmarshalTolerations(testCase.input)
+		if !testCase.expectError {
+			c.Assert(err, IsNil, Commentf(TestErrErrorFmt, testName, err))
+		} else {
+			c.Assert(err, NotNil)
 		}
 
-		if test.expectError && err == nil {
-			t.Errorf("unexpected error: %v", err)
-		}
+		c.Assert(reflect.DeepEqual(toleration, testCase.expectedToleration), Equals, true, Commentf(TestErrResultFmt, testName))
 	}
 }
 
