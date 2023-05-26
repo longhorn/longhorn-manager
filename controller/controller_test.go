@@ -43,6 +43,7 @@ const (
 	TestInstanceManagerImage      = "longhorn-instance-manager:latest"
 	TestExtraInstanceManagerImage = "longhorn-instance-manager:upgraded"
 	TestManagerImage              = "longhorn-manager:latest"
+	TestShareManagerImage         = "longhorn-share-manager:latest"
 	TestServiceAccount            = "longhorn-service-account"
 
 	TestBackingImage = "test-backing-image"
