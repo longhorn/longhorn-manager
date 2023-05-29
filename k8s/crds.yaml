@@ -446,9 +446,6 @@ spec:
                 additionalProperties:
                   type: string
                 type: object
-              imageURL:
-                description: 'Deprecated: This kind of info will be included in the related BackingImageDataSource.'
-                type: string
               sourceParameters:
                 additionalProperties:
                   type: string
@@ -465,19 +462,6 @@ spec:
             properties:
               checksum:
                 type: string
-              diskDownloadProgressMap:
-                additionalProperties:
-                  type: integer
-                description: 'Deprecated: Replaced by field `Progress` in `DiskFileStatusMap`.'
-                nullable: true
-                type: object
-              diskDownloadStateMap:
-                additionalProperties:
-                  description: BackingImageDownloadState is replaced by BackingImageState.
-                  type: string
-                description: 'Deprecated: Replaced by field `State` in `DiskFileStatusMap`.'
-                nullable: true
-                type: object
               diskFileStatusMap:
                 additionalProperties:
                   properties:
