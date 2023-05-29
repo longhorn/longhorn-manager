@@ -1046,12 +1046,12 @@ var (
 
 	SettingDefinitionLogLevel = SettingDefinition{
 		DisplayName: "Log Level",
-		Description: "The log level Panic, Fatal, Error, Warn, Info, Debug, Trace used in longhorn manager. By default Info.",
+		Description: "The log level Panic, Fatal, Error, Warn, Info, Debug, Trace used in longhorn manager. By default Debug.",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeString,
 		Required:    true,
 		ReadOnly:    false,
-		Default:     "Info",
+		Default:     "Debug",
 	}
 )
 
