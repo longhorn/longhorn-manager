@@ -6,8 +6,11 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
-
 	"github.com/rancher/go-rancher/client"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 func (s *Server) SystemBackupCreate(w http.ResponseWriter, req *http.Request) error {
@@ -19,7 +22,15 @@ func (s *Server) SystemBackupCreate(w http.ResponseWriter, req *http.Request) er
 		return err
 	}
 
-	systemBackup, err := s.m.CreateSystemBackup(input.Name)
+	obj := &longhorn.SystemBackup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: input.Name,
+		},
+		Spec: longhorn.SystemBackupSpec{
+			VolumeBackupPolicy: input.VolumeBackupPolicy,
+		},
+	}
+	systemBackup, err := s.m.CreateSystemBackup(obj)
 	if err != nil {
 		return errors.Wrapf(err, "failed to create SystemBackup")
 	}
