@@ -1672,9 +1672,6 @@ spec:
           spec:
             description: InstanceManagerSpec defines the desired state of the Longhorn instancer manager
             properties:
-              engineImage:
-                description: 'Deprecated: This field is useless.'
-                type: string
               image:
                 type: string
               nodeID:
