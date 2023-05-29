@@ -297,12 +297,6 @@ spec:
                   properties:
                     currentChecksum:
                       type: string
-                    directory:
-                      description: 'Deprecated: This field is useless.'
-                      type: string
-                    downloadProgress:
-                      description: 'Deprecated: This field is renamed to `Progress`.'
-                      type: integer
                     message:
                       type: string
                     name:
@@ -317,9 +311,6 @@ spec:
                       format: int64
                       type: integer
                     state:
-                      type: string
-                    url:
-                      description: 'Deprecated: This field is useless now. The manager of backing image files doesn''t care if a file is downloaded and how.'
                       type: string
                     uuid:
                       type: string
