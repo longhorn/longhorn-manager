@@ -431,20 +431,6 @@ func (in *BackingImageStatus) DeepCopyInto(out *BackingImageStatus) {
 			(*out)[key] = val
 		}
 	}
-	if in.DiskDownloadStateMap != nil {
-		in, out := &in.DiskDownloadStateMap, &out.DiskDownloadStateMap
-		*out = make(map[string]BackingImageDownloadState, len(*in))
-		for key, val := range *in {
-			(*out)[key] = val
-		}
-	}
-	if in.DiskDownloadProgressMap != nil {
-		in, out := &in.DiskDownloadProgressMap, &out.DiskDownloadProgressMap
-		*out = make(map[string]int, len(*in))
-		for key, val := range *in {
-			(*out)[key] = val
-		}
-	}
 	return
 }
 
