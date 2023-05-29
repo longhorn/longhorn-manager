@@ -2422,13 +2422,7 @@ spec:
                 type: boolean
               backingImage:
                 type: string
-              baseImage:
-                description: Deprecated. Rename to BackingImage
-                type: string
               dataDirectoryName:
-                type: string
-              dataPath:
-                description: Deprecated
                 type: string
               desireState:
                 type: string

@@ -186,10 +186,9 @@ func (rc *ReplicaController) handleErr(err error, key interface{}) {
 func getLoggerForReplica(logger logrus.FieldLogger, r *longhorn.Replica) *logrus.Entry {
 	return logger.WithFields(
 		logrus.Fields{
-			"replica":  r.Name,
-			"nodeID":   r.Spec.NodeID,
-			"dataPath": r.Spec.DataPath,
-			"ownerID":  r.Status.OwnerID,
+			"replica": r.Name,
+			"nodeID":  r.Spec.NodeID,
+			"ownerID": r.Status.OwnerID,
 		},
 	)
 }
