@@ -131,9 +131,6 @@ type InstanceManagerSpec struct {
 	NodeID string `json:"nodeID"`
 	// +optional
 	Type InstanceManagerType `json:"type"`
-	// Deprecated: This field is useless.
-	// +optional
-	EngineImage string `json:"engineImage"`
 }
 
 // InstanceManagerStatus defines the observed state of the Longhorn instance manager
