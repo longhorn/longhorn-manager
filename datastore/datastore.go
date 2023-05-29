@@ -29,6 +29,9 @@ var (
 
 	// SystemRestoreTimeout is the timeout for system restore
 	SystemRestoreTimeout = 24 * time.Hour
+
+	// VolumeBackupTimeout is the timeout for volume backups
+	VolumeBackupTimeout = 24 * time.Hour
 )
 
 // DataStore object
