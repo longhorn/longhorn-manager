@@ -63,7 +63,7 @@ type SystemBackupTestCase struct {
 }
 
 func (s *TestSuite) TestReconcileSystemBackup(c *C) {
-	datastore.SystemBackupTimeout = 10 // 10 seconds
+	datastore.SystemBackupTimeout = 10 * time.Second
 
 	rolloutOwnerID := TestNode1
 

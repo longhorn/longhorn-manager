@@ -525,8 +525,7 @@ func (c *SystemBackupController) UploadSystemBackup(systemBackup *longhorn.Syste
 		return
 	}
 
-	timeout := time.Duration(datastore.SystemBackupTimeout) * time.Second
-	timer := time.NewTimer(timeout)
+	timer := time.NewTimer(datastore.SystemBackupTimeout)
 	defer timer.Stop()
 
 	ticker := time.NewTicker(time.Second)
