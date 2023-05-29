@@ -3452,9 +3452,6 @@ spec:
                 - lz4
                 - gzip
                 type: string
-              baseImage:
-                description: Deprecated. Rename to BackingImage
-                type: string
               dataLocality:
                 enum:
                 - disabled

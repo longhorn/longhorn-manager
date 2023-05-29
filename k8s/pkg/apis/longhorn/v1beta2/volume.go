@@ -236,9 +236,6 @@ type VolumeSpec struct {
 	// +kubebuilder:validation:Enum=ignored;disabled;enabled;fast-check
 	// +optional
 	SnapshotDataIntegrity SnapshotDataIntegrity `json:"snapshotDataIntegrity"`
-	// Deprecated. Rename to BackingImage
-	// +optional
-	BaseImage string `json:"baseImage"`
 	// +kubebuilder:validation:Enum=none;lz4;gzip
 	// +optional
 	BackupCompressionMethod BackupCompressionMethod `json:"backupCompressionMethod"`
