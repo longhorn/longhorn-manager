@@ -393,7 +393,10 @@ type SupportBundleInitateInput struct {
 
 type SystemBackup struct {
 	client.Resource
-	Name         string                     `json:"name"`
+
+	Name               string                                        `json:"name"`
+	VolumeBackupPolicy longhorn.SystemBackupCreateVolumeBackupPolicy `json:"volumeBackupPolicy"`
+
 	Version      string                     `json:"version,omitempty"`
 	ManagerImage string                     `json:"managerImage,omitempty"`
 	State        longhorn.SystemBackupState `json:"state,omitempty"`
@@ -402,7 +405,8 @@ type SystemBackup struct {
 }
 
 type SystemBackupInput struct {
-	Name string `json:"name"`
+	Name               string                                        `json:"name"`
+	VolumeBackupPolicy longhorn.SystemBackupCreateVolumeBackupPolicy `json:"volumeBackupPolicy"`
 }
 
 type SystemRestore struct {
@@ -1929,7 +1933,9 @@ func toSystemBackupResource(systemBackup *longhorn.SystemBackup) *SystemBackup {
 			Id:   systemBackup.Name,
 			Type: "systemBackup",
 		},
-		Name:         systemBackup.Name,
+		Name:               systemBackup.Name,
+		VolumeBackupPolicy: systemBackup.Spec.VolumeBackupPolicy,
+
 		Version:      systemBackup.Status.Version,
 		ManagerImage: systemBackup.Status.ManagerImage,
 		State:        systemBackup.Status.State,
