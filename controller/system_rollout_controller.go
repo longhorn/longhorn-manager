@@ -772,8 +772,7 @@ func (c *SystemRolloutController) GetSystemBackupURL() (string, error) {
 }
 
 func (c *SystemRolloutController) restore(kind string, fn func() error, log logrus.FieldLogger) {
-	timeout := time.Duration(datastore.SystemRestoreTimeout) * time.Second
-	timer := time.NewTimer(timeout)
+	timer := time.NewTimer(datastore.SystemRestoreTimeout)
 	defer timer.Stop()
 
 	ticker := time.NewTicker(1 * time.Second)

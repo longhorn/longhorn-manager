@@ -885,7 +885,7 @@ func (c *FakeSystemBackupTargetClient) UploadSystemBackup(name, localFile, longh
 	case TestSystemBackupNameUploadFailed, TestSystemRestoreNameUploadFailed:
 		return "", fmt.Errorf(name)
 	case TestSystemBackupNameUploadExceedTimeout, TestSystemRestoreNameUploadExceedTimeout:
-		time.Sleep(time.Duration(datastore.SystemBackupTimeout) * 2)
+		time.Sleep(datastore.SystemBackupTimeout * 2)
 	}
 
 	return "", nil

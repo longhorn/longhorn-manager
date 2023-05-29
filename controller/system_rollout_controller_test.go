@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
@@ -109,7 +110,7 @@ type SystemRolloutTestCase struct {
 }
 
 func (s *TestSuite) TestSystemRollout(c *C) {
-	datastore.SystemRestoreTimeout = 10 // 10 seconds
+	datastore.SystemRestoreTimeout = 10 * time.Second
 
 	controllerID := TestNode1
 	systemRolloutOwnerID := controllerID
