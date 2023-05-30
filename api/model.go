@@ -131,6 +131,7 @@ type BackupVolume struct {
 	Messages             map[string]string `json:"messages"`
 	BackingImageName     string            `json:"backingImageName"`
 	BackingImageChecksum string            `json:"backingImageChecksum"`
+	StorageClassName     string            `json:"storageClassName"`
 }
 
 type Backup struct {
@@ -319,6 +320,8 @@ type PVCreateInput struct {
 
 	SecretName      string `json:"secretName"`
 	SecretNamespace string `json:"secretNamespace"`
+
+	StorageClassName string `json:"storageClassName"`
 }
 
 type PVCCreateInput struct {
@@ -346,11 +349,6 @@ type Node struct {
 	Region                    string                        `json:"region"`
 	Zone                      string                        `json:"zone"`
 	InstanceManagerCPURequest int                           `json:"instanceManagerCPURequest"`
-
-	// Deprecated: Replaced by InstanceManagerCPURequest
-	EngineManagerCPURequest int `json:"engineManagerCPURequest"`
-	// Deprecated: Replaced by InstanceManagerCPURequest
-	ReplicaManagerCPURequest int `json:"replicaManagerCPURequest"`
 }
 
 type DiskStatus struct {
@@ -395,7 +393,10 @@ type SupportBundleInitateInput struct {
 
 type SystemBackup struct {
 	client.Resource
-	Name         string                     `json:"name"`
+
+	Name               string                                        `json:"name"`
+	VolumeBackupPolicy longhorn.SystemBackupCreateVolumeBackupPolicy `json:"volumeBackupPolicy"`
+
 	Version      string                     `json:"version,omitempty"`
 	ManagerImage string                     `json:"managerImage,omitempty"`
 	State        longhorn.SystemBackupState `json:"state,omitempty"`
@@ -404,7 +405,8 @@ type SystemBackup struct {
 }
 
 type SystemBackupInput struct {
-	Name string `json:"name"`
+	Name               string                                        `json:"name"`
+	VolumeBackupPolicy longhorn.SystemBackupCreateVolumeBackupPolicy `json:"volumeBackupPolicy"`
 }
 
 type SystemRestore struct {
@@ -640,19 +642,6 @@ func nodeSchema(node *client.Schema) {
 	tags := node.ResourceFields["tags"]
 	tags.Create = true
 	node.ResourceFields["tags"] = tags
-
-	engineManagerCPURequest := node.ResourceFields["engineManagerCPURequest"]
-	engineManagerCPURequest.Required = true
-	engineManagerCPURequest.Unique = false
-	engineManagerCPURequest.Default = -1
-	node.ResourceFields["engineManagerCPURequest"] = engineManagerCPURequest
-
-	replicaManagerCPURequest := node.ResourceFields["replicaManagerCPURequest"]
-	replicaManagerCPURequest.Required = true
-	replicaManagerCPURequest.Unique = false
-	replicaManagerCPURequest.Default = -1
-	node.ResourceFields["replicaManagerCPURequest"] = replicaManagerCPURequest
-
 }
 
 func diskSchema(diskUpdateInput *client.Schema) {
@@ -1011,12 +1000,6 @@ func volumeSchema(volume *client.Schema) {
 	replicas := volume.ResourceFields["replicas"]
 	replicas.Type = "array[replica]"
 	volume.ResourceFields["replicas"] = replicas
-
-	recurringJobs := volume.ResourceFields["recurringJobs"]
-	recurringJobs.Create = true
-	recurringJobs.Default = nil
-	recurringJobs.Type = "array[recurringJob]"
-	volume.ResourceFields["recurringJobs"] = recurringJobs
 
 	recurringJobSelector := volume.ResourceFields["recurringJobSelector"]
 	recurringJobSelector.Create = true
@@ -1651,6 +1634,7 @@ func toBackupVolumeResource(bv *longhorn.BackupVolume, apiContext *api.ApiContex
 		Messages:             bv.Status.Messages,
 		BackingImageName:     bv.Status.BackingImageName,
 		BackingImageChecksum: bv.Status.BackingImageChecksum,
+		StorageClassName:     bv.Status.StorageClassName,
 	}
 	b.Actions = map[string]string{
 		"backupList":   apiContext.UrlBuilder.ActionLink(b.Resource, "backupList"),
@@ -1840,8 +1824,6 @@ func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiCont
 		Tags:                      node.Spec.Tags,
 		Region:                    node.Status.Region,
 		Zone:                      node.Status.Zone,
-		EngineManagerCPURequest:   node.Spec.EngineManagerCPURequest,
-		ReplicaManagerCPURequest:  node.Spec.ReplicaManagerCPURequest,
 		InstanceManagerCPURequest: node.Spec.InstanceManagerCPURequest,
 	}
 
@@ -1951,7 +1933,9 @@ func toSystemBackupResource(systemBackup *longhorn.SystemBackup) *SystemBackup {
 			Id:   systemBackup.Name,
 			Type: "systemBackup",
 		},
-		Name:         systemBackup.Name,
+		Name:               systemBackup.Name,
+		VolumeBackupPolicy: systemBackup.Spec.VolumeBackupPolicy,
+
 		Version:      systemBackup.Status.Version,
 		ManagerImage: systemBackup.Status.ManagerImage,
 		State:        systemBackup.Status.State,

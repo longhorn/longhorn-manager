@@ -46,6 +46,7 @@ type BackingImageManagerController struct {
 	namespace      string
 	controllerID   string
 	serviceAccount string
+	bimImageName   string
 
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
@@ -100,7 +101,7 @@ func NewBackingImageManagerController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
-	namespace, controllerID, serviceAccount string) *BackingImageManagerController {
+	namespace, controllerID, serviceAccount, backingImageManagerImage string) *BackingImageManagerController {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -112,6 +113,7 @@ func NewBackingImageManagerController(
 		namespace:      namespace,
 		controllerID:   controllerID,
 		serviceAccount: serviceAccount,
+		bimImageName:   backingImageManagerImage,
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-backing-image-manager-controller"}),
@@ -329,12 +331,7 @@ func (c *BackingImageManagerController) syncBackingImageManager(key string) (err
 func (c *BackingImageManagerController) cleanupBackingImageManager(bim *longhorn.BackingImageManager) (err error) {
 	log := getLoggerForBackingImageManager(c.logger, bim)
 
-	// Do file cleanup for default manager only.
-	defaultImage, err := c.ds.GetSettingValueExisted(types.SettingNameDefaultBackingImageManagerImage)
-	if err != nil {
-		return err
-	}
-	if bim.Spec.Image == defaultImage && bim.Status.CurrentState == longhorn.BackingImageManagerStateRunning && bim.Status.IP != "" {
+	if bim.Spec.Image == c.bimImageName && bim.Status.CurrentState == longhorn.BackingImageManagerStateRunning && bim.Status.IP != "" {
 		cli, err := engineapi.NewBackingImageManagerClient(bim)
 		if err != nil {
 			log.WithError(err).Warnf("Failed to launch a gRPC client during cleanup, will skip deleting all files")
@@ -489,11 +486,7 @@ func (c *BackingImageManagerController) syncBackingImageManagerPod(bim *longhorn
 
 	// It's meaningless to start or monitor a pod for an old manager
 	// since it will cleaned up immediately.
-	defaultImage, err := c.ds.GetSettingValueExisted(types.SettingNameDefaultBackingImageManagerImage)
-	if err != nil {
-		return err
-	}
-	if bim.Spec.Image != defaultImage {
+	if bim.Spec.Image != c.bimImageName {
 		return nil
 	}
 
@@ -552,11 +545,7 @@ func (c *BackingImageManagerController) handleBackingImageFiles(bim *longhorn.Ba
 		return nil
 	}
 
-	defaultImage, err := c.ds.GetSettingValueExisted(types.SettingNameDefaultBackingImageManagerImage)
-	if err != nil {
-		return err
-	}
-	if bim.Spec.Image != defaultImage {
+	if bim.Spec.Image != c.bimImageName {
 		return nil
 	}
 
@@ -644,11 +633,6 @@ func (c *BackingImageManagerController) prepareBackingImageFiles(currentBIM *lon
 		err = errors.Wrapf(err, "failed to prepare backing image files")
 	}()
 
-	defaultImage, err := c.ds.GetSettingValueExisted(types.SettingNameDefaultBackingImageManagerImage)
-	if err != nil {
-		return err
-	}
-
 	bims, err := c.ds.ListBackingImageManagers()
 	if err != nil {
 		return err
@@ -723,7 +707,7 @@ func (c *BackingImageManagerController) prepareBackingImageFiles(currentBIM *lon
 		noReadyFile := true
 		var senderCandidate *longhorn.BackingImageManager
 		for _, bim := range bims {
-			if bim.Status.CurrentState != longhorn.BackingImageManagerStateRunning || bim.Spec.Image != defaultImage {
+			if bim.Status.CurrentState != longhorn.BackingImageManagerStateRunning || bim.Spec.Image != c.bimImageName {
 				continue
 			}
 			info, exists := bim.Status.BackingImageFileMap[biName]

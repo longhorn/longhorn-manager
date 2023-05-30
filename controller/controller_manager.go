@@ -35,7 +35,10 @@ var (
 	longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
 )
 
-func StartControllers(logger logrus.FieldLogger, stopCh <-chan struct{}, controllerID, serviceAccount, managerImage, kubeconfigPath, version string, proxyConnCounter util.Counter) (*datastore.DataStore, *WebsocketController, error) {
+// StartControllers initiates all Longhorn component controllers and monitors to manage the creating, updating, and deletion of Longhorn resources
+func StartControllers(logger logrus.FieldLogger, stopCh <-chan struct{},
+	controllerID, serviceAccount, managerImage, backingImageManagerImage, shareManagerImage,
+	kubeconfigPath, version string, proxyConnCounter util.Counter) (*datastore.DataStore, *WebsocketController, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, "+
@@ -84,7 +87,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh <-chan struct{}, control
 
 	rc := NewReplicaController(logger, ds, scheme, kubeClient, namespace, controllerID)
 	ec := NewEngineController(logger, ds, scheme, kubeClient, &engineapi.EngineCollection{}, namespace, controllerID, proxyConnCounter)
-	vc := NewVolumeController(logger, ds, scheme, kubeClient, namespace, controllerID, proxyConnCounter)
+	vc := NewVolumeController(logger, ds, scheme, kubeClient, namespace, controllerID, shareManagerImage, proxyConnCounter)
 	ic := NewEngineImageController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount)
 	nc := NewNodeController(logger, ds, scheme, kubeClient, namespace, controllerID)
 	ws := NewWebsocketController(logger, ds)
@@ -94,9 +97,9 @@ func StartControllers(logger logrus.FieldLogger, stopCh <-chan struct{}, control
 	bc := NewBackupController(logger, ds, scheme, kubeClient, controllerID, namespace, proxyConnCounter)
 	imc := NewInstanceManagerController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount)
 	smc := NewShareManagerController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount)
-	bic := NewBackingImageController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount)
-	bimc := NewBackingImageManagerController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount)
-	bidsc := NewBackingImageDataSourceController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount, proxyConnCounter)
+	bic := NewBackingImageController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount, backingImageManagerImage)
+	bimc := NewBackingImageManagerController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount, backingImageManagerImage)
+	bidsc := NewBackingImageDataSourceController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount, backingImageManagerImage, proxyConnCounter)
 	rjc := NewRecurringJobController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount, managerImage)
 	oc := NewOrphanController(logger, ds, scheme, kubeClient, controllerID, namespace)
 	snapc := NewSnapshotController(logger, ds, scheme, kubeClient, namespace, controllerID, &engineapi.EngineCollection{}, proxyConnCounter)
@@ -187,22 +190,8 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 		return nil, err
 	}
 
-	cpuRequest := 0
-	guaranteedCPUSettingName := types.SettingName("")
-	switch im.Spec.Type {
-	case longhorn.InstanceManagerTypeEngine:
-		cpuRequest = lhNode.Spec.EngineManagerCPURequest
-		guaranteedCPUSettingName = types.SettingNameGuaranteedEngineManagerCPU
-	case longhorn.InstanceManagerTypeReplica:
-		cpuRequest = lhNode.Spec.ReplicaManagerCPURequest
-		guaranteedCPUSettingName = types.SettingNameGuaranteedReplicaManagerCPU
-	case longhorn.InstanceManagerTypeAllInOne:
-		cpuRequest = lhNode.Spec.InstanceManagerCPURequest
-		guaranteedCPUSettingName = types.SettingNameGuaranteedInstanceManagerCPU
-	default:
-		return nil, fmt.Errorf("instance manager %v has unknown type %v", im.Name, im.Spec.Type)
-	}
-
+	cpuRequest := lhNode.Spec.InstanceManagerCPURequest
+	guaranteedCPUSettingName := types.SettingNameGuaranteedInstanceManagerCPU
 	if cpuRequest == 0 {
 		guaranteedCPUSetting, err := ds.GetSetting(guaranteedCPUSettingName)
 		if err != nil {

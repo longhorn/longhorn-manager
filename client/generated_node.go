@@ -15,15 +15,13 @@ type Node struct {
 
 	Disks map[string]interface{} `json:"disks,omitempty" yaml:"disks,omitempty"`
 
-	EngineManagerCPURequest int64 `json:"engineManagerCPURequest,omitempty" yaml:"engine_manager_cpurequest,omitempty"`
-
 	EvictionRequested bool `json:"evictionRequested,omitempty" yaml:"eviction_requested,omitempty"`
+
+	InstanceManagerCPURequest int64 `json:"instanceManagerCPURequest,omitempty" yaml:"instance_manager_cpurequest,omitempty"`
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 
 	Region string `json:"region,omitempty" yaml:"region,omitempty"`
-
-	ReplicaManagerCPURequest int64 `json:"replicaManagerCPURequest,omitempty" yaml:"replica_manager_cpurequest,omitempty"`
 
 	Tags []string `json:"tags,omitempty" yaml:"tags,omitempty"`
 

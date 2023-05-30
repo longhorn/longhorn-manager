@@ -53,17 +53,21 @@ type SystemBackupTestCase struct {
 	isExistInRemote     bool
 	systemBackupName    string
 	systemBackupVersion string
+	volumeBackupPolicy  longhorn.SystemBackupCreateVolumeBackupPolicy
 
 	existPersistentVolumes map[SystemRolloutCRName]*corev1.PersistentVolume
+	existVolumes           map[SystemRolloutCRName]*longhorn.Volume
 
 	expectError                 bool
 	expectErrorConditionMessage string
 	expectState                 longhorn.SystemBackupState
 	expectRemove                bool
+	expectNewVolumBackupCount   int
 }
 
 func (s *TestSuite) TestReconcileSystemBackup(c *C) {
-	datastore.SystemBackupTimeout = 10 // 10 seconds
+	datastore.SystemBackupTimeout = 10 * time.Second
+	datastore.VolumeBackupTimeout = 10 * time.Second
 
 	rolloutOwnerID := TestNode1
 
@@ -78,12 +82,51 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 	testCases := map[string]SystemBackupTestCase{
 		"system backup create": {
 			state:       longhorn.SystemBackupStateNone,
-			expectState: longhorn.SystemBackupStateGenerating,
+			expectState: longhorn.SystemBackupStateVolumeBackup,
 		},
 		"system backup create list backup failed": {
 			systemBackupName: TestSystemBackupNameListFailed,
 			state:            longhorn.SystemBackupStateNone,
 			expectState:      longhorn.SystemBackupStateError,
+		},
+		"system backup create volume backup if-not-present": {
+			state:              longhorn.SystemBackupStateVolumeBackup,
+			volumeBackupPolicy: longhorn.SystemBackupCreateVolumeBackupPolicyIfNotPresent,
+			existVolumes: map[SystemRolloutCRName]*longhorn.Volume{
+				SystemRolloutCRName(TestVolumeName): {
+					Status: longhorn.VolumeStatus{
+						LastBackup: "",
+					},
+				},
+			},
+			expectState:               longhorn.SystemBackupStateGenerating,
+			expectNewVolumBackupCount: 1,
+		},
+		"system backup create volume backup if-not-present when backup exists": {
+			state:              longhorn.SystemBackupStateVolumeBackup,
+			volumeBackupPolicy: longhorn.SystemBackupCreateVolumeBackupPolicyIfNotPresent,
+			existVolumes: map[SystemRolloutCRName]*longhorn.Volume{
+				SystemRolloutCRName(TestVolumeName): {
+					Status: longhorn.VolumeStatus{
+						LastBackup: "exists",
+					},
+				},
+			},
+			expectState:               longhorn.SystemBackupStateGenerating,
+			expectNewVolumBackupCount: 0,
+		},
+		"system backup create volume backup always": {
+			state:              longhorn.SystemBackupStateVolumeBackup,
+			volumeBackupPolicy: longhorn.SystemBackupCreateVolumeBackupPolicyAlways,
+			existVolumes: map[SystemRolloutCRName]*longhorn.Volume{
+				SystemRolloutCRName(TestVolumeName): {
+					Status: longhorn.VolumeStatus{
+						LastBackup: "exists",
+					},
+				},
+			},
+			expectState:               longhorn.SystemBackupStateGenerating,
+			expectNewVolumBackupCount: 1,
 		},
 		"system backup generate": {
 			state:       longhorn.SystemBackupStateGenerating,
@@ -197,6 +240,7 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 		fakeSystemRolloutBackupTargetDefault(c, lhInformerFactory, lhClient)
 		fakeSystemRolloutStorageClassesDefault(c, kubeInformerFactory, kubeClient)
 
+		fakeSystemRolloutVolumes(tc.existVolumes, c, lhInformerFactory, lhClient)
 		fakeSystemRolloutPersistentVolumes(tc.existPersistentVolumes, c, kubeInformerFactory, kubeClient)
 
 		extensionsClient := apiextensionsfake.NewSimpleClientset()
@@ -207,9 +251,9 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 			tc.controllerID,
 		)
 
-		systemBackup := fakeSystemBackup(tc.systemBackupName, rolloutOwnerID, tc.systemBackupVersion, tc.isDeleting, tc.state, c, lhInformerFactory, lhClient)
+		systemBackup := fakeSystemBackup(tc.systemBackupName, rolloutOwnerID, tc.systemBackupVersion, tc.isDeleting, tc.volumeBackupPolicy, tc.state, c, lhInformerFactory, lhClient)
 		if tc.notExist {
-			systemBackup = fakeSystemBackup("none", rolloutOwnerID, tc.systemBackupVersion, tc.isDeleting, tc.state, c, lhInformerFactory, lhClient)
+			systemBackup = fakeSystemBackup("none", rolloutOwnerID, tc.systemBackupVersion, tc.isDeleting, tc.volumeBackupPolicy, tc.state, c, lhInformerFactory, lhClient)
 		}
 
 		systemBackupTempDir, err := os.MkdirTemp(os.TempDir(), fmt.Sprintf("*-%v", TestSystemBackupName))
@@ -220,6 +264,15 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 		tempDir := filepath.Join(systemBackupTempDir, tc.systemBackupName)
 
 		switch systemBackup.Status.State {
+		case longhorn.SystemBackupStateVolumeBackup:
+			backups, _ := systemBackupController.BackupVolumes(systemBackup)
+
+			for _, backup := range backups {
+				backup.Status.State = longhorn.BackupStateCompleted
+			}
+			fakeSystemRolloutBackups(backups, c, lhInformerFactory, lhClient)
+			systemBackupController.WaitForVolumeBackupToComplete(backups, systemBackup)
+
 		case longhorn.SystemBackupStateGenerating:
 			systemBackupController.GenerateSystemBackup(systemBackup, archievePath, tempDir)
 
@@ -255,6 +308,10 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 		if tc.isExistInRemote {
 			c.Assert(systemBackup.Labels[types.GetVersionLabelKey()], NotNil)
 		}
+
+		volumeBackups, err := lhClient.LonghornV1beta2().Backups(TestNamespace).List(context.TODO(), metav1.ListOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(len(volumeBackups.Items), Equals, tc.expectNewVolumBackupCount)
 	}
 }
 
@@ -280,8 +337,13 @@ func newFakeSystemBackupController(
 	return c
 }
 
-func fakeSystemBackup(name, currentOwnerID, longhornVersion string, isDeleting bool, state longhorn.SystemBackupState, c *C, informerFactory lhinformers.SharedInformerFactory, client *lhfake.Clientset) *longhorn.SystemBackup {
-	systemBackup := newSystemBackup(name, currentOwnerID, longhornVersion, state)
+func fakeSystemBackup(name, currentOwnerID, longhornVersion string, isDeleting bool,
+	volumeBackupPolicy longhorn.SystemBackupCreateVolumeBackupPolicy,
+	state longhorn.SystemBackupState, c *C, informerFactory lhinformers.SharedInformerFactory, client *lhfake.Clientset) *longhorn.SystemBackup {
+	if volumeBackupPolicy == "" {
+		volumeBackupPolicy = longhorn.SystemBackupCreateVolumeBackupPolicyDisabled
+	}
+	systemBackup := newSystemBackup(name, currentOwnerID, longhornVersion, volumeBackupPolicy, state)
 
 	err := util.AddFinalizer(longhornFinalizerKey, systemBackup)
 	c.Assert(err, IsNil)
