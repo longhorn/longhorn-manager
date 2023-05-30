@@ -3633,7 +3633,7 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 	// the only time there should be more then 1 engines is when we are migrating or upgrading
 	// if there are more then 1 and we no longer have a migration id set we can cleanup the extra engine
 	if v.Spec.MigrationNodeID == "" {
-		if len(es) < 2 {
+		if len(es) < 2 && v.Status.CurrentMigrationNodeID == "" {
 			return nil
 		}
 
