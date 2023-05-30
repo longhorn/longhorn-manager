@@ -101,6 +101,8 @@ const (
 	SettingNameBackupConcurrentLimit                                    = SettingName("backup-concurrent-limit")
 	SettingNameRestoreConcurrentLimit                                   = SettingName("restore-concurrent-limit")
 	SettingNameLogLevel                                                 = SettingName("log-level")
+	SettingNameSpdk                                                     = SettingName("spdk")
+	SettingNameSpdkHugepageLimit                                        = SettingName("spdk-hugepage-limit")
 )
 
 var (
@@ -170,6 +172,8 @@ var (
 		SettingNameBackupConcurrentLimit,
 		SettingNameRestoreConcurrentLimit,
 		SettingNameLogLevel,
+		SettingNameSpdk,
+		SettingNameSpdkHugepageLimit,
 	}
 )
 
@@ -182,6 +186,7 @@ const (
 	SettingCategoryScheduling = SettingCategory("scheduling")
 	SettingCategoryDangerZone = SettingCategory("danger Zone")
 	SettingCategorySnapshot   = SettingCategory("snapshot")
+	SettingCategorySpdk       = SettingCategory("spdk")
 )
 
 type SettingDefinition struct {
@@ -264,6 +269,8 @@ var (
 		SettingNameBackupConcurrentLimit:                                    SettingDefinitionBackupConcurrentLimit,
 		SettingNameRestoreConcurrentLimit:                                   SettingDefinitionRestoreConcurrentLimit,
 		SettingNameLogLevel:                                                 SettingDefinitionLogLevel,
+		SettingNameSpdk:                                                     SettingDefinitionSpdk,
+		SettingNameSpdkHugepageLimit:                                        SettingDefinitionSpdkHugepageLimit,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -1053,6 +1060,28 @@ var (
 		ReadOnly:    false,
 		Default:     "Debug",
 	}
+
+	SettingDefinitionSpdk = SettingDefinition{
+		DisplayName: "Enable SPDK Data Engine (Preview Feature)",
+		Description: "This allows users to activate the SPDK data engine. Currently, it is in the preview phase and should not be utilized in a production environment.\n\n" +
+			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will try to block this setting update when there are attached volumes. \n\n" +
+			"  - When applying the setting, Longhorn will restart all instance-manager pods. \n\n",
+		Category: SettingCategoryDangerZone,
+		Type:     SettingTypeBool,
+		Required: true,
+		ReadOnly: false,
+		Default:  "false",
+	}
+
+	SettingDefinitionSpdkHugepageLimit = SettingDefinition{
+		DisplayName: "Hugepage Size for SPDK Data Engine",
+		Description: "Hugepage size in MiB for SPDK data engine",
+		Category:    SettingCategorySpdk,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    true,
+		Default:     "1024",
+	}
 )
 
 type NodeDownPodDeletionPolicy string
@@ -1085,6 +1114,10 @@ type CNIAnnotation string
 const (
 	CNIAnnotationNetworks      = CNIAnnotation("k8s.v1.cni.cncf.io/networks")
 	CNIAnnotationNetworkStatus = CNIAnnotation("k8s.v1.cni.cncf.io/networks-status")
+)
+
+const (
+	SpdkAnnotation = "longhorn.io/spdk"
 )
 
 func ValidateSetting(name, value string) (err error) {
@@ -1143,6 +1176,8 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameFastReplicaRebuildEnabled:
 		fallthrough
 	case SettingNameUpgradeChecker:
+		fallthrough
+	case SettingNameSpdk:
 		if value != "true" && value != "false" {
 			return fmt.Errorf("value %v of setting %v should be true or false", value, sName)
 		}
@@ -1206,6 +1241,8 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameRecurringFailedJobsHistoryLimit:
 		fallthrough
 	case SettingNameFailedBackupTTL:
+		fallthrough
+	case SettingNameSpdkHugepageLimit:
 		value, err := strconv.Atoi(value)
 		if err != nil {
 			errors.Wrapf(err, "value %v is not a number", value)
