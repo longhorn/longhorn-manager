@@ -1,6 +1,8 @@
 package replica
 
 import (
+	"fmt"
+
 	"github.com/pkg/errors"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -66,6 +68,10 @@ func mutateReplica(newObj runtime.Object, needFinalizer bool) (admission.PatchOp
 			return nil, werror.NewInvalidError(err.Error(), "")
 		}
 		patchOps = append(patchOps, patchOp)
+	}
+
+	if string(replica.Spec.BackendStoreDriver) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeLonghorn))
 	}
 
 	return patchOps, nil
