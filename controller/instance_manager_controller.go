@@ -14,6 +14,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -25,6 +26,8 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
+	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -34,7 +37,8 @@ import (
 )
 
 var (
-	hostToContainer = v1.MountPropagationHostToContainer
+	mountPropagationHostToContainer = v1.MountPropagationHostToContainer
+	mountPropagationBidirectional   = v1.MountPropagationBidirectional
 )
 
 type InstanceManagerController struct {
@@ -1089,7 +1093,7 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 					LivenessProbe: &v1.Probe{
 						ProbeHandler: v1.ProbeHandler{
 							TCPSocket: &v1.TCPSocketAction{
-								Port: intstr.FromInt(engineapi.InstanceManagerDefaultPort),
+								Port: intstr.FromInt(engineapi.InstanceManagerProcessManagerServiceDefaultPort),
 							},
 						},
 						InitialDelaySeconds: datastore.PodProbeInitialDelay,
@@ -1137,25 +1141,65 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	secretIsOptional := true
 	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, longhorn.InstanceManagerTypeAllInOne)
 	podSpec.Spec.Containers[0].Name = "instance-manager"
-	podSpec.Spec.Containers[0].Args = []string{
-		"instance-manager", "--debug", "daemon", "--listen", "0.0.0.0:8500",
+
+	spdkEnabled, err := imc.ds.GetSetting(types.SettingNameSpdk)
+	if err != nil {
+		return nil, err
 	}
+	spdkAnnot := string(types.SpdkAnnotation)
+	if spdkEnabled.Value != podSpec.Annotations[spdkAnnot] {
+		podSpec.Annotations[spdkAnnot] = spdkEnabled.Value
+	}
+
+	if spdkEnabled.Value == "true" {
+		podSpec.Spec.Containers[0].Args = []string{
+			"instance-manager", "--enable-spdk", "--debug", "daemon", "--spdk-enabled", "--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort),
+		}
+
+		hugepage, err := imc.ds.GetSettingAsInt(types.SettingNameSpdkHugepageLimit)
+		if err != nil {
+			return nil, err
+		}
+
+		if podSpec.Spec.Containers[0].Resources.Requests == nil {
+			podSpec.Spec.Containers[0].Resources.Requests = v1.ResourceList{}
+		}
+		podSpec.Spec.Containers[0].Resources.Requests[v1.ResourceMemory] = resource.MustParse("128Mi")
+
+		if podSpec.Spec.Containers[0].Resources.Limits == nil {
+			podSpec.Spec.Containers[0].Resources.Limits = v1.ResourceList{}
+		}
+		podSpec.Spec.Containers[0].Resources.Limits[v1.ResourceName("hugepages-2Mi")] = resource.MustParse(fmt.Sprintf("%vMi", hugepage))
+	} else {
+		podSpec.Spec.Containers[0].Args = []string{
+			"instance-manager", "--debug", "daemon", "--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort),
+		}
+	}
+
 	podSpec.Spec.Containers[0].Env = []v1.EnvVar{
 		{
 			Name:  "TLS_DIR",
 			Value: types.TLSDirectoryInContainer,
+		},
+		{
+			Name: types.EnvPodIP,
+			ValueFrom: &v1.EnvVarSource{
+				FieldRef: &v1.ObjectFieldSelector{
+					FieldPath: "status.podIP",
+				},
+			},
 		},
 	}
 	podSpec.Spec.Containers[0].VolumeMounts = []v1.VolumeMount{
 		{
 			MountPath:        "/host",
 			Name:             "host",
-			MountPropagation: &hostToContainer,
+			MountPropagation: &mountPropagationHostToContainer,
 		},
 		{
 			MountPath:        types.EngineBinaryDirectoryInContainer,
 			Name:             "engine-binaries",
-			MountPropagation: &hostToContainer,
+			MountPropagation: &mountPropagationHostToContainer,
 		},
 		{
 			MountPath: types.UnixDomainSocketDirectoryInContainer,
@@ -1201,6 +1245,23 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			},
 		},
 	}
+
+	if spdkEnabled.Value == "true" {
+		podSpec.Spec.Containers[0].VolumeMounts = append(podSpec.Spec.Containers[0].VolumeMounts, v1.VolumeMount{
+			MountPath: "/hugepages",
+			Name:      "hugepage",
+		})
+
+		podSpec.Spec.Volumes = append(podSpec.Spec.Volumes, v1.Volume{
+			Name: "hugepage",
+			VolumeSource: v1.VolumeSource{
+				EmptyDir: &v1.EmptyDirVolumeSource{
+					Medium: v1.StorageMediumHugePages,
+				},
+			},
+		})
+	}
+
 	return podSpec, nil
 }
 
@@ -1222,7 +1283,7 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 	// TODO: #2441 refactor this when we do the resource monitoring refactor
 	client, err := engineapi.NewInstanceManagerClient(im)
 	if err != nil {
-		log.Errorf("failed to initialize im client before monitoring")
+		log.WithError(err).Errorf("Failed to initialize im client to %v before monitoring", im.Name)
 		return
 	}
 
@@ -1277,12 +1338,12 @@ func (imc *InstanceManagerController) stopMonitoring(imName string) {
 }
 
 func (m *InstanceManagerMonitor) Run() {
-	m.logger.Debugf("Start monitoring instance manager %v", m.Name)
+	m.logger.Infof("Start monitoring instance manager %v", m.Name)
 
 	// TODO: this function will error out in unit tests. Need to find a way to skip this for unit tests.
 	// TODO: #2441 refactor this when we do the resource monitoring refactor
 	ctx, cancel := context.WithCancel(context.TODO())
-	notifier, err := m.client.ProcessWatch(ctx)
+	notifier, err := m.client.InstanceWatch(ctx)
 	if err != nil {
 		m.logger.Errorf("Failed to get the notifier for monitoring: %v", err)
 		cancel()
@@ -1309,8 +1370,14 @@ func (m *InstanceManagerMonitor) Run() {
 				return
 			}
 
-			if _, err := notifier.Recv(); err != nil {
-				m.logger.Errorf("error receiving next item in engine watch: %v", err)
+			var err error
+			if m.client.GetAPIVersion() < 4 {
+				_, err = notifier.(*imapi.ProcessStream).Recv()
+			} else {
+				_, err = notifier.(*imapi.InstanceStream).Recv()
+			}
+			if err != nil {
+				m.logger.WithError(err).Error("error receiving next item in instance watch")
 				continuousFailureCount++
 				time.Sleep(engineapi.MinPollCount * engineapi.PollInterval)
 			} else {
@@ -1370,12 +1437,11 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() (needStop bool) {
 		return true
 	}
 
-	resp, err := m.client.ProcessList()
+	resp, err := m.client.InstanceList()
 	if err != nil {
 		utilruntime.HandleError(errors.Wrapf(err, "failed to poll instance info to update instance manager %v", m.Name))
 		return false
 	}
-
 	if !m.updateInstanceMap(im, resp) {
 		return false
 	}

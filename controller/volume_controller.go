@@ -595,8 +595,8 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		isNoAvailableBackend := strings.Contains(engineInstanceCreationCondition.Message, fmt.Sprintf("exit status %v", int(syscall.ENODATA)))
 		for _, r := range rs {
 			if isNoAvailableBackend || (r.Spec.FailedAt == "" && r.Status.CurrentState == longhorn.InstanceStateError) {
-				log.Warnf("Replica %v that not in the engine mode map is marked as failed, current state %v, engine name %v, active %v",
-					r.Name, r.Status.CurrentState, r.Spec.EngineName, r.Spec.Active)
+				log.Warnf("Replica %v that not in the engine mode map is marked as failed, current state %v, engine name %v, active %v, no available backend %v",
+					r.Name, r.Status.CurrentState, r.Spec.EngineName, r.Spec.Active, isNoAvailableBackend)
 				e.Spec.LogRequested = true
 				r.Spec.LogRequested = true
 				r.Spec.FailedAt = c.nowHandler()
@@ -1995,10 +1995,15 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 		replenishCount = 1
 	}
 	for i := 0; i < replenishCount; i++ {
-		reusableFailedReplica, err := c.scheduler.CheckAndReuseFailedReplica(rs, v, hardNodeAffinity)
-		if err != nil {
-			return errors.Wrapf(err, "failed to reuse a failed replica during replica replenishment")
+		var reusableFailedReplica *longhorn.Replica
+		// TODO: reuse failed replica for replica rebuilding of SPDK volumes
+		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+			reusableFailedReplica, err = c.scheduler.CheckAndReuseFailedReplica(rs, v, hardNodeAffinity)
+			if err != nil {
+				return errors.Wrapf(err, "failed to reuse a failed replica during replica replenishment")
+			}
 		}
+
 		if reusableFailedReplica != nil {
 			if !c.backoff.IsInBackOffSinceUpdate(reusableFailedReplica.Name, time.Now()) {
 				log.Debugf("Failed replica %v will be reused during rebuilding", reusableFailedReplica.Name)
@@ -2460,8 +2465,8 @@ func (c *VolumeController) getIsSchedulableToDiskNodes(v *longhorn.Volume, nodeN
 		if err != nil {
 			continue
 		}
-		for fsid, diskStatus := range node.Status.DiskStatus {
-			diskSpec, exists := node.Spec.Disks[fsid]
+		for diskName, diskStatus := range node.Status.DiskStatus {
+			diskSpec, exists := node.Spec.Disks[diskName]
 			if !exists {
 				continue
 			}
@@ -3190,10 +3195,11 @@ func (c *VolumeController) createEngine(v *longhorn.Volume, isNewEngine bool) (*
 		},
 		Spec: longhorn.EngineSpec{
 			InstanceSpec: longhorn.InstanceSpec{
-				VolumeName:  v.Name,
-				VolumeSize:  v.Spec.Size,
-				EngineImage: v.Status.CurrentImage,
-				DesireState: longhorn.InstanceStateStopped,
+				VolumeName:         v.Name,
+				VolumeSize:         v.Spec.Size,
+				EngineImage:        v.Status.CurrentImage,
+				BackendStoreDriver: v.Spec.BackendStoreDriver,
+				DesireState:        longhorn.InstanceStateStopped,
 			},
 			Frontend:                  v.Spec.Frontend,
 			ReplicaAddressMap:         map[string]string{},
@@ -3238,10 +3244,11 @@ func (c *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine,
 		},
 		Spec: longhorn.ReplicaSpec{
 			InstanceSpec: longhorn.InstanceSpec{
-				VolumeName:  v.Name,
-				VolumeSize:  v.Spec.Size,
-				EngineImage: v.Status.CurrentImage,
-				DesireState: longhorn.InstanceStateStopped,
+				VolumeName:         v.Name,
+				VolumeSize:         v.Spec.Size,
+				EngineImage:        v.Status.CurrentImage,
+				BackendStoreDriver: v.Spec.BackendStoreDriver,
+				DesireState:        longhorn.InstanceStateStopped,
 			},
 			EngineName:                       e.Name,
 			Active:                           true,
@@ -3252,7 +3259,13 @@ func (c *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine,
 		},
 	}
 	if isRebuildingReplica {
-		log.Debugf("A new replica %v will be replenished during rebuilding", replica.Name)
+		// TODO: reuse failed replica for replica rebuilding of SPDK volumes
+		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+			log.Warnf("Rebuilding replica %v is not supported for SPDK volumes", replica.Name)
+			return nil
+		}
+
+		log.Infof("A new replica %v will be replenished during rebuilding", replica.Name)
 		// Prevent this new replica from being reused after rebuilding failure.
 		replica.Spec.RebuildRetryCount = scheduler.FailedReplicaMaxRetryCount
 	}
