@@ -927,7 +927,7 @@ func updateVolumeAttachments(namespace string, lhClient *lhclientset.Clientset, 
 		if _, ok := existingVolumeAttachmentMap[va.Name]; ok {
 			continue
 		}
-		if _, err = lhClient.LonghornV1beta2().VolumeAttachments(namespace).Create(context.TODO(), va, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(errors.Cause(err)) {
+		if _, err = lhClient.LonghornV1beta2().VolumeAttachments(namespace).Create(context.TODO(), va, metav1.CreateOptions{}); err != nil {
 			return err
 		}
 	}
