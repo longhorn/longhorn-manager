@@ -1,6 +1,8 @@
 package datastore
 
 import (
+	"time"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
@@ -23,10 +25,13 @@ var (
 	SkipListerCheck = false
 
 	// SystemBackupTimeout is the timeout for system backup
-	SystemBackupTimeout = 60 * 60 // 1 hours
+	SystemBackupTimeout = time.Hour
 
 	// SystemRestoreTimeout is the timeout for system restore
-	SystemRestoreTimeout = 24 * 60 * 60 // 24 hours
+	SystemRestoreTimeout = 24 * time.Hour
+
+	// VolumeBackupTimeout is the timeout for volume backups
+	VolumeBackupTimeout = 24 * time.Hour
 )
 
 // DataStore object

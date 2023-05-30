@@ -51,6 +51,7 @@ type BackingImageDataSourceController struct {
 	namespace      string
 	controllerID   string
 	serviceAccount string
+	bimImageName   string
 
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
@@ -84,7 +85,7 @@ func NewBackingImageDataSourceController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
-	namespace, controllerID, serviceAccount string,
+	namespace, controllerID, serviceAccount, imageManagerImage string,
 	proxyConnCounter util.Counter,
 ) *BackingImageDataSourceController {
 
@@ -98,6 +99,7 @@ func NewBackingImageDataSourceController(
 		namespace:      namespace,
 		controllerID:   controllerID,
 		serviceAccount: serviceAccount,
+		bimImageName:   imageManagerImage,
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-backing-image-data-source-controller"}),
@@ -404,11 +406,6 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 	}()
 	log := getLoggerForBackingImageDataSource(c.logger, bids)
 
-	defaultImage, err := c.ds.GetSettingValueExisted(types.SettingNameDefaultBackingImageManagerImage)
-	if err != nil {
-		return err
-	}
-
 	newBackingImageDataSource := bids.Status.CurrentState == ""
 
 	podName := types.GetBackingImageDataSourcePodName(bids.Name)
@@ -425,7 +422,7 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 		podNotReadyMessage = fmt.Sprintf("pod spec node ID %v doesn't match the desired node ID %v", pod.Spec.NodeName, bids.Spec.NodeID)
 	} else if pod.DeletionTimestamp != nil {
 		podNotReadyMessage = "the pod dedicated to prepare the first backing image file is being deleted"
-	} else if pod.Spec.Containers[0].Image != defaultImage {
+	} else if pod.Spec.Containers[0].Image != c.bimImageName {
 		podNotReadyMessage = "the pod image is not the default one"
 	} else {
 		switch pod.Status.Phase {
@@ -662,11 +659,6 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 		return nil, err
 	}
 
-	bimImage, err := c.ds.GetSettingValueExisted(types.SettingNameDefaultBackingImageManagerImage)
-	if err != nil {
-		return nil, err
-	}
-
 	bi, err := c.ds.GetBackingImage(bids.Name)
 	if err != nil {
 		return nil, err
@@ -711,7 +703,7 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 			Containers: []v1.Container{
 				{
 					Name:            BackingImageDataSourcePodContainerName,
-					Image:           bimImage,
+					Image:           c.bimImageName,
 					ImagePullPolicy: imagePullPolicy,
 					Command:         cmd,
 					ReadinessProbe: &v1.Probe{

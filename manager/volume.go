@@ -677,26 +677,18 @@ func (m *VolumeManager) AddVolumeRecurringJob(volumeName string, name string, is
 		err = errors.Wrapf(err, "failed to add volume recurring jobs for %v", volumeName)
 	}()
 
-	v, err := m.ds.GetVolume(volumeName)
+	volume, err := m.ds.GetVolume(volumeName)
 	if err != nil {
 		return nil, err
 	}
 
-	key := ""
-	if isGroup {
-		key = types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJobGroup, name)
-	} else {
-		key = types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJob, name)
+	key := types.GetRecurringJobLabelKeyByType(name, isGroup)
+	volume, err = m.ds.AddRecurringJobLabelToVolume(volume, key)
+	if err != nil {
+		return nil, err
 	}
-	if value, exist := v.Labels[key]; !exist || value != types.LonghornLabelValueEnabled {
-		v.Labels[key] = types.LonghornLabelValueEnabled
-		v, err = m.ds.UpdateVolume(v)
-		if err != nil {
-			return nil, err
-		}
-		logrus.Debugf("Added volume %v recurring job label %v", v.Name, key)
-	}
-	volumeRecurringJob, err = m.ListVolumeRecurringJob(volumeName)
+
+	volumeRecurringJob, err = m.ListVolumeRecurringJob(volume.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -717,11 +709,17 @@ func (m *VolumeManager) ListVolumeRecurringJob(volumeName string) (map[string]*l
 }
 
 func (m *VolumeManager) DeleteVolumeRecurringJob(volumeName string, name string, isGroup bool) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to delete recurring job %v from Volume %v", name, volumeName)
+	}()
+
 	volume, err := m.ds.GetVolumeRO(volumeName)
 	if err != nil {
 		return nil, err
 	}
-	return m.ds.DeleteVolumeRecurringJob(name, isGroup, volume)
+
+	key := types.GetRecurringJobLabelKeyByType(name, isGroup)
+	return m.ds.RemoveRecurringJobLabelFromVolume(volume, key)
 }
 
 func (m *VolumeManager) DeleteReplica(volumeName, replicaName string) error {

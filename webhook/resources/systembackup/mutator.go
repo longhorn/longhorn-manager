@@ -1,6 +1,8 @@
 package systembackup
 
 import (
+	"fmt"
+
 	"github.com/pkg/errors"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -48,6 +50,10 @@ func (m *systemBackupMutator) Create(request *admission.Request, newObj runtime.
 		return nil, werror.NewInvalidError(err.Error(), "")
 	}
 	patchOps = append(patchOps, patchOp)
+
+	if systemBackup.Spec.VolumeBackupPolicy == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/volumeBackupPolicy", "value": "%s"}`, longhorn.SystemBackupCreateVolumeBackupPolicyIfNotPresent))
+	}
 
 	return patchOps, nil
 }

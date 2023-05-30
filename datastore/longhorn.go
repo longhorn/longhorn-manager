@@ -724,27 +724,32 @@ func MarshalLabelToVolumeRecurringJob(labels map[string]string) map[string]*long
 	return jobMapVolumeJob
 }
 
-func (s *DataStore) DeleteVolumeRecurringJob(name string, isGroup bool, v *longhorn.Volume) (volume *longhorn.Volume, err error) {
-	vName := v.Name
-	defer func() {
-		err = errors.Wrapf(err, "failed to delete volume recurring jobs for %v", vName)
-	}()
-
-	key := ""
-	if isGroup {
-		key = types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJobGroup, name)
-	} else {
-		key = types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJob, name)
-	}
-	if _, exist := v.Labels[key]; exist {
-		delete(v.Labels, key)
-		v, err = s.UpdateVolume(v)
+// AddRecurringJobLabelToVolume adds a recurring job label to the given volume.
+func (s *DataStore) AddRecurringJobLabelToVolume(volume *longhorn.Volume, labelKey string) (*longhorn.Volume, error) {
+	var err error
+	if _, exist := volume.Labels[labelKey]; !exist {
+		volume.Labels[labelKey] = types.LonghornLabelValueEnabled
+		volume, err = s.UpdateVolume(volume)
 		if err != nil {
 			return nil, err
 		}
-		logrus.Debugf("Removed volume %v recurring job label %v", v.Name, key)
+		logrus.Debugf("Added volume %v recurring job label %v", volume.Name, labelKey)
 	}
-	return v, nil
+	return volume, nil
+}
+
+// RemoveRecurringJobLabelFromVolume removes a recurring job label from the given volume.
+func (s *DataStore) RemoveRecurringJobLabelFromVolume(volume *longhorn.Volume, labelKey string) (*longhorn.Volume, error) {
+	var err error
+	if _, exist := volume.Labels[labelKey]; exist {
+		delete(volume.Labels, labelKey)
+		volume, err = s.UpdateVolume(volume)
+		if err != nil {
+			return nil, err
+		}
+		logrus.Debugf("Removed volume %v recurring job label %v", volume.Name, labelKey)
+	}
+	return volume, nil
 }
 
 // ListDRVolumesRO returns a single object contains all DR Volumes
@@ -1809,29 +1814,6 @@ func (s *DataStore) ListBackingImageManagersByDiskUUID(diskUUID string) (map[str
 		return nil, err
 	}
 	return s.listBackingImageManagers(diskSelector)
-}
-
-// ListDefaultBackingImageManagers gets a list of BackingImageManager
-// using default image with the given namespace.
-func (s *DataStore) ListDefaultBackingImageManagers() (map[string]*longhorn.BackingImageManager, error) {
-	defaultImage, err := s.GetSettingValueExisted(types.SettingNameDefaultBackingImageManagerImage)
-	if err != nil {
-		return nil, err
-	}
-
-	itemMap := map[string]*longhorn.BackingImageManager{}
-	list, err := s.bimLister.BackingImageManagers(s.namespace).List(labels.Everything())
-	if err != nil {
-		return nil, err
-	}
-	for _, itemRO := range list {
-		if itemRO.Spec.Image != defaultImage {
-			continue
-		}
-		// Cannot use cached object from lister
-		itemMap[itemRO.Name] = itemRO.DeepCopy()
-	}
-	return itemMap, nil
 }
 
 // GetOwnerReferencesForBackingImageManager returns OwnerReference for the given
