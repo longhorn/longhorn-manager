@@ -193,10 +193,9 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 	engineImage, err := ic.ds.GetEngineImage(name)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
-			ic.logger.WithField("engineImage", name).Debugf("Longhorn engine image %v has been deleted", key)
 			return nil
 		}
-		return err
+		return errors.Wrapf(err, "failed to get engine image")
 	}
 	log := getLoggerForEngineImage(ic.logger, engineImage)
 
@@ -219,18 +218,16 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 			}
 			return err
 		}
-		log.Debugf("Engine Image Controller %v picked up %v (%v)", ic.controllerID, engineImage.Name, engineImage.Spec.Image)
+		log.Infof("Engine Image got new owner %v", ic.controllerID)
 	}
 
 	checksumName := types.GetEngineImageChecksumName(engineImage.Spec.Image)
 	if engineImage.Name != checksumName {
-		return fmt.Errorf("image %v checksum %v doesn't match engine image name %v", engineImage.Spec.Image, checksumName, engineImage.Name)
+		return fmt.Errorf("image %v checksum name %v doesn't match engine image name %v", engineImage.Spec.Image, checksumName, engineImage.Name)
 	}
 
 	dsName := types.GetDaemonSetNameFromEngineImageName(engineImage.Name)
 	if engineImage.DeletionTimestamp != nil {
-		// Will use the foreground deletion to implicitly clean up the related DaemonSet.
-		log.Infof("Removing engine image %v (%v)", engineImage.Name, engineImage.Spec.Image)
 		return ic.ds.RemoveFinalizerForEngineImage(engineImage)
 	}
 
@@ -283,10 +280,11 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 			return errors.Wrapf(err, "failed to create daemonset spec for engine image %v", engineImage.Name)
 		}
 
+		log.Infof("Creating daemon set %v for engine image %v (%v)", dsSpec.Name, engineImage.Name, engineImage.Spec.Image)
 		if err = ic.ds.CreateEngineImageDaemonSet(dsSpec); err != nil {
 			return errors.Wrapf(err, "failed to create daemonset for engine image %v", engineImage.Name)
 		}
-		log.Infof("Created daemon set %v for engine image %v (%v)", dsSpec.Name, engineImage.Name, engineImage.Spec.Image)
+
 		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions,
 			longhorn.EngineImageConditionTypeReady, longhorn.ConditionStatusFalse,
 			longhorn.EngineImageConditionTypeReadyReasonDaemonSet, fmt.Sprintf("creating daemon set %v for %v", dsSpec.Name, engineImage.Spec.Image))
@@ -435,7 +433,7 @@ func (ic *EngineImageController) handleAutoUpgradeEngineImageToDefaultEngineImag
 
 	for _, vs := range limitedCandidates {
 		for _, v := range vs {
-			ic.logger.WithFields(logrus.Fields{"volume": v.Name, "engineImage": v.Spec.EngineImage}).Infof("automatically upgrade volume engine image to the default engine image %v", defaultEngineImage)
+			ic.logger.WithFields(logrus.Fields{"volume": v.Name, "engineImage": v.Spec.EngineImage}).Infof("Upgrading volume engine image to the default engine image %v automatically", defaultEngineImage)
 			v.Spec.EngineImage = defaultEngineImage
 			v, err = ic.ds.UpdateVolume(v)
 			if err != nil {
@@ -518,7 +516,6 @@ func (ic *EngineImageController) canDoLiveEngineImageUpgrade(v *longhorn.Volume,
 	}
 	oldEngineImageResource, err := ic.ds.GetEngineImage(types.GetEngineImageChecksumName(v.Status.CurrentImage))
 	if err != nil {
-		ic.logger.WithError(err).Warnf("canDoLiveEngineImageUpgrade: cannot get engine image resource for engine image %v ", v.Status.CurrentImage)
 		return false
 	}
 	if oldEngineImageResource.Status.ControllerAPIVersion > newEngineImageResource.Status.ControllerAPIVersion ||
@@ -661,7 +658,7 @@ func (ic *EngineImageController) cleanupExpiredEngineImage(ei *longhorn.EngineIm
 		}
 
 		log := getLoggerForEngineImage(ic.logger, ei)
-		log.Info("Engine image expired, clean it up")
+		log.Info("Cleaning engine image since it expired")
 		// TODO: Need to consider if the engine image can be removed in engine image controller
 		if err := ic.ds.DeleteEngineImage(ei.Name); err != nil {
 			return err
@@ -727,7 +724,7 @@ func (ic *EngineImageController) enqueueControlleeChange(obj interface{}) {
 	metaObj, err := meta.Accessor(obj)
 
 	if err != nil {
-		ic.logger.WithError(err).Warnf("BUG: cannot convert obj %v to metav1.Object", obj)
+		ic.logger.WithError(err).Warnf("Failed to convert obj %v to metav1.Object", obj)
 		return
 	}
 	ownerRefs := metaObj.GetOwnerReferences()
