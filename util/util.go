@@ -83,11 +83,11 @@ type MetadataConfig struct {
 }
 
 type DiskStat struct {
-	Fsid             string
+	DiskID           string
 	Path             string
 	Type             string
-	FreeBlock        int64
-	TotalBlock       int64
+	FreeBlocks       int64
+	TotalBlocks      int64
 	BlockSize        int64
 	StorageMaximum   int64
 	StorageAvailable int64
@@ -433,6 +433,15 @@ func CheckBackupType(backupTarget string) (string, error) {
 	return u.Scheme, nil
 }
 
+type FsStat struct {
+	Fsid       string
+	Path       string
+	Type       string
+	FreeBlock  int64
+	TotalBlock int64
+	BlockSize  int64
+}
+
 func GetDiskStat(directory string) (stat *DiskStat, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "cannot get disk stat of directory %v", directory)
@@ -445,16 +454,22 @@ func GetDiskStat(directory string) (stat *DiskStat, err error) {
 	}
 	output = strings.Replace(output, "\n", "", -1)
 
-	diskStat := &DiskStat{}
-	err = json.Unmarshal([]byte(output), diskStat)
+	fsStat := &FsStat{}
+	err = json.Unmarshal([]byte(output), fsStat)
 	if err != nil {
 		return nil, err
 	}
 
-	diskStat.StorageMaximum = diskStat.TotalBlock * diskStat.BlockSize
-	diskStat.StorageAvailable = diskStat.FreeBlock * diskStat.BlockSize
-
-	return diskStat, nil
+	return &DiskStat{
+		DiskID:           fsStat.Fsid,
+		Path:             fsStat.Path,
+		Type:             fsStat.Type,
+		FreeBlocks:       fsStat.FreeBlock,
+		TotalBlocks:      fsStat.TotalBlock,
+		BlockSize:        fsStat.BlockSize,
+		StorageMaximum:   fsStat.TotalBlock * fsStat.BlockSize,
+		StorageAvailable: fsStat.FreeBlock * fsStat.BlockSize,
+	}, nil
 }
 
 func RetryOnConflictCause(fn func() (interface{}, error)) (interface{}, error) {
@@ -740,66 +755,6 @@ type DiskConfig struct {
 	DiskUUID string `json:"diskUUID"`
 }
 
-func GetDiskConfig(path string) (*DiskConfig, error) {
-	nsPath := iscsiutil.GetHostNamespacePath(HostProcPath)
-	nsExec, err := iscsiutil.NewNamespaceExecutor(nsPath)
-	if err != nil {
-		return nil, err
-	}
-	filePath := filepath.Join(path, DiskConfigFile)
-	output, err := nsExec.Execute("cat", []string{filePath})
-	if err != nil {
-		return nil, fmt.Errorf("cannot find config file %v on host: %v", filePath, err)
-	}
-
-	cfg := &DiskConfig{}
-	if err := json.Unmarshal([]byte(output), cfg); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal %v content %v on host: %v", filePath, output, err)
-	}
-	return cfg, nil
-}
-
-func GenerateDiskConfig(path string) (*DiskConfig, error) {
-	cfg := &DiskConfig{
-		DiskUUID: UUID(),
-	}
-	encoded, err := json.Marshal(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("BUG: Cannot marshal %+v: %v", cfg, err)
-	}
-
-	nsPath := iscsiutil.GetHostNamespacePath(HostProcPath)
-	nsExec, err := iscsiutil.NewNamespaceExecutor(nsPath)
-	if err != nil {
-		return nil, err
-	}
-	filePath := filepath.Join(path, DiskConfigFile)
-	if _, err := nsExec.Execute("ls", []string{filePath}); err == nil {
-		return nil, fmt.Errorf("disk cfg on %v exists, cannot override", filePath)
-	}
-
-	defer func() {
-		if err != nil {
-			if derr := DeleteDiskPathReplicaSubdirectoryAndDiskCfgFile(nsExec, path); derr != nil {
-				err = errors.Wrapf(err, "cleaning up disk config path %v failed with error: %v", path, derr)
-			}
-
-		}
-	}()
-
-	if _, err := nsExec.ExecuteWithStdin("dd", []string{"of=" + filePath}, string(encoded)); err != nil {
-		return nil, fmt.Errorf("cannot write to disk cfg on %v: %v", filePath, err)
-	}
-	if err := CreateDiskPathReplicaSubdirectory(path); err != nil {
-		return nil, err
-	}
-	if _, err := nsExec.Execute("sync", []string{filePath}); err != nil {
-		return nil, fmt.Errorf("cannot sync disk cfg on %v: %v", filePath, err)
-	}
-
-	return cfg, nil
-}
-
 func MinInt(a, b int) int {
 	if a <= b {
 		return a
@@ -857,7 +812,7 @@ func GetPossibleReplicaDirectoryNames(diskPath string) (replicaDirectoryNames ma
 	return replicaDirectoryNames, nil
 }
 
-func DeleteReplicaDirectoryName(diskPath, replicaDirectoryName string) (err error) {
+func DeleteReplicaDirectory(diskPath, replicaDirectoryName string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "cannot delete replica directory %v in disk %v", replicaDirectoryName, diskPath)
 	}()
