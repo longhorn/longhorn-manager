@@ -9,6 +9,8 @@ type Volume struct {
 
 	AccessMode string `json:"accessMode,omitempty" yaml:"access_mode,omitempty"`
 
+	BackendStoreDriver string `json:"backendStoreDriver,omitempty" yaml:"backend_store_driver,omitempty"`
+
 	BackingImage string `json:"backingImage,omitempty" yaml:"backing_image,omitempty"`
 
 	BackupCompressionMethod string `json:"backupCompressionMethod,omitempty" yaml:"backup_compression_method,omitempty"`
@@ -72,6 +74,8 @@ type Volume struct {
 	ReplicaZoneSoftAntiAffinity string `json:"replicaZoneSoftAntiAffinity,omitempty" yaml:"replica_zone_soft_anti_affinity,omitempty"`
 
 	Replicas []Replica `json:"replicas,omitempty" yaml:"replicas,omitempty"`
+
+	RestoreInitiated bool `json:"restoreInitiated,omitempty" yaml:"restore_initiated,omitempty"`
 
 	RestoreRequired bool `json:"restoreRequired,omitempty" yaml:"restore_required,omitempty"`
 
