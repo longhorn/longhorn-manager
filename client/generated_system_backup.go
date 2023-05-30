@@ -18,6 +18,8 @@ type SystemBackup struct {
 	State string `json:"state,omitempty" yaml:"state,omitempty"`
 
 	Version string `json:"version,omitempty" yaml:"version,omitempty"`
+
+	VolumeBackupPolicy string `json:"volumeBackupPolicy,omitempty" yaml:"volume_backup_policy,omitempty"`
 }
 
 type SystemBackupCollection struct {

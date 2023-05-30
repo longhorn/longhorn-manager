@@ -189,6 +189,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		UnmapMarkSnapChainRemoved:   volume.UnmapMarkSnapChainRemoved,
 		ReplicaSoftAntiAffinity:     volume.ReplicaSoftAntiAffinity,
 		ReplicaZoneSoftAntiAffinity: volume.ReplicaZoneSoftAntiAffinity,
+		BackendStoreDriver:          volume.BackendStoreDriver,
 	}, volume.RecurringJobSelector)
 	if err != nil {
 		return errors.Wrap(err, "unable to create volume")

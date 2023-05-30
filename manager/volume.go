@@ -176,6 +176,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			UnmapMarkSnapChainRemoved:   spec.UnmapMarkSnapChainRemoved,
 			ReplicaSoftAntiAffinity:     spec.ReplicaSoftAntiAffinity,
 			ReplicaZoneSoftAntiAffinity: spec.ReplicaZoneSoftAntiAffinity,
+			BackendStoreDriver:          spec.BackendStoreDriver,
 		},
 	}
 
