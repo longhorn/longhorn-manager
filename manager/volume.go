@@ -352,7 +352,11 @@ func (m *VolumeManager) Detach(name, nodeID string) (v *longhorn.Volume, err err
 	if isMigrationConfirmation {
 		// Need to make sure both engines are running.
 		// If the old one crashes, the volume will fall into the auto reattachment flow. Then allowing migration confirmation will mess up the volume.
-		if !m.isVolumeAvailableOnNode(name, v.Spec.MigrationNodeID) || !m.isVolumeAvailableOnNode(name, v.Spec.NodeID) {
+		engineSnapshotSynced, err := m.checkMigratingEngineSyncSnapshots(v)
+		if err != nil {
+			return v, err
+		}
+		if !m.isVolumeAvailableOnNode(name, v.Spec.MigrationNodeID) || !m.isVolumeAvailableOnNode(name, v.Spec.NodeID) || !engineSnapshotSynced {
 			return nil, fmt.Errorf("migration is not ready yet")
 		}
 		v.Spec.NodeID = v.Spec.MigrationNodeID
@@ -398,6 +402,40 @@ func (m *VolumeManager) isVolumeAvailableOnNode(volume, node string) bool {
 	}
 
 	return false
+}
+
+func (m *VolumeManager) checkMigratingEngineSyncSnapshots(vol *longhorn.Volume) (bool, error) {
+	engines, err := m.ds.ListVolumeEngines(vol.Name)
+	if err != nil {
+		return false, err
+	}
+
+	var migratingEngine *longhorn.Engine
+	var oldEngine *longhorn.Engine
+	for _, e := range engines {
+		if e.Spec.Active {
+			oldEngine = e
+			continue
+		}
+		if e.Spec.NodeID == vol.Spec.MigrationNodeID {
+			migratingEngine = e
+		}
+	}
+
+	if oldEngine == nil {
+		return false, fmt.Errorf("failed to find the active engine for volume %v", vol.Name)
+	}
+
+	if migratingEngine == nil {
+		return false, fmt.Errorf("failed to find the migrating engine for volume %v", vol.Name)
+	}
+
+	if !reflect.DeepEqual(oldEngine.Status.Snapshots, migratingEngine.Status.Snapshots) {
+		logrus.Debugf("Volume migration (%v) is in progress for synchronizing snapshots", vol.Name)
+		return false, nil
+	}
+
+	return true, nil
 }
 
 func (m *VolumeManager) Salvage(volumeName string, replicaNames []string) (v *longhorn.Volume, err error) {
