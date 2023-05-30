@@ -217,7 +217,8 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	vol.Name = volumeID
 	vol.Size = fmt.Sprintf("%d", reqVolSizeBytes)
 
-	logrus.Infof("CreateVolume: creating a volume by API client, name: %s, size: %s accessMode: %v", vol.Name, vol.Size, vol.AccessMode)
+	logrus.Infof("CreateVolume: creating a volume by API client, name: %s, size: %s, accessMode: %v, backendStoreDriver: %v",
+		vol.Name, vol.Size, vol.AccessMode, vol.BackendStoreDriver)
 	resVol, err := cs.apiClient.Volume.Create(vol)
 	// TODO: implement error response code for Longhorn API to differentiate different error type.
 	// For example, creating a volume from a non-existing snapshot should return codes.NotFound instead of codes.Internal
