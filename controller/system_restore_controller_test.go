@@ -119,7 +119,7 @@ func (s *TestSuite) TestReconcileSystemRestore(c *C) {
 		fakeSystemRolloutManagerPod(c, kubeInformerFactory, kubeClient)
 		fakeSystemRolloutSettingDefaultEngineImage(c, lhInformerFactory, lhClient)
 		fakeSystemRolloutBackupTargetDefault(c, lhInformerFactory, lhClient)
-		fakeSystemBackup(tc.systemBackupName, systemRestoreOwnerID, "", false, longhorn.SystemBackupStateGenerating, c, lhInformerFactory, lhClient)
+		fakeSystemBackup(tc.systemBackupName, systemRestoreOwnerID, "", false, "", longhorn.SystemBackupStateGenerating, c, lhInformerFactory, lhClient)
 
 		extensionsClient := apiextensionsfake.NewSimpleClientset()
 
@@ -337,6 +337,41 @@ func fakeSystemRolloutCustomResourceDefinitions(fakeObjs map[SystemRolloutCRName
 		}
 
 		exist, err := clientInterface.Create(context.TODO(), newCustomResourceDefinition(name, fakeObj.Spec), metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+
+		err = indexer.Add(exist)
+		c.Assert(err, IsNil)
+	}
+}
+
+func fakeSystemRolloutBackups(fakeObjs map[string]*longhorn.Backup, c *C, informerFactory lhinformers.SharedInformerFactory, client *lhfake.Clientset) {
+	indexer := informerFactory.Longhorn().V1beta2().Backups().Informer().GetIndexer()
+
+	clientInterface := client.LonghornV1beta2().Backups(TestNamespace)
+
+	exists, err := clientInterface.List(context.TODO(), metav1.ListOptions{})
+	c.Assert(err, IsNil)
+
+	for _, exist := range exists.Items {
+		exist, err := clientInterface.Get(context.TODO(), exist.Name, metav1.GetOptions{})
+		c.Assert(err, IsNil)
+
+		err = clientInterface.Delete(context.TODO(), exist.Name, metav1.DeleteOptions{})
+		c.Assert(err, IsNil)
+
+		err = indexer.Delete(exist)
+		c.Assert(err, IsNil)
+	}
+
+	for k, fakeObj := range fakeObjs {
+		name := string(k)
+		if strings.HasSuffix(name, TestIgnoreSuffix) {
+			continue
+		}
+
+		backup := newBackup(name)
+		backup.Status = fakeObj.Status
+		exist, err := clientInterface.Create(context.TODO(), backup, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
 		err = indexer.Add(exist)
@@ -682,6 +717,7 @@ func fakeSystemRolloutVolumes(fakeObjs map[SystemRolloutCRName]*longhorn.Volume,
 		}
 
 		volume := newVolume(name, fakeObj.Spec.NumberOfReplicas)
+		volume.Status = fakeObj.Status
 		exist, err := clientInterface.Create(context.TODO(), volume, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
@@ -885,7 +921,7 @@ func (c *FakeSystemBackupTargetClient) UploadSystemBackup(name, localFile, longh
 	case TestSystemBackupNameUploadFailed, TestSystemRestoreNameUploadFailed:
 		return "", fmt.Errorf(name)
 	case TestSystemBackupNameUploadExceedTimeout, TestSystemRestoreNameUploadExceedTimeout:
-		time.Sleep(time.Duration(datastore.SystemBackupTimeout) * 2)
+		time.Sleep(datastore.SystemBackupTimeout * 2)
 	}
 
 	return "", nil

@@ -40,15 +40,6 @@ func (n *nodeValidator) Resource() admission.Resource {
 
 func (n *nodeValidator) Create(request *admission.Request, newObj runtime.Object) error {
 	node := newObj.(*longhorn.Node)
-
-	if node.Spec.EngineManagerCPURequest < 0 {
-		return werror.NewInvalidError("engineManagerCPURequest should be greater than or equal to 0", "")
-	}
-
-	if node.Spec.ReplicaManagerCPURequest < 0 {
-		return werror.NewInvalidError("replicaManagerCPURequest should be greater than or equal to 0", "")
-	}
-
 	if node.Spec.InstanceManagerCPURequest < 0 {
 		return werror.NewInvalidError("instanceManagerCPURequest should be greater than or equal to 0", "")
 	}
@@ -59,14 +50,6 @@ func (n *nodeValidator) Create(request *admission.Request, newObj runtime.Object
 func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
 	oldNode := oldObj.(*longhorn.Node)
 	newNode := newObj.(*longhorn.Node)
-
-	if newNode.Spec.EngineManagerCPURequest < 0 {
-		return werror.NewInvalidError("engineManagerCPURequest should be greater than or equal to 0", "")
-	}
-
-	if newNode.Spec.ReplicaManagerCPURequest < 0 {
-		return werror.NewInvalidError("replicaManagerCPURequest should be greater than or equal to 0", "")
-	}
 
 	if newNode.Spec.InstanceManagerCPURequest < 0 {
 		return werror.NewInvalidError("instanceManagerCPURequest should be greater than or equal to 0", "")
@@ -90,7 +73,7 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
-	if newNode.Spec.EngineManagerCPURequest != 0 || newNode.Spec.ReplicaManagerCPURequest != 0 || newNode.Spec.InstanceManagerCPURequest != 0 {
+	if newNode.Spec.InstanceManagerCPURequest != 0 {
 		kubeNode, err := n.ds.GetKubernetesNode(oldNode.Name)
 		if err != nil {
 			if !datastore.ErrorIsNotFound(err) {
@@ -101,22 +84,6 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 
 		if err == nil {
 			allocatableCPU := float64(kubeNode.Status.Allocatable.Cpu().MilliValue())
-			engineManagerCPUSetting, err := n.ds.GetSetting(types.SettingNameGuaranteedEngineManagerCPU)
-			if err != nil {
-				return werror.NewInvalidError(err.Error(), "")
-			}
-			engineManagerCPUInPercentage := engineManagerCPUSetting.Value
-			if newNode.Spec.EngineManagerCPURequest > 0 {
-				engineManagerCPUInPercentage = fmt.Sprintf("%.0f", math.Round(float64(newNode.Spec.EngineManagerCPURequest)/allocatableCPU*100.0))
-			}
-			replicaManagerCPUSetting, err := n.ds.GetSetting(types.SettingNameGuaranteedReplicaManagerCPU)
-			if err != nil {
-				return werror.NewInvalidError(err.Error(), "")
-			}
-			replicaManagerCPUInPercentage := replicaManagerCPUSetting.Value
-			if newNode.Spec.ReplicaManagerCPURequest > 0 {
-				replicaManagerCPUInPercentage = fmt.Sprintf("%.0f", math.Round(float64(newNode.Spec.ReplicaManagerCPURequest)/allocatableCPU*100.0))
-			}
 			instanceManagerCPUSetting, err := n.ds.GetSetting(types.SettingNameGuaranteedInstanceManagerCPU)
 			if err != nil {
 				return werror.NewInvalidError(err.Error(), "")
@@ -125,7 +92,7 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 			if newNode.Spec.InstanceManagerCPURequest > 0 {
 				instanceManagerCPUInPercentage = fmt.Sprintf("%.0f", math.Round(float64(newNode.Spec.InstanceManagerCPURequest)/allocatableCPU*100.0))
 			}
-			if err := types.ValidateCPUReservationValues(engineManagerCPUInPercentage, replicaManagerCPUInPercentage, instanceManagerCPUInPercentage); err != nil {
+			if err := types.ValidateCPUReservationValues(instanceManagerCPUInPercentage); err != nil {
 				return werror.NewInvalidError(err.Error(), "")
 			}
 		}

@@ -9,7 +9,7 @@ import (
 )
 
 func (c *ProxyClient) SnapshotBackup(serviceAddress, backupName, snapshotName, backupTarget,
-	backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int,
+	backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int, storageClassName string,
 	labels map[string]string, envs []string) (backupID, replicaAddress string, err error) {
 	input := map[string]string{
 		"serviceAddress": serviceAddress,
@@ -34,6 +34,7 @@ func (c *ProxyClient) SnapshotBackup(serviceAddress, backupName, snapshotName, b
 		BackingImageChecksum: backingImageChecksum,
 		CompressionMethod:    compressionMethod,
 		ConcurrentLimit:      int32(concurrentLimit),
+		StorageClassName:     storageClassName,
 		Labels:               labels,
 	}
 	recv, err := c.service.SnapshotBackup(getContextWithGRPCTimeout(c.ctx), req)

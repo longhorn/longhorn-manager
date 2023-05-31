@@ -5,10 +5,30 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/sirupsen/logrus"
+
 	corev1 "k8s.io/api/core/v1"
+
+	. "gopkg.in/check.v1"
 )
 
-func TestParseToleration(t *testing.T) {
+const (
+	TestErrErrorFmt  = "Unexpected error for test case: %s: %v"
+	TestErrResultFmt = "Unexpected result for test case: %s"
+)
+
+func Test(t *testing.T) { TestingT(t) }
+
+type TestSuite struct {
+}
+
+var _ = Suite(&TestSuite{})
+
+func (s *TestSuite) SetUpTest(c *C) {
+	logrus.SetLevel(logrus.DebugLevel)
+}
+
+func (s *TestSuite) TestParseToleration(c *C) {
 	type testCase struct {
 		input string
 
@@ -87,16 +107,59 @@ func TestParseToleration(t *testing.T) {
 		},
 	}
 
-	for name, test := range testCases {
-		fmt.Printf("testing %v\n", name)
+	for testName, testCase := range testCases {
+		fmt.Printf("testing %v\n", testName)
 
-		toleration, err := UnmarshalTolerations(test.input)
-		if !reflect.DeepEqual(toleration, test.expectedToleration) {
-			t.Errorf("unexpected toleration:\nGot: %v\nWant: %v", toleration, test.expectedToleration)
+		toleration, err := UnmarshalTolerations(testCase.input)
+		if !testCase.expectError {
+			c.Assert(err, IsNil, Commentf(TestErrErrorFmt, testName, err))
+		} else {
+			c.Assert(err, NotNil)
 		}
 
-		if test.expectError && err == nil {
-			t.Errorf("unexpected error: %v", err)
-		}
+		c.Assert(reflect.DeepEqual(toleration, testCase.expectedToleration), Equals, true, Commentf(TestErrResultFmt, testName))
+	}
+}
+
+func (s *TestSuite) TestIsSelectorsInTags(c *C) {
+	type testCase struct {
+		inputTags      []string
+		inputSelectors []string
+
+		expected bool
+	}
+	testCases := map[string]testCase{
+		"selectors exist": {
+			inputTags:      []string{"aaa", "bbb", "ccc"},
+			inputSelectors: []string{"aaa", "bbb", "ccc"},
+			expected:       true,
+		},
+		"selectors mis-matched": {
+			inputTags:      []string{"aaa", "bbb", "ccc"},
+			inputSelectors: []string{"aaa", "b", "ccc"},
+			expected:       false,
+		},
+		"selectors empty": {
+			inputTags:      []string{"aaa", "bbb", "ccc"},
+			inputSelectors: []string{},
+			expected:       true,
+		},
+		"tags unsorted": {
+			inputTags:      []string{"bbb", "aaa", "ccc"},
+			inputSelectors: []string{"aaa", "bbb", "ccc"},
+			expected:       true,
+		},
+		"tags empty": {
+			inputTags:      []string{},
+			inputSelectors: []string{"aaa", "bbb", "ccc"},
+			expected:       false,
+		},
+	}
+
+	for testName, testCase := range testCases {
+		fmt.Printf("testing %v\n", testName)
+
+		actual := IsSelectorsInTags(testCase.inputTags, testCase.inputSelectors)
+		c.Assert(actual, Equals, testCase.expected, Commentf(TestErrResultFmt, testName))
 	}
 }

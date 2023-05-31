@@ -102,8 +102,8 @@ func (bvc *BackupVolumeController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer bvc.queue.ShutDown()
 
-	bvc.logger.Infof("Starting Longhorn Backup Volume controller")
-	defer bvc.logger.Infof("Shut down Longhorn Backup Volume controller")
+	bvc.logger.Info("Starting Longhorn Backup Volume controller")
+	defer bvc.logger.Info("Shut down Longhorn Backup Volume controller")
 
 	if !cache.WaitForNamedCacheSync(bvc.name, stopCh, bvc.cacheSyncs...) {
 		return
@@ -153,7 +153,7 @@ func (bvc *BackupVolumeController) handleErr(err error, key interface{}) {
 	}
 
 	if bvc.queue.NumRequeues(key) < maxRetries {
-		bvc.logger.WithError(err).Warnf("Error syncing Longhorn backup volume %v", key)
+		bvc.logger.WithError(err).Warnf("Failed to sync Longhorn backup volume %v", key)
 		bvc.queue.AddRateLimited(key)
 		return
 	}
@@ -210,33 +210,30 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	// Get default backup target
 	backupTarget, err := bvc.ds.GetBackupTargetRO(types.DefaultBackupTargetName)
 	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return err
+		if apierrors.IsNotFound(err) {
+			return nil
 		}
-		log.Warnf("Cannot found the %s backup target", types.DefaultBackupTargetName)
-		return nil
+		return errors.Wrapf(err, "failed to get %s backup target", types.DefaultBackupTargetName)
 	}
 
 	// Examine DeletionTimestamp to determine if object is under deletion
 	if !backupVolume.DeletionTimestamp.IsZero() {
 
 		if err := bvc.ds.DeleteAllBackupsForBackupVolume(backupVolumeName); err != nil {
-			log.WithError(err).Error("Error deleting backups")
-			return err
+			return errors.Wrap(err, "failed to delete backups")
 		}
 
 		// Delete the backup volume from the remote backup target
 		if backupTarget.Spec.BackupTargetURL != "" {
 			engineClientProxy, backupTargetClient, err := getBackupTarget(bvc.controllerID, backupTarget, bvc.ds, log, bvc.proxyConnCounter)
 			if err != nil || engineClientProxy == nil {
-				log.WithError(err).Error("Error init backup target clients")
+				log.WithError(err).Error("Failed to init backup target clients")
 				return nil // Ignore error to prevent enqueue
 			}
 			defer engineClientProxy.Close()
 
 			if err := backupTargetClient.BackupVolumeDelete(backupTargetClient.URL, backupVolumeName, backupTargetClient.Credential); err != nil {
-				log.WithError(err).Error("Error clean up remote backup volume")
-				return err
+				return errors.Wrap(err, "failed to delete remote backup volume")
 			}
 		}
 		return bvc.ds.RemoveFinalizerForBackupVolume(backupVolume)
@@ -265,7 +262,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 
 	engineClientProxy, backupTargetClient, err := getBackupTarget(bvc.controllerID, backupTarget, bvc.ds, log, bvc.proxyConnCounter)
 	if err != nil {
-		log.WithError(err).Error("Error init backup target clients")
+		log.WithError(err).Error("Failed to init backup target clients")
 		return nil // Ignore error to prevent enqueue
 	}
 	defer engineClientProxy.Close()
@@ -273,7 +270,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	// Get a list of all the backups that are stored in the backup target
 	res, err := backupTargetClient.BackupNameList(backupTargetClient.URL, backupVolumeName, backupTargetClient.Credential)
 	if err != nil {
-		log.WithError(err).Error("Error listing backups from backup target")
+		log.WithError(err).Error("Failed to list backups from backup target")
 		return nil // Ignore error to prevent enqueue
 	}
 	backupStoreBackups := sets.NewString(res...)
@@ -281,7 +278,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	// Get a list of all the backups that exist as custom resources in the cluster
 	clusterBackups, err := bvc.ds.ListBackupsWithBackupVolumeName(backupVolumeName)
 	if err != nil {
-		log.WithError(err).Error("Error listing backups in the cluster")
+		log.WithError(err).Error("Failed to list backups in the cluster")
 		return err
 	}
 
@@ -299,7 +296,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 				// Failed backup `LastSyncedAt` should not be updated after it was marked as `Error` or `Unknown`
 				if failedBackupTTL > 0 && time.Now().After(b.Status.LastSyncedAt.Add(time.Duration(failedBackupTTL)*time.Minute)) {
 					if err = bvc.ds.DeleteBackup(b.Name); err != nil {
-						log.WithError(err).Errorf("failed to delete failed backup %s", b.Name)
+						log.WithError(err).Errorf("Failed to delete failed backup %s", b.Name)
 					}
 				}
 			}
@@ -322,7 +319,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 			log.WithError(err).WithFields(logrus.Fields{
 				"backup":       backupName,
 				"backupvolume": backupVolumeName,
-				"backuptarget": backupURL}).Warnf("Failed to get backupInfo from remote backup target")
+				"backuptarget": backupURL}).Warn("Failed to get backupInfo from remote backup target")
 		} else {
 			if accessMode, exist := backupInfo.Labels[types.GetLonghornLabelKey(types.LonghornLabelVolumeAccessMode)]; exist {
 				backupLabelMap[types.GetLonghornLabelKey(types.LonghornLabelVolumeAccessMode)] = accessMode
@@ -338,7 +335,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 			},
 		}
 		if _, err = bvc.ds.CreateBackup(backup, backupVolumeName); err != nil && !apierrors.IsAlreadyExists(err) {
-			log.WithError(err).Errorf("Error creating backup %s into cluster", backupName)
+			log.WithError(err).Errorf("Failed to create backup %s in the cluster", backupName)
 			return err
 		}
 	}
@@ -351,15 +348,14 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	}
 	for backupName := range backupsToDelete {
 		if err = bvc.ds.DeleteBackup(backupName); err != nil {
-			log.WithError(err).Errorf("Error deleting backup %s from cluster", backupName)
-			return err
+			return errors.Wrapf(err, "failed to delete backup %s from cluster", backupName)
 		}
 	}
 
 	backupVolumeMetadataURL := backupstore.EncodeBackupURL("", backupVolumeName, backupTargetClient.URL)
 	configMetadata, err := backupTargetClient.BackupConfigMetaGet(backupVolumeMetadataURL, backupTargetClient.Credential)
 	if err != nil {
-		log.WithError(err).Error("Error getting backup volume config metadata from backup target")
+		log.WithError(err).Error("Failed to get backup volume config metadata from backup target")
 		return nil // Ignore error to prevent enqueue
 	}
 	if configMetadata == nil {
@@ -376,7 +372,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 
 	backupVolumeInfo, err := backupTargetClient.BackupVolumeGet(backupVolumeMetadataURL, backupTargetClient.Credential)
 	if err != nil {
-		log.WithError(err).Error("Error getting backup volume config from backup target")
+		log.WithError(err).Error("Failed to get backup volume config from backup target")
 		return nil // Ignore error to prevent enqueue
 	}
 	if backupVolumeInfo == nil {
@@ -390,7 +386,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		if err == nil {
 			backup.Spec.SyncRequestedAt = syncTime
 			if _, err = bvc.ds.UpdateBackup(backup); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				log.WithError(err).Errorf("Error updating backup %s spec", backup.Name)
+				log.WithError(err).Errorf("Failed to update backup %s spec", backup.Name)
 			}
 		}
 	}
@@ -406,6 +402,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	backupVolume.Status.Messages = backupVolumeInfo.Messages
 	backupVolume.Status.BackingImageName = backupVolumeInfo.BackingImageName
 	backupVolume.Status.BackingImageChecksum = backupVolumeInfo.BackingImageChecksum
+	backupVolume.Status.StorageClassName = backupVolumeInfo.StorageClassName
 	backupVolume.Status.LastSyncedAt = syncTime
 	return nil
 }

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
@@ -109,7 +110,7 @@ type SystemRolloutTestCase struct {
 }
 
 func (s *TestSuite) TestSystemRollout(c *C) {
-	datastore.SystemRestoreTimeout = 10 // 10 seconds
+	datastore.SystemRestoreTimeout = 10 * time.Second
 
 	controllerID := TestNode1
 	systemRolloutOwnerID := controllerID
@@ -1427,7 +1428,7 @@ func fakeSystemBackupArchieve(c *C, systemBackupName, systemRolloutOwnerID, roll
 	fakeSystemRolloutNamespace(c, kubeInformerFactory, kubeClient)
 
 	systemBackupController := newFakeSystemBackupController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, extensionsClient, rolloutControllerID)
-	systemBackup := fakeSystemBackup(systemBackupName, systemRolloutOwnerID, "", false, longhorn.SystemBackupStateGenerating, c, lhInformerFactory, lhClient)
+	systemBackup := fakeSystemBackup(systemBackupName, systemRolloutOwnerID, "", false, "", longhorn.SystemBackupStateGenerating, c, lhInformerFactory, lhClient)
 
 	systemBackupController.GenerateSystemBackup(systemBackup, downloadPath, tempDir)
 	systemBackup, err := lhClient.LonghornV1beta2().SystemBackups(TestNamespace).Get(context.TODO(), systemBackupName, metav1.GetOptions{})

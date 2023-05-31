@@ -12,9 +12,9 @@ import (
 
 type SimpleResourceEventHandler struct{ ChangeFunc func() }
 
-func (s SimpleResourceEventHandler) OnAdd(obj interface{})               { s.ChangeFunc() }
-func (s SimpleResourceEventHandler) OnUpdate(oldObj, newObj interface{}) { s.ChangeFunc() }
-func (s SimpleResourceEventHandler) OnDelete(obj interface{})            { s.ChangeFunc() }
+func (s SimpleResourceEventHandler) OnAdd(obj interface{}, isInInitialList bool) { s.ChangeFunc() }
+func (s SimpleResourceEventHandler) OnUpdate(oldObj, newObj interface{})         { s.ChangeFunc() }
+func (s SimpleResourceEventHandler) OnDelete(obj interface{})                    { s.ChangeFunc() }
 
 type Watcher struct {
 	eventChan  chan struct{}

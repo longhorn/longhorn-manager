@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -154,6 +155,7 @@ const (
 	LonghornLabelBackupVolume               = "backup-volume"
 	LonghornLabelRecurringJob               = "job"
 	LonghornLabelRecurringJobGroup          = "job-group"
+	LonghornLabelRecurringJobSource         = "source"
 	LonghornLabelOrphan                     = "orphan"
 	LonghornLabelOrphanType                 = "orphan-type"
 	LonghornLabelRecoveryBackend            = "recovery-backend"
@@ -500,15 +502,44 @@ func GetVolumeLabels(volumeName string) map[string]string {
 	}
 }
 
+func GetRecurringJobLabelKeyByType(name string, isGroup bool) string {
+	if isGroup {
+		return GetRecurringJobLabelKey(LonghornLabelRecurringJobGroup, name)
+	}
+	return GetRecurringJobLabelKey(LonghornLabelRecurringJob, name)
+}
+
 func GetRecurringJobLabelKey(labelType, recurringJobName string) string {
 	prefix := fmt.Sprintf(LonghornLabelRecurringJobKeyPrefixFmt, labelType)
 	return fmt.Sprintf("%s/%s", prefix, recurringJobName)
+}
+
+// GetRecurringJobSourceLabelKey returns "recurring-job.longhorn.io/source"
+func GetRecurringJobSourceLabelKey() string {
+	prefix := fmt.Sprintf(LonghornLabelRecurringJobKeyPrefixFmt, LonghornLabelRecurringJob)
+	return fmt.Sprintf("%s/%s", prefix, LonghornLabelRecurringJobSource)
 }
 
 func GetRecurringJobLabelValueMap(labelType, recurringJobName string) map[string]string {
 	return map[string]string{
 		GetRecurringJobLabelKey(labelType, recurringJobName): LonghornLabelValueEnabled,
 	}
+}
+
+// IsRecurringJobLabel checks if the given key is a recurring job label.
+func IsRecurringJobLabel(key string) bool {
+	if IsRecurringJobSourceLabel(key) {
+		return false
+	}
+
+	jobPrefix := fmt.Sprintf(LonghornLabelRecurringJobKeyPrefixFmt, LonghornLabelRecurringJob)
+	groupPrefix := fmt.Sprintf(LonghornLabelRecurringJobKeyPrefixFmt, LonghornLabelRecurringJobGroup)
+	return strings.HasPrefix(key, jobPrefix) || strings.HasPrefix(key, groupPrefix)
+}
+
+// IsRecurringJobSourceLabel checks if the given key is the recurring job source label.
+func IsRecurringJobSourceLabel(key string) bool {
+	return key == GetRecurringJobSourceLabelKey()
 }
 
 func GetOrphanLabelsForOrphanedDirectory(nodeID, diskUUID string) map[string]string {
@@ -896,21 +927,13 @@ func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[st
 	}, nil
 }
 
-func ValidateCPUReservationValues(engineManagerCPUStr, replicaManagerCPUStr, instanceManagerCPUStr string) error {
-	engineManagerCPU, err := strconv.Atoi(engineManagerCPUStr)
-	if err != nil {
-		return fmt.Errorf("guaranteed/requested engine manager CPU value %v is not int: %v", engineManagerCPUStr, err)
-	}
-	replicaManagerCPU, err := strconv.Atoi(replicaManagerCPUStr)
-	if err != nil {
-		return fmt.Errorf("guaranteed/requested replica manager CPU value %v is not int: %v", replicaManagerCPUStr, err)
-	}
+func ValidateCPUReservationValues(instanceManagerCPUStr string) error {
 	instanceManagerCPU, err := strconv.Atoi(instanceManagerCPUStr)
 	if err != nil {
-		return fmt.Errorf("guaranteed/requested instance manager CPU value %v is not int: %v", replicaManagerCPUStr, err)
+		return errors.Wrapf(err, "invalid guaranteed/requested instance manager CPU value (%v)", instanceManagerCPUStr)
 	}
-	isUnderLimit := engineManagerCPU+replicaManagerCPU < 0 || instanceManagerCPU < 0
-	isOverLimit := engineManagerCPU+replicaManagerCPU > 40 || instanceManagerCPU > 40
+	isUnderLimit := instanceManagerCPU < 0
+	isOverLimit := instanceManagerCPU > 40
 	if isUnderLimit || isOverLimit {
 		return fmt.Errorf("invalid requested instance manager CPUs. Valid instance manager CPU range between 0%% - 40%%")
 	}
@@ -957,4 +980,23 @@ func ConsolidateInstanceManagers(instanceManagerMaps ...map[string]*longhorn.Ins
 
 func GetLHVolumeAttachmentNameFromVolumeName(volName string) string {
 	return volName
+}
+
+// IsSelectorsInTags checks if all the selectors are present in the tags slice.
+// It returns true if all selectors are found, false otherwise.
+func IsSelectorsInTags(tags, selectors []string) bool {
+	if !sort.StringsAreSorted(tags) {
+		logrus.Debug("BUG: Tags are not sorted, sorting now")
+		sort.Strings(tags)
+	}
+
+	for _, selector := range selectors {
+		index := sort.SearchStrings(tags, selector)
+		// If the selector is not found or the index is out of bounds, return false.
+		if index >= len(tags) || tags[index] != selector {
+			return false
+		}
+	}
+
+	return true
 }

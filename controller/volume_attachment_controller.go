@@ -101,6 +101,16 @@ func (vac *VolumeAttachmentController) enqueueVolumeAttachment(obj interface{}) 
 	vac.queue.Add(key)
 }
 
+func (vac *VolumeAttachmentController) enqueueVolumeAttachmentAfter(obj interface{}, duration time.Duration) {
+	key, err := controller.KeyFunc(obj)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("enqueueVolumeAttachmentAfter: couldn't get key for object %#v: %v", obj, err))
+		return
+	}
+
+	vac.queue.AddAfter(key, duration)
+}
+
 func (vac *VolumeAttachmentController) enqueueForLonghornVolume(obj interface{}) {
 	vol, ok := obj.(*longhorn.Volume)
 	if !ok {
@@ -342,11 +352,62 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationConfirmation(va *lon
 			break
 		}
 	}
-	if !hasCSIAttachmentTicketRequestingPrevNode {
+	migratingEngineSnapSynced, err := vac.checkMigratingEngineSyncSnapshots(vol)
+	if err != nil {
+		vac.logger.WithError(err).Warn("failed to check migrating engine snapshot status")
+		return
+	}
+	if !hasCSIAttachmentTicketRequestingPrevNode && migratingEngineSnapSynced {
 		// TODO: Do we need check if the volume is available on the currentMigrationIDNode?
 		vol.Spec.NodeID = vol.Status.CurrentMigrationNodeID
 		vol.Spec.MigrationNodeID = ""
 	}
+}
+
+func (vac *VolumeAttachmentController) checkMigratingEngineSyncSnapshots(vol *longhorn.Volume) (bool, error) {
+	engines, err := vac.ds.ListVolumeEngines(vol.Name)
+	if err != nil {
+		return false, err
+	}
+
+	var migratingEngine *longhorn.Engine
+	var oldEngine *longhorn.Engine
+	for _, e := range engines {
+		if e.Spec.Active {
+			oldEngine = e
+			continue
+		}
+		if e.Spec.NodeID == vol.Spec.MigrationNodeID {
+			migratingEngine = e
+		}
+	}
+
+	if oldEngine == nil {
+		return false, fmt.Errorf("failed to find the active engine for volume %v", vol.Name)
+	}
+
+	if migratingEngine == nil {
+		return false, fmt.Errorf("failed to find the migrating engine for volume %v", vol.Name)
+	}
+
+	if !reflect.DeepEqual(oldEngine.Status.Snapshots, migratingEngine.Status.Snapshots) {
+		vac.logger.Debugf("Volume migration (%v) is in progress for synchronizing snapshots", vol.Name)
+
+		// there is a chance that synchronizing engine snapshots does not finish and volume attachment controller will not receive changes anymore
+		// check volumeAttachments again  to ensure that migration will be finished
+		volumeAttachments, err := vac.ds.ListLonghornVolumeAttachmentByVolumeRO(migratingEngine.Spec.VolumeName)
+		if err != nil {
+			utilruntime.HandleError(fmt.Errorf("failed to list Longhorn VolumeAttachment of volume %v: %v", migratingEngine.Name, err))
+			return false, err
+		}
+
+		for _, va := range volumeAttachments {
+			vac.enqueueVolumeAttachmentAfter(va, 10*time.Second)
+		}
+		return false, nil
+	}
+
+	return true, nil
 }
 
 func (vac *VolumeAttachmentController) handleVolumeMigrationRollback(va *longhorn.VolumeAttachment, vol *longhorn.Volume) {

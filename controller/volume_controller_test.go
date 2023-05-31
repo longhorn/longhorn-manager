@@ -59,7 +59,7 @@ func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerF
 
 	logger := logrus.StandardLogger()
 
-	vc := NewVolumeController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID, proxyConnCounter)
+	vc := NewVolumeController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID, TestShareManagerImage, proxyConnCounter)
 
 	fakeRecorder := record.NewFakeRecorder(100)
 	vc.eventRecorder = fakeRecorder
