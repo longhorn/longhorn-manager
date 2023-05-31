@@ -811,9 +811,11 @@ func (c *SystemBackupController) WaitForVolumeBackupToComplete(backups map[strin
 }
 
 func (c *SystemBackupController) createVolumeBackup(volume *longhorn.Volume, systemBackup *longhorn.SystemBackup) (backup *longhorn.Backup, err error) {
+	volumeBackupName := bsutil.GenerateName("system-backup")
+
 	snapshotCR := &longhorn.Snapshot{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: bsutil.GenerateName("system-backup"),
+			Name: volumeBackupName,
 		},
 		Spec: longhorn.SnapshotSpec{
 			Volume:         volume.Name,
@@ -826,10 +828,9 @@ func (c *SystemBackupController) createVolumeBackup(volume *longhorn.Volume, sys
 		return nil, errors.Wrapf(err, "failed to create Volume %v snapshot %s", volume.Name, snapshot.Name)
 	}
 
-	backupName := c.getVolumeBackupName(systemBackup.Name, volume.Name)
 	backup = &longhorn.Backup{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: backupName,
+			Name: volumeBackupName,
 		},
 		Spec: longhorn.BackupSpec{
 			SnapshotName: snapshot.Name,
@@ -837,10 +838,7 @@ func (c *SystemBackupController) createVolumeBackup(volume *longhorn.Volume, sys
 	}
 	backup, err = c.ds.CreateBackup(backup, volume.Name)
 	if err != nil {
-		if apierrors.IsAlreadyExists(err) {
-			return c.ds.GetBackup(backup.Name)
-		}
-		return nil, errors.Wrapf(err, "failed to create Volume %v backup %s", volume.Name, backupName)
+		return nil, errors.Wrapf(err, "failed to create Volume %v backup %s", volume.Name, volumeBackupName)
 	}
 	return backup, nil
 }
