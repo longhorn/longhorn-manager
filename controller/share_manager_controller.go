@@ -23,6 +23,8 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
+	"github.com/longhorn/longhorn-manager/csi"
+	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
@@ -731,6 +733,7 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 	mountOptions := pv.Spec.MountOptions
 
 	var cryptoKey string
+	var cryptoParams *crypto.EncryptParams
 	if volume.Spec.Encrypted {
 		secretRef := pv.Spec.CSI.NodePublishSecretRef
 		secret, err := c.ds.GetSecretRO(secretRef.Namespace, secretRef.Name)
@@ -738,14 +741,20 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 			return nil, err
 		}
 
-		cryptoKey = string(secret.Data["CRYPTO_KEY_VALUE"])
+		cryptoKey = string(secret.Data[csi.CryptoKeyValue])
 		if len(cryptoKey) == 0 {
-			return nil, fmt.Errorf("missing CRYPTO_KEY_VALUE in secret for encrypted RWX volume %v", volume.Name)
+			return nil, fmt.Errorf("missing %v in secret for encrypted RWX volume %v", csi.CryptoKeyValue, volume.Name)
 		}
+		cryptoParams = crypto.NewEncryptParams(
+			string(secret.Data[csi.CryptoKeyProvider]),
+			string(secret.Data[csi.CryptoKeyCipher]),
+			string(secret.Data[csi.CryptoKeyHash]),
+			string(secret.Data[csi.CryptoKeySize]),
+			string(secret.Data[csi.CryptoPBKDF]))
 	}
 
 	manifest := c.createPodManifest(sm, annotations, tolerations, imagePullPolicy, nil, registrySecret, priorityClass, nodeSelector,
-		fsType, mountOptions, cryptoKey)
+		fsType, mountOptions, cryptoKey, cryptoParams)
 	pod, err := c.ds.CreatePod(manifest)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create pod for share manager %v", sm.Name)
@@ -781,7 +790,7 @@ func (c *ShareManagerController) createServiceManifest(sm *longhorn.ShareManager
 
 func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, annotations map[string]string, tolerations []v1.Toleration,
 	pullPolicy v1.PullPolicy, resourceReq *v1.ResourceRequirements, registrySecret, priorityClass string, nodeSelector map[string]string,
-	fsType string, mountOptions []string, cryptoKey string) *v1.Pod {
+	fsType string, mountOptions []string, cryptoKey string, cryptoParams *crypto.EncryptParams) *v1.Pod {
 
 	// command args for the share-manager
 	args := []string{"--debug", "daemon", "--volume", sm.Name}
@@ -845,6 +854,22 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 			{
 				Name:  "PASSPHRASE",
 				Value: string(cryptoKey),
+			},
+			{
+				Name:  "CRYPTOKEYCIPHER",
+				Value: string(cryptoParams.GetKeyCipher()),
+			},
+			{
+				Name:  "CRYPTOKEYHASH",
+				Value: string(cryptoParams.GetKeyHash()),
+			},
+			{
+				Name:  "CRYPTOKEYSIZE",
+				Value: string(cryptoParams.GetKeySize()),
+			},
+			{
+				Name:  "CRYPTOPBKDF",
+				Value: string(cryptoParams.GetPBKDF()),
 			},
 		}
 	}
