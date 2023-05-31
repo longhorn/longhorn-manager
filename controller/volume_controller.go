@@ -468,6 +468,10 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 
+	if err := c.ReconcilePersistentVolume(volume); err != nil {
+		return err
+	}
+
 	if err := c.ReconcileShareManagerState(volume); err != nil {
 		return err
 	}
@@ -4325,6 +4329,47 @@ func (c *VolumeController) createSnapshot(snapshotName string, labels map[string
 func (c *VolumeController) checkVolumeNotInMigration(volume *longhorn.Volume) error {
 	if volume.Spec.MigrationNodeID != "" {
 		return fmt.Errorf("cannot operate during migration")
+	}
+	return nil
+}
+
+// ReconcilePersistentVolume is responsible for syncing the state with the PersistentVolume
+func (c *VolumeController) ReconcilePersistentVolume(volume *longhorn.Volume) error {
+	log := getLoggerForVolume(c.logger, volume)
+
+	kubeStatus := volume.Status.KubernetesStatus
+	if kubeStatus.PVName == "" {
+		return nil
+	}
+
+	pv, err := c.ds.GetPersistentVolume(kubeStatus.PVName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	existingPV := pv.DeepCopy()
+	defer func() {
+		if !reflect.DeepEqual(existingPV.Spec, pv.Spec) {
+			logrus.Debugf("Updating PersistentVolume %v", pv.Name)
+			_, err = c.ds.UpdatePersistentVolume(pv)
+
+			// requeue if it's conflict
+			if apierrors.IsConflict(errors.Cause(err)) {
+				log.WithError(err).Debugf("Requeue volume due to error")
+				c.enqueueVolume(volume)
+			}
+		}
+	}()
+
+	if volume.Spec.DataLocality == longhorn.DataLocalityStrictLocal && volume.Spec.NodeID != "" {
+		pv.Spec.NodeAffinity = &corev1.VolumeNodeAffinity{
+			Required: &corev1.NodeSelector{NodeSelectorTerms: []corev1.NodeSelectorTerm{
+				util.GetNodeSelectorTermMatchExpressionNodeName(volume.Spec.NodeID),
+			}},
+		}
 	}
 	return nil
 }
