@@ -25,6 +25,9 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 	if err := upgradeWebhookAndRecoveryService(namespace, kubeClient); err != nil {
 		return err
 	}
+	if err := upgradeWebhookPDB(namespace, kubeClient); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -75,6 +78,19 @@ func upgradeWebhookAndRecoveryService(namespace string, kubeClient *clientset.Cl
 			if err != nil {
 				return errors.Wrapf(err, upgradeLogPrefix+"failed to delete the deployment with label %v during the upgrade", selector)
 			}
+		}
+	}
+
+	return nil
+}
+
+func upgradeWebhookPDB(namespace string, kubeClient *clientset.Clientset) error {
+	webhookPDBs := []string{"longhorn-admission-webhook", "longhorn-conversion-webhook"}
+
+	for _, pdb := range webhookPDBs {
+		err := kubeClient.PolicyV1().PodDisruptionBudgets(namespace).Delete(context.TODO(), pdb, metav1.DeleteOptions{})
+		if err != nil && !apierrors.IsNotFound(err) {
+			return errors.Wrapf(err, upgradeLogPrefix+"failed to delete the pdb %v during the upgrade", pdb)
 		}
 	}
 
