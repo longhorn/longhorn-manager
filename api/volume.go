@@ -236,11 +236,12 @@ func (s *Server) VolumeDetach(rw http.ResponseWriter, req *http.Request) error {
 	if err := apiContext.Read(&input); err != nil {
 		// HACK: for ui detach requests that don't send a body
 		input.AttachmentID = ""
+		input.HostID = ""
 	}
 	id := mux.Vars(req)["name"]
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
-		return s.m.Detach(id, input.AttachmentID, input.ForceDetach)
+		return s.m.Detach(id, input.AttachmentID, input.HostID, input.ForceDetach)
 	})
 	if err != nil {
 		return err

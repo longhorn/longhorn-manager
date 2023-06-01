@@ -213,7 +213,7 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 	// case 1: this volume is target of a clone
 	if isTargetVolumeOfCloning(vol) {
 		cloningAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, volName)
-		vcc.createOrUpdateAttachmentTicket(cloningAttachmentTicketID, vol.Status.OwnerID, va, longhorn.TrueValue)
+		createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, vol.Status.OwnerID, longhorn.TrueValue, longhorn.AttacherTypeVolumeCloneController)
 		expectedAttachmentTickets[cloningAttachmentTicketID] = true
 	}
 
@@ -225,7 +225,7 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 	for _, v := range vols {
 		attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
 		if isTargetVolumeOfCloning(v) && types.GetVolumeName(v.Spec.DataSource) == vol.Name {
-			vcc.createOrUpdateAttachmentTicket(attachmentTicketID, vol.Status.OwnerID, va, longhorn.AnyValue)
+			createOrUpdateAttachmentTicket(va, attachmentTicketID, vol.Status.OwnerID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
 			expectedAttachmentTickets[attachmentTicketID] = true
 		}
 	}
@@ -240,25 +240,6 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 	}
 
 	return nil
-}
-
-func (vcc *VolumeCloneController) createOrUpdateAttachmentTicket(attachmentID string, nodeID string, va *longhorn.VolumeAttachment, disableFrontend string) {
-	attachmentTicket, ok := va.Spec.AttachmentTickets[attachmentID]
-	if !ok {
-		// Create new one
-		attachmentTicket = &longhorn.AttachmentTicket{
-			ID:     attachmentID,
-			Type:   longhorn.AttacherTypeVolumeCloneController,
-			NodeID: nodeID,
-			Parameters: map[string]string{
-				longhorn.AttachmentParameterDisableFrontend: disableFrontend,
-			},
-		}
-	}
-	if attachmentTicket.NodeID != nodeID {
-		attachmentTicket.NodeID = nodeID
-	}
-	va.Spec.AttachmentTickets[attachmentTicket.ID] = attachmentTicket
 }
 
 func (vcc *VolumeCloneController) isResponsibleFor(vol *longhorn.Volume) bool {

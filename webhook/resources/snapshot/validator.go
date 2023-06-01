@@ -2,14 +2,17 @@ package snapshot
 
 import (
 	"fmt"
+	"reflect"
+
+	admissionregv1 "k8s.io/api/admissionregistration/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
-	admissionregv1 "k8s.io/api/admissionregistration/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"reflect"
 )
 
 type snapshotValidator struct {
@@ -36,9 +39,10 @@ func (o *snapshotValidator) Resource() admission.Resource {
 }
 
 func (o *snapshotValidator) Create(request *admission.Request, newObj runtime.Object) error {
-	_, ok := newObj.(*longhorn.Snapshot)
-	if !ok {
-		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Snapshot", newObj), "")
+	snap := newObj.(*longhorn.Snapshot)
+
+	if err := util.VerifySnapshotLabels(snap.Labels); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
 	}
 
 	return nil

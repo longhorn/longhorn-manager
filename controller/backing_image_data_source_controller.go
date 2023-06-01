@@ -38,11 +38,6 @@ import (
 
 const (
 	BackingImageDataSourcePodContainerName = "backing-image-data-source"
-
-	DataSourceTypeExportFromVolumeParameterVolumeName    = "volume-name"
-	DataSourceTypeExportFromVolumeParameterVolumeSize    = "volume-size"
-	DataSourceTypeExportFromVolumeParameterSnapshotName  = "snapshot-name"
-	DataSourceTypeExportFromVolumeParameterSenderAddress = "sender-address"
 )
 
 type BackingImageDataSourceController struct {
@@ -540,7 +535,7 @@ func (c *BackingImageDataSourceController) handleAttachmentTicketDeletion(bids *
 		return nil
 	}
 
-	volumeName := bids.Spec.Parameters[DataSourceTypeExportFromVolumeParameterVolumeName]
+	volumeName := bids.Spec.Parameters[longhorn.DataSourceTypeExportFromVolumeParameterVolumeName]
 	va, err := c.ds.GetLHVolumeAttachmentByVolumeName(volumeName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -567,7 +562,7 @@ func (c *BackingImageDataSourceController) handleAttachmentTicketCreation(bids *
 		return nil
 	}
 
-	volumeName := bids.Spec.Parameters[DataSourceTypeExportFromVolumeParameterVolumeName]
+	volumeName := bids.Spec.Parameters[longhorn.DataSourceTypeExportFromVolumeParameterVolumeName]
 	vol, err := c.ds.GetVolume(volumeName)
 	if err != nil {
 		return err
@@ -593,23 +588,7 @@ func (c *BackingImageDataSourceController) handleAttachmentTicketCreation(bids *
 	}()
 
 	attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackingImageDataSourceController, bids.Name)
-
-	attachmentTicket, ok := va.Spec.AttachmentTickets[attachmentTicketID]
-	if !ok {
-		//create new one
-		attachmentTicket = &longhorn.AttachmentTicket{
-			ID:     attachmentTicketID,
-			Type:   longhorn.AttacherTypeBackingImageDataSourceController,
-			NodeID: vol.Status.OwnerID,
-			Parameters: map[string]string{
-				longhorn.AttachmentParameterDisableFrontend: longhorn.AnyValue,
-			},
-		}
-	}
-	if attachmentTicket.NodeID != vol.Status.OwnerID {
-		attachmentTicket.NodeID = vol.Status.OwnerID
-	}
-	va.Spec.AttachmentTickets[attachmentTicket.ID] = attachmentTicket
+	createOrUpdateAttachmentTicket(va, attachmentTicketID, vol.Status.OwnerID, longhorn.AnyValue, longhorn.AttacherTypeBackingImageDataSourceController)
 
 	return nil
 }
@@ -781,7 +760,7 @@ func (c *BackingImageDataSourceController) prepareRunningParameters(bids *longho
 		return nil
 	}
 
-	volumeName := bids.Spec.Parameters[DataSourceTypeExportFromVolumeParameterVolumeName]
+	volumeName := bids.Spec.Parameters[longhorn.DataSourceTypeExportFromVolumeParameterVolumeName]
 	v, err := c.ds.GetVolume(volumeName)
 	if err != nil {
 		return err
@@ -789,7 +768,7 @@ func (c *BackingImageDataSourceController) prepareRunningParameters(bids *longho
 	if v.Status.State != longhorn.VolumeStateAttached {
 		return fmt.Errorf("need to wait for volume %v attached before preparing parameters", volumeName)
 	}
-	bids.Status.RunningParameters[DataSourceTypeExportFromVolumeParameterVolumeSize] = strconv.FormatInt(v.Spec.Size, 10)
+	bids.Status.RunningParameters[longhorn.DataSourceTypeExportFromVolumeParameterVolumeSize] = strconv.FormatInt(v.Spec.Size, 10)
 
 	e, err := c.ds.GetVolumeCurrentEngine(volumeName)
 	if err != nil {
@@ -803,8 +782,8 @@ func (c *BackingImageDataSourceController) prepareRunningParameters(bids *longho
 	}
 
 	newSnapshotRequired := true
-	if bids.Status.RunningParameters[DataSourceTypeExportFromVolumeParameterSnapshotName] != "" {
-		if _, ok := e.Status.Snapshots[bids.Status.RunningParameters[DataSourceTypeExportFromVolumeParameterSnapshotName]]; ok {
+	if bids.Status.RunningParameters[longhorn.DataSourceTypeExportFromVolumeParameterSnapshotName] != "" {
+		if _, ok := e.Status.Snapshots[bids.Status.RunningParameters[longhorn.DataSourceTypeExportFromVolumeParameterSnapshotName]]; ok {
 			newSnapshotRequired = false
 		}
 	}
@@ -820,7 +799,7 @@ func (c *BackingImageDataSourceController) prepareRunningParameters(bids *longho
 		if err != nil {
 			return err
 		}
-		bids.Status.RunningParameters[DataSourceTypeExportFromVolumeParameterSnapshotName] = snapshotName
+		bids.Status.RunningParameters[longhorn.DataSourceTypeExportFromVolumeParameterSnapshotName] = snapshotName
 	}
 
 	for rName, mode := range e.Status.ReplicaModeMap {
@@ -838,9 +817,9 @@ func (c *BackingImageDataSourceController) prepareRunningParameters(bids *longho
 		if rAddress == "" || rAddress != fmt.Sprintf("%s:%d", r.Status.StorageIP, r.Status.Port) {
 			continue
 		}
-		bids.Status.RunningParameters[DataSourceTypeExportFromVolumeParameterSenderAddress] = rAddress
+		bids.Status.RunningParameters[longhorn.DataSourceTypeExportFromVolumeParameterSenderAddress] = rAddress
 	}
-	if bids.Status.RunningParameters[DataSourceTypeExportFromVolumeParameterSenderAddress] == "" {
+	if bids.Status.RunningParameters[longhorn.DataSourceTypeExportFromVolumeParameterSenderAddress] == "" {
 		return fmt.Errorf("failed to get an available replica from volume %v during backing image %v exporting", v.Name, bids.Name)
 	}
 

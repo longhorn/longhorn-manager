@@ -708,6 +708,8 @@ func UpdateResources(namespace string, lhClient *lhclientset.Clientset, resource
 			err = updateRecurringJobs(namespace, lhClient, resourceMap.(map[string]*longhorn.RecurringJob))
 		case types.LonghornKindSetting:
 			err = updateSettings(namespace, lhClient, resourceMap.(map[string]*longhorn.Setting))
+		case types.LonghornKindVolumeAttachment:
+			err = updateVolumeAttachments(namespace, lhClient, resourceMap.(map[string]*longhorn.VolumeAttachment))
 		default:
 			return fmt.Errorf("resource kind %v is not able to updated", resourceKind)
 		}
@@ -1026,6 +1028,29 @@ func updateSettings(namespace string, lhClient *lhclientset.Clientset, settings 
 			if _, err = lhClient.LonghornV1beta2().Settings(namespace).Update(context.TODO(), setting, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
 				return err
 			}
+		}
+	}
+
+	return nil
+}
+
+func updateVolumeAttachments(namespace string, lhClient *lhclientset.Clientset, volumeAttachment map[string]*longhorn.VolumeAttachment) error {
+	existingVolumeAttachmentList, err := lhClient.LonghornV1beta2().VolumeAttachments(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+
+	existingVolumeAttachmentMap := map[string]bool{}
+	for _, volume := range existingVolumeAttachmentList.Items {
+		existingVolumeAttachmentMap[volume.Name] = true
+	}
+
+	for _, va := range volumeAttachment {
+		if _, ok := existingVolumeAttachmentMap[va.Name]; ok {
+			continue
+		}
+		if _, err = lhClient.LonghornV1beta2().VolumeAttachments(namespace).Create(context.TODO(), va, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(errors.Cause(err)) {
+			return err
 		}
 	}
 
