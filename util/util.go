@@ -241,7 +241,14 @@ func ParseTime(t string) (time.Time, error) {
 
 }
 
-func Execute(envs []string, binary string, args ...string) (string, error) {
+type ExecuteFunc func([]string, string, ...string) (string, error)
+
+// Execute is a variable holding the function responsible for executing commands.
+// By using a variable for the execution function, it allows for easier unit testing
+// by substituting a mock implementation.
+var Execute ExecuteFunc = execute
+
+func execute(envs []string, binary string, args ...string) (string, error) {
 	return ExecuteWithTimeout(cmdTimeout, envs, binary, args...)
 }
 
