@@ -2883,7 +2883,12 @@ func (c *VolumeController) checkAndFinishVolumeRestore(v *longhorn.Volume, e *lo
 		return err
 	}
 
-	if !isPurging && (v.Status.Robustness == longhorn.VolumeRobustnessHealthy || v.Status.Robustness == longhorn.VolumeRobustnessDegraded) && allScheduledReplicasIncluded {
+	degradedVolumeSupported, err := c.ds.GetSettingAsBool(types.SettingNameAllowVolumeCreationWithDegradedAvailability)
+	if err != nil {
+		return err
+	}
+
+	if !isPurging && ((v.Status.Robustness == longhorn.VolumeRobustnessHealthy && allScheduledReplicasIncluded) || (v.Status.Robustness == longhorn.VolumeRobustnessDegraded && degradedVolumeSupported)) {
 		log.Info("Restore/DR volume finished")
 		v.Status.IsStandby = false
 		v.Status.RestoreRequired = false
@@ -2913,7 +2918,7 @@ func (c *VolumeController) checkAllScheduledReplicasIncluded(v *longhorn.Volume,
 		}
 	}
 
-	return healthReplicaCount != 0 && (healthReplicaCount >= v.Spec.NumberOfReplicas || !hasReplicaNotIncluded), nil
+	return healthReplicaCount > 0 && (healthReplicaCount >= v.Spec.NumberOfReplicas || !hasReplicaNotIncluded), nil
 }
 
 func (c *VolumeController) updateRequestedDataSourceForVolumeCloning(v *longhorn.Volume, e *longhorn.Engine) (err error) {
@@ -3150,7 +3155,12 @@ func (c *VolumeController) checkForAutoDetachment(v *longhorn.Volume, e *longhor
 		return err
 	}
 
-	if (cliAPIVersion >= engineapi.CLIVersionFour && !isPurging && (v.Status.Robustness == longhorn.VolumeRobustnessHealthy || v.Status.Robustness == longhorn.VolumeRobustnessDegraded) && allScheduledReplicasIncluded) ||
+	degradedVolumeSupported, err := c.ds.GetSettingAsBool(types.SettingNameAllowVolumeCreationWithDegradedAvailability)
+	if err != nil {
+		return err
+	}
+
+	if (cliAPIVersion >= engineapi.CLIVersionFour && !isPurging && ((v.Status.Robustness == longhorn.VolumeRobustnessHealthy && allScheduledReplicasIncluded) || (v.Status.Robustness == longhorn.VolumeRobustnessDegraded && degradedVolumeSupported))) ||
 		(cliAPIVersion < engineapi.CLIVersionFour && (v.Status.Robustness == longhorn.VolumeRobustnessHealthy || v.Status.Robustness == longhorn.VolumeRobustnessDegraded)) {
 		log.Info("Preparing to do auto detachment for restore/DR volume")
 		v.Status.CurrentNodeID = ""
