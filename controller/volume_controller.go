@@ -2977,8 +2977,12 @@ func (c *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume) (err erro
 	}
 
 	if snapshotName == "" {
+		// Use a deterministic UUID for snapshotName in case this reconciliation fails and we hit this code block again
+		// in the next reconciliation. We don't want to generate multiple snapshots. Create the UUID by hashing the UIDs
+		// of the source and destination volume to avoid problems with reused volume names.
+		snapshotName = util.DeterministicUUID(string(sourceVol.GetUID()) + string(v.GetUID()))
 		labels := map[string]string{types.GetLonghornLabelKey(types.LonghornLabelSnapshotForCloningVolume): v.Name}
-		snapshot, err := c.createSnapshot("", labels, sourceVol, e)
+		snapshot, err := c.createSnapshot(snapshotName, labels, sourceVol, e)
 		if err != nil {
 			return errors.Wrapf(err, "failed to create snapshot of source volume %v", sourceVol.Name)
 		}
@@ -4327,6 +4331,20 @@ func (c *VolumeController) createSnapshot(snapshotName string, labels map[string
 		return nil, err
 	}
 	defer engineClientProxy.Close()
+
+	// Check if we have already created a snapshot with this name.
+	// TODO: Update longhorn-engine and longhorn-instance-manager so that SnapshotCreate returns an identifiable
+	// error/code when a snapshot exists so that this check isn't necessary.
+	if snapshotName != "" {
+		snap, err := engineClientProxy.SnapshotGet(e, snapshotName)
+		if err != nil {
+			return nil, err
+		}
+		if snap != nil {
+			logrus.Debugf("Snapshot %v with labels %+v for volume %v already exists", snapshotName, labels, volume.Name)
+			return snap, nil
+		}
+	}
 
 	snapshotName, err = engineClientProxy.SnapshotCreate(e, snapshotName, labels)
 	if err != nil {
