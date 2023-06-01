@@ -1,8 +1,9 @@
 package util
 
 import (
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestConvertSize(t *testing.T) {
@@ -42,4 +43,11 @@ func TestRoundUpSize(t *testing.T) {
 
 	assert.Equal(int64(SizeAlignment), RoundUpSize(0))
 	assert.Equal(int64(2*SizeAlignment), RoundUpSize(SizeAlignment+1))
+}
+
+func TestDeterministicUUID(t *testing.T) {
+	assert := require.New(t)
+
+	dataUsedToGenerate := "Each time DeterministicUUID is called on this data, it outputs the same UUID."
+	assert.Equal(DeterministicUUID(dataUsedToGenerate), DeterministicUUID(dataUsedToGenerate))
 }
