@@ -183,13 +183,13 @@ func (sc *SettingController) handleErr(err error, key interface{}) {
 	}
 
 	if sc.queue.NumRequeues(key) < maxRetries {
-		sc.logger.WithError(err).Warnf("Error syncing Longhorn setting %v", key)
+		sc.logger.WithError(err).Errorf("Failed to sync Longhorn setting %v", key)
 		sc.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	sc.logger.WithError(err).Warnf("Dropping Longhorn setting %v out of the queue", key)
+	sc.logger.WithError(err).Errorf("Dropping Longhorn setting %v out of the queue", key)
 	sc.queue.Forget(key)
 }
 
@@ -272,7 +272,7 @@ func getResponsibleNodeID(ds *datastore.DataStore) (string, error) {
 
 func (sc *SettingController) syncBackupTarget() (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "failed to sync backup target")
+		err = errors.Wrap(err, "failed to sync backup target")
 	}()
 
 	stopTimer := func() {
@@ -284,8 +284,7 @@ func (sc *SettingController) syncBackupTarget() (err error) {
 
 	responsibleNodeID, err := getResponsibleNodeID(sc.ds)
 	if err != nil {
-		sc.logger.WithError(err).Warn("Failed to select node for sync backup target")
-		return err
+		return errors.Wrap(err, "failed to select node for sync backup target")
 	}
 	if responsibleNodeID != sc.controllerID {
 		stopTimer()
@@ -327,8 +326,7 @@ func (sc *SettingController) syncBackupTarget() (err error) {
 			},
 		})
 		if err != nil {
-			sc.logger.WithError(err).Warn("Failed to create backup target")
-			return err
+			return errors.Wrap(err, "failed to create backup target")
 		}
 	}
 
@@ -388,27 +386,27 @@ func (sc *SettingController) updateTaintToleration() error {
 
 	daemonsetList, err := sc.ds.ListDaemonSetWithLabels(types.GetBaseLabelsForSystemManagedComponent())
 	if err != nil {
-		return errors.Wrapf(err, "failed to list Longhorn daemonsets for toleration update")
+		return errors.Wrap(err, "failed to list Longhorn daemonsets for toleration update")
 	}
 
 	deploymentList, err := sc.ds.ListDeploymentWithLabels(types.GetBaseLabelsForSystemManagedComponent())
 	if err != nil {
-		return errors.Wrapf(err, "failed to list Longhorn deployments for toleration update")
+		return errors.Wrap(err, "failed to list Longhorn deployments for toleration update")
 	}
 
 	imPodList, err := sc.ds.ListInstanceManagerPods()
 	if err != nil {
-		return errors.Wrapf(err, "failed to list instance manager pods for toleration update")
+		return errors.Wrap(err, "failed to list instance manager pods for toleration update")
 	}
 
 	smPodList, err := sc.ds.ListShareManagerPods()
 	if err != nil {
-		return errors.Wrapf(err, "failed to list share manager pods for toleration update")
+		return errors.Wrap(err, "failed to list share manager pods for toleration update")
 	}
 
 	bimPodList, err := sc.ds.ListBackingImageManagerPods()
 	if err != nil {
-		return errors.Wrapf(err, "failed to list backing image manager pods for toleration update")
+		return errors.Wrap(err, "failed to list backing image manager pods for toleration update")
 	}
 
 	for _, dp := range deploymentList {
@@ -447,7 +445,7 @@ func (sc *SettingController) updateTaintToleration() error {
 		if reflect.DeepEqual(util.TolerationListToMap(lastAppliedTolerations), newTolerationsMap) {
 			continue
 		}
-		sc.logger.Infof("Delete pod %v to update tolerations from %v to %v", pod.Name, util.TolerationListToMap(lastAppliedTolerations), newTolerationsMap)
+		sc.logger.Infof("Deleting pod %v to update tolerations from %v to %v", pod.Name, util.TolerationListToMap(lastAppliedTolerations), newTolerationsMap)
 		if err := sc.ds.DeletePod(pod.Name); err != nil {
 			return err
 		}
@@ -468,7 +466,7 @@ func (sc *SettingController) updateTolerationForDeployment(dp *appsv1.Deployment
 	if err := util.SetAnnotation(dp, types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix), string(newTolerationsByte)); err != nil {
 		return err
 	}
-	sc.logger.Infof("Update tolerations from %v to %v for %v", existingTolerationsMap, dp.Spec.Template.Spec.Tolerations, dp.Name)
+	sc.logger.Infof("Updating tolerations from %v to %v for %v", existingTolerationsMap, dp.Spec.Template.Spec.Tolerations, dp.Name)
 	if _, err := sc.ds.UpdateDeployment(dp); err != nil {
 		return err
 	}
@@ -487,7 +485,7 @@ func (sc *SettingController) updateTolerationForDaemonset(ds *appsv1.DaemonSet, 
 	if err := util.SetAnnotation(ds, types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix), string(newTolerationsByte)); err != nil {
 		return err
 	}
-	sc.logger.Infof("Update tolerations from %v to %v for %v", existingTolerationsMap, ds.Spec.Template.Spec.Tolerations, ds.Name)
+	sc.logger.Infof("Updating tolerations from %v to %v for %v", existingTolerationsMap, ds.Spec.Template.Spec.Tolerations, ds.Name)
 	if _, err := sc.ds.UpdateDaemonSet(ds); err != nil {
 		return err
 	}
@@ -521,34 +519,34 @@ func (sc *SettingController) updatePriorityClass() error {
 
 	daemonsetList, err := sc.ds.ListDaemonSetWithLabels(types.GetBaseLabelsForSystemManagedComponent())
 	if err != nil {
-		return errors.Wrapf(err, "failed to list Longhorn daemonsets for priority class update")
+		return errors.Wrap(err, "failed to list Longhorn daemonsets for priority class update")
 	}
 
 	deploymentList, err := sc.ds.ListDeploymentWithLabels(types.GetBaseLabelsForSystemManagedComponent())
 	if err != nil {
-		return errors.Wrapf(err, "failed to list Longhorn deployments for priority class update")
+		return errors.Wrap(err, "failed to list Longhorn deployments for priority class update")
 	}
 
 	imPodList, err := sc.ds.ListInstanceManagerPods()
 	if err != nil {
-		return errors.Wrapf(err, "failed to list instance manager pods for priority class update")
+		return errors.Wrap(err, "failed to list instance manager pods for priority class update")
 	}
 
 	smPodList, err := sc.ds.ListShareManagerPods()
 	if err != nil {
-		return errors.Wrapf(err, "failed to list share manager pods for priority class update")
+		return errors.Wrap(err, "failed to list share manager pods for priority class update")
 	}
 
 	bimPodList, err := sc.ds.ListBackingImageManagerPods()
 	if err != nil {
-		return errors.Wrapf(err, "failed to list backing image manager pods for priority class update")
+		return errors.Wrap(err, "failed to list backing image manager pods for priority class update")
 	}
 
 	for _, dp := range deploymentList {
 		if dp.Spec.Template.Spec.PriorityClassName == newPriorityClass {
 			continue
 		}
-		sc.logger.Infof("Update the priority class from %v to %v for %v", dp.Spec.Template.Spec.PriorityClassName, newPriorityClass, dp.Name)
+		sc.logger.Infof("Updating the priority class from %v to %v for %v", dp.Spec.Template.Spec.PriorityClassName, newPriorityClass, dp.Name)
 		dp.Spec.Template.Spec.PriorityClassName = newPriorityClass
 		if _, err := sc.ds.UpdateDeployment(dp); err != nil {
 			return err
@@ -558,7 +556,7 @@ func (sc *SettingController) updatePriorityClass() error {
 		if ds.Spec.Template.Spec.PriorityClassName == newPriorityClass {
 			continue
 		}
-		sc.logger.Infof("Update the priority class from %v to %v for %v", ds.Spec.Template.Spec.PriorityClassName, newPriorityClass, ds.Name)
+		sc.logger.Infof("Updating the priority class from %v to %v for %v", ds.Spec.Template.Spec.PriorityClassName, newPriorityClass, ds.Name)
 		ds.Spec.Template.Spec.PriorityClassName = newPriorityClass
 		if _, err := sc.ds.UpdateDaemonSet(ds); err != nil {
 			return err
@@ -571,7 +569,7 @@ func (sc *SettingController) updatePriorityClass() error {
 		if pod.Spec.PriorityClassName == newPriorityClass {
 			continue
 		}
-		sc.logger.Infof("Delete pod %v to update the priority class from %v to %v", pod.Name, pod.Spec.PriorityClassName, newPriorityClass)
+		sc.logger.Infof("Deleting pod %v to update the priority class from %v to %v", pod.Name, pod.Spec.PriorityClassName, newPriorityClass)
 		if err := sc.ds.DeletePod(pod.Name); err != nil {
 			return err
 		}
@@ -619,14 +617,14 @@ func (sc *SettingController) updateKubernetesClusterAutoscalerEnabled() error {
 			}
 
 			anno[evictKey] = strconv.FormatBool(clusterAutoscalerEnabled)
-			sc.logger.Infof("Update the %v annotation to %v for %v", types.KubernetesClusterAutoscalerSafeToEvictKey, clusterAutoscalerEnabled, dp.Name)
+			sc.logger.Infof("Updating the %v annotation to %v for %v", types.KubernetesClusterAutoscalerSafeToEvictKey, clusterAutoscalerEnabled, dp.Name)
 		} else {
 			if _, exists := anno[evictKey]; !exists {
 				continue
 			}
 
 			delete(anno, evictKey)
-			sc.logger.Infof("Delete the %v annotation for %v", types.KubernetesClusterAutoscalerSafeToEvictKey, clusterAutoscalerEnabled, dp.Name)
+			sc.logger.Infof("Deleting the %v annotation for %v", types.KubernetesClusterAutoscalerSafeToEvictKey, clusterAutoscalerEnabled, dp.Name)
 		}
 		dp.Spec.Template.Annotations = anno
 		if _, err := sc.ds.UpdateDeployment(dp); err != nil {
@@ -649,7 +647,7 @@ func (sc *SettingController) updateCNI() error {
 	}
 
 	if !volumesDetached {
-		return errors.Errorf("cannot apply %v setting to Longhorn workloads when there are attached volumes", types.SettingNameStorageNetwork)
+		return errors.Errorf("failed to apply %v setting to Longhorn workloads when there are attached volumes", types.SettingNameStorageNetwork)
 	}
 
 	nadAnnot := string(types.CNIAnnotationNetworks)
@@ -687,7 +685,7 @@ func (sc *SettingController) updateLogLevel() error {
 	if err != nil {
 		return err
 	}
-	logrus.Infof("Update log level from %v to %v", oldLevel, newLevel)
+	logrus.Infof("Updating log level from %v to %v", oldLevel, newLevel)
 	logrus.SetLevel(newLevel)
 	return nil
 }
@@ -726,23 +724,23 @@ func (sc *SettingController) updateNodeSelector() error {
 	}
 	deploymentList, err := sc.ds.ListDeploymentWithLabels(types.GetBaseLabelsForSystemManagedComponent())
 	if err != nil {
-		return errors.Wrapf(err, "failed to list Longhorn deployments for node selector update")
+		return errors.Wrap(err, "failed to list Longhorn deployments for node selector update")
 	}
 	daemonsetList, err := sc.ds.ListDaemonSetWithLabels(types.GetBaseLabelsForSystemManagedComponent())
 	if err != nil {
-		return errors.Wrapf(err, "failed to list Longhorn daemonsets for node selector update")
+		return errors.Wrap(err, "failed to list Longhorn daemonsets for node selector update")
 	}
 	imPodList, err := sc.ds.ListInstanceManagerPods()
 	if err != nil {
-		return errors.Wrapf(err, "failed to list instance manager pods for node selector update")
+		return errors.Wrap(err, "failed to list instance manager pods for node selector update")
 	}
 	smPodList, err := sc.ds.ListShareManagerPods()
 	if err != nil {
-		return errors.Wrapf(err, "failed to list share manager pods for node selector update")
+		return errors.Wrap(err, "failed to list share manager pods for node selector update")
 	}
 	bimPodList, err := sc.ds.ListBackingImageManagerPods()
 	if err != nil {
-		return errors.Wrapf(err, "failed to list backing image manager pods for node selector update")
+		return errors.Wrap(err, "failed to list backing image manager pods for node selector update")
 	}
 	for _, dp := range deploymentList {
 		if dp.Spec.Template.Spec.NodeSelector == nil {
@@ -753,7 +751,7 @@ func (sc *SettingController) updateNodeSelector() error {
 		if reflect.DeepEqual(dp.Spec.Template.Spec.NodeSelector, newNodeSelector) {
 			continue
 		}
-		sc.logger.Infof("Update the node selector from %v to %v for %v", dp.Spec.Template.Spec.NodeSelector, newNodeSelector, dp.Name)
+		sc.logger.Infof("Updating the node selector from %v to %v for %v", dp.Spec.Template.Spec.NodeSelector, newNodeSelector, dp.Name)
 		dp.Spec.Template.Spec.NodeSelector = newNodeSelector
 		if _, err := sc.ds.UpdateDeployment(dp); err != nil {
 			return err
@@ -768,7 +766,7 @@ func (sc *SettingController) updateNodeSelector() error {
 		if reflect.DeepEqual(ds.Spec.Template.Spec.NodeSelector, newNodeSelector) {
 			continue
 		}
-		sc.logger.Infof("Update the node selector from %v to %v for %v", ds.Spec.Template.Spec.NodeSelector, newNodeSelector, ds.Name)
+		sc.logger.Infof("Updating the node selector from %v to %v for %v", ds.Spec.Template.Spec.NodeSelector, newNodeSelector, ds.Name)
 		ds.Spec.Template.Spec.NodeSelector = newNodeSelector
 		if _, err := sc.ds.UpdateDaemonSet(ds); err != nil {
 			return err
@@ -786,7 +784,7 @@ func (sc *SettingController) updateNodeSelector() error {
 			continue
 		}
 		if pod.DeletionTimestamp == nil {
-			sc.logger.Infof("Delete pod %v to update the node selector from %v to %v", pod.Name, pod.Spec.NodeSelector, newNodeSelector)
+			sc.logger.Infof("Deleting pod %v to update the node selector from %v to %v", pod.Name, pod.Spec.NodeSelector, newNodeSelector)
 			if err := sc.ds.DeletePod(pod.Name); err != nil {
 				return err
 			}
@@ -802,24 +800,24 @@ func (bst *BackupStoreTimer) Start() {
 	log := bst.logger.WithFields(logrus.Fields{
 		"interval": bst.pollInterval,
 	})
-	log.Debug("Start backup store timer")
+	log.Info("Starting backup store timer")
 
 	wait.PollUntil(bst.pollInterval, func() (done bool, err error) {
 		backupTarget, err := bst.ds.GetBackupTarget(types.DefaultBackupTargetName)
 		if err != nil {
-			log.WithError(err).Errorf("Cannot get %s backup target", types.DefaultBackupTargetName)
+			log.WithError(err).Errorf("Failed to get %s backup target", types.DefaultBackupTargetName)
 			return false, err
 		}
 
+		log.Debug("Triggering sync backup target")
 		backupTarget.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
 		if _, err = bst.ds.UpdateBackupTarget(backupTarget); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
 			log.WithError(err).Warn("Failed to updating backup target")
 		}
-		log.Debug("Trigger sync backup target")
 		return false, nil
 	}, bst.stopCh)
 
-	log.Debug("Stop backup store timer")
+	log.Infof("Stopped backup store timer")
 }
 
 func (bst *BackupStoreTimer) Stop() {
@@ -873,7 +871,7 @@ func (sc *SettingController) syncUpgradeChecker() error {
 	latestLonghornVersion.Value, stableLonghornVersions.Value, err = sc.CheckLatestAndStableLonghornVersions()
 	if err != nil {
 		// non-critical error, don't retry
-		sc.logger.WithError(err).Debug("Failed to check for the latest and stable Longhorn versions")
+		sc.logger.WithError(err).Warn("Failed to check for the latest and stable Longhorn versions")
 		return nil
 	}
 
@@ -883,7 +881,7 @@ func (sc *SettingController) syncUpgradeChecker() error {
 		sc.logger.Infof("Latest Longhorn version is %v", latestLonghornVersion.Value)
 		if _, err := sc.ds.UpdateSetting(latestLonghornVersion); err != nil {
 			// non-critical error, don't retry
-			sc.logger.WithError(err).Debug("Cannot update latest Longhorn version")
+			sc.logger.WithError(err).Warn("Failed to update latest Longhorn version")
 			return nil
 		}
 	}
@@ -891,7 +889,7 @@ func (sc *SettingController) syncUpgradeChecker() error {
 		sc.logger.Infof("The latest stable version of every minor release line: %v", stableLonghornVersions.Value)
 		if _, err := sc.ds.UpdateSetting(stableLonghornVersions); err != nil {
 			// non-critical error, don't retry
-			sc.logger.WithError(err).Debug("Cannot update stable Longhorn versions")
+			sc.logger.WithError(err).Warn("Failed to update stable Longhorn versions")
 			return nil
 		}
 	}
@@ -948,7 +946,7 @@ func (sc *SettingController) CheckLatestAndStableLonghornVersions() (string, str
 		}
 	}
 	if latestVersion == "" {
-		return "", "", fmt.Errorf("cannot find latest Longhorn version during CheckLatestAndStableLonghornVersions")
+		return "", "", fmt.Errorf("failed to find latest Longhorn version during CheckLatestAndStableLonghornVersions")
 	}
 	sort.Strings(stableVersions)
 	return latestVersion, strings.Join(stableVersions, ","), nil
@@ -957,7 +955,7 @@ func (sc *SettingController) CheckLatestAndStableLonghornVersions() (string, str
 func (sc *SettingController) enqueueSetting(obj interface{}) {
 	key, err := controller.KeyFunc(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
+		utilruntime.HandleError(fmt.Errorf("failed to get key for object %#v: %v", obj, err))
 		return
 	}
 
@@ -984,7 +982,7 @@ func (sc *SettingController) enqueueSettingForBackupTarget(obj interface{}) {
 func (sc *SettingController) updateInstanceManagerCPURequest() error {
 	imPodList, err := sc.ds.ListInstanceManagerPods()
 	if err != nil {
-		return errors.Wrapf(err, "failed to list instance manager pods for toleration update")
+		return errors.Wrap(err, "failed to list instance manager pods for toleration update")
 	}
 	imMap, err := sc.ds.ListInstanceManagers()
 	if err != nil {
@@ -1010,7 +1008,7 @@ func (sc *SettingController) updateInstanceManagerCPURequest() error {
 		if IsSameGuaranteedCPURequirement(resourceReq, &podResourceReq) {
 			continue
 		}
-		sc.logger.Infof("Delete instance manager pod %v to refresh CPU request option", imPod.Name)
+		sc.logger.Infof("Deleting instance manager pod %v to refresh CPU request option", imPod.Name)
 		if err := sc.ds.DeletePod(imPod.Name); err != nil {
 			return err
 		}
@@ -1031,7 +1029,7 @@ func (sc *SettingController) cleanupFailedSupportBundles() error {
 
 	supportBundleList, err := sc.ds.ListSupportBundles()
 	if err != nil {
-		return errors.Wrapf(err, "failed to list SupportBundles for auto-deletion")
+		return errors.Wrap(err, "failed to list SupportBundles for auto-deletion")
 	}
 
 	for _, supportBundle := range supportBundleList {

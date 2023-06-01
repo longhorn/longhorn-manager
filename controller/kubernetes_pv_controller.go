@@ -99,8 +99,8 @@ func (kc *KubernetesPVController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer kc.queue.ShutDown()
 
-	logrus.Infof("Start kubernetes controller")
-	defer logrus.Infof("Shutting down kubernetes controller")
+	logrus.Info("Starting Kubernetes PV controller")
+	defer logrus.Info("Shut down kubernetes PV controller")
 
 	if !cache.WaitForNamedCacheSync("kubernetes", stopCh, kc.cacheSyncs...) {
 		return
@@ -139,19 +139,19 @@ func (kc *KubernetesPVController) handleErr(err error, key interface{}) {
 	}
 
 	if kc.queue.NumRequeues(key) < maxRetries {
-		logrus.Warnf("Error syncing Longhorn volume kubernetes status %v: %v", key, err)
+		logrus.WithError(err).Errorf("Failed to sync Longhorn volume kubernetes status %v", key)
 		kc.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	logrus.Warnf("Dropping Persistent Volume %v out of the queue: %v", key, err)
+	logrus.WithError(err).Errorf("Dropping Persistent Volume %v out of the queue", key)
 	kc.queue.Forget(key)
 }
 
 func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "kubernetes-controller: failed to sync %v", key)
+		err = errors.Wrapf(err, "failed to sync PV %v", key)
 	}()
 	_, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -233,7 +233,7 @@ func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 	} else {
 		if ks.LastPVCRefAt == "" {
 			if pv.Status.Phase == v1.VolumeBound {
-				return fmt.Errorf("BUG: current Persistent Volume %v is in Bound phase but has no ClaimRef field", pv.Name)
+				return fmt.Errorf("current Persistent Volume %v is in Bound phase but has no ClaimRef field", pv.Name)
 			}
 			// The associated PVC is removed from the PV ClaimRef
 			if ks.PVCName != "" {
@@ -268,7 +268,7 @@ func (kc *KubernetesPVController) getCSIVolumeHandleFromPV(pv *v1.PersistentVolu
 func (kc *KubernetesPVController) enqueuePersistentVolume(obj interface{}) {
 	key, err := controller.KeyFunc(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
+		utilruntime.HandleError(fmt.Errorf("failed to get key for object %#v: %v", obj, err))
 		return
 	}
 	kc.queue.Add(key)
@@ -301,7 +301,7 @@ func (kc *KubernetesPVController) enqueuePodChange(obj interface{}) {
 		pvc, err := kc.ds.GetPersistentVolumeClaimRO(pod.Namespace, claim.ClaimName)
 		if err != nil {
 			if !datastore.ErrorIsNotFound(err) {
-				utilruntime.HandleError(fmt.Errorf("couldn't get pvc %#v: %v", claim.ClaimName, err))
+				utilruntime.HandleError(fmt.Errorf("failed to get pvc %#v: %v", claim.ClaimName, err))
 				return
 			}
 			continue
@@ -376,7 +376,7 @@ func (kc *KubernetesPVController) cleanupForPVDeletion(pvName string) (bool, err
 			kc.pvToVolumeCache.Delete(pvName)
 			return true, nil
 		}
-		return false, errors.Wrapf(err, "failed to get volume for cleanup in cleanupForPVDeletion")
+		return false, errors.Wrap(err, "failed to get volume for cleanup in cleanupForPVDeletion")
 	}
 	if kc.controllerID != volume.Status.OwnerID {
 		kc.pvToVolumeCache.Delete(pvName)
@@ -384,7 +384,7 @@ func (kc *KubernetesPVController) cleanupForPVDeletion(pvName string) (bool, err
 	}
 	pv, err := kc.ds.GetPersistentVolumeRO(pvName)
 	if err != nil && !datastore.ErrorIsNotFound(err) {
-		return false, errors.Wrapf(err, "failed to get associated pv in cleanupForPVDeletion")
+		return false, errors.Wrap(err, "failed to get associated pv in cleanupForPVDeletion")
 	}
 	if datastore.ErrorIsNotFound(err) || pv.DeletionTimestamp != nil {
 		ks := &volume.Status.KubernetesStatus
@@ -398,7 +398,7 @@ func (kc *KubernetesPVController) cleanupForPVDeletion(pvName string) (bool, err
 		volume.Status.KubernetesStatus.PVStatus = ""
 		volume, err = kc.ds.UpdateVolumeStatus(volume)
 		if err != nil {
-			return false, errors.Wrapf(err, "failed to update volume in cleanupForPVDeletion")
+			return false, errors.Wrap(err, "failed to update volume in cleanupForPVDeletion")
 		}
 		kc.eventRecorder.Eventf(volume, v1.EventTypeNormal, constant.EventReasonStop, "Persistent Volume %v stopped to use Longhorn volume %v", pvName, volume.Name)
 	}
@@ -423,7 +423,7 @@ func (kc *KubernetesPVController) getAssociatedPods(ks *longhorn.KubernetesStatu
 	}
 	ps, err := kc.ds.ListPodsRO(ks.Namespace)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to list pods in getAssociatedPod")
+		return nil, errors.Wrap(err, "failed to list pods in getAssociatedPod")
 	}
 
 	pods := filterPods(ps, func(pod *v1.Pod) bool {

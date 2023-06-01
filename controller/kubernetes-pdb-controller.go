@@ -80,8 +80,8 @@ func (pc *KubernetesPDBController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer pc.queue.ShutDown()
 
-	pc.logger.Infof("Starting Kubernetes PDB controller")
-	defer pc.logger.Infof("Shut down Kubernetes PDB controller")
+	pc.logger.Info("Starting Kubernetes PDB controller")
+	defer pc.logger.Info("Shut down Kubernetes PDB controller")
 
 	if !cache.WaitForNamedCacheSync(pc.name, stopCh, pc.cacheSyncs...) {
 		return
@@ -114,13 +114,13 @@ func (pc *KubernetesPDBController) handleErr(err error, key interface{}) {
 		return
 	}
 
-	pc.logger.WithError(err).Warnf("Error syncing PDB for %v", key)
+	pc.logger.WithError(err).Errorf("Failed to sync PDB %v", key)
 	pc.queue.AddRateLimited(key)
 }
 
 func (pc *KubernetesPDBController) syncHandler(key string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "%v: failed to sync PDB for %v", pc.name, key)
+		err = errors.Wrapf(err, "failed to sync PDB %v", key)
 	}()
 
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
@@ -170,19 +170,19 @@ func (pc *KubernetesPDBController) reconcile(name string) (err error) {
 	if pdb != nil {
 		return nil
 	}
+
+	pc.logger.Infof("Creating PDB %v", pdbName)
 	pdb = generatePDBManifest(pdbName, pc.namespace, deployment.Spec.Selector)
 	if _, err := pc.ds.CreatePDB(pdb); err != nil && !apierrors.IsAlreadyExists(err) {
 		return err
 	}
-	pc.logger.Infof("Created %v PDB", pdbName)
-
 	return nil
 }
 
 func (pc *KubernetesPDBController) enqueueDeployment(obj interface{}) {
 	key, err := controller.KeyFunc(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
+		utilruntime.HandleError(fmt.Errorf("failed to get key for object %#v: %v", obj, err))
 		return
 	}
 	pc.queue.Add(key)
@@ -211,10 +211,10 @@ func deletePDBObject(log logrus.FieldLogger, ds *datastore.DataStore, pdb *polic
 	if pdb == nil {
 		return nil
 	}
+	log.Infof("Deleting %v PDB", pdb.Name)
 	err := ds.DeletePDB(pdb.Name)
 	if err != nil && !datastore.ErrorIsNotFound(err) {
 		return err
 	}
-	log.Infof("Deleted %v PDB", pdb.Name)
 	return nil
 }
