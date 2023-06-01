@@ -24,6 +24,7 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
@@ -1139,6 +1140,8 @@ const (
 	ClusterInfoNamespaceUID = util.StructName("LonghornNamespaceUid")
 	ClusterInfoNodeCount    = util.StructName("LonghornNodeCount")
 
+	ClusterInfoVolumeAvgSnapshotCount = util.StructName("LonghornVolumeAverageSnapshotCount")
+
 	ClusterInfoVolumeAccessModeCountFmt   = "LonghornVolumeAccessMode%sCount"
 	ClusterInfoVolumeDataLocalityCountFmt = "LonghornVolumeDataLocality%sCount"
 	ClusterInfoVolumeFrontendCountFmt     = "LonghornVolumeFrontend%sCount"
@@ -1209,10 +1212,17 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 		return errors.Wrapf(err, "failed to list Longhorn Volumes")
 	}
 
+	var totalVolumeSize int
+	var totalVolumeActualSize int
+	var totalVolumeNumOfReplicas int
 	accessModeCountStruct := make(map[util.StructName]int)
 	dataLocalityCountStruct := make(map[util.StructName]int)
 	frontendCountStruct := make(map[util.StructName]int)
 	for _, volume := range volumesRO {
+		totalVolumeSize += int(volume.Spec.Size)
+		totalVolumeActualSize += int(volume.Status.ActualSize)
+		totalVolumeNumOfReplicas += volume.Spec.NumberOfReplicas
+
 		accessMode := types.ValueUnknown
 		if volume.Spec.AccessMode != "" {
 			accessMode = util.ConvertToCamel(string(volume.Spec.AccessMode), "-")
@@ -1233,6 +1243,17 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	info.structFields.AppendCounted(accessModeCountStruct)
 	info.structFields.AppendCounted(dataLocalityCountStruct)
 	info.structFields.AppendCounted(frontendCountStruct)
+
+	var avgVolumeSnapshotCount int
+	volumeCount := len(volumesRO)
+	if volumeCount > 0 {
+		snapshotsRO, err := info.ds.ListSnapshotsRO(labels.Everything())
+		if err != nil {
+			return errors.Wrapf(err, "failed to list Longhorn Snapshots")
+		}
+		avgVolumeSnapshotCount = len(snapshotsRO) / volumeCount
+	}
+	info.structFields.Append(ClusterInfoVolumeAvgSnapshotCount, fmt.Sprint(avgVolumeSnapshotCount))
 
 	return nil
 }
