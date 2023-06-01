@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,6 +25,7 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -1145,6 +1147,7 @@ const (
 	ClusterInfoVolumeAvgSnapshotCount = util.StructName("LonghornVolumeAverageSnapshotCount")
 	ClusterInfoVolumeAvgNumOfReplicas = util.StructName("LonghornVolumeAverageNumberOfReplicas")
 
+	ClusterInfoPodAvgCPUUsageFmt          = "Longhorn%sAverageCpuUsageCore"
 	ClusterInfoVolumeAccessModeCountFmt   = "LonghornVolumeAccessMode%sCount"
 	ClusterInfoVolumeDataLocalityCountFmt = "LonghornVolumeDataLocality%sCount"
 	ClusterInfoVolumeFrontendCountFmt     = "LonghornVolumeFrontend%sCount"
@@ -1188,6 +1191,10 @@ func (info *ClusterInfo) collectClusterScope() {
 		info.logger.WithError(err).Debug("Failed to collect number of Longhorn nodes")
 	}
 
+	if err := info.collectResourceUsage(); err != nil {
+		info.logger.WithError(err).Debug("Failed to collect Longhorn resource usages")
+	}
+
 	if err := info.collectVolumesInfo(); err != nil {
 		info.logger.WithError(err).Debug("Failed to collect Longhorn Volumes info")
 	}
@@ -1207,6 +1214,53 @@ func (info *ClusterInfo) collectNodeCount() error {
 		info.structFields.Append(ClusterInfoNodeCount, fmt.Sprint(len(nodesRO)))
 	}
 	return err
+}
+
+func (info *ClusterInfo) collectResourceUsage() error {
+	componentMap := map[string]map[string]string{
+		"Manager":         info.ds.GetManagerLabel(),
+		"InstanceManager": types.GetInstanceManagerComponentLabel(),
+	}
+
+	metricsClient := info.metricsClient.MetricsV1beta1()
+	for component, label := range componentMap {
+		selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+			MatchLabels: label,
+		})
+		if err != nil {
+			logrus.WithError(err).Debugf("Failed to get %v label for %v", label, component)
+			continue
+		}
+
+		pods, err := info.ds.ListPodsBySelector(selector)
+		if err != nil {
+			logrus.WithError(err).Debugf("Failed to list %v Pod by %v label", component, label)
+			continue
+		}
+
+		if len(pods) == 0 {
+			continue
+		}
+
+		var totalCPUUsage resource.Quantity
+		for _, pod := range pods {
+			podMetrics, err := metricsClient.PodMetricses(info.namespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
+			if err != nil && !apierrors.IsNotFound(err) {
+				logrus.WithError(err).Debugf("Failed to get %v Pod", pod.Name)
+				continue
+			}
+			for _, container := range podMetrics.Containers {
+				totalCPUUsage.Add(*container.Usage.Cpu())
+			}
+		}
+
+		avgCPUUsageMilli := totalCPUUsage.MilliValue() / int64(len(pods))
+		avgCPUUsage := resource.NewMilliQuantity(avgCPUUsageMilli, resource.DecimalSI).String()
+		cpuStruct := util.StructName(fmt.Sprintf(ClusterInfoPodAvgCPUUsageFmt, component))
+		info.structFields.Append(cpuStruct, avgCPUUsage)
+	}
+
+	return nil
 }
 
 func (info *ClusterInfo) collectVolumesInfo() error {
