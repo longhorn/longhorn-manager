@@ -67,7 +67,6 @@ const (
 	SettingNameDisableSchedulingOnCordonedNode                          = SettingName("disable-scheduling-on-cordoned-node")
 	SettingNameReplicaZoneSoftAntiAffinity                              = SettingName("replica-zone-soft-anti-affinity")
 	SettingNameNodeDownPodDeletionPolicy                                = SettingName("node-down-pod-deletion-policy")
-	SettingNameAllowNodeDrainWithLastHealthyReplica                     = SettingName("allow-node-drain-with-last-healthy-replica")
 	SettingNameNodeDrainPolicy                                          = SettingName("node-drain-policy")
 	SettingNamePriorityClass                                            = SettingName("priority-class")
 	SettingNameDisableRevisionCounter                                   = SettingName("disable-revision-counter")
@@ -138,7 +137,6 @@ var (
 		SettingNameDisableSchedulingOnCordonedNode,
 		SettingNameReplicaZoneSoftAntiAffinity,
 		SettingNameNodeDownPodDeletionPolicy,
-		SettingNameAllowNodeDrainWithLastHealthyReplica,
 		SettingNameNodeDrainPolicy,
 		SettingNamePriorityClass,
 		SettingNameDisableRevisionCounter,
@@ -235,7 +233,6 @@ var (
 		SettingNameDisableSchedulingOnCordonedNode:                          SettingDefinitionDisableSchedulingOnCordonedNode,
 		SettingNameReplicaZoneSoftAntiAffinity:                              SettingDefinitionReplicaZoneSoftAntiAffinity,
 		SettingNameNodeDownPodDeletionPolicy:                                SettingDefinitionNodeDownPodDeletionPolicy,
-		SettingNameAllowNodeDrainWithLastHealthyReplica:                     SettingDefinitionAllowNodeDrainWithLastHealthyReplica,
 		SettingNameNodeDrainPolicy:                                          SettingDefinitionNodeDrainPolicy,
 		SettingNamePriorityClass:                                            SettingDefinitionPriorityClass,
 		SettingNameDisableRevisionCounter:                                   SettingDefinitionDisableRevisionCounter,
@@ -661,17 +658,6 @@ var (
 			string(NodeDownPodDeletionPolicyDeleteDeploymentPod),
 			string(NodeDownPodDeletionPolicyDeleteBothStatefulsetAndDeploymentPod),
 		},
-	}
-
-	SettingDefinitionAllowNodeDrainWithLastHealthyReplica = SettingDefinition{
-		DisplayName: "Allow Node Drain with the Last Healthy Replica",
-		Description: "By default, Longhorn will block `kubectl drain` action on a node if the node contains the last healthy replica of a volume.\n\n" +
-			"If this setting is enabled, Longhorn will **not** block `kubectl drain` action on a node even if the node contains the last healthy replica of a volume.",
-		Category: SettingCategoryGeneral,
-		Type:     SettingTypeBool,
-		Required: true,
-		ReadOnly: false,
-		Default:  "false",
 	}
 
 	SettingDefinitionNodeDrainPolicy = SettingDefinition{
@@ -1154,8 +1140,6 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameDisableSchedulingOnCordonedNode:
 		fallthrough
 	case SettingNameReplicaZoneSoftAntiAffinity:
-		fallthrough
-	case SettingNameAllowNodeDrainWithLastHealthyReplica:
 		fallthrough
 	case SettingNameAllowVolumeCreationWithDegradedAvailability:
 		fallthrough

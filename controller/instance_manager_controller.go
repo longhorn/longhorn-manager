@@ -706,15 +706,6 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 		return false, nil
 	}
 
-	// TODO: this setting is deprecated and will be replaced by nodeDrainingPolicy in the future
-	allowDrainingNodeWithLastReplica, err := imc.ds.GetSettingAsBool(types.SettingNameAllowNodeDrainWithLastHealthyReplica)
-	if err != nil {
-		return false, err
-	}
-	if allowDrainingNodeWithLastReplica {
-		return true, nil
-	}
-
 	nodeDrainingPolicy, err := imc.ds.GetSettingValueExisted(types.SettingNameNodeDrainPolicy)
 	if err != nil {
 		return false, err
