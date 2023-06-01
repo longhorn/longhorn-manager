@@ -1140,6 +1140,7 @@ const (
 	ClusterInfoNamespaceUID = util.StructName("LonghornNamespaceUid")
 	ClusterInfoNodeCount    = util.StructName("LonghornNodeCount")
 
+	ClusterInfoVolumeAvgSize          = util.StructName("LonghornVolumeAverageSize")
 	ClusterInfoVolumeAvgSnapshotCount = util.StructName("LonghornVolumeAverageSnapshotCount")
 
 	ClusterInfoVolumeAccessModeCountFmt   = "LonghornVolumeAccessMode%sCount"
@@ -1245,14 +1246,18 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	info.structFields.AppendCounted(frontendCountStruct)
 
 	var avgVolumeSnapshotCount int
+	var avgVolumeSize int
 	volumeCount := len(volumesRO)
 	if volumeCount > 0 {
+		avgVolumeSize = totalVolumeSize / volumeCount
+
 		snapshotsRO, err := info.ds.ListSnapshotsRO(labels.Everything())
 		if err != nil {
 			return errors.Wrapf(err, "failed to list Longhorn Snapshots")
 		}
 		avgVolumeSnapshotCount = len(snapshotsRO) / volumeCount
 	}
+	info.structFields.Append(ClusterInfoVolumeAvgSize, fmt.Sprint(avgVolumeSize))
 	info.structFields.Append(ClusterInfoVolumeAvgSnapshotCount, fmt.Sprint(avgVolumeSnapshotCount))
 
 	return nil
