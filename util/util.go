@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"math"
 	"math/rand"
 	"net"
 	"net/http"
@@ -998,4 +999,10 @@ func VerifySnapshotLabels(labels map[string]string) error {
 
 func RemoveNewlines(input string) string {
 	return strings.Replace(input, "\n", "", -1)
+}
+
+func GetRange(number float64, rangeBlock float64) (float64, float64) {
+	min := math.Floor(number/rangeBlock) * rangeBlock
+	max := min + rangeBlock
+	return min, max
 }
