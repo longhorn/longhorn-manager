@@ -207,7 +207,7 @@ func (nc *NodeController) isResponsibleForSnapshot(obj interface{}) bool {
 	}
 	volumeName, ok := snapshot.Labels[types.LonghornLabelVolume]
 	if !ok {
-		logrus.Warnf("Cannot find volume name from snapshot %v", snapshot.Name)
+		logrus.Warnf("Failed to find volume name from snapshot %v", snapshot.Name)
 		return false
 	}
 	volume, err := nc.ds.GetVolumeRO(volumeName)
@@ -239,7 +239,7 @@ func (nc *NodeController) snapshotHashRequired(volume *longhorn.Volume) bool {
 	if volume.Spec.SnapshotDataIntegrity == longhorn.SnapshotDataIntegrityIgnored {
 		dataIntegrity, err := nc.ds.GetSettingValueExisted(types.SettingNameSnapshotDataIntegrity)
 		if err != nil {
-			logrus.Warnf("failed to get %v setting since %v", types.SettingNameSnapshotDataIntegrity, err)
+			logrus.Warnf("Failed to get %v setting since %v", types.SettingNameSnapshotDataIntegrity, err)
 			return false
 		}
 
@@ -278,8 +278,8 @@ func (nc *NodeController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer nc.queue.ShutDown()
 
-	logrus.Infof("Starting Longhorn node controller")
-	defer logrus.Infof("Shut down Longhorn node controller")
+	logrus.Info("Starting Longhorn node controller")
+	defer logrus.Info("Shut down Longhorn node controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn node", stopCh, nc.cacheSyncs...) {
 		return
@@ -318,13 +318,13 @@ func (nc *NodeController) handleErr(err error, key interface{}) {
 	}
 
 	if nc.queue.NumRequeues(key) < maxRetries {
-		logrus.Warnf("Error syncing Longhorn node %v: %v", key, err)
+		logrus.WithError(err).Errorf("Failed to sync Longhorn node %v", key)
 		nc.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	logrus.Warnf("Dropping Longhorn node %v out of the queue: %v", key, err)
+	logrus.WithError(err).Errorf("Dropping Longhorn node %v out of the queue", key)
 	nc.queue.Forget(key)
 }
 
@@ -458,8 +458,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		DisableSchedulingOnCordonedNode, err :=
 			nc.ds.GetSettingAsBool(types.SettingNameDisableSchedulingOnCordonedNode)
 		if err != nil {
-			logrus.Errorf("error getting disable scheduling on cordoned node setting: %v", err)
-			return err
+			return errors.Wrapf(err, "failed to get %v setting", types.SettingNameDisableSchedulingOnCordonedNode)
 		}
 
 		// Update node condition based on
@@ -523,7 +522,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		data, _ := nc.snapshotMonitor.GetCollectedData()
 		status, ok := data.(monitor.SnapshotMonitorStatus)
 		if !ok {
-			logrus.Errorf("failed to assert value from snapshot monitor: %v", data)
+			logrus.Errorf("Failed to assert value from snapshot monitor: %v", data)
 		} else {
 			node.Status.SnapshotCheckStatus.LastPeriodicCheckedAt = status.LastSnapshotPeriodicCheckedAt
 		}
@@ -566,7 +565,7 @@ func (nc *NodeController) enqueueNode(obj interface{}) {
 func (nc *NodeController) enqueueSetting(obj interface{}) {
 	nodesRO, err := nc.ds.ListNodesRO()
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("couldn't list nodes: %v ", err))
+		utilruntime.HandleError(fmt.Errorf("failed to list nodes: %v ", err))
 		return
 	}
 
@@ -595,7 +594,7 @@ func (nc *NodeController) enqueueReplica(obj interface{}) {
 	node, err := nc.ds.GetNode(replica.Spec.NodeID)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
-			utilruntime.HandleError(fmt.Errorf("couldn't get node %v for replica %v: %v ",
+			utilruntime.HandleError(fmt.Errorf("failed to get node %v for replica %v: %v ",
 				replica.Spec.NodeID, replica.Name, err))
 		}
 		return
@@ -618,13 +617,13 @@ func (nc *NodeController) enqueueSnapshot(old, cur interface{}) {
 
 	volumeName, ok := currentSnapshot.Labels[types.LonghornLabelVolume]
 	if !ok {
-		logrus.Warnf("cannot get volume name from snapshot %v", currentSnapshot.Name)
+		logrus.Warnf("Failed to get volume name from snapshot %v", currentSnapshot.Name)
 		return
 	}
 
 	volume, err := nc.ds.GetVolumeRO(volumeName)
 	if err != nil {
-		logrus.Warnf("failed to get volume %v since %v", currentSnapshot.Name, err)
+		logrus.WithError(err).Warnf("Failed to get volume %v", currentSnapshot.Name)
 		return
 	}
 
@@ -650,7 +649,7 @@ func (nc *NodeController) enqueueSnapshot(old, cur interface{}) {
 func (nc *NodeController) enqueueManagerPod(obj interface{}) {
 	nodesRO, err := nc.ds.ListNodesRO()
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("couldn't list nodes: %v ", err))
+		utilruntime.HandleError(fmt.Errorf("failed to list nodes: %v ", err))
 		return
 	}
 	for _, node := range nodesRO {
@@ -678,7 +677,7 @@ func (nc *NodeController) enqueueKubernetesNode(obj interface{}) {
 	nodeRO, err := nc.ds.GetNodeRO(kubernetesNode.Name)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
-			utilruntime.HandleError(fmt.Errorf("couldn't get longhorn node %v: %v ", kubernetesNode.Name, err))
+			utilruntime.HandleError(fmt.Errorf("failed to get longhorn node %v: %v ", kubernetesNode.Name, err))
 		}
 		return
 	}
@@ -848,11 +847,11 @@ func (nc *NodeController) updateDiskStatusSchedulableCondition(node *longhorn.No
 			}
 			for _, bim := range list {
 				if bim.Spec.NodeID != node.Name || bim.Spec.DiskPath != disk.Path {
-					log.Infof("Node Controller: Node & disk info in backing image manager %v need to be updated", bim.Name)
+					log.Infof("Node Controller: updating Node & disk info in backing image manager %v", bim.Name)
 					bim.Spec.NodeID = node.Name
 					bim.Spec.DiskPath = disk.Path
 					if _, err := nc.ds.UpdateBackingImageManager(bim); err != nil {
-						log.WithError(err).Errorf("Failed to update node & disk info for backing image manager %v when syncing disk %v(%v), will enqueue then resync node", bim.Name, diskName, diskStatus.DiskUUID)
+						log.WithError(err).Warnf("Failed to update node & disk info for backing image manager %v when syncing disk %v(%v), will enqueue then resync node", bim.Name, diskName, diskStatus.DiskUUID)
 						nc.enqueueNode(node)
 						continue
 					}
@@ -871,7 +870,7 @@ func (nc *NodeController) updateDiskStatusSchedulableCondition(node *longhorn.No
 					replica.Spec.NodeID = node.Name
 					replica.Spec.DiskPath = disk.Path
 					if _, err := nc.ds.UpdateReplica(replica); err != nil {
-						log.Errorf("Failed to update node & disk info for replica %v when syncing disk %v(%v), will enqueue then resync node", replica.Name, diskName, diskStatus.DiskUUID)
+						log.Warnf("Failed to update node & disk info for replica %v when syncing disk %v(%v), will enqueue then resync node", replica.Name, diskName, diskStatus.DiskUUID)
 						nc.enqueueNode(node)
 						continue
 					}
@@ -949,7 +948,7 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 			return err
 		}
 		for _, rm := range rmMap {
-			logrus.Debugf("Prepare to clean up the replica manager %v since there is no available disk on node %v", rm.Name, node.Name)
+			logrus.Infof("Cleaning up the replica manager %v since there is no available disk on node %v", rm.Name, node.Name)
 			if err := nc.ds.DeleteInstanceManager(rm.Name); err != nil {
 				return err
 			}
@@ -966,7 +965,7 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 		}
 		for _, im := range imMap {
 			if im.Labels[types.GetLonghornLabelKey(types.LonghornLabelNode)] != im.Spec.NodeID {
-				return fmt.Errorf("BUG: Instance manager %v NodeID %v is not consistent with the label %v=%v",
+				return fmt.Errorf("instance manager %v NodeID %v is not consistent with the label %v=%v",
 					im.Name, im.Spec.NodeID, types.GetLonghornLabelKey(types.LonghornLabelNode), im.Labels[types.GetLonghornLabelKey(types.LonghornLabelNode)])
 			}
 			cleanupRequired := true
@@ -986,7 +985,7 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 				}
 			}
 			if cleanupRequired {
-				logrus.Debugf("Prepare to clean up the redundant instance manager %v when there is no running/starting instance", im.Name)
+				logrus.Infof("Cleaning up the redundant instance manager %v when there is no running/starting instance", im.Name)
 				if err := nc.ds.DeleteInstanceManager(im.Name); err != nil {
 					return err
 				}
@@ -997,7 +996,7 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 			if err != nil {
 				return err
 			}
-			logrus.Debugf("Prepare to create default instance manager %v, node: %v, default instance manager image: %v, type: %v",
+			logrus.Infof("Creating default instance manager %v, node: %v, default instance manager image: %v, type: %v",
 				imName, node.Name, defaultInstanceManagerImage, imType)
 			if _, err := nc.createInstanceManager(node, imName, defaultInstanceManagerImage, imType); err != nil {
 				return err
@@ -1027,7 +1026,7 @@ func (nc *NodeController) createInstanceManager(node *longhorn.Node, imName, ima
 func (nc *NodeController) cleanUpBackingImagesInDisks(node *longhorn.Node) error {
 	settingValue, err := nc.ds.GetSettingAsInt(types.SettingNameBackingImageCleanupWaitInterval)
 	if err != nil {
-		logrus.Errorf("failed to get Setting BackingImageCleanupWaitInterval, won't do cleanup for backing images: %v", err)
+		logrus.WithError(err).Warnf("Failed to get setting %v, won't do cleanup for backing images", types.SettingNameBackingImageCleanupWaitInterval)
 		return nil
 	}
 	waitInterval := time.Duration(settingValue) * time.Minute
@@ -1040,14 +1039,14 @@ func (nc *NodeController) cleanUpBackingImagesInDisks(node *longhorn.Node) error
 		log := getLoggerForBackingImage(nc.logger, bi).WithField("node", node.Name)
 		bids, err := nc.ds.GetBackingImageDataSource(bi.Name)
 		if err != nil && !apierrors.IsNotFound(err) {
-			log.WithError(err).Error("Failed to get the backing image data source when cleaning up the images in disks")
+			log.WithError(err).Warn("Failed to get the backing image data source when cleaning up the images in disks")
 			continue
 		}
 		existingBackingImage := bi.DeepCopy()
 		BackingImageDiskFileCleanup(node, bi, bids, waitInterval, 1)
 		if !reflect.DeepEqual(existingBackingImage.Spec, bi.Spec) {
 			if _, err := nc.ds.UpdateBackingImage(bi); err != nil {
-				log.WithError(err).Error("Failed to update backing image when cleaning up the images in disks")
+				log.WithError(err).Warn("Failed to update backing image when cleaning up the images in disks")
 				// Requeue the node but do not fail the whole sync function
 				nc.enqueueNode(node)
 				continue
@@ -1100,7 +1099,7 @@ func BackingImageDiskFileCleanup(node *longhorn.Node, bi *longhorn.BackingImage,
 		}
 		lastRefAt, err := util.ParseTime(lastRefAtStr)
 		if err != nil {
-			logrus.Errorf("Unable to parse LastRefAt timestamp %v for backing image %v", lastRefAtStr, bi.Name)
+			logrus.Warnf("Failed to parse LastRefAt timestamp %v for backing image %v", lastRefAtStr, bi.Name)
 			continue
 		}
 		if !time.Now().After(lastRefAt.Add(waitInterval)) {
@@ -1136,7 +1135,7 @@ func BackingImageDiskFileCleanup(node *longhorn.Node, bi *longhorn.BackingImage,
 			handlingDiskFileCount--
 		}
 
-		logrus.Debugf("Start to cleanup the unused file in disk %v for backing image %v", diskUUID, bi.Name)
+		logrus.Infof("Cleaning up the unused file in disk %v for backing image %v", diskUUID, bi.Name)
 		delete(bi.Spec.Disks, diskUUID)
 	}
 }
@@ -1183,7 +1182,7 @@ func (nc *NodeController) getNewAndMissingOrphanedReplicaDirectoryNames(diskName
 	// Find out the new/missing orphaned directories by checking with orphan CRs
 	orphans, err := nc.ds.ListOrphansByNode(nc.controllerID)
 	if err != nil {
-		logrus.Errorf("unable to list orphans for node %v since %v", nc.controllerID, err.Error())
+		logrus.Warnf("Failed to list orphans for node %v since %v", nc.controllerID, err.Error())
 		return map[string]string{}, map[string]string{}
 	}
 
@@ -1225,7 +1224,7 @@ func (nc *NodeController) deleteOrphans(node *longhorn.Node, diskName string, di
 
 	orphans, err := nc.ds.ListOrphans()
 	if err != nil {
-		return errors.Wrap(err, "unable to list orphans")
+		return errors.Wrap(err, "failed to list orphans")
 	}
 
 	for _, orphan := range orphans {
@@ -1250,7 +1249,7 @@ func (nc *NodeController) deleteOrphans(node *longhorn.Node, diskName string, di
 func (nc *NodeController) createOrphans(node *longhorn.Node, diskName string, diskInfo *monitor.CollectedDiskInfo, newOrphanedReplicaDirectoryNames map[string]string) error {
 	for dirName := range newOrphanedReplicaDirectoryNames {
 		if err := nc.createOrphan(node, diskName, dirName, diskInfo); err != nil && !apierrors.IsAlreadyExists(err) {
-			return errors.Wrapf(err, "unable to create orphan for orphaned replica directory %v in disk %v on node %v",
+			return errors.Wrapf(err, "failed to create orphan for orphaned replica directory %v in disk %v on node %v",
 				dirName, node.Spec.Disks[diskName].Path, node.Name)
 		}
 	}
@@ -1387,7 +1386,7 @@ func isReadyDiskFound(diskInfoMap map[string]*monitor.CollectedDiskInfo) bool {
 
 func isDiskMatched(node *longhorn.Node, collectedDiskInfo map[string]*monitor.CollectedDiskInfo) bool {
 	if len(node.Spec.Disks) != len(collectedDiskInfo) {
-		logrus.Warnf("number of node disks %v and collected disk info %v are not equal",
+		logrus.Warnf("Number of node disks %v and collected disk info %v are not equal",
 			len(node.Spec.Disks), len(collectedDiskInfo))
 		return false
 	}
@@ -1395,14 +1394,14 @@ func isDiskMatched(node *longhorn.Node, collectedDiskInfo map[string]*monitor.Co
 	for diskName, diskInfo := range collectedDiskInfo {
 		disk, ok := node.Spec.Disks[diskName]
 		if !ok {
-			logrus.Warnf("disk %v is not found in node %v", diskName, node.Name)
+			logrus.Warnf("Failed to find disk %v in node %v", diskName, node.Name)
 			return false
 		}
 
 		nodeOrDiskEvicted := node.Spec.EvictionRequested || disk.EvictionRequested
 		if nodeOrDiskEvicted != diskInfo.NodeOrDiskEvicted ||
 			disk.Path != diskInfo.Path {
-			logrus.Warnf("disk data %v is mismatched with collected data %v for disk %v", disk, diskInfo, diskName)
+			logrus.Warnf("Disk data %v is mismatched with collected data %v for disk %v", disk, diskInfo, diskName)
 			return false
 		}
 	}
