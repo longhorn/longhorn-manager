@@ -1052,7 +1052,7 @@ var (
 		Description: "This allows users to activate the SPDK data engine. Currently, it is in the preview phase and should not be utilized in a production environment.\n\n" +
 			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will try to block this setting update when there are attached volumes. \n\n" +
 			"  - When applying the setting, Longhorn will restart all instance-manager pods. \n\n",
-		Category: SettingCategoryDangerZone,
+		Category: SettingCategorySpdk,
 		Type:     SettingTypeBool,
 		Required: true,
 		ReadOnly: false,
