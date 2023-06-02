@@ -1216,14 +1216,12 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 
 	var totalVolumeSize int
 	var totalVolumeActualSize int
-	var totalVolumeNumOfReplicas int
 	accessModeCountStruct := make(map[util.StructName]int)
 	dataLocalityCountStruct := make(map[util.StructName]int)
 	frontendCountStruct := make(map[util.StructName]int)
 	for _, volume := range volumesRO {
 		totalVolumeSize += int(volume.Spec.Size)
 		totalVolumeActualSize += int(volume.Status.ActualSize)
-		totalVolumeNumOfReplicas += volume.Spec.NumberOfReplicas
 
 		accessMode := types.ValueUnknown
 		if volume.Spec.AccessMode != "" {
@@ -1260,11 +1258,17 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 		}
 		avgVolumeSnapshotCount = len(snapshotsRO) / volumeCount
 	}
-	info.structFields.Append(ClusterInfoVolumeAvgSize, fmt.Sprint(avgVolumeSize))
-	info.structFields.Append(ClusterInfoVolumeAvgActualSize, fmt.Sprint(avgVolumeActualSize))
+	info.structFields.Append(ClusterInfoVolumeAvgSize, info.getSizeRange(avgVolumeSize))
+	info.structFields.Append(ClusterInfoVolumeAvgActualSize, info.getSizeRange(avgVolumeActualSize))
 	info.structFields.Append(ClusterInfoVolumeAvgSnapshotCount, fmt.Sprint(avgVolumeSnapshotCount))
 
 	return nil
+}
+
+func (info *ClusterInfo) getSizeRange(bytes int) string {
+	gib := float64(bytes) / 1024 / 1024 / 1024
+	min, max := util.GetRange(gib, 100.0)
+	return fmt.Sprintf("%.0f-%.0f", min, max)
 }
 
 func (info *ClusterInfo) collectNodeScope() {
