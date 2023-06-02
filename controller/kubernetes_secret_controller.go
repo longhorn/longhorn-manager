@@ -128,12 +128,12 @@ func (ks *KubernetesSecretController) handleErr(err error, key interface{}) {
 	}
 
 	if ks.queue.NumRequeues(key) < maxRetries {
-		ks.logger.WithError(err).Warnf("Error syncing Secret %v", key)
+		ks.logger.WithError(err).Errorf("Failed to sync Secret %v", key)
 		ks.queue.AddRateLimited(key)
 		return
 	}
 
-	ks.logger.WithError(err).Warnf("Dropping Secret %v out of the queue", key)
+	ks.logger.WithError(err).Errorf("Dropping Secret %v out of the queue", key)
 	ks.queue.Forget(key)
 	utilruntime.HandleError(err)
 }
@@ -165,7 +165,7 @@ func (ks *KubernetesSecretController) reconcileSecret(namespace, secretName stri
 		if !apierrors.IsNotFound(err) {
 			return err
 		}
-		ks.logger.Warnf("Cannot found the %s backup target", types.DefaultBackupTargetName)
+		ks.logger.Warnf("Failed to find the %s backup target", types.DefaultBackupTargetName)
 		return nil
 	}
 
@@ -241,11 +241,10 @@ func (ks *KubernetesSecretController) annotateAWSIAMRoleArn(awsIAMRoleArn string
 			continue
 		}
 
+		ks.logger.Infof("Updating AWS IAM role for pod %v/%v", pod.Namespace, pod.Name)
 		if _, err = ks.kubeClient.CoreV1().Pods(pod.Namespace).Update(context.TODO(), pod, metav1.UpdateOptions{}); err != nil {
 			return err
 		}
-
-		ks.logger.Infof("AWS IAM role for pod %v/%v updated", pod.Namespace, pod.Name)
 	}
 
 	return nil
@@ -258,10 +257,10 @@ func (ks *KubernetesSecretController) triggerSyncBackupTarget(backupTarget *long
 		return nil
 	}
 
+	ks.logger.Info("Triggering sync backup target because the credential secret change")
 	backupTarget.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
 	if _, err := ks.ds.UpdateBackupTarget(backupTarget); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-		ks.logger.WithError(err).Warn("Failed to updating backup target")
+		ks.logger.WithError(err).Warn("Failed to update backup target")
 	}
-	ks.logger.Debug("Trigger sync backup target because the credential secret change")
 	return nil
 }

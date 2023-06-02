@@ -90,7 +90,7 @@ func NewOrphanController(
 func (oc *OrphanController) enqueueOrphan(obj interface{}) {
 	key, err := controller.KeyFunc(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
+		utilruntime.HandleError(fmt.Errorf("failed to get key for object %#v: %v", obj, err))
 		return
 	}
 
@@ -128,8 +128,8 @@ func (oc *OrphanController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer oc.queue.ShutDown()
 
-	oc.logger.Infof("Starting Longhorn Orphan controller")
-	defer oc.logger.Infof("Shut down Longhorn Orphan controller")
+	oc.logger.Info("Starting Longhorn Orphan controller")
+	defer oc.logger.Info("Shut down Longhorn Orphan controller")
 
 	if !cache.WaitForNamedCacheSync(oc.name, stopCh, oc.cacheSyncs...) {
 		return
@@ -165,20 +165,20 @@ func (oc *OrphanController) handleErr(err error, key interface{}) {
 	log := oc.logger.WithField("orphan", key)
 
 	if oc.queue.NumRequeues(key) < maxRetries {
-		log.WithError(err).Warnf("Error syncing Longhorn orphan %v: %v", key, err)
+		log.WithError(err).Errorf("Failed to sync Longhorn orphan %v: %v", key, err)
 
 		oc.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	log.WithError(err).Warnf("Dropping Longhorn orphan %v out of the queue: %v", key, err)
+	log.WithError(err).Errorf("Dropping Longhorn orphan %v out of the queue: %v", key, err)
 	oc.queue.Forget(key)
 }
 
 func (oc *OrphanController) syncOrphan(key string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "%v: failed to sync orphan %v", oc.name, key)
+		err = errors.Wrapf(err, "failed to sync orphan %v", key)
 	}()
 
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
@@ -216,7 +216,7 @@ func (oc *OrphanController) reconcile(orphanName string) (err error) {
 			}
 			return err
 		}
-		log.Infof("Orphan Controller %v picked up %v", oc.controllerID, orphan.Name)
+		log.Infof("Orphan got new owner %v", oc.controllerID)
 	}
 
 	if !orphan.DeletionTimestamp.IsZero() {
@@ -244,8 +244,7 @@ func (oc *OrphanController) reconcile(orphanName string) (err error) {
 	}()
 
 	if err := oc.updateConditions(orphan); err != nil {
-		log.WithError(err).Errorf("failed to update conditions for orphan %v", orphan.Name)
-		return err
+		return errors.Wrapf(err, "failed to update conditions for orphan %v", orphan.Name)
 	}
 
 	return nil
@@ -271,7 +270,7 @@ func (oc *OrphanController) cleanupOrphanedData(orphan *longhorn.Orphan) (err er
 			return
 		}
 
-		log.WithError(err).Errorf("error deleting orphan %v data", orphan.Name)
+		err = errors.Wrapf(err, "failed to delete orphan %v data", orphan.Name)
 		orphan.Status.Conditions = types.SetCondition(orphan.Status.Conditions,
 			longhorn.OrphanConditionTypeError, longhorn.ConditionStatusTrue, "", err.Error())
 	}()
