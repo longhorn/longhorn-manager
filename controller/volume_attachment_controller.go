@@ -171,8 +171,8 @@ func (vac *VolumeAttachmentController) Run(workers int, stopCh <-chan struct{}) 
 	defer utilruntime.HandleCrash()
 	defer vac.queue.ShutDown()
 
-	vac.logger.Infof("Start Longhorn VolumeAttachment controller")
-	defer vac.logger.Infof("Shutting down Longhorn VolumeAttachment controller")
+	vac.logger.Info("Start Longhorn VolumeAttachment controller")
+	defer vac.logger.Info("Shutting down Longhorn VolumeAttachment controller")
 
 	if !cache.WaitForNamedCacheSync(vac.name, stopCh, vac.cacheSyncs...) {
 		return
@@ -207,7 +207,7 @@ func (vac *VolumeAttachmentController) handleErr(err error, key interface{}) {
 		return
 	}
 
-	vac.logger.WithError(err).Warnf("Error syncing Longhorn VolumeAttachment %v", key)
+	vac.logger.WithError(err).Errorf("Failed to sync Longhorn VolumeAttachment %v", key)
 	vac.queue.AddRateLimited(key)
 }
 
@@ -354,7 +354,7 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationConfirmation(va *lon
 	}
 	migratingEngineSnapSynced, err := vac.checkMigratingEngineSyncSnapshots(vol)
 	if err != nil {
-		vac.logger.WithError(err).Warn("failed to check migrating engine snapshot status")
+		vac.logger.WithError(err).Warn("Failed to check migrating engine snapshot status")
 		return
 	}
 	if !hasCSIAttachmentTicketRequestingPrevNode && migratingEngineSnapSynced {
@@ -391,7 +391,7 @@ func (vac *VolumeAttachmentController) checkMigratingEngineSyncSnapshots(vol *lo
 	}
 
 	if !reflect.DeepEqual(oldEngine.Status.Snapshots, migratingEngine.Status.Snapshots) {
-		vac.logger.Debugf("Volume migration (%v) is in progress for synchronizing snapshots", vol.Name)
+		vac.logger.Infof("Volume migration (%v) is in progress for synchronizing snapshots", vol.Name)
 
 		// there is a chance that synchronizing engine snapshots does not finish and volume attachment controller will not receive changes anymore
 		// check volumeAttachments again  to ensure that migration will be finished
@@ -483,7 +483,7 @@ func (vac *VolumeAttachmentController) shouldDoDetach(va *longhorn.VolumeAttachm
 		return true
 	}
 	if !hasUninterruptibleTicket(currentAttachmentTickets) && hasWorkloadTicket(attachmentTicketsOnOtherNodes) {
-		log.Debugf("Workload attachment ticket interrupted snapshot-controller/backup-controller attachment tickets")
+		log.Info("Workload attachment ticket interrupted snapshot-controller/backup-controller attachment tickets")
 		return true
 	}
 
@@ -694,7 +694,7 @@ func (vac *VolumeAttachmentController) updateStatusForDesiredAttachingAttachment
 			attachmentTicketStatus.Satisfied = false
 			cond := types.GetCondition(attachmentTicketStatus.Conditions, longhorn.AttachmentStatusConditionTypeSatisfied)
 			if cond.Reason != longhorn.AttachmentStatusConditionReasonAttachedWithIncompatibleParameters {
-				log.Warnf("volume %v has already attached to node %v with incompatible parameters", vol.Name, vol.Status.CurrentNodeID)
+				log.Warnf("Volume %v has already attached to node %v with incompatible parameters", vol.Name, vol.Status.CurrentNodeID)
 			}
 			attachmentTicketStatus.Conditions = types.SetCondition(
 				attachmentTicketStatus.Conditions,

@@ -187,14 +187,14 @@ func (c *SupportBundleController) handleErr(err error, key interface{}) {
 	log := c.logger.WithField("supportBundle", key)
 
 	if c.queue.NumRequeues(key) < maxRetries {
-		log.WithError(err).Warn("Error syncing Longhorn SupportBundle")
+		log.WithError(err).Error("Error syncing Longhorn SupportBundle")
 
 		c.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	log.WithError(err).Warn("Dropping Longhorn SupportBundle out of the queue")
+	log.WithError(err).Error("Dropping Longhorn SupportBundle out of the queue")
 	c.queue.Forget(key)
 }
 
@@ -304,7 +304,7 @@ func (c *SupportBundleController) reconcile(name string) (err error) {
 			}
 			return err
 		}
-		log.Infof("Picked up by SupportBundle Controller %v", c.controllerID)
+		log.Infof("Support bundle got new owner %v", c.controllerID)
 	}
 
 	record := &supportBundleRecord{}
@@ -360,7 +360,7 @@ func (c *SupportBundleController) reconcile(name string) (err error) {
 
 		_, err = c.getSupportBundleManager(supportBundle, log)
 		if err != nil {
-			logrus.WithError(err).Debug("Waiting for support bundle manager to start")
+			logrus.WithError(err).Warn("Waiting for support bundle manager to start")
 			return nil
 		}
 
@@ -383,7 +383,6 @@ func (c *SupportBundleController) reconcile(name string) (err error) {
 		c.recordManagerState(supportBundleManager, supportBundle, log)
 
 		if supportBundle.Status.Progress != 100 {
-			log.WithError(err).Debug("Waiting for support bundle manager to finish")
 			return nil
 		}
 
@@ -397,6 +396,8 @@ func (c *SupportBundleController) reconcile(name string) (err error) {
 		)
 
 	case longhorn.SupportBundleStateDeleting:
+		log.Info("Deleting SupportBundle")
+
 		err := c.cleanupSupportBundle(supportBundle)
 		if err != nil {
 			return c.updateSupportBundleRecord(record,
@@ -412,8 +413,6 @@ func (c *SupportBundleController) reconcile(name string) (err error) {
 				constant.EventReasonFailedDeleting, err.Error(),
 			)
 		}
-
-		log.Info("Deleted SupportBundle")
 
 	case longhorn.SupportBundleStatePurging:
 		supportBundles, err := c.ds.ListSupportBundles()
@@ -441,7 +440,7 @@ func (c *SupportBundleController) reconcile(name string) (err error) {
 			otherSupportBundle.Status.State = longhorn.SupportBundleStatePurging
 			_, err = c.ds.UpdateSupportBundleStatus(otherSupportBundle)
 			if err != nil && !apierrors.IsNotFound(err) && !apierrors.IsConflict(err) {
-				log.WithError(err).Warnf("failed to update SupportBundle %v to state %v", otherSupportBundle.Name, longhorn.SupportBundleStatePurging)
+				log.WithError(err).Warnf("Failed to update SupportBundle %v to state %v", otherSupportBundle.Name, longhorn.SupportBundleStatePurging)
 			}
 		}
 
@@ -622,24 +621,24 @@ func (c *SupportBundleController) createSupportBundleManagerDeployment(supportBu
 
 	imagePullPolicy, err := c.ds.GetSettingImagePullPolicy()
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get system pods image pull policy before creating support bundle manager deployment")
+		return nil, errors.Wrap(err, "failed to get system pods image pull policy before creating support bundle manager deployment")
 	}
 
 	priorityClassSetting, err := c.ds.GetSetting(types.SettingNamePriorityClass)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get priority class setting before creating support bundle manager deployment")
+		return nil, errors.Wrap(err, "failed to get priority class setting before creating support bundle manager deployment")
 	}
 	priorityClass := priorityClassSetting.Value
 
 	registrySecretSetting, err := c.ds.GetSetting(types.SettingNameRegistrySecret)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get registry secret setting before creating support bundle manager deployment")
+		return nil, errors.Wrap(err, "failed to get registry secret setting before creating support bundle manager deployment")
 	}
 	registrySecret := registrySecretSetting.Value
 
 	newSupportBundleManager, err := c.newSupportBundleManager(supportBundle, nodeSelector, imagePullPolicy, priorityClass, registrySecret)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create new support bundle manager")
+		return nil, errors.Wrap(err, "failed to create new support bundle manager")
 	}
 	return c.ds.CreateDeployment(newSupportBundleManager)
 }
