@@ -75,7 +75,7 @@ func NewVolumeCloneController(
 func (vcc *VolumeCloneController) enqueueVolume(obj interface{}) {
 	key, err := controller.KeyFunc(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
+		utilruntime.HandleError(fmt.Errorf("failed get key for object %#v: %v", obj, err))
 		return
 	}
 
@@ -118,8 +118,8 @@ func (vcc *VolumeCloneController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer vcc.queue.ShutDown()
 
-	vcc.logger.Infof("Start Longhorn volume clone controller")
-	defer vcc.logger.Infof("Shutting down Longhorn volume clone controller")
+	vcc.logger.Info("Starting Longhorn volume clone controller")
+	defer vcc.logger.Info("Shut down Longhorn volume clone controller")
 
 	if !cache.WaitForNamedCacheSync(vcc.name, stopCh, vcc.cacheSyncs...) {
 		return
@@ -154,7 +154,7 @@ func (vcc *VolumeCloneController) handleErr(err error, key interface{}) {
 		return
 	}
 
-	vcc.logger.WithError(err).Warnf("Error syncing Longhorn volume %v", key)
+	vcc.logger.WithError(err).Errorf("Failed to sync Longhorn volume %v", key)
 	vcc.queue.AddRateLimited(key)
 }
 

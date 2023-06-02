@@ -95,7 +95,7 @@ func NewSnapshotController(
 func (sc *SnapshotController) enqueueSnapshot(obj interface{}) {
 	key, err := controller.KeyFunc(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
+		utilruntime.HandleError(fmt.Errorf("failed to get key for object %#v: %v", obj, err))
 		return
 	}
 
@@ -255,7 +255,7 @@ func (sc *SnapshotController) handlerErr(err error, key interface{}) {
 		return
 	}
 
-	sc.logger.WithError(err).Warnf("Error syncing Longhorn snapshot %v", key)
+	sc.logger.WithError(err).Errorf("Failed to sync Longhorn snapshot %v", key)
 	sc.queue.AddRateLimited(key)
 	return
 }
@@ -292,8 +292,6 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 		return nil
 	}
 
-	log := getLoggerForSnapshot(sc.logger, snapshot)
-
 	existingSnapshot := snapshot.DeepCopy()
 	defer func() {
 		if err != nil && !shouldUpdateObject(err) {
@@ -317,7 +315,6 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 			return err
 		}
 		if isVolDeletedOrBeingDeleted {
-			log.Infof("Removing finalizer for snapshot %v", snapshot.Name)
 			return sc.ds.RemoveFinalizerForSnapshot(snapshot)
 		}
 
@@ -349,7 +346,7 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 		}
 
 		if engine.Status.CurrentState != longhorn.InstanceStateRunning {
-			return fmt.Errorf("cannot delete snapshot because the volume engine %v is not running. Will reenqueue and retry later", engine.Name)
+			return fmt.Errorf("failed to delete snapshot because the volume engine %v is not running. Will reenqueue and retry later", engine.Name)
 		}
 		// Delete the snapshot from engine process
 		if err := sc.handleSnapshotDeletion(snapshot, engine); err != nil {
@@ -365,7 +362,6 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 			if err = sc.handleAttachmentTicketDeletion(snapshot); err != nil {
 				return err
 			}
-			log.Infof("Removing finalizer for snapshot %v", snapshot.Name)
 			return sc.ds.RemoveFinalizerForSnapshot(snapshot)
 		}
 
@@ -392,7 +388,7 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 			return err
 		}
 		if engine.Status.CurrentState != longhorn.InstanceStateRunning {
-			snapshot.Status.Error = fmt.Sprintf("cannot take snapshot because the volume engine %v is not running. Waiting for the volume to be attached", engine.Name)
+			snapshot.Status.Error = fmt.Sprintf("failed to take snapshot because the volume engine %v is not running. Waiting for the volume to be attached", engine.Name)
 			return nil
 		}
 		err = sc.handleSnapshotCreate(snapshot, engine)
@@ -411,7 +407,6 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 		if !requestCreateNewSnapshot || alreadyCreatedBefore {
 			// The snapshotInfo exists inside engine.Status.Snapshots before but disappears now.
 			// Mark snapshotCR as lost track of the corresponding snapshotInfo
-			log.Infof("snapshot CR %v lost track of its snapshotInfo", snapshot.Name)
 			snapshot.Status.Error = "lost track of the corresponding snapshot info inside volume engine"
 		}
 		// Newly created snapshotCR, wait for the snapshotInfo to be appeared inside engine.Status.Snapshot
@@ -429,7 +424,7 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 // handleAttachmentTicketDeletion check and delete attachment so that the source volume is detached if needed
 func (sc *SnapshotController) handleAttachmentTicketDeletion(snap *longhorn.Snapshot) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "handleAttachmentTicketDeletion: failed to clean up attachment")
+		err = errors.Wrap(err, "handleAttachmentTicketDeletion: failed to clean up attachment")
 	}()
 
 	va, err := sc.ds.GetLHVolumeAttachmentByVolumeName(snap.Spec.Volume)
@@ -455,7 +450,7 @@ func (sc *SnapshotController) handleAttachmentTicketDeletion(snap *longhorn.Snap
 // handleAttachmentTicketCreation check and create attachment so that the source volume is attached if needed
 func (sc *SnapshotController) handleAttachmentTicketCreation(snap *longhorn.Snapshot) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "handleAttachmentTicketCreation: failed to create/update attachment")
+		err = errors.Wrap(err, "handleAttachmentTicketCreation: failed to create/update attachment")
 	}()
 
 	vol, err := sc.ds.GetVolume(snap.Spec.Volume)
@@ -573,7 +568,7 @@ func (sc *SnapshotController) handleSnapshotCreate(snapshot *longhorn.Snapshot, 
 		return err
 	}
 	if snapshotInfo == nil {
-		sc.logger.Infof("creating snapshot %v of volume %v", snapshot.Name, snapshot.Spec.Volume)
+		sc.logger.Infof("Creating snapshot %v of volume %v", snapshot.Name, snapshot.Spec.Volume)
 		_, err = engineClientProxy.SnapshotCreate(engine, snapshot.Name, snapshot.Spec.Labels)
 		if err != nil {
 			return err
@@ -603,7 +598,7 @@ func (sc *SnapshotController) handleSnapshotDeletion(snapshot *longhorn.Snapshot
 	}
 
 	if !snapshotInfo.Removed {
-		sc.logger.Infof("deleting snapshot %v", snapshot.Name)
+		sc.logger.Infof("Deleting snapshot %v", snapshot.Name)
 		if err = engineClientProxy.SnapshotDelete(engine, snapshot.Name); err != nil {
 			return err
 		}
@@ -621,7 +616,7 @@ func (sc *SnapshotController) handleSnapshotDeletion(snapshot *longhorn.Snapshot
 		}
 	}
 	if !isPurging {
-		sc.logger.Infof("start SnapshotPurge to delete snapshot %v", snapshot.Name)
+		sc.logger.Infof("Starting SnapshotPurge to delete snapshot %v", snapshot.Name)
 		if err := engineClientProxy.SnapshotPurge(engine); err != nil {
 			return err
 		}
