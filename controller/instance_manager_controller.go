@@ -209,8 +209,8 @@ func (imc *InstanceManagerController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer imc.queue.ShutDown()
 
-	logrus.Infof("Starting Longhorn instance manager controller")
-	defer logrus.Infof("Shut down Longhorn instance manager controller")
+	logrus.Info("Starting Longhorn instance manager controller")
+	defer logrus.Info("Shut down Longhorn instance manager controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn instance manager", stopCh, imc.cacheSyncs...) {
 		return
@@ -249,13 +249,13 @@ func (imc *InstanceManagerController) handleErr(err error, key interface{}) {
 	}
 
 	if imc.queue.NumRequeues(key) < maxRetries {
-		logrus.Warnf("Error syncing Longhorn instance manager %v: %v", key, err)
+		logrus.WithError(err).Errorf("Failed to sync Longhorn instance manager %v", key)
 		imc.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	logrus.Warnf("Dropping Longhorn instance manager %v out of the queue: %v", key, err)
+	logrus.WithError(err).Errorf("Dropping Longhorn instance manager %v out of the queue", key)
 	imc.queue.Forget(key)
 }
 
@@ -317,7 +317,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 			_, err = imc.ds.UpdateInstanceManagerStatus(im)
 		}
 		if apierrors.IsConflict(errors.Cause(err)) {
-			log.Debugf("Requeue %v due to conflict: %v", key, err)
+			log.WithError(err).Debugf("Requeue %v due to conflict", key)
 			imc.enqueueInstanceManager(im)
 			err = nil
 		}
@@ -890,7 +890,7 @@ func getIMNameFromPDBName(pdbName string) string {
 func (imc *InstanceManagerController) enqueueInstanceManager(instanceManager interface{}) {
 	key, err := controller.KeyFunc(instanceManager)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", instanceManager, err))
+		utilruntime.HandleError(fmt.Errorf("failed to get key for object %#v: %v", instanceManager, err))
 		return
 	}
 
@@ -919,7 +919,7 @@ func (imc *InstanceManagerController) enqueueInstanceManagerPod(obj interface{})
 		if apierrors.IsNotFound(err) {
 			return
 		}
-		utilruntime.HandleError(fmt.Errorf("couldn't get instance manager: %v", err))
+		utilruntime.HandleError(fmt.Errorf("failed to get instance manager: %v", err))
 		return
 	}
 	imc.enqueueInstanceManager(im)
@@ -1032,7 +1032,7 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 		podSpec.Annotations[nadAnnot] = types.CreateCniAnnotationFromSetting(storageNetwork)
 	}
 
-	log.Infof("Creating instance manager pod")
+	log.Info("Creating instance manager pod")
 	if _, err := imc.ds.CreatePod(podSpec); err != nil {
 		if apierrors.IsAlreadyExists(err) {
 			return nil
@@ -1330,7 +1330,7 @@ func (m *InstanceManagerMonitor) Run() {
 	ctx, cancel := context.WithCancel(context.TODO())
 	notifier, err := m.client.InstanceWatch(ctx)
 	if err != nil {
-		m.logger.Errorf("Failed to get the notifier for monitoring: %v", err)
+		m.logger.WithError(err).Errorf("Failed to get the notifier for monitoring")
 		cancel()
 		close(m.monitorVoluntaryStopCh)
 		return
@@ -1347,7 +1347,7 @@ func (m *InstanceManagerMonitor) Run() {
 		continuousFailureCount := 0
 		for {
 			if continuousFailureCount >= engineapi.MaxMonitorRetryCount {
-				m.logger.Errorf("instance manager monitor streaming continuously errors receiving items for %v times, will stop the monitor itself", engineapi.MaxMonitorRetryCount)
+				m.logger.Errorf("Instance manager monitor streaming continuously errors receiving items for %v times, will stop the monitor itself", engineapi.MaxMonitorRetryCount)
 				m.StopMonitorWithLock()
 			}
 

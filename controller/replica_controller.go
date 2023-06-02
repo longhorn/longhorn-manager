@@ -173,13 +173,13 @@ func (rc *ReplicaController) handleErr(err error, key interface{}) {
 	}
 
 	if rc.queue.NumRequeues(key) < maxRetries {
-		rc.logger.WithError(err).Warnf("Error syncing Longhorn replica %v", key)
+		rc.logger.WithError(err).Errorf("Error syncing Longhorn replica %v", key)
 		rc.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	rc.logger.WithError(err).Warnf("Dropping Longhorn replica %v out of the queue", key)
+	rc.logger.WithError(err).Errorf("Dropping Longhorn replica %v out of the queue", key)
 	rc.queue.Forget(key)
 }
 
@@ -356,7 +356,7 @@ func (rc *ReplicaController) enqueueReplica(obj interface{}) {
 func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
-		return nil, fmt.Errorf("invalid object for replica process creation: %v", obj)
+		return nil, fmt.Errorf("invalid object for replica instance creation: %v", obj)
 	}
 
 	dataPath := types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName)
@@ -545,7 +545,7 @@ func (rc *ReplicaController) CanStartRebuildingReplica(r *longhorn.Replica) (boo
 func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
-		return fmt.Errorf("invalid object for replica process deletion: %v", obj)
+		return fmt.Errorf("invalid object for replica instance deletion: %v", obj)
 	}
 	log := getLoggerForReplica(rc.logger, r)
 
@@ -563,10 +563,10 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 		}
 		im, err = rc.ds.GetInstanceManagerByInstance(obj)
 		if err != nil {
-			log.Warnf("Failed to detect instance manager for replica %v, will skip the actual instance deletion: %v", r.Name, err)
+			log.WithError(err).Warnf("Failed to detect instance manager for replica %v, will skip the actual instance deletion", r.Name)
 			return nil
 		}
-		log.Infof("Cleaning up the process for replica %v in instance manager %v", r.Name, im.Name)
+		log.Infof("Cleaning up the instance for replica %v in instance manager %v", r.Name, im.Name)
 	} else {
 		im, err = rc.ds.GetInstanceManager(r.Status.InstanceManagerName)
 		if err != nil {
@@ -600,7 +600,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	}
 
 	if err := deleteUnixSocketFile(r.Spec.VolumeName); err != nil && !types.ErrorIsNotFound(err) {
-		log.Warnf("Failed to delete unix-domain-socket file for volume %v since %v", r.Spec.VolumeName, err)
+		log.WithError(err).Warnf("Failed to delete unix-domain-socket file for volume %v", r.Spec.VolumeName)
 	}
 
 	// Directly remove the instance from the map. Best effort.
@@ -684,7 +684,7 @@ func (rc *ReplicaController) deleteOldReplicaPod(pod *v1.Pod, r *longhorn.Replic
 func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
-		return nil, fmt.Errorf("invalid object for replica process get: %v", obj)
+		return nil, fmt.Errorf("invalid object for replica instance get: %v", obj)
 	}
 
 	var (
@@ -725,7 +725,7 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstancePro
 func (rc *ReplicaController) LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
-		return nil, nil, fmt.Errorf("invalid object for replica process log: %v", obj)
+		return nil, nil, fmt.Errorf("invalid object for replica instance log: %v", obj)
 	}
 
 	im, err := rc.ds.GetInstanceManager(r.Status.InstanceManagerName)

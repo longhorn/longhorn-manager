@@ -159,13 +159,13 @@ func (ic *EngineImageController) handleErr(err error, key interface{}) {
 
 	log := ic.logger.WithField("engineImage", key)
 	if ic.queue.NumRequeues(key) < maxRetries {
-		log.WithError(err).Warn("Error syncing Longhorn engine image")
+		log.WithError(err).Error("Failed to sync Longhorn engine image")
 		ic.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	log.WithError(err).Warn("Dropping Longhorn engine image out of the queue")
+	log.WithError(err).Error("Dropping Longhorn engine image out of the queue")
 	ic.queue.Forget(key)
 }
 
@@ -237,7 +237,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 			_, err = ic.ds.UpdateEngineImageStatus(engineImage)
 		}
 		if apierrors.IsConflict(errors.Cause(err)) {
-			log.Debugf("Requeue %v due to conflict: %v", key, err)
+			log.WithError(err).Debugf("Requeue %v due to conflict", key)
 			ic.enqueueEngineImage(engineImage)
 			err = nil
 		}

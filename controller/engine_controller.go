@@ -214,13 +214,13 @@ func (ec *EngineController) handleErr(err error, key interface{}) {
 
 	log := ec.logger.WithField("engine", key)
 	if ec.queue.NumRequeues(key) < maxRetries {
-		log.WithError(err).Warn("Error syncing Longhorn engine")
+		log.WithError(err).Error("Error syncing Longhorn engine")
 		ec.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	log.WithError(err).Warn("Dropping Longhorn engine out of the queue")
+	log.WithError(err).Error("Dropping Longhorn engine out of the queue")
 	ec.queue.Forget(key)
 }
 
@@ -532,7 +532,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 		}
 	}
 
-	log.Infof("Deleting engine instance")
+	log.Info("Deleting engine instance")
 
 	defer func() {
 		if err != nil {
@@ -550,7 +550,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 			// If the network of the node A gets back to normal, the SM can be shifted back to node A.
 			// After shifting to node A, the first reattachment fail due to the IO error resulting from the
 			// orphaned engine instance and block device. Then, the detachment will trigger the teardown of the
-			// problematic engine process and block device. The next reattachment then will succeed.
+			// problematic engine instance and block device. The next reattachment then will succeed.
 			log.Warnf("Ignored the failure of deleting engine %v for volume %v", e.Name, v.Name)
 			err = nil
 		}
@@ -647,7 +647,7 @@ func (ec *EngineController) deleteOldEnginePod(pod *v1.Pod, e *longhorn.Engine) 
 func (ec *EngineController) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
-		return nil, fmt.Errorf("invalid object for engine process get: %v", obj)
+		return nil, fmt.Errorf("invalid object for engine instance get: %v", obj)
 	}
 
 	var (
@@ -677,7 +677,7 @@ func (ec *EngineController) GetInstance(obj interface{}) (*longhorn.InstanceProc
 func (ec *EngineController) LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
-		return nil, nil, fmt.Errorf("invalid object for engine process log: %v", obj)
+		return nil, nil, fmt.Errorf("invalid object for engine instance log: %v", obj)
 	}
 
 	im, err := ec.ds.GetInstanceManager(e.Status.InstanceManagerName)
@@ -1026,7 +1026,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 
 	defer func() {
 		if err != nil {
-			m.logger.WithError(err).Warnf("Engine Monitor")
+			m.logger.WithError(err).Warn("Engine Monitor")
 			return
 		}
 
@@ -1350,12 +1350,12 @@ func syncWithRestoreStatusForCompatibleEngine(log logrus.FieldLogger, engine *lo
 		for addr, status := range rsMap {
 			if lastRestored != "" && status.LastRestored != lastRestored {
 				// this error shouldn't prevent the engine from updating the other status
-				log.Errorf("Getting different lastRestored values, expecting %v bot getting %v even though engine is not restoring",
+				log.Warnf("Getting different lastRestored values, expecting %v but getting %v even though engine is not restoring",
 					lastRestored, status.LastRestored)
 				isConsensual = false
 			}
 			if status.Error != "" {
-				log.WithError(errors.New(status.Error)).Errorf("Received restore error from replica %v", addr)
+				log.WithError(errors.New(status.Error)).Warnf("Received restore error from replica %v", addr)
 				isConsensual = false
 			}
 			lastRestored = status.LastRestored
@@ -1770,7 +1770,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 					continue
 				}
 				if e.Status.CurrentState != longhorn.InstanceStateRunning {
-					log.Errorf("Cannot continue waiting for the purge before rebuilding since engine is state %v", e.Status.CurrentState)
+					log.Errorf("Failed to continue waiting for the purge before rebuilding since engine is state %v", e.Status.CurrentState)
 					return
 				}
 				// Wait for purge complete
@@ -1980,7 +1980,7 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err 
 	// will cause live replica to be removed. Volume controller should filter those.
 	if version.ClientVersion.GitCommit != version.ServerVersion.GitCommit {
 		log.Infof("Upgrading engine from %v to %v", e.Status.CurrentImage, e.Spec.EngineImage)
-		if err := ec.UpgradeEngineProcess(e, log); err != nil {
+		if err := ec.UpgradeEngineInstance(e, log); err != nil {
 			return err
 		}
 	}
