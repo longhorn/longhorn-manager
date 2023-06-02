@@ -1262,10 +1262,8 @@ func (info *ClusterInfo) collectResourceUsage() error {
 		info.structFields.Append(cpuStruct, info.getCPURange(avgCPUUsageMilli))
 
 		avgMemoryUsageBytes := totalMemoryUsage.Value() / int64(len(pods))
-		avgMemoryUsageMiB := float64(avgMemoryUsageBytes) / (1024 * 1024)
-		avgMemoryUsage := resource.NewQuantity(int64(avgMemoryUsageMiB), resource.BinarySI).String()
 		memStruct := util.StructName(fmt.Sprintf(ClusterInfoPodAvgMemoryUsageFmt, component))
-		info.structFields.Append(memStruct, avgMemoryUsage)
+		info.structFields.Append(memStruct, info.getMemoryRange(avgMemoryUsageBytes))
 	}
 
 	return nil
@@ -1274,6 +1272,12 @@ func (info *ClusterInfo) collectResourceUsage() error {
 func (info *ClusterInfo) getCPURange(milliValue int64) string {
 	min, max := util.GetRange(float64(milliValue), 50.0)
 	return fmt.Sprintf("%.0fm-%.0fm", min, max)
+}
+
+func (info *ClusterInfo) getMemoryRange(bytes int64) string {
+	mib := float64(bytes) / 1024 / 1024
+	min, max := util.GetRange(mib, 50.0)
+	return fmt.Sprintf("%.0f-%.0f", min, max)
 }
 
 func (info *ClusterInfo) collectVolumesInfo() error {
