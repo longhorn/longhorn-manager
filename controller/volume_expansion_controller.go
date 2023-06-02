@@ -95,8 +95,8 @@ func (vec *VolumeExpansionController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer vec.queue.ShutDown()
 
-	vec.logger.Infof("Start Longhorn expansion controller")
-	defer vec.logger.Infof("Shutting down Longhorn expansion controller")
+	vec.logger.Info("Starting Longhorn expansion controller")
+	defer vec.logger.Info("Shut down Longhorn expansion controller")
 
 	if !cache.WaitForNamedCacheSync(vec.name, stopCh, vec.cacheSyncs...) {
 		return
@@ -131,7 +131,7 @@ func (vec *VolumeExpansionController) handleErr(err error, key interface{}) {
 		return
 	}
 
-	vec.logger.WithError(err).Warnf("Error syncing Longhorn volume %v", key)
+	vec.logger.WithError(err).Errorf("Error syncing Longhorn volume %v", key)
 	vec.queue.AddRateLimited(key)
 }
 

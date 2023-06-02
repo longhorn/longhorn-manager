@@ -97,8 +97,8 @@ func (vec *VolumeEvictionController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer vec.queue.ShutDown()
 
-	vec.logger.Infof("Start Longhorn eviction controller")
-	defer vec.logger.Infof("Shutting down Longhorn eviction controller")
+	vec.logger.Info("Starting Longhorn eviction controller")
+	defer vec.logger.Info("Shut down Longhorn eviction controller")
 
 	if !cache.WaitForNamedCacheSync(vec.name, stopCh, vec.cacheSyncs...) {
 		return
@@ -133,7 +133,7 @@ func (vec *VolumeEvictionController) handleErr(err error, key interface{}) {
 		return
 	}
 
-	vec.logger.WithError(err).Warnf("Error syncing Longhorn volume %v", key)
+	vec.logger.WithError(err).Errorf("Error syncing Longhorn volume %v", key)
 	vec.queue.AddRateLimited(key)
 }
 
