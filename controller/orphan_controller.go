@@ -21,6 +21,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -292,6 +293,8 @@ func (oc *OrphanController) cleanupOrphanedData(orphan *longhorn.Orphan) (err er
 	switch orphan.Spec.Type {
 	case longhorn.OrphanTypeReplica:
 		err = oc.deleteOrphanedReplica(orphan)
+	default:
+		err = fmt.Errorf("unknown orphan type %v", orphan.Spec.Type)
 	}
 
 	if err == nil || (err != nil && apierrors.IsNotFound(err)) {
@@ -306,7 +309,45 @@ func (oc *OrphanController) deleteOrphanedReplica(orphan *longhorn.Orphan) error
 		orphan.Name, orphan.Spec.Parameters[longhorn.OrphanDataName],
 		orphan.Spec.Parameters[longhorn.OrphanDiskPath], orphan.Status.OwnerID)
 
-	return util.DeleteReplicaDirectoryName(orphan.Spec.Parameters[longhorn.OrphanDiskPath], orphan.Spec.Parameters[longhorn.OrphanDataName])
+	diskType, ok := orphan.Spec.Parameters[longhorn.OrphanDiskType]
+	if !ok {
+		return fmt.Errorf("failed to get disk type for orphan %v", orphan.Name)
+	}
+
+	switch longhorn.DiskType(diskType) {
+	case longhorn.DiskTypeFilesystem:
+		return util.DeleteReplicaDirectory(orphan.Spec.Parameters[longhorn.OrphanDiskPath], orphan.Spec.Parameters[longhorn.OrphanDataName])
+	case longhorn.DiskTypeBlock:
+		return oc.DeleteSpdkReplicaInstance(orphan.Spec.Parameters[longhorn.OrphanDiskName], orphan.Spec.Parameters[longhorn.OrphanDiskUUID], orphan.Spec.Parameters[longhorn.OrphanDataName])
+	default:
+		return fmt.Errorf("unknown disk type %v for orphan %v", diskType, orphan.Name)
+	}
+}
+
+func (oc *OrphanController) DeleteSpdkReplicaInstance(diskName, diskUUID, replicaInstanceName string) (err error) {
+	logrus.Infof("Deleting SPDK replica instance %v on disk %v on node %v", replicaInstanceName, diskUUID, oc.controllerID)
+
+	defer func() {
+		err = errors.Wrapf(err, "cannot delete SPDK replica instance %v", replicaInstanceName)
+	}()
+
+	im, err := oc.ds.GetDefaultInstanceManagerByNode(oc.controllerID)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get instance manager for node %v for deleting SPDK replica instance  %v", oc.controllerID, replicaInstanceName)
+	}
+
+	c, err := engineapi.NewDiskServiceClient(im, oc.logger)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	err = c.DiskReplicaInstanceDelete(string(longhorn.DiskTypeBlock), diskName, diskUUID, replicaInstanceName)
+	if err != nil && !types.ErrorIsNotFound(err) {
+		return err
+	}
+
+	return nil
 }
 
 func (oc *OrphanController) updateConditions(orphan *longhorn.Orphan) error {

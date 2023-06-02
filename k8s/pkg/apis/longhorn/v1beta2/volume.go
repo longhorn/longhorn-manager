@@ -24,12 +24,13 @@ const (
 	VolumeRobustnessUnknown  = VolumeRobustness("unknown")
 )
 
-// +kubebuilder:validation:Enum=blockdev;iscsi;""
+// +kubebuilder:validation:Enum=blockdev;iscsi;nvmf;""
 type VolumeFrontend string
 
 const (
 	VolumeFrontendBlockDev = VolumeFrontend("blockdev")
 	VolumeFrontendISCSI    = VolumeFrontend("iscsi")
+	VolumeFrontendNvmf     = VolumeFrontend("nvmf")
 	VolumeFrontendEmpty    = VolumeFrontend("")
 )
 
@@ -147,6 +148,13 @@ const (
 	ReplicaZoneSoftAntiAffinityDisabled = ReplicaZoneSoftAntiAffinity("disabled")
 )
 
+type BackendStoreDriverType string
+
+const (
+	BackendStoreDriverTypeLonghorn = BackendStoreDriverType("longhorn")
+	BackendStoreDriverTypeSPDK     = BackendStoreDriverType("spdk")
+)
+
 type KubernetesStatus struct {
 	// +optional
 	PVName string `json:"pvName"`
@@ -236,12 +244,12 @@ type VolumeSpec struct {
 	// +kubebuilder:validation:Enum=ignored;disabled;enabled;fast-check
 	// +optional
 	SnapshotDataIntegrity SnapshotDataIntegrity `json:"snapshotDataIntegrity"`
-	// Deprecated. Rename to BackingImage
-	// +optional
-	BaseImage string `json:"baseImage"`
 	// +kubebuilder:validation:Enum=none;lz4;gzip
 	// +optional
 	BackupCompressionMethod BackupCompressionMethod `json:"backupCompressionMethod"`
+	// +kubebuilder:validation:Enum=longhorn;spdk
+	// +optional
+	BackendStoreDriver BackendStoreDriverType `json:"backendStoreDriver"`
 }
 
 // VolumeStatus defines the observed state of the Longhorn volume

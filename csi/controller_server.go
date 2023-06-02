@@ -217,7 +217,8 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	vol.Name = volumeID
 	vol.Size = fmt.Sprintf("%d", reqVolSizeBytes)
 
-	logrus.Infof("CreateVolume: creating a volume by API client, name: %s, size: %s accessMode: %v", vol.Name, vol.Size, vol.AccessMode)
+	logrus.Infof("CreateVolume: creating a volume by API client, name: %s, size: %s, accessMode: %v, backendStoreDriver: %v",
+		vol.Name, vol.Size, vol.AccessMode, vol.BackendStoreDriver)
 	resVol, err := cs.apiClient.Volume.Create(vol)
 	// TODO: implement error response code for Longhorn API to differentiate different error type.
 	// For example, creating a volume from a non-existing snapshot should return codes.NotFound instead of codes.Internal
@@ -422,8 +423,12 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 
 	return cs.publishVolume(volume, nodeID, attachmentID, func() error {
 		checkVolumePublished := func(vol *longhornclient.Volume) bool {
+			isRegularRWXVolume := vol.AccessMode == string(longhorn.AccessModeReadWriteMany) && !vol.Migratable
 			attachment, ok := vol.VolumeAttachment.Attachments[attachmentID]
-			return ok && attachment.Satisfied
+			if isRegularRWXVolume {
+				return ok && attachment.Satisfied
+			}
+			return ok && attachment.Satisfied && isVolumeAvailableOn(vol, nodeID)
 		}
 		if !cs.waitForVolumeState(volumeID, "volume published", checkVolumePublished, false, false) {
 			// check if there is error while attaching
@@ -517,11 +522,7 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 	// TODO: hadndle cases in which NodeID is empty. Should we detach the volume from all nodes???
 
 	return cs.unpublishVolume(volume, nodeID, attachmentID, func() error {
-		//isSharedVolume := requiresSharedAccess(volume, nil) && !volume.Migratable
 		checkVolumeUnpublished := func(vol *longhornclient.Volume) bool {
-			//if isSharedVolume {
-			//	return true
-			//}
 			_, ok := vol.VolumeAttachment.Attachments[attachmentID]
 			return !ok
 		}
@@ -538,6 +539,7 @@ func (cs *ControllerServer) unpublishVolume(volume *longhornclient.Volume, nodeI
 	logrus.Debugf("requesting Volume %v detachment for %v with attachmentID %v ", volume.Name, nodeID, attachmentID)
 	detachInput := &longhornclient.DetachInput{
 		AttachmentID: attachmentID,
+		HostId:       nodeID,
 		// if nodeID == "" means to detach from all nodes
 		ForceDetach: nodeID == "",
 	}

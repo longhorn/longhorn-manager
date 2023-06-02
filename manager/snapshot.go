@@ -9,7 +9,6 @@ import (
 
 	bsutil "github.com/longhorn/backupstore/util"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
-	"github.com/longhorn/longhorn-manager/util"
 )
 
 func (m *VolumeManager) ListSnapshotsCR(volumeName string) (map[string]*longhorn.Snapshot, error) {
@@ -27,10 +26,6 @@ func (m *VolumeManager) DeleteSnapshotCR(snapName string) error {
 func (m *VolumeManager) CreateSnapshotCR(snapshotName string, labels map[string]string, volumeName string) (*longhorn.Snapshot, error) {
 	if volumeName == "" {
 		return nil, fmt.Errorf("volume name required")
-	}
-
-	if err := util.VerifySnapshotLabels(labels); err != nil {
-		return nil, err
 	}
 
 	if err := m.checkVolumeNotInMigration(volumeName); err != nil {

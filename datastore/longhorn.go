@@ -15,15 +15,15 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation"
 
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
-
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 const (
@@ -351,34 +351,89 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 	case types.SettingNameStorageNetwork:
 		volumesDetached, err := s.AreAllVolumesDetached()
 		if err != nil {
-			return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameStorageNetwork)
+			return errors.Wrapf(err, "failed to check volume detachment for %v setting update", name)
 		}
-
 		if !volumesDetached {
-			return errors.Errorf("cannot apply %v setting to Longhorn workloads when there are attached volumes", types.SettingNameStorageNetwork)
+			return errors.Errorf("cannot apply %v setting to Longhorn workloads when there are attached volumes", name)
+		}
+	case types.SettingNameSpdk:
+		old, err := s.GetSetting(types.SettingNameSpdk)
+		if err != nil {
+			return err
+		}
+		if old.Value != value {
+			spdkEnabled, err := strconv.ParseBool(value)
+			if err != nil {
+				return err
+			}
+			err = s.ValidateSpdk(spdkEnabled)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
-func (s *DataStore) AreAllVolumesDetached() (bool, error) {
-	image, err := s.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+func (s *DataStore) ValidateSpdk(spdkEnabled bool) error {
+	// Check if all volumes are detached
+	volumesDetached, err := s.AreAllVolumesDetached()
 	if err != nil {
-		return false, err
+		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameSpdk)
+	}
+	if !volumesDetached {
+		return errors.Errorf("cannot apply %v setting to Longhorn workloads when there are attached volumes", types.SettingNameSpdk)
 	}
 
+	if !spdkEnabled {
+		return nil
+	}
+
+	// Check if there is enough hugepages-2Mi capacity for all nodes
+	hugepageRequestedInMiB, err := s.GetSetting(types.SettingNameSpdkHugepageLimit)
+	if err != nil {
+		return err
+	}
+	hugepageRequested := resource.MustParse(hugepageRequestedInMiB.Value + "Mi")
+
+	kubeNodes, err := s.ListKubeNodesRO()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list Kubernetes nodes for %v setting update", types.SettingNameSpdk)
+	}
+
+	for _, node := range kubeNodes {
+		if node.Spec.Taints == nil {
+			continue
+		}
+
+		capacity, ok := node.Status.Capacity["hugepages-2Mi"]
+		if !ok {
+			return errors.Errorf("failed to get hugepages-2Mi capacity for node %v", node.Name)
+		}
+
+		hugepageCapacity := resource.MustParse(capacity.String())
+
+		if hugepageCapacity.Cmp(hugepageRequested) < 0 {
+			return errors.Errorf("not enough hugepages-2Mi capacity for node %v, requested %v, capacity %v", node.Name, hugepageRequested.String(), hugepageCapacity.String())
+		}
+	}
+
+	return nil
+}
+
+func (s *DataStore) AreAllVolumesDetached() (bool, error) {
 	nodes, err := s.ListNodes()
 	if err != nil {
 		return false, err
 	}
 
 	for node := range nodes {
-		engineInstanceManagers, err := s.ListInstanceManagersBySelector(node, image, longhorn.InstanceManagerTypeEngine)
+		engineInstanceManagers, err := s.ListInstanceManagersBySelector(node, "", longhorn.InstanceManagerTypeEngine)
 		if err != nil && !ErrorIsNotFound(err) {
 			return false, err
 		}
 
-		aioInstanceManagers, err := s.ListInstanceManagersBySelector(node, image, longhorn.InstanceManagerTypeAllInOne)
+		aioInstanceManagers, err := s.ListInstanceManagersBySelector(node, "", longhorn.InstanceManagerTypeAllInOne)
 		if err != nil && !ErrorIsNotFound(err) {
 			return false, err
 		}
@@ -1134,7 +1189,7 @@ func (s *DataStore) CreateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 	}
 
 	obj, err := verifyCreation(ret.Name, "replica", func(name string) (runtime.Object, error) {
-		return s.getReplicaRO(name)
+		return s.GetReplicaRO(name)
 	})
 	if err != nil {
 		return nil, err
@@ -1167,7 +1222,7 @@ func (s *DataStore) UpdateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 		return nil, err
 	}
 	verifyUpdate(r.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getReplicaRO(name)
+		return s.GetReplicaRO(name)
 	})
 	return obj, nil
 }
@@ -1183,7 +1238,7 @@ func (s *DataStore) UpdateReplicaStatus(r *longhorn.Replica) (*longhorn.Replica,
 		return nil, err
 	}
 	verifyUpdate(r.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getReplicaRO(name)
+		return s.GetReplicaRO(name)
 	})
 	return obj, nil
 }
@@ -1217,7 +1272,7 @@ func (s *DataStore) RemoveFinalizerForReplica(obj *longhorn.Replica) error {
 // GetReplica gets Replica for the given name and namespace and returns
 // a new Replica object
 func (s *DataStore) GetReplica(name string) (*longhorn.Replica, error) {
-	resultRO, err := s.getReplicaRO(name)
+	resultRO, err := s.GetReplicaRO(name)
 	if err != nil {
 		return nil, err
 	}
@@ -1225,7 +1280,7 @@ func (s *DataStore) GetReplica(name string) (*longhorn.Replica, error) {
 	return resultRO.DeepCopy(), nil
 }
 
-func (s *DataStore) getReplicaRO(name string) (*longhorn.Replica, error) {
+func (s *DataStore) GetReplicaRO(name string) (*longhorn.Replica, error) {
 	return s.rLister.Replicas(s.namespace).Get(name)
 }
 

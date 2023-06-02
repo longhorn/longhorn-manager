@@ -2,14 +2,19 @@ package snapshot
 
 import (
 	"fmt"
+	"reflect"
+
+	"github.com/pkg/errors"
+
+	admissionregv1 "k8s.io/api/admissionregistration/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
-	admissionregv1 "k8s.io/api/admissionregistration/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"reflect"
 )
 
 type snapshotValidator struct {
@@ -36,9 +41,23 @@ func (o *snapshotValidator) Resource() admission.Resource {
 }
 
 func (o *snapshotValidator) Create(request *admission.Request, newObj runtime.Object) error {
-	_, ok := newObj.(*longhorn.Snapshot)
-	if !ok {
-		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Snapshot", newObj), "")
+	snapshot := newObj.(*longhorn.Snapshot)
+
+	if err := util.VerifySnapshotLabels(snapshot.Labels); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
+	if snapshot.Spec.Volume == "" {
+		return werror.NewInvalidError("spec.volume is required", "spec.volume")
+	}
+	volume, err := o.ds.GetVolumeRO(snapshot.Spec.Volume)
+	if err != nil {
+		err := errors.Wrapf(err, "failed to get volume %v", snapshot.Spec.Volume)
+		return werror.NewInvalidError(err.Error(), "")
+	}
+	if volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+		err := errors.Errorf("creating snapshot for volume %v with backend store driver %v is not supported", volume.Name, volume.Spec.BackendStoreDriver)
+		return werror.NewInvalidError(err.Error(), "")
 	}
 
 	return nil
@@ -55,11 +74,11 @@ func (o *snapshotValidator) Update(request *admission.Request, oldObj runtime.Ob
 	}
 
 	if newSnapshot.Spec.Volume != oldSnapshot.Spec.Volume {
-		return werror.NewInvalidError(fmt.Sprintf("spec.volume field is immutable"), "spec.volume")
+		return werror.NewInvalidError("spec.volume field is immutable", "spec.volume")
 	}
 
 	if len(oldSnapshot.OwnerReferences) != 0 && !reflect.DeepEqual(newSnapshot.OwnerReferences, oldSnapshot.OwnerReferences) {
-		return werror.NewInvalidError(fmt.Sprintf("snapshot OwnerReferences field is immutable"), "metadata.ownerReferences")
+		return werror.NewInvalidError("snapshot OwnerReferences field is immutable", "metadata.ownerReferences")
 	}
 
 	if _, ok := oldSnapshot.Labels[types.LonghornLabelVolume]; ok && newSnapshot.Labels[types.LonghornLabelVolume] != oldSnapshot.Labels[types.LonghornLabelVolume] {

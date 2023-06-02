@@ -195,22 +195,7 @@ func (vec *VolumeEvictionController) reconcile(volName string) (err error) {
 	evictingAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeEvictionController, volName)
 
 	if hasReplicaEvictionRequested(replicas) {
-		evictingAttachmentTicket, ok := va.Spec.AttachmentTickets[evictingAttachmentTicketID]
-		if !ok {
-			//create new one
-			evictingAttachmentTicket = &longhorn.AttachmentTicket{
-				ID:     evictingAttachmentTicketID,
-				Type:   longhorn.AttacherTypeVolumeEvictionController,
-				NodeID: vol.Status.OwnerID,
-				Parameters: map[string]string{
-					longhorn.AttachmentParameterDisableFrontend: longhorn.AnyValue,
-				},
-			}
-		}
-		if evictingAttachmentTicket.NodeID != vol.Status.OwnerID {
-			evictingAttachmentTicket.NodeID = vol.Status.OwnerID
-		}
-		va.Spec.AttachmentTickets[evictingAttachmentTicket.ID] = evictingAttachmentTicket
+		createOrUpdateAttachmentTicket(va, evictingAttachmentTicketID, vol.Status.OwnerID, longhorn.AnyValue, longhorn.AttacherTypeVolumeEvictionController)
 	} else {
 		delete(va.Spec.AttachmentTickets, evictingAttachmentTicketID)
 	}

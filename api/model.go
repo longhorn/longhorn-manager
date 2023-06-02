@@ -54,6 +54,7 @@ type Volume struct {
 	BackupCompressionMethod     longhorn.BackupCompressionMethod       `json:"backupCompressionMethod"`
 	ReplicaSoftAntiAffinity     longhorn.ReplicaSoftAntiAffinity       `json:"replicaSoftAntiAffinity"`
 	ReplicaZoneSoftAntiAffinity longhorn.ReplicaZoneSoftAntiAffinity   `json:"replicaZoneSoftAntiAffinity"`
+	BackendStoreDriver          longhorn.BackendStoreDriverType        `json:"backendStoreDriver"`
 
 	DiskSelector         []string                      `json:"diskSelector"`
 	NodeSelector         []string                      `json:"nodeSelector"`
@@ -188,11 +189,12 @@ type Controller struct {
 type Replica struct {
 	Instance
 
-	DiskID   string `json:"diskID"`
-	DiskPath string `json:"diskPath"`
-	DataPath string `json:"dataPath"`
-	Mode     string `json:"mode"`
-	FailedAt string `json:"failedAt"`
+	DiskID             string `json:"diskID"`
+	DiskPath           string `json:"diskPath"`
+	DataPath           string `json:"dataPath"`
+	Mode               string `json:"mode"`
+	FailedAt           string `json:"failedAt"`
+	BackendStoreDriver string `json:"backendStoreDriver"`
 }
 
 type Attachment struct {
@@ -249,6 +251,7 @@ type AttachInput struct {
 
 type DetachInput struct {
 	AttachmentID string `json:"attachmentID"`
+	HostID       string `json:"hostId"`
 	ForceDetach  bool   `json:"forceDetach"`
 }
 
@@ -1036,6 +1039,12 @@ func volumeSchema(volume *client.Schema) {
 	replicaZoneSoftAntiAffinity.Default = longhorn.ReplicaZoneSoftAntiAffinityDefault
 	volume.ResourceFields["replicaZoneSoftAntiAffinity"] = replicaZoneSoftAntiAffinity
 
+	backendStoreDriver := volume.ResourceFields["backendStoreDriver"]
+	backendStoreDriver.Required = true
+	backendStoreDriver.Create = true
+	backendStoreDriver.Default = longhorn.BackendStoreDriverTypeLonghorn
+	volume.ResourceFields["backendStoreDriver"] = backendStoreDriver
+
 	conditions := volume.ResourceFields["conditions"]
 	conditions.Type = "map[volumeCondition]"
 	volume.ResourceFields["conditions"] = conditions
@@ -1287,11 +1296,12 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 				CurrentImage:        r.Status.CurrentImage,
 				InstanceManagerName: r.Status.InstanceManagerName,
 			},
-			DiskID:   r.Spec.DiskID,
-			DiskPath: r.Spec.DiskPath,
-			DataPath: types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName),
-			Mode:     mode,
-			FailedAt: r.Spec.FailedAt,
+			DiskID:             r.Spec.DiskID,
+			DiskPath:           r.Spec.DiskPath,
+			DataPath:           types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName),
+			Mode:               mode,
+			FailedAt:           r.Spec.FailedAt,
+			BackendStoreDriver: string(r.Spec.BackendStoreDriver),
 		})
 	}
 
@@ -1391,6 +1401,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		UnmapMarkSnapChainRemoved:   v.Spec.UnmapMarkSnapChainRemoved,
 		ReplicaSoftAntiAffinity:     v.Spec.ReplicaSoftAntiAffinity,
 		ReplicaZoneSoftAntiAffinity: v.Spec.ReplicaZoneSoftAntiAffinity,
+		BackendStoreDriver:          v.Spec.BackendStoreDriver,
 		Ready:                       ready,
 
 		AccessMode:    v.Spec.AccessMode,

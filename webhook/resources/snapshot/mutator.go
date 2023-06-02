@@ -3,6 +3,7 @@ package snapshot
 import (
 	"encoding/json"
 	"fmt"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
@@ -53,6 +54,8 @@ func (s *snapShotMutator) Create(request *admission.Request, newObj runtime.Obje
 		err = errors.Wrapf(err, "failed to get volume %v", snapshot.Spec.Volume)
 		return nil, werror.NewInvalidError(err.Error(), "spec.Volume")
 	}
+
+	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, volume.Spec.BackendStoreDriver))
 
 	patchOp, err := common.GetLonghornLabelsPatchOp(snapshot, types.GetVolumeLabels(volume.Name), nil)
 	if err != nil {

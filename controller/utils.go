@@ -31,23 +31,28 @@ func isTargetVolumeOfCloning(v *longhorn.Volume) bool {
 	return isCloningDesired && !isCloningDone
 }
 
-// isSourceVolumeOfCloning checks if the input volume is the source volume of an on-going cloning process
-func (vc *VolumeController) isSourceVolumeOfCloning(v *longhorn.Volume) (bool, error) {
-	vols, err := vc.ds.ListVolumes()
-	if err != nil {
-		return false, err
-	}
-	for _, vol := range vols {
-		if isTargetVolumeOfCloning(vol) && types.GetVolumeName(vol.Spec.DataSource) == v.Name {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
 func isVolumeFullyDetached(vol *longhorn.Volume) bool {
 	return vol.Spec.NodeID == "" &&
 		vol.Spec.MigrationNodeID == "" &&
 		vol.Status.PendingNodeID == "" &&
 		vol.Status.State == longhorn.VolumeStateDetached
+}
+
+func createOrUpdateAttachmentTicket(va *longhorn.VolumeAttachment, ticketID, nodeID, disableFrontend string, attacherType longhorn.AttacherType) {
+	attachmentTicket, ok := va.Spec.AttachmentTickets[ticketID]
+	if !ok {
+		// Create new one
+		attachmentTicket = &longhorn.AttachmentTicket{
+			ID:     ticketID,
+			Type:   attacherType,
+			NodeID: nodeID,
+			Parameters: map[string]string{
+				longhorn.AttachmentParameterDisableFrontend: disableFrontend,
+			},
+		}
+	}
+	if attachmentTicket.NodeID != nodeID {
+		attachmentTicket.NodeID = nodeID
+	}
+	va.Spec.AttachmentTickets[attachmentTicket.ID] = attachmentTicket
 }

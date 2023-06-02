@@ -101,6 +101,16 @@ func (vac *VolumeAttachmentController) enqueueVolumeAttachment(obj interface{}) 
 	vac.queue.Add(key)
 }
 
+func (vac *VolumeAttachmentController) enqueueVolumeAttachmentAfter(obj interface{}, duration time.Duration) {
+	key, err := controller.KeyFunc(obj)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("enqueueVolumeAttachmentAfter: couldn't get key for object %#v: %v", obj, err))
+		return
+	}
+
+	vac.queue.AddAfter(key, duration)
+}
+
 func (vac *VolumeAttachmentController) enqueueForLonghornVolume(obj interface{}) {
 	vol, ok := obj.(*longhorn.Volume)
 	if !ok {
@@ -300,7 +310,7 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationStart(va *longhorn.V
 
 	hasCSIAttachmentTicket := false
 	for _, attachmentTicket := range va.Spec.AttachmentTickets {
-		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
+		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher && attachmentTicket.Type != longhorn.AttacherTypeLonghornUpgrader {
 			continue
 		}
 		// Found one csi attachmentTicket that is requesting volume to attach to the current node
@@ -314,7 +324,7 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationStart(va *longhorn.V
 	}
 
 	for _, attachmentTicket := range va.Spec.AttachmentTickets {
-		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
+		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher && attachmentTicket.Type != longhorn.AttacherTypeLonghornUpgrader {
 			continue
 		}
 		// Found one csi attachmentTicket that is requesting volume to attach to a different node
@@ -333,7 +343,7 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationConfirmation(va *lon
 
 	hasCSIAttachmentTicketRequestingPrevNode := false
 	for _, attachmentTicket := range va.Spec.AttachmentTickets {
-		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
+		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher && attachmentTicket.Type != longhorn.AttacherTypeLonghornUpgrader {
 			continue
 		}
 		// Found one csi attachmentTicket that is requesting volume to attach to the current node
@@ -342,11 +352,62 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationConfirmation(va *lon
 			break
 		}
 	}
-	if !hasCSIAttachmentTicketRequestingPrevNode {
+	migratingEngineSnapSynced, err := vac.checkMigratingEngineSyncSnapshots(vol)
+	if err != nil {
+		vac.logger.WithError(err).Warn("failed to check migrating engine snapshot status")
+		return
+	}
+	if !hasCSIAttachmentTicketRequestingPrevNode && migratingEngineSnapSynced {
 		// TODO: Do we need check if the volume is available on the currentMigrationIDNode?
 		vol.Spec.NodeID = vol.Status.CurrentMigrationNodeID
 		vol.Spec.MigrationNodeID = ""
 	}
+}
+
+func (vac *VolumeAttachmentController) checkMigratingEngineSyncSnapshots(vol *longhorn.Volume) (bool, error) {
+	engines, err := vac.ds.ListVolumeEngines(vol.Name)
+	if err != nil {
+		return false, err
+	}
+
+	var migratingEngine *longhorn.Engine
+	var oldEngine *longhorn.Engine
+	for _, e := range engines {
+		if e.Spec.Active {
+			oldEngine = e
+			continue
+		}
+		if e.Spec.NodeID == vol.Spec.MigrationNodeID {
+			migratingEngine = e
+		}
+	}
+
+	if oldEngine == nil {
+		return false, fmt.Errorf("failed to find the active engine for volume %v", vol.Name)
+	}
+
+	if migratingEngine == nil {
+		return false, fmt.Errorf("failed to find the migrating engine for volume %v", vol.Name)
+	}
+
+	if !reflect.DeepEqual(oldEngine.Status.Snapshots, migratingEngine.Status.Snapshots) {
+		vac.logger.Debugf("Volume migration (%v) is in progress for synchronizing snapshots", vol.Name)
+
+		// there is a chance that synchronizing engine snapshots does not finish and volume attachment controller will not receive changes anymore
+		// check volumeAttachments again  to ensure that migration will be finished
+		volumeAttachments, err := vac.ds.ListLonghornVolumeAttachmentByVolumeRO(migratingEngine.Spec.VolumeName)
+		if err != nil {
+			utilruntime.HandleError(fmt.Errorf("failed to list Longhorn VolumeAttachment of volume %v: %v", migratingEngine.Name, err))
+			return false, err
+		}
+
+		for _, va := range volumeAttachments {
+			vac.enqueueVolumeAttachmentAfter(va, 10*time.Second)
+		}
+		return false, nil
+	}
+
+	return true, nil
 }
 
 func (vac *VolumeAttachmentController) handleVolumeMigrationRollback(va *longhorn.VolumeAttachment, vol *longhorn.Volume) {
@@ -357,7 +418,7 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationRollback(va *longhor
 
 	hasCSIAttachmentTicketRequestingMigratingNode := false
 	for _, attachmentTicket := range va.Spec.AttachmentTickets {
-		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
+		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher && attachmentTicket.Type != longhorn.AttacherTypeLonghornUpgrader {
 			continue
 		}
 		// Found one csi attachmentTicket that is requesting volume to attach to the current node
@@ -371,14 +432,12 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationRollback(va *longhor
 }
 
 func (vac *VolumeAttachmentController) handleVolumeDetachment(va *longhorn.VolumeAttachment, vol *longhorn.Volume) {
-	// handle volume migration confirmation/rollback
-
 	// Volume is already trying to detach
 	if vol.Spec.NodeID == "" {
 		return
 	}
 
-	if !shouldDoDetach(va, vol) {
+	if !vac.shouldDoDetach(va, vol) {
 		return
 	}
 
@@ -389,7 +448,8 @@ func (vac *VolumeAttachmentController) handleVolumeDetachment(va *longhorn.Volum
 	setAttachmentParameter(map[string]string{}, vol)
 }
 
-func shouldDoDetach(va *longhorn.VolumeAttachment, vol *longhorn.Volume) bool {
+func (vac *VolumeAttachmentController) shouldDoDetach(va *longhorn.VolumeAttachment, vol *longhorn.Volume) bool {
+	log := getLoggerForLHVolumeAttachment(vac.logger, va)
 	// For auto salvage logic
 	// TODO: create Auto Salvage controller to handle this logic instead of AD controller
 	if vol.Status.Robustness == longhorn.VolumeRobustnessFaulted {
@@ -399,6 +459,9 @@ func shouldDoDetach(va *longhorn.VolumeAttachment, vol *longhorn.Volume) bool {
 		// if the volume is migrating, the detachment will be handled by handleVolumeMigration()
 		return false
 	}
+
+	currentAttachmentTickets := map[string]*longhorn.AttachmentTicket{}
+	attachmentTicketsOnOtherNodes := map[string]*longhorn.AttachmentTicket{}
 	for _, attachmentTicket := range va.Spec.AttachmentTickets {
 		// For the RWX volume attachment, VolumeAttachment controller will not directly handle
 		// the tickets from the CSI plugin. Instead, ShareManager controller will add a
@@ -408,12 +471,44 @@ func shouldDoDetach(va *longhorn.VolumeAttachment, vol *longhorn.Volume) bool {
 		if isCSIAttacherTicketOfRegularRWXVolume(attachmentTicket, vol) {
 			continue
 		}
-		// Found one attachmentTicket that is still requesting volume to attach to the current node
 		if attachmentTicket.NodeID == vol.Spec.NodeID && verifyAttachmentParameters(attachmentTicket.Parameters, vol) {
-			return false
+			currentAttachmentTickets[attachmentTicket.ID] = attachmentTicket
+		}
+		if attachmentTicket.NodeID != vol.Spec.NodeID {
+			attachmentTicketsOnOtherNodes[attachmentTicket.ID] = attachmentTicket
 		}
 	}
-	return true
+
+	if len(currentAttachmentTickets) == 0 {
+		return true
+	}
+	if !hasUninterruptibleTicket(currentAttachmentTickets) && hasWorkloadTicket(attachmentTicketsOnOtherNodes) {
+		log.Debugf("Workload attachment ticket interrupted snapshot-controller/backup-controller attachment tickets")
+		return true
+	}
+
+	return false
+}
+
+func hasUninterruptibleTicket(attachmentTickets map[string]*longhorn.AttachmentTicket) bool {
+	for _, ticket := range attachmentTickets {
+		if ticket.Type != longhorn.AttacherTypeSnapshotController &&
+			ticket.Type != longhorn.AttacherTypeBackupController {
+			return true
+		}
+	}
+	return false
+}
+
+func hasWorkloadTicket(attachmentTickets map[string]*longhorn.AttachmentTicket) bool {
+	for _, ticket := range attachmentTickets {
+		if ticket.Type == longhorn.AttacherTypeCSIAttacher ||
+			ticket.Type == longhorn.AttacherTypeLonghornAPI ||
+			ticket.Type == longhorn.AttacherTypeShareManagerController {
+			return true
+		}
+	}
+	return false
 }
 
 func (vac *VolumeAttachmentController) handleVolumeAttachment(va *longhorn.VolumeAttachment, vol *longhorn.Volume) {

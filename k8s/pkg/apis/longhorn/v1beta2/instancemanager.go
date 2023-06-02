@@ -47,6 +47,8 @@ type InstanceProcess struct {
 type InstanceProcessSpec struct {
 	// +optional
 	Name string `json:"name"`
+	// +optional
+	BackendStoreDriver BackendStoreDriverType `json:"backendStoreDriver"`
 }
 
 type InstanceState string
@@ -76,6 +78,9 @@ type InstanceSpec struct {
 	LogRequested bool `json:"logRequested"`
 	// +optional
 	SalvageRequested bool `json:"salvageRequested"`
+	// +kubebuilder:validation:Enum=longhorn;spdk
+	// +optional
+	BackendStoreDriver BackendStoreDriverType `json:"backendStoreDriver"`
 }
 
 type InstanceStatus struct {
@@ -131,9 +136,6 @@ type InstanceManagerSpec struct {
 	NodeID string `json:"nodeID"`
 	// +optional
 	Type InstanceManagerType `json:"type"`
-	// Deprecated: This field is useless.
-	// +optional
-	EngineImage string `json:"engineImage"`
 }
 
 // InstanceManagerStatus defines the observed state of the Longhorn instance manager

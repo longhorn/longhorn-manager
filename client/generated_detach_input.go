@@ -10,6 +10,8 @@ type DetachInput struct {
 	AttachmentID string `json:"attachmentID,omitempty" yaml:"attachment_id,omitempty"`
 
 	ForceDetach bool `json:"forceDetach,omitempty" yaml:"force_detach,omitempty"`
+
+	HostId string `json:"hostId,omitempty" yaml:"host_id,omitempty"`
 }
 
 type DetachInputCollection struct {

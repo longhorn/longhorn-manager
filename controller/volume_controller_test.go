@@ -1058,6 +1058,7 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 			Size:                TestVolumeSize,
 			StaleReplicaTimeout: TestVolumeStaleTimeout,
 			EngineImage:         TestEngineImage,
+			BackendStoreDriver:  longhorn.BackendStoreDriverTypeLonghorn,
 		},
 		Status: longhorn.VolumeStatus{
 			OwnerID: TestOwnerID1,
@@ -1184,6 +1185,7 @@ func newNode(name, namespace string, allowScheduling bool, status longhorn.Condi
 			AllowScheduling: allowScheduling,
 			Disks: map[string]longhorn.DiskSpec{
 				TestDiskID1: {
+					Type:            longhorn.DiskTypeFilesystem,
 					Path:            TestDefaultDataPath,
 					AllowScheduling: true,
 					StorageReserved: 0,
@@ -1205,6 +1207,7 @@ func newNode(name, namespace string, allowScheduling bool, status longhorn.Condi
 						newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					},
 					DiskUUID: TestDiskID1,
+					Type:     longhorn.DiskTypeFilesystem,
 				},
 			},
 		},

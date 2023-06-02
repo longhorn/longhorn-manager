@@ -21,9 +21,11 @@ import (
 const (
 	LonghornKindNode                = "Node"
 	LonghornKindVolume              = "Volume"
+	LonghornKindVolumeAttachment    = "VolumeAttachment"
 	LonghornKindEngine              = "Engine"
 	LonghornKindReplica             = "Replica"
 	LonghornKindBackup              = "Backup"
+	LonghornKindSnapshot            = "Snapshot"
 	LonghornKindEngineImage         = "EngineImage"
 	LonghornKindInstanceManager     = "InstanceManager"
 	LonghornKindShareManager        = "ShareManager"
@@ -33,6 +35,7 @@ const (
 	LonghornKindSetting             = "Setting"
 	LonghornKindSupportBundle       = "SupportBundle"
 	LonghornKindSystemRestore       = "SystemRestore"
+	LonghornKindOrphan              = "Orphan"
 
 	LonghornKindBackingImageDataSource = "BackingImageDataSource"
 
@@ -683,6 +686,10 @@ func ErrorIsNotFound(err error) bool {
 	return strings.Contains(err.Error(), "cannot find")
 }
 
+func ErrorIsStopped(err error) bool {
+	return strings.Contains(err.Error(), "is stopped")
+}
+
 func ErrorIsNotSupport(err error) bool {
 	return strings.Contains(err.Error(), "not support")
 }
@@ -816,7 +823,7 @@ func LabelsToString(labels map[string]string) string {
 
 func CreateDisksFromAnnotation(annotation string) (map[string]longhorn.DiskSpec, error) {
 	validDisks := map[string]longhorn.DiskSpec{}
-	existFsid := map[string]string{}
+	existDiskID := map[string]string{}
 
 	disks, err := UnmarshalToDisks(annotation)
 	if err != nil {
@@ -838,18 +845,18 @@ func CreateDisksFromAnnotation(annotation string) (map[string]longhorn.DiskSpec,
 
 		// Set to default disk name
 		if disk.Name == "" {
-			disk.Name = DefaultDiskPrefix + diskStat.Fsid
+			disk.Name = DefaultDiskPrefix + diskStat.DiskID
 		}
 
-		if _, exist := existFsid[diskStat.Fsid]; exist {
+		if _, exist := existDiskID[diskStat.DiskID]; exist {
 			return nil, fmt.Errorf(
 				"the disk %v is the same"+
-					"file system with %v, fsid %v",
-				disk.Path, existFsid[diskStat.Fsid],
-				diskStat.Fsid)
+					"file system with %v, diskID %v",
+				disk.Path, existDiskID[diskStat.DiskID],
+				diskStat.DiskID)
 		}
 
-		existFsid[diskStat.Fsid] = disk.Path
+		existDiskID[diskStat.DiskID] = disk.Path
 
 		if disk.StorageReserved < 0 || disk.StorageReserved > diskStat.StorageMaximum {
 			return nil, fmt.Errorf("the storageReserved setting of disk %v is not valid, should be positive and no more than storageMaximum and storageAvailable", disk.Path)
@@ -917,7 +924,8 @@ func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[st
 		return nil, err
 	}
 	return map[string]longhorn.DiskSpec{
-		DefaultDiskPrefix + diskStat.Fsid: {
+		DefaultDiskPrefix + diskStat.DiskID: {
+			Type:              longhorn.DiskTypeFilesystem,
 			Path:              diskStat.Path,
 			AllowScheduling:   true,
 			EvictionRequested: false,

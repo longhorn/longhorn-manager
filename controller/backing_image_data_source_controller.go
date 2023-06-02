@@ -38,11 +38,6 @@ import (
 
 const (
 	BackingImageDataSourcePodContainerName = "backing-image-data-source"
-
-	DataSourceTypeExportFromVolumeParameterVolumeName    = "volume-name"
-	DataSourceTypeExportFromVolumeParameterVolumeSize    = "volume-size"
-	DataSourceTypeExportFromVolumeParameterSnapshotName  = "snapshot-name"
-	DataSourceTypeExportFromVolumeParameterSenderAddress = "sender-address"
 )
 
 type BackingImageDataSourceController struct {
@@ -247,12 +242,10 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSource(key string
 
 	bids, err := c.ds.GetBackingImageDataSource(name)
 	if err != nil {
-		if !datastore.ErrorIsNotFound(err) {
-			c.logger.WithField("backingImageDataSource", name).WithError(err).Error("Failed to retrieve backing image data source from datastore")
-			return err
+		if datastore.ErrorIsNotFound(err) {
+			return nil
 		}
-		c.logger.WithField("backingImageDataSource", name).Warn("Failed to find backing image data source, may have been deleted")
-		return nil
+		return errors.Wrap(err, "failed to get backing image data source")
 	}
 
 	log := getLoggerForBackingImageDataSource(c.logger, bids)
@@ -310,7 +303,7 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSource(key string
 			_, err = c.ds.UpdateBackingImageDataSourceStatus(bids)
 		}
 		if apierrors.IsConflict(errors.Cause(err)) {
-			log.WithError(err).Warnf("Requeue %v due to conflict", key)
+			log.WithError(err).Debugf("Requeue %v due to conflict", key)
 			c.enqueueBackingImageDataSource(bids)
 			err = nil
 		}
@@ -404,7 +397,7 @@ func (c *BackingImageDataSourceController) syncBackingImage(bids *longhorn.Backi
 
 func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *longhorn.BackingImageDataSource) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "failed to sync backing image data source pod")
+		err = errors.Wrap(err, "failed to sync backing image data source pod")
 	}()
 	log := getLoggerForBackingImageDataSource(c.logger, bids)
 
@@ -510,7 +503,7 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 				isInBackoffWindow = false
 				log.Infof("Preparing to recreate pod for image data source %v since the backoff window is already passed", bids.Name)
 			} else {
-				log.Infof("Failed backing image data source %v is still in the backoff window, Longhorn cannot recreate pod for it", bids.Name)
+				log.Debugf("Failed backing image data source %v is still in the backoff window, Longhorn cannot recreate pod for it", bids.Name)
 			}
 		}
 
@@ -542,7 +535,7 @@ func (c *BackingImageDataSourceController) handleAttachmentTicketDeletion(bids *
 		return nil
 	}
 
-	volumeName := bids.Spec.Parameters[DataSourceTypeExportFromVolumeParameterVolumeName]
+	volumeName := bids.Spec.Parameters[longhorn.DataSourceTypeExportFromVolumeParameterVolumeName]
 	va, err := c.ds.GetLHVolumeAttachmentByVolumeName(volumeName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -569,7 +562,7 @@ func (c *BackingImageDataSourceController) handleAttachmentTicketCreation(bids *
 		return nil
 	}
 
-	volumeName := bids.Spec.Parameters[DataSourceTypeExportFromVolumeParameterVolumeName]
+	volumeName := bids.Spec.Parameters[longhorn.DataSourceTypeExportFromVolumeParameterVolumeName]
 	vol, err := c.ds.GetVolume(volumeName)
 	if err != nil {
 		return err
@@ -595,23 +588,7 @@ func (c *BackingImageDataSourceController) handleAttachmentTicketCreation(bids *
 	}()
 
 	attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackingImageDataSourceController, bids.Name)
-
-	attachmentTicket, ok := va.Spec.AttachmentTickets[attachmentTicketID]
-	if !ok {
-		//create new one
-		attachmentTicket = &longhorn.AttachmentTicket{
-			ID:     attachmentTicketID,
-			Type:   longhorn.AttacherTypeBackingImageDataSourceController,
-			NodeID: vol.Status.OwnerID,
-			Parameters: map[string]string{
-				longhorn.AttachmentParameterDisableFrontend: longhorn.AnyValue,
-			},
-		}
-	}
-	if attachmentTicket.NodeID != vol.Status.OwnerID {
-		attachmentTicket.NodeID = vol.Status.OwnerID
-	}
-	va.Spec.AttachmentTickets[attachmentTicket.ID] = attachmentTicket
+	createOrUpdateAttachmentTicket(va, attachmentTicketID, vol.Status.OwnerID, longhorn.AnyValue, longhorn.AttacherTypeBackingImageDataSourceController)
 
 	return nil
 }
@@ -632,8 +609,6 @@ func (c *BackingImageDataSourceController) createBackingImageDataSourcePod(bids 
 	if _, err := c.ds.CreatePod(podManifest); err != nil && !apierrors.IsAlreadyExists(err) {
 		return err
 	}
-
-	log.Info("Created backing image data source pod")
 
 	return nil
 }
@@ -785,7 +760,7 @@ func (c *BackingImageDataSourceController) prepareRunningParameters(bids *longho
 		return nil
 	}
 
-	volumeName := bids.Spec.Parameters[DataSourceTypeExportFromVolumeParameterVolumeName]
+	volumeName := bids.Spec.Parameters[longhorn.DataSourceTypeExportFromVolumeParameterVolumeName]
 	v, err := c.ds.GetVolume(volumeName)
 	if err != nil {
 		return err
@@ -793,7 +768,7 @@ func (c *BackingImageDataSourceController) prepareRunningParameters(bids *longho
 	if v.Status.State != longhorn.VolumeStateAttached {
 		return fmt.Errorf("need to wait for volume %v attached before preparing parameters", volumeName)
 	}
-	bids.Status.RunningParameters[DataSourceTypeExportFromVolumeParameterVolumeSize] = strconv.FormatInt(v.Spec.Size, 10)
+	bids.Status.RunningParameters[longhorn.DataSourceTypeExportFromVolumeParameterVolumeSize] = strconv.FormatInt(v.Spec.Size, 10)
 
 	e, err := c.ds.GetVolumeCurrentEngine(volumeName)
 	if err != nil {
@@ -807,8 +782,8 @@ func (c *BackingImageDataSourceController) prepareRunningParameters(bids *longho
 	}
 
 	newSnapshotRequired := true
-	if bids.Status.RunningParameters[DataSourceTypeExportFromVolumeParameterSnapshotName] != "" {
-		if _, ok := e.Status.Snapshots[bids.Status.RunningParameters[DataSourceTypeExportFromVolumeParameterSnapshotName]]; ok {
+	if bids.Status.RunningParameters[longhorn.DataSourceTypeExportFromVolumeParameterSnapshotName] != "" {
+		if _, ok := e.Status.Snapshots[bids.Status.RunningParameters[longhorn.DataSourceTypeExportFromVolumeParameterSnapshotName]]; ok {
 			newSnapshotRequired = false
 		}
 	}
@@ -824,7 +799,7 @@ func (c *BackingImageDataSourceController) prepareRunningParameters(bids *longho
 		if err != nil {
 			return err
 		}
-		bids.Status.RunningParameters[DataSourceTypeExportFromVolumeParameterSnapshotName] = snapshotName
+		bids.Status.RunningParameters[longhorn.DataSourceTypeExportFromVolumeParameterSnapshotName] = snapshotName
 	}
 
 	for rName, mode := range e.Status.ReplicaModeMap {
@@ -842,9 +817,9 @@ func (c *BackingImageDataSourceController) prepareRunningParameters(bids *longho
 		if rAddress == "" || rAddress != fmt.Sprintf("%s:%d", r.Status.StorageIP, r.Status.Port) {
 			continue
 		}
-		bids.Status.RunningParameters[DataSourceTypeExportFromVolumeParameterSenderAddress] = rAddress
+		bids.Status.RunningParameters[longhorn.DataSourceTypeExportFromVolumeParameterSenderAddress] = rAddress
 	}
-	if bids.Status.RunningParameters[DataSourceTypeExportFromVolumeParameterSenderAddress] == "" {
+	if bids.Status.RunningParameters[longhorn.DataSourceTypeExportFromVolumeParameterSenderAddress] == "" {
 		return fmt.Errorf("failed to get an available replica from volume %v during backing image %v exporting", v.Name, bids.Name)
 	}
 
@@ -1025,14 +1000,11 @@ func (c *BackingImageDataSourceController) stopMonitoring(bidsName string) {
 	log := c.logger.WithField("backingImageDataSource", bidsName)
 	stopCh, ok := c.monitorMap[bidsName]
 	if !ok {
-		log.Warn("No monitor goroutine for stopping")
 		return
 	}
 	log.Info("Stopping monitoring")
 	close(stopCh)
 	delete(c.monitorMap, bidsName)
-	log.Info("Stopped monitoring")
-
 }
 
 func (c *BackingImageDataSourceController) startMonitoring(bids *longhorn.BackingImageDataSource) {
@@ -1042,12 +1014,11 @@ func (c *BackingImageDataSourceController) startMonitoring(bids *longhorn.Backin
 	defer c.lock.Unlock()
 
 	if _, ok := c.monitorMap[bids.Name]; ok {
-		log.Error("Monitor goroutine already exists")
 		return
 	}
 
 	if bids.Status.IP == "" {
-		log.Errorf("Failed to get backing image data source pod IP before launching the monitor")
+		log.Error("Failed to get backing image data source pod IP before launching the monitor")
 		return
 	}
 

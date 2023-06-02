@@ -46,9 +46,10 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.4.0-rc1.0.20230521151917-38ff27cc2cbb
 	github.com/longhorn/backupstore v0.0.0-20230522064032-228beb21aa3c
-	github.com/longhorn/go-iscsi-helper v0.0.0-20230425064248-72f136f48524
+	github.com/longhorn/go-iscsi-helper v0.0.0-20230529082528-4c3270590712
+	github.com/longhorn/go-spdk-helper v0.0.0-20230525131301-ddb9e9044e51
 	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230522141009-4f6770982ebd
-	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230525063215-e020f2fb5960
+	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230601151509-8fe3da922d71
 	github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20230426140253-1729f0f8ef80
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.15.0
@@ -61,7 +62,7 @@ require (
 	github.com/urfave/cli v1.22.13
 	golang.org/x/mod v0.9.0
 	golang.org/x/net v0.9.0
-	golang.org/x/sys v0.7.0
+	golang.org/x/sys v0.8.0
 	golang.org/x/time v0.0.0-20220210224613-90d013bbcef8
 	google.golang.org/grpc v1.54.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
@@ -77,6 +78,8 @@ require (
 	k8s.io/utils v0.0.0-20230406110748-d93618cff8a2
 	sigs.k8s.io/controller-runtime v0.10.1
 )
+
+require github.com/longhorn/longhorn-spdk-engine v0.0.0-20230529160612-fb6a2f207976 // indirect
 
 require (
 	github.com/Microsoft/go-winio v0.4.17 // indirect
@@ -142,7 +145,7 @@ require (
 	github.com/prometheus/client_model v0.3.0 // indirect
 	github.com/prometheus/common v0.42.0 // indirect
 	github.com/prometheus/procfs v0.9.0 // indirect
-	github.com/rancher/lasso v0.0.0-20211217013041-3c6118a30611 // indirect
+	github.com/rancher/lasso v0.0.0-20211217013041-3c6118a30611
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rogpeppe/go-internal v1.10.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
@@ -164,7 +167,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.10.0 // indirect
 	go.opentelemetry.io/proto/otlp v0.19.0 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
-	go.uber.org/multierr v1.11.0 // indirect
+	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.19.0 // indirect
 	golang.org/x/crypto v0.1.0 // indirect
 	golang.org/x/oauth2 v0.5.0 // indirect

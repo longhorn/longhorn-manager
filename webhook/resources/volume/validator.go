@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/pkg/errors"
+
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -93,7 +94,9 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 	}
 
 	if !volume.Spec.Standby {
-		if volume.Spec.Frontend != longhorn.VolumeFrontendBlockDev && volume.Spec.Frontend != longhorn.VolumeFrontendISCSI {
+		if volume.Spec.Frontend != longhorn.VolumeFrontendBlockDev &&
+			volume.Spec.Frontend != longhorn.VolumeFrontendISCSI &&
+			volume.Spec.Frontend != longhorn.VolumeFrontendNvmf {
 			return werror.NewInvalidError(fmt.Sprintf("invalid volume frontend specified: %v", volume.Spec.Frontend), "")
 		}
 	}
@@ -112,6 +115,21 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 
 	if err := datastore.CheckVolume(volume); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
+	}
+
+	if volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+		spdkEnabled, err := v.ds.GetSettingAsBool(types.SettingNameSpdk)
+		if err != nil {
+			err = errors.Wrapf(err, "failed to get spdk setting")
+			return werror.NewInvalidError(err.Error(), "")
+		}
+		if !spdkEnabled {
+			return werror.NewInvalidError("SPDK data engine is not enabled", "")
+		}
+
+		if volume.Spec.Frontend == longhorn.VolumeFrontendISCSI {
+			return werror.NewInvalidError("SPDK data engine does not support iSCSI frontend", "")
+		}
 	}
 
 	return nil
@@ -172,6 +190,76 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 	if oldVolume.Spec.BackupCompressionMethod != "" {
 		if oldVolume.Spec.BackupCompressionMethod != newVolume.Spec.BackupCompressionMethod {
 			err := fmt.Errorf("changing backup compression method for volume %v is not supported", oldVolume.Name)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+	}
+
+	if oldVolume.Spec.BackendStoreDriver != "" {
+		if oldVolume.Spec.BackendStoreDriver != newVolume.Spec.BackendStoreDriver {
+			err := fmt.Errorf("changing backend store driver for volume %v is not supported", oldVolume.Name)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+	}
+
+	if newVolume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+		// TODO: remove this check when we support the following features for SPDK volumes
+		if oldVolume.Spec.Size != newVolume.Spec.Size {
+			err := fmt.Errorf("changing volume size for volume %v is not supported for backend store driver %v",
+				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+
+		if oldVolume.Spec.NumberOfReplicas != newVolume.Spec.NumberOfReplicas {
+			err := fmt.Errorf("changing number of replicas for volume %v is not supported for backend store driver %v",
+				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+
+		if oldVolume.Spec.BackingImage != newVolume.Spec.BackingImage {
+			err := fmt.Errorf("changing backing image for volume %v is not supported for backend store driver %v",
+				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+
+		if oldVolume.Spec.Encrypted != newVolume.Spec.Encrypted {
+			err := fmt.Errorf("changing encryption for volume %v is not supported for backend store driver %v",
+				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+
+		if oldVolume.Spec.DataLocality != newVolume.Spec.DataLocality {
+			err := fmt.Errorf("changing data locality for volume %v is not supported for backend store driver %v",
+				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+
+		if oldVolume.Spec.SnapshotDataIntegrity != newVolume.Spec.SnapshotDataIntegrity {
+			err := fmt.Errorf("changing snapshot data integrity for volume %v is not supported for backend store driver %v",
+				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+
+		if oldVolume.Spec.ReplicaAutoBalance != newVolume.Spec.ReplicaAutoBalance {
+			err := fmt.Errorf("changing replica auto balance for volume %v is not supported for backend store driver %v",
+				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+
+		if oldVolume.Spec.RestoreVolumeRecurringJob != newVolume.Spec.RestoreVolumeRecurringJob {
+			err := fmt.Errorf("changing restore volume recurring job for volume %v is not supported for backend store driver %v",
+				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+
+		if oldVolume.Spec.ReplicaSoftAntiAffinity != newVolume.Spec.ReplicaSoftAntiAffinity {
+			err := fmt.Errorf("changing replica soft anti-affinity for volume %v is not supported for backend store driver %v",
+				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+
+		if oldVolume.Spec.ReplicaZoneSoftAntiAffinity != newVolume.Spec.ReplicaZoneSoftAntiAffinity {
+			err := fmt.Errorf("changing replica zone soft anti-affinity for volume %v is not supported for backend store driver %v",
+				newVolume.Name, newVolume.Spec.BackendStoreDriver)
 			return werror.NewInvalidError(err.Error(), "")
 		}
 	}
