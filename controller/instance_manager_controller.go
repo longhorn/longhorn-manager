@@ -209,8 +209,8 @@ func (imc *InstanceManagerController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer imc.queue.ShutDown()
 
-	logrus.Infof("Starting Longhorn instance manager controller")
-	defer logrus.Infof("Shut down Longhorn instance manager controller")
+	logrus.Info("Starting Longhorn instance manager controller")
+	defer logrus.Info("Shut down Longhorn instance manager controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn instance manager", stopCh, imc.cacheSyncs...) {
 		return
@@ -249,13 +249,13 @@ func (imc *InstanceManagerController) handleErr(err error, key interface{}) {
 	}
 
 	if imc.queue.NumRequeues(key) < maxRetries {
-		logrus.Warnf("Error syncing Longhorn instance manager %v: %v", key, err)
+		logrus.WithError(err).Errorf("Failed to sync Longhorn instance manager %v", key)
 		imc.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	logrus.Warnf("Dropping Longhorn instance manager %v out of the queue: %v", key, err)
+	logrus.WithError(err).Errorf("Dropping Longhorn instance manager %v out of the queue", key)
 	imc.queue.Forget(key)
 }
 
@@ -283,10 +283,9 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 	im, err := imc.ds.GetInstanceManager(name)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
-			logrus.Infof("Longhorn instance manager %v has been deleted, will try best to do cleanup", name)
 			return imc.cleanupInstanceManager(name)
 		}
-		return err
+		return errors.Wrap(err, "failed to get instance manager")
 	}
 
 	log := getLoggerForInstanceManager(imc.logger, im)
@@ -305,7 +304,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 			}
 			return err
 		}
-		log.Debugf("Instance Manager Controller %v picked up %v", imc.controllerID, im.Name)
+		log.Infof("Instance Manager got new owner %v", imc.controllerID)
 	}
 
 	if im.DeletionTimestamp != nil {
@@ -318,7 +317,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 			_, err = imc.ds.UpdateInstanceManagerStatus(im)
 		}
 		if apierrors.IsConflict(errors.Cause(err)) {
-			log.Debugf("Requeue %v due to conflict: %v", key, err)
+			log.WithError(err).Debugf("Requeue %v due to conflict", key)
 			imc.enqueueInstanceManager(im)
 			err = nil
 		}
@@ -327,7 +326,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 	// Skip the cleanup when the node is suddenly down.
 	isDown, err := imc.ds.IsNodeDownOrDeleted(im.Spec.NodeID)
 	if err != nil {
-		log.WithError(err).Warnf("cannot check IsNodeDownOrDeleted(%v) when syncInstanceManager ", im.Spec.NodeID)
+		log.WithError(err).Warnf("Failed to check IsNodeDownOrDeleted(%v) when syncing instance manager", im.Spec.NodeID)
 	}
 	if isDown {
 		im.Status.CurrentState = longhorn.InstanceManagerStateUnknown
@@ -375,7 +374,7 @@ func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceMan
 
 	pod, err := imc.ds.GetPod(im.Name)
 	if err != nil {
-		return errors.Wrapf(err, "cannot get pod for instance manager %v", im.Name)
+		return errors.Wrapf(err, "failed get pod for instance manager %v", im.Name)
 	}
 
 	if pod == nil {
@@ -496,11 +495,11 @@ func (imc *InstanceManagerController) annotateCASafeToEvict(im *longhorn.Instanc
 		return nil
 	}
 
+	imc.logger.Infof("Updating annotation %v for pod %v/%v", types.KubernetesClusterAutoscalerSafeToEvictKey, pod.Namespace, pod.Name)
 	if _, err := imc.kubeClient.CoreV1().Pods(pod.Namespace).Update(context.TODO(), pod, metav1.UpdateOptions{}); err != nil {
 		return err
 	}
 
-	imc.logger.Infof("Updated annotation %v for pod %v/%v", types.KubernetesClusterAutoscalerSafeToEvictKey, pod.Namespace, pod.Name)
 	return nil
 }
 
@@ -582,7 +581,7 @@ func (imc *InstanceManagerController) syncInstanceManagerPDB(im *longhorn.Instan
 			return nil
 		}
 
-		imc.logger.Debugf("Node %v is marked unschedulable, try to remove %v PDB", imc.controllerID, im.Name)
+		imc.logger.Infof("Removing %v PDB since Node %v is marked unschedulable", im.Name, imc.controllerID)
 		return imc.deleteInstanceManagerPDB(im)
 	}
 
@@ -671,11 +670,11 @@ func (imc *InstanceManagerController) cleanUpPDBForNonExistingIM() error {
 
 func (imc *InstanceManagerController) deleteInstanceManagerPDB(im *longhorn.InstanceManager) error {
 	name := imc.getPDBName(im)
+	imc.logger.Infof("Deleting %v PDB", name)
 	err := imc.ds.DeletePDB(name)
 	if err != nil && !datastore.ErrorIsNotFound(err) {
 		return err
 	}
-	imc.logger.Infof("Deleted %v PDB", name)
 	return nil
 }
 
@@ -851,14 +850,13 @@ func (imc *InstanceManagerController) areAllInstanceRemovedFromNodeByType(nodeNa
 
 func (imc *InstanceManagerController) createInstanceManagerPDB(im *longhorn.InstanceManager) error {
 	instanceManagerPDB := imc.generateInstanceManagerPDBManifest(im)
+	imc.logger.Infof("Creating %v PDB", instanceManagerPDB.Name)
 	if _, err := imc.ds.CreatePDB(instanceManagerPDB); err != nil {
 		if apierrors.IsAlreadyExists(err) {
-			imc.logger.Debugf("The %s PDB is already exists", instanceManagerPDB.GetName())
 			return nil
 		}
 		return err
 	}
-	imc.logger.Infof("Created %v PDB", instanceManagerPDB.Name)
 	return nil
 }
 
@@ -892,7 +890,7 @@ func getIMNameFromPDBName(pdbName string) string {
 func (imc *InstanceManagerController) enqueueInstanceManager(instanceManager interface{}) {
 	key, err := controller.KeyFunc(instanceManager)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", instanceManager, err))
+		utilruntime.HandleError(fmt.Errorf("failed to get key for object %#v: %v", instanceManager, err))
 		return
 	}
 
@@ -919,10 +917,9 @@ func (imc *InstanceManagerController) enqueueInstanceManagerPod(obj interface{})
 	im, err := imc.ds.GetInstanceManager(pod.Name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			logrus.Warnf("Can't find instance manager for pod %v, may be deleted", pod.Name)
 			return
 		}
-		utilruntime.HandleError(fmt.Errorf("couldn't get instance manager: %v", err))
+		utilruntime.HandleError(fmt.Errorf("failed to get instance manager: %v", err))
 		return
 	}
 	imc.enqueueInstanceManager(im)
@@ -952,7 +949,7 @@ func (imc *InstanceManagerController) enqueueKubernetesNode(obj interface{}) {
 			// node (e.g. controller/etcd node). Skip it
 			return
 		}
-		utilruntime.HandleError(fmt.Errorf("couldn't get node %v: %v ", kubernetesNode.Name, err))
+		utilruntime.HandleError(fmt.Errorf("failed to get node %v: %v ", kubernetesNode.Name, err))
 		return
 	}
 
@@ -960,10 +957,9 @@ func (imc *InstanceManagerController) enqueueKubernetesNode(obj interface{}) {
 		ims, err := imc.ds.ListInstanceManagersByNode(node.Name, imType)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
-				logrus.Warnf("Can't find instance manager for node %v, may be deleted", node.Name)
 				return
 			}
-			utilruntime.HandleError(fmt.Errorf("couldn't get instance manager: %v", err))
+			utilruntime.HandleError(fmt.Errorf("failed to get instance manager: %v", err))
 			return
 		}
 
@@ -991,10 +987,10 @@ func (imc *InstanceManagerController) cleanupInstanceManager(imName string) erro
 		return err
 	}
 	if pod != nil && pod.DeletionTimestamp == nil {
+		logrus.Infof("Deleting instance manager pod %v for instance manager %v", pod.Name, imName)
 		if err := imc.ds.DeletePod(pod.Name); err != nil {
 			return err
 		}
-		logrus.Warnf("Deleted instance manager pod %v for instance manager %v", pod.Name, imName)
 	}
 
 	return nil
@@ -1005,17 +1001,17 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 
 	tolerations, err := imc.ds.GetSettingTaintToleration()
 	if err != nil {
-		return errors.Wrapf(err, "failed to get taint toleration setting before creating instance manager pod")
+		return errors.Wrap(err, "failed to get taint toleration setting before creating instance manager pod")
 	}
 
 	nodeSelector, err := imc.ds.GetSettingSystemManagedComponentsNodeSelector()
 	if err != nil {
-		return errors.Wrapf(err, "failed to get node selector setting before creating instance manager pod")
+		return errors.Wrap(err, "failed to get node selector setting before creating instance manager pod")
 	}
 
 	registrySecretSetting, err := imc.ds.GetSetting(types.SettingNameRegistrySecret)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get registry secret setting before creating instance manager pod")
+		return errors.Wrap(err, "failed to get registry secret setting before creating instance manager pod")
 	}
 
 	registrySecret := registrySecretSetting.Value
@@ -1036,14 +1032,13 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 		podSpec.Annotations[nadAnnot] = types.CreateCniAnnotationFromSetting(storageNetwork)
 	}
 
+	log.Info("Creating instance manager pod")
 	if _, err := imc.ds.CreatePod(podSpec); err != nil {
 		if apierrors.IsAlreadyExists(err) {
-			log.Infof("Instance manager pod is already created")
 			return nil
 		}
 		return err
 	}
-	log.Infof("Created instance manager pod")
 
 	return nil
 }
@@ -1305,7 +1300,6 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 		client.Close()
 		imc.instanceManagerMonitorMutex.Lock()
 		delete(imc.instanceManagerMonitorMap, im.Name)
-		log.Debug("removed the instance manager from imc.instanceManagerMonitorMap")
 		imc.instanceManagerMonitorMutex.Unlock()
 	}()
 }
@@ -1336,14 +1330,14 @@ func (m *InstanceManagerMonitor) Run() {
 	ctx, cancel := context.WithCancel(context.TODO())
 	notifier, err := m.client.InstanceWatch(ctx)
 	if err != nil {
-		m.logger.Errorf("Failed to get the notifier for monitoring: %v", err)
+		m.logger.WithError(err).Errorf("Failed to get the notifier for monitoring")
 		cancel()
 		close(m.monitorVoluntaryStopCh)
 		return
 	}
 
 	defer func() {
-		m.logger.Debugf("Stop monitoring instance manager %v", m.Name)
+		m.logger.Infof("Stop monitoring instance manager %v", m.Name)
 		cancel()
 		m.StopMonitorWithLock()
 		close(m.monitorVoluntaryStopCh)
@@ -1353,7 +1347,7 @@ func (m *InstanceManagerMonitor) Run() {
 		continuousFailureCount := 0
 		for {
 			if continuousFailureCount >= engineapi.MaxMonitorRetryCount {
-				m.logger.Errorf("instance manager monitor streaming continuously errors receiving items for %v times, will stop the monitor itself", engineapi.MaxMonitorRetryCount)
+				m.logger.Errorf("Instance manager monitor streaming continuously errors receiving items for %v times, will stop the monitor itself", engineapi.MaxMonitorRetryCount)
 				m.StopMonitorWithLock()
 			}
 
@@ -1368,7 +1362,7 @@ func (m *InstanceManagerMonitor) Run() {
 				_, err = notifier.(*imapi.InstanceStream).Recv()
 			}
 			if err != nil {
-				m.logger.WithError(err).Error("error receiving next item in instance watch")
+				m.logger.WithError(err).Error("Failed to receive next item in instance watch")
 				continuousFailureCount++
 				time.Sleep(engineapi.MinPollCount * engineapi.PollInterval)
 			} else {
@@ -1416,7 +1410,7 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() (needStop bool) {
 	im, err := m.ds.GetInstanceManager(m.Name)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
-			m.logger.Info("stop monitoring because the instance manager no longer exists")
+			m.logger.Warn("stop monitoring because the instance manager no longer exists")
 			return true
 		}
 		utilruntime.HandleError(errors.Wrapf(err, "failed to get instance manager %v for monitoring", m.Name))
@@ -1424,7 +1418,7 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() (needStop bool) {
 	}
 
 	if im.Status.OwnerID != m.controllerID {
-		m.logger.Infof("stop monitoring the instance manager on this node (%v) because the instance manager has new ownerID %v", m.controllerID, im.Status.OwnerID)
+		m.logger.Warnf("stop monitoring the instance manager on this node (%v) because the instance manager has new ownerID %v", m.controllerID, im.Status.OwnerID)
 		return true
 	}
 
