@@ -1255,12 +1255,16 @@ func (info *ClusterInfo) collectResourceUsage() error {
 		}
 
 		avgCPUUsageMilli := totalCPUUsage.MilliValue() / int64(len(pods))
-		avgCPUUsage := resource.NewMilliQuantity(avgCPUUsageMilli, resource.DecimalSI).String()
 		cpuStruct := util.StructName(fmt.Sprintf(ClusterInfoPodAvgCPUUsageFmt, component))
-		info.structFields.Append(cpuStruct, avgCPUUsage)
+		info.structFields.Append(cpuStruct, info.getCPURange(avgCPUUsageMilli))
 	}
 
 	return nil
+}
+
+func (info *ClusterInfo) getCPURange(milliValue int64) string {
+	min, max := util.GetRange(float64(milliValue), 50.0)
+	return fmt.Sprintf("%.0fm-%.0fm", min, max)
 }
 
 func (info *ClusterInfo) collectVolumesInfo() error {
