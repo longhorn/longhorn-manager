@@ -323,6 +323,26 @@ func ListAndUpdateNodesInProvidedCache(namespace string, lhClient *lhclientset.C
 	return nodes, nil
 }
 
+// ListAndUpdateOrphansInProvidedCache list all orphans and save them into the provided cached `resourceMap`. This method is not thread-safe.
+func ListAndUpdateOrphansInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*v1beta2.Orphan, error) {
+	if v, ok := resourceMaps[types.LonghornKindOrphan]; ok {
+		return v.(map[string]*v1beta2.Orphan), nil
+	}
+
+	orphans := map[string]*v1beta2.Orphan{}
+	orphanList, err := lhClient.LonghornV1beta2().Orphans(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	for i, orphan := range orphanList.Items {
+		orphans[orphan.Name] = &orphanList.Items[i]
+	}
+
+	resourceMaps[types.LonghornKindOrphan] = orphans
+
+	return orphans, nil
+}
+
 // ListAndUpdateInstanceManagersInProvidedCache list all instanceManagers and save them into the provided cached `resourceMap`. This method is not thread-safe.
 func ListAndUpdateInstanceManagersInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*v1beta2.InstanceManager, error) {
 	if v, ok := resourceMaps[types.LonghornKindInstanceManager]; ok {
@@ -421,6 +441,26 @@ func ListAndUpdateBackupsInProvidedCache(namespace string, lhClient *lhclientset
 	resourceMaps[types.LonghornKindBackup] = backups
 
 	return backups, nil
+}
+
+// ListAndUpdateSnapshotsInProvidedCache list all snapshots and save them into the provided cached `resourceMap`. This method is not thread-safe.
+func ListAndUpdateSnapshotsInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*v1beta2.Snapshot, error) {
+	if v, ok := resourceMaps[types.LonghornKindSnapshot]; ok {
+		return v.(map[string]*v1beta2.Snapshot), nil
+	}
+
+	snapshots := map[string]*v1beta2.Snapshot{}
+	snapshotList, err := lhClient.LonghornV1beta2().Snapshots(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	for i, snapshot := range snapshotList.Items {
+		snapshots[snapshot.Name] = &snapshotList.Items[i]
+	}
+
+	resourceMaps[types.LonghornKindSnapshot] = snapshots
+
+	return snapshots, nil
 }
 
 // ListAndUpdateEngineImagesInProvidedCache list all engineImages and save them into the provided cached `resourceMap`. This method is not thread-safe.
@@ -523,123 +563,6 @@ func ListAndUpdateRecurringJobsInProvidedCache(namespace string, lhClient *lhcli
 	return recurringJobs, nil
 }
 
-// GetNodeFromProvidedCache gets the node from the provided cached `resourceMap`. This method is not thread-safe.
-func GetNodeFromProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, name string) (*v1beta2.Node, error) {
-	nodes, err := ListAndUpdateNodesInProvidedCache(namespace, lhClient, resourceMaps)
-	if err != nil {
-		return nil, err
-	}
-	node, ok := nodes[name]
-	if !ok {
-		return nil, apierrors.NewNotFound(v1beta2.Resource("node"), name)
-	}
-	return node, nil
-}
-
-// GetSettingFromProvidedCache gets the setting from the provided cached `resourceMap`. This method is not thread-safe.
-func GetSettingFromProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, name string) (*v1beta2.Setting, error) {
-	settings, err := ListAndUpdateSettingsInProvidedCache(namespace, lhClient, resourceMaps)
-	if err != nil {
-		return nil, err
-	}
-	setting, ok := settings[name]
-	if !ok {
-		return nil, apierrors.NewNotFound(v1beta2.Resource("setting"), name)
-	}
-	return setting, nil
-}
-
-// GetEngineImageFromProvidedCache gets the engineImage from the provided cached `resourceMap`. This method is not thread-safe.
-func GetEngineImageFromProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, name string) (*v1beta2.EngineImage, error) {
-	eis, err := ListAndUpdateEngineImagesInProvidedCache(namespace, lhClient, resourceMaps)
-	if err != nil {
-		return nil, err
-	}
-	ei, ok := eis[name]
-	if !ok {
-		return nil, apierrors.NewNotFound(v1beta2.Resource("engineimage"), name)
-	}
-	return ei, nil
-}
-
-// GetInstanceManagerFromProvidedCache gets the instanceManager from the provided cached `resourceMap`. This method is not thread-safe.
-func GetInstanceManagerFromProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, name string) (*v1beta2.InstanceManager, error) {
-	ims, err := ListAndUpdateInstanceManagersInProvidedCache(namespace, lhClient, resourceMaps)
-	if err != nil {
-		return nil, err
-	}
-	im, ok := ims[name]
-	if !ok {
-		return nil, apierrors.NewNotFound(v1beta2.Resource("instancemanager"), name)
-	}
-	return im, nil
-}
-
-// GetShareManagerFromProvidedCache gets the shareManager from the provided cached `resourceMap`. This method is not thread-safe.
-func GetShareManagerFromProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, name string) (*v1beta2.ShareManager, error) {
-	sms, err := ListAndUpdateShareManagersInProvidedCache(namespace, lhClient, resourceMaps)
-	if err != nil {
-		return nil, err
-	}
-	sm, ok := sms[name]
-	if !ok {
-		return nil, apierrors.NewNotFound(v1beta2.Resource("sharemanager"), name)
-	}
-	return sm, nil
-}
-
-// GetVolumeFromProvidedCache gets the volume from the provided cached `resourceMap`. This method is not thread-safe.
-func GetVolumeFromProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, name string) (*v1beta2.Volume, error) {
-	volumes, err := ListAndUpdateVolumesInProvidedCache(namespace, lhClient, resourceMaps)
-	if err != nil {
-		return nil, err
-	}
-	volume, ok := volumes[name]
-	if !ok {
-		return nil, apierrors.NewNotFound(v1beta2.Resource("volume"), name)
-	}
-	return volume, nil
-}
-
-// GetBackingImageFromProvidedCache gets the backingImage from the provided cached `resourceMap`. This method is not thread-safe.
-func GetBackingImageFromProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, name string) (*v1beta2.BackingImage, error) {
-	bis, err := ListAndUpdateBackingImagesInProvidedCache(namespace, lhClient, resourceMaps)
-	if err != nil {
-		return nil, err
-	}
-	bi, ok := bis[name]
-	if !ok {
-		return nil, apierrors.NewNotFound(v1beta2.Resource("backingimage"), name)
-	}
-	return bi, nil
-}
-
-// GetBackingImageDataSourceFromProvidedCache gets the backingImageDataSource from the provided cached `resourceMap`. This method is not thread-safe.
-func GetBackingImageDataSourceFromProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, name string) (*v1beta2.BackingImageDataSource, error) {
-	bidss, err := ListAndUpdateBackingImageDataSourcesInProvidedCache(namespace, lhClient, resourceMaps)
-	if err != nil {
-		return nil, err
-	}
-	bids, ok := bidss[name]
-	if !ok {
-		return nil, apierrors.NewNotFound(v1beta2.Resource("backingimagedatasource"), name)
-	}
-	return bids, nil
-}
-
-// GetRecurringJobFromProvidedCache gets the recurringJob from the provided cached `resourceMap`. This method is not thread-safe.
-func GetRecurringJobFromProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, name string) (*v1beta2.RecurringJob, error) {
-	recurringJobs, err := ListAndUpdateRecurringJobsInProvidedCache(namespace, lhClient, resourceMaps)
-	if err != nil {
-		return nil, err
-	}
-	recurringJob, ok := recurringJobs[name]
-	if !ok {
-		return nil, apierrors.NewNotFound(v1beta2.Resource("recurringjob"), name)
-	}
-	return recurringJob, nil
-}
-
 // CreateAndUpdateRecurringJobInProvidedCache creates a recurringJob and saves it into the provided cached `resourceMap`. This method is not thread-safe.
 func CreateAndUpdateRecurringJobInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, job *longhorn.RecurringJob) (*v1beta2.RecurringJob, error) {
 	obj, err := lhClient.LonghornV1beta2().RecurringJobs(namespace).Create(context.TODO(), job, metav1.CreateOptions{})
@@ -680,7 +603,7 @@ func CreateAndUpdateBackingImageInProvidedCache(namespace string, lhClient *lhcl
 	return obj, nil
 }
 
-// UpdateResources persists all the resources in provided cached `resourceMap`. This method is not thread-safe.
+// UpdateResources persists all the resources' spec changes in provided cached `resourceMap`. This method is not thread-safe.
 func UpdateResources(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) error {
 	var err error
 
@@ -710,6 +633,10 @@ func UpdateResources(namespace string, lhClient *lhclientset.Clientset, resource
 			err = updateSettings(namespace, lhClient, resourceMap.(map[string]*longhorn.Setting))
 		case types.LonghornKindVolumeAttachment:
 			err = updateVolumeAttachments(namespace, lhClient, resourceMap.(map[string]*longhorn.VolumeAttachment))
+		case types.LonghornKindSnapshot:
+			err = updateSnapshots(namespace, lhClient, resourceMap.(map[string]*longhorn.Snapshot))
+		case types.LonghornKindOrphan:
+			err = updateOrphans(namespace, lhClient, resourceMap.(map[string]*longhorn.Orphan))
 		default:
 			return fmt.Errorf("resource kind %v is not able to updated", resourceKind)
 		}
@@ -727,27 +654,18 @@ func updateNodes(namespace string, lhClient *lhclientset.Clientset, nodes map[st
 	if err != nil {
 		return err
 	}
-
 	for _, existingNode := range existingNodeList.Items {
 		node, ok := nodes[existingNode.Name]
 		if !ok {
 			continue
 		}
-
-		if !reflect.DeepEqual(existingNode.Status, node.Status) {
-			if _, err = lhClient.LonghornV1beta2().Nodes(namespace).UpdateStatus(context.TODO(), node, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				return err
-			}
-		}
-
 		if !reflect.DeepEqual(existingNode.Spec, node.Spec) ||
 			!reflect.DeepEqual(existingNode.ObjectMeta, node.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().Nodes(namespace).Update(context.TODO(), node, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().Nodes(namespace).Update(context.TODO(), node, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -756,27 +674,18 @@ func updateVolumes(namespace string, lhClient *lhclientset.Clientset, volumes ma
 	if err != nil {
 		return err
 	}
-
 	for _, existingVolume := range existingVolumeList.Items {
 		volume, ok := volumes[existingVolume.Name]
 		if !ok {
 			continue
 		}
-
-		if !reflect.DeepEqual(existingVolume.Status, volume.Status) {
-			if _, err = lhClient.LonghornV1beta2().Volumes(namespace).UpdateStatus(context.TODO(), volume, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				return err
-			}
-		}
-
 		if !reflect.DeepEqual(existingVolume.Spec, volume.Spec) ||
 			!reflect.DeepEqual(existingVolume.ObjectMeta, volume.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().Volumes(namespace).Update(context.TODO(), volume, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().Volumes(namespace).Update(context.TODO(), volume, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -785,27 +694,18 @@ func updateReplicas(namespace string, lhClient *lhclientset.Clientset, replicas 
 	if err != nil {
 		return err
 	}
-
 	for _, existingReplica := range existingReplicaList.Items {
 		replica, ok := replicas[existingReplica.Name]
 		if !ok {
 			continue
 		}
-
-		if !reflect.DeepEqual(existingReplica.Status, replica.Status) {
-			if _, err = lhClient.LonghornV1beta2().Replicas(namespace).UpdateStatus(context.TODO(), replica, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				return err
-			}
-		}
-
 		if !reflect.DeepEqual(existingReplica.Spec, replica.Spec) ||
 			!reflect.DeepEqual(existingReplica.ObjectMeta, replica.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().Replicas(namespace).Update(context.TODO(), replica, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().Replicas(namespace).Update(context.TODO(), replica, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -814,27 +714,18 @@ func updateEngines(namespace string, lhClient *lhclientset.Clientset, engines ma
 	if err != nil {
 		return err
 	}
-
 	for _, existingEngine := range existingEngineList.Items {
 		engine, ok := engines[existingEngine.Name]
 		if !ok {
 			continue
 		}
-
-		if !reflect.DeepEqual(existingEngine.Status, engine.Status) {
-			if _, err = lhClient.LonghornV1beta2().Engines(namespace).UpdateStatus(context.TODO(), engine, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				return err
-			}
-		}
-
 		if !reflect.DeepEqual(existingEngine.Spec, engine.Spec) ||
 			!reflect.DeepEqual(existingEngine.ObjectMeta, engine.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().Engines(namespace).Update(context.TODO(), engine, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().Engines(namespace).Update(context.TODO(), engine, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -849,21 +740,13 @@ func updateBackups(namespace string, lhClient *lhclientset.Clientset, backups ma
 		if !ok {
 			continue
 		}
-
-		if !reflect.DeepEqual(existingBackup.Status, backup.Status) {
-			if _, err = lhClient.LonghornV1beta2().Backups(namespace).UpdateStatus(context.TODO(), backup, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				return err
-			}
-		}
-
 		if !reflect.DeepEqual(existingBackup.Spec, backup.Spec) ||
 			!reflect.DeepEqual(existingBackup.ObjectMeta, backup.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().Backups(namespace).Update(context.TODO(), backup, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().Backups(namespace).Update(context.TODO(), backup, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -872,27 +755,18 @@ func updateEngineImages(namespace string, lhClient *lhclientset.Clientset, engin
 	if err != nil {
 		return err
 	}
-
 	for _, existingEngineImage := range existingEngineImageList.Items {
 		engineImage, ok := engineImages[existingEngineImage.Name]
 		if !ok {
 			continue
 		}
-
-		if !reflect.DeepEqual(existingEngineImage.Status, engineImage.Status) {
-			if _, err = lhClient.LonghornV1beta2().EngineImages(namespace).UpdateStatus(context.TODO(), engineImage, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				return err
-			}
-		}
-
 		if !reflect.DeepEqual(existingEngineImage.Spec, engineImage.Spec) ||
 			!reflect.DeepEqual(existingEngineImage.ObjectMeta, engineImage.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().EngineImages(namespace).Update(context.TODO(), engineImage, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().EngineImages(namespace).Update(context.TODO(), engineImage, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -901,27 +775,18 @@ func updateInstanceManagers(namespace string, lhClient *lhclientset.Clientset, i
 	if err != nil {
 		return err
 	}
-
 	for _, existingInstanceManager := range existingInstanceManagerList.Items {
 		instanceManager, ok := instanceManagers[existingInstanceManager.Name]
 		if !ok {
 			continue
 		}
-
-		if !reflect.DeepEqual(existingInstanceManager.Status, instanceManager.Status) {
-			if _, err = lhClient.LonghornV1beta2().InstanceManagers(namespace).UpdateStatus(context.TODO(), instanceManager, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				return err
-			}
-		}
-
 		if !reflect.DeepEqual(existingInstanceManager.Spec, instanceManager.Spec) ||
 			!reflect.DeepEqual(existingInstanceManager.ObjectMeta, instanceManager.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().InstanceManagers(namespace).Update(context.TODO(), instanceManager, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().InstanceManagers(namespace).Update(context.TODO(), instanceManager, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -930,27 +795,18 @@ func updateShareManagers(namespace string, lhClient *lhclientset.Clientset, shar
 	if err != nil {
 		return err
 	}
-
 	for _, existingShareManager := range existingShareManagerList.Items {
 		shareManager, ok := shareManagers[existingShareManager.Name]
 		if !ok {
 			continue
 		}
-
-		if !reflect.DeepEqual(existingShareManager.Status, shareManager.Status) {
-			if _, err = lhClient.LonghornV1beta2().ShareManagers(namespace).UpdateStatus(context.TODO(), shareManager, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				return err
-			}
-		}
-
 		if !reflect.DeepEqual(existingShareManager.Spec, shareManager.Spec) ||
 			!reflect.DeepEqual(existingShareManager.ObjectMeta, shareManager.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().ShareManagers(namespace).Update(context.TODO(), shareManager, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().ShareManagers(namespace).Update(context.TODO(), shareManager, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -959,27 +815,18 @@ func updateBackingImages(namespace string, lhClient *lhclientset.Clientset, back
 	if err != nil {
 		return err
 	}
-
 	for _, existingBackingImage := range existingBackingImagesList.Items {
 		backingImage, ok := backingImages[existingBackingImage.Name]
 		if !ok {
 			continue
 		}
-
-		if !reflect.DeepEqual(existingBackingImage.Status, backingImage.Status) {
-			if _, err = lhClient.LonghornV1beta2().BackingImages(namespace).UpdateStatus(context.TODO(), backingImage, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				return err
-			}
-		}
-
 		if !reflect.DeepEqual(existingBackingImage.Spec, backingImage.Spec) ||
 			!reflect.DeepEqual(existingBackingImage.ObjectMeta, backingImage.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().BackingImages(namespace).Update(context.TODO(), backingImage, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().BackingImages(namespace).Update(context.TODO(), backingImage, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -988,27 +835,18 @@ func updateRecurringJobs(namespace string, lhClient *lhclientset.Clientset, recu
 	if err != nil {
 		return err
 	}
-
 	for _, existingRecurringJob := range existingRecurringJobList.Items {
 		recurringJob, ok := recurringJobs[existingRecurringJob.Name]
 		if !ok {
 			continue
 		}
-
-		if !reflect.DeepEqual(existingRecurringJob.Status, recurringJob.Status) {
-			if _, err = lhClient.LonghornV1beta2().RecurringJobs(namespace).UpdateStatus(context.TODO(), recurringJob, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				return err
-			}
-		}
-
 		if !reflect.DeepEqual(existingRecurringJob.Spec, recurringJob.Spec) ||
 			!reflect.DeepEqual(existingRecurringJob.ObjectMeta, recurringJob.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().RecurringJobs(namespace).Update(context.TODO(), recurringJob, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().RecurringJobs(namespace).Update(context.TODO(), recurringJob, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -1025,12 +863,52 @@ func updateSettings(namespace string, lhClient *lhclientset.Clientset, settings 
 		}
 
 		if !reflect.DeepEqual(existingSetting.Value, setting.Value) {
-			if _, err = lhClient.LonghornV1beta2().Settings(namespace).Update(context.TODO(), setting, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
+			if _, err = lhClient.LonghornV1beta2().Settings(namespace).Update(context.TODO(), setting, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}
 	}
 
+	return nil
+}
+
+func updateSnapshots(namespace string, lhClient *lhclientset.Clientset, snapshots map[string]*longhorn.Snapshot) error {
+	existingSnapshotList, err := lhClient.LonghornV1beta2().Snapshots(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, existingSnapshot := range existingSnapshotList.Items {
+		snapshot, ok := snapshots[existingSnapshot.Name]
+		if !ok {
+			continue
+		}
+		if !reflect.DeepEqual(existingSnapshot.Spec, snapshot.Spec) ||
+			!reflect.DeepEqual(existingSnapshot.ObjectMeta, snapshot.ObjectMeta) {
+			if _, err = lhClient.LonghornV1beta2().Snapshots(namespace).Update(context.TODO(), snapshot, metav1.UpdateOptions{}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func updateOrphans(namespace string, lhClient *lhclientset.Clientset, orphans map[string]*longhorn.Orphan) error {
+	existingOrphanList, err := lhClient.LonghornV1beta2().Orphans(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, existingOrphan := range existingOrphanList.Items {
+		orphan, ok := orphans[existingOrphan.Name]
+		if !ok {
+			continue
+		}
+		if !reflect.DeepEqual(existingOrphan.Spec, orphan.Spec) ||
+			!reflect.DeepEqual(existingOrphan.ObjectMeta, orphan.ObjectMeta) {
+			if _, err = lhClient.LonghornV1beta2().Orphans(namespace).Update(context.TODO(), orphan, metav1.UpdateOptions{}); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
@@ -1049,10 +927,49 @@ func updateVolumeAttachments(namespace string, lhClient *lhclientset.Clientset, 
 		if _, ok := existingVolumeAttachmentMap[va.Name]; ok {
 			continue
 		}
-		if _, err = lhClient.LonghornV1beta2().VolumeAttachments(namespace).Create(context.TODO(), va, metav1.CreateOptions{}); err != nil && !apierrors.IsAlreadyExists(errors.Cause(err)) {
+		if _, err = lhClient.LonghornV1beta2().VolumeAttachments(namespace).Create(context.TODO(), va, metav1.CreateOptions{}); err != nil {
 			return err
 		}
 	}
 
+	return nil
+}
+
+// UpdateResourcesStatus persists all the resources' status changes in provided cached `resourceMap`. This method is not thread-safe.
+func UpdateResourcesStatus(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) error {
+	var err error
+
+	for resourceKind, resourceMap := range resourceMaps {
+		switch resourceKind {
+		case types.LonghornKindNode:
+			err = updateNodesStatus(namespace, lhClient, resourceMap.(map[string]*longhorn.Node))
+		default:
+			return fmt.Errorf("resource kind %v is not able to updated", resourceKind)
+		}
+
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func updateNodesStatus(namespace string, lhClient *lhclientset.Clientset, nodes map[string]*longhorn.Node) error {
+	existingNodeList, err := lhClient.LonghornV1beta2().Nodes(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, existingNode := range existingNodeList.Items {
+		node, ok := nodes[existingNode.Name]
+		if !ok {
+			continue
+		}
+		if !reflect.DeepEqual(existingNode.Status, node.Status) {
+			if _, err = lhClient.LonghornV1beta2().Nodes(namespace).UpdateStatus(context.TODO(), node, metav1.UpdateOptions{}); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
@@ -33,6 +34,7 @@ func (n *nodeValidator) Resource() admission.Resource {
 		APIVersion: longhorn.SchemeGroupVersion.Version,
 		ObjectType: &longhorn.Node{},
 		OperationTypes: []admissionregv1.OperationType{
+			admissionregv1.Create,
 			admissionregv1.Update,
 		},
 	}
@@ -42,6 +44,20 @@ func (n *nodeValidator) Create(request *admission.Request, newObj runtime.Object
 	node := newObj.(*longhorn.Node)
 	if node.Spec.InstanceManagerCPURequest < 0 {
 		return werror.NewInvalidError("instanceManagerCPURequest should be greater than or equal to 0", "")
+	}
+
+	spdkEnabled, err := n.ds.GetSettingAsBool(types.SettingNameSpdk)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to get spdk setting")
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
+	for name, disk := range node.Spec.Disks {
+		if !spdkEnabled {
+			if disk.Type == longhorn.DiskTypeBlock {
+				return werror.NewInvalidError(fmt.Sprintf("disk %v type %v is not supported since SPDK data engine is disabled", name, disk.Type), "")
+			}
+		}
 	}
 
 	return nil
@@ -107,15 +123,27 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 		}
 	}
 
-	// Validate StorageReserved and Disk.Tags
+	spdkEnabled, err := n.ds.GetSettingAsBool(types.SettingNameSpdk)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to get spdk setting")
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
+	// Validate Disks StorageReserved, Tags and Type
 	for name, disk := range newNode.Spec.Disks {
 		if disk.StorageReserved < 0 {
 			return werror.NewInvalidError(fmt.Sprintf("update disk on node %v error: The storageReserved setting of disk %v(%v) is not valid, should be positive and no more than storageMaximum and storageAvailable",
-				name, name, disk.Path), "")
+				newNode.Name, name, disk.Path), "")
 		}
 		_, err := util.ValidateTags(disk.Tags)
 		if err != nil {
 			return werror.NewInvalidError(err.Error(), "")
+		}
+		if !spdkEnabled {
+			if disk.Type == longhorn.DiskTypeBlock {
+				return werror.NewInvalidError(fmt.Sprintf("update disk on node %v error: The disk %v(%v) is a block device, but the SPDK feature is not enabled",
+					newNode.Name, name, disk.Path), "")
+			}
 		}
 	}
 
@@ -125,6 +153,15 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 			if disk.AllowScheduling || oldNode.Status.DiskStatus[name].StorageScheduled != 0 {
 				logrus.Infof("Delete Disk on node %v error: Please disable the disk %v and remove all replicas first ", name, disk.Path)
 				return werror.NewInvalidError(fmt.Sprintf("Delete Disk on node %v error: Please disable the disk %v and remove all replicas first ", name, disk.Path), "")
+			}
+		}
+	}
+
+	// Validate disk type change, the disk type is not allow to change
+	for name, disk := range oldNode.Spec.Disks {
+		if newDisk, ok := newNode.Spec.Disks[name]; ok {
+			if disk.Type != "" && disk.Type != newDisk.Type {
+				return werror.NewInvalidError(fmt.Sprintf("update disk on node %v error: The disk %v(%v) type is not allow to change", newNode.Name, name, disk.Path), "")
 			}
 		}
 	}

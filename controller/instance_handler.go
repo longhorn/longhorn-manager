@@ -258,11 +258,14 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 
 	if spec.LogRequested {
 		if !status.LogFetched {
-			logrus.Warnf("Try to get requested log for %v in instance manager %v", instanceName, status.InstanceManagerName)
-			if im == nil {
-				logrus.Warnf("Cannot get the log for %v due to Instance Manager is already gone", status.InstanceManagerName)
-			} else if err := h.printInstanceLogs(instanceName, runtimeObj); err != nil {
-				logrus.Warnf("cannot get requested log for instance %v on node %v, error %v", instanceName, im.Spec.NodeID, err)
+			// No need to get the log for instance manager if the backend store driver is not "longhorn"
+			if spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+				logrus.Warnf("Try to get requested log for %v in instance manager %v", instanceName, status.InstanceManagerName)
+				if im == nil {
+					logrus.Warnf("Cannot get the log for %v due to Instance Manager is already gone", status.InstanceManagerName)
+				} else if err := h.printInstanceLogs(instanceName, runtimeObj); err != nil {
+					logrus.WithError(err).Warnf("Cannot get requested log for instance %v on node %v", instanceName, im.Spec.NodeID)
+				}
 			}
 			status.LogFetched = true
 		}
@@ -307,7 +310,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 			break
 		}
 
-		err = h.createInstance(instanceName, runtimeObj)
+		err = h.createInstance(instanceName, spec.BackendStoreDriver, runtimeObj)
 		if err != nil {
 			return err
 		}
@@ -335,9 +338,11 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		if im != nil && im.DeletionTimestamp == nil {
 			// there is a delay between deleteInstance() invocation and state/InstanceManager update,
 			// deleteInstance() may be called multiple times.
-			if _, exists := instances[instanceName]; exists {
-				if err := h.deleteInstance(instanceName, runtimeObj); err != nil {
-					return err
+			if instance, exists := instances[instanceName]; exists {
+				if shouldDeleteInstance(&instance) {
+					if err := h.deleteInstance(instanceName, runtimeObj); err != nil {
+						return err
+					}
 				}
 			}
 		}
@@ -381,15 +386,28 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 					longhorn.InstanceConditionReasonInstanceCreationFailure, instance.Status.ErrorMsg)
 			}
 
-			logrus.Warnf("Instance %v crashed on Instance Manager %v at %v, try to get log",
-				instanceName, im.Name, im.Spec.NodeID)
-			if err := h.printInstanceLogs(instanceName, runtimeObj); err != nil {
-				logrus.WithError(err).Warnf("cannot get crash log for instance %v on Instance Manager %v at %v",
+			if instance.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+				logrus.Warnf("Instance %v crashed on Instance Manager %v at %v, try to get log",
 					instanceName, im.Name, im.Spec.NodeID)
+				if err := h.printInstanceLogs(instanceName, runtimeObj); err != nil {
+					logrus.WithError(err).Warnf("cannot get crash log for instance %v on Instance Manager %v at %v",
+						instanceName, im.Name, im.Spec.NodeID)
+				}
 			}
 		}
 	}
 	return nil
+}
+
+func shouldDeleteInstance(instance *longhorn.InstanceProcess) bool {
+	// For a replica of a SPDK volume, a stopped replica means the lvol is not exposed,
+	// but the lvol is still there. We don't need to delete it.
+	if instance.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+		if instance.Status.State == longhorn.InstanceStateStopped {
+			return false
+		}
+	}
+	return true
 }
 
 func (h *InstanceHandler) getInstancesFromInstanceManager(obj runtime.Object, instanceManager *longhorn.InstanceManager) (map[string]longhorn.InstanceProcess, error) {
@@ -424,13 +442,13 @@ func (h *InstanceHandler) printInstanceLogs(instanceName string, obj runtime.Obj
 	return nil
 }
 
-func (h *InstanceHandler) createInstance(instanceName string, obj runtime.Object) error {
+func (h *InstanceHandler) createInstance(instanceName string, backendStoreDriver longhorn.BackendStoreDriverType, obj runtime.Object) error {
 	_, err := h.instanceManagerHandler.GetInstance(obj)
 	if err == nil {
 		logrus.Debugf("Instance process %v had been created, need to wait for instance manager update", instanceName)
 		return nil
 	}
-	if !types.ErrorIsNotFound(err) {
+	if !types.ErrorIsNotFound(err) && !(backendStoreDriver == longhorn.BackendStoreDriverTypeSPDK && types.ErrorIsStopped(err)) {
 		logrus.WithError(err).Errorf("Failed to get instance process %v", instanceName)
 		return err
 	}

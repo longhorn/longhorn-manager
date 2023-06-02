@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"fmt"
+
 	"github.com/pkg/errors"
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -74,6 +76,10 @@ func mutateEngine(newObj runtime.Object, needFinalizer bool) (admission.PatchOps
 			return nil, werror.NewInvalidError(err.Error(), "")
 		}
 		patchOps = append(patchOps, patchOp)
+	}
+
+	if string(engine.Spec.BackendStoreDriver) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeLonghorn))
 	}
 
 	return patchOps, nil

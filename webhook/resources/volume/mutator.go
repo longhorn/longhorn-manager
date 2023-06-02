@@ -220,6 +220,39 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupCompressionMethod", "value": "%s"}`, defaultCompressionMethod))
 	}
 
+	if string(volume.Spec.BackendStoreDriver) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeLonghorn))
+	}
+
+	// TODO: Remove the mutations below after they are implemented for SPDK volumes
+	if volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+		if volume.Spec.Encrypted {
+			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/encrypted", "value": false}`)
+		}
+
+		if volume.Spec.BackingImage != "" {
+			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/backingImage", "value": ""}`)
+		}
+		if volume.Spec.DataLocality != longhorn.DataLocalityDisabled {
+			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataLocality", "value": "%s"}`, longhorn.DataLocalityDisabled))
+		}
+		if volume.Spec.SnapshotDataIntegrity != longhorn.SnapshotDataIntegrityDisabled {
+			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/snapshotDataIntegrity", "value": "%s"}`, longhorn.SnapshotDataIntegrityDisabled))
+		}
+		if volume.Spec.ReplicaAutoBalance != longhorn.ReplicaAutoBalanceDisabled {
+			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaAutoBalance", "value": "%s"}`, longhorn.ReplicaAutoBalanceIgnored))
+		}
+		if volume.Spec.RestoreVolumeRecurringJob != longhorn.RestoreVolumeRecurringJobDisabled {
+			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/restoreVolumeRecurringJob", "value": "%s"}`, longhorn.RestoreVolumeRecurringJobDefault))
+		}
+		if volume.Spec.ReplicaSoftAntiAffinity != longhorn.ReplicaSoftAntiAffinityDisabled {
+			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaSoftAntiAffinityDefault))
+		}
+		if volume.Spec.ReplicaZoneSoftAntiAffinity != longhorn.ReplicaZoneSoftAntiAffinityDisabled {
+			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaZoneSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaZoneSoftAntiAffinityDefault))
+		}
+	}
+
 	return patchOps, nil
 }
 
@@ -254,6 +287,9 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 	}
 	if string(volume.Spec.ReplicaZoneSoftAntiAffinity) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaZoneSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaZoneSoftAntiAffinityDefault))
+	}
+	if string(volume.Spec.BackendStoreDriver) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeLonghorn))
 	}
 
 	size := util.RoundUpSize(volume.Spec.Size)

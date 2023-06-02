@@ -26,6 +26,8 @@ type BackupVolume struct {
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 
 	Size string `json:"size,omitempty" yaml:"size,omitempty"`
+
+	StorageClassName string `json:"storageClassName,omitempty" yaml:"storage_class_name,omitempty"`
 }
 
 type BackupVolumeCollection struct {

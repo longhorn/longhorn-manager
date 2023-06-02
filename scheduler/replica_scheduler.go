@@ -71,8 +71,8 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 	nodeDisksMap := map[string]map[string]struct{}{}
 	for _, node := range nodeCandidates {
 		disks := map[string]struct{}{}
-		for fsid, diskStatus := range node.Status.DiskStatus {
-			diskSpec, exists := node.Spec.Disks[fsid]
+		for diskName, diskStatus := range node.Status.DiskStatus {
+			diskSpec, exists := node.Spec.Disks[diskName]
 			if !exists {
 				continue
 			}
@@ -298,17 +298,17 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 
 	// find disk that fit for current replica
 	for diskUUID := range disks {
-		var fsid string
+		var diskName string
 		var diskSpec longhorn.DiskSpec
 		var diskStatus *longhorn.DiskStatus
 		diskFound := false
-		for fsid, diskStatus = range node.Status.DiskStatus {
+		for diskName, diskStatus = range node.Status.DiskStatus {
 			if diskStatus.DiskUUID != diskUUID {
 				continue
 			}
 			if !requireSchedulingCheck || types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status == longhorn.ConditionStatusTrue {
 				diskFound = true
-				diskSpec = node.Spec.Disks[fsid]
+				diskSpec = node.Spec.Disks[diskName]
 				break
 			}
 		}
@@ -317,6 +317,13 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 			multiError.Append(util.NewMultiError(longhorn.ErrorReplicaScheduleDiskNotFound))
 			continue
 		}
+
+		if !(volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn && diskSpec.Type == longhorn.DiskTypeFilesystem) &&
+			!(volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK && diskSpec.Type == longhorn.DiskTypeBlock) {
+			logrus.Debugf("Volume %v is not compatible with disk %v", volume.Name, diskName)
+			continue
+		}
+
 		if requireSchedulingCheck {
 			info, err := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus)
 			if err != nil {

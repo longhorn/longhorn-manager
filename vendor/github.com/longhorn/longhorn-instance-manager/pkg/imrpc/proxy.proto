@@ -5,6 +5,8 @@ package imrpc;
 import "google/protobuf/empty.proto";
 import "github.com/longhorn/longhorn-engine/proto/ptypes/controller.proto";
 import "github.com/longhorn/longhorn-engine/proto/ptypes/syncagent.proto";
+import "github.com/longhorn/longhorn-instance-manager/pkg/imrpc/common.proto";
+
 
 service ProxyEngineService {
 	rpc ServerVersionGet(ProxyEngineRequest) returns (EngineVersionProxyResponse);
@@ -43,6 +45,8 @@ service ProxyEngineService {
 
 message ProxyEngineRequest{
 	string address = 1;
+	BackendStoreDriver backend_store_driver = 2;
+	string engine_name = 3;
 }
 
 message EngineVersionProxyResponse {
@@ -229,6 +233,7 @@ message EngineReplicaRemoveRequest {
 	ProxyEngineRequest proxy_engine_request = 1;
 
 	string replica_address = 2;
+	string replica_name = 3;
 }
 
 message EngineReplicaModeUpdateRequest {

@@ -302,23 +302,25 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 
 	if replica.DeletionTimestamp != nil {
 		if err := rc.DeleteInstance(replica); err != nil {
-			return errors.Wrapf(err, "failed to cleanup the related replica process before deleting replica %v", replica.Name)
+			return errors.Wrapf(err, "failed to cleanup the related replica instance before deleting replica %v", replica.Name)
 		}
 
 		if replica.Spec.NodeID != "" && replica.Spec.NodeID != rc.controllerID {
 			log.Warn("can't cleanup replica's data because the replica's data is not on this node")
 		} else if replica.Spec.NodeID != "" {
-			if replica.Spec.Active && dataPath != "" {
-				// prevent accidentally deletion
-				if !strings.Contains(filepath.Base(filepath.Clean(dataPath)), "-") {
-					return fmt.Errorf("%v doesn't look like a replica data path", dataPath)
+			if replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+				if replica.Spec.Active && dataPath != "" {
+					// prevent accidentally deletion
+					if !strings.Contains(filepath.Base(filepath.Clean(dataPath)), "-") {
+						return fmt.Errorf("%v doesn't look like a replica data path", dataPath)
+					}
+					if err := util.RemoveHostDirectoryContent(dataPath); err != nil {
+						return errors.Wrapf(err, "cannot cleanup after replica %v at %v", replica.Name, dataPath)
+					}
+					log.Debug("Cleanup replica completed")
+				} else {
+					log.Debug("Didn't cleanup replica since it's not the active one for the path or the path is empty")
 				}
-				if err := util.RemoveHostDirectoryContent(dataPath); err != nil {
-					return errors.Wrapf(err, "cannot cleanup after replica %v at %v", replica.Name, dataPath)
-				}
-				log.Debug("Cleanup replica completed")
-			} else {
-				log.Debug("Didn't cleanup replica since it's not the active one for the path or the path is empty")
 			}
 		}
 
@@ -358,12 +360,12 @@ func (rc *ReplicaController) enqueueReplica(obj interface{}) {
 func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
-		return nil, fmt.Errorf("BUG: invalid object for replica process creation: %v", obj)
+		return nil, fmt.Errorf("BUG: invalid object for replica instance creation: %v", obj)
 	}
 
 	dataPath := types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName)
 	if r.Spec.NodeID == "" || dataPath == "" || r.Spec.DiskID == "" || r.Spec.VolumeSize == 0 {
-		return nil, fmt.Errorf("missing parameters for replica process creation: %v", r)
+		return nil, fmt.Errorf("missing parameters for replica instance creation: %v", r)
 	}
 
 	var err error
@@ -407,7 +409,39 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		return nil, err
 	}
 
-	return c.ReplicaProcessCreate(r, dataPath, backingImagePath, v.Spec.DataLocality, engineCLIAPIVersion)
+	diskName, err := rc.getDiskNameFromUUID(r)
+	if err != nil {
+		return nil, err
+	}
+
+	exposeRequired := true
+	if v.Spec.NodeID == rc.controllerID {
+		exposeRequired = false
+	}
+
+	return c.ReplicaInstanceCreate(&engineapi.ReplicaInstanceCreateRequest{
+		Replica:             r,
+		DiskName:            diskName,
+		DataPath:            dataPath,
+		BackingImagePath:    backingImagePath,
+		DataLocality:        v.Spec.DataLocality,
+		ExposeRequired:      exposeRequired,
+		ImIP:                im.Status.IP,
+		EngineCLIAPIVersion: engineCLIAPIVersion,
+	})
+}
+
+func (rc *ReplicaController) getDiskNameFromUUID(r *longhorn.Replica) (string, error) {
+	node, err := rc.ds.GetNodeRO(rc.controllerID)
+	if err != nil {
+		return "", err
+	}
+	for name, disk := range node.Status.DiskStatus {
+		if disk.DiskUUID == r.Spec.DiskID {
+			return name, nil
+		}
+	}
+	return "", fmt.Errorf("cannot find disk name for replica %v", r.Name)
 }
 
 func (rc *ReplicaController) GetBackingImagePathForReplicaStarting(r *longhorn.Replica) (string, error) {
@@ -460,7 +494,7 @@ func (rc *ReplicaController) CanStartRebuildingReplica(r *longhorn.Replica) (boo
 	}
 
 	// If the concurrent value is 0, Longhorn will rely on
-	// skipping replica replenishment rather than blocking process launching here to disable the rebuilding.
+	// skipping replica replenishment rather than blocking instance launching here to disable the rebuilding.
 	// Otherwise, the newly created replicas will keep hanging up there.
 	if concurrentRebuildingLimit < 1 {
 		return true, nil
@@ -518,7 +552,7 @@ func (rc *ReplicaController) CanStartRebuildingReplica(r *longhorn.Replica) (boo
 func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
-		return fmt.Errorf("BUG: invalid object for replica process deletion: %v", obj)
+		return fmt.Errorf("BUG: invalid object for replica instance deletion: %v", obj)
 	}
 	log := getLoggerForReplica(rc.logger, r)
 
@@ -531,15 +565,15 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	// Not assigned or not updated, try best to delete
 	if r.Status.InstanceManagerName == "" {
 		if r.Spec.NodeID == "" {
-			log.Warnf("Replica %v does not set instance manager name and node ID, will skip the actual process deletion", r.Name)
+			log.Warnf("Replica %v does not set instance manager name and node ID, will skip the actual instance deletion", r.Name)
 			return nil
 		}
 		im, err = rc.ds.GetInstanceManagerByInstance(obj)
 		if err != nil {
-			log.Warnf("Failed to detect instance manager for replica %v, will skip the actual process deletion: %v", r.Name, err)
+			log.Warnf("Failed to detect instance manager for replica %v, will skip the actual instance deletion: %v", r.Name, err)
 			return nil
 		}
-		log.Infof("Try best to clean up the process for replica %v in instance manager %v", r.Name, im.Name)
+		log.Infof("Try best to clean up the instance for replica %v in instance manager %v", r.Name, im.Name)
 	} else {
 		im, err = rc.ds.GetInstanceManager(r.Status.InstanceManagerName)
 		if err != nil {
@@ -562,7 +596,13 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	}
 	defer c.Close()
 
-	if err := c.ProcessDelete(r.Name); err != nil && !types.ErrorIsNotFound(err) {
+	// No need to delete the instance if the replica is backed by a SPDK lvol
+	cleanupRequired := false
+	if canDeleteInstance(r) {
+		cleanupRequired = true
+	}
+	err = c.InstanceDelete(r.Spec.BackendStoreDriver, r.Name, string(longhorn.InstanceManagerTypeReplica), r.Spec.DiskID, cleanupRequired)
+	if err != nil && !types.ErrorIsNotFound(err) {
 		return err
 	}
 
@@ -580,6 +620,11 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	}
 
 	return nil
+}
+
+func canDeleteInstance(r *longhorn.Replica) bool {
+	return r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn ||
+		(r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK && r.DeletionTimestamp != nil)
 }
 
 func deleteUnixSocketFile(volumeName string) error {
@@ -649,7 +694,7 @@ func (rc *ReplicaController) deleteOldReplicaPod(pod *v1.Pod, r *longhorn.Replic
 func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
-		return nil, fmt.Errorf("BUG: invalid object for replica process get: %v", obj)
+		return nil, fmt.Errorf("BUG: invalid object for replica instance get: %v", obj)
 	}
 
 	var (
@@ -673,13 +718,24 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstancePro
 	}
 	defer c.Close()
 
-	return c.ProcessGet(r.Name)
+	instance, err := c.InstanceGet(r.Spec.BackendStoreDriver, r.Name, string(longhorn.InstanceManagerTypeReplica))
+	if err != nil {
+		return nil, err
+	}
+
+	if instance.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+		if instance.Status.State == longhorn.InstanceStateStopped {
+			return nil, fmt.Errorf("instance %v is stopped", instance.Spec.Name)
+		}
+	}
+
+	return instance, nil
 }
 
 func (rc *ReplicaController) LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
-		return nil, nil, fmt.Errorf("BUG: invalid object for replica process log: %v", obj)
+		return nil, nil, fmt.Errorf("BUG: invalid object for replica instance log: %v", obj)
 	}
 
 	im, err := rc.ds.GetInstanceManager(r.Status.InstanceManagerName)
@@ -692,7 +748,7 @@ func (rc *ReplicaController) LogInstance(ctx context.Context, obj interface{}) (
 	}
 
 	// TODO: #2441 refactor this when we do the resource monitoring refactor
-	stream, err := c.ProcessLog(ctx, r.Name)
+	stream, err := c.InstanceLog(ctx, r.Spec.BackendStoreDriver, r.Name, string(longhorn.InstanceManagerTypeReplica))
 	return c, stream, err
 }
 

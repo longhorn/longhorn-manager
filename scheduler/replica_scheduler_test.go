@@ -146,6 +146,7 @@ func newCondition(conditionType string, status longhorn.ConditionStatus) longhor
 
 func newDisk(path string, allowScheduling bool, storageReserved int64) longhorn.DiskSpec {
 	return longhorn.DiskSpec{
+		Type:            longhorn.DiskTypeFilesystem,
 		Path:            path,
 		AllowScheduling: allowScheduling,
 		StorageReserved: storageReserved,
@@ -167,6 +168,7 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 			EngineImage:                 TestEngineImage,
 			ReplicaSoftAntiAffinity:     longhorn.ReplicaSoftAntiAffinityDefault,
 			ReplicaZoneSoftAntiAffinity: longhorn.ReplicaZoneSoftAntiAffinityDefault,
+			BackendStoreDriver:          longhorn.BackendStoreDriverTypeLonghorn,
 		},
 		Status: longhorn.VolumeStatus{
 			OwnerID: TestOwnerID1,
@@ -282,6 +284,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode1, "1"),
+			Type:     longhorn.DiskTypeFilesystem,
 		},
 	}
 	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
@@ -296,6 +299,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
 			DiskUUID:         getDiskID(TestNode2, "1"),
+			Type:             longhorn.DiskTypeFilesystem,
 		},
 	}
 	tc.engineImage.Status.NodeDeploymentMap[node2.Name] = true
@@ -310,6 +314,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
 			DiskUUID:         getDiskID(TestNode3, "1"),
+			Type:             longhorn.DiskTypeFilesystem,
 		},
 	}
 	tc.engineImage.Status.NodeDeploymentMap[node3.Name] = true
@@ -374,6 +379,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode1, "1"),
+			Type:     longhorn.DiskTypeFilesystem,
 		},
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue)
@@ -390,6 +396,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode2, "1"),
+			Type:     longhorn.DiskTypeFilesystem,
 		},
 	}
 	nodes = map[string]*longhorn.Node{
@@ -429,6 +436,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode1, "1"),
+			Type:     longhorn.DiskTypeFilesystem,
 		},
 		getDiskID(TestNode1, "2"): {
 			StorageAvailable: TestDiskAvailableSize,
@@ -438,6 +446,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode1, "2"),
+			Type:     longhorn.DiskTypeFilesystem,
 		},
 	}
 	expectNode1 := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue)
@@ -461,6 +470,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode2, "1"),
+			Type:     longhorn.DiskTypeFilesystem,
 		},
 		getDiskID(TestNode2, "2"): {
 			StorageAvailable: TestDiskAvailableSize,
@@ -470,6 +480,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse),
 			},
 			DiskUUID: getDiskID(TestNode2, "2"),
+			Type:     longhorn.DiskTypeFilesystem,
 		},
 	}
 	expectNode2 := newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue)
@@ -523,6 +534,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode1, "1"),
+			Type:     longhorn.DiskTypeFilesystem,
 		},
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue)
@@ -542,6 +554,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode2, "1"),
+			Type:     longhorn.DiskTypeFilesystem,
 		},
 		getDiskID(TestNode2, "2"): {
 			StorageAvailable: TestDiskAvailableSize,
@@ -551,6 +564,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse),
 			},
 			DiskUUID: getDiskID(TestNode2, "2"),
+			Type:     longhorn.DiskTypeFilesystem,
 		},
 	}
 	nodes = map[string]*longhorn.Node{
@@ -589,6 +603,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode1, "1"),
+			Type:     longhorn.DiskTypeFilesystem,
 		},
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue)
@@ -608,6 +623,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode2, "1"),
+			Type:     longhorn.DiskTypeFilesystem,
 		},
 		getDiskID(TestNode2, "2"): {
 			StorageAvailable: TestDiskAvailableSize,
@@ -617,6 +633,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode2, "2"),
+			Type:     longhorn.DiskTypeFilesystem,
 		},
 	}
 	nodes = map[string]*longhorn.Node{
@@ -659,6 +676,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode1, "1"),
+			Type:     longhorn.DiskTypeFilesystem,
 		},
 		getDiskID(TestNode1, "2"): {
 			StorageAvailable: TestDiskAvailableSize / 2,
@@ -668,6 +686,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode1, "2"),
+			Type:     longhorn.DiskTypeFilesystem,
 		},
 	}
 	expectNode1 = newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue)
@@ -691,6 +710,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode2, "1"),
+			Type:     longhorn.DiskTypeFilesystem,
 		},
 		getDiskID(TestNode2, "2"): {
 			StorageAvailable: TestDiskAvailableSize,
@@ -700,6 +720,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
 			DiskUUID: getDiskID(TestNode2, "2"),
+			Type:     longhorn.DiskTypeFilesystem,
 		},
 	}
 	expectNode2 = newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue)
