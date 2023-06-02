@@ -9,6 +9,8 @@ type DiskUpdate struct {
 
 	AllowScheduling bool `json:"allowScheduling,omitempty" yaml:"allow_scheduling,omitempty"`
 
+	DiskType string `json:"diskType,omitempty" yaml:"disk_type,omitempty"`
+
 	EvictionRequested bool `json:"evictionRequested,omitempty" yaml:"eviction_requested,omitempty"`
 
 	Path string `json:"path,omitempty" yaml:"path,omitempty"`

@@ -33,8 +33,8 @@ type metricInfo struct {
 }
 
 type diskInfo struct {
-	longhorn.DiskSpec
-	longhorn.DiskStatus
+	longhorn.DiskSpec   `json:"diskSpec"`
+	longhorn.DiskStatus `json:"diskStatus"`
 }
 
 func getDiskListFromNode(node *longhorn.Node) map[string]diskInfo {

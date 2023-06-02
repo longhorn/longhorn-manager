@@ -96,6 +96,10 @@ func mutate(newObj runtime.Object) (admission.PatchOps, error) {
 					patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/disks/%s/tags", "value": %s}`, name, string(bytes)))
 				}
 			}
+
+			if disk.Type == "" {
+				patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/disks/%s/diskType", "value": "filesystem"}`, name))
+			}
 		}
 	}
 

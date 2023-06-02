@@ -1312,6 +1312,11 @@ spec:
             properties:
               active:
                 type: boolean
+              backendStoreDriver:
+                enum:
+                - longhorn
+                - spdk
+                type: string
               backupVolume:
                 type: string
               desireState:
@@ -1324,6 +1329,7 @@ spec:
                 enum:
                 - blockdev
                 - iscsi
+                - nvmf
                 - ""
                 type: string
               logRequested:
@@ -1672,6 +1678,8 @@ spec:
                   properties:
                     spec:
                       properties:
+                        backendStoreDriver:
+                          type: string
                         name:
                           type: string
                       type: object
@@ -1705,6 +1713,8 @@ spec:
                   properties:
                     spec:
                       properties:
+                        backendStoreDriver:
+                          type: string
                         name:
                           type: string
                       type: object
@@ -1738,6 +1748,8 @@ spec:
                   properties:
                     spec:
                       properties:
+                        backendStoreDriver:
+                          type: string
                         name:
                           type: string
                       type: object
@@ -1897,6 +1909,11 @@ spec:
                   properties:
                     allowScheduling:
                       type: boolean
+                    diskType:
+                      enum:
+                      - filesystem
+                      - block
+                      type: string
                     evictionRequested:
                       type: boolean
                     path:
@@ -1975,6 +1992,8 @@ spec:
                         type: object
                       nullable: true
                       type: array
+                    diskType:
+                      type: string
                     diskUUID:
                       type: string
                     scheduledReplica:
@@ -2392,6 +2411,11 @@ spec:
             properties:
               active:
                 type: boolean
+              backendStoreDriver:
+                enum:
+                - longhorn
+                - spdk
+                type: string
               backingImage:
                 type: string
               dataDirectoryName:
@@ -3410,6 +3434,11 @@ spec:
                 - rwo
                 - rwx
                 type: string
+              backendStoreDriver:
+                enum:
+                - longhorn
+                - spdk
+                type: string
               backingImage:
                 type: string
               backupCompressionMethod:
@@ -3442,6 +3471,7 @@ spec:
                 enum:
                 - blockdev
                 - iscsi
+                - nvmf
                 - ""
                 type: string
               lastAttachedBy:

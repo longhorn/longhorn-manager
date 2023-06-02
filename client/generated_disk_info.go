@@ -11,6 +11,8 @@ type DiskInfo struct {
 
 	Conditions map[string]interface{} `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 
+	DiskType string `json:"diskType,omitempty" yaml:"disk_type,omitempty"`
+
 	DiskUUID string `json:"diskUUID,omitempty" yaml:"disk_uuid,omitempty"`
 
 	EvictionRequested bool `json:"evictionRequested,omitempty" yaml:"eviction_requested,omitempty"`
