@@ -34,8 +34,8 @@ func PostUpgradeCmd() cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) {
-			logrus.Infof("Running post-upgrade...")
-			defer logrus.Infof("Completed post-upgrade.")
+			logrus.Info("Running post-upgrade...")
+			defer logrus.Info("Completed post-upgrade.")
 
 			if err := postUpgrade(c); err != nil {
 				logrus.Fatalf("Error during post-upgrade: %v", err)
@@ -52,12 +52,12 @@ func postUpgrade(c *cli.Context) error {
 
 	config, err := clientcmd.BuildConfigFromFlags("", c.String(FlagKubeConfig))
 	if err != nil {
-		return errors.Wrap(err, "unable to get client config")
+		return errors.Wrap(err, "failed to get client config")
 	}
 
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		return errors.Wrap(err, "unable to get k8s client")
+		return errors.Wrap(err, "failed to get k8s client")
 	}
 
 	return newPostUpgrader(namespace, kubeClient).Run()
@@ -88,17 +88,17 @@ func (u *postUpgrader) waitManagerUpgradeComplete() error {
 			context.TODO(),
 			types.LonghornManagerDaemonSetName, metav1.GetOptions{})
 		if err != nil {
-			logrus.Warningf("couldn't get daemonset: %v", err)
+			logrus.Warnf("failed to get daemonset: %v", err)
 			continue
 		}
 		if len(ds.Spec.Template.Spec.Containers) != 1 {
-			logrus.Warningf("found %d containers in manager spec", len(ds.Spec.Template.Spec.Containers))
+			logrus.Warnf("found %d containers in manager spec", len(ds.Spec.Template.Spec.Containers))
 			continue
 		}
 
 		podList, err := u.kubeClient.CoreV1().Pods(u.namespace).List(context.TODO(), metav1.ListOptions{})
 		if err != nil {
-			logrus.Warningf("couldn't list pods: %v", err)
+			logrus.Warnf("failed to list pods: %v", err)
 			continue
 		}
 		complete = true
@@ -112,7 +112,7 @@ func (u *postUpgrader) waitManagerUpgradeComplete() error {
 			}
 		}
 		if complete {
-			logrus.Infof("Manager upgrade complete")
+			logrus.Info("Manager upgrade complete")
 			break
 		}
 		time.Sleep(RetryInterval)

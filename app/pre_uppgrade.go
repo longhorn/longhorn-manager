@@ -42,12 +42,12 @@ func preUpgrade(c *cli.Context) error {
 
 	config, err := clientcmd.BuildConfigFromFlags("", c.String(FlagKubeConfig))
 	if err != nil {
-		return errors.Wrap(err, "unable to get client config")
+		return errors.Wrap(err, "failed to get client config")
 	}
 
 	lhClient, err := lhclientset.NewForConfig(config)
 	if err != nil {
-		return errors.Wrap(err, "unable to get clientset")
+		return errors.Wrap(err, "failed to get clientset")
 	}
 
 	if err := upgradeutil.CheckUpgradePathSupported(namespace, lhClient); err != nil {

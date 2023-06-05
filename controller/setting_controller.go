@@ -700,8 +700,10 @@ func (sc *SettingController) updateLogLevel() error {
 	if err != nil {
 		return err
 	}
-	logrus.Infof("Updating log level from %v to %v", oldLevel, newLevel)
-	logrus.SetLevel(newLevel)
+	if oldLevel != newLevel {
+		logrus.Infof("Updating log level from %v to %v", oldLevel, newLevel)
+		logrus.SetLevel(newLevel)
+	}
 
 	return nil
 }

@@ -20,7 +20,7 @@ import (
 
 func (s *Server) VolumeList(rw http.ResponseWriter, req *http.Request) (err error) {
 	defer func() {
-		err = errors.Wrap(err, "unable to list")
+		err = errors.Wrap(err, "failed to list volume")
 	}()
 
 	apiContext := api.GetApiContext(req)
@@ -91,7 +91,7 @@ func (s *Server) responseWithVolume(rw http.ResponseWriter, req *http.Request, i
 				rw.WriteHeader(http.StatusNotFound)
 				return nil
 			}
-			return errors.Wrap(err, "unable to get volume")
+			return errors.Wrap(err, "failed to get volume")
 		}
 	}
 
@@ -126,10 +126,10 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 
 	if volume.Standby {
 		if volume.Frontend != "" {
-			return fmt.Errorf("cannot set frontend for standby volume: %v", volume.Name)
+			return fmt.Errorf("failed to set frontend for standby volume: %v", volume.Name)
 		}
 		if volume.FromBackup == "" {
-			return fmt.Errorf("cannot create standby volume %v without field FromBackup", volume.Name)
+			return fmt.Errorf("failed to create standby volume %v without field FromBackup", volume.Name)
 		}
 	} else {
 		if volume.Frontend == "" {
@@ -145,7 +145,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 	// Check DiskSelector.
 	diskTags, err := s.m.GetDiskTags()
 	if err != nil {
-		return errors.Wrapf(err, "failed to get all disk tags")
+		return errors.Wrap(err, "failed to get all disk tags")
 	}
 	sort.Strings(diskTags)
 	for _, selector := range volume.DiskSelector {
@@ -157,7 +157,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 	// Check NodeSelector.
 	nodeTags, err := s.m.GetNodeTags()
 	if err != nil {
-		return errors.Wrapf(err, "failed to get all node tags")
+		return errors.Wrap(err, "failed to get all node tags")
 	}
 	sort.Strings(nodeTags)
 	for _, selector := range volume.NodeSelector {
@@ -192,7 +192,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		BackendStoreDriver:          volume.BackendStoreDriver,
 	}, volume.RecurringJobSelector)
 	if err != nil {
-		return errors.Wrap(err, "unable to create volume")
+		return errors.Wrap(err, "failed to create volume")
 	}
 	return s.responseWithVolume(rw, req, "", v)
 }
@@ -201,7 +201,7 @@ func (s *Server) VolumeDelete(rw http.ResponseWriter, req *http.Request) error {
 	id := mux.Vars(req)["name"]
 
 	if err := s.m.Delete(id); err != nil {
-		return errors.Wrap(err, "unable to delete volume")
+		return errors.Wrap(err, "failed to delete volume")
 	}
 
 	return nil
@@ -224,7 +224,7 @@ func (s *Server) VolumeAttach(rw http.ResponseWriter, req *http.Request) error {
 	}
 	v, ok := obj.(*longhorn.Volume)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+		return fmt.Errorf("failed to convert to volume %v object", id)
 	}
 
 	return s.responseWithVolume(rw, req, "", v)
@@ -249,7 +249,7 @@ func (s *Server) VolumeDetach(rw http.ResponseWriter, req *http.Request) error {
 	}
 	v, ok := obj.(*longhorn.Volume)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+		return fmt.Errorf("failed to convert to volume %v object", id)
 	}
 
 	return s.responseWithVolume(rw, req, "", v)
@@ -260,7 +260,7 @@ func (s *Server) VolumeSalvage(rw http.ResponseWriter, req *http.Request) error 
 
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
-		return errors.Wrapf(err, "error read salvageInput")
+		return errors.Wrap(err, "failed to read salvageInput")
 	}
 
 	id := mux.Vars(req)["name"]
@@ -273,7 +273,7 @@ func (s *Server) VolumeSalvage(rw http.ResponseWriter, req *http.Request) error 
 	}
 	v, ok := obj.(*longhorn.Volume)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+		return fmt.Errorf("failed to convert to volume %v object", id)
 	}
 
 	return s.responseWithVolume(rw, req, "", v)
@@ -285,7 +285,7 @@ func (s *Server) VolumeRecurringAdd(rw http.ResponseWriter, req *http.Request) e
 
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
-		return errors.Wrapf(err, "error reading volumeRecurringJobInput")
+		return errors.Wrap(err, "failed to read volumeRecurringJobInput")
 	}
 
 	_, err := util.RetryOnConflictCause(func() (interface{}, error) {
@@ -323,7 +323,7 @@ func (s *Server) VolumeRecurringDelete(rw http.ResponseWriter, req *http.Request
 
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
-		return errors.Wrapf(err, "error reading volumeRecurringJobInput")
+		return errors.Wrap(err, "failed to read volumeRecurringJobInput")
 	}
 
 	_, err := util.RetryOnConflictCause(func() (interface{}, error) {
@@ -346,7 +346,7 @@ func (s *Server) VolumeUpdateReplicaCount(rw http.ResponseWriter, req *http.Requ
 
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
-		return errors.Wrapf(err, "error reading replicaCount")
+		return errors.Wrap(err, "failed to read replicaCount")
 	}
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
@@ -357,7 +357,7 @@ func (s *Server) VolumeUpdateReplicaCount(rw http.ResponseWriter, req *http.Requ
 	}
 	v, ok := obj.(*longhorn.Volume)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+		return fmt.Errorf("failed to convert to volume %v object", id)
 	}
 
 	return s.responseWithVolume(rw, req, "", v)
@@ -369,7 +369,7 @@ func (s *Server) VolumeUpdateSnapshotDataIntegrity(rw http.ResponseWriter, req *
 
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
-		return errors.Wrapf(err, "error reading snapshotDataIntegrity")
+		return errors.Wrap(err, "failed to read snapshotDataIntegrity")
 	}
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
@@ -380,7 +380,7 @@ func (s *Server) VolumeUpdateSnapshotDataIntegrity(rw http.ResponseWriter, req *
 	}
 	v, ok := obj.(*longhorn.Volume)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+		return fmt.Errorf("failed to convert to volume %v object", id)
 	}
 
 	return s.responseWithVolume(rw, req, "", v)
@@ -392,7 +392,7 @@ func (s *Server) VolumeUpdateBackupCompressionMethod(rw http.ResponseWriter, req
 
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
-		return errors.Wrapf(err, "error reading backupCompressionMethod")
+		return errors.Wrap(err, "failed to read backupCompressionMethod")
 	}
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
@@ -403,7 +403,7 @@ func (s *Server) VolumeUpdateBackupCompressionMethod(rw http.ResponseWriter, req
 	}
 	v, ok := obj.(*longhorn.Volume)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+		return fmt.Errorf("failed to convert to volume %v object", id)
 	}
 
 	return s.responseWithVolume(rw, req, "", v)
@@ -415,7 +415,7 @@ func (s *Server) VolumeUpdateReplicaAutoBalance(rw http.ResponseWriter, req *htt
 
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
-		return errors.Wrapf(err, "error reading replicaAutoBalance")
+		return errors.Wrap(err, "failed to read replicaAutoBalance")
 	}
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
@@ -426,7 +426,7 @@ func (s *Server) VolumeUpdateReplicaAutoBalance(rw http.ResponseWriter, req *htt
 	}
 	v, ok := obj.(*longhorn.Volume)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+		return fmt.Errorf("failed to convert to volume %v object", id)
 	}
 
 	return s.responseWithVolume(rw, req, "", v)
@@ -438,7 +438,7 @@ func (s *Server) VolumeUpdateDataLocality(rw http.ResponseWriter, req *http.Requ
 
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
-		return errors.Wrapf(err, "error reading dataLocality")
+		return errors.Wrap(err, "failed to read dataLocality")
 	}
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
@@ -449,7 +449,7 @@ func (s *Server) VolumeUpdateDataLocality(rw http.ResponseWriter, req *http.Requ
 	}
 	v, ok := obj.(*longhorn.Volume)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+		return fmt.Errorf("failed to convert to volume %v object", id)
 	}
 	return s.responseWithVolume(rw, req, "", v)
 }
@@ -460,7 +460,7 @@ func (s *Server) VolumeUpdateAccessMode(rw http.ResponseWriter, req *http.Reques
 
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
-		return errors.Wrapf(err, "error reading access mode")
+		return errors.Wrap(err, "failed to read access mode")
 	}
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
@@ -471,7 +471,7 @@ func (s *Server) VolumeUpdateAccessMode(rw http.ResponseWriter, req *http.Reques
 	}
 	v, ok := obj.(*longhorn.Volume)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+		return fmt.Errorf("failed to convert to volume %v object", id)
 	}
 	return s.responseWithVolume(rw, req, "", v)
 }
@@ -482,7 +482,7 @@ func (s *Server) VolumeUpdateUnmapMarkSnapChainRemoved(rw http.ResponseWriter, r
 
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
-		return errors.Wrap(err, "error reading UnmapMarkSnapChainRemoved input")
+		return errors.Wrap(err, "failed to read UnmapMarkSnapChainRemoved input")
 	}
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
@@ -493,7 +493,7 @@ func (s *Server) VolumeUpdateUnmapMarkSnapChainRemoved(rw http.ResponseWriter, r
 	}
 	v, ok := obj.(*longhorn.Volume)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+		return fmt.Errorf("failed to convert to volume %v object", id)
 	}
 	return s.responseWithVolume(rw, req, "", v)
 }
@@ -504,7 +504,7 @@ func (s *Server) VolumeUpdateReplicaSoftAntiAffinity(rw http.ResponseWriter, req
 
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
-		return errors.Wrap(err, "error reading ReplicaSoftAntiAffinity input")
+		return errors.Wrap(err, "failed to read ReplicaSoftAntiAffinity input")
 	}
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
@@ -515,7 +515,7 @@ func (s *Server) VolumeUpdateReplicaSoftAntiAffinity(rw http.ResponseWriter, req
 	}
 	v, ok := obj.(*longhorn.Volume)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+		return fmt.Errorf("failed to convert to volume %v object", id)
 	}
 	return s.responseWithVolume(rw, req, "", v)
 }
@@ -526,7 +526,7 @@ func (s *Server) VolumeUpdateReplicaZoneSoftAntiAffinity(rw http.ResponseWriter,
 
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
-		return errors.Wrap(err, "error reading ReplicaZoneSoftAntiAffinity input")
+		return errors.Wrap(err, "failed to read ReplicaZoneSoftAntiAffinity input")
 	}
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
@@ -537,7 +537,7 @@ func (s *Server) VolumeUpdateReplicaZoneSoftAntiAffinity(rw http.ResponseWriter,
 	}
 	v, ok := obj.(*longhorn.Volume)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+		return fmt.Errorf("failed to convert to volume %v object", id)
 	}
 	return s.responseWithVolume(rw, req, "", v)
 }
@@ -560,7 +560,7 @@ func (s *Server) VolumeActivate(rw http.ResponseWriter, req *http.Request) error
 	}
 	v, ok := obj.(*longhorn.Volume)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+		return fmt.Errorf("failed to convert to volume %v object", id)
 	}
 
 	return s.responseWithVolume(rw, req, "", v)
@@ -583,10 +583,10 @@ func (s *Server) VolumeExpand(rw http.ResponseWriter, req *http.Request) error {
 
 	vol, err := s.m.Get(id)
 	if err != nil {
-		return errors.Wrap(err, "unable to get volume")
+		return errors.Wrap(err, "failed to get volume")
 	}
 	if vol.Status.IsStandby {
-		return fmt.Errorf("cannot manually expand standby volume %v", vol.Name)
+		return fmt.Errorf("failed to manually expand standby volume %v", vol.Name)
 	}
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
@@ -597,7 +597,7 @@ func (s *Server) VolumeExpand(rw http.ResponseWriter, req *http.Request) error {
 	}
 	v, ok := obj.(*longhorn.Volume)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+		return fmt.Errorf("failed to convert to volume %v object", id)
 	}
 
 	return s.responseWithVolume(rw, req, "", v)
@@ -614,7 +614,7 @@ func (s *Server) VolumeCancelExpansion(rw http.ResponseWriter, req *http.Request
 	}
 	v, ok := obj.(*longhorn.Volume)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+		return fmt.Errorf("failed to convert to volume %v object", id)
 	}
 
 	return s.responseWithVolume(rw, req, "", v)
@@ -631,7 +631,7 @@ func (s *Server) VolumeFilesystemTrim(rw http.ResponseWriter, req *http.Request)
 	}
 	v, ok := obj.(*longhorn.Volume)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+		return fmt.Errorf("failed to convert to volume %v object", id)
 	}
 
 	return s.responseWithVolume(rw, req, "", v)
@@ -643,16 +643,16 @@ func (s *Server) PVCreate(rw http.ResponseWriter, req *http.Request) error {
 
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
-		return errors.Wrapf(err, "error reading pvCreateInput")
+		return errors.Wrap(err, "failed to read pvCreateInput")
 	}
 
 	vol, err := s.m.Get(id)
 	if err != nil {
-		return errors.Wrap(err, "unable to get volume")
+		return errors.Wrap(err, "failed to get volume")
 	}
 
 	if vol.Status.IsStandby {
-		return fmt.Errorf("cannot create PV for standby volume %v", vol.Name)
+		return fmt.Errorf("failed to create PV for standby volume %v", vol.Name)
 	}
 
 	_, err = util.RetryOnConflictCause(func() (interface{}, error) {
@@ -670,16 +670,16 @@ func (s *Server) PVCCreate(rw http.ResponseWriter, req *http.Request) error {
 
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
-		return errors.Wrapf(err, "error reading pvcCreateInput")
+		return errors.Wrap(err, "failed to read pvcCreateInput")
 	}
 
 	vol, err := s.m.Get(id)
 	if err != nil {
-		return errors.Wrap(err, "unable to get volume")
+		return errors.Wrap(err, "failed to get volume")
 	}
 
 	if vol.Status.IsStandby {
-		return fmt.Errorf("cannot create PVC for standby volume %v", vol.Name)
+		return fmt.Errorf("failed to create PVC for standby volume %v", vol.Name)
 	}
 
 	_, err = util.RetryOnConflictCause(func() (interface{}, error) {
@@ -696,13 +696,13 @@ func (s *Server) ReplicaRemove(rw http.ResponseWriter, req *http.Request) error 
 
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
-		return errors.Wrapf(err, "error read replicaRemoveInput")
+		return errors.Wrap(err, "failed to read replicaRemoveInput")
 	}
 
 	id := mux.Vars(req)["name"]
 
 	if err := s.m.DeleteReplica(id, input.Name); err != nil {
-		return errors.Wrap(err, "unable to remove replica")
+		return errors.Wrap(err, "failed to remove replica")
 	}
 
 	return s.responseWithVolume(rw, req, id, nil)
@@ -713,7 +713,7 @@ func (s *Server) EngineUpgrade(rw http.ResponseWriter, req *http.Request) error 
 
 	apiContext := api.GetApiContext(req)
 	if err := apiContext.Read(&input); err != nil {
-		return errors.Wrapf(err, "error read engineUpgradeInput")
+		return errors.Wrap(err, "failed to read engineUpgradeInput")
 	}
 
 	id := mux.Vars(req)["name"]
@@ -726,7 +726,7 @@ func (s *Server) EngineUpgrade(rw http.ResponseWriter, req *http.Request) error 
 	}
 	v, ok := obj.(*longhorn.Volume)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
+		return fmt.Errorf("failed to convert to volume %v object", id)
 	}
 
 	return s.responseWithVolume(rw, req, id, v)

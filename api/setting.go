@@ -37,7 +37,7 @@ func (s *Server) SettingGet(w http.ResponseWriter, req *http.Request) error {
 	apiContext := api.GetApiContext(req)
 	si, err := s.m.GetSetting(types.SettingName(name))
 	if err != nil {
-		return errors.Wrapf(err, "fail get setting %v", name)
+		return errors.Wrapf(err, "failed to get setting %v", name)
 	}
 	apiContext.Write(toSettingResource(si))
 	return nil

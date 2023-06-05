@@ -32,7 +32,7 @@ func OwnerIDFromVolume(m *manager.VolumeManager) func(req *http.Request) (string
 		name := mux.Vars(req)["name"]
 		volume, err := m.Get(name)
 		if err != nil {
-			return "", errors.Wrapf(err, "error getting volume '%s'", name)
+			return "", errors.Wrapf(err, "failed to get volume '%s'", name)
 		}
 		if volume == nil {
 			return "", nil
@@ -60,7 +60,7 @@ func NodeHasDefaultEngineImage(m *manager.VolumeManager) func(req *http.Request)
 		for nodeID := range nodes {
 			return nodeID, nil
 		}
-		return "", fmt.Errorf("cannot find a node that is ready and has the default engine image %v deployed", engineImage)
+		return "", fmt.Errorf("failed to find a node that is ready and has the default engine image %v deployed", engineImage)
 	}
 }
 
@@ -132,7 +132,7 @@ func (f *Fwd) HandleProxyRequestByNodeID(parameters map[string]string, req *http
 		h.Del("X-Forwarded-Host")
 	}
 	req.Header = h
-	logrus.Debugf("Forwarding request to %v", targetAddress)
+	logrus.Infof("Forwarding request to %v", targetAddress)
 
 	return true, nil
 }
@@ -243,7 +243,7 @@ func DownloadParametersFromBackingImage(m *manager.VolumeManager) func(req *http
 			break
 		}
 		if targetBIM == nil {
-			return nil, fmt.Errorf("cannot find a default backing image manager for backing image %v download", name)
+			return nil, fmt.Errorf("failed to find a default backing image manager for backing image %v download", name)
 		}
 
 		cli, err := engineapi.NewBackingImageManagerClient(targetBIM)
