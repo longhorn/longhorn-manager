@@ -165,11 +165,9 @@ type resourceDeleteFunc func(kubeClient *clientset.Clientset, name, namespace st
 type resourceGetFunc func(kubeClient *clientset.Clientset, name, namespace string) (runtime.Object, error)
 
 func waitForDeletion(kubeClient *clientset.Clientset, name, namespace, resource string, getFunc resourceGetFunc) error {
-	logrus.Debugf("Waiting for foreground deletion of %s %s", resource, name)
 	for i := 0; i < maxRetryForDeletion; i++ {
 		_, err := getFunc(kubeClient, name, namespace)
 		if err != nil && apierrors.IsNotFound(err) {
-			logrus.Debugf("Deleted %s %s in foreground", resource, name)
 			return nil
 		}
 		time.Sleep(time.Duration(1) * time.Second)
@@ -187,7 +185,7 @@ func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string
 
 	objMeta, err := meta.Accessor(obj)
 	if err != nil {
-		return fmt.Errorf("BUG: invalid object for deploy %v: %v", obj, err)
+		return fmt.Errorf("invalid object for deploy %v: %v", obj, err)
 	}
 	annos := objMeta.GetAnnotations()
 	if annos == nil {
@@ -227,12 +225,9 @@ func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string
 	if err := cleanup(kubeClient, obj, resource, deleteFunc, getFunc); err != nil {
 		return err
 	}
-	logrus.Debugf("Creating %s %s", resource, name)
-	if err := createFunc(kubeClient, obj); err != nil {
-		return err
-	}
-	logrus.Debugf("Created %s %s", resource, name)
-	return nil
+	logrus.Infof("Creating %s %s", resource, name)
+	err = createFunc(kubeClient, obj)
+	return err
 }
 
 func needToUpdateImage(existingObj, newObj runtime.Object) bool {
@@ -302,7 +297,7 @@ func cleanup(kubeClient *clientset.Clientset, obj runtime.Object, resource strin
 
 	objMeta, err := meta.Accessor(obj)
 	if err != nil {
-		return fmt.Errorf("BUG: invalid object for cleanup %v: %v", obj, err)
+		return fmt.Errorf("invalid object for cleanup %v: %v", obj, err)
 	}
 	name := objMeta.GetName()
 	namespace := objMeta.GetNamespace()
@@ -325,18 +320,17 @@ func cleanup(kubeClient *clientset.Clientset, obj runtime.Object, resource strin
 	if existingMeta.GetDeletionTimestamp() != nil {
 		return waitForDeletion(kubeClient, name, namespace, resource, getFunc)
 	}
-	logrus.Debugf("Deleting existing %s %s", resource, name)
+	logrus.Infof("Deleting existing %s %s", resource, name)
 	if err := deleteFunc(kubeClient, name, namespace); err != nil {
 		return err
 	}
-	logrus.Debugf("Deleted %s %s", resource, name)
 	return waitForDeletion(kubeClient, name, namespace, resource, getFunc)
 }
 
 func serviceCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) error {
 	o, ok := obj.(*v1.Service)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert back the object")
+		return fmt.Errorf("failed to convert back the object")
 	}
 	_, err := kubeClient.CoreV1().Services(o.Namespace).Create(context.TODO(), o, metav1.CreateOptions{})
 	return err
@@ -358,7 +352,7 @@ func serviceGetFunc(kubeClient *clientset.Clientset, name, namespace string) (ru
 func deploymentCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) error {
 	o, ok := obj.(*appsv1.Deployment)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert back the object")
+		return fmt.Errorf("failed to convert back the object")
 	}
 	_, err := kubeClient.AppsV1().Deployments(o.Namespace).Create(context.TODO(), o, metav1.CreateOptions{})
 	return err
@@ -380,7 +374,7 @@ func deploymentGetFunc(kubeClient *clientset.Clientset, name, namespace string) 
 func daemonSetCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) error {
 	o, ok := obj.(*appsv1.DaemonSet)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert back the object")
+		return fmt.Errorf("failed to convert back the object")
 	}
 	_, err := kubeClient.AppsV1().DaemonSets(o.Namespace).Create(context.TODO(), o, metav1.CreateOptions{})
 	return err
@@ -402,7 +396,7 @@ func daemonSetGetFunc(kubeClient *clientset.Clientset, name, namespace string) (
 func csiDriverObjectCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) error {
 	o, ok := obj.(*storagev1.CSIDriver)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert back the object")
+		return fmt.Errorf("failed to convert back the object")
 	}
 	_, err := kubeClient.StorageV1().CSIDrivers().Create(context.TODO(), o, metav1.CreateOptions{})
 	return err
