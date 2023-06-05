@@ -107,8 +107,8 @@ func (bic *BackingImageController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer bic.queue.ShutDown()
 
-	logrus.Infof("Starting Longhorn Backing Image controller")
-	defer logrus.Infof("Shut down Longhorn Backing Image controller")
+	logrus.Info("Starting Longhorn Backing Image controller")
+	defer logrus.Info("Shut down Longhorn Backing Image controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn backing images", stopCh, bic.cacheSyncs...) {
 		return
@@ -147,13 +147,13 @@ func (bic *BackingImageController) handleErr(err error, key interface{}) {
 	}
 
 	if bic.queue.NumRequeues(key) < maxRetries {
-		logrus.WithError(err).Warnf("Error syncing Longhorn backing image %v", key)
+		logrus.WithError(err).Errorf("Failed to sync Longhorn backing image %v", key)
 		bic.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	logrus.WithError(err).Warnf("Dropping Longhorn backing image %v out of the queue", key)
+	logrus.WithError(err).Errorf("Dropping Longhorn backing image %v out of the queue", key)
 	bic.queue.Forget(key)
 }
 

@@ -56,7 +56,7 @@ func (s *Server) SystemBackupGet(rw http.ResponseWriter, req *http.Request) erro
 
 	systemBackup, err := s.m.GetSystemBackup(name)
 	if err != nil {
-		return errors.Wrapf(err, "error get SystemBackup '%s'", name)
+		return errors.Wrapf(err, "failed to get SystemBackup '%s'", name)
 	}
 	apiContext.Write(toSystemBackupResource(systemBackup))
 	return nil
@@ -65,7 +65,7 @@ func (s *Server) SystemBackupGet(rw http.ResponseWriter, req *http.Request) erro
 func (s *Server) SystemBackupList(w http.ResponseWriter, req *http.Request) error {
 	systemBackups, err := s.m.ListSystemBackupsSorted()
 	if err != nil {
-		return errors.Wrapf(err, "failed to list SystemBackups")
+		return errors.Wrap(err, "failed to list SystemBackups")
 	}
 
 	apiContext := api.GetApiContext(req)
@@ -76,7 +76,7 @@ func (s *Server) SystemBackupList(w http.ResponseWriter, req *http.Request) erro
 func (s *Server) systemBackupList(apiContext *api.ApiContext) (*client.GenericCollection, error) {
 	systemBackups, err := s.m.ListSystemBackupsSorted()
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to list SystemBackups")
+		return nil, errors.Wrap(err, "failed to list SystemBackups")
 	}
 	return toSystemBackupCollection(systemBackups), nil
 }

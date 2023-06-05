@@ -20,7 +20,7 @@ func startRecoveryBackend(ctx context.Context, serviceAccount, kubeconfigPath st
 
 	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
-		return fmt.Errorf("unable to get client config: %v", err)
+		return fmt.Errorf("failed to get client config: %v", err)
 	}
 
 	client, err := client.NewClient(ctx, cfg, namespace, true)

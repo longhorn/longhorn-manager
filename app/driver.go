@@ -156,21 +156,21 @@ func deployDriver(c *cli.Context) error {
 
 	config, err := clientcmd.BuildConfigFromFlags("", c.String(FlagKubeConfig))
 	if err != nil {
-		return errors.Wrap(err, "unable to get client config")
+		return errors.Wrap(err, "failed to get client config")
 	}
 
 	kubeClient, err := clientset.NewForConfig(config)
 	if err != nil {
-		return errors.Wrap(err, "unable to get k8s client")
+		return errors.Wrap(err, "failed to get k8s client")
 	}
 
 	lhClient, err := lhclientset.NewForConfig(config)
 	if err != nil {
-		return errors.Wrap(err, "unable to get clientset")
+		return errors.Wrap(err, "failed to get clientset")
 	}
 
 	if err := checkKubernetesVersion(kubeClient); err != nil {
-		return errors.Wrap(err, "cannot start driver due to failed Kubernetes version check")
+		return errors.Wrap(err, "failed to start driver due to failed Kubernetes version check")
 	}
 
 	if err := csi.CheckMountPropagationWithNode(managerURL); err != nil {
@@ -310,7 +310,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	logrus.Debug("CSI deployment done")
+	logrus.Info("CSI deployment done")
 
 	done := make(chan struct{})
 	util.RegisterShutdownChannel(done)

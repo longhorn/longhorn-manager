@@ -24,7 +24,7 @@ func (s *Server) OrphanList(rw http.ResponseWriter, req *http.Request) (err erro
 func (s *Server) orphanList(apiContext *api.ApiContext) (*client.GenericCollection, error) {
 	list, err := s.m.ListOrphans()
 	if err != nil {
-		return nil, errors.Wrap(err, "error listing orphan")
+		return nil, errors.Wrap(err, "failed to list orphan")
 	}
 	return toOrphanCollection(list), nil
 }
@@ -36,7 +36,7 @@ func (s *Server) OrphanGet(rw http.ResponseWriter, req *http.Request) error {
 
 	orphan, err := s.m.GetOrphan(id)
 	if err != nil {
-		return errors.Wrapf(err, "error get orphan '%s'", id)
+		return errors.Wrapf(err, "failed to get orphan '%s'", id)
 	}
 	apiContext.Write(toOrphanResource(orphan))
 	return nil
@@ -45,7 +45,7 @@ func (s *Server) OrphanGet(rw http.ResponseWriter, req *http.Request) error {
 func (s *Server) OrphanDelete(rw http.ResponseWriter, req *http.Request) error {
 	id := mux.Vars(req)["name"]
 	if err := s.m.DeleteOrphan(id); err != nil {
-		return errors.Wrapf(err, "unable to delete orphan %v", id)
+		return errors.Wrapf(err, "failed to delete orphan %v", id)
 	}
 
 	return nil
