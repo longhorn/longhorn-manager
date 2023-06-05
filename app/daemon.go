@@ -8,6 +8,7 @@ import (
 	_ "net/http/pprof" // for runtime profiling
 
 	"github.com/gorilla/handlers"
+	"github.com/pkg/errors"
 	"github.com/rancher/wrangler/pkg/signals"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
@@ -118,19 +119,17 @@ func startManager(c *cli.Context) error {
 	kubeconfigPath := c.String(FlagKubeConfig)
 
 	if err := environmentCheck(); err != nil {
-		logrus.Errorf("Failed environment check, please make sure you " +
-			"have iscsiadm/open-iscsi installed on the host")
-		return fmt.Errorf("environment check failed: %v", err)
+		return errors.Wrap(err, "Failed environment check, please make sure you have iscsiadm/open-iscsi installed on the host")
 	}
 
 	currentNodeID, err := util.GetRequiredEnv(types.EnvNodeName)
 	if err != nil {
-		return fmt.Errorf("BUG: failed to detect the node name")
+		return fmt.Errorf("failed to detect the node name")
 	}
 
 	currentIP, err := util.GetRequiredEnv(types.EnvPodIP)
 	if err != nil {
-		return fmt.Errorf("BUG: failed to detect the node IP")
+		return fmt.Errorf("failed to detect the node IP")
 	}
 
 	ctx := signals.SetupSignalContext()

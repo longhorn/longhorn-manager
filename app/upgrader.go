@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+
 	"github.com/sirupsen/logrus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -16,7 +17,7 @@ const (
 )
 
 func upgradeLonghornRelatedComponents(kubeClient *clientset.Clientset, namespace string) error {
-	logrus.Infof("Upgrading Longhorn related components for CSI v1.1.0")
+	logrus.Info("Upgrading Longhorn related components for CSI v1.1.0")
 
 	pvList, err := kubeClient.CoreV1().PersistentVolumes().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {

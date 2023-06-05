@@ -165,8 +165,8 @@ func (c *BackingImageManagerController) Run(workers int, stopCh <-chan struct{})
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
 
-	logrus.Infof("Starting Longhorn backing image manager controller")
-	defer logrus.Infof("Shut down Longhorn backing image manager controller")
+	logrus.Info("Starting Longhorn backing image manager controller")
+	defer logrus.Info("Shut down Longhorn backing image manager controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn backing image manager", stopCh, c.cacheSyncs...) {
 		return
@@ -205,13 +205,13 @@ func (c *BackingImageManagerController) handleErr(err error, key interface{}) {
 	}
 
 	if c.queue.NumRequeues(key) < maxRetries {
-		logrus.WithError(err).Warnf("Error syncing Longhorn backing image manager %v", key)
+		logrus.WithError(err).Errorf("Failed to sync Longhorn backing image manager %v", key)
 		c.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	logrus.WithError(err).Warnf("Dropping Longhorn backing image manager %v out of the queue", key)
+	logrus.WithError(err).Errorf("Dropping Longhorn backing image manager %v out of the queue", key)
 	c.queue.Forget(key)
 }
 

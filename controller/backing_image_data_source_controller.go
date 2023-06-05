@@ -151,8 +151,8 @@ func (c *BackingImageDataSourceController) Run(workers int, stopCh <-chan struct
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
 
-	logrus.Infof("Starting Longhorn backing image data source controller")
-	defer logrus.Infof("Shut down Longhorn backing image data source controller")
+	logrus.Info("Starting Longhorn backing image data source controller")
+	defer logrus.Info("Shut down Longhorn backing image data source controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn backing image data source", stopCh, c.cacheSyncs...) {
 		return
@@ -191,13 +191,13 @@ func (c *BackingImageDataSourceController) handleErr(err error, key interface{})
 	}
 
 	if c.queue.NumRequeues(key) < maxRetries {
-		logrus.WithError(err).Warnf("Error syncing Longhorn backing image data source %v", key)
+		logrus.WithError(err).Errorf("Failed to sync Longhorn backing image data source %v", key)
 		c.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	logrus.WithError(err).Warnf("Dropping Longhorn backing image data source %v out of the queue", key)
+	logrus.WithError(err).Errorf("Dropping Longhorn backing image data source %v out of the queue", key)
 	c.queue.Forget(key)
 }
 

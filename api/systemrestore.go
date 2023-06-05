@@ -41,7 +41,7 @@ func (s *Server) SystemRestoreGet(rw http.ResponseWriter, req *http.Request) err
 	name := mux.Vars(req)["name"]
 	systemRestore, err := s.m.GetSystemRestore(name)
 	if err != nil {
-		return errors.Wrapf(err, "error get SystemRestore '%s'", name)
+		return errors.Wrapf(err, "failed to get SystemRestore '%s'", name)
 	}
 
 	apiContext := api.GetApiContext(req)
