@@ -48,20 +48,20 @@ func migrateForPre070Volumes(c *cli.Context) error {
 
 	lhNamespace := os.Getenv(types.EnvPodNamespace)
 	if lhNamespace == "" {
-		return fmt.Errorf("cannot detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
+		return fmt.Errorf("failed to detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
 	}
 
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		return errors.Wrap(err, "unable to get client config")
+		return errors.Wrap(err, "failed to get client config")
 	}
 	kubeClient, err := kubeclientset.NewForConfig(config)
 	if err != nil {
-		return errors.Wrap(err, "unable to get k8s client")
+		return errors.Wrap(err, "failed to get k8s client")
 	}
 	lhClient, err := lhclientset.NewForConfig(config)
 	if err != nil {
-		return errors.Wrap(err, "unable to get clientset")
+		return errors.Wrap(err, "failed to get clientset")
 	}
 
 	if migrateAllVolumes {

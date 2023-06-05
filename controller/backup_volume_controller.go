@@ -153,13 +153,13 @@ func (bvc *BackupVolumeController) handleErr(err error, key interface{}) {
 	}
 
 	if bvc.queue.NumRequeues(key) < maxRetries {
-		bvc.logger.WithError(err).Warnf("Failed to sync Longhorn backup volume %v", key)
+		bvc.logger.WithError(err).Errorf("Failed to sync Longhorn backup volume %v", key)
 		bvc.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	bvc.logger.WithError(err).Warnf("Dropping Longhorn backup volume %v out of the queue", key)
+	bvc.logger.WithError(err).Errorf("Dropping Longhorn backup volume %v out of the queue", key)
 	bvc.queue.Forget(key)
 }
 

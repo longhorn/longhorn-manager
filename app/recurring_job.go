@@ -93,11 +93,11 @@ func recurringJob(c *cli.Context) error {
 
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
-		return fmt.Errorf("cannot detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
+		return fmt.Errorf("failed detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
 	}
 	lhClient, err := getLonghornClientset()
 	if err != nil {
-		return errors.Wrap(err, "unable to get clientset")
+		return errors.Wrap(err, "failed to get clientset")
 	}
 	recurringJob, err := lhClient.LonghornV1beta2().RecurringJobs(namespace).Get(context.TODO(), jobName, metav1.GetOptions{})
 	if err != nil {
@@ -122,9 +122,9 @@ func recurringJob(c *cli.Context) error {
 	allowDetachedSetting := types.SettingNameAllowRecurringJobWhileVolumeDetached
 	allowDetached, err := getSettingAsBoolean(allowDetachedSetting, namespace, lhClient)
 	if err != nil {
-		return errors.Wrapf(err, "unable to get %v setting", allowDetachedSetting)
+		return errors.Wrapf(err, "failed to get %v setting", allowDetachedSetting)
 	}
-	logger.Debugf("Setting %v is %v", allowDetachedSetting, allowDetached)
+	logger.Infof("Setting %v is %v", allowDetachedSetting, allowDetached)
 
 	volumes, err := getVolumesBySelector(types.LonghornLabelRecurringJob, jobName, namespace, lhClient)
 	if err != nil {
@@ -203,16 +203,16 @@ func sliceStringSafely(s string, begin, end int) string {
 func NewJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName string, labels map[string]string, retain int, task longhorn.RecurringJobType) (*Job, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
-		return nil, fmt.Errorf("cannot detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
+		return nil, fmt.Errorf("failed detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
 	}
 
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to get client config")
+		return nil, errors.Wrap(err, "failed to get client config")
 	}
 	lhClient, err := lhclientset.NewForConfig(config)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to get clientset")
+		return nil, errors.Wrap(err, "failed to get clientset")
 	}
 
 	clientOpts := &longhornclient.ClientOpts{
@@ -221,7 +221,7 @@ func NewJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName stri
 	}
 	apiClient, err := longhornclient.NewRancherClient(clientOpts)
 	if err != nil {
-		return nil, errors.Wrapf(err, "could not create longhorn-manager api client")
+		return nil, errors.Wrap(err, "could not create longhorn-manager api client")
 	}
 
 	logger = logger.WithFields(logrus.Fields{
@@ -235,7 +235,7 @@ func NewJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName stri
 
 	scheme := runtime.NewScheme()
 	if err := longhorn.SchemeBuilder.AddToScheme(scheme); err != nil {
-		return nil, errors.Wrap(err, "unable to create scheme")
+		return nil, errors.Wrap(err, "failed to create scheme")
 	}
 
 	eventBroadcaster, err := createEventBroadcaster(config)
@@ -261,7 +261,7 @@ func NewJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName stri
 func createEventBroadcaster(config *rest.Config) (record.EventBroadcaster, error) {
 	kubeClient, err := clientset.NewForConfig(config)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to get k8s client")
+		return nil, errors.Wrap(err, "failed to get k8s client")
 	}
 
 	eventBroadcaster := record.NewBroadcaster()
@@ -315,7 +315,7 @@ func (job *Job) run() (err error) {
 
 func (job *Job) doRecurringSnapshot() (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "failed recurring snapshot")
+		err = errors.Wrap(err, "failed recurring snapshot")
 		if err == nil {
 			job.logger.Info("Finished recurring snapshot")
 		}
@@ -909,7 +909,7 @@ func getSettingAsBoolean(name types.SettingName, namespace string, client *lhcli
 func getLonghornClientset() (*lhclientset.Clientset, error) {
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to get client config")
+		return nil, errors.Wrap(err, "failed to get client config")
 	}
 	return lhclientset.NewForConfig(config)
 }

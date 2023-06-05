@@ -16,7 +16,7 @@ type HandleFuncWithError func(http.ResponseWriter, *http.Request) error
 func HandleError(s *client.Schemas, t HandleFuncWithError) http.Handler {
 	return api.ApiHandler(s, http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		if err := t(rw, req); err != nil {
-			logrus.Warnf("HTTP handling error %v", err)
+			logrus.WithError(err).Warnf("HTTP handling error")
 			apiContext := api.GetApiContext(req)
 			apiContext.WriteErr(err)
 		}
