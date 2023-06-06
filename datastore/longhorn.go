@@ -376,7 +376,6 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 }
 
 func (s *DataStore) ValidateSpdk(spdkEnabled bool) error {
-	// Check if all volumes are detached
 	volumesDetached, err := s.AreAllVolumesDetached()
 	if err != nil {
 		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameSpdk)
@@ -396,13 +395,17 @@ func (s *DataStore) ValidateSpdk(spdkEnabled bool) error {
 	}
 	hugepageRequested := resource.MustParse(hugepageRequestedInMiB.Value + "Mi")
 
-	kubeNodes, err := s.ListKubeNodesRO()
+	ims, err := s.ListInstanceManagers()
 	if err != nil {
-		return errors.Wrapf(err, "failed to list Kubernetes nodes for %v setting update", types.SettingNameSpdk)
+		return errors.Wrapf(err, "failed to list instance managers for %v setting update", types.SettingNameSpdk)
 	}
 
-	for _, node := range kubeNodes {
-		if node.Spec.Taints == nil {
+	for _, im := range ims {
+		node, err := s.GetKubernetesNode(im.Spec.NodeID)
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				return errors.Wrapf(err, "failed to get Kubernetes node %v for %v setting update", im.Spec.NodeID, types.SettingNameSpdk)
+			}
 			continue
 		}
 
