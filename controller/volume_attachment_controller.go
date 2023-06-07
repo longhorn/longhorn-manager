@@ -493,7 +493,8 @@ func (vac *VolumeAttachmentController) shouldDoDetach(va *longhorn.VolumeAttachm
 func hasUninterruptibleTicket(attachmentTickets map[string]*longhorn.AttachmentTicket) bool {
 	for _, ticket := range attachmentTickets {
 		if ticket.Type != longhorn.AttacherTypeSnapshotController &&
-			ticket.Type != longhorn.AttacherTypeBackupController {
+			ticket.Type != longhorn.AttacherTypeBackupController &&
+			ticket.Type != longhorn.AttacherTypeVolumeRebuildingController {
 			return true
 		}
 	}
