@@ -52,6 +52,7 @@ const (
 	AttacherTypeVolumeExpansionController        = AttacherType("volume-expansion-controller")
 	AttacherTypeBackingImageDataSourceController = AttacherType("bim-ds-controller")
 	AttacherTypeLonghornUpgrader                 = AttacherType("longhorn-upgrader")
+	AttacherTypeVolumeRebuildingController       = AttacherType("volume-rebuilding-controller")
 )
 
 const (
@@ -67,6 +68,7 @@ const (
 	AttacherPriorityLevelVolumeCloneController            = 800
 	AttacherPriorityLevelVolumeEvictionController         = 800
 	AttacherPriorityLevelBackingImageDataSourceController = 800
+	AttachedPriorityLevelVolumeRebuildingController       = 800
 )
 
 const (
@@ -104,6 +106,8 @@ func GetAttacherPriorityLevel(t AttacherType) int {
 		return AttacherPriorityLevelLonghornUpgrader
 	case AttacherTypeVolumeRestoreController:
 		return AttacherPriorityLevelVolumeRestoreController
+	case AttacherTypeVolumeRebuildingController:
+		return AttachedPriorityLevelVolumeRebuildingController
 	case AttacherTypeVolumeEvictionController:
 		return AttacherPriorityLevelVolumeEvictionController
 	case AttacherTypeVolumeExpansionController:
