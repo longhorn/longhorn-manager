@@ -1645,12 +1645,6 @@ func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
 }
 
 func (ec *EngineController) rebuildNewReplica(e *longhorn.Engine) error {
-	// TODO: Ssupport runtime rebuilding replica for SPDK volumes
-	if e.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
-		logrus.Debugf("SPDK is not supported for runtime rebuilding replica")
-		return nil
-	}
-
 	rebuildingInProgress := false
 	replicaExists := make(map[string]bool)
 	for replica, mode := range e.Status.ReplicaModeMap {
