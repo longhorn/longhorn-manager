@@ -251,6 +251,12 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		if volume.Spec.ReplicaZoneSoftAntiAffinity != longhorn.ReplicaZoneSoftAntiAffinityDisabled {
 			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaZoneSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaZoneSoftAntiAffinityDefault))
 		}
+		if string(volume.Spec.OfflineReplicaRebuilding) == "" {
+			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/offlineReplicaRebuilding", "value": "%s"}`, longhorn.OfflineReplicaRebuildingIgnored))
+		}
+	} else {
+		// Always mutate the offlineReplicaRebuilding to disabled for non-SPDK volumes
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/offlineReplicaRebuilding", "value": "%s"}`, longhorn.OfflineReplicaRebuildingDisabled))
 	}
 
 	return patchOps, nil
