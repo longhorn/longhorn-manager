@@ -190,6 +190,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		ReplicaSoftAntiAffinity:     volume.ReplicaSoftAntiAffinity,
 		ReplicaZoneSoftAntiAffinity: volume.ReplicaZoneSoftAntiAffinity,
 		BackendStoreDriver:          volume.BackendStoreDriver,
+		OfflineReplicaRebuilding:    volume.OfflineReplicaRebuilding,
 	}, volume.RecurringJobSelector)
 	if err != nil {
 		return errors.Wrap(err, "failed to create volume")
@@ -381,6 +382,29 @@ func (s *Server) VolumeUpdateSnapshotDataIntegrity(rw http.ResponseWriter, req *
 	v, ok := obj.(*longhorn.Volume)
 	if !ok {
 		return fmt.Errorf("failed to convert to volume %v object", id)
+	}
+
+	return s.responseWithVolume(rw, req, "", v)
+}
+
+func (s *Server) VolumeUpdateOfflineReplicaRebuilding(rw http.ResponseWriter, req *http.Request) error {
+	var input UpdateOfflineReplicaRebuildingInput
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrapf(err, "error reading offlineReplicaRebuilding")
+	}
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.UpdateOfflineReplicaRebuilding(id, input.OfflineReplicaRebuilding)
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("BUG: cannot convert to volume %v object", id)
 	}
 
 	return s.responseWithVolume(rw, req, "", v)
