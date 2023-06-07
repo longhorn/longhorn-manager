@@ -1351,6 +1351,8 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameStorageReservedPercentageForDefaultDisk:                  true,
 		types.SettingNameSupportBundleFailedHistoryLimit:                          true,
 		types.SettingNameSystemManagedPodsImagePullPolicy:                         true,
+		types.SettingNameSpdk:                                                     true,
+		types.SettingNameOfflineReplicaRebuilding:                                 true,
 	}
 
 	settings, err := info.ds.ListSettings()
