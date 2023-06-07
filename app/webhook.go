@@ -37,7 +37,7 @@ func startWebhook(ctx context.Context, serviceAccount, kubeconfigPath, webhookTy
 
 	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
-		return fmt.Errorf("unable to get client config: %v", err)
+		return fmt.Errorf("failed to get client config: %v", err)
 	}
 
 	s := server.New(ctx, cfg, namespace, webhookType)
@@ -59,7 +59,7 @@ func startWebhook(ctx context.Context, serviceAccount, kubeconfigPath, webhookTy
 	for start := time.Now(); time.Since(start) < defaultStartTimeout; {
 		resp, err := cli.Get(webhookHealthEndpoint)
 		if err != nil {
-			logrus.WithError(err).Warnf("Error getting webhook health endpoint %v", webhookHealthEndpoint)
+			logrus.WithError(err).Warnf("Failed to get webhook health endpoint %v", webhookHealthEndpoint)
 		} else if resp.StatusCode == 200 {
 			logrus.Infof("Webhook %v is ready", webhookType)
 			running = true

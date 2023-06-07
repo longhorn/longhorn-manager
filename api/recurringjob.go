@@ -27,7 +27,7 @@ func (s *Server) RecurringJobList(rw http.ResponseWriter, req *http.Request) (er
 func (s *Server) recurringJobList(apiContext *api.ApiContext) (*client.GenericCollection, error) {
 	list, err := s.m.ListRecurringJobsSorted()
 	if err != nil {
-		return nil, errors.Wrap(err, "error listing recurring job")
+		return nil, errors.Wrap(err, "failed to list recurring job")
 	}
 	return toRecurringJobCollection(list, apiContext), nil
 }
@@ -39,7 +39,7 @@ func (s *Server) RecurringJobGet(rw http.ResponseWriter, req *http.Request) erro
 
 	job, err := s.m.GetRecurringJob(id)
 	if err != nil {
-		return errors.Wrapf(err, "error get recurring job policy '%s'", id)
+		return errors.Wrapf(err, "failed to get recurring job policy '%s'", id)
 	}
 	apiContext.Write(toRecurringJobResource(job, apiContext))
 	return nil
@@ -63,7 +63,7 @@ func (s *Server) RecurringJobCreate(rw http.ResponseWriter, req *http.Request) e
 		Labels:      input.Labels,
 	})
 	if err != nil {
-		return errors.Wrapf(err, "unable to create recurring job %v", input.Name)
+		return errors.Wrapf(err, "failed to create recurring job %v", input.Name)
 	}
 	apiContext.Write(toRecurringJobResource(obj, apiContext))
 	return nil
@@ -95,7 +95,7 @@ func (s *Server) RecurringJobUpdate(rw http.ResponseWriter, req *http.Request) e
 	}
 	job, ok := obj.(*longhorn.RecurringJob)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert %v to recurring job object", name)
+		return fmt.Errorf("failed to convert %v to recurring job object", name)
 	}
 
 	apiContext.Write(toRecurringJobResource(job, apiContext))
@@ -105,7 +105,7 @@ func (s *Server) RecurringJobUpdate(rw http.ResponseWriter, req *http.Request) e
 func (s *Server) RecurringJobDelete(rw http.ResponseWriter, req *http.Request) error {
 	id := mux.Vars(req)["name"]
 	if err := s.m.DeleteRecurringJob(id); err != nil {
-		return errors.Wrapf(err, "unable to delete recurring job %v", id)
+		return errors.Wrapf(err, "failed to delete recurring job %v", id)
 	}
 
 	return nil

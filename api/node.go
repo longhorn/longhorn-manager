@@ -84,7 +84,7 @@ func (s *Server) NodeUpdate(rw http.ResponseWriter, req *http.Request) error {
 	}
 	unode, ok := obj.(*longhorn.Node)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert to node %v object", id)
+		return fmt.Errorf("failed to convert to node %v object", id)
 	}
 
 	apiContext.Write(toNodeResource(unode, nodeIPMap[id], apiContext))
@@ -113,7 +113,7 @@ func (s *Server) DiskUpdate(rw http.ResponseWriter, req *http.Request) error {
 	}
 	unode, ok := obj.(*longhorn.Node)
 	if !ok {
-		return fmt.Errorf("BUG: cannot convert to node %v object", id)
+		return fmt.Errorf("failed to convert to node %v object", id)
 	}
 	apiContext.Write(toNodeResource(unode, nodeIPMap[id], apiContext))
 	return nil
@@ -122,7 +122,7 @@ func (s *Server) DiskUpdate(rw http.ResponseWriter, req *http.Request) error {
 func (s *Server) NodeDelete(rw http.ResponseWriter, req *http.Request) error {
 	id := mux.Vars(req)["name"]
 	if err := s.m.DeleteNode(id); err != nil {
-		return errors.Wrap(err, "unable to delete node")
+		return errors.Wrap(err, "failed to delete node")
 	}
 
 	return nil

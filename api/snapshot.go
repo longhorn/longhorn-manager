@@ -33,11 +33,11 @@ func (s *Server) SnapshotCreate(w http.ResponseWriter, req *http.Request) (err e
 
 	vol, err := s.m.Get(volName)
 	if err != nil {
-		return errors.Wrap(err, "unable to get volume")
+		return errors.Wrap(err, "failed to get volume")
 	}
 
 	if vol.Status.IsStandby {
-		return fmt.Errorf("cannot create snapshot for standby volume %v", vol.Name)
+		return fmt.Errorf("failed to create snapshot for standby volume %v", vol.Name)
 	}
 
 	snapshot, err := s.m.CreateSnapshot(input.Name, input.Labels, volName)
@@ -109,11 +109,11 @@ func (s *Server) SnapshotDelete(w http.ResponseWriter, req *http.Request) (err e
 
 	vol, err := s.m.Get(volName)
 	if err != nil {
-		return errors.Wrap(err, "unable to get volume")
+		return errors.Wrap(err, "failed to get volume")
 	}
 
 	if vol.Status.IsStandby {
-		return fmt.Errorf("cannot delete snapshot for standby volume %v", vol.Name)
+		return fmt.Errorf("failed to delete snapshot for standby volume %v", vol.Name)
 	}
 
 	if err := s.m.DeleteSnapshot(input.Name, volName); err != nil {
@@ -137,15 +137,15 @@ func (s *Server) SnapshotRevert(w http.ResponseWriter, req *http.Request) (err e
 
 	vol, err := s.m.Get(volName)
 	if err != nil {
-		return errors.Wrap(err, "unable to get volume")
+		return errors.Wrap(err, "failed to get volume")
 	}
 
 	if vol.Status.IsStandby {
-		return fmt.Errorf("cannot revert snapshot for standby volume %v", vol.Name)
+		return fmt.Errorf("failed to revert snapshot for standby volume %v", vol.Name)
 	}
 
 	if vol.Spec.Frontend != "" && !vol.Spec.DisableFrontend {
-		return fmt.Errorf("cannot revert snapshot for volume %v with frontend enabled", vol.Name)
+		return fmt.Errorf("failed to revert snapshot for volume %v with frontend enabled", vol.Name)
 	}
 
 	if err := s.m.RevertSnapshot(input.Name, volName); err != nil {
@@ -171,11 +171,11 @@ func (s *Server) SnapshotBackup(w http.ResponseWriter, req *http.Request) (err e
 
 	vol, err := s.m.Get(volName)
 	if err != nil {
-		return errors.Wrap(err, "unable to get volume")
+		return errors.Wrap(err, "failed to get volume")
 	}
 
 	if vol.Status.IsStandby {
-		return fmt.Errorf("cannot create backup for standby volume %v", vol.Name)
+		return fmt.Errorf("failed to create backup for standby volume %v", vol.Name)
 	}
 
 	labels, err := util.ValidateSnapshotLabels(input.Labels)
@@ -187,7 +187,7 @@ func (s *Server) SnapshotBackup(w http.ResponseWriter, req *http.Request) (err e
 	if !reflect.DeepEqual(vol.Status.KubernetesStatus, longhorn.KubernetesStatus{}) {
 		kubeStatus, err := json.Marshal(vol.Status.KubernetesStatus)
 		if err != nil {
-			return errors.Wrapf(err, "BUG: could not convert volume %v's KubernetesStatus to json", volName)
+			return errors.Wrapf(err, "failed to convert volume %v's KubernetesStatus to json", volName)
 		}
 		labels[types.KubernetesStatusLabel] = string(kubeStatus)
 	}
@@ -227,11 +227,11 @@ func (s *Server) SnapshotCRCreate(w http.ResponseWriter, req *http.Request) (err
 
 	vol, err := s.m.Get(volName)
 	if err != nil {
-		return errors.Wrap(err, "unable to get volume")
+		return errors.Wrap(err, "failed to get volume")
 	}
 
 	if vol.Status.IsStandby {
-		return fmt.Errorf("cannot create snapshot for standby volume %v", vol.Name)
+		return fmt.Errorf("failed to create snapshot for standby volume %v", vol.Name)
 	}
 
 	snapshot, err := s.m.CreateSnapshotCR(input.Name, input.Labels, volName)
@@ -295,11 +295,11 @@ func (s *Server) SnapshotCRDelete(w http.ResponseWriter, req *http.Request) (err
 
 	vol, err := s.m.Get(volName)
 	if err != nil {
-		return errors.Wrap(err, "unable to get volume")
+		return errors.Wrap(err, "failed to get volume")
 	}
 
 	if vol.Status.IsStandby {
-		return fmt.Errorf("cannot delete snapshot for standby volume %v", vol.Name)
+		return fmt.Errorf("failed to delete snapshot for standby volume %v", vol.Name)
 	}
 
 	err = s.m.DeleteSnapshotCR(input.Name)

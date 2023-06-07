@@ -1204,7 +1204,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		for _, snapshot := range snapshots {
 			snapshotSize, err := util.ConvertSize(snapshot.Size)
 			if err != nil {
-				logrus.WithError(err).Warnf("api: Cannot convert snapshot size %v for volume %v", snapshot.Size, v.Name)
+				logrus.WithError(err).Warnf("api: failed to convert snapshot size %v for volume %v", snapshot.Size, v.Name)
 				continue
 			}
 			actualSize += snapshotSize
@@ -1505,7 +1505,6 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 
 func toSnapshotCRResource(s *longhorn.Snapshot) *SnapshotCR {
 	if s == nil {
-		logrus.Warn("weird: nil snapshot")
 		return nil
 	}
 
@@ -1551,7 +1550,6 @@ func toSnapshotCRCollection(snapCRs map[string]*longhorn.Snapshot) *client.Gener
 
 func toSnapshotResource(s *longhorn.SnapshotInfo, checksum string) *Snapshot {
 	if s == nil {
-		logrus.Warn("weird: nil snapshot")
 		return nil
 	}
 	return &Snapshot{
@@ -1581,7 +1579,6 @@ func toSnapshotCollection(ssList map[string]*longhorn.SnapshotInfo, ssListRO map
 
 func toVolumeRecurringJobResource(obj *longhorn.VolumeRecurringJob) *VolumeRecurringJob {
 	if obj == nil {
-		logrus.Warn("weird: nil volumeRecurringJob")
 		return nil
 	}
 	return &VolumeRecurringJob{
@@ -1603,7 +1600,6 @@ func toVolumeRecurringJobCollection(recurringJobs map[string]*longhorn.VolumeRec
 
 func toBackupTargetResource(bt *longhorn.BackupTarget) *BackupTarget {
 	if bt == nil {
-		logrus.Warnf("weird: nil backupTarget")
 		return nil
 	}
 
@@ -1626,7 +1622,6 @@ func toBackupTargetResource(bt *longhorn.BackupTarget) *BackupTarget {
 
 func toBackupVolumeResource(bv *longhorn.BackupVolume, apiContext *api.ApiContext) *BackupVolume {
 	if bv == nil {
-		logrus.Warnf("weird: nil backupVolume")
 		return nil
 	}
 	b := &BackupVolume{
@@ -1673,7 +1668,6 @@ func toBackupVolumeCollection(bvs []*longhorn.BackupVolume, apiContext *api.ApiC
 
 func toBackupResource(b *longhorn.Backup) *Backup {
 	if b == nil {
-		logrus.Warnf("weird: nil backup")
 		return nil
 	}
 

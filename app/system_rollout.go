@@ -64,27 +64,27 @@ func systemRollout(c *cli.Context) error {
 
 	config, err := clientcmd.BuildConfigFromFlags("", c.String(FlagKubeConfig))
 	if err != nil {
-		return errors.Wrap(err, "unable to get client config")
+		return errors.Wrap(err, "failed to get client config")
 	}
 
 	kubeClient, err := clientset.NewForConfig(config)
 	if err != nil {
-		return errors.Wrap(err, "unable to get k8s client")
+		return errors.Wrap(err, "failed to get k8s client")
 	}
 
 	extensionsClient, err := apiextensionsclientset.NewForConfig(config)
 	if err != nil {
-		return errors.Wrap(err, "unable to get k8s extension client")
+		return errors.Wrap(err, "failed to get k8s extension client")
 	}
 
 	lhClient, err := lhclientset.NewForConfig(config)
 	if err != nil {
-		return errors.Wrap(err, "unable to get lh client")
+		return errors.Wrap(err, "failed to get lh client")
 	}
 
 	scheme := runtime.NewScheme()
 	if err := longhorn.SchemeBuilder.AddToScheme(scheme); err != nil {
-		return errors.Wrap(err, "unable to create scheme")
+		return errors.Wrap(err, "failed to create scheme")
 	}
 
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, time.Second*30)
