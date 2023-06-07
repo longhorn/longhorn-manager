@@ -634,6 +634,10 @@ func IsPotentiallyReusableReplica(r *longhorn.Replica, hardNodeAffinity string) 
 	if hardNodeAffinity != "" && r.Spec.NodeID != hardNodeAffinity {
 		return false
 	}
+	// TODO: Reuse failed replicas for a SPDK volume
+	if r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+		return false
+	}
 	return true
 }
 
