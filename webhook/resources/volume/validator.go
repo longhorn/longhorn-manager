@@ -262,6 +262,12 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 				newVolume.Name, newVolume.Spec.BackendStoreDriver)
 			return werror.NewInvalidError(err.Error(), "")
 		}
+	} else {
+		if newVolume.Spec.OfflineReplicaRebuilding != longhorn.OfflineReplicaRebuildingDisabled {
+			err := fmt.Errorf("changing offline replica rebuilding for volume %v is not supported for backend store driver %v",
+				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			return werror.NewInvalidError(err.Error(), "")
+		}
 	}
 
 	// prevent the changing v.Spec.MigrationNodeID to different node when the volume is doing live migration (when v.Status.CurrentMigrationNodeID != "")
