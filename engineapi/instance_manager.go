@@ -30,7 +30,7 @@ const (
 	UnsupportedInstanceManagerProxyAPIVersion = 0
 
 	DefaultEnginePortCount  = 1
-	DefaultReplicaPortCount = 15
+	DefaultReplicaPortCount = 10
 
 	DefaultPortArg         = "--listen,0.0.0.0:"
 	DefaultTerminateSignal = "SIGHUP"
