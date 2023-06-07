@@ -155,6 +155,14 @@ const (
 	BackendStoreDriverTypeSPDK     = BackendStoreDriverType("spdk")
 )
 
+type OfflineReplicaRebuilding string
+
+const (
+	OfflineReplicaRebuildingIgnored  = OfflineReplicaRebuilding("ignored")
+	OfflineReplicaRebuildingEnabled  = OfflineReplicaRebuilding("enabled")
+	OfflineReplicaRebuildingDisabled = OfflineReplicaRebuilding("disabled")
+)
+
 type KubernetesStatus struct {
 	// +optional
 	PVName string `json:"pvName"`
@@ -250,6 +258,10 @@ type VolumeSpec struct {
 	// +kubebuilder:validation:Enum=longhorn;spdk
 	// +optional
 	BackendStoreDriver BackendStoreDriverType `json:"backendStoreDriver"`
+	// OfflineReplicaRebuilding is used to determine if the offline replica rebuilding feature is enabled or not
+	// +kubebuilder:validation:Enum=ignored;disabled;enabled
+	// +optional
+	OfflineReplicaRebuilding OfflineReplicaRebuilding `json:"offlineReplicaRebuilding"`
 }
 
 // VolumeStatus defines the observed state of the Longhorn volume
@@ -301,6 +313,8 @@ type VolumeStatus struct {
 	ShareEndpoint string `json:"shareEndpoint"`
 	// +optional
 	ShareState ShareManagerState `json:"shareState"`
+	// +optional
+	OfflineReplicaRebuildingRequired bool `json:"offlineReplicaRebuildingRequired"`
 }
 
 // +genclient
