@@ -487,14 +487,30 @@ func (vac *VolumeAttachmentController) shouldDoDetach(va *longhorn.VolumeAttachm
 		return true
 	}
 
+	// Currently, the only ticket that is interruptible and frontend disabled is the rebuilding-controller ticket
+	// Offline replica rebuilding has the potential to fail and repeated attempts.
+	// Users can give up (interrupt) the replica rebuilding and attach the degraded volume to a node.
+	if hasInterruptibleAndFrontendDisabledTicket(currentAttachmentTickets) && hasWorkloadTicket(va.Spec.AttachmentTickets) {
+		log.Debugf("Workload attachment ticket interrupted rebuilding-controller attachment tickets")
+		return true
+	}
+
+	return false
+}
+
+func hasInterruptibleAndFrontendDisabledTicket(attachmentTickets map[string]*longhorn.AttachmentTicket) bool {
+	for _, ticket := range attachmentTickets {
+		if ticket.Type == longhorn.AttacherTypeVolumeRebuildingController {
+			return true
+		}
+	}
 	return false
 }
 
 func hasUninterruptibleTicket(attachmentTickets map[string]*longhorn.AttachmentTicket) bool {
 	for _, ticket := range attachmentTickets {
 		if ticket.Type != longhorn.AttacherTypeSnapshotController &&
-			ticket.Type != longhorn.AttacherTypeBackupController &&
-			ticket.Type != longhorn.AttacherTypeVolumeRebuildingController {
+			ticket.Type != longhorn.AttacherTypeBackupController {
 			return true
 		}
 	}
@@ -735,14 +751,6 @@ func setAttachmentParameter(parameters map[string]string, vol *longhorn.Volume) 
 		vol.Spec.DisableFrontend = true
 	}
 	vol.Spec.LastAttachedBy = parameters["lastAttachedBy"]
-}
-
-func copyStringMap(originalMap map[string]string) map[string]string {
-	CopiedMap := make(map[string]string)
-	for index, element := range originalMap {
-		CopiedMap[index] = element
-	}
-	return CopiedMap
 }
 
 func (vac *VolumeAttachmentController) isResponsibleFor(va *longhorn.VolumeAttachment) (bool, error) {
