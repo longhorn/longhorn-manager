@@ -14,6 +14,7 @@ import (
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 	immeta "github.com/longhorn/longhorn-instance-manager/pkg/meta"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
+	spdktypes "github.com/longhorn/longhorn-spdk-engine/pkg/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
@@ -29,7 +30,7 @@ const (
 	UnsupportedInstanceManagerProxyAPIVersion = 0
 
 	DefaultEnginePortCount  = 1
-	DefaultReplicaPortCount = 15
+	DefaultReplicaPortCount = 10
 
 	DefaultPortArg         = "--listen,0.0.0.0:"
 	DefaultTerminateSignal = "SIGHUP"
@@ -474,13 +475,18 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 		return parseProcess(imapi.RPCToProcess(process)), nil
 	}
 
+	portCount := DefaultReplicaPortCount
+	if req.Replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+		portCount = spdktypes.DefaultReplicaReservedPortCount
+	}
+
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
 		BackendStoreDriver: string(req.Replica.Spec.BackendStoreDriver),
 		Name:               req.Replica.Name,
 		InstanceType:       string(longhorn.InstanceManagerTypeReplica),
 		VolumeName:         req.Replica.Spec.VolumeName,
 		Size:               uint64(req.Replica.Spec.VolumeSize),
-		PortCount:          DefaultReplicaPortCount,
+		PortCount:          portCount,
 		PortArgs:           []string{DefaultPortArg},
 
 		Binary:     binary,
