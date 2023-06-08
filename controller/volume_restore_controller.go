@@ -61,11 +61,11 @@ func NewVolumeRestoreController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-volume-restore-controller"}),
 	}
 
-	ds.VolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vrsc.enqueueVolume,
 		UpdateFunc: func(old, cur interface{}) { vrsc.enqueueVolume(cur) },
 		DeleteFunc: vrsc.enqueueVolume,
-	})
+	}, 0)
 	vrsc.cacheSyncs = append(vrsc.cacheSyncs, ds.VolumeInformer.HasSynced)
 
 	return vrsc
