@@ -1590,6 +1590,11 @@ func GetBinaryClientForEngine(e *longhorn.Engine, engines engineapi.EngineClient
 	defer func() {
 		err = errors.Wrapf(err, "cannot get client for engine %v", e.Name)
 	}()
+
+	if e.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+		return nil, nil
+	}
+
 	if e.Status.CurrentState != longhorn.InstanceStateRunning {
 		return nil, fmt.Errorf("engine is not running")
 	}
