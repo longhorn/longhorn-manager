@@ -4,8 +4,8 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
-func (p *Proxy) ReplicaAdd(e *longhorn.Engine, address string, restore, fastSync bool, replicaFileSyncHTTPClientTimeout int64) (err error) {
-	return p.grpcClient.ReplicaAdd(string(e.Spec.BackendStoreDriver), p.DirectToURL(e), address, restore, e.Spec.VolumeSize, e.Status.CurrentSize, int(replicaFileSyncHTTPClientTimeout), fastSync)
+func (p *Proxy) ReplicaAdd(e *longhorn.Engine, replicaName, replicaAddress string, restore, fastSync bool, replicaFileSyncHTTPClientTimeout int64) (err error) {
+	return p.grpcClient.ReplicaAdd(string(e.Spec.BackendStoreDriver), e.Name, p.DirectToURL(e), replicaName, replicaAddress, restore, e.Spec.VolumeSize, e.Status.CurrentSize, int(replicaFileSyncHTTPClientTimeout), fastSync)
 }
 
 func (p *Proxy) ReplicaRemove(e *longhorn.Engine, address string) (err error) {
