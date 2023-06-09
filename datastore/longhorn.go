@@ -376,17 +376,12 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 }
 
 func (s *DataStore) ValidateSpdk(spdkEnabled bool) error {
-	// Check if all volumes are detached
 	volumesDetached, err := s.AreAllVolumesDetached()
 	if err != nil {
 		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameSpdk)
 	}
 	if !volumesDetached {
 		return errors.Errorf("cannot apply %v setting to Longhorn workloads when there are attached volumes", types.SettingNameSpdk)
-	}
-
-	if !spdkEnabled {
-		return nil
 	}
 
 	// Check if there is enough hugepages-2Mi capacity for all nodes
@@ -396,25 +391,42 @@ func (s *DataStore) ValidateSpdk(spdkEnabled bool) error {
 	}
 	hugepageRequested := resource.MustParse(hugepageRequestedInMiB.Value + "Mi")
 
-	kubeNodes, err := s.ListKubeNodesRO()
+	ims, err := s.ListInstanceManagers()
 	if err != nil {
-		return errors.Wrapf(err, "failed to list Kubernetes nodes for %v setting update", types.SettingNameSpdk)
+		return errors.Wrapf(err, "failed to list instance managers for %v setting update", types.SettingNameSpdk)
 	}
 
-	for _, node := range kubeNodes {
-		if node.Spec.Taints == nil {
+	for _, im := range ims {
+		node, err := s.GetKubernetesNode(im.Spec.NodeID)
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				return errors.Wrapf(err, "failed to get Kubernetes node %v for %v setting update", im.Spec.NodeID, types.SettingNameSpdk)
+			}
 			continue
 		}
 
-		capacity, ok := node.Status.Capacity["hugepages-2Mi"]
-		if !ok {
-			return errors.Errorf("failed to get hugepages-2Mi capacity for node %v", node.Name)
-		}
+		if spdkEnabled {
+			capacity, ok := node.Status.Capacity["hugepages-2Mi"]
+			if !ok {
+				return errors.Errorf("failed to get hugepages-2Mi capacity for node %v", node.Name)
+			}
 
-		hugepageCapacity := resource.MustParse(capacity.String())
+			hugepageCapacity := resource.MustParse(capacity.String())
 
-		if hugepageCapacity.Cmp(hugepageRequested) < 0 {
-			return errors.Errorf("not enough hugepages-2Mi capacity for node %v, requested %v, capacity %v", node.Name, hugepageRequested.String(), hugepageCapacity.String())
+			if hugepageCapacity.Cmp(hugepageRequested) < 0 {
+				return errors.Errorf("not enough hugepages-2Mi capacity for node %v, requested %v, capacity %v", node.Name, hugepageRequested.String(), hugepageCapacity.String())
+			}
+		} else {
+			lhNode, err := s.GetNodeRO(im.Spec.NodeID)
+			if err != nil {
+				return errors.Wrapf(err, "failed to get Longhorn node %v for %v setting update", im.Spec.NodeID, types.SettingNameSpdk)
+			}
+
+			for _, disk := range lhNode.Spec.Disks {
+				if disk.Type == longhorn.DiskTypeBlock {
+					return fmt.Errorf("failed to disable %v setting because there are block-type disks on node %v", types.SettingNameSpdk, node.Name)
+				}
+			}
 		}
 	}
 

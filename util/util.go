@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"math"
 	"math/rand"
 	"net"
 	"net/http"
@@ -30,6 +31,8 @@ import (
 	"github.com/gorilla/handlers"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 	"gopkg.in/yaml.v2"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -112,6 +115,19 @@ func ConvertSize(size interface{}) (int64, error) {
 		return quantity.Value(), nil
 	}
 	return 0, errors.Errorf("could not parse size '%v'", size)
+}
+
+func ConvertToCamel(input, separator string) string {
+	words := strings.Split(input, separator)
+	caser := cases.Title(language.English)
+	for i := 0; i < len(words); i++ {
+		words[i] = caser.String(words[i])
+	}
+	return strings.Join(words, "")
+}
+
+func ConvertFirstCharToLower(input string) string {
+	return strings.ToLower(input[:1]) + input[1:]
 }
 
 func RoundUpSize(size int64) int64 {
@@ -225,7 +241,14 @@ func ParseTime(t string) (time.Time, error) {
 
 }
 
-func Execute(envs []string, binary string, args ...string) (string, error) {
+type ExecuteFunc func([]string, string, ...string) (string, error)
+
+// Execute is a variable holding the function responsible for executing commands.
+// By using a variable for the execution function, it allows for easier unit testing
+// by substituting a mock implementation.
+var Execute ExecuteFunc = execute
+
+func execute(envs []string, binary string, args ...string) (string, error) {
 	return ExecuteWithTimeout(cmdTimeout, envs, binary, args...)
 }
 
@@ -979,4 +1002,14 @@ func VerifySnapshotLabels(labels map[string]string) error {
 		}
 	}
 	return nil
+}
+
+func RemoveNewlines(input string) string {
+	return strings.Replace(input, "\n", "", -1)
+}
+
+func GetRange(number float64, rangeBlock float64) (float64, float64) {
+	min := math.Floor(number/rangeBlock) * rangeBlock
+	max := min + rangeBlock
+	return min, max
 }

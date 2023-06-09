@@ -88,7 +88,7 @@ func NewRecurringJobController(
 func (c *RecurringJobController) enqueueRecurringJob(obj interface{}) {
 	key, err := controller.KeyFunc(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
+		utilruntime.HandleError(fmt.Errorf("failed to get key for object %#v: %v", obj, err))
 		return
 	}
 
@@ -99,8 +99,8 @@ func (c *RecurringJobController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
 
-	logrus.Infof("Starting Longhorn Recurring Job controller")
-	defer logrus.Infof("Shut down Longhorn Recurring Job controller")
+	logrus.Info("Starting Longhorn Recurring Job controller")
+	defer logrus.Info("Shut down Longhorn Recurring Job controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn recurring jobs", stopCh, c.cacheSyncs...) {
 		return
@@ -139,13 +139,13 @@ func (c *RecurringJobController) handleErr(err error, key interface{}) {
 	}
 
 	if c.queue.NumRequeues(key) < maxRetries {
-		logrus.Warnf("Error syncing Longhorn recurring job %v: %v", key, err)
+		logrus.WithError(err).Errorf("Failed to sync Longhorn recurring job %v", key)
 		c.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	logrus.Warnf("Dropping Longhorn recurring job %v out of the queue: %v", key, err)
+	logrus.WithError(err).Errorf("Dropping Longhorn recurring job %v out of the queue", key)
 	c.queue.Forget(key)
 }
 
@@ -159,7 +159,7 @@ func getLoggerForRecurringJob(logger logrus.FieldLogger, recurringJob *longhorn.
 
 func (c *RecurringJobController) syncRecurringJob(key string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "failed to sync recurring job for %v", key)
+		err = errors.Wrapf(err, "failed to sync recurring job %v", key)
 	}()
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
@@ -173,10 +173,10 @@ func (c *RecurringJobController) syncRecurringJob(key string) (err error) {
 	if err != nil {
 		log := c.logger.WithField("recurringJob", name)
 		if !datastore.ErrorIsNotFound(err) {
-			log.WithError(err).Error("failed to retrieve recurring job from datastore")
-			return err
+			return errors.Wrap(err, "failed to retrieve recurring job from datastore")
 		}
-		log.Debug("Cannot find recurring job, may have been deleted")
+
+		log.Info("Detaching volumes auto attached by recurring job since recurring job may have been deleted")
 
 		// The detachVolumeAutoAttachedByRecurringJob is a workaround to
 		// resolve volume unable to detach via the recurring job. The volume
@@ -238,7 +238,7 @@ func (c *RecurringJobController) syncRecurringJob(key string) (err error) {
 
 	err = c.reconcileRecurringJob(recurringJob)
 	if err != nil {
-		log.WithError(err).Error("failed to reconcile recurring job")
+		log.WithError(err).Warnf("Failed to reconcile recurring job %v", key)
 	}
 
 	return nil
@@ -270,11 +270,11 @@ func (c *RecurringJobController) cleanupRecurringJobLabelInVolumesAndPVCs(recurr
 				if !unusedGroups[jobName] {
 					continue
 				}
-				c.logger.Debugf("Clean up recurring job-group %v for %v", jobName, vol.Name)
+				c.logger.Infof("Cleaning up recurring job-group %v for %v", jobName, vol.Name)
 				labelKey := types.GetRecurringJobLabelKeyByType(jobName, true)
 				vol = c.removeRecurringJobLabelInVolume(vol, labelKey)
 			} else if jobName == recurringJob.Name {
-				c.logger.Debugf("Clean up recurring job %v for %v", jobName, vol.Name)
+				c.logger.Infof("Cleaning up recurring job %v for %v", jobName, vol.Name)
 				labelKey := types.GetRecurringJobLabelKeyByType(jobName, false)
 				vol = c.removeRecurringJobLabelInVolume(vol, labelKey)
 			}
@@ -293,8 +293,8 @@ func (c *RecurringJobController) cleanupRecurringJobLabelInVolumesAndPVCs(recurr
 
 func (c *RecurringJobController) removeRecurringJobLabelInVolume(volume *longhorn.Volume, labelKey string) *longhorn.Volume {
 	if _, exist := volume.Labels[labelKey]; exist {
+		logrus.Infof("Removing volume %v recurring job label %v", volume.Name, labelKey)
 		delete(volume.Labels, labelKey)
-		logrus.Debugf("Removing volume %v recurring job label %v", volume.Name, labelKey)
 	}
 	return volume
 }
@@ -356,7 +356,7 @@ func (c *RecurringJobController) detachVolumeAutoAttachedByRecurringJob(name str
 		return nil
 	}
 	if v.Status.State == longhorn.VolumeStateAttached {
-		c.logger.Infof("requesting auto-attached volume %v to detach from node %v", v.Name, v.Spec.NodeID)
+		c.logger.Infof("Requesting auto-attached volume %v to detach from node %v", v.Name, v.Spec.NodeID)
 		v.Spec.NodeID = ""
 		if _, err := c.ds.UpdateVolume(v); err != nil {
 			return err
@@ -377,7 +377,7 @@ func (c *RecurringJobController) reconcileRecurringJob(recurringJob *longhorn.Re
 
 	appliedCronJob, err := c.ds.GetCronJobROByRecurringJob(recurringJob)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get cron job by recurring job")
+		return errors.Wrap(err, "failed to get cron job by recurring job")
 	}
 	if appliedCronJob == nil {
 		err = c.createCronJob(cronJob, recurringJob)
@@ -406,7 +406,7 @@ func (c *RecurringJobController) createCronJob(cronJob *batchv1.CronJob, recurri
 	}
 	_, err = c.ds.CreateCronJob(cronJob)
 	if err != nil {
-		return errors.Wrapf(err, "failed to create cron job")
+		return errors.Wrap(err, "failed to create cron job")
 	}
 	return nil
 }
@@ -420,14 +420,14 @@ func (c *RecurringJobController) checkAndUpdateCronJob(cronJob, appliedCronJob *
 
 	lastAppliedSpec, err := util.GetAnnotation(appliedCronJob, types.GetLonghornLabelKey(LastAppliedCronJobSpecAnnotationKeySuffix))
 	if err != nil {
-		return errors.Wrapf(err, "failed to get annotation from cron job")
+		return errors.Wrap(err, "failed to get annotation from cron job")
 	}
 	if lastAppliedSpec == cronJobSpec {
 		return nil
 	}
 	annotation := types.GetLonghornLabelKey(LastAppliedCronJobSpecAnnotationKeySuffix)
 	if err := util.SetAnnotation(cronJob, annotation, cronJobSpec); err != nil {
-		return errors.Wrapf(err, "failed to set annotation for cron job")
+		return errors.Wrap(err, "failed to set annotation for cron job")
 	}
 	if _, err := c.ds.UpdateCronJob(cronJob); err != nil {
 		return err
@@ -439,12 +439,12 @@ func (c *RecurringJobController) newCronJob(recurringJob *longhorn.RecurringJob)
 	backoffLimit := int32(CronJobBackoffLimit)
 	settingSuccessfulJobsHistoryLimit, err := c.ds.GetSettingAsInt(types.SettingNameRecurringSuccessfulJobsHistoryLimit)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get setting of RecurringSuccessfulJobsHistoryLimit")
+		return nil, errors.Wrapf(err, "failed to get setting of %v", types.SettingNameRecurringSuccessfulJobsHistoryLimit)
 	}
 	successfulJobsHistoryLimit := int32(settingSuccessfulJobsHistoryLimit)
 	settingFailedJobsHistoryLimit, err := c.ds.GetSettingAsInt(types.SettingNameRecurringFailedJobsHistoryLimit)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get setting of RecurringFailedJobsHistoryLimit")
+		return nil, errors.Wrapf(err, "failed to get setting of %v", types.SettingNameRecurringFailedJobsHistoryLimit)
 	}
 	failedJobsHistoryLimit := int32(settingFailedJobsHistoryLimit)
 
@@ -584,7 +584,7 @@ func syncRecurringJobLabelsToTargetResource(targetKind string, targetObj, source
 			continue
 		}
 
-		log.Debugf("Removing %v %v recurring job label %v", targetKind, targetMeta.GetName(), key)
+		log.Infof("Removing %v %v recurring job label %v", targetKind, targetMeta.GetName(), key)
 		delete(targetLabels, key)
 	}
 
@@ -597,7 +597,7 @@ func syncRecurringJobLabelsToTargetResource(targetKind string, targetObj, source
 			continue
 		}
 
-		log.Debugf("Adding %v %v recurring job label %v: %v", targetKind, targetMeta.GetName(), key, value)
+		log.Infof("Adding %v %v recurring job label %v: %v", targetKind, targetMeta.GetName(), key, value)
 		targetLabels[key] = value
 	}
 

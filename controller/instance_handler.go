@@ -56,7 +56,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	if im == nil || im.Status.CurrentState == longhorn.InstanceManagerStateUnknown {
 		if status.Started {
 			if status.CurrentState != longhorn.InstanceStateUnknown {
-				logrus.Warnf("The related node %v of instance %v is down or deleted, will mark the instance as state UNKNOWN", spec.NodeID, instanceName)
+				logrus.Warnf("Marking the instance as state UNKNOWN since the related node %v of instance %v is down or deleted", spec.NodeID, instanceName)
 			}
 			status.CurrentState = longhorn.InstanceStateUnknown
 		} else {
@@ -74,7 +74,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		im.DeletionTimestamp != nil {
 		if status.Started {
 			if status.CurrentState != longhorn.InstanceStateError {
-				logrus.Warnf("Cannot find the instance manager for the running instance %v, will mark the instance as state ERROR", instanceName)
+				logrus.Warnf("Marking the instance as state ERROR since failed to find the instance manager for the running instance %v", instanceName)
 			}
 			status.CurrentState = longhorn.InstanceStateError
 		} else {
@@ -90,7 +90,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	if im.Status.CurrentState == longhorn.InstanceManagerStateStarting {
 		if status.Started {
 			if status.CurrentState != longhorn.InstanceStateError {
-				logrus.Warnf("The starting instance manager %v shouldn't contain the running instance %v, will mark the instance as state ERROR", im.Name, instanceName)
+				logrus.Warnf("Marking the instance as state ERROR since the starting instance manager %v shouldn't contain the running instance %v", im.Name, instanceName)
 			}
 			status.CurrentState = longhorn.InstanceStateError
 			status.CurrentImage = ""
@@ -105,7 +105,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	if !exists {
 		if status.Started {
 			if status.CurrentState != longhorn.InstanceStateError {
-				logrus.Warnf("Cannot find the instance status in instance manager %v for the running instance %v, will mark the instance as state ERROR", im.Name, instanceName)
+				logrus.Warnf("Marking the instance as state ERROR since failed to find the instance status in instance manager %v for the running instance %v", im.Name, instanceName)
 			}
 			status.CurrentState = longhorn.InstanceStateError
 		} else {
@@ -119,7 +119,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	}
 
 	if status.InstanceManagerName != "" && status.InstanceManagerName != im.Name {
-		logrus.Errorf("BUG: The related process of instance %v is found in the instance manager %v, but the instance manager name in the instance status is %v. "+
+		logrus.Errorf("The related process of instance %v is found in the instance manager %v, but the instance manager name in the instance status is %v. "+
 			"The instance manager name shouldn't change except for cleanup",
 			instanceName, im.Name, status.InstanceManagerName)
 	}
@@ -146,23 +146,23 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		}
 
 		if imPod == nil {
-			logrus.Debugf("Instance manager pod from %v not exist in datastore", im.Name)
+			logrus.Warnf("Instance manager pod from %v not exist in datastore", im.Name)
 			return
 		}
 
 		storageIP := h.ds.GetStorageIPFromPod(imPod)
 		if status.StorageIP != storageIP {
 			status.StorageIP = storageIP
-			logrus.Debugf("Instance %v starts running, Storage IP %v", instanceName, status.StorageIP)
+			logrus.Warnf("Instance %v starts running, Storage IP %v", instanceName, status.StorageIP)
 		}
 
 		if status.IP != im.Status.IP {
 			status.IP = im.Status.IP
-			logrus.Debugf("Instance %v starts running, IP %v", instanceName, status.IP)
+			logrus.Warnf("Instance %v starts running, IP %v", instanceName, status.IP)
 		}
 		if status.Port != int(instance.Status.PortStart) {
 			status.Port = int(instance.Status.PortStart)
-			logrus.Debugf("Instance %v starts running, Port %d", instanceName, status.Port)
+			logrus.Warnf("Instance %v starts running, Port %d", instanceName, status.Port)
 		}
 		// only set CurrentImage when first started, since later we may specify
 		// different spec.EngineImage for upgrade
@@ -237,7 +237,6 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 				if !datastore.ErrorIsNotFound(err) {
 					return err
 				}
-				logrus.Debugf("Cannot find instance manager %v", status.InstanceManagerName)
 			}
 		}
 		// There should be an available instance manager for a scheduled instance when its related engine image is compatible
@@ -260,11 +259,11 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		if !status.LogFetched {
 			// No need to get the log for instance manager if the backend store driver is not "longhorn"
 			if spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
-				logrus.Warnf("Try to get requested log for %v in instance manager %v", instanceName, status.InstanceManagerName)
+				logrus.Warnf("Getting requested log for %v in instance manager %v", instanceName, status.InstanceManagerName)
 				if im == nil {
-					logrus.Warnf("Cannot get the log for %v due to Instance Manager is already gone", status.InstanceManagerName)
+					logrus.Warnf("Failed to get the log for %v due to Instance Manager is already gone", status.InstanceManagerName)
 				} else if err := h.printInstanceLogs(instanceName, runtimeObj); err != nil {
-					logrus.WithError(err).Warnf("Cannot get requested log for instance %v on node %v", instanceName, im.Spec.NodeID)
+					logrus.WithError(err).Warnf("Failed to get requested log for instance %v on node %v", instanceName, im.Spec.NodeID)
 				}
 			}
 			status.LogFetched = true
@@ -351,14 +350,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		return fmt.Errorf("BUG: unknown instance desire state: desire %v", spec.DesireState)
 	}
 
-	oldState := status.CurrentState
-
 	h.syncStatusWithInstanceManager(im, instanceName, spec, status, instances)
-
-	if oldState != status.CurrentState {
-		logrus.Debugf("Instance handler updated instance %v state, old state %v, new state %v", instanceName, oldState, status.CurrentState)
-	}
-
 	switch status.CurrentState {
 	case longhorn.InstanceStateRunning:
 		// If `spec.DesireState` is `longhorn.InstanceStateStopped`, `spec.NodeID` has been unset by volume controller.
@@ -367,9 +359,8 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 				status.CurrentState = longhorn.InstanceStateError
 				status.IP = ""
 				status.StorageIP = ""
-				err := fmt.Errorf("BUG: instance %v NodeID %v is not the same as the instance manager %v NodeID %v",
+				err := fmt.Errorf("instance %v NodeID %v is not the same as the instance manager %v NodeID %v",
 					instanceName, spec.NodeID, im.Name, im.Spec.NodeID)
-				logrus.Errorf("%v", err)
 				return err
 			}
 		}
@@ -387,10 +378,10 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 			}
 
 			if instance.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
-				logrus.Warnf("Instance %v crashed on Instance Manager %v at %v, try to get log",
+				logrus.Warnf("Instance %v crashed on Instance Manager %v at %v, getting log",
 					instanceName, im.Name, im.Spec.NodeID)
 				if err := h.printInstanceLogs(instanceName, runtimeObj); err != nil {
-					logrus.WithError(err).Warnf("cannot get crash log for instance %v on Instance Manager %v at %v",
+					logrus.WithError(err).Warnf("failed to get crash log for instance %v on Instance Manager %v at %v",
 						instanceName, im.Name, im.Spec.NodeID)
 				}
 			}
@@ -434,7 +425,6 @@ func (h *InstanceHandler) printInstanceLogs(instanceName string, obj runtime.Obj
 			break
 		}
 		if err != nil {
-			logrus.WithError(err).Errorf("Failed to receive log for instance %v", instanceName)
 			return err
 		}
 		logrus.Warnf("%s: %s", instanceName, line)
@@ -445,12 +435,10 @@ func (h *InstanceHandler) printInstanceLogs(instanceName string, obj runtime.Obj
 func (h *InstanceHandler) createInstance(instanceName string, backendStoreDriver longhorn.BackendStoreDriverType, obj runtime.Object) error {
 	_, err := h.instanceManagerHandler.GetInstance(obj)
 	if err == nil {
-		logrus.Debugf("Instance process %v had been created, need to wait for instance manager update", instanceName)
 		return nil
 	}
 	if !types.ErrorIsNotFound(err) && !(backendStoreDriver == longhorn.BackendStoreDriverTypeSPDK && types.ErrorIsStopped(err)) {
-		logrus.WithError(err).Errorf("Failed to get instance process %v", instanceName)
-		return err
+		return errors.Wrapf(err, "Failed to get instance process %v", instanceName)
 	}
 
 	logrus.Infof("Creating instance %v", instanceName)

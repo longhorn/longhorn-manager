@@ -83,8 +83,8 @@ func (kc *KubernetesPodController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer kc.queue.ShutDown()
 
-	kc.logger.Infof("Start %v", controllerAgentName)
-	defer kc.logger.Infof("Shutting down %v", controllerAgentName)
+	kc.logger.Infof("Starting %v", controllerAgentName)
+	defer kc.logger.Infof("Shut down %v", controllerAgentName)
 
 	if !cache.WaitForNamedCacheSync(controllerAgentName, stopCh, kc.cacheSyncs...) {
 		return
@@ -118,12 +118,12 @@ func (kc *KubernetesPodController) handleErr(err error, key interface{}) {
 	}
 
 	if kc.queue.NumRequeues(key) < maxRetries {
-		kc.logger.WithError(err).Warnf("%v: Error syncing Longhorn kubernetes pod %v", controllerAgentName, key)
+		kc.logger.WithError(err).Errorf("Failed to sync Longhorn kubernetes pod %v", key)
 		kc.queue.AddRateLimited(key)
 		return
 	}
 
-	kc.logger.WithError(err).Warnf("%v: Dropping Longhorn kubernetes pod %v out of the queue", controllerAgentName, key)
+	kc.logger.WithError(err).Errorf("Dropping Longhorn kubernetes pod %v out of the queue", key)
 	kc.queue.Forget(key)
 	utilruntime.HandleError(err)
 }
@@ -134,7 +134,7 @@ func getLoggerForPod(logger logrus.FieldLogger, pod *v1.Pod) *logrus.Entry {
 
 func (kc *KubernetesPodController) syncHandler(key string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "%v: failed to sync %v", controllerAgentName, key)
+		err = errors.Wrapf(err, "failed to sync pod %v", key)
 	}()
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {

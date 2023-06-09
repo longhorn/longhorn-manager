@@ -25,11 +25,11 @@ func (s *Server) EngineImageList(rw http.ResponseWriter, req *http.Request) erro
 func (s *Server) engineImageList(apiContext *api.ApiContext) (*client.GenericCollection, error) {
 	eis, err := s.m.ListEngineImagesSorted()
 	if err != nil {
-		return nil, errors.Wrap(err, "error listing engine image")
+		return nil, errors.Wrap(err, "failed to list engine image")
 	}
 	defaultImage, err := s.m.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 	if err != nil {
-		return nil, errors.Wrap(err, "error listing engine image")
+		return nil, errors.Wrap(err, "failed to list engine image")
 	}
 	return toEngineImageCollection(eis, defaultImage), nil
 }
@@ -41,11 +41,11 @@ func (s *Server) EngineImageGet(rw http.ResponseWriter, req *http.Request) error
 
 	ei, err := s.m.GetEngineImageByName(id)
 	if err != nil {
-		return errors.Wrapf(err, "error get engine image '%s'", id)
+		return errors.Wrapf(err, "failed to get engine image '%s'", id)
 	}
 	defaultImage, err := s.m.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 	if err != nil {
-		return errors.Wrapf(err, "error get engine image '%s'", id)
+		return errors.Wrapf(err, "failed to get engine image '%s'", id)
 	}
 	apiContext.Write(toEngineImageResource(ei, ei.Spec.Image == defaultImage))
 	return nil
@@ -61,11 +61,11 @@ func (s *Server) EngineImageCreate(rw http.ResponseWriter, req *http.Request) er
 
 	ei, err := s.m.CreateEngineImage(img.Image)
 	if err != nil {
-		return errors.Wrapf(err, "unable to create engine image %v", img.Image)
+		return errors.Wrapf(err, "failed to create engine image %v", img.Image)
 	}
 	defaultImage, err := s.m.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 	if err != nil {
-		return errors.Wrap(err, "unable to create engine image")
+		return errors.Wrap(err, "failed to create engine image")
 	}
 	apiContext.Write(toEngineImageResource(ei, ei.Spec.Image == defaultImage))
 	return nil
@@ -74,7 +74,7 @@ func (s *Server) EngineImageCreate(rw http.ResponseWriter, req *http.Request) er
 func (s *Server) EngineImageDelete(rw http.ResponseWriter, req *http.Request) error {
 	id := mux.Vars(req)["name"]
 	if err := s.m.DeleteEngineImageByName(id); err != nil {
-		return errors.Wrap(err, "unable to delete engine image")
+		return errors.Wrap(err, "failed to delete engine image")
 	}
 
 	return nil

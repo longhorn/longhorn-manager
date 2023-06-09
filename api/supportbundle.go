@@ -34,7 +34,7 @@ func (s *Server) SupportBundleCreate(w http.ResponseWriter, req *http.Request) e
 func (s *Server) SupportBundleDelete(w http.ResponseWriter, req *http.Request) error {
 	name := mux.Vars(req)["bundleName"]
 	if err := s.m.DeleteSupportBundle(name); err != nil {
-		return errors.Wrapf(err, "unable to delete SupportBundle %v", name)
+		return errors.Wrapf(err, "failed to delete SupportBundle %v", name)
 	}
 
 	return nil
@@ -113,7 +113,7 @@ func (s *Server) SupportBundleList(rw http.ResponseWriter, req *http.Request) (e
 func (s *Server) supportBundleList(apiContext *api.ApiContext) (*client.GenericCollection, error) {
 	list, err := s.m.ListSupportBundlesSorted()
 	if err != nil {
-		return nil, errors.Wrap(err, "error listing SupportBundles")
+		return nil, errors.Wrap(err, "failed to list SupportBundles")
 	}
 	return toSupportBundleCollection(list, apiContext), nil
 }
