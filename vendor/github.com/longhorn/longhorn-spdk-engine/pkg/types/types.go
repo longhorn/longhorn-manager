@@ -11,7 +11,9 @@ const (
 const (
 	FrontendSPDKTCPNvmf     = "spdk-tcp-nvmf"
 	FrontendSPDKTCPBlockdev = "spdk-tcp-blockdev"
+	FrontendEmpty           = ""
 
+	DefaultEngineReservedPortCount  = 1
 	DefaultReplicaReservedPortCount = 5
 )
 
@@ -30,3 +32,5 @@ const (
 	InstanceTypeReplica = InstanceType("replica")
 	InstanceTypeEngine  = InstanceType("engine")
 )
+
+const SPDKServicePort = 8504

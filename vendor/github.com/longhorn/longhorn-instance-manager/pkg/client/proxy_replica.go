@@ -11,9 +11,11 @@ import (
 	rpc "github.com/longhorn/longhorn-instance-manager/pkg/imrpc"
 )
 
-func (c *ProxyClient) ReplicaAdd(backendStoreDriver, serviceAddress, replicaAddress string, restore bool, size, currentSize int64, fileSyncHTTPClientTimeout int, fastSync bool) (err error) {
+func (c *ProxyClient) ReplicaAdd(backendStoreDriver, engineName, serviceAddress, replicaName, replicaAddress string, restore bool, size, currentSize int64, fileSyncHTTPClientTimeout int, fastSync bool) (err error) {
 	input := map[string]string{
 		"serviceAddress": serviceAddress,
+		"engineName":     engineName,
+		"replicaName":    replicaName,
 		"replicaAddress": replicaAddress,
 	}
 	if err := validateProxyMethodParameters(input); err != nil {
@@ -36,8 +38,10 @@ func (c *ProxyClient) ReplicaAdd(backendStoreDriver, serviceAddress, replicaAddr
 	req := &rpc.EngineReplicaAddRequest{
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
 			Address:            serviceAddress,
+			EngineName:         engineName,
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 		},
+		ReplicaName:               replicaName,
 		ReplicaAddress:            replicaAddress,
 		Restore:                   restore,
 		Size:                      size,
