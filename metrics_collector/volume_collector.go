@@ -3,6 +3,7 @@ package metricscollector
 import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -18,10 +19,11 @@ type VolumeCollector struct {
 
 	proxyConnCounter util.Counter
 
-	capacityMetric   metricInfo
-	sizeMetric       metricInfo
-	stateMetric      metricInfo
-	robustnessMetric metricInfo
+	capacityMetric     metricInfo
+	sizeMetric         metricInfo
+	stateMetric        metricInfo
+	robustnessMetric   metricInfo
+	lastBackupAtMetric metricInfo
 
 	volumePerfMetrics
 }
@@ -85,6 +87,16 @@ func NewVolumeCollector(
 			nil,
 		),
 		Type: prometheus.GaugeValue,
+	}
+
+	vc.lastBackupAtMetric = metricInfo{
+		Desc: prometheus.NewDesc(
+			prometheus.BuildFQName(longhornName, subsystemVolume, "last_backup_at"),
+			"Timestamp of last successful backup of this volume in seconds since 1970-01 1970 (UTC), or 0 if no such backup exists",
+			[]string{nodeLabel, volumeLabel},
+			nil,
+		),
+		Type: prometheus.CounterValue,
 	}
 
 	vc.volumePerfMetrics.throughputMetrics.read = metricInfo{
@@ -155,6 +167,7 @@ func (vc *VolumeCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- vc.sizeMetric.Desc
 	ch <- vc.stateMetric.Desc
 	ch <- vc.robustnessMetric.Desc
+	ch <- vc.lastBackupAtMetric.Desc
 }
 
 func (vc *VolumeCollector) Collect(ch chan<- prometheus.Metric) {
@@ -198,6 +211,7 @@ func (vc *VolumeCollector) Collect(ch chan<- prometheus.Metric) {
 			ch <- prometheus.MustNewConstMetric(vc.sizeMetric.Desc, vc.sizeMetric.Type, float64(v.Status.ActualSize), vc.currentNodeID, v.Name)
 			ch <- prometheus.MustNewConstMetric(vc.stateMetric.Desc, vc.stateMetric.Type, float64(getVolumeStateValue(v)), vc.currentNodeID, v.Name)
 			ch <- prometheus.MustNewConstMetric(vc.robustnessMetric.Desc, vc.robustnessMetric.Type, float64(getVolumeRobustnessValue(v)), vc.currentNodeID, v.Name)
+			ch <- prometheus.MustNewConstMetric(vc.lastBackupAtMetric.Desc, vc.lastBackupAtMetric.Type, float64(getLastBackupAtValue(v)), vc.currentNodeID, v.Name)
 			ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.throughputMetrics.read.Desc, vc.volumePerfMetrics.throughputMetrics.read.Type, float64(vc.getVolumeReadThroughput(metrics)), vc.currentNodeID, v.Name)
 			ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.throughputMetrics.write.Desc, vc.volumePerfMetrics.throughputMetrics.write.Type, float64(vc.getVolumeWriteThroughput(metrics)), vc.currentNodeID, v.Name)
 			ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.iopsMetrics.read.Desc, vc.volumePerfMetrics.iopsMetrics.read.Type, float64(vc.getVolumeReadIOPS(metrics)), vc.currentNodeID, v.Name)
@@ -249,6 +263,14 @@ func getVolumeRobustnessValue(v *longhorn.Volume) int {
 		robustnessValue = 3
 	}
 	return robustnessValue
+}
+
+func getLastBackupAtValue(v *longhorn.Volume) int64 {
+	lastBackupAt, err := time.Parse(time.DateTime, v.Status.LastBackupAt)
+	if err != nil {
+		return 0
+	}
+	return lastBackupAt.Unix()
 }
 
 func (vc *VolumeCollector) getVolumeReadThroughput(metrics *engineapi.Metrics) int64 {
