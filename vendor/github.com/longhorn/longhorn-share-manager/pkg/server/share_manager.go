@@ -129,7 +129,7 @@ func setupDevice(logger logrus.FieldLogger, vol volume.Volume, devicePath string
 		// initial setup of longhorn device for crypto
 		if diskFormat == "" {
 			logger.Info("Encrypting new volume before first use")
-			if err := crypto.EncryptVolume(devicePath, vol.Passphrase); err != nil {
+			if err := crypto.EncryptVolume(devicePath, vol.Passphrase, vol.CryptoKeyCipher, vol.CryptoKeyHash, vol.CryptoKeySize, vol.CryptoPBKDF); err != nil {
 				return "", errors.Wrapf(err, "failed to encrypt volume %v", vol.Name)
 			}
 		}
