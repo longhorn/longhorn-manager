@@ -249,7 +249,7 @@ func (c *UninstallController) handleErr(err error, key interface{}) {
 		return
 	}
 
-	c.logger.WithError(err).Warn("worker error")
+	c.logger.WithError(err).Warn("Failed to uninstall")
 	c.queue.AddRateLimited(key)
 }
 
@@ -316,7 +316,7 @@ func (c *UninstallController) uninstall() error {
 func (c *UninstallController) checkPreconditions() error {
 	confirmationFlag, err := c.ds.GetSettingAsBool(types.SettingNameDeletingConfirmationFlag)
 	if err != nil {
-		return errors.Wrapf(err, "failed to check deleting-confirmation-flag setting")
+		return errors.Wrap(err, "failed to check deleting-confirmation-flag setting")
 	}
 	if !confirmationFlag {
 		return fmt.Errorf("cannot uninstall Longhorn because deleting-confirmation-flag is set to `false`. " +
@@ -328,7 +328,7 @@ func (c *UninstallController) checkPreconditions() error {
 		return err
 	} else if !ready {
 		if c.force {
-			c.logger.Warn("Manager not ready, this may leave data behind")
+			c.logger.Warn("Manager is not ready, this may leave data behind")
 			gracePeriod = 0 * time.Second
 		} else {
 			return fmt.Errorf("manager not ready, set --force to continue")
@@ -343,12 +343,12 @@ func (c *UninstallController) checkPreconditions() error {
 			if vol.Status.State == longhorn.VolumeStateAttaching ||
 				vol.Status.State == longhorn.VolumeStateAttached {
 				log := getLoggerForVolume(c.logger, vol)
-				log.Warn("Volume in use")
+				log.Warn("Volume is in use")
 				volumesInUse = true
 			}
 		}
 		if volumesInUse && !c.force {
-			return fmt.Errorf("volume(s) in use, set --force to continue")
+			return fmt.Errorf("volume(s) are in use, set --force to continue")
 		}
 	}
 
@@ -432,7 +432,12 @@ func (c *UninstallController) deleteCRDs() (bool, error) {
 	if backups, err := c.ds.ListBackups(); err != nil {
 		return true, err
 	} else if len(backups) > 0 {
-		c.logger.Infof("Found %d backups remaining", len(backups))
+		c.logger.Infof("Found %d backups remaining, deleting if they don't have backup volume", len(backups))
+		for _, backup := range backups {
+			if err := c.deleteLeftBackups(backup); err != nil {
+				return true, err
+			}
+		}
 		return true, nil
 	}
 
@@ -533,7 +538,7 @@ func (c *UninstallController) deleteVolumes(vols map[string]*longhorn.Volume) (e
 			log.Info("Marked for deletion")
 		} else if vol.DeletionTimestamp.Before(&timeout) {
 			if err = c.ds.RemoveFinalizerForVolume(vol); err != nil {
-				err = errors.Wrapf(err, "failed to remove finalizer")
+				err = errors.Wrap(err, "failed to remove finalizer")
 				return
 			}
 			log.Info("Removed finalizer")
@@ -558,7 +563,7 @@ func (c *UninstallController) deleteSnapshots(snapshots map[string]*longhorn.Sna
 			log.Info("Marked for deletion")
 		} else if snap.DeletionTimestamp.Before(&timeout) {
 			if err = c.ds.RemoveFinalizerForSnapshot(snap); err != nil {
-				err = errors.Wrapf(err, "failed to remove finalizer")
+				err = errors.Wrap(err, "failed to remove finalizer")
 				return
 			}
 			log.Info("Removed finalizer")
@@ -615,6 +620,29 @@ func (c *UninstallController) deleteReplicas(replicas map[string]*longhorn.Repli
 		}
 	}
 	return
+}
+
+// deleteLeftBackups deletes the backup having no backup volume
+func (c *UninstallController) deleteLeftBackups(backup *longhorn.Backup) (err error) {
+	backupVolumeName, ok := backup.Labels[types.LonghornLabelBackupVolume]
+	if !ok {
+		// directly delete it if there is even no backup volume label
+		if err = c.ds.DeleteBackup(backup.Name); err != nil {
+			if !apierrors.IsNotFound(err) {
+				return errors.Wrapf(err, "failed to delete backup %v", backup.Name)
+			}
+		}
+	}
+	_, err = c.ds.GetBackupVolume(backupVolumeName)
+	if err != nil && apierrors.IsNotFound(err) {
+		if err = c.ds.DeleteBackup(backup.Name); err != nil {
+			if !apierrors.IsNotFound(err) {
+				return errors.Wrapf(err, "failed to delete backup %v", backup.Name)
+			}
+		}
+		return nil
+	}
+	return err
 }
 
 func (c *UninstallController) deleteBackupTargets(backupTargets map[string]*longhorn.BackupTarget) (err error) {

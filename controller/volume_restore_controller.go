@@ -61,11 +61,11 @@ func NewVolumeRestoreController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-volume-restore-controller"}),
 	}
 
-	ds.VolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vrsc.enqueueVolume,
 		UpdateFunc: func(old, cur interface{}) { vrsc.enqueueVolume(cur) },
 		DeleteFunc: vrsc.enqueueVolume,
-	})
+	}, 0)
 	vrsc.cacheSyncs = append(vrsc.cacheSyncs, ds.VolumeInformer.HasSynced)
 
 	return vrsc
@@ -95,8 +95,8 @@ func (vrsc *VolumeRestoreController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer vrsc.queue.ShutDown()
 
-	vrsc.logger.Infof("Start Longhorn restore controller")
-	defer vrsc.logger.Infof("Shutting down Longhorn restore controller")
+	vrsc.logger.Info("Starting Longhorn restore controller")
+	defer vrsc.logger.Info("Shut down Longhorn restore controller")
 
 	if !cache.WaitForNamedCacheSync(vrsc.name, stopCh, vrsc.cacheSyncs...) {
 		return
@@ -131,7 +131,7 @@ func (vrsc *VolumeRestoreController) handleErr(err error, key interface{}) {
 		return
 	}
 
-	vrsc.logger.WithError(err).Warnf("Error syncing Longhorn volume %v", key)
+	vrsc.logger.WithError(err).Errorf("Error syncing Longhorn volume %v", key)
 	vrsc.queue.AddRateLimited(key)
 }
 

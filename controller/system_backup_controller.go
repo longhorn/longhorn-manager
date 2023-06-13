@@ -201,14 +201,14 @@ func (c *SystemBackupController) handleErr(err error, key interface{}) {
 	log := c.logger.WithField("systemBackup", key)
 
 	if c.queue.NumRequeues(key) < maxRetries {
-		log.WithError(err).Warn("Failed to sync Longhorn SystemBackup, and requeuing to reconcile")
+		log.WithError(err).Error("Failed to sync Longhorn SystemBackup")
 
 		c.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	log.WithError(err).Warn("Failed to sync Longhorn systemBackup, and dropping it out of the queue")
+	log.WithError(err).Error("Dropping SystemBackup out of the queue")
 	c.queue.Forget(key)
 }
 
@@ -343,7 +343,7 @@ func (c *SystemBackupController) reconcile(name string, backupTargetClient engin
 			return err
 		}
 
-		log.Infof("Picked up by SystemBackup Controller %v", c.controllerID)
+		log.Infof("System backup got new owner %v", c.controllerID)
 	}
 
 	record := &systemBackupRecord{}
@@ -558,7 +558,6 @@ func (c *SystemBackupController) UploadSystemBackup(systemBackup *longhorn.Syste
 		case <-ticker.C:
 			systemBackupCfg, err = backupTargetClient.GetSystemBackupConfig(systemBackup.Name, systemBackup.Status.Version)
 			if err != nil && !types.ErrorIsNotFound(err) {
-				log.WithError(err).Debugf("Getting system backup config")
 				err = errors.Wrap(err, SystemBackupErrGetConfig)
 				continue
 			}
@@ -573,7 +572,7 @@ func (c *SystemBackupController) UploadSystemBackup(systemBackup *longhorn.Syste
 					err = nil
 				}
 
-				log.WithError(err).Debugf("Failed to upload %v to backup target", archievePath)
+				log.WithError(err).Warnf("Failed to upload %v to backup target", archievePath)
 			}
 		}
 	}
