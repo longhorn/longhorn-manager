@@ -1153,8 +1153,8 @@ const (
 	ClusterInfoNamespaceUID = util.StructName("LonghornNamespaceUid")
 	ClusterInfoNodeCount    = util.StructName("LonghornNodeCount")
 
-	ClusterInfoVolumeAvgActualSize    = util.StructName("LonghornVolumeAverageActualSize")
-	ClusterInfoVolumeAvgSize          = util.StructName("LonghornVolumeAverageSize")
+	ClusterInfoVolumeAvgActualSize    = util.StructName("LonghornVolumeAverageActualSizeGib")
+	ClusterInfoVolumeAvgSize          = util.StructName("LonghornVolumeAverageSizeGib")
 	ClusterInfoVolumeAvgSnapshotCount = util.StructName("LonghornVolumeAverageSnapshotCount")
 	ClusterInfoVolumeAvgNumOfReplicas = util.StructName("LonghornVolumeAverageNumberOfReplicas")
 
@@ -1275,25 +1275,14 @@ func (info *ClusterInfo) collectResourceUsage() error {
 
 		avgCPUUsageMilli := totalCPUUsage.MilliValue() / int64(len(pods))
 		cpuStruct := util.StructName(fmt.Sprintf(ClusterInfoPodAvgCPUUsageFmt, component))
-		info.structFields.Append(cpuStruct, info.getCPURange(avgCPUUsageMilli))
+		info.structFields.Append(cpuStruct, fmt.Sprint(util.ConvertToCPUCore(avgCPUUsageMilli)))
 
 		avgMemoryUsageBytes := totalMemoryUsage.Value() / int64(len(pods))
 		memStruct := util.StructName(fmt.Sprintf(ClusterInfoPodAvgMemoryUsageFmt, component))
-		info.structFields.Append(memStruct, info.getMemoryRange(avgMemoryUsageBytes))
+		info.structFields.Append(memStruct, fmt.Sprint(util.ConvertToMiB(avgMemoryUsageBytes)))
 	}
 
 	return nil
-}
-
-func (info *ClusterInfo) getCPURange(milliValue int64) string {
-	min, max := util.GetRange(float64(milliValue), 50.0)
-	return fmt.Sprintf("%.0fm-%.0fm", min, max)
-}
-
-func (info *ClusterInfo) getMemoryRange(bytes int64) string {
-	mib := float64(bytes) / 1024 / 1024
-	min, max := util.GetRange(mib, 50.0)
-	return fmt.Sprintf("%.0f-%.0f", min, max)
 }
 
 func (info *ClusterInfo) collectSettings() error {
@@ -1444,18 +1433,12 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 		}
 		avgVolumeSnapshotCount = len(snapshotsRO) / volumeCount
 	}
-	info.structFields.Append(ClusterInfoVolumeAvgSize, info.getSizeRange(avgVolumeSize))
-	info.structFields.Append(ClusterInfoVolumeAvgActualSize, info.getSizeRange(avgVolumeActualSize))
+	info.structFields.Append(ClusterInfoVolumeAvgSize, fmt.Sprint(util.ConvertToGiB(avgVolumeSize)))
+	info.structFields.Append(ClusterInfoVolumeAvgActualSize, fmt.Sprint(util.ConvertToGiB(avgVolumeActualSize)))
 	info.structFields.Append(ClusterInfoVolumeAvgSnapshotCount, fmt.Sprint(avgVolumeSnapshotCount))
 	info.structFields.Append(ClusterInfoVolumeAvgNumOfReplicas, fmt.Sprint(avgVolumeNumOfReplicas))
 
 	return nil
-}
-
-func (info *ClusterInfo) getSizeRange(bytes int) string {
-	gib := float64(bytes) / 1024 / 1024 / 1024
-	min, max := util.GetRange(gib, 100.0)
-	return fmt.Sprintf("%.0f-%.0f", min, max)
 }
 
 func (info *ClusterInfo) collectNodeScope() {
