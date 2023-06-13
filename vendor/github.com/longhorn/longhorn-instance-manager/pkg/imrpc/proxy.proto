@@ -213,6 +213,7 @@ message EngineReplicaAddRequest {
 	int64 current_size = 5;
 	bool fast_sync = 6;
 	int32 file_sync_http_client_timeout = 7;
+	string replica_name = 8;
 }
 
 message EngineReplicaListProxyResponse {
