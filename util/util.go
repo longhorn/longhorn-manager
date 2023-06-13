@@ -126,6 +126,18 @@ func ConvertToCamel(input, separator string) string {
 	return strings.Join(words, "")
 }
 
+func ConvertToMiB(bytes int64) int {
+	return int(math.Ceil(float64(bytes) / (1024 / 1024)))
+}
+
+func ConvertToGiB(bytes int) int {
+	return int(math.Ceil(float64(bytes) / (1024 * 1024 * 1024)))
+}
+
+func ConvertToCPUCore(milliValue int64) int {
+	return int(math.Ceil(float64(milliValue) / 1000))
+}
+
 func ConvertFirstCharToLower(input string) string {
 	return strings.ToLower(input[:1]) + input[1:]
 }
@@ -1006,10 +1018,4 @@ func VerifySnapshotLabels(labels map[string]string) error {
 
 func RemoveNewlines(input string) string {
 	return strings.Replace(input, "\n", "", -1)
-}
-
-func GetRange(number float64, rangeBlock float64) (float64, float64) {
-	min := math.Floor(number/rangeBlock) * rangeBlock
-	max := min + rangeBlock
-	return min, max
 }
