@@ -45,12 +45,11 @@ require (
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.4.0-rc1.0.20230521151917-38ff27cc2cbb
-	github.com/longhorn/backupstore v0.0.0-20230522064032-228beb21aa3c
+	github.com/longhorn/backupstore v0.0.0-20230612062152-f4e0de6bc37a
 	github.com/longhorn/go-iscsi-helper v0.0.0-20230529082528-4c3270590712
-	github.com/longhorn/go-spdk-helper v0.0.0-20230525131301-ddb9e9044e51
-	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230522141009-4f6770982ebd
-	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230601151509-8fe3da922d71
-	github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20230426140253-1729f0f8ef80
+	github.com/longhorn/go-spdk-helper v0.0.0-20230610063427-757b34a43c07
+	github.com/longhorn/longhorn-engine v1.5.0-rc1.0.20230612091804-9e71a56aade8
+	github.com/longhorn/longhorn-instance-manager v1.5.0-rc1.0.20230613111738-83d986abd40f
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.15.0
 	github.com/rancher/dynamiclistener v0.3.1
@@ -79,7 +78,15 @@ require (
 	sigs.k8s.io/controller-runtime v0.10.1
 )
 
-require github.com/longhorn/longhorn-spdk-engine v0.0.0-20230529160612-fb6a2f207976 // indirect
+require (
+	github.com/longhorn/longhorn-share-manager v1.5.0-rc1
+	github.com/longhorn/longhorn-spdk-engine v0.0.0-20230613092711-13d2db326c5e
+)
+
+require (
+	google.golang.org/genproto/googleapis/api v0.0.0-20230525234020-1aefcd67740a // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20230530153820-e85fd2cbaebc // indirect
+)
 
 require (
 	github.com/Microsoft/go-winio v0.4.17 // indirect
@@ -175,7 +182,7 @@ require (
 	golang.org/x/term v0.7.0 // indirect
 	golang.org/x/text v0.9.0
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1 // indirect
+	google.golang.org/genproto v0.0.0-20230525234025-438c736192d0 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
