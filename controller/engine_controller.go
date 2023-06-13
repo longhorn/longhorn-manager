@@ -529,7 +529,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 
 	defer func() {
 		if err != nil {
-			logrus.WithError(err).Warnf("Failed to delete engine %v for volume %v", e.Name, v.Name)
+			logrus.WithError(err).Warnf("Failed to delete engine %v", e.Name)
 		}
 		if isRWXVolume && im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
 			// Try the best to delete engine instance.
@@ -544,7 +544,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 			// After shifting to node A, the first reattachment fail due to the IO error resulting from the
 			// orphaned engine instance and block device. Then, the detachment will trigger the teardown of the
 			// problematic engine process and block device. The next reattachment then will succeed.
-			logrus.Warnf("Ignored the failure of deleting engine %v for volume %v", e.Name, v.Name)
+			logrus.Warnf("Ignored the failure of deleting engine %v", e.Name)
 			err = nil
 		}
 	}()
