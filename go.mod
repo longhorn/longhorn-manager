@@ -47,10 +47,17 @@ require (
 	github.com/longhorn/backing-image-manager v1.4.0-rc1.0.20230521151917-38ff27cc2cbb
 	github.com/longhorn/backupstore v0.0.0-20230522064032-228beb21aa3c
 	github.com/longhorn/go-iscsi-helper v0.0.0-20230529082528-4c3270590712
+<<<<<<< HEAD
 	github.com/longhorn/go-spdk-helper v0.0.0-20230525131301-ddb9e9044e51
 	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230522141009-4f6770982ebd
 	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230601151509-8fe3da922d71
 	github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20230426140253-1729f0f8ef80
+=======
+	github.com/longhorn/go-spdk-helper v0.0.0-20230610063427-757b34a43c07
+	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230612073917-0896a6f78315
+	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230613094429-85c7d1d7f70b
+	github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20230531125701-c996c5a415b6
+>>>>>>> a35221bb (vendor: update longhorn-share-manager)
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.15.0
 	github.com/rancher/dynamiclistener v0.3.1

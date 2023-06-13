@@ -10,9 +10,9 @@ import (
 )
 
 // EncryptVolume encrypts provided device with LUKS.
-func EncryptVolume(devicePath, passphrase string) error {
+func EncryptVolume(devicePath, passphrase, keyCipher, keyHash, keySize, pbkdf string) error {
 	logrus.Debugf("Encrypting device %s with LUKS", devicePath)
-	if _, err := luksFormat(devicePath, passphrase); err != nil {
+	if _, err := luksFormat(devicePath, passphrase, keyCipher, keyHash, keySize, pbkdf); err != nil {
 		return errors.Wrapf(err, "failed to encrypt device %s with LUKS", devicePath)
 	}
 	return nil

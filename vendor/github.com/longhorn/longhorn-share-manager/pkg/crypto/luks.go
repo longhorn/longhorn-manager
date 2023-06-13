@@ -24,9 +24,9 @@ func luksClose(volume string) (stdout string, err error) {
 	return cryptSetup("luksClose", volume)
 }
 
-func luksFormat(devicePath, passphrase string) (stdout string, err error) {
+func luksFormat(devicePath, passphrase, keyCipher, keyHash, keySize, pbkdf string) (stdout string, err error) {
 	return cryptSetupWithPassphrase(passphrase,
-		"-q", "luksFormat", "--type", "luks2", "--hash", "sha256",
+		"-q", "luksFormat", "--type", "luks2", "--cipher", keyCipher, "--hash", keyHash, "--key-size", keySize, "--pbkdf", pbkdf,
 		devicePath, "-d", "/dev/stdin")
 }
 
