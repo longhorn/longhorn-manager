@@ -777,13 +777,29 @@ func getLoggerForLHVolumeAttachment(logger logrus.FieldLogger, va *longhorn.Volu
 	)
 }
 
-func isCSIAttacherTicketOfRegularRWXVolume(attachmentTicket *longhorn.AttachmentTicket, vol *longhorn.Volume) bool {
-	if attachmentTicket == nil || vol == nil {
+func isCSIAttacherTicketOfRegularRWXVolume(attachmentTicket *longhorn.AttachmentTicket, v *longhorn.Volume) bool {
+	return isRegularRWXVolume(v) && isCSIAttacherTicket(attachmentTicket)
+}
+
+func isRegularRWXVolume(v *longhorn.Volume) bool {
+	if v == nil {
 		return false
 	}
-	isRegularRWXVolume := vol.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !vol.Spec.Migratable
-	isCSIAttacherTicket := attachmentTicket.Type == longhorn.AttacherTypeCSIAttacher
-	return isRegularRWXVolume && isCSIAttacherTicket
+	return v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !v.Spec.Migratable
+}
+
+func isUpgraderTicket(ticket *longhorn.AttachmentTicket) bool {
+	if ticket == nil {
+		return false
+	}
+	return ticket.Type == longhorn.AttacherTypeLonghornUpgrader
+}
+
+func isCSIAttacherTicket(ticket *longhorn.AttachmentTicket) bool {
+	if ticket == nil {
+		return false
+	}
+	return ticket.Type == longhorn.AttacherTypeCSIAttacher
 }
 
 func isMigratingCSIAttacherTicket(attachmentTicket *longhorn.AttachmentTicket, vol *longhorn.Volume) bool {
