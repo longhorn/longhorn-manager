@@ -1247,7 +1247,7 @@ func (info *ClusterInfo) collectNamespace() error {
 func (info *ClusterInfo) collectNodeCount() error {
 	nodesRO, err := info.ds.ListNodesRO()
 	if err == nil {
-		info.structFields.fields.Append(ClusterInfoNodeCount, fmt.Sprint(len(nodesRO)))
+		info.structFields.fields.Append(ClusterInfoNodeCount, len(nodesRO))
 	}
 	return err
 }
@@ -1294,11 +1294,11 @@ func (info *ClusterInfo) collectResourceUsage() error {
 
 		avgCPUUsageMilli := totalCPUUsage.MilliValue() / int64(len(pods))
 		cpuStruct := util.StructName(fmt.Sprintf(ClusterInfoPodAvgCPUUsageFmt, component))
-		info.structFields.fields.Append(cpuStruct, fmt.Sprint(avgCPUUsageMilli))
+		info.structFields.fields.Append(cpuStruct, avgCPUUsageMilli)
 
 		avgMemoryUsageBytes := totalMemoryUsage.Value() / int64(len(pods))
 		memStruct := util.StructName(fmt.Sprintf(ClusterInfoPodAvgMemoryUsageFmt, component))
-		info.structFields.fields.Append(memStruct, fmt.Sprint(avgMemoryUsageBytes))
+		info.structFields.fields.Append(memStruct, avgMemoryUsageBytes)
 	}
 
 	return nil
@@ -1368,7 +1368,7 @@ func (info *ClusterInfo) collectSettings() error {
 		return err
 	}
 
-	settingMap := make(map[string]string)
+	settingMap := make(map[string]interface{})
 	for _, setting := range settings {
 		settingName := types.SettingName(setting.Name)
 
@@ -1379,7 +1379,7 @@ func (info *ClusterInfo) collectSettings() error {
 
 		// Setting that should be collected as boolean (true if configured, false if not)
 		case includeAsBoolean[settingName]:
-			settingMap[setting.Name] = fmt.Sprint(setting.Value != "")
+			settingMap[setting.Name] = setting.Value != ""
 
 		// Setting value
 		case include[settingName]:
@@ -1458,10 +1458,10 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 		}
 		avgVolumeSnapshotCount = len(snapshotsRO) / volumeCount
 	}
-	info.structFields.fields.Append(ClusterInfoVolumeAvgSize, fmt.Sprint(avgVolumeSize))
-	info.structFields.fields.Append(ClusterInfoVolumeAvgActualSize, fmt.Sprint(avgVolumeActualSize))
-	info.structFields.fields.Append(ClusterInfoVolumeAvgSnapshotCount, fmt.Sprint(avgVolumeSnapshotCount))
-	info.structFields.fields.Append(ClusterInfoVolumeAvgNumOfReplicas, fmt.Sprint(avgVolumeNumOfReplicas))
+	info.structFields.fields.Append(ClusterInfoVolumeAvgSize, avgVolumeSize)
+	info.structFields.fields.Append(ClusterInfoVolumeAvgActualSize, avgVolumeActualSize)
+	info.structFields.fields.Append(ClusterInfoVolumeAvgSnapshotCount, avgVolumeSnapshotCount)
+	info.structFields.fields.Append(ClusterInfoVolumeAvgNumOfReplicas, avgVolumeNumOfReplicas)
 
 	return nil
 }
@@ -1528,7 +1528,7 @@ func (info *ClusterInfo) collectNodeDiskCount() error {
 		structMap[util.StructName(fmt.Sprintf(ClusterInfoNodeDiskCountFmt, strings.ToUpper(deviceType)))]++
 	}
 	for structName, value := range structMap {
-		info.structFields.fields.Append(structName, fmt.Sprint(value))
+		info.structFields.fields.Append(structName, value)
 	}
 
 	return nil
