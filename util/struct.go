@@ -12,11 +12,11 @@ type StructFields []StructField
 // StructField contains information about a single field in a struct.
 type StructField struct {
 	Name  string
-	Value string
+	Value interface{}
 	Tag   string
 }
 
-func (sf *StructFields) Append(name StructName, value string) {
+func (sf *StructFields) Append(name StructName, value interface{}) {
 	*sf = append(*sf, StructField{
 		Name:  string(name),
 		Value: value,
@@ -26,7 +26,7 @@ func (sf *StructFields) Append(name StructName, value string) {
 
 func (sf *StructFields) AppendCounted(structMap map[StructName]int) {
 	for name, value := range structMap {
-		sf.Append(name, fmt.Sprint(value))
+		sf.Append(name, value)
 	}
 }
 
@@ -43,7 +43,7 @@ func (sf *StructFields) NewStruct() interface{} {
 		// Create a new struct field using reflection
 		field := reflect.StructField{
 			Name: f.Name,
-			Type: reflect.TypeOf(string("")),
+			Type: reflect.TypeOf(f.Value),
 			Tag:  reflect.StructTag(fmt.Sprintf(`json:"%s"`, f.Tag)),
 		}
 
@@ -57,7 +57,7 @@ func (sf *StructFields) NewStruct() interface{} {
 	// Create a new instance of the struct and set its field values.
 	structValue := reflect.New(structOfFields).Elem()
 	for _, f := range *sf {
-		structValue.FieldByName(f.Name).SetString(f.Value)
+		structValue.FieldByName(f.Name).Set(reflect.ValueOf(f.Value))
 	}
 	return structValue.Interface()
 }
