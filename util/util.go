@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
-	"math"
 	"math/rand"
 	"net"
 	"net/http"
@@ -124,18 +123,6 @@ func ConvertToCamel(input, separator string) string {
 		words[i] = caser.String(words[i])
 	}
 	return strings.Join(words, "")
-}
-
-func ConvertToMiB(bytes int64) int {
-	return int(math.Ceil(float64(bytes) / (1024 / 1024)))
-}
-
-func ConvertToGiB(bytes int) int {
-	return int(math.Ceil(float64(bytes) / (1024 * 1024 * 1024)))
-}
-
-func ConvertToCPUCore(milliValue int64) int {
-	return int(math.Ceil(float64(milliValue) / 1000))
 }
 
 func ConvertFirstCharToLower(input string) string {
