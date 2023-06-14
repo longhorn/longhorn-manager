@@ -94,7 +94,7 @@ func fakeGetDiskConfig(diskType longhorn.DiskType, name, path string, client *en
 	}
 }
 
-func fakeGenerateDiskConfig(diskType longhorn.DiskType, name, path string, client *engineapi.DiskService) (*util.DiskConfig, error) {
+func fakeGenerateDiskConfig(diskType longhorn.DiskType, name, uuid, path string, client *engineapi.DiskService) (*util.DiskConfig, error) {
 	return &util.DiskConfig{
 		DiskUUID: TestDiskID1,
 	}, nil

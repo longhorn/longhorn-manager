@@ -107,12 +107,12 @@ func getBlockTypeDiskConfig(client *engineapi.DiskService, name, path string) (c
 }
 
 // GenerateDiskConfig generates a disk config for the given directory
-func generateDiskConfig(diskType longhorn.DiskType, name, path string, client *engineapi.DiskService) (*util.DiskConfig, error) {
+func generateDiskConfig(diskType longhorn.DiskType, name, uuid, path string, client *engineapi.DiskService) (*util.DiskConfig, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return generateFilesystemTypeDiskConfig(path)
 	case longhorn.DiskTypeBlock:
-		return generateBlockTypeDiskConfig(client, name, path, defaultBlockSize)
+		return generateBlockTypeDiskConfig(client, name, uuid, path, defaultBlockSize)
 	default:
 		return nil, fmt.Errorf("unknown disk type %v", diskType)
 	}
@@ -159,12 +159,12 @@ func generateFilesystemTypeDiskConfig(path string) (*util.DiskConfig, error) {
 	return cfg, nil
 }
 
-func generateBlockTypeDiskConfig(client *engineapi.DiskService, name, path string, blockSize int64) (*util.DiskConfig, error) {
+func generateBlockTypeDiskConfig(client *engineapi.DiskService, name, uuid, path string, blockSize int64) (*util.DiskConfig, error) {
 	if client == nil {
 		return nil, errors.New("disk service client is nil")
 	}
 
-	info, err := client.DiskCreate(string(longhorn.DiskTypeBlock), name, path, blockSize)
+	info, err := client.DiskCreate(string(longhorn.DiskTypeBlock), name, uuid, path, blockSize)
 	if err != nil {
 		return nil, err
 	}
