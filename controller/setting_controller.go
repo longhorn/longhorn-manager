@@ -90,11 +90,13 @@ type Version struct {
 }
 
 type CheckUpgradeRequest struct {
-	AppVersion string                       `json:"appVersion"`
-	ExtraInfo  CheckUpgradeRequestExtraInfo `json:"extraInfo"`
+	AppVersion string `json:"appVersion"`
+
+	ExtraTagInfo   CheckUpgradeExtraInfo `json:"extraTagInfo"`
+	ExtraFieldInfo CheckUpgradeExtraInfo `json:"extraFieldInfo"`
 }
 
-type CheckUpgradeRequestExtraInfo interface {
+type CheckUpgradeExtraInfo interface {
 }
 
 type CheckUpgradeResponse struct {
@@ -951,13 +953,14 @@ func (sc *SettingController) CheckLatestAndStableLonghornVersions() (string, str
 		content bytes.Buffer
 	)
 
-	checkUpgradeRequestExtraInfo, err := sc.GetCheckUpgradeRequestExtraInfo()
+	extraTagInfo, extraFieldInfo, err := sc.GetCheckUpgradeRequestExtraInfo()
 	if err != nil {
 		return "", "", errors.Wrap(err, "failed to get extra info for upgrade checker")
 	}
 	req := &CheckUpgradeRequest{
-		AppVersion: sc.version,
-		ExtraInfo:  checkUpgradeRequestExtraInfo,
+		AppVersion:     sc.version,
+		ExtraTagInfo:   extraTagInfo,
+		ExtraFieldInfo: extraFieldInfo,
 	}
 	if err := json.NewEncoder(&content).Encode(req); err != nil {
 		return "", "", err
@@ -1109,43 +1112,54 @@ func (sc *SettingController) cleanupFailedSupportBundles() error {
 	return nil
 }
 
-func (sc *SettingController) GetCheckUpgradeRequestExtraInfo() (CheckUpgradeRequestExtraInfo, error) {
+func (sc *SettingController) GetCheckUpgradeRequestExtraInfo() (extraTagInfo CheckUpgradeExtraInfo, extraFieldInfo CheckUpgradeExtraInfo, err error) {
 	clusterInfo := &ClusterInfo{
 		logger:        sc.logger,
 		ds:            sc.ds,
 		kubeClient:    sc.kubeClient,
 		metricsClient: sc.metricsClient,
-		structFields:  util.StructFields{},
-		controllerID:  sc.controllerID,
-		namespace:     sc.namespace,
+		structFields: ClusterInfoStructFields{
+			tags:   util.StructFields{},
+			fields: util.StructFields{},
+		},
+		controllerID: sc.controllerID,
+		namespace:    sc.namespace,
 	}
+
+	defer func() {
+		extraTagInfo = clusterInfo.structFields.tags.NewStruct()
+		extraFieldInfo = clusterInfo.structFields.fields.NewStruct()
+	}()
 
 	kubeVersion, err := sc.kubeClient.Discovery().ServerVersion()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get Kubernetes server version")
+		err = errors.Wrap(err, "failed to get Kubernetes server version")
+		return
 	}
-	clusterInfo.structFields.Append(ClusterInfoKubernetesVersion, kubeVersion.GitVersion)
+	clusterInfo.structFields.tags.Append(ClusterInfoKubernetesVersion, kubeVersion.GitVersion)
 
 	allowCollectingUsage, err := sc.ds.GetSettingAsBool(types.SettingNameAllowCollectingLonghornUsage)
 	if err != nil {
-		return nil, err
+		sc.logger.WithError(err).Warnf("Failed to get Setting %v for extra info collection", types.SettingNameAllowCollectingLonghornUsage)
+		return nil, nil, nil
 	}
 
 	if !allowCollectingUsage {
-		return clusterInfo.structFields.NewStruct(), nil
+		return
 	}
 
 	clusterInfo.collectNodeScope()
 
 	responsibleNodeID, err := getResponsibleNodeID(sc.ds)
 	if err != nil {
-		sc.logger.WithError(err).Warn("Failed to select node to get extra info")
+		sc.logger.WithError(err).Warn("Failed to get responsible Node for extra info collection")
+		return nil, nil, nil
 	}
 	if responsibleNodeID == sc.controllerID {
 		clusterInfo.collectClusterScope()
 	}
 
-	return clusterInfo.structFields.NewStruct(), nil
+	return
 }
 
 // Cluster Scope Info: will be sent from one of the Longhorn cluster nodes
@@ -1187,12 +1201,17 @@ type ClusterInfo struct {
 	kubeClient    clientset.Interface
 	metricsClient metricsclientset.Interface
 
-	structFields util.StructFields
+	structFields ClusterInfoStructFields
 
 	controllerID string
 	namespace    string
 
 	osDistro string
+}
+
+type ClusterInfoStructFields struct {
+	tags   util.StructFields
+	fields util.StructFields
 }
 
 func (info *ClusterInfo) collectClusterScope() {
@@ -1220,7 +1239,7 @@ func (info *ClusterInfo) collectClusterScope() {
 func (info *ClusterInfo) collectNamespace() error {
 	namespace, err := info.ds.GetNamespace(info.namespace)
 	if err == nil {
-		info.structFields.Append(ClusterInfoNamespaceUID, string(namespace.UID))
+		info.structFields.fields.Append(ClusterInfoNamespaceUID, string(namespace.UID))
 	}
 	return err
 }
@@ -1228,7 +1247,7 @@ func (info *ClusterInfo) collectNamespace() error {
 func (info *ClusterInfo) collectNodeCount() error {
 	nodesRO, err := info.ds.ListNodesRO()
 	if err == nil {
-		info.structFields.Append(ClusterInfoNodeCount, fmt.Sprint(len(nodesRO)))
+		info.structFields.fields.Append(ClusterInfoNodeCount, fmt.Sprint(len(nodesRO)))
 	}
 	return err
 }
@@ -1275,11 +1294,11 @@ func (info *ClusterInfo) collectResourceUsage() error {
 
 		avgCPUUsageMilli := totalCPUUsage.MilliValue() / int64(len(pods))
 		cpuStruct := util.StructName(fmt.Sprintf(ClusterInfoPodAvgCPUUsageFmt, component))
-		info.structFields.Append(cpuStruct, fmt.Sprint(avgCPUUsageMilli))
+		info.structFields.fields.Append(cpuStruct, fmt.Sprint(avgCPUUsageMilli))
 
 		avgMemoryUsageBytes := totalMemoryUsage.Value() / int64(len(pods))
 		memStruct := util.StructName(fmt.Sprintf(ClusterInfoPodAvgMemoryUsageFmt, component))
-		info.structFields.Append(memStruct, fmt.Sprint(avgMemoryUsageBytes))
+		info.structFields.fields.Append(memStruct, fmt.Sprint(avgMemoryUsageBytes))
 	}
 
 	return nil
@@ -1374,7 +1393,13 @@ func (info *ClusterInfo) collectSettings() error {
 
 	for name, value := range settingMap {
 		structName := util.StructName(fmt.Sprintf(ClusterInfoSettingFmt, util.ConvertToCamel(name, "-")))
-		info.structFields.Append(structName, value)
+
+		switch reflect.TypeOf(value).Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Float32, reflect.Float64:
+			info.structFields.fields.Append(structName, value)
+		default:
+			info.structFields.tags.Append(structName, fmt.Sprint(value))
+		}
 	}
 	return nil
 }
@@ -1413,9 +1438,9 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 			frontendCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeFrontendCountFmt, frontend))]++
 		}
 	}
-	info.structFields.AppendCounted(accessModeCountStruct)
-	info.structFields.AppendCounted(dataLocalityCountStruct)
-	info.structFields.AppendCounted(frontendCountStruct)
+	info.structFields.fields.AppendCounted(accessModeCountStruct)
+	info.structFields.fields.AppendCounted(dataLocalityCountStruct)
+	info.structFields.fields.AppendCounted(frontendCountStruct)
 
 	var avgVolumeSnapshotCount int
 	var avgVolumeSize int
@@ -1433,10 +1458,10 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 		}
 		avgVolumeSnapshotCount = len(snapshotsRO) / volumeCount
 	}
-	info.structFields.Append(ClusterInfoVolumeAvgSize, fmt.Sprint(avgVolumeSize))
-	info.structFields.Append(ClusterInfoVolumeAvgActualSize, fmt.Sprint(avgVolumeActualSize))
-	info.structFields.Append(ClusterInfoVolumeAvgSnapshotCount, fmt.Sprint(avgVolumeSnapshotCount))
-	info.structFields.Append(ClusterInfoVolumeAvgNumOfReplicas, fmt.Sprint(avgVolumeNumOfReplicas))
+	info.structFields.fields.Append(ClusterInfoVolumeAvgSize, fmt.Sprint(avgVolumeSize))
+	info.structFields.fields.Append(ClusterInfoVolumeAvgActualSize, fmt.Sprint(avgVolumeActualSize))
+	info.structFields.fields.Append(ClusterInfoVolumeAvgSnapshotCount, fmt.Sprint(avgVolumeSnapshotCount))
+	info.structFields.fields.Append(ClusterInfoVolumeAvgNumOfReplicas, fmt.Sprint(avgVolumeNumOfReplicas))
 
 	return nil
 }
@@ -1462,7 +1487,7 @@ func (info *ClusterInfo) collectNodeScope() {
 func (info *ClusterInfo) collectHostKernelRelease() error {
 	kernelRelease, err := util.GetHostKernelRelease()
 	if err == nil {
-		info.structFields.Append(ClusterInfoHostKernelRelease, kernelRelease)
+		info.structFields.tags.Append(ClusterInfoHostKernelRelease, kernelRelease)
 	}
 	return err
 }
@@ -1474,7 +1499,7 @@ func (info *ClusterInfo) collectHostOSDistro() (err error) {
 			return err
 		}
 	}
-	info.structFields.Append(ClusterInfoHostOsDistro, info.osDistro)
+	info.structFields.tags.Append(ClusterInfoHostOsDistro, info.osDistro)
 	return nil
 }
 
@@ -1482,7 +1507,7 @@ func (info *ClusterInfo) collectKubernetesNodeProvider() error {
 	node, err := info.ds.GetKubernetesNode(info.controllerID)
 	if err == nil {
 		scheme := types.GetKubernetesProviderNameFromURL(node.Spec.ProviderID)
-		info.structFields.Append(ClusterInfoKubernetesNodeProvider, scheme)
+		info.structFields.tags.Append(ClusterInfoKubernetesNodeProvider, scheme)
 	}
 	return err
 }
@@ -1503,7 +1528,7 @@ func (info *ClusterInfo) collectNodeDiskCount() error {
 		structMap[util.StructName(fmt.Sprintf(ClusterInfoNodeDiskCountFmt, strings.ToUpper(deviceType)))]++
 	}
 	for structName, value := range structMap {
-		info.structFields.Append(structName, fmt.Sprint(value))
+		info.structFields.fields.Append(structName, fmt.Sprint(value))
 	}
 
 	return nil
