@@ -1153,13 +1153,13 @@ const (
 	ClusterInfoNamespaceUID = util.StructName("LonghornNamespaceUid")
 	ClusterInfoNodeCount    = util.StructName("LonghornNodeCount")
 
-	ClusterInfoVolumeAvgActualSize    = util.StructName("LonghornVolumeAverageActualSizeGib")
-	ClusterInfoVolumeAvgSize          = util.StructName("LonghornVolumeAverageSizeGib")
+	ClusterInfoVolumeAvgActualSize    = util.StructName("LonghornVolumeAverageActualSizeBytes")
+	ClusterInfoVolumeAvgSize          = util.StructName("LonghornVolumeAverageSizeBytes")
 	ClusterInfoVolumeAvgSnapshotCount = util.StructName("LonghornVolumeAverageSnapshotCount")
 	ClusterInfoVolumeAvgNumOfReplicas = util.StructName("LonghornVolumeAverageNumberOfReplicas")
 
-	ClusterInfoPodAvgCPUUsageFmt          = "Longhorn%sAverageCpuUsageCore"
-	ClusterInfoPodAvgMemoryUsageFmt       = "Longhorn%sAverageMemoryUsageMib"
+	ClusterInfoPodAvgCPUUsageFmt          = "Longhorn%sAverageCpuUsageMilliCores"
+	ClusterInfoPodAvgMemoryUsageFmt       = "Longhorn%sAverageMemoryUsageBytes"
 	ClusterInfoSettingFmt                 = "LonghornSetting%s"
 	ClusterInfoVolumeAccessModeCountFmt   = "LonghornVolumeAccessMode%sCount"
 	ClusterInfoVolumeDataLocalityCountFmt = "LonghornVolumeDataLocality%sCount"
@@ -1275,11 +1275,11 @@ func (info *ClusterInfo) collectResourceUsage() error {
 
 		avgCPUUsageMilli := totalCPUUsage.MilliValue() / int64(len(pods))
 		cpuStruct := util.StructName(fmt.Sprintf(ClusterInfoPodAvgCPUUsageFmt, component))
-		info.structFields.Append(cpuStruct, fmt.Sprint(util.ConvertToCPUCore(avgCPUUsageMilli)))
+		info.structFields.Append(cpuStruct, fmt.Sprint(avgCPUUsageMilli))
 
 		avgMemoryUsageBytes := totalMemoryUsage.Value() / int64(len(pods))
 		memStruct := util.StructName(fmt.Sprintf(ClusterInfoPodAvgMemoryUsageFmt, component))
-		info.structFields.Append(memStruct, fmt.Sprint(util.ConvertToMiB(avgMemoryUsageBytes)))
+		info.structFields.Append(memStruct, fmt.Sprint(avgMemoryUsageBytes))
 	}
 
 	return nil
@@ -1433,8 +1433,8 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 		}
 		avgVolumeSnapshotCount = len(snapshotsRO) / volumeCount
 	}
-	info.structFields.Append(ClusterInfoVolumeAvgSize, fmt.Sprint(util.ConvertToGiB(avgVolumeSize)))
-	info.structFields.Append(ClusterInfoVolumeAvgActualSize, fmt.Sprint(util.ConvertToGiB(avgVolumeActualSize)))
+	info.structFields.Append(ClusterInfoVolumeAvgSize, fmt.Sprint(avgVolumeSize))
+	info.structFields.Append(ClusterInfoVolumeAvgActualSize, fmt.Sprint(avgVolumeActualSize))
 	info.structFields.Append(ClusterInfoVolumeAvgSnapshotCount, fmt.Sprint(avgVolumeSnapshotCount))
 	info.structFields.Append(ClusterInfoVolumeAvgNumOfReplicas, fmt.Sprint(avgVolumeNumOfReplicas))
 
