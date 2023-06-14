@@ -394,7 +394,7 @@ func (c *ShareManagerController) isShareManagerRequiredForVolume(volume *longhor
 	}
 
 	for _, attachmentTicket := range va.Spec.AttachmentTickets {
-		if isCSIAttacherTicketOfRegularRWXVolume(attachmentTicket, volume) {
+		if isRegularRWXVolume(volume) && (isCSIAttacherTicket(attachmentTicket) || isUpgraderTicket(attachmentTicket)) {
 			return true
 		}
 	}
