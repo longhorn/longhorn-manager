@@ -1383,7 +1383,12 @@ func (info *ClusterInfo) collectSettings() error {
 
 		// Setting value
 		case include[settingName]:
-			settingMap[setting.Name] = setting.Value
+			convertedValue, err := info.convertSettingValueType(setting)
+			if err != nil {
+				logrus.WithError(err).Debugf("failed to convert Setting %v value", setting.Name)
+				continue
+			}
+			settingMap[setting.Name] = convertedValue
 		}
 
 		if value, ok := settingMap[setting.Name]; ok && value == "" {
@@ -1402,6 +1407,22 @@ func (info *ClusterInfo) collectSettings() error {
 		}
 	}
 	return nil
+}
+
+func (info *ClusterInfo) convertSettingValueType(setting *longhorn.Setting) (convertedValue interface{}, err error) {
+	definition, ok := types.GetSettingDefinition(types.SettingName(setting.Name))
+	if !ok {
+		return false, fmt.Errorf("failed to get Setting %v definition", setting.Name)
+	}
+
+	switch definition.Type {
+	case types.SettingTypeInt:
+		return strconv.ParseInt(setting.Value, 10, 64)
+	case types.SettingTypeBool:
+		return strconv.ParseBool(setting.Value)
+	default:
+		return setting.Value, nil
+	}
 }
 
 func (info *ClusterInfo) collectVolumesInfo() error {
