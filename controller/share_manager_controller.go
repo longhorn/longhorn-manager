@@ -395,10 +395,7 @@ func (c *ShareManagerController) isShareManagerRequiredForVolume(volume *longhor
 
 	for _, attachmentTicket := range va.Spec.AttachmentTickets {
 		if isRegularRWXVolume(volume) && (isCSIAttacherTicket(attachmentTicket) || isUpgraderTicket(attachmentTicket)) {
-			// no active workload, there is no need to keep the share manager around
-			if hasActiveWorkload(volume) {
-				return true
-			}
+			return true
 		}
 	}
 	return false
@@ -425,15 +422,6 @@ func (c *ShareManagerController) createShareManagerAttachmentTicket(sm *longhorn
 	}
 
 	va.Spec.AttachmentTickets[shareManagerAttachmentTicketID] = shareManagerAttachmentTicket
-}
-
-func hasActiveWorkload(vol *longhorn.Volume) bool {
-	if vol == nil {
-		return false
-	}
-	return vol.Status.KubernetesStatus.LastPodRefAt == "" &&
-		vol.Status.KubernetesStatus.LastPVCRefAt == "" &&
-		len(vol.Status.KubernetesStatus.WorkloadsStatus) > 0
 }
 
 func (c *ShareManagerController) detachShareManagerVolume(sm *longhorn.ShareManager, va *longhorn.VolumeAttachment) {
