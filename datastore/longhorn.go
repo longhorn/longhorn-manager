@@ -356,17 +356,17 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 		if !volumesDetached {
 			return errors.Errorf("cannot apply %v setting to Longhorn workloads when there are attached volumes", name)
 		}
-	case types.SettingNameSpdk:
-		old, err := s.GetSetting(types.SettingNameSpdk)
+	case types.SettingNameV2DataEngine:
+		old, err := s.GetSetting(types.SettingNameV2DataEngine)
 		if err != nil {
 			return err
 		}
 		if old.Value != value {
-			spdkEnabled, err := strconv.ParseBool(value)
+			v2DataEngineEnabled, err := strconv.ParseBool(value)
 			if err != nil {
 				return err
 			}
-			err = s.ValidateSpdk(spdkEnabled)
+			err = s.ValidateV2DataEngine(v2DataEngineEnabled)
 			if err != nil {
 				return err
 			}
@@ -375,17 +375,17 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 	return nil
 }
 
-func (s *DataStore) ValidateSpdk(spdkEnabled bool) error {
+func (s *DataStore) ValidateV2DataEngine(v2DataEngineEnabled bool) error {
 	volumesDetached, err := s.AreAllVolumesDetached()
 	if err != nil {
-		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameSpdk)
+		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameV2DataEngine)
 	}
 	if !volumesDetached {
-		return errors.Errorf("cannot apply %v setting to Longhorn workloads when there are attached volumes", types.SettingNameSpdk)
+		return errors.Errorf("cannot apply %v setting to Longhorn workloads when there are attached volumes", types.SettingNameV2DataEngine)
 	}
 
 	// Check if there is enough hugepages-2Mi capacity for all nodes
-	hugepageRequestedInMiB, err := s.GetSetting(types.SettingNameSpdkHugepageLimit)
+	hugepageRequestedInMiB, err := s.GetSetting(types.SettingNameV2DataEngineHugepageLimit)
 	if err != nil {
 		return err
 	}
@@ -393,19 +393,19 @@ func (s *DataStore) ValidateSpdk(spdkEnabled bool) error {
 
 	ims, err := s.ListInstanceManagers()
 	if err != nil {
-		return errors.Wrapf(err, "failed to list instance managers for %v setting update", types.SettingNameSpdk)
+		return errors.Wrapf(err, "failed to list instance managers for %v setting update", types.SettingNameV2DataEngine)
 	}
 
 	for _, im := range ims {
 		node, err := s.GetKubernetesNode(im.Spec.NodeID)
 		if err != nil {
 			if !apierrors.IsNotFound(err) {
-				return errors.Wrapf(err, "failed to get Kubernetes node %v for %v setting update", im.Spec.NodeID, types.SettingNameSpdk)
+				return errors.Wrapf(err, "failed to get Kubernetes node %v for %v setting update", im.Spec.NodeID, types.SettingNameV2DataEngine)
 			}
 			continue
 		}
 
-		if spdkEnabled {
+		if v2DataEngineEnabled {
 			capacity, ok := node.Status.Capacity["hugepages-2Mi"]
 			if !ok {
 				return errors.Errorf("failed to get hugepages-2Mi capacity for node %v", node.Name)
@@ -419,12 +419,12 @@ func (s *DataStore) ValidateSpdk(spdkEnabled bool) error {
 		} else {
 			lhNode, err := s.GetNodeRO(im.Spec.NodeID)
 			if err != nil {
-				return errors.Wrapf(err, "failed to get Longhorn node %v for %v setting update", im.Spec.NodeID, types.SettingNameSpdk)
+				return errors.Wrapf(err, "failed to get Longhorn node %v for %v setting update", im.Spec.NodeID, types.SettingNameV2DataEngine)
 			}
 
 			for _, disk := range lhNode.Spec.Disks {
 				if disk.Type == longhorn.DiskTypeBlock {
-					return fmt.Errorf("failed to disable %v setting because there are block-type disks on node %v", types.SettingNameSpdk, node.Name)
+					return fmt.Errorf("failed to disable %v setting because there are block-type disks on node %v", types.SettingNameV2DataEngine, node.Name)
 				}
 			}
 		}

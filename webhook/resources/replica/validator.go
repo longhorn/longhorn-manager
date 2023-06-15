@@ -42,13 +42,13 @@ func (r *replicaValidator) Create(request *admission.Request, newObj runtime.Obj
 	replica := newObj.(*longhorn.Replica)
 
 	if replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
-		spdkEnabled, err := r.ds.GetSettingAsBool(types.SettingNameSpdk)
+		v2DataEngineEnabled, err := r.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
 		if err != nil {
 			err = errors.Wrapf(err, "failed to get spdk setting")
 			return werror.NewInvalidError(err.Error(), "")
 		}
-		if !spdkEnabled {
-			return werror.NewInvalidError("SPDK data engine is not enabled", "")
+		if !v2DataEngineEnabled {
+			return werror.NewInvalidError("v2 data engine is not enabled", "")
 		}
 	}
 
