@@ -203,10 +203,11 @@ message Disk {
     int64 cluster_size = 10;
 }
 
-message DiskCreateRequest{
-	string disk_name = 1;
-    string disk_path= 2;
-    int64 block_size = 3;
+message DiskCreateRequest {
+    string disk_name = 1;
+    string disk_uuid = 2;
+    string disk_path = 3;
+    int64 block_size = 4;
 }
 
 message DiskGetRequest {
