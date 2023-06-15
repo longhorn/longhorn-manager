@@ -806,6 +806,7 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 		return nil, err
 	}
 
+	privileged := true
 	podSpec := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            bim.Name,
@@ -856,6 +857,9 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 								},
 							},
 						},
+					},
+					SecurityContext: &v1.SecurityContext{
+						Privileged: &privileged,
 					},
 				},
 			},
