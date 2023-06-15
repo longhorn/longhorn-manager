@@ -47,9 +47,17 @@ require (
 	github.com/longhorn/backing-image-manager v1.4.0-rc1.0.20230521151917-38ff27cc2cbb
 	github.com/longhorn/backupstore v0.0.0-20230612062152-f4e0de6bc37a
 	github.com/longhorn/go-iscsi-helper v0.0.0-20230529082528-4c3270590712
+<<<<<<< HEAD
 	github.com/longhorn/go-spdk-helper v0.0.0-20230610063427-757b34a43c07
 	github.com/longhorn/longhorn-engine v1.5.0-rc1.0.20230612091804-9e71a56aade8
 	github.com/longhorn/longhorn-instance-manager v1.5.0-rc1.0.20230613111738-83d986abd40f
+=======
+	github.com/longhorn/go-spdk-helper v0.0.0-20230614144600-60ea9f38b2eb
+	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230612073917-0896a6f78315
+	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230615075334-e59ad7e20d07
+	github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20230531125701-c996c5a415b6
+	github.com/longhorn/longhorn-spdk-engine v0.0.0-20230615022458-774de44673fa
+>>>>>>> 70f03268 (vendor: udpate longhorn-instance-manager)
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.15.0
 	github.com/rancher/dynamiclistener v0.3.1
@@ -78,6 +86,7 @@ require (
 	sigs.k8s.io/controller-runtime v0.10.1
 )
 
+<<<<<<< HEAD
 require (
 	github.com/longhorn/longhorn-share-manager v1.5.0-rc1
 	github.com/longhorn/longhorn-spdk-engine v0.0.0-20230613092711-13d2db326c5e
@@ -88,6 +97,8 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20230530153820-e85fd2cbaebc // indirect
 )
 
+=======
+>>>>>>> 70f03268 (vendor: udpate longhorn-instance-manager)
 require (
 	github.com/Microsoft/go-winio v0.4.17 // indirect
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
