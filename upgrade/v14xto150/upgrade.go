@@ -106,7 +106,7 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceM
 			v.Spec.ReplicaZoneSoftAntiAffinity = longhorn.ReplicaZoneSoftAntiAffinityDefault
 		}
 		if v.Spec.BackendStoreDriver == "" {
-			v.Spec.BackendStoreDriver = longhorn.BackendStoreDriverTypeLonghorn
+			v.Spec.BackendStoreDriver = longhorn.BackendStoreDriverTypeV1
 		}
 		if v.Spec.OfflineReplicaRebuilding == "" {
 			v.Spec.OfflineReplicaRebuilding = longhorn.OfflineReplicaRebuildingDisabled
@@ -213,7 +213,7 @@ func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset, resource
 
 	for _, r := range replicaMap {
 		if r.Spec.BackendStoreDriver == "" {
-			r.Spec.BackendStoreDriver = longhorn.BackendStoreDriverTypeLonghorn
+			r.Spec.BackendStoreDriver = longhorn.BackendStoreDriverTypeV1
 		}
 	}
 
@@ -235,7 +235,7 @@ func upgradeEngines(namespace string, lhClient *lhclientset.Clientset, resourceM
 
 	for _, e := range engineMap {
 		if e.Spec.BackendStoreDriver == "" {
-			e.Spec.BackendStoreDriver = longhorn.BackendStoreDriverTypeLonghorn
+			e.Spec.BackendStoreDriver = longhorn.BackendStoreDriverTypeV1
 		}
 	}
 

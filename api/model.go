@@ -1058,7 +1058,7 @@ func volumeSchema(volume *client.Schema) {
 	backendStoreDriver := volume.ResourceFields["backendStoreDriver"]
 	backendStoreDriver.Required = true
 	backendStoreDriver.Create = true
-	backendStoreDriver.Default = longhorn.BackendStoreDriverTypeLonghorn
+	backendStoreDriver.Default = longhorn.BackendStoreDriverTypeV1
 	volume.ResourceFields["backendStoreDriver"] = backendStoreDriver
 
 	conditions := volume.ResourceFields["conditions"]

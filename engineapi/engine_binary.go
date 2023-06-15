@@ -28,7 +28,7 @@ func GetEngineBinaryClient(ds *datastore.DataStore, volumeName, nodeID string) (
 	for _, e = range es {
 		break
 	}
-	if e.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+	if e.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
 		return nil, nil
 	}
 	if e.Status.CurrentState != longhorn.InstanceStateRunning {

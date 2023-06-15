@@ -117,7 +117,7 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
-	if volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+	if volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
 		spdkEnabled, err := v.ds.GetSettingAsBool(types.SettingNameSpdk)
 		if err != nil {
 			err = errors.Wrapf(err, "failed to get spdk setting")
@@ -201,7 +201,7 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		}
 	}
 
-	if newVolume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+	if newVolume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
 		// TODO: remove this check when we support the following features for SPDK volumes
 		if oldVolume.Spec.Size != newVolume.Spec.Size {
 			err := fmt.Errorf("changing volume size for volume %v is not supported for backend store driver %v",
