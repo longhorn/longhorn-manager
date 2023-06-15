@@ -71,7 +71,7 @@ func (m *ProxyEngineRequest) GetBackendStoreDriver() BackendStoreDriver {
 	if m != nil {
 		return m.BackendStoreDriver
 	}
-	return BackendStoreDriver_longhorn
+	return BackendStoreDriver_v1
 }
 
 func (m *ProxyEngineRequest) GetEngineName() string {

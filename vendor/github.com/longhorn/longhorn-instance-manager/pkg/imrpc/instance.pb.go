@@ -194,7 +194,7 @@ func (m *InstanceSpec) GetBackendStoreDriver() BackendStoreDriver {
 	if m != nil {
 		return m.BackendStoreDriver
 	}
-	return BackendStoreDriver_longhorn
+	return BackendStoreDriver_v1
 }
 
 func (m *InstanceSpec) GetName() string {
@@ -388,7 +388,7 @@ func (m *InstanceDeleteRequest) GetBackendStoreDriver() BackendStoreDriver {
 	if m != nil {
 		return m.BackendStoreDriver
 	}
-	return BackendStoreDriver_longhorn
+	return BackendStoreDriver_v1
 }
 
 func (m *InstanceDeleteRequest) GetName() string {
@@ -457,7 +457,7 @@ func (m *InstanceGetRequest) GetBackendStoreDriver() BackendStoreDriver {
 	if m != nil {
 		return m.BackendStoreDriver
 	}
-	return BackendStoreDriver_longhorn
+	return BackendStoreDriver_v1
 }
 
 func (m *InstanceGetRequest) GetName() string {
@@ -606,7 +606,7 @@ func (m *InstanceLogRequest) GetBackendStoreDriver() BackendStoreDriver {
 	if m != nil {
 		return m.BackendStoreDriver
 	}
-	return BackendStoreDriver_longhorn
+	return BackendStoreDriver_v1
 }
 
 func (m *InstanceLogRequest) GetName() string {
