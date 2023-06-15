@@ -1128,21 +1128,21 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, longhorn.InstanceManagerTypeAllInOne)
 	podSpec.Spec.Containers[0].Name = "instance-manager"
 
-	spdkEnabled, err := imc.ds.GetSetting(types.SettingNameSpdk)
+	v2DataEngineEnabled, err := imc.ds.GetSetting(types.SettingNameV2DataEngine)
 	if err != nil {
 		return nil, err
 	}
-	spdkAnnot := string(types.SpdkAnnotation)
-	if spdkEnabled.Value != podSpec.Annotations[spdkAnnot] {
-		podSpec.Annotations[spdkAnnot] = spdkEnabled.Value
+	v2DataEngineAnnot := string(types.V2DataEngineAnnotation)
+	if v2DataEngineEnabled.Value != podSpec.Annotations[v2DataEngineAnnot] {
+		podSpec.Annotations[v2DataEngineAnnot] = v2DataEngineEnabled.Value
 	}
 
-	if spdkEnabled.Value == "true" {
+	if v2DataEngineEnabled.Value == "true" {
 		podSpec.Spec.Containers[0].Args = []string{
 			"instance-manager", "--enable-spdk", "--debug", "daemon", "--spdk-enabled", "--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort),
 		}
 
-		hugepage, err := imc.ds.GetSettingAsInt(types.SettingNameSpdkHugepageLimit)
+		hugepage, err := imc.ds.GetSettingAsInt(types.SettingNameV2DataEngineHugepageLimit)
 		if err != nil {
 			return nil, err
 		}
@@ -1232,7 +1232,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		},
 	}
 
-	if spdkEnabled.Value == "true" {
+	if v2DataEngineEnabled.Value == "true" {
 		podSpec.Spec.Containers[0].VolumeMounts = append(podSpec.Spec.Containers[0].VolumeMounts, v1.VolumeMount{
 			MountPath: "/hugepages",
 			Name:      "hugepage",
