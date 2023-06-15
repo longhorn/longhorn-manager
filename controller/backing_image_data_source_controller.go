@@ -611,6 +611,7 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 		cmd = append(cmd, "--checksum", bids.Spec.Checksum)
 	}
 
+	privileged := true
 	podSpec := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            types.GetBackingImageDataSourcePodName(bids.Name),
@@ -656,6 +657,9 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 								},
 							},
 						},
+					},
+					SecurityContext: &v1.SecurityContext{
+						Privileged: &privileged,
 					},
 				},
 			},
