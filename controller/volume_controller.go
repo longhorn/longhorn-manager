@@ -681,7 +681,7 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		}
 	}
 
-	if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+	if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
 		shouldStop, err := c.shouldStopOfflineReplicaRebuilding(v, healthyCount)
 		if err != nil {
 			log.WithError(err).Errorf("Failed to check if offline replica rebuilding should be stopped")
@@ -731,7 +731,7 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 			}
 		}
 
-		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
 			v.Status.OfflineReplicaRebuildingRequired = false
 		}
 	} else { // healthyCount < v.Spec.NumberOfReplicas
@@ -913,7 +913,7 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 			continue
 		}
 
-		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
 			staled := false
 			if v.Spec.StaleReplicaTimeout > 0 && util.TimestampAfterTimeout(r.Spec.FailedAt,
 				time.Duration(int64(v.Spec.StaleReplicaTimeout*60))*time.Second) {
@@ -2042,7 +2042,7 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 	for i := 0; i < replenishCount; i++ {
 		var reusableFailedReplica *longhorn.Replica
 		// TODO: reuse failed replica for replica rebuilding of SPDK volumes
-		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
 			reusableFailedReplica, err = c.scheduler.CheckAndReuseFailedReplica(rs, v, hardNodeAffinity)
 			if err != nil {
 				return errors.Wrapf(err, "failed to reuse a failed replica during replica replenishment")
@@ -2854,7 +2854,7 @@ func (c *VolumeController) updateRequestedBackupForVolumeRestore(v *longhorn.Vol
 func (c *VolumeController) checkAndInitVolumeOfflineReplicaRebuilding(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
 	log := getLoggerForVolume(c.logger, v)
 
-	if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+	if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
 		return nil
 	}
 
@@ -3364,7 +3364,7 @@ func (c *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine,
 	}
 	if isRebuildingReplica {
 		// TODO: reuse failed replica for replica rebuilding of SPDK volumes
-		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
 			if !v.Spec.DisableFrontend || !v.Status.OfflineReplicaRebuildingRequired {
 				log.Tracef("Online replica rebuilding for replica %v is not supported for SPDK volumes", replica.Name)
 				return nil

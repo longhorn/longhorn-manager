@@ -221,11 +221,11 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 
 	if string(volume.Spec.BackendStoreDriver) == "" {
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeLonghorn))
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeV1))
 	}
 
 	// TODO: Remove the mutations below after they are implemented for SPDK volumes
-	if volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+	if volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
 		if volume.Spec.Encrypted {
 			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/encrypted", "value": false}`)
 		}
@@ -295,7 +295,7 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaZoneSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaZoneSoftAntiAffinityDefault))
 	}
 	if string(volume.Spec.BackendStoreDriver) == "" {
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeLonghorn))
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeV1))
 	}
 
 	size := util.RoundUpSize(volume.Spec.Size)
