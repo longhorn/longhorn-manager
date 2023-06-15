@@ -269,7 +269,7 @@ func parseProcess(p *imapi.Process) *longhorn.InstanceProcess {
 	return &longhorn.InstanceProcess{
 		Spec: longhorn.InstanceProcessSpec{
 			Name:               p.Name,
-			BackendStoreDriver: longhorn.BackendStoreDriverTypeLonghorn,
+			BackendStoreDriver: longhorn.BackendStoreDriverTypeV1,
 		},
 		Status: longhorn.InstanceProcessStatus{
 			Type:      getTypeForProcess(p.PortCount),
@@ -401,12 +401,12 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 	}
 
 	switch req.Engine.Spec.BackendStoreDriver {
-	case longhorn.BackendStoreDriverTypeLonghorn:
+	case longhorn.BackendStoreDriverTypeV1:
 		binary, args, err = getBinaryAndArgsForEngineProcessCreation(req.Engine, frontend, req.EngineReplicaTimeout, req.ReplicaFileSyncHTTPClientTimeout, req.DataLocality, req.EngineCLIAPIVersion)
 		if err != nil {
 			return nil, err
 		}
-	case longhorn.BackendStoreDriverTypeSPDK:
+	case longhorn.BackendStoreDriverTypeV2:
 		replicaAddresses = req.Engine.Status.CurrentReplicaAddressMap
 	}
 
@@ -462,7 +462,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 
 	binary := ""
 	args := []string{}
-	if req.Replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+	if req.Replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
 		binary, args = getBinaryAndArgsForReplicaProcessCreation(req.Replica, req.DataPath, req.BackingImagePath, req.DataLocality, req.EngineCLIAPIVersion)
 	}
 
@@ -476,7 +476,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 	}
 
 	portCount := DefaultReplicaPortCount
-	if req.Replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+	if req.Replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
 		portCount = spdktypes.DefaultReplicaReservedPortCount
 	}
 
@@ -637,9 +637,9 @@ type EngineInstanceUpgradeRequest struct {
 func (c *InstanceManagerClient) EngineInstanceUpgrade(req *EngineInstanceUpgradeRequest) (*longhorn.InstanceProcess, error) {
 	engine := req.Engine
 	switch engine.Spec.BackendStoreDriver {
-	case longhorn.BackendStoreDriverTypeLonghorn:
+	case longhorn.BackendStoreDriverTypeV1:
 		return c.engineInstanceUpgrade(req)
-	case longhorn.BackendStoreDriverTypeSPDK:
+	case longhorn.BackendStoreDriverTypeV2:
 		/* TODO: Handle SPDK engine upgrade */
 		return nil, fmt.Errorf("SPDK engine upgrade is not supported yet")
 	default:
