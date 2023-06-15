@@ -71,7 +71,7 @@ func mutateReplica(newObj runtime.Object, needFinalizer bool) (admission.PatchOp
 	}
 
 	if string(replica.Spec.BackendStoreDriver) == "" {
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeLonghorn))
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeV1))
 	}
 
 	return patchOps, nil

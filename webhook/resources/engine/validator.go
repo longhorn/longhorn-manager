@@ -41,7 +41,7 @@ func (e *engineValidator) Resource() admission.Resource {
 func (e *engineValidator) Create(request *admission.Request, newObj runtime.Object) error {
 	engine := newObj.(*longhorn.Engine)
 
-	if engine.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+	if engine.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
 		spdkEnabled, err := e.ds.GetSettingAsBool(types.SettingNameSpdk)
 		if err != nil {
 			err = errors.Wrapf(err, "failed to get spdk setting")
