@@ -1314,8 +1314,8 @@ spec:
                 type: boolean
               backendStoreDriver:
                 enum:
-                - longhorn
-                - spdk
+                - v1
+                - v2
                 type: string
               backupVolume:
                 type: string
@@ -2413,8 +2413,8 @@ spec:
                 type: boolean
               backendStoreDriver:
                 enum:
-                - longhorn
-                - spdk
+                - v1
+                - v2
                 type: string
               backingImage:
                 type: string
@@ -3436,8 +3436,8 @@ spec:
                 type: string
               backendStoreDriver:
                 enum:
-                - longhorn
-                - spdk
+                - v1
+                - v2
                 type: string
               backingImage:
                 type: string
