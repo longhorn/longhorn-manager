@@ -46,16 +46,16 @@ func (n *nodeValidator) Create(request *admission.Request, newObj runtime.Object
 		return werror.NewInvalidError("instanceManagerCPURequest should be greater than or equal to 0", "")
 	}
 
-	spdkEnabled, err := n.ds.GetSettingAsBool(types.SettingNameSpdk)
+	v2DataEngineEnabled, err := n.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
 	if err != nil {
 		err = errors.Wrapf(err, "failed to get spdk setting")
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
 	for name, disk := range node.Spec.Disks {
-		if !spdkEnabled {
+		if !v2DataEngineEnabled {
 			if disk.Type == longhorn.DiskTypeBlock {
-				return werror.NewInvalidError(fmt.Sprintf("disk %v type %v is not supported since SPDK data engine is disabled", name, disk.Type), "")
+				return werror.NewInvalidError(fmt.Sprintf("disk %v type %v is not supported since v2 data engine is disabled", name, disk.Type), "")
 			}
 		}
 	}
@@ -123,7 +123,7 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 		}
 	}
 
-	spdkEnabled, err := n.ds.GetSettingAsBool(types.SettingNameSpdk)
+	v2DataEngineEnabled, err := n.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
 	if err != nil {
 		err = errors.Wrapf(err, "failed to get spdk setting")
 		return werror.NewInvalidError(err.Error(), "")
@@ -139,7 +139,7 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 		if err != nil {
 			return werror.NewInvalidError(err.Error(), "")
 		}
-		if !spdkEnabled {
+		if !v2DataEngineEnabled {
 			if disk.Type == longhorn.DiskTypeBlock {
 				return werror.NewInvalidError(fmt.Sprintf("update disk on node %v error: The disk %v(%v) is a block device, but the SPDK feature is not enabled",
 					newNode.Name, name, disk.Path), "")

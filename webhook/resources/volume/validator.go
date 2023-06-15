@@ -118,17 +118,17 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 	}
 
 	if volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
-		spdkEnabled, err := v.ds.GetSettingAsBool(types.SettingNameSpdk)
+		v2DataEngineEnabled, err := v.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
 		if err != nil {
 			err = errors.Wrapf(err, "failed to get spdk setting")
 			return werror.NewInvalidError(err.Error(), "")
 		}
-		if !spdkEnabled {
-			return werror.NewInvalidError("SPDK data engine is not enabled", "")
+		if !v2DataEngineEnabled {
+			return werror.NewInvalidError("v2 data engine is not enabled", "")
 		}
 
 		if volume.Spec.Frontend == longhorn.VolumeFrontendISCSI {
-			return werror.NewInvalidError("SPDK data engine does not support iSCSI frontend", "")
+			return werror.NewInvalidError("v2 data engine does not support iSCSI frontend", "")
 		}
 	}
 
