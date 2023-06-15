@@ -681,6 +681,17 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		}
 	}
 
+	if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+		shouldStop, err := c.shouldStopOfflineReplicaRebuilding(v, healthyCount)
+		if err != nil {
+			log.WithError(err).Errorf("Failed to check if offline replica rebuilding should be stopped")
+			return err
+		}
+		if shouldStop {
+			v.Status.OfflineReplicaRebuildingRequired = false
+		}
+	}
+
 	// Cannot continue evicting or replenishing replicas during engine migration.
 	isMigratingDone := !isVolumeMigrating(v) && len(es) == 1
 
@@ -720,6 +731,9 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 			}
 		}
 
+		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+			v.Status.OfflineReplicaRebuildingRequired = false
+		}
 	} else { // healthyCount < v.Spec.NumberOfReplicas
 		v.Status.Robustness = longhorn.VolumeRobustnessDegraded
 		if oldRobustness != longhorn.VolumeRobustnessDegraded {
@@ -780,6 +794,28 @@ func areAllReplicasFailed(rs map[string]*longhorn.Replica) bool {
 		}
 	}
 	return true
+}
+
+func (c *VolumeController) shouldStopOfflineReplicaRebuilding(v *longhorn.Volume, healthyCount int) (bool, error) {
+	if healthyCount == v.Spec.NumberOfReplicas {
+		return true, nil
+	}
+
+	if v.Spec.OfflineReplicaRebuilding == longhorn.OfflineReplicaRebuildingDisabled {
+		return true, nil
+	}
+
+	if v.Spec.OfflineReplicaRebuilding == longhorn.OfflineReplicaRebuildingIgnored {
+		offlineReplicaRebuilding, err := c.ds.GetSettingValueExisted(types.SettingNameOfflineReplicaRebuilding)
+		if err != nil {
+			return false, err
+		}
+		if offlineReplicaRebuilding == string(longhorn.OfflineReplicaRebuildingDisabled) {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // isFirstAttachment returns true if this is the first time the volume is attached.
@@ -876,19 +912,26 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 		if r.DeletionTimestamp != nil {
 			continue
 		}
-		staled := false
-		if v.Spec.StaleReplicaTimeout > 0 && util.TimestampAfterTimeout(r.Spec.FailedAt,
-			time.Duration(int64(v.Spec.StaleReplicaTimeout*60))*time.Second) {
 
-			staled = true
-		}
+		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+			staled := false
+			if v.Spec.StaleReplicaTimeout > 0 && util.TimestampAfterTimeout(r.Spec.FailedAt,
+				time.Duration(int64(v.Spec.StaleReplicaTimeout*60))*time.Second) {
 
-		// 1. failed for multiple times or failed at rebuilding (`Spec.RebuildRetryCount` of a newly created rebuilding replica
-		//    is `FailedReplicaMaxRetryCount`) before ever became healthy/ mode RW,
-		// 2. failed too long ago, became stale and unnecessary to keep around, unless we don't have any healthy replicas
-		// 3. failed for race condition at upgrading when waiting IM-r to start and it would never became healty
-		if (r.Spec.RebuildRetryCount >= scheduler.FailedReplicaMaxRetryCount) || (healthyCount != 0 && staled) || (r.Spec.EngineImage != v.Status.CurrentImage) {
-			log.WithField("replica", r.Name).Info("Cleaning up corrupted, staled replica")
+				staled = true
+			}
+
+			// 1. failed for multiple times or failed at rebuilding (`Spec.RebuildRetryCount` of a newly created rebuilding replica
+			//    is `FailedReplicaMaxRetryCount`) before ever became healthy/ mode RW,
+			// 2. failed too long ago, became stale and unnecessary to keep around, unless we don't have any healthy replicas
+			// 3. failed for race condition at upgrading when waiting IM-r to start and it would never became healty
+			if (r.Spec.RebuildRetryCount >= scheduler.FailedReplicaMaxRetryCount) || (healthyCount != 0 && staled) || (r.Spec.EngineImage != v.Status.CurrentImage) {
+				log.WithField("replica", r.Name).Info("Cleaning up corrupted, staled replica")
+				if err := c.deleteReplica(r, rs); err != nil {
+					return errors.Wrapf(err, "cannot cleanup staled replica %v", r.Name)
+				}
+			}
+		} else {
 			if err := c.deleteReplica(r, rs); err != nil {
 				return errors.Wrapf(err, "failed to cleanup staled replica %v", r.Name)
 			}
@@ -1138,9 +1181,14 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 		v.Status.CurrentImage = v.Spec.EngineImage
 	}
 
+	if err := c.checkAndInitVolumeOfflineReplicaRebuilding(v, rs); err != nil {
+		return err
+	}
+
 	if err := c.checkAndInitVolumeRestore(v); err != nil {
 		return err
 	}
+
 	if err := c.updateRequestedBackupForVolumeRestore(v, e); err != nil {
 		return err
 	}
@@ -1772,7 +1820,6 @@ func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *
 			rs[r.Name] = r
 		}
 	}
-
 }
 
 func (c *VolumeController) verifyVolumeDependentResourcesClosed(e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {
@@ -2804,6 +2851,60 @@ func (c *VolumeController) updateRequestedBackupForVolumeRestore(v *longhorn.Vol
 	return nil
 }
 
+func (c *VolumeController) checkAndInitVolumeOfflineReplicaRebuilding(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
+	log := getLoggerForVolume(c.logger, v)
+
+	if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+		return nil
+	}
+
+	switch v.Spec.OfflineReplicaRebuilding {
+	case longhorn.OfflineReplicaRebuildingIgnored:
+		offlineReplicaRebuilding, err := c.ds.GetSettingValueExisted(types.SettingNameOfflineReplicaRebuilding)
+		if err != nil {
+			log.WithError(err).Errorf("Failed to get setting %v", types.SettingNameOfflineReplicaRebuilding)
+			return nil
+		}
+		if offlineReplicaRebuilding == string(longhorn.OfflineReplicaRebuildingDisabled) {
+			return nil
+		}
+	case longhorn.OfflineReplicaRebuildingDisabled:
+		return nil
+	}
+
+	if len(rs) == 0 {
+		return nil
+	}
+
+	healthyReplicaCount := 0
+
+	replicas, err := c.ds.ListVolumeReplicas(v.Name)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get replicas for volume %v offline replica rebuilding", v.Name)
+	}
+	for _, r := range replicas {
+		if r.Spec.HealthyAt != "" && r.Spec.FailedAt == "" {
+			healthyReplicaCount++
+		}
+	}
+
+	if healthyReplicaCount == 0 {
+		return nil
+	}
+
+	if healthyReplicaCount >= v.Spec.NumberOfReplicas {
+		return nil
+	}
+
+	if !v.Status.OfflineReplicaRebuildingRequired {
+		log.Info("Requesting offline replica rebuilding for the volume")
+	}
+
+	v.Status.OfflineReplicaRebuildingRequired = true
+
+	return nil
+}
+
 func (c *VolumeController) checkAndInitVolumeRestore(v *longhorn.Volume) error {
 	log := getLoggerForVolume(c.logger, v)
 
@@ -3264,8 +3365,10 @@ func (c *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine,
 	if isRebuildingReplica {
 		// TODO: reuse failed replica for replica rebuilding of SPDK volumes
 		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
-			log.Warnf("Rebuilding replica %v is not supported for SPDK volumes", replica.Name)
-			return nil
+			if !v.Spec.DisableFrontend || !v.Status.OfflineReplicaRebuildingRequired {
+				log.Tracef("Online replica rebuilding for replica %v is not supported for SPDK volumes", replica.Name)
+				return nil
+			}
 		}
 
 		log.Infof("A new replica %v will be replenished during rebuilding", replica.Name)
@@ -3306,7 +3409,7 @@ func (c *VolumeController) enqueueVolume(obj interface{}) {
 func (c *VolumeController) enqueueVolumeAfter(obj interface{}, duration time.Duration) {
 	key, err := controller.KeyFunc(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("enqueueVolumeAfter: couldn't get key for object %#v: %v", obj, err))
+		utilruntime.HandleError(fmt.Errorf("enqueueVolumeAfter: failed to get key for object %#v: %v", obj, err))
 		return
 	}
 

@@ -107,7 +107,7 @@ func (vcc *VolumeCloneController) enqueueVolume(obj interface{}) {
 func (vcc *VolumeCloneController) enqueueVolumeAfter(obj interface{}, duration time.Duration) {
 	key, err := controller.KeyFunc(obj)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("enqueueVolumeAfter: couldn't get key for object %#v: %v", obj, err))
+		utilruntime.HandleError(fmt.Errorf("enqueueVolumeAfter: failed to get key for object %#v: %v", obj, err))
 		return
 	}
 

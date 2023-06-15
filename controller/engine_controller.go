@@ -1590,6 +1590,11 @@ func GetBinaryClientForEngine(e *longhorn.Engine, engines engineapi.EngineClient
 	defer func() {
 		err = errors.Wrapf(err, "cannot get client for engine %v", e.Name)
 	}()
+
+	if e.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+		return nil, nil
+	}
+
 	if e.Status.CurrentState != longhorn.InstanceStateRunning {
 		return nil, fmt.Errorf("engine is not running")
 	}
@@ -1645,12 +1650,6 @@ func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
 }
 
 func (ec *EngineController) rebuildNewReplica(e *longhorn.Engine) error {
-	// TODO: Ssupport runtime rebuilding replica for SPDK volumes
-	if e.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
-		logrus.Debugf("SPDK is not supported for runtime rebuilding replica")
-		return nil
-	}
-
 	rebuildingInProgress := false
 	replicaExists := make(map[string]bool)
 	for replica, mode := range e.Status.ReplicaModeMap {
@@ -1831,12 +1830,12 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 			if e.Spec.NodeID != "" {
 				ec.eventRecorder.Eventf(e, v1.EventTypeNormal, constant.EventReasonRebuilding,
 					"Start rebuilding replica %v with Address %v for restore engine %v and volume %v", replicaName, addr, e.Name, e.Spec.VolumeName)
-				err = engineClientProxy.ReplicaAdd(e, replicaURL, true, fastReplicaRebuild, fileSyncHTTPClientTimeout)
+				err = engineClientProxy.ReplicaAdd(e, replicaName, replicaURL, true, fastReplicaRebuild, fileSyncHTTPClientTimeout)
 			}
 		} else {
 			ec.eventRecorder.Eventf(e, v1.EventTypeNormal, constant.EventReasonRebuilding,
 				"Start rebuilding replica %v with Address %v for normal engine %v and volume %v", replicaName, addr, e.Name, e.Spec.VolumeName)
-			err = engineClientProxy.ReplicaAdd(e, replicaURL, false, fastReplicaRebuild, fileSyncHTTPClientTimeout)
+			err = engineClientProxy.ReplicaAdd(e, replicaName, replicaURL, false, fastReplicaRebuild, fileSyncHTTPClientTimeout)
 		}
 		if err != nil {
 			replicaRebuildErrMsg := err.Error()

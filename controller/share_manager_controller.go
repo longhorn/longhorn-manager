@@ -394,11 +394,13 @@ func (c *ShareManagerController) isShareManagerRequiredForVolume(volume *longhor
 	}
 
 	for _, attachmentTicket := range va.Spec.AttachmentTickets {
-		if isCSIAttacherTicketOfRegularRWXVolume(attachmentTicket, volume) {
-			return true
+		if isRegularRWXVolume(volume) && (isCSIAttacherTicket(attachmentTicket) || isUpgraderTicket(attachmentTicket)) {
+			// no active workload, there is no need to keep the share manager around
+			if hasActiveWorkload(volume) {
+				return true
+			}
 		}
 	}
-
 	return false
 }
 

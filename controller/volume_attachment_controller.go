@@ -487,6 +487,23 @@ func (vac *VolumeAttachmentController) shouldDoDetach(va *longhorn.VolumeAttachm
 		return true
 	}
 
+	// Currently, the only ticket that is interruptible and frontend disabled is the rebuilding-controller ticket
+	// Offline replica rebuilding has the potential to fail and repeated attempts.
+	// Users can give up (interrupt) the replica rebuilding and attach the degraded volume to a node.
+	if hasInterruptibleAndFrontendDisabledTicket(currentAttachmentTickets) && hasWorkloadTicket(va.Spec.AttachmentTickets) {
+		log.Debugf("Workload attachment ticket interrupted rebuilding-controller attachment tickets")
+		return true
+	}
+
+	return false
+}
+
+func hasInterruptibleAndFrontendDisabledTicket(attachmentTickets map[string]*longhorn.AttachmentTicket) bool {
+	for _, ticket := range attachmentTickets {
+		if ticket.Type == longhorn.AttacherTypeVolumeRebuildingController {
+			return true
+		}
+	}
 	return false
 }
 
@@ -736,14 +753,6 @@ func setAttachmentParameter(parameters map[string]string, vol *longhorn.Volume) 
 	vol.Spec.LastAttachedBy = parameters["lastAttachedBy"]
 }
 
-func copyStringMap(originalMap map[string]string) map[string]string {
-	CopiedMap := make(map[string]string)
-	for index, element := range originalMap {
-		CopiedMap[index] = element
-	}
-	return CopiedMap
-}
-
 func (vac *VolumeAttachmentController) isResponsibleFor(va *longhorn.VolumeAttachment) (bool, error) {
 	var err error
 	defer func() {
@@ -768,13 +777,29 @@ func getLoggerForLHVolumeAttachment(logger logrus.FieldLogger, va *longhorn.Volu
 	)
 }
 
-func isCSIAttacherTicketOfRegularRWXVolume(attachmentTicket *longhorn.AttachmentTicket, vol *longhorn.Volume) bool {
-	if attachmentTicket == nil || vol == nil {
+func isCSIAttacherTicketOfRegularRWXVolume(attachmentTicket *longhorn.AttachmentTicket, v *longhorn.Volume) bool {
+	return isRegularRWXVolume(v) && isCSIAttacherTicket(attachmentTicket)
+}
+
+func isRegularRWXVolume(v *longhorn.Volume) bool {
+	if v == nil {
 		return false
 	}
-	isRegularRWXVolume := vol.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !vol.Spec.Migratable
-	isCSIAttacherTicket := attachmentTicket.Type == longhorn.AttacherTypeCSIAttacher
-	return isRegularRWXVolume && isCSIAttacherTicket
+	return v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !v.Spec.Migratable
+}
+
+func isUpgraderTicket(ticket *longhorn.AttachmentTicket) bool {
+	if ticket == nil {
+		return false
+	}
+	return ticket.Type == longhorn.AttacherTypeLonghornUpgrader
+}
+
+func isCSIAttacherTicket(ticket *longhorn.AttachmentTicket) bool {
+	if ticket == nil {
+		return false
+	}
+	return ticket.Type == longhorn.AttacherTypeCSIAttacher
 }
 
 func isMigratingCSIAttacherTicket(attachmentTicket *longhorn.AttachmentTicket, vol *longhorn.Volume) bool {

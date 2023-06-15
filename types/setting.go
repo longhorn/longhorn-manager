@@ -106,6 +106,7 @@ const (
 	SettingNameLogLevel                                                 = SettingName("log-level")
 	SettingNameSpdk                                                     = SettingName("spdk")
 	SettingNameSpdkHugepageLimit                                        = SettingName("spdk-hugepage-limit")
+	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
 )
 
 var (
@@ -177,6 +178,7 @@ var (
 		SettingNameLogLevel,
 		SettingNameSpdk,
 		SettingNameSpdkHugepageLimit,
+		SettingNameOfflineReplicaRebuilding,
 	}
 )
 
@@ -189,7 +191,7 @@ const (
 	SettingCategoryScheduling = SettingCategory("scheduling")
 	SettingCategoryDangerZone = SettingCategory("danger Zone")
 	SettingCategorySnapshot   = SettingCategory("snapshot")
-	SettingCategorySpdk       = SettingCategory("spdk")
+	SettingCategorySpdk       = SettingCategory("SPDK (Preview Feature)")
 )
 
 type SettingDefinition struct {
@@ -274,6 +276,7 @@ var (
 		SettingNameLogLevel:                                                 SettingDefinitionLogLevel,
 		SettingNameSpdk:                                                     SettingDefinitionSpdk,
 		SettingNameSpdkHugepageLimit:                                        SettingDefinitionSpdkHugepageLimit,
+		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -1064,9 +1067,23 @@ var (
 		Default:     "Debug",
 	}
 
+	SettingDefinitionOfflineReplicaRebuilding = SettingDefinition{
+		DisplayName: "Offline Replica Rebuilding",
+		Description: "This setting allows users to enable the offline replica rebuilding for volumes using SPDK data engine.",
+		Category:    SettingCategorySpdk,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     string(longhorn.OfflineReplicaRebuildingEnabled),
+		Choices: []string{
+			string(longhorn.OfflineReplicaRebuildingEnabled),
+			string(longhorn.OfflineReplicaRebuildingDisabled),
+		},
+	}
+
 	SettingDefinitionSpdk = SettingDefinition{
-		DisplayName: "Enable SPDK Data Engine (Preview Feature)",
-		Description: "This allows users to activate the SPDK data engine. Currently, it is in the preview phase and should not be utilized in a production environment.\n\n" +
+		DisplayName: "SPDK Data Engine",
+		Description: "This setting allows users to activate SPDK data engine. Currently, it is in the preview phase and should not be utilized in a production environment.\n\n" +
 			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will try to block this setting update when there are attached volumes. \n\n" +
 			"  - When applying the setting, Longhorn will restart all instance-manager pods. \n\n",
 		Category: SettingCategorySpdk,
@@ -1293,6 +1310,10 @@ func ValidateSetting(name, value string) (err error) {
 
 		if val < 1 {
 			return fmt.Errorf("the value %v shouldn't be less than 1", value)
+		}
+	case SettingNameOfflineReplicaRebuilding:
+		if err = ValidateOfflineReplicaRebuilding(value); err != nil {
+			return errors.Wrapf(err, "the value of %v is invalid", sName)
 		}
 	case SettingNameSnapshotDataIntegrity:
 		if err = ValidateSnapshotDataIntegrity(value); err != nil {

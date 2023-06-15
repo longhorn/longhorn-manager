@@ -177,6 +177,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			ReplicaSoftAntiAffinity:     spec.ReplicaSoftAntiAffinity,
 			ReplicaZoneSoftAntiAffinity: spec.ReplicaZoneSoftAntiAffinity,
 			BackendStoreDriver:          spec.BackendStoreDriver,
+			OfflineReplicaRebuilding:    spec.OfflineReplicaRebuilding,
 		},
 	}
 
@@ -881,6 +882,27 @@ func (m *VolumeManager) UpdateSnapshotDataIntegrity(name string, value string) (
 		return nil, err
 	}
 	logrus.Debugf("Updated volume %v snapshot data integrity from %v to %v", v.Name, oldValue, v.Spec.SnapshotDataIntegrity)
+	return v, nil
+}
+
+func (m *VolumeManager) UpdateOfflineReplicaRebuilding(name string, value string) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to update offline replica rebuilding for volume %v", name)
+	}()
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+
+	oldValue := v.Spec.OfflineReplicaRebuilding
+	v.Spec.OfflineReplicaRebuilding = longhorn.OfflineReplicaRebuilding(value)
+
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+	logrus.Debugf("Updated volume %v offline replica rebuilding from %v to %v", v.Name, oldValue, v.Spec.OfflineReplicaRebuilding)
 	return v, nil
 }
 
