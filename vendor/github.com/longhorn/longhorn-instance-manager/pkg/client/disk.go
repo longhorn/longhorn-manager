@@ -38,6 +38,7 @@ type DiskServiceClient struct {
 	DiskServiceContext
 }
 
+// NewDiskServiceClient creates a new DiskServiceClient.
 func NewDiskServiceClient(serviceURL string, tlsConfig *tls.Config) (*DiskServiceClient, error) {
 	getDiskServiceContext := func(serviceUrl string, tlsConfig *tls.Config) (DiskServiceContext, error) {
 		connection, err := util.Connect(serviceUrl, tlsConfig)
@@ -63,6 +64,7 @@ func NewDiskServiceClient(serviceURL string, tlsConfig *tls.Config) (*DiskServic
 	}, nil
 }
 
+// NewDiskServiceClientWithTLS creates a new DiskServiceClient with TLS
 func NewDiskServiceClientWithTLS(serviceURL, caFile, certFile, keyFile, peerName string) (*DiskServiceClient, error) {
 	tlsConfig, err := util.LoadClientTLS(caFile, certFile, keyFile, peerName)
 	if err != nil {
@@ -72,7 +74,9 @@ func NewDiskServiceClientWithTLS(serviceURL, caFile, certFile, keyFile, peerName
 	return NewDiskServiceClient(serviceURL, tlsConfig)
 }
 
-func (c *DiskServiceClient) DiskCreate(diskType, diskName, diskPath string, blockSize int64) (*api.DiskInfo, error) {
+// DiskCreate creates a disk with the given name and path.
+// diskUUID is optional, if not provided, it indicates the disk is newly added.
+func (c *DiskServiceClient) DiskCreate(diskType, diskName, diskUUID, diskPath string, blockSize int64) (*api.DiskInfo, error) {
 	if diskName == "" || diskPath == "" {
 		return nil, fmt.Errorf("failed to create disk: missing required parameters")
 	}
@@ -89,6 +93,7 @@ func (c *DiskServiceClient) DiskCreate(diskType, diskName, diskPath string, bloc
 	resp, err := client.DiskCreate(ctx, &rpc.DiskCreateRequest{
 		DiskType:  rpc.DiskType(t),
 		DiskName:  diskName,
+		DiskUuid:  diskUUID,
 		DiskPath:  diskPath,
 		BlockSize: blockSize,
 	})
@@ -110,6 +115,7 @@ func (c *DiskServiceClient) DiskCreate(diskType, diskName, diskPath string, bloc
 	}, nil
 }
 
+// DiskGet returns the disk info with the given name and path.
 func (c *DiskServiceClient) DiskGet(diskType, diskName, diskPath string) (*api.DiskInfo, error) {
 	if diskName == "" || diskPath == "" {
 		return nil, fmt.Errorf("failed to get disk info: missing required parameters")
@@ -147,6 +153,7 @@ func (c *DiskServiceClient) DiskGet(diskType, diskName, diskPath string) (*api.D
 	}, nil
 }
 
+// DiskDelete deletes the disk with the given name and uuid.
 func (c *DiskServiceClient) DiskDelete(diskType, diskName, diskUUID string) error {
 	if diskName == "" || diskUUID == "" {
 		return fmt.Errorf("failed to delete disk: missing required parameters")
@@ -196,6 +203,7 @@ func (c *DiskServiceClient) DiskReplicaInstanceList(diskType, diskName string) (
 	return instances, nil
 }
 
+// DiskReplicaInstanceDelete deletes the replica instance with the given name on the disk.
 func (c *DiskServiceClient) DiskReplicaInstanceDelete(diskType, diskName, diskUUID, replciaInstanceName string) error {
 	if diskName == "" || diskUUID == "" || replciaInstanceName == "" {
 		return fmt.Errorf("failed to delete replica instance on disk: missing required parameters")
@@ -215,6 +223,7 @@ func (c *DiskServiceClient) DiskReplicaInstanceDelete(diskType, diskName, diskUU
 	return err
 }
 
+// VersionGet returns the disk service version.
 func (c *DiskServiceClient) VersionGet() (*meta.DiskServiceVersionOutput, error) {
 	client := c.getControllerServiceClient()
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
