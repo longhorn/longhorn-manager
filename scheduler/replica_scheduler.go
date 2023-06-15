@@ -318,8 +318,8 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 			continue
 		}
 
-		if !(volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn && diskSpec.Type == longhorn.DiskTypeFilesystem) &&
-			!(volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK && diskSpec.Type == longhorn.DiskTypeBlock) {
+		if !(volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 && diskSpec.Type == longhorn.DiskTypeFilesystem) &&
+			!(volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 && diskSpec.Type == longhorn.DiskTypeBlock) {
 			logrus.Debugf("Volume %v is not compatible with disk %v", volume.Name, diskName)
 			continue
 		}
@@ -635,7 +635,7 @@ func IsPotentiallyReusableReplica(r *longhorn.Replica, hardNodeAffinity string) 
 		return false
 	}
 	// TODO: Reuse failed replicas for a SPDK volume
-	if r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+	if r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
 		return false
 	}
 	return true

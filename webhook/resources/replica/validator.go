@@ -41,7 +41,7 @@ func (r *replicaValidator) Resource() admission.Resource {
 func (r *replicaValidator) Create(request *admission.Request, newObj runtime.Object) error {
 	replica := newObj.(*longhorn.Replica)
 
-	if replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+	if replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
 		spdkEnabled, err := r.ds.GetSettingAsBool(types.SettingNameSpdk)
 		if err != nil {
 			err = errors.Wrapf(err, "failed to get spdk setting")
