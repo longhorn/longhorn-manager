@@ -1918,7 +1918,7 @@ func (vc *VolumeController) getReplicaCountForAutoBalanceBestEffort(v *longhorn.
 func (vc *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (int, map[string][]string, error) {
 	log := getLoggerForVolume(vc.logger, v).WithField("replicaAutoBalanceType", "zone")
 
-	readyNodes, err := vc.listReadySchedulableAndScheduledNodes(rs, log)
+	readyNodes, err := vc.listReadySchedulableAndScheduledNodes(v, rs, log)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -2022,10 +2022,19 @@ func (vc *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume
 	return adjustCount, zoneExtraRs, err
 }
 
-func (vc *VolumeController) listReadySchedulableAndScheduledNodes(rs map[string]*longhorn.Replica, log logrus.FieldLogger) (map[string]*longhorn.Node, error) {
+func (vc *VolumeController) listReadySchedulableAndScheduledNodes(volume *longhorn.Volume, rs map[string]*longhorn.Replica, log logrus.FieldLogger) (map[string]*longhorn.Node, error) {
 	readyNodes, err := vc.ds.ListReadyAndSchedulableNodes()
 	if err != nil {
 		return nil, err
+	}
+
+	filteredReadyNodes := readyNodes
+	if len(volume.Spec.NodeSelector) != 0 {
+		for nodeName, node := range readyNodes {
+			if !types.IsSelectorsInTags(node.Spec.Tags, volume.Spec.NodeSelector) {
+				delete(filteredReadyNodes, nodeName)
+			}
+		}
 	}
 
 	// Including unschedulable node because the replica is already scheduled and running
@@ -2035,7 +2044,7 @@ func (vc *VolumeController) listReadySchedulableAndScheduledNodes(rs map[string]
 			continue
 		}
 
-		_, exist := readyNodes[r.Spec.NodeID]
+		_, exist := filteredReadyNodes[r.Spec.NodeID]
 		if exist {
 			continue
 		}
@@ -2054,20 +2063,20 @@ func (vc *VolumeController) listReadySchedulableAndScheduledNodes(rs map[string]
 			continue
 		}
 
-		readyNodes[r.Spec.NodeID] = node
+		filteredReadyNodes[r.Spec.NodeID] = node
 		log.WithFields(logrus.Fields{
 			"replica": r.Name,
 			"node":    node.Name,
 		}).Debugf("Including unschedulable node because the replica is scheduled and running")
 	}
 
-	return readyNodes, nil
+	return filteredReadyNodes, nil
 }
 
 func (vc *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (int, map[string][]string, error) {
 	log := getLoggerForVolume(vc.logger, v).WithField("replicaAutoBalanceType", "node")
 
-	readyNodes, err := vc.listReadySchedulableAndScheduledNodes(rs, log)
+	readyNodes, err := vc.listReadySchedulableAndScheduledNodes(v, rs, log)
 	if err != nil {
 		return 0, nil, err
 	}
