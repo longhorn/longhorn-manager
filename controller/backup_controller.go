@@ -328,12 +328,12 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		if _, err := bc.ds.UpdateBackupStatus(backup); err != nil && apierrors.IsConflict(errors.Cause(err)) {
 			log.WithError(err).Debugf("Requeue %v due to conflict", backupName)
 			bc.enqueueBackup(backup)
+			err = nil
+			return
 		}
-	}()
-
-	defer func() {
 		if !backup.Status.LastSyncedAt.IsZero() || backup.Spec.SnapshotName == "" {
 			err = bc.handleAttachmentTicketDeletion(backup, backupVolumeName)
+			return
 		}
 	}()
 
