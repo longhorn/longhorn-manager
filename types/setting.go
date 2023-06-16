@@ -1044,7 +1044,7 @@ var (
 		Type:        SettingTypeInt,
 		Required:    true,
 		ReadOnly:    false,
-		Default:     "5",
+		Default:     "2",
 	}
 
 	SettingDefinitionRestoreConcurrentLimit = SettingDefinition{
@@ -1054,7 +1054,7 @@ var (
 		Type:        SettingTypeInt,
 		Required:    true,
 		ReadOnly:    false,
-		Default:     "5",
+		Default:     "2",
 	}
 
 	SettingDefinitionLogLevel = SettingDefinition{
