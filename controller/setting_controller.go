@@ -17,7 +17,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	appsv1 "k8s.io/api/apps/v1"
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -124,7 +124,7 @@ func NewSettingController(
 
 		kubeClient:    kubeClient,
 		metricsClient: metricsClient,
-		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-setting-controller"}),
+		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-setting-controller"}),
 
 		ds: ds,
 
@@ -471,7 +471,7 @@ func (sc *SettingController) updateTaintToleration() error {
 	return nil
 }
 
-func (sc *SettingController) updateTolerationForDeployment(dp *appsv1.Deployment, lastAppliedTolerations, newTolerations []v1.Toleration) error {
+func (sc *SettingController) updateTolerationForDeployment(dp *appsv1.Deployment, lastAppliedTolerations, newTolerations []corev1.Toleration) error {
 	existingTolerationsMap := util.TolerationListToMap(dp.Spec.Template.Spec.Tolerations)
 	lastAppliedTolerationsMap := util.TolerationListToMap(lastAppliedTolerations)
 	newTolerationsMap := util.TolerationListToMap(newTolerations)
@@ -490,7 +490,7 @@ func (sc *SettingController) updateTolerationForDeployment(dp *appsv1.Deployment
 	return nil
 }
 
-func (sc *SettingController) updateTolerationForDaemonset(ds *appsv1.DaemonSet, lastAppliedTolerations, newTolerations []v1.Toleration) error {
+func (sc *SettingController) updateTolerationForDaemonset(ds *appsv1.DaemonSet, lastAppliedTolerations, newTolerations []corev1.Toleration) error {
 	existingTolerationsMap := util.TolerationListToMap(ds.Spec.Template.Spec.Tolerations)
 	lastAppliedTolerationsMap := util.TolerationListToMap(lastAppliedTolerations)
 	newTolerationsMap := util.TolerationListToMap(newTolerations)
@@ -509,7 +509,7 @@ func (sc *SettingController) updateTolerationForDaemonset(ds *appsv1.DaemonSet, 
 	return nil
 }
 
-func getLastAppliedTolerationsList(obj runtime.Object) ([]v1.Toleration, error) {
+func getLastAppliedTolerationsList(obj runtime.Object) ([]corev1.Toleration, error) {
 	lastAppliedTolerations, err := util.GetAnnotation(obj, types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix))
 	if err != nil {
 		return nil, err
@@ -519,7 +519,7 @@ func getLastAppliedTolerationsList(obj runtime.Object) ([]v1.Toleration, error) 
 		lastAppliedTolerations = "[]"
 	}
 
-	lastAppliedTolerationsList := []v1.Toleration{}
+	lastAppliedTolerationsList := []corev1.Toleration{}
 	if err := json.Unmarshal([]byte(lastAppliedTolerations), &lastAppliedTolerationsList); err != nil {
 		return nil, err
 	}
@@ -740,8 +740,8 @@ func (sc *SettingController) updateV2DataEngine() error {
 	return nil
 }
 
-func getFinalTolerations(existingTolerations, lastAppliedTolerations, newTolerations map[string]v1.Toleration) []v1.Toleration {
-	resultMap := make(map[string]v1.Toleration)
+func getFinalTolerations(existingTolerations, lastAppliedTolerations, newTolerations map[string]corev1.Toleration) []corev1.Toleration {
+	resultMap := make(map[string]corev1.Toleration)
 
 	for k, v := range existingTolerations {
 		resultMap[k] = v
@@ -755,7 +755,7 @@ func getFinalTolerations(existingTolerations, lastAppliedTolerations, newTolerat
 		resultMap[k] = v
 	}
 
-	resultSlice := []v1.Toleration{}
+	resultSlice := []corev1.Toleration{}
 	for _, v := range resultMap {
 		resultSlice = append(resultSlice, v)
 	}
@@ -1106,7 +1106,7 @@ func (sc *SettingController) cleanupFailedSupportBundles() error {
 
 		message := fmt.Sprintf("Purging failed SupportBundle %v", supportBundle.Name)
 		sc.logger.Info(message)
-		sc.eventRecorder.Eventf(supportBundle, v1.EventTypeNormal, constant.EventReasonDeleting, message)
+		sc.eventRecorder.Eventf(supportBundle, corev1.EventTypeNormal, constant.EventReasonDeleting, message)
 	}
 
 	return nil
