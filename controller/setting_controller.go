@@ -1172,12 +1172,13 @@ const (
 	ClusterInfoVolumeAvgSnapshotCount = util.StructName("LonghornVolumeAverageSnapshotCount")
 	ClusterInfoVolumeAvgNumOfReplicas = util.StructName("LonghornVolumeAverageNumberOfReplicas")
 
-	ClusterInfoPodAvgCPUUsageFmt          = "Longhorn%sAverageCpuUsageMilliCores"
-	ClusterInfoPodAvgMemoryUsageFmt       = "Longhorn%sAverageMemoryUsageBytes"
-	ClusterInfoSettingFmt                 = "LonghornSetting%s"
-	ClusterInfoVolumeAccessModeCountFmt   = "LonghornVolumeAccessMode%sCount"
-	ClusterInfoVolumeDataLocalityCountFmt = "LonghornVolumeDataLocality%sCount"
-	ClusterInfoVolumeFrontendCountFmt     = "LonghornVolumeFrontend%sCount"
+	ClusterInfoPodAvgCPUUsageFmt                = "Longhorn%sAverageCpuUsageMilliCores"
+	ClusterInfoPodAvgMemoryUsageFmt             = "Longhorn%sAverageMemoryUsageBytes"
+	ClusterInfoSettingFmt                       = "LonghornSetting%s"
+	ClusterInfoVolumeAccessModeCountFmt         = "LonghornVolumeAccessMode%sCount"
+	ClusterInfoVolumeDataLocalityCountFmt       = "LonghornVolumeDataLocality%sCount"
+	ClusterInfoVolumeFrontendCountFmt           = "LonghornVolumeFrontend%sCount"
+	ClusterInfoVolumeReplicaAutoBalanceCountFmt = "LonghornVolumeReplicaAutoBalance%sCount"
 )
 
 // Node Scope Info: will be sent from all Longhorn cluster nodes
@@ -1440,9 +1441,11 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	var totalVolumeSize int
 	var totalVolumeActualSize int
 	var totalVolumeNumOfReplicas int
-	accessModeCountStruct := make(map[util.StructName]int, volumeCount)
-	dataLocalityCountStruct := make(map[util.StructName]int, volumeCount)
-	frontendCountStruct := make(map[util.StructName]int, volumeCount)
+	newStruct := func() map[util.StructName]int { return make(map[util.StructName]int, volumeCount) }
+	accessModeCountStruct := newStruct()
+	dataLocalityCountStruct := newStruct()
+	frontendCountStruct := newStruct()
+	replicaAutoBalanceCountStruct := newStruct()
 	for _, volume := range volumesRO {
 		isVolumeV2DataEngineEnabled := isV2DataEngineEnabled && volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2
 		if !isVolumeV2DataEngineEnabled {
@@ -1467,10 +1470,14 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 			frontend := util.ConvertToCamel(string(volume.Spec.Frontend), "-")
 			frontendCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeFrontendCountFmt, frontend))]++
 		}
+
+		replicaAutoBalance := info.collectSettingInVolume(string(volume.Spec.ReplicaAutoBalance), string(longhorn.ReplicaAutoBalanceIgnored), types.SettingNameReplicaAutoBalance)
+		replicaAutoBalanceCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeReplicaAutoBalanceCountFmt, util.ConvertToCamel(string(replicaAutoBalance), "-")))]++
 	}
 	info.structFields.fields.AppendCounted(accessModeCountStruct)
 	info.structFields.fields.AppendCounted(dataLocalityCountStruct)
 	info.structFields.fields.AppendCounted(frontendCountStruct)
+	info.structFields.fields.AppendCounted(replicaAutoBalanceCountStruct)
 
 	var avgVolumeSnapshotCount int
 	var avgVolumeSize int
@@ -1499,6 +1506,17 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	info.structFields.fields.Append(ClusterInfoVolumeAvgNumOfReplicas, avgVolumeNumOfReplicas)
 
 	return nil
+}
+
+func (info *ClusterInfo) collectSettingInVolume(volumeSpecValue, ignoredValue string, settingName types.SettingName) string {
+	if volumeSpecValue == ignoredValue {
+		globalSetting, err := info.ds.GetSetting(settingName)
+		if err != nil {
+			info.logger.WithError(err).Debugf("Failed to get Longhorn Setting %v", settingName)
+		}
+		return globalSetting.Value
+	}
+	return volumeSpecValue
 }
 
 func (info *ClusterInfo) collectNodeScope() {
