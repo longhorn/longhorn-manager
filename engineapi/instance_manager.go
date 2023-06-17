@@ -344,7 +344,7 @@ func getBinaryAndArgsForEngineProcessCreation(e *longhorn.Engine,
 }
 
 func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
-	dataPath, backingImagePath string, dataLocality longhorn.DataLocality, engineCLIAPIVersion int) (string, []string) {
+	dataPath, backingImagePath string, dataLocality longhorn.DataLocality, portCount, engineCLIAPIVersion int) (string, []string) {
 
 	args := []string{
 		"replica", types.GetReplicaMountedDataPath(dataPath),
@@ -367,6 +367,10 @@ func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
 			args = append(args, "--unmap-mark-disk-chain-removed")
 		}
 	}
+
+	// 3 ports are already used by replica server, data server and syncagent server
+	syncAgentPortCount := portCount - 3
+	args = append(args, "--sync-agent-port-count", strconv.Itoa(syncAgentPortCount))
 
 	binary := filepath.Join(types.GetEngineBinaryDirectoryForReplicaManagerContainer(r.Spec.EngineImage), types.EngineBinaryName)
 
@@ -463,7 +467,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 	binary := ""
 	args := []string{}
 	if req.Replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
-		binary, args = getBinaryAndArgsForReplicaProcessCreation(req.Replica, req.DataPath, req.BackingImagePath, req.DataLocality, req.EngineCLIAPIVersion)
+		binary, args = getBinaryAndArgsForReplicaProcessCreation(req.Replica, req.DataPath, req.BackingImagePath, req.DataLocality, DefaultReplicaPortCount, req.EngineCLIAPIVersion)
 	}
 
 	if c.GetAPIVersion() < 4 {
