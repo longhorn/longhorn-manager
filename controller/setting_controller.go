@@ -1280,8 +1280,9 @@ func (info *ClusterInfo) collectResourceUsage() error {
 			logrus.WithError(err).Debugf("Failed to list %v Pod by %v label", component, label)
 			continue
 		}
+		podCount := len(pods)
 
-		if len(pods) == 0 {
+		if podCount == 0 {
 			continue
 		}
 
@@ -1299,11 +1300,11 @@ func (info *ClusterInfo) collectResourceUsage() error {
 			}
 		}
 
-		avgCPUUsageMilli := totalCPUUsage.MilliValue() / int64(len(pods))
+		avgCPUUsageMilli := totalCPUUsage.MilliValue() / int64(podCount)
 		cpuStruct := util.StructName(fmt.Sprintf(ClusterInfoPodAvgCPUUsageFmt, component))
 		info.structFields.fields.Append(cpuStruct, avgCPUUsageMilli)
 
-		avgMemoryUsageBytes := totalMemoryUsage.Value() / int64(len(pods))
+		avgMemoryUsageBytes := totalMemoryUsage.Value() / int64(podCount)
 		memStruct := util.StructName(fmt.Sprintf(ClusterInfoPodAvgMemoryUsageFmt, component))
 		info.structFields.fields.Append(memStruct, avgMemoryUsageBytes)
 	}
