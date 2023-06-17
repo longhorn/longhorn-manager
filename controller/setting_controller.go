@@ -1430,16 +1430,25 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	if err != nil {
 		return errors.Wrapf(err, "failed to list Longhorn Volumes")
 	}
+	volumeCount := len(volumesRO)
+
+	isV2DataEngineEnabled, err := info.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
+	if err != nil {
+		return err
+	}
 
 	var totalVolumeSize int
 	var totalVolumeActualSize int
 	var totalVolumeNumOfReplicas int
-	accessModeCountStruct := make(map[util.StructName]int)
-	dataLocalityCountStruct := make(map[util.StructName]int)
-	frontendCountStruct := make(map[util.StructName]int)
+	accessModeCountStruct := make(map[util.StructName]int, volumeCount)
+	dataLocalityCountStruct := make(map[util.StructName]int, volumeCount)
+	frontendCountStruct := make(map[util.StructName]int, volumeCount)
 	for _, volume := range volumesRO {
-		totalVolumeSize += int(volume.Spec.Size)
-		totalVolumeActualSize += int(volume.Status.ActualSize)
+		isVolumeV2DataEngineEnabled := isV2DataEngineEnabled && volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2
+		if !isVolumeV2DataEngineEnabled {
+			totalVolumeSize += int(volume.Spec.Size)
+			totalVolumeActualSize += int(volume.Status.ActualSize)
+		}
 		totalVolumeNumOfReplicas += volume.Spec.NumberOfReplicas
 
 		accessMode := types.ValueUnknown
@@ -1454,7 +1463,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 		}
 		dataLocalityCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeDataLocalityCountFmt, dataLocality))]++
 
-		if volume.Spec.Frontend != "" {
+		if volume.Spec.Frontend != "" && !isVolumeV2DataEngineEnabled {
 			frontend := util.ConvertToCamel(string(volume.Spec.Frontend), "-")
 			frontendCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeFrontendCountFmt, frontend))]++
 		}
@@ -1467,10 +1476,15 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	var avgVolumeSize int
 	var avgVolumeActualSize int
 	var avgVolumeNumOfReplicas int
-	volumeCount := len(volumesRO)
 	if volumeCount > 0 {
-		avgVolumeSize = totalVolumeSize / volumeCount
-		avgVolumeActualSize = totalVolumeActualSize / volumeCount
+		if totalVolumeSize > 0 {
+			avgVolumeSize = totalVolumeSize / volumeCount
+
+			if totalVolumeActualSize > 0 {
+				avgVolumeActualSize = totalVolumeActualSize / volumeCount
+			}
+		}
+
 		avgVolumeNumOfReplicas = totalVolumeNumOfReplicas / volumeCount
 
 		snapshotsRO, err := info.ds.ListSnapshotsRO(labels.Everything())
