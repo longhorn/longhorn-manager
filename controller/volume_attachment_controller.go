@@ -310,7 +310,7 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationStart(va *longhorn.V
 
 	hasCSIAttachmentTicket := false
 	for _, attachmentTicket := range va.Spec.AttachmentTickets {
-		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher && attachmentTicket.Type != longhorn.AttacherTypeLonghornUpgrader {
+		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
 			continue
 		}
 		// Found one csi attachmentTicket that is requesting volume to attach to the current node
@@ -324,7 +324,7 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationStart(va *longhorn.V
 	}
 
 	for _, attachmentTicket := range va.Spec.AttachmentTickets {
-		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher && attachmentTicket.Type != longhorn.AttacherTypeLonghornUpgrader {
+		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
 			continue
 		}
 		// Found one csi attachmentTicket that is requesting volume to attach to a different node
@@ -343,7 +343,7 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationConfirmation(va *lon
 
 	hasCSIAttachmentTicketRequestingPrevNode := false
 	for _, attachmentTicket := range va.Spec.AttachmentTickets {
-		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher && attachmentTicket.Type != longhorn.AttacherTypeLonghornUpgrader {
+		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
 			continue
 		}
 		// Found one csi attachmentTicket that is requesting volume to attach to the current node
@@ -418,7 +418,7 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationRollback(va *longhor
 
 	hasCSIAttachmentTicketRequestingMigratingNode := false
 	for _, attachmentTicket := range va.Spec.AttachmentTickets {
-		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher && attachmentTicket.Type != longhorn.AttacherTypeLonghornUpgrader {
+		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
 			continue
 		}
 		// Found one csi attachmentTicket that is requesting volume to attach to the current node
@@ -786,13 +786,6 @@ func isRegularRWXVolume(v *longhorn.Volume) bool {
 		return false
 	}
 	return v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !v.Spec.Migratable
-}
-
-func isUpgraderTicket(ticket *longhorn.AttachmentTicket) bool {
-	if ticket == nil {
-		return false
-	}
-	return ticket.Type == longhorn.AttacherTypeLonghornUpgrader
 }
 
 func isCSIAttacherTicket(ticket *longhorn.AttachmentTicket) bool {
