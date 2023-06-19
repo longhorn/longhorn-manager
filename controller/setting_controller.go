@@ -1183,6 +1183,7 @@ const (
 	ClusterInfoVolumeReplicaSoftAntiAffinityCountFmt     = "LonghornVolumeReplicaSoftAntiAffinity%sCount"
 	ClusterInfoVolumeReplicaZoneSoftAntiAffinityCountFmt = "LonghornVolumeReplicaZoneSoftAntiAffinity%sCount"
 	ClusterInfoVolumeRestoreVolumeRecurringJobCountFmt   = "LonghornVolumeRestoreVolumeRecurringJob%sCount"
+	ClusterInfoVolumeSnapshotDataIntegrityCountFmt       = "LonghornVolumeSnapshotDataIntegrity%sCount"
 )
 
 // Node Scope Info: will be sent from all Longhorn cluster nodes
@@ -1454,6 +1455,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	replicaSoftAntiAffinityCountStruct := newStruct()
 	replicaZoneSoftAntiAffinityCountStruct := newStruct()
 	restoreVolumeRecurringJobCountStruct := newStruct()
+	snapshotDataIntegrityCountStruct := newStruct()
 	for _, volume := range volumesRO {
 		isVolumeV2DataEngineEnabled := isV2DataEngineEnabled && volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2
 		if !isVolumeV2DataEngineEnabled {
@@ -1493,6 +1495,9 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 
 		restoreVolumeRecurringJob := info.collectSettingInVolume(string(volume.Spec.RestoreVolumeRecurringJob), string(longhorn.RestoreVolumeRecurringJobDefault), types.SettingNameRestoreVolumeRecurringJobs)
 		restoreVolumeRecurringJobCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeRestoreVolumeRecurringJobCountFmt, util.ConvertToCamel(string(restoreVolumeRecurringJob), "-")))]++
+
+		snapshotDataIntegrity := info.collectSettingInVolume(string(volume.Spec.SnapshotDataIntegrity), string(longhorn.SnapshotDataIntegrityIgnored), types.SettingNameSnapshotDataIntegrity)
+		snapshotDataIntegrityCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeSnapshotDataIntegrityCountFmt, util.ConvertToCamel(string(snapshotDataIntegrity), "-")))]++
 	}
 	info.structFields.fields.AppendCounted(accessModeCountStruct)
 	info.structFields.fields.AppendCounted(dataLocalityCountStruct)
@@ -1502,6 +1507,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	info.structFields.fields.AppendCounted(replicaSoftAntiAffinityCountStruct)
 	info.structFields.fields.AppendCounted(replicaZoneSoftAntiAffinityCountStruct)
 	info.structFields.fields.AppendCounted(restoreVolumeRecurringJobCountStruct)
+	info.structFields.fields.AppendCounted(snapshotDataIntegrityCountStruct)
 
 	var avgVolumeSnapshotCount int
 	var avgVolumeSize int
