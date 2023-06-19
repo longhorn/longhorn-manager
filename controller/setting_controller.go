@@ -1180,6 +1180,7 @@ const (
 	ClusterInfoVolumeFrontendCountFmt                 = "LonghornVolumeFrontend%sCount"
 	ClusterInfoVolumeOfflineReplicaRebuildingCountFmt = "LonghornVolumeOfflineReplicaRebuilding%sCount"
 	ClusterInfoVolumeReplicaAutoBalanceCountFmt       = "LonghornVolumeReplicaAutoBalance%sCount"
+	ClusterInfoVolumeReplicaSoftAntiAffinityCountFmt  = "LonghornVolumeReplicaSoftAntiAffinity%sCount"
 )
 
 // Node Scope Info: will be sent from all Longhorn cluster nodes
@@ -1448,6 +1449,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	frontendCountStruct := newStruct()
 	offlineReplicaRebuildingCountStruct := newStruct()
 	replicaAutoBalanceCountStruct := newStruct()
+	replicaSoftAntiAffinityCountStruct := newStruct()
 	for _, volume := range volumesRO {
 		isVolumeV2DataEngineEnabled := isV2DataEngineEnabled && volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2
 		if !isVolumeV2DataEngineEnabled {
@@ -1478,12 +1480,17 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 
 		replicaAutoBalance := info.collectSettingInVolume(string(volume.Spec.ReplicaAutoBalance), string(longhorn.ReplicaAutoBalanceIgnored), types.SettingNameReplicaAutoBalance)
 		replicaAutoBalanceCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeReplicaAutoBalanceCountFmt, util.ConvertToCamel(string(replicaAutoBalance), "-")))]++
+
+		replicaSoftAntiAffinity := info.collectSettingInVolume(string(volume.Spec.ReplicaSoftAntiAffinity), string(longhorn.ReplicaSoftAntiAffinityDefault), types.SettingNameReplicaSoftAntiAffinity)
+		replicaSoftAntiAffinityCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeReplicaSoftAntiAffinityCountFmt, util.ConvertToCamel(string(replicaSoftAntiAffinity), "-")))]++
+
 	}
 	info.structFields.fields.AppendCounted(accessModeCountStruct)
 	info.structFields.fields.AppendCounted(dataLocalityCountStruct)
 	info.structFields.fields.AppendCounted(frontendCountStruct)
 	info.structFields.fields.AppendCounted(offlineReplicaRebuildingCountStruct)
 	info.structFields.fields.AppendCounted(replicaAutoBalanceCountStruct)
+	info.structFields.fields.AppendCounted(replicaSoftAntiAffinityCountStruct)
 
 	var avgVolumeSnapshotCount int
 	var avgVolumeSize int
