@@ -6,6 +6,7 @@ import (
 
 	"github.com/pkg/errors"
 
+	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
@@ -21,6 +22,10 @@ const (
 )
 
 func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) error {
+	if err := upgradeCSIPlugin(namespace, kubeClient); err != nil {
+		return err
+	}
+
 	if err := upgradeVolumes(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
@@ -33,7 +38,7 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 		return err
 	}
 
-	if err := upgradeVolumeAttachments(namespace, lhClient, resourceMaps); err != nil {
+	if err := upgradeVolumeAttachments(namespace, lhClient, kubeClient, resourceMaps); err != nil {
 		return err
 	}
 
@@ -116,17 +121,38 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceM
 	return nil
 }
 
-func upgradeVolumeAttachments(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+func upgradeVolumeAttachments(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade VolumeAttachment failed")
 	}()
 
 	volumeList, err := lhClient.LonghornV1beta2().Volumes(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
-		return errors.Wrapf(err, "failed to list all existing Longhorn volumes during the VolumeAttachment upgrade")
+		return errors.Wrapf(err, "failed to list all existing Longhorn volumes during the Longhorn VolumeAttachment upgrade")
 	}
-	volumeAttachments := map[string]*longhorn.VolumeAttachment{}
+	kubeVAList, err := kubeClient.StorageV1().VolumeAttachments().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return errors.Wrapf(err, "failed to list all Kubernetes VolumeAttachments during the Longhorn VolumeAttachment upgrade")
+	}
+	smList, err := lhClient.LonghornV1beta2().ShareManagers(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return errors.Wrapf(err, "failed to list all share manager during the Longhorn VolumeAttachment upgrade")
+	}
 
+	kubeVAMap := map[string][]storagev1.VolumeAttachment{}
+	for _, va := range kubeVAList.Items {
+		if va.Spec.Source.PersistentVolumeName != nil {
+			volName := *va.Spec.Source.PersistentVolumeName
+			kubeVAMap[volName] = append(kubeVAMap[volName], va)
+		}
+	}
+
+	smMap := map[string]longhorn.ShareManager{}
+	for _, sm := range smList.Items {
+		smMap[sm.Name] = sm
+	}
+
+	volumeAttachments := map[string]*longhorn.VolumeAttachment{}
 	for _, v := range volumeList.Items {
 		va := longhorn.VolumeAttachment{
 			ObjectMeta: metav1.ObjectMeta{
@@ -134,7 +160,7 @@ func upgradeVolumeAttachments(namespace string, lhClient *lhclientset.Clientset,
 				Labels: types.GetVolumeLabels(v.Name),
 			},
 			Spec: longhorn.VolumeAttachmentSpec{
-				AttachmentTickets: generateVolumeAttachmentTickets(v),
+				AttachmentTickets: generateVolumeAttachmentTickets(v, kubeVAMap, smMap),
 				Volume:            v.Name,
 			},
 		}
@@ -146,30 +172,46 @@ func upgradeVolumeAttachments(namespace string, lhClient *lhclientset.Clientset,
 	return nil
 }
 
-func generateVolumeAttachmentTickets(vol longhorn.Volume) map[string]*longhorn.AttachmentTicket {
+func generateVolumeAttachmentTickets(vol longhorn.Volume, kubeVAMap map[string][]storagev1.VolumeAttachment, smMap map[string]longhorn.ShareManager) map[string]*longhorn.AttachmentTicket {
 	attachmentTickets := make(map[string]*longhorn.AttachmentTicket)
-	if vol.Spec.NodeID != "" {
-		ticketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeLonghornUpgrader, vol.Spec.NodeID)
+
+	kubeVAs := kubeVAMap[vol.Name]
+
+	for _, kubeVA := range kubeVAs {
+		if !kubeVA.DeletionTimestamp.IsZero() {
+			continue
+		}
+		ticketID := kubeVA.Name
 		attachmentTickets[ticketID] = &longhorn.AttachmentTicket{
 			ID:     ticketID,
-			Type:   longhorn.AttacherTypeLonghornUpgrader,
-			NodeID: vol.Spec.NodeID,
+			Type:   longhorn.AttacherTypeCSIAttacher,
+			NodeID: kubeVA.Spec.NodeName,
 			Parameters: map[string]string{
-				longhorn.AttachmentParameterDisableFrontend: strconv.FormatBool(vol.Spec.DisableFrontend),
-				longhorn.AttachmentParameterLastAttachedBy:  vol.Spec.LastAttachedBy,
+				longhorn.AttachmentParameterDisableFrontend: longhorn.FalseValue,
 			},
 		}
 	}
 
-	if vol.Spec.MigrationNodeID != "" {
-		ticketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeLonghornUpgrader, vol.Spec.MigrationNodeID)
+	if sm, ok := smMap[vol.Name]; ok && sm.Status.State == longhorn.ShareManagerStateRunning {
+		ticketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeShareManagerController, sm.Name)
 		attachmentTickets[ticketID] = &longhorn.AttachmentTicket{
 			ID:     ticketID,
-			Type:   longhorn.AttacherTypeLonghornUpgrader,
+			Type:   longhorn.AttacherTypeShareManagerController,
+			NodeID: sm.Status.OwnerID,
+			Parameters: map[string]string{
+				longhorn.AttachmentParameterDisableFrontend: longhorn.FalseValue,
+			},
+		}
+	}
+
+	if vol.Spec.NodeID != "" && len(attachmentTickets) == 0 {
+		ticketID := "longhorn-ui"
+		attachmentTickets[ticketID] = &longhorn.AttachmentTicket{
+			ID:     ticketID,
+			Type:   longhorn.AttacherTypeLonghornAPI,
 			NodeID: vol.Spec.NodeID,
 			Parameters: map[string]string{
 				longhorn.AttachmentParameterDisableFrontend: strconv.FormatBool(vol.Spec.DisableFrontend),
-				longhorn.AttachmentParameterLastAttachedBy:  vol.Spec.LastAttachedBy,
 			},
 		}
 	}
@@ -309,5 +351,13 @@ func upgradeWebhookPDB(namespace string, kubeClient *clientset.Clientset) error 
 		}
 	}
 
+	return nil
+}
+
+func upgradeCSIPlugin(namespace string, kubeClient *clientset.Clientset) error {
+	err := kubeClient.AppsV1().DaemonSets(namespace).Delete(context.TODO(), types.CSIPluginName, metav1.DeleteOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return errors.Wrapf(err, upgradeLogPrefix+"failed to delete the %v daemonset during the upgrade", types.CSIPluginName)
+	}
 	return nil
 }

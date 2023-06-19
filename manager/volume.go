@@ -296,23 +296,6 @@ func (m *VolumeManager) Detach(name, attachmentID, hostID string, forceDetach bo
 
 	delete(va.Spec.AttachmentTickets, attachmentID)
 
-	// Cleanup the attachment ticket created by longhorn-upgrade process if existed
-	if hostID == "" {
-		// This might be the request from UI which doesn't usually send information about hostID.
-		// Cleanup all tickets created by longhorn-upgrade process
-		ticketsToDelete := []string{}
-		for _, ticket := range va.Spec.AttachmentTickets {
-			if ticket.Type == longhorn.AttacherTypeLonghornUpgrader {
-				ticketsToDelete = append(ticketsToDelete, ticket.ID)
-			}
-		}
-		for _, ticketID := range ticketsToDelete {
-			delete(va.Spec.AttachmentTickets, ticketID)
-		}
-	} else {
-		delete(va.Spec.AttachmentTickets, longhorn.GetAttachmentTicketID(longhorn.AttacherTypeLonghornUpgrader, hostID))
-	}
-
 	if _, err := m.ds.UpdateLHVolumeAttachment(va); err != nil {
 		return nil, err
 	}
