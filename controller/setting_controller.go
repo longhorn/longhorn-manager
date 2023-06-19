@@ -1182,6 +1182,7 @@ const (
 	ClusterInfoVolumeReplicaAutoBalanceCountFmt          = "LonghornVolumeReplicaAutoBalance%sCount"
 	ClusterInfoVolumeReplicaSoftAntiAffinityCountFmt     = "LonghornVolumeReplicaSoftAntiAffinity%sCount"
 	ClusterInfoVolumeReplicaZoneSoftAntiAffinityCountFmt = "LonghornVolumeReplicaZoneSoftAntiAffinity%sCount"
+	ClusterInfoVolumeRestoreVolumeRecurringJobCountFmt   = "LonghornVolumeRestoreVolumeRecurringJob%sCount"
 )
 
 // Node Scope Info: will be sent from all Longhorn cluster nodes
@@ -1452,6 +1453,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	replicaAutoBalanceCountStruct := newStruct()
 	replicaSoftAntiAffinityCountStruct := newStruct()
 	replicaZoneSoftAntiAffinityCountStruct := newStruct()
+	restoreVolumeRecurringJobCountStruct := newStruct()
 	for _, volume := range volumesRO {
 		isVolumeV2DataEngineEnabled := isV2DataEngineEnabled && volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2
 		if !isVolumeV2DataEngineEnabled {
@@ -1488,6 +1490,9 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 
 		replicaZoneSoftAntiAffinity := info.collectSettingInVolume(string(volume.Spec.ReplicaZoneSoftAntiAffinity), string(longhorn.ReplicaZoneSoftAntiAffinityDefault), types.SettingNameReplicaZoneSoftAntiAffinity)
 		replicaZoneSoftAntiAffinityCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeReplicaZoneSoftAntiAffinityCountFmt, util.ConvertToCamel(string(replicaZoneSoftAntiAffinity), "-")))]++
+
+		restoreVolumeRecurringJob := info.collectSettingInVolume(string(volume.Spec.RestoreVolumeRecurringJob), string(longhorn.RestoreVolumeRecurringJobDefault), types.SettingNameRestoreVolumeRecurringJobs)
+		restoreVolumeRecurringJobCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeRestoreVolumeRecurringJobCountFmt, util.ConvertToCamel(string(restoreVolumeRecurringJob), "-")))]++
 	}
 	info.structFields.fields.AppendCounted(accessModeCountStruct)
 	info.structFields.fields.AppendCounted(dataLocalityCountStruct)
@@ -1496,6 +1501,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	info.structFields.fields.AppendCounted(replicaAutoBalanceCountStruct)
 	info.structFields.fields.AppendCounted(replicaSoftAntiAffinityCountStruct)
 	info.structFields.fields.AppendCounted(replicaZoneSoftAntiAffinityCountStruct)
+	info.structFields.fields.AppendCounted(restoreVolumeRecurringJobCountStruct)
 
 	var avgVolumeSnapshotCount int
 	var avgVolumeSize int
