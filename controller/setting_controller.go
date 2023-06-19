@@ -1172,15 +1172,16 @@ const (
 	ClusterInfoVolumeAvgSnapshotCount = util.StructName("LonghornVolumeAverageSnapshotCount")
 	ClusterInfoVolumeAvgNumOfReplicas = util.StructName("LonghornVolumeAverageNumberOfReplicas")
 
-	ClusterInfoPodAvgCPUUsageFmt                      = "Longhorn%sAverageCpuUsageMilliCores"
-	ClusterInfoPodAvgMemoryUsageFmt                   = "Longhorn%sAverageMemoryUsageBytes"
-	ClusterInfoSettingFmt                             = "LonghornSetting%s"
-	ClusterInfoVolumeAccessModeCountFmt               = "LonghornVolumeAccessMode%sCount"
-	ClusterInfoVolumeDataLocalityCountFmt             = "LonghornVolumeDataLocality%sCount"
-	ClusterInfoVolumeFrontendCountFmt                 = "LonghornVolumeFrontend%sCount"
-	ClusterInfoVolumeOfflineReplicaRebuildingCountFmt = "LonghornVolumeOfflineReplicaRebuilding%sCount"
-	ClusterInfoVolumeReplicaAutoBalanceCountFmt       = "LonghornVolumeReplicaAutoBalance%sCount"
-	ClusterInfoVolumeReplicaSoftAntiAffinityCountFmt  = "LonghornVolumeReplicaSoftAntiAffinity%sCount"
+	ClusterInfoPodAvgCPUUsageFmt                         = "Longhorn%sAverageCpuUsageMilliCores"
+	ClusterInfoPodAvgMemoryUsageFmt                      = "Longhorn%sAverageMemoryUsageBytes"
+	ClusterInfoSettingFmt                                = "LonghornSetting%s"
+	ClusterInfoVolumeAccessModeCountFmt                  = "LonghornVolumeAccessMode%sCount"
+	ClusterInfoVolumeDataLocalityCountFmt                = "LonghornVolumeDataLocality%sCount"
+	ClusterInfoVolumeFrontendCountFmt                    = "LonghornVolumeFrontend%sCount"
+	ClusterInfoVolumeOfflineReplicaRebuildingCountFmt    = "LonghornVolumeOfflineReplicaRebuilding%sCount"
+	ClusterInfoVolumeReplicaAutoBalanceCountFmt          = "LonghornVolumeReplicaAutoBalance%sCount"
+	ClusterInfoVolumeReplicaSoftAntiAffinityCountFmt     = "LonghornVolumeReplicaSoftAntiAffinity%sCount"
+	ClusterInfoVolumeReplicaZoneSoftAntiAffinityCountFmt = "LonghornVolumeReplicaZoneSoftAntiAffinity%sCount"
 )
 
 // Node Scope Info: will be sent from all Longhorn cluster nodes
@@ -1450,6 +1451,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	offlineReplicaRebuildingCountStruct := newStruct()
 	replicaAutoBalanceCountStruct := newStruct()
 	replicaSoftAntiAffinityCountStruct := newStruct()
+	replicaZoneSoftAntiAffinityCountStruct := newStruct()
 	for _, volume := range volumesRO {
 		isVolumeV2DataEngineEnabled := isV2DataEngineEnabled && volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2
 		if !isVolumeV2DataEngineEnabled {
@@ -1484,6 +1486,8 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 		replicaSoftAntiAffinity := info.collectSettingInVolume(string(volume.Spec.ReplicaSoftAntiAffinity), string(longhorn.ReplicaSoftAntiAffinityDefault), types.SettingNameReplicaSoftAntiAffinity)
 		replicaSoftAntiAffinityCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeReplicaSoftAntiAffinityCountFmt, util.ConvertToCamel(string(replicaSoftAntiAffinity), "-")))]++
 
+		replicaZoneSoftAntiAffinity := info.collectSettingInVolume(string(volume.Spec.ReplicaZoneSoftAntiAffinity), string(longhorn.ReplicaZoneSoftAntiAffinityDefault), types.SettingNameReplicaZoneSoftAntiAffinity)
+		replicaZoneSoftAntiAffinityCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeReplicaZoneSoftAntiAffinityCountFmt, util.ConvertToCamel(string(replicaZoneSoftAntiAffinity), "-")))]++
 	}
 	info.structFields.fields.AppendCounted(accessModeCountStruct)
 	info.structFields.fields.AppendCounted(dataLocalityCountStruct)
@@ -1491,6 +1495,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	info.structFields.fields.AppendCounted(offlineReplicaRebuildingCountStruct)
 	info.structFields.fields.AppendCounted(replicaAutoBalanceCountStruct)
 	info.structFields.fields.AppendCounted(replicaSoftAntiAffinityCountStruct)
+	info.structFields.fields.AppendCounted(replicaZoneSoftAntiAffinityCountStruct)
 
 	var avgVolumeSnapshotCount int
 	var avgVolumeSize int
