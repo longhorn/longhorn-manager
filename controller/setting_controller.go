@@ -1172,13 +1172,14 @@ const (
 	ClusterInfoVolumeAvgSnapshotCount = util.StructName("LonghornVolumeAverageSnapshotCount")
 	ClusterInfoVolumeAvgNumOfReplicas = util.StructName("LonghornVolumeAverageNumberOfReplicas")
 
-	ClusterInfoPodAvgCPUUsageFmt                = "Longhorn%sAverageCpuUsageMilliCores"
-	ClusterInfoPodAvgMemoryUsageFmt             = "Longhorn%sAverageMemoryUsageBytes"
-	ClusterInfoSettingFmt                       = "LonghornSetting%s"
-	ClusterInfoVolumeAccessModeCountFmt         = "LonghornVolumeAccessMode%sCount"
-	ClusterInfoVolumeDataLocalityCountFmt       = "LonghornVolumeDataLocality%sCount"
-	ClusterInfoVolumeFrontendCountFmt           = "LonghornVolumeFrontend%sCount"
-	ClusterInfoVolumeReplicaAutoBalanceCountFmt = "LonghornVolumeReplicaAutoBalance%sCount"
+	ClusterInfoPodAvgCPUUsageFmt                      = "Longhorn%sAverageCpuUsageMilliCores"
+	ClusterInfoPodAvgMemoryUsageFmt                   = "Longhorn%sAverageMemoryUsageBytes"
+	ClusterInfoSettingFmt                             = "LonghornSetting%s"
+	ClusterInfoVolumeAccessModeCountFmt               = "LonghornVolumeAccessMode%sCount"
+	ClusterInfoVolumeDataLocalityCountFmt             = "LonghornVolumeDataLocality%sCount"
+	ClusterInfoVolumeFrontendCountFmt                 = "LonghornVolumeFrontend%sCount"
+	ClusterInfoVolumeOfflineReplicaRebuildingCountFmt = "LonghornVolumeOfflineReplicaRebuilding%sCount"
+	ClusterInfoVolumeReplicaAutoBalanceCountFmt       = "LonghornVolumeReplicaAutoBalance%sCount"
 )
 
 // Node Scope Info: will be sent from all Longhorn cluster nodes
@@ -1445,6 +1446,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	accessModeCountStruct := newStruct()
 	dataLocalityCountStruct := newStruct()
 	frontendCountStruct := newStruct()
+	offlineReplicaRebuildingCountStruct := newStruct()
 	replicaAutoBalanceCountStruct := newStruct()
 	for _, volume := range volumesRO {
 		isVolumeV2DataEngineEnabled := isV2DataEngineEnabled && volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2
@@ -1471,12 +1473,16 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 			frontendCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeFrontendCountFmt, frontend))]++
 		}
 
+		offlineReplicaRebuilding := info.collectSettingInVolume(string(volume.Spec.OfflineReplicaRebuilding), string(longhorn.OfflineReplicaRebuildingIgnored), types.SettingNameOfflineReplicaRebuilding)
+		offlineReplicaRebuildingCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeOfflineReplicaRebuildingCountFmt, util.ConvertToCamel(string(offlineReplicaRebuilding), "-")))]++
+
 		replicaAutoBalance := info.collectSettingInVolume(string(volume.Spec.ReplicaAutoBalance), string(longhorn.ReplicaAutoBalanceIgnored), types.SettingNameReplicaAutoBalance)
 		replicaAutoBalanceCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeReplicaAutoBalanceCountFmt, util.ConvertToCamel(string(replicaAutoBalance), "-")))]++
 	}
 	info.structFields.fields.AppendCounted(accessModeCountStruct)
 	info.structFields.fields.AppendCounted(dataLocalityCountStruct)
 	info.structFields.fields.AppendCounted(frontendCountStruct)
+	info.structFields.fields.AppendCounted(offlineReplicaRebuildingCountStruct)
 	info.structFields.fields.AppendCounted(replicaAutoBalanceCountStruct)
 
 	var avgVolumeSnapshotCount int
