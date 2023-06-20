@@ -12,9 +12,6 @@ const (
 	FrontendSPDKTCPNvmf     = "spdk-tcp-nvmf"
 	FrontendSPDKTCPBlockdev = "spdk-tcp-blockdev"
 	FrontendEmpty           = ""
-
-	DefaultEngineReservedPortCount  = 1
-	DefaultReplicaReservedPortCount = 5
 )
 
 type InstanceState string

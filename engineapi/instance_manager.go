@@ -14,7 +14,6 @@ import (
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 	immeta "github.com/longhorn/longhorn-instance-manager/pkg/meta"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
-	spdktypes "github.com/longhorn/longhorn-spdk-engine/pkg/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
@@ -29,8 +28,10 @@ const (
 	// UnsupportedInstanceManagerProxyAPIVersion means the instance manager without the proxy client (Longhorn release before v1.3.0)
 	UnsupportedInstanceManagerProxyAPIVersion = 0
 
-	DefaultEnginePortCount  = 1
-	DefaultReplicaPortCount = 10
+	DefaultEnginePortCount = 1
+
+	DefaultReplicaPortCountV1 = 10
+	DefaultReplicaPortCountV2 = 5
 
 	DefaultPortArg         = "--listen,0.0.0.0:"
 	DefaultTerminateSignal = "SIGHUP"
@@ -467,21 +468,21 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 	binary := ""
 	args := []string{}
 	if req.Replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
-		binary, args = getBinaryAndArgsForReplicaProcessCreation(req.Replica, req.DataPath, req.BackingImagePath, req.DataLocality, DefaultReplicaPortCount, req.EngineCLIAPIVersion)
+		binary, args = getBinaryAndArgsForReplicaProcessCreation(req.Replica, req.DataPath, req.BackingImagePath, req.DataLocality, DefaultReplicaPortCountV1, req.EngineCLIAPIVersion)
 	}
 
 	if c.GetAPIVersion() < 4 {
 		/* Fall back to the old way of creating replica process */
-		process, err := c.processManagerGrpcClient.ProcessCreate(req.Replica.Name, binary, DefaultReplicaPortCount, args, []string{DefaultPortArg})
+		process, err := c.processManagerGrpcClient.ProcessCreate(req.Replica.Name, binary, DefaultReplicaPortCountV1, args, []string{DefaultPortArg})
 		if err != nil {
 			return nil, err
 		}
 		return parseProcess(imapi.RPCToProcess(process)), nil
 	}
 
-	portCount := DefaultReplicaPortCount
+	portCount := DefaultReplicaPortCountV1
 	if req.Replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
-		portCount = spdktypes.DefaultReplicaReservedPortCount
+		portCount = DefaultReplicaPortCountV2
 	}
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
