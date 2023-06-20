@@ -55,7 +55,7 @@ type CollectedDiskInfo struct {
 
 type GetDiskStatHandler func(longhorn.DiskType, string, string, *engineapi.DiskService) (*util.DiskStat, error)
 type GetDiskConfigHandler func(longhorn.DiskType, string, string, *engineapi.DiskService) (*util.DiskConfig, error)
-type GenerateDiskConfigHandler func(longhorn.DiskType, string, string, *engineapi.DiskService) (*util.DiskConfig, error)
+type GenerateDiskConfigHandler func(longhorn.DiskType, string, string, string, *engineapi.DiskService) (*util.DiskConfig, error)
 type GetReplicaInstanceNamesHandler func(longhorn.DiskType, *longhorn.Node, string, string, string, *engineapi.DiskService) (map[string]string, error)
 
 func NewDiskMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName string, syncCallback func(key string)) (*NodeMonitor, error) {
@@ -150,9 +150,9 @@ func (m *NodeMonitor) newDiskServiceClient(node *longhorn.Node) (*engineapi.Disk
 func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*CollectedDiskInfo {
 	diskInfoMap := make(map[string]*CollectedDiskInfo, 0)
 
-	spdkEnabled, err := m.ds.GetSettingAsBool(types.SettingNameSpdk)
+	v2DataEngineEnabled, err := m.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
 	if err != nil {
-		m.logger.Errorf("Failed to get setting %v: %v", types.SettingNameSpdk, err)
+		m.logger.Errorf("Failed to get setting %v: %v", types.SettingNameV2DataEngine, err)
 		return diskInfoMap
 	}
 
@@ -169,7 +169,7 @@ func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 	}()
 
 	for diskName, disk := range node.Spec.Disks {
-		if !spdkEnabled && disk.Type == longhorn.DiskTypeBlock {
+		if !v2DataEngineEnabled && disk.Type == longhorn.DiskTypeBlock {
 			continue
 		}
 
@@ -187,12 +187,19 @@ func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 				continue
 			}
 
+			diskUUID := ""
+			if node.Status.DiskStatus != nil {
+				if diskStatus, ok := node.Status.DiskStatus[diskName]; ok {
+					diskUUID = diskStatus.DiskUUID
+				}
+			}
+
 			// Filesystem-type disk
 			//   Blindly check or generate disk config.
 			//   The handling of all disks containing the same fsid will be done in NodeController.
 			// Block-type disk
 			//   Create a bdev lvstore
-			if diskConfig, err = m.generateDiskConfigHandler(disk.Type, diskName, disk.Path, diskServiceClient); err != nil {
+			if diskConfig, err = m.generateDiskConfigHandler(disk.Type, diskName, diskUUID, disk.Path, diskServiceClient); err != nil {
 				diskInfoMap[diskName] = NewDiskInfo(disk.Path, "", nodeOrDiskEvicted, nil,
 					orphanedReplicaDirectoryNames, string(longhorn.DiskConditionReasonNoDiskInfo),
 					fmt.Sprintf("Disk %v(%v) on node %v is not ready: failed to generate disk config: error: %v",

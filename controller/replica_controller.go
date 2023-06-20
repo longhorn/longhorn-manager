@@ -304,7 +304,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		if replica.Spec.NodeID != "" && replica.Spec.NodeID != rc.controllerID {
 			log.Warn("Failed to cleanup replica's data because the replica's data is not on this node")
 		} else if replica.Spec.NodeID != "" {
-			if replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+			if replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
 				if replica.Spec.Active && dataPath != "" {
 					// prevent accidentally deletion
 					if !strings.Contains(filepath.Base(filepath.Clean(dataPath)), "-") {
@@ -616,8 +616,8 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 }
 
 func canDeleteInstance(r *longhorn.Replica) bool {
-	return r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn ||
-		(r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK && r.DeletionTimestamp != nil)
+	return r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 ||
+		(r.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 && r.DeletionTimestamp != nil)
 }
 
 func deleteUnixSocketFile(volumeName string) error {
@@ -713,7 +713,7 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstancePro
 		return nil, err
 	}
 
-	if instance.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+	if instance.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
 		if instance.Status.State == longhorn.InstanceStateStopped {
 			return nil, fmt.Errorf("instance %v is stopped", instance.Spec.Name)
 		}

@@ -56,8 +56,8 @@ func (s *DiskService) Close() {
 	}
 }
 
-func (s *DiskService) DiskCreate(diskType, diskName, diskPath string, blockSize int64) (*imapi.DiskInfo, error) {
-	return s.grpcClient.DiskCreate(diskType, diskName, diskPath, blockSize)
+func (s *DiskService) DiskCreate(diskType, diskName, diskUUID, diskPath string, blockSize int64) (*imapi.DiskInfo, error) {
+	return s.grpcClient.DiskCreate(diskType, diskName, diskUUID, diskPath, blockSize)
 }
 
 func (s *DiskService) DiskGet(diskType, diskName, diskPath string) (*imapi.DiskInfo, error) {

@@ -41,14 +41,14 @@ func (e *engineValidator) Resource() admission.Resource {
 func (e *engineValidator) Create(request *admission.Request, newObj runtime.Object) error {
 	engine := newObj.(*longhorn.Engine)
 
-	if engine.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
-		spdkEnabled, err := e.ds.GetSettingAsBool(types.SettingNameSpdk)
+	if engine.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+		v2DataEngineEnabled, err := e.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
 		if err != nil {
 			err = errors.Wrapf(err, "failed to get spdk setting")
 			return werror.NewInvalidError(err.Error(), "")
 		}
-		if !spdkEnabled {
-			return werror.NewInvalidError("SPDK data engine is not enabled", "")
+		if !v2DataEngineEnabled {
+			return werror.NewInvalidError("v2 data engine is not enabled", "")
 		}
 	}
 

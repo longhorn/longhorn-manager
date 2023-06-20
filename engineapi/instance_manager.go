@@ -14,7 +14,6 @@ import (
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 	immeta "github.com/longhorn/longhorn-instance-manager/pkg/meta"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
-	spdktypes "github.com/longhorn/longhorn-spdk-engine/pkg/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
@@ -29,8 +28,10 @@ const (
 	// UnsupportedInstanceManagerProxyAPIVersion means the instance manager without the proxy client (Longhorn release before v1.3.0)
 	UnsupportedInstanceManagerProxyAPIVersion = 0
 
-	DefaultEnginePortCount  = 1
-	DefaultReplicaPortCount = 10
+	DefaultEnginePortCount = 1
+
+	DefaultReplicaPortCountV1 = 10
+	DefaultReplicaPortCountV2 = 5
 
 	DefaultPortArg         = "--listen,0.0.0.0:"
 	DefaultTerminateSignal = "SIGHUP"
@@ -269,7 +270,7 @@ func parseProcess(p *imapi.Process) *longhorn.InstanceProcess {
 	return &longhorn.InstanceProcess{
 		Spec: longhorn.InstanceProcessSpec{
 			Name:               p.Name,
-			BackendStoreDriver: longhorn.BackendStoreDriverTypeLonghorn,
+			BackendStoreDriver: longhorn.BackendStoreDriverTypeV1,
 		},
 		Status: longhorn.InstanceProcessStatus{
 			Type:      getTypeForProcess(p.PortCount),
@@ -344,7 +345,7 @@ func getBinaryAndArgsForEngineProcessCreation(e *longhorn.Engine,
 }
 
 func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
-	dataPath, backingImagePath string, dataLocality longhorn.DataLocality, engineCLIAPIVersion int) (string, []string) {
+	dataPath, backingImagePath string, dataLocality longhorn.DataLocality, portCount, engineCLIAPIVersion int) (string, []string) {
 
 	args := []string{
 		"replica", types.GetReplicaMountedDataPath(dataPath),
@@ -367,6 +368,10 @@ func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
 			args = append(args, "--unmap-mark-disk-chain-removed")
 		}
 	}
+
+	// 3 ports are already used by replica server, data server and syncagent server
+	syncAgentPortCount := portCount - 3
+	args = append(args, "--sync-agent-port-count", strconv.Itoa(syncAgentPortCount))
 
 	binary := filepath.Join(types.GetEngineBinaryDirectoryForReplicaManagerContainer(r.Spec.EngineImage), types.EngineBinaryName)
 
@@ -401,12 +406,12 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 	}
 
 	switch req.Engine.Spec.BackendStoreDriver {
-	case longhorn.BackendStoreDriverTypeLonghorn:
+	case longhorn.BackendStoreDriverTypeV1:
 		binary, args, err = getBinaryAndArgsForEngineProcessCreation(req.Engine, frontend, req.EngineReplicaTimeout, req.ReplicaFileSyncHTTPClientTimeout, req.DataLocality, req.EngineCLIAPIVersion)
 		if err != nil {
 			return nil, err
 		}
-	case longhorn.BackendStoreDriverTypeSPDK:
+	case longhorn.BackendStoreDriverTypeV2:
 		replicaAddresses = req.Engine.Status.CurrentReplicaAddressMap
 	}
 
@@ -462,22 +467,22 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 
 	binary := ""
 	args := []string{}
-	if req.Replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
-		binary, args = getBinaryAndArgsForReplicaProcessCreation(req.Replica, req.DataPath, req.BackingImagePath, req.DataLocality, req.EngineCLIAPIVersion)
+	if req.Replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		binary, args = getBinaryAndArgsForReplicaProcessCreation(req.Replica, req.DataPath, req.BackingImagePath, req.DataLocality, DefaultReplicaPortCountV1, req.EngineCLIAPIVersion)
 	}
 
 	if c.GetAPIVersion() < 4 {
 		/* Fall back to the old way of creating replica process */
-		process, err := c.processManagerGrpcClient.ProcessCreate(req.Replica.Name, binary, DefaultReplicaPortCount, args, []string{DefaultPortArg})
+		process, err := c.processManagerGrpcClient.ProcessCreate(req.Replica.Name, binary, DefaultReplicaPortCountV1, args, []string{DefaultPortArg})
 		if err != nil {
 			return nil, err
 		}
 		return parseProcess(imapi.RPCToProcess(process)), nil
 	}
 
-	portCount := DefaultReplicaPortCount
-	if req.Replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
-		portCount = spdktypes.DefaultReplicaReservedPortCount
+	portCount := DefaultReplicaPortCountV1
+	if req.Replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+		portCount = DefaultReplicaPortCountV2
 	}
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
@@ -637,9 +642,9 @@ type EngineInstanceUpgradeRequest struct {
 func (c *InstanceManagerClient) EngineInstanceUpgrade(req *EngineInstanceUpgradeRequest) (*longhorn.InstanceProcess, error) {
 	engine := req.Engine
 	switch engine.Spec.BackendStoreDriver {
-	case longhorn.BackendStoreDriverTypeLonghorn:
+	case longhorn.BackendStoreDriverTypeV1:
 		return c.engineInstanceUpgrade(req)
-	case longhorn.BackendStoreDriverTypeSPDK:
+	case longhorn.BackendStoreDriverTypeV2:
 		/* TODO: Handle SPDK engine upgrade */
 		return nil, fmt.Errorf("SPDK engine upgrade is not supported yet")
 	default:

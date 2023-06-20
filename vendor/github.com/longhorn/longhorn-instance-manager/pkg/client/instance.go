@@ -115,7 +115,7 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 
 	var processInstanceSpec *rpc.ProcessInstanceSpec
 	var spdkInstanceSpec *rpc.SpdkInstanceSpec
-	if rpc.BackendStoreDriver(driver) == rpc.BackendStoreDriver_longhorn {
+	if rpc.BackendStoreDriver(driver) == rpc.BackendStoreDriver_v1 {
 		processInstanceSpec = &rpc.ProcessInstanceSpec{
 			Binary: req.Binary,
 			Args:   req.BinaryArgs,

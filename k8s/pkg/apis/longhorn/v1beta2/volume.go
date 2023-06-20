@@ -151,8 +151,8 @@ const (
 type BackendStoreDriverType string
 
 const (
-	BackendStoreDriverTypeLonghorn = BackendStoreDriverType("longhorn")
-	BackendStoreDriverTypeSPDK     = BackendStoreDriverType("spdk")
+	BackendStoreDriverTypeV1 = BackendStoreDriverType("v1")
+	BackendStoreDriverTypeV2 = BackendStoreDriverType("v2")
 )
 
 type OfflineReplicaRebuilding string
@@ -255,7 +255,7 @@ type VolumeSpec struct {
 	// +kubebuilder:validation:Enum=none;lz4;gzip
 	// +optional
 	BackupCompressionMethod BackupCompressionMethod `json:"backupCompressionMethod"`
-	// +kubebuilder:validation:Enum=longhorn;spdk
+	// +kubebuilder:validation:Enum=v1;v2
 	// +optional
 	BackendStoreDriver BackendStoreDriverType `json:"backendStoreDriver"`
 	// OfflineReplicaRebuilding is used to determine if the offline replica rebuilding feature is enabled or not

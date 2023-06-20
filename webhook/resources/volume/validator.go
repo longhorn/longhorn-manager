@@ -117,18 +117,18 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
-	if volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
-		spdkEnabled, err := v.ds.GetSettingAsBool(types.SettingNameSpdk)
+	if volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+		v2DataEngineEnabled, err := v.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
 		if err != nil {
 			err = errors.Wrapf(err, "failed to get spdk setting")
 			return werror.NewInvalidError(err.Error(), "")
 		}
-		if !spdkEnabled {
-			return werror.NewInvalidError("SPDK data engine is not enabled", "")
+		if !v2DataEngineEnabled {
+			return werror.NewInvalidError("v2 data engine is not enabled", "")
 		}
 
 		if volume.Spec.Frontend == longhorn.VolumeFrontendISCSI {
-			return werror.NewInvalidError("SPDK data engine does not support iSCSI frontend", "")
+			return werror.NewInvalidError("v2 data engine does not support iSCSI frontend", "")
 		}
 	}
 
@@ -201,7 +201,7 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		}
 	}
 
-	if newVolume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+	if newVolume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
 		// TODO: remove this check when we support the following features for SPDK volumes
 		if oldVolume.Spec.Size != newVolume.Spec.Size {
 			err := fmt.Errorf("changing volume size for volume %v is not supported for backend store driver %v",

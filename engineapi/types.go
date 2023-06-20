@@ -246,7 +246,7 @@ func GetEngineInstanceFrontend(backendStoreDriver longhorn.BackendStoreDriverTyp
 	switch volumeFrontend {
 	case longhorn.VolumeFrontendBlockDev:
 		frontend = string(iscsidevtypes.FrontendTGTBlockDev)
-		if backendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+		if backendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
 			frontend = string(spdkdevtypes.FrontendSPDKTCPBlockdev)
 		}
 	case longhorn.VolumeFrontendISCSI:

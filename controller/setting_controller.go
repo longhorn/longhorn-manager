@@ -254,8 +254,8 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		if err := sc.updateLogLevel(); err != nil {
 			return err
 		}
-	case string(types.SettingNameSpdk):
-		if err := sc.updateSpdk(); err != nil {
+	case string(types.SettingNameV2DataEngine):
+		if err := sc.updateV2DataEngine(); err != nil {
 			return err
 		}
 	default:
@@ -708,13 +708,13 @@ func (sc *SettingController) updateLogLevel() error {
 	return nil
 }
 
-func (sc *SettingController) updateSpdk() error {
-	spdkEnabled, err := sc.ds.GetSettingAsBool(types.SettingNameSpdk)
+func (sc *SettingController) updateV2DataEngine() error {
+	v2DataEngineEnabled, err := sc.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
 	if err != nil {
 		return err
 	}
 
-	err = sc.ds.ValidateSpdk(spdkEnabled)
+	err = sc.ds.ValidateV2DataEngine(v2DataEngineEnabled)
 	if err != nil {
 		return err
 	}
@@ -722,11 +722,11 @@ func (sc *SettingController) updateSpdk() error {
 	// Recreate all instance manager pods
 	imPodList, err := sc.ds.ListInstanceManagerPods()
 	if err != nil {
-		return errors.Wrapf(err, "failed to list instance manager Pods for %v setting update", types.SettingNameSpdk)
+		return errors.Wrapf(err, "failed to list instance manager Pods for %v setting update", types.SettingNameV2DataEngine)
 	}
 
 	for _, pod := range imPodList {
-		if pod.Annotations[types.SpdkAnnotation] == strconv.FormatBool(spdkEnabled) {
+		if pod.Annotations[types.V2DataEngineAnnotation] == strconv.FormatBool(v2DataEngineEnabled) {
 			continue
 		}
 
@@ -1351,7 +1351,7 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameStorageReservedPercentageForDefaultDisk:                  true,
 		types.SettingNameSupportBundleFailedHistoryLimit:                          true,
 		types.SettingNameSystemManagedPodsImagePullPolicy:                         true,
-		types.SettingNameSpdk:                                                     true,
+		types.SettingNameV2DataEngine:                                             true,
 		types.SettingNameOfflineReplicaRebuilding:                                 true,
 	}
 

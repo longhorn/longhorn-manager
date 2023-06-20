@@ -104,8 +104,8 @@ const (
 	SettingNameBackupConcurrentLimit                                    = SettingName("backup-concurrent-limit")
 	SettingNameRestoreConcurrentLimit                                   = SettingName("restore-concurrent-limit")
 	SettingNameLogLevel                                                 = SettingName("log-level")
-	SettingNameSpdk                                                     = SettingName("spdk")
-	SettingNameSpdkHugepageLimit                                        = SettingName("spdk-hugepage-limit")
+	SettingNameV2DataEngine                                             = SettingName("v2-data-engine")
+	SettingNameV2DataEngineHugepageLimit                                = SettingName("v2-data-engine-hugepage-limit")
 	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
 )
 
@@ -176,8 +176,8 @@ var (
 		SettingNameBackupConcurrentLimit,
 		SettingNameRestoreConcurrentLimit,
 		SettingNameLogLevel,
-		SettingNameSpdk,
-		SettingNameSpdkHugepageLimit,
+		SettingNameV2DataEngine,
+		SettingNameV2DataEngineHugepageLimit,
 		SettingNameOfflineReplicaRebuilding,
 	}
 )
@@ -185,13 +185,13 @@ var (
 type SettingCategory string
 
 const (
-	SettingCategoryGeneral    = SettingCategory("general")
-	SettingCategoryBackup     = SettingCategory("backup")
-	SettingCategoryOrphan     = SettingCategory("orphan")
-	SettingCategoryScheduling = SettingCategory("scheduling")
-	SettingCategoryDangerZone = SettingCategory("danger Zone")
-	SettingCategorySnapshot   = SettingCategory("snapshot")
-	SettingCategorySpdk       = SettingCategory("SPDK (Preview Feature)")
+	SettingCategoryGeneral      = SettingCategory("general")
+	SettingCategoryBackup       = SettingCategory("backup")
+	SettingCategoryOrphan       = SettingCategory("orphan")
+	SettingCategoryScheduling   = SettingCategory("scheduling")
+	SettingCategoryDangerZone   = SettingCategory("danger Zone")
+	SettingCategorySnapshot     = SettingCategory("snapshot")
+	SettingCategoryV2DataEngine = SettingCategory("v2 data engine (Preview Feature)")
 )
 
 type SettingDefinition struct {
@@ -274,8 +274,8 @@ var (
 		SettingNameBackupConcurrentLimit:                                    SettingDefinitionBackupConcurrentLimit,
 		SettingNameRestoreConcurrentLimit:                                   SettingDefinitionRestoreConcurrentLimit,
 		SettingNameLogLevel:                                                 SettingDefinitionLogLevel,
-		SettingNameSpdk:                                                     SettingDefinitionSpdk,
-		SettingNameSpdkHugepageLimit:                                        SettingDefinitionSpdkHugepageLimit,
+		SettingNameV2DataEngine:                                             SettingDefinitionV2DataEngine,
+		SettingNameV2DataEngineHugepageLimit:                                SettingDefinitionV2DataEngineHugepageLimit,
 		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
 	}
 
@@ -1044,7 +1044,7 @@ var (
 		Type:        SettingTypeInt,
 		Required:    true,
 		ReadOnly:    false,
-		Default:     "5",
+		Default:     "2",
 	}
 
 	SettingDefinitionRestoreConcurrentLimit = SettingDefinition{
@@ -1054,7 +1054,7 @@ var (
 		Type:        SettingTypeInt,
 		Required:    true,
 		ReadOnly:    false,
-		Default:     "5",
+		Default:     "2",
 	}
 
 	SettingDefinitionLogLevel = SettingDefinition{
@@ -1069,8 +1069,8 @@ var (
 
 	SettingDefinitionOfflineReplicaRebuilding = SettingDefinition{
 		DisplayName: "Offline Replica Rebuilding",
-		Description: "This setting allows users to enable the offline replica rebuilding for volumes using SPDK data engine.",
-		Category:    SettingCategorySpdk,
+		Description: "This setting allows users to enable the offline replica rebuilding for volumes using v2 data engine.",
+		Category:    SettingCategoryV2DataEngine,
 		Type:        SettingTypeString,
 		Required:    true,
 		ReadOnly:    false,
@@ -1081,22 +1081,23 @@ var (
 		},
 	}
 
-	SettingDefinitionSpdk = SettingDefinition{
-		DisplayName: "SPDK Data Engine",
-		Description: "This setting allows users to activate SPDK data engine. Currently, it is in the preview phase and should not be utilized in a production environment.\n\n" +
-			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will try to block this setting update when there are attached volumes. \n\n" +
-			"  - When applying the setting, Longhorn will restart all instance-manager pods. \n\n",
-		Category: SettingCategorySpdk,
+	SettingDefinitionV2DataEngine = SettingDefinition{
+		DisplayName: "V2 Data Engine",
+		Description: "This setting allows users to activate v2 data engine which is based on SPDK. Currently, it is in the preview phase and should not be utilized in a production environment.\n\n" +
+			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached volumes. \n\n" +
+			"  - When applying the setting, Longhorn will restart all instance-manager pods. \n\n" +
+			"  - When the V2 Data Engine is enabled, each instance-manager pod utilizes 1 CPU core. This high CPU usage is attributed to the spdk_tgt process running within each instance-manager pod. The spdk_tgt process is responsible for handling input/output (IO) operations and requires intensive polling. As a result, it consumes 100% of a dedicated CPU core to efficiently manage and process the IO requests, ensuring optimal performance and responsiveness for storage operations. \n\n",
+		Category: SettingCategoryV2DataEngine,
 		Type:     SettingTypeBool,
 		Required: true,
 		ReadOnly: false,
 		Default:  "false",
 	}
 
-	SettingDefinitionSpdkHugepageLimit = SettingDefinition{
-		DisplayName: "Hugepage Size for SPDK Data Engine",
-		Description: "Hugepage size in MiB for SPDK data engine",
-		Category:    SettingCategorySpdk,
+	SettingDefinitionV2DataEngineHugepageLimit = SettingDefinition{
+		DisplayName: "Hugepage Size for V2 Data Engine",
+		Description: "Hugepage size in MiB for v2 data engine",
+		Category:    SettingCategoryV2DataEngine,
 		Type:        SettingTypeInt,
 		Required:    true,
 		ReadOnly:    true,
@@ -1137,7 +1138,7 @@ const (
 )
 
 const (
-	SpdkAnnotation = "longhorn.io/spdk"
+	V2DataEngineAnnotation = "longhorn.io/v2-data-engine"
 )
 
 func ValidateSetting(name, value string) (err error) {
@@ -1195,7 +1196,7 @@ func ValidateSetting(name, value string) (err error) {
 		fallthrough
 	case SettingNameUpgradeChecker:
 		fallthrough
-	case SettingNameSpdk:
+	case SettingNameV2DataEngine:
 		fallthrough
 	case SettingNameAllowCollectingLonghornUsage:
 		if value != "true" && value != "false" {
@@ -1262,7 +1263,7 @@ func ValidateSetting(name, value string) (err error) {
 		fallthrough
 	case SettingNameFailedBackupTTL:
 		fallthrough
-	case SettingNameSpdkHugepageLimit:
+	case SettingNameV2DataEngineHugepageLimit:
 		value, err := strconv.Atoi(value)
 		if err != nil {
 			errors.Wrapf(err, "value %v is not a number", value)
