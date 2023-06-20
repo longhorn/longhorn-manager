@@ -67,6 +67,7 @@ message ReplicaCreateRequest {
     string lvs_uuid = 3;
     uint64 spec_size = 4;
     bool expose_required = 5;
+    int32 port_count = 6;
 }
 
 message ReplicaDeleteRequest {
@@ -138,6 +139,7 @@ message EngineCreateRequest {
     uint64 spec_size = 3;
     map<string, string> replica_address_map = 4;
     string frontend = 5;
+    int32 port_count = 6;
 }
 
 message EngineDeleteRequest {
