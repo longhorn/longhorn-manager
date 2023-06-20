@@ -51,7 +51,6 @@ require (
 	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230612073917-0896a6f78315
 	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230620043941-e1fa76231793
 	github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20230531125701-c996c5a415b6
-	github.com/longhorn/longhorn-spdk-engine v0.0.0-20230620042318-efec96993250
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.15.0
 	github.com/rancher/dynamiclistener v0.3.1
@@ -127,6 +126,7 @@ require (
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de // indirect
+	github.com/longhorn/longhorn-spdk-engine v0.0.0-20230620042318-efec96993250 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
