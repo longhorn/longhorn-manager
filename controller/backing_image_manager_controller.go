@@ -652,6 +652,8 @@ func (c *BackingImageManagerController) prepareBackingImageFiles(currentBIM *lon
 
 		currentInfo, exists := currentBIM.Status.BackingImageFileMap[biName]
 		requireFile := !exists || currentInfo.State == longhorn.BackingImageStateFailed
+		// Ensure the bids can be deleted instead of being stuck in the `BackingImageStateFailed` state. 
+		// ref: https://github.com/longhorn/longhorn/issues/6086#issuecomment-1590662594
 		requireFile = requireFile || bids.Status.CurrentState == longhorn.BackingImageStateFailed
 		if !requireFile {
 			continue
