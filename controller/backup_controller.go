@@ -318,6 +318,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 
 	syncTime := metav1.Time{Time: time.Now().UTC()}
 	existingBackup := backup.DeepCopy()
+	existingBackupState := backup.Status.State
 	defer func() {
 		if err != nil {
 			return
@@ -330,6 +331,12 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			bc.enqueueBackup(backup)
 			err = nil
 			return
+		}
+		if backup.Status.State == longhorn.BackupStateCompleted && existingBackupState != backup.Status.State {
+			if err := bc.syncBackupVolume(backupVolumeName); err != nil {
+				log.Warnf("failed to sync Backup Volume: %v", backupVolumeName)
+				return
+			}
 		}
 		if !backup.Status.LastSyncedAt.IsZero() || backup.Spec.SnapshotName == "" {
 			err = bc.handleAttachmentTicketDeletion(backup, backupVolumeName)
@@ -682,9 +689,6 @@ func (bc *BackupController) syncWithMonitor(backup *longhorn.Backup, volume *lon
 	bc.eventRecorder.Eventf(volume, corev1.EventTypeNormal, string(backup.Status.State),
 		"Snapshot %s backup %s label %v", backup.Spec.SnapshotName, backup.Name, backup.Spec.Labels)
 
-	if backup.Status.State == longhorn.BackupStateCompleted {
-		return bc.syncBackupVolume(volume.Name)
-	}
 	return nil
 }
 
