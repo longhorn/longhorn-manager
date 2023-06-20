@@ -1085,7 +1085,8 @@ var (
 		DisplayName: "V2 Data Engine",
 		Description: "This setting allows users to activate v2 data engine which is based on SPDK. Currently, it is in the preview phase and should not be utilized in a production environment.\n\n" +
 			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached volumes. \n\n" +
-			"  - When applying the setting, Longhorn will restart all instance-manager pods. \n\n",
+			"  - When applying the setting, Longhorn will restart all instance-manager pods. \n\n" +
+			"  - When the V2 Data Engine is enabled, each instance-manager pod utilizes 1 CPU core. This high CPU usage is attributed to the spdk_tgt process running within each instance-manager pod. The spdk_tgt process is responsible for handling input/output (IO) operations and requires intensive polling. As a result, it consumes 100% of a dedicated CPU core to efficiently manage and process the IO requests, ensuring optimal performance and responsiveness for storage operations. \n\n",
 		Category: SettingCategoryV2DataEngine,
 		Type:     SettingTypeBool,
 		Required: true,
