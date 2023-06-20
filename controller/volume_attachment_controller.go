@@ -482,19 +482,33 @@ func (vac *VolumeAttachmentController) shouldDoDetach(va *longhorn.VolumeAttachm
 	if len(currentAttachmentTickets) == 0 {
 		return true
 	}
-	if !hasUninterruptibleTicket(currentAttachmentTickets) && hasWorkloadTicket(attachmentTicketsOnOtherNodes) {
-		log.Info("Workload attachment ticket interrupted snapshot-controller/backup-controller attachment tickets")
+
+	// Check if there is any workload ticket regardless of frontend on other nodes
+	// If exist, detach and interrupt the current ticket.
+	if !hasUninterruptibleTicket(currentAttachmentTickets) && hasWorkloadTicket(attachmentTicketsOnOtherNodes, longhorn.AnyValue) {
+		log.Info("Workload attachment ticket interrupted snapshot/backup/rebuilding-controller attachment tickets")
 		return true
 	}
 
-	// Currently, the only ticket that is interruptible and frontend disabled is the rebuilding-controller ticket
-	// Offline replica rebuilding has the potential to fail and repeated attempts.
-	// Users can give up (interrupt) the replica rebuilding and attach the degraded volume to a node.
-	if hasInterruptibleAndFrontendDisabledTicket(currentAttachmentTickets) && hasWorkloadTicket(va.Spec.AttachmentTickets) {
-		log.Debugf("Workload attachment ticket interrupted rebuilding-controller attachment tickets")
+	// If there is an interruptible ticket and frontend disabled ticket on the current node (currently, only offline rebuilding ticket)
+	// need to check if there is any workload ticket with frontend enabled (disableFrontend=false) on the same node.
+	// If exist, detach and interrupt the rebuilding ticket.
+	if hasInterruptibleAndFrontendDisabledTicket(currentAttachmentTickets) && hasWorkloadTicket(currentAttachmentTickets, longhorn.FalseValue) {
+		log.Info("Workload attachment ticket interrupted rebuilding-controller attachment tickets")
 		return true
 	}
 
+	return false
+}
+
+func hasUninterruptibleTicket(attachmentTickets map[string]*longhorn.AttachmentTicket) bool {
+	for _, ticket := range attachmentTickets {
+		if ticket.Type != longhorn.AttacherTypeSnapshotController &&
+			ticket.Type != longhorn.AttacherTypeBackupController &&
+			ticket.Type != longhorn.AttacherTypeVolumeRebuildingController {
+			return true
+		}
+	}
 	return false
 }
 
@@ -507,22 +521,20 @@ func hasInterruptibleAndFrontendDisabledTicket(attachmentTickets map[string]*lon
 	return false
 }
 
-func hasUninterruptibleTicket(attachmentTickets map[string]*longhorn.AttachmentTicket) bool {
-	for _, ticket := range attachmentTickets {
-		if ticket.Type != longhorn.AttacherTypeSnapshotController &&
-			ticket.Type != longhorn.AttacherTypeBackupController {
-			return true
-		}
-	}
-	return false
-}
-
-func hasWorkloadTicket(attachmentTickets map[string]*longhorn.AttachmentTicket) bool {
+func hasWorkloadTicket(attachmentTickets map[string]*longhorn.AttachmentTicket, disableFrontend string) bool {
 	for _, ticket := range attachmentTickets {
 		if ticket.Type == longhorn.AttacherTypeCSIAttacher ||
 			ticket.Type == longhorn.AttacherTypeLonghornAPI ||
 			ticket.Type == longhorn.AttacherTypeShareManagerController {
-			return true
+			if disableFrontend == longhorn.AnyValue {
+				return true
+			}
+			if ticket.Parameters != nil {
+				value, ok := ticket.Parameters[longhorn.AttachmentParameterDisableFrontend]
+				if ok && value == disableFrontend {
+					return true
+				}
+			}
 		}
 	}
 	return false
