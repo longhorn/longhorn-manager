@@ -1434,8 +1434,9 @@ func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume,
 				if err := c.openVolumeDependentResources(v, e, rs, log); err != nil {
 					return err
 				}
+
+				v.Status.CurrentNodeID = v.Spec.NodeID
 				if c.areVolumeDependentResourcesOpened(e, rs) {
-					v.Status.CurrentNodeID = v.Spec.NodeID
 					v.Status.State = longhorn.VolumeStateAttached
 					c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonAttached, "volume %v has been attached to %v", v.Name, v.Status.CurrentNodeID)
 				}
