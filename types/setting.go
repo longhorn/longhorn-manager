@@ -843,7 +843,7 @@ var (
 			"  - This global setting will be ignored for a node if the field \"InstanceManagerCPURequest\" on the node is set. \n\n" +
 			"  - After this setting is changed, all instance manager pods using this global setting on all the nodes will be automatically restarted. In other words, DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. \n\n",
 		Category: SettingCategoryDangerZone,
-		Type:     SettingTypeString,
+		Type:     SettingTypeInt,
 		Required: true,
 		ReadOnly: false,
 		Default:  "12",
