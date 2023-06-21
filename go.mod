@@ -47,10 +47,17 @@ require (
 	github.com/longhorn/backing-image-manager v1.4.0-rc1.0.20230521151917-38ff27cc2cbb
 	github.com/longhorn/backupstore v0.0.0-20230620040003-393d5122a38c
 	github.com/longhorn/go-iscsi-helper v0.0.0-20230529082528-4c3270590712
+<<<<<<< HEAD
 	github.com/longhorn/go-spdk-helper v0.0.0-20230620021725-56fd696a7431
 	github.com/longhorn/longhorn-engine v1.5.0-rc2
 	github.com/longhorn/longhorn-instance-manager v1.5.0-rc2.0.20230620053808-7d08b6e28f9d
 	github.com/longhorn/longhorn-share-manager v1.5.0-rc2
+=======
+	github.com/longhorn/go-spdk-helper v0.0.0-20230620105912-7fdb56e276a6
+	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230612073917-0896a6f78315
+	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230620170109-89cbf322e315
+	github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20230531125701-c996c5a415b6
+>>>>>>> f9957ad8 (vendor: update dependencies)
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.15.0
 	github.com/rancher/dynamiclistener v0.3.1
@@ -131,7 +138,7 @@ require (
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de // indirect
-	github.com/longhorn/longhorn-spdk-engine v0.0.0-20230620042318-efec96993250 // indirect
+	github.com/longhorn/longhorn-spdk-engine v0.0.0-20230620162131-a9d08b7b13b6 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect

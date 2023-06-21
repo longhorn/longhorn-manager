@@ -503,6 +503,7 @@ github.com/longhorn/backupstore v0.0.0-20230620040003-393d5122a38c h1:uul+kPFHTH
 github.com/longhorn/backupstore v0.0.0-20230620040003-393d5122a38c/go.mod h1:wiEYTbvxEAIUxAAY1DmvMeuFuGqwWmJTzfVhZiBKlNo=
 github.com/longhorn/go-iscsi-helper v0.0.0-20230529082528-4c3270590712 h1:IOBWtvr2ZdpQs3Fy8ecre3vZOBvmLJXme9qB6sqWdlw=
 github.com/longhorn/go-iscsi-helper v0.0.0-20230529082528-4c3270590712/go.mod h1:hxy8Ra38KtX4MFmXZRAZUpJZSYcaI1pmnWmKA3ICA2c=
+<<<<<<< HEAD
 github.com/longhorn/go-spdk-helper v0.0.0-20230620021725-56fd696a7431 h1:LbHR6kVmymOB+4cJ5fu30ikZ16+QCZh7MgzZU9e2+Ks=
 github.com/longhorn/go-spdk-helper v0.0.0-20230620021725-56fd696a7431/go.mod h1:XoGXOYHw1KW3qdvTSimwY+Anyg5cPl6EVkjXxS25Upg=
 github.com/longhorn/longhorn-engine v1.5.0-rc2 h1:4eDiMrAgKbrPZ0Y9yQoiSRMxagvsLvIv1Jl1hu5iBwM=
@@ -513,6 +514,18 @@ github.com/longhorn/longhorn-share-manager v1.5.0-rc2 h1:kzyxv4xEDB/z7L6YjJTGl2R
 github.com/longhorn/longhorn-share-manager v1.5.0-rc2/go.mod h1:Kq3D8tu8J1SED7XiVM6Yco6qkizxCjVhYzR78bqhUUI=
 github.com/longhorn/longhorn-spdk-engine v0.0.0-20230620042318-efec96993250 h1:rrzP4RFICaU4TrxnQxJyhoAF+6XfxZxbOrDkuwLxjLc=
 github.com/longhorn/longhorn-spdk-engine v0.0.0-20230620042318-efec96993250/go.mod h1:c+ksJvR8qQc3AwiLTjvMhfNTlzFyJ7NzG2rLY9BPfDA=
+=======
+github.com/longhorn/go-spdk-helper v0.0.0-20230620105912-7fdb56e276a6 h1:SmofHsRBP6hgRmdRYIDri4FT7A9eryMgpOsKneG9LNs=
+github.com/longhorn/go-spdk-helper v0.0.0-20230620105912-7fdb56e276a6/go.mod h1:XoGXOYHw1KW3qdvTSimwY+Anyg5cPl6EVkjXxS25Upg=
+github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230612073917-0896a6f78315 h1:PC8jKa2J3TF2oG3rY55oc7ILOOV29g2dJ20fGllK+SA=
+github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230612073917-0896a6f78315/go.mod h1:ZxJFbQH6KUFHVf34RpfNloMqZuebpRyHCFasYX1bUaM=
+github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230620170109-89cbf322e315 h1:H1Vg/NhjmftQgtMQnvThzK38ohFe5HfOTQ/lpdHO9KU=
+github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230620170109-89cbf322e315/go.mod h1:37ZZTj5XjoyOepYdapbYU6xjLQG/oDC6WkLI2JkcEUQ=
+github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20230531125701-c996c5a415b6 h1:v+3TcQuWtUphsYWJ4Hr+PeEjEPHUVVOSnk1DMNSFI1E=
+github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20230531125701-c996c5a415b6/go.mod h1:Kq3D8tu8J1SED7XiVM6Yco6qkizxCjVhYzR78bqhUUI=
+github.com/longhorn/longhorn-spdk-engine v0.0.0-20230620162131-a9d08b7b13b6 h1:10UWfxYgduAgfO2tROaf2JPm/J/EPilEBIiT4TT3DAE=
+github.com/longhorn/longhorn-spdk-engine v0.0.0-20230620162131-a9d08b7b13b6/go.mod h1:NMc/HiloU8MI7T5nqF8Zx/ngOgdrexvumVdU1K8qbNs=
+>>>>>>> f9957ad8 (vendor: update dependencies)
 github.com/longhorn/nsfilelock v0.0.0-20200723175406-fa7c83ad0003/go.mod h1:0CLeXlf59Lg6C0kjLSDf47ft73Dh37CwymYRKWwAn04=
 github.com/magiconair/properties v1.8.0/go.mod h1:PppfXfuXeibc/6YijjN8zIbojt8czPbwD3XqdrwzmxQ=
 github.com/magiconair/properties v1.8.1/go.mod h1:PppfXfuXeibc/6YijjN8zIbojt8czPbwD3XqdrwzmxQ=
