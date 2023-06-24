@@ -754,7 +754,7 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 			return nil, err
 		}
 		if image != defaultEngineImage {
-			return nil, fmt.Errorf("updrading to %v is not allowed. "+
+			return nil, fmt.Errorf("upgrading to %v is not allowed. "+
 				"Only allow to upgrade to the default engine image %v because the setting "+
 				"`Concurrent Automatic Engine Upgrade Per Node Limit` is greater than 0",
 				image, defaultEngineImage)
