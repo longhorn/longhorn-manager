@@ -441,6 +441,13 @@ func (c *UninstallController) deleteCRDs() (bool, error) {
 		return true, nil
 	}
 
+	// Waits the SystemBackup CRs be clean up by backup_target_controller
+	if systemBackups, err := c.ds.ListSystemBackups(); err != nil {
+		return true, err
+	} else if len(systemBackups) > 0 {
+		return true, fmt.Errorf("found %d SystemBackups remaining", len(systemBackups))
+	}
+
 	// Delete the BackupTarget CRs
 	if backupTargets, err := c.ds.ListBackupTargets(); err != nil {
 		return true, err
