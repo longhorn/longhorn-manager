@@ -28,7 +28,7 @@ func (c *DiskServiceClient) Close() error {
 	return c.cc.Close()
 }
 
-func (c *DiskServiceClient) getControllerServiceClient() rpc.DiskServiceClient {
+func (c *DiskServiceClient) getDiskServiceClient() rpc.DiskServiceClient {
 	return c.service
 }
 
@@ -86,7 +86,7 @@ func (c *DiskServiceClient) DiskCreate(diskType, diskName, diskUUID, diskPath st
 		return nil, fmt.Errorf("failed to get disk info: invalid disk type %v", diskType)
 	}
 
-	client := c.getControllerServiceClient()
+	client := c.getDiskServiceClient()
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
 	defer cancel()
 
@@ -126,7 +126,7 @@ func (c *DiskServiceClient) DiskGet(diskType, diskName, diskPath string) (*api.D
 		return nil, fmt.Errorf("failed to get disk info: invalid disk type %v", diskType)
 	}
 
-	client := c.getControllerServiceClient()
+	client := c.getDiskServiceClient()
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
 	defer cancel()
 
@@ -159,7 +159,7 @@ func (c *DiskServiceClient) DiskDelete(diskType, diskName, diskUUID string) erro
 		return fmt.Errorf("failed to delete disk: missing required parameters")
 	}
 
-	client := c.getControllerServiceClient()
+	client := c.getDiskServiceClient()
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
 	defer cancel()
 
@@ -176,7 +176,7 @@ func (c *DiskServiceClient) DiskReplicaInstanceList(diskType, diskName string) (
 		return nil, fmt.Errorf("failed to list replica instances on disk: missing required parameter")
 	}
 
-	client := c.getControllerServiceClient()
+	client := c.getDiskServiceClient()
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
 	defer cancel()
 
@@ -209,7 +209,7 @@ func (c *DiskServiceClient) DiskReplicaInstanceDelete(diskType, diskName, diskUU
 		return fmt.Errorf("failed to delete replica instance on disk: missing required parameters")
 	}
 
-	client := c.getControllerServiceClient()
+	client := c.getDiskServiceClient()
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
 	defer cancel()
 
@@ -225,7 +225,7 @@ func (c *DiskServiceClient) DiskReplicaInstanceDelete(diskType, diskName, diskUU
 
 // VersionGet returns the disk service version.
 func (c *DiskServiceClient) VersionGet() (*meta.DiskServiceVersionOutput, error) {
-	client := c.getControllerServiceClient()
+	client := c.getDiskServiceClient()
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
 	defer cancel()
 
