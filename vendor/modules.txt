@@ -219,7 +219,7 @@ github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/rpc
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20230620040003-393d5122a38c
+# github.com/longhorn/backupstore v0.0.0-20230627040634-5b4f2d040e9d
 ## explicit; go 1.17
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/logging
@@ -233,14 +233,22 @@ github.com/longhorn/go-iscsi-helper/util
 # github.com/longhorn/go-spdk-helper v0.0.0-20230626041832-c611b61f6b36
 ## explicit; go 1.17
 github.com/longhorn/go-spdk-helper/pkg/types
+<<<<<<< HEAD
 # github.com/longhorn/longhorn-engine v1.5.0-rc2.0.20230626084001-d82e290abcc9
+=======
+# github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230627154646-d1d6d308d37a
+>>>>>>> 16895efa (vendor: update dependencies)
 ## explicit; go 1.20
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
 github.com/longhorn/longhorn-engine/proto/ptypes
+<<<<<<< HEAD
 # github.com/longhorn/longhorn-instance-manager v1.5.0-rc2.0.20230626085618-b35c18699f21
+=======
+# github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230627162235-cb966cd0f58a
+>>>>>>> 16895efa (vendor: update dependencies)
 ## explicit; go 1.20
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -258,7 +266,11 @@ github.com/longhorn/longhorn-share-manager/pkg/server/nfs
 github.com/longhorn/longhorn-share-manager/pkg/types
 github.com/longhorn/longhorn-share-manager/pkg/util
 github.com/longhorn/longhorn-share-manager/pkg/volume
+<<<<<<< HEAD
 # github.com/longhorn/longhorn-spdk-engine v0.0.0-20230626073013-4d74edb3633a
+=======
+# github.com/longhorn/longhorn-spdk-engine v0.0.0-20230627161406-64cb30ad3cf1
+>>>>>>> 16895efa (vendor: update dependencies)
 ## explicit; go 1.17
 github.com/longhorn/longhorn-spdk-engine/pkg/types
 github.com/longhorn/longhorn-spdk-engine/proto/spdkrpc
