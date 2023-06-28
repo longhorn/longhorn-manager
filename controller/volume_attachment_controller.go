@@ -352,7 +352,7 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationConfirmation(va *lon
 			break
 		}
 	}
-	migratingEngineSnapSynced, err := vac.checkMigratingEngineSyncSnapshots(vol)
+	migratingEngineSnapSynced, err := vac.checkMigratingEngineSyncSnapshots(va, vol)
 	if err != nil {
 		vac.logger.WithError(err).Warn("Failed to check migrating engine snapshot status")
 		return
@@ -364,7 +364,7 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationConfirmation(va *lon
 	}
 }
 
-func (vac *VolumeAttachmentController) checkMigratingEngineSyncSnapshots(vol *longhorn.Volume) (bool, error) {
+func (vac *VolumeAttachmentController) checkMigratingEngineSyncSnapshots(va *longhorn.VolumeAttachment, vol *longhorn.Volume) (bool, error) {
 	engines, err := vac.ds.ListVolumeEngines(vol.Name)
 	if err != nil {
 		return false, err
@@ -390,24 +390,29 @@ func (vac *VolumeAttachmentController) checkMigratingEngineSyncSnapshots(vol *lo
 		return false, fmt.Errorf("failed to find the migrating engine for volume %v", vol.Name)
 	}
 
-	if !reflect.DeepEqual(oldEngine.Status.Snapshots, migratingEngine.Status.Snapshots) {
+	if !hasSameKeys(oldEngine.Status.Snapshots, migratingEngine.Status.Snapshots) {
 		vac.logger.Infof("Volume migration (%v) is in progress for synchronizing snapshots", vol.Name)
-
 		// there is a chance that synchronizing engine snapshots does not finish and volume attachment controller will not receive changes anymore
 		// check volumeAttachments again  to ensure that migration will be finished
-		volumeAttachments, err := vac.ds.ListLonghornVolumeAttachmentByVolumeRO(migratingEngine.Spec.VolumeName)
-		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("failed to list Longhorn VolumeAttachment of volume %v: %v", migratingEngine.Name, err))
-			return false, err
-		}
-
-		for _, va := range volumeAttachments {
-			vac.enqueueVolumeAttachmentAfter(va, 10*time.Second)
-		}
+		vac.enqueueVolumeAttachmentAfter(va, 10*time.Second)
 		return false, nil
 	}
 
 	return true, nil
+}
+
+func hasSameKeys(map1, map2 map[string]*longhorn.SnapshotInfo) bool {
+	if len(map1) != len(map2) {
+		return false
+	}
+
+	for key := range map1 {
+		if _, ok := map2[key]; !ok {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (vac *VolumeAttachmentController) handleVolumeMigrationRollback(va *longhorn.VolumeAttachment, vol *longhorn.Volume) {
