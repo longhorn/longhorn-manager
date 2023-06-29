@@ -143,7 +143,18 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		if err != nil {
 			return nil, werror.NewInvalidError(fmt.Sprintf("cannot get backup volume %s: %v", bvName, err), "")
 		}
-		if bv != nil && bv.Status.BackingImageName != "" {
+
+		backup, err := v.ds.GetBackupRO(bName)
+		if err != nil {
+			return nil, werror.NewInvalidError(fmt.Sprintf("cannot get backup %s: %v", bName, err), "")
+		}
+
+		if bv != nil && backup != nil && backup.Status.VolumeBackingImageName != "" {
+			if bv.Status.BackingImageName != backup.Status.VolumeBackingImageName {
+				err = fmt.Errorf("backup volume's backing image %v does not match backup's backing image %v. The backup volume resource is being updated and please retry later", bv.Status.BackingImageName, backup.Status.VolumeBackingImageName)
+				return nil, werror.NewForbiddenError(err.Error())
+			}
+
 			if volume.Spec.BackingImage == "" {
 				volume.Spec.BackingImage = bv.Status.BackingImageName
 				patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backingImage", "value": "%s"}`, bv.Status.BackingImageName))
@@ -164,11 +175,6 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 					return nil, werror.NewInvalidError(fmt.Sprintf("backing image %v current checksum doesn't match the recoreded checksum in backup volume", volume.Spec.BackingImage), "")
 				}
 			}
-		}
-
-		backup, err := v.ds.GetBackupRO(bName)
-		if err != nil {
-			return nil, werror.NewInvalidError(fmt.Sprintf("cannot get backup %s: %v", bName, err), "")
 		}
 
 		logrus.Infof("Override size of volume %v to %v because it's from backup", name, backup.Status.VolumeSize)
