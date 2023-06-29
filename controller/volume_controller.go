@@ -1773,30 +1773,6 @@ func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *
 		}
 	}
 
-	// check if any replica has been RW yet
-	dataExists := false
-	for _, r := range rs {
-		if r.Spec.HealthyAt != "" {
-			dataExists = true
-			break
-		}
-	}
-	// stop rebuilding
-	if dataExists {
-		for _, r := range rs {
-			if r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" {
-				r.Spec.FailedAt = c.nowHandler()
-				r.Spec.DesireState = longhorn.InstanceStateStopped
-				// unscheduled replicas marked failed here when volume detached
-				// check if NodeId or DiskID is empty to avoid deleting reusableFailedReplica when replenished.
-				if r.Spec.NodeID == "" || r.Spec.DiskID == "" {
-					r.Spec.RebuildRetryCount = scheduler.FailedReplicaMaxRetryCount
-				}
-				rs[r.Name] = r
-			}
-		}
-	}
-
 	if e.Spec.DesireState != longhorn.InstanceStateStopped || e.Spec.NodeID != "" {
 		if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 			e.Spec.LogRequested = true
@@ -1815,7 +1791,24 @@ func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *
 		return
 	}
 
+	// check if any replica has been RW yet
+	dataExists := false
 	for _, r := range rs {
+		if r.Spec.HealthyAt != "" {
+			dataExists = true
+			break
+		}
+	}
+	for _, r := range rs {
+		if r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" && dataExists {
+			// This replica must have been rebuilding. Mark it as failed.
+			r.Spec.FailedAt = c.nowHandler()
+			// Unscheduled replicas are marked failed here when volume is detached.
+			// Check if NodeId or DiskID is empty to avoid deleting reusableFailedReplica when replenished.
+			if r.Spec.NodeID == "" || r.Spec.DiskID == "" {
+				r.Spec.RebuildRetryCount = scheduler.FailedReplicaMaxRetryCount
+			}
+		}
 		if r.Spec.DesireState != longhorn.InstanceStateStopped {
 			if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 				r.Spec.LogRequested = true
