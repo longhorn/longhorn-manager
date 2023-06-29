@@ -1759,19 +1759,16 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 			for !purgeDone && time.Now().Before(endTime) {
 				<-ticker.C
 
+				// It may have been a long time since we started purging. Should we proceed?
 				e, err := ec.ds.GetEngineRO(e.Name)
 				if err != nil {
-					if apierrors.IsNotFound(err) {
-						log.Error("Failed to continue waiting for the purge before rebuilding since engine is not found")
-						return
-					}
-					log.WithError(err).Warn("Failed to get engine and wait for the purge before rebuilding")
-					continue
-				}
-				if e.Status.CurrentState != longhorn.InstanceStateRunning {
-					log.Errorf("Failed to continue waiting for the purge before rebuilding since engine is state %v", e.Status.CurrentState)
+					log.WithError(err).Error("Failed to get engine and wait for the purge before rebuilding")
 					return
 				}
+				if !shouldProceedToWaitAndRebuild(e, replicaName, addr, log) {
+					return
+				}
+
 				// Wait for purge complete
 				purgeDone = true
 				for _, purgeStatus := range e.Status.PurgeStatus {
@@ -1788,28 +1785,6 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 					e.Spec.VolumeName, purgeWaitIntervalInSecond)
 				return
 			}
-		}
-
-		// It has been at least 10 seconds (2 * EnginePollInterval) since we were asked to rebuild.
-		// Should we still communicate with addr?
-		// TODO: Remove this check in versions that include a completed longhorn/longhorn#5845.
-		updatedEngine, err := ec.ds.GetEngineRO(e.Name)
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				log.Error("Failed to proceed to rebuild since engine is not found")
-				return
-			}
-			log.WithError(err).Error("Failed to get latest engine spec before rebuilding")
-			return
-		}
-		updatedAddr, ok := updatedEngine.Spec.ReplicaAddressMap[replicaName]
-		if !ok {
-			log.Warnf("Refusing to rebuild since replica %v is no longer in the replicaAddressMap", replicaName)
-			return
-		}
-		if addr != updatedAddr {
-			log.Warnf("Refusing to rebuild since the address for replica %v has been updated from %v to %v", replicaName, addr, updatedAddr)
-			return
 		}
 
 		replica, err := ec.ds.GetReplica(replicaName)
@@ -2126,4 +2101,36 @@ func removeInvalidEngineOpStatus(e *longhorn.Engine) {
 			delete(e.Status.CloneStatus, tcpAddr)
 		}
 	}
+}
+
+// shouldProceedToRebuild checks a variety of conditions that may cause us not to proceed with waiting for snapshot
+// purge and/or rebuilding a replica. We pass the logger to it so it can decide what level to log at depending on the
+// issue. We do not return any errors because shouldProceedToRebuild is called by startRebuilding in a goroutine.
+func shouldProceedToWaitAndRebuild(e *longhorn.Engine, replicaName, originalReplicaAddr string, log *logrus.Entry) bool {
+	// The engine is no longer running.
+	if e.Status.CurrentState != longhorn.InstanceStateRunning {
+		log.Errorf("Failed to proceed to rebuild since engine is state %v", e.Status.CurrentState)
+		return false
+	}
+
+	// The volume controller no longer expects the engine to be running.
+	if e.Spec.DesireState != longhorn.InstanceStateRunning {
+		log.Warnf("Failed to proceed to rebuild since engine state should be %v",
+			e.Spec.DesireState)
+		return false
+	}
+
+	// The volume controller no longer expects the engine to communicate with a replica at this address.
+	updatedAddr, ok := e.Spec.ReplicaAddressMap[replicaName]
+	if !ok {
+		log.Warnf("Failed to proceed to rebuild since replica %v is no longer in the replicaAddressMap", replicaName)
+		return false
+	}
+	if originalReplicaAddr != updatedAddr {
+		log.Warnf("Failed to proceed to rebuild since the address for replica %v has been updated from %v to %v",
+			replicaName, originalReplicaAddr, updatedAddr)
+		return false
+	}
+
+	return true
 }
