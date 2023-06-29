@@ -244,7 +244,7 @@ func parseJSONRecurringJobs(jsonRecurringJobs string) ([]longhornclient.Recurrin
 // in case where the mount point exists but is corrupt, the mount point will be cleaned up and a error is returned
 // the underlying implementation utilizes mounter.IsLikelyNotMountPoint so it cannot detect bind mounts
 func ensureMountPoint(targetPath string, mounter mount.Interface) (bool, error) {
-	logrus.Debugf("trying to ensure mount point %v", targetPath)
+	logrus.Debugf("Trying to ensure mount point %v", targetPath)
 	notMnt, err := mount.IsNotMountPoint(mounter, targetPath)
 	if os.IsNotExist(err) {
 		return false, os.MkdirAll(targetPath, 0750)
@@ -252,9 +252,9 @@ func ensureMountPoint(targetPath string, mounter mount.Interface) (bool, error) 
 
 	IsCorruptedMnt := mount.IsCorruptedMnt(err)
 	if !IsCorruptedMnt {
-		logrus.Debugf("mount point %v try reading dir to make sure it's healthy", targetPath)
+		logrus.Debugf("Mount point %v try reading dir to make sure it's healthy", targetPath)
 		if _, err := os.ReadDir(targetPath); err != nil {
-			logrus.Debugf("mount point %v was identified as corrupt by ReadDir", targetPath)
+			logrus.Debugf("Mount point %v was identified as corrupt by ReadDir", targetPath)
 			IsCorruptedMnt = true
 		}
 	}
@@ -289,7 +289,7 @@ func unmount(targetPath string, mounter mount.Interface) error {
 
 	if strings.Contains(err.Error(), "not mounted") ||
 		strings.Contains(err.Error(), "no mount point specified") {
-		logrus.Infof("no need for unmount not a mount point %v", targetPath)
+		logrus.Infof("No need for unmount not a mount point %v", targetPath)
 		return nil
 	}
 
@@ -299,13 +299,13 @@ func unmount(targetPath string, mounter mount.Interface) error {
 // cleanupMountPoint ensures all mount layers for the targetPath are unmounted and the mount directory is removed
 func cleanupMountPoint(targetPath string, mounter mount.Interface) error {
 	// we just try to unmount since the path check would get stuck for nfs mounts
-	logrus.Infof("trying to cleanup mount point %v", targetPath)
+	logrus.Infof("Trying to cleanup mount point %v", targetPath)
 	if err := unmount(targetPath, mounter); err != nil {
-		logrus.Debugf("failed to unmount during cleanup error: %v", err)
+		logrus.WithError(err).Warn("Failed to unmount during cleanup")
 		return err
 	}
 
-	logrus.Infof("cleaned up mount point %v", targetPath)
+	logrus.Infof("Cleaned up mount point %v", targetPath)
 	return mount.CleanupMountPoint(targetPath, mounter, true)
 }
 

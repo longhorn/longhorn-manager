@@ -359,7 +359,7 @@ func (e *EngineBinary) SnapshotBackup(engine *longhorn.Engine, snapName, backupN
 		return "", "", err
 	}
 
-	logrus.Debugf("Backup %v created for volume %v snapshot %v", backupCreateInfo.BackupID, e.Name(), snapName)
+	logrus.Infof("Backup %v created for volume %v snapshot %v", backupCreateInfo.BackupID, e.Name(), snapName)
 	return backupCreateInfo.BackupID, backupCreateInfo.ReplicaAddress, nil
 }
 
@@ -426,7 +426,7 @@ func (e *EngineBinary) BackupRestore(engine *longhorn.Engine, backupTarget, back
 		return taskErr
 	}
 
-	logrus.Debugf("Backup %v restored for volume %v", backup, e.Name())
+	logrus.Infof("Backup %v restored for volume %v", backup, e.Name())
 	return nil
 }
 

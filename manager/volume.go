@@ -185,7 +185,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 	if err != nil {
 		return nil, err
 	}
-	logrus.Debugf("Created volume %v: %+v", v.Name, v.Spec)
+	logrus.Infof("Created volume %v: %+v", v.Name, v.Spec)
 	return v, nil
 }
 
@@ -193,7 +193,7 @@ func (m *VolumeManager) Delete(name string) error {
 	if err := m.ds.DeleteVolume(name); err != nil {
 		return err
 	}
-	logrus.Debugf("Deleted volume %v", name)
+	logrus.Infof("Deleted volume %v", name)
 	return nil
 }
 
@@ -233,7 +233,7 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 	}
 
 	if v.Spec.MigrationNodeID == node.Name {
-		logrus.Debugf("Volume %v is already migrating to node %v from node %v", v.Name, node.Name, v.Spec.NodeID)
+		logrus.Infof("Volume %v is already migrating to node %v from node %v", v.Name, node.Name, v.Spec.NodeID)
 		return v, nil
 	}
 
@@ -390,7 +390,7 @@ func (m *VolumeManager) Salvage(volumeName string, replicaNames []string) (v *lo
 		}
 	}
 
-	logrus.Debugf("Salvaged replica %+v for volume %v", replicaNames, v.Name)
+	logrus.Infof("Salvaged replica %+v for volume %v", replicaNames, v.Name)
 	return v, nil
 }
 
@@ -433,7 +433,7 @@ func (m *VolumeManager) Activate(volumeName string, frontend string) (v *longhor
 		return nil, err
 	}
 
-	logrus.Debugf("Activating volume %v with frontend %v", v.Name, frontend)
+	logrus.Infof("Activating volume %v with frontend %v", v.Name, frontend)
 	return v, nil
 }
 
@@ -718,7 +718,7 @@ func (m *VolumeManager) DeleteReplica(volumeName, replicaName string) error {
 	if err := m.ds.DeleteReplica(replicaName); err != nil {
 		return err
 	}
-	logrus.Debugf("Deleted replica %v of volume %v, there is still at least one available healthy replica %v", replicaName, volumeName, healthyReplica)
+	logrus.Infof("Deleted replica %v of volume %v, there is still at least one available healthy replica %v", replicaName, volumeName, healthyReplica)
 	return nil
 }
 
@@ -808,9 +808,9 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 		return nil, err
 	}
 	if image != v.Status.CurrentImage {
-		logrus.Debugf("Upgrading volume %v engine image from %v to %v", v.Name, oldImage, v.Spec.EngineImage)
+		logrus.Infof("Upgrading volume %v engine image from %v to %v", v.Name, oldImage, v.Spec.EngineImage)
 	} else {
-		logrus.Debugf("Rolling back volume %v engine image to %v", v.Name, v.Status.CurrentImage)
+		logrus.Infof("Rolling back volume %v engine image to %v", v.Name, v.Status.CurrentImage)
 	}
 
 	return v, nil
