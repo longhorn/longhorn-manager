@@ -337,7 +337,10 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		// we allow across monitoring temporaily due to migration case
 		if !ec.isMonitoring(engine) {
 			ec.startMonitoring(engine)
-		} else if engine.Status.ReplicaModeMap != nil {
+		} else if engine.Status.ReplicaModeMap != nil && engine.Spec.DesireState != longhorn.InstanceStateStopped {
+			// If engine.Spec.DesireState == longhorn.InstanceStateStopped, we have likely already issued a command to
+			// shut down the engine. It is potentially dangerous to attempt to communicate with it now, as a new engine
+			// may start using its address.
 			if err := ec.ReconcileEngineState(engine); err != nil {
 				return err
 			}
