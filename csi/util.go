@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -372,6 +373,11 @@ func isBlockDevice(volumePath string) (bool, error) {
 	return false, nil
 }
 
+func getDiskFormat(devicePath string) (string, error) {
+	m := mount.SafeFormatAndMount{Interface: mount.New(""), Exec: utilexec.New()}
+	return m.GetDiskFormat(devicePath)
+}
+
 func getFilesystemStatistics(volumePath string) (*volumeFilesystemStatistics, error) {
 	var statfs unix.Statfs_t
 	// See http://man7.org/linux/man-pages/man2/statfs.2.html for details.
@@ -427,4 +433,8 @@ func requiresSharedAccess(vol *longhornclient.Volume, cap *csi.VolumeCapability)
 		mode == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY ||
 		mode == csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER ||
 		mode == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER
+}
+
+func getStageBlockVolumePath(stagingTargetPath, volumeID string) string {
+	return filepath.Join(stagingTargetPath, volumeID)
 }
