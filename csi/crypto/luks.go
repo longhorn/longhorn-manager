@@ -3,11 +3,12 @@ package crypto
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/pkg/errors"
 
 	iscsiutil "github.com/longhorn/go-iscsi-helper/util"
 )
@@ -63,9 +64,9 @@ func cryptSetupWithPassphrase(passphrase string, args ...string) (stdout string,
 		cmd.Stdin = strings.NewReader(passphrase)
 	}
 
-	output := string(stdoutBuf.Bytes())
+	output := stdoutBuf.String()
 	if err := cmd.Run(); err != nil {
-		return output, fmt.Errorf("failed to run cryptsetup args: %v output: %v error: %v", args, output, err)
+		return output, errors.Wrapf(err, "failed to run cryptsetup args: %v output: %v", args, output)
 	}
 
 	return stdoutBuf.String(), nil

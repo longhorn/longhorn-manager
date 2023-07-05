@@ -92,13 +92,13 @@ func updateVolumeParamsForBackingImage(volumeParameters map[string]string, backi
 	volumeParameters[longhorn.BackingImageParameterDataSourceParameters] = string(backingImageParametersStr)
 }
 
-func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, error) {
+func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornclient.Volume, error) {
 	vol := &longhornclient.Volume{}
 
 	if staleReplicaTimeout, ok := volOptions["staleReplicaTimeout"]; ok {
 		srt, err := strconv.Atoi(staleReplicaTimeout)
 		if err != nil {
-			return nil, errors.Wrap(err, "Invalid parameter staleReplicaTimeout")
+			return nil, errors.Wrap(err, "invalid parameter staleReplicaTimeout")
 		}
 		vol.StaleReplicaTimeout = int64(srt)
 	}
@@ -109,7 +109,7 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 	if share, ok := volOptions["share"]; ok {
 		isShared, err := strconv.ParseBool(share)
 		if err != nil {
-			return nil, errors.Wrap(err, "Invalid parameter share")
+			return nil, errors.Wrap(err, "invalid parameter share")
 		}
 
 		if isShared {
@@ -122,12 +122,12 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 	if migratable, ok := volOptions["migratable"]; ok {
 		isMigratable, err := strconv.ParseBool(migratable)
 		if err != nil {
-			return nil, errors.Wrap(err, "Invalid parameter migratable")
+			return nil, errors.Wrap(err, "invalid parameter migratable")
 		}
 
 		if isMigratable && vol.AccessMode != string(longhorn.AccessModeReadWriteMany) {
 			logrus.Infof("Cannot mark volume %v as migratable, "+
-				"since access mode is not RWX proceeding with RWO non migratable volume creation.", vol.Name)
+				"since access mode is not RWX proceeding with RWO non migratable volume creation", volumeID)
 			volOptions["migratable"] = strconv.FormatBool(false)
 			isMigratable = false
 		}
@@ -137,7 +137,7 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 	if encrypted, ok := volOptions["encrypted"]; ok {
 		isEncrypted, err := strconv.ParseBool(encrypted)
 		if err != nil {
-			return nil, errors.Wrap(err, "Invalid parameter encrypted")
+			return nil, errors.Wrap(err, "invalid parameter encrypted")
 		}
 		vol.Encrypted = isEncrypted
 	}
@@ -145,7 +145,7 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 	if numberOfReplicas, ok := volOptions["numberOfReplicas"]; ok {
 		nor, err := strconv.Atoi(numberOfReplicas)
 		if err != nil || nor < 0 {
-			return nil, errors.Wrap(err, "Invalid parameter numberOfReplicas")
+			return nil, errors.Wrap(err, "invalid parameter numberOfReplicas")
 		}
 		vol.NumberOfReplicas = int64(nor)
 	}
@@ -153,14 +153,14 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 	if replicaAutoBalance, ok := volOptions["replicaAutoBalance"]; ok {
 		err := types.ValidateReplicaAutoBalance(longhorn.ReplicaAutoBalance(replicaAutoBalance))
 		if err != nil {
-			return nil, errors.Wrap(err, "Invalid parameter replicaAutoBalance")
+			return nil, errors.Wrap(err, "invalid parameter replicaAutoBalance")
 		}
 		vol.ReplicaAutoBalance = replicaAutoBalance
 	}
 
 	if locality, ok := volOptions["dataLocality"]; ok {
 		if err := types.ValidateDataLocality(longhorn.DataLocality(locality)); err != nil {
-			return nil, errors.Wrap(err, "Invalid parameter dataLocality")
+			return nil, errors.Wrap(err, "invalid parameter dataLocality")
 		}
 		vol.DataLocality = locality
 	}
@@ -168,28 +168,28 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 	if revisionCounterDisabled, ok := volOptions["disableRevisionCounter"]; ok {
 		revCounterDisabled, err := strconv.ParseBool(revisionCounterDisabled)
 		if err != nil {
-			return nil, errors.Wrap(err, "Invalid parameter disableRevisionCounter")
+			return nil, errors.Wrap(err, "invalid parameter disableRevisionCounter")
 		}
 		vol.RevisionCounterDisabled = revCounterDisabled
 	}
 
 	if unmapMarkSnapChainRemoved, ok := volOptions["unmapMarkSnapChainRemoved"]; ok {
 		if err := types.ValidateUnmapMarkSnapChainRemoved(longhorn.UnmapMarkSnapChainRemoved(unmapMarkSnapChainRemoved)); err != nil {
-			return nil, errors.Wrap(err, "Invalid parameter unmapMarkSnapChainRemoved")
+			return nil, errors.Wrap(err, "invalid parameter unmapMarkSnapChainRemoved")
 		}
 		vol.UnmapMarkSnapChainRemoved = unmapMarkSnapChainRemoved
 	}
 
 	if replicaSoftAntiAffinity, ok := volOptions["replicaSoftAntiAffinity"]; ok {
 		if err := types.ValidateReplicaSoftAntiAffinity(longhorn.ReplicaSoftAntiAffinity(replicaSoftAntiAffinity)); err != nil {
-			return nil, errors.Wrap(err, "Invalid parameter replicaSoftAntiAffinity")
+			return nil, errors.Wrap(err, "invalid parameter replicaSoftAntiAffinity")
 		}
 		vol.ReplicaSoftAntiAffinity = replicaSoftAntiAffinity
 	}
 
 	if replicaZoneSoftAntiAffinity, ok := volOptions["replicaZoneSoftAntiAffinity"]; ok {
 		if err := types.ValidateReplicaZoneSoftAntiAffinity(longhorn.ReplicaZoneSoftAntiAffinity(replicaZoneSoftAntiAffinity)); err != nil {
-			return nil, errors.Wrap(err, "Invalid parameter replicaZoneSoftAntiAffinity")
+			return nil, errors.Wrap(err, "invalid parameter replicaZoneSoftAntiAffinity")
 		}
 		vol.ReplicaZoneSoftAntiAffinity = replicaZoneSoftAntiAffinity
 	}
@@ -288,48 +288,46 @@ func syncMountPointDirectory(targetPath string) error {
 }
 
 // ensureMountPoint evaluates whether a path is a valid mountPoint
-// in case the targetPath does not exists it will create a path and return false
+// in case the path does not exists it will create a path and return false
 // in case where the mount point exists but is corrupt, the mount point will be cleaned up and a error is returned
 // the underlying implementation utilizes mounter.IsLikelyNotMountPoint so it cannot detect bind mounts
-func ensureMountPoint(targetPath string, mounter mount.Interface) (bool, error) {
-	logrus.Infof("Trying to ensure mount point %v", targetPath)
-	notMnt, err := mount.IsNotMountPoint(mounter, targetPath)
+func ensureMountPoint(path string, mounter mount.Interface) (bool, error) {
+	logrus.Infof("Trying to ensure mount point %v", path)
+	notMnt, err := mount.IsNotMountPoint(mounter, path)
 	if os.IsNotExist(err) {
-		return false, os.MkdirAll(targetPath, 0750)
+		return false, os.MkdirAll(path, 0750)
 	}
 
 	IsCorruptedMnt := mount.IsCorruptedMnt(err)
 	if !IsCorruptedMnt {
-		logrus.Infof("Mount point %v try opening and syncing dir to make sure it's healthy", targetPath)
-		if err := syncMountPointDirectory(targetPath); err != nil {
-			logrus.WithError(err).Warnf("Mount point %v was identified as corrupt by opening and syncing", targetPath)
+		logrus.Infof("Mount point %v try opening and syncing dir to make sure it's healthy", path)
+		if err := syncMountPointDirectory(path); err != nil {
+			logrus.WithError(err).Warnf("Mount point %v was identified as corrupt by opening and syncing", path)
 			IsCorruptedMnt = true
 		}
 	}
 
 	if IsCorruptedMnt {
-		unmountErr := unmount(targetPath, mounter)
+		unmountErr := unmount(path, mounter)
 		if unmountErr != nil {
 			return false, fmt.Errorf("failed to unmount corrupt mount point %v umount error: %v eval error: %v",
-				targetPath, unmountErr, err)
+				path, unmountErr, err)
 		}
 
-		return false, fmt.Errorf("unmounted existing corrupt mount point %v", targetPath)
+		return false, fmt.Errorf("unmounted existing corrupt mount point %v", path)
 	}
 
 	return !notMnt, err
 }
 
-func unmount(targetPath string, mounter mount.Interface) error {
-	var err error
-
+func unmount(path string, mounter mount.Interface) (err error) {
 	forceUnmounter, ok := mounter.(mount.MounterForceUnmounter)
 	if ok {
-		logrus.Infof("Trying to force unmount potential mount point %v", targetPath)
-		err = forceUnmounter.UnmountWithForce(targetPath, defaultForceUmountTimeout)
+		logrus.Infof("Trying to force unmount potential mount point %v", path)
+		err = forceUnmounter.UnmountWithForce(path, defaultForceUmountTimeout)
 	} else {
-		logrus.Infof("Trying to unmount potential mount point %v", targetPath)
-		err = mounter.Unmount(targetPath)
+		logrus.Infof("Trying to unmount potential mount point %v", path)
+		err = mounter.Unmount(path)
 	}
 	if err == nil {
 		return nil
@@ -337,24 +335,24 @@ func unmount(targetPath string, mounter mount.Interface) error {
 
 	if strings.Contains(err.Error(), "not mounted") ||
 		strings.Contains(err.Error(), "no mount point specified") {
-		logrus.Infof("No need for unmount not a mount point %v", targetPath)
+		logrus.Infof("No need for unmount not a mount point %v", path)
 		return nil
 	}
 
 	return err
 }
 
-// cleanupMountPoint ensures all mount layers for the targetPath are unmounted and the mount directory is removed
-func cleanupMountPoint(targetPath string, mounter mount.Interface) error {
+// cleanupMountPoint ensures all mount layers for the path are unmounted and the mount directory is removed
+func cleanupMountPoint(path string, mounter mount.Interface) error {
 	// we just try to unmount since the path check would get stuck for nfs mounts
-	logrus.Infof("Trying to cleanup mount point %v", targetPath)
-	if err := unmount(targetPath, mounter); err != nil {
-		logrus.WithError(err).Warn("Failed to unmount during cleanup")
+	logrus.Infof("Trying to cleanup mount point %v", path)
+	if err := unmount(path, mounter); err != nil {
+		logrus.WithError(err).Warnf("Failed to unmount %v during cleanup", path)
 		return err
 	}
 
-	logrus.Infof("Cleaned up mount point %v", targetPath)
-	return mount.CleanupMountPoint(targetPath, mounter, true)
+	logrus.Infof("Cleaned up mount point %v", path)
+	return mount.CleanupMountPoint(path, mounter, true)
 }
 
 // isBlockDevice return true if volumePath file is a block device, false otherwise.
