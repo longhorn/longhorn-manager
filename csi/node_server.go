@@ -115,7 +115,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	if volume.State != string(longhorn.VolumeStateAttached) || volume.Controllers[0].Endpoint == "" {
 		logrus.Debugf("volume %v hasn't been attached yet, try unmounting potential mount point %v", volumeID, targetPath)
 		if err := unmount(targetPath, mounter); err != nil {
-			logrus.Debugf("failed to unmount error: %v", err)
+			logrus.WithError(err).Warnf("Failed to unmount: %v", targetPath)
 		}
 		return nil, status.Errorf(codes.InvalidArgument, "volume %s hasn't been attached yet", volumeID)
 	}
