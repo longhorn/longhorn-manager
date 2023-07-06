@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +31,8 @@ const (
 	defaultStaleReplicaTimeout = 2880
 
 	defaultForceUmountTimeout = 30 * time.Second
+
+	tempTestMountPointValidStatusFile = ".longhorn-volume-mount-point-test.tmp"
 )
 
 // NewForcedParamsExec creates a osExecutor that allows for adding additional params to later occurring Run calls
@@ -215,6 +219,42 @@ func parseJSONRecurringJobs(jsonRecurringJobs string) ([]longhornclient.Recurrin
 	return recurringJobs, nil
 }
 
+func syncMountPointDirectory(targetPath string) error {
+	d, err := os.OpenFile(targetPath, os.O_SYNC, 0750)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+
+	if _, err := d.Readdirnames(1); err != nil {
+		if !errors.Is(err, io.EOF) {
+			return err
+		}
+	}
+
+	// it would not always return `Input/Output Error` or `read-only file system` errors if we only use ReadDir() or Readdirnames() without an I/O operation
+	// an I/O operation will make the targetPath mount point invalid immediately
+	tempFile := path.Join(targetPath, tempTestMountPointValidStatusFile)
+	f, err := os.OpenFile(tempFile, os.O_CREATE|os.O_RDWR|os.O_SYNC|os.O_TRUNC, 0666)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			logrus.WithError(err).Warnf("Failed to close %v", tempFile)
+		}
+		if err := os.Remove(tempFile); err != nil {
+			logrus.WithError(err).Warnf("Failed to remove %v", tempFile)
+		}
+	}()
+
+	if _, err := f.WriteString(tempFile); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // ensureMountPoint evaluates whether a path is a valid mountPoint
 // in case the targetPath does not exists it will create a path and return false
 // in case where the mount point exists but is corrupt, the mount point will be cleaned up and a error is returned
@@ -228,9 +268,9 @@ func ensureMountPoint(targetPath string, mounter mount.Interface) (bool, error) 
 
 	IsCorruptedMnt := mount.IsCorruptedMnt(err)
 	if !IsCorruptedMnt {
-		logrus.Debugf("mount point %v try reading dir to make sure it's healthy", targetPath)
-		if _, err := os.ReadDir(targetPath); err != nil {
-			logrus.Debugf("mount point %v was identified as corrupt by ReadDir", targetPath)
+		logrus.Debugf("Mount point %v try opening and syncing dir to make sure it's healthy", targetPath)
+		if err := syncMountPointDirectory(targetPath); err != nil {
+			logrus.WithError(err).Warnf("Mount point %v was identified as corrupt by opening and syncing", targetPath)
 			IsCorruptedMnt = true
 		}
 	}
