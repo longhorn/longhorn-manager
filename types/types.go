@@ -256,8 +256,7 @@ const (
 )
 
 // SettingsRelatedToVolume should match the items in datastore.GetLabelsForVolumesFollowsGlobalSettings
-//
-//	TODO: May need to add the data locality check
+// TODO: May need to add the data locality check
 var SettingsRelatedToVolume = map[string]string{
 	string(SettingNameReplicaAutoBalance):                  LonghornLabelValueIgnored,
 	string(SettingNameSnapshotDataIntegrity):               LonghornLabelValueIgnored,
