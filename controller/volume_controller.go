@@ -1208,11 +1208,14 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			continue
 		}
 		if v.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
-			if v.Spec.NodeID == "" {
-				continue
+			if v.Status.RestoreRequired {
+				r.Spec.HardNodeAffinity = v.Status.OwnerID
+			} else {
+				if v.Spec.NodeID == "" {
+					continue
+				}
+				r.Spec.HardNodeAffinity = v.Spec.NodeID
 			}
-
-			r.Spec.HardNodeAffinity = v.Spec.NodeID
 		}
 
 		scheduledReplica, multiError, err := vc.scheduler.ScheduleReplica(r, rs, v)
