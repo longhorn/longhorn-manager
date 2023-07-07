@@ -2,7 +2,6 @@ package orphan
 
 import (
 	"fmt"
-	"reflect"
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -54,15 +53,10 @@ func (o *orphanValidator) Create(request *admission.Request, newObj runtime.Obje
 }
 
 func (o *orphanValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
-	oldOrphan := oldObj.(*longhorn.Orphan)
 	newOrphan := newObj.(*longhorn.Orphan)
 
 	if err := checkOrphanParameters(newOrphan); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
-	}
-
-	if !reflect.DeepEqual(oldOrphan.Spec, newOrphan.Spec) {
-		return werror.NewInvalidError(fmt.Sprintf("orphan %v spec fields are immutable", oldOrphan.Name), "")
 	}
 
 	return nil
@@ -83,6 +77,7 @@ func checkOrphanForReplicaDirectory(orphan *longhorn.Orphan) error {
 		longhorn.OrphanDiskName,
 		longhorn.OrphanDiskUUID,
 		longhorn.OrphanDiskPath,
+		longhorn.OrphanDiskType,
 	}
 
 	for _, param := range params {
