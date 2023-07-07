@@ -430,12 +430,29 @@ func (m *VolumeManager) checkMigratingEngineSyncSnapshots(vol *longhorn.Volume) 
 		return false, fmt.Errorf("failed to find the migrating engine for volume %v", vol.Name)
 	}
 
-	if !reflect.DeepEqual(oldEngine.Status.Snapshots, migratingEngine.Status.Snapshots) {
+	// map[string]*longhorn.SnapshotInfo can't be compared directly because SnapshotInfo.Created
+	// and SnapshotInfo.Size field might be different when old engine and new engine fetches them
+	// from different replicas
+	if !hasSameKeys(oldEngine.Status.Snapshots, migratingEngine.Status.Snapshots) {
 		logrus.Debugf("Volume migration (%v) is in progress for synchronizing snapshots", vol.Name)
 		return false, nil
 	}
 
 	return true, nil
+}
+
+func hasSameKeys(map1, map2 map[string]*longhorn.SnapshotInfo) bool {
+	if len(map1) != len(map2) {
+		return false
+	}
+
+	for key := range map1 {
+		if _, ok := map2[key]; !ok {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (m *VolumeManager) Salvage(volumeName string, replicaNames []string) (v *longhorn.Volume, err error) {
