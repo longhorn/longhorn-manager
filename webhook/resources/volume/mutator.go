@@ -303,6 +303,12 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 	if string(volume.Spec.BackendStoreDriver) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeV1))
 	}
+	if string(volume.Spec.BackupCompressionMethod) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupCompressionMethod", "value": "%s"}`, longhorn.BackupCompressionMethodGzip))
+	}
+	if string(volume.Spec.OfflineReplicaRebuilding) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/offlineReplicaRebuilding", "value": "%s"}`, longhorn.OfflineReplicaRebuildingDisabled))
+	}
 
 	size := util.RoundUpSize(volume.Spec.Size)
 	if size != volume.Spec.Size {
