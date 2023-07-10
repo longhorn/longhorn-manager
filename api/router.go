@@ -8,6 +8,7 @@ import (
 	"github.com/rancher/go-rancher/client"
 	"github.com/sirupsen/logrus"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/metrics_collector/registry"
 )
 
@@ -17,6 +18,12 @@ func HandleError(s *client.Schemas, t HandleFuncWithError) http.Handler {
 	return api.ApiHandler(s, http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		if err := t(rw, req); err != nil {
 			logrus.WithError(err).Warnf("HTTP handling error")
+
+			if datastore.ErrorIsNotFound(err) {
+				rw.WriteHeader(http.StatusNotFound)
+				return
+			}
+
 			apiContext := api.GetApiContext(req)
 			apiContext.WriteErr(err)
 		}
