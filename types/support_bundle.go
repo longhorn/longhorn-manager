@@ -16,7 +16,7 @@ const (
 	SupportBundleURLStatusFmt   = "http://%s:%v/status"
 	SupportBundleURLDownloadFmt = "http://%s:%v/bundle"
 
-	SupportBundleDownloadTimeout = 5 * time.Minute
+	SupportBundleDownloadTimeout = 24 * time.Hour
 )
 
 func IsSupportBundleControllerDeleting(supportBundle *longhorn.SupportBundle) bool {
