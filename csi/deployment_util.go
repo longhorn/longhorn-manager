@@ -23,6 +23,7 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	longhornmeta "github.com/longhorn/longhorn-manager/meta"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 )
 
 const (
@@ -162,21 +163,9 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 
 type resourceCreateFunc func(kubeClient *clientset.Clientset, obj runtime.Object) error
 type resourceDeleteFunc func(kubeClient *clientset.Clientset, name, namespace string) error
-type resourceGetFunc func(kubeClient *clientset.Clientset, name, namespace string) (runtime.Object, error)
-
-func waitForDeletion(kubeClient *clientset.Clientset, name, namespace, resource string, getFunc resourceGetFunc) error {
-	for i := 0; i < maxRetryForDeletion; i++ {
-		_, err := getFunc(kubeClient, name, namespace)
-		if err != nil && apierrors.IsNotFound(err) {
-			return nil
-		}
-		time.Sleep(time.Duration(1) * time.Second)
-	}
-	return fmt.Errorf("foreground deletion of %s %s timed out", resource, name)
-}
 
 func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string,
-	createFunc resourceCreateFunc, deleteFunc resourceDeleteFunc, getFunc resourceGetFunc) (err error) {
+	createFunc resourceCreateFunc, deleteFunc resourceDeleteFunc, getFunc util.ResourceGetFunc) (err error) {
 
 	kubeVersion, err := kubeClient.Discovery().ServerVersion()
 	if err != nil {
@@ -293,7 +282,7 @@ func needToUpdateDaemonSetImage(existingObj, newObj runtime.Object) bool {
 }
 
 func cleanup(kubeClient *clientset.Clientset, obj runtime.Object, resource string,
-	deleteFunc resourceDeleteFunc, getFunc resourceGetFunc) (err error) {
+	deleteFunc resourceDeleteFunc, getFunc util.ResourceGetFunc) (err error) {
 
 	objMeta, err := meta.Accessor(obj)
 	if err != nil {
@@ -318,13 +307,13 @@ func cleanup(kubeClient *clientset.Clientset, obj runtime.Object, resource strin
 		return err
 	}
 	if existingMeta.GetDeletionTimestamp() != nil {
-		return waitForDeletion(kubeClient, name, namespace, resource, getFunc)
+		return util.WaitForResourceDeletion(kubeClient, name, namespace, resource, maxRetryForDeletion, getFunc)
 	}
 	logrus.Infof("Deleting existing %s %s", resource, name)
 	if err := deleteFunc(kubeClient, name, namespace); err != nil {
 		return err
 	}
-	return waitForDeletion(kubeClient, name, namespace, resource, getFunc)
+	return util.WaitForResourceDeletion(kubeClient, name, namespace, resource, maxRetryForDeletion, getFunc)
 }
 
 func serviceCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) error {

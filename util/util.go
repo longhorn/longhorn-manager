@@ -1006,3 +1006,16 @@ func VerifySnapshotLabels(labels map[string]string) error {
 func RemoveNewlines(input string) string {
 	return strings.Replace(input, "\n", "", -1)
 }
+
+type ResourceGetFunc func(kubeClient *clientset.Clientset, name, namespace string) (runtime.Object, error)
+
+func WaitForResourceDeletion(kubeClient *clientset.Clientset, name, namespace, resource string, maxRetryForDeletion int, getFunc ResourceGetFunc) error {
+	for i := 0; i < maxRetryForDeletion; i++ {
+		_, err := getFunc(kubeClient, name, namespace)
+		if err != nil && apierrors.IsNotFound(err) {
+			return nil
+		}
+		time.Sleep(time.Duration(1) * time.Second)
+	}
+	return fmt.Errorf("foreground deletion of %s %s timed out", resource, name)
+}

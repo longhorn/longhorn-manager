@@ -5,28 +5,29 @@ import (
 	"strconv"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	clientset "k8s.io/client-go/kubernetes"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	"github.com/longhorn/longhorn-manager/types"
 	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
+	"github.com/longhorn/longhorn-manager/util"
 )
 
 const (
 	upgradeLogPrefix = "upgrade from v1.4.x to v1.5.0: "
+
+	maxRetryForDeploymentDeletion = 300
 )
 
 func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) error {
 	if err := upgradeCSIPlugin(namespace, kubeClient); err != nil {
-		return err
-	}
-
-	if err := upgradeVolumes(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
 
@@ -35,6 +36,10 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 	}
 
 	if err := upgradeWebhookPDB(namespace, kubeClient); err != nil {
+		return err
+	}
+
+	if err := upgradeVolumes(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
 
@@ -230,14 +235,25 @@ func upgradeWebhookAndRecoveryService(namespace string, kubeClient *clientset.Cl
 			}
 			return errors.Wrapf(err, upgradeLogPrefix+"failed to get deployment with label %v during the upgrade", selector)
 		}
+
 		for _, deployment := range deployments.Items {
 			err := kubeClient.AppsV1().Deployments(deployment.Namespace).Delete(context.TODO(), deployment.Name, metav1.DeleteOptions{})
 			if err != nil {
 				return errors.Wrapf(err, upgradeLogPrefix+"failed to delete the deployment with label %v during the upgrade", selector)
 			}
+
+			err = util.WaitForResourceDeletion(kubeClient, deployment.Name, deployment.Namespace, selector, maxRetryForDeploymentDeletion, deploymentGetFunc)
+			if err != nil {
+				return errors.Wrapf(err, upgradeLogPrefix+"failed to wait for the deployment with label %v to be deleted during the upgrade", selector)
+			}
+			logrus.Infof("Deleted deployment %v with label %v during the upgrade", deployment.Name, selector)
 		}
 	}
 	return nil
+}
+
+func deploymentGetFunc(kubeClient *clientset.Clientset, name, namespace string) (runtime.Object, error) {
+	return kubeClient.AppsV1().Deployments(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 }
 
 func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
