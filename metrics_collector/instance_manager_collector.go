@@ -230,7 +230,7 @@ func (imc *InstanceManagerCollector) collectGrpcConnection(ch chan<- prometheus.
 		imPod, err := imc.ds.GetPod(im.Name)
 		if err != nil {
 			if datastore.ErrorIsNotFound(err) {
-				logrus.WithError(err).Debugf("Resetting proxy gRPC connection counter for %v", im.Name)
+				logrus.WithError(err).Infof("Resetting proxy gRPC connection counter for %v", im.Name)
 				imc.proxyConnCounter.ResetCount()
 				continue
 			}

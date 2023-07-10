@@ -439,7 +439,7 @@ func (job *Job) doSnapshotCleanup(backupDone bool) (err error) {
 		}); err != nil {
 			return err
 		}
-		job.logger.Debugf("Cleaned up snapshot CR %v for %v", snapshotName, volumeName)
+		job.logger.Infof("Cleaned up snapshot CR %v for %v", snapshotName, volumeName)
 	}
 
 	if job.task == longhorn.RecurringJobTypeSnapshotCleanup {
@@ -471,7 +471,7 @@ func (job *Job) deleteSnapshots(names []string, volume *longhornclient.Volume, v
 		if err != nil {
 			return err
 		}
-		job.logger.WithField("volume", volume.Name).Debugf("Deleted snapshot %v", name)
+		job.logger.WithField("volume", volume.Name).Infof("Deleted snapshot %v", name)
 	}
 	return nil
 }
@@ -514,7 +514,7 @@ func (job *Job) purgeSnapshots(volume *longhornclient.Volume, volumeAPI longhorn
 				}
 				job.logger.Warn("Encountered one or more errors while purging snapshots")
 			}
-			job.logger.WithField("volume", volume.Name).Debug("Purged snapshots")
+			job.logger.WithField("volume", volume.Name).Info("Purged snapshots")
 			return nil
 		}
 
@@ -626,9 +626,9 @@ func (job *Job) doRecurringBackup() (err error) {
 		switch info.State {
 		case string(longhorn.BackupStateCompleted):
 			complete = true
-			job.logger.Debugf("Complete creating backup %v", info.Id)
+			job.logger.Infof("Completed creating backup %v", info.Id)
 		case string(longhorn.BackupStateNew), string(longhorn.BackupStateInProgress):
-			job.logger.Debugf("Creating backup %v, current progress %v", info.Id, info.Progress)
+			job.logger.Infof("Creating backup %v, current progress %v", info.Id, info.Progress)
 		case string(longhorn.BackupStateError), string(longhorn.BackupStateUnknown):
 			return fmt.Errorf("failed to create backup %v: %v", info.Id, info.Error)
 		default:
@@ -663,7 +663,7 @@ func (job *Job) doRecurringBackup() (err error) {
 		}); err != nil {
 			return fmt.Errorf("cleaned up backup %v failed for %v: %v", backup, job.volumeName, err)
 		}
-		job.logger.Debugf("Cleaned up backup %v for %v", backup, job.volumeName)
+		job.logger.Infof("Cleaned up backup %v for %v", backup, job.volumeName)
 	}
 
 	if err := job.doSnapshotCleanup(true); err != nil {
@@ -865,7 +865,7 @@ func filterVolumesForJob(allowDetached bool, volumes []longhorn.Volume, filterNa
 		}
 
 		if volume.Status.RestoreRequired {
-			logger.Debugf("Bypassed to create job for %v volume during restoring from the backup", volume.Name)
+			logger.Infof("Bypassed to create job for %v volume during restoring from the backup", volume.Name)
 			continue
 		}
 
@@ -874,7 +874,7 @@ func filterVolumesForJob(allowDetached bool, volumes []longhorn.Volume, filterNa
 			*filterNames = append(*filterNames, volume.Name)
 			continue
 		}
-		logger.Debugf("Cannot create job for %v volume in state %v", volume.Name, volume.Status.State)
+		logger.Warnf("Cannot create job for %v volume in state %v", volume.Name, volume.Status.State)
 	}
 }
 
@@ -883,7 +883,7 @@ func getVolumesBySelector(recurringJobType, recurringJobName, namespace string, 
 
 	label := fmt.Sprintf("%s=%s",
 		types.GetRecurringJobLabelKey(recurringJobType, recurringJobName), types.LonghornLabelValueEnabled)
-	logger.Debugf("Get volumes from label %v", label)
+	logger.Infof("Got volumes from label %v", label)
 
 	volumes, err := client.LonghornV1beta2().Volumes(namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: label,

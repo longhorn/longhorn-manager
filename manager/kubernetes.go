@@ -77,7 +77,7 @@ func (m *VolumeManager) PVCreate(name, pvName, fsType, secretNamespace, secretNa
 		return nil, err
 	}
 
-	logrus.Debugf("Created PV for volume %v: %+v", v.Name, v.Spec)
+	logrus.Infof("Created PV for volume %v: %+v", v.Name, v.Spec)
 	return v, nil
 }
 
@@ -136,7 +136,7 @@ func (m *VolumeManager) PVCCreate(name, namespace, pvcName string) (v *longhorn.
 		return nil, err
 	}
 
-	logrus.Debugf("Created PVC for volume %v: %+v", v.Name, v.Spec)
+	logrus.Infof("Created PVC for volume %v: %+v", v.Name, v.Spec)
 	return v, nil
 }
 
