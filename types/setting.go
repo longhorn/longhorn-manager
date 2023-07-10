@@ -836,6 +836,223 @@ var (
 		ReadOnly: false,
 		Default:  CniNetworkNone,
 	}
+<<<<<<< HEAD
+=======
+
+	SettingDefinitionRecurringSuccessfulJobsHistoryLimit = SettingDefinition{
+		DisplayName: "Cronjob Successful Jobs History Limit",
+		Description: "This setting specifies how many successful backup or snapshot job histories should be retained. \n\n" +
+			"History will not be retained if the value is 0.",
+		Category: SettingCategoryBackup,
+		Type:     SettingTypeInt,
+		Required: false,
+		ReadOnly: false,
+		Default:  "1",
+	}
+
+	SettingDefinitionRecurringFailedJobsHistoryLimit = SettingDefinition{
+		DisplayName: "Cronjob Failed Jobs History Limit",
+		Description: "This setting specifies how many failed backup or snapshot job histories should be retained.\n\n" +
+			"History will not be retained if the value is 0.",
+		Category: SettingCategoryBackup,
+		Type:     SettingTypeInt,
+		Required: false,
+		ReadOnly: false,
+		Default:  "1",
+	}
+
+	SettingDefinitionSupportBundleFailedHistoryLimit = SettingDefinition{
+		DisplayName: "SupportBundle Failed History Limit",
+		Description: "This setting specifies how many failed support bundles can exist in the cluster.\n\n" +
+			"The retained failed support bundle is for analysis purposes and needs to clean up manually.\n\n" +
+			"Set this value to **0** to have Longhorn automatically purge all failed support bundles.\n\n",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeInt,
+		Required: false,
+		ReadOnly: false,
+		Default:  "1",
+	}
+
+	SettingDefinitionDeletingConfirmationFlag = SettingDefinition{
+		DisplayName: "Deleting Confirmation Flag",
+		Description: "This flag is designed to prevent Longhorn from being accidentally uninstalled which will lead to data lost. \n\n" +
+			"Set this flag to **true** to allow Longhorn uninstallation. " +
+			"If this flag **false**, Longhorn uninstallation job will fail.",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeBool,
+		Required: true,
+		ReadOnly: false,
+		Default:  "false",
+	}
+
+	SettingDefinitionEngineReplicaTimeout = SettingDefinition{
+		DisplayName: "Timeout between Engine and Replica",
+		Description: "In seconds. The setting specifies the timeout between the engine and replica(s), and the value should be between 8 to 30 seconds. The default value is 8 seconds.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "8",
+	}
+
+	SettingDefinitionSnapshotDataIntegrity = SettingDefinition{
+		DisplayName: "Snapshot Data Integrity",
+		Description: "This setting allows users to enable or disable snapshot hashing and data integrity checking. \n\n" +
+			"Available options are: \n\n" +
+			"- **disabled**: Disable snapshot disk file hashing and data integrity checking. \n\n" +
+			"- **enabled**: Enables periodic snapshot disk file hashing and data integrity checking. To detect the filesystem-unaware corruption caused by bit rot or other issues in snapshot disk files, Longhorn system periodically hashes files and finds corrupted ones. Hence, the system performance will be impacted during the periodical checking. \n\n" +
+			"- **fast-check**: Enable snapshot disk file hashing and fast data integrity checking. Longhorn system only hashes snapshot disk files if their are not hashed or the modification time are changed. In this mode, filesystem-unaware corruption cannot be detected, but the impact on system performance can be minimized.",
+		Category: SettingCategorySnapshot,
+		Type:     SettingTypeString,
+		Required: true,
+		ReadOnly: false,
+		Default:  string(longhorn.SnapshotDataIntegrityFastCheck),
+		Choices: []string{
+			string(longhorn.SnapshotDataIntegrityDisabled),
+			string(longhorn.SnapshotDataIntegrityEnabled),
+			string(longhorn.SnapshotDataIntegrityFastCheck),
+		},
+	}
+
+	SettingDefinitionSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation = SettingDefinition{
+		DisplayName: "Immediate Snapshot Data Integrity Check After Creating a Snapshot",
+		Description: "Hashing snapshot disk files impacts the performance of the system. The immediate snapshot hashing and checking can be disabled to minimize the impact after creating a snapshot.",
+		Category:    SettingCategorySnapshot,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "false",
+	}
+
+	SettingDefinitionSnapshotDataIntegrityCronJob = SettingDefinition{
+		DisplayName: "Snapshot Data Integrity Check CronJob",
+		Description: "Unix-cron string format. The setting specifies when Longhorn checks the data integrity of snapshot disk files. \n\n" +
+			"Warning: Hashing snapshot disk files impacts the performance of the system. It is recommended to run data integrity checks during off-peak times and to reduce the frequency of checks.",
+		Category: SettingCategorySnapshot,
+		Type:     SettingTypeString,
+		Required: true,
+		ReadOnly: false,
+		Default:  "0 0 */7 * *",
+	}
+
+	SettingDefinitionRemoveSnapshotsDuringFilesystemTrim = SettingDefinition{
+		DisplayName: "Remove Snapshots During Filesystem Trim",
+		Description: "This setting allows Longhorn filesystem trim feature to automatically mark the latest snapshot and its ancestors as removed and stops at the snapshot containing multiple children.\n\n" +
+			"Since Longhorn filesystem trim feature can be applied to the volume head and the followed continuous removed or system snapshots only, trying to trim a removed file from a valid snapshot will do nothing but the filesystem will discard this kind of in-memory trimmable file info. " +
+			"Later on if you mark the snapshot as removed and want to retry the trim, you may need to unmount and remount the filesystem so that the filesystem can recollect the trimmable file info.",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeBool,
+		Required: true,
+		ReadOnly: false,
+		Default:  "false",
+	}
+
+	SettingDefinitionFastReplicaRebuildEnabled = SettingDefinition{
+		DisplayName: "Fast Replica Rebuild Enabled",
+		Description: "This setting enables the fast replica rebuilding feature. It relies on the checksums of snapshot disk files, so setting the snapshot-data-integrity to **enable** or **fast-check** is a prerequisite.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "true",
+	}
+
+	SettingDefinitionReplicaFileSyncHTTPClientTimeout = SettingDefinition{
+		DisplayName: "Timeout of HTTP Client to Replica File Sync Server",
+		Description: "In seconds. The setting specifies the HTTP client timeout to the file sync server.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "30",
+	}
+
+	SettingDefinitionBackupCompressionMethod = SettingDefinition{
+		DisplayName: "Backup Compression Method",
+		Description: "This setting allows users to specify backup compression method.\n\n" +
+			"Available options are: \n\n" +
+			"- **none**: Disable the compression method. Suitable for multimedia data such as encoded images and videos. \n\n" +
+			"- **lz4**: Fast compression method. Suitable for flat files. \n\n" +
+			"- **gzip**: A bit of higher compression ratio but relatively slow.",
+		Category: SettingCategoryBackup,
+		Type:     SettingTypeString,
+		Required: true,
+		ReadOnly: false,
+		Default:  string(longhorn.BackupCompressionMethodLz4),
+		Choices: []string{
+			string(longhorn.BackupCompressionMethodNone),
+			string(longhorn.BackupCompressionMethodLz4),
+			string(longhorn.BackupCompressionMethodGzip),
+		},
+	}
+
+	SettingDefinitionBackupConcurrentLimit = SettingDefinition{
+		DisplayName: "Backup Concurrent Limit Per Backup",
+		Description: "This setting controls how many worker threads per backup concurrently.",
+		Category:    SettingCategoryBackup,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "2",
+	}
+
+	SettingDefinitionRestoreConcurrentLimit = SettingDefinition{
+		DisplayName: "Restore Concurrent Limit Per Backup",
+		Description: "This setting controls how many worker threads per restore concurrently.",
+		Category:    SettingCategoryBackup,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "2",
+	}
+
+	SettingDefinitionLogLevel = SettingDefinition{
+		DisplayName: "Log Level",
+		Description: "The log level Panic, Fatal, Error, Warn, Info, Debug, Trace used in longhorn manager. By default Debug.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "Info",
+	}
+
+	SettingDefinitionOfflineReplicaRebuilding = SettingDefinition{
+		DisplayName: "Offline Replica Rebuilding",
+		Description: "This setting allows users to enable the offline replica rebuilding for volumes using v2 data engine.",
+		Category:    SettingCategoryV2DataEngine,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     string(longhorn.OfflineReplicaRebuildingEnabled),
+		Choices: []string{
+			string(longhorn.OfflineReplicaRebuildingEnabled),
+			string(longhorn.OfflineReplicaRebuildingDisabled),
+		},
+	}
+
+	SettingDefinitionV2DataEngine = SettingDefinition{
+		DisplayName: "V2 Data Engine",
+		Description: "This setting allows users to activate v2 data engine which is based on SPDK. Currently, it is in the preview phase and should not be utilized in a production environment.\n\n" +
+			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached volumes. \n\n" +
+			"  - When applying the setting, Longhorn will restart all instance-manager pods. \n\n" +
+			"  - When the V2 Data Engine is enabled, each instance-manager pod utilizes 1 CPU core. This high CPU usage is attributed to the spdk_tgt process running within each instance-manager pod. The spdk_tgt process is responsible for handling input/output (IO) operations and requires intensive polling. As a result, it consumes 100% of a dedicated CPU core to efficiently manage and process the IO requests, ensuring optimal performance and responsiveness for storage operations. \n\n",
+		Category: SettingCategoryV2DataEngine,
+		Type:     SettingTypeBool,
+		Required: true,
+		ReadOnly: false,
+		Default:  "false",
+	}
+
+	SettingDefinitionV2DataEngineHugepageLimit = SettingDefinition{
+		DisplayName: "Hugepage Size for V2 Data Engine",
+		Description: "Hugepage size in MiB for v2 data engine",
+		Category:    SettingCategoryV2DataEngine,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    true,
+		Default:     "1024",
+	}
+>>>>>>> 2c5b6234 (fix: change default log level to info)
 )
 
 type NodeDownPodDeletionPolicy string
