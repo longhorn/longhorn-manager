@@ -205,7 +205,7 @@ func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string
 			existingMeta.GetDeletionTimestamp() == nil &&
 			!needToUpdateImage(existing, obj) {
 			// deployment of correct version already deployed
-			logrus.Debugf("Detected %v %v CSI Git commit %v version %v Kubernetes version %v has already been deployed",
+			logrus.Infof("Detected %v %v CSI Git commit %v version %v Kubernetes version %v has already been deployed",
 				resource, name, annos[AnnotationCSIGitCommit], annos[AnnotationCSIVersion], annos[AnnotationKubernetesVersion])
 			return nil
 		}

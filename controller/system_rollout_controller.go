@@ -789,7 +789,7 @@ func (c *SystemRolloutController) restore(kind string, fn func() error, log logr
 				c.postRestoreHandle(kind, nil)
 				return
 			}
-			log.WithError(err).Debugf(SystemRolloutMsgRestoringFmt, kind)
+			log.WithError(err).Warnf(SystemRolloutMsgRestoringFmt, kind)
 		}
 	}
 }

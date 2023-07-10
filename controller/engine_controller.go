@@ -1401,7 +1401,7 @@ func checkSizeBeforeRestoration(log logrus.FieldLogger, engine *longhorn.Engine,
 				if !datastore.ErrorIsConflict(err) {
 					return false, err
 				}
-				log.WithField("volume", v.Name).Debug("Retrying size update for DR volume before restore")
+				log.WithField("volume", v.Name).WithError(err).Warn("Retrying size update for DR volume before restore")
 				continue
 			}
 			return false, nil
@@ -1664,7 +1664,7 @@ func (ec *EngineController) rebuildNewReplica(e *longhorn.Engine) error {
 	}
 	// We cannot rebuild more than one replica at one time
 	if rebuildingInProgress {
-		ec.logger.WithField("volume", e.Spec.VolumeName).Debug("Skipped rebuilding of replica because there is another rebuild in progress")
+		ec.logger.WithField("volume", e.Spec.VolumeName).Info("Skipped rebuilding of replica because there is another rebuild in progress")
 		return nil
 	}
 	for replica, addr := range e.Status.CurrentReplicaAddressMap {

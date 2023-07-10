@@ -178,7 +178,7 @@ func deployDriver(c *cli.Context) error {
 		return errors.Wrap(err, "CSI cannot be deployed because MountPropagation is not set")
 	}
 
-	logrus.Debug("Deploying CSI driver")
+	logrus.Info("Deploying CSI driver")
 	return deployCSIDriver(kubeClient, lhClient, c, managerImage, managerURL)
 }
 

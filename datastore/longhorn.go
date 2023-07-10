@@ -800,7 +800,7 @@ func (s *DataStore) AddRecurringJobLabelToVolume(volume *longhorn.Volume, labelK
 		if err != nil {
 			return nil, err
 		}
-		logrus.Debugf("Added volume %v recurring job label %v", volume.Name, labelKey)
+		logrus.Infof("Added volume %v recurring job label %v", volume.Name, labelKey)
 	}
 	return volume, nil
 }
@@ -814,7 +814,7 @@ func (s *DataStore) RemoveRecurringJobLabelFromVolume(volume *longhorn.Volume, l
 		if err != nil {
 			return nil, err
 		}
-		logrus.Debugf("Removed volume %v recurring job label %v", volume.Name, labelKey)
+		logrus.Infof("Removed volume %v recurring job label %v", volume.Name, labelKey)
 	}
 	return volume, nil
 }
@@ -1545,7 +1545,7 @@ func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (is
 		}
 	}
 	if len(undeployedNodes) > 0 {
-		logrus.Debugf("CheckEngineImageReadiness: nodes %v don't have the engine image %v", undeployedNodes, image)
+		logrus.Infof("CheckEngineImageReadiness: nodes %v don't have the engine image %v", undeployedNodes, image)
 		return false, nil
 	}
 	return true, nil
@@ -2336,7 +2336,7 @@ func (s *DataStore) ListReadyNodesWithEngineImage(image string) (map[string]*lon
 // GetRandomReadyNode gets a list of all Node in the given namespace and
 // returns the first Node marked with condition ready and allow scheduling
 func (s *DataStore) GetRandomReadyNode() (*longhorn.Node, error) {
-	logrus.Debugf("Prepare to find a random ready node")
+	logrus.Info("Prepare to find a random ready node")
 	nodesRO, err := s.ListNodesRO()
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get random ready node")
@@ -2355,7 +2355,7 @@ func (s *DataStore) GetRandomReadyNode() (*longhorn.Node, error) {
 // GetRandomReadyNodeDisk a list of all Node the in the given namespace and
 // returns the first Node && the first Disk of the Node marked with condition ready and allow scheduling
 func (s *DataStore) GetRandomReadyNodeDisk() (*longhorn.Node, string, error) {
-	logrus.Debugf("Preparing to find a random ready node disk")
+	logrus.Info("Preparing to find a random ready node disk")
 	nodesRO, err := s.ListNodesRO()
 	if err != nil {
 		return nil, "", errors.Wrapf(err, "failed to get random ready node disk")
@@ -4352,7 +4352,7 @@ func (s *DataStore) RemoveSystemRestoreLabel(systemRestore *longhorn.SystemResto
 		"systemRestore": systemRestore.Name,
 		"label":         key,
 	})
-	log.Debug("Removed SystemRestore label")
+	log.Info("Removed SystemRestore label")
 	return systemRestore, nil
 }
 

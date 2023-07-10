@@ -109,12 +109,12 @@ type EngineClientProxy interface {
 
 func (p *Proxy) Close() {
 	if p.grpcClient == nil {
-		p.logger.WithError(errors.New("gRPC client not exist")).Debugf("failed to close engine proxy service client")
+		p.logger.WithError(errors.New("gRPC client not exist")).Warn("Failed to close engine proxy service client")
 		return
 	}
 
 	if err := p.grpcClient.Close(); err != nil {
-		p.logger.WithError(err).Warn("failed to close engine client proxy")
+		p.logger.WithError(err).Warn("Failed to close engine client proxy")
 	}
 
 	// The only potential returning error from Close() is
