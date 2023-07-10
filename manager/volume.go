@@ -843,7 +843,7 @@ func (m *VolumeManager) UpdateReplicaCount(name string, count int) (v *longhorn.
 	if err != nil {
 		return nil, err
 	}
-	logrus.Debugf("Updated volume %v replica count from %v to %v", v.Name, oldCount, v.Spec.NumberOfReplicas)
+	logrus.Infof("Updated volume %v replica count from %v to %v", v.Name, oldCount, v.Spec.NumberOfReplicas)
 	return v, nil
 }
 
@@ -864,7 +864,7 @@ func (m *VolumeManager) UpdateSnapshotDataIntegrity(name string, value string) (
 	if err != nil {
 		return nil, err
 	}
-	logrus.Debugf("Updated volume %v snapshot data integrity from %v to %v", v.Name, oldValue, v.Spec.SnapshotDataIntegrity)
+	logrus.Infof("Updated volume %v snapshot data integrity from %v to %v", v.Name, oldValue, v.Spec.SnapshotDataIntegrity)
 	return v, nil
 }
 
@@ -885,7 +885,7 @@ func (m *VolumeManager) UpdateOfflineReplicaRebuilding(name string, value string
 	if err != nil {
 		return nil, err
 	}
-	logrus.Debugf("Updated volume %v offline replica rebuilding from %v to %v", v.Name, oldValue, v.Spec.OfflineReplicaRebuilding)
+	logrus.Infof("Updated volume %v offline replica rebuilding from %v to %v", v.Name, oldValue, v.Spec.OfflineReplicaRebuilding)
 	return v, nil
 }
 
@@ -906,7 +906,7 @@ func (m *VolumeManager) UpdateBackupCompressionMethod(name string, value string)
 	if err != nil {
 		return nil, err
 	}
-	logrus.Debugf("Updated volume %v backup compression method from %v to %v", v.Name, oldValue, v.Spec.BackupCompressionMethod)
+	logrus.Infof("Updated volume %v backup compression method from %v to %v", v.Name, oldValue, v.Spec.BackupCompressionMethod)
 	return v, nil
 }
 
@@ -932,7 +932,7 @@ func (m *VolumeManager) UpdateReplicaAutoBalance(name string, inputSpec longhorn
 		return nil, err
 	}
 
-	logrus.Debugf("Updated volume %v replica auto-balance spec from %v to %v", v.Name, oldSpec, v.Spec.ReplicaAutoBalance)
+	logrus.Infof("Updated volume %v replica auto-balance spec from %v to %v", v.Name, oldSpec, v.Spec.ReplicaAutoBalance)
 	return v, nil
 }
 
@@ -958,7 +958,7 @@ func (m *VolumeManager) UpdateDataLocality(name string, dataLocality longhorn.Da
 		return nil, err
 	}
 
-	logrus.Debugf("Updated volume %v data locality from %v to %v", v.Name, oldDataLocality, v.Spec.DataLocality)
+	logrus.Infof("Updated volume %v data locality from %v to %v", v.Name, oldDataLocality, v.Spec.DataLocality)
 	return v, nil
 }
 

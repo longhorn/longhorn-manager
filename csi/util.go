@@ -284,7 +284,7 @@ func syncMountPointDirectory(targetPath string) error {
 // in case where the mount point exists but is corrupt, the mount point will be cleaned up and a error is returned
 // the underlying implementation utilizes mounter.IsLikelyNotMountPoint so it cannot detect bind mounts
 func ensureMountPoint(targetPath string, mounter mount.Interface) (bool, error) {
-	logrus.Debugf("Trying to ensure mount point %v", targetPath)
+	logrus.Infof("Trying to ensure mount point %v", targetPath)
 	notMnt, err := mount.IsNotMountPoint(mounter, targetPath)
 	if os.IsNotExist(err) {
 		return false, os.MkdirAll(targetPath, 0750)
@@ -292,7 +292,7 @@ func ensureMountPoint(targetPath string, mounter mount.Interface) (bool, error) 
 
 	IsCorruptedMnt := mount.IsCorruptedMnt(err)
 	if !IsCorruptedMnt {
-		logrus.Debugf("Mount point %v try opening and syncing dir to make sure it's healthy", targetPath)
+		logrus.Infof("Mount point %v try opening and syncing dir to make sure it's healthy", targetPath)
 		if err := syncMountPointDirectory(targetPath); err != nil {
 			logrus.WithError(err).Warnf("Mount point %v was identified as corrupt by opening and syncing", targetPath)
 			IsCorruptedMnt = true
@@ -317,10 +317,10 @@ func unmount(targetPath string, mounter mount.Interface) error {
 
 	forceUnmounter, ok := mounter.(mount.MounterForceUnmounter)
 	if ok {
-		logrus.Debugf("Trying to force unmount potential mount point %v", targetPath)
+		logrus.Infof("Trying to force unmount potential mount point %v", targetPath)
 		err = forceUnmounter.UnmountWithForce(targetPath, defaultForceUmountTimeout)
 	} else {
-		logrus.Debugf("Trying to unmount potential mount point %v", targetPath)
+		logrus.Infof("Trying to unmount potential mount point %v", targetPath)
 		err = mounter.Unmount(targetPath)
 	}
 	if err == nil {

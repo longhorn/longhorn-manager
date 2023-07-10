@@ -244,14 +244,14 @@ func (rc *ReplicaController) UpdateReplicaEvictionStatus(replica *longhorn.Repli
 	if rc.isEvictionRequested(replica) &&
 		!replica.Status.EvictionRequested {
 		replica.Status.EvictionRequested = true
-		log.Debug("Replica has requested eviction")
+		log.Info("Replica has requested eviction")
 	}
 
 	// Check if eviction has been cancelled on this replica
 	if !rc.isEvictionRequested(replica) &&
 		replica.Status.EvictionRequested {
 		replica.Status.EvictionRequested = false
-		log.Debug("Replica has cancelled eviction")
+		log.Info("Replica has cancelled eviction")
 	}
 
 }
