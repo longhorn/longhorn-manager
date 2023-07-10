@@ -3647,7 +3647,8 @@ func (c *VolumeController) syncPVCRecurringJobLabels(volume *longhorn.Volume) er
 	}
 
 	if !hasSourceLabel {
-		c.logger.Warnf("Ignoring recurring job labels on Volume %v PVC %v due to missing source label", volume.Name, pvc.Name)
+		c.logger.Debugf("Ignoring recurring job labels on Volume %v PVC %v due to missing source label", volume.Name, pvc.Name)
+
 		return nil
 	}
 

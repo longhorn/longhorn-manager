@@ -1064,7 +1064,7 @@ var (
 		Type:        SettingTypeString,
 		Required:    true,
 		ReadOnly:    false,
-		Default:     "Debug",
+		Default:     "Info",
 	}
 
 	SettingDefinitionOfflineReplicaRebuilding = SettingDefinition{
