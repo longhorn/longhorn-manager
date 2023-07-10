@@ -1047,6 +1047,95 @@ var (
 		ReadOnly:    false,
 		Default:     "30",
 	}
+<<<<<<< HEAD
+=======
+
+	SettingDefinitionBackupCompressionMethod = SettingDefinition{
+		DisplayName: "Backup Compression Method",
+		Description: "This setting allows users to specify backup compression method.\n\n" +
+			"Available options are: \n\n" +
+			"- **none**: Disable the compression method. Suitable for multimedia data such as encoded images and videos. \n\n" +
+			"- **lz4**: Fast compression method. Suitable for flat files. \n\n" +
+			"- **gzip**: A bit of higher compression ratio but relatively slow.",
+		Category: SettingCategoryBackup,
+		Type:     SettingTypeString,
+		Required: true,
+		ReadOnly: false,
+		Default:  string(longhorn.BackupCompressionMethodLz4),
+		Choices: []string{
+			string(longhorn.BackupCompressionMethodNone),
+			string(longhorn.BackupCompressionMethodLz4),
+			string(longhorn.BackupCompressionMethodGzip),
+		},
+	}
+
+	SettingDefinitionBackupConcurrentLimit = SettingDefinition{
+		DisplayName: "Backup Concurrent Limit Per Backup",
+		Description: "This setting controls how many worker threads per backup concurrently.",
+		Category:    SettingCategoryBackup,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "2",
+	}
+
+	SettingDefinitionRestoreConcurrentLimit = SettingDefinition{
+		DisplayName: "Restore Concurrent Limit Per Backup",
+		Description: "This setting controls how many worker threads per restore concurrently.",
+		Category:    SettingCategoryBackup,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "2",
+	}
+
+	SettingDefinitionLogLevel = SettingDefinition{
+		DisplayName: "Log Level",
+		Description: "The log level Panic, Fatal, Error, Warn, Info, Debug, Trace used in longhorn manager. By default Debug.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "Info",
+	}
+
+	SettingDefinitionOfflineReplicaRebuilding = SettingDefinition{
+		DisplayName: "Offline Replica Rebuilding",
+		Description: "This setting allows users to enable the offline replica rebuilding for volumes using v2 data engine.",
+		Category:    SettingCategoryV2DataEngine,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     string(longhorn.OfflineReplicaRebuildingEnabled),
+		Choices: []string{
+			string(longhorn.OfflineReplicaRebuildingEnabled),
+			string(longhorn.OfflineReplicaRebuildingDisabled),
+		},
+	}
+
+	SettingDefinitionV2DataEngine = SettingDefinition{
+		DisplayName: "V2 Data Engine",
+		Description: "This setting allows users to activate v2 data engine which is based on SPDK. Currently, it is in the preview phase and should not be utilized in a production environment.\n\n" +
+			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached volumes. \n\n" +
+			"  - When applying the setting, Longhorn will restart all instance-manager pods. \n\n" +
+			"  - When the V2 Data Engine is enabled, each instance-manager pod utilizes 1 CPU core. This high CPU usage is attributed to the spdk_tgt process running within each instance-manager pod. The spdk_tgt process is responsible for handling input/output (IO) operations and requires intensive polling. As a result, it consumes 100% of a dedicated CPU core to efficiently manage and process the IO requests, ensuring optimal performance and responsiveness for storage operations. \n\n",
+		Category: SettingCategoryV2DataEngine,
+		Type:     SettingTypeBool,
+		Required: true,
+		ReadOnly: false,
+		Default:  "false",
+	}
+
+	SettingDefinitionV2DataEngineHugepageLimit = SettingDefinition{
+		DisplayName: "Hugepage Size for V2 Data Engine",
+		Description: "Hugepage size in MiB for v2 data engine",
+		Category:    SettingCategoryV2DataEngine,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    true,
+		Default:     "1024",
+	}
+>>>>>>> 2c5b6234 (fix: change default log level to info)
 )
 
 type NodeDownPodDeletionPolicy string
