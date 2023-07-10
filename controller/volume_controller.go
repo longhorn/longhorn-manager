@@ -3351,8 +3351,40 @@ func (vc *VolumeController) updateRecurringJobs(v *longhorn.Volume) (err error) 
 	return nil
 }
 
+<<<<<<< HEAD
 func (vc *VolumeController) isVolumeUpgrading(v *longhorn.Volume) bool {
 	return v.Status.CurrentImage != v.Spec.EngineImage
+=======
+func (c *VolumeController) syncPVCRecurringJobLabels(volume *longhorn.Volume) error {
+	kubeStatus := volume.Status.KubernetesStatus
+	if kubeStatus.PVCName == "" || kubeStatus.LastPVCRefAt != "" {
+		return nil
+	}
+
+	pvc, err := c.ds.GetPersistentVolumeClaim(kubeStatus.Namespace, kubeStatus.PVCName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	hasSourceLabel, err := hasRecurringJobSourceLabel(pvc)
+	if err != nil {
+		return errors.Wrapf(err, "failed to check recurring job source")
+	}
+
+	if !hasSourceLabel {
+		c.logger.Debugf("Ignoring recurring job labels on Volume %v PVC %v due to missing source label", volume.Name, pvc.Name)
+
+		return nil
+	}
+
+	if err := syncRecurringJobLabelsToTargetResource(types.LonghornKindVolume, volume, pvc, c.logger); err != nil {
+		return errors.Wrapf(err, "failed to sync recurring job labels from PVC %v to Volume %v", pvc.Name, volume.Name)
+	}
+	return nil
+>>>>>>> 73e92f70 (fix(recurring-job): flooded source label log)
 }
 
 func (vc *VolumeController) isVolumeMigrating(v *longhorn.Volume) bool {
