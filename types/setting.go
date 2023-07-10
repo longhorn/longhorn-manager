@@ -1333,7 +1333,7 @@ func ValidateSetting(name, value string) (err error) {
 		runAt := schedule.Next(time.Unix(0, 0))
 		nextRunAt := schedule.Next(runAt)
 
-		logrus.Debugf("The interval between two data integrity checks is %v seconds", nextRunAt.Sub(runAt).Seconds())
+		logrus.Infof("The interval between two data integrity checks is %v seconds", nextRunAt.Sub(runAt).Seconds())
 
 	// multi-choices
 	case SettingNameNodeDownPodDeletionPolicy:

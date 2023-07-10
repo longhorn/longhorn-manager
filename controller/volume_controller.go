@@ -1647,7 +1647,7 @@ func isVolumeOfflineUpgrade(v *longhorn.Volume) bool {
 
 func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, log *logrus.Entry) error {
 	if isVolumeOfflineUpgrade(v) {
-		log.Debug("Wait for offline volume upgrade to finish")
+		log.Info("Waiting for offline volume upgrade to finish")
 		return nil
 	}
 
@@ -2060,7 +2060,7 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 				rs[reusableFailedReplica.Name] = reusableFailedReplica
 				continue
 			}
-			log.Debugf("Failed to reuse failed replica %v immediately, backoff period is %v now",
+			log.Warnf("Failed to reuse failed replica %v immediately, backoff period is %v now",
 				reusableFailedReplica.Name, c.backoff.Get(reusableFailedReplica.Name).Seconds())
 			// Couldn't reuse the replica. Add the volume back to the workqueue to check it later
 			c.enqueueVolumeAfter(v, c.backoff.Get(reusableFailedReplica.Name))
@@ -2494,7 +2494,7 @@ func (c *VolumeController) getIsSchedulableToDiskNodes(v *longhorn.Volume, nodeN
 			// TODO: record the message to condition
 			log.Warn("Found 0 node has at least one schedulable disk")
 		} else {
-			log.Debugf("Found node %v has at least one schedulable disk", schedulableNodeNames)
+			log.Infof("Found node %v has at least one schedulable disk", schedulableNodeNames)
 		}
 	}()
 

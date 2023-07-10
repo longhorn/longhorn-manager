@@ -75,7 +75,7 @@ func EncryptVolume(devicePath, passphrase string, cryptoParams *EncryptParams) e
 // OpenVolume opens volume so that it can be used by the client.
 func OpenVolume(volume, devicePath, passphrase string) error {
 	if isOpen, _ := IsDeviceOpen(VolumeMapper(volume)); isOpen {
-		logrus.Debugf("Device %s is already opened at %s", devicePath, VolumeMapper(volume))
+		logrus.Infof("Device %s is already opened at %s", devicePath, VolumeMapper(volume))
 		return nil
 	}
 
@@ -121,7 +121,7 @@ func DeviceEncryptionStatus(devicePath string) (mappedDevice, mapper string, err
 	volume := strings.TrimPrefix(devicePath, mapperFilePathPrefix+"/")
 	stdout, err := luksStatus(volume)
 	if err != nil {
-		logrus.WithError(err).Debugf("Device %s is not an active LUKS device", devicePath)
+		logrus.WithError(err).Warnf("Device %s is not an active LUKS device", devicePath)
 		return devicePath, "", nil
 	}
 	lines := strings.Split(string(stdout), "\n")

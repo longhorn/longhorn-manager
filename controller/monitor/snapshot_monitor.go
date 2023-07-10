@@ -299,7 +299,7 @@ func (m *SnapshotMonitor) shouldAddToInProgressSnapshotCheckTasks(snapshotName s
 
 	_, ok := m.inProgressSnapshotCheckTasks[snapshotName]
 	if ok {
-		m.logger.WithField("monitor", monitorName).Debugf("snapshot %s is being checked", snapshotName)
+		m.logger.WithField("monitor", monitorName).Infof("Checking snapshot %s", snapshotName)
 		return false
 	}
 	m.inProgressSnapshotCheckTasks[snapshotName] = struct{}{}

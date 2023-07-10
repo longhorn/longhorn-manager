@@ -48,7 +48,7 @@ func NewStreamHandlerFunc(streamType string, watcher *controller.Watcher, listFu
 			for {
 				_, _, err := conn.ReadMessage()
 				if err != nil {
-					logrus.WithFields(fields).Debug(err.Error())
+					logrus.WithFields(fields).Warn(err.Error())
 					return
 				}
 			}
