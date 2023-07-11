@@ -636,7 +636,17 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 	if kubernetesStatus.PVCName != "" && kubernetesStatus.LastPVCRefAt == "" {
 		pvc, _ := bc.ds.GetPersistentVolumeClaim(kubernetesStatus.Namespace, kubernetesStatus.PVCName)
 		if pvc != nil {
-			storageClassName = *pvc.Spec.StorageClassName
+			if pvc.Spec.StorageClassName != nil {
+				storageClassName = *pvc.Spec.StorageClassName
+			}
+			if storageClassName == "" {
+				if v, exist := pvc.Annotations[corev1.BetaStorageClassAnnotation]; exist {
+					storageClassName = v
+				}
+			}
+			if storageClassName == "" {
+				bc.logger.Warnf("Failed to find the StorageClassName from the pvc %v", pvc.Name)
+			}
 		}
 	}
 
