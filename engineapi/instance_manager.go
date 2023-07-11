@@ -65,7 +65,7 @@ func (c *InstanceManagerClient) Close() error {
 	}
 
 	if c.diskServiceGrpcClient != nil {
-		err = multierr.Append(err, c.instanceServiceGrpcClient.Close())
+		err = multierr.Append(err, c.diskServiceGrpcClient.Close())
 	}
 
 	if c.instanceServiceGrpcClient != nil {
