@@ -318,6 +318,7 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 			return sc.ds.RemoveFinalizerForSnapshot(snapshot)
 		}
 
+		// Wait to get engine until now. If isVolDeletedOrBeingDeleted, the engine may not exist.
 		engine, err := sc.getTheOnlyEngineCRforSnapshot(snapshot)
 		if err != nil {
 			return err
@@ -335,6 +336,14 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 			}
 		}()
 
+		// If the snapshot no longer exists in the engine, allow its CR to be deleted.
+		if _, ok := engine.Status.Snapshots[snapshot.Name]; !ok {
+			if err = sc.handleAttachmentTicketDeletion(snapshot); err != nil {
+				return err
+			}
+			return sc.ds.RemoveFinalizerForSnapshot(snapshot)
+		}
+
 		if _, ok := snapshot.Status.Children["volume-head"]; ok && snapshot.Status.MarkRemoved {
 			// This snapshot is the parent of volume-head, so it cannot be purged immediately.
 			// We do not want to keep the volume stuck in attached state.
@@ -348,24 +357,9 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 		if engine.Status.CurrentState != longhorn.InstanceStateRunning {
 			return fmt.Errorf("failed to delete snapshot because the volume engine %v is not running. Will reenqueue and retry later", engine.Name)
 		}
+
 		// Delete the snapshot from engine process
-		if err := sc.handleSnapshotDeletion(snapshot, engine); err != nil {
-			return err
-		}
-
-		// Wait for the snapshot to be removed from engine.Status.Snapshots
-		engine, err = sc.ds.GetEngineRO(engine.Name)
-		if err != nil {
-			return err
-		}
-		if _, ok := engine.Status.Snapshots[snapshot.Name]; !ok {
-			if err = sc.handleAttachmentTicketDeletion(snapshot); err != nil {
-				return err
-			}
-			return sc.ds.RemoveFinalizerForSnapshot(snapshot)
-		}
-
-		return nil
+		return sc.handleSnapshotDeletion(snapshot, engine)
 	}
 
 	requestCreateNewSnapshot := snapshot.Spec.CreateSnapshot
