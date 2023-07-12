@@ -37,16 +37,18 @@ func (s *snapShotMutator) Resource() admission.Resource {
 		ObjectType: &longhorn.Snapshot{},
 		OperationTypes: []admissionregv1.OperationType{
 			admissionregv1.Create,
+			admissionregv1.Update,
 		},
 	}
 }
 
 func (s *snapShotMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
+	snapshot := newObj.(*longhorn.Snapshot)
 	var patchOps admission.PatchOps
 
-	snapshot, ok := newObj.(*longhorn.Snapshot)
-	if !ok {
-		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Snapshot", newObj), "")
+	var err error
+	if patchOps, err = mutate(newObj); err != nil {
+		return nil, err
 	}
 
 	volume, err := s.ds.GetVolumeRO(snapshot.Spec.Volume)
@@ -64,13 +66,6 @@ func (s *snapShotMutator) Create(request *admission.Request, newObj runtime.Obje
 	}
 	patchOps = append(patchOps, patchOp)
 
-	patchOp, err = common.GetLonghornFinalizerPatchOp(snapshot)
-	if err != nil {
-		err := errors.Wrapf(err, "failed to get finalizer patch for snapshot %v", snapshot.Name)
-		return nil, werror.NewInvalidError(err.Error(), "")
-	}
-	patchOps = append(patchOps, patchOp)
-
 	if len(snapshot.OwnerReferences) == 0 {
 		volumeRef := datastore.GetOwnerReferencesForVolume(volume)
 		bytes, err := json.Marshal(volumeRef)
@@ -79,6 +74,27 @@ func (s *snapShotMutator) Create(request *admission.Request, newObj runtime.Obje
 			return nil, werror.NewInvalidError(err.Error(), "")
 		}
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/metadata/ownerReferences", "value": %v}`, string(bytes)))
+	}
+
+	return patchOps, nil
+}
+
+func (s *snapShotMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
+	return mutate(newObj)
+}
+
+// mutate contains functionality shared by Create and Update.
+func mutate(newObj runtime.Object) (admission.PatchOps, error) {
+	snapshot := newObj.(*longhorn.Snapshot)
+	var patchOps admission.PatchOps
+
+	patchOp, err := common.GetLonghornFinalizerPatchOpIfNeeded(snapshot)
+	if err != nil {
+		err := errors.Wrapf(err, "failed to get finalizer patch for snapshot %v", snapshot.Name)
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+	if patchOp != "" {
+		patchOps = append(patchOps, patchOp)
 	}
 
 	return patchOps, nil

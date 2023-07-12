@@ -1419,10 +1419,6 @@ func (s *DataStore) CreateEngineImage(img *longhorn.EngineImage) (*longhorn.Engi
 
 // UpdateEngineImage updates Longhorn EngineImage and verifies update
 func (s *DataStore) UpdateEngineImage(img *longhorn.EngineImage) (*longhorn.EngineImage, error) {
-	if err := util.AddFinalizer(longhornFinalizerKey, img); err != nil {
-		return nil, err
-	}
-
 	obj, err := s.lhClient.LonghornV1beta2().EngineImages(s.namespace).Update(context.TODO(), img, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
@@ -1621,9 +1617,6 @@ func (s *DataStore) CreateBackingImage(backingImage *longhorn.BackingImage) (*lo
 
 // UpdateBackingImage updates Longhorn BackingImage and verifies update
 func (s *DataStore) UpdateBackingImage(backingImage *longhorn.BackingImage) (*longhorn.BackingImage, error) {
-	if err := util.AddFinalizer(longhornFinalizerKey, backingImage); err != nil {
-		return nil, err
-	}
 	obj, err := s.lhClient.LonghornV1beta2().BackingImages(s.namespace).Update(context.TODO(), backingImage, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
@@ -1766,9 +1759,6 @@ func initBackingImageManager(backingImageManager *longhorn.BackingImageManager) 
 
 // UpdateBackingImageManager updates Longhorn BackingImageManager and verifies update
 func (s *DataStore) UpdateBackingImageManager(backingImageManager *longhorn.BackingImageManager) (*longhorn.BackingImageManager, error) {
-	if err := util.AddFinalizer(longhornFinalizerKey, backingImageManager); err != nil {
-		return nil, err
-	}
 	if err := labelLonghornNode(backingImageManager.Spec.NodeID, backingImageManager); err != nil {
 		return nil, err
 	}
@@ -1908,9 +1898,6 @@ func (s *DataStore) CreateBackingImageDataSource(backingImageDataSource *longhor
 	if err := initBackingImageDataSource(backingImageDataSource); err != nil {
 		return nil, err
 	}
-	if err := util.AddFinalizer(longhornFinalizerKey, backingImageDataSource); err != nil {
-		return nil, err
-	}
 	ret, err := s.lhClient.LonghornV1beta2().BackingImageDataSources(s.namespace).Create(context.TODO(), backingImageDataSource, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
@@ -1942,10 +1929,6 @@ func initBackingImageDataSource(backingImageDataSource *longhorn.BackingImageDat
 
 // UpdateBackingImageDataSource updates Longhorn BackingImageDataSource and verifies update
 func (s *DataStore) UpdateBackingImageDataSource(backingImageDataSource *longhorn.BackingImageDataSource) (*longhorn.BackingImageDataSource, error) {
-	if err := util.AddFinalizer(longhornFinalizerKey, backingImageDataSource); err != nil {
-		return nil, err
-	}
-
 	obj, err := s.lhClient.LonghornV1beta2().BackingImageDataSources(s.namespace).Update(context.TODO(), backingImageDataSource, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
@@ -3181,10 +3164,6 @@ func (s *DataStore) CreateShareManager(sm *longhorn.ShareManager) (*longhorn.Sha
 
 // UpdateShareManager updates Longhorn ShareManager resource and verifies update
 func (s *DataStore) UpdateShareManager(sm *longhorn.ShareManager) (*longhorn.ShareManager, error) {
-	if err := util.AddFinalizer(longhornFinalizerKey, sm); err != nil {
-		return nil, err
-	}
-
 	obj, err := s.lhClient.LonghornV1beta2().ShareManagers(s.namespace).Update(context.TODO(), sm, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err

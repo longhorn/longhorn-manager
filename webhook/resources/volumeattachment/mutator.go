@@ -42,9 +42,13 @@ func (m *volumeAttachmentMutator) Resource() admission.Resource {
 }
 
 func (m *volumeAttachmentMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
+	va := newObj.(*longhorn.VolumeAttachment)
 	var patchOps admission.PatchOps
 
-	va := newObj.(*longhorn.VolumeAttachment)
+	var err error
+	if patchOps, err = mutate(newObj); err != nil {
+		return nil, err
+	}
 
 	volume, err := m.ds.GetVolumeRO(va.Spec.Volume)
 	if err != nil {
@@ -55,13 +59,6 @@ func (m *volumeAttachmentMutator) Create(request *admission.Request, newObj runt
 	patchOp, err := common.GetLonghornLabelsPatchOp(va, types.GetVolumeLabels(volume.Name), nil)
 	if err != nil {
 		err := errors.Wrapf(err, "failed to get labels patch for VolumeAttachment %v", va.Name)
-		return nil, werror.NewInvalidError(err.Error(), "")
-	}
-	patchOps = append(patchOps, patchOp)
-
-	patchOp, err = common.GetLonghornFinalizerPatchOp(va)
-	if err != nil {
-		err := errors.Wrapf(err, "failed to get finalizer patch for VolumeAttachment %v", va.Name)
 		return nil, werror.NewInvalidError(err.Error(), "")
 	}
 	patchOps = append(patchOps, patchOp)
@@ -80,10 +77,14 @@ func (m *volumeAttachmentMutator) Create(request *admission.Request, newObj runt
 }
 
 func (m *volumeAttachmentMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
-	var patchOps admission.PatchOps
-
 	oldVa := oldObj.(*longhorn.VolumeAttachment)
 	newVa := newObj.(*longhorn.VolumeAttachment)
+	var patchOps admission.PatchOps
+
+	var err error
+	if patchOps, err = mutate(newObj); err != nil {
+		return nil, err
+	}
 
 	if newVa.Spec.AttachmentTickets == nil {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/attachmentTickets", "value": {}}`)
@@ -116,6 +117,23 @@ func (m *volumeAttachmentMutator) Update(request *admission.Request, oldObj runt
 			return nil, errors.Wrapf(err, "failed to get JSON encoding of attachmentTickets for volumeattachment %v ", newVa.Name)
 		}
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/attachmentTickets", "value": %v}`, string(bytes)))
+	}
+
+	return patchOps, nil
+}
+
+// mutate contains functionality shared by Create and Update.
+func mutate(newObj runtime.Object) (admission.PatchOps, error) {
+	va := newObj.(*longhorn.VolumeAttachment)
+	var patchOps admission.PatchOps
+
+	patchOp, err := common.GetLonghornFinalizerPatchOpIfNeeded(va)
+	if err != nil {
+		err := errors.Wrapf(err, "failed to get finalizer patch for VolumeAttachment %v", va.Name)
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+	if patchOp != "" {
+		patchOps = append(patchOps, patchOp)
 	}
 
 	return patchOps, nil

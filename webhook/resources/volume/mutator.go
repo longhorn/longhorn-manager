@@ -45,9 +45,13 @@ func (v *volumeMutator) Resource() admission.Resource {
 }
 
 func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
+	volume := newObj.(*longhorn.Volume)
 	var patchOps admission.PatchOps
 
-	volume := newObj.(*longhorn.Volume)
+	var err error
+	if patchOps, err = mutate(newObj); err != nil {
+		return nil, err
+	}
 
 	name := util.AutoCorrectName(volume.Name, datastore.NameMaximumLength)
 	if name != volume.Name {
@@ -199,13 +203,6 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 	patchOps = append(patchOps, patchOp)
 
-	patchOp, err = common.GetLonghornFinalizerPatchOp(volume)
-	if err != nil {
-		err := errors.Wrapf(err, "failed to get finalizer patch for volume %v", volume.Name)
-		return nil, werror.NewInvalidError(err.Error(), "")
-	}
-	patchOps = append(patchOps, patchOp)
-
 	newSize := util.RoundUpSize(size)
 	if newSize != size {
 		logrus.Infof("Rounding up the volume spec size from %d to %d in the create mutator", size, newSize)
@@ -269,9 +266,13 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 }
 
 func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
+	volume := newObj.(*longhorn.Volume)
 	var patchOps admission.PatchOps
 
-	volume := newObj.(*longhorn.Volume)
+	var err error
+	if patchOps, err = mutate(newObj); err != nil {
+		return nil, err
+	}
 
 	if volume.Spec.ReplicaAutoBalance == "" {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/replicaAutoBalance", "value": "ignored"}`)
@@ -336,6 +337,23 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 		return nil, werror.NewInvalidError(err.Error(), "")
 	}
 	patchOps = append(patchOps, patchOp)
+
+	return patchOps, nil
+}
+
+// mutate contains functionality shared by Create and Update.
+func mutate(newObj runtime.Object) (admission.PatchOps, error) {
+	volume := newObj.(*longhorn.Volume)
+	var patchOps admission.PatchOps
+
+	patchOp, err := common.GetLonghornFinalizerPatchOpIfNeeded(volume)
+	if err != nil {
+		err := errors.Wrapf(err, "failed to get finalizer patch for volume %v", volume.Name)
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+	if patchOp != "" {
+		patchOps = append(patchOps, patchOp)
+	}
 
 	return patchOps, nil
 }
