@@ -33,21 +33,32 @@ func (m *supportBundleMutator) Resource() admission.Resource {
 		ObjectType: &longhorn.SupportBundle{},
 		OperationTypes: []admissionregv1.OperationType{
 			admissionregv1.Create,
+			admissionregv1.Update,
 		},
 	}
 }
 
 func (m *supportBundleMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
+	return mutate(newObj)
+}
+
+func (m *supportBundleMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
+	return mutate(newObj)
+}
+
+// mutate contains functionality shared by Create and Update.
+func mutate(newObj runtime.Object) (admission.PatchOps, error) {
+	supportBundle := newObj.(*longhorn.SupportBundle)
 	var patchOps admission.PatchOps
 
-	supportBundle := newObj.(*longhorn.SupportBundle)
-
-	patchOp, err := common.GetLonghornFinalizerPatchOp(supportBundle)
+	patchOp, err := common.GetLonghornFinalizerPatchOpIfNeeded(supportBundle)
 	if err != nil {
 		err := errors.Wrapf(err, "failed to get finalizer patch for supportBundle %v", supportBundle.Name)
 		return nil, werror.NewInvalidError(err.Error(), "")
 	}
-	patchOps = append(patchOps, patchOp)
+	if patchOp != "" {
+		patchOps = append(patchOps, patchOp)
+	}
 
 	return patchOps, nil
 }

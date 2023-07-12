@@ -18,13 +18,17 @@ var (
 	longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
 )
 
-func GetLonghornFinalizerPatchOp(obj runtime.Object) (string, error) {
-	if err := util.AddFinalizer(longhornFinalizerKey, obj); err != nil {
-		return "", err
-	}
-
+func GetLonghornFinalizerPatchOpIfNeeded(obj runtime.Object) (string, error) {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
+		return "", err
+	}
+	if metadata.GetDeletionTimestamp() != nil {
+		// We should not add a finalizer to an object that is being deleted.
+		return "", nil
+	}
+
+	if err := util.AddFinalizer(longhornFinalizerKey, obj); err != nil {
 		return "", err
 	}
 

@@ -34,6 +34,7 @@ func (e *engineImageMutator) Resource() admission.Resource {
 		ObjectType: &longhorn.EngineImage{},
 		OperationTypes: []admissionregv1.OperationType{
 			admissionregv1.Create,
+			admissionregv1.Update,
 		},
 	}
 }
@@ -41,6 +42,11 @@ func (e *engineImageMutator) Resource() admission.Resource {
 func (e *engineImageMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
 	engineImage := newObj.(*longhorn.EngineImage)
 	var patchOps admission.PatchOps
+
+	var err error
+	if patchOps, err = mutate(newObj); err != nil {
+		return nil, err
+	}
 
 	image := strings.TrimSpace(engineImage.Spec.Image)
 	if image != engineImage.Spec.Image {
@@ -60,12 +66,26 @@ func (e *engineImageMutator) Create(request *admission.Request, newObj runtime.O
 	}
 	patchOps = append(patchOps, patchOp)
 
-	patchOp, err = common.GetLonghornFinalizerPatchOp(engineImage)
+	return patchOps, nil
+}
+
+func (e *engineImageMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
+	return mutate(newObj)
+}
+
+// mutate contains functionality shared by Create and Update.
+func mutate(newObj runtime.Object) (admission.PatchOps, error) {
+	engineImage := newObj.(*longhorn.EngineImage)
+	var patchOps admission.PatchOps
+
+	patchOp, err := common.GetLonghornFinalizerPatchOpIfNeeded(engineImage)
 	if err != nil {
 		err := errors.Wrapf(err, "failed to get finalizer patch for engineImage %v", engineImage.Name)
 		return nil, werror.NewInvalidError(err.Error(), "")
 	}
-	patchOps = append(patchOps, patchOp)
+	if patchOp != "" {
+		patchOps = append(patchOps, patchOp)
+	}
 
 	return patchOps, nil
 }

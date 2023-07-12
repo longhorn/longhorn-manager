@@ -38,9 +38,8 @@ func (r *recurringJobMutator) Resource() admission.Resource {
 }
 
 func (r *recurringJobMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
-	var patchOps admission.PatchOps
-
 	recurringjob := newObj.(*longhorn.RecurringJob)
+	var patchOps admission.PatchOps
 
 	name := util.AutoCorrectName(recurringjob.Name, datastore.NameMaximumLength)
 	if name != recurringjob.Name {
@@ -79,9 +78,8 @@ func (r *recurringJobMutator) Create(request *admission.Request, newObj runtime.
 }
 
 func (r *recurringJobMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
-	var patchOps admission.PatchOps
-
 	newRecurringjob := newObj.(*longhorn.RecurringJob)
+	var patchOps admission.PatchOps
 
 	if newRecurringjob.Spec.Name == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/name", "value": "%s"}`, newRecurringjob.Name))

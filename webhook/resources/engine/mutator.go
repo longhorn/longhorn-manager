@@ -38,17 +38,17 @@ func (e *engineMutator) Resource() admission.Resource {
 }
 
 func (e *engineMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
-	return mutateEngine(newObj, true)
+	return mutate(newObj)
 }
 
 func (e *engineMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
-	return mutateEngine(newObj, false)
+	return mutate(newObj)
 }
 
-func mutateEngine(newObj runtime.Object, needFinalizer bool) (admission.PatchOps, error) {
-	var patchOps admission.PatchOps
-
+// mutate contains functionality shared by Create and Update.
+func mutate(newObj runtime.Object) (admission.PatchOps, error) {
 	engine := newObj.(*longhorn.Engine)
+	var patchOps admission.PatchOps
 
 	if engine.Spec.ReplicaAddressMap == nil {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/replicaAddressMap", "value": {}}`)
@@ -69,12 +69,12 @@ func mutateEngine(newObj runtime.Object, needFinalizer bool) (admission.PatchOps
 	}
 	patchOps = append(patchOps, patchOp)
 
-	if needFinalizer {
-		patchOp, err = common.GetLonghornFinalizerPatchOp(engine)
-		if err != nil {
-			err := errors.Wrapf(err, "failed to get finalizer patch for engine %v", engine.Name)
-			return nil, werror.NewInvalidError(err.Error(), "")
-		}
+	patchOp, err = common.GetLonghornFinalizerPatchOpIfNeeded(engine)
+	if err != nil {
+		err := errors.Wrapf(err, "failed to get finalizer patch for engine %v", engine.Name)
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+	if patchOp != "" {
 		patchOps = append(patchOps, patchOp)
 	}
 

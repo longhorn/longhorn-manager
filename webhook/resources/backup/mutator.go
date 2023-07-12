@@ -42,18 +42,12 @@ func (b *backupMutator) Resource() admission.Resource {
 
 func (b *backupMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
 	backup := newObj.(*longhorn.Backup)
+	var patchOps admission.PatchOps
 
-	patchOps, err := mutate(newObj)
-	if err != nil {
-		return nil, werror.NewInvalidError(err.Error(), "")
+	var err error
+	if patchOps, err = mutate(newObj); err != nil {
+		return nil, err
 	}
-
-	patchOp, err := common.GetLonghornFinalizerPatchOp(backup)
-	if err != nil {
-		err := errors.Wrapf(err, "failed to get finalizer patch for backup %v", backup.Name)
-		return nil, werror.NewInvalidError(err.Error(), "")
-	}
-	patchOps = append(patchOps, patchOp)
 
 	backupLabels := backup.Spec.Labels
 	if backupLabels == nil {
@@ -88,12 +82,22 @@ func (b *backupMutator) Update(request *admission.Request, oldObj runtime.Object
 	return mutate(newObj)
 }
 
+// mutate contains functionality shared by Create and Update.
 func mutate(newObj runtime.Object) (admission.PatchOps, error) {
 	backup := newObj.(*longhorn.Backup)
 	var patchOps admission.PatchOps
 
 	if backup.Spec.Labels == nil {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/labels", "value": {}}`)
+	}
+
+	patchOp, err := common.GetLonghornFinalizerPatchOpIfNeeded(backup)
+	if err != nil {
+		err := errors.Wrapf(err, "failed to get finalizer patch for backup %v", backup.Name)
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+	if patchOp != "" {
+		patchOps = append(patchOps, patchOp)
 	}
 
 	return patchOps, nil

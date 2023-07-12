@@ -30,21 +30,32 @@ func (b *backupVolumeMutator) Resource() admission.Resource {
 		ObjectType: &longhorn.BackupVolume{},
 		OperationTypes: []admissionregv1.OperationType{
 			admissionregv1.Create,
+			admissionregv1.Update,
 		},
 	}
 }
 
 func (b *backupVolumeMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
+	return mutate(newObj)
+}
+
+func (b *backupVolumeMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
+	return mutate(newObj)
+}
+
+// mutate contains functionality shared by Create and Update.
+func mutate(newObj runtime.Object) (admission.PatchOps, error) {
+	backupVolume := newObj.(*longhorn.BackupVolume)
 	var patchOps admission.PatchOps
 
-	backupVolume := newObj.(*longhorn.BackupVolume)
-
-	patchOp, err := common.GetLonghornFinalizerPatchOp(backupVolume)
+	patchOp, err := common.GetLonghornFinalizerPatchOpIfNeeded(backupVolume)
 	if err != nil {
 		err := errors.Wrapf(err, "failed to get finalizer patch for backupVolume %v", backupVolume.Name)
 		return nil, werror.NewInvalidError(err.Error(), "")
 	}
-	patchOps = append(patchOps, patchOp)
+	if patchOp != "" {
+		patchOps = append(patchOps, patchOp)
+	}
 
 	return patchOps, nil
 }
