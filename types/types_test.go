@@ -123,43 +123,55 @@ func (s *TestSuite) TestParseToleration(c *C) {
 
 func (s *TestSuite) TestIsSelectorsInTags(c *C) {
 	type testCase struct {
-		inputTags      []string
-		inputSelectors []string
+		inputTags          []string
+		inputSelectors     []string
+		allowEmptySelector bool
 
 		expected bool
 	}
 	testCases := map[string]testCase{
 		"selectors exist": {
-			inputTags:      []string{"aaa", "bbb", "ccc"},
-			inputSelectors: []string{"aaa", "bbb", "ccc"},
-			expected:       true,
+			inputTags:          []string{"aaa", "bbb", "ccc"},
+			inputSelectors:     []string{"aaa", "bbb", "ccc"},
+			allowEmptySelector: true,
+			expected:           true,
 		},
 		"selectors mis-matched": {
-			inputTags:      []string{"aaa", "bbb", "ccc"},
-			inputSelectors: []string{"aaa", "b", "ccc"},
-			expected:       false,
+			inputTags:          []string{"aaa", "bbb", "ccc"},
+			inputSelectors:     []string{"aaa", "b", "ccc"},
+			allowEmptySelector: true,
+			expected:           false,
 		},
-		"selectors empty": {
-			inputTags:      []string{"aaa", "bbb", "ccc"},
-			inputSelectors: []string{},
-			expected:       true,
+		"selectors empty and tolerate": {
+			inputTags:          []string{"aaa", "bbb", "ccc"},
+			inputSelectors:     []string{},
+			allowEmptySelector: true,
+			expected:           true,
+		},
+		"selectors empty and not tolerate": {
+			inputTags:          []string{"aaa", "bbb", "ccc"},
+			inputSelectors:     []string{},
+			allowEmptySelector: false,
+			expected:           false,
 		},
 		"tags unsorted": {
-			inputTags:      []string{"bbb", "aaa", "ccc"},
-			inputSelectors: []string{"aaa", "bbb", "ccc"},
-			expected:       true,
+			inputTags:          []string{"bbb", "aaa", "ccc"},
+			inputSelectors:     []string{"aaa", "bbb", "ccc"},
+			allowEmptySelector: true,
+			expected:           true,
 		},
 		"tags empty": {
-			inputTags:      []string{},
-			inputSelectors: []string{"aaa", "bbb", "ccc"},
-			expected:       false,
+			inputTags:          []string{},
+			inputSelectors:     []string{"aaa", "bbb", "ccc"},
+			allowEmptySelector: true,
+			expected:           false,
 		},
 	}
 
 	for testName, testCase := range testCases {
 		fmt.Printf("testing %v\n", testName)
 
-		actual := IsSelectorsInTags(testCase.inputTags, testCase.inputSelectors)
+		actual := IsSelectorsInTags(testCase.inputTags, testCase.inputSelectors, testCase.allowEmptySelector)
 		c.Assert(actual, Equals, testCase.expected, Commentf(TestErrResultFmt, testName))
 	}
 }

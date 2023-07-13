@@ -107,6 +107,8 @@ const (
 	SettingNameV2DataEngine                                             = SettingName("v2-data-engine")
 	SettingNameV2DataEngineHugepageLimit                                = SettingName("v2-data-engine-hugepage-limit")
 	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
+	SettingNameAllowEmptyNodeSelectorVolume                             = SettingName("allow-empty-node-selector-volume")
+	SettingNameAllowEmptyDiskSelectorVolume                             = SettingName("allow-empty-disk-selector-volume")
 )
 
 var (
@@ -179,6 +181,8 @@ var (
 		SettingNameV2DataEngine,
 		SettingNameV2DataEngineHugepageLimit,
 		SettingNameOfflineReplicaRebuilding,
+		SettingNameAllowEmptyNodeSelectorVolume,
+		SettingNameAllowEmptyDiskSelectorVolume,
 	}
 )
 
@@ -277,6 +281,8 @@ var (
 		SettingNameV2DataEngine:                                             SettingDefinitionV2DataEngine,
 		SettingNameV2DataEngineHugepageLimit:                                SettingDefinitionV2DataEngineHugepageLimit,
 		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
+		SettingNameAllowEmptyNodeSelectorVolume:                             SettingDefinitionAllowEmptyNodeSelectorVolume,
+		SettingNameAllowEmptyDiskSelectorVolume:                             SettingDefinitionAllowEmptyDiskSelectorVolume,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -1103,6 +1109,26 @@ var (
 		ReadOnly:    true,
 		Default:     "1024",
 	}
+
+	SettingDefinitionAllowEmptyNodeSelectorVolume = SettingDefinition{
+		DisplayName: "Allow Scheduling Empty Node Selector Volumes To Any Node",
+		Description: "Allow replica of the volume without node selector to be scheduled on node with tags, default true",
+		Category:    SettingCategoryScheduling,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "true",
+	}
+
+	SettingDefinitionAllowEmptyDiskSelectorVolume = SettingDefinition{
+		DisplayName: "Allow Scheduling Empty Disk Selector Volumes To Any Disk",
+		Description: "Allow replica of the volume without disk selector to be scheduled on disk with tags, default true",
+		Category:    SettingCategoryScheduling,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "true",
+	}
 )
 
 type NodeDownPodDeletionPolicy string
@@ -1197,6 +1223,10 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameUpgradeChecker:
 		fallthrough
 	case SettingNameV2DataEngine:
+		fallthrough
+	case SettingNameAllowEmptyNodeSelectorVolume:
+		fallthrough
+	case SettingNameAllowEmptyDiskSelectorVolume:
 		fallthrough
 	case SettingNameAllowCollectingLonghornUsage:
 		if value != "true" && value != "false" {

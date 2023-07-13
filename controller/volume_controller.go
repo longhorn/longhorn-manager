@@ -2304,10 +2304,15 @@ func (c *VolumeController) listReadySchedulableAndScheduledNodes(volume *longhor
 		return nil, err
 	}
 
+	allowEmptyNodeSelectorVolume, err := c.ds.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyNodeSelectorVolume)
+	}
+
 	filteredReadyNodes := readyNodes
 	if len(volume.Spec.NodeSelector) != 0 {
 		for nodeName, node := range readyNodes {
-			if !types.IsSelectorsInTags(node.Spec.Tags, volume.Spec.NodeSelector) {
+			if !types.IsSelectorsInTags(node.Spec.Tags, volume.Spec.NodeSelector, allowEmptyNodeSelectorVolume) {
 				delete(filteredReadyNodes, nodeName)
 			}
 		}

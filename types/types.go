@@ -995,10 +995,16 @@ func GetLHVolumeAttachmentNameFromVolumeName(volName string) string {
 
 // IsSelectorsInTags checks if all the selectors are present in the tags slice.
 // It returns true if all selectors are found, false otherwise.
-func IsSelectorsInTags(tags, selectors []string) bool {
+func IsSelectorsInTags(tags, selectors []string, allowEmptySelector bool) bool {
 	if !sort.StringsAreSorted(tags) {
 		logrus.Debug("BUG: Tags are not sorted, sorting now")
 		sort.Strings(tags)
+	}
+
+	if len(selectors) == 0 {
+		if !allowEmptySelector && len(tags) != 0 {
+			return false
+		}
 	}
 
 	for _, selector := range selectors {
