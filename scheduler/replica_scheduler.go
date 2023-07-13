@@ -147,7 +147,9 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 
 	nodeSoftAntiAffinity, err := rcs.ds.GetSettingAsBool(types.SettingNameReplicaSoftAntiAffinity)
 	if err != nil {
-		logrus.Errorf("error getting replica soft anti-affinity setting: %v", err)
+		err = errors.Wrapf(err, "failed to get %v setting", types.SettingNameReplicaSoftAntiAffinity)
+		multiError.Append(util.NewMultiError(err.Error()))
+		return map[string]*Disk{}, multiError
 	}
 
 	if volume.Spec.ReplicaSoftAntiAffinity != longhorn.ReplicaSoftAntiAffinityDefault &&
@@ -157,7 +159,9 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 
 	zoneSoftAntiAffinity, err := rcs.ds.GetSettingAsBool(types.SettingNameReplicaZoneSoftAntiAffinity)
 	if err != nil {
-		logrus.Errorf("Error getting replica zone soft anti-affinity setting: %v", err)
+		err = errors.Wrapf(err, "failed to get %v setting", types.SettingNameReplicaZoneSoftAntiAffinity)
+		multiError.Append(util.NewMultiError(err.Error()))
+		return map[string]*Disk{}, multiError
 	}
 	if volume.Spec.ReplicaZoneSoftAntiAffinity != longhorn.ReplicaZoneSoftAntiAffinityDefault &&
 		volume.Spec.ReplicaZoneSoftAntiAffinity != "" {
@@ -202,6 +206,13 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		return result
 	}
 
+	allowEmptyNodeSelectorVolume, err := rcs.ds.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyNodeSelectorVolume)
+		multiError.Append(util.NewMultiError(err.Error()))
+		return map[string]*Disk{}, multiError
+	}
+
 	unusedNodes := map[string]*longhorn.Node{}
 	unusedNodesInNewZones := map[string]*longhorn.Node{}
 	nodesInUnusedZones := map[string]*longhorn.Node{}
@@ -209,7 +220,7 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 
 	for nodeName, node := range nodeInfo {
 		// Filter Nodes. If the Nodes don't match the tags, don't bother marking them as candidates.
-		if !types.IsSelectorsInTags(node.Spec.Tags, volume.Spec.NodeSelector) {
+		if !types.IsSelectorsInTags(node.Spec.Tags, volume.Spec.NodeSelector, allowEmptyNodeSelectorVolume) {
 			continue
 		}
 		if _, ok := usedNodes[nodeName]; !ok {
@@ -291,6 +302,13 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 	multiError = util.NewMultiError()
 	preferredDisks = map[string]*Disk{}
 
+	allowEmptyDiskSelectorVolume, err := rcs.ds.GetSettingAsBool(types.SettingNameAllowEmptyDiskSelectorVolume)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyDiskSelectorVolume)
+		multiError.Append(util.NewMultiError(err.Error()))
+		return preferredDisks, multiError
+	}
+
 	if len(disks) == 0 {
 		multiError.Append(util.NewMultiError(longhorn.ErrorReplicaScheduleDiskUnavailable))
 		return preferredDisks, multiError
@@ -349,7 +367,7 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 		}
 
 		// Check if the Disk's Tags are valid.
-		if !types.IsSelectorsInTags(diskSpec.Tags, volume.Spec.DiskSelector) {
+		if !types.IsSelectorsInTags(diskSpec.Tags, volume.Spec.DiskSelector, allowEmptyDiskSelectorVolume) {
 			multiError.Append(util.NewMultiError(longhorn.ErrorReplicaScheduleTagsNotFulfilled))
 			continue
 		}
@@ -445,7 +463,11 @@ func (rcs *ReplicaScheduler) CheckAndReuseFailedReplica(replicas map[string]*lon
 	availableNodeDisksMap := map[string]map[string]struct{}{}
 	reusableNodeReplicasMap := map[string][]*longhorn.Replica{}
 	for _, r := range replicas {
-		if !rcs.isFailedReplicaReusable(r, volume, allNodesInfo, hardNodeAffinity) {
+		isReusable, err := rcs.isFailedReplicaReusable(r, volume, allNodesInfo, hardNodeAffinity)
+		if err != nil {
+			return nil, err
+		}
+		if !isReusable {
 			continue
 		}
 
@@ -539,29 +561,34 @@ func (rcs *ReplicaScheduler) RequireNewReplica(replicas map[string]*longhorn.Rep
 	return lastDegradedAt.Add(waitInterval).Sub(now) + time.Second
 }
 
-func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *longhorn.Volume, nodeInfo map[string]*longhorn.Node, hardNodeAffinity string) bool {
+func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *longhorn.Volume, nodeInfo map[string]*longhorn.Node, hardNodeAffinity string) (bool, error) {
 	if r.Spec.FailedAt == "" {
-		return false
+		return false, nil
 	}
 	if r.Spec.NodeID == "" || r.Spec.DiskID == "" {
-		return false
+		return false, nil
 	}
 	if r.Spec.RebuildRetryCount >= FailedReplicaMaxRetryCount {
-		return false
+		return false, nil
 	}
 	if r.Status.EvictionRequested {
-		return false
+		return false, nil
 	}
 	if hardNodeAffinity != "" && r.Spec.NodeID != hardNodeAffinity {
-		return false
+		return false, nil
 	}
 	if isReady, _ := rcs.ds.CheckEngineImageReadiness(r.Spec.EngineImage, r.Spec.NodeID); !isReady {
-		return false
+		return false, nil
+	}
+
+	allowEmptyDiskSelectorVolume, err := rcs.ds.GetSettingAsBool(types.SettingNameAllowEmptyDiskSelectorVolume)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyDiskSelectorVolume)
 	}
 
 	node, exists := nodeInfo[r.Spec.NodeID]
 	if !exists {
-		return false
+		return false, nil
 	}
 	diskFound := false
 	for diskName, diskStatus := range node.Status.DiskStatus {
@@ -590,30 +617,30 @@ func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *lon
 			diskFound = true
 			diskSpec, exists := node.Spec.Disks[diskName]
 			if !exists {
-				return false
+				return false, nil
 			}
 			if !diskSpec.AllowScheduling || diskSpec.EvictionRequested {
-				return false
+				return false, nil
 			}
-			if !types.IsSelectorsInTags(diskSpec.Tags, v.Spec.DiskSelector) {
-				return false
+			if !types.IsSelectorsInTags(diskSpec.Tags, v.Spec.DiskSelector, allowEmptyDiskSelectorVolume) {
+				return false, nil
 			}
 		}
 	}
 	if !diskFound {
-		return false
+		return false, nil
 	}
 
 	im, err := rcs.ds.GetInstanceManagerByInstance(r)
 	if err != nil {
 		logrus.Errorf("failed to get instance manager when checking replica %v is reusable: %v", r.Name, err)
-		return false
+		return false, nil
 	}
 	if im.DeletionTimestamp != nil || im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
-		return false
+		return false, nil
 	}
 
-	return true
+	return true, nil
 }
 
 // IsPotentiallyReusableReplica is used to check if a failed replica is potentially reusable.
