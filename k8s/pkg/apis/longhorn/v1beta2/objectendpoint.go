@@ -14,19 +14,26 @@ const (
 )
 
 type ObjectEndpointStatus struct {
-	State    ObjectEndpointState `json:"state""`
-	Endpoint string              `json:"endpoint"`
+	// +optional
+	CurrentState ObjectEndpointState `json:"state"`
+	// +optional
+	Endpoint string `json:"endpoint"`
 }
 
 type ObjectEndpointCredentials struct {
+	// +optional
 	AccessKey string `json:"accessKey"`
+	// +optional
 	SecretKey string `json:"secretKey"`
 }
 
 type ObjectEndpointSpec struct {
-	Image       string                    `json:"image"`
+	// +optional
+	Image string `json:"image"`
+	// +optional
 	Credentials ObjectEndpointCredentials `json:"credentials"`
-	Volume      string                    `json:"volume"`
+	// +optional
+	Volume string `json:"volume"`
 }
 
 // +genclient
@@ -34,7 +41,7 @@ type ObjectEndpointSpec struct {
 // +kubebuilder:resource:shortName=lhoe
 // +kubebuilder:subresource:status
 // +kubebuilder:storageversion
-// +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`,description="The state of object endpoint"
+// +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.currentState`,description="The state of object endpoint"
 // +kubebuilder:printcolumn:name="Endpoint",type=string,JSONPath=`.status.endpoint`,description=""
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
@@ -51,8 +58,8 @@ type ObjectEndpoint struct {
 
 // ObjectEndpointList is a list of ObjectEndpoints.
 type ObjectEndpointList struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 
 	Items []ObjectEndpoint `json:"items"`
 }

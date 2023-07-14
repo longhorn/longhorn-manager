@@ -170,9 +170,18 @@ func startManager(c *cli.Context) error {
 
 	proxyConnCounter := util.NewAtomicCounter()
 
-	wsc, err := controller.StartControllers(logger, clients,
-		currentNodeID, serviceAccount, managerImage, backingImageManagerImage, shareManagerImage,
-		kubeconfigPath, meta.Version, proxyConnCounter)
+	wsc, err := controller.StartControllers(
+		logger,
+		clients,
+		currentNodeID,
+		serviceAccount,
+		managerImage,
+		backingImageManagerImage,
+		shareManagerImage,
+		objectEndpointImage,
+		kubeconfigPath,
+		meta.Version,
+		proxyConnCounter)
 	if err != nil {
 		return err
 	}
@@ -186,6 +195,7 @@ func startManager(c *cli.Context) error {
 		types.SettingNameDefaultInstanceManagerImage:     instanceManagerImage,
 		types.SettingNameDefaultBackingImageManagerImage: backingImageManagerImage,
 		types.SettingNameSupportBundleManagerImage:       supportBundleManagerImage,
+		types.SettingNameObjectEndpointImage:             objectEndpointImage,
 	}
 	if err := clients.Datastore.UpdateCustomizedSettings(defaultImageSettings); err != nil {
 		return err

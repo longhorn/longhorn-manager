@@ -30,9 +30,18 @@ var (
 )
 
 // StartControllers initiates all Longhorn component controllers and monitors to manage the creating, updating, and deletion of Longhorn resources
-func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
-	controllerID, serviceAccount, managerImage, backingImageManagerImage, shareManagerImage,
-	kubeconfigPath, version string, proxyConnCounter util.Counter) (*WebsocketController, error) {
+func StartControllers(
+	logger logrus.FieldLogger,
+	clients *client.Clients,
+	controllerID,
+	serviceAccount,
+	managerImage,
+	backingImageManagerImage,
+	shareManagerImage,
+	objectEndpointImage,
+	kubeconfigPath,
+	version string,
+	proxyConnCounter util.Counter) (*WebsocketController, error) {
 	namespace := clients.Namespace
 	kubeClient := clients.Clients.K8s
 	metricsClient := clients.MetricsClient
@@ -68,6 +77,7 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	volumeEvictionController := NewVolumeEvictionController(logger, ds, scheme, kubeClient, controllerID, namespace)
 	volumeCloneController := NewVolumeCloneController(logger, ds, scheme, kubeClient, controllerID, namespace)
 	volumeExpansionController := NewVolumeExpansionController(logger, ds, scheme, kubeClient, controllerID, namespace)
+	objectEndpointController := NewObjectEndpointController(logger, ds, scheme, kubeClient, controllerID, namespace, objectEndpointImage)
 
 	// Kubernetes controllers
 	kubernetesPVController := NewKubernetesPVController(logger, ds, scheme, kubeClient, controllerID)
@@ -105,6 +115,7 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	go volumeEvictionController.Run(Workers, stopCh)
 	go volumeCloneController.Run(Workers, stopCh)
 	go volumeExpansionController.Run(Workers, stopCh)
+	go objectEndpointController.Run(Workers, stopCh)
 
 	// Start goroutines for Kubernetes controllers
 	go kubernetesPVController.Run(Workers, stopCh)

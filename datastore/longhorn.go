@@ -4725,3 +4725,20 @@ func (s *DataStore) RemoveFinalizerForLHVolumeAttachment(va *longhorn.VolumeAtta
 func (s *DataStore) DeleteLHVolumeAttachment(vaName string) error {
 	return s.lhClient.LonghornV1beta2().VolumeAttachments(s.namespace).Delete(context.TODO(), vaName, metav1.DeleteOptions{})
 }
+
+// GetObjectEndpointRO is the read-only version of GetObjectEndpoint.
+// If strict read-only access can be guaranteed, this provides a way to inspect
+// an ObjectEndpoint without the overhead of a deep-copy.
+func (s *DataStore) GetObjectEndpointRO(name string, namespace string) (*longhorn.ObjectEndpoint, error) {
+	return s.oeLister.ObjectEndpoints(namespace).Get(name)
+}
+
+// GetObjectEndpoint returns a new object endpoint object in the given namespace and name
+func (s *DataStore) GetObjectEndpoint(name string, namespace string) (*longhorn.ObjectEndpoint, error) {
+	resultRO, err := s.oeLister.ObjectEndpoints(namespace).Get(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}

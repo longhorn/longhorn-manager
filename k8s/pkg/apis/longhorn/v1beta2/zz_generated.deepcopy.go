@@ -1599,7 +1599,7 @@ func (in *ObjectEndpointCredentials) DeepCopy() *ObjectEndpointCredentials {
 func (in *ObjectEndpointList) DeepCopyInto(out *ObjectEndpointList) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
-	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
+	in.ListMeta.DeepCopyInto(&out.ListMeta)
 	if in.Items != nil {
 		in, out := &in.Items, &out.Items
 		*out = make([]ObjectEndpoint, len(*in))

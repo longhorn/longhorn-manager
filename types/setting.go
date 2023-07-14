@@ -428,7 +428,7 @@ var (
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeString,
 		Required:    true,
-		ReadOnly:    false,
+		ReadOnly:    true,
 	}
 
 	SettingDefinitionReplicaSoftAntiAffinity = SettingDefinition{
