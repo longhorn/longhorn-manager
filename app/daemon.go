@@ -37,6 +37,7 @@ const (
 	FlagBackingImageManagerImage  = "backing-image-manager-image"
 	FlagManagerImage              = "manager-image"
 	FlagSupportBundleManagerImage = "support-bundle-manager-image"
+	FlagObjectEndpointImage       = "object-endpoint-image"
 	FlagServiceAccount            = "service-account"
 	FlagKubeConfig                = "kube-config"
 )
@@ -64,6 +65,10 @@ func DaemonCmd() cli.Command {
 			cli.StringFlag{
 				Name:  FlagSupportBundleManagerImage,
 				Usage: "Specify Longhorn support bundle manager image",
+			},
+			cli.StringFlag{
+				Name:  FlagObjectEndpointImage,
+				Usage: "Specify Longhorn object storage gateway image",
 			},
 			cli.StringFlag{
 				Name:  FlagManagerImage,
@@ -110,6 +115,10 @@ func startManager(c *cli.Context) error {
 	supportBundleManagerImage := c.String(FlagSupportBundleManagerImage)
 	if supportBundleManagerImage == "" {
 		return fmt.Errorf("require %v", FlagSupportBundleManagerImage)
+	}
+	objectEndpointImage := c.String(FlagObjectEndpointImage)
+	if objectEndpointImage == "" {
+		return fmt.Errorf("require %v", FlagObjectEndpointImage)
 	}
 	managerImage := c.String(FlagManagerImage)
 	if managerImage == "" {

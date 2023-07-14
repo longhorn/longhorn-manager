@@ -161,6 +161,8 @@ const (
 	LonghornLabelRecurringJob               = "job"
 	LonghornLabelRecurringJobGroup          = "job-group"
 	LonghornLabelRecurringJobSource         = "source"
+	LonghornLabelObjectEndpoint             = "object-endpoint"
+	LonghornLabelObjectEndpointImage        = "object-endpoint-image"
 	LonghornLabelOrphan                     = "orphan"
 	LonghornLabelOrphanType                 = "orphan-type"
 	LonghornLabelRecoveryBackend            = "recovery-backend"
