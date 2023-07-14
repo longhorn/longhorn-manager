@@ -68,6 +68,10 @@ func (c *FakeLonghornV1beta2) Nodes(namespace string) v1beta2.NodeInterface {
 	return &FakeNodes{c, namespace}
 }
 
+func (c *FakeLonghornV1beta2) ObjectEndpoints(namespace string) v1beta2.ObjectEndpointInterface {
+	return &FakeObjectEndpoints{c, namespace}
+}
+
 func (c *FakeLonghornV1beta2) Orphans(namespace string) v1beta2.OrphanInterface {
 	return &FakeOrphans{c, namespace}
 }
