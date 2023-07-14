@@ -23,7 +23,7 @@ func NewMutator(ds *datastore.DataStore) admission.Mutator {
 
 func (b *backingImageManagerMutator) Resource() admission.Resource {
 	return admission.Resource{
-		Name:       "backingImageManagers",
+		Name:       "backingimagemanagers",
 		Scope:      admissionregv1.NamespacedScope,
 		APIGroup:   longhorn.SchemeGroupVersion.Group,
 		APIVersion: longhorn.SchemeGroupVersion.Version,
