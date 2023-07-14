@@ -41,6 +41,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&InstanceManagerList{},
 		&Node{},
 		&NodeList{},
+		&ObjectEndpoint{},
+		&ObjectEndpointList{},
 		&Orphan{},
 		&OrphanList{},
 		&RecurringJob{},

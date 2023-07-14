@@ -84,6 +84,8 @@ type DataStore struct {
 	SystemRestoreInformer          cache.SharedInformer
 	lhVALister                     lhlisters.VolumeAttachmentLister
 	LHVolumeAttachmentInformer     cache.SharedInformer
+	oeLister                       lhlisters.ObjectEndpointLister
+	ObjectEndpointInformer         cache.SharedInformer
 
 	kubeClient                    clientset.Interface
 	pLister                       corelisters.PodLister
@@ -173,6 +175,8 @@ func NewDataStore(
 	cacheSyncs = append(cacheSyncs, systemRestoreInformer.Informer().HasSynced)
 	lhVAInformer := lhInformerFactory.Longhorn().V1beta2().VolumeAttachments()
 	cacheSyncs = append(cacheSyncs, lhVAInformer.Informer().HasSynced)
+	lhOEInformer := lhInformerFactory.Longhorn().V1beta2().ObjectEndpoints()
+	cacheSyncs = append(cacheSyncs, lhOEInformer.Informer().HasSynced)
 
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	cacheSyncs = append(cacheSyncs, podInformer.Informer().HasSynced)
@@ -253,6 +257,8 @@ func NewDataStore(
 		SystemRestoreInformer:          systemRestoreInformer.Informer(),
 		lhVALister:                     lhVAInformer.Lister(),
 		LHVolumeAttachmentInformer:     lhVAInformer.Informer(),
+		oeLister:                       lhOEInformer.Lister(),
+		ObjectEndpointInformer:         lhOEInformer.Informer(),
 
 		kubeClient:                    kubeClient,
 		pLister:                       podInformer.Lister(),
@@ -305,4 +311,10 @@ func ErrorIsNotFound(err error) bool {
 // metav1.StatusReasonConflict
 func ErrorIsConflict(err error) bool {
 	return apierrors.IsConflict(err)
+}
+
+// ErrorIsAlreadyExists checks if given error match
+// metav1.StatusReasonAlreadyExists
+func ErrorIsAlreadyExists(err error) bool {
+	return apierrors.IsAlreadyExists(err)
 }

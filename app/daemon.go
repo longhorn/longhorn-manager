@@ -36,6 +36,8 @@ const (
 	FlagBackingImageManagerImage  = "backing-image-manager-image"
 	FlagManagerImage              = "manager-image"
 	FlagSupportBundleManagerImage = "support-bundle-manager-image"
+	FlagObjectEndpointImage       = "object-endpoint-image"
+	FlagObjectEndpointUIImage     = "object-endpoint-ui-image"
 	FlagServiceAccount            = "service-account"
 	FlagKubeConfig                = "kube-config"
 )
@@ -63,6 +65,14 @@ func DaemonCmd() cli.Command {
 			cli.StringFlag{
 				Name:  FlagSupportBundleManagerImage,
 				Usage: "Specify Longhorn support bundle manager image",
+			},
+			cli.StringFlag{
+				Name:  FlagObjectEndpointImage,
+				Usage: "Specify Longhorn object storage gateway image",
+			},
+			cli.StringFlag{
+				Name:  FlagObjectEndpointUIImage,
+				Usage: "Specify Longhorn object storage ui image",
 			},
 			cli.StringFlag{
 				Name:  FlagManagerImage,
@@ -110,6 +120,14 @@ func startManager(c *cli.Context) error {
 	if supportBundleManagerImage == "" {
 		return fmt.Errorf("require %v", FlagSupportBundleManagerImage)
 	}
+	objectEndpointImage := c.String(FlagObjectEndpointImage)
+	if objectEndpointImage == "" {
+		return fmt.Errorf("require %v", FlagObjectEndpointImage)
+	}
+	objectEndpointUIImage := c.String(FlagObjectEndpointUIImage)
+	if objectEndpointUIImage == "" {
+		return fmt.Errorf("require %v", FlagObjectEndpointUIImage)
+	}
 	managerImage := c.String(FlagManagerImage)
 	if managerImage == "" {
 		return fmt.Errorf("require %v", FlagManagerImage)
@@ -155,9 +173,19 @@ func startManager(c *cli.Context) error {
 
 	proxyConnCounter := util.NewAtomicCounter()
 
-	ds, wsc, err := controller.StartControllers(logger, ctx.Done(),
-		currentNodeID, serviceAccount, managerImage, backingImageManagerImage, shareManagerImage,
-		kubeconfigPath, meta.Version, proxyConnCounter)
+	ds, wsc, err := controller.StartControllers(
+		logger,
+		ctx.Done(),
+		currentNodeID,
+		serviceAccount,
+		managerImage,
+		backingImageManagerImage,
+		shareManagerImage,
+		objectEndpointImage,
+		objectEndpointUIImage,
+		kubeconfigPath,
+		meta.Version,
+		proxyConnCounter)
 	if err != nil {
 		return err
 	}
@@ -171,6 +199,7 @@ func startManager(c *cli.Context) error {
 		types.SettingNameDefaultInstanceManagerImage:     instanceManagerImage,
 		types.SettingNameDefaultBackingImageManagerImage: backingImageManagerImage,
 		types.SettingNameSupportBundleManagerImage:       supportBundleManagerImage,
+		types.SettingNameObjectEndpointImage:             objectEndpointImage,
 	}
 	if err := ds.UpdateCustomizedSettings(defaultImageSettings); err != nil {
 		return err
@@ -191,13 +220,15 @@ func startManager(c *cli.Context) error {
 	server := api.NewServer(m, wsc)
 	router := http.Handler(api.NewRouter(server))
 	router = util.FilteredLoggingHandler(map[string]struct{}{
-		"/v1/apiversions":  {},
-		"/v1/schemas":      {},
-		"/v1/settings":     {},
-		"/v1/volumes":      {},
-		"/v1/nodes":        {},
-		"/v1/engineimages": {},
-		"/v1/events":       {},
+		"/v1/apiversions":     {},
+		"/v1/schemas":         {},
+		"/v1/settings":        {},
+		"/v1/volumes":         {},
+		"/v1/nodes":           {},
+		"/v1/engineimages":    {},
+		"/v1/events":          {},
+		"/v1/objectendpoints": {},
+		"/v1/storageclasses":  {},
 	}, os.Stdout, router)
 	router = handlers.ProxyHeaders(router)
 

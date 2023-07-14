@@ -39,7 +39,7 @@ var (
 
 // StartControllers initiates all Longhorn component controllers and monitors to manage the creating, updating, and deletion of Longhorn resources
 func StartControllers(logger logrus.FieldLogger, stopCh <-chan struct{},
-	controllerID, serviceAccount, managerImage, backingImageManagerImage, shareManagerImage,
+	controllerID, serviceAccount, managerImage, backingImageManagerImage, shareManagerImage, objectEndpointImage, objectEndpointUIImage,
 	kubeconfigPath, version string, proxyConnCounter util.Counter) (*datastore.DataStore, *WebsocketController, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
@@ -119,6 +119,7 @@ func StartControllers(logger logrus.FieldLogger, stopCh <-chan struct{},
 	vec := NewVolumeEvictionController(logger, ds, scheme, kubeClient, controllerID, namespace)
 	vcc := NewVolumeCloneController(logger, ds, scheme, kubeClient, controllerID, namespace)
 	vexc := NewVolumeExpansionController(logger, ds, scheme, kubeClient, controllerID, namespace)
+	oec := NewObjectEndpointController(logger, ds, scheme, kubeClient, controllerID, namespace, objectEndpointImage, objectEndpointUIImage)
 	kpvc := NewKubernetesPVController(logger, ds, scheme, kubeClient, controllerID)
 	knc := NewKubernetesNodeController(logger, ds, scheme, kubeClient, controllerID)
 	kpc := NewKubernetesPodController(logger, ds, scheme, kubeClient, controllerID)
@@ -158,6 +159,8 @@ func StartControllers(logger logrus.FieldLogger, stopCh <-chan struct{},
 	go vec.Run(Workers, stopCh)
 	go vcc.Run(Workers, stopCh)
 	go vexc.Run(Workers, stopCh)
+
+	go oec.Run(Workers, stopCh)
 
 	go kpvc.Run(Workers, stopCh)
 	go knc.Run(Workers, stopCh)

@@ -49,6 +49,7 @@ const (
 	SettingNameDefaultInstanceManagerImage                              = SettingName("default-instance-manager-image")
 	SettingNameDefaultBackingImageManagerImage                          = SettingName("default-backing-image-manager-image")
 	SettingNameSupportBundleManagerImage                                = SettingName("support-bundle-manager-image")
+	SettingNameObjectEndpointImage                                      = SettingName("object-endpoint-image")
 	SettingNameReplicaSoftAntiAffinity                                  = SettingName("replica-soft-anti-affinity")
 	SettingNameReplicaAutoBalance                                       = SettingName("replica-auto-balance")
 	SettingNameStorageOverProvisioningPercentage                        = SettingName("storage-over-provisioning-percentage")
@@ -124,6 +125,7 @@ var (
 		SettingNameDefaultInstanceManagerImage,
 		SettingNameDefaultBackingImageManagerImage,
 		SettingNameSupportBundleManagerImage,
+		SettingNameObjectEndpointImage,
 		SettingNameReplicaSoftAntiAffinity,
 		SettingNameReplicaAutoBalance,
 		SettingNameStorageOverProvisioningPercentage,
@@ -225,6 +227,7 @@ var (
 		SettingNameDefaultInstanceManagerImage:                              SettingDefinitionDefaultInstanceManagerImage,
 		SettingNameDefaultBackingImageManagerImage:                          SettingDefinitionDefaultBackingImageManagerImage,
 		SettingNameSupportBundleManagerImage:                                SettingDefinitionSupportBundleManagerImage,
+		SettingNameObjectEndpointImage:                                      SettingDefinitionObjectEndpointImage,
 		SettingNameReplicaSoftAntiAffinity:                                  SettingDefinitionReplicaSoftAntiAffinity,
 		SettingNameReplicaAutoBalance:                                       SettingDefinitionReplicaAutoBalance,
 		SettingNameStorageOverProvisioningPercentage:                        SettingDefinitionStorageOverProvisioningPercentage,
@@ -413,6 +416,15 @@ var (
 		Type:        SettingTypeString,
 		Required:    true,
 		ReadOnly:    false,
+	}
+
+	SettingDefinitionObjectEndpointImage = SettingDefinition{
+		DisplayName: "Object Endpoint Image",
+		Description: "The container image used by the manager when deploying an object storage gateway",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    true,
 	}
 
 	SettingDefinitionReplicaSoftAntiAffinity = SettingDefinition{

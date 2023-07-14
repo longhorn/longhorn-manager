@@ -45,6 +45,7 @@ const (
 	CRDRecurringJobName           = "recurringjobs.longhorn.io"
 	CRDOrphanName                 = "orphans.longhorn.io"
 	CRDSnapshotName               = "snapshots.longhorn.io"
+	CRDObjectEndpointName         = "objectendpoints.longhorn.io"
 
 	EnvLonghornNamespace = "LONGHORN_NAMESPACE"
 )
@@ -162,7 +163,10 @@ func NewUninstallController(
 		ds.SnapshotInformer.AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, ds.SnapshotInformer.HasSynced)
 	}
-
+	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDObjectEndpointName, metav1.GetOptions{}); err == nil {
+		ds.ObjectEndpointInformer.AddEventHandler(c.controlleeHandler())
+		cacheSyncs = append(cacheSyncs, ds.ObjectEndpointInformer.HasSynced)
+	}
 	c.cacheSyncs = cacheSyncs
 
 	return c
@@ -527,7 +531,36 @@ func (c *UninstallController) deleteCRDs() (bool, error) {
 		return true, c.deleteSystemRestores(systemRestores)
 	}
 
+	if objectEndpoints, err := c.ds.ListObjectEndpoints(); err != nil {
+		return true, err
+	} else if len(objectEndpoints) > 0 {
+		c.logger.Infof("Found %d object endpoints remaining", len(objectEndpoints))
+		return true, c.deleteObjectEndpoints(objectEndpoints)
+	}
+
 	return false, nil
+}
+
+func (c *UninstallController) deleteObjectEndpoints(endpoints map[string]*longhorn.ObjectEndpoint) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to delete object endpoints")
+	}()
+
+	for _, endpoint := range endpoints {
+		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
+		if endpoint.DeletionTimestamp == nil {
+			if err = c.ds.DeleteObjectEndpoint(endpoint.Name); err != nil {
+				err = errors.Wrap(err, "failed to mark for deletion")
+				return
+			}
+		} else if endpoint.DeletionTimestamp.Before(&timeout) {
+			if err = c.ds.RemoveFinalizerForObjectEndpoint(endpoint); err != nil {
+				err = errors.Wrap(err, "failed to remove finalizer")
+				return
+			}
+		}
+	}
+	return
 }
 
 func (c *UninstallController) deleteVolumes(vols map[string]*longhorn.Volume) (err error) {

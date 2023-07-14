@@ -4521,3 +4521,124 @@ func (s *DataStore) RemoveFinalizerForLHVolumeAttachment(va *longhorn.VolumeAtta
 func (s *DataStore) DeleteLHVolumeAttachment(vaName string) error {
 	return s.lhClient.LonghornV1beta2().VolumeAttachments(s.namespace).Delete(context.TODO(), vaName, metav1.DeleteOptions{})
 }
+
+// GetObjectEndpointRO is the read-only version of GetObjectEndpoint.
+// If strict read-only access can be guaranteed, this provides a way to inspect
+// an ObjectEndpoint without the overhead of a deep-copy.
+func (s *DataStore) GetObjectEndpointRO(name string) (*longhorn.ObjectEndpoint, error) {
+	return s.oeLister.Get(name)
+}
+
+// GetObjectEndpoint returns a new object endpoint object in the given namespace and name
+func (s *DataStore) GetObjectEndpoint(name string) (*longhorn.ObjectEndpoint, error) {
+	resultRO, err := s.oeLister.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// CreateObjectEndpoint creates a Longhorn Object Endpoint resource and verifies
+// creation
+func (s *DataStore) CreateObjectEndpoint(endpoint *longhorn.ObjectEndpoint) (*longhorn.ObjectEndpoint, error) {
+	ret, err := s.lhClient.LonghornV1beta2().ObjectEndpoints().Create(context.TODO(), endpoint, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(ret.Name, "object endpoint", func(name string) (runtime.Object, error) {
+		return s.GetObjectEndpointRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.ObjectEndpoint)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for object endpoint")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// UpdateObjectEndpoint updates Longhorn Object Endpoint
+func (s *DataStore) UpdateObjectEndpoint(oe *longhorn.ObjectEndpoint) (*longhorn.ObjectEndpoint, error) {
+	if err := util.AddFinalizer(longhornFinalizerKey, oe); err != nil {
+		return nil, err
+	}
+
+	obj, err := s.lhClient.LonghornV1beta2().ObjectEndpoints().Update(context.TODO(), oe, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return obj, nil
+}
+
+// UpdateObjectEndpointStatus updates an the status of a Longhorn Object
+// Endpoint.
+func (s *DataStore) UpdateObjectEndpointStatus(oe *longhorn.ObjectEndpoint) (*longhorn.ObjectEndpoint, error) {
+	if err := util.AddFinalizer(longhornFinalizerKey, oe); err != nil {
+		return nil, err
+	}
+
+	obj, err := s.lhClient.LonghornV1beta2().ObjectEndpoints().UpdateStatus(context.TODO(), oe, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return obj, nil
+}
+
+func (s *DataStore) ListObjectEndpoints() (map[string]*longhorn.ObjectEndpoint, error) {
+	list, err := s.oeLister.List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.ObjectEndpoint{}
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// GetOwnerReferencesForObjectEndpoint returns a list contains single OwnerReference for the
+// given ObjectEndpoint object
+func (s *DataStore) GetOwnerReferencesForObjectEndpoint(endpoint *longhorn.ObjectEndpoint) []metav1.OwnerReference {
+	return []metav1.OwnerReference{
+		{
+			APIVersion: longhorn.SchemeGroupVersion.String(),
+			Kind:       types.LonghornKindObjectEndpoint,
+			Name:       endpoint.Name,
+			UID:        endpoint.UID,
+		},
+	}
+}
+
+func (s *DataStore) DeleteObjectEndpoint(name string) error {
+	return s.lhClient.LonghornV1beta2().ObjectEndpoints().Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
+func (s *DataStore) RemoveFinalizerForObjectEndpoint(endpoint *longhorn.ObjectEndpoint) (err error) {
+	if !util.FinalizerExists(longhornFinalizerKey, endpoint) {
+		// finalizer already removed
+		return nil
+	}
+
+	if err = util.RemoveFinalizer(longhornFinalizerKey, endpoint); err != nil {
+		return err
+	}
+
+	endpoint, err = s.lhClient.LonghornV1beta2().ObjectEndpoints().Update(context.TODO(), endpoint, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if endpoint.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for Object Endpoint%s", endpoint.Name)
+	}
+	return nil
+}

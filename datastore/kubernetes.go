@@ -81,6 +81,22 @@ func (s *DataStore) getSupportBundleManagerSelector(supportBundle *longhorn.Supp
 	})
 }
 
+func (s *DataStore) GetObjectEndpointSelectorLabels(endpoint *longhorn.ObjectEndpoint) map[string]string {
+	return map[string]string{
+		types.ObjectEndpointLabelKeyApp:       types.ObjectEndpointLabelApp,
+		types.ObjectEndpointLabelKeyInstance:  endpoint.Name,
+		types.ObjectEndpointLabelKeyComponent: types.ObjectEndpointLabelComponent,
+	}
+}
+
+func (s *DataStore) GetObjectEndpointLabels(endpoint *longhorn.ObjectEndpoint) map[string]string {
+	return map[string]string{
+		types.ObjectEndpointLabelKeyApp:       types.ObjectEndpointLabelApp,
+		types.ObjectEndpointLabelKeyInstance:  endpoint.Name,
+		types.ObjectEndpointLabelKeyManagedBy: types.ObjectEndpointLabelManagedBy,
+	}
+}
+
 // GetManagerNodeIPMap returns an object contains podIPs from list
 // of running pods with app=longhorn-manager
 func (s *DataStore) GetManagerNodeIPMap() (map[string]string, error) {
@@ -651,6 +667,16 @@ func (s *DataStore) DeleteConfigMap(namespace, name string) error {
 	return nil
 }
 
+// CreateSecret creates Secret with the given object
+func (s *DataStore) CreateSecret(namespace string, obj *corev1.Secret) (*corev1.Secret, error) {
+	return s.kubeClient.CoreV1().Secrets(namespace).Create(context.TODO(), obj, metav1.CreateOptions{})
+}
+
+// ListSecret retrieves a list of all Secret objects in the given namespace
+func (s *DataStore) ListSecret(namespace string) ([]*corev1.Secret, error) {
+	return s.secretLister.Secrets(namespace).List(labels.Everything())
+}
+
 // GetSecretRO gets Secret with the given namespace and name
 // This function returns direct reference to the internal cache object and should not be mutated.
 // Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
@@ -666,6 +692,15 @@ func (s *DataStore) GetSecret(namespace, name string) (*corev1.Secret, error) {
 	}
 	// Cannot use cached object from lister
 	return resultRO.DeepCopy(), nil
+}
+
+// DeleteSecret deletes the named Secret from the namespace
+func (s *DataStore) DeleteSecret(namespace string, name string) error {
+	err := s.kubeClient.CoreV1().Secrets(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+	if err != nil && apierrors.IsNotFound(err) {
+		return err
+	}
+	return nil
 }
 
 // GetPriorityClass gets the PriorityClass from the index for the
@@ -998,4 +1033,18 @@ func (s *DataStore) GetRoleBinding(name string) (*rbacv1.RoleBinding, error) {
 // UpdateRoleBinding updates the RoleBinding resource with the given RoleBinding object in the Longhorn namespace
 func (s *DataStore) UpdateRoleBinding(roleBinding *rbacv1.RoleBinding) (*rbacv1.RoleBinding, error) {
 	return s.kubeClient.RbacV1().RoleBindings(s.namespace).Update(context.TODO(), roleBinding, metav1.UpdateOptions{})
+}
+
+func (s *DataStore) ListStorageClasses() (map[string]*storagev1.StorageClass, error) {
+	list, err := s.storageclassLister.List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*storagev1.StorageClass{}
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
 }

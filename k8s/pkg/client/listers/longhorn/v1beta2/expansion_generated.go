@@ -98,6 +98,10 @@ type NodeListerExpansion interface{}
 // NodeNamespaceLister.
 type NodeNamespaceListerExpansion interface{}
 
+// ObjectEndpointListerExpansion allows custom methods to be added to
+// ObjectEndpointLister.
+type ObjectEndpointListerExpansion interface{}
+
 // OrphanListerExpansion allows custom methods to be added to
 // OrphanLister.
 type OrphanListerExpansion interface{}

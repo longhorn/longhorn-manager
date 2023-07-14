@@ -37,13 +37,15 @@ const (
 	LonghornKindSupportBundle       = "SupportBundle"
 	LonghornKindSystemRestore       = "SystemRestore"
 	LonghornKindOrphan              = "Orphan"
+	LonghornKindObjectEndpoint      = "ObjectEndpoint"
 
 	LonghornKindBackingImageDataSource = "BackingImageDataSource"
 
-	LonghornKindEngineImageList  = "EngineImageList"
-	LonghornKindRecurringJobList = "RecurringJobList"
-	LonghornKindSettingList      = "SettingList"
-	LonghornKindVolumeList       = "VolumeList"
+	LonghornKindEngineImageList    = "EngineImageList"
+	LonghornKindRecurringJobList   = "RecurringJobList"
+	LonghornKindSettingList        = "SettingList"
+	LonghornKindVolumeList         = "VolumeList"
+	LonghornKindObjectEndpointList = "ObjectEndpointList"
 
 	KubernetesKindClusterRole           = "ClusterRole"
 	KubernetesKindClusterRoleBinding    = "ClusterRoleBinding"
@@ -160,6 +162,8 @@ const (
 	LonghornLabelRecurringJob               = "job"
 	LonghornLabelRecurringJobGroup          = "job-group"
 	LonghornLabelRecurringJobSource         = "source"
+	LonghornLabelObjectEndpoint             = "object-endpoint"
+	LonghornLabelObjectEndpointImage        = "object-endpoint-image"
 	LonghornLabelOrphan                     = "orphan"
 	LonghornLabelOrphanType                 = "orphan-type"
 	LonghornLabelRecoveryBackend            = "recovery-backend"
