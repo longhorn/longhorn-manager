@@ -386,6 +386,10 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 
 		monitor, err := bc.checkMonitor(backup, volume, backupTarget)
 		if err != nil {
+			if backup.Status.State == longhorn.BackupStateError {
+				log.WithError(err).Warnf("Failed to enable the backup monitor for backup %v", backup.Name)
+				return nil
+			}
 			return err
 		}
 
