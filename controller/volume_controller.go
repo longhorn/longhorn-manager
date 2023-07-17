@@ -2494,7 +2494,7 @@ func (c *VolumeController) getIsSchedulableToDiskNodes(v *longhorn.Volume, nodeN
 			// TODO: record the message to condition
 			log.Warn("Found 0 node has at least one schedulable disk")
 		} else {
-			log.Infof("Found node %v has at least one schedulable disk", schedulableNodeNames)
+			log.Debugf("Found node %v has at least one schedulable disk", schedulableNodeNames)
 		}
 	}()
 
