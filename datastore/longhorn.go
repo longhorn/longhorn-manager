@@ -4742,3 +4742,22 @@ func (s *DataStore) GetObjectEndpoint(name string, namespace string) (*longhorn.
 	// Cannot use cached object from lister
 	return resultRO.DeepCopy(), nil
 }
+
+// UpdateObjectEndpoint updates Longhorn Object Endpoint
+func (s *DataStore) UpdateObjectEndpoint(oe *longhorn.ObjectEndpoint) (*longhorn.ObjectEndpoint, error) {
+	obj, err := s.lhClient.LonghornV1beta2().ObjectEndpoints(oe.Namespace).Update(context.TODO(), oe, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return obj, nil
+}
+
+// UpdateObjectEndpointStatus updates an the status of a Longhorn Object
+// Endpoint.
+func (s *DataStore) UpdateObjectEndpointStatus(oe *longhorn.ObjectEndpoint) (*longhorn.ObjectEndpoint, error) {
+	obj, err := s.lhClient.LonghornV1beta2().ObjectEndpoints(oe.Namespace).UpdateStatus(context.TODO(), oe, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return obj, nil
+}

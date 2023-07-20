@@ -70,11 +70,26 @@ func (s *DataStore) getSupportBundleManagerLabel(supportBundle *longhorn.Support
 		types.SupportBundleManagerLabelKey: supportBundle.Name,
 	}
 }
-
 func (s *DataStore) getSupportBundleManagerSelector(supportBundle *longhorn.SupportBundle) (labels.Selector, error) {
 	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: s.getSupportBundleManagerLabel(supportBundle),
 	})
+}
+
+func (s *DataStore) GetObjectEndpointSelectorLabels(endpoint *longhorn.ObjectEndpoint) map[string]string {
+	return map[string]string{
+		types.ObjectEndpointLabelKeyApp:       types.ObjectEndpointLabelApp,
+		types.ObjectEndpointLabelKeyInstance:  endpoint.Name,
+		types.ObjectEndpointLabelKeyComponent: types.ObjectEndpointLabelComponent,
+	}
+}
+
+func (s *DataStore) GetObjectEndpointLabels(endpoint *longhorn.ObjectEndpoint) map[string]string {
+	return map[string]string{
+		types.ObjectEndpointLabelKeyApp:       types.ObjectEndpointLabelApp,
+		types.ObjectEndpointLabelKeyInstance:  endpoint.Name,
+		types.ObjectEndpointLabelKeyManagedBy: types.ObjectEndpointLabelManagedBy,
+	}
 }
 
 // GetManagerNodeIPMap returns an object contains podIPs from list
@@ -682,6 +697,16 @@ func (s *DataStore) DeleteConfigMap(namespace, name string) error {
 	return nil
 }
 
+// CreateSecret creates Secret with the given object
+func (s *DataStore) CreateSecret(namespace string, obj *corev1.Secret) (*corev1.Secret, error) {
+	return s.kubeClient.CoreV1().Secrets(namespace).Create(context.TODO(), obj, metav1.CreateOptions{})
+}
+
+// ListSecret retrieves a list of all Secret objects in the given namespace
+func (s *DataStore) ListSecret(namespace string) ([]*corev1.Secret, error) {
+	return s.secretLister.Secrets(namespace).List(labels.Everything())
+}
+
 // GetSecretRO gets Secret with the given namespace and name
 // This function returns direct reference to the internal cache object and should not be mutated.
 // Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
@@ -709,6 +734,15 @@ func (s *DataStore) GetSecret(namespace, name string) (resultRO *corev1.Secret, 
 // UpdateSecret updates the Secret resource with the given object and namespace
 func (s *DataStore) UpdateSecret(namespace string, secret *corev1.Secret) (*corev1.Secret, error) {
 	return s.kubeClient.CoreV1().Secrets(namespace).Update(context.TODO(), secret, metav1.UpdateOptions{})
+}
+
+// DeleteSecret deletes the named Secret from the namespace
+func (s *DataStore) DeleteSecret(namespace string, name string) error {
+	err := s.kubeClient.CoreV1().Secrets(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+	if err != nil && apierrors.IsNotFound(err) {
+		return err
+	}
+	return nil
 }
 
 // GetPriorityClass gets the PriorityClass from the index for the
