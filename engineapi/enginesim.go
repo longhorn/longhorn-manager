@@ -196,7 +196,8 @@ func (e *EngineSimulator) SnapshotBackup(engine *longhorn.Engine, backupName, sn
 	return "", "", fmt.Errorf(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SnapshotBackupStatus(engine *longhorn.Engine, backupName, replicaAddress string) (*longhorn.EngineBackupStatus, error) {
+func (e *EngineSimulator) SnapshotBackupStatus(engine *longhorn.Engine, backupName, replicaAddress,
+	replicaName string) (*longhorn.EngineBackupStatus, error) {
 	return nil, fmt.Errorf(ErrNotImplement)
 }
 

@@ -1610,10 +1610,11 @@ func GetBinaryClientForEngine(e *longhorn.Engine, engines engineapi.EngineClient
 	}
 
 	client, err = engines.NewEngineClient(&engineapi.EngineClientRequest{
-		VolumeName:  e.Spec.VolumeName,
-		EngineImage: image,
-		IP:          e.Status.IP,
-		Port:        e.Status.Port,
+		VolumeName:   e.Spec.VolumeName,
+		EngineImage:  image,
+		IP:           e.Status.IP,
+		Port:         e.Status.Port,
+		InstanceName: e.Name,
 	})
 	if err != nil {
 		return nil, err

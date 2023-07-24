@@ -108,7 +108,16 @@ func (e *EngineBinary) SnapshotPurgeStatus(*longhorn.Engine) (map[string]*longho
 func (e *EngineBinary) SnapshotClone(engine *longhorn.Engine, snapshotName, fromEngineAddress, fromEngineName string,
 	fileSyncHTTPClientTimeout int64) error {
 	args := []string{"snapshot", "clone", "--snapshot-name", snapshotName, "--from-controller-address",
-		fromEngineAddress, "--from-controller-instance-name", fromEngineName}
+		fromEngineAddress}
+
+	version, err := e.VersionGet(engine, true)
+	if err != nil {
+		return err
+	}
+	if version.ClientVersion.CLIAPIVersion >= 9 {
+		args = append(args, "--from-controller-instance-name", fromEngineName)
+	}
+
 	if _, err := e.ExecuteEngineBinaryWithoutTimeout([]string{}, args...); err != nil {
 		return errors.Wrapf(err, "error starting snapshot clone")
 	}
