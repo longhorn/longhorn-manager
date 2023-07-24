@@ -94,7 +94,7 @@ type EngineClient interface {
 	SnapshotPurge(engine *longhorn.Engine) error
 	SnapshotPurgeStatus(engine *longhorn.Engine) (map[string]*longhorn.PurgeStatus, error)
 	SnapshotBackup(engine *longhorn.Engine, backupName, snapName, backupTarget, backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int, storageClassName string, labels, credential map[string]string) (string, string, error)
-	SnapshotBackupStatus(engine *longhorn.Engine, backupName, replicaAddress string) (*longhorn.EngineBackupStatus, error)
+	SnapshotBackupStatus(engine *longhorn.Engine, backupName, replicaAddress, replicaName string) (*longhorn.EngineBackupStatus, error)
 	SnapshotCloneStatus(engine *longhorn.Engine) (map[string]*longhorn.SnapshotCloneStatus, error)
 	SnapshotClone(engine *longhorn.Engine, snapshotName, fromEngineAddress, fromEngineName string, fileSyncHTTPClientTimeout int64) error
 	SnapshotHash(engine *longhorn.Engine, snapshotName string, rehash bool) error
@@ -107,10 +107,11 @@ type EngineClient interface {
 }
 
 type EngineClientRequest struct {
-	VolumeName  string
-	EngineImage string
-	IP          string
-	Port        int
+	VolumeName   string
+	EngineImage  string
+	IP           string
+	Port         int
+	InstanceName string
 }
 
 type EngineClientCollection interface {
