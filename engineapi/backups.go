@@ -320,10 +320,10 @@ func (e *EngineBinary) SnapshotBackup(engine *longhorn.Engine, snapName, backupN
 	// TODO: update when replacing this function
 	snap, err := e.SnapshotGet(nil, snapName)
 	if err != nil {
-		return "", "", errors.Wrapf(err, "error getting snapshot '%s', volume '%s'", snapName, e.name)
+		return "", "", errors.Wrapf(err, "error getting snapshot '%s', volume '%s'", snapName, e.volumeName)
 	}
 	if snap == nil {
-		return "", "", errors.Errorf("could not find snapshot '%s' to backup, volume '%s'", snapName, e.name)
+		return "", "", errors.Errorf("could not find snapshot '%s' to backup, volume '%s'", snapName, e.volumeName)
 	}
 	version, err := e.VersionGet(nil, true)
 	if err != nil {
@@ -367,10 +367,22 @@ func (e *EngineBinary) SnapshotBackup(engine *longhorn.Engine, snapName, backupN
 
 // SnapshotBackupStatus calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
-func (e *EngineBinary) SnapshotBackupStatus(engine *longhorn.Engine, backupName, replicaAddress string) (*longhorn.EngineBackupStatus, error) {
+func (e *EngineBinary) SnapshotBackupStatus(engine *longhorn.Engine, backupName, replicaAddress,
+	replicaName string) (*longhorn.EngineBackupStatus, error) {
 	args := []string{"backup", "status", backupName}
 	if replicaAddress != "" {
 		args = append(args, "--replica", replicaAddress)
+	}
+
+	// For now, we likely don't know the replica name here. Don't bother checking the binary version if we don't.
+	if replicaName != "" {
+		version, err := e.VersionGet(engine, true)
+		if err != nil {
+			return nil, err
+		}
+		if version.ClientVersion.CLIAPIVersion >= 9 {
+			args = append(args, "--replica-instance-name", replicaName)
+		}
 	}
 
 	output, err := e.ExecuteEngineBinary(args...)

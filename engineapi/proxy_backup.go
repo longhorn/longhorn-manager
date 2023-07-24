@@ -49,9 +49,10 @@ func (p *Proxy) SnapshotBackup(e *longhorn.Engine, snapshotName, backupName, bac
 	return backupID, replicaAddress, nil
 }
 
-func (p *Proxy) SnapshotBackupStatus(e *longhorn.Engine, backupName, replicaAddress string) (status *longhorn.EngineBackupStatus, err error) {
+func (p *Proxy) SnapshotBackupStatus(e *longhorn.Engine, backupName, replicaAddress,
+	replicaName string) (status *longhorn.EngineBackupStatus, err error) {
 	recv, err := p.grpcClient.SnapshotBackupStatus(string(e.Spec.BackendStoreDriver), e.Name, e.Spec.VolumeName,
-		p.DirectToURL(e), backupName, replicaAddress, "")
+		p.DirectToURL(e), backupName, replicaAddress, replicaName)
 	if err != nil {
 		return nil, err
 	}
