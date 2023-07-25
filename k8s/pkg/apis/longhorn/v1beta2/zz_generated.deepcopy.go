@@ -1556,7 +1556,7 @@ func (in *ObjectEndpoint) DeepCopyInto(out *ObjectEndpoint) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
 	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
-	out.Spec = in.Spec
+	in.Spec.DeepCopyInto(&out.Spec)
 	out.Status = in.Status
 	return
 }
@@ -1632,6 +1632,7 @@ func (in *ObjectEndpointList) DeepCopyObject() runtime.Object {
 func (in *ObjectEndpointSpec) DeepCopyInto(out *ObjectEndpointSpec) {
 	*out = *in
 	out.Credentials = in.Credentials
+	out.Size = in.Size.DeepCopy()
 	return
 }
 

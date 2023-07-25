@@ -33,7 +33,7 @@ import (
 // ObjectEndpointsGetter has a method to return a ObjectEndpointInterface.
 // A group's client should implement this interface.
 type ObjectEndpointsGetter interface {
-	ObjectEndpoints(namespace string) ObjectEndpointInterface
+	ObjectEndpoints() ObjectEndpointInterface
 }
 
 // ObjectEndpointInterface has methods to work with ObjectEndpoint resources.
@@ -53,14 +53,12 @@ type ObjectEndpointInterface interface {
 // objectEndpoints implements ObjectEndpointInterface
 type objectEndpoints struct {
 	client rest.Interface
-	ns     string
 }
 
 // newObjectEndpoints returns a ObjectEndpoints
-func newObjectEndpoints(c *LonghornV1beta2Client, namespace string) *objectEndpoints {
+func newObjectEndpoints(c *LonghornV1beta2Client) *objectEndpoints {
 	return &objectEndpoints{
 		client: c.RESTClient(),
-		ns:     namespace,
 	}
 }
 
@@ -68,7 +66,6 @@ func newObjectEndpoints(c *LonghornV1beta2Client, namespace string) *objectEndpo
 func (c *objectEndpoints) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta2.ObjectEndpoint, err error) {
 	result = &v1beta2.ObjectEndpoint{}
 	err = c.client.Get().
-		Namespace(c.ns).
 		Resource("objectendpoints").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
@@ -85,7 +82,6 @@ func (c *objectEndpoints) List(ctx context.Context, opts v1.ListOptions) (result
 	}
 	result = &v1beta2.ObjectEndpointList{}
 	err = c.client.Get().
-		Namespace(c.ns).
 		Resource("objectendpoints").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -102,7 +98,6 @@ func (c *objectEndpoints) Watch(ctx context.Context, opts v1.ListOptions) (watch
 	}
 	opts.Watch = true
 	return c.client.Get().
-		Namespace(c.ns).
 		Resource("objectendpoints").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -113,7 +108,6 @@ func (c *objectEndpoints) Watch(ctx context.Context, opts v1.ListOptions) (watch
 func (c *objectEndpoints) Create(ctx context.Context, objectEndpoint *v1beta2.ObjectEndpoint, opts v1.CreateOptions) (result *v1beta2.ObjectEndpoint, err error) {
 	result = &v1beta2.ObjectEndpoint{}
 	err = c.client.Post().
-		Namespace(c.ns).
 		Resource("objectendpoints").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(objectEndpoint).
@@ -126,7 +120,6 @@ func (c *objectEndpoints) Create(ctx context.Context, objectEndpoint *v1beta2.Ob
 func (c *objectEndpoints) Update(ctx context.Context, objectEndpoint *v1beta2.ObjectEndpoint, opts v1.UpdateOptions) (result *v1beta2.ObjectEndpoint, err error) {
 	result = &v1beta2.ObjectEndpoint{}
 	err = c.client.Put().
-		Namespace(c.ns).
 		Resource("objectendpoints").
 		Name(objectEndpoint.Name).
 		VersionedParams(&opts, scheme.ParameterCodec).
@@ -141,7 +134,6 @@ func (c *objectEndpoints) Update(ctx context.Context, objectEndpoint *v1beta2.Ob
 func (c *objectEndpoints) UpdateStatus(ctx context.Context, objectEndpoint *v1beta2.ObjectEndpoint, opts v1.UpdateOptions) (result *v1beta2.ObjectEndpoint, err error) {
 	result = &v1beta2.ObjectEndpoint{}
 	err = c.client.Put().
-		Namespace(c.ns).
 		Resource("objectendpoints").
 		Name(objectEndpoint.Name).
 		SubResource("status").
@@ -155,7 +147,6 @@ func (c *objectEndpoints) UpdateStatus(ctx context.Context, objectEndpoint *v1be
 // Delete takes name of the objectEndpoint and deletes it. Returns an error if one occurs.
 func (c *objectEndpoints) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	return c.client.Delete().
-		Namespace(c.ns).
 		Resource("objectendpoints").
 		Name(name).
 		Body(&opts).
@@ -170,7 +161,6 @@ func (c *objectEndpoints) DeleteCollection(ctx context.Context, opts v1.DeleteOp
 		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
 	}
 	return c.client.Delete().
-		Namespace(c.ns).
 		Resource("objectendpoints").
 		VersionedParams(&listOpts, scheme.ParameterCodec).
 		Timeout(timeout).
@@ -183,7 +173,6 @@ func (c *objectEndpoints) DeleteCollection(ctx context.Context, opts v1.DeleteOp
 func (c *objectEndpoints) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta2.ObjectEndpoint, err error) {
 	result = &v1beta2.ObjectEndpoint{}
 	err = c.client.Patch(pt).
-		Namespace(c.ns).
 		Resource("objectendpoints").
 		Name(name).
 		SubResource(subresources...).

@@ -70,5 +70,5 @@ kustomize build ${CRDS_DIR} >> ${GOPATH}/src/${LH_MANAGER_DIR}/k8s/crds.yaml
 rm -r ${CRDS_DIR}
 
 if [[ -d k8s ]] ; then
-  diff ${GOPATH}/src/${LH_MANAGER_DIR}/k8s/crds.yaml k8s/crds.yaml
+  diff -qr ${GOPATH}/src/${LH_MANAGER_DIR}/k8s/ k8s/
 fi

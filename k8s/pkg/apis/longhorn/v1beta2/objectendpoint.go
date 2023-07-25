@@ -8,10 +8,11 @@ import (
 type ObjectEndpointState string
 
 const (
-	ObjectEndpointStateUnknown  = ObjectEndpointState("unknown")
-	ObjectEndpointStateStarting = ObjectEndpointState("starting")
-	ObjectEndpointStateRunning  = ObjectEndpointState("running")
-	ObjectEndpointStateError    = ObjectEndpointState("error")
+	ObjectEndpointStateUnknown  = ObjectEndpointState("Unknown")
+	ObjectEndpointStateStarting = ObjectEndpointState("Starting")
+	ObjectEndpointStateRunning  = ObjectEndpointState("Running")
+	ObjectEndpointStateStopping = ObjectEndpointState("Stopping")
+	ObjectEndpointStateError    = ObjectEndpointState("Error")
 )
 
 type ObjectEndpointStatus struct {
@@ -26,19 +27,35 @@ type ObjectEndpointStatus struct {
 	// The state remains in "running" until a the object endpoint is deleted, at
 	// which point the controller will clean up the associated resources.
 	//
-	// object endpoint created
-	// │
-	// │  ┌──────────┐    ┌──────────┐    ┌──────────┐
-	// └─►│ unknown  ├─┬─►│ starting ├─┬─►│ running  ├──► object endpoint deleted,
-	//    └──────────┘ │  └──────────┘ │  └──────────┘    controller cleans up
-	//                 │               │                  resources
-	// controller creates resources    │
-	//                                 │
-	//                                 │
-	// controller detects all resources ready
+	//  │ object endpoint created
+	//  │
+	//  └──►┌───────────┐
+	//      │ unknown   │
+	//  ┌── └───────────┘
+	//  │
+	//  │ controller creates resources
+	//  │
+	//  └──►┌───────────┐
+	//      │ starting  │
+	//  ┌── └───────────┘
+	//  │
+	//  │ controller detects all resources ready
+	//  │
+	//  └──►┌───────────┐
+	//      │ running   │
+	//  ┌── └───────────┘
+	//  │
+	//  │ object endpoint is marked for deletion
+	//  │
+	//  └──►┌───────────┐
+	//      │ stopping  │
+	//  ┌── └───────────┘
+	//  │
+	//  │ controller waits for dependent resources to disappear before removing
+	//  │ the finalizer, thereby letting the object endpoint be deleted
 	//
 	// +optional
-	// +default="unknown"
+	// +default="Unknown"
 	State ObjectEndpointState `json:"state"`
 
 	// An address where the S3 endpoint is exposed.
@@ -82,8 +99,9 @@ type ObjectEndpointSpec struct {
 }
 
 // +genclient
+// +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +kubebuilder:resource:shortName=lhoe
+// +kubebuilder:resource:scope="Cluster",shortName={lhoe}
 // +kubebuilder:subresource:status
 // +kubebuilder:storageversion
 // +kubebuilder:printcolumn:name="Name",type=string,JSONPath=`.metadata.name`

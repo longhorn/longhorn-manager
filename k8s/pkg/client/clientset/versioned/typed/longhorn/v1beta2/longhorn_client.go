@@ -95,8 +95,8 @@ func (c *LonghornV1beta2Client) Nodes(namespace string) NodeInterface {
 	return newNodes(c, namespace)
 }
 
-func (c *LonghornV1beta2Client) ObjectEndpoints(namespace string) ObjectEndpointInterface {
-	return newObjectEndpoints(c, namespace)
+func (c *LonghornV1beta2Client) ObjectEndpoints() ObjectEndpointInterface {
+	return newObjectEndpoints(c)
 }
 
 func (c *LonghornV1beta2Client) Orphans(namespace string) OrphanInterface {

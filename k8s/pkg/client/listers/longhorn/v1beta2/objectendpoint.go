@@ -29,8 +29,8 @@ import (
 type ObjectEndpointLister interface {
 	// List lists all ObjectEndpoints in the indexer.
 	List(selector labels.Selector) (ret []*v1beta2.ObjectEndpoint, err error)
-	// ObjectEndpoints returns an object that can list and get ObjectEndpoints.
-	ObjectEndpoints(namespace string) ObjectEndpointNamespaceLister
+	// Get retrieves the ObjectEndpoint from the index for a given name.
+	Get(name string) (*v1beta2.ObjectEndpoint, error)
 	ObjectEndpointListerExpansion
 }
 
@@ -52,38 +52,9 @@ func (s *objectEndpointLister) List(selector labels.Selector) (ret []*v1beta2.Ob
 	return ret, err
 }
 
-// ObjectEndpoints returns an object that can list and get ObjectEndpoints.
-func (s *objectEndpointLister) ObjectEndpoints(namespace string) ObjectEndpointNamespaceLister {
-	return objectEndpointNamespaceLister{indexer: s.indexer, namespace: namespace}
-}
-
-// ObjectEndpointNamespaceLister helps list and get ObjectEndpoints.
-type ObjectEndpointNamespaceLister interface {
-	// List lists all ObjectEndpoints in the indexer for a given namespace.
-	List(selector labels.Selector) (ret []*v1beta2.ObjectEndpoint, err error)
-	// Get retrieves the ObjectEndpoint from the indexer for a given namespace and name.
-	Get(name string) (*v1beta2.ObjectEndpoint, error)
-	ObjectEndpointNamespaceListerExpansion
-}
-
-// objectEndpointNamespaceLister implements the ObjectEndpointNamespaceLister
-// interface.
-type objectEndpointNamespaceLister struct {
-	indexer   cache.Indexer
-	namespace string
-}
-
-// List lists all ObjectEndpoints in the indexer for a given namespace.
-func (s objectEndpointNamespaceLister) List(selector labels.Selector) (ret []*v1beta2.ObjectEndpoint, err error) {
-	err = cache.ListAllByNamespace(s.indexer, s.namespace, selector, func(m interface{}) {
-		ret = append(ret, m.(*v1beta2.ObjectEndpoint))
-	})
-	return ret, err
-}
-
-// Get retrieves the ObjectEndpoint from the indexer for a given namespace and name.
-func (s objectEndpointNamespaceLister) Get(name string) (*v1beta2.ObjectEndpoint, error) {
-	obj, exists, err := s.indexer.GetByKey(s.namespace + "/" + name)
+// Get retrieves the ObjectEndpoint from the index for a given name.
+func (s *objectEndpointLister) Get(name string) (*v1beta2.ObjectEndpoint, error) {
+	obj, exists, err := s.indexer.GetByKey(name)
 	if err != nil {
 		return nil, err
 	}

@@ -37,13 +37,15 @@ const (
 	LonghornKindSupportBundle       = "SupportBundle"
 	LonghornKindSystemRestore       = "SystemRestore"
 	LonghornKindOrphan              = "Orphan"
+	LonghornKindObjectEndpoint      = "ObjectEndpoint"
 
 	LonghornKindBackingImageDataSource = "BackingImageDataSource"
 
-	LonghornKindEngineImageList  = "EngineImageList"
-	LonghornKindRecurringJobList = "RecurringJobList"
-	LonghornKindSettingList      = "SettingList"
-	LonghornKindVolumeList       = "VolumeList"
+	LonghornKindEngineImageList    = "EngineImageList"
+	LonghornKindRecurringJobList   = "RecurringJobList"
+	LonghornKindSettingList        = "SettingList"
+	LonghornKindVolumeList         = "VolumeList"
+	LonghornKindObjectEndpointList = "ObjectEndpointList"
 
 	KubernetesKindClusterRole           = "ClusterRole"
 	KubernetesKindClusterRoleBinding    = "ClusterRoleBinding"

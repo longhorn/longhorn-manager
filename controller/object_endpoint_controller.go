@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -114,41 +115,130 @@ func (oec *ObjectEndpointController) handleError(err error, key interface{}) {
 }
 
 func (oec *ObjectEndpointController) syncObjectEndpoint(key string) error {
-	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	_, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		return err
 	}
 
-	endpoint, err := oec.ds.GetObjectEndpoint(name, namespace)
+	endpoint, err := oec.ds.GetObjectEndpoint(name)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
-			oec.handleResourceDeletion(name, namespace)
+			return nil // already deleted, nothing to do
 		}
 		return err
 	}
 
-	if endpoint.Status.State == longhorn.ObjectEndpointStateStarting {
-		// check all resources and update state if necessary
-		return nil
+	if !endpoint.DeletionTimestamp.IsZero() && endpoint.Status.State != longhorn.ObjectEndpointStateStopping {
+		endpoint.Status.State = longhorn.ObjectEndpointStateStopping
+		endpoint, err = oec.ds.UpdateObjectEndpointStatus(endpoint)
+		if err != nil {
+			return err
+		}
 	}
 
-	if endpoint.Status.State == longhorn.ObjectEndpointStateRunning {
+	switch endpoint.Status.State {
+	case longhorn.ObjectEndpointStateStarting, longhorn.ObjectEndpointStateError:
+		dpl, err := oec.ds.GetDeployment(endpoint.Name)
+		if err == nil {
+			if dpl.Status.UnavailableReplicas > 0 {
+				return nil
+			}
+		} else {
+			return err
+		}
+
+		_, err = oec.ds.GetSecret(oec.namespace, endpoint.Name)
+		if err != nil {
+			return err
+		}
+
+		_, err = oec.ds.GetService(oec.namespace, endpoint.Name)
+		if err != nil {
+			return err
+		}
+
+		pvc, err := oec.ds.GetPersistentVolumeClaim(oec.namespace, genPVCName(endpoint))
+		if err == nil {
+			if pvc.Status.Phase != corev1.ClaimBound {
+				return nil
+			}
+		} else {
+			return err
+		}
+
+		endpoint.Status.Endpoint = fmt.Sprintf("%s.%s.svc", endpoint.Name, oec.namespace)
+		endpoint.Status.State = longhorn.ObjectEndpointStateRunning
+		endpoint, err = oec.ds.UpdateObjectEndpointStatus(endpoint)
+		if err != nil {
+			return err
+		}
 		return nil
+
+	case longhorn.ObjectEndpointStateRunning:
+		dpl, err := oec.ds.GetDeployment(endpoint.Name)
+		if err != nil || dpl.Status.UnavailableReplicas > 0 {
+			_, err = oec.setObjectEndpointState(endpoint, longhorn.ObjectEndpointStateError)
+			return err
+		}
+
+		_, err = oec.ds.GetSecret(oec.namespace, endpoint.Name)
+		if err != nil {
+			_, err = oec.setObjectEndpointState(endpoint, longhorn.ObjectEndpointStateError)
+			return err
+		}
+
+		_, err = oec.ds.GetService(oec.namespace, endpoint.Name)
+		if err != nil {
+			_, err = oec.setObjectEndpointState(endpoint, longhorn.ObjectEndpointStateError)
+			return err
+		}
+
+		pvc, err := oec.ds.GetPersistentVolumeClaim(oec.namespace, genPVCName(endpoint))
+		if err != nil || pvc.Status.Phase != corev1.ClaimBound {
+			_, err = oec.setObjectEndpointState(endpoint, longhorn.ObjectEndpointStateError)
+			return err
+		}
+		return nil
+
+	case longhorn.ObjectEndpointStateStopping:
+		_, err = oec.ds.GetDeployment(endpoint.Name)
+		if err == nil || !datastore.ErrorIsNotFound(err) {
+			return err
+		}
+		_, err = oec.ds.GetSecret(oec.namespace, endpoint.Name)
+		if err == nil || !datastore.ErrorIsNotFound(err) {
+			return err
+		}
+		_, err = oec.ds.GetService(oec.namespace, endpoint.Name)
+		if err == nil || !datastore.ErrorIsNotFound(err) {
+			return err
+		}
+		_, err = oec.ds.GetPersistentVolumeClaim(oec.namespace, genPVCName(endpoint))
+		if err == nil || !datastore.ErrorIsNotFound(err) {
+			return err
+		}
+		err = oec.ds.RemoveFinalizerForObjectEndpoint(endpoint)
+		if err != nil {
+			endpoint.Status.State = longhorn.ObjectEndpointStateError
+			endpoint, err = oec.ds.UpdateObjectEndpointStatus(endpoint)
+			return err
+		}
+
+	default:
+		if err := oec.handleResourceCreation(endpoint); err != nil {
+			return err
+		}
 	}
 
-	if err := oec.handleResourceCreation(endpoint); err != nil {
-		return err
-	}
 	return nil
 }
 
-func (oec *ObjectEndpointController) handleResourceCreation(endpoint *longhorn.ObjectEndpoint) error {
-	endpoint.Status.State = longhorn.ObjectEndpointStateStarting
-	endpoint, err := oec.ds.UpdateObjectEndpointStatus(endpoint)
-	if err != nil {
-		return err
-	}
+func (oec *ObjectEndpointController) setObjectEndpointState(endpoint *longhorn.ObjectEndpoint, status longhorn.ObjectEndpointState) (*longhorn.ObjectEndpoint, error) {
+	endpoint.Status.State = status
+	return oec.ds.UpdateObjectEndpointStatus(endpoint)
+}
 
+func (oec *ObjectEndpointController) handleResourceCreation(endpoint *longhorn.ObjectEndpoint) error {
 	if err := oec.handlePVCCreation(endpoint); err != nil {
 		return err
 	}
@@ -165,31 +255,18 @@ func (oec *ObjectEndpointController) handleResourceCreation(endpoint *longhorn.O
 		return err
 	}
 
-	return nil
-}
-
-func (oec *ObjectEndpointController) handleResourceDeletion(name string, namespace string) error {
-	if err := oec.ds.DeleteDeployment(name); err != nil {
-		return err
-	}
-	if err := oec.ds.DeleteSecret(namespace, name); err != nil {
-		return err
-	}
-	if err := oec.ds.DeleteService(namespace, name); err != nil {
-		return err
-	}
-	if err := oec.ds.DeletePersistentVolumeClaim(namespace, name); err != nil {
-		return err
-	}
-	return nil
+	endpoint.Status.State = longhorn.ObjectEndpointStateStarting
+	endpoint, err := oec.ds.UpdateObjectEndpointStatus(endpoint)
+	return err
 }
 
 func (oec *ObjectEndpointController) handlePVCCreation(endpoint *longhorn.ObjectEndpoint) error {
 	pvc := corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      endpoint.Name,
-			Namespace: endpoint.Namespace,
-			Labels:    oec.ds.GetObjectEndpointLabels(endpoint),
+			Name:            genPVCName(endpoint),
+			Namespace:       oec.namespace,
+			Labels:          oec.ds.GetObjectEndpointLabels(endpoint),
+			OwnerReferences: oec.ds.GetOwnerReferencesForObjectEndpoint(endpoint),
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{
@@ -204,7 +281,7 @@ func (oec *ObjectEndpointController) handlePVCCreation(endpoint *longhorn.Object
 		},
 	}
 
-	if _, err := oec.ds.CreatePersistentVolumeClaim(endpoint.Namespace, &pvc); err != nil {
+	if _, err := oec.ds.CreatePersistentVolumeClaim(oec.namespace, &pvc); err != nil {
 		return err
 	}
 	return nil
@@ -213,9 +290,10 @@ func (oec *ObjectEndpointController) handlePVCCreation(endpoint *longhorn.Object
 func (oec *ObjectEndpointController) handleSVCCreation(endpoint *longhorn.ObjectEndpoint) error {
 	svc := corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      endpoint.Name,
-			Namespace: endpoint.Namespace,
-			Labels:    oec.ds.GetObjectEndpointLabels(endpoint),
+			Name:            endpoint.Name,
+			Namespace:       oec.namespace,
+			Labels:          oec.ds.GetObjectEndpointLabels(endpoint),
+			OwnerReferences: oec.ds.GetOwnerReferencesForObjectEndpoint(endpoint),
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: oec.ds.GetObjectEndpointSelectorLabels(endpoint),
@@ -232,7 +310,7 @@ func (oec *ObjectEndpointController) handleSVCCreation(endpoint *longhorn.Object
 		},
 	}
 
-	if _, err := oec.ds.CreateService(endpoint.Namespace, &svc); err != nil {
+	if _, err := oec.ds.CreateService(oec.namespace, &svc); err != nil {
 		return err
 	}
 	return nil
@@ -241,9 +319,10 @@ func (oec *ObjectEndpointController) handleSVCCreation(endpoint *longhorn.Object
 func (oec *ObjectEndpointController) handleSecretCreation(endpoint *longhorn.ObjectEndpoint) error {
 	secret := corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      endpoint.Name,
-			Namespace: endpoint.Namespace,
-			Labels:    oec.ds.GetObjectEndpointLabels(endpoint),
+			Name:            endpoint.Name,
+			Namespace:       oec.namespace,
+			Labels:          oec.ds.GetObjectEndpointLabels(endpoint),
+			OwnerReferences: oec.ds.GetOwnerReferencesForObjectEndpoint(endpoint),
 		},
 		StringData: map[string]string{
 			"RGW_DEFAULT_USER_ACCESS_KEY": endpoint.Spec.Credentials.AccessKey,
@@ -251,7 +330,7 @@ func (oec *ObjectEndpointController) handleSecretCreation(endpoint *longhorn.Obj
 		},
 	}
 
-	if _, err := oec.ds.CreateSecret(endpoint.Namespace, &secret); err != nil {
+	if _, err := oec.ds.CreateSecret(oec.namespace, &secret); err != nil {
 		return err
 	}
 	return nil
@@ -259,21 +338,23 @@ func (oec *ObjectEndpointController) handleSecretCreation(endpoint *longhorn.Obj
 
 func (oec *ObjectEndpointController) handleDeploymentCreation(endpoint *longhorn.ObjectEndpoint) error {
 	replicas := int32(1) // this must be allocated and can't be a constant
-	secretref := corev1.SecretEnvSource{
-		LocalObjectReference: corev1.LocalObjectReference{
-			Name: endpoint.Name,
-		},
-	}
 
-	pvc := corev1.PersistentVolumeClaimVolumeSource{
-		ClaimName: endpoint.Name,
+	registrySecretSetting, err := oec.ds.GetSetting(types.SettingNameRegistrySecret)
+	if err != nil {
+		return errors.Wrap(err, "failed to get registry secret setting for object endpoint deployment")
+	}
+	registrySecret := []corev1.LocalObjectReference{
+		{
+			Name: registrySecretSetting.Value,
+		},
 	}
 
 	dpl := appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      endpoint.Name,
-			Namespace: endpoint.Namespace,
-			Labels:    oec.ds.GetObjectEndpointLabels(endpoint),
+			Name:            endpoint.Name,
+			Namespace:       oec.namespace,
+			Labels:          oec.ds.GetObjectEndpointLabels(endpoint),
+			OwnerReferences: oec.ds.GetOwnerReferencesForObjectEndpoint(endpoint),
 		},
 		Spec: appsv1.DeploymentSpec{
 			Selector: &metav1.LabelSelector{
@@ -288,13 +369,13 @@ func (oec *ObjectEndpointController) handleDeploymentCreation(endpoint *longhorn
 					Labels: oec.ds.GetObjectEndpointSelectorLabels(endpoint),
 				},
 				Spec: corev1.PodSpec{
-					// TODO: propagate image pull secrets
+					ImagePullSecrets: registrySecret,
 					Containers: []corev1.Container{
 						{
 							Name:  "s3gw",
 							Image: oec.image,
 							Args: []string{
-								"--rgw-dns-name", fmt.Sprintf("%s.%s", endpoint.Name, endpoint.Namespace),
+								"--rgw-dns-name", fmt.Sprintf("%s.%s", endpoint.Name, oec.namespace),
 								"--rgw-backend-store", "sfs",
 								"--debug-rgw", "1",
 								"--rgw_frontends", fmt.Sprintf("beast port=%d", types.ObjectEndpointContainerPort),
@@ -308,12 +389,16 @@ func (oec *ObjectEndpointController) handleDeploymentCreation(endpoint *longhorn
 							},
 							EnvFrom: []corev1.EnvFromSource{
 								{
-									SecretRef: &secretref,
+									SecretRef: &corev1.SecretEnvSource{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: endpoint.Name,
+										},
+									},
 								},
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{
-									Name:      fmt.Sprintf("%s-lh-storage", endpoint.Name),
+									Name:      genVolumeMountName(endpoint),
 									MountPath: "/data",
 								},
 							},
@@ -321,9 +406,11 @@ func (oec *ObjectEndpointController) handleDeploymentCreation(endpoint *longhorn
 					},
 					Volumes: []corev1.Volume{
 						{
-							Name: fmt.Sprintf("%s-lh-storage", endpoint.Name),
+							Name: genVolumeMountName(endpoint),
 							VolumeSource: corev1.VolumeSource{
-								PersistentVolumeClaim: &pvc,
+								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+									ClaimName: genPVCName(endpoint),
+								},
 							},
 						},
 					},
@@ -332,9 +419,16 @@ func (oec *ObjectEndpointController) handleDeploymentCreation(endpoint *longhorn
 		},
 	}
 
-	oec.logger.Infof("OEC Deployment: %v", dpl)
 	if _, err := oec.ds.CreateDeployment(&dpl); err != nil {
 		return err
 	}
 	return nil
+}
+
+func genPVCName(endpoint *longhorn.ObjectEndpoint) string {
+	return fmt.Sprintf("pvc-%s", endpoint.Name)
+}
+
+func genVolumeMountName(endpoint *longhorn.ObjectEndpoint) string {
+	return fmt.Sprintf("%s-data", endpoint.Name)
 }
