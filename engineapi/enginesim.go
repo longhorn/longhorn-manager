@@ -217,7 +217,7 @@ func (e *EngineSimulator) BackupRestore(engine *longhorn.Engine, backupTarget, b
 	return fmt.Errorf(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SnapshotClone(engine *longhorn.Engine, snapshotName, fromEngineAddress,
+func (e *EngineSimulator) SnapshotClone(engine *longhorn.Engine, snapshotName, fromEngineAddress, fromVolumeName,
 	fromEngineName string, fileSyncHTTPClientTimeout int64) error {
 	return fmt.Errorf(ErrNotImplement)
 }
