@@ -699,6 +699,10 @@ func (c *InstanceManagerClient) engineInstanceUpgrade(req *EngineInstanceUpgrade
 		}
 	}
 
+	if req.EngineCLIAPIVersion >= 9 {
+		args = append([]string{"--engine-instance-name", req.Engine.Name}, args...)
+	}
+
 	binary := filepath.Join(types.GetEngineBinaryDirectoryForEngineManagerContainer(req.Engine.Spec.EngineImage), types.EngineBinaryName)
 
 	if c.GetAPIVersion() < 4 {
