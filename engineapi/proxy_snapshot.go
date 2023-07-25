@@ -32,10 +32,10 @@ func (p *Proxy) SnapshotGet(e *longhorn.Engine, name string) (snapshot *longhorn
 	return recv[name], nil
 }
 
-func (p *Proxy) SnapshotClone(e *longhorn.Engine, snapshotName, fromEngineAddress, fromEngineName string,
+func (p *Proxy) SnapshotClone(e *longhorn.Engine, snapshotName, fromEngineAddress, fromVolumeName, fromEngineName string,
 	fileSyncHTTPClientTimeout int64) (err error) {
 	return p.grpcClient.SnapshotClone(string(e.Spec.BackendStoreDriver), e.Name, e.Spec.VolumeName, p.DirectToURL(e),
-		snapshotName, fromEngineAddress, fromEngineName, int(fileSyncHTTPClientTimeout))
+		snapshotName, fromEngineAddress, fromVolumeName, fromEngineName, int(fileSyncHTTPClientTimeout))
 }
 
 func (p *Proxy) SnapshotCloneStatus(e *longhorn.Engine) (status map[string]*longhorn.SnapshotCloneStatus, err error) {
