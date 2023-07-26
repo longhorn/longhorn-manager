@@ -26,7 +26,7 @@ import (
 	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
 
 	"github.com/longhorn/longhorn-manager/meta"
-	"github.com/longhorn/longhorn-manager/upgrade/v14xto150"
+	"github.com/longhorn/longhorn-manager/upgrade/v15xto160"
 	"github.com/longhorn/longhorn-manager/upgrade/v1beta1"
 )
 
@@ -219,11 +219,11 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 		return err
 	}
 
-	// When lhVersionBeforeUpgrade < v1.5.0, it is v1.4.x. The `CheckUpgradePathSupported` method would have failed us out earlier if it was not v1.4.x.
+	// When lhVersionBeforeUpgrade < v1.6.0, it is v1.5.x. The `CheckUpgradePathSupported` method would have failed us out earlier if it was not v1.5.x.
 	resourceMaps := map[string]interface{}{}
-	if semver.Compare(lhVersionBeforeUpgrade, "v1.5.0") < 0 {
-		logrus.Info("Walking through the resource upgrade path v1.4.x to v1.5.0")
-		if err := v14xto150.UpgradeResources(namespace, lhClient, kubeClient, resourceMaps); err != nil {
+	if semver.Compare(lhVersionBeforeUpgrade, "v1.6.0") < 0 {
+		logrus.Info("Walking through the resource upgrade path v1.5.x to v1.6.0")
+		if err := v15xto160.UpgradeResources(namespace, lhClient, kubeClient, resourceMaps); err != nil {
 			return err
 		}
 	}
@@ -231,11 +231,11 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 		return err
 	}
 
-	// When lhVersionBeforeUpgrade < v1.5.0, it is v1.4.x. The `CheckUpgradePathSupported` method would have failed us out earlier if it was not v1.4.x.
+	// When lhVersionBeforeUpgrade < v1.6.0, it is v1.5.x. The `CheckUpgradePathSupported` method would have failed us out earlier if it was not v1.5.x.
 	resourceMaps = map[string]interface{}{}
 	if semver.Compare(lhVersionBeforeUpgrade, "v1.5.0") < 0 {
-		logrus.Info("Walking through the resource status upgrade path v1.4.x to v1.5.0")
-		if err := v14xto150.UpgradeResourcesStatus(namespace, lhClient, kubeClient, resourceMaps); err != nil {
+		logrus.Info("Walking through the resource status upgrade path v1.5.x to v1.6.0")
+		if err := v15xto160.UpgradeResourcesStatus(namespace, lhClient, kubeClient, resourceMaps); err != nil {
 			return err
 		}
 	}
