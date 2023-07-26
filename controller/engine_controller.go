@@ -2073,15 +2073,19 @@ func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineIm
 		return isResponsible, nil
 	}
 
+	currentNodeEngineAvailable, err := ec.ds.CheckEngineImageReadiness(e.Status.CurrentImage, ec.controllerID)
+	if err != nil {
+		return false, err
+	}
+	if !currentNodeEngineAvailable {
+		// avoid redundant checking if the current node is not available
+		return false, nil
+	}
 	preferredOwnerEngineAvailable, err := ec.ds.CheckEngineImageReadiness(e.Status.CurrentImage, e.Spec.NodeID)
 	if err != nil {
 		return false, err
 	}
 	currentOwnerEngineAvailable, err := ec.ds.CheckEngineImageReadiness(e.Status.CurrentImage, e.Status.OwnerID)
-	if err != nil {
-		return false, err
-	}
-	currentNodeEngineAvailable, err := ec.ds.CheckEngineImageReadiness(e.Status.CurrentImage, ec.controllerID)
 	if err != nil {
 		return false, err
 	}
