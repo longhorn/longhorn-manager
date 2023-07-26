@@ -804,6 +804,15 @@ func ValidateReplicaZoneSoftAntiAffinity(value longhorn.ReplicaZoneSoftAntiAffin
 	return nil
 }
 
+func ValidateReplicaDiskSoftAntiAffinity(value longhorn.ReplicaDiskSoftAntiAffinity) error {
+	if value != longhorn.ReplicaDiskSoftAntiAffinityDefault &&
+		value != longhorn.ReplicaDiskSoftAntiAffinityEnabled &&
+		value != longhorn.ReplicaDiskSoftAntiAffinityDisabled {
+		return fmt.Errorf("invalid ReplicaDiskSoftAntiAffinity setting: %v", value)
+	}
+	return nil
+}
+
 func GetDaemonSetNameFromEngineImageName(engineImageName string) string {
 	return "engine-image-" + engineImageName
 }

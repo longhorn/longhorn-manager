@@ -83,6 +83,10 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
+	if err := types.ValidateReplicaDiskSoftAntiAffinity(volume.Spec.ReplicaDiskSoftAntiAffinity); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
 	if volume.Spec.BackingImage != "" {
 		if _, err := v.ds.GetBackingImage(volume.Spec.BackingImage); err != nil {
 			return werror.NewInvalidError(err.Error(), "")
@@ -168,6 +172,10 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 	}
 
 	if err := types.ValidateReplicaZoneSoftAntiAffinity(newVolume.Spec.ReplicaZoneSoftAntiAffinity); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
+	if err := types.ValidateReplicaDiskSoftAntiAffinity(newVolume.Spec.ReplicaDiskSoftAntiAffinity); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
@@ -259,6 +267,12 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 
 		if oldVolume.Spec.ReplicaZoneSoftAntiAffinity != newVolume.Spec.ReplicaZoneSoftAntiAffinity {
 			err := fmt.Errorf("changing replica zone soft anti-affinity for volume %v is not supported for backend store driver %v",
+				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+
+		if oldVolume.Spec.ReplicaDiskSoftAntiAffinity != newVolume.Spec.ReplicaDiskSoftAntiAffinity {
+			err := fmt.Errorf("changing replica disk soft anti-affinity for volume %v is not supported for backend store driver %v",
 				newVolume.Name, newVolume.Spec.BackendStoreDriver)
 			return werror.NewInvalidError(err.Error(), "")
 		}

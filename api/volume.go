@@ -190,6 +190,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		UnmapMarkSnapChainRemoved:   volume.UnmapMarkSnapChainRemoved,
 		ReplicaSoftAntiAffinity:     volume.ReplicaSoftAntiAffinity,
 		ReplicaZoneSoftAntiAffinity: volume.ReplicaZoneSoftAntiAffinity,
+		ReplicaDiskSoftAntiAffinity: volume.ReplicaDiskSoftAntiAffinity,
 		BackendStoreDriver:          volume.BackendStoreDriver,
 		OfflineReplicaRebuilding:    volume.OfflineReplicaRebuilding,
 	}, volume.RecurringJobSelector)
@@ -556,6 +557,28 @@ func (s *Server) VolumeUpdateReplicaZoneSoftAntiAffinity(rw http.ResponseWriter,
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
 		return s.m.UpdateReplicaZoneSoftAntiAffinity(id, longhorn.ReplicaZoneSoftAntiAffinity(input.ReplicaZoneSoftAntiAffinity))
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("failed to convert to volume %v object", id)
+	}
+	return s.responseWithVolume(rw, req, "", v)
+}
+
+func (s *Server) VolumeUpdateReplicaDiskSoftAntiAffinity(rw http.ResponseWriter, req *http.Request) error {
+	var input UpdateReplicaDiskSoftAntiAffinityInput
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrap(err, "failed to read ReplicaDiskSoftAntiAffinity input")
+	}
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.UpdateReplicaDiskSoftAntiAffinity(id, longhorn.ReplicaDiskSoftAntiAffinity(input.ReplicaDiskSoftAntiAffinity))
 	})
 	if err != nil {
 		return err
