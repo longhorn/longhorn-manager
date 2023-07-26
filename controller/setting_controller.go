@@ -1182,6 +1182,7 @@ const (
 	ClusterInfoVolumeReplicaAutoBalanceCountFmt          = "LonghornVolumeReplicaAutoBalance%sCount"
 	ClusterInfoVolumeReplicaSoftAntiAffinityCountFmt     = "LonghornVolumeReplicaSoftAntiAffinity%sCount"
 	ClusterInfoVolumeReplicaZoneSoftAntiAffinityCountFmt = "LonghornVolumeReplicaZoneSoftAntiAffinity%sCount"
+	ClusterInfoVolumeReplicaDiskSoftAntiAffinityCountFmt = "LonghornVolumeReplicaDiskSoftAntiAffinity%sCount"
 	ClusterInfoVolumeRestoreVolumeRecurringJobCountFmt   = "LonghornVolumeRestoreVolumeRecurringJob%sCount"
 	ClusterInfoVolumeSnapshotDataIntegrityCountFmt       = "LonghornVolumeSnapshotDataIntegrity%sCount"
 	ClusterInfoVolumeUnmapMarkSnapChainRemovedCountFmt   = "LonghornVolumeUnmapMarkSnapChainRemoved%sCount"
@@ -1358,6 +1359,7 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameReplicaReplenishmentWaitInterval:                         true,
 		types.SettingNameReplicaSoftAntiAffinity:                                  true,
 		types.SettingNameReplicaZoneSoftAntiAffinity:                              true,
+		types.SettingNameReplicaDiskSoftAntiAffinity:                              true,
 		types.SettingNameRestoreConcurrentLimit:                                   true,
 		types.SettingNameRestoreVolumeRecurringJobs:                               true,
 		types.SettingNameSnapshotDataIntegrity:                                    true,
@@ -1461,6 +1463,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	replicaAutoBalanceCountStruct := newStruct()
 	replicaSoftAntiAffinityCountStruct := newStruct()
 	replicaZoneSoftAntiAffinityCountStruct := newStruct()
+	replicaDiskSoftAntiAffinityCountStruct := newStruct()
 	restoreVolumeRecurringJobCountStruct := newStruct()
 	snapshotDataIntegrityCountStruct := newStruct()
 	unmapMarkSnapChainRemovedCountStruct := newStruct()
@@ -1501,6 +1504,9 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 		replicaZoneSoftAntiAffinity := info.collectSettingInVolume(string(volume.Spec.ReplicaZoneSoftAntiAffinity), string(longhorn.ReplicaZoneSoftAntiAffinityDefault), types.SettingNameReplicaZoneSoftAntiAffinity)
 		replicaZoneSoftAntiAffinityCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeReplicaZoneSoftAntiAffinityCountFmt, util.ConvertToCamel(string(replicaZoneSoftAntiAffinity), "-")))]++
 
+		replicaDiskSoftAntiAffinity := info.collectSettingInVolume(string(volume.Spec.ReplicaDiskSoftAntiAffinity), string(longhorn.ReplicaDiskSoftAntiAffinityDefault), types.SettingNameReplicaDiskSoftAntiAffinity)
+		replicaDiskSoftAntiAffinityCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeReplicaDiskSoftAntiAffinityCountFmt, util.ConvertToCamel(string(replicaDiskSoftAntiAffinity), "-")))]++
+
 		restoreVolumeRecurringJob := info.collectSettingInVolume(string(volume.Spec.RestoreVolumeRecurringJob), string(longhorn.RestoreVolumeRecurringJobDefault), types.SettingNameRestoreVolumeRecurringJobs)
 		restoreVolumeRecurringJobCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeRestoreVolumeRecurringJobCountFmt, util.ConvertToCamel(string(restoreVolumeRecurringJob), "-")))]++
 
@@ -1517,6 +1523,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	info.structFields.fields.AppendCounted(replicaAutoBalanceCountStruct)
 	info.structFields.fields.AppendCounted(replicaSoftAntiAffinityCountStruct)
 	info.structFields.fields.AppendCounted(replicaZoneSoftAntiAffinityCountStruct)
+	info.structFields.fields.AppendCounted(replicaDiskSoftAntiAffinityCountStruct)
 	info.structFields.fields.AppendCounted(restoreVolumeRecurringJobCountStruct)
 	info.structFields.fields.AppendCounted(snapshotDataIntegrityCountStruct)
 	info.structFields.fields.AppendCounted(unmapMarkSnapChainRemovedCountStruct)
