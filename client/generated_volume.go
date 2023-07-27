@@ -73,6 +73,8 @@ type Volume struct {
 
 	ReplicaAutoBalance string `json:"replicaAutoBalance,omitempty" yaml:"replica_auto_balance,omitempty"`
 
+	ReplicaDiskSoftAntiAffinity string `json:"replicaDiskSoftAntiAffinity,omitempty" yaml:"replica_disk_soft_anti_affinity,omitempty"`
+
 	ReplicaSoftAntiAffinity string `json:"replicaSoftAntiAffinity,omitempty" yaml:"replica_soft_anti_affinity,omitempty"`
 
 	ReplicaZoneSoftAntiAffinity string `json:"replicaZoneSoftAntiAffinity,omitempty" yaml:"replica_zone_soft_anti_affinity,omitempty"`
