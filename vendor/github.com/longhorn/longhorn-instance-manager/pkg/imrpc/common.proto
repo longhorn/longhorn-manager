@@ -3,6 +3,6 @@ syntax="proto3";
 package imrpc;
 
 enum BackendStoreDriver {
-    longhorn = 0;
-    spdk = 1;
+    v1 = 0;
+    v2 = 1;
 }

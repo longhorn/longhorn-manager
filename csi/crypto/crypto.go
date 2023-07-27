@@ -65,7 +65,7 @@ func VolumeMapper(volume string) string {
 
 // EncryptVolume encrypts provided device with LUKS.
 func EncryptVolume(devicePath, passphrase string, cryptoParams *EncryptParams) error {
-	logrus.Debugf("Encrypting device %s with LUKS", devicePath)
+	logrus.Infof("Encrypting device %s with LUKS", devicePath)
 	if _, err := luksFormat(devicePath, passphrase, cryptoParams); err != nil {
 		return fmt.Errorf("failed to encrypt device %s with LUKS: %w", devicePath, err)
 	}
@@ -75,21 +75,21 @@ func EncryptVolume(devicePath, passphrase string, cryptoParams *EncryptParams) e
 // OpenVolume opens volume so that it can be used by the client.
 func OpenVolume(volume, devicePath, passphrase string) error {
 	if isOpen, _ := IsDeviceOpen(VolumeMapper(volume)); isOpen {
-		logrus.Debugf("device %s is already opened at %s", devicePath, VolumeMapper(volume))
+		logrus.Infof("Device %s is already opened at %s", devicePath, VolumeMapper(volume))
 		return nil
 	}
 
-	logrus.Debugf("Opening device %s with LUKS on %s", devicePath, volume)
+	logrus.Infof("Opening device %s with LUKS on %s", devicePath, volume)
 	_, err := luksOpen(volume, devicePath, passphrase)
 	if err != nil {
-		logrus.Warnf("failed to open LUKS device %s: %s", devicePath, err)
+		logrus.WithError(err).Warnf("Failed to open LUKS device %s", devicePath)
 	}
 	return err
 }
 
 // CloseVolume closes encrypted volume so it can be detached.
 func CloseVolume(volume string) error {
-	logrus.Debugf("Closing LUKS device %s", volume)
+	logrus.Infof("Closing LUKS device %s", volume)
 	_, err := luksClose(volume)
 	return err
 }
@@ -121,7 +121,7 @@ func DeviceEncryptionStatus(devicePath string) (mappedDevice, mapper string, err
 	volume := strings.TrimPrefix(devicePath, mapperFilePathPrefix+"/")
 	stdout, err := luksStatus(volume)
 	if err != nil {
-		logrus.Debugf("device %s is not an active LUKS device: %v", devicePath, err)
+		logrus.WithError(err).Warnf("Device %s is not an active LUKS device", devicePath)
 		return devicePath, "", nil
 	}
 	lines := strings.Split(string(stdout), "\n")

@@ -43,9 +43,13 @@ func (b *backingImageMutator) Resource() admission.Resource {
 }
 
 func (b *backingImageMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
+	backingImage := newObj.(*longhorn.BackingImage)
 	var patchOps admission.PatchOps
 
-	backingImage := newObj.(*longhorn.BackingImage)
+	var err error
+	if patchOps, err = mutate(newObj); err != nil {
+		return nil, err
+	}
 
 	name := util.AutoCorrectName(backingImage.Name, datastore.NameMaximumLength)
 	if name != backingImage.Name {
@@ -88,19 +92,17 @@ func (b *backingImageMutator) Create(request *admission.Request, newObj runtime.
 	}
 	patchOps = append(patchOps, patchOp)
 
-	patchOp, err = common.GetLonghornFinalizerPatchOp(backingImage)
-	if err != nil {
-		err := errors.Wrapf(err, "failed to get finalizer patch for backingImage %v", backingImage.Name)
-		return nil, werror.NewInvalidError(err.Error(), "")
-	}
-	patchOps = append(patchOps, patchOp)
-
 	return patchOps, nil
 }
 
 func (b *backingImageMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
 	backingImage := newObj.(*longhorn.BackingImage)
 	var patchOps admission.PatchOps
+
+	var err error
+	if patchOps, err = mutate(newObj); err != nil {
+		return nil, err
+	}
 
 	// Backward compatibility
 	// SourceType is set to "download" if it is empty
@@ -113,6 +115,23 @@ func (b *backingImageMutator) Update(request *admission.Request, oldObj runtime.
 	}
 	if backingImage.Spec.SourceParameters == nil {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/sourceParameters", "value": {}}`)
+	}
+
+	return patchOps, nil
+}
+
+// mutate contains functionality shared by Create and Update.
+func mutate(newObj runtime.Object) (admission.PatchOps, error) {
+	backingImage := newObj.(*longhorn.BackingImage)
+	var patchOps admission.PatchOps
+
+	patchOp, err := common.GetLonghornFinalizerPatchOpIfNeeded(backingImage)
+	if err != nil {
+		err := errors.Wrapf(err, "failed to get finalizer patch for backingImage %v", backingImage.Name)
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+	if patchOp != "" {
+		patchOps = append(patchOps, patchOp)
 	}
 
 	return patchOps, nil

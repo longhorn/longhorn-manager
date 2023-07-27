@@ -318,6 +318,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 
 	syncTime := metav1.Time{Time: time.Now().UTC()}
 	existingBackup := backup.DeepCopy()
+	existingBackupState := backup.Status.State
 	defer func() {
 		if err != nil {
 			return
@@ -328,12 +329,18 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		if _, err := bc.ds.UpdateBackupStatus(backup); err != nil && apierrors.IsConflict(errors.Cause(err)) {
 			log.WithError(err).Debugf("Requeue %v due to conflict", backupName)
 			bc.enqueueBackup(backup)
+			err = nil
+			return
 		}
-	}()
-
-	defer func() {
+		if backup.Status.State == longhorn.BackupStateCompleted && existingBackupState != backup.Status.State {
+			if err := bc.syncBackupVolume(backupVolumeName); err != nil {
+				log.Warnf("failed to sync Backup Volume: %v", backupVolumeName)
+				return
+			}
+		}
 		if !backup.Status.LastSyncedAt.IsZero() || backup.Spec.SnapshotName == "" {
 			err = bc.handleAttachmentTicketDeletion(backup, backupVolumeName)
+			return
 		}
 	}()
 
@@ -629,7 +636,17 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 	if kubernetesStatus.PVCName != "" && kubernetesStatus.LastPVCRefAt == "" {
 		pvc, _ := bc.ds.GetPersistentVolumeClaim(kubernetesStatus.Namespace, kubernetesStatus.PVCName)
 		if pvc != nil {
-			storageClassName = *pvc.Spec.StorageClassName
+			if pvc.Spec.StorageClassName != nil {
+				storageClassName = *pvc.Spec.StorageClassName
+			}
+			if storageClassName == "" {
+				if v, exist := pvc.Annotations[corev1.BetaStorageClassAnnotation]; exist {
+					storageClassName = v
+				}
+			}
+			if storageClassName == "" {
+				bc.logger.Warnf("Failed to find the StorageClassName from the pvc %v", pvc.Name)
+			}
 		}
 	}
 
@@ -682,9 +699,6 @@ func (bc *BackupController) syncWithMonitor(backup *longhorn.Backup, volume *lon
 	bc.eventRecorder.Eventf(volume, corev1.EventTypeNormal, string(backup.Status.State),
 		"Snapshot %s backup %s label %v", backup.Spec.SnapshotName, backup.Name, backup.Spec.Labels)
 
-	if backup.Status.State == longhorn.BackupStateCompleted {
-		return bc.syncBackupVolume(volume.Name)
-	}
 	return nil
 }
 

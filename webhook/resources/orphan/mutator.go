@@ -31,6 +31,7 @@ func (o *orphanMutator) Resource() admission.Resource {
 		ObjectType: &longhorn.Orphan{},
 		OperationTypes: []admissionregv1.OperationType{
 			admissionregv1.Create,
+			admissionregv1.Update,
 		},
 	}
 }
@@ -38,6 +39,11 @@ func (o *orphanMutator) Resource() admission.Resource {
 func (o *orphanMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
 	orphan := newObj.(*longhorn.Orphan)
 	var patchOps admission.PatchOps
+
+	var err error
+	if patchOps, err = mutate(newObj); err != nil {
+		return nil, err
+	}
 
 	// Add labels according to the orphan type
 	var longhornLabels map[string]string
@@ -56,12 +62,26 @@ func (o *orphanMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 	patchOps = append(patchOps, patchOp)
 
-	patchOp, err = common.GetLonghornFinalizerPatchOp(orphan)
+	return patchOps, nil
+}
+
+func (o *orphanMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
+	return mutate(newObj)
+}
+
+// mutate contains functionality shared by Create and Update.
+func mutate(newObj runtime.Object) (admission.PatchOps, error) {
+	orphan := newObj.(*longhorn.Orphan)
+	var patchOps admission.PatchOps
+
+	patchOp, err := common.GetLonghornFinalizerPatchOpIfNeeded(orphan)
 	if err != nil {
 		err := errors.Wrapf(err, "failed to get finalizer patch for orphan %v", orphan.Name)
 		return nil, werror.NewInvalidError(err.Error(), "")
 	}
-	patchOps = append(patchOps, patchOp)
+	if patchOp != "" {
+		patchOps = append(patchOps, patchOp)
+	}
 
 	return patchOps, nil
 }

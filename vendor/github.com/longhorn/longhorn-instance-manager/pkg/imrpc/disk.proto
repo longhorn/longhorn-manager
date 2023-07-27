@@ -47,9 +47,10 @@ enum DiskType {
 message DiskCreateRequest{
     DiskType disk_type = 1;
 
-	string disk_name = 2;
-    string disk_path = 3;
-    int64 block_size = 4;
+    string disk_name = 2;
+    string disk_uuid = 3;
+    string disk_path = 4;
+    int64 block_size = 5;
 }
 
 message DiskGetRequest {

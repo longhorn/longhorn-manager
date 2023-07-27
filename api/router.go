@@ -8,6 +8,7 @@ import (
 	"github.com/rancher/go-rancher/client"
 	"github.com/sirupsen/logrus"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/metrics_collector/registry"
 )
 
@@ -17,10 +18,30 @@ func HandleError(s *client.Schemas, t HandleFuncWithError) http.Handler {
 	return api.ApiHandler(s, http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		if err := t(rw, req); err != nil {
 			logrus.WithError(err).Warnf("HTTP handling error")
-			apiContext := api.GetApiContext(req)
-			apiContext.WriteErr(err)
+
+			statusCode := http.StatusInternalServerError
+			if datastore.ErrorIsNotFound(err) {
+				statusCode = http.StatusNotFound
+			}
+			writeErr(rw, req, err, statusCode)
 		}
 	}))
+}
+
+func writeErr(rw http.ResponseWriter, req *http.Request, err error, statusCode int) {
+	apiContext := api.GetApiContext(req)
+	rw.WriteHeader(statusCode)
+	writeErr := apiContext.WriteResource(&client.ServerApiError{
+		Resource: client.Resource{
+			Type: "error",
+		},
+		Status:  statusCode,
+		Code:    http.StatusText(statusCode),
+		Message: err.Error(),
+	})
+	if writeErr != nil {
+		logrus.WithError(writeErr).Errorf("Failed to write error %v", err)
+	}
 }
 
 func NewRouter(s *Server) *mux.Router {

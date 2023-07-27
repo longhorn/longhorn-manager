@@ -3,12 +3,16 @@ package backingimagedatasource
 import (
 	"fmt"
 
+	"github.com/pkg/errors"
+
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
+	"github.com/longhorn/longhorn-manager/webhook/common"
+	werror "github.com/longhorn/longhorn-manager/webhook/error"
 )
 
 type backingImageDataSourceMutator struct {
@@ -35,24 +39,34 @@ func (b *backingImageDataSourceMutator) Resource() admission.Resource {
 }
 
 func (b *backingImageDataSourceMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
-	return mutateBackingImageDatasource(newObj)
+	return mutate(newObj)
 }
 
 func (b *backingImageDataSourceMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
-	return mutateBackingImageDatasource(newObj)
+	return mutate(newObj)
 }
 
-func mutateBackingImageDatasource(newObj runtime.Object) (admission.PatchOps, error) {
+// mutate contains functionality shared by Create and Update.
+func mutate(newObj runtime.Object) (admission.PatchOps, error) {
 	var patchOps admission.PatchOps
 
-	backingimagedatasource := newObj.(*longhorn.BackingImageDataSource)
+	backingImageDataSource := newObj.(*longhorn.BackingImageDataSource)
 
-	if backingimagedatasource.Spec.SourceType == "" {
+	if backingImageDataSource.Spec.SourceType == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/sourceType", "value": "%s"}`, longhorn.BackingImageDataSourceTypeDownload))
 	}
 
-	if backingimagedatasource.Spec.Parameters == nil {
+	if backingImageDataSource.Spec.Parameters == nil {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/parameters", "value": {}}`)
+	}
+
+	patchOp, err := common.GetLonghornFinalizerPatchOpIfNeeded(backingImageDataSource)
+	if err != nil {
+		err := errors.Wrapf(err, "failed to get finalizer patch for backingImageDataSource %v", backingImageDataSource.Name)
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+	if patchOp != "" {
+		patchOps = append(patchOps, patchOp)
 	}
 
 	return patchOps, nil

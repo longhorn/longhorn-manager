@@ -3,14 +3,15 @@ package app
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
+
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 
@@ -142,7 +143,7 @@ func getProcCmdline(kubeClient *clientset.Clientset, managerImage, serviceAccoun
 			completed = true
 			break
 		} else {
-			logrus.Debugf("proc cmdline detection pod %v in phase: %v", name, pod.Status.Phase)
+			logrus.Infof("proc cmdline detection pod %v in phase: %v", name, pod.Status.Phase)
 		}
 		time.Sleep(1 * time.Second)
 	}

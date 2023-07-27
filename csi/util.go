@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +31,8 @@ const (
 	defaultStaleReplicaTimeout = 2880
 
 	defaultForceUmountTimeout = 30 * time.Second
+
+	tempTestMountPointValidStatusFile = ".longhorn-volume-mount-point-test.tmp"
 )
 
 // NewForcedParamsExec creates a osExecutor that allows for adding additional params to later occurring Run calls
@@ -218,7 +222,7 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 		vol.NodeSelector = strings.Split(nodeSelector, ",")
 	}
 
-	vol.BackendStoreDriver = string(longhorn.BackendStoreDriverTypeLonghorn)
+	vol.BackendStoreDriver = string(longhorn.BackendStoreDriverTypeV1)
 	if driver, ok := volOptions["backendStoreDriver"]; ok {
 		vol.BackendStoreDriver = driver
 	}
@@ -239,12 +243,48 @@ func parseJSONRecurringJobs(jsonRecurringJobs string) ([]longhornclient.Recurrin
 	return recurringJobs, nil
 }
 
+func syncMountPointDirectory(targetPath string) error {
+	d, err := os.OpenFile(targetPath, os.O_SYNC, 0750)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+
+	if _, err := d.Readdirnames(1); err != nil {
+		if !errors.Is(err, io.EOF) {
+			return err
+		}
+	}
+
+	// it would not always return `Input/Output Error` or `read-only file system` errors if we only use ReadDir() or Readdirnames() without an I/O operation
+	// an I/O operation will make the targetPath mount point invalid immediately
+	tempFile := path.Join(targetPath, tempTestMountPointValidStatusFile)
+	f, err := os.OpenFile(tempFile, os.O_CREATE|os.O_RDWR|os.O_SYNC|os.O_TRUNC, 0666)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			logrus.WithError(err).Warnf("Failed to close %v", tempFile)
+		}
+		if err := os.Remove(tempFile); err != nil {
+			logrus.WithError(err).Warnf("Failed to remove %v", tempFile)
+		}
+	}()
+
+	if _, err := f.WriteString(tempFile); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // ensureMountPoint evaluates whether a path is a valid mountPoint
 // in case the targetPath does not exists it will create a path and return false
 // in case where the mount point exists but is corrupt, the mount point will be cleaned up and a error is returned
 // the underlying implementation utilizes mounter.IsLikelyNotMountPoint so it cannot detect bind mounts
 func ensureMountPoint(targetPath string, mounter mount.Interface) (bool, error) {
-	logrus.Debugf("trying to ensure mount point %v", targetPath)
+	logrus.Infof("Trying to ensure mount point %v", targetPath)
 	notMnt, err := mount.IsNotMountPoint(mounter, targetPath)
 	if os.IsNotExist(err) {
 		return false, os.MkdirAll(targetPath, 0750)
@@ -252,9 +292,9 @@ func ensureMountPoint(targetPath string, mounter mount.Interface) (bool, error) 
 
 	IsCorruptedMnt := mount.IsCorruptedMnt(err)
 	if !IsCorruptedMnt {
-		logrus.Debugf("mount point %v try reading dir to make sure it's healthy", targetPath)
-		if _, err := os.ReadDir(targetPath); err != nil {
-			logrus.Debugf("mount point %v was identified as corrupt by ReadDir", targetPath)
+		logrus.Infof("Mount point %v try opening and syncing dir to make sure it's healthy", targetPath)
+		if err := syncMountPointDirectory(targetPath); err != nil {
+			logrus.WithError(err).Warnf("Mount point %v was identified as corrupt by opening and syncing", targetPath)
 			IsCorruptedMnt = true
 		}
 	}
@@ -277,10 +317,10 @@ func unmount(targetPath string, mounter mount.Interface) error {
 
 	forceUnmounter, ok := mounter.(mount.MounterForceUnmounter)
 	if ok {
-		logrus.Debugf("Trying to force unmount potential mount point %v", targetPath)
+		logrus.Infof("Trying to force unmount potential mount point %v", targetPath)
 		err = forceUnmounter.UnmountWithForce(targetPath, defaultForceUmountTimeout)
 	} else {
-		logrus.Debugf("Trying to unmount potential mount point %v", targetPath)
+		logrus.Infof("Trying to unmount potential mount point %v", targetPath)
 		err = mounter.Unmount(targetPath)
 	}
 	if err == nil {
@@ -289,7 +329,7 @@ func unmount(targetPath string, mounter mount.Interface) error {
 
 	if strings.Contains(err.Error(), "not mounted") ||
 		strings.Contains(err.Error(), "no mount point specified") {
-		logrus.Infof("no need for unmount not a mount point %v", targetPath)
+		logrus.Infof("No need for unmount not a mount point %v", targetPath)
 		return nil
 	}
 
@@ -299,13 +339,13 @@ func unmount(targetPath string, mounter mount.Interface) error {
 // cleanupMountPoint ensures all mount layers for the targetPath are unmounted and the mount directory is removed
 func cleanupMountPoint(targetPath string, mounter mount.Interface) error {
 	// we just try to unmount since the path check would get stuck for nfs mounts
-	logrus.Infof("trying to cleanup mount point %v", targetPath)
+	logrus.Infof("Trying to cleanup mount point %v", targetPath)
 	if err := unmount(targetPath, mounter); err != nil {
-		logrus.Debugf("failed to unmount during cleanup error: %v", err)
+		logrus.WithError(err).Warn("Failed to unmount during cleanup")
 		return err
 	}
 
-	logrus.Infof("cleaned up mount point %v", targetPath)
+	logrus.Infof("Cleaned up mount point %v", targetPath)
 	return mount.CleanupMountPoint(targetPath, mounter, true)
 }
 

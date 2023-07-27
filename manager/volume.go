@@ -185,7 +185,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 	if err != nil {
 		return nil, err
 	}
-	logrus.Debugf("Created volume %v: %+v", v.Name, v.Spec)
+	logrus.Infof("Created volume %v: %+v", v.Name, v.Spec)
 	return v, nil
 }
 
@@ -193,7 +193,7 @@ func (m *VolumeManager) Delete(name string) error {
 	if err := m.ds.DeleteVolume(name); err != nil {
 		return err
 	}
-	logrus.Debugf("Deleted volume %v", name)
+	logrus.Infof("Deleted volume %v", name)
 	return nil
 }
 
@@ -233,7 +233,7 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 	}
 
 	if v.Spec.MigrationNodeID == node.Name {
-		logrus.Debugf("Volume %v is already migrating to node %v from node %v", v.Name, node.Name, v.Spec.NodeID)
+		logrus.Infof("Volume %v is already migrating to node %v from node %v", v.Name, node.Name, v.Spec.NodeID)
 		return v, nil
 	}
 
@@ -295,23 +295,6 @@ func (m *VolumeManager) Detach(name, attachmentID, hostID string, forceDetach bo
 	}
 
 	delete(va.Spec.AttachmentTickets, attachmentID)
-
-	// Cleanup the attachment ticket created by longhorn-upgrade process if existed
-	if hostID == "" {
-		// This might be the request from UI which doesn't usually send information about hostID.
-		// Cleanup all tickets created by longhorn-upgrade process
-		ticketsToDelete := []string{}
-		for _, ticket := range va.Spec.AttachmentTickets {
-			if ticket.Type == longhorn.AttacherTypeLonghornUpgrader {
-				ticketsToDelete = append(ticketsToDelete, ticket.ID)
-			}
-		}
-		for _, ticketID := range ticketsToDelete {
-			delete(va.Spec.AttachmentTickets, ticketID)
-		}
-	} else {
-		delete(va.Spec.AttachmentTickets, longhorn.GetAttachmentTicketID(longhorn.AttacherTypeLonghornUpgrader, hostID))
-	}
 
 	if _, err := m.ds.UpdateLHVolumeAttachment(va); err != nil {
 		return nil, err
@@ -407,7 +390,7 @@ func (m *VolumeManager) Salvage(volumeName string, replicaNames []string) (v *lo
 		}
 	}
 
-	logrus.Debugf("Salvaged replica %+v for volume %v", replicaNames, v.Name)
+	logrus.Infof("Salvaged replica %+v for volume %v", replicaNames, v.Name)
 	return v, nil
 }
 
@@ -450,7 +433,7 @@ func (m *VolumeManager) Activate(volumeName string, frontend string) (v *longhor
 		return nil, err
 	}
 
-	logrus.Debugf("Activating volume %v with frontend %v", v.Name, frontend)
+	logrus.Infof("Activating volume %v with frontend %v", v.Name, frontend)
 	return v, nil
 }
 
@@ -735,7 +718,7 @@ func (m *VolumeManager) DeleteReplica(volumeName, replicaName string) error {
 	if err := m.ds.DeleteReplica(replicaName); err != nil {
 		return err
 	}
-	logrus.Debugf("Deleted replica %v of volume %v, there is still at least one available healthy replica %v", replicaName, volumeName, healthyReplica)
+	logrus.Infof("Deleted replica %v of volume %v, there is still at least one available healthy replica %v", replicaName, volumeName, healthyReplica)
 	return nil
 }
 
@@ -771,7 +754,7 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 			return nil, err
 		}
 		if image != defaultEngineImage {
-			return nil, fmt.Errorf("updrading to %v is not allowed. "+
+			return nil, fmt.Errorf("upgrading to %v is not allowed. "+
 				"Only allow to upgrade to the default engine image %v because the setting "+
 				"`Concurrent Automatic Engine Upgrade Per Node Limit` is greater than 0",
 				image, defaultEngineImage)
@@ -825,9 +808,9 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 		return nil, err
 	}
 	if image != v.Status.CurrentImage {
-		logrus.Debugf("Upgrading volume %v engine image from %v to %v", v.Name, oldImage, v.Spec.EngineImage)
+		logrus.Infof("Upgrading volume %v engine image from %v to %v", v.Name, oldImage, v.Spec.EngineImage)
 	} else {
-		logrus.Debugf("Rolling back volume %v engine image to %v", v.Name, v.Status.CurrentImage)
+		logrus.Infof("Rolling back volume %v engine image to %v", v.Name, v.Status.CurrentImage)
 	}
 
 	return v, nil
@@ -860,7 +843,7 @@ func (m *VolumeManager) UpdateReplicaCount(name string, count int) (v *longhorn.
 	if err != nil {
 		return nil, err
 	}
-	logrus.Debugf("Updated volume %v replica count from %v to %v", v.Name, oldCount, v.Spec.NumberOfReplicas)
+	logrus.Infof("Updated volume %v replica count from %v to %v", v.Name, oldCount, v.Spec.NumberOfReplicas)
 	return v, nil
 }
 
@@ -881,7 +864,7 @@ func (m *VolumeManager) UpdateSnapshotDataIntegrity(name string, value string) (
 	if err != nil {
 		return nil, err
 	}
-	logrus.Debugf("Updated volume %v snapshot data integrity from %v to %v", v.Name, oldValue, v.Spec.SnapshotDataIntegrity)
+	logrus.Infof("Updated volume %v snapshot data integrity from %v to %v", v.Name, oldValue, v.Spec.SnapshotDataIntegrity)
 	return v, nil
 }
 
@@ -902,7 +885,7 @@ func (m *VolumeManager) UpdateOfflineReplicaRebuilding(name string, value string
 	if err != nil {
 		return nil, err
 	}
-	logrus.Debugf("Updated volume %v offline replica rebuilding from %v to %v", v.Name, oldValue, v.Spec.OfflineReplicaRebuilding)
+	logrus.Infof("Updated volume %v offline replica rebuilding from %v to %v", v.Name, oldValue, v.Spec.OfflineReplicaRebuilding)
 	return v, nil
 }
 
@@ -923,7 +906,7 @@ func (m *VolumeManager) UpdateBackupCompressionMethod(name string, value string)
 	if err != nil {
 		return nil, err
 	}
-	logrus.Debugf("Updated volume %v backup compression method from %v to %v", v.Name, oldValue, v.Spec.BackupCompressionMethod)
+	logrus.Infof("Updated volume %v backup compression method from %v to %v", v.Name, oldValue, v.Spec.BackupCompressionMethod)
 	return v, nil
 }
 
@@ -949,7 +932,7 @@ func (m *VolumeManager) UpdateReplicaAutoBalance(name string, inputSpec longhorn
 		return nil, err
 	}
 
-	logrus.Debugf("Updated volume %v replica auto-balance spec from %v to %v", v.Name, oldSpec, v.Spec.ReplicaAutoBalance)
+	logrus.Infof("Updated volume %v replica auto-balance spec from %v to %v", v.Name, oldSpec, v.Spec.ReplicaAutoBalance)
 	return v, nil
 }
 
@@ -975,7 +958,7 @@ func (m *VolumeManager) UpdateDataLocality(name string, dataLocality longhorn.Da
 		return nil, err
 	}
 
-	logrus.Debugf("Updated volume %v data locality from %v to %v", v.Name, oldDataLocality, v.Spec.DataLocality)
+	logrus.Infof("Updated volume %v data locality from %v to %v", v.Name, oldDataLocality, v.Spec.DataLocality)
 	return v, nil
 }
 

@@ -17,7 +17,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	appsv1 "k8s.io/api/apps/v1"
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -90,11 +90,13 @@ type Version struct {
 }
 
 type CheckUpgradeRequest struct {
-	AppVersion string                       `json:"appVersion"`
-	ExtraInfo  CheckUpgradeRequestExtraInfo `json:"extraInfo"`
+	AppVersion string `json:"appVersion"`
+
+	ExtraTagInfo   CheckUpgradeExtraInfo `json:"extraTagInfo"`
+	ExtraFieldInfo CheckUpgradeExtraInfo `json:"extraFieldInfo"`
 }
 
-type CheckUpgradeRequestExtraInfo interface {
+type CheckUpgradeExtraInfo interface {
 }
 
 type CheckUpgradeResponse struct {
@@ -122,7 +124,7 @@ func NewSettingController(
 
 		kubeClient:    kubeClient,
 		metricsClient: metricsClient,
-		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-setting-controller"}),
+		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-setting-controller"}),
 
 		ds: ds,
 
@@ -254,8 +256,8 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		if err := sc.updateLogLevel(); err != nil {
 			return err
 		}
-	case string(types.SettingNameSpdk):
-		if err := sc.updateSpdk(); err != nil {
+	case string(types.SettingNameV2DataEngine):
+		if err := sc.updateV2DataEngine(); err != nil {
 			return err
 		}
 	default:
@@ -469,7 +471,7 @@ func (sc *SettingController) updateTaintToleration() error {
 	return nil
 }
 
-func (sc *SettingController) updateTolerationForDeployment(dp *appsv1.Deployment, lastAppliedTolerations, newTolerations []v1.Toleration) error {
+func (sc *SettingController) updateTolerationForDeployment(dp *appsv1.Deployment, lastAppliedTolerations, newTolerations []corev1.Toleration) error {
 	existingTolerationsMap := util.TolerationListToMap(dp.Spec.Template.Spec.Tolerations)
 	lastAppliedTolerationsMap := util.TolerationListToMap(lastAppliedTolerations)
 	newTolerationsMap := util.TolerationListToMap(newTolerations)
@@ -488,7 +490,7 @@ func (sc *SettingController) updateTolerationForDeployment(dp *appsv1.Deployment
 	return nil
 }
 
-func (sc *SettingController) updateTolerationForDaemonset(ds *appsv1.DaemonSet, lastAppliedTolerations, newTolerations []v1.Toleration) error {
+func (sc *SettingController) updateTolerationForDaemonset(ds *appsv1.DaemonSet, lastAppliedTolerations, newTolerations []corev1.Toleration) error {
 	existingTolerationsMap := util.TolerationListToMap(ds.Spec.Template.Spec.Tolerations)
 	lastAppliedTolerationsMap := util.TolerationListToMap(lastAppliedTolerations)
 	newTolerationsMap := util.TolerationListToMap(newTolerations)
@@ -507,7 +509,7 @@ func (sc *SettingController) updateTolerationForDaemonset(ds *appsv1.DaemonSet, 
 	return nil
 }
 
-func getLastAppliedTolerationsList(obj runtime.Object) ([]v1.Toleration, error) {
+func getLastAppliedTolerationsList(obj runtime.Object) ([]corev1.Toleration, error) {
 	lastAppliedTolerations, err := util.GetAnnotation(obj, types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix))
 	if err != nil {
 		return nil, err
@@ -517,7 +519,7 @@ func getLastAppliedTolerationsList(obj runtime.Object) ([]v1.Toleration, error) 
 		lastAppliedTolerations = "[]"
 	}
 
-	lastAppliedTolerationsList := []v1.Toleration{}
+	lastAppliedTolerationsList := []corev1.Toleration{}
 	if err := json.Unmarshal([]byte(lastAppliedTolerations), &lastAppliedTolerationsList); err != nil {
 		return nil, err
 	}
@@ -708,13 +710,13 @@ func (sc *SettingController) updateLogLevel() error {
 	return nil
 }
 
-func (sc *SettingController) updateSpdk() error {
-	spdkEnabled, err := sc.ds.GetSettingAsBool(types.SettingNameSpdk)
+func (sc *SettingController) updateV2DataEngine() error {
+	v2DataEngineEnabled, err := sc.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
 	if err != nil {
 		return err
 	}
 
-	err = sc.ds.ValidateSpdk(spdkEnabled)
+	err = sc.ds.ValidateV2DataEngine(v2DataEngineEnabled)
 	if err != nil {
 		return err
 	}
@@ -722,11 +724,11 @@ func (sc *SettingController) updateSpdk() error {
 	// Recreate all instance manager pods
 	imPodList, err := sc.ds.ListInstanceManagerPods()
 	if err != nil {
-		return errors.Wrapf(err, "failed to list instance manager Pods for %v setting update", types.SettingNameSpdk)
+		return errors.Wrapf(err, "failed to list instance manager Pods for %v setting update", types.SettingNameV2DataEngine)
 	}
 
 	for _, pod := range imPodList {
-		if pod.Annotations[types.SpdkAnnotation] == strconv.FormatBool(spdkEnabled) {
+		if pod.Annotations[types.V2DataEngineAnnotation] == strconv.FormatBool(v2DataEngineEnabled) {
 			continue
 		}
 
@@ -738,8 +740,8 @@ func (sc *SettingController) updateSpdk() error {
 	return nil
 }
 
-func getFinalTolerations(existingTolerations, lastAppliedTolerations, newTolerations map[string]v1.Toleration) []v1.Toleration {
-	resultMap := make(map[string]v1.Toleration)
+func getFinalTolerations(existingTolerations, lastAppliedTolerations, newTolerations map[string]corev1.Toleration) []corev1.Toleration {
+	resultMap := make(map[string]corev1.Toleration)
 
 	for k, v := range existingTolerations {
 		resultMap[k] = v
@@ -753,7 +755,7 @@ func getFinalTolerations(existingTolerations, lastAppliedTolerations, newTolerat
 		resultMap[k] = v
 	}
 
-	resultSlice := []v1.Toleration{}
+	resultSlice := []corev1.Toleration{}
 	for _, v := range resultMap {
 		resultSlice = append(resultSlice, v)
 	}
@@ -951,13 +953,14 @@ func (sc *SettingController) CheckLatestAndStableLonghornVersions() (string, str
 		content bytes.Buffer
 	)
 
-	checkUpgradeRequestExtraInfo, err := sc.GetCheckUpgradeRequestExtraInfo()
+	extraTagInfo, extraFieldInfo, err := sc.GetCheckUpgradeRequestExtraInfo()
 	if err != nil {
 		return "", "", errors.Wrap(err, "failed to get extra info for upgrade checker")
 	}
 	req := &CheckUpgradeRequest{
-		AppVersion: sc.version,
-		ExtraInfo:  checkUpgradeRequestExtraInfo,
+		AppVersion:     sc.version,
+		ExtraTagInfo:   extraTagInfo,
+		ExtraFieldInfo: extraFieldInfo,
 	}
 	if err := json.NewEncoder(&content).Encode(req); err != nil {
 		return "", "", err
@@ -1103,49 +1106,60 @@ func (sc *SettingController) cleanupFailedSupportBundles() error {
 
 		message := fmt.Sprintf("Purging failed SupportBundle %v", supportBundle.Name)
 		sc.logger.Info(message)
-		sc.eventRecorder.Eventf(supportBundle, v1.EventTypeNormal, constant.EventReasonDeleting, message)
+		sc.eventRecorder.Eventf(supportBundle, corev1.EventTypeNormal, constant.EventReasonDeleting, message)
 	}
 
 	return nil
 }
 
-func (sc *SettingController) GetCheckUpgradeRequestExtraInfo() (CheckUpgradeRequestExtraInfo, error) {
+func (sc *SettingController) GetCheckUpgradeRequestExtraInfo() (extraTagInfo CheckUpgradeExtraInfo, extraFieldInfo CheckUpgradeExtraInfo, err error) {
 	clusterInfo := &ClusterInfo{
 		logger:        sc.logger,
 		ds:            sc.ds,
 		kubeClient:    sc.kubeClient,
 		metricsClient: sc.metricsClient,
-		structFields:  util.StructFields{},
-		controllerID:  sc.controllerID,
-		namespace:     sc.namespace,
+		structFields: ClusterInfoStructFields{
+			tags:   util.StructFields{},
+			fields: util.StructFields{},
+		},
+		controllerID: sc.controllerID,
+		namespace:    sc.namespace,
 	}
+
+	defer func() {
+		extraTagInfo = clusterInfo.structFields.tags.NewStruct()
+		extraFieldInfo = clusterInfo.structFields.fields.NewStruct()
+	}()
 
 	kubeVersion, err := sc.kubeClient.Discovery().ServerVersion()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get Kubernetes server version")
+		err = errors.Wrap(err, "failed to get Kubernetes server version")
+		return
 	}
-	clusterInfo.structFields.Append(ClusterInfoKubernetesVersion, kubeVersion.GitVersion)
+	clusterInfo.structFields.tags.Append(ClusterInfoKubernetesVersion, kubeVersion.GitVersion)
 
 	allowCollectingUsage, err := sc.ds.GetSettingAsBool(types.SettingNameAllowCollectingLonghornUsage)
 	if err != nil {
-		return nil, err
+		sc.logger.WithError(err).Warnf("Failed to get Setting %v for extra info collection", types.SettingNameAllowCollectingLonghornUsage)
+		return nil, nil, nil
 	}
 
 	if !allowCollectingUsage {
-		return clusterInfo.structFields.NewStruct(), nil
+		return
 	}
 
 	clusterInfo.collectNodeScope()
 
 	responsibleNodeID, err := getResponsibleNodeID(sc.ds)
 	if err != nil {
-		sc.logger.WithError(err).Warn("Failed to select node to get extra info")
+		sc.logger.WithError(err).Warn("Failed to get responsible Node for extra info collection")
+		return nil, nil, nil
 	}
 	if responsibleNodeID == sc.controllerID {
 		clusterInfo.collectClusterScope()
 	}
 
-	return clusterInfo.structFields.NewStruct(), nil
+	return
 }
 
 // Cluster Scope Info: will be sent from one of the Longhorn cluster nodes
@@ -1153,17 +1167,24 @@ const (
 	ClusterInfoNamespaceUID = util.StructName("LonghornNamespaceUid")
 	ClusterInfoNodeCount    = util.StructName("LonghornNodeCount")
 
-	ClusterInfoVolumeAvgActualSize    = util.StructName("LonghornVolumeAverageActualSize")
-	ClusterInfoVolumeAvgSize          = util.StructName("LonghornVolumeAverageSize")
+	ClusterInfoVolumeAvgActualSize    = util.StructName("LonghornVolumeAverageActualSizeBytes")
+	ClusterInfoVolumeAvgSize          = util.StructName("LonghornVolumeAverageSizeBytes")
 	ClusterInfoVolumeAvgSnapshotCount = util.StructName("LonghornVolumeAverageSnapshotCount")
 	ClusterInfoVolumeAvgNumOfReplicas = util.StructName("LonghornVolumeAverageNumberOfReplicas")
 
-	ClusterInfoPodAvgCPUUsageFmt          = "Longhorn%sAverageCpuUsageCore"
-	ClusterInfoPodAvgMemoryUsageFmt       = "Longhorn%sAverageMemoryUsageMib"
-	ClusterInfoSettingFmt                 = "LonghornSetting%s"
-	ClusterInfoVolumeAccessModeCountFmt   = "LonghornVolumeAccessMode%sCount"
-	ClusterInfoVolumeDataLocalityCountFmt = "LonghornVolumeDataLocality%sCount"
-	ClusterInfoVolumeFrontendCountFmt     = "LonghornVolumeFrontend%sCount"
+	ClusterInfoPodAvgCPUUsageFmt                         = "Longhorn%sAverageCpuUsageMilliCores"
+	ClusterInfoPodAvgMemoryUsageFmt                      = "Longhorn%sAverageMemoryUsageBytes"
+	ClusterInfoSettingFmt                                = "LonghornSetting%s"
+	ClusterInfoVolumeAccessModeCountFmt                  = "LonghornVolumeAccessMode%sCount"
+	ClusterInfoVolumeDataLocalityCountFmt                = "LonghornVolumeDataLocality%sCount"
+	ClusterInfoVolumeFrontendCountFmt                    = "LonghornVolumeFrontend%sCount"
+	ClusterInfoVolumeOfflineReplicaRebuildingCountFmt    = "LonghornVolumeOfflineReplicaRebuilding%sCount"
+	ClusterInfoVolumeReplicaAutoBalanceCountFmt          = "LonghornVolumeReplicaAutoBalance%sCount"
+	ClusterInfoVolumeReplicaSoftAntiAffinityCountFmt     = "LonghornVolumeReplicaSoftAntiAffinity%sCount"
+	ClusterInfoVolumeReplicaZoneSoftAntiAffinityCountFmt = "LonghornVolumeReplicaZoneSoftAntiAffinity%sCount"
+	ClusterInfoVolumeRestoreVolumeRecurringJobCountFmt   = "LonghornVolumeRestoreVolumeRecurringJob%sCount"
+	ClusterInfoVolumeSnapshotDataIntegrityCountFmt       = "LonghornVolumeSnapshotDataIntegrity%sCount"
+	ClusterInfoVolumeUnmapMarkSnapChainRemovedCountFmt   = "LonghornVolumeUnmapMarkSnapChainRemoved%sCount"
 )
 
 // Node Scope Info: will be sent from all Longhorn cluster nodes
@@ -1187,7 +1208,7 @@ type ClusterInfo struct {
 	kubeClient    clientset.Interface
 	metricsClient metricsclientset.Interface
 
-	structFields util.StructFields
+	structFields ClusterInfoStructFields
 
 	controllerID string
 	namespace    string
@@ -1195,32 +1216,37 @@ type ClusterInfo struct {
 	osDistro string
 }
 
+type ClusterInfoStructFields struct {
+	tags   util.StructFields
+	fields util.StructFields
+}
+
 func (info *ClusterInfo) collectClusterScope() {
 	if err := info.collectNamespace(); err != nil {
-		info.logger.WithError(err).Debug("Failed to collect Longhorn namespace")
+		info.logger.WithError(err).Warn("Failed to collect Longhorn namespace")
 	}
 
 	if err := info.collectNodeCount(); err != nil {
-		info.logger.WithError(err).Debug("Failed to collect number of Longhorn nodes")
+		info.logger.WithError(err).Warn("Failed to collect number of Longhorn nodes")
 	}
 
 	if err := info.collectResourceUsage(); err != nil {
-		info.logger.WithError(err).Debug("Failed to collect Longhorn resource usages")
+		info.logger.WithError(err).Warn("Failed to collect Longhorn resource usages")
 	}
 
 	if err := info.collectVolumesInfo(); err != nil {
-		info.logger.WithError(err).Debug("Failed to collect Longhorn Volumes info")
+		info.logger.WithError(err).Warn("Failed to collect Longhorn Volumes info")
 	}
 
 	if err := info.collectSettings(); err != nil {
-		info.logger.WithError(err).Debug("Failed to collect Longhorn settings")
+		info.logger.WithError(err).Warn("Failed to collect Longhorn settings")
 	}
 }
 
 func (info *ClusterInfo) collectNamespace() error {
 	namespace, err := info.ds.GetNamespace(info.namespace)
 	if err == nil {
-		info.structFields.Append(ClusterInfoNamespaceUID, string(namespace.UID))
+		info.structFields.fields.Append(ClusterInfoNamespaceUID, string(namespace.UID))
 	}
 	return err
 }
@@ -1228,7 +1254,7 @@ func (info *ClusterInfo) collectNamespace() error {
 func (info *ClusterInfo) collectNodeCount() error {
 	nodesRO, err := info.ds.ListNodesRO()
 	if err == nil {
-		info.structFields.Append(ClusterInfoNodeCount, fmt.Sprint(len(nodesRO)))
+		info.structFields.fields.Append(ClusterInfoNodeCount, len(nodesRO))
 	}
 	return err
 }
@@ -1245,17 +1271,18 @@ func (info *ClusterInfo) collectResourceUsage() error {
 			MatchLabels: label,
 		})
 		if err != nil {
-			logrus.WithError(err).Debugf("Failed to get %v label for %v", label, component)
+			logrus.WithError(err).Warnf("Failed to get %v label for %v", label, component)
 			continue
 		}
 
 		pods, err := info.ds.ListPodsBySelector(selector)
 		if err != nil {
-			logrus.WithError(err).Debugf("Failed to list %v Pod by %v label", component, label)
+			logrus.WithError(err).Warnf("Failed to list %v Pod by %v label", component, label)
 			continue
 		}
+		podCount := len(pods)
 
-		if len(pods) == 0 {
+		if podCount == 0 {
 			continue
 		}
 
@@ -1264,7 +1291,7 @@ func (info *ClusterInfo) collectResourceUsage() error {
 		for _, pod := range pods {
 			podMetrics, err := metricsClient.PodMetricses(info.namespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
 			if err != nil && !apierrors.IsNotFound(err) {
-				logrus.WithError(err).Debugf("Failed to get %v Pod", pod.Name)
+				logrus.WithError(err).Warnf("Failed to get %v Pod", pod.Name)
 				continue
 			}
 			for _, container := range podMetrics.Containers {
@@ -1273,27 +1300,16 @@ func (info *ClusterInfo) collectResourceUsage() error {
 			}
 		}
 
-		avgCPUUsageMilli := totalCPUUsage.MilliValue() / int64(len(pods))
+		avgCPUUsageMilli := totalCPUUsage.MilliValue() / int64(podCount)
 		cpuStruct := util.StructName(fmt.Sprintf(ClusterInfoPodAvgCPUUsageFmt, component))
-		info.structFields.Append(cpuStruct, info.getCPURange(avgCPUUsageMilli))
+		info.structFields.fields.Append(cpuStruct, avgCPUUsageMilli)
 
-		avgMemoryUsageBytes := totalMemoryUsage.Value() / int64(len(pods))
+		avgMemoryUsageBytes := totalMemoryUsage.Value() / int64(podCount)
 		memStruct := util.StructName(fmt.Sprintf(ClusterInfoPodAvgMemoryUsageFmt, component))
-		info.structFields.Append(memStruct, info.getMemoryRange(avgMemoryUsageBytes))
+		info.structFields.fields.Append(memStruct, avgMemoryUsageBytes)
 	}
 
 	return nil
-}
-
-func (info *ClusterInfo) getCPURange(milliValue int64) string {
-	min, max := util.GetRange(float64(milliValue), 50.0)
-	return fmt.Sprintf("%.0fm-%.0fm", min, max)
-}
-
-func (info *ClusterInfo) getMemoryRange(bytes int64) string {
-	mib := float64(bytes) / 1024 / 1024
-	min, max := util.GetRange(mib, 50.0)
-	return fmt.Sprintf("%.0f-%.0f", min, max)
 }
 
 func (info *ClusterInfo) collectSettings() error {
@@ -1351,7 +1367,7 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameStorageReservedPercentageForDefaultDisk:                  true,
 		types.SettingNameSupportBundleFailedHistoryLimit:                          true,
 		types.SettingNameSystemManagedPodsImagePullPolicy:                         true,
-		types.SettingNameSpdk:                                                     true,
+		types.SettingNameV2DataEngine:                                             true,
 		types.SettingNameOfflineReplicaRebuilding:                                 true,
 	}
 
@@ -1360,7 +1376,7 @@ func (info *ClusterInfo) collectSettings() error {
 		return err
 	}
 
-	settingMap := make(map[string]string)
+	settingMap := make(map[string]interface{})
 	for _, setting := range settings {
 		settingName := types.SettingName(setting.Name)
 
@@ -1371,11 +1387,16 @@ func (info *ClusterInfo) collectSettings() error {
 
 		// Setting that should be collected as boolean (true if configured, false if not)
 		case includeAsBoolean[settingName]:
-			settingMap[setting.Name] = fmt.Sprint(setting.Value != "")
+			settingMap[setting.Name] = setting.Value != ""
 
 		// Setting value
 		case include[settingName]:
-			settingMap[setting.Name] = setting.Value
+			convertedValue, err := info.convertSettingValueType(setting)
+			if err != nil {
+				logrus.WithError(err).Warnf("Failed to convert Setting %v value", setting.Name)
+				continue
+			}
+			settingMap[setting.Name] = convertedValue
 		}
 
 		if value, ok := settingMap[setting.Name]; ok && value == "" {
@@ -1385,9 +1406,31 @@ func (info *ClusterInfo) collectSettings() error {
 
 	for name, value := range settingMap {
 		structName := util.StructName(fmt.Sprintf(ClusterInfoSettingFmt, util.ConvertToCamel(name, "-")))
-		info.structFields.Append(structName, value)
+
+		switch reflect.TypeOf(value).Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Float32, reflect.Float64:
+			info.structFields.fields.Append(structName, value)
+		default:
+			info.structFields.tags.Append(structName, fmt.Sprint(value))
+		}
 	}
 	return nil
+}
+
+func (info *ClusterInfo) convertSettingValueType(setting *longhorn.Setting) (convertedValue interface{}, err error) {
+	definition, ok := types.GetSettingDefinition(types.SettingName(setting.Name))
+	if !ok {
+		return false, fmt.Errorf("failed to get Setting %v definition", setting.Name)
+	}
+
+	switch definition.Type {
+	case types.SettingTypeInt:
+		return strconv.ParseInt(setting.Value, 10, 64)
+	case types.SettingTypeBool:
+		return strconv.ParseBool(setting.Value)
+	default:
+		return setting.Value, nil
+	}
 }
 
 func (info *ClusterInfo) collectVolumesInfo() error {
@@ -1395,16 +1438,33 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	if err != nil {
 		return errors.Wrapf(err, "failed to list Longhorn Volumes")
 	}
+	volumeCount := len(volumesRO)
+
+	isV2DataEngineEnabled, err := info.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
+	if err != nil {
+		return err
+	}
 
 	var totalVolumeSize int
 	var totalVolumeActualSize int
 	var totalVolumeNumOfReplicas int
-	accessModeCountStruct := make(map[util.StructName]int)
-	dataLocalityCountStruct := make(map[util.StructName]int)
-	frontendCountStruct := make(map[util.StructName]int)
+	newStruct := func() map[util.StructName]int { return make(map[util.StructName]int, volumeCount) }
+	accessModeCountStruct := newStruct()
+	dataLocalityCountStruct := newStruct()
+	frontendCountStruct := newStruct()
+	offlineReplicaRebuildingCountStruct := newStruct()
+	replicaAutoBalanceCountStruct := newStruct()
+	replicaSoftAntiAffinityCountStruct := newStruct()
+	replicaZoneSoftAntiAffinityCountStruct := newStruct()
+	restoreVolumeRecurringJobCountStruct := newStruct()
+	snapshotDataIntegrityCountStruct := newStruct()
+	unmapMarkSnapChainRemovedCountStruct := newStruct()
 	for _, volume := range volumesRO {
-		totalVolumeSize += int(volume.Spec.Size)
-		totalVolumeActualSize += int(volume.Status.ActualSize)
+		isVolumeV2DataEngineEnabled := isV2DataEngineEnabled && volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2
+		if !isVolumeV2DataEngineEnabled {
+			totalVolumeSize += int(volume.Spec.Size)
+			totalVolumeActualSize += int(volume.Status.ActualSize)
+		}
 		totalVolumeNumOfReplicas += volume.Spec.NumberOfReplicas
 
 		accessMode := types.ValueUnknown
@@ -1419,23 +1479,56 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 		}
 		dataLocalityCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeDataLocalityCountFmt, dataLocality))]++
 
-		if volume.Spec.Frontend != "" {
+		if volume.Spec.Frontend != "" && !isVolumeV2DataEngineEnabled {
 			frontend := util.ConvertToCamel(string(volume.Spec.Frontend), "-")
 			frontendCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeFrontendCountFmt, frontend))]++
 		}
+
+		offlineReplicaRebuilding := info.collectSettingInVolume(string(volume.Spec.OfflineReplicaRebuilding), string(longhorn.OfflineReplicaRebuildingIgnored), types.SettingNameOfflineReplicaRebuilding)
+		offlineReplicaRebuildingCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeOfflineReplicaRebuildingCountFmt, util.ConvertToCamel(string(offlineReplicaRebuilding), "-")))]++
+
+		replicaAutoBalance := info.collectSettingInVolume(string(volume.Spec.ReplicaAutoBalance), string(longhorn.ReplicaAutoBalanceIgnored), types.SettingNameReplicaAutoBalance)
+		replicaAutoBalanceCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeReplicaAutoBalanceCountFmt, util.ConvertToCamel(string(replicaAutoBalance), "-")))]++
+
+		replicaSoftAntiAffinity := info.collectSettingInVolume(string(volume.Spec.ReplicaSoftAntiAffinity), string(longhorn.ReplicaSoftAntiAffinityDefault), types.SettingNameReplicaSoftAntiAffinity)
+		replicaSoftAntiAffinityCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeReplicaSoftAntiAffinityCountFmt, util.ConvertToCamel(string(replicaSoftAntiAffinity), "-")))]++
+
+		replicaZoneSoftAntiAffinity := info.collectSettingInVolume(string(volume.Spec.ReplicaZoneSoftAntiAffinity), string(longhorn.ReplicaZoneSoftAntiAffinityDefault), types.SettingNameReplicaZoneSoftAntiAffinity)
+		replicaZoneSoftAntiAffinityCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeReplicaZoneSoftAntiAffinityCountFmt, util.ConvertToCamel(string(replicaZoneSoftAntiAffinity), "-")))]++
+
+		restoreVolumeRecurringJob := info.collectSettingInVolume(string(volume.Spec.RestoreVolumeRecurringJob), string(longhorn.RestoreVolumeRecurringJobDefault), types.SettingNameRestoreVolumeRecurringJobs)
+		restoreVolumeRecurringJobCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeRestoreVolumeRecurringJobCountFmt, util.ConvertToCamel(string(restoreVolumeRecurringJob), "-")))]++
+
+		snapshotDataIntegrity := info.collectSettingInVolume(string(volume.Spec.SnapshotDataIntegrity), string(longhorn.SnapshotDataIntegrityIgnored), types.SettingNameSnapshotDataIntegrity)
+		snapshotDataIntegrityCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeSnapshotDataIntegrityCountFmt, util.ConvertToCamel(string(snapshotDataIntegrity), "-")))]++
+
+		unmapMarkSnapChainRemoved := info.collectSettingInVolume(string(volume.Spec.UnmapMarkSnapChainRemoved), string(longhorn.UnmapMarkSnapChainRemovedIgnored), types.SettingNameRemoveSnapshotsDuringFilesystemTrim)
+		unmapMarkSnapChainRemovedCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeUnmapMarkSnapChainRemovedCountFmt, util.ConvertToCamel(string(unmapMarkSnapChainRemoved), "-")))]++
 	}
-	info.structFields.AppendCounted(accessModeCountStruct)
-	info.structFields.AppendCounted(dataLocalityCountStruct)
-	info.structFields.AppendCounted(frontendCountStruct)
+	info.structFields.fields.AppendCounted(accessModeCountStruct)
+	info.structFields.fields.AppendCounted(dataLocalityCountStruct)
+	info.structFields.fields.AppendCounted(frontendCountStruct)
+	info.structFields.fields.AppendCounted(offlineReplicaRebuildingCountStruct)
+	info.structFields.fields.AppendCounted(replicaAutoBalanceCountStruct)
+	info.structFields.fields.AppendCounted(replicaSoftAntiAffinityCountStruct)
+	info.structFields.fields.AppendCounted(replicaZoneSoftAntiAffinityCountStruct)
+	info.structFields.fields.AppendCounted(restoreVolumeRecurringJobCountStruct)
+	info.structFields.fields.AppendCounted(snapshotDataIntegrityCountStruct)
+	info.structFields.fields.AppendCounted(unmapMarkSnapChainRemovedCountStruct)
 
 	var avgVolumeSnapshotCount int
 	var avgVolumeSize int
 	var avgVolumeActualSize int
 	var avgVolumeNumOfReplicas int
-	volumeCount := len(volumesRO)
 	if volumeCount > 0 {
-		avgVolumeSize = totalVolumeSize / volumeCount
-		avgVolumeActualSize = totalVolumeActualSize / volumeCount
+		if totalVolumeSize > 0 {
+			avgVolumeSize = totalVolumeSize / volumeCount
+
+			if totalVolumeActualSize > 0 {
+				avgVolumeActualSize = totalVolumeActualSize / volumeCount
+			}
+		}
+
 		avgVolumeNumOfReplicas = totalVolumeNumOfReplicas / volumeCount
 
 		snapshotsRO, err := info.ds.ListSnapshotsRO(labels.Everything())
@@ -1444,42 +1537,47 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 		}
 		avgVolumeSnapshotCount = len(snapshotsRO) / volumeCount
 	}
-	info.structFields.Append(ClusterInfoVolumeAvgSize, info.getSizeRange(avgVolumeSize))
-	info.structFields.Append(ClusterInfoVolumeAvgActualSize, info.getSizeRange(avgVolumeActualSize))
-	info.structFields.Append(ClusterInfoVolumeAvgSnapshotCount, fmt.Sprint(avgVolumeSnapshotCount))
-	info.structFields.Append(ClusterInfoVolumeAvgNumOfReplicas, fmt.Sprint(avgVolumeNumOfReplicas))
+	info.structFields.fields.Append(ClusterInfoVolumeAvgSize, avgVolumeSize)
+	info.structFields.fields.Append(ClusterInfoVolumeAvgActualSize, avgVolumeActualSize)
+	info.structFields.fields.Append(ClusterInfoVolumeAvgSnapshotCount, avgVolumeSnapshotCount)
+	info.structFields.fields.Append(ClusterInfoVolumeAvgNumOfReplicas, avgVolumeNumOfReplicas)
 
 	return nil
 }
 
-func (info *ClusterInfo) getSizeRange(bytes int) string {
-	gib := float64(bytes) / 1024 / 1024 / 1024
-	min, max := util.GetRange(gib, 100.0)
-	return fmt.Sprintf("%.0f-%.0f", min, max)
+func (info *ClusterInfo) collectSettingInVolume(volumeSpecValue, ignoredValue string, settingName types.SettingName) string {
+	if volumeSpecValue == ignoredValue {
+		globalSetting, err := info.ds.GetSetting(settingName)
+		if err != nil {
+			info.logger.WithError(err).Warnf("Failed to get Longhorn Setting %v", settingName)
+		}
+		return globalSetting.Value
+	}
+	return volumeSpecValue
 }
 
 func (info *ClusterInfo) collectNodeScope() {
 	if err := info.collectHostKernelRelease(); err != nil {
-		info.logger.WithError(err).Debug("Failed to collect host kernel release")
+		info.logger.WithError(err).Warn("Failed to collect host kernel release")
 	}
 
 	if err := info.collectHostOSDistro(); err != nil {
-		info.logger.WithError(err).Debug("Failed to collect host OS distro")
+		info.logger.WithError(err).Warn("Failed to collect host OS distro")
 	}
 
 	if err := info.collectNodeDiskCount(); err != nil {
-		info.logger.WithError(err).Debug("Failed to collect number of node disks")
+		info.logger.WithError(err).Warn("Failed to collect number of node disks")
 	}
 
 	if err := info.collectKubernetesNodeProvider(); err != nil {
-		info.logger.WithError(err).Debug("Failed to collect node provider")
+		info.logger.WithError(err).Warn("Failed to collect node provider")
 	}
 }
 
 func (info *ClusterInfo) collectHostKernelRelease() error {
 	kernelRelease, err := util.GetHostKernelRelease()
 	if err == nil {
-		info.structFields.Append(ClusterInfoHostKernelRelease, kernelRelease)
+		info.structFields.tags.Append(ClusterInfoHostKernelRelease, kernelRelease)
 	}
 	return err
 }
@@ -1491,7 +1589,7 @@ func (info *ClusterInfo) collectHostOSDistro() (err error) {
 			return err
 		}
 	}
-	info.structFields.Append(ClusterInfoHostOsDistro, info.osDistro)
+	info.structFields.tags.Append(ClusterInfoHostOsDistro, info.osDistro)
 	return nil
 }
 
@@ -1499,7 +1597,7 @@ func (info *ClusterInfo) collectKubernetesNodeProvider() error {
 	node, err := info.ds.GetKubernetesNode(info.controllerID)
 	if err == nil {
 		scheme := types.GetKubernetesProviderNameFromURL(node.Spec.ProviderID)
-		info.structFields.Append(ClusterInfoKubernetesNodeProvider, scheme)
+		info.structFields.tags.Append(ClusterInfoKubernetesNodeProvider, scheme)
 	}
 	return err
 }
@@ -1514,13 +1612,13 @@ func (info *ClusterInfo) collectNodeDiskCount() error {
 	for _, disk := range node.Spec.Disks {
 		deviceType, err := types.GetDeviceTypeOf(disk.Path)
 		if err != nil {
-			info.logger.WithError(err).Debugf("Failed to get device type of %v", disk.Path)
+			info.logger.WithError(err).Warnf("Failed to get device type of %v", disk.Path)
 			deviceType = types.ValueUnknown
 		}
 		structMap[util.StructName(fmt.Sprintf(ClusterInfoNodeDiskCountFmt, strings.ToUpper(deviceType)))]++
 	}
 	for structName, value := range structMap {
-		info.structFields.Append(structName, fmt.Sprint(value))
+		info.structFields.fields.Append(structName, value)
 	}
 
 	return nil

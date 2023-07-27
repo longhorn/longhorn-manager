@@ -40,27 +40,14 @@ func (n *nodeMutator) Resource() admission.Resource {
 }
 
 func (n *nodeMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
-	node := newObj.(*longhorn.Node)
-
-	patchOps, err := mutate(newObj)
-	if err != nil {
-		return nil, werror.NewInvalidError(err.Error(), "")
-	}
-
-	patchOp, err := common.GetLonghornFinalizerPatchOp(node)
-	if err != nil {
-		err := errors.Wrapf(err, "failed to get finalizer patch for node %v", node.Name)
-		return nil, werror.NewInvalidError(err.Error(), "")
-	}
-	patchOps = append(patchOps, patchOp)
-
-	return patchOps, nil
+	return mutate(newObj)
 }
 
 func (n *nodeMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
 	return mutate(newObj)
 }
 
+// mutate contains functionality shared by Create and Update.
 func mutate(newObj runtime.Object) (admission.PatchOps, error) {
 	node := newObj.(*longhorn.Node)
 	var patchOps admission.PatchOps
@@ -101,6 +88,15 @@ func mutate(newObj runtime.Object) (admission.PatchOps, error) {
 				patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/disks/%s/diskType", "value": "filesystem"}`, name))
 			}
 		}
+	}
+
+	patchOp, err := common.GetLonghornFinalizerPatchOpIfNeeded(node)
+	if err != nil {
+		err := errors.Wrapf(err, "failed to get finalizer patch for node %v", node.Name)
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+	if patchOp != "" {
+		patchOps = append(patchOps, patchOp)
 	}
 
 	return patchOps, nil

@@ -52,6 +52,6 @@ func (m *VolumeManager) CreateSnapshotCR(snapshotName string, labels map[string]
 		return nil, err
 	}
 
-	logrus.Debugf("Created snapshot CR %v with labels %+v for volume %v", snapshotName, labels, volumeName)
+	logrus.Infof("Created snapshot CR %v with labels %+v for volume %v", snapshotName, labels, volumeName)
 	return snapshotCR, nil
 }

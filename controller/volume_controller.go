@@ -681,7 +681,7 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		}
 	}
 
-	if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+	if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
 		shouldStop, err := c.shouldStopOfflineReplicaRebuilding(v, healthyCount)
 		if err != nil {
 			log.WithError(err).Errorf("Failed to check if offline replica rebuilding should be stopped")
@@ -731,7 +731,7 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 			}
 		}
 
-		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
 			v.Status.OfflineReplicaRebuildingRequired = false
 		}
 	} else { // healthyCount < v.Spec.NumberOfReplicas
@@ -913,7 +913,7 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 			continue
 		}
 
-		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
 			staled := false
 			if v.Spec.StaleReplicaTimeout > 0 && util.TimestampAfterTimeout(r.Spec.FailedAt,
 				time.Duration(int64(v.Spec.StaleReplicaTimeout*60))*time.Second) {
@@ -1330,19 +1330,23 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 			return nil
 		}
 
-		// reattach volume if detached unexpected and there are still healthy replicas
-		if e.Status.CurrentState == longhorn.InstanceStateError && v.Status.CurrentNodeID != "" {
-			log.Warn("Reattaching the volume since engine of volume dead unexpectedly")
-			msg := fmt.Sprintf("Engine of volume %v dead unexpectedly, reattach the volume", v.Name)
-			c.eventRecorder.Event(v, corev1.EventTypeWarning, constant.EventReasonDetachedUnexpectly, msg)
-			e.Spec.LogRequested = true
-			for _, r := range rs {
-				if r.Status.CurrentState == longhorn.InstanceStateRunning {
-					r.Spec.LogRequested = true
-					rs[r.Name] = r
+		// Reattach volume if
+		// - volume is detached unexpectedly and there are still healthy replicas
+		// - engine dead unexpectedly and there are still healthy replicas when the volume is not attached
+		if e.Status.CurrentState == longhorn.InstanceStateError {
+			if v.Status.CurrentNodeID != "" || (v.Spec.NodeID != "" && v.Status.CurrentNodeID == "" && v.Status.State != longhorn.VolumeStateAttached) {
+				log.Warn("Reattaching the volume since engine of volume dead unexpectedly")
+				msg := fmt.Sprintf("Engine of volume %v dead unexpectedly, reattach the volume", v.Name)
+				c.eventRecorder.Event(v, corev1.EventTypeWarning, constant.EventReasonDetachedUnexpectedly, msg)
+				e.Spec.LogRequested = true
+				for _, r := range rs {
+					if r.Status.CurrentState == longhorn.InstanceStateRunning {
+						r.Spec.LogRequested = true
+						rs[r.Name] = r
+					}
 				}
+				v.Status.Robustness = longhorn.VolumeRobustnessFaulted
 			}
-			v.Status.Robustness = longhorn.VolumeRobustnessFaulted
 		}
 	}
 
@@ -1643,7 +1647,7 @@ func isVolumeOfflineUpgrade(v *longhorn.Volume) bool {
 
 func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, log *logrus.Entry) error {
 	if isVolumeOfflineUpgrade(v) {
-		log.Debug("Wait for offline volume upgrade to finish")
+		log.Info("Waiting for offline volume upgrade to finish")
 		return nil
 	}
 
@@ -1769,30 +1773,6 @@ func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *
 		}
 	}
 
-	// check if any replica has been RW yet
-	dataExists := false
-	for _, r := range rs {
-		if r.Spec.HealthyAt != "" {
-			dataExists = true
-			break
-		}
-	}
-	// stop rebuilding
-	if dataExists {
-		for _, r := range rs {
-			if r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" {
-				r.Spec.FailedAt = c.nowHandler()
-				r.Spec.DesireState = longhorn.InstanceStateStopped
-				// unscheduled replicas marked failed here when volume detached
-				// check if NodeId or DiskID is empty to avoid deleting reusableFailedReplica when replenished.
-				if r.Spec.NodeID == "" || r.Spec.DiskID == "" {
-					r.Spec.RebuildRetryCount = scheduler.FailedReplicaMaxRetryCount
-				}
-				rs[r.Name] = r
-			}
-		}
-	}
-
 	if e.Spec.DesireState != longhorn.InstanceStateStopped || e.Spec.NodeID != "" {
 		if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 			e.Spec.LogRequested = true
@@ -1811,7 +1791,24 @@ func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *
 		return
 	}
 
+	// check if any replica has been RW yet
+	dataExists := false
 	for _, r := range rs {
+		if r.Spec.HealthyAt != "" {
+			dataExists = true
+			break
+		}
+	}
+	for _, r := range rs {
+		if r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" && dataExists {
+			// This replica must have been rebuilding. Mark it as failed.
+			r.Spec.FailedAt = c.nowHandler()
+			// Unscheduled replicas are marked failed here when volume is detached.
+			// Check if NodeId or DiskID is empty to avoid deleting reusableFailedReplica when replenished.
+			if r.Spec.NodeID == "" || r.Spec.DiskID == "" {
+				r.Spec.RebuildRetryCount = scheduler.FailedReplicaMaxRetryCount
+			}
+		}
 		if r.Spec.DesireState != longhorn.InstanceStateStopped {
 			if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 				r.Spec.LogRequested = true
@@ -2042,7 +2039,7 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 	for i := 0; i < replenishCount; i++ {
 		var reusableFailedReplica *longhorn.Replica
 		// TODO: reuse failed replica for replica rebuilding of SPDK volumes
-		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
 			reusableFailedReplica, err = c.scheduler.CheckAndReuseFailedReplica(rs, v, hardNodeAffinity)
 			if err != nil {
 				return errors.Wrapf(err, "failed to reuse a failed replica during replica replenishment")
@@ -2063,7 +2060,7 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 				rs[reusableFailedReplica.Name] = reusableFailedReplica
 				continue
 			}
-			log.Debugf("Failed to reuse failed replica %v immediately, backoff period is %v now",
+			log.Warnf("Failed to reuse failed replica %v immediately, backoff period is %v now",
 				reusableFailedReplica.Name, c.backoff.Get(reusableFailedReplica.Name).Seconds())
 			// Couldn't reuse the replica. Add the volume back to the workqueue to check it later
 			c.enqueueVolumeAfter(v, c.backoff.Get(reusableFailedReplica.Name))
@@ -2854,7 +2851,7 @@ func (c *VolumeController) updateRequestedBackupForVolumeRestore(v *longhorn.Vol
 func (c *VolumeController) checkAndInitVolumeOfflineReplicaRebuilding(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
 	log := getLoggerForVolume(c.logger, v)
 
-	if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeLonghorn {
+	if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
 		return nil
 	}
 
@@ -3364,7 +3361,7 @@ func (c *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine,
 	}
 	if isRebuildingReplica {
 		// TODO: reuse failed replica for replica rebuilding of SPDK volumes
-		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeSPDK {
+		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
 			if !v.Spec.DisableFrontend || !v.Status.OfflineReplicaRebuildingRequired {
 				log.Tracef("Online replica rebuilding for replica %v is not supported for SPDK volumes", replica.Name)
 				return nil
@@ -3650,7 +3647,8 @@ func (c *VolumeController) syncPVCRecurringJobLabels(volume *longhorn.Volume) er
 	}
 
 	if !hasSourceLabel {
-		c.logger.Warnf("Ignoring recurring job labels on Volume %v PVC %v due to missing source label", volume.Name, pvc.Name)
+		c.logger.Debugf("Ignoring recurring job labels on Volume %v PVC %v due to missing source label", volume.Name, pvc.Name)
+
 		return nil
 	}
 

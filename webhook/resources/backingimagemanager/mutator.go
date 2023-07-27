@@ -23,7 +23,7 @@ func NewMutator(ds *datastore.DataStore) admission.Mutator {
 
 func (b *backingImageManagerMutator) Resource() admission.Resource {
 	return admission.Resource{
-		Name:       "backingImageManagers",
+		Name:       "backingimagemanagers",
 		Scope:      admissionregv1.NamespacedScope,
 		APIGroup:   longhorn.SchemeGroupVersion.Group,
 		APIVersion: longhorn.SchemeGroupVersion.Version,
@@ -36,33 +36,29 @@ func (b *backingImageManagerMutator) Resource() admission.Resource {
 }
 
 func (b *backingImageManagerMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
-	backingImageManager := newObj.(*longhorn.BackingImageManager)
-
-	patchOps, err := mutate(newObj)
-	if err != nil {
-		return nil, werror.NewInvalidError(err.Error(), "")
-	}
-
-	patchOp, err := common.GetLonghornFinalizerPatchOp(backingImageManager)
-	if err != nil {
-		err := errors.Wrapf(err, "failed to get finalizer patch for backingImageManager %v", backingImageManager.Name)
-		return nil, werror.NewInvalidError(err.Error(), "")
-	}
-	patchOps = append(patchOps, patchOp)
-
-	return patchOps, nil
+	return mutate(newObj)
 }
 
 func (b *backingImageManagerMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
 	return mutate(newObj)
 }
 
+// mutate contains functionality shared by Create and Update.
 func mutate(newObj runtime.Object) (admission.PatchOps, error) {
 	backingImageManager := newObj.(*longhorn.BackingImageManager)
 	var patchOps admission.PatchOps
 
 	if backingImageManager.Spec.BackingImages == nil {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/backingImages", "value": {}}`)
+	}
+
+	patchOp, err := common.GetLonghornFinalizerPatchOpIfNeeded(backingImageManager)
+	if err != nil {
+		err := errors.Wrapf(err, "failed to get finalizer patch for backingImageManager %v", backingImageManager.Name)
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+	if patchOp != "" {
+		patchOps = append(patchOps, patchOp)
 	}
 
 	return patchOps, nil
