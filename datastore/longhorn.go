@@ -4743,6 +4743,31 @@ func (s *DataStore) GetObjectEndpoint(name string) (*longhorn.ObjectEndpoint, er
 	return resultRO.DeepCopy(), nil
 }
 
+// CreateObjectEndpoint creates a Longhorn Object Endpoint resource and verifies
+// creation
+func (s *DataStore) CreateObjectEndpoint(endpoint *longhorn.ObjectEndpoint) (*longhorn.ObjectEndpoint, error) {
+	ret, err := s.lhClient.LonghornV1beta2().ObjectEndpoints().Create(context.TODO(), endpoint, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(ret.Name, "object endpoint", func(name string) (runtime.Object, error) {
+		return s.GetObjectEndpointRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.ObjectEndpoint)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for object endpoint")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
 // UpdateObjectEndpoint updates Longhorn Object Endpoint
 func (s *DataStore) UpdateObjectEndpoint(oe *longhorn.ObjectEndpoint) (*longhorn.ObjectEndpoint, error) {
 	if err := util.AddFinalizer(longhornFinalizerKey, oe); err != nil {

@@ -216,13 +216,15 @@ func startManager(c *cli.Context) error {
 	server := api.NewServer(m, wsc)
 	router := http.Handler(api.NewRouter(server))
 	router = util.FilteredLoggingHandler(map[string]struct{}{
-		"/v1/apiversions":  {},
-		"/v1/schemas":      {},
-		"/v1/settings":     {},
-		"/v1/volumes":      {},
-		"/v1/nodes":        {},
-		"/v1/engineimages": {},
-		"/v1/events":       {},
+		"/v1/apiversions":     {},
+		"/v1/schemas":         {},
+		"/v1/settings":        {},
+		"/v1/volumes":         {},
+		"/v1/nodes":           {},
+		"/v1/engineimages":    {},
+		"/v1/events":          {},
+		"/v1/objectendpoints": {},
+		"/v1/storageclasses":  {},
 	}, os.Stdout, router)
 	router = handlers.ProxyHeaders(router)
 

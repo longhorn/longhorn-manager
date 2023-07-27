@@ -19,6 +19,9 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
+	v1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
+
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
@@ -539,6 +542,36 @@ type SnapshotCRListOutput struct {
 	Type string       `json:"type"`
 }
 
+type ObjectEndpoint struct {
+	client.Resource
+	Name     string                       `json:"name"`
+	State    longhorn.ObjectEndpointState `json:"state"`
+	Endpoint string                       `json:"endpoint"`
+}
+
+type ObjectEndpointInput struct {
+	Name         string `json:"name"`
+	Size         string `json:"size"`
+	StorageClass string `json:"storageclass"`
+	AccessKey    string `json:"accesskey"`
+	SecretKey    string `json:"secretkey"`
+}
+
+type ObjectEndpointListOutput struct {
+	Data []ObjectEndpoint `json:"data"`
+	Type string           `json:"type"`
+}
+
+type StorageClass struct {
+	client.Resource
+	Name string `json:"name"`
+}
+
+type StorageClassListOutput struct {
+	Data []StorageClass `json:"data"`
+	Type string         `json:"type"`
+}
+
 func NewSchema() *client.Schemas {
 	schemas := &client.Schemas{}
 
@@ -624,6 +657,9 @@ func NewSchema() *client.Schemas {
 	systemBackupSchema(schemas.AddType("systemBackup", SystemBackup{}))
 	systemRestoreSchema(schemas.AddType("systemRestore", SystemRestore{}))
 	snapshotCRListOutputSchema(schemas.AddType("snapshotCRListOutput", SnapshotCRListOutput{}))
+
+	objectEndpointSchema(schemas.AddType("objectEndpoint", ObjectEndpoint{}))
+	storageClassSchema(schemas.AddType("storageClass", StorageClass{}))
 
 	return schemas
 }
@@ -1188,6 +1224,27 @@ func volumeAttachmentSchema(volumeAttachment *client.Schema) {
 	attachments := volumeAttachment.ResourceFields["attachments"]
 	attachments.Type = "map[attachment]"
 	volumeAttachment.ResourceFields["attachments"] = attachments
+}
+
+func objectEndpointSchema(objectEndpoint *client.Schema) {
+	objectEndpoint.CollectionMethods = []string{"GET", "POST"}
+	objectEndpoint.ResourceMethods = []string{"GET", "PUT", "DELETE"}
+
+	name := objectEndpoint.ResourceFields["name"]
+	name.Required = true
+	name.Unique = true
+	name.Create = true
+	objectEndpoint.ResourceFields["name"] = name
+}
+
+func storageClassSchema(storageClass *client.Schema) {
+	storageClass.CollectionMethods = []string{"GET"}
+
+	name := storageClass.ResourceFields["name"]
+	name.Required = true
+	name.Unique = true
+	name.Create = true
+	storageClass.ResourceFields["name"] = name
 }
 
 func toEmptyResource() *Empty {
@@ -2123,4 +2180,56 @@ func sliceToMap(conditions []longhorn.Condition) map[string]longhorn.Condition {
 		converted[c.Type] = c
 	}
 	return converted
+}
+
+func toObjectEndpointResource(endpoint *longhorn.ObjectEndpoint) *ObjectEndpoint {
+	return &ObjectEndpoint{
+		Resource: client.Resource{
+			Id:   endpoint.Name,
+			Type: "objectEndpoint",
+		},
+		Name:     endpoint.Name,
+		State:    endpoint.Status.State,
+		Endpoint: endpoint.Status.Endpoint,
+	}
+}
+
+func toObjectEndpointCollection(endpoints []*longhorn.ObjectEndpoint, apiContext *api.ApiContext) *client.GenericCollection {
+	data := []interface{}{}
+
+	for _, endpoint := range endpoints {
+		data = append(data, toObjectEndpointResource(endpoint))
+	}
+
+	return &client.GenericCollection{
+		Data: data,
+		Collection: client.Collection{
+			ResourceType: "objectEndpoint",
+		},
+	}
+}
+
+func toStorageClassResource(class *storagev1.StorageClass) *StorageClass {
+	return &StorageClass{
+		Resource: client.Resource{
+			Id:   class.Name,
+			Type: "storageClass",
+		},
+		Name: class.Name,
+	}
+}
+
+func toStorageClassCollection(classes []*storagev1.StorageClass, apiContext *api.ApiContext) *client.GenericCollection {
+	data := []interface{}{}
+
+	for _, class := range classes {
+		data = append(data, toStorageClassResource(class))
+	}
+
+	return &client.GenericCollection{
+		Data: data,
+		Collection: client.Collection{
+			ResourceType: "storageClass",
+		},
+	}
 }

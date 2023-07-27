@@ -1087,3 +1087,17 @@ func (s *DataStore) GetRoleBinding(name string) (*rbacv1.RoleBinding, error) {
 func (s *DataStore) UpdateRoleBinding(roleBinding *rbacv1.RoleBinding) (*rbacv1.RoleBinding, error) {
 	return s.kubeClient.RbacV1().RoleBindings(s.namespace).Update(context.TODO(), roleBinding, metav1.UpdateOptions{})
 }
+
+func (s *DataStore) ListStorageClasses() (map[string]*storagev1.StorageClass, error) {
+	list, err := s.storageclassLister.List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*storagev1.StorageClass{}
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
