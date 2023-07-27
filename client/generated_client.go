@@ -35,6 +35,7 @@ type RancherClient struct {
 	UpdateUnmapMarkSnapChainRemovedInput   UpdateUnmapMarkSnapChainRemovedInputOperations
 	UpdateReplicaSoftAntiAffinityInput     UpdateReplicaSoftAntiAffinityInputOperations
 	UpdateReplicaZoneSoftAntiAffinityInput UpdateReplicaZoneSoftAntiAffinityInputOperations
+	UpdateReplicaDiskSoftAntiAffinityInput UpdateReplicaDiskSoftAntiAffinityInputOperations
 	WorkloadStatus                         WorkloadStatusOperations
 	CloneStatus                            CloneStatusOperations
 	Empty                                  EmptyOperations
@@ -111,6 +112,7 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.UpdateUnmapMarkSnapChainRemovedInput = newUpdateUnmapMarkSnapChainRemovedInputClient(client)
 	client.UpdateReplicaSoftAntiAffinityInput = newUpdateReplicaSoftAntiAffinityInputClient(client)
 	client.UpdateReplicaZoneSoftAntiAffinityInput = newUpdateReplicaZoneSoftAntiAffinityInputClient(client)
+	client.UpdateReplicaDiskSoftAntiAffinityInput = newUpdateReplicaDiskSoftAntiAffinityInputClient(client)
 	client.WorkloadStatus = newWorkloadStatusClient(client)
 	client.CloneStatus = newCloneStatusClient(client)
 	client.Empty = newEmptyClient(client)

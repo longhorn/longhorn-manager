@@ -194,12 +194,12 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 		vol.ReplicaZoneSoftAntiAffinity = replicaZoneSoftAntiAffinity
 	}
 
-	// if replicaDiskSoftAntiAffinity, ok := volOptions["replicaDiskSoftAntiAffinity"]; ok {
-	// 	if err := types.ValidateReplicaDiskSoftAntiAffinity(longhorn.ReplicaDiskSoftAntiAffinity(replicaDiskSoftAntiAffinity)); err != nil {
-	// 		return nil, errors.Wrap(err, "Invalid parameter replicaDiskSoftAntiAffinity")
-	// 	}
-	// 	vol.ReplicaDiskSoftAntiAffinity = replicaDiskSoftAntiAffinity
-	// }
+	if replicaDiskSoftAntiAffinity, ok := volOptions["replicaDiskSoftAntiAffinity"]; ok {
+		if err := types.ValidateReplicaDiskSoftAntiAffinity(longhorn.ReplicaDiskSoftAntiAffinity(replicaDiskSoftAntiAffinity)); err != nil {
+			return nil, errors.Wrap(err, "Invalid parameter replicaDiskSoftAntiAffinity")
+		}
+		vol.ReplicaDiskSoftAntiAffinity = replicaDiskSoftAntiAffinity
+	}
 
 	if fromBackup, ok := volOptions["fromBackup"]; ok {
 		vol.FromBackup = fromBackup
