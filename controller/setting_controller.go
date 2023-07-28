@@ -1318,6 +1318,7 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameSystemManagedComponentsNodeSelector: true,
 		types.SettingNameRegistrySecret:                      true,
 		types.SettingNamePriorityClass:                       true,
+		types.SettingNameSnapshotDataIntegrityCronJob:        true,
 		types.SettingNameStorageNetwork:                      true,
 	}
 
@@ -1360,7 +1361,6 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameRestoreConcurrentLimit:                                   true,
 		types.SettingNameRestoreVolumeRecurringJobs:                               true,
 		types.SettingNameSnapshotDataIntegrity:                                    true,
-		types.SettingNameSnapshotDataIntegrityCronJob:                             true,
 		types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation: true,
 		types.SettingNameStorageMinimalAvailablePercentage:                        true,
 		types.SettingNameStorageOverProvisioningPercentage:                        true,
@@ -1387,7 +1387,12 @@ func (info *ClusterInfo) collectSettings() error {
 
 		// Setting that should be collected as boolean (true if configured, false if not)
 		case includeAsBoolean[settingName]:
-			settingMap[setting.Name] = setting.Value != ""
+			definition, ok := types.GetSettingDefinition(types.SettingName(setting.Name))
+			if !ok {
+				logrus.WithError(err).Warnf("Failed to get Setting %v definition", setting.Name)
+				continue
+			}
+			settingMap[setting.Name] = setting.Value != definition.Default
 
 		// Setting value
 		case include[settingName]:
