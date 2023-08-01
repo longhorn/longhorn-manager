@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	CurrentInstanceManagerAPIVersion = 4
+	CurrentInstanceManagerAPIVersion = 5
 	MinInstanceManagerAPIVersion     = 1
 	UnknownInstanceManagerAPIVersion = 0
 
