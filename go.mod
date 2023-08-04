@@ -46,11 +46,11 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.4.0-rc1.0.20230521151917-38ff27cc2cbb
 	github.com/longhorn/backupstore v0.0.0-20231114103026-af339bb498d3
-	github.com/longhorn/go-iscsi-helper v0.0.0-20231113050545-9df1e6b605c7
+	github.com/longhorn/go-iscsi-helper v0.0.0-20231220091133-38e296e68ad2
 	github.com/longhorn/go-spdk-helper v0.0.0-20231113055029-9acddd184246
-	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230914160943-b42224518443
+	github.com/longhorn/longhorn-engine v1.6.0-dev-20231217.0.20231221124647-1a5cdbf02a5a
 	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20231117031020-055db7ef0240
-	github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20231115135615-fb85b56534a4
+	github.com/longhorn/longhorn-share-manager v1.6.0-dev-20231217.0.20231221124415-c1ae736675af
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.16.0
 	github.com/rancher/dynamiclistener v0.3.6
@@ -64,7 +64,7 @@ require (
 	golang.org/x/net v0.17.0
 	golang.org/x/sys v0.15.0
 	golang.org/x/time v0.3.0
-	google.golang.org/grpc v1.56.3
+	google.golang.org/grpc v1.58.3
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.28.2
@@ -81,12 +81,16 @@ require (
 
 require (
 	github.com/antlr/antlr4/runtime/Go/antlr/v4 v4.0.0-20230305170008-8188dc5388df // indirect
+	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
+	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
+	github.com/shirou/gopsutil/v3 v3.23.7 // indirect
+	github.com/yusufpapurcu/wmi v1.2.3 // indirect
 	golang.org/x/exp v0.0.0-20220827204233-334a2380cb91 // indirect
 	golang.org/x/tools v0.8.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20230525234035-dd9d682886f9 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20230525234030-28d5490b6b19 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20230711160842-782d3b101e98 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20230711160842-782d3b101e98 // indirect
 )
 
 require (
@@ -134,6 +138,7 @@ require (
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de // indirect
+	github.com/longhorn/go-common-libs v0.0.0-20231201083854-bf0165ef3a22 // indirect
 	github.com/longhorn/longhorn-spdk-engine v0.0.0-20231005170812-e9b634e07e47 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
@@ -177,11 +182,11 @@ require (
 	go.uber.org/zap v1.19.0 // indirect
 	golang.org/x/crypto v0.17.0 // indirect
 	golang.org/x/oauth2 v0.10.0 // indirect
-	golang.org/x/sync v0.2.0
+	golang.org/x/sync v0.3.0
 	golang.org/x/term v0.15.0 // indirect
 	golang.org/x/text v0.14.0
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/genproto v0.0.0-20230526161137-0005af68ea54 // indirect
+	google.golang.org/genproto v0.0.0-20230711160842-782d3b101e98 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
