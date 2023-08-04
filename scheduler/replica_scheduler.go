@@ -224,8 +224,7 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 	}
 
 	unusedNodes := map[string]*longhorn.Node{}
-	unusedNodesInNewZones := map[string]*longhorn.Node{}
-	nodesInUnusedZones := map[string]*longhorn.Node{}
+	unusedNodesInUnusedZones := map[string]*longhorn.Node{} // By definition, these nodes are also unused.
 	nodesWithEvictingReplicas := getNodesWithEvictingReplicas(replicas, nodeInfo)
 
 	for nodeName, node := range nodeInfo {
@@ -235,33 +234,31 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		}
 		if _, ok := usedNodes[nodeName]; !ok {
 			unusedNodes[nodeName] = node
-			if _, ok := usedZones[node.Status.Zone]; !ok {
-				unusedNodesInNewZones[nodeName] = node
-			}
 		}
 		if _, ok := usedZones[node.Status.Zone]; !ok {
-			nodesInUnusedZones[nodeName] = node
+			unusedNodesInUnusedZones[nodeName] = node
 		}
 	}
 
+	// In all cases, we should try to use a disk on an unused node in an unused zone first. Don't bother considering
+	// zoneSoftAntiAffinity and nodeSoftAntiAffinity settings if such disks are available.
+	diskCandidates, errors := getDiskCandidatesFromNodes(unusedNodesInUnusedZones)
+	if len(diskCandidates) > 0 {
+		return diskCandidates, nil
+	}
+	multiError.Append(errors)
+
 	switch {
 	case !zoneSoftAntiAffinity && !nodeSoftAntiAffinity:
-		diskCandidates, errors := getDiskCandidatesFromNodes(unusedNodesInNewZones)
-		if len(diskCandidates) > 0 {
-			return diskCandidates, nil
-		}
-		multiError.Append(errors)
+		fallthrough
+	// Same as the above. If we cannot schedule two replicas in the same zone, we cannot schedule them on the same node.
+	case !zoneSoftAntiAffinity && nodeSoftAntiAffinity:
 		diskCandidates, errors = getDiskCandidatesFromNodes(filterNodesWithLessThanTwoReplicas(nodesWithEvictingReplicas))
 		if len(diskCandidates) > 0 {
 			return diskCandidates, nil
 		}
 		multiError.Append(errors)
 	case zoneSoftAntiAffinity && !nodeSoftAntiAffinity:
-		diskCandidates, errors := getDiskCandidatesFromNodes(unusedNodesInNewZones)
-		if len(diskCandidates) > 0 {
-			return diskCandidates, nil
-		}
-		multiError.Append(errors)
 		diskCandidates, errors = getDiskCandidatesFromNodes(unusedNodes)
 		if len(diskCandidates) > 0 {
 			return diskCandidates, nil
@@ -272,28 +269,7 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 			return diskCandidates, nil
 		}
 		multiError.Append(errors)
-	case !zoneSoftAntiAffinity && nodeSoftAntiAffinity:
-		diskCandidates, errors := getDiskCandidatesFromNodes(unusedNodesInNewZones)
-		if len(diskCandidates) > 0 {
-			return diskCandidates, nil
-		}
-		multiError.Append(errors)
-		diskCandidates, errors = getDiskCandidatesFromNodes(nodesInUnusedZones)
-		if len(diskCandidates) > 0 {
-			return diskCandidates, nil
-		}
-		multiError.Append(errors)
-		diskCandidates, errors = getDiskCandidatesFromNodes(nodesWithEvictingReplicas)
-		if len(diskCandidates) > 0 {
-			return diskCandidates, nil
-		}
-		multiError.Append(errors)
 	case zoneSoftAntiAffinity && nodeSoftAntiAffinity:
-		diskCandidates, errors := getDiskCandidatesFromNodes(unusedNodesInNewZones)
-		if len(diskCandidates) > 0 {
-			return diskCandidates, nil
-		}
-		multiError.Append(errors)
 		diskCandidates, errors = getDiskCandidatesFromNodes(unusedNodes)
 		if len(diskCandidates) > 0 {
 			return diskCandidates, nil
