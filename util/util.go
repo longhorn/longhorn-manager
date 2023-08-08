@@ -45,6 +45,9 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	clientset "k8s.io/client-go/kubernetes"
 
+	lhio "github.com/longhorn/go-common-libs/io"
+	lhns "github.com/longhorn/go-common-libs/ns"
+	lhtypes "github.com/longhorn/go-common-libs/types"
 	iscsiutil "github.com/longhorn/go-iscsi-helper/util"
 )
 
@@ -867,8 +870,13 @@ func GetPodIP(pod *corev1.Pod) (string, error) {
 }
 
 func TrimFilesystem(volumeName string, encryptedDevice bool) error {
-	nsPath := iscsiutil.GetHostNamespacePath(HostProcPath)
-	nsExec, err := iscsiutil.NewNamespaceExecutor(nsPath)
+	var err error
+	defer func() {
+		err = errors.Wrapf(err, "failed to trim filesystem for Volume %v", volumeName)
+	}()
+
+	procMountsPath := filepath.Join(lhtypes.HostProcDirectory, "1", "mounts")
+	content, err := lhio.ReadFileContent(procMountsPath)
 	if err != nil {
 		return err
 	}
@@ -878,28 +886,38 @@ func TrimFilesystem(volumeName string, encryptedDevice bool) error {
 		deviceDir = EncryptedDeviceDirectory
 	}
 
-	mountOutput, err := nsExec.Execute("bash", []string{"-c", fmt.Sprintf("cat /proc/mounts | grep %s%s | awk '{print $2}'", deviceDir, volumeName)})
-	if err != nil {
-		return errors.Wrapf(err, "cannot find volume %v mount info on host", volumeName)
-	}
-
-	mountList := strings.Split(strings.TrimSpace(mountOutput), "\n")
-
-	var mountpoint string
-	for _, m := range mountList {
-		_, err = nsExec.Execute("stat", []string{m})
-		if err == nil {
-			mountpoint = m
-			break
+	var validMountpoint string
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
 		}
 
-		logrus.WithError(err).Warnf("Failed to get volume %v mount point %v info", volumeName, m)
-	}
-	if mountpoint == "" {
-		return fmt.Errorf("cannot find a valid mount point for volume %v", volumeName)
+		device := fields[0]
+		if !strings.HasPrefix(device, deviceDir+volumeName) {
+			continue
+		}
+
+		mountPoint := fields[1]
+		_, err = lhns.GetFileInfo(mountPoint)
+		if err == nil {
+			validMountpoint = mountPoint
+			break
+		}
 	}
 
-	_, err = nsExec.Execute("fstrim", []string{mountpoint})
+	if validMountpoint == "" {
+		return fmt.Errorf("failed to find valid mountpoint")
+	}
+
+	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceNet}
+	nsexec, err := lhns.NewNamespaceExecutor(lhns.GetDefaultProcessName(), lhtypes.HostProcDirectory, namespaces)
+	if err != nil {
+		return err
+	}
+
+	_, err = nsexec.Execute(lhtypes.BinaryFstrim, []string{validMountpoint}, lhtypes.ExecuteDefaultTimeout)
 	if err != nil {
 		return errors.Wrapf(err, "cannot find volume %v mount info on host", volumeName)
 	}
