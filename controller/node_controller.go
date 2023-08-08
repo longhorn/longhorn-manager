@@ -933,7 +933,16 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 		return err
 	}
 
+<<<<<<< HEAD
 	imTypes := []longhorn.InstanceManagerType{longhorn.InstanceManagerTypeEngine}
+=======
+	log := getLoggerForNode(nc.logger, node)
+
+	imTypes := []longhorn.InstanceManagerType{
+		longhorn.InstanceManagerTypeAllInOne,
+		longhorn.InstanceManagerTypeEngine,
+	}
+>>>>>>> 82e8e648 (controller: Node controller skips unknown IM cleanup)
 
 	// Clean up all replica managers if there is no disk on the node
 	if len(node.Spec.Disks) == 0 {
@@ -942,7 +951,11 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 			return err
 		}
 		for _, rm := range rmMap {
+<<<<<<< HEAD
 			logrus.Debugf("Prepare to clean up the replica manager %v since there is no available disk on node %v", rm.Name, node.Name)
+=======
+			log.Infof("Cleaning up the replica manager %v since there is no available disk on this node", rm.Name)
+>>>>>>> 82e8e648 (controller: Node controller skips unknown IM cleanup)
 			if err := nc.ds.DeleteInstanceManager(rm.Name); err != nil {
 				return err
 			}
@@ -977,9 +990,17 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 						}
 					}
 				}
+				if im.Status.CurrentState == longhorn.InstanceManagerStateUnknown && im.DeletionTimestamp == nil {
+					cleanupRequired = false
+					log.Debugf("Skipping cleaning up non-default unknown instance manager %s", im.Name)
+				}
 			}
 			if cleanupRequired {
+<<<<<<< HEAD
 				logrus.Debugf("Prepare to clean up the redundant instance manager %v when there is no running/starting instance", im.Name)
+=======
+				log.Infof("Cleaning up the redundant instance manager %v when there is no running/starting instance", im.Name)
+>>>>>>> 82e8e648 (controller: Node controller skips unknown IM cleanup)
 				if err := nc.ds.DeleteInstanceManager(im.Name); err != nil {
 					return err
 				}
@@ -990,8 +1011,12 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 			if err != nil {
 				return err
 			}
+<<<<<<< HEAD
 			logrus.Debugf("Prepare to create default instance manager %v, node: %v, default instance manager image: %v, type: %v",
 				imName, node.Name, defaultInstanceManagerImage, imType)
+=======
+			log.Infof("Creating default instance manager %v, image: %v", imName, defaultInstanceManagerImage)
+>>>>>>> 82e8e648 (controller: Node controller skips unknown IM cleanup)
 			if _, err := nc.createInstanceManager(node, imName, defaultInstanceManagerImage, imType); err != nil {
 				return err
 			}
