@@ -10,8 +10,8 @@ import (
 
 	"github.com/pkg/errors"
 
+	lhexec "github.com/longhorn/go-common-libs/exec"
 	lhtypes "github.com/longhorn/go-common-libs/types"
-	lhutils "github.com/longhorn/go-common-libs/utils"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/types"
@@ -71,7 +71,7 @@ func (e *EngineBinary) ExecuteEngineBinary(args ...string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return lhutils.NewExecutor().Execute([]string{}, e.LonghornEngineBinary(), args, lhtypes.ExecuteDefaultTimeout)
+	return lhexec.NewExecutor().Execute([]string{}, e.LonghornEngineBinary(), args, lhtypes.ExecuteDefaultTimeout)
 }
 
 func (e *EngineBinary) ExecuteEngineBinaryWithTimeout(timeout time.Duration, args ...string) (string, error) {
@@ -79,7 +79,7 @@ func (e *EngineBinary) ExecuteEngineBinaryWithTimeout(timeout time.Duration, arg
 	if err != nil {
 		return "", err
 	}
-	return lhutils.NewExecutor().Execute([]string{}, e.LonghornEngineBinary(), args, timeout)
+	return lhexec.NewExecutor().Execute([]string{}, e.LonghornEngineBinary(), args, timeout)
 }
 
 func (e *EngineBinary) ExecuteEngineBinaryWithoutTimeout(envs []string, args ...string) (string, error) {
@@ -87,7 +87,7 @@ func (e *EngineBinary) ExecuteEngineBinaryWithoutTimeout(envs []string, args ...
 	if err != nil {
 		return "", err
 	}
-	return lhutils.NewExecutor().Execute(envs, e.LonghornEngineBinary(), args, lhtypes.ExecuteNoTimeout)
+	return lhexec.NewExecutor().Execute(envs, e.LonghornEngineBinary(), args, lhtypes.ExecuteNoTimeout)
 }
 
 func parseReplica(s string) (*Replica, error) {
@@ -207,7 +207,7 @@ func (e *EngineBinary) VersionGet(engine *longhorn.Engine, clientOnly bool) (*En
 	} else {
 		cmdline = append([]string{"--url", e.cURL}, cmdline...)
 	}
-	output, err := lhutils.NewExecutor().Execute([]string{}, e.LonghornEngineBinary(), cmdline, lhtypes.ExecuteDefaultTimeout)
+	output, err := lhexec.NewExecutor().Execute([]string{}, e.LonghornEngineBinary(), cmdline, lhtypes.ExecuteDefaultTimeout)
 	if err != nil {
 		return nil, errors.Wrapf(err, "cannot get volume version")
 	}
