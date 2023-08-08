@@ -800,7 +800,7 @@ func (s *DataStore) AddRecurringJobLabelToVolume(volume *longhorn.Volume, labelK
 		if err != nil {
 			return nil, err
 		}
-		logrus.Debugf("Added volume %v recurring job label %v", volume.Name, labelKey)
+		logrus.Infof("Added volume %v recurring job label %v", volume.Name, labelKey)
 	}
 	return volume, nil
 }
@@ -814,7 +814,7 @@ func (s *DataStore) RemoveRecurringJobLabelFromVolume(volume *longhorn.Volume, l
 		if err != nil {
 			return nil, err
 		}
-		logrus.Debugf("Removed volume %v recurring job label %v", volume.Name, labelKey)
+		logrus.Infof("Removed volume %v recurring job label %v", volume.Name, labelKey)
 	}
 	return volume, nil
 }
@@ -1419,10 +1419,6 @@ func (s *DataStore) CreateEngineImage(img *longhorn.EngineImage) (*longhorn.Engi
 
 // UpdateEngineImage updates Longhorn EngineImage and verifies update
 func (s *DataStore) UpdateEngineImage(img *longhorn.EngineImage) (*longhorn.EngineImage, error) {
-	if err := util.AddFinalizer(longhornFinalizerKey, img); err != nil {
-		return nil, err
-	}
-
 	obj, err := s.lhClient.LonghornV1beta2().EngineImages(s.namespace).Update(context.TODO(), img, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
@@ -1545,7 +1541,7 @@ func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (is
 		}
 	}
 	if len(undeployedNodes) > 0 {
-		logrus.Debugf("CheckEngineImageReadiness: nodes %v don't have the engine image %v", undeployedNodes, image)
+		logrus.Infof("CheckEngineImageReadiness: nodes %v don't have the engine image %v", undeployedNodes, image)
 		return false, nil
 	}
 	return true, nil
@@ -1621,9 +1617,6 @@ func (s *DataStore) CreateBackingImage(backingImage *longhorn.BackingImage) (*lo
 
 // UpdateBackingImage updates Longhorn BackingImage and verifies update
 func (s *DataStore) UpdateBackingImage(backingImage *longhorn.BackingImage) (*longhorn.BackingImage, error) {
-	if err := util.AddFinalizer(longhornFinalizerKey, backingImage); err != nil {
-		return nil, err
-	}
 	obj, err := s.lhClient.LonghornV1beta2().BackingImages(s.namespace).Update(context.TODO(), backingImage, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
@@ -1766,9 +1759,6 @@ func initBackingImageManager(backingImageManager *longhorn.BackingImageManager) 
 
 // UpdateBackingImageManager updates Longhorn BackingImageManager and verifies update
 func (s *DataStore) UpdateBackingImageManager(backingImageManager *longhorn.BackingImageManager) (*longhorn.BackingImageManager, error) {
-	if err := util.AddFinalizer(longhornFinalizerKey, backingImageManager); err != nil {
-		return nil, err
-	}
 	if err := labelLonghornNode(backingImageManager.Spec.NodeID, backingImageManager); err != nil {
 		return nil, err
 	}
@@ -1908,9 +1898,6 @@ func (s *DataStore) CreateBackingImageDataSource(backingImageDataSource *longhor
 	if err := initBackingImageDataSource(backingImageDataSource); err != nil {
 		return nil, err
 	}
-	if err := util.AddFinalizer(longhornFinalizerKey, backingImageDataSource); err != nil {
-		return nil, err
-	}
 	ret, err := s.lhClient.LonghornV1beta2().BackingImageDataSources(s.namespace).Create(context.TODO(), backingImageDataSource, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
@@ -1942,10 +1929,6 @@ func initBackingImageDataSource(backingImageDataSource *longhorn.BackingImageDat
 
 // UpdateBackingImageDataSource updates Longhorn BackingImageDataSource and verifies update
 func (s *DataStore) UpdateBackingImageDataSource(backingImageDataSource *longhorn.BackingImageDataSource) (*longhorn.BackingImageDataSource, error) {
-	if err := util.AddFinalizer(longhornFinalizerKey, backingImageDataSource); err != nil {
-		return nil, err
-	}
-
 	obj, err := s.lhClient.LonghornV1beta2().BackingImageDataSources(s.namespace).Update(context.TODO(), backingImageDataSource, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
@@ -2336,7 +2319,7 @@ func (s *DataStore) ListReadyNodesWithEngineImage(image string) (map[string]*lon
 // GetRandomReadyNode gets a list of all Node in the given namespace and
 // returns the first Node marked with condition ready and allow scheduling
 func (s *DataStore) GetRandomReadyNode() (*longhorn.Node, error) {
-	logrus.Debugf("Prepare to find a random ready node")
+	logrus.Info("Prepare to find a random ready node")
 	nodesRO, err := s.ListNodesRO()
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get random ready node")
@@ -2355,7 +2338,7 @@ func (s *DataStore) GetRandomReadyNode() (*longhorn.Node, error) {
 // GetRandomReadyNodeDisk a list of all Node the in the given namespace and
 // returns the first Node && the first Disk of the Node marked with condition ready and allow scheduling
 func (s *DataStore) GetRandomReadyNodeDisk() (*longhorn.Node, string, error) {
-	logrus.Debugf("Preparing to find a random ready node disk")
+	logrus.Info("Preparing to find a random ready node disk")
 	nodesRO, err := s.ListNodesRO()
 	if err != nil {
 		return nil, "", errors.Wrapf(err, "failed to get random ready node disk")
@@ -3181,10 +3164,6 @@ func (s *DataStore) CreateShareManager(sm *longhorn.ShareManager) (*longhorn.Sha
 
 // UpdateShareManager updates Longhorn ShareManager resource and verifies update
 func (s *DataStore) UpdateShareManager(sm *longhorn.ShareManager) (*longhorn.ShareManager, error) {
-	if err := util.AddFinalizer(longhornFinalizerKey, sm); err != nil {
-		return nil, err
-	}
-
 	obj, err := s.lhClient.LonghornV1beta2().ShareManagers(s.namespace).Update(context.TODO(), sm, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
@@ -4352,7 +4331,7 @@ func (s *DataStore) RemoveSystemRestoreLabel(systemRestore *longhorn.SystemResto
 		"systemRestore": systemRestore.Name,
 		"label":         key,
 	})
-	log.Debug("Removed SystemRestore label")
+	log.Info("Removed SystemRestore label")
 	return systemRestore, nil
 }
 

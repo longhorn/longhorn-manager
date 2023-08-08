@@ -119,7 +119,7 @@ func (m *VolumeManager) CreateSnapshot(snapshotName string, labels map[string]st
 		return nil, fmt.Errorf("cannot found just created snapshot '%s', for volume '%s'", snapshotName, volumeName)
 	}
 
-	logrus.Debugf("Created snapshot %v with labels %+v for volume %v", snapshotName, labels, volumeName)
+	logrus.Infof("Created snapshot %v with labels %+v for volume %v", snapshotName, labels, volumeName)
 	return snap, nil
 }
 
@@ -152,7 +152,7 @@ func (m *VolumeManager) DeleteSnapshot(snapshotName, volumeName string) error {
 		return err
 	}
 
-	logrus.Debugf("Deleted snapshot %v for volume %v", snapshotName, volumeName)
+	logrus.Infof("Deleted snapshot %v for volume %v", snapshotName, volumeName)
 	return nil
 }
 
@@ -198,7 +198,7 @@ func (m *VolumeManager) RevertSnapshot(snapshotName, volumeName string) error {
 		return err
 	}
 
-	logrus.Debugf("Revert to snapshot %v for volume %v", snapshotName, volumeName)
+	logrus.Infof("Reverted to snapshot %v for volume %v", snapshotName, volumeName)
 	return nil
 }
 
@@ -231,7 +231,7 @@ func (m *VolumeManager) PurgeSnapshot(volumeName string) error {
 		return err
 	}
 
-	logrus.Debugf("Started snapshot purge for volume %v", volumeName)
+	logrus.Infof("Started snapshot purge for volume %v", volumeName)
 	return nil
 }
 

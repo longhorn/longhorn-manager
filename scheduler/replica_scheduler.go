@@ -419,7 +419,7 @@ func (rcs *ReplicaScheduler) scheduleReplicaToDisk(replica *longhorn.Replica, di
 		"disk":              replica.Spec.DiskID,
 		"diskPath":          replica.Spec.DiskPath,
 		"dataDirectoryName": replica.Spec.DataDirectoryName,
-	}).Debugf("Schedule replica to node %v", replica.Spec.NodeID)
+	}).Infof("Schedule replica to node %v", replica.Spec.NodeID)
 }
 
 func (rcs *ReplicaScheduler) getDiskWithMostUsableStorage(disks map[string]*Disk) *Disk {
@@ -556,7 +556,7 @@ func (rcs *ReplicaScheduler) RequireNewReplica(replicas map[string]*longhorn.Rep
 		return 0
 	}
 
-	logrus.Debugf("Replica replenishment is delayed until %v", lastDegradedAt.Add(waitInterval))
+	logrus.Infof("Replica replenishment is delayed until %v", lastDegradedAt.Add(waitInterval))
 	// Adding 1 more second to the check back interval to avoid clock skew
 	return lastDegradedAt.Add(waitInterval).Sub(now) + time.Second
 }

@@ -1223,23 +1223,23 @@ type ClusterInfoStructFields struct {
 
 func (info *ClusterInfo) collectClusterScope() {
 	if err := info.collectNamespace(); err != nil {
-		info.logger.WithError(err).Debug("Failed to collect Longhorn namespace")
+		info.logger.WithError(err).Warn("Failed to collect Longhorn namespace")
 	}
 
 	if err := info.collectNodeCount(); err != nil {
-		info.logger.WithError(err).Debug("Failed to collect number of Longhorn nodes")
+		info.logger.WithError(err).Warn("Failed to collect number of Longhorn nodes")
 	}
 
 	if err := info.collectResourceUsage(); err != nil {
-		info.logger.WithError(err).Debug("Failed to collect Longhorn resource usages")
+		info.logger.WithError(err).Warn("Failed to collect Longhorn resource usages")
 	}
 
 	if err := info.collectVolumesInfo(); err != nil {
-		info.logger.WithError(err).Debug("Failed to collect Longhorn Volumes info")
+		info.logger.WithError(err).Warn("Failed to collect Longhorn Volumes info")
 	}
 
 	if err := info.collectSettings(); err != nil {
-		info.logger.WithError(err).Debug("Failed to collect Longhorn settings")
+		info.logger.WithError(err).Warn("Failed to collect Longhorn settings")
 	}
 }
 
@@ -1271,13 +1271,13 @@ func (info *ClusterInfo) collectResourceUsage() error {
 			MatchLabels: label,
 		})
 		if err != nil {
-			logrus.WithError(err).Debugf("Failed to get %v label for %v", label, component)
+			logrus.WithError(err).Warnf("Failed to get %v label for %v", label, component)
 			continue
 		}
 
 		pods, err := info.ds.ListPodsBySelector(selector)
 		if err != nil {
-			logrus.WithError(err).Debugf("Failed to list %v Pod by %v label", component, label)
+			logrus.WithError(err).Warnf("Failed to list %v Pod by %v label", component, label)
 			continue
 		}
 		podCount := len(pods)
@@ -1291,7 +1291,7 @@ func (info *ClusterInfo) collectResourceUsage() error {
 		for _, pod := range pods {
 			podMetrics, err := metricsClient.PodMetricses(info.namespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
 			if err != nil && !apierrors.IsNotFound(err) {
-				logrus.WithError(err).Debugf("Failed to get %v Pod", pod.Name)
+				logrus.WithError(err).Warnf("Failed to get %v Pod", pod.Name)
 				continue
 			}
 			for _, container := range podMetrics.Containers {
@@ -1318,6 +1318,7 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameSystemManagedComponentsNodeSelector: true,
 		types.SettingNameRegistrySecret:                      true,
 		types.SettingNamePriorityClass:                       true,
+		types.SettingNameSnapshotDataIntegrityCronJob:        true,
 		types.SettingNameStorageNetwork:                      true,
 	}
 
@@ -1360,7 +1361,6 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameRestoreConcurrentLimit:                                   true,
 		types.SettingNameRestoreVolumeRecurringJobs:                               true,
 		types.SettingNameSnapshotDataIntegrity:                                    true,
-		types.SettingNameSnapshotDataIntegrityCronJob:                             true,
 		types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation: true,
 		types.SettingNameStorageMinimalAvailablePercentage:                        true,
 		types.SettingNameStorageOverProvisioningPercentage:                        true,
@@ -1387,13 +1387,18 @@ func (info *ClusterInfo) collectSettings() error {
 
 		// Setting that should be collected as boolean (true if configured, false if not)
 		case includeAsBoolean[settingName]:
-			settingMap[setting.Name] = setting.Value != ""
+			definition, ok := types.GetSettingDefinition(types.SettingName(setting.Name))
+			if !ok {
+				logrus.WithError(err).Warnf("Failed to get Setting %v definition", setting.Name)
+				continue
+			}
+			settingMap[setting.Name] = setting.Value != definition.Default
 
 		// Setting value
 		case include[settingName]:
 			convertedValue, err := info.convertSettingValueType(setting)
 			if err != nil {
-				logrus.WithError(err).Debugf("failed to convert Setting %v value", setting.Name)
+				logrus.WithError(err).Warnf("Failed to convert Setting %v value", setting.Name)
 				continue
 			}
 			settingMap[setting.Name] = convertedValue
@@ -1549,7 +1554,7 @@ func (info *ClusterInfo) collectSettingInVolume(volumeSpecValue, ignoredValue st
 	if volumeSpecValue == ignoredValue {
 		globalSetting, err := info.ds.GetSetting(settingName)
 		if err != nil {
-			info.logger.WithError(err).Debugf("Failed to get Longhorn Setting %v", settingName)
+			info.logger.WithError(err).Warnf("Failed to get Longhorn Setting %v", settingName)
 		}
 		return globalSetting.Value
 	}
@@ -1558,19 +1563,19 @@ func (info *ClusterInfo) collectSettingInVolume(volumeSpecValue, ignoredValue st
 
 func (info *ClusterInfo) collectNodeScope() {
 	if err := info.collectHostKernelRelease(); err != nil {
-		info.logger.WithError(err).Debug("Failed to collect host kernel release")
+		info.logger.WithError(err).Warn("Failed to collect host kernel release")
 	}
 
 	if err := info.collectHostOSDistro(); err != nil {
-		info.logger.WithError(err).Debug("Failed to collect host OS distro")
+		info.logger.WithError(err).Warn("Failed to collect host OS distro")
 	}
 
 	if err := info.collectNodeDiskCount(); err != nil {
-		info.logger.WithError(err).Debug("Failed to collect number of node disks")
+		info.logger.WithError(err).Warn("Failed to collect number of node disks")
 	}
 
 	if err := info.collectKubernetesNodeProvider(); err != nil {
-		info.logger.WithError(err).Debug("Failed to collect node provider")
+		info.logger.WithError(err).Warn("Failed to collect node provider")
 	}
 }
 
@@ -1612,7 +1617,7 @@ func (info *ClusterInfo) collectNodeDiskCount() error {
 	for _, disk := range node.Spec.Disks {
 		deviceType, err := types.GetDeviceTypeOf(disk.Path)
 		if err != nil {
-			info.logger.WithError(err).Debugf("Failed to get device type of %v", disk.Path)
+			info.logger.WithError(err).Warnf("Failed to get device type of %v", disk.Path)
 			deviceType = types.ValueUnknown
 		}
 		structMap[util.StructName(fmt.Sprintf(ClusterInfoNodeDiskCountFmt, strings.ToUpper(deviceType)))]++

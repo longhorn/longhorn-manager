@@ -29,11 +29,12 @@ const (
 type EngineCollection struct{}
 
 type EngineBinary struct {
-	name  string
-	image string
-	ip    string
-	port  int
-	cURL  string
+	volumeName   string
+	image        string
+	ip           string
+	port         int
+	cURL         string
+	instanceName string
 }
 
 func (c *EngineCollection) NewEngineClient(request *EngineClientRequest) (*EngineBinary, error) {
@@ -46,16 +47,17 @@ func (c *EngineCollection) NewEngineClient(request *EngineClientRequest) (*Engin
 	}
 
 	return &EngineBinary{
-		name:  request.VolumeName,
-		image: request.EngineImage,
-		ip:    request.IP,
-		port:  request.Port,
-		cURL:  imutil.GetURL(request.IP, request.Port),
+		volumeName:   request.VolumeName,
+		image:        request.EngineImage,
+		ip:           request.IP,
+		port:         request.Port,
+		cURL:         imutil.GetURL(request.IP, request.Port),
+		instanceName: request.InstanceName,
 	}, nil
 }
 
 func (e *EngineBinary) Name() string {
-	return e.name
+	return e.volumeName
 }
 
 func (e *EngineBinary) LonghornEngineBinary() string {
@@ -63,17 +65,26 @@ func (e *EngineBinary) LonghornEngineBinary() string {
 }
 
 func (e *EngineBinary) ExecuteEngineBinary(args ...string) (string, error) {
-	args = append([]string{"--url", e.cURL}, args...)
+	args, err := e.addFlags(args)
+	if err != nil {
+		return "", err
+	}
 	return util.Execute([]string{}, e.LonghornEngineBinary(), args...)
 }
 
 func (e *EngineBinary) ExecuteEngineBinaryWithTimeout(timeout time.Duration, args ...string) (string, error) {
-	args = append([]string{"--url", e.cURL}, args...)
+	args, err := e.addFlags(args)
+	if err != nil {
+		return "", err
+	}
 	return util.ExecuteWithTimeout(timeout, []string{}, e.LonghornEngineBinary(), args...)
 }
 
 func (e *EngineBinary) ExecuteEngineBinaryWithoutTimeout(envs []string, args ...string) (string, error) {
-	args = append([]string{"--url", e.cURL}, args...)
+	args, err := e.addFlags(args)
+	if err != nil {
+		return "", err
+	}
 	return util.ExecuteWithoutTimeout(envs, e.LonghornEngineBinary(), args...)
 }
 
@@ -98,7 +109,7 @@ func parseReplica(s string) (*Replica, error) {
 func (e *EngineBinary) ReplicaList(*longhorn.Engine) (map[string]*Replica, error) {
 	output, err := e.ExecuteEngineBinary("ls")
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to list replicas from controller '%s'", e.name)
+		return nil, errors.Wrapf(err, "failed to list replicas from controller '%s'", e.volumeName)
 	}
 	replicas := make(map[string]*Replica)
 	lines := strings.Split(output, "\n")
@@ -148,8 +159,12 @@ func (e *EngineBinary) ReplicaAdd(engine *longhorn.Engine, replicaName, url stri
 		}
 	}
 
+	if version.ClientVersion.CLIAPIVersion >= 9 {
+		cmd = append(cmd, "--replica-instance-name", replicaName)
+	}
+
 	if _, err := e.ExecuteEngineBinaryWithoutTimeout([]string{}, cmd...); err != nil {
-		return errors.Wrapf(err, "failed to add replica address='%s' to controller '%s'", url, e.name)
+		return errors.Wrapf(err, "failed to add replica address='%s' to controller '%s'", url, e.volumeName)
 	}
 	return nil
 }
@@ -161,7 +176,7 @@ func (e *EngineBinary) ReplicaRemove(engine *longhorn.Engine, url string) error 
 		return err
 	}
 	if _, err := e.ExecuteEngineBinary("rm", url); err != nil {
-		return errors.Wrapf(err, "failed to rm replica address='%s' from controller '%s'", url, e.name)
+		return errors.Wrapf(err, "failed to rm replica address='%s' from controller '%s'", url, e.volumeName)
 	}
 	return nil
 }
@@ -303,4 +318,19 @@ func (e *EngineBinary) ReplicaModeUpdate(engine *longhorn.Engine, url, mode stri
 
 func (e *EngineBinary) MetricsGet(*longhorn.Engine) (*Metrics, error) {
 	return nil, fmt.Errorf(ErrNotImplement)
+}
+
+// addFlags always adds required flags to args. In addition, if the engine version is high enough, it adds additional
+// engine identity validation flags.
+func (e *EngineBinary) addFlags(args []string) ([]string, error) {
+	version, err := e.VersionGet(nil, true)
+	if err != nil {
+		return args, errors.Wrap(err, "failed to get engine CLI version while adding identity flags")
+	}
+
+	argsToAdd := []string{"--url", e.cURL}
+	if version.ClientVersion.CLIAPIVersion >= 9 {
+		argsToAdd = append(argsToAdd, "--volume-name", e.volumeName, "--engine-instance-name", e.instanceName)
+	}
+	return append(argsToAdd, args...), nil
 }

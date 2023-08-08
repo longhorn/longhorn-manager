@@ -228,7 +228,7 @@ func (c *SupportBundleController) handleStatusUpdate(record *supportBundleRecord
 	if isStatusChange {
 		supportBundle, err = c.ds.UpdateSupportBundleStatus(supportBundle)
 		if apierrors.IsConflict(errors.Cause(err)) {
-			log.WithError(err).Debugf(SupportBundleMsgRequeueOnConflictFmt, supportBundle.Name)
+			log.WithError(err).Warnf(SupportBundleMsgRequeueOnConflictFmt, supportBundle.Name)
 			c.enqueue(supportBundle)
 		}
 
@@ -588,7 +588,7 @@ func (c *SupportBundleController) recordManagerState(supportBundleManager *Suppo
 	)
 
 	c.eventRecorder.Eventf(supportBundle, corev1.EventTypeNormal, constant.EventReasonCreate, fmt.Sprintf(SupportBundleMsgManagerPhase, message))
-	log.Debug(message)
+	log.Info(message)
 
 }
 

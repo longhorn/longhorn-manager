@@ -38,17 +38,17 @@ func (e *replicaMutator) Resource() admission.Resource {
 }
 
 func (e *replicaMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
-	return mutateReplica(newObj, true)
+	return mutate(newObj)
 }
 
 func (e *replicaMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
-	return mutateReplica(newObj, false)
+	return mutate(newObj)
 }
 
-func mutateReplica(newObj runtime.Object, needFinalizer bool) (admission.PatchOps, error) {
-	var patchOps admission.PatchOps
-
+// mutate contains functionality shared by Create and Update.
+func mutate(newObj runtime.Object) (admission.PatchOps, error) {
 	replica := newObj.(*longhorn.Replica)
+	var patchOps admission.PatchOps
 
 	labels := replica.Labels
 	if labels == nil {
@@ -61,12 +61,12 @@ func mutateReplica(newObj runtime.Object, needFinalizer bool) (admission.PatchOp
 	}
 	patchOps = append(patchOps, patchOp)
 
-	if needFinalizer {
-		patchOp, err = common.GetLonghornFinalizerPatchOp(replica)
-		if err != nil {
-			err := errors.Wrapf(err, "failed to get finalizer patch for replica %v", replica.Name)
-			return nil, werror.NewInvalidError(err.Error(), "")
-		}
+	patchOp, err = common.GetLonghornFinalizerPatchOpIfNeeded(replica)
+	if err != nil {
+		err := errors.Wrapf(err, "failed to get finalizer patch for replica %v", replica.Name)
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+	if patchOp != "" {
 		patchOps = append(patchOps, patchOp)
 	}
 

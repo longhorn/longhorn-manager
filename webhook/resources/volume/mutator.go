@@ -45,25 +45,12 @@ func (v *volumeMutator) Resource() admission.Resource {
 }
 
 func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
-	var patchOps admission.PatchOps
-
 	volume := newObj.(*longhorn.Volume)
+	var patchOps admission.PatchOps
 
 	name := util.AutoCorrectName(volume.Name, datastore.NameMaximumLength)
 	if name != volume.Name {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/metadata/name", "value": "%s"}`, name))
-	}
-
-	if volume.Spec.ReplicaAutoBalance == "" {
-		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/replicaAutoBalance", "value": "ignored"}`)
-	}
-
-	if volume.Spec.DiskSelector == nil {
-		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/diskSelector", "value": []}`)
-	}
-
-	if volume.Spec.NodeSelector == nil {
-		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/nodeSelector", "value": []}`)
 	}
 
 	if volume.Spec.NumberOfReplicas == 0 {
@@ -83,28 +70,6 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 			return nil, werror.NewInvalidError(err.Error(), "")
 		}
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataLocality", "value": "%s"}`, defaultDataLocality))
-	} else if volume.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
-		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/revisionCounterDisabled", "value": true}`)
-	}
-
-	if string(volume.Spec.SnapshotDataIntegrity) == "" {
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/snapshotDataIntegrity", "value": "%s"}`, longhorn.SnapshotDataIntegrityIgnored))
-	}
-
-	if string(volume.Spec.RestoreVolumeRecurringJob) == "" {
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/restoreVolumeRecurringJob", "value": "%s"}`, longhorn.RestoreVolumeRecurringJobDefault))
-	}
-
-	if volume.Spec.UnmapMarkSnapChainRemoved == "" {
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/unmapMarkSnapChainRemoved", "value": "%s"}`, longhorn.UnmapMarkSnapChainRemovedIgnored))
-	}
-
-	if string(volume.Spec.ReplicaSoftAntiAffinity) == "" {
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaSoftAntiAffinityDefault))
-	}
-
-	if string(volume.Spec.ReplicaZoneSoftAntiAffinity) == "" {
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaZoneSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaZoneSoftAntiAffinityDefault))
 	}
 
 	if string(volume.Spec.AccessMode) == "" {
@@ -127,11 +92,7 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/accessMode", "value": "%s"}`, string(accessModeFromBackup)))
 	}
 
-	labels := volume.Labels
-	if labels == nil {
-		labels = map[string]string{}
-	}
-
+	moreLabels := map[string]string{}
 	size := volume.Spec.Size
 	if volume.Spec.FromBackup != "" {
 		bName, bvName, _, err := backupstore.DecodeBackupURL(volume.Spec.FromBackup)
@@ -184,27 +145,8 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 			return nil, werror.NewInvalidError(fmt.Sprintf("get invalid size for volume %v: %v", backup.Status.VolumeSize, err), "")
 		}
 
-		labels[types.LonghornLabelBackupVolume] = bvName
+		moreLabels[types.LonghornLabelBackupVolume] = bvName
 	}
-
-	labelsForVolumesFollowsGlobalSettings := datastore.GetLabelsForVolumesFollowsGlobalSettings(volume)
-	for k, v := range labelsForVolumesFollowsGlobalSettings {
-		labels[k] = v
-	}
-
-	patchOp, err := common.GetLonghornLabelsPatchOp(volume, labels, types.SettingsRelatedToVolume)
-	if err != nil {
-		err := errors.Wrapf(err, "failed to get label patch for volume %v", volume.Name)
-		return nil, werror.NewInvalidError(err.Error(), "")
-	}
-	patchOps = append(patchOps, patchOp)
-
-	patchOp, err = common.GetLonghornFinalizerPatchOp(volume)
-	if err != nil {
-		err := errors.Wrapf(err, "failed to get finalizer patch for volume %v", volume.Name)
-		return nil, werror.NewInvalidError(err.Error(), "")
-	}
-	patchOps = append(patchOps, patchOp)
 
 	newSize := util.RoundUpSize(size)
 	if newSize != size {
@@ -224,10 +166,6 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 			return nil, werror.NewInvalidError("BUG: Invalid empty Setting.BackupCompressionMethod", "")
 		}
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupCompressionMethod", "value": "%s"}`, defaultCompressionMethod))
-	}
-
-	if string(volume.Spec.BackendStoreDriver) == "" {
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeV1))
 	}
 
 	// TODO: Remove the mutations below after they are implemented for SPDK volumes
@@ -260,24 +198,63 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		if string(volume.Spec.OfflineReplicaRebuilding) == "" {
 			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/offlineReplicaRebuilding", "value": "%s"}`, longhorn.OfflineReplicaRebuildingIgnored))
 		}
-	} else {
-		// Always mutate the offlineReplicaRebuilding to disabled for non-SPDK volumes
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/offlineReplicaRebuilding", "value": "%s"}`, longhorn.OfflineReplicaRebuildingDisabled))
 	}
+
+	var patchOpsInCommon admission.PatchOps
+	var err error
+	if patchOpsInCommon, err = mutate(newObj, moreLabels); err != nil {
+		return nil, err
+	}
+	patchOps = append(patchOps, patchOpsInCommon...)
 
 	return patchOps, nil
 }
 
 func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
+	volume := newObj.(*longhorn.Volume)
 	var patchOps admission.PatchOps
 
+	if volume.Spec.AccessMode == "" {
+		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/accessMode", "value": "rwo"}`)
+	}
+
+	size := util.RoundUpSize(volume.Spec.Size)
+	if size != volume.Spec.Size {
+		logrus.Infof("Rounding up the requested volume spec size from %d to %d in the update mutator", volume.Spec.Size, size)
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/size", "value": "%s"}`, strconv.FormatInt(size, 10)))
+	}
+
+	if string(volume.Spec.BackupCompressionMethod) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupCompressionMethod", "value": "%s"}`, longhorn.BackupCompressionMethodGzip))
+	}
+
+	var patchOpsInCommon admission.PatchOps
+	var err error
+	if patchOpsInCommon, err = mutate(newObj, nil); err != nil {
+		return nil, err
+	}
+	patchOps = append(patchOps, patchOpsInCommon...)
+
+	return patchOps, nil
+}
+
+// mutate contains functionality shared by Create and Update.
+// Unlike mutate for other resources, this mutate takes a moreLabels map, as Create may want to add some.
+func mutate(newObj runtime.Object, moreLabels map[string]string) (admission.PatchOps, error) {
 	volume := newObj.(*longhorn.Volume)
+	var patchOps admission.PatchOps
+
+	patchOp, err := common.GetLonghornFinalizerPatchOpIfNeeded(volume)
+	if err != nil {
+		err := errors.Wrapf(err, "failed to get finalizer patch for volume %v", volume.Name)
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+	if patchOp != "" {
+		patchOps = append(patchOps, patchOp)
+	}
 
 	if volume.Spec.ReplicaAutoBalance == "" {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/replicaAutoBalance", "value": "ignored"}`)
-	}
-	if volume.Spec.AccessMode == "" {
-		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/accessMode", "value": "rwo"}`)
 	}
 	if volume.Spec.DiskSelector == nil {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/diskSelector", "value": []}`)
@@ -285,14 +262,14 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 	if volume.Spec.NodeSelector == nil {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/nodeSelector", "value": []}`)
 	}
-	if volume.Spec.UnmapMarkSnapChainRemoved == "" {
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/unmapMarkSnapChainRemoved", "value": "%s"}`, longhorn.UnmapMarkSnapChainRemovedIgnored))
-	}
 	if string(volume.Spec.SnapshotDataIntegrity) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/snapshotDataIntegrity", "value": "%s"}`, longhorn.SnapshotDataIntegrityIgnored))
 	}
 	if string(volume.Spec.RestoreVolumeRecurringJob) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/restoreVolumeRecurringJob", "value": "%s"}`, longhorn.RestoreVolumeRecurringJobDefault))
+	}
+	if volume.Spec.UnmapMarkSnapChainRemoved == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/unmapMarkSnapChainRemoved", "value": "%s"}`, longhorn.UnmapMarkSnapChainRemovedIgnored))
 	}
 	if string(volume.Spec.ReplicaSoftAntiAffinity) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaSoftAntiAffinityDefault))
@@ -303,19 +280,11 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 	if string(volume.Spec.BackendStoreDriver) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeV1))
 	}
-	if string(volume.Spec.BackupCompressionMethod) == "" {
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupCompressionMethod", "value": "%s"}`, longhorn.BackupCompressionMethodGzip))
-	}
-	if string(volume.Spec.OfflineReplicaRebuilding) == "" {
+	if string(volume.Spec.OfflineReplicaRebuilding) == "" &&
+		volume.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+		// Always mutate the offlineReplicaRebuilding to disabled for non-SPDK volumes
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/offlineReplicaRebuilding", "value": "%s"}`, longhorn.OfflineReplicaRebuildingDisabled))
 	}
-
-	size := util.RoundUpSize(volume.Spec.Size)
-	if size != volume.Spec.Size {
-		logrus.Infof("Rounding up the requested volume spec size from %d to %d in the update mutator", volume.Spec.Size, size)
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/size", "value": "%s"}`, strconv.FormatInt(size, 10)))
-	}
-
 	if volume.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/revisionCounterDisabled", "value": true}`)
 	}
@@ -324,13 +293,14 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 	if labels == nil {
 		labels = map[string]string{}
 	}
-
+	for k, v := range moreLabels {
+		labels[k] = v
+	}
 	labelsForVolumesFollowsGlobalSettings := datastore.GetLabelsForVolumesFollowsGlobalSettings(volume)
 	for k, v := range labelsForVolumesFollowsGlobalSettings {
 		labels[k] = v
 	}
-
-	patchOp, err := common.GetLonghornLabelsPatchOp(volume, labels, types.SettingsRelatedToVolume)
+	patchOp, err = common.GetLonghornLabelsPatchOp(volume, labels, types.SettingsRelatedToVolume)
 	if err != nil {
 		err := errors.Wrapf(err, "failed to get label patch for volume %v", volume.Name)
 		return nil, werror.NewInvalidError(err.Error(), "")

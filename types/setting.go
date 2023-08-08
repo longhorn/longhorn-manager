@@ -1065,7 +1065,7 @@ var (
 
 	SettingDefinitionLogLevel = SettingDefinition{
 		DisplayName: "Log Level",
-		Description: "The log level Panic, Fatal, Error, Warn, Info, Debug, Trace used in longhorn manager. By default Debug.",
+		Description: "The log level Panic, Fatal, Error, Warn, Info, Debug, Trace used in longhorn manager. By default Info.",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeString,
 		Required:    true,
@@ -1363,7 +1363,7 @@ func ValidateSetting(name, value string) (err error) {
 		runAt := schedule.Next(time.Unix(0, 0))
 		nextRunAt := schedule.Next(runAt)
 
-		logrus.Debugf("The interval between two data integrity checks is %v seconds", nextRunAt.Sub(runAt).Seconds())
+		logrus.Infof("The interval between two data integrity checks is %v seconds", nextRunAt.Sub(runAt).Seconds())
 
 	// multi-choices
 	case SettingNameNodeDownPodDeletionPolicy:

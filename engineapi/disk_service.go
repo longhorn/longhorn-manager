@@ -47,12 +47,12 @@ type DiskService struct {
 
 func (s *DiskService) Close() {
 	if s.grpcClient == nil {
-		s.logger.WithError(errors.New("gRPC client not exist")).Debugf("failed to close disk service client")
+		s.logger.WithError(errors.New("gRPC client not exist")).Warn("Failed to close disk service client")
 		return
 	}
 
 	if err := s.grpcClient.Close(); err != nil {
-		s.logger.WithError(err).Warn("failed to close disk service client")
+		s.logger.WithError(err).Warn("Failed to close disk service client")
 	}
 }
 
