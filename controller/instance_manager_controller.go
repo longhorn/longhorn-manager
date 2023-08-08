@@ -320,6 +320,7 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		}
 	}()
 
+<<<<<<< HEAD
 	// Skip the cleanup when the node is suddenly down.
 	isDown, err := imc.ds.IsNodeDownOrDeleted(im.Spec.NodeID)
 	if err != nil {
@@ -328,9 +329,13 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 	if isDown {
 		im.Status.CurrentState = longhorn.InstanceManagerStateUnknown
 		return nil
+=======
+	if err := imc.syncStatusWithPod(im); err != nil {
+		return err
+>>>>>>> d8dbcd15 (controller: IM controller updates unknown IM handling)
 	}
 
-	if err := imc.syncStatusWithPod(im); err != nil {
+	if err := imc.syncStatusWithNode(im); err != nil {
 		return err
 	}
 
@@ -407,10 +412,30 @@ func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceMan
 		} else {
 			im.Status.CurrentState = longhorn.InstanceManagerStateStarting
 		}
+<<<<<<< HEAD
 	case v1.PodUnknown:
 		im.Status.CurrentState = longhorn.InstanceManagerStateUnknown
+=======
+>>>>>>> d8dbcd15 (controller: IM controller updates unknown IM handling)
 	default:
 		im.Status.CurrentState = longhorn.InstanceManagerStateError
+	}
+
+	return nil
+}
+
+func (imc *InstanceManagerController) syncStatusWithNode(im *longhorn.InstanceManager) error {
+	log := getLoggerForInstanceManager(imc.logger, im).WithField("node", im.Spec.NodeID)
+
+	isDown, err := imc.ds.IsNodeDownOrDeleted(im.Spec.NodeID)
+	if err != nil {
+		return err
+	}
+	if isDown {
+		if im.Status.CurrentState != longhorn.InstanceManagerStateError && im.Status.CurrentState != longhorn.InstanceManagerStateUnknown {
+			im.Status.CurrentState = longhorn.InstanceManagerStateUnknown
+			log.Infof("Updated the non-error instance manager to state %v due to node down or deleted", longhorn.InstanceManagerStateUnknown)
+		}
 	}
 
 	return nil
