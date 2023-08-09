@@ -194,6 +194,7 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 
 	usedNodes := map[string]*longhorn.Node{}
 	usedZones := map[string]bool{}
+	onlyEvictingZones := map[string]bool{}
 	replicasCountPerNode := map[string]int{}
 	// Get current nodes and zones
 	for _, r := range replicas {
@@ -203,6 +204,11 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 				// For empty zone label, we treat them as
 				// one zone.
 				usedZones[node.Status.Zone] = true
+				if r.Status.EvictionRequested {
+					onlyEvictingZones[node.Status.Zone] = true
+				} else {
+					onlyEvictingZones[node.Status.Zone] = false
+				}
 				replicasCountPerNode[r.Spec.NodeID] = replicasCountPerNode[r.Spec.NodeID] + 1
 			}
 		}
@@ -212,6 +218,16 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		result := map[string]*longhorn.Node{}
 		for nodeName, node := range nodes {
 			if replicasCountPerNode[nodeName] < 2 {
+				result[nodeName] = node
+			}
+		}
+		return result
+	}
+
+	filterNodesInOnlyEvictingZones := func(nodes map[string]*longhorn.Node) map[string]*longhorn.Node {
+		result := map[string]*longhorn.Node{}
+		for nodeName, node := range nodes {
+			if onlyEvictingZones[node.Status.Zone] {
 				result[nodeName] = node
 			}
 		}
@@ -255,7 +271,7 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		fallthrough
 	// Same as the above. If we cannot schedule two replicas in the same zone, we cannot schedule them on the same node.
 	case !zoneSoftAntiAffinity && nodeSoftAntiAffinity:
-		diskCandidates, errors = getDiskCandidatesFromNodes(filterNodesWithLessThanTwoReplicas(nodesWithEvictingReplicas))
+		diskCandidates, errors = getDiskCandidatesFromNodes(filterNodesWithLessThanTwoReplicas(filterNodesInOnlyEvictingZones(nodesWithEvictingReplicas)))
 		if len(diskCandidates) > 0 {
 			return diskCandidates, nil
 		}
