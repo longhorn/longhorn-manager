@@ -10,7 +10,7 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
-	iscsiutil "github.com/longhorn/go-iscsi-helper/util"
+	lhns "github.com/longhorn/go-common-libs/ns"
 
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/util"
@@ -72,20 +72,20 @@ func getDiskConfig(diskType longhorn.DiskType, name, path string, client *engine
 }
 
 func getFilesystemTypeDiskConfig(path string) (*util.DiskConfig, error) {
-	nsPath := iscsiutil.GetHostNamespacePath(util.HostProcPath)
-	nsExec, err := iscsiutil.NewNamespaceExecutor(nsPath)
+	var err error
+	defer func() {
+		err = errors.Wrapf(err, "failed to get disk config for %v", path)
+	}()
+
+	diskCfgFilePath := filepath.Join(path, util.DiskConfigFile)
+	output, err := lhns.ReadFileContent(diskCfgFilePath)
 	if err != nil {
-		return nil, err
-	}
-	filePath := filepath.Join(path, util.DiskConfigFile)
-	output, err := nsExec.Execute("cat", []string{filePath})
-	if err != nil {
-		return nil, fmt.Errorf("cannot find config file %v on host: %v", filePath, err)
+		return nil, errors.Wrapf(err, "failed to read host disk config file %v", util.DiskConfigFile)
 	}
 
 	cfg := &util.DiskConfig{}
 	if err := json.Unmarshal([]byte(output), cfg); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal %v content %v on host: %v", filePath, output, err)
+		return nil, errors.Wrapf(err, "failed to unmarshal host %v content: %v", diskCfgFilePath, output)
 	}
 	return cfg, nil
 }
@@ -120,6 +120,11 @@ func generateDiskConfig(diskType longhorn.DiskType, name, uuid, path string, cli
 }
 
 func generateFilesystemTypeDiskConfig(path string) (*util.DiskConfig, error) {
+	var err error
+	defer func() {
+		err = errors.Wrapf(err, "failed to generate disk config for %v", path)
+	}()
+
 	cfg := &util.DiskConfig{
 		DiskUUID: util.UUID(),
 	}
@@ -128,33 +133,29 @@ func generateFilesystemTypeDiskConfig(path string) (*util.DiskConfig, error) {
 		return nil, fmt.Errorf("BUG: Cannot marshal %+v: %v", cfg, err)
 	}
 
-	nsPath := iscsiutil.GetHostNamespacePath(util.HostProcPath)
-	nsExec, err := iscsiutil.NewNamespaceExecutor(nsPath)
-	if err != nil {
-		return nil, err
-	}
-	filePath := filepath.Join(path, util.DiskConfigFile)
-	if _, err := nsExec.Execute("ls", []string{filePath}); err == nil {
-		return nil, fmt.Errorf("disk cfg on %v exists, cannot override", filePath)
+	diskCfgFilePath := filepath.Join(path, util.DiskConfigFile)
+	if _, err := lhns.GetFileInfo(diskCfgFilePath); err == nil {
+		return nil, fmt.Errorf("disk cfg on %v exists, cannot override", diskCfgFilePath)
 	}
 
 	defer func() {
 		if err != nil {
-			if derr := util.DeleteDiskPathReplicaSubdirectoryAndDiskCfgFile(nsExec, path); derr != nil {
+			if derr := util.DeleteDiskPathReplicaSubdirectoryAndDiskCfgFile(path); derr != nil {
 				err = errors.Wrapf(err, "cleaning up disk config path %v failed with error: %v", path, derr)
 			}
-
 		}
 	}()
 
-	if _, err := nsExec.ExecuteWithStdin("dd", []string{"of=" + filePath}, string(encoded)); err != nil {
-		return nil, fmt.Errorf("cannot write to disk cfg on %v: %v", filePath, err)
+	if err := lhns.WriteFile(diskCfgFilePath, string(encoded)); err != nil {
+		return nil, err
 	}
+
 	if err := util.CreateDiskPathReplicaSubdirectory(path); err != nil {
 		return nil, err
 	}
-	if _, err := nsExec.Execute("sync", []string{filePath}); err != nil {
-		return nil, fmt.Errorf("cannot sync disk cfg on %v: %v", filePath, err)
+
+	if err := lhns.SyncFile(diskCfgFilePath); err != nil {
+		return nil, err
 	}
 
 	return cfg, nil

@@ -1,7 +1,6 @@
 package util
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/hex"
@@ -14,7 +13,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"reflect"
@@ -45,10 +43,10 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	clientset "k8s.io/client-go/kubernetes"
 
+	lhexec "github.com/longhorn/go-common-libs/exec"
 	lhio "github.com/longhorn/go-common-libs/io"
 	lhns "github.com/longhorn/go-common-libs/ns"
 	lhtypes "github.com/longhorn/go-common-libs/types"
-	iscsiutil "github.com/longhorn/go-iscsi-helper/util"
 )
 
 const (
@@ -56,7 +54,6 @@ const (
 	ControllerServiceName = "controller"
 	ReplicaServiceName    = "replica"
 
-	HostProcPath                 = "/host/proc"
 	ReplicaDirectory             = "/replicas/"
 	RegularDeviceDirectory       = "/dev/longhorn/"
 	EncryptedDeviceDirectory     = "/dev/mapper/"
@@ -75,7 +72,6 @@ const (
 )
 
 var (
-	cmdTimeout     = time.Minute // one minute by default
 	reservedLabels = []string{"KubernetesStatus", "ranchervm-base-image"}
 
 	APIRetryInterval       = 500 * time.Millisecond
@@ -242,67 +238,6 @@ func Now() string {
 func ParseTime(t string) (time.Time, error) {
 	return time.Parse(time.RFC3339, t)
 
-}
-
-type ExecuteFunc func([]string, string, ...string) (string, error)
-
-// Execute is a variable holding the function responsible for executing commands.
-// By using a variable for the execution function, it allows for easier unit testing
-// by substituting a mock implementation.
-var Execute ExecuteFunc = execute
-
-func execute(envs []string, binary string, args ...string) (string, error) {
-	return ExecuteWithTimeout(cmdTimeout, envs, binary, args...)
-}
-
-func ExecuteWithTimeout(timeout time.Duration, envs []string, binary string, args ...string) (string, error) {
-	var err error
-	cmd := exec.Command(binary, args...)
-	cmd.Env = append(os.Environ(), envs...)
-	done := make(chan struct{})
-
-	var output, stderr bytes.Buffer
-	cmd.Stdout = &output
-	cmd.Stderr = &stderr
-
-	go func() {
-		err = cmd.Run()
-		done <- struct{}{}
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(timeout):
-		if cmd.Process != nil {
-			if err := cmd.Process.Kill(); err != nil {
-				logrus.Warnf("Problem killing process pid=%v: %s", cmd.Process.Pid, err)
-			}
-
-		}
-		return "", fmt.Errorf("timeout executing: %v %v, output %s, stderr, %s, error %v",
-			binary, args, output.String(), stderr.String(), err)
-	}
-
-	if err != nil {
-		return "", fmt.Errorf("failed to execute: %v %v, output %s, stderr, %s, error %v",
-			binary, args, output.String(), stderr.String(), err)
-	}
-	return output.String(), nil
-}
-
-func ExecuteWithoutTimeout(envs []string, binary string, args ...string) (string, error) {
-	cmd := exec.Command(binary, args...)
-	cmd.Env = append(os.Environ(), envs...)
-
-	var output, stderr bytes.Buffer
-	cmd.Stdout = &output
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return output.String(), fmt.Errorf("failed to execute: %v %v, output %s, stderr, %s, error %v",
-			binary, args, output.String(), stderr.String(), err)
-	}
-	return output.String(), nil
 }
 
 func TimestampAfterTimeout(ts string, timeout time.Duration) bool {
@@ -483,9 +418,9 @@ func GetDiskStat(directory string) (stat *DiskStat, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "cannot get disk stat of directory %v", directory)
 	}()
-	initiatorNSPath := iscsiutil.GetHostNamespacePath(HostProcPath)
-	mountPath := fmt.Sprintf("--mount=%s/mnt", initiatorNSPath)
-	output, err := Execute([]string{}, "nsenter", mountPath, "stat", "-fc", "{\"path\":\"%n\",\"fsid\":\"%i\",\"type\":\"%T\",\"freeBlock\":%f,\"totalBlock\":%b,\"blockSize\":%S}", directory)
+
+	args := []string{"-fc", "{\"path\":\"%n\",\"fsid\":\"%i\",\"type\":\"%T\",\"freeBlock\":%f,\"totalBlock\":%b,\"blockSize\":%S}", directory}
+	output, err := lhexec.NewExecutor().Execute(nil, "stat", args, lhtypes.ExecuteDefaultTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -537,34 +472,6 @@ func RunAsync(wg *sync.WaitGroup, f func()) {
 		defer wg.Done()
 		f()
 	}()
-}
-
-func RemoveHostDirectoryContent(directory string) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "failed to remove host directory %v", directory)
-	}()
-
-	dir, err := filepath.Abs(filepath.Clean(directory))
-	if err != nil {
-		return err
-	}
-	if strings.Count(dir, "/") < 2 {
-		return fmt.Errorf("prohibit removing the top level of directory %v", dir)
-	}
-	initiatorNSPath := iscsiutil.GetHostNamespacePath(HostProcPath)
-	nsExec, err := iscsiutil.NewNamespaceExecutor(initiatorNSPath)
-	if err != nil {
-		return err
-	}
-	// check if the directory already deleted
-	if _, err := nsExec.Execute("ls", []string{dir}); err != nil {
-		logrus.Warnf("cannot find host directory %v for removal", dir)
-		return nil
-	}
-	if _, err := nsExec.Execute("rm", []string{"-rf", dir}); err != nil {
-		return err
-	}
-	return nil
 }
 
 type filteredLoggingHandler struct {
@@ -636,40 +543,35 @@ func ValidateTags(inputTags []string) ([]string, error) {
 }
 
 func CreateDiskPathReplicaSubdirectory(path string) error {
-	nsPath := iscsiutil.GetHostNamespacePath(HostProcPath)
-	nsExec, err := iscsiutil.NewNamespaceExecutor(nsPath)
-	if err != nil {
-		return err
+	var err error
+	defer func() {
+		err = errors.Wrapf(err, "failed to create replica subdirectory %v", path)
+	}()
+
+	_, err = lhns.CreateDirectory(filepath.Join(path, ReplicaDirectory), time.Now())
+	return err
+}
+
+func DeleteDiskPathReplicaSubdirectoryAndDiskCfgFile(path string) error {
+	replicaDirectoryPath := filepath.Join(path, ReplicaDirectory)
+	diskCfgFilePath := filepath.Join(path, DiskConfigFile)
+
+	// Delete the replica directory on host
+	if _, err := lhns.GetFileInfo(replicaDirectoryPath); err == nil {
+		logrus.Tracef("Deleting replica directory %v", replicaDirectoryPath)
+		if err := lhns.DeletePath(replicaDirectoryPath); err != nil {
+			return errors.Wrapf(err, "failed to delete host replica directory %v", replicaDirectoryPath)
+		}
 	}
-	if _, err := nsExec.Execute("mkdir", []string{"-p", filepath.Join(path, ReplicaDirectory)}); err != nil {
-		return errors.Wrapf(err, "error creating data path %v on host", path)
+
+	if _, err := lhns.GetFileInfo(diskCfgFilePath); err == nil {
+		logrus.Tracef("Deleting disk cfg file %v", diskCfgFilePath)
+		if err := lhns.DeletePath(diskCfgFilePath); err != nil {
+			return errors.Wrapf(err, "failed to delete host disk cfg file %v", diskCfgFilePath)
+		}
 	}
 
 	return nil
-}
-
-func DeleteDiskPathReplicaSubdirectoryAndDiskCfgFile(
-	nsExec *iscsiutil.NamespaceExecutor, path string) error {
-
-	var err error
-	dirPath := filepath.Join(path, ReplicaDirectory)
-	filePath := filepath.Join(path, DiskConfigFile)
-
-	// Check if the replica directory exist, delete it
-	if _, err := nsExec.Execute("ls", []string{dirPath}); err == nil {
-		if _, err := nsExec.Execute("rmdir", []string{dirPath}); err != nil {
-			return errors.Wrapf(err, "error deleting data path %v on host", path)
-		}
-	}
-
-	// Check if the disk cfg file exist, delete it
-	if _, err := nsExec.Execute("ls", []string{filePath}); err == nil {
-		if _, err := nsExec.Execute("rm", []string{filePath}); err != nil {
-			err = errors.Wrapf(err, "error deleting disk cfg file %v on host", filePath)
-		}
-	}
-
-	return err
 }
 
 func IsKubernetesDefaultToleration(toleration corev1.Toleration) bool {
@@ -789,21 +691,20 @@ func GetPossibleReplicaDirectoryNames(diskPath string) (replicaDirectoryNames ma
 	}()
 
 	replicaDirectoryNames = make(map[string]string, 0)
+	path := filepath.Join(diskPath, "replicas")
 
-	directory := filepath.Join(diskPath, "replicas")
-
-	initiatorNSPath := iscsiutil.GetHostNamespacePath(HostProcPath)
-	mountPath := fmt.Sprintf("--mount=%s/mnt", initiatorNSPath)
-	command := fmt.Sprintf("find %s -type d -maxdepth 1 -mindepth 1 -regextype posix-extended -regex \".*-[a-zA-Z0-9]{8}$\" -exec basename {} \\;", directory)
-	output, err := Execute([]string{}, "nsenter", mountPath, "sh", "-c", command)
+	files, err := lhns.ReadDirectory(path)
 	if err != nil {
 		return replicaDirectoryNames, err
 	}
 
-	names := strings.Split(output, "\n")
-	for _, name := range names {
-		if name != "" {
-			replicaDirectoryNames[name] = ""
+	// Compile the regular expression pattern
+	pattern := regexp.MustCompile(`.*-[a-zA-Z0-9]{8}$`)
+
+	// Iterate over the files and filter directories based on the pattern
+	for _, file := range files {
+		if file.IsDir() && pattern.MatchString(file.Name()) {
+			replicaDirectoryNames[file.Name()] = ""
 		}
 	}
 
@@ -815,16 +716,8 @@ func DeleteReplicaDirectory(diskPath, replicaDirectoryName string) (err error) {
 		err = errors.Wrapf(err, "cannot delete replica directory %v in disk %v", replicaDirectoryName, diskPath)
 	}()
 
-	path := filepath.Join(diskPath, "replicas", replicaDirectoryName)
-
-	initiatorNSPath := iscsiutil.GetHostNamespacePath(HostProcPath)
-	mountPath := fmt.Sprintf("--mount=%s/mnt", initiatorNSPath)
-	_, err = Execute([]string{}, "nsenter", mountPath, "rm", "-rf", path)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	replicaDirectory := filepath.Join(diskPath, "replicas", replicaDirectoryName)
+	return lhns.DeletePath(replicaDirectory)
 }
 
 type VolumeMeta struct {
@@ -840,13 +733,7 @@ type VolumeMeta struct {
 }
 
 func GetVolumeMeta(path string) (*VolumeMeta, error) {
-	nsPath := iscsiutil.GetHostNamespacePath(HostProcPath)
-	nsExec, err := iscsiutil.NewNamespaceExecutor(nsPath)
-	if err != nil {
-		return nil, err
-	}
-
-	output, err := nsExec.Execute("cat", []string{path})
+	output, err := lhns.ReadFileContent(path)
 	if err != nil {
 		return nil, fmt.Errorf("cannot find volume meta %v on host: %v", path, err)
 	}
