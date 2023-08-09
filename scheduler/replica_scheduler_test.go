@@ -50,6 +50,9 @@ const (
 	// TestDiskID2           = "diskID2"
 	TestDiskSize          = 5000000000
 	TestDiskAvailableSize = 3000000000
+
+	TestZone1 = "test-zone-1"
+	TestZone2 = "test-zone-2"
 )
 
 var longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
@@ -81,7 +84,7 @@ func newDaemonPod(phase v1.PodPhase, name, namespace, nodeID, podIP string) *v1.
 	}
 }
 
-func newNode(name, namespace string, allowScheduling bool, status longhorn.ConditionStatus) *longhorn.Node {
+func newNode(name, namespace, zone string, allowScheduling bool, status longhorn.ConditionStatus) *longhorn.Node {
 	return &longhorn.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -95,6 +98,7 @@ func newNode(name, namespace string, allowScheduling bool, status longhorn.Condi
 				newCondition(longhorn.NodeConditionTypeSchedulable, status),
 				newCondition(longhorn.NodeConditionTypeReady, status),
 			},
+			Zone: zone,
 		},
 	}
 }
@@ -227,14 +231,18 @@ func (s *TestSuite) SetUpTest(c *C) {
 
 type ReplicaSchedulerTestCase struct {
 	volume                            *longhorn.Volume
-	replicas                          map[string]*longhorn.Replica
 	daemons                           []*v1.Pod
 	nodes                             map[string]*longhorn.Node
 	engineImage                       *longhorn.EngineImage
 	storageOverProvisioningPercentage string
 	storageMinimalAvailablePercentage string
 	replicaNodeSoftAntiAffinity       string
+	replicaZoneSoftAntiAffinity       string
 	replicaDiskSoftAntiAffinity       string
+
+	// some test cases only try to schedule a subset of a volume's replicas
+	allReplicas        map[string]*longhorn.Replica
+	replicasToSchedule map[string]struct{}
 
 	// schedule state
 	expectedNodes map[string]*longhorn.Node
@@ -253,16 +261,21 @@ func generateSchedulerTestCase() *ReplicaSchedulerTestCase {
 	v := newVolume(TestVolumeName, 2)
 	replica1 := newReplicaForVolume(v)
 	replica2 := newReplicaForVolume(v)
-	replicas := map[string]*longhorn.Replica{
+	allReplicas := map[string]*longhorn.Replica{
 		replica1.Name: replica1,
 		replica2.Name: replica2,
 	}
+	replicasToSchedule := map[string]struct{}{}
+	for name := range allReplicas {
+		replicasToSchedule[name] = struct{}{}
+	}
 	engineImage := newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed)
 	return &ReplicaSchedulerTestCase{
-		volume:          v,
-		replicas:        replicas,
-		engineImage:     engineImage,
-		firstNilReplica: -1,
+		volume:             v,
+		engineImage:        engineImage,
+		allReplicas:        allReplicas,
+		replicasToSchedule: replicasToSchedule,
+		firstNilReplica:    -1,
 	}
 }
 
@@ -278,7 +291,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon2,
 		daemon3,
 	}
-	node1 := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue)
+	node1 := newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
 	disk := newDisk(TestDefaultDataPath, true, 0)
 	node1.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode1, "1"): disk,
@@ -296,7 +309,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		},
 	}
 	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
-	node2 := newNode(TestNode2, TestNamespace, false, longhorn.ConditionStatusTrue)
+	node2 := newNode(TestNode2, TestNamespace, TestZone1, false, longhorn.ConditionStatusTrue)
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	node2.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode2, "1"): disk,
@@ -311,7 +324,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		},
 	}
 	tc.engineImage.Status.NodeDeploymentMap[node2.Name] = true
-	node3 := newNode(TestNode3, TestNamespace, true, longhorn.ConditionStatusFalse)
+	node3 := newNode(TestNode3, TestNamespace, TestZone1, true, longhorn.ConditionStatusFalse)
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	node3.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode3, "1"): disk,
@@ -350,9 +363,9 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon1,
 		daemon2,
 	}
-	node1 = newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue)
+	node1 = newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
 	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
-	node2 = newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue)
+	node2 = newNode(TestNode2, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
 	tc.engineImage.Status.NodeDeploymentMap[node2.Name] = true
 	nodes = map[string]*longhorn.Node{
 		TestNode1: node1,
@@ -373,7 +386,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon1,
 		daemon2,
 	}
-	node1 = newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue)
+	node1 = newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	node1.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode1, "1"): disk,
@@ -390,7 +403,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			Type:     longhorn.DiskTypeFilesystem,
 		},
 	}
-	node2 = newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue)
+	node2 = newNode(TestNode2, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	node2.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode2, "1"): disk,
@@ -426,7 +439,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon1,
 		daemon2,
 	}
-	node1 = newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue)
+	node1 = newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
 	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	disk2 := newDisk(TestDefaultDataPath, true, TestDiskSize)
@@ -457,11 +470,11 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			Type:     longhorn.DiskTypeFilesystem,
 		},
 	}
-	expectNode1 := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue)
+	expectNode1 := newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
 	expectNode1.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode1, "1"): disk,
 	}
-	node2 = newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue)
+	node2 = newNode(TestNode2, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
 	tc.engineImage.Status.NodeDeploymentMap[node2.Name] = true
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	disk2 = newDisk(TestDefaultDataPath, true, 0)
@@ -491,7 +504,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			Type:     longhorn.DiskTypeFilesystem,
 		},
 	}
-	expectNode2 := newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue)
+	expectNode2 := newNode(TestNode2, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
 	expectNode2.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode2, "1"): disk,
 	}
@@ -511,7 +524,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 
 	// Test scheduler error when replica.NodeID is not ""
 	tc = generateSchedulerTestCase()
-	replicas := tc.replicas
+	replicas := tc.allReplicas
 	for _, replica := range replicas {
 		replica.Spec.NodeID = TestNode1
 	}
@@ -527,7 +540,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon1,
 		daemon2,
 	}
-	node1 = newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue)
+	node1 = newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
 	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
 	disk = newDisk(TestDefaultDataPath, true, TestDiskSize)
 	node1.Spec.Disks = map[string]longhorn.DiskSpec{
@@ -545,7 +558,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			Type:     longhorn.DiskTypeFilesystem,
 		},
 	}
-	node2 = newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue)
+	node2 = newNode(TestNode2, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
 	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	disk2 = newDisk(TestDefaultDataPath, true, 0)
@@ -596,7 +609,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon1,
 		daemon2,
 	}
-	node1 = newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue)
+	node1 = newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
 	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
 	disk = newDisk(TestDefaultDataPath, true, TestDiskSize)
 	node1.Spec.Disks = map[string]longhorn.DiskSpec{
@@ -614,7 +627,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			Type:     longhorn.DiskTypeFilesystem,
 		},
 	}
-	node2 = newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue)
+	node2 = newNode(TestNode2, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
 	tc.engineImage.Status.NodeDeploymentMap[node2.Name] = true
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	disk2 = newDisk(TestDefaultDataPath, true, 0)
@@ -666,7 +679,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		daemon1,
 		daemon2,
 	}
-	node1 = newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue)
+	node1 = newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
 	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	disk2 = newDisk(TestDefaultDataPath, true, 0)
@@ -696,11 +709,11 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			Type:     longhorn.DiskTypeFilesystem,
 		},
 	}
-	expectNode1 = newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue)
+	expectNode1 = newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
 	expectNode1.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode1, "1"): disk,
 	}
-	node2 = newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue)
+	node2 = newNode(TestNode2, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
 	tc.engineImage.Status.NodeDeploymentMap[node2.Name] = true
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	disk2 = newDisk(TestDefaultDataPath, true, 0)
@@ -730,7 +743,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			Type:     longhorn.DiskTypeFilesystem,
 		},
 	}
-	expectNode2 = newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue)
+	expectNode2 = newNode(TestNode2, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
 	expectNode2.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode2, "2"): disk2,
 	}
@@ -754,7 +767,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	tc.daemons = []*v1.Pod{
 		daemon1,
 	}
-	node1 = newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue)
+	node1 = newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
 	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
 	disk = newDisk(TestDefaultDataPath, true, 0)
 	disk2 = newDisk(TestDefaultDataPath, true, 0)
@@ -784,7 +797,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			Type:     longhorn.DiskTypeFilesystem,
 		},
 	}
-	expectNode1 = newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue)
+	expectNode1 = newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
 	expectNode1.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode1, "1"): disk,
 	}
@@ -810,27 +823,27 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	tc.daemons = []*v1.Pod{
 		daemon1,
 	}
-	node1 = newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue)
+	node1 = newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
 	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
 	disk = newDisk(TestDefaultDataPath, true, 0)
+	node2 = newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node2.Name] = true
 	node1.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode1, "1"): disk,
 	}
-	alreadyScheduledReplica := newReplicaForVolume(tc.volume)
 	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{
 		getDiskID(TestNode1, "1"): {
 			StorageAvailable: TestDiskAvailableSize,
-			StorageScheduled: TestVolumeSize,
+			StorageScheduled: 0,
 			StorageMaximum:   TestDiskSize,
 			Conditions: []longhorn.Condition{
 				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
 			},
-			DiskUUID:         getDiskID(TestNode1, "1"),
-			Type:             longhorn.DiskTypeFilesystem,
-			ScheduledReplica: map[string]int64{alreadyScheduledReplica.Name: TestVolumeSize},
+			DiskUUID: getDiskID(TestNode1, "1"),
+			Type:     longhorn.DiskTypeFilesystem,
 		},
 	}
-	expectNode1 = newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue)
+	expectNode1 = newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
 	expectNode1.Spec.Disks = map[string]longhorn.DiskSpec{
 		getDiskID(TestNode1, "1"): disk,
 	}
@@ -850,6 +863,145 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	tc.replicaNodeSoftAntiAffinity = "true"  // Allow replicas to schedule to the same node.
 	tc.replicaDiskSoftAntiAffinity = "false" // Do not allow replicas to schedule to the same disk.
 	testCases["fail scheduling when replicaDiskSoftAntiAffinity is true"] = tc
+
+	// Test fail scheduling when zoneSoftAntiAffinity is false
+	tc = generateSchedulerTestCase()
+	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+	tc.daemons = []*v1.Pod{
+		daemon1,
+		daemon2,
+	}
+	node1 = newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
+	disk = newDisk(TestDefaultDataPath, true, 0)
+	node1.Spec.Disks = map[string]longhorn.DiskSpec{
+		getDiskID(TestNode1, "1"): disk,
+	}
+	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		getDiskID(TestNode1, "1"): {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			},
+			DiskUUID: getDiskID(TestNode1, "1"),
+			Type:     longhorn.DiskTypeFilesystem,
+		},
+	}
+	disk = newDisk(TestDefaultDataPath, true, 0)
+	expectNode1 = newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+	expectNode1.Spec.Disks = map[string]longhorn.DiskSpec{
+		getDiskID(TestNode1, "1"): disk,
+	}
+	disk = newDisk(TestDefaultDataPath, true, 0)
+	node2 = newNode(TestNode2, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node2.Name] = true
+	node2.Spec.Disks = map[string]longhorn.DiskSpec{
+		getDiskID(TestNode2, "1"): disk,
+	}
+	node2.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		getDiskID(TestNode2, "1"): {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			},
+			DiskUUID: getDiskID(TestNode2, "1"),
+			Type:     longhorn.DiskTypeFilesystem,
+		},
+	}
+	nodes = map[string]*longhorn.Node{
+		TestNode1: node1,
+		TestNode2: node2,
+	}
+	tc.nodes = nodes
+	tc.expectedNodes = nil // We don't know or care which node the first replica will schedule to.
+	tc.err = false
+	tc.firstNilReplica = 1                   // There is only one disk, so the second replica must fail to schedule.
+	tc.replicaNodeSoftAntiAffinity = "true"  // Allow replicas to schedule to the same node.
+	tc.replicaZoneSoftAntiAffinity = "false" // Do not allow replicas to schedule to the same zone.
+	testCases["fail scheduling when zoneSoftAntiAffinity is false"] = tc
+
+	// Test schedule when zoneSoftAntiAffinity is false but there is an evicting replica
+	tc = generateSchedulerTestCase()
+	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+	tc.daemons = []*v1.Pod{
+		daemon1,
+		daemon2,
+	}
+	node1 = newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
+	disk = newDisk(TestDefaultDataPath, true, 0)
+	node1.Spec.Disks = map[string]longhorn.DiskSpec{
+		getDiskID(TestNode1, "1"): disk,
+	}
+	alreadyScheduledReplica := newReplicaForVolume(tc.volume)
+	alreadyScheduledReplica.Spec.NodeID = TestNode1
+	alreadyScheduledReplica.Status.EvictionRequested = true
+	tc.allReplicas[alreadyScheduledReplica.Name] = alreadyScheduledReplica
+	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		getDiskID(TestNode1, "1"): {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: TestVolumeSize,
+			StorageMaximum:   TestDiskSize,
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			},
+			DiskUUID:         getDiskID(TestNode1, "1"),
+			Type:             longhorn.DiskTypeFilesystem,
+			ScheduledReplica: map[string]int64{alreadyScheduledReplica.Name: TestVolumeSize},
+		},
+	}
+	expectNode1 = newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+	expectNode1.Spec.Disks = map[string]longhorn.DiskSpec{
+		getDiskID(TestNode1, "1"): disk,
+	}
+	disk = newDisk(TestDefaultDataPath, true, 0)
+	expectNode1 = newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+	expectNode1.Spec.Disks = map[string]longhorn.DiskSpec{
+		getDiskID(TestNode1, "1"): disk,
+	}
+	disk = newDisk(TestDefaultDataPath, true, 0)
+	node2 = newNode(TestNode2, TestNamespace, TestZone2, true, longhorn.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node2.Name] = true
+	node2.Spec.Disks = map[string]longhorn.DiskSpec{
+		getDiskID(TestNode2, "1"): disk,
+	}
+	node2.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		getDiskID(TestNode2, "1"): {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			},
+			DiskUUID: getDiskID(TestNode2, "1"),
+			Type:     longhorn.DiskTypeFilesystem,
+		},
+	}
+	expectNode2 = newNode(TestNode2, TestNamespace, TestZone2, true, longhorn.ConditionStatusTrue)
+	expectNode2.Spec.Disks = map[string]longhorn.DiskSpec{
+		getDiskID(TestNode2, "1"): disk,
+	}
+	nodes = map[string]*longhorn.Node{
+		TestNode1: node1,
+		TestNode2: node2,
+	}
+	tc.nodes = nodes
+	expectedNodes = map[string]*longhorn.Node{
+		TestNode1: expectNode1,
+		TestNode2: expectNode2,
+	}
+	tc.expectedNodes = expectedNodes
+	tc.err = false
+	tc.firstNilReplica = -1
+	tc.replicaNodeSoftAntiAffinity = "true"  // Allow replicas to schedule to the same node.
+	tc.replicaZoneSoftAntiAffinity = "false" // Do not allow replicas to schedule to the same zone.
+	testCases["schedule when zoneSoftAntiAffinity is false but there is an evicting replica"] = tc
 
 	for name, tc := range testCases {
 		fmt.Printf("testing %v\n", name)
@@ -922,6 +1074,17 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			err = sIndexer.Add(setting)
 			c.Assert(err, IsNil)
 		}
+		// Set replica zone soft anti-affinity setting
+		if tc.replicaZoneSoftAntiAffinity != "" {
+			s := initSettings(
+				string(types.SettingNameReplicaZoneSoftAntiAffinity),
+				tc.replicaZoneSoftAntiAffinity)
+			setting, err :=
+				lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			err = sIndexer.Add(setting)
+			c.Assert(err, IsNil)
+		}
 		// Set replica disk soft anti-affinity setting
 		if tc.replicaDiskSoftAntiAffinity != "" {
 			s := initSettings(
@@ -935,14 +1098,14 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		}
 		// validate scheduler
 		numScheduled := 0
-		for _, replica := range tc.replicas {
-			r, err := lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), replica, metav1.CreateOptions{})
+		for replicaName := range tc.replicasToSchedule {
+			r, err := lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), tc.allReplicas[replicaName], metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(r, NotNil)
 			err = rIndexer.Add(r)
 			c.Assert(err, IsNil)
 
-			sr, _, err := s.ScheduleReplica(r, tc.replicas, volume)
+			sr, _, err := s.ScheduleReplica(r, tc.allReplicas, volume)
 			if tc.err {
 				c.Assert(err, NotNil)
 			} else {
@@ -955,7 +1118,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 					c.Assert(sr.Spec.DiskID, Not(Equals), "")
 					c.Assert(sr.Spec.DiskPath, Not(Equals), "")
 					c.Assert(sr.Spec.DataDirectoryName, Not(Equals), "")
-					tc.replicas[sr.Name] = sr
+					tc.allReplicas[sr.Name] = sr
 					// check expected node
 					for name, node := range tc.expectedNodes {
 						if sr.Spec.NodeID == name {
