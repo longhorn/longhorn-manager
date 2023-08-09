@@ -388,9 +388,9 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 }
 
 // filterDisksWithMatchingReplicas filters the input disks map and returns only the disks that have the fewest matching
-// replicas. If allowMatches is false, it only returns disks that have no matching replicas.
+// replicas. If diskSoftAntiAffinity is false, it only returns disks that have no matching replicas.
 func filterDisksWithMatchingReplicas(disks map[string]*Disk, replicas map[string]*longhorn.Replica,
-	allowMatches bool) map[string]*Disk {
+	diskSoftAntiAffinity bool) map[string]*Disk {
 	replicasCountPerDisk := map[string]int{}
 	for _, r := range replicas {
 		replicasCountPerDisk[r.Spec.DiskID]++
@@ -409,7 +409,7 @@ func filterDisksWithMatchingReplicas(disks map[string]*Disk, replicas map[string
 		}
 	}
 
-	if len(disksByReplicaCount[0]) > 0 || !allowMatches {
+	if len(disksByReplicaCount[0]) > 0 || !diskSoftAntiAffinity {
 		return disksByReplicaCount[0]
 	}
 
