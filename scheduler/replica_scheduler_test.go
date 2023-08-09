@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -1050,52 +1051,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		err = vIndexer.Add(volume)
 		c.Assert(err, IsNil)
 		// set settings
-		if tc.storageOverProvisioningPercentage != "" && tc.storageMinimalAvailablePercentage != "" {
-			s := initSettings(string(types.SettingNameStorageOverProvisioningPercentage), tc.storageOverProvisioningPercentage)
-			setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-			err = sIndexer.Add(setting)
-			c.Assert(err, IsNil)
-
-			s = initSettings(string(types.SettingNameStorageMinimalAvailablePercentage), tc.storageMinimalAvailablePercentage)
-			setting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-			err = sIndexer.Add(setting)
-			c.Assert(err, IsNil)
-		}
-		// Set replica node soft anti-affinity setting
-		if tc.replicaNodeSoftAntiAffinity != "" {
-			s := initSettings(
-				string(types.SettingNameReplicaSoftAntiAffinity),
-				tc.replicaNodeSoftAntiAffinity)
-			setting, err :=
-				lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-			err = sIndexer.Add(setting)
-			c.Assert(err, IsNil)
-		}
-		// Set replica zone soft anti-affinity setting
-		if tc.replicaZoneSoftAntiAffinity != "" {
-			s := initSettings(
-				string(types.SettingNameReplicaZoneSoftAntiAffinity),
-				tc.replicaZoneSoftAntiAffinity)
-			setting, err :=
-				lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-			err = sIndexer.Add(setting)
-			c.Assert(err, IsNil)
-		}
-		// Set replica disk soft anti-affinity setting
-		if tc.replicaDiskSoftAntiAffinity != "" {
-			s := initSettings(
-				string(types.SettingNameReplicaDiskSoftAntiAffinity),
-				tc.replicaDiskSoftAntiAffinity)
-			setting, err :=
-				lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-			err = sIndexer.Add(setting)
-			c.Assert(err, IsNil)
-		}
+		setSettings(tc, lhClient, sIndexer, c)
 		// validate scheduler
 		numScheduled := 0
 		for replicaName := range tc.replicasToSchedule {
@@ -1138,6 +1094,56 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		}
 		c.Assert(len(tc.expectedNodes), Equals, 0)
 		c.Assert(len(tc.expectedDisks), Equals, 0)
+	}
+}
+
+func setSettings(tc *ReplicaSchedulerTestCase, lhClient *lhfake.Clientset, sIndexer cache.Indexer, c *C) {
+	// Set storage over-provisioning percentage settings
+	if tc.storageOverProvisioningPercentage != "" && tc.storageMinimalAvailablePercentage != "" {
+		s := initSettings(string(types.SettingNameStorageOverProvisioningPercentage), tc.storageOverProvisioningPercentage)
+		setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(setting)
+		c.Assert(err, IsNil)
+
+		s = initSettings(string(types.SettingNameStorageMinimalAvailablePercentage), tc.storageMinimalAvailablePercentage)
+		setting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(setting)
+		c.Assert(err, IsNil)
+	}
+	// Set replica node soft anti-affinity setting
+	if tc.replicaNodeSoftAntiAffinity != "" {
+		s := initSettings(
+			string(types.SettingNameReplicaSoftAntiAffinity),
+			tc.replicaNodeSoftAntiAffinity)
+		setting, err :=
+			lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(setting)
+		c.Assert(err, IsNil)
+	}
+	// Set replica zone soft anti-affinity setting
+	if tc.replicaZoneSoftAntiAffinity != "" {
+		s := initSettings(
+			string(types.SettingNameReplicaZoneSoftAntiAffinity),
+			tc.replicaZoneSoftAntiAffinity)
+		setting, err :=
+			lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(setting)
+		c.Assert(err, IsNil)
+	}
+	// Set replica disk soft anti-affinity setting
+	if tc.replicaDiskSoftAntiAffinity != "" {
+		s := initSettings(
+			string(types.SettingNameReplicaDiskSoftAntiAffinity),
+			tc.replicaDiskSoftAntiAffinity)
+		setting, err :=
+			lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(setting)
+		c.Assert(err, IsNil)
 	}
 }
 
