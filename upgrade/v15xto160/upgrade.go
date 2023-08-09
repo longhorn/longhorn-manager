@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	"github.com/longhorn/longhorn-manager/types"
 	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
@@ -76,7 +77,9 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceM
 	}
 
 	for _, v := range volumeMap {
-		_ = v // Nothing to do.
+		if v.Spec.ReplicaDiskSoftAntiAffinity == "" {
+			v.Spec.ReplicaDiskSoftAntiAffinity = longhorn.ReplicaDiskSoftAntiAffinityDefault
+		}
 	}
 
 	return nil
