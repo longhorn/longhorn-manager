@@ -170,7 +170,9 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 
 	diskSoftAntiAffinity, err := rcs.ds.GetSettingAsBool(types.SettingNameReplicaDiskSoftAntiAffinity)
 	if err != nil {
-		logrus.Errorf("Error getting replica disk soft anti-affinity setting: %v", err)
+		err = errors.Wrapf(err, "failed to get %v setting", types.SettingNameReplicaDiskSoftAntiAffinity)
+		multiError.Append(util.NewMultiError(err.Error()))
+		return map[string]*Disk{}, multiError
 	}
 	if volume.Spec.ReplicaDiskSoftAntiAffinity != longhorn.ReplicaDiskSoftAntiAffinityDefault &&
 		volume.Spec.ReplicaDiskSoftAntiAffinity != "" {
