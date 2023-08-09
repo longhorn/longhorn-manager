@@ -1149,9 +1149,9 @@ func setSettings(tc *ReplicaSchedulerTestCase, lhClient *lhfake.Clientset, sInde
 
 func (s *TestSuite) TestFilterDisksWithMatchingReplicas(c *C) {
 	type testCase struct {
-		inputDiskUUIDs []string
-		inputReplicas  map[string]*longhorn.Replica
-		allowMatches   bool
+		inputDiskUUIDs       []string
+		inputReplicas        map[string]*longhorn.Replica
+		diskSoftAntiAffinity bool
 
 		expectDiskUUIDs []string
 	}
@@ -1170,9 +1170,9 @@ func (s *TestSuite) TestFilterDisksWithMatchingReplicas(c *C) {
 		replica1.Name: replica1,
 		replica2.Name: replica2,
 	}
-	tc.allowMatches = false
+	tc.diskSoftAntiAffinity = false
 	tc.expectDiskUUIDs = []string{} // No disks can be scheduled.
-	tests["allowMatches = false and no empty disks"] = tc
+	tests["diskSoftAntiAffinity = false and no empty disks"] = tc
 
 	tc = testCase{}
 	diskUUID1 = getDiskID(TestNode1, "1")
@@ -1187,9 +1187,9 @@ func (s *TestSuite) TestFilterDisksWithMatchingReplicas(c *C) {
 		replica1.Name: replica1,
 		replica2.Name: replica2,
 	}
-	tc.allowMatches = true
+	tc.diskSoftAntiAffinity = true
 	tc.expectDiskUUIDs = append(tc.expectDiskUUIDs, tc.inputDiskUUIDs...) // Both disks are equally viable.
-	tests["allowMatches = true and no empty disks"] = tc
+	tests["diskSoftAntiAffinity = true and no empty disks"] = tc
 
 	tc = testCase{}
 	diskUUID1 = getDiskID(TestNode1, "1")
@@ -1213,7 +1213,7 @@ func (s *TestSuite) TestFilterDisksWithMatchingReplicas(c *C) {
 		replica3.Name: replica3,
 		replica4.Name: replica4,
 	}
-	tc.allowMatches = true
+	tc.diskSoftAntiAffinity = true
 	tc.expectDiskUUIDs = []string{diskUUID5} // Only disk5 has no matching replica.
 	tests["only schedule to disk without matching replica"] = tc
 
@@ -1223,7 +1223,7 @@ func (s *TestSuite) TestFilterDisksWithMatchingReplicas(c *C) {
 		for _, UUID := range tc.inputDiskUUIDs {
 			inputDisks[UUID] = &Disk{}
 		}
-		outputDiskUUIDs := filterDisksWithMatchingReplicas(inputDisks, tc.inputReplicas, tc.allowMatches)
+		outputDiskUUIDs := filterDisksWithMatchingReplicas(inputDisks, tc.inputReplicas, tc.diskSoftAntiAffinity)
 		c.Assert(len(outputDiskUUIDs), Equals, len(tc.expectDiskUUIDs))
 		for _, UUID := range tc.expectDiskUUIDs {
 			_, ok := outputDiskUUIDs[UUID]
