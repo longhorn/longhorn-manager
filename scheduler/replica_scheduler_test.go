@@ -1004,7 +1004,103 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	tc.replicaZoneSoftAntiAffinity = "false" // Do not allow replicas to schedule to the same zone.
 	testCases["schedule when zoneSoftAntiAffinity is false but there is an evicting replica"] = tc
 
+	// Test fail scheduling when doing so would reuse an invalid evicting node
+	tc = generateSchedulerTestCase()
+	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+	// Implement with three nodes to create the scenario posed by
+	// https://github.com/longhorn/longhorn-manager/pull/2094#discussion_r1290839641.
+	daemon3 = newDaemonPod(v1.PodRunning, TestDaemon3, TestNamespace, TestNode3, TestIP3)
+	tc.daemons = []*v1.Pod{
+		daemon1,
+		daemon2,
+		daemon3,
+	}
+	node1 = newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
+	disk = newDisk(TestDefaultDataPath, true, 0)
+	node1.Spec.Disks = map[string]longhorn.DiskSpec{
+		getDiskID(TestNode1, "1"): disk,
+	}
+	alreadyScheduledReplica = newReplicaForVolume(tc.volume)
+	alreadyScheduledReplica.Spec.NodeID = TestNode1
+	alreadyScheduledReplica.Status.EvictionRequested = true
+	tc.allReplicas[alreadyScheduledReplica.Name] = alreadyScheduledReplica
+	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		getDiskID(TestNode1, "1"): {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: TestVolumeSize,
+			StorageMaximum:   TestDiskSize,
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			},
+			DiskUUID:         getDiskID(TestNode1, "1"),
+			Type:             longhorn.DiskTypeFilesystem,
+			ScheduledReplica: map[string]int64{alreadyScheduledReplica.Name: TestVolumeSize},
+		},
+	}
+	disk = newDisk(TestDefaultDataPath, true, 0)
+	node2 = newNode(TestNode2, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node2.Name] = true
+	node2.Spec.Disks = map[string]longhorn.DiskSpec{
+		getDiskID(TestNode2, "1"): disk,
+	}
+	alreadyScheduledReplica = newReplicaForVolume(tc.volume)
+	alreadyScheduledReplica.Spec.NodeID = TestNode2
+	alreadyScheduledReplica.Status.EvictionRequested = false
+	tc.allReplicas[alreadyScheduledReplica.Name] = alreadyScheduledReplica
+	node2.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		getDiskID(TestNode2, "1"): {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			},
+			DiskUUID:         getDiskID(TestNode2, "1"),
+			Type:             longhorn.DiskTypeFilesystem,
+			ScheduledReplica: map[string]int64{alreadyScheduledReplica.Name: TestVolumeSize},
+		},
+	}
+	disk = newDisk(TestDefaultDataPath, true, 0)
+	node3 = newNode(TestNode3, TestNamespace, TestZone2, true, longhorn.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node2.Name] = true
+	node3.Spec.Disks = map[string]longhorn.DiskSpec{
+		getDiskID(TestNode3, "1"): disk,
+	}
+	alreadyScheduledReplica = newReplicaForVolume(tc.volume)
+	alreadyScheduledReplica.Spec.NodeID = TestNode3
+	alreadyScheduledReplica.Status.EvictionRequested = false
+	tc.allReplicas[alreadyScheduledReplica.Name] = alreadyScheduledReplica
+	node3.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		getDiskID(TestNode3, "1"): {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			},
+			DiskUUID:         getDiskID(TestNode3, "1"),
+			Type:             longhorn.DiskTypeFilesystem,
+			ScheduledReplica: map[string]int64{alreadyScheduledReplica.Name: TestVolumeSize},
+		},
+	}
+	nodes = map[string]*longhorn.Node{
+		TestNode1: node1,
+		TestNode2: node2,
+		TestNode3: node3,
+	}
+	tc.nodes = nodes
+	tc.err = false
+	tc.firstNilReplica = 0                   // We cannot schedule to an evicting node in a used zone.
+	tc.replicaNodeSoftAntiAffinity = "false" // Allow replicas to schedule to the same node.
+	tc.replicaZoneSoftAntiAffinity = "false" // Do not allow replicas to schedule to the same zone.
+	testCases["fail scheduling when doing so would reuse an invalid evicting node"] = tc
+
 	for name, tc := range testCases {
+		if name != "fail scheduling when doing so would reuse an invalid evicting node" {
+			continue
+		}
 		fmt.Printf("testing %v\n", name)
 
 		kubeClient := fake.NewSimpleClientset()
