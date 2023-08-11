@@ -83,7 +83,7 @@ func (oec *ObjectEndpointController) processNextWorkItem() bool {
 	defer oec.queue.Done(key)
 
 	err := oec.syncObjectEndpoint(key.(string))
-	oec.handleError(err, key)
+	oec.handleErr(err, key)
 
 	return true
 }
@@ -97,20 +97,20 @@ func (oec *ObjectEndpointController) enqueueObjectEndpoint(obj interface{}) {
 	oec.queue.Add(key)
 }
 
-func (oec *ObjectEndpointController) handleError(err error, key interface{}) {
+func (oec *ObjectEndpointController) handleErr(err error, key interface{}) {
 	if err == nil {
 		oec.queue.Forget(key)
 		return
 	}
 
 	if oec.queue.NumRequeues(key) < maxRetries {
-		oec.logger.WithError(err).Errorf("")
+		oec.logger.WithError(err).Errorf("error syncing object endpoint %v, retrying", err)
 		oec.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	oec.logger.WithError(err).Errorf("")
+	oec.logger.WithError(err).Errorf("error syncing object endpoint %v, giving up", err)
 	oec.queue.Forget(key)
 }
 
