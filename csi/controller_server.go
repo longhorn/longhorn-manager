@@ -28,15 +28,15 @@ import (
 
 const (
 	// we wait 1m30s for the volume state polling, this leaves 20s for the rest of the function call
-	timeoutAttachDetach     = 90 * time.Second
-	tickAttachDetach        = 2 * time.Second
-	timeoutBackupInitiation = 60 * time.Second
-	tickBackupInitiation    = 5 * time.Second
-	backupStateCompleted    = "Completed"
-	timeoutSnapshotCreation = 90 * time.Second
-	tickSnapshotCreation    = 2 * time.Second
-	timeoutSnapshotDeletion = 90 * time.Second
-	tickSnapshotDeletion    = 2 * time.Second
+	timeoutAttachDetach         = 90 * time.Second
+	tickAttachDetach            = 2 * time.Second
+	timeoutBackupControllerSync = 30 * time.Second
+	tickBackupControllerSync    = 2 * time.Second
+	backupStateCompleted        = "Completed"
+	timeoutSnapshotCreation     = 90 * time.Second
+	tickSnapshotCreation        = 2 * time.Second
+	timeoutSnapshotDeletion     = 90 * time.Second
+	tickSnapshotDeletion        = 2 * time.Second
 
 	csiSnapshotTypeLonghornSnapshot         = "snap"
 	csiSnapshotTypeLonghornBackingImage     = "bi"
@@ -728,29 +728,25 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornBackup(req *csi.CreateS
 		return nil, status.Error(codes.InvalidArgument, "Snapshot name must be provided")
 	}
 
-	// we check for backup existence first, since it's possible that
-	// the actual volume is no longer available but the backup still is.
-	backupVolume, err := cs.apiClient.BackupVolume.ById(csiVolumeName)
+	// We check for backup existence first, since it's possible that the actual volume is no longer available but the
+	// backup still is.
+	backup, err := cs.getBackup(csiVolumeName, csiSnapshotName)
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	backupListOutput, err := cs.apiClient.BackupVolume.ActionBackupList(backupVolume)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	// NOTE: csi-snapshots assume a 1 to 1 relationship, longhorn allows for multiple backups of a snapshot
-	var backup *longhornclient.Backup
-	for _, b := range backupListOutput.Data {
-		if b.SnapshotName == csiSnapshotName {
-			backup = &b
-			break
-		}
+		// Status code set in waitForBackupControllerSync.
+		return nil, err
 	}
 
 	if backup != nil {
+		// Per the CSI spec, if we are unable to complete the CreateSnapshot call successfully, we must return a non-ok
+		// gRPC code. In practice, doing so ensures we get requeued (and quickly deleted) when we hit
+		// https://github.com/kubernetes-csi/external-snapshotter/issues/880.
+		if backup.Error != "" {
+			return nil, status.Error(codes.Internal, backup.Error)
+		}
+
 		snapshotID := encodeSnapshotID(csiSnapshotTypeLonghornBackup, backup.VolumeName, backup.Name)
-		rsp := createSnapshotResponseForSnapshotTypeLonghornBackup(backup.VolumeName, snapshotID, backup.SnapshotCreated, backup.VolumeSize, backup.State == string(longhorn.BackupStateCompleted))
+		rsp := createSnapshotResponseForSnapshotTypeLonghornBackup(backup.VolumeName, snapshotID,
+			backup.SnapshotCreated, backup.VolumeSize, backup.State == string(longhorn.BackupStateCompleted))
 		return rsp, nil
 	}
 
@@ -799,21 +795,24 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornBackup(req *csi.CreateS
 		Labels: csiLabels,
 		Name:   csiSnapshotName,
 	})
-
-	// failed to kick off backup
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	// we need to wait for backup initiation since we only know the backupID after the fact
-	backupStatus, err := cs.waitForBackupInitiation(csiVolumeName, csiSnapshotName)
+	// Get the newly created backup. Don't wait for the backup controller to actually start the backup and update the
+	// status. It's possible that the backup operation can't actually be completed, but we need to return quickly so the
+	// CO can unfreeze I/O (if freezing is supported) and without error (if possible) so the CO knows our ID and can use
+	// it in future calls.
+	backup, err = cs.waitForBackupControllerSync(existVol.Name, csiSnapshotName)
 	if err != nil {
+		// Status code set in waitForBackupControllerSync.
 		return nil, err
 	}
 
-	logrus.Infof("Volume %s backup %s of snapshot %s in progress", existVol.Name, backupStatus.Id, csiSnapshotName)
-	snapshotID := encodeSnapshotID(csiSnapshotTypeLonghornBackup, existVol.Name, backupStatus.Id)
-	rsp := createSnapshotResponseForSnapshotTypeLonghornBackup(existVol.Name, snapshotID, snapshotCR.CreationTime, existVol.Size, backupStatus.State == string(longhorn.BackupStateCompleted))
+	logrus.Infof("Volume %s backup %s of snapshot %s created", existVol.Name, backup.Id, csiSnapshotName)
+	snapshotID := encodeSnapshotID(csiSnapshotTypeLonghornBackup, existVol.Name, backup.Id)
+	rsp := createSnapshotResponseForSnapshotTypeLonghornBackup(existVol.Name, snapshotID, snapshotCR.CreationTime,
+		existVol.Size, backup.State == string(longhorn.BackupStateCompleted))
 	return rsp, nil
 }
 
@@ -1167,56 +1166,71 @@ func (cs *ControllerServer) waitForVolumeState(volumeID string, stateDescription
 	}
 }
 
-// waitForBackupInitiation polls the volumes backup status till there is a backup in progress
-// this is necessary since the backup name is only known after the backup is initiated
-func (cs *ControllerServer) waitForBackupInitiation(volumeName, snapshotName string) (*longhornclient.BackupStatus, error) {
-	timer := time.NewTimer(timeoutBackupInitiation)
+// waitForBackupControllerSync returns the backup of the given snapshot of the given volume. It does not return until
+// the backup controller has synced at least once (so the backup contains information we need). This function does not
+// wait for the existence of a backup. If one doesn't exist, it returns without error immediately.
+func (cs *ControllerServer) waitForBackupControllerSync(volumeName, snapshotName string) (*longhornclient.Backup, error) {
+	// Don't wait if we don't need to.
+	backup, err := cs.getBackup(volumeName, snapshotName)
+	if err != nil {
+		return nil, err
+	}
+	if backup.SnapshotCreated != "" {
+		// The backup controller sets the snapshot creation time at first sync. If we do not wait to return until
+		// this is done, we may see timestamp related errors in csi-snapshotter logs.
+		return backup, nil
+	}
+
+	timer := time.NewTimer(timeoutBackupControllerSync)
 	defer timer.Stop()
 	timeout := timer.C
 
-	ticker := time.NewTicker(tickBackupInitiation)
+	ticker := time.NewTicker(tickBackupControllerSync)
 	defer ticker.Stop()
 	tick := ticker.C
 
 	for {
 		select {
 		case <-timeout:
-			msg := fmt.Sprintf("waitForBackupInitiation: timeout while waiting for backup initiation for volume %s for snapshot %s", volumeName, snapshotName)
+			msg := fmt.Sprintf("waitForBackupControllerSync: timeout while waiting for backup controller to sync for volume %s and snapshot %s", volumeName, snapshotName)
 			logrus.Warn(msg)
 			return nil, status.Error(codes.DeadlineExceeded, msg)
 		case <-tick:
-			backupStatus, err := cs.getBackupStatus(volumeName, snapshotName)
+			backup, err := cs.getBackup(volumeName, snapshotName)
 			if err != nil {
 				return nil, err
 			}
-
-			if backupStatus != nil {
-				return backupStatus, nil
+			if backup.SnapshotCreated != "" {
+				return backup, nil
 			}
 		}
 	}
 }
 
-func (cs *ControllerServer) getBackupStatus(volumeName, snapshotName string) (*longhornclient.BackupStatus, error) {
-	existVol, err := cs.apiClient.Volume.ById(volumeName)
+// getBackup looks for all backups associated with the given backupVolume or volume and returns the one for the given
+// snapshot. It does not rely on volume.BackupStatus because volume.BackupStatus.Snapshot is only set if the backup
+// successfully initializes and after the backup monitor has had a chance to sync. We want to retrieve the backup
+// (and in particular, its name) as quickly as possible and in any state.
+func (cs *ControllerServer) getBackup(volumeName, snapshotName string) (*longhornclient.Backup, error) {
+	// Successfully returns an empty BackupVolume with volumeName even if one doesn't exist.
+	backupVolume, err := cs.apiClient.BackupVolume.ById(volumeName)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	if existVol == nil {
-		msg := fmt.Sprintf("failed to retrieve backup status the volume %s doesn't exist", volumeName)
-		logrus.Warn(msg)
-		return nil, status.Error(codes.NotFound, msg)
+	backupListOutput, err := cs.apiClient.BackupVolume.ActionBackupList(backupVolume)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	var backupStatus *longhornclient.BackupStatus
-	for _, status := range existVol.BackupStatus {
-		if status.Snapshot == snapshotName {
-			backupStatus = &status
+	var backup *longhornclient.Backup
+	for _, b := range backupListOutput.Data {
+		if b.SnapshotName == snapshotName {
+			backup = &b
 			break
 		}
 	}
 
-	return backupStatus, nil
+	return backup, nil
 }
 
 func (cs *ControllerServer) validateVolumeCapabilities(volumeCaps []*csi.VolumeCapability) error {
