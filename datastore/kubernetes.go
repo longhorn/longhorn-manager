@@ -70,6 +70,7 @@ func (s *DataStore) getSupportBundleManagerLabel(supportBundle *longhorn.Support
 		types.SupportBundleManagerLabelKey: supportBundle.Name,
 	}
 }
+
 func (s *DataStore) getSupportBundleManagerSelector(supportBundle *longhorn.SupportBundle) (labels.Selector, error) {
 	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: s.getSupportBundleManagerLabel(supportBundle),

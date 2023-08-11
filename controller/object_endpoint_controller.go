@@ -337,8 +337,6 @@ func (oec *ObjectEndpointController) handleSecretCreation(endpoint *longhorn.Obj
 }
 
 func (oec *ObjectEndpointController) handleDeploymentCreation(endpoint *longhorn.ObjectEndpoint) error {
-	replicas := int32(1) // this must be allocated and can't be a constant
-
 	registrySecretSetting, err := oec.ds.GetSetting(types.SettingNameRegistrySecret)
 	if err != nil {
 		return errors.Wrap(err, "failed to get registry secret setting for object endpoint deployment")
@@ -360,7 +358,11 @@ func (oec *ObjectEndpointController) handleDeploymentCreation(endpoint *longhorn
 			Selector: &metav1.LabelSelector{
 				MatchLabels: oec.ds.GetObjectEndpointSelectorLabels(endpoint),
 			},
-			Replicas: &replicas, // an s3gw instance must have exclusive access to the volume
+			// an s3gw instance must have exclusive access to the volume, so we can
+			// only spawn one replica (i.e. one s3gw instance) per object-endpoint.
+			// Due to the way the struct works, an allocated integer has to be used
+			// here and not a constant.
+			Replicas: func() *int32 { r := int32(1); return &r }(),
 			Strategy: appsv1.DeploymentStrategy{
 				Type: "Recreate",
 			},
@@ -377,7 +379,6 @@ func (oec *ObjectEndpointController) handleDeploymentCreation(endpoint *longhorn
 							Args: []string{
 								"--rgw-dns-name", fmt.Sprintf("%s.%s", endpoint.Name, oec.namespace),
 								"--rgw-backend-store", "sfs",
-								"--debug-rgw", "1",
 								"--rgw_frontends", fmt.Sprintf("beast port=%d", types.ObjectEndpointContainerPort),
 							},
 							Ports: []corev1.ContainerPort{
