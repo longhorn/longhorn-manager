@@ -196,8 +196,8 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 
 	usedNodes := map[string]*longhorn.Node{}
 	usedZones := map[string]bool{}
+	onlyEvictingNodes := map[string]bool{}
 	onlyEvictingZones := map[string]bool{}
-	replicasCountPerNode := map[string]int{}
 	// Get current nodes and zones
 	for _, r := range replicas {
 		if r.Spec.NodeID != "" && r.DeletionTimestamp == nil && r.Spec.FailedAt == "" {
@@ -207,33 +207,14 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 				// one zone.
 				usedZones[node.Status.Zone] = true
 				if r.Status.EvictionRequested {
+					onlyEvictingNodes[node.Name] = true
 					onlyEvictingZones[node.Status.Zone] = true
 				} else {
+					onlyEvictingNodes[node.Name] = false
 					onlyEvictingZones[node.Status.Zone] = false
 				}
-				replicasCountPerNode[r.Spec.NodeID] = replicasCountPerNode[r.Spec.NodeID] + 1
 			}
 		}
-	}
-
-	filterNodesWithLessThanTwoReplicas := func(nodes map[string]*longhorn.Node) map[string]*longhorn.Node {
-		result := map[string]*longhorn.Node{}
-		for nodeName, node := range nodes {
-			if replicasCountPerNode[nodeName] < 2 {
-				result[nodeName] = node
-			}
-		}
-		return result
-	}
-
-	filterNodesInOnlyEvictingZones := func(nodes map[string]*longhorn.Node) map[string]*longhorn.Node {
-		result := map[string]*longhorn.Node{}
-		for nodeName, node := range nodes {
-			if onlyEvictingZones[node.Status.Zone] {
-				result[nodeName] = node
-			}
-		}
-		return result
 	}
 
 	allowEmptyNodeSelectorVolume, err := rcs.ds.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
@@ -244,8 +225,9 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 	}
 
 	unusedNodes := map[string]*longhorn.Node{}
-	unusedNodesInUnusedZones := map[string]*longhorn.Node{} // By definition, these nodes are also unused.
-	nodesWithEvictingReplicas := getNodesWithEvictingReplicas(replicas, nodeInfo)
+	unusedNodesAfterEviction := map[string]*longhorn.Node{}
+	unusedNodesInUnusedZones := map[string]*longhorn.Node{}
+	unusedNodesInUnusedZonesAfterEviction := map[string]*longhorn.Node{}
 
 	for nodeName, node := range nodeInfo {
 		// Filter Nodes. If the Nodes don't match the tags, don't bother marking them as candidates.
@@ -254,6 +236,12 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		}
 		if _, ok := usedNodes[nodeName]; !ok {
 			unusedNodes[nodeName] = node
+		}
+		if onlyEvictingNodes[nodeName] {
+			unusedNodesAfterEviction[nodeName] = node
+			if onlyEvictingZones[node.Status.Zone] {
+				unusedNodesInUnusedZonesAfterEviction[nodeName] = node
+			}
 		}
 		if _, ok := usedZones[node.Status.Zone]; !ok {
 			unusedNodesInUnusedZones[nodeName] = node
@@ -273,7 +261,7 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		fallthrough
 	// Same as the above. If we cannot schedule two replicas in the same zone, we cannot schedule them on the same node.
 	case !zoneSoftAntiAffinity && nodeSoftAntiAffinity:
-		diskCandidates, errors = getDiskCandidatesFromNodes(filterNodesWithLessThanTwoReplicas(filterNodesInOnlyEvictingZones(nodesWithEvictingReplicas)))
+		diskCandidates, errors = getDiskCandidatesFromNodes(unusedNodesInUnusedZonesAfterEviction)
 		if len(diskCandidates) > 0 {
 			return diskCandidates, nil
 		}
@@ -284,7 +272,7 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 			return diskCandidates, nil
 		}
 		multiError.Append(errors)
-		diskCandidates, errors = getDiskCandidatesFromNodes(filterNodesWithLessThanTwoReplicas(nodesWithEvictingReplicas))
+		diskCandidates, errors = getDiskCandidatesFromNodes(unusedNodesAfterEviction)
 		if len(diskCandidates) > 0 {
 			return diskCandidates, nil
 		}
