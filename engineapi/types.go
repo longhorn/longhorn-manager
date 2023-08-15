@@ -8,18 +8,14 @@ import (
 	iscsidevtypes "github.com/longhorn/go-iscsi-helper/types"
 	spdkdevtypes "github.com/longhorn/go-spdk-helper/pkg/types"
 
+	emeta "github.com/longhorn/longhorn-engine/pkg/meta"
+
 	"github.com/longhorn/longhorn-manager/datastore"
+
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 const (
-	// CurrentCLIVersion indicates the default API version manager used to talk with the
-	// engine, including `longhorn-engine` and `longhorn-instance-manager`
-	CurrentCLIVersion = 7
-	// MinCLIVersion indicates the Min API version manager used to talk with the
-	// engine.
-	MinCLIVersion = 3
-
 	CLIVersionFour = 4
 	CLIVersionFive = 5
 
@@ -240,8 +236,10 @@ func ValidateReplicaURL(url string) error {
 }
 
 func CheckCLICompatibility(cliVersion, cliMinVersion int) error {
-	if MinCLIVersion > cliVersion || CurrentCLIVersion < cliMinVersion {
-		return fmt.Errorf("manager current CLI version %v and min CLI version %v is not compatible with CLIVersion %v and CLIMinVersion %v", CurrentCLIVersion, MinCLIVersion, cliVersion, cliMinVersion)
+	currentCLIVersion := emeta.CLIAPIVersion
+	minCLIVersion := emeta.CLIAPIMinVersion
+	if minCLIVersion > cliVersion || currentCLIVersion < cliMinVersion {
+		return fmt.Errorf("manager current CLI version %v and min CLI version %v is not compatible with CLIVersion %v and CLIMinVersion %v", currentCLIVersion, minCLIVersion, cliVersion, cliMinVersion)
 	}
 	return nil
 }
