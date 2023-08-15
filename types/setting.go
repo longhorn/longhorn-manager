@@ -1243,6 +1243,8 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameAllowEmptyDiskSelectorVolume:
 		fallthrough
 	case SettingNameAllowCollectingLonghornUsage:
+		fallthrough
+	case SettingNameReplicaDiskSoftAntiAffinity:
 		if value != "true" && value != "false" {
 			return fmt.Errorf("value %v of setting %v should be true or false", value, sName)
 		}
