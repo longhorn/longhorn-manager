@@ -43,7 +43,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	clientset "k8s.io/client-go/kubernetes"
 
-	lhexec "github.com/longhorn/go-common-libs/exec"
 	lhio "github.com/longhorn/go-common-libs/io"
 	lhns "github.com/longhorn/go-common-libs/ns"
 	lhtypes "github.com/longhorn/go-common-libs/types"
@@ -84,17 +83,6 @@ type MetadataConfig struct {
 	Image               string
 	OrcImage            string
 	DriverContainerName string
-}
-
-type DiskStat struct {
-	DiskID           string
-	Path             string
-	Type             string
-	FreeBlocks       int64
-	TotalBlocks      int64
-	BlockSize        int64
-	StorageMaximum   int64
-	StorageAvailable int64
 }
 
 func ConvertSize(size interface{}) (int64, error) {
@@ -405,43 +393,12 @@ func CheckBackupType(backupTarget string) (string, error) {
 	return u.Scheme, nil
 }
 
-type FsStat struct {
-	Fsid       string
-	Path       string
-	Type       string
-	FreeBlock  int64
-	TotalBlock int64
-	BlockSize  int64
-}
-
-func GetDiskStat(directory string) (stat *DiskStat, err error) {
+func GetDiskStat(directory string) (stat *lhtypes.DiskStat, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "cannot get disk stat of directory %v", directory)
 	}()
 
-	args := []string{"-fc", "{\"path\":\"%n\",\"fsid\":\"%i\",\"type\":\"%T\",\"freeBlock\":%f,\"totalBlock\":%b,\"blockSize\":%S}", directory}
-	output, err := lhexec.NewExecutor().Execute(nil, "stat", args, lhtypes.ExecuteDefaultTimeout)
-	if err != nil {
-		return nil, err
-	}
-	output = strings.Replace(output, "\n", "", -1)
-
-	fsStat := &FsStat{}
-	err = json.Unmarshal([]byte(output), fsStat)
-	if err != nil {
-		return nil, err
-	}
-
-	return &DiskStat{
-		DiskID:           fsStat.Fsid,
-		Path:             fsStat.Path,
-		Type:             fsStat.Type,
-		FreeBlocks:       fsStat.FreeBlock,
-		TotalBlocks:      fsStat.TotalBlock,
-		BlockSize:        fsStat.BlockSize,
-		StorageMaximum:   fsStat.TotalBlock * fsStat.BlockSize,
-		StorageAvailable: fsStat.FreeBlock * fsStat.BlockSize,
-	}, nil
+	return lhns.GetDiskStat(directory)
 }
 
 func RetryOnConflictCause(fn func() (interface{}, error)) (interface{}, error) {

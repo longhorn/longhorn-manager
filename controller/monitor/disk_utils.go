@@ -11,6 +11,7 @@ import (
 	grpcstatus "google.golang.org/grpc/status"
 
 	lhns "github.com/longhorn/go-common-libs/ns"
+	lhtypes "github.com/longhorn/go-common-libs/types"
 
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/util"
@@ -23,7 +24,7 @@ const (
 )
 
 // GetDiskStat returns the disk stat of the given directory
-func getDiskStat(diskType longhorn.DiskType, name, path string, client *engineapi.DiskService) (stat *util.DiskStat, err error) {
+func getDiskStat(diskType longhorn.DiskType, name, path string, client *engineapi.DiskService) (stat *lhtypes.DiskStat, err error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return getFilesystemTypeDiskStat(path)
@@ -34,11 +35,11 @@ func getDiskStat(diskType longhorn.DiskType, name, path string, client *engineap
 	}
 }
 
-func getFilesystemTypeDiskStat(path string) (stat *util.DiskStat, err error) {
+func getFilesystemTypeDiskStat(path string) (stat *lhtypes.DiskStat, err error) {
 	return util.GetDiskStat(path)
 }
 
-func getBlockTypeDiskStat(client *engineapi.DiskService, name, path string) (stat *util.DiskStat, err error) {
+func getBlockTypeDiskStat(client *engineapi.DiskService, name, path string) (stat *lhtypes.DiskStat, err error) {
 	if client == nil {
 		return nil, errors.New("disk service client is nil")
 	}
@@ -47,7 +48,7 @@ func getBlockTypeDiskStat(client *engineapi.DiskService, name, path string) (sta
 	if err != nil {
 		return nil, err
 	}
-	return &util.DiskStat{
+	return &lhtypes.DiskStat{
 		DiskID:           info.ID,
 		Path:             info.Path,
 		Type:             info.Type,
