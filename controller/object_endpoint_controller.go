@@ -83,7 +83,16 @@ func (oec *ObjectEndpointController) processNextWorkItem() bool {
 	defer oec.queue.Done(key)
 
 	err := oec.syncObjectEndpoint(key.(string))
-	oec.handleErr(err, key)
+	if err == nil {
+		oec.queue.Forget(key)
+	} else if oec.queue.NumRequeues(key) < maxRetries {
+		oec.logger.WithError(err).Errorf("error syncing object endpoint %v, retrying", err)
+		oec.queue.AddRateLimited(key)
+	} else {
+		utilruntime.HandleError(err)
+		oec.logger.WithError(err).Errorf("error syncing object endpoint %v, giving up", err)
+		oec.queue.Forget(key)
+	}
 
 	return true
 }
@@ -95,23 +104,6 @@ func (oec *ObjectEndpointController) enqueueObjectEndpoint(obj interface{}) {
 		return
 	}
 	oec.queue.Add(key)
-}
-
-func (oec *ObjectEndpointController) handleErr(err error, key interface{}) {
-	if err == nil {
-		oec.queue.Forget(key)
-		return
-	}
-
-	if oec.queue.NumRequeues(key) < maxRetries {
-		oec.logger.WithError(err).Errorf("error syncing object endpoint %v, retrying", err)
-		oec.queue.AddRateLimited(key)
-		return
-	}
-
-	utilruntime.HandleError(err)
-	oec.logger.WithError(err).Errorf("error syncing object endpoint %v, giving up", err)
-	oec.queue.Forget(key)
 }
 
 func (oec *ObjectEndpointController) syncObjectEndpoint(key string) error {
@@ -139,12 +131,11 @@ func (oec *ObjectEndpointController) syncObjectEndpoint(key string) error {
 	switch endpoint.Status.State {
 	case longhorn.ObjectEndpointStateStarting, longhorn.ObjectEndpointStateError:
 		dpl, err := oec.ds.GetDeployment(endpoint.Name)
-		if err == nil {
-			if dpl.Status.UnavailableReplicas > 0 {
-				return nil
-			}
-		} else {
+		if err != nil {
 			return err
+		}
+		if dpl.Status.UnavailableReplicas > 0 {
+			return nil
 		}
 
 		_, err = oec.ds.GetSecret(oec.namespace, endpoint.Name)
@@ -158,12 +149,11 @@ func (oec *ObjectEndpointController) syncObjectEndpoint(key string) error {
 		}
 
 		pvc, err := oec.ds.GetPersistentVolumeClaim(oec.namespace, genPVCName(endpoint))
-		if err == nil {
-			if pvc.Status.Phase != corev1.ClaimBound {
-				return nil
-			}
-		} else {
+		if err != nil {
 			return err
+		}
+		if pvc.Status.Phase != corev1.ClaimBound {
+			return nil
 		}
 
 		endpoint.Status.Endpoint = fmt.Sprintf("%s.%s.svc", endpoint.Name, oec.namespace)

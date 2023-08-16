@@ -24,7 +24,7 @@ type ObjectEndpointStatus struct {
 	// endpoint and begins resource creation the state is transformed to
 	// "starting". The object endpoint controller observes the resources and once
 	// all resources are up and ready the state transitions to "running".
-	// The state remains in "running" until a the object endpoint is deleted, at
+	// The state remains in "running" until the object endpoint is deleted, at
 	// which point the controller will clean up the associated resources.
 	//
 	//  │ object endpoint created
