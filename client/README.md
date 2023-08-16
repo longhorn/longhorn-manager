@@ -20,17 +20,19 @@ with modern Go.
 cd $GOPATH/src/github.com/niusmallnan/
 git clone https://github.com/niusmallnan/go-rancher
 cd go-rancher
+git checkout longhorn-v1
 ```
 
 4. Get dependencies.
 
 ```bash
+GO111MODULE=off go get
 ```
 
 5. Generate code.
 
 ```bash
-GO111MODULE=off scripts/generate-longhorn-schemas.sh http://<ip>:<port>
+scripts/generate-longhorn-schemas.sh http://<ip>:<port>
 ```
 
 ## Copy code to longhorn-manager
