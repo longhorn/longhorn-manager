@@ -22,6 +22,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 
+	emeta "github.com/longhorn/longhorn-engine/pkg/meta"
+
 	"github.com/longhorn/longhorn-manager/meta"
 	"github.com/longhorn/longhorn-manager/types"
 
@@ -145,6 +147,30 @@ func GetCurrentLonghornVersion(namespace string, lhClient lhclientset.Interface)
 	return currentLHVersionSetting.Value, nil
 }
 
+func GetCurrentReferredLonghornEngineImageVersions(namespace string, lhClient lhclientset.Interface) (map[string]emeta.VersionOutput, error) {
+	engineImages, err := lhClient.LonghornV1beta2().EngineImages(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	engineImageVersionMap := map[string]emeta.VersionOutput{}
+	for _, engineImage := range engineImages.Items {
+		if engineImage.Status.RefCount == 0 {
+			continue
+		}
+
+		engineImageVersionMap[engineImage.Name] = emeta.VersionOutput{
+			ControllerAPIVersion: engineImage.Status.ControllerAPIVersion,
+			CLIAPIVersion:        engineImage.Status.CLIAPIVersion,
+		}
+	}
+
+	return engineImageVersionMap, nil
+}
+
 func CreateOrUpdateLonghornVersionSetting(namespace string, lhClient *lhclientset.Clientset) error {
 	s, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameCurrentLonghornVersion), metav1.GetOptions{})
 	if err != nil {
@@ -179,13 +205,21 @@ func CreateOrUpdateLonghornVersionSetting(namespace string, lhClient *lhclientse
 	return nil
 }
 
-// CheckUpgradePathSupported returns if the upgrade path from lhCurrentVersion to meta.Version is supported.
+func CheckUpgradePathSupported(namespace string, lhClient lhclientset.Interface) error {
+	if err := checkLHUpgradePathSupported(namespace, lhClient); err != nil {
+		return err
+	}
+
+	return checkEngineUpgradePathSupported(namespace, lhClient, emeta.GetVersion())
+}
+
+// checkLHUpgradePathSupported returns if the upgrade path from lhCurrentVersion to meta.Version is supported.
 //
 //	For example: upgrade path is from x.y.z to a.b.c,
 //	0 <= a-x <= 1 is supported, and y should be after a specific version if a-x == 1
 //	0 <= b-y <= 1 is supported when a-x == 0
 //	all downgrade is not supported
-func CheckUpgradePathSupported(namespace string, lhClient lhclientset.Interface) error {
+func checkLHUpgradePathSupported(namespace string, lhClient lhclientset.Interface) error {
 	lhCurrentVersion, err := GetCurrentLonghornVersion(namespace, lhClient)
 	if err != nil {
 		return err
@@ -240,6 +274,55 @@ func CheckUpgradePathSupported(namespace string, lhClient lhclientset.Interface)
 		return fmt.Errorf("failed to upgrade since downgrading from %v to %v is not supported", lhCurrentVersion, meta.Version)
 	}
 
+	return nil
+}
+
+// checkEngineUpgradePathSupported returns error if the upgrade path from
+// current EngineImage version to emeta.ControllerAPIVersion is not supported.
+func checkEngineUpgradePathSupported(namespace string, lhClient lhclientset.Interface, newEngineVersion emeta.VersionOutput) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed checking Engine upgrade path")
+	}()
+
+	engineImageVersions, err := GetCurrentReferredLonghornEngineImageVersions(namespace, lhClient)
+	if err != nil {
+		return err
+	}
+
+	if len(engineImageVersions) == 0 {
+		return nil
+	}
+
+	logrus.WithFields(logrus.Fields{
+		"newEngineControllerAPIVersion":    newEngineVersion.ControllerAPIVersion,
+		"newEngineControllerAPIMinVersion": newEngineVersion.ControllerAPIMinVersion,
+		"newEngineClientAPIVersion":        newEngineVersion.CLIAPIVersion,
+		"newEngineClientAPIMinVersion":     newEngineVersion.CLIAPIMinVersion,
+	}).Infof("Checking if the engine upgrade path from %+v is supported", engineImageVersions)
+
+	checkSupportVersion := func(currentVersion, newVersion, newMinVersion int) error {
+		if currentVersion > newVersion {
+			return fmt.Errorf("downgrading from %v to %v is not supported", currentVersion, newVersion)
+		}
+
+		if currentVersion < newMinVersion {
+			return fmt.Errorf("found version %v is below required minimal version %v", currentVersion, newMinVersion)
+		}
+
+		return nil
+	}
+
+	for name, engineImageVersion := range engineImageVersions {
+		err = checkSupportVersion(engineImageVersion.ControllerAPIVersion, newEngineVersion.ControllerAPIVersion, newEngineVersion.ControllerAPIMinVersion)
+		if err != nil {
+			return errors.Wrapf(err, "incompatible Engine %v controller API version", name)
+		}
+
+		err = checkSupportVersion(engineImageVersion.CLIAPIVersion, newEngineVersion.CLIAPIVersion, newEngineVersion.CLIAPIMinVersion)
+		if err != nil {
+			return errors.Wrapf(err, "incompatible Engine %v client API version", name)
+		}
+	}
 	return nil
 }
 
