@@ -6,9 +6,15 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/stretchr/testify/require"
 
+	. "gopkg.in/check.v1"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	emeta "github.com/longhorn/longhorn-engine/pkg/meta"
 
 	"github.com/longhorn/longhorn-manager/meta"
 	"github.com/longhorn/longhorn-manager/types"
@@ -20,6 +26,10 @@ import (
 
 const (
 	TestNamespace = "longhorn-system"
+)
+
+const (
+	TestErrErrorFmt = "Unexpected error for test case: %s: %v"
 )
 
 func TestProgressMonitorInc(t *testing.T) {
@@ -165,7 +175,7 @@ func TestCheckUpgradePathSupported(t *testing.T) {
 			assert := require.New(t)
 
 			meta.Version = tt.upgradeVersion
-			err := newCheckUpgradePathSupported(lhClient)
+			err := newCheckLHUpgradePathSupported(lhClient)
 			if tt.expectError {
 				fmt.Println(err)
 				assert.NotNil(err)
@@ -177,6 +187,129 @@ func TestCheckUpgradePathSupported(t *testing.T) {
 	}
 }
 
-func newCheckUpgradePathSupported(lhClient lhclientset.Interface) error {
-	return CheckUpgradePathSupported(TestNamespace, lhClient)
+func newCheckLHUpgradePathSupported(lhClient lhclientset.Interface) error {
+	return checkLHUpgradePathSupported(TestNamespace, lhClient)
+}
+
+func Test(t *testing.T) { TestingT(t) }
+
+type TestSuite struct {
+}
+
+var _ = Suite(&TestSuite{})
+
+func (s *TestSuite) SetUpTest(c *C) {
+	logrus.SetLevel(logrus.TraceLevel)
+}
+
+func (s *TestSuite) TestCheckEngineUpgradePathSupported(c *C) {
+	type testCase struct {
+		currentVersions []emeta.VersionOutput
+		upgradeVersion  *emeta.VersionOutput
+		expectError     bool
+	}
+	testCases := map[string]testCase{
+		"checkEngineUpgradePathSupported(...)": {
+			currentVersions: []emeta.VersionOutput{
+				{
+					ControllerAPIVersion: emeta.ControllerAPIMinVersion,
+					CLIAPIVersion:        emeta.CLIAPIMinVersion,
+				},
+			},
+		},
+		"checkEngineUpgradePathSupported(...): multiple engine": {
+			currentVersions: []emeta.VersionOutput{
+				{
+					ControllerAPIVersion: emeta.ControllerAPIMinVersion + 1,
+					CLIAPIVersion:        emeta.CLIAPIVersion,
+				},
+				{
+					ControllerAPIVersion: emeta.ControllerAPIVersion,
+					CLIAPIVersion:        emeta.CLIAPIMinVersion + 1,
+				},
+			},
+			upgradeVersion: &emeta.VersionOutput{
+				ControllerAPIVersion:    emeta.ControllerAPIVersion + 1,
+				ControllerAPIMinVersion: emeta.ControllerAPIMinVersion,
+				CLIAPIVersion:           emeta.CLIAPIVersion + 1,
+				CLIAPIMinVersion:        emeta.CLIAPIMinVersion,
+			},
+		},
+		"checkEngineUpgradePathSupported(...): single engine upgrade path not supported": {
+			currentVersions: []emeta.VersionOutput{
+				{
+					ControllerAPIVersion: emeta.ControllerAPIMinVersion - 1,
+					CLIAPIVersion:        emeta.CLIAPIMinVersion,
+				},
+			},
+			expectError: true,
+		},
+		"checkEngineUpgradePathSupported(...): multiple engine upgrade path not supported": {
+			currentVersions: []emeta.VersionOutput{
+				{
+					ControllerAPIVersion: emeta.ControllerAPIMinVersion,
+					CLIAPIVersion:        emeta.CLIAPIMinVersion,
+				},
+				{
+					ControllerAPIVersion: emeta.ControllerAPIMinVersion,
+					CLIAPIVersion:        emeta.CLIAPIMinVersion - 1,
+				},
+			},
+			expectError: true,
+		},
+		"checkEngineUpgradePathSupported(...): downgrade": {
+			currentVersions: []emeta.VersionOutput{
+				{
+					ControllerAPIVersion: emeta.ControllerAPIVersion + 1,
+					CLIAPIVersion:        emeta.CLIAPIVersion + 1,
+				},
+			},
+			expectError: true,
+		},
+		"checkEngineUpgradePathSupported(...): engine image not found": {
+			currentVersions: []emeta.VersionOutput{},
+		},
+	}
+
+	for testName, testCase := range testCases {
+		c.Logf("testing upgrade.util.%v", testName)
+		lhClient := lhfake.NewSimpleClientset()
+
+		for i, version := range testCase.currentVersions {
+			engineImage := &longhorn.EngineImage{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf("test-%d", i),
+				},
+				Status: longhorn.EngineImageStatus{
+					EngineVersionDetails: longhorn.EngineVersionDetails{
+						ControllerAPIVersion: version.ControllerAPIVersion,
+						CLIAPIVersion:        version.CLIAPIVersion,
+					},
+					RefCount: len(testCase.currentVersions),
+				},
+			}
+			_, err := lhClient.LonghornV1beta2().EngineImages(TestNamespace).Create(context.TODO(), engineImage, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+		}
+
+		engimeImages, err := lhClient.LonghornV1beta2().EngineImages(TestNamespace).List(context.TODO(), metav1.ListOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(len(engimeImages.Items), Equals, len(testCase.currentVersions))
+
+		if testCase.upgradeVersion == nil {
+			testCase.upgradeVersion = &emeta.VersionOutput{
+				ControllerAPIVersion:    emeta.ControllerAPIVersion,
+				ControllerAPIMinVersion: emeta.ControllerAPIMinVersion,
+				CLIAPIVersion:           emeta.CLIAPIVersion,
+				CLIAPIMinVersion:        emeta.CLIAPIMinVersion,
+			}
+		}
+
+		err = checkEngineUpgradePathSupported(TestNamespace, lhClient, *testCase.upgradeVersion)
+		if testCase.expectError {
+			c.Assert(err, NotNil)
+		} else {
+			c.Assert(err, IsNil, Commentf(TestErrErrorFmt, testName, err))
+		}
+	}
 }
