@@ -1307,7 +1307,7 @@ func syncWithRestoreStatus(log logrus.FieldLogger, engine *longhorn.Engine, rsMa
 				replicaName := addressReplicaMap[engineapi.GetAddressFromBackendReplicaURL(url)]
 				if mode, exists := engine.Status.ReplicaModeMap[replicaName]; exists && mode == longhorn.ReplicaModeWO {
 					log.Infof("Verifying the rebuild of replica %v after restore completion", url)
-					if err := engineClientProxy.ReplicaRebuildVerify(engine, url); err != nil {
+					if err := engineClientProxy.ReplicaRebuildVerify(engine, replicaName, url); err != nil {
 						log.WithError(err).Errorf("Failed to verify the rebuild of replica %v after restore completion", url)
 						engine.Status.ReplicaModeMap[url] = longhorn.ReplicaModeERR
 						return false
