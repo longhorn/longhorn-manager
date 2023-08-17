@@ -291,11 +291,21 @@ func (e *EngineBinary) VolumeUnmapMarkSnapChainRemovedSet(engine *longhorn.Engin
 
 // ReplicaRebuildVerify calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
-func (e *EngineBinary) ReplicaRebuildVerify(engine *longhorn.Engine, url string) error {
+func (e *EngineBinary) ReplicaRebuildVerify(engine *longhorn.Engine, replicaName, url string) error {
 	if err := ValidateReplicaURL(url); err != nil {
 		return err
 	}
+
+	version, err := e.VersionGet(engine, true)
+	if err != nil {
+		return err
+	}
+
 	cmd := []string{"verify-rebuild-replica", url}
+	if version.ClientVersion.CLIAPIVersion >= 9 {
+		cmd = append(cmd, "--replica-instance-name", replicaName)
+	}
+
 	if _, err := e.ExecuteEngineBinaryWithoutTimeout([]string{}, cmd...); err != nil {
 		return errors.Wrapf(err, "failed to verify rebuilding for the replica from address %s", url)
 	}
