@@ -12,9 +12,10 @@ import (
 
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 // Should be the same values as in https://github.com/longhorn/longhorn-engine/blob/master/pkg/types/types.go

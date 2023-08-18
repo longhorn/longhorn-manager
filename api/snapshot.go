@@ -8,14 +8,17 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
+
 	"github.com/rancher/go-rancher/api"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	bsutil "github.com/longhorn/backupstore/util"
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 func (s *Server) SnapshotCreate(w http.ResponseWriter, req *http.Request) (err error) {
