@@ -27,6 +27,13 @@ type BackingImageStatus struct {
 	Progress             int    `json:"progress"`
 }
 
+type BackupBackingImageStatus struct {
+	Progress  int    `json:"progress"`
+	BackupURL string `json:"backupURL"`
+	ErrorMsg  string `json:"errorMsg"`
+	State     string `json:"state"`
+}
+
 func RPCToBackingImage(obj *rpc.BackingImageResponse) *BackingImage {
 	return &BackingImage{
 		Name:             obj.Spec.Name,
@@ -51,6 +58,15 @@ func RPCToBackingImageList(obj *rpc.ListResponse) map[string]*BackingImage {
 		ret[name] = RPCToBackingImage(bi)
 	}
 	return ret
+}
+
+func RPCToBackupBackingImageStatus(obj *rpc.BackupStatusResponse) *BackupBackingImageStatus {
+	return &BackupBackingImageStatus{
+		Progress:  int(obj.Progress),
+		BackupURL: obj.BackupUrl,
+		ErrorMsg:  obj.Error,
+		State:     obj.State,
+	}
 }
 
 type BackingImageStream struct {

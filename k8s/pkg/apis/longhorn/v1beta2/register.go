@@ -33,6 +33,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&BackupTargetList{},
 		&BackupVolume{},
 		&BackupVolumeList{},
+		&BackupBackingImage{},
+		&BackupBackingImageList{},
 		&Engine{},
 		&EngineList{},
 		&EngineImage{},

@@ -373,6 +373,10 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			bc.syncBackupStatusWithSnapshotCreationTimeAndVolumeSize(volume, backup)
 		}
 
+		if err := bc.backupBackingImage(volume); err != nil {
+			return err
+		}
+
 		monitor, err := bc.checkMonitor(backup, volume, backupTarget)
 		if err != nil {
 			if backup.Status.State == longhorn.BackupStateError {
@@ -596,6 +600,46 @@ func (bc *BackupController) validateBackingImageChecksum(volName, biName string)
 			biName, bv.Status.BackingImageChecksum, bi.Status.Checksum)
 	}
 	return bi.Status.Checksum, nil
+}
+
+func (bc *BackupController) backupBackingImage(volume *longhorn.Volume) error {
+	if volume == nil {
+		return nil
+	}
+
+	// volume is not using backing image, there is no need to backup
+	biName := volume.Spec.BackingImage
+	if biName == "" {
+		return nil
+	}
+
+	_, err := bc.ds.GetBackingImage(biName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get backing image %v", biName)
+	}
+
+	bbi, err := bc.ds.GetBackupBackingImage(biName)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return errors.Wrapf(err, "failed to get backup backing image %v", biName)
+		}
+	}
+
+	if bbi == nil {
+		backupBackingImage := &longhorn.BackupBackingImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: biName,
+			},
+			Spec: longhorn.BackupBackingImageSpec{
+				UserCreated: true,
+			},
+		}
+		if _, err = bc.ds.CreateBackupBackingImage(backupBackingImage); err != nil && !apierrors.IsAlreadyExists(err) {
+			return errors.Wrapf(err, "failed to create backup backing image %s in the cluster", biName)
+		}
+	}
+
+	return nil
 }
 
 // checkMonitor checks if the replica monitor existed.

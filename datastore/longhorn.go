@@ -2066,6 +2066,112 @@ func GetOwnerReferencesForBackingImageDataSource(backingImageDataSource *longhor
 	}
 }
 
+// CreateBackupBackingImage creates a Longhorn BackupBackingImage resource and verifies
+func (s *DataStore) CreateBackupBackingImage(backupBackingImage *longhorn.BackupBackingImage) (*longhorn.BackupBackingImage, error) {
+	ret, err := s.lhClient.LonghornV1beta2().BackupBackingImages(s.namespace).Create(context.TODO(), backupBackingImage, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(ret.Name, "backup backing image", func(name string) (runtime.Object, error) {
+		return s.getBackupBackingImageRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.BackupBackingImage)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for backup backing image")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// UpdateBackupBackingImage updates Longhorn BackupBackingImage and verifies update
+func (s *DataStore) UpdateBackupBackingImage(backupBackingImage *longhorn.BackupBackingImage) (*longhorn.BackupBackingImage, error) {
+	obj, err := s.lhClient.LonghornV1beta2().BackupBackingImages(s.namespace).Update(context.TODO(), backupBackingImage, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(backupBackingImage.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getBackupBackingImageRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateBackupBackingImageStatus updates Longhorn BackupBackingImage resource status and
+// verifies update
+func (s *DataStore) UpdateBackupBackingImageStatus(backupBackingImage *longhorn.BackupBackingImage) (*longhorn.BackupBackingImage, error) {
+	obj, err := s.lhClient.LonghornV1beta2().BackupBackingImages(s.namespace).UpdateStatus(context.TODO(), backupBackingImage, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(backupBackingImage.Name, obj, func(name string) (runtime.Object, error) {
+		return s.getBackupBackingImageRO(name)
+	})
+	return obj, nil
+}
+
+// DeleteBackupBackingImage won't result in immediately deletion since finalizer was
+// set by default
+func (s *DataStore) DeleteBackupBackingImage(name string) error {
+	return s.lhClient.LonghornV1beta2().BackupBackingImages(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
+// RemoveFinalizerForBackupBackingImage will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForBackupBackingImage(obj *longhorn.BackupBackingImage) error {
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta2().BackupBackingImages(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for backing image %v", obj.Name)
+	}
+	return nil
+}
+
+func (s *DataStore) getBackupBackingImageRO(name string) (*longhorn.BackupBackingImage, error) {
+	return s.bbiLister.BackupBackingImages(s.namespace).Get(name)
+}
+
+// GetBackupBackingImage returns a new BackupBackingImage object for the given name and
+// namespace
+func (s *DataStore) GetBackupBackingImage(name string) (*longhorn.BackupBackingImage, error) {
+	resultRO, err := s.getBackupBackingImageRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// ListBackupBackingImages returns object includes all BackupBackingImage in namespace
+func (s *DataStore) ListBackupBackingImages() (map[string]*longhorn.BackupBackingImage, error) {
+	itemMap := map[string]*longhorn.BackupBackingImage{}
+
+	list, err := s.bbiLister.BackupBackingImages(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
 // CreateNode creates a Longhorn Node resource and verifies creation
 func (s *DataStore) CreateNode(node *longhorn.Node) (*longhorn.Node, error) {
 	ret, err := s.lhClient.LonghornV1beta2().Nodes(s.namespace).Create(context.TODO(), node, metav1.CreateOptions{})

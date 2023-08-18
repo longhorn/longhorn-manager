@@ -238,3 +238,60 @@ func (cli *BackingImageManagerClient) Watch() (*api.BackingImageStream, error) {
 	}
 	return api.NewBackingImageStream(conn, cancel, stream), nil
 }
+
+func (cli *BackingImageManagerClient) BackupCreate(name, uuid, checksum, backupTargetURL string, labels, credential map[string]string, compressionMethod string, concurrentLimit int) error {
+	if name == "" || uuid == "" || checksum == "" {
+		return fmt.Errorf("failed to create backup backing image: missing required parameter")
+	}
+
+	conn, err := grpc.Dial(cli.Address, grpc.WithInsecure())
+	if err != nil {
+		return fmt.Errorf("failed to connect backing image manager service to %v: %v", cli.Address, err)
+	}
+	defer conn.Close()
+
+	client := rpc.NewBackingImageManagerServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	labelSlice := []string{}
+	for k, v := range labels {
+		labelSlice = append(labelSlice, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	_, err = client.BackupCreate(ctx, &rpc.BackupCreateRequest{
+		Name:              name,
+		Uuid:              uuid,
+		Checksum:          checksum,
+		BackupTarget:      backupTargetURL,
+		Labels:            labelSlice,
+		Credential:        credential,
+		CompressionMethod: compressionMethod,
+		ConcurrentLimit:   int32(concurrentLimit),
+	})
+	return err
+}
+
+func (cli *BackingImageManagerClient) BackupStatus(name string) (*api.BackupBackingImageStatus, error) {
+	if name == "" {
+		return nil, fmt.Errorf("failed to get backup backing image status: missing required parameter")
+	}
+
+	conn, err := grpc.Dial(cli.Address, grpc.WithInsecure())
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect backing image manager service to %v: %v", cli.Address, err)
+	}
+	defer conn.Close()
+
+	client := rpc.NewBackingImageManagerServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	resp, err := client.BackupStatus(ctx, &rpc.BackupStatusRequest{
+		Name: name,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return api.RPCToBackupBackingImageStatus(resp), nil
+}

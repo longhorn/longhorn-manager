@@ -9,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -145,6 +146,11 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 		if err := m.verifyDataSourceForVolumeCreation(spec.DataSource, spec.Size); err != nil {
 			return nil, err
 		}
+	}
+
+	// restore backing image if needed
+	if err := m.restoreBackingImage(spec.BackingImage); err != nil {
+		return nil, errors.Wrapf(err, "failed to restore backing image %v when create volume %v", spec.BackingImage, v.Name)
 	}
 
 	v = &longhorn.Volume{
@@ -1099,5 +1105,52 @@ func (m *VolumeManager) verifyDataSourceForVolumeCreation(dataSource longhorn.Vo
 			}
 		}
 	}
+	return nil
+}
+
+func (m *VolumeManager) restoreBackingImage(biName string) error {
+	if biName == "" {
+		return nil
+	}
+	bi, err := m.ds.GetBackingImage(biName)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return errors.Wrapf(err, "failed to get backing image %v", biName)
+		}
+	}
+	// backing image already exists
+	if bi != nil {
+		return nil
+	}
+
+	// try find the backup backing image
+	bbi, err := m.ds.GetBackupBackingImage(biName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get backup backing image %v", biName)
+	}
+
+	// restore by creating backing image with type restore
+	concurrentLimit, err := m.ds.GetSettingAsInt(types.SettingNameBackupConcurrentLimit)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get %v value", types.SettingNameBackupConcurrentLimit)
+	}
+
+	restoreBi := &longhorn.BackingImage{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: biName,
+		},
+		Spec: longhorn.BackingImageSpec{
+			Checksum:   bbi.Status.Checksum,
+			SourceType: longhorn.BackingImageDataSourceTypeRestore,
+			SourceParameters: map[string]string{
+				longhorn.DataSourceTypeRestoreParameterBackupURL:       bbi.Status.URL,
+				longhorn.DataSourceTypeRestoreParameterConcurrentLimit: strconv.FormatInt(concurrentLimit, 10),
+			},
+		},
+	}
+	if _, err = m.ds.CreateBackingImage(restoreBi); err != nil && !apierrors.IsAlreadyExists(err) {
+		return errors.Wrapf(err, "failed to create backing image %v", biName)
+	}
+
 	return nil
 }

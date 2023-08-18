@@ -63,6 +63,8 @@ type DataStore struct {
 	BackingImageManagerInformer    cache.SharedInformer
 	bidsLister                     lhlisters.BackingImageDataSourceLister
 	BackingImageDataSourceInformer cache.SharedInformer
+	bbiLister                      lhlisters.BackupBackingImageLister
+	BackupBackingImageInformer     cache.SharedInformer
 	btLister                       lhlisters.BackupTargetLister
 	BackupTargetInformer           cache.SharedInformer
 	bvLister                       lhlisters.BackupVolumeLister
@@ -152,6 +154,8 @@ func NewDataStore(
 	cacheSyncs = append(cacheSyncs, bimInformer.Informer().HasSynced)
 	bidsInformer := lhInformerFactory.Longhorn().V1beta2().BackingImageDataSources()
 	cacheSyncs = append(cacheSyncs, bidsInformer.Informer().HasSynced)
+	bbiInformer := lhInformerFactory.Longhorn().V1beta2().BackupBackingImages()
+	cacheSyncs = append(cacheSyncs, bidsInformer.Informer().HasSynced)
 	btInformer := lhInformerFactory.Longhorn().V1beta2().BackupTargets()
 	cacheSyncs = append(cacheSyncs, btInformer.Informer().HasSynced)
 	bvInformer := lhInformerFactory.Longhorn().V1beta2().BackupVolumes()
@@ -232,6 +236,8 @@ func NewDataStore(
 		BackingImageManagerInformer:    bimInformer.Informer(),
 		bidsLister:                     bidsInformer.Lister(),
 		BackingImageDataSourceInformer: bidsInformer.Informer(),
+		bbiLister:                      bbiInformer.Lister(),
+		BackupBackingImageInformer:     bbiInformer.Informer(),
 		btLister:                       btInformer.Lister(),
 		BackupTargetInformer:           btInformer.Informer(),
 		bvLister:                       bvInformer.Lister(),
