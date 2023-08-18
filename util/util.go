@@ -34,14 +34,15 @@ import (
 	"golang.org/x/text/language"
 	"gopkg.in/yaml.v2"
 
-	appsv1 "k8s.io/api/apps/v1"
-	v1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/version"
+
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	clientset "k8s.io/client-go/kubernetes"
 
 	iscsiutil "github.com/longhorn/go-iscsi-helper/util"
@@ -707,7 +708,7 @@ func DeleteDiskPathReplicaSubdirectoryAndDiskCfgFile(
 	return err
 }
 
-func IsKubernetesDefaultToleration(toleration v1.Toleration) bool {
+func IsKubernetesDefaultToleration(toleration corev1.Toleration) bool {
 	return strings.Contains(toleration.Key, DefaultKubernetesTolerationKey)
 }
 
@@ -746,13 +747,13 @@ func GetNamespace(key string) string {
 	if namespace == "" {
 		logrus.Warnf("Failed to detect pod namespace, environment variable %v is missing, "+
 			"using default namespace", key)
-		namespace = v1.NamespaceDefault
+		namespace = corev1.NamespaceDefault
 	}
 	return namespace
 }
 
-func GetDistinctTolerations(tolerationList []v1.Toleration) []v1.Toleration {
-	res := []v1.Toleration{}
+func GetDistinctTolerations(tolerationList []corev1.Toleration) []corev1.Toleration {
+	res := []corev1.Toleration{}
 	tolerationMap := TolerationListToMap(tolerationList)
 	for _, t := range tolerationMap {
 		res = append(res, t)
@@ -760,8 +761,8 @@ func GetDistinctTolerations(tolerationList []v1.Toleration) []v1.Toleration {
 	return res
 }
 
-func TolerationListToMap(tolerationList []v1.Toleration) map[string]v1.Toleration {
-	res := map[string]v1.Toleration{}
+func TolerationListToMap(tolerationList []corev1.Toleration) map[string]corev1.Toleration {
+	res := map[string]corev1.Toleration{}
 	for _, t := range tolerationList {
 		// We use checksum of the toleration to separate 2 tolerations
 		// with the same t.Key but different operator/effect/value
@@ -770,7 +771,7 @@ func TolerationListToMap(tolerationList []v1.Toleration) map[string]v1.Toleratio
 	return res
 }
 
-func GetTolerationChecksum(t v1.Toleration) string {
+func GetTolerationChecksum(t corev1.Toleration) string {
 	return GetStringChecksum(string(t.Key) + string(t.Operator) + string(t.Value) + string(t.Effect))
 }
 
@@ -814,7 +815,7 @@ func HasLocalStorageInDeployment(deployment *appsv1.Deployment) bool {
 	return false
 }
 
-func isLocalVolume(volume *v1.Volume) bool {
+func isLocalVolume(volume *corev1.Volume) bool {
 	return volume.HostPath != nil || volume.EmptyDir != nil
 }
 
@@ -897,7 +898,7 @@ func CapitalizeFirstLetter(input string) string {
 	return strings.ToUpper(input[:1]) + input[1:]
 }
 
-func GetPodIP(pod *v1.Pod) (string, error) {
+func GetPodIP(pod *corev1.Pod) (string, error) {
 	if pod.Status.PodIP == "" {
 		return "", fmt.Errorf("%v pod IP is empty", pod.Name)
 	}

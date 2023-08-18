@@ -10,22 +10,24 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	v1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	clientset "k8s.io/client-go/kubernetes"
-	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clientset "k8s.io/client-go/kubernetes"
+	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
+
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 type KubernetesPVController struct {
@@ -68,7 +70,7 @@ func NewKubernetesPVController(
 		ds: ds,
 
 		kubeClient:    kubeClient,
-		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-kubernetes-pv-controller"}),
+		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-kubernetes-pv-controller"}),
 
 		pvToVolumeCache: sync.Map{},
 
@@ -208,7 +210,7 @@ func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 	// existing volume may be used/reused by pv
 	if volume.Status.KubernetesStatus.PVName != name {
 		volume.Status.KubernetesStatus = longhorn.KubernetesStatus{}
-		kc.eventRecorder.Eventf(volume, v1.EventTypeNormal, constant.EventReasonStart, "Persistent Volume %v started to use/reuse Longhorn volume %v", volume.Name, name)
+		kc.eventRecorder.Eventf(volume, corev1.EventTypeNormal, constant.EventReasonStart, "Persistent Volume %v started to use/reuse Longhorn volume %v", volume.Name, name)
 	}
 	ks := &volume.Status.KubernetesStatus
 
@@ -218,12 +220,12 @@ func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 	ks.PVStatus = string(pv.Status.Phase)
 
 	if pv.Spec.ClaimRef != nil {
-		if pv.Status.Phase == v1.VolumeBound {
+		if pv.Status.Phase == corev1.VolumeBound {
 			// set for bounded PVC
 			ks.PVCName = pv.Spec.ClaimRef.Name
 			ks.Namespace = pv.Spec.ClaimRef.Namespace
 			ks.LastPVCRefAt = ""
-		} else if lastPVStatus == string(v1.VolumeBound) && ks.LastPVCRefAt == "" {
+		} else if lastPVStatus == string(corev1.VolumeBound) && ks.LastPVCRefAt == "" {
 			// PVC is no longer bound with PV. indicate historic data by setting <LastPVCRefAt>
 			ks.LastPVCRefAt = kc.nowHandler()
 			if len(ks.WorkloadsStatus) != 0 && ks.LastPodRefAt == "" {
@@ -232,7 +234,7 @@ func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 		}
 	} else {
 		if ks.LastPVCRefAt == "" {
-			if pv.Status.Phase == v1.VolumeBound {
+			if pv.Status.Phase == corev1.VolumeBound {
 				return fmt.Errorf("current Persistent Volume %v is in Bound phase but has no ClaimRef field", pv.Name)
 			}
 			// The associated PVC is removed from the PV ClaimRef
@@ -254,7 +256,7 @@ func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 	return nil
 }
 
-func (kc *KubernetesPVController) getCSIVolumeHandleFromPV(pv *v1.PersistentVolume) string {
+func (kc *KubernetesPVController) getCSIVolumeHandleFromPV(pv *corev1.PersistentVolume) string {
 	if pv == nil {
 		return ""
 	}
@@ -276,7 +278,7 @@ func (kc *KubernetesPVController) enqueuePersistentVolume(obj interface{}) {
 }
 
 func (kc *KubernetesPVController) enqueuePodChange(obj interface{}) {
-	pod, ok := obj.(*v1.Pod)
+	pod, ok := obj.(*corev1.Pod)
 	if !ok {
 		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
@@ -285,7 +287,7 @@ func (kc *KubernetesPVController) enqueuePodChange(obj interface{}) {
 		}
 
 		// use the last known state, to enqueue, dependent objects
-		pod, ok = deletedState.Obj.(*v1.Pod)
+		pod, ok = deletedState.Obj.(*corev1.Pod)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
 			return
@@ -335,7 +337,7 @@ func (kc *KubernetesPVController) enqueueVolumeChange(obj interface{}) {
 		return
 	}
 	ks := volume.Status.KubernetesStatus
-	if ks.PVName != "" && ks.PVStatus == string(v1.VolumeBound) &&
+	if ks.PVName != "" && ks.PVStatus == string(corev1.VolumeBound) &&
 		ks.LastPodRefAt == "" {
 		kc.queue.Add(volume.Status.KubernetesStatus.PVName)
 	}
@@ -343,7 +345,7 @@ func (kc *KubernetesPVController) enqueueVolumeChange(obj interface{}) {
 }
 
 func (kc *KubernetesPVController) enqueuePVDeletion(obj interface{}) {
-	pv, ok := obj.(*v1.PersistentVolume)
+	pv, ok := obj.(*corev1.PersistentVolume)
 	if !ok {
 		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
@@ -352,7 +354,7 @@ func (kc *KubernetesPVController) enqueuePVDeletion(obj interface{}) {
 		}
 
 		// use the last known state, to enqueue, dependent objects
-		pv, ok = deletedState.Obj.(*v1.PersistentVolume)
+		pv, ok = deletedState.Obj.(*corev1.PersistentVolume)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
 			return
@@ -400,14 +402,14 @@ func (kc *KubernetesPVController) cleanupForPVDeletion(pvName string) (bool, err
 		if err != nil {
 			return false, errors.Wrap(err, "failed to update volume in cleanupForPVDeletion")
 		}
-		kc.eventRecorder.Eventf(volume, v1.EventTypeNormal, constant.EventReasonStop, "Persistent Volume %v stopped to use Longhorn volume %v", pvName, volume.Name)
+		kc.eventRecorder.Eventf(volume, corev1.EventTypeNormal, constant.EventReasonStop, "Persistent Volume %v stopped to use Longhorn volume %v", pvName, volume.Name)
 	}
 	kc.pvToVolumeCache.Delete(pvName)
 	return true, nil
 }
 
 // filterPods includes only the pods where the passed predicate returns true
-func filterPods(pods []*v1.Pod, predicate func(pod *v1.Pod) bool) (filtered []*v1.Pod) {
+func filterPods(pods []*corev1.Pod, predicate func(pod *corev1.Pod) bool) (filtered []*corev1.Pod) {
 	for _, p := range pods {
 		if predicate(p) {
 			filtered = append(filtered, p)
@@ -417,8 +419,8 @@ func filterPods(pods []*v1.Pod, predicate func(pod *v1.Pod) bool) (filtered []*v
 }
 
 // getAssociatedPods returns all pods using this pvc in sorted order based on pod name
-func (kc *KubernetesPVController) getAssociatedPods(ks *longhorn.KubernetesStatus) ([]*v1.Pod, error) {
-	if ks.PVStatus != string(v1.VolumeBound) {
+func (kc *KubernetesPVController) getAssociatedPods(ks *longhorn.KubernetesStatus) ([]*corev1.Pod, error) {
+	if ks.PVStatus != string(corev1.VolumeBound) {
 		return nil, nil
 	}
 	ps, err := kc.ds.ListPodsRO(ks.Namespace)
@@ -426,7 +428,7 @@ func (kc *KubernetesPVController) getAssociatedPods(ks *longhorn.KubernetesStatu
 		return nil, errors.Wrap(err, "failed to list pods in getAssociatedPod")
 	}
 
-	pods := filterPods(ps, func(pod *v1.Pod) bool {
+	pods := filterPods(ps, func(pod *corev1.Pod) bool {
 		for _, v := range pod.Spec.Volumes {
 			if v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName == ks.PVCName {
 				return true
@@ -443,7 +445,7 @@ func (kc *KubernetesPVController) getAssociatedPods(ks *longhorn.KubernetesStatu
 	return pods, nil
 }
 
-func (kc *KubernetesPVController) setWorkloads(ks *longhorn.KubernetesStatus, pods []*v1.Pod) {
+func (kc *KubernetesPVController) setWorkloads(ks *longhorn.KubernetesStatus, pods []*corev1.Pod) {
 	if len(pods) == 0 {
 		if len(ks.WorkloadsStatus) == 0 || ks.LastPodRefAt != "" {
 			return
@@ -465,7 +467,7 @@ func (kc *KubernetesPVController) setWorkloads(ks *longhorn.KubernetesStatus, po
 
 }
 
-func (kc *KubernetesPVController) detectWorkload(p *v1.Pod) (string, string) {
+func (kc *KubernetesPVController) detectWorkload(p *corev1.Pod) (string, string) {
 	refs := p.GetObjectMeta().GetOwnerReferences()
 	for _, ref := range refs {
 		if ref.Name != "" && ref.Kind != "" {
