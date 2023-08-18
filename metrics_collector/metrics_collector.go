@@ -6,16 +6,18 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/clientcmd"
+
+	corev1 "k8s.io/api/core/v1"
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 
 	"github.com/longhorn/longhorn-manager/datastore"
-	_ "github.com/longhorn/longhorn-manager/metrics_collector/client_go_adaper" // load the client-go metrics
 	"github.com/longhorn/longhorn-manager/metrics_collector/registry"
-	_ "github.com/longhorn/longhorn-manager/metrics_collector/workqueue" // load the workqueue metrics
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
+
+	_ "github.com/longhorn/longhorn-manager/metrics_collector/client_go_adaper" // load the client-go metrics
+	_ "github.com/longhorn/longhorn-manager/metrics_collector/workqueue"        // load the workqueue metrics
 )
 
 func InitMetricsCollectorSystem(logger logrus.FieldLogger, currentNodeID string, ds *datastore.DataStore, kubeconfigPath string, proxyConnCounter util.Counter) {

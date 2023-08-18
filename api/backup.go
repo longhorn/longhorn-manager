@@ -5,9 +5,10 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
+
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
-	"github.com/sirupsen/logrus"
 )
 
 func (s *Server) BackupTargetList(w http.ResponseWriter, req *http.Request) error {

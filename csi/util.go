@@ -15,15 +15,16 @@ import (
 	"github.com/pkg/errors"
 	"github.com/robfig/cron"
 	"github.com/sirupsen/logrus"
-
 	"golang.org/x/sys/unix"
 
 	"k8s.io/mount-utils"
+
 	utilexec "k8s.io/utils/exec"
+
+	"github.com/longhorn/longhorn-manager/types"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
-	"github.com/longhorn/longhorn-manager/types"
 )
 
 const (
