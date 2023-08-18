@@ -52,7 +52,7 @@ func NewVolumeCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "capacity_bytes"),
 			"Configured size in bytes for this volume",
-			[]string{nodeLabel, volumeLabel},
+			[]string{nodeLabel, volumeLabel, pvcLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -62,7 +62,7 @@ func NewVolumeCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "actual_size_bytes"),
 			"Actual space used by each replica of the volume on the corresponding node",
-			[]string{nodeLabel, volumeLabel},
+			[]string{nodeLabel, volumeLabel, pvcLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -72,7 +72,7 @@ func NewVolumeCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "state"),
 			"State of this volume",
-			[]string{nodeLabel, volumeLabel},
+			[]string{nodeLabel, volumeLabel, pvcLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -82,7 +82,7 @@ func NewVolumeCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "robustness"),
 			"Robustness of this volume",
-			[]string{nodeLabel, volumeLabel},
+			[]string{nodeLabel, volumeLabel, pvcLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -92,7 +92,7 @@ func NewVolumeCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "read_throughput"),
 			"Read throughput of this volume (Bytes/s)",
-			[]string{nodeLabel, volumeLabel},
+			[]string{nodeLabel, volumeLabel, pvcLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -102,7 +102,7 @@ func NewVolumeCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "write_throughput"),
 			"Write throughput of this volume (Bytes/s)",
-			[]string{nodeLabel, volumeLabel},
+			[]string{nodeLabel, volumeLabel, pvcLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -112,7 +112,7 @@ func NewVolumeCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "read_iops"),
 			"Read IOPS of this volume",
-			[]string{nodeLabel, volumeLabel},
+			[]string{nodeLabel, volumeLabel, pvcLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -122,7 +122,7 @@ func NewVolumeCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "write_iops"),
 			"Write IOPS of this volume",
-			[]string{nodeLabel, volumeLabel},
+			[]string{nodeLabel, volumeLabel, pvcLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -132,7 +132,7 @@ func NewVolumeCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "read_latency"),
 			"Read latency of this volume (ns)",
-			[]string{nodeLabel, volumeLabel},
+			[]string{nodeLabel, volumeLabel, pvcLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -142,7 +142,7 @@ func NewVolumeCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "write_latency"),
 			"Write latency of this volume (ns)",
-			[]string{nodeLabel, volumeLabel},
+			[]string{nodeLabel, volumeLabel, pvcLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -195,16 +195,16 @@ func (vc *VolumeCollector) Collect(ch chan<- prometheus.Metric) {
 				vc.logger.WithError(err).Warnf("Failed to get engine for volume %v", v.Name)
 			}
 
-			ch <- prometheus.MustNewConstMetric(vc.capacityMetric.Desc, vc.capacityMetric.Type, float64(v.Spec.Size), vc.currentNodeID, v.Name)
-			ch <- prometheus.MustNewConstMetric(vc.sizeMetric.Desc, vc.sizeMetric.Type, float64(v.Status.ActualSize), vc.currentNodeID, v.Name)
-			ch <- prometheus.MustNewConstMetric(vc.stateMetric.Desc, vc.stateMetric.Type, float64(getVolumeStateValue(v)), vc.currentNodeID, v.Name)
-			ch <- prometheus.MustNewConstMetric(vc.robustnessMetric.Desc, vc.robustnessMetric.Type, float64(getVolumeRobustnessValue(v)), vc.currentNodeID, v.Name)
-			ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.throughputMetrics.read.Desc, vc.volumePerfMetrics.throughputMetrics.read.Type, float64(vc.getVolumeReadThroughput(metrics)), vc.currentNodeID, v.Name)
-			ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.throughputMetrics.write.Desc, vc.volumePerfMetrics.throughputMetrics.write.Type, float64(vc.getVolumeWriteThroughput(metrics)), vc.currentNodeID, v.Name)
-			ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.iopsMetrics.read.Desc, vc.volumePerfMetrics.iopsMetrics.read.Type, float64(vc.getVolumeReadIOPS(metrics)), vc.currentNodeID, v.Name)
-			ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.iopsMetrics.write.Desc, vc.volumePerfMetrics.iopsMetrics.write.Type, float64(vc.getVolumeWriteIOPS(metrics)), vc.currentNodeID, v.Name)
-			ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.latencyMetrics.read.Desc, vc.volumePerfMetrics.latencyMetrics.read.Type, float64(vc.getVolumeReadLatency(metrics)), vc.currentNodeID, v.Name)
-			ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.latencyMetrics.write.Desc, vc.volumePerfMetrics.latencyMetrics.write.Type, float64(vc.getVolumeWriteLatency(metrics)), vc.currentNodeID, v.Name)
+			ch <- prometheus.MustNewConstMetric(vc.capacityMetric.Desc, vc.capacityMetric.Type, float64(v.Spec.Size), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName)
+			ch <- prometheus.MustNewConstMetric(vc.sizeMetric.Desc, vc.sizeMetric.Type, float64(v.Status.ActualSize), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName)
+			ch <- prometheus.MustNewConstMetric(vc.stateMetric.Desc, vc.stateMetric.Type, float64(getVolumeStateValue(v)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName)
+			ch <- prometheus.MustNewConstMetric(vc.robustnessMetric.Desc, vc.robustnessMetric.Type, float64(getVolumeRobustnessValue(v)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName)
+			ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.throughputMetrics.read.Desc, vc.volumePerfMetrics.throughputMetrics.read.Type, float64(vc.getVolumeReadThroughput(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName)
+			ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.throughputMetrics.write.Desc, vc.volumePerfMetrics.throughputMetrics.write.Type, float64(vc.getVolumeWriteThroughput(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName)
+			ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.iopsMetrics.read.Desc, vc.volumePerfMetrics.iopsMetrics.read.Type, float64(vc.getVolumeReadIOPS(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName)
+			ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.iopsMetrics.write.Desc, vc.volumePerfMetrics.iopsMetrics.write.Type, float64(vc.getVolumeWriteIOPS(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName)
+			ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.latencyMetrics.read.Desc, vc.volumePerfMetrics.latencyMetrics.read.Type, float64(vc.getVolumeReadLatency(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName)
+			ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.latencyMetrics.write.Desc, vc.volumePerfMetrics.latencyMetrics.write.Type, float64(vc.getVolumeWriteLatency(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName)
 		}
 	}
 }
