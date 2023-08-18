@@ -10,20 +10,21 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	appsv1 "k8s.io/api/apps/v1"
-	v1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	clientset "k8s.io/client-go/kubernetes"
-	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
+
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clientset "k8s.io/client-go/kubernetes"
+	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -81,7 +82,7 @@ func NewEngineImageController(
 		serviceAccount: serviceAccount,
 
 		kubeClient:    kubeClient,
-		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-engine-image-controller"}),
+		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-engine-image-controller"}),
 
 		ds: ds,
 
@@ -351,7 +352,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		engineImage.Status.Conditions = types.SetConditionAndRecord(engineImage.Status.Conditions,
 			longhorn.EngineImageConditionTypeReady, longhorn.ConditionStatusTrue,
 			"", fmt.Sprintf("Engine image %v (%v) is fully deployed on all ready nodes", engineImage.Name, engineImage.Spec.Image),
-			ic.eventRecorder, engineImage, v1.EventTypeNormal)
+			ic.eventRecorder, engineImage, corev1.EventTypeNormal)
 		engineImage.Status.State = longhorn.EngineImageStateDeployed
 	}
 
@@ -757,8 +758,8 @@ func (ic *EngineImageController) ResolveRefAndEnqueue(namespace string, ref *met
 	ic.enqueueEngineImage(engineImage)
 }
 
-func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.EngineImage, tolerations []v1.Toleration,
-	priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy, nodeSelector map[string]string) (*appsv1.DaemonSet, error) {
+func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.EngineImage, tolerations []corev1.Toleration,
+	priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string) (*appsv1.DaemonSet, error) {
 
 	dsName := types.GetDaemonSetNameFromEngineImageName(ei.Name)
 	image := ei.Spec.Image
@@ -793,33 +794,33 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 					MaxUnavailable: &maxUnavailable,
 				},
 			},
-			Template: v1.PodTemplateSpec{
+			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            dsName,
 					Labels:          types.GetEIDaemonSetLabelSelector(ei.Name),
 					OwnerReferences: datastore.GetOwnerReferencesForEngineImage(ei),
 				},
-				Spec: v1.PodSpec{
+				Spec: corev1.PodSpec{
 					ServiceAccountName: ic.serviceAccount,
 					Tolerations:        tolerations,
 					NodeSelector:       nodeSelector,
 					PriorityClassName:  priorityClass,
-					Containers: []v1.Container{
+					Containers: []corev1.Container{
 						{
 							Name:            dsName,
 							Image:           image,
 							Command:         cmd,
 							Args:            args,
 							ImagePullPolicy: imagePullPolicy,
-							VolumeMounts: []v1.VolumeMount{
+							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "data",
 									MountPath: "/data/",
 								},
 							},
-							ReadinessProbe: &v1.Probe{
-								ProbeHandler: v1.ProbeHandler{
-									Exec: &v1.ExecAction{
+							ReadinessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									Exec: &corev1.ExecAction{
 										Command: []string{
 											"sh", "-c",
 											"ls /data/longhorn && /data/longhorn version --client-only",
@@ -831,9 +832,9 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 								PeriodSeconds:       datastore.PodProbePeriodSeconds,
 								FailureThreshold:    datastore.PodLivenessProbeFailureThreshold,
 							},
-							LivenessProbe: &v1.Probe{
-								ProbeHandler: v1.ProbeHandler{
-									Exec: &v1.ExecAction{
+							LivenessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									Exec: &corev1.ExecAction{
 										Command: []string{
 											"sh", "-c",
 											"/data/longhorn version --client-only",
@@ -845,16 +846,16 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 								PeriodSeconds:       datastore.PodProbePeriodSeconds,
 								FailureThreshold:    datastore.PodLivenessProbeFailureThreshold,
 							},
-							SecurityContext: &v1.SecurityContext{
+							SecurityContext: &corev1.SecurityContext{
 								Privileged: &privileged,
 							},
 						},
 					},
-					Volumes: []v1.Volume{
+					Volumes: []corev1.Volume{
 						{
 							Name: "data",
-							VolumeSource: v1.VolumeSource{
-								HostPath: &v1.HostPathVolumeSource{
+							VolumeSource: corev1.VolumeSource{
+								HostPath: &corev1.HostPathVolumeSource{
 									Path: types.GetEngineBinaryDirectoryOnHostForImage(image),
 								},
 							},
@@ -866,7 +867,7 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 	}
 
 	if registrySecret != "" {
-		d.Spec.Template.Spec.ImagePullSecrets = []v1.LocalObjectReference{
+		d.Spec.Template.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
 			{
 				Name: registrySecret,
 			},

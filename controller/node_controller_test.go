@@ -6,23 +6,24 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
-	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
-	monitor "github.com/longhorn/longhorn-manager/controller/monitor"
+	corev1 "k8s.io/api/core/v1"
+	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clientset "k8s.io/client-go/kubernetes"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 
+	monitor "github.com/longhorn/longhorn-manager/controller/monitor"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
-	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 
 	. "gopkg.in/check.v1"
 )
@@ -35,16 +36,24 @@ const (
 )
 
 var (
-	MountPropagationBidirectional = v1.MountPropagationBidirectional
+	MountPropagationBidirectional = corev1.MountPropagationBidirectional
 )
 
 type NodeTestCase struct {
+<<<<<<< HEAD
 	nodes           map[string]*longhorn.Node
 	pods            map[string]*v1.Pod
 	replicas        []*longhorn.Replica
 	kubeNodes       map[string]*v1.Node
 	engineManagers  map[string]*longhorn.InstanceManager
 	replicaManagers map[string]*longhorn.InstanceManager
+=======
+	nodes            map[string]*longhorn.Node
+	pods             map[string]*corev1.Pod
+	replicas         []*longhorn.Replica
+	kubeNodes        map[string]*corev1.Node
+	instanceManagers map[string]*longhorn.InstanceManager
+>>>>>>> acb922ec (refactor: cleanup imports)
 
 	expectNodeStatus      map[string]longhorn.NodeStatus
 	expectEngineManagers  map[string]*longhorn.InstanceManager
@@ -81,36 +90,36 @@ func fakeTopologyLabelsChecker(kubeClient clientset.Interface, vers string) (boo
 	return false, nil
 }
 
-func generateKubeNodes(testType string) map[string]*v1.Node {
-	var kubeNode1, kubeNode2 *v1.Node
+func generateKubeNodes(testType string) map[string]*corev1.Node {
+	var kubeNode1, kubeNode2 *corev1.Node
 	switch testType {
 	case KubeNodeDown:
-		kubeNode1 = newKubernetesNode(TestNode1, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
-		kubeNode2 = newKubernetesNode(TestNode2, v1.ConditionTrue, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
+		kubeNode1 = newKubernetesNode(TestNode1, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kubeNode2 = newKubernetesNode(TestNode2, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
 	case KubeNodePressure:
-		kubeNode1 = newKubernetesNode(TestNode1, v1.ConditionTrue, v1.ConditionTrue, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
-		kubeNode2 = newKubernetesNode(TestNode2, v1.ConditionTrue, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
+		kubeNode1 = newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kubeNode2 = newKubernetesNode(TestNode2, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
 	default:
-		kubeNode1 = newKubernetesNode(TestNode1, v1.ConditionTrue, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
-		kubeNode2 = newKubernetesNode(TestNode2, v1.ConditionTrue, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
+		kubeNode1 = newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kubeNode2 = newKubernetesNode(TestNode2, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
 	}
-	return map[string]*v1.Node{
+	return map[string]*corev1.Node{
 		TestNode1: kubeNode1,
 		TestNode2: kubeNode2,
 	}
 }
 
-func generateManagerPod(testType string) map[string]*v1.Pod {
-	var daemon1, daemon2 *v1.Pod
+func generateManagerPod(testType string) map[string]*corev1.Pod {
+	var daemon1, daemon2 *corev1.Pod
 	switch testType {
 	case ManagerPodDown:
-		daemon1 = newDaemonPod(v1.PodFailed, TestDaemon1, TestNamespace, TestNode1, TestIP1, nil)
-		daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, nil)
+		daemon1 = newDaemonPod(corev1.PodFailed, TestDaemon1, TestNamespace, TestNode1, TestIP1, nil)
+		daemon2 = newDaemonPod(corev1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, nil)
 	default:
-		daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, &MountPropagationBidirectional)
-		daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, &MountPropagationBidirectional)
+		daemon1 = newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, &MountPropagationBidirectional)
+		daemon2 = newDaemonPod(corev1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, &MountPropagationBidirectional)
 	}
-	return map[string]*v1.Pod{
+	return map[string]*corev1.Pod{
 		TestDaemon1: daemon1,
 		TestDaemon2: daemon2,
 	}

@@ -11,20 +11,34 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
+<<<<<<< HEAD
 	v1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+=======
+	"k8s.io/apimachinery/pkg/api/resource"
+>>>>>>> acb922ec (refactor: cleanup imports)
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	clientset "k8s.io/client-go/kubernetes"
-	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
+<<<<<<< HEAD
+=======
+	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clientset "k8s.io/client-go/kubernetes"
+	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
+
+	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
+
+>>>>>>> acb922ec (refactor: cleanup imports)
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -34,7 +48,12 @@ import (
 )
 
 var (
+<<<<<<< HEAD
 	hostToContainer = v1.MountPropagationHostToContainer
+=======
+	mountPropagationHostToContainer = corev1.MountPropagationHostToContainer
+	mountPropagationBidirectional   = corev1.MountPropagationBidirectional
+>>>>>>> acb922ec (refactor: cleanup imports)
 )
 
 type InstanceManagerController struct {
@@ -114,7 +133,7 @@ func NewInstanceManagerController(
 		serviceAccount: serviceAccount,
 
 		kubeClient:    kubeClient,
-		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-instance-manager-controller"}),
+		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-instance-manager-controller"}),
 
 		ds: ds,
 
@@ -178,7 +197,7 @@ func (imc *InstanceManagerController) isResponsibleForSetting(obj interface{}) b
 }
 
 func isInstanceManagerPod(obj interface{}) bool {
-	pod, ok := obj.(*v1.Pod)
+	pod, ok := obj.(*corev1.Pod)
 	if !ok {
 		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
@@ -186,7 +205,7 @@ func isInstanceManagerPod(obj interface{}) bool {
 		}
 
 		// use the last known state, to enqueue, dependent objects
-		pod, ok = deletedState.Obj.(*v1.Pod)
+		pod, ok = deletedState.Obj.(*corev1.Pod)
 		if !ok {
 			return false
 		}
@@ -391,9 +410,9 @@ func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceMan
 
 	// Blindly update the state based on the pod phase.
 	switch pod.Status.Phase {
-	case v1.PodPending:
+	case corev1.PodPending:
 		im.Status.CurrentState = longhorn.InstanceManagerStateStarting
-	case v1.PodRunning:
+	case corev1.PodRunning:
 		isReady := true
 		// Make sure readiness probe has passed.
 		for _, st := range pod.Status.ContainerStatuses {
@@ -406,7 +425,7 @@ func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceMan
 		} else {
 			im.Status.CurrentState = longhorn.InstanceManagerStateStarting
 		}
-	case v1.PodUnknown:
+	case corev1.PodUnknown:
 		im.Status.CurrentState = longhorn.InstanceManagerStateUnknown
 	default:
 		im.Status.CurrentState = longhorn.InstanceManagerStateError
@@ -894,7 +913,7 @@ func (imc *InstanceManagerController) enqueueInstanceManager(instanceManager int
 }
 
 func (imc *InstanceManagerController) enqueueInstanceManagerPod(obj interface{}) {
-	pod, ok := obj.(*v1.Pod)
+	pod, ok := obj.(*corev1.Pod)
 	if !ok {
 		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
@@ -903,7 +922,7 @@ func (imc *InstanceManagerController) enqueueInstanceManagerPod(obj interface{})
 		}
 
 		// use the last known state, to enqueue, dependent objects
-		pod, ok = deletedState.Obj.(*v1.Pod)
+		pod, ok = deletedState.Obj.(*corev1.Pod)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
 			return
@@ -923,7 +942,7 @@ func (imc *InstanceManagerController) enqueueInstanceManagerPod(obj interface{})
 }
 
 func (imc *InstanceManagerController) enqueueKubernetesNode(obj interface{}) {
-	kubernetesNode, ok := obj.(*v1.Node)
+	kubernetesNode, ok := obj.(*corev1.Node)
 	if !ok {
 		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
@@ -932,7 +951,7 @@ func (imc *InstanceManagerController) enqueueKubernetesNode(obj interface{}) {
 		}
 
 		// use the last known state, to enqueue, dependent objects
-		kubernetesNode, ok = deletedState.Obj.(*v1.Node)
+		kubernetesNode, ok = deletedState.Obj.(*corev1.Node)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
 			return
@@ -1014,6 +1033,7 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 
 	registrySecret := registrySecretSetting.Value
 
+<<<<<<< HEAD
 	var podSpec *v1.Pod
 	switch im.Spec.Type {
 	case longhorn.InstanceManagerTypeEngine:
@@ -1021,6 +1041,10 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 	case longhorn.InstanceManagerTypeReplica:
 		podSpec, err = imc.createReplicaManagerPodSpec(im, tolerations, registrySecret, nodeSelector)
 	}
+=======
+	var podSpec *corev1.Pod
+	podSpec, err = imc.createInstanceManagerPodSpec(im, tolerations, registrySecret, nodeSelector)
+>>>>>>> acb922ec (refactor: cleanup imports)
 	if err != nil {
 		return err
 	}
@@ -1047,7 +1071,7 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 	return nil
 }
 
-func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.InstanceManager, tolerations []v1.Toleration, registrySecret string, nodeSelector map[string]string) (*v1.Pod, error) {
+func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.InstanceManager, tolerations []corev1.Toleration, registrySecret string, nodeSelector map[string]string) (*corev1.Pod, error) {
 	tolerationsByte, err := json.Marshal(tolerations)
 	if err != nil {
 		return nil, err
@@ -1064,26 +1088,33 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 	}
 
 	privileged := true
-	podSpec := &v1.Pod{
+	podSpec := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            im.Name,
 			Namespace:       imc.namespace,
 			OwnerReferences: datastore.GetOwnerReferencesForInstanceManager(im),
 			Annotations:     map[string]string{types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix): string(tolerationsByte)},
 		},
-		Spec: v1.PodSpec{
+		Spec: corev1.PodSpec{
 			ServiceAccountName: imc.serviceAccount,
 			Tolerations:        util.GetDistinctTolerations(tolerations),
 			NodeSelector:       nodeSelector,
 			PriorityClassName:  priorityClass.Value,
-			Containers: []v1.Container{
+			Containers: []corev1.Container{
 				{
 					Image:           im.Spec.Image,
 					ImagePullPolicy: imagePullPolicy,
+<<<<<<< HEAD
 					LivenessProbe: &v1.Probe{
 						ProbeHandler: v1.ProbeHandler{
 							TCPSocket: &v1.TCPSocketAction{
 								Port: intstr.FromInt(engineapi.InstanceManagerDefaultPort),
+=======
+					LivenessProbe: &corev1.Probe{
+						ProbeHandler: corev1.ProbeHandler{
+							TCPSocket: &corev1.TCPSocketAction{
+								Port: intstr.FromInt(engineapi.InstanceManagerProcessManagerServiceDefaultPort),
+>>>>>>> acb922ec (refactor: cleanup imports)
 							},
 						},
 						InitialDelaySeconds: datastore.PodProbeInitialDelay,
@@ -1091,18 +1122,18 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 						PeriodSeconds:       datastore.PodProbePeriodSeconds,
 						FailureThreshold:    datastore.PodLivenessProbeFailureThreshold,
 					},
-					SecurityContext: &v1.SecurityContext{
+					SecurityContext: &corev1.SecurityContext{
 						Privileged: &privileged,
 					},
 				},
 			},
 			NodeName:      im.Spec.NodeID,
-			RestartPolicy: v1.RestartPolicyNever,
+			RestartPolicy: corev1.RestartPolicyNever,
 		},
 	}
 
 	if registrySecret != "" {
-		podSpec.Spec.ImagePullSecrets = []v1.LocalObjectReference{
+		podSpec.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
 			{
 				Name: registrySecret,
 			},
@@ -1122,7 +1153,11 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 	return podSpec, nil
 }
 
+<<<<<<< HEAD
 func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.InstanceManager, tolerations []v1.Toleration, registrySecret string, nodeSelector map[string]string) (*v1.Pod, error) {
+=======
+func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.InstanceManager, tolerations []corev1.Toleration, registrySecret string, nodeSelector map[string]string) (*corev1.Pod, error) {
+>>>>>>> acb922ec (refactor: cleanup imports)
 	podSpec, err := imc.createGenericManagerPodSpec(im, tolerations, registrySecret, nodeSelector)
 	if err != nil {
 		return nil, err
@@ -1134,13 +1169,58 @@ func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.In
 	podSpec.Spec.Containers[0].Args = []string{
 		"engine-manager", "--debug", "daemon", "--listen", "0.0.0.0:8500",
 	}
+<<<<<<< HEAD
 	podSpec.Spec.Containers[0].Env = []v1.EnvVar{
+=======
+	v2DataEngineAnnot := string(types.V2DataEngineAnnotation)
+	if v2DataEngineEnabled.Value != podSpec.Annotations[v2DataEngineAnnot] {
+		podSpec.Annotations[v2DataEngineAnnot] = v2DataEngineEnabled.Value
+	}
+
+	if v2DataEngineEnabled.Value == "true" {
+		podSpec.Spec.Containers[0].Args = []string{
+			"instance-manager", "--enable-spdk", "--debug", "daemon", "--spdk-enabled", "--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort),
+		}
+
+		hugepage, err := imc.ds.GetSettingAsInt(types.SettingNameV2DataEngineHugepageLimit)
+		if err != nil {
+			return nil, err
+		}
+
+		if podSpec.Spec.Containers[0].Resources.Requests == nil {
+			podSpec.Spec.Containers[0].Resources.Requests = corev1.ResourceList{}
+		}
+		podSpec.Spec.Containers[0].Resources.Requests[corev1.ResourceMemory] = resource.MustParse("128Mi")
+
+		if podSpec.Spec.Containers[0].Resources.Limits == nil {
+			podSpec.Spec.Containers[0].Resources.Limits = corev1.ResourceList{}
+		}
+		podSpec.Spec.Containers[0].Resources.Limits[corev1.ResourceName("hugepages-2Mi")] = resource.MustParse(fmt.Sprintf("%vMi", hugepage))
+	} else {
+		podSpec.Spec.Containers[0].Args = []string{
+			"instance-manager", "--debug", "daemon", "--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort),
+		}
+	}
+
+	podSpec.Spec.Containers[0].Env = []corev1.EnvVar{
+>>>>>>> acb922ec (refactor: cleanup imports)
 		{
 			Name:  "TLS_DIR",
 			Value: types.TLSDirectoryInContainer,
 		},
+<<<<<<< HEAD
+=======
+		{
+			Name: types.EnvPodIP,
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{
+					FieldPath: "status.podIP",
+				},
+			},
+		},
+>>>>>>> acb922ec (refactor: cleanup imports)
 	}
-	podSpec.Spec.Containers[0].VolumeMounts = []v1.VolumeMount{
+	podSpec.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
 		{
 			MountPath: "/host/dev",
 			Name:      "dev",
@@ -1163,8 +1243,9 @@ func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.In
 			Name:      "longhorn-grpc-tls",
 		},
 	}
-	podSpec.Spec.Volumes = []v1.Volume{
+	podSpec.Spec.Volumes = []corev1.Volume{
 		{
+<<<<<<< HEAD
 			Name: "dev",
 			VolumeSource: v1.VolumeSource{
 				HostPath: &v1.HostPathVolumeSource{
@@ -1177,29 +1258,35 @@ func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.In
 			VolumeSource: v1.VolumeSource{
 				HostPath: &v1.HostPathVolumeSource{
 					Path: "/proc",
+=======
+			Name: "host",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/",
+>>>>>>> acb922ec (refactor: cleanup imports)
 				},
 			},
 		},
 		{
 			Name: "engine-binaries",
-			VolumeSource: v1.VolumeSource{
-				HostPath: &v1.HostPathVolumeSource{
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
 					Path: types.EngineBinaryDirectoryOnHost,
 				},
 			},
 		},
 		{
 			Name: "unix-domain-socket",
-			VolumeSource: v1.VolumeSource{
-				HostPath: &v1.HostPathVolumeSource{
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
 					Path: types.UnixDomainSocketDirectoryOnHost,
 				},
 			},
 		},
 		{
 			Name: "longhorn-grpc-tls",
-			VolumeSource: v1.VolumeSource{
-				Secret: &v1.SecretVolumeSource{
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
 					SecretName: types.TLSSecretName,
 					Optional:   &secretIsOptional,
 				},
@@ -1209,10 +1296,27 @@ func (imc *InstanceManagerController) createEngineManagerPodSpec(im *longhorn.In
 	return podSpec, nil
 }
 
+<<<<<<< HEAD
 func (imc *InstanceManagerController) createReplicaManagerPodSpec(im *longhorn.InstanceManager, tolerations []v1.Toleration, registrySecret string, nodeSelector map[string]string) (*v1.Pod, error) {
 	podSpec, err := imc.createGenericManagerPodSpec(im, tolerations, registrySecret, nodeSelector)
 	if err != nil {
 		return nil, err
+=======
+	if v2DataEngineEnabled.Value == "true" {
+		podSpec.Spec.Containers[0].VolumeMounts = append(podSpec.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+			MountPath: "/hugepages",
+			Name:      "hugepage",
+		})
+
+		podSpec.Spec.Volumes = append(podSpec.Spec.Volumes, corev1.Volume{
+			Name: "hugepage",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					Medium: corev1.StorageMediumHugePages,
+				},
+			},
+		})
+>>>>>>> acb922ec (refactor: cleanup imports)
 	}
 
 	secretIsOptional := true

@@ -10,19 +10,26 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/runtime"
+
 	appsv1 "k8s.io/api/apps/v1"
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	clientset "k8s.io/client-go/kubernetes"
+
+	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	longhornmeta "github.com/longhorn/longhorn-manager/meta"
+<<<<<<< HEAD
 	"github.com/longhorn/longhorn-manager/types"
+=======
+>>>>>>> acb922ec (refactor: cleanup imports)
 )
 
 const (
@@ -31,20 +38,20 @@ const (
 	maxRetryForDeletion                   = 120
 )
 
-func getCommonService(commonName, namespace string) *v1.Service {
+func getCommonService(commonName, namespace string) *corev1.Service {
 	serviceLabels := types.GetBaseLabelsForSystemManagedComponent()
 	serviceLabels["app"] = commonName
-	return &v1.Service{
+	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      commonName,
 			Namespace: namespace,
 			Labels:    serviceLabels,
 		},
-		Spec: v1.ServiceSpec{
+		Spec: corev1.ServiceSpec{
 			Selector: map[string]string{
 				"app": commonName,
 			},
-			Ports: []v1.ServicePort{
+			Ports: []corev1.ServicePort{
 				{
 					Name: "dummy",
 					Port: 12345,
@@ -55,7 +62,7 @@ func getCommonService(commonName, namespace string) *v1.Service {
 }
 
 func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir string, args []string, replicaCount int32,
-	tolerations []v1.Toleration, tolerationsString, priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy, nodeSelector map[string]string) *appsv1.Deployment {
+	tolerations []corev1.Toleration, tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string) *appsv1.Deployment {
 
 	deploymentLabels := types.GetBaseLabelsForSystemManagedComponent()
 	deploymentLabels["app"] = commonName
@@ -72,21 +79,21 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 				MatchLabels: map[string]string{"app": commonName},
 			},
 			Replicas: &replicaCount,
-			Template: v1.PodTemplateSpec{
+			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{"app": commonName},
 				},
-				Spec: v1.PodSpec{
+				Spec: corev1.PodSpec{
 					ServiceAccountName: serviceAccount,
 					Tolerations:        tolerations,
 					NodeSelector:       nodeSelector,
 					PriorityClassName:  priorityClass,
-					Affinity: &v1.Affinity{
-						PodAntiAffinity: &v1.PodAntiAffinity{
-							PreferredDuringSchedulingIgnoredDuringExecution: []v1.WeightedPodAffinityTerm{
+					Affinity: &corev1.Affinity{
+						PodAntiAffinity: &corev1.PodAntiAffinity{
+							PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
 								{
 									Weight: 1,
-									PodAffinityTerm: v1.PodAffinityTerm{
+									PodAffinityTerm: corev1.PodAffinityTerm{
 										LabelSelector: &metav1.LabelSelector{
 											MatchExpressions: []metav1.LabelSelectorRequirement{
 												{
@@ -99,33 +106,33 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 											},
 										},
 
-										TopologyKey: v1.LabelHostname,
+										TopologyKey: corev1.LabelHostname,
 									},
 								},
 							},
 						},
 					},
-					Containers: []v1.Container{
+					Containers: []corev1.Container{
 						{
 							Name:            commonName,
 							Image:           image,
 							Args:            args,
 							ImagePullPolicy: imagePullPolicy,
-							Env: []v1.EnvVar{
+							Env: []corev1.EnvVar{
 								{
 									Name:  "ADDRESS",
 									Value: GetInContainerCSISocketFilePath(),
 								},
 								{
 									Name: "POD_NAMESPACE",
-									ValueFrom: &v1.EnvVarSource{
-										FieldRef: &v1.ObjectFieldSelector{
+									ValueFrom: &corev1.EnvVarSource{
+										FieldRef: &corev1.ObjectFieldSelector{
 											FieldPath: "metadata.namespace",
 										},
 									},
 								},
 							},
-							VolumeMounts: []v1.VolumeMount{
+							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "socket-dir",
 									MountPath: GetInContainerCSISocketDir(),
@@ -133,11 +140,11 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 							},
 						},
 					},
-					Volumes: []v1.Volume{
+					Volumes: []corev1.Volume{
 						{
 							Name: "socket-dir",
-							VolumeSource: v1.VolumeSource{
-								HostPath: &v1.HostPathVolumeSource{
+							VolumeSource: corev1.VolumeSource{
+								HostPath: &corev1.HostPathVolumeSource{
 									Path: GetCSISocketDir(rootDir),
 									Type: &HostPathDirectoryOrCreate,
 								},
@@ -150,7 +157,7 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 	}
 
 	if registrySecret != "" {
-		commonDeploymentSpec.Spec.Template.Spec.ImagePullSecrets = []v1.LocalObjectReference{
+		commonDeploymentSpec.Spec.Template.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
 			{
 				Name: registrySecret,
 			},
@@ -334,7 +341,7 @@ func cleanup(kubeClient *clientset.Clientset, obj runtime.Object, resource strin
 }
 
 func serviceCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) error {
-	o, ok := obj.(*v1.Service)
+	o, ok := obj.(*corev1.Service)
 	if !ok {
 		return fmt.Errorf("BUG: cannot convert back the object")
 	}

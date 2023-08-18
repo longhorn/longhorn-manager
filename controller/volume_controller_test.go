@@ -9,15 +9,17 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/longhorn/backupstore"
+
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -1131,12 +1133,12 @@ func newReplicaForVolume(v *longhorn.Volume, e *longhorn.Engine, nodeID, diskID 
 	}
 }
 
-func newDaemonPod(phase v1.PodPhase, name, namespace, nodeID, podIP string, mountpropagation *v1.MountPropagationMode) *v1.Pod {
-	podStatus := v1.ConditionFalse
-	if phase == v1.PodRunning {
-		podStatus = v1.ConditionTrue
+func newDaemonPod(phase corev1.PodPhase, name, namespace, nodeID, podIP string, mountpropagation *corev1.MountPropagationMode) *corev1.Pod {
+	podStatus := corev1.ConditionFalse
+	if phase == corev1.PodRunning {
+		podStatus = corev1.ConditionTrue
 	}
-	return &v1.Pod{
+	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
@@ -1144,13 +1146,13 @@ func newDaemonPod(phase v1.PodPhase, name, namespace, nodeID, podIP string, moun
 				"app": "longhorn-manager",
 			},
 		},
-		Spec: v1.PodSpec{
+		Spec: corev1.PodSpec{
 			NodeName: nodeID,
-			Containers: []v1.Container{
+			Containers: []corev1.Container{
 				{
 					Name:  "test-container",
 					Image: TestEngineImage,
-					VolumeMounts: []v1.VolumeMount{
+					VolumeMounts: []corev1.VolumeMount{
 						{
 							Name:             "longhorn",
 							MountPath:        TestDefaultDataPath,
@@ -1161,10 +1163,10 @@ func newDaemonPod(phase v1.PodPhase, name, namespace, nodeID, podIP string, moun
 			},
 			ServiceAccountName: TestServiceAccount,
 		},
-		Status: v1.PodStatus{
-			Conditions: []v1.PodCondition{
+		Status: corev1.PodStatus{
+			Conditions: []corev1.PodCondition{
 				{
-					Type:   v1.PodReady,
+					Type:   corev1.PodReady,
 					Status: podStatus,
 				},
 			},
@@ -1220,31 +1222,31 @@ func newNodeCondition(conditionType string, status longhorn.ConditionStatus, rea
 	}
 }
 
-func newKubernetesNode(name string, readyStatus, diskPressureStatus, memoryStatus, outOfDiskStatus, pidStatus, networkStatus, kubeletStatus v1.ConditionStatus) *v1.Node {
-	return &v1.Node{
+func newKubernetesNode(name string, readyStatus, diskPressureStatus, memoryStatus, outOfDiskStatus, pidStatus, networkStatus, kubeletStatus corev1.ConditionStatus) *corev1.Node {
+	return &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Status: v1.NodeStatus{
-			Conditions: []v1.NodeCondition{
+		Status: corev1.NodeStatus{
+			Conditions: []corev1.NodeCondition{
 				{
-					Type:   v1.NodeReady,
+					Type:   corev1.NodeReady,
 					Status: readyStatus,
 				},
 				{
-					Type:   v1.NodeDiskPressure,
+					Type:   corev1.NodeDiskPressure,
 					Status: diskPressureStatus,
 				},
 				{
-					Type:   v1.NodeMemoryPressure,
+					Type:   corev1.NodeMemoryPressure,
 					Status: memoryStatus,
 				},
 				{
-					Type:   v1.NodePIDPressure,
+					Type:   corev1.NodePIDPressure,
 					Status: pidStatus,
 				},
 				{
-					Type:   v1.NodeNetworkUnavailable,
+					Type:   corev1.NodeNetworkUnavailable,
 					Status: networkStatus,
 				},
 			},
@@ -1321,11 +1323,11 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		vc := newTestVolumeController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, extensionsClient, TestOwnerID1)
 
 		// Need to create daemon pod for node
-		daemon1 := newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, nil)
+		daemon1 := newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, nil)
 		p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), daemon1, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		pIndexer.Add(p)
-		daemon2 := newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, nil)
+		daemon2 := newDaemonPod(corev1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, nil)
 		p, err = kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), daemon2, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		pIndexer.Add(p)
@@ -1429,13 +1431,13 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			err = nIndexer.Add(n)
 			c.Assert(err, IsNil)
 
-			knodeCondition := v1.ConditionTrue
+			knodeCondition := corev1.ConditionTrue
 
 			condition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
 			if condition.Status != longhorn.ConditionStatusTrue {
-				knodeCondition = v1.ConditionFalse
+				knodeCondition = corev1.ConditionFalse
 			}
-			knode := newKubernetesNode(node.Name, knodeCondition, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
+			knode := newKubernetesNode(node.Name, knodeCondition, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
 			kn, err := kubeClient.CoreV1().Nodes().Create(context.TODO(), knode, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			err = knIndexer.Add(kn)

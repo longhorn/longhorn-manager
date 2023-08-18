@@ -8,17 +8,18 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	v1 "k8s.io/api/core/v1"
-	storagev1 "k8s.io/api/storage/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	clientset "k8s.io/client-go/kubernetes"
-	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
+
+	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clientset "k8s.io/client-go/kubernetes"
+	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -66,7 +67,7 @@ func NewKubernetesPodController(
 		ds: ds,
 
 		kubeClient:    kubeClient,
-		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-kubernetes-pod-controller"}),
+		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-kubernetes-pod-controller"}),
 	}
 
 	ds.PodInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -128,7 +129,7 @@ func (kc *KubernetesPodController) handleErr(err error, key interface{}) {
 	utilruntime.HandleError(err)
 }
 
-func getLoggerForPod(logger logrus.FieldLogger, pod *v1.Pod) *logrus.Entry {
+func getLoggerForPod(logger logrus.FieldLogger, pod *corev1.Pod) *logrus.Entry {
 	return logger.WithField("pod", pod.Name)
 }
 
@@ -178,7 +179,7 @@ func (kc *KubernetesPodController) syncHandler(key string) (err error) {
 // 3. node containing the pod is down
 // 4. the pod is terminating and the DeletionTimestamp has passed.
 // 5. pod has a PV with provisioner driver.longhorn.io
-func (kc *KubernetesPodController) handlePodDeletionIfNodeDown(pod *v1.Pod, nodeID string, namespace string) error {
+func (kc *KubernetesPodController) handlePodDeletionIfNodeDown(pod *corev1.Pod, nodeID string, namespace string) error {
 	deletionPolicy := types.NodeDownPodDeletionPolicyDoNothing
 	if deletionSetting, err := kc.ds.GetSettingValueExisted(types.SettingNameNodeDownPodDeletionPolicy); err == nil {
 		deletionPolicy = types.NodeDownPodDeletionPolicy(deletionSetting)
@@ -242,7 +243,7 @@ func (kc *KubernetesPodController) handlePodDeletionIfNodeDown(pod *v1.Pod, node
 	return nil
 }
 
-func (kc *KubernetesPodController) getVolumeAttachmentsOfPod(pod *v1.Pod) ([]*storagev1.VolumeAttachment, error) {
+func (kc *KubernetesPodController) getVolumeAttachmentsOfPod(pod *corev1.Pod) ([]*storagev1.VolumeAttachment, error) {
 	var res []*storagev1.VolumeAttachment
 	volumeAttachments, err := kc.ds.ListVolumeAttachmentsRO()
 	if err != nil {
@@ -287,7 +288,7 @@ func (kc *KubernetesPodController) getVolumeAttachmentsOfPod(pod *v1.Pod) ([]*st
 
 // handlePodDeletionIfVolumeRequestRemount will delete the pod which is using a volume that has requested remount.
 // By deleting the consuming pod, Kubernetes will recreated them, reattaches, and remounts the volume.
-func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *v1.Pod) error {
+func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *corev1.Pod) error {
 	// Only handle pod that is on the same node as this manager
 	if pod.Spec.NodeName != kc.controllerID {
 		return nil
@@ -356,14 +357,14 @@ func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *
 	return nil
 }
 
-func isOwnedByStatefulSet(pod *v1.Pod) bool {
+func isOwnedByStatefulSet(pod *corev1.Pod) bool {
 	if ownerRef := metav1.GetControllerOf(pod); ownerRef != nil {
 		return ownerRef.Kind == types.KubernetesStatefulSet
 	}
 	return false
 }
 
-func isOwnedByDeployment(pod *v1.Pod) bool {
+func isOwnedByDeployment(pod *corev1.Pod) bool {
 	if ownerRef := metav1.GetControllerOf(pod); ownerRef != nil {
 		return ownerRef.Kind == types.KubernetesReplicaSet
 	}
@@ -378,7 +379,7 @@ func (kc *KubernetesPodController) enqueuePodChange(obj interface{}) {
 		return
 	}
 
-	pod, ok := obj.(*v1.Pod)
+	pod, ok := obj.(*corev1.Pod)
 	if !ok {
 		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
@@ -387,7 +388,7 @@ func (kc *KubernetesPodController) enqueuePodChange(obj interface{}) {
 		}
 
 		// use the last known state, to enqueue, dependent objects
-		pod, ok = deletedState.Obj.(*v1.Pod)
+		pod, ok = deletedState.Obj.(*corev1.Pod)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
 			return
@@ -424,12 +425,12 @@ func (kc *KubernetesPodController) enqueuePodChange(obj interface{}) {
 	}
 }
 
-func (kc *KubernetesPodController) getAssociatedPersistentVolume(pvc *v1.PersistentVolumeClaim) (*v1.PersistentVolume, error) {
+func (kc *KubernetesPodController) getAssociatedPersistentVolume(pvc *corev1.PersistentVolumeClaim) (*corev1.PersistentVolume, error) {
 	pvName := pvc.Spec.VolumeName
 	return kc.ds.GetPersistentVolumeRO(pvName)
 }
 
-func (kc *KubernetesPodController) getAssociatedVolumes(pod *v1.Pod) ([]*longhorn.Volume, error) {
+func (kc *KubernetesPodController) getAssociatedVolumes(pod *corev1.Pod) ([]*longhorn.Volume, error) {
 	log := getLoggerForPod(kc.logger, pod)
 	var volumeList []*longhorn.Volume
 	for _, v := range pod.Spec.Volumes {

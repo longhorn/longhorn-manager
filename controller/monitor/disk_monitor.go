@@ -15,9 +15,15 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+<<<<<<< HEAD
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+=======
+	"github.com/longhorn/longhorn-manager/engineapi"
+>>>>>>> acb922ec (refactor: cleanup imports)
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 const (

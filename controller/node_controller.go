@@ -10,26 +10,33 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	v1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	clientset "k8s.io/client-go/kubernetes"
-	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/pkg/controller"
 
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clientset "k8s.io/client-go/kubernetes"
+	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
+
 	"github.com/longhorn/longhorn-manager/constant"
-	monitor "github.com/longhorn/longhorn-manager/controller/monitor"
 	"github.com/longhorn/longhorn-manager/datastore"
+<<<<<<< HEAD
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+=======
+	"github.com/longhorn/longhorn-manager/engineapi"
+>>>>>>> acb922ec (refactor: cleanup imports)
 	"github.com/longhorn/longhorn-manager/scheduler"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
+
+	monitor "github.com/longhorn/longhorn-manager/controller/monitor"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 var (
@@ -87,7 +94,7 @@ func NewNodeController(
 		controllerID: controllerID,
 
 		kubeClient:    kubeClient,
-		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-node-controller"}),
+		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-node-controller"}),
 
 		ds: ds,
 
@@ -250,7 +257,7 @@ func (nc *NodeController) snapshotHashRequired(volume *longhorn.Volume) bool {
 }
 
 func isManagerPod(obj interface{}) bool {
-	pod, ok := obj.(*v1.Pod)
+	pod, ok := obj.(*corev1.Pod)
 	if !ok {
 		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
@@ -258,7 +265,7 @@ func isManagerPod(obj interface{}) bool {
 		}
 
 		// use the last known state, to enqueue, dependent objects
-		pod, ok = deletedState.Obj.(*v1.Pod)
+		pod, ok = deletedState.Obj.(*corev1.Pod)
 		if !ok {
 			return false
 		}
@@ -353,7 +360,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	}
 
 	if node.DeletionTimestamp != nil {
-		nc.eventRecorder.Eventf(node, v1.EventTypeWarning, constant.EventReasonDelete, "Deleting node %v", node.Name)
+		nc.eventRecorder.Eventf(node, corev1.EventTypeWarning, constant.EventReasonDelete, "Deleting node %v", node.Name)
 		return nc.ds.RemoveFinalizerForNode(node)
 	}
 
@@ -382,18 +389,18 @@ func (nc *NodeController) syncNode(key string) (err error) {
 			nodeManagerFound = true
 			podConditions := pod.Status.Conditions
 			for _, podCondition := range podConditions {
-				if podCondition.Type == v1.PodReady {
-					if podCondition.Status == v1.ConditionTrue && pod.Status.Phase == v1.PodRunning {
+				if podCondition.Type == corev1.PodReady {
+					if podCondition.Status == corev1.ConditionTrue && pod.Status.Phase == corev1.PodRunning {
 						node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
 							longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue,
 							"", fmt.Sprintf("Node %v is ready", node.Name),
-							nc.eventRecorder, node, v1.EventTypeNormal)
+							nc.eventRecorder, node, corev1.EventTypeNormal)
 					} else {
 						node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
 							longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse,
 							string(longhorn.NodeConditionReasonManagerPodDown),
 							fmt.Sprintf("Node %v is down: the manager pod %v is not running", node.Name, pod.Name),
-							nc.eventRecorder, node, v1.EventTypeWarning)
+							nc.eventRecorder, node, corev1.EventTypeWarning)
 					}
 					break
 				}
@@ -407,7 +414,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 			longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse,
 			string(longhorn.NodeConditionReasonManagerPodMissing),
 			fmt.Sprintf("manager pod missing: node %v has no manager pod running on it", node.Name),
-			nc.eventRecorder, node, v1.EventTypeWarning)
+			nc.eventRecorder, node, corev1.EventTypeWarning)
 	}
 
 	// sync node state with kubernetes node status
@@ -419,7 +426,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 				longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse,
 				string(longhorn.NodeConditionReasonKubernetesNodeGone),
 				fmt.Sprintf("Kubernetes node missing: node %v has been removed from the cluster and there is no manager pod running on it", node.Name),
-				nc.eventRecorder, node, v1.EventTypeWarning)
+				nc.eventRecorder, node, corev1.EventTypeWarning)
 		} else {
 			return err
 		}
@@ -427,28 +434,28 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		kubeConditions := kubeNode.Status.Conditions
 		for _, con := range kubeConditions {
 			switch con.Type {
-			case v1.NodeReady:
-				if con.Status != v1.ConditionTrue {
+			case corev1.NodeReady:
+				if con.Status != corev1.ConditionTrue {
 					node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
 						longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse,
 						string(longhorn.NodeConditionReasonKubernetesNodeNotReady),
 						fmt.Sprintf("Kubernetes node %v not ready: %v", node.Name, con.Reason),
-						nc.eventRecorder, node, v1.EventTypeWarning)
+						nc.eventRecorder, node, corev1.EventTypeWarning)
 				}
-			case v1.NodeDiskPressure,
-				v1.NodePIDPressure,
-				v1.NodeMemoryPressure,
-				v1.NodeNetworkUnavailable:
-				if con.Status == v1.ConditionTrue {
+			case corev1.NodeDiskPressure,
+				corev1.NodePIDPressure,
+				corev1.NodeMemoryPressure,
+				corev1.NodeNetworkUnavailable:
+				if con.Status == corev1.ConditionTrue {
 					node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
 						longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse,
 						string(longhorn.NodeConditionReasonKubernetesNodePressure),
 						fmt.Sprintf("Kubernetes node %v has pressure: %v, %v", node.Name, con.Reason, con.Message),
-						nc.eventRecorder, node, v1.EventTypeWarning)
+						nc.eventRecorder, node, corev1.EventTypeWarning)
 				}
 			default:
-				if con.Status == v1.ConditionTrue {
-					nc.eventRecorder.Eventf(node, v1.EventTypeWarning, longhorn.NodeConditionReasonUnknownNodeConditionTrue, "Unknown condition true of kubernetes node %v: condition type is %v, reason is %v, message is %v", node.Name, con.Type, con.Reason, con.Message)
+				if con.Status == corev1.ConditionTrue {
+					nc.eventRecorder.Eventf(node, corev1.EventTypeWarning, longhorn.NodeConditionReasonUnknownNodeConditionTrue, "Unknown condition true of kubernetes node %v: condition type is %v, reason is %v, message is %v", node.Name, con.Type, con.Reason, con.Message)
 				}
 			}
 		}
@@ -473,7 +480,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 					string(longhorn.NodeConditionReasonKubernetesNodeCordoned),
 					fmt.Sprintf("Node %v is cordoned", node.Name),
 					nc.eventRecorder, node,
-					v1.EventTypeNormal)
+					corev1.EventTypeNormal)
 		} else {
 			node.Status.Conditions =
 				types.SetConditionAndRecord(node.Status.Conditions,
@@ -482,7 +489,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 					"",
 					"",
 					nc.eventRecorder, node,
-					v1.EventTypeNormal)
+					corev1.EventTypeNormal)
 		}
 
 		node.Status.Region, node.Status.Zone = types.GetRegionAndZone(kubeNode.Labels)
@@ -657,7 +664,7 @@ func (nc *NodeController) enqueueManagerPod(obj interface{}) {
 }
 
 func (nc *NodeController) enqueueKubernetesNode(obj interface{}) {
-	kubernetesNode, ok := obj.(*v1.Node)
+	kubernetesNode, ok := obj.(*corev1.Node)
 	if !ok {
 		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
@@ -666,7 +673,7 @@ func (nc *NodeController) enqueueKubernetesNode(obj interface{}) {
 		}
 
 		// use the last known state, to enqueue, dependent objects
-		kubernetesNode, ok = deletedState.Obj.(*v1.Node)
+		kubernetesNode, ok = deletedState.Obj.(*corev1.Node)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
 			return
@@ -787,7 +794,7 @@ func (nc *NodeController) updateNotReadyDiskStatusReadyCondition(node *longhorn.
 				info.Condition.Message,
 				nc.eventRecorder,
 				node,
-				v1.EventTypeWarning)
+				corev1.EventTypeWarning)
 	}
 }
 
@@ -807,7 +814,7 @@ func (nc *NodeController) updateReadyDiskStatusReadyCondition(node *longhorn.Nod
 			diskStatusMap[diskName].Conditions = types.SetConditionAndRecord(diskStatusMap[diskName].Conditions,
 				longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue,
 				"", fmt.Sprintf("Disk %v(%v) on node %v is ready", diskName, diskInfoMap[diskName].Path, node.Name),
-				nc.eventRecorder, node, v1.EventTypeNormal)
+				nc.eventRecorder, node, corev1.EventTypeNormal)
 		}
 		diskStatusMap[diskName] = diskStatus
 	}
@@ -834,7 +841,7 @@ func (nc *NodeController) updateDiskStatusSchedulableCondition(node *longhorn.No
 				longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse,
 				string(longhorn.DiskConditionReasonDiskNotReady),
 				fmt.Sprintf("the disk %v(%v) on the node %v is not ready", diskName, disk.Path, node.Name),
-				nc.eventRecorder, node, v1.EventTypeWarning)
+				nc.eventRecorder, node, corev1.EventTypeWarning)
 		} else {
 			// sync backing image managers
 			list, err := nc.ds.ListBackingImageManagersByDiskUUID(diskStatus.DiskUUID)
@@ -887,12 +894,12 @@ func (nc *NodeController) updateDiskStatusSchedulableCondition(node *longhorn.No
 					string(longhorn.DiskConditionReasonDiskPressure),
 					fmt.Sprintf("the disk %v(%v) on the node %v has %v available, but requires reserved %v, minimal %v%s to schedule more replicas",
 						diskName, disk.Path, node.Name, diskStatus.StorageAvailable, disk.StorageReserved, minimalAvailablePercentage, "%"),
-					nc.eventRecorder, node, v1.EventTypeWarning)
+					nc.eventRecorder, node, corev1.EventTypeWarning)
 			} else {
 				diskStatus.Conditions = types.SetConditionAndRecord(diskStatus.Conditions,
 					longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue,
 					"", fmt.Sprintf("Disk %v(%v) on node %v is schedulable", diskName, disk.Path, node.Name),
-					nc.eventRecorder, node, v1.EventTypeNormal)
+					nc.eventRecorder, node, corev1.EventTypeNormal)
 			}
 		}
 
@@ -902,7 +909,7 @@ func (nc *NodeController) updateDiskStatusSchedulableCondition(node *longhorn.No
 	return nil
 }
 
-func (nc *NodeController) syncNodeStatus(pod *v1.Pod, node *longhorn.Node) error {
+func (nc *NodeController) syncNodeStatus(pod *corev1.Pod, node *longhorn.Node) error {
 	// sync bidirectional mount propagation for node status to check whether the node could deploy CSI driver
 	for _, mount := range pod.Spec.Containers[0].VolumeMounts {
 		if mount.Name == types.LonghornSystemKey {
@@ -912,7 +919,7 @@ func (nc *NodeController) syncNodeStatus(pod *v1.Pod, node *longhorn.Node) error
 			} else {
 				mountPropagationStr = string(*mount.MountPropagation)
 			}
-			if mount.MountPropagation == nil || *mount.MountPropagation != v1.MountPropagationBidirectional {
+			if mount.MountPropagation == nil || *mount.MountPropagation != corev1.MountPropagationBidirectional {
 				node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusFalse,
 					string(longhorn.NodeConditionReasonNoMountPropagationSupport),
 					fmt.Sprintf("The MountPropagation value %s is not detected from pod %s, node %s", mountPropagationStr, pod.Name, pod.Spec.NodeName))

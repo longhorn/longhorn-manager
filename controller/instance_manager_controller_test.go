@@ -6,13 +6,15 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
+
+	corev1 "k8s.io/api/core/v1"
+	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -21,7 +23,6 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
-	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 
 	. "gopkg.in/check.v1"
 )
@@ -31,7 +32,7 @@ type InstanceManagerTestCase struct {
 	nodeDown     bool
 	nodeID       string
 
-	currentPodStatus *v1.PodStatus
+	currentPodStatus *corev1.PodStatus
 	currentOwnerID   string
 	currentState     longhorn.InstanceManagerState
 	currentInstances map[string]longhorn.InstanceProcess
@@ -81,8 +82,13 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 	testCases := map[string]InstanceManagerTestCase{
 		"instance manager change ownership": {
 			TestNode1, false, TestNode1,
+<<<<<<< HEAD
 			&v1.PodStatus{PodIP: TestIP1, Phase: v1.PodRunning},
 			TestNode2, longhorn.InstanceManagerStateUnknown, nil, 1,
+=======
+			&corev1.PodStatus{PodIP: TestIP1, Phase: corev1.PodRunning},
+			TestNode2, longhorn.InstanceManagerStateUnknown, nil, nil, 1,
+>>>>>>> acb922ec (refactor: cleanup imports)
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
 				CurrentState:  longhorn.InstanceManagerStateRunning,
@@ -94,7 +100,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		},
 		"instance manager error then restart immediately": {
 			TestNode1, false, TestNode1,
-			&v1.PodStatus{PodIP: "", Phase: v1.PodFailed},
+			&corev1.PodStatus{PodIP: "", Phase: corev1.PodFailed},
 			TestNode1, longhorn.InstanceManagerStateRunning,
 			map[string]longhorn.InstanceProcess{ // Process information will be erased in the next reconcile loop.
 				TestReplicaName: {
@@ -120,8 +126,13 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		},
 		"instance manager node down": {
 			TestNode2, true, TestNode1,
+<<<<<<< HEAD
 			&v1.PodStatus{PodIP: TestIP1, Phase: v1.PodRunning},
 			TestNode2, longhorn.InstanceManagerStateRunning, nil, 1,
+=======
+			&corev1.PodStatus{PodIP: TestIP1, Phase: corev1.PodRunning},
+			TestNode2, longhorn.InstanceManagerStateRunning, nil, nil, 1,
+>>>>>>> acb922ec (refactor: cleanup imports)
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode2,
 				CurrentState:  longhorn.InstanceManagerStateUnknown,
@@ -133,8 +144,13 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		},
 		"instance manager restarting after error": {
 			TestNode1, false, TestNode1,
+<<<<<<< HEAD
 			&v1.PodStatus{PodIP: TestIP1, Phase: v1.PodPending},
 			TestNode1, longhorn.InstanceManagerStateError, nil, 1,
+=======
+			&corev1.PodStatus{PodIP: TestIP1, Phase: corev1.PodPending},
+			TestNode1, longhorn.InstanceManagerStateError, nil, nil, 1,
+>>>>>>> acb922ec (refactor: cleanup imports)
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
 				CurrentState:  longhorn.InstanceManagerStateStarting,
@@ -145,8 +161,13 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		},
 		"instance manager running": {
 			TestNode1, false, TestNode1,
+<<<<<<< HEAD
 			&v1.PodStatus{PodIP: TestIP1, Phase: v1.PodRunning},
 			TestNode1, longhorn.InstanceManagerStateStarting, nil, 1,
+=======
+			&corev1.PodStatus{PodIP: TestIP1, Phase: corev1.PodRunning},
+			TestNode1, longhorn.InstanceManagerStateStarting, nil, nil, 1,
+>>>>>>> acb922ec (refactor: cleanup imports)
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
 				CurrentState:  longhorn.InstanceManagerStateRunning,
@@ -182,8 +203,13 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		},
 		"instance manager sync IP": {
 			TestNode1, false, TestNode1,
+<<<<<<< HEAD
 			&v1.PodStatus{PodIP: TestIP2, Phase: v1.PodRunning},
 			TestNode1, longhorn.InstanceManagerStateRunning, nil, 1,
+=======
+			&corev1.PodStatus{PodIP: TestIP2, Phase: corev1.PodRunning},
+			TestNode1, longhorn.InstanceManagerStateRunning, nil, nil, 1,
+>>>>>>> acb922ec (refactor: cleanup imports)
 			longhorn.InstanceManagerStatus{
 				OwnerID:       TestNode1,
 				CurrentState:  longhorn.InstanceManagerStateRunning,
@@ -228,7 +254,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 
 		// Create Nodes for test. Conditionally add the first Node.
 		if !tc.nodeDown {
-			kubeNode1 := newKubernetesNode(TestNode1, v1.ConditionTrue, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
+			kubeNode1 := newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
 			err = kubeNodeIndexer.Add(kubeNode1)
 			c.Assert(err, IsNil)
 			_, err = kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode1, metav1.CreateOptions{})
@@ -241,7 +267,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			c.Assert(err, IsNil)
 		}
 
-		kubeNode2 := newKubernetesNode(TestNode2, v1.ConditionTrue, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionFalse, v1.ConditionTrue)
+		kubeNode2 := newKubernetesNode(TestNode2, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
 		err = kubeNodeIndexer.Add(kubeNode2)
 		c.Assert(err, IsNil)
 		_, err = kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode2, metav1.CreateOptions{})

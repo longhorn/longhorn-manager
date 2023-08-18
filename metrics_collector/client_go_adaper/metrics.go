@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+
 	clientmetrics "k8s.io/client-go/tools/metrics"
 
 	"github.com/longhorn/longhorn-manager/metrics_collector/registry"
