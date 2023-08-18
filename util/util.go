@@ -589,7 +589,6 @@ func CopyHostDirectoryContent(src, dest string) (err error) {
 
 	// There can be no src directory, hence returning nil is fine.
 	if _, err := nsExec.Execute("bash", []string{"-c", fmt.Sprintf("ls %s", filepath.Join(srcDir, "*"))}); err != nil {
-		logrus.Infof("cannot list the content of the src directory %v for the copy, will do nothing: %v", srcDir, err)
 		return nil
 	}
 	// Check if the dest directory exists.
