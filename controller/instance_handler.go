@@ -8,18 +8,20 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
+
+	corev1 "k8s.io/api/core/v1"
 
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 // InstanceHandler can handle the state transition of correlated instance and
@@ -444,13 +446,13 @@ func (h *InstanceHandler) createInstance(instanceName string, backendStoreDriver
 	logrus.Infof("Creating instance %v", instanceName)
 	if _, err := h.instanceManagerHandler.CreateInstance(obj); err != nil {
 		if !types.ErrorAlreadyExists(err) {
-			h.eventRecorder.Eventf(obj, v1.EventTypeWarning, constant.EventReasonFailedStarting, "Error starting %v: %v", instanceName, err)
+			h.eventRecorder.Eventf(obj, corev1.EventTypeWarning, constant.EventReasonFailedStarting, "Error starting %v: %v", instanceName, err)
 			return err
 		}
 		// Already exists, lost track may due to previous datastore conflict
 		return nil
 	}
-	h.eventRecorder.Eventf(obj, v1.EventTypeNormal, constant.EventReasonStart, "Starts %v", instanceName)
+	h.eventRecorder.Eventf(obj, corev1.EventTypeNormal, constant.EventReasonStart, "Starts %v", instanceName)
 
 	return nil
 }
@@ -459,10 +461,10 @@ func (h *InstanceHandler) deleteInstance(instanceName string, obj runtime.Object
 	// May try to force deleting instances on lost node. Don't need to check the instance
 	logrus.Infof("Deleting instance %v", instanceName)
 	if err := h.instanceManagerHandler.DeleteInstance(obj); err != nil {
-		h.eventRecorder.Eventf(obj, v1.EventTypeWarning, constant.EventReasonFailedStopping, "Error stopping %v: %v", instanceName, err)
+		h.eventRecorder.Eventf(obj, corev1.EventTypeWarning, constant.EventReasonFailedStopping, "Error stopping %v: %v", instanceName, err)
 		return err
 	}
-	h.eventRecorder.Eventf(obj, v1.EventTypeNormal, constant.EventReasonStop, "Stops %v", instanceName)
+	h.eventRecorder.Eventf(obj, corev1.EventTypeNormal, constant.EventReasonStop, "Stops %v", instanceName)
 
 	return nil
 }
