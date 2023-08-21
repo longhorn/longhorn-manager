@@ -245,7 +245,7 @@ func (e *EngineSimulator) VolumeUnmapMarkSnapChainRemovedSet(*longhorn.Engine) e
 	return fmt.Errorf(ErrNotImplement)
 }
 
-func (e *EngineSimulator) ReplicaRebuildVerify(engine *longhorn.Engine, url string) error {
+func (e *EngineSimulator) ReplicaRebuildVerify(engine *longhorn.Engine, replicaName, url string) error {
 	return fmt.Errorf(ErrNotImplement)
 }
 
