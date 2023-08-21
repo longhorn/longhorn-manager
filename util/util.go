@@ -564,44 +564,6 @@ func RemoveHostDirectoryContent(directory string) (err error) {
 	return nil
 }
 
-func CopyHostDirectoryContent(src, dest string) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "failed to copy the content from %v to %v for the host", src, dest)
-	}()
-
-	srcDir, err := filepath.Abs(filepath.Clean(src))
-	if err != nil {
-		return err
-	}
-	destDir, err := filepath.Abs(filepath.Clean(dest))
-	if err != nil {
-		return err
-	}
-	if strings.Count(srcDir, "/") < 2 || strings.Count(destDir, "/") < 2 {
-		return fmt.Errorf("prohibit copying the content for the top level of directory %v or %v", srcDir, destDir)
-	}
-
-	initiatorNSPath := iscsiutil.GetHostNamespacePath(HostProcPath)
-	nsExec, err := iscsiutil.NewNamespaceExecutor(initiatorNSPath)
-	if err != nil {
-		return err
-	}
-
-	// There can be no src directory, hence returning nil is fine.
-	if _, err := nsExec.Execute("bash", []string{"-c", fmt.Sprintf("ls %s", filepath.Join(srcDir, "*"))}); err != nil {
-		return nil
-	}
-	// Check if the dest directory exists.
-	if _, err := nsExec.Execute("mkdir", []string{"-p", destDir}); err != nil {
-		return err
-	}
-	// The flag `-n` means not overwriting an existing file.
-	if _, err := nsExec.Execute("bash", []string{"-c", fmt.Sprintf("cp -an %s %s", filepath.Join(srcDir, "*"), destDir)}); err != nil {
-		return err
-	}
-	return nil
-}
-
 type filteredLoggingHandler struct {
 	filteredPaths  map[string]struct{}
 	handler        http.Handler
