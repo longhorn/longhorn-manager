@@ -4,12 +4,11 @@ import (
 	"context"
 	"os"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
-
-	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 )

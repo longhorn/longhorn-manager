@@ -1,9 +1,9 @@
 package workqueue
 
 import (
-	"k8s.io/client-go/util/workqueue"
-
 	"github.com/prometheus/client_golang/prometheus"
+
+	"k8s.io/client-go/util/workqueue"
 
 	"github.com/longhorn/longhorn-manager/metrics_collector/registry"
 )

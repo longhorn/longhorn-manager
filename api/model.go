@@ -5,9 +5,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
-	"github.com/sirupsen/logrus"
+
+	corev1 "k8s.io/api/core/v1"
 
 	"github.com/longhorn/longhorn-manager/controller"
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -15,7 +18,6 @@ import (
 	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
-	v1 "k8s.io/api/core/v1"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -382,8 +384,8 @@ type DiskUpdateInput struct {
 
 type Event struct {
 	client.Resource
-	Event     v1.Event `json:"event"`
-	EventType string   `json:"eventType"`
+	Event     corev1.Event `json:"event"`
+	EventType string       `json:"eventType"`
 }
 
 type SupportBundle struct {
@@ -1886,7 +1888,7 @@ func toNodeCollection(nodeList []*longhorn.Node, nodeIPMap map[string]string, ap
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "node"}}
 }
 
-func toEventResource(event v1.Event) *Event {
+func toEventResource(event corev1.Event) *Event {
 	e := &Event{
 		Resource: client.Resource{
 			Id:    event.Name,
@@ -1899,7 +1901,7 @@ func toEventResource(event v1.Event) *Event {
 	return e
 }
 
-func toEventCollection(eventList *v1.EventList) *client.GenericCollection {
+func toEventCollection(eventList *corev1.EventList) *client.GenericCollection {
 	data := []interface{}{}
 	for _, event := range eventList.Items {
 		data = append(data, toEventResource(event))
