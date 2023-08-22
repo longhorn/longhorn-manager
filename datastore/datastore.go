@@ -310,3 +310,9 @@ func ErrorIsNotFound(err error) bool {
 func ErrorIsConflict(err error) bool {
 	return apierrors.IsConflict(err)
 }
+
+// ErrorIsAlreadyExists checks if given error match
+// metav1.StatusReasonAlreadyExists
+func ErrorIsAlreadyExists(err error) bool {
+	return apierrors.IsAlreadyExists(err)
+}

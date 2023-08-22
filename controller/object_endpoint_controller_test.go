@@ -18,16 +18,16 @@ import (
 
 const (
 	TestObjectEndpointName    = "test-object-endpoint"
+	TestObjectEndpointPVName  = "pv-test-object-endpoint"
 	TestObjectEndpointPVCName = "pvc-test-object-endpoint"
 	TestObjectEndpointImage   = "quay.io/s3gw/s3gw:latest"
 )
 
 type ObjectEndpointTestCase struct {
-	state                  longhorn.ObjectEndpointState
-	expectedState          longhorn.ObjectEndpointState
-	controllerID           string
-	objectEndpointNames    []string
-	objectEndpointPVCNames []string
+	state               longhorn.ObjectEndpointState
+	expectedState       longhorn.ObjectEndpointState
+	controllerID        string
+	objectEndpointNames []string
 }
 
 func (s *TestSuite) TestReconcileObjectEndpoint(c *C) {
@@ -47,10 +47,6 @@ func (s *TestSuite) TestReconcileObjectEndpoint(c *C) {
 	for name, tc := range testCases {
 		if len(tc.objectEndpointNames) == 0 {
 			tc.objectEndpointNames = append(tc.objectEndpointNames, TestObjectEndpointName)
-		}
-
-		if len(tc.objectEndpointPVCNames) == 0 {
-			tc.objectEndpointPVCNames = append(tc.objectEndpointPVCNames, TestObjectEndpointPVCName)
 		}
 
 		if tc.controllerID == "" {
