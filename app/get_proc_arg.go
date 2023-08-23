@@ -11,7 +11,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 
@@ -52,7 +52,7 @@ const (
         if [ ! -f $proc/cmdline ]; then
           continue
         fi
-        # Before k3s v1.19, the cmdline is separated by \000. 
+        # Before k3s v1.19, the cmdline is separated by \000.
         # After v1.19, it's using normal spaces, which is \040
         if [[ "$(cat $proc/cmdline | tr '\000' '\n' | tr '\040' '\n' | head -n1 | tr '/' '\n' | tail -n1)" == "k3s" ]]; then
           proc_name=$(cat $proc/cmdline | tr '\000' '\n' | tr '\040' '\n' | sed -n '2p')
@@ -69,7 +69,7 @@ const (
 	`
 )
 
-func getProcArg(kubeClient *clientset.Clientset, managerImage, serviceAccountName, name string, tolerations []v1.Toleration, priorityClass, registrySecret string, nodeSelector map[string]string) (string, error) {
+func getProcArg(kubeClient *clientset.Clientset, managerImage, serviceAccountName, name string, tolerations []corev1.Toleration, priorityClass, registrySecret string, nodeSelector map[string]string) (string, error) {
 	switch name {
 	case ArgKubeletRootDir:
 		dir, err := detectKubeletRootDir(kubeClient, managerImage, serviceAccountName, tolerations, priorityClass, registrySecret, nodeSelector)
@@ -81,7 +81,7 @@ func getProcArg(kubeClient *clientset.Clientset, managerImage, serviceAccountNam
 	return "", fmt.Errorf("getting arg %v is not supported", name)
 }
 
-func detectKubeletRootDir(kubeClient *clientset.Clientset, managerImage, serviceAccountName string, tolerations []v1.Toleration, priorityClass, registrySecret string, nodeSelector map[string]string) (string, error) {
+func detectKubeletRootDir(kubeClient *clientset.Clientset, managerImage, serviceAccountName string, tolerations []corev1.Toleration, priorityClass, registrySecret string, nodeSelector map[string]string) (string, error) {
 	// try to detect root-dir in proc kubelet
 	kubeletCmdline, err := getProcCmdline(kubeClient, managerImage, serviceAccountName, KubeletDetectionPodName, GetKubeletCmdlineScript, tolerations, priorityClass, registrySecret, nodeSelector)
 	if err != nil {
@@ -112,7 +112,7 @@ func detectKubeletRootDir(kubeClient *clientset.Clientset, managerImage, service
 	return "", fmt.Errorf("failed to get kubelet root dir, no related proc for root-dir detection, error out")
 }
 
-func getProcCmdline(kubeClient *clientset.Clientset, managerImage, serviceAccountName, name, script string, tolerations []v1.Toleration, priorityClass, registrySecret string, nodeSelector map[string]string) (string, error) {
+func getProcCmdline(kubeClient *clientset.Clientset, managerImage, serviceAccountName, name, script string, tolerations []corev1.Toleration, priorityClass, registrySecret string, nodeSelector map[string]string) (string, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		return "", fmt.Errorf("failed to detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
@@ -139,7 +139,7 @@ func getProcCmdline(kubeClient *clientset.Clientset, managerImage, serviceAccoun
 	for i := 0; i < DetectPodMaxPolls; i++ {
 		if pod, err := kubeClient.CoreV1().Pods(namespace).Get(context.TODO(), name, metav1.GetOptions{}); err != nil {
 			logrus.Warnf("failed to get proc cmdline detection pod %v: %v", name, err)
-		} else if pod.Status.Phase == v1.PodSucceeded {
+		} else if pod.Status.Phase == corev1.PodSucceeded {
 			completed = true
 			break
 		} else {
@@ -158,28 +158,28 @@ func getProcCmdline(kubeClient *clientset.Clientset, managerImage, serviceAccoun
 	return procArg, nil
 }
 
-func deployDetectionPod(kubeClient *clientset.Clientset, namespace, managerImage, serviceAccountName, name, script string, tolerations []v1.Toleration, priorityClass, registrySecret string, nodeSelector map[string]string) error {
+func deployDetectionPod(kubeClient *clientset.Clientset, namespace, managerImage, serviceAccountName, name, script string, tolerations []corev1.Toleration, priorityClass, registrySecret string, nodeSelector map[string]string) error {
 	privileged := true
-	detectionPodSpec := &v1.Pod{
+	detectionPodSpec := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
 		},
-		Spec: v1.PodSpec{
+		Spec: corev1.PodSpec{
 			ServiceAccountName: serviceAccountName,
 			Tolerations:        tolerations,
 			NodeSelector:       nodeSelector,
-			Containers: []v1.Container{
+			Containers: []corev1.Container{
 				{
 					Name:    name,
 					Image:   managerImage,
 					Command: []string{"/bin/bash"},
 					Args:    []string{"-c", script},
-					SecurityContext: &v1.SecurityContext{
+					SecurityContext: &corev1.SecurityContext{
 						Privileged: &privileged,
 					},
 				},
 			},
-			RestartPolicy: v1.RestartPolicyNever,
+			RestartPolicy: corev1.RestartPolicyNever,
 			HostPID:       true,
 		},
 	}
@@ -189,7 +189,7 @@ func deployDetectionPod(kubeClient *clientset.Clientset, namespace, managerImage
 	}
 
 	if registrySecret != "" {
-		detectionPodSpec.Spec.ImagePullSecrets = []v1.LocalObjectReference{
+		detectionPodSpec.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
 			{
 				Name: registrySecret,
 			},
@@ -202,7 +202,7 @@ func deployDetectionPod(kubeClient *clientset.Clientset, namespace, managerImage
 }
 
 func getPodLogAsString(kubeClient *clientset.Clientset, namespace, name string) (string, error) {
-	req := kubeClient.CoreV1().Pods(namespace).GetLogs(name, &v1.PodLogOptions{})
+	req := kubeClient.CoreV1().Pods(namespace).GetLogs(name, &corev1.PodLogOptions{})
 	if req.URL().Path == "" {
 		return "", fmt.Errorf("getPodLogAsString for %v/%v returns empty request path, may due to unit test run: %+v", namespace, name, req)
 	}
