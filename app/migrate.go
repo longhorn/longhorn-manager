@@ -10,15 +10,17 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	kubeclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kubeclientset "k8s.io/client-go/kubernetes"
+
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
+
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
-	"github.com/longhorn/longhorn-manager/types"
 )
 
 const (
@@ -148,8 +150,8 @@ func migratePVAndPVCForPre070Volume(kubeClient *kubeclientset.Clientset, lhClien
 		}
 	}()
 
-	if oldPV.Spec.PersistentVolumeReclaimPolicy != v1.PersistentVolumeReclaimRetain {
-		oldPV.Spec.PersistentVolumeReclaimPolicy = v1.PersistentVolumeReclaimRetain
+	if oldPV.Spec.PersistentVolumeReclaimPolicy != corev1.PersistentVolumeReclaimRetain {
+		oldPV.Spec.PersistentVolumeReclaimPolicy = corev1.PersistentVolumeReclaimRetain
 		if oldPV, err = kubeClient.CoreV1().PersistentVolumes().Update(context.TODO(), oldPV, metav1.UpdateOptions{}); err != nil {
 			return err
 		}

@@ -10,12 +10,12 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
-	v1 "k8s.io/api/core/v1"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/version"
-	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clientset "k8s.io/client-go/kubernetes"
 
 	"github.com/longhorn/longhorn-manager/csi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -252,14 +252,14 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	var imagePullPolicy v1.PullPolicy
+	var imagePullPolicy corev1.PullPolicy
 	switch imagePullPolicySetting.Value {
 	case string(types.SystemManagedPodsImagePullPolicyNever):
-		imagePullPolicy = v1.PullNever
+		imagePullPolicy = corev1.PullNever
 	case string(types.SystemManagedPodsImagePullPolicyIfNotPresent):
-		imagePullPolicy = v1.PullIfNotPresent
+		imagePullPolicy = corev1.PullIfNotPresent
 	case string(types.SystemManagedPodsImagePullPolicyAlways):
-		imagePullPolicy = v1.PullAlways
+		imagePullPolicy = corev1.PullAlways
 	default:
 		return fmt.Errorf("invalid image pull policy %v", imagePullPolicySetting.Value)
 	}
