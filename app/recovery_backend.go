@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/sirupsen/logrus"
+
+	"k8s.io/client-go/tools/clientcmd"
+
 	"github.com/longhorn/longhorn-manager/recovery_backend/server"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/util/client"
-	"github.com/sirupsen/logrus"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
 func startRecoveryBackend(ctx context.Context, serviceAccount, kubeconfigPath string) error {
