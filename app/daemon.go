@@ -19,10 +19,11 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/meta"
-	metricsCollector "github.com/longhorn/longhorn-manager/metrics_collector"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/upgrade"
 	"github.com/longhorn/longhorn-manager/util"
+
+	metricscollector "github.com/longhorn/longhorn-manager/metrics_collector"
 )
 
 const (
@@ -149,7 +150,7 @@ func startManager(c *cli.Context) error {
 
 	m := manager.NewVolumeManager(currentNodeID, ds, proxyConnCounter)
 
-	metricsCollector.InitMetricsCollectorSystem(logger, currentNodeID, ds, kubeconfigPath, proxyConnCounter)
+	metricscollector.InitMetricsCollectorSystem(logger, currentNodeID, ds, kubeconfigPath, proxyConnCounter)
 
 	defaultImageSettings := map[types.SettingName]string{
 		types.SettingNameDefaultEngineImage:              engineImage,
