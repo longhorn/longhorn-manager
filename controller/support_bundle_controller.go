@@ -119,7 +119,7 @@ func NewSupportBundleController(
 		UpdateFunc: func(old, cur interface{}) { c.enqueue(cur) },
 		DeleteFunc: c.enqueue,
 	}, 0)
-	c.cacheSyncs = append(c.cacheSyncs, ds.OrphanInformer.HasSynced)
+	c.cacheSyncs = append(c.cacheSyncs, ds.SupportBundleInformer.HasSynced)
 
 	return c
 }
