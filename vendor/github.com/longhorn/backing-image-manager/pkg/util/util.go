@@ -106,7 +106,7 @@ func DetectGRPCServerAvailability(address string, waitIntervalInSecond int, shou
 		}
 		if shouldAvailable && err == nil {
 			state := conn.GetState()
-			if state == connectivity.Ready || state == connectivity.Idle {
+			if state == connectivity.Ready || state == connectivity.Idle || state == connectivity.Connecting {
 				return true
 			}
 		}

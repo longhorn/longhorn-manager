@@ -31,29 +31,29 @@ type BackupBackingImage struct {
 	Blocks []common.BlockMapping `json:",omitempty"`
 }
 
-type BackupBackingImageConfig struct {
+type BackupConfig struct {
 	Name            string
 	DestURL         string
 	ConcurrentLimit int32
 }
 
-type RestoreBackingImageConfig struct {
+type RestoreConfig struct {
 	BackupURL       string
 	Filename        string
 	ConcurrentLimit int32
 }
 
-type BackupBackingImageStatus interface {
+type BackupStatus interface {
 	ReadFile(start int64, data []byte) error
 	CloseFile() error
 	Update(state string, progress int, backupURL string, err string) error
 }
 
-type RestoreBackingImageStatus interface {
+type RestoreStatus interface {
 	UpdateRestoreProgress(progress int, err error)
 }
 
-func CreateBackingImageBackup(config *BackupBackingImageConfig, backupBackingImage *BackupBackingImage, backupStatus BackupBackingImageStatus, mappings *common.Mappings) (err error) {
+func CreateBackingImageBackup(config *BackupConfig, backupBackingImage *BackupBackingImage, backupStatus BackupStatus, mappings *common.Mappings) (err error) {
 	log := backupstore.GetLog()
 	if config == nil || backupStatus == nil {
 		return fmt.Errorf("invalid empty config or backupStatus for backup")
@@ -117,8 +117,8 @@ func CreateBackingImageBackup(config *BackupBackingImageConfig, backupBackingIma
 	return nil
 }
 
-func performBackup(bsDriver backupstore.BackupStoreDriver, config *BackupBackingImageConfig,
-	backupBackingImage *BackupBackingImage, backupStatus BackupBackingImageStatus, mappings *common.Mappings) (int, string, error) {
+func performBackup(bsDriver backupstore.BackupStoreDriver, config *BackupConfig,
+	backupBackingImage *BackupBackingImage, backupStatus BackupStatus, mappings *common.Mappings) (int, string, error) {
 	log := backupstore.GetLog()
 	destURL := config.DestURL
 	concurrentLimit := config.ConcurrentLimit
@@ -155,11 +155,11 @@ func performBackup(bsDriver backupstore.BackupStoreDriver, config *BackupBacking
 		return progress.Progress, "", err
 	}
 
-	return common.PROGRESS_PERCENTAGE_BACKUP_TOTAL, EncodeBackupBackingImageURL(config.Name, destURL), nil
+	return common.ProgressPercentageBackupTotal, EncodeBackupBackingImageURL(config.Name, destURL), nil
 }
 
 func backupMappings(ctx context.Context, bsDriver backupstore.BackupStoreDriver,
-	config *BackupBackingImageConfig, backupBackingImage *BackupBackingImage, backupStatus BackupBackingImageStatus,
+	config *BackupConfig, backupBackingImage *BackupBackingImage, backupStatus BackupStatus,
 	blockSize int64, progress *common.Progress, in <-chan common.Mapping) <-chan error {
 
 	errChan := make(chan error, 1)
@@ -186,7 +186,7 @@ func backupMappings(ctx context.Context, bsDriver backupstore.BackupStoreDriver,
 }
 
 func backupMapping(bsDriver backupstore.BackupStoreDriver,
-	config *BackupBackingImageConfig, backupBackingImage *BackupBackingImage, backupStatus BackupBackingImageStatus,
+	config *BackupConfig, backupBackingImage *BackupBackingImage, backupStatus BackupStatus,
 	blockSize int64, mapping common.Mapping, progress *common.Progress) error {
 
 	log := backupstore.GetLog()
@@ -206,7 +206,7 @@ func backupMapping(bsDriver backupstore.BackupStoreDriver,
 }
 
 func backupBlock(bsDriver backupstore.BackupStoreDriver,
-	config *BackupBackingImageConfig, backupBackingImage *BackupBackingImage, backupStatus BackupBackingImageStatus,
+	config *BackupConfig, backupBackingImage *BackupBackingImage, backupStatus BackupStatus,
 	offset int64, block []byte, progress *common.Progress) error {
 
 	var err error
@@ -288,7 +288,7 @@ func updateBlocksAndProgress(backupBackingImage *BackupBackingImage, progress *c
 	delete(processingBlocks.Blocks, checksum)
 }
 
-func RestoreBackingImageBackup(config *RestoreBackingImageConfig, restoreStatus RestoreBackingImageStatus) error {
+func RestoreBackingImageBackup(config *RestoreConfig, restoreStatus RestoreStatus) error {
 	if config == nil || restoreStatus == nil {
 		return fmt.Errorf("invalid empty config or restoreStatus for restore")
 	}
@@ -390,7 +390,7 @@ func RestoreBackingImageBackup(config *RestoreBackingImageConfig, restoreStatus 
 	return nil
 }
 
-func restoreBlocks(ctx context.Context, bsDriver backupstore.BackupStoreDriver, backingImageFilePath string, in <-chan *common.Block, progress *common.Progress, restoreStatus RestoreBackingImageStatus) <-chan error {
+func restoreBlocks(ctx context.Context, bsDriver backupstore.BackupStoreDriver, backingImageFilePath string, in <-chan *common.Block, progress *common.Progress, restoreStatus RestoreStatus) <-chan error {
 	errChan := make(chan error, 1)
 
 	go func() {
@@ -423,7 +423,7 @@ func restoreBlocks(ctx context.Context, bsDriver backupstore.BackupStoreDriver, 
 	return errChan
 }
 
-func restoreBlock(bsDriver backupstore.BackupStoreDriver, backingImageFile *os.File, block *common.Block, progress *common.Progress, restoreStatus RestoreBackingImageStatus) error {
+func restoreBlock(bsDriver backupstore.BackupStoreDriver, backingImageFile *os.File, block *common.Block, progress *common.Progress, restoreStatus RestoreStatus) error {
 
 	defer func() {
 		progress.Lock()

@@ -3,9 +3,9 @@ module github.com/longhorn/longhorn-manager
 go 1.20
 
 replace (
-	github.com/longhorn/backing-image-manager v1.4.0-rc1.0.20230521151917-38ff27cc2cbb => github.com/ChanYiLin/backing-image-manager v1.4.0-rc1.0.20230828093519-f1142c92c155
-	github.com/longhorn/backupstore v0.0.0-20230627040634-5b4f2d040e9d => github.com/ChanYiLin/backupstore v0.0.0-20230828090341-d5ff4e60daae
-	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230804172754-4d54af9e4ccf => github.com/ChanYiLin/longhorn-engine v1.4.0-rc1.0.20230828094132-50e2b20afb01
+	github.com/longhorn/backing-image-manager v1.4.0-rc1.0.20230521151917-38ff27cc2cbb => github.com/ChanYiLin/backing-image-manager v1.4.0-rc1.0.20230914041937-203314ad6518
+	github.com/longhorn/backupstore v0.0.0-20230627040634-5b4f2d040e9d => github.com/ChanYiLin/backupstore v0.0.0-20230913072807-57da262c78f8
+	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230804172754-4d54af9e4ccf => github.com/ChanYiLin/longhorn-engine v1.4.0-rc1.0.20230914044348-44e9cd708356
 	k8s.io/api => k8s.io/api v0.27.1
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.27.1
 	k8s.io/apimachinery => k8s.io/apimachinery v0.27.1

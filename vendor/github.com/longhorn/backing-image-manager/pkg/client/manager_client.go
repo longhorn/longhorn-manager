@@ -272,7 +272,7 @@ func (cli *BackingImageManagerClient) BackupCreate(name, uuid, checksum, backupT
 	return err
 }
 
-func (cli *BackingImageManagerClient) BackupStatus(name string) (*api.BackupBackingImageStatus, error) {
+func (cli *BackingImageManagerClient) BackupStatus(name string) (*api.BackupStatus, error) {
 	if name == "" {
 		return nil, fmt.Errorf("failed to get backup backing image status: missing required parameter")
 	}
@@ -293,5 +293,5 @@ func (cli *BackingImageManagerClient) BackupStatus(name string) (*api.BackupBack
 	if err != nil {
 		return nil, err
 	}
-	return api.RPCToBackupBackingImageStatus(resp), nil
+	return api.RPCToBackupStatus(resp), nil
 }

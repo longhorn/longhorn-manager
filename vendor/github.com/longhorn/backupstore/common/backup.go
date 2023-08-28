@@ -16,8 +16,8 @@ const (
 )
 
 const (
-	PROGRESS_PERCENTAGE_BACKUP       = 95
-	PROGRESS_PERCENTAGE_BACKUP_TOTAL = 100
+	ProgressPercentageBackup      = 95
+	ProgressPercentageBackupTotal = 100
 )
 
 type Mapping struct {
@@ -110,7 +110,7 @@ func PopulateBlocksForFullRestore(blocks []BlockMapping, compressionMethod strin
 	return blockChan, errChan
 }
 
-// mergeErrorChannels will merge all error channels into a single error out channel.
+// MergeErrorChannels will merge all error channels into a single error out channel.
 // the error out channel will be closed once the ctx is done or all error channels are closed
 // if there is an error on one of the incoming channels the error will be relayed.
 func MergeErrorChannels(ctx context.Context, channels ...<-chan error) <-chan error {
@@ -143,7 +143,7 @@ func MergeErrorChannels(ctx context.Context, channels ...<-chan error) <-chan er
 }
 
 func GetProgress(total, processed int64) int {
-	return int((float64(processed+1) / float64(total)) * PROGRESS_PERCENTAGE_BACKUP)
+	return int((float64(processed+1) / float64(total)) * ProgressPercentageBackup)
 }
 
 func SortBackupBlocks(blocks []BlockMapping, size, blockSize int64) []BlockMapping {
@@ -177,7 +177,7 @@ func CheckBlockReferenceCount(blockInfos map[string]*BlockInfo, blocks []BlockMa
 			info = &BlockInfo{Checksum: block.BlockChecksum}
 			blockInfos[block.BlockChecksum] = info
 		}
-		info.Refcount += 1
+		info.Refcount++
 	}
 }
 

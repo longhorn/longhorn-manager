@@ -22,10 +22,10 @@ import (
 )
 
 // parseBackupBackingImageConfig parses a backup backing image config
-func parseBackupBackingImageConfig(output string) (*backupbackingimage.BackupBackingImageInfo, error) {
-	backupBackingImageInfo := &backupbackingimage.BackupBackingImageInfo{}
+func parseBackupBackingImageConfig(output string) (*backupbackingimage.BackupInfo, error) {
+	backupBackingImageInfo := &backupbackingimage.BackupInfo{}
 	if err := json.Unmarshal([]byte(output), backupBackingImageInfo); err != nil {
-		return nil, errors.Wrapf(err, "error parsing config of backup backing image: \n%s", output)
+		return nil, errors.Wrapf(err, "failed to parse config of backup backing image: \n%s", output)
 	}
 	return backupBackingImageInfo, nil
 }
@@ -34,7 +34,7 @@ func parseBackupBackingImageConfig(output string) (*backupbackingimage.BackupBac
 func parseBackupBackingImageNamesList(output string) ([]string, error) {
 	backingImageNames := []string{}
 	if err := json.Unmarshal([]byte(output), &backingImageNames); err != nil {
-		return nil, errors.Wrapf(err, "error parsing backup backing image names: \n%s", output)
+		return nil, errors.Wrapf(err, "failed to parse backup backing image names: \n%s", output)
 	}
 
 	sort.Strings(backingImageNames)
@@ -42,13 +42,13 @@ func parseBackupBackingImageNamesList(output string) ([]string, error) {
 }
 
 // BackupBackingImageGet inspects a backup config with the given backup config URL
-func (btc *BackupTargetClient) BackupBackingImageGet(backupBackingImageURL string) (*backupbackingimage.BackupBackingImageInfo, error) {
+func (btc *BackupTargetClient) BackupBackingImageGet(backupBackingImageURL string) (*backupbackingimage.BackupInfo, error) {
 	output, err := btc.ExecuteEngineBinary("backup", "inspect-backing-image", backupBackingImageURL)
 	if err != nil {
 		if types.ErrorIsNotFound(err) {
 			return nil, nil
 		}
-		return nil, errors.Wrapf(err, "error getting backup backing image config %s", backupBackingImageURL)
+		return nil, errors.Wrapf(err, "failed to get backup backing image config %s", backupBackingImageURL)
 	}
 	return parseBackupBackingImageConfig(output)
 }
@@ -60,7 +60,7 @@ func (btc *BackupTargetClient) BackupBackingImageNameList() ([]string, error) {
 		if types.ErrorIsNotFound(err) {
 			return nil, nil
 		}
-		return nil, errors.Wrapf(err, "error listing backup backing image names")
+		return nil, errors.Wrapf(err, "failed to list backup backing image names")
 	}
 	return parseBackupBackingImageNamesList(output)
 }
@@ -72,7 +72,7 @@ func (btc *BackupTargetClient) BackupBackingImageDelete(backupURL string) error 
 		if types.ErrorIsNotFound(err) {
 			return nil
 		}
-		return errors.Wrapf(err, "error deleting backup backing image")
+		return errors.Wrapf(err, "failed to delete backup backing image")
 	}
 	return nil
 }
@@ -117,11 +117,11 @@ func NewBackupBackingImageMonitor(logger logrus.FieldLogger, ds *datastore.DataS
 			backupTargetClient.URL, bbi.Spec.Labels, backupTargetClient.Credential, string(compressionMethod), concurrentLimit)
 		if err != nil {
 			if !strings.Contains(err.Error(), "DeadlineExceeded") {
-				m.logger.WithError(err).Warn("Cannot take backing image backup")
+				m.logger.WithError(err).Warn("failed to take backing image backup")
 				return nil, err
 			}
 
-			m.logger.WithError(err).Warnf("Snapshot backup timeout")
+			m.logger.WithError(err).Warnf("backup backing image request timeout")
 			bbi.Status.State = longhorn.BackupStatePending
 		}
 
@@ -234,7 +234,7 @@ func (m *BackupBackingImageMonitor) syncBackupStatusFromBackingImageManager() (c
 		return currentBackupStatus, err
 	}
 	if backupBackingImageStatus == nil {
-		err = fmt.Errorf("cannot find backup backing image %s status in backing image mananger", m.backupBackingImageName)
+		err = fmt.Errorf("failed to find backup backing image %s status in backing image manager", m.backupBackingImageName)
 		return currentBackupStatus, err
 	}
 

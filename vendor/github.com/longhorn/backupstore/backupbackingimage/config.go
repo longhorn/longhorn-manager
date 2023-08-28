@@ -12,21 +12,14 @@ import (
 )
 
 const (
-	BACKING_IMAGE_SEPARATE_LAYER1 = 2
-	BACKING_IMAGE_SEPARATE_LAYER2 = 4
+	BackingImageBlockSeparateLayer1 = 2
+	BackingImageBlockSeparateLayer2 = 4
 
-	BACKING_IMAGE_BLOCK_SEPARATE_LAYER1 = 2
-	BACKING_IMAGE_BLOCK_SEPARATE_LAYER2 = 4
+	BackingImageDirectory  = "backing-images"
+	BackingImageConfigFile = "backing-image.cfg"
 
-	BACKING_IMAGE_DIRECTORY   = "backing-images"
-	BACKING_IMAGE_CONFIG_FILE = "backing-image.cfg"
-
-	BLOCKS_DIRECTORY      = "blocks"
-	BLOCK_SEPARATE_LAYER1 = 2
-	BLOCK_SEPARATE_LAYER2 = 4
-	BLK_SUFFIX            = ".blk"
-
-	CFG_SUFFIX = ".cfg"
+	BlocksDirectory = "blocks"
+	BlkSuffix       = ".blk"
 )
 
 func addBackingImage(driver backupstore.BackupStoreDriver, backupBackingImage *BackupBackingImage) error {
@@ -63,12 +56,12 @@ func backingImageExists(driver backupstore.BackupStoreDriver, backingImageName s
 
 func getBackingImageFilePath(backingImageName string) string {
 	backingImagePath := getBackingImagePath(backingImageName)
-	backingImageCfg := BACKING_IMAGE_CONFIG_FILE
+	backingImageCfg := BackingImageConfigFile
 	return filepath.Join(backingImagePath, backingImageCfg)
 }
 
 func getBackingImagePath(backingImageName string) string {
-	return filepath.Join(backupstore.GetBackupstoreBase(), BACKING_IMAGE_DIRECTORY, BACKING_IMAGE_DIRECTORY, backingImageName) + "/"
+	return filepath.Join(backupstore.GetBackupstoreBase(), BackingImageDirectory, BackingImageDirectory, backingImageName) + "/"
 }
 
 func saveBackingImage(driver backupstore.BackupStoreDriver, backupBackingImage *BackupBackingImage) error {
@@ -95,16 +88,16 @@ func getTotalBackupBlockCounts(mappings *common.Mappings) (int64, error) {
 }
 
 func getBackingImageBlockFilePath(checksum string) string {
-	blockSubDirLayer1 := checksum[0:BACKING_IMAGE_BLOCK_SEPARATE_LAYER1]
-	blockSubDirLayer2 := checksum[BACKING_IMAGE_BLOCK_SEPARATE_LAYER1:BACKING_IMAGE_BLOCK_SEPARATE_LAYER2]
+	blockSubDirLayer1 := checksum[0:BackingImageBlockSeparateLayer1]
+	blockSubDirLayer2 := checksum[BackingImageBlockSeparateLayer1:BackingImageBlockSeparateLayer2]
 	path := filepath.Join(getBackingImageBlockPath(), blockSubDirLayer1, blockSubDirLayer2)
-	fileName := checksum + BLK_SUFFIX
+	fileName := checksum + BlkSuffix
 
 	return filepath.Join(path, fileName)
 }
 
 func getBackingImageBlockPath() string {
-	return filepath.Join(backupstore.GetBackupstoreBase(), BACKING_IMAGE_DIRECTORY, BLOCKS_DIRECTORY) + "/"
+	return filepath.Join(backupstore.GetBackupstoreBase(), BackingImageDirectory, BlocksDirectory) + "/"
 }
 
 func EncodeBackupBackingImageURL(backingImageName, destURL string) string {
@@ -130,7 +123,7 @@ func DecodeBackupBackingImageURL(backupURL string) (string, string, error) {
 
 func GetAllBackupBackingImageNames(driver backupstore.BackupStoreDriver) ([]string, error) {
 	result := []string{}
-	backingImageConfigBase := filepath.Join(backupstore.GetBackupstoreBase(), BACKING_IMAGE_DIRECTORY, BACKING_IMAGE_DIRECTORY) + "/"
+	backingImageConfigBase := filepath.Join(backupstore.GetBackupstoreBase(), BackingImageDirectory, BackingImageDirectory) + "/"
 	nameList, err := driver.List(backingImageConfigBase)
 	if err != nil {
 		return result, nil
@@ -162,14 +155,14 @@ func getAllBlockNames(driver backupstore.BackupStoreDriver) ([]string, error) {
 		}
 	}
 
-	return util.ExtractNames(names, "", BLK_SUFFIX), nil
+	return util.ExtractNames(names, "", BlkSuffix), nil
 }
 
 func isBackupInProgress(backupBackingImage *BackupBackingImage) bool {
 	return backupBackingImage != nil && backupBackingImage.CompleteTime == ""
 }
 
-type BackupBackingImageInfo struct {
+type BackupInfo struct {
 	Name              string
 	URL               string
 	CompleteAt        string
@@ -179,7 +172,7 @@ type BackupBackingImageInfo struct {
 	CompressionMethod string `json:",omitempty"`
 }
 
-func InspectBackupBackingImage(backupURL string) (*BackupBackingImageInfo, error) {
+func InspectBackupBackingImage(backupURL string) (*BackupInfo, error) {
 	backupBackingImageName, destURL, err := DecodeBackupBackingImageURL(backupURL)
 	if err != nil {
 		return nil, err
@@ -201,8 +194,8 @@ func InspectBackupBackingImage(backupURL string) (*BackupBackingImageInfo, error
 	return fillFullBackupBackingImageInfo(backupBackingImage, bsDriver.GetURL()), nil
 }
 
-func fillFullBackupBackingImageInfo(backupBackingImage *BackupBackingImage, destURL string) *BackupBackingImageInfo {
-	return &BackupBackingImageInfo{
+func fillFullBackupBackingImageInfo(backupBackingImage *BackupBackingImage, destURL string) *BackupInfo {
+	return &BackupInfo{
 		Name:              backupBackingImage.Name,
 		URL:               EncodeBackupBackingImageURL(backupBackingImage.Name, destURL),
 		CompleteAt:        backupBackingImage.CompleteTime,
