@@ -1093,14 +1093,11 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	tc.nodes = nodes
 	tc.err = false
 	tc.firstNilReplica = 0                   // We cannot schedule to an evicting node in a used zone.
-	tc.replicaNodeSoftAntiAffinity = "false" // Allow replicas to schedule to the same node.
+	tc.replicaNodeSoftAntiAffinity = "false" // Do not allow replicas to schedule to the same node.
 	tc.replicaZoneSoftAntiAffinity = "false" // Do not allow replicas to schedule to the same zone.
 	testCases["fail scheduling when doing so would reuse an invalid evicting node"] = tc
 
 	for name, tc := range testCases {
-		if name != "fail scheduling when doing so would reuse an invalid evicting node" {
-			continue
-		}
 		fmt.Printf("testing %v\n", name)
 
 		kubeClient := fake.NewSimpleClientset()
@@ -1325,5 +1322,148 @@ func (s *TestSuite) TestFilterDisksWithMatchingReplicas(c *C) {
 			_, ok := outputDiskUUIDs[UUID]
 			c.Assert(ok, Equals, true)
 		}
+	}
+}
+
+// TestGetCurrentNodesAndZones can easily be extended with additional test cases. However, it was originally written to
+// verify the behavior of getCurrentNodesAndZones when replicas with different values of
+// replica.Status.EvictionRequested were considered in different orders.
+func (s *TestSuite) TestGetCurrentNodesAndZones(c *C) {
+	const (
+		TestReplica1 = "test-replica-1"
+		TestReplica2 = "test-replica-2"
+	)
+
+	generateNodeInZone := func(nodeName, zoneName string) *longhorn.Node {
+		return &longhorn.Node{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: nodeName,
+			},
+			Status: longhorn.NodeStatus{
+				Zone: zoneName,
+			},
+		}
+	}
+
+	generateNodeMap := func(nodes ...*longhorn.Node) map[string]*longhorn.Node {
+		nodeMap := map[string]*longhorn.Node{}
+		for _, node := range nodes {
+			nodeMap[node.Name] = node
+		}
+		return nodeMap
+	}
+
+	generateReplica := func(replicaName, nodeName string, evictionRequested bool) *longhorn.Replica {
+		return &longhorn.Replica{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: replicaName,
+			},
+			Spec: longhorn.ReplicaSpec{
+				InstanceSpec: longhorn.InstanceSpec{
+					NodeID: nodeName,
+				},
+			},
+			Status: longhorn.ReplicaStatus{
+				EvictionRequested: evictionRequested,
+			},
+		}
+	}
+
+	generateReplicaMap := func(replicas ...*longhorn.Replica) map[string]*longhorn.Replica {
+		replicaMap := map[string]*longhorn.Replica{}
+		for _, replica := range replicas {
+			replicaMap[replica.Name] = replica
+		}
+		return replicaMap
+	}
+
+	verifyNodeNames := func(usedNodeNames []string, usedNodes map[string]*longhorn.Node) {
+		c.Assert(len(usedNodes), Equals, len(usedNodeNames))
+		for _, usedNodeName := range usedNodeNames {
+			_, ok := usedNodes[usedNodeName]
+			c.Assert(ok, Equals, true)
+		}
+	}
+
+	verifyZoneNames := func(usedZoneNames []string, usedZones map[string]bool) {
+		c.Assert(len(usedZones), Equals, len(usedZoneNames))
+		for _, usedZoneName := range usedZoneNames {
+			used, ok := usedZones[usedZoneName]
+			c.Assert(ok, Equals, true)
+			c.Assert(used, Equals, true)
+		}
+	}
+
+	verifyOnlyEvictingNodeNames := func(onlyEvictingNodeNames []string, onlyEvictingNodes map[string]bool) {
+		for k, v := range onlyEvictingNodes {
+			if v == false {
+				delete(onlyEvictingNodes, k) // These are false. We want to compare those that are true.
+			}
+		}
+		c.Assert(len(onlyEvictingNodes), Equals, len(onlyEvictingNodeNames))
+		for _, onlyEvictingNodeName := range onlyEvictingNodeNames {
+			used, ok := onlyEvictingNodes[onlyEvictingNodeName]
+			c.Assert(ok, Equals, true)
+			c.Assert(used, Equals, true)
+			delete(onlyEvictingNodes, onlyEvictingNodeName)
+		}
+	}
+
+	verifyOnlyEvictingZoneNames := func(onlyEvictingZoneNames []string, onlyEvictingZones map[string]bool) {
+		for k, v := range onlyEvictingZones {
+			if v == false {
+				delete(onlyEvictingZones, k) // These are false. We want to compare those that are true.
+			}
+		}
+		c.Assert(len(onlyEvictingZones), Equals, len(onlyEvictingZoneNames))
+		for _, onlyEvictingZoneName := range onlyEvictingZoneNames {
+			used, ok := onlyEvictingZones[onlyEvictingZoneName]
+			c.Assert(ok, Equals, true)
+			c.Assert(used, Equals, true)
+			delete(onlyEvictingZones, onlyEvictingZoneName)
+		}
+	}
+
+	testCases := map[string]struct {
+		replicas                    map[string]*longhorn.Replica
+		nodeInfo                    map[string]*longhorn.Node
+		expectUsedNodeNames         []string
+		expectUsedZoneNames         []string
+		expectOnlyEvictingNodeNames []string
+		expectOnlyEvictingZoneNames []string
+	}{
+		"one evicting, then one not evicting": {
+			// A previous attempt at refactoring the scheduler gave different results depending on the loop order of
+			// replicas. We can't guarantee the loop order in this test case, but generally, it sees the evicting
+			// replica first.
+			nodeInfo: generateNodeMap(generateNodeInZone(TestNode1, TestZone1)),
+			replicas: generateReplicaMap(generateReplica(TestReplica1, TestNode1, true),
+				generateReplica(TestReplica2, TestNode1, false)),
+			expectUsedNodeNames:         []string{TestNode1},
+			expectUsedZoneNames:         []string{TestZone1},
+			expectOnlyEvictingNodeNames: []string{},
+			expectOnlyEvictingZoneNames: []string{},
+		},
+		"one not evicting, then one evicting": {
+			// A previous attempt at refactoring the scheduler gave different results depending on the loop order of
+			// replicas. We can't guarantee the loop order in this test case, but generally, it sees the not evicting
+			// replica first.
+			nodeInfo: generateNodeMap(generateNodeInZone(TestNode1, TestZone1)),
+			replicas: generateReplicaMap(generateReplica(TestReplica1, TestNode1, false),
+				generateReplica(TestReplica2, TestNode1, true)),
+			expectUsedNodeNames:         []string{TestNode1},
+			expectUsedZoneNames:         []string{TestZone1},
+			expectOnlyEvictingNodeNames: []string{},
+			expectOnlyEvictingZoneNames: []string{},
+		},
+	}
+
+	for name, tc := range testCases {
+		fmt.Printf("testing %v\n", name)
+		usedNodes, usedZones, onlyEvictingNodes, onlyEvictingZones := getCurrentNodesAndZones(tc.replicas, tc.nodeInfo)
+		verifyNodeNames(tc.expectUsedNodeNames, usedNodes)
+		verifyZoneNames(tc.expectUsedZoneNames, usedZones)
+		verifyOnlyEvictingNodeNames(tc.expectOnlyEvictingNodeNames, onlyEvictingNodes)
+		verifyOnlyEvictingZoneNames(tc.expectOnlyEvictingZoneNames, onlyEvictingZones)
 	}
 }
