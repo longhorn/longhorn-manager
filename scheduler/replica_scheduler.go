@@ -194,28 +194,7 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		return diskCandidates, multiError
 	}
 
-	usedNodes := map[string]*longhorn.Node{}
-	usedZones := map[string]bool{}
-	onlyEvictingNodes := map[string]bool{}
-	onlyEvictingZones := map[string]bool{}
-	// Get current nodes and zones
-	for _, r := range replicas {
-		if r.Spec.NodeID != "" && r.DeletionTimestamp == nil && r.Spec.FailedAt == "" {
-			if node, ok := nodeInfo[r.Spec.NodeID]; ok {
-				usedNodes[r.Spec.NodeID] = node
-				// For empty zone label, we treat them as
-				// one zone.
-				usedZones[node.Status.Zone] = true
-				if r.Status.EvictionRequested {
-					onlyEvictingNodes[node.Name] = true
-					onlyEvictingZones[node.Status.Zone] = true
-				} else {
-					onlyEvictingNodes[node.Name] = false
-					onlyEvictingZones[node.Status.Zone] = false
-				}
-			}
-		}
-	}
+	usedNodes, usedZones, onlyEvictingNodes, onlyEvictingZones := getCurrentNodesAndZones(replicas, nodeInfo)
 
 	allowEmptyNodeSelectorVolume, err := rcs.ds.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
 	if err != nil {
@@ -806,4 +785,41 @@ func findDiskSpecAndDiskStatusInNode(diskUUID string, node *longhorn.Node) (long
 		}
 	}
 	return longhorn.DiskSpec{}, longhorn.DiskStatus{}, false
+}
+
+func getCurrentNodesAndZones(replicas map[string]*longhorn.Replica, nodeInfo map[string]*longhorn.Node) (map[string]*longhorn.Node,
+	map[string]bool, map[string]bool, map[string]bool) {
+	usedNodes := map[string]*longhorn.Node{}
+	usedZones := map[string]bool{}
+	onlyEvictingNodes := map[string]bool{}
+	onlyEvictingZones := map[string]bool{}
+
+	for _, r := range replicas {
+		if r.Spec.NodeID != "" && r.DeletionTimestamp == nil && r.Spec.FailedAt == "" {
+			if node, ok := nodeInfo[r.Spec.NodeID]; ok {
+				if r.Status.EvictionRequested {
+					if _, ok := usedNodes[r.Spec.NodeID]; !ok {
+						// This is an evicting replica on a thus far unused node. We won't change this again unless we
+						// find a non-evicting replica on this node.
+						onlyEvictingNodes[node.Name] = true
+					}
+					if used := usedZones[node.Status.Zone]; !used {
+						// This is an evicting replica in a thus far unused zone. We won't change this again unless we
+						// find a non-evicting replica in this zone.
+						onlyEvictingZones[node.Status.Zone] = true
+					}
+				} else {
+					// There is now at least one replica on this node and in this zone that is not evicting.
+					onlyEvictingNodes[node.Name] = false
+					onlyEvictingZones[node.Status.Zone] = false
+				}
+
+				usedNodes[node.Name] = node
+				// For empty zone label, we treat them as one zone.
+				usedZones[node.Status.Zone] = true
+			}
+		}
+	}
+
+	return usedNodes, usedZones, onlyEvictingNodes, onlyEvictingZones
 }
