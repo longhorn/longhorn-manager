@@ -204,8 +204,12 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 	}
 
 	unusedNodes := map[string]*longhorn.Node{}
-	unusedNodesAfterEviction := map[string]*longhorn.Node{}
 	unusedNodesInUnusedZones := map[string]*longhorn.Node{}
+
+	// Per https://github.com/longhorn/longhorn/issues/3076, if a replica is being evicted from one disk on a node, the
+	// scheduler must be given the opportunity to schedule it to a different disk on the same node (if it meets other
+	// requirements). Track nodes that are evicting all their replicas in case we can reuse one.
+	unusedNodesAfterEviction := map[string]*longhorn.Node{}
 	unusedNodesInUnusedZonesAfterEviction := map[string]*longhorn.Node{}
 
 	for nodeName, node := range nodeInfo {
