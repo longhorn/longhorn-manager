@@ -25,6 +25,7 @@ const (
 	instanceManagerType  = "instance_manager_type"
 	managerLabel         = "manager"
 	backupLabel          = "backup"
+	pvcLabel             = "pvc"
 )
 
 type metricInfo struct {

@@ -6,6 +6,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/longhorn/backupstore"
+
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"

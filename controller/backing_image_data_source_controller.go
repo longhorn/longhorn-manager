@@ -12,19 +12,20 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	v1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	clientset "k8s.io/client-go/kubernetes"
-	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/controller"
+
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clientset "k8s.io/client-go/kubernetes"
+	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	bimtypes "github.com/longhorn/backing-image-manager/pkg/types"
 
@@ -97,7 +98,7 @@ func NewBackingImageDataSourceController(
 		bimImageName:   imageManagerImage,
 
 		kubeClient:    kubeClient,
-		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-backing-image-data-source-controller"}),
+		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-backing-image-data-source-controller"}),
 
 		ds: ds,
 
@@ -421,16 +422,16 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 		podNotReadyMessage = "the pod image is not the default one"
 	} else {
 		switch pod.Status.Phase {
-		case v1.PodRunning:
+		case corev1.PodRunning:
 			podReady = true
 			for _, st := range pod.Status.ContainerStatuses {
 				if !st.Ready {
 					podReady = false
-					podNotReadyMessage = fmt.Sprintf("pod phase %v but the containers not ready", v1.PodRunning)
+					podNotReadyMessage = fmt.Sprintf("pod phase %v but the containers not ready", corev1.PodRunning)
 					break
 				}
 			}
-		case v1.PodFailed:
+		case corev1.PodFailed:
 			podFailed = true
 		default:
 			podNotReadyMessage = fmt.Sprintf("pod phase %v", pod.Status.Phase)
@@ -613,7 +614,7 @@ func (c *BackingImageDataSourceController) createBackingImageDataSourcePod(bids 
 	return nil
 }
 
-func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodManifest(bids *longhorn.BackingImageDataSource) (*v1.Pod, error) {
+func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodManifest(bids *longhorn.BackingImageDataSource) (*corev1.Pod, error) {
 	nodeSelector, err := c.ds.GetSettingSystemManagedComponentsNodeSelector()
 	if err != nil {
 		return nil, err
@@ -697,7 +698,7 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 	}
 
 	privileged := true
-	podSpec := &v1.Pod{
+	podSpec := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            types.GetBackingImageDataSourcePodName(bids.Name),
 			Namespace:       c.namespace,
@@ -705,20 +706,20 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 			Labels:          types.GetBackingImageDataSourceLabels(bids.Name, bids.Spec.NodeID, bids.Spec.DiskUUID),
 			Annotations:     map[string]string{types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix): string(tolerationsByte)},
 		},
-		Spec: v1.PodSpec{
+		Spec: corev1.PodSpec{
 			ServiceAccountName: c.serviceAccount,
 			Tolerations:        util.GetDistinctTolerations(tolerations),
 			NodeSelector:       nodeSelector,
 			PriorityClassName:  priorityClass.Value,
-			Containers: []v1.Container{
+			Containers: []corev1.Container{
 				{
 					Name:            BackingImageDataSourcePodContainerName,
 					Image:           c.bimImageName,
 					ImagePullPolicy: imagePullPolicy,
 					Command:         cmd,
-					ReadinessProbe: &v1.Probe{
-						ProbeHandler: v1.ProbeHandler{
-							TCPSocket: &v1.TCPSocketAction{
+					ReadinessProbe: &corev1.Probe{
+						ProbeHandler: corev1.ProbeHandler{
+							TCPSocket: &corev1.TCPSocketAction{
 								Port: intstr.FromInt(engineapi.BackingImageDataSourceDefaultPort),
 							},
 						},
@@ -727,39 +728,39 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 						TimeoutSeconds:      datastore.PodProbeTimeoutSeconds,
 						FailureThreshold:    datastore.PodLivenessProbeFailureThreshold,
 					},
-					VolumeMounts: []v1.VolumeMount{
+					VolumeMounts: []corev1.VolumeMount{
 						{
 							Name:      "disk-path",
 							MountPath: bimtypes.DiskPathInContainer,
 						},
 					},
-					Env: []v1.EnvVar{
+					Env: []corev1.EnvVar{
 						{
 							Name: types.EnvPodIP,
-							ValueFrom: &v1.EnvVarSource{
-								FieldRef: &v1.ObjectFieldSelector{
+							ValueFrom: &corev1.EnvVarSource{
+								FieldRef: &corev1.ObjectFieldSelector{
 									FieldPath: "status.podIP",
 								},
 							},
 						},
 					},
-					SecurityContext: &v1.SecurityContext{
+					SecurityContext: &corev1.SecurityContext{
 						Privileged: &privileged,
 					},
 				},
 			},
-			Volumes: []v1.Volume{
+			Volumes: []corev1.Volume{
 				{
 					Name: "disk-path",
-					VolumeSource: v1.VolumeSource{
-						HostPath: &v1.HostPathVolumeSource{
+					VolumeSource: corev1.VolumeSource{
+						HostPath: &corev1.HostPathVolumeSource{
 							Path: bids.Spec.DiskPath,
 						},
 					},
 				},
 			},
 			NodeName:      bids.Spec.NodeID,
-			RestartPolicy: v1.RestartPolicyNever,
+			RestartPolicy: corev1.RestartPolicyNever,
 		},
 	}
 
@@ -768,7 +769,7 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 		return nil, err
 	}
 	if registrySecretSetting.Value != "" {
-		podSpec.Spec.ImagePullSecrets = []v1.LocalObjectReference{
+		podSpec.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
 			{
 				Name: registrySecretSetting.Value,
 			},
@@ -871,7 +872,7 @@ func (c *BackingImageDataSourceController) enqueueBackingImageDataSource(backing
 }
 
 func isBackingImageDataSourcePod(obj interface{}) bool {
-	pod, ok := obj.(*v1.Pod)
+	pod, ok := obj.(*corev1.Pod)
 	if !ok {
 		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
@@ -879,7 +880,7 @@ func isBackingImageDataSourcePod(obj interface{}) bool {
 		}
 
 		// use the last known state, to enqueue, dependent objects
-		pod, ok = deletedState.Obj.(*v1.Pod)
+		pod, ok = deletedState.Obj.(*corev1.Pod)
 		if !ok {
 			return false
 		}
@@ -987,7 +988,7 @@ func (c *BackingImageDataSourceController) enqueueForLonghornNode(obj interface{
 }
 
 func (c *BackingImageDataSourceController) enqueueForBackingImageDataSourcePod(obj interface{}) {
-	pod, ok := obj.(*v1.Pod)
+	pod, ok := obj.(*corev1.Pod)
 	if !ok {
 		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
@@ -996,7 +997,7 @@ func (c *BackingImageDataSourceController) enqueueForBackingImageDataSourcePod(o
 		}
 
 		// use the last known state, to enqueue, dependent objects
-		pod, ok = deletedState.Obj.(*v1.Pod)
+		pod, ok = deletedState.Obj.(*corev1.Pod)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
 			return
