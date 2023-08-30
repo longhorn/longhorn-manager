@@ -28,7 +28,10 @@ type ObjectEndpointController struct {
 
 	namespace string
 	ds        *datastore.DataStore
-	image     string
+	s3gwImage string
+	uiImage   string
+
+	cacheSyncs []cache.InformerSynced
 }
 
 func NewObjectEndpointController(
@@ -39,12 +42,14 @@ func NewObjectEndpointController(
 	controllerID string,
 	namespace string,
 	objectEndpointImage string,
+	objectEndpointUIImage string,
 ) *ObjectEndpointController {
 	oec := &ObjectEndpointController{
 		baseController: newBaseController("object-endpoint", logger),
 		namespace:      namespace,
 		ds:             ds,
-		image:          objectEndpointImage,
+		s3gwImage:      objectEndpointImage,
+		uiImage:        objectEndpointUIImage,
 	}
 
 	ds.ObjectEndpointInformer.AddEventHandler(
@@ -54,6 +59,7 @@ func NewObjectEndpointController(
 			DeleteFunc: oec.enqueueObjectEndpoint,
 		},
 	)
+	oec.cacheSyncs = append(oec.cacheSyncs, ds.ObjectEndpointInformer.HasSynced)
 
 	return oec
 }
@@ -62,6 +68,10 @@ func (oec *ObjectEndpointController) Run(workers int, stopCh <-chan struct{}) {
 	oec.logger.Info("Starting Longhorn Object Endpoint Controller")
 	defer oec.logger.Info("Shut down Longhorn Object Endpoint Controller")
 	defer oec.queue.ShutDown()
+
+	if !cache.WaitForNamedCacheSync("longhorn object endpoints", stopCh, oec.cacheSyncs...) {
+		return
+	}
 
 	for i := 0; i < workers; i++ {
 		go wait.Until(oec.worker, time.Second, stopCh)
@@ -212,31 +222,37 @@ func (oec *ObjectEndpointController) handleStarting(endpoint *longhorn.ObjectEnd
 func (oec *ObjectEndpointController) handleRunning(endpoint *longhorn.ObjectEndpoint) (err error) {
 	dpl, err := oec.ds.GetDeployment(endpoint.Name)
 	if err != nil || dpl.Status.UnavailableReplicas > 0 {
-		_, err = oec.setObjectEndpointState(endpoint, longhorn.ObjectEndpointStateError)
+		oec.setObjectEndpointState(endpoint, longhorn.ObjectEndpointStateError)
 		return err
 	}
 
 	_, err = oec.ds.GetSecret(oec.namespace, endpoint.Name)
 	if err != nil {
-		_, err = oec.setObjectEndpointState(endpoint, longhorn.ObjectEndpointStateError)
+		oec.setObjectEndpointState(endpoint, longhorn.ObjectEndpointStateError)
 		return err
 	}
 
 	_, err = oec.ds.GetService(oec.namespace, endpoint.Name)
 	if err != nil {
-		_, err = oec.setObjectEndpointState(endpoint, longhorn.ObjectEndpointStateError)
+		oec.setObjectEndpointState(endpoint, longhorn.ObjectEndpointStateError)
 		return err
 	}
 
 	pvc, err := oec.ds.GetPersistentVolumeClaim(oec.namespace, genPVCName(endpoint))
 	if err != nil || pvc.Status.Phase != corev1.ClaimBound {
-		_, err = oec.setObjectEndpointState(endpoint, longhorn.ObjectEndpointStateError)
+		oec.setObjectEndpointState(endpoint, longhorn.ObjectEndpointStateError)
+		return err
+	}
+
+	_, err = oec.ds.GetVolume(endpoint.Name)
+	if err != nil {
+		oec.setObjectEndpointState(endpoint, longhorn.ObjectEndpointStateError)
 		return err
 	}
 
 	_, err = oec.ds.GetPersistentVolume(genPVName(endpoint))
 	if err != nil {
-		_, err = oec.setObjectEndpointState(endpoint, longhorn.ObjectEndpointStateError)
+		oec.setObjectEndpointState(endpoint, longhorn.ObjectEndpointStateError)
 		return err
 	}
 	return nil
@@ -285,6 +301,12 @@ func (oec *ObjectEndpointController) setObjectEndpointState(endpoint *longhorn.O
 	return oec.ds.UpdateObjectEndpointStatus(endpoint)
 }
 
+// createResources, as the name suggests tries to create the various resources
+// that implement the object endpoint in the K8s API. To manage their
+// interaction and ensure cleanup when the object endpoint is deleted, K8s owner
+// ship relations (aka. owner references) are used with the following relations
+// between the K8s objects:
+//
 // | ┌────────────────┐
 // | │ ObjectEndpoint │
 // | └─┬──────────────┘
@@ -318,6 +340,9 @@ func (oec *ObjectEndpointController) setObjectEndpointState(endpoint *longhorn.O
 // |         ┌───────────────────────┐      │shutdown
 // |         │ PersistentVolume      ├──────┘
 // |         └───────────────────────┘
+//
+// From this ownership relationship and the mount dependencies, the order of
+// creation of the resources is determined.
 func (oec *ObjectEndpointController) createResources(endpoint *longhorn.ObjectEndpoint) error {
 	pvc, err := oec.createPVC(endpoint)
 	if err != nil && !datastore.ErrorIsAlreadyExists(err) {
@@ -569,7 +594,7 @@ func (oec *ObjectEndpointController) createDeployment(endpoint *longhorn.ObjectE
 					Containers: []corev1.Container{
 						{
 							Name:  "s3gw",
-							Image: oec.image,
+							Image: oec.s3gwImage,
 							Args: []string{
 								"--rgw-dns-name", fmt.Sprintf("%s.%s", endpoint.Name, oec.namespace),
 								"--rgw-backend-store", "sfs",
@@ -595,6 +620,18 @@ func (oec *ObjectEndpointController) createDeployment(endpoint *longhorn.ObjectE
 								{
 									Name:      genVolumeMountName(endpoint),
 									MountPath: "/data",
+								},
+							},
+						},
+						{
+							Name:  "s3gw-ui",
+							Image: oec.uiImage,
+							Args:  []string{},
+							Ports: []corev1.ContainerPort{
+								{
+									Name:          "ui",
+									ContainerPort: types.ObjectEndpointUIContainerPort,
+									Protocol:      "TCP",
 								},
 							},
 						},
