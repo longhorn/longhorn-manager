@@ -135,28 +135,28 @@ func NewDataStore(
 	cacheSyncs = append(cacheSyncs, nodeInformer.Informer().HasSynced)
 	settingInformer := lhInformerFactory.Longhorn().V1beta2().Settings()
 	cacheSyncs = append(cacheSyncs, settingInformer.Informer().HasSynced)
-	imInformer := lhInformerFactory.Longhorn().V1beta2().InstanceManagers()
-	cacheSyncs = append(cacheSyncs, imInformer.Informer().HasSynced)
-	smInformer := lhInformerFactory.Longhorn().V1beta2().ShareManagers()
-	cacheSyncs = append(cacheSyncs, smInformer.Informer().HasSynced)
-	biInformer := lhInformerFactory.Longhorn().V1beta2().BackingImages()
-	cacheSyncs = append(cacheSyncs, biInformer.Informer().HasSynced)
-	bimInformer := lhInformerFactory.Longhorn().V1beta2().BackingImageManagers()
-	cacheSyncs = append(cacheSyncs, bimInformer.Informer().HasSynced)
-	bidsInformer := lhInformerFactory.Longhorn().V1beta2().BackingImageDataSources()
-	cacheSyncs = append(cacheSyncs, bidsInformer.Informer().HasSynced)
-	btInformer := lhInformerFactory.Longhorn().V1beta2().BackupTargets()
-	cacheSyncs = append(cacheSyncs, btInformer.Informer().HasSynced)
-	bvInformer := lhInformerFactory.Longhorn().V1beta2().BackupVolumes()
-	cacheSyncs = append(cacheSyncs, bvInformer.Informer().HasSynced)
-	bInformer := lhInformerFactory.Longhorn().V1beta2().Backups()
-	cacheSyncs = append(cacheSyncs, bInformer.Informer().HasSynced)
-	rjInformer := lhInformerFactory.Longhorn().V1beta2().RecurringJobs()
-	cacheSyncs = append(cacheSyncs, rjInformer.Informer().HasSynced)
-	oInformer := lhInformerFactory.Longhorn().V1beta2().Orphans()
-	cacheSyncs = append(cacheSyncs, oInformer.Informer().HasSynced)
-	snapInformer := lhInformerFactory.Longhorn().V1beta2().Snapshots()
-	cacheSyncs = append(cacheSyncs, snapInformer.Informer().HasSynced)
+	instanceManagerInformer := lhInformerFactory.Longhorn().V1beta2().InstanceManagers()
+	cacheSyncs = append(cacheSyncs, instanceManagerInformer.Informer().HasSynced)
+	shareManagerInformer := lhInformerFactory.Longhorn().V1beta2().ShareManagers()
+	cacheSyncs = append(cacheSyncs, shareManagerInformer.Informer().HasSynced)
+	backingImageInformer := lhInformerFactory.Longhorn().V1beta2().BackingImages()
+	cacheSyncs = append(cacheSyncs, backingImageInformer.Informer().HasSynced)
+	backingImageManagerInformer := lhInformerFactory.Longhorn().V1beta2().BackingImageManagers()
+	cacheSyncs = append(cacheSyncs, backingImageManagerInformer.Informer().HasSynced)
+	backingImageDataSourceInformer := lhInformerFactory.Longhorn().V1beta2().BackingImageDataSources()
+	cacheSyncs = append(cacheSyncs, backingImageDataSourceInformer.Informer().HasSynced)
+	backupTargetInformer := lhInformerFactory.Longhorn().V1beta2().BackupTargets()
+	cacheSyncs = append(cacheSyncs, backupTargetInformer.Informer().HasSynced)
+	backupVolumeInformer := lhInformerFactory.Longhorn().V1beta2().BackupVolumes()
+	cacheSyncs = append(cacheSyncs, backupVolumeInformer.Informer().HasSynced)
+	backupInformer := lhInformerFactory.Longhorn().V1beta2().Backups()
+	cacheSyncs = append(cacheSyncs, backupInformer.Informer().HasSynced)
+	recurringJobInformer := lhInformerFactory.Longhorn().V1beta2().RecurringJobs()
+	cacheSyncs = append(cacheSyncs, recurringJobInformer.Informer().HasSynced)
+	orphanInformer := lhInformerFactory.Longhorn().V1beta2().Orphans()
+	cacheSyncs = append(cacheSyncs, orphanInformer.Informer().HasSynced)
+	snapshotInformer := lhInformerFactory.Longhorn().V1beta2().Snapshots()
+	cacheSyncs = append(cacheSyncs, snapshotInformer.Informer().HasSynced)
 	supportBundleInformer := lhInformerFactory.Longhorn().V1beta2().SupportBundles()
 	cacheSyncs = append(cacheSyncs, supportBundleInformer.Informer().HasSynced)
 	systemBackupInformer := lhInformerFactory.Longhorn().V1beta2().SystemBackups()
@@ -190,8 +190,8 @@ func NewDataStore(
 	cacheSyncs = append(cacheSyncs, csiDriverInformer.Informer().HasSynced)
 	storageclassInformer := kubeInformerFactory.Storage().V1().StorageClasses()
 	cacheSyncs = append(cacheSyncs, storageclassInformer.Informer().HasSynced)
-	pdbInformer := kubeInformerFactory.Policy().V1().PodDisruptionBudgets()
-	cacheSyncs = append(cacheSyncs, pdbInformer.Informer().HasSynced)
+	podDisruptionBudgetInformer := kubeInformerFactory.Policy().V1().PodDisruptionBudgets()
+	cacheSyncs = append(cacheSyncs, podDisruptionBudgetInformer.Informer().HasSynced)
 	serviceInformer := kubeInformerFactory.Core().V1().Services()
 	cacheSyncs = append(cacheSyncs, serviceInformer.Informer().HasSynced)
 
@@ -213,28 +213,28 @@ func NewDataStore(
 		NodeInformer:                   nodeInformer.Informer(),
 		settingLister:                  settingInformer.Lister(),
 		SettingInformer:                settingInformer.Informer(),
-		instanceManagerLister:          imInformer.Lister(),
-		InstanceManagerInformer:        imInformer.Informer(),
-		shareManagerLister:             smInformer.Lister(),
-		ShareManagerInformer:           smInformer.Informer(),
-		backingImageLister:             biInformer.Lister(),
-		BackingImageInformer:           biInformer.Informer(),
-		backingImageManagerLister:      bimInformer.Lister(),
-		BackingImageManagerInformer:    bimInformer.Informer(),
-		backingImageDataSourceLister:   bidsInformer.Lister(),
-		BackingImageDataSourceInformer: bidsInformer.Informer(),
-		backupTargetLister:             btInformer.Lister(),
-		BackupTargetInformer:           btInformer.Informer(),
-		backupVolumeLister:             bvInformer.Lister(),
-		BackupVolumeInformer:           bvInformer.Informer(),
-		backupLister:                   bInformer.Lister(),
-		BackupInformer:                 bInformer.Informer(),
-		recurringJobLister:             rjInformer.Lister(),
-		RecurringJobInformer:           rjInformer.Informer(),
-		orphanLister:                   oInformer.Lister(),
-		OrphanInformer:                 oInformer.Informer(),
-		snapshotLister:                 snapInformer.Lister(),
-		SnapshotInformer:               snapInformer.Informer(),
+		instanceManagerLister:          instanceManagerInformer.Lister(),
+		InstanceManagerInformer:        instanceManagerInformer.Informer(),
+		shareManagerLister:             shareManagerInformer.Lister(),
+		ShareManagerInformer:           shareManagerInformer.Informer(),
+		backingImageLister:             backingImageInformer.Lister(),
+		BackingImageInformer:           backingImageInformer.Informer(),
+		backingImageManagerLister:      backingImageManagerInformer.Lister(),
+		BackingImageManagerInformer:    backingImageManagerInformer.Informer(),
+		backingImageDataSourceLister:   backingImageDataSourceInformer.Lister(),
+		BackingImageDataSourceInformer: backingImageDataSourceInformer.Informer(),
+		backupTargetLister:             backupTargetInformer.Lister(),
+		BackupTargetInformer:           backupTargetInformer.Informer(),
+		backupVolumeLister:             backupVolumeInformer.Lister(),
+		BackupVolumeInformer:           backupVolumeInformer.Informer(),
+		backupLister:                   backupInformer.Lister(),
+		BackupInformer:                 backupInformer.Informer(),
+		recurringJobLister:             recurringJobInformer.Lister(),
+		RecurringJobInformer:           recurringJobInformer.Informer(),
+		orphanLister:                   orphanInformer.Lister(),
+		OrphanInformer:                 orphanInformer.Informer(),
+		snapshotLister:                 snapshotInformer.Lister(),
+		SnapshotInformer:               snapshotInformer.Informer(),
 		supportBundleLister:            supportBundleInformer.Lister(),
 		SupportBundleInformer:          supportBundleInformer.Informer(),
 		systemBackupLister:             systemBackupInformer.Lister(),
@@ -269,8 +269,8 @@ func NewDataStore(
 		CSIDriverInformer:             csiDriverInformer.Informer(),
 		storageclassLister:            storageclassInformer.Lister(),
 		StorageClassInformer:          storageclassInformer.Informer(),
-		podDisruptionBudgetLister:     pdbInformer.Lister(),
-		PodDisruptionBudgetInformer:   pdbInformer.Informer(),
+		podDisruptionBudgetLister:     podDisruptionBudgetInformer.Lister(),
+		PodDisruptionBudgetInformer:   podDisruptionBudgetInformer.Informer(),
 		serviceLister:                 serviceInformer.Lister(),
 		ServiceInformer:               serviceInformer.Informer(),
 
