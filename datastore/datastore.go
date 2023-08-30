@@ -42,79 +42,79 @@ type DataStore struct {
 	cacheSyncs []cache.InformerSynced
 
 	lhClient                       lhclientset.Interface
-	vLister                        lhlisters.VolumeLister
+	volumeLister                   lhlisters.VolumeLister
 	VolumeInformer                 cache.SharedInformer
-	eLister                        lhlisters.EngineLister
+	engineLister                   lhlisters.EngineLister
 	EngineInformer                 cache.SharedInformer
-	rLister                        lhlisters.ReplicaLister
+	replicaLister                  lhlisters.ReplicaLister
 	ReplicaInformer                cache.SharedInformer
-	iLister                        lhlisters.EngineImageLister
+	engineImageLister              lhlisters.EngineImageLister
 	EngineImageInformer            cache.SharedInformer
-	nLister                        lhlisters.NodeLister
+	nodeLister                     lhlisters.NodeLister
 	NodeInformer                   cache.SharedInformer
-	sLister                        lhlisters.SettingLister
+	settingLister                  lhlisters.SettingLister
 	SettingInformer                cache.SharedInformer
-	imLister                       lhlisters.InstanceManagerLister
+	instanceManagerLister          lhlisters.InstanceManagerLister
 	InstanceManagerInformer        cache.SharedInformer
-	smLister                       lhlisters.ShareManagerLister
+	shareManagerLister             lhlisters.ShareManagerLister
 	ShareManagerInformer           cache.SharedInformer
-	biLister                       lhlisters.BackingImageLister
+	backingImageLister             lhlisters.BackingImageLister
 	BackingImageInformer           cache.SharedInformer
-	bimLister                      lhlisters.BackingImageManagerLister
+	backingImageManagerLister      lhlisters.BackingImageManagerLister
 	BackingImageManagerInformer    cache.SharedInformer
-	bidsLister                     lhlisters.BackingImageDataSourceLister
+	backingImageDataSourceLister   lhlisters.BackingImageDataSourceLister
 	BackingImageDataSourceInformer cache.SharedInformer
-	btLister                       lhlisters.BackupTargetLister
+	backupTargetLister             lhlisters.BackupTargetLister
 	BackupTargetInformer           cache.SharedInformer
-	bvLister                       lhlisters.BackupVolumeLister
+	backupVolumeLister             lhlisters.BackupVolumeLister
 	BackupVolumeInformer           cache.SharedInformer
-	bLister                        lhlisters.BackupLister
+	backupLister                   lhlisters.BackupLister
 	BackupInformer                 cache.SharedInformer
-	rjLister                       lhlisters.RecurringJobLister
+	recurringJobLister             lhlisters.RecurringJobLister
 	RecurringJobInformer           cache.SharedInformer
-	oLister                        lhlisters.OrphanLister
+	orphanLister                   lhlisters.OrphanLister
 	OrphanInformer                 cache.SharedInformer
-	snapLister                     lhlisters.SnapshotLister
+	snapshotLister                 lhlisters.SnapshotLister
 	SnapshotInformer               cache.SharedInformer
 	supportBundleLister            lhlisters.SupportBundleLister
 	SupportBundleInformer          cache.SharedInformer
-	sbLister                       lhlisters.SystemBackupLister
+	systemBackupLister             lhlisters.SystemBackupLister
 	SystemBackupInformer           cache.SharedInformer
-	srLister                       lhlisters.SystemRestoreLister
+	systemRestoreLister            lhlisters.SystemRestoreLister
 	SystemRestoreInformer          cache.SharedInformer
-	lhVALister                     lhlisters.VolumeAttachmentLister
+	lhVolumeAttachmentLister       lhlisters.VolumeAttachmentLister
 	LHVolumeAttachmentInformer     cache.SharedInformer
 
 	kubeClient                    clientset.Interface
-	pLister                       corelisters.PodLister
+	podLister                     corelisters.PodLister
 	PodInformer                   cache.SharedInformer
-	cjLister                      batchlisters_v1.CronJobLister
+	cronJobLister                 batchlisters_v1.CronJobLister
 	CronJobInformer               cache.SharedInformer
-	dsLister                      appslisters.DaemonSetLister
+	daemonSetLister               appslisters.DaemonSetLister
 	DaemonSetInformer             cache.SharedInformer
-	dpLister                      appslisters.DeploymentLister
+	deploymentLister              appslisters.DeploymentLister
 	DeploymentInformer            cache.SharedInformer
-	pvLister                      corelisters.PersistentVolumeLister
+	persistentVolumeLister        corelisters.PersistentVolumeLister
 	PersistentVolumeInformer      cache.SharedInformer
-	pvcLister                     corelisters.PersistentVolumeClaimLister
+	persistentVolumeClaimLister   corelisters.PersistentVolumeClaimLister
 	PersistentVolumeClaimInformer cache.SharedInformer
-	vaLister                      storagelisters_v1.VolumeAttachmentLister
+	volumeAttachmentLister        storagelisters_v1.VolumeAttachmentLister
 	VolumeAttachmentInformer      cache.SharedInformer
-	cfmLister                     corelisters.ConfigMapLister
+	configMapLister               corelisters.ConfigMapLister
 	ConfigMapInformer             cache.SharedInformer
 	secretLister                  corelisters.SecretLister
 	SecretInformer                cache.SharedInformer
-	knLister                      corelisters.NodeLister
+	kubeNodeLister                corelisters.NodeLister
 	KubeNodeInformer              cache.SharedInformer
-	pcLister                      schedulinglisters.PriorityClassLister
+	priorityClassLister           schedulinglisters.PriorityClassLister
 	PriorityClassInformer         cache.SharedInformer
 	csiDriverLister               storagelisters_v1.CSIDriverLister
 	CSIDriverInformer             cache.SharedInformer
 	storageclassLister            storagelisters_v1.StorageClassLister
 	StorageClassInformer          cache.SharedInformer
-	pdbLister                     policylisters.PodDisruptionBudgetLister
+	podDisruptionBudgetLister     policylisters.PodDisruptionBudgetLister
 	PodDisruptionBudgetInformer   cache.SharedInformer
-	svLister                      corelisters.ServiceLister
+	serviceLister                 corelisters.ServiceLister
 	ServiceInformer               cache.SharedInformer
 
 	extensionsClient apiextensionsclientset.Interface
@@ -211,79 +211,79 @@ func NewDataStore(
 		cacheSyncs: cacheSyncs,
 
 		lhClient:                       lhClient,
-		vLister:                        volumeInformer.Lister(),
+		volumeLister:                   volumeInformer.Lister(),
 		VolumeInformer:                 volumeInformer.Informer(),
-		eLister:                        engineInformer.Lister(),
+		engineLister:                   engineInformer.Lister(),
 		EngineInformer:                 engineInformer.Informer(),
-		rLister:                        replicaInformer.Lister(),
+		replicaLister:                  replicaInformer.Lister(),
 		ReplicaInformer:                replicaInformer.Informer(),
-		iLister:                        engineImageInformer.Lister(),
+		engineImageLister:              engineImageInformer.Lister(),
 		EngineImageInformer:            engineImageInformer.Informer(),
-		nLister:                        nodeInformer.Lister(),
+		nodeLister:                     nodeInformer.Lister(),
 		NodeInformer:                   nodeInformer.Informer(),
-		sLister:                        settingInformer.Lister(),
+		settingLister:                  settingInformer.Lister(),
 		SettingInformer:                settingInformer.Informer(),
-		imLister:                       imInformer.Lister(),
+		instanceManagerLister:          imInformer.Lister(),
 		InstanceManagerInformer:        imInformer.Informer(),
-		smLister:                       smInformer.Lister(),
+		shareManagerLister:             smInformer.Lister(),
 		ShareManagerInformer:           smInformer.Informer(),
-		biLister:                       biInformer.Lister(),
+		backingImageLister:             biInformer.Lister(),
 		BackingImageInformer:           biInformer.Informer(),
-		bimLister:                      bimInformer.Lister(),
+		backingImageManagerLister:      bimInformer.Lister(),
 		BackingImageManagerInformer:    bimInformer.Informer(),
-		bidsLister:                     bidsInformer.Lister(),
+		backingImageDataSourceLister:   bidsInformer.Lister(),
 		BackingImageDataSourceInformer: bidsInformer.Informer(),
-		btLister:                       btInformer.Lister(),
+		backupTargetLister:             btInformer.Lister(),
 		BackupTargetInformer:           btInformer.Informer(),
-		bvLister:                       bvInformer.Lister(),
+		backupVolumeLister:             bvInformer.Lister(),
 		BackupVolumeInformer:           bvInformer.Informer(),
-		bLister:                        bInformer.Lister(),
+		backupLister:                   bInformer.Lister(),
 		BackupInformer:                 bInformer.Informer(),
-		rjLister:                       rjInformer.Lister(),
+		recurringJobLister:             rjInformer.Lister(),
 		RecurringJobInformer:           rjInformer.Informer(),
-		oLister:                        oInformer.Lister(),
+		orphanLister:                   oInformer.Lister(),
 		OrphanInformer:                 oInformer.Informer(),
-		snapLister:                     snapInformer.Lister(),
+		snapshotLister:                 snapInformer.Lister(),
 		SnapshotInformer:               snapInformer.Informer(),
 		supportBundleLister:            supportBundleInformer.Lister(),
 		SupportBundleInformer:          supportBundleInformer.Informer(),
-		sbLister:                       systemBackupInformer.Lister(),
+		systemBackupLister:             systemBackupInformer.Lister(),
 		SystemBackupInformer:           systemBackupInformer.Informer(),
-		srLister:                       systemRestoreInformer.Lister(),
+		systemRestoreLister:            systemRestoreInformer.Lister(),
 		SystemRestoreInformer:          systemRestoreInformer.Informer(),
-		lhVALister:                     lhVAInformer.Lister(),
+		lhVolumeAttachmentLister:       lhVAInformer.Lister(),
 		LHVolumeAttachmentInformer:     lhVAInformer.Informer(),
 
 		kubeClient:                    kubeClient,
-		pLister:                       podInformer.Lister(),
+		podLister:                     podInformer.Lister(),
 		PodInformer:                   podInformer.Informer(),
-		cjLister:                      cronJobInformer.Lister(),
+		cronJobLister:                 cronJobInformer.Lister(),
 		CronJobInformer:               cronJobInformer.Informer(),
-		dsLister:                      daemonSetInformer.Lister(),
+		daemonSetLister:               daemonSetInformer.Lister(),
 		DaemonSetInformer:             daemonSetInformer.Informer(),
-		dpLister:                      deploymentInformer.Lister(),
+		deploymentLister:              deploymentInformer.Lister(),
 		DeploymentInformer:            deploymentInformer.Informer(),
-		pvLister:                      persistentVolumeInformer.Lister(),
+		persistentVolumeLister:        persistentVolumeInformer.Lister(),
 		PersistentVolumeInformer:      persistentVolumeInformer.Informer(),
-		pvcLister:                     persistentVolumeClaimInformer.Lister(),
+		persistentVolumeClaimLister:   persistentVolumeClaimInformer.Lister(),
 		PersistentVolumeClaimInformer: persistentVolumeClaimInformer.Informer(),
-		vaLister:                      volumeAttachmentInformer.Lister(),
+		volumeAttachmentLister:        volumeAttachmentInformer.Lister(),
 		VolumeAttachmentInformer:      volumeAttachmentInformer.Informer(),
-		cfmLister:                     configMapInformer.Lister(),
+		configMapLister:               configMapInformer.Lister(),
 		ConfigMapInformer:             configMapInformer.Informer(),
 		secretLister:                  secretInformer.Lister(),
 		SecretInformer:                secretInformer.Informer(),
-		knLister:                      kubeNodeInformer.Lister(),
+		kubeNodeLister:                kubeNodeInformer.Lister(),
 		KubeNodeInformer:              kubeNodeInformer.Informer(),
-		pcLister:                      priorityClassInformer.Lister(),
+		priorityClassLister:           priorityClassInformer.Lister(),
 		PriorityClassInformer:         priorityClassInformer.Informer(),
 		csiDriverLister:               csiDriverInformer.Lister(),
 		CSIDriverInformer:             csiDriverInformer.Informer(),
 		storageclassLister:            storageclassInformer.Lister(),
 		StorageClassInformer:          storageclassInformer.Informer(),
-		pdbLister:                     pdbInformer.Lister(),
+		podDisruptionBudgetLister:     pdbInformer.Lister(),
 		PodDisruptionBudgetInformer:   pdbInformer.Informer(),
-		svLister:                      serviceInformer.Lister(),
+		serviceLister:                 serviceInformer.Lister(),
 		ServiceInformer:               serviceInformer.Informer(),
 
 		extensionsClient: extensionsClient,
