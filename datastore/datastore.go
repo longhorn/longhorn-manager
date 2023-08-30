@@ -113,7 +113,7 @@ type DataStore struct {
 	storageclassLister            storagelisters_v1.StorageClassLister
 	StorageClassInformer          cache.SharedInformer
 	pdbLister                     policylisters.PodDisruptionBudgetLister
-	PodDistrptionBudgetInformer   cache.SharedInformer
+	PodDisruptionBudgetInformer   cache.SharedInformer
 	svLister                      corelisters.ServiceLister
 	ServiceInformer               cache.SharedInformer
 
@@ -282,7 +282,7 @@ func NewDataStore(
 		storageclassLister:            storageclassInformer.Lister(),
 		StorageClassInformer:          storageclassInformer.Informer(),
 		pdbLister:                     pdbInformer.Lister(),
-		PodDistrptionBudgetInformer:   pdbInformer.Informer(),
+		PodDisruptionBudgetInformer:   pdbInformer.Informer(),
 		svLister:                      serviceInformer.Lister(),
 		ServiceInformer:               serviceInformer.Informer(),
 
