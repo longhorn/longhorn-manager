@@ -4522,16 +4522,14 @@ func (s *DataStore) DeleteLHVolumeAttachment(vaName string) error {
 	return s.lhClient.LonghornV1beta2().VolumeAttachments(s.namespace).Delete(context.TODO(), vaName, metav1.DeleteOptions{})
 }
 
-// GetObjectEndpointRO is the read-only version of GetObjectEndpoint.
-// If strict read-only access can be guaranteed, this provides a way to inspect
-// an ObjectEndpoint without the overhead of a deep-copy.
+// GetObjectEndpointRO returns the ObjectEndpoint with the given name in the cluster
 func (s *DataStore) GetObjectEndpointRO(name string) (*longhorn.ObjectEndpoint, error) {
-	return s.oeLister.Get(name)
+	return s.oeLister.ObjectEndpoints(s.namespace).Get(name)
 }
 
-// GetObjectEndpoint returns a new object endpoint object in the given namespace and name
+// GetObjectEndpoint returns a copy of ObjectEndpoint with the given name in the cluster
 func (s *DataStore) GetObjectEndpoint(name string) (*longhorn.ObjectEndpoint, error) {
-	resultRO, err := s.oeLister.Get(name)
+	resultRO, err := s.GetObjectEndpointRO(name)
 	if err != nil {
 		return nil, err
 	}
@@ -4539,10 +4537,9 @@ func (s *DataStore) GetObjectEndpoint(name string) (*longhorn.ObjectEndpoint, er
 	return resultRO.DeepCopy(), nil
 }
 
-// CreateObjectEndpoint creates a Longhorn Object Endpoint resource and verifies
-// creation
+// CreateObjectEndpoint creates a Longhorn ObjectEndpoint resource and verifies creation
 func (s *DataStore) CreateObjectEndpoint(endpoint *longhorn.ObjectEndpoint) (*longhorn.ObjectEndpoint, error) {
-	ret, err := s.lhClient.LonghornV1beta2().ObjectEndpoints().Create(context.TODO(), endpoint, metav1.CreateOptions{})
+	ret, err := s.lhClient.LonghornV1beta2().ObjectEndpoints(s.namespace).Create(context.TODO(), endpoint, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -4564,35 +4561,42 @@ func (s *DataStore) CreateObjectEndpoint(endpoint *longhorn.ObjectEndpoint) (*lo
 	return ret.DeepCopy(), nil
 }
 
-// UpdateObjectEndpoint updates Longhorn Object Endpoint
+// UpdateObjectEndpoint updates the given Longhorn ObjectEndpoint in the ObjectEndpoint CR and verifies update
 func (s *DataStore) UpdateObjectEndpoint(oe *longhorn.ObjectEndpoint) (*longhorn.ObjectEndpoint, error) {
+	// TODO: AddFinalizer should be moved to webhook
 	if err := util.AddFinalizer(longhornFinalizerKey, oe); err != nil {
 		return nil, err
 	}
 
-	obj, err := s.lhClient.LonghornV1beta2().ObjectEndpoints().Update(context.TODO(), oe, metav1.UpdateOptions{})
+	obj, err := s.lhClient.LonghornV1beta2().ObjectEndpoints(s.namespace).Update(context.TODO(), oe, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
 	}
+	verifyUpdate(oe.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetObjectEndpointRO(name)
+	})
 	return obj, nil
 }
 
-// UpdateObjectEndpointStatus updates an the status of a Longhorn Object
-// Endpoint.
+// UpdateObjectEndpointStatus updates the given Longhorn ObjectEndpoint status in the VolumeAttachment CR status and verifies update
 func (s *DataStore) UpdateObjectEndpointStatus(oe *longhorn.ObjectEndpoint) (*longhorn.ObjectEndpoint, error) {
+	// TODO: AddFinalizer should be moved to webhook
 	if err := util.AddFinalizer(longhornFinalizerKey, oe); err != nil {
 		return nil, err
 	}
 
-	obj, err := s.lhClient.LonghornV1beta2().ObjectEndpoints().UpdateStatus(context.TODO(), oe, metav1.UpdateOptions{})
+	obj, err := s.lhClient.LonghornV1beta2().ObjectEndpoints(s.namespace).UpdateStatus(context.TODO(), oe, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
 	}
+	verifyUpdate(oe.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetObjectEndpointRO(name)
+	})
 	return obj, nil
 }
 
 func (s *DataStore) ListObjectEndpoints() (map[string]*longhorn.ObjectEndpoint, error) {
-	list, err := s.oeLister.List(labels.Everything())
+	list, err := s.oeLister.ObjectEndpoints(s.namespace).List(labels.Everything())
 	if err != nil {
 		return nil, err
 	}
@@ -4619,7 +4623,7 @@ func (s *DataStore) GetOwnerReferencesForObjectEndpoint(endpoint *longhorn.Objec
 }
 
 func (s *DataStore) DeleteObjectEndpoint(name string) error {
-	return s.lhClient.LonghornV1beta2().ObjectEndpoints().Delete(context.TODO(), name, metav1.DeleteOptions{})
+	return s.lhClient.LonghornV1beta2().ObjectEndpoints(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 }
 
 func (s *DataStore) RemoveFinalizerForObjectEndpoint(endpoint *longhorn.ObjectEndpoint) (err error) {
@@ -4632,7 +4636,7 @@ func (s *DataStore) RemoveFinalizerForObjectEndpoint(endpoint *longhorn.ObjectEn
 		return err
 	}
 
-	endpoint, err = s.lhClient.LonghornV1beta2().ObjectEndpoints().Update(context.TODO(), endpoint, metav1.UpdateOptions{})
+	endpoint, err = s.lhClient.LonghornV1beta2().ObjectEndpoints(s.namespace).Update(context.TODO(), endpoint, metav1.UpdateOptions{})
 	if err != nil {
 		// workaround `StorageError: invalid object, Code: 4` due to empty object
 		if endpoint.DeletionTimestamp != nil {

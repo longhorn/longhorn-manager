@@ -2055,7 +2055,7 @@ spec:
     shortNames:
     - lhoe
     singular: objectendpoint
-  scope: Cluster
+  scope: Namespaced
   versions:
   - additionalPrinterColumns:
     - jsonPath: .metadata.name

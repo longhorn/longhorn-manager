@@ -99,9 +99,8 @@ type ObjectEndpointSpec struct {
 }
 
 // +genclient
-// +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +kubebuilder:resource:scope="Cluster",shortName={lhoe}
+// +kubebuilder:resource:shortName={lhoe}
 // +kubebuilder:subresource:status
 // +kubebuilder:storageversion
 // +kubebuilder:printcolumn:name="Name",type=string,JSONPath=`.metadata.name`

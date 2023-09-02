@@ -33,6 +33,7 @@ import (
 // FakeObjectEndpoints implements ObjectEndpointInterface
 type FakeObjectEndpoints struct {
 	Fake *FakeLonghornV1beta2
+	ns   string
 }
 
 var objectendpointsResource = schema.GroupVersionResource{Group: "longhorn.io", Version: "v1beta2", Resource: "objectendpoints"}
@@ -42,7 +43,8 @@ var objectendpointsKind = schema.GroupVersionKind{Group: "longhorn.io", Version:
 // Get takes name of the objectEndpoint, and returns the corresponding objectEndpoint object, and an error if there is any.
 func (c *FakeObjectEndpoints) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta2.ObjectEndpoint, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(objectendpointsResource, name), &v1beta2.ObjectEndpoint{})
+		Invokes(testing.NewGetAction(objectendpointsResource, c.ns, name), &v1beta2.ObjectEndpoint{})
+
 	if obj == nil {
 		return nil, err
 	}
@@ -52,7 +54,8 @@ func (c *FakeObjectEndpoints) Get(ctx context.Context, name string, options v1.G
 // List takes label and field selectors, and returns the list of ObjectEndpoints that match those selectors.
 func (c *FakeObjectEndpoints) List(ctx context.Context, opts v1.ListOptions) (result *v1beta2.ObjectEndpointList, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(objectendpointsResource, objectendpointsKind, opts), &v1beta2.ObjectEndpointList{})
+		Invokes(testing.NewListAction(objectendpointsResource, objectendpointsKind, c.ns, opts), &v1beta2.ObjectEndpointList{})
+
 	if obj == nil {
 		return nil, err
 	}
@@ -73,13 +76,15 @@ func (c *FakeObjectEndpoints) List(ctx context.Context, opts v1.ListOptions) (re
 // Watch returns a watch.Interface that watches the requested objectEndpoints.
 func (c *FakeObjectEndpoints) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
-		InvokesWatch(testing.NewRootWatchAction(objectendpointsResource, opts))
+		InvokesWatch(testing.NewWatchAction(objectendpointsResource, c.ns, opts))
+
 }
 
 // Create takes the representation of a objectEndpoint and creates it.  Returns the server's representation of the objectEndpoint, and an error, if there is any.
 func (c *FakeObjectEndpoints) Create(ctx context.Context, objectEndpoint *v1beta2.ObjectEndpoint, opts v1.CreateOptions) (result *v1beta2.ObjectEndpoint, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(objectendpointsResource, objectEndpoint), &v1beta2.ObjectEndpoint{})
+		Invokes(testing.NewCreateAction(objectendpointsResource, c.ns, objectEndpoint), &v1beta2.ObjectEndpoint{})
+
 	if obj == nil {
 		return nil, err
 	}
@@ -89,7 +94,8 @@ func (c *FakeObjectEndpoints) Create(ctx context.Context, objectEndpoint *v1beta
 // Update takes the representation of a objectEndpoint and updates it. Returns the server's representation of the objectEndpoint, and an error, if there is any.
 func (c *FakeObjectEndpoints) Update(ctx context.Context, objectEndpoint *v1beta2.ObjectEndpoint, opts v1.UpdateOptions) (result *v1beta2.ObjectEndpoint, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(objectendpointsResource, objectEndpoint), &v1beta2.ObjectEndpoint{})
+		Invokes(testing.NewUpdateAction(objectendpointsResource, c.ns, objectEndpoint), &v1beta2.ObjectEndpoint{})
+
 	if obj == nil {
 		return nil, err
 	}
@@ -100,7 +106,8 @@ func (c *FakeObjectEndpoints) Update(ctx context.Context, objectEndpoint *v1beta
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
 func (c *FakeObjectEndpoints) UpdateStatus(ctx context.Context, objectEndpoint *v1beta2.ObjectEndpoint, opts v1.UpdateOptions) (*v1beta2.ObjectEndpoint, error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateSubresourceAction(objectendpointsResource, "status", objectEndpoint), &v1beta2.ObjectEndpoint{})
+		Invokes(testing.NewUpdateSubresourceAction(objectendpointsResource, "status", c.ns, objectEndpoint), &v1beta2.ObjectEndpoint{})
+
 	if obj == nil {
 		return nil, err
 	}
@@ -110,13 +117,14 @@ func (c *FakeObjectEndpoints) UpdateStatus(ctx context.Context, objectEndpoint *
 // Delete takes name of the objectEndpoint and deletes it. Returns an error if one occurs.
 func (c *FakeObjectEndpoints) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteAction(objectendpointsResource, name), &v1beta2.ObjectEndpoint{})
+		Invokes(testing.NewDeleteAction(objectendpointsResource, c.ns, name), &v1beta2.ObjectEndpoint{})
+
 	return err
 }
 
 // DeleteCollection deletes a collection of objects.
 func (c *FakeObjectEndpoints) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(objectendpointsResource, listOpts)
+	action := testing.NewDeleteCollectionAction(objectendpointsResource, c.ns, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1beta2.ObjectEndpointList{})
 	return err
@@ -125,7 +133,8 @@ func (c *FakeObjectEndpoints) DeleteCollection(ctx context.Context, opts v1.Dele
 // Patch applies the patch and returns the patched objectEndpoint.
 func (c *FakeObjectEndpoints) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta2.ObjectEndpoint, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(objectendpointsResource, name, pt, data, subresources...), &v1beta2.ObjectEndpoint{})
+		Invokes(testing.NewPatchSubresourceAction(objectendpointsResource, c.ns, name, pt, data, subresources...), &v1beta2.ObjectEndpoint{})
+
 	if obj == nil {
 		return nil, err
 	}

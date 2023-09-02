@@ -133,7 +133,7 @@ func (v *version) Nodes() NodeInformer {
 
 // ObjectEndpoints returns a ObjectEndpointInformer.
 func (v *version) ObjectEndpoints() ObjectEndpointInformer {
-	return &objectEndpointInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+	return &objectEndpointInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // Orphans returns a OrphanInformer.
