@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"testing"
 
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/kubernetes/pkg/controller"
+
+	corev1 "k8s.io/api/core/v1"
+	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -19,7 +21,6 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
-	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 
 	. "gopkg.in/check.v1"
 )
@@ -62,8 +63,8 @@ func newReplicaScheduler(lhInformerFactory lhinformerfactory.SharedInformerFacto
 	return NewReplicaScheduler(ds)
 }
 
-func newDaemonPod(phase v1.PodPhase, name, namespace, nodeID, podIP string) *v1.Pod {
-	return &v1.Pod{
+func newDaemonPod(phase corev1.PodPhase, name, namespace, nodeID, podIP string) *corev1.Pod {
+	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
@@ -71,10 +72,10 @@ func newDaemonPod(phase v1.PodPhase, name, namespace, nodeID, podIP string) *v1.
 				"app": "longhorn-manager",
 			},
 		},
-		Spec: v1.PodSpec{
+		Spec: corev1.PodSpec{
 			NodeName: nodeID,
 		},
-		Status: v1.PodStatus{
+		Status: corev1.PodStatus{
 			Phase: phase,
 			PodIP: podIP,
 		},
@@ -223,7 +224,7 @@ func (s *TestSuite) SetUpTest(c *C) {
 type ReplicaSchedulerTestCase struct {
 	volume                            *longhorn.Volume
 	replicas                          map[string]*longhorn.Replica
-	daemons                           []*v1.Pod
+	daemons                           []*corev1.Pod
 	nodes                             map[string]*longhorn.Node
 	engineImage                       *longhorn.EngineImage
 	storageOverProvisioningPercentage string
@@ -258,10 +259,10 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	testCases := map[string]*ReplicaSchedulerTestCase{}
 	// Test only node1 could schedule replica
 	tc := generateSchedulerTestCase()
-	daemon1 := newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
-	daemon2 := newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
-	daemon3 := newDaemonPod(v1.PodRunning, TestDaemon3, TestNamespace, TestNode3, TestIP3)
-	tc.daemons = []*v1.Pod{
+	daemon1 := newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+	daemon2 := newDaemonPod(corev1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+	daemon3 := newDaemonPod(corev1.PodRunning, TestDaemon3, TestNamespace, TestNode3, TestIP3)
+	tc.daemons = []*corev1.Pod{
 		daemon1,
 		daemon2,
 		daemon3,
@@ -329,9 +330,9 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 
 	// Test no disks on each nodes, volume should not schedule to any node
 	tc = generateSchedulerTestCase()
-	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
-	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
-	tc.daemons = []*v1.Pod{
+	daemon1 = newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+	daemon2 = newDaemonPod(corev1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+	tc.daemons = []*corev1.Pod{
 		daemon1,
 		daemon2,
 	}
@@ -352,9 +353,9 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 
 	// Test engine image is not deployed on any node
 	tc = generateSchedulerTestCase()
-	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
-	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
-	tc.daemons = []*v1.Pod{
+	daemon1 = newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+	daemon2 = newDaemonPod(corev1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+	tc.daemons = []*corev1.Pod{
 		daemon1,
 		daemon2,
 	}
@@ -403,9 +404,9 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 
 	// Test anti affinity nodes, replica should schedule to both node1 and node2
 	tc = generateSchedulerTestCase()
-	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
-	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
-	tc.daemons = []*v1.Pod{
+	daemon1 = newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+	daemon2 = newDaemonPod(corev1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+	tc.daemons = []*corev1.Pod{
 		daemon1,
 		daemon2,
 	}
@@ -500,9 +501,9 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 
 	// Test no available disks
 	tc = generateSchedulerTestCase()
-	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
-	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
-	tc.daemons = []*v1.Pod{
+	daemon1 = newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+	daemon2 = newDaemonPod(corev1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+	tc.daemons = []*corev1.Pod{
 		daemon1,
 		daemon2,
 	}
@@ -566,9 +567,9 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 
 	// Test no available disks due to volume.Status.ActualSize
 	tc = generateSchedulerTestCase()
-	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
-	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
-	tc.daemons = []*v1.Pod{
+	daemon1 = newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+	daemon2 = newDaemonPod(corev1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+	tc.daemons = []*corev1.Pod{
 		daemon1,
 		daemon2,
 	}
@@ -633,9 +634,9 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 
 	// Test schedule to disk with the most usable storage
 	tc = generateSchedulerTestCase()
-	daemon1 = newDaemonPod(v1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
-	daemon2 = newDaemonPod(v1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
-	tc.daemons = []*v1.Pod{
+	daemon1 = newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+	daemon2 = newDaemonPod(corev1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+	tc.daemons = []*corev1.Pod{
 		daemon1,
 		daemon2,
 	}

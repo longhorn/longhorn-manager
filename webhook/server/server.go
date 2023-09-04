@@ -11,11 +11,12 @@ import (
 	"github.com/rancher/dynamiclistener/server"
 	"github.com/sirupsen/logrus"
 
+	"k8s.io/client-go/rest"
+
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/rest"
 
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util/client"
