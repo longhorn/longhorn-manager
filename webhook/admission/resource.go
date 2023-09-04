@@ -3,8 +3,9 @@ package admission
 import (
 	"fmt"
 
-	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	admissionregv1 "k8s.io/api/admissionregistration/v1"
 )
 
 type Resource struct {
