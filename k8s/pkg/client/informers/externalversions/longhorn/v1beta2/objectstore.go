@@ -32,58 +32,59 @@ import (
 	cache "k8s.io/client-go/tools/cache"
 )
 
-// ObjectEndpointInformer provides access to a shared informer and lister for
-// ObjectEndpoints.
-type ObjectEndpointInformer interface {
+// ObjectStoreInformer provides access to a shared informer and lister for
+// ObjectStores.
+type ObjectStoreInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1beta2.ObjectEndpointLister
+	Lister() v1beta2.ObjectStoreLister
 }
 
-type objectEndpointInformer struct {
+type objectStoreInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
 	tweakListOptions internalinterfaces.TweakListOptionsFunc
+	namespace        string
 }
 
-// NewObjectEndpointInformer constructs a new informer for ObjectEndpoint type.
+// NewObjectStoreInformer constructs a new informer for ObjectStore type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewObjectEndpointInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
-	return NewFilteredObjectEndpointInformer(client, resyncPeriod, indexers, nil)
+func NewObjectStoreInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
+	return NewFilteredObjectStoreInformer(client, namespace, resyncPeriod, indexers, nil)
 }
 
-// NewFilteredObjectEndpointInformer constructs a new informer for ObjectEndpoint type.
+// NewFilteredObjectStoreInformer constructs a new informer for ObjectStore type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewFilteredObjectEndpointInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
+func NewFilteredObjectStoreInformer(client versioned.Interface, namespace string, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.LonghornV1beta2().ObjectEndpoints().List(context.TODO(), options)
+				return client.LonghornV1beta2().ObjectStores(namespace).List(context.TODO(), options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.LonghornV1beta2().ObjectEndpoints().Watch(context.TODO(), options)
+				return client.LonghornV1beta2().ObjectStores(namespace).Watch(context.TODO(), options)
 			},
 		},
-		&longhornv1beta2.ObjectEndpoint{},
+		&longhornv1beta2.ObjectStore{},
 		resyncPeriod,
 		indexers,
 	)
 }
 
-func (f *objectEndpointInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewFilteredObjectEndpointInformer(client, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
+func (f *objectStoreInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+	return NewFilteredObjectStoreInformer(client, f.namespace, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
 }
 
-func (f *objectEndpointInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&longhornv1beta2.ObjectEndpoint{}, f.defaultInformer)
+func (f *objectStoreInformer) Informer() cache.SharedIndexInformer {
+	return f.factory.InformerFor(&longhornv1beta2.ObjectStore{}, f.defaultInformer)
 }
 
-func (f *objectEndpointInformer) Lister() v1beta2.ObjectEndpointLister {
-	return v1beta2.NewObjectEndpointLister(f.Informer().GetIndexer())
+func (f *objectStoreInformer) Lister() v1beta2.ObjectStoreLister {
+	return v1beta2.NewObjectStoreLister(f.Informer().GetIndexer())
 }

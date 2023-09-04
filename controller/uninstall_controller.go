@@ -45,7 +45,7 @@ const (
 	CRDRecurringJobName           = "recurringjobs.longhorn.io"
 	CRDOrphanName                 = "orphans.longhorn.io"
 	CRDSnapshotName               = "snapshots.longhorn.io"
-	CRDObjectEndpointName         = "objectendpoints.longhorn.io"
+	CRDObjectStoreName            = "objectstores.longhorn.io"
 
 	EnvLonghornNamespace = "LONGHORN_NAMESPACE"
 )
@@ -163,9 +163,9 @@ func NewUninstallController(
 		ds.SnapshotInformer.AddEventHandler(c.controlleeHandler())
 		cacheSyncs = append(cacheSyncs, ds.SnapshotInformer.HasSynced)
 	}
-	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDObjectEndpointName, metav1.GetOptions{}); err == nil {
-		ds.ObjectEndpointInformer.AddEventHandler(c.controlleeHandler())
-		cacheSyncs = append(cacheSyncs, ds.ObjectEndpointInformer.HasSynced)
+	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDObjectStoreName, metav1.GetOptions{}); err == nil {
+		ds.ObjectStoreInformer.AddEventHandler(c.controlleeHandler())
+		cacheSyncs = append(cacheSyncs, ds.ObjectStoreInformer.HasSynced)
 	}
 	c.cacheSyncs = cacheSyncs
 
@@ -531,30 +531,30 @@ func (c *UninstallController) deleteCRDs() (bool, error) {
 		return true, c.deleteSystemRestores(systemRestores)
 	}
 
-	if objectEndpoints, err := c.ds.ListObjectEndpoints(); err != nil {
+	if objectStores, err := c.ds.ListObjectStores(); err != nil {
 		return true, err
-	} else if len(objectEndpoints) > 0 {
-		c.logger.Infof("Found %d object endpoints remaining", len(objectEndpoints))
-		return true, c.deleteObjectEndpoints(objectEndpoints)
+	} else if len(objectStores) > 0 {
+		c.logger.Infof("Found %d object endpoints remaining", len(objectStores))
+		return true, c.deleteObjectStores(objectStores)
 	}
 
 	return false, nil
 }
 
-func (c *UninstallController) deleteObjectEndpoints(endpoints map[string]*longhorn.ObjectEndpoint) (err error) {
+func (c *UninstallController) deleteObjectStores(stores map[string]*longhorn.ObjectStore) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to delete object endpoints")
 	}()
 
-	for _, endpoint := range endpoints {
+	for _, store := range stores {
 		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
-		if endpoint.DeletionTimestamp == nil {
-			if err = c.ds.DeleteObjectEndpoint(endpoint.Name); err != nil {
+		if store.DeletionTimestamp == nil {
+			if err = c.ds.DeleteObjectStore(store.Name); err != nil {
 				err = errors.Wrap(err, "failed to mark for deletion")
 				return
 			}
-		} else if endpoint.DeletionTimestamp.Before(&timeout) {
-			if err = c.ds.RemoveFinalizerForObjectEndpoint(endpoint); err != nil {
+		} else if store.DeletionTimestamp.Before(&timeout) {
+			if err = c.ds.RemoveFinalizerForObjectStore(store); err != nil {
 				err = errors.Wrap(err, "failed to remove finalizer")
 				return
 			}

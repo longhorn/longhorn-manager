@@ -77,19 +77,19 @@ func (s *DataStore) getSupportBundleManagerSelector(supportBundle *longhorn.Supp
 	})
 }
 
-func (s *DataStore) GetObjectEndpointSelectorLabels(endpoint *longhorn.ObjectEndpoint) map[string]string {
+func (s *DataStore) GetObjectStoreSelectorLabels(store *longhorn.ObjectStore) map[string]string {
 	return map[string]string{
-		types.ObjectEndpointLabelKeyApp:       types.ObjectEndpointLabelApp,
-		types.ObjectEndpointLabelKeyInstance:  endpoint.Name,
-		types.ObjectEndpointLabelKeyComponent: types.ObjectEndpointLabelComponent,
+		types.ObjectStoreLabelKeyApp:       types.ObjectStoreLabelApp,
+		types.ObjectStoreLabelKeyInstance:  store.Name,
+		types.ObjectStoreLabelKeyComponent: types.ObjectStoreLabelComponent,
 	}
 }
 
-func (s *DataStore) GetObjectEndpointLabels(endpoint *longhorn.ObjectEndpoint) map[string]string {
+func (s *DataStore) GetObjectStoreLabels(store *longhorn.ObjectStore) map[string]string {
 	return map[string]string{
-		types.ObjectEndpointLabelKeyApp:       types.ObjectEndpointLabelApp,
-		types.ObjectEndpointLabelKeyInstance:  endpoint.Name,
-		types.ObjectEndpointLabelKeyManagedBy: types.ObjectEndpointLabelManagedBy,
+		types.ObjectStoreLabelKeyApp:       types.ObjectStoreLabelApp,
+		types.ObjectStoreLabelKeyInstance:  store.Name,
+		types.ObjectStoreLabelKeyManagedBy: types.ObjectStoreLabelManagedBy,
 	}
 }
 

@@ -38,7 +38,7 @@ type InstanceManagerExpansion interface{}
 
 type NodeExpansion interface{}
 
-type ObjectEndpointExpansion interface{}
+type ObjectStoreExpansion interface{}
 
 type OrphanExpansion interface{}
 

@@ -50,7 +50,8 @@ const (
 	SettingNameDefaultInstanceManagerImage                              = SettingName("default-instance-manager-image")
 	SettingNameDefaultBackingImageManagerImage                          = SettingName("default-backing-image-manager-image")
 	SettingNameSupportBundleManagerImage                                = SettingName("support-bundle-manager-image")
-	SettingNameObjectEndpointImage                                      = SettingName("object-endpoint-image")
+	SettingNameObjectStoreImage                                         = SettingName("object-store-image")
+	SettingNameObjectStoreUIImage                                       = SettingName("object-store-ui-image")
 	SettingNameReplicaSoftAntiAffinity                                  = SettingName("replica-soft-anti-affinity")
 	SettingNameReplicaAutoBalance                                       = SettingName("replica-auto-balance")
 	SettingNameStorageOverProvisioningPercentage                        = SettingName("storage-over-provisioning-percentage")
@@ -127,7 +128,8 @@ var (
 		SettingNameDefaultInstanceManagerImage,
 		SettingNameDefaultBackingImageManagerImage,
 		SettingNameSupportBundleManagerImage,
-		SettingNameObjectEndpointImage,
+		SettingNameObjectStoreImage,
+		SettingNameObjectStoreUIImage,
 		SettingNameReplicaSoftAntiAffinity,
 		SettingNameReplicaAutoBalance,
 		SettingNameStorageOverProvisioningPercentage,
@@ -230,7 +232,8 @@ var (
 		SettingNameDefaultInstanceManagerImage:                              SettingDefinitionDefaultInstanceManagerImage,
 		SettingNameDefaultBackingImageManagerImage:                          SettingDefinitionDefaultBackingImageManagerImage,
 		SettingNameSupportBundleManagerImage:                                SettingDefinitionSupportBundleManagerImage,
-		SettingNameObjectEndpointImage:                                      SettingDefinitionObjectEndpointImage,
+		SettingNameObjectStoreImage:                                         SettingDefinitionObjectStoreImage,
+		SettingNameObjectStoreUIImage:                                       SettingDefinitionObjectStoreUIImage,
 		SettingNameReplicaSoftAntiAffinity:                                  SettingDefinitionReplicaSoftAntiAffinity,
 		SettingNameReplicaAutoBalance:                                       SettingDefinitionReplicaAutoBalance,
 		SettingNameStorageOverProvisioningPercentage:                        SettingDefinitionStorageOverProvisioningPercentage,
@@ -422,9 +425,18 @@ var (
 		ReadOnly:    false,
 	}
 
-	SettingDefinitionObjectEndpointImage = SettingDefinition{
-		DisplayName: "Object Endpoint Image",
+	SettingDefinitionObjectStoreImage = SettingDefinition{
+		DisplayName: "Object Store Image",
 		Description: "The container image used by the manager when deploying an object storage gateway",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    true,
+	}
+
+	SettingDefinitionObjectStoreUIImage = SettingDefinition{
+		DisplayName: "Object Store UI Image",
+		Description: "The container image used by the manager when deploying an object storage ui instance",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeString,
 		Required:    true,

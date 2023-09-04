@@ -197,13 +197,11 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("GET").Path("/v1/systemrestores/{name}").Handler(f(schemas, s.SystemRestoreGet))
 	r.Methods("DELETE").Path("/v1/systemrestores/{name}").Handler(f(schemas, s.SystemRestoreDelete))
 
-	r.Methods("GET").Path("/v1/objectendpoints").Handler(f(schemas, s.ObjectEndpointList))
-	r.Methods("GET").Path("/v1/objectendpoints/{name}").Handler(f(schemas, s.ObjectEndpointGet))
-	r.Methods("POST").Path("/v1/objectendpoints").Handler(f(schemas, s.ObjectEndpointCreate))
-	r.Methods("PUT").Path("/v1/objectendpoints/{name}").Handler(f(schemas, s.ObjectEndpointUpdate))
-	r.Methods("DELETE").Path("/v1/objectendpoints/{name}").Handler(f(schemas, s.ObjectEndpointDelete))
-
-	r.Methods("GET").Path("/v1/storageclasses").Handler(f(schemas, s.StorageClassList))
+	r.Methods("GET").Path("/v1/objectstores").Handler(f(schemas, s.ObjectStoreList))
+	r.Methods("GET").Path("/v1/objectstores/{name}").Handler(f(schemas, s.ObjectStoreGet))
+	r.Methods("POST").Path("/v1/objectstores").Handler(f(schemas, s.ObjectStoreCreate))
+	r.Methods("PUT").Path("/v1/objectstores/{name}").Handler(f(schemas, s.ObjectStoreUpdate))
+	r.Methods("DELETE").Path("/v1/objectstores/{name}").Handler(f(schemas, s.ObjectStoreDelete))
 
 	settingListStream := NewStreamHandlerFunc("settings", s.wsc.NewWatcher("setting"), s.settingList)
 	r.Path("/v1/ws/settings").Handler(f(schemas, settingListStream))
@@ -261,13 +259,9 @@ func NewRouter(s *Server) *mux.Router {
 	r.Path("/v1/ws/events").Handler(f(schemas, eventListStream))
 	r.Path("/v1/ws/{period}/events").Handler(f(schemas, eventListStream))
 
-	objectEndpointListStream := NewStreamHandlerFunc("objectendpoints", s.wsc.NewWatcher("objectEndpoint"), s.objectEndpointList)
-	r.Path("/v1/ws/objectendpoints").Handler(f(schemas, objectEndpointListStream))
-	r.Path("/v1/ws/{period}/objectendpoints").Handler(f(schemas, objectEndpointListStream))
-
-	storageClassListStream := NewStreamHandlerFunc("storageclasses", s.wsc.NewWatcher("storageClass"), s.storageClassList)
-	r.Path("/v1/ws/storageclasses").Handler(f(schemas, storageClassListStream))
-	r.Path("/v1/ws/{period}/storageclasses").Handler(f(schemas, storageClassListStream))
+	objectStoreListStream := NewStreamHandlerFunc("objectendpoints", s.wsc.NewWatcher("objectEndpoint"), s.objectStoreList)
+	r.Path("/v1/ws/objectstores").Handler(f(schemas, objectStoreListStream))
+	r.Path("/v1/ws/{period}/objectstores").Handler(f(schemas, objectStoreListStream))
 
 	return r
 }

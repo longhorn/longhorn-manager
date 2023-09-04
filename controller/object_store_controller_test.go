@@ -24,24 +24,24 @@ import (
 )
 
 const (
-	TestObjectEndpointName    = "test-object-endpoint"
-	TestObjectEndpointPVName  = "pv-test-object-endpoint"
-	TestObjectEndpointPVCName = "pvc-test-object-endpoint"
-	TestObjectEndpointImage   = "quay.io/s3gw/s3gw:latest"
-	TestObjectEndpointUIImage = "quay.io/s3gw/s3gw-ui:latest"
+	TestObjectStoreName    = "test-object-store"
+	TestObjectStorePVName  = "pv-test-object-store"
+	TestObjectStorePVCName = "pvc-test-object-store"
+	TestObjectStoreImage   = "quay.io/s3gw/s3gw:latest"
+	TestObjectStoreUIImage = "quay.io/s3gw/s3gw-ui:latest"
 
-	TestObjectEndpointControllerID = "test-objecte-endpoint-controller"
+	TestObjectStoreControllerID = "test-objecte-store-controller"
 )
 
 var (
-	TestObjectEndpointSize = resource.MustParse("10Gi")
+	TestObjectStoreSize = resource.MustParse("10Gi")
 )
 
 type fixture struct {
 	test                 *testing.T
 	kubeClient           *k8sfake.Clientset
 	lhClient             *lhfake.Clientset
-	objectEndpointLister []*longhorn.ObjectEndpoint
+	objectStoreLister    []*longhorn.ObjectStore
 	longhornVolumeLister []*longhorn.Volume
 	pvcLister            []*corev1.PersistentVolumeClaim
 	secretLister         []*corev1.Secret
@@ -61,15 +61,16 @@ func newFixture(t *testing.T) *fixture {
 	}
 }
 
-func oeTestNewObjectEndpoint() *longhorn.ObjectEndpoint {
-	return &longhorn.ObjectEndpoint{
+func osTestNewObjectStore() *longhorn.ObjectStore {
+	return &longhorn.ObjectStore{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: TestObjectEndpointName,
+			Name: TestObjectStoreName,
 		},
-		Spec: longhorn.ObjectEndpointSpec{
-			Size:         TestObjectEndpointSize,
-			StorageClass: "longhorn",
-			Credentials: longhorn.ObjectEndpointCredentials{
+		Spec: longhorn.ObjectStoreSpec{
+			Storage: longhorn.ObjectStoreStorageSpec{
+				Size: TestObjectStoreSize,
+			},
+			Credentials: longhorn.ObjectStoreCredentials{
 				AccessKey: "foobar",
 				SecretKey: "barfoo",
 			},
@@ -77,10 +78,10 @@ func oeTestNewObjectEndpoint() *longhorn.ObjectEndpoint {
 	}
 }
 
-func oeTestNewPersistentVolumeClaim() *corev1.PersistentVolumeClaim {
+func osTestNewPersistentVolumeClaim() *corev1.PersistentVolumeClaim {
 	return &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      TestObjectEndpointPVCName,
+			Name:      TestObjectStorePVCName,
 			Namespace: TestNamespace,
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
@@ -89,60 +90,60 @@ func oeTestNewPersistentVolumeClaim() *corev1.PersistentVolumeClaim {
 			},
 			Resources: corev1.ResourceRequirements{
 				Requests: map[corev1.ResourceName]resource.Quantity{
-					corev1.ResourceStorage: TestObjectEndpointSize,
+					corev1.ResourceStorage: TestObjectStoreSize,
 				},
 			},
 			StorageClassName: func() *string { s := ""; return &s }(),
-			VolumeName:       TestObjectEndpointPVName,
+			VolumeName:       TestObjectStorePVName,
 		},
 	}
 }
 
-func oeTestNewLonghornVolume() *longhorn.Volume {
+func osTestNewLonghornVolume() *longhorn.Volume {
 	return &longhorn.Volume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      TestObjectEndpointName,
+			Name:      TestObjectStoreName,
 			Namespace: TestNamespace,
 		},
 		Spec: longhorn.VolumeSpec{
-			Size:       func() int64 { s, _ := TestObjectEndpointSize.AsInt64(); return s }(),
+			Size:       func() int64 { s, _ := TestObjectStoreSize.AsInt64(); return s }(),
 			Frontend:   longhorn.VolumeFrontendBlockDev,
 			AccessMode: longhorn.AccessModeReadWriteOnce,
 		},
 	}
 }
 
-func oeTestNewSecret() *corev1.Secret {
+func osTestNewSecret() *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      TestObjectEndpointName,
+			Name:      TestObjectStoreName,
 			Namespace: TestNamespace,
 		},
 		StringData: map[string]string{},
 	}
 }
 
-func oeTestNewService() *corev1.Service {
+func osTestNewService() *corev1.Service {
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      TestObjectEndpointName,
+			Name:      TestObjectStoreName,
 			Namespace: TestNamespace,
 		},
 		Spec: corev1.ServiceSpec{},
 	}
 }
 
-func oeTestNewDeployment() *appsv1.Deployment {
+func osTestNewDeployment() *appsv1.Deployment {
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      TestObjectEndpointName,
+			Name:      TestObjectStoreName,
 			Namespace: TestNamespace,
 		},
 		Spec: appsv1.DeploymentSpec{},
 	}
 }
 
-func (f *fixture) newObjectEndpointController(ctx *context.Context) (*ObjectEndpointController, k8sinformers.SharedInformerFactory, lhinformers.SharedInformerFactory) {
+func (f *fixture) newObjectStoreController(ctx *context.Context) (*ObjectStoreController, k8sinformers.SharedInformerFactory, lhinformers.SharedInformerFactory) {
 	f.kubeClient = k8sfake.NewSimpleClientset()
 	f.lhClient = lhfake.NewSimpleClientset()
 
@@ -165,25 +166,25 @@ func (f *fixture) newObjectEndpointController(ctx *context.Context) (*ObjectEndp
 		extensionsClient,
 		TestNamespace)
 
-	c := NewObjectEndpointController(
+	c := NewObjectStoreController(
 		logger,
 		ds,
 		scheme.Scheme,
 		f.kubeClient,
-		TestObjectEndpointControllerID,
+		TestObjectStoreControllerID,
 		TestNamespace,
-		TestObjectEndpointImage,
-		TestObjectEndpointUIImage)
+		TestObjectStoreImage,
+		TestObjectStoreUIImage)
 
 	for index := range c.cacheSyncs {
 		c.cacheSyncs[index] = alwaysReady
 	}
 
-	for _, o := range f.objectEndpointLister {
+	for _, o := range f.objectStoreLister {
 		lhInformerFactory.
 			Longhorn().
 			V1beta2().
-			ObjectEndpoints().
+			ObjectStores().
 			Informer().
 			GetIndexer().
 			Add(o)
@@ -242,185 +243,189 @@ func (f *fixture) newObjectEndpointController(ctx *context.Context) (*ObjectEndp
 	return c, kubeInformerFactory, lhInformerFactory
 }
 
-func (f *fixture) runObjectEndpointController(ctx *context.Context, key string) error {
-	c, _, _ := f.newObjectEndpointController(ctx)
-	err := c.syncObjectEndpoint(key)
+func (f *fixture) runObjectStoreController(ctx *context.Context, key string) error {
+	c, _, _ := f.newObjectStoreController(ctx)
+	err := c.syncObjectStore(key)
 	return err
 }
 
 func (f *fixture) runExpectSuccess(ctx *context.Context, key string) {
-	err := f.runObjectEndpointController(ctx, key)
+	err := f.runObjectStoreController(ctx, key)
 	if err != nil {
 		f.test.Errorf("%v", err)
 	}
 }
 
 func (f *fixture) runExpectFailure(ctx *context.Context, key string) {
-	err := f.runObjectEndpointController(ctx, key)
+	err := f.runObjectStoreController(ctx, key)
 	if err == nil {
 		f.test.Errorf("%v", err)
 	}
 }
 
-// TestSyncNonexistentObjectEndpoint tests that the object endpoint controller
-// gracefully handles the case where the object endpoint does not exist
-func TestSyncNonexistentObjectEndpoint(t *testing.T) {
+// TestSyncNonexistentObjectStore tests that the object endpoint controller
+// gracefully handles the case where the object endpoint doss not exist
+func TestSyncNonexistentObjectStore(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.TODO()
 
-	f.runExpectSuccess(&ctx, getMetaKey(TestObjectEndpointName))
+	f.runExpectSuccess(&ctx, getMetaKey(TestObjectStoreName))
 }
 
-// TestSyncNewObjectEndpoint tests the case where a new object endpoint is
-// created that doesn't have any status property at all
-func TestSyncNewObjectEndpoint(t *testing.T) {
+// TestSyncNewObjectStore tests the case where a new object endpoint is
+// created that dossn't have any status property at all
+func TestSyncNewObjectStore(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.TODO()
 
-	endpoint := oeTestNewObjectEndpoint()
-	vol := oeTestNewLonghornVolume()
+	store := osTestNewObjectStore()
+	vol := osTestNewLonghornVolume()
 
-	f.lhObjects = append(f.lhObjects, endpoint)
+	f.lhObjects = append(f.lhObjects, store)
 	f.lhObjects = append(f.lhObjects, vol)
-	f.objectEndpointLister = append(f.objectEndpointLister, endpoint)
+	f.objectStoreLister = append(f.objectStoreLister, store)
 	f.longhornVolumeLister = append(f.longhornVolumeLister, vol)
 
-	f.runExpectSuccess(&ctx, getMetaKey(TestObjectEndpointName))
+	f.runExpectSuccess(&ctx, getMetaKey(TestObjectStoreName))
 }
 
-// TestSyncUnkonwObjectEndpoint tests the default case of a new object endpoint
+// TestSyncUnkonwObjectStore tests the default case of a new object endpoint
 // where the status is already filled out by the kubeapi, but still contains the
 // default value of "Unknown"
-func TestSyncUnkonwObjectEndpoint(t *testing.T) {
+func TestSyncUnkonwObjectStore(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.TODO()
 
-	endpoint := oeTestNewObjectEndpoint()
-	(*endpoint).Status = longhorn.ObjectEndpointStatus{
-		State:    longhorn.ObjectEndpointStateUnknown,
-		Endpoint: "",
+	store := osTestNewObjectStore()
+	(*store).Status = longhorn.ObjectStoreStatus{
+		State:     longhorn.ObjectStoreStateUnknown,
+		Endpoints: []string{},
 	}
-	vol := oeTestNewLonghornVolume()
+	vol := osTestNewLonghornVolume()
 
-	f.lhObjects = append(f.lhObjects, endpoint)
+	f.lhObjects = append(f.lhObjects, store)
 	f.lhObjects = append(f.lhObjects, vol)
-	f.objectEndpointLister = append(f.objectEndpointLister, endpoint)
+	f.objectStoreLister = append(f.objectStoreLister, store)
 	f.longhornVolumeLister = append(f.longhornVolumeLister, vol)
 
-	f.runExpectSuccess(&ctx, getMetaKey(TestObjectEndpointName))
+	f.runExpectSuccess(&ctx, getMetaKey(TestObjectStoreName))
 }
 
-// TestSyncStartingObjectEndpoint  tests the case where the object endpoint has
+// TestSyncStartingObjectStore  tests the case where the object endpoint has
 // already been seen by the controller and the resources should have been
 // deployed
-func TestSyncStartingObjectEndpoint(t *testing.T) {
+func TestSyncStartingObjectStore(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.TODO()
 
-	endpoint := oeTestNewObjectEndpoint()
-	(*endpoint).Status = longhorn.ObjectEndpointStatus{
-		State:    longhorn.ObjectEndpointStateStarting,
-		Endpoint: "",
+	store := osTestNewObjectStore()
+	(*store).Status = longhorn.ObjectStoreStatus{
+		State:     longhorn.ObjectStoreStateStarting,
+		Endpoints: []string{},
 	}
-	pvc := oeTestNewPersistentVolumeClaim()
-	vol := oeTestNewLonghornVolume()
-	deployment := oeTestNewDeployment()
+	pvc := osTestNewPersistentVolumeClaim()
+	vol := osTestNewLonghornVolume()
+	deployment := osTestNewDeployment()
 	// TODO: Create the other objects here too. This only succeeds because the
 	// volume claim isn't in bound state, so the controller will return success
 	// and wait
 
-	f.lhObjects = append(f.lhObjects, endpoint)
+	f.lhObjects = append(f.lhObjects, store)
 	f.kubeObjects = append(f.kubeObjects, pvc)
 	f.lhObjects = append(f.lhObjects, vol)
 	f.kubeObjects = append(f.kubeObjects, deployment)
-	f.objectEndpointLister = append(f.objectEndpointLister, endpoint)
+	f.objectStoreLister = append(f.objectStoreLister, store)
 	f.pvcLister = append(f.pvcLister, pvc)
 	f.longhornVolumeLister = append(f.longhornVolumeLister, vol)
 	f.deploymentLister = append(f.deploymentLister, deployment)
 
-	f.runExpectSuccess(&ctx, getMetaKey(TestObjectEndpointName))
+	f.runExpectSuccess(&ctx, getMetaKey(TestObjectStoreName))
 }
 
-// TestSyncRunningObjectEndpoint tests the case where the object endpoint is
+// TestSyncRunningObjectStore tests the case where the object endpoint is
 // already fully functional and the controller only needs to monitor it
-func TestSyncRunningObjectEndpoint(t *testing.T) {
+func TestSyncRunningObjectStore(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.TODO()
 
-	endpoint := oeTestNewObjectEndpoint()
-	(*endpoint).Status = longhorn.ObjectEndpointStatus{
-		State:    longhorn.ObjectEndpointStateRunning,
-		Endpoint: fmt.Sprintf("%s.%s.svc", TestObjectEndpointName, TestNamespace),
+	store := osTestNewObjectStore()
+	(*store).Status = longhorn.ObjectStoreStatus{
+		State: longhorn.ObjectStoreStateRunning,
+		Endpoints: []string{
+			fmt.Sprintf("%s.%s.svc", TestObjectStoreName, TestNamespace),
+		},
 	}
-	pvc := oeTestNewPersistentVolumeClaim()
-	vol := oeTestNewLonghornVolume()
-	secret := oeTestNewSecret()
-	service := oeTestNewService()
-	deployment := oeTestNewDeployment()
+	pvc := osTestNewPersistentVolumeClaim()
+	vol := osTestNewLonghornVolume()
+	secret := osTestNewSecret()
+	service := osTestNewService()
+	deployment := osTestNewDeployment()
 
-	f.lhObjects = append(f.lhObjects, endpoint)
+	f.lhObjects = append(f.lhObjects, store)
 	f.kubeObjects = append(f.kubeObjects, pvc)
 	f.lhObjects = append(f.lhObjects, vol)
 	f.kubeObjects = append(f.kubeObjects, secret)
 	f.kubeObjects = append(f.kubeObjects, service)
 	f.kubeObjects = append(f.kubeObjects, deployment)
-	f.objectEndpointLister = append(f.objectEndpointLister, endpoint)
+	f.objectStoreLister = append(f.objectStoreLister, store)
 	f.pvcLister = append(f.pvcLister, pvc)
 	f.longhornVolumeLister = append(f.longhornVolumeLister, vol)
 	f.secretLister = append(f.secretLister, secret)
 	f.serviceLister = append(f.serviceLister, service)
 	f.deploymentLister = append(f.deploymentLister, deployment)
 
-	f.runExpectSuccess(&ctx, getMetaKey(TestObjectEndpointName))
+	f.runExpectSuccess(&ctx, getMetaKey(TestObjectStoreName))
 }
 
-// TestSyncStoppingObjectEndpoint tests that the object endpoint has been marked
+// TestSyncStoppingObjectStore tests that the object endpoint has been marked
 // for deletion and the controller needs to wait for the resources to be removed
-// before it can remvoe the finalizer and stop tracking the object endpoint
-func TestSyncStoppingObjectEndpoint(t *testing.T) {
+// before it can remvos the finalizer and stop tracking the object endpoint
+func TestSyncStoppingObjectStore(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.TODO()
 
-	endpoint := oeTestNewObjectEndpoint()
-	(*endpoint).Status = longhorn.ObjectEndpointStatus{
-		State:    longhorn.ObjectEndpointStateStopping,
-		Endpoint: fmt.Sprintf("%s.%s.svc", TestObjectEndpointName, TestNamespace),
+	store := osTestNewObjectStore()
+	(*store).Status = longhorn.ObjectStoreStatus{
+		State: longhorn.ObjectStoreStateStopping,
+		Endpoints: []string{
+			fmt.Sprintf("%s.%s.svc", TestObjectStoreName, TestNamespace),
+		},
 	}
 
-	f.lhObjects = append(f.lhObjects, endpoint)
-	f.objectEndpointLister = append(f.objectEndpointLister, endpoint)
+	f.lhObjects = append(f.lhObjects, store)
+	f.objectStoreLister = append(f.objectStoreLister, store)
 
-	f.runExpectSuccess(&ctx, getMetaKey(TestObjectEndpointName))
+	f.runExpectSuccess(&ctx, getMetaKey(TestObjectStoreName))
 }
 
-// TestSyncErrorObjectEndpoint tests the case where the objecte endpoint is in
+// TestSyncErrorObjectStore tests the case where the objecte endpoint is in
 // error state
-func TestSyncErrorObjectEndpoint(t *testing.T) {
+func TestSyncErrorObjectStore(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.TODO()
 
-	endpoint := oeTestNewObjectEndpoint()
-	(*endpoint).Status = longhorn.ObjectEndpointStatus{
-		State:    longhorn.ObjectEndpointStateStarting,
-		Endpoint: "",
+	store := osTestNewObjectStore()
+	(*store).Status = longhorn.ObjectStoreStatus{
+		State:     longhorn.ObjectStoreStateStarting,
+		Endpoints: []string{},
 	}
-	pvc := oeTestNewPersistentVolumeClaim()
-	vol := oeTestNewLonghornVolume()
-	deployment := oeTestNewDeployment()
+	pvc := osTestNewPersistentVolumeClaim()
+	vol := osTestNewLonghornVolume()
+	deployment := osTestNewDeployment()
 	// TODO: Create the other objects here too. This only succeeds because the
 	// volume claim isn't in bound state, so the controller will return success
 	// and wait
 
-	f.lhObjects = append(f.lhObjects, endpoint)
+	f.lhObjects = append(f.lhObjects, store)
 	f.kubeObjects = append(f.kubeObjects, pvc)
 	f.lhObjects = append(f.lhObjects, vol)
 	f.kubeObjects = append(f.kubeObjects, deployment)
-	f.objectEndpointLister = append(f.objectEndpointLister, endpoint)
+	f.objectStoreLister = append(f.objectStoreLister, store)
 	f.pvcLister = append(f.pvcLister, pvc)
 	f.longhornVolumeLister = append(f.longhornVolumeLister, vol)
 	f.deploymentLister = append(f.deploymentLister, deployment)
 
-	f.runExpectSuccess(&ctx, getMetaKey(TestObjectEndpointName))
+	f.runExpectSuccess(&ctx, getMetaKey(TestObjectStoreName))
 }
 
 // --- Helper Functions ---

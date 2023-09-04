@@ -19,9 +19,6 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
-	v1 "k8s.io/api/core/v1"
-	storagev1 "k8s.io/api/storage/v1"
-
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
@@ -542,34 +539,40 @@ type SnapshotCRListOutput struct {
 	Type string       `json:"type"`
 }
 
-type ObjectEndpoint struct {
+type ObjectStore struct {
 	client.Resource
-	Name     string                       `json:"name"`
-	State    longhorn.ObjectEndpointState `json:"state"`
-	Endpoint string                       `json:"endpoint"`
+	Name      string                    `json:"name"`
+	State     longhorn.ObjectStoreState `json:"state"`
+	Endpoints []string                  `json:"endpoints"`
 }
 
-type ObjectEndpointInput struct {
-	Name         string `json:"name"`
-	Size         string `json:"size"`
-	StorageClass string `json:"storageclass"`
-	AccessKey    string `json:"accesskey"`
-	SecretKey    string `json:"secretkey"`
+type ObjectStoreInput struct {
+	Name                        string                               `json:"name"`
+	Size                        string                               `json:"size"`
+	NumberOfReplicas            int                                  `json:"numberOfReplicas"`
+	ReplicaSoftAntiAffinity     longhorn.ReplicaSoftAntiAffinity     `json:"replicaSoftAntiAffinity"`
+	ReplicaZoneSoftAntiAffinity longhorn.ReplicaZoneSoftAntiAffinity `json:"replicaZoneSoftAntiAffinity"`
+	ReplicaDiskSoftAntiAffinity longhorn.ReplicaDiskSoftAntiAffinity `json:"replicaDiskSoftAntiAffinity"`
+	DiskSelector                []string                             `json:"diskSelector"`
+	NodeSelector                []string                             `json:"nodeSelector"`
+	DataLocality                longhorn.DataLocality                `json:"dataLocality"`
+	FromBackup                  string                               `json:"fromBackup"`
+	StaleReplicaTimeout         int                                  `json:"staleReplicaTimeout"`
+	RecurringJobSelector        []longhorn.VolumeRecurringJob        `json:"recurringJobSelector"`
+	ReplicaAutoBalance          longhorn.ReplicaAutoBalance          `json:"replicaAutoBalance"`
+	RevisionCounterDisabled     bool                                 `json:"revisionCounterDisabled"`
+	UnmapMarkSnapChainRemoved   longhorn.UnmapMarkSnapChainRemoved   `json:"unmapMarkSnapChainRemoved"`
+	BackendStoreDriver          longhorn.BackendStoreDriverType      `json:"backendStoreDriver"`
+	AccessKey                   string                               `json:"accesskey"`
+	SecretKey                   string                               `json:"secretkey"`
+	TargetState                 longhorn.ObjectStoreState            `json:"targetState"`
+	Image                       string                               `json:"image"`
+	UIImage                     string                               `json:"uiImage"`
 }
 
-type ObjectEndpointListOutput struct {
-	Data []ObjectEndpoint `json:"data"`
-	Type string           `json:"type"`
-}
-
-type StorageClass struct {
-	client.Resource
-	Name string `json:"name"`
-}
-
-type StorageClassListOutput struct {
-	Data []StorageClass `json:"data"`
-	Type string         `json:"type"`
+type ObjectStoreListOutput struct {
+	Data []ObjectStore `json:"data"`
+	Type string        `json:"type"`
 }
 
 func NewSchema() *client.Schemas {
@@ -658,8 +661,7 @@ func NewSchema() *client.Schemas {
 	systemRestoreSchema(schemas.AddType("systemRestore", SystemRestore{}))
 	snapshotCRListOutputSchema(schemas.AddType("snapshotCRListOutput", SnapshotCRListOutput{}))
 
-	objectEndpointSchema(schemas.AddType("objectEndpoint", ObjectEndpoint{}))
-	storageClassSchema(schemas.AddType("storageClass", StorageClass{}))
+	objectStoreSchema(schemas.AddType("objectStore", ObjectStore{}))
 
 	return schemas
 }
@@ -1226,15 +1228,15 @@ func volumeAttachmentSchema(volumeAttachment *client.Schema) {
 	volumeAttachment.ResourceFields["attachments"] = attachments
 }
 
-func objectEndpointSchema(objectEndpoint *client.Schema) {
-	objectEndpoint.CollectionMethods = []string{"GET", "POST"}
-	objectEndpoint.ResourceMethods = []string{"GET", "PUT", "DELETE"}
+func objectStoreSchema(objectStore *client.Schema) {
+	objectStore.CollectionMethods = []string{"GET", "POST"}
+	objectStore.ResourceMethods = []string{"GET", "PUT", "DELETE"}
 
-	name := objectEndpoint.ResourceFields["name"]
+	name := objectStore.ResourceFields["name"]
 	name.Required = true
 	name.Unique = true
 	name.Create = true
-	objectEndpoint.ResourceFields["name"] = name
+	objectStore.ResourceFields["name"] = name
 }
 
 func storageClassSchema(storageClass *client.Schema) {
@@ -2182,54 +2184,29 @@ func sliceToMap(conditions []longhorn.Condition) map[string]longhorn.Condition {
 	return converted
 }
 
-func toObjectEndpointResource(endpoint *longhorn.ObjectEndpoint) *ObjectEndpoint {
-	return &ObjectEndpoint{
+func toObjectStoreResource(store *longhorn.ObjectStore) *ObjectStore {
+	return &ObjectStore{
 		Resource: client.Resource{
-			Id:   endpoint.Name,
-			Type: "objectEndpoint",
+			Id:   store.Name,
+			Type: "objectStore",
 		},
-		Name:     endpoint.Name,
-		State:    endpoint.Status.State,
-		Endpoint: endpoint.Status.Endpoint,
+		Name:      store.Name,
+		State:     store.Status.State,
+		Endpoints: store.Status.Endpoints,
 	}
 }
 
-func toObjectEndpointCollection(endpoints []*longhorn.ObjectEndpoint, apiContext *api.ApiContext) *client.GenericCollection {
+func toObjectStoreCollection(stores []*longhorn.ObjectStore, apiContext *api.ApiContext) *client.GenericCollection {
 	data := []interface{}{}
 
-	for _, endpoint := range endpoints {
-		data = append(data, toObjectEndpointResource(endpoint))
+	for _, store := range stores {
+		data = append(data, toObjectStoreResource(store))
 	}
 
 	return &client.GenericCollection{
 		Data: data,
 		Collection: client.Collection{
-			ResourceType: "objectEndpoint",
-		},
-	}
-}
-
-func toStorageClassResource(class *storagev1.StorageClass) *StorageClass {
-	return &StorageClass{
-		Resource: client.Resource{
-			Id:   class.Name,
-			Type: "storageClass",
-		},
-		Name: class.Name,
-	}
-}
-
-func toStorageClassCollection(classes []*storagev1.StorageClass, apiContext *api.ApiContext) *client.GenericCollection {
-	data := []interface{}{}
-
-	for _, class := range classes {
-		data = append(data, toStorageClassResource(class))
-	}
-
-	return &client.GenericCollection{
-		Data: data,
-		Collection: client.Collection{
-			ResourceType: "storageClass",
+			ResourceType: "objectStore",
 		},
 	}
 }
