@@ -82,19 +82,7 @@ func (s *DataStore) getSupportBundleManagerSelector(supportBundle *longhorn.Supp
 }
 
 func (s *DataStore) GetObjectEndpointSelectorLabels(endpoint *longhorn.ObjectEndpoint) map[string]string {
-	return map[string]string{
-		types.ObjectEndpointLabelKeyApp:       types.ObjectEndpointLabelApp,
-		types.ObjectEndpointLabelKeyInstance:  endpoint.Name,
-		types.ObjectEndpointLabelKeyComponent: types.ObjectEndpointLabelComponent,
-	}
-}
-
-func (s *DataStore) GetObjectEndpointLabels(endpoint *longhorn.ObjectEndpoint) map[string]string {
-	return map[string]string{
-		types.ObjectEndpointLabelKeyApp:       types.ObjectEndpointLabelApp,
-		types.ObjectEndpointLabelKeyInstance:  endpoint.Name,
-		types.ObjectEndpointLabelKeyManagedBy: types.ObjectEndpointLabelManagedBy,
-	}
+	return types.GetObjectEndpointLabels(endpoint)
 }
 
 // GetManagerNodeIPMap returns an object contains podIPs from list

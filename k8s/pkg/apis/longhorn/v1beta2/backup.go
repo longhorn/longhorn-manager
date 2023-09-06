@@ -95,6 +95,8 @@ type BackupStatus struct {
 	// Compression method
 	// +optional
 	CompressionMethod BackupCompressionMethod `json:"compressionMethod"`
+	// +optional
+	ObjectEndpointBackup string `json:"objectEndpointBackup,omitempty"`
 }
 
 // +genclient
@@ -124,4 +126,10 @@ type BackupList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Backup `json:"items"`
+}
+
+type ObjectEndpointBackup struct {
+	Labels      map[string]string  `json:"labels,omitempty"`
+	Annotations map[string]string  `json:"annotations,omitempty"`
+	Spec        ObjectEndpointSpec `json:"spec,omitempty"`
 }

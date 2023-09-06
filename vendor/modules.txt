@@ -219,13 +219,13 @@ github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/rpc
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20230627040634-5b4f2d040e9d
+# github.com/longhorn/backupstore v0.0.0-20230830075002-fa25b1a97ffd => ../backupstore
 ## explicit; go 1.17
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-iscsi-helper v0.0.0-20230529082528-4c3270590712
+# github.com/longhorn/go-iscsi-helper v0.0.0-20230802055236-4ec8edae3fad
 ## explicit; go 1.13
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/types
@@ -240,7 +240,7 @@ github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
 github.com/longhorn/longhorn-engine/proto/ptypes
-# github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230804185319-08b3613c5311
+# github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230804185319-08b3613c5311 => ../longhorn-instance-manager
 ## explicit; go 1.20
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -1473,6 +1473,8 @@ sigs.k8s.io/structured-merge-diff/v4/value
 # sigs.k8s.io/yaml v1.3.0
 ## explicit; go 1.12
 sigs.k8s.io/yaml
+# github.com/longhorn/backupstore => ../backupstore
+# github.com/longhorn/longhorn-instance-manager => ../longhorn-instance-manager
 # k8s.io/api => k8s.io/api v0.27.1
 # k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.27.1
 # k8s.io/apimachinery => k8s.io/apimachinery v0.27.1

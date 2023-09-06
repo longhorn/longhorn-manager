@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -442,6 +443,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	backup.Status.VolumeCreated = backupInfo.VolumeCreated
 	backup.Status.VolumeBackingImageName = backupInfo.VolumeBackingImageName
 	backup.Status.CompressionMethod = longhorn.BackupCompressionMethod(backupInfo.CompressionMethod)
+	backup.Status.ObjectEndpointBackup = backupInfo.ObjectEndpointBackup
 	backup.Status.LastSyncedAt = syncTime
 	return nil
 }
@@ -654,6 +656,30 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 		}
 	}
 
+	objectEndpointBackup := ""
+	// this volume is backing an ObjectEndpoint, we will backing up the metadata of this ObjectEndpoint
+	if component, ok := volume.Labels[types.GetLonghornLabelComponentKey()]; ok && component == types.LonghornLabelObjectEndpoint {
+		objectEndpoint, err := bc.ds.GetObjectEndpointRO(getEndpointName(volume))
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				bc.logger.Warnf("The objectEndpoint of volume %v does not exist", volume.Name)
+			} else {
+				return nil, fmt.Errorf("failed to find the objectEndpoint of volume %v", volume.Name)
+			}
+		} else {
+			objectEndpointBackupStruct := longhorn.ObjectEndpointBackup{
+				Labels:      objectEndpoint.Labels,
+				Annotations: objectEndpoint.Annotations,
+				Spec:        objectEndpoint.Spec,
+			}
+			objectEndpointBackupByte, err := json.Marshal(objectEndpointBackupStruct)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to convert objectEndpointBackupStruct of volume %v to json", volume.Name)
+			}
+			objectEndpointBackup = string(objectEndpointBackupByte)
+		}
+	}
+
 	engine, err := bc.ds.GetVolumeCurrentEngine(volume.Name)
 	if err != nil {
 		return nil, err
@@ -665,7 +691,7 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 
 	// Enable the backup monitor
 	monitor, err := bc.enableBackupMonitor(backup, volume, backupTargetClient, biChecksum,
-		volume.Spec.BackupCompressionMethod, int(concurrentLimit), storageClassName, engineClientProxy)
+		volume.Spec.BackupCompressionMethod, int(concurrentLimit), storageClassName, objectEndpointBackup, engineClientProxy)
 	if err != nil {
 		backup.Status.Error = err.Error()
 		backup.Status.State = longhorn.BackupStateError
@@ -738,7 +764,7 @@ func (bc *BackupController) hasMonitor(backupName string) *engineapi.BackupMonit
 }
 
 func (bc *BackupController) enableBackupMonitor(backup *longhorn.Backup, volume *longhorn.Volume, backupTargetClient *engineapi.BackupTargetClient,
-	biChecksum string, compressionMethod longhorn.BackupCompressionMethod, concurrentLimit int, storageClassName string,
+	biChecksum string, compressionMethod longhorn.BackupCompressionMethod, concurrentLimit int, storageClassName, objectEndpointBackup string,
 	engineClientProxy engineapi.EngineClientProxy) (*engineapi.BackupMonitor, error) {
 	monitor := bc.hasMonitor(backup.Name)
 	if monitor != nil {
@@ -754,7 +780,7 @@ func (bc *BackupController) enableBackupMonitor(backup *longhorn.Backup, volume 
 	}
 
 	monitor, err = engineapi.NewBackupMonitor(bc.logger, bc.ds, backup, volume, backupTargetClient,
-		biChecksum, compressionMethod, concurrentLimit, storageClassName, engine, engineClientProxy, bc.enqueueBackupForMonitor)
+		biChecksum, compressionMethod, concurrentLimit, storageClassName, objectEndpointBackup, engine, engineClientProxy, bc.enqueueBackupForMonitor)
 	if err != nil {
 		return nil, err
 	}

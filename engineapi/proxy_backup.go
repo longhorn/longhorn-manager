@@ -13,7 +13,7 @@ import (
 )
 
 func (p *Proxy) SnapshotBackup(e *longhorn.Engine, snapshotName, backupName, backupTarget,
-	backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int, storageClassName string,
+	backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int, storageClassName, objectEndpointBackup string,
 	labels, credential map[string]string) (string, string, error) {
 	if snapshotName == etypes.VolumeHeadName {
 		return "", "", fmt.Errorf("invalid operation: cannot backup %v", etypes.VolumeHeadName)
@@ -40,7 +40,7 @@ func (p *Proxy) SnapshotBackup(e *longhorn.Engine, snapshotName, backupName, bac
 
 	backupID, replicaAddress, err := p.grpcClient.SnapshotBackup(string(e.Spec.BackendStoreDriver), e.Name,
 		e.Spec.VolumeName, p.DirectToURL(e), backupName, snapshotName, backupTarget, backingImageName,
-		backingImageChecksum, compressionMethod, concurrentLimit, storageClassName, labels, credentialEnv,
+		backingImageChecksum, compressionMethod, concurrentLimit, storageClassName, objectEndpointBackup, labels, credentialEnv,
 	)
 	if err != nil {
 		return "", "", err

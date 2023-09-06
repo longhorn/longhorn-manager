@@ -3,6 +3,8 @@ module github.com/longhorn/longhorn-manager
 go 1.20
 
 replace (
+	github.com/longhorn/backupstore => ../backupstore
+	github.com/longhorn/longhorn-instance-manager => ../longhorn-instance-manager
 	k8s.io/api => k8s.io/api v0.27.1
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.27.1
 	k8s.io/apimachinery => k8s.io/apimachinery v0.27.1
@@ -45,8 +47,8 @@ require (
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.4.0-rc1.0.20230521151917-38ff27cc2cbb
-	github.com/longhorn/backupstore v0.0.0-20230627040634-5b4f2d040e9d
-	github.com/longhorn/go-iscsi-helper v0.0.0-20230529082528-4c3270590712
+	github.com/longhorn/backupstore v0.0.0-20230830075002-fa25b1a97ffd
+	github.com/longhorn/go-iscsi-helper v0.0.0-20230802055236-4ec8edae3fad
 	github.com/longhorn/go-spdk-helper v0.0.0-20230802035240-e5fe21b6067f
 	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230804172754-4d54af9e4ccf
 	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230804185319-08b3613c5311
@@ -170,7 +172,7 @@ require (
 	go.uber.org/zap v1.19.0 // indirect
 	golang.org/x/crypto v0.1.0 // indirect
 	golang.org/x/oauth2 v0.5.0 // indirect
-	golang.org/x/sync v0.1.0 // indirect
+	golang.org/x/sync v0.1.0
 	golang.org/x/term v0.7.0 // indirect
 	golang.org/x/text v0.9.0
 	google.golang.org/appengine v1.6.7 // indirect

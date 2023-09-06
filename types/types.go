@@ -202,6 +202,8 @@ const (
 	DefaultStorageClassName            = "longhorn"
 	ControlPlaneName                   = "longhorn-manager"
 
+	ObjectEndpointStorageClassName = "longhorn-object-endpoint"
+
 	DefaultRecurringJobConcurrency = 10
 
 	PVAnnotationLonghornVolumeSchedulingError = "longhorn.io/volume-scheduling-error"
@@ -502,6 +504,13 @@ func GetVolumeLabels(volumeName string) map[string]string {
 	return map[string]string{
 		LonghornLabelVolume: volumeName,
 	}
+}
+
+func GetObjectEndpointLabels(endpoint *longhorn.ObjectEndpoint) map[string]string {
+	labels := GetBaseLabelsForSystemManagedComponent()
+	labels[GetLonghornLabelComponentKey()] = LonghornLabelObjectEndpoint
+	labels[GetLonghornLabelKey(LonghornLabelObjectEndpoint)] = endpoint.Name
+	return labels
 }
 
 func GetRecurringJobLabelKeyByType(name string, isGroup bool) string {

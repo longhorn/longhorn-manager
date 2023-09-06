@@ -50,8 +50,8 @@ func (s *Server) ObjectEndpointCreate(rw http.ResponseWriter, req *http.Request)
 			Name: input.Name,
 		},
 		Spec: longhorn.ObjectEndpointSpec{
-			Size:         resource.MustParse(input.Size),
-			StorageClass: input.StorageClass,
+			Size: resource.MustParse(input.Size),
+			//StorageClass: input.StorageClass,
 			Credentials: longhorn.ObjectEndpointCredentials{
 				AccessKey: input.AccessKey,
 				SecretKey: input.SecretKey,

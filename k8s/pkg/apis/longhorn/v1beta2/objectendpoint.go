@@ -19,7 +19,7 @@ type ObjectEndpointStatus struct {
 	// The state of the object endpoint as observed by the object endpoint
 	// controller.
 	//
-	// The object endpoint implemets a state machine with this, beginning at
+	// The object endpoint implements a state machine with this, beginning at
 	// "unknown". Once the object endpoint controller detects the new object
 	// endpoint and begins resource creation the state is transformed to
 	// "starting". The object endpoint controller observes the resources and once
@@ -69,12 +69,46 @@ type ObjectEndpointCredentials struct {
 	// account.
 	//
 	// +optional
-	AccessKey string `json:"accessKey"`
+	AccessKey string `json:"accessKey,omitempty"`
 
 	// A secret key. This is the secret key corresponding to the access key above.
 	//
 	// +optional
-	SecretKey string `json:"secretKey"`
+	SecretKey string `json:"secretKey,omitempty"`
+}
+
+type ObjectEndpointVolumeParameters struct {
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	NumberOfReplicas int `json:"numberOfReplicas,omitempty"`
+	// +optional
+	ReplicaAutoBalance ReplicaAutoBalance `json:"replicaAutoBalance,omitempty"`
+	// +optional
+	DataLocality DataLocality `json:"dataLocality,omitempty"`
+	// +optional
+	RevisionCounterDisabled bool `json:"revisionCounterDisabled,omitempty"`
+	// +optional
+	UnmapMarkSnapChainRemoved UnmapMarkSnapChainRemoved `json:"unmapMarkSnapChainRemoved,omitempty"`
+	// Replica soft anti affinity of the volume. Set enabled to allow replicas to be scheduled on the same node.
+	// +optional
+	ReplicaSoftAntiAffinity ReplicaSoftAntiAffinity `json:"replicaSoftAntiAffinity,omitempty"`
+	// Replica zone soft anti affinity of the volume. Set enabled to allow replicas to be scheduled in the same zone.
+	// +optional
+	ReplicaZoneSoftAntiAffinity ReplicaZoneSoftAntiAffinity `json:"replicaZoneSoftAntiAffinity,omitempty"`
+	// Replica disk soft anti affinity of the volume. Set enabled to allow replicas to be scheduled in the same disk.
+	// +optional
+	ReplicaDiskSoftAntiAffinity ReplicaDiskSoftAntiAffinity `json:"replicaDiskSoftAntiAffinity,omitempty"`
+	// +optional
+	FromBackup string `json:"fromBackup,omitempty"`
+	// +optional
+	RecurringJobSelector []VolumeRecurringJob `json:"recurringJobSelector,omitempty"`
+	// +optional
+	DiskSelector []string `json:"diskSelector,omitempty"`
+	// +optional
+	NodeSelector []string `json:"nodeSelector,omitempty"`
+	// +kubebuilder:validation:Enum=v1;v2
+	// +optional
+	BackendStoreDriver BackendStoreDriverType `json:"backendStoreDriver,omitempty"`
 }
 
 type ObjectEndpointSpec struct {
@@ -84,11 +118,27 @@ type ObjectEndpointSpec struct {
 	// +optional
 	Credentials ObjectEndpointCredentials `json:"credentials"`
 
+	// Maybe we don't need user to specify StorageClass because we are doing static provisioning now
 	// The name of a storage class. The backing storage is going to be a new
 	// volume from that storage class.
 	//
 	// +optional
-	StorageClass string `json:"storageClassName"`
+	//StorageClass string `json:"storageClassName"`
+
+	// S3GW Image
+	// +optional
+	Image string `json:"image"`
+
+	// S3GW UI Image
+	// +optional
+	UiImage string `json:"UiImage"`
+
+	// +optional
+	FromVolumeBackup string `json:"fromVolumeBackup"`
+
+	// VolumeParameters holds the parameters for the backing Longhorn volume of this ObjectEndpoint
+	// +optional
+	VolumeParameters ObjectEndpointVolumeParameters `json:"volumeParameters"`
 
 	// The initial size of the volume to provision. This size together with the
 	// storage class will be used to automatically create a suitable volume where

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/longhorn/longhorn-manager/webhook/resources/objectendpoint"
 	"net/http"
 
 	"github.com/rancher/wrangler/pkg/webhook"
@@ -35,6 +36,7 @@ func Mutation(client *client.Client) (http.Handler, []admission.Resource, error)
 		backingimagedatasource.NewMutator(client.Datastore),
 		node.NewMutator(client.Datastore),
 		volume.NewMutator(client.Datastore),
+		objectendpoint.NewMutator(client.Datastore),
 		engine.NewMutator(client.Datastore),
 		recurringjob.NewMutator(client.Datastore),
 		engineimage.NewMutator(client.Datastore),

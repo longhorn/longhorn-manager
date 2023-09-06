@@ -635,6 +635,8 @@ spec:
                 description: The error messages when calling longhorn engine on listing or inspecting backups.
                 nullable: true
                 type: object
+              objectEndpointBackup:
+                type: string
               ownerID:
                 description: The node ID on which the controller is responsible to reconcile this backup CR.
                 type: string
@@ -2087,6 +2089,9 @@ spec:
             type: object
           spec:
             properties:
+              UiImage:
+                description: S3GW UI Image
+                type: string
               credentials:
                 description: Credentials contain a pair of access and secret keys that are used to seed the object endpoint.
                 properties:
@@ -2097,6 +2102,11 @@ spec:
                     description: A secret key. This is the secret key corresponding to the access key above.
                     type: string
                 type: object
+              fromVolumeBackup:
+                type: string
+              image:
+                description: S3GW Image
+                type: string
               size:
                 anyOf:
                 - type: integer
@@ -2104,9 +2114,82 @@ spec:
                 description: The initial size of the volume to provision. This size together with the storage class will be used to automatically create a suitable volume where the objects will be stored.
                 pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                 x-kubernetes-int-or-string: true
-              storageClassName:
-                description: The name of a storage class. The backing storage is going to be a new volume from that storage class.
-                type: string
+              volumeParameters:
+                description: VolumeParameters holds the parameters for the backing Longhorn volume of this ObjectEndpoint
+                properties:
+                  backendStoreDriver:
+                    enum:
+                    - v1
+                    - v2
+                    type: string
+                  dataLocality:
+                    enum:
+                    - disabled
+                    - best-effort
+                    - strict-local
+                    type: string
+                  diskSelector:
+                    items:
+                      type: string
+                    type: array
+                  fromBackup:
+                    type: string
+                  nodeSelector:
+                    items:
+                      type: string
+                    type: array
+                  numberOfReplicas:
+                    minimum: 1
+                    type: integer
+                  recurringJobSelector:
+                    items:
+                      properties:
+                        isGroup:
+                          type: boolean
+                        name:
+                          type: string
+                      required:
+                      - isGroup
+                      - name
+                      type: object
+                    type: array
+                  replicaAutoBalance:
+                    enum:
+                    - ignored
+                    - disabled
+                    - least-effort
+                    - best-effort
+                    type: string
+                  replicaDiskSoftAntiAffinity:
+                    description: Replica disk soft anti affinity of the volume. Set enabled to allow replicas to be scheduled in the same disk.
+                    enum:
+                    - ignored
+                    - enabled
+                    - disabled
+                    type: string
+                  replicaSoftAntiAffinity:
+                    description: Replica soft anti affinity of the volume. Set enabled to allow replicas to be scheduled on the same node.
+                    enum:
+                    - ignored
+                    - enabled
+                    - disabled
+                    type: string
+                  replicaZoneSoftAntiAffinity:
+                    description: Replica zone soft anti affinity of the volume. Set enabled to allow replicas to be scheduled in the same zone.
+                    enum:
+                    - ignored
+                    - enabled
+                    - disabled
+                    type: string
+                  revisionCounterDisabled:
+                    type: boolean
+                  unmapMarkSnapChainRemoved:
+                    enum:
+                    - ignored
+                    - disabled
+                    - enabled
+                    type: string
+                type: object
             type: object
           status:
             properties:
@@ -2114,7 +2197,7 @@ spec:
                 description: An address where the S3 endpoint is exposed.
                 type: string
               state:
-                description: "The state of the object endpoint as observed by the object endpoint controller. \n The object endpoint implemets a state machine with this, beginning at \"unknown\". Once the object endpoint controller detects the new object endpoint and begins resource creation the state is transformed to \"starting\". The object endpoint controller observes the resources and once all resources are up and ready the state transitions to \"running\". The state remains in \"running\" until the object endpoint is deleted, at which point the controller will clean up the associated resources. \n  │ object endpoint created  │  └──►┌───────────┐      │ unknown   │  ┌── └───────────┘  │  │ controller creates resources  │  └──►┌───────────┐      │ starting  │  ┌── └───────────┘  │  │ controller detects all resources ready  │  └──►┌───────────┐      │ running   │  ┌── └───────────┘  │  │ object endpoint is marked for deletion  │  └──►┌───────────┐      │ stopping  │  ┌── └───────────┘  │  │ controller waits for dependent resources to disappear before removing  │ the finalizer, thereby letting the object endpoint be deleted"
+                description: "The state of the object endpoint as observed by the object endpoint controller. \n The object endpoint implements a state machine with this, beginning at \"unknown\". Once the object endpoint controller detects the new object endpoint and begins resource creation the state is transformed to \"starting\". The object endpoint controller observes the resources and once all resources are up and ready the state transitions to \"running\". The state remains in \"running\" until the object endpoint is deleted, at which point the controller will clean up the associated resources. \n  │ object endpoint created  │  └──►┌───────────┐      │ unknown   │  ┌── └───────────┘  │  │ controller creates resources  │  └──►┌───────────┐      │ starting  │  ┌── └───────────┘  │  │ controller detects all resources ready  │  └──►┌───────────┐      │ running   │  ┌── └───────────┘  │  │ object endpoint is marked for deletion  │  └──►┌───────────┐      │ stopping  │  ┌── └───────────┘  │  │ controller waits for dependent resources to disappear before removing  │ the finalizer, thereby letting the object endpoint be deleted"
                 type: string
             type: object
         type: object

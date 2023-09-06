@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/longhorn/longhorn-manager/webhook/resources/objectendpoint"
 	"net/http"
 
 	"github.com/rancher/wrangler/pkg/webhook"
@@ -43,6 +44,7 @@ func Validation(client *client.Client) (http.Handler, []admission.Resource, erro
 		systembackup.NewValidator(client.Datastore),
 		systemrestore.NewValidator(client.Datastore),
 		volumeattachment.NewValidator(client.Datastore),
+		objectendpoint.NewValidator(client.Datastore),
 		engine.NewValidator(client.Datastore),
 		replica.NewValidator(client.Datastore),
 	}

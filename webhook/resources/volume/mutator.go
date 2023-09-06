@@ -21,6 +21,11 @@ import (
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
 )
 
+const (
+	// defaultStaleReplicaTimeout set to 48 hours (2880 minutes)
+	defaultStaleReplicaTimeout = 2880
+)
+
 type volumeMutator struct {
 	admission.DefaultMutator
 	ds *datastore.DataStore
@@ -51,6 +56,10 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	name := util.AutoCorrectName(volume.Name, datastore.NameMaximumLength)
 	if name != volume.Name {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/metadata/name", "value": "%s"}`, name))
+	}
+
+	if volume.Spec.StaleReplicaTimeout <= 0 {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/staleReplicaTimeout", "value": %v}`, defaultStaleReplicaTimeout))
 	}
 
 	if volume.Spec.NumberOfReplicas == 0 {
