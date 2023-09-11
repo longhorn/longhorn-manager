@@ -40,7 +40,7 @@ type Volume struct {
 	StaleReplicaTimeout              int                                    `json:"staleReplicaTimeout"`
 	State                            longhorn.VolumeState                   `json:"state"`
 	Robustness                       longhorn.VolumeRobustness              `json:"robustness"`
-	EngineImage                      string                                 `json:"engineImage"`
+	Image                            string                                 `json:"image"`
 	CurrentImage                     string                                 `json:"currentImage"`
 	BackingImage                     string                                 `json:"backingImage"`
 	Created                          string                                 `json:"created"`
@@ -173,7 +173,7 @@ type Instance struct {
 	NodeID              string `json:"hostId"`
 	Address             string `json:"address"`
 	Running             bool   `json:"running"`
-	EngineImage         string `json:"engineImage"`
+	Image               string `json:"image"`
 	CurrentImage        string `json:"currentImage"`
 	InstanceManagerName string `json:"instanceManagerName"`
 }
@@ -1249,7 +1249,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 				Running:             e.Status.CurrentState == longhorn.InstanceStateRunning,
 				NodeID:              e.Spec.NodeID,
 				Address:             e.Status.IP,
-				EngineImage:         e.Spec.EngineImage,
+				Image:               e.Spec.Image,
 				CurrentImage:        e.Status.CurrentImage,
 				InstanceManagerName: e.Status.InstanceManagerName,
 			},
@@ -1326,7 +1326,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 				Running:             r.Status.CurrentState == longhorn.InstanceStateRunning,
 				Address:             r.Status.IP,
 				NodeID:              r.Spec.NodeID,
-				EngineImage:         r.Spec.EngineImage,
+				Image:               r.Spec.Image,
 				CurrentImage:        r.Status.CurrentImage,
 				InstanceManagerName: r.Status.InstanceManagerName,
 			},
@@ -1417,7 +1417,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		BackupCompressionMethod:   v.Spec.BackupCompressionMethod,
 		StaleReplicaTimeout:       v.Spec.StaleReplicaTimeout,
 		Created:                   v.CreationTimestamp.String(),
-		EngineImage:               v.Spec.EngineImage,
+		Image:                     v.Spec.Image,
 		BackingImage:              v.Spec.BackingImage,
 		Standby:                   v.Spec.Standby,
 		DiskSelector:              v.Spec.DiskSelector,

@@ -343,7 +343,7 @@ func getBinaryAndArgsForEngineProcessCreation(e *longhorn.Engine,
 	for _, addr := range e.Status.CurrentReplicaAddressMap {
 		args = append(args, "--replica", GetBackendReplicaURL(addr))
 	}
-	binary := filepath.Join(types.GetEngineBinaryDirectoryForEngineManagerContainer(e.Spec.EngineImage), types.EngineBinaryName)
+	binary := filepath.Join(types.GetEngineBinaryDirectoryForEngineManagerContainer(e.Spec.Image), types.EngineBinaryName)
 
 	return binary, args, nil
 }
@@ -385,7 +385,7 @@ func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
 	syncAgentPortCount := portCount - 3
 	args = append(args, "--sync-agent-port-count", strconv.Itoa(syncAgentPortCount))
 
-	binary := filepath.Join(types.GetEngineBinaryDirectoryForReplicaManagerContainer(r.Spec.EngineImage), types.EngineBinaryName)
+	binary := filepath.Join(types.GetEngineBinaryDirectoryForReplicaManagerContainer(r.Spec.Image), types.EngineBinaryName)
 
 	return binary, args
 }
@@ -703,7 +703,7 @@ func (c *InstanceManagerClient) engineInstanceUpgrade(req *EngineInstanceUpgrade
 		args = append([]string{"--engine-instance-name", req.Engine.Name}, args...)
 	}
 
-	binary := filepath.Join(types.GetEngineBinaryDirectoryForEngineManagerContainer(req.Engine.Spec.EngineImage), types.EngineBinaryName)
+	binary := filepath.Join(types.GetEngineBinaryDirectoryForEngineManagerContainer(req.Engine.Spec.Image), types.EngineBinaryName)
 
 	if c.GetAPIVersion() < 4 {
 		process, err := c.processManagerGrpcClient.ProcessReplace(
