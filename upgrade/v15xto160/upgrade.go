@@ -18,7 +18,15 @@ const (
 func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) error {
 	// We will probably need to upgrade other resources as well. See upgradeVolumes or previous Longhorn versions for
 	// examples.
-	return upgradeVolumes(namespace, lhClient, resourceMaps)
+	if err := upgradeVolumes(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	if err := upgradeEngines(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	return upgradeReplicas(namespace, lhClient, resourceMaps)
 }
 
 func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
@@ -37,6 +45,57 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceM
 	for _, v := range volumeMap {
 		if v.Spec.ReplicaDiskSoftAntiAffinity == "" {
 			v.Spec.ReplicaDiskSoftAntiAffinity = longhorn.ReplicaDiskSoftAntiAffinityDefault
+		}
+
+		if v.Spec.Image == "" {
+			v.Spec.Image = v.Spec.EngineImage
+			v.Spec.EngineImage = ""
+		}
+	}
+
+	return nil
+}
+
+func upgradeEngines(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade engine failed")
+	}()
+
+	engineMap, err := upgradeutil.ListAndUpdateEnginesInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn engines during the engine upgrade")
+	}
+
+	for _, e := range engineMap {
+		if e.Spec.Image == "" {
+			e.Spec.Image = e.Spec.EngineImage
+			e.Spec.EngineImage = ""
+		}
+	}
+
+	return nil
+}
+
+func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade replica failed")
+	}()
+
+	replicaMap, err := upgradeutil.ListAndUpdateReplicasInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn replicas during the replica upgrade")
+	}
+
+	for _, r := range replicaMap {
+		if r.Spec.Image == "" {
+			r.Spec.Image = r.Spec.EngineImage
+			r.Spec.EngineImage = ""
 		}
 	}
 
