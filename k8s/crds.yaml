@@ -1324,6 +1324,7 @@ spec:
               disableFrontend:
                 type: boolean
               engineImage:
+                description: 'Deprecated: Replaced by field `image`.'
                 type: string
               frontend:
                 enum:
@@ -1331,6 +1332,8 @@ spec:
                 - iscsi
                 - nvmf
                 - ""
+                type: string
+              image:
                 type: string
               logRequested:
                 type: boolean
@@ -2427,6 +2430,7 @@ spec:
               diskPath:
                 type: string
               engineImage:
+                description: 'Deprecated: Replaced by field `image`.'
                 type: string
               engineName:
                 type: string
@@ -2435,6 +2439,8 @@ spec:
               hardNodeAffinity:
                 type: string
               healthyAt:
+                type: string
+              image:
                 type: string
               logRequested:
                 type: boolean
@@ -3464,6 +3470,7 @@ spec:
               encrypted:
                 type: boolean
               engineImage:
+                description: 'Deprecated: Replaced by field `image`.'
                 type: string
               fromBackup:
                 type: string
@@ -3473,6 +3480,8 @@ spec:
                 - iscsi
                 - nvmf
                 - ""
+                type: string
+              image:
                 type: string
               lastAttachedBy:
                 type: string

@@ -215,8 +215,11 @@ type VolumeSpec struct {
 	NodeID string `json:"nodeID"`
 	// +optional
 	MigrationNodeID string `json:"migrationNodeID"`
+	// Deprecated: Replaced by field `image`.
 	// +optional
 	EngineImage string `json:"engineImage"`
+	// +optional
+	Image string `json:"image"`
 	// +optional
 	BackingImage string `json:"backingImage"`
 	// +optional
