@@ -70,8 +70,11 @@ type InstanceSpec struct {
 	VolumeSize int64 `json:"volumeSize,string"`
 	// +optional
 	NodeID string `json:"nodeID"`
+	// Deprecated: Replaced by field `image`.
 	// +optional
 	EngineImage string `json:"engineImage"`
+	// +optional
+	Image string `json:"image"`
 	// +optional
 	DesireState InstanceState `json:"desireState"`
 	// +optional
