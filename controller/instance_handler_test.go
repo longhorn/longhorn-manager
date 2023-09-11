@@ -94,7 +94,7 @@ func newEngine(name, currentImage, imName, nodeName, ip string, port int, starte
 				VolumeSize:  TestVolumeSize,
 				DesireState: desireState,
 				NodeID:      nodeName,
-				EngineImage: TestEngineImage,
+				Image:       TestEngineImage,
 			},
 		},
 		Status: longhorn.EngineStatus{

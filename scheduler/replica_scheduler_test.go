@@ -165,7 +165,7 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 			NumberOfReplicas:            replicaCount,
 			Size:                        TestVolumeSize,
 			StaleReplicaTimeout:         TestVolumeStaleTimeout,
-			EngineImage:                 TestEngineImage,
+			Image:                       TestEngineImage,
 			ReplicaSoftAntiAffinity:     longhorn.ReplicaSoftAntiAffinityDefault,
 			ReplicaZoneSoftAntiAffinity: longhorn.ReplicaZoneSoftAntiAffinityDefault,
 			BackendStoreDriver:          longhorn.BackendStoreDriverTypeV1,
@@ -188,7 +188,7 @@ func newReplicaForVolume(v *longhorn.Volume) *longhorn.Replica {
 			InstanceSpec: longhorn.InstanceSpec{
 				VolumeName:  v.Name,
 				VolumeSize:  v.Spec.Size,
-				EngineImage: TestEngineImage,
+				Image:       TestEngineImage,
 				DesireState: longhorn.InstanceStateStopped,
 			},
 		},

@@ -105,7 +105,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	// default replica and engine objects will be copied by copyCurrentToExpect
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = longhorn.VolumeStateCreating
-	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.Image
 	tc.volume.Status.Conditions = []longhorn.Condition{}
 	tc.engines = nil
 	tc.replicas = nil
@@ -129,7 +129,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		r.Spec.DataDirectoryName = ""
 	}
 	tc.expectVolume.Status.State = longhorn.VolumeStateCreating
-	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.Image
 	tc.expectVolume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.expectVolume.Status.Conditions,
 		longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse, longhorn.VolumeConditionReasonReplicaSchedulingFailure, longhorn.ErrorReplicaScheduleNodeUnavailable)
 	testCases["volume create - replica scheduling failure"] = tc
@@ -141,7 +141,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
 		longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusFalse, "", "")
 	tc.expectVolume.Status.State = longhorn.VolumeStateDetaching
-	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.Image
 	tc.expectVolume.Status.Robustness = longhorn.VolumeRobustnessUnknown
 	testCases["volume detaching after being created"] = tc
 
@@ -159,7 +159,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusFalse, "", "")
 	tc.expectVolume.Status.State = longhorn.VolumeStateDetached
 	tc.expectVolume.Status.Robustness = longhorn.VolumeRobustnessUnknown
-	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.Image
 	testCases["volume detached"] = tc
 
 	// volume attaching, start replicas
@@ -171,7 +171,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Status.State = longhorn.VolumeStateDetached
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = longhorn.VolumeStateAttaching
-	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.Image
 	// replicas will be started first
 	// engine will be started only after all the replicas are running
 	for _, r := range tc.expectReplicas {
@@ -192,7 +192,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Status.State = longhorn.VolumeStateAttaching
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = longhorn.VolumeStateAttaching
-	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.Image
 	for _, e := range tc.expectEngines {
 		e.Spec.NodeID = tc.volume.Spec.NodeID
 		e.Spec.DesireState = longhorn.InstanceStateRunning
@@ -235,7 +235,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = longhorn.VolumeStateAttached
 	tc.expectVolume.Status.Robustness = longhorn.VolumeRobustnessHealthy
-	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.Image
 	tc.expectVolume.Status.CurrentNodeID = tc.volume.Spec.NodeID
 	for _, r := range tc.expectReplicas {
 		r.Spec.HealthyAt = getTestNow()
@@ -262,7 +262,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	for _, r := range tc.replicas {
 		r.Spec.HealthyAt = getTestNow()
 		r.Spec.DesireState = longhorn.InstanceStateRunning
-		r.Spec.EngineImage = TestEngineImage
+		r.Spec.Image = TestEngineImage
 		r.Status.CurrentState = longhorn.InstanceStateRunning
 		r.Status.CurrentImage = TestEngineImage
 		r.Status.IP = randomIP()
@@ -317,7 +317,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	for name, r := range tc.replicas {
 		r.Spec.HealthyAt = getTestNow()
 		r.Spec.DesireState = longhorn.InstanceStateRunning
-		r.Spec.EngineImage = TestEngineImage
+		r.Spec.Image = TestEngineImage
 		r.Status.CurrentState = longhorn.InstanceStateRunning
 		r.Status.CurrentImage = TestEngineImage
 		r.Status.IP = randomIP()
@@ -505,7 +505,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.volume.Spec.FromBackup = testBackupURL
 	tc.volume.Spec.Standby = false
 	tc.volume.Spec.DisableFrontend = true
-	tc.volume.Spec.EngineImage = TestEngineImage
+	tc.volume.Spec.Image = TestEngineImage
 	tc.volume.Status.OwnerID = TestNode1
 	tc.volume.Status.State = longhorn.VolumeStateAttached
 	tc.volume.Status.Robustness = longhorn.VolumeRobustnessHealthy
@@ -522,7 +522,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		e.Spec.DesireState = longhorn.InstanceStateRunning
 		e.Spec.BackupVolume = TestBackupVolumeName
 		e.Spec.RequestedBackupRestore = TestBackupName
-		e.Spec.EngineImage = TestEngineImage
+		e.Spec.Image = TestEngineImage
 		e.Status.OwnerID = TestNode1
 		e.Status.CurrentState = longhorn.InstanceStateRunning
 		e.Status.IP = randomIP()
@@ -761,7 +761,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = longhorn.VolumeStateDetaching
 	tc.expectVolume.Status.Robustness = longhorn.VolumeRobustnessUnknown
-	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.Image
 	tc.expectVolume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
 		longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusFalse, "", "")
 	for _, e := range tc.expectEngines {
@@ -794,7 +794,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = longhorn.VolumeStateDetaching
 	tc.expectVolume.Status.Robustness = longhorn.VolumeRobustnessUnknown
-	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.Image
 	tc.expectVolume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
 		longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusFalse, "", "")
 	for _, r := range tc.expectReplicas {
@@ -827,7 +827,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.CurrentNodeID = ""
 	tc.expectVolume.Status.State = longhorn.VolumeStateAttaching
-	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.Image
 	for _, r := range tc.expectReplicas {
 		if r.Spec.NodeID == TestNode2 {
 			r.Spec.DesireState = longhorn.InstanceStateStopped
@@ -853,7 +853,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.replicas = nil
 
 	tc.expectVolume.Status.State = longhorn.VolumeStateCreating
-	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.Image
 	tc.expectVolume.Status.CurrentNodeID = ""
 	expectEngines := map[string]*longhorn.Engine{}
 	for _, e := range tc.expectEngines {
@@ -912,7 +912,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectReplicas = expectRs
 
 	tc.expectVolume.Status.State = longhorn.VolumeStateDetached
-	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.Image
 	tc.expectVolume.Status.CurrentNodeID = ""
 	tc.expectVolume.Status.PendingNodeID = ""
 	tc.expectVolume.Status.Robustness = longhorn.VolumeRobustnessUnknown
@@ -931,7 +931,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = longhorn.VolumeStateAttaching
-	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.Image
 	expectRs = map[string]*longhorn.Replica{}
 	for _, r := range tc.expectReplicas {
 		r.Spec.DesireState = longhorn.InstanceStateRunning
@@ -964,7 +964,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.copyCurrentToExpect()
 	tc.expectVolume.Status.State = longhorn.VolumeStateDetaching
 	tc.expectVolume.Status.Robustness = longhorn.VolumeRobustnessUnknown
-	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.Image
 	tc.expectVolume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.volume.Status.Conditions,
 		longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusFalse, "", "")
 	for _, r := range tc.expectReplicas {
@@ -983,7 +983,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	for _, e := range tc.engines {
 		e.Spec.NodeID = TestNode1
 		e.Spec.DesireState = longhorn.InstanceStateRunning
-		e.Spec.EngineImage = TestEngineImage
+		e.Spec.Image = TestEngineImage
 		e.Status.CurrentState = longhorn.InstanceStateRunning
 		e.Status.CurrentImage = TestEngineImage
 		e.Status.CurrentSize = TestVolumeSize
@@ -1034,7 +1034,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	for _, e := range tc.engines {
 		e.Spec.NodeID = TestNode1
 		e.Spec.DesireState = longhorn.InstanceStateRunning
-		e.Spec.EngineImage = TestEngineImage
+		e.Spec.Image = TestEngineImage
 		e.Status.CurrentState = longhorn.InstanceStateRunning
 		e.Status.CurrentImage = TestEngineImage
 		e.Status.CurrentSize = TestVolumeSize
@@ -1084,7 +1084,7 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 			NumberOfReplicas:    replicaCount,
 			Size:                TestVolumeSize,
 			StaleReplicaTimeout: TestVolumeStaleTimeout,
-			EngineImage:         TestEngineImage,
+			Image:               TestEngineImage,
 			BackendStoreDriver:  longhorn.BackendStoreDriverTypeV1,
 		},
 		Status: longhorn.VolumeStatus{
@@ -1116,7 +1116,7 @@ func newEngineForVolume(v *longhorn.Volume) *longhorn.Engine {
 			InstanceSpec: longhorn.InstanceSpec{
 				VolumeName:  v.Name,
 				VolumeSize:  v.Spec.Size,
-				EngineImage: TestEngineImage,
+				Image:       TestEngineImage,
 				DesireState: longhorn.InstanceStateStopped,
 			},
 			Frontend:                  longhorn.VolumeFrontendBlockDev,
@@ -1143,7 +1143,7 @@ func newReplicaForVolume(v *longhorn.Volume, e *longhorn.Engine, nodeID, diskID 
 				NodeID:      nodeID,
 				VolumeName:  v.Name,
 				VolumeSize:  v.Spec.Size,
-				EngineImage: TestEngineImage,
+				Image:       TestEngineImage,
 				DesireState: longhorn.InstanceStateStopped,
 			},
 			EngineName:        e.Name,

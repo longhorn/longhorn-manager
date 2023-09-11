@@ -117,7 +117,7 @@ func (rcs *ReplicaScheduler) getNodeCandidates(nodesInfo map[string]*longhorn.No
 
 	nodeCandidates = map[string]*longhorn.Node{}
 	for _, node := range nodesInfo {
-		if isReady, _ := rcs.ds.CheckEngineImageReadiness(schedulingReplica.Spec.EngineImage, node.Name); isReady {
+		if isReady, _ := rcs.ds.CheckEngineImageReadiness(schedulingReplica.Spec.Image, node.Name); isReady {
 			nodeCandidates[node.Name] = node
 		}
 	}
@@ -555,8 +555,18 @@ func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *lon
 	if hardNodeAffinity != "" && r.Spec.NodeID != hardNodeAffinity {
 		return false
 	}
+<<<<<<< HEAD
 	if isReady, _ := rcs.ds.CheckEngineImageReadiness(r.Spec.EngineImage, r.Spec.NodeID); !isReady {
 		return false
+=======
+	if isReady, _ := rcs.ds.CheckEngineImageReadiness(r.Spec.Image, r.Spec.NodeID); !isReady {
+		return false, nil
+	}
+
+	allowEmptyDiskSelectorVolume, err := rcs.ds.GetSettingAsBool(types.SettingNameAllowEmptyDiskSelectorVolume)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyDiskSelectorVolume)
+>>>>>>> 8c416fc7 (Replace spec.engineImage with spec.Image in volume, replica and engine resources)
 	}
 
 	node, exists := nodeInfo[r.Spec.NodeID]
