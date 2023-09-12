@@ -8,6 +8,17 @@ type BackupVolumeSpec struct {
 	// +optional
 	// +nullable
 	SyncRequestedAt metav1.Time `json:"syncRequestedAt"`
+	// The backup target name that the backup volume was synced.
+	// +optional
+	// +nullable
+	BackupTargetName string `json:"backupTargetName"`
+	// The backup target url that the backup volume was synced.
+	// +optional
+	// +nullable
+	BackupTargetURL string `json:"backupTargetURL"`
+	// The volume name that the backup volume was used to backup.
+	// +optional
+	VolumeName string `json:"volumeName"`
 }
 
 // BackupVolumeStatus defines the observed state of the Longhorn backup volume
