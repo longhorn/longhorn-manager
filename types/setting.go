@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -1158,8 +1159,18 @@ func ValidateSetting(name, value string) (err error) {
 
 	switch sName {
 	case SettingNameBackupTarget:
-		// check whether have $ or , have been set in BackupTarget
+		u, err := url.Parse(value)
+		if err != nil {
+			return errors.Wrapf(err, "failed to parse %v as url", value)
+		}
+
+		// Check whether have $ or , have been set in BackupTarget
 		regStr := `[\$\,]`
+		if u.Scheme == "cifs" {
+			// The $ in SMB/CIFS URIs means that the share is hidden.
+			regStr = `[\,]`
+		}
+
 		reg := regexp.MustCompile(regStr)
 		findStr := reg.FindAllString(value, -1)
 		if len(findStr) != 0 {
