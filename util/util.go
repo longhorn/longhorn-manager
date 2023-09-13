@@ -393,14 +393,6 @@ func CheckBackupType(backupTarget string) (string, error) {
 	return u.Scheme, nil
 }
 
-func GetDiskStat(directory string) (stat *lhtypes.DiskStat, err error) {
-	defer func() {
-		err = errors.Wrapf(err, "cannot get disk stat of directory %v", directory)
-	}()
-
-	return lhns.GetDiskStat(directory)
-}
-
 func RetryOnConflictCause(fn func() (interface{}, error)) (interface{}, error) {
 	return RetryOnErrorCondition(fn, apierrors.IsConflict)
 }
