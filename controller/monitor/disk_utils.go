@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/pkg/errors"
 
@@ -151,8 +152,8 @@ func generateFilesystemTypeDiskConfig(path string) (*util.DiskConfig, error) {
 		return nil, err
 	}
 
-	if err := util.CreateDiskPathReplicaSubdirectory(path); err != nil {
-		return nil, err
+	if _, err := lhns.CreateDirectory(filepath.Join(path, util.ReplicaDirectory), time.Now()); err != nil {
+		return nil, errors.Wrapf(err, "failed to create replica subdirectory %v", path)
 	}
 
 	if err := lhns.SyncFile(diskCfgFilePath); err != nil {
