@@ -28,16 +28,12 @@ const (
 func getDiskStat(diskType longhorn.DiskType, name, path string, client *engineapi.DiskService) (stat *lhtypes.DiskStat, err error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
-		return getFilesystemTypeDiskStat(path)
+		return lhns.GetDiskStat(path)
 	case longhorn.DiskTypeBlock:
 		return getBlockTypeDiskStat(client, name, path)
 	default:
 		return nil, fmt.Errorf("unknown disk type %v", diskType)
 	}
-}
-
-func getFilesystemTypeDiskStat(path string) (stat *lhtypes.DiskStat, err error) {
-	return util.GetDiskStat(path)
 }
 
 func getBlockTypeDiskStat(client *engineapi.DiskService, name, path string) (stat *lhtypes.DiskStat, err error) {

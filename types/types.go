@@ -876,7 +876,7 @@ func CreateDisksFromAnnotation(annotation string) (map[string]longhorn.DiskSpec,
 		if disk.Path == "" {
 			return nil, fmt.Errorf("invalid disk %+v", disk)
 		}
-		diskStat, err := util.GetDiskStat(disk.Path)
+		diskStat, err := lhns.GetDiskStat(disk.Path)
 		if err != nil {
 			return nil, err
 		}
@@ -982,7 +982,7 @@ func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[st
 	if _, err := lhns.CreateDirectory(filepath.Join(dataPath, util.ReplicaDirectory), time.Now()); err != nil {
 		return nil, errors.Wrapf(err, "failed to create replica subdirectory %v", dataPath)
 	}
-	diskStat, err := util.GetDiskStat(dataPath)
+	diskStat, err := lhns.GetDiskStat(dataPath)
 	if err != nil {
 		return nil, err
 	}
