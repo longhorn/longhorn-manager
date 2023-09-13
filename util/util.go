@@ -658,15 +658,6 @@ func GetPossibleReplicaDirectoryNames(diskPath string) (replicaDirectoryNames ma
 	return replicaDirectoryNames, nil
 }
 
-func DeleteReplicaDirectory(diskPath, replicaDirectoryName string) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "cannot delete replica directory %v in disk %v", replicaDirectoryName, diskPath)
-	}()
-
-	replicaDirectory := filepath.Join(diskPath, "replicas", replicaDirectoryName)
-	return lhns.DeletePath(replicaDirectory)
-}
-
 type VolumeMeta struct {
 	Size            int64
 	Head            string
