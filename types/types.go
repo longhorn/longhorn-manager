@@ -10,9 +10,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+
+	lhns "github.com/longhorn/go-common-libs/ns"
 
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -976,8 +979,8 @@ func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[st
 	}
 
 	// filesystem-type disk
-	if err := util.CreateDiskPathReplicaSubdirectory(dataPath); err != nil {
-		return nil, err
+	if _, err := lhns.CreateDirectory(filepath.Join(dataPath, util.ReplicaDirectory), time.Now()); err != nil {
+		return nil, errors.Wrapf(err, "failed to create replica subdirectory %v", dataPath)
 	}
 	diskStat, err := util.GetDiskStat(dataPath)
 	if err != nil {

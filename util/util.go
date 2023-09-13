@@ -499,16 +499,6 @@ func ValidateTags(inputTags []string) ([]string, error) {
 	return tags, nil
 }
 
-func CreateDiskPathReplicaSubdirectory(path string) error {
-	var err error
-	defer func() {
-		err = errors.Wrapf(err, "failed to create replica subdirectory %v", path)
-	}()
-
-	_, err = lhns.CreateDirectory(filepath.Join(path, ReplicaDirectory), time.Now())
-	return err
-}
-
 func DeleteDiskPathReplicaSubdirectoryAndDiskCfgFile(path string) error {
 	replicaDirectoryPath := filepath.Join(path, ReplicaDirectory)
 	diskCfgFilePath := filepath.Join(path, DiskConfigFile)
