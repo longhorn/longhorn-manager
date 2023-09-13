@@ -37,11 +37,11 @@ type Volume struct {
 
 	Encrypted bool `json:"encrypted,omitempty" yaml:"encrypted,omitempty"`
 
-	EngineImage string `json:"engineImage,omitempty" yaml:"engine_image,omitempty"`
-
 	FromBackup string `json:"fromBackup,omitempty" yaml:"from_backup,omitempty"`
 
 	Frontend string `json:"frontend,omitempty" yaml:"frontend,omitempty"`
+
+	Image string `json:"image,omitempty" yaml:"image,omitempty"`
 
 	KubernetesStatus KubernetesStatus `json:"kubernetesStatus,omitempty" yaml:"kubernetes_status,omitempty"`
 
