@@ -324,6 +324,10 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		if err != nil {
 			return
 		}
+
+		if bc.backupInFinalState(backup) && (!backup.Status.LastSyncedAt.IsZero() || backup.Spec.SnapshotName == "") {
+			err = bc.handleAttachmentTicketDeletion(backup, backupVolumeName)
+		}
 		if reflect.DeepEqual(existingBackup.Status, backup.Status) {
 			return
 		}
@@ -339,10 +343,6 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 				return
 			}
 		}
-		if !backup.Status.LastSyncedAt.IsZero() || backup.Spec.SnapshotName == "" {
-			err = bc.handleAttachmentTicketDeletion(backup, backupVolumeName)
-			return
-		}
 	}()
 
 	// Perform backup snapshot to the remote backup target
@@ -352,7 +352,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	// Otherwise, the Backup CR is created by the backup volume controller, which means the backup already
 	// exists in the remote backup target before the CR creation.
 	// What the controller needs to do for this case is retrieve the info from the remote backup target.
-	if backup.Status.LastSyncedAt.IsZero() && backup.Spec.SnapshotName != "" && bc.backupNotInFinalState(backup) {
+	if backup.Status.LastSyncedAt.IsZero() && backup.Spec.SnapshotName != "" && !bc.backupInFinalState(backup) {
 		volume, err := bc.ds.GetVolume(backupVolumeName)
 		if err != nil {
 			if !apierrors.IsNotFound(err) {
@@ -856,8 +856,8 @@ func (bc *BackupController) syncBackupStatusWithSnapshotCreationTimeAndVolumeSiz
 	backup.Status.SnapshotCreatedAt = snap.Created
 }
 
-func (bc *BackupController) backupNotInFinalState(backup *longhorn.Backup) bool {
-	return backup.Status.State != longhorn.BackupStateCompleted &&
-		backup.Status.State != longhorn.BackupStateError &&
-		backup.Status.State != longhorn.BackupStateUnknown
+func (bc *BackupController) backupInFinalState(backup *longhorn.Backup) bool {
+	return backup.Status.State == longhorn.BackupStateCompleted ||
+		backup.Status.State == longhorn.BackupStateError ||
+		backup.Status.State == longhorn.BackupStateUnknown
 }
