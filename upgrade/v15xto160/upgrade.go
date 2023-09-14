@@ -26,7 +26,11 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 		return err
 	}
 
-	return upgradeReplicas(namespace, lhClient, resourceMaps)
+	if err := upgradeReplicas(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	return upgradeVolumeAttachments(namespace, lhClient, resourceMaps)
 }
 
 func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
@@ -96,6 +100,48 @@ func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset, resource
 		if r.Spec.Image == "" {
 			r.Spec.Image = r.Spec.EngineImage
 			r.Spec.EngineImage = ""
+		}
+	}
+
+	return nil
+}
+
+func upgradeVolumeAttachments(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade VolumeAttachment failed")
+	}()
+
+	volumeAttachmentMap, err := upgradeutil.ListAndUpdateVolumeAttachmentsInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn VolumeAttachments during the Longhorn VolumeAttachment upgrade")
+	}
+
+	snapshotMap, err := upgradeutil.ListAndUpdateSnapshotsInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Snapshots during the Longhorn VolumeAttachment a upgrade")
+	}
+
+	ticketIDsForExistingSnapshotsMap := map[string]interface{}{}
+	for snapshotName := range snapshotMap {
+		ticketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeSnapshotController, snapshotName)
+		ticketIDsForExistingSnapshotsMap[ticketID] = nil
+	}
+
+	// Previous Longhorn versions may have created attachmentTickets for snapshots that no longer exist. Clean these up.
+	for _, volumeAttachment := range volumeAttachmentMap {
+		for ticketID, ticket := range volumeAttachment.Spec.AttachmentTickets {
+			if ticket.Type != longhorn.AttacherTypeSnapshotController {
+				continue
+			}
+			if _, ok := ticketIDsForExistingSnapshotsMap[ticketID]; !ok {
+				delete(volumeAttachment.Spec.AttachmentTickets, ticketID)
+			}
 		}
 	}
 
