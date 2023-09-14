@@ -27,6 +27,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/meta"
 	"github.com/longhorn/longhorn-manager/upgrade/v14xto150"
+	"github.com/longhorn/longhorn-manager/upgrade/v151to152"
 	"github.com/longhorn/longhorn-manager/upgrade/v1beta1"
 )
 
@@ -228,6 +229,12 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 	if semver.Compare(lhVersionBeforeUpgrade, "v1.5.0") < 0 {
 		logrus.Info("Walking through the resource upgrade path v1.4.x to v1.5.0")
 		if err := v14xto150.UpgradeResources(namespace, lhClient, kubeClient, resourceMaps); err != nil {
+			return err
+		}
+	}
+	if semver.Compare(lhVersionBeforeUpgrade, "v1.5.2") < 0 {
+		logrus.Info("Walking through the resource upgrade path v1.5.1 to v1.5.2")
+		if err := v151to152.UpgradeResources(namespace, lhClient, kubeClient, resourceMaps); err != nil {
 			return err
 		}
 	}
