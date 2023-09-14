@@ -64,7 +64,7 @@ type DataStore struct {
 	BackingImageManagerInformer    cache.SharedInformer
 	backingImageDataSourceLister   lhlisters.BackingImageDataSourceLister
 	BackingImageDataSourceInformer cache.SharedInformer
-	bbiLister                      lhlisters.BackupBackingImageLister
+	backupBackingImageLister       lhlisters.BackupBackingImageLister
 	BackupBackingImageInformer     cache.SharedInformer
 	backupTargetLister             lhlisters.BackupTargetLister
 	BackupTargetInformer           cache.SharedInformer
@@ -155,8 +155,8 @@ func NewDataStore(
 	cacheSyncs = append(cacheSyncs, backingImageManagerInformer.Informer().HasSynced)
 	backingImageDataSourceInformer := lhInformerFactory.Longhorn().V1beta2().BackingImageDataSources()
 	cacheSyncs = append(cacheSyncs, backingImageDataSourceInformer.Informer().HasSynced)
-	bbiInformer := lhInformerFactory.Longhorn().V1beta2().BackupBackingImages()
-	cacheSyncs = append(cacheSyncs, bbiInformer.Informer().HasSynced)
+	backupBackingImageInformer := lhInformerFactory.Longhorn().V1beta2().BackupBackingImages()
+	cacheSyncs = append(cacheSyncs, backupBackingImageInformer.Informer().HasSynced)
 	backupTargetInformer := lhInformerFactory.Longhorn().V1beta2().BackupTargets()
 	cacheSyncs = append(cacheSyncs, backupTargetInformer.Informer().HasSynced)
 	backupVolumeInformer := lhInformerFactory.Longhorn().V1beta2().BackupVolumes()
@@ -237,8 +237,8 @@ func NewDataStore(
 		BackingImageManagerInformer:    backingImageManagerInformer.Informer(),
 		backingImageDataSourceLister:   backingImageDataSourceInformer.Lister(),
 		BackingImageDataSourceInformer: backingImageDataSourceInformer.Informer(),
-		bbiLister:                      bbiInformer.Lister(),
-		BackupBackingImageInformer:     bbiInformer.Informer(),
+		backupBackingImageLister:       backupBackingImageInformer.Lister(),
+		BackupBackingImageInformer:     backupBackingImageInformer.Informer(),
 		backupTargetLister:             backupTargetInformer.Lister(),
 		BackupTargetInformer:           backupTargetInformer.Informer(),
 		backupVolumeLister:             backupVolumeInformer.Lister(),

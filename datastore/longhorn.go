@@ -2144,7 +2144,7 @@ func (s *DataStore) RemoveFinalizerForBackupBackingImage(obj *longhorn.BackupBac
 }
 
 func (s *DataStore) getBackupBackingImageRO(name string) (*longhorn.BackupBackingImage, error) {
-	return s.bbiLister.BackupBackingImages(s.namespace).Get(name)
+	return s.backupBackingImageLister.BackupBackingImages(s.namespace).Get(name)
 }
 
 // GetBackupBackingImage returns a new BackupBackingImage object for the given name and
@@ -2162,7 +2162,7 @@ func (s *DataStore) GetBackupBackingImage(name string) (*longhorn.BackupBackingI
 func (s *DataStore) ListBackupBackingImages() (map[string]*longhorn.BackupBackingImage, error) {
 	itemMap := map[string]*longhorn.BackupBackingImage{}
 
-	list, err := s.bbiLister.BackupBackingImages(s.namespace).List(labels.Everything())
+	list, err := s.backupBackingImageLister.BackupBackingImages(s.namespace).List(labels.Everything())
 	if err != nil {
 		return nil, err
 	}
