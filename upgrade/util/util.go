@@ -572,6 +572,26 @@ func ListAndUpdateRecurringJobsInProvidedCache(namespace string, lhClient *lhcli
 	return recurringJobs, nil
 }
 
+// ListAndUpdateVolumeAttachmentsInProvidedCache list all volumeAttachments and save them into the provided cached `resourceMap`. This method is not thread-safe.
+func ListAndUpdateVolumeAttachmentsInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*longhorn.VolumeAttachment, error) {
+	if v, ok := resourceMaps[types.LonghornKindVolumeAttachment]; ok {
+		return v.(map[string]*longhorn.VolumeAttachment), nil
+	}
+
+	volumeAttachments := map[string]*longhorn.VolumeAttachment{}
+	volumeAttachmentList, err := lhClient.LonghornV1beta2().VolumeAttachments(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	for i, volumeAttachment := range volumeAttachmentList.Items {
+		volumeAttachments[volumeAttachment.Name] = &volumeAttachmentList.Items[i]
+	}
+
+	resourceMaps[types.LonghornKindVolumeAttachment] = volumeAttachments
+
+	return volumeAttachments, nil
+}
+
 // CreateAndUpdateRecurringJobInProvidedCache creates a recurringJob and saves it into the provided cached `resourceMap`. This method is not thread-safe.
 func CreateAndUpdateRecurringJobInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, job *longhorn.RecurringJob) (*longhorn.RecurringJob, error) {
 	obj, err := lhClient.LonghornV1beta2().RecurringJobs(namespace).Create(context.TODO(), job, metav1.CreateOptions{})
@@ -641,7 +661,7 @@ func UpdateResources(namespace string, lhClient *lhclientset.Clientset, resource
 		case types.LonghornKindSetting:
 			err = updateSettings(namespace, lhClient, resourceMap.(map[string]*longhorn.Setting))
 		case types.LonghornKindVolumeAttachment:
-			err = updateVolumeAttachments(namespace, lhClient, resourceMap.(map[string]*longhorn.VolumeAttachment))
+			err = createOrUpdateVolumeAttachments(namespace, lhClient, resourceMap.(map[string]*longhorn.VolumeAttachment))
 		case types.LonghornKindSnapshot:
 			err = updateSnapshots(namespace, lhClient, resourceMap.(map[string]*longhorn.Snapshot))
 		case types.LonghornKindOrphan:
@@ -921,19 +941,27 @@ func updateOrphans(namespace string, lhClient *lhclientset.Clientset, orphans ma
 	return nil
 }
 
-func updateVolumeAttachments(namespace string, lhClient *lhclientset.Clientset, volumeAttachment map[string]*longhorn.VolumeAttachment) error {
+// VolumeAttachments are new in v1.5.0. v1.5.x upgrades must be able to create VolumeAttachments that don't exist (when
+// coming from v1.4.x) or update VolumeAttachments that do exist (when coming from v1.5.x).
+func createOrUpdateVolumeAttachments(namespace string, lhClient *lhclientset.Clientset, volumeAttachments map[string]*longhorn.VolumeAttachment) error {
 	existingVolumeAttachmentList, err := lhClient.LonghornV1beta2().VolumeAttachments(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
 
-	existingVolumeAttachmentMap := map[string]bool{}
-	for _, volume := range existingVolumeAttachmentList.Items {
-		existingVolumeAttachmentMap[volume.Name] = true
+	existingVolumeAttachmentMap := map[string]longhorn.VolumeAttachment{}
+	for _, va := range existingVolumeAttachmentList.Items {
+		existingVolumeAttachmentMap[va.Name] = va
 	}
 
-	for _, va := range volumeAttachment {
-		if _, ok := existingVolumeAttachmentMap[va.Name]; ok {
+	for _, va := range volumeAttachments {
+		if existingVolumeAttachment, ok := existingVolumeAttachmentMap[va.Name]; ok {
+			if !reflect.DeepEqual(existingVolumeAttachment.Spec, va.Spec) ||
+				!reflect.DeepEqual(existingVolumeAttachment.ObjectMeta, va.ObjectMeta) {
+				if _, err = lhClient.LonghornV1beta2().VolumeAttachments(namespace).Update(context.TODO(), va, metav1.UpdateOptions{}); err != nil {
+					return err
+				}
+			}
 			continue
 		}
 		if _, err = lhClient.LonghornV1beta2().VolumeAttachments(namespace).Create(context.TODO(), va, metav1.CreateOptions{}); err != nil {
