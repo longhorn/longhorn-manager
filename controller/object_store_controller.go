@@ -176,7 +176,7 @@ func (osc *ObjectStoreController) handleStarting(store *longhorn.ObjectStore) (e
 		return nil
 	}
 
-	_, err = osc.ds.GetVolume(store.Name)
+	_, err = osc.ds.GetVolume(genPVName(store))
 	if err != nil && datastore.ErrorIsNotFound(err) {
 		return osc.createResources(store)
 	} else if err != nil {
@@ -260,7 +260,7 @@ func (osc *ObjectStoreController) handleRunning(store *longhorn.ObjectStore) (er
 		return err
 	}
 
-	_, err = osc.ds.GetVolume(store.Name)
+	_, err = osc.ds.GetVolume(genPVName(store))
 	if err != nil {
 		osc.setObjectStoreState(store, longhorn.ObjectStoreStateError)
 		return err
@@ -328,9 +328,10 @@ func (osc *ObjectStoreController) handleTerminating(store *longhorn.ObjectStore)
 	if err == nil || !datastore.ErrorIsNotFound(err) {
 		return err
 	}
+
 	err = osc.ds.RemoveFinalizerForObjectStore(store)
 	if err != nil {
-		store, err = osc.setObjectStoreState(store, longhorn.ObjectStoreStateError)
+		store, _ = osc.setObjectStoreState(store, longhorn.ObjectStoreStateError)
 		return err
 	}
 	return nil
@@ -466,7 +467,7 @@ func (osc *ObjectStoreController) createVolume(
 ) (*longhorn.Volume, error) {
 	vol := longhorn.Volume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      store.Name,
+			Name:      genPVName(store),
 			Namespace: osc.namespace,
 			Labels:    osc.ds.GetObjectStoreLabels(store),
 			OwnerReferences: []metav1.OwnerReference{
@@ -614,6 +615,14 @@ func (osc *ObjectStoreController) createSVC(store *longhorn.ObjectStore) error {
 						IntVal: types.ObjectStoreUIContainerPort, // 8080
 					},
 				},
+				{
+					Name:     "status",
+					Protocol: "TCP",
+					Port:     types.ObjectStoreStatusServicePort, // 9090
+					TargetPort: intstr.IntOrString{
+						IntVal: types.ObjectStoreStatusContainerPort, // 9090
+					},
+				},
 			},
 		},
 	}
@@ -683,12 +692,21 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 							Args: []string{
 								"--rgw-dns-name", (*osc.getLocalEndpointURL(store)).DomainName,
 								"--rgw-backend-store", "sfs",
-								"--rgw_frontends", fmt.Sprintf("beast port=%d", types.ObjectStoreContainerPort),
+								"--rgw_frontends", fmt.Sprintf(
+									"beast port=%d, status port=%d",
+									types.ObjectStoreContainerPort,
+									types.ObjectStoreStatusContainerPort,
+								),
 							},
 							Ports: []corev1.ContainerPort{
 								{
 									Name:          "s3",
 									ContainerPort: types.ObjectStoreContainerPort,
+									Protocol:      "TCP",
+								},
+								{
+									Name:          "status",
+									ContainerPort: types.ObjectStoreStatusContainerPort,
 									Protocol:      "TCP",
 								},
 							},
@@ -721,8 +739,9 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 							},
 							Env: []corev1.EnvVar{
 								{
-									Name:  "S3GW_SERVICE_ADDRESS",
-									Value: (*osc.getLocalEndpointURL(store)).DomainName,
+									Name: "S3GW_SERVICE_URL",
+									Value: fmt.Sprintf("http://%v/",
+										(*osc.getLocalEndpointURL(store)).DomainName),
 								},
 							},
 						},
