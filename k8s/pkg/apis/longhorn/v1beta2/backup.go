@@ -97,6 +97,14 @@ type BackupStatus struct {
 	// Compression method
 	// +optional
 	CompressionMethod BackupCompressionMethod `json:"compressionMethod"`
+	// +optional
+	ObjectStoreBackup string `json:"objectStoreBackup,omitempty"`
+}
+
+type ObjectStoreBackup struct {
+	Labels      map[string]string `json:"labels,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty"`
+	Spec        ObjectStoreSpec   `json:"spec,omitempty"`
 }
 
 // +genclient

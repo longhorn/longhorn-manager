@@ -526,6 +526,13 @@ func GetVolumeLabels(volumeName string) map[string]string {
 	}
 }
 
+func GetObjectStoreLabels(store *longhorn.ObjectStore) map[string]string {
+	labels := GetBaseLabelsForSystemManagedComponent()
+	labels[GetLonghornLabelComponentKey()] = LonghornLabelObjectStore
+	labels[GetLonghornLabelKey(LonghornLabelObjectStore)] = store.Name
+	return labels
+}
+
 func GetRecurringJobLabelKeyByType(name string, isGroup bool) string {
 	if isGroup {
 		return GetRecurringJobLabelKey(LonghornLabelRecurringJobGroup, name)

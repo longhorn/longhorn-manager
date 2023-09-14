@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -443,6 +444,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	backup.Status.VolumeCreated = backupInfo.VolumeCreated
 	backup.Status.VolumeBackingImageName = backupInfo.VolumeBackingImageName
 	backup.Status.CompressionMethod = longhorn.BackupCompressionMethod(backupInfo.CompressionMethod)
+	backup.Status.ObjectStoreBackup = backupInfo.ObjectStoreBackup
 	backup.Status.LastSyncedAt = syncTime
 	return nil
 }
@@ -652,6 +654,28 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 			if storageClassName == "" {
 				bc.logger.Warnf("Failed to find the StorageClassName from the pvc %v", pvc.Name)
 			}
+		}
+	}
+
+	objectStoreBackup := ""
+	// this volume is backing an ObjectStore, we will also backup the metadata of
+	// this ObjectStore
+	if component, ok := volume.Labels[types.GetLonghornLabelComponentKey()]; ok && component == types.LonghornLabelObjectStore {
+		objectStore, err := bc.ds.GetObjectStoreRO(getStoreName(volume))
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				bc.logger.Warnf("The ObjectStore of volume %v does not exist", volume.Name)
+			} else {
+				return nil, fmt.Errorf("Failed to find the ObjectStore of volume %v", volume.Name)
+			}
+		} else {
+			objectStoreBackupStruct := longhorn.ObjectStoreBackup{}
+
+			objectStoreBackupBytes, err := json.Marshal(objectStoreBackupStruct)
+			if err != nil {
+			}
+
+			objectStoreBackup = string(objectStoreBackupBytes)
 		}
 	}
 

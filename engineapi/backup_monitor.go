@@ -52,7 +52,7 @@ type BackupMonitor struct {
 }
 
 func NewBackupMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, backup *longhorn.Backup, volume *longhorn.Volume, backupTargetClient *BackupTargetClient,
-	biChecksum string, compressionMethod longhorn.BackupCompressionMethod, concurrentLimit int, storageClassName string, engine *longhorn.Engine, engineClientProxy EngineClientProxy,
+	biChecksum string, compressionMethod longhorn.BackupCompressionMethod, concurrentLimit int, storageClassName, objectStoreBackup string, engine *longhorn.Engine, engineClientProxy EngineClientProxy,
 	syncCallback func(key string)) (*BackupMonitor, error) {
 	ctx, quit := context.WithCancel(context.Background())
 	m := &BackupMonitor{
@@ -86,7 +86,7 @@ func NewBackupMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, backup
 		}
 		_, replicaAddress, err := engineClientProxy.SnapshotBackup(engine, backup.Spec.SnapshotName, backup.Name,
 			backupTargetClient.URL, volume.Spec.BackingImage, biChecksum, string(compressionMethod), concurrentLimit, storageClassName,
-			backup.Spec.Labels, backupTargetClient.Credential)
+			objectStoreBackup, backup.Spec.Labels, backupTargetClient.Credential)
 		if err != nil {
 			if !strings.Contains(err.Error(), "DeadlineExceeded") {
 				m.logger.WithError(err).Warn("Cannot take snapshot backup")

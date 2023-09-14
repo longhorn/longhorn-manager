@@ -624,6 +624,8 @@ spec:
                 description: The error messages when calling longhorn engine on listing or inspecting backups.
                 nullable: true
                 type: object
+              objectStoreBackup:
+                type: string
               ownerID:
                 description: The node ID on which the controller is responsible to reconcile this backup CR.
                 type: string
