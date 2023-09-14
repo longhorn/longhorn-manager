@@ -369,12 +369,19 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 	backingImagePath := ""
 	if r.Spec.BackingImage != "" {
 		if backingImagePath, err = rc.GetBackingImagePathForReplicaStarting(r); err != nil {
+			r.Status.Conditions = types.SetCondition(r.Status.Conditions, longhorn.ReplicaConditionTypeWaitForBackingImage,
+				longhorn.ConditionStatusTrue, longhorn.ReplicaConditionReasonWaitForBackingImageFailed, err.Error())
 			return nil, err
 		}
 		if backingImagePath == "" {
+			r.Status.Conditions = types.SetCondition(r.Status.Conditions, longhorn.ReplicaConditionTypeWaitForBackingImage,
+				longhorn.ConditionStatusTrue, longhorn.ReplicaConditionReasonWaitForBackingImageWaiting, "")
 			return nil, nil
 		}
 	}
+
+	r.Status.Conditions = types.SetCondition(r.Status.Conditions, longhorn.ReplicaConditionTypeWaitForBackingImage,
+		longhorn.ConditionStatusFalse, "", "")
 
 	if IsRebuildingReplica(r) {
 		canStart, err := rc.CanStartRebuildingReplica(r)

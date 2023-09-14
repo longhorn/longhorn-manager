@@ -1091,6 +1091,10 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 			OwnerID: TestOwnerID1,
 			Conditions: []longhorn.Condition{
 				{
+					Type:   string(longhorn.VolumeConditionTypeWaitForBackingImage),
+					Status: longhorn.ConditionStatusFalse,
+				},
+				{
 					Type:   string(longhorn.VolumeConditionTypeTooManySnapshots),
 					Status: longhorn.ConditionStatusFalse,
 				},
