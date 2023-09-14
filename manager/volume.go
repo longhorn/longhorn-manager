@@ -184,6 +184,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			UnmapMarkSnapChainRemoved:   spec.UnmapMarkSnapChainRemoved,
 			ReplicaSoftAntiAffinity:     spec.ReplicaSoftAntiAffinity,
 			ReplicaZoneSoftAntiAffinity: spec.ReplicaZoneSoftAntiAffinity,
+			ReplicaDiskSoftAntiAffinity: spec.ReplicaDiskSoftAntiAffinity,
 			BackendStoreDriver:          spec.BackendStoreDriver,
 			OfflineReplicaRebuilding:    spec.OfflineReplicaRebuilding,
 		},
@@ -1075,6 +1076,32 @@ func (m *VolumeManager) UpdateReplicaZoneSoftAntiAffinity(name string, replicaZo
 	}
 
 	logrus.Infof("Updated volume %v field ReplicaZoneSoftAntiAffinity from %v to %v", v.Name, oldReplicaZoneSoftAntiAffinity, replicaZoneSoftAntiAffinity)
+	return v, nil
+}
+
+func (m *VolumeManager) UpdateReplicaDiskSoftAntiAffinity(name string, replicaDiskSoftAntiAffinity longhorn.ReplicaDiskSoftAntiAffinity) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to update field ReplicaDiskSoftAntiAffinity for volume %v", name)
+	}()
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if v.Spec.ReplicaDiskSoftAntiAffinity == replicaDiskSoftAntiAffinity {
+		logrus.Debugf("Volume %v already set field ReplicaDiskSoftAntiAffinity to %v", v.Name, replicaDiskSoftAntiAffinity)
+		return v, nil
+	}
+
+	oldReplicaDiskSoftAntiAffinity := v.Spec.ReplicaDiskSoftAntiAffinity
+	v.Spec.ReplicaDiskSoftAntiAffinity = replicaDiskSoftAntiAffinity
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+
+	logrus.Infof("Updated volume %v field ReplicaDiskSoftAntiAffinity from %v to %v", v.Name, oldReplicaDiskSoftAntiAffinity, replicaDiskSoftAntiAffinity)
 	return v, nil
 }
 

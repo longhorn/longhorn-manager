@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -108,6 +109,7 @@ const (
 	SettingNameV2DataEngine                                             = SettingName("v2-data-engine")
 	SettingNameV2DataEngineHugepageLimit                                = SettingName("v2-data-engine-hugepage-limit")
 	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
+	SettingNameReplicaDiskSoftAntiAffinity                              = SettingName("replica-disk-soft-anti-affinity")
 	SettingNameAllowEmptyNodeSelectorVolume                             = SettingName("allow-empty-node-selector-volume")
 	SettingNameAllowEmptyDiskSelectorVolume                             = SettingName("allow-empty-disk-selector-volume")
 )
@@ -182,6 +184,7 @@ var (
 		SettingNameV2DataEngine,
 		SettingNameV2DataEngineHugepageLimit,
 		SettingNameOfflineReplicaRebuilding,
+		SettingNameReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume,
 	}
@@ -282,6 +285,7 @@ var (
 		SettingNameV2DataEngine:                                             SettingDefinitionV2DataEngine,
 		SettingNameV2DataEngineHugepageLimit:                                SettingDefinitionV2DataEngineHugepageLimit,
 		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
+		SettingNameReplicaDiskSoftAntiAffinity:                              SettingDefinitionReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume:                             SettingDefinitionAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume:                             SettingDefinitionAllowEmptyDiskSelectorVolume,
 	}
@@ -1111,6 +1115,16 @@ var (
 		Default:     "1024",
 	}
 
+	SettingDefinitionReplicaDiskSoftAntiAffinity = SettingDefinition{
+		DisplayName: "Replica Disk Level Soft Anti-Affinity",
+		Description: "Allow scheduling on disks with existing healthy replicas of the same volume",
+		Category:    SettingCategoryScheduling,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "true",
+	}
+
 	SettingDefinitionAllowEmptyNodeSelectorVolume = SettingDefinition{
 		DisplayName: "Allow Scheduling Empty Node Selector Volumes To Any Node",
 		Description: "Allow replica of the volume without node selector to be scheduled on node with tags, default true",
@@ -1184,8 +1198,18 @@ func ValidateSetting(name, value string) (err error) {
 
 	switch sName {
 	case SettingNameBackupTarget:
-		// check whether have $ or , have been set in BackupTarget
+		u, err := url.Parse(value)
+		if err != nil {
+			return errors.Wrapf(err, "failed to parse %v as url", value)
+		}
+
+		// Check whether have $ or , have been set in BackupTarget
 		regStr := `[\$\,]`
+		if u.Scheme == "cifs" {
+			// The $ in SMB/CIFS URIs means that the share is hidden.
+			regStr = `[\,]`
+		}
+
 		reg := regexp.MustCompile(regStr)
 		findStr := reg.FindAllString(value, -1)
 		if len(findStr) != 0 {
@@ -1230,6 +1254,8 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameAllowEmptyDiskSelectorVolume:
 		fallthrough
 	case SettingNameAllowCollectingLonghornUsage:
+		fallthrough
+	case SettingNameReplicaDiskSoftAntiAffinity:
 		if value != "true" && value != "false" {
 			return fmt.Errorf("value %v of setting %v should be true or false", value, sName)
 		}

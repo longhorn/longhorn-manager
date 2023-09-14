@@ -148,6 +148,15 @@ const (
 	ReplicaZoneSoftAntiAffinityDisabled = ReplicaZoneSoftAntiAffinity("disabled")
 )
 
+// +kubebuilder:validation:Enum=ignored;enabled;disabled
+type ReplicaDiskSoftAntiAffinity string
+
+const (
+	ReplicaDiskSoftAntiAffinityDefault  = ReplicaDiskSoftAntiAffinity("ignored")
+	ReplicaDiskSoftAntiAffinityEnabled  = ReplicaDiskSoftAntiAffinity("enabled")
+	ReplicaDiskSoftAntiAffinityDisabled = ReplicaDiskSoftAntiAffinity("disabled")
+)
+
 type BackendStoreDriverType string
 
 const (
@@ -231,12 +240,15 @@ type VolumeSpec struct {
 	RevisionCounterDisabled bool `json:"revisionCounterDisabled"`
 	// +optional
 	UnmapMarkSnapChainRemoved UnmapMarkSnapChainRemoved `json:"unmapMarkSnapChainRemoved"`
-	// Replica soft anti affinity of the volume. Set enabled to allow replicas to be scheduled on the same node
+	// Replica soft anti affinity of the volume. Set enabled to allow replicas to be scheduled on the same node.
 	// +optional
 	ReplicaSoftAntiAffinity ReplicaSoftAntiAffinity `json:"replicaSoftAntiAffinity"`
-	// Replica zone soft anti affinity of the volume. Set enabled to allow replicas to be scheduled in the same zone
+	// Replica zone soft anti affinity of the volume. Set enabled to allow replicas to be scheduled in the same zone.
 	// +optional
 	ReplicaZoneSoftAntiAffinity ReplicaZoneSoftAntiAffinity `json:"replicaZoneSoftAntiAffinity"`
+	// Replica disk soft anti affinity of the volume. Set enabled to allow replicas to be scheduled in the same disk.
+	// +optional
+	ReplicaDiskSoftAntiAffinity ReplicaDiskSoftAntiAffinity `json:"replicaDiskSoftAntiAffinity"`
 	// +optional
 	LastAttachedBy string `json:"lastAttachedBy"`
 	// +optional
