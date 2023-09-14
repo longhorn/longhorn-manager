@@ -569,6 +569,32 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		}
 	}()
 
+	// Aggregate replica wait for backing image condition
+	aggregatedReplicaWaitForBackingImageError := util.NewMultiError()
+	waitForBackingImage := false
+	for _, r := range rs {
+		waitForBackingImageCondition := types.GetCondition(r.Status.Conditions, longhorn.ReplicaConditionTypeWaitForBackingImage)
+		if waitForBackingImageCondition.Status == longhorn.ConditionStatusTrue {
+			waitForBackingImage = true
+			if waitForBackingImageCondition.Reason == longhorn.ReplicaConditionReasonWaitForBackingImageFailed {
+				aggregatedReplicaWaitForBackingImageError.Append(util.NewMultiError(waitForBackingImageCondition.Message))
+			}
+		}
+	}
+	if waitForBackingImage {
+		if len(aggregatedReplicaWaitForBackingImageError) > 0 {
+			failureMessage := aggregatedReplicaWaitForBackingImageError.Join()
+			v.Status.Conditions = types.SetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeWaitForBackingImage,
+				longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonWaitForBackingImageFailed, failureMessage)
+		} else {
+			v.Status.Conditions = types.SetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeWaitForBackingImage,
+				longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonWaitForBackingImageWaiting, "")
+		}
+	} else {
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeWaitForBackingImage,
+			longhorn.ConditionStatusFalse, "", "")
+	}
+
 	e, err := c.ds.PickVolumeCurrentEngine(v, es)
 	if err != nil {
 		return err
