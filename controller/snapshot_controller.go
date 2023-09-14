@@ -23,6 +23,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -299,15 +300,17 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 		if err != nil && !shouldUpdateObject(err) {
 			return
 		}
-		if reflect.DeepEqual(existingSnapshot.Status, snapshot.Status) {
-			return
+		if !reflect.DeepEqual(existingSnapshot.Annotations, snapshot.Annotations) {
+			// We need to annotate this deleting snapshot.
+			if snapshot, err = sc.ds.UpdateSnapshot(snapshot); err != nil {
+				return
+			}
+		} else if !reflect.DeepEqual(existingSnapshot.Status, snapshot.Status) {
+			if snapshot, err = sc.ds.UpdateSnapshotStatus(snapshot); err != nil {
+				return
+			}
+			sc.generatingEventsForSnapshot(existingSnapshot, snapshot)
 		}
-
-		snapshot, err = sc.ds.UpdateSnapshotStatus(snapshot)
-		if err != nil {
-			return
-		}
-		sc.generatingEventsForSnapshot(existingSnapshot, snapshot)
 	}()
 
 	// deleting snapshotCR
@@ -344,8 +347,25 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 			return sc.handleAttachmentTicketDeletion(snapshot)
 		}
 
-		if err := sc.handleAttachmentTicketCreation(snapshot); err != nil {
-			return err
+		// It is possible for us to be reconciling an out-of-date snapshot that has had its finalizer removed and has
+		// been deleted from the cluster, so we must take special care around attachment tickets.
+		if val, ok := snapshot.Annotations[types.AttachingForDeletionAnnotationKey]; ok && val == "true" {
+			// It is fine to update an attachment ticket more than once after DeletionTimestamp is set. If we attempt
+			// to update an out-of-date volume attachment, we will simply fail.
+			if err := sc.handleAttachmentTicketModification(snapshot, false); err != nil {
+				return err
+			}
+		} else {
+			// Only create an attachment ticket once after DeletionTimestamp is set and then immediately return. We must
+			// not create an attachment ticket again in case this is the last time we reconcile.
+			if err := sc.handleAttachmentTicketModification(snapshot, true); err != nil {
+				return err
+			}
+			if snapshot.Annotations == nil {
+				snapshot.Annotations = make(map[string]string)
+			}
+			snapshot.Annotations[types.AttachingForDeletionAnnotationKey] = "true"
+			return nil
 		}
 
 		if engine.Status.CurrentState != longhorn.InstanceStateRunning {
@@ -387,7 +407,7 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 
 	// newly created snapshotCR by user
 	if requestCreateNewSnapshot && !alreadyCreatedBefore {
-		if err := sc.handleAttachmentTicketCreation(snapshot); err != nil {
+		if err := sc.handleAttachmentTicketModification(snapshot, true); err != nil {
 			return err
 		}
 		if engine.Status.CurrentState != longhorn.InstanceStateRunning {
@@ -450,8 +470,9 @@ func (sc *SnapshotController) handleAttachmentTicketDeletion(snap *longhorn.Snap
 	return nil
 }
 
-// handleAttachmentTicketCreation check and create attachment so that the source volume is attached if needed
-func (sc *SnapshotController) handleAttachmentTicketCreation(snap *longhorn.Snapshot) (err error) {
+// handleAttachmentTicketModification creates or updates an attachment ticket if allowCreation is true. If allowCreation
+// is false, it only updates an existing attachment ticket.
+func (sc *SnapshotController) handleAttachmentTicketModification(snap *longhorn.Snapshot, allowCreation bool) (err error) {
 	defer func() {
 		err = errors.Wrap(err, "handleAttachmentTicketCreation: failed to create/update attachment")
 	}()
@@ -481,6 +502,10 @@ func (sc *SnapshotController) handleAttachmentTicketCreation(snap *longhorn.Snap
 	}()
 
 	attachmentID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeSnapshotController, snap.Name)
+	if _, ok := va.Spec.AttachmentTickets[attachmentID]; !ok && !allowCreation {
+		// An attachment ticket does not exist and we are not allowed to create one.
+		return nil
+	}
 	createOrUpdateAttachmentTicket(va, attachmentID, vol.Status.OwnerID, longhorn.AnyValue, longhorn.AttacherTypeSnapshotController)
 
 	return nil

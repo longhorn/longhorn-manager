@@ -204,6 +204,8 @@ const (
 
 	CniNetworkNone          = ""
 	StorageNetworkInterface = "lhnet1"
+
+	AttachingForDeletionAnnotationKey = "longhorn.io/attaching-for-deletion"
 )
 
 const (

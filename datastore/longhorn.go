@@ -3607,6 +3607,18 @@ func (s *DataStore) GetSnapshot(name string) (*longhorn.Snapshot, error) {
 	return resultRO.DeepCopy(), nil
 }
 
+// UpdateSnapshot updates the given Longhorn Snapshot and verifies update
+func (s *DataStore) UpdateSnapshot(snap *longhorn.Snapshot) (*longhorn.Snapshot, error) {
+	obj, err := s.lhClient.LonghornV1beta2().Snapshots(s.namespace).Update(context.TODO(), snap, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(snap.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetSnapshotRO(name)
+	})
+	return obj, nil
+}
+
 // UpdateSnapshotStatus updates the given Longhorn snapshot status verifies update
 func (s *DataStore) UpdateSnapshotStatus(snap *longhorn.Snapshot) (*longhorn.Snapshot, error) {
 	obj, err := s.lhClient.LonghornV1beta2().Snapshots(s.namespace).UpdateStatus(context.TODO(), snap, metav1.UpdateOptions{})
