@@ -681,15 +681,13 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		}
 	}
 
-	if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
-		shouldStop, err := c.shouldStopOfflineReplicaRebuilding(v, healthyCount)
-		if err != nil {
-			log.WithError(err).Errorf("Failed to check if offline replica rebuilding should be stopped")
-			return err
-		}
-		if shouldStop {
-			v.Status.OfflineReplicaRebuildingRequired = false
-		}
+	shouldStop, err := c.shouldStopOfflineReplicaRebuilding(v, healthyCount)
+	if err != nil {
+		log.WithError(err).Errorf("Failed to check if offline replica rebuilding should be stopped")
+		return err
+	}
+	if shouldStop {
+		v.Status.OfflineReplicaRebuildingRequired = false
 	}
 
 	// Cannot continue evicting or replenishing replicas during engine migration.
@@ -731,9 +729,7 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 			}
 		}
 
-		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
-			v.Status.OfflineReplicaRebuildingRequired = false
-		}
+		v.Status.OfflineReplicaRebuildingRequired = false
 	} else { // healthyCount < v.Spec.NumberOfReplicas
 		v.Status.Robustness = longhorn.VolumeRobustnessDegraded
 		if oldRobustness != longhorn.VolumeRobustnessDegraded {
@@ -797,6 +793,10 @@ func areAllReplicasFailed(rs map[string]*longhorn.Replica) bool {
 }
 
 func (c *VolumeController) shouldStopOfflineReplicaRebuilding(v *longhorn.Volume, healthyCount int) (bool, error) {
+	if v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+		return true, nil
+	}
+
 	if healthyCount == v.Spec.NumberOfReplicas {
 		return true, nil
 	}
@@ -2854,7 +2854,7 @@ func (c *VolumeController) updateRequestedBackupForVolumeRestore(v *longhorn.Vol
 func (c *VolumeController) checkAndInitVolumeOfflineReplicaRebuilding(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
 	log := getLoggerForVolume(c.logger, v)
 
-	if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+	if v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
 		return nil
 	}
 
