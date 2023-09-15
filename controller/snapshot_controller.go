@@ -348,25 +348,18 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 		}
 
 		// It is possible for us to be reconciling an out-of-date snapshot that has had its finalizer removed and has
-		// been deleted from the cluster, so we must take special care around attachment tickets.
-		if val, ok := snapshot.Annotations[types.AttachingForDeletionAnnotationKey]; ok && val == "true" {
-			// It is fine to update an attachment ticket more than once after DeletionTimestamp is set. If we attempt
-			// to update an out-of-date volume attachment, we will simply fail.
-			if err := sc.handleAttachmentTicketModification(snapshot, false); err != nil {
-				return err
-			}
-		} else {
-			// Only create an attachment ticket once after DeletionTimestamp is set and then immediately return. We must
-			// not create an attachment ticket again in case this is the last time we reconcile.
-			if err := sc.handleAttachmentTicketModification(snapshot, true); err != nil {
-				return err
-			}
-			if snapshot.Annotations == nil {
-				snapshot.Annotations = make(map[string]string)
-			}
-			snapshot.Annotations[types.AttachingForDeletionAnnotationKey] = "true"
-			return nil
+		// been deleted from the cluster, so we must take special care around attachment tickets. It is fine to update
+		// an attachment ticket after DeletionTimestamp is set (because attempts to update an out-of-date volume
+		// attachment will simply fail), but we must only create one once (to avoid recreating one the list time we
+		// reconcile).
+		requireVATicket := snapshot.Annotations[types.AttachingForDeletionAnnotationKey] == "true"
+		if err := sc.handleAttachmentTicketModification(snapshot, requireVATicket); err != nil {
+			return err
 		}
+		if snapshot.Annotations == nil {
+			snapshot.Annotations = make(map[string]string)
+		}
+		snapshot.Annotations[types.AttachingForDeletionAnnotationKey] = "true"
 
 		if engine.Status.CurrentState != longhorn.InstanceStateRunning {
 			return fmt.Errorf("failed to delete snapshot because the volume engine %v is not running. Will reenqueue and retry later", engine.Name)
