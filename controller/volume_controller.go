@@ -2131,7 +2131,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceLeastEffort(v *longhorn.
 	if err != nil {
 		return 0
 	}
-	log.Infof("Found %v replica candidate for auto-balance", adjustCount)
+	log.Debugf("Found %v replica candidate for auto-balance", adjustCount)
 	return adjustCount
 }
 
@@ -2244,10 +2244,10 @@ func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume,
 			usedNodes = append(usedNodes, r.Spec.NodeID)
 		}
 	}
-	log.Infof("Found %v use zones %v", len(usedZones), usedZones)
-	log.Infof("Found %v use nodes %v", len(usedNodes), usedNodes)
+	log.Debugf("Found %v use zones %v", len(usedZones), usedZones)
+	log.Debugf("Found %v use nodes %v", len(usedNodes), usedNodes)
 	if v.Spec.NumberOfReplicas == len(zoneExtraRs) {
-		log.Infof("Balanced, %v volume replicas are running on different zones", v.Spec.NumberOfReplicas)
+		log.Debugf("Balanced, %v volume replicas are running on different zones", v.Spec.NumberOfReplicas)
 		return 0, zoneExtraRs, nil
 	}
 
@@ -2281,7 +2281,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume,
 		unusedZone[node.Status.Zone] = append(unusedZone[node.Status.Zone], nodeName)
 	}
 	if len(unusedZone) == 0 {
-		log.Info("Balanced, all ready zones are used by this volume")
+		log.Debugf("Balanced, all ready zones are used by this volume")
 		return 0, zoneExtraRs, err
 	}
 
@@ -2389,7 +2389,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 	}
 
 	if v.Spec.NumberOfReplicas == len(nodeExtraRs) {
-		log.Info("Balanced, volume replicas are running on different nodes")
+		log.Debugf("Balanced, volume replicas are running on different nodes")
 		return 0, nodeExtraRs, nil
 	}
 
@@ -2416,7 +2416,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 		}
 	}
 	if len(nodeExtraRs) == len(readyNodes) {
-		log.Info("Balanced, all ready nodes are used by this volume")
+		log.Debugf("Balanced, all ready nodes are used by this volume")
 		return 0, nodeExtraRs, nil
 	}
 
@@ -2479,13 +2479,16 @@ func (c *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[
 				nCandidates = c.getNodeCandidatesForAutoBalanceZone(v, e, rs, zCandidates)
 			}
 		}
-		// TODO: remove checking and let schedular handle this part after
-		// https://github.com/longhorn/longhorn/issues/2667
-		schedulableCandidates := c.getIsSchedulableToDiskNodes(v, nCandidates)
-		if len(schedulableCandidates) != 0 {
-			// TODO: select replica auto-balance best-effort node from candidate list.
+		if adjustCount != 0 {
+			// TODO: remove checking and let schedular handle this part after
 			// https://github.com/longhorn/longhorn/issues/2667
-			adjustNodeAffinity = schedulableCandidates[0]
+			schedulableCandidates := c.getIsSchedulableToDiskNodes(v, nCandidates)
+			if len(schedulableCandidates) != 0 {
+				// TODO: select replica auto-balance best-effort node from candidate list.
+				// https://github.com/longhorn/longhorn/issues/2667
+				adjustNodeAffinity = schedulableCandidates[0]
+			}
+			return adjustCount, adjustNodeAffinity
 		}
 		return adjustCount, adjustNodeAffinity
 	}
@@ -2499,7 +2502,7 @@ func (c *VolumeController) getIsSchedulableToDiskNodes(v *longhorn.Volume, nodeN
 			// TODO: record the message to condition
 			log.Warn("Found 0 node has at least one schedulable disk")
 		} else {
-			log.Debugf("Found node %v has at least one schedulable disk", schedulableNodeNames)
+			log.Infof("Found node %v has at least one schedulable disk", schedulableNodeNames)
 		}
 	}()
 
