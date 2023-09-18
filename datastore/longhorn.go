@@ -3610,7 +3610,21 @@ func (s *DataStore) ListBackupTargets() (map[string]*longhorn.BackupTarget, erro
 
 // GetDefaultBackupTargetRO returns the BackupTarget for the default backup target
 func (s *DataStore) GetDefaultBackupTargetRO() (*longhorn.BackupTarget, error) {
-	return s.GetBackupTargetRO(types.DefaultBackupTargetName)
+	var defaultBackupTarget *longhorn.BackupTarget
+	backupTargetMap, err := s.ListBackupTargets()
+	if err != nil {
+		return nil, err
+	}
+	for _, backupTarget := range backupTargetMap {
+		if backupTarget.Status.Default {
+			defaultBackupTarget = backupTarget
+			break
+		}
+	}
+	if defaultBackupTarget == nil {
+		return nil, fmt.Errorf("failed to find default backup target")
+	}
+	return defaultBackupTarget, nil
 }
 
 // GetBackupTargetRO returns the BackupTarget with the given backup target name in the cluster

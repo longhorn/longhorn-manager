@@ -164,12 +164,12 @@ func (ks *KubernetesSecretController) syncHandler(key string) (err error) {
 
 func (ks *KubernetesSecretController) reconcileSecret(namespace, secretName string) error {
 	// Get default backup target
-	backupTarget, err := ks.ds.GetBackupTargetRO(types.DefaultBackupTargetName)
+	backupTarget, err := ks.ds.GetDefaultBackupTargetRO()
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return err
 		}
-		ks.logger.Warnf("Failed to find the %s backup target", types.DefaultBackupTargetName)
+		ks.logger.Warnf("Failed to find the default backup target")
 		return nil
 	}
 

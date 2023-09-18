@@ -148,10 +148,16 @@ func (btc *BackupTargetController) enqueueEngineImage(obj interface{}) {
 	if err != nil || ei.Spec.Image != defaultEngineImage || ei.Status.State != longhorn.EngineImageStateDeployed {
 		return
 	}
-	// For now, we only support a default backup target
-	// We've to enhance it once we support multiple backup targets
-	// https://github.com/longhorn/longhorn/issues/2317
-	btc.queue.Add(ei.Namespace + "/" + types.DefaultBackupTargetName)
+
+	backupTargetMap, err := btc.ds.ListBackupTargets()
+	if err != nil {
+		return
+	}
+	for backupTargetName, backupTarget := range backupTargetMap {
+		if backupTarget.Spec.PollInterval.Duration == time.Duration(0) {
+			btc.queue.Add(ei.Namespace + "/" + backupTargetName)
+		}
+	}
 }
 
 func (btc *BackupTargetController) Run(workers int, stopCh <-chan struct{}) {
