@@ -3802,6 +3802,8 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 			}
 		}
 
+		currentEngine.Spec.Active = true
+
 		// cleanupCorruptedOrStaleReplicas() will take care of old replicas
 		if err := c.switchActiveReplicas(rs, func(r *longhorn.Replica, engineName string) bool {
 			return r.Spec.EngineName == engineName
