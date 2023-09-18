@@ -4,7 +4,7 @@ import (
 	"errors"
 	"os"
 
-	"github.com/longhorn/longhorn-engine/pkg/types"
+	"github.com/longhorn/backupstore/types"
 )
 
 func SetupCredential(backupType string, credential map[string]string) error {
