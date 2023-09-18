@@ -968,7 +968,12 @@ func GetCurrentEngineAndExtras(v *longhorn.Volume, es map[string]*longhorn.Engin
 	if currentEngine == nil {
 		logrus.Warnf("failed to directly pick up the current one from multiple engines for volume %v, fall back to detect the new current engine, "+
 			"current node %v, desire node %v", v.Name, v.Status.CurrentNodeID, v.Spec.NodeID)
-		return GetNewCurrentEngineAndExtras(v, es)
+		newCurrentEngine, extras, err := GetNewCurrentEngineAndExtras(v, es)
+		if err != nil {
+			return nil, nil, err
+		}
+		newCurrentEngine.Spec.Active = true
+		return newCurrentEngine, extras, nil
 	}
 	return
 }
@@ -988,7 +993,6 @@ func GetNewCurrentEngineAndExtras(v *longhorn.Volume, es map[string]*longhorn.En
 				return nil, nil, fmt.Errorf("BUG: found the second new active engine %v besides %v", e.Name, currentEngine.Name)
 			}
 			currentEngine = e
-			currentEngine.Spec.Active = true
 		} else {
 			extras = append(extras, e)
 		}
