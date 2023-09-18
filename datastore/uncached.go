@@ -3,17 +3,18 @@ package datastore
 import (
 	"context"
 
-	"k8s.io/apimachinery/pkg/runtime"
-
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhornapis "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 // GetLonghornEventList returns an uncached list of longhorn events for the
@@ -342,6 +343,18 @@ func (s *DataStore) GetLonghornEngineImage(name string) (runtime.Object, error) 
 // Direct retrieval from the API server should only be used for one-shot tasks.
 func (s *DataStore) GetAllLonghornVolumes() (runtime.Object, error) {
 	return s.lhClient.LonghornV1beta2().Volumes(s.namespace).List(context.TODO(), metav1.ListOptions{})
+}
+
+// ListVolumeEnginesUncached returns an uncached list of Volume's engines in
+// Longhorn namespace directly from the API server.
+func (s *DataStore) ListVolumeEnginesUncached(volumeName string) ([]longhorn.Engine, error) {
+	engineList, err := s.lhClient.LonghornV1beta2().Engines(s.namespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: labels.Set(types.GetVolumeLabels(volumeName)).String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return engineList.Items, nil
 }
 
 // GetAllLonghornRecurringJobs returns an uncached list of RecurringJobs in
