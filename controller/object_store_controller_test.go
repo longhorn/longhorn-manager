@@ -24,11 +24,12 @@ import (
 )
 
 const (
-	TestObjectStoreName    = "test-object-store"
-	TestObjectStorePVName  = "pv-test-object-store"
-	TestObjectStorePVCName = "pvc-test-object-store"
-	TestObjectStoreImage   = "quay.io/s3gw/s3gw:latest"
-	TestObjectStoreUIImage = "quay.io/s3gw/s3gw-ui:latest"
+	TestObjectStoreName       = "test-object-store"
+	TestObjectStoreSecretName = "test-secret"
+	TestObjectStorePVName     = "pv-test-object-store"
+	TestObjectStorePVCName    = "pvc-test-object-store"
+	TestObjectStoreImage      = "quay.io/s3gw/s3gw:latest"
+	TestObjectStoreUIImage    = "quay.io/s3gw/s3gw-ui:latest"
 
 	TestObjectStoreControllerID = "test-objecte-store-controller"
 )
@@ -61,19 +62,33 @@ func newFixture(t *testing.T) *fixture {
 	}
 }
 
-func osTestNewObjectStore() *longhorn.ObjectStore {
+func osTestNewObjectStore(secret *corev1.Secret) *longhorn.ObjectStore {
 	return &longhorn.ObjectStore{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: TestObjectStoreName,
+			Name:      TestObjectStoreName,
+			Namespace: TestNamespace,
 		},
 		Spec: longhorn.ObjectStoreSpec{
 			Storage: longhorn.ObjectStoreStorageSpec{
 				Size: TestObjectStoreSize,
 			},
-			Credentials: longhorn.ObjectStoreCredentials{
-				AccessKey: "foobar",
-				SecretKey: "barfoo",
+			Credentials: corev1.SecretReference{
+				Name:      secret.Name,
+				Namespace: secret.Namespace,
 			},
+		},
+	}
+}
+
+func osTestNewSecret() *corev1.Secret {
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      TestObjectStoreSecretName,
+			Namespace: TestNamespace,
+		},
+		StringData: map[string]string{
+			"RGW_DEFAULT_USER_ACCESS_KEY": "foobar",
+			"RGW_DEFAULT_USER_SECRET_KEY": "barfoo",
 		},
 	}
 }
@@ -110,16 +125,6 @@ func osTestNewLonghornVolume() *longhorn.Volume {
 			Frontend:   longhorn.VolumeFrontendBlockDev,
 			AccessMode: longhorn.AccessModeReadWriteOnce,
 		},
-	}
-}
-
-func osTestNewSecret() *corev1.Secret {
-	return &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      TestObjectStoreName,
-			Namespace: TestNamespace,
-		},
-		StringData: map[string]string{},
 	}
 }
 
@@ -278,7 +283,8 @@ func TestSyncNewObjectStore(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.TODO()
 
-	store := osTestNewObjectStore()
+	secret := osTestNewSecret()
+	store := osTestNewObjectStore(secret)
 	vol := osTestNewLonghornVolume()
 
 	f.lhObjects = append(f.lhObjects, store)
@@ -296,7 +302,8 @@ func TestSyncUnkonwObjectStore(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.TODO()
 
-	store := osTestNewObjectStore()
+	secret := osTestNewSecret()
+	store := osTestNewObjectStore(secret)
 	(*store).Status = longhorn.ObjectStoreStatus{
 		State:     longhorn.ObjectStoreStateUnknown,
 		Endpoints: []string{},
@@ -318,7 +325,8 @@ func TestSyncStartingObjectStore(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.TODO()
 
-	store := osTestNewObjectStore()
+	secret := osTestNewSecret()
+	store := osTestNewObjectStore(secret)
 	(*store).Status = longhorn.ObjectStoreStatus{
 		State:     longhorn.ObjectStoreStateStarting,
 		Endpoints: []string{},
@@ -348,7 +356,8 @@ func TestSyncRunningObjectStore(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.TODO()
 
-	store := osTestNewObjectStore()
+	secret := osTestNewSecret()
+	store := osTestNewObjectStore(secret)
 	(*store).Status = longhorn.ObjectStoreStatus{
 		State: longhorn.ObjectStoreStateRunning,
 		Endpoints: []string{
@@ -357,7 +366,6 @@ func TestSyncRunningObjectStore(t *testing.T) {
 	}
 	pvc := osTestNewPersistentVolumeClaim()
 	vol := osTestNewLonghornVolume()
-	secret := osTestNewSecret()
 	service := osTestNewService()
 	deployment := osTestNewDeployment()
 
@@ -378,13 +386,14 @@ func TestSyncRunningObjectStore(t *testing.T) {
 }
 
 // TestSyncStoppingObjectStore tests that the object endpoint has been marked
-// for deletion and the controller needs to wait for the resources to be removed
-// before it can remvos the finalizer and stop tracking the object endpoint
+// for suspension and the controller needs to wait for the deployment to scale
+// down
 func TestSyncStoppingObjectStore(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.TODO()
 
-	store := osTestNewObjectStore()
+	secret := osTestNewSecret()
+	store := osTestNewObjectStore(secret)
 	(*store).Status = longhorn.ObjectStoreStatus{
 		State: longhorn.ObjectStoreStateStopping,
 		Endpoints: []string{
@@ -404,7 +413,8 @@ func TestSyncErrorObjectStore(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.TODO()
 
-	store := osTestNewObjectStore()
+	secret := osTestNewSecret()
+	store := osTestNewObjectStore(secret)
 	(*store).Status = longhorn.ObjectStoreStatus{
 		State:     longhorn.ObjectStoreStateStarting,
 		Endpoints: []string{},

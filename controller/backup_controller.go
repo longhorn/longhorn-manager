@@ -669,7 +669,11 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 				return nil, fmt.Errorf("Failed to find the ObjectStore of volume %v", volume.Name)
 			}
 		} else {
-			objectStoreBackupStruct := longhorn.ObjectStoreBackup{}
+			objectStoreBackupStruct := longhorn.ObjectStoreBackup{
+				Labels:      objectStore.Labels,
+				Annotations: objectStore.Annotations,
+				Spec:        objectStore.Spec,
+			}
 
 			objectStoreBackupBytes, err := json.Marshal(objectStoreBackupStruct)
 			if err != nil {
@@ -692,7 +696,8 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 
 	// Enable the backup monitor
 	monitor, err := bc.enableBackupMonitor(backup, volume, backupTargetClient, biChecksum,
-		volume.Spec.BackupCompressionMethod, int(concurrentLimit), storageClassName, engineClientProxy)
+		volume.Spec.BackupCompressionMethod, int(concurrentLimit), storageClassName,
+		objectStoreBackup, engineClientProxy)
 	if err != nil {
 		backup.Status.Error = err.Error()
 		backup.Status.State = longhorn.BackupStateError
@@ -765,7 +770,7 @@ func (bc *BackupController) hasMonitor(backupName string) *engineapi.BackupMonit
 }
 
 func (bc *BackupController) enableBackupMonitor(backup *longhorn.Backup, volume *longhorn.Volume, backupTargetClient *engineapi.BackupTargetClient,
-	biChecksum string, compressionMethod longhorn.BackupCompressionMethod, concurrentLimit int, storageClassName string,
+	biChecksum string, compressionMethod longhorn.BackupCompressionMethod, concurrentLimit int, storageClassName, objectStoreBackup string,
 	engineClientProxy engineapi.EngineClientProxy) (*engineapi.BackupMonitor, error) {
 	monitor := bc.hasMonitor(backup.Name)
 	if monitor != nil {
@@ -781,7 +786,7 @@ func (bc *BackupController) enableBackupMonitor(backup *longhorn.Backup, volume 
 	}
 
 	monitor, err = engineapi.NewBackupMonitor(bc.logger, bc.ds, backup, volume, backupTargetClient,
-		biChecksum, compressionMethod, concurrentLimit, storageClassName, engine, engineClientProxy, bc.enqueueBackupForMonitor)
+		biChecksum, compressionMethod, concurrentLimit, storageClassName, objectStoreBackup, engine, engineClientProxy, bc.enqueueBackupForMonitor)
 	if err != nil {
 		return nil, err
 	}
@@ -840,4 +845,8 @@ func (bc *BackupController) backupNotInFinalState(backup *longhorn.Backup) bool 
 	return backup.Status.State != longhorn.BackupStateCompleted &&
 		backup.Status.State != longhorn.BackupStateError &&
 		backup.Status.State != longhorn.BackupStateUnknown
+}
+
+func getStoreName(volume *longhorn.Volume) string {
+	return volume.Annotations[types.LonghornAnnotationObjectStoreName]
 }

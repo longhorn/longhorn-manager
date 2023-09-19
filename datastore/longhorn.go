@@ -4730,12 +4730,12 @@ func (s *DataStore) DeleteLHVolumeAttachment(vaName string) error {
 // If strict read-only access can be guaranteed, this provides a way to inspect
 // an ObjectStore without the overhead of a deep-copy.
 func (s *DataStore) GetObjectStoreRO(name string) (*longhorn.ObjectStore, error) {
-	return s.osLister.ObjectStores(s.namespace).Get(name)
+	return s.ObjectStoreLister.ObjectStores(s.namespace).Get(name)
 }
 
 // GetObjectStore returns a new object store object in the given namespace and name
 func (s *DataStore) GetObjectStore(name string) (*longhorn.ObjectStore, error) {
-	resultRO, err := s.osLister.ObjectStores(s.namespace).Get(name)
+	resultRO, err := s.ObjectStoreLister.ObjectStores(s.namespace).Get(name)
 	if err != nil {
 		return nil, err
 	}
@@ -4803,7 +4803,7 @@ func (s *DataStore) UpdateObjectStoreStatus(store *longhorn.ObjectStore) (*longh
 }
 
 func (s *DataStore) ListObjectStores() (map[string]*longhorn.ObjectStore, error) {
-	list, err := s.osLister.List(labels.Everything())
+	list, err := s.ObjectStoreLister.List(labels.Everything())
 	if err != nil {
 		return nil, err
 	}

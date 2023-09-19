@@ -185,6 +185,8 @@ const (
 	LonghornLabelExportFromVolume                 = "export-from-volume"
 	LonghornLabelSnapshotForExportingBackingImage = "for-exporting-backing-image"
 
+	LonghornAnnotationObjectStoreName = "objectstore.longhorn.io/name"
+
 	KubernetesFailureDomainRegionLabelKey = "failure-domain.beta.kubernetes.io/region"
 	KubernetesFailureDomainZoneLabelKey   = "failure-domain.beta.kubernetes.io/zone"
 	KubernetesTopologyRegionLabelKey      = "topology.kubernetes.io/region"

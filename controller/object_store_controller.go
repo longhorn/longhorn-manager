@@ -447,9 +447,12 @@ func (osc *ObjectStoreController) createVolume(
 ) (*longhorn.Volume, error) {
 	vol := longhorn.Volume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            genPVName(store),
-			Namespace:       osc.namespace,
-			Labels:          types.GetObjectStoreLabels(store),
+			Name:      genPVName(store),
+			Namespace: osc.namespace,
+			Labels:    types.GetObjectStoreLabels(store),
+			Annotations: map[string]string{
+				types.LonghornAnnotationObjectStoreName: store.Name,
+			},
 			OwnerReferences: osc.ds.GetOwnerReferencesForPVC(pvc),
 		},
 		Spec: longhorn.VolumeSpec{

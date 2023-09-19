@@ -8,6 +8,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -45,9 +46,16 @@ func (s *Server) ObjectStoreCreate(rw http.ResponseWriter, req *http.Request) (e
 		return err
 	}
 
+	sec, err := s.m.CreateSecret(&corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      input.Name,
+			Namespace: s.m.GetLonghornNamespace(),
+		},
+	})
 	obj, err := s.m.CreateObjectStore(&longhorn.ObjectStore{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: input.Name,
+			Name:      input.Name,
+			Namespace: s.m.GetLonghornNamespace(),
 		},
 		Spec: longhorn.ObjectStoreSpec{
 			Storage: longhorn.ObjectStoreStorageSpec{
@@ -67,9 +75,9 @@ func (s *Server) ObjectStoreCreate(rw http.ResponseWriter, req *http.Request) (e
 				UnmapMarkSnapChainRemoved:   input.UnmapMarkSnapChainRemoved,
 				BackendStoreDriver:          input.BackendStoreDriver,
 			},
-			Credentials: longhorn.ObjectStoreCredentials{
-				AccessKey: input.AccessKey,
-				SecretKey: input.SecretKey,
+			Credentials: corev1.SecretReference{
+				Name:      sec.Name,
+				Namespace: sec.Namespace,
 			},
 			Endpoints:   []longhorn.ObjectStoreEndpointSpec{},
 			TargetState: input.TargetState,
@@ -117,10 +125,6 @@ func (s *Server) ObjectStoreUpdate(rw http.ResponseWriter, req *http.Request) (e
 				RevisionCounterDisabled:     input.RevisionCounterDisabled,
 				UnmapMarkSnapChainRemoved:   input.UnmapMarkSnapChainRemoved,
 				BackendStoreDriver:          input.BackendStoreDriver,
-			},
-			Credentials: longhorn.ObjectStoreCredentials{
-				AccessKey: input.AccessKey,
-				SecretKey: input.SecretKey,
 			},
 			Endpoints:   []longhorn.ObjectStoreEndpointSpec{},
 			TargetState: input.TargetState,

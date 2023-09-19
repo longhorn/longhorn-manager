@@ -143,3 +143,12 @@ func (m *VolumeManager) PVCCreate(name, namespace, pvcName string) (v *longhorn.
 func (m *VolumeManager) GetDaemonSetRO(name string) (*appsv1.DaemonSet, error) {
 	return m.ds.GetDaemonSet(name)
 }
+
+func (m *VolumeManager) CreateSecret(secret *corev1.Secret) (*corev1.Secret, error) {
+	return m.ds.CreateSecret(m.GetLonghornNamespace(), secret)
+}
+
+func (m *VolumeManager) GetLonghornNamespace() string {
+	ns, _ := m.ds.GetLonghornNamespace()
+	return ns.Name
+}
