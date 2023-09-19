@@ -149,7 +149,7 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
-	if err := upgrade.Upgrade(kubeconfigPath, currentNodeID); err != nil {
+	if err := upgrade.Upgrade(kubeconfigPath, currentNodeID, managerImage); err != nil {
 		return err
 	}
 
