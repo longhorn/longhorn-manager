@@ -137,7 +137,7 @@ func startManager(c *cli.Context) error {
 
 	logger := logrus.StandardLogger().WithField("node", currentNodeID)
 
-	if err := upgrade.Upgrade(kubeconfigPath, currentNodeID); err != nil {
+	if err := upgrade.Upgrade(kubeconfigPath, currentNodeID, managerImage); err != nil {
 		return err
 	}
 
