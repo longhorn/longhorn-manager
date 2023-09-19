@@ -2078,11 +2078,7 @@ func (vc *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume
 		unusedZone[node.Status.Zone] = append(unusedZone[node.Status.Zone], nodeName)
 	}
 	if len(unusedZone) == 0 {
-<<<<<<< HEAD
-		log.Debug("Balanced, all ready zones are used by this volume")
-=======
 		log.Debugf("Balanced, all ready zones are used by this volume")
->>>>>>> e9f5eac3 (refactor(logging): change scheduling related message to debug)
 		return 0, zoneExtraRs, err
 	}
 
@@ -2185,11 +2181,7 @@ func (vc *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume
 	}
 
 	if v.Spec.NumberOfReplicas == len(nodeExtraRs) {
-<<<<<<< HEAD
-		log.Debug("Balanced, volume replicas are running on different nodes")
-=======
 		log.Debugf("Balanced, volume replicas are running on different nodes")
->>>>>>> e9f5eac3 (refactor(logging): change scheduling related message to debug)
 		return 0, nodeExtraRs, nil
 	}
 
@@ -2216,11 +2208,7 @@ func (vc *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume
 		}
 	}
 	if len(nodeExtraRs) == len(readyNodes) {
-<<<<<<< HEAD
-		log.Debug("Balanced, all ready nodes are used by this volume")
-=======
 		log.Debugf("Balanced, all ready nodes are used by this volume")
->>>>>>> e9f5eac3 (refactor(logging): change scheduling related message to debug)
 		return 0, nodeExtraRs, nil
 	}
 
@@ -2283,18 +2271,10 @@ func (vc *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map
 				nCandidates = vc.getNodeCandidatesForAutoBalanceZone(v, e, rs, zCandidates)
 			}
 		}
-<<<<<<< HEAD
-		// TODO: remove checking and let schedular handle this part after
-		// https://github.com/longhorn/longhorn/issues/2667
-		schedulableCandidates := vc.getIsSchedulableToDiskNodes(v, nCandidates)
-		if len(schedulableCandidates) != 0 {
-			// TODO: select replica auto-balance best-effort node from candidate list.
-=======
 		if adjustCount != 0 {
 			// TODO: remove checking and let schedular handle this part after
->>>>>>> e9f5eac3 (refactor(logging): change scheduling related message to debug)
 			// https://github.com/longhorn/longhorn/issues/2667
-			schedulableCandidates := c.getIsSchedulableToDiskNodes(v, nCandidates)
+			schedulableCandidates := vc.getIsSchedulableToDiskNodes(v, nCandidates)
 			if len(schedulableCandidates) != 0 {
 				// TODO: select replica auto-balance best-effort node from candidate list.
 				// https://github.com/longhorn/longhorn/issues/2667
