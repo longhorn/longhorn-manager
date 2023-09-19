@@ -84,8 +84,8 @@ type DataStore struct {
 	SystemRestoreInformer          cache.SharedInformer
 	lhVolumeAttachmentLister       lhlisters.VolumeAttachmentLister
 	LHVolumeAttachmentInformer     cache.SharedInformer
-	osLister                       lhlisters.ObjectStoreLister
-	ObjectStoreInformer            cache.SharedInformer
+	lhObjectStoreLister            lhlisters.ObjectStoreLister
+	lhObjectStoreInformer          cache.SharedInformer
 
 	kubeClient                    clientset.Interface
 	podLister                     corelisters.PodLister
@@ -169,8 +169,8 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, systemRestoreInformer.Informer().HasSynced)
 	lhVolumeAttachmentInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().VolumeAttachments()
 	cacheSyncs = append(cacheSyncs, lhVolumeAttachmentInformer.Informer().HasSynced)
-	lhOSInformer := lhInformerFactory.Longhorn().V1beta2().ObjectStores()
-	cacheSyncs = append(cacheSyncs, lhOSInformer.Informer().HasSynced)
+	lhObjectStoreInformer := lhInformerFactory.Longhorn().V1beta2().ObjectStores()
+	cacheSyncs = append(cacheSyncs, lhObjectStoreInformer.Informer().HasSynced)
 
 	// Kube Informers
 	podInformer := informerFactories.KubeInformerFactory.Core().V1().Pods()
@@ -254,8 +254,8 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 		SystemRestoreInformer:          systemRestoreInformer.Informer(),
 		lhVolumeAttachmentLister:       lhVolumeAttachmentInformer.Lister(),
 		LHVolumeAttachmentInformer:     lhVolumeAttachmentInformer.Informer(),
-		osLister:                       lhOSInformer.Lister(),
-		ObjectStoreInformer:            lhOSInformer.Informer(),
+		lhObjectStoreLister:            lhObjectStoreInformer.Lister(),
+		lhObjectStoreInformer:          lhObjectStoreInformer.Informer(),
 
 		kubeClient:                    kubeClient,
 		podLister:                     podInformer.Lister(),
