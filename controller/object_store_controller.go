@@ -203,13 +203,6 @@ func (osc *ObjectStoreController) handleStarting(store *longhorn.ObjectStore) (e
 		return nil
 	}
 
-	_, err = osc.ds.GetSecret(osc.namespace, store.Name)
-	if err != nil && datastore.ErrorIsNotFound(err) {
-		return osc.createResources(store)
-	} else if err != nil {
-		return errors.Wrap(err, "API error while observing secret")
-	}
-
 	_, err = osc.ds.GetService(osc.namespace, store.Name)
 	if err != nil && datastore.ErrorIsNotFound(err) {
 		return osc.createResources(store)
@@ -238,12 +231,6 @@ func (osc *ObjectStoreController) handleRunning(store *longhorn.ObjectStore) (er
 
 	dpl, err := osc.ds.GetDeployment(store.Name)
 	if err != nil || dpl.Status.UnavailableReplicas > 0 {
-		osc.setObjectStoreState(store, longhorn.ObjectStoreStateError)
-		return err
-	}
-
-	_, err = osc.ds.GetSecret(osc.namespace, store.Name)
-	if err != nil {
 		osc.setObjectStoreState(store, longhorn.ObjectStoreStateError)
 		return err
 	}
@@ -312,20 +299,25 @@ func (osc *ObjectStoreController) handleTerminating(store *longhorn.ObjectStore)
 	} else if !datastore.ErrorIsNotFound(err) {
 		return errors.Wrap(err, "API error while waiting on deployment shutdown")
 	}
-	_, err = osc.ds.GetSecret(osc.namespace, store.Name)
-	if err == nil || !datastore.ErrorIsNotFound(err) {
-		return err
-	}
+
 	_, err = osc.ds.GetService(osc.namespace, store.Name)
 	if err == nil || !datastore.ErrorIsNotFound(err) {
 		return err
 	}
+
 	_, err = osc.ds.GetPersistentVolumeClaim(osc.namespace, genPVCName(store))
 	if err == nil || !datastore.ErrorIsNotFound(err) {
 		return err
 	}
-	_, err = osc.ds.GetPersistentVolume(genPVName(store))
-	if err == nil || !datastore.ErrorIsNotFound(err) {
+
+	// The PV is special because it is cluster scoped. All the other resources are
+	// namespace-scoped, therefore the PV can not be owned through an OwnerRef by
+	// another resource of the ObjectStore and has to be deleted explicitly by the
+	// controller
+	pv, err := osc.ds.GetPersistentVolume(genPVName(store))
+	if err == nil {
+		return osc.ds.DeletePersistentVolume(pv.Name)
+	} else if err == nil || !datastore.ErrorIsNotFound(err) {
 		return err
 	}
 
@@ -378,10 +370,6 @@ func (osc *ObjectStoreController) initializeObjectStore(store *longhorn.ObjectSt
 // |   │     └───────────────────────┘
 // |   │
 // |   │     ┌───────────────────────┐
-// |   ├────►│ Secret                │
-// |   │     └───────────────────────┘
-// |   │
-// |   │     ┌───────────────────────┐
 // |   ├────►│ Deployment            ├──────┐
 // |   │     └───────────────────────┘      │owns
 // |   │                                    ▼
@@ -393,10 +381,10 @@ func (osc *ObjectStoreController) initializeObjectStore(store *longhorn.ObjectSt
 // |           ▼                            ▼
 // |         ┌───────────────────────┐    ┌────────────────┐
 // |         │ LonghornVolume        │    │ Pod            │
-// |         └─┬─────────────────────┘    └────────────────┘
-// |           │owns                        ▲
-// |           │                            │
-// |           ▼                            │waits for
+// |         └───────────────────────┘    └────────────────┘
+// |                                        ▲
+// |                                        │
+// |                                        │waits for
 // |         ┌───────────────────────┐      │shutdown
 // |         │ PersistentVolume      ├──────┘
 // |         └───────────────────────┘
@@ -442,14 +430,6 @@ func (osc *ObjectStoreController) createResources(store *longhorn.ObjectStore) e
 		osc.setObjectStoreState(store, longhorn.ObjectStoreStateStarting)
 	}
 
-	err = osc.createSecret(store)
-	if err != nil && !datastore.ErrorIsAlreadyExists(err) {
-		store, _ = osc.setObjectStoreState(store, longhorn.ObjectStoreStateError)
-		return err
-	} else if store.Status.State != longhorn.ObjectStoreStateStarting {
-		osc.setObjectStoreState(store, longhorn.ObjectStoreStateStarting)
-	}
-
 	err = osc.createDeployment(store)
 	if err != nil && !datastore.ErrorIsAlreadyExists(err) {
 		store, _ = osc.setObjectStoreState(store, longhorn.ObjectStoreStateError)
@@ -467,17 +447,10 @@ func (osc *ObjectStoreController) createVolume(
 ) (*longhorn.Volume, error) {
 	vol := longhorn.Volume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      genPVName(store),
-			Namespace: osc.namespace,
-			Labels:    osc.ds.GetObjectStoreLabels(store),
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion: corev1.SchemeGroupVersion.String(),
-					Kind:       "PersistentVolumeClaim",
-					Name:       pvc.Name,
-					UID:        pvc.UID,
-				},
-			},
+			Name:            genPVName(store),
+			Namespace:       osc.namespace,
+			Labels:          types.GetObjectStoreLabels(store),
+			OwnerReferences: osc.ds.GetOwnerReferencesForPVC(pvc),
 		},
 		Spec: longhorn.VolumeSpec{
 			Size:                        resourceAsInt64(store.Spec.Storage.Size),
@@ -511,20 +484,10 @@ func (osc *ObjectStoreController) createPV(
 	store *longhorn.ObjectStore,
 	volume *longhorn.Volume,
 ) (*corev1.PersistentVolume, error) {
-	blockOwnerDeletion := true
 	pv := corev1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   genPVName(store),
-			Labels: osc.ds.GetObjectStoreLabels(store),
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion:         longhorn.SchemeGroupVersion.String(),
-					Kind:               types.LonghornKindVolume,
-					Name:               volume.Name,
-					UID:                volume.UID,
-					BlockOwnerDeletion: &blockOwnerDeletion,
-				},
-			},
+			Labels: types.GetObjectStoreLabels(store),
 		},
 		Spec: corev1.PersistentVolumeSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{
@@ -535,10 +498,7 @@ func (osc *ObjectStoreController) createPV(
 			},
 			StorageClassName:              "",
 			PersistentVolumeReclaimPolicy: corev1.PersistentVolumeReclaimRetain,
-			VolumeMode: func() *corev1.PersistentVolumeMode {
-				mode := corev1.PersistentVolumeMode(corev1.PersistentVolumeFilesystem)
-				return &mode
-			}(),
+			VolumeMode:                    persistentVolumeModePtr(corev1.PersistentVolumeFilesystem),
 			ClaimRef: &corev1.ObjectReference{
 				APIVersion: "v1",
 				Kind:       "PersistentVolumeClaim",
@@ -568,7 +528,7 @@ func (osc *ObjectStoreController) createPVC(
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            genPVCName(store),
 			Namespace:       osc.namespace,
-			Labels:          osc.ds.GetObjectStoreLabels(store),
+			Labels:          types.GetObjectStoreLabels(store),
 			OwnerReferences: osc.ds.GetOwnerReferencesForObjectStore(store),
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
@@ -593,7 +553,7 @@ func (osc *ObjectStoreController) createSVC(store *longhorn.ObjectStore) error {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            store.Name,
 			Namespace:       osc.namespace,
-			Labels:          osc.ds.GetObjectStoreLabels(store),
+			Labels:          types.GetObjectStoreLabels(store),
 			OwnerReferences: osc.ds.GetOwnerReferencesForObjectStore(store),
 		},
 		Spec: corev1.ServiceSpec{
@@ -631,24 +591,6 @@ func (osc *ObjectStoreController) createSVC(store *longhorn.ObjectStore) error {
 	return err
 }
 
-func (osc *ObjectStoreController) createSecret(store *longhorn.ObjectStore) error {
-	secret := corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            store.Name,
-			Namespace:       osc.namespace,
-			Labels:          osc.ds.GetObjectStoreLabels(store),
-			OwnerReferences: osc.ds.GetOwnerReferencesForObjectStore(store),
-		},
-		StringData: map[string]string{
-			"RGW_DEFAULT_USER_ACCESS_KEY": store.Spec.Credentials.AccessKey,
-			"RGW_DEFAULT_USER_SECRET_KEY": store.Spec.Credentials.SecretKey,
-		},
-	}
-
-	_, err := osc.ds.CreateSecret(osc.namespace, &secret)
-	return err
-}
-
 func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) error {
 	registrySecretSetting, err := osc.ds.GetSetting(types.SettingNameRegistrySecret)
 	if err != nil {
@@ -664,7 +606,7 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            store.Name,
 			Namespace:       osc.namespace,
-			Labels:          osc.ds.GetObjectStoreLabels(store),
+			Labels:          types.GetObjectStoreLabels(store),
 			OwnerReferences: osc.ds.GetOwnerReferencesForObjectStore(store),
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -714,7 +656,7 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 								{
 									SecretRef: &corev1.SecretEnvSource{
 										LocalObjectReference: corev1.LocalObjectReference{
-											Name: store.Name,
+											Name: store.Spec.Credentials.Name,
 										},
 									},
 								},
@@ -794,6 +736,11 @@ func int32Ptr(i int32) *int32 {
 func strPtr(s string) *string {
 	r := string(s)
 	return &r
+}
+
+func persistentVolumeModePtr(mode corev1.PersistentVolumeMode) *corev1.PersistentVolumeMode {
+	m := corev1.PersistentVolumeMode(mode)
+	return &m
 }
 
 func resourceAsInt64(r resource.Quantity) int64 {

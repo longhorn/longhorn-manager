@@ -1,6 +1,7 @@
 package v1beta2
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -79,25 +80,12 @@ type ObjectStoreStatus struct {
 	// +kubebuilder:validation:Enum:=unknown;starting;running;stopping;stopped;terminating;error
 	// +optional
 	// +default="Unknown"
-	State ObjectStoreState `json:"state"`
+	State ObjectStoreState `json:"state,omitempty"`
 
 	// A list of addresses where the S3 store is exposed.
 	//
 	// +optional
 	Endpoints []string `json:"endpoints,omitempty"`
-}
-
-type ObjectStoreCredentials struct {
-	// An access key. This will be the initial access key for the administrative
-	// account.
-	//
-	// +optional
-	AccessKey string `json:"accessKey,omitempty"`
-
-	// A secret key. This is the secret key corresponding to the access key above.
-	//
-	// +optional
-	SecretKey string `json:"secretKey,omitempty"`
 }
 
 type ObjectStoreStorageSpec struct {
@@ -178,8 +166,12 @@ type ObjectStoreSpec struct {
 	// Credentials contain a pair of access and secret keys that are used to seed
 	// the object store.
 	//
+	// This expects an opaque secret with the two keys
+	// `RGW_DEFAULT_USER_ACCESS_KEY` and `RGW_DEFAULT_USER_SECRET_KEY` to be
+	// provided by the user in the longhorn-system namespace.
+	//
 	// +optional
-	Credentials ObjectStoreCredentials `json:"credentials"`
+	Credentials corev1.SecretReference `json:"credentials"`
 
 	// The configuration of the longhorn volume providing storage for the object
 	// store.

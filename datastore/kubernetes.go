@@ -78,19 +78,7 @@ func (s *DataStore) getSupportBundleManagerSelector(supportBundle *longhorn.Supp
 }
 
 func (s *DataStore) GetObjectStoreSelectorLabels(store *longhorn.ObjectStore) map[string]string {
-	return map[string]string{
-		types.ObjectStoreLabelKeyApp:       types.ObjectStoreLabelApp,
-		types.ObjectStoreLabelKeyInstance:  store.Name,
-		types.ObjectStoreLabelKeyComponent: types.ObjectStoreLabelComponent,
-	}
-}
-
-func (s *DataStore) GetObjectStoreLabels(store *longhorn.ObjectStore) map[string]string {
-	return map[string]string{
-		types.ObjectStoreLabelKeyApp:       types.ObjectStoreLabelApp,
-		types.ObjectStoreLabelKeyInstance:  store.Name,
-		types.ObjectStoreLabelKeyManagedBy: types.ObjectStoreLabelManagedBy,
-	}
+	return types.GetObjectStoreLabels(store)
 }
 
 // GetManagerNodeIPMap returns an object contains podIPs from list
@@ -1101,4 +1089,15 @@ func (s *DataStore) ListStorageClasses() (map[string]*storagev1.StorageClass, er
 		itemMap[itemRO.Name] = itemRO.DeepCopy()
 	}
 	return itemMap, nil
+}
+
+func (s *DataStore) GetOwnerReferencesForPVC(pvc *corev1.PersistentVolumeClaim) []metav1.OwnerReference {
+	return []metav1.OwnerReference{
+		{
+			APIVersion: corev1.SchemeGroupVersion.String(),
+			Kind:       "PersistentVolumeClaim",
+			Name:       pvc.Name,
+			UID:        pvc.UID,
+		},
+	}
 }
