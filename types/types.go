@@ -368,6 +368,11 @@ func GetLonghornLabelCRDAPIVersionKey() string {
 	return GetLonghornLabelKey(LonghornLabelCRDAPIVersion)
 }
 
+func GetManagerLabels() map[string]string {
+	return map[string]string{
+		"app": LonghornManagerDaemonSetName,
+	}
+}
 func GetEngineImageLabels(engineImageName string) map[string]string {
 	labels := GetBaseLabelsForSystemManagedComponent()
 	labels[GetLonghornLabelComponentKey()] = LonghornLabelEngineImage
