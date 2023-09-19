@@ -137,7 +137,22 @@ func startManager(c *cli.Context) error {
 
 	logger := logrus.StandardLogger().WithField("node", currentNodeID)
 
+<<<<<<< HEAD
 	if err := upgrade.Upgrade(kubeconfigPath, currentNodeID); err != nil {
+=======
+	webhookTypes := []string{types.WebhookTypeConversion, types.WebhookTypeAdmission}
+	for _, webhookType := range webhookTypes {
+		if err := startWebhook(ctx, serviceAccount, kubeconfigPath, webhookType); err != nil {
+			return err
+		}
+	}
+
+	if err := startRecoveryBackend(ctx, serviceAccount, kubeconfigPath); err != nil {
+		return err
+	}
+
+	if err := upgrade.Upgrade(kubeconfigPath, currentNodeID, managerImage); err != nil {
+>>>>>>> 396605a2 (Waiting for old Longhorn manager to be fully removed before starting)
 		return err
 	}
 
