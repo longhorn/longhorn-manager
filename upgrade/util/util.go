@@ -110,6 +110,16 @@ func ListIMPods(namespace string, kubeClient *clientset.Clientset) ([]v1.Pod, er
 	return imPodsList.Items, nil
 }
 
+func ListManagerPods(namespace string, kubeClient *clientset.Clientset) ([]v1.Pod, error) {
+	managerPodsList, err := kubeClient.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: labels.Set(types.GetManagerLabels()).String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return managerPodsList.Items, nil
+}
+
 func MergeStringMaps(baseMap, overwriteMap map[string]string) map[string]string {
 	result := map[string]string{}
 	for k, v := range baseMap {
