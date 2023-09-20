@@ -77,7 +77,7 @@ func getLoggerForCSINodeServer() *logrus.Entry {
 
 // NodePublishVolume will mount the volume /dev/longhorn/<volume_name> to target_path
 func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
-	log := getLoggerForCSIControllerServer()
+	log := getLoggerForCSINodeServer()
 	log = log.WithFields(logrus.Fields{"function": "NodePublishVolume"})
 
 	targetPath := req.GetTargetPath()
@@ -199,7 +199,9 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
-func (ns *NodeServer) nodeStageSharedVolume(volumeID, shareEndpoint, targetPath string, mounter mount.Interface, mountOptions []string) error {
+func (ns *NodeServer) nodeStageSharedVolume(volumeID, shareEndpoint, targetPath string, mounter mount.Interface, customMountOptions []string) error {
+	log := getLoggerForCSINodeServer()
+
 	isMnt, err := ensureMountPoint(targetPath, mounter)
 
 	if err != nil {
@@ -225,21 +227,32 @@ func (ns *NodeServer) nodeStageSharedVolume(volumeID, shareEndpoint, targetPath 
 	exportPath := uri.Path
 	export := fmt.Sprintf("%s:%s", server, exportPath)
 
-	// set default longhorn nfs client options
-	if len(mountOptions) == 0 {
-		mountOptions = []string{
-			"vers=4.1",
-			"noresvport",
-			// "sync", // sync mode is prohibitively expensive on the client, so we allow for host defaults
-			// "intr",
-			//"hard",
-			"soft",      // for this release we use soft mode, so we can always cleanup mount points
-			"timeo=150", // This is tenths of a second, so a 15 second timeout, each retrans the timeout will be linearly increased, 15s, 30s, 45s
-			"retrans=3", // We try the io operation for a total of 3 times, before failing
-		}
+	defaultMountOptions := []string{
+		"vers=4.1",
+		"noresvport",
+		//"sync",    // sync mode is prohibitively expensive on the client, so we allow for host defaults
+		//"intr",
+		//"hard",
+		//"softerr", // for this release we use soft mode, so we can always cleanup mount points
+		"timeo=600", // This is tenths of a second, so a 60 second timeout, each retrans the timeout will be linearly increased, 60s, 120s, 240s, 480s, 600s(max)
+		"retrans=5", // We try the io operation for a total of 5 times, before failing
 	}
 
+	mountOptions := append(defaultMountOptions, []string{"sof"}...)
+	if len(customMountOptions) != 0 {
+		mountOptions = customMountOptions
+	}
+
+	log.Infof("Mounting shared volume %v on node %v via share endpoint %v with mount options %v", volumeID, ns.nodeID, shareEndpoint, mountOptions)
 	if err := mounter.Mount(export, targetPath, fsType, mountOptions); err != nil {
+		if len(customMountOptions) == 0 && strings.Contains(err.Error(), "an incorrect mount option was specified") {
+			log.WithError(err).Warnf("Failed to mount volume %v with default mount options, retrying with soft mount", volumeID)
+			mountOptions = append(defaultMountOptions, []string{"soft"}...)
+			err = mounter.Mount(export, targetPath, fsType, mountOptions)
+			if err == nil {
+				return nil
+			}
+		}
 		return status.Error(codes.Internal, err.Error())
 	}
 
@@ -283,7 +296,7 @@ func (ns *NodeServer) nodePublishBlockVolume(volumeID, devicePath, targetPath st
 }
 
 func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
-	log := getLoggerForCSIControllerServer()
+	log := getLoggerForCSINodeServer()
 	log = log.WithFields(logrus.Fields{"function": "NodeUnpublishVolume"})
 
 	targetPath := req.GetTargetPath()
@@ -305,7 +318,7 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 }
 
 func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
-	log := getLoggerForCSIControllerServer()
+	log := getLoggerForCSINodeServer()
 	log = log.WithFields(logrus.Fields{"function": "NodeStageVolume"})
 
 	targetPath := req.GetStagingTargetPath()
@@ -474,7 +487,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 }
 
 func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
-	log := getLoggerForCSIControllerServer()
+	log := getLoggerForCSINodeServer()
 	log = log.WithFields(logrus.Fields{"function": "NodeUnstageVolume"})
 
 	targetPath := req.GetStagingTargetPath()
@@ -587,7 +600,7 @@ func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 
 // NodeExpandVolume is designed to expand the file system for ONLINE expansion,
 func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
-	log := getLoggerForCSIControllerServer()
+	log := getLoggerForCSINodeServer()
 	log = log.WithFields(logrus.Fields{"function": "NodeExpandVolume"})
 
 	if req.CapacityRange == nil {
