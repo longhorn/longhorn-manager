@@ -226,6 +226,7 @@ func generateVolumeAttachmentTickets(vol longhorn.Volume, kubeVAMap map[string][
 
 func upgradeWebhookAndRecoveryService(namespace string, kubeClient *clientset.Clientset) error {
 	selectors := []string{"app=longhorn-conversion-webhook", "app=longhorn-admission-webhook", "app=longhorn-recovery-backend"}
+	propagation := metav1.DeletePropagationForeground
 
 	for _, selector := range selectors {
 		deployments, err := kubeClient.AppsV1().Deployments("").List(context.TODO(), metav1.ListOptions{LabelSelector: selector})
@@ -237,7 +238,7 @@ func upgradeWebhookAndRecoveryService(namespace string, kubeClient *clientset.Cl
 		}
 
 		for _, deployment := range deployments.Items {
-			err := kubeClient.AppsV1().Deployments(deployment.Namespace).Delete(context.TODO(), deployment.Name, metav1.DeleteOptions{})
+			err := kubeClient.AppsV1().Deployments(deployment.Namespace).Delete(context.TODO(), deployment.Name, metav1.DeleteOptions{PropagationPolicy: &propagation})
 			if err != nil {
 				return errors.Wrapf(err, upgradeLogPrefix+"failed to delete the deployment with label %v during the upgrade", selector)
 			}
