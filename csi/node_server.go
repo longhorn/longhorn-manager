@@ -210,7 +210,9 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
-func (ns *NodeServer) nodeStageSharedVolume(volumeID, shareEndpoint, targetPath string, mounter mount.Interface, mountOptions []string) error {
+func (ns *NodeServer) nodeStageSharedVolume(volumeID, shareEndpoint, targetPath string, mounter mount.Interface, customMountOptions []string) error {
+	log := ns.log.WithFields(logrus.Fields{"function": "nodeStageSharedVolume"})
+
 	isMnt, err := ensureMountPoint(targetPath, mounter)
 	if err != nil {
 		return status.Errorf(codes.Internal, errors.Wrapf(err, "failed to prepare mount point for shared volume %v", volumeID).Error())
@@ -234,21 +236,32 @@ func (ns *NodeServer) nodeStageSharedVolume(volumeID, shareEndpoint, targetPath 
 	exportPath := uri.Path
 	export := fmt.Sprintf("%s:%s", server, exportPath)
 
-	// set default longhorn nfs client options
-	if len(mountOptions) == 0 {
-		mountOptions = []string{
-			"vers=4.1",
-			"noresvport",
-			// "sync", // sync mode is prohibitively expensive on the client, so we allow for host defaults
-			// "intr",
-			//"hard",
-			"soft",      // for this release we use soft mode, so we can always cleanup mount points
-			"timeo=150", // This is tenths of a second, so a 15 second timeout, each retrans the timeout will be linearly increased, 15s, 30s, 45s
-			"retrans=3", // We try the io operation for a total of 3 times, before failing
-		}
+	defaultMountOptions := []string{
+		"vers=4.1",
+		"noresvport",
+		//"sync",    // sync mode is prohibitively expensive on the client, so we allow for host defaults
+		//"intr",
+		//"hard",
+		//"softerr", // for this release we use soft mode, so we can always cleanup mount points
+		"timeo=600", // This is tenths of a second, so a 60 second timeout, each retrans the timeout will be linearly increased, 60s, 120s, 240s, 480s, 600s(max)
+		"retrans=5", // We try the io operation for a total of 5 times, before failing
 	}
 
+	mountOptions := append(defaultMountOptions, []string{"softerr"}...)
+	if len(customMountOptions) != 0 {
+		mountOptions = customMountOptions
+	}
+
+	log.Infof("Mounting shared volume %v on node %v via share endpoint %v with mount options %v", volumeID, ns.nodeID, shareEndpoint, mountOptions)
 	if err := mounter.Mount(export, targetPath, fsType, mountOptions); err != nil {
+		if len(customMountOptions) == 0 && strings.Contains(err.Error(), "an incorrect mount option was specified") {
+			log.WithError(err).Warnf("Failed to mount volume %v with default mount options, retrying with soft mount", volumeID)
+			mountOptions = append(defaultMountOptions, []string{"soft"}...)
+			err = mounter.Mount(export, targetPath, fsType, mountOptions)
+			if err == nil {
+				return nil
+			}
+		}
 		return status.Error(codes.Internal, err.Error())
 	}
 
