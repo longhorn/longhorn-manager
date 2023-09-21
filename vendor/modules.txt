@@ -232,7 +232,7 @@ github.com/rancher/lasso/pkg/dynamic
 github.com/rancher/lasso/pkg/log
 github.com/rancher/lasso/pkg/mapper
 github.com/rancher/lasso/pkg/scheme
-# github.com/rancher/wrangler v0.8.10
+# github.com/rancher/wrangler v0.8.11
 ## explicit; go 1.16
 github.com/rancher/wrangler/pkg/apply
 github.com/rancher/wrangler/pkg/apply/injectors
