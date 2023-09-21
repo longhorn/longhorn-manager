@@ -186,6 +186,10 @@ func (f *fixture) newObjectStoreController(ctx *context.Context) (*ObjectStoreCo
 	}
 
 	for _, o := range f.objectStoreLister {
+		f.lhClient.
+			LonghornV1beta2().
+			ObjectStores(TestNamespace).
+			Create(context.TODO(), o, metav1.CreateOptions{})
 		lhInformerFactory.
 			Longhorn().
 			V1beta2().
@@ -196,6 +200,10 @@ func (f *fixture) newObjectStoreController(ctx *context.Context) (*ObjectStoreCo
 	}
 
 	for _, v := range f.longhornVolumeLister {
+		f.lhClient.
+			LonghornV1beta2().
+			Volumes(TestNamespace).
+			Create(context.TODO(), v, metav1.CreateOptions{})
 		lhInformerFactory.
 			Longhorn().
 			V1beta2().
@@ -206,6 +214,10 @@ func (f *fixture) newObjectStoreController(ctx *context.Context) (*ObjectStoreCo
 	}
 
 	for _, p := range f.pvcLister {
+		f.kubeClient.
+			CoreV1().
+			PersistentVolumeClaims(TestNamespace).
+			Create(context.TODO(), p, metav1.CreateOptions{})
 		kubeInformerFactory.
 			Core().
 			V1().
@@ -216,6 +228,10 @@ func (f *fixture) newObjectStoreController(ctx *context.Context) (*ObjectStoreCo
 	}
 
 	for _, s := range f.secretLister {
+		f.kubeClient.
+			CoreV1().
+			Secrets(TestNamespace).
+			Create(context.TODO(), s, metav1.CreateOptions{})
 		kubeInformerFactory.
 			Core().
 			V1().
@@ -226,6 +242,10 @@ func (f *fixture) newObjectStoreController(ctx *context.Context) (*ObjectStoreCo
 	}
 
 	for _, s := range f.serviceLister {
+		f.kubeClient.
+			CoreV1().
+			Services(TestNamespace).
+			Create(context.TODO(), s, metav1.CreateOptions{})
 		kubeInformerFactory.
 			Core().
 			V1().
@@ -236,6 +256,10 @@ func (f *fixture) newObjectStoreController(ctx *context.Context) (*ObjectStoreCo
 	}
 
 	for _, d := range f.deploymentLister {
+		f.kubeClient.
+			AppsV1().
+			Deployments(TestNamespace).
+			Create(context.TODO(), d, metav1.CreateOptions{})
 		kubeInformerFactory.
 			Apps().
 			V1().
@@ -274,7 +298,7 @@ func TestSyncNonexistentObjectStore(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.TODO()
 
-	f.runExpectSuccess(&ctx, getMetaKey(TestObjectStoreName))
+	f.runExpectSuccess(&ctx, getMetaKey(TestNamespace, TestObjectStoreName))
 }
 
 // TestSyncNewObjectStore tests the case where a new object endpoint is
@@ -285,14 +309,11 @@ func TestSyncNewObjectStore(t *testing.T) {
 
 	secret := osTestNewSecret()
 	store := osTestNewObjectStore(secret)
-	vol := osTestNewLonghornVolume()
 
 	f.lhObjects = append(f.lhObjects, store)
-	f.lhObjects = append(f.lhObjects, vol)
 	f.objectStoreLister = append(f.objectStoreLister, store)
-	f.longhornVolumeLister = append(f.longhornVolumeLister, vol)
 
-	f.runExpectSuccess(&ctx, getMetaKey(TestObjectStoreName))
+	f.runExpectSuccess(&ctx, getMetaKey(TestNamespace, TestObjectStoreName))
 }
 
 // TestSyncUnkonwObjectStore tests the default case of a new object endpoint
@@ -308,14 +329,11 @@ func TestSyncUnkonwObjectStore(t *testing.T) {
 		State:     longhorn.ObjectStoreStateUnknown,
 		Endpoints: []string{},
 	}
-	vol := osTestNewLonghornVolume()
 
 	f.lhObjects = append(f.lhObjects, store)
-	f.lhObjects = append(f.lhObjects, vol)
 	f.objectStoreLister = append(f.objectStoreLister, store)
-	f.longhornVolumeLister = append(f.longhornVolumeLister, vol)
 
-	f.runExpectSuccess(&ctx, getMetaKey(TestObjectStoreName))
+	f.runExpectSuccess(&ctx, getMetaKey(TestNamespace, TestObjectStoreName))
 }
 
 // TestSyncStartingObjectStore  tests the case where the object endpoint has
@@ -347,7 +365,7 @@ func TestSyncStartingObjectStore(t *testing.T) {
 	f.longhornVolumeLister = append(f.longhornVolumeLister, vol)
 	f.deploymentLister = append(f.deploymentLister, deployment)
 
-	f.runExpectSuccess(&ctx, getMetaKey(TestObjectStoreName))
+	f.runExpectSuccess(&ctx, getMetaKey(TestNamespace, TestObjectStoreName))
 }
 
 // TestSyncRunningObjectStore tests the case where the object endpoint is
@@ -382,7 +400,7 @@ func TestSyncRunningObjectStore(t *testing.T) {
 	f.serviceLister = append(f.serviceLister, service)
 	f.deploymentLister = append(f.deploymentLister, deployment)
 
-	f.runExpectSuccess(&ctx, getMetaKey(TestObjectStoreName))
+	f.runExpectSuccess(&ctx, getMetaKey(TestNamespace, TestObjectStoreName))
 }
 
 // TestSyncStoppingObjectStore tests that the object endpoint has been marked
@@ -404,7 +422,7 @@ func TestSyncStoppingObjectStore(t *testing.T) {
 	f.lhObjects = append(f.lhObjects, store)
 	f.objectStoreLister = append(f.objectStoreLister, store)
 
-	f.runExpectSuccess(&ctx, getMetaKey(TestObjectStoreName))
+	f.runExpectSuccess(&ctx, getMetaKey(TestNamespace, TestObjectStoreName))
 }
 
 // TestSyncErrorObjectStore tests the case where the objecte endpoint is in
@@ -435,9 +453,9 @@ func TestSyncErrorObjectStore(t *testing.T) {
 	f.longhornVolumeLister = append(f.longhornVolumeLister, vol)
 	f.deploymentLister = append(f.deploymentLister, deployment)
 
-	f.runExpectSuccess(&ctx, getMetaKey(TestObjectStoreName))
+	f.runExpectSuccess(&ctx, getMetaKey(TestNamespace, TestObjectStoreName))
 }
 
 // --- Helper Functions ---
 
-func getMetaKey(name string) string { return name }
+func getMetaKey(namespace, name string) string { return fmt.Sprintf("%v/%v", namespace, name) }

@@ -202,3 +202,7 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
+
+replace github.com/longhorn/backupstore v0.0.0-20230830075002-fa25b1a97ffd => ../backupstore
+
+replace github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230804185319-08b3613c5311 => ../longhorn-instance-manager

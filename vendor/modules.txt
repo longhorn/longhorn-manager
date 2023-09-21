@@ -1550,3 +1550,5 @@ sigs.k8s.io/yaml
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.28.2
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.28.2
 # k8s.io/sample-controller => k8s.io/sample-controller v0.28.2
+# github.com/longhorn/backupstore v0.0.0-20230830075002-fa25b1a97ffd => ../backupstore
+# github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230804185319-08b3613c5311 => ../longhorn-instance-manager
