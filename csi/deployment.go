@@ -406,6 +406,9 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 									MountPath: GetInContainerCSISocketDir(),
 								},
 							},
+							SecurityContext: &corev1.SecurityContext{
+								Privileged: pointer.BoolPtr(true),
+							},
 						},
 						{
 							Name: types.CSIPluginName,

@@ -12,6 +12,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/pointer"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -133,6 +134,9 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 									Name:      "socket-dir",
 									MountPath: GetInContainerCSISocketDir(),
 								},
+							},
+							SecurityContext: &corev1.SecurityContext{
+								Privileged: pointer.BoolPtr(true),
 							},
 						},
 					},
