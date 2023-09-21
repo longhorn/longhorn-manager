@@ -23,11 +23,24 @@ type SharedControllerFactory interface {
 }
 
 type SharedControllerFactoryOptions struct {
+	CacheOptions *cache.SharedCacheFactoryOptions
+
 	DefaultRateLimiter workqueue.RateLimiter
 	DefaultWorkers     int
 
 	KindRateLimiter map[schema.GroupVersionKind]workqueue.RateLimiter
 	KindWorkers     map[schema.GroupVersionKind]int
+
+	// SyncOnlyChangedObjects causes the handle function to only proceed if the object was actually updated.
+	// This is intended to be used by applications with many objects and/or controllers types that have
+	// alternative means of rerunning when necessary. When the informer's resync their cache the update
+	// function is run. If this setting is enabled, when the update handler is triggered the overhead is
+	// reduced but has the tradeoff of not rerunning handlers. Handlers that rely on external objects or
+	// services, or experience a bug might need to rerun despite the respective object not changing. If this
+	// is enabled, it is the responsibility of the app to ensure logic is retried when needed. The result is
+	// that running the handler func on resync will mostly only serve the purpose of catching missed cache
+	// events.
+	SyncOnlyChangedObjects bool
 }
 
 type sharedControllerFactory struct {
@@ -40,6 +53,8 @@ type sharedControllerFactory struct {
 	workers         int
 	kindRateLimiter map[schema.GroupVersionKind]workqueue.RateLimiter
 	kindWorkers     map[schema.GroupVersionKind]int
+
+	syncOnlyChangedObjects bool
 }
 
 func NewSharedControllerFactoryFromConfig(config *rest.Config, scheme *runtime.Scheme) (SharedControllerFactory, error) {
@@ -52,15 +67,32 @@ func NewSharedControllerFactoryFromConfig(config *rest.Config, scheme *runtime.S
 	return NewSharedControllerFactory(cache.NewSharedCachedFactory(cf, nil), nil), nil
 }
 
+// NewSharedControllerFactoryFromConfigWithOptions accepts options for configuring a new SharedControllerFactory and its
+// cache.
+func NewSharedControllerFactoryFromConfigWithOptions(config *rest.Config, scheme *runtime.Scheme, opts *SharedControllerFactoryOptions) (SharedControllerFactory, error) {
+	cf, err := client.NewSharedClientFactory(config, &client.SharedClientFactoryOptions{
+		Scheme: scheme,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var cacheOpts *cache.SharedCacheFactoryOptions
+	if opts != nil {
+		cacheOpts = opts.CacheOptions
+	}
+	return NewSharedControllerFactory(cache.NewSharedCachedFactory(cf, cacheOpts), opts), nil
+}
+
 func NewSharedControllerFactory(cacheFactory cache.SharedCacheFactory, opts *SharedControllerFactoryOptions) SharedControllerFactory {
 	opts = applyDefaultSharedOptions(opts)
 	return &sharedControllerFactory{
-		sharedCacheFactory: cacheFactory,
-		controllers:        map[schema.GroupVersionResource]*sharedController{},
-		workers:            opts.DefaultWorkers,
-		kindWorkers:        opts.KindWorkers,
-		rateLimiter:        opts.DefaultRateLimiter,
-		kindRateLimiter:    opts.KindRateLimiter,
+		sharedCacheFactory:     cacheFactory,
+		controllers:            map[schema.GroupVersionResource]*sharedController{},
+		workers:                opts.DefaultWorkers,
+		kindWorkers:            opts.KindWorkers,
+		rateLimiter:            opts.DefaultRateLimiter,
+		kindRateLimiter:        opts.KindRateLimiter,
+		syncOnlyChangedObjects: opts.SyncOnlyChangedObjects,
 	}
 }
 
@@ -73,6 +105,10 @@ func applyDefaultSharedOptions(opts *SharedControllerFactoryOptions) *SharedCont
 		newOpts.DefaultWorkers = 5
 	}
 	return &newOpts
+}
+
+func (s *sharedControllerFactory) EnableSyncOnlyChangedObjects() {
+	s.syncOnlyChangedObjects = true
 }
 
 func (s *sharedControllerFactory) Start(ctx context.Context, defaultWorkers int) error {
@@ -146,7 +182,7 @@ func (s *sharedControllerFactory) ForResourceKind(gvr schema.GroupVersionResourc
 
 	client := s.sharedCacheFactory.SharedClientFactory().ForResourceKind(gvr, kind, namespaced)
 
-	handler := &SharedHandler{}
+	handler := &SharedHandler{controllerGVR: gvr.String()}
 
 	controllerResult = &sharedController{
 		deferredController: func() (Controller, error) {
@@ -179,7 +215,8 @@ func (s *sharedControllerFactory) ForResourceKind(gvr schema.GroupVersionResourc
 			}
 
 			c := New(gvk.String(), cache, starter, handler, &Options{
-				RateLimiter: rateLimiter,
+				RateLimiter:            rateLimiter,
+				SyncOnlyChangedObjects: s.syncOnlyChangedObjects,
 			})
 
 			return c, err
