@@ -104,11 +104,11 @@ func (osc *ObjectStoreController) processNextWorkItem() bool {
 	if err == nil {
 		osc.queue.Forget(key)
 	} else if osc.queue.NumRequeues(key) < maxRetries {
-		osc.logger.WithError(err).Errorf("error syncing object store %v, retrying", err)
+		osc.logger.WithError(err).Errorf("error syncing object store: \"%v\", retrying", err)
 		osc.queue.AddRateLimited(key)
 	} else {
 		utilruntime.HandleError(err)
-		osc.logger.WithError(err).Errorf("error syncing object store %v, giving up", err)
+		osc.logger.WithError(err).Errorf("error syncing object store: \"%v\", giving up", err)
 		osc.queue.Forget(key)
 	}
 
@@ -139,10 +139,8 @@ func (osc *ObjectStoreController) syncObjectStore(key string) error {
 	}
 
 	if !store.DeletionTimestamp.IsZero() && store.Status.State != longhorn.ObjectStoreStateTerminating {
-		store, err = osc.setObjectStoreState(store, longhorn.ObjectStoreStateTerminating)
-		if err != nil {
-			return err
-		}
+		_, err = osc.setObjectStoreState(store, longhorn.ObjectStoreStateTerminating)
+		return err
 	}
 
 	switch store.Status.State {
@@ -330,49 +328,10 @@ func (osc *ObjectStoreController) handleStopped(store *longhorn.ObjectStore) (er
 	return nil
 }
 
-// The controller transitions the object store to "Terminating" state, when
-// deletion is requested in the API. While in "Terminating" state, the controller
-// observes the resources that make up the object store until they are
-// removed. At that point, the object store resource itself is allowed to be
-// removed as well, by removing the finalizer.
-// This ensures that while there are resources remaining in the
-// cluster, the controller will keep knowledge of the object store and
-// communicate back if errors occur.
 func (osc *ObjectStoreController) handleTerminating(store *longhorn.ObjectStore) (err error) {
-	_, err = osc.ds.GetDeployment(store.Name)
-	if err == nil {
-		return nil
-	} else if !datastore.ErrorIsNotFound(err) {
-		return errors.Wrap(err, "API error while waiting on deployment shutdown")
-	}
-
-	_, err = osc.ds.GetService(osc.namespace, store.Name)
-	if err == nil || !datastore.ErrorIsNotFound(err) {
-		return err
-	}
-
-	_, err = osc.ds.GetPersistentVolumeClaim(osc.namespace, genPVCName(store))
-	if err == nil || !datastore.ErrorIsNotFound(err) {
-		return err
-	}
-
-	// The PV is special because it is cluster scoped. All the other resources are
-	// namespace-scoped, therefore the PV can not be owned through an OwnerRef by
-	// another resource of the ObjectStore and has to be deleted explicitly by the
-	// controller
-	pv, err := osc.ds.GetPersistentVolume(genPVName(store))
-	if err == nil {
-		return osc.ds.DeletePersistentVolume(pv.Name)
-	} else if err == nil || !datastore.ErrorIsNotFound(err) {
-		return err
-	}
-
-	err = osc.ds.RemoveFinalizerForObjectStore(store)
-	if err != nil {
-		store, _ = osc.setObjectStoreState(store, longhorn.ObjectStoreStateError)
-		return err
-	}
-	return nil
+	// Just remove the finalizer. The K8s API will take care of removing dependent
+	// resources.
+	return osc.ds.RemoveFinalizerForObjectStore(store)
 }
 
 func (osc *ObjectStoreController) setObjectStoreState(
@@ -391,7 +350,7 @@ func (osc *ObjectStoreController) initializeObjectStore(store *longhorn.ObjectSt
 
 	store, err = osc.ds.UpdateObjectStore(store)
 	if err != nil {
-		return errors.Wrapf(err, "failed to initialize")
+		return nil // retry until no more conflicts
 	}
 
 	_, err = osc.setObjectStoreState(store, longhorn.ObjectStoreStateStarting)
