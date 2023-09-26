@@ -1163,7 +1163,294 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		if err != nil {
 			return err
 		}
+<<<<<<< HEAD
 		newVolume = true
+=======
+		// To make sure that we don't miss the `isAutoSalvageNeeded` event, This IF statement makes sure the `e.Spec.SalvageRequested=true`
+		// persist in ETCD before Longhorn salvages the failed replicas in the IF statement below it.
+		// More explanation: when all replicas fails, Longhorn tries to set `e.Spec.SalvageRequested=true`
+		// and try to detach the volume by setting `v.Status.CurrentNodeID = ""`.
+		// Because at the end of volume syncVolume(), Longhorn updates CRs in the order: replicas, engine, volume,
+		// when volume changes from v.Status.State == longhorn.VolumeStateAttached to v.Status.State == longhorn.VolumeStateDetached,
+		// we know that volume RS has been updated and therefore the engine RS also has been updated and persisted in ETCD.
+		// At this moment, Longhorn goes into the IF statement below this IF statement and salvage all replicas.
+		if autoSalvage && !v.Status.IsStandby && !v.Status.RestoreRequired {
+			// Since all replica failed and autoSalvage is enable, mark engine controller salvage requested
+			e.Spec.SalvageRequested = true
+			log.Infof("All replicas are failed, set engine salvageRequested to %v", e.Spec.SalvageRequested)
+		}
+		// make sure the volume is detached before automatically salvage replicas
+		if autoSalvage && v.Status.State == longhorn.VolumeStateDetached && !v.Status.IsStandby && !v.Status.RestoreRequired {
+			lastFailedAt := time.Time{}
+			failedUsableReplicas := map[string]*longhorn.Replica{}
+			dataExists := false
+
+			for _, r := range rs {
+				if r.Spec.HealthyAt == "" {
+					continue
+				}
+				dataExists = true
+				if r.Spec.NodeID == "" || r.Spec.DiskID == "" {
+					continue
+				}
+				if isDownOrDeleted, err := c.ds.IsNodeDownOrDeleted(r.Spec.NodeID); err != nil {
+					log.WithField("replica", r.Name).WithError(err).Warnf("Failed to check if node %v is still running for failed replica", r.Spec.NodeID)
+					continue
+				} else if isDownOrDeleted {
+					continue
+				}
+				node, err := c.ds.GetNode(r.Spec.NodeID)
+				if err != nil {
+					log.WithField("replica", r.Name).WithError(err).Warnf("Failed to get node %v for failed replica", r.Spec.NodeID)
+				}
+				diskSchedulable := false
+				for _, diskStatus := range node.Status.DiskStatus {
+					if diskStatus.DiskUUID == r.Spec.DiskID {
+						if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status == longhorn.ConditionStatusTrue {
+							diskSchedulable = true
+							break
+						}
+					}
+				}
+				if !diskSchedulable {
+					continue
+				}
+				failedAt, err := util.ParseTime(r.Spec.FailedAt)
+				if err != nil {
+					log.WithField("replica", r.Name).WithError(err).Warn("Failed to parse FailedAt timestamp for replica")
+					continue
+				}
+				if failedAt.After(lastFailedAt) {
+					lastFailedAt = failedAt
+				}
+				// all failedUsableReplica contains data
+				failedUsableReplicas[r.Name] = r
+			}
+			if !dataExists {
+				log.Warn("Failed to auto salvage volume: no data exists")
+			} else {
+				// This salvage is for revision counter enabled case
+				salvaged := false
+				// Bring up the replicas for auto-salvage
+				for _, r := range failedUsableReplicas {
+					if util.TimestampWithinLimit(lastFailedAt, r.Spec.FailedAt, AutoSalvageTimeLimit) {
+						r.Spec.FailedAt = ""
+						log.WithField("replica", r.Name).Warn("Automatically salvaging volume replica")
+						msg := fmt.Sprintf("Replica %v of volume %v will be automatically salvaged", r.Name, v.Name)
+						c.eventRecorder.Event(v, corev1.EventTypeWarning, constant.EventReasonAutoSalvaged, msg)
+						salvaged = true
+					}
+				}
+				if salvaged {
+					// remount the reattached volume later if possible
+					v.Status.RemountRequestedAt = c.nowHandler()
+					msg := fmt.Sprintf("Volume %v requested remount at %v after automatically salvaging replicas", v.Name, v.Status.RemountRequestedAt)
+					c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonRemount, msg)
+					v.Status.Robustness = longhorn.VolumeRobustnessUnknown
+					return nil
+				}
+			}
+		}
+	} else { // !isAutoSalvageNeeded
+		if v.Status.Robustness == longhorn.VolumeRobustnessFaulted && v.Status.State == longhorn.VolumeStateDetached {
+			v.Status.Robustness = longhorn.VolumeRobustnessUnknown
+			// The volume was faulty and there are usable replicas.
+			// Therefore, we set RemountRequestedAt so that KubernetesPodController restarts the workload pod
+			v.Status.RemountRequestedAt = c.nowHandler()
+			msg := fmt.Sprintf("Volume %v requested remount at %v", v.Name, v.Status.RemountRequestedAt)
+			c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonRemount, msg)
+			return nil
+		}
+
+		// Reattach volume if
+		// - volume is detached unexpectedly and there are still healthy replicas
+		// - engine dead unexpectedly and there are still healthy replicas when the volume is not attached
+		if e.Status.CurrentState == longhorn.InstanceStateError {
+			if v.Status.CurrentNodeID != "" || (v.Spec.NodeID != "" && v.Status.CurrentNodeID == "" && v.Status.State != longhorn.VolumeStateAttached) {
+				log.Warn("Reattaching the volume since engine of volume dead unexpectedly")
+				msg := fmt.Sprintf("Engine of volume %v dead unexpectedly, reattach the volume", v.Name)
+				c.eventRecorder.Event(v, corev1.EventTypeWarning, constant.EventReasonDetachedUnexpectedly, msg)
+				e.Spec.LogRequested = true
+				for _, r := range rs {
+					if r.Status.CurrentState == longhorn.InstanceStateRunning {
+						r.Spec.LogRequested = true
+						rs[r.Name] = r
+					}
+				}
+				v.Status.Robustness = longhorn.VolumeRobustnessFaulted
+			}
+		}
+	}
+
+	if err := c.reconcileAttachDetachStateMachine(v, e, rs, isNewVolume, log); err != nil {
+		return err
+	}
+
+	if v.Status.CurrentNodeID != "" &&
+		v.Status.State == longhorn.VolumeStateAttached &&
+		e.Status.CurrentState == longhorn.InstanceStateRunning {
+		if e.Spec.RequestedBackupRestore != "" {
+			v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+				longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonRestoreInProgress, "")
+		}
+
+		// TODO: reconcileVolumeSize
+		// The engine expansion is complete
+		if v.Status.ExpansionRequired && v.Spec.Size == e.Status.CurrentSize {
+			v.Status.ExpansionRequired = false
+			v.Status.FrontendDisabled = false
+		}
+	}
+
+	return c.checkAndFinishVolumeRestore(v, e, rs)
+}
+
+func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, isNewVolume bool, log *logrus.Entry) error {
+	//TODO: link the state machine graph here
+
+	if isNewVolume || v.Status.State == "" {
+		v.Status.State = longhorn.VolumeStateCreating
+		return nil
+	}
+
+	if v.Spec.NodeID == "" {
+		if v.Status.CurrentNodeID == "" {
+			switch v.Status.State {
+			case longhorn.VolumeStateAttached, longhorn.VolumeStateAttaching, longhorn.VolumeStateCreating:
+				c.closeVolumeDependentResources(v, e, rs)
+				v.Status.State = longhorn.VolumeStateDetaching
+			case longhorn.VolumeStateDetaching:
+				c.closeVolumeDependentResources(v, e, rs)
+				if c.verifyVolumeDependentResourcesClosed(e, rs) {
+					v.Status.State = longhorn.VolumeStateDetached
+					c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
+				}
+			case longhorn.VolumeStateDetached:
+				// This is a stable state.
+				// We attempt to close the resources anyway to make sure that they are closed
+				c.closeVolumeDependentResources(v, e, rs)
+			}
+			return nil
+		}
+		if v.Status.CurrentNodeID != "" {
+			switch v.Status.State {
+			case longhorn.VolumeStateAttaching, longhorn.VolumeStateAttached, longhorn.VolumeStateDetached:
+				c.closeVolumeDependentResources(v, e, rs)
+				v.Status.State = longhorn.VolumeStateDetaching
+			case longhorn.VolumeStateDetaching:
+				c.closeVolumeDependentResources(v, e, rs)
+				if c.verifyVolumeDependentResourcesClosed(e, rs) {
+					v.Status.CurrentNodeID = ""
+					v.Status.State = longhorn.VolumeStateDetached
+					c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
+				}
+			}
+			return nil
+		}
+	}
+
+	if v.Spec.NodeID != "" {
+		if v.Status.CurrentNodeID == "" {
+			switch v.Status.State {
+			case longhorn.VolumeStateAttached:
+				c.closeVolumeDependentResources(v, e, rs)
+				v.Status.State = longhorn.VolumeStateDetaching
+			case longhorn.VolumeStateDetaching:
+				c.closeVolumeDependentResources(v, e, rs)
+				if c.verifyVolumeDependentResourcesClosed(e, rs) {
+					v.Status.State = longhorn.VolumeStateDetached
+					c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
+				}
+			case longhorn.VolumeStateDetached:
+				if err := c.openVolumeDependentResources(v, e, rs, log); err != nil {
+					return err
+				}
+				v.Status.State = longhorn.VolumeStateAttaching
+			case longhorn.VolumeStateAttaching:
+				if err := c.openVolumeDependentResources(v, e, rs, log); err != nil {
+					return err
+				}
+				if c.areVolumeDependentResourcesOpened(e, rs) {
+					v.Status.CurrentNodeID = v.Spec.NodeID
+					v.Status.State = longhorn.VolumeStateAttached
+					c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonAttached, "volume %v has been attached to %v", v.Name, v.Status.CurrentNodeID)
+				}
+			}
+			return nil
+		}
+
+		if v.Status.CurrentNodeID != "" {
+			if v.Spec.NodeID == v.Status.CurrentNodeID {
+				switch v.Status.State {
+				case longhorn.VolumeStateAttaching, longhorn.VolumeStateDetached:
+					c.closeVolumeDependentResources(v, e, rs)
+					v.Status.State = longhorn.VolumeStateDetaching
+				case longhorn.VolumeStateDetaching:
+					c.closeVolumeDependentResources(v, e, rs)
+					if c.verifyVolumeDependentResourcesClosed(e, rs) {
+						v.Status.CurrentNodeID = ""
+						v.Status.State = longhorn.VolumeStateDetached
+						c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
+					}
+				case longhorn.VolumeStateAttached:
+					// This is a stable state
+					// Try to openVolumeDependentResources so that we start the newly added replicas if they exist
+					if err := c.openVolumeDependentResources(v, e, rs, log); err != nil {
+						return err
+					}
+					if !c.areVolumeDependentResourcesOpened(e, rs) {
+						log.Warnf("Volume is attached but dependent resources are not opened")
+					}
+				}
+				return nil
+			}
+			if v.Spec.NodeID != v.Status.CurrentNodeID {
+				switch v.Status.State {
+				case longhorn.VolumeStateDetached, longhorn.VolumeStateAttaching:
+					c.closeVolumeDependentResources(v, e, rs)
+					v.Status.State = longhorn.VolumeStateDetaching
+				case longhorn.VolumeStateDetaching:
+					c.closeVolumeDependentResources(v, e, rs)
+					if c.verifyVolumeDependentResourcesClosed(e, rs) {
+						v.Status.CurrentNodeID = ""
+						v.Status.State = longhorn.VolumeStateDetached
+						c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDetached, "volume %v has been detached", v.Name)
+					}
+				case longhorn.VolumeStateAttached:
+					if v.Spec.Migratable && v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && v.Status.CurrentMigrationNodeID != "" {
+						if err := c.openVolumeDependentResources(v, e, rs, log); err != nil {
+							return err
+						}
+						if !c.areVolumeDependentResourcesOpened(e, rs) {
+							log.Warnf("Volume is attached but dependent resources are not opened")
+						}
+					} else {
+						c.closeVolumeDependentResources(v, e, rs)
+						v.Status.State = longhorn.VolumeStateDetaching
+					}
+				}
+				return nil
+			}
+		}
+	}
+
+	return nil
+}
+
+func (c *VolumeController) reconcileVolumeCreation(v *longhorn.Volume, e *longhorn.Engine, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (bool, *longhorn.Engine, error) {
+	// first time engine creation etc
+
+	var isNewVolume bool
+	var err error
+
+	if len(es) == 0 {
+		// first time creation
+		e, err = c.createEngine(v, "")
+		if err != nil {
+			return false, e, err
+		}
+		isNewVolume = true
+>>>>>>> d8cd36b9 (Make the new engine name deterministic based on the existing engine)
 		es[e.Name] = e
 	}
 
@@ -3028,12 +3315,17 @@ func (vc *VolumeController) getInfoFromBackupURL(v *longhorn.Volume) (string, st
 	return backupVolumeName, backupName, err
 }
 
+<<<<<<< HEAD
 func (vc *VolumeController) createEngine(v *longhorn.Volume, isNewEngine bool) (*longhorn.Engine, error) {
 	log := getLoggerForVolume(vc.logger, v)
+=======
+func (c *VolumeController) createEngine(v *longhorn.Volume, currentEngineName string) (*longhorn.Engine, error) {
+	log := getLoggerForVolume(c.logger, v)
+>>>>>>> d8cd36b9 (Make the new engine name deterministic based on the existing engine)
 
 	engine := &longhorn.Engine{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            types.GenerateEngineNameForVolume(v.Name),
+			Name:            types.GenerateEngineNameForVolume(v.Name, currentEngineName),
 			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
 		},
 		Spec: longhorn.EngineSpec{
@@ -3068,7 +3360,7 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume, isNewEngine bool) (
 	}
 	engine.Spec.UnmapMarkSnapChainRemovedEnabled = unmapMarkEnabled
 
-	if isNewEngine {
+	if currentEngineName == "" {
 		engine.Spec.Active = true
 	}
 
@@ -3586,7 +3878,11 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 	}
 
 	if migrationEngine == nil {
+<<<<<<< HEAD
 		migrationEngine, err = vc.createEngine(v, false)
+=======
+		migrationEngine, err = c.createEngine(v, currentEngine.Name)
+>>>>>>> d8cd36b9 (Make the new engine name deterministic based on the existing engine)
 		if err != nil {
 			return err
 		}
