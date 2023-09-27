@@ -659,7 +659,9 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 		return nil, err
 	}
 
-	if engine.Status.CurrentState != longhorn.InstanceStateRunning {
+	if engine.Status.CurrentState != longhorn.InstanceStateRunning ||
+		engine.Spec.DesireState != longhorn.InstanceStateRunning ||
+		volume.Status.State != longhorn.VolumeStateAttached {
 		return nil, fmt.Errorf("waiting for engine %v to be running before enabling backup monitor", engine.Name)
 	}
 
