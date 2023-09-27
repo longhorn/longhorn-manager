@@ -21,7 +21,7 @@ const (
 type ObjectStoreStatus struct {
 	// The state of the object store as observed by the object store controller.
 	//
-	// The object store implemets a state machine with this, beginning at
+	// The object store implements a state machine with this, beginning at
 	// "unknown". Once the object store controller detects the new object store
 	// and begins resource creation the state is transformed to "starting". The
 	// object store controller observes the resources and once all resources are

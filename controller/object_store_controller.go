@@ -365,7 +365,7 @@ func (osc *ObjectStoreController) getOrCreatePVC(store *longhorn.ObjectStore) (*
 		pvc, err = osc.createPVC(store)
 		if err != nil {
 			store, _ = osc.setObjectStoreState(store, longhorn.ObjectStoreStateError)
-			return nil, store, errors.Wrap(err, "failed to create persisten volume claim")
+			return nil, store, errors.Wrap(err, "failed to create persistent volume claim")
 		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
 			store, _ = osc.setObjectStoreState(store, longhorn.ObjectStoreStateStarting)
 		}
