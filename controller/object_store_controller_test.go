@@ -403,10 +403,86 @@ func TestSyncRunningObjectStore(t *testing.T) {
 	f.runExpectSuccess(&ctx, getMetaKey(TestNamespace, TestObjectStoreName))
 }
 
-// TestSyncStoppingObjectStore tests that the object endpoint has been marked
+// TestSyncStoppingObjectStore
+func TestSyncStoppingObjectStore(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.TODO()
+
+	secret := osTestNewSecret()
+	store := osTestNewObjectStore(secret)
+	(*store).Status = longhorn.ObjectStoreStatus{
+		State: longhorn.ObjectStoreStateStopping,
+		Endpoints: []string{
+			fmt.Sprintf("%s.%s.svc", TestObjectStoreName, TestNamespace),
+		},
+	}
+	pvc := osTestNewPersistentVolumeClaim()
+	vol := osTestNewLonghornVolume()
+	service := osTestNewService()
+	deployment := osTestNewDeployment()
+	(*deployment).Spec.Replicas = func() *int32 { a := int32(1); return &a }()
+
+	f.lhObjects = append(f.lhObjects, store)
+	f.kubeObjects = append(f.kubeObjects, pvc)
+	f.lhObjects = append(f.lhObjects, vol)
+	f.kubeObjects = append(f.kubeObjects, secret)
+	f.kubeObjects = append(f.kubeObjects, service)
+	f.kubeObjects = append(f.kubeObjects, deployment)
+	f.objectStoreLister = append(f.objectStoreLister, store)
+	f.pvcLister = append(f.pvcLister, pvc)
+	f.longhornVolumeLister = append(f.longhornVolumeLister, vol)
+	f.secretLister = append(f.secretLister, secret)
+	f.serviceLister = append(f.serviceLister, service)
+	f.deploymentLister = append(f.deploymentLister, deployment)
+
+	// On the first run, the controller is expected to just scale down the
+	// deployment
+	f.runExpectSuccess(&ctx, getMetaKey(TestNamespace, TestObjectStoreName))
+
+	if *((*deployment).Spec.Replicas) != 0 {
+		f.test.Fail()
+	}
+}
+
+// TestSyncStoppedObjectStore
+func TestSyncStoppedObjectStore(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.TODO()
+
+	secret := osTestNewSecret()
+	store := osTestNewObjectStore(secret)
+	(*store).Status = longhorn.ObjectStoreStatus{
+		State: longhorn.ObjectStoreStateStopped,
+		Endpoints: []string{
+			fmt.Sprintf("%s.%s.svc", TestObjectStoreName, TestNamespace),
+		},
+	}
+	pvc := osTestNewPersistentVolumeClaim()
+	vol := osTestNewLonghornVolume()
+	service := osTestNewService()
+	deployment := osTestNewDeployment()
+	(*deployment).Spec.Replicas = func() *int32 { a := int32(0); return &a }()
+
+	f.lhObjects = append(f.lhObjects, store)
+	f.kubeObjects = append(f.kubeObjects, pvc)
+	f.lhObjects = append(f.lhObjects, vol)
+	f.kubeObjects = append(f.kubeObjects, secret)
+	f.kubeObjects = append(f.kubeObjects, service)
+	f.kubeObjects = append(f.kubeObjects, deployment)
+	f.objectStoreLister = append(f.objectStoreLister, store)
+	f.pvcLister = append(f.pvcLister, pvc)
+	f.longhornVolumeLister = append(f.longhornVolumeLister, vol)
+	f.secretLister = append(f.secretLister, secret)
+	f.serviceLister = append(f.serviceLister, service)
+	f.deploymentLister = append(f.deploymentLister, deployment)
+
+	f.runExpectSuccess(&ctx, getMetaKey(TestNamespace, TestObjectStoreName))
+}
+
+// TestSyncTerminatingObjectStore tests that the object endpoint has been marked
 // for suspension and the controller needs to wait for the deployment to scale
 // down
-func TestSyncStoppingObjectStore(t *testing.T) {
+func TestSyncTerminatingObjectStore(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.TODO()
 
