@@ -175,3 +175,61 @@ func (s *TestSuite) TestIsSelectorsInTags(c *C) {
 		c.Assert(actual, Equals, testCase.expected, Commentf(TestErrResultFmt, testName))
 	}
 }
+
+func (s *TestSuite) TestGenerateEngineNameForVolume(c *C) {
+	type testCase struct {
+		volumeName        string
+		currentEngineName string
+
+		expectedEngineName string
+	}
+	testCases := map[string]testCase{
+		"case 1: testvol, new engine": {
+			volumeName:         "testvol",
+			currentEngineName:  "",
+			expectedEngineName: "testvol-e-0",
+		},
+		"case 2: testvol, new engine from old engine version": {
+			volumeName:         "testvol",
+			currentEngineName:  "testvol-e-abcdefgh",
+			expectedEngineName: "testvol-e-1",
+		},
+		"case 3: testvol, new engine from new engine version": {
+			volumeName:         "testvol",
+			currentEngineName:  "testvol-e-0",
+			expectedEngineName: "testvol-e-1",
+		},
+		"case 4: testvol, newer engine from new engine version": {
+			volumeName:         "testvol",
+			currentEngineName:  "testvol-e-1",
+			expectedEngineName: "testvol-e-2",
+		},
+		"case 5: test-vol, new engine": {
+			volumeName:         "test-vol",
+			currentEngineName:  "",
+			expectedEngineName: "test-vol-e-0",
+		},
+		"case 6: test-vol, new engine from old engine version": {
+			volumeName:         "test-vol",
+			currentEngineName:  "test-vol-e-xxxxxxxx",
+			expectedEngineName: "test-vol-e-1",
+		},
+		"case 7: test-vol, new engine from new engine version": {
+			volumeName:         "test-vol",
+			currentEngineName:  "test-vol-e-0",
+			expectedEngineName: "test-vol-e-1",
+		},
+		"case 8: test-vol, newer engine from new engine version": {
+			volumeName:         "test-vol",
+			currentEngineName:  "test-vol-e-1",
+			expectedEngineName: "test-vol-e-2",
+		},
+	}
+
+	for testName, testCase := range testCases {
+		fmt.Printf("testing %v\n", testName)
+
+		actual := GenerateEngineNameForVolume(testCase.volumeName, testCase.currentEngineName)
+		c.Assert(actual, Equals, testCase.expectedEngineName, Commentf(TestErrResultFmt, testName))
+	}
+}
