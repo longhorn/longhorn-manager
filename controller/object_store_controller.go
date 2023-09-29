@@ -344,8 +344,14 @@ func (osc *ObjectStoreController) setObjectStoreState(
 
 func (osc *ObjectStoreController) initializeObjectStore(store *longhorn.ObjectStore) (err error) {
 	// TODO: check if we really need/want to update the spec's image here
-	store.Spec.Image = osc.s3gwImage
-	store.Spec.UiImage = osc.uiImage
+	if store.Spec.Image == "" {
+		store.Spec.Image = osc.s3gwImage
+	}
+
+	if store.Spec.UiImage == "" {
+		store.Spec.UiImage = osc.uiImage
+	}
+
 	store.Spec.TargetState = longhorn.ObjectStoreStateRunning
 
 	store, err = osc.ds.UpdateObjectStore(store)

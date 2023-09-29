@@ -314,6 +314,31 @@ func TestSyncNewObjectStore(t *testing.T) {
 	f.objectStoreLister = append(f.objectStoreLister, store)
 
 	f.runExpectSuccess(&ctx, getMetaKey(TestNamespace, TestObjectStoreName))
+
+	check, _ := f.lhClient.
+		LonghornV1beta2().
+		ObjectStores(TestNamespace).
+		Get(context.TODO(), TestObjectStoreName, metav1.GetOptions{})
+
+	if check.Spec.Image != TestObjectStoreImage {
+		f.test.Errorf("%v != %v", (*store).Spec.Image, TestObjectStoreImage)
+	}
+
+	if check.Spec.UiImage != TestObjectStoreUIImage {
+		f.test.Errorf("%v != %v", (*store).Spec.UiImage, TestObjectStoreUIImage)
+	}
+
+	if check.Spec.TargetState != longhorn.ObjectStoreStateRunning {
+		f.test.Errorf("%v != %v",
+			(*store).Spec.TargetState,
+			longhorn.ObjectStoreStateRunning)
+	}
+
+	if check.Status.State != longhorn.ObjectStoreStateStarting {
+		f.test.Errorf("%v != %v",
+			(*store).Status.State,
+			longhorn.ObjectStoreStateStarting)
+	}
 }
 
 // TestSyncUnkonwObjectStore tests the default case of a new object endpoint
@@ -334,6 +359,31 @@ func TestSyncUnkonwObjectStore(t *testing.T) {
 	f.objectStoreLister = append(f.objectStoreLister, store)
 
 	f.runExpectSuccess(&ctx, getMetaKey(TestNamespace, TestObjectStoreName))
+
+	check, _ := f.lhClient.
+		LonghornV1beta2().
+		ObjectStores(TestNamespace).
+		Get(context.TODO(), TestObjectStoreName, metav1.GetOptions{})
+
+	if check.Spec.Image != TestObjectStoreImage {
+		f.test.Errorf("%v != %v", (*store).Spec.Image, TestObjectStoreImage)
+	}
+
+	if check.Spec.UiImage != TestObjectStoreUIImage {
+		f.test.Errorf("%v != %v", (*store).Spec.UiImage, TestObjectStoreUIImage)
+	}
+
+	if check.Spec.TargetState != longhorn.ObjectStoreStateRunning {
+		f.test.Errorf("%v != %v",
+			(*store).Spec.TargetState,
+			longhorn.ObjectStoreStateRunning)
+	}
+
+	if check.Status.State != longhorn.ObjectStoreStateStarting {
+		f.test.Errorf("%v != %v",
+			(*store).Status.State,
+			longhorn.ObjectStoreStateStarting)
+	}
 }
 
 // TestSyncStartingObjectStore  tests the case where the object endpoint has
