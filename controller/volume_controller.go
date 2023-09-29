@@ -1159,7 +1159,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 
 	if e == nil {
 		// first time creation
-		e, err = vc.createEngine(v, true)
+		e, err = vc.createEngine(v, "")
 		if err != nil {
 			return err
 		}
@@ -3028,12 +3028,12 @@ func (vc *VolumeController) getInfoFromBackupURL(v *longhorn.Volume) (string, st
 	return backupVolumeName, backupName, err
 }
 
-func (vc *VolumeController) createEngine(v *longhorn.Volume, isNewEngine bool) (*longhorn.Engine, error) {
+func (vc *VolumeController) createEngine(v *longhorn.Volume, currentEngineName string) (*longhorn.Engine, error) {
 	log := getLoggerForVolume(vc.logger, v)
 
 	engine := &longhorn.Engine{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            types.GenerateEngineNameForVolume(v.Name),
+			Name:            types.GenerateEngineNameForVolume(v.Name, currentEngineName),
 			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
 		},
 		Spec: longhorn.EngineSpec{
@@ -3068,7 +3068,7 @@ func (vc *VolumeController) createEngine(v *longhorn.Volume, isNewEngine bool) (
 	}
 	engine.Spec.UnmapMarkSnapChainRemovedEnabled = unmapMarkEnabled
 
-	if isNewEngine {
+	if currentEngineName == "" {
 		engine.Spec.Active = true
 	}
 
@@ -3586,7 +3586,7 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 	}
 
 	if migrationEngine == nil {
-		migrationEngine, err = vc.createEngine(v, false)
+		migrationEngine, err = vc.createEngine(v, currentEngine.Name)
 		if err != nil {
 			return err
 		}
