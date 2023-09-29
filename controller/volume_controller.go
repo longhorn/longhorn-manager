@@ -423,13 +423,15 @@ func (vc *VolumeController) syncVolume(key string) (err error) {
 			// Make sure that we don't update condition's LastTransitionTime if the condition's values hasn't changed
 			handleConditionLastTransitionTime(&existingVolume.Status, &volume.Status)
 			if !reflect.DeepEqual(existingVolume.Status, volume.Status) {
-				// reuse err
-				_, err = vc.ds.UpdateVolumeStatus(volume)
+				_, lastErr = vc.ds.UpdateVolumeStatus(volume)
 			}
 		}
+		if err == nil {
+			err = lastErr
+		}
 		// requeue if it's conflict
-		if apierrors.IsConflict(errors.Cause(err)) || apierrors.IsConflict(errors.Cause(lastErr)) {
-			log.Debugf("Requeue volume due to error %v or %v", err, lastErr)
+		if apierrors.IsConflict(errors.Cause(err)) {
+			log.Debugf("Requeue volume due to error %v", err)
 			vc.enqueueVolume(volume)
 			err = nil
 		}
