@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -42,7 +43,7 @@ import (
 
 const (
 	unknownReplicaPrefix            = "UNKNOWN-"
-	restoreGetLockFailedMsg         = "error initiating full backup restore: failed lock"
+	restoreGetLockFailedPatternMsg  = "error initiating (full|incremental) backup restore: failed lock"
 	restoreAlreadyInProgressMsg     = "already in progress"
 	restoreAlreadyRestoredBackupMsg = "already restored backup"
 )
@@ -1483,7 +1484,7 @@ func handleRestoreError(log logrus.FieldLogger, engine *longhorn.Engine, rsMap m
 			continue
 		}
 
-		if strings.Contains(re.Error(), restoreGetLockFailedMsg) {
+		if isReplicaRestoreFailedLockError(&re) {
 			log.WithError(re).Warnf("Ignored failed locked restore error from replica %v", re.Address)
 			// Register the name with a restore backoff entry
 			backoff.Next(engine.Name, time.Now())
@@ -1504,6 +1505,11 @@ func handleRestoreError(log logrus.FieldLogger, engine *longhorn.Engine, rsMap m
 	return nil
 }
 
+func isReplicaRestoreFailedLockError(err *imclient.ReplicaError) bool {
+	failedLock := regexp.MustCompile(restoreGetLockFailedPatternMsg)
+	return failedLock.MatchString(err.Error())
+}
+
 func handleRestoreErrorForCompatibleEngine(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, backoff *flowcontrol.Backoff, err error) error {
 	taskErr, ok := err.(imclient.TaskError)
 	if !ok {
@@ -1517,7 +1523,7 @@ func handleRestoreErrorForCompatibleEngine(log logrus.FieldLogger, engine *longh
 			continue
 		}
 
-		if strings.Contains(re.Error(), restoreGetLockFailedMsg) {
+		if isReplicaRestoreFailedLockError(&re) {
 			log.WithError(re).Warnf("Ignored failed locked restore error from replica %v", re.Address)
 			// Register the name with a restore backoff entry
 			backoff.Next(engine.Name, time.Now())
