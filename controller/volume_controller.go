@@ -431,13 +431,15 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 			// Make sure that we don't update condition's LastTransitionTime if the condition's values hasn't changed
 			handleConditionLastTransitionTime(&existingVolume.Status, &volume.Status)
 			if !reflect.DeepEqual(existingVolume.Status, volume.Status) {
-				// reuse err
-				_, err = c.ds.UpdateVolumeStatus(volume)
+				_, lastErr = c.ds.UpdateVolumeStatus(volume)
 			}
 		}
+		if err == nil {
+			err = lastErr
+		}
 		// requeue if it's conflict
-		if apierrors.IsConflict(errors.Cause(err)) || apierrors.IsConflict(errors.Cause(lastErr)) {
-			log.Debugf("Requeue volume due to error %v or %v", err, lastErr)
+		if apierrors.IsConflict(errors.Cause(err)) {
+			log.Debugf("Requeue volume due to error %v", err)
 			c.enqueueVolume(volume)
 			err = nil
 		}
@@ -1513,7 +1515,7 @@ func (c *VolumeController) reconcileVolumeCreation(v *longhorn.Volume, e *longho
 
 	if len(es) == 0 {
 		// first time creation
-		e, err = c.createEngine(v, true)
+		e, err = c.createEngine(v, "")
 		if err != nil {
 			return false, e, err
 		}
@@ -3294,12 +3296,12 @@ func (c *VolumeController) getInfoFromBackupURL(v *longhorn.Volume) (string, str
 	return backupVolumeName, backupName, err
 }
 
-func (c *VolumeController) createEngine(v *longhorn.Volume, isNewEngine bool) (*longhorn.Engine, error) {
+func (c *VolumeController) createEngine(v *longhorn.Volume, currentEngineName string) (*longhorn.Engine, error) {
 	log := getLoggerForVolume(c.logger, v)
 
 	engine := &longhorn.Engine{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            types.GenerateEngineNameForVolume(v.Name),
+			Name:            types.GenerateEngineNameForVolume(v.Name, currentEngineName),
 			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
 		},
 		Spec: longhorn.EngineSpec{
@@ -3335,7 +3337,7 @@ func (c *VolumeController) createEngine(v *longhorn.Volume, isNewEngine bool) (*
 	}
 	engine.Spec.UnmapMarkSnapChainRemovedEnabled = unmapMarkEnabled
 
-	if isNewEngine {
+	if currentEngineName == "" {
 		engine.Spec.Active = true
 	}
 
@@ -3894,7 +3896,7 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 	}
 
 	if migrationEngine == nil {
-		migrationEngine, err = c.createEngine(v, false)
+		migrationEngine, err = c.createEngine(v, currentEngine.Name)
 		if err != nil {
 			return err
 		}
