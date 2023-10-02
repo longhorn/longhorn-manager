@@ -98,9 +98,10 @@ type VolumeCloneStatus struct {
 }
 
 const (
-	VolumeConditionTypeScheduled        = "scheduled"
-	VolumeConditionTypeRestore          = "restore"
-	VolumeConditionTypeTooManySnapshots = "toomanysnapshots"
+	VolumeConditionTypeScheduled           = "Scheduled"
+	VolumeConditionTypeRestore             = "Restore"
+	VolumeConditionTypeTooManySnapshots    = "TooManySnapshots"
+	VolumeConditionTypeWaitForBackingImage = "WaitForBackingImage"
 )
 
 const (
@@ -109,6 +110,8 @@ const (
 	VolumeConditionReasonRestoreInProgress             = "RestoreInProgress"
 	VolumeConditionReasonRestoreFailure                = "RestoreFailure"
 	VolumeConditionReasonTooManySnapshots              = "TooManySnapshots"
+	VolumeConditionReasonWaitForBackingImageFailed     = "GetBackingImageFailed"
+	VolumeConditionReasonWaitForBackingImageWaiting    = "Waiting"
 )
 
 type SnapshotDataIntegrity string
