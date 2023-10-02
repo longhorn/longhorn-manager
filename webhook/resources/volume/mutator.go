@@ -7,17 +7,19 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	admissionregv1 "k8s.io/api/admissionregistration/v1"
 
 	"github.com/longhorn/backupstore"
 
 	"github.com/longhorn/longhorn-manager/datastore"
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	"github.com/longhorn/longhorn-manager/webhook/common"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
 )
 
@@ -158,7 +160,7 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	if defaultEngineImage == "" {
 		return nil, werror.NewInvalidError("BUG: Invalid empty Setting.EngineImage", "")
 	}
-	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/engineImage", "value": "%s"}`, defaultEngineImage))
+	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/image", "value": "%s"}`, defaultEngineImage))
 
 	if volume.Spec.BackupCompressionMethod == "" {
 		defaultCompressionMethod, _ := v.ds.GetSettingValueExisted(types.SettingNameBackupCompressionMethod)

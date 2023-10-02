@@ -14,6 +14,8 @@ type PVCreateInput struct {
 	SecretName string `json:"secretName,omitempty" yaml:"secret_name,omitempty"`
 
 	SecretNamespace string `json:"secretNamespace,omitempty" yaml:"secret_namespace,omitempty"`
+
+	StorageClassName string `json:"storageClassName,omitempty" yaml:"storage_class_name,omitempty"`
 }
 
 type PVCreateInputCollection struct {

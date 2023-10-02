@@ -431,13 +431,15 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 			// Make sure that we don't update condition's LastTransitionTime if the condition's values hasn't changed
 			handleConditionLastTransitionTime(&existingVolume.Status, &volume.Status)
 			if !reflect.DeepEqual(existingVolume.Status, volume.Status) {
-				// reuse err
-				_, err = c.ds.UpdateVolumeStatus(volume)
+				_, lastErr = c.ds.UpdateVolumeStatus(volume)
 			}
 		}
+		if err == nil {
+			err = lastErr
+		}
 		// requeue if it's conflict
-		if apierrors.IsConflict(errors.Cause(err)) || apierrors.IsConflict(errors.Cause(lastErr)) {
-			log.Debugf("Requeue volume due to error %v or %v", err, lastErr)
+		if apierrors.IsConflict(errors.Cause(err)) {
+			log.Debugf("Requeue volume due to error %v", err)
 			c.enqueueVolume(volume)
 			err = nil
 		}
@@ -707,15 +709,13 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		}
 	}
 
-	if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
-		shouldStop, err := c.shouldStopOfflineReplicaRebuilding(v, healthyCount)
-		if err != nil {
-			log.WithError(err).Errorf("Failed to check if offline replica rebuilding should be stopped")
-			return err
-		}
-		if shouldStop {
-			v.Status.OfflineReplicaRebuildingRequired = false
-		}
+	shouldStop, err := c.shouldStopOfflineReplicaRebuilding(v, healthyCount)
+	if err != nil {
+		log.WithError(err).Errorf("Failed to check if offline replica rebuilding should be stopped")
+		return err
+	}
+	if shouldStop {
+		v.Status.OfflineReplicaRebuildingRequired = false
 	}
 
 	// Cannot continue evicting or replenishing replicas during engine migration.
@@ -757,9 +757,7 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 			}
 		}
 
-		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
-			v.Status.OfflineReplicaRebuildingRequired = false
-		}
+		v.Status.OfflineReplicaRebuildingRequired = false
 	} else { // healthyCount < v.Spec.NumberOfReplicas
 		v.Status.Robustness = longhorn.VolumeRobustnessDegraded
 		if oldRobustness != longhorn.VolumeRobustnessDegraded {
@@ -823,6 +821,10 @@ func areAllReplicasFailed(rs map[string]*longhorn.Replica) bool {
 }
 
 func (c *VolumeController) shouldStopOfflineReplicaRebuilding(v *longhorn.Volume, healthyCount int) (bool, error) {
+	if v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+		return true, nil
+	}
+
 	if healthyCount == v.Spec.NumberOfReplicas {
 		return true, nil
 	}
@@ -924,10 +926,10 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 					return err
 				}
 				continue
-			} else if r.Spec.EngineImage != v.Spec.EngineImage {
+			} else if r.Spec.Image != v.Spec.Image {
 				// r.Spec.Active shouldn't be set for the leftover replicas, something must wrong
 				log.WithField("replica", r.Name).Warnf("Replica engine image %v is different from volume engine image %v, "+
-					"but replica spec.Active has been set", r.Spec.EngineImage, v.Spec.EngineImage)
+					"but replica spec.Active has been set", r.Spec.Image, v.Spec.Image)
 			}
 		}
 
@@ -951,7 +953,7 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 			//    is `FailedReplicaMaxRetryCount`) before ever became healthy/ mode RW,
 			// 2. failed too long ago, became stale and unnecessary to keep around, unless we don't have any healthy replicas
 			// 3. failed for race condition at upgrading when waiting IM-r to start and it would never became healty
-			if (r.Spec.RebuildRetryCount >= scheduler.FailedReplicaMaxRetryCount) || (healthyCount != 0 && staled) || (r.Spec.EngineImage != v.Status.CurrentImage) {
+			if (r.Spec.RebuildRetryCount >= scheduler.FailedReplicaMaxRetryCount) || (healthyCount != 0 && staled) || (r.Spec.Image != v.Status.CurrentImage) {
 				log.WithField("replica", r.Name).Info("Cleaning up corrupted, staled replica")
 				if err := c.deleteReplica(r, rs); err != nil {
 					return errors.Wrapf(err, "cannot cleanup staled replica %v", r.Name)
@@ -1204,7 +1206,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 	}
 
 	if v.Status.CurrentImage == "" {
-		v.Status.CurrentImage = v.Spec.EngineImage
+		v.Status.CurrentImage = v.Spec.Image
 	}
 
 	if err := c.checkAndInitVolumeOfflineReplicaRebuilding(v, rs); err != nil {
@@ -1539,7 +1541,7 @@ func (c *VolumeController) reconcileVolumeCreation(v *longhorn.Volume, e *longho
 
 	if len(es) == 0 {
 		// first time creation
-		e, err = c.createEngine(v, true)
+		e, err = c.createEngine(v, "")
 		if err != nil {
 			return false, e, err
 		}
@@ -1668,7 +1670,7 @@ func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longh
 }
 
 func isVolumeOfflineUpgrade(v *longhorn.Volume) bool {
-	return v.Status.State == longhorn.VolumeStateDetached && v.Status.CurrentImage != v.Spec.EngineImage
+	return v.Status.State == longhorn.VolumeStateDetached && v.Status.CurrentImage != v.Spec.Image
 }
 
 func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, log *logrus.Entry) error {
@@ -1687,7 +1689,7 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 			return err
 		}
 		if canIMLaunchReplica {
-			if r.Spec.FailedAt == "" && r.Spec.EngineImage == v.Status.CurrentImage {
+			if r.Spec.FailedAt == "" && r.Spec.Image == v.Status.CurrentImage {
 				if r.Status.CurrentState == longhorn.InstanceStateStopped {
 					r.Spec.DesireState = longhorn.InstanceStateRunning
 				}
@@ -1726,7 +1728,7 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 		if r.Spec.NodeID == "" {
 			continue
 		}
-		if r.Spec.EngineImage != v.Status.CurrentImage {
+		if r.Spec.Image != v.Status.CurrentImage {
 			continue
 		}
 		if r.Spec.EngineName != e.Name {
@@ -2157,7 +2159,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceLeastEffort(v *longhorn.
 	if err != nil {
 		return 0
 	}
-	log.Infof("Found %v replica candidate for auto-balance", adjustCount)
+	log.Debugf("Found %v replica candidate for auto-balance", adjustCount)
 	return adjustCount
 }
 
@@ -2270,10 +2272,10 @@ func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume,
 			usedNodes = append(usedNodes, r.Spec.NodeID)
 		}
 	}
-	log.Infof("Found %v use zones %v", len(usedZones), usedZones)
-	log.Infof("Found %v use nodes %v", len(usedNodes), usedNodes)
+	log.Debugf("Found %v use zones %v", len(usedZones), usedZones)
+	log.Debugf("Found %v use nodes %v", len(usedNodes), usedNodes)
 	if v.Spec.NumberOfReplicas == len(zoneExtraRs) {
-		log.Infof("Balanced, %v volume replicas are running on different zones", v.Spec.NumberOfReplicas)
+		log.Debugf("Balanced, %v volume replicas are running on different zones", v.Spec.NumberOfReplicas)
 		return 0, zoneExtraRs, nil
 	}
 
@@ -2307,7 +2309,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume,
 		unusedZone[node.Status.Zone] = append(unusedZone[node.Status.Zone], nodeName)
 	}
 	if len(unusedZone) == 0 {
-		log.Info("Balanced, all ready zones are used by this volume")
+		log.Debugf("Balanced, all ready zones are used by this volume")
 		return 0, zoneExtraRs, err
 	}
 
@@ -2415,7 +2417,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 	}
 
 	if v.Spec.NumberOfReplicas == len(nodeExtraRs) {
-		log.Info("Balanced, volume replicas are running on different nodes")
+		log.Debugf("Balanced, volume replicas are running on different nodes")
 		return 0, nodeExtraRs, nil
 	}
 
@@ -2442,7 +2444,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 		}
 	}
 	if len(nodeExtraRs) == len(readyNodes) {
-		log.Info("Balanced, all ready nodes are used by this volume")
+		log.Debugf("Balanced, all ready nodes are used by this volume")
 		return 0, nodeExtraRs, nil
 	}
 
@@ -2505,13 +2507,16 @@ func (c *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[
 				nCandidates = c.getNodeCandidatesForAutoBalanceZone(v, e, rs, zCandidates)
 			}
 		}
-		// TODO: remove checking and let schedular handle this part after
-		// https://github.com/longhorn/longhorn/issues/2667
-		schedulableCandidates := c.getIsSchedulableToDiskNodes(v, nCandidates)
-		if len(schedulableCandidates) != 0 {
-			// TODO: select replica auto-balance best-effort node from candidate list.
+		if adjustCount != 0 {
+			// TODO: remove checking and let schedular handle this part after
 			// https://github.com/longhorn/longhorn/issues/2667
-			adjustNodeAffinity = schedulableCandidates[0]
+			schedulableCandidates := c.getIsSchedulableToDiskNodes(v, nCandidates)
+			if len(schedulableCandidates) != 0 {
+				// TODO: select replica auto-balance best-effort node from candidate list.
+				// https://github.com/longhorn/longhorn/issues/2667
+				adjustNodeAffinity = schedulableCandidates[0]
+			}
+			return adjustCount, adjustNodeAffinity
 		}
 		return adjustCount, adjustNodeAffinity
 	}
@@ -2525,7 +2530,7 @@ func (c *VolumeController) getIsSchedulableToDiskNodes(v *longhorn.Volume, nodeN
 			// TODO: record the message to condition
 			log.Warn("Found 0 node has at least one schedulable disk")
 		} else {
-			log.Debugf("Found node %v has at least one schedulable disk", schedulableNodeNames)
+			log.Infof("Found node %v has at least one schedulable disk", schedulableNodeNames)
 		}
 	}()
 
@@ -2683,13 +2688,13 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 
 	log := getLoggerForVolume(c.logger, v).WithFields(logrus.Fields{
 		"engine":                   e.Name,
-		"volumeDesiredEngineImage": v.Spec.EngineImage,
+		"volumeDesiredEngineImage": v.Spec.Image,
 	})
 
 	if !c.isVolumeUpgrading(v) {
 		// it must be a rollback
-		if e.Spec.EngineImage != v.Spec.EngineImage {
-			e.Spec.EngineImage = v.Spec.EngineImage
+		if e.Spec.Image != v.Spec.Image {
+			e.Spec.Image = v.Spec.Image
 			e.Spec.UpgradedReplicaAddressMap = map[string]string{}
 		}
 		return nil
@@ -2698,13 +2703,13 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 	// If volume is detached accidentally during the live upgrade,
 	// the live upgrade info and the inactive replicas are meaningless.
 	if v.Status.State == longhorn.VolumeStateDetached {
-		if e.Spec.EngineImage != v.Spec.EngineImage {
-			e.Spec.EngineImage = v.Spec.EngineImage
+		if e.Spec.Image != v.Spec.Image {
+			e.Spec.Image = v.Spec.Image
 			e.Spec.UpgradedReplicaAddressMap = map[string]string{}
 		}
 		for _, r := range rs {
-			if r.Spec.EngineImage != v.Spec.EngineImage {
-				r.Spec.EngineImage = v.Spec.EngineImage
+			if r.Spec.Image != v.Spec.Image {
+				r.Spec.Image = v.Spec.Image
 				rs[r.Name] = r
 			}
 			if !r.Spec.Active {
@@ -2715,8 +2720,8 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 			}
 		}
 		// TODO current replicas should be calculated by checking if there is
-		// any other image exists except for the v.Spec.EngineImage
-		v.Status.CurrentImage = v.Spec.EngineImage
+		// any other image exists except for the v.Spec.Image
+		v.Status.CurrentImage = v.Spec.Image
 		return nil
 	}
 
@@ -2743,9 +2748,9 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 		log.WithError(err).Warnf("Engine live upgrade from %v, but the image wasn't ready", oldImage.Spec.Image)
 		return nil
 	}
-	newImage, err := c.getEngineImage(v.Spec.EngineImage)
+	newImage, err := c.getEngineImage(v.Spec.Image)
 	if err != nil {
-		log.WithError(err).Warnf("Failed to get engine image %v for live upgrade", v.Spec.EngineImage)
+		log.WithError(err).Warnf("Failed to get engine image %v for live upgrade", v.Spec.Image)
 		return nil
 	}
 	if isReady, err := c.ds.CheckEngineImageReadiness(newImage.Spec.Image, volumeAndReplicaNodes...); !isReady {
@@ -2772,12 +2777,12 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 	dataPathToNewReplica := map[string]*longhorn.Replica{}
 	for _, r := range rs {
 		dataPath := types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName)
-		if r.Spec.EngineImage == v.Status.CurrentImage && r.Status.CurrentState == longhorn.InstanceStateRunning && r.Spec.HealthyAt != "" {
+		if r.Spec.Image == v.Status.CurrentImage && r.Status.CurrentState == longhorn.InstanceStateRunning && r.Spec.HealthyAt != "" {
 			dataPathToOldRunningReplica[dataPath] = r
-		} else if r.Spec.EngineImage == v.Spec.EngineImage {
+		} else if r.Spec.Image == v.Spec.Image {
 			dataPathToNewReplica[dataPath] = r
 		} else {
-			log.Warnf("Found unknown replica with image %v for live upgrade", r.Spec.EngineImage)
+			log.Warnf("Found unknown replica with image %v for live upgrade", r.Spec.Image)
 			unknownReplicas[r.Name] = r
 		}
 	}
@@ -2787,13 +2792,13 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 	//   2. The new replicas is activated and all old replicas are already purged.
 	if len(dataPathToOldRunningReplica) >= v.Spec.NumberOfReplicas {
 		if err := c.createAndStartMatchingReplicas(v, rs, dataPathToOldRunningReplica, dataPathToNewReplica, func(r *longhorn.Replica, engineImage string) {
-			r.Spec.EngineImage = engineImage
-		}, v.Spec.EngineImage); err != nil {
+			r.Spec.Image = engineImage
+		}, v.Spec.Image); err != nil {
 			return err
 		}
 	}
 
-	if e.Spec.EngineImage != v.Spec.EngineImage {
+	if e.Spec.Image != v.Spec.Image {
 		replicaAddressMap := map[string]string{}
 		for _, r := range dataPathToNewReplica {
 			// wait for all potentially healthy replicas become running
@@ -2814,7 +2819,7 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 			}
 			replicaAddressMap[r.Name] = imutil.GetURL(r.Status.StorageIP, r.Status.Port)
 		}
-		// Only upgrade e.Spec.EngineImage if there are enough new upgraded replica.
+		// Only upgrade e.Spec.Image if there are enough new upgraded replica.
 		// This prevent the deadlock in the case that an upgrade from engine image
 		// is followed immediately by an other upgrade.
 		// More specifically, after the 1st upgrade, e.Status.ReplicaModeMap empty.
@@ -2825,25 +2830,25 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 		// and keep the e.Status.ReplicaModeMap to be empty map. The system enter a deadlock for the volume.
 		if len(replicaAddressMap) == v.Spec.NumberOfReplicas {
 			e.Spec.UpgradedReplicaAddressMap = replicaAddressMap
-			e.Spec.EngineImage = v.Spec.EngineImage
+			e.Spec.Image = v.Spec.Image
 		}
 	}
-	if e.Status.CurrentImage != v.Spec.EngineImage ||
+	if e.Status.CurrentImage != v.Spec.Image ||
 		e.Status.CurrentState != longhorn.InstanceStateRunning {
 		return nil
 	}
 
-	if err := c.switchActiveReplicas(rs, func(r *longhorn.Replica, engineImage string) bool {
-		return r.Spec.EngineImage == engineImage && r.DeletionTimestamp.IsZero()
-	}, v.Spec.EngineImage); err != nil {
+	if err := c.switchActiveReplicas(rs, func(r *longhorn.Replica, image string) bool {
+		return r.Spec.Image == image && r.DeletionTimestamp.IsZero()
+	}, v.Spec.Image); err != nil {
 		return err
 	}
 
 	e.Spec.ReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
 	e.Spec.UpgradedReplicaAddressMap = map[string]string{}
 	// cleanupCorruptedOrStaleReplicas() will take care of old replicas
-	log.Infof("Engine %v has been upgraded from %v to %v", e.Name, v.Status.CurrentImage, v.Spec.EngineImage)
-	v.Status.CurrentImage = v.Spec.EngineImage
+	log.Infof("Engine %v has been upgraded from %v to %v", e.Name, v.Status.CurrentImage, v.Spec.Image)
+	v.Status.CurrentImage = v.Spec.Image
 
 	return nil
 }
@@ -2882,7 +2887,7 @@ func (c *VolumeController) updateRequestedBackupForVolumeRestore(v *longhorn.Vol
 func (c *VolumeController) checkAndInitVolumeOfflineReplicaRebuilding(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
 	log := getLoggerForVolume(c.logger, v)
 
-	if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+	if v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
 		return nil
 	}
 
@@ -3317,19 +3322,19 @@ func (c *VolumeController) getInfoFromBackupURL(v *longhorn.Volume) (string, str
 	return backupVolumeName, backupName, err
 }
 
-func (c *VolumeController) createEngine(v *longhorn.Volume, isNewEngine bool) (*longhorn.Engine, error) {
+func (c *VolumeController) createEngine(v *longhorn.Volume, currentEngineName string) (*longhorn.Engine, error) {
 	log := getLoggerForVolume(c.logger, v)
 
 	engine := &longhorn.Engine{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            types.GenerateEngineNameForVolume(v.Name),
+			Name:            types.GenerateEngineNameForVolume(v.Name, currentEngineName),
 			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
 		},
 		Spec: longhorn.EngineSpec{
 			InstanceSpec: longhorn.InstanceSpec{
 				VolumeName:         v.Name,
 				VolumeSize:         v.Spec.Size,
-				EngineImage:        v.Status.CurrentImage,
+				Image:              v.Status.CurrentImage,
 				BackendStoreDriver: v.Spec.BackendStoreDriver,
 				DesireState:        longhorn.InstanceStateStopped,
 			},
@@ -3358,7 +3363,7 @@ func (c *VolumeController) createEngine(v *longhorn.Volume, isNewEngine bool) (*
 	}
 	engine.Spec.UnmapMarkSnapChainRemovedEnabled = unmapMarkEnabled
 
-	if isNewEngine {
+	if currentEngineName == "" {
 		engine.Spec.Active = true
 	}
 
@@ -3378,7 +3383,7 @@ func (c *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine,
 			InstanceSpec: longhorn.InstanceSpec{
 				VolumeName:         v.Name,
 				VolumeSize:         v.Spec.Size,
-				EngineImage:        v.Status.CurrentImage,
+				Image:              v.Status.CurrentImage,
 				BackendStoreDriver: v.Spec.BackendStoreDriver,
 				DesireState:        longhorn.InstanceStateStopped,
 			},
@@ -3833,6 +3838,8 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 			}
 		}
 
+		currentEngine.Spec.Active = true
+
 		// cleanupCorruptedOrStaleReplicas() will take care of old replicas
 		if err := c.switchActiveReplicas(rs, func(r *longhorn.Replica, engineName string) bool {
 			return r.Spec.EngineName == engineName
@@ -3915,7 +3922,7 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 	}
 
 	if migrationEngine == nil {
-		migrationEngine, err = c.createEngine(v, false)
+		migrationEngine, err = c.createEngine(v, currentEngine.Name)
 		if err != nil {
 			return err
 		}

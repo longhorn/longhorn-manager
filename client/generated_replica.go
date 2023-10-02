@@ -19,11 +19,11 @@ type Replica struct {
 
 	DiskPath string `json:"diskPath,omitempty" yaml:"disk_path,omitempty"`
 
-	EngineImage string `json:"engineImage,omitempty" yaml:"engine_image,omitempty"`
-
 	FailedAt string `json:"failedAt,omitempty" yaml:"failed_at,omitempty"`
 
 	HostId string `json:"hostId,omitempty" yaml:"host_id,omitempty"`
+
+	Image string `json:"image,omitempty" yaml:"image,omitempty"`
 
 	InstanceManagerName string `json:"instanceManagerName,omitempty" yaml:"instance_manager_name,omitempty"`
 

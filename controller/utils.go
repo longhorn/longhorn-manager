@@ -21,7 +21,7 @@ func isVolumeMigrating(v *longhorn.Volume) bool {
 }
 
 func (vc *VolumeController) isVolumeUpgrading(v *longhorn.Volume) bool {
-	return v.Status.CurrentImage != v.Spec.EngineImage
+	return v.Status.CurrentImage != v.Spec.Image
 }
 
 // isTargetVolumeOfCloning checks if the input volume is the target volume of an on-going cloning process

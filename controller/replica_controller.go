@@ -408,7 +408,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		return nil, err
 	}
 
-	engineCLIAPIVersion, err := rc.ds.GetEngineImageCLIAPIVersion(r.Spec.EngineImage)
+	engineCLIAPIVersion, err := rc.ds.GetEngineImageCLIAPIVersion(r.Spec.Image)
 	if err != nil {
 		return nil, err
 	}

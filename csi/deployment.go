@@ -173,13 +173,13 @@ func (p *ProvisionerDeployment) Cleanup(kubeClient *clientset.Clientset) {
 	util.RunAsync(&wg, func() {
 		if err := cleanup(kubeClient, p.service, "service",
 			serviceDeleteFunc, serviceGetFunc); err != nil {
-			logrus.Warnf("Failed to cleanup service in provisioner deployment: %v", err)
+			logrus.WithError(err).Warn("Failed to cleanup service in provisioner deployment")
 		}
 	})
 	util.RunAsync(&wg, func() {
 		if err := cleanup(kubeClient, p.deployment, "deployment",
 			deploymentDeleteFunc, deploymentGetFunc); err != nil {
-			logrus.Warnf("Failed to cleanup deployment in provisioner deployment: %v", err)
+			logrus.WithError(err).Warn("Failed to cleanup deployment in provisioner deployment")
 		}
 	})
 }
@@ -243,13 +243,13 @@ func (p *ResizerDeployment) Cleanup(kubeClient *clientset.Clientset) {
 	util.RunAsync(&wg, func() {
 		if err := cleanup(kubeClient, p.service, "service",
 			serviceDeleteFunc, serviceGetFunc); err != nil {
-			logrus.Warnf("Failed to cleanup service in resizer deployment: %v", err)
+			logrus.WithError(err).Warn("Failed to cleanup service in resizer deployment")
 		}
 	})
 	util.RunAsync(&wg, func() {
 		if err := cleanup(kubeClient, p.deployment, "deployment",
 			deploymentDeleteFunc, deploymentGetFunc); err != nil {
-			logrus.Warnf("Failed to cleanup deployment in resizer deployment: %v", err)
+			logrus.WithError(err).Warn("Failed to cleanup deployment in resizer deployment")
 		}
 	})
 }
@@ -308,13 +308,13 @@ func (p *SnapshotterDeployment) Cleanup(kubeClient *clientset.Clientset) {
 	util.RunAsync(&wg, func() {
 		if err := cleanup(kubeClient, p.service, "service",
 			serviceDeleteFunc, serviceGetFunc); err != nil {
-			logrus.Warnf("Failed to cleanup service in snapshotter deployment: %v", err)
+			logrus.WithError(err).Warn("Failed to cleanup service in snapshotter deployment")
 		}
 	})
 	util.RunAsync(&wg, func() {
 		if err := cleanup(kubeClient, p.deployment, "deployment",
 			deploymentDeleteFunc, deploymentGetFunc); err != nil {
-			logrus.Warnf("Failed to cleanup deployment in snapshotter deployment: %v", err)
+			logrus.WithError(err).Warn("Failed to cleanup deployment in snapshotter deployment")
 		}
 	})
 }
@@ -603,7 +603,7 @@ func (p *PluginDeployment) Deploy(kubeClient *clientset.Clientset) error {
 func (p *PluginDeployment) Cleanup(kubeClient *clientset.Clientset) {
 	if err := cleanup(kubeClient, p.daemonSet, "daemon set",
 		daemonSetDeleteFunc, daemonSetGetFunc); err != nil {
-		logrus.Warnf("Failed to cleanup DaemonSet in plugin deployment: %v", err)
+		logrus.WithError(err).Warn("Failed to cleanup DaemonSet in plugin deployment")
 	}
 }
 
@@ -634,6 +634,6 @@ func (d *DriverObjectDeployment) Deploy(kubeClient *clientset.Clientset) error {
 func (d *DriverObjectDeployment) Cleanup(kubeClient *clientset.Clientset) {
 	if err := cleanup(kubeClient, d.obj, "CSI Driver",
 		csiDriverObjectDeleteFunc, csiDriverObjectGetFunc); err != nil {
-		logrus.Warnf("Failed to cleanup CSI Driver object in CSI Driver object deployment: %v", err)
+		logrus.WithError(err).Warn("Failed to cleanup CSI Driver object in CSI Driver object deployment")
 	}
 }
