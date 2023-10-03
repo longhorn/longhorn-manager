@@ -635,11 +635,17 @@ func (m *VolumeManager) trimRWXVolumeFilesystem(volumeName string, encryptedDevi
 	if err != nil {
 		return errors.Wrapf(err, "failed to get share manager pod for trimming volume %v in namespae", volumeName)
 	}
+
+	if sm.Status.State != longhorn.ShareManagerStateRunning {
+		return fmt.Errorf("share manager %v is not running", sm.Name)
+	}
+
 	client, err := engineapi.NewShareManagerClient(sm, pod)
 	if err != nil {
 		return errors.Wrapf(err, "failed to launch gRPC client for share manager before trimming volume %v", volumeName)
 	}
 	defer client.Close()
+
 	return client.FilesystemTrim(encryptedDevice)
 }
 
