@@ -765,7 +765,7 @@ func decodeSnapshotID(snapshotID string) (csiSnapshotType, sourceVolumeName, id 
 	return normalizeCSISnapshotType(csiSnapshotType), sourceVolumeName, id
 }
 
-// normalizeCSISnapshotType coverts the deprecated CSISnapshotType to the its new value
+// normalizeCSISnapshotType converts the deprecated CSISnapshotType to the its new value
 func normalizeCSISnapshotType(cSISnapshotType string) string {
 	if cSISnapshotType == deprecatedCSISnapshotTypeLonghornBackup {
 		return csiSnapshotTypeLonghornBackup
