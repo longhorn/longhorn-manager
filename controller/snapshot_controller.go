@@ -345,7 +345,7 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 			return sc.handleAttachmentTicketDeletion(snapshot)
 		}
 
-		if err := sc.handleAttachmentTicketCreation(snapshot); err != nil {
+		if err := sc.handleAttachmentTicketCreation(snapshot, true); err != nil {
 			return err
 		}
 
@@ -388,7 +388,7 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 
 	// newly created snapshotCR by user
 	if requestCreateNewSnapshot && !alreadyCreatedBefore {
-		if err := sc.handleAttachmentTicketCreation(snapshot); err != nil {
+		if err := sc.handleAttachmentTicketCreation(snapshot, false); err != nil {
 			return err
 		}
 		if engine.Status.CurrentState != longhorn.InstanceStateRunning {
@@ -452,7 +452,8 @@ func (sc *SnapshotController) handleAttachmentTicketDeletion(snap *longhorn.Snap
 }
 
 // handleAttachmentTicketCreation check and create attachment so that the source volume is attached if needed
-func (sc *SnapshotController) handleAttachmentTicketCreation(snap *longhorn.Snapshot) (err error) {
+func (sc *SnapshotController) handleAttachmentTicketCreation(snap *longhorn.Snapshot,
+	checkIfSnapshotExists bool) (err error) {
 	defer func() {
 		err = errors.Wrap(err, "handleAttachmentTicketCreation: failed to create/update attachment")
 	}()
@@ -469,11 +470,18 @@ func (sc *SnapshotController) handleAttachmentTicketCreation(snap *longhorn.Snap
 
 	existingVA := va.DeepCopy()
 	defer func() {
-		if err != nil {
-			return
-		}
 		if reflect.DeepEqual(existingVA.Spec, va.Spec) {
 			return
+		}
+
+		if checkIfSnapshotExists {
+			// It is possible we are reconciling a cached version of a deleted snapshot (only if deletionTimestamp is
+			// set). Confirm that the snapshot still exists on the API server before creating an attachment ticket to
+			// prevent an orphan attachment (see longhorn/longhorn#6652). Avoid checking until here to limit
+			// requests to the API server.
+			if _, err = sc.ds.GetLonghornSnapshotUncached(snap.Name); err != nil {
+				return // Either the snapshot no longer exists or we failed to check.
+			}
 		}
 
 		if _, err = sc.ds.UpdateLHVolumeAttachment(va); err != nil {
