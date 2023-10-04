@@ -392,3 +392,10 @@ func (s *DataStore) GetAllLonghornCustomResourceDefinitions() (runtime.Object, e
 func (s *DataStore) GetConfigMapWithoutCache(namespace, name string) (*corev1.ConfigMap, error) {
 	return s.kubeClient.CoreV1().ConfigMaps(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
 }
+
+// GetLonghornSnapshotUncached returns the uncached Snapshot in the Longhorn namespace directly from the API server.
+// Direct retrieval from the API server should ideally only be used for one-shot tasks, but there may be other limited
+// situations in which it is necessary.
+func (s *DataStore) GetLonghornSnapshotUncached(name string) (*longhorn.Snapshot, error) {
+	return s.lhClient.LonghornV1beta2().Snapshots(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
