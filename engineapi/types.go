@@ -28,6 +28,8 @@ const (
 	BackingImageDataSourceDefaultPort = 8000
 	BackingImageSyncServerDefaultPort = 8001
 
+	ShareManagerDefaultPort = 9600
+
 	EndpointISCSIPrefix = "iscsi://"
 	DefaultISCSIPort    = "3260"
 	DefaultISCSILUN     = "1"
