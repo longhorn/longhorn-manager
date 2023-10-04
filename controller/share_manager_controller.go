@@ -24,6 +24,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -400,6 +401,36 @@ func (c *ShareManagerController) isShareManagerRequiredForVolume(volume *longhor
 	return true
 }
 
+// unmountShareManagerVolume unmounts the volume in the share manager pod.
+// It is a best effort operation and will not return an error if it fails.
+func (c *ShareManagerController) unmountShareManagerVolume(sm *longhorn.ShareManager) {
+	log := getLoggerForShareManager(c.logger, sm)
+
+	podName := types.GetShareManagerPodNameFromShareManagerName(sm.Name)
+	pod, err := c.ds.GetPod(podName)
+	if err != nil && !apierrors.IsNotFound(err) {
+		log.WithError(err).Errorf("Failed to retrieve pod %v for share manager from datastore", podName)
+		return
+	}
+
+	if pod == nil {
+		return
+	}
+
+	log.Infof("Unmounting volume in share manager pod")
+
+	client, err := engineapi.NewShareManagerClient(sm, pod)
+	if err != nil {
+		log.WithError(err).Errorf("Failed to create share manager client for pod %v", podName)
+		return
+	}
+	defer client.Close()
+
+	if err := client.Unmount(); err != nil {
+		log.WithError(err).Warnf("Failed to unmount share manager pod %v", podName)
+	}
+}
+
 func hasActiveWorkload(vol *longhorn.Volume) bool {
 	if vol == nil {
 		return false
@@ -446,6 +477,8 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 		// while the share manager is no longer running (only run cleanup once)
 		if isNotNeeded && sm.Status.State != longhorn.ShareManagerStateStopping && sm.Status.State != longhorn.ShareManagerStateStopped {
 			getLoggerForShareManager(c.logger, sm).Info("stopping share manager")
+			c.unmountShareManagerVolume(sm)
+
 			if err = c.detachShareManagerVolume(sm); err == nil {
 				sm.Status.State = longhorn.ShareManagerStateStopping
 			}
@@ -508,6 +541,8 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 	shouldDetach := isDown || buggedVolume || nodeSwitch
 	if shouldDetach {
 		log.Infof("Requesting Volume detach from node %v attached node %v", volume.Spec.NodeID, volume.Status.CurrentNodeID)
+		c.unmountShareManagerVolume(sm)
+
 		if err = c.detachShareManagerVolume(sm); err != nil {
 			return err
 		}
@@ -541,6 +576,7 @@ func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManage
 		return nil
 	}
 
+	log.Infof("Deleting share manager pod")
 	if err := c.ds.DeletePod(podName); err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
