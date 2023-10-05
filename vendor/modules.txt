@@ -225,7 +225,7 @@ github.com/longhorn/backupstore
 github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-iscsi-helper v0.0.0-20230529082528-4c3270590712
+# github.com/longhorn/go-iscsi-helper v0.0.0-20230802055236-4ec8edae3fad
 ## explicit; go 1.13
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/types
@@ -248,7 +248,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/imrpc
 github.com/longhorn/longhorn-instance-manager/pkg/meta
 github.com/longhorn/longhorn-instance-manager/pkg/types
 github.com/longhorn/longhorn-instance-manager/pkg/util
-# github.com/longhorn/longhorn-share-manager v1.5.1
+# github.com/longhorn/longhorn-share-manager v1.5.2-0.20231005132006-8a167c38f7eb
 ## explicit; go 1.20
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/crypto
@@ -273,6 +273,9 @@ github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/mitchellh/copystructure v1.2.0
 ## explicit; go 1.15
 github.com/mitchellh/copystructure
+# github.com/mitchellh/go-ps v1.0.0
+## explicit; go 1.13
+github.com/mitchellh/go-ps
 # github.com/mitchellh/mapstructure v1.4.1
 ## explicit; go 1.14
 github.com/mitchellh/mapstructure

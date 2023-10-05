@@ -46,11 +46,11 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.4.0-rc1.0.20230521151917-38ff27cc2cbb
 	github.com/longhorn/backupstore v0.0.0-20230627040634-5b4f2d040e9d
-	github.com/longhorn/go-iscsi-helper v0.0.0-20230529082528-4c3270590712
+	github.com/longhorn/go-iscsi-helper v0.0.0-20230802055236-4ec8edae3fad
 	github.com/longhorn/go-spdk-helper v0.0.0-20230802035240-e5fe21b6067f
 	github.com/longhorn/longhorn-engine v1.5.2-0.20230906182804-9475221d9535
 	github.com/longhorn/longhorn-instance-manager v1.5.2-0.20230907170536-67ae0509eaf5
-	github.com/longhorn/longhorn-share-manager v1.5.1
+	github.com/longhorn/longhorn-share-manager v1.5.2-0.20231005132006-8a167c38f7eb
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.15.0
 	github.com/rancher/dynamiclistener v0.3.1
@@ -80,6 +80,7 @@ require (
 )
 
 require (
+	github.com/mitchellh/go-ps v1.0.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20230525234020-1aefcd67740a // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20230530153820-e85fd2cbaebc // indirect
 )

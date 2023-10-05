@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/fscrypt/filesystem"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"k8s.io/mount-utils"
 
@@ -18,9 +19,14 @@ import (
 	iscsiutil "github.com/longhorn/go-iscsi-helper/util"
 
 	"github.com/longhorn/longhorn-share-manager/pkg/server"
+	"github.com/longhorn/longhorn-share-manager/pkg/server/nfs"
 	"github.com/longhorn/longhorn-share-manager/pkg/types"
 	"github.com/longhorn/longhorn-share-manager/pkg/util"
 	"github.com/longhorn/longhorn-share-manager/pkg/volume"
+)
+
+const (
+	configPath = "/tmp/vfs.conf"
 )
 
 type ShareManagerServer struct {
@@ -38,7 +44,7 @@ func (s *ShareManagerServer) FilesystemTrim(ctx context.Context, req *Filesystem
 
 	defer func() {
 		if err != nil {
-			logrus.WithError(err).Errorf("failed to trim mounted filesystem on volume %v", volumeName)
+			logrus.WithError(err).Errorf("Failed to trim mounted filesystem on volume %v", volumeName)
 		}
 	}()
 
@@ -84,6 +90,63 @@ func (s *ShareManagerServer) FilesystemTrim(ctx context.Context, req *Filesystem
 	}
 
 	logrus.Infof("Finished trimming mounted filesystem %v on volume %v", mountPath, volumeName)
+
+	return &empty.Empty{}, nil
+}
+
+func unexport(volumeName string) error {
+	logrus.Infof("Unexporting volume %v", volumeName)
+
+	logger := util.NewLogger()
+
+	exporter, err := nfs.NewExporter(logger, configPath, types.ExportPath)
+	if err != nil {
+		return errors.Wrap(err, "failed to create nfs exporter")
+	}
+
+	if err := exporter.DeleteExport(volumeName); err != nil {
+		return errors.Wrap(err, "failed to delete nfs export")
+	}
+
+	if err := exporter.ReloadExport(); err != nil {
+		return errors.Wrap(err, "failed to reload nfs export")
+	}
+
+	return nil
+}
+
+func unmount(volumeName string) error {
+	logrus.Infof("Unmounting volume %v", volumeName)
+
+	mountPath := types.GetMountPath(volumeName)
+
+	mounter := mount.New("")
+	notMounted, err := mount.IsNotMountPoint(mounter, mountPath)
+	if notMounted {
+		return err
+	}
+
+	return volume.UnmountVolume(mountPath)
+}
+
+func (s *ShareManagerServer) Unmount(ctx context.Context, req *empty.Empty) (resp *empty.Empty, err error) {
+	volumeName := s.manager.GetVolumeName()
+
+	defer func() {
+		if err != nil {
+			logrus.WithError(err).Errorf("Failed to unmount volume %v", volumeName)
+		}
+	}()
+
+	err = unexport(volumeName)
+	if err != nil {
+		return nil, grpcstatus.Error(grpccodes.Internal, err.Error())
+	}
+
+	err = unmount(volumeName)
+	if err != nil {
+		return nil, grpcstatus.Error(grpccodes.Internal, err.Error())
+	}
 
 	return &empty.Empty{}, nil
 }
