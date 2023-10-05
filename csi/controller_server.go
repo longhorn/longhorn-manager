@@ -922,7 +922,7 @@ func decodeSnapshoBackingImageID(snapshotID string) (parameters map[string]strin
 	return
 }
 
-// normalizeCSISnapshotType coverts the deprecated CSISnapshotType to the its new value
+// normalizeCSISnapshotType converts the deprecated CSISnapshotType to the its new value
 func normalizeCSISnapshotType(cSISnapshotType string) string {
 	if cSISnapshotType == deprecatedCSISnapshotTypeLonghornBackup {
 		return csiSnapshotTypeLonghornBackup
