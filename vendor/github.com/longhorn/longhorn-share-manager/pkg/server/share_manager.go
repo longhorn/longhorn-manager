@@ -9,6 +9,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	mount "k8s.io/mount-utils"
 
 	"github.com/longhorn/longhorn-share-manager/pkg/crypto"
 	"github.com/longhorn/longhorn-share-manager/pkg/server/nfs"
@@ -19,6 +20,11 @@ import (
 const waitBetweenChecks = time.Second * 5
 const healthCheckInterval = time.Second * 10
 const configPath = "/tmp/vfs.conf"
+
+const (
+	UnhealthyErr = "UNHEALTHY: volume with mount path %v is unhealthy"
+	ReadOnlyErr  = "READONLY: volume with mount path %v is read only"
+)
 
 type ShareManager struct {
 	logger logrus.FieldLogger
@@ -199,7 +205,7 @@ func resizeVolume(logger logrus.FieldLogger, devicePath, mountPath string) error
 }
 
 func (m *ShareManager) runHealthCheck() {
-	m.logger.Info("Starting health check for volume")
+	m.logger.Infof("Starting health check for volume mounted at: %v", types.GetMountPath(m.volume.Name))
 	ticker := time.NewTicker(healthCheckInterval)
 	defer ticker.Stop()
 
@@ -209,19 +215,58 @@ func (m *ShareManager) runHealthCheck() {
 			m.logger.Info("NFS server is shutting down")
 			return
 		case <-ticker.C:
-			if !m.hasHealthyVolume() {
-				m.logger.Error("Volume health check failed, terminating")
-				m.Shutdown()
-				return
+			if err := m.hasHealthyVolume(); err != nil {
+				if strings.Contains(err.Error(), "UNHEALTHY") {
+					m.logger.WithError(err).Error("Terminating")
+					m.Shutdown()
+					return
+				} else if strings.Contains(err.Error(), "READONLY") {
+					m.logger.WithError(err).Warn("Recovering read only volume")
+					if err := m.recoverReadOnlyVolume(); err != nil {
+						m.logger.WithError(err).Error("Volume is unable to recover by remounting, terminating")
+						m.Shutdown()
+						return
+					}
+				}
 			}
 		}
 	}
 }
 
-func (m *ShareManager) hasHealthyVolume() bool {
+func (m *ShareManager) hasHealthyVolume() error {
 	mountPath := types.GetMountPath(m.volume.Name)
-	err := exec.CommandContext(m.context, "ls", mountPath).Run()
-	return err == nil
+	if err := exec.CommandContext(m.context, "ls", mountPath).Run(); err != nil {
+		return fmt.Errorf(UnhealthyErr, mountPath)
+	}
+
+	mounter := mount.New("")
+	mountPoints, _ := mounter.List()
+	for _, mp := range mountPoints {
+		if mp.Path == mountPath && isMountPointReadOnly(mp) {
+			return fmt.Errorf(ReadOnlyErr, mountPath)
+		}
+	}
+	return nil
+}
+
+func (m *ShareManager) recoverReadOnlyVolume() error {
+	mountPath := types.GetMountPath(m.volume.Name)
+
+	cmd := exec.CommandContext(m.context, "mount", "-o", "remount,rw", mountPath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return errors.Wrapf(err, "remount failed with output: %s", out)
+	}
+
+	return nil
+}
+
+func isMountPointReadOnly(mp mount.MountPoint) bool {
+	for _, opt := range mp.Opts {
+		if opt == "ro" {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *ShareManager) Shutdown() {

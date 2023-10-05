@@ -35,7 +35,7 @@ replace (
 )
 
 require (
-	github.com/container-storage-interface/spec v1.7.0
+	github.com/container-storage-interface/spec v1.8.0
 	github.com/docker/go-connections v0.4.0
 	github.com/golang/protobuf v1.5.3
 	github.com/google/uuid v1.3.0
@@ -50,7 +50,7 @@ require (
 	github.com/longhorn/go-spdk-helper v0.0.0-20230802035240-e5fe21b6067f
 	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230914160943-b42224518443
 	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20230804185319-08b3613c5311
-	github.com/longhorn/longhorn-share-manager v1.5.1
+	github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20231005131108-b629923cd5b4
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.15.0
 	github.com/rancher/dynamiclistener v0.3.1
@@ -78,6 +78,8 @@ require (
 	k8s.io/utils v0.0.0-20230406110748-d93618cff8a2
 	sigs.k8s.io/controller-runtime v0.10.1
 )
+
+require github.com/mitchellh/go-ps v1.0.0 // indirect
 
 require (
 	github.com/Microsoft/go-winio v0.4.17 // indirect
