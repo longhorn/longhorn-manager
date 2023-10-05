@@ -36,7 +36,7 @@ github.com/cenkalti/backoff/v4
 # github.com/cespare/xxhash/v2 v2.2.0
 ## explicit; go 1.11
 github.com/cespare/xxhash/v2
-# github.com/container-storage-interface/spec v1.7.0
+# github.com/container-storage-interface/spec v1.8.0
 ## explicit; go 1.18
 github.com/container-storage-interface/spec/lib/go/csi
 # github.com/coreos/go-semver v0.3.0
@@ -249,7 +249,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/imrpc
 github.com/longhorn/longhorn-instance-manager/pkg/meta
 github.com/longhorn/longhorn-instance-manager/pkg/types
 github.com/longhorn/longhorn-instance-manager/pkg/util
-# github.com/longhorn/longhorn-share-manager v1.5.1
+# github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20231005131108-b629923cd5b4
 ## explicit; go 1.20
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/crypto
@@ -274,6 +274,9 @@ github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/mitchellh/copystructure v1.2.0
 ## explicit; go 1.15
 github.com/mitchellh/copystructure
+# github.com/mitchellh/go-ps v1.0.0
+## explicit; go 1.13
+github.com/mitchellh/go-ps
 # github.com/mitchellh/mapstructure v1.4.1
 ## explicit; go 1.14
 github.com/mitchellh/mapstructure
