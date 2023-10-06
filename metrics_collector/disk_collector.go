@@ -1,8 +1,10 @@
 package metricscollector
 
 import (
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
+	"strings"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 )
@@ -13,6 +15,7 @@ type DiskCollector struct {
 	capacityMetric    metricInfo
 	usageMetric       metricInfo
 	reservationMetric metricInfo
+	statusMetric      metricInfo
 }
 
 func NewDiskCollector(
@@ -54,6 +57,16 @@ func NewDiskCollector(
 		Type: prometheus.GaugeValue,
 	}
 
+	dc.statusMetric = metricInfo{
+		Desc: prometheus.NewDesc(
+			prometheus.BuildFQName(longhornName, subsystemDisk, "status"),
+			"The status of this disk",
+			[]string{nodeLabel, diskLabel, conditionLabel, conditionReasonLabel},
+			nil,
+		),
+		Type: prometheus.GaugeValue,
+	}
+
 	return dc
 }
 
@@ -61,6 +74,7 @@ func (dc *DiskCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- dc.capacityMetric.Desc
 	ch <- dc.usageMetric.Desc
 	ch <- dc.reservationMetric.Desc
+	ch <- dc.statusMetric.Desc
 }
 
 func (dc *DiskCollector) Collect(ch chan<- prometheus.Metric) {
@@ -89,5 +103,13 @@ func (dc *DiskCollector) collectDiskStorage(ch chan<- prometheus.Metric) {
 		ch <- prometheus.MustNewConstMetric(dc.capacityMetric.Desc, dc.capacityMetric.Type, float64(storageCapacity), dc.currentNodeID, diskName)
 		ch <- prometheus.MustNewConstMetric(dc.usageMetric.Desc, dc.usageMetric.Type, float64(storageUsage), dc.currentNodeID, diskName)
 		ch <- prometheus.MustNewConstMetric(dc.reservationMetric.Desc, dc.reservationMetric.Type, float64(storageReservation), dc.currentNodeID, diskName)
+
+		for _, condition := range disk.Conditions {
+			val := 0
+			if condition.Status == longhorn.ConditionStatusTrue {
+				val = 1
+			}
+			ch <- prometheus.MustNewConstMetric(dc.statusMetric.Desc, dc.statusMetric.Type, float64(val), dc.currentNodeID, diskName, strings.ToLower(condition.Type), condition.Reason)
+		}
 	}
 }
