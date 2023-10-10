@@ -128,13 +128,14 @@ func (kc *KubernetesConfigMapController) handleErr(err error, key interface{}) {
 		return
 	}
 
+	log := kc.logger.WithField("ConfigMap", key)
 	if kc.queue.NumRequeues(key) < maxRetries {
-		kc.logger.WithError(err).Errorf("Failed to syncing ConfigMap %v", key)
+		handleReconcileErrorLogging(log, err, "Failed to syncing ConfigMap")
 		kc.queue.AddRateLimited(key)
 		return
 	}
 
-	kc.logger.WithError(err).Errorf("Dropping ConfigMap %v out of the queue", key)
+	handleReconcileErrorLogging(log, err, "Dropping ConfigMap out of the queue")
 	kc.queue.Forget(key)
 	utilruntime.HandleError(err)
 }

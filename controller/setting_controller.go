@@ -195,14 +195,15 @@ func (sc *SettingController) handleErr(err error, key interface{}) {
 		return
 	}
 
+	log := sc.logger.WithField("Setting", key)
 	if sc.queue.NumRequeues(key) < maxRetries {
-		sc.logger.WithError(err).Errorf("Failed to sync Longhorn setting %v", key)
+		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn setting")
 		sc.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	sc.logger.WithError(err).Errorf("Dropping Longhorn setting %v out of the queue", key)
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn setting out of the queue")
 	sc.queue.Forget(key)
 }
 

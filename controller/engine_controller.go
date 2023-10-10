@@ -217,13 +217,13 @@ func (ec *EngineController) handleErr(err error, key interface{}) {
 
 	log := ec.logger.WithField("engine", key)
 	if ec.queue.NumRequeues(key) < maxRetries {
-		log.WithError(err).Error("Error syncing Longhorn engine")
+		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn engine")
 		ec.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	log.WithError(err).Error("Dropping Longhorn engine out of the queue")
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn engine out of the queue")
 	ec.queue.Forget(key)
 }
 

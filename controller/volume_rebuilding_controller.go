@@ -133,7 +133,8 @@ func (vbc *VolumeRebuildingController) handleErr(err error, key interface{}) {
 		return
 	}
 
-	vbc.logger.WithError(err).Warnf("Failed to sync Longhorn volume %v", key)
+	log := vbc.logger.WithField("Volume", key)
+	handleReconcileErrorLogging(log, err, "Failed to sync Longhorn volume")
 	vbc.queue.AddRateLimited(key)
 }
 
