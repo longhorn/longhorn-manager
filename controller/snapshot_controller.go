@@ -247,17 +247,18 @@ func (sc *SnapshotController) processNextWorkItem() bool {
 	}
 	defer sc.queue.Done(key)
 	err := sc.syncHandler(key.(string))
-	sc.handlerErr(err, key)
+	sc.handleErr(err, key)
 	return true
 }
 
-func (sc *SnapshotController) handlerErr(err error, key interface{}) {
+func (sc *SnapshotController) handleErr(err error, key interface{}) {
 	if err == nil {
 		sc.queue.Forget(key)
 		return
 	}
 
-	sc.logger.WithError(err).Errorf("Failed to sync Longhorn snapshot %v", key)
+	log := sc.logger.WithField("Snapshot", key)
+	handleReconcileErrorLogging(log, err, "Failed to sync Longhorn snapshot")
 	sc.queue.AddRateLimited(key)
 	return
 }

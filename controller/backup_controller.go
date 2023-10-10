@@ -160,7 +160,8 @@ func (bc *BackupController) handleErr(err error, key interface{}) {
 		return
 	}
 
-	bc.logger.WithError(err).Errorf("Failed to sync Longhorn backup %v", key)
+	log := bc.logger.WithField("Backup", key)
+	handleReconcileErrorLogging(log, err, "Failed to sync Longhorn backup")
 	bc.queue.AddRateLimited(key)
 }
 

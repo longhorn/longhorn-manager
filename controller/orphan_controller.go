@@ -165,16 +165,14 @@ func (oc *OrphanController) handleErr(err error, key interface{}) {
 	}
 
 	log := oc.logger.WithField("orphan", key)
-
 	if oc.queue.NumRequeues(key) < maxRetries {
-		log.WithError(err).Errorf("Failed to sync Longhorn orphan %v: %v", key, err)
-
+		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn orphan")
 		oc.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	log.WithError(err).Errorf("Dropping Longhorn orphan %v out of the queue: %v", key, err)
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn orphan out of the queue")
 	oc.queue.Forget(key)
 }
 

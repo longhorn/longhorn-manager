@@ -222,14 +222,15 @@ func (c *VolumeController) handleErr(err error, key interface{}) {
 		return
 	}
 
+	log := c.logger.WithField("Volume", key)
 	if c.queue.NumRequeues(key) < maxRetries {
-		c.logger.WithError(err).Errorf("Failed to sync Longhorn volume %v", key)
+		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn volume")
 		c.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	c.logger.WithError(err).Errorf("Dropping Longhorn volume %v out of the queue", key)
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn volume out of the queue")
 	c.queue.Forget(key)
 }
 

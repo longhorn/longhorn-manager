@@ -191,14 +191,15 @@ func (btc *BackupTargetController) handleErr(err error, key interface{}) {
 		return
 	}
 
+	log := btc.logger.WithField("BackupTarget", key)
 	if btc.queue.NumRequeues(key) < maxRetries {
-		btc.logger.WithError(err).Errorf("Failed to sync Longhorn backup target %v", key)
+		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn backup target")
 		btc.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	btc.logger.WithError(err).Errorf("Dropping Longhorn backup target %v out of the queue", key)
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn backup target out of the queue")
 	btc.queue.Forget(key)
 }
 

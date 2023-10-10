@@ -135,7 +135,8 @@ func (vec *VolumeEvictionController) handleErr(err error, key interface{}) {
 		return
 	}
 
-	vec.logger.WithError(err).Errorf("Error syncing Longhorn volume %v", key)
+	log := vec.logger.WithField("Volume", key)
+	handleReconcileErrorLogging(log, err, "Failed to sync Longhorn volume")
 	vec.queue.AddRateLimited(key)
 }
 

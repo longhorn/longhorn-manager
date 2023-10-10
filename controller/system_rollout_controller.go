@@ -281,7 +281,7 @@ func (c *SystemRolloutController) handleErr(err error, key interface{}) {
 		return
 	}
 
-	c.logger.WithError(err).Error("Worker error")
+	handleReconcileErrorLogging(c.logger, err, "Worker error")
 	c.queue.AddRateLimited(key)
 }
 

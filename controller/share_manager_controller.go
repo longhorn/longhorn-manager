@@ -242,13 +242,14 @@ func (c *ShareManagerController) handleErr(err error, key interface{}) {
 		return
 	}
 
+	log := c.logger.WithField("ShareManager", key)
 	if c.queue.NumRequeues(key) < maxRetries {
-		c.logger.WithError(err).Errorf("Failed to sync Longhorn share manager %v", key)
+		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn share manager")
 		c.queue.AddRateLimited(key)
 		return
 	}
 
-	c.logger.WithError(err).Errorf("Dropping Longhorn share manager %v out of the queue", key)
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn share manager out of the queue")
 	c.queue.Forget(key)
 	utilruntime.HandleError(err)
 }
