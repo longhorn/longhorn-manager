@@ -135,15 +135,27 @@ func (control *RecurringJobController) handleErr(err error, key interface{}) {
 		return
 	}
 
+<<<<<<< HEAD
 	if control.queue.NumRequeues(key) < maxRetries {
 		logrus.Warnf("Error syncing Longhorn recurring job %v: %v", key, err)
 		control.queue.AddRateLimited(key)
+=======
+	log := c.logger.WithField("RecurringJob", key)
+	if c.queue.NumRequeues(key) < maxRetries {
+		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn recurring job")
+		c.queue.AddRateLimited(key)
+>>>>>>> c3ba075c (Improve log level for reconcilidation error)
 		return
 	}
 
 	utilruntime.HandleError(err)
+<<<<<<< HEAD
 	logrus.Warnf("Dropping Longhorn recurring job %v out of the queue: %v", key, err)
 	control.queue.Forget(key)
+=======
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn recurring job out of the queue")
+	c.queue.Forget(key)
+>>>>>>> c3ba075c (Improve log level for reconcilidation error)
 }
 
 func getLoggerForRecurringJob(logger logrus.FieldLogger, recurringJob *longhorn.RecurringJob) *logrus.Entry {

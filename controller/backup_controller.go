@@ -160,6 +160,7 @@ func (bc *BackupController) handleErr(err error, key interface{}) {
 		return
 	}
 
+<<<<<<< HEAD
 	// The resync period of the backup is one hour and the maxRetries is 3.
 	// Thus, the deletion failure of the backup in error state is caused by the shutdown of the replica during backing up,
 	// if the lock hold by the backup job is not released.
@@ -182,6 +183,11 @@ func (bc *BackupController) handleErr(err error, key interface{}) {
 	utilruntime.HandleError(err)
 	bc.logger.WithError(err).Warnf("Dropping Longhorn backup %v out of the queue", key)
 	bc.queue.Forget(key)
+=======
+	log := bc.logger.WithField("Backup", key)
+	handleReconcileErrorLogging(log, err, "Failed to sync Longhorn backup")
+	bc.queue.AddRateLimited(key)
+>>>>>>> c3ba075c (Improve log level for reconcilidation error)
 }
 
 func (bc *BackupController) syncHandler(key string) (err error) {

@@ -159,13 +159,21 @@ func (ic *EngineImageController) handleErr(err error, key interface{}) {
 
 	log := ic.logger.WithField("engineImage", key)
 	if ic.queue.NumRequeues(key) < maxRetries {
+<<<<<<< HEAD
 		log.WithError(err).Warn("Error syncing Longhorn engine image")
+=======
+		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn engine image")
+>>>>>>> c3ba075c (Improve log level for reconcilidation error)
 		ic.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
+<<<<<<< HEAD
 	log.WithError(err).Warn("Dropping Longhorn engine image out of the queue")
+=======
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn engine image out of the queue")
+>>>>>>> c3ba075c (Improve log level for reconcilidation error)
 	ic.queue.Forget(key)
 }
 

@@ -187,14 +187,22 @@ func (c *SupportBundleController) handleErr(err error, key interface{}) {
 	log := c.logger.WithField("supportBundle", key)
 
 	if c.queue.NumRequeues(key) < maxRetries {
+<<<<<<< HEAD
 		log.WithError(err).Warn("Error syncing Longhorn SupportBundle")
 
+=======
+		handleReconcileErrorLogging(log, err, "Failed syncing Longhorn SupportBundle")
+>>>>>>> c3ba075c (Improve log level for reconcilidation error)
 		c.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
+<<<<<<< HEAD
 	log.WithError(err).Warn("Dropping Longhorn SupportBundle out of the queue")
+=======
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn SupportBundle out of the queue")
+>>>>>>> c3ba075c (Improve log level for reconcilidation error)
 	c.queue.Forget(key)
 }
 

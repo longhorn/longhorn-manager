@@ -160,17 +160,25 @@ func (c *SystemRestoreController) handleErr(err error, key interface{}) {
 		return
 	}
 
-	log := c.logger.WithField("systemRestore", key)
+	log := c.logger.WithField("SystemRestore", key)
 
 	if c.queue.NumRequeues(key) < maxRetries {
+<<<<<<< HEAD
 		log.WithError(err).Warn("Failed to sync SystemRestore")
 
+=======
+		handleReconcileErrorLogging(log, err, "Failed to sync SystemRestore")
+>>>>>>> c3ba075c (Improve log level for reconcilidation error)
 		c.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
+<<<<<<< HEAD
 	log.WithError(err).Warnf("Dropping Longhorn SystemRestore %v out of the queue", key)
+=======
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn SystemRestore out of the queue")
+>>>>>>> c3ba075c (Improve log level for reconcilidation error)
 	c.queue.Forget(key)
 }
 

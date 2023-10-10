@@ -281,7 +281,11 @@ func (c *SystemRolloutController) handleErr(err error, key interface{}) {
 		return
 	}
 
+<<<<<<< HEAD
 	c.logger.WithError(err).Warn("Worker error")
+=======
+	handleReconcileErrorLogging(c.logger, err, "Worker error")
+>>>>>>> c3ba075c (Improve log level for reconcilidation error)
 	c.queue.AddRateLimited(key)
 }
 

@@ -202,14 +202,23 @@ func (c *BackingImageManagerController) handleErr(err error, key interface{}) {
 		return
 	}
 
+	log := c.logger.WithField("BackingImageManager", key)
 	if c.queue.NumRequeues(key) < maxRetries {
+<<<<<<< HEAD
 		logrus.WithError(err).Warnf("Error syncing Longhorn backing image manager %v", key)
+=======
+		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn backing image manager")
+>>>>>>> c3ba075c (Improve log level for reconcilidation error)
 		c.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
+<<<<<<< HEAD
 	logrus.WithError(err).Warnf("Dropping Longhorn backing image manager %v out of the queue", key)
+=======
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn backing image manager out of the queue")
+>>>>>>> c3ba075c (Improve log level for reconcilidation error)
 	c.queue.Forget(key)
 }
 

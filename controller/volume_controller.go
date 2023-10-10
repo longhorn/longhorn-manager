@@ -217,15 +217,27 @@ func (vc *VolumeController) handleErr(err error, key interface{}) {
 		return
 	}
 
+<<<<<<< HEAD
 	if vc.queue.NumRequeues(key) < maxRetries {
 		vc.logger.WithError(err).Warnf("Error syncing Longhorn volume %v", key)
 		vc.queue.AddRateLimited(key)
+=======
+	log := c.logger.WithField("Volume", key)
+	if c.queue.NumRequeues(key) < maxRetries {
+		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn volume")
+		c.queue.AddRateLimited(key)
+>>>>>>> c3ba075c (Improve log level for reconcilidation error)
 		return
 	}
 
 	utilruntime.HandleError(err)
+<<<<<<< HEAD
 	vc.logger.WithError(err).Warnf("Dropping Longhorn volume %v out of the queue", key)
 	vc.queue.Forget(key)
+=======
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn volume out of the queue")
+	c.queue.Forget(key)
+>>>>>>> c3ba075c (Improve log level for reconcilidation error)
 }
 
 func getLoggerForVolume(logger logrus.FieldLogger, v *longhorn.Volume) *logrus.Entry {

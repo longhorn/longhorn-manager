@@ -196,17 +196,25 @@ func (c *SystemBackupController) handleErr(err error, key interface{}) {
 		return
 	}
 
-	log := c.logger.WithField("systemBackup", key)
+	log := c.logger.WithField("SystemBackup", key)
 
 	if c.queue.NumRequeues(key) < maxRetries {
+<<<<<<< HEAD
 		log.WithError(err).Warn("Failed to sync Longhorn SystemBackup, and requeuing to reconcile")
 
+=======
+		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn SystemBackup")
+>>>>>>> c3ba075c (Improve log level for reconcilidation error)
 		c.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
+<<<<<<< HEAD
 	log.WithError(err).Warn("Failed to sync Longhorn systemBackup, and dropping it out of the queue")
+=======
+	handleReconcileErrorLogging(log, err, "Dropping SystemBackup out of the queue")
+>>>>>>> c3ba075c (Improve log level for reconcilidation error)
 	c.queue.Forget(key)
 }
 
