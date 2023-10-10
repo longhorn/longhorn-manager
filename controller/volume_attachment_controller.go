@@ -209,7 +209,8 @@ func (vac *VolumeAttachmentController) handleErr(err error, key interface{}) {
 		return
 	}
 
-	vac.logger.WithError(err).Errorf("Failed to sync Longhorn VolumeAttachment %v", key)
+	log := vac.logger.WithField("LonghornVolumeAttachment", key)
+	handleReconcileErrorLogging(log, err, "Failed to sync Longhorn VolumeAttachment")
 	vac.queue.AddRateLimited(key)
 }
 
