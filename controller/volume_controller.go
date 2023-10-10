@@ -2697,6 +2697,12 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 		if e.Spec.Image != v.Spec.Image {
 			e.Spec.Image = v.Spec.Image
 			e.Spec.UpgradedReplicaAddressMap = map[string]string{}
+			return nil
+		}
+		// If the engine already has new engine image or it has been stopped,
+		// live upgrade is not needed, there is no point to keep e.Spec.UpgradedReplicaAddressMap
+		if e.Spec.Image == e.Status.CurrentImage || e.Status.CurrentImage == "" {
+			e.Spec.UpgradedReplicaAddressMap = map[string]string{}
 		}
 		return nil
 	}
