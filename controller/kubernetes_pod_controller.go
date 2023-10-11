@@ -118,13 +118,14 @@ func (kc *KubernetesPodController) handleErr(err error, key interface{}) {
 		return
 	}
 
+	log := kc.logger.WithField("Pod", key)
 	if kc.queue.NumRequeues(key) < maxRetries {
-		kc.logger.WithError(err).Errorf("Failed to sync Longhorn kubernetes pod %v", key)
+		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn kubernetes pod")
 		kc.queue.AddRateLimited(key)
 		return
 	}
 
-	kc.logger.WithError(err).Errorf("Dropping Longhorn kubernetes pod %v out of the queue", key)
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn kubernetes pod out of the queue")
 	kc.queue.Forget(key)
 	utilruntime.HandleError(err)
 }
@@ -327,9 +328,6 @@ func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *
 	podStartTime := pod.Status.StartTime.Time
 	for _, vol := range volumeList {
 		if vol.Status.RemountRequestedAt == "" {
-			continue
-		}
-		if vol.Spec.AccessMode == longhorn.AccessModeReadWriteMany {
 			continue
 		}
 		remountRequestedAt, err := time.Parse(time.RFC3339, vol.Status.RemountRequestedAt)

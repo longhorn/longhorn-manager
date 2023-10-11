@@ -27,6 +27,7 @@ import (
 	"github.com/longhorn/longhorn-manager/csi"
 	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -241,13 +242,14 @@ func (c *ShareManagerController) handleErr(err error, key interface{}) {
 		return
 	}
 
+	log := c.logger.WithField("ShareManager", key)
 	if c.queue.NumRequeues(key) < maxRetries {
-		c.logger.WithError(err).Errorf("Failed to sync Longhorn share manager %v", key)
+		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn share manager")
 		c.queue.AddRateLimited(key)
 		return
 	}
 
-	c.logger.WithError(err).Errorf("Dropping Longhorn share manager %v out of the queue", key)
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn share manager out of the queue")
 	c.queue.Forget(key)
 	utilruntime.HandleError(err)
 }
@@ -366,7 +368,7 @@ func (c *ShareManagerController) syncShareManagerEndpoint(sm *longhorn.ShareMana
 
 // isShareManagerRequiredForVolume checks if a share manager should export a volume
 // a nil volume does not require a share manager
-func (c *ShareManagerController) isShareManagerRequiredForVolume(volume *longhorn.Volume, va *longhorn.VolumeAttachment) bool {
+func (c *ShareManagerController) isShareManagerRequiredForVolume(sm *longhorn.ShareManager, volume *longhorn.Volume, va *longhorn.VolumeAttachment) bool {
 	if volume == nil {
 		return false
 	}
@@ -426,12 +428,44 @@ func (c *ShareManagerController) createShareManagerAttachmentTicket(sm *longhorn
 	va.Spec.AttachmentTickets[shareManagerAttachmentTicketID] = shareManagerAttachmentTicket
 }
 
+// unmountShareManagerVolume unmounts the volume in the share manager pod.
+// It is a best effort operation and will not return an error if it fails.
+func (c *ShareManagerController) unmountShareManagerVolume(sm *longhorn.ShareManager) {
+	log := getLoggerForShareManager(c.logger, sm)
+
+	podName := types.GetShareManagerPodNameFromShareManagerName(sm.Name)
+	pod, err := c.ds.GetPod(podName)
+	if err != nil && !apierrors.IsNotFound(err) {
+		log.WithError(err).Errorf("Failed to retrieve pod %v for share manager from datastore", podName)
+		return
+	}
+
+	if pod == nil {
+		return
+	}
+
+	log.Infof("Unmounting volume in share manager pod")
+
+	client, err := engineapi.NewShareManagerClient(sm, pod)
+	if err != nil {
+		log.WithError(err).Errorf("Failed to create share manager client for pod %v", podName)
+		return
+	}
+	defer client.Close()
+
+	if err := client.Unmount(); err != nil {
+		log.WithError(err).Warnf("Failed to unmount share manager pod %v", podName)
+	}
+}
+
 func (c *ShareManagerController) detachShareManagerVolume(sm *longhorn.ShareManager, va *longhorn.VolumeAttachment) {
 	log := getLoggerForShareManager(c.logger, sm)
 
 	shareManagerAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeShareManagerController, sm.Name)
-	log.Infof("Removing volume attachment ticket: %v to detach the volume %v", shareManagerAttachmentTicketID, va.Name)
-	delete(va.Spec.AttachmentTickets, shareManagerAttachmentTicketID)
+	if _, ok := va.Spec.AttachmentTickets[shareManagerAttachmentTicketID]; ok {
+		log.Infof("Removing volume attachment ticket: %v to detach the volume %v", shareManagerAttachmentTicketID, va.Name)
+		delete(va.Spec.AttachmentTickets, shareManagerAttachmentTicketID)
+	}
 }
 
 // syncShareManagerVolume controls volume attachment and provides the following state transitions
@@ -472,7 +506,9 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 		}
 	}()
 
-	if !c.isShareManagerRequiredForVolume(volume, va) {
+	if !c.isShareManagerRequiredForVolume(sm, volume, va) {
+		c.unmountShareManagerVolume(sm)
+
 		c.detachShareManagerVolume(sm, va)
 		if sm.Status.State != longhorn.ShareManagerStateStopped {
 			log.Info("Stopping share manager since it is no longer required")
@@ -488,6 +524,8 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 	// we only check for running, since we don't want to nuke valid pods, not schedulable only means no new pods.
 	// in the case of a drain kubernetes will terminate the running pod, which we will mark as error in the sync pod method
 	if !c.ds.IsNodeSchedulable(sm.Status.OwnerID) {
+		c.unmountShareManagerVolume(sm)
+
 		c.detachShareManagerVolume(sm, va)
 		if sm.Status.State != longhorn.ShareManagerStateStopped {
 			log.Info("Failed to start share manager, node is not schedulable")
@@ -530,6 +568,7 @@ func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManage
 		return nil
 	}
 
+	log.Infof("Deleting share manager pod")
 	if err := c.ds.DeletePod(podName); err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}

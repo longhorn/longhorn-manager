@@ -222,14 +222,15 @@ func (c *VolumeController) handleErr(err error, key interface{}) {
 		return
 	}
 
+	log := c.logger.WithField("Volume", key)
 	if c.queue.NumRequeues(key) < maxRetries {
-		c.logger.WithError(err).Errorf("Failed to sync Longhorn volume %v", key)
+		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn volume")
 		c.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	c.logger.WithError(err).Errorf("Dropping Longhorn volume %v out of the queue", key)
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn volume out of the queue")
 	c.queue.Forget(key)
 }
 
@@ -431,13 +432,15 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 			// Make sure that we don't update condition's LastTransitionTime if the condition's values hasn't changed
 			handleConditionLastTransitionTime(&existingVolume.Status, &volume.Status)
 			if !reflect.DeepEqual(existingVolume.Status, volume.Status) {
-				// reuse err
-				_, err = c.ds.UpdateVolumeStatus(volume)
+				_, lastErr = c.ds.UpdateVolumeStatus(volume)
 			}
 		}
+		if err == nil {
+			err = lastErr
+		}
 		// requeue if it's conflict
-		if apierrors.IsConflict(errors.Cause(err)) || apierrors.IsConflict(errors.Cause(lastErr)) {
-			log.Debugf("Requeue volume due to error %v or %v", err, lastErr)
+		if apierrors.IsConflict(errors.Cause(err)) {
+			log.Debugf("Requeue volume due to error %v", err)
 			c.enqueueVolume(volume)
 			err = nil
 		}
@@ -568,6 +571,32 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 			v.Status.LastDegradedAt = ""
 		}
 	}()
+
+	// Aggregate replica wait for backing image condition
+	aggregatedReplicaWaitForBackingImageError := util.NewMultiError()
+	waitForBackingImage := false
+	for _, r := range rs {
+		waitForBackingImageCondition := types.GetCondition(r.Status.Conditions, longhorn.ReplicaConditionTypeWaitForBackingImage)
+		if waitForBackingImageCondition.Status == longhorn.ConditionStatusTrue {
+			waitForBackingImage = true
+			if waitForBackingImageCondition.Reason == longhorn.ReplicaConditionReasonWaitForBackingImageFailed {
+				aggregatedReplicaWaitForBackingImageError.Append(util.NewMultiError(waitForBackingImageCondition.Message))
+			}
+		}
+	}
+	if waitForBackingImage {
+		if len(aggregatedReplicaWaitForBackingImageError) > 0 {
+			failureMessage := aggregatedReplicaWaitForBackingImageError.Join()
+			v.Status.Conditions = types.SetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeWaitForBackingImage,
+				longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonWaitForBackingImageFailed, failureMessage)
+		} else {
+			v.Status.Conditions = types.SetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeWaitForBackingImage,
+				longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonWaitForBackingImageWaiting, "")
+		}
+	} else {
+		v.Status.Conditions = types.SetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeWaitForBackingImage,
+			longhorn.ConditionStatusFalse, "", "")
+	}
 
 	e, err := c.ds.PickVolumeCurrentEngine(v, es)
 	if err != nil {
@@ -1513,7 +1542,7 @@ func (c *VolumeController) reconcileVolumeCreation(v *longhorn.Volume, e *longho
 
 	if len(es) == 0 {
 		// first time creation
-		e, err = c.createEngine(v, true)
+		e, err = c.createEngine(v, "")
 		if err != nil {
 			return false, e, err
 		}
@@ -3289,12 +3318,12 @@ func (c *VolumeController) getInfoFromBackupURL(v *longhorn.Volume) (string, str
 	return backupVolumeName, backupName, err
 }
 
-func (c *VolumeController) createEngine(v *longhorn.Volume, isNewEngine bool) (*longhorn.Engine, error) {
+func (c *VolumeController) createEngine(v *longhorn.Volume, currentEngineName string) (*longhorn.Engine, error) {
 	log := getLoggerForVolume(c.logger, v)
 
 	engine := &longhorn.Engine{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            types.GenerateEngineNameForVolume(v.Name),
+			Name:            types.GenerateEngineNameForVolume(v.Name, currentEngineName),
 			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
 		},
 		Spec: longhorn.EngineSpec{
@@ -3330,7 +3359,7 @@ func (c *VolumeController) createEngine(v *longhorn.Volume, isNewEngine bool) (*
 	}
 	engine.Spec.UnmapMarkSnapChainRemovedEnabled = unmapMarkEnabled
 
-	if isNewEngine {
+	if currentEngineName == "" {
 		engine.Spec.Active = true
 	}
 
@@ -3889,7 +3918,7 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 	}
 
 	if migrationEngine == nil {
-		migrationEngine, err = c.createEngine(v, false)
+		migrationEngine, err = c.createEngine(v, currentEngine.Name)
 		if err != nil {
 			return err
 		}

@@ -2,6 +2,8 @@ package controller
 
 import (
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/sirupsen/logrus"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -56,4 +58,12 @@ func createOrUpdateAttachmentTicket(va *longhorn.VolumeAttachment, ticketID, nod
 		attachmentTicket.NodeID = nodeID
 	}
 	va.Spec.AttachmentTickets[attachmentTicket.ID] = attachmentTicket
+}
+
+func handleReconcileErrorLogging(logger logrus.FieldLogger, err error, mesg string) {
+	if apierrors.IsConflict(err) {
+		logger.WithError(err).Debug(mesg)
+	} else {
+		logger.WithError(err).Error(mesg)
+	}
 }
