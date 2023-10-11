@@ -1164,7 +1164,7 @@ func ValidateSetting(name, value string) (err error) {
 			return errors.Wrapf(err, "failed to parse %v as url", value)
 		}
 
-		// Check whether have $ or , have been set in BackupTarget
+		// Check whether have $ or , have been set in BackupTarget path
 		regStr := `[\$\,]`
 		if u.Scheme == "cifs" {
 			// The $ in SMB/CIFS URIs means that the share is hidden.
@@ -1172,7 +1172,7 @@ func ValidateSetting(name, value string) (err error) {
 		}
 
 		reg := regexp.MustCompile(regStr)
-		findStr := reg.FindAllString(value, -1)
+		findStr := reg.FindAllString(u.Path, -1)
 		if len(findStr) != 0 {
 			return fmt.Errorf("value %s, contains %v", value, strings.Join(findStr, " or "))
 		}
