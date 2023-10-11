@@ -117,13 +117,14 @@ func (kc *KubernetesPodController) handleErr(err error, key interface{}) {
 		return
 	}
 
+	log := kc.logger.WithField("Pod", key)
 	if kc.queue.NumRequeues(key) < maxRetries {
-		kc.logger.WithError(err).Warnf("%v: Error syncing Longhorn kubernetes pod %v", controllerAgentName, key)
+		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn kubernetes pod")
 		kc.queue.AddRateLimited(key)
 		return
 	}
 
-	kc.logger.WithError(err).Warnf("%v: Dropping Longhorn kubernetes pod %v out of the queue", controllerAgentName, key)
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn kubernetes pod out of the queue")
 	kc.queue.Forget(key)
 	utilruntime.HandleError(err)
 }

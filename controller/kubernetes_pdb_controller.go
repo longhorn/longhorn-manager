@@ -116,7 +116,8 @@ func (pc *KubernetesPDBController) handleErr(err error, key interface{}) {
 		return
 	}
 
-	pc.logger.WithError(err).Warnf("Error syncing PDB for %v", key)
+	log := pc.logger.WithField("PDB", key)
+	handleReconcileErrorLogging(log, err, "Failed to sync PDB")
 	pc.queue.AddRateLimited(key)
 }
 
