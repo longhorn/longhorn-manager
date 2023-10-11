@@ -112,12 +112,18 @@ func removeVolume(volumeName string, driver BackupStoreDriver) error {
 }
 
 func EncodeBackupURL(backupName, volumeName, destURL string) string {
+	u, err := url.Parse(destURL)
+	if err != nil {
+		return ""
+	}
 	v := url.Values{}
 	v.Add("volume", volumeName)
 	if backupName != "" {
 		v.Add("backup", backupName)
 	}
-	return destURL + "?" + v.Encode()
+	// This will drop any Query tag (such as "nfsOptions") and replace with just the backup name tags.
+	u.RawQuery = v.Encode()
+	return u.String()
 }
 
 func DecodeBackupURL(backupURL string) (string, string, string, error) {
@@ -134,6 +140,9 @@ func DecodeBackupURL(backupURL string) (string, string, string, error) {
 	if backupName != "" && !util.ValidateName(backupName) {
 		return "", "", "", fmt.Errorf("invalid backup name parsed, got %v", backupName)
 	}
+	// Is this going to cause a problem because we are discarding any other Query tags here
+	// rather than just removing "volume" and "backup"?
+	// No, because no caller anywhere uses the returned destURL value anyway.
 	u.RawQuery = ""
 	destURL := u.String()
 	return backupName, volumeName, destURL, nil
