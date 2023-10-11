@@ -143,15 +143,15 @@ func (bic *BackingImageController) handleErr(err error, key interface{}) {
 		bic.queue.Forget(key)
 		return
 	}
-
+	log := bic.logger.WithField("BackingImage", key)
 	if bic.queue.NumRequeues(key) < maxRetries {
-		logrus.WithError(err).Warnf("Error syncing Longhorn backing image %v", key)
+		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn backing image")
 		bic.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	logrus.WithError(err).Warnf("Dropping Longhorn backing image %v out of the queue", key)
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn backing image out of the queue")
 	bic.queue.Forget(key)
 }
 

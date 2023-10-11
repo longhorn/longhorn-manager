@@ -149,14 +149,15 @@ func (knc *KubernetesNodeController) handleErr(err error, key interface{}) {
 		return
 	}
 
+	log := knc.logger.WithField("KubernetesNode", key)
 	if knc.queue.NumRequeues(key) < maxRetries {
-		logrus.Warnf("Error syncing Longhorn node %v: %v", key, err)
+		handleReconcileErrorLogging(log, err, "Failed to sync Kubernetes node")
 		knc.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	logrus.Warnf("Dropping Longhorn node %v out of the queue: %v", key, err)
+	handleReconcileErrorLogging(log, err, "Dropping Kubernetes node out of the queue")
 	knc.queue.Forget(key)
 }
 

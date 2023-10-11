@@ -193,14 +193,15 @@ func (c *BackingImageDataSourceController) handleErr(err error, key interface{})
 		return
 	}
 
+	log := c.logger.WithField("BackingImageDataSource", key)
 	if c.queue.NumRequeues(key) < maxRetries {
-		logrus.WithError(err).Warnf("Error syncing Longhorn backing image data source %v", key)
+		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn backing image data source")
 		c.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	logrus.WithError(err).Warnf("Dropping Longhorn backing image data source %v out of the queue", key)
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn backing image data source out of the queue")
 	c.queue.Forget(key)
 }
 

@@ -315,14 +315,15 @@ func (nc *NodeController) handleErr(err error, key interface{}) {
 		return
 	}
 
+	log := nc.logger.WithField("LonghornNode", key)
 	if nc.queue.NumRequeues(key) < maxRetries {
-		logrus.Warnf("Error syncing Longhorn node %v: %v", key, err)
+		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn node")
 		nc.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	logrus.Warnf("Dropping Longhorn node %v out of the queue: %v", key, err)
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn node out of the queue")
 	nc.queue.Forget(key)
 }
 

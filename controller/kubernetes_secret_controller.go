@@ -127,13 +127,14 @@ func (ks *KubernetesSecretController) handleErr(err error, key interface{}) {
 		return
 	}
 
+	log := ks.logger.WithField("Secret", key)
 	if ks.queue.NumRequeues(key) < maxRetries {
-		ks.logger.WithError(err).Warnf("Error syncing Secret %v", key)
+		handleReconcileErrorLogging(log, err, "Failed to sync Secret")
 		ks.queue.AddRateLimited(key)
 		return
 	}
 
-	ks.logger.WithError(err).Warnf("Dropping Secret %v out of the queue", key)
+	handleReconcileErrorLogging(log, err, "Dropping Secret out of the queue")
 	ks.queue.Forget(key)
 	utilruntime.HandleError(err)
 }

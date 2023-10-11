@@ -172,14 +172,15 @@ func (rc *ReplicaController) handleErr(err error, key interface{}) {
 		return
 	}
 
+	log := rc.logger.WithField("Replica", key)
 	if rc.queue.NumRequeues(key) < maxRetries {
-		rc.logger.WithError(err).Warnf("Error syncing Longhorn replica %v", key)
+		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn replica")
 		rc.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	rc.logger.WithError(err).Warnf("Dropping Longhorn replica %v out of the queue", key)
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn replica out of the queue")
 	rc.queue.Forget(key)
 }
 
