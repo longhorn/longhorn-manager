@@ -31,32 +31,6 @@ const (
 	maxRetryForDeletion                   = 120
 )
 
-<<<<<<< HEAD
-func getCommonService(commonName, namespace string) *v1.Service {
-	serviceLabels := types.GetBaseLabelsForSystemManagedComponent()
-	serviceLabels["app"] = commonName
-	return &v1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      commonName,
-			Namespace: namespace,
-			Labels:    serviceLabels,
-		},
-		Spec: v1.ServiceSpec{
-			Selector: map[string]string{
-				"app": commonName,
-			},
-			Ports: []v1.ServicePort{
-				{
-					Name: "dummy",
-					Port: 12345,
-				},
-			},
-		},
-	}
-}
-
-=======
->>>>>>> eb568dc9 (Don't deploy dummy services with CSI components)
 func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir string, args []string, replicaCount int32,
 	tolerations []v1.Toleration, tolerationsString, priorityClass, registrySecret string, imagePullPolicy v1.PullPolicy, nodeSelector map[string]string) *appsv1.Deployment {
 
