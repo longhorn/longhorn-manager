@@ -421,7 +421,7 @@ func (c *ShareManagerController) createShareManagerAttachmentTicket(sm *longhorn
 		}
 	}
 	if shareManagerAttachmentTicket.NodeID != sm.Status.OwnerID {
-		log.Infof("Attachment ticket %v request a new node %v from old node %v", shareManagerAttachmentTicket.ID, shareManagerAttachmentTicket.NodeID, sm.Status.OwnerID)
+		log.Infof("Attachment ticket %v request a new node %v from old node %v", shareManagerAttachmentTicket.ID, sm.Status.OwnerID, shareManagerAttachmentTicket.NodeID)
 		shareManagerAttachmentTicket.NodeID = sm.Status.OwnerID
 	}
 

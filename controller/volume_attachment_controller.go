@@ -440,6 +440,8 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationRollback(va *longhor
 }
 
 func (vac *VolumeAttachmentController) handleVolumeDetachment(va *longhorn.VolumeAttachment, vol *longhorn.Volume) {
+	log := getLoggerForLHVolumeAttachment(vac.logger, va)
+
 	// Volume is already trying to detach
 	if vol.Spec.NodeID == "" {
 		return
@@ -448,6 +450,8 @@ func (vac *VolumeAttachmentController) handleVolumeDetachment(va *longhorn.Volum
 	if !vac.shouldDoDetach(va, vol) {
 		return
 	}
+
+	log.Infof("Volume %v is selected to detach from node %v", vol.Name, vol.Spec.NodeID)
 
 	// There is no attachment ticket that request the current vol.Spec.NodeID.
 	// Therefore, set desire state of volume to empty
@@ -488,6 +492,7 @@ func (vac *VolumeAttachmentController) shouldDoDetach(va *longhorn.VolumeAttachm
 	}
 
 	if len(currentAttachmentTickets) == 0 {
+		log.Infof("Should detach volume %v because there is no matching attachment ticket", vol.Spec.NodeID)
 		return true
 	}
 
@@ -549,6 +554,8 @@ func hasWorkloadTicket(attachmentTickets map[string]*longhorn.AttachmentTicket, 
 }
 
 func (vac *VolumeAttachmentController) handleVolumeAttachment(va *longhorn.VolumeAttachment, vol *longhorn.Volume) {
+	log := getLoggerForLHVolumeAttachment(vac.logger, va)
+
 	// Wait for volume to be fully detached
 	if !isVolumeFullyDetached(vol) {
 		return
@@ -564,6 +571,8 @@ func (vac *VolumeAttachmentController) handleVolumeAttachment(va *longhorn.Volum
 	if attachmentTicket == nil {
 		return
 	}
+
+	log.Infof("Volume %v is selected to attach to node %v, ticket +%v", vol.Name, attachmentTicket.NodeID, attachmentTicket)
 
 	vol.Spec.NodeID = attachmentTicket.NodeID
 	setAttachmentParameter(attachmentTicket.Parameters, vol)
