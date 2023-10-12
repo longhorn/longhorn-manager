@@ -2,7 +2,6 @@ package csi
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/sirupsen/logrus"
 
@@ -17,7 +16,6 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
-	"github.com/longhorn/longhorn-manager/util"
 )
 
 const (
@@ -52,14 +50,11 @@ var (
 )
 
 type AttacherDeployment struct {
-	service    *corev1.Service
 	deployment *appsv1.Deployment
 }
 
 func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir string, replicaCount int, tolerations []corev1.Toleration,
 	tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string) *AttacherDeployment {
-
-	service := getCommonService(types.CSIAttacherName, namespace)
 
 	deployment := getCommonDeployment(
 		types.CSIAttacherName,
@@ -84,48 +79,28 @@ func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir str
 	)
 
 	return &AttacherDeployment{
-		service:    service,
 		deployment: deployment,
 	}
 }
 
 func (a *AttacherDeployment) Deploy(kubeClient *clientset.Clientset) error {
-	if err := deploy(kubeClient, a.service, "service",
-		serviceCreateFunc, serviceDeleteFunc, serviceGetFunc); err != nil {
-		return err
-	}
-
 	return deploy(kubeClient, a.deployment, "deployment",
 		deploymentCreateFunc, deploymentDeleteFunc, deploymentGetFunc)
 }
 
 func (a *AttacherDeployment) Cleanup(kubeClient *clientset.Clientset) {
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
-	util.RunAsync(&wg, func() {
-		if err := cleanup(kubeClient, a.service, "service",
-			serviceDeleteFunc, serviceGetFunc); err != nil {
-			logrus.Warnf("Failed to cleanup service in attacher deployment: %v", err)
-		}
-	})
-	util.RunAsync(&wg, func() {
-		if err := cleanup(kubeClient, a.deployment, "deployment",
-			deploymentDeleteFunc, deploymentGetFunc); err != nil {
-			logrus.Warnf("Failed to cleanup deployment in attacher deployment: %v", err)
-		}
-	})
+	if err := cleanup(kubeClient, a.deployment, "deployment",
+		deploymentDeleteFunc, deploymentGetFunc); err != nil {
+		logrus.Warnf("Failed to cleanup deployment in attacher deployment: %v", err)
+	}
 }
 
 type ProvisionerDeployment struct {
-	service    *corev1.Service
 	deployment *appsv1.Deployment
 }
 
 func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootDir string, replicaCount int, tolerations []corev1.Toleration,
 	tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string) *ProvisionerDeployment {
-
-	service := getCommonService(types.CSIProvisionerName, namespace)
 
 	deployment := getCommonDeployment(
 		types.CSIProvisionerName,
@@ -151,48 +126,28 @@ func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootD
 	)
 
 	return &ProvisionerDeployment{
-		service:    service,
 		deployment: deployment,
 	}
 }
 
 func (p *ProvisionerDeployment) Deploy(kubeClient *clientset.Clientset) error {
-	if err := deploy(kubeClient, p.service, "service",
-		serviceCreateFunc, serviceDeleteFunc, serviceGetFunc); err != nil {
-		return err
-	}
-
 	return deploy(kubeClient, p.deployment, "deployment",
 		deploymentCreateFunc, deploymentDeleteFunc, deploymentGetFunc)
 }
 
 func (p *ProvisionerDeployment) Cleanup(kubeClient *clientset.Clientset) {
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
-	util.RunAsync(&wg, func() {
-		if err := cleanup(kubeClient, p.service, "service",
-			serviceDeleteFunc, serviceGetFunc); err != nil {
-			logrus.WithError(err).Warn("Failed to cleanup service in provisioner deployment")
-		}
-	})
-	util.RunAsync(&wg, func() {
-		if err := cleanup(kubeClient, p.deployment, "deployment",
-			deploymentDeleteFunc, deploymentGetFunc); err != nil {
-			logrus.WithError(err).Warn("Failed to cleanup deployment in provisioner deployment")
-		}
-	})
+	if err := cleanup(kubeClient, p.deployment, "deployment",
+		deploymentDeleteFunc, deploymentGetFunc); err != nil {
+		logrus.WithError(err).Warn("Failed to cleanup deployment in provisioner deployment")
+	}
 }
 
 type ResizerDeployment struct {
-	service    *corev1.Service
 	deployment *appsv1.Deployment
 }
 
 func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir string, replicaCount int, tolerations []corev1.Toleration,
 	tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string) *ResizerDeployment {
-
-	service := getCommonService(types.CSIResizerName, namespace)
 
 	deployment := getCommonDeployment(
 		types.CSIResizerName,
@@ -221,47 +176,28 @@ func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir strin
 	)
 
 	return &ResizerDeployment{
-		service:    service,
 		deployment: deployment,
 	}
 }
 
 func (p *ResizerDeployment) Deploy(kubeClient *clientset.Clientset) error {
-	if err := deploy(kubeClient, p.service, "service",
-		serviceCreateFunc, serviceDeleteFunc, serviceGetFunc); err != nil {
-		return err
-	}
-
 	return deploy(kubeClient, p.deployment, "deployment",
 		deploymentCreateFunc, deploymentDeleteFunc, deploymentGetFunc)
 }
 
 func (p *ResizerDeployment) Cleanup(kubeClient *clientset.Clientset) {
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
-	util.RunAsync(&wg, func() {
-		if err := cleanup(kubeClient, p.service, "service",
-			serviceDeleteFunc, serviceGetFunc); err != nil {
-			logrus.WithError(err).Warn("Failed to cleanup service in resizer deployment")
-		}
-	})
-	util.RunAsync(&wg, func() {
-		if err := cleanup(kubeClient, p.deployment, "deployment",
-			deploymentDeleteFunc, deploymentGetFunc); err != nil {
-			logrus.WithError(err).Warn("Failed to cleanup deployment in resizer deployment")
-		}
-	})
+	if err := cleanup(kubeClient, p.deployment, "deployment",
+		deploymentDeleteFunc, deploymentGetFunc); err != nil {
+		logrus.WithError(err).Warn("Failed to cleanup deployment in resizer deployment")
+	}
 }
 
 type SnapshotterDeployment struct {
-	service    *corev1.Service
 	deployment *appsv1.Deployment
 }
 
 func NewSnapshotterDeployment(namespace, serviceAccount, snapshotterImage, rootDir string, replicaCount int, tolerations []corev1.Toleration,
 	tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string) *SnapshotterDeployment {
-	service := getCommonService(types.CSISnapshotterName, namespace)
 
 	deployment := getCommonDeployment(
 		types.CSISnapshotterName,
@@ -286,37 +222,20 @@ func NewSnapshotterDeployment(namespace, serviceAccount, snapshotterImage, rootD
 	)
 
 	return &SnapshotterDeployment{
-		service:    service,
 		deployment: deployment,
 	}
 }
 
 func (p *SnapshotterDeployment) Deploy(kubeClient *clientset.Clientset) error {
-	if err := deploy(kubeClient, p.service, "service",
-		serviceCreateFunc, serviceDeleteFunc, serviceGetFunc); err != nil {
-		return err
-	}
-
 	return deploy(kubeClient, p.deployment, "deployment",
 		deploymentCreateFunc, deploymentDeleteFunc, deploymentGetFunc)
 }
 
 func (p *SnapshotterDeployment) Cleanup(kubeClient *clientset.Clientset) {
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
-	util.RunAsync(&wg, func() {
-		if err := cleanup(kubeClient, p.service, "service",
-			serviceDeleteFunc, serviceGetFunc); err != nil {
-			logrus.WithError(err).Warn("Failed to cleanup service in snapshotter deployment")
-		}
-	})
-	util.RunAsync(&wg, func() {
-		if err := cleanup(kubeClient, p.deployment, "deployment",
-			deploymentDeleteFunc, deploymentGetFunc); err != nil {
-			logrus.WithError(err).Warn("Failed to cleanup deployment in snapshotter deployment")
-		}
-	})
+	if err := cleanup(kubeClient, p.deployment, "deployment",
+		deploymentDeleteFunc, deploymentGetFunc); err != nil {
+		logrus.WithError(err).Warn("Failed to cleanup deployment in snapshotter deployment")
+	}
 }
 
 type PluginDeployment struct {
