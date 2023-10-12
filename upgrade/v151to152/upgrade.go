@@ -1,13 +1,18 @@
 package v151to152
 
 import (
+	"context"
+
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
+	"github.com/longhorn/longhorn-manager/types"
 	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
 )
 
@@ -18,7 +23,11 @@ const (
 func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) error {
 	// We will probably need to upgrade other resources as well. See upgradeVolumeAttachments or previous Longhorn
 	// versions for examples.
-	return upgradeVolumeAttachments(namespace, lhClient, resourceMaps)
+	if err := upgradeVolumeAttachments(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	return deleteCSIServices(namespace, kubeClient)
 }
 
 func upgradeVolumeAttachments(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
@@ -57,6 +66,36 @@ func upgradeVolumeAttachments(namespace string, lhClient *lhclientset.Clientset,
 			if _, ok := ticketIDsForExistingSnapshotsMap[ticketID]; !ok {
 				delete(volumeAttachment.Spec.AttachmentTickets, ticketID)
 			}
+		}
+	}
+
+	return nil
+}
+
+func deleteCSIServices(namespace string, kubeClient *clientset.Clientset) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"delete CSI service failed")
+	}()
+
+	servicesToDelete := map[string]struct{}{
+		types.CSIAttacherName:    {},
+		types.CSIProvisionerName: {},
+		types.CSIResizerName:     {},
+		types.CSISnapshotterName: {},
+	}
+
+	servicesInCluster, err := kubeClient.CoreV1().Services(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return errors.Wrapf(err, "failed to list all existing Longhorn services during the CSI service deletion")
+	}
+
+	for _, serviceInCluster := range servicesInCluster.Items {
+		if _, ok := servicesToDelete[serviceInCluster.Name]; !ok {
+			continue
+		}
+		if err = kubeClient.CoreV1().Services(namespace).Delete(context.TODO(), serviceInCluster.Name, metav1.DeleteOptions{}); err != nil {
+			// Best effort. Dummy services have no function and no finalizer, so we can proceed on failure.
+			logrus.Warnf("Deprecated CSI dummy service could not be deleted during upgrade: %v", err)
 		}
 	}
 
