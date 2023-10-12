@@ -34,29 +34,6 @@ const (
 	maxRetryForDeletion                   = 120
 )
 
-func getCommonService(commonName, namespace string) *corev1.Service {
-	serviceLabels := types.GetBaseLabelsForSystemManagedComponent()
-	serviceLabels["app"] = commonName
-	return &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      commonName,
-			Namespace: namespace,
-			Labels:    serviceLabels,
-		},
-		Spec: corev1.ServiceSpec{
-			Selector: map[string]string{
-				"app": commonName,
-			},
-			Ports: []corev1.ServicePort{
-				{
-					Name: "dummy",
-					Port: 12345,
-				},
-			},
-		},
-	}
-}
-
 func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir string, args []string, replicaCount int32,
 	tolerations []corev1.Toleration, tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string) *appsv1.Deployment {
 
