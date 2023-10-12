@@ -136,28 +136,10 @@ func (p *ProvisionerDeployment) Deploy(kubeClient *clientset.Clientset) error {
 }
 
 func (p *ProvisionerDeployment) Cleanup(kubeClient *clientset.Clientset) {
-<<<<<<< HEAD
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
-	util.RunAsync(&wg, func() {
-		if err := cleanup(kubeClient, p.service, "service",
-			serviceDeleteFunc, serviceGetFunc); err != nil {
-			logrus.Warnf("Failed to cleanup service in provisioner deployment: %v", err)
-		}
-	})
-	util.RunAsync(&wg, func() {
-		if err := cleanup(kubeClient, p.deployment, "deployment",
-			deploymentDeleteFunc, deploymentGetFunc); err != nil {
-			logrus.Warnf("Failed to cleanup deployment in provisioner deployment: %v", err)
-		}
-	})
-=======
 	if err := cleanup(kubeClient, p.deployment, "deployment",
 		deploymentDeleteFunc, deploymentGetFunc); err != nil {
 		logrus.WithError(err).Warn("Failed to cleanup deployment in provisioner deployment")
 	}
->>>>>>> eb568dc9 (Don't deploy dummy services with CSI components)
 }
 
 type ResizerDeployment struct {
@@ -204,28 +186,10 @@ func (p *ResizerDeployment) Deploy(kubeClient *clientset.Clientset) error {
 }
 
 func (p *ResizerDeployment) Cleanup(kubeClient *clientset.Clientset) {
-<<<<<<< HEAD
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
-	util.RunAsync(&wg, func() {
-		if err := cleanup(kubeClient, p.service, "service",
-			serviceDeleteFunc, serviceGetFunc); err != nil {
-			logrus.Warnf("Failed to cleanup service in resizer deployment: %v", err)
-		}
-	})
-	util.RunAsync(&wg, func() {
-		if err := cleanup(kubeClient, p.deployment, "deployment",
-			deploymentDeleteFunc, deploymentGetFunc); err != nil {
-			logrus.Warnf("Failed to cleanup deployment in resizer deployment: %v", err)
-		}
-	})
-=======
 	if err := cleanup(kubeClient, p.deployment, "deployment",
 		deploymentDeleteFunc, deploymentGetFunc); err != nil {
 		logrus.WithError(err).Warn("Failed to cleanup deployment in resizer deployment")
 	}
->>>>>>> eb568dc9 (Don't deploy dummy services with CSI components)
 }
 
 type SnapshotterDeployment struct {
@@ -268,28 +232,10 @@ func (p *SnapshotterDeployment) Deploy(kubeClient *clientset.Clientset) error {
 }
 
 func (p *SnapshotterDeployment) Cleanup(kubeClient *clientset.Clientset) {
-<<<<<<< HEAD
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
-	util.RunAsync(&wg, func() {
-		if err := cleanup(kubeClient, p.service, "service",
-			serviceDeleteFunc, serviceGetFunc); err != nil {
-			logrus.Warnf("Failed to cleanup service in snapshotter deployment: %v", err)
-		}
-	})
-	util.RunAsync(&wg, func() {
-		if err := cleanup(kubeClient, p.deployment, "deployment",
-			deploymentDeleteFunc, deploymentGetFunc); err != nil {
-			logrus.Warnf("Failed to cleanup deployment in snapshotter deployment: %v", err)
-		}
-	})
-=======
 	if err := cleanup(kubeClient, p.deployment, "deployment",
 		deploymentDeleteFunc, deploymentGetFunc); err != nil {
 		logrus.WithError(err).Warn("Failed to cleanup deployment in snapshotter deployment")
 	}
->>>>>>> eb568dc9 (Don't deploy dummy services with CSI components)
 }
 
 type PluginDeployment struct {
