@@ -160,7 +160,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			Migratable:                  spec.Migratable,
 			Encrypted:                   spec.Encrypted,
 			Frontend:                    spec.Frontend,
-			EngineImage:                 "",
+			Image:                       "",
 			FromBackup:                  spec.FromBackup,
 			RestoreVolumeRecurringJob:   spec.RestoreVolumeRecurringJob,
 			DataSource:                  spec.DataSource,
@@ -219,11 +219,11 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 		return nil, err
 	}
 
-	if isReady, err := m.ds.CheckEngineImageReadyOnAtLeastOneVolumeReplica(v.Spec.EngineImage, v.Name, node.Name, v.Spec.DataLocality); !isReady {
+	if isReady, err := m.ds.CheckEngineImageReadyOnAtLeastOneVolumeReplica(v.Spec.Image, v.Name, node.Name, v.Spec.DataLocality); !isReady {
 		if err != nil {
-			return nil, errors.Wrapf(err, "cannot attach volume %v with image %v", v.Name, v.Spec.EngineImage)
+			return nil, errors.Wrapf(err, "cannot attach volume %v with image %v", v.Name, v.Spec.Image)
 		}
-		return nil, fmt.Errorf("cannot attach volume %v because the engine image %v is not deployed on at least one of the the replicas' nodes or the node that the volume is going to attach to", v.Name, v.Spec.EngineImage)
+		return nil, fmt.Errorf("cannot attach volume %v because the image %v is not deployed on at least one of the the replicas' nodes or the node that the volume is going to attach to", v.Name, v.Spec.Image)
 	}
 
 	restoreCondition := types.GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeRestore)
@@ -635,11 +635,17 @@ func (m *VolumeManager) trimRWXVolumeFilesystem(volumeName string, encryptedDevi
 	if err != nil {
 		return errors.Wrapf(err, "failed to get share manager pod for trimming volume %v in namespae", volumeName)
 	}
+
+	if sm.Status.State != longhorn.ShareManagerStateRunning {
+		return fmt.Errorf("share manager %v is not running", sm.Name)
+	}
+
 	client, err := engineapi.NewShareManagerClient(sm, pod)
 	if err != nil {
 		return errors.Wrapf(err, "failed to launch gRPC client for share manager before trimming volume %v", volumeName)
 	}
 	defer client.Close()
+
 	return client.FilesystemTrim(encryptedDevice)
 }
 
@@ -769,28 +775,28 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 		return nil, err
 	}
 
-	if v.Spec.EngineImage == image {
+	if v.Spec.Image == image {
 		return nil, fmt.Errorf("upgrading in process for volume %v engine image from %v to %v already",
-			v.Name, v.Status.CurrentImage, v.Spec.EngineImage)
+			v.Name, v.Status.CurrentImage, v.Spec.Image)
 	}
 
-	if v.Spec.EngineImage != v.Status.CurrentImage && image != v.Status.CurrentImage {
+	if v.Spec.Image != v.Status.CurrentImage && image != v.Status.CurrentImage {
 		return nil, fmt.Errorf("upgrading in process for volume %v engine image from %v to %v, cannot upgrade to another engine image",
-			v.Name, v.Status.CurrentImage, v.Spec.EngineImage)
+			v.Name, v.Status.CurrentImage, v.Spec.Image)
 	}
 
 	if isReady, err := m.ds.CheckEngineImageReadyOnAllVolumeReplicas(image, v.Name, v.Status.CurrentNodeID); !isReady {
 		if err != nil {
-			return nil, fmt.Errorf("cannot upgrade engine image for volume %v from image %v to image %v: %v", v.Name, v.Spec.EngineImage, image, err)
+			return nil, fmt.Errorf("cannot upgrade engine image for volume %v from image %v to image %v: %v", v.Name, v.Spec.Image, image, err)
 		}
-		return nil, fmt.Errorf("cannot upgrade engine image for volume %v from image %v to image %v because the engine image %v is not deployed on the replicas' nodes or the node that the volume is attached to", v.Name, v.Spec.EngineImage, image, image)
+		return nil, fmt.Errorf("cannot upgrade engine image for volume %v from image %v to image %v because the engine image %v is not deployed on the replicas' nodes or the node that the volume is attached to", v.Name, v.Spec.Image, image, image)
 	}
 
 	if isReady, err := m.ds.CheckEngineImageReadyOnAllVolumeReplicas(v.Status.CurrentImage, v.Name, v.Status.CurrentNodeID); !isReady {
 		if err != nil {
-			return nil, fmt.Errorf("cannot upgrade engine image for volume %v from image %v to image %v: %v", v.Name, v.Spec.EngineImage, image, err)
+			return nil, fmt.Errorf("cannot upgrade engine image for volume %v from image %v to image %v: %v", v.Name, v.Spec.Image, image, err)
 		}
-		return nil, fmt.Errorf("cannot upgrade engine image for volume %v from image %v to image %v because the volume's current engine image %v is not deployed on the replicas' nodes or the node that the volume is attached to", v.Name, v.Spec.EngineImage, image, v.Status.CurrentImage)
+		return nil, fmt.Errorf("cannot upgrade engine image for volume %v from image %v to image %v because the volume's current engine image %v is not deployed on the replicas' nodes or the node that the volume is attached to", v.Name, v.Spec.Image, image, v.Status.CurrentImage)
 	}
 
 	if v.Spec.MigrationNodeID != "" {
@@ -803,15 +809,15 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 		return nil, fmt.Errorf("cannot do live upgrade for a unhealthy volume %v", v.Name)
 	}
 
-	oldImage := v.Spec.EngineImage
-	v.Spec.EngineImage = image
+	oldImage := v.Spec.Image
+	v.Spec.Image = image
 
 	v, err = m.ds.UpdateVolume(v)
 	if err != nil {
 		return nil, err
 	}
 	if image != v.Status.CurrentImage {
-		logrus.Infof("Upgrading volume %v engine image from %v to %v", v.Name, oldImage, v.Spec.EngineImage)
+		logrus.Infof("Upgrading volume %v engine image from %v to %v", v.Name, oldImage, v.Spec.Image)
 	} else {
 		logrus.Infof("Rolling back volume %v engine image to %v", v.Name, v.Status.CurrentImage)
 	}
@@ -832,7 +838,7 @@ func (m *VolumeManager) UpdateReplicaCount(name string, count int) (v *longhorn.
 	if v.Spec.NodeID == "" || v.Status.State != longhorn.VolumeStateAttached {
 		return nil, fmt.Errorf("invalid volume state to update replica count%v", v.Status.State)
 	}
-	if v.Spec.EngineImage != v.Status.CurrentImage {
+	if v.Spec.Image != v.Status.CurrentImage {
 		return nil, fmt.Errorf("upgrading in process, cannot update replica count")
 	}
 	if v.Spec.MigrationNodeID != "" {

@@ -51,11 +51,7 @@ func labelMapToLabelSelector(labels map[string]string) (labels.Selector, error) 
 }
 
 func (s *DataStore) GetManagerLabel() map[string]string {
-	return map[string]string{
-		// TODO standardize key
-		// longhornSystemKey: longhornSystemManager,
-		"app": types.LonghornManagerDaemonSetName,
-	}
+	return types.GetManagerLabels()
 }
 
 func (s *DataStore) getManagerSelector() (labels.Selector, error) {

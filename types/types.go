@@ -292,8 +292,16 @@ const (
 	replicaManagerPrefix  = instanceManagerPrefix + "r-"
 )
 
-func GenerateEngineNameForVolume(vName string) string {
-	return vName + engineSuffix + "-" + util.RandomID()
+func GenerateEngineNameForVolume(vName, currentEngineName string) string {
+	if currentEngineName == "" {
+		return vName + engineSuffix + "-" + "0"
+	}
+	parts := strings.Split(currentEngineName, "-")
+	suffix, err := strconv.Atoi(parts[len(parts)-1])
+	if err != nil {
+		return vName + engineSuffix + "-" + "1"
+	}
+	return vName + engineSuffix + "-" + strconv.Itoa(suffix+1)
 }
 
 func GenerateReplicaNameForVolume(vName string) string {
@@ -380,6 +388,11 @@ func GetLonghornLabelCRDAPIVersionKey() string {
 	return GetLonghornLabelKey(LonghornLabelCRDAPIVersion)
 }
 
+func GetManagerLabels() map[string]string {
+	return map[string]string{
+		"app": LonghornManagerDaemonSetName,
+	}
+}
 func GetEngineImageLabels(engineImageName string) map[string]string {
 	labels := GetBaseLabelsForSystemManagedComponent()
 	labels[GetLonghornLabelComponentKey()] = LonghornLabelEngineImage

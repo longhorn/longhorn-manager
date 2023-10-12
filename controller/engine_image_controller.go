@@ -160,13 +160,13 @@ func (ic *EngineImageController) handleErr(err error, key interface{}) {
 
 	log := ic.logger.WithField("engineImage", key)
 	if ic.queue.NumRequeues(key) < maxRetries {
-		log.WithError(err).Error("Failed to sync Longhorn engine image")
+		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn engine image")
 		ic.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	log.WithError(err).Error("Dropping Longhorn engine image out of the queue")
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn engine image out of the queue")
 	ic.queue.Forget(key)
 }
 
@@ -434,9 +434,9 @@ func (ic *EngineImageController) handleAutoUpgradeEngineImageToDefaultEngineImag
 
 	for _, vs := range limitedCandidates {
 		for _, v := range vs {
-			ic.logger.WithFields(logrus.Fields{"volume": v.Name, "engineImage": v.Spec.EngineImage}).Infof("Upgrading volume engine image to the default engine image %v automatically", defaultEngineImage)
-			v.Spec.EngineImage = defaultEngineImage
-			v, err = ic.ds.UpdateVolume(v)
+			ic.logger.WithFields(logrus.Fields{"volume": v.Name, "image": v.Spec.Image}).Infof("Upgrading volume engine image to the default engine image %v automatically", defaultEngineImage)
+			v.Spec.Image = defaultEngineImage
+			_, err = ic.ds.UpdateVolume(v)
 			if err != nil {
 				return err
 			}
@@ -475,14 +475,14 @@ func (ic *EngineImageController) getVolumesForEngineImageUpgrading(volumes map[s
 	inProgress = make(map[string][]*longhorn.Volume)
 
 	for _, v := range volumes {
-		if v.Spec.EngineImage != v.Status.CurrentImage {
+		if v.Spec.Image != v.Status.CurrentImage {
 			inProgress[v.Status.OwnerID] = append(inProgress[v.Status.OwnerID], v)
 			continue
 		}
 		canBeUpgraded := ic.canDoOfflineEngineImageUpgrade(v, newEngineImageResource) || ic.canDoLiveEngineImageUpgrade(v, newEngineImageResource)
 		isCurrentEIAvailable, _ := ic.ds.CheckEngineImageReadyOnAllVolumeReplicas(v.Status.CurrentImage, v.Name, v.Status.CurrentNodeID)
 		isNewEIAvailable, _ := ic.ds.CheckEngineImageReadyOnAllVolumeReplicas(newEngineImageResource.Spec.Image, v.Name, v.Status.CurrentNodeID)
-		validCandidate := v.Spec.EngineImage != newEngineImageResource.Spec.Image && canBeUpgraded && isCurrentEIAvailable && isNewEIAvailable
+		validCandidate := v.Spec.Image != newEngineImageResource.Spec.Image && canBeUpgraded && isCurrentEIAvailable && isNewEIAvailable
 		if validCandidate {
 			candidates[v.Status.OwnerID] = append(candidates[v.Status.OwnerID], v)
 		}
@@ -555,7 +555,7 @@ func (ic *EngineImageController) countVolumesUsingEngineImage(image string) (int
 
 	count := 0
 	for _, v := range volumes {
-		if v.Spec.EngineImage == image || v.Status.CurrentImage == image {
+		if v.Spec.Image == image || v.Status.CurrentImage == image {
 			count++
 		}
 	}
@@ -570,7 +570,7 @@ func (ic *EngineImageController) countEnginesUsingEngineImage(image string) (int
 
 	count := 0
 	for _, e := range engines {
-		if e.Spec.EngineImage == image || e.Status.CurrentImage == image {
+		if e.Spec.Image == image || e.Status.CurrentImage == image {
 			count++
 		}
 	}
@@ -585,7 +585,7 @@ func (ic *EngineImageController) countReplicasUsingEngineImage(image string) (in
 
 	count := 0
 	for _, r := range replicas {
-		if r.Spec.EngineImage == image || r.Status.CurrentImage == image {
+		if r.Spec.Image == image || r.Status.CurrentImage == image {
 			count++
 		}
 	}
@@ -698,8 +698,8 @@ func (ic *EngineImageController) enqueueVolumes(volumes ...interface{}) {
 			}
 		}
 
-		if _, ok := images[v.Spec.EngineImage]; !ok {
-			images[v.Spec.EngineImage] = struct{}{}
+		if _, ok := images[v.Spec.Image]; !ok {
+			images[v.Spec.Image] = struct{}{}
 		}
 		if v.Status.CurrentImage != "" {
 			if _, ok := images[v.Status.CurrentImage]; !ok {

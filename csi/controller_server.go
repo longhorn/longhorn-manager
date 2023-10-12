@@ -213,10 +213,11 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		}
 	}
 
-	vol, err := getVolumeOptions(volumeParameters)
+	vol, err := getVolumeOptions(volumeID, volumeParameters)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+
 	if err = cs.checkAndPrepareBackingImage(volumeID, vol.BackingImage, volumeParameters); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -503,7 +504,7 @@ func (cs *ControllerServer) updateVolumeAccessMode(volume *longhornclient.Volume
 	log.Infof("Changing volume %s access mode to %s", volumeName, mode)
 	volume, err := cs.apiClient.Volume.ActionUpdateAccessMode(volume, input)
 	if err != nil {
-		logrus.WithError(err).Errorf("Failed to change Volume %s access mode to %s", volumeName, mode)
+		log.WithError(err).Errorf("Failed to change volume %s access mode to %s", volumeName, mode)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
@@ -532,7 +533,7 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 
 	attachmentID := generateAttachmentID(volumeID, nodeID)
 
-	// TODO: hadndle cases in which NodeID is empty. Should we detach the volume from all nodes???
+	// TODO: handle cases in which NodeID is empty. Should we detach the volume from all nodes???
 
 	return cs.unpublishVolume(volume, nodeID, attachmentID, func() error {
 		checkVolumeUnpublished := func(vol *longhornclient.Volume) bool {
@@ -552,7 +553,7 @@ func (cs *ControllerServer) unpublishVolume(volume *longhornclient.Volume, nodeI
 	log := getLoggerForCSIControllerServer()
 	log = log.WithFields(logrus.Fields{"function": "unpublishVolume"})
 
-	logrus.Infof("Requesting volume %v detachment for %v with attachmentID %v ", volume.Name, nodeID, attachmentID)
+	log.Infof("Requesting volume %v detachment for node %v with attachmentID %v ", volume.Name, nodeID, attachmentID)
 	detachInput := &longhornclient.DetachInput{
 		AttachmentID: attachmentID,
 		HostId:       nodeID,
@@ -810,7 +811,7 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornBackup(req *csi.CreateS
 		return nil, err
 	}
 
-	logrus.Infof("Volume %s backup %s of snapshot %s created", existVol.Name, backup.Id, csiSnapshotName)
+	log.Infof("Volume %s backup %s of snapshot %s created", existVol.Name, backup.Id, csiSnapshotName)
 	snapshotID := encodeSnapshotID(csiSnapshotTypeLonghornBackup, existVol.Name, backup.Id)
 	rsp := createSnapshotResponseForSnapshotTypeLonghornBackup(existVol.Name, snapshotID, snapshotCR.CreationTime,
 		existVol.Size, backup.State == string(longhorn.BackupStateCompleted))
@@ -820,7 +821,7 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornBackup(req *csi.CreateS
 func createSnapshotResponseForSnapshotTypeLonghornSnapshot(sourceVolumeName, snapshotID string, snapshotCR *longhornclient.SnapshotCR) *csi.CreateSnapshotResponse {
 	creationTime, err := toProtoTimestamp(snapshotCR.CreationTime)
 	if err != nil {
-		logrus.Errorf("Failed to parse creation time %v for csi snapshot %v", snapshotCR.CreationTime, snapshotID)
+		logrus.WithError(err).Errorf("Failed to parse creation time %v for csi snapshot %v", snapshotCR.CreationTime, snapshotID)
 	}
 
 	return &csi.CreateSnapshotResponse{
@@ -837,7 +838,7 @@ func createSnapshotResponseForSnapshotTypeLonghornSnapshot(sourceVolumeName, sna
 func createSnapshotResponseForSnapshotTypeLonghornBackup(sourceVolumeName, snapshotID, snapshotTime, sourceVolumeSize string, readyToUse bool) *csi.CreateSnapshotResponse {
 	creationTime, err := toProtoTimestamp(snapshotTime)
 	if err != nil {
-		logrus.Errorf("Failed to parse creation time %v for CSI snapshot %v", snapshotTime, snapshotID)
+		logrus.WithError(err).Errorf("Failed to parse creation time %v for CSI snapshot %v", snapshotTime, snapshotID)
 	}
 
 	size, _ := util.ConvertSize(sourceVolumeSize)
@@ -856,7 +857,7 @@ func createSnapshotResponseForSnapshotTypeLonghornBackup(sourceVolumeName, snaps
 func createSnapshotResponseForSnapshotTypeLonghornBackingImage(sourceVolumeName, snapshotID, snapshotTime, sourceVolumeSize string, readyToUse bool) *csi.CreateSnapshotResponse {
 	creationTime, err := toProtoTimestamp(snapshotTime)
 	if err != nil {
-		logrus.Errorf("Failed to parse creation time %v for CSI snapshot %v", snapshotTime, snapshotID)
+		logrus.WithError(err).Errorf("Failed to parse creation time %v for CSI snapshot %v", snapshotTime, snapshotID)
 	}
 
 	size, _ := util.ConvertSize(sourceVolumeSize)
@@ -922,7 +923,7 @@ func decodeSnapshoBackingImageID(snapshotID string) (parameters map[string]strin
 	return
 }
 
-// normalizeCSISnapshotType coverts the deprecated CSISnapshotType to the its new value
+// normalizeCSISnapshotType converts the deprecated CSISnapshotType to the its new value
 func normalizeCSISnapshotType(cSISnapshotType string) string {
 	if cSISnapshotType == deprecatedCSISnapshotTypeLonghornBackup {
 		return csiSnapshotTypeLonghornBackup
@@ -1109,12 +1110,6 @@ func isVolumeAvailableOn(vol *longhornclient.Volume, node string) bool {
 	return vol.State == string(longhorn.VolumeStateAttached) && isEngineOnNodeAvailable(vol, node)
 }
 
-// isVolumeUnavailableOn checks that the volume is not attached to the requested node
-func isVolumeUnavailableOn(vol *longhornclient.Volume, node string) bool {
-	isValidState := vol.State == string(longhorn.VolumeStateAttached) || vol.State == string(longhorn.VolumeStateDetached)
-	return isValidState && !isEngineOnNodeAvailable(vol, node)
-}
-
 func isEngineOnNodeAvailable(vol *longhornclient.Volume, node string) bool {
 	for _, controller := range vol.Controllers {
 		if controller.HostId == node && controller.Endpoint != "" {
@@ -1150,7 +1145,7 @@ func (cs *ControllerServer) waitForVolumeState(volumeID string, stateDescription
 		case <-tick:
 			existVol, err := cs.apiClient.Volume.ById(volumeID)
 			if err != nil {
-				log.Warnf("Failed to get volume while waiting for volume %s state %s error %s", volumeID, stateDescription, err)
+				log.WithError(err).Warnf("Failed to get volume while waiting for volume %s state %s", volumeID, stateDescription)
 				continue
 			}
 			if existVol == nil {

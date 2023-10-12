@@ -173,14 +173,15 @@ func (rc *ReplicaController) handleErr(err error, key interface{}) {
 		return
 	}
 
+	log := rc.logger.WithField("Replica", key)
 	if rc.queue.NumRequeues(key) < maxRetries {
-		rc.logger.WithError(err).Errorf("Error syncing Longhorn replica %v", key)
+		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn replica")
 		rc.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	rc.logger.WithError(err).Errorf("Dropping Longhorn replica %v out of the queue", key)
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn replica out of the queue")
 	rc.queue.Forget(key)
 }
 
@@ -369,12 +370,19 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 	backingImagePath := ""
 	if r.Spec.BackingImage != "" {
 		if backingImagePath, err = rc.GetBackingImagePathForReplicaStarting(r); err != nil {
+			r.Status.Conditions = types.SetCondition(r.Status.Conditions, longhorn.ReplicaConditionTypeWaitForBackingImage,
+				longhorn.ConditionStatusTrue, longhorn.ReplicaConditionReasonWaitForBackingImageFailed, err.Error())
 			return nil, err
 		}
 		if backingImagePath == "" {
+			r.Status.Conditions = types.SetCondition(r.Status.Conditions, longhorn.ReplicaConditionTypeWaitForBackingImage,
+				longhorn.ConditionStatusTrue, longhorn.ReplicaConditionReasonWaitForBackingImageWaiting, "")
 			return nil, nil
 		}
 	}
+
+	r.Status.Conditions = types.SetCondition(r.Status.Conditions, longhorn.ReplicaConditionTypeWaitForBackingImage,
+		longhorn.ConditionStatusFalse, "", "")
 
 	if IsRebuildingReplica(r) {
 		canStart, err := rc.CanStartRebuildingReplica(r)
@@ -401,7 +409,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		return nil, err
 	}
 
-	engineCLIAPIVersion, err := rc.ds.GetEngineImageCLIAPIVersion(r.Spec.EngineImage)
+	engineCLIAPIVersion, err := rc.ds.GetEngineImageCLIAPIVersion(r.Spec.Image)
 	if err != nil {
 		return nil, err
 	}

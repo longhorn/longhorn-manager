@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -42,7 +43,7 @@ import (
 
 const (
 	unknownReplicaPrefix            = "UNKNOWN-"
-	restoreGetLockFailedMsg         = "error initiating full backup restore: failed lock"
+	restoreGetLockFailedPatternMsg  = "error initiating (full|incremental) backup restore: failed lock"
 	restoreAlreadyInProgressMsg     = "already in progress"
 	restoreAlreadyRestoredBackupMsg = "already restored backup"
 )
@@ -216,13 +217,13 @@ func (ec *EngineController) handleErr(err error, key interface{}) {
 
 	log := ec.logger.WithField("engine", key)
 	if ec.queue.NumRequeues(key) < maxRetries {
-		log.WithError(err).Error("Error syncing Longhorn engine")
+		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn engine")
 		ec.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	log.WithError(err).Error("Dropping Longhorn engine out of the queue")
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn engine out of the queue")
 	ec.queue.Forget(key)
 }
 
@@ -316,7 +317,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	}
 
 	syncReplicaAddressMap := false
-	if len(engine.Spec.UpgradedReplicaAddressMap) != 0 && engine.Status.CurrentImage != engine.Spec.EngineImage {
+	if len(engine.Spec.UpgradedReplicaAddressMap) != 0 && engine.Status.CurrentImage != engine.Spec.Image {
 		if err := ec.Upgrade(engine, log); err != nil {
 			// Engine live upgrade failure shouldn't block the following engine state update.
 			log.WithError(err).Error("Failed to run engine live upgrade")
@@ -460,7 +461,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		return nil, err
 	}
 
-	engineCLIAPIVersion, err := ec.ds.GetEngineImageCLIAPIVersion(e.Spec.EngineImage)
+	engineCLIAPIVersion, err := ec.ds.GetEngineImageCLIAPIVersion(e.Spec.Image)
 	if err != nil {
 		return nil, err
 	}
@@ -820,7 +821,7 @@ func (m *EngineMonitor) sync() bool {
 		}
 
 		// engine is upgrading
-		if engine.Status.CurrentImage != engine.Spec.EngineImage || len(engine.Spec.UpgradedReplicaAddressMap) != 0 {
+		if engine.Status.CurrentImage != engine.Spec.Image || len(engine.Spec.UpgradedReplicaAddressMap) != 0 {
 			return false
 		}
 
@@ -1483,7 +1484,7 @@ func handleRestoreError(log logrus.FieldLogger, engine *longhorn.Engine, rsMap m
 			continue
 		}
 
-		if strings.Contains(re.Error(), restoreGetLockFailedMsg) {
+		if isReplicaRestoreFailedLockError(&re) {
 			log.WithError(re).Warnf("Ignored failed locked restore error from replica %v", re.Address)
 			// Register the name with a restore backoff entry
 			backoff.Next(engine.Name, time.Now())
@@ -1504,6 +1505,11 @@ func handleRestoreError(log logrus.FieldLogger, engine *longhorn.Engine, rsMap m
 	return nil
 }
 
+func isReplicaRestoreFailedLockError(err *imclient.ReplicaError) bool {
+	failedLock := regexp.MustCompile(restoreGetLockFailedPatternMsg)
+	return failedLock.MatchString(err.Error())
+}
+
 func handleRestoreErrorForCompatibleEngine(log logrus.FieldLogger, engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, backoff *flowcontrol.Backoff, err error) error {
 	taskErr, ok := err.(imclient.TaskError)
 	if !ok {
@@ -1517,7 +1523,7 @@ func handleRestoreErrorForCompatibleEngine(log logrus.FieldLogger, engine *longh
 			continue
 		}
 
-		if strings.Contains(re.Error(), restoreGetLockFailedMsg) {
+		if isReplicaRestoreFailedLockError(&re) {
 			log.WithError(re).Warnf("Ignored failed locked restore error from replica %v", re.Address)
 			// Register the name with a restore backoff entry
 			backoff.Next(engine.Name, time.Now())
@@ -1946,7 +1952,7 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err 
 		err = errors.Wrapf(err, "failed to live upgrade image for %v", e.Name)
 	}()
 
-	engineClientProxy, err := ec.getEngineClientProxy(e, e.Spec.EngineImage)
+	engineClientProxy, err := ec.getEngineClientProxy(e, e.Spec.Image)
 	if err != nil {
 		return err
 	}
@@ -1960,13 +1966,13 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err 
 	// Don't use image with different image name but same commit here. It
 	// will cause live replica to be removed. Volume controller should filter those.
 	if version.ClientVersion.GitCommit != version.ServerVersion.GitCommit {
-		log.Infof("Upgrading engine from %v to %v", e.Status.CurrentImage, e.Spec.EngineImage)
+		log.Infof("Upgrading engine from %v to %v", e.Status.CurrentImage, e.Spec.Image)
 		if err := ec.UpgradeEngineInstance(e, log); err != nil {
 			return err
 		}
 	}
-	log.Infof("Engine has been upgraded from %v to %v", e.Status.CurrentImage, e.Spec.EngineImage)
-	e.Status.CurrentImage = e.Spec.EngineImage
+	log.Infof("Engine has been upgraded from %v to %v", e.Status.CurrentImage, e.Spec.Image)
+	e.Status.CurrentImage = e.Spec.Image
 	e.Status.CurrentReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
 	// reset ReplicaModeMap to reflect the new replicas
 	e.Status.ReplicaModeMap = nil
@@ -2006,7 +2012,7 @@ func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logru
 		return err
 	}
 
-	engineCLIAPIVersion, err := ec.ds.GetEngineImageCLIAPIVersion(e.Spec.EngineImage)
+	engineCLIAPIVersion, err := ec.ds.GetEngineImageCLIAPIVersion(e.Spec.Image)
 	if err != nil {
 		return err
 	}
@@ -2015,8 +2021,8 @@ func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logru
 	if err != nil {
 		return errors.Wrapf(err, "failed to get the binary of the current engine instance")
 	}
-	if strings.Contains(processBinary, types.GetImageCanonicalName(e.Spec.EngineImage)) {
-		log.Infof("The existing engine instance already has the new engine image %v", e.Spec.EngineImage)
+	if strings.Contains(processBinary, types.GetImageCanonicalName(e.Spec.Image)) {
+		log.Infof("The existing engine instance already has the new engine image %v", e.Spec.Image)
 		return nil
 	}
 

@@ -99,9 +99,10 @@ type VolumeCloneStatus struct {
 }
 
 const (
-	VolumeConditionTypeScheduled        = "scheduled"
-	VolumeConditionTypeRestore          = "restore"
-	VolumeConditionTypeTooManySnapshots = "toomanysnapshots"
+	VolumeConditionTypeScheduled           = "Scheduled"
+	VolumeConditionTypeRestore             = "Restore"
+	VolumeConditionTypeTooManySnapshots    = "TooManySnapshots"
+	VolumeConditionTypeWaitForBackingImage = "WaitForBackingImage"
 )
 
 const (
@@ -110,6 +111,8 @@ const (
 	VolumeConditionReasonRestoreInProgress             = "RestoreInProgress"
 	VolumeConditionReasonRestoreFailure                = "RestoreFailure"
 	VolumeConditionReasonTooManySnapshots              = "TooManySnapshots"
+	VolumeConditionReasonWaitForBackingImageFailed     = "GetBackingImageFailed"
+	VolumeConditionReasonWaitForBackingImageWaiting    = "Waiting"
 )
 
 type SnapshotDataIntegrity string
@@ -224,8 +227,11 @@ type VolumeSpec struct {
 	NodeID string `json:"nodeID"`
 	// +optional
 	MigrationNodeID string `json:"migrationNodeID"`
+	// Deprecated: Replaced by field `image`.
 	// +optional
 	EngineImage string `json:"engineImage"`
+	// +optional
+	Image string `json:"image"`
 	// +optional
 	BackingImage string `json:"backingImage"`
 	// +optional

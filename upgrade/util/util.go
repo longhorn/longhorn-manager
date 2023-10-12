@@ -110,6 +110,16 @@ func ListIMPods(namespace string, kubeClient *clientset.Clientset) ([]v1.Pod, er
 	return imPodsList.Items, nil
 }
 
+func ListManagerPods(namespace string, kubeClient *clientset.Clientset) ([]v1.Pod, error) {
+	managerPodsList, err := kubeClient.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: labels.Set(types.GetManagerLabels()).String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return managerPodsList.Items, nil
+}
+
 func MergeStringMaps(baseMap, overwriteMap map[string]string) map[string]string {
 	result := map[string]string{}
 	for k, v := range baseMap {
@@ -562,6 +572,26 @@ func ListAndUpdateRecurringJobsInProvidedCache(namespace string, lhClient *lhcli
 	return recurringJobs, nil
 }
 
+// ListAndUpdateVolumeAttachmentsInProvidedCache list all volumeAttachments and save them into the provided cached `resourceMap`. This method is not thread-safe.
+func ListAndUpdateVolumeAttachmentsInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*longhorn.VolumeAttachment, error) {
+	if v, ok := resourceMaps[types.LonghornKindVolumeAttachment]; ok {
+		return v.(map[string]*longhorn.VolumeAttachment), nil
+	}
+
+	volumeAttachments := map[string]*longhorn.VolumeAttachment{}
+	volumeAttachmentList, err := lhClient.LonghornV1beta2().VolumeAttachments(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	for i, volumeAttachment := range volumeAttachmentList.Items {
+		volumeAttachments[volumeAttachment.Name] = &volumeAttachmentList.Items[i]
+	}
+
+	resourceMaps[types.LonghornKindVolumeAttachment] = volumeAttachments
+
+	return volumeAttachments, nil
+}
+
 // CreateAndUpdateRecurringJobInProvidedCache creates a recurringJob and saves it into the provided cached `resourceMap`. This method is not thread-safe.
 func CreateAndUpdateRecurringJobInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, job *longhorn.RecurringJob) (*longhorn.RecurringJob, error) {
 	obj, err := lhClient.LonghornV1beta2().RecurringJobs(namespace).Create(context.TODO(), job, metav1.CreateOptions{})
@@ -911,23 +941,21 @@ func updateOrphans(namespace string, lhClient *lhclientset.Clientset, orphans ma
 	return nil
 }
 
-func updateVolumeAttachments(namespace string, lhClient *lhclientset.Clientset, volumeAttachment map[string]*longhorn.VolumeAttachment) error {
+func updateVolumeAttachments(namespace string, lhClient *lhclientset.Clientset, volumeAttachments map[string]*longhorn.VolumeAttachment) error {
 	existingVolumeAttachmentList, err := lhClient.LonghornV1beta2().VolumeAttachments(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
-
-	existingVolumeAttachmentMap := map[string]bool{}
-	for _, volume := range existingVolumeAttachmentList.Items {
-		existingVolumeAttachmentMap[volume.Name] = true
-	}
-
-	for _, va := range volumeAttachment {
-		if _, ok := existingVolumeAttachmentMap[va.Name]; ok {
+	for _, existingVolumeAttachment := range existingVolumeAttachmentList.Items {
+		volumeAttachment, ok := volumeAttachments[existingVolumeAttachment.Name]
+		if !ok {
 			continue
 		}
-		if _, err = lhClient.LonghornV1beta2().VolumeAttachments(namespace).Create(context.TODO(), va, metav1.CreateOptions{}); err != nil {
-			return err
+		if !reflect.DeepEqual(existingVolumeAttachment.Spec, volumeAttachment.Spec) ||
+			!reflect.DeepEqual(existingVolumeAttachment.ObjectMeta, volumeAttachment.ObjectMeta) {
+			if _, err = lhClient.LonghornV1beta2().VolumeAttachments(namespace).Update(context.TODO(), volumeAttachment, metav1.UpdateOptions{}); err != nil {
+				return err
+			}
 		}
 	}
 

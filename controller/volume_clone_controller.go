@@ -156,7 +156,8 @@ func (vcc *VolumeCloneController) handleErr(err error, key interface{}) {
 		return
 	}
 
-	vcc.logger.WithError(err).Errorf("Failed to sync Longhorn volume %v", key)
+	log := vcc.logger.WithField("Volume", key)
+	handleReconcileErrorLogging(log, err, "Failed to sync Longhorn volume")
 	vcc.queue.AddRateLimited(key)
 }
 

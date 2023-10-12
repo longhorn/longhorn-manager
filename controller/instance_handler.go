@@ -167,9 +167,9 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			logrus.Warnf("Instance %v starts running, Port %d", instanceName, status.Port)
 		}
 		// only set CurrentImage when first started, since later we may specify
-		// different spec.EngineImage for upgrade
+		// different spec.Image for upgrade
 		if status.CurrentImage == "" {
-			status.CurrentImage = spec.EngineImage
+			status.CurrentImage = spec.Image
 		}
 	case longhorn.InstanceStateStopping:
 		if status.Started {
@@ -242,7 +242,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 			}
 		}
 		// There should be an available instance manager for a scheduled instance when its related engine image is compatible
-		if im == nil && spec.EngineImage != "" && spec.NodeID != "" {
+		if im == nil && spec.Image != "" && spec.NodeID != "" {
 			// The related node maybe cleaned up then there is no available instance manager for this instance (typically it's replica).
 			isNodeDownOrDeleted, err := h.ds.IsNodeDownOrDeleted(spec.NodeID)
 			if err != nil {

@@ -249,14 +249,15 @@ func (imc *InstanceManagerController) handleErr(err error, key interface{}) {
 		return
 	}
 
+	log := imc.logger.WithField("InstanceManager", key)
 	if imc.queue.NumRequeues(key) < maxRetries {
-		logrus.WithError(err).Errorf("Failed to sync Longhorn instance manager %v", key)
+		handleReconcileErrorLogging(log, err, "Failed to sync Longhorn instance manager")
 		imc.queue.AddRateLimited(key)
 		return
 	}
 
 	utilruntime.HandleError(err)
-	logrus.WithError(err).Errorf("Dropping Longhorn instance manager %v out of the queue", key)
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn instance manager out of the queue")
 	imc.queue.Forget(key)
 }
 
