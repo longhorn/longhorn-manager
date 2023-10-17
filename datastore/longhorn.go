@@ -298,24 +298,20 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			}
 		}
 	case types.SettingNameTaintToleration:
-		list, err := s.ListVolumesRO()
+		volumesDetached, err := s.AreAllVolumesDetachedState()
 		if err != nil {
 			return errors.Wrapf(err, "failed to list volumes before modifying toleration setting")
 		}
-		for _, v := range list {
-			if v.Status.State != longhorn.VolumeStateDetached {
-				return fmt.Errorf("cannot modify toleration setting before all volumes are detached")
-			}
+		if !volumesDetached {
+			return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot modify toleration setting before all volumes are detached")}
 		}
 	case types.SettingNameSystemManagedComponentsNodeSelector:
-		list, err := s.ListVolumesRO()
+		volumesDetached, err := s.AreAllVolumesDetachedState()
 		if err != nil {
 			return errors.Wrapf(err, "failed to list volumes before modifying node selector for managed components setting")
 		}
-		for _, v := range list {
-			if v.Status.State != longhorn.VolumeStateDetached {
-				return fmt.Errorf("cannot modify node selector for managed components setting before all volumes are detached")
-			}
+		if !volumesDetached {
+			return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot modify node selector for managed components setting before all volumes are detached")}
 		}
 	case types.SettingNamePriorityClass:
 		if value != "" {
@@ -323,14 +319,12 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 				return errors.Wrapf(err, "failed to get priority class %v before modifying priority class setting", value)
 			}
 		}
-		list, err := s.ListVolumesRO()
+		volumesDetached, err := s.AreAllVolumesDetachedState()
 		if err != nil {
 			return errors.Wrapf(err, "failed to list volumes before modifying priority class setting")
 		}
-		for _, v := range list {
-			if v.Status.State != longhorn.VolumeStateDetached {
-				return fmt.Errorf("cannot modify priority class setting before all volumes are detached")
-			}
+		if !volumesDetached {
+			return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot modify priority class setting before all volumes are detached")}
 		}
 	case types.SettingNameGuaranteedEngineManagerCPU:
 		fallthrough
@@ -359,12 +353,92 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 		}
 
 		if !volumesDetached {
+<<<<<<< HEAD
 			return errors.Errorf("cannot apply %v setting to Longhorn workloads when there are attached volumes", types.SettingNameStorageNetwork)
+=======
+			return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot apply %v setting to Longhorn workloads when there are attached volumes", name)}
+		}
+	case types.SettingNameV2DataEngine:
+		old, err := s.GetSetting(types.SettingNameV2DataEngine)
+		if err != nil {
+			return err
+		}
+		if old.Value != value {
+			v2DataEngineEnabled, err := strconv.ParseBool(value)
+			if err != nil {
+				return err
+			}
+			err = s.ValidateV2DataEngine(v2DataEngineEnabled)
+			if err != nil {
+				return err
+			}
+>>>>>>> 380c0c3e (Suppress nagging error logging.)
 		}
 	}
 	return nil
 }
 
+<<<<<<< HEAD
+=======
+func (s *DataStore) ValidateV2DataEngine(v2DataEngineEnabled bool) error {
+	volumesDetached, err := s.AreAllVolumesDetached()
+	if err != nil {
+		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameV2DataEngine)
+	}
+	if !volumesDetached {
+		return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot apply %v setting to Longhorn workloads when there are attached volumes", types.SettingNameV2DataEngine)}
+	}
+
+	// Check if there is enough hugepages-2Mi capacity for all nodes
+	hugepageRequestedInMiB, err := s.GetSetting(types.SettingNameV2DataEngineHugepageLimit)
+	if err != nil {
+		return err
+	}
+	hugepageRequested := resource.MustParse(hugepageRequestedInMiB.Value + "Mi")
+
+	ims, err := s.ListInstanceManagers()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list instance managers for %v setting update", types.SettingNameV2DataEngine)
+	}
+
+	for _, im := range ims {
+		node, err := s.GetKubernetesNode(im.Spec.NodeID)
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				return errors.Wrapf(err, "failed to get Kubernetes node %v for %v setting update", im.Spec.NodeID, types.SettingNameV2DataEngine)
+			}
+			continue
+		}
+
+		if v2DataEngineEnabled {
+			capacity, ok := node.Status.Capacity["hugepages-2Mi"]
+			if !ok {
+				return errors.Errorf("failed to get hugepages-2Mi capacity for node %v", node.Name)
+			}
+
+			hugepageCapacity := resource.MustParse(capacity.String())
+
+			if hugepageCapacity.Cmp(hugepageRequested) < 0 {
+				return errors.Errorf("not enough hugepages-2Mi capacity for node %v, requested %v, capacity %v", node.Name, hugepageRequested.String(), hugepageCapacity.String())
+			}
+		} else {
+			lhNode, err := s.GetNodeRO(im.Spec.NodeID)
+			if err != nil {
+				return errors.Wrapf(err, "failed to get Longhorn node %v for %v setting update", im.Spec.NodeID, types.SettingNameV2DataEngine)
+			}
+
+			for _, disk := range lhNode.Spec.Disks {
+				if disk.Type == longhorn.DiskTypeBlock {
+					return fmt.Errorf("failed to disable %v setting because there are block-type disks on node %v", types.SettingNameV2DataEngine, node.Name)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+>>>>>>> 380c0c3e (Suppress nagging error logging.)
 func (s *DataStore) AreAllVolumesDetached() (bool, error) {
 	nodes, err := s.ListNodes()
 	if err != nil {
@@ -387,6 +461,19 @@ func (s *DataStore) AreAllVolumesDetached() (bool, error) {
 		}
 	}
 
+	return true, nil
+}
+
+func (s *DataStore) AreAllVolumesDetachedState() (bool, error) {
+	list, err := s.ListVolumesRO()
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to list volumes")
+	}
+	for _, v := range list {
+		if v.Status.State != longhorn.VolumeStateDetached {
+			return false, nil
+		}
+	}
 	return true, nil
 }
 
