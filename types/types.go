@@ -273,6 +273,14 @@ func (e *NotFoundError) Error() string {
 	return fmt.Sprintf("cannot find %v", e.Name)
 }
 
+type ErrorInvalidState struct {
+	Reason string
+}
+
+func (e *ErrorInvalidState) Error() string {
+	return fmt.Sprintf("current state prevents this: %v", e.Reason)
+}
+
 const (
 	engineSuffix    = "-e"
 	replicaSuffix   = "-r"
@@ -704,6 +712,11 @@ func ErrorIsNotSupport(err error) bool {
 
 func ErrorAlreadyExists(err error) bool {
 	return strings.Contains(err.Error(), "already exists")
+}
+
+func ErrorIsInvalidState(err error) bool {
+	var dummy *ErrorInvalidState
+	return errors.As(err, &dummy)
 }
 
 func ValidateReplicaCount(count int) error {
