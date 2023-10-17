@@ -647,7 +647,11 @@ func (sc *SettingController) updateCNI() error {
 	}
 
 	if !volumesDetached {
+<<<<<<< HEAD
 		return errors.Errorf("cannot apply %v setting to Longhorn workloads when there are attached volumes", types.SettingNameStorageNetwork)
+=======
+		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting to Longhorn workloads when there are attached volumes", types.SettingNameStorageNetwork)}
+>>>>>>> 380c0c3e (Suppress nagging error logging.)
 	}
 
 	nadAnnot := string(types.CNIAnnotationNetworks)
