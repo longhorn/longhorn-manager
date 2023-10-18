@@ -10,22 +10,19 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/mod/semver"
 
-	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	clientset "k8s.io/client-go/kubernetes"
-	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
-	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
-	"github.com/longhorn/longhorn-manager/types"
-	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clientset "k8s.io/client-go/kubernetes"
+	restclient "k8s.io/client-go/rest"
 
 	"github.com/longhorn/longhorn-manager/meta"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/upgrade/v070to080"
 	"github.com/longhorn/longhorn-manager/upgrade/v100to101"
 	"github.com/longhorn/longhorn-manager/upgrade/v102to110"
@@ -38,6 +35,10 @@ import (
 	"github.com/longhorn/longhorn-manager/upgrade/v13xto140"
 	"github.com/longhorn/longhorn-manager/upgrade/v143to144"
 	"github.com/longhorn/longhorn-manager/upgrade/v1beta1"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
+	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
 )
 
 const (
