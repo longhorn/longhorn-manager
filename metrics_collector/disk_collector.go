@@ -1,12 +1,14 @@
 package metricscollector
 
 import (
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/sirupsen/logrus"
 	"strings"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/sirupsen/logrus"
+
 	"github.com/longhorn/longhorn-manager/datastore"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 type DiskCollector struct {
