@@ -15,16 +15,18 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
+
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	clientset "k8s.io/client-go/kubernetes"
+
+	"github.com/longhorn/longhorn-manager/meta"
+	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
-	"github.com/longhorn/longhorn-manager/meta"
-	"github.com/longhorn/longhorn-manager/types"
 )
 
 const (
@@ -90,7 +92,7 @@ func (pm *ProgressMonitor) GetCurrentProgress() (int, int, float64) {
 	return pm.currentValue, pm.targetValue, pm.currentProgressInPercentage
 }
 
-func ListShareManagerPods(namespace string, kubeClient *clientset.Clientset) ([]v1.Pod, error) {
+func ListShareManagerPods(namespace string, kubeClient *clientset.Clientset) ([]corev1.Pod, error) {
 	smPodsList, err := kubeClient.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{
 		LabelSelector: labels.Set(types.GetShareManagerComponentLabel()).String(),
 	})
@@ -100,7 +102,7 @@ func ListShareManagerPods(namespace string, kubeClient *clientset.Clientset) ([]
 	return smPodsList.Items, nil
 }
 
-func ListIMPods(namespace string, kubeClient *clientset.Clientset) ([]v1.Pod, error) {
+func ListIMPods(namespace string, kubeClient *clientset.Clientset) ([]corev1.Pod, error) {
 	imPodsList, err := kubeClient.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("%s=%s", types.GetLonghornLabelComponentKey(), types.LonghornLabelInstanceManager),
 	})
@@ -110,7 +112,7 @@ func ListIMPods(namespace string, kubeClient *clientset.Clientset) ([]v1.Pod, er
 	return imPodsList.Items, nil
 }
 
-func ListManagerPods(namespace string, kubeClient *clientset.Clientset) ([]v1.Pod, error) {
+func ListManagerPods(namespace string, kubeClient *clientset.Clientset) ([]corev1.Pod, error) {
 	managerPodsList, err := kubeClient.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: labels.Set(types.GetManagerLabels()).String(),
 	})
