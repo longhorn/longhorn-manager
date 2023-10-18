@@ -9,13 +9,15 @@ import (
 	"github.com/rancher/wrangler/pkg/clients"
 	"github.com/rancher/wrangler/pkg/schemes"
 
-	v1 "k8s.io/api/apps/v1"
-	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/client-go/informers"
-	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
+	corev1 "k8s.io/api/apps/v1"
+	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	clientset "k8s.io/client-go/kubernetes"
+
 	"github.com/longhorn/longhorn-manager/datastore"
+
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
 )
@@ -26,7 +28,7 @@ type Client struct {
 }
 
 func NewClient(ctx context.Context, config *rest.Config, namespace string, needDataStore bool) (*Client, error) {
-	if err := schemes.Register(v1.AddToScheme); err != nil {
+	if err := schemes.Register(corev1.AddToScheme); err != nil {
 		return nil, err
 	}
 
