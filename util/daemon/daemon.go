@@ -1,10 +1,11 @@
 package daemon
 
 import (
-	"github.com/sirupsen/logrus"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/sirupsen/logrus"
 )
 
 func WaitForExit() error {
