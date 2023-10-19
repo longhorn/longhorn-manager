@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"path"
+	"runtime"
 
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
@@ -20,7 +22,15 @@ func onUsageError(c *cli.Context, err error, isSubcommand bool) error {
 }
 
 func main() {
-	logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
+	logrus.SetReportCaller(true)
+	logrus.SetFormatter(&logrus.TextFormatter{
+		CallerPrettyfier: func(f *runtime.Frame) (function string, file string) {
+			fileName := fmt.Sprintf("%s:%d", path.Base(f.File), f.Line)
+			funcName := path.Base(f.Function)
+			return funcName, fileName
+		},
+		FullTimestamp: true,
+	})
 
 	a := cli.NewApp()
 	a.Usage = "Longhorn Manager"
