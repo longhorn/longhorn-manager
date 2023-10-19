@@ -3,6 +3,7 @@ package backingimage
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -69,6 +70,16 @@ func (b *backingImageMutator) Create(request *admission.Request, newObj runtime.
 		// By default the exported file type is raw.
 		if parameters[manager.DataSourceTypeExportFromVolumeParameterExportType] == "" {
 			parameters[manager.DataSourceTypeExportFromVolumeParameterExportType] = manager.DataSourceTypeExportFromVolumeParameterExportTypeRAW
+		}
+	}
+
+	if longhorn.BackingImageDataSourceType(backingImage.Spec.SourceType) == longhorn.BackingImageDataSourceTypeRestore {
+		if parameters[longhorn.DataSourceTypeRestoreParameterConcurrentLimit] == "" {
+			concurrentLimit, err := b.ds.GetSettingAsInt(types.SettingNameBackupConcurrentLimit)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to get %v value", types.SettingNameBackupConcurrentLimit)
+			}
+			parameters[longhorn.DataSourceTypeRestoreParameterConcurrentLimit] = strconv.FormatInt(concurrentLimit, 10)
 		}
 	}
 

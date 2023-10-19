@@ -347,6 +347,10 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 			return errors.Wrap(err, "failed to clean up SystemBackups")
 		}
 
+		if err := btc.cleanupBackupBackingImages(); err != nil {
+			return errors.Wrap(err, "failed to clean up BackupBackingImages")
+		}
+
 		return nil
 	}
 
@@ -639,6 +643,26 @@ func (btc *BackupTargetController) cleanupSystemBackups() error {
 	var errs []string
 	for systemBackup := range systemBackups {
 		if err = btc.ds.DeleteSystemBackup(systemBackup); err != nil && !apierrors.IsNotFound(err) {
+			errs = append(errs, err.Error())
+			continue
+		}
+	}
+	if len(errs) > 0 {
+		return errors.New(strings.Join(errs, ","))
+	}
+	return nil
+}
+
+// cleanupSystemBackups deletes all BackupBackingImage CRs
+func (btc *BackupTargetController) cleanupBackupBackingImages() error {
+	clusterBackupBackingImages, err := btc.ds.ListBackupBackingImages()
+	if err != nil {
+		return err
+	}
+
+	var errs []string
+	for backupBackingImageName := range clusterBackupBackingImages {
+		if err = btc.ds.DeleteBackupBackingImage(backupBackingImageName); err != nil && !apierrors.IsNotFound(err) {
 			errs = append(errs, err.Error())
 			continue
 		}
