@@ -1851,13 +1851,20 @@ func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *
 func (c *VolumeController) verifyVolumeDependentResourcesClosed(e *longhorn.Engine, rs map[string]*longhorn.Replica) bool {
 	allReplicasStopped := func() bool {
 		for _, r := range rs {
+			if r.Spec.DesireState != longhorn.InstanceStateStopped {
+				return false
+			}
 			if r.Status.CurrentState != longhorn.InstanceStateStopped {
 				return false
 			}
 		}
 		return true
 	}
-	return e.Status.CurrentState == longhorn.InstanceStateStopped && allReplicasStopped()
+
+	engineStopped := func() bool {
+		return e.Spec.DesireState == longhorn.InstanceStateStopped && e.Status.CurrentState == longhorn.InstanceStateStopped
+	}
+	return engineStopped() && allReplicasStopped()
 }
 
 func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
