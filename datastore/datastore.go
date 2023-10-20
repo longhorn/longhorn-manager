@@ -11,6 +11,7 @@ import (
 	appslisters "k8s.io/client-go/listers/apps/v1"
 	batchlisters_v1 "k8s.io/client-go/listers/batch/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
+	networkinglisters "k8s.io/client-go/listers/networking/v1"
 	policylisters "k8s.io/client-go/listers/policy/v1"
 	schedulinglisters "k8s.io/client-go/listers/scheduling/v1"
 	storagelisters_v1 "k8s.io/client-go/listers/storage/v1"
@@ -118,6 +119,8 @@ type DataStore struct {
 	PodDisruptionBudgetInformer   cache.SharedInformer
 	serviceLister                 corelisters.ServiceLister
 	ServiceInformer               cache.SharedInformer
+	ingressLister                 networkinglisters.IngressLister
+	IngressInformer               cache.SharedInformer
 
 	extensionsClient apiextensionsclientset.Interface
 }
@@ -205,6 +208,8 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, daemonSetInformer.Informer().HasSynced)
 	deploymentInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Apps().V1().Deployments()
 	cacheSyncs = append(cacheSyncs, deploymentInformer.Informer().HasSynced)
+	ingressInformer := kubeInformerFactory.Networking().V1().Ingresses()
+	cacheSyncs = append(cacheSyncs, ingressInformer.Informer().HasSynced)
 
 	return &DataStore{
 		namespace: namespace,
@@ -289,6 +294,12 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 		DaemonSetInformer:           daemonSetInformer.Informer(),
 		deploymentLister:            deploymentInformer.Lister(),
 		DeploymentInformer:          deploymentInformer.Informer(),
+		podDisruptionBudgetLister:   podDisruptionBudgetInformer.Lister(),
+		PodDisruptionBudgetInformer: podDisruptionBudgetInformer.Informer(),
+		serviceLister:               serviceInformer.Lister(),
+		ServiceInformer:             serviceInformer.Informer(),
+		ingressLister:               ingressInformer.Lister(),
+		IngressInformer:             ingressInformer.Informer(),
 
 		extensionsClient: extensionsClient,
 	}

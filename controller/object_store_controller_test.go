@@ -12,6 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -47,6 +48,7 @@ type fixture struct {
 	pvcLister            []*corev1.PersistentVolumeClaim
 	secretLister         []*corev1.Secret
 	serviceLister        []*corev1.Service
+	ingressLister        []*networkingv1.Ingress
 	deploymentLister     []*appsv1.Deployment
 	kubeActions          []k8score.Action
 	lhActions            []k8score.Action
@@ -135,6 +137,16 @@ func osTestNewService() *corev1.Service {
 			Namespace: TestNamespace,
 		},
 		Spec: corev1.ServiceSpec{},
+	}
+}
+
+func osTestNewIngress() *networkingv1.Ingress {
+	return &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      TestObjectStoreName,
+			Namespace: TestNamespace,
+		},
+		Spec: networkingv1.IngressSpec{},
 	}
 }
 
@@ -253,6 +265,20 @@ func (f *fixture) newObjectStoreController(ctx *context.Context) (*ObjectStoreCo
 			Informer().
 			GetIndexer().
 			Add(s)
+	}
+
+	for _, i := range f.ingressLister {
+		f.kubeClient.
+			NetworkingV1().
+			Ingresses(TestNamespace).
+			Create(context.TODO(), i, metav1.CreateOptions{})
+		kubeInformerFactory.
+			Networking().
+			V1().
+			Ingresses().
+			Informer().
+			GetIndexer().
+			Add(i)
 	}
 
 	for _, d := range f.deploymentLister {
@@ -435,6 +461,7 @@ func TestSyncRunningObjectStore(t *testing.T) {
 	pvc := osTestNewPersistentVolumeClaim()
 	vol := osTestNewLonghornVolume()
 	service := osTestNewService()
+	ingress := osTestNewIngress()
 	deployment := osTestNewDeployment()
 
 	f.lhObjects = append(f.lhObjects, store)
@@ -442,12 +469,14 @@ func TestSyncRunningObjectStore(t *testing.T) {
 	f.lhObjects = append(f.lhObjects, vol)
 	f.kubeObjects = append(f.kubeObjects, secret)
 	f.kubeObjects = append(f.kubeObjects, service)
+	f.kubeObjects = append(f.kubeObjects, ingress)
 	f.kubeObjects = append(f.kubeObjects, deployment)
 	f.objectStoreLister = append(f.objectStoreLister, store)
 	f.pvcLister = append(f.pvcLister, pvc)
 	f.longhornVolumeLister = append(f.longhornVolumeLister, vol)
 	f.secretLister = append(f.secretLister, secret)
 	f.serviceLister = append(f.serviceLister, service)
+	f.ingressLister = append(f.ingressLister, ingress)
 	f.deploymentLister = append(f.deploymentLister, deployment)
 
 	f.runExpectSuccess(&ctx, getMetaKey(TestNamespace, TestObjectStoreName))

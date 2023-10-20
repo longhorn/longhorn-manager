@@ -8,6 +8,7 @@ import (
 	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -29,6 +30,7 @@ var (
 	ErrObjectStorePVNotReady         = errors.New("PV not ready")
 	ErrObjectStoreDeploymentNotReady = errors.New("Deployment not ready")
 	ErrObjectStoreServiceNotReady    = errors.New("Service not ready")
+	ErrObjectStoreIngressNotReady    = errors.New("Ingress not ready")
 )
 
 type ObjectStoreController struct {
@@ -187,6 +189,10 @@ func (osc *ObjectStoreController) syncObjectStore(key string) error {
 // |   │     └───────────────────────┘
 // |   │
 // |   │     ┌───────────────────────┐
+// |   ├────►│ Ingress               │
+// |   │     └───────────────────────┘
+// |   │
+// |   │     ┌───────────────────────┐
 // |   ├────►│ Deployment            ├──────┐
 // |   │     └───────────────────────┘      │owns
 // |   │                                    ▼
@@ -234,6 +240,11 @@ func (osc *ObjectStoreController) handleStarting(store *longhorn.ObjectStore) (e
 		return errors.Wrap(err, "API error while creating service")
 	}
 
+	ingress, store, err := osc.getOrCreateIngress(store)
+	if err != nil {
+		return errors.Wrap(err, "API error while creating ingress")
+	}
+
 	if err := osc.checkPVC(pvc); errors.Is(err, ErrObjectStorePVCNotReady) {
 		return nil
 	}
@@ -251,6 +262,10 @@ func (osc *ObjectStoreController) handleStarting(store *longhorn.ObjectStore) (e
 	}
 
 	if err := osc.checkService(svc); errors.Is(err, ErrObjectStoreServiceNotReady) {
+		return nil
+	}
+
+	if err := osc.checkIngress(ingress); errors.Is(err, ErrObjectStoreIngressNotReady) {
 		return nil
 	}
 
@@ -280,6 +295,12 @@ func (osc *ObjectStoreController) handleRunning(store *longhorn.ObjectStore) (er
 	}
 
 	_, err = osc.ds.GetService(osc.namespace, store.Name)
+	if err != nil {
+		osc.setObjectStoreState(store, longhorn.ObjectStoreStateError)
+		return err
+	}
+
+	_, err = osc.ds.GetIngress(osc.namespace, store.Name)
 	if err != nil {
 		osc.setObjectStoreState(store, longhorn.ObjectStoreStateError)
 		return err
@@ -484,6 +505,27 @@ func (osc *ObjectStoreController) checkService(svc *corev1.Service) error {
 	return nil
 }
 
+func (osc *ObjectStoreController) getOrCreateIngress(store *longhorn.ObjectStore) (*networkingv1.Ingress, *longhorn.ObjectStore, error) {
+	ingress, err := osc.ds.GetIngress(osc.namespace, store.Name)
+	if err == nil {
+		return ingress, store, nil
+	} else if datastore.ErrorIsNotFound(err) {
+		ingress, err = osc.createIngress(store)
+		if err != nil {
+			store, _ = osc.setObjectStoreState(store, longhorn.ObjectStoreStateError)
+			return nil, store, errors.Wrap(err, "failed to create ingress")
+		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
+			store, _ = osc.setObjectStoreState(store, longhorn.ObjectStoreStateStarting)
+		}
+		return ingress, store, nil
+	}
+	return nil, store, err
+}
+
+func (osc *ObjectStoreController) checkIngress(ingress *networkingv1.Ingress) error {
+	return nil
+}
+
 func (osc *ObjectStoreController) createVolume(
 	store *longhorn.ObjectStore,
 	pvc *corev1.PersistentVolumeClaim,
@@ -630,6 +672,43 @@ func (osc *ObjectStoreController) createService(store *longhorn.ObjectStore) (*c
 	return osc.ds.CreateService(osc.namespace, &svc)
 }
 
+func (osc *ObjectStoreController) createIngress(store *longhorn.ObjectStore) (*networkingv1.Ingress, error) {
+	ingress := networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            store.Name,
+			Namespace:       osc.namespace,
+			Labels:          types.GetObjectStoreLabels(store),
+			OwnerReferences: osc.ds.GetOwnerReferencesForObjectStore(store),
+		},
+		Spec: networkingv1.IngressSpec{
+			Rules: []networkingv1.IngressRule{
+				{
+					IngressRuleValue: networkingv1.IngressRuleValue{
+						HTTP: &networkingv1.HTTPIngressRuleValue{
+							Paths: []networkingv1.HTTPIngressPath{
+								{
+									Path:     fmt.Sprintf("/%v", store.Name),
+									PathType: func() *networkingv1.PathType { r := networkingv1.PathType(networkingv1.PathTypePrefix); return &r }(),
+									Backend: networkingv1.IngressBackend{
+										Service: &networkingv1.IngressServiceBackend{
+											Name: store.Name,
+											Port: networkingv1.ServiceBackendPort{
+												Name: "ui",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	return osc.ds.CreateIngress(osc.namespace, &ingress)
+}
+
 func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) (*appsv1.Deployment, error) {
 	registrySecretSetting, err := osc.ds.GetSetting(types.SettingNameRegistrySecret)
 	if err != nil {
@@ -723,6 +802,10 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 									Name: "S3GW_SERVICE_URL",
 									Value: fmt.Sprintf("http://%v/",
 										(*osc.getLocalEndpointURL(store)).DomainName),
+								},
+								{
+									Name:  "S3GW_UI_LOCATION",
+									Value: fmt.Sprintf("/%v", store.Name),
 								},
 							},
 						},

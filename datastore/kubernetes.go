@@ -19,6 +19,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -1100,4 +1101,12 @@ func (s *DataStore) GetOwnerReferencesForPVC(pvc *corev1.PersistentVolumeClaim) 
 			UID:        pvc.UID,
 		},
 	}
+}
+
+func (s *DataStore) CreateIngress(namespace string, ingress *networkingv1.Ingress) (*networkingv1.Ingress, error) {
+	return s.kubeClient.NetworkingV1().Ingresses(namespace).Create(context.TODO(), ingress, metav1.CreateOptions{})
+}
+
+func (s *DataStore) GetIngress(namespace, name string) (*networkingv1.Ingress, error) {
+	return s.kubeClient.NetworkingV1().Ingresses(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 }
