@@ -139,7 +139,7 @@ func (m *NodeMonitor) run(value interface{}) error {
 }
 
 func (m *NodeMonitor) newDiskServiceClient(node *longhorn.Node) (*engineapi.DiskService, error) {
-	im, err := m.ds.GetDefaultInstanceManagerByNode(m.nodeName)
+	im, err := m.ds.GetDefaultInstanceManagerByNodeRO(m.nodeName)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get default instance manager for node %v", m.nodeName)
 	}
