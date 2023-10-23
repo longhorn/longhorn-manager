@@ -212,7 +212,7 @@ func (rc *ReplicaController) isEvictionRequested(replica *longhorn.Replica) bool
 		return false
 	}
 
-	node, err := rc.ds.GetNode(replica.Spec.NodeID)
+	node, err := rc.ds.GetNodeRO(replica.Spec.NodeID)
 	if err != nil {
 		log.WithError(err).Warn("Failed to get node information")
 		return false

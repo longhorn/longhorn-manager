@@ -2059,7 +2059,7 @@ func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineIm
 		return isResponsible, nil
 	}
 
-	readyNodesWithEI, err := ec.ds.ListReadyNodesWithEngineImage(e.Status.CurrentImage)
+	readyNodesWithEI, err := ec.ds.ListReadyNodesContainingEngineImageRO(e.Status.CurrentImage)
 	if err != nil {
 		return false, err
 	}
