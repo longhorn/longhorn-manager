@@ -12,7 +12,7 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/rest"
 
-	corev1 "k8s.io/api/apps/v1"
+	appsv1 "k8s.io/api/apps/v1"
 	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	clientset "k8s.io/client-go/kubernetes"
 
@@ -28,7 +28,7 @@ type Client struct {
 }
 
 func NewClient(ctx context.Context, config *rest.Config, namespace string, needDataStore bool) (*Client, error) {
-	if err := schemes.Register(corev1.AddToScheme); err != nil {
+	if err := schemes.Register(appsv1.AddToScheme); err != nil {
 		return nil, err
 	}
 
