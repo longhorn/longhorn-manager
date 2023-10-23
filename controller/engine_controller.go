@@ -1555,7 +1555,7 @@ func preCloneCheck(engine *longhorn.Engine) (needClone bool, err error) {
 func cloneSnapshot(engine *longhorn.Engine, engineClientProxy engineapi.EngineClientProxy, ds *datastore.DataStore) error {
 	sourceVolumeName := types.GetVolumeName(engine.Spec.RequestedDataSource)
 	snapshotName := types.GetSnapshotName(engine.Spec.RequestedDataSource)
-	sourceEngines, err := ds.ListVolumeEngines(sourceVolumeName)
+	sourceEngines, err := ds.ListVolumeEnginesRO(sourceVolumeName)
 	if err != nil {
 		return err
 	}
@@ -2007,7 +2007,7 @@ func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logru
 		return err
 	}
 
-	v, err := ec.ds.GetVolume(e.Spec.VolumeName)
+	v, err := ec.ds.GetVolumeRO(e.Spec.VolumeName)
 	if err != nil {
 		return err
 	}

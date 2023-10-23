@@ -380,12 +380,12 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 		}
 
 		// now volumeattachment, snapshots, replicas, and engines have been marked for deletion
-		if engines, err := c.ds.ListVolumeEngines(volume.Name); err != nil {
+		if engines, err := c.ds.ListVolumeEnginesRO(volume.Name); err != nil {
 			return err
 		} else if len(engines) > 0 {
 			return nil
 		}
-		if replicas, err := c.ds.ListVolumeReplicas(volume.Name); err != nil {
+		if replicas, err := c.ds.ListVolumeReplicasRO(volume.Name); err != nil {
 			return err
 		} else if len(replicas) > 0 {
 			return nil
@@ -540,7 +540,7 @@ func (c *VolumeController) EvictReplicas(v *longhorn.Volume,
 
 func (c *VolumeController) handleVolumeAttachmentCreation(v *longhorn.Volume) error {
 	vaName := types.GetLHVolumeAttachmentNameFromVolumeName(v.Name)
-	_, err := c.ds.GetLHVolumeAttachment(vaName)
+	_, err := c.ds.GetLHVolumeAttachmentRO(vaName)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return err
@@ -2921,7 +2921,7 @@ func (c *VolumeController) checkAndInitVolumeOfflineReplicaRebuilding(v *longhor
 
 	healthyReplicaCount := 0
 
-	replicas, err := c.ds.ListVolumeReplicas(v.Name)
+	replicas, err := c.ds.ListVolumeReplicasRO(v.Name)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get replicas for volume %v offline replica rebuilding", v.Name)
 	}
@@ -3196,7 +3196,7 @@ func (c *VolumeController) checkForAutoAttachment(v *longhorn.Volume, e *longhor
 
 // isSourceVolumeOfCloning checks if the input volume is the source volume of an on-going cloning process
 func (c *VolumeController) isSourceVolumeOfCloning(v *longhorn.Volume) (bool, error) {
-	vols, err := c.ds.ListVolumes()
+	vols, err := c.ds.ListVolumesRO()
 	if err != nil {
 		return false, err
 	}
@@ -3484,7 +3484,7 @@ func (c *VolumeController) ResolveRefAndEnqueue(namespace string, ref *metav1.Ow
 			return
 		}
 	}
-	volume, err := c.ds.GetVolume(ref.Name)
+	volume, err := c.ds.GetVolumeRO(ref.Name)
 	if err != nil {
 		return
 	}
@@ -4285,7 +4285,7 @@ func (c *VolumeController) enqueueVolumesForBackupVolume(obj interface{}) {
 
 	// Update last backup for the volume name matches backup volume name
 	var matchedVolumeName string
-	_, err := c.ds.GetVolume(bv.Name)
+	_, err := c.ds.GetVolumeRO(bv.Name)
 	if err == nil {
 		matchedVolumeName = bv.Name
 		key := bv.Namespace + "/" + bv.Name
@@ -4293,7 +4293,7 @@ func (c *VolumeController) enqueueVolumesForBackupVolume(obj interface{}) {
 	}
 
 	// Update last backup for DR volumes
-	volumes, err := c.ds.ListDRVolumesROWithBackupVolumeName(bv.Name)
+	volumes, err := c.ds.ListDRVolumesWithBackupVolumeNameRO(bv.Name)
 	if err != nil {
 		return
 	}
