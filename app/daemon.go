@@ -25,6 +25,7 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/upgrade"
 	"github.com/longhorn/longhorn-manager/util"
+	"github.com/longhorn/longhorn-manager/util/client"
 
 	metricscollector "github.com/longhorn/longhorn-manager/metrics_collector"
 )
@@ -138,14 +139,19 @@ func startManager(c *cli.Context) error {
 
 	logger := logrus.StandardLogger().WithField("node", currentNodeID)
 
+	clients, err := client.NewClients(kubeconfigPath, ctx.Done())
+	if err != nil {
+		return err
+	}
+
 	webhookTypes := []string{types.WebhookTypeConversion, types.WebhookTypeAdmission}
 	for _, webhookType := range webhookTypes {
-		if err := startWebhook(ctx, serviceAccount, kubeconfigPath, webhookType); err != nil {
+		if err := startWebhook(ctx, webhookType, clients); err != nil {
 			return err
 		}
 	}
 
-	if err := startRecoveryBackend(ctx, serviceAccount, kubeconfigPath); err != nil {
+	if err := startRecoveryBackend(clients); err != nil {
 		return err
 	}
 
@@ -155,16 +161,16 @@ func startManager(c *cli.Context) error {
 
 	proxyConnCounter := util.NewAtomicCounter()
 
-	ds, wsc, err := controller.StartControllers(logger, ctx.Done(),
+	wsc, err := controller.StartControllers(logger, clients,
 		currentNodeID, serviceAccount, managerImage, backingImageManagerImage, shareManagerImage,
 		kubeconfigPath, meta.Version, proxyConnCounter)
 	if err != nil {
 		return err
 	}
 
-	m := manager.NewVolumeManager(currentNodeID, ds, proxyConnCounter)
+	m := manager.NewVolumeManager(currentNodeID, clients.Datastore, proxyConnCounter)
 
-	metricscollector.InitMetricsCollectorSystem(logger, currentNodeID, ds, kubeconfigPath, proxyConnCounter)
+	metricscollector.InitMetricsCollectorSystem(logger, currentNodeID, clients.Datastore, kubeconfigPath, proxyConnCounter)
 
 	defaultImageSettings := map[types.SettingName]string{
 		types.SettingNameDefaultEngineImage:              engineImage,
@@ -172,7 +178,7 @@ func startManager(c *cli.Context) error {
 		types.SettingNameDefaultBackingImageManagerImage: backingImageManagerImage,
 		types.SettingNameSupportBundleManagerImage:       supportBundleManagerImage,
 	}
-	if err := ds.UpdateCustomizedSettings(defaultImageSettings); err != nil {
+	if err := clients.Datastore.UpdateCustomizedSettings(defaultImageSettings); err != nil {
 		return err
 	}
 
@@ -180,7 +186,7 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
-	if err := initDaemonNode(ds); err != nil {
+	if err := initDaemonNode(clients.Datastore); err != nil {
 		return err
 	}
 

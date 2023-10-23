@@ -5,9 +5,9 @@ import (
 
 	"github.com/rancher/wrangler/pkg/webhook"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
-	"github.com/longhorn/longhorn-manager/util/client"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	"github.com/longhorn/longhorn-manager/webhook/resources/backingimage"
 	"github.com/longhorn/longhorn-manager/webhook/resources/engine"
@@ -24,7 +24,7 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/resources/volumeattachment"
 )
 
-func Validation(client *client.Client) (http.Handler, []admission.Resource, error) {
+func Validation(ds *datastore.DataStore) (http.Handler, []admission.Resource, error) {
 	currentNodeID, err := util.GetRequiredEnv(types.EnvNodeName)
 	if err != nil {
 		return nil, nil, err
@@ -32,19 +32,19 @@ func Validation(client *client.Client) (http.Handler, []admission.Resource, erro
 
 	resources := []admission.Resource{}
 	validators := []admission.Validator{
-		node.NewValidator(client.Datastore),
-		setting.NewValidator(client.Datastore),
-		recurringjob.NewValidator(client.Datastore),
-		backingimage.NewValidator(client.Datastore),
-		volume.NewValidator(client.Datastore, currentNodeID),
-		orphan.NewValidator(client.Datastore),
-		snapshot.NewValidator(client.Datastore),
-		supportbundle.NewValidator(client.Datastore),
-		systembackup.NewValidator(client.Datastore),
-		systemrestore.NewValidator(client.Datastore),
-		volumeattachment.NewValidator(client.Datastore),
-		engine.NewValidator(client.Datastore),
-		replica.NewValidator(client.Datastore),
+		node.NewValidator(ds),
+		setting.NewValidator(ds),
+		recurringjob.NewValidator(ds),
+		backingimage.NewValidator(ds),
+		volume.NewValidator(ds, currentNodeID),
+		orphan.NewValidator(ds),
+		snapshot.NewValidator(ds),
+		supportbundle.NewValidator(ds),
+		systembackup.NewValidator(ds),
+		systemrestore.NewValidator(ds),
+		volumeattachment.NewValidator(ds),
+		engine.NewValidator(ds),
+		replica.NewValidator(ds),
 	}
 
 	router := webhook.NewRouter()
