@@ -1674,7 +1674,7 @@ func (s *DataStore) CreateBackingImage(backingImage *longhorn.BackingImage) (*lo
 	}
 
 	obj, err := verifyCreation(ret.Name, "backing image", func(name string) (runtime.Object, error) {
-		return s.getBackingImageRO(name)
+		return s.GetBackingImageRO(name)
 	})
 	if err != nil {
 		return nil, err
@@ -1694,7 +1694,7 @@ func (s *DataStore) UpdateBackingImage(backingImage *longhorn.BackingImage) (*lo
 		return nil, err
 	}
 	verifyUpdate(backingImage.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getBackingImageRO(name)
+		return s.GetBackingImageRO(name)
 	})
 	return obj, nil
 }
@@ -1707,7 +1707,7 @@ func (s *DataStore) UpdateBackingImageStatus(backingImage *longhorn.BackingImage
 		return nil, err
 	}
 	verifyUpdate(backingImage.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getBackingImageRO(name)
+		return s.GetBackingImageRO(name)
 	})
 	return obj, nil
 }
@@ -1739,14 +1739,14 @@ func (s *DataStore) RemoveFinalizerForBackingImage(obj *longhorn.BackingImage) e
 	return nil
 }
 
-func (s *DataStore) getBackingImageRO(name string) (*longhorn.BackingImage, error) {
+func (s *DataStore) GetBackingImageRO(name string) (*longhorn.BackingImage, error) {
 	return s.backingImageLister.BackingImages(s.namespace).Get(name)
 }
 
 // GetBackingImage returns a new BackingImage object for the given name and
 // namespace
 func (s *DataStore) GetBackingImage(name string) (*longhorn.BackingImage, error) {
-	resultRO, err := s.getBackingImageRO(name)
+	resultRO, err := s.GetBackingImageRO(name)
 	if err != nil {
 		return nil, err
 	}
@@ -1809,7 +1809,7 @@ func (s *DataStore) CreateBackingImageManager(backingImageManager *longhorn.Back
 	}
 
 	obj, err := verifyCreation(ret.Name, "backing image manager", func(name string) (runtime.Object, error) {
-		return s.getBackingImageManagerRO(name)
+		return s.GetBackingImageManagerRO(name)
 	})
 	if err != nil {
 		return nil, err
@@ -1843,7 +1843,7 @@ func (s *DataStore) UpdateBackingImageManager(backingImageManager *longhorn.Back
 		return nil, err
 	}
 	verifyUpdate(backingImageManager.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getBackingImageManagerRO(name)
+		return s.GetBackingImageManagerRO(name)
 	})
 	return obj, nil
 }
@@ -1856,7 +1856,7 @@ func (s *DataStore) UpdateBackingImageManagerStatus(backingImageManager *longhor
 		return nil, err
 	}
 	verifyUpdate(backingImageManager.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getBackingImageManagerRO(name)
+		return s.GetBackingImageManagerRO(name)
 	})
 	return obj, nil
 }
@@ -1887,14 +1887,14 @@ func (s *DataStore) RemoveFinalizerForBackingImageManager(obj *longhorn.BackingI
 	return nil
 }
 
-func (s *DataStore) getBackingImageManagerRO(name string) (*longhorn.BackingImageManager, error) {
+func (s *DataStore) GetBackingImageManagerRO(name string) (*longhorn.BackingImageManager, error) {
 	return s.backingImageManagerLister.BackingImageManagers(s.namespace).Get(name)
 }
 
 // GetBackingImageManager returns a new BackingImageManager object for the given name and
 // namespace
 func (s *DataStore) GetBackingImageManager(name string) (*longhorn.BackingImageManager, error) {
-	resultRO, err := s.getBackingImageManagerRO(name)
+	resultRO, err := s.GetBackingImageManagerRO(name)
 	if err != nil {
 		return nil, err
 	}
@@ -1902,10 +1902,14 @@ func (s *DataStore) GetBackingImageManager(name string) (*longhorn.BackingImageM
 	return resultRO.DeepCopy(), nil
 }
 
+func (s *DataStore) ListBackingImageManagersRO() ([]*longhorn.BackingImageManager, error) {
+	return s.listBackingImageManagersRO(labels.Everything())
+}
+
 func (s *DataStore) listBackingImageManagers(selector labels.Selector) (map[string]*longhorn.BackingImageManager, error) {
 	itemMap := map[string]*longhorn.BackingImageManager{}
 
-	list, err := s.backingImageManagerLister.BackingImageManagers(s.namespace).List(selector)
+	list, err := s.listBackingImageManagersRO(selector)
 	if err != nil {
 		return nil, err
 	}
@@ -1914,6 +1918,10 @@ func (s *DataStore) listBackingImageManagers(selector labels.Selector) (map[stri
 		itemMap[itemRO.Name] = itemRO.DeepCopy()
 	}
 	return itemMap, nil
+}
+
+func (s *DataStore) listBackingImageManagersRO(selector labels.Selector) ([]*longhorn.BackingImageManager, error) {
+	return s.backingImageManagerLister.BackingImageManagers(s.namespace).List(selector)
 }
 
 // ListBackingImageManagers returns object includes all BackingImageManager in namespace
@@ -1929,6 +1937,14 @@ func (s *DataStore) ListBackingImageManagersByNode(nodeName string) (map[string]
 		return nil, err
 	}
 	return s.listBackingImageManagers(nodeSelector)
+}
+
+func (s *DataStore) ListBackingImageManagersByNodeRO(nodeName string) ([]*longhorn.BackingImageManager, error) {
+	nodeSelector, err := getNodeSelector(nodeName)
+	if err != nil {
+		return nil, err
+	}
+	return s.listBackingImageManagersRO(nodeSelector)
 }
 
 // ListBackingImageManagersByDiskUUID gets a list of BackingImageManager

@@ -580,7 +580,7 @@ func (bc *BackupController) validateBackingImageChecksum(volName, biName string)
 		return "", nil
 	}
 
-	bi, err := bc.ds.GetBackingImage(biName)
+	bi, err := bc.ds.GetBackingImageRO(biName)
 	if err != nil {
 		return "", err
 	}
