@@ -410,7 +410,7 @@ func (c *ShareManagerController) createShareManagerAttachmentTicket(sm *longhorn
 	shareManagerAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeShareManagerController, sm.Name)
 	shareManagerAttachmentTicket, ok := va.Spec.AttachmentTickets[shareManagerAttachmentTicketID]
 	if !ok {
-		//create new one
+		// create new one
 		shareManagerAttachmentTicket = &longhorn.AttachmentTicket{
 			ID:     shareManagerAttachmentTicketID,
 			Type:   longhorn.AttacherTypeShareManagerController,
@@ -976,7 +976,7 @@ func (c *ShareManagerController) isResponsibleFor(sm *longhorn.ShareManager) (bo
 
 	isResponsible := isControllerResponsibleFor(c.controllerID, c.ds, sm.Name, preferredOwnerID, sm.Status.OwnerID)
 
-	readyAndSchedulableNodes, err := c.ds.ListReadyAndSchedulableNodes()
+	readyAndSchedulableNodes, err := c.ds.ListReadyAndSchedulableNodesRO()
 	if err != nil {
 		return false, err
 	}

@@ -50,7 +50,7 @@ func NodeHasDefaultEngineImage(m *manager.VolumeManager) func(req *http.Request)
 		if err != nil {
 			return "", err
 		}
-		nodes, err := m.ListReadyNodesWithEngineImage(engineImage)
+		nodes, err := m.ListReadyNodesContainingEngineImageRO(engineImage)
 		if err != nil {
 			return "", err
 		}

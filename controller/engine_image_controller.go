@@ -337,7 +337,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		}
 	}
 
-	readyNodes, err := ic.ds.ListReadyNodes()
+	readyNodes, err := ic.ds.ListReadyNodesRO()
 	if err != nil {
 		return err
 	}
@@ -369,8 +369,8 @@ func (ic *EngineImageController) syncNodeDeploymentMap(engineImage *longhorn.Eng
 	// initialize deployment map for all known nodes
 	nodeDeploymentMap, err := func() (map[string]bool, error) {
 		deployed := map[string]bool{}
-		nodesRO, err := ic.ds.ListNodesRO()
-		for _, node := range nodesRO {
+		nodes, err := ic.ds.ListNodesRO()
+		for _, node := range nodes {
 			deployed[node.Name] = false
 		}
 		return deployed, err
@@ -880,7 +880,7 @@ func (ic *EngineImageController) isResponsibleFor(ei *longhorn.EngineImage) (boo
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
-	readyNodesWithDefaultEI, err := ic.ds.ListReadyNodesWithEngineImage(ei.Spec.Image)
+	readyNodesWithDefaultEI, err := ic.ds.ListReadyNodesContainingEngineImageRO(ei.Spec.Image)
 	if err != nil {
 		return false, err
 	}
