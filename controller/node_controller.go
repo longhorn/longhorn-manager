@@ -566,13 +566,13 @@ func (nc *NodeController) enqueueNode(obj interface{}) {
 }
 
 func (nc *NodeController) enqueueSetting(obj interface{}) {
-	nodesRO, err := nc.ds.ListNodesRO()
+	nodes, err := nc.ds.ListNodesRO()
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("failed to list nodes: %v ", err))
 		return
 	}
 
-	for _, node := range nodesRO {
+	for _, node := range nodes {
 		nc.enqueueNode(node)
 	}
 }
@@ -594,7 +594,7 @@ func (nc *NodeController) enqueueReplica(obj interface{}) {
 		}
 	}
 
-	node, err := nc.ds.GetNode(replica.Spec.NodeID)
+	node, err := nc.ds.GetNodeRO(replica.Spec.NodeID)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			utilruntime.HandleError(fmt.Errorf("failed to get node %v for replica %v: %v ",
@@ -650,12 +650,12 @@ func (nc *NodeController) enqueueSnapshot(old, cur interface{}) {
 }
 
 func (nc *NodeController) enqueueManagerPod(obj interface{}) {
-	nodesRO, err := nc.ds.ListNodesRO()
+	nodes, err := nc.ds.ListNodesRO()
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("failed to list nodes: %v ", err))
 		return
 	}
-	for _, node := range nodesRO {
+	for _, node := range nodes {
 		nc.enqueueNode(node)
 	}
 }
