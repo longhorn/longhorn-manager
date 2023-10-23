@@ -269,7 +269,7 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 
 // getResponsibleNodeID returns which node need to run
 func getResponsibleNodeID(ds *datastore.DataStore) (string, error) {
-	readyNodes, err := ds.ListReadyNodes()
+	readyNodes, err := ds.ListReadyNodesRO()
 	if err != nil {
 		return "", err
 	}
@@ -1345,9 +1345,9 @@ func (info *ClusterInfo) collectNamespace() error {
 }
 
 func (info *ClusterInfo) collectNodeCount() error {
-	nodesRO, err := info.ds.ListNodesRO()
+	nodes, err := info.ds.ListNodesRO()
 	if err == nil {
-		info.structFields.fields.Append(ClusterInfoNodeCount, len(nodesRO))
+		info.structFields.fields.Append(ClusterInfoNodeCount, len(nodes))
 	}
 	return err
 }

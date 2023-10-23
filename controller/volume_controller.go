@@ -1296,7 +1296,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 				} else if isDownOrDeleted {
 					continue
 				}
-				node, err := c.ds.GetNode(r.Spec.NodeID)
+				node, err := c.ds.GetNodeRO(r.Spec.NodeID)
 				if err != nil {
 					log.WithField("replica", r.Name).WithError(err).Warnf("Failed to get node %v for failed replica", r.Spec.NodeID)
 				}
@@ -1403,7 +1403,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 }
 
 func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, isNewVolume bool, log *logrus.Entry) error {
-	//TODO: link the state machine graph here
+	// TODO: link the state machine graph here
 
 	if isNewVolume || v.Status.State == "" {
 		v.Status.State = longhorn.VolumeStateCreating
@@ -1942,15 +1942,19 @@ func (c *VolumeController) getPreferredReplicaCandidatesForDeletion(rs map[strin
 	nodeToReplicaMap := make(map[string][]string)
 	zoneToReplicaMap := make(map[string][]string)
 
-	nodeList, err := c.ds.ListNodes()
+	nodeList, err := c.ds.ListNodesRO()
 	if err != nil {
 		return nil, err
+	}
+	nodeMap := make(map[string]*longhorn.Node, len(nodeList))
+	for _, node := range nodeList {
+		nodeMap[node.Name] = node
 	}
 
 	for _, r := range rs {
 		diskToReplicaMap[r.Spec.NodeID+r.Spec.DiskID] = append(diskToReplicaMap[r.Spec.NodeID+r.Spec.DiskID], r.Name)
 		nodeToReplicaMap[r.Spec.NodeID] = append(nodeToReplicaMap[r.Spec.NodeID], r.Name)
-		if node, ok := nodeList[r.Spec.NodeID]; ok {
+		if node, ok := nodeMap[r.Spec.NodeID]; ok {
 			zoneToReplicaMap[node.Status.Zone] = append(zoneToReplicaMap[node.Status.Zone], r.Name)
 		}
 	}
@@ -2229,7 +2233,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceBestEffort(v *longhorn.V
 func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (int, map[string][]string, error) {
 	log := getLoggerForVolume(c.logger, v).WithField("replicaAutoBalanceType", "zone")
 
-	readyNodes, err := c.listReadySchedulableAndScheduledNodes(v, rs, log)
+	readyNodes, err := c.listReadySchedulableAndScheduledNodesRO(v, rs, log)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -2333,8 +2337,8 @@ func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume,
 	return adjustCount, zoneExtraRs, err
 }
 
-func (c *VolumeController) listReadySchedulableAndScheduledNodes(volume *longhorn.Volume, rs map[string]*longhorn.Replica, log logrus.FieldLogger) (map[string]*longhorn.Node, error) {
-	readyNodes, err := c.ds.ListReadyAndSchedulableNodes()
+func (c *VolumeController) listReadySchedulableAndScheduledNodesRO(volume *longhorn.Volume, rs map[string]*longhorn.Replica, log logrus.FieldLogger) (map[string]*longhorn.Node, error) {
+	readyNodes, err := c.ds.ListReadyAndSchedulableNodesRO()
 	if err != nil {
 		return nil, err
 	}
@@ -2387,7 +2391,7 @@ func (c *VolumeController) listReadySchedulableAndScheduledNodes(volume *longhor
 func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (int, map[string][]string, error) {
 	log := getLoggerForVolume(c.logger, v).WithField("replicaAutoBalanceType", "node")
 
-	readyNodes, err := c.listReadySchedulableAndScheduledNodes(v, rs, log)
+	readyNodes, err := c.listReadySchedulableAndScheduledNodesRO(v, rs, log)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -2542,7 +2546,7 @@ func (c *VolumeController) getIsSchedulableToDiskNodes(v *longhorn.Volume, nodeN
 
 	for _, nodeName := range nodeNames {
 		scheduleNode := false
-		node, err := c.ds.GetNode(nodeName)
+		node, err := c.ds.GetNodeRO(nodeName)
 		if err != nil {
 			continue
 		}
@@ -2601,7 +2605,7 @@ func (c *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volum
 		return candidateNames
 	}
 
-	readyNodes, err := c.ds.ListReadyAndSchedulableNodes()
+	readyNodes, err := c.ds.ListReadyAndSchedulableNodesRO()
 	if err != nil {
 		return candidateNames
 	}
@@ -4087,7 +4091,7 @@ func (c *VolumeController) IsReplicaUnavailable(r *longhorn.Replica) (bool, erro
 		return true, nil
 	}
 
-	node, err := c.ds.GetNode(r.Spec.NodeID)
+	node, err := c.ds.GetNodeRO(r.Spec.NodeID)
 	if err != nil {
 		return true, errors.Wrapf(err, "failed to get node %v for failed replica %v", r.Spec.NodeID, r.Name)
 	}
@@ -4112,7 +4116,7 @@ func (c *VolumeController) isResponsibleFor(v *longhorn.Volume, defaultEngineIma
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
-	readyNodesWithDefaultEI, err := c.ds.ListReadyNodesWithEngineImage(defaultEngineImage)
+	readyNodesWithDefaultEI, err := c.ds.ListReadyNodesContainingEngineImageRO(defaultEngineImage)
 	if err != nil {
 		return false, err
 	}
