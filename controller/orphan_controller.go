@@ -330,7 +330,7 @@ func (oc *OrphanController) DeleteSpdkReplicaInstance(diskName, diskUUID, replic
 		err = errors.Wrapf(err, "cannot delete SPDK replica instance %v", replicaInstanceName)
 	}()
 
-	im, err := oc.ds.GetDefaultInstanceManagerByNode(oc.controllerID)
+	im, err := oc.ds.GetDefaultInstanceManagerByNodeRO(oc.controllerID)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get instance manager for node %v for deleting SPDK replica instance  %v", oc.controllerID, replicaInstanceName)
 	}

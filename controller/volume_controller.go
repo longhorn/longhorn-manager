@@ -1923,7 +1923,7 @@ func (c *VolumeController) canInstanceManagerLaunchReplica(r *longhorn.Replica) 
 	if r.Status.InstanceManagerName != "" {
 		return true, nil
 	}
-	defaultIM, err := c.ds.GetInstanceManagerByInstance(r)
+	defaultIM, err := c.ds.GetInstanceManagerByInstanceRO(r)
 	if err != nil {
 		return false, errors.Wrapf(err, "failed to find instance manager for replica %v", r.Name)
 	}

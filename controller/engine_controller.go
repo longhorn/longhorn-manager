@@ -436,7 +436,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		frontend = longhorn.VolumeFrontendEmpty
 	}
 
-	im, err := ec.ds.GetInstanceManagerByInstance(obj)
+	im, err := ec.ds.GetInstanceManagerByInstanceRO(obj)
 	if err != nil {
 		return nil, err
 	}
@@ -661,12 +661,12 @@ func (ec *EngineController) GetInstance(obj interface{}) (*longhorn.InstanceProc
 		err error
 	)
 	if e.Status.InstanceManagerName == "" {
-		im, err = ec.ds.GetInstanceManagerByInstance(obj)
+		im, err = ec.ds.GetInstanceManagerByInstanceRO(obj)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		im, err = ec.ds.GetInstanceManager(e.Status.InstanceManagerName)
+		im, err = ec.ds.GetInstanceManagerRO(e.Status.InstanceManagerName)
 		if err != nil {
 			return nil, err
 		}
@@ -686,7 +686,7 @@ func (ec *EngineController) LogInstance(ctx context.Context, obj interface{}) (*
 		return nil, nil, fmt.Errorf("invalid object for engine instance log: %v", obj)
 	}
 
-	im, err := ec.ds.GetInstanceManager(e.Status.InstanceManagerName)
+	im, err := ec.ds.GetInstanceManagerRO(e.Status.InstanceManagerName)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1987,7 +1987,7 @@ func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logru
 		frontend = longhorn.VolumeFrontendEmpty
 	}
 
-	im, err := ec.ds.GetInstanceManager(e.Status.InstanceManagerName)
+	im, err := ec.ds.GetInstanceManagerRO(e.Status.InstanceManagerName)
 	if err != nil {
 		return err
 	}

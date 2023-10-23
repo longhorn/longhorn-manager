@@ -404,7 +404,7 @@ func (s *DataStore) ValidateV2DataEngine(v2DataEngineEnabled bool) error {
 	}
 	hugepageRequested := resource.MustParse(hugepageRequestedInMiB.Value + "Mi")
 
-	ims, err := s.ListInstanceManagers()
+	ims, err := s.ListInstanceManagersRO()
 	if err != nil {
 		return errors.Wrapf(err, "failed to list instance managers for %v setting update", types.SettingNameV2DataEngine)
 	}
@@ -453,12 +453,12 @@ func (s *DataStore) AreAllVolumesDetached() (bool, error) {
 	}
 
 	for node := range nodes {
-		engineInstanceManagers, err := s.ListInstanceManagersBySelector(node, "", longhorn.InstanceManagerTypeEngine)
+		engineInstanceManagers, err := s.ListInstanceManagersBySelectorRO(node, "", longhorn.InstanceManagerTypeEngine)
 		if err != nil && !ErrorIsNotFound(err) {
 			return false, err
 		}
 
-		aioInstanceManagers, err := s.ListInstanceManagersBySelector(node, "", longhorn.InstanceManagerTypeAllInOne)
+		aioInstanceManagers, err := s.ListInstanceManagersBySelectorRO(node, "", longhorn.InstanceManagerTypeAllInOne)
 		if err != nil && !ErrorIsNotFound(err) {
 			return false, err
 		}
@@ -2903,15 +2903,17 @@ func (s *DataStore) GetInstanceManager(name string) (*longhorn.InstanceManager, 
 	return resultRO.DeepCopy(), nil
 }
 
-// GetDefaultInstanceManagerByNode returns the given node's engine InstanceManager
+// GetDefaultInstanceManagerByNodeRO returns the given node's engine InstanceManager
 // that is using the default instance manager image.
-func (s *DataStore) GetDefaultInstanceManagerByNode(name string) (*longhorn.InstanceManager, error) {
+// The object is the direct reference to the internal cache object and should not be mutated.
+// Consider using this function when you can guarantee read only access and don't want the overhead of deep copy.
+func (s *DataStore) GetDefaultInstanceManagerByNodeRO(name string) (*longhorn.InstanceManager, error) {
 	defaultInstanceManagerImage, err := s.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
 	if err != nil {
 		return nil, err
 	}
 
-	instanceManagers, err := s.ListInstanceManagersBySelector(name, defaultInstanceManagerImage, longhorn.InstanceManagerTypeAllInOne)
+	instanceManagers, err := s.ListInstanceManagersBySelectorRO(name, defaultInstanceManagerImage, longhorn.InstanceManagerTypeAllInOne)
 	if err != nil {
 		return nil, err
 	}
@@ -2950,11 +2952,11 @@ func CheckInstanceManagerType(im *longhorn.InstanceManager) (longhorn.InstanceMa
 	return longhorn.InstanceManagerType(""), fmt.Errorf("unknown type %v for instance manager %v", imType, im.Name)
 }
 
-// ListInstanceManagersBySelector gets a list of InstanceManager by labels for
-// the given namespace. Returns an object contains all InstanceManager
-func (s *DataStore) ListInstanceManagersBySelector(node, instanceManagerImage string, managerType longhorn.InstanceManagerType) (map[string]*longhorn.InstanceManager, error) {
-	itemMap := map[string]*longhorn.InstanceManager{}
-
+// ListInstanceManagersBySelectorRO gets a list of InstanceManager by labels for
+// the given namespace,
+// the list contains direct references to the internal cache objects and should not be mutated.
+// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies.
+func (s *DataStore) ListInstanceManagersBySelectorRO(node, instanceManagerImage string, managerType longhorn.InstanceManagerType) (map[string]*longhorn.InstanceManager, error) {
 	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: types.GetInstanceManagerLabels(node, instanceManagerImage, managerType),
 	})
@@ -2962,20 +2964,30 @@ func (s *DataStore) ListInstanceManagersBySelector(node, instanceManagerImage st
 		return nil, err
 	}
 
-	listRO, err := s.instanceManagerLister.InstanceManagers(s.namespace).List(selector)
+	imList, err := s.instanceManagerLister.InstanceManagers(s.namespace).List(selector)
 	if err != nil {
 		return nil, err
 	}
-	for _, itemRO := range listRO {
-		// Cannot use cached object from lister
-		itemMap[itemRO.Name] = itemRO.DeepCopy()
+
+	imMap := make(map[string]*longhorn.InstanceManager, len(imList))
+	for _, imRO := range imList {
+		imMap[imRO.Name] = imRO
 	}
-	return itemMap, nil
+
+	return imMap, nil
 }
 
 // GetInstanceManagerByInstance returns an InstanceManager for a given object,
 // or an error if more than one InstanceManager is found.
 func (s *DataStore) GetInstanceManagerByInstance(obj interface{}) (*longhorn.InstanceManager, error) {
+	im, err := s.GetInstanceManagerByInstanceRO(obj)
+	if err != nil {
+		return nil, err
+	}
+	return im.DeepCopy(), nil
+}
+
+func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.InstanceManager, error) {
 	var (
 		name   string // name of the object
 		nodeID string
@@ -3002,7 +3014,7 @@ func (s *DataStore) GetInstanceManagerByInstance(obj interface{}) (*longhorn.Ins
 		return nil, err
 	}
 
-	imMap, err := s.ListInstanceManagersBySelector(nodeID, image, longhorn.InstanceManagerTypeAllInOne)
+	imMap, err := s.ListInstanceManagersBySelectorRO(nodeID, image, longhorn.InstanceManagerTypeAllInOne)
 	if err != nil {
 		return nil, err
 	}
@@ -3015,9 +3027,8 @@ func (s *DataStore) GetInstanceManagerByInstance(obj interface{}) (*longhorn.Ins
 	return nil, fmt.Errorf("cannot find the only available instance manager for instance %v, node %v, instance manager image %v, type %v", name, nodeID, image, longhorn.InstanceManagerTypeAllInOne)
 }
 
-// ListInstanceManagersByNode returns ListInstanceManagersBySelector
-func (s *DataStore) ListInstanceManagersByNode(node string, imType longhorn.InstanceManagerType) (map[string]*longhorn.InstanceManager, error) {
-	return s.ListInstanceManagersBySelector(node, "", imType)
+func (s *DataStore) ListInstanceManagersByNodeRO(node string, imType longhorn.InstanceManagerType) (map[string]*longhorn.InstanceManager, error) {
+	return s.ListInstanceManagersBySelectorRO(node, "", imType)
 }
 
 // ListInstanceManagers gets a list of InstanceManagers for the given namespace.
@@ -3035,6 +3046,19 @@ func (s *DataStore) ListInstanceManagers() (map[string]*longhorn.InstanceManager
 		itemMap[itemRO.Name] = itemRO.DeepCopy()
 	}
 	return itemMap, nil
+}
+
+func (s *DataStore) ListInstanceManagersRO() (map[string]*longhorn.InstanceManager, error) {
+	imList, err := s.instanceManagerLister.InstanceManagers(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	imMap := make(map[string]*longhorn.InstanceManager, len(imList))
+	for _, imRO := range imList {
+		imMap[imRO.Name] = imRO
+	}
+	return imMap, nil
 }
 
 // UpdateInstanceManager updates Longhorn InstanceManager resource and verifies update
@@ -3154,7 +3178,7 @@ func (s *DataStore) GetEngineImageCLIAPIVersion(imageName string) (int, error) {
 	if imageName == "" {
 		return -1, fmt.Errorf("cannot check the CLI API Version based on empty image name")
 	}
-	ei, err := s.GetEngineImage(types.GetEngineImageChecksumName(imageName))
+	ei, err := s.getEngineImageRO(types.GetEngineImageChecksumName(imageName))
 	if err != nil {
 		return -1, errors.Wrapf(err, "failed to get engine image object based on image name %v", imageName)
 	}
