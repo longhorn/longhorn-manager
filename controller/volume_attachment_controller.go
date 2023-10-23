@@ -368,7 +368,7 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationConfirmation(va *lon
 }
 
 func (vac *VolumeAttachmentController) checkMigratingEngineSyncSnapshots(va *longhorn.VolumeAttachment, vol *longhorn.Volume) (bool, error) {
-	engines, err := vac.ds.ListVolumeEngines(vol.Name)
+	engines, err := vac.ds.ListVolumeEnginesRO(vol.Name)
 	if err != nil {
 		return false, err
 	}
@@ -840,7 +840,7 @@ func isVolumeShareAvailable(vol *longhorn.Volume) bool {
 }
 
 func (vac *VolumeAttachmentController) isVolumeAvailableOnNode(volumeName, node string) bool {
-	es, _ := vac.ds.ListVolumeEngines(volumeName)
+	es, _ := vac.ds.ListVolumeEnginesRO(volumeName)
 	for _, e := range es {
 		if e.Spec.NodeID != node {
 			continue

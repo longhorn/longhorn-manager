@@ -411,7 +411,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 	}
 	defer c.Close()
 
-	v, err := rc.ds.GetVolume(r.Spec.VolumeName)
+	v, err := rc.ds.GetVolumeRO(r.Spec.VolumeName)
 	if err != nil {
 		return nil, err
 	}
@@ -813,7 +813,7 @@ func (rc *ReplicaController) enqueueNodeAddOrDelete(obj interface{}) {
 	for diskName := range node.Spec.Disks {
 		if diskStatus, existed := node.Status.DiskStatus[diskName]; existed {
 			for replicaName := range diskStatus.ScheduledReplica {
-				if replica, err := rc.ds.GetReplica(replicaName); err == nil {
+				if replica, err := rc.ds.GetReplicaRO(replicaName); err == nil {
 					rc.enqueueReplica(replica)
 				}
 			}
