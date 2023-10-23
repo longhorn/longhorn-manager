@@ -368,7 +368,7 @@ func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceMan
 		}
 	}()
 
-	pod, err := imc.ds.GetPod(im.Name)
+	pod, err := imc.ds.GetPodRO(imc.namespace, im.Name)
 	if err != nil {
 		return errors.Wrapf(err, "failed get pod for instance manager %v", im.Name)
 	}
@@ -639,7 +639,7 @@ func (imc *InstanceManagerController) syncInstanceManagerPDB(im *longhorn.Instan
 }
 
 func (imc *InstanceManagerController) cleanUpPDBForNonExistingIM() error {
-	ims, err := imc.ds.ListInstanceManagers()
+	ims, err := imc.ds.ListInstanceManagersRO()
 	if err != nil {
 		if !datastore.ErrorIsNotFound(err) {
 			return err
@@ -647,7 +647,7 @@ func (imc *InstanceManagerController) cleanUpPDBForNonExistingIM() error {
 		ims = make(map[string]*longhorn.InstanceManager)
 	}
 
-	imPDBs, err := imc.ds.ListPDBs()
+	imPDBs, err := imc.ds.ListPDBsRO()
 	if err != nil {
 		if !datastore.ErrorIsNotFound(err) {
 			return err
@@ -771,7 +771,7 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 				}
 
 				var rIM *longhorn.InstanceManager
-				rIM, err = imc.getRunningReplicaInstancManager(r)
+				rIM, err = imc.getRunningReplicaInstanceManagerRO(r)
 				if err != nil {
 					return false, err
 				}
@@ -807,14 +807,14 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 	return true, nil
 }
 
-func (imc *InstanceManagerController) getRunningReplicaInstancManager(r *longhorn.Replica) (im *longhorn.InstanceManager, err error) {
+func (imc *InstanceManagerController) getRunningReplicaInstanceManagerRO(r *longhorn.Replica) (im *longhorn.InstanceManager, err error) {
 	if r.Status.InstanceManagerName == "" {
-		im, err = imc.ds.GetInstanceManagerByInstance(r)
+		im, err = imc.ds.GetInstanceManagerByInstanceRO(r)
 		if err != nil && !types.ErrorIsNotFound(err) {
 			return nil, err
 		}
 	} else {
-		im, err = imc.ds.GetInstanceManager(r.Status.InstanceManagerName)
+		im, err = imc.ds.GetInstanceManagerRO(r.Status.InstanceManagerName)
 		if err != nil && !apierrors.IsNotFound(err) {
 			return nil, err
 		}
@@ -842,7 +842,7 @@ func (imc *InstanceManagerController) areAllVolumesDetachedFromNode(nodeName str
 }
 
 func (imc *InstanceManagerController) areAllInstanceRemovedFromNodeByType(nodeName string, imType longhorn.InstanceManagerType) (bool, error) {
-	ims, err := imc.ds.ListInstanceManagersByNode(nodeName, imType)
+	ims, err := imc.ds.ListInstanceManagersByNodeRO(nodeName, imType)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
 			return true, nil
@@ -925,7 +925,7 @@ func (imc *InstanceManagerController) enqueueInstanceManagerPod(obj interface{})
 		}
 	}
 
-	im, err := imc.ds.GetInstanceManager(pod.Name)
+	im, err := imc.ds.GetInstanceManagerRO(pod.Name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return
@@ -965,7 +965,7 @@ func (imc *InstanceManagerController) enqueueKubernetesNode(obj interface{}) {
 	}
 
 	for _, imType := range []longhorn.InstanceManagerType{longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerTypeReplica, longhorn.InstanceManagerTypeAllInOne} {
-		ims, err := imc.ds.ListInstanceManagersByNode(node.Name, imType)
+		ims, err := imc.ds.ListInstanceManagersByNodeRO(node.Name, imType)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				return
@@ -993,7 +993,7 @@ func (imc *InstanceManagerController) enqueueSettingChange(obj interface{}) {
 func (imc *InstanceManagerController) cleanupInstanceManager(imName string) error {
 	imc.stopMonitoring(imName)
 
-	pod, err := imc.ds.GetPod(imName)
+	pod, err := imc.ds.GetPodRO(imc.namespace, imName)
 	if err != nil {
 		return err
 	}

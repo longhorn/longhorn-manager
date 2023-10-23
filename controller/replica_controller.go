@@ -401,7 +401,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		}
 	}
 
-	im, err := rc.ds.GetInstanceManagerByInstance(obj)
+	im, err := rc.ds.GetInstanceManagerByInstanceRO(obj)
 	if err != nil {
 		return nil, err
 	}
@@ -708,12 +708,12 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstancePro
 		err error
 	)
 	if r.Status.InstanceManagerName == "" {
-		im, err = rc.ds.GetInstanceManagerByInstance(obj)
+		im, err = rc.ds.GetInstanceManagerByInstanceRO(obj)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		im, err = rc.ds.GetInstanceManager(r.Status.InstanceManagerName)
+		im, err = rc.ds.GetInstanceManagerRO(r.Status.InstanceManagerName)
 		if err != nil {
 			return nil, err
 		}
@@ -744,7 +744,7 @@ func (rc *ReplicaController) LogInstance(ctx context.Context, obj interface{}) (
 		return nil, nil, fmt.Errorf("invalid object for replica instance log: %v", obj)
 	}
 
-	im, err := rc.ds.GetInstanceManager(r.Status.InstanceManagerName)
+	im, err := rc.ds.GetInstanceManagerRO(r.Status.InstanceManagerName)
 	if err != nil {
 		return nil, nil, err
 	}

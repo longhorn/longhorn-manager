@@ -1128,7 +1128,7 @@ func (sc *SettingController) updateInstanceManagerCPURequest() error {
 	if err != nil {
 		return errors.Wrap(err, "failed to list instance manager pods for toleration update")
 	}
-	imMap, err := sc.ds.ListInstanceManagers()
+	imMap, err := sc.ds.ListInstanceManagersRO()
 	if err != nil {
 		return err
 	}

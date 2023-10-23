@@ -948,7 +948,7 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 
 	// Clean up all replica managers if there is no disk on the node
 	if len(node.Spec.Disks) == 0 {
-		rmMap, err := nc.ds.ListInstanceManagersByNode(node.Name, longhorn.InstanceManagerTypeReplica)
+		rmMap, err := nc.ds.ListInstanceManagersByNodeRO(node.Name, longhorn.InstanceManagerTypeReplica)
 		if err != nil {
 			return err
 		}
@@ -964,7 +964,7 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 
 	for _, imType := range imTypes {
 		defaultInstanceManagerCreated := false
-		imMap, err := nc.ds.ListInstanceManagersByNode(node.Name, imType)
+		imMap, err := nc.ds.ListInstanceManagersByNodeRO(node.Name, imType)
 		if err != nil {
 			return err
 		}
@@ -1370,7 +1370,7 @@ func (nc *NodeController) deleteDisk(node *longhorn.Node, diskType longhorn.Disk
 		return nil
 	}
 
-	im, err := nc.ds.GetDefaultInstanceManagerByNode(nc.controllerID)
+	im, err := nc.ds.GetDefaultInstanceManagerByNodeRO(nc.controllerID)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get default engine instance manager")
 	}
