@@ -197,7 +197,7 @@ func (bc *BackupController) isBackupNotBeingUsedForVolumeRestore(backupName, bac
 		if !v.Status.RestoreRequired {
 			continue
 		}
-		engines, err := bc.ds.ListVolumeEngines(v.Name)
+		engines, err := bc.ds.ListVolumeEnginesRO(v.Name)
 		if err != nil {
 			return false, errors.Wrapf(err, "failed to list engines for volume %v for checking restore status", v.Name)
 		}
@@ -479,7 +479,7 @@ func (bc *BackupController) handleAttachmentTicketCreation(backup *longhorn.Back
 		err = errors.Wrap(err, "handleAttachmentTicketCreation: failed to create/update attachment")
 	}()
 
-	vol, err := bc.ds.GetVolume(volumeName)
+	vol, err := bc.ds.GetVolumeRO(volumeName)
 	if err != nil {
 		return err
 	}
@@ -516,7 +516,7 @@ func (bc *BackupController) VerifyAttachment(backup *longhorn.Backup, volumeName
 		err = errors.Wrap(err, "VerifyAttachment: failed to verify attachment")
 	}()
 
-	vol, err := bc.ds.GetVolume(volumeName)
+	vol, err := bc.ds.GetVolumeRO(volumeName)
 	if err != nil {
 		return false, err
 	}
