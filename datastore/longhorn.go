@@ -862,9 +862,9 @@ func (s *DataStore) ListDRVolumesRO() (map[string]*longhorn.Volume, error) {
 	return itemMap, nil
 }
 
-// ListDRVolumesROWithBackupVolumeName returns a single object contains the DR volumes
+// ListDRVolumesWithBackupVolumeNameRO returns a single object contains the DR volumes
 // matches to the backup volume name
-func (s *DataStore) ListDRVolumesROWithBackupVolumeName(backupVolumeName string) (map[string]*longhorn.Volume, error) {
+func (s *DataStore) ListDRVolumesWithBackupVolumeNameRO(backupVolumeName string) (map[string]*longhorn.Volume, error) {
 	itemMap := make(map[string]*longhorn.Volume)
 
 	list, err := s.ListVolumesROWithBackupVolumeName(backupVolumeName)
@@ -1047,7 +1047,7 @@ func (s *DataStore) PickVolumeCurrentEngine(v *longhorn.Volume, es map[string]*l
 
 // GetVolumeCurrentEngine returns the Engine for a volume with the given namespace
 func (s *DataStore) GetVolumeCurrentEngine(volumeName string) (*longhorn.Engine, error) {
-	es, err := s.ListVolumeEngines(volumeName)
+	es, err := s.ListVolumeEnginesRO(volumeName)
 	if err != nil {
 		return nil, err
 	}
@@ -1055,7 +1055,11 @@ func (s *DataStore) GetVolumeCurrentEngine(volumeName string) (*longhorn.Engine,
 	if err != nil {
 		return nil, err
 	}
-	return s.PickVolumeCurrentEngine(v, es)
+	e, err := s.PickVolumeCurrentEngine(v, es)
+	if err != nil {
+		return nil, err
+	}
+	return e.DeepCopy(), nil
 }
 
 // CreateEngine creates a Longhorn Engine resource and verifies creation
@@ -1192,6 +1196,25 @@ func (s *DataStore) ListVolumeEngines(volumeName string) (map[string]*longhorn.E
 		return nil, err
 	}
 	return s.listEngines(selector)
+}
+
+func (s *DataStore) ListVolumeEnginesRO(volumeName string) (map[string]*longhorn.Engine, error) {
+	selector, err := getVolumeSelector(volumeName)
+	if err != nil {
+		return nil, err
+	}
+
+	engineList, err := s.engineLister.Engines(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	engineMap := make(map[string]*longhorn.Engine, len(engineList))
+	for _, e := range engineList {
+		engineMap[e.Name] = e
+	}
+
+	return engineMap, nil
 }
 
 func checkReplica(r *longhorn.Replica) error {
@@ -1358,6 +1381,25 @@ func (s *DataStore) ListVolumeReplicas(volumeName string) (map[string]*longhorn.
 		return nil, err
 	}
 	return s.listReplicas(selector)
+}
+
+func (s *DataStore) ListVolumeReplicasRO(volumeName string) (map[string]*longhorn.Replica, error) {
+	selector, err := getVolumeSelector(volumeName)
+	if err != nil {
+		return nil, err
+	}
+
+	rList, err := s.replicaLister.Replicas(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	rMap := make(map[string]*longhorn.Replica, len(rList))
+	for _, rRO := range rList {
+		rMap[rRO.Name] = rRO
+	}
+
+	return rMap, nil
 }
 
 // ReplicaAddressToReplicaName will directly return the address if the format
