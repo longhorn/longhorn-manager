@@ -141,7 +141,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	case longhorn.InstanceStateRunning:
 		status.CurrentState = longhorn.InstanceStateRunning
 
-		imPod, err := h.ds.GetPod(im.Name)
+		imPod, err := h.ds.GetPodRO(im.Namespace, im.Name)
 		if err != nil {
 			logrus.WithError(err).Errorf("Failed to get instance manager pod from %v", im.Name)
 			return
@@ -234,7 +234,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 	var im *longhorn.InstanceManager
 	if !isCLIAPIVersionOne {
 		if status.InstanceManagerName != "" {
-			im, err = h.ds.GetInstanceManager(status.InstanceManagerName)
+			im, err = h.ds.GetInstanceManagerRO(status.InstanceManagerName)
 			if err != nil {
 				if !datastore.ErrorIsNotFound(err) {
 					return err
@@ -249,7 +249,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 				return err
 			}
 			if !isNodeDownOrDeleted {
-				im, err = h.ds.GetInstanceManagerByInstance(obj)
+				im, err = h.ds.GetInstanceManagerByInstanceRO(obj)
 				if err != nil {
 					return errors.Wrapf(err, "failed to get instance manager for instance %v", instanceName)
 				}

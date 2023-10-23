@@ -213,20 +213,20 @@ func (s *DataStore) GetPDBRO(name string) (*policyv1.PodDisruptionBudget, error)
 	return s.podDisruptionBudgetLister.PodDisruptionBudgets(s.namespace).Get(name)
 }
 
-// ListPDBs gets a map of PDB in s.namespace
-func (s *DataStore) ListPDBs() (map[string]*policyv1.PodDisruptionBudget, error) {
-	itemMap := map[string]*policyv1.PodDisruptionBudget{}
-
-	list, err := s.podDisruptionBudgetLister.PodDisruptionBudgets(s.namespace).List(labels.Everything())
+// ListPDBsRO gets a map of PDB in s.namespace
+// This function returns direct reference to the internal cache objects and should not be mutated.
+// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
+func (s *DataStore) ListPDBsRO() (map[string]*policyv1.PodDisruptionBudget, error) {
+	pdbList, err := s.podDisruptionBudgetLister.PodDisruptionBudgets(s.namespace).List(labels.Everything())
 	if err != nil {
 		return nil, err
 	}
 
-	for _, itemRO := range list {
-		// Cannot use cached object from lister
-		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	pdbMap := make(map[string]*policyv1.PodDisruptionBudget, len(pdbList))
+	for _, pdbRO := range pdbList {
+		pdbMap[pdbRO.Name] = pdbRO
 	}
-	return itemMap, nil
+	return pdbMap, nil
 }
 
 // CreatePod creates a Pod resource for the given pod object and namespace
@@ -313,18 +313,20 @@ func (s *DataStore) ListPodsRO(namespace string) ([]*corev1.Pod, error) {
 
 // GetPod returns a mutable Pod object for the given name and namespace
 func (s *DataStore) GetPod(name string) (*corev1.Pod, error) {
-	resultRO, err := s.podLister.Pods(s.namespace).Get(name)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, nil
-		}
-		return nil, err
+	var pod *corev1.Pod
+	podRO, err := s.GetPodRO(s.namespace, name)
+	if podRO != nil {
+		pod = podRO.DeepCopy()
 	}
-	return resultRO.DeepCopy(), nil
+	return pod, err
 }
 
 func (s *DataStore) GetPodRO(namespace, name string) (*corev1.Pod, error) {
-	return s.podLister.Pods(namespace).Get(name)
+	pod, err := s.podLister.Pods(namespace).Get(name)
+	if err != nil && apierrors.IsNotFound(err) {
+		err = nil
+	}
+	return pod, err
 }
 
 // GetPodContainerLog dumps the log of a container in a Pod object for the given name and namespace.

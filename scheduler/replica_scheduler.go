@@ -605,7 +605,7 @@ func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *lon
 		return false
 	}
 
-	im, err := rcs.ds.GetInstanceManagerByInstance(r)
+	im, err := rcs.ds.GetInstanceManagerByInstanceRO(r)
 	if err != nil {
 		logrus.Errorf("failed to get instance manager when checking replica %v is reusable: %v", r.Name, err)
 		return false
