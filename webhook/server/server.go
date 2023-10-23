@@ -11,8 +11,6 @@ import (
 	"github.com/rancher/dynamiclistener/server"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/client-go/rest"
-
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -47,31 +45,26 @@ var (
 
 type WebhookServer struct {
 	context     context.Context
-	cfg         *rest.Config
 	namespace   string
 	webhookType string
+	clients     *client.Clients
 }
 
-func New(ctx context.Context, cfg *rest.Config, namespace, webhookType string) *WebhookServer {
+func New(ctx context.Context, namespace, webhookType string, clients *client.Clients) *WebhookServer {
 	return &WebhookServer{
 		context:     ctx,
-		cfg:         cfg,
 		namespace:   namespace,
 		webhookType: webhookType,
+		clients:     clients,
 	}
 }
 
 func (s *WebhookServer) admissionWebhookListenAndServe() error {
-	client, err := client.NewClient(s.context, s.cfg, s.namespace, true)
+	validationHandler, validationResources, err := Validation(s.clients.Datastore)
 	if err != nil {
 		return err
 	}
-
-	validationHandler, validationResources, err := Validation(client)
-	if err != nil {
-		return err
-	}
-	mutationHandler, mutationResources, err := Mutation(client)
+	mutationHandler, mutationResources, err := Mutation(s.clients.Datastore)
 	if err != nil {
 		return err
 	}
@@ -81,19 +74,14 @@ func (s *WebhookServer) admissionWebhookListenAndServe() error {
 	router.Handle("/v1/healthz", newhealthzHandler())
 	router.Handle(validationPath, validationHandler)
 	router.Handle(mutationPath, mutationHandler)
-	if err := s.runAdmissionWebhookListenAndServe(client, router, validationResources, mutationResources); err != nil {
+	if err := s.runAdmissionWebhookListenAndServe(router, validationResources, mutationResources); err != nil {
 		return err
 	}
 
-	return client.Start(s.context)
+	return s.clients.Start(s.context)
 }
 
 func (s *WebhookServer) conversionWebhookListenAndServe() error {
-	client, err := client.NewClient(s.context, s.cfg, s.namespace, false)
-	if err != nil {
-		return err
-	}
-
 	conversionHandler, conversionResources, err := Conversion()
 	if err != nil {
 		return err
@@ -103,11 +91,11 @@ func (s *WebhookServer) conversionWebhookListenAndServe() error {
 
 	router.Handle("/v1/healthz", newhealthzHandler())
 	router.Handle(conversionPath, conversionHandler)
-	if err := s.runConversionWebhookListenAndServe(client, router, conversionResources); err != nil {
+	if err := s.runConversionWebhookListenAndServe(router, conversionResources); err != nil {
 		return err
 	}
 
-	return client.Start(s.context)
+	return s.clients.Start(s.context)
 }
 
 func (s *WebhookServer) ListenAndServe() error {
@@ -121,9 +109,9 @@ func (s *WebhookServer) ListenAndServe() error {
 	}
 }
 
-func (s *WebhookServer) runAdmissionWebhookListenAndServe(client *client.Client, handler http.Handler, validationResources []admission.Resource, mutationResources []admission.Resource) error {
-	apply := client.Apply.WithDynamicLookup()
-	client.Core.Secret().OnChange(s.context, "secrets", func(key string, secret *corev1.Secret) (*corev1.Secret, error) {
+func (s *WebhookServer) runAdmissionWebhookListenAndServe(handler http.Handler, validationResources []admission.Resource, mutationResources []admission.Resource) error {
+	apply := s.clients.Apply.WithDynamicLookup()
+	s.clients.Core.Secret().OnChange(s.context, "secrets", func(key string, secret *corev1.Secret) (*corev1.Secret, error) {
 		if secret == nil || secret.Name != caName || secret.Namespace != s.namespace || len(secret.Data[corev1.TLSCertKey]) == 0 {
 			return nil, nil
 		}
@@ -191,7 +179,7 @@ func (s *WebhookServer) runAdmissionWebhookListenAndServe(client *client.Client,
 	tlsName := fmt.Sprintf("%s.%s.svc", admissionWebhookServiceName, s.namespace)
 
 	return server.ListenAndServe(s.context, types.DefaultAdmissionWebhookPort, 0, handler, &server.ListenOpts{
-		Secrets:       client.Core.Secret(),
+		Secrets:       s.clients.Core.Secret(),
 		CertNamespace: s.namespace,
 		CertName:      certName,
 		CAName:        caName,
@@ -204,8 +192,8 @@ func (s *WebhookServer) runAdmissionWebhookListenAndServe(client *client.Client,
 	})
 }
 
-func (s *WebhookServer) runConversionWebhookListenAndServe(client *client.Client, handler http.Handler, conversionResources []string) error {
-	client.Core.Secret().OnChange(s.context, "secrets", func(key string, secret *corev1.Secret) (*corev1.Secret, error) {
+func (s *WebhookServer) runConversionWebhookListenAndServe(handler http.Handler, conversionResources []string) error {
+	s.clients.Core.Secret().OnChange(s.context, "secrets", func(key string, secret *corev1.Secret) (*corev1.Secret, error) {
 		if secret == nil || secret.Name != caName || secret.Namespace != s.namespace || len(secret.Data[corev1.TLSCertKey]) == 0 {
 			return nil, nil
 		}
@@ -214,7 +202,7 @@ func (s *WebhookServer) runConversionWebhookListenAndServe(client *client.Client
 
 		logrus.Infof("Building conversion rules...")
 		for _, name := range conversionResources {
-			crd, err := client.CRD.CustomResourceDefinition().Get(name, metav1.GetOptions{})
+			crd, err := s.clients.CRD.CustomResourceDefinition().Get(name, metav1.GetOptions{})
 			if err != nil {
 				return secret, err
 			}
@@ -238,7 +226,7 @@ func (s *WebhookServer) runConversionWebhookListenAndServe(client *client.Client
 
 			if !reflect.DeepEqual(existingCRD, crd) {
 				logrus.Infof("Update CRD for %+v", name)
-				if _, err = client.CRD.CustomResourceDefinition().Update(crd); err != nil {
+				if _, err = s.clients.CRD.CustomResourceDefinition().Update(crd); err != nil {
 					return secret, err
 				}
 			}
@@ -250,7 +238,7 @@ func (s *WebhookServer) runConversionWebhookListenAndServe(client *client.Client
 	tlsName := fmt.Sprintf("%s.%s.svc", conversionWebhookServiceName, s.namespace)
 
 	return server.ListenAndServe(s.context, types.DefaultConversionWebhookPort, 0, handler, &server.ListenOpts{
-		Secrets:       client.Core.Secret(),
+		Secrets:       s.clients.Core.Secret(),
 		CertNamespace: s.namespace,
 		CertName:      certName,
 		CAName:        caName,

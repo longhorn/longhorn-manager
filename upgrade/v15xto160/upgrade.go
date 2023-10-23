@@ -10,9 +10,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 
+	"github.com/longhorn/longhorn-manager/types"
+
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
-	"github.com/longhorn/longhorn-manager/types"
 	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
 )
 
