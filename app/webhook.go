@@ -10,10 +10,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/client-go/tools/clientcmd"
-
 	"github.com/longhorn/longhorn-manager/types"
-	"github.com/longhorn/longhorn-manager/util"
+	"github.com/longhorn/longhorn-manager/util/client"
 	"github.com/longhorn/longhorn-manager/webhook/server"
 )
 
@@ -21,7 +19,7 @@ var (
 	defaultStartTimeout = 60 * time.Second
 )
 
-func startWebhook(ctx context.Context, serviceAccount, kubeconfigPath, webhookType string) error {
+func startWebhook(ctx context.Context, webhookType string, clients *client.Clients) error {
 	logrus.Infof("Starting longhorn %s webhook server", webhookType)
 
 	var webhookPort int
@@ -34,14 +32,7 @@ func startWebhook(ctx context.Context, serviceAccount, kubeconfigPath, webhookTy
 		return fmt.Errorf("unexpected webhook server type %v", webhookType)
 	}
 
-	namespace := util.GetNamespace(types.EnvPodNamespace)
-
-	cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
-	if err != nil {
-		return fmt.Errorf("failed to get client config: %v", err)
-	}
-
-	s := server.New(ctx, cfg, namespace, webhookType)
+	s := server.New(ctx, clients.Namespace, webhookType, clients)
 	go func() {
 		if err := s.ListenAndServe(); err != nil {
 			logrus.Fatalf("Error %v webhook server failed: %v", webhookType, err)
