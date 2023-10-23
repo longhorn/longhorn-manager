@@ -1554,14 +1554,14 @@ func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (is
 	if len(nodes) == 0 || (len(nodes) == 1 && nodes[0] == "") {
 		return false, nil
 	}
-	ei, err := s.GetEngineImage(types.GetEngineImageChecksumName(image))
+	ei, err := s.getEngineImageRO(types.GetEngineImageChecksumName(image))
 	if err != nil {
 		return false, fmt.Errorf("unable to get engine image %v: %v", image, err)
 	}
 	if ei.Status.State != longhorn.EngineImageStateDeployed && ei.Status.State != longhorn.EngineImageStateDeploying {
 		return false, nil
 	}
-	nodesHaveEngineImage, err := s.ListNodesWithEngineImage(ei)
+	nodesHaveEngineImage, err := s.ListNodesContainingEngineImageRO(ei)
 	if err != nil {
 		return false, errors.Wrapf(err, "failed CheckEngineImageReadiness for nodes %v", nodes)
 	}
@@ -2200,7 +2200,16 @@ func (s *DataStore) GetNode(name string) (*longhorn.Node, error) {
 // GetReadyDiskNode find the corresponding ready Longhorn Node for a given disk
 // Returns a Node object and the disk name
 func (s *DataStore) GetReadyDiskNode(diskUUID string) (*longhorn.Node, string, error) {
-	nodes, err := s.ListReadyNodes()
+	node, diskName, err := s.GetReadyDiskNodeRO(diskUUID)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return node.DeepCopy(), diskName, nil
+}
+
+func (s *DataStore) GetReadyDiskNodeRO(diskUUID string) (*longhorn.Node, string, error) {
+	nodes, err := s.ListReadyNodesRO()
 	if err != nil {
 		return nil, "", err
 	}
@@ -2223,7 +2232,7 @@ func (s *DataStore) GetReadyDiskNode(diskUUID string) (*longhorn.Node, string, e
 // GetReadyDisk find disk name by the given nodeName and diskUUD
 // Returns a disk name
 func (s *DataStore) GetReadyDisk(nodeName string, diskUUID string) (string, error) {
-	node, err := s.GetNode(nodeName)
+	node, err := s.GetNodeRO(nodeName)
 	if err != nil {
 		return "", err
 	}
@@ -2289,17 +2298,21 @@ func (s *DataStore) ListNodesRO() ([]*longhorn.Node, error) {
 	return s.nodeLister.Nodes(s.namespace).List(labels.Everything())
 }
 
-func (s *DataStore) ListNodesWithEngineImage(ei *longhorn.EngineImage) (map[string]*longhorn.Node, error) {
-	nodes, err := s.ListNodes()
+func (s *DataStore) ListNodesContainingEngineImageRO(ei *longhorn.EngineImage) (map[string]*longhorn.Node, error) {
+	nodeList, err := s.ListNodesRO()
 	if err != nil {
 		return nil, err
 	}
-	for nodeID := range nodes {
-		if !ei.Status.NodeDeploymentMap[nodeID] {
-			delete(nodes, nodeID)
+
+	nodeMap := make(map[string]*longhorn.Node)
+	for _, node := range nodeList {
+		if !ei.Status.NodeDeploymentMap[node.Name] {
+			continue
 		}
+		nodeMap[node.Name] = node
 	}
-	return nodes, nil
+
+	return nodeMap, nil
 }
 
 // filterNodes returns only the nodes where the passed predicate returns true
@@ -2338,24 +2351,38 @@ func (s *DataStore) ListReadyNodes() (map[string]*longhorn.Node, error) {
 	return readyNodes, nil
 }
 
-func (s *DataStore) ListReadyAndSchedulableNodes() (map[string]*longhorn.Node, error) {
-	nodes, err := s.ListNodes()
+func (s *DataStore) ListReadyNodesRO() (map[string]*longhorn.Node, error) {
+	nodeList, err := s.ListNodesRO()
 	if err != nil {
 		return nil, err
 	}
+
+	nodeMap := make(map[string]*longhorn.Node, len(nodeList))
+	for _, node := range nodeList {
+		nodeMap[node.Name] = node
+	}
+	readyNodes := filterReadyNodes(nodeMap)
+	return readyNodes, nil
+}
+
+func (s *DataStore) ListReadyAndSchedulableNodesRO() (map[string]*longhorn.Node, error) {
+	nodes, err := s.ListReadyNodesRO()
+	if err != nil {
+		return nil, err
+	}
+
 	return filterSchedulableNodes(filterReadyNodes(nodes)), nil
 }
 
-// ListReadyNodesWithEngineImage returns list of ready nodes that have the corresponding engine image deploying or deployed
-func (s *DataStore) ListReadyNodesWithEngineImage(image string) (map[string]*longhorn.Node, error) {
-	ei, err := s.GetEngineImage(types.GetEngineImageChecksumName(image))
+func (s *DataStore) ListReadyNodesContainingEngineImageRO(image string) (map[string]*longhorn.Node, error) {
+	ei, err := s.getEngineImageRO(types.GetEngineImageChecksumName(image))
 	if err != nil {
 		return nil, fmt.Errorf("unable to get engine image %v: %v", image, err)
 	}
 	if ei.Status.State != longhorn.EngineImageStateDeployed && ei.Status.State != longhorn.EngineImageStateDeploying {
 		return map[string]*longhorn.Node{}, nil
 	}
-	nodes, err := s.ListNodesWithEngineImage(ei)
+	nodes, err := s.ListNodesContainingEngineImageRO(ei)
 	if err != nil {
 		return nil, err
 	}
@@ -2363,37 +2390,18 @@ func (s *DataStore) ListReadyNodesWithEngineImage(image string) (map[string]*lon
 	return readyNodes, nil
 }
 
-// GetRandomReadyNode gets a list of all Node in the given namespace and
-// returns the first Node marked with condition ready and allow scheduling
-func (s *DataStore) GetRandomReadyNode() (*longhorn.Node, error) {
-	logrus.Info("Prepare to find a random ready node")
-	nodesRO, err := s.ListNodesRO()
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get random ready node")
-	}
-
-	for _, node := range nodesRO {
-		readyCondition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
-		if readyCondition.Status == longhorn.ConditionStatusTrue && node.Spec.AllowScheduling {
-			return node.DeepCopy(), nil
-		}
-	}
-
-	return nil, fmt.Errorf("unable to get a ready node")
-}
-
 // GetRandomReadyNodeDisk a list of all Node the in the given namespace and
 // returns the first Node && the first Disk of the Node marked with condition ready and allow scheduling
 func (s *DataStore) GetRandomReadyNodeDisk() (*longhorn.Node, string, error) {
 	logrus.Info("Preparing to find a random ready node disk")
-	nodesRO, err := s.ListNodesRO()
+	nodes, err := s.ListNodesRO()
 	if err != nil {
 		return nil, "", errors.Wrapf(err, "failed to get random ready node disk")
 	}
 
 	rand.Seed(time.Now().UnixNano())
-	rand.Shuffle(len(nodesRO), func(i, j int) { nodesRO[i], nodesRO[j] = nodesRO[j], nodesRO[i] })
-	for _, node := range nodesRO {
+	rand.Shuffle(len(nodes), func(i, j int) { nodes[i], nodes[j] = nodes[j], nodes[i] })
+	for _, node := range nodes {
 		if !node.Spec.AllowScheduling {
 			continue
 		}

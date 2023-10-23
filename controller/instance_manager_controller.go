@@ -953,7 +953,7 @@ func (imc *InstanceManagerController) enqueueKubernetesNode(obj interface{}) {
 		}
 	}
 
-	node, err := imc.ds.GetNode(kubernetesNode.Name)
+	node, err := imc.ds.GetNodeRO(kubernetesNode.Name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			// there is no Longhorn node created for the Kubernetes
@@ -981,7 +981,7 @@ func (imc *InstanceManagerController) enqueueKubernetesNode(obj interface{}) {
 }
 
 func (imc *InstanceManagerController) enqueueSettingChange(obj interface{}) {
-	node, err := imc.ds.GetNode(imc.controllerID)
+	node, err := imc.ds.GetNodeRO(imc.controllerID)
 	if err != nil {
 		utilruntime.HandleError(errors.Wrapf(err, "failed to get node %v for instance manager", imc.controllerID))
 		return
