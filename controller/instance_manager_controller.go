@@ -747,12 +747,12 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 	// find out whether there is a PDB protected healthy replica of the same
 	// volume on another schedulable node.
 	for _, replica := range targetReplicas {
-		vol, err := imc.ds.GetVolume(replica.Spec.VolumeName)
+		vol, err := imc.ds.GetVolumeRO(replica.Spec.VolumeName)
 		if err != nil {
 			return false, err
 		}
 
-		replicas, err := imc.ds.ListVolumeReplicas(vol.Name)
+		replicas, err := imc.ds.ListVolumeReplicasRO(vol.Name)
 		if err != nil {
 			return false, err
 		}

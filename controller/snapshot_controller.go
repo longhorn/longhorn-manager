@@ -321,7 +321,7 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 			return sc.ds.RemoveFinalizerForSnapshot(snapshot)
 		}
 
-		engine, err := sc.getTheOnlyEngineCRforSnapshot(snapshot)
+		engine, err := sc.getTheOnlyEngineCRforSnapshotRO(snapshot)
 		if err != nil {
 			return err
 		}
@@ -381,7 +381,7 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 		}
 	}()
 
-	engine, err := sc.getTheOnlyEngineCRforSnapshot(snapshot)
+	engine, err := sc.getTheOnlyEngineCRforSnapshotRO(snapshot)
 	if err != nil {
 		return err
 	}
@@ -458,7 +458,7 @@ func (sc *SnapshotController) handleAttachmentTicketCreation(snap *longhorn.Snap
 		err = errors.Wrap(err, "handleAttachmentTicketCreation: failed to create/update attachment")
 	}()
 
-	vol, err := sc.ds.GetVolume(snap.Spec.Volume)
+	vol, err := sc.ds.GetVolumeRO(snap.Spec.Volume)
 	if err != nil {
 		return err
 	}
@@ -547,8 +547,8 @@ func syncSnapshotWithSnapshotInfo(snap *longhorn.Snapshot, snapInfo *longhorn.Sn
 	return nil
 }
 
-func (sc *SnapshotController) getTheOnlyEngineCRforSnapshot(snapshot *longhorn.Snapshot) (*longhorn.Engine, error) {
-	engines, err := sc.ds.ListVolumeEngines(snapshot.Spec.Volume)
+func (sc *SnapshotController) getTheOnlyEngineCRforSnapshotRO(snapshot *longhorn.Snapshot) (*longhorn.Engine, error) {
+	engines, err := sc.ds.ListVolumeEnginesRO(snapshot.Spec.Volume)
 	if err != nil {
 		return nil, errors.Wrap(err, "getTheOnlyEngineCRforSnapshot")
 	}
