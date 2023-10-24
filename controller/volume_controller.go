@@ -2290,7 +2290,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume,
 		return 0, zoneExtraRs, nil
 	}
 
-	ei, err := c.getEngineImage(v.Status.CurrentImage)
+	ei, err := c.getEngineImageRO(v.Status.CurrentImage)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -2432,7 +2432,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 		return 0, nodeExtraRs, nil
 	}
 
-	ei, err := c.getEngineImage(v.Status.CurrentImage)
+	ei, err := c.getEngineImageRO(v.Status.CurrentImage)
 	if err != nil {
 		return 0, nodeExtraRs, err
 	}
@@ -2615,7 +2615,7 @@ func (c *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volum
 		return candidateNames
 	}
 
-	ei, err := c.getEngineImage(v.Status.CurrentImage)
+	ei, err := c.getEngineImageRO(v.Status.CurrentImage)
 	if err != nil {
 		return candidateNames
 	}
@@ -2755,7 +2755,7 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 		volumeAndReplicaNodes = append(volumeAndReplicaNodes, r.Spec.NodeID)
 	}
 
-	oldImage, err := c.getEngineImage(v.Status.CurrentImage)
+	oldImage, err := c.getEngineImageRO(v.Status.CurrentImage)
 	if err != nil {
 		log.WithError(err).Warnf("Failed to get engine image %v for live upgrade", v.Status.CurrentImage)
 		return nil
@@ -2765,7 +2765,7 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 		log.WithError(err).Warnf("Engine live upgrade from %v, but the image wasn't ready", oldImage.Spec.Image)
 		return nil
 	}
-	newImage, err := c.getEngineImage(v.Spec.Image)
+	newImage, err := c.getEngineImageRO(v.Spec.Image)
 	if err != nil {
 		log.WithError(err).Warnf("Failed to get engine image %v for live upgrade", v.Spec.Image)
 		return nil
@@ -3709,13 +3709,13 @@ func (c *VolumeController) syncPVCRecurringJobLabels(volume *longhorn.Volume) er
 	return nil
 }
 
-func (c *VolumeController) getEngineImage(image string) (*longhorn.EngineImage, error) {
+func (c *VolumeController) getEngineImageRO(image string) (*longhorn.EngineImage, error) {
 	name := types.GetEngineImageChecksumName(image)
-	img, err := c.ds.GetEngineImage(name)
+	ei, err := c.ds.GetEngineImageRO(name)
 	if err != nil {
 		return nil, errors.Wrapf(err, "unable to get engine image %v", image)
 	}
-	return img, nil
+	return ei, nil
 }
 
 func (c *VolumeController) getCurrentEngineAndCleanupOthers(v *longhorn.Volume, es map[string]*longhorn.Engine) (current *longhorn.Engine, err error) {
