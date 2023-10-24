@@ -79,9 +79,10 @@ func uninstall(c *cli.Context) error {
 	}
 
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, time.Second*30)
+	kubeFilteredInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, time.Second*30, informers.WithNamespace(namespace))
 	lhInformerFactory := lhinformers.NewSharedInformerFactory(lhClient, time.Second*30)
 
-	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, extensionsClient, namespace)
+	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeFilteredInformerFactory, kubeClient, extensionsClient, namespace)
 
 	logger := logrus.StandardLogger()
 
@@ -97,5 +98,6 @@ func uninstall(c *cli.Context) error {
 	)
 	go lhInformerFactory.Start(doneCh)
 	go kubeInformerFactory.Start(doneCh)
+	go kubeFilteredInformerFactory.Start(doneCh)
 	return ctrl.Run()
 }

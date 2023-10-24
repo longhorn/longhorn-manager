@@ -125,12 +125,14 @@ func NewDataStore(
 	lhInformerFactory lhinformers.SharedInformerFactory,
 	lhClient lhclientset.Interface,
 	kubeInformerFactory informers.SharedInformerFactory,
+	kubeFilteredInformerFactory informers.SharedInformerFactory,
 	kubeClient clientset.Interface,
 	extensionsClient apiextensionsclientset.Interface,
 	namespace string) *DataStore {
 
 	cacheSyncs := []cache.InformerSynced{}
 
+	// Longhorn Informers
 	replicaInformer := lhInformerFactory.Longhorn().V1beta2().Replicas()
 	cacheSyncs = append(cacheSyncs, replicaInformer.Informer().HasSynced)
 	engineInformer := lhInformerFactory.Longhorn().V1beta2().Engines()
@@ -174,6 +176,7 @@ func NewDataStore(
 	lhVolumeAttachmentInformer := lhInformerFactory.Longhorn().V1beta2().VolumeAttachments()
 	cacheSyncs = append(cacheSyncs, lhVolumeAttachmentInformer.Informer().HasSynced)
 
+	// Kube Informers
 	podInformer := kubeInformerFactory.Core().V1().Pods()
 	cacheSyncs = append(cacheSyncs, podInformer.Informer().HasSynced)
 	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
@@ -184,25 +187,27 @@ func NewDataStore(
 	cacheSyncs = append(cacheSyncs, persistentVolumeClaimInformer.Informer().HasSynced)
 	volumeAttachmentInformer := kubeInformerFactory.Storage().V1().VolumeAttachments()
 	cacheSyncs = append(cacheSyncs, volumeAttachmentInformer.Informer().HasSynced)
-	configMapInformer := kubeInformerFactory.Core().V1().ConfigMaps()
-	cacheSyncs = append(cacheSyncs, configMapInformer.Informer().HasSynced)
-	secretInformer := kubeInformerFactory.Core().V1().Secrets()
-	cacheSyncs = append(cacheSyncs, secretInformer.Informer().HasSynced)
-	cronJobInformer := kubeInformerFactory.Batch().V1().CronJobs()
-	cacheSyncs = append(cacheSyncs, cronJobInformer.Informer().HasSynced)
 	daemonSetInformer := kubeInformerFactory.Apps().V1().DaemonSets()
 	cacheSyncs = append(cacheSyncs, daemonSetInformer.Informer().HasSynced)
 	deploymentInformer := kubeInformerFactory.Apps().V1().Deployments()
 	cacheSyncs = append(cacheSyncs, deploymentInformer.Informer().HasSynced)
-	priorityClassInformer := kubeInformerFactory.Scheduling().V1().PriorityClasses()
-	cacheSyncs = append(cacheSyncs, priorityClassInformer.Informer().HasSynced)
 	csiDriverInformer := kubeInformerFactory.Storage().V1().CSIDrivers()
 	cacheSyncs = append(cacheSyncs, csiDriverInformer.Informer().HasSynced)
 	storageclassInformer := kubeInformerFactory.Storage().V1().StorageClasses()
 	cacheSyncs = append(cacheSyncs, storageclassInformer.Informer().HasSynced)
 	podDisruptionBudgetInformer := kubeInformerFactory.Policy().V1().PodDisruptionBudgets()
 	cacheSyncs = append(cacheSyncs, podDisruptionBudgetInformer.Informer().HasSynced)
-	serviceInformer := kubeInformerFactory.Core().V1().Services()
+
+	// Filtered kube Informers
+	cronJobInformer := kubeFilteredInformerFactory.Batch().V1().CronJobs()
+	cacheSyncs = append(cacheSyncs, cronJobInformer.Informer().HasSynced)
+	configMapInformer := kubeFilteredInformerFactory.Core().V1().ConfigMaps()
+	cacheSyncs = append(cacheSyncs, configMapInformer.Informer().HasSynced)
+	secretInformer := kubeFilteredInformerFactory.Core().V1().Secrets()
+	cacheSyncs = append(cacheSyncs, secretInformer.Informer().HasSynced)
+	priorityClassInformer := kubeFilteredInformerFactory.Scheduling().V1().PriorityClasses()
+	cacheSyncs = append(cacheSyncs, priorityClassInformer.Informer().HasSynced)
+	serviceInformer := kubeFilteredInformerFactory.Core().V1().Services()
 	cacheSyncs = append(cacheSyncs, serviceInformer.Informer().HasSynced)
 
 	return &DataStore{
@@ -257,8 +262,6 @@ func NewDataStore(
 		kubeClient:                    kubeClient,
 		podLister:                     podInformer.Lister(),
 		PodInformer:                   podInformer.Informer(),
-		cronJobLister:                 cronJobInformer.Lister(),
-		CronJobInformer:               cronJobInformer.Informer(),
 		daemonSetLister:               daemonSetInformer.Lister(),
 		DaemonSetInformer:             daemonSetInformer.Informer(),
 		deploymentLister:              deploymentInformer.Lister(),
@@ -269,22 +272,25 @@ func NewDataStore(
 		PersistentVolumeClaimInformer: persistentVolumeClaimInformer.Informer(),
 		volumeAttachmentLister:        volumeAttachmentInformer.Lister(),
 		VolumeAttachmentInformer:      volumeAttachmentInformer.Informer(),
-		configMapLister:               configMapInformer.Lister(),
-		ConfigMapInformer:             configMapInformer.Informer(),
-		secretLister:                  secretInformer.Lister(),
-		SecretInformer:                secretInformer.Informer(),
 		kubeNodeLister:                kubeNodeInformer.Lister(),
 		KubeNodeInformer:              kubeNodeInformer.Informer(),
-		priorityClassLister:           priorityClassInformer.Lister(),
-		PriorityClassInformer:         priorityClassInformer.Informer(),
 		csiDriverLister:               csiDriverInformer.Lister(),
 		CSIDriverInformer:             csiDriverInformer.Informer(),
 		storageclassLister:            storageclassInformer.Lister(),
 		StorageClassInformer:          storageclassInformer.Informer(),
 		podDisruptionBudgetLister:     podDisruptionBudgetInformer.Lister(),
 		PodDisruptionBudgetInformer:   podDisruptionBudgetInformer.Informer(),
-		serviceLister:                 serviceInformer.Lister(),
-		ServiceInformer:               serviceInformer.Informer(),
+
+		cronJobLister:         cronJobInformer.Lister(),
+		CronJobInformer:       cronJobInformer.Informer(),
+		configMapLister:       configMapInformer.Lister(),
+		ConfigMapInformer:     configMapInformer.Informer(),
+		secretLister:          secretInformer.Lister(),
+		SecretInformer:        secretInformer.Informer(),
+		priorityClassLister:   priorityClassInformer.Lister(),
+		PriorityClassInformer: priorityClassInformer.Informer(),
+		serviceLister:         serviceInformer.Lister(),
+		ServiceInformer:       serviceInformer.Informer(),
 
 		extensionsClient: extensionsClient,
 	}
