@@ -142,7 +142,7 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 	if err != nil {
 		return nil, err
 	}
-	kubeNode, err := ds.GetKubernetesNode(im.Spec.NodeID)
+	kubeNode, err := ds.GetKubernetesNodeRO(im.Spec.NodeID)
 	if err != nil {
 		return nil, err
 	}

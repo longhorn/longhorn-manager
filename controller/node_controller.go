@@ -416,7 +416,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	}
 
 	// sync node state with kubernetes node status
-	kubeNode, err := nc.ds.GetKubernetesNode(name)
+	kubeNode, err := nc.ds.GetKubernetesNodeRO(name)
 	if err != nil {
 		// if kubernetes node has been removed from cluster
 		if apierrors.IsNotFound(err) {

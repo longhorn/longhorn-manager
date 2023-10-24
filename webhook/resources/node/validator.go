@@ -93,7 +93,7 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 	}
 
 	if newNode.Spec.InstanceManagerCPURequest != 0 {
-		kubeNode, err := n.ds.GetKubernetesNode(oldNode.Name)
+		kubeNode, err := n.ds.GetKubernetesNodeRO(oldNode.Name)
 		if err != nil {
 			if !datastore.ErrorIsNotFound(err) {
 				return werror.NewInvalidError(err.Error(), "")
