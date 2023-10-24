@@ -77,7 +77,7 @@ type InstanceManagerMonitor struct {
 	// used to notify the controller that monitoring has stopped
 	monitorVoluntaryStopCh chan struct{}
 
-	nodeCallback func(obj interface{})
+	nodeCallback func(nodeName string)
 
 	client *engineapi.InstanceManagerClient
 }
@@ -953,14 +953,18 @@ func (imc *InstanceManagerController) enqueueKubernetesNode(obj interface{}) {
 		}
 	}
 
-	node, err := imc.ds.GetNodeRO(kubernetesNode.Name)
+	imc.enqueueInstanceManagersForNode(kubernetesNode.Name)
+}
+
+func (imc *InstanceManagerController) enqueueInstanceManagersForNode(nodeName string) {
+	node, err := imc.ds.GetNodeRO(nodeName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			// there is no Longhorn node created for the Kubernetes
 			// node (e.g. controller/etcd node). Skip it
 			return
 		}
-		utilruntime.HandleError(fmt.Errorf("failed to get node %v: %v ", kubernetesNode.Name, err))
+		utilruntime.HandleError(fmt.Errorf("failed to get node %v: %v ", nodeName, err))
 		return
 	}
 
@@ -981,13 +985,7 @@ func (imc *InstanceManagerController) enqueueKubernetesNode(obj interface{}) {
 }
 
 func (imc *InstanceManagerController) enqueueSettingChange(obj interface{}) {
-	node, err := imc.ds.GetNodeRO(imc.controllerID)
-	if err != nil {
-		utilruntime.HandleError(errors.Wrapf(err, "failed to get node %v for instance manager", imc.controllerID))
-		return
-	}
-
-	imc.enqueueKubernetesNode(node)
+	imc.enqueueInstanceManagersForNode(imc.controllerID)
 }
 
 func (imc *InstanceManagerController) cleanupInstanceManager(imName string) error {
@@ -1299,7 +1297,7 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 		updateNotification: true,
 		client:             client,
 
-		nodeCallback: imc.enqueueKubernetesNode,
+		nodeCallback: imc.enqueueInstanceManagersForNode,
 	}
 
 	imc.instanceManagerMonitorMap[im.Name] = stopCh
@@ -1459,13 +1457,7 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() (needStop bool) {
 	// replica IM PDB in this case. So enqueue the node IMs again to sync replica
 	// IM PDB.
 	if clusterAutoscalerEnabled && im.Spec.Type == longhorn.InstanceManagerTypeEngine {
-		node, err := m.ds.GetNode(m.controllerID)
-		if err != nil {
-			utilruntime.HandleError(errors.Wrapf(err, "failed to get node for instance manager %v", m.Name))
-			return false
-		}
-
-		m.nodeCallback(node)
+		m.nodeCallback(m.controllerID)
 	}
 
 	return false
