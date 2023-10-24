@@ -1188,20 +1188,24 @@ func (nc *NodeController) getNewAndMissingOrphanedReplicaDirectoryNames(diskName
 	missingOrphanedReplicaDirectoryNames := map[string]string{}
 
 	// Find out the new/missing orphaned directories by checking with orphan CRs
-	orphans, err := nc.ds.ListOrphansByNode(nc.controllerID)
+	orphanList, err := nc.ds.ListOrphansByNodeRO(nc.controllerID)
 	if err != nil {
 		logrus.Warnf("Failed to list orphans for node %v since %v", nc.controllerID, err.Error())
 		return map[string]string{}, map[string]string{}
 	}
+	orphanMap := make(map[string]*longhorn.Orphan, len(orphanList))
+	for _, o := range orphanList {
+		orphanMap[o.Name] = o
+	}
 
 	for dirName := range replicaDirectoryNames {
 		orphanName := types.GetOrphanChecksumNameForOrphanedDirectory(nc.controllerID, diskName, diskPath, diskUUID, dirName)
-		if _, ok := orphans[orphanName]; !ok {
+		if _, ok := orphanMap[orphanName]; !ok {
 			newOrphanedReplicaDirectoryNames[dirName] = ""
 		}
 	}
 
-	for _, orphan := range orphans {
+	for _, orphan := range orphanMap {
 		if orphan.Spec.Parameters[longhorn.OrphanDiskName] != diskName ||
 			orphan.Spec.Parameters[longhorn.OrphanDiskUUID] != diskUUID ||
 			orphan.Spec.Parameters[longhorn.OrphanDiskPath] != diskPath {
@@ -1230,7 +1234,7 @@ func (nc *NodeController) deleteOrphans(node *longhorn.Node, diskName string, di
 		}
 	}
 
-	orphans, err := nc.ds.ListOrphans()
+	orphans, err := nc.ds.ListOrphansRO()
 	if err != nil {
 		return errors.Wrap(err, "failed to list orphans")
 	}
