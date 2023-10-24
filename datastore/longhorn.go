@@ -1476,7 +1476,7 @@ func (s *DataStore) CreateEngineImage(img *longhorn.EngineImage) (*longhorn.Engi
 	}
 
 	obj, err := verifyCreation(ret.Name, "engine image", func(name string) (runtime.Object, error) {
-		return s.getEngineImageRO(name)
+		return s.GetEngineImageRO(name)
 	})
 	if err != nil {
 		return nil, err
@@ -1496,7 +1496,7 @@ func (s *DataStore) UpdateEngineImage(img *longhorn.EngineImage) (*longhorn.Engi
 		return nil, err
 	}
 	verifyUpdate(img.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getEngineImageRO(name)
+		return s.GetEngineImageRO(name)
 	})
 	return obj, nil
 }
@@ -1509,7 +1509,7 @@ func (s *DataStore) UpdateEngineImageStatus(img *longhorn.EngineImage) (*longhor
 		return nil, err
 	}
 	verifyUpdate(img.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getEngineImageRO(name)
+		return s.GetEngineImageRO(name)
 	})
 	return obj, nil
 }
@@ -1541,14 +1541,14 @@ func (s *DataStore) RemoveFinalizerForEngineImage(obj *longhorn.EngineImage) err
 	return nil
 }
 
-func (s *DataStore) getEngineImageRO(name string) (*longhorn.EngineImage, error) {
+func (s *DataStore) GetEngineImageRO(name string) (*longhorn.EngineImage, error) {
 	return s.engineImageLister.EngineImages(s.namespace).Get(name)
 }
 
 // GetEngineImage returns a new EngineImage object for the given name and
 // namespace
 func (s *DataStore) GetEngineImage(name string) (*longhorn.EngineImage, error) {
-	resultRO, err := s.getEngineImageRO(name)
+	resultRO, err := s.GetEngineImageRO(name)
 	if err != nil {
 		return nil, err
 	}
@@ -1592,7 +1592,7 @@ func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (is
 	if len(nodes) == 0 || (len(nodes) == 1 && nodes[0] == "") {
 		return false, nil
 	}
-	ei, err := s.getEngineImageRO(types.GetEngineImageChecksumName(image))
+	ei, err := s.GetEngineImageRO(types.GetEngineImageChecksumName(image))
 	if err != nil {
 		return false, fmt.Errorf("unable to get engine image %v: %v", image, err)
 	}
@@ -2416,7 +2416,7 @@ func (s *DataStore) ListReadyAndSchedulableNodesRO() (map[string]*longhorn.Node,
 }
 
 func (s *DataStore) ListReadyNodesContainingEngineImageRO(image string) (map[string]*longhorn.Node, error) {
-	ei, err := s.getEngineImageRO(types.GetEngineImageChecksumName(image))
+	ei, err := s.GetEngineImageRO(types.GetEngineImageChecksumName(image))
 	if err != nil {
 		return nil, fmt.Errorf("unable to get engine image %v: %v", image, err)
 	}
@@ -3236,7 +3236,7 @@ func (s *DataStore) GetEngineImageCLIAPIVersion(imageName string) (int, error) {
 	if imageName == "" {
 		return -1, fmt.Errorf("cannot check the CLI API Version based on empty image name")
 	}
-	ei, err := s.getEngineImageRO(types.GetEngineImageChecksumName(imageName))
+	ei, err := s.GetEngineImageRO(types.GetEngineImageChecksumName(imageName))
 	if err != nil {
 		return -1, errors.Wrapf(err, "failed to get engine image object based on image name %v", imageName)
 	}
