@@ -90,11 +90,13 @@ func NewClients(kubeconfigPath string, stopCh <-chan struct{}) (*Clients, error)
 	//  if a specific controller requires a periodic resync, one enable it only for that informer, add a resync to the event handler, go routine, etc.
 	//  some refs to look at: https://github.com/kubernetes-sigs/controller-runtime/issues/521
 	kubeInformerFactory := informers.NewSharedInformerFactory(clients.K8s, time.Second*30)
+	kubeFilteredInformerFactory := informers.NewSharedInformerFactoryWithOptions(clients.K8s, time.Second*30, informers.WithNamespace(namespace))
 	lhInformerFactory := lhinformers.NewSharedInformerFactory(lhClient, time.Second*30)
 
-	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, clients.K8s, extensionsClient, namespace)
+	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeFilteredInformerFactory, clients.K8s, extensionsClient, namespace)
 
 	go kubeInformerFactory.Start(stopCh)
+	go kubeFilteredInformerFactory.Start(stopCh)
 	go lhInformerFactory.Start(stopCh)
 	if !ds.Sync(stopCh) {
 		return nil, fmt.Errorf("datastore cache sync up failed")
