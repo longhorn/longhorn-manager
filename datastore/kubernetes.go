@@ -517,15 +517,15 @@ func (s *DataStore) ListKubeNodesRO() ([]*corev1.Node, error) {
 	return s.kubeNodeLister.List(labels.Everything())
 }
 
-// GetKubernetesNode gets the Node from the index for the given name
-func (s *DataStore) GetKubernetesNode(name string) (*corev1.Node, error) {
+// GetKubernetesNodeRO gets the Node from the index for the given name
+func (s *DataStore) GetKubernetesNodeRO(name string) (*corev1.Node, error) {
 	return s.kubeNodeLister.Get(name)
 }
 
 // IsKubeNodeUnschedulable checks if the Kubernetes Node resource is
 // unschedulable
 func (s *DataStore) IsKubeNodeUnschedulable(nodeName string) (bool, error) {
-	kubeNode, err := s.GetKubernetesNode(nodeName)
+	kubeNode, err := s.GetKubernetesNodeRO(nodeName)
 	if err != nil {
 		return false, err
 	}

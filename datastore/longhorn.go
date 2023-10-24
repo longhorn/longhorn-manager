@@ -410,7 +410,7 @@ func (s *DataStore) ValidateV2DataEngine(v2DataEngineEnabled bool) error {
 	}
 
 	for _, im := range ims {
-		node, err := s.GetKubernetesNode(im.Spec.NodeID)
+		node, err := s.GetKubernetesNodeRO(im.Spec.NodeID)
 		if err != nil {
 			if !apierrors.IsNotFound(err) {
 				return errors.Wrapf(err, "failed to get Kubernetes node %v for %v setting update", im.Spec.NodeID, types.SettingNameV2DataEngine)

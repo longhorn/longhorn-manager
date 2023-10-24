@@ -1699,7 +1699,7 @@ func (info *ClusterInfo) collectHostOSDistro() (err error) {
 }
 
 func (info *ClusterInfo) collectKubernetesNodeProvider() error {
-	node, err := info.ds.GetKubernetesNode(info.controllerID)
+	node, err := info.ds.GetKubernetesNodeRO(info.controllerID)
 	if err == nil {
 		scheme := types.GetKubernetesProviderNameFromURL(node.Spec.ProviderID)
 		info.structFields.tags.Append(ClusterInfoKubernetesNodeProvider, scheme)
