@@ -171,7 +171,7 @@ func (knc *KubernetesNodeController) syncKubernetesNode(key string) (err error) 
 		return err
 	}
 
-	kubeNode, err := knc.ds.GetKubernetesNode(name)
+	kubeNode, err := knc.ds.GetKubernetesNodeRO(name)
 	if err != nil {
 		if !datastore.ErrorIsNotFound(err) {
 			return err
@@ -224,7 +224,7 @@ func (knc *KubernetesNodeController) syncKubernetesNode(key string) (err error) 
 }
 
 func (knc *KubernetesNodeController) enqueueSetting(obj interface{}) {
-	node, err := knc.ds.GetKubernetesNode(knc.controllerID)
+	node, err := knc.ds.GetKubernetesNodeRO(knc.controllerID)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("couldn't get kubernetes node %v: %v ", knc.controllerID, err))
 		return
@@ -277,7 +277,7 @@ func (knc *KubernetesNodeController) syncDefaultDisks(node *longhorn.Node) (err 
 	if len(node.Spec.Disks) != 0 {
 		return nil
 	}
-	kubeNode, err := knc.ds.GetKubernetesNode(node.Name)
+	kubeNode, err := knc.ds.GetKubernetesNodeRO(node.Name)
 	if err != nil {
 		return err
 	}
@@ -331,7 +331,7 @@ func (knc *KubernetesNodeController) syncDefaultNodeTags(node *longhorn.Node) er
 		return nil
 	}
 
-	kubeNode, err := knc.ds.GetKubernetesNode(node.Name)
+	kubeNode, err := knc.ds.GetKubernetesNodeRO(node.Name)
 	if err != nil {
 		return err
 	}
