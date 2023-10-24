@@ -426,8 +426,9 @@ func (s *TestSuite) runVolumeAttachmentTestCase(c *C, tc *volumeAttachmentTestCa
 	lhClient := lhfake.NewSimpleClientset()
 	extensionsClient := apiextensionsfake.NewSimpleClientset()
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
+	kubeFilteredInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, 0, informers.WithNamespace(TestNamespace))
 	lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, 0)
-	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, extensionsClient, TestNamespace)
+	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeFilteredInformerFactory, kubeClient, extensionsClient, TestNamespace)
 	logger := logrus.StandardLogger()
 
 	volumeIndexer := lhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()

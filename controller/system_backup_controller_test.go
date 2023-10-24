@@ -231,6 +231,7 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 
 		kubeClient := fake.NewSimpleClientset()
 		kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, controller.NoResyncPeriodFunc())
+		kubeFilteredInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, controller.NoResyncPeriodFunc(), informers.WithNamespace(TestNamespace))
 
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformers.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
@@ -246,7 +247,7 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 		extensionsClient := apiextensionsfake.NewSimpleClientset()
 
 		systemBackupController := newFakeSystemBackupController(
-			lhInformerFactory, kubeInformerFactory,
+			lhInformerFactory, kubeInformerFactory, kubeFilteredInformerFactory,
 			lhClient, kubeClient, extensionsClient,
 			tc.controllerID,
 		)
@@ -318,12 +319,13 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 func newFakeSystemBackupController(
 	lhInformerFactory lhinformers.SharedInformerFactory,
 	kubeInformerFactory informers.SharedInformerFactory,
+	kubeFilteredInformerFactory informers.SharedInformerFactory,
 	lhClient *lhfake.Clientset,
 	kubeClient *fake.Clientset,
 	extensionsClient *apiextensionsfake.Clientset,
 	controllerID string) *SystemBackupController {
 
-	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, extensionsClient, TestNamespace)
+	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeFilteredInformerFactory, kubeClient, extensionsClient, TestNamespace)
 
 	logger := logrus.StandardLogger()
 	logrus.SetLevel(logrus.DebugLevel)
