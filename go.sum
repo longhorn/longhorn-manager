@@ -496,8 +496,13 @@ github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de/go.mod h1:zAbeS9
 github.com/lithammer/dedent v1.1.0/go.mod h1:jrXYCQtgg0nJiN+StA2KgR7w6CiQNv9Fd/Z9BP0jIOc=
 github.com/longhorn/backing-image-manager v1.4.0-rc1.0.20230521151917-38ff27cc2cbb h1:y59M4Z8jvOowAwdXcATyHjG31ZbaMJvjIPY+SpVmeII=
 github.com/longhorn/backing-image-manager v1.4.0-rc1.0.20230521151917-38ff27cc2cbb/go.mod h1:yhfIPKYbnFpRmrJOz0biNthyoyBpN4SrUk8ZQNMcW1o=
+<<<<<<< HEAD
 github.com/longhorn/backupstore v0.0.0-20230627040634-5b4f2d040e9d h1:sJBr2HsVp61Lpb4zj4dDGLr4RuTQtJwogw/mPe1DBkI=
 github.com/longhorn/backupstore v0.0.0-20230627040634-5b4f2d040e9d/go.mod h1:wiEYTbvxEAIUxAAY1DmvMeuFuGqwWmJTzfVhZiBKlNo=
+=======
+github.com/longhorn/backupstore v0.0.0-20231025000449-5316e8b5320d h1:WrjW6b0VmaapZWBKLSJTyZ7A5xzN0mciraLbPG9rExE=
+github.com/longhorn/backupstore v0.0.0-20231025000449-5316e8b5320d/go.mod h1:wiEYTbvxEAIUxAAY1DmvMeuFuGqwWmJTzfVhZiBKlNo=
+>>>>>>> 87ed4821 (Update vendor after backupstore merge.)
 github.com/longhorn/go-iscsi-helper v0.0.0-20230802055236-4ec8edae3fad h1:1eZBx9ZSopMM969E/BTTUIhM0O2klBOgh8qnmGnXftA=
 github.com/longhorn/go-iscsi-helper v0.0.0-20230802055236-4ec8edae3fad/go.mod h1:hxy8Ra38KtX4MFmXZRAZUpJZSYcaI1pmnWmKA3ICA2c=
 github.com/longhorn/go-spdk-helper v0.0.0-20231002161457-6c31a95f76e8 h1:tV7DKLG7xKdM3CratmRLF2JsOA1BpzFGj90nu0PiNCc=
