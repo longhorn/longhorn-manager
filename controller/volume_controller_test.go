@@ -52,10 +52,10 @@ func initSettingsNameValue(name, value string) *longhorn.Setting {
 	return setting
 }
 
-func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
+func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory, kubeFilteredInformerFactory informers.SharedInformerFactory,
 	lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
 	controllerID string) *VolumeController {
-	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, extensionsClient, TestNamespace)
+	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeFilteredInformerFactory, kubeClient, extensionsClient, TestNamespace)
 
 	proxyConnCounter := util.NewAtomicCounter()
 
@@ -1334,6 +1334,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 
 		kubeClient := fake.NewSimpleClientset()
 		kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, controller.NoResyncPeriodFunc())
+		kubeFilteredInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, controller.NoResyncPeriodFunc(), informers.WithNamespace(TestNamespace))
 
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
@@ -1348,7 +1349,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 
 		extensionsClient := apiextensionsfake.NewSimpleClientset()
 
-		vc := newTestVolumeController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, extensionsClient, TestOwnerID1)
+		vc := newTestVolumeController(lhInformerFactory, kubeInformerFactory, kubeFilteredInformerFactory, lhClient, kubeClient, extensionsClient, TestOwnerID1)
 
 		// Need to create daemon pod for node
 		daemon1 := newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, nil)

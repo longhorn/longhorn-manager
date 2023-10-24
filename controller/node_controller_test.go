@@ -51,9 +51,9 @@ type NodeTestCase struct {
 	expectOrphans          []*longhorn.Orphan
 }
 
-func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
+func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory, kubeFilteredInformerFactory informers.SharedInformerFactory,
 	lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset, controllerID string) *NodeController {
-	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, extensionsClient, TestNamespace)
+	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeFilteredInformerFactory, kubeClient, extensionsClient, TestNamespace)
 
 	logger := logrus.StandardLogger()
 	nc := NewNodeController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID)
@@ -725,6 +725,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		fmt.Printf("testing %v\n", name)
 		kubeClient := fake.NewSimpleClientset()
 		kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, controller.NoResyncPeriodFunc())
+		kubeFilteredInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, controller.NoResyncPeriodFunc(), informers.WithNamespace(TestNamespace))
 
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
@@ -755,7 +756,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 
 		extensionsClient := apiextensionsfake.NewSimpleClientset()
 
-		nc := newTestNodeController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, extensionsClient, TestNode1)
+		nc := newTestNodeController(lhInformerFactory, kubeInformerFactory, kubeFilteredInformerFactory, lhClient, kubeClient, extensionsClient, TestNode1)
 		c.Assert(err, IsNil)
 
 		// create manager pod

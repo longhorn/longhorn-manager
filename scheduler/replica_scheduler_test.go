@@ -59,11 +59,11 @@ const (
 
 var longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
 
-func newReplicaScheduler(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
+func newReplicaScheduler(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory, kubeFilteredInformerFactory informers.SharedInformerFactory,
 	lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset) *ReplicaScheduler {
 	fmt.Printf("testing NewReplicaScheduler\n")
 
-	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, extensionsClient, TestNamespace)
+	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeFilteredInformerFactory, kubeClient, extensionsClient, TestNamespace)
 	return NewReplicaScheduler(ds)
 }
 
@@ -1103,6 +1103,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 
 		kubeClient := fake.NewSimpleClientset()
 		kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, controller.NoResyncPeriodFunc())
+		kubeFilteredInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, controller.NoResyncPeriodFunc(), informers.WithNamespace(TestNamespace))
 
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
@@ -1116,7 +1117,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		sIndexer := lhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
 		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 
-		s := newReplicaScheduler(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, extensionsClient)
+		s := newReplicaScheduler(lhInformerFactory, kubeInformerFactory, kubeFilteredInformerFactory, lhClient, kubeClient, extensionsClient)
 		// create daemon pod
 		for _, daemon := range tc.daemons {
 			p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), daemon, metav1.CreateOptions{})
