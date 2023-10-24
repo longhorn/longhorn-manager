@@ -58,10 +58,10 @@ func fakeInstanceManagerVersionUpdater(im *longhorn.InstanceManager) error {
 }
 
 func newTestInstanceManagerController(lhInformerFactory lhinformerfactory.SharedInformerFactory,
-	kubeInformerFactory informers.SharedInformerFactory, lhClient *lhfake.Clientset, kubeClient *fake.Clientset,
+	kubeInformerFactory informers.SharedInformerFactory, kubeFilteredInformerFactory informers.SharedInformerFactory, lhClient *lhfake.Clientset, kubeClient *fake.Clientset,
 	extensionsClient *apiextensionsfake.Clientset, controllerID string) *InstanceManagerController {
 
-	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, extensionsClient, TestNamespace)
+	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeFilteredInformerFactory, kubeClient, extensionsClient, TestNamespace)
 
 	logger := logrus.StandardLogger()
 
@@ -205,6 +205,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 
 		kubeClient := fake.NewSimpleClientset()
 		kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, controller.NoResyncPeriodFunc())
+		kubeFilteredInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, controller.NoResyncPeriodFunc(), informers.WithNamespace(TestNamespace))
 		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 		kubeNodeIndexer := kubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
 
@@ -216,7 +217,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 
 		extensionsClient := apiextensionsfake.NewSimpleClientset()
 
-		imc := newTestInstanceManagerController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient,
+		imc := newTestInstanceManagerController(lhInformerFactory, kubeInformerFactory, kubeFilteredInformerFactory, lhClient, kubeClient,
 			extensionsClient, tc.controllerID)
 
 		// Controller logic depends on the existence of DefaultInstanceManagerImage Setting and Toleration Setting.
