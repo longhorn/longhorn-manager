@@ -3550,11 +3550,11 @@ func restoreVolumeRecurringJobLabel(v *longhorn.Volume, jobName string, job *lon
 
 // createRecurringJobNotExist add recurring jobs and group back to a restoring volume and create recurring jobs if not exist
 func createRecurringJobNotExist(log *logrus.Entry, ds *datastore.DataStore, v *longhorn.Volume, jobName string, job *longhorn.VolumeRecurringJobInfo) (string, error) {
-	if existJob, err := ds.GetRecurringJob(jobName); err != nil {
+	if existingJob, err := ds.GetRecurringJobRO(jobName); err != nil {
 		if !apierrors.IsNotFound(err) {
 			return "", errors.Wrapf(err, "failed to get the recurring job %v", jobName)
 		}
-	} else if !reflect.DeepEqual(existJob.Spec, job.JobSpec) {
+	} else if !reflect.DeepEqual(existingJob.Spec, job.JobSpec) {
 		// create a new recurring job if job name is used and configuration is different.
 		newJobName, existJobName, err := generateRecurringJobName(log, ds, job)
 		if err != nil {

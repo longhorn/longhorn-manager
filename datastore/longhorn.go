@@ -3862,14 +3862,14 @@ func (s *DataStore) getRecurringJobRO(name string) (*longhorn.RecurringJob, erro
 // GetRecurringJob gets the RecurringJob for the given name and namespace.
 // Returns a mutable RecurringJob object
 func (s *DataStore) GetRecurringJob(name string) (*longhorn.RecurringJob, error) {
-	result, err := s.getRecurringJob(name)
+	result, err := s.GetRecurringJobRO(name)
 	if err != nil {
 		return nil, err
 	}
 	return result.DeepCopy(), nil
 }
 
-func (s *DataStore) getRecurringJob(name string) (*longhorn.RecurringJob, error) {
+func (s *DataStore) GetRecurringJobRO(name string) (*longhorn.RecurringJob, error) {
 	return s.recurringJobLister.RecurringJobs(s.namespace).Get(name)
 }
 
@@ -3880,7 +3880,7 @@ func (s *DataStore) UpdateRecurringJob(recurringJob *longhorn.RecurringJob) (*lo
 		return nil, err
 	}
 	verifyUpdate(recurringJob.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getRecurringJob(name)
+		return s.GetRecurringJobRO(name)
 	})
 	return obj, nil
 }
