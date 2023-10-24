@@ -423,6 +423,14 @@ func (s *DataStore) ListManagerPods() ([]*corev1.Pod, error) {
 	return s.ListPodsBySelector(selector)
 }
 
+func (s *DataStore) ListManagerPodsRO() ([]*corev1.Pod, error) {
+	selector, err := s.getManagerSelector()
+	if err != nil {
+		return nil, err
+	}
+	return s.ListPodsBySelectorRO(selector)
+}
+
 func getInstanceManagerComponentSelector() (labels.Selector, error) {
 	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: types.GetInstanceManagerComponentLabel(),
@@ -503,9 +511,22 @@ func (s *DataStore) ListPodsBySelector(selector labels.Selector) ([]*corev1.Pod,
 		return nil, err
 	}
 
-	res := []*corev1.Pod{}
-	for _, item := range podList {
-		res = append(res, item.DeepCopy())
+	res := make([]*corev1.Pod, len(podList))
+	for idx, item := range podList {
+		res[idx] = item.DeepCopy()
+	}
+	return res, nil
+}
+
+func (s *DataStore) ListPodsBySelectorRO(selector labels.Selector) ([]*corev1.Pod, error) {
+	podList, err := s.podLister.Pods(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	res := make([]*corev1.Pod, len(podList))
+	for idx, item := range podList {
+		res[idx] = item
 	}
 	return res, nil
 }
