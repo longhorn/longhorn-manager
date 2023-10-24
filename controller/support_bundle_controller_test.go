@@ -161,6 +161,7 @@ func (s *TestSuite) TestReconcileSupportBundle(c *C) {
 
 		kubeClient := fake.NewSimpleClientset()
 		kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, controller.NoResyncPeriodFunc())
+		kubeFilteredInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, controller.NoResyncPeriodFunc(), informers.WithNamespace(TestNamespace))
 
 		lhClient := lhfake.NewSimpleClientset()
 		lhInformerFactory := lhinformers.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
@@ -172,7 +173,7 @@ func (s *TestSuite) TestReconcileSupportBundle(c *C) {
 		fakeSupportBundleFailedHistoryLimitSetting(tc.supportBundleFailedHistoryLimit, c, lhInformerFactory, lhClient)
 
 		supportBundleController := newFakeSupportBundleController(
-			lhInformerFactory, kubeInformerFactory,
+			lhInformerFactory, kubeInformerFactory, kubeFilteredInformerFactory,
 			lhClient, kubeClient, extensionsClient,
 			tc.controllerID,
 		)
@@ -222,12 +223,13 @@ func (s *TestSuite) TestReconcileSupportBundle(c *C) {
 func newFakeSupportBundleController(
 	lhInformerFactory lhinformers.SharedInformerFactory,
 	kubeInformerFactory informers.SharedInformerFactory,
+	kubeFilteredInformerFactory informers.SharedInformerFactory,
 	lhClient *lhfake.Clientset,
 	kubeClient *fake.Clientset,
 	extensionsClient *apiextensionsfake.Clientset,
 	controllerID string) *SupportBundleController {
 
-	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, extensionsClient, TestNamespace)
+	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeFilteredInformerFactory, kubeClient, extensionsClient, TestNamespace)
 
 	logger := logrus.StandardLogger()
 	logrus.SetLevel(logrus.DebugLevel)
