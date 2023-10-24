@@ -565,11 +565,18 @@ func (job *Job) filterExpiredSnapshotsOfCurrentRecurringJob(snapshotCRs []longho
 	// Only consider deleting the snapshots that were created by our current job
 	snapshotCRs = filterSnapshotCRsWithLabel(snapshotCRs, types.RecurringJobLabel, jobLabel)
 
-	if job.task == longhorn.RecurringJobTypeSnapshot || job.task == longhorn.RecurringJobTypeSnapshotForceCreate {
+	allowBackupSnapshotDeleted, err := job.GetSettingAsBool(types.SettingNameAutoCleanupRecurringJobBackupSnapshot)
+	if err != nil {
+		job.logger.WithError(err).Warnf("Failed to get the setting %v", types.SettingNameAutoCleanupRecurringJobBackupSnapshot)
+		return []string{}
+	}
+
+	// For recurring snapshot job and AutoCleanupRecurringJobBackupSnapshot is disabled, keeps the number of the snapshots as job.retain.
+	if job.task == longhorn.RecurringJobTypeSnapshot || job.task == longhorn.RecurringJobTypeSnapshotForceCreate || !allowBackupSnapshotDeleted {
 		return filterExpiredItems(snapshotCRsToNameWithTimestamps(snapshotCRs), job.retain)
 	}
 
-	// For the recurring backup job, only keep the snapshot of the last backup and the current snapshot
+	// For the recurring backup job, only keep the snapshot of the last backup and the current snapshot when AutoCleanupRecurringJobBackupSnapshot is enabled.
 	retainingSnapshotCRs := map[string]struct{}{job.snapshotName: {}}
 	if !backupDone {
 		lastBackup, err := job.getLastBackup()
@@ -783,6 +790,20 @@ func (job *Job) GetEngineImage(name string) (*longhorn.EngineImage, error) {
 
 func (job *Job) UpdateVolumeStatus(v *longhorn.Volume) (*longhorn.Volume, error) {
 	return job.lhClient.LonghornV1beta2().Volumes(job.namespace).UpdateStatus(context.TODO(), v, metav1.UpdateOptions{})
+}
+
+// GetSettingAsBool returns boolean of the setting value searching by name.
+func (job *Job) GetSettingAsBool(name types.SettingName) (bool, error) {
+	obj, err := job.lhClient.LonghornV1beta2().Settings(job.namespace).Get(context.TODO(), string(name), metav1.GetOptions{})
+	if err != nil {
+		return false, err
+	}
+	value, err := strconv.ParseBool(obj.Value)
+	if err != nil {
+		return false, err
+	}
+
+	return value, nil
 }
 
 // waitForVolumeState timeout in second
