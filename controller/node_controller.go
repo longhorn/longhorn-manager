@@ -377,7 +377,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	}()
 
 	// sync node state by manager pod
-	managerPods, err := nc.ds.ListManagerPods()
+	managerPods, err := nc.ds.ListManagerPodsRO()
 	if err != nil {
 		return err
 	}
