@@ -82,6 +82,9 @@ type ObjectStoreStatus struct {
 	// +default="Unknown"
 	State ObjectStoreState `json:"state,omitempty"`
 
+	// +optional
+	OwnerID string `json:"ownerID"`
+
 	// A list of addresses where the S3 store is exposed.
 	//
 	// +optional

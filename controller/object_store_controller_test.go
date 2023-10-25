@@ -78,6 +78,9 @@ func osTestNewObjectStore(secret *corev1.Secret) *longhorn.ObjectStore {
 				Name:      secret.Name,
 				Namespace: secret.Namespace,
 			},
+			Image:       TestObjectStoreImage,
+			UiImage:     TestObjectStoreUIImage,
+			TargetState: "running",
 		},
 	}
 }

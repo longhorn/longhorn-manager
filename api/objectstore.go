@@ -51,6 +51,10 @@ func (s *Server) ObjectStoreCreate(rw http.ResponseWriter, req *http.Request) (e
 			Name:      input.Name,
 			Namespace: s.m.GetLonghornNamespace(),
 		},
+		StringData: map[string]string{
+			"RGW_DEFAULT_USER_ACCESS_KEY": input.AccessKey,
+			"RGW_DEFAULT_USER_SECRET_KEY": input.SecretKey,
+		},
 	})
 	obj, err := s.m.CreateObjectStore(&longhorn.ObjectStore{
 		ObjectMeta: metav1.ObjectMeta{
@@ -80,9 +84,7 @@ func (s *Server) ObjectStoreCreate(rw http.ResponseWriter, req *http.Request) (e
 				Namespace: sec.Namespace,
 			},
 			Endpoints:   []longhorn.ObjectStoreEndpointSpec{},
-			TargetState: input.TargetState,
-			Image:       input.Image,
-			UiImage:     input.UIImage,
+			TargetState: "running",
 		},
 	})
 	if err != nil {
