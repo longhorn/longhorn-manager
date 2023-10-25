@@ -100,16 +100,16 @@ func NewServer(logger logrus.FieldLogger, configPath, exportPath, volume string)
 		return nil, errors.Wrap(err, "error creating nfs exporter")
 	}
 
-	if _, err := exporter.CreateExport(volume); err != nil {
-		return nil, err
-	}
-
 	return &Server{
 		logger:     logger,
 		configPath: configPath,
 		exportPath: exportPath,
 		exporter:   exporter,
 	}, nil
+}
+
+func (s *Server) CreateExport(volume string) (uint16, error) {
+	return s.exporter.CreateExport(volume)
 }
 
 func (s *Server) Run(ctx context.Context) error {

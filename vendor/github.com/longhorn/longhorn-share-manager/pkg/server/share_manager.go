@@ -108,6 +108,11 @@ func (m *ShareManager) Run() error {
 			m.logger.Info("Starting nfs server, volume is ready for export")
 			go m.runHealthCheck()
 
+			if _, err := m.nfsServer.CreateExport(vol.Name); err != nil {
+				m.logger.WithError(err).Error("Failed to create nfs export")
+				return err
+			}
+
 			// This blocks until server exist
 			if err := m.nfsServer.Run(m.context); err != nil {
 				m.logger.WithError(err).Error("NFS server exited with error")
