@@ -164,7 +164,7 @@ func (kc *KubernetesConfigMapController) reconcile(namespace, cfmName string) er
 
 	switch cfmName {
 	case types.DefaultStorageClassConfigMapName:
-		storageCFM, err := kc.ds.GetConfigMap(kc.namespace, types.DefaultStorageClassConfigMapName)
+		storageCFM, err := kc.ds.GetConfigMapRO(kc.namespace, types.DefaultStorageClassConfigMapName)
 		if err != nil {
 			return err
 		}
@@ -238,7 +238,7 @@ func needToUpdateStorageClass(storageclassYAML string, existingSC *storagev1.Sto
 	}
 
 	lastAppliedConfiguration, ok := existingSC.Annotations[types.GetLonghornLabelKey(lastAppliedStorageConfigLabelKeySuffix)]
-	if !ok { //First time creation using the default StorageClass ConfigMap
+	if !ok { // First time creation using the default StorageClass ConfigMap
 		return true
 	}
 

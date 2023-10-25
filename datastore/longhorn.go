@@ -45,7 +45,7 @@ var (
 )
 
 func (s *DataStore) UpdateCustomizedSettings(defaultImages map[types.SettingName]string) error {
-	defaultSettingCM, err := s.GetConfigMap(s.namespace, types.DefaultDefaultSettingConfigMapName)
+	defaultSettingCM, err := s.GetConfigMapRO(s.namespace, types.DefaultDefaultSettingConfigMapName)
 	if err != nil {
 		return err
 	}
