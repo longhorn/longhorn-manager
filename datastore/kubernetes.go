@@ -835,10 +835,18 @@ func (s *DataStore) GetStorageIPFromPod(pod *corev1.Pod) string {
 		return pod.Status.PodIP
 	}
 
+	// Check if the network-status annotation exists.
 	status, ok := pod.Annotations[string(types.CNIAnnotationNetworkStatus)]
 	if !ok {
-		logrus.Warnf("Missing %v annotation, use %v pod IP %v", types.CNIAnnotationNetworkStatus, pod.Name, pod.Status.PodIP)
-		return pod.Status.PodIP
+		// If the network-status annotation is missing, check the deprecated annotation.
+		logrus.Debugf("Missing %v annotation, checking deprecated %v annotation", types.CNIAnnotationNetworkStatus, types.CNIAnnotationNetworksStatus)
+		status, ok = pod.Annotations[string(types.CNIAnnotationNetworksStatus)]
+
+		// If the deprecated annotation is also missing, use the pod IP.
+		if !ok {
+			logrus.Warnf("Missing %v annotation, use %v pod IP %v", types.CNIAnnotationNetworkStatus, pod.Name, pod.Status.PodIP)
+			return pod.Status.PodIP
+		}
 	}
 
 	nets := []types.CniNetwork{}

@@ -1078,7 +1078,12 @@ type CNIAnnotation string
 
 const (
 	CNIAnnotationNetworks      = CNIAnnotation("k8s.v1.cni.cncf.io/networks")
-	CNIAnnotationNetworkStatus = CNIAnnotation("k8s.v1.cni.cncf.io/networks-status")
+	CNIAnnotationNetworkStatus = CNIAnnotation("k8s.v1.cni.cncf.io/network-status")
+
+	// CNIAnnotationNetworksStatus is deprecated since Multus v3.6 and completely removed in v4.0.0.
+	// This exists to support older Multus versions.
+	// Ref: https://github.com/longhorn/longhorn/issues/6953
+	CNIAnnotationNetworksStatus = CNIAnnotation("k8s.v1.cni.cncf.io/networks-status")
 )
 
 func ValidateSetting(name, value string) (err error) {
