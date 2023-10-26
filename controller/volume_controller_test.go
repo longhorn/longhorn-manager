@@ -9,7 +9,6 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
@@ -28,7 +27,6 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
-	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 
 	. "gopkg.in/check.v1"
@@ -52,10 +50,9 @@ func initSettingsNameValue(name, value string) *longhorn.Setting {
 	return setting
 }
 
-func newTestVolumeController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory, kubeFilteredInformerFactory informers.SharedInformerFactory,
-	lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
-	controllerID string) *VolumeController {
-	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeFilteredInformerFactory, kubeClient, extensionsClient, TestNamespace)
+func newTestVolumeController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
+	informerFactories *util.InformerFactories, controllerID string) *VolumeController {
+	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	proxyConnCounter := util.NewAtomicCounter()
 
@@ -1333,23 +1330,21 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		fmt.Printf("testing %v\n", name)
 
 		kubeClient := fake.NewSimpleClientset()
-		kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, controller.NoResyncPeriodFunc())
-		kubeFilteredInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, controller.NoResyncPeriodFunc(), informers.WithNamespace(TestNamespace))
-
 		lhClient := lhfake.NewSimpleClientset()
-		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
-		vIndexer := lhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
-		eIndexer := lhInformerFactory.Longhorn().V1beta2().Engines().Informer().GetIndexer()
-		rIndexer := lhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
-		nIndexer := lhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
-
-		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
-		knIndexer := kubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
-		sIndexer := lhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
-
 		extensionsClient := apiextensionsfake.NewSimpleClientset()
 
-		vc := newTestVolumeController(lhInformerFactory, kubeInformerFactory, kubeFilteredInformerFactory, lhClient, kubeClient, extensionsClient, TestOwnerID1)
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+		vIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+		eIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Engines().Informer().GetIndexer()
+		rIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
+		nIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+
+		pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+		knIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
+		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+
+		vc := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
 
 		// Need to create daemon pod for node
 		daemon1 := newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, nil)
@@ -1363,7 +1358,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 
 		ei, err := lhClient.LonghornV1beta2().EngineImages(TestNamespace).Create(context.TODO(), tc.engineImage, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
-		eiIndexer := lhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer()
+		eiIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer()
 		err = eiIndexer.Add(ei)
 		c.Assert(err, IsNil)
 
@@ -1391,7 +1386,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			metav1.CreateOptions{},
 		)
 		c.Assert(err, IsNil)
-		imIndexer := lhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+		imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
 		err = imIndexer.Add(instanceManager1)
 		c.Assert(err, IsNil)
 		err = imIndexer.Add(instanceManager2)
@@ -1415,7 +1410,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 
 			bv, err := lhClient.LonghornV1beta2().BackupVolumes(TestNamespace).Create(context.TODO(), backupVolume, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
-			bvIndexer := lhInformerFactory.Longhorn().V1beta2().BackupVolumes().Informer().GetIndexer()
+			bvIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().BackupVolumes().Informer().GetIndexer()
 			err = bvIndexer.Add(bv)
 			c.Assert(err, IsNil)
 		}

@@ -28,6 +28,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
@@ -111,31 +112,24 @@ func (s *TestSuite) TestReconcileSystemRestore(c *C) {
 		fmt.Printf("testing %v\n", name)
 
 		kubeClient := fake.NewSimpleClientset()
-		kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, controller.NoResyncPeriodFunc())
-		kubeFilteredInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, controller.NoResyncPeriodFunc(), informers.WithNamespace(TestNamespace))
-
 		lhClient := lhfake.NewSimpleClientset()
-		lhInformerFactory := lhinformers.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
-
-		fakeSystemRolloutManagerPod(c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutSettingDefaultEngineImage(c, lhInformerFactory, lhClient)
-		fakeSystemRolloutBackupTargetDefault(c, lhInformerFactory, lhClient)
-		fakeSystemBackup(tc.systemBackupName, systemRestoreOwnerID, "", false, "", longhorn.SystemBackupStateGenerating, c, lhInformerFactory, lhClient)
-
 		extensionsClient := apiextensionsfake.NewSimpleClientset()
 
-		systemRestoreController := newFakeSystemRestoreController(
-			lhInformerFactory, kubeInformerFactory, kubeFilteredInformerFactory,
-			lhClient, kubeClient, extensionsClient,
-			tc.controllerID,
-		)
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+		fakeSystemRolloutManagerPod(c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutSettingDefaultEngineImage(c, informerFactories.LhInformerFactory, lhClient)
+		fakeSystemRolloutBackupTargetDefault(c, informerFactories.LhInformerFactory, lhClient)
+		fakeSystemBackup(tc.systemBackupName, systemRestoreOwnerID, "", false, "", longhorn.SystemBackupStateGenerating, c, informerFactories.LhInformerFactory, lhClient)
+
+		systemRestoreController := newFakeSystemRestoreController(lhClient, kubeClient, extensionsClient, informerFactories, tc.controllerID)
 
 		if !tc.notExist {
 			if tc.state == "" {
 				tc.state = longhorn.SystemRestoreStateNone
 			}
 
-			systemRestore := fakeSystemRestore(systemRestoreName, systemRestoreOwnerID, false, tc.isDeleting, tc.state, c, lhInformerFactory, lhClient, systemRestoreController.ds)
+			systemRestore := fakeSystemRestore(systemRestoreName, systemRestoreOwnerID, false, tc.isDeleting, tc.state, c, informerFactories.LhInformerFactory, lhClient, systemRestoreController.ds)
 			if tc.isDeleting {
 				_, err := systemRestoreController.CreateSystemRestoreJob(systemRestore, backupTargetClient)
 				c.Assert(err, IsNil)
@@ -168,16 +162,9 @@ func (s *TestSuite) TestReconcileSystemRestore(c *C) {
 	}
 }
 
-func newFakeSystemRestoreController(
-	lhInformerFactory lhinformers.SharedInformerFactory,
-	kubeInformerFactory informers.SharedInformerFactory,
-	kubeFilteredInformerFactory informers.SharedInformerFactory,
-	lhClient *lhfake.Clientset,
-	kubeClient *fake.Clientset,
-	extensionsClient *apiextensionsfake.Clientset,
-	controllerID string) *SystemRestoreController {
-
-	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeFilteredInformerFactory, kubeClient, extensionsClient, TestNamespace)
+func newFakeSystemRestoreController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
+	informerFactories *util.InformerFactories, controllerID string) *SystemRestoreController {
+	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	logger := logrus.StandardLogger()
 	logrus.SetLevel(logrus.DebugLevel)
