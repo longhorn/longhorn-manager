@@ -5,12 +5,14 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 type BackupState string
 
 const (
+	// non-final state
 	BackupStateNew        = BackupState("")
 	BackupStatePending    = BackupState("Pending")
 	BackupStateInProgress = BackupState("InProgress")
-	BackupStateCompleted  = BackupState("Completed")
-	BackupStateError      = BackupState("Error")
-	BackupStateUnknown    = BackupState("Unknown")
+	// final state
+	BackupStateCompleted = BackupState("Completed")
+	BackupStateError     = BackupState("Error")
+	BackupStateUnknown   = BackupState("Unknown")
 )
 
 // BackupSpec defines the desired state of the Longhorn backup
