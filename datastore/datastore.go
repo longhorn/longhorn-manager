@@ -198,6 +198,7 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	volumeAttachmentInformer := informerFactories.KubeInformerFactory.Storage().V1().VolumeAttachments()
 	cacheSyncs = append(cacheSyncs, volumeAttachmentInformer.Informer().HasSynced)
 <<<<<<< HEAD
+<<<<<<< HEAD
 	configMapInformer := kubeInformerFactory.Core().V1().ConfigMaps()
 	cacheSyncs = append(cacheSyncs, configMapInformer.Informer().HasSynced)
 	secretInformer := kubeInformerFactory.Core().V1().Secrets()
@@ -216,16 +217,21 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, priorityClassInformer.Informer().HasSynced)
 	csiDriverInformer := kubeInformerFactory.Storage().V1().CSIDrivers()
 =======
+=======
+>>>>>>> 4f2d68df (Filter pdb, daemonset and deployment by namespace)
 	csiDriverInformer := informerFactories.KubeInformerFactory.Storage().V1().CSIDrivers()
 >>>>>>> c568293a (Refactor informer factories creation and initialization)
 	cacheSyncs = append(cacheSyncs, csiDriverInformer.Informer().HasSynced)
 	storageclassInformer := informerFactories.KubeInformerFactory.Storage().V1().StorageClasses()
 	cacheSyncs = append(cacheSyncs, storageclassInformer.Informer().HasSynced)
+<<<<<<< HEAD
 	podDisruptionBudgetInformer := kubeInformerFactory.Policy().V1().PodDisruptionBudgets()
 	cacheSyncs = append(cacheSyncs, podDisruptionBudgetInformer.Informer().HasSynced)
 <<<<<<< HEAD
 	serviceInformer := kubeInformerFactory.Core().V1().Services()
 =======
+=======
+>>>>>>> 4f2d68df (Filter pdb, daemonset and deployment by namespace)
 
 	// Filtered kube Informers by longhorn-system namespace
 	cronJobInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Batch().V1().CronJobs()
@@ -239,6 +245,12 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	serviceInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Core().V1().Services()
 >>>>>>> c568293a (Refactor informer factories creation and initialization)
 	cacheSyncs = append(cacheSyncs, serviceInformer.Informer().HasSynced)
+	podDisruptionBudgetInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Policy().V1().PodDisruptionBudgets()
+	cacheSyncs = append(cacheSyncs, podDisruptionBudgetInformer.Informer().HasSynced)
+	daemonSetInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Apps().V1().DaemonSets()
+	cacheSyncs = append(cacheSyncs, daemonSetInformer.Informer().HasSynced)
+	deploymentInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Apps().V1().Deployments()
+	cacheSyncs = append(cacheSyncs, deploymentInformer.Informer().HasSynced)
 
 	return &DataStore{
 		namespace: namespace,
@@ -292,12 +304,15 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 		kubeClient:                    kubeClient,
 		podLister:                     podInformer.Lister(),
 		PodInformer:                   podInformer.Informer(),
+<<<<<<< HEAD
 		cronJobLister:                 cronJobInformer.Lister(),
 		CronJobInformer:               cronJobInformer.Informer(),
 		daemonSetLister:               daemonSetInformer.Lister(),
 		DaemonSetInformer:             daemonSetInformer.Informer(),
 		deploymentLister:              deploymentInformer.Lister(),
 		DeploymentInformer:            deploymentInformer.Informer(),
+=======
+>>>>>>> 4f2d68df (Filter pdb, daemonset and deployment by namespace)
 		persistentVolumeLister:        persistentVolumeInformer.Lister(),
 		PersistentVolumeInformer:      persistentVolumeInformer.Informer(),
 		persistentVolumeClaimLister:   persistentVolumeClaimInformer.Lister(),
@@ -316,10 +331,30 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 		CSIDriverInformer:             csiDriverInformer.Informer(),
 		storageclassLister:            storageclassInformer.Lister(),
 		StorageClassInformer:          storageclassInformer.Informer(),
+<<<<<<< HEAD
 		podDisruptionBudgetLister:     podDisruptionBudgetInformer.Lister(),
 		PodDisruptionBudgetInformer:   podDisruptionBudgetInformer.Informer(),
 		serviceLister:                 serviceInformer.Lister(),
 		ServiceInformer:               serviceInformer.Informer(),
+=======
+
+		cronJobLister:               cronJobInformer.Lister(),
+		CronJobInformer:             cronJobInformer.Informer(),
+		configMapLister:             configMapInformer.Lister(),
+		ConfigMapInformer:           configMapInformer.Informer(),
+		secretLister:                secretInformer.Lister(),
+		SecretInformer:              secretInformer.Informer(),
+		priorityClassLister:         priorityClassInformer.Lister(),
+		PriorityClassInformer:       priorityClassInformer.Informer(),
+		serviceLister:               serviceInformer.Lister(),
+		ServiceInformer:             serviceInformer.Informer(),
+		podDisruptionBudgetLister:   podDisruptionBudgetInformer.Lister(),
+		PodDisruptionBudgetInformer: podDisruptionBudgetInformer.Informer(),
+		daemonSetLister:             daemonSetInformer.Lister(),
+		DaemonSetInformer:           daemonSetInformer.Informer(),
+		deploymentLister:            deploymentInformer.Lister(),
+		DeploymentInformer:          deploymentInformer.Informer(),
+>>>>>>> 4f2d68df (Filter pdb, daemonset and deployment by namespace)
 
 		extensionsClient: extensionsClient,
 	}
