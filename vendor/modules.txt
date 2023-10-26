@@ -219,11 +219,7 @@ github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/rpc
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-<<<<<<< HEAD
-# github.com/longhorn/backupstore v0.0.0-20230627040634-5b4f2d040e9d
-=======
 # github.com/longhorn/backupstore v0.0.0-20231025000449-5316e8b5320d
->>>>>>> 87ed4821 (Update vendor after backupstore merge.)
 ## explicit; go 1.17
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/logging
