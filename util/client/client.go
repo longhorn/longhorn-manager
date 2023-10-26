@@ -11,7 +11,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/clientcmd"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -22,8 +21,8 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 )
 
 type Clients struct {
@@ -89,15 +88,10 @@ func NewClients(kubeconfigPath string, stopCh <-chan struct{}) (*Clients, error)
 	//  lead to scalability problems, since we dump the whole cache of each object back in to the reconciler every 30 seconds.
 	//  if a specific controller requires a periodic resync, one enable it only for that informer, add a resync to the event handler, go routine, etc.
 	//  some refs to look at: https://github.com/kubernetes-sigs/controller-runtime/issues/521
-	kubeInformerFactory := informers.NewSharedInformerFactory(clients.K8s, time.Second*30)
-	kubeFilteredInformerFactory := informers.NewSharedInformerFactoryWithOptions(clients.K8s, time.Second*30, informers.WithNamespace(namespace))
-	lhInformerFactory := lhinformers.NewSharedInformerFactory(lhClient, time.Second*30)
+	informerFactories := util.NewInformerFactories(namespace, clients.K8s, lhClient, 30*time.Second)
+	ds := datastore.NewDataStore(namespace, lhClient, clients.K8s, extensionsClient, informerFactories)
 
-	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeFilteredInformerFactory, clients.K8s, extensionsClient, namespace)
-
-	go kubeInformerFactory.Start(stopCh)
-	go kubeFilteredInformerFactory.Start(stopCh)
-	go lhInformerFactory.Start(stopCh)
+	informerFactories.Start(stopCh)
 	if !ds.Sync(stopCh) {
 		return nil, fmt.Errorf("datastore cache sync up failed")
 	}
