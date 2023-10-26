@@ -202,7 +202,7 @@ func (s *TestSuite) TestEngineImage(c *C) {
 
 		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
 
-		dsIndexer := informerFactories.KubeInformerFactory.Apps().V1().DaemonSets().Informer().GetIndexer()
+		dsIndexer := informerFactories.KubeNamespaceFilteredInformerFactory.Apps().V1().DaemonSets().Informer().GetIndexer()
 		podIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 
 		nodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
