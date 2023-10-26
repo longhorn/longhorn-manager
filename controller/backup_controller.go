@@ -360,13 +360,13 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	}()
 
 	// Perform backup snapshot to the remote backup target
-	// If the Backup CR is created by the user/API layer (spec.snapshotName != "") and has not been synced (status.lastSyncedAt == ""),
-	// it means creating a backup from a volume snapshot is required.
+	// If the Backup CR is created by the user/API layer (spec.snapshotName != ""), has not been synced (status.lastSyncedAt == "")
+	// and is not in final state, it means creating a backup from a volume snapshot is required.
 	// Hence the source of truth is the engine/replica and the controller needs to sync the status with it.
 	// Otherwise, the Backup CR is created by the backup volume controller, which means the backup already
 	// exists in the remote backup target before the CR creation.
 	// What the controller needs to do for this case is retrieve the info from the remote backup target.
-	if backup.Status.LastSyncedAt.IsZero() && backup.Spec.SnapshotName != "" {
+	if backup.Status.LastSyncedAt.IsZero() && backup.Spec.SnapshotName != "" && bc.backupNotInFinalState(backup) {
 		volume, err := bc.ds.GetVolume(backupVolumeName)
 		if err != nil {
 			if !apierrors.IsNotFound(err) {
@@ -688,4 +688,10 @@ func (bc *BackupController) syncBackupStatusWithSnapshotCreationTimeAndVolumeSiz
 	}
 
 	backup.Status.SnapshotCreatedAt = snap.Created
+}
+
+func (bc *BackupController) backupNotInFinalState(backup *longhorn.Backup) bool {
+	return backup.Status.State != longhorn.BackupStateCompleted &&
+		backup.Status.State != longhorn.BackupStateError &&
+		backup.Status.State != longhorn.BackupStateUnknown
 }
