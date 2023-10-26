@@ -62,6 +62,7 @@ func createOrUpdateAttachmentTicket(va *longhorn.VolumeAttachment, ticketID, nod
 
 func handleReconcileErrorLogging(logger logrus.FieldLogger, err error, mesg string) {
 	if types.ErrorIsInvalidState(err) {
+		logger.WithError(err).Trace(mesg)
 		return
 	}
 
