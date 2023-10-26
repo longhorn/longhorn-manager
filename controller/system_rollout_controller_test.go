@@ -12,7 +12,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
@@ -35,7 +34,6 @@ import (
 	longhornapis "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
 
 	. "gopkg.in/check.v1"
 )
@@ -964,38 +962,36 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 
 		tc.initTestCase()
 
+		kubeClient := fake.NewSimpleClientset()
+		lhClient := lhfake.NewSimpleClientset()
 		extensionsClient := apiextensionsfake.NewSimpleClientset()
+
 		extensionsInformerFactory := apiextensionsinformers.NewSharedInformerFactory(extensionsClient, controller.NoResyncPeriodFunc())
 
-		kubeClient := fake.NewSimpleClientset()
-		kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, controller.NoResyncPeriodFunc())
-		kubeFilteredInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, controller.NoResyncPeriodFunc(), informers.WithNamespace(TestNamespace))
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
 
-		lhClient := lhfake.NewSimpleClientset()
-		lhInformerFactory := lhinformers.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
+		fakeSystemRolloutBackupTargetDefault(c, informerFactories.LhInformerFactory, lhClient)
 
-		fakeSystemRolloutBackupTargetDefault(c, lhInformerFactory, lhClient)
-
-		fakeSystemRolloutSettings(tc.backupSettings, c, lhInformerFactory, lhClient)
+		fakeSystemRolloutSettings(tc.backupSettings, c, informerFactories.LhInformerFactory, lhClient)
 		fakeSystemRolloutCustomResourceDefinitions(tc.backupCRDVersions, c, extensionsInformerFactory, extensionsClient)
-		fakeSystemRolloutClusterRoles(tc.backupClusterRoles, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutClusterRoleBindings(tc.backupClusterRoleBindings, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutConfigMaps(tc.backupConfigMaps, c, kubeFilteredInformerFactory, kubeClient)
-		fakeSystemRolloutDaemonSets(tc.backupDaemonSets, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutDeployments(tc.backupDeployments, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutEngineImages(tc.backupEngineImages, c, lhInformerFactory, lhClient)
-		fakeSystemRolloutPersistentVolumes(tc.backupPersistentVolumes, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutPersistentVolumeClaims(tc.backupPersistentVolumeClaims, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutPodSecurityPolicies(tc.backupPodSecurityPolicies, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutRecurringJobs(tc.backupRecurringJobs, c, lhInformerFactory, lhClient)
-		fakeSystemRolloutRoles(tc.backupRoles, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutRoleBindings(tc.backupRoleBindings, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutServices(tc.backupServices, c, kubeFilteredInformerFactory, kubeClient)
-		fakeSystemRolloutServiceAccounts(tc.backupServiceAccounts, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutStorageClasses(tc.backupStorageClasses, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutVolumes(tc.backupVolumes, c, lhInformerFactory, lhClient)
+		fakeSystemRolloutClusterRoles(tc.backupClusterRoles, c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutClusterRoleBindings(tc.backupClusterRoleBindings, c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutConfigMaps(tc.backupConfigMaps, c, informerFactories.KubeNamespaceFilteredInformerFactory, kubeClient)
+		fakeSystemRolloutDaemonSets(tc.backupDaemonSets, c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutDeployments(tc.backupDeployments, c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutEngineImages(tc.backupEngineImages, c, informerFactories.LhInformerFactory, lhClient)
+		fakeSystemRolloutPersistentVolumes(tc.backupPersistentVolumes, c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutPersistentVolumeClaims(tc.backupPersistentVolumeClaims, c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutPodSecurityPolicies(tc.backupPodSecurityPolicies, c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutRecurringJobs(tc.backupRecurringJobs, c, informerFactories.LhInformerFactory, lhClient)
+		fakeSystemRolloutRoles(tc.backupRoles, c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutRoleBindings(tc.backupRoleBindings, c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutServices(tc.backupServices, c, informerFactories.KubeNamespaceFilteredInformerFactory, kubeClient)
+		fakeSystemRolloutServiceAccounts(tc.backupServiceAccounts, c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutStorageClasses(tc.backupStorageClasses, c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutVolumes(tc.backupVolumes, c, informerFactories.LhInformerFactory, lhClient)
 
-		ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeFilteredInformerFactory, kubeClient, extensionsClient, TestNamespace)
+		ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 		doneCh := make(chan struct{})
 		if tc.expectState != longhorn.SystemRestoreStateCompleted && tc.expectState != longhorn.SystemRestoreStateError {
 			doneChs = append(doneChs, doneCh)
@@ -1005,7 +1001,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 		controller.systemRestoreVersion = TestSystemBackupLonghornVersion
 		controller.cacheErrors = util.MultiError{}
 
-		fakeSystemRestore(tc.systemRestoreName, systemRolloutOwnerID, tc.isInProgress, false, tc.state, c, lhInformerFactory, lhClient, controller.ds)
+		fakeSystemRestore(tc.systemRestoreName, systemRolloutOwnerID, tc.isInProgress, false, tc.state, c, informerFactories.LhInformerFactory, lhClient, controller.ds)
 
 		var err error
 		controller.systemRestore, err = lhClient.LonghornV1beta2().SystemRestores(TestNamespace).Get(context.TODO(), tc.systemRestoreName, metav1.GetOptions{})
@@ -1020,29 +1016,29 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 
 		if tc.state != longhorn.SystemRestoreStateUnpacking || (tc.state == longhorn.SystemRestoreStateUnpacking && tc.expectState != longhorn.SystemRestoreStateError) {
 			fakeSystemBackupArchieve(c, TestSystemBackupName, controllerID, systemRolloutOwnerID, tempDir, controller.downloadPath,
-				kubeInformerFactory, kubeFilteredInformerFactory, kubeClient, lhInformerFactory, lhClient, extensionsClient)
+				kubeClient, lhClient, extensionsClient, informerFactories)
 		}
 
 		err = os.RemoveAll(tempDir)
 		c.Assert(err, IsNil)
 
-		fakeSystemRolloutClusterRoles(tc.existClusterRoles, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutClusterRoleBindings(tc.existClusterRoleBindings, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutConfigMaps(tc.existConfigMaps, c, kubeFilteredInformerFactory, kubeClient)
+		fakeSystemRolloutClusterRoles(tc.existClusterRoles, c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutClusterRoleBindings(tc.existClusterRoleBindings, c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutConfigMaps(tc.existConfigMaps, c, informerFactories.KubeNamespaceFilteredInformerFactory, kubeClient)
 		fakeSystemRolloutCustomResourceDefinitions(tc.existCRDVersions, c, extensionsInformerFactory, extensionsClient)
-		fakeSystemRolloutDaemonSets(tc.existDaemonSets, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutDeployments(tc.existDeployments, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutEngineImages(tc.existEngineImages, c, lhInformerFactory, lhClient)
-		fakeSystemRolloutPersistentVolumes(tc.existPersistentVolumes, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutPersistentVolumeClaims(tc.existPersistentVolumeClaims, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutPodSecurityPolicies(tc.existPodSecurityPolicies, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutRecurringJobs(tc.existRecurringJobs, c, lhInformerFactory, lhClient)
-		fakeSystemRolloutRoles(tc.existRoles, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutRoleBindings(tc.existRoleBindings, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutServices(tc.existServices, c, kubeFilteredInformerFactory, kubeClient)
-		fakeSystemRolloutServiceAccounts(tc.existServiceAccounts, c, kubeInformerFactory, kubeClient)
-		fakeSystemRolloutSettings(tc.existSettings, c, lhInformerFactory, lhClient)
-		fakeSystemRolloutVolumes(tc.existVolumes, c, lhInformerFactory, lhClient)
+		fakeSystemRolloutDaemonSets(tc.existDaemonSets, c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutDeployments(tc.existDeployments, c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutEngineImages(tc.existEngineImages, c, informerFactories.LhInformerFactory, lhClient)
+		fakeSystemRolloutPersistentVolumes(tc.existPersistentVolumes, c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutPersistentVolumeClaims(tc.existPersistentVolumeClaims, c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutPodSecurityPolicies(tc.existPodSecurityPolicies, c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutRecurringJobs(tc.existRecurringJobs, c, informerFactories.LhInformerFactory, lhClient)
+		fakeSystemRolloutRoles(tc.existRoles, c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutRoleBindings(tc.existRoleBindings, c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutServices(tc.existServices, c, informerFactories.KubeNamespaceFilteredInformerFactory, kubeClient)
+		fakeSystemRolloutServiceAccounts(tc.existServiceAccounts, c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSystemRolloutSettings(tc.existSettings, c, informerFactories.LhInformerFactory, lhClient)
+		fakeSystemRolloutVolumes(tc.existVolumes, c, informerFactories.LhInformerFactory, lhClient)
 
 		if tc.state == longhorn.SystemRestoreStateRestoring {
 			err := controller.Unpack(controller.logger)
@@ -1423,13 +1419,11 @@ func (tc *SystemRolloutTestCase) initTestCase() {
 }
 
 func fakeSystemBackupArchieve(c *C, systemBackupName, systemRolloutOwnerID, rolloutControllerID, tempDir, downloadPath string,
-	kubeInformerFactory informers.SharedInformerFactory, kubeFilteredInformerFactory informers.SharedInformerFactory, kubeClient *fake.Clientset,
-	lhInformerFactory lhinformers.SharedInformerFactory, lhClient *lhfake.Clientset,
-	extensionsClient *apiextensionsfake.Clientset) {
-	fakeSystemRolloutNamespace(c, kubeInformerFactory, kubeClient)
+	kubeClient *fake.Clientset, lhClient *lhfake.Clientset, extensionsClient *apiextensionsfake.Clientset, informerFactories *util.InformerFactories) {
+	fakeSystemRolloutNamespace(c, informerFactories.KubeInformerFactory, kubeClient)
 
-	systemBackupController := newFakeSystemBackupController(lhInformerFactory, kubeInformerFactory, kubeFilteredInformerFactory, lhClient, kubeClient, extensionsClient, rolloutControllerID)
-	systemBackup := fakeSystemBackup(systemBackupName, systemRolloutOwnerID, "", false, "", longhorn.SystemBackupStateGenerating, c, lhInformerFactory, lhClient)
+	systemBackupController := newFakeSystemBackupController(lhClient, kubeClient, extensionsClient, informerFactories, rolloutControllerID)
+	systemBackup := fakeSystemBackup(systemBackupName, systemRolloutOwnerID, "", false, "", longhorn.SystemBackupStateGenerating, c, informerFactories.LhInformerFactory, lhClient)
 
 	systemBackupController.GenerateSystemBackup(systemBackup, downloadPath, tempDir)
 	systemBackup, err := lhClient.LonghornV1beta2().SystemBackups(TestNamespace).Get(context.TODO(), systemBackupName, metav1.GetOptions{})

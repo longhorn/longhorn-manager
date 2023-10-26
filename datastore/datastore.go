@@ -3,7 +3,6 @@ package datastore
 import (
 	"time"
 
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/cache"
 
 	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
@@ -16,8 +15,9 @@ import (
 	schedulinglisters "k8s.io/client-go/listers/scheduling/v1"
 	storagelisters_v1 "k8s.io/client-go/listers/storage/v1"
 
+	"github.com/longhorn/longhorn-manager/util"
+
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
 	lhlisters "github.com/longhorn/longhorn-manager/k8s/pkg/client/listers/longhorn/v1beta2"
 )
 
@@ -121,93 +121,85 @@ type DataStore struct {
 }
 
 // NewDataStore creates new DataStore object
-func NewDataStore(
-	lhInformerFactory lhinformers.SharedInformerFactory,
-	lhClient lhclientset.Interface,
-	kubeInformerFactory informers.SharedInformerFactory,
-	kubeFilteredInformerFactory informers.SharedInformerFactory,
-	kubeClient clientset.Interface,
-	extensionsClient apiextensionsclientset.Interface,
-	namespace string) *DataStore {
-
+func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient clientset.Interface, extensionsClient apiextensionsclientset.Interface, informerFactories *util.InformerFactories) *DataStore {
 	cacheSyncs := []cache.InformerSynced{}
 
 	// Longhorn Informers
-	replicaInformer := lhInformerFactory.Longhorn().V1beta2().Replicas()
+	replicaInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas()
 	cacheSyncs = append(cacheSyncs, replicaInformer.Informer().HasSynced)
-	engineInformer := lhInformerFactory.Longhorn().V1beta2().Engines()
+	engineInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Engines()
 	cacheSyncs = append(cacheSyncs, engineInformer.Informer().HasSynced)
-	volumeInformer := lhInformerFactory.Longhorn().V1beta2().Volumes()
+	volumeInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes()
 	cacheSyncs = append(cacheSyncs, volumeInformer.Informer().HasSynced)
-	engineImageInformer := lhInformerFactory.Longhorn().V1beta2().EngineImages()
+	engineImageInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages()
 	cacheSyncs = append(cacheSyncs, engineImageInformer.Informer().HasSynced)
-	nodeInformer := lhInformerFactory.Longhorn().V1beta2().Nodes()
+	nodeInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes()
 	cacheSyncs = append(cacheSyncs, nodeInformer.Informer().HasSynced)
-	settingInformer := lhInformerFactory.Longhorn().V1beta2().Settings()
+	settingInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings()
 	cacheSyncs = append(cacheSyncs, settingInformer.Informer().HasSynced)
-	instanceManagerInformer := lhInformerFactory.Longhorn().V1beta2().InstanceManagers()
+	instanceManagerInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers()
 	cacheSyncs = append(cacheSyncs, instanceManagerInformer.Informer().HasSynced)
-	shareManagerInformer := lhInformerFactory.Longhorn().V1beta2().ShareManagers()
+	shareManagerInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().ShareManagers()
 	cacheSyncs = append(cacheSyncs, shareManagerInformer.Informer().HasSynced)
-	backingImageInformer := lhInformerFactory.Longhorn().V1beta2().BackingImages()
+	backingImageInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().BackingImages()
 	cacheSyncs = append(cacheSyncs, backingImageInformer.Informer().HasSynced)
-	backingImageManagerInformer := lhInformerFactory.Longhorn().V1beta2().BackingImageManagers()
+	backingImageManagerInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().BackingImageManagers()
 	cacheSyncs = append(cacheSyncs, backingImageManagerInformer.Informer().HasSynced)
-	backingImageDataSourceInformer := lhInformerFactory.Longhorn().V1beta2().BackingImageDataSources()
+	backingImageDataSourceInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().BackingImageDataSources()
 	cacheSyncs = append(cacheSyncs, backingImageDataSourceInformer.Informer().HasSynced)
-	backupTargetInformer := lhInformerFactory.Longhorn().V1beta2().BackupTargets()
+	backupTargetInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().BackupTargets()
 	cacheSyncs = append(cacheSyncs, backupTargetInformer.Informer().HasSynced)
-	backupVolumeInformer := lhInformerFactory.Longhorn().V1beta2().BackupVolumes()
+	backupVolumeInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().BackupVolumes()
 	cacheSyncs = append(cacheSyncs, backupVolumeInformer.Informer().HasSynced)
-	backupInformer := lhInformerFactory.Longhorn().V1beta2().Backups()
+	backupInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Backups()
 	cacheSyncs = append(cacheSyncs, backupInformer.Informer().HasSynced)
-	recurringJobInformer := lhInformerFactory.Longhorn().V1beta2().RecurringJobs()
+	recurringJobInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().RecurringJobs()
 	cacheSyncs = append(cacheSyncs, recurringJobInformer.Informer().HasSynced)
-	orphanInformer := lhInformerFactory.Longhorn().V1beta2().Orphans()
+	orphanInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Orphans()
 	cacheSyncs = append(cacheSyncs, orphanInformer.Informer().HasSynced)
-	snapshotInformer := lhInformerFactory.Longhorn().V1beta2().Snapshots()
+	snapshotInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Snapshots()
 	cacheSyncs = append(cacheSyncs, snapshotInformer.Informer().HasSynced)
-	supportBundleInformer := lhInformerFactory.Longhorn().V1beta2().SupportBundles()
+	supportBundleInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().SupportBundles()
 	cacheSyncs = append(cacheSyncs, supportBundleInformer.Informer().HasSynced)
-	systemBackupInformer := lhInformerFactory.Longhorn().V1beta2().SystemBackups()
+	systemBackupInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().SystemBackups()
 	cacheSyncs = append(cacheSyncs, systemBackupInformer.Informer().HasSynced)
-	systemRestoreInformer := lhInformerFactory.Longhorn().V1beta2().SystemRestores()
+	systemRestoreInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().SystemRestores()
 	cacheSyncs = append(cacheSyncs, systemRestoreInformer.Informer().HasSynced)
-	lhVolumeAttachmentInformer := lhInformerFactory.Longhorn().V1beta2().VolumeAttachments()
+	lhVolumeAttachmentInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().VolumeAttachments()
 	cacheSyncs = append(cacheSyncs, lhVolumeAttachmentInformer.Informer().HasSynced)
 
 	// Kube Informers
-	podInformer := kubeInformerFactory.Core().V1().Pods()
+	podInformer := informerFactories.KubeInformerFactory.Core().V1().Pods()
 	cacheSyncs = append(cacheSyncs, podInformer.Informer().HasSynced)
-	kubeNodeInformer := kubeInformerFactory.Core().V1().Nodes()
+	kubeNodeInformer := informerFactories.KubeInformerFactory.Core().V1().Nodes()
 	cacheSyncs = append(cacheSyncs, kubeNodeInformer.Informer().HasSynced)
-	persistentVolumeInformer := kubeInformerFactory.Core().V1().PersistentVolumes()
+	persistentVolumeInformer := informerFactories.KubeInformerFactory.Core().V1().PersistentVolumes()
 	cacheSyncs = append(cacheSyncs, persistentVolumeInformer.Informer().HasSynced)
-	persistentVolumeClaimInformer := kubeInformerFactory.Core().V1().PersistentVolumeClaims()
+	persistentVolumeClaimInformer := informerFactories.KubeInformerFactory.Core().V1().PersistentVolumeClaims()
 	cacheSyncs = append(cacheSyncs, persistentVolumeClaimInformer.Informer().HasSynced)
-	volumeAttachmentInformer := kubeInformerFactory.Storage().V1().VolumeAttachments()
+	volumeAttachmentInformer := informerFactories.KubeInformerFactory.Storage().V1().VolumeAttachments()
 	cacheSyncs = append(cacheSyncs, volumeAttachmentInformer.Informer().HasSynced)
-	daemonSetInformer := kubeInformerFactory.Apps().V1().DaemonSets()
+	daemonSetInformer := informerFactories.KubeInformerFactory.Apps().V1().DaemonSets()
 	cacheSyncs = append(cacheSyncs, daemonSetInformer.Informer().HasSynced)
-	deploymentInformer := kubeInformerFactory.Apps().V1().Deployments()
+	deploymentInformer := informerFactories.KubeInformerFactory.Apps().V1().Deployments()
 	cacheSyncs = append(cacheSyncs, deploymentInformer.Informer().HasSynced)
-	csiDriverInformer := kubeInformerFactory.Storage().V1().CSIDrivers()
+	csiDriverInformer := informerFactories.KubeInformerFactory.Storage().V1().CSIDrivers()
 	cacheSyncs = append(cacheSyncs, csiDriverInformer.Informer().HasSynced)
-	storageclassInformer := kubeInformerFactory.Storage().V1().StorageClasses()
+	storageclassInformer := informerFactories.KubeInformerFactory.Storage().V1().StorageClasses()
 	cacheSyncs = append(cacheSyncs, storageclassInformer.Informer().HasSynced)
 	podDisruptionBudgetInformer := kubeInformerFactory.Policy().V1().PodDisruptionBudgets()
 	cacheSyncs = append(cacheSyncs, podDisruptionBudgetInformer.Informer().HasSynced)
 
-	// Filtered kube Informers
-	cronJobInformer := kubeFilteredInformerFactory.Batch().V1().CronJobs()
+	// Filtered kube Informers by longhorn-system namespace
+	cronJobInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Batch().V1().CronJobs()
 	cacheSyncs = append(cacheSyncs, cronJobInformer.Informer().HasSynced)
-	configMapInformer := kubeFilteredInformerFactory.Core().V1().ConfigMaps()
+	configMapInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Core().V1().ConfigMaps()
 	cacheSyncs = append(cacheSyncs, configMapInformer.Informer().HasSynced)
-	secretInformer := kubeFilteredInformerFactory.Core().V1().Secrets()
+	secretInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Core().V1().Secrets()
 	cacheSyncs = append(cacheSyncs, secretInformer.Informer().HasSynced)
-	priorityClassInformer := kubeFilteredInformerFactory.Scheduling().V1().PriorityClasses()
+	priorityClassInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Scheduling().V1().PriorityClasses()
 	cacheSyncs = append(cacheSyncs, priorityClassInformer.Informer().HasSynced)
-	serviceInformer := kubeFilteredInformerFactory.Core().V1().Services()
+	serviceInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Core().V1().Services()
 	cacheSyncs = append(cacheSyncs, serviceInformer.Informer().HasSynced)
 
 	return &DataStore{
