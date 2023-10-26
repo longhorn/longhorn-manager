@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"k8s.io/apimachinery/pkg/util/uuid"
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/kubernetes/pkg/controller"
 
@@ -20,7 +19,6 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
-	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
 
 	. "gopkg.in/check.v1"
 )
@@ -55,11 +53,20 @@ const (
 
 var longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
 
+<<<<<<< HEAD
 func newReplicaScheduler(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
 	lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset) *ReplicaScheduler {
 	fmt.Printf("testing NewReplicaScheduler\n")
 
 	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, extensionsClient, TestNamespace)
+=======
+func newReplicaScheduler(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
+	informerFactories *util.InformerFactories) *ReplicaScheduler {
+	fmt.Printf("testing NewReplicaScheduler\n")
+
+	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+
+>>>>>>> c568293a (Refactor informer factories creation and initialization)
 	return NewReplicaScheduler(ds)
 }
 
@@ -746,21 +753,28 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		fmt.Printf("testing %v\n", name)
 
 		kubeClient := fake.NewSimpleClientset()
+<<<<<<< HEAD
 		kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, controller.NoResyncPeriodFunc())
 
+=======
+>>>>>>> c568293a (Refactor informer factories creation and initialization)
 		lhClient := lhfake.NewSimpleClientset()
-		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
-
 		extensionsClient := apiextensionsfake.NewSimpleClientset()
 
-		vIndexer := lhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
-		rIndexer := lhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
-		nIndexer := lhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
-		eiIndexer := lhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer()
-		sIndexer := lhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
-		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
 
+<<<<<<< HEAD
 		s := newReplicaScheduler(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, extensionsClient)
+=======
+		vIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
+		rIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
+		nIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+		eiIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer()
+		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+		pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+
+		s := newReplicaScheduler(lhClient, kubeClient, extensionsClient, informerFactories)
+>>>>>>> c568293a (Refactor informer factories creation and initialization)
 		// create daemon pod
 		for _, daemon := range tc.daemons {
 			p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), daemon, metav1.CreateOptions{})

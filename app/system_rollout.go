@@ -8,7 +8,6 @@ import (
 	"github.com/urfave/cli"
 
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/clientcmd"
 
 	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
@@ -21,7 +20,6 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
 )
 
 func SystemRolloutCmd() cli.Command {
@@ -87,17 +85,26 @@ func systemRollout(c *cli.Context) error {
 		return errors.Wrap(err, "failed to create scheme")
 	}
 
+<<<<<<< HEAD
 	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, time.Second*30)
 	lhInformerFactory := lhinformers.NewSharedInformerFactory(lhClient, time.Second*30)
 
 	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, extensionsClient, namespace)
+=======
+	informerFactories := util.NewInformerFactories(namespace, kubeClient, lhClient, 30*time.Second)
+	ds := datastore.NewDataStore(namespace, lhClient, kubeClient, extensionsClient, informerFactories)
+>>>>>>> c568293a (Refactor informer factories creation and initialization)
 
 	logger := logrus.StandardLogger()
 	logrus.SetLevel(logrus.DebugLevel)
 
 	doneCh := make(chan struct{})
+<<<<<<< HEAD
 	go lhInformerFactory.Start(doneCh)
 	go kubeInformerFactory.Start(doneCh)
+=======
+	informerFactories.Start(doneCh)
+>>>>>>> c568293a (Refactor informer factories creation and initialization)
 
 	ctrl := controller.NewSystemRolloutController(
 		systemRestoreName,

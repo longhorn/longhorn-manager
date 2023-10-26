@@ -6,7 +6,6 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
@@ -19,11 +18,11 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	monitor "github.com/longhorn/longhorn-manager/controller/monitor"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
-	lhinformerfactory "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
 
 	. "gopkg.in/check.v1"
 )
@@ -51,9 +50,15 @@ type NodeTestCase struct {
 	expectOrphans          []*longhorn.Orphan
 }
 
+<<<<<<< HEAD
 func newTestNodeController(lhInformerFactory lhinformerfactory.SharedInformerFactory, kubeInformerFactory informers.SharedInformerFactory,
 	lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset, controllerID string) *NodeController {
 	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeClient, extensionsClient, TestNamespace)
+=======
+func newTestNodeController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
+	informerFactories *util.InformerFactories, controllerID string) *NodeController {
+	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+>>>>>>> c568293a (Refactor informer factories creation and initialization)
 
 	logger := logrus.StandardLogger()
 	nc := NewNodeController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID)
@@ -723,20 +728,25 @@ func (s *TestSuite) TestSyncNode(c *C) {
 
 	for name, tc := range testCases {
 		fmt.Printf("testing %v\n", name)
+
 		kubeClient := fake.NewSimpleClientset()
+<<<<<<< HEAD
 		kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, controller.NoResyncPeriodFunc())
 
+=======
+>>>>>>> c568293a (Refactor informer factories creation and initialization)
 		lhClient := lhfake.NewSimpleClientset()
-		lhInformerFactory := lhinformerfactory.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
 
-		nIndexer := lhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
-		pIndexer := kubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
 
-		rIndexer := lhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
-		knIndexer := kubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
+		nIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+		pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 
-		sIndexer := lhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
-		imIndexer := lhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+		rIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
+		knIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
+
+		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+		imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
 
 		imImageSetting := newDefaultInstanceManagerImageSetting()
 		imImageSetting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), imImageSetting, metav1.CreateOptions{})
@@ -755,7 +765,11 @@ func (s *TestSuite) TestSyncNode(c *C) {
 
 		extensionsClient := apiextensionsfake.NewSimpleClientset()
 
+<<<<<<< HEAD
 		nc := newTestNodeController(lhInformerFactory, kubeInformerFactory, lhClient, kubeClient, extensionsClient, TestNode1)
+=======
+		nc := newTestNodeController(lhClient, kubeClient, extensionsClient, informerFactories, TestNode1)
+>>>>>>> c568293a (Refactor informer factories creation and initialization)
 		c.Assert(err, IsNil)
 
 		// create manager pod
