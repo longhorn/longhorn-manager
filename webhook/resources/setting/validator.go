@@ -44,6 +44,19 @@ func (v *settingValidator) Create(request *admission.Request, newObj runtime.Obj
 }
 
 func (v *settingValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
+	setting := newObj.(*longhorn.Setting)
+
+	settingDef, isExist := types.GetSettingDefinition(types.SettingName(setting.Name))
+	if !isExist {
+		return werror.NewInvalidError(fmt.Sprintf("setting %s does not exist", setting.Name), "metadata.name")
+	}
+	existingSetting := oldObj.(*longhorn.Setting)
+	_, isFromLHOld := existingSetting.Annotations[types.GetLonghornLabelKey(types.UpdateSettingFromLonghorn)]
+	_, isFromLH := setting.Annotations[types.GetLonghornLabelKey(types.UpdateSettingFromLonghorn)]
+	if settingDef.ReadOnly && !isFromLHOld && !isFromLH {
+		return werror.NewInvalidError(fmt.Sprintf("setting %s is read-only", setting.Name), "metadata.name")
+	}
+
 	return v.validateSetting(newObj)
 }
 
