@@ -3062,7 +3062,7 @@ func verifyCreation(name, kind string, getMethod func(name string) (runtime.Obje
 func verifyUpdate(name string, obj runtime.Object, getMethod func(name string) (runtime.Object, error)) {
 	accessor, err := meta.Accessor(obj)
 	if err != nil {
-		logrus.Errorf("BUG: datastore: cannot verify update for %v (%+v) because cannot get accessor: %v", name, obj, err)
+		logrus.WithError(err).Errorf("BUG: datastore: cannot verify update for %v (%+v) because cannot get accessor", name, obj)
 		return
 	}
 	minimalResourceVersion := accessor.GetResourceVersion()
@@ -3070,12 +3070,12 @@ func verifyUpdate(name string, obj runtime.Object, getMethod func(name string) (
 	for i := 0; i < VerificationRetryCounts; i++ {
 		ret, err := getMethod(name)
 		if err != nil {
-			logrus.Errorf("datastore: failed to get updated object %v", name)
+			logrus.WithError(err).Errorf("datastore: failed to get updated object %v", name)
 			return
 		}
 		accessor, err := meta.Accessor(ret)
 		if err != nil {
-			logrus.Errorf("BUG: datastore: cannot verify update for %v because cannot get accessor for updated object: %v", name, err)
+			logrus.WithError(err).Errorf("BUG: datastore: cannot verify update for %v because cannot get accessor for updated object", name)
 			return
 		}
 		if resourceVersionAtLeast(accessor.GetResourceVersion(), minimalResourceVersion) {
@@ -3098,12 +3098,12 @@ func resourceVersionAtLeast(curr, min string) bool {
 	}
 	currVersion, err := strconv.ParseInt(curr, 10, 64)
 	if err != nil {
-		logrus.Errorf("datastore: failed to parse current resource version %v: %v", curr, err)
+		logrus.WithError(err).Errorf("datastore: failed to parse current resource version %v", curr)
 		return false
 	}
 	minVersion, err := strconv.ParseInt(min, 10, 64)
 	if err != nil {
-		logrus.Errorf("datastore: failed to parse minimal resource version %v: %v", min, err)
+		logrus.WithError(err).Errorf("datastore: failed to parse minimal resource version %v", min)
 		return false
 	}
 	return currVersion >= minVersion
