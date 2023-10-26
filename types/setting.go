@@ -1531,6 +1531,7 @@ func UnmarshalNodeSelector(nodeSelectorSetting string) (map[string]string, error
 	return nodeSelector, nil
 }
 
+// GetSettingDefinition gets the setting definition in `settingDefinitions` by the parameter `name`
 func GetSettingDefinition(name SettingName) (SettingDefinition, bool) {
 	settingDefinitionsLock.RLock()
 	defer settingDefinitionsLock.RUnlock()
@@ -1538,6 +1539,7 @@ func GetSettingDefinition(name SettingName) (SettingDefinition, bool) {
 	return setting, ok
 }
 
+// SetSettingDefinition sets the setting definition in `settingDefinitions` by the parameter `name` and `definition`
 func SetSettingDefinition(name SettingName, definition SettingDefinition) {
 	settingDefinitionsLock.Lock()
 	defer settingDefinitionsLock.Unlock()

@@ -127,6 +127,7 @@ const (
 	LastAppliedTolerationAnnotationKeySuffix = "last-applied-tolerations"
 
 	ConfigMapResourceVersionKey = "configmap-resource-version"
+	UpdateSettingFromLonghorn   = "update-setting-from-longhorn"
 
 	KubernetesStatusLabel = "KubernetesStatus"
 	KubernetesReplicaSet  = "ReplicaSet"
