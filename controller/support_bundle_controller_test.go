@@ -160,34 +160,27 @@ func (s *TestSuite) TestReconcileSupportBundle(c *C) {
 		fmt.Printf("testing %v\n", name)
 
 		kubeClient := fake.NewSimpleClientset()
-		kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, controller.NoResyncPeriodFunc())
-		kubeFilteredInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, controller.NoResyncPeriodFunc(), informers.WithNamespace(TestNamespace))
-
 		lhClient := lhfake.NewSimpleClientset()
-		lhInformerFactory := lhinformers.NewSharedInformerFactory(lhClient, controller.NoResyncPeriodFunc())
-
 		extensionsClient := apiextensionsfake.NewSimpleClientset()
 
-		fakeSupportBundleNamespace(c, kubeInformerFactory, kubeClient)
-		fakeSupportBundleManagerImageSetting(c, lhInformerFactory, lhClient)
-		fakeSupportBundleFailedHistoryLimitSetting(tc.supportBundleFailedHistoryLimit, c, lhInformerFactory, lhClient)
+		informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
 
-		supportBundleController := newFakeSupportBundleController(
-			lhInformerFactory, kubeInformerFactory, kubeFilteredInformerFactory,
-			lhClient, kubeClient, extensionsClient,
-			tc.controllerID,
-		)
+		fakeSupportBundleNamespace(c, informerFactories.KubeInformerFactory, kubeClient)
+		fakeSupportBundleManagerImageSetting(c, informerFactories.LhInformerFactory, lhClient)
+		fakeSupportBundleFailedHistoryLimitSetting(tc.supportBundleFailedHistoryLimit, c, informerFactories.LhInformerFactory, lhClient)
+
+		supportBundleController := newFakeSupportBundleController(lhClient, kubeClient, extensionsClient, informerFactories, tc.controllerID)
 
 		var supportBundle *longhorn.SupportBundle
 		for _, supportBundleName := range tc.supportBundleNames {
-			supportBundle = fakeSupportBundle(supportBundleName, rolloutOwnerID, tc.state, c, lhInformerFactory, lhClient)
+			supportBundle = fakeSupportBundle(supportBundleName, rolloutOwnerID, tc.state, c, informerFactories.LhInformerFactory, lhClient)
 
 			if strings.HasSuffix(supportBundleName, TestSupportBundleNamePurgeSuffix) {
 				continue
 			}
 
 			for _, podName := range tc.supportBundleManagerPodNames {
-				fakeSupportBundleManagerPod(podName, supportBundle, supportBundleController.ds, c, kubeInformerFactory, kubeClient)
+				fakeSupportBundleManagerPod(podName, supportBundle, supportBundleController.ds, c, informerFactories.KubeInformerFactory, kubeClient)
 			}
 		}
 		c.Assert(supportBundle, NotNil)
@@ -220,16 +213,9 @@ func (s *TestSuite) TestReconcileSupportBundle(c *C) {
 	}
 }
 
-func newFakeSupportBundleController(
-	lhInformerFactory lhinformers.SharedInformerFactory,
-	kubeInformerFactory informers.SharedInformerFactory,
-	kubeFilteredInformerFactory informers.SharedInformerFactory,
-	lhClient *lhfake.Clientset,
-	kubeClient *fake.Clientset,
-	extensionsClient *apiextensionsfake.Clientset,
-	controllerID string) *SupportBundleController {
-
-	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeFilteredInformerFactory, kubeClient, extensionsClient, TestNamespace)
+func newFakeSupportBundleController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
+	informerFactories *util.InformerFactories, controllerID string) *SupportBundleController {
+	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	logger := logrus.StandardLogger()
 	logrus.SetLevel(logrus.DebugLevel)

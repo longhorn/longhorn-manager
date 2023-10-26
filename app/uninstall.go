@@ -7,7 +7,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
-	"k8s.io/client-go/informers"
 	"k8s.io/client-go/tools/clientcmd"
 
 	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
@@ -15,9 +14,9 @@ import (
 
 	"github.com/longhorn/longhorn-manager/controller"
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/util"
 
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
 )
 
 const (
@@ -78,11 +77,8 @@ func uninstall(c *cli.Context) error {
 		return errors.Wrap(err, "failed to get lh client")
 	}
 
-	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, time.Second*30)
-	kubeFilteredInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, time.Second*30, informers.WithNamespace(namespace))
-	lhInformerFactory := lhinformers.NewSharedInformerFactory(lhClient, time.Second*30)
-
-	ds := datastore.NewDataStore(lhInformerFactory, lhClient, kubeInformerFactory, kubeFilteredInformerFactory, kubeClient, extensionsClient, namespace)
+	informerFactories := util.NewInformerFactories(namespace, kubeClient, lhClient, 30*time.Second)
+	ds := datastore.NewDataStore(namespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	logger := logrus.StandardLogger()
 
@@ -96,8 +92,8 @@ func uninstall(c *cli.Context) error {
 		kubeClient,
 		extensionsClient,
 	)
-	go lhInformerFactory.Start(doneCh)
-	go kubeInformerFactory.Start(doneCh)
-	go kubeFilteredInformerFactory.Start(doneCh)
+
+	informerFactories.Start(doneCh)
+
 	return ctrl.Run()
 }
