@@ -31,18 +31,6 @@ import (
 	. "gopkg.in/check.v1"
 )
 
-const (
-	TestSystemBackupName                    = "system-backup-0"
-	TestSystemBackupNameGetConfigFailed     = "system-backup-get-config-failed"
-	TestSystemBackupNameListFailed          = "system-backup-list-failed"
-	TestSystemBackupNameUploadFailed        = "system-backup-upload-failed"
-	TestSystemBackupNameUploadExceedTimeout = "system-backup-upload-exceed-timeout"
-
-	TestSystemBackupGitCommit       = "12345abcd"
-	TestSystemBackupLonghornVersion = "v1.4.0"
-	TestSystemBackupURIFmt          = "backupstore/system-backups/%v/%v"
-)
-
 type SystemBackupTestCase struct {
 	state longhorn.SystemBackupState
 
