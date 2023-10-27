@@ -165,8 +165,14 @@ func (s *DataStore) createOrUpdateSetting(name types.SettingName, value, default
 		setting.Annotations = map[string]string{}
 	}
 
+	if existingSettingCMResourceVersion, isExist := setting.Annotations[types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey)]; isExist {
+		if existingSettingCMResourceVersion == defaultSettingCMResourceVersion && setting.Value == value {
+			return nil
+		}
+	}
 	setting.Annotations[types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey)] = defaultSettingCMResourceVersion
 	setting.Value = value
+
 	_, err = s.UpdateSetting(setting)
 	return err
 }
@@ -235,10 +241,18 @@ func (s *DataStore) CreateSetting(setting *longhorn.Setting) (*longhorn.Setting,
 
 // UpdateSetting updates the given Longhorn Settings and verifies update
 func (s *DataStore) UpdateSetting(setting *longhorn.Setting) (*longhorn.Setting, error) {
+	setting.Annotations[types.GetLonghornLabelKey(types.UpdateSettingFromLonghorn)] = ""
 	obj, err := s.lhClient.LonghornV1beta2().Settings(s.namespace).Update(context.TODO(), setting, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
 	}
+
+	delete(obj.Annotations, types.GetLonghornLabelKey(types.UpdateSettingFromLonghorn))
+	obj, err = s.lhClient.LonghornV1beta2().Settings(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+
 	verifyUpdate(setting.Name, obj, func(name string) (runtime.Object, error) {
 		return s.getSettingRO(name)
 	})
