@@ -82,9 +82,6 @@ type ObjectStoreStatus struct {
 	// +default="Unknown"
 	State ObjectStoreState `json:"state,omitempty"`
 
-	// +optional
-	OwnerID string `json:"ownerID"`
-
 	// A list of addresses where the S3 store is exposed.
 	//
 	// +optional
@@ -163,6 +160,10 @@ type ObjectStoreEndpointSpec struct {
 
 	// +optional
 	DomainName string `json:"domainName,omitempty"`
+
+	// Reference to a secret containing TLS certificate and key for DomainName
+	// +optional
+	TLS corev1.SecretReference `json:"tls,omitempty"`
 }
 
 type ObjectStoreSpec struct {

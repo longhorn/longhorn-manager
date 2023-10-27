@@ -203,6 +203,8 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("PUT").Path("/v1/objectstores/{name}").Handler(f(schemas, s.ObjectStoreUpdate))
 	r.Methods("DELETE").Path("/v1/objectstores/{name}").Handler(f(schemas, s.ObjectStoreDelete))
 
+	r.Methods("GET").Path("/k8s/core/v1/secrets").Handler(f(schemas, s.SecretList))
+
 	settingListStream := NewStreamHandlerFunc("settings", s.wsc.NewWatcher("setting"), s.settingList)
 	r.Path("/v1/ws/settings").Handler(f(schemas, settingListStream))
 	r.Path("/v1/ws/{period}/settings").Handler(f(schemas, settingListStream))

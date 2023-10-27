@@ -15,6 +15,7 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/resources/engine"
 	"github.com/longhorn/longhorn-manager/webhook/resources/engineimage"
 	"github.com/longhorn/longhorn-manager/webhook/resources/node"
+	"github.com/longhorn/longhorn-manager/webhook/resources/objectstore"
 	"github.com/longhorn/longhorn-manager/webhook/resources/orphan"
 	"github.com/longhorn/longhorn-manager/webhook/resources/recurringjob"
 	"github.com/longhorn/longhorn-manager/webhook/resources/replica"
@@ -37,6 +38,7 @@ func Mutation(ds *datastore.DataStore) (http.Handler, []admission.Resource, erro
 		volume.NewMutator(ds),
 		engine.NewMutator(ds),
 		recurringjob.NewMutator(ds),
+		objectstore.NewMutator(ds),
 		engineimage.NewMutator(ds),
 		orphan.NewMutator(ds),
 		sharemanager.NewMutator(ds),

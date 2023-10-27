@@ -89,8 +89,17 @@ func NewObjectStoreController(
 		0,
 	)
 
+	ds.ServiceInformer.AddEventHandlerWithResyncPeriod(
+		cache.ResourceEventHandlerFuncs{
+			UpdateFunc: osc.enqueueService,
+		},
+		0,
+	)
+
 	osc.cacheSyncs = append(osc.cacheSyncs, ds.ObjectStoreInformer.HasSynced)
 	osc.cacheSyncs = append(osc.cacheSyncs, ds.DeploymentInformer.HasSynced)
+	osc.cacheSyncs = append(osc.cacheSyncs, ds.VolumeInformer.HasSynced)
+	osc.cacheSyncs = append(osc.cacheSyncs, ds.ServiceInformer.HasSynced)
 
 	return osc
 }
@@ -205,6 +214,41 @@ func (osc *ObjectStoreController) enqueueVolume(old, cur interface{}) {
 	}
 	storeName := pvc.ObjectMeta.OwnerReferences[0].Name
 	store, err := osc.ds.GetObjectStore(storeName)
+	if err != nil {
+		return
+	}
+	key, err := cache.MetaNamespaceKeyFunc(store)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to get key for object store %v: %v", storeName, err))
+		return
+	}
+	osc.queue.Add(key)
+}
+
+func (osc *ObjectStoreController) enqueueService(old, cur interface{}) {
+	svcKey, err := controller.KeyFunc(cur)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to get key for %v: %v", cur, err))
+		return
+	}
+	_, svcName, err := cache.SplitMetaNamespaceKey(svcKey)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to get name from key %v: %v", svcKey, err))
+		return
+	}
+	svc, err := osc.ds.GetService(osc.namespace, svcName)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to get deployment %v: %v", svcName, err))
+		return
+	}
+	if len(svc.ObjectMeta.OwnerReferences) < 1 {
+		return // deployment has no owner reference, therefore is not related to an object store
+	}
+	storeName := svc.ObjectMeta.OwnerReferences[0].Name
+	store, err := osc.ds.GetObjectStore(storeName)
+	if err != nil {
+		return // deployment has owner reference, but is not owned by an object store
+	}
 	key, err := cache.MetaNamespaceKeyFunc(store)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("failed to get key for object store %v: %v", storeName, err))
@@ -287,7 +331,11 @@ func (osc *ObjectStoreController) syncObjectStore(key string) error {
 // |   │     └───────────────────────┘
 // |   │
 // |   │     ┌───────────────────────┐
-// |   ├────►│ Ingress               │
+// |   ├────►│ UI Ingress            │
+// |   │     └───────────────────────┘
+// |   │
+// |   │     ┌───────────────────────┐
+// |   ├────►│ optional S3 Ingresses │
 // |   │     └───────────────────────┘
 // |   │
 // |   │     ┌───────────────────────┐
@@ -340,8 +388,14 @@ func (osc *ObjectStoreController) handleStarting(store *longhorn.ObjectStore) (e
 
 	ingress, store, err := osc.getOrCreateIngress(store)
 	if err != nil {
-		return errors.Wrap(err, "API error while creating ingress")
+		return errors.Wrap(err, "API error while creating UI ingress")
 	}
+
+	endpoints, store, err := osc.getOrCreateS3Endpoints(store)
+	if err != nil {
+		return errors.Wrap(err, "API error while creating S3 ingresses")
+	}
+	osc.logger.Info("created %d S3 endpoint(s)", len(endpoints))
 
 	if err := osc.checkPVC(pvc); errors.Is(err, ErrObjectStorePVCNotReady) {
 		return nil
@@ -367,13 +421,6 @@ func (osc *ObjectStoreController) handleStarting(store *longhorn.ObjectStore) (e
 		return nil
 	}
 
-	if vol.Status.OwnerID != store.Status.OwnerID {
-		store.Status.OwnerID = vol.Status.OwnerID
-	}
-	if len(store.Status.Endpoints) == 0 {
-		localEndpoint := *osc.getLocalEndpointURL(store)
-		store.Status.Endpoints = append(store.Status.Endpoints, localEndpoint.DomainName)
-	}
 	store.Status.State = longhorn.ObjectStoreStateRunning
 	return nil
 }
@@ -412,13 +459,10 @@ func (osc *ObjectStoreController) handleRunning(store *longhorn.ObjectStore) (er
 		return err
 	}
 
-	vol, err := osc.ds.GetVolume(genPVName(store))
+	_, err = osc.ds.GetVolume(genPVName(store))
 	if err != nil {
 		store.Status.State = longhorn.ObjectStoreStateError
 		return err
-	}
-	if vol.Status.OwnerID != store.Status.OwnerID {
-		store.Status.OwnerID = vol.Status.OwnerID
 	}
 
 	_, err = osc.ds.GetPersistentVolume(genPVName(store))
@@ -453,8 +497,38 @@ func (osc *ObjectStoreController) handleStopped(store *longhorn.ObjectStore) (er
 }
 
 func (osc *ObjectStoreController) handleTerminating(store *longhorn.ObjectStore) (err error) {
-	// Just remove the finalizer. The K8s API will take care of removing dependent
-	// resources.
+	// Wait for all directly owmed resources to be deleted before removing the finalizer
+
+	_, err = osc.ds.GetService(osc.namespace, store.Name)
+	if err == nil || !datastore.ErrorIsNotFound(err) {
+		return err
+	}
+
+	_, err = osc.ds.GetIngress(osc.namespace, store.Name)
+	if err == nil || !datastore.ErrorIsNotFound(err) {
+		return err
+	}
+
+	_, err = osc.ds.GetDeployment(store.Name)
+	if err == nil || !datastore.ErrorIsNotFound(err) {
+		return err
+	}
+
+	_, err = osc.ds.GetPersistentVolumeClaim(osc.namespace, genPVCName(store))
+	if err == nil || !datastore.ErrorIsNotFound(err) {
+		return err
+	}
+
+	_, err = osc.ds.GetPersistentVolume(genPVName(store))
+	if err == nil || !datastore.ErrorIsNotFound(err) {
+		return err
+	}
+
+	_, err = osc.ds.GetVolume(genPVName(store))
+	if err == nil || !datastore.ErrorIsNotFound(err) {
+		return err
+	}
+
 	return osc.ds.RemoveFinalizerForObjectStore(store)
 }
 
@@ -605,6 +679,98 @@ func (osc *ObjectStoreController) getOrCreateIngress(store *longhorn.ObjectStore
 
 func (osc *ObjectStoreController) checkIngress(ingress *networkingv1.Ingress) error {
 	return nil
+}
+
+func (osc *ObjectStoreController) getOrCreateS3Endpoints(store *longhorn.ObjectStore) ([]*networkingv1.Ingress, *longhorn.ObjectStore, error) {
+	ingresses := []*networkingv1.Ingress{}
+
+	s3backend := networkingv1.IngressBackend{
+		Service: &networkingv1.IngressServiceBackend{
+			Name: store.Name,
+			Port: networkingv1.ServiceBackendPort{
+				Name: "s3",
+			},
+		},
+	}
+
+	for _, endpoint := range store.Spec.Endpoints {
+		name := fmt.Sprintf("%v-%v", store.Name, endpoint.Name)
+		ingress, err := osc.ds.GetIngress(osc.namespace, name)
+		if err == nil {
+			ingresses = append(ingresses, ingress)
+		} else if datastore.ErrorIsNotFound(err) {
+			baserule := networkingv1.IngressRule{
+				Host: endpoint.DomainName,
+				IngressRuleValue: networkingv1.IngressRuleValue{
+					HTTP: &networkingv1.HTTPIngressRuleValue{
+						Paths: []networkingv1.HTTPIngressPath{
+							{
+								Path:     "/",
+								PathType: func() *networkingv1.PathType { r := networkingv1.PathType(networkingv1.PathTypePrefix); return &r }(),
+								Backend:  s3backend,
+							},
+						},
+					},
+				},
+			}
+
+			wildcardrule := networkingv1.IngressRule{
+				Host: fmt.Sprintf("*.%v", endpoint.DomainName),
+				IngressRuleValue: networkingv1.IngressRuleValue{
+					HTTP: &networkingv1.HTTPIngressRuleValue{
+						Paths: []networkingv1.HTTPIngressPath{
+							{
+								Path:     "/",
+								PathType: func() *networkingv1.PathType { r := networkingv1.PathType(networkingv1.PathTypePrefix); return &r }(),
+								Backend:  s3backend,
+							},
+						},
+					},
+				},
+			}
+
+			ingress := &networkingv1.Ingress{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:            name,
+					Namespace:       osc.namespace,
+					Labels:          types.GetObjectStoreLabels(store),
+					OwnerReferences: osc.ds.GetOwnerReferencesForObjectStore(store),
+				},
+				Spec: networkingv1.IngressSpec{
+					Rules: []networkingv1.IngressRule{
+						baserule,
+						wildcardrule,
+					},
+				},
+			}
+
+			if endpoint.TLS.Name != "" {
+				ingress.Spec.TLS = []networkingv1.IngressTLS{
+					{
+						SecretName: endpoint.TLS.Name,
+						Hosts: []string{
+							endpoint.DomainName,
+							fmt.Sprintf("*.%v", endpoint.DomainName),
+						},
+					},
+				}
+			}
+
+			_, err := osc.ds.CreateIngress(osc.namespace, ingress)
+			if err != nil {
+				store.Status.State = longhorn.ObjectStoreStateError
+				return []*networkingv1.Ingress{}, store, err
+			}
+
+			store.Status.Endpoints = append(store.Status.Endpoints, endpoint.DomainName)
+			ingresses = append(ingresses, ingress)
+		} else {
+			// if there was an api error
+			return []*networkingv1.Ingress{}, store, err
+		}
+	}
+
+	return ingresses, store, nil
 }
 
 func (osc *ObjectStoreController) createVolume(
@@ -801,6 +967,15 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 		},
 	}
 
+	domainNameArgs := []string{
+		"--rgw-dns-name",
+		fmt.Sprintf("%v.%v.svc", store.Name, osc.namespace),
+	}
+	for _, endpoint := range store.Spec.Endpoints {
+		domainNameArgs = append(domainNameArgs, "--rgw-dns-name")
+		domainNameArgs = append(domainNameArgs, endpoint.DomainName)
+	}
+
 	dpl := appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            store.Name,
@@ -830,15 +1005,14 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 						{
 							Name:  "s3gw",
 							Image: osc.getObjectStoreImage(store),
-							Args: []string{
-								"--rgw-dns-name", (*osc.getLocalEndpointURL(store)).DomainName,
+							Args: append([]string{
 								"--rgw-backend-store", "sfs",
 								"--rgw_frontends", fmt.Sprintf(
 									"beast port=%d, status port=%d",
 									types.ObjectStoreContainerPort,
 									types.ObjectStoreStatusContainerPort,
 								),
-							},
+							}, domainNameArgs...),
 							Ports: []corev1.ContainerPort{
 								{
 									Name:          "s3",
@@ -880,9 +1054,8 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 							},
 							Env: []corev1.EnvVar{
 								{
-									Name: "S3GW_SERVICE_URL",
-									Value: fmt.Sprintf("http://%v/",
-										(*osc.getLocalEndpointURL(store)).DomainName),
+									Name:  "S3GW_SERVICE_URL",
+									Value: fmt.Sprintf("http://127.0.0.1:%v", types.ObjectStoreContainerPort),
 								},
 								{
 									Name:  "S3GW_UI_LOCATION",
@@ -909,24 +1082,14 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 	return osc.ds.CreateDeployment(&dpl)
 }
 
-// getLocalEndpointURL generates the URL of the namespace-local endpoint for the
-// object store. This endpoint is implicit
-func (osc *ObjectStoreController) getLocalEndpointURL(store *longhorn.ObjectStore) *longhorn.ObjectStoreEndpointSpec {
-	return &longhorn.ObjectStoreEndpointSpec{
-		Name:       "local",
-		DomainName: fmt.Sprintf("%s.%s.svc", store.Name, osc.namespace),
-	}
-}
-
 func (osc *ObjectStoreController) isResponsibleFor(store *longhorn.ObjectStore) bool {
-	isResponsible := osc.controllerID == store.Status.OwnerID
-	vol, err := osc.ds.GetVolume(genPVName(store))
+	vol, err := osc.ds.GetVolumeRO(genPVName(store))
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("failed to find volume for object store %v: %v", store.Name, err))
 		return true
 	}
-	needsNewOwner := store.Status.OwnerID != vol.Status.OwnerID
-	return isResponsible || needsNewOwner
+
+	return osc.controllerID == vol.Status.OwnerID
 }
 
 func (osc *ObjectStoreController) getObjectStoreImage(store *longhorn.ObjectStore) string {

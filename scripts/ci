@@ -5,7 +5,7 @@ cd $(dirname $0)
 
 ./build
 ./validate
-./test -cover
+./test -cover -coverprofile=coverage.out
 ./package
 
 image=`cat ../bin/latest_image`

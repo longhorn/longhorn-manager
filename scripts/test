@@ -3,13 +3,14 @@ set -e
 
 cd $(dirname $0)/..
 
-args=$1
+args=("$@")
 
 echo Running tests
 
 PACKAGES="$(find . -name '*.go' | xargs -I{} dirname {} | sort -u | grep -Ev '(.git|.trash-cache|vendor|bin|k8s)')"
+PACKAGES="$(git diff --name-only | grep -E '*.go' | xargs -I{} dirname ./{} | sort -u | grep -Ev '(.git|.trash-cache|vendor|bin|k8s)')"
 
-echo Packages: ${PACKAGES}
+echo Packages: "${PACKAGES}"
 
 [ "${ARCH}" == "amd64" ] && RACE=-race
-go test ${RACE} ${args} ${PACKAGES}
+go test "${RACE}" "${args[@]}" ${PACKAGES}

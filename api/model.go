@@ -575,6 +575,12 @@ type ObjectStoreListOutput struct {
 	Type string        `json:"type"`
 }
 
+type SecretRef struct {
+	client.Resource
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+}
+
 func NewSchema() *client.Schemas {
 	schemas := &client.Schemas{}
 
@@ -662,6 +668,7 @@ func NewSchema() *client.Schemas {
 	snapshotCRListOutputSchema(schemas.AddType("snapshotCRListOutput", SnapshotCRListOutput{}))
 
 	objectStoreSchema(schemas.AddType("objectStore", ObjectStore{}))
+	secretRefSchema(schemas.AddType("secretRef", SecretRef{}))
 
 	return schemas
 }
@@ -1237,6 +1244,16 @@ func objectStoreSchema(objectStore *client.Schema) {
 	name.Unique = true
 	name.Create = true
 	objectStore.ResourceFields["name"] = name
+}
+
+func secretRefSchema(secretRef *client.Schema) {
+	secretRef.CollectionMethods = []string{"GET"}
+
+	name := secretRef.ResourceFields["name"]
+	name.Required = true
+	name.Unique = true
+	name.Create = true
+	secretRef.ResourceFields["name"] = name
 }
 
 func storageClassSchema(storageClass *client.Schema) {
@@ -2207,6 +2224,32 @@ func toObjectStoreCollection(stores []*longhorn.ObjectStore, apiContext *api.Api
 		Data: data,
 		Collection: client.Collection{
 			ResourceType: "objectStore",
+		},
+	}
+}
+
+func toSecretRefResource(secret *corev1.Secret) *SecretRef {
+	return &SecretRef{
+		Resource: client.Resource{
+			Id:   secret.Name,
+			Type: "secretRef",
+		},
+		Name:      secret.Name,
+		Namespace: secret.Namespace,
+	}
+}
+
+func toSecretRefCollection(secrets []*corev1.Secret, apiContext *api.ApiContext) *client.GenericCollection {
+	data := []interface{}{}
+
+	for _, secret := range secrets {
+		data = append(data, toSecretRefResource(secret))
+	}
+
+	return &client.GenericCollection{
+		Data: data,
+		Collection: client.Collection{
+			ResourceType: "secret",
 		},
 	}
 }
