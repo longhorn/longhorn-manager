@@ -241,6 +241,9 @@ func (s *DataStore) CreateSetting(setting *longhorn.Setting) (*longhorn.Setting,
 
 // UpdateSetting updates the given Longhorn Settings and verifies update
 func (s *DataStore) UpdateSetting(setting *longhorn.Setting) (*longhorn.Setting, error) {
+	if setting.Annotations == nil {
+		setting.Annotations = make(map[string]string)
+	}
 	setting.Annotations[types.GetLonghornLabelKey(types.UpdateSettingFromLonghorn)] = ""
 	obj, err := s.lhClient.LonghornV1beta2().Settings(s.namespace).Update(context.TODO(), setting, metav1.UpdateOptions{})
 	if err != nil {
