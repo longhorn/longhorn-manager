@@ -144,6 +144,16 @@ func upgradeVolumeAttachments(namespace string, lhClient *lhclientset.Clientset,
 		return errors.Wrapf(err, "failed to list all share manager during the Longhorn VolumeAttachment upgrade")
 	}
 
+	// We don't expect any volume attachments to exist when upgrading from v1.4.x to v1.5.0. However, we could be
+	// walking the upgrade path again after a failure.
+	volumeAttachmentMap, err := upgradeutil.ListAndUpdateVolumeAttachmentsInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn VolumeAttachments during the Longhorn VolumeAttachment upgrade")
+	}
+
 	kubeVAMap := map[string][]storagev1.VolumeAttachment{}
 	for _, va := range kubeVAList.Items {
 		if va.Spec.Source.PersistentVolumeName != nil {
@@ -157,8 +167,11 @@ func upgradeVolumeAttachments(namespace string, lhClient *lhclientset.Clientset,
 		smMap[sm.Name] = sm
 	}
 
-	volumeAttachments := map[string]*longhorn.VolumeAttachment{}
 	for _, v := range volumeList.Items {
+		if _, ok := volumeAttachmentMap[types.GetLHVolumeAttachmentNameFromVolumeName(v.Name)]; ok {
+			continue // We handled this one on a previous upgrade attempt.
+		}
+
 		va := longhorn.VolumeAttachment{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   types.GetLHVolumeAttachmentNameFromVolumeName(v.Name),
@@ -169,10 +182,8 @@ func upgradeVolumeAttachments(namespace string, lhClient *lhclientset.Clientset,
 				Volume:            v.Name,
 			},
 		}
-		volumeAttachments[va.Name] = &va
+		volumeAttachmentMap[va.Name] = &va
 	}
-
-	resourceMaps[types.LonghornKindVolumeAttachment] = volumeAttachments
 
 	return nil
 }
