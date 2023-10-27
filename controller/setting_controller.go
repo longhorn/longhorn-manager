@@ -359,6 +359,9 @@ func (sc *SettingController) syncBackupTarget() (err error) {
 			if _, err = sc.ds.UpdateBackupTarget(backupTarget); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
 				sc.logger.WithError(err).Warn("Failed to update backup target")
 			}
+			if err = sc.handleSecretsForAWSIAMRoleAnnotation(backupTarget.Spec.BackupTargetURL, existingBackupTarget.Spec.CredentialSecret, secretSetting.Value, existingBackupTarget.Spec.BackupTargetURL != targetSetting.Value); err != nil {
+				sc.logger.WithError(err).Warn("Failed to update secrets for AWSIAMRoleAnnotation")
+			}
 		}
 	}()
 
@@ -387,6 +390,92 @@ func (sc *SettingController) syncBackupTarget() (err error) {
 		stopCh:       make(chan struct{}),
 	}
 	go sc.bsTimer.Start()
+	return nil
+}
+
+func (sc *SettingController) handleSecretsForAWSIAMRoleAnnotation(backupTargetURL, oldSecretName, newSecretName string, isBackupTargetURLChanged bool) (err error) {
+	isSameSecretName := oldSecretName == newSecretName
+	if isSameSecretName && !isBackupTargetURLChanged {
+		return nil
+	}
+
+	isArnExists := false
+	if !isSameSecretName {
+		isArnExists, _, err = sc.updateSecretForAWSIAMRoleAnnotation(backupTargetURL, oldSecretName, true)
+		if err != nil {
+			return err
+		}
+	}
+	_, isValidSecret, err := sc.updateSecretForAWSIAMRoleAnnotation(backupTargetURL, newSecretName, false)
+	if err != nil {
+		return err
+	}
+	// kubernetes_secret_controller will not reconcile the secret that does not exist such as named "", so we remove AWS IAM role annotation of pods if new secret name is "".
+	if !isValidSecret && isArnExists {
+		if err = sc.removePodsAWSIAMRoleAnnotation(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// updateSecretForAWSIAMRoleAnnotation adds the AWS IAM Role annotation to make an update to reconcile in kubernetes secret controller and returns
+//
+//	isArnExists = true if annotation had been added to the secret for first parameter,
+//	isValidSecret = true if this secret is valid for second parameter.
+//	err != nil if there is an error occurred.
+func (sc *SettingController) updateSecretForAWSIAMRoleAnnotation(backupTargetURL, secretName string, isOldSecret bool) (isArnExists bool, isValidSecret bool, err error) {
+	if secretName == "" {
+		return false, false, nil
+	}
+
+	secret, err := sc.ds.GetSecret(sc.namespace, secretName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, false, nil
+		}
+		return false, false, err
+	}
+
+	if isOldSecret {
+		delete(secret.Annotations, types.GetLonghornLabelKey(string(types.SettingNameBackupTarget)))
+		isArnExists = secret.Data[types.AWSIAMRoleArn] != nil
+	} else {
+		secret.Annotations[types.GetLonghornLabelKey(string(types.SettingNameBackupTarget))] = backupTargetURL
+	}
+
+	if _, err = sc.ds.UpdateSecret(sc.namespace, secret); err != nil {
+		return false, false, err
+	}
+	return isArnExists, true, nil
+}
+
+func (sc *SettingController) removePodsAWSIAMRoleAnnotation() error {
+	managerPods, err := sc.ds.ListManagerPods()
+	if err != nil {
+		return err
+	}
+
+	instanceManagerPods, err := sc.ds.ListInstanceManagerPods()
+	if err != nil {
+		return err
+	}
+	pods := append(managerPods, instanceManagerPods...)
+
+	for _, pod := range pods {
+		_, exist := pod.Annotations[types.AWSIAMRoleAnnotation]
+		if !exist {
+			continue
+		}
+		delete(pod.Annotations, types.AWSIAMRoleAnnotation)
+		sc.logger.Infof("Removing AWS IAM role for pod %v", pod.Name)
+		if _, err := sc.ds.UpdatePod(pod); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return err
+		}
+	}
 	return nil
 }
 
