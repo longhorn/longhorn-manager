@@ -699,6 +699,14 @@ func (c *SupportBundleController) newSupportBundleManager(supportBundle *longhor
 									Value: supportBundle.Name,
 								},
 								{
+									Name:  "SUPPORT_BUNDLE_ISSUE_URL",
+									Value: supportBundle.Spec.IssueURL,
+								},
+								{
+									Name:  "SUPPORT_BUNDLE_DESCRIPTION",
+									Value: supportBundle.Spec.Description,
+								},
+								{
 									Name:  "SUPPORT_BUNDLE_DEBUG",
 									Value: "true",
 								},
