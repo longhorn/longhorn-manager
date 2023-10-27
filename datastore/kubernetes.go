@@ -239,6 +239,11 @@ func (s *DataStore) DeletePod(name string) error {
 	return s.kubeClient.CoreV1().Pods(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 }
 
+// UpdatePod updates Pod for the given Pod object and namespace
+func (s *DataStore) UpdatePod(obj *corev1.Pod) (*corev1.Pod, error) {
+	return s.kubeClient.CoreV1().Pods(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
+}
+
 // DeleteLease deletes Lease with the given name in s.namespace
 func (s *DataStore) DeleteLease(name string) error {
 	return s.kubeClient.CoordinationV1().Leases(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
@@ -662,6 +667,11 @@ func (s *DataStore) GetSecret(namespace, name string) (*corev1.Secret, error) {
 	}
 	// Cannot use cached object from lister
 	return resultRO.DeepCopy(), nil
+}
+
+// UpdateSecret updates the Secret resource with the given object and namespace
+func (s *DataStore) UpdateSecret(namespace string, secret *corev1.Secret) (*corev1.Secret, error) {
+	return s.kubeClient.CoreV1().Secrets(namespace).Update(context.TODO(), secret, metav1.UpdateOptions{})
 }
 
 // GetPriorityClass gets the PriorityClass from the index for the

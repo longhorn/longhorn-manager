@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -244,7 +243,10 @@ func (ks *KubernetesSecretController) annotateAWSIAMRoleArn(awsIAMRoleArn string
 		}
 
 		ks.logger.Infof("Updating AWS IAM role for pod %v/%v", pod.Namespace, pod.Name)
-		if _, err = ks.kubeClient.CoreV1().Pods(pod.Namespace).Update(context.TODO(), pod, metav1.UpdateOptions{}); err != nil {
+		if _, err := ks.ds.UpdatePod(pod); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
 			return err
 		}
 	}
