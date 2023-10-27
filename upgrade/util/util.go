@@ -151,6 +151,12 @@ func CreateOrUpdateLonghornVersionSetting(namespace string, lhClient *lhclientse
 
 	if s.Value != meta.Version {
 		s.Value = meta.Version
+		s.Annotations[types.GetLonghornLabelKey(types.UpdateSettingFromLonghorn)] = ""
+		s, err = lhClient.LonghornV1beta2().Settings(namespace).Update(context.TODO(), s, metav1.UpdateOptions{})
+		if err != nil {
+			return err
+		}
+		delete(s.Annotations, types.GetLonghornLabelKey(types.UpdateSettingFromLonghorn))
 		_, err = lhClient.LonghornV1beta2().Settings(namespace).Update(context.TODO(), s, metav1.UpdateOptions{})
 		return err
 	}
