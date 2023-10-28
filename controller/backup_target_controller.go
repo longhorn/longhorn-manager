@@ -214,7 +214,7 @@ func getLoggerForBackupTarget(logger logrus.FieldLogger, backupTarget *longhorn.
 }
 
 func getBackupTarget(controllerID string, backupTarget *longhorn.BackupTarget, ds *datastore.DataStore, log logrus.FieldLogger, proxyConnCounter util.Counter) (engineClientProxy engineapi.EngineClientProxy, backupTargetClient *engineapi.BackupTargetClient, err error) {
-	instanceManager, err := ds.GetDefaultInstanceManagerByNodeRO(controllerID)
+	instanceManager, err := ds.GetDefaultInstanceManagerByNodeRO(controllerID, longhorn.BackendStoreDriverTypeV1)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to get default engine instance manager for proxy client")
 	}

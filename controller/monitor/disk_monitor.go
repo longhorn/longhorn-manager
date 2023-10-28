@@ -140,40 +140,68 @@ func (m *NodeMonitor) run(value interface{}) error {
 	return nil
 }
 
-func (m *NodeMonitor) newDiskServiceClient(node *longhorn.Node) (*engineapi.DiskService, error) {
-	im, err := m.ds.GetDefaultInstanceManagerByNodeRO(m.nodeName)
+func (m *NodeMonitor) getBackendStoreDrivers() []longhorn.BackendStoreDriverType {
+	backendStoreDrivers := []longhorn.BackendStoreDriverType{longhorn.BackendStoreDriverTypeV1}
+
+	v2DataEngineEnabled, err := m.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get default instance manager for node %v", m.nodeName)
+		m.logger.WithError(err).Errorf("Failed to get setting %v", types.SettingNameV2DataEngine)
+		return backendStoreDrivers
+	}
+	if v2DataEngineEnabled {
+		backendStoreDrivers = append(backendStoreDrivers, longhorn.BackendStoreDriverTypeV2)
 	}
 
-	return engineapi.NewDiskServiceClient(im, m.logger)
+	return backendStoreDrivers
+}
+
+func (m *NodeMonitor) newDiskServiceClients(node *longhorn.Node) (map[longhorn.BackendStoreDriverType]*engineapi.DiskService, error) {
+	clients := map[longhorn.BackendStoreDriverType]*engineapi.DiskService{}
+
+	backendStoreDrivers := m.getBackendStoreDrivers()
+
+	for _, backendStoreDriver := range backendStoreDrivers {
+		im, err := m.ds.GetDefaultInstanceManagerByNodeRO(m.nodeName, backendStoreDriver)
+		if err != nil {
+			return clients, errors.Wrapf(err, "failed to get default instance manager for node %v", m.nodeName)
+		}
+
+		client, err := engineapi.NewDiskServiceClient(im, m.logger)
+		if err != nil {
+			return clients, errors.Wrapf(err, "failed to create disk service client for node %v", m.nodeName)
+		}
+
+		clients[backendStoreDriver] = client
+	}
+
+	return clients, nil
 }
 
 // Collect disk data and generate disk UUID blindly.
 func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*CollectedDiskInfo {
 	diskInfoMap := make(map[string]*CollectedDiskInfo, 0)
 
-	v2DataEngineEnabled, err := m.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
-	if err != nil {
-		m.logger.Errorf("Failed to get setting %v: %v", types.SettingNameV2DataEngine, err)
-		return diskInfoMap
-	}
-
-	diskServiceClient, err := m.newDiskServiceClient(node)
+	diskServiceClients, err := m.newDiskServiceClients(node)
 	if err != nil {
 		// If failed to create disk service client, just log a warning and continue.
 		// The error out will hinder the following logics in syncNode.
 		logrus.WithError(err).Warnf("Failed to create disk service client")
 	}
 	defer func() {
-		if diskServiceClient != nil {
+		for _, diskServiceClient := range diskServiceClients {
 			diskServiceClient.Close()
 		}
 	}()
 
 	for diskName, disk := range node.Spec.Disks {
-		if !v2DataEngineEnabled && disk.Type == longhorn.DiskTypeBlock {
-			continue
+		backendStoreDriver := util.GetBackendStoreDriverForDiskType(disk.Type)
+		diskServiceClient := diskServiceClients[backendStoreDriver]
+
+		if diskServiceClient == nil {
+			// TODO: disk service is not used by filesystem-type disk, so we can skip it for now.
+			if backendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+				continue
+			}
 		}
 
 		orphanedReplicaDirectoryNames := map[string]string{}
