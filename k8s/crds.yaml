@@ -1656,6 +1656,8 @@ spec:
           spec:
             description: InstanceManagerSpec defines the desired state of the Longhorn instancer manager
             properties:
+              backendStoreDriver:
+                type: string
               image:
                 type: string
               nodeID:
