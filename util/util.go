@@ -46,6 +46,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 
 	iscsiutil "github.com/longhorn/go-iscsi-helper/util"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 const (
@@ -980,4 +982,11 @@ func WaitForResourceDeletion(kubeClient *clientset.Clientset, name, namespace, r
 		time.Sleep(time.Duration(1) * time.Second)
 	}
 	return fmt.Errorf("foreground deletion of %s %s timed out", resource, name)
+}
+
+func GetBackendStoreDriverForDiskType(diskType longhorn.DiskType) longhorn.BackendStoreDriverType {
+	if diskType == longhorn.DiskTypeBlock {
+		return longhorn.BackendStoreDriverTypeV2
+	}
+	return longhorn.BackendStoreDriverTypeV1
 }

@@ -173,6 +173,7 @@ const (
 	LonghornLabelLastSystemRestore          = "last-system-restored"
 	LonghornLabelLastSystemRestoreAt        = "last-system-restored-at"
 	LonghornLabelLastSystemRestoreBackup    = "last-system-restored-backup"
+	LonghornLabelBackendStoreDriver         = "backend-store-driver"
 	LonghornLabelVersion                    = "version"
 
 	LonghornLabelValueEnabled = "enabled"
@@ -417,15 +418,19 @@ func GetEIDaemonSetLabelSelector(engineImageName string) map[string]string {
 	return labels
 }
 
-func GetInstanceManagerLabels(node, instanceManagerImage string, managerType longhorn.InstanceManagerType) map[string]string {
+func GetInstanceManagerLabels(node, imImage string, imType longhorn.InstanceManagerType, backendStoreDriver longhorn.BackendStoreDriverType) map[string]string {
 	labels := GetBaseLabelsForSystemManagedComponent()
 	labels[GetLonghornLabelComponentKey()] = LonghornLabelInstanceManager
-	labels[GetLonghornLabelKey(LonghornLabelInstanceManagerType)] = string(managerType)
+	labels[GetLonghornLabelKey(LonghornLabelInstanceManagerType)] = string(imType)
+
 	if node != "" {
 		labels[GetLonghornLabelKey(LonghornLabelNode)] = node
 	}
-	if instanceManagerImage != "" {
-		labels[GetLonghornLabelKey(LonghornLabelInstanceManagerImage)] = GetInstanceManagerImageChecksumName(GetImageCanonicalName(instanceManagerImage))
+	if imImage != "" {
+		labels[GetLonghornLabelKey(LonghornLabelInstanceManagerImage)] = GetInstanceManagerImageChecksumName(GetImageCanonicalName(imImage))
+	}
+	if backendStoreDriver != "" {
+		labels[GetLonghornLabelKey(LonghornLabelBackendStoreDriver)] = string(backendStoreDriver)
 	}
 
 	return labels
@@ -659,8 +664,8 @@ func ValidateEngineImageChecksumName(name string) bool {
 	return matched
 }
 
-func GetInstanceManagerName(imType longhorn.InstanceManagerType, nodeName, image string) (string, error) {
-	hashedSuffix := util.GetStringChecksum(nodeName + image)[:InstanceManagerSuffixChecksumLength]
+func GetInstanceManagerName(imType longhorn.InstanceManagerType, nodeName, image, backendStoreDriver string) (string, error) {
+	hashedSuffix := util.GetStringChecksum(nodeName + image + backendStoreDriver)[:InstanceManagerSuffixChecksumLength]
 	switch imType {
 	case longhorn.InstanceManagerTypeEngine:
 		return engineManagerPrefix + hashedSuffix, nil

@@ -220,7 +220,7 @@ func (imc *InstanceManagerCollector) collectGrpcConnection(ch chan<- prometheus.
 		}
 	}()
 
-	engineInstanceManagers, err := imc.ds.ListInstanceManagersByNodeRO(imc.currentNodeID, longhorn.InstanceManagerTypeEngine)
+	engineInstanceManagers, err := imc.ds.ListInstanceManagersByNodeRO(imc.currentNodeID, longhorn.InstanceManagerTypeEngine, "")
 	if err != nil {
 		imc.logger.WithError(err).Warn("Error during scrape")
 		return

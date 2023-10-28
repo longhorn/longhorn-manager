@@ -261,7 +261,6 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		if err := sc.updateV2DataEngine(); err != nil {
 			return err
 		}
-	default:
 	}
 
 	return nil
@@ -809,23 +808,31 @@ func (sc *SettingController) updateV2DataEngine() error {
 		return err
 	}
 
-	err = sc.ds.ValidateV2DataEngine(v2DataEngineEnabled)
+	if err := sc.ds.ValidateV2DataEngine(v2DataEngineEnabled); err != nil {
+		return err
+	}
+
+	if !v2DataEngineEnabled {
+		return sc.cleanupInstanceManagerForV2DataEngine()
+	}
+
+	return nil
+}
+
+func (sc *SettingController) cleanupInstanceManagerForV2DataEngine() error {
+	imMap, err := sc.ds.ListInstanceManagersBySelectorRO("", "", longhorn.InstanceManagerTypeAllInOne, longhorn.BackendStoreDriverTypeV2)
 	if err != nil {
 		return err
 	}
 
-	// Recreate all instance manager pods
-	imPodList, err := sc.ds.ListInstanceManagerPods()
-	if err != nil {
-		return errors.Wrapf(err, "failed to list instance manager Pods for %v setting update", types.SettingNameV2DataEngine)
-	}
-
-	for _, pod := range imPodList {
-		if pod.Annotations[types.V2DataEngineAnnotation] == strconv.FormatBool(v2DataEngineEnabled) {
+	for _, im := range imMap {
+		if len(im.Status.InstanceEngines) != 0 || len(im.Status.InstanceReplicas) != 0 || len(im.Status.Instances) != 0 {
+			sc.logger.Infof("Skipping cleaning up the instance manager %v for v2 data engine since there are still instances running on it", im.Name)
 			continue
 		}
 
-		if err := sc.ds.DeletePod(pod.Name); err != nil {
+		sc.logger.Infof("Cleaning up the instance manager %v for v2 data engine", im.Name)
+		if err := sc.ds.DeleteInstanceManager(im.Name); err != nil {
 			return err
 		}
 	}
