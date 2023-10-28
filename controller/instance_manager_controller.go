@@ -798,7 +798,7 @@ func (imc *InstanceManagerController) areAllVolumesDetachedFromNode(nodeName str
 }
 
 func (imc *InstanceManagerController) areAllInstanceRemovedFromNodeByType(nodeName string, imType longhorn.InstanceManagerType) (bool, error) {
-	ims, err := imc.ds.ListInstanceManagersByNodeRO(nodeName, imType)
+	ims, err := imc.ds.ListInstanceManagersByNodeRO(nodeName, imType, "")
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
 			return true, nil
@@ -835,7 +835,7 @@ func (imc *InstanceManagerController) generateInstanceManagerPDBManifest(im *lon
 		},
 		Spec: policyv1.PodDisruptionBudgetSpec{
 			Selector: &metav1.LabelSelector{
-				MatchLabels: types.GetInstanceManagerLabels(im.Spec.NodeID, im.Spec.Image, im.Spec.Type),
+				MatchLabels: types.GetInstanceManagerLabels(im.Spec.NodeID, im.Spec.Image, im.Spec.Type, im.Spec.BackendStoreDriver),
 			},
 			MinAvailable: &intstr.IntOrString{IntVal: 1},
 		},
@@ -913,7 +913,7 @@ func (imc *InstanceManagerController) enqueueInstanceManagersForNode(nodeName st
 	}
 
 	for _, imType := range []longhorn.InstanceManagerType{longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerTypeReplica, longhorn.InstanceManagerTypeAllInOne} {
-		ims, err := imc.ds.ListInstanceManagersByNodeRO(node.Name, imType)
+		ims, err := imc.ds.ListInstanceManagersByNodeRO(node.Name, imType, "")
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				return
@@ -970,7 +970,7 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 	registrySecret := registrySecretSetting.Value
 
 	var podSpec *corev1.Pod
-	podSpec, err = imc.createInstanceManagerPodSpec(im, tolerations, registrySecret, nodeSelector)
+	podSpec, err = imc.createInstanceManagerPodSpec(im, tolerations, registrySecret, nodeSelector, im.Spec.BackendStoreDriver)
 	if err != nil {
 		return err
 	}
@@ -1071,26 +1071,17 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 	return podSpec, nil
 }
 
-func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.InstanceManager, tolerations []corev1.Toleration, registrySecret string, nodeSelector map[string]string) (*corev1.Pod, error) {
+func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.InstanceManager, tolerations []corev1.Toleration, registrySecret string, nodeSelector map[string]string, backendStoreDriver longhorn.BackendStoreDriverType) (*corev1.Pod, error) {
 	podSpec, err := imc.createGenericManagerPodSpec(im, tolerations, registrySecret, nodeSelector)
 	if err != nil {
 		return nil, err
 	}
 
 	secretIsOptional := true
-	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, longhorn.InstanceManagerTypeAllInOne)
+	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, longhorn.InstanceManagerTypeAllInOne, backendStoreDriver)
 	podSpec.Spec.Containers[0].Name = "instance-manager"
 
-	v2DataEngineEnabled, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngine)
-	if err != nil {
-		return nil, err
-	}
-	v2DataEngineAnnot := string(types.V2DataEngineAnnotation)
-	if v2DataEngineEnabled.Value != podSpec.Annotations[v2DataEngineAnnot] {
-		podSpec.Annotations[v2DataEngineAnnot] = v2DataEngineEnabled.Value
-	}
-
-	if v2DataEngineEnabled.Value == "true" {
+	if backendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
 		podSpec.Spec.Containers[0].Args = []string{
 			"instance-manager", "--enable-spdk", "--debug", "daemon", "--spdk-enabled", "--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort),
 		}
@@ -1185,7 +1176,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		},
 	}
 
-	if v2DataEngineEnabled.Value == "true" {
+	if backendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
 		podSpec.Spec.Containers[0].VolumeMounts = append(podSpec.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
 			MountPath: "/hugepages",
 			Name:      "hugepage",

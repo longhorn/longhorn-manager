@@ -211,13 +211,13 @@ func (ks *KubernetesSecretController) annotateAWSIAMRoleArn(awsIAMRoleArn string
 		return err
 	}
 
-	replicaInstanceManagerPods, err := ks.ds.ListInstanceManagerPodsBy(ks.controllerID, "", longhorn.InstanceManagerTypeReplica)
+	replicaInstanceManagerPods, err := ks.ds.ListInstanceManagerPodsBy(ks.controllerID, "", longhorn.InstanceManagerTypeReplica, "")
 	if err != nil {
 		return err
 	}
 	pods := append(managerPods, replicaInstanceManagerPods...)
 
-	aioInstanceManagerPods, err := ks.ds.ListInstanceManagerPodsBy(ks.controllerID, "", longhorn.InstanceManagerTypeAllInOne)
+	aioInstanceManagerPods, err := ks.ds.ListInstanceManagerPodsBy(ks.controllerID, "", longhorn.InstanceManagerTypeAllInOne, "")
 	if err != nil {
 		return err
 	}

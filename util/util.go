@@ -46,6 +46,8 @@ import (
 	lhio "github.com/longhorn/go-common-libs/io"
 	lhns "github.com/longhorn/go-common-libs/ns"
 	lhtypes "github.com/longhorn/go-common-libs/types"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 const (
@@ -824,4 +826,11 @@ func WaitForResourceDeletion(kubeClient *clientset.Clientset, name, namespace, r
 		time.Sleep(time.Duration(1) * time.Second)
 	}
 	return fmt.Errorf("foreground deletion of %s %s timed out", resource, name)
+}
+
+func GetBackendStoreDriverForDiskType(diskType longhorn.DiskType) longhorn.BackendStoreDriverType {
+	if diskType == longhorn.DiskTypeBlock {
+		return longhorn.BackendStoreDriverTypeV2
+	}
+	return longhorn.BackendStoreDriverTypeV1
 }

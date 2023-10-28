@@ -961,6 +961,70 @@ func (nc *NodeController) syncNodeStatus(pod *corev1.Pod, node *longhorn.Node) e
 	return nil
 }
 
+func (nc *NodeController) getBackendStoreDrivers(node *longhorn.Node) map[longhorn.InstanceManagerType]map[longhorn.BackendStoreDriverType]struct{} {
+	log := getLoggerForNode(nc.logger, node)
+
+	backendStoreDrivers := map[longhorn.InstanceManagerType]map[longhorn.BackendStoreDriverType]struct{}{
+		longhorn.InstanceManagerTypeEngine: {
+			longhorn.BackendStoreDriverTypeV1: {},
+		},
+		longhorn.InstanceManagerTypeAllInOne: {
+			longhorn.BackendStoreDriverTypeV1: {},
+		},
+	}
+
+	v2DataEngineEnabled, err := nc.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to get %v setting", types.SettingNameV2DataEngine)
+		return backendStoreDrivers
+	}
+
+	if !v2DataEngineEnabled {
+		return backendStoreDrivers
+	}
+
+	err = nc.ds.ValidateV2DataEngine(v2DataEngineEnabled)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to validate %v setting", types.SettingNameV2DataEngine)
+		return backendStoreDrivers
+	}
+
+	backendStoreDrivers[longhorn.InstanceManagerTypeAllInOne][longhorn.BackendStoreDriverTypeV2] = struct{}{}
+
+	return backendStoreDrivers
+}
+
+func getSupportedInstanceManagerTypes(node *longhorn.Node) []longhorn.InstanceManagerType {
+	imTypes := []longhorn.InstanceManagerType{
+		longhorn.InstanceManagerTypeAllInOne,
+		longhorn.InstanceManagerTypeEngine,
+	}
+
+	if len(node.Spec.Disks) != 0 {
+		imTypes = append(imTypes, longhorn.InstanceManagerTypeReplica)
+	}
+
+	return imTypes
+}
+
+func (nc *NodeController) cleanupAllReplicaManagers(node *longhorn.Node) error {
+	log := getLoggerForNode(nc.logger, node)
+
+	rmMap, err := nc.ds.ListInstanceManagersByNodeRO(node.Name, longhorn.InstanceManagerTypeReplica, "")
+	if err != nil {
+		return err
+	}
+
+	for _, rm := range rmMap {
+		log.Infof("Cleaning up the replica manager %v since there is no available disk on this node", rm.Name)
+		if err := nc.ds.DeleteInstanceManager(rm.Name); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 	defaultInstanceManagerImage, err := nc.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
 	if err != nil {
@@ -969,90 +1033,83 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 
 	log := getLoggerForNode(nc.logger, node)
 
-	imTypes := []longhorn.InstanceManagerType{
-		longhorn.InstanceManagerTypeAllInOne,
-		longhorn.InstanceManagerTypeEngine,
-	}
+	imTypes := getSupportedInstanceManagerTypes(node)
+	backendStoreDrivers := nc.getBackendStoreDrivers(node)
 
 	// Clean up all replica managers if there is no disk on the node
 	if len(node.Spec.Disks) == 0 {
-		rmMap, err := nc.ds.ListInstanceManagersByNodeRO(node.Name, longhorn.InstanceManagerTypeReplica)
-		if err != nil {
+		if err := nc.cleanupAllReplicaManagers(node); err != nil {
 			return err
 		}
-		for _, rm := range rmMap {
-			log.Infof("Cleaning up the replica manager %v since there is no available disk on this node", rm.Name)
-			if err := nc.ds.DeleteInstanceManager(rm.Name); err != nil {
-				return err
-			}
-		}
-	} else {
-		imTypes = append(imTypes, longhorn.InstanceManagerTypeReplica)
 	}
 
 	for _, imType := range imTypes {
-		defaultInstanceManagerCreated := false
-		imMap, err := nc.ds.ListInstanceManagersByNodeRO(node.Name, imType)
-		if err != nil {
-			return err
-		}
-		for _, im := range imMap {
-			if im.Labels[types.GetLonghornLabelKey(types.LonghornLabelNode)] != im.Spec.NodeID {
-				return fmt.Errorf("instance manager %v NodeID %v is not consistent with the label %v=%v",
-					im.Name, im.Spec.NodeID, types.GetLonghornLabelKey(types.LonghornLabelNode), im.Labels[types.GetLonghornLabelKey(types.LonghornLabelNode)])
-			}
-			cleanupRequired := true
-			if im.Spec.Image == defaultInstanceManagerImage {
-				// Create default instance manager if needed.
-				defaultInstanceManagerCreated = true
-				cleanupRequired = false
-			} else {
-				// Clean up old instance managers if there is no running instance.
-				if im.Status.CurrentState == longhorn.InstanceManagerStateRunning && im.DeletionTimestamp == nil {
-					for _, instance := range types.ConsolidateInstances(im.Status.InstanceEngines, im.Status.InstanceReplicas, im.Status.Instances) {
-						if instance.Status.State == longhorn.InstanceStateRunning || instance.Status.State == longhorn.InstanceStateStarting {
-							cleanupRequired = false
-							break
-						}
-					}
-				}
-				if im.Status.CurrentState == longhorn.InstanceManagerStateUnknown && im.DeletionTimestamp == nil {
-					cleanupRequired = false
-					log.Debugf("Skipping cleaning up non-default unknown instance manager %s", im.Name)
-				}
-			}
-			if cleanupRequired {
-				log.Infof("Cleaning up the redundant instance manager %v when there is no running/starting instance", im.Name)
-				if err := nc.ds.DeleteInstanceManager(im.Name); err != nil {
-					return err
-				}
-			}
-		}
-		if !defaultInstanceManagerCreated && imType == longhorn.InstanceManagerTypeAllInOne {
-			imName, err := types.GetInstanceManagerName(imType, node.Name, defaultInstanceManagerImage)
+		for backendStoreDriver := range backendStoreDrivers[imType] {
+			defaultInstanceManagerCreated := false
+			imMap, err := nc.ds.ListInstanceManagersByNodeRO(node.Name, imType, backendStoreDriver)
 			if err != nil {
 				return err
 			}
-			log.Infof("Creating default instance manager %v, image: %v", imName, defaultInstanceManagerImage)
-			if _, err := nc.createInstanceManager(node, imName, defaultInstanceManagerImage, imType); err != nil {
-				return err
+			for _, im := range imMap {
+				if im.Labels[types.GetLonghornLabelKey(types.LonghornLabelNode)] != im.Spec.NodeID {
+					return fmt.Errorf("instance manager %v NodeID %v is not consistent with the label %v=%v",
+						im.Name, im.Spec.NodeID, types.GetLonghornLabelKey(types.LonghornLabelNode), im.Labels[types.GetLonghornLabelKey(types.LonghornLabelNode)])
+				}
+				cleanupRequired := true
+
+				if im.Spec.Image == defaultInstanceManagerImage && im.Spec.BackendStoreDriver == backendStoreDriver {
+					// Create default instance manager if needed.
+					defaultInstanceManagerCreated = true
+					cleanupRequired = false
+				} else {
+					// Clean up old instance managers if there is no running instance.
+					if im.Status.CurrentState == longhorn.InstanceManagerStateRunning && im.DeletionTimestamp == nil {
+						for _, instance := range types.ConsolidateInstances(im.Status.InstanceEngines, im.Status.InstanceReplicas, im.Status.Instances) {
+							if instance.Status.State == longhorn.InstanceStateRunning || instance.Status.State == longhorn.InstanceStateStarting {
+								cleanupRequired = false
+								break
+							}
+						}
+					}
+					if im.Status.CurrentState == longhorn.InstanceManagerStateUnknown && im.DeletionTimestamp == nil {
+						cleanupRequired = false
+						log.Debugf("Skipping cleaning up non-default unknown instance manager %s", im.Name)
+					}
+				}
+				if cleanupRequired {
+					log.Infof("Cleaning up the redundant instance manager %v when there is no running/starting instance", im.Name)
+					if err := nc.ds.DeleteInstanceManager(im.Name); err != nil {
+						return err
+					}
+				}
+			}
+			if !defaultInstanceManagerCreated && imType == longhorn.InstanceManagerTypeAllInOne {
+				imName, err := types.GetInstanceManagerName(imType, node.Name, defaultInstanceManagerImage, string(backendStoreDriver))
+				if err != nil {
+					return err
+				}
+				log.Infof("Creating default instance manager %v, image: %v, backendStoreDriver: %v", imName, defaultInstanceManagerImage, backendStoreDriver)
+				if _, err := nc.createInstanceManager(node, imName, defaultInstanceManagerImage, imType, backendStoreDriver); err != nil {
+					return err
+				}
 			}
 		}
 	}
 	return nil
 }
 
-func (nc *NodeController) createInstanceManager(node *longhorn.Node, imName, image string, imType longhorn.InstanceManagerType) (*longhorn.InstanceManager, error) {
+func (nc *NodeController) createInstanceManager(node *longhorn.Node, imName, imImage string, imType longhorn.InstanceManagerType, backendStoreDriver longhorn.BackendStoreDriverType) (*longhorn.InstanceManager, error) {
 	instanceManager := &longhorn.InstanceManager{
 		ObjectMeta: metav1.ObjectMeta{
-			Labels:          types.GetInstanceManagerLabels(node.Name, image, imType),
+			Labels:          types.GetInstanceManagerLabels(node.Name, imImage, imType, backendStoreDriver),
 			Name:            imName,
 			OwnerReferences: datastore.GetOwnerReferencesForNode(node),
 		},
 		Spec: longhorn.InstanceManagerSpec{
-			Image:  image,
-			NodeID: node.Name,
-			Type:   imType,
+			Image:              imImage,
+			NodeID:             node.Name,
+			Type:               imType,
+			BackendStoreDriver: backendStoreDriver,
 		},
 	}
 
@@ -1402,7 +1459,9 @@ func (nc *NodeController) deleteDisk(node *longhorn.Node, diskType longhorn.Disk
 		return nil
 	}
 
-	im, err := nc.ds.GetDefaultInstanceManagerByNodeRO(nc.controllerID)
+	backendStoreDriver := util.GetBackendStoreDriverForDiskType(diskType)
+
+	im, err := nc.ds.GetDefaultInstanceManagerByNodeRO(nc.controllerID, backendStoreDriver)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get default engine instance manager")
 	}

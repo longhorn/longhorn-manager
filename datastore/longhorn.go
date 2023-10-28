@@ -403,12 +403,23 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 }
 
 func (s *DataStore) ValidateV2DataEngine(v2DataEngineEnabled bool) error {
-	volumesDetached, err := s.AreAllVolumesDetached()
-	if err != nil {
-		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameV2DataEngine)
-	}
-	if !volumesDetached {
-		return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot apply %v setting to Longhorn workloads when there are attached volumes", types.SettingNameV2DataEngine)}
+	if !v2DataEngineEnabled {
+		allV2VolumesDetached, err := s.AreAllV2VolumesDetached()
+		if err != nil {
+			return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameV2DataEngine)
+		}
+		if !allV2VolumesDetached {
+			return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot apply %v setting to Longhorn workloads when there are attached volumes", types.SettingNameV2DataEngine)}
+		}
+
+		allBlockTypeDisksRemoved, err := s.AreAllBlockTypeDisksRemoved()
+		if err != nil {
+			return errors.Wrapf(err, "failed to check block-type disk removal for %v setting update", types.SettingNameV2DataEngine)
+		}
+		if !allBlockTypeDisksRemoved {
+			return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot apply %v setting to Longhorn workloads when there are block-type disks", types.SettingNameV2DataEngine)}
+		}
+		return nil
 	}
 
 	// Check if there is enough hugepages-2Mi capacity for all nodes
@@ -467,12 +478,12 @@ func (s *DataStore) AreAllVolumesDetached() (bool, error) {
 	}
 
 	for node := range nodes {
-		engineInstanceManagers, err := s.ListInstanceManagersBySelectorRO(node, "", longhorn.InstanceManagerTypeEngine)
+		engineInstanceManagers, err := s.ListInstanceManagersBySelectorRO(node, "", longhorn.InstanceManagerTypeEngine, longhorn.BackendStoreDriverTypeV1)
 		if err != nil && !ErrorIsNotFound(err) {
 			return false, err
 		}
 
-		aioInstanceManagers, err := s.ListInstanceManagersBySelectorRO(node, "", longhorn.InstanceManagerTypeAllInOne)
+		aioInstanceManagers, err := s.ListInstanceManagersBySelectorRO(node, "", longhorn.InstanceManagerTypeAllInOne, "")
 		if err != nil && !ErrorIsNotFound(err) {
 			return false, err
 		}
@@ -480,6 +491,45 @@ func (s *DataStore) AreAllVolumesDetached() (bool, error) {
 		instanceManagers := types.ConsolidateInstanceManagers(engineInstanceManagers, aioInstanceManagers)
 		for _, instanceManager := range instanceManagers {
 			if len(instanceManager.Status.InstanceEngines)+len(instanceManager.Status.Instances) > 0 {
+				return false, nil
+			}
+		}
+	}
+
+	return true, nil
+}
+
+func (s *DataStore) AreAllV2VolumesDetached() (bool, error) {
+	nodes, err := s.ListNodesRO()
+	if err != nil {
+		return false, err
+	}
+
+	for _, node := range nodes {
+		aioInstanceManagers, err := s.ListInstanceManagersBySelectorRO(node.Name, "", longhorn.InstanceManagerTypeAllInOne, longhorn.BackendStoreDriverTypeV2)
+		if err != nil && !ErrorIsNotFound(err) {
+			return false, err
+		}
+
+		for _, instanceManager := range aioInstanceManagers {
+			if len(instanceManager.Status.InstanceEngines)+len(instanceManager.Status.Instances) > 0 {
+				return false, nil
+			}
+		}
+	}
+
+	return true, nil
+}
+
+func (s *DataStore) AreAllBlockTypeDisksRemoved() (bool, error) {
+	nodes, err := s.ListNodesRO()
+	if err != nil {
+		return false, err
+	}
+
+	for _, node := range nodes {
+		for _, disk := range node.Spec.Disks {
+			if disk.Type == longhorn.DiskTypeBlock {
 				return false, nil
 			}
 		}
@@ -3085,13 +3135,13 @@ func (s *DataStore) GetInstanceManager(name string) (*longhorn.InstanceManager, 
 // that is using the default instance manager image.
 // The object is the direct reference to the internal cache object and should not be mutated.
 // Consider using this function when you can guarantee read only access and don't want the overhead of deep copy.
-func (s *DataStore) GetDefaultInstanceManagerByNodeRO(name string) (*longhorn.InstanceManager, error) {
+func (s *DataStore) GetDefaultInstanceManagerByNodeRO(name string, backendStoreDriver longhorn.BackendStoreDriverType) (*longhorn.InstanceManager, error) {
 	defaultInstanceManagerImage, err := s.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
 	if err != nil {
 		return nil, err
 	}
 
-	instanceManagers, err := s.ListInstanceManagersBySelectorRO(name, defaultInstanceManagerImage, longhorn.InstanceManagerTypeAllInOne)
+	instanceManagers, err := s.ListInstanceManagersBySelectorRO(name, defaultInstanceManagerImage, longhorn.InstanceManagerTypeAllInOne, backendStoreDriver)
 	if err != nil {
 		return nil, err
 	}
@@ -3134,9 +3184,9 @@ func CheckInstanceManagerType(im *longhorn.InstanceManager) (longhorn.InstanceMa
 // the given namespace,
 // the list contains direct references to the internal cache objects and should not be mutated.
 // Consider using this function when you can guarantee read only access and don't want the overhead of deep copies.
-func (s *DataStore) ListInstanceManagersBySelectorRO(node, instanceManagerImage string, managerType longhorn.InstanceManagerType) (map[string]*longhorn.InstanceManager, error) {
+func (s *DataStore) ListInstanceManagersBySelectorRO(node, imImage string, imType longhorn.InstanceManagerType, backendStoreDriver longhorn.BackendStoreDriverType) (map[string]*longhorn.InstanceManager, error) {
 	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: types.GetInstanceManagerLabels(node, instanceManagerImage, managerType),
+		MatchLabels: types.GetInstanceManagerLabels(node, imImage, imType, backendStoreDriver),
 	})
 	if err != nil {
 		return nil, err
@@ -3167,19 +3217,20 @@ func (s *DataStore) GetInstanceManagerByInstance(obj interface{}) (*longhorn.Ins
 
 func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.InstanceManager, error) {
 	var (
-		name   string // name of the object
-		nodeID string
+		name               string // name of the object
+		nodeID             string
+		backendStoreDriver longhorn.BackendStoreDriverType
 	)
 
-	switch obj.(type) {
+	switch obj := obj.(type) {
 	case *longhorn.Engine:
-		engine := obj.(*longhorn.Engine)
-		name = engine.Name
-		nodeID = engine.Spec.NodeID
+		name = obj.Name
+		nodeID = obj.Spec.NodeID
+		backendStoreDriver = obj.Spec.BackendStoreDriver
 	case *longhorn.Replica:
-		replica := obj.(*longhorn.Replica)
-		name = replica.Name
-		nodeID = replica.Spec.NodeID
+		name = obj.Name
+		nodeID = obj.Spec.NodeID
+		backendStoreDriver = obj.Spec.BackendStoreDriver
 	default:
 		return nil, fmt.Errorf("unknown type for GetInstanceManagerByInstance, %+v", obj)
 	}
@@ -3192,7 +3243,7 @@ func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.I
 		return nil, err
 	}
 
-	imMap, err := s.ListInstanceManagersBySelectorRO(nodeID, image, longhorn.InstanceManagerTypeAllInOne)
+	imMap, err := s.ListInstanceManagersBySelectorRO(nodeID, image, longhorn.InstanceManagerTypeAllInOne, backendStoreDriver)
 	if err != nil {
 		return nil, err
 	}
@@ -3205,8 +3256,8 @@ func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.I
 	return nil, fmt.Errorf("cannot find the only available instance manager for instance %v, node %v, instance manager image %v, type %v", name, nodeID, image, longhorn.InstanceManagerTypeAllInOne)
 }
 
-func (s *DataStore) ListInstanceManagersByNodeRO(node string, imType longhorn.InstanceManagerType) (map[string]*longhorn.InstanceManager, error) {
-	return s.ListInstanceManagersBySelectorRO(node, "", imType)
+func (s *DataStore) ListInstanceManagersByNodeRO(node string, imType longhorn.InstanceManagerType, backendStoreDriver longhorn.BackendStoreDriverType) (map[string]*longhorn.InstanceManager, error) {
+	return s.ListInstanceManagersBySelectorRO(node, "", imType, backendStoreDriver)
 }
 
 // ListInstanceManagers gets a list of InstanceManagers for the given namespace.
