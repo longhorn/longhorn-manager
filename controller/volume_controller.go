@@ -1757,6 +1757,12 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 			log.WithField("replica", r.Name).Warn("Replica is running but Port is empty")
 			continue
 		}
+		if _, ok := e.Spec.ReplicaAddressMap[r.Name]; !ok && isVolumeMigrating(v) && e.Spec.NodeID == v.Spec.NodeID {
+			// The volume is migrating from this engine. Don't allow new replicas to be added until migration is
+			// complete per https://github.com/longhorn/longhorn/issues/6961.
+			log.WithField("replica", r.Name).Warn("Replica is running, but can't be added while migration is ongoing")
+			continue
+		}
 		replicaAddressMap[r.Name] = imutil.GetURL(r.Status.StorageIP, r.Status.Port)
 	}
 	if len(replicaAddressMap) == 0 {
@@ -3990,6 +3996,8 @@ func (c *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Volu
 				return false, true, nil
 			case longhorn.ReplicaModeRW:
 				currentAvailableReplicas[dataPath] = r
+			case "":
+				log.Warnf("Running replica %v wasn't added to engine, will ignore it and continue migration", r.Name)
 			default:
 				log.Warnf("Unexpected mode %v for the current replica %v, will ignore it and continue migration", currentEngine.Status.ReplicaModeMap[r.Name], r.Name)
 				continue
