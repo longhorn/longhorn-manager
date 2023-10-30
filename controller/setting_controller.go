@@ -423,6 +423,9 @@ func (sc *SettingController) updateSecretForAWSIAMRoleAnnotation(backupTargetURL
 		delete(secret.Annotations, types.GetLonghornLabelKey(string(types.SettingNameBackupTarget)))
 		isArnExists = secret.Data[types.AWSIAMRoleArn] != nil
 	} else {
+		if secret.Annotations == nil {
+			secret.Annotations = make(map[string]string)
+		}
 		secret.Annotations[types.GetLonghornLabelKey(string(types.SettingNameBackupTarget))] = backupTargetURL
 	}
 
