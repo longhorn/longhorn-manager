@@ -2846,11 +2846,17 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 		return nil
 	}
 
+<<<<<<< HEAD
 	if err := c.switchActiveReplicas(rs, func(r *longhorn.Replica, engineImage string) bool {
 		return r.Spec.EngineImage == engineImage && r.DeletionTimestamp.IsZero()
 	}, v.Spec.EngineImage); err != nil {
 		return err
 	}
+=======
+	c.switchActiveReplicas(rs, func(r *longhorn.Replica, image string) bool {
+		return r.Spec.Image == image && r.DeletionTimestamp.IsZero()
+	}, v.Spec.Image)
+>>>>>>> 3d0f79bb (Clean up pointless error return)
 
 	e.Spec.ReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
 	e.Spec.UpgradedReplicaAddressMap = map[string]string{}
@@ -3770,7 +3776,7 @@ func (c *VolumeController) deleteInvalidMigrationReplicas(rs, pathToOldRs, pathT
 }
 
 func (c *VolumeController) switchActiveReplicas(rs map[string]*longhorn.Replica,
-	activeCondFunc func(r *longhorn.Replica, obj string) bool, obj string) error {
+	activeCondFunc func(r *longhorn.Replica, obj string) bool, obj string) {
 
 	// Deletion of an active replica will trigger the cleanup process to
 	// delete the volume data on the disk.
@@ -3781,7 +3787,6 @@ func (c *VolumeController) switchActiveReplicas(rs map[string]*longhorn.Replica,
 			r.Spec.Active = !r.Spec.Active
 		}
 	}
-	return nil
 }
 
 func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
@@ -3849,11 +3854,9 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 		currentEngine.Spec.Active = true
 
 		// cleanupCorruptedOrStaleReplicas() will take care of old replicas
-		if err := c.switchActiveReplicas(rs, func(r *longhorn.Replica, engineName string) bool {
-			return r.Spec.EngineName == engineName
-		}, currentEngine.Name); err != nil {
-			return err
-		}
+		c.switchActiveReplicas(rs, func(r *longhorn.Replica, engineName string) bool {
+			return r.Spec.EngineName == engineName && r.Spec.HealthyAt != ""
+		}, currentEngine.Name)
 
 		// migration rollback or confirmation finished
 		v.Status.CurrentMigrationNodeID = ""
@@ -4000,7 +4003,6 @@ func (c *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Volu
 				log.Warnf("Running replica %v wasn't added to engine, will ignore it and continue migration", r.Name)
 			default:
 				log.Warnf("Unexpected mode %v for the current replica %v, will ignore it and continue migration", currentEngine.Status.ReplicaModeMap[r.Name], r.Name)
-				continue
 			}
 		} else if r.Spec.EngineName == migrationEngine.Name {
 			migrationReplicas[dataPath] = r
