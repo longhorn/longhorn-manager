@@ -1176,11 +1176,9 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 			v.Status.CurrentNodeID = v.Spec.NodeID
 
 			// ensure that the replicas are marked as active
-			if err := vc.switchActiveReplicas(rs, func(r *longhorn.Replica, engineName string) bool {
+			vc.switchActiveReplicas(rs, func(r *longhorn.Replica, engineName string) bool {
 				return r.Spec.EngineName == engineName
-			}, e.Name); err != nil {
-				return err
-			}
+			}, e.Name)
 		}
 
 		return fmt.Errorf("volume %v has already attached to node %v, but asked to attach to node %v", v.Name, v.Status.CurrentNodeID, v.Spec.NodeID)
@@ -2642,11 +2640,9 @@ func (vc *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[st
 		return nil
 	}
 
-	if err := vc.switchActiveReplicas(rs, func(r *longhorn.Replica, engineImage string) bool {
+	vc.switchActiveReplicas(rs, func(r *longhorn.Replica, engineImage string) bool {
 		return r.Spec.EngineImage == engineImage && r.DeletionTimestamp.IsZero()
-	}, v.Spec.EngineImage); err != nil {
-		return err
-	}
+	}, v.Spec.EngineImage)
 
 	e.Spec.ReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
 	e.Spec.UpgradedReplicaAddressMap = map[string]string{}
@@ -3474,7 +3470,7 @@ func (vc *VolumeController) deleteInvalidMigrationReplicas(rs, pathToOldRs, path
 }
 
 func (vc *VolumeController) switchActiveReplicas(rs map[string]*longhorn.Replica,
-	activeCondFunc func(r *longhorn.Replica, obj string) bool, obj string) error {
+	activeCondFunc func(r *longhorn.Replica, obj string) bool, obj string) {
 
 	// Deletion of an active replica will trigger the cleanup process to
 	// delete the volume data on the disk.
@@ -3485,7 +3481,6 @@ func (vc *VolumeController) switchActiveReplicas(rs map[string]*longhorn.Replica
 			r.Spec.Active = !r.Spec.Active
 		}
 	}
-	return nil
 }
 
 func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
@@ -3553,11 +3548,9 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 		currentEngine.Spec.Active = true
 
 		// cleanupCorruptedOrStaleReplicas() will take care of old replicas
-		if err := vc.switchActiveReplicas(rs, func(r *longhorn.Replica, engineName string) bool {
+		vc.switchActiveReplicas(rs, func(r *longhorn.Replica, engineName string) bool {
 			return r.Spec.EngineName == engineName
-		}, currentEngine.Name); err != nil {
-			return err
-		}
+		}, currentEngine.Name)
 
 		return nil
 	}
@@ -3692,8 +3685,7 @@ func (vc *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Vol
 			case "":
 				log.Warnf("Running replica %v wasn't added to engine, will ignore it and continue migration", r.Name)
 			default:
-				log.Warnf("unexpected mode %v for the current replica %v, will ignore it and continue migration", currentEngine.Status.ReplicaModeMap[r.Name], r.Name)
-				continue
+				log.Warnf("Unexpected mode %v for the current replica %v, will ignore it and continue migration", currentEngine.Status.ReplicaModeMap[r.Name], r.Name)
 			}
 		} else if r.Spec.EngineName == migrationEngine.Name {
 			migrationReplicas[dataPath] = r
