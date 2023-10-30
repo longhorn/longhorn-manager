@@ -307,10 +307,16 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 			return errors.Wrapf(err, "failed to cleanup the related replica process before deleting replica %v", replica.Name)
 		}
 
+		rs, err := rc.ds.ListReplicasByNodeRO(replica.Spec.NodeID)
+		if err != nil {
+			return errors.Wrapf(err, "failed to list replicas by node before deleting replica %v", replica.Name)
+		}
+
 		if replica.Spec.NodeID != "" && replica.Spec.NodeID != rc.controllerID {
 			log.Warn("can't cleanup replica's data because the replica's data is not on this node")
 		} else if replica.Spec.NodeID != "" {
-			if replica.Spec.Active && dataPath != "" {
+			// Clean up the data directory if this is the active replica or if there is no matching replica.
+			if (replica.Spec.Active || !hasMatchingReplica(replica, rs)) && dataPath != "" {
 				// prevent accidentally deletion
 				if !strings.Contains(filepath.Base(filepath.Clean(dataPath)), "-") {
 					return fmt.Errorf("%v doesn't look like a replica data path", dataPath)
@@ -889,4 +895,13 @@ func (rc *ReplicaController) enqueueAllRebuildingReplicaOnCurrentNode() {
 
 func (rc *ReplicaController) isResponsibleFor(r *longhorn.Replica) bool {
 	return isControllerResponsibleFor(rc.controllerID, rc.ds, r.Name, r.Spec.NodeID, r.Status.OwnerID)
+}
+
+func hasMatchingReplica(replica *longhorn.Replica, replicas []*longhorn.Replica) bool {
+	for _, r := range replicas {
+		if r.Name != replica.Name && r.Spec.DataDirectoryName == replica.Spec.DataDirectoryName {
+			return true
+		}
+	}
+	return false
 }
