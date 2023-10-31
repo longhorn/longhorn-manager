@@ -1018,7 +1018,7 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 		return errors.Wrap(err, "failed to get node selector setting before creating instance manager pod")
 	}
 
-	registrySecretSetting, err := imc.ds.GetSetting(types.SettingNameRegistrySecret)
+	registrySecretSetting, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameRegistrySecret)
 	if err != nil {
 		return errors.Wrap(err, "failed to get registry secret setting before creating instance manager pod")
 	}
@@ -1031,7 +1031,7 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 		return err
 	}
 
-	storageNetwork, err := imc.ds.GetSetting(types.SettingNameStorageNetwork)
+	storageNetwork, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
 	if err != nil {
 		return err
 	}
@@ -1058,7 +1058,7 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 		return nil, err
 	}
 
-	priorityClass, err := imc.ds.GetSetting(types.SettingNamePriorityClass)
+	priorityClass, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNamePriorityClass)
 	if err != nil {
 		return nil, err
 	}
@@ -1137,7 +1137,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, longhorn.InstanceManagerTypeAllInOne)
 	podSpec.Spec.Containers[0].Name = "instance-manager"
 
-	v2DataEngineEnabled, err := imc.ds.GetSetting(types.SettingNameV2DataEngine)
+	v2DataEngineEnabled, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngine)
 	if err != nil {
 		return nil, err
 	}

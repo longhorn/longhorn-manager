@@ -259,13 +259,13 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 			return err
 		}
 
-		priorityClassSetting, err := ic.ds.GetSetting(types.SettingNamePriorityClass)
+		priorityClassSetting, err := ic.ds.GetSettingWithAutoFillingRO(types.SettingNamePriorityClass)
 		if err != nil {
 			return errors.Wrapf(err, "failed to get priority class setting before creating engine image daemonset")
 		}
 		priorityClass := priorityClassSetting.Value
 
-		registrySecretSetting, err := ic.ds.GetSetting(types.SettingNameRegistrySecret)
+		registrySecretSetting, err := ic.ds.GetSettingWithAutoFillingRO(types.SettingNameRegistrySecret)
 		if err != nil {
 			return errors.Wrapf(err, "failed to get registry secret setting before creating engine image daemonset")
 		}
@@ -646,15 +646,12 @@ func (ic *EngineImageController) cleanupExpiredEngineImage(ei *longhorn.EngineIm
 		return nil
 	}
 	if util.TimestampAfterTimeout(ei.Status.NoRefSince, ExpiredEngineImageTimeout) {
-		defaultEngineImage, err := ic.ds.GetSetting(types.SettingNameDefaultEngineImage)
+		defaultEngineImageValue, err := ic.ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 		if err != nil {
 			return err
 		}
-		if defaultEngineImage.Value == "" {
-			return fmt.Errorf("default engine image not set")
-		}
 		// Don't delete the default image
-		if ei.Spec.Image == defaultEngineImage.Value {
+		if ei.Spec.Image == defaultEngineImageValue {
 			return nil
 		}
 

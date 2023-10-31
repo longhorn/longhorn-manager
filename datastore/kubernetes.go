@@ -857,7 +857,7 @@ func NewPVCManifest(size int64, pvName, ns, pvcName, storageClassName string, ac
 //	  	  "dns": {}
 //	    }]
 func (s *DataStore) GetStorageIPFromPod(pod *corev1.Pod) string {
-	storageNetwork, err := s.GetSetting(types.SettingNameStorageNetwork)
+	storageNetwork, err := s.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
 	if err != nil {
 		logrus.Warnf("Failed to get %v setting, use %v pod IP %v", types.SettingNameStorageNetwork, pod.Name, pod.Status.PodIP)
 		return pod.Status.PodIP
