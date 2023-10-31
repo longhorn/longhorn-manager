@@ -779,7 +779,7 @@ func (c *BackingImageManagerController) createBackingImageManagerPod(bim *longho
 	if err != nil {
 		return err
 	}
-	registrySecretSetting, err := c.ds.GetSetting(types.SettingNameRegistrySecret)
+	registrySecretSetting, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameRegistrySecret)
 	if err != nil {
 		return err
 	}
@@ -802,7 +802,7 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 		return nil, err
 	}
 
-	priorityClass, err := c.ds.GetSetting(types.SettingNamePriorityClass)
+	priorityClass, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNamePriorityClass)
 	if err != nil {
 		return nil, err
 	}
@@ -892,7 +892,7 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 		}
 	}
 
-	storageNetwork, err := c.ds.GetSetting(types.SettingNameStorageNetwork)
+	storageNetwork, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
 	if err != nil {
 		return nil, err
 	}

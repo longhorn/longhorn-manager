@@ -74,8 +74,7 @@ func (s *DataStore) UpdateCustomizedSettings(defaultImages map[types.SettingName
 
 func (s *DataStore) createNonExistingSettingCRsWithDefaultSetting(configMapResourceVersion string) error {
 	for _, sName := range types.SettingNameList {
-		_, err := s.GetSettingExact(sName)
-		if err != nil && apierrors.IsNotFound(err) {
+		if _, err := s.GetSettingExactRO(sName); err != nil && apierrors.IsNotFound(err) {
 			definition, ok := types.GetSettingDefinition(sName)
 			if !ok {
 				return fmt.Errorf("BUG: setting %v is not defined", sName)
@@ -118,7 +117,7 @@ func (s *DataStore) filterCustomizedDefaultSettings(customizedDefaultSettings ma
 
 // isSettingValueChanged check if the customized default setting and value was changed
 func (s *DataStore) isSettingValueChanged(name types.SettingName, value string) bool {
-	setting, err := s.GetSettingExact(name)
+	setting, err := s.GetSettingExactRO(name)
 	if err != nil {
 		if !ErrorIsNotFound(err) {
 			logrus.WithError(err).Errorf("failed to get customized default setting %v value", name)
@@ -200,7 +199,7 @@ func (s *DataStore) applyCustomizedDefaultSettingsToDefinitions(customizedDefaul
 func (s *DataStore) syncSettingCRsWithCustomizedDefaultSettings(customizedDefaultSettings map[string]string, defaultSettingCMResourceVersion string) error {
 	for _, sName := range types.SettingNameList {
 		configMapResourceVersion := ""
-		if s, err := s.GetSettingExact(sName); err != nil {
+		if s, err := s.GetSettingExactRO(sName); err != nil {
 			if !apierrors.IsNotFound(err) {
 				return err
 			}
@@ -351,7 +350,7 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot modify priority class setting before all volumes are detached")}
 		}
 	case types.SettingNameGuaranteedInstanceManagerCPU:
-		guaranteedInstanceManagerCPU, err := s.GetSetting(types.SettingNameGuaranteedInstanceManagerCPU)
+		guaranteedInstanceManagerCPU, err := s.GetSettingWithAutoFillingRO(types.SettingNameGuaranteedInstanceManagerCPU)
 		if err != nil {
 			return err
 		}
@@ -370,7 +369,7 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot apply %v setting to Longhorn workloads when there are attached volumes", name)}
 		}
 	case types.SettingNameV2DataEngine:
-		old, err := s.GetSetting(types.SettingNameV2DataEngine)
+		old, err := s.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngine)
 		if err != nil {
 			return err
 		}
@@ -398,7 +397,7 @@ func (s *DataStore) ValidateV2DataEngine(v2DataEngineEnabled bool) error {
 	}
 
 	// Check if there is enough hugepages-2Mi capacity for all nodes
-	hugepageRequestedInMiB, err := s.GetSetting(types.SettingNameV2DataEngineHugepageLimit)
+	hugepageRequestedInMiB, err := s.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngineHugepageLimit)
 	if err != nil {
 		return err
 	}
@@ -491,24 +490,12 @@ func (s *DataStore) getSettingRO(name string) (*longhorn.Setting, error) {
 	return s.settingLister.Settings(s.namespace).Get(name)
 }
 
-// GetSettingExact returns the Setting for the given name and namespace
-func (s *DataStore) GetSettingExact(sName types.SettingName) (*longhorn.Setting, error) {
-	resultRO, err := s.getSettingRO(string(sName))
-	if err != nil {
-		return nil, err
-	}
-
-	return resultRO.DeepCopy(), nil
-}
-
-// GetSetting will automatically fill the non-existing setting if it's a valid
-// setting name.
-// The function will not return nil for *longhorn.Setting when error is nil
-func (s *DataStore) GetSetting(sName types.SettingName) (*longhorn.Setting, error) {
+func (s *DataStore) GetSettingWithAutoFillingRO(sName types.SettingName) (*longhorn.Setting, error) {
 	definition, ok := types.GetSettingDefinition(sName)
 	if !ok {
 		return nil, fmt.Errorf("setting %v is not supported", sName)
 	}
+
 	resultRO, err := s.getSettingRO(string(sName))
 	if err != nil {
 		if !ErrorIsNotFound(err) {
@@ -521,13 +508,44 @@ func (s *DataStore) GetSetting(sName types.SettingName) (*longhorn.Setting, erro
 			Value: definition.Default,
 		}
 	}
+
+	return resultRO, nil
+}
+
+// GetSettingExact returns the Setting for the given name and namespace
+func (s *DataStore) GetSettingExact(sName types.SettingName) (*longhorn.Setting, error) {
+	resultRO, err := s.getSettingRO(string(sName))
+	if err != nil {
+		return nil, err
+	}
+
+	return resultRO.DeepCopy(), nil
+}
+
+func (s *DataStore) GetSettingExactRO(sName types.SettingName) (*longhorn.Setting, error) {
+	resultRO, err := s.getSettingRO(string(sName))
+	if err != nil {
+		return nil, err
+	}
+
+	return resultRO, nil
+}
+
+// GetSetting will automatically fill the non-existing setting if it's a valid
+// setting name.
+// The function will not return nil for *longhorn.Setting when error is nil
+func (s *DataStore) GetSetting(sName types.SettingName) (*longhorn.Setting, error) {
+	resultRO, err := s.GetSettingWithAutoFillingRO(sName)
+	if err != nil {
+		return nil, err
+	}
 	return resultRO.DeepCopy(), nil
 }
 
 // GetSettingValueExisted returns the value of the given setting name.
 // Returns error if the setting does not exist or value is empty
 func (s *DataStore) GetSettingValueExisted(sName types.SettingName) (string, error) {
-	setting, err := s.GetSetting(sName)
+	setting, err := s.GetSettingWithAutoFillingRO(sName)
 	if err != nil {
 		return "", err
 	}
@@ -2799,7 +2817,7 @@ func (s *DataStore) GetSettingAsInt(settingName types.SettingName) (int64, error
 	if !ok {
 		return -1, fmt.Errorf("setting %v is not supported", settingName)
 	}
-	settings, err := s.GetSetting(settingName)
+	settings, err := s.GetSettingWithAutoFillingRO(settingName)
 	if err != nil {
 		return -1, err
 	}
@@ -2823,7 +2841,7 @@ func (s *DataStore) GetSettingAsBool(settingName types.SettingName) (bool, error
 	if !ok {
 		return false, fmt.Errorf("setting %v is not supported", settingName)
 	}
-	settings, err := s.GetSetting(settingName)
+	settings, err := s.GetSettingWithAutoFillingRO(settingName)
 	if err != nil {
 		return false, err
 	}
@@ -2843,7 +2861,7 @@ func (s *DataStore) GetSettingAsBool(settingName types.SettingName) (bool, error
 // GetSettingImagePullPolicy get the setting and return one of Kubernetes ImagePullPolicy definition
 // Returns error if the ImagePullPolicy is invalid
 func (s *DataStore) GetSettingImagePullPolicy() (corev1.PullPolicy, error) {
-	ipp, err := s.GetSetting(types.SettingNameSystemManagedPodsImagePullPolicy)
+	ipp, err := s.GetSettingWithAutoFillingRO(types.SettingNameSystemManagedPodsImagePullPolicy)
 	if err != nil {
 		return "", err
 	}
@@ -2859,7 +2877,7 @@ func (s *DataStore) GetSettingImagePullPolicy() (corev1.PullPolicy, error) {
 }
 
 func (s *DataStore) GetSettingTaintToleration() ([]corev1.Toleration, error) {
-	setting, err := s.GetSetting(types.SettingNameTaintToleration)
+	setting, err := s.GetSettingWithAutoFillingRO(types.SettingNameTaintToleration)
 	if err != nil {
 		return nil, err
 	}
@@ -2871,7 +2889,7 @@ func (s *DataStore) GetSettingTaintToleration() ([]corev1.Toleration, error) {
 }
 
 func (s *DataStore) GetSettingSystemManagedComponentsNodeSelector() (map[string]string, error) {
-	setting, err := s.GetSetting(types.SettingNameSystemManagedComponentsNodeSelector)
+	setting, err := s.GetSettingWithAutoFillingRO(types.SettingNameSystemManagedComponentsNodeSelector)
 	if err != nil {
 		return nil, err
 	}
