@@ -623,13 +623,13 @@ func (c *SupportBundleController) createSupportBundleManagerDeployment(supportBu
 		return nil, errors.Wrap(err, "failed to get system pods image pull policy before creating support bundle manager deployment")
 	}
 
-	priorityClassSetting, err := c.ds.GetSetting(types.SettingNamePriorityClass)
+	priorityClassSetting, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNamePriorityClass)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get priority class setting before creating support bundle manager deployment")
 	}
 	priorityClass := priorityClassSetting.Value
 
-	registrySecretSetting, err := c.ds.GetSetting(types.SettingNameRegistrySecret)
+	registrySecretSetting, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameRegistrySecret)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get registry secret setting before creating support bundle manager deployment")
 	}
@@ -645,7 +645,7 @@ func (c *SupportBundleController) createSupportBundleManagerDeployment(supportBu
 func (c *SupportBundleController) newSupportBundleManager(supportBundle *longhorn.SupportBundle, nodeSelector map[string]string,
 	imagePullPolicy corev1.PullPolicy, priorityClass, registrySecret string) (*appsv1.Deployment, error) {
 
-	tolerationSetting, err := c.ds.GetSetting(types.SettingNameTaintToleration)
+	tolerationSetting, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameTaintToleration)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameTaintToleration)
 	}

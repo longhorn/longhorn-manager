@@ -459,7 +459,7 @@ func (c *RecurringJobController) newCronJob(recurringJob *longhorn.RecurringJob)
 	if err != nil {
 		return nil, err
 	}
-	priorityClass, err := c.ds.GetSetting(types.SettingNamePriorityClass)
+	priorityClass, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNamePriorityClass)
 	if err != nil {
 		return nil, err
 	}
@@ -467,7 +467,7 @@ func (c *RecurringJobController) newCronJob(recurringJob *longhorn.RecurringJob)
 	if err != nil {
 		return nil, err
 	}
-	registrySecretSetting, err := c.ds.GetSetting(types.SettingNameRegistrySecret)
+	registrySecretSetting, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameRegistrySecret)
 	if err != nil {
 		return nil, err
 	}

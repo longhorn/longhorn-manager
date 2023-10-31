@@ -500,7 +500,7 @@ func (c *SystemRolloutController) syncController() error {
 			return errors.Wrapf(err, "failed to get SystemBackup %v", systemRestore.Spec.SystemBackup)
 		}
 
-		currentLonghornVersion, err := c.ds.GetSetting(types.SettingNameCurrentLonghornVersion)
+		currentLonghornVersion, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameCurrentLonghornVersion)
 		if err != nil {
 			return err
 		}
