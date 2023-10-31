@@ -1101,9 +1101,7 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 func (nc *NodeController) createInstanceManager(node *longhorn.Node, imName, imImage string, imType longhorn.InstanceManagerType, backendStoreDriver longhorn.BackendStoreDriverType) (*longhorn.InstanceManager, error) {
 	instanceManager := &longhorn.InstanceManager{
 		ObjectMeta: metav1.ObjectMeta{
-			Labels:          types.GetInstanceManagerLabels(node.Name, imImage, imType, backendStoreDriver),
-			Name:            imName,
-			OwnerReferences: datastore.GetOwnerReferencesForNode(node),
+			Name: imName,
 		},
 		Spec: longhorn.InstanceManagerSpec{
 			Image:              imImage,

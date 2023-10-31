@@ -3058,10 +3058,15 @@ func (s *DataStore) DeleteNode(name string) error {
 // Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
 func (s *DataStore) ListEnginesByNodeRO(name string) ([]*longhorn.Engine, error) {
 	nodeSelector, err := getNodeSelector(name)
+	if err != nil {
+		return nil, err
+	}
+
 	engineList, err := s.engineLister.Engines(s.namespace).List(nodeSelector)
 	if err != nil {
 		return nil, err
 	}
+
 	return engineList, nil
 }
 
