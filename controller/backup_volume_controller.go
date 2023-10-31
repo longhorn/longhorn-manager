@@ -325,8 +325,10 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 				"backupvolume": backupVolumeName,
 				"backuptarget": backupURL}).Warnf("Failed to get backupInfo from remote backup target")
 		} else {
-			if accessMode, exist := backupInfo.Labels[types.GetLonghornLabelKey(types.LonghornLabelVolumeAccessMode)]; exist {
-				backupLabelMap[types.GetLonghornLabelKey(types.LonghornLabelVolumeAccessMode)] = accessMode
+			if backupInfo != nil && backupInfo.Labels != nil {
+				if accessMode, exist := backupInfo.Labels[types.GetLonghornLabelKey(types.LonghornLabelVolumeAccessMode)]; exist {
+					backupLabelMap[types.GetLonghornLabelKey(types.LonghornLabelVolumeAccessMode)] = accessMode
+				}
 			}
 		}
 
