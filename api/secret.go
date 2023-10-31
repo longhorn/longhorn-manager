@@ -6,12 +6,13 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
+	corev1 "k8s.io/api/core/v1"
 )
 
-func (s *Server) SecretList(rw http.ResponseWriter, req *http.Request) (err error) {
+func (s *Server) TLSSecretList(rw http.ResponseWriter, req *http.Request) (err error) {
 	apiContext := api.GetApiContext(req)
 
-	col, err := s.secretList(apiContext)
+	col, err := s.tlsSecretList(apiContext)
 	if err != nil {
 		return err
 	}
@@ -20,10 +21,18 @@ func (s *Server) SecretList(rw http.ResponseWriter, req *http.Request) (err erro
 	return nil
 }
 
-func (s *Server) secretList(apiContext *api.ApiContext) (*client.GenericCollection, error) {
+func (s *Server) tlsSecretList(apiContext *api.ApiContext) (*client.GenericCollection, error) {
 	list, err := s.m.ListSecrets()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list secrets")
 	}
-	return toSecretRefCollection(list, apiContext), nil
+
+	tlsSecrets := []*corev1.Secret{}
+	for _, s := range list {
+		if s.Type == corev1.SecretTypeTLS {
+			tlsSecrets = append(tlsSecrets, s)
+		}
+	}
+
+	return toSecretRefCollection(tlsSecrets, apiContext), nil
 }

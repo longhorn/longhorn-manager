@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -46,7 +47,7 @@ func (s *Server) ObjectStoreCreate(rw http.ResponseWriter, req *http.Request) (e
 		return err
 	}
 
-	sec, err := s.m.CreateSecret(&corev1.Secret{
+	secret := corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      input.Name,
 			Namespace: s.m.GetLonghornNamespace(),
@@ -55,8 +56,14 @@ func (s *Server) ObjectStoreCreate(rw http.ResponseWriter, req *http.Request) (e
 			"RGW_DEFAULT_USER_ACCESS_KEY": input.AccessKey,
 			"RGW_DEFAULT_USER_SECRET_KEY": input.SecretKey,
 		},
-	})
-	obj, err := s.m.CreateObjectStore(&longhorn.ObjectStore{
+	}
+
+	_, err = s.m.CreateSecret(&secret)
+	if err != nil {
+		return errors.Wrapf(err, "failed to create object store %v", input.Name)
+	}
+
+	store := longhorn.ObjectStore{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      input.Name,
 			Namespace: s.m.GetLonghornNamespace(),
@@ -80,13 +87,31 @@ func (s *Server) ObjectStoreCreate(rw http.ResponseWriter, req *http.Request) (e
 				BackendStoreDriver:          input.BackendStoreDriver,
 			},
 			Credentials: corev1.SecretReference{
-				Name:      sec.Name,
-				Namespace: sec.Namespace,
+				Name:      secret.Name,
+				Namespace: secret.Namespace,
 			},
 			Endpoints:   []longhorn.ObjectStoreEndpointSpec{},
 			TargetState: "running",
 		},
-	})
+	}
+
+	for i, endpoint := range input.Endpoints {
+		endpointspec := longhorn.ObjectStoreEndpointSpec{
+			Name:       fmt.Sprintf("endpoint-%v", i),
+			DomainName: endpoint.DomainName,
+		}
+
+		if endpoint.SecretName != "" {
+			endpointspec.TLS = corev1.SecretReference{
+				Name:      endpoint.SecretName,
+				Namespace: endpoint.SecretNamespace,
+			}
+		}
+
+		store.Spec.Endpoints = append(store.Spec.Endpoints, endpointspec)
+	}
+
+	obj, err := s.m.CreateObjectStore(&store)
 	if err != nil {
 		return errors.Wrapf(err, "failed to create object store %v", input.Name)
 	}

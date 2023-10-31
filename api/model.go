@@ -547,8 +547,14 @@ type ObjectStore struct {
 }
 
 type ObjectStoreInput struct {
-	Name                        string                               `json:"name"`
-	Size                        string                               `json:"size"`
+	Name string `json:"name"`
+	Size string `json:"size"`
+
+	AccessKey string `json:"accesskey"`
+	SecretKey string `json:"secretkey"`
+
+	Endpoints []ObjectEndpointInput `json:"endppoints"`
+
 	NumberOfReplicas            int                                  `json:"numberOfReplicas"`
 	ReplicaSoftAntiAffinity     longhorn.ReplicaSoftAntiAffinity     `json:"replicaSoftAntiAffinity"`
 	ReplicaZoneSoftAntiAffinity longhorn.ReplicaZoneSoftAntiAffinity `json:"replicaZoneSoftAntiAffinity"`
@@ -563,11 +569,15 @@ type ObjectStoreInput struct {
 	RevisionCounterDisabled     bool                                 `json:"revisionCounterDisabled"`
 	UnmapMarkSnapChainRemoved   longhorn.UnmapMarkSnapChainRemoved   `json:"unmapMarkSnapChainRemoved"`
 	BackendStoreDriver          longhorn.BackendStoreDriverType      `json:"backendStoreDriver"`
-	AccessKey                   string                               `json:"accesskey"`
-	SecretKey                   string                               `json:"secretkey"`
 	TargetState                 longhorn.ObjectStoreState            `json:"targetState"`
 	Image                       string                               `json:"image"`
 	UIImage                     string                               `json:"uiImage"`
+}
+
+type ObjectEndpointInput struct {
+	DomainName      string `json:"domainName"`
+	SecretName      string `json:"secretName"`
+	SecretNamespace string `json:"secretNamespace"`
 }
 
 type ObjectStoreListOutput struct {
@@ -2249,7 +2259,7 @@ func toSecretRefCollection(secrets []*corev1.Secret, apiContext *api.ApiContext)
 	return &client.GenericCollection{
 		Data: data,
 		Collection: client.Collection{
-			ResourceType: "secret",
+			ResourceType: "secretRef",
 		},
 	}
 }

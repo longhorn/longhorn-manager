@@ -203,7 +203,7 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("PUT").Path("/v1/objectstores/{name}").Handler(f(schemas, s.ObjectStoreUpdate))
 	r.Methods("DELETE").Path("/v1/objectstores/{name}").Handler(f(schemas, s.ObjectStoreDelete))
 
-	r.Methods("GET").Path("/k8s/core/v1/secrets").Handler(f(schemas, s.SecretList))
+	r.Methods("GET").Path("/v1/secrets").Handler(f(schemas, s.TLSSecretList))
 
 	settingListStream := NewStreamHandlerFunc("settings", s.wsc.NewWatcher("setting"), s.settingList)
 	r.Path("/v1/ws/settings").Handler(f(schemas, settingListStream))
@@ -264,6 +264,10 @@ func NewRouter(s *Server) *mux.Router {
 	objectStoreListStream := NewStreamHandlerFunc("objectendpoints", s.wsc.NewWatcher("objectEndpoint"), s.objectStoreList)
 	r.Path("/v1/ws/objectstores").Handler(f(schemas, objectStoreListStream))
 	r.Path("/v1/ws/{period}/objectstores").Handler(f(schemas, objectStoreListStream))
+
+	secretListStream := NewStreamHandlerFunc("secrets", s.wsc.NewWatcher("secret"), s.tlsSecretList)
+	r.Path("/v1/ws/secrets").Handler(f(schemas, secretListStream))
+	r.Path("/v1/ws/{period}/secrets").Handler(f(schemas, secretListStream))
 
 	return r
 }
