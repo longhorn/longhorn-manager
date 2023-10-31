@@ -715,13 +715,9 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 
 // createShareManagerPod ensures existence of service, it's assumed that the pvc for this share manager already exists
 func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager) (*corev1.Pod, error) {
-	setting, err := c.ds.GetSetting(types.SettingNameTaintToleration)
+	tolerations, err := c.ds.GetSettingTaintToleration()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get taint toleration setting before creating share manager pod")
-	}
-	tolerations, err := types.UnmarshalTolerations(setting.Value)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal taint toleration setting before creating share manager pod")
 	}
 	nodeSelector, err := c.ds.GetSettingSystemManagedComponentsNodeSelector()
 	if err != nil {
@@ -739,13 +735,13 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 		return nil, errors.Wrap(err, "failed to get image pull policy before creating share manager pod")
 	}
 
-	setting, err = c.ds.GetSetting(types.SettingNameRegistrySecret)
+	setting, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameRegistrySecret)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get registry secret setting before creating share manager pod")
 	}
 	registrySecret := setting.Value
 
-	setting, err = c.ds.GetSetting(types.SettingNamePriorityClass)
+	setting, err = c.ds.GetSettingWithAutoFillingRO(types.SettingNamePriorityClass)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get priority class setting before creating share manager pod")
 	}

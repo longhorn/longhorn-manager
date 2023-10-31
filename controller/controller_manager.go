@@ -150,7 +150,7 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 	cpuRequest := lhNode.Spec.InstanceManagerCPURequest
 	guaranteedCPUSettingName := types.SettingNameGuaranteedInstanceManagerCPU
 	if cpuRequest == 0 {
-		guaranteedCPUSetting, err := ds.GetSetting(guaranteedCPUSettingName)
+		guaranteedCPUSetting, err := ds.GetSettingWithAutoFillingRO(guaranteedCPUSettingName)
 		if err != nil {
 			return nil, err
 		}
