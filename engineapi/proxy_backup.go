@@ -83,3 +83,7 @@ func (p *Proxy) BackupRestoreStatus(e *longhorn.Engine) (status map[string]*long
 	}
 	return status, nil
 }
+
+func (p *Proxy) CleanupBackupMountPoints() (err error) {
+	return p.grpcClient.CleanupBackupMountPoints()
+}

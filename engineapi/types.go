@@ -99,6 +99,8 @@ type EngineClient interface {
 	BackupRestore(engine *longhorn.Engine, backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string) error
 	BackupRestoreStatus(engine *longhorn.Engine) (map[string]*longhorn.RestoreStatus, error)
 
+	CleanupBackupMountPoints() error
+
 	MetricsGet(engine *longhorn.Engine) (*Metrics, error)
 }
 

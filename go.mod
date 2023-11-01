@@ -43,9 +43,16 @@ require (
 	github.com/longhorn/backing-image-manager v0.0.0-20220609065820-a08f7f47442f
 	github.com/longhorn/backupstore v0.0.0-20230606110118-7c0666bcb0cf
 	github.com/longhorn/go-iscsi-helper v0.0.0-20231113050545-9df1e6b605c7
+<<<<<<< HEAD
 	github.com/longhorn/longhorn-engine v1.4.4-rc2
 	github.com/longhorn/longhorn-instance-manager v1.4.4-rc2
 	github.com/longhorn/longhorn-share-manager v1.4.5-0.20231115141251-cb28f2149b7c
+=======
+	github.com/longhorn/go-spdk-helper v0.0.0-20231113055029-9acddd184246
+	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230914160943-b42224518443
+	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20231117031020-055db7ef0240
+	github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20231115135615-fb85b56534a4
+>>>>>>> 3a66afaa (feat(backuptarget): add cleanup all mounts grpc function)
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.1
 	github.com/rancher/dynamiclistener v0.3.1

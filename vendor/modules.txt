@@ -148,15 +148,28 @@ github.com/longhorn/backupstore/util
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
+<<<<<<< HEAD
 # github.com/longhorn/longhorn-engine v1.4.4-rc2
 ## explicit; go 1.17
+=======
+# github.com/longhorn/go-spdk-helper v0.0.0-20231113055029-9acddd184246
+## explicit; go 1.21
+github.com/longhorn/go-spdk-helper/pkg/types
+# github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230914160943-b42224518443
+## explicit; go 1.20
+>>>>>>> 3a66afaa (feat(backuptarget): add cleanup all mounts grpc function)
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
 github.com/longhorn/longhorn-engine/proto/ptypes
+<<<<<<< HEAD
 # github.com/longhorn/longhorn-instance-manager v1.4.4-rc2
 ## explicit; go 1.17
+=======
+# github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20231117031020-055db7ef0240
+## explicit; go 1.21
+>>>>>>> 3a66afaa (feat(backuptarget): add cleanup all mounts grpc function)
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
 github.com/longhorn/longhorn-instance-manager/pkg/imrpc

@@ -387,6 +387,11 @@ func (btc *BackupTargetController) cleanUpAllMounts(backupTarget *longhorn.Backu
 		return err
 	}
 	defer engineClientProxy.Close()
+	// cleanup mount points in instance-manager
+	if err := engineClientProxy.CleanupBackupMountPoints(); err != nil {
+		return err
+	}
+	// clean mount points in longhorn-manager
 	err = backupTargetClient.BackupCleanUpAllMounts()
 	return err
 }

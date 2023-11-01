@@ -3,15 +3,30 @@ package client
 import (
 	"encoding/json"
 
+	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/pkg/errors"
 
 	rpc "github.com/longhorn/longhorn-instance-manager/pkg/imrpc"
 )
 
+<<<<<<< HEAD
 func (c *ProxyClient) SnapshotBackup(serviceAddress,
 	backupName, snapshotName, backupTarget,
 	backingImageName, backingImageChecksum string,
 	labels map[string]string, envs []string) (backupID, replicaAddress string, err error) {
+=======
+func (c *ProxyClient) CleanupBackupMountPoints() (err error) {
+	_, err = c.service.CleanupBackupMountPoints(getContextWithGRPCTimeout(c.ctx), &empty.Empty{})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *ProxyClient) SnapshotBackup(backendStoreDriver, engineName, volumeName, serviceAddress, backupName,
+	snapshotName, backupTarget, backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int,
+	storageClassName string, labels map[string]string, envs []string) (backupID, replicaAddress string, err error) {
+>>>>>>> 3a66afaa (feat(backuptarget): add cleanup all mounts grpc function)
 	input := map[string]string{
 		"serviceAddress": serviceAddress,
 	}
