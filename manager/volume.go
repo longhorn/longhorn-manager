@@ -633,7 +633,10 @@ func (m *VolumeManager) trimRWXVolumeFilesystem(volumeName string, encryptedDevi
 	}
 	pod, err := m.ds.GetPodRO(sm.Namespace, types.GetShareManagerPodNameFromShareManagerName(sm.Name))
 	if err != nil {
-		return errors.Wrapf(err, "failed to get share manager pod for trimming volume %v in namespae", volumeName)
+		return errors.Wrapf(err, "failed to get share manager pod for trimming volume %v in namespace", volumeName)
+	}
+	if pod == nil {
+		return fmt.Errorf("share manager pod is not found for trimming volume %v in namespace", volumeName)
 	}
 
 	if sm.Status.State != longhorn.ShareManagerStateRunning {
