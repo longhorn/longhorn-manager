@@ -47,9 +47,9 @@ require (
 	github.com/longhorn/backing-image-manager v1.4.0-rc1.0.20230521151917-38ff27cc2cbb
 	github.com/longhorn/backupstore v0.0.0-20231114103026-af339bb498d3
 	github.com/longhorn/go-iscsi-helper v0.0.0-20231113050545-9df1e6b605c7
-	github.com/longhorn/go-spdk-helper v0.0.0-20231002161457-6c31a95f76e8
+	github.com/longhorn/go-spdk-helper v0.0.0-20231113055029-9acddd184246
 	github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230914160943-b42224518443
-	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20231006015831-4dca206b03f0
+	github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20231117031020-055db7ef0240
 	github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20231115135615-fb85b56534a4
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.16.0

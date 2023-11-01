@@ -264,3 +264,7 @@ func (e *EngineSimulator) ReplicaModeUpdate(engine *longhorn.Engine, url, mode s
 func (e *EngineSimulator) MetricsGet(*longhorn.Engine) (*Metrics, error) {
 	return nil, fmt.Errorf(ErrNotImplement)
 }
+
+func (e *EngineSimulator) CleanupBackupMountPoints() error {
+	return fmt.Errorf(ErrNotImplement)
+}
