@@ -145,10 +145,10 @@ func (kc *KubernetesPodController) syncHandler(key string) (err error) {
 
 	pod, err := kc.ds.GetPodRO(namespace, name)
 	if err != nil {
-		if datastore.ErrorIsNotFound(err) {
-			return nil
-		}
 		return errors.Wrapf(err, "Error getting Pod: %s", name)
+	}
+	if pod == nil {
+		return nil
 	}
 	nodeID := pod.Spec.NodeName
 	if nodeID == "" {
