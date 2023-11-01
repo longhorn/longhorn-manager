@@ -1030,12 +1030,12 @@ github.com/longhorn/backupstore v0.0.0-20231114103026-af339bb498d3 h1:z1+k7ANPYj
 github.com/longhorn/backupstore v0.0.0-20231114103026-af339bb498d3/go.mod h1:JzuHEmLyQPhGuxtKpJ2vCXPfGbylXJiBVg4KLVKsj9c=
 github.com/longhorn/go-iscsi-helper v0.0.0-20231113050545-9df1e6b605c7 h1:YOOhIENIfhVCOaD00oWFeothjP0UyItBScUmpwGg8TM=
 github.com/longhorn/go-iscsi-helper v0.0.0-20231113050545-9df1e6b605c7/go.mod h1:xz30xMoSLdYxfUygCzM/s99CA8/LNrkcEULFWExhqz4=
-github.com/longhorn/go-spdk-helper v0.0.0-20231002161457-6c31a95f76e8 h1:tV7DKLG7xKdM3CratmRLF2JsOA1BpzFGj90nu0PiNCc=
-github.com/longhorn/go-spdk-helper v0.0.0-20231002161457-6c31a95f76e8/go.mod h1:XoGXOYHw1KW3qdvTSimwY+Anyg5cPl6EVkjXxS25Upg=
+github.com/longhorn/go-spdk-helper v0.0.0-20231113055029-9acddd184246 h1:Pry2QHJEqEy9jsRIaACmq/1Hre8N9wfE061+gQKspKg=
+github.com/longhorn/go-spdk-helper v0.0.0-20231113055029-9acddd184246/go.mod h1:PCawMRVllTJnjbIYIC8axRfEI7aEhhjbsoBS/Y/EUYQ=
 github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230914160943-b42224518443 h1:4P/dmOAq8nMGg9vnXkT04NBdNidOCPXg2LM3J63ewn8=
 github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230914160943-b42224518443/go.mod h1:zcfS53mU3LkxWAWf2MkHsa75Q4t01GmiW++mfp1+78M=
-github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20231006015831-4dca206b03f0 h1:s4fSDgPEnw76Uwbiy+L9RbL/OJ8qb/Uu6Ki0QhIiZT4=
-github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20231006015831-4dca206b03f0/go.mod h1:t3yBsQRDOL56ONfxEdzUkgCOqfmU0mF4B5MHMteYsOw=
+github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20231117031020-055db7ef0240 h1:ODDgqV+etH3mOI+Ss9C2jb5wHqll7kyet//bjBYhvaI=
+github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20231117031020-055db7ef0240/go.mod h1:UEKMX5u3sHynT3KAddLUaxcrLABl8Y2H/NH8Oy4Kv3U=
 github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20231115135615-fb85b56534a4 h1:jf2jLuUZS5l7TyI1cNRqm7e9X/lrwBNsI16Q7P/o7JE=
 github.com/longhorn/longhorn-share-manager v1.4.0-rc1.0.20231115135615-fb85b56534a4/go.mod h1:A/Z/YpW//hdULf+ZxelXQi8VEfAIIDRvEFvmv0xHSU0=
 github.com/longhorn/longhorn-spdk-engine v0.0.0-20231005170812-e9b634e07e47 h1:hadV15fSF+akBFZ8dMQFscTsJUVpEC1t6Go3B28ZNYw=
