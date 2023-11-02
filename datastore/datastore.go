@@ -172,7 +172,7 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, systemRestoreInformer.Informer().HasSynced)
 	lhVolumeAttachmentInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().VolumeAttachments()
 	cacheSyncs = append(cacheSyncs, lhVolumeAttachmentInformer.Informer().HasSynced)
-	ObjectStoreInformer := lhInformerFactory.Longhorn().V1beta2().ObjectStores()
+	ObjectStoreInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().ObjectStores()
 	cacheSyncs = append(cacheSyncs, ObjectStoreInformer.Informer().HasSynced)
 
 	// Kube Informers
@@ -208,7 +208,7 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, daemonSetInformer.Informer().HasSynced)
 	deploymentInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Apps().V1().Deployments()
 	cacheSyncs = append(cacheSyncs, deploymentInformer.Informer().HasSynced)
-	ingressInformer := kubeInformerFactory.Networking().V1().Ingresses()
+	ingressInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Networking().V1().Ingresses()
 	cacheSyncs = append(cacheSyncs, ingressInformer.Informer().HasSynced)
 
 	return &DataStore{
@@ -294,10 +294,6 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 		DaemonSetInformer:           daemonSetInformer.Informer(),
 		deploymentLister:            deploymentInformer.Lister(),
 		DeploymentInformer:          deploymentInformer.Informer(),
-		podDisruptionBudgetLister:   podDisruptionBudgetInformer.Lister(),
-		PodDisruptionBudgetInformer: podDisruptionBudgetInformer.Informer(),
-		serviceLister:               serviceInformer.Lister(),
-		ServiceInformer:             serviceInformer.Informer(),
 		ingressLister:               ingressInformer.Lister(),
 		IngressInformer:             ingressInformer.Informer(),
 

@@ -743,10 +743,6 @@ func (s *DataStore) DeleteSecret(namespace string, name string) error {
 	return nil
 }
 
-func (s *DataStore) UpdateSecret(namespace string, obj *corev1.Secret) (*corev1.Secret, error) {
-	return s.kubeClient.CoreV1().Secrets(namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
-}
-
 // GetPriorityClass gets the PriorityClass from the index for the
 // given name
 func (s *DataStore) GetPriorityClass(pcName string) (*schedulingv1.PriorityClass, error) {

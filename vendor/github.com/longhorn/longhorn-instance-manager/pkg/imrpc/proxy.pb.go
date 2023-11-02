@@ -854,6 +854,7 @@ type EngineSnapshotBackupRequest struct {
 	CompressionMethod    string              `protobuf:"bytes,9,opt,name=compression_method,json=compressionMethod,proto3" json:"compression_method,omitempty"`
 	ConcurrentLimit      int32               `protobuf:"varint,10,opt,name=concurrent_limit,json=concurrentLimit,proto3" json:"concurrent_limit,omitempty"`
 	StorageClassName     string              `protobuf:"bytes,11,opt,name=storage_class_name,json=storageClassName,proto3" json:"storage_class_name,omitempty"`
+	ObjectStoreBackup    string              `protobuf:"bytes,12,opt,name=object_store_backup,json=objectStoreBackup,proto3" json:"object_store_backup,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}            `json:"-"`
 	XXX_unrecognized     []byte              `json:"-"`
 	XXX_sizecache        int32               `json:"-"`
@@ -957,6 +958,13 @@ func (m *EngineSnapshotBackupRequest) GetConcurrentLimit() int32 {
 func (m *EngineSnapshotBackupRequest) GetStorageClassName() string {
 	if m != nil {
 		return m.StorageClassName
+	}
+	return ""
+}
+
+func (m *EngineSnapshotBackupRequest) GetObjectStoreBackup() string {
+	if m != nil {
+		return m.ObjectStoreBackup
 	}
 	return ""
 }

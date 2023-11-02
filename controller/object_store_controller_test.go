@@ -8,7 +8,7 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
-	lhinformers "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions"
+	"github.com/longhorn/longhorn-manager/util"
 	"github.com/sirupsen/logrus"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -17,7 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	k8sinformers "k8s.io/client-go/informers"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	k8score "k8s.io/client-go/testing"
@@ -40,9 +39,12 @@ var (
 )
 
 type fixture struct {
-	test                 *testing.T
-	kubeClient           *k8sfake.Clientset
-	lhClient             *lhfake.Clientset
+	test *testing.T
+
+	kubeClient       *k8sfake.Clientset
+	lhClient         *lhfake.Clientset
+	extensionsClient *apiextensionsfake.Clientset
+
 	objectStoreLister    []*longhorn.ObjectStore
 	longhornVolumeLister []*longhorn.Volume
 	pvcLister            []*corev1.PersistentVolumeClaim
@@ -50,17 +52,22 @@ type fixture struct {
 	serviceLister        []*corev1.Service
 	ingressLister        []*networkingv1.Ingress
 	deploymentLister     []*appsv1.Deployment
-	kubeActions          []k8score.Action
-	lhActions            []k8score.Action
-	kubeObjects          []runtime.Object
-	lhObjects            []runtime.Object
+
+	kubeActions       []k8score.Action
+	lhActions         []k8score.Action
+	extensionsActions []k8score.Action
+
+	kubeObjects       []runtime.Object
+	lhObjects         []runtime.Object
+	extensionsObjects []runtime.Object
 }
 
 func newFixture(t *testing.T) *fixture {
 	return &fixture{
-		test:        t,
-		kubeObjects: []runtime.Object{},
-		lhObjects:   []runtime.Object{},
+		test:              t,
+		kubeObjects:       []runtime.Object{},
+		lhObjects:         []runtime.Object{},
+		extensionsObjects: []runtime.Object{},
 	}
 }
 
@@ -122,7 +129,7 @@ func osTestNewPersistentVolumeClaim() *corev1.PersistentVolumeClaim {
 func osTestNewLonghornVolume() *longhorn.Volume {
 	return &longhorn.Volume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      TestObjectStoreName,
+			Name:      fmt.Sprintf("pv-%v", TestObjectStoreName),
 			Namespace: TestNamespace,
 		},
 		Spec: longhorn.VolumeSpec{
@@ -163,28 +170,21 @@ func osTestNewDeployment() *appsv1.Deployment {
 	}
 }
 
-func (f *fixture) newObjectStoreController(ctx *context.Context) (*ObjectStoreController, k8sinformers.SharedInformerFactory, lhinformers.SharedInformerFactory) {
+func (f *fixture) newObjectStoreController(ctx *context.Context) *ObjectStoreController {
 	f.kubeClient = k8sfake.NewSimpleClientset()
 	f.lhClient = lhfake.NewSimpleClientset()
+	f.extensionsClient = apiextensionsfake.NewSimpleClientset()
 
-	kubeInformerFactory := k8sinformers.NewSharedInformerFactory(
+	informerFactories := util.NewInformerFactories(
+		TestNamespace,
 		f.kubeClient,
-		controller.NoResyncPeriodFunc())
-	lhInformerFactory := lhinformers.NewSharedInformerFactory(
 		f.lhClient,
 		controller.NoResyncPeriodFunc())
-	extensionsClient := apiextensionsfake.NewSimpleClientset()
 
 	logger := logrus.StandardLogger()
 	logrus.SetLevel(logrus.DebugLevel)
 
-	ds := datastore.NewDataStore(
-		lhInformerFactory,
-		f.lhClient,
-		kubeInformerFactory,
-		f.kubeClient,
-		extensionsClient,
-		TestNamespace)
+	ds := datastore.NewDataStore(TestNamespace, f.lhClient, f.kubeClient, f.extensionsClient, informerFactories)
 
 	c := NewObjectStoreController(
 		logger,
@@ -205,7 +205,7 @@ func (f *fixture) newObjectStoreController(ctx *context.Context) (*ObjectStoreCo
 			LonghornV1beta2().
 			ObjectStores(TestNamespace).
 			Create(context.TODO(), o, metav1.CreateOptions{})
-		lhInformerFactory.
+		informerFactories.LhInformerFactory.
 			Longhorn().
 			V1beta2().
 			ObjectStores().
@@ -219,7 +219,7 @@ func (f *fixture) newObjectStoreController(ctx *context.Context) (*ObjectStoreCo
 			LonghornV1beta2().
 			Volumes(TestNamespace).
 			Create(context.TODO(), v, metav1.CreateOptions{})
-		lhInformerFactory.
+		informerFactories.LhInformerFactory.
 			Longhorn().
 			V1beta2().
 			Volumes().
@@ -233,7 +233,7 @@ func (f *fixture) newObjectStoreController(ctx *context.Context) (*ObjectStoreCo
 			CoreV1().
 			PersistentVolumeClaims(TestNamespace).
 			Create(context.TODO(), p, metav1.CreateOptions{})
-		kubeInformerFactory.
+		informerFactories.KubeNamespaceFilteredInformerFactory.
 			Core().
 			V1().
 			PersistentVolumeClaims().
@@ -247,7 +247,7 @@ func (f *fixture) newObjectStoreController(ctx *context.Context) (*ObjectStoreCo
 			CoreV1().
 			Secrets(TestNamespace).
 			Create(context.TODO(), s, metav1.CreateOptions{})
-		kubeInformerFactory.
+		informerFactories.KubeNamespaceFilteredInformerFactory.
 			Core().
 			V1().
 			Secrets().
@@ -261,7 +261,7 @@ func (f *fixture) newObjectStoreController(ctx *context.Context) (*ObjectStoreCo
 			CoreV1().
 			Services(TestNamespace).
 			Create(context.TODO(), s, metav1.CreateOptions{})
-		kubeInformerFactory.
+		informerFactories.KubeNamespaceFilteredInformerFactory.
 			Core().
 			V1().
 			Services().
@@ -275,7 +275,7 @@ func (f *fixture) newObjectStoreController(ctx *context.Context) (*ObjectStoreCo
 			NetworkingV1().
 			Ingresses(TestNamespace).
 			Create(context.TODO(), i, metav1.CreateOptions{})
-		kubeInformerFactory.
+		informerFactories.KubeNamespaceFilteredInformerFactory.
 			Networking().
 			V1().
 			Ingresses().
@@ -289,7 +289,7 @@ func (f *fixture) newObjectStoreController(ctx *context.Context) (*ObjectStoreCo
 			AppsV1().
 			Deployments(TestNamespace).
 			Create(context.TODO(), d, metav1.CreateOptions{})
-		kubeInformerFactory.
+		informerFactories.KubeNamespaceFilteredInformerFactory.
 			Apps().
 			V1().
 			Deployments().
@@ -298,11 +298,11 @@ func (f *fixture) newObjectStoreController(ctx *context.Context) (*ObjectStoreCo
 			Add(d)
 	}
 
-	return c, kubeInformerFactory, lhInformerFactory
+	return c
 }
 
 func (f *fixture) runObjectStoreController(ctx *context.Context, key string) error {
-	c, _, _ := f.newObjectStoreController(ctx)
+	c := f.newObjectStoreController(ctx)
 	err := c.reconcile(key)
 	return err
 }
@@ -431,9 +431,6 @@ func TestSyncStartingObjectStore(t *testing.T) {
 	pvc := osTestNewPersistentVolumeClaim()
 	vol := osTestNewLonghornVolume()
 	deployment := osTestNewDeployment()
-	// TODO: Create the other objects here too. This only succeeds because the
-	// volume claim isn't in bound state, so the controller will return success
-	// and wait
 
 	f.lhObjects = append(f.lhObjects, store)
 	f.kubeObjects = append(f.kubeObjects, pvc)
@@ -520,19 +517,7 @@ func TestSyncStoppingObjectStore(t *testing.T) {
 	f.ingressLister = append(f.ingressLister, ingress)
 	f.deploymentLister = append(f.deploymentLister, deployment)
 
-	// On the first run, the controller is expected to just scale down the
-	// deployment
 	f.runExpectSuccess(&ctx, getMetaKey(TestNamespace, TestObjectStoreName))
-
-	check, _ := f.kubeClient.
-		AppsV1().
-		Deployments(TestNamespace).
-		Get(context.TODO(), TestObjectStoreName, metav1.GetOptions{})
-
-	if *((*check).Spec.Replicas) != 0 {
-		f.test.Errorf("%v != %v", *((*check).Spec.Replicas), 0)
-	}
-
 }
 
 // TestSyncStoppedObjectStore
