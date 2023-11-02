@@ -546,16 +546,18 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	// if it is we let the share-manager clean up the crypto device
 	volume, _ := ns.apiClient.Volume.ById(volumeID)
 
-	// Currently, only "RWO volumes" and "block device with volume.Migratable is true" supports encryption.
-	cleanupCryptoDevice := !requiresSharedAccess(volume, nil)
-	if cleanupCryptoDevice {
-		cryptoDevice := crypto.VolumeMapper(volumeID)
-		if isOpen, err := crypto.IsDeviceOpen(cryptoDevice); err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
-		} else if isOpen {
-			log.Infof("Volume %s closing active crypto device %s", volumeID, cryptoDevice)
-			if err := crypto.CloseVolume(volumeID); err != nil {
+	if volume == nil || volume.BackendStoreDriver == string(longhorn.BackendStoreDriverTypeV1) {
+		// Currently, only "RWO v1 volumes" and "block device with v1 volume.Migratable is true" supports encryption.
+		cleanupCryptoDevice := !requiresSharedAccess(volume, nil)
+		if cleanupCryptoDevice {
+			cryptoDevice := crypto.VolumeMapper(volumeID)
+			if isOpen, err := crypto.IsDeviceOpen(cryptoDevice); err != nil {
 				return nil, status.Error(codes.Internal, err.Error())
+			} else if isOpen {
+				log.Infof("Volume %s closing active crypto device %s", volumeID, cryptoDevice)
+				if err := crypto.CloseVolume(volumeID); err != nil {
+					return nil, status.Error(codes.Internal, err.Error())
+				}
 			}
 		}
 	}
