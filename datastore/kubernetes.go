@@ -384,9 +384,17 @@ func (s *DataStore) CreateDeployment(obj *appsv1.Deployment) (*appsv1.Deployment
 	return s.kubeClient.AppsV1().Deployments(s.namespace).Create(context.TODO(), obj, metav1.CreateOptions{})
 }
 
+func (s *DataStore) GetDeploymentRO(name string) (*appsv1.Deployment, error) {
+	return s.deploymentLister.Deployments(s.namespace).Get(name)
+}
+
 // GetDeployment gets the Deployment for the given name and namespace
 func (s *DataStore) GetDeployment(name string) (*appsv1.Deployment, error) {
-	return s.deploymentLister.Deployments(s.namespace).Get(name)
+	dpl, err := s.GetDeploymentRO(name)
+	if err != nil {
+		return nil, err
+	}
+	return dpl.DeepCopy(), nil
 }
 
 // ListDeployment gets a list of all Deployment for the given namespace
@@ -735,6 +743,10 @@ func (s *DataStore) DeleteSecret(namespace string, name string) error {
 	return nil
 }
 
+func (s *DataStore) UpdateSecret(namespace string, obj *corev1.Secret) (*corev1.Secret, error) {
+	return s.kubeClient.CoreV1().Secrets(namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
+}
+
 // GetPriorityClass gets the PriorityClass from the index for the
 // given name
 func (s *DataStore) GetPriorityClass(pcName string) (*schedulingv1.PriorityClass, error) {
@@ -761,12 +773,23 @@ func (s *DataStore) CreateService(ns string, service *corev1.Service) (*corev1.S
 	return s.kubeClient.CoreV1().Services(ns).Create(context.TODO(), service, metav1.CreateOptions{})
 }
 
-// GetService gets the Service for the given name and namespace
-func (s *DataStore) GetService(namespace, name string) (*corev1.Service, error) {
+// GetServiceRO gets the Service for the given name and namespace, but needs the
+// caller to guarantee that no modifications take place on the object
+func (s *DataStore) GetServiceRO(namespace, name string) (*corev1.Service, error) {
 	if namespace == s.namespace {
 		return s.serviceLister.Services(namespace).Get(name)
 	}
 	return s.kubeClient.CoreV1().Services(namespace).Get(context.Background(), name, metav1.GetOptions{})
+}
+
+// GetService returns a copy of the current service with namespace/name in the
+// datastore.
+func (s *DataStore) GetService(namespace, name string) (*corev1.Service, error) {
+	svc, err := s.GetServiceRO(namespace, name)
+	if err != nil {
+		return nil, err
+	}
+	return svc.DeepCopy(), nil
 }
 
 // DeleteService deletes the Service for the given name and namespace

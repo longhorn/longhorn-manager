@@ -1,14 +1,17 @@
 #!/bin/bash
 set -e
 
-cd $(dirname $0)/..
+cd "$(dirname "$0")/.."
 
 args=("$@")
 
 echo Running tests
 
-PACKAGES="$(find . -name '*.go' | xargs -I{} dirname {} | sort -u | grep -Ev '(.git|.trash-cache|vendor|bin|k8s)')"
-PACKAGES="$(git diff --name-only | grep -E '*.go' | xargs -I{} dirname ./{} | sort -u | grep -Ev '(.git|.trash-cache|vendor|bin|k8s)')"
+if ! git diff --name-only | grep -E '.*\.go' ; then
+  PACKAGES="$(find . -name '*.go' | xargs -I{} dirname {} | sort -u | grep -Ev '(.git|.trash-cache|vendor|bin|k8s)')"
+else
+  PACKAGES="$(git diff --name-only | grep -E '.*\.go' | xargs -I{} dirname ./{} | sort -u | grep -Ev '(.git|.trash-cache|vendor|bin|k8s)')"
+fi
 
 echo Packages: "${PACKAGES}"
 

@@ -303,7 +303,7 @@ func (f *fixture) newObjectStoreController(ctx *context.Context) (*ObjectStoreCo
 
 func (f *fixture) runObjectStoreController(ctx *context.Context, key string) error {
 	c, _, _ := f.newObjectStoreController(ctx)
-	err := c.syncObjectStore(key)
+	err := c.reconcile(key)
 	return err
 }
 
@@ -502,6 +502,7 @@ func TestSyncStoppingObjectStore(t *testing.T) {
 	vol := osTestNewLonghornVolume()
 	service := osTestNewService()
 	deployment := osTestNewDeployment()
+	ingress := osTestNewIngress()
 	(*deployment).Spec.Replicas = func() *int32 { a := int32(1); return &a }()
 
 	f.lhObjects = append(f.lhObjects, store)
@@ -509,21 +510,29 @@ func TestSyncStoppingObjectStore(t *testing.T) {
 	f.lhObjects = append(f.lhObjects, vol)
 	f.kubeObjects = append(f.kubeObjects, secret)
 	f.kubeObjects = append(f.kubeObjects, service)
+	f.kubeObjects = append(f.kubeObjects, ingress)
 	f.kubeObjects = append(f.kubeObjects, deployment)
 	f.objectStoreLister = append(f.objectStoreLister, store)
 	f.pvcLister = append(f.pvcLister, pvc)
 	f.longhornVolumeLister = append(f.longhornVolumeLister, vol)
 	f.secretLister = append(f.secretLister, secret)
 	f.serviceLister = append(f.serviceLister, service)
+	f.ingressLister = append(f.ingressLister, ingress)
 	f.deploymentLister = append(f.deploymentLister, deployment)
 
 	// On the first run, the controller is expected to just scale down the
 	// deployment
 	f.runExpectSuccess(&ctx, getMetaKey(TestNamespace, TestObjectStoreName))
 
-	if *((*deployment).Spec.Replicas) != 0 {
-		f.test.Fail()
+	check, _ := f.kubeClient.
+		AppsV1().
+		Deployments(TestNamespace).
+		Get(context.TODO(), TestObjectStoreName, metav1.GetOptions{})
+
+	if *((*check).Spec.Replicas) != 0 {
+		f.test.Errorf("%v != %v", *((*check).Spec.Replicas), 0)
 	}
+
 }
 
 // TestSyncStoppedObjectStore
@@ -543,6 +552,7 @@ func TestSyncStoppedObjectStore(t *testing.T) {
 	vol := osTestNewLonghornVolume()
 	service := osTestNewService()
 	deployment := osTestNewDeployment()
+	ingress := osTestNewIngress()
 	(*deployment).Spec.Replicas = func() *int32 { a := int32(0); return &a }()
 
 	f.lhObjects = append(f.lhObjects, store)
@@ -550,12 +560,14 @@ func TestSyncStoppedObjectStore(t *testing.T) {
 	f.lhObjects = append(f.lhObjects, vol)
 	f.kubeObjects = append(f.kubeObjects, secret)
 	f.kubeObjects = append(f.kubeObjects, service)
+	f.kubeObjects = append(f.kubeObjects, ingress)
 	f.kubeObjects = append(f.kubeObjects, deployment)
 	f.objectStoreLister = append(f.objectStoreLister, store)
 	f.pvcLister = append(f.pvcLister, pvc)
 	f.longhornVolumeLister = append(f.longhornVolumeLister, vol)
 	f.secretLister = append(f.secretLister, secret)
 	f.serviceLister = append(f.serviceLister, service)
+	f.ingressLister = append(f.ingressLister, ingress)
 	f.deploymentLister = append(f.deploymentLister, deployment)
 
 	f.runExpectSuccess(&ctx, getMetaKey(TestNamespace, TestObjectStoreName))
@@ -576,9 +588,26 @@ func TestSyncTerminatingObjectStore(t *testing.T) {
 			fmt.Sprintf("%s.%s.svc", TestObjectStoreName, TestNamespace),
 		},
 	}
+	pvc := osTestNewPersistentVolumeClaim()
+	vol := osTestNewLonghornVolume()
+	service := osTestNewService()
+	ingress := osTestNewIngress()
+	deployment := osTestNewDeployment()
 
 	f.lhObjects = append(f.lhObjects, store)
+	f.kubeObjects = append(f.kubeObjects, pvc)
+	f.lhObjects = append(f.lhObjects, vol)
+	f.kubeObjects = append(f.kubeObjects, secret)
+	f.kubeObjects = append(f.kubeObjects, service)
+	f.kubeObjects = append(f.kubeObjects, ingress)
+	f.kubeObjects = append(f.kubeObjects, deployment)
 	f.objectStoreLister = append(f.objectStoreLister, store)
+	f.pvcLister = append(f.pvcLister, pvc)
+	f.longhornVolumeLister = append(f.longhornVolumeLister, vol)
+	f.secretLister = append(f.secretLister, secret)
+	f.serviceLister = append(f.serviceLister, service)
+	f.ingressLister = append(f.ingressLister, ingress)
+	f.deploymentLister = append(f.deploymentLister, deployment)
 
 	f.runExpectSuccess(&ctx, getMetaKey(TestNamespace, TestObjectStoreName))
 }
@@ -592,23 +621,28 @@ func TestSyncErrorObjectStore(t *testing.T) {
 	secret := osTestNewSecret()
 	store := osTestNewObjectStore(secret)
 	(*store).Status = longhorn.ObjectStoreStatus{
-		State:     longhorn.ObjectStoreStateStarting,
+		State:     longhorn.ObjectStoreStateError,
 		Endpoints: []string{},
 	}
 	pvc := osTestNewPersistentVolumeClaim()
 	vol := osTestNewLonghornVolume()
+	service := osTestNewService()
+	ingress := osTestNewIngress()
 	deployment := osTestNewDeployment()
-	// TODO: Create the other objects here too. This only succeeds because the
-	// volume claim isn't in bound state, so the controller will return success
-	// and wait
 
 	f.lhObjects = append(f.lhObjects, store)
 	f.kubeObjects = append(f.kubeObjects, pvc)
 	f.lhObjects = append(f.lhObjects, vol)
+	f.kubeObjects = append(f.kubeObjects, secret)
+	f.kubeObjects = append(f.kubeObjects, service)
+	f.kubeObjects = append(f.kubeObjects, ingress)
 	f.kubeObjects = append(f.kubeObjects, deployment)
 	f.objectStoreLister = append(f.objectStoreLister, store)
 	f.pvcLister = append(f.pvcLister, pvc)
 	f.longhornVolumeLister = append(f.longhornVolumeLister, vol)
+	f.secretLister = append(f.secretLister, secret)
+	f.serviceLister = append(f.serviceLister, service)
+	f.ingressLister = append(f.ingressLister, ingress)
 	f.deploymentLister = append(f.deploymentLister, deployment)
 
 	f.runExpectSuccess(&ctx, getMetaKey(TestNamespace, TestObjectStoreName))

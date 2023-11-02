@@ -77,21 +77,36 @@ func NewObjectStoreController(
 
 	ds.DeploymentInformer.AddEventHandlerWithResyncPeriod(
 		cache.ResourceEventHandlerFuncs{
-			UpdateFunc: osc.enqueueDeployment,
+			AddFunc:    osc.enqueueDeployment,
+			UpdateFunc: func(old, cur interface{}) { osc.enqueueDeployment(cur) },
+			DeleteFunc: osc.enqueueDeployment,
 		},
 		0,
 	)
 
 	ds.VolumeInformer.AddEventHandlerWithResyncPeriod(
 		cache.ResourceEventHandlerFuncs{
-			UpdateFunc: osc.enqueueVolume,
+			AddFunc:    osc.enqueueVolume,
+			UpdateFunc: func(old, cur interface{}) { osc.enqueueVolume(cur) },
+			DeleteFunc: osc.enqueueVolume,
 		},
 		0,
 	)
 
 	ds.ServiceInformer.AddEventHandlerWithResyncPeriod(
 		cache.ResourceEventHandlerFuncs{
-			UpdateFunc: osc.enqueueService,
+			AddFunc:    osc.enqueueService,
+			UpdateFunc: func(old, cur interface{}) { osc.enqueueService(cur) },
+			DeleteFunc: osc.enqueueService,
+		},
+		0,
+	)
+
+	ds.PersistentVolumeClaimInformer.AddEventHandlerWithResyncPeriod(
+		cache.ResourceEventHandlerFuncs{
+			AddFunc:    osc.enqueueService,
+			UpdateFunc: func(old, cur interface{}) { osc.enqueuePVC(cur) },
+			DeleteFunc: osc.enqueueService,
 		},
 		0,
 	)
@@ -100,6 +115,7 @@ func NewObjectStoreController(
 	osc.cacheSyncs = append(osc.cacheSyncs, ds.DeploymentInformer.HasSynced)
 	osc.cacheSyncs = append(osc.cacheSyncs, ds.VolumeInformer.HasSynced)
 	osc.cacheSyncs = append(osc.cacheSyncs, ds.ServiceInformer.HasSynced)
+	osc.cacheSyncs = append(osc.cacheSyncs, ds.PersistentVolumeClaimInformer.HasSynced)
 
 	return osc
 }
@@ -132,12 +148,12 @@ func (osc *ObjectStoreController) processNextWorkItem() bool {
 	}
 	defer osc.queue.Done(key)
 
-	err := osc.syncObjectStore(key.(string))
+	err := osc.reconcile(key.(string))
 	if err == nil {
 		osc.queue.Forget(key)
 		return true
 	}
-	osc.logger.WithError(err).Errorf("error syncing object store: \"%v\", retrying", err)
+	osc.logger.WithError(err).Errorf("failed to reconcile object store: \"%v\", retrying", err)
 	osc.queue.AddRateLimited(key)
 
 	return true
@@ -152,27 +168,27 @@ func (osc *ObjectStoreController) enqueueObjectStore(obj interface{}) {
 	osc.queue.Add(key)
 }
 
-func (osc *ObjectStoreController) enqueueDeployment(old, cur interface{}) {
-	dplKey, err := controller.KeyFunc(cur)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("failed to get key for %v: %v", cur, err))
-		return
+func (osc *ObjectStoreController) enqueueDeployment(obj interface{}) {
+	dpl, ok := obj.(*appsv1.Deployment)
+	if !ok {
+		deleted, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+		dpl, ok = deleted.Obj.(*appsv1.Deployment)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object %#v", deleted.Obj))
+			return
+		}
+
 	}
-	_, dplName, err := cache.SplitMetaNamespaceKey(dplKey)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("failed to get name from key %v: %v", dplKey, err))
-		return
-	}
-	dpl, err := osc.ds.GetDeployment(dplName)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("failed to get deployment %v: %v", dplName, err))
-		return
-	}
-	if len(dpl.ObjectMeta.OwnerReferences) < 1 {
+
+	if dpl.Namespace != osc.namespace || len(dpl.ObjectMeta.OwnerReferences) < 1 {
 		return // deployment has no owner reference, therefore is not related to an object store
 	}
 	storeName := dpl.ObjectMeta.OwnerReferences[0].Name
-	store, err := osc.ds.GetObjectStore(storeName)
+	store, err := osc.ds.GetObjectStoreRO(storeName)
 	if err != nil {
 		return // deployment has owner reference, but is not owned by an object store
 	}
@@ -184,27 +200,31 @@ func (osc *ObjectStoreController) enqueueDeployment(old, cur interface{}) {
 	osc.queue.Add(key)
 }
 
-func (osc *ObjectStoreController) enqueueVolume(old, cur interface{}) {
-	volKey, err := controller.KeyFunc(cur)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("failed to get key for %v: %v", cur, err))
-		return
+func (osc *ObjectStoreController) enqueueVolume(obj interface{}) {
+	vol, ok := obj.(*longhorn.Volume)
+	if !ok {
+		deleted, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+		vol, ok = deleted.Obj.(*longhorn.Volume)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object %#v", deleted.Obj))
+			return
+		}
+
 	}
-	_, volName, err := cache.SplitMetaNamespaceKey(volKey)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("failed to get name from key %v: %v", volKey, err))
+
+	// Volume has no owner reference, therefore is not related to an object store
+	// or this instance of the longhorn manager is not the one responsible for the
+	// volume, therefore it's also not responsible for the object store. No need
+	// to queue.
+	if len(vol.ObjectMeta.OwnerReferences) < 1 || osc.controllerID != vol.Status.OwnerID {
 		return
-	}
-	vol, err := osc.ds.GetVolume(volName)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("failed to get deployment %v: %v", volName, err))
-		return
-	}
-	if len(vol.ObjectMeta.OwnerReferences) < 1 {
-		return // Volume has no owner reference, therefore is not related to an object store
 	}
 	pvcName := vol.ObjectMeta.OwnerReferences[0].Name
-	pvc, err := osc.ds.GetPersistentVolumeClaim(osc.namespace, pvcName)
+	pvc, err := osc.ds.GetPersistentVolumeClaimRO(osc.namespace, pvcName)
 	if err != nil {
 		return
 	}
@@ -213,7 +233,7 @@ func (osc *ObjectStoreController) enqueueVolume(old, cur interface{}) {
 		return // PVC has no owner reference, therefore is not related to an object store
 	}
 	storeName := pvc.ObjectMeta.OwnerReferences[0].Name
-	store, err := osc.ds.GetObjectStore(storeName)
+	store, err := osc.ds.GetObjectStoreRO(storeName)
 	if err != nil {
 		return
 	}
@@ -225,29 +245,31 @@ func (osc *ObjectStoreController) enqueueVolume(old, cur interface{}) {
 	osc.queue.Add(key)
 }
 
-func (osc *ObjectStoreController) enqueueService(old, cur interface{}) {
-	svcKey, err := controller.KeyFunc(cur)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("failed to get key for %v: %v", cur, err))
-		return
+func (osc *ObjectStoreController) enqueueService(obj interface{}) {
+	svc, ok := obj.(*corev1.Service)
+	if !ok {
+		deleted, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+		svc, ok = deleted.Obj.(*corev1.Service)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object %#v", deleted.Obj))
+			return
+		}
+
 	}
-	_, svcName, err := cache.SplitMetaNamespaceKey(svcKey)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("failed to get name from key %v: %v", svcKey, err))
+
+	// only consider services within the longhorn namespace and which have an
+	// owner. All others can not be related to an object store.
+	if svc.Namespace != osc.namespace || len(svc.ObjectMeta.OwnerReferences) < 1 {
 		return
-	}
-	svc, err := osc.ds.GetService(osc.namespace, svcName)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("failed to get deployment %v: %v", svcName, err))
-		return
-	}
-	if len(svc.ObjectMeta.OwnerReferences) < 1 {
-		return // deployment has no owner reference, therefore is not related to an object store
 	}
 	storeName := svc.ObjectMeta.OwnerReferences[0].Name
-	store, err := osc.ds.GetObjectStore(storeName)
+	store, err := osc.ds.GetObjectStoreRO(storeName)
 	if err != nil {
-		return // deployment has owner reference, but is not owned by an object store
+		return // service has owner reference, but is not owned by an object store
 	}
 	key, err := cache.MetaNamespaceKeyFunc(store)
 	if err != nil {
@@ -257,7 +279,41 @@ func (osc *ObjectStoreController) enqueueService(old, cur interface{}) {
 	osc.queue.Add(key)
 }
 
-func (osc *ObjectStoreController) syncObjectStore(key string) error {
+func (osc *ObjectStoreController) enqueuePVC(obj interface{}) {
+	pvc, ok := obj.(*corev1.PersistentVolumeClaim)
+	if !ok {
+		deleted, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+		pvc, ok = deleted.Obj.(*corev1.PersistentVolumeClaim)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object %#v", deleted.Obj))
+			return
+		}
+
+	}
+
+	// only consider PVCs within the longhorn namespace and which have an
+	// owner. All others can not be related to an object store.
+	if pvc.Namespace != osc.namespace || len(pvc.ObjectMeta.OwnerReferences) < 1 {
+		return
+	}
+	storeName := pvc.ObjectMeta.OwnerReferences[0].Name
+	store, err := osc.ds.GetObjectStoreRO(storeName)
+	if err != nil {
+		return //  pvc has owner reference, but is not owned by an object store
+	}
+	key, err := cache.MetaNamespaceKeyFunc(store)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to get key for object store %v: %v", storeName, err))
+		return
+	}
+	osc.queue.Add(key)
+}
+
+func (osc *ObjectStoreController) reconcile(key string) error {
 	_, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		return err
@@ -391,11 +447,11 @@ func (osc *ObjectStoreController) handleStarting(store *longhorn.ObjectStore) (e
 		return errors.Wrap(err, "API error while creating UI ingress")
 	}
 
-	endpoints, store, err := osc.getOrCreateS3Endpoints(store)
+	_, store, err = osc.getOrCreateS3Endpoints(store)
 	if err != nil {
 		return errors.Wrap(err, "API error while creating S3 ingresses")
 	}
-	osc.logger.Info("created %d S3 endpoint(s)", len(endpoints))
+	osc.logger.Infof("created %v S3 endpoint(s) for %v", len(store.Status.Endpoints), store.Name)
 
 	if err := osc.checkPVC(pvc); errors.Is(err, ErrObjectStorePVCNotReady) {
 		return nil
@@ -476,8 +532,10 @@ func (osc *ObjectStoreController) handleRunning(store *longhorn.ObjectStore) (er
 func (osc *ObjectStoreController) handleStopping(store *longhorn.ObjectStore) (err error) {
 	dpl, err := osc.ds.GetDeployment(store.Name)
 	if err != nil {
-	} else if *dpl.Spec.Replicas != 0 {
-		dpl.Spec.Replicas = int32Ptr(0)
+		store.Status.State = longhorn.ObjectStoreStateError
+		return errors.Wrap(err, "failed find Deployment to stop")
+	} else if (*dpl).Spec.Replicas != nil && *((*dpl).Spec.Replicas) != 0 {
+		(*dpl).Spec.Replicas = int32Ptr(0)
 		_, err = osc.ds.UpdateDeployment(dpl)
 		return err
 	} else if dpl.Status.AvailableReplicas > 0 {
@@ -545,7 +603,7 @@ func (osc *ObjectStoreController) getOrCreatePVC(store *longhorn.ObjectStore) (*
 		return pvc, store, nil
 	} else if datastore.ErrorIsNotFound(err) {
 		pvc, err = osc.createPVC(store)
-		if err != nil {
+		if err != nil && !datastore.ErrorIsAlreadyExists(err) {
 			store.Status.State = longhorn.ObjectStoreStateError
 			return nil, store, errors.Wrap(err, "failed to create persistent volume claim")
 		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
@@ -572,7 +630,7 @@ func (osc *ObjectStoreController) getOrCreateVolume(
 		return vol, store, nil
 	} else if datastore.ErrorIsNotFound(err) {
 		vol, err = osc.createVolume(store, pvc)
-		if err != nil {
+		if err != nil && !datastore.ErrorIsAlreadyExists(err) {
 			store.Status.State = longhorn.ObjectStoreStateError
 			return nil, store, errors.Wrap(err, "failed to create longhorn volume")
 		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
@@ -596,7 +654,7 @@ func (osc *ObjectStoreController) getOrCreatePV(
 		return pv, store, nil
 	} else if datastore.ErrorIsNotFound(err) {
 		pv, err = osc.createPV(store, volume)
-		if err != nil {
+		if err != nil && !datastore.ErrorIsAlreadyExists(err) {
 			store.Status.State = longhorn.ObjectStoreStateError
 			return nil, store, errors.Wrap(err, "failed to create persistent volume")
 		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
@@ -617,7 +675,7 @@ func (osc *ObjectStoreController) getOrCreateDeployment(store *longhorn.ObjectSt
 		return dpl, store, nil
 	} else if datastore.ErrorIsNotFound(err) {
 		dpl, err = osc.createDeployment(store)
-		if err != nil {
+		if err != nil && !datastore.ErrorIsAlreadyExists(err) {
 			store.Status.State = longhorn.ObjectStoreStateError
 			return nil, store, errors.Wrap(err, "failed to create deployment")
 		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
@@ -645,7 +703,7 @@ func (osc *ObjectStoreController) getOrCreateService(store *longhorn.ObjectStore
 		return svc, store, nil
 	} else if datastore.ErrorIsNotFound(err) {
 		svc, err = osc.createService(store)
-		if err != nil {
+		if err != nil && !datastore.ErrorIsAlreadyExists(err) {
 			store.Status.State = longhorn.ObjectStoreStateError
 			return nil, store, errors.Wrap(err, "failed to create service")
 		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
@@ -666,7 +724,7 @@ func (osc *ObjectStoreController) getOrCreateIngress(store *longhorn.ObjectStore
 		return ingress, store, nil
 	} else if datastore.ErrorIsNotFound(err) {
 		ingress, err = osc.createIngress(store)
-		if err != nil {
+		if err != nil && !datastore.ErrorIsAlreadyExists(err) {
 			store.Status.State = longhorn.ObjectStoreStateError
 			return nil, store, errors.Wrap(err, "failed to create ingress")
 		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
@@ -757,7 +815,7 @@ func (osc *ObjectStoreController) getOrCreateS3Endpoints(store *longhorn.ObjectS
 			}
 
 			_, err := osc.ds.CreateIngress(osc.namespace, ingress)
-			if err != nil {
+			if err != nil && !datastore.ErrorIsAlreadyExists(err) {
 				store.Status.State = longhorn.ObjectStoreStateError
 				return []*networkingv1.Ingress{}, store, err
 			}
@@ -1082,10 +1140,16 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 	return osc.ds.CreateDeployment(&dpl)
 }
 
+// To avoid multiple longhorn managers acting on the same object store, only the
+// instance responsible for the longhorn volume is considered responsible for
+// the object store. This of course precludes that the volume has already been
+// created.
 func (osc *ObjectStoreController) isResponsibleFor(store *longhorn.ObjectStore) bool {
 	vol, err := osc.ds.GetVolumeRO(genPVName(store))
-	if err != nil {
+	if err != nil && !datastore.ErrorIsNotFound(err) {
 		utilruntime.HandleError(fmt.Errorf("failed to find volume for object store %v: %v", store.Name, err))
+		return false
+	} else if err != nil {
 		return true
 	}
 

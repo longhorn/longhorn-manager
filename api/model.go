@@ -553,7 +553,7 @@ type ObjectStoreInput struct {
 	AccessKey string `json:"accesskey"`
 	SecretKey string `json:"secretkey"`
 
-	Endpoints []ObjectEndpointInput `json:"endppoints"`
+	Endpoints []ObjectEndpointInput `json:"endpoints"`
 
 	NumberOfReplicas            int                                  `json:"numberOfReplicas"`
 	ReplicaSoftAntiAffinity     longhorn.ReplicaSoftAntiAffinity     `json:"replicaSoftAntiAffinity"`

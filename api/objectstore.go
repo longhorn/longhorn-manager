@@ -5,10 +5,12 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
+	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -47,23 +49,34 @@ func (s *Server) ObjectStoreCreate(rw http.ResponseWriter, req *http.Request) (e
 		return err
 	}
 
-	secret := corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      input.Name,
-			Namespace: s.m.GetLonghornNamespace(),
-		},
-		StringData: map[string]string{
-			"RGW_DEFAULT_USER_ACCESS_KEY": input.AccessKey,
-			"RGW_DEFAULT_USER_SECRET_KEY": input.SecretKey,
-		},
+	secret, err := s.m.GetSecret(s.m.GetLonghornNamespace(), input.Name)
+	if err != nil && datastore.ErrorIsNotFound(err) {
+		secret = &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      input.Name,
+				Namespace: s.m.GetLonghornNamespace(),
+			},
+			StringData: map[string]string{
+				"RGW_DEFAULT_USER_ACCESS_KEY": input.AccessKey,
+				"RGW_DEFAULT_USER_SECRET_KEY": input.SecretKey,
+			},
+		}
+
+		_, err = s.m.CreateSecret(secret)
+		if err != nil {
+			return errors.Wrapf(err, "failed to create secret %v", input.Name)
+		}
+	} else {
+		secret.StringData["RGW_DEFAULT_USER_ACCESS_KEY"] = input.AccessKey
+		secret.StringData["RGW_DEFAULT_USER_SECRET_KEY"] = input.SecretKey
+
+		_, err = s.m.UpdateSecret(secret)
+		if err != nil {
+			return errors.Wrapf(err, "failed to update secret %v", input.Name)
+		}
 	}
 
-	_, err = s.m.CreateSecret(&secret)
-	if err != nil {
-		return errors.Wrapf(err, "failed to create object store %v", input.Name)
-	}
-
-	store := longhorn.ObjectStore{
+	store := &longhorn.ObjectStore{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      input.Name,
 			Namespace: s.m.GetLonghornNamespace(),
@@ -108,10 +121,13 @@ func (s *Server) ObjectStoreCreate(rw http.ResponseWriter, req *http.Request) (e
 			}
 		}
 
+		logrus.Infof("add endpoint %v to object store %v", endpoint.DomainName, input.Name)
 		store.Spec.Endpoints = append(store.Spec.Endpoints, endpointspec)
 	}
 
-	obj, err := s.m.CreateObjectStore(&store)
+	logrus.Infof("store has %v endpoints", len(store.Spec.Endpoints))
+
+	obj, err := s.m.CreateObjectStore(store)
 	if err != nil {
 		return errors.Wrapf(err, "failed to create object store %v", input.Name)
 	}
