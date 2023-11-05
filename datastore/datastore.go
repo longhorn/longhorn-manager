@@ -183,6 +183,8 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, csiDriverInformer.Informer().HasSynced)
 	storageclassInformer := informerFactories.KubeInformerFactory.Storage().V1().StorageClasses()
 	cacheSyncs = append(cacheSyncs, storageclassInformer.Informer().HasSynced)
+	priorityClassInformer := informerFactories.KubeInformerFactory.Scheduling().V1().PriorityClasses()
+	cacheSyncs = append(cacheSyncs, priorityClassInformer.Informer().HasSynced)
 
 	// Filtered kube Informers by longhorn-system namespace
 	cronJobInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Batch().V1().CronJobs()
@@ -191,8 +193,6 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, configMapInformer.Informer().HasSynced)
 	secretInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Core().V1().Secrets()
 	cacheSyncs = append(cacheSyncs, secretInformer.Informer().HasSynced)
-	priorityClassInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Scheduling().V1().PriorityClasses()
-	cacheSyncs = append(cacheSyncs, priorityClassInformer.Informer().HasSynced)
 	serviceInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Core().V1().Services()
 	cacheSyncs = append(cacheSyncs, serviceInformer.Informer().HasSynced)
 	podDisruptionBudgetInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Policy().V1().PodDisruptionBudgets()
@@ -266,6 +266,8 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 		CSIDriverInformer:             csiDriverInformer.Informer(),
 		storageclassLister:            storageclassInformer.Lister(),
 		StorageClassInformer:          storageclassInformer.Informer(),
+		priorityClassLister:           priorityClassInformer.Lister(),
+		PriorityClassInformer:         priorityClassInformer.Informer(),
 
 		cronJobLister:               cronJobInformer.Lister(),
 		CronJobInformer:             cronJobInformer.Informer(),
@@ -273,8 +275,6 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 		ConfigMapInformer:           configMapInformer.Informer(),
 		secretLister:                secretInformer.Lister(),
 		SecretInformer:              secretInformer.Informer(),
-		priorityClassLister:         priorityClassInformer.Lister(),
-		PriorityClassInformer:       priorityClassInformer.Informer(),
 		serviceLister:               serviceInformer.Lister(),
 		ServiceInformer:             serviceInformer.Informer(),
 		podDisruptionBudgetLister:   podDisruptionBudgetInformer.Lister(),

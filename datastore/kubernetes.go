@@ -630,12 +630,19 @@ func (s *DataStore) UpdateConfigMap(configMap *corev1.ConfigMap) (*corev1.Config
 // This function returns direct reference to the internal cache object and should not be mutated.
 // Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
 func (s *DataStore) GetConfigMapRO(namespace, name string) (*corev1.ConfigMap, error) {
-	return s.configMapLister.ConfigMaps(namespace).Get(name)
+	if namespace == s.namespace {
+		return s.configMapLister.ConfigMaps(namespace).Get(name)
+	}
+	return s.kubeClient.CoreV1().ConfigMaps(namespace).Get(context.Background(), name, metav1.GetOptions{})
 }
 
 // GetConfigMap return a new ConfigMap object for the given namespace and name
-func (s *DataStore) GetConfigMap(namespace, name string) (*corev1.ConfigMap, error) {
-	resultRO, err := s.configMapLister.ConfigMaps(namespace).Get(name)
+func (s *DataStore) GetConfigMap(namespace, name string) (resultRO *corev1.ConfigMap, err error) {
+	if namespace == s.namespace {
+		resultRO, err = s.configMapLister.ConfigMaps(namespace).Get(name)
+	} else {
+		resultRO, err = s.kubeClient.CoreV1().ConfigMaps(namespace).Get(context.Background(), name, metav1.GetOptions{})
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -656,12 +663,19 @@ func (s *DataStore) DeleteConfigMap(namespace, name string) error {
 // This function returns direct reference to the internal cache object and should not be mutated.
 // Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
 func (s *DataStore) GetSecretRO(namespace, name string) (*corev1.Secret, error) {
-	return s.secretLister.Secrets(namespace).Get(name)
+	if namespace == s.namespace {
+		return s.secretLister.Secrets(namespace).Get(name)
+	}
+	return s.kubeClient.CoreV1().Secrets(namespace).Get(context.Background(), name, metav1.GetOptions{})
 }
 
 // GetSecret return a new Secret object with the given namespace and name
-func (s *DataStore) GetSecret(namespace, name string) (*corev1.Secret, error) {
-	resultRO, err := s.secretLister.Secrets(namespace).Get(name)
+func (s *DataStore) GetSecret(namespace, name string) (resultRO *corev1.Secret, err error) {
+	if namespace == s.namespace {
+		resultRO, err = s.secretLister.Secrets(namespace).Get(name)
+	} else {
+		resultRO, err = s.kubeClient.CoreV1().Secrets(namespace).Get(context.Background(), name, metav1.GetOptions{})
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -702,7 +716,10 @@ func (s *DataStore) CreateService(ns string, service *corev1.Service) (*corev1.S
 
 // GetService gets the Service for the given name and namespace
 func (s *DataStore) GetService(namespace, name string) (*corev1.Service, error) {
-	return s.serviceLister.Services(namespace).Get(name)
+	if namespace == s.namespace {
+		return s.serviceLister.Services(namespace).Get(name)
+	}
+	return s.kubeClient.CoreV1().Services(namespace).Get(context.Background(), name, metav1.GetOptions{})
 }
 
 // DeleteService deletes the Service for the given name and namespace
