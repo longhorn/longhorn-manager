@@ -24,6 +24,10 @@ func (m *VolumeManager) ListObjectStoresSorted() ([]*longhorn.ObjectStore, error
 	return stores, nil
 }
 
+func (m *VolumeManager) GetObjectStore(name string) (*longhorn.ObjectStore, error) {
+	return m.ds.GetObjectStore(name)
+}
+
 func (m *VolumeManager) CreateObjectStore(store *longhorn.ObjectStore) (*longhorn.ObjectStore, error) {
 	store, err := m.ds.CreateObjectStore(store)
 	if err != nil {

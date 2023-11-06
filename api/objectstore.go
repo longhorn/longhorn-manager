@@ -10,7 +10,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
-	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -121,11 +120,8 @@ func (s *Server) ObjectStoreCreate(rw http.ResponseWriter, req *http.Request) (e
 			}
 		}
 
-		logrus.Infof("add endpoint %v to object store %v", endpoint.DomainName, input.Name)
 		store.Spec.Endpoints = append(store.Spec.Endpoints, endpointspec)
 	}
-
-	logrus.Infof("store has %v endpoints", len(store.Spec.Endpoints))
 
 	obj, err := s.m.CreateObjectStore(store)
 	if err != nil {
@@ -137,7 +133,6 @@ func (s *Server) ObjectStoreCreate(rw http.ResponseWriter, req *http.Request) (e
 	return nil
 }
 
-// ObjectStoreUpdate - currently intentionally stubbed out
 func (s *Server) ObjectStoreUpdate(rw http.ResponseWriter, req *http.Request) (err error) {
 	apiContext := api.GetApiContext(req)
 
@@ -146,35 +141,15 @@ func (s *Server) ObjectStoreUpdate(rw http.ResponseWriter, req *http.Request) (e
 		return err
 	}
 
-	// TODO: reduce to set of properties that make sense being updated
-	obj, err := s.m.UpdateObjectStore(&longhorn.ObjectStore{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: input.Name,
-		},
-		Spec: longhorn.ObjectStoreSpec{
-			Storage: longhorn.ObjectStoreStorageSpec{
-				Size:                        resource.MustParse(input.Size),
-				NumberOfReplicas:            input.NumberOfReplicas,
-				ReplicaSoftAntiAffinity:     input.ReplicaSoftAntiAffinity,
-				ReplicaZoneSoftAntiAffinity: input.ReplicaZoneSoftAntiAffinity,
-				ReplicaDiskSoftAntiAffinity: input.ReplicaDiskSoftAntiAffinity,
-				DiskSelector:                input.DiskSelector,
-				NodeSelector:                input.NodeSelector,
-				DataLocality:                input.DataLocality,
-				FromBackup:                  input.FromBackup,
-				StaleReplicaTimeout:         input.StaleReplicaTimeout,
-				RecurringJobSelector:        input.RecurringJobSelector,
-				ReplicaAutoBalance:          input.ReplicaAutoBalance,
-				RevisionCounterDisabled:     input.RevisionCounterDisabled,
-				UnmapMarkSnapChainRemoved:   input.UnmapMarkSnapChainRemoved,
-				BackendStoreDriver:          input.BackendStoreDriver,
-			},
-			Endpoints:   []longhorn.ObjectStoreEndpointSpec{},
-			TargetState: input.TargetState,
-			Image:       input.Image,
-			UiImage:     input.UIImage,
-		},
-	})
+	store, err := s.m.GetObjectStore(input.Name)
+	if err != nil {
+		return err
+	}
+
+	// TODO: update all sensible properties here. e.g. the container images, etc.
+	store.Spec.TargetState = input.TargetState
+
+	obj, err := s.m.UpdateObjectStore(store)
 	resp := toObjectStoreResource(obj)
 	apiContext.Write(resp)
 	return nil

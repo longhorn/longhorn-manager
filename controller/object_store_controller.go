@@ -32,6 +32,8 @@ var (
 	ErrObjectStoreDeploymentNotReady = errors.New("Deployment not ready")
 	ErrObjectStoreServiceNotReady    = errors.New("Service not ready")
 	ErrObjectStoreIngressNotReady    = errors.New("Ingress not ready")
+
+	OneHour, _ = time.ParseDuration("1h")
 )
 
 type ObjectStoreController struct {
@@ -72,7 +74,7 @@ func NewObjectStoreController(
 			UpdateFunc: func(old, cur interface{}) { osc.enqueueObjectStore(cur) },
 			DeleteFunc: osc.enqueueObjectStore,
 		},
-		0,
+		OneHour,
 	)
 
 	ds.DeploymentInformer.AddEventHandlerWithResyncPeriod(
@@ -81,7 +83,7 @@ func NewObjectStoreController(
 			UpdateFunc: func(old, cur interface{}) { osc.enqueueDeployment(cur) },
 			DeleteFunc: osc.enqueueDeployment,
 		},
-		0,
+		OneHour,
 	)
 
 	ds.VolumeInformer.AddEventHandlerWithResyncPeriod(
@@ -90,7 +92,7 @@ func NewObjectStoreController(
 			UpdateFunc: func(old, cur interface{}) { osc.enqueueVolume(cur) },
 			DeleteFunc: osc.enqueueVolume,
 		},
-		0,
+		OneHour,
 	)
 
 	ds.ServiceInformer.AddEventHandlerWithResyncPeriod(
@@ -99,7 +101,7 @@ func NewObjectStoreController(
 			UpdateFunc: func(old, cur interface{}) { osc.enqueueService(cur) },
 			DeleteFunc: osc.enqueueService,
 		},
-		0,
+		OneHour,
 	)
 
 	ds.PersistentVolumeClaimInformer.AddEventHandlerWithResyncPeriod(
@@ -108,7 +110,7 @@ func NewObjectStoreController(
 			UpdateFunc: func(old, cur interface{}) { osc.enqueuePVC(cur) },
 			DeleteFunc: osc.enqueueService,
 		},
-		0,
+		OneHour,
 	)
 
 	osc.cacheSyncs = append(osc.cacheSyncs, ds.ObjectStoreInformer.HasSynced)
@@ -447,11 +449,15 @@ func (osc *ObjectStoreController) handleStarting(store *longhorn.ObjectStore) (e
 		return errors.Wrap(err, "API error while creating UI ingress")
 	}
 
-	_, store, err = osc.getOrCreateS3Endpoints(store)
+	endpoints, store, err := osc.getOrCreateS3Endpoints(store)
 	if err != nil {
 		return errors.Wrap(err, "API error while creating S3 ingresses")
 	}
-	osc.logger.Infof("created %v S3 endpoint(s) for %v", len(store.Status.Endpoints), store.Name)
+	osc.logger.Infof("created %v S3 endpoint(s) for %v", len(endpoints), store.Name)
+	// if there are no public endpoints, add the implicit cluster-internal one
+	if len(endpoints) == 0 {
+		store.Status.Endpoints = append(store.Status.Endpoints, fmt.Sprintf("%v.%v.svc", store.Name, osc.namespace))
+	}
 
 	if err := osc.checkPVC(pvc); errors.Is(err, ErrObjectStorePVCNotReady) {
 		return nil
@@ -1116,8 +1122,8 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 									Value: fmt.Sprintf("http://127.0.0.1:%v", types.ObjectStoreContainerPort),
 								},
 								{
-									Name:  "S3GW_UI_LOCATION",
-									Value: fmt.Sprintf("/%v", store.Name),
+									Name:  "S3GW_UI_PATH",
+									Value: fmt.Sprintf("/objectstore/%v", store.Name),
 								},
 							},
 						},

@@ -4772,10 +4772,6 @@ func (s *DataStore) CreateObjectStore(store *longhorn.ObjectStore) (*longhorn.Ob
 
 // UpdateObjectStore updates Longhorn Object Store
 func (s *DataStore) UpdateObjectStore(store *longhorn.ObjectStore) (*longhorn.ObjectStore, error) {
-	if err := util.AddFinalizer(longhornFinalizerKey, store); err != nil {
-		return nil, err
-	}
-
 	obj, err := s.lhClient.
 		LonghornV1beta2().
 		ObjectStores(s.namespace).
@@ -4783,15 +4779,12 @@ func (s *DataStore) UpdateObjectStore(store *longhorn.ObjectStore) (*longhorn.Ob
 	if err != nil {
 		return nil, err
 	}
+	verifyUpdate(store.Name, obj, func(name string) (runtime.Object, error) { return s.GetObjectStoreRO(name) })
 	return obj, nil
 }
 
 // UpdateObjectStoreStatus updates an the status of a Longhorn Object Store
 func (s *DataStore) UpdateObjectStoreStatus(store *longhorn.ObjectStore) (*longhorn.ObjectStore, error) {
-	if err := util.AddFinalizer(longhornFinalizerKey, store); err != nil {
-		return nil, err
-	}
-
 	obj, err := s.lhClient.
 		LonghornV1beta2().
 		ObjectStores(s.namespace).
@@ -4799,6 +4792,7 @@ func (s *DataStore) UpdateObjectStoreStatus(store *longhorn.ObjectStore) (*longh
 	if err != nil {
 		return nil, err
 	}
+	verifyUpdate(store.Name, obj, func(name string) (runtime.Object, error) { return s.GetObjectStoreRO(name) })
 	return obj, nil
 }
 
