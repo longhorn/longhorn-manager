@@ -150,16 +150,6 @@ func osTestNewService() *corev1.Service {
 	}
 }
 
-func osTestNewIngress() *networkingv1.Ingress {
-	return &networkingv1.Ingress{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      TestObjectStoreName,
-			Namespace: TestNamespace,
-		},
-		Spec: networkingv1.IngressSpec{},
-	}
-}
-
 func osTestNewDeployment() *appsv1.Deployment {
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -461,7 +451,6 @@ func TestSyncRunningObjectStore(t *testing.T) {
 	pvc := osTestNewPersistentVolumeClaim()
 	vol := osTestNewLonghornVolume()
 	service := osTestNewService()
-	ingress := osTestNewIngress()
 	deployment := osTestNewDeployment()
 
 	f.lhObjects = append(f.lhObjects, store)
@@ -469,14 +458,12 @@ func TestSyncRunningObjectStore(t *testing.T) {
 	f.lhObjects = append(f.lhObjects, vol)
 	f.kubeObjects = append(f.kubeObjects, secret)
 	f.kubeObjects = append(f.kubeObjects, service)
-	f.kubeObjects = append(f.kubeObjects, ingress)
 	f.kubeObjects = append(f.kubeObjects, deployment)
 	f.objectStoreLister = append(f.objectStoreLister, store)
 	f.pvcLister = append(f.pvcLister, pvc)
 	f.longhornVolumeLister = append(f.longhornVolumeLister, vol)
 	f.secretLister = append(f.secretLister, secret)
 	f.serviceLister = append(f.serviceLister, service)
-	f.ingressLister = append(f.ingressLister, ingress)
 	f.deploymentLister = append(f.deploymentLister, deployment)
 
 	f.runExpectSuccess(&ctx, getMetaKey(TestNamespace, TestObjectStoreName))
@@ -499,7 +486,6 @@ func TestSyncStoppingObjectStore(t *testing.T) {
 	vol := osTestNewLonghornVolume()
 	service := osTestNewService()
 	deployment := osTestNewDeployment()
-	ingress := osTestNewIngress()
 	(*deployment).Spec.Replicas = func() *int32 { a := int32(1); return &a }()
 
 	f.lhObjects = append(f.lhObjects, store)
@@ -507,14 +493,12 @@ func TestSyncStoppingObjectStore(t *testing.T) {
 	f.lhObjects = append(f.lhObjects, vol)
 	f.kubeObjects = append(f.kubeObjects, secret)
 	f.kubeObjects = append(f.kubeObjects, service)
-	f.kubeObjects = append(f.kubeObjects, ingress)
 	f.kubeObjects = append(f.kubeObjects, deployment)
 	f.objectStoreLister = append(f.objectStoreLister, store)
 	f.pvcLister = append(f.pvcLister, pvc)
 	f.longhornVolumeLister = append(f.longhornVolumeLister, vol)
 	f.secretLister = append(f.secretLister, secret)
 	f.serviceLister = append(f.serviceLister, service)
-	f.ingressLister = append(f.ingressLister, ingress)
 	f.deploymentLister = append(f.deploymentLister, deployment)
 
 	f.runExpectSuccess(&ctx, getMetaKey(TestNamespace, TestObjectStoreName))
@@ -537,7 +521,6 @@ func TestSyncStoppedObjectStore(t *testing.T) {
 	vol := osTestNewLonghornVolume()
 	service := osTestNewService()
 	deployment := osTestNewDeployment()
-	ingress := osTestNewIngress()
 	(*deployment).Spec.Replicas = func() *int32 { a := int32(0); return &a }()
 
 	f.lhObjects = append(f.lhObjects, store)
@@ -545,14 +528,12 @@ func TestSyncStoppedObjectStore(t *testing.T) {
 	f.lhObjects = append(f.lhObjects, vol)
 	f.kubeObjects = append(f.kubeObjects, secret)
 	f.kubeObjects = append(f.kubeObjects, service)
-	f.kubeObjects = append(f.kubeObjects, ingress)
 	f.kubeObjects = append(f.kubeObjects, deployment)
 	f.objectStoreLister = append(f.objectStoreLister, store)
 	f.pvcLister = append(f.pvcLister, pvc)
 	f.longhornVolumeLister = append(f.longhornVolumeLister, vol)
 	f.secretLister = append(f.secretLister, secret)
 	f.serviceLister = append(f.serviceLister, service)
-	f.ingressLister = append(f.ingressLister, ingress)
 	f.deploymentLister = append(f.deploymentLister, deployment)
 
 	f.runExpectSuccess(&ctx, getMetaKey(TestNamespace, TestObjectStoreName))
@@ -576,7 +557,6 @@ func TestSyncTerminatingObjectStore(t *testing.T) {
 	pvc := osTestNewPersistentVolumeClaim()
 	vol := osTestNewLonghornVolume()
 	service := osTestNewService()
-	ingress := osTestNewIngress()
 	deployment := osTestNewDeployment()
 
 	f.lhObjects = append(f.lhObjects, store)
@@ -584,14 +564,12 @@ func TestSyncTerminatingObjectStore(t *testing.T) {
 	f.lhObjects = append(f.lhObjects, vol)
 	f.kubeObjects = append(f.kubeObjects, secret)
 	f.kubeObjects = append(f.kubeObjects, service)
-	f.kubeObjects = append(f.kubeObjects, ingress)
 	f.kubeObjects = append(f.kubeObjects, deployment)
 	f.objectStoreLister = append(f.objectStoreLister, store)
 	f.pvcLister = append(f.pvcLister, pvc)
 	f.longhornVolumeLister = append(f.longhornVolumeLister, vol)
 	f.secretLister = append(f.secretLister, secret)
 	f.serviceLister = append(f.serviceLister, service)
-	f.ingressLister = append(f.ingressLister, ingress)
 	f.deploymentLister = append(f.deploymentLister, deployment)
 
 	f.runExpectSuccess(&ctx, getMetaKey(TestNamespace, TestObjectStoreName))
@@ -612,7 +590,6 @@ func TestSyncErrorObjectStore(t *testing.T) {
 	pvc := osTestNewPersistentVolumeClaim()
 	vol := osTestNewLonghornVolume()
 	service := osTestNewService()
-	ingress := osTestNewIngress()
 	deployment := osTestNewDeployment()
 
 	f.lhObjects = append(f.lhObjects, store)
@@ -620,14 +597,12 @@ func TestSyncErrorObjectStore(t *testing.T) {
 	f.lhObjects = append(f.lhObjects, vol)
 	f.kubeObjects = append(f.kubeObjects, secret)
 	f.kubeObjects = append(f.kubeObjects, service)
-	f.kubeObjects = append(f.kubeObjects, ingress)
 	f.kubeObjects = append(f.kubeObjects, deployment)
 	f.objectStoreLister = append(f.objectStoreLister, store)
 	f.pvcLister = append(f.pvcLister, pvc)
 	f.longhornVolumeLister = append(f.longhornVolumeLister, vol)
 	f.secretLister = append(f.secretLister, secret)
 	f.serviceLister = append(f.serviceLister, service)
-	f.ingressLister = append(f.ingressLister, ingress)
 	f.deploymentLister = append(f.deploymentLister, deployment)
 
 	f.runExpectSuccess(&ctx, getMetaKey(TestNamespace, TestObjectStoreName))
