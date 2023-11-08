@@ -26,13 +26,6 @@ import (
 )
 
 var (
-	ErrObjectStorePVCNotReady        = errors.New("PVC not ready")
-	ErrObjectStoreVolumeNotReady     = errors.New("Volume not ready")
-	ErrObjectStorePVNotReady         = errors.New("PV not ready")
-	ErrObjectStoreDeploymentNotReady = errors.New("Deployment not ready")
-	ErrObjectStoreServiceNotReady    = errors.New("Service not ready")
-	ErrObjectStoreIngressNotReady    = errors.New("Ingress not ready")
-
 	OneHour, _ = time.ParseDuration("1h")
 )
 
@@ -342,6 +335,7 @@ func (osc *ObjectStoreController) reconcile(key string) error {
 	// handle termination
 	if !store.DeletionTimestamp.IsZero() {
 		if store.Status.State != longhorn.ObjectStoreStateTerminating {
+			logrus.Infof("object store %v is now terminating", store.Name)
 			store.Status.State = longhorn.ObjectStoreStateTerminating
 			return err
 		}
@@ -444,32 +438,33 @@ func (osc *ObjectStoreController) handleStarting(store *longhorn.ObjectStore) (e
 	if err != nil {
 		return errors.Wrap(err, "API error while creating S3 ingresses")
 	}
-	osc.logger.Infof("created %v S3 endpoint(s) for %v", len(endpoints), store.Name)
+	osc.logger.Infof("object store %v has  %v S3 endpoint(s)", store.Name, len(endpoints))
 	// if there are no public endpoints, add the implicit cluster-internal one
 	if len(store.Status.Endpoints) == 0 {
 		store.Status.Endpoints = append(store.Status.Endpoints, fmt.Sprintf("%v.%v.svc", store.Name, osc.namespace))
 	}
 
-	if err := osc.checkPVC(pvc); errors.Is(err, ErrObjectStorePVCNotReady) {
+	if err := osc.checkPVC(pvc); err != nil {
 		return nil
 	}
 
-	if err := osc.checkVolume(vol); errors.Is(err, ErrObjectStoreVolumeNotReady) {
+	if err := osc.checkVolume(vol); err != nil {
 		return nil
 	}
 
-	if err := osc.checkPV(pv); errors.Is(err, ErrObjectStorePVNotReady) {
+	if err := osc.checkPV(pv); err != nil {
 		return nil
 	}
 
-	if err := osc.checkDeployment(dpl); errors.Is(err, ErrObjectStoreDeploymentNotReady) {
+	if err := osc.checkDeployment(dpl); err != nil {
 		return nil
 	}
 
-	if err := osc.checkService(svc); errors.Is(err, ErrObjectStoreServiceNotReady) {
+	if err := osc.checkService(svc); err != nil {
 		return nil
 	}
 
+	logrus.Infof("object store %v is now running", store.Name)
 	store.Status.State = longhorn.ObjectStoreStateRunning
 	return nil
 }
@@ -480,39 +475,56 @@ func (osc *ObjectStoreController) handleStarting(store *longhorn.ObjectStore) (e
 // state, otherwise do nothing.
 func (osc *ObjectStoreController) handleRunning(store *longhorn.ObjectStore) (err error) {
 	if store.Spec.TargetState == longhorn.ObjectStoreStateStopped {
+		logrus.Infof("object store %v is now stopping", store.Name)
 		store.Status.State = longhorn.ObjectStoreStateStopping
 		return nil
 	}
 
 	dpl, err := osc.ds.GetDeployment(store.Name)
-	if err != nil || dpl.Status.UnavailableReplicas > 0 {
+	if err != nil {
+		return errors.Wrapf(err, "failed to find deployment %v", store.Name)
+	} else if err = osc.checkDeployment(dpl); err != nil {
+		logrus.Errorf("Object Store running but deployment not ready")
 		store.Status.State = longhorn.ObjectStoreStateError
 		return err
 	}
 
-	_, err = osc.ds.GetService(osc.namespace, store.Name)
+	svc, err := osc.ds.GetService(osc.namespace, store.Name)
 	if err != nil {
+		return errors.Wrapf(err, "failed to find service %v", store.Name)
+	} else if err = osc.checkService(svc); err != nil {
+		logrus.Errorf("Object Store running but service not ready")
 		store.Status.State = longhorn.ObjectStoreStateError
 		return err
 	}
 
 	pvc, err := osc.ds.GetPersistentVolumeClaim(osc.namespace, genPVCName(store))
-	if err != nil || pvc.Status.Phase != corev1.ClaimBound {
+	if err != nil {
+		return errors.Wrapf(err, "failed to find pvc %v", genPVCName(store))
+	} else if err = osc.checkPVC(pvc); err != nil {
+		logrus.Errorf("Object Store running but PVC not bound")
 		store.Status.State = longhorn.ObjectStoreStateError
 		return err
 	}
 
-	_, err = osc.ds.GetVolume(genPVName(store))
+	vol, err := osc.ds.GetVolume(genPVName(store))
 	if err != nil {
+		return errors.Wrapf(err, "failed to find volume %v", genPVName(store))
+	} else if err = osc.checkVolume(vol); err != nil {
+		logrus.Errorf("Object Store running but Volume not ready")
 		store.Status.State = longhorn.ObjectStoreStateError
 		return err
 	}
 
-	_, err = osc.ds.GetPersistentVolume(genPVName(store))
+	pv, err := osc.ds.GetPersistentVolume(genPVName(store))
 	if err != nil {
+		return errors.Wrapf(err, "failed to find PV %v", genPVName(store))
+	} else if err = osc.checkPV(pv); err != nil {
+		logrus.Errorf("Object Store running but PV not ready")
 		store.Status.State = longhorn.ObjectStoreStateError
 		return err
 	}
+
 	return nil
 }
 
@@ -529,12 +541,14 @@ func (osc *ObjectStoreController) handleStopping(store *longhorn.ObjectStore) (e
 		return nil // wait for shutdown
 	}
 
+	logrus.Infof("object store %v is now stopped", store.Name)
 	store.Status.State = longhorn.ObjectStoreStateStopped
 	return nil
 }
 
 func (osc *ObjectStoreController) handleStopped(store *longhorn.ObjectStore) (err error) {
 	if store.Spec.TargetState == longhorn.ObjectStoreStateRunning {
+		logrus.Infof("object store %v is now starting", store.Name)
 		store.Status.State = longhorn.ObjectStoreStateStarting
 		return nil
 	}
@@ -577,6 +591,7 @@ func (osc *ObjectStoreController) handleTerminating(store *longhorn.ObjectStore)
 
 func (osc *ObjectStoreController) initializeObjectStore(store *longhorn.ObjectStore) (err error) {
 	if !(store.Spec.TargetState == longhorn.ObjectStoreStateStopped) {
+		logrus.Infof("object store %v is now starting", store.Name)
 		store.Status.State = longhorn.ObjectStoreStateStarting
 	}
 	return nil
@@ -601,7 +616,7 @@ func (osc *ObjectStoreController) getOrCreatePVC(store *longhorn.ObjectStore) (*
 
 func (osc *ObjectStoreController) checkPVC(pvc *corev1.PersistentVolumeClaim) error {
 	if pvc.Status.Phase != corev1.ClaimBound {
-		return ErrObjectStorePVCNotReady
+		return errors.New("PVC not bound")
 	}
 	return nil
 }
@@ -674,10 +689,10 @@ func (osc *ObjectStoreController) getOrCreateDeployment(store *longhorn.ObjectSt
 func (osc *ObjectStoreController) checkDeployment(deployment *appsv1.Deployment) error {
 	if *deployment.Spec.Replicas != 1 {
 		deployment.Spec.Replicas = int32Ptr(1)
-		_, err := osc.ds.UpdateDeployment(deployment)
-		return err
-	} else if deployment.Status.UnavailableReplicas > 0 {
-		return ErrObjectStoreDeploymentNotReady
+		osc.ds.UpdateDeployment(deployment)
+		return errors.New("deployment just scaled")
+	} else if deployment.Status.Replicas == 0 || deployment.Status.UnavailableReplicas > 0 {
+		return errors.New("deployment not ready")
 	}
 	return nil
 }
@@ -942,16 +957,6 @@ func (osc *ObjectStoreController) createService(store *longhorn.ObjectStore) (*c
 }
 
 func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) (*appsv1.Deployment, error) {
-	registrySecretSetting, err := osc.ds.GetSetting(types.SettingNameRegistrySecret)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get registry secret setting for object store deployment")
-	}
-	registrySecret := []corev1.LocalObjectReference{
-		{
-			Name: registrySecretSetting.Value,
-		},
-	}
-
 	domainNameArgs := []string{
 		"--rgw-dns-name",
 		fmt.Sprintf("%v.%v.svc", store.Name, osc.namespace),
@@ -985,7 +990,6 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 					Labels: osc.ds.GetObjectStoreSelectorLabels(store),
 				},
 				Spec: corev1.PodSpec{
-					ImagePullSecrets: registrySecret,
 					Containers: []corev1.Container{
 						{
 							Name:  "s3gw",
@@ -1062,6 +1066,19 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 				},
 			},
 		},
+	}
+
+	registrySecretSetting, err := osc.ds.GetSetting(types.SettingNameRegistrySecret)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get registry secret setting for object store deployment")
+	}
+
+	if registrySecretSetting.Value != "" {
+		dpl.Spec.Template.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
+			{
+				Name: registrySecretSetting.Value,
+			},
+		}
 	}
 
 	return osc.ds.CreateDeployment(&dpl)

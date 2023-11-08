@@ -261,7 +261,7 @@ func NewRouter(s *Server) *mux.Router {
 	r.Path("/v1/ws/events").Handler(f(schemas, eventListStream))
 	r.Path("/v1/ws/{period}/events").Handler(f(schemas, eventListStream))
 
-	objectStoreListStream := NewStreamHandlerFunc("objectendpoints", s.wsc.NewWatcher("objectEndpoint"), s.objectStoreList)
+	objectStoreListStream := NewStreamHandlerFunc("objectstores", s.wsc.NewWatcher("objectstore"), s.objectStoreList)
 	r.Path("/v1/ws/objectstores").Handler(f(schemas, objectStoreListStream))
 	r.Path("/v1/ws/{period}/objectstores").Handler(f(schemas, objectStoreListStream))
 
