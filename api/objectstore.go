@@ -30,7 +30,23 @@ func (s *Server) objectStoreList(apiContext *api.ApiContext) (*client.GenericCol
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list object stores")
 	}
-	return toObjectStoreCollection(list, apiContext), nil
+
+	data := []interface{}{}
+
+	for _, store := range list {
+		vol, err := s.m.Get(fmt.Sprintf("pv-%v", store.Name))
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get volume for %v", store.Name)
+		}
+		data = append(data, toObjectStoreResource(store, vol.Spec.Size, vol.Status.ActualSize))
+	}
+
+	return &client.GenericCollection{
+		Data: data,
+		Collection: client.Collection{
+			ResourceType: "objectStore",
+		},
+	}, nil
 }
 
 func (s *Server) ObjectStoreGet(rw http.ResponseWriter, req *http.Request) (err error) {
@@ -47,6 +63,8 @@ func (s *Server) ObjectStoreCreate(rw http.ResponseWriter, req *http.Request) (e
 	if err := apiContext.Read(&input); err != nil {
 		return err
 	}
+
+	size := resource.MustParse(input.Size)
 
 	secret, err := s.m.GetSecret(s.m.GetLonghornNamespace(), input.Name)
 	if err != nil && datastore.ErrorIsNotFound(err) {
@@ -82,7 +100,7 @@ func (s *Server) ObjectStoreCreate(rw http.ResponseWriter, req *http.Request) (e
 		},
 		Spec: longhorn.ObjectStoreSpec{
 			Storage: longhorn.ObjectStoreStorageSpec{
-				Size:                        resource.MustParse(input.Size),
+				Size:                        size,
 				NumberOfReplicas:            input.NumberOfReplicas,
 				ReplicaSoftAntiAffinity:     input.ReplicaSoftAntiAffinity,
 				ReplicaZoneSoftAntiAffinity: input.ReplicaZoneSoftAntiAffinity,
@@ -128,7 +146,10 @@ func (s *Server) ObjectStoreCreate(rw http.ResponseWriter, req *http.Request) (e
 		return errors.Wrapf(err, "failed to create object store %v", input.Name)
 	}
 
-	resp := toObjectStoreResource(obj)
+	// Have to fake the size information because the actual volume isn't yet
+	// provisioned and can't be queried. These values are accurate enough for a
+	// start
+	resp := toObjectStoreResource(obj, (&size).Value(), 0)
 	apiContext.Write(resp)
 	return nil
 }
@@ -146,11 +167,15 @@ func (s *Server) ObjectStoreUpdate(rw http.ResponseWriter, req *http.Request) (e
 		return err
 	}
 
+	vol, err := s.m.Get(fmt.Sprintf("pv-%v", input.Name))
+	if err != nil {
+		return err
+	}
 	// TODO: update all sensible properties here. e.g. the container images, etc.
 	store.Spec.TargetState = input.TargetState
 
 	obj, err := s.m.UpdateObjectStore(store)
-	resp := toObjectStoreResource(obj)
+	resp := toObjectStoreResource(obj, vol.Spec.Size, vol.Status.ActualSize)
 	apiContext.Write(resp)
 	return nil
 }
