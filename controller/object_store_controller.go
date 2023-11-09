@@ -99,9 +99,9 @@ func NewObjectStoreController(
 
 	ds.PersistentVolumeClaimInformer.AddEventHandlerWithResyncPeriod(
 		cache.ResourceEventHandlerFuncs{
-			AddFunc:    osc.enqueueService,
+			AddFunc:    osc.enqueuePVC,
 			UpdateFunc: func(old, cur interface{}) { osc.enqueuePVC(cur) },
-			DeleteFunc: osc.enqueueService,
+			DeleteFunc: osc.enqueuePVC,
 		},
 		OneHour,
 	)
