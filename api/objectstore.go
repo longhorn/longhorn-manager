@@ -7,6 +7,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	"github.com/longhorn/longhorn-manager/util"
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
@@ -66,31 +67,34 @@ func (s *Server) ObjectStoreCreate(rw http.ResponseWriter, req *http.Request) (e
 
 	size := resource.MustParse(input.Size)
 
-	secret, err := s.m.GetSecret(s.m.GetLonghornNamespace(), input.Name)
-	if err != nil && datastore.ErrorIsNotFound(err) {
-		secret = &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      input.Name,
-				Namespace: s.m.GetLonghornNamespace(),
-			},
-			StringData: map[string]string{
-				"RGW_DEFAULT_USER_ACCESS_KEY": input.AccessKey,
-				"RGW_DEFAULT_USER_SECRET_KEY": input.SecretKey,
-			},
+	// find a new name for the secret and create a new secret to seed the
+	// credentials of the object store.
+	var secretName string = input.Name
+	for {
+		_, err := s.m.GetSecret(s.m.GetLonghornNamespace(), secretName)
+		if err != nil && datastore.ErrorIsNotFound(err) {
+			break
+		} else if err != nil {
+			return errors.Wrapf(err, "API error while searching for secret %v", secretName)
+		} else {
+			secretName = fmt.Sprintf("%v-%v", input.Name, util.RandomString(6))
 		}
+	}
 
-		_, err = s.m.CreateSecret(secret)
-		if err != nil {
-			return errors.Wrapf(err, "failed to create secret %v", input.Name)
-		}
-	} else {
-		secret.StringData["RGW_DEFAULT_USER_ACCESS_KEY"] = input.AccessKey
-		secret.StringData["RGW_DEFAULT_USER_SECRET_KEY"] = input.SecretKey
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      secretName,
+			Namespace: s.m.GetLonghornNamespace(),
+		},
+		StringData: map[string]string{
+			"RGW_DEFAULT_USER_ACCESS_KEY": input.AccessKey,
+			"RGW_DEFAULT_USER_SECRET_KEY": input.SecretKey,
+		},
+	}
 
-		_, err = s.m.UpdateSecret(secret)
-		if err != nil {
-			return errors.Wrapf(err, "failed to update secret %v", input.Name)
-		}
+	_, err = s.m.CreateSecret(secret)
+	if err != nil {
+		return errors.Wrapf(err, "failed to create secret %v", input.Name)
 	}
 
 	store := &longhorn.ObjectStore{

@@ -69,6 +69,9 @@ const (
 	RandomIDLenth = 8
 
 	DeterministicUUIDNamespace = "08958d54-65cd-4d87-8627-9831a1eab170" // Arbitrarily generated.
+
+	// AlphaNum is just lower case alpha numeric characters
+	AlphaNum = "abcdefghijklmnopqrstuvwxyzZ0123456789"
 )
 
 var (
@@ -980,4 +983,14 @@ func WaitForResourceDeletion(kubeClient *clientset.Clientset, name, namespace, r
 		time.Sleep(time.Duration(1) * time.Second)
 	}
 	return fmt.Errorf("foreground deletion of %s %s timed out", resource, name)
+}
+
+// RandomString generates a string of length n with random lowercase alphanumeric
+// characters
+func RandomString(n int) string {
+	buf := make([]byte, n)
+	for i := range buf {
+		buf[i] = AlphaNum[rand.Intn(len(AlphaNum))]
+	}
+	return string(buf)
 }

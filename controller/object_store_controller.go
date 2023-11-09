@@ -603,7 +603,7 @@ func (osc *ObjectStoreController) getOrCreatePVC(store *longhorn.ObjectStore) (*
 		return pvc, store, nil
 	} else if datastore.ErrorIsNotFound(err) {
 		pvc, err = osc.createPVC(store)
-		if err != nil && !datastore.ErrorIsAlreadyExists(err) {
+		if err != nil {
 			store.Status.State = longhorn.ObjectStoreStateError
 			return nil, store, errors.Wrap(err, "failed to create persistent volume claim")
 		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
@@ -630,7 +630,7 @@ func (osc *ObjectStoreController) getOrCreateVolume(
 		return vol, store, nil
 	} else if datastore.ErrorIsNotFound(err) {
 		vol, err = osc.createVolume(store, pvc)
-		if err != nil && !datastore.ErrorIsAlreadyExists(err) {
+		if err != nil {
 			store.Status.State = longhorn.ObjectStoreStateError
 			return nil, store, errors.Wrap(err, "failed to create longhorn volume")
 		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
@@ -654,7 +654,7 @@ func (osc *ObjectStoreController) getOrCreatePV(
 		return pv, store, nil
 	} else if datastore.ErrorIsNotFound(err) {
 		pv, err = osc.createPV(store, volume)
-		if err != nil && !datastore.ErrorIsAlreadyExists(err) {
+		if err != nil {
 			store.Status.State = longhorn.ObjectStoreStateError
 			return nil, store, errors.Wrap(err, "failed to create persistent volume")
 		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
@@ -675,7 +675,7 @@ func (osc *ObjectStoreController) getOrCreateDeployment(store *longhorn.ObjectSt
 		return dpl, store, nil
 	} else if datastore.ErrorIsNotFound(err) {
 		dpl, err = osc.createDeployment(store)
-		if err != nil && !datastore.ErrorIsAlreadyExists(err) {
+		if err != nil {
 			store.Status.State = longhorn.ObjectStoreStateError
 			return nil, store, errors.Wrap(err, "failed to create deployment")
 		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
@@ -703,7 +703,7 @@ func (osc *ObjectStoreController) getOrCreateService(store *longhorn.ObjectStore
 		return svc, store, nil
 	} else if datastore.ErrorIsNotFound(err) {
 		svc, err = osc.createService(store)
-		if err != nil && !datastore.ErrorIsAlreadyExists(err) {
+		if err != nil {
 			store.Status.State = longhorn.ObjectStoreStateError
 			return nil, store, errors.Wrap(err, "failed to create service")
 		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
@@ -844,12 +844,7 @@ func (osc *ObjectStoreController) createVolume(
 		},
 	}
 
-	volume, err := osc.ds.CreateVolume(&vol)
-	if err != nil && !datastore.ErrorIsAlreadyExists(err) {
-		store.Status.State = longhorn.ObjectStoreStateError
-		return nil, errors.Wrap(err, "failed to create Longhorn Volume")
-	}
-	return volume, err
+	return osc.ds.CreateVolume(&vol)
 }
 
 func (osc *ObjectStoreController) createPV(
@@ -966,6 +961,22 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 		domainNameArgs = append(domainNameArgs, endpoint.DomainName)
 	}
 
+	secret, err := osc.ds.GetSecret(osc.namespace, store.Spec.Credentials.Name)
+	if err != nil && !datastore.ErrorIsNotFound(err) {
+		return nil, errors.Wrapf(err, "failed to find secret %v", store.Spec.Credentials.Name)
+	}
+
+	env := []corev1.EnvFromSource{}
+	if secret != nil {
+		env = append(env, corev1.EnvFromSource{
+			SecretRef: &corev1.SecretEnvSource{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: store.Spec.Credentials.Name,
+				},
+			},
+		})
+	}
+
 	dpl := appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            store.Name,
@@ -1014,15 +1025,7 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 									Protocol:      "TCP",
 								},
 							},
-							EnvFrom: []corev1.EnvFromSource{
-								{
-									SecretRef: &corev1.SecretEnvSource{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: store.Spec.Credentials.Name,
-										},
-									},
-								},
-							},
+							EnvFrom: env,
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      genVolumeMountName(store),
