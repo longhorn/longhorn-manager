@@ -2472,6 +2472,10 @@ func (s *DataStore) GetRandomReadyNodeDisk() (*longhorn.Node, string, error) {
 			if !exists {
 				continue
 			}
+			// TODO: Jack add block type disk for spdk version BackingImage
+			if diskSpec.Type != longhorn.DiskTypeFilesystem {
+				continue
+			}
 			if !diskSpec.AllowScheduling {
 				continue
 			}
