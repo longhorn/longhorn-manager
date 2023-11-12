@@ -166,8 +166,8 @@ func (c *BackingImageManagerController) Run(workers int, stopCh <-chan struct{})
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
 
-	logrus.Info("Starting Longhorn backing image manager controller")
-	defer logrus.Info("Shut down Longhorn backing image manager controller")
+	c.logger.Info("Starting Longhorn backing image manager controller")
+	defer c.logger.Info("Shut down Longhorn backing image manager controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn backing image manager", stopCh, c.cacheSyncs...) {
 		return
@@ -278,7 +278,7 @@ func (c *BackingImageManagerController) syncBackingImageManager(key string) (err
 			_, err = c.ds.UpdateBackingImageManagerStatus(bim)
 		}
 		if apierrors.IsConflict(errors.Cause(err)) {
-			logrus.WithError(err).Debugf("Requeue %v due to conflict", key)
+			log.WithError(err).Debugf("Requeue %v due to conflict", key)
 			c.enqueueBackingImageManager(bim)
 			err = nil
 		}
@@ -460,7 +460,7 @@ func (c *BackingImageManagerController) syncBackingImageManagerPod(bim *longhorn
 				storageIP := c.ds.GetStorageIPFromPod(pod)
 				if bim.Status.StorageIP != storageIP {
 					bim.Status.StorageIP = storageIP
-					logrus.Warnf("Inconsistent storage IP from pod %v, update backing image status storage IP %v", pod.Name, bim.Status.StorageIP)
+					log.Warnf("Inconsistent storage IP from pod %v, update backing image status storage IP %v", pod.Name, bim.Status.StorageIP)
 				}
 
 				bim.Status.IP = pod.Status.PodIP

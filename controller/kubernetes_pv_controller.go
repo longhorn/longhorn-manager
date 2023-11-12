@@ -101,8 +101,8 @@ func (kc *KubernetesPVController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer kc.queue.ShutDown()
 
-	logrus.Info("Starting Kubernetes PV controller")
-	defer logrus.Info("Shut down kubernetes PV controller")
+	kc.logger.Info("Starting Kubernetes PV controller")
+	defer kc.logger.Info("Shut down kubernetes PV controller")
 
 	if !cache.WaitForNamedCacheSync("kubernetes", stopCh, kc.cacheSyncs...) {
 		return
@@ -202,7 +202,7 @@ func (kc *KubernetesPVController) syncKubernetesStatus(key string) (err error) {
 		}
 		// requeue if it's conflict
 		if apierrors.IsConflict(errors.Cause(err)) {
-			logrus.Debugf("Requeue for volume %v due to conflict: %v", volumeName, err)
+			kc.logger.WithError(err).Debugf("Requeue for volume %v due to conflict", volumeName)
 			kc.enqueueVolumeChange(volume)
 			err = nil
 		}

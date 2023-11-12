@@ -211,7 +211,7 @@ func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 	if err != nil {
 		// If failed to create disk service client, just log a warning and continue.
 		// The error out will hinder the following logics in syncNode.
-		logrus.WithError(err).Warnf("Failed to create disk service client")
+		m.logger.WithError(err).Warnf("Failed to create disk service client")
 	}
 	defer func() {
 		for _, diskServiceClient := range diskServiceClients {
@@ -278,13 +278,13 @@ func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 
 		replicaInstanceNames, err := m.getReplicaInstanceNamesHandler(disk.Type, node, diskName, diskConfig.DiskUUID, disk.Path, diskServiceClient)
 		if err != nil {
-			logrus.WithError(err).Warnf("Failed to get replica instance names for disk %v(%v) on node %v", diskName, disk.Path, node.Name)
+			m.logger.WithError(err).Warnf("Failed to get replica instance names for disk %v(%v) on node %v", diskName, disk.Path, node.Name)
 			continue
 		}
 
 		orphanedReplicaInstanceNames, err = m.getOrphanedReplicaInstanceNames(disk.Type, node, diskName, diskConfig.DiskUUID, disk.Path, replicaInstanceNames)
 		if err != nil {
-			logrus.WithError(err).Warnf("Failed to get orphaned replica instance names for disk %v(%v) on node %v", diskName, disk.Path, node.Name)
+			m.logger.WithError(err).Warnf("Failed to get orphaned replica instance names for disk %v(%v) on node %v", diskName, disk.Path, node.Name)
 			continue
 		}
 
@@ -389,7 +389,7 @@ func (m *NodeMonitor) getOrphanedReplicaDirectoryNames(node *longhorn.Node, disk
 	// Find out the orphaned directories by checking with replica CRs
 	replicas, err := m.ds.ListReplicasByDiskUUID(diskUUID)
 	if err != nil {
-		logrus.Errorf("unable to list replicas for disk UUID %v since %v", diskUUID, err.Error())
+		m.logger.Errorf("unable to list replicas for disk UUID %v since %v", diskUUID, err.Error())
 		return map[string]string{}, nil
 	}
 

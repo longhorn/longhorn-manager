@@ -210,8 +210,8 @@ func (imc *InstanceManagerController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer imc.queue.ShutDown()
 
-	logrus.Info("Starting Longhorn instance manager controller")
-	defer logrus.Info("Shut down Longhorn instance manager controller")
+	imc.logger.Info("Starting Longhorn instance manager controller")
+	defer imc.logger.Info("Shut down Longhorn instance manager controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn instance manager", stopCh, imc.cacheSyncs...) {
 		return
@@ -940,7 +940,7 @@ func (imc *InstanceManagerController) cleanupInstanceManager(imName string) erro
 		return err
 	}
 	if pod != nil && pod.DeletionTimestamp == nil {
-		logrus.Infof("Deleting instance manager pod %v for instance manager %v", pod.Name, imName)
+		imc.logger.Infof("Deleting instance manager pod %v for instance manager %v", pod.Name, imName)
 		if err := imc.ds.DeletePod(pod.Name); err != nil {
 			return err
 		}
