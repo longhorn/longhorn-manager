@@ -99,8 +99,8 @@ func (c *RecurringJobController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
 
-	logrus.Info("Starting Longhorn Recurring Job controller")
-	defer logrus.Info("Shut down Longhorn Recurring Job controller")
+	c.logger.Info("Starting Longhorn Recurring Job controller")
+	defer c.logger.Info("Shut down Longhorn Recurring Job controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn recurring jobs", stopCh, c.cacheSyncs...) {
 		return
@@ -294,7 +294,7 @@ func (c *RecurringJobController) cleanupRecurringJobLabelInVolumesAndPVCs(recurr
 
 func (c *RecurringJobController) removeRecurringJobLabelInVolume(volume *longhorn.Volume, labelKey string) *longhorn.Volume {
 	if _, exist := volume.Labels[labelKey]; exist {
-		logrus.Infof("Removing volume %v recurring job label %v", volume.Name, labelKey)
+		c.logger.Infof("Removing volume %v recurring job label %v", volume.Name, labelKey)
 		delete(volume.Labels, labelKey)
 	}
 	return volume

@@ -211,12 +211,12 @@ func (nc *NodeController) isResponsibleForSnapshot(obj interface{}) bool {
 	}
 	volumeName, ok := snapshot.Labels[types.LonghornLabelVolume]
 	if !ok {
-		logrus.Warnf("Failed to find volume name from snapshot %v", snapshot.Name)
+		nc.logger.Warnf("Failed to find volume name from snapshot %v", snapshot.Name)
 		return false
 	}
 	volume, err := nc.ds.GetVolumeRO(volumeName)
 	if err != nil {
-		logrus.WithError(err).Warnf("Failed to get volume for snapshot %v", snapshot.Name)
+		nc.logger.WithError(err).Warnf("Failed to get volume for snapshot %v", snapshot.Name)
 		return false
 	}
 	if volume.Status.OwnerID != nc.controllerID {
@@ -229,7 +229,7 @@ func (nc *NodeController) isResponsibleForSnapshot(obj interface{}) bool {
 func (nc *NodeController) snapshotHashRequired(volume *longhorn.Volume) bool {
 	dataIntegrityImmediateChecking, err := nc.ds.GetSettingAsBool(types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation)
 	if err != nil {
-		logrus.WithError(err).Warnf("Failed to get %v setting", types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation)
+		nc.logger.WithError(err).Warnf("Failed to get %v setting", types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation)
 		return false
 	}
 	if !dataIntegrityImmediateChecking {
@@ -243,7 +243,7 @@ func (nc *NodeController) snapshotHashRequired(volume *longhorn.Volume) bool {
 	if volume.Spec.SnapshotDataIntegrity == longhorn.SnapshotDataIntegrityIgnored {
 		dataIntegrity, err := nc.ds.GetSettingValueExisted(types.SettingNameSnapshotDataIntegrity)
 		if err != nil {
-			logrus.Warnf("Failed to get %v setting since %v", types.SettingNameSnapshotDataIntegrity, err)
+			nc.logger.WithError(err).Warnf("Failed to get %v setting", types.SettingNameSnapshotDataIntegrity)
 			return false
 		}
 
@@ -282,8 +282,8 @@ func (nc *NodeController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer nc.queue.ShutDown()
 
-	logrus.Info("Starting Longhorn node controller")
-	defer logrus.Info("Shut down Longhorn node controller")
+	nc.logger.Info("Starting Longhorn node controller")
+	defer nc.logger.Info("Shut down Longhorn node controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn node", stopCh, nc.cacheSyncs...) {
 		return
@@ -353,11 +353,13 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	node, err := nc.ds.GetNode(name)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
-			logrus.Errorf("Longhorn node %v has been deleted", key)
+			nc.logger.Errorf("Longhorn node %v has been deleted", key)
 			return nil
 		}
 		return err
 	}
+
+	log := getLoggerForNode(nc.logger, node)
 
 	if node.DeletionTimestamp != nil {
 		nc.eventRecorder.Eventf(node, corev1.EventTypeWarning, constant.EventReasonDelete, "Deleting node %v", node.Name)
@@ -372,7 +374,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		}
 		// requeue if it's conflict
 		if apierrors.IsConflict(errors.Cause(err)) {
-			logrus.Debugf("Requeue %v due to conflict: %v", key, err)
+			log.WithError(err).Debugf("Requeue %v due to conflict", key)
 			nc.enqueueNode(node)
 			err = nil
 		}
@@ -510,7 +512,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	collectedDiskInfo, err := nc.syncWithDiskMonitor(node)
 	if err != nil {
 		if strings.Contains(err.Error(), "mismatching disks") {
-			logrus.Info(err.Error())
+			log.WithError(err).Info("Failed to sync with disk monitor due to mismatching disks")
 			return nil
 		}
 		return err
@@ -531,7 +533,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		data, _ := nc.snapshotMonitor.GetCollectedData()
 		status, ok := data.(monitor.SnapshotMonitorStatus)
 		if !ok {
-			logrus.Errorf("Failed to assert value from snapshot monitor: %v", data)
+			log.Errorf("Failed to assert value from snapshot monitor: %v", data)
 		} else {
 			node.Status.SnapshotCheckStatus.LastPeriodicCheckedAt = status.LastSnapshotPeriodicCheckedAt
 		}
@@ -640,13 +642,13 @@ func (nc *NodeController) enqueueSnapshot(old, cur interface{}) {
 
 	volumeName, ok := currentSnapshot.Labels[types.LonghornLabelVolume]
 	if !ok {
-		logrus.Warnf("Failed to get volume name from snapshot %v", currentSnapshot.Name)
+		nc.logger.Warnf("Failed to get volume name from snapshot %v", currentSnapshot.Name)
 		return
 	}
 
 	volume, err := nc.ds.GetVolumeRO(volumeName)
 	if err != nil {
-		logrus.WithError(err).Warnf("Failed to get volume %v", currentSnapshot.Name)
+		nc.logger.WithError(err).Warnf("Failed to get volume %v", currentSnapshot.Name)
 		return
 	}
 
@@ -664,7 +666,7 @@ func (nc *NodeController) enqueueSnapshot(old, cur interface{}) {
 			SnapshotName: currentSnapshot.Name,
 		})
 	} else {
-		logrus.Warnf("Dropped the snapshot change event with volume %v snapshot %v since snapshotChangeEventQueue is full",
+		nc.logger.Warnf("Dropped the snapshot change event with volume %v snapshot %v since snapshotChangeEventQueue is full",
 			volume.Name, currentSnapshot.Name)
 	}
 }
@@ -1115,9 +1117,11 @@ func (nc *NodeController) createInstanceManager(node *longhorn.Node, imName, imI
 }
 
 func (nc *NodeController) cleanUpBackingImagesInDisks(node *longhorn.Node) error {
+	log := getLoggerForNode(nc.logger, node)
+
 	settingValue, err := nc.ds.GetSettingAsInt(types.SettingNameBackingImageCleanupWaitInterval)
 	if err != nil {
-		logrus.WithError(err).Warnf("Failed to get setting %v, won't do cleanup for backing images", types.SettingNameBackingImageCleanupWaitInterval)
+		log.WithError(err).Warnf("Failed to get setting %v, won't do cleanup for backing images", types.SettingNameBackingImageCleanupWaitInterval)
 		return nil
 	}
 	waitInterval := time.Duration(settingValue) * time.Minute
@@ -1190,7 +1194,7 @@ func BackingImageDiskFileCleanup(node *longhorn.Node, bi *longhorn.BackingImage,
 		}
 		lastRefAt, err := util.ParseTime(lastRefAtStr)
 		if err != nil {
-			logrus.Warnf("Failed to parse LastRefAt timestamp %v for backing image %v", lastRefAtStr, bi.Name)
+			logrus.WithError(err).Warnf("Failed to parse LastRefAt timestamp %v for backing image %v", lastRefAtStr, bi.Name)
 			continue
 		}
 		if !time.Now().After(lastRefAt.Add(waitInterval)) {
@@ -1273,7 +1277,7 @@ func (nc *NodeController) getNewAndMissingOrphanedReplicaDirectoryNames(diskName
 	// Find out the new/missing orphaned directories by checking with orphan CRs
 	orphanList, err := nc.ds.ListOrphansByNodeRO(nc.controllerID)
 	if err != nil {
-		logrus.Warnf("Failed to list orphans for node %v since %v", nc.controllerID, err.Error())
+		nc.logger.WithError(err).Warnf("Failed to list orphans for node %v", nc.controllerID)
 		return map[string]string{}, map[string]string{}
 	}
 	orphanMap := make(map[string]*longhorn.Orphan, len(orphanList))
