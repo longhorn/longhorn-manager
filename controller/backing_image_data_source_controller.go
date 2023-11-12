@@ -152,8 +152,8 @@ func (c *BackingImageDataSourceController) Run(workers int, stopCh <-chan struct
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
 
-	logrus.Info("Starting Longhorn backing image data source controller")
-	defer logrus.Info("Shut down Longhorn backing image data source controller")
+	c.logger.Info("Starting Longhorn backing image data source controller")
+	defer c.logger.Info("Shut down Longhorn backing image data source controller")
 
 	if !cache.WaitForNamedCacheSync("longhorn backing image data source", stopCh, c.cacheSyncs...) {
 		return
