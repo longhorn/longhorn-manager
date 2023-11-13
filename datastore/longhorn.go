@@ -4916,3 +4916,16 @@ func (s *DataStore) GetDataEngines() map[longhorn.DataEngineType]struct{} {
 
 	return dataEngines
 }
+
+// IsV2VolumeDisabledForNode returns true if the node disables v2 data engine
+func (s *DataStore) IsV2DataEngineDisabledForNode(nodeName string) (bool, error) {
+	kubeNode, err := s.GetKubernetesNodeRO(nodeName)
+	if err != nil {
+		return false, err
+	}
+	val, ok := kubeNode.Labels[types.NodeDisableV2DataEngineLabelKey]
+	if ok && val == types.NodeDisableV2DataEngineLabelKeyTrue {
+		return true, nil
+	}
+	return false, nil
+}
