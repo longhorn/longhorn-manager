@@ -52,7 +52,7 @@ func NewVolumeCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "capacity_bytes"),
 			"Configured size in bytes for this volume",
-			[]string{nodeLabel, volumeLabel, pvcLabel, namespaceLabel},
+			[]string{nodeLabel, volumeLabel, pvcLabel, pvcNamespaceLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -62,7 +62,7 @@ func NewVolumeCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "actual_size_bytes"),
 			"Actual space used by each replica of the volume on the corresponding node",
-			[]string{nodeLabel, volumeLabel, pvcLabel, namespaceLabel},
+			[]string{nodeLabel, volumeLabel, pvcLabel, pvcNamespaceLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -72,7 +72,7 @@ func NewVolumeCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "state"),
 			"State of this volume",
-			[]string{nodeLabel, volumeLabel, pvcLabel, namespaceLabel},
+			[]string{nodeLabel, volumeLabel, pvcLabel, pvcNamespaceLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -82,7 +82,7 @@ func NewVolumeCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "robustness"),
 			"Robustness of this volume",
-			[]string{nodeLabel, volumeLabel, pvcLabel, namespaceLabel},
+			[]string{nodeLabel, volumeLabel, pvcLabel, pvcNamespaceLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -92,7 +92,7 @@ func NewVolumeCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "read_throughput"),
 			"Read throughput of this volume (Bytes/s)",
-			[]string{nodeLabel, volumeLabel, pvcLabel, namespaceLabel},
+			[]string{nodeLabel, volumeLabel, pvcLabel, pvcNamespaceLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -102,7 +102,7 @@ func NewVolumeCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "write_throughput"),
 			"Write throughput of this volume (Bytes/s)",
-			[]string{nodeLabel, volumeLabel, pvcLabel, namespaceLabel},
+			[]string{nodeLabel, volumeLabel, pvcLabel, pvcNamespaceLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -112,7 +112,7 @@ func NewVolumeCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "read_iops"),
 			"Read IOPS of this volume",
-			[]string{nodeLabel, volumeLabel, pvcLabel, namespaceLabel},
+			[]string{nodeLabel, volumeLabel, pvcLabel, pvcNamespaceLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -122,7 +122,7 @@ func NewVolumeCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "write_iops"),
 			"Write IOPS of this volume",
-			[]string{nodeLabel, volumeLabel, pvcLabel, namespaceLabel},
+			[]string{nodeLabel, volumeLabel, pvcLabel, pvcNamespaceLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -132,7 +132,7 @@ func NewVolumeCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "read_latency"),
 			"Read latency of this volume (ns)",
-			[]string{nodeLabel, volumeLabel, pvcLabel, namespaceLabel},
+			[]string{nodeLabel, volumeLabel, pvcLabel, pvcNamespaceLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -142,7 +142,7 @@ func NewVolumeCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "write_latency"),
 			"Write latency of this volume (ns)",
-			[]string{nodeLabel, volumeLabel, pvcLabel, namespaceLabel},
+			[]string{nodeLabel, volumeLabel, pvcLabel, pvcNamespaceLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
