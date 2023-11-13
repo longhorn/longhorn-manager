@@ -124,6 +124,8 @@ const (
 	NodeCreateDefaultDiskLabelKey             = "node.longhorn.io/create-default-disk"
 	NodeCreateDefaultDiskLabelValueTrue       = "true"
 	NodeCreateDefaultDiskLabelValueConfig     = "config"
+	NodeDisableV2DataEngineLabelKey           = "node.longhorn.io/disable-v2-data-engine"
+	NodeDisableV2DataEngineLabelKeyTrue       = "true"
 	KubeNodeDefaultDiskConfigAnnotationKey    = "node.longhorn.io/default-disks-config"
 	KubeNodeDefaultNodeTagConfigAnnotationKey = "node.longhorn.io/default-node-tags"
 

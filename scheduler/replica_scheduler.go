@@ -118,6 +118,17 @@ func (rcs *ReplicaScheduler) getNodeCandidates(nodesInfo map[string]*longhorn.No
 
 	nodeCandidates = map[string]*longhorn.Node{}
 	for _, node := range nodesInfo {
+		if datastore.IsDataEngineV2(schedulingReplica.Spec.DataEngine) {
+			disabled, err := rcs.ds.IsV2DataEngineDisabledForNode(node.Name)
+			if err != nil {
+				logrus.WithError(err).Errorf("Failed to check if v2 data engine is disabled on node %v", node.Name)
+				return nil, util.NewMultiError(longhorn.ErrorReplicaScheduleSchedulingFailed)
+			}
+			if disabled {
+				continue
+			}
+		}
+
 		if isReady, _ := rcs.ds.CheckDataEngineImageReadiness(schedulingReplica.Spec.Image, schedulingReplica.Spec.DataEngine, node.Name); isReady {
 			nodeCandidates[node.Name] = node
 		}
