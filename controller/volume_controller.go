@@ -2846,17 +2846,9 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 		return nil
 	}
 
-<<<<<<< HEAD
-	if err := c.switchActiveReplicas(rs, func(r *longhorn.Replica, engineImage string) bool {
+	c.switchActiveReplicas(rs, func(r *longhorn.Replica, engineImage string) bool {
 		return r.Spec.EngineImage == engineImage && r.DeletionTimestamp.IsZero()
-	}, v.Spec.EngineImage); err != nil {
-		return err
-	}
-=======
-	c.switchActiveReplicas(rs, func(r *longhorn.Replica, image string) bool {
-		return r.Spec.Image == image && r.DeletionTimestamp.IsZero()
-	}, v.Spec.Image)
->>>>>>> 3d0f79bb (Clean up pointless error return)
+	}, v.Spec.EngineImage)
 
 	e.Spec.ReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
 	e.Spec.UpgradedReplicaAddressMap = map[string]string{}
