@@ -397,6 +397,13 @@ func (s *DataStore) GetDeployment(name string) (*appsv1.Deployment, error) {
 	return dpl.DeepCopy(), nil
 }
 
+// ListDeploymentsByLabels returns a list of all deployments with labels
+// matching the provided map
+func (s *DataStore) ListDeploymentsByLabels(matchLabels map[string]string) ([]*appsv1.Deployment, error) {
+	selector := labels.SelectorFromSet(matchLabels)
+	return s.deploymentLister.Deployments(s.namespace).List(selector)
+}
+
 // ListDeployment gets a list of all Deployment for the given namespace
 func (s *DataStore) ListDeployment() ([]*appsv1.Deployment, error) {
 	return s.deploymentLister.Deployments(s.namespace).List(labels.Everything())

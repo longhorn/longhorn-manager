@@ -546,6 +546,8 @@ type ObjectStore struct {
 	Endpoints     []string                  `json:"endpoints"`
 	AllocatedSize int64                     `json:"allocatedSize"`
 	OccupiedSize  int64                     `json:"occupiedSize"`
+	Image         string                    `json:"image"`
+	UIImage       string                    `json:"uiImage"`
 }
 
 type ObjectStoreInput struct {
@@ -2213,7 +2215,7 @@ func sliceToMap(conditions []longhorn.Condition) map[string]longhorn.Condition {
 	return converted
 }
 
-func toObjectStoreResource(store *longhorn.ObjectStore, allocatedSize, occupiedSize int64) *ObjectStore {
+func toObjectStoreResource(store *longhorn.ObjectStore, allocatedSize, occupiedSize int64, image, uiImage string) *ObjectStore {
 	return &ObjectStore{
 		Resource: client.Resource{
 			Id:   store.Name,
@@ -2224,6 +2226,8 @@ func toObjectStoreResource(store *longhorn.ObjectStore, allocatedSize, occupiedS
 		Endpoints:     store.Status.Endpoints,
 		AllocatedSize: allocatedSize,
 		OccupiedSize:  occupiedSize,
+		Image:         image,
+		UIImage:       uiImage,
 	}
 }
 

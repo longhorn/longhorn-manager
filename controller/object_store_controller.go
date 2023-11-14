@@ -456,7 +456,7 @@ func (osc *ObjectStoreController) handleStarting(store *longhorn.ObjectStore) (e
 		return nil
 	}
 
-	if err := osc.checkDeployment(dpl); err != nil {
+	if err := osc.checkDeployment(dpl, store); err != nil {
 		return nil
 	}
 
@@ -483,7 +483,7 @@ func (osc *ObjectStoreController) handleRunning(store *longhorn.ObjectStore) (er
 	dpl, err := osc.ds.GetDeployment(store.Name)
 	if err != nil {
 		return errors.Wrapf(err, "failed to find deployment %v", store.Name)
-	} else if err = osc.checkDeployment(dpl); err != nil {
+	} else if err = osc.checkDeployment(dpl, store); err != nil {
 		logrus.Errorf("Object Store running but deployment not ready")
 		store.Status.State = longhorn.ObjectStoreStateError
 		return err
@@ -686,7 +686,7 @@ func (osc *ObjectStoreController) getOrCreateDeployment(store *longhorn.ObjectSt
 	return nil, store, err
 }
 
-func (osc *ObjectStoreController) checkDeployment(deployment *appsv1.Deployment) error {
+func (osc *ObjectStoreController) checkDeployment(deployment *appsv1.Deployment, store *longhorn.ObjectStore) error {
 	if *deployment.Spec.Replicas != 1 {
 		deployment.Spec.Replicas = int32Ptr(1)
 		osc.ds.UpdateDeployment(deployment)
@@ -694,6 +694,19 @@ func (osc *ObjectStoreController) checkDeployment(deployment *appsv1.Deployment)
 	} else if deployment.Status.Replicas == 0 || deployment.Status.UnavailableReplicas > 0 {
 		return errors.New("deployment not ready")
 	}
+
+	if store.Spec.Image != "" && deployment.Spec.Template.Spec.Containers[0].Image != store.Spec.Image {
+		deployment.Spec.Template.Spec.Containers[0].Image = store.Spec.Image
+		osc.ds.UpdateDeployment(deployment)
+		store.Status.State = longhorn.ObjectStoreStateStarting
+	}
+
+	if store.Spec.UiImage != "" && deployment.Spec.Template.Spec.Containers[1].Image != store.Spec.UiImage {
+		deployment.Spec.Template.Spec.Containers[1].Image = store.Spec.UiImage
+		osc.ds.UpdateDeployment(deployment)
+		store.Status.State = longhorn.ObjectStoreStateStarting
+	}
+
 	return nil
 }
 
@@ -863,7 +876,7 @@ func (osc *ObjectStoreController) createPV(
 			Capacity: map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceStorage: store.Spec.Storage.Size.DeepCopy(),
 			},
-			StorageClassName:              "",
+			StorageClassName:              types.ObjectStoreStorageClassName,
 			PersistentVolumeReclaimPolicy: corev1.PersistentVolumeReclaimRetain,
 			VolumeMode:                    persistentVolumeModePtr(corev1.PersistentVolumeFilesystem),
 			ClaimRef: &corev1.ObjectReference{
@@ -907,7 +920,7 @@ func (osc *ObjectStoreController) createPVC(
 					corev1.ResourceStorage: store.Spec.Storage.Size.DeepCopy(),
 				},
 			},
-			StorageClassName: strPtr(""),
+			StorageClassName: strPtr(types.ObjectStoreStorageClassName),
 			VolumeName:       genPVName(store),
 		},
 	}
@@ -1007,6 +1020,7 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 							Image: osc.getObjectStoreImage(store),
 							Args: append([]string{
 								"--rgw-backend-store", "sfs",
+								"--debug-rgw", fmt.Sprintf("%v", types.ObjectStoreLogLevel),
 								"--rgw_frontends", fmt.Sprintf(
 									"beast port=%d, status port=%d",
 									types.ObjectStoreContainerPort,
@@ -1023,6 +1037,12 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 									Name:          "status",
 									ContainerPort: types.ObjectStoreStatusContainerPort,
 									Protocol:      "TCP",
+								},
+							},
+							Env: []corev1.EnvVar{
+								{
+									Name:  "RGW_S3GW_ENABLE_TELEMETRY",
+									Value: "true",
 								},
 							},
 							EnvFrom: env,

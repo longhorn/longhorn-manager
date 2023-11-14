@@ -9,4 +9,8 @@ const (
 
 	ObjectStoreUIContainerPort = 8080
 	ObjectStoreUIServicePort   = 8080
+
+	ObjectStoreLogLevel = 2
+
+	ObjectStoreStorageClassName = "longhorn-objectstorage"
 )

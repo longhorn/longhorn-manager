@@ -4796,6 +4796,8 @@ func (s *DataStore) UpdateObjectStoreStatus(store *longhorn.ObjectStore) (*longh
 	return obj, nil
 }
 
+// ListObjectStores returns a list of copies of all object stores known to the
+// datastore.
 func (s *DataStore) ListObjectStores() (map[string]*longhorn.ObjectStore, error) {
 	list, err := s.ObjectStoreLister.List(labels.Everything())
 	if err != nil {

@@ -7,6 +7,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
@@ -39,7 +40,20 @@ func (s *Server) objectStoreList(apiContext *api.ApiContext) (*client.GenericCol
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get volume for %v", store.Name)
 		}
-		data = append(data, toObjectStoreResource(store, vol.Spec.Size, vol.Status.ActualSize))
+		dpls, err := s.m.ListDeploymentsByLabels(types.GetObjectStoreLabels(store))
+		if err != nil || len(dpls) == 0 {
+			return nil, errors.Wrapf(err, "failed to get deployment for %v", store.Name)
+		} else if len(dpls) > 1 {
+			return nil, errors.Wrapf(err, "found multiple deployments for %v", store.Name)
+		}
+		data = append(data,
+			toObjectStoreResource(store,
+				vol.Spec.Size,
+				vol.Status.ActualSize,
+				dpls[0].Spec.Template.Spec.Containers[0].Image,
+				dpls[0].Spec.Template.Spec.Containers[1].Image,
+			),
+		)
 	}
 
 	return &client.GenericCollection{
@@ -153,7 +167,7 @@ func (s *Server) ObjectStoreCreate(rw http.ResponseWriter, req *http.Request) (e
 	// Have to fake the size information because the actual volume isn't yet
 	// provisioned and can't be queried. These values are accurate enough for a
 	// start
-	resp := toObjectStoreResource(obj, (&size).Value(), 0)
+	resp := toObjectStoreResource(obj, (&size).Value(), 0, input.Image, input.UIImage)
 	apiContext.Write(resp)
 	return nil
 }
@@ -175,11 +189,39 @@ func (s *Server) ObjectStoreUpdate(rw http.ResponseWriter, req *http.Request) (e
 	if err != nil {
 		return err
 	}
-	// TODO: update all sensible properties here. e.g. the container images, etc.
-	store.Spec.TargetState = input.TargetState
+
+	if input.Size != "" {
+		oldSize, err := util.ConvertSize(store.Spec.Storage.Size)
+		size, err := util.ConvertSize(input.Size)
+		if err != nil {
+			return errors.Wrapf(err, "failed to parse size")
+		}
+
+		if oldSize > size {
+			return fmt.Errorf("new object store size must be larger than the old one: %v", oldSize)
+		}
+
+		_, err = util.RetryOnConflictCause(func() (interface{}, error) { return s.m.Expand(vol.Name, size) })
+		if err != nil {
+			return errors.Wrapf(err, "faild to expand volume")
+		}
+		store.Spec.Storage.Size = resource.MustParse(input.Size)
+	}
+
+	if input.TargetState != "" {
+		store.Spec.TargetState = input.TargetState
+	}
+
+	if input.Image != "" {
+		store.Spec.Image = input.Image
+	}
+
+	if input.UIImage != "" {
+		store.Spec.UiImage = input.UIImage
+	}
 
 	obj, err := s.m.UpdateObjectStore(store)
-	resp := toObjectStoreResource(obj, vol.Spec.Size, vol.Status.ActualSize)
+	resp := toObjectStoreResource(obj, vol.Spec.Size, vol.Status.ActualSize, input.Image, input.UIImage)
 	apiContext.Write(resp)
 	return nil
 }
