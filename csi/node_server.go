@@ -238,7 +238,7 @@ func (ns *NodeServer) nodeStageSharedVolume(volumeID, shareEndpoint, targetPath 
 		"retrans=5", // We try the io operation for a total of 5 times, before failing
 	}
 
-	mountOptions := append(defaultMountOptions, []string{"sof"}...)
+	mountOptions := append(defaultMountOptions, []string{"softerr"}...)
 	if len(customMountOptions) != 0 {
 		mountOptions = customMountOptions
 	}
