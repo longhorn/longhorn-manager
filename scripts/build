@@ -6,9 +6,16 @@ source $(dirname $0)/version
 cd $(dirname $0)/..
 
 mkdir -p bin
+
 [ "$(uname)" != "Darwin" ] && LINKFLAGS="-extldflags -static -s"
+
+if [ "$(git rev-parse --abbrev-ref HEAD)" = "master" ]; then
+    COVER="-cover"
+    COVERPKG="-coverpkg=github.com/longhorn/longhorn-manager/..."
+fi
+
 CGO_ENABLED=0 go build -ldflags \
   "-X github.com/longhorn/longhorn-manager/meta.Version=$VERSION \
    -X github.com/longhorn/longhorn-manager/meta.GitCommit=$GITCOMMIT \
    -X github.com/longhorn/longhorn-manager/meta.BuildDate=$BUILDDATE \
-   $LINKFLAGS" -o bin/longhorn-manager
+   $LINKFLAGS" "$COVER" "$COVERPKG" -o bin/longhorn-manager
