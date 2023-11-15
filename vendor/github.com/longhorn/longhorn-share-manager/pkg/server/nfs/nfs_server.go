@@ -95,9 +95,9 @@ func NewServer(logger logrus.FieldLogger, configPath, exportPath, volume string)
 		}
 	}
 
-	exporter, err := NewExporter(logger, configPath, exportPath)
+	exporter, err := NewExporter(configPath, exportPath)
 	if err != nil {
-		return nil, errors.Wrap(err, "error creating nfs exporter")
+		return nil, errors.Wrap(err, "failed to create nfs exporter")
 	}
 
 	return &Server{
