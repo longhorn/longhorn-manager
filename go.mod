@@ -1,6 +1,6 @@
 module github.com/longhorn/longhorn-manager
 
-go 1.20
+go 1.21
 
 replace (
 	k8s.io/api => k8s.io/api v0.27.1
@@ -46,11 +46,11 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.4.0-rc1.0.20230521151917-38ff27cc2cbb
 	github.com/longhorn/backupstore v0.0.0-20231025000449-5316e8b5320d
-	github.com/longhorn/go-iscsi-helper v0.0.0-20230802055236-4ec8edae3fad
+	github.com/longhorn/go-iscsi-helper v0.0.0-20231113050545-9df1e6b605c7
 	github.com/longhorn/go-spdk-helper v0.0.0-20231002161457-6c31a95f76e8
 	github.com/longhorn/longhorn-engine v1.5.2-0.20230906182804-9475221d9535
 	github.com/longhorn/longhorn-instance-manager v1.5.2-0.20231006022904-b2c88ac8080d
-	github.com/longhorn/longhorn-share-manager v1.5.2-0.20231005132006-8a167c38f7eb
+	github.com/longhorn/longhorn-share-manager v1.5.3-rc1.0.20231115141215-5109d5939e17
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.15.0
 	github.com/rancher/dynamiclistener v0.3.1
