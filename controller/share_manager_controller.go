@@ -458,6 +458,31 @@ func (c *ShareManagerController) unmountShareManagerVolume(sm *longhorn.ShareMan
 	}
 }
 
+// mountShareManagerVolume checks, exports and mounts the volume in the share manager pod.
+func (c *ShareManagerController) mountShareManagerVolume(sm *longhorn.ShareManager) error {
+	podName := types.GetShareManagerPodNameFromShareManagerName(sm.Name)
+	pod, err := c.ds.GetPod(podName)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return errors.Wrapf(err, "failed to retrieve pod %v for share manager from datastore", podName)
+	}
+
+	if pod == nil {
+		return fmt.Errorf("pod %v for share manager not found", podName)
+	}
+
+	client, err := engineapi.NewShareManagerClient(sm, pod)
+	if err != nil {
+		return errors.Wrapf(err, "failed to create share manager client for pod %v", podName)
+	}
+	defer client.Close()
+
+	if err := client.Mount(); err != nil {
+		return errors.Wrapf(err, "failed to mount share manager pod %v", podName)
+	}
+
+	return nil
+}
+
 func (c *ShareManagerController) detachShareManagerVolume(sm *longhorn.ShareManager, va *longhorn.VolumeAttachment) {
 	log := getLoggerForShareManager(c.logger, sm)
 
@@ -516,7 +541,7 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 		}
 		return nil
 	} else if sm.Status.State == longhorn.ShareManagerStateRunning {
-		return nil
+		return c.mountShareManagerVolume(sm)
 	}
 
 	// in a single node cluster, there is no other manager that can claim ownership so we are prevented from creation
