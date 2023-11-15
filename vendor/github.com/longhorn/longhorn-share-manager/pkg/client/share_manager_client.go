@@ -53,3 +53,11 @@ func (c *ShareManagerClient) Unmount() error {
 	_, err := c.client.Unmount(ctx, &empty.Empty{})
 	return err
 }
+
+func (c *ShareManagerClient) Mount() error {
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	_, err := c.client.Mount(ctx, &empty.Empty{})
+	return err
+}
