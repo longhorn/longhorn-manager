@@ -12,6 +12,7 @@ import (
 
 	"github.com/longhorn/backupstore"
 
+	btypes "github.com/longhorn/backupstore/types"
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -186,8 +187,8 @@ func parseBackupNamesList(output, volumeName string) ([]string, error) {
 	}
 
 	backupNames := []string{}
-	if volumeData.Messages[string(backupstore.MessageTypeError)] != "" {
-		return backupNames, errors.New(volumeData.Messages[string(backupstore.MessageTypeError)])
+	if volumeData.Messages[string(btypes.MessageTypeError)] != "" {
+		return backupNames, errors.New(volumeData.Messages[string(btypes.MessageTypeError)])
 	}
 	for backupName := range volumeData.Backups {
 		backupNames = append(backupNames, backupName)
