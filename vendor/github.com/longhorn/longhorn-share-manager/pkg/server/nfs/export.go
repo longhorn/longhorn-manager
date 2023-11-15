@@ -10,9 +10,9 @@ import (
 	"sync"
 	"syscall"
 
-	ps "github.com/mitchellh/go-ps"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
+
+	"github.com/longhorn/longhorn-share-manager/pkg/util"
 )
 
 type ExportMap struct {
@@ -21,8 +21,6 @@ type ExportMap struct {
 }
 
 type Exporter struct {
-	logger logrus.FieldLogger
-
 	*ExportMap
 
 	configPath string
@@ -34,7 +32,7 @@ type Exporter struct {
 
 var exportRegex = regexp.MustCompile("Export_Id = ([0-9]+);#Volume=(.+)")
 
-func NewExporter(logger logrus.FieldLogger, configPath, exportPath string) (*Exporter, error) {
+func NewExporter(configPath, exportPath string) (*Exporter, error) {
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		return nil, errors.Wrapf(err, "nfs server config file %v does not exist", configPath)
 	}
@@ -50,8 +48,6 @@ func NewExporter(logger logrus.FieldLogger, configPath, exportPath string) (*Exp
 	}
 
 	return &Exporter{
-		logger: logger,
-
 		ExportMap: &ExportMap{
 			idToVolume: exportIDs,
 			volumeToid: volToID,
@@ -160,7 +156,7 @@ func (e *Exporter) DeleteExport(volume string) error {
 func (e *Exporter) ReloadExport() error {
 	processName := "ganesha.nfsd"
 
-	process, err := findProcessByName(processName)
+	process, err := util.FindProcessByName(processName)
 	if err != nil {
 		return errors.Wrapf(err, "failed to find process %s", processName)
 	}
@@ -171,21 +167,6 @@ func (e *Exporter) ReloadExport() error {
 	}
 
 	return nil
-}
-
-func findProcessByName(name string) (*os.Process, error) {
-	processes, err := ps.Processes()
-	if err != nil {
-		return nil, fmt.Errorf("failed to list processes")
-	}
-
-	for _, process := range processes {
-		if process.Executable() == name {
-			return os.FindProcess(process.Pid())
-		}
-	}
-
-	return nil, fmt.Errorf("process %s is not found", name)
 }
 
 func generateExportBlock(exportBase, volume string, id uint16) string {
