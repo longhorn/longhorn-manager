@@ -1,6 +1,8 @@
 package objectstore
 
 import (
+	"fmt"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	"github.com/longhorn/longhorn-manager/webhook/common"
@@ -41,8 +43,23 @@ func (osm *objectStoreMutator) Create(req *admission.Request, obj runtime.Object
 	}
 
 	if store.Spec.TargetState == "" {
-		op := "{\"op\": \"add\", \"path\": \"/spec/targetState\", \"value\": \"running\"}"
-		ops = append(ops, op)
+		ops = append(ops, "{\"op\": \"add\", \"path\": \"/spec/targetState\", \"value\": \"running\"}")
+	}
+
+	if store.Spec.Image == "" {
+		imageSetting, err := osm.ds.GetSetting("object-store-image")
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to read setting \"object-store-image\"")
+		}
+		ops = append(ops, fmt.Sprintf("{\"op\": \"add\", \"path\": \"/spec/image\", \"value\": \"%v\"}", imageSetting.Value))
+	}
+
+	if store.Spec.UiImage == "" {
+		uiImageSetting, err := osm.ds.GetSetting("object-store-ui-image")
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to read setting \"object-store-ui-image\"")
+		}
+		ops = append(ops, fmt.Sprintf("{\"op\": \"add\", \"path\": \"/spec/uiImage\", \"value\": \"%v\"}", uiImageSetting.Value))
 	}
 
 	return ops, nil

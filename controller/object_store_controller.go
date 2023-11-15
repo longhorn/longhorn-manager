@@ -429,7 +429,7 @@ func (osc *ObjectStoreController) handleStarting(store *longhorn.ObjectStore) (e
 		return errors.Wrap(err, "API error while creating deployment")
 	}
 
-	svc, store, err := osc.getOrCreateService(store)
+	_, store, err = osc.getOrCreateService(store)
 	if err != nil {
 		return errors.Wrap(err, "API error while creating service")
 	}
@@ -460,10 +460,6 @@ func (osc *ObjectStoreController) handleStarting(store *longhorn.ObjectStore) (e
 		return nil
 	}
 
-	if err := osc.checkService(svc); err != nil {
-		return nil
-	}
-
 	logrus.Infof("object store %v is now running", store.Name)
 	store.Status.State = longhorn.ObjectStoreStateRunning
 	return nil
@@ -489,13 +485,9 @@ func (osc *ObjectStoreController) handleRunning(store *longhorn.ObjectStore) (er
 		return err
 	}
 
-	svc, err := osc.ds.GetService(osc.namespace, store.Name)
+	_, err = osc.ds.GetService(osc.namespace, store.Name)
 	if err != nil {
 		return errors.Wrapf(err, "failed to find service %v", store.Name)
-	} else if err = osc.checkService(svc); err != nil {
-		logrus.Errorf("Object Store running but service not ready")
-		store.Status.State = longhorn.ObjectStoreStateError
-		return err
 	}
 
 	pvc, err := osc.ds.GetPersistentVolumeClaim(osc.namespace, genPVCName(store))
@@ -604,7 +596,6 @@ func (osc *ObjectStoreController) getOrCreatePVC(store *longhorn.ObjectStore) (*
 	} else if datastore.ErrorIsNotFound(err) {
 		pvc, err = osc.createPVC(store)
 		if err != nil {
-			store.Status.State = longhorn.ObjectStoreStateError
 			return nil, store, errors.Wrap(err, "failed to create persistent volume claim")
 		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
 			store.Status.State = longhorn.ObjectStoreStateStarting
@@ -616,7 +607,7 @@ func (osc *ObjectStoreController) getOrCreatePVC(store *longhorn.ObjectStore) (*
 
 func (osc *ObjectStoreController) checkPVC(pvc *corev1.PersistentVolumeClaim) error {
 	if pvc.Status.Phase != corev1.ClaimBound {
-		return errors.New("PVC not bound")
+		return errors.New(fmt.Sprintf("PVC %v not bound", pvc.Name))
 	}
 	return nil
 }
@@ -631,7 +622,6 @@ func (osc *ObjectStoreController) getOrCreateVolume(
 	} else if datastore.ErrorIsNotFound(err) {
 		vol, err = osc.createVolume(store, pvc)
 		if err != nil {
-			store.Status.State = longhorn.ObjectStoreStateError
 			return nil, store, errors.Wrap(err, "failed to create longhorn volume")
 		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
 			store.Status.State = longhorn.ObjectStoreStateStarting
@@ -642,6 +632,9 @@ func (osc *ObjectStoreController) getOrCreateVolume(
 }
 
 func (osc *ObjectStoreController) checkVolume(vol *longhorn.Volume) error {
+	if vol.Status.Robustness == longhorn.VolumeRobustnessFaulted {
+		return errors.New(fmt.Sprintf("volume %v has failed", vol.Name))
+	}
 	return nil
 }
 
@@ -655,7 +648,6 @@ func (osc *ObjectStoreController) getOrCreatePV(
 	} else if datastore.ErrorIsNotFound(err) {
 		pv, err = osc.createPV(store, volume)
 		if err != nil {
-			store.Status.State = longhorn.ObjectStoreStateError
 			return nil, store, errors.Wrap(err, "failed to create persistent volume")
 		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
 			store.Status.State = longhorn.ObjectStoreStateStarting
@@ -666,6 +658,9 @@ func (osc *ObjectStoreController) getOrCreatePV(
 }
 
 func (osc *ObjectStoreController) checkPV(pv *corev1.PersistentVolume) error {
+	if pv.Status.Phase != corev1.VolumeBound {
+		return errors.New(fmt.Sprintf("PV %v not bound", pv.Name))
+	}
 	return nil
 }
 
@@ -676,7 +671,6 @@ func (osc *ObjectStoreController) getOrCreateDeployment(store *longhorn.ObjectSt
 	} else if datastore.ErrorIsNotFound(err) {
 		dpl, err = osc.createDeployment(store)
 		if err != nil {
-			store.Status.State = longhorn.ObjectStoreStateError
 			return nil, store, errors.Wrap(err, "failed to create deployment")
 		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
 			store.Status.State = longhorn.ObjectStoreStateStarting
@@ -717,7 +711,6 @@ func (osc *ObjectStoreController) getOrCreateService(store *longhorn.ObjectStore
 	} else if datastore.ErrorIsNotFound(err) {
 		svc, err = osc.createService(store)
 		if err != nil {
-			store.Status.State = longhorn.ObjectStoreStateError
 			return nil, store, errors.Wrap(err, "failed to create service")
 		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
 			store.Status.State = longhorn.ObjectStoreStateStarting
@@ -725,10 +718,6 @@ func (osc *ObjectStoreController) getOrCreateService(store *longhorn.ObjectStore
 		return svc, store, nil
 	}
 	return nil, store, err
-}
-
-func (osc *ObjectStoreController) checkService(svc *corev1.Service) error {
-	return nil
 }
 
 func (osc *ObjectStoreController) getOrCreateS3Endpoints(store *longhorn.ObjectStore) ([]*networkingv1.Ingress, *longhorn.ObjectStore, error) {

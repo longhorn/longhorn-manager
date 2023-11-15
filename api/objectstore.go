@@ -203,7 +203,7 @@ func (s *Server) ObjectStoreUpdate(rw http.ResponseWriter, req *http.Request) (e
 
 		_, err = util.RetryOnConflictCause(func() (interface{}, error) { return s.m.Expand(vol.Name, size) })
 		if err != nil {
-			return errors.Wrapf(err, "faild to expand volume")
+			return errors.Wrapf(err, "failed to expand volume")
 		}
 		store.Spec.Storage.Size = resource.MustParse(input.Size)
 	}
