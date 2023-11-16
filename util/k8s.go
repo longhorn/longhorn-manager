@@ -1,6 +1,8 @@
 package util
 
 import (
+	"fmt"
+
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -85,4 +87,20 @@ func GetImageOfDeploymentContainerWithName(dpl *appsv1.Deployment, name string) 
 		}
 	}
 	return ""
+}
+
+func SetImageOfDeploymentContainerWithName(dpl *appsv1.Deployment, name, image string) error {
+	idx := int(-1)
+
+	for i, container := range dpl.Spec.Template.Spec.Containers {
+		if container.Name == name {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return fmt.Errorf("could not find container with name %v", name)
+	}
+	dpl.Spec.Template.Spec.Containers[idx].Image = image
+	return nil
 }

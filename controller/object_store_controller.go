@@ -23,6 +23,7 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 )
 
 var (
@@ -696,14 +697,20 @@ func (osc *ObjectStoreController) checkDeployment(deployment *appsv1.Deployment,
 		return errors.New("deployment not ready")
 	}
 
-	if store.Spec.Image != "" && deployment.Spec.Template.Spec.Containers[0].Image != store.Spec.Image {
-		deployment.Spec.Template.Spec.Containers[0].Image = store.Spec.Image
+	if store.Spec.Image != "" && util.GetImageOfDeploymentContainerWithName(deployment, types.ObjectStoreContainerName) != store.Spec.Image {
+		err := util.SetImageOfDeploymentContainerWithName(deployment, types.ObjectStoreContainerName, store.Spec.Image)
+		if err != nil {
+			return err
+		}
 		osc.ds.UpdateDeployment(deployment)
 		store.Status.State = longhorn.ObjectStoreStateStarting
 	}
 
-	if store.Spec.UIImage != "" && deployment.Spec.Template.Spec.Containers[1].Image != store.Spec.UIImage {
-		deployment.Spec.Template.Spec.Containers[1].Image = store.Spec.UIImage
+	if store.Spec.UIImage != "" && util.GetImageOfDeploymentContainerWithName(deployment, types.ObjectStoreUIContainerName) != store.Spec.UIImage {
+		err := util.SetImageOfDeploymentContainerWithName(deployment, types.ObjectStoreUIContainerName, store.Spec.UIImage)
+		if err != nil {
+			return err
+		}
 		osc.ds.UpdateDeployment(deployment)
 		store.Status.State = longhorn.ObjectStoreStateStarting
 	}
