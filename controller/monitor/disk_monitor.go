@@ -153,15 +153,41 @@ func (m *NodeMonitor) getBackendStoreDrivers() []longhorn.BackendStoreDriverType
 	return backendStoreDrivers
 }
 
+func (m *NodeMonitor) getInstanceManagerRO(backendStoreDriver longhorn.BackendStoreDriverType) (*longhorn.InstanceManager, error) {
+	switch backendStoreDriver {
+	case longhorn.BackendStoreDriverTypeV1:
+		return m.ds.GetDefaultInstanceManagerByNodeRO(m.nodeName, backendStoreDriver)
+	case longhorn.BackendStoreDriverTypeV2:
+		im, err := m.ds.GetDefaultInstanceManagerByNodeRO(m.nodeName, backendStoreDriver)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get default instance manager for node %v", m.nodeName)
+		}
+		if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+			return im, nil
+		}
+		ims, err := m.ds.ListInstanceManagersByNodeRO(m.nodeName, longhorn.InstanceManagerTypeAllInOne, backendStoreDriver)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to list instance managers for node %v", m.nodeName)
+		}
+		for _, im := range ims {
+			if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+				return im, nil
+			}
+		}
+		return nil, fmt.Errorf("failed to find running instance manager for node %v", m.nodeName)
+	}
+	return nil, fmt.Errorf("unknown backend store driver %v", backendStoreDriver)
+}
+
 func (m *NodeMonitor) newDiskServiceClients(node *longhorn.Node) (map[longhorn.BackendStoreDriverType]*engineapi.DiskService, error) {
 	clients := map[longhorn.BackendStoreDriverType]*engineapi.DiskService{}
 
 	backendStoreDrivers := m.getBackendStoreDrivers()
 
 	for _, backendStoreDriver := range backendStoreDrivers {
-		im, err := m.ds.GetDefaultInstanceManagerByNodeRO(m.nodeName, backendStoreDriver)
+		im, err := m.getInstanceManagerRO(backendStoreDriver)
 		if err != nil {
-			return clients, errors.Wrapf(err, "failed to get default instance manager for node %v", m.nodeName)
+			return clients, errors.Wrapf(err, "failed to get instance manager for node %v", m.nodeName)
 		}
 
 		client, err := engineapi.NewDiskServiceClient(im, m.logger)
