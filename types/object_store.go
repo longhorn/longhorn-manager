@@ -12,5 +12,8 @@ const (
 
 	ObjectStoreLogLevel = 2
 
-	ObjectStoreStorageClassName = "longhorn-objectstorage"
+	ObjectStoreStorageClassName = "longhorn-objectstorage-static"
+
+	ObjectStoreContainerName   = "s3gw"
+	ObjectStoreUIContainerName = "s3gw-ui"
 )

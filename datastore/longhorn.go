@@ -258,7 +258,7 @@ func (s *DataStore) UpdateSetting(setting *longhorn.Setting) (*longhorn.Setting,
 	}
 
 	verifyUpdate(setting.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getSettingRO(name)
+		return s.GetSettingRO(name)
 	})
 	return obj, nil
 }
@@ -487,7 +487,7 @@ func (s *DataStore) AreAllVolumesDetachedState() (bool, error) {
 	return true, nil
 }
 
-func (s *DataStore) getSettingRO(name string) (*longhorn.Setting, error) {
+func (s *DataStore) GetSettingRO(name string) (*longhorn.Setting, error) {
 	return s.settingLister.Settings(s.namespace).Get(name)
 }
 
@@ -497,7 +497,7 @@ func (s *DataStore) GetSettingWithAutoFillingRO(sName types.SettingName) (*longh
 		return nil, fmt.Errorf("setting %v is not supported", sName)
 	}
 
-	resultRO, err := s.getSettingRO(string(sName))
+	resultRO, err := s.GetSettingRO(string(sName))
 	if err != nil {
 		if !ErrorIsNotFound(err) {
 			return nil, err
@@ -515,7 +515,7 @@ func (s *DataStore) GetSettingWithAutoFillingRO(sName types.SettingName) (*longh
 
 // GetSettingExact returns the Setting for the given name and namespace
 func (s *DataStore) GetSettingExact(sName types.SettingName) (*longhorn.Setting, error) {
-	resultRO, err := s.getSettingRO(string(sName))
+	resultRO, err := s.GetSettingRO(string(sName))
 	if err != nil {
 		return nil, err
 	}
@@ -524,7 +524,7 @@ func (s *DataStore) GetSettingExact(sName types.SettingName) (*longhorn.Setting,
 }
 
 func (s *DataStore) GetSettingExactRO(sName types.SettingName) (*longhorn.Setting, error) {
-	resultRO, err := s.getSettingRO(string(sName))
+	resultRO, err := s.GetSettingRO(string(sName))
 	if err != nil {
 		return nil, err
 	}

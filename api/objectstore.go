@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
+	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -50,8 +51,8 @@ func (s *Server) objectStoreList(apiContext *api.ApiContext) (*client.GenericCol
 			toObjectStoreResource(store,
 				vol.Spec.Size,
 				vol.Status.ActualSize,
-				dpls[0].Spec.Template.Spec.Containers[0].Image,
-				dpls[0].Spec.Template.Spec.Containers[1].Image,
+				util.GetImageOfDeploymentContainerWithName(dpls[0], types.ObjectStoreContainerName),
+				util.GetImageOfDeploymentContainerWithName(dpls[0], types.ObjectStoreUIContainerName),
 			),
 		)
 	}
@@ -64,13 +65,6 @@ func (s *Server) objectStoreList(apiContext *api.ApiContext) (*client.GenericCol
 	}, nil
 }
 
-func (s *Server) ObjectStoreGet(rw http.ResponseWriter, req *http.Request) (err error) {
-	apiContext := api.GetApiContext(req)
-	resp := &client.GenericCollection{}
-	apiContext.Write(resp)
-	return nil
-}
-
 func (s *Server) ObjectStoreCreate(rw http.ResponseWriter, req *http.Request) (err error) {
 	apiContext := api.GetApiContext(req)
 
@@ -79,8 +73,12 @@ func (s *Server) ObjectStoreCreate(rw http.ResponseWriter, req *http.Request) (e
 		return err
 	}
 
-	size := resource.MustParse(input.Size)
+	size, err := resource.ParseQuantity(input.Size)
+	if err != nil {
+		return err
+	}
 
+	logrus.Debugf("Creating Object Store of Size %v", size)
 	// find a new name for the secret and create a new secret to seed the
 	// credentials of the object store.
 	var secretName string = input.Name
@@ -117,8 +115,8 @@ func (s *Server) ObjectStoreCreate(rw http.ResponseWriter, req *http.Request) (e
 			Namespace: s.m.GetLonghornNamespace(),
 		},
 		Spec: longhorn.ObjectStoreSpec{
-			Storage: longhorn.ObjectStoreStorageSpec{
-				Size:                        size,
+			Size: size,
+			VolumeParameters: longhorn.ObjectStoreVolumeParameterSpec{
 				NumberOfReplicas:            input.NumberOfReplicas,
 				ReplicaSoftAntiAffinity:     input.ReplicaSoftAntiAffinity,
 				ReplicaZoneSoftAntiAffinity: input.ReplicaZoneSoftAntiAffinity,
@@ -191,7 +189,7 @@ func (s *Server) ObjectStoreUpdate(rw http.ResponseWriter, req *http.Request) (e
 	}
 
 	if input.Size != "" {
-		oldSize, err := util.ConvertSize(store.Spec.Storage.Size)
+		oldSize, err := util.ConvertSize(store.Spec.Size)
 		size, err := util.ConvertSize(input.Size)
 		if err != nil {
 			return errors.Wrapf(err, "failed to parse size")
@@ -205,7 +203,7 @@ func (s *Server) ObjectStoreUpdate(rw http.ResponseWriter, req *http.Request) (e
 		if err != nil {
 			return errors.Wrapf(err, "failed to expand volume")
 		}
-		store.Spec.Storage.Size = resource.MustParse(input.Size)
+		store.Spec.Size = resource.MustParse(input.Size)
 	}
 
 	if input.TargetState != "" {
@@ -217,7 +215,7 @@ func (s *Server) ObjectStoreUpdate(rw http.ResponseWriter, req *http.Request) (e
 	}
 
 	if input.UIImage != "" {
-		store.Spec.UiImage = input.UIImage
+		store.Spec.UIImage = input.UIImage
 	}
 
 	obj, err := s.m.UpdateObjectStore(store)

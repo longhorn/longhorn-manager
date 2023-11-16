@@ -198,7 +198,6 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("DELETE").Path("/v1/systemrestores/{name}").Handler(f(schemas, s.SystemRestoreDelete))
 
 	r.Methods("GET").Path("/v1/objectstores").Handler(f(schemas, s.ObjectStoreList))
-	r.Methods("GET").Path("/v1/objectstores/{name}").Handler(f(schemas, s.ObjectStoreGet))
 	r.Methods("POST").Path("/v1/objectstores").Handler(f(schemas, s.ObjectStoreCreate))
 	r.Methods("PUT").Path("/v1/objectstores/{name}").Handler(f(schemas, s.ObjectStoreUpdate))
 	r.Methods("DELETE").Path("/v1/objectstores/{name}").Handler(f(schemas, s.ObjectStoreDelete))

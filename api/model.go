@@ -541,13 +541,13 @@ type SnapshotCRListOutput struct {
 
 type ObjectStore struct {
 	client.Resource
-	Name          string                    `json:"name"`
-	State         longhorn.ObjectStoreState `json:"state"`
-	Endpoints     []string                  `json:"endpoints"`
-	AllocatedSize int64                     `json:"allocatedSize"`
-	OccupiedSize  int64                     `json:"occupiedSize"`
-	Image         string                    `json:"image"`
-	UIImage       string                    `json:"uiImage"`
+	Name       string                    `json:"name"`
+	State      longhorn.ObjectStoreState `json:"state"`
+	Endpoints  []string                  `json:"endpoints"`
+	Size       int64                     `json:"size"`       // number of bytes allocated
+	ActualSize int64                     `json:"actualSize"` // number of bytes occupied
+	Image      string                    `json:"image"`
+	UIImage    string                    `json:"uiImage"`
 }
 
 type ObjectStoreInput struct {
@@ -2215,19 +2215,19 @@ func sliceToMap(conditions []longhorn.Condition) map[string]longhorn.Condition {
 	return converted
 }
 
-func toObjectStoreResource(store *longhorn.ObjectStore, allocatedSize, occupiedSize int64, image, uiImage string) *ObjectStore {
+func toObjectStoreResource(store *longhorn.ObjectStore, size, actualSize int64, image, uiImage string) *ObjectStore {
 	return &ObjectStore{
 		Resource: client.Resource{
 			Id:   store.Name,
 			Type: "objectStore",
 		},
-		Name:          store.Name,
-		State:         store.Status.State,
-		Endpoints:     store.Status.Endpoints,
-		AllocatedSize: allocatedSize,
-		OccupiedSize:  occupiedSize,
-		Image:         image,
-		UIImage:       uiImage,
+		Name:       store.Name,
+		State:      store.Status.State,
+		Endpoints:  store.Status.Endpoints,
+		Size:       size,
+		ActualSize: actualSize,
+		Image:      image,
+		UIImage:    uiImage,
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 )
@@ -71,4 +72,17 @@ func GetNodeSelectorTermMatchExpressionNodeName(nodeName string) corev1.NodeSele
 			},
 		},
 	}
+}
+
+// GetImageOfDeploymentContainerWithName returns the image of the container with
+// the given name from the specification of the deployment dpl. It assumes that
+// a container with the given name exists and returns an empty string if there
+// is no such container
+func GetImageOfDeploymentContainerWithName(dpl *appsv1.Deployment, name string) string {
+	for _, container := range dpl.Spec.Template.Spec.Containers {
+		if container.Name == name {
+			return container.Image
+		}
+	}
+	return ""
 }

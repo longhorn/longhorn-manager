@@ -78,15 +78,14 @@ func osTestNewObjectStore(secret *corev1.Secret) *longhorn.ObjectStore {
 			Namespace: TestNamespace,
 		},
 		Spec: longhorn.ObjectStoreSpec{
-			Storage: longhorn.ObjectStoreStorageSpec{
-				Size: TestObjectStoreSize,
-			},
+			Size:             TestObjectStoreSize,
+			VolumeParameters: longhorn.ObjectStoreVolumeParameterSpec{},
 			Credentials: corev1.SecretReference{
 				Name:      secret.Name,
 				Namespace: secret.Namespace,
 			},
 			Image:       TestObjectStoreImage,
-			UiImage:     TestObjectStoreUIImage,
+			UIImage:     TestObjectStoreUIImage,
 			TargetState: "running",
 		},
 	}
@@ -343,8 +342,8 @@ func TestSyncNewObjectStore(t *testing.T) {
 		f.test.Errorf("%v != %v", (*store).Spec.Image, TestObjectStoreImage)
 	}
 
-	if check.Spec.UiImage != TestObjectStoreUIImage {
-		f.test.Errorf("%v != %v", (*store).Spec.UiImage, TestObjectStoreUIImage)
+	if check.Spec.UIImage != TestObjectStoreUIImage {
+		f.test.Errorf("%v != %v", (*store).Spec.UIImage, TestObjectStoreUIImage)
 	}
 
 	if check.Spec.TargetState != longhorn.ObjectStoreStateRunning {
@@ -388,8 +387,8 @@ func TestSyncUnkonwObjectStore(t *testing.T) {
 		f.test.Errorf("%v != %v", (*store).Spec.Image, TestObjectStoreImage)
 	}
 
-	if check.Spec.UiImage != TestObjectStoreUIImage {
-		f.test.Errorf("%v != %v", (*store).Spec.UiImage, TestObjectStoreUIImage)
+	if check.Spec.UIImage != TestObjectStoreUIImage {
+		f.test.Errorf("%v != %v", (*store).Spec.UIImage, TestObjectStoreUIImage)
 	}
 
 	if check.Spec.TargetState != longhorn.ObjectStoreStateRunning {

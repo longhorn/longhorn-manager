@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	"github.com/longhorn/longhorn-manager/webhook/common"
 	"github.com/pkg/errors"
@@ -47,15 +48,15 @@ func (osm *objectStoreMutator) Create(req *admission.Request, obj runtime.Object
 	}
 
 	if store.Spec.Image == "" {
-		imageSetting, err := osm.ds.GetSetting("object-store-image")
+		imageSetting, err := osm.ds.GetSettingRO(string(types.SettingNameObjectStoreImage))
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to read setting \"object-store-image\"")
 		}
 		ops = append(ops, fmt.Sprintf("{\"op\": \"add\", \"path\": \"/spec/image\", \"value\": \"%v\"}", imageSetting.Value))
 	}
 
-	if store.Spec.UiImage == "" {
-		uiImageSetting, err := osm.ds.GetSetting("object-store-ui-image")
+	if store.Spec.UIImage == "" {
+		uiImageSetting, err := osm.ds.GetSettingRO(string(types.SettingNameObjectStoreUIImage))
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to read setting \"object-store-ui-image\"")
 		}

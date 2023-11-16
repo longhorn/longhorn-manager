@@ -88,15 +88,7 @@ type ObjectStoreStatus struct {
 	Endpoints []string `json:"endpoints,omitempty"`
 }
 
-type ObjectStoreStorageSpec struct {
-	// The initial size of the volume to provision. The volume will be created
-	// such that it can be expanded if resources are available
-	//
-	// +kubebuilder:validation:Required
-	// +kubebuilder:example:=100Gi
-	// +optional
-	Size resource.Quantity `json:"size,omitempty"`
-
+type ObjectStoreVolumeParameterSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:default:=3
 	// +optional
@@ -177,11 +169,19 @@ type ObjectStoreSpec struct {
 	// +optional
 	Credentials corev1.SecretReference `json:"credentials"`
 
+	// The initial size of the volume to provision. The volume will be created
+	// such that it can be expanded if resources are available
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:example:=100Gi
+	// +optional
+	Size resource.Quantity `json:"size,omitempty"`
+
 	// The configuration of the longhorn volume providing storage for the object
 	// store.
 	//
 	// +optional
-	Storage ObjectStoreStorageSpec `json:"storage"`
+	VolumeParameters ObjectStoreVolumeParameterSpec `json:"volumeParameters"`
 
 	// A list of endpoint configurations to make the object store available at.
 	//
@@ -202,7 +202,7 @@ type ObjectStoreSpec struct {
 	// +optional
 	Image string `json:"image,omitempty"`
 	// +optional
-	UiImage string `json:"uiImage,omitempty"`
+	UIImage string `json:"uiImage,omitempty"`
 }
 
 // +genclient

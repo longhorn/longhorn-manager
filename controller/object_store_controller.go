@@ -76,7 +76,7 @@ func NewObjectStoreController(
 			UpdateFunc: func(old, cur interface{}) { osc.enqueueDeployment(cur) },
 			DeleteFunc: osc.enqueueDeployment,
 		},
-		OneHour,
+		0,
 	)
 
 	ds.VolumeInformer.AddEventHandlerWithResyncPeriod(
@@ -85,7 +85,7 @@ func NewObjectStoreController(
 			UpdateFunc: func(old, cur interface{}) { osc.enqueueVolume(cur) },
 			DeleteFunc: osc.enqueueVolume,
 		},
-		OneHour,
+		0,
 	)
 
 	ds.ServiceInformer.AddEventHandlerWithResyncPeriod(
@@ -94,7 +94,7 @@ func NewObjectStoreController(
 			UpdateFunc: func(old, cur interface{}) { osc.enqueueService(cur) },
 			DeleteFunc: osc.enqueueService,
 		},
-		OneHour,
+		0,
 	)
 
 	ds.PersistentVolumeClaimInformer.AddEventHandlerWithResyncPeriod(
@@ -103,7 +103,7 @@ func NewObjectStoreController(
 			UpdateFunc: func(old, cur interface{}) { osc.enqueuePVC(cur) },
 			DeleteFunc: osc.enqueuePVC,
 		},
-		OneHour,
+		0,
 	)
 
 	osc.cacheSyncs = append(osc.cacheSyncs, ds.ObjectStoreInformer.HasSynced)
@@ -320,7 +320,9 @@ func (osc *ObjectStoreController) reconcile(key string) error {
 			return nil // already deleted, nothing to do
 		}
 		return err
-	} else if !osc.isResponsibleFor(store) {
+	}
+
+	if !osc.isResponsibleFor(store) {
 		return nil
 	}
 
@@ -478,6 +480,7 @@ func (osc *ObjectStoreController) handleRunning(store *longhorn.ObjectStore) (er
 
 	dpl, err := osc.ds.GetDeployment(store.Name)
 	if err != nil {
+		store.Status.State = longhorn.ObjectStoreStateError
 		return errors.Wrapf(err, "failed to find deployment %v", store.Name)
 	} else if err = osc.checkDeployment(dpl, store); err != nil {
 		logrus.Errorf("Object Store running but deployment not ready")
@@ -487,11 +490,13 @@ func (osc *ObjectStoreController) handleRunning(store *longhorn.ObjectStore) (er
 
 	_, err = osc.ds.GetService(osc.namespace, store.Name)
 	if err != nil {
+		store.Status.State = longhorn.ObjectStoreStateError
 		return errors.Wrapf(err, "failed to find service %v", store.Name)
 	}
 
 	pvc, err := osc.ds.GetPersistentVolumeClaim(osc.namespace, genPVCName(store))
 	if err != nil {
+		store.Status.State = longhorn.ObjectStoreStateError
 		return errors.Wrapf(err, "failed to find pvc %v", genPVCName(store))
 	} else if err = osc.checkPVC(pvc); err != nil {
 		logrus.Errorf("Object Store running but PVC not bound")
@@ -501,6 +506,7 @@ func (osc *ObjectStoreController) handleRunning(store *longhorn.ObjectStore) (er
 
 	vol, err := osc.ds.GetVolume(genPVName(store))
 	if err != nil {
+		store.Status.State = longhorn.ObjectStoreStateError
 		return errors.Wrapf(err, "failed to find volume %v", genPVName(store))
 	} else if err = osc.checkVolume(vol); err != nil {
 		logrus.Errorf("Object Store running but Volume not ready")
@@ -510,6 +516,7 @@ func (osc *ObjectStoreController) handleRunning(store *longhorn.ObjectStore) (er
 
 	pv, err := osc.ds.GetPersistentVolume(genPVName(store))
 	if err != nil {
+		store.Status.State = longhorn.ObjectStoreStateError
 		return errors.Wrapf(err, "failed to find PV %v", genPVName(store))
 	} else if err = osc.checkPV(pv); err != nil {
 		logrus.Errorf("Object Store running but PV not ready")
@@ -695,8 +702,8 @@ func (osc *ObjectStoreController) checkDeployment(deployment *appsv1.Deployment,
 		store.Status.State = longhorn.ObjectStoreStateStarting
 	}
 
-	if store.Spec.UiImage != "" && deployment.Spec.Template.Spec.Containers[1].Image != store.Spec.UiImage {
-		deployment.Spec.Template.Spec.Containers[1].Image = store.Spec.UiImage
+	if store.Spec.UIImage != "" && deployment.Spec.Template.Spec.Containers[1].Image != store.Spec.UIImage {
+		deployment.Spec.Template.Spec.Containers[1].Image = store.Spec.UIImage
 		osc.ds.UpdateDeployment(deployment)
 		store.Status.State = longhorn.ObjectStoreStateStarting
 	}
@@ -827,22 +834,22 @@ func (osc *ObjectStoreController) createVolume(
 			OwnerReferences: osc.ds.GetOwnerReferencesForPVC(pvc),
 		},
 		Spec: longhorn.VolumeSpec{
-			Size:                        resourceAsInt64(store.Spec.Storage.Size),
+			Size:                        resourceAsInt64(store.Spec.Size),
 			Frontend:                    longhorn.VolumeFrontendBlockDev,
 			AccessMode:                  longhorn.AccessModeReadWriteOnce,
-			NumberOfReplicas:            store.Spec.Storage.NumberOfReplicas,
-			ReplicaSoftAntiAffinity:     store.Spec.Storage.ReplicaSoftAntiAffinity,
-			ReplicaZoneSoftAntiAffinity: store.Spec.Storage.ReplicaZoneSoftAntiAffinity,
-			ReplicaDiskSoftAntiAffinity: store.Spec.Storage.ReplicaDiskSoftAntiAffinity,
-			DiskSelector:                store.Spec.Storage.DiskSelector,
-			NodeSelector:                store.Spec.Storage.NodeSelector,
-			DataLocality:                store.Spec.Storage.DataLocality,
-			FromBackup:                  store.Spec.Storage.FromBackup,
-			StaleReplicaTimeout:         store.Spec.Storage.StaleReplicaTimeout,
-			ReplicaAutoBalance:          store.Spec.Storage.ReplicaAutoBalance,
-			RevisionCounterDisabled:     store.Spec.Storage.RevisionCounterDisabled,
-			UnmapMarkSnapChainRemoved:   store.Spec.Storage.UnmapMarkSnapChainRemoved,
-			BackendStoreDriver:          store.Spec.Storage.BackendStoreDriver,
+			NumberOfReplicas:            store.Spec.VolumeParameters.NumberOfReplicas,
+			ReplicaSoftAntiAffinity:     store.Spec.VolumeParameters.ReplicaSoftAntiAffinity,
+			ReplicaZoneSoftAntiAffinity: store.Spec.VolumeParameters.ReplicaZoneSoftAntiAffinity,
+			ReplicaDiskSoftAntiAffinity: store.Spec.VolumeParameters.ReplicaDiskSoftAntiAffinity,
+			DiskSelector:                store.Spec.VolumeParameters.DiskSelector,
+			NodeSelector:                store.Spec.VolumeParameters.NodeSelector,
+			DataLocality:                store.Spec.VolumeParameters.DataLocality,
+			FromBackup:                  store.Spec.VolumeParameters.FromBackup,
+			StaleReplicaTimeout:         store.Spec.VolumeParameters.StaleReplicaTimeout,
+			ReplicaAutoBalance:          store.Spec.VolumeParameters.ReplicaAutoBalance,
+			RevisionCounterDisabled:     store.Spec.VolumeParameters.RevisionCounterDisabled,
+			UnmapMarkSnapChainRemoved:   store.Spec.VolumeParameters.UnmapMarkSnapChainRemoved,
+			BackendStoreDriver:          store.Spec.VolumeParameters.BackendStoreDriver,
 		},
 	}
 
@@ -863,7 +870,7 @@ func (osc *ObjectStoreController) createPV(
 				corev1.ReadWriteOnce,
 			},
 			Capacity: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceStorage: store.Spec.Storage.Size.DeepCopy(),
+				corev1.ResourceStorage: store.Spec.Size.DeepCopy(),
 			},
 			StorageClassName:              types.ObjectStoreStorageClassName,
 			PersistentVolumeReclaimPolicy: corev1.PersistentVolumeReclaimRetain,
@@ -906,7 +913,7 @@ func (osc *ObjectStoreController) createPVC(
 			},
 			Resources: corev1.ResourceRequirements{
 				Requests: map[corev1.ResourceName]resource.Quantity{
-					corev1.ResourceStorage: store.Spec.Storage.Size.DeepCopy(),
+					corev1.ResourceStorage: store.Spec.Size.DeepCopy(),
 				},
 			},
 			StorageClassName: strPtr(types.ObjectStoreStorageClassName),
@@ -1005,7 +1012,7 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:  "s3gw",
+							Name:  types.ObjectStoreContainerName,
 							Image: osc.getObjectStoreImage(store),
 							Args: append([]string{
 								"--rgw-backend-store", "sfs",
@@ -1043,7 +1050,7 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 							},
 						},
 						{
-							Name:  "s3gw-ui",
+							Name:  types.ObjectStoreUIContainerName,
 							Image: osc.getObjectStoreUIImage(store),
 							Args:  []string{},
 							Ports: []corev1.ContainerPort{
@@ -1120,8 +1127,8 @@ func (osc *ObjectStoreController) getObjectStoreImage(store *longhorn.ObjectStor
 }
 
 func (osc *ObjectStoreController) getObjectStoreUIImage(store *longhorn.ObjectStore) string {
-	if store.Spec.UiImage != "" {
-		return store.Spec.UiImage
+	if store.Spec.UIImage != "" {
+		return store.Spec.UIImage
 	}
 	return osc.uiImage
 }
