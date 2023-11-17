@@ -37,16 +37,41 @@ func (s *Server) objectStoreList(apiContext *api.ApiContext) (*client.GenericCol
 	data := []interface{}{}
 
 	for _, store := range list {
-		vol, err := s.m.Get(fmt.Sprintf("pv-%v", store.Name))
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to get volume for %v", store.Name)
-		}
 		dpls, err := s.m.ListDeploymentsByLabels(types.GetObjectStoreLabels(store))
-		if err != nil || len(dpls) == 0 {
+		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get deployment for %v", store.Name)
+		} else if len(dpls) == 0 {
+			// this object store might still be in its creation phase
+			data = append(data,
+				toObjectStoreResource(store,
+					store.Spec.Size.Value(),
+					0,
+					store.Spec.Image,
+					store.Spec.UIImage,
+				),
+			)
+			continue
 		} else if len(dpls) > 1 {
 			return nil, errors.Wrapf(err, "found multiple deployments for %v", store.Name)
 		}
+
+		vol, err := s.m.Get(fmt.Sprintf("pv-%v", store.Name))
+		if err != nil {
+			if datastore.ErrorIsNotFound(err) {
+				// this object store might still be in its creation phase
+				data = append(data,
+					toObjectStoreResource(store,
+						store.Spec.Size.Value(),
+						0,
+						store.Spec.Image,
+						store.Spec.UIImage,
+					),
+				)
+				continue
+			}
+			return nil, errors.Wrapf(err, "failed to get volume for %v", store.Name)
+		}
+
 		data = append(data,
 			toObjectStoreResource(store,
 				vol.Spec.Size,

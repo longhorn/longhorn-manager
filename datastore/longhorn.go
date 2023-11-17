@@ -2414,6 +2414,25 @@ func (s *DataStore) ListNodes() (map[string]*longhorn.Node, error) {
 	return itemMap, nil
 }
 
+// ListNodesSorted returns a sorted list of nodes with a stable order
+func (s *DataStore) ListNodesSorted() ([]*longhorn.Node, error) {
+	nodeMap, err := s.ListNodes()
+	if err != nil {
+		return []*longhorn.Node{}, err
+	}
+
+	nodes := make([]*longhorn.Node, len(nodeMap))
+	names, err := util.SortKeys(nodeMap)
+	if err != nil {
+		return []*longhorn.Node{}, err
+	}
+
+	for i, name := range names {
+		nodes[i] = nodeMap[name]
+	}
+	return nodes, nil
+}
+
 // ListNodesRO returns a list of all Nodes for the given namespace,
 // the list contains direct references to the internal cache objects and should not be mutated.
 // Consider using this function when you can guarantee read only access and don't want the overhead of deep copies

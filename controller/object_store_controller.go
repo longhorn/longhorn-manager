@@ -303,7 +303,7 @@ func (osc *ObjectStoreController) enqueuePVC(obj interface{}) {
 	osc.queue.Add(key)
 }
 
-func (osc *ObjectStoreController) reconcile(key string) error {
+func (osc *ObjectStoreController) reconcile(key string) (err error) {
 	_, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		return err
@@ -341,20 +341,25 @@ func (osc *ObjectStoreController) reconcile(key string) error {
 
 	switch store.Status.State {
 	case longhorn.ObjectStoreStateStarting, longhorn.ObjectStoreStateError:
-		return osc.handleStarting(store)
+		err = osc.handleStarting(store)
 
 	case longhorn.ObjectStoreStateRunning:
-		return osc.handleRunning(store)
+		err = osc.handleRunning(store)
 
 	case longhorn.ObjectStoreStateStopping:
-		return osc.handleStopping(store)
+		err = osc.handleStopping(store)
 
 	case longhorn.ObjectStoreStateStopped:
-		return osc.handleStopped(store)
+		err = osc.handleStopped(store)
 
 	default:
-		return osc.initializeObjectStore(store)
+		err = osc.initializeObjectStore(store)
 	}
+
+	if err != nil {
+		store.Status.State = longhorn.ObjectStoreStateError
+	}
+	return err
 }
 
 // This function handles the case when the object store is in "Starting"
@@ -388,13 +393,13 @@ func (osc *ObjectStoreController) reconcile(key string) error {
 // |   │     └───────────────────────┘      │owns
 // |   │                                    ▼
 // |   │     ┌───────────────────────┐    ┌────────────────┐
-// |   └────►│ PersistentVolumeClaim │    │ ReplicaSet     │
-// |         └─┬─────────────────────┘    └─┬──────────────┘
-// |           │owns                        │owns
-// |           │                            │
-// |           ▼                            ▼
-// |         ┌───────────────────────┐    ┌────────────────┐
-// |         │ LonghornVolume        │    │ Pod            │
+// |   ├────►│ PersistentVolumeClaim │    │ ReplicaSet     │
+// |   │     └───────────────────────┘    └─┬──────────────┘
+// |   │                                    │owns
+// |   │                                    │
+// |   │                                    ▼
+// |   │     ┌───────────────────────┐    ┌────────────────┐
+// |   └────►│ LonghornVolume        │    │ Pod            │
 // |         └───────────────────────┘    └────────────────┘
 // |                                        ▲
 // |                                        │
@@ -406,19 +411,29 @@ func (osc *ObjectStoreController) reconcile(key string) error {
 // From this ownership relationship and the mount dependencies, the order of
 // creation of the resources is determined.
 func (osc *ObjectStoreController) handleStarting(store *longhorn.ObjectStore) (err error) {
-	pvc, store, err := osc.getOrCreatePVC(store)
+	vol, store, err := osc.getOrCreateVolume(store)
 	if err != nil {
-		return errors.Wrap(err, "API error while creating pvc")
-	}
-
-	vol, store, err := osc.getOrCreateVolume(store, pvc)
-	if err != nil {
+		// since the "owner" controller of an object store is the smae one that
+		// owns the volume, but we don't track it explicitly, there is a race when
+		// creating an object store between multiple controllers. Therefore
+		// multiple controllers will try to create the volume and we'll see the
+		// error "already exists", but need to just abort without error in that
+		// case, because it just means that the volume is now created by another
+		// controller and this one isn't responsible.
+		if datastore.ErrorIsAlreadyExists(err) {
+			return nil
+		}
 		return errors.Wrap(err, "API error while creating volume")
 	}
 
 	pv, store, err := osc.getOrCreatePV(store, vol)
 	if err != nil {
 		return errors.Wrap(err, "API error while creating volume")
+	}
+
+	pvc, store, err := osc.getOrCreatePVC(store)
+	if err != nil {
+		return errors.Wrap(err, "API error while creating pvc")
 	}
 
 	dpl, store, err := osc.getOrCreateDeployment(store)
@@ -441,15 +456,15 @@ func (osc *ObjectStoreController) handleStarting(store *longhorn.ObjectStore) (e
 		store.Status.Endpoints = append(store.Status.Endpoints, fmt.Sprintf("%v.%v.svc", store.Name, osc.namespace))
 	}
 
-	if err := osc.checkPVC(pvc); err != nil {
-		return nil
-	}
-
 	if err := osc.checkVolume(vol); err != nil {
 		return nil
 	}
 
 	if err := osc.checkPV(pv); err != nil {
+		return nil
+	}
+
+	if err := osc.checkPVC(pvc); err != nil {
 		return nil
 	}
 
@@ -474,48 +489,39 @@ func (osc *ObjectStoreController) handleRunning(store *longhorn.ObjectStore) (er
 	}
 
 	dpl, err := osc.ds.GetDeployment(store.Name)
-	if err != nil {
-		store.Status.State = longhorn.ObjectStoreStateError
+	if err != nil && datastore.ErrorIsNotFound(err) {
 		return errors.Wrapf(err, "failed to find deployment %v", store.Name)
 	} else if err = osc.checkDeployment(dpl, store); err != nil {
 		logrus.Errorf("Object Store running but deployment not ready")
-		store.Status.State = longhorn.ObjectStoreStateError
 		return err
 	}
 
 	_, err = osc.ds.GetService(osc.namespace, store.Name)
-	if err != nil {
-		store.Status.State = longhorn.ObjectStoreStateError
+	if err != nil && datastore.ErrorIsNotFound(err) {
 		return errors.Wrapf(err, "failed to find service %v", store.Name)
 	}
 
-	pvc, err := osc.ds.GetPersistentVolumeClaim(osc.namespace, genPVCName(store))
-	if err != nil {
-		store.Status.State = longhorn.ObjectStoreStateError
-		return errors.Wrapf(err, "failed to find pvc %v", genPVCName(store))
-	} else if err = osc.checkPVC(pvc); err != nil {
-		logrus.Errorf("Object Store running but PVC not bound")
-		store.Status.State = longhorn.ObjectStoreStateError
-		return err
-	}
-
 	vol, err := osc.ds.GetVolume(genPVName(store))
-	if err != nil {
-		store.Status.State = longhorn.ObjectStoreStateError
+	if err != nil && datastore.ErrorIsNotFound(err) {
 		return errors.Wrapf(err, "failed to find volume %v", genPVName(store))
 	} else if err = osc.checkVolume(vol); err != nil {
 		logrus.Errorf("Object Store running but Volume not ready")
-		store.Status.State = longhorn.ObjectStoreStateError
 		return err
 	}
 
 	pv, err := osc.ds.GetPersistentVolume(genPVName(store))
-	if err != nil {
-		store.Status.State = longhorn.ObjectStoreStateError
+	if err != nil && datastore.ErrorIsNotFound(err) {
 		return errors.Wrapf(err, "failed to find PV %v", genPVName(store))
 	} else if err = osc.checkPV(pv); err != nil {
 		logrus.Errorf("Object Store running but PV not ready")
-		store.Status.State = longhorn.ObjectStoreStateError
+		return err
+	}
+
+	pvc, err := osc.ds.GetPersistentVolumeClaim(osc.namespace, genPVCName(store))
+	if err != nil && datastore.ErrorIsNotFound(err) {
+		return errors.Wrapf(err, "failed to find pvc %v", genPVCName(store))
+	} else if err = osc.checkPVC(pvc); err != nil {
+		logrus.Errorf("Object Store running but PVC not bound")
 		return err
 	}
 
@@ -525,7 +531,6 @@ func (osc *ObjectStoreController) handleRunning(store *longhorn.ObjectStore) (er
 func (osc *ObjectStoreController) handleStopping(store *longhorn.ObjectStore) (err error) {
 	dpl, err := osc.ds.GetDeployment(store.Name)
 	if err != nil {
-		store.Status.State = longhorn.ObjectStoreStateError
 		return errors.Wrap(err, "failed find Deployment to stop")
 	} else if (*dpl).Spec.Replicas != nil && *((*dpl).Spec.Replicas) != 0 {
 		(*dpl).Spec.Replicas = int32Ptr(0)
@@ -595,7 +600,9 @@ func (osc *ObjectStoreController) getOrCreatePVC(store *longhorn.ObjectStore) (*
 	pvc, err := osc.ds.GetPersistentVolumeClaim(osc.namespace, genPVCName(store))
 	if err == nil {
 		return pvc, store, nil
-	} else if datastore.ErrorIsNotFound(err) {
+	}
+
+	if datastore.ErrorIsNotFound(err) {
 		pvc, err = osc.createPVC(store)
 		if err != nil {
 			return nil, store, errors.Wrap(err, "failed to create persistent volume claim")
@@ -604,6 +611,7 @@ func (osc *ObjectStoreController) getOrCreatePVC(store *longhorn.ObjectStore) (*
 		}
 		return pvc, store, nil
 	}
+
 	return nil, store, err
 }
 
@@ -616,13 +624,14 @@ func (osc *ObjectStoreController) checkPVC(pvc *corev1.PersistentVolumeClaim) er
 
 func (osc *ObjectStoreController) getOrCreateVolume(
 	store *longhorn.ObjectStore,
-	pvc *corev1.PersistentVolumeClaim,
 ) (*longhorn.Volume, *longhorn.ObjectStore, error) {
 	vol, err := osc.ds.GetVolume(genPVName(store))
 	if err == nil {
 		return vol, store, nil
-	} else if datastore.ErrorIsNotFound(err) {
-		vol, err = osc.createVolume(store, pvc)
+	}
+
+	if datastore.ErrorIsNotFound(err) {
+		vol, err = osc.createVolume(store)
 		if err != nil {
 			return nil, store, errors.Wrap(err, "failed to create longhorn volume")
 		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
@@ -630,6 +639,7 @@ func (osc *ObjectStoreController) getOrCreateVolume(
 		}
 		return vol, store, nil
 	}
+
 	return nil, store, err
 }
 
@@ -647,7 +657,9 @@ func (osc *ObjectStoreController) getOrCreatePV(
 	pv, err := osc.ds.GetPersistentVolume(genPVName(store))
 	if err == nil {
 		return pv, store, nil
-	} else if datastore.ErrorIsNotFound(err) {
+	}
+
+	if datastore.ErrorIsNotFound(err) {
 		pv, err = osc.createPV(store, volume)
 		if err != nil {
 			return nil, store, errors.Wrap(err, "failed to create persistent volume")
@@ -656,6 +668,7 @@ func (osc *ObjectStoreController) getOrCreatePV(
 		}
 		return pv, store, nil
 	}
+
 	return nil, store, err
 }
 
@@ -670,7 +683,9 @@ func (osc *ObjectStoreController) getOrCreateDeployment(store *longhorn.ObjectSt
 	dpl, err := osc.ds.GetDeployment(store.Name)
 	if err == nil {
 		return dpl, store, nil
-	} else if datastore.ErrorIsNotFound(err) {
+	}
+
+	if datastore.ErrorIsNotFound(err) {
 		dpl, err = osc.createDeployment(store)
 		if err != nil {
 			return nil, store, errors.Wrap(err, "failed to create deployment")
@@ -679,6 +694,7 @@ func (osc *ObjectStoreController) getOrCreateDeployment(store *longhorn.ObjectSt
 		}
 		return dpl, store, nil
 	}
+
 	return nil, store, err
 }
 
@@ -716,7 +732,9 @@ func (osc *ObjectStoreController) getOrCreateService(store *longhorn.ObjectStore
 	svc, err := osc.ds.GetService(osc.namespace, store.Name)
 	if err == nil {
 		return svc, store, nil
-	} else if datastore.ErrorIsNotFound(err) {
+	}
+
+	if datastore.ErrorIsNotFound(err) {
 		svc, err = osc.createService(store)
 		if err != nil {
 			return nil, store, errors.Wrap(err, "failed to create service")
@@ -725,6 +743,7 @@ func (osc *ObjectStoreController) getOrCreateService(store *longhorn.ObjectStore
 		}
 		return svc, store, nil
 	}
+
 	return nil, store, err
 }
 
@@ -822,7 +841,6 @@ func (osc *ObjectStoreController) getOrCreateS3Endpoints(store *longhorn.ObjectS
 
 func (osc *ObjectStoreController) createVolume(
 	store *longhorn.ObjectStore,
-	pvc *corev1.PersistentVolumeClaim,
 ) (*longhorn.Volume, error) {
 	vol := longhorn.Volume{
 		ObjectMeta: metav1.ObjectMeta{
@@ -832,7 +850,7 @@ func (osc *ObjectStoreController) createVolume(
 			Annotations: map[string]string{
 				types.LonghornAnnotationObjectStoreName: store.Name,
 			},
-			OwnerReferences: osc.ds.GetOwnerReferencesForPVC(pvc),
+			OwnerReferences: osc.ds.GetOwnerReferencesForObjectStore(store),
 		},
 		Spec: longhorn.VolumeSpec{
 			Size:                        resourceAsInt64(store.Spec.Size),
@@ -1115,9 +1133,22 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 func (osc *ObjectStoreController) isResponsibleFor(store *longhorn.ObjectStore) bool {
 	vol, err := osc.ds.GetVolumeRO(genPVName(store))
 	if err != nil {
-		// if there is no volume yet, assume that this controller is responsible.
+		// if there is no volume yet, the first available controller should take over for the
+		// time being. If there are no available nodes at all, we'll just take
+		// responsibility - but this shouldn't ever happen
 		if datastore.ErrorIsNotFound(err) {
-			return true
+			nodes, err := osc.ds.ListNodesSorted()
+			if err != nil || len(nodes) == 0 {
+				utilruntime.HandleError(fmt.Errorf("failed to find an owner for object store %v: %v", store.Name, err))
+			}
+
+			for _, node := range nodes {
+				unavailable, err := osc.ds.IsNodeDownOrDeletedOrMissingManager(node.Name)
+				if err == nil && !unavailable {
+					return osc.controllerID == node.Name
+				}
+			}
+			return true // this shouldn't ever happen
 		}
 		utilruntime.HandleError(fmt.Errorf("failed to find volume for object store %v: %v", store.Name, err))
 		return false
