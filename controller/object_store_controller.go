@@ -37,8 +37,6 @@ type ObjectStoreController struct {
 
 	namespace string
 	ds        *datastore.DataStore
-	s3gwImage string
-	uiImage   string
 
 	cacheSyncs []cache.InformerSynced
 }
@@ -50,16 +48,12 @@ func NewObjectStoreController(
 	kubeClient clientset.Interface,
 	controllerID string,
 	namespace string,
-	objectStoreImage string,
-	objectStoreUIImage string,
 ) *ObjectStoreController {
 	osc := &ObjectStoreController{
 		baseController: newBaseController("object-store", logger),
 		controllerID:   controllerID,
 		namespace:      namespace,
 		ds:             ds,
-		s3gwImage:      objectStoreImage,
-		uiImage:        objectStoreUIImage,
 	}
 
 	ds.ObjectStoreInformer.AddEventHandlerWithResyncPeriod(

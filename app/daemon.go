@@ -187,8 +187,6 @@ func startManager(c *cli.Context) error {
 		managerImage,
 		backingImageManagerImage,
 		shareManagerImage,
-		objectStoreImage,
-		objectStoreUIImage,
 		kubeconfigPath,
 		meta.Version,
 		proxyConnCounter)

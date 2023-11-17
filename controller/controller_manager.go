@@ -38,8 +38,6 @@ func StartControllers(
 	managerImage,
 	backingImageManagerImage,
 	shareManagerImage,
-	objectStoreImage,
-	objectStoreUIImage,
 	kubeconfigPath,
 	version string,
 	proxyConnCounter util.Counter) (*WebsocketController, error) {
@@ -78,7 +76,7 @@ func StartControllers(
 	volumeEvictionController := NewVolumeEvictionController(logger, ds, scheme, kubeClient, controllerID, namespace)
 	volumeCloneController := NewVolumeCloneController(logger, ds, scheme, kubeClient, controllerID, namespace)
 	volumeExpansionController := NewVolumeExpansionController(logger, ds, scheme, kubeClient, controllerID, namespace)
-	objectStoreController := NewObjectStoreController(logger, ds, scheme, kubeClient, controllerID, namespace, objectStoreImage, objectStoreUIImage)
+	objectStoreController := NewObjectStoreController(logger, ds, scheme, kubeClient, controllerID, namespace)
 
 	// Kubernetes controllers
 	kubernetesPVController := NewKubernetesPVController(logger, ds, scheme, kubeClient, controllerID)

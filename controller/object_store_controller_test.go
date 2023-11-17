@@ -182,8 +182,7 @@ func (f *fixture) newObjectStoreController(ctx *context.Context) *ObjectStoreCon
 		f.kubeClient,
 		TestObjectStoreControllerID,
 		TestNamespace,
-		TestObjectStoreImage,
-		TestObjectStoreUIImage)
+	)
 
 	for index := range c.cacheSyncs {
 		c.cacheSyncs[index] = alwaysReady
