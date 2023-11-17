@@ -413,7 +413,7 @@ func (osc *ObjectStoreController) reconcile(key string) (err error) {
 func (osc *ObjectStoreController) handleStarting(store *longhorn.ObjectStore) (err error) {
 	vol, store, err := osc.getOrCreateVolume(store)
 	if err != nil {
-		// since the "owner" controller of an object store is the smae one that
+		// since the "owner" controller of an object store is the same one that
 		// owns the volume, but we don't track it explicitly, there is a race when
 		// creating an object store between multiple controllers. Therefore
 		// multiple controllers will try to create the volume and we'll see the
