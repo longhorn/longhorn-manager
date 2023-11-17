@@ -29,6 +29,7 @@ import (
 
 	"github.com/longhorn/backupstore"
 
+	imtypes "github.com/longhorn/longhorn-instance-manager/pkg/types"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/constant"
@@ -1380,6 +1381,9 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 		}
 	}
 
+	// check volume mount status
+	c.requestRemountIfFileSystemReadOnly(v, e)
+
 	if err := c.reconcileAttachDetachStateMachine(v, e, rs, isNewVolume, log); err != nil {
 		return err
 	}
@@ -1401,6 +1405,20 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 	}
 
 	return c.checkAndFinishVolumeRestore(v, e, rs)
+}
+
+func (c *VolumeController) requestRemountIfFileSystemReadOnly(v *longhorn.Volume, e *longhorn.Engine) {
+	log := getLoggerForVolume(c.logger, v)
+	if v.Status.State == longhorn.VolumeStateAttached && e.Status.CurrentState == longhorn.InstanceStateRunning {
+		fileSystemReadOnlyCondition := types.GetCondition(e.Status.Conditions, imtypes.EngineConditionFilesystemReadOnly)
+
+		if fileSystemReadOnlyCondition.Status == longhorn.ConditionStatusTrue {
+			v.Status.RemountRequestedAt = c.nowHandler()
+			log.Infof("Volume request remount at %v due to engine detected read-only filesystem", v.Status.RemountRequestedAt)
+			msg := fmt.Sprintf("Volume %s requested remount at %v due to engine detected read-only filesystem", v.Name, v.Status.RemountRequestedAt)
+			c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonRemount, msg)
+		}
+	}
 }
 
 func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, isNewVolume bool, log *logrus.Entry) error {
