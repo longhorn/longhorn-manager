@@ -15,8 +15,8 @@ func (m *VolumeManager) ListSecrets() ([]*corev1.Secret, error) {
 	return secrets, err
 }
 
-func (m *VolumeManager) GetSecret(namespace, name string) (*corev1.Secret, error) {
-	return m.ds.GetSecret(namespace, name)
+func (m *VolumeManager) GetSecretRO(namespace, name string) (*corev1.Secret, error) {
+	return m.ds.GetSecretRO(namespace, name)
 }
 
 func (m *VolumeManager) CreateSecret(secret *corev1.Secret) (*corev1.Secret, error) {

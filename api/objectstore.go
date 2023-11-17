@@ -78,25 +78,17 @@ func (s *Server) ObjectStoreCreate(rw http.ResponseWriter, req *http.Request) (e
 		return err
 	}
 
-	logrus.Debugf("Creating Object Store of Size %v", size)
-	// find a new name for the secret and create a new secret to seed the
-	// credentials of the object store.
-	var secretName string = input.Name
-	for {
-		_, err := s.m.GetSecret(s.m.GetLonghornNamespace(), secretName)
-		if err != nil && datastore.ErrorIsNotFound(err) {
-			break
-		} else if err != nil {
-			return errors.Wrapf(err, "API error while searching for secret %v", secretName)
-		} else {
-			secretName = fmt.Sprintf("%v-%v", input.Name, util.RandomString(6))
-		}
-	}
+	// This whole lot is quite crappy. TODO move it to a separate function or
+	// rethink the logic here some more
+	labels := types.GetBaseLabelsForSystemManagedComponent()
+	labels[types.GetLonghornLabelComponentKey()] = types.LonghornLabelObjectStore
+	labels[types.GetLonghornLabelKey(types.LonghornLabelObjectStore)] = input.Name
 
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
+			Name:      input.Name,
 			Namespace: s.m.GetLonghornNamespace(),
+			Labels:    labels,
 		},
 		StringData: map[string]string{
 			"RGW_DEFAULT_USER_ACCESS_KEY": input.AccessKey,
@@ -104,9 +96,36 @@ func (s *Server) ObjectStoreCreate(rw http.ResponseWriter, req *http.Request) (e
 		},
 	}
 
-	_, err = s.m.CreateSecret(secret)
-	if err != nil {
-		return errors.Wrapf(err, "failed to create secret %v", input.Name)
+	logrus.Debugf("Creating Object Store of Size %v", size)
+	sec, err := s.m.GetSecretRO(s.m.GetLonghornNamespace(), input.Name)
+	if err != nil && datastore.ErrorIsNotFound(err) {
+		// secret doesn't exist --> create it
+		_, err = s.m.CreateSecret(secret)
+		if err != nil {
+			return errors.Wrapf(err, "failed to create secret %v", input.Name)
+		}
+	} else if err != nil {
+		// api error --> abort
+		return errors.Wrapf(err, "API error while searching for secret %v", input.Name)
+	} else {
+		if sec.Labels == nil {
+			// secret was created by user --> error
+			return fmt.Errorf("secret %v already exists, please clean up", secret.Name)
+		}
+
+		labelObjStore, okLabelObjStore := sec.Labels[types.GetLonghornLabelComponentKey()]
+		labelManagedBy, okLabelManagedBy := sec.Labels[types.LonghornLabelManagedBy]
+		if okLabelObjStore && labelObjStore == types.LonghornLabelObjectStore &&
+			okLabelManagedBy && labelManagedBy == types.ControlPlaneName {
+			// secret is managed by longhorn manager --> adopt this secret
+			_, err = s.m.UpdateSecret(secret)
+			if err != nil {
+				return errors.Wrapf(err, "api error while adopting secret %v", input.Name)
+			}
+		} else {
+			// secret was created by user --> error
+			return fmt.Errorf("secret %v already exists, please clean up", secret.Name)
+		}
 	}
 
 	store := &longhorn.ObjectStore{

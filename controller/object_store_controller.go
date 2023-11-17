@@ -697,7 +697,7 @@ func (osc *ObjectStoreController) checkDeployment(deployment *appsv1.Deployment,
 		return errors.New("deployment not ready")
 	}
 
-	if store.Spec.Image != "" && util.GetImageOfDeploymentContainerWithName(deployment, types.ObjectStoreContainerName) != store.Spec.Image {
+	if util.GetImageOfDeploymentContainerWithName(deployment, types.ObjectStoreContainerName) != store.Spec.Image {
 		err := util.SetImageOfDeploymentContainerWithName(deployment, types.ObjectStoreContainerName, store.Spec.Image)
 		if err != nil {
 			return err
@@ -706,7 +706,7 @@ func (osc *ObjectStoreController) checkDeployment(deployment *appsv1.Deployment,
 		store.Status.State = longhorn.ObjectStoreStateStarting
 	}
 
-	if store.Spec.UIImage != "" && util.GetImageOfDeploymentContainerWithName(deployment, types.ObjectStoreUIContainerName) != store.Spec.UIImage {
+	if util.GetImageOfDeploymentContainerWithName(deployment, types.ObjectStoreUIContainerName) != store.Spec.UIImage {
 		err := util.SetImageOfDeploymentContainerWithName(deployment, types.ObjectStoreUIContainerName, store.Spec.UIImage)
 		if err != nil {
 			return err
@@ -1020,7 +1020,7 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 					Containers: []corev1.Container{
 						{
 							Name:  types.ObjectStoreContainerName,
-							Image: osc.getObjectStoreImage(store),
+							Image: store.Spec.Image,
 							Args: append([]string{
 								"--rgw-backend-store", "sfs",
 								"--debug-rgw", fmt.Sprintf("%v", types.ObjectStoreLogLevel),
@@ -1058,7 +1058,7 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 						},
 						{
 							Name:  types.ObjectStoreUIContainerName,
-							Image: osc.getObjectStoreUIImage(store),
+							Image: store.Spec.UIImage,
 							Args:  []string{},
 							Ports: []corev1.ContainerPort{
 								{
@@ -1075,6 +1075,10 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 								{
 									Name:  "S3GW_UI_PATH",
 									Value: fmt.Sprintf("/objectstore/%v", store.Name),
+								},
+								{
+									Name:  "S3GW_INSTANCE_ID",
+									Value: store.Name,
 								},
 							},
 						},
@@ -1116,28 +1120,16 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 // created.
 func (osc *ObjectStoreController) isResponsibleFor(store *longhorn.ObjectStore) bool {
 	vol, err := osc.ds.GetVolumeRO(genPVName(store))
-	if err != nil && !datastore.ErrorIsNotFound(err) {
+	if err != nil {
+		// if there is no volume yet, assume that this controller is responsible.
+		if datastore.ErrorIsNotFound(err) {
+			return true
+		}
 		utilruntime.HandleError(fmt.Errorf("failed to find volume for object store %v: %v", store.Name, err))
 		return false
-	} else if err != nil {
-		return true
 	}
 
 	return osc.controllerID == vol.Status.OwnerID
-}
-
-func (osc *ObjectStoreController) getObjectStoreImage(store *longhorn.ObjectStore) string {
-	if store.Spec.Image != "" {
-		return store.Spec.Image
-	}
-	return osc.s3gwImage
-}
-
-func (osc *ObjectStoreController) getObjectStoreUIImage(store *longhorn.ObjectStore) string {
-	if store.Spec.UIImage != "" {
-		return store.Spec.UIImage
-	}
-	return osc.uiImage
 }
 
 func genPVName(store *longhorn.ObjectStore) string {

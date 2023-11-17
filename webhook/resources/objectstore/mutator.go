@@ -48,19 +48,19 @@ func (osm *objectStoreMutator) Create(req *admission.Request, obj runtime.Object
 	}
 
 	if store.Spec.Image == "" {
-		imageSetting, err := osm.ds.GetSettingRO(string(types.SettingNameObjectStoreImage))
+		imageSetting, err := osm.ds.GetSettingValueExisted(types.SettingNameObjectStoreImage)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to read setting \"object-store-image\"")
+			return nil, err
 		}
-		ops = append(ops, fmt.Sprintf("{\"op\": \"add\", \"path\": \"/spec/image\", \"value\": \"%v\"}", imageSetting.Value))
+		ops = append(ops, fmt.Sprintf("{\"op\": \"add\", \"path\": \"/spec/image\", \"value\": \"%v\"}", imageSetting))
 	}
 
 	if store.Spec.UIImage == "" {
-		uiImageSetting, err := osm.ds.GetSettingRO(string(types.SettingNameObjectStoreUIImage))
+		uiImageSetting, err := osm.ds.GetSettingValueExisted(types.SettingNameObjectStoreUIImage)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to read setting \"object-store-ui-image\"")
+			return nil, err
 		}
-		ops = append(ops, fmt.Sprintf("{\"op\": \"add\", \"path\": \"/spec/uiImage\", \"value\": \"%v\"}", uiImageSetting.Value))
+		ops = append(ops, fmt.Sprintf("{\"op\": \"add\", \"path\": \"/spec/uiImage\", \"value\": \"%v\"}", uiImageSetting))
 	}
 
 	return ops, nil

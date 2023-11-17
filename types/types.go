@@ -198,12 +198,15 @@ const (
 
 	DefaultDiskPrefix = "default-disk-"
 
-	DeprecatedProvisionerName          = "rancher.io/longhorn"
-	DepracatedDriverName               = "io.rancher.longhorn"
-	DefaultStorageClassConfigMapName   = "longhorn-storageclass"
-	DefaultDefaultSettingConfigMapName = "longhorn-default-setting"
-	DefaultStorageClassName            = "longhorn"
-	ControlPlaneName                   = "longhorn-manager"
+	DeprecatedProvisionerName                   = "rancher.io/longhorn"
+	DepracatedDriverName                        = "io.rancher.longhorn"
+	DefaultStorageClassConfigMapName            = "longhorn-storageclass"
+	DefaultObjectStoreStorageClassConfigMapName = "longhorn-objectstorage-static-storageclass"
+	DefaultDefaultSettingConfigMapName          = "longhorn-default-setting"
+	DefaultStorageClassName                     = "longhorn"
+	ControlPlaneName                            = "longhorn-manager"
+
+	StorageClassConfigMapKey = "storageclass.yaml"
 
 	DefaultRecurringJobConcurrency = 10
 
