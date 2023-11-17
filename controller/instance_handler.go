@@ -171,6 +171,14 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		if status.CurrentImage == "" {
 			status.CurrentImage = spec.Image
 		}
+		for condition, flag := range instance.Status.Conditions {
+			conditionStatus := longhorn.ConditionStatusFalse
+			if flag {
+				conditionStatus = longhorn.ConditionStatusTrue
+			}
+			status.Conditions = types.SetCondition(status.Conditions, condition, conditionStatus, "", "")
+		}
+
 	case longhorn.InstanceStateStopping:
 		if status.Started {
 			status.CurrentState = longhorn.InstanceStateError

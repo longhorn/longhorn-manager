@@ -250,11 +250,12 @@ func parseInstance(p *imapi.Instance) *longhorn.InstanceProcess {
 			BackendStoreDriver: longhorn.BackendStoreDriverType(p.BackendStoreDriver),
 		},
 		Status: longhorn.InstanceProcessStatus{
-			Type:      getTypeForInstance(longhorn.InstanceType(p.Type), p.PortCount),
-			State:     longhorn.InstanceState(p.InstanceStatus.State),
-			ErrorMsg:  p.InstanceStatus.ErrorMsg,
-			PortStart: p.InstanceStatus.PortStart,
-			PortEnd:   p.InstanceStatus.PortEnd,
+			Type:       getTypeForInstance(longhorn.InstanceType(p.Type), p.PortCount),
+			State:      longhorn.InstanceState(p.InstanceStatus.State),
+			ErrorMsg:   p.InstanceStatus.ErrorMsg,
+			Conditions: p.InstanceStatus.Conditions,
+			PortStart:  p.InstanceStatus.PortStart,
+			PortEnd:    p.InstanceStatus.PortEnd,
 
 			// These fields are not used, maybe we can deprecate them later.
 			Listen:   "",
@@ -274,11 +275,12 @@ func parseProcess(p *imapi.Process) *longhorn.InstanceProcess {
 			BackendStoreDriver: longhorn.BackendStoreDriverTypeV1,
 		},
 		Status: longhorn.InstanceProcessStatus{
-			Type:      getTypeForProcess(p.PortCount),
-			State:     longhorn.InstanceState(p.ProcessStatus.State),
-			ErrorMsg:  p.ProcessStatus.ErrorMsg,
-			PortStart: p.ProcessStatus.PortStart,
-			PortEnd:   p.ProcessStatus.PortEnd,
+			Type:       getTypeForProcess(p.PortCount),
+			State:      longhorn.InstanceState(p.ProcessStatus.State),
+			ErrorMsg:   p.ProcessStatus.ErrorMsg,
+			Conditions: p.ProcessStatus.Conditions,
+			PortStart:  p.ProcessStatus.PortStart,
+			PortEnd:    p.ProcessStatus.PortEnd,
 		},
 	}
 }
