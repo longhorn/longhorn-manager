@@ -1533,7 +1533,7 @@ func (nc *NodeController) shouldEvictReplica(node *longhorn.Node, kubeNode *core
 		return false, constant.EventReasonEvictionCanceled, nil
 	}
 
-	pdbProtectedHealthyReplicas, err := nc.ds.ListVolumePDBProtectedHealthyReplicas(replica.Spec.VolumeName)
+	pdbProtectedHealthyReplicas, err := nc.ds.ListVolumePDBProtectedHealthyReplicasRO(replica.Spec.VolumeName)
 	if err != nil {
 		return false, "", err
 	}

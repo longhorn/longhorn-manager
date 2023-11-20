@@ -1451,9 +1451,9 @@ func IsAvailableHealthyReplica(r *longhorn.Replica) bool {
 	return true
 }
 
-func (s *DataStore) ListVolumePDBProtectedHealthyReplicas(volumeName string) (map[string]*longhorn.Replica, error) {
+func (s *DataStore) ListVolumePDBProtectedHealthyReplicasRO(volumeName string) (map[string]*longhorn.Replica, error) {
 	pdbProtectedHealthyReplicas := map[string]*longhorn.Replica{}
-	replicas, err := s.ListVolumeReplicas(volumeName)
+	replicas, err := s.ListVolumeReplicasRO(volumeName)
 	if err != nil {
 		return nil, err
 	}

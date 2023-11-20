@@ -754,7 +754,7 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 		hasPDBOnAnotherNode := false
 		isUnusedReplicaOnCurrentNode := false
 
-		pdbProtectedHealthyReplicas, err := imc.ds.ListVolumePDBProtectedHealthyReplicas(replica.Spec.VolumeName)
+		pdbProtectedHealthyReplicas, err := imc.ds.ListVolumePDBProtectedHealthyReplicasRO(replica.Spec.VolumeName)
 		if err != nil {
 			return false, err
 		}
