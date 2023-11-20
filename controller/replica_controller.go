@@ -240,11 +240,18 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 			return errors.Wrapf(err, "failed to cleanup the related replica instance before deleting replica %v", replica.Name)
 		}
 
+		rs, err := rc.ds.ListReplicasByNodeRO(replica.Spec.NodeID)
+		if err != nil {
+			return errors.Wrapf(err, "failed to list replicas by node before deleting replica %v", replica.Name)
+		}
+
 		if replica.Spec.NodeID != "" && replica.Spec.NodeID != rc.controllerID {
 			log.Warn("Failed to cleanup replica's data because the replica's data is not on this node")
 		} else if replica.Spec.NodeID != "" {
 			if replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
-				if replica.Spec.Active && dataPath != "" {
+				// Clean up the data directory if this is the active replica or if this inactive replica is the only one
+				// using it.
+				if (replica.Spec.Active || !hasMatchingReplica(replica, rs)) && dataPath != "" {
 					// prevent accidentally deletion
 					if !strings.Contains(filepath.Base(filepath.Clean(dataPath)), "-") {
 						return fmt.Errorf("%v doesn't look like a replica data path", dataPath)
@@ -331,7 +338,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		}
 	}
 
-	im, err := rc.ds.GetInstanceManagerByInstance(obj)
+	im, err := rc.ds.GetInstanceManagerByInstanceRO(obj)
 	if err != nil {
 		return nil, err
 	}
@@ -341,7 +348,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 	}
 	defer c.Close()
 
-	v, err := rc.ds.GetVolume(r.Spec.VolumeName)
+	v, err := rc.ds.GetVolumeRO(r.Spec.VolumeName)
 	if err != nil {
 		return nil, err
 	}
@@ -638,12 +645,12 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstancePro
 		err error
 	)
 	if r.Status.InstanceManagerName == "" {
-		im, err = rc.ds.GetInstanceManagerByInstance(obj)
+		im, err = rc.ds.GetInstanceManagerByInstanceRO(obj)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		im, err = rc.ds.GetInstanceManager(r.Status.InstanceManagerName)
+		im, err = rc.ds.GetInstanceManagerRO(r.Status.InstanceManagerName)
 		if err != nil {
 			return nil, err
 		}
@@ -674,7 +681,7 @@ func (rc *ReplicaController) LogInstance(ctx context.Context, obj interface{}) (
 		return nil, nil, fmt.Errorf("invalid object for replica instance log: %v", obj)
 	}
 
-	im, err := rc.ds.GetInstanceManager(r.Status.InstanceManagerName)
+	im, err := rc.ds.GetInstanceManagerRO(r.Status.InstanceManagerName)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -743,7 +750,7 @@ func (rc *ReplicaController) enqueueNodeAddOrDelete(obj interface{}) {
 	for diskName := range node.Spec.Disks {
 		if diskStatus, existed := node.Status.DiskStatus[diskName]; existed {
 			for replicaName := range diskStatus.ScheduledReplica {
-				if replica, err := rc.ds.GetReplica(replicaName); err == nil {
+				if replica, err := rc.ds.GetReplicaRO(replicaName); err == nil {
 					rc.enqueueReplica(replica)
 				}
 			}
@@ -873,4 +880,13 @@ func (rc *ReplicaController) enqueueAllRebuildingReplicaOnCurrentNode() {
 
 func (rc *ReplicaController) isResponsibleFor(r *longhorn.Replica) bool {
 	return isControllerResponsibleFor(rc.controllerID, rc.ds, r.Name, r.Spec.NodeID, r.Status.OwnerID)
+}
+
+func hasMatchingReplica(replica *longhorn.Replica, replicas []*longhorn.Replica) bool {
+	for _, r := range replicas {
+		if r.Name != replica.Name && r.Spec.DataDirectoryName == replica.Spec.DataDirectoryName {
+			return true
+		}
+	}
+	return false
 }

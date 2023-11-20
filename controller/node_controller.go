@@ -378,7 +378,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	}()
 
 	// sync node state by manager pod
-	managerPods, err := nc.ds.ListManagerPods()
+	managerPods, err := nc.ds.ListManagerPodsRO()
 	if err != nil {
 		return err
 	}
@@ -417,7 +417,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	}
 
 	// sync node state with kubernetes node status
-	kubeNode, err := nc.ds.GetKubernetesNode(name)
+	kubeNode, err := nc.ds.GetKubernetesNodeRO(name)
 	if err != nil {
 		// if kubernetes node has been removed from cluster
 		if apierrors.IsNotFound(err) {
@@ -571,13 +571,13 @@ func (nc *NodeController) enqueueNode(obj interface{}) {
 }
 
 func (nc *NodeController) enqueueSetting(obj interface{}) {
-	nodesRO, err := nc.ds.ListNodesRO()
+	nodes, err := nc.ds.ListNodesRO()
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("failed to list nodes: %v ", err))
 		return
 	}
 
-	for _, node := range nodesRO {
+	for _, node := range nodes {
 		nc.enqueueNode(node)
 	}
 }
@@ -599,7 +599,7 @@ func (nc *NodeController) enqueueReplica(obj interface{}) {
 		}
 	}
 
-	node, err := nc.ds.GetNode(replica.Spec.NodeID)
+	node, err := nc.ds.GetNodeRO(replica.Spec.NodeID)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			utilruntime.HandleError(fmt.Errorf("failed to get node %v for replica %v: %v ",
@@ -655,12 +655,12 @@ func (nc *NodeController) enqueueSnapshot(old, cur interface{}) {
 }
 
 func (nc *NodeController) enqueueManagerPod(obj interface{}) {
-	nodesRO, err := nc.ds.ListNodesRO()
+	nodes, err := nc.ds.ListNodesRO()
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("failed to list nodes: %v ", err))
 		return
 	}
-	for _, node := range nodesRO {
+	for _, node := range nodes {
 		nc.enqueueNode(node)
 	}
 }
@@ -953,7 +953,7 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 
 	// Clean up all replica managers if there is no disk on the node
 	if len(node.Spec.Disks) == 0 {
-		rmMap, err := nc.ds.ListInstanceManagersByNode(node.Name, longhorn.InstanceManagerTypeReplica)
+		rmMap, err := nc.ds.ListInstanceManagersByNodeRO(node.Name, longhorn.InstanceManagerTypeReplica)
 		if err != nil {
 			return err
 		}
@@ -969,7 +969,7 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 
 	for _, imType := range imTypes {
 		defaultInstanceManagerCreated := false
-		imMap, err := nc.ds.ListInstanceManagersByNode(node.Name, imType)
+		imMap, err := nc.ds.ListInstanceManagersByNodeRO(node.Name, imType)
 		if err != nil {
 			return err
 		}
@@ -1193,20 +1193,24 @@ func (nc *NodeController) getNewAndMissingOrphanedReplicaDirectoryNames(diskName
 	missingOrphanedReplicaDirectoryNames := map[string]string{}
 
 	// Find out the new/missing orphaned directories by checking with orphan CRs
-	orphans, err := nc.ds.ListOrphansByNode(nc.controllerID)
+	orphanList, err := nc.ds.ListOrphansByNodeRO(nc.controllerID)
 	if err != nil {
 		logrus.Warnf("Failed to list orphans for node %v since %v", nc.controllerID, err.Error())
 		return map[string]string{}, map[string]string{}
 	}
+	orphanMap := make(map[string]*longhorn.Orphan, len(orphanList))
+	for _, o := range orphanList {
+		orphanMap[o.Name] = o
+	}
 
 	for dirName := range replicaDirectoryNames {
 		orphanName := types.GetOrphanChecksumNameForOrphanedDirectory(nc.controllerID, diskName, diskPath, diskUUID, dirName)
-		if _, ok := orphans[orphanName]; !ok {
+		if _, ok := orphanMap[orphanName]; !ok {
 			newOrphanedReplicaDirectoryNames[dirName] = ""
 		}
 	}
 
-	for _, orphan := range orphans {
+	for _, orphan := range orphanMap {
 		if orphan.Spec.Parameters[longhorn.OrphanDiskName] != diskName ||
 			orphan.Spec.Parameters[longhorn.OrphanDiskUUID] != diskUUID ||
 			orphan.Spec.Parameters[longhorn.OrphanDiskPath] != diskPath {
@@ -1235,7 +1239,7 @@ func (nc *NodeController) deleteOrphans(node *longhorn.Node, diskName string, di
 		}
 	}
 
-	orphans, err := nc.ds.ListOrphans()
+	orphans, err := nc.ds.ListOrphansRO()
 	if err != nil {
 		return errors.Wrap(err, "failed to list orphans")
 	}
@@ -1375,7 +1379,7 @@ func (nc *NodeController) deleteDisk(node *longhorn.Node, diskType longhorn.Disk
 		return nil
 	}
 
-	im, err := nc.ds.GetDefaultInstanceManagerByNode(nc.controllerID)
+	im, err := nc.ds.GetDefaultInstanceManagerByNodeRO(nc.controllerID)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get default engine instance manager")
 	}

@@ -26,6 +26,7 @@ const (
 	managerLabel         = "manager"
 	backupLabel          = "backup"
 	pvcLabel             = "pvc"
+	pvcNamespaceLabel    = "pvc_namespace"
 )
 
 type metricInfo struct {

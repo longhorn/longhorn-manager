@@ -259,13 +259,13 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 			return err
 		}
 
-		priorityClassSetting, err := ic.ds.GetSetting(types.SettingNamePriorityClass)
+		priorityClassSetting, err := ic.ds.GetSettingWithAutoFillingRO(types.SettingNamePriorityClass)
 		if err != nil {
 			return errors.Wrapf(err, "failed to get priority class setting before creating engine image daemonset")
 		}
 		priorityClass := priorityClassSetting.Value
 
-		registrySecretSetting, err := ic.ds.GetSetting(types.SettingNameRegistrySecret)
+		registrySecretSetting, err := ic.ds.GetSettingWithAutoFillingRO(types.SettingNameRegistrySecret)
 		if err != nil {
 			return errors.Wrapf(err, "failed to get registry secret setting before creating engine image daemonset")
 		}
@@ -337,7 +337,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		}
 	}
 
-	readyNodes, err := ic.ds.ListReadyNodes()
+	readyNodes, err := ic.ds.ListReadyNodesRO()
 	if err != nil {
 		return err
 	}
@@ -369,8 +369,8 @@ func (ic *EngineImageController) syncNodeDeploymentMap(engineImage *longhorn.Eng
 	// initialize deployment map for all known nodes
 	nodeDeploymentMap, err := func() (map[string]bool, error) {
 		deployed := map[string]bool{}
-		nodesRO, err := ic.ds.ListNodesRO()
-		for _, node := range nodesRO {
+		nodes, err := ic.ds.ListNodesRO()
+		for _, node := range nodes {
 			deployed[node.Name] = false
 		}
 		return deployed, err
@@ -646,15 +646,12 @@ func (ic *EngineImageController) cleanupExpiredEngineImage(ei *longhorn.EngineIm
 		return nil
 	}
 	if util.TimestampAfterTimeout(ei.Status.NoRefSince, ExpiredEngineImageTimeout) {
-		defaultEngineImage, err := ic.ds.GetSetting(types.SettingNameDefaultEngineImage)
+		defaultEngineImageValue, err := ic.ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 		if err != nil {
 			return err
 		}
-		if defaultEngineImage.Value == "" {
-			return fmt.Errorf("default engine image not set")
-		}
 		// Don't delete the default image
-		if ei.Spec.Image == defaultEngineImage.Value {
+		if ei.Spec.Image == defaultEngineImageValue {
 			return nil
 		}
 
@@ -880,7 +877,7 @@ func (ic *EngineImageController) isResponsibleFor(ei *longhorn.EngineImage) (boo
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
-	readyNodesWithDefaultEI, err := ic.ds.ListReadyNodesWithEngineImage(ei.Spec.Image)
+	readyNodesWithDefaultEI, err := ic.ds.ListReadyNodesContainingEngineImageRO(ei.Spec.Image)
 	if err != nil {
 		return false, err
 	}

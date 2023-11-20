@@ -95,6 +95,16 @@ const (
 	TestRecurringJobName      = "test-recurring-job"
 	TestRecurringJobGroupName = "test-recurring-job-group"
 
+	TestSystemBackupName                    = "system-backup-0"
+	TestSystemBackupNameGetConfigFailed     = "system-backup-get-config-failed"
+	TestSystemBackupNameListFailed          = "system-backup-list-failed"
+	TestSystemBackupNameUploadFailed        = "system-backup-upload-failed"
+	TestSystemBackupNameUploadExceedTimeout = "system-backup-upload-exceed-timeout"
+
+	TestSystemBackupGitCommit       = "12345abcd"
+	TestSystemBackupLonghornVersion = "v1.4.0"
+	TestSystemBackupURIFmt          = "backupstore/system-backups/%v/%v"
+
 	TestCustomResourceDefinitionName = "test-crd"
 	TestVolumeAttachmentName         = "test-volume"
 )
@@ -441,6 +451,87 @@ func newBackup(name string) *longhorn.Backup {
 			Name:      name,
 			Namespace: TestNamespace,
 		},
+	}
+}
+
+func newKubernetesNode(name string, readyStatus, diskPressureStatus, memoryStatus, outOfDiskStatus, pidStatus, networkStatus, kubeletStatus corev1.ConditionStatus) *corev1.Node {
+	return &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Status: corev1.NodeStatus{
+			Conditions: []corev1.NodeCondition{
+				{
+					Type:   corev1.NodeReady,
+					Status: readyStatus,
+				},
+				{
+					Type:   corev1.NodeDiskPressure,
+					Status: diskPressureStatus,
+				},
+				{
+					Type:   corev1.NodeMemoryPressure,
+					Status: memoryStatus,
+				},
+				{
+					Type:   corev1.NodePIDPressure,
+					Status: pidStatus,
+				},
+				{
+					Type:   corev1.NodeNetworkUnavailable,
+					Status: networkStatus,
+				},
+			},
+		},
+	}
+}
+
+func newNode(name, namespace string, allowScheduling bool, status longhorn.ConditionStatus, reason string) *longhorn.Node {
+	return &longhorn.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: longhorn.NodeSpec{
+			AllowScheduling: allowScheduling,
+			Disks: map[string]longhorn.DiskSpec{
+				TestDiskID1: {
+					Type:            longhorn.DiskTypeFilesystem,
+					Path:            TestDefaultDataPath,
+					AllowScheduling: true,
+					StorageReserved: 0,
+				},
+			},
+			Name: name,
+		},
+		Status: longhorn.NodeStatus{
+			Conditions: []longhorn.Condition{
+				newNodeCondition(longhorn.NodeConditionTypeSchedulable, status, reason),
+				newNodeCondition(longhorn.NodeConditionTypeReady, status, reason),
+			},
+			DiskStatus: map[string]*longhorn.DiskStatus{
+				TestDiskID1: {
+					StorageAvailable: TestDiskAvailableSize,
+					StorageScheduled: 0,
+					StorageMaximum:   TestDiskSize,
+					Conditions: []longhorn.Condition{
+						newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
+						newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+					},
+					DiskUUID: TestDiskID1,
+					Type:     longhorn.DiskTypeFilesystem,
+				},
+			},
+		},
+	}
+}
+
+func newNodeCondition(conditionType string, status longhorn.ConditionStatus, reason string) longhorn.Condition {
+	return longhorn.Condition{
+		Type:    conditionType,
+		Status:  status,
+		Reason:  reason,
+		Message: "",
 	}
 }
 

@@ -380,12 +380,12 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 		}
 
 		// now volumeattachment, snapshots, replicas, and engines have been marked for deletion
-		if engines, err := c.ds.ListVolumeEngines(volume.Name); err != nil {
+		if engines, err := c.ds.ListVolumeEnginesRO(volume.Name); err != nil {
 			return err
 		} else if len(engines) > 0 {
 			return nil
 		}
-		if replicas, err := c.ds.ListVolumeReplicas(volume.Name); err != nil {
+		if replicas, err := c.ds.ListVolumeReplicasRO(volume.Name); err != nil {
 			return err
 		} else if len(replicas) > 0 {
 			return nil
@@ -540,7 +540,7 @@ func (c *VolumeController) EvictReplicas(v *longhorn.Volume,
 
 func (c *VolumeController) handleVolumeAttachmentCreation(v *longhorn.Volume) error {
 	vaName := types.GetLHVolumeAttachmentNameFromVolumeName(v.Name)
-	_, err := c.ds.GetLHVolumeAttachment(vaName)
+	_, err := c.ds.GetLHVolumeAttachmentRO(vaName)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return err
@@ -1299,7 +1299,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 				} else if isDownOrDeleted {
 					continue
 				}
-				node, err := c.ds.GetNode(r.Spec.NodeID)
+				node, err := c.ds.GetNodeRO(r.Spec.NodeID)
 				if err != nil {
 					log.WithField("replica", r.Name).WithError(err).Warnf("Failed to get node %v for failed replica", r.Spec.NodeID)
 				}
@@ -1406,7 +1406,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 }
 
 func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, isNewVolume bool, log *logrus.Entry) error {
-	//TODO: link the state machine graph here
+	// TODO: link the state machine graph here
 
 	if isNewVolume || v.Status.State == "" {
 		v.Status.State = longhorn.VolumeStateCreating
@@ -1760,6 +1760,12 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 			log.WithField("replica", r.Name).Warn("Replica is running but Port is empty")
 			continue
 		}
+		if _, ok := e.Spec.ReplicaAddressMap[r.Name]; !ok && isVolumeMigrating(v) && e.Spec.NodeID == v.Spec.NodeID {
+			// The volume is migrating from this engine. Don't allow new replicas to be added until migration is
+			// complete per https://github.com/longhorn/longhorn/issues/6961.
+			log.WithField("replica", r.Name).Warn("Replica is running, but can't be added while migration is ongoing")
+			continue
+		}
 		replicaAddressMap[r.Name] = imutil.GetURL(r.Status.StorageIP, r.Status.Port)
 	}
 	if len(replicaAddressMap) == 0 {
@@ -1926,7 +1932,7 @@ func (c *VolumeController) canInstanceManagerLaunchReplica(r *longhorn.Replica) 
 	if r.Status.InstanceManagerName != "" {
 		return true, nil
 	}
-	defaultIM, err := c.ds.GetInstanceManagerByInstance(r)
+	defaultIM, err := c.ds.GetInstanceManagerByInstanceRO(r)
 	if err != nil {
 		return false, errors.Wrapf(err, "failed to find instance manager for replica %v", r.Name)
 	}
@@ -1939,15 +1945,19 @@ func (c *VolumeController) getPreferredReplicaCandidatesForDeletion(rs map[strin
 	nodeToReplicaMap := make(map[string][]string)
 	zoneToReplicaMap := make(map[string][]string)
 
-	nodeList, err := c.ds.ListNodes()
+	nodeList, err := c.ds.ListNodesRO()
 	if err != nil {
 		return nil, err
+	}
+	nodeMap := make(map[string]*longhorn.Node, len(nodeList))
+	for _, node := range nodeList {
+		nodeMap[node.Name] = node
 	}
 
 	for _, r := range rs {
 		diskToReplicaMap[r.Spec.NodeID+r.Spec.DiskID] = append(diskToReplicaMap[r.Spec.NodeID+r.Spec.DiskID], r.Name)
 		nodeToReplicaMap[r.Spec.NodeID] = append(nodeToReplicaMap[r.Spec.NodeID], r.Name)
-		if node, ok := nodeList[r.Spec.NodeID]; ok {
+		if node, ok := nodeMap[r.Spec.NodeID]; ok {
 			zoneToReplicaMap[node.Status.Zone] = append(zoneToReplicaMap[node.Status.Zone], r.Name)
 		}
 	}
@@ -2226,7 +2236,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceBestEffort(v *longhorn.V
 func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (int, map[string][]string, error) {
 	log := getLoggerForVolume(c.logger, v).WithField("replicaAutoBalanceType", "zone")
 
-	readyNodes, err := c.listReadySchedulableAndScheduledNodes(v, rs, log)
+	readyNodes, err := c.listReadySchedulableAndScheduledNodesRO(v, rs, log)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -2283,7 +2293,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume,
 		return 0, zoneExtraRs, nil
 	}
 
-	ei, err := c.getEngineImage(v.Status.CurrentImage)
+	ei, err := c.getEngineImageRO(v.Status.CurrentImage)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -2330,8 +2340,8 @@ func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume,
 	return adjustCount, zoneExtraRs, err
 }
 
-func (c *VolumeController) listReadySchedulableAndScheduledNodes(volume *longhorn.Volume, rs map[string]*longhorn.Replica, log logrus.FieldLogger) (map[string]*longhorn.Node, error) {
-	readyNodes, err := c.ds.ListReadyAndSchedulableNodes()
+func (c *VolumeController) listReadySchedulableAndScheduledNodesRO(volume *longhorn.Volume, rs map[string]*longhorn.Replica, log logrus.FieldLogger) (map[string]*longhorn.Node, error) {
+	readyNodes, err := c.ds.ListReadyAndSchedulableNodesRO()
 	if err != nil {
 		return nil, err
 	}
@@ -2389,7 +2399,7 @@ func (c *VolumeController) listReadySchedulableAndScheduledNodes(volume *longhor
 func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (int, map[string][]string, error) {
 	log := getLoggerForVolume(c.logger, v).WithField("replicaAutoBalanceType", "node")
 
-	readyNodes, err := c.listReadySchedulableAndScheduledNodes(v, rs, log)
+	readyNodes, err := c.listReadySchedulableAndScheduledNodesRO(v, rs, log)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -2425,7 +2435,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 		return 0, nodeExtraRs, nil
 	}
 
-	ei, err := c.getEngineImage(v.Status.CurrentImage)
+	ei, err := c.getEngineImageRO(v.Status.CurrentImage)
 	if err != nil {
 		return 0, nodeExtraRs, err
 	}
@@ -2544,7 +2554,7 @@ func (c *VolumeController) getIsSchedulableToDiskNodes(v *longhorn.Volume, nodeN
 
 	for _, nodeName := range nodeNames {
 		scheduleNode := false
-		node, err := c.ds.GetNode(nodeName)
+		node, err := c.ds.GetNodeRO(nodeName)
 		if err != nil {
 			continue
 		}
@@ -2603,12 +2613,12 @@ func (c *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volum
 		return candidateNames
 	}
 
-	readyNodes, err := c.ds.ListReadyAndSchedulableNodes()
+	readyNodes, err := c.ds.ListReadyAndSchedulableNodesRO()
 	if err != nil {
 		return candidateNames
 	}
 
-	ei, err := c.getEngineImage(v.Status.CurrentImage)
+	ei, err := c.getEngineImageRO(v.Status.CurrentImage)
 	if err != nil {
 		return candidateNames
 	}
@@ -2748,7 +2758,7 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 		volumeAndReplicaNodes = append(volumeAndReplicaNodes, r.Spec.NodeID)
 	}
 
-	oldImage, err := c.getEngineImage(v.Status.CurrentImage)
+	oldImage, err := c.getEngineImageRO(v.Status.CurrentImage)
 	if err != nil {
 		log.WithError(err).Warnf("Failed to get engine image %v for live upgrade", v.Status.CurrentImage)
 		return nil
@@ -2758,7 +2768,7 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 		log.WithError(err).Warnf("Engine live upgrade from %v, but the image wasn't ready", oldImage.Spec.Image)
 		return nil
 	}
-	newImage, err := c.getEngineImage(v.Spec.Image)
+	newImage, err := c.getEngineImageRO(v.Spec.Image)
 	if err != nil {
 		log.WithError(err).Warnf("Failed to get engine image %v for live upgrade", v.Spec.Image)
 		return nil
@@ -2848,11 +2858,9 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 		return nil
 	}
 
-	if err := c.switchActiveReplicas(rs, func(r *longhorn.Replica, image string) bool {
+	c.switchActiveReplicas(rs, func(r *longhorn.Replica, image string) bool {
 		return r.Spec.Image == image && r.DeletionTimestamp.IsZero()
-	}, v.Spec.Image); err != nil {
-		return err
-	}
+	}, v.Spec.Image)
 
 	e.Spec.ReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
 	e.Spec.UpgradedReplicaAddressMap = map[string]string{}
@@ -2921,7 +2929,7 @@ func (c *VolumeController) checkAndInitVolumeOfflineReplicaRebuilding(v *longhor
 
 	healthyReplicaCount := 0
 
-	replicas, err := c.ds.ListVolumeReplicas(v.Name)
+	replicas, err := c.ds.ListVolumeReplicasRO(v.Name)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get replicas for volume %v offline replica rebuilding", v.Name)
 	}
@@ -3196,7 +3204,7 @@ func (c *VolumeController) checkForAutoAttachment(v *longhorn.Volume, e *longhor
 
 // isSourceVolumeOfCloning checks if the input volume is the source volume of an on-going cloning process
 func (c *VolumeController) isSourceVolumeOfCloning(v *longhorn.Volume) (bool, error) {
-	vols, err := c.ds.ListVolumes()
+	vols, err := c.ds.ListVolumesRO()
 	if err != nil {
 		return false, err
 	}
@@ -3484,7 +3492,7 @@ func (c *VolumeController) ResolveRefAndEnqueue(namespace string, ref *metav1.Ow
 			return
 		}
 	}
-	volume, err := c.ds.GetVolume(ref.Name)
+	volume, err := c.ds.GetVolumeRO(ref.Name)
 	if err != nil {
 		return
 	}
@@ -3545,11 +3553,11 @@ func restoreVolumeRecurringJobLabel(v *longhorn.Volume, jobName string, job *lon
 
 // createRecurringJobNotExist add recurring jobs and group back to a restoring volume and create recurring jobs if not exist
 func createRecurringJobNotExist(log *logrus.Entry, ds *datastore.DataStore, v *longhorn.Volume, jobName string, job *longhorn.VolumeRecurringJobInfo) (string, error) {
-	if existJob, err := ds.GetRecurringJob(jobName); err != nil {
+	if existingJob, err := ds.GetRecurringJobRO(jobName); err != nil {
 		if !apierrors.IsNotFound(err) {
 			return "", errors.Wrapf(err, "failed to get the recurring job %v", jobName)
 		}
-	} else if !reflect.DeepEqual(existJob.Spec, job.JobSpec) {
+	} else if !reflect.DeepEqual(existingJob.Spec, job.JobSpec) {
 		// create a new recurring job if job name is used and configuration is different.
 		newJobName, existJobName, err := generateRecurringJobName(log, ds, job)
 		if err != nil {
@@ -3704,13 +3712,13 @@ func (c *VolumeController) syncPVCRecurringJobLabels(volume *longhorn.Volume) er
 	return nil
 }
 
-func (c *VolumeController) getEngineImage(image string) (*longhorn.EngineImage, error) {
+func (c *VolumeController) getEngineImageRO(image string) (*longhorn.EngineImage, error) {
 	name := types.GetEngineImageChecksumName(image)
-	img, err := c.ds.GetEngineImage(name)
+	ei, err := c.ds.GetEngineImageRO(name)
 	if err != nil {
 		return nil, errors.Wrapf(err, "unable to get engine image %v", image)
 	}
-	return img, nil
+	return ei, nil
 }
 
 func (c *VolumeController) getCurrentEngineAndCleanupOthers(v *longhorn.Volume, es map[string]*longhorn.Engine) (current *longhorn.Engine, err error) {
@@ -3772,7 +3780,7 @@ func (c *VolumeController) deleteInvalidMigrationReplicas(rs, pathToOldRs, pathT
 }
 
 func (c *VolumeController) switchActiveReplicas(rs map[string]*longhorn.Replica,
-	activeCondFunc func(r *longhorn.Replica, obj string) bool, obj string) error {
+	activeCondFunc func(r *longhorn.Replica, obj string) bool, obj string) {
 
 	// Deletion of an active replica will trigger the cleanup process to
 	// delete the volume data on the disk.
@@ -3783,7 +3791,6 @@ func (c *VolumeController) switchActiveReplicas(rs map[string]*longhorn.Replica,
 			r.Spec.Active = !r.Spec.Active
 		}
 	}
-	return nil
 }
 
 func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
@@ -3851,11 +3858,9 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 		currentEngine.Spec.Active = true
 
 		// cleanupCorruptedOrStaleReplicas() will take care of old replicas
-		if err := c.switchActiveReplicas(rs, func(r *longhorn.Replica, engineName string) bool {
-			return r.Spec.EngineName == engineName
-		}, currentEngine.Name); err != nil {
-			return err
-		}
+		c.switchActiveReplicas(rs, func(r *longhorn.Replica, engineName string) bool {
+			return r.Spec.EngineName == engineName && r.Spec.HealthyAt != ""
+		}, currentEngine.Name)
 
 		// migration rollback or confirmation finished
 		v.Status.CurrentMigrationNodeID = ""
@@ -3998,9 +4003,10 @@ func (c *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Volu
 				return false, true, nil
 			case longhorn.ReplicaModeRW:
 				currentAvailableReplicas[dataPath] = r
+			case "":
+				log.Warnf("Running replica %v wasn't added to engine, will ignore it and continue migration", r.Name)
 			default:
 				log.Warnf("Unexpected mode %v for the current replica %v, will ignore it and continue migration", currentEngine.Status.ReplicaModeMap[r.Name], r.Name)
-				continue
 			}
 		} else if r.Spec.EngineName == migrationEngine.Name {
 			migrationReplicas[dataPath] = r
@@ -4093,7 +4099,7 @@ func (c *VolumeController) IsReplicaUnavailable(r *longhorn.Replica) (bool, erro
 		return true, nil
 	}
 
-	node, err := c.ds.GetNode(r.Spec.NodeID)
+	node, err := c.ds.GetNodeRO(r.Spec.NodeID)
 	if err != nil {
 		return true, errors.Wrapf(err, "failed to get node %v for failed replica %v", r.Spec.NodeID, r.Name)
 	}
@@ -4118,7 +4124,7 @@ func (c *VolumeController) isResponsibleFor(v *longhorn.Volume, defaultEngineIma
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
-	readyNodesWithDefaultEI, err := c.ds.ListReadyNodesWithEngineImage(defaultEngineImage)
+	readyNodesWithDefaultEI, err := c.ds.ListReadyNodesContainingEngineImageRO(defaultEngineImage)
 	if err != nil {
 		return false, err
 	}
@@ -4287,7 +4293,7 @@ func (c *VolumeController) enqueueVolumesForBackupVolume(obj interface{}) {
 
 	// Update last backup for the volume name matches backup volume name
 	var matchedVolumeName string
-	_, err := c.ds.GetVolume(bv.Name)
+	_, err := c.ds.GetVolumeRO(bv.Name)
 	if err == nil {
 		matchedVolumeName = bv.Name
 		key := bv.Namespace + "/" + bv.Name
@@ -4295,7 +4301,7 @@ func (c *VolumeController) enqueueVolumesForBackupVolume(obj interface{}) {
 	}
 
 	// Update last backup for DR volumes
-	volumes, err := c.ds.ListDRVolumesROWithBackupVolumeName(bv.Name)
+	volumes, err := c.ds.ListDRVolumesWithBackupVolumeNameRO(bv.Name)
 	if err != nil {
 		return
 	}
@@ -4434,7 +4440,7 @@ func (c *VolumeController) ReconcileBackupVolumeState(volume *longhorn.Volume) e
 		backupVolumeName = volume.Name
 	}
 
-	bv, err := c.ds.GetBackupVolume(backupVolumeName)
+	bv, err := c.ds.GetBackupVolumeRO(backupVolumeName)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return errors.Wrapf(err, "failed to get backup volume %s for volume %v", backupVolumeName, volume.Name)
 	}

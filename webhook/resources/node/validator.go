@@ -93,7 +93,7 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 	}
 
 	if newNode.Spec.InstanceManagerCPURequest != 0 {
-		kubeNode, err := n.ds.GetKubernetesNode(oldNode.Name)
+		kubeNode, err := n.ds.GetKubernetesNodeRO(oldNode.Name)
 		if err != nil {
 			if !datastore.ErrorIsNotFound(err) {
 				return werror.NewInvalidError(err.Error(), "")
@@ -103,7 +103,7 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 
 		if err == nil {
 			allocatableCPU := float64(kubeNode.Status.Allocatable.Cpu().MilliValue())
-			instanceManagerCPUSetting, err := n.ds.GetSetting(types.SettingNameGuaranteedInstanceManagerCPU)
+			instanceManagerCPUSetting, err := n.ds.GetSettingWithAutoFillingRO(types.SettingNameGuaranteedInstanceManagerCPU)
 			if err != nil {
 				return werror.NewInvalidError(err.Error(), "")
 			}

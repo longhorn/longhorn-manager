@@ -67,7 +67,7 @@ func handleReconcileErrorLogging(logger logrus.FieldLogger, err error, mesg stri
 	}
 
 	if apierrors.IsConflict(err) {
-		logger.WithError(err).Debug(mesg)
+		logger.WithError(err).Warn(mesg)
 	} else {
 		logger.WithError(err).Error(mesg)
 	}

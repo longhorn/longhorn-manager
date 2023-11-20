@@ -410,7 +410,7 @@ func (c *ShareManagerController) createShareManagerAttachmentTicket(sm *longhorn
 	shareManagerAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeShareManagerController, sm.Name)
 	shareManagerAttachmentTicket, ok := va.Spec.AttachmentTickets[shareManagerAttachmentTicketID]
 	if !ok {
-		//create new one
+		// create new one
 		shareManagerAttachmentTicket = &longhorn.AttachmentTicket{
 			ID:     shareManagerAttachmentTicketID,
 			Type:   longhorn.AttacherTypeShareManagerController,
@@ -456,6 +456,31 @@ func (c *ShareManagerController) unmountShareManagerVolume(sm *longhorn.ShareMan
 	if err := client.Unmount(); err != nil {
 		log.WithError(err).Warnf("Failed to unmount share manager pod %v", podName)
 	}
+}
+
+// mountShareManagerVolume checks, exports and mounts the volume in the share manager pod.
+func (c *ShareManagerController) mountShareManagerVolume(sm *longhorn.ShareManager) error {
+	podName := types.GetShareManagerPodNameFromShareManagerName(sm.Name)
+	pod, err := c.ds.GetPod(podName)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return errors.Wrapf(err, "failed to retrieve pod %v for share manager from datastore", podName)
+	}
+
+	if pod == nil {
+		return fmt.Errorf("pod %v for share manager not found", podName)
+	}
+
+	client, err := engineapi.NewShareManagerClient(sm, pod)
+	if err != nil {
+		return errors.Wrapf(err, "failed to create share manager client for pod %v", podName)
+	}
+	defer client.Close()
+
+	if err := client.Mount(); err != nil {
+		return errors.Wrapf(err, "failed to mount share manager pod %v", podName)
+	}
+
+	return nil
 }
 
 func (c *ShareManagerController) detachShareManagerVolume(sm *longhorn.ShareManager, va *longhorn.VolumeAttachment) {
@@ -516,7 +541,7 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 		}
 		return nil
 	} else if sm.Status.State == longhorn.ShareManagerStateRunning {
-		return nil
+		return c.mountShareManagerVolume(sm)
 	}
 
 	// in a single node cluster, there is no other manager that can claim ownership so we are prevented from creation
@@ -690,13 +715,9 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 
 // createShareManagerPod ensures existence of service, it's assumed that the pvc for this share manager already exists
 func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager) (*corev1.Pod, error) {
-	setting, err := c.ds.GetSetting(types.SettingNameTaintToleration)
+	tolerations, err := c.ds.GetSettingTaintToleration()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get taint toleration setting before creating share manager pod")
-	}
-	tolerations, err := types.UnmarshalTolerations(setting.Value)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal taint toleration setting before creating share manager pod")
 	}
 	nodeSelector, err := c.ds.GetSettingSystemManagedComponentsNodeSelector()
 	if err != nil {
@@ -714,13 +735,13 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 		return nil, errors.Wrap(err, "failed to get image pull policy before creating share manager pod")
 	}
 
-	setting, err = c.ds.GetSetting(types.SettingNameRegistrySecret)
+	setting, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameRegistrySecret)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get registry secret setting before creating share manager pod")
 	}
 	registrySecret := setting.Value
 
-	setting, err = c.ds.GetSetting(types.SettingNamePriorityClass)
+	setting, err = c.ds.GetSettingWithAutoFillingRO(types.SettingNamePriorityClass)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get priority class setting before creating share manager pod")
 	}
@@ -976,7 +997,7 @@ func (c *ShareManagerController) isResponsibleFor(sm *longhorn.ShareManager) (bo
 
 	isResponsible := isControllerResponsibleFor(c.controllerID, c.ds, sm.Name, preferredOwnerID, sm.Status.OwnerID)
 
-	readyAndSchedulableNodes, err := c.ds.ListReadyAndSchedulableNodes()
+	readyAndSchedulableNodes, err := c.ds.ListReadyAndSchedulableNodesRO()
 	if err != nil {
 		return false, err
 	}

@@ -269,7 +269,7 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 
 // getResponsibleNodeID returns which node need to run
 func getResponsibleNodeID(ds *datastore.DataStore) (string, error) {
-	readyNodes, err := ds.ListReadyNodes()
+	readyNodes, err := ds.ListReadyNodesRO()
 	if err != nil {
 		return "", err
 	}
@@ -310,12 +310,12 @@ func (sc *SettingController) syncBackupTarget() (err error) {
 	}
 
 	// Get settings
-	targetSetting, err := sc.ds.GetSetting(types.SettingNameBackupTarget)
+	targetSetting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameBackupTarget)
 	if err != nil {
 		return err
 	}
 
-	secretSetting, err := sc.ds.GetSetting(types.SettingNameBackupTargetCredentialSecret)
+	secretSetting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameBackupTargetCredentialSecret)
 	if err != nil {
 		return err
 	}
@@ -483,7 +483,7 @@ func (sc *SettingController) removePodsAWSIAMRoleAnnotation() error {
 }
 
 func (sc *SettingController) updateTaintToleration() error {
-	setting, err := sc.ds.GetSetting(types.SettingNameTaintToleration)
+	setting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameTaintToleration)
 	if err != nil {
 		return err
 	}
@@ -621,7 +621,7 @@ func getLastAppliedTolerationsList(obj runtime.Object) ([]corev1.Toleration, err
 }
 
 func (sc *SettingController) updatePriorityClass() error {
-	setting, err := sc.ds.GetSetting(types.SettingNamePriorityClass)
+	setting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNamePriorityClass)
 	if err != nil {
 		return err
 	}
@@ -746,7 +746,7 @@ func (sc *SettingController) updateKubernetesClusterAutoscalerEnabled() error {
 }
 
 func (sc *SettingController) updateCNI() error {
-	storageNetwork, err := sc.ds.GetSetting(types.SettingNameStorageNetwork)
+	storageNetwork, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
 	if err != nil {
 		return err
 	}
@@ -786,7 +786,7 @@ func (sc *SettingController) updateCNI() error {
 }
 
 func (sc *SettingController) updateLogLevel() error {
-	setting, err := sc.ds.GetSetting(types.SettingNameLogLevel)
+	setting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameLogLevel)
 	if err != nil {
 		return err
 	}
@@ -857,7 +857,7 @@ func getFinalTolerations(existingTolerations, lastAppliedTolerations, newTolerat
 }
 
 func (sc *SettingController) updateNodeSelector() error {
-	setting, err := sc.ds.GetSetting(types.SettingNameSystemManagedComponentsNodeSelector)
+	setting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameSystemManagedComponentsNodeSelector)
 	if err != nil {
 		return err
 	}
@@ -1128,7 +1128,7 @@ func (sc *SettingController) updateInstanceManagerCPURequest() error {
 	if err != nil {
 		return errors.Wrap(err, "failed to list instance manager pods for toleration update")
 	}
-	imMap, err := sc.ds.ListInstanceManagers()
+	imMap, err := sc.ds.ListInstanceManagersRO()
 	if err != nil {
 		return err
 	}
@@ -1346,9 +1346,9 @@ func (info *ClusterInfo) collectNamespace() error {
 }
 
 func (info *ClusterInfo) collectNodeCount() error {
-	nodesRO, err := info.ds.ListNodesRO()
+	nodes, err := info.ds.ListNodesRO()
 	if err == nil {
-		info.structFields.fields.Append(ClusterInfoNodeCount, len(nodesRO))
+		info.structFields.fields.Append(ClusterInfoNodeCount, len(nodes))
 	}
 	return err
 }
@@ -1652,7 +1652,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 
 func (info *ClusterInfo) collectSettingInVolume(volumeSpecValue, ignoredValue string, settingName types.SettingName) string {
 	if volumeSpecValue == ignoredValue {
-		globalSetting, err := info.ds.GetSetting(settingName)
+		globalSetting, err := info.ds.GetSettingWithAutoFillingRO(settingName)
 		if err != nil {
 			info.logger.WithError(err).Warnf("Failed to get Longhorn Setting %v", settingName)
 		}
@@ -1699,7 +1699,7 @@ func (info *ClusterInfo) collectHostOSDistro() (err error) {
 }
 
 func (info *ClusterInfo) collectKubernetesNodeProvider() error {
-	node, err := info.ds.GetKubernetesNode(info.controllerID)
+	node, err := info.ds.GetKubernetesNodeRO(info.controllerID)
 	if err == nil {
 		scheme := types.GetKubernetesProviderNameFromURL(node.Spec.ProviderID)
 		info.structFields.tags.Append(ClusterInfoKubernetesNodeProvider, scheme)

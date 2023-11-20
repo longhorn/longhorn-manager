@@ -142,7 +142,7 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 	if err != nil {
 		return nil, err
 	}
-	kubeNode, err := ds.GetKubernetesNode(im.Spec.NodeID)
+	kubeNode, err := ds.GetKubernetesNodeRO(im.Spec.NodeID)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +150,7 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 	cpuRequest := lhNode.Spec.InstanceManagerCPURequest
 	guaranteedCPUSettingName := types.SettingNameGuaranteedInstanceManagerCPU
 	if cpuRequest == 0 {
-		guaranteedCPUSetting, err := ds.GetSetting(guaranteedCPUSettingName)
+		guaranteedCPUSetting, err := ds.GetSettingWithAutoFillingRO(guaranteedCPUSettingName)
 		if err != nil {
 			return nil, err
 		}

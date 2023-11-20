@@ -436,7 +436,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		frontend = longhorn.VolumeFrontendEmpty
 	}
 
-	im, err := ec.ds.GetInstanceManagerByInstance(obj)
+	im, err := ec.ds.GetInstanceManagerByInstanceRO(obj)
 	if err != nil {
 		return nil, err
 	}
@@ -661,12 +661,12 @@ func (ec *EngineController) GetInstance(obj interface{}) (*longhorn.InstanceProc
 		err error
 	)
 	if e.Status.InstanceManagerName == "" {
-		im, err = ec.ds.GetInstanceManagerByInstance(obj)
+		im, err = ec.ds.GetInstanceManagerByInstanceRO(obj)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		im, err = ec.ds.GetInstanceManager(e.Status.InstanceManagerName)
+		im, err = ec.ds.GetInstanceManagerRO(e.Status.InstanceManagerName)
 		if err != nil {
 			return nil, err
 		}
@@ -686,7 +686,7 @@ func (ec *EngineController) LogInstance(ctx context.Context, obj interface{}) (*
 		return nil, nil, fmt.Errorf("invalid object for engine instance log: %v", obj)
 	}
 
-	im, err := ec.ds.GetInstanceManager(e.Status.InstanceManagerName)
+	im, err := ec.ds.GetInstanceManagerRO(e.Status.InstanceManagerName)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1555,7 +1555,7 @@ func preCloneCheck(engine *longhorn.Engine) (needClone bool, err error) {
 func cloneSnapshot(engine *longhorn.Engine, engineClientProxy engineapi.EngineClientProxy, ds *datastore.DataStore) error {
 	sourceVolumeName := types.GetVolumeName(engine.Spec.RequestedDataSource)
 	snapshotName := types.GetSnapshotName(engine.Spec.RequestedDataSource)
-	sourceEngines, err := ds.ListVolumeEngines(sourceVolumeName)
+	sourceEngines, err := ds.ListVolumeEnginesRO(sourceVolumeName)
 	if err != nil {
 		return err
 	}
@@ -1987,7 +1987,7 @@ func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logru
 		frontend = longhorn.VolumeFrontendEmpty
 	}
 
-	im, err := ec.ds.GetInstanceManager(e.Status.InstanceManagerName)
+	im, err := ec.ds.GetInstanceManagerRO(e.Status.InstanceManagerName)
 	if err != nil {
 		return err
 	}
@@ -2007,7 +2007,7 @@ func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logru
 		return err
 	}
 
-	v, err := ec.ds.GetVolume(e.Spec.VolumeName)
+	v, err := ec.ds.GetVolumeRO(e.Spec.VolumeName)
 	if err != nil {
 		return err
 	}
@@ -2059,7 +2059,7 @@ func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineIm
 		return isResponsible, nil
 	}
 
-	readyNodesWithEI, err := ec.ds.ListReadyNodesWithEngineImage(e.Status.CurrentImage)
+	readyNodesWithEI, err := ec.ds.ListReadyNodesContainingEngineImageRO(e.Status.CurrentImage)
 	if err != nil {
 		return false, err
 	}

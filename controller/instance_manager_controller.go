@@ -77,7 +77,7 @@ type InstanceManagerMonitor struct {
 	// used to notify the controller that monitoring has stopped
 	monitorVoluntaryStopCh chan struct{}
 
-	nodeCallback func(obj interface{})
+	nodeCallback func(nodeName string)
 
 	client *engineapi.InstanceManagerClient
 }
@@ -368,7 +368,7 @@ func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceMan
 		}
 	}()
 
-	pod, err := imc.ds.GetPod(im.Name)
+	pod, err := imc.ds.GetPodRO(imc.namespace, im.Name)
 	if err != nil {
 		return errors.Wrapf(err, "failed get pod for instance manager %v", im.Name)
 	}
@@ -639,7 +639,7 @@ func (imc *InstanceManagerController) syncInstanceManagerPDB(im *longhorn.Instan
 }
 
 func (imc *InstanceManagerController) cleanUpPDBForNonExistingIM() error {
-	ims, err := imc.ds.ListInstanceManagers()
+	ims, err := imc.ds.ListInstanceManagersRO()
 	if err != nil {
 		if !datastore.ErrorIsNotFound(err) {
 			return err
@@ -647,7 +647,7 @@ func (imc *InstanceManagerController) cleanUpPDBForNonExistingIM() error {
 		ims = make(map[string]*longhorn.InstanceManager)
 	}
 
-	imPDBs, err := imc.ds.ListPDBs()
+	imPDBs, err := imc.ds.ListPDBsRO()
 	if err != nil {
 		if !datastore.ErrorIsNotFound(err) {
 			return err
@@ -798,7 +798,7 @@ func (imc *InstanceManagerController) areAllVolumesDetachedFromNode(nodeName str
 }
 
 func (imc *InstanceManagerController) areAllInstanceRemovedFromNodeByType(nodeName string, imType longhorn.InstanceManagerType) (bool, error) {
-	ims, err := imc.ds.ListInstanceManagersByNode(nodeName, imType)
+	ims, err := imc.ds.ListInstanceManagersByNodeRO(nodeName, imType)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
 			return true, nil
@@ -869,7 +869,7 @@ func (imc *InstanceManagerController) enqueueInstanceManagerPod(obj interface{})
 		}
 	}
 
-	im, err := imc.ds.GetInstanceManager(pod.Name)
+	im, err := imc.ds.GetInstanceManagerRO(pod.Name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return
@@ -897,19 +897,23 @@ func (imc *InstanceManagerController) enqueueKubernetesNode(obj interface{}) {
 		}
 	}
 
-	node, err := imc.ds.GetNode(kubernetesNode.Name)
+	imc.enqueueInstanceManagersForNode(kubernetesNode.Name)
+}
+
+func (imc *InstanceManagerController) enqueueInstanceManagersForNode(nodeName string) {
+	node, err := imc.ds.GetNodeRO(nodeName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			// there is no Longhorn node created for the Kubernetes
 			// node (e.g. controller/etcd node). Skip it
 			return
 		}
-		utilruntime.HandleError(fmt.Errorf("failed to get node %v: %v ", kubernetesNode.Name, err))
+		utilruntime.HandleError(fmt.Errorf("failed to get node %v: %v ", nodeName, err))
 		return
 	}
 
 	for _, imType := range []longhorn.InstanceManagerType{longhorn.InstanceManagerTypeEngine, longhorn.InstanceManagerTypeReplica, longhorn.InstanceManagerTypeAllInOne} {
-		ims, err := imc.ds.ListInstanceManagersByNode(node.Name, imType)
+		ims, err := imc.ds.ListInstanceManagersByNodeRO(node.Name, imType)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				return
@@ -925,19 +929,13 @@ func (imc *InstanceManagerController) enqueueKubernetesNode(obj interface{}) {
 }
 
 func (imc *InstanceManagerController) enqueueSettingChange(obj interface{}) {
-	node, err := imc.ds.GetNode(imc.controllerID)
-	if err != nil {
-		utilruntime.HandleError(errors.Wrapf(err, "failed to get node %v for instance manager", imc.controllerID))
-		return
-	}
-
-	imc.enqueueKubernetesNode(node)
+	imc.enqueueInstanceManagersForNode(imc.controllerID)
 }
 
 func (imc *InstanceManagerController) cleanupInstanceManager(imName string) error {
 	imc.stopMonitoring(imName)
 
-	pod, err := imc.ds.GetPod(imName)
+	pod, err := imc.ds.GetPodRO(imc.namespace, imName)
 	if err != nil {
 		return err
 	}
@@ -964,7 +962,7 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 		return errors.Wrap(err, "failed to get node selector setting before creating instance manager pod")
 	}
 
-	registrySecretSetting, err := imc.ds.GetSetting(types.SettingNameRegistrySecret)
+	registrySecretSetting, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameRegistrySecret)
 	if err != nil {
 		return errors.Wrap(err, "failed to get registry secret setting before creating instance manager pod")
 	}
@@ -977,7 +975,7 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 		return err
 	}
 
-	storageNetwork, err := imc.ds.GetSetting(types.SettingNameStorageNetwork)
+	storageNetwork, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
 	if err != nil {
 		return err
 	}
@@ -1004,7 +1002,7 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 		return nil, err
 	}
 
-	priorityClass, err := imc.ds.GetSetting(types.SettingNamePriorityClass)
+	priorityClass, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNamePriorityClass)
 	if err != nil {
 		return nil, err
 	}
@@ -1083,7 +1081,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, longhorn.InstanceManagerTypeAllInOne)
 	podSpec.Spec.Containers[0].Name = "instance-manager"
 
-	v2DataEngineEnabled, err := imc.ds.GetSetting(types.SettingNameV2DataEngine)
+	v2DataEngineEnabled, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngine)
 	if err != nil {
 		return nil, err
 	}
@@ -1243,7 +1241,7 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 		updateNotification: true,
 		client:             client,
 
-		nodeCallback: imc.enqueueKubernetesNode,
+		nodeCallback: imc.enqueueInstanceManagersForNode,
 	}
 
 	imc.instanceManagerMonitorMap[im.Name] = stopCh
@@ -1403,13 +1401,7 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() (needStop bool) {
 	// replica IM PDB in this case. So enqueue the node IMs again to sync replica
 	// IM PDB.
 	if clusterAutoscalerEnabled && im.Spec.Type == longhorn.InstanceManagerTypeEngine {
-		node, err := m.ds.GetNode(m.controllerID)
-		if err != nil {
-			utilruntime.HandleError(errors.Wrapf(err, "failed to get node for instance manager %v", m.Name))
-			return false
-		}
-
-		m.nodeCallback(node)
+		m.nodeCallback(m.controllerID)
 	}
 
 	return false
