@@ -394,12 +394,68 @@ func (c *ShareManagerController) isShareManagerRequiredForVolume(volume *longhor
 		return false
 	}
 
+<<<<<<< HEAD
 	// no active workload, there is no need to keep the share manager around
 	if !hasActiveWorkload(volume) {
 		return false
 	}
 
 	return true
+=======
+	for _, attachmentTicket := range va.Spec.AttachmentTickets {
+		if isRegularRWXVolume(volume) && isCSIAttacherTicket(attachmentTicket) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *ShareManagerController) createShareManagerAttachmentTicket(sm *longhorn.ShareManager, va *longhorn.VolumeAttachment) error {
+	log := getLoggerForShareManager(c.logger, sm)
+	podName := types.GetShareManagerPodNameFromShareManagerName(sm.Name)
+	pod, err := c.ds.GetPodRO(c.namespace, podName)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return errors.Wrapf(err, "failed to retrieve pod %v for share manager from datastore", podName)
+	}
+
+	// This is not a fatal error, just wait for the pod.
+	if pod == nil {
+		log.Infof("No share-manager pod yet to attach the volume %v", va.Name)
+		return nil
+	}
+	if pod.Spec.NodeName == "" {
+		log.Infof("Share-manager pod %v for volume %v reports no owner node", pod.Name, va.Name)
+		return nil
+	}
+	if pod.Status.Phase != corev1.PodPending && pod.Status.Phase != corev1.PodRunning {
+		log.Infof("Share-manager pod %v for volume %v reports unusable phase %v", pod.Name, va.Name, pod.Status.Phase)
+		return nil
+	}
+	nodeID := pod.Spec.NodeName
+
+	shareManagerAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeShareManagerController, sm.Name)
+	shareManagerAttachmentTicket, ok := va.Spec.AttachmentTickets[shareManagerAttachmentTicketID]
+	if !ok {
+		//create new one
+		shareManagerAttachmentTicket = &longhorn.AttachmentTicket{
+			ID:     shareManagerAttachmentTicketID,
+			Type:   longhorn.AttacherTypeShareManagerController,
+			NodeID: nodeID,
+			Parameters: map[string]string{
+				longhorn.AttachmentParameterDisableFrontend: longhorn.FalseValue,
+			},
+		}
+		log.Infof("Adding volume attachment ticket: %v to attach the volume %v to node %v", shareManagerAttachmentTicketID, va.Name, nodeID)
+	}
+	if shareManagerAttachmentTicket.NodeID != nodeID {
+		log.Infof("Attachment ticket %v request a new node %v from old node %v", shareManagerAttachmentTicket.ID, nodeID, shareManagerAttachmentTicket.NodeID)
+		shareManagerAttachmentTicket.NodeID = nodeID
+	}
+
+	va.Spec.AttachmentTickets[shareManagerAttachmentTicketID] = shareManagerAttachmentTicket
+
+	return nil
+>>>>>>> 266210f7 (Use the share-manager pod owner node for volume attachments.)
 }
 
 // unmountShareManagerVolume unmounts the volume in the share manager pod.
@@ -558,6 +614,7 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 		sm.Status.State = longhorn.ShareManagerStateStarting
 	}
 
+<<<<<<< HEAD
 	// TODO: #2527 at the moment the consumer needs to control the state transitions of the volume
 	//  since it's not possible to just specify the desired state, we should fix that down the line.
 	//  for the actual state transition we need to request detachment then wait for detachment
@@ -590,6 +647,15 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 			return err
 		}
 	}
+=======
+	// For the RWX volume attachment, VolumeAttachment controller will not directly handle
+	// the tickets from the CSI plugin. Instead, ShareManager controller will add a
+	// AttacherTypeShareManagerController ticket (as the summarization of CSI tickets) then
+	// the VolumeAttachment controller is responsible for handling the AttacherTypeShareManagerController
+	// tickets only. See more at https://github.com/longhorn/longhorn-manager/pull/1541#issuecomment-1429044946
+	// Failure in creating the ticket should not derail the rest of share manager sync, so swallow it.
+	_ = c.createShareManagerAttachmentTicket(sm, va)
+>>>>>>> 266210f7 (Use the share-manager pod owner node for volume attachments.)
 
 	return nil
 }
@@ -814,7 +880,7 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create pod for share manager %v", sm.Name)
 	}
-	getLoggerForShareManager(c.logger, sm).WithField("pod", pod.Name).Info("Created pod for share manager")
+	getLoggerForShareManager(c.logger, sm).WithField("pod", pod.Name).Infof("Created pod for share manager on node %v", pod.Spec.NodeName)
 	return pod, nil
 }
 
@@ -990,7 +1056,8 @@ func (c *ShareManagerController) isResponsibleFor(sm *longhorn.ShareManager) (bo
 	// We prefer keeping the owner of the share manager CR to be the same node
 	// where the share manager pod is running on.
 	preferredOwnerID := ""
-	pod, err := c.ds.GetPod(types.GetShareManagerPodNameFromShareManagerName(sm.Name))
+	podName := types.GetShareManagerPodNameFromShareManagerName(sm.Name)
+	pod, err := c.ds.GetPodRO(c.namespace, podName)
 	if err == nil && pod != nil {
 		preferredOwnerID = pod.Spec.NodeName
 	}
