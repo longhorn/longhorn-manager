@@ -1391,6 +1391,66 @@ func IsAvailableHealthyReplica(r *longhorn.Replica) bool {
 	return true
 }
 
+func (s *DataStore) ListVolumePDBProtectedHealthyReplicas(volumeName string) (map[string]*longhorn.Replica, error) {
+	pdbProtectedHealthyReplicas := map[string]*longhorn.Replica{}
+	replicas, err := s.ListVolumeReplicas(volumeName)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, replica := range replicas {
+		if replica.Spec.HealthyAt == "" || replica.Spec.FailedAt != "" {
+			continue
+		}
+
+		unschedulable, err := s.IsKubeNodeUnschedulable(replica.Spec.NodeID)
+		if err != nil {
+			return map[string]*longhorn.Replica{}, err
+		}
+		if unschedulable {
+			continue
+		}
+
+		instanceManager, err := s.getRunningReplicaInstanceManager(replica)
+		if err != nil {
+			return map[string]*longhorn.Replica{}, err
+		}
+		if instanceManager == nil {
+			continue
+		}
+
+		pdb, err := s.GetPDBRO(types.GetPDBName(instanceManager))
+		if err != nil && !ErrorIsNotFound(err) {
+			return map[string]*longhorn.Replica{}, err
+		}
+		if pdb != nil {
+			pdbProtectedHealthyReplicas[replica.Name] = replica
+		}
+	}
+
+	return pdbProtectedHealthyReplicas, nil
+}
+
+func (s *DataStore) getRunningReplicaInstanceManager(replica *longhorn.Replica) (*longhorn.InstanceManager, error) {
+	var instanceManager *longhorn.InstanceManager
+	var err error
+	if replica.Status.InstanceManagerName == "" {
+		instanceManager, err = s.GetInstanceManagerByInstance(replica)
+		if err != nil && !types.ErrorIsNotFound(err) {
+			return nil, err
+		}
+	} else {
+		instanceManager, err = s.GetInstanceManager(replica.Status.InstanceManagerName)
+		if err != nil && !ErrorIsNotFound(err) {
+			return nil, err
+		}
+	}
+	if instanceManager == nil || instanceManager.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+		return nil, nil
+	}
+	return instanceManager, nil
+}
+
 // IsReplicaRebuildingFailed returns true if the rebuilding replica failed not caused by network issues.
 func IsReplicaRebuildingFailed(reusableFailedReplica *longhorn.Replica) bool {
 	replicaRebuildFailedCondition := types.GetCondition(reusableFailedReplica.Status.Conditions, longhorn.ReplicaConditionTypeRebuildFailed)

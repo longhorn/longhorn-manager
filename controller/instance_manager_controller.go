@@ -566,7 +566,7 @@ func (imc *InstanceManagerController) syncInstanceManagerPDB(im *longhorn.Instan
 		return err
 	}
 
-	imPDB, err := imc.ds.GetPDBRO(imc.getPDBName(im))
+	imPDB, err := imc.ds.GetPDBRO(types.GetPDBName(im))
 	if err != nil && !datastore.ErrorIsNotFound(err) {
 		return err
 	}
@@ -666,7 +666,7 @@ func (imc *InstanceManagerController) cleanUpPDBForNonExistingIM() error {
 		if labelValue != types.LonghornLabelInstanceManager {
 			continue
 		}
-		if _, ok := ims[getIMNameFromPDBName(pdbName)]; ok {
+		if _, ok := ims[types.GetIMNameFromPDBName(pdbName)]; ok {
 			continue
 		}
 		if err := imc.ds.DeletePDB(pdbName); err != nil {
@@ -680,7 +680,7 @@ func (imc *InstanceManagerController) cleanUpPDBForNonExistingIM() error {
 }
 
 func (imc *InstanceManagerController) deleteInstanceManagerPDB(im *longhorn.InstanceManager) error {
-	name := imc.getPDBName(im)
+	name := types.GetPDBName(im)
 	imc.logger.Infof("Deleting %v PDB", name)
 	err := imc.ds.DeletePDB(name)
 	if err != nil && !datastore.ErrorIsNotFound(err) {
@@ -732,6 +732,11 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 		return false, err
 	}
 
+	if nodeDrainingPolicy == string(types.NodeDrainPolicyBlockForEviction) && len(replicasOnCurrentNode) > 0 {
+		// We must wait for ALL replicas to be evicted before removing the PDB.
+		return false, nil
+	}
+
 	targetReplicas := []*longhorn.Replica{}
 	if nodeDrainingPolicy == string(types.NodeDrainPolicyAllowIfReplicaIsStopped) {
 		for _, replica := range replicasOnCurrentNode {
@@ -743,61 +748,30 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 		targetReplicas = replicasOnCurrentNode
 	}
 
-	// For each replica in the target replica list,
-	// find out whether there is a PDB protected healthy replica of the same
-	// volume on another schedulable node.
+	// For each replica in the target replica list, find out whether there is a PDB protected healthy replica of the
+	// same volume on another schedulable node.
 	for _, replica := range targetReplicas {
-		vol, err := imc.ds.GetVolume(replica.Spec.VolumeName)
-		if err != nil {
-			return false, err
-		}
-
-		replicas, err := imc.ds.ListVolumeReplicas(vol.Name)
-		if err != nil {
-			return false, err
-		}
-
 		hasPDBOnAnotherNode := false
 		isUnusedReplicaOnCurrentNode := false
-		for _, r := range replicas {
-			hasOtherHealthyReplicas := r.Spec.HealthyAt != "" && r.Spec.FailedAt == "" && r.Spec.NodeID != im.Spec.NodeID
-			if hasOtherHealthyReplicas {
-				unschedulable, err := imc.ds.IsKubeNodeUnschedulable(r.Spec.NodeID)
-				if err != nil {
-					return false, err
-				}
-				if unschedulable {
-					continue
-				}
 
-				var rIM *longhorn.InstanceManager
-				rIM, err = imc.getRunningReplicaInstancManager(r)
-				if err != nil {
-					return false, err
-				}
-				if rIM == nil {
-					continue
-				}
-
-				pdb, err := imc.ds.GetPDBRO(imc.getPDBName(rIM))
-				if err != nil && !datastore.ErrorIsNotFound(err) {
-					return false, err
-				}
-				if pdb != nil {
-					hasPDBOnAnotherNode = true
-					break
-				}
-			}
-			// If a replica has never been started, there is no data stored in this replica, and
-			// retaining it makes no sense for HA.
-			// Hence Longhorn doesn't need to block the PDB removal for the replica.
-			// This case typically happens on a newly created volume that hasn't been attached to any node.
-			// https://github.com/longhorn/longhorn/issues/2673
-			isUnusedReplicaOnCurrentNode = r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" && r.Spec.NodeID == im.Spec.NodeID
-			if isUnusedReplicaOnCurrentNode {
+		pdbProtectedHealthyReplicas, err := imc.ds.ListVolumePDBProtectedHealthyReplicas(replica.Spec.VolumeName)
+		if err != nil {
+			return false, err
+		}
+		for _, pdbProtectedHealthyReplica := range pdbProtectedHealthyReplicas {
+			if pdbProtectedHealthyReplica.Spec.NodeID != im.Spec.NodeID {
+				hasPDBOnAnotherNode = true
 				break
 			}
 		}
+
+		// If a replica has never been started, there is no data stored in this replica, and retaining it makes no sense
+		// for HA. Hence Longhorn doesn't need to block the PDB removal for the replica. This case typically happens on
+		// a newly created volume that hasn't been attached to any node.
+		// https://github.com/longhorn/longhorn/issues/2673
+		isUnusedReplicaOnCurrentNode = replica.Spec.HealthyAt == "" &&
+			replica.Spec.FailedAt == "" &&
+			replica.Spec.NodeID == im.Spec.NodeID
 
 		if !hasPDBOnAnotherNode && !isUnusedReplicaOnCurrentNode {
 			return false, nil
@@ -805,24 +779,6 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 	}
 
 	return true, nil
-}
-
-func (imc *InstanceManagerController) getRunningReplicaInstancManager(r *longhorn.Replica) (im *longhorn.InstanceManager, err error) {
-	if r.Status.InstanceManagerName == "" {
-		im, err = imc.ds.GetInstanceManagerByInstance(r)
-		if err != nil && !types.ErrorIsNotFound(err) {
-			return nil, err
-		}
-	} else {
-		im, err = imc.ds.GetInstanceManager(r.Status.InstanceManagerName)
-		if err != nil && !apierrors.IsNotFound(err) {
-			return nil, err
-		}
-	}
-	if im == nil || im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
-		return nil, nil
-	}
-	return im, nil
 }
 
 func (imc *InstanceManagerController) areAllVolumesDetachedFromNode(nodeName string) (bool, error) {
@@ -874,7 +830,7 @@ func (imc *InstanceManagerController) createInstanceManagerPDB(im *longhorn.Inst
 func (imc *InstanceManagerController) generateInstanceManagerPDBManifest(im *longhorn.InstanceManager) *policyv1.PodDisruptionBudget {
 	return &policyv1.PodDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      imc.getPDBName(im),
+			Name:      types.GetPDBName(im),
 			Namespace: imc.namespace,
 		},
 		Spec: policyv1.PodDisruptionBudgetSpec{
@@ -884,18 +840,6 @@ func (imc *InstanceManagerController) generateInstanceManagerPDBManifest(im *lon
 			MinAvailable: &intstr.IntOrString{IntVal: 1},
 		},
 	}
-}
-
-func (imc *InstanceManagerController) getPDBName(im *longhorn.InstanceManager) string {
-	return getPDBNameFromIMName(im.Name)
-}
-
-func getPDBNameFromIMName(imName string) string {
-	return imName
-}
-
-func getIMNameFromPDBName(pdbName string) string {
-	return pdbName
 }
 
 func (imc *InstanceManagerController) enqueueInstanceManager(instanceManager interface{}) {

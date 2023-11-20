@@ -181,7 +181,8 @@ func (nc *NodeController) isResponsibleForSetting(obj interface{}) bool {
 
 	return types.SettingName(setting.Name) == types.SettingNameStorageMinimalAvailablePercentage ||
 		types.SettingName(setting.Name) == types.SettingNameBackingImageCleanupWaitInterval ||
-		types.SettingName(setting.Name) == types.SettingNameOrphanAutoDeletion
+		types.SettingName(setting.Name) == types.SettingNameOrphanAutoDeletion ||
+		types.SettingName(setting.Name) == types.SettingNameNodeDrainPolicy
 }
 
 func (nc *NodeController) isResponsibleForReplica(obj interface{}) bool {
@@ -549,6 +550,10 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	}
 
 	if err := nc.syncOrphans(node, collectedDiskInfo); err != nil {
+		return err
+	}
+
+	if err = nc.syncReplicaEvictionRequested(node, kubeNode); err != nil {
 		return err
 	}
 
@@ -1436,4 +1441,108 @@ func (nc *NodeController) createSnapshotMonitor() (mon monitor.Monitor, err erro
 	nc.snapshotMonitor = mon
 
 	return mon, nil
+}
+
+func (nc *NodeController) syncReplicaEvictionRequested(node *longhorn.Node, kubeNode *corev1.Node) error {
+	log := getLoggerForNode(nc.logger, node)
+	node.Status.AutoEvicting = false
+	nodeDrainPolicy, err := nc.ds.GetSettingValueExisted(types.SettingNameNodeDrainPolicy)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameNodeDrainPolicy)
+	}
+
+	type replicaToSync struct {
+		*longhorn.Replica
+		syncReason string
+	}
+	replicasToSync := []replicaToSync{}
+
+	for diskName, diskSpec := range node.Spec.Disks {
+		diskStatus := node.Status.DiskStatus[diskName]
+		for replicaName := range diskStatus.ScheduledReplica {
+			replica, err := nc.ds.GetReplica(replicaName)
+			if err != nil {
+				return err
+			}
+			shouldEvictReplica, reason, err := nc.shouldEvictReplica(node, kubeNode, &diskSpec, replica,
+				nodeDrainPolicy)
+			if err != nil {
+				return err
+			}
+			if replica.Spec.EvictionRequested != shouldEvictReplica {
+				replica.Spec.EvictionRequested = shouldEvictReplica
+				replicasToSync = append(replicasToSync, replicaToSync{replica, reason})
+			}
+
+			if replica.Spec.EvictionRequested && !node.Spec.EvictionRequested && !diskSpec.EvictionRequested {
+				// We don't consider the node to be auto evicting if eviction was manually requested.
+				node.Status.AutoEvicting = true
+			}
+		}
+	}
+
+	for _, replicaToSync := range replicasToSync {
+		replicaLog := log.WithField("replica", replicaToSync.Name).WithField("disk", replicaToSync.Spec.DiskID)
+		if replicaToSync.Spec.EvictionRequested {
+			replicaLog.Infof("Requesting replica eviction")
+			if _, err := nc.ds.UpdateReplica(replicaToSync.Replica); err != nil {
+				replicaLog.Warn("Failed to request replica eviction, will enqueue then resync node")
+				nc.enqueueNode(node)
+				continue
+			}
+			nc.eventRecorder.Eventf(replicaToSync.Replica, corev1.EventTypeNormal, replicaToSync.syncReason, "Requesting replica %v eviction from node %v and disk %v", replicaToSync.Name, node.Spec.Name, replicaToSync.Spec.DiskID)
+		} else {
+			replicaLog.Infof("Cancelling replica eviction")
+			if _, err := nc.ds.UpdateReplica(replicaToSync.Replica); err != nil {
+				replicaLog.Warn("Failed to cancel replica eviction, will enqueue then resync node")
+				nc.enqueueNode(node)
+				continue
+			}
+			nc.eventRecorder.Eventf(replicaToSync.Replica, corev1.EventTypeNormal, replicaToSync.syncReason, "Cancelling replica %v eviction from node %v and disk %v", replicaToSync.Name, node.Spec.Name, replicaToSync.Spec.DiskID)
+		}
+	}
+
+	return nil
+}
+
+func (nc *NodeController) shouldEvictReplica(node *longhorn.Node, kubeNode *corev1.Node, diskSpec *longhorn.DiskSpec,
+	replica *longhorn.Replica, nodeDrainPolicy string) (bool, string, error) {
+	// Replica eviction was cancelled on down or deleted nodes in previous implementations. It seems safest to continue
+	// this behavior unless we find a reason to change it.
+	if isDownOrDeleted, err := nc.ds.IsNodeDownOrDeleted(node.Spec.Name); err != nil {
+		return false, "", err
+	} else if isDownOrDeleted {
+		return false, longhorn.NodeConditionReasonKubernetesNodeNotReady, nil
+	}
+
+	if node.Spec.EvictionRequested || diskSpec.EvictionRequested {
+		return true, constant.EventReasonEvictionUserRequested, nil
+	}
+	if !kubeNode.Spec.Unschedulable {
+		// Node drain policy only takes effect on cordoned nodes.
+		return false, constant.EventReasonEvictionCanceled, nil
+	}
+	if nodeDrainPolicy == string(types.NodeDrainPolicyBlockForEviction) {
+		return true, constant.EventReasonEvictionAutomatic, nil
+	}
+	if nodeDrainPolicy != string(types.NodeDrainPolicyBlockForEvictionIfContainsLastReplica) {
+		return false, constant.EventReasonEvictionCanceled, nil
+	}
+
+	pdbProtectedHealthyReplicas, err := nc.ds.ListVolumePDBProtectedHealthyReplicas(replica.Spec.VolumeName)
+	if err != nil {
+		return false, "", err
+	}
+	hasPDBOnAnotherNode := false
+	for _, pdbProtectedHealthyReplica := range pdbProtectedHealthyReplicas {
+		if pdbProtectedHealthyReplica.Spec.NodeID != replica.Spec.NodeID {
+			hasPDBOnAnotherNode = true
+			break
+		}
+	}
+	if !hasPDBOnAnotherNode {
+		return true, constant.EventReasonEvictionAutomatic, nil
+	}
+
+	return false, constant.EventReasonEvictionCanceled, nil
 }

@@ -195,69 +195,6 @@ func getLoggerForReplica(logger logrus.FieldLogger, r *longhorn.Replica) *logrus
 	)
 }
 
-// From replica to check Node.Spec.EvictionRequested of the node
-// this replica first, then check Node.Spec.Disks.EvictionRequested
-func (rc *ReplicaController) isEvictionRequested(replica *longhorn.Replica) bool {
-	// Return false if this replica has not been assigned to a node.
-	if replica.Spec.NodeID == "" {
-		return false
-	}
-
-	log := getLoggerForReplica(rc.logger, replica)
-
-	if isDownOrDeleted, err := rc.ds.IsNodeDownOrDeleted(replica.Spec.NodeID); err != nil {
-		log.WithError(err).Warn("Failed to check if node is down or deleted")
-		return false
-	} else if isDownOrDeleted {
-		return false
-	}
-
-	node, err := rc.ds.GetNode(replica.Spec.NodeID)
-	if err != nil {
-		log.WithError(err).Warn("Failed to get node information")
-		return false
-	}
-
-	// Check if node has been request eviction.
-	if node.Spec.EvictionRequested {
-		return true
-	}
-
-	// Check if disk has been request eviction.
-	for diskName, diskStatus := range node.Status.DiskStatus {
-		if diskStatus.DiskUUID != replica.Spec.DiskID {
-			continue
-		}
-		diskSpec, ok := node.Spec.Disks[diskName]
-		if !ok {
-			log.Warnf("Cannot continue handling replica eviction since there is no spec for disk name %v on node %v", diskName, node.Name)
-			return false
-		}
-		return diskSpec.EvictionRequested
-	}
-
-	return false
-}
-
-func (rc *ReplicaController) UpdateReplicaEvictionStatus(replica *longhorn.Replica) {
-	log := getLoggerForReplica(rc.logger, replica)
-
-	// Check if eviction has been requested on this replica
-	if rc.isEvictionRequested(replica) &&
-		!replica.Status.EvictionRequested {
-		replica.Status.EvictionRequested = true
-		log.Info("Replica has requested eviction")
-	}
-
-	// Check if eviction has been cancelled on this replica
-	if !rc.isEvictionRequested(replica) &&
-		replica.Status.EvictionRequested {
-		replica.Status.EvictionRequested = false
-		log.Info("Replica has cancelled eviction")
-	}
-
-}
-
 func (rc *ReplicaController) syncReplica(key string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to sync replica for %v", key)
@@ -339,8 +276,8 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 	}()
 
-	// Update `Replica.Status.EvictionRequested` field
-	rc.UpdateReplicaEvictionStatus(replica)
+	// Deprecated and no longer used by Longhorn, but maybe someone's external tooling uses it? Remove in v1.7.0.
+	replica.Status.EvictionRequested = replica.Spec.EvictionRequested
 
 	return rc.instanceHandler.ReconcileInstanceState(replica, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus)
 }

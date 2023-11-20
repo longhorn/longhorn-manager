@@ -10,7 +10,7 @@ import (
 
 func hasReplicaEvictionRequested(rs map[string]*longhorn.Replica) bool {
 	for _, r := range rs {
-		if r.Status.EvictionRequested {
+		if r.Spec.EvictionRequested {
 			return true
 		}
 	}
