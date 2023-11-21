@@ -26,10 +26,11 @@ const (
 )
 
 const (
-	DiskConditionReasonDiskPressure          = "DiskPressure"
-	DiskConditionReasonDiskFilesystemChanged = "DiskFilesystemChanged"
-	DiskConditionReasonNoDiskInfo            = "NoDiskInfo"
-	DiskConditionReasonDiskNotReady          = "DiskNotReady"
+	DiskConditionReasonDiskPressure           = "DiskPressure"
+	DiskConditionReasonDiskFilesystemChanged  = "DiskFilesystemChanged"
+	DiskConditionReasonNoDiskInfo             = "NoDiskInfo"
+	DiskConditionReasonDiskNotReady           = "DiskNotReady"
+	DiskConditionReasonDiskServiceUnreachable = "DiskServiceUnreachable"
 )
 
 const (
