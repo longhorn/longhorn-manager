@@ -5,6 +5,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
@@ -67,7 +68,7 @@ func VolumeMapper(volume string) string {
 func EncryptVolume(devicePath, passphrase string, cryptoParams *EncryptParams) error {
 	logrus.Debugf("Encrypting device %s with LUKS", devicePath)
 	if _, err := luksFormat(devicePath, passphrase, cryptoParams); err != nil {
-		return fmt.Errorf("failed to encrypt device %s with LUKS: %w", devicePath, err)
+		return errors.Wrapf(err, "failed to encrypt device %s with LUKS", devicePath)
 	}
 	return nil
 }
