@@ -555,7 +555,20 @@ func (osc *ObjectStoreController) handleStopped(store *longhorn.ObjectStore) (er
 }
 
 func (osc *ObjectStoreController) handleTerminating(store *longhorn.ObjectStore) (err error) {
-	// remove finalizer and wait for dependent resources to be deleted
+	// cleanup all secrets with matching labels.
+	labels := types.GetBaseLabelsForSystemManagedComponent()
+	labels[types.GetLonghornLabelComponentKey()] = types.LonghornLabelObjectStore
+	labels[types.GetLonghornLabelKey(types.LonghornLabelObjectStore)] = store.Name
+
+	secrets, err := osc.ds.ListSecretsByLabels(osc.namespace, labels)
+	if err != nil {
+		return err
+	}
+
+	for _, secret := range secrets {
+		osc.ds.DeleteSecret(osc.namespace, secret.Name)
+	}
+
 	if len(store.ObjectMeta.Finalizers) != 0 {
 		return osc.ds.RemoveFinalizerForObjectStore(store)
 	}
@@ -980,14 +993,6 @@ func (osc *ObjectStoreController) createService(store *longhorn.ObjectStore) (*c
 }
 
 func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) (*appsv1.Deployment, error) {
-	domainNameArgs := []string{
-		"--rgw-dns-name",
-		fmt.Sprintf("%v.%v.svc", store.Name, osc.namespace),
-	}
-	for _, endpoint := range store.Spec.Endpoints {
-		domainNameArgs = append(domainNameArgs, "--rgw-dns-name")
-		domainNameArgs = append(domainNameArgs, endpoint.DomainName)
-	}
 
 	secret, err := osc.ds.GetSecret(osc.namespace, store.Spec.Credentials.Name)
 	if err != nil && !datastore.ErrorIsNotFound(err) {
@@ -1004,6 +1009,35 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 			},
 		})
 	}
+
+	imagePullPolicy, err := osc.ds.GetSettingImagePullPolicy()
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get image pull policy before creating deployment %v", store.Name)
+	}
+
+	s3gwContainerArgs := []string{
+		"--id", store.Name,
+		"--debug", types.ObjectStoreLogLevel,
+		"--with-status",
+	}
+
+	enableTelemetry, err := osc.ds.GetSettingAsBool(types.SettingNameAllowCollectingLonghornUsage)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get telemetry setting before creating deployment %v", store.Name)
+	}
+	if !enableTelemetry {
+		s3gwContainerArgs = append(s3gwContainerArgs, "--no-telemetry")
+	}
+
+	domainNameArgs := []string{
+		"--dns-name",
+		fmt.Sprintf("%v.%v.svc", store.Name, osc.namespace),
+	}
+	for _, endpoint := range store.Spec.Endpoints {
+		domainNameArgs = append(domainNameArgs, "--dns-name")
+		domainNameArgs = append(domainNameArgs, endpoint.DomainName)
+	}
+	s3gwContainerArgs = append(s3gwContainerArgs, domainNameArgs...)
 
 	dpl := appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1031,17 +1065,10 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:  types.ObjectStoreContainerName,
-							Image: store.Spec.Image,
-							Args: append([]string{
-								"--rgw-backend-store", "sfs",
-								"--debug-rgw", fmt.Sprintf("%v", types.ObjectStoreLogLevel),
-								"--rgw_frontends", fmt.Sprintf(
-									"beast port=%d, status port=%d",
-									types.ObjectStoreContainerPort,
-									types.ObjectStoreStatusContainerPort,
-								),
-							}, domainNameArgs...),
+							Name:            types.ObjectStoreContainerName,
+							Image:           store.Spec.Image,
+							ImagePullPolicy: imagePullPolicy,
+							Args:            s3gwContainerArgs,
 							Ports: []corev1.ContainerPort{
 								{
 									Name:          "s3",
@@ -1069,9 +1096,10 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 							},
 						},
 						{
-							Name:  types.ObjectStoreUIContainerName,
-							Image: store.Spec.UIImage,
-							Args:  []string{},
+							Name:            types.ObjectStoreUIContainerName,
+							Image:           store.Spec.UIImage,
+							ImagePullPolicy: imagePullPolicy,
+							Args:            []string{},
 							Ports: []corev1.ContainerPort{
 								{
 									Name:          "ui",

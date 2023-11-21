@@ -707,6 +707,13 @@ func (s *DataStore) CreateSecret(namespace string, obj *corev1.Secret) (*corev1.
 	return s.kubeClient.CoreV1().Secrets(namespace).Create(context.TODO(), obj, metav1.CreateOptions{})
 }
 
+// ListSecretsByLabels returns a list of secrets in the given namespace matching
+// the labels given in the labels map
+func (s *DataStore) ListSecretsByLabels(namespace string, labelMap map[string]string) ([]*corev1.Secret, error) {
+	selector := labels.SelectorFromSet(labels.Set(labelMap))
+	return s.secretLister.Secrets(namespace).List(selector)
+}
+
 // ListSecret retrieves a list of all Secret objects in the given namespace
 func (s *DataStore) ListSecret(namespace string) ([]*corev1.Secret, error) {
 	return s.secretLister.Secrets(namespace).List(labels.Everything())
