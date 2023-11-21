@@ -3,11 +3,12 @@ package crypto
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/pkg/errors"
 
 	iscsi_util "github.com/longhorn/go-iscsi-helper/util"
 )
@@ -31,8 +32,7 @@ func luksFormat(devicePath, passphrase string, cryptoParams *EncryptParams) (std
 }
 
 func luksResize(volume, passphrase string) (stdout string, err error) {
-	return cryptSetupWithPassphrase(passphrase,
-		"resize", volume)
+	return cryptSetupWithPassphrase(passphrase, "resize", volume)
 }
 
 func luksStatus(volume string) (stdout string, err error) {
@@ -57,15 +57,18 @@ func cryptSetupWithPassphrase(passphrase string, args ...string) (stdout string,
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "nsenter", nsArgs...)
 
-	var stdoutBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
+	stdoutBuf := &bytes.Buffer{}
+	stderrBuf := &bytes.Buffer{}
+	cmd.Stdout = stdoutBuf
+	cmd.Stderr = stderrBuf
+
 	if len(passphrase) > 0 {
 		cmd.Stdin = strings.NewReader(passphrase)
 	}
 
-	output := string(stdoutBuf.Bytes())
 	if err := cmd.Run(); err != nil {
-		return output, fmt.Errorf("failed to run cryptsetup args: %v output: %v error: %v", args, output, err)
+		return stdoutBuf.String(), errors.Wrapf(err, "failed to run cryptsetup, args: %v, stdout: %v, stderr: %v",
+			args, stdoutBuf.String(), stderrBuf.String())
 	}
 
 	return stdoutBuf.String(), nil
