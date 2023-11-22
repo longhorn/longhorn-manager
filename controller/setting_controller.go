@@ -1279,6 +1279,8 @@ const (
 	ClusterInfoVolumeRestoreVolumeRecurringJobCountFmt   = "LonghornVolumeRestoreVolumeRecurringJob%sCount"
 	ClusterInfoVolumeSnapshotDataIntegrityCountFmt       = "LonghornVolumeSnapshotDataIntegrity%sCount"
 	ClusterInfoVolumeUnmapMarkSnapChainRemovedCountFmt   = "LonghornVolumeUnmapMarkSnapChainRemoved%sCount"
+
+	ClusterInfoObjectStoreCount = "LonghornObjectStoreCount"
 )
 
 // Node Scope Info: will be sent from all Longhorn cluster nodes
@@ -1334,6 +1336,10 @@ func (info *ClusterInfo) collectClusterScope() {
 
 	if err := info.collectSettings(); err != nil {
 		info.logger.WithError(err).Warn("Failed to collect Longhorn settings")
+	}
+
+	if err := info.collectObjectStorageInfo(); err != nil {
+		info.logger.WithError(err).Warn("Failed to collect Longhorn Object Storage info")
 	}
 }
 
@@ -1722,6 +1728,23 @@ func (info *ClusterInfo) collectNodeDiskCount() error {
 		}
 		structMap[util.StructName(fmt.Sprintf(ClusterInfoNodeDiskCountFmt, strings.ToUpper(deviceType)))]++
 	}
+	for structName, value := range structMap {
+		info.structFields.fields.Append(structName, value)
+	}
+
+	return nil
+}
+
+func (info *ClusterInfo) collectObjectStorageInfo() error {
+	stores, err := info.ds.ListObjectStoresRO()
+	if err != nil {
+		return err
+	}
+
+	structMap := make(map[util.StructName]int)
+
+	structMap[util.StructName(ClusterInfoObjectStoreCount)] = len(stores)
+
 	for structName, value := range structMap {
 		info.structFields.fields.Append(structName, value)
 	}

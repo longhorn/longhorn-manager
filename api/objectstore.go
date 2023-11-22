@@ -55,7 +55,7 @@ func (s *Server) objectStoreList(apiContext *api.ApiContext) (*client.GenericCol
 			return nil, errors.Wrapf(err, "found multiple deployments for %v", store.Name)
 		}
 
-		vol, err := s.m.Get(fmt.Sprintf("pv-%v", store.Name))
+		vol, err := s.m.Get(store.Name)
 		if err != nil {
 			if datastore.ErrorIsNotFound(err) {
 				// this object store might still be in its creation phase
@@ -227,7 +227,7 @@ func (s *Server) ObjectStoreUpdate(rw http.ResponseWriter, req *http.Request) (e
 		return err
 	}
 
-	vol, err := s.m.Get(fmt.Sprintf("pv-%v", input.Name))
+	vol, err := s.m.Get(input.Name)
 	if err != nil {
 		return err
 	}

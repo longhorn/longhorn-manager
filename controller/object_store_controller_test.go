@@ -26,8 +26,6 @@ import (
 const (
 	TestObjectStoreName       = "test-object-store"
 	TestObjectStoreSecretName = "test-secret"
-	TestObjectStorePVName     = "pv-test-object-store"
-	TestObjectStorePVCName    = "pvc-test-object-store"
 	TestObjectStoreImage      = "quay.io/s3gw/s3gw:latest"
 	TestObjectStoreUIImage    = "quay.io/s3gw/s3gw-ui:latest"
 
@@ -107,7 +105,7 @@ func osTestNewSecret() *corev1.Secret {
 func osTestNewPersistentVolumeClaim() *corev1.PersistentVolumeClaim {
 	return &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      TestObjectStorePVCName,
+			Name:      TestObjectStoreName,
 			Namespace: TestNamespace,
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
@@ -120,7 +118,7 @@ func osTestNewPersistentVolumeClaim() *corev1.PersistentVolumeClaim {
 				},
 			},
 			StorageClassName: func() *string { s := ""; return &s }(),
-			VolumeName:       TestObjectStorePVName,
+			VolumeName:       TestObjectStoreName,
 		},
 	}
 }
@@ -128,7 +126,7 @@ func osTestNewPersistentVolumeClaim() *corev1.PersistentVolumeClaim {
 func osTestNewLonghornVolume() *longhorn.Volume {
 	return &longhorn.Volume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("pv-%v", TestObjectStoreName),
+			Name:      TestObjectStoreName,
 			Namespace: TestNamespace,
 		},
 		Spec: longhorn.VolumeSpec{

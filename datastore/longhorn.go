@@ -4815,10 +4815,14 @@ func (s *DataStore) UpdateObjectStoreStatus(store *longhorn.ObjectStore) (*longh
 	return obj, nil
 }
 
+func (s *DataStore) ListObjectStoresRO() ([]*longhorn.ObjectStore, error) {
+	return s.ObjectStoreLister.List(labels.Everything())
+}
+
 // ListObjectStores returns a list of copies of all object stores known to the
 // datastore.
 func (s *DataStore) ListObjectStores() (map[string]*longhorn.ObjectStore, error) {
-	list, err := s.ObjectStoreLister.List(labels.Everything())
+	list, err := s.ListObjectStoresRO()
 	if err != nil {
 		return nil, err
 	}

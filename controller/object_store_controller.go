@@ -489,37 +489,47 @@ func (osc *ObjectStoreController) handleRunning(store *longhorn.ObjectStore) (er
 	}
 
 	dpl, err := osc.ds.GetDeployment(store.Name)
-	if err != nil && datastore.ErrorIsNotFound(err) {
-		return errors.Wrapf(err, "failed to find deployment %v", store.Name)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return errors.Wrapf(err, "failed to find deployment %v", store.Name)
+		}
 	} else if err = osc.checkDeployment(dpl, store); err != nil {
 		logrus.Errorf("Object Store running but deployment not ready")
 		return err
 	}
 
 	_, err = osc.ds.GetService(osc.namespace, store.Name)
-	if err != nil && datastore.ErrorIsNotFound(err) {
-		return errors.Wrapf(err, "failed to find service %v", store.Name)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return errors.Wrapf(err, "failed to find service %v", store.Name)
+		}
 	}
 
-	vol, err := osc.ds.GetVolume(genPVName(store))
-	if err != nil && datastore.ErrorIsNotFound(err) {
-		return errors.Wrapf(err, "failed to find volume %v", genPVName(store))
+	vol, err := osc.ds.GetVolume(store.Name)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return errors.Wrapf(err, "failed to find volume %v", store.Name)
+		}
 	} else if err = osc.checkVolume(vol); err != nil {
 		logrus.Errorf("Object Store running but Volume not ready")
 		return err
 	}
 
-	pv, err := osc.ds.GetPersistentVolume(genPVName(store))
-	if err != nil && datastore.ErrorIsNotFound(err) {
-		return errors.Wrapf(err, "failed to find PV %v", genPVName(store))
+	pv, err := osc.ds.GetPersistentVolume(store.Name)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return errors.Wrapf(err, "failed to find PV %v", store.Name)
+		}
 	} else if err = osc.checkPV(pv); err != nil {
 		logrus.Errorf("Object Store running but PV not ready")
 		return err
 	}
 
-	pvc, err := osc.ds.GetPersistentVolumeClaim(osc.namespace, genPVCName(store))
-	if err != nil && datastore.ErrorIsNotFound(err) {
-		return errors.Wrapf(err, "failed to find pvc %v", genPVCName(store))
+	pvc, err := osc.ds.GetPersistentVolumeClaim(osc.namespace, store.Name)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return errors.Wrapf(err, "failed to find pvc %v", store.Name)
+		}
 	} else if err = osc.checkPVC(pvc); err != nil {
 		logrus.Errorf("Object Store running but PVC not bound")
 		return err
@@ -583,17 +593,17 @@ func (osc *ObjectStoreController) handleTerminating(store *longhorn.ObjectStore)
 		return err
 	}
 
-	_, err = osc.ds.GetPersistentVolumeClaim(osc.namespace, genPVCName(store))
+	_, err = osc.ds.GetPersistentVolumeClaim(osc.namespace, store.Name)
 	if err == nil || !datastore.ErrorIsNotFound(err) {
 		return err
 	}
 
-	_, err = osc.ds.GetPersistentVolume(genPVName(store))
+	_, err = osc.ds.GetPersistentVolume(store.Name)
 	if err == nil || !datastore.ErrorIsNotFound(err) {
 		return err
 	}
 
-	_, err = osc.ds.GetVolume(genPVName(store))
+	_, err = osc.ds.GetVolume(store.Name)
 	if err == nil || !datastore.ErrorIsNotFound(err) {
 		return err
 	}
@@ -610,7 +620,7 @@ func (osc *ObjectStoreController) initializeObjectStore(store *longhorn.ObjectSt
 }
 
 func (osc *ObjectStoreController) getOrCreatePVC(store *longhorn.ObjectStore) (*corev1.PersistentVolumeClaim, *longhorn.ObjectStore, error) {
-	pvc, err := osc.ds.GetPersistentVolumeClaim(osc.namespace, genPVCName(store))
+	pvc, err := osc.ds.GetPersistentVolumeClaim(osc.namespace, store.Name)
 	if err == nil {
 		return pvc, store, nil
 	}
@@ -638,7 +648,7 @@ func (osc *ObjectStoreController) checkPVC(pvc *corev1.PersistentVolumeClaim) er
 func (osc *ObjectStoreController) getOrCreateVolume(
 	store *longhorn.ObjectStore,
 ) (*longhorn.Volume, *longhorn.ObjectStore, error) {
-	vol, err := osc.ds.GetVolume(genPVName(store))
+	vol, err := osc.ds.GetVolume(store.Name)
 	if err == nil {
 		return vol, store, nil
 	}
@@ -667,7 +677,7 @@ func (osc *ObjectStoreController) getOrCreatePV(
 	store *longhorn.ObjectStore,
 	volume *longhorn.Volume,
 ) (*corev1.PersistentVolume, *longhorn.ObjectStore, error) {
-	pv, err := osc.ds.GetPersistentVolume(genPVName(store))
+	pv, err := osc.ds.GetPersistentVolume(store.Name)
 	if err == nil {
 		return pv, store, nil
 	}
@@ -857,7 +867,7 @@ func (osc *ObjectStoreController) createVolume(
 ) (*longhorn.Volume, error) {
 	vol := longhorn.Volume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      genPVName(store),
+			Name:      store.Name,
 			Namespace: osc.namespace,
 			Labels:    types.GetObjectStoreLabels(store),
 			Annotations: map[string]string{
@@ -894,7 +904,7 @@ func (osc *ObjectStoreController) createPV(
 ) (*corev1.PersistentVolume, error) {
 	pv := corev1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   genPVName(store),
+			Name:   store.Name,
 			Labels: types.GetObjectStoreLabels(store),
 		},
 		Spec: corev1.PersistentVolumeSpec{
@@ -911,7 +921,7 @@ func (osc *ObjectStoreController) createPV(
 				APIVersion: "v1",
 				Kind:       "PersistentVolumeClaim",
 				Namespace:  osc.namespace,
-				Name:       genPVCName(store),
+				Name:       store.Name,
 			},
 			PersistentVolumeSource: corev1.PersistentVolumeSource{
 				CSI: &corev1.CSIPersistentVolumeSource{
@@ -934,7 +944,7 @@ func (osc *ObjectStoreController) createPVC(
 ) (*corev1.PersistentVolumeClaim, error) {
 	pvc := corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            genPVCName(store),
+			Name:            store.Name,
 			Namespace:       osc.namespace,
 			Labels:          types.GetObjectStoreLabels(store),
 			OwnerReferences: osc.ds.GetOwnerReferencesForObjectStore(store),
@@ -949,7 +959,7 @@ func (osc *ObjectStoreController) createPVC(
 				},
 			},
 			StorageClassName: strPtr(types.ObjectStoreStorageClassName),
-			VolumeName:       genPVName(store),
+			VolumeName:       store.Name,
 		},
 	}
 
@@ -1128,7 +1138,7 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 							Name: genVolumeMountName(store),
 							VolumeSource: corev1.VolumeSource{
 								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-									ClaimName: genPVCName(store),
+									ClaimName: store.Name,
 								},
 							},
 						},
@@ -1159,7 +1169,7 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 // the object store. This of course precludes that the volume has already been
 // created.
 func (osc *ObjectStoreController) isResponsibleFor(store *longhorn.ObjectStore) bool {
-	vol, err := osc.ds.GetVolumeRO(genPVName(store))
+	vol, err := osc.ds.GetVolumeRO(store.Name)
 	if err != nil {
 		// if there is no volume yet, the first available controller should take over for the
 		// time being. If there are no available nodes at all, we'll just take
@@ -1183,14 +1193,6 @@ func (osc *ObjectStoreController) isResponsibleFor(store *longhorn.ObjectStore) 
 	}
 
 	return osc.controllerID == vol.Status.OwnerID
-}
-
-func genPVName(store *longhorn.ObjectStore) string {
-	return fmt.Sprintf("pv-%s", store.Name)
-}
-
-func genPVCName(store *longhorn.ObjectStore) string {
-	return fmt.Sprintf("pvc-%s", store.Name)
 }
 
 func genVolumeMountName(store *longhorn.ObjectStore) string {
