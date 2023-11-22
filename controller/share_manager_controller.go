@@ -979,6 +979,7 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 	if resourceReq != nil {
 		podSpec.Spec.Containers[0].Resources = *resourceReq
 	}
+	types.AddGoCoverDirToPod(podSpec)
 
 	return podSpec
 }

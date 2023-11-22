@@ -789,6 +789,7 @@ func (c *BackingImageManagerController) createBackingImageManagerPod(bim *longho
 	if err != nil {
 		return err
 	}
+
 	if _, err := c.ds.CreatePod(podManifest); err != nil && !apierrors.IsAlreadyExists(err) {
 		return err
 	}
@@ -902,6 +903,7 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 		podSpec.Annotations[nadAnnot] = types.CreateCniAnnotationFromSetting(storageNetwork)
 	}
 
+	types.AddGoCoverDirToPod(podSpec)
 	return podSpec, nil
 }
 
