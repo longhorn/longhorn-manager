@@ -570,6 +570,16 @@ func (nc *NodeController) enqueueNode(obj interface{}) {
 	nc.queue.Add(key)
 }
 
+func (nc *NodeController) enqueueNodeRateLimited(obj interface{}) {
+	key, err := controller.KeyFunc(obj)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
+		return
+	}
+
+	nc.queue.AddRateLimited(key)
+}
+
 func (nc *NodeController) enqueueSetting(obj interface{}) {
 	nodes, err := nc.ds.ListNodesRO()
 	if err != nil {
@@ -1491,7 +1501,7 @@ func (nc *NodeController) syncReplicaEvictionRequested(node *longhorn.Node, kube
 			replicaLog.Infof("Requesting replica eviction")
 			if _, err := nc.ds.UpdateReplica(replicaToSync.Replica); err != nil {
 				replicaLog.Warn("Failed to request replica eviction, will enqueue then resync node")
-				nc.enqueueNode(node)
+				nc.enqueueNodeRateLimited(node)
 				continue
 			}
 			nc.eventRecorder.Eventf(replicaToSync.Replica, corev1.EventTypeNormal, replicaToSync.syncReason, "Requesting replica %v eviction from node %v and disk %v", replicaToSync.Name, node.Spec.Name, replicaToSync.Spec.DiskID)
@@ -1499,7 +1509,7 @@ func (nc *NodeController) syncReplicaEvictionRequested(node *longhorn.Node, kube
 			replicaLog.Infof("Cancelling replica eviction")
 			if _, err := nc.ds.UpdateReplica(replicaToSync.Replica); err != nil {
 				replicaLog.Warn("Failed to cancel replica eviction, will enqueue then resync node")
-				nc.enqueueNode(node)
+				nc.enqueueNodeRateLimited(node)
 				continue
 			}
 			nc.eventRecorder.Eventf(replicaToSync.Replica, corev1.EventTypeNormal, replicaToSync.syncReason, "Cancelling replica %v eviction from node %v and disk %v", replicaToSync.Name, node.Spec.Name, replicaToSync.Spec.DiskID)
