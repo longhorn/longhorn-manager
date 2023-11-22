@@ -757,6 +757,7 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 		podSpec.Annotations[nadAnnot] = types.CreateCniAnnotationFromSetting(storageNetwork)
 	}
 
+	types.AddGoCoverDirToPod(podSpec)
 	return podSpec, nil
 }
 

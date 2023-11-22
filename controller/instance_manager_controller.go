@@ -1256,6 +1256,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			},
 		})
 	}
+	types.AddGoCoverDirToPod(podSpec)
 
 	return podSpec, nil
 }
