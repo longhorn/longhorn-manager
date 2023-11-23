@@ -541,7 +541,12 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 		}
 		return nil
 	} else if sm.Status.State == longhorn.ShareManagerStateRunning {
-		return c.mountShareManagerVolume(sm)
+		err := c.mountShareManagerVolume(sm)
+		if err != nil {
+			log.WithError(err).Error("Failed to mount share manager volume")
+			sm.Status.State = longhorn.ShareManagerStateError
+		}
+		return nil
 	}
 
 	// in a single node cluster, there is no other manager that can claim ownership so we are prevented from creation
@@ -979,6 +984,7 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 	if resourceReq != nil {
 		podSpec.Spec.Containers[0].Resources = *resourceReq
 	}
+	types.AddGoCoverDirToPod(podSpec)
 
 	return podSpec
 }

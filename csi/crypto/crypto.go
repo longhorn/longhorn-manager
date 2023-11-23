@@ -5,6 +5,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 
@@ -15,6 +16,12 @@ const (
 	CryptoKeyDefaultHash   = "sha256"
 	CryptoKeyDefaultSize   = "256"
 	CryptoDefaultPBKDF     = "argon2i"
+
+	// Luks2MinimalVolumeSize the minimal volume size for the LUKS2format encryption.
+	//  https://gitlab.com/cryptsetup/cryptsetup/-/wikis/FrequentlyAskedQuestions
+	//  Section 10.10 What about the size of the LUKS2 header
+	//  The default size is 16MB
+	Luks2MinimalVolumeSize = 16 * 1024 * 1024
 )
 
 // EncryptParams keeps the customized cipher options from the secret CR
@@ -67,7 +74,7 @@ func VolumeMapper(volume string) string {
 func EncryptVolume(devicePath, passphrase string, cryptoParams *EncryptParams) error {
 	logrus.Infof("Encrypting device %s with LUKS", devicePath)
 	if _, err := luksFormat(devicePath, passphrase, cryptoParams); err != nil {
-		return fmt.Errorf("failed to encrypt device %s with LUKS: %w", devicePath, err)
+		return errors.Wrapf(err, "failed to encrypt device %s with LUKS", devicePath)
 	}
 	return nil
 }

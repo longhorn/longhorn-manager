@@ -867,6 +867,7 @@ func (ic *EngineImageController) createEngineImageDaemonSetSpec(ei *longhorn.Eng
 			},
 		}
 	}
+	types.AddGoCoverDirToDaemonSet(d)
 
 	return d, nil
 }

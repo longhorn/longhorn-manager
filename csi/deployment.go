@@ -508,6 +508,7 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 			},
 		}
 	}
+	types.AddGoCoverDirToDaemonSet(daemonSet)
 
 	return &PluginDeployment{
 		daemonSet: daemonSet,
