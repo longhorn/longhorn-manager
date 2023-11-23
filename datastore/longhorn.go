@@ -1467,6 +1467,64 @@ func IsAvailableHealthyReplica(r *longhorn.Replica) bool {
 	return true
 }
 
+func (s *DataStore) ListVolumePDBProtectedHealthyReplicasRO(volumeName string) (map[string]*longhorn.Replica, error) {
+	pdbProtectedHealthyReplicas := map[string]*longhorn.Replica{}
+	replicas, err := s.ListVolumeReplicasRO(volumeName)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, replica := range replicas {
+		if replica.Spec.HealthyAt == "" || replica.Spec.FailedAt != "" {
+			continue
+		}
+
+		unschedulable, err := s.IsKubeNodeUnschedulable(replica.Spec.NodeID)
+		if err != nil {
+			return map[string]*longhorn.Replica{}, err
+		}
+		if unschedulable {
+			continue
+		}
+
+		instanceManager, err := s.getRunningReplicaInstanceManagerRO(replica)
+		if err != nil {
+			return map[string]*longhorn.Replica{}, err
+		}
+		if instanceManager == nil {
+			continue
+		}
+
+		pdb, err := s.GetPDBRO(types.GetPDBName(instanceManager))
+		if err != nil && !ErrorIsNotFound(err) {
+			return map[string]*longhorn.Replica{}, err
+		}
+		if pdb != nil {
+			pdbProtectedHealthyReplicas[replica.Name] = replica
+		}
+	}
+
+	return pdbProtectedHealthyReplicas, nil
+}
+
+func (s *DataStore) getRunningReplicaInstanceManagerRO(r *longhorn.Replica) (im *longhorn.InstanceManager, err error) {
+	if r.Status.InstanceManagerName == "" {
+		im, err = s.GetInstanceManagerByInstanceRO(r)
+		if err != nil && !types.ErrorIsNotFound(err) {
+			return nil, err
+		}
+	} else {
+		im, err = s.GetInstanceManagerRO(r.Status.InstanceManagerName)
+		if err != nil && !ErrorIsNotFound(err) {
+			return nil, err
+		}
+	}
+	if im == nil || im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+		return nil, nil
+	}
+	return im, nil
+}
+
 // IsReplicaRebuildingFailed returns true if the rebuilding replica failed not caused by network issues.
 func IsReplicaRebuildingFailed(reusableFailedReplica *longhorn.Replica) bool {
 	replicaRebuildFailedCondition := types.GetCondition(reusableFailedReplica.Status.Conditions, longhorn.ReplicaConditionTypeRebuildFailed)

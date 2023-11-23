@@ -360,6 +360,7 @@ type Node struct {
 	Region                    string                        `json:"region"`
 	Zone                      string                        `json:"zone"`
 	InstanceManagerCPURequest int                           `json:"instanceManagerCPURequest"`
+	AutoEvicting              bool                          `json:"autoEvicting"`
 }
 
 type DiskStatus struct {
@@ -1852,6 +1853,7 @@ func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiCont
 		Region:                    node.Status.Region,
 		Zone:                      node.Status.Zone,
 		InstanceManagerCPURequest: node.Spec.InstanceManagerCPURequest,
+		AutoEvicting:              node.Status.AutoEvicting,
 	}
 
 	disks := map[string]DiskInfo{}

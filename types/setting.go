@@ -687,7 +687,9 @@ var (
 
 	SettingDefinitionNodeDrainPolicy = SettingDefinition{
 		DisplayName: "Node Drain Policy",
-		Description: "Define the policy to use when a node with the last healthy replica of a volume is drained. \n" +
+		Description: "Define the policy to use when a node with the last healthy replica of a volume is drained.\n" +
+			"- **block-for-eviction** Longhorn will automatically evict all replicas and block the drain until eviction is complete.\n" +
+			"- **block-for-eviction-if-contains-last-replica** Longhorn will automatically evict any replicas that don't have a healthy counterpart and block the drain until eviction is complete.\n" +
 			"- **block-if-contains-last-replica** Longhorn will block the drain when the node contains the last healthy replica of a volume.\n" +
 			"- **allow-if-replica-is-stopped** Longhorn will allow the drain when the node contains the last healthy replica of a volume but the replica is stopped. WARNING: possible data loss if the node is removed after draining. Select this option if you want to drain the node and do in-place upgrade/maintenance.\n" +
 			"- **always-allow** Longhorn will allow the drain even though the node contains the last healthy replica of a volume. WARNING: possible data loss if the node is removed after draining. Also possible data corruption if the last replica was running during the draining.\n",
@@ -697,6 +699,8 @@ var (
 		ReadOnly: false,
 		Default:  string(NodeDrainPolicyBlockIfContainsLastReplica),
 		Choices: []string{
+			string(NodeDrainPolicyBlockForEviction),
+			string(NodeDrainPolicyBlockForEvictionIfContainsLastReplica),
 			string(NodeDrainPolicyBlockIfContainsLastReplica),
 			string(NodeDrainPolicyAllowIfReplicaIsStopped),
 			string(NodeDrainPolicyAlwaysAllow),
@@ -1129,12 +1133,14 @@ const (
 	NodeDownPodDeletionPolicyDeleteBothStatefulsetAndDeploymentPod = NodeDownPodDeletionPolicy("delete-both-statefulset-and-deployment-pod")
 )
 
-type NodeWithLastHealthyReplicaDrainPolicy string
+type NodeDrainPolicy string
 
 const (
-	NodeDrainPolicyBlockIfContainsLastReplica = NodeWithLastHealthyReplicaDrainPolicy("block-if-contains-last-replica")
-	NodeDrainPolicyAllowIfReplicaIsStopped    = NodeWithLastHealthyReplicaDrainPolicy("allow-if-replica-is-stopped")
-	NodeDrainPolicyAlwaysAllow                = NodeWithLastHealthyReplicaDrainPolicy("always-allow")
+	NodeDrainPolicyBlockForEviction                      = NodeDrainPolicy("block-for-eviction")
+	NodeDrainPolicyBlockForEvictionIfContainsLastReplica = NodeDrainPolicy("block-for-eviction-if-contains-last-replica")
+	NodeDrainPolicyBlockIfContainsLastReplica            = NodeDrainPolicy("block-if-contains-last-replica")
+	NodeDrainPolicyAllowIfReplicaIsStopped               = NodeDrainPolicy("allow-if-replica-is-stopped")
+	NodeDrainPolicyAlwaysAllow                           = NodeDrainPolicy("always-allow")
 )
 
 type SystemManagedPodsImagePullPolicy string
