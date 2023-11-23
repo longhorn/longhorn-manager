@@ -219,7 +219,7 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 		return nil, err
 	}
 
-	if isReady, err := m.ds.CheckEngineImageReadyOnAtLeastOneVolumeReplica(v.Spec.Image, v.Name, node.Name, v.Spec.DataLocality); !isReady {
+	if isReady, err := m.ds.CheckImageReadyOnAtLeastOneVolumeReplica(v.Spec.Image, v.Name, node.Name, v.Spec.DataLocality, v.Spec.BackendStoreDriver); !isReady {
 		if err != nil {
 			return nil, errors.Wrapf(err, "cannot attach volume %v with image %v", v.Name, v.Spec.Image)
 		}
@@ -788,14 +788,14 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 			v.Name, v.Status.CurrentImage, v.Spec.Image)
 	}
 
-	if isReady, err := m.ds.CheckEngineImageReadyOnAllVolumeReplicas(image, v.Name, v.Status.CurrentNodeID); !isReady {
+	if isReady, err := m.ds.CheckImageReadyOnAllVolumeReplicas(image, v.Name, v.Status.CurrentNodeID, v.Spec.BackendStoreDriver); !isReady {
 		if err != nil {
 			return nil, fmt.Errorf("cannot upgrade engine image for volume %v from image %v to image %v: %v", v.Name, v.Spec.Image, image, err)
 		}
 		return nil, fmt.Errorf("cannot upgrade engine image for volume %v from image %v to image %v because the engine image %v is not deployed on the replicas' nodes or the node that the volume is attached to", v.Name, v.Spec.Image, image, image)
 	}
 
-	if isReady, err := m.ds.CheckEngineImageReadyOnAllVolumeReplicas(v.Status.CurrentImage, v.Name, v.Status.CurrentNodeID); !isReady {
+	if isReady, err := m.ds.CheckImageReadyOnAllVolumeReplicas(v.Status.CurrentImage, v.Name, v.Status.CurrentNodeID, v.Spec.BackendStoreDriver); !isReady {
 		if err != nil {
 			return nil, fmt.Errorf("cannot upgrade engine image for volume %v from image %v to image %v: %v", v.Name, v.Spec.Image, image, err)
 		}

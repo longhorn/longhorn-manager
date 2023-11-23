@@ -311,10 +311,12 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	}()
 
 	isCLIAPIVersionOne := false
-	if engine.Status.CurrentImage != "" {
-		isCLIAPIVersionOne, err = ec.ds.IsEngineImageCLIAPIVersionOne(engine.Status.CurrentImage)
-		if err != nil {
-			return err
+	if engine.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+		if engine.Status.CurrentImage != "" {
+			isCLIAPIVersionOne, err = ec.ds.IsEngineImageCLIAPIVersionOne(engine.Status.CurrentImage)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -463,7 +465,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		return nil, err
 	}
 
-	engineCLIAPIVersion, err := ec.ds.GetEngineImageCLIAPIVersion(e.Spec.Image)
+	cliAPIVersion, err := ec.ds.GetDataEngineImageCLIAPIVersion(e.Spec.Image, e.Spec.BackendStoreDriver)
 	if err != nil {
 		return nil, err
 	}
@@ -475,7 +477,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		ReplicaFileSyncHTTPClientTimeout: fileSyncHTTPClientTimeout,
 		DataLocality:                     v.Spec.DataLocality,
 		ImIP:                             im.Status.IP,
-		EngineCLIAPIVersion:              engineCLIAPIVersion,
+		EngineCLIAPIVersion:              cliAPIVersion,
 	})
 }
 
@@ -486,9 +488,11 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 	}
 	log := getLoggerForEngine(ec.logger, e)
 
-	err = ec.deleteInstanceWithCLIAPIVersionOne(e)
-	if err != nil {
-		return err
+	if e.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+		err = ec.deleteInstanceWithCLIAPIVersionOne(e)
+		if err != nil {
+			return err
+		}
 	}
 
 	var im *longhorn.InstanceManager
@@ -914,11 +918,14 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	if err != nil {
 		return err
 	}
-	cliAPIVersion, err := m.ds.GetEngineImageCLIAPIVersion(engine.Status.CurrentImage)
+
+	cliAPIVersion, err := m.ds.GetDataEngineImageCLIAPIVersion(engine.Status.CurrentImage, engine.Spec.BackendStoreDriver)
 	if err != nil {
 		return err
 	}
-	if cliAPIVersion >= engineapi.MinCLIVersion {
+
+	if (engine.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 && cliAPIVersion >= engineapi.MinCLIVersion) ||
+		(engine.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2) {
 		volumeInfo, err := engineClientProxy.VolumeGet(engine)
 		if err != nil {
 			return err
@@ -2020,7 +2027,7 @@ func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logru
 		return err
 	}
 
-	engineCLIAPIVersion, err := ec.ds.GetEngineImageCLIAPIVersion(e.Spec.Image)
+	cliAPIVersion, err := ec.ds.GetDataEngineImageCLIAPIVersion(e.Spec.Image, e.Spec.BackendStoreDriver)
 	if err != nil {
 		return err
 	}
@@ -2040,7 +2047,7 @@ func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logru
 		EngineReplicaTimeout:             engineReplicaTimeout,
 		ReplicaFileSyncHTTPClientTimeout: fileSyncHTTPClientTimeout,
 		DataLocality:                     v.Spec.DataLocality,
-		EngineCLIAPIVersion:              engineCLIAPIVersion,
+		EngineCLIAPIVersion:              cliAPIVersion,
 	})
 	if err != nil {
 		return err
@@ -2067,25 +2074,27 @@ func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineIm
 		return isResponsible, nil
 	}
 
-	readyNodesWithEI, err := ec.ds.ListReadyNodesContainingEngineImageRO(e.Status.CurrentImage)
-	if err != nil {
-		return false, err
-	}
-	// No node in the system has the e.Status.CurrentImage,
-	// Fall back to the default logic where we pick a running node to be the owner
-	if len(readyNodesWithEI) == 0 {
-		return isResponsible, nil
+	if e.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+		readyNodesWithEI, err := ec.ds.ListReadyNodesContainingEngineImageRO(e.Status.CurrentImage)
+		if err != nil {
+			return false, errors.Wrapf(err, "failed to list ready nodes containing engine image %v", e.Status.CurrentImage)
+		}
+		// No node in the system has the e.Status.CurrentImage,
+		// Fall back to the default logic where we pick a running node to be the owner
+		if len(readyNodesWithEI) == 0 {
+			return isResponsible, nil
+		}
 	}
 
-	preferredOwnerEngineAvailable, err := ec.ds.CheckEngineImageReadiness(e.Status.CurrentImage, e.Spec.NodeID)
+	preferredOwnerEngineAvailable, err := ec.ds.CheckImageReadiness(e.Status.CurrentImage, e.Spec.BackendStoreDriver, e.Spec.NodeID)
 	if err != nil {
 		return false, err
 	}
-	currentOwnerEngineAvailable, err := ec.ds.CheckEngineImageReadiness(e.Status.CurrentImage, e.Status.OwnerID)
+	currentOwnerEngineAvailable, err := ec.ds.CheckImageReadiness(e.Status.CurrentImage, e.Spec.BackendStoreDriver, e.Status.OwnerID)
 	if err != nil {
 		return false, err
 	}
-	currentNodeEngineAvailable, err := ec.ds.CheckEngineImageReadiness(e.Status.CurrentImage, ec.controllerID)
+	currentNodeEngineAvailable, err := ec.ds.CheckImageReadiness(e.Status.CurrentImage, e.Spec.BackendStoreDriver, ec.controllerID)
 	if err != nil {
 		return false, err
 	}
