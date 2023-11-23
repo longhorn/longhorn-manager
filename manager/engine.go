@@ -302,7 +302,7 @@ func (m *VolumeManager) GetRunningEngineByVolume(name string) (e *longhorn.Engin
 		return nil, errors.Errorf("engine is not running")
 	}
 
-	if isReady, err := m.ds.CheckEngineImageReadiness(e.Status.CurrentImage, m.currentNodeID); !isReady {
+	if isReady, err := m.ds.CheckImageReadiness(e.Status.CurrentImage, e.Spec.BackendStoreDriver, m.currentNodeID); !isReady {
 		if err != nil {
 			return nil, errors.Errorf("cannot get engine with image %v: %v", e.Status.CurrentImage, err)
 		}

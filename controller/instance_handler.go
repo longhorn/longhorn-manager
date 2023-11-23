@@ -224,10 +224,12 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 	}
 
 	isCLIAPIVersionOne := false
-	if status.CurrentImage != "" {
-		isCLIAPIVersionOne, err = h.ds.IsEngineImageCLIAPIVersionOne(status.CurrentImage)
-		if err != nil {
-			return err
+	if spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+		if status.CurrentImage != "" {
+			isCLIAPIVersionOne, err = h.ds.IsEngineImageCLIAPIVersionOne(status.CurrentImage)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
