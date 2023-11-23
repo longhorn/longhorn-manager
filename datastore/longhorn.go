@@ -1765,11 +1765,19 @@ func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (is
 	return true, nil
 }
 
-// CheckEngineImageReadyOnAtLeastOneVolumeReplica checks if the IMAGE is deployed on the NODEID and on at least one of the the volume's replicas
-func (s *DataStore) CheckEngineImageReadyOnAtLeastOneVolumeReplica(image, volumeName, nodeID string, dataLocality longhorn.DataLocality) (bool, error) {
-	isReady, err := s.CheckEngineImageReadiness(image, nodeID)
+func (s *DataStore) CheckImageReadiness(image string, backendStoreDriver longhorn.BackendStoreDriverType, nodes ...string) (isReady bool, err error) {
+	if backendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+		// TODO: check readiness of instance manager image
+		return true, nil
+	}
+	return s.CheckEngineImageReadiness(image, nodes...)
+}
+
+// CheckImageReadyOnAtLeastOneVolumeReplica checks if the IMAGE is deployed on the NODEID and on at least one of the the volume's replicas
+func (s *DataStore) CheckImageReadyOnAtLeastOneVolumeReplica(image, volumeName, nodeID string, dataLocality longhorn.DataLocality, backendStoreDriver longhorn.BackendStoreDriverType) (bool, error) {
+	isReady, err := s.CheckImageReadiness(image, backendStoreDriver, nodeID)
 	if err != nil {
-		return false, errors.Wrapf(err, "failed to check engine image readiness of node %v", nodeID)
+		return false, errors.Wrapf(err, "failed to check image readiness of node %v", nodeID)
 	}
 
 	if !isReady || dataLocality == longhorn.DataLocalityStrictLocal {
@@ -1783,7 +1791,7 @@ func (s *DataStore) CheckEngineImageReadyOnAtLeastOneVolumeReplica(image, volume
 
 	hasScheduledReplica := false
 	for _, r := range replicas {
-		isReady, err := s.CheckEngineImageReadiness(image, r.Spec.NodeID)
+		isReady, err := s.CheckImageReadiness(image, r.Spec.BackendStoreDriver, r.Spec.NodeID)
 		if err != nil || isReady {
 			return isReady, err
 		}
@@ -1797,8 +1805,8 @@ func (s *DataStore) CheckEngineImageReadyOnAtLeastOneVolumeReplica(image, volume
 	return false, nil
 }
 
-// CheckEngineImageReadyOnAllVolumeReplicas checks if the IMAGE is deployed on the NODEID as well as all the volume's replicas
-func (s *DataStore) CheckEngineImageReadyOnAllVolumeReplicas(image, volumeName, nodeID string) (bool, error) {
+// CheckImageReadyOnAllVolumeReplicas checks if the IMAGE is deployed on the NODEID as well as all the volume's replicas
+func (s *DataStore) CheckImageReadyOnAllVolumeReplicas(image, volumeName, nodeID string, backendStoreDriver longhorn.BackendStoreDriverType) (bool, error) {
 	replicas, err := s.ListVolumeReplicas(volumeName)
 	if err != nil {
 		return false, fmt.Errorf("cannot get replicas for volume %v: %w", volumeName, err)
@@ -1812,7 +1820,7 @@ func (s *DataStore) CheckEngineImageReadyOnAllVolumeReplicas(image, volumeName, 
 			nodes = append(nodes, r.Spec.NodeID)
 		}
 	}
-	return s.CheckEngineImageReadiness(image, nodes...)
+	return s.CheckImageReadiness(image, backendStoreDriver, nodes...)
 }
 
 // CreateBackingImage creates a Longhorn BackingImage resource and verifies
@@ -3412,6 +3420,24 @@ func (s *DataStore) GetEngineImageCLIAPIVersion(imageName string) (int, error) {
 	if imageName == "" {
 		return -1, fmt.Errorf("cannot check the CLI API Version based on empty image name")
 	}
+	ei, err := s.GetEngineImageRO(types.GetEngineImageChecksumName(imageName))
+	if err != nil {
+		return -1, errors.Wrapf(err, "failed to get engine image object based on image name %v", imageName)
+	}
+
+	return ei.Status.CLIAPIVersion, nil
+}
+
+// GetImageCLIAPIVersion get engine or instance manager image for the given name and returns the CLIAPIVersion
+func (s *DataStore) GetImageCLIAPIVersion(imageName string, backendStoreDriver longhorn.BackendStoreDriverType) (int, error) {
+	if imageName == "" {
+		return -1, fmt.Errorf("cannot check the CLI API Version based on empty image name")
+	}
+
+	if backendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+		return 0, nil
+	}
+
 	ei, err := s.GetEngineImageRO(types.GetEngineImageChecksumName(imageName))
 	if err != nil {
 		return -1, errors.Wrapf(err, "failed to get engine image object based on image name %v", imageName)

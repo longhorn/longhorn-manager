@@ -35,7 +35,7 @@ func GetEngineBinaryClient(ds *datastore.DataStore, volumeName, nodeID string) (
 	if e.Status.CurrentState != longhorn.InstanceStateRunning {
 		return nil, fmt.Errorf("engine is not running")
 	}
-	if isReady, err := ds.CheckEngineImageReadiness(e.Status.CurrentImage, nodeID); !isReady {
+	if isReady, err := ds.CheckImageReadiness(e.Status.CurrentImage, e.Spec.BackendStoreDriver, nodeID); !isReady {
 		if err != nil {
 			return nil, fmt.Errorf("cannot get engine client with image %v: %v", e.Status.CurrentImage, err)
 		}

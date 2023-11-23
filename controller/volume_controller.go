@@ -766,15 +766,17 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 			c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonDegraded, "volume %v became degraded", v.Name)
 		}
 
-		cliAPIVersion, err := c.ds.GetEngineImageCLIAPIVersion(e.Status.CurrentImage)
+		cliAPIVersion, err := c.ds.GetImageCLIAPIVersion(e.Status.CurrentImage, e.Spec.BackendStoreDriver)
 		if err != nil {
 			return err
 		}
+
 		// Rebuild is not supported when:
 		//   1. the volume is being migrating to another node.
 		//   2. the volume is old restore/DR volumes.
 		//   3. the volume is expanding size.
-		isOldRestoreVolume := (v.Status.IsStandby || v.Status.RestoreRequired) && cliAPIVersion < engineapi.CLIVersionFour
+		isOldRestoreVolume := (v.Status.IsStandby || v.Status.RestoreRequired) &&
+			(e.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 && cliAPIVersion < engineapi.CLIVersionFour)
 		isInExpansion := v.Spec.Size != e.Status.CurrentSize
 		if isMigratingDone && !isOldRestoreVolume && !isInExpansion {
 			if err := c.replenishReplicas(v, e, rs, ""); err != nil {
@@ -2293,9 +2295,12 @@ func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume,
 		return 0, zoneExtraRs, nil
 	}
 
-	ei, err := c.getEngineImageRO(v.Status.CurrentImage)
-	if err != nil {
-		return 0, nil, err
+	ei := &longhorn.EngineImage{}
+	if v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+		ei, err = c.getEngineImageRO(v.Status.CurrentImage)
+		if err != nil {
+			return 0, nil, err
+		}
 	}
 
 	unusedZone := make(map[string][]string)
@@ -2315,9 +2320,11 @@ func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume,
 			continue
 		}
 
-		if isReady, _ := c.ds.CheckEngineImageReadiness(ei.Spec.Image, nodeName); !isReady {
-			log.Warnf("Failed to use node %v, engine image is not ready", nodeName)
-			continue
+		if v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+			if isReady, _ := c.ds.CheckEngineImageReadiness(ei.Spec.Image, nodeName); !isReady {
+				log.Warnf("Failed to use node %v, engine image is not ready", nodeName)
+				continue
+			}
 		}
 
 		unusedZone[node.Status.Zone] = append(unusedZone[node.Status.Zone], nodeName)
@@ -2437,9 +2444,12 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 		return 0, nodeExtraRs, nil
 	}
 
-	ei, err := c.getEngineImageRO(v.Status.CurrentImage)
-	if err != nil {
-		return 0, nodeExtraRs, err
+	ei := &longhorn.EngineImage{}
+	if v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+		ei, err = c.getEngineImageRO(v.Status.CurrentImage)
+		if err != nil {
+			return 0, nodeExtraRs, err
+		}
 	}
 	for nodeName, node := range readyNodes {
 		_, exist := nodeExtraRs[nodeName]
@@ -2453,10 +2463,12 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 			continue
 		}
 
-		if isReady, _ := c.ds.CheckEngineImageReadiness(ei.Spec.Image, node.Name); !isReady {
-			log.Warnf("Failed to use node %v, engine image is not ready", nodeName)
-			delete(readyNodes, nodeName)
-			continue
+		if v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+			if isReady, _ := c.ds.CheckEngineImageReadiness(ei.Spec.Image, node.Name); !isReady {
+				log.Warnf("Failed to use node %v, engine image is not ready", nodeName)
+				delete(readyNodes, nodeName)
+				continue
+			}
 		}
 	}
 	if len(nodeExtraRs) == len(readyNodes) {
@@ -2561,9 +2573,12 @@ func (c *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volum
 		return candidateNames
 	}
 
-	ei, err := c.getEngineImageRO(v.Status.CurrentImage)
-	if err != nil {
-		return candidateNames
+	ei := &longhorn.EngineImage{}
+	if v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+		ei, err = c.getEngineImageRO(v.Status.CurrentImage)
+		if err != nil {
+			return candidateNames
+		}
 	}
 	for nName, n := range readyNodes {
 		for _, zone := range zones {
@@ -2579,10 +2594,12 @@ func (c *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volum
 			continue
 		}
 
-		if isReady, _ := c.ds.CheckEngineImageReadiness(ei.Spec.Image, nName); !isReady {
-			// cannot use node, engine image is not ready
-			delete(readyNodes, nName)
-			continue
+		if v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+			if isReady, _ := c.ds.CheckEngineImageReadiness(ei.Spec.Image, nName); !isReady {
+				// cannot use node, engine image is not ready
+				delete(readyNodes, nName)
+				continue
+			}
 		}
 
 		for _, r := range rs {
@@ -2735,38 +2752,40 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 		volumeAndReplicaNodes = append(volumeAndReplicaNodes, r.Spec.NodeID)
 	}
 
-	oldImage, err := c.getEngineImageRO(v.Status.CurrentImage)
-	if err != nil {
-		log.WithError(err).Warnf("Failed to get engine image %v for live upgrade", v.Status.CurrentImage)
-		return nil
-	}
+	if v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+		oldImage, err := c.getEngineImageRO(v.Status.CurrentImage)
+		if err != nil {
+			log.WithError(err).Warnf("Failed to get engine image %v for live upgrade", v.Status.CurrentImage)
+			return nil
+		}
 
-	if isReady, err := c.ds.CheckEngineImageReadiness(oldImage.Spec.Image, volumeAndReplicaNodes...); !isReady {
-		log.WithError(err).Warnf("Engine live upgrade from %v, but the image wasn't ready", oldImage.Spec.Image)
-		return nil
-	}
-	newImage, err := c.getEngineImageRO(v.Spec.Image)
-	if err != nil {
-		log.WithError(err).Warnf("Failed to get engine image %v for live upgrade", v.Spec.Image)
-		return nil
-	}
-	if isReady, err := c.ds.CheckEngineImageReadiness(newImage.Spec.Image, volumeAndReplicaNodes...); !isReady {
-		log.WithError(err).Warnf("Engine live upgrade to %v, but the image wasn't ready", newImage.Spec.Image)
-		return nil
-	}
+		if isReady, err := c.ds.CheckEngineImageReadiness(oldImage.Spec.Image, volumeAndReplicaNodes...); !isReady {
+			log.WithError(err).Warnf("Engine live upgrade from %v, but the image wasn't ready", oldImage.Spec.Image)
+			return nil
+		}
+		newImage, err := c.getEngineImageRO(v.Spec.Image)
+		if err != nil {
+			log.WithError(err).Warnf("Failed to get engine image %v for live upgrade", v.Spec.Image)
+			return nil
+		}
+		if isReady, err := c.ds.CheckEngineImageReadiness(newImage.Spec.Image, volumeAndReplicaNodes...); !isReady {
+			log.WithError(err).Warnf("Engine live upgrade to %v, but the image wasn't ready", newImage.Spec.Image)
+			return nil
+		}
 
-	if oldImage.Status.GitCommit == newImage.Status.GitCommit {
-		log.Warnf("Engine image %v and %v are identical, delay upgrade until detach for volume", oldImage.Spec.Image, newImage.Spec.Image)
-		return nil
-	}
+		if oldImage.Status.GitCommit == newImage.Status.GitCommit {
+			log.Warnf("Engine image %v and %v are identical, delay upgrade until detach for volume", oldImage.Spec.Image, newImage.Spec.Image)
+			return nil
+		}
 
-	if oldImage.Status.ControllerAPIVersion > newImage.Status.ControllerAPIVersion ||
-		oldImage.Status.ControllerAPIVersion < newImage.Status.ControllerAPIMinVersion {
-		log.Warnf("Failed to live upgrade from %v to %v: the old controller version %v "+
-			"is not compatible with the new controller version %v and the new controller minimal version %v",
-			oldImage.Spec.Image, newImage.Spec.Image,
-			oldImage.Status.ControllerAPIVersion, newImage.Status.ControllerAPIVersion, newImage.Status.ControllerAPIMinVersion)
-		return nil
+		if oldImage.Status.ControllerAPIVersion > newImage.Status.ControllerAPIVersion ||
+			oldImage.Status.ControllerAPIVersion < newImage.Status.ControllerAPIMinVersion {
+			log.Warnf("Failed to live upgrade from %v to %v: the old controller version %v "+
+				"is not compatible with the new controller version %v and the new controller minimal version %v",
+				oldImage.Spec.Image, newImage.Spec.Image,
+				oldImage.Status.ControllerAPIVersion, newImage.Status.ControllerAPIVersion, newImage.Status.ControllerAPIMinVersion)
+			return nil
+		}
 	}
 
 	unknownReplicas := map[string]*longhorn.Replica{}
@@ -3131,182 +3150,6 @@ func (c *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume) (err erro
 	v.Status.CloneStatus.Snapshot = snapshotName
 	v.Status.CloneStatus.State = longhorn.VolumeCloneStateInitiated
 	c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonVolumeCloneInitiated, "source volume %v, snapshot %v", sourceVolName, snapshotName)
-
-	return nil
-}
-
-func (c *VolumeController) checkForAutoAttachment(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, scheduled bool) error {
-	if v.Spec.NodeID != "" || v.Status.CurrentNodeID != "" {
-		return nil
-	}
-	if !(v.Status.State == "" || v.Status.State == longhorn.VolumeStateDetached) {
-		return nil
-	}
-	// Do not intervene the auto reattachment workflow during the engine crashing and volume recovery.
-	if v.Status.PendingNodeID != "" {
-		return nil
-	}
-	// It's meaningless to do auto attachment if the volume scheduling fails
-	if !scheduled {
-		return nil
-	}
-
-	exportingBackingImageDataSources, err := c.ds.ListBackingImageDataSourcesExportingFromVolume(v.Name)
-	if err != nil {
-		return err
-	}
-
-	// Do auto attachment for:
-	//   1. restoring/DR volumes.
-	//   2. expansion.
-	//   3. Eviction requested on this volume.
-	//   4. The target volume of a cloning
-	//   5. The source volume of a cloning
-	//   6, Export data as a backing image
-	isRestoringDRVol := v.Status.RestoreRequired || v.Status.IsStandby
-	isExpansionVol := v.Status.ExpansionRequired
-	isEvictionRequestedOnVol := hasReplicaEvictionRequested(rs)
-	isTargetVolOfCloning := isTargetVolumeOfCloning(v)
-	sourceVolumeOfCloning, err := c.isSourceVolumeOfCloning(v)
-	isExportingBackingImage := len(exportingBackingImageDataSources) != 0
-	if err != nil {
-		return err
-	}
-	if isRestoringDRVol || isExpansionVol || isEvictionRequestedOnVol ||
-		isTargetVolOfCloning || sourceVolumeOfCloning || isExportingBackingImage {
-		// Should use c.controllerID or v.Status.OwnerID as CurrentNodeID,
-		// otherwise they may be not equal
-		v.Status.CurrentNodeID = v.Status.OwnerID
-	}
-
-	return nil
-}
-
-// isSourceVolumeOfCloning checks if the input volume is the source volume of an on-going cloning process
-func (c *VolumeController) isSourceVolumeOfCloning(v *longhorn.Volume) (bool, error) {
-	vols, err := c.ds.ListVolumesRO()
-	if err != nil {
-		return false, err
-	}
-	for _, vol := range vols {
-		if isTargetVolumeOfCloning(vol) && types.GetVolumeName(vol.Spec.DataSource) == v.Name {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-func (c *VolumeController) checkForAutoDetachment(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) error {
-	log := getLoggerForVolume(c.logger, v)
-
-	if v.Spec.NodeID != "" || v.Status.CurrentNodeID == "" || e == nil {
-		return nil
-	}
-
-	if v.Status.ExpansionRequired {
-		_, err := c.ds.GetNodeRO(v.Status.CurrentNodeID)
-		if err == nil || (err != nil && !datastore.ErrorIsNotFound(err)) {
-			return nil
-		}
-
-		log.Infof("Preparing to do auto-detachment of expanding volume %v, because the node %v is unavailable", v.Name, v.Status.CurrentNodeID)
-		v.Status.CurrentNodeID = ""
-		return nil
-	}
-
-	// Don't do auto-detachment if the eviction is going on.
-	if hasReplicaEvictionRequested(rs) {
-		return nil
-	}
-
-	// While cloning is happening, don't auto-detach target volume or source volume of the cloning
-	if isTargetVolumeOfCloning(v) {
-		return nil
-	}
-	if isSourceVolOfCloning, err := c.isSourceVolumeOfCloning(v); err != nil {
-		return err
-	} else if isSourceVolOfCloning {
-		return nil
-	}
-
-	// This volume is being exported as a backing image.
-	exportingBackingImageDataSources, err := c.ds.ListBackingImageDataSourcesExportingFromVolume(v.Name)
-	if err != nil {
-		return err
-	}
-	if len(exportingBackingImageDataSources) != 0 {
-		return nil
-	}
-
-	// Do auto-detachment for non-restore/DR volumes.
-	if !v.Status.RestoreRequired && !v.Status.IsStandby {
-		v.Status.CurrentNodeID = ""
-		return nil
-	}
-
-	// Do auto-detachment for restore/DR volumes.
-	if v.Status.CurrentNodeID != v.Status.OwnerID {
-		log.Info("Found the restore/DR volume node is down, will detach it first then re-attach it to restart the restoring")
-		v.Status.CurrentNodeID = ""
-		return nil
-	}
-	// Can automatically detach/activate the restore/DR volume on the running node if the following conditions are satisfied:
-	// 1) The restored backup is up-to-date;
-	// 2) The volume is no longer a DR volume;
-	// 3) The restore/DR volume is
-	//   3.1) using the old engine image. And it's still running.
-	//	 3.2) or using the latest engine image without purging snapshots. And
-	//	   3.2.1) it's state `Healthy`;
-	//	   3.2.2) or it's state `Degraded` with all the scheduled replica included in the engine
-	cliAPIVersion, err := c.ds.GetEngineImageCLIAPIVersion(v.Status.CurrentImage)
-	if err != nil {
-		return err
-	}
-	isPurging := false
-	for _, status := range e.Status.PurgeStatus {
-		if status.IsPurging {
-			isPurging = true
-			break
-		}
-	}
-
-	// After the volume is detached, the engine stops and does not perform recovery,
-	// so it should ensure that the backup volume is synced and updated at least once
-	// so that the engine restores with the latest backup before the volume is detached
-	if backupVolumeName, isExist := v.Labels[types.LonghornLabelBackupVolume]; isExist && backupVolumeName != "" {
-		backupVolume, err := c.ds.GetBackupVolumeRO(backupVolumeName)
-		if err != nil && !datastore.ErrorIsNotFound(err) {
-			return errors.Wrapf(err, "failed to get backup volume: %v", v.Name)
-		}
-		if backupVolume != nil && backupVolume.Status.LastSyncedAt.Before(&backupVolume.Spec.SyncRequestedAt) {
-			return nil
-		}
-	}
-
-	// make sure engine finish restoring with the latest backup and no longer a DR volume
-	if !(e.Spec.RequestedBackupRestore != "" &&
-		e.Spec.RequestedBackupRestore == e.Status.LastRestoredBackup &&
-		!v.Spec.Standby) {
-		return nil
-	}
-
-	allScheduledReplicasIncluded, err := c.checkAllScheduledReplicasIncluded(v, e, rs)
-	if err != nil {
-		return err
-	}
-
-	degradedVolumeSupported, err := c.ds.GetSettingAsBool(types.SettingNameAllowVolumeCreationWithDegradedAvailability)
-	if err != nil {
-		return err
-	}
-
-	if (cliAPIVersion >= engineapi.CLIVersionFour && !isPurging && ((v.Status.Robustness == longhorn.VolumeRobustnessHealthy && allScheduledReplicasIncluded) || (v.Status.Robustness == longhorn.VolumeRobustnessDegraded && degradedVolumeSupported))) ||
-		(cliAPIVersion < engineapi.CLIVersionFour && (v.Status.Robustness == longhorn.VolumeRobustnessHealthy || v.Status.Robustness == longhorn.VolumeRobustnessDegraded)) {
-		log.Info("Preparing to do auto detachment for restore/DR volume")
-		v.Status.CurrentNodeID = ""
-		v.Status.IsStandby = false
-		v.Status.RestoreRequired = false
-	}
 
 	return nil
 }
@@ -4108,17 +3951,18 @@ func (c *VolumeController) isResponsibleFor(v *longhorn.Volume, defaultEngineIma
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
-	readyNodesWithDefaultEI, err := c.ds.ListReadyNodesContainingEngineImageRO(defaultEngineImage)
-	if err != nil {
-		return false, err
-	}
-
 	isResponsible := isControllerResponsibleFor(c.controllerID, c.ds, v.Name, v.Spec.NodeID, v.Status.OwnerID)
 
-	// No node in the system has the default engine image,
-	// Fall back to the default logic where we pick a running node to be the owner
-	if len(readyNodesWithDefaultEI) == 0 {
-		return isResponsible, nil
+	if v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+		readyNodesWithDefaultEI, err := c.ds.ListReadyNodesContainingEngineImageRO(defaultEngineImage)
+		if err != nil {
+			return false, err
+		}
+		// No node in the system has the default engine image,
+		// Fall back to the default logic where we pick a running node to be the owner
+		if len(readyNodesWithDefaultEI) == 0 {
+			return isResponsible, nil
+		}
 	}
 
 	preferredOwnerEngineAvailable, err := c.ds.CheckEngineImageReadiness(defaultEngineImage, v.Spec.NodeID)

@@ -113,7 +113,7 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 
 	// Check engine version before disable revision counter
 	if volume.Spec.RevisionCounterDisabled {
-		if ok, err := v.canDisableRevisionCounter(volume.Spec.Image); !ok {
+		if ok, err := v.canDisableRevisionCounter(volume.Spec.Image, volume.Spec.BackendStoreDriver); !ok {
 			err := errors.Wrapf(err, "can not create volume with current engine image that doesn't support disable revision counter")
 			return werror.NewInvalidError(err.Error(), "")
 		}
@@ -399,8 +399,13 @@ func validateReplicaCount(dataLocality longhorn.DataLocality, replicaCount int) 
 	return nil
 }
 
-func (v *volumeValidator) canDisableRevisionCounter(engineImage string) (bool, error) {
-	cliAPIVersion, err := v.ds.GetEngineImageCLIAPIVersion(engineImage)
+func (v *volumeValidator) canDisableRevisionCounter(image string, backendStoreDriver longhorn.BackendStoreDriverType) (bool, error) {
+	if backendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+		// v2 volume does not have revision counter
+		return true, nil
+	}
+
+	cliAPIVersion, err := v.ds.GetEngineImageCLIAPIVersion(image)
 	if err != nil {
 		return false, err
 	}

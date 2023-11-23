@@ -150,18 +150,25 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		moreLabels[types.LonghornLabelBackupVolume] = bvName
 	}
 
+	// Round up the size to the unit in bytes
 	newSize := util.RoundUpSize(size)
 	if newSize != size {
 		logrus.Infof("Rounding up the volume spec size from %d to %d in the create mutator", size, newSize)
 	}
 	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/size", "value": "%v"}`, strconv.FormatInt(newSize, 10)))
 
-	defaultEngineImage, _ := v.ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
-	if defaultEngineImage == "" {
-		return nil, werror.NewInvalidError("BUG: Invalid empty Setting.EngineImage", "")
+	// Mutate the image to the default one
+	defaultImageSetting := types.SettingNameDefaultEngineImage
+	if volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+		defaultImageSetting = types.SettingNameDefaultInstanceManagerImage
 	}
-	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/image", "value": "%s"}`, defaultEngineImage))
+	defaultImage, _ := v.ds.GetSettingValueExisted(defaultImageSetting)
+	if defaultImage == "" {
+		return nil, werror.NewInvalidError(fmt.Sprintf("invalid empty setting %s", defaultImageSetting), "")
+	}
+	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/image", "value": "%s"}`, defaultImage))
 
+	// Mutate the backup compression method to the default one
 	if volume.Spec.BackupCompressionMethod == "" {
 		defaultCompressionMethod, _ := v.ds.GetSettingValueExisted(types.SettingNameBackupCompressionMethod)
 		if defaultCompressionMethod == "" {
