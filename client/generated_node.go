@@ -11,6 +11,8 @@ type Node struct {
 
 	AllowScheduling bool `json:"allowScheduling,omitempty" yaml:"allow_scheduling,omitempty"`
 
+	AutoEvicting bool `json:"autoEvicting,omitempty" yaml:"auto_evicting,omitempty"`
+
 	Conditions map[string]interface{} `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 
 	Disks map[string]interface{} `json:"disks,omitempty" yaml:"disks,omitempty"`

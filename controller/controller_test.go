@@ -502,6 +502,7 @@ func newNode(name, namespace string, allowScheduling bool, status longhorn.Condi
 					StorageReserved: 0,
 				},
 			},
+			Name: name,
 		},
 		Status: longhorn.NodeStatus{
 			Conditions: []longhorn.Condition{

@@ -515,7 +515,7 @@ func (c *VolumeController) EvictReplicas(v *longhorn.Volume,
 	hasNewReplica := false
 	healthyNonEvictingCount := healthyCount
 	for _, replica := range rs {
-		if replica.Status.EvictionRequested &&
+		if replica.Spec.EvictionRequested &&
 			e.Status.ReplicaModeMap[replica.Name] == longhorn.ReplicaModeRW {
 			healthyNonEvictingCount--
 		}
@@ -529,7 +529,7 @@ func (c *VolumeController) EvictReplicas(v *longhorn.Volume,
 		log.Info("Creating one more replica for eviction")
 		if err := c.replenishReplicas(v, e, rs, ""); err != nil {
 			c.eventRecorder.Eventf(v, corev1.EventTypeWarning,
-				constant.EventReasonFailedEviction,
+				constant.EventReasonEvictionFailed,
 				"volume %v failed to create one more replica", v.Name)
 			return errors.Wrap(err, "failed to create new replica for replica eviction")
 		}
@@ -1030,7 +1030,7 @@ func (c *VolumeController) cleanupEvictionRequestedReplicas(v *longhorn.Volume, 
 		if !datastore.IsAvailableHealthyReplica(r) {
 			continue
 		}
-		if !r.Status.EvictionRequested {
+		if !r.Spec.EvictionRequested {
 			hasNonEvictingHealthyReplica = true
 			break
 		}
@@ -1038,7 +1038,7 @@ func (c *VolumeController) cleanupEvictionRequestedReplicas(v *longhorn.Volume, 
 	}
 
 	for _, r := range rs {
-		if !r.Status.EvictionRequested {
+		if !r.Spec.EvictionRequested {
 			continue
 		}
 		if !hasNonEvictingHealthyReplica && r.Name == evictingHealthyReplica {
@@ -1046,10 +1046,13 @@ func (c *VolumeController) cleanupEvictionRequestedReplicas(v *longhorn.Volume, 
 			continue
 		}
 		if err := c.deleteReplica(r, rs); err != nil {
-			c.eventRecorder.Eventf(v, corev1.EventTypeWarning,
-				constant.EventReasonFailedEviction,
-				"volume %v failed to evict replica %v",
-				v.Name, r.Name)
+			if !apierrors.IsConflict(err) && !apierrors.IsNotFound(err) {
+				c.eventRecorder.Eventf(v, corev1.EventTypeWarning,
+					constant.EventReasonEvictionFailed,
+					"volume %v failed to evict replica %v",
+					v.Name, r.Name)
+				return false, err
+			}
 			return false, err
 		}
 		log.Infof("Evicted replica %v in disk %v of node %v ", r.Name, r.Spec.DiskID, r.Spec.NodeID)
@@ -2484,7 +2487,7 @@ func (c *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[
 			continue
 		}
 		// Skip the replica has been requested eviction.
-		if r.Spec.FailedAt == "" && (!r.Status.EvictionRequested) && r.Spec.Active {
+		if r.Spec.FailedAt == "" && (!r.Spec.EvictionRequested) && r.Spec.Active {
 			usableCount++
 		}
 	}

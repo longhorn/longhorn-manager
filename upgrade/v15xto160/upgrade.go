@@ -111,6 +111,8 @@ func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset, resource
 			r.Spec.Image = r.Spec.EngineImage
 			r.Spec.EngineImage = ""
 		}
+
+		r.Spec.EvictionRequested = r.Status.EvictionRequested
 	}
 
 	return nil
