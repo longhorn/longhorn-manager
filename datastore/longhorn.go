@@ -22,6 +22,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -628,6 +629,11 @@ func CheckVolume(v *longhorn.Volume) error {
 	if v.Name == "" || size == 0 || v.Spec.NumberOfReplicas == 0 {
 		return fmt.Errorf("BUG: missing required field %+v", v)
 	}
+
+	if v.Spec.Encrypted && size <= crypto.Luks2MinimalVolumeSize {
+		return fmt.Errorf("invalid volume size %v, need to be bigger than 16MiB, default LUKS2 header size for encryption", v.Spec.Size)
+	}
+
 	errs := validation.IsDNS1123Label(v.Name)
 	if len(errs) != 0 {
 		return fmt.Errorf("invalid volume name: %+v", errs)
