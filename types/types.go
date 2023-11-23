@@ -1059,3 +1059,15 @@ func GetBackupTargetSchemeFromURL(backupTargetURL string) string {
 		return ValueUnknown
 	}
 }
+
+func GetPDBName(im *longhorn.InstanceManager) string {
+	return GetPDBNameFromIMName(im.Name)
+}
+
+func GetPDBNameFromIMName(imName string) string {
+	return imName
+}
+
+func GetIMNameFromPDBName(pdbName string) string {
+	return pdbName
+}
