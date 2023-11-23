@@ -16,6 +16,12 @@ const (
 	CryptoKeyDefaultHash   = "sha256"
 	CryptoKeyDefaultSize   = "256"
 	CryptoDefaultPBKDF     = "argon2i"
+
+	// Luks2MinimalVolumeSize the minimal volume size for the LUKS2format encryption.
+	//  https://gitlab.com/cryptsetup/cryptsetup/-/wikis/FrequentlyAskedQuestions
+	//  Section 10.10 What about the size of the LUKS2 header
+	//  The default size is 16MB
+	Luks2MinimalVolumeSize = 16 * 1024 * 1024
 )
 
 // EncryptParams keeps the customized cipher options from the secret CR
