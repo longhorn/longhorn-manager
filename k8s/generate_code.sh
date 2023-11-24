@@ -14,9 +14,16 @@ CODE_GENERATOR_VERSION="v0.18.0"
 CRDS_DIR="crds"
 CONTROLLER_TOOLS_VERSION="v0.7.0"
 KUSTOMIZE_VERSION="kustomize/v3.10.0"
+GOPATH="${GOPATH:-}"
 
-if [[ -z "${GOPATH}" ]]; then
-  GOPATH=~/go
+
+if [[ -z "$GOPATH" ]]; then
+  GOPATH="$(go env GOPATH)"
+
+  if [[ -z "$GOPATH" ]]; then
+    echo "GOPATH is not set"
+    exit 1
+  fi
 fi
 
 # https://github.com/kubernetes/code-generator/blob/v0.18.0/generate-groups.sh
