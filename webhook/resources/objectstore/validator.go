@@ -1,9 +1,13 @@
 package objectstore
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -13,8 +17,13 @@ import (
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 )
 
+const (
+	lowercaseAlpha    = "abcdefghijklmnopqrstuvwxyz"
+	lowercaseAlphaNum = "abcdefghijklmnopqrstuvwxyz0123456789"
+	validRFC1035Chars = "abcdefghijklmnopqrstuvwxyz0123456789-"
+)
+
 type objectStoreValidator struct {
-	admission.DefaultValidator
 	ds *datastore.DataStore
 }
 
@@ -36,8 +45,15 @@ func (osv *objectStoreValidator) Resource() admission.Resource {
 	}
 }
 
-func (osv *objectStoreValidator) Crete(req *admission.Request, newObj runtime.Object) (err error) {
+func (osv *objectStoreValidator) Create(req *admission.Request, newObj runtime.Object) (err error) {
 	store := newObj.(*longhorn.ObjectStore)
+
+	logrus.Errorf("validating object store resource %v", store.Name)
+
+	if err = validateStringIsRFC1035Label(store.Name); err != nil {
+		logrus.Errorf("%v", err)
+		return werror.NewInvalidError("object store name is not an RFC 1035 label", "metadata.name")
+	}
 
 	if err = osv.validateNamespace(store); err != nil {
 		return err
@@ -114,6 +130,14 @@ func (osv *objectStoreValidator) Update(req *admission.Request, oldObj, newObj r
 	return nil
 }
 
+func (osv *objectStoreValidator) Delete(req *admission.Request, oldObj runtime.Object) (err error) {
+	return nil
+}
+
+func (osv *objectStoreValidator) Connect(req *admission.Request, newObj runtime.Object) (err error) {
+	return nil
+}
+
 func (osv *objectStoreValidator) validateNamespace(objectstore *longhorn.ObjectStore) error {
 	namespace, err := osv.ds.GetLonghornNamespace()
 	if err != nil {
@@ -129,6 +153,31 @@ func (osv *objectStoreValidator) validateNamespace(objectstore *longhorn.ObjectS
 func (osv *objectStoreValidator) validateCredentialsNamespace(objectstore *longhorn.ObjectStore) error {
 	if objectstore.ObjectMeta.Namespace != objectstore.Spec.Credentials.Namespace {
 		return werror.NewInvalidError("spec.credentials.namespace is invalid", "spec.cerentials.namespace")
+	}
+
+	return nil
+}
+
+func validateStringIsRFC1035Label(str string) error {
+	if len(str) == 0 {
+		return errors.New("zero length string is not an RFC1035 label")
+	}
+
+	if len(str) > 63 {
+		return errors.New("string is too long for RFC1035 label")
+	}
+
+	if !strings.Contains(lowercaseAlpha, fmt.Sprintf("%v", str[0])) {
+		return errors.New("string must start with lowercase alphabetic character")
+	}
+	if !strings.Contains(lowercaseAlphaNum, fmt.Sprintf("%v", str[len(str)-1])) {
+		return errors.New("string must end with lowercase alphanumeric character")
+	}
+
+	for _, c := range str {
+		if !strings.Contains(validRFC1035Chars, fmt.Sprintf("%v", c)) {
+			return errors.New("string must only contain lowercase alphanumeric characters and '-'")
+		}
 	}
 
 	return nil

@@ -7,6 +7,7 @@ import (
 
 	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	appslisters "k8s.io/client-go/listers/apps/v1"
 	batchlisters_v1 "k8s.io/client-go/listers/batch/v1"
@@ -322,4 +323,16 @@ func ErrorIsConflict(err error) bool {
 // metav1.StatusReasonAlreadyExists
 func ErrorIsAlreadyExists(err error) bool {
 	return apierrors.IsAlreadyExists(err)
+}
+
+// ErrorIsTemporaryAPIError returns true if the error indicates that the problem
+// is of temporary nature and on the side of the API server, e.g. a timeout
+func ErrorIsTemporaryAPIError(err error) bool {
+	return apierrors.IsInternalError(err) || // HTTP code 500
+		apierrors.IsServerTimeout(err) || // HTTP code 500
+		apierrors.IsServiceUnavailable(err) || // HTTP code 503
+		apierrors.IsTimeout(err) || // HTTP code 504
+		apierrors.IsTooManyRequests(err) || // HTTP code 429
+		apierrors.IsUnexpectedServerError(err) || // HTTP response was not in expected format
+		apierrors.ReasonForError(err) == metav1.StatusReasonUnknown // HTTP code 500
 }

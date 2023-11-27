@@ -323,10 +323,9 @@ func (osc *ObjectStoreController) reconcile(key string) (err error) {
 
 	existingStore := store.DeepCopy()
 	defer func() {
-		if reflect.DeepEqual(existingStore.Status, store.Status) {
-			return
+		if !reflect.DeepEqual(existingStore.Status, store.Status) {
+			_, err = osc.ds.UpdateObjectStoreStatus(store)
 		}
-		store, err = osc.ds.UpdateObjectStoreStatus(store)
 	}()
 
 	// handle termination
@@ -356,7 +355,10 @@ func (osc *ObjectStoreController) reconcile(key string) (err error) {
 		err = osc.initializeObjectStore(store)
 	}
 
-	if err != nil {
+	// set the object state to error if there is an error and the error is not
+	// caused by an API server problem like a timeout.
+	if err != nil && !datastore.ErrorIsTemporaryAPIError(err) {
+		logrus.Errorf("object store %v has error: %v", store.Name, err)
 		store.Status.State = longhorn.ObjectStoreStateError
 	}
 	return err
@@ -488,6 +490,7 @@ func (osc *ObjectStoreController) handleRunning(store *longhorn.ObjectStore) (er
 		return nil
 	}
 
+	// TODO: return errors if we encounter them
 	dpl, err := osc.ds.GetDeployment(store.Name)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
@@ -565,6 +568,41 @@ func (osc *ObjectStoreController) handleStopped(store *longhorn.ObjectStore) (er
 }
 
 func (osc *ObjectStoreController) handleTerminating(store *longhorn.ObjectStore) (err error) {
+	_, err = osc.ds.GetService(osc.namespace, store.Name)
+	if err == nil {
+		return osc.ds.DeleteService(osc.namespace, store.Name)
+	} else if !datastore.ErrorIsNotFound(err) {
+		return err
+	}
+
+	_, err = osc.ds.GetDeployment(store.Name)
+	if err == nil {
+		return osc.ds.DeleteDeployment(store.Name)
+	} else if !datastore.ErrorIsNotFound(err) {
+		return err
+	}
+
+	_, err = osc.ds.GetPersistentVolumeClaim(osc.namespace, store.Name)
+	if err == nil {
+		return osc.ds.DeletePersistentVolumeClaim(osc.namespace, store.Name)
+	} else if !datastore.ErrorIsNotFound(err) {
+		return err
+	}
+
+	_, err = osc.ds.GetPersistentVolume(store.Name)
+	if err == nil {
+		osc.ds.DeletePersistentVolume(store.Name)
+	} else if !datastore.ErrorIsNotFound(err) {
+		return err
+	}
+
+	_, err = osc.ds.GetVolume(store.Name)
+	if err == nil {
+		osc.ds.DeleteVolume(store.Name)
+	} else if !datastore.ErrorIsNotFound(err) {
+		return err
+	}
+
 	// cleanup all secrets with matching labels.
 	labels := types.GetBaseLabelsForSystemManagedComponent()
 	labels[types.GetLonghornLabelComponentKey()] = types.LonghornLabelObjectStore
@@ -581,31 +619,6 @@ func (osc *ObjectStoreController) handleTerminating(store *longhorn.ObjectStore)
 
 	if len(store.ObjectMeta.Finalizers) != 0 {
 		return osc.ds.RemoveFinalizerForObjectStore(store)
-	}
-
-	_, err = osc.ds.GetService(osc.namespace, store.Name)
-	if err == nil || !datastore.ErrorIsNotFound(err) {
-		return err
-	}
-
-	_, err = osc.ds.GetDeployment(store.Name)
-	if err == nil || !datastore.ErrorIsNotFound(err) {
-		return err
-	}
-
-	_, err = osc.ds.GetPersistentVolumeClaim(osc.namespace, store.Name)
-	if err == nil || !datastore.ErrorIsNotFound(err) {
-		return err
-	}
-
-	_, err = osc.ds.GetPersistentVolume(store.Name)
-	if err == nil || !datastore.ErrorIsNotFound(err) {
-		return err
-	}
-
-	_, err = osc.ds.GetVolume(store.Name)
-	if err == nil || !datastore.ErrorIsNotFound(err) {
-		return err
 	}
 
 	return nil
@@ -629,8 +642,6 @@ func (osc *ObjectStoreController) getOrCreatePVC(store *longhorn.ObjectStore) (*
 		pvc, err = osc.createPVC(store)
 		if err != nil {
 			return nil, store, errors.Wrap(err, "failed to create persistent volume claim")
-		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
-			store.Status.State = longhorn.ObjectStoreStateStarting
 		}
 		return pvc, store, nil
 	}
@@ -657,8 +668,6 @@ func (osc *ObjectStoreController) getOrCreateVolume(
 		vol, err = osc.createVolume(store)
 		if err != nil {
 			return nil, store, errors.Wrap(err, "failed to create longhorn volume")
-		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
-			store.Status.State = longhorn.ObjectStoreStateStarting
 		}
 		return vol, store, nil
 	}
@@ -686,8 +695,6 @@ func (osc *ObjectStoreController) getOrCreatePV(
 		pv, err = osc.createPV(store, volume)
 		if err != nil {
 			return nil, store, errors.Wrap(err, "failed to create persistent volume")
-		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
-			store.Status.State = longhorn.ObjectStoreStateStarting
 		}
 		return pv, store, nil
 	}
@@ -712,8 +719,6 @@ func (osc *ObjectStoreController) getOrCreateDeployment(store *longhorn.ObjectSt
 		dpl, err = osc.createDeployment(store)
 		if err != nil {
 			return nil, store, errors.Wrap(err, "failed to create deployment")
-		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
-			store.Status.State = longhorn.ObjectStoreStateStarting
 		}
 		return dpl, store, nil
 	}
@@ -722,9 +727,10 @@ func (osc *ObjectStoreController) getOrCreateDeployment(store *longhorn.ObjectSt
 }
 
 func (osc *ObjectStoreController) checkDeployment(deployment *appsv1.Deployment, store *longhorn.ObjectStore) error {
+	deploymentAsSeen := deployment.DeepCopy()
+
 	if *deployment.Spec.Replicas != 1 {
 		deployment.Spec.Replicas = int32Ptr(1)
-		osc.ds.UpdateDeployment(deployment)
 		return errors.New("deployment just scaled")
 	} else if deployment.Status.Replicas == 0 || deployment.Status.UnavailableReplicas > 0 {
 		return errors.New("deployment not ready")
@@ -735,7 +741,6 @@ func (osc *ObjectStoreController) checkDeployment(deployment *appsv1.Deployment,
 		if err != nil {
 			return err
 		}
-		osc.ds.UpdateDeployment(deployment)
 		store.Status.State = longhorn.ObjectStoreStateStarting
 	}
 
@@ -744,8 +749,40 @@ func (osc *ObjectStoreController) checkDeployment(deployment *appsv1.Deployment,
 		if err != nil {
 			return err
 		}
-		osc.ds.UpdateDeployment(deployment)
 		store.Status.State = longhorn.ObjectStoreStateStarting
+	}
+
+	// propagate telemetry setting
+	settingEnableTelemetry, err := osc.ds.GetSettingAsBool(types.SettingNameAllowCollectingLonghornUsage)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get telemetry setting while checking deployment %v", store.Name)
+	}
+
+	args := util.GetArgsOfDeploymentContainerWithName(deployment, types.ObjectStoreContainerName)
+	telemetryEnabled := true
+	for _, arg := range args {
+		if arg == "--no-telemetry" {
+			telemetryEnabled = false
+		}
+	}
+
+	if settingEnableTelemetry != telemetryEnabled {
+		newArgs, err := osc.getS3gwContainerArgs(store)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get s3gw arguments for deployment %v", store.Name)
+		}
+		err = util.SetArgsOfDeploymentContainerWithName(deployment, types.ObjectStoreContainerName, newArgs)
+		if err != nil {
+			return err
+		}
+	}
+
+	// if anything has been changed, update deployment
+	if !reflect.DeepEqual(deploymentAsSeen, deployment) {
+		_, err = osc.ds.UpdateDeployment(deployment)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -761,8 +798,6 @@ func (osc *ObjectStoreController) getOrCreateService(store *longhorn.ObjectStore
 		svc, err = osc.createService(store)
 		if err != nil {
 			return nil, store, errors.Wrap(err, "failed to create service")
-		} else if store.Status.State != longhorn.ObjectStoreStateStarting {
-			store.Status.State = longhorn.ObjectStoreStateStarting
 		}
 		return svc, store, nil
 	}
@@ -820,9 +855,12 @@ func (osc *ObjectStoreController) getOrCreateS3Endpoints(store *longhorn.ObjectS
 
 			ingress := &networkingv1.Ingress{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:            name,
-					Namespace:       osc.namespace,
-					Labels:          types.GetObjectStoreLabels(store),
+					Name:      name,
+					Namespace: osc.namespace,
+					Labels:    types.GetObjectStoreLabels(store),
+					Annotations: map[string]string{
+						types.LonghornAnnotationObjectStoreName: store.Name,
+					},
 					OwnerReferences: osc.ds.GetOwnerReferencesForObjectStore(store),
 				},
 				Spec: networkingv1.IngressSpec{
@@ -847,7 +885,6 @@ func (osc *ObjectStoreController) getOrCreateS3Endpoints(store *longhorn.ObjectS
 
 			_, err := osc.ds.CreateIngress(osc.namespace, ingress)
 			if err != nil && !datastore.ErrorIsAlreadyExists(err) {
-				store.Status.State = longhorn.ObjectStoreStateError
 				return []*networkingv1.Ingress{}, store, err
 			}
 
@@ -906,6 +943,9 @@ func (osc *ObjectStoreController) createPV(
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   store.Name,
 			Labels: types.GetObjectStoreLabels(store),
+			Annotations: map[string]string{
+				types.LonghornAnnotationObjectStoreName: store.Name,
+			},
 		},
 		Spec: corev1.PersistentVolumeSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{
@@ -944,9 +984,12 @@ func (osc *ObjectStoreController) createPVC(
 ) (*corev1.PersistentVolumeClaim, error) {
 	pvc := corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            store.Name,
-			Namespace:       osc.namespace,
-			Labels:          types.GetObjectStoreLabels(store),
+			Name:      store.Name,
+			Namespace: osc.namespace,
+			Labels:    types.GetObjectStoreLabels(store),
+			Annotations: map[string]string{
+				types.LonghornAnnotationObjectStoreName: store.Name,
+			},
 			OwnerReferences: osc.ds.GetOwnerReferencesForObjectStore(store),
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
@@ -969,9 +1012,12 @@ func (osc *ObjectStoreController) createPVC(
 func (osc *ObjectStoreController) createService(store *longhorn.ObjectStore) (*corev1.Service, error) {
 	svc := corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            store.Name,
-			Namespace:       osc.namespace,
-			Labels:          types.GetObjectStoreLabels(store),
+			Name:      store.Name,
+			Namespace: osc.namespace,
+			Labels:    types.GetObjectStoreLabels(store),
+			Annotations: map[string]string{
+				types.LonghornAnnotationObjectStoreName: store.Name,
+			},
 			OwnerReferences: osc.ds.GetOwnerReferencesForObjectStore(store),
 		},
 		Spec: corev1.ServiceSpec{
@@ -1025,35 +1071,19 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 		return nil, errors.Wrapf(err, "failed to get image pull policy before creating deployment %v", store.Name)
 	}
 
-	s3gwContainerArgs := []string{
-		"--id", store.Name,
-		"--debug", types.ObjectStoreLogLevel,
-		"--with-status",
-	}
-
-	enableTelemetry, err := osc.ds.GetSettingAsBool(types.SettingNameAllowCollectingLonghornUsage)
+	s3gwContainerArgs, err := osc.getS3gwContainerArgs(store)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get telemetry setting before creating deployment %v", store.Name)
+		return nil, err
 	}
-	if !enableTelemetry {
-		s3gwContainerArgs = append(s3gwContainerArgs, "--no-telemetry")
-	}
-
-	domainNameArgs := []string{
-		"--dns-name",
-		fmt.Sprintf("%v.%v.svc", store.Name, osc.namespace),
-	}
-	for _, endpoint := range store.Spec.Endpoints {
-		domainNameArgs = append(domainNameArgs, "--dns-name")
-		domainNameArgs = append(domainNameArgs, endpoint.DomainName)
-	}
-	s3gwContainerArgs = append(s3gwContainerArgs, domainNameArgs...)
 
 	dpl := appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            store.Name,
-			Namespace:       osc.namespace,
-			Labels:          types.GetObjectStoreLabels(store),
+			Name:      store.Name,
+			Namespace: osc.namespace,
+			Labels:    types.GetObjectStoreLabels(store),
+			Annotations: map[string]string{
+				types.LonghornAnnotationObjectStoreName: store.Name,
+			},
 			OwnerReferences: osc.ds.GetOwnerReferencesForObjectStore(store),
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -1193,6 +1223,33 @@ func (osc *ObjectStoreController) isResponsibleFor(store *longhorn.ObjectStore) 
 	}
 
 	return osc.controllerID == vol.Status.OwnerID
+}
+
+func (osc *ObjectStoreController) getS3gwContainerArgs(store *longhorn.ObjectStore) ([]string, error) {
+	s3gwContainerArgs := []string{
+		"--id", store.Name,
+		"--debug", types.ObjectStoreLogLevel,
+		"--with-status",
+	}
+
+	enableTelemetry, err := osc.ds.GetSettingAsBool(types.SettingNameAllowCollectingLonghornUsage)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get telemetry setting before creating deployment %v", store.Name)
+	}
+	if !enableTelemetry {
+		s3gwContainerArgs = append(s3gwContainerArgs, "--no-telemetry")
+	}
+
+	domainNameArgs := []string{
+		"--dns-name",
+		fmt.Sprintf("%v.%v.svc", store.Name, osc.namespace),
+	}
+	for _, endpoint := range store.Spec.Endpoints {
+		domainNameArgs = append(domainNameArgs, "--dns-name")
+		domainNameArgs = append(domainNameArgs, endpoint.DomainName)
+	}
+	s3gwContainerArgs = append(s3gwContainerArgs, domainNameArgs...)
+	return s3gwContainerArgs, nil
 }
 
 func genVolumeMountName(store *longhorn.ObjectStore) string {

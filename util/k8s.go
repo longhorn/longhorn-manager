@@ -89,7 +89,34 @@ func GetImageOfDeploymentContainerWithName(dpl *appsv1.Deployment, name string) 
 	return ""
 }
 
+func GetArgsOfDeploymentContainerWithName(dpl *appsv1.Deployment, name string) []string {
+	for _, container := range dpl.Spec.Template.Spec.Containers {
+		if container.Name == name {
+			return container.Args
+		}
+	}
+	return []string{}
+}
+
 func SetImageOfDeploymentContainerWithName(dpl *appsv1.Deployment, name, image string) error {
+	idx, err := deploymentFindIndexOfContainerWithName(dpl, name)
+	if err != nil {
+		return err
+	}
+	dpl.Spec.Template.Spec.Containers[idx].Image = image
+	return nil
+}
+
+func SetArgsOfDeploymentContainerWithName(dpl *appsv1.Deployment, name string, args []string) error {
+	idx, err := deploymentFindIndexOfContainerWithName(dpl, name)
+	if err != nil {
+		return err
+	}
+	dpl.Spec.Template.Spec.Containers[idx].Args = args
+	return nil
+}
+
+func deploymentFindIndexOfContainerWithName(dpl *appsv1.Deployment, name string) (int, error) {
 	idx := int(-1)
 
 	for i, container := range dpl.Spec.Template.Spec.Containers {
@@ -99,8 +126,7 @@ func SetImageOfDeploymentContainerWithName(dpl *appsv1.Deployment, name, image s
 		}
 	}
 	if idx < 0 {
-		return fmt.Errorf("could not find container with name %v", name)
+		return idx, fmt.Errorf("could not find container with name %v", name)
 	}
-	dpl.Spec.Template.Spec.Containers[idx].Image = image
-	return nil
+	return idx, nil
 }
