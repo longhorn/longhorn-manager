@@ -243,13 +243,8 @@ github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
 github.com/longhorn/longhorn-engine/proto/ptypes
-<<<<<<< HEAD
-# github.com/longhorn/longhorn-instance-manager v1.5.2-0.20231006022904-b2c88ac8080d
-## explicit; go 1.20
-=======
-# github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20231117031020-055db7ef0240
+# github.com/longhorn/longhorn-instance-manager v1.5.4-0.20231128092427-aeb67c55a6da
 ## explicit; go 1.21
->>>>>>> 3a66afaa (feat(backuptarget): add cleanup all mounts grpc function)
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
 github.com/longhorn/longhorn-instance-manager/pkg/imrpc
