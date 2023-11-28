@@ -413,7 +413,7 @@ func (osc *ObjectStoreController) reconcile(key string) (err error) {
 // From this ownership relationship and the mount dependencies, the order of
 // creation of the resources is determined.
 func (osc *ObjectStoreController) handleStarting(store *longhorn.ObjectStore) (err error) {
-	vol, store, err := osc.getOrCreateVolume(store)
+	vol, err := osc.getOrCreateVolume(store)
 	if err != nil {
 		// since the "owner" controller of an object store is the same one that
 		// owns the volume, but we don't track it explicitly, there is a race when
@@ -428,22 +428,38 @@ func (osc *ObjectStoreController) handleStarting(store *longhorn.ObjectStore) (e
 		return errors.Wrap(err, "API error while creating volume")
 	}
 
-	pv, store, err := osc.getOrCreatePV(store, vol)
+	if err := osc.checkVolume(vol); err != nil {
+		return nil
+	}
+
+	pv, err := osc.getOrCreatePV(store, vol)
 	if err != nil {
 		return errors.Wrap(err, "API error while creating volume")
 	}
 
-	pvc, store, err := osc.getOrCreatePVC(store)
+	pvc, err := osc.getOrCreatePVC(store)
 	if err != nil {
 		return errors.Wrap(err, "API error while creating pvc")
 	}
 
-	dpl, store, err := osc.getOrCreateDeployment(store)
+	if err := osc.checkPV(pv); err != nil {
+		return nil
+	}
+
+	if err := osc.checkPVC(pvc); err != nil {
+		return nil
+	}
+
+	dpl, err := osc.getOrCreateDeployment(store)
 	if err != nil {
 		return errors.Wrap(err, "API error while creating deployment")
 	}
 
-	_, store, err = osc.getOrCreateService(store)
+	if err := osc.checkDeployment(dpl, store); err != nil {
+		return nil
+	}
+
+	_, err = osc.getOrCreateService(store)
 	if err != nil {
 		return errors.Wrap(err, "API error while creating service")
 	}
@@ -456,22 +472,6 @@ func (osc *ObjectStoreController) handleStarting(store *longhorn.ObjectStore) (e
 	// if there are no public endpoints, add the implicit cluster-internal one
 	if len(store.Status.Endpoints) == 0 {
 		store.Status.Endpoints = append(store.Status.Endpoints, fmt.Sprintf("%v.%v.svc", store.Name, osc.namespace))
-	}
-
-	if err := osc.checkVolume(vol); err != nil {
-		return nil
-	}
-
-	if err := osc.checkPV(pv); err != nil {
-		return nil
-	}
-
-	if err := osc.checkPVC(pvc); err != nil {
-		return nil
-	}
-
-	if err := osc.checkDeployment(dpl, store); err != nil {
-		return nil
 	}
 
 	logrus.Infof("object store %v is now running", store.Name)
@@ -490,12 +490,9 @@ func (osc *ObjectStoreController) handleRunning(store *longhorn.ObjectStore) (er
 		return nil
 	}
 
-	// TODO: return errors if we encounter them
 	dpl, err := osc.ds.GetDeployment(store.Name)
 	if err != nil {
-		if datastore.ErrorIsNotFound(err) {
-			return errors.Wrapf(err, "failed to find deployment %v", store.Name)
-		}
+		return errors.Wrapf(err, "failed to find deployment %v", store.Name)
 	} else if err = osc.checkDeployment(dpl, store); err != nil {
 		logrus.Errorf("Object Store running but deployment not ready")
 		return err
@@ -503,16 +500,12 @@ func (osc *ObjectStoreController) handleRunning(store *longhorn.ObjectStore) (er
 
 	_, err = osc.ds.GetService(osc.namespace, store.Name)
 	if err != nil {
-		if datastore.ErrorIsNotFound(err) {
-			return errors.Wrapf(err, "failed to find service %v", store.Name)
-		}
+		return errors.Wrapf(err, "failed to find service %v", store.Name)
 	}
 
 	vol, err := osc.ds.GetVolume(store.Name)
 	if err != nil {
-		if datastore.ErrorIsNotFound(err) {
-			return errors.Wrapf(err, "failed to find volume %v", store.Name)
-		}
+		return errors.Wrapf(err, "failed to find volume %v", store.Name)
 	} else if err = osc.checkVolume(vol); err != nil {
 		logrus.Errorf("Object Store running but Volume not ready")
 		return err
@@ -520,9 +513,7 @@ func (osc *ObjectStoreController) handleRunning(store *longhorn.ObjectStore) (er
 
 	pv, err := osc.ds.GetPersistentVolume(store.Name)
 	if err != nil {
-		if datastore.ErrorIsNotFound(err) {
-			return errors.Wrapf(err, "failed to find PV %v", store.Name)
-		}
+		return errors.Wrapf(err, "failed to find PV %v", store.Name)
 	} else if err = osc.checkPV(pv); err != nil {
 		logrus.Errorf("Object Store running but PV not ready")
 		return err
@@ -530,9 +521,7 @@ func (osc *ObjectStoreController) handleRunning(store *longhorn.ObjectStore) (er
 
 	pvc, err := osc.ds.GetPersistentVolumeClaim(osc.namespace, store.Name)
 	if err != nil {
-		if datastore.ErrorIsNotFound(err) {
-			return errors.Wrapf(err, "failed to find pvc %v", store.Name)
-		}
+		return errors.Wrapf(err, "failed to find pvc %v", store.Name)
 	} else if err = osc.checkPVC(pvc); err != nil {
 		logrus.Errorf("Object Store running but PVC not bound")
 		return err
@@ -546,7 +535,7 @@ func (osc *ObjectStoreController) handleStopping(store *longhorn.ObjectStore) (e
 	if err != nil {
 		return errors.Wrap(err, "failed find Deployment to stop")
 	} else if (*dpl).Spec.Replicas != nil && *((*dpl).Spec.Replicas) != 0 {
-		(*dpl).Spec.Replicas = int32Ptr(0)
+		(*dpl).Spec.Replicas = util.Int32Ptr(0)
 		_, err = osc.ds.UpdateDeployment(dpl)
 		return err
 	} else if dpl.Status.AvailableReplicas > 0 {
@@ -568,6 +557,12 @@ func (osc *ObjectStoreController) handleStopped(store *longhorn.ObjectStore) (er
 }
 
 func (osc *ObjectStoreController) handleTerminating(store *longhorn.ObjectStore) (err error) {
+	// The resources are created in the order:
+	// Volume -> PV -> PVC -> Deployment -> Service
+	// so we tear them down in reverse:
+	// Service -> Deployment -> PVC -> PV -> Volume
+	// Once that is done we can remove the finalizer, which allows the K8s API to
+	// remove the object store resource as well.
 	_, err = osc.ds.GetService(osc.namespace, store.Name)
 	if err == nil {
 		return osc.ds.DeleteService(osc.namespace, store.Name)
@@ -632,21 +627,21 @@ func (osc *ObjectStoreController) initializeObjectStore(store *longhorn.ObjectSt
 	return nil
 }
 
-func (osc *ObjectStoreController) getOrCreatePVC(store *longhorn.ObjectStore) (*corev1.PersistentVolumeClaim, *longhorn.ObjectStore, error) {
+func (osc *ObjectStoreController) getOrCreatePVC(store *longhorn.ObjectStore) (*corev1.PersistentVolumeClaim, error) {
 	pvc, err := osc.ds.GetPersistentVolumeClaim(osc.namespace, store.Name)
 	if err == nil {
-		return pvc, store, nil
+		return pvc, nil
 	}
 
 	if datastore.ErrorIsNotFound(err) {
 		pvc, err = osc.createPVC(store)
 		if err != nil {
-			return nil, store, errors.Wrap(err, "failed to create persistent volume claim")
+			return nil, errors.Wrap(err, "failed to create persistent volume claim")
 		}
-		return pvc, store, nil
+		return pvc, nil
 	}
 
-	return nil, store, err
+	return nil, err
 }
 
 func (osc *ObjectStoreController) checkPVC(pvc *corev1.PersistentVolumeClaim) error {
@@ -656,50 +651,53 @@ func (osc *ObjectStoreController) checkPVC(pvc *corev1.PersistentVolumeClaim) er
 	return nil
 }
 
-func (osc *ObjectStoreController) getOrCreateVolume(
-	store *longhorn.ObjectStore,
-) (*longhorn.Volume, *longhorn.ObjectStore, error) {
+func (osc *ObjectStoreController) getOrCreateVolume(store *longhorn.ObjectStore) (*longhorn.Volume, error) {
 	vol, err := osc.ds.GetVolume(store.Name)
 	if err == nil {
-		return vol, store, nil
+		return vol, nil
 	}
 
 	if datastore.ErrorIsNotFound(err) {
 		vol, err = osc.createVolume(store)
 		if err != nil {
-			return nil, store, errors.Wrap(err, "failed to create longhorn volume")
+			return nil, errors.Wrap(err, "failed to create longhorn volume")
 		}
-		return vol, store, nil
+		return vol, nil
 	}
 
-	return nil, store, err
+	return nil, err
 }
 
 func (osc *ObjectStoreController) checkVolume(vol *longhorn.Volume) error {
+	if vol.Status.OwnerID == "" {
+		return errors.New(fmt.Sprintf("volume %v has no owner", vol.Name))
+	}
+
 	if vol.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 		return errors.New(fmt.Sprintf("volume %v has failed", vol.Name))
 	}
+
 	return nil
 }
 
 func (osc *ObjectStoreController) getOrCreatePV(
 	store *longhorn.ObjectStore,
 	volume *longhorn.Volume,
-) (*corev1.PersistentVolume, *longhorn.ObjectStore, error) {
+) (*corev1.PersistentVolume, error) {
 	pv, err := osc.ds.GetPersistentVolume(store.Name)
 	if err == nil {
-		return pv, store, nil
+		return pv, nil
 	}
 
 	if datastore.ErrorIsNotFound(err) {
 		pv, err = osc.createPV(store, volume)
 		if err != nil {
-			return nil, store, errors.Wrap(err, "failed to create persistent volume")
+			return nil, errors.Wrap(err, "failed to create persistent volume")
 		}
-		return pv, store, nil
+		return pv, nil
 	}
 
-	return nil, store, err
+	return nil, err
 }
 
 func (osc *ObjectStoreController) checkPV(pv *corev1.PersistentVolume) error {
@@ -709,28 +707,28 @@ func (osc *ObjectStoreController) checkPV(pv *corev1.PersistentVolume) error {
 	return nil
 }
 
-func (osc *ObjectStoreController) getOrCreateDeployment(store *longhorn.ObjectStore) (*appsv1.Deployment, *longhorn.ObjectStore, error) {
+func (osc *ObjectStoreController) getOrCreateDeployment(store *longhorn.ObjectStore) (*appsv1.Deployment, error) {
 	dpl, err := osc.ds.GetDeployment(store.Name)
 	if err == nil {
-		return dpl, store, nil
+		return dpl, nil
 	}
 
 	if datastore.ErrorIsNotFound(err) {
 		dpl, err = osc.createDeployment(store)
 		if err != nil {
-			return nil, store, errors.Wrap(err, "failed to create deployment")
+			return nil, errors.Wrap(err, "failed to create deployment")
 		}
-		return dpl, store, nil
+		return dpl, nil
 	}
 
-	return nil, store, err
+	return nil, err
 }
 
 func (osc *ObjectStoreController) checkDeployment(deployment *appsv1.Deployment, store *longhorn.ObjectStore) error {
 	deploymentAsSeen := deployment.DeepCopy()
 
 	if *deployment.Spec.Replicas != 1 {
-		deployment.Spec.Replicas = int32Ptr(1)
+		deployment.Spec.Replicas = util.Int32Ptr(1)
 		return errors.New("deployment just scaled")
 	} else if deployment.Status.Replicas == 0 || deployment.Status.UnavailableReplicas > 0 {
 		return errors.New("deployment not ready")
@@ -788,21 +786,21 @@ func (osc *ObjectStoreController) checkDeployment(deployment *appsv1.Deployment,
 	return nil
 }
 
-func (osc *ObjectStoreController) getOrCreateService(store *longhorn.ObjectStore) (*corev1.Service, *longhorn.ObjectStore, error) {
+func (osc *ObjectStoreController) getOrCreateService(store *longhorn.ObjectStore) (*corev1.Service, error) {
 	svc, err := osc.ds.GetService(osc.namespace, store.Name)
 	if err == nil {
-		return svc, store, nil
+		return svc, nil
 	}
 
 	if datastore.ErrorIsNotFound(err) {
 		svc, err = osc.createService(store)
 		if err != nil {
-			return nil, store, errors.Wrap(err, "failed to create service")
+			return nil, errors.Wrap(err, "failed to create service")
 		}
-		return svc, store, nil
+		return svc, nil
 	}
 
-	return nil, store, err
+	return nil, err
 }
 
 func (osc *ObjectStoreController) getOrCreateS3Endpoints(store *longhorn.ObjectStore) ([]*networkingv1.Ingress, *longhorn.ObjectStore, error) {
@@ -830,7 +828,7 @@ func (osc *ObjectStoreController) getOrCreateS3Endpoints(store *longhorn.ObjectS
 						Paths: []networkingv1.HTTPIngressPath{
 							{
 								Path:     "/",
-								PathType: func() *networkingv1.PathType { r := networkingv1.PathType(networkingv1.PathTypePrefix); return &r }(),
+								PathType: util.NetworkingV1PathTypePtr(networkingv1.PathTypePrefix),
 								Backend:  s3backend,
 							},
 						},
@@ -845,7 +843,7 @@ func (osc *ObjectStoreController) getOrCreateS3Endpoints(store *longhorn.ObjectS
 						Paths: []networkingv1.HTTPIngressPath{
 							{
 								Path:     "/",
-								PathType: func() *networkingv1.PathType { r := networkingv1.PathType(networkingv1.PathTypePrefix); return &r }(),
+								PathType: util.NetworkingV1PathTypePtr(networkingv1.PathTypePrefix),
 								Backend:  s3backend,
 							},
 						},
@@ -956,7 +954,7 @@ func (osc *ObjectStoreController) createPV(
 			},
 			StorageClassName:              types.ObjectStoreStorageClassName,
 			PersistentVolumeReclaimPolicy: corev1.PersistentVolumeReclaimRetain,
-			VolumeMode:                    persistentVolumeModePtr(corev1.PersistentVolumeFilesystem),
+			VolumeMode:                    util.CoreV1PersistentVolumeModePtr(corev1.PersistentVolumeFilesystem),
 			ClaimRef: &corev1.ObjectReference{
 				APIVersion: "v1",
 				Kind:       "PersistentVolumeClaim",
@@ -1001,7 +999,7 @@ func (osc *ObjectStoreController) createPVC(
 					corev1.ResourceStorage: store.Spec.Size.DeepCopy(),
 				},
 			},
-			StorageClassName: strPtr(types.ObjectStoreStorageClassName),
+			StorageClassName: util.StringPtr(types.ObjectStoreStorageClassName),
 			VolumeName:       store.Name,
 		},
 	}
@@ -1024,19 +1022,19 @@ func (osc *ObjectStoreController) createService(store *longhorn.ObjectStore) (*c
 			Selector: osc.ds.GetObjectStoreSelectorLabels(store),
 			Ports: []corev1.ServicePort{
 				{
-					Name:       "s3",
+					Name:       types.ObjectStorePortName,
 					Protocol:   "TCP",
 					Port:       types.ObjectStoreServicePort, // 80
 					TargetPort: intstr.FromInt(types.ObjectStoreContainerPort),
 				},
 				{
-					Name:       "ui",
+					Name:       types.ObjectStoreUIPortName,
 					Protocol:   "TCP",
 					Port:       types.ObjectStoreUIServicePort, // 8080
 					TargetPort: intstr.FromInt(types.ObjectStoreUIContainerPort),
 				},
 				{
-					Name:       "status",
+					Name:       types.ObjectStoreStatusPortName,
 					Protocol:   "TCP",
 					Port:       types.ObjectStoreStatusServicePort, // 9090
 					TargetPort: intstr.FromInt(types.ObjectStoreStatusContainerPort),
@@ -1094,7 +1092,7 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 			// only spawn one replica (i.e. one s3gw instance) per object-store.
 			// Due to the way the struct works, an allocated integer has to be used
 			// here and not a constant.
-			Replicas: int32Ptr(1),
+			Replicas: util.Int32Ptr(1),
 			Strategy: appsv1.DeploymentStrategy{
 				Type: appsv1.RecreateDeploymentStrategyType,
 			},
@@ -1111,26 +1109,20 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 							Args:            s3gwContainerArgs,
 							Ports: []corev1.ContainerPort{
 								{
-									Name:          "s3",
+									Name:          types.ObjectStorePortName,
 									ContainerPort: types.ObjectStoreContainerPort,
 									Protocol:      "TCP",
 								},
 								{
-									Name:          "status",
+									Name:          types.ObjectStoreStatusPortName,
 									ContainerPort: types.ObjectStoreStatusContainerPort,
 									Protocol:      "TCP",
-								},
-							},
-							Env: []corev1.EnvVar{
-								{
-									Name:  "RGW_S3GW_ENABLE_TELEMETRY",
-									Value: "true",
 								},
 							},
 							EnvFrom: env,
 							VolumeMounts: []corev1.VolumeMount{
 								{
-									Name:      genVolumeMountName(store),
+									Name:      types.ObjectStorePodVolumeName,
 									MountPath: "/data",
 								},
 							},
@@ -1142,7 +1134,7 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 							Args:            []string{},
 							Ports: []corev1.ContainerPort{
 								{
-									Name:          "ui",
+									Name:          types.ObjectStoreUIPortName,
 									ContainerPort: types.ObjectStoreUIContainerPort,
 									Protocol:      "TCP",
 								},
@@ -1165,7 +1157,7 @@ func (osc *ObjectStoreController) createDeployment(store *longhorn.ObjectStore) 
 					},
 					Volumes: []corev1.Volume{
 						{
-							Name: genVolumeMountName(store),
+							Name: types.ObjectStorePodVolumeName,
 							VolumeSource: corev1.VolumeSource{
 								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 									ClaimName: store.Name,
@@ -1250,25 +1242,6 @@ func (osc *ObjectStoreController) getS3gwContainerArgs(store *longhorn.ObjectSto
 	}
 	s3gwContainerArgs = append(s3gwContainerArgs, domainNameArgs...)
 	return s3gwContainerArgs, nil
-}
-
-func genVolumeMountName(store *longhorn.ObjectStore) string {
-	return fmt.Sprintf("%s-data", store.Name)
-}
-
-func int32Ptr(i int32) *int32 {
-	r := int32(i)
-	return &r
-}
-
-func strPtr(s string) *string {
-	r := string(s)
-	return &r
-}
-
-func persistentVolumeModePtr(mode corev1.PersistentVolumeMode) *corev1.PersistentVolumeMode {
-	m := corev1.PersistentVolumeMode(mode)
-	return &m
 }
 
 func resourceAsInt64(r resource.Quantity) int64 {
