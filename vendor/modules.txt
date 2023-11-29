@@ -221,7 +221,7 @@ github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/rpc
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20231114103026-af339bb498d3
+# github.com/longhorn/backupstore v0.0.0-20231114103026-af339bb498d3 => ../backupstore
 ## explicit; go 1.21
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/logging
@@ -237,13 +237,13 @@ github.com/longhorn/go-iscsi-helper/util
 ## explicit; go 1.21
 github.com/longhorn/go-spdk-helper/pkg/types
 # github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230914160943-b42224518443 => ../longhorn-engine
-## explicit; go 1.20
+## explicit; go 1.21
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
 github.com/longhorn/longhorn-engine/proto/ptypes
-# github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20231117031020-055db7ef0240
+# github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20231117031020-055db7ef0240 => ../longhorn-instance-manager
 ## explicit; go 1.21
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -1550,4 +1550,6 @@ sigs.k8s.io/yaml
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.28.2
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.28.2
 # k8s.io/sample-controller => k8s.io/sample-controller v0.28.2
-# github.com/longhorn/backupstore v0.0.0-20230830075002-fa25b1a97ffd => ../backupstore
+# github.com/longhorn/longhorn-engine => ../longhorn-engine
+# github.com/longhorn/backupstore => ../backupstore
+# github.com/longhorn/longhorn-instance-manager => ../longhorn-instance-manager

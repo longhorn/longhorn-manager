@@ -23,6 +23,7 @@ type Volume struct {
 	CompressionMethod    string `json:",string"`
 	StorageClassName     string `json:",string"`
 	BackendStoreDriver   string `json:",string"`
+	ObjectStoreBackup    string `json:",string"`
 }
 
 type Snapshot struct {
@@ -46,6 +47,7 @@ type Backup struct {
 	Labels            map[string]string
 	IsIncremental     bool
 	CompressionMethod string
+	ObjectStoreBackup string
 
 	ProcessingBlocks *ProcessingBlocks
 

@@ -203,8 +203,8 @@ require (
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
 
-replace github.com/longhorn/longhorn-engine v1.4.0-rc1.0.20230914160943-b42224518443 => ../longhorn-engine
+replace github.com/longhorn/longhorn-engine => ../longhorn-engine
 
-replace github.com/longhorn/backupstore v0.0.0-20230830075002-fa25b1a97ffd => ../backupstore
+replace github.com/longhorn/backupstore => ../backupstore
 
-replace github.com/longhorn/longhorn-instance-manager v1.4.0-rc1.0.20231006015831-4dca206b03f0 => ../longhorn-instance-manager
+replace github.com/longhorn/longhorn-instance-manager => ../longhorn-instance-manager
