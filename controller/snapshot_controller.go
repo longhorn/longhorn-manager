@@ -11,6 +11,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -23,6 +24,7 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 )
 
@@ -79,6 +81,7 @@ func NewSnapshotController(
 		DeleteFunc: sc.enqueueSnapshot,
 	}, 0)
 	sc.cacheSyncs = append(sc.cacheSyncs, ds.SnapshotInformer.HasSynced)
+
 	ds.EngineInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: sc.enqueueEngineChange,
 	}, 0)
@@ -88,6 +91,11 @@ func NewSnapshotController(
 		DeleteFunc: sc.enqueueVolumeChange,
 	}, 0)
 	sc.cacheSyncs = append(sc.cacheSyncs, ds.VolumeInformer.HasSynced)
+
+	ds.SettingInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: func(old, cur interface{}) { sc.enqueueSettingChange(cur) },
+	}, 0)
+	sc.cacheSyncs = append(sc.cacheSyncs, ds.SettingInformer.HasSynced)
 
 	return sc
 }
@@ -216,6 +224,42 @@ func (sc *SnapshotController) enqueueVolumeChange(obj interface{}) {
 	}
 }
 
+// If DisableSnapshotPurge is transitioning from true to false, there may be a backlog of snapshots with
+// deletionTimestamps that we are ignoring. Requeue all such snapshots.
+func (sc *SnapshotController) enqueueSettingChange(obj interface{}) {
+	setting, ok := obj.(*longhorn.Setting)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		setting, ok = deletedState.Obj.(*longhorn.Setting)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	if types.SettingName(setting.Name) != types.SettingNameDisableSnapshotPurge || setting.Value == "true" {
+		return
+	}
+
+	snapshots, err := sc.ds.ListSnapshotsRO(labels.Everything())
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("snapshot controller failed to list snapshots when enqueuing setting %v: %v",
+			types.SettingNameDisableSnapshotPurge, err))
+		return
+	}
+	for _, snap := range snapshots {
+		if !snap.DeletionTimestamp.IsZero() {
+			sc.enqueueSnapshot(snap)
+		}
+	}
+}
+
 func (sc *SnapshotController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer sc.queue.ShutDown()
@@ -332,6 +376,20 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 			sc.logger.Errorf("cannot delete snapshot because the volume engine %v is not running", engine.Name)
 			return nil
 		}
+
+		disablePurge, err := sc.ds.GetSettingAsBool(types.SettingNameDisableSnapshotPurge)
+		if err != nil {
+			return err
+		}
+		if disablePurge {
+			sc.eventRecorder.Eventf(snapshot, v1.EventTypeWarning,
+				"SnapshotDeleteError", "cannot delete snapshot because the %v setting is true",
+				types.SettingNameDisableSnapshotPurge)
+			sc.logger.Errorf("cannot delete snapshot because the %v setting is true",
+				types.SettingNameDisableSnapshotPurge)
+			return nil
+		}
+
 		// Delete the snapshot from engine process
 		if err := sc.handleSnapshotDeletion(snapshot, engine); err != nil {
 			return err
@@ -532,6 +590,7 @@ func (sc *SnapshotController) handleSnapshotDeletion(snapshot *longhorn.Snapshot
 		}
 	}
 	if !isPurging {
+		// We checked DisableSnapshotPurge at a higher level, so we do not need to check it again here.
 		sc.logger.Infof("start SnapshotPurge to delete snapshot %v", snapshot.Name)
 		if err := engineClientProxy.SnapshotPurge(engine); err != nil {
 			return err
