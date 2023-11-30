@@ -101,6 +101,7 @@ const (
 	SettingNameRemoveSnapshotsDuringFilesystemTrim                      = SettingName("remove-snapshots-during-filesystem-trim")
 	SettingNameFastReplicaRebuildEnabled                                = SettingName("fast-replica-rebuild-enabled")
 	SettingNameReplicaFileSyncHTTPClientTimeout                         = SettingName("replica-file-sync-http-client-timeout")
+	SettingNameDisableSnapshotPurge                                     = SettingName("disable-snapshot-purge")
 )
 
 var (
@@ -170,6 +171,7 @@ var (
 		SettingNameRemoveSnapshotsDuringFilesystemTrim,
 		SettingNameFastReplicaRebuildEnabled,
 		SettingNameReplicaFileSyncHTTPClientTimeout,
+		SettingNameDisableSnapshotPurge,
 	}
 )
 
@@ -264,6 +266,7 @@ var (
 		SettingNameRemoveSnapshotsDuringFilesystemTrim:                      SettingDefinitionRemoveSnapshotsDuringFilesystemTrim,
 		SettingNameFastReplicaRebuildEnabled:                                SettingDefinitionFastReplicaRebuildEnabled,
 		SettingNameReplicaFileSyncHTTPClientTimeout:                         SettingDefinitionReplicaFileSyncHTTPClientTimeout,
+		SettingNameDisableSnapshotPurge:                                     SettingDefinitionDisableSnapshotPurge,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -1047,6 +1050,16 @@ var (
 		ReadOnly:    false,
 		Default:     "30",
 	}
+
+	SettingDefinitionDisableSnapshotPurge = SettingDefinition{
+		DisplayName: "Disable Snapshot Purge",
+		Description: "Temporarily prevent all attempts to purge volume snapshots",
+		Category:    SettingCategoryDangerZone,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "false",
+	}
 )
 
 type NodeDownPodDeletionPolicy string
@@ -1142,6 +1155,8 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameFastReplicaRebuildEnabled:
 		fallthrough
 	case SettingNameUpgradeChecker:
+		fallthrough
+	case SettingNameDisableSnapshotPurge:
 		if value != "true" && value != "false" {
 			return fmt.Errorf("value %v of setting %v should be true or false", value, sName)
 		}

@@ -372,6 +372,22 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 		if !volumesDetached {
 			return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot apply %v setting to Longhorn workloads when there are attached volumes", name)}
 		}
+	case types.SettingNameAutoCleanupSystemGeneratedSnapshot:
+		disablePurgeValue, err := s.GetSettingAsBool(types.SettingNameDisableSnapshotPurge)
+		if err != nil {
+			return err
+		}
+		if value == "true" && disablePurgeValue {
+			return errors.Errorf("cannot set %v setting to true when %v setting is true", name, types.SettingNameDisableSnapshotPurge)
+		}
+	case types.SettingNameDisableSnapshotPurge:
+		autoCleanupValue, err := s.GetSettingAsBool(types.SettingNameAutoCleanupSystemGeneratedSnapshot)
+		if err != nil {
+			return err
+		}
+		if value == "true" && autoCleanupValue {
+			return errors.Errorf("cannot set %v setting to true when %v setting is true", name, types.SettingNameAutoCleanupSystemGeneratedSnapshot)
+		}
 	}
 	return nil
 }
