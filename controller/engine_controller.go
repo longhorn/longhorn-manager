@@ -1743,6 +1743,8 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 		defer engineClientProxy.Close()
 
 		// If enabled, call and wait for SnapshotPurge to clean up system generated snapshot before rebuilding.
+		// It is not necessary to check the value of DisableSnapshotPurge here because the webhook prevents enabling
+		// AutoCleanupSystemGeneratedSnapshot and DisableSnapshot purge simultaneously.
 		if autoCleanupSystemGeneratedSnapshot {
 			if err := engineClientProxy.SnapshotPurge(e); err != nil {
 				log.WithError(err).Error("Failed to start snapshot purge before rebuilding")
@@ -1863,6 +1865,8 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 			"Replica %v with Address %v has been rebuilt for volume %v", replicaName, addr, e.Spec.VolumeName)
 
 		// If enabled, call SnapshotPurge to clean up system generated snapshot after rebuilding.
+		// It is not necessary to check the value of DisableSnapshotPurge here because the webhook prevents enabling
+		// AutoCleanupSystemGeneratedSnapshot and DisableSnapshot purge simultaneously.
 		if autoCleanupSystemGeneratedSnapshot {
 			if err := engineClientProxy.SnapshotPurge(e); err != nil {
 				log.WithError(err).Error("Failed to start snapshot purge after rebuilding")
