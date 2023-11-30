@@ -113,6 +113,7 @@ const (
 	SettingNameReplicaDiskSoftAntiAffinity                              = SettingName("replica-disk-soft-anti-affinity")
 	SettingNameAllowEmptyNodeSelectorVolume                             = SettingName("allow-empty-node-selector-volume")
 	SettingNameAllowEmptyDiskSelectorVolume                             = SettingName("allow-empty-disk-selector-volume")
+	SettingNameDisableSnapshotPurge                                     = SettingName("disable-snapshot-purge")
 )
 
 var (
@@ -189,6 +190,7 @@ var (
 		SettingNameReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume,
+		SettingNameDisableSnapshotPurge,
 	}
 )
 
@@ -291,6 +293,7 @@ var (
 		SettingNameReplicaDiskSoftAntiAffinity:                              SettingDefinitionReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume:                             SettingDefinitionAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume:                             SettingDefinitionAllowEmptyDiskSelectorVolume,
+		SettingNameDisableSnapshotPurge:                                     SettingDefinitionDisableSnapshotPurge,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -1161,6 +1164,16 @@ var (
 		ReadOnly:    false,
 		Default:     "true",
 	}
+
+	SettingDefinitionDisableSnapshotPurge = SettingDefinition{
+		DisplayName: "Disable Snapshot Purge",
+		Description: "Temporarily prevent all attempts to purge volume snapshots",
+		Category:    SettingCategoryDangerZone,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "false",
+	}
 )
 
 type NodeDownPodDeletionPolicy string
@@ -1282,6 +1295,8 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameAllowCollectingLonghornUsage:
 		fallthrough
 	case SettingNameReplicaDiskSoftAntiAffinity:
+		fallthrough
+	case SettingNameDisableSnapshotPurge:
 		if value != "true" && value != "false" {
 			return fmt.Errorf("value %v of setting %v should be true or false", value, sName)
 		}
