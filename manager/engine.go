@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/engineapi"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -209,6 +210,14 @@ func (m *VolumeManager) RevertSnapshot(snapshotName, volumeName string) error {
 func (m *VolumeManager) PurgeSnapshot(volumeName string) error {
 	if volumeName == "" {
 		return fmt.Errorf("volume name required")
+	}
+
+	disablePurge, err := m.ds.GetSettingAsBool(types.SettingNameDisableSnapshotPurge)
+	if err != nil {
+		return err
+	}
+	if disablePurge {
+		return errors.Errorf("cannot purge snapshots while %v setting is true", types.SettingNameDisableSnapshotPurge)
 	}
 
 	if err := m.checkVolumeNotInMigration(volumeName); err != nil {
