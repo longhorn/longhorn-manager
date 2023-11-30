@@ -109,6 +109,7 @@ const (
 	SettingNameV2DataEngine                                             = SettingName("v2-data-engine")
 	SettingNameV2DataEngineHugepageLimit                                = SettingName("v2-data-engine-hugepage-limit")
 	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
+	SettingNameDisableSnapshotPurge                                     = SettingName("disable-snapshot-purge")
 )
 
 var (
@@ -181,6 +182,7 @@ var (
 		SettingNameV2DataEngine,
 		SettingNameV2DataEngineHugepageLimit,
 		SettingNameOfflineReplicaRebuilding,
+		SettingNameDisableSnapshotPurge,
 	}
 )
 
@@ -279,6 +281,7 @@ var (
 		SettingNameV2DataEngine:                                             SettingDefinitionV2DataEngine,
 		SettingNameV2DataEngineHugepageLimit:                                SettingDefinitionV2DataEngineHugepageLimit,
 		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
+		SettingNameDisableSnapshotPurge:                                     SettingDefinitionDisableSnapshotPurge,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -1105,6 +1108,16 @@ var (
 		ReadOnly:    true,
 		Default:     "1024",
 	}
+
+	SettingDefinitionDisableSnapshotPurge = SettingDefinition{
+		DisplayName: "Disable Snapshot Purge",
+		Description: "Temporarily prevent all attempts to purge volume snapshots",
+		Category:    SettingCategoryDangerZone,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "false",
+	}
 )
 
 type NodeDownPodDeletionPolicy string
@@ -1216,6 +1229,8 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameV2DataEngine:
 		fallthrough
 	case SettingNameAllowCollectingLonghornUsage:
+		fallthrough
+	case SettingNameDisableSnapshotPurge:
 		if value != "true" && value != "false" {
 			return fmt.Errorf("value %v of setting %v should be true or false", value, sName)
 		}
