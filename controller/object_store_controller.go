@@ -563,38 +563,23 @@ func (osc *ObjectStoreController) handleTerminating(store *longhorn.ObjectStore)
 	// Service -> Deployment -> PVC -> PV -> Volume
 	// Once that is done we can remove the finalizer, which allows the K8s API to
 	// remove the object store resource as well.
-	_, err = osc.ds.GetService(osc.namespace, store.Name)
-	if err == nil {
-		return osc.ds.DeleteService(osc.namespace, store.Name)
-	} else if !datastore.ErrorIsNotFound(err) {
+	if err = osc.ds.DeleteService(osc.namespace, store.Name); err != nil && !datastore.ErrorIsNotFound(err) {
 		return err
 	}
 
-	_, err = osc.ds.GetDeployment(store.Name)
-	if err == nil {
-		return osc.ds.DeleteDeployment(store.Name)
-	} else if !datastore.ErrorIsNotFound(err) {
+	if err = osc.ds.DeleteDeployment(store.Name); err != nil && !datastore.ErrorIsNotFound(err) {
 		return err
 	}
 
-	_, err = osc.ds.GetPersistentVolumeClaim(osc.namespace, store.Name)
-	if err == nil {
-		return osc.ds.DeletePersistentVolumeClaim(osc.namespace, store.Name)
-	} else if !datastore.ErrorIsNotFound(err) {
+	if err = osc.ds.DeletePersistentVolumeClaim(osc.namespace, store.Name); err != nil && !datastore.ErrorIsNotFound(err) {
 		return err
 	}
 
-	_, err = osc.ds.GetPersistentVolume(store.Name)
-	if err == nil {
-		osc.ds.DeletePersistentVolume(store.Name)
-	} else if !datastore.ErrorIsNotFound(err) {
+	if err = osc.ds.DeletePersistentVolume(store.Name); err != nil && !datastore.ErrorIsNotFound(err) {
 		return err
 	}
 
-	_, err = osc.ds.GetVolume(store.Name)
-	if err == nil {
-		osc.ds.DeleteVolume(store.Name)
-	} else if !datastore.ErrorIsNotFound(err) {
+	if err = osc.ds.DeleteVolume(store.Name); err != nil && !datastore.ErrorIsNotFound(err) {
 		return err
 	}
 
