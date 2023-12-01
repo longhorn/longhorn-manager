@@ -830,6 +830,12 @@ func (c *BackingImageDataSourceController) prepareRunningParameters(bids *longho
 		return fmt.Errorf("failed to get an available replica from volume %v during backing image %v exporting", v.Name, bids.Name)
 	}
 
+	fileSyncHTTPClientTimeout, err := c.ds.GetSettingAsInt(types.SettingNameReplicaFileSyncHTTPClientTimeout)
+	if err != nil {
+		return err
+	}
+	bids.Status.RunningParameters[longhorn.DataSourceTypeExportFromVolumeParameterFileSyncHTTPClientTimeout] = strconv.FormatInt(fileSyncHTTPClientTimeout, 10)
+
 	return nil
 }
 

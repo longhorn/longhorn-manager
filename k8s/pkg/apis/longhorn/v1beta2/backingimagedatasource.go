@@ -16,10 +16,11 @@ const (
 	BackingImageDataSourceTypeUpload           = BackingImageDataSourceType("upload")
 	BackingImageDataSourceTypeExportFromVolume = BackingImageDataSourceType("export-from-volume")
 
-	DataSourceTypeExportFromVolumeParameterVolumeName    = "volume-name"
-	DataSourceTypeExportFromVolumeParameterVolumeSize    = "volume-size"
-	DataSourceTypeExportFromVolumeParameterSnapshotName  = "snapshot-name"
-	DataSourceTypeExportFromVolumeParameterSenderAddress = "sender-address"
+	DataSourceTypeExportFromVolumeParameterVolumeName                = "volume-name"
+	DataSourceTypeExportFromVolumeParameterVolumeSize                = "volume-size"
+	DataSourceTypeExportFromVolumeParameterSnapshotName              = "snapshot-name"
+	DataSourceTypeExportFromVolumeParameterSenderAddress             = "sender-address"
+	DataSourceTypeExportFromVolumeParameterFileSyncHTTPClientTimeout = "file-sync-http-client-timeout"
 )
 
 // BackingImageDataSourceSpec defines the desired state of the Longhorn backing image data source
