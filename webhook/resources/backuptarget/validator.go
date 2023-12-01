@@ -69,6 +69,10 @@ func (b *backupTargetValidator) Create(request *admission.Request, newObj runtim
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
+	if err := b.handleAWSIAMRoleAnnotation(backupTarget, nil); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
 	return nil
 }
 
@@ -79,12 +83,6 @@ func (b *backupTargetValidator) Update(request *admission.Request, oldObj runtim
 	urlChanged := oldBackupTarget.Spec.BackupTargetURL != newBackupTarget.Spec.BackupTargetURL
 	secretChanged := oldBackupTarget.Spec.CredentialSecret != newBackupTarget.Spec.CredentialSecret
 
-	if urlChanged || secretChanged {
-		if err := b.validateDRVolume(newBackupTarget); err != nil {
-			return werror.NewInvalidError(err.Error(), "")
-		}
-	}
-
 	if urlChanged {
 		if err := b.validateBackupTargetURL(newBackupTarget.Spec.BackupTargetURL); err != nil {
 			return werror.NewInvalidError(err.Error(), "")
@@ -93,6 +91,16 @@ func (b *backupTargetValidator) Update(request *admission.Request, oldObj runtim
 
 	if secretChanged {
 		if err := b.validateCredentialSecret(newBackupTarget.Spec.CredentialSecret); err != nil {
+			return werror.NewInvalidError(err.Error(), "")
+		}
+	}
+
+	if urlChanged || secretChanged {
+		if err := b.validateDRVolume(newBackupTarget); err != nil {
+			return werror.NewInvalidError(err.Error(), "")
+		}
+
+		if err := b.handleAWSIAMRoleAnnotation(newBackupTarget, oldBackupTarget); err != nil {
 			return werror.NewInvalidError(err.Error(), "")
 		}
 	}
@@ -223,6 +231,30 @@ func (b *backupTargetValidator) validateCredentialSecret(secretName string) erro
 			if strings.TrimSpace(string(value)) != string(value) {
 				return fmt.Errorf("there is space or new line in %s", checkKey)
 			}
+		}
+	}
+	return nil
+}
+
+func (b *backupTargetValidator) handleAWSIAMRoleAnnotation(newBackupTarget, oldBackupTarget *longhorn.BackupTarget) error {
+	oldBackupTargetURL := ""
+	oldBackupTargetSecret := ""
+	if oldBackupTarget != nil {
+		oldBackupTargetURL = oldBackupTarget.Spec.BackupTargetURL
+		oldBackupTargetSecret = oldBackupTarget.Spec.CredentialSecret
+	}
+	uOld, err := url.Parse(oldBackupTargetURL)
+	if err != nil {
+		return errors.Wrapf(err, "failed to parse %v as url", oldBackupTargetURL)
+	}
+	newBackupTargetURL := newBackupTarget.Spec.BackupTargetURL
+	u, err := url.Parse(newBackupTargetURL)
+	if err != nil {
+		return errors.Wrapf(err, "failed to parse %v as url", newBackupTargetURL)
+	}
+	if u.Scheme == types.BackupStoreTypeS3 || (uOld.Scheme == types.BackupStoreTypeS3 && newBackupTargetURL == "") {
+		if err := b.ds.HandleSecretsForAWSIAMRoleAnnotation(newBackupTargetURL, oldBackupTargetSecret, newBackupTarget.Spec.CredentialSecret, oldBackupTargetURL != newBackupTargetURL); err != nil {
+			return err
 		}
 	}
 	return nil
