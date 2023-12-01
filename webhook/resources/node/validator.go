@@ -61,6 +61,12 @@ func (n *nodeValidator) Create(request *admission.Request, newObj runtime.Object
 				return werror.NewInvalidError(fmt.Sprintf("disk %v type %v is not supported since v2 data engine is disabled", name, disk.Type), "")
 			}
 		}
+
+		if disk.Type == longhorn.DiskTypeBlock {
+			if disk.StorageReserved != 0 {
+				return werror.NewInvalidError(fmt.Sprintf("disk %v type %v is not supported to reserve storage", name, disk.Type), "")
+			}
+		}
 	}
 
 	return nil
@@ -146,6 +152,11 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 			if disk.Type == longhorn.DiskTypeBlock {
 				return werror.NewInvalidError(fmt.Sprintf("update disk on node %v error: The disk %v(%v) is a block device, but the SPDK feature is not enabled",
 					newNode.Name, name, disk.Path), "")
+			}
+		}
+		if disk.Type == longhorn.DiskTypeBlock {
+			if disk.StorageReserved != 0 {
+				return werror.NewInvalidError(fmt.Sprintf("disk %v type %v is not supported to reserve storage", name, disk.Type), "")
 			}
 		}
 	}
