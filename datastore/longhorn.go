@@ -4738,6 +4738,11 @@ func (s *DataStore) ListLonghornVolumeAttachmentByVolumeRO(name string) ([]*long
 	return s.lhVolumeAttachmentLister.VolumeAttachments(s.namespace).List(volumeSelector)
 }
 
+// ListLHVolumeAttachmentsRO returns a list of all VolumeAttachments for the given namespace
+func (s *DataStore) ListLHVolumeAttachmentsRO() ([]*longhorn.VolumeAttachment, error) {
+	return s.lhVolumeAttachmentLister.VolumeAttachments(s.namespace).List(labels.Everything())
+}
+
 // RemoveFinalizerForLHVolumeAttachment will result in deletion if DeletionTimestamp was set
 func (s *DataStore) RemoveFinalizerForLHVolumeAttachment(va *longhorn.VolumeAttachment) error {
 	if !util.FinalizerExists(longhornFinalizerKey, va) {

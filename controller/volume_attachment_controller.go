@@ -20,6 +20,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 
@@ -90,6 +91,11 @@ func NewLonghornVolumeAttachmentController(
 		DeleteFunc: vac.enqueueEngineChange,
 	}, 0)
 	vac.cacheSyncs = append(vac.cacheSyncs, ds.EngineInformer.HasSynced)
+
+	ds.KubeNodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: func(old, cur interface{}) { vac.enqueueNodeChange(cur) },
+	}, 0)
+	vac.cacheSyncs = append(vac.cacheSyncs, ds.KubeNodeInformer.HasSynced)
 
 	return vac
 }
@@ -167,6 +173,34 @@ func (vac *VolumeAttachmentController) enqueueEngineChange(obj interface{}) {
 		vac.enqueueVolumeAttachment(va)
 	}
 
+}
+
+func (vac *VolumeAttachmentController) enqueueNodeChange(obj interface{}) {
+	kubernetesNode, ok := obj.(*corev1.Node)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		kubernetesNode, ok = deletedState.Obj.(*corev1.Node)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	volumeAttachments, err := vac.ds.ListLHVolumeAttachmentsRO()
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to list VolumeAttachments when enqueuing node %v: %v", kubernetesNode.Name, err))
+		return
+	}
+
+	for _, va := range volumeAttachments {
+		vac.enqueueVolumeAttachment(va)
+	}
 }
 
 func (vac *VolumeAttachmentController) Run(workers int, stopCh <-chan struct{}) {
@@ -269,6 +303,11 @@ func (vac *VolumeAttachmentController) reconcile(vaName string) (err error) {
 			}
 
 		}
+		if !reflect.DeepEqual(existingVA.Spec, va.Spec) {
+			if _, err = vac.ds.UpdateLHVolumeAttachment(va); err != nil {
+				return
+			}
+		}
 		if !reflect.DeepEqual(existingVA.Status, va.Status) {
 			if _, err = vac.ds.UpdateLHVolumeAttachmentStatus(va); err != nil {
 				return
@@ -280,6 +319,8 @@ func (vac *VolumeAttachmentController) reconcile(vaName string) (err error) {
 	// Note that in this controller the desire state is recorded in VA.Spec
 	// and the current state of the world is recorded inside volume CR
 
+	vac.handleNodeCordoned(va, vol)
+
 	vac.handleVolumeDetachment(va, vol)
 
 	vac.handleVolumeAttachment(va, vol)
@@ -287,6 +328,43 @@ func (vac *VolumeAttachmentController) reconcile(vaName string) (err error) {
 	vac.handleVolumeMigration(va, vol)
 
 	return vac.handleVAStatusUpdate(va, vol)
+}
+
+// handleNodeCordoned delete ui attachment ticket from the va when the target node is cordened
+func (vac *VolumeAttachmentController) handleNodeCordoned(va *longhorn.VolumeAttachment, vol *longhorn.Volume) {
+	log := getLoggerForLHVolumeAttachment(vac.logger, va)
+
+	detachManuallyAttachedVolumesWhenCordoned, err := vac.ds.GetSettingAsBool(types.SettingNameDetachManuallyAttachedVolumesWhenCordoned)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to get setting %v", types.SettingNameDetachManuallyAttachedVolumesWhenCordoned)
+		return
+	}
+
+	var manualAttachmentTicket *longhorn.AttachmentTicket
+	for _, attachmentTicket := range va.Spec.AttachmentTickets {
+		if attachmentTicket.Type == longhorn.AttacherTypeLonghornAPI {
+			manualAttachmentTicket = attachmentTicket
+			break
+		}
+	}
+
+	if manualAttachmentTicket != nil {
+		unschedulable, err := vac.ds.IsKubeNodeUnschedulable(manualAttachmentTicket.NodeID)
+		if err != nil {
+			log.WithError(err).Warnf("Failed to check if node %v schedulable", manualAttachmentTicket.NodeID)
+			return
+		}
+		if unschedulable {
+			if !detachManuallyAttachedVolumesWhenCordoned {
+				msg := fmt.Sprintf("Failed to detach manually attached volume due to %v is set to false", types.SettingNameDetachManuallyAttachedVolumesWhenCordoned)
+				vac.eventRecorder.Event(va, corev1.EventTypeWarning, constant.EventReasonDetachedUnexpectedly, msg)
+				return
+			}
+
+			log.Infof("Deleting manual attachment ticket %v due to node is unschedulable", manualAttachmentTicket.ID)
+			delete(va.Spec.AttachmentTickets, manualAttachmentTicket.ID)
+		}
+	}
 }
 
 func (vac *VolumeAttachmentController) handleVolumeMigration(va *longhorn.VolumeAttachment, vol *longhorn.Volume) {
