@@ -1657,11 +1657,18 @@ func (s *DataStore) CheckEngineImageReadyOnAtLeastOneVolumeReplica(image, volume
 		return false, errors.Wrapf(err, "cannot get replicas for volume %v", volumeName)
 	}
 
+	hasScheduledReplica := false
 	for _, r := range replicas {
 		isReady, err := s.CheckEngineImageReadiness(image, r.Spec.NodeID)
 		if err != nil || isReady {
 			return isReady, err
 		}
+		if r.Spec.NodeID != "" {
+			hasScheduledReplica = true
+		}
+	}
+	if !hasScheduledReplica {
+		return false, errors.Errorf("volume %v has no scheduled replicas", volumeName)
 	}
 	return false, nil
 }
