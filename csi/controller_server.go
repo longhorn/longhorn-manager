@@ -13,11 +13,10 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/protobuf/ptypes"
-	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -1286,13 +1285,13 @@ func getVolumeCapabilityAccessModes(vc []csi.VolumeCapability_AccessMode_Mode) [
 	return vca
 }
 
-func toProtoTimestamp(s string) (*timestamp.Timestamp, error) {
+func toProtoTimestamp(s string) (*timestamppb.Timestamp, error) {
 	t, err := util.ParseTimeZ(s)
 	if err != nil {
 		return nil, err
 	}
 
-	return ptypes.TimestampProto(t)
+	return timestamppb.New(t), nil
 }
 
 func (cs *ControllerServer) waitForSnapshotToBeReady(snapshotName, volumeName string) (*longhornclient.SnapshotCR, error) {
