@@ -74,6 +74,7 @@ const (
 	SettingNameReplicaZoneSoftAntiAffinity                              = SettingName("replica-zone-soft-anti-affinity")
 	SettingNameNodeDownPodDeletionPolicy                                = SettingName("node-down-pod-deletion-policy")
 	SettingNameNodeDrainPolicy                                          = SettingName("node-drain-policy")
+	SettingNameDetachManuallyAttachedVolumesWhenCordoned                = SettingName("detach-manually-attached-volumes-when-cordoned")
 	SettingNamePriorityClass                                            = SettingName("priority-class")
 	SettingNameDisableRevisionCounter                                   = SettingName("disable-revision-counter")
 	SettingNameReplicaReplenishmentWaitInterval                         = SettingName("replica-replenishment-wait-interval")
@@ -150,6 +151,7 @@ var (
 		SettingNameReplicaZoneSoftAntiAffinity,
 		SettingNameNodeDownPodDeletionPolicy,
 		SettingNameNodeDrainPolicy,
+		SettingNameDetachManuallyAttachedVolumesWhenCordoned,
 		SettingNamePriorityClass,
 		SettingNameDisableRevisionCounter,
 		SettingNameReplicaReplenishmentWaitInterval,
@@ -252,6 +254,7 @@ var (
 		SettingNameReplicaZoneSoftAntiAffinity:                              SettingDefinitionReplicaZoneSoftAntiAffinity,
 		SettingNameNodeDownPodDeletionPolicy:                                SettingDefinitionNodeDownPodDeletionPolicy,
 		SettingNameNodeDrainPolicy:                                          SettingDefinitionNodeDrainPolicy,
+		SettingNameDetachManuallyAttachedVolumesWhenCordoned:                SettingDefinitionDetachManuallyAttachedVolumesWhenCordoned,
 		SettingNamePriorityClass:                                            SettingDefinitionPriorityClass,
 		SettingNameDisableRevisionCounter:                                   SettingDefinitionDisableRevisionCounter,
 		SettingNameReplicaReplenishmentWaitInterval:                         SettingDefinitionReplicaReplenishmentWaitInterval,
@@ -714,6 +717,16 @@ var (
 			string(NodeDrainPolicyAllowIfReplicaIsStopped),
 			string(NodeDrainPolicyAlwaysAllow),
 		},
+	}
+
+	SettingDefinitionDetachManuallyAttachedVolumesWhenCordoned = SettingDefinition{
+		DisplayName: "Detach Manually Attached Volumes When Cordoned",
+		Description: "Automatically detach volumes that are attached manually when node is cordoned.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "false",
 	}
 
 	SettingDefinitionPriorityClass = SettingDefinition{
@@ -1280,6 +1293,8 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameAllowEmptyDiskSelectorVolume:
 		fallthrough
 	case SettingNameAllowCollectingLonghornUsage:
+		fallthrough
+	case SettingNameDetachManuallyAttachedVolumesWhenCordoned:
 		fallthrough
 	case SettingNameReplicaDiskSoftAntiAffinity:
 		if value != "true" && value != "false" {
