@@ -3824,9 +3824,9 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 
 		log.Warnf("The migration engine or all migration replicas crashed, will clean them up now")
 
-		currentEngine, err := c.getCurrentEngineAndCleanupOthers(v, es)
-		if err != nil {
-			err = errors.Wrap(err, "failed to get the current engine and clean up others during the migration revert")
+		currentEngine, err2 := c.getCurrentEngineAndCleanupOthers(v, es)
+		if err2 != nil {
+			err = errors.Wrapf(err, "failed to get the current engine and clean up others during the migration revert: %v", err2)
 			return
 		}
 
@@ -3834,8 +3834,8 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 			if r.Spec.EngineName == currentEngine.Name {
 				continue
 			}
-			if err := c.deleteReplica(r, rs); err != nil {
-				err = errors.Wrapf(err, "failed to delete the migration replica %v during the migration revert", r.Name)
+			if err2 := c.deleteReplica(r, rs); err2 != nil {
+				err = errors.Wrapf(err, "failed to delete the migration replica %v during the migration revert: %v", r.Name, err2)
 				return
 			}
 		}
