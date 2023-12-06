@@ -2480,11 +2480,24 @@ func filterReadyNodes(nodes map[string]*longhorn.Node) map[string]*longhorn.Node
 	})
 }
 
-// filterSchedulableNodes returns only the nodes that are ready
+// filterSchedulableNodes returns only the nodes that are ready and have at least one schedulable disk
 func filterSchedulableNodes(nodes map[string]*longhorn.Node) map[string]*longhorn.Node {
 	return filterNodes(nodes, func(node *longhorn.Node) bool {
 		nodeSchedulableCondition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeSchedulable)
-		return nodeSchedulableCondition.Status == longhorn.ConditionStatusTrue
+		if nodeSchedulableCondition.Status != longhorn.ConditionStatusTrue {
+			return false
+		}
+
+		for _, disk := range node.Spec.Disks {
+			if disk.EvictionRequested {
+				continue
+			}
+
+			if disk.AllowScheduling {
+				return true
+			}
+		}
+		return false
 	})
 }
 
