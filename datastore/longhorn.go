@@ -2530,7 +2530,7 @@ func (s *DataStore) ListReadyAndSchedulableNodesRO() (map[string]*longhorn.Node,
 		return nil, err
 	}
 
-	return filterSchedulableNodes(filterReadyNodes(nodes)), nil
+	return filterSchedulableNodes(nodes), nil
 }
 
 func (s *DataStore) ListReadyNodesContainingEngineImageRO(image string) (map[string]*longhorn.Node, error) {
