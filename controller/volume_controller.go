@@ -2134,6 +2134,8 @@ func (vc *VolumeController) listReadySchedulableAndScheduledNodes(volume *longho
 		return nil, err
 	}
 
+	readyNodes = vc.scheduler.FilterNodesSchedulableForVolume(readyNodes, volume)
+
 	filteredReadyNodes := readyNodes
 	if len(volume.Spec.NodeSelector) != 0 {
 		for nodeName, node := range readyNodes {
@@ -2295,7 +2297,7 @@ func (vc *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map
 		if adjustCount := vc.getReplicaCountForAutoBalanceLeastEffort(v, e, rs, vc.getReplicaCountForAutoBalanceNode); adjustCount != 0 {
 			return adjustCount, ""
 		}
-		adjustNodeAffinity := ""
+
 		var nCandidates []string
 		adjustCount, _, nCandidates := vc.getReplicaCountForAutoBalanceBestEffort(v, e, rs, vc.getReplicaCountForAutoBalanceNode)
 		if adjustCount == 0 {
@@ -2304,71 +2306,13 @@ func (vc *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map
 				nCandidates = vc.getNodeCandidatesForAutoBalanceZone(v, e, rs, zCandidates)
 			}
 		}
-		if adjustCount != 0 {
-			// TODO: remove checking and let schedular handle this part after
-			// https://github.com/longhorn/longhorn/issues/2667
-			schedulableCandidates := vc.getIsSchedulableToDiskNodes(v, nCandidates)
-			if len(schedulableCandidates) != 0 {
-				// TODO: select replica auto-balance best-effort node from candidate list.
-				// https://github.com/longhorn/longhorn/issues/2667
-				adjustNodeAffinity = schedulableCandidates[0]
-			}
-			return adjustCount, adjustNodeAffinity
+		if adjustCount != 0 && len(nCandidates) != 0 {
+			// TODO: https://github.com/longhorn/longhorn/issues/2667
+			return adjustCount, nCandidates[0]
 		}
-		return adjustCount, adjustNodeAffinity
+		return adjustCount, ""
 	}
 	return 0, ""
-}
-
-func (vc *VolumeController) getIsSchedulableToDiskNodes(v *longhorn.Volume, nodeNames []string) (schedulableNodeNames []string) {
-	log := getLoggerForVolume(vc.logger, v)
-	defer func() {
-		if len(schedulableNodeNames) == 0 {
-			log.Debugf("Found 0 node has at least one schedulable disk")
-		} else {
-			log.Infof("Found node %v has at least one schedulable disk", schedulableNodeNames)
-		}
-	}()
-
-	if len(nodeNames) == 0 {
-		return schedulableNodeNames
-	}
-
-	for _, nodeName := range nodeNames {
-		scheduleNode := false
-		node, err := vc.ds.GetNode(nodeName)
-		if err != nil {
-			continue
-		}
-		for fsid, diskStatus := range node.Status.DiskStatus {
-			diskSpec, exists := node.Spec.Disks[fsid]
-			if !exists {
-				continue
-			}
-
-			if !diskSpec.AllowScheduling || diskSpec.EvictionRequested {
-				continue
-			}
-
-			if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
-				continue
-			}
-
-			diskInfo, err := vc.scheduler.GetDiskSchedulingInfo(diskSpec, diskStatus)
-			if err != nil {
-				continue
-			}
-
-			if vc.scheduler.IsSchedulableToDisk(v.Spec.Size, v.Status.ActualSize, diskInfo) {
-				scheduleNode = true
-				break
-			}
-		}
-		if scheduleNode {
-			schedulableNodeNames = append(schedulableNodeNames, nodeName)
-		}
-	}
-	return schedulableNodeNames
 }
 
 func (vc *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, zones []string) (candidateNames []string) {
