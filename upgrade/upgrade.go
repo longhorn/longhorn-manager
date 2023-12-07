@@ -225,6 +225,11 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 		return err
 	}
 
+	if lhVersionBeforeUpgrade == "" {
+		logrus.Info("Skipping walking through the resource upgrade path for fresh Longhorn installation")
+		return nil
+	}
+
 	// When lhVersionBeforeUpgrade < v1.5.0, it is v1.4.x. The `CheckUpgradePathSupported` method would have failed us out earlier if it was not v1.4.x.
 	resourceMaps := map[string]interface{}{}
 	if semver.Compare(lhVersionBeforeUpgrade, "v1.5.0") < 0 {
