@@ -244,6 +244,11 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 		return err
 	}
 
+	if lhVersionBeforeUpgrade == "" {
+		logrus.Info("Skipping walking through the resource upgrade path for fresh Longhorn installation")
+		return nil
+	}
+
 	if semver.Compare(lhVersionBeforeUpgrade, "v0.8.0") < 0 {
 		logrus.Debugf("Walking through the upgrade path v0.7.0 to v0.8.0")
 		if err := v070to080.UpgradeResources(namespace, lhClient); err != nil {
