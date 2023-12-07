@@ -2311,11 +2311,11 @@ func (s *DataStore) ListReadyNodes() (map[string]*longhorn.Node, error) {
 }
 
 func (s *DataStore) ListReadyAndSchedulableNodes() (map[string]*longhorn.Node, error) {
-	nodes, err := s.ListNodes()
+	nodes, err := s.ListReadyNodes()
 	if err != nil {
 		return nil, err
 	}
-	return filterSchedulableNodes(filterReadyNodes(nodes)), nil
+	return filterSchedulableNodes(nodes), nil
 }
 
 // ListReadyNodesWithEngineImage returns list of ready nodes that have the corresponding engine image deploying or deployed
