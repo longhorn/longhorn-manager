@@ -710,6 +710,42 @@ func (rcs *ReplicaScheduler) IsSchedulableToDisk(size int64, requiredStorage int
 		(size+info.StorageScheduled) <= int64(float64(info.StorageMaximum-info.StorageReserved)*float64(info.OverProvisioningPercentage)/100)
 }
 
+// FilterNodesSchedulableForVolume filters nodes that are schedulable for a given volume based on the disk space.
+func (rcs *ReplicaScheduler) FilterNodesSchedulableForVolume(nodes map[string]*longhorn.Node, volume *longhorn.Volume) map[string]*longhorn.Node {
+	filteredNodes := map[string]*longhorn.Node{}
+	for _, node := range nodes {
+		isSchedulable := false
+
+		for diskName, diskStatus := range node.Status.DiskStatus {
+			diskSpec, exists := node.Spec.Disks[diskName]
+			if !exists {
+				continue
+			}
+
+			diskInfo, err := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus)
+			if err != nil {
+				logrus.WithError(err).Debugf("Failed to get disk scheduling info for disk %v on node %v", diskName, node.Name)
+				continue
+			}
+
+			if rcs.IsSchedulableToDisk(volume.Spec.Size, volume.Status.ActualSize, diskInfo) {
+				isSchedulable = true
+				break
+			}
+		}
+
+		if isSchedulable {
+			logrus.Tracef("Found node %v schedulable for volume %v", node.Name, volume.Name)
+			filteredNodes[node.Name] = node
+		}
+	}
+
+	if len(filteredNodes) == 0 {
+		logrus.Debugf("Found no nodes schedulable for volume %v", volume.Name)
+	}
+	return filteredNodes
+}
+
 func (rcs *ReplicaScheduler) isDiskNotFull(info *DiskSchedulingInfo) bool {
 	// StorageAvailable = the space can be used by 3rd party or Longhorn system.
 	return info.StorageMaximum > 0 && info.StorageAvailable > 0 &&
