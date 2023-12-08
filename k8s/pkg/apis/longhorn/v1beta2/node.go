@@ -48,8 +48,10 @@ const (
 type DiskType string
 
 const (
+	// DiskTypeFilesystem is the disk type for storing v1 replica directories
 	DiskTypeFilesystem = DiskType("filesystem")
-	DiskTypeBlock      = DiskType("block")
+	// DiskTypeBlock is the disk type for storing v2 replica logical volumes
+	DiskTypeBlock = DiskType("block")
 )
 
 type SnapshotCheckStatus struct {
