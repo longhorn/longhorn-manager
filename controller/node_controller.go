@@ -461,10 +461,6 @@ func (nc *NodeController) syncNode(key string) (err error) {
 						fmt.Sprintf("Kubernetes node %v has pressure: %v, %v", node.Name, con.Reason, con.Message),
 						nc.eventRecorder, node, corev1.EventTypeWarning)
 				}
-			default:
-				if con.Status == corev1.ConditionTrue {
-					nc.eventRecorder.Eventf(node, corev1.EventTypeWarning, longhorn.NodeConditionReasonUnknownNodeConditionTrue, "Unknown condition true of kubernetes node %v: condition type is %v, reason is %v, message is %v", node.Name, con.Type, con.Reason, con.Message)
-				}
 			}
 		}
 
