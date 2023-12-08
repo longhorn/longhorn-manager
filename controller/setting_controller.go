@@ -1289,6 +1289,7 @@ const (
 	ClusterInfoHostKernelRelease = util.StructName("HostKernelRelease")
 	ClusterInfoHostOsDistro      = util.StructName("HostOsDistro")
 
+	ClusterInfoDiskCountFmt     = "LonghornDisk%sCount"
 	ClusterInfoNodeDiskCountFmt = "LonghornNodeDisk%sCount"
 )
 
@@ -1720,7 +1721,10 @@ func (info *ClusterInfo) collectNodeDiskCount() error {
 			info.logger.WithError(err).Warnf("Failed to get device type of %v", disk.Path)
 			deviceType = types.ValueUnknown
 		}
+
 		structMap[util.StructName(fmt.Sprintf(ClusterInfoNodeDiskCountFmt, strings.ToUpper(deviceType)))]++
+		structMap[util.StructName(fmt.Sprintf(ClusterInfoDiskCountFmt, util.ConvertToCamel(string(disk.Type), "-")))]++
+
 	}
 	for structName, value := range structMap {
 		info.structFields.fields.Append(structName, value)
