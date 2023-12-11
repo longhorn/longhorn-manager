@@ -1269,6 +1269,7 @@ const (
 	ClusterInfoPodAvgMemoryUsageFmt                      = "Longhorn%sAverageMemoryUsageBytes"
 	ClusterInfoSettingFmt                                = "LonghornSetting%s"
 	ClusterInfoVolumeAccessModeCountFmt                  = "LonghornVolumeAccessMode%sCount"
+	ClusterInfoVolumeBackendStoreDriverCountFmt          = "LonghornVolumeBackendStoreDriver%sCount"
 	ClusterInfoVolumeDataLocalityCountFmt                = "LonghornVolumeDataLocality%sCount"
 	ClusterInfoVolumeFrontendCountFmt                    = "LonghornVolumeFrontend%sCount"
 	ClusterInfoVolumeOfflineReplicaRebuildingCountFmt    = "LonghornVolumeOfflineReplicaRebuilding%sCount"
@@ -1541,16 +1542,12 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	}
 	volumeCount := len(volumesRO)
 
-	isV2DataEngineEnabled, err := info.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
-	if err != nil {
-		return err
-	}
-
 	var totalVolumeSize int
 	var totalVolumeActualSize int
 	var totalVolumeNumOfReplicas int
 	newStruct := func() map[util.StructName]int { return make(map[util.StructName]int, volumeCount) }
 	accessModeCountStruct := newStruct()
+	backendStoreDriverCountStruct := newStruct()
 	dataLocalityCountStruct := newStruct()
 	frontendCountStruct := newStruct()
 	offlineReplicaRebuildingCountStruct := newStruct()
@@ -1562,8 +1559,14 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	snapshotDataIntegrityCountStruct := newStruct()
 	unmapMarkSnapChainRemovedCountStruct := newStruct()
 	for _, volume := range volumesRO {
-		isVolumeV2DataEngineEnabled := isV2DataEngineEnabled && volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2
-		if !isVolumeV2DataEngineEnabled {
+		backendStoreDriver := types.ValueUnknown
+		if volume.Spec.BackendStoreDriver != "" {
+			backendStoreDriver = util.ConvertToCamel(string(volume.Spec.BackendStoreDriver), "-")
+		}
+		backendStoreDriverCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeBackendStoreDriverCountFmt, backendStoreDriver))]++
+
+		isVolumeUsingV2DataEngine := volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2
+		if !isVolumeUsingV2DataEngine {
 			totalVolumeSize += int(volume.Spec.Size)
 			totalVolumeActualSize += int(volume.Status.ActualSize)
 		}
@@ -1581,7 +1584,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 		}
 		dataLocalityCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeDataLocalityCountFmt, dataLocality))]++
 
-		if volume.Spec.Frontend != "" && !isVolumeV2DataEngineEnabled {
+		if volume.Spec.Frontend != "" && !isVolumeUsingV2DataEngine {
 			frontend := util.ConvertToCamel(string(volume.Spec.Frontend), "-")
 			frontendCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeFrontendCountFmt, frontend))]++
 		}
@@ -1611,6 +1614,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 		unmapMarkSnapChainRemovedCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeUnmapMarkSnapChainRemovedCountFmt, util.ConvertToCamel(string(unmapMarkSnapChainRemoved), "-")))]++
 	}
 	info.structFields.fields.AppendCounted(accessModeCountStruct)
+	info.structFields.fields.AppendCounted(backendStoreDriverCountStruct)
 	info.structFields.fields.AppendCounted(dataLocalityCountStruct)
 	info.structFields.fields.AppendCounted(frontendCountStruct)
 	info.structFields.fields.AppendCounted(offlineReplicaRebuildingCountStruct)
