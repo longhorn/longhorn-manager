@@ -38,6 +38,7 @@ import (
 
 const (
 	nodeControllerResyncPeriod = 30 * time.Second
+	ignoreKubeletNotReadyTime  = 10 * time.Second
 
 	unknownDiskID = "UNKNOWN_DISKID"
 
@@ -435,11 +436,19 @@ func (nc *NodeController) syncNode(key string) (err error) {
 			switch con.Type {
 			case corev1.NodeReady:
 				if con.Status != corev1.ConditionTrue {
-					node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
-						longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse,
-						string(longhorn.NodeConditionReasonKubernetesNodeNotReady),
-						fmt.Sprintf("Kubernetes node %v not ready: %v", node.Name, con.Reason),
-						nc.eventRecorder, node, corev1.EventTypeWarning)
+					if con.Status == corev1.ConditionFalse &&
+						time.Since(con.LastTransitionTime.Time) < ignoreKubeletNotReadyTime {
+						// When kubelet restarts, it briefly reports Ready == False. Responding too quickly can cause
+						// undesirable churn. See https://github.com/longhorn/longhorn/issues/7302 for an example.
+						nc.logger.Warnf("Ignoring %v == %v condition due to %v until %v", corev1.NodeReady, con.Status,
+							con.Reason, con.LastTransitionTime.Add(ignoreKubeletNotReadyTime))
+					} else {
+						node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
+							longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse,
+							string(longhorn.NodeConditionReasonKubernetesNodeNotReady),
+							fmt.Sprintf("Kubernetes node %v not ready: %v", node.Name, con.Reason),
+							nc.eventRecorder, node, corev1.EventTypeWarning)
+					}
 				}
 			case corev1.NodeDiskPressure,
 				corev1.NodePIDPressure,
