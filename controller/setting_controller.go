@@ -1720,9 +1720,17 @@ func (info *ClusterInfo) collectNodeDiskCount() error {
 
 	structMap := make(map[util.StructName]int)
 	for _, disk := range node.Spec.Disks {
-		deviceType, err := types.GetDeviceTypeOf(disk.Path)
+		var deviceType string
+		switch disk.Type {
+		case longhorn.DiskTypeFilesystem:
+			deviceType, err = types.GetDeviceTypeOf(disk.Path)
+		case longhorn.DiskTypeBlock:
+			deviceType, err = types.GetBlockDeviceType(disk.Path)
+		default:
+			err = fmt.Errorf("unknown disk type %v", disk.Type)
+		}
 		if err != nil {
-			info.logger.WithError(err).Warnf("Failed to get device type of %v", disk.Path)
+			info.logger.WithError(err).Warnf("Failed to get %v device type of %v", disk.Type, disk.Path)
 			deviceType = types.ValueUnknown
 		}
 
