@@ -117,6 +117,12 @@ func NewRouter(s *Server) *mux.Router {
 		r.Methods("POST").Path("/v1/volumes/{name}").Queries("action", name).Handler(f(schemas, action))
 	}
 
+	r.Methods("GET").Path("/v1/secrets").Handler(f(schemas, s.SecretList))
+	r.Methods("GET").Path("/v1/secrets/{name}").Handler(f(schemas, s.SecretGet))
+	r.Methods("POST").Path("/v1/secrets").Handler(f(schemas, s.SecretCreate))
+	r.Methods("DELETE").Path("/v1/secrets/{name}").Handler(f(schemas, s.SecretDelete))
+	r.Methods("PUT").Path("/v1/secrets/{name}").Handler(f(schemas, s.SecretUpdate))
+
 	r.Methods("GET").Path("/v1/backuptargets").Handler(f(schemas, s.BackupTargetList))
 	r.Methods("GET").Path("/v1/backuptargets/{name}").Handler(f(schemas, s.BackupTargetGet))
 	r.Methods("POST").Path("/v1/backuptargets").Handler(f(schemas, s.BackupTargetCreate))
