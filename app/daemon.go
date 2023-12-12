@@ -3,9 +3,8 @@ package app
 import (
 	"fmt"
 	"net/http"
-	"os"
-
 	_ "net/http/pprof" // for runtime profiling
+	"os"
 
 	"github.com/gorilla/handlers"
 	"github.com/pkg/errors"
@@ -22,10 +21,12 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/meta"
+	"github.com/longhorn/longhorn-manager/recovery_backend"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/upgrade"
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/util/client"
+	"github.com/longhorn/longhorn-manager/webhook"
 
 	metricscollector "github.com/longhorn/longhorn-manager/metrics_collector"
 )
@@ -146,12 +147,12 @@ func startManager(c *cli.Context) error {
 
 	webhookTypes := []string{types.WebhookTypeConversion, types.WebhookTypeAdmission}
 	for _, webhookType := range webhookTypes {
-		if err := startWebhook(ctx, webhookType, clients); err != nil {
+		if err := webhook.StartWebhook(ctx, webhookType, clients); err != nil {
 			return err
 		}
 	}
 
-	if err := startRecoveryBackend(clients); err != nil {
+	if err := recoverybackend.StartRecoveryBackend(clients); err != nil {
 		return err
 	}
 
@@ -220,7 +221,7 @@ func startManager(c *cli.Context) error {
 		debugAddress := "127.0.0.1:6060"
 		debugHandler := http.DefaultServeMux
 		logger.Infof("Debug Server listening on %s", debugAddress)
-		if err := http.ListenAndServe(debugAddress, debugHandler); err != nil && err != http.ErrServerClosed {
+		if err := http.ListenAndServe(debugAddress, debugHandler); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Errorf(fmt.Sprintf("ListenAndServe: %s", err))
 		}
 	}()
