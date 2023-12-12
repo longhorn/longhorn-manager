@@ -24,11 +24,11 @@ func NewBackupCollector(
 	nodeID string,
 	ds *datastore.DataStore) *BackupCollector {
 
-	vc := &BackupCollector{
+	bc := &BackupCollector{
 		baseCollector: newBaseCollector(subsystemBackup, logger, nodeID, ds),
 	}
 
-	vc.sizeMetric = metricInfo{
+	bc.sizeMetric = metricInfo{
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemBackup, "actual_size_bytes"),
 			"Actual size of this backup",
@@ -38,7 +38,7 @@ func NewBackupCollector(
 		Type: prometheus.GaugeValue,
 	}
 
-	vc.stateMetric = metricInfo{
+	bc.stateMetric = metricInfo{
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemBackup, "state"),
 			"State of this backup",
@@ -48,46 +48,46 @@ func NewBackupCollector(
 		Type: prometheus.GaugeValue,
 	}
 
-	return vc
+	return bc
 }
 
-func (vc *BackupCollector) Describe(ch chan<- *prometheus.Desc) {
-	ch <- vc.sizeMetric.Desc
-	ch <- vc.stateMetric.Desc
+func (bc *BackupCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- bc.sizeMetric.Desc
+	ch <- bc.stateMetric.Desc
 }
 
-func (vc *BackupCollector) Collect(ch chan<- prometheus.Metric) {
+func (bc *BackupCollector) Collect(ch chan<- prometheus.Metric) {
 	defer func() {
 		if err := recover(); err != nil {
-			vc.logger.WithField("error", err).Warn("Panic during collecting metrics")
+			bc.logger.WithField("error", err).Warn("Panic during collecting metrics")
 		}
 	}()
 
-	backupLists, err := vc.ds.ListBackupsRO()
+	backupLists, err := bc.ds.ListBackupsRO()
 	if err != nil {
-		vc.logger.WithError(err).Warn("Error during scrape")
+		bc.logger.WithError(err).Warn("Error during scrape")
 		return
 	}
 
-	for _, v := range backupLists {
-		if v.Status.OwnerID == vc.currentNodeID {
+	for _, backup := range backupLists {
+		if backup.Status.OwnerID == bc.currentNodeID {
 			var size float64
-			if size, err = strconv.ParseFloat(v.Status.Size, 64); err != nil {
-				vc.logger.WithError(err).Warn("Error get size")
+			if size, err = strconv.ParseFloat(backup.Status.Size, 64); err != nil {
+				bc.logger.WithError(err).Warn("Error get size")
 			}
-			backupVolumeName, ok := v.Labels[types.LonghornLabelBackupVolume]
+			backupVolumeName, ok := backup.Labels[types.LonghornLabelBackupVolume]
 			if !ok {
-				vc.logger.WithError(err).Warn("Error get backup volume label")
+				bc.logger.WithError(err).Warn("Error get backup volume label")
 			}
-			ch <- prometheus.MustNewConstMetric(vc.sizeMetric.Desc, vc.sizeMetric.Type, size, backupVolumeName, v.Name)
-			ch <- prometheus.MustNewConstMetric(vc.stateMetric.Desc, vc.stateMetric.Type, float64(getBackupStateValue(v)), backupVolumeName, v.Name)
+			ch <- prometheus.MustNewConstMetric(bc.sizeMetric.Desc, bc.sizeMetric.Type, size, backupVolumeName, backup.Name)
+			ch <- prometheus.MustNewConstMetric(bc.stateMetric.Desc, bc.stateMetric.Type, float64(getBackupStateValue(backup)), backupVolumeName, backup.Name)
 		}
 	}
 }
 
-func getBackupStateValue(v *longhorn.Backup) int {
+func getBackupStateValue(backup *longhorn.Backup) int {
 	stateValue := 0
-	switch v.Status.State {
+	switch backup.Status.State {
 	case longhorn.BackupStateNew:
 		stateValue = 0
 	case longhorn.BackupStatePending:
