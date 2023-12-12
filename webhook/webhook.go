@@ -1,4 +1,4 @@
-package app
+package webhook
 
 import (
 	"context"
@@ -19,7 +19,7 @@ var (
 	defaultStartTimeout = 60 * time.Second
 )
 
-func startWebhook(ctx context.Context, webhookType string, clients *client.Clients) error {
+func StartWebhook(ctx context.Context, webhookType string, clients *client.Clients) error {
 	logrus.Infof("Starting longhorn %s webhook server", webhookType)
 
 	var webhookPort int
