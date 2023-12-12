@@ -679,6 +679,31 @@ func (s *DataStore) DeleteConfigMap(namespace, name string) error {
 	return nil
 }
 
+// CreateSecret creates a Secret resource
+func (s *DataStore) CreateSecret(namespace string, secret *corev1.Secret) (*corev1.Secret, error) {
+	return s.kubeClient.CoreV1().Secrets(namespace).Create(context.TODO(), secret, metav1.CreateOptions{})
+}
+
+// UpdateSecret updates a Secret resource
+func (s *DataStore) UpdateSecret(namespace string, secret *corev1.Secret) (*corev1.Secret, error) {
+	return s.kubeClient.CoreV1().Secrets(namespace).Update(context.TODO(), secret, metav1.UpdateOptions{})
+}
+
+// DeleteSecret deletes a Secret resource
+func (s *DataStore) DeleteSecret(namespace, name string) error {
+	return s.kubeClient.CoreV1().Secrets(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
+// ListSecretsRO returns an object contains all secrets in Longhorn namespace in the cluster Secret resources
+func (s *DataStore) ListSecretsRO(namespace string) ([]*corev1.Secret, error) {
+	return s.secretLister.Secrets(namespace).List(labels.Everything())
+}
+
+// ListAllSecretsRO returns an object contains all secrets in all namespaces in the cluster Secret resources
+func (s *DataStore) ListAllSecretsRO() ([]*corev1.Secret, error) {
+	return s.secretLister.List(labels.Everything())
+}
+
 // GetSecretRO gets Secret with the given namespace and name
 // This function returns direct reference to the internal cache object and should not be mutated.
 // Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
@@ -701,16 +726,6 @@ func (s *DataStore) GetSecret(namespace, name string) (resultRO *corev1.Secret, 
 	}
 	// Cannot use cached object from lister
 	return resultRO.DeepCopy(), nil
-}
-
-// UpdateSecret updates the Secret resource with the given object and namespace
-func (s *DataStore) UpdateSecret(namespace string, secret *corev1.Secret) (*corev1.Secret, error) {
-	return s.kubeClient.CoreV1().Secrets(namespace).Update(context.TODO(), secret, metav1.UpdateOptions{})
-}
-
-// DeleteSecret deletes the Secret for the given name and namespace
-func (s *DataStore) DeleteSecret(namespace, name string) error {
-	return s.kubeClient.CoreV1().Secrets(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 }
 
 // GetPriorityClass gets the PriorityClass from the index for the

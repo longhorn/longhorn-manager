@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/base64"
 	"fmt"
 	"strconv"
 	"time"
@@ -119,6 +120,14 @@ type SnapshotCR struct {
 	RestoreSize  int64             `json:"restoreSize"`
 	ReadyToUse   bool              `json:"readyToUse"`
 	Checksum     string            `json:"checksum"`
+}
+
+type SecretInput struct {
+	client.Resource
+
+	Name       string            `json:"name"`
+	SecretType string            `json:"secretType"`
+	Data       map[string]string `json:"data"`
 }
 
 type BackupTarget struct {
@@ -670,6 +679,7 @@ func NewSchema() *client.Schemas {
 	backupTargetSchema(schemas.AddType("backupTarget", BackupTarget{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
 	backupBackingImageSchema(schemas.AddType("backupBackingImage", BackupBackingImage{}))
+	secretSchema(schemas.AddType("secret", SecretInput{}))
 	settingSchema(schemas.AddType("setting", Setting{}))
 	recurringJobSchema(schemas.AddType("recurringJob", RecurringJob{}))
 	engineImageSchema(schemas.AddType("engineImage", EngineImage{}))
@@ -838,6 +848,28 @@ func kubernetesStatusSchema(status *client.Schema) {
 	workloadsStatus := status.ResourceFields["workloadsStatus"]
 	workloadsStatus.Type = "array[workloadStatus]"
 	status.ResourceFields["workloadsStatus"] = workloadsStatus
+}
+
+func secretSchema(secret *client.Schema) {
+	secret.CollectionMethods = []string{"GET", "POST"}
+	secret.ResourceMethods = []string{"GET", "PUT", "DELETE"}
+
+	name := secret.ResourceFields["name"]
+	name.Required = true
+	name.Unique = true
+	name.Create = true
+	secret.ResourceFields["name"] = name
+
+	secretType := secret.ResourceFields["type"]
+	secretType.Required = true
+	secretType.Unique = false
+	secretType.Create = true
+	secret.ResourceFields["type"] = secretType
+
+	data := secret.ResourceFields["data"]
+	data.Type = "map[string]"
+	data.Nullable = true
+	secret.ResourceFields["data"] = data
 }
 
 func backupTargetSchema(backupTarget *client.Schema) {
@@ -1816,6 +1848,38 @@ func toBackupTargetResource(bt *longhorn.BackupTarget, apiContext *api.ApiContex
 	}
 
 	return res
+}
+
+func toSecretResource(s *corev1.Secret) *SecretInput {
+	if s == nil {
+		return nil
+	}
+
+	dataMap := make(map[string]string, len(s.Data))
+	for key, data := range s.Data {
+		dataMap[key] = base64.StdEncoding.EncodeToString(data)
+	}
+
+	res := &SecretInput{
+		Resource: client.Resource{
+			Id:    s.Name,
+			Type:  "secret",
+			Links: map[string]string{},
+		},
+
+		Name:       s.Name,
+		SecretType: string(s.Type),
+		Data:       dataMap,
+	}
+	return res
+}
+
+func toSecretCollection(ss []*corev1.Secret) *client.GenericCollection {
+	data := []interface{}{}
+	for _, s := range ss {
+		data = append(data, toSecretResource(s))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "secret"}}
 }
 
 func toBackupVolumeResource(bv *longhorn.BackupVolume, apiContext *api.ApiContext) *BackupVolume {
