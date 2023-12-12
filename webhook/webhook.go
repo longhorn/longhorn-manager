@@ -1,8 +1,7 @@
-package app
+package webhook
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 
 	"github.com/pkg/errors"
@@ -14,18 +13,30 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/longhorn/longhorn-manager/recovery_backend/server"
 	"github.com/longhorn/longhorn-manager/types"
-	"github.com/longhorn/longhorn-manager/util/client"
+	"github.com/longhorn/longhorn-manager/webhook/server"
 )
 
-func RecoveryBackendServiceCommand() cli.Command {
+func AdmissionWebhookServerCommand() cli.Command {
+	return webhookServerCommand(types.WebhookTypeAdmission)
+}
+
+<<<<<<< HEAD:app/webhook.go
+func ConversionWebhookServerCommand() cli.Command {
+	return webhookServerCommand(types.WebhookTypeConversion)
+}
+=======
+func StartWebhook(ctx context.Context, webhookType string, clients *client.Clients) error {
+	logrus.Infof("Starting longhorn %s webhook server", webhookType)
+>>>>>>> ac3a1301 (refactor: move non-entry app functions away from app pkg):webhook/webhook.go
+
+func webhookServerCommand(webhookType string) cli.Command {
 	return cli.Command{
-		Name: "recovery-backend",
+		Name: fmt.Sprintf("%v-webhook", webhookType),
 		Flags: []cli.Flag{
 			cli.StringFlag{
 				Name:  FlagServiceAccount,
-				Usage: "Specify service account for recovery-backend service",
+				Usage: fmt.Sprintf("Specify service account for %v webhook", webhookType),
 			},
 			cli.StringFlag{
 				Name:  FlagKubeConfig,
@@ -33,15 +44,15 @@ func RecoveryBackendServiceCommand() cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) {
-			if err := runRecoveryBackendServer(c); err != nil {
-				logrus.Fatalf("Failed to start longhorn recovery-backend server: %v", err)
+			if err := runWebhookServer(c, webhookType); err != nil {
+				logrus.Fatalf("Error starting longhorn %v webhook server: %v", webhookType, err)
 			}
 		},
 	}
 }
 
-func runRecoveryBackendServer(c *cli.Context) error {
-	logrus.Infof("Starting longhorn recovery-backend server")
+func runWebhookServer(c *cli.Context, webhookType string) error {
+	logrus.Infof("Starting longhorn %s webhook server", webhookType)
 
 	ctx := signals.SetupSignalContext()
 
@@ -49,7 +60,6 @@ func runRecoveryBackendServer(c *cli.Context) error {
 	if serviceAccount == "" {
 		return fmt.Errorf("require %v", FlagServiceAccount)
 	}
-
 	kubeconfigPath := c.String(FlagKubeConfig)
 
 	namespace := os.Getenv(types.EnvPodNamespace)
@@ -64,22 +74,10 @@ func runRecoveryBackendServer(c *cli.Context) error {
 		return errors.Wrap(err, "unable to get client config")
 	}
 
-	client, err := client.NewClient(ctx, cfg, namespace, true)
-	if err != nil {
+	s := server.New(ctx, cfg, namespace, webhookType)
+	if err := s.ListenAndServe(); err != nil {
 		return err
 	}
-
-	if err := client.Start(ctx); err != nil {
-		return err
-	}
-
-	srv := server.New(namespace, client.Datastore)
-	router := http.Handler(server.NewRouter(srv))
-
-	if err := srv.ListenAndServe(router); err != nil {
-		return err
-	}
-
 	<-ctx.Done()
 	return nil
 }

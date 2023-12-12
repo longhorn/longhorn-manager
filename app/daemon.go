@@ -3,9 +3,8 @@ package app
 import (
 	"fmt"
 	"net/http"
-	"os"
-
 	_ "net/http/pprof" // for runtime profiling
+	"os"
 
 	"github.com/gorilla/handlers"
 	"github.com/sirupsen/logrus"
@@ -19,9 +18,15 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/meta"
+	"github.com/longhorn/longhorn-manager/recovery_backend"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/upgrade"
 	"github.com/longhorn/longhorn-manager/util"
+<<<<<<< HEAD
+=======
+	"github.com/longhorn/longhorn-manager/util/client"
+	"github.com/longhorn/longhorn-manager/webhook"
+>>>>>>> ac3a1301 (refactor: move non-entry app functions away from app pkg)
 
 	metricscollector "github.com/longhorn/longhorn-manager/metrics_collector"
 )
@@ -137,6 +142,25 @@ func startManager(c *cli.Context) error {
 
 	logger := logrus.StandardLogger().WithField("node", currentNodeID)
 
+<<<<<<< HEAD
+=======
+	clients, err := client.NewClients(kubeconfigPath, ctx.Done())
+	if err != nil {
+		return err
+	}
+
+	webhookTypes := []string{types.WebhookTypeConversion, types.WebhookTypeAdmission}
+	for _, webhookType := range webhookTypes {
+		if err := webhook.StartWebhook(ctx, webhookType, clients); err != nil {
+			return err
+		}
+	}
+
+	if err := recoverybackend.StartRecoveryBackend(clients); err != nil {
+		return err
+	}
+
+>>>>>>> ac3a1301 (refactor: move non-entry app functions away from app pkg)
 	if err := upgrade.Upgrade(kubeconfigPath, currentNodeID, managerImage); err != nil {
 		return err
 	}
@@ -197,7 +221,7 @@ func startManager(c *cli.Context) error {
 		debugAddress := "127.0.0.1:6060"
 		debugHandler := http.DefaultServeMux
 		logger.Infof("Debug Server listening on %s", debugAddress)
-		if err := http.ListenAndServe(debugAddress, debugHandler); err != nil && err != http.ErrServerClosed {
+		if err := http.ListenAndServe(debugAddress, debugHandler); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Errorf(fmt.Sprintf("ListenAndServe: %s", err))
 		}
 	}()
