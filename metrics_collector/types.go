@@ -15,6 +15,7 @@ const (
 	subsystemInstanceManager = "instance_manager"
 	subsystemManager         = "manager"
 	subsystemBackup          = "backup"
+	subsystemSnapshot        = "snapshot"
 
 	nodeLabel            = "node"
 	diskLabel            = "disk"
@@ -27,6 +28,7 @@ const (
 	backupLabel          = "backup"
 	pvcLabel             = "pvc"
 	pvcNamespaceLabel    = "pvc_namespace"
+	userCreatedLabel     = "user_created"
 )
 
 type metricInfo struct {
