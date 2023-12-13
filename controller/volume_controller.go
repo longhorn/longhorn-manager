@@ -3814,7 +3814,7 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 			return
 		}
 
-		log.Warnf("The migration engine or all migration replicas crashed, will clean them up now")
+		log.Warnf("Cleaning up the migration engine and all migration replicas to revert migration")
 
 		currentEngine, err2 := c.getCurrentEngineAndCleanupOthers(v, es)
 		if err2 != nil {
@@ -3939,6 +3939,10 @@ func (c *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Volu
 			case longhorn.ReplicaModeRW:
 				currentAvailableReplicas[dataPath] = r
 			case "":
+				if _, ok := currentEngine.Spec.ReplicaAddressMap[r.Name]; ok {
+					log.Infof("Need to revert rather than starting migration since the current replica %v is already in the engine spec, which means it may start rebuilding", r.Name)
+					return false, true, nil
+				}
 				log.Warnf("Running replica %v wasn't added to engine, will ignore it and continue migration", r.Name)
 			default:
 				log.Warnf("Unexpected mode %v for the current replica %v, will ignore it and continue migration", currentEngine.Status.ReplicaModeMap[r.Name], r.Name)
