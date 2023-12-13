@@ -1,15 +1,25 @@
 #!/bin/bash
 set -e
 
-cd $(dirname $0)/..
+TESTS=${TESTS:-""}
 
-args=$1
+cd "$(dirname "$0")/.."
 
-echo Running tests
+args=("$@")
 
-PACKAGES="$(find . -name '*.go' | xargs -I{} dirname {} | sort -u | grep -Ev '(.git|.trash-cache|vendor|bin|k8s)')"
+echo "Running tests ${TESTS}"
 
-echo Packages: ${PACKAGES}
+if ! git diff --name-only | grep -Ev '(.git|.trash-cache|vendor|bin|k8s)' | grep -E '.*\.go' ; then
+  PACKAGES="$(find . -name '*.go' -exec dirname {} \; | sort -u | grep -Ev '(.git|.trash-cache|vendor|bin|k8s)')"
+else
+  PACKAGES="$(git diff --name-only | grep -E '.*\.go' | xargs -I{} dirname ./{} | sort -u | grep -Ev '(.git|.trash-cache|vendor|bin|k8s)')"
+fi
+
+echo Packages: "${PACKAGES}"
 
 [ "${ARCH}" == "amd64" ] && RACE=-race
-go test ${RACE} ${args} ${PACKAGES}
+if [ -n "${TESTS}" ]; then
+  go test -v "${RACE}" "${args[@]}" ${PACKAGES} -check.f "${TESTS}"
+else
+  go test -v "${RACE}" "${args[@]}" ${PACKAGES}
+fi

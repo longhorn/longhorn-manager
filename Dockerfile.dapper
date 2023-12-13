@@ -22,7 +22,7 @@ RUN wget -O - https://storage.googleapis.com/golang/go1.20.3.linux-${!GOLANG_ARC
 ENV DAPPER_SOURCE /go/src/github.com/longhorn/longhorn-manager
 ENV DAPPER_OUTPUT ./bin coverage.out
 ENV DAPPER_DOCKER_SOCKET true
-ENV DAPPER_ENV IMAGE REPO VERSION TAG
+ENV DAPPER_ENV IMAGE REPO VERSION TAG TESTS
 ENV DAPPER_RUN_ARGS --privileged --tmpfs /go/src/github.com/longhorn/longhorn/integration/.venv:exec --tmpfs /go/src/github.com/longhorn/longhorn/integration/.tox:exec -v /dev:/host/dev
 ENV TRASH_CACHE ${DAPPER_SOURCE}/.trash-cache
 ENV HOME ${DAPPER_SOURCE}
