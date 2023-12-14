@@ -2680,8 +2680,42 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 		return nil
 	}
 
-	// only start live upgrade if volume is healthy
+	// Only start live upgrade if volume is healthy
 	if v.Status.State != longhorn.VolumeStateAttached || v.Status.Robustness != longhorn.VolumeRobustnessHealthy {
+		if v.Status.State != longhorn.VolumeStateAttached || v.Status.Robustness != longhorn.VolumeRobustnessDegraded {
+			return nil
+		}
+		// Clean up inactive replica corresponding to non-existing active replica.
+		// This will allow volume controller to schedule and rebuild a new active replica
+		// and make the volume healthy again for the live upgrade to be able to continue.
+		// https://github.com/longhorn/longhorn/issues/7012
+
+		// sort the replica by name so that we don't select multiple replicas when running this logic repeatedly quickly
+		var sortedReplicaNames []string
+		for rName := range rs {
+			sortedReplicaNames = append(sortedReplicaNames, rName)
+		}
+		sort.Strings(sortedReplicaNames)
+
+		var inactiveReplicaToCleanup *longhorn.Replica
+		for _, rName := range sortedReplicaNames {
+			r := rs[rName]
+			if !r.Spec.Active && !hasMatchingActiveReplica(r, rs) {
+				inactiveReplicaToCleanup = r
+				break
+			}
+		}
+		if inactiveReplicaToCleanup != nil {
+			log.Infof("Cleaning up inactive replica %v which doesn't have corresponding active replica", inactiveReplicaToCleanup.Name)
+			if err := c.deleteReplica(inactiveReplicaToCleanup, rs); err != nil {
+				return errors.Wrapf(err, "failed to cleanup inactive replica %v", inactiveReplicaToCleanup.Name)
+			}
+			return nil
+		}
+
+		// When the volume is degraded, even though we don't start the live engine upgrade, try to mark it as finished if it already started
+		c.finishLiveEngineUpgrade(v, e, rs, log)
+
 		return nil
 	}
 
@@ -2788,9 +2822,14 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 			e.Spec.EngineImage = v.Spec.EngineImage
 		}
 	}
+	c.finishLiveEngineUpgrade(v, e, rs, log)
+	return nil
+}
+
+func (c *VolumeController) finishLiveEngineUpgrade(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, log *logrus.Entry) {
 	if e.Status.CurrentImage != v.Spec.EngineImage ||
 		e.Status.CurrentState != longhorn.InstanceStateRunning {
-		return nil
+		return
 	}
 
 	c.switchActiveReplicas(rs, func(r *longhorn.Replica, engineImage string) bool {
@@ -2802,8 +2841,6 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 	// cleanupCorruptedOrStaleReplicas() will take care of old replicas
 	log.Infof("Engine %v has been upgraded from %v to %v", e.Name, v.Status.CurrentImage, v.Spec.EngineImage)
 	v.Status.CurrentImage = v.Spec.EngineImage
-
-	return nil
 }
 
 func (c *VolumeController) updateRequestedBackupForVolumeRestore(v *longhorn.Volume, e *longhorn.Engine) (err error) {
