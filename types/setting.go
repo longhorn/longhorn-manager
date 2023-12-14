@@ -2,8 +2,6 @@ package types
 
 import (
 	"fmt"
-	"net/url"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -48,8 +46,6 @@ const (
 type SettingName string
 
 const (
-	SettingNameBackupTarget                                             = SettingName("backup-target")
-	SettingNameBackupTargetCredentialSecret                             = SettingName("backup-target-credential-secret")
 	SettingNameAllowRecurringJobWhileVolumeDetached                     = SettingName("allow-recurring-job-while-volume-detached")
 	SettingNameCreateDefaultDiskLabeledNodes                            = SettingName("create-default-disk-labeled-nodes")
 	SettingNameDefaultDataPath                                          = SettingName("default-data-path")
@@ -70,7 +66,6 @@ const (
 	SettingNameDefaultReplicaCount                                      = SettingName("default-replica-count")
 	SettingNameDefaultDataLocality                                      = SettingName("default-data-locality")
 	SettingNameDefaultLonghornStaticStorageClass                        = SettingName("default-longhorn-static-storage-class")
-	SettingNameBackupstorePollInterval                                  = SettingName("backupstore-poll-interval")
 	SettingNameTaintToleration                                          = SettingName("taint-toleration")
 	SettingNameSystemManagedComponentsNodeSelector                      = SettingName("system-managed-components-node-selector")
 	SettingNameCRDAPIVersion                                            = SettingName("crd-api-version")
@@ -132,8 +127,6 @@ const (
 
 var (
 	SettingNameList = []SettingName{
-		SettingNameBackupTarget,
-		SettingNameBackupTargetCredentialSecret,
 		SettingNameAllowRecurringJobWhileVolumeDetached,
 		SettingNameCreateDefaultDiskLabeledNodes,
 		SettingNameDefaultDataPath,
@@ -154,7 +147,6 @@ var (
 		SettingNameDefaultReplicaCount,
 		SettingNameDefaultDataLocality,
 		SettingNameDefaultLonghornStaticStorageClass,
-		SettingNameBackupstorePollInterval,
 		SettingNameTaintToleration,
 		SettingNameSystemManagedComponentsNodeSelector,
 		SettingNameCRDAPIVersion,
@@ -244,8 +236,6 @@ var settingDefinitionsLock sync.RWMutex
 
 var (
 	settingDefinitions = map[SettingName]SettingDefinition{
-		SettingNameBackupTarget:                                             SettingDefinitionBackupTarget,
-		SettingNameBackupTargetCredentialSecret:                             SettingDefinitionBackupTargetCredentialSecret,
 		SettingNameAllowRecurringJobWhileVolumeDetached:                     SettingDefinitionAllowRecurringJobWhileVolumeDetached,
 		SettingNameCreateDefaultDiskLabeledNodes:                            SettingDefinitionCreateDefaultDiskLabeledNodes,
 		SettingNameDefaultDataPath:                                          SettingDefinitionDefaultDataPath,
@@ -266,7 +256,6 @@ var (
 		SettingNameDefaultReplicaCount:                                      SettingDefinitionDefaultReplicaCount,
 		SettingNameDefaultDataLocality:                                      SettingDefinitionDefaultDataLocality,
 		SettingNameDefaultLonghornStaticStorageClass:                        SettingDefinitionDefaultLonghornStaticStorageClass,
-		SettingNameBackupstorePollInterval:                                  SettingDefinitionBackupstorePollInterval,
 		SettingNameTaintToleration:                                          SettingDefinitionTaintToleration,
 		SettingNameSystemManagedComponentsNodeSelector:                      SettingDefinitionSystemManagedComponentsNodeSelector,
 		SettingNameCRDAPIVersion:                                            SettingDefinitionCRDAPIVersion,
@@ -326,24 +315,6 @@ var (
 		SettingNameDisableSnapshotPurge:                                     SettingDefinitionDisableSnapshotPurge,
 	}
 
-	SettingDefinitionBackupTarget = SettingDefinition{
-		DisplayName: "Backup Target",
-		Description: "The endpoint used to access the backupstore. NFS, CIFS and S3 are supported.",
-		Category:    SettingCategoryBackup,
-		Type:        SettingTypeString,
-		Required:    false,
-		ReadOnly:    false,
-	}
-
-	SettingDefinitionBackupTargetCredentialSecret = SettingDefinition{
-		DisplayName: "Backup Target Credential Secret",
-		Description: "The name of the Kubernetes secret associated with the backup target.",
-		Category:    SettingCategoryBackup,
-		Type:        SettingTypeString,
-		Required:    false,
-		ReadOnly:    false,
-	}
-
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
 		DisplayName: "Allow Recurring Job While Volume Is Detached",
 		Description: "If this setting is enabled, Longhorn will automatically attaches the volume and takes snapshot/backup when it is the time to do recurring snapshot/backup. \n\n" +
@@ -354,19 +325,6 @@ var (
 		Required: true,
 		ReadOnly: false,
 		Default:  "false",
-	}
-
-	SettingDefinitionBackupstorePollInterval = SettingDefinition{
-		DisplayName: "Backupstore Poll Interval",
-		Description: "In seconds. The backupstore poll interval determines how often Longhorn checks the backupstore for new backups. Set to 0 to disable the polling.",
-		Category:    SettingCategoryBackup,
-		Type:        SettingTypeInt,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "300",
-		ValueIntRange: map[string]int{
-			ValueIntRangeMinimum: 0,
-		},
 	}
 
 	SettingDefinitionFailedBackupTTL = SettingDefinition{
@@ -1678,26 +1636,6 @@ func validateString(sName SettingName, definition SettingDefinition, value strin
 		if _, err := UnmarshalNodeSelector(value); err != nil {
 			return errors.Wrapf(err, "the value of %v is invalid", sName)
 		}
-
-	case SettingNameBackupTarget:
-		u, err := url.Parse(value)
-		if err != nil {
-			return errors.Wrapf(err, "failed to parse %v as url", value)
-		}
-
-		// Check whether have $ or , have been set in BackupTarget path
-		regStr := `[\$\,]`
-		if u.Scheme == "cifs" {
-			// The $ in SMB/CIFS URIs means that the share is hidden.
-			regStr = `[\,]`
-		}
-
-		reg := regexp.MustCompile(regStr)
-		findStr := reg.FindAllString(u.Path, -1)
-		if len(findStr) != 0 {
-			return fmt.Errorf("value %s, contains %v", value, strings.Join(findStr, " or "))
-		}
-
 	case SettingNameStorageNetwork:
 		if err := ValidateStorageNetwork(value); err != nil {
 			return errors.Wrapf(err, "the value of %v is invalid", sName)

@@ -1668,8 +1668,6 @@ func (c *SystemRolloutController) restoreServiceAccounts() (err error) {
 var systemRolloutIgnoredSettings = [...]string{
 	string(types.SettingNameConcurrentBackupRestorePerNodeLimit),
 	string(types.SettingNameConcurrentReplicaRebuildPerNodeLimit),
-	string(types.SettingNameBackupTarget),
-	string(types.SettingNameBackupTargetCredentialSecret),
 }
 
 func isSystemRolloutIgnoredSetting(name string) bool {

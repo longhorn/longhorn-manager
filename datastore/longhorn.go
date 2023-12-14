@@ -283,62 +283,6 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 	}
 
 	switch sName {
-	case types.SettingNameBackupTarget:
-		vs, err := s.ListDRVolumesRO()
-		if err != nil {
-			return errors.Wrapf(err, "failed to list standby volume when modifying BackupTarget")
-		}
-		if len(vs) != 0 {
-			standbyVolumeNames := make([]string, len(vs))
-			for k := range vs {
-				standbyVolumeNames = append(standbyVolumeNames, k)
-			}
-			return fmt.Errorf("cannot modify BackupTarget since there are existing standby volumes: %v", standbyVolumeNames)
-		}
-	case types.SettingNameBackupTargetCredentialSecret:
-		secret, err := s.GetSecretRO(s.namespace, value)
-		if err != nil {
-			if !apierrors.IsNotFound(err) {
-				return errors.Wrapf(err, "failed to get the secret before modifying backup target credential secret setting")
-			}
-			return nil
-		}
-		checkKeyList := []string{
-			types.AWSAccessKey,
-			types.AWSIAMRoleAnnotation,
-			types.AWSIAMRoleArn,
-			types.AWSAccessKey,
-			types.AWSSecretKey,
-			types.AWSEndPoint,
-			types.AWSCert,
-			types.CIFSUsername,
-			types.CIFSPassword,
-			types.AZBlobAccountName,
-			types.AZBlobAccountKey,
-			types.AZBlobEndpoint,
-			types.AZBlobCert,
-			types.HTTPSProxy,
-			types.HTTPProxy,
-			types.NOProxy,
-			types.VirtualHostedStyle,
-		}
-		for _, checkKey := range checkKeyList {
-			if value, ok := secret.Data[checkKey]; ok {
-				if strings.TrimSpace(string(value)) != string(value) {
-					switch {
-					case strings.TrimLeft(string(value), " ") != string(value):
-						return fmt.Errorf("invalid leading white space in %s", checkKey)
-					case strings.TrimRight(string(value), " ") != string(value):
-						return fmt.Errorf("invalid trailing white space in %s", checkKey)
-					case strings.TrimLeft(string(value), "\n") != string(value):
-						return fmt.Errorf("invalid leading new line in %s", checkKey)
-					case strings.TrimRight(string(value), "\n") != string(value):
-						return fmt.Errorf("invalid trailing new line in %s", checkKey)
-					}
-					return fmt.Errorf("invalid white space or new line in %s", checkKey)
-				}
-			}
-		}
 	case types.SettingNamePriorityClass:
 		if value != "" {
 			if _, err := s.GetPriorityClass(value); err != nil {
