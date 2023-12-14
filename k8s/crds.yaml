@@ -745,6 +745,14 @@ spec:
           spec:
             description: BackupSpec defines the desired state of the Longhorn backup
             properties:
+              backupTargetName:
+                description: The backup target name.
+                nullable: true
+                type: string
+              backupTargetURL:
+                description: The backup target url.
+                nullable: true
+                type: string
               labels:
                 additionalProperties:
                   type: string
