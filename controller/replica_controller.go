@@ -240,9 +240,9 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 			return errors.Wrapf(err, "failed to cleanup the related replica instance before deleting replica %v", replica.Name)
 		}
 
-		rs, err := rc.ds.ListReplicasByNodeRO(replica.Spec.NodeID)
+		rs, err := rc.ds.ListVolumeReplicasRO(replica.Spec.VolumeName)
 		if err != nil {
-			return errors.Wrapf(err, "failed to list replicas by node before deleting replica %v", replica.Name)
+			return errors.Wrapf(err, "failed to list replicas of the volume before deleting replica %v", replica.Name)
 		}
 
 		if replica.Spec.NodeID != "" && replica.Spec.NodeID != rc.controllerID {
@@ -251,7 +251,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 			if replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
 				// Clean up the data directory if this is the active replica or if this inactive replica is the only one
 				// using it.
-				if (replica.Spec.Active || !hasMatchingReplica(replica, rs)) && dataPath != "" {
+				if (replica.Spec.Active || !hasMatchingActiveReplica(replica, rs)) && dataPath != "" {
 					// prevent accidentally deletion
 					if !strings.Contains(filepath.Base(filepath.Clean(dataPath)), "-") {
 						return fmt.Errorf("%v doesn't look like a replica data path", dataPath)
@@ -882,9 +882,14 @@ func (rc *ReplicaController) isResponsibleFor(r *longhorn.Replica) bool {
 	return isControllerResponsibleFor(rc.controllerID, rc.ds, r.Name, r.Spec.NodeID, r.Status.OwnerID)
 }
 
-func hasMatchingReplica(replica *longhorn.Replica, replicas []*longhorn.Replica) bool {
+func hasMatchingActiveReplica(replica *longhorn.Replica, replicas map[string]*longhorn.Replica) bool {
 	for _, r := range replicas {
-		if r.Name != replica.Name && r.Spec.DataDirectoryName == replica.Spec.DataDirectoryName {
+		if r.Spec.Active &&
+			r.Name != replica.Name &&
+			r.Spec.NodeID == replica.Spec.NodeID &&
+			r.Spec.DiskID == replica.Spec.DiskID &&
+			r.Spec.DiskPath == replica.Spec.DiskPath &&
+			r.Spec.DataDirectoryName == replica.Spec.DataDirectoryName {
 			return true
 		}
 	}
