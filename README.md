@@ -57,6 +57,20 @@ longhorn-uninstall   1/1           20s        20s
 
 Tip: If you try `kubectl delete -Rf deploy/install` first and get stuck there, pressing `Ctrl C` then running `kubectl create -f deploy/uninstall/uninstall.yaml` can also help you remove Longhorn. Finally, don't forget to cleanup remaining components by running `kubectl delete -f deploy/uninstall/uninstall.yaml`.
 
+## Unit Test
+
+To execute all unit tests, make sure there are no uncommitted changes and run:
+
+```
+make test
+```
+
+If there are uncommitted changes, only the affected modules will be tested.
+To execute specific unit tests or all tests matching a regex, run:
+
+```
+TESTS=="NodeControllerSuite.*" make test
+```
 
 ## Integration test
 
