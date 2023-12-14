@@ -873,14 +873,6 @@ func (sc *SettingController) enqueueSettingForNode(obj interface{}) {
 	}
 
 	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameGuaranteedInstanceManagerCPU))
-	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameBackupTarget))
-}
-
-func (sc *SettingController) enqueueSettingForBackupTarget(obj interface{}) {
-	if _, ok := obj.(*longhorn.BackupTarget); !ok {
-		return
-	}
-	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameBackupTarget))
 }
 
 func (sc *SettingController) updateInstanceManagerCPURequest() error {
@@ -1187,7 +1179,6 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameBackingImageCleanupWaitInterval:                          true,
 		types.SettingNameBackingImageRecoveryWaitInterval:                         true,
 		types.SettingNameBackupCompressionMethod:                                  true,
-		types.SettingNameBackupstorePollInterval:                                  true,
 		types.SettingNameBackupConcurrentLimit:                                    true,
 		types.SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit:             true,
 		types.SettingNameConcurrentBackupRestorePerNodeLimit:                      true,
@@ -1238,10 +1229,6 @@ func (info *ClusterInfo) collectSettings() error {
 		settingName := types.SettingName(setting.Name)
 
 		switch {
-		// Setting that require extra processing to identify their general purpose
-		case settingName == types.SettingNameBackupTarget:
-			settingMap[setting.Name] = types.GetBackupTargetSchemeFromURL(setting.Value)
-
 		// Setting that should be collected as boolean (true if configured, false if not)
 		case includeAsBoolean[settingName]:
 			definition, ok := types.GetSettingDefinition(types.SettingName(setting.Name))
