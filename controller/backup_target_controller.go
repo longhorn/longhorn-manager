@@ -848,3 +848,8 @@ func (bst *BackupStoreTimer) Stop() {
 	}
 	bst.cancel()
 }
+
+// IsBackupTargetAvailable returns a boolean that the backup target is available for true and not available for false
+func IsBackupTargetAvailable(backupTarget *longhorn.BackupTarget) bool {
+	return backupTarget != nil && backupTarget.DeletionTimestamp == nil && backupTarget.Spec.BackupTargetURL != "" && backupTarget.Status.Available
+}
