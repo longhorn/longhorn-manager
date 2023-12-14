@@ -89,6 +89,7 @@ const (
 	TestDeploymentName = "test-deployment"
 
 	TestBackupTarget     = "s3://backupbucket@us-east-1/backupstore"
+	TestBackupTargetName = "default"
 	TestBackupVolumeName = "test-backup-volume-for-restoration"
 	TestBackupName       = "test-backup-for-restoration"
 
