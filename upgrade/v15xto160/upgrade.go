@@ -2,6 +2,7 @@ package v15xto160
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -19,6 +20,8 @@ import (
 
 const (
 	upgradeLogPrefix = "upgrade from v1.5.x to v1.6.0: "
+
+	oldDefaultBackupTargetName = "default"
 )
 
 func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) error {
@@ -41,6 +44,22 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 	}
 
 	if err := upgradeVolumeAttachments(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	if err := upgradeBackupTargets(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	if err := upgradeBackupVolumes(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	if err := upgradeBackups(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	if err := upgradeRecurringJobs(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
 
@@ -105,6 +124,11 @@ func upgradeEngines(namespace string, lhClient *lhclientset.Clientset, resourceM
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade engine failed")
 	}()
 
+	backupTarget, err := getOldDefaultBackupTarget(namespace, lhClient, resourceMaps)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get old default backup target during the engine upgrade")
+	}
+
 	engineMap, err := upgradeutil.ListAndUpdateEnginesInProvidedCache(namespace, lhClient, resourceMaps)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -118,9 +142,24 @@ func upgradeEngines(namespace string, lhClient *lhclientset.Clientset, resourceM
 			e.Spec.Image = e.Spec.EngineImage
 			e.Spec.EngineImage = ""
 		}
+		if e.Spec.BackupTargetName == "" {
+			e.Spec.BackupTargetName = backupTarget.Name
+		}
 	}
 
 	return nil
+}
+
+func getOldDefaultBackupTarget(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (backupTarget *longhorn.BackupTarget, err error) {
+	backupTargetMap, err := upgradeutil.ListAndUpdateBackupTargetsInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		return nil, err
+	}
+	backupTarget, exist := backupTargetMap[oldDefaultBackupTargetName]
+	if !exist {
+		return nil, fmt.Errorf("old default backup target %v does not exist", oldDefaultBackupTargetName)
+	}
+	return backupTarget, nil
 }
 
 func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
@@ -190,6 +229,127 @@ func upgradeVolumeAttachments(namespace string, lhClient *lhclientset.Clientset,
 	return nil
 }
 
+func upgradeBackupTargets(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade backup target failed")
+	}()
+
+	backupTargetMap, err := upgradeutil.ListAndUpdateBackupTargetsInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		return errors.Wrapf(err, "failed to list all existing Longhorn BackupTargets during the Longhorn BackupTarget upgrade")
+	}
+
+	backupTarget, exist := backupTargetMap[oldDefaultBackupTargetName]
+	if !exist {
+		return errors.Wrapf(err, "failed to get old default backup target during the Longhorn BackupTarget upgrade")
+	}
+
+	backupTarget.Spec.Default = true
+
+	return nil
+}
+
+func upgradeBackupVolumes(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade backup volume failed")
+	}()
+
+	backupTarget, err := getOldDefaultBackupTarget(namespace, lhClient, resourceMaps)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get old default backup target during the Longhorn BackupVolume upgrade")
+	}
+
+	backupVolumeMap, err := upgradeutil.ListAndUpdateBackupVolumesInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn BackupVolumes during the Longhorn BackupVolume upgrade")
+	}
+
+	for _, bv := range backupVolumeMap {
+		if bv.Spec.BackupTargetName == "" {
+			bv.Spec.BackupTargetName = backupTarget.Name
+		}
+		if bv.Spec.BackupTargetURL == "" {
+			bv.Spec.BackupTargetURL = backupTarget.Spec.BackupTargetURL
+		}
+		if bv.Spec.VolumeName == "" {
+			bv.Spec.VolumeName = bv.Name
+		}
+		if bv.Labels == nil {
+			bv.Labels = make(map[string]string)
+		}
+		_, exists := bv.Labels[types.LonghornLabelBackupVolumeCRName]
+		if !exists {
+			bv.Labels[types.LonghornLabelBackupVolumeCRName] = bv.Spec.VolumeName + "-" + bv.Spec.BackupTargetName
+		}
+	}
+
+	return nil
+}
+
+func upgradeBackups(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade backup failed")
+	}()
+
+	backupTarget, err := getOldDefaultBackupTarget(namespace, lhClient, resourceMaps)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get old default backup target during the Longhorn Backup upgrade")
+	}
+
+	backupMap, err := upgradeutil.ListAndUpdateBackupsInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn Backups during the Longhorn Backup upgrade")
+	}
+
+	for _, b := range backupMap {
+		if b.Annotations == nil {
+			b.Annotations = make(map[string]string)
+		}
+		b.Annotations[types.UpgradedOldBackupFrom15x] = ""
+		if b.Spec.BackupTargetName == "" {
+			b.Spec.BackupTargetName = backupTarget.Name
+		}
+		if b.Spec.BackupTargetURL == "" {
+			b.Spec.BackupTargetURL = backupTarget.Spec.BackupTargetURL
+		}
+	}
+
+	return nil
+}
+
+func upgradeRecurringJobs(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade recurring job failed")
+	}()
+
+	backupTarget, err := getOldDefaultBackupTarget(namespace, lhClient, resourceMaps)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get old default backup target during the Longhorn RecurringJob upgrade")
+	}
+
+	recurringJobMap, err := upgradeutil.ListAndUpdateRecurringJobsInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn RecurringJobs during the Longhorn RecurringJob upgrade")
+	}
+
+	for _, rj := range recurringJobMap {
+		if rj.Spec.Task == longhorn.RecurringJobTypeBackup || rj.Spec.Task == longhorn.RecurringJobTypeBackupForceCreate {
+			rj.Spec.BackupTargetName = backupTarget.Name
+		}
+	}
+
+	return nil
+}
+
 func deleteCSIServices(namespace string, kubeClient *clientset.Clientset) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, upgradeLogPrefix+"delete CSI service failed")
@@ -223,5 +383,29 @@ func deleteCSIServices(namespace string, kubeClient *clientset.Clientset) (err e
 func UpgradeResourcesStatus(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) error {
 	// Currently there are no statuses to upgrade. See UpgradeResources -> upgradeVolumes or previous Longhorn versions
 	// for examples.
+	if err := upgradeBackupTargets(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func upgradeBackupTargetsStatus(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade backup target failed")
+	}()
+
+	backupTargetMap, err := upgradeutil.ListAndUpdateBackupTargetsInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		return errors.Wrapf(err, "failed to list all existing Longhorn BackupTargets during the Longhorn BackupTarget status upgrade")
+	}
+
+	backupTarget, exist := backupTargetMap[oldDefaultBackupTargetName]
+	if !exist {
+		return errors.Wrapf(err, "failed to get old default backup target during the Longhorn BackupTarget status upgrade")
+	}
+
+	backupTarget.Status.Default = true
+
 	return nil
 }
