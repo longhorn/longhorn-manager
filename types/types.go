@@ -162,6 +162,7 @@ const (
 	LonghornLabelBackingImageDataSource     = "backing-image-data-source"
 	LonghornLabelBackupTarget               = "backup-target"
 	LonghornLabelBackupVolume               = "backup-volume"
+	LonghornLabelBackupVolumeCRName         = "backup-volume-cr-name"
 	LonghornLabelRecurringJob               = "job"
 	LonghornLabelRecurringJobGroup          = "job-group"
 	LonghornLabelRecurringJobSource         = "source"
@@ -528,6 +529,12 @@ func GetBackupTargetLabels(backupTargetName string) map[string]string {
 func GetBackupVolumeLabels(volumeName string) map[string]string {
 	return map[string]string{
 		LonghornLabelBackupVolume: volumeName,
+	}
+}
+
+func GetBackupVolumeCRLabels(backupVolumeName string) map[string]string {
+	return map[string]string{
+		LonghornLabelBackupVolumeCRName: backupVolumeName,
 	}
 }
 
