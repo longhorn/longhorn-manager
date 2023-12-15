@@ -38,9 +38,8 @@ const (
 	DefaultInContainerCSIRegistrationDir = "/registration"
 	DefaultCSILivenessProbePort          = 9808
 
-	AnnotationCSIGitCommit      = types.LonghornDriverName + "/git-commit"
-	AnnotationCSIVersion        = types.LonghornDriverName + "/version"
-	AnnotationKubernetesVersion = types.LonghornDriverName + "/kubernetes-version"
+	AnnotationCSIGitCommit = types.LonghornDriverName + "/git-commit"
+	AnnotationCSIVersion   = types.LonghornDriverName + "/version"
 )
 
 var (
