@@ -244,7 +244,7 @@ func (m *VolumeManager) PurgeSnapshot(volumeName string) error {
 	return nil
 }
 
-func (m *VolumeManager) BackupSnapshot(backupName, volumeName, snapshotName string, labels map[string]string) error {
+func (m *VolumeManager) BackupSnapshot(backupName, volumeName, snapshotName, backupTargetName string, labels map[string]string) error {
 	if volumeName == "" || snapshotName == "" {
 		return fmt.Errorf("volume and snapshot name required")
 	}
@@ -258,8 +258,9 @@ func (m *VolumeManager) BackupSnapshot(backupName, volumeName, snapshotName stri
 			Name: backupName,
 		},
 		Spec: longhorn.BackupSpec{
-			SnapshotName: snapshotName,
-			Labels:       labels,
+			SnapshotName:     snapshotName,
+			Labels:           labels,
+			BackupTargetName: backupTargetName,
 		},
 	}
 	_, err := m.ds.CreateBackup(backupCR, volumeName)

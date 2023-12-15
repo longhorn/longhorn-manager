@@ -260,9 +260,11 @@ type DetachInput struct {
 	ForceDetach  bool   `json:"forceDetach"`
 }
 
+// SnapshotInput struct is used for the actions of APIs
 type SnapshotInput struct {
-	Name   string            `json:"name"`
-	Labels map[string]string `json:"labels"`
+	Name             string            `json:"name"`
+	Labels           map[string]string `json:"labels"`
+	BackupTargetName string            `json:"backupTargetName"`
 }
 
 type SnapshotCRInput struct {
