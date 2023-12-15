@@ -775,6 +775,9 @@ func fakeSystemRolloutBackupTargetDefault(c *C, informerFactory lhinformers.Shar
 			BackupTargetURL:  "",
 			CredentialSecret: "",
 		},
+		Status: longhorn.BackupTargetStatus{
+			Default: true,
+		},
 	}
 	backupTarget, err := lhClient.LonghornV1beta2().BackupTargets(TestNamespace).Create(context.TODO(), backupTarget, metav1.CreateOptions{})
 	c.Assert(err, IsNil)

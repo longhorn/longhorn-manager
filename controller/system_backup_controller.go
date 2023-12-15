@@ -842,12 +842,18 @@ func (c *SystemBackupController) createVolumeBackup(volume *longhorn.Volume, sys
 		return nil, errors.Wrapf(err, "failed to create Volume %v snapshot %s", volume.Name, snapshot.Name)
 	}
 
+	defaultBackupTarget, err := c.ds.GetDefaultBackupTargetRO()
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get default backup target")
+	}
+
 	backup = &longhorn.Backup{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: volumeBackupName,
 		},
 		Spec: longhorn.BackupSpec{
-			SnapshotName: snapshot.Name,
+			SnapshotName:     snapshot.Name,
+			BackupTargetName: defaultBackupTarget.Name,
 		},
 	}
 	backup, err = c.ds.CreateBackup(backup, volume.Name)
