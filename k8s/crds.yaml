@@ -2518,6 +2518,9 @@ spec:
               cron:
                 description: The cron setting.
                 type: string
+              backupTargetName:
+                description: The backup target name for backup job task.
+                type: string
               groups:
                 description: The recurring job group.
                 items:

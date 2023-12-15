@@ -20,6 +20,7 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	typedv1core "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -48,14 +49,15 @@ const (
 )
 
 type Job struct {
-	logger       logrus.FieldLogger
-	lhClient     lhclientset.Interface
-	namespace    string
-	volumeName   string
-	snapshotName string
-	retain       int
-	task         longhorn.RecurringJobType
-	labels       map[string]string
+	logger           logrus.FieldLogger
+	lhClient         lhclientset.Interface
+	namespace        string
+	volumeName       string
+	snapshotName     string
+	retain           int
+	task             longhorn.RecurringJobType
+	labels           map[string]string
+	backupTargetName string
 
 	eventRecorder record.EventRecorder
 
@@ -109,6 +111,7 @@ func recurringJob(c *cli.Context) (err error) {
 	var jobGroups []string = recurringJob.Spec.Groups
 	var jobRetain int = recurringJob.Spec.Retain
 	var jobConcurrent int = recurringJob.Spec.Concurrency
+	var jobBackupTargetName string = recurringJob.Spec.BackupTargetName
 	jobTask := recurringJob.Spec.Task
 
 	jobLabelMap := map[string]string{}
@@ -153,7 +156,7 @@ func recurringJob(c *cli.Context) (err error) {
 	for _, volumeName := range filteredVolumes {
 		startJobVolumeName := volumeName
 		ewg.Go(func() error {
-			return startVolumeJob(startJobVolumeName, logger, concurrentLimiter, managerURL, jobName, jobTask, jobRetain, jobConcurrent, jobGroups, jobLabelMap, labelJSON)
+			return startVolumeJob(startJobVolumeName, logger, concurrentLimiter, managerURL, jobName, jobBackupTargetName, jobTask, jobRetain, jobConcurrent, jobGroups, jobLabelMap, labelJSON)
 		})
 	}
 
@@ -162,7 +165,8 @@ func recurringJob(c *cli.Context) (err error) {
 
 func startVolumeJob(
 	volumeName string, logger *logrus.Logger, concurrentLimiter chan struct{}, managerURL string,
-	jobName string, jobTask longhorn.RecurringJobType, jobRetain int, jobConcurrent int, jobGroups []string, jobLabelMap map[string]string, labelJSON []byte) error {
+	jobName, jobBackupTargetName string, jobTask longhorn.RecurringJobType, jobRetain int, jobConcurrent int,
+	jobGroups []string, jobLabelMap map[string]string, labelJSON []byte) error {
 
 	concurrentLimiter <- struct{}{}
 	defer func() {
@@ -186,6 +190,7 @@ func startVolumeJob(
 		managerURL,
 		volumeName,
 		snapshotName,
+		jobBackupTargetName,
 		jobLabelMap,
 		jobRetain,
 		jobTask)
@@ -213,7 +218,7 @@ func sliceStringSafely(s string, begin, end int) string {
 	return s[begin:end]
 }
 
-func newJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName string, labels map[string]string, retain int, task longhorn.RecurringJobType) (*Job, error) {
+func newJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName, backupTargetName string, labels map[string]string, retain int, task longhorn.RecurringJobType) (*Job, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		return nil, fmt.Errorf("failed detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
@@ -257,15 +262,16 @@ func newJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName stri
 	}
 
 	return &Job{
-		logger:       logger,
-		lhClient:     lhClient,
-		namespace:    namespace,
-		volumeName:   volumeName,
-		snapshotName: snapshotName,
-		labels:       labels,
-		retain:       retain,
-		task:         task,
-		api:          apiClient,
+		logger:           logger,
+		lhClient:         lhClient,
+		namespace:        namespace,
+		volumeName:       volumeName,
+		snapshotName:     snapshotName,
+		labels:           labels,
+		retain:           retain,
+		task:             task,
+		api:              apiClient,
+		backupTargetName: backupTargetName,
 
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-recurring-job"}),
 	}, nil
@@ -601,8 +607,9 @@ func (job *Job) doRecurringBackup() (err error) {
 	}
 
 	if _, err := job.api.Volume.ActionSnapshotBackup(volume, &longhornclient.SnapshotInput{
-		Labels: job.labels,
-		Name:   job.snapshotName,
+		Labels:           job.labels,
+		Name:             job.snapshotName,
+		BackupTargetName: job.backupTargetName,
 	}); err != nil {
 		return err
 	}
@@ -657,7 +664,7 @@ func (job *Job) doRecurringBackup() (err error) {
 		}
 	}()
 
-	backupVolume, err := job.api.BackupVolume.ById(job.volumeName)
+	backupVolume, err := job.getBackupVolume()
 	if err != nil {
 		return err
 	}
@@ -679,6 +686,21 @@ func (job *Job) doRecurringBackup() (err error) {
 		return err
 	}
 	return nil
+}
+
+func (job *Job) getBackupVolume() (*longhornclient.BackupVolume, error) {
+	backupVolume, err := job.api.BackupVolume.ById(job.volumeName + "-" + job.backupTargetName)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return nil, err
+		}
+		// for backup volumes of old default backup target after an upgrade.
+		backupVolume, err = job.api.BackupVolume.ById(job.volumeName)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return backupVolume, nil
 }
 
 func (job *Job) doRecurringFilesystemTrim(volume *longhornclient.Volume) (err error) {
@@ -734,7 +756,7 @@ func (job *Job) getLastBackup() (*longhornclient.Backup, error) {
 	if volume.LastBackup == "" {
 		return nil, nil
 	}
-	backupVolume, err := job.api.BackupVolume.ById(job.volumeName)
+	backupVolume, err := job.getBackupVolume()
 	if err != nil {
 		return nil, err
 	}
