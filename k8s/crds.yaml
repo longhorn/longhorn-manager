@@ -1506,6 +1506,8 @@ spec:
               backendStoreDriver:
                 description: Deprecated:Replaced by field `dataEngine`.
                 type: string
+              backupTargetName:
+                type: string
               backupVolume:
                 type: string
               dataEngine:

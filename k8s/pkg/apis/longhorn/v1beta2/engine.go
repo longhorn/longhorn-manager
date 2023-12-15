@@ -125,6 +125,8 @@ type EngineSpec struct {
 	// +optional
 	UpgradedReplicaAddressMap map[string]string `json:"upgradedReplicaAddressMap"`
 	// +optional
+	BackupTargetName string `json:"backupTargetName"`
+	// +optional
 	BackupVolume string `json:"backupVolume"`
 	// +optional
 	RequestedBackupRestore string `json:"requestedBackupRestore"`
