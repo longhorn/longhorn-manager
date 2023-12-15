@@ -3980,6 +3980,11 @@ func (s *DataStore) ListBackupsWithBackupVolumeNameRO(backupVolumeName string) (
 			continue
 		}
 		bvName := volumeName + "-" + backup.Spec.BackupTargetName
+		if backup.Annotations != nil {
+			if _, exists := backup.Annotations[types.UpgradedOldBackupFrom15x]; exists {
+				bvName = volumeName
+			}
+		}
 		if bvName == backupVolumeName {
 			itemMap[backup.Name] = backup
 		}

@@ -543,6 +543,46 @@ func ListAndUpdateEnginesInProvidedCache(namespace string, lhClient *lhclientset
 	return engines, nil
 }
 
+// ListAndUpdateBackupTargetsInProvidedCache list all backup targets and save them into the provided cached `resourceMap`. This method is not thread-safe.
+func ListAndUpdateBackupTargetsInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*longhorn.BackupTarget, error) {
+	if v, ok := resourceMaps[types.LonghornKindBackupTarget]; ok {
+		return v.(map[string]*longhorn.BackupTarget), nil
+	}
+
+	backupTargets := map[string]*longhorn.BackupTarget{}
+	backupTargetList, err := lhClient.LonghornV1beta2().BackupTargets(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	for i, backupTarget := range backupTargetList.Items {
+		backupTargets[backupTarget.Name] = &backupTargetList.Items[i]
+	}
+
+	resourceMaps[types.LonghornKindBackupTarget] = backupTargets
+
+	return backupTargets, nil
+}
+
+// ListAndUpdateBackupVolumesInProvidedCache list all backup volumes and save them into the provided cached `resourceMap`. This method is not thread-safe.
+func ListAndUpdateBackupVolumesInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*longhorn.BackupVolume, error) {
+	if v, ok := resourceMaps[types.LonghornKindBackupVolume]; ok {
+		return v.(map[string]*longhorn.BackupVolume), nil
+	}
+
+	backupVolumes := map[string]*longhorn.BackupVolume{}
+	backupVolumeList, err := lhClient.LonghornV1beta2().BackupVolumes(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	for i, backupVolume := range backupVolumeList.Items {
+		backupVolumes[backupVolume.Name] = &backupVolumeList.Items[i]
+	}
+
+	resourceMaps[types.LonghornKindBackupVolume] = backupVolumes
+
+	return backupVolumes, nil
+}
+
 // ListAndUpdateBackupsInProvidedCache list all backups and save them into the provided cached `resourceMap`. This method is not thread-safe.
 func ListAndUpdateBackupsInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*longhorn.Backup, error) {
 	if v, ok := resourceMaps[types.LonghornKindBackup]; ok {

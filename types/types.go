@@ -29,6 +29,8 @@ const (
 	LonghornKindEngine              = "Engine"
 	LonghornKindReplica             = "Replica"
 	LonghornKindBackup              = "Backup"
+	LonghornKindBackupTarget        = "BackupTarget"
+	LonghornKindBackupVolume        = "BackupVolume"
 	LonghornKindSnapshot            = "Snapshot"
 	LonghornKindEngineImage         = "EngineImage"
 	LonghornKindInstanceManager     = "InstanceManager"
@@ -127,6 +129,7 @@ const (
 	ConfigMapResourceVersionKey = "configmap-resource-version"
 	UpdateSettingFromLonghorn   = "update-setting-from-longhorn"
 
+	UpgradedOldBackupFrom15x       = "upgraded-dld-backup-from-15x"
 	DeleteBackupTargetFromLonghorn = "delete-backup-target-from-longhorn"
 	UpdateBackupTargetFromLonghorn = "update-backup-target-from-longhorn"
 

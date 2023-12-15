@@ -768,6 +768,9 @@ func (c *UninstallController) deleteBackupTargets(backupTargets map[string]*long
 			bt.Annotations = make(map[string]string)
 		}
 		if bt.DeletionTimestamp == nil {
+			if bt.Annotations == nil {
+				bt.Annotations = make(map[string]string)
+			}
 			bt.Annotations[types.GetLonghornLabelKey(types.DeleteBackupTargetFromLonghorn)] = ""
 			if _, err := c.ds.UpdateBackupTarget(bt); err != nil {
 				return errors.Wrap(err, "failed to update backup target annotations to mark for deletion")
