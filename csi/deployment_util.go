@@ -146,11 +146,6 @@ type resourceDeleteFunc func(kubeClient *clientset.Clientset, name, namespace st
 func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string,
 	createFunc resourceCreateFunc, deleteFunc resourceDeleteFunc, getFunc util.ResourceGetFunc) (err error) {
 
-	kubeVersion, err := kubeClient.Discovery().ServerVersion()
-	if err != nil {
-		return errors.Wrap(err, "failed to get Kubernetes server version")
-	}
-
 	objMeta, err := meta.Accessor(obj)
 	if err != nil {
 		return fmt.Errorf("invalid object for deploy %v: %v", obj, err)
@@ -161,7 +156,6 @@ func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string
 	}
 	annos[AnnotationCSIGitCommit] = longhornmeta.GitCommit
 	annos[AnnotationCSIVersion] = longhornmeta.Version
-	annos[AnnotationKubernetesVersion] = kubeVersion.GitVersion
 	objMeta.SetAnnotations(annos)
 	name := objMeta.GetName()
 	namespace := objMeta.GetNamespace()
@@ -180,19 +174,21 @@ func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string
 		existingAnnos := existingMeta.GetAnnotations()
 		if annos[AnnotationCSIGitCommit] == existingAnnos[AnnotationCSIGitCommit] &&
 			annos[AnnotationCSIVersion] == existingAnnos[AnnotationCSIVersion] &&
-			annos[AnnotationKubernetesVersion] == existingAnnos[AnnotationKubernetesVersion] &&
 			existingMeta.GetDeletionTimestamp() == nil &&
 			!needToUpdateImage(existing, obj) {
 			// deployment of correct version already deployed
-			logrus.Infof("Detected %v %v CSI Git commit %v version %v Kubernetes version %v has already been deployed",
-				resource, name, annos[AnnotationCSIGitCommit], annos[AnnotationCSIVersion], annos[AnnotationKubernetesVersion])
+			logrus.Infof("Detected %v %v CSI Git commit %v version %v has already been deployed",
+				resource, name, annos[AnnotationCSIGitCommit], annos[AnnotationCSIVersion])
 			return nil
 		}
-	}
-	// otherwise clean up the old deployment
-	if err := cleanup(kubeClient, obj, resource, deleteFunc, getFunc); err != nil {
+		// otherwise clean up the old deployment
+		if err := cleanup(kubeClient, obj, resource, deleteFunc, getFunc); err != nil {
+			return err
+		}
+	} else if !apierrors.IsNotFound(err) {
 		return err
 	}
+
 	logrus.Infof("Creating %s %s", resource, name)
 	err = createFunc(kubeClient, obj)
 	return err
