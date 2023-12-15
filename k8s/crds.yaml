@@ -1345,6 +1345,8 @@ spec:
                 - v1
                 - v2
                 type: string
+              backupTargetName:
+                type: string
               backupVolume:
                 type: string
               desireState:

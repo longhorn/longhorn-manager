@@ -3183,11 +3183,16 @@ func (c *VolumeController) createEngine(v *longhorn.Volume, currentEngineName st
 	}
 
 	if v.Spec.FromBackup != "" && v.Status.RestoreRequired {
-		backupVolumeName, backupName, err := c.getInfoFromBackupURL(v)
+		remoteBackupVolumeName, backupName, err := c.getInfoFromBackupURL(v)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get backup volume when creating engine object of restored volume %v", v.Name)
 		}
-		engine.Spec.BackupVolume = backupVolumeName
+		backupRO, err := c.ds.GetBackupRO(backupName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get backup when creating engine object of restored volume %v", backupName)
+		}
+		engine.Spec.BackupTargetName = backupRO.Spec.BackupTargetName
+		engine.Spec.BackupVolume = remoteBackupVolumeName
 		engine.Spec.RequestedBackupRestore = backupName
 
 		log.Infof("Creating engine %v for restored volume, BackupVolume is %v, RequestedBackupRestore is %v",
@@ -3404,24 +3409,28 @@ func (c *VolumeController) restoreVolumeRecurringJobs(v *longhorn.Volume) error 
 	log := getLoggerForVolume(c.logger, v)
 
 	backupVolumeRecurringJobsInfo := make(map[string]longhorn.VolumeRecurringJobInfo)
-	bvName, exist := v.Labels[types.LonghornLabelBackupVolume]
-	if !exist {
+	backupVolumeName, exists := v.Labels[types.LonghornLabelBackupVolume]
+	if !exists {
 		log.Warn("Failed to find the backup volume label")
 		return nil
 	}
-
-	bv, err := c.ds.GetBackupVolumeRO(bvName)
+	backupTargetName, exists := v.Labels[types.LonghornLabelBackupTarget]
+	if !exists {
+		log.Warn("Failed to find the backup target label")
+		return nil
+	}
+	bv, err := c.ds.GetBackupVolumeByCRLabelRO(backupVolumeName + "-" + backupTargetName)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get the backup volume %v info", bvName)
+		return errors.Wrapf(err, "failed to get the backup volume %v info", backupVolumeName+"-"+backupTargetName)
 	}
 
-	volumeRecurringJobInfoStr, exist := bv.Status.Labels[types.VolumeRecurringJobInfoLabel]
-	if !exist {
+	volumeRecurringJobInfoStr, exists := bv.Status.Labels[types.VolumeRecurringJobInfoLabel]
+	if !exists {
 		return nil
 	}
 
 	if err := json.Unmarshal([]byte(volumeRecurringJobInfoStr), &backupVolumeRecurringJobsInfo); err != nil {
-		return errors.Wrapf(err, "failed to unmarshal information of volume recurring jobs, backup volume %v", bvName)
+		return errors.Wrapf(err, "failed to unmarshal information of volume recurring jobs, backup volume %v", backupVolumeName)
 	}
 
 	for jobName, job := range backupVolumeRecurringJobsInfo {
