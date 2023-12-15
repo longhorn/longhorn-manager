@@ -21,19 +21,19 @@ import (
 func InitMetricsCollectorSystem(logger logrus.FieldLogger, currentNodeID string, ds *datastore.DataStore, kubeconfigPath string, proxyConnCounter util.Counter) {
 	logger.Info("Initializing metrics collector system")
 
-	vc := NewVolumeCollector(logger, currentNodeID, ds)
-	dc := NewDiskCollector(logger, currentNodeID, ds)
-	bc := NewBackupCollector(logger, currentNodeID, ds)
+	volumeCollector := NewVolumeCollector(logger, currentNodeID, ds)
+	diskCollector := NewDiskCollector(logger, currentNodeID, ds)
+	backupCollector := NewBackupCollector(logger, currentNodeID, ds)
 
-	if err := registry.Register(vc); err != nil {
+	if err := registry.Register(volumeCollector); err != nil {
 		logger.WithField("collector", subsystemVolume).WithError(err).Warn("Failed to register collector")
 	}
 
-	if err := registry.Register(dc); err != nil {
+	if err := registry.Register(diskCollector); err != nil {
 		logger.WithField("collector", subsystemDisk).WithError(err).Warn("Failed to register collector")
 	}
 
-	if err := registry.Register(bc); err != nil {
+	if err := registry.Register(backupCollector); err != nil {
 		logger.WithField("collector", subsystemBackup).WithError(err).Warn("Failed to register collector")
 	}
 
@@ -47,17 +47,17 @@ func InitMetricsCollectorSystem(logger logrus.FieldLogger, currentNodeID string,
 	if kubeMetricsClient, err := buildMetricClientFromConfigPath(kubeconfigPath); err != nil {
 		logger.WithError(err).Warn("Skipped instantiating InstanceManagerCollector, ManagerCollector, and NodeCollector")
 	} else {
-		imc := NewInstanceManagerCollector(logger, currentNodeID, ds, proxyConnCounter, kubeMetricsClient, namespace)
-		nc := NewNodeCollector(logger, currentNodeID, ds, kubeMetricsClient)
-		mc := NewManagerCollector(logger, currentNodeID, ds, kubeMetricsClient, namespace)
+		instanceManagerCollector := NewInstanceManagerCollector(logger, currentNodeID, ds, proxyConnCounter, kubeMetricsClient, namespace)
+		nodeCollector := NewNodeCollector(logger, currentNodeID, ds, kubeMetricsClient)
+		managerCollector := NewManagerCollector(logger, currentNodeID, ds, kubeMetricsClient, namespace)
 
-		if err := registry.Register(imc); err != nil {
+		if err := registry.Register(instanceManagerCollector); err != nil {
 			logger.WithField("collector", subsystemInstanceManager).WithError(err).Warn("Failed to register collector")
 		}
-		if err := registry.Register(nc); err != nil {
+		if err := registry.Register(nodeCollector); err != nil {
 			logger.WithField("collector", subsystemNode).WithError(err).Warn("Failed to register collector")
 		}
-		if err := registry.Register(mc); err != nil {
+		if err := registry.Register(managerCollector); err != nil {
 			logger.WithField("collector", subsystemManager).WithError(err).Warn("Failed to register collector")
 		}
 	}
