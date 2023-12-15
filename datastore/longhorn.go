@@ -3811,15 +3811,39 @@ func getBackupTargetSelector(backupTargetName string) (labels.Selector, error) {
 	})
 }
 
-func getBackupVolumeSelector(backupVolumeName string) (labels.Selector, error) {
+func getBackupVolumeSelector(volumeName string) (labels.Selector, error) {
 	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: types.GetBackupVolumeLabels(backupVolumeName),
+		MatchLabels: types.GetBackupVolumeLabels(volumeName),
+	})
+}
+
+func getBackupVolumeCRSelector(backupVolumeName string) (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetBackupVolumeCRLabels(backupVolumeName),
 	})
 }
 
 // GetBackupVolumeRO returns the BackupVolume with the given backup volume name in the cluster
 func (s *DataStore) GetBackupVolumeRO(backupVolumeName string) (*longhorn.BackupVolume, error) {
 	return s.backupVolumeLister.BackupVolumes(s.namespace).Get(backupVolumeName)
+}
+
+// GetBackupVolumeByCRLabelRO returns the read-only BackupVolume with the given backup volume name by matching it with the CR label in the cluster
+func (s *DataStore) GetBackupVolumeByCRLabelRO(backupVolumeName string) (*longhorn.BackupVolume, error) {
+	selector, err := getBackupVolumeCRSelector(backupVolumeName)
+	if err != nil {
+		return nil, err
+	}
+
+	list, err := s.backupVolumeLister.BackupVolumes(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+	if len(list) == 0 {
+		return nil, apierrors.NewNotFound(longhorn.Resource("backupvolume"), backupVolumeName)
+	}
+
+	return list[0], nil
 }
 
 // GetBackupVolume returns a copy of BackupVolume with the given backup volume name in the cluster
@@ -3829,6 +3853,15 @@ func (s *DataStore) GetBackupVolume(name string) (*longhorn.BackupVolume, error)
 		return nil, err
 	}
 	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// GetBackupVolumeByCRLabel returns the BackupVolume with the given backup volume name by matching it with the CR label in the cluster
+func (s *DataStore) GetBackupVolumeByCRLabel(backupVolumeName string) (*longhorn.BackupVolume, error) {
+	resultRO, err := s.GetBackupVolumeByCRLabelRO(backupVolumeName)
+	if err != nil {
+		return nil, err
+	}
 	return resultRO.DeepCopy(), nil
 }
 
@@ -3867,7 +3900,7 @@ func (s *DataStore) UpdateBackupVolume(backupVolume *longhorn.BackupVolume) (*lo
 		return nil, err
 	}
 	verifyUpdate(backupVolume.Name, obj, func(name string) (runtime.Object, error) {
-		return s.GetBackupVolumeRO(name)
+		return s.GetBackupVolumeByCRLabelRO(name)
 	})
 	return obj, nil
 }
@@ -3879,7 +3912,7 @@ func (s *DataStore) UpdateBackupVolumeStatus(backupVolume *longhorn.BackupVolume
 		return nil, err
 	}
 	verifyUpdate(backupVolume.Name, obj, func(name string) (runtime.Object, error) {
-		return s.GetBackupVolumeRO(name)
+		return s.GetBackupVolumeByCRLabelRO(name)
 	})
 	return obj, nil
 }
