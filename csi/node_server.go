@@ -78,6 +78,8 @@ func NewNodeServer(apiClient *longhornclient.RancherClient, nodeID string) *Node
 func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	log := ns.log.WithFields(logrus.Fields{"function": "NodePublishVolume"})
 
+	log.Infof("NodePublishVolume is called with req %+v", req)
+
 	targetPath := req.GetTargetPath()
 	if targetPath == "" {
 		return nil, status.Error(codes.InvalidArgument, "target path missing in request")
@@ -125,12 +127,14 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	// Check volume attachment status
-	if volume.State != string(longhorn.VolumeStateAttached) || volume.Controllers[0].Endpoint == "" {
-		log.Infof("Volume %v hasn't been attached yet, unmounting potential mount point %v", volumeID, targetPath)
-		if err := unmount(targetPath, mounter); err != nil {
-			log.WithError(err).Warnf("Failed to unmount targetPath %v", targetPath)
+	if datastore.IsBackendStoreDriverV1(longhorn.BackendStoreDriverType(volume.BackendStoreDriver)) {
+		if volume.State != string(longhorn.VolumeStateAttached) || volume.Controllers[0].Endpoint == "" {
+			log.Infof("Volume %v hasn't been attached yet, unmounting potential mount point %v", volumeID, targetPath)
+			if err := unmount(targetPath, mounter); err != nil {
+				log.WithError(err).Warnf("Failed to unmount targetPath %v", targetPath)
+			}
+			return nil, status.Errorf(codes.InvalidArgument, "volume %s hasn't been attached yet", volumeID)
 		}
-		return nil, status.Errorf(codes.InvalidArgument, "volume %s hasn't been attached yet", volumeID)
 	}
 
 	if !volume.Ready {
@@ -159,7 +163,16 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	// we validate the staging path to make sure the global mount is still valid
-	if isMnt, err := ensureMountPoint(stagingTargetPath, mounter); err != nil || !isMnt {
+	unstageVolumeRequired := true
+	if volume.BackendStoreDriver == string(longhorn.BackendStoreDriverTypeV2) {
+		err = fmt.Errorf("always unstage v2 volume %v", volumeID)
+	} else {
+		isMnt, err := ensureMountPoint(stagingTargetPath, mounter)
+		if err == nil && isMnt {
+			unstageVolumeRequired = false
+		}
+	}
+	if unstageVolumeRequired {
 		msg := fmt.Sprintf("Staging target path %v is no longer valid for volume %v", stagingTargetPath, volumeID)
 		log.WithError(err).Error(msg)
 
@@ -320,6 +333,8 @@ func (ns *NodeServer) nodePublishBlockVolume(volumeID, devicePath, targetPath st
 func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 	log := ns.log.WithFields(logrus.Fields{"function": "NodeUnpublishVolume"})
 
+	log.Infof("NodeUnpublishVolume is called with req %+v", req)
+
 	targetPath := req.GetTargetPath()
 	if targetPath == "" {
 		return nil, status.Error(codes.InvalidArgument, "target path missing in request")
@@ -340,6 +355,8 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 
 func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
 	log := ns.log.WithFields(logrus.Fields{"function": "NodeStageVolume"})
+
+	log.Infof("NodeStageVolume is called with req %+v", req)
 
 	stagingTargetPath := req.GetStagingTargetPath()
 	if stagingTargetPath == "" {
@@ -516,6 +533,8 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 	log := ns.log.WithFields(logrus.Fields{"function": "NodeUnstageVolume"})
 
+	log.Infof("NodeUnstageVolume is called with req %+v", req)
+
 	stagingTargetPath := req.GetStagingTargetPath()
 	if stagingTargetPath == "" {
 		return nil, status.Error(codes.InvalidArgument, "staging target path missing in request")
@@ -641,6 +660,8 @@ func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 // NodeExpandVolume is designed to expand the file system for ONLINE expansion,
 func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
 	log := ns.log.WithFields(logrus.Fields{"function": "NodeExpandVolume"})
+
+	log.Infof("NodeNodeExpandVolume is called with req %+v", req)
 
 	if req.CapacityRange == nil {
 		return nil, status.Error(codes.InvalidArgument, "capacity range missing in request")
