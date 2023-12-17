@@ -21,6 +21,7 @@ import (
 	utilexec "k8s.io/utils/exec"
 
 	"github.com/longhorn/longhorn-manager/csi/crypto"
+	"github.com/longhorn/longhorn-manager/datastore"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -545,17 +546,18 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	// optionally try to retrieve the volume and check if it's an RWX volume
 	// if it is we let the share-manager clean up the crypto device
 	volume, _ := ns.apiClient.Volume.ById(volumeID)
-
-	// Currently, only "RWO volumes" and "block device with volume.Migratable is true" supports encryption.
-	cleanupCryptoDevice := !requiresSharedAccess(volume, nil)
-	if cleanupCryptoDevice {
-		cryptoDevice := crypto.VolumeMapper(volumeID)
-		if isOpen, err := crypto.IsDeviceOpen(cryptoDevice); err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
-		} else if isOpen {
-			log.Infof("Volume %s closing active crypto device %s", volumeID, cryptoDevice)
-			if err := crypto.CloseVolume(volumeID); err != nil {
+	if volume == nil || datastore.IsBackendStoreDriverV1(longhorn.BackendStoreDriverType(volume.BackendStoreDriver)) {
+		// Currently, only "RWO v1 volumes" and "block device with v1 volume.Migratable is true" supports encryption.
+		cleanupCryptoDevice := !requiresSharedAccess(volume, nil)
+		if cleanupCryptoDevice {
+			cryptoDevice := crypto.VolumeMapper(volumeID)
+			if isOpen, err := crypto.IsDeviceOpen(cryptoDevice); err != nil {
 				return nil, status.Error(codes.Internal, err.Error())
+			} else if isOpen {
+				log.Infof("Volume %s closing active crypto device %s", volumeID, cryptoDevice)
+				if err := crypto.CloseVolume(volumeID); err != nil {
+					return nil, status.Error(codes.Internal, err.Error())
+				}
 			}
 		}
 	}
