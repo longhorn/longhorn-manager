@@ -28,7 +28,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	var err error
 	coll := NewEngineSimulatorCollection()
 
-	sim, err := coll.GetEngineSimulator(VolumeName)
+	_, err = coll.GetEngineSimulator(VolumeName)
 	c.Assert(err, NotNil)
 
 	req := &EngineSimulatorRequest{
@@ -46,7 +46,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	err = coll.CreateEngineSimulator(req)
 	c.Assert(err, ErrorMatches, "duplicate simulator.*")
 
-	sim, err = coll.GetEngineSimulator(VolumeName)
+	sim, err := coll.GetEngineSimulator(VolumeName)
 	c.Assert(err, IsNil)
 
 	e := &longhorn.Engine{}
@@ -64,7 +64,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(replicas, HasLen, 1)
 	c.Assert(replicas[Replica1Addr].Mode, Equals, longhorn.ReplicaModeRW)
 
-	err = sim.ReplicaAdd(e, "", Replica3Addr, false, false, 30)
+	_ = sim.ReplicaAdd(e, "", Replica3Addr, false, false, 30)
 	replicas, err = sim.ReplicaList(e)
 	c.Assert(err, IsNil)
 	c.Assert(replicas, HasLen, 2)

@@ -50,11 +50,11 @@ func (v *volumeAttachmentValidator) Update(request *admission.Request, oldObj ru
 	newVA := newObj.(*longhorn.VolumeAttachment)
 
 	if newVA.Spec.Volume != oldVA.Spec.Volume {
-		return werror.NewInvalidError(fmt.Sprintf("spec.volume field is immutable"), "spec.volume")
+		return werror.NewInvalidError("spec.volume field is immutable", "spec.volume")
 	}
 
 	if len(oldVA.OwnerReferences) != 0 && !reflect.DeepEqual(newVA.OwnerReferences, oldVA.OwnerReferences) {
-		return werror.NewInvalidError(fmt.Sprintf("VolumeAttachment's OwnerReferences field is immutable"), "metadata.ownerReferences")
+		return werror.NewInvalidError("VolumeAttachment's OwnerReferences field is immutable", "metadata.ownerReferences")
 	}
 
 	if _, ok := oldVA.Labels[types.LonghornLabelVolume]; ok && newVA.Labels[types.LonghornLabelVolume] != oldVA.Labels[types.LonghornLabelVolume] {
