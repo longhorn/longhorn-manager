@@ -50,6 +50,7 @@ type ControllerServer struct {
 	nodeID      string
 	caps        []*csi.ControllerServiceCapability
 	accessModes []*csi.VolumeCapability_AccessMode
+	log         *logrus.Entry
 }
 
 func NewControllerServer(apiClient *longhornclient.RancherClient, nodeID string) *ControllerServer {
@@ -69,16 +70,14 @@ func NewControllerServer(apiClient *longhornclient.RancherClient, nodeID string)
 				csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
 				csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
 			}),
+		log: logrus.StandardLogger().WithField("component", "csi-controller-server"),
 	}
 }
 
-func getLoggerForCSIControllerServer() *logrus.Entry {
-	return logrus.StandardLogger().WithField("component", "csi-controller-server")
-}
-
 func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
-	log := getLoggerForCSIControllerServer()
-	log = log.WithFields(logrus.Fields{"function": "CreateVolume"})
+	log := cs.log.WithFields(logrus.Fields{"function": "CreateVolume"})
+
+	log.Infof("CreateVolume is called with req %+v", req)
 
 	volumeID := util.AutoCorrectName(req.GetName(), datastore.NameMaximumLength)
 	if len(volumeID) == 0 {
@@ -315,8 +314,9 @@ func (cs *ControllerServer) checkAndPrepareBackingImage(volumeName, backingImage
 }
 
 func (cs *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
-	log := getLoggerForCSIControllerServer()
-	log = log.WithFields(logrus.Fields{"function": "DeleteVolume"})
+	log := cs.log.WithFields(logrus.Fields{"function": "DeleteVolume"})
+
+	log.Infof("DeleteVolume is called with req %+v", req)
 
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
@@ -381,6 +381,10 @@ func (cs *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req 
 
 // ControllerPublishVolume will attach the volume to the specified node
 func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
+	log := cs.log.WithFields(logrus.Fields{"function": "ControllerPublishVolume"})
+
+	log.Infof("ControllerPublishVolume is called with req %+v", req)
+
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
@@ -465,8 +469,7 @@ func generateAttachmentID(volName, nodeID string) string {
 
 // publishVolume sends the actual attach request to the longhorn api and executes the passed waitForResult func
 func (cs *ControllerServer) publishVolume(volume *longhornclient.Volume, nodeID, attachmentID string, waitForResult func() error) (*csi.ControllerPublishVolumeResponse, error) {
-	log := getLoggerForCSIControllerServer()
-	log = log.WithFields(logrus.Fields{"function": "publishVolume"})
+	log := cs.log.WithFields(logrus.Fields{"function": "publishVolume"})
 
 	input := &longhornclient.AttachInput{
 		HostId:          nodeID,
@@ -490,8 +493,7 @@ func (cs *ControllerServer) publishVolume(volume *longhornclient.Volume, nodeID,
 }
 
 func (cs *ControllerServer) updateVolumeAccessMode(volume *longhornclient.Volume, accessMode longhorn.AccessMode) (*longhornclient.Volume, error) {
-	log := getLoggerForCSIControllerServer()
-	log = log.WithFields(logrus.Fields{"function": "updateVolumeAccessMode"})
+	log := cs.log.WithFields(logrus.Fields{"function": "updateVolumeAccessMode"})
 
 	mode := string(accessMode)
 	if volume.AccessMode == mode {
@@ -513,6 +515,10 @@ func (cs *ControllerServer) updateVolumeAccessMode(volume *longhornclient.Volume
 
 // ControllerUnpublishVolume will detach the volume
 func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
+	log := cs.log.WithFields(logrus.Fields{"function": "ControllerUnpublishVolume"})
+
+	log.Infof("ControllerUnpublishVolume is called with req %+v", req)
+
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
@@ -550,8 +556,7 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 
 // unpublishVolume sends the actual detach request to the longhorn api and executes the passed waitForResult func
 func (cs *ControllerServer) unpublishVolume(volume *longhornclient.Volume, nodeID, attachmentID string, waitForResult func() error) (*csi.ControllerUnpublishVolumeResponse, error) {
-	log := getLoggerForCSIControllerServer()
-	log = log.WithFields(logrus.Fields{"function": "unpublishVolume"})
+	log := cs.log.WithFields(logrus.Fields{"function": "unpublishVolume"})
 
 	log.Infof("Requesting volume %v detachment for node %v with attachmentID %v ", volume.Name, nodeID, attachmentID)
 	detachInput := &longhornclient.DetachInput{
@@ -581,8 +586,9 @@ func (cs *ControllerServer) GetCapacity(context.Context, *csi.GetCapacityRequest
 }
 
 func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
-	log := getLoggerForCSIControllerServer()
-	log = log.WithFields(logrus.Fields{"function": "CreateSnapshot"})
+	log := cs.log.WithFields(logrus.Fields{"function": "CreateSnapshot"})
+
+	log.Infof("CreateSnapshot is called with req %+v", req)
 
 	var rsp *csi.CreateSnapshotResponse
 	var err error
@@ -609,8 +615,7 @@ func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateS
 }
 
 func (cs *ControllerServer) createCSISnapshotTypeLonghornBackingImage(req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
-	log := getLoggerForCSIControllerServer()
-	log = log.WithFields(logrus.Fields{"function": "createCSISnapshotTypeLonghornBackingImage"})
+	log := cs.log.WithFields(logrus.Fields{"function": "createCSISnapshotTypeLonghornBackingImage"})
 
 	csiSnapshotName := req.GetName()
 	csiVolumeName := req.GetSourceVolumeId()
@@ -664,8 +669,7 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornBackingImage(req *csi.C
 }
 
 func (cs *ControllerServer) createCSISnapshotTypeLonghornSnapshot(req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
-	log := getLoggerForCSIControllerServer()
-	log = log.WithFields(logrus.Fields{"function": "createCSISnapshotTypeLonghornSnapshot"})
+	log := cs.log.WithFields(logrus.Fields{"function": "createCSISnapshotTypeLonghornSnapshot"})
 
 	csiLabels := req.Parameters
 	csiSnapshotName := req.GetName()
@@ -718,8 +722,7 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornSnapshot(req *csi.Creat
 }
 
 func (cs *ControllerServer) createCSISnapshotTypeLonghornBackup(req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
-	log := getLoggerForCSIControllerServer()
-	log = log.WithFields(logrus.Fields{"function": "createCSISnapshotTypeLonghornBackup"})
+	log := cs.log.WithFields(logrus.Fields{"function": "createCSISnapshotTypeLonghornBackup"})
 
 	csiLabels := req.Parameters
 	csiSnapshotName := req.GetName()
@@ -1012,8 +1015,9 @@ func (cs *ControllerServer) ListSnapshots(context.Context, *csi.ListSnapshotsReq
 }
 
 func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
-	log := getLoggerForCSIControllerServer()
-	log = log.WithFields(logrus.Fields{"function": "ControllerExpandVolume"})
+	log := cs.log.WithFields(logrus.Fields{"function": "ControllerExpandVolume"})
+
+	log.Infof("ControllerExpandVolume is called with req %+v", req)
 
 	volumeID := req.GetVolumeId()
 	if len(volumeID) == 0 {
@@ -1127,8 +1131,7 @@ func isVolumeShareAvailable(vol *longhornclient.Volume) bool {
 
 func (cs *ControllerServer) waitForVolumeState(volumeID string, stateDescription string,
 	predicate func(vol *longhornclient.Volume) bool, notFoundRetry, notFoundReturn bool) bool {
-	log := getLoggerForCSIControllerServer()
-	log = log.WithFields(logrus.Fields{"function": "waitForVolumeState"})
+	log := cs.log.WithFields(logrus.Fields{"function": "waitForVolumeState"})
 	timer := time.NewTimer(timeoutAttachDetach)
 	defer timer.Stop()
 	timeout := timer.C
