@@ -285,7 +285,7 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 								},
 							},
 							SecurityContext: &corev1.SecurityContext{
-								Privileged: pointer.BoolPtr(true),
+								Privileged: pointer.Bool(true),
 							},
 							Args: []string{
 								"--v=2",
@@ -328,13 +328,13 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 						{
 							Name: types.CSIPluginName,
 							SecurityContext: &corev1.SecurityContext{
-								Privileged: pointer.BoolPtr(true),
+								Privileged: pointer.Bool(true),
 								Capabilities: &corev1.Capabilities{
 									Add: []corev1.Capability{
 										"SYS_ADMIN",
 									},
 								},
-								AllowPrivilegeEscalation: pointer.BoolPtr(true),
+								AllowPrivilegeEscalation: pointer.Bool(true),
 							},
 							Image:           managerImage,
 							ImagePullPolicy: imagePullPolicy,
