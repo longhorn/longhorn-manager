@@ -436,7 +436,7 @@ func (ic *EngineImageController) handleAutoUpgradeEngineImageToDefaultEngineImag
 		for _, v := range vs {
 			ic.logger.WithFields(logrus.Fields{"volume": v.Name, "image": v.Spec.Image}).Infof("Upgrading volume engine image to the default engine image %v automatically", defaultEngineImage)
 
-			if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+			if datastore.IsBackendStoreDriverV2(v.Spec.BackendStoreDriver) {
 				ic.logger.WithFields(logrus.Fields{"volume": v.Name, "image": v.Spec.Image}).Infof("Skip upgrading volume engine image to the default engine image %v automatically since it is using v2 backend store", defaultEngineImage)
 				continue
 			}

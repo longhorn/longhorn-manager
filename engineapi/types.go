@@ -8,6 +8,7 @@ import (
 	iscsidevtypes "github.com/longhorn/go-iscsi-helper/types"
 	spdkdevtypes "github.com/longhorn/go-spdk-helper/pkg/types"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
@@ -249,7 +250,7 @@ func GetEngineInstanceFrontend(backendStoreDriver longhorn.BackendStoreDriverTyp
 	switch volumeFrontend {
 	case longhorn.VolumeFrontendBlockDev:
 		frontend = string(iscsidevtypes.FrontendTGTBlockDev)
-		if backendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+		if datastore.IsBackendStoreDriverV2(backendStoreDriver) {
 			frontend = string(spdkdevtypes.FrontendSPDKTCPBlockdev)
 		}
 	case longhorn.VolumeFrontendISCSI:

@@ -224,7 +224,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 	}
 
 	isCLIAPIVersionOne := false
-	if spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+	if datastore.IsBackendStoreDriverV1(spec.BackendStoreDriver) {
 		if status.CurrentImage != "" {
 			isCLIAPIVersionOne, err = h.ds.IsEngineImageCLIAPIVersionOne(status.CurrentImage)
 			if err != nil {
@@ -262,7 +262,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 	if spec.LogRequested {
 		if !status.LogFetched {
 			// No need to get the log for instance manager if the backend store driver is not "longhorn"
-			if spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+			if datastore.IsBackendStoreDriverV1(spec.BackendStoreDriver) {
 				logrus.Warnf("Getting requested log for %v in instance manager %v", instanceName, status.InstanceManagerName)
 				if im == nil {
 					logrus.Warnf("Failed to get the log for %v due to Instance Manager is already gone", status.InstanceManagerName)
@@ -381,7 +381,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 					longhorn.InstanceConditionReasonInstanceCreationFailure, instance.Status.ErrorMsg)
 			}
 
-			if instance.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+			if datastore.IsBackendStoreDriverV1(instance.Spec.BackendStoreDriver) {
 				logrus.Warnf("Instance %v crashed on Instance Manager %v at %v, getting log",
 					instanceName, im.Name, im.Spec.NodeID)
 				if err := h.printInstanceLogs(instanceName, runtimeObj); err != nil {
@@ -397,7 +397,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 func shouldDeleteInstance(instance *longhorn.InstanceProcess) bool {
 	// For a replica of a SPDK volume, a stopped replica means the lvol is not exposed,
 	// but the lvol is still there. We don't need to delete it.
-	if instance.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+	if datastore.IsBackendStoreDriverV2(instance.Spec.BackendStoreDriver) {
 		if instance.Status.State == longhorn.InstanceStateStopped {
 			return false
 		}
@@ -441,7 +441,7 @@ func (h *InstanceHandler) createInstance(instanceName string, backendStoreDriver
 	if err == nil {
 		return nil
 	}
-	if !types.ErrorIsNotFound(err) && !(backendStoreDriver == longhorn.BackendStoreDriverTypeV2 && types.ErrorIsStopped(err)) {
+	if !types.ErrorIsNotFound(err) && !(datastore.IsBackendStoreDriverV2(backendStoreDriver) && types.ErrorIsStopped(err)) {
 		return errors.Wrapf(err, "Failed to get instance process %v", instanceName)
 	}
 

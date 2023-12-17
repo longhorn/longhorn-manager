@@ -311,7 +311,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	}()
 
 	isCLIAPIVersionOne := false
-	if engine.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+	if datastore.IsBackendStoreDriverV1(engine.Spec.BackendStoreDriver) {
 		if engine.Status.CurrentImage != "" {
 			isCLIAPIVersionOne, err = ec.ds.IsEngineImageCLIAPIVersionOne(engine.Status.CurrentImage)
 			if err != nil {
@@ -488,7 +488,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 	}
 	log := getLoggerForEngine(ec.logger, e)
 
-	if e.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+	if datastore.IsBackendStoreDriverV1(e.Spec.BackendStoreDriver) {
 		err = ec.deleteInstanceWithCLIAPIVersionOne(e)
 		if err != nil {
 			return err
@@ -924,8 +924,8 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		return err
 	}
 
-	if (engine.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 && cliAPIVersion >= engineapi.MinCLIVersion) ||
-		(engine.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2) {
+	if (datastore.IsBackendStoreDriverV1(engine.Spec.BackendStoreDriver) && cliAPIVersion >= engineapi.MinCLIVersion) ||
+		datastore.IsBackendStoreDriverV2(engine.Spec.BackendStoreDriver) {
 		volumeInfo, err := engineClientProxy.VolumeGet(engine)
 		if err != nil {
 			return err
@@ -1614,7 +1614,7 @@ func GetBinaryClientForEngine(e *longhorn.Engine, engines engineapi.EngineClient
 		err = errors.Wrapf(err, "cannot get client for engine %v", e.Name)
 	}()
 
-	if e.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+	if datastore.IsBackendStoreDriverV2(e.Spec.BackendStoreDriver) {
 		return nil, nil
 	}
 
@@ -2074,7 +2074,7 @@ func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineIm
 		return isResponsible, nil
 	}
 
-	if e.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+	if datastore.IsBackendStoreDriverV1(e.Spec.BackendStoreDriver) {
 		readyNodesWithEI, err := ec.ds.ListReadyNodesContainingEngineImageRO(e.Status.CurrentImage)
 		if err != nil {
 			return false, errors.Wrapf(err, "failed to list ready nodes containing engine image %v", e.Status.CurrentImage)
