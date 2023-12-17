@@ -944,14 +944,14 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 			continue
 		}
 
+		staled := false
+		if v.Spec.StaleReplicaTimeout > 0 &&
+			util.TimestampAfterTimeout(r.Spec.FailedAt, time.Duration(int64(v.Spec.StaleReplicaTimeout*60))*time.Second) {
+
+			staled = true
+		}
+
 		if datastore.IsBackendStoreDriverV1(v.Spec.BackendStoreDriver) {
-			staled := false
-			if v.Spec.StaleReplicaTimeout > 0 && util.TimestampAfterTimeout(r.Spec.FailedAt,
-				time.Duration(int64(v.Spec.StaleReplicaTimeout*60))*time.Second) {
-
-				staled = true
-			}
-
 			// 1. failed for multiple times or failed at rebuilding (`Spec.RebuildRetryCount` of a newly created rebuilding replica
 			//    is `FailedReplicaMaxRetryCount`) before ever became healthy/ mode RW,
 			// 2. failed too long ago, became stale and unnecessary to keep around, unless we don't have any healthy replicas
@@ -959,12 +959,15 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 			if (r.Spec.RebuildRetryCount >= scheduler.FailedReplicaMaxRetryCount) || (healthyCount != 0 && staled) || (r.Spec.Image != v.Status.CurrentImage) {
 				log.WithField("replica", r.Name).Info("Cleaning up corrupted, staled replica")
 				if err := c.deleteReplica(r, rs); err != nil {
-					return errors.Wrapf(err, "cannot cleanup staled replica %v", r.Name)
+					return errors.Wrapf(err, "cannot clean up staled replica %v", r.Name)
 				}
 			}
 		} else {
-			if err := c.deleteReplica(r, rs); err != nil {
-				return errors.Wrapf(err, "failed to cleanup staled replica %v", r.Name)
+			// TODO: check `staled` flag after v2 volume supports online replica rebuilding
+			if healthyCount != 0 {
+				if err := c.deleteReplica(r, rs); err != nil {
+					return errors.Wrapf(err, "failed to clean up staled replica %v", r.Name)
+				}
 			}
 		}
 	}
@@ -1264,11 +1267,16 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 		// At this moment, Longhorn goes into the IF statement below this IF statement and salvage all replicas.
 		if autoSalvage && !v.Status.IsStandby && !v.Status.RestoreRequired {
 			// Since all replica failed and autoSalvage is enable, mark engine controller salvage requested
-			e.Spec.SalvageRequested = true
-			log.Infof("All replicas are failed, set engine salvageRequested to %v", e.Spec.SalvageRequested)
+			// TODO: SalvageRequested is meanningless for v2 volume
+			if datastore.IsBackendStoreDriverV1(v.Spec.BackendStoreDriver) {
+				e.Spec.SalvageRequested = true
+				log.Infof("All replicas are failed, set engine salvageRequested to %v", e.Spec.SalvageRequested)
+			}
 		}
 		// make sure the volume is detached before automatically salvage replicas
 		if autoSalvage && v.Status.State == longhorn.VolumeStateDetached && !v.Status.IsStandby && !v.Status.RestoreRequired {
+			log.Info("All replicas are failed, auto-salvaging volume")
+
 			lastFailedAt := time.Time{}
 			failedUsableReplicas := map[string]*longhorn.Replica{}
 			dataExists := false
@@ -1317,6 +1325,8 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 			if !dataExists {
 				log.Warn("Failed to auto salvage volume: no data exists")
 			} else {
+				log.Info("Bringing up replicas for auto-salvage")
+
 				// This salvage is for revision counter enabled case
 				salvaged := false
 				// Bring up the replicas for auto-salvage
