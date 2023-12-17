@@ -1766,7 +1766,7 @@ func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (is
 }
 
 func (s *DataStore) CheckImageReadiness(image string, backendStoreDriver longhorn.BackendStoreDriverType, nodes ...string) (isReady bool, err error) {
-	if backendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+	if IsBackendStoreDriverV2(backendStoreDriver) {
 		return true, nil
 	}
 	return s.CheckEngineImageReadiness(image, nodes...)
@@ -3433,7 +3433,7 @@ func (s *DataStore) GetDataEngineImageCLIAPIVersion(imageName string, backendSto
 		return -1, fmt.Errorf("cannot check the CLI API Version based on empty image name")
 	}
 
-	if backendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+	if IsBackendStoreDriverV2(backendStoreDriver) {
 		return 0, nil
 	}
 
@@ -4850,4 +4850,14 @@ func (s *DataStore) RemoveFinalizerForLHVolumeAttachment(va *longhorn.VolumeAtta
 // DeleteLHVolumeAttachment won't result in immediately deletion since finalizer was set by default
 func (s *DataStore) DeleteLHVolumeAttachment(vaName string) error {
 	return s.lhClient.LonghornV1beta2().VolumeAttachments(s.namespace).Delete(context.TODO(), vaName, metav1.DeleteOptions{})
+}
+
+// IsBackendStoreDriverV1 returns true if the given backendstoreDriver is v1
+func IsBackendStoreDriverV1(backendstoreDriver longhorn.BackendStoreDriverType) bool {
+	return backendstoreDriver != longhorn.BackendStoreDriverTypeV2
+}
+
+// IsBackendStoreDriverV2 returns true if the given backendstoreDriver is v2
+func IsBackendStoreDriverV2(backendstoreDriver longhorn.BackendStoreDriverType) bool {
+	return backendstoreDriver == longhorn.BackendStoreDriverTypeV2
 }

@@ -227,7 +227,7 @@ func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 
 		if diskServiceClient == nil {
 			// TODO: disk service is not used by filesystem-type disk, so we can skip it for now.
-			if backendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+			if datastore.IsBackendStoreDriverV2(backendStoreDriver) {
 				diskInfoMap[diskName] = NewDiskInfo(disk.Path, "", nodeOrDiskEvicted, nil,
 					orphanedReplicaInstanceNames, string(longhorn.DiskConditionReasonDiskServiceUnreachable),
 					fmt.Sprintf("Disk %v(%v) on node %v is not ready: disk service is unreachable",

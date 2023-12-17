@@ -159,7 +159,7 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 
 	// Mutate the image to the default one
 	defaultImageSetting := types.SettingNameDefaultEngineImage
-	if volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+	if datastore.IsBackendStoreDriverV2(volume.Spec.BackendStoreDriver) {
 		defaultImageSetting = types.SettingNameDefaultInstanceManagerImage
 	}
 	defaultImage, _ := v.ds.GetSettingValueExisted(defaultImageSetting)
@@ -178,7 +178,7 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 
 	// TODO: Remove the mutations below after they are implemented for SPDK volumes
-	if volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+	if datastore.IsBackendStoreDriverV2(volume.Spec.BackendStoreDriver) {
 		if volume.Spec.Encrypted {
 			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/encrypted", "value": false}`)
 		}
@@ -295,8 +295,7 @@ func mutate(newObj runtime.Object, moreLabels map[string]string) (admission.Patc
 	if string(volume.Spec.BackendStoreDriver) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeV1))
 	}
-	if string(volume.Spec.OfflineReplicaRebuilding) == "" &&
-		volume.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+	if string(volume.Spec.OfflineReplicaRebuilding) == "" && datastore.IsBackendStoreDriverV1(volume.Spec.BackendStoreDriver) {
 		// Always mutate the offlineReplicaRebuilding to disabled for non-SPDK volumes
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/offlineReplicaRebuilding", "value": "%s"}`, longhorn.OfflineReplicaRebuildingDisabled))
 	}

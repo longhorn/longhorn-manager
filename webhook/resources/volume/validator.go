@@ -123,7 +123,7 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
-	if volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+	if datastore.IsBackendStoreDriverV2(volume.Spec.BackendStoreDriver) {
 		v2DataEngineEnabled, err := v.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
 		if err != nil {
 			err = errors.Wrapf(err, "failed to get spdk setting")
@@ -217,7 +217,7 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		}
 	}
 
-	if newVolume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+	if datastore.IsBackendStoreDriverV2(newVolume.Spec.BackendStoreDriver) {
 		// TODO: remove this check when we support the following features for SPDK volumes
 		if oldVolume.Spec.Size != newVolume.Spec.Size {
 			err := fmt.Errorf("changing volume size for volume %v is not supported for backend store driver %v",
@@ -406,7 +406,7 @@ func validateReplicaCount(dataLocality longhorn.DataLocality, replicaCount int) 
 }
 
 func (v *volumeValidator) canDisableRevisionCounter(image string, backendStoreDriver longhorn.BackendStoreDriverType) (bool, error) {
-	if backendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+	if datastore.IsBackendStoreDriverV2(backendStoreDriver) {
 		// v2 volume does not have revision counter
 		return true, nil
 	}

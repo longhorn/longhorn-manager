@@ -52,7 +52,7 @@ func (e *engineValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInternalError(err.Error())
 	}
 
-	if engine.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+	if datastore.IsBackendStoreDriverV2(engine.Spec.BackendStoreDriver) {
 		v2DataEngineEnabled, err := e.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
 		if err != nil {
 			err = errors.Wrapf(err, "failed to get spdk setting")

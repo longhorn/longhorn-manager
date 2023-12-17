@@ -15,6 +15,7 @@ import (
 	immeta "github.com/longhorn/longhorn-instance-manager/pkg/meta"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 )
@@ -479,7 +480,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 
 	binary := ""
 	args := []string{}
-	if req.Replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+	if datastore.IsBackendStoreDriverV1(req.Replica.Spec.BackendStoreDriver) {
 		binary, args = getBinaryAndArgsForReplicaProcessCreation(req.Replica, req.DataPath, req.BackingImagePath, req.DataLocality, DefaultReplicaPortCountV1, req.EngineCLIAPIVersion)
 	}
 
@@ -493,7 +494,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 	}
 
 	portCount := DefaultReplicaPortCountV1
-	if req.Replica.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+	if datastore.IsBackendStoreDriverV2(req.Replica.Spec.BackendStoreDriver) {
 		portCount = DefaultReplicaPortCountV2
 	}
 

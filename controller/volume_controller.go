@@ -776,7 +776,7 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		//   2. the volume is old restore/DR volumes.
 		//   3. the volume is expanding size.
 		isOldRestoreVolume := (v.Status.IsStandby || v.Status.RestoreRequired) &&
-			(e.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 && cliAPIVersion < engineapi.CLIVersionFour)
+			(datastore.IsBackendStoreDriverV1(e.Spec.BackendStoreDriver) && cliAPIVersion < engineapi.CLIVersionFour)
 		isInExpansion := v.Spec.Size != e.Status.CurrentSize
 		if isMigratingDone && !isOldRestoreVolume && !isInExpansion {
 			if err := c.replenishReplicas(v, e, rs, ""); err != nil {
@@ -824,7 +824,7 @@ func areAllReplicasFailed(rs map[string]*longhorn.Replica) bool {
 }
 
 func (c *VolumeController) shouldStopOfflineReplicaRebuilding(v *longhorn.Volume, healthyCount int) (bool, error) {
-	if v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+	if datastore.IsBackendStoreDriverV1(v.Spec.BackendStoreDriver) {
 		return true, nil
 	}
 
@@ -944,7 +944,7 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 			continue
 		}
 
-		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		if datastore.IsBackendStoreDriverV1(v.Spec.BackendStoreDriver) {
 			staled := false
 			if v.Spec.StaleReplicaTimeout > 0 && util.TimestampAfterTimeout(r.Spec.FailedAt,
 				time.Duration(int64(v.Spec.StaleReplicaTimeout*60))*time.Second) {
@@ -1154,20 +1154,6 @@ func (c *VolumeController) getAutoBalancedReplicasSetting(v *longhorn.Volume) (l
 		setting = longhorn.ReplicaAutoBalanceDisabled
 	}
 	return setting, errors.Wrapf(err, "replica auto-balance is disabled")
-}
-
-func (c *VolumeController) updateReplicaLogRequested(e *longhorn.Engine, rs map[string]*longhorn.Replica) {
-	needReplicaLogs := false
-	for _, r := range rs {
-		if r.Spec.LogRequested && r.Status.LogFetched {
-			r.Spec.LogRequested = false
-		}
-		needReplicaLogs = needReplicaLogs || r.Spec.LogRequested
-		rs[r.Name] = r
-	}
-	if e.Spec.LogRequested && e.Status.LogFetched && !needReplicaLogs {
-		e.Spec.LogRequested = false
-	}
 }
 
 func (c *VolumeController) isUnmapMarkSnapChainRemovedEnabled(v *longhorn.Volume) (bool, error) {
@@ -2083,7 +2069,7 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 	for i := 0; i < replenishCount; i++ {
 		var reusableFailedReplica *longhorn.Replica
 		// TODO: reuse failed replica for replica rebuilding of SPDK volumes
-		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		if datastore.IsBackendStoreDriverV1(v.Spec.BackendStoreDriver) {
 			reusableFailedReplica, err = c.scheduler.CheckAndReuseFailedReplica(rs, v, hardNodeAffinity)
 			if err != nil {
 				return errors.Wrapf(err, "failed to reuse a failed replica during replica replenishment")
@@ -2296,7 +2282,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume,
 	}
 
 	ei := &longhorn.EngineImage{}
-	if v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+	if datastore.IsBackendStoreDriverV1(v.Spec.BackendStoreDriver) {
 		ei, err = c.getEngineImageRO(v.Status.CurrentImage)
 		if err != nil {
 			return 0, nil, err
@@ -2320,7 +2306,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume,
 			continue
 		}
 
-		if v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+		if datastore.IsBackendStoreDriverV1(v.Spec.BackendStoreDriver) {
 			if isReady, _ := c.ds.CheckEngineImageReadiness(ei.Spec.Image, nodeName); !isReady {
 				log.Warnf("Failed to use node %v, engine image is not ready", nodeName)
 				continue
@@ -2445,7 +2431,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 	}
 
 	ei := &longhorn.EngineImage{}
-	if v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+	if datastore.IsBackendStoreDriverV1(v.Spec.BackendStoreDriver) {
 		ei, err = c.getEngineImageRO(v.Status.CurrentImage)
 		if err != nil {
 			return 0, nodeExtraRs, err
@@ -2463,7 +2449,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 			continue
 		}
 
-		if v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+		if datastore.IsBackendStoreDriverV1(v.Spec.BackendStoreDriver) {
 			if isReady, _ := c.ds.CheckEngineImageReadiness(ei.Spec.Image, node.Name); !isReady {
 				log.Warnf("Failed to use node %v, engine image is not ready", nodeName)
 				delete(readyNodes, nodeName)
@@ -2574,7 +2560,7 @@ func (c *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volum
 	}
 
 	ei := &longhorn.EngineImage{}
-	if v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+	if datastore.IsBackendStoreDriverV1(v.Spec.BackendStoreDriver) {
 		ei, err = c.getEngineImageRO(v.Status.CurrentImage)
 		if err != nil {
 			return candidateNames
@@ -2594,7 +2580,7 @@ func (c *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volum
 			continue
 		}
 
-		if v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+		if datastore.IsBackendStoreDriverV1(v.Spec.BackendStoreDriver) {
 			if isReady, _ := c.ds.CheckEngineImageReadiness(ei.Spec.Image, nName); !isReady {
 				// cannot use node, engine image is not ready
 				delete(readyNodes, nName)
@@ -2752,7 +2738,7 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 		volumeAndReplicaNodes = append(volumeAndReplicaNodes, r.Spec.NodeID)
 	}
 
-	if v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+	if datastore.IsBackendStoreDriverV1(v.Spec.BackendStoreDriver) {
 		oldImage, err := c.getEngineImageRO(v.Status.CurrentImage)
 		if err != nil {
 			log.WithError(err).Warnf("Failed to get engine image %v for live upgrade", v.Status.CurrentImage)
@@ -2904,7 +2890,7 @@ func (c *VolumeController) updateRequestedBackupForVolumeRestore(v *longhorn.Vol
 func (c *VolumeController) checkAndInitVolumeOfflineReplicaRebuilding(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
 	log := getLoggerForVolume(c.logger, v)
 
-	if v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+	if datastore.IsBackendStoreDriverV1(v.Spec.BackendStoreDriver) {
 		return nil
 	}
 
@@ -3238,7 +3224,7 @@ func (c *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine,
 	}
 	if isRebuildingReplica {
 		// TODO: reuse failed replica for replica rebuilding of SPDK volumes
-		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+		if datastore.IsBackendStoreDriverV2(v.Spec.BackendStoreDriver) {
 			if !v.Spec.DisableFrontend || !v.Status.OfflineReplicaRebuildingRequired {
 				log.Tracef("Online replica rebuilding for replica %v is not supported for SPDK volumes", replica.Name)
 				return nil
@@ -3953,7 +3939,7 @@ func (c *VolumeController) isResponsibleFor(v *longhorn.Volume, defaultEngineIma
 
 	isResponsible := isControllerResponsibleFor(c.controllerID, c.ds, v.Name, v.Spec.NodeID, v.Status.OwnerID)
 
-	if v.Spec.BackendStoreDriver != longhorn.BackendStoreDriverTypeV2 {
+	if datastore.IsBackendStoreDriverV1(v.Spec.BackendStoreDriver) {
 		readyNodesWithDefaultEI, err := c.ds.ListReadyNodesContainingEngineImageRO(defaultEngineImage)
 		if err != nil {
 			return false, err
