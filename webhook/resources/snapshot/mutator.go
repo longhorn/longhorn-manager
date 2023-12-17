@@ -18,10 +18,6 @@ import (
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 )
 
-var (
-	longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
-)
-
 type snapShotMutator struct {
 	admission.DefaultMutator
 	ds *datastore.DataStore

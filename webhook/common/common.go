@@ -56,25 +56,22 @@ func GetLonghornLabelsPatchOp(obj runtime.Object, requiredLabels, removingLabels
 		labels = map[string]string{}
 	}
 
-	if removingLabels != nil {
-		for k := range removingLabels {
-			delete(labels, k)
-		}
+	for k := range removingLabels {
+		delete(labels, k)
 	}
-	if requiredLabels != nil {
-		for k, v := range requiredLabels {
-			labels[k] = v
-		}
+
+	for k, v := range requiredLabels {
+		labels[k] = v
 	}
 
 	volumeName := ""
-	switch obj.(type) {
+	switch o := obj.(type) {
 	case *longhorn.Volume:
-		volumeName = obj.(*longhorn.Volume).Name
+		volumeName = o.Name
 	case *longhorn.Engine:
-		volumeName = obj.(*longhorn.Engine).Spec.VolumeName
+		volumeName = o.Spec.VolumeName
 	case *longhorn.Replica:
-		volumeName = obj.(*longhorn.Replica).Spec.VolumeName
+		volumeName = o.Spec.VolumeName
 	}
 
 	if volumeName != "" {

@@ -26,5 +26,4 @@ func newhealthzHandler() *healthzHandler {
 
 func (h *healthzHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	return
 }

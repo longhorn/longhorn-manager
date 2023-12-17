@@ -304,7 +304,6 @@ func (sc *SnapshotController) handleErr(err error, key interface{}) {
 	log := sc.logger.WithField("Snapshot", key)
 	handleReconcileErrorLogging(log, err, "Failed to sync Longhorn snapshot")
 	sc.queue.AddRateLimited(key)
-	return
 }
 
 func (sc *SnapshotController) syncHandler(key string) (err error) {
