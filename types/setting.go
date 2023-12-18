@@ -27,6 +27,9 @@ const (
 
 	ValueEmpty   = "none"
 	ValueUnknown = "unknown"
+
+	// From `maximumChainLength` in longhorn-engine/pkg/replica/replica.go
+	maxSnapshotNum = 250
 )
 
 type SettingType string
@@ -94,6 +97,7 @@ const (
 	SettingNameFailedBackupTTL                                          = SettingName("failed-backup-ttl")
 	SettingNameRecurringSuccessfulJobsHistoryLimit                      = SettingName("recurring-successful-jobs-history-limit")
 	SettingNameRecurringFailedJobsHistoryLimit                          = SettingName("recurring-failed-jobs-history-limit")
+	SettingNameRecurringJobMaxRetention                                 = SettingName("recurring-job-max-retention")
 	SettingNameSupportBundleFailedHistoryLimit                          = SettingName("support-bundle-failed-history-limit")
 	SettingNameDeletingConfirmationFlag                                 = SettingName("deleting-confirmation-flag")
 	SettingNameEngineReplicaTimeout                                     = SettingName("engine-replica-timeout")
@@ -172,6 +176,7 @@ var (
 		SettingNameFailedBackupTTL,
 		SettingNameRecurringSuccessfulJobsHistoryLimit,
 		SettingNameRecurringFailedJobsHistoryLimit,
+		SettingNameRecurringJobMaxRetention,
 		SettingNameSupportBundleFailedHistoryLimit,
 		SettingNameDeletingConfirmationFlag,
 		SettingNameEngineReplicaTimeout,
@@ -276,6 +281,7 @@ var (
 		SettingNameFailedBackupTTL:                                          SettingDefinitionFailedBackupTTL,
 		SettingNameRecurringSuccessfulJobsHistoryLimit:                      SettingDefinitionRecurringSuccessfulJobsHistoryLimit,
 		SettingNameRecurringFailedJobsHistoryLimit:                          SettingDefinitionRecurringFailedJobsHistoryLimit,
+		SettingNameRecurringJobMaxRetention:                                 SettingDefinitionRecurringJobMaxRetention,
 		SettingNameSupportBundleFailedHistoryLimit:                          SettingDefinitionSupportBundleFailedHistoryLimit,
 		SettingNameDeletingConfirmationFlag:                                 SettingDefinitionDeletingConfirmationFlag,
 		SettingNameEngineReplicaTimeout:                                     SettingDefinitionEngineReplicaTimeout,
@@ -956,6 +962,16 @@ var (
 		Default:  "1",
 	}
 
+	SettingDefinitionRecurringJobMaxRetention = SettingDefinition{
+		DisplayName: "Maximum Retention Number for Recurring Job",
+		Description: "This setting specifies how many snapshots or backups should be retained.",
+		Category:    SettingCategoryBackup,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "100",
+	}
+
 	SettingDefinitionSupportBundleFailedHistoryLimit = SettingDefinition{
 		DisplayName: "SupportBundle Failed History Limit",
 		Description: "This setting specifies how many failed support bundles can exist in the cluster.\n\n" +
@@ -1404,6 +1420,14 @@ func ValidateSetting(name, value string) (err error) {
 
 		if timeout < 5 || timeout > 120 {
 			return fmt.Errorf("the value %v should be between 5 and 120", value)
+		}
+	case SettingNameRecurringJobMaxRetention:
+		maxNumber, err := strconv.Atoi(value)
+		if err != nil {
+			return errors.Wrapf(err, "value %v is not a number", value)
+		}
+		if maxNumber < 1 || maxNumber > maxSnapshotNum {
+			return fmt.Errorf("the value %v should be between 1 and %v", maxNumber, maxSnapshotNum)
 		}
 	case SettingNameEngineReplicaTimeout:
 		timeout, err := strconv.Atoi(value)

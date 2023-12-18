@@ -32,8 +32,6 @@ import (
 const (
 	// NameMaximumLength restricted the length due to Kubernetes name limitation
 	NameMaximumLength = 40
-
-	MaxRecurringJobRetain = 100
 )
 
 var (
@@ -4066,7 +4064,8 @@ func isValidRecurringJobTask(task longhorn.RecurringJobType) bool {
 		task == longhorn.RecurringJobTypeSnapshotDelete
 }
 
-func ValidateRecurringJobs(jobs []longhorn.RecurringJobSpec) error {
+// ValidateRecurringJobs validates data and formats for recurring jobs
+func (s *DataStore) ValidateRecurringJobs(jobs []longhorn.RecurringJobSpec) error {
 	if jobs == nil {
 		return nil
 	}
@@ -4079,8 +4078,13 @@ func ValidateRecurringJobs(jobs []longhorn.RecurringJobSpec) error {
 		totalJobRetainCount += job.Retain
 	}
 
-	if totalJobRetainCount > MaxRecurringJobRetain {
-		return fmt.Errorf("job Can't retain more than %d snapshots", MaxRecurringJobRetain)
+	maxRecurringJobRetain, err := s.GetSettingAsInt(types.SettingNameRecurringJobMaxRetention)
+	if err != nil {
+		return err
+	}
+
+	if totalJobRetainCount > int(maxRecurringJobRetain) {
+		return fmt.Errorf("job Can't retain more than %d snapshots", maxRecurringJobRetain)
 	}
 	return nil
 }
