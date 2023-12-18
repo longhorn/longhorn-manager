@@ -343,6 +343,17 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 		}
 	}
 
+	// Check if it is the default backup target or not.
+	backupTarget, err = btc.setDefaultBackupTarget(backupTarget)
+	if err != nil {
+		if apierrors.IsConflict(errors.Cause(err)) {
+			log.WithError(err).Debugf("Requeue %v due to conflict", name)
+			btc.queue.Add(btc.namespace + "/" + name)
+			return nil
+		}
+		return err
+	}
+
 	// start a BackupStoreTimer and keep it in a map[string]*BackupStoreTimer
 	stopTimer := func(backupTargetName string) {
 		_, exists := btc.bsTimerMap[backupTargetName]
@@ -462,6 +473,65 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 		return err
 	}
 	return nil
+}
+
+func (btc *BackupTargetController) setDefaultBackupTarget(backupTarget *longhorn.BackupTarget) (*longhorn.BackupTarget, error) {
+	log := getLoggerForBackupTarget(btc.logger, backupTarget)
+	backupTargetMap, err := btc.ds.ListBackupTargets()
+	if err != nil {
+		log.WithError(err).Errorf("Failed to get all backup targets")
+		return nil, err
+	}
+
+	if len(backupTargetMap) != 1 && !backupTarget.Spec.Default {
+		if backupTarget.Status.Default {
+			backupTarget.Status.Default = false
+			backupTarget, err = btc.ds.UpdateBackupTargetStatus(backupTarget)
+			if err != nil {
+				log.WithError(err).Errorf("Failed to update backup target status")
+				return nil, err
+			}
+		}
+		return backupTarget, nil
+	}
+
+	for _, bt := range backupTargetMap {
+		if bt.Status.Default && bt.Name != backupTarget.Name {
+			btName := bt.Name
+			bt.Status.Default = false
+			bt, err := btc.ds.UpdateBackupTargetStatus(bt)
+			if err != nil {
+				log.WithError(err).Errorf("Failed to update backup target %s status", btName)
+				return nil, err
+			}
+			bt.Spec.Default = false
+			if _, err := btc.ds.UpdateBackupTarget(bt); err != nil {
+				log.WithError(err).Errorf("Failed to update backup target %s spec", btName)
+				return nil, err
+			}
+		}
+	}
+	if !backupTarget.Spec.Default {
+		backupTarget, err = btc.ds.GetBackupTarget(backupTarget.Name)
+		if err != nil {
+			log.WithError(err).Errorf("Failed to get backup targets")
+			return nil, err
+		}
+		backupTarget.Spec.Default = true
+		backupTarget, err = btc.ds.UpdateBackupTarget(backupTarget)
+		if err != nil {
+			log.WithError(err).Errorf("Failed to update backup target spec")
+			return nil, err
+		}
+	}
+	backupTarget.Status.Default = true
+	backupTarget, err = btc.ds.UpdateBackupTargetStatus(backupTarget)
+	if err != nil {
+		log.WithError(err).Errorf("Failed to update backup target status")
+		return nil, err
+	}
+
+	return backupTarget, nil
 }
 
 func (btc *BackupTargetController) cleanUpAllMounts(backupTarget *longhorn.BackupTarget) (err error) {
