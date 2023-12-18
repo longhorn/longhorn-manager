@@ -235,7 +235,7 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		if err := sc.updateNodeSelector(); err != nil {
 			return err
 		}
-	case string(types.SettingNameGuaranteedInstanceManagerCPU):
+	case string(types.SettingNameGuaranteedInstanceManagerCPU), string(types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU):
 		if err := sc.updateInstanceManagerCPURequest(); err != nil {
 			return err
 		}
@@ -1474,6 +1474,7 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameSupportBundleFailedHistoryLimit:                          true,
 		types.SettingNameSystemManagedPodsImagePullPolicy:                         true,
 		types.SettingNameV2DataEngine:                                             true,
+		types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU:                 true,
 		types.SettingNameOfflineReplicaRebuilding:                                 true,
 	}
 
