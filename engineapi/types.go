@@ -135,11 +135,14 @@ type Volume struct {
 }
 
 type BackupTarget struct {
+	Name             string `json:"name"`
 	BackupTargetURL  string `json:"backupTargetURL"`
 	CredentialSecret string `json:"credentialSecret"`
+	Default          bool   `json:"default"`
 	PollInterval     string `json:"pollInterval"`
 	Available        bool   `json:"available"`
 	Message          string `json:"message"`
+	ReadyOnly        bool   `json:"readOnly"`
 }
 
 type BackupVolume struct {
@@ -155,6 +158,8 @@ type BackupVolume struct {
 	BackingImageName     string             `json:"backingImageName"`
 	BackingImageChecksum string             `json:"backingImageChecksum"`
 	StorageClassName     string             `json:"storageClassName"`
+	BackupTargetName     string             `json:"backupTargetName"`
+	VolumeName           string             `json:"volumeName"`
 }
 
 type Backup struct {
@@ -172,6 +177,7 @@ type Backup struct {
 	VolumeBackingImageName string               `json:"volumeBackingImageName"`
 	Messages               map[string]string    `json:"messages"`
 	CompressionMethod      string               `json:"compressionMethod"`
+	BackupTargetName       string               `json:"backupTargetName"`
 }
 
 type ConfigMetadata struct {

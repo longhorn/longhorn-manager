@@ -53,7 +53,7 @@ func (s *Server) volumeList(apiContext *api.ApiContext) (*client.GenericCollecti
 		if err != nil {
 			return nil, err
 		}
-		backups, err := s.m.ListBackupsForVolumeSorted(v.Name)
+		backups, err := s.m.ListBackupsForVolumeSorted(v.Name, false)
 		if err != nil {
 			return nil, err
 		}
@@ -104,7 +104,7 @@ func (s *Server) responseWithVolume(rw http.ResponseWriter, req *http.Request, i
 	if err != nil {
 		return err
 	}
-	backups, err := s.m.ListBackupsForVolumeSorted(id)
+	backups, err := s.m.ListBackupsForVolumeSorted(id, false)
 	if err != nil {
 		return err
 	}

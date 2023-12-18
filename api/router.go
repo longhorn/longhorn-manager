@@ -118,11 +118,16 @@ func NewRouter(s *Server) *mux.Router {
 	}
 
 	r.Methods("GET").Path("/v1/backuptargets").Handler(f(schemas, s.BackupTargetList))
+	r.Methods("GET").Path("/v1/backuptargets/{name}").Handler(f(schemas, s.BackupTargetGet))
+	r.Methods("POST").Path("/v1/backuptargets").Handler(f(schemas, s.BackupTargetCreate))
+	r.Methods("DELETE").Path("/v1/backuptargets/{name}").Handler(f(schemas, s.BackupTargetDelete))
+	r.Methods("PUT").Path("/v1/backuptargets/{name}").Handler(f(schemas, s.BackupTargetUpdate))
+
 	r.Methods("GET").Path("/v1/backupvolumes").Handler(f(schemas, s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupVolumeList)))
 	r.Methods("GET").Path("/v1/backupvolumes/{volName}").Handler(f(schemas, s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupVolumeGet)))
 	r.Methods("DELETE").Path("/v1/backupvolumes/{volName}").Handler(f(schemas, s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupVolumeDelete)))
 	backupActions := map[string]func(http.ResponseWriter, *http.Request) error{
-		"backupList":   s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupList),
+		"backupList":   s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupListByBVName),
 		"backupGet":    s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupGet),
 		"backupDelete": s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupDelete),
 	}

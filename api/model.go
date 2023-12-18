@@ -138,6 +138,8 @@ type BackupVolume struct {
 	BackingImageName     string            `json:"backingImageName"`
 	BackingImageChecksum string            `json:"backingImageChecksum"`
 	StorageClassName     string            `json:"storageClassName"`
+	BackupTargetName     string            `json:"backupTargetName"`
+	VolumeName           string            `json:"volumeName"`
 }
 
 type Backup struct {
@@ -159,6 +161,7 @@ type Backup struct {
 	VolumeCreated          string               `json:"volumeCreated"`
 	VolumeBackingImageName string               `json:"volumeBackingImageName"`
 	CompressionMethod      string               `json:"compressionMethod"`
+	BackupTargetName       string               `json:"backupTargetName"`
 }
 
 type Setting struct {
@@ -552,7 +555,6 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("detachInput", DetachInput{})
 	schemas.AddType("snapshotInput", SnapshotInput{})
 	schemas.AddType("snapshotCRInput", SnapshotCRInput{})
-	schemas.AddType("backupTarget", BackupTarget{})
 	schemas.AddType("backup", Backup{})
 	schemas.AddType("backupInput", BackupInput{})
 	schemas.AddType("backupStatus", BackupStatus{})
@@ -614,6 +616,7 @@ func NewSchema() *client.Schemas {
 	snapshotSchema(schemas.AddType("snapshot", Snapshot{}))
 	snapshotCRSchema(schemas.AddType("snapshotCR", SnapshotCR{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
+	backupTargetSchema(schemas.AddType("backupTarget", BackupTarget{}))
 	settingSchema(schemas.AddType("setting", Setting{}))
 	recurringJobSchema(schemas.AddType("recurringJob", RecurringJob{}))
 	engineImageSchema(schemas.AddType("engineImage", EngineImage{}))
@@ -788,6 +791,42 @@ func backupVolumeSchema(backupVolume *client.Schema) {
 			Output: "backupVolume",
 		},
 	}
+}
+
+func backupTargetSchema(backupTarget *client.Schema) {
+	backupTarget.CollectionMethods = []string{"GET", "POST"}
+	backupTarget.ResourceMethods = []string{"GET", "PUT", "DELETE"}
+
+	backupTargetName := backupTarget.ResourceFields["name"]
+	backupTargetName.Required = true
+	backupTargetName.Unique = true
+	backupTargetName.Create = true
+	backupTarget.ResourceFields["name"] = backupTargetName
+
+	backupTargetURL := backupTarget.ResourceFields["backupTargetURL"]
+	backupTargetURL.Create = true
+	backupTargetURL.Default = ""
+	backupTarget.ResourceFields["backupTargetURL"] = backupTargetURL
+
+	credentialSecret := backupTarget.ResourceFields["credentialSecret"]
+	credentialSecret.Create = true
+	credentialSecret.Default = ""
+	backupTarget.ResourceFields["credentialSecret"] = credentialSecret
+
+	backupTargetPollInterval := backupTarget.ResourceFields["pollInterval"]
+	backupTargetPollInterval.Create = true
+	backupTargetPollInterval.Default = "300"
+	backupTarget.ResourceFields["pollInterval"] = backupTargetPollInterval
+
+	defaultBackupTarget := backupTarget.ResourceFields["default"]
+	defaultBackupTarget.Create = true
+	defaultBackupTarget.Default = false
+	backupTarget.ResourceFields["default"] = defaultBackupTarget
+
+	backupTargetReadOnly := backupTarget.ResourceFields["readOnly"]
+	backupTargetReadOnly.Create = true
+	backupTargetReadOnly.Default = false
+	backupTarget.ResourceFields["readOnly"] = backupTargetReadOnly
 }
 
 func settingSchema(setting *client.Schema) {
@@ -1655,11 +1694,14 @@ func toBackupTargetResource(bt *longhorn.BackupTarget) *BackupTarget {
 			Links: map[string]string{},
 		},
 		BackupTarget: engineapi.BackupTarget{
+			Name:             bt.Name,
 			BackupTargetURL:  bt.Spec.BackupTargetURL,
 			CredentialSecret: bt.Spec.CredentialSecret,
+			Default:          bt.Status.Default,
 			PollInterval:     bt.Spec.PollInterval.Duration.String(),
 			Available:        bt.Status.Available,
 			Message:          types.GetCondition(bt.Status.Conditions, longhorn.BackupTargetConditionTypeUnavailable).Message,
+			ReadyOnly:        bt.Spec.ReadOnly,
 		},
 	}
 	return res
@@ -1686,6 +1728,8 @@ func toBackupVolumeResource(bv *longhorn.BackupVolume, apiContext *api.ApiContex
 		BackingImageName:     bv.Status.BackingImageName,
 		BackingImageChecksum: bv.Status.BackingImageChecksum,
 		StorageClassName:     bv.Status.StorageClassName,
+		BackupTargetName:     bv.Spec.BackupTargetName,
+		VolumeName:           bv.Spec.VolumeName,
 	}
 	b.Actions = map[string]string{
 		"backupList":   apiContext.UrlBuilder.ActionLink(b.Resource, "backupList"),
@@ -1745,6 +1789,7 @@ func toBackupResource(b *longhorn.Backup) *Backup {
 		VolumeCreated:          b.Status.VolumeCreated,
 		VolumeBackingImageName: b.Status.VolumeBackingImageName,
 		CompressionMethod:      string(b.Status.CompressionMethod),
+		BackupTargetName:       b.Spec.BackupTargetName,
 	}
 	// Set the volume name from backup CR's label if it's empty.
 	// This field is empty probably because the backup state is not Ready
