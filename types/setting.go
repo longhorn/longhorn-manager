@@ -112,13 +112,14 @@ const (
 	SettingNameBackupConcurrentLimit                                    = SettingName("backup-concurrent-limit")
 	SettingNameRestoreConcurrentLimit                                   = SettingName("restore-concurrent-limit")
 	SettingNameLogLevel                                                 = SettingName("log-level")
-	SettingNameV2DataEngine                                             = SettingName("v2-data-engine")
-	SettingNameV2DataEngineHugepageLimit                                = SettingName("v2-data-engine-hugepage-limit")
 	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
 	SettingNameReplicaDiskSoftAntiAffinity                              = SettingName("replica-disk-soft-anti-affinity")
 	SettingNameAllowEmptyNodeSelectorVolume                             = SettingName("allow-empty-node-selector-volume")
 	SettingNameAllowEmptyDiskSelectorVolume                             = SettingName("allow-empty-disk-selector-volume")
 	SettingNameDisableSnapshotPurge                                     = SettingName("disable-snapshot-purge")
+	SettingNameV2DataEngine                                             = SettingName("v2-data-engine")
+	SettingNameV2DataEngineHugepageLimit                                = SettingName("v2-data-engine-hugepage-limit")
+	SettingNameV2DataEngineGuaranteedInstanceManagerCPU                 = SettingName("v2-data-engine-guaranteed-instance-manager-cpu")
 )
 
 var (
@@ -193,6 +194,7 @@ var (
 		SettingNameLogLevel,
 		SettingNameV2DataEngine,
 		SettingNameV2DataEngineHugepageLimit,
+		SettingNameV2DataEngineGuaranteedInstanceManagerCPU,
 		SettingNameOfflineReplicaRebuilding,
 		SettingNameReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume,
@@ -298,6 +300,7 @@ var (
 		SettingNameLogLevel:                                                 SettingDefinitionLogLevel,
 		SettingNameV2DataEngine:                                             SettingDefinitionV2DataEngine,
 		SettingNameV2DataEngineHugepageLimit:                                SettingDefinitionV2DataEngineHugepageLimit,
+		SettingNameV2DataEngineGuaranteedInstanceManagerCPU:                 SettingDefinitionV2DataEngineGuaranteedInstanceManagerCPU,
 		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
 		SettingNameReplicaDiskSoftAntiAffinity:                              SettingDefinitionReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume:                             SettingDefinitionAllowEmptyNodeSelectorVolume,
@@ -881,7 +884,7 @@ var (
 
 	SettingDefinitionGuaranteedInstanceManagerCPU = SettingDefinition{
 		DisplayName: "Guaranteed Instance Manager CPU",
-		Description: "This integer value indicates how many percentage of the total allocatable CPU on each node will be reserved for each instance manager Pod. For example, 10 means 10% of the total CPU on a node will be allocated to each instance manager pod on this node. This will help maintain engine and replica stability during high node workload. \n\n" +
+		Description: "This integer value indicates how many percentage of the total allocatable CPU on each node will be reserved for each instance manager Pod for v1 data engine. For example, 10 means 10% of the total CPU on a node will be allocated to each instance manager pod on this node. This will help maintain engine and replica stability during high node workload. \n\n" +
 			"In order to prevent unexpected volume instance (engine/replica) crash as well as guarantee a relative acceptable IO performance, you can use the following formula to calculate a value for this setting: \n\n" +
 			"`Guaranteed Instance Manager CPU = The estimated max Longhorn volume engine and replica count on a node * 0.1 / The total allocatable CPUs on the node * 100` \n\n" +
 			"The result of above calculation doesn't mean that's the maximum CPU resources the Longhorn workloads require. To fully exploit the Longhorn volume I/O performance, you can allocate/guarantee more CPU resources via this setting. \n\n" +
@@ -1162,6 +1165,20 @@ var (
 		Required:    true,
 		ReadOnly:    true,
 		Default:     "1024",
+	}
+
+	SettingDefinitionV2DataEngineGuaranteedInstanceManagerCPU = SettingDefinition{
+		DisplayName: "Guaranteed Instance Manager CPU for V2 Data Engine",
+		Description: "This integer value indicates how many millicpus on each node are reserved for each instance manager Pod for v2 data engine. By default, the SPDK target daemon within an instance manager Pod utilizes 1 CPU core. Ensuring a minimum CPU usage is essential for sustaining engine and replica stability, especially during periods of high node workload. \n\n" +
+			"WARNING: \n\n" +
+			"  - Value 0 means unsetting CPU requests for instance manager pods for v2 data engine. \n\n" +
+			"  - This integer value is range from 0 to 2000. \n\n" +
+			"  - After this setting is changed, all instance manager pods using this global setting on all the nodes will be automatically restarted. In other words, DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. \n\n",
+		Category: SettingCategoryV2DataEngine,
+		Type:     SettingTypeInt,
+		Required: true,
+		ReadOnly: false,
+		Default:  "1250",
 	}
 
 	SettingDefinitionReplicaDiskSoftAntiAffinity = SettingDefinition{
@@ -1488,10 +1505,18 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameGuaranteedInstanceManagerCPU:
 		i, err := strconv.Atoi(value)
 		if err != nil {
-			return errors.Wrapf(err, "guaranteed instance manager cpu value %v is not a valid integer", value)
+			return errors.Wrapf(err, "guaranteed v1 data engine instance manager cpu value %v is not a valid integer", value)
 		}
 		if i < 0 || i > 40 {
-			return fmt.Errorf("guaranteed instance manager cpu value %v should be between 0 to 40", value)
+			return fmt.Errorf("guaranteed v1 data engine instance manager cpu value %v should be between 0 to 40", value)
+		}
+	case SettingNameV2DataEngineGuaranteedInstanceManagerCPU:
+		i, err := strconv.Atoi(value)
+		if err != nil {
+			return errors.Wrapf(err, "guaranteed v2 data engine instance manager cpu value %v is not a valid integer", value)
+		}
+		if i < 0 || i > 2000 {
+			return fmt.Errorf("guaranteed v2 data engine instance manager cpu value %v should be between 0 to 2000", value)
 		}
 	case SettingNameLogLevel:
 		if err := ValidateLogLevel(value); err != nil {
@@ -1551,12 +1576,23 @@ func GetCustomizedDefaultSettings(defaultSettingCM *corev1.ConfigMap) (defaultSe
 		defaultSettings[name] = value
 	}
 
+	// GuaranteedInstanceManagerCPU for v1 data engine
 	guaranteedInstanceManagerCPU := SettingDefinitionGuaranteedInstanceManagerCPU.Default
 	if defaultSettings[string(SettingNameGuaranteedInstanceManagerCPU)] != "" {
 		guaranteedInstanceManagerCPU = defaultSettings[string(SettingNameGuaranteedInstanceManagerCPU)]
 	}
 	if err := ValidateCPUReservationValues(guaranteedInstanceManagerCPU); err != nil {
 		logrus.WithError(err).Error("Customized settings GuaranteedInstanceManagerCPU is invalid, will give up using it")
+		defaultSettings = map[string]string{}
+	}
+
+	// GuaranteedInstanceManagerCPU for v2 data engine
+	v2DataEngineGuaranteedInstanceManagerCPU := SettingDefinitionV2DataEngineGuaranteedInstanceManagerCPU.Default
+	if defaultSettings[string(SettingNameV2DataEngineGuaranteedInstanceManagerCPU)] != "" {
+		v2DataEngineGuaranteedInstanceManagerCPU = defaultSettings[string(SettingNameV2DataEngineGuaranteedInstanceManagerCPU)]
+	}
+	if err := ValidateCPUReservationValues(v2DataEngineGuaranteedInstanceManagerCPU); err != nil {
+		logrus.WithError(err).Error("Customized settings V2DataEngineGuaranteedInstanceManagerCPU is invalid, will give up using it")
 		defaultSettings = map[string]string{}
 	}
 

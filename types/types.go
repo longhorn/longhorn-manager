@@ -1017,10 +1017,20 @@ func ValidateCPUReservationValues(instanceManagerCPUStr string) error {
 	if err != nil {
 		return errors.Wrapf(err, "invalid guaranteed/requested instance manager CPU value (%v)", instanceManagerCPUStr)
 	}
-	isUnderLimit := instanceManagerCPU < 0
-	isOverLimit := instanceManagerCPU > 40
-	if isUnderLimit || isOverLimit {
-		return fmt.Errorf("invalid requested instance manager CPUs. Valid instance manager CPU range between 0%% - 40%%")
+
+	switch instanceManagerCPUStr {
+	case SettingDefinitionGuaranteedInstanceManagerCPU.Default:
+		isUnderLimit := instanceManagerCPU < 0
+		isOverLimit := instanceManagerCPU > 40
+		if isUnderLimit || isOverLimit {
+			return fmt.Errorf("invalid requested v1 data engine instance manager CPUs. Valid instance manager CPU range between 0%% - 40%%")
+		}
+	case SettingDefinitionV2DataEngineGuaranteedInstanceManagerCPU.Default:
+		isUnderLimit := instanceManagerCPU < 0
+		isOverLimit := instanceManagerCPU > 2000
+		if isUnderLimit || isOverLimit {
+			return fmt.Errorf("invalid requested v2 data engine instance manager CPUs. Valid instance manager CPU range between 0 - 2000 millicpu")
+		}
 	}
 	return nil
 }

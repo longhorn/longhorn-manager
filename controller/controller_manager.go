@@ -148,18 +148,32 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 	}
 
 	cpuRequest := lhNode.Spec.InstanceManagerCPURequest
-	guaranteedCPUSettingName := types.SettingNameGuaranteedInstanceManagerCPU
 	if cpuRequest == 0 {
-		guaranteedCPUSetting, err := ds.GetSettingWithAutoFillingRO(guaranteedCPUSettingName)
-		if err != nil {
-			return nil, err
+		switch im.Spec.BackendStoreDriver {
+		case longhorn.BackendStoreDriverTypeV1:
+			guaranteedCPUSetting, err := ds.GetSettingWithAutoFillingRO(types.SettingNameGuaranteedInstanceManagerCPU)
+			if err != nil {
+				return nil, err
+			}
+			guaranteedCPUPercentage, err := strconv.ParseFloat(guaranteedCPUSetting.Value, 64)
+			if err != nil {
+				return nil, err
+			}
+			allocatableMilliCPU := float64(kubeNode.Status.Allocatable.Cpu().MilliValue())
+			cpuRequest = int(math.Round(allocatableMilliCPU * guaranteedCPUPercentage / 100.0))
+		case longhorn.BackendStoreDriverTypeV2:
+			guaranteedCPUSetting, err := ds.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU)
+			if err != nil {
+				return nil, err
+			}
+			guaranteedCPURequest, err := strconv.ParseFloat(guaranteedCPUSetting.Value, 64)
+			if err != nil {
+				return nil, err
+			}
+			cpuRequest = int(guaranteedCPURequest)
+		default:
+			return nil, fmt.Errorf("unknown backend store driver %v", im.Spec.BackendStoreDriver)
 		}
-		guaranteedCPUPercentage, err := strconv.ParseFloat(guaranteedCPUSetting.Value, 64)
-		if err != nil {
-			return nil, err
-		}
-		allocatableMilliCPU := float64(kubeNode.Status.Allocatable.Cpu().MilliValue())
-		cpuRequest = int(math.Round(allocatableMilliCPU * guaranteedCPUPercentage / 100.0))
 	}
 	return ParseResourceRequirement(fmt.Sprintf("%dm", cpuRequest))
 }
