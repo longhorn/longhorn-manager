@@ -8,6 +8,7 @@ import (
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 
@@ -49,8 +50,13 @@ func (r *recurringJobValidator) Create(request *admission.Request, newObj runtim
 		return werror.NewInvalidError(fmt.Sprintf("invalid name %v", recurringJob.Name), "")
 	}
 
-	if recurringJob.Spec.Retain > datastore.MaxRecurringJobRetain {
-		return werror.NewInvalidError(fmt.Sprintf(RecurringJobErrRetainValueFmt, datastore.MaxRecurringJobRetain), "")
+	maxRecurringJobRetain, err := r.ds.GetSettingAsInt(types.SettingNameRecurringJobMaxRetention)
+	if err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
+	if recurringJob.Spec.Retain > int(maxRecurringJobRetain) {
+		return werror.NewInvalidError(fmt.Sprintf(RecurringJobErrRetainValueFmt, maxRecurringJobRetain), "")
 	}
 
 	jobs := []longhorn.RecurringJobSpec{
@@ -64,7 +70,7 @@ func (r *recurringJobValidator) Create(request *admission.Request, newObj runtim
 			Labels:      recurringJob.Spec.Labels,
 		},
 	}
-	if err := datastore.ValidateRecurringJobs(jobs); err != nil {
+	if err := r.ds.ValidateRecurringJobs(jobs); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
@@ -75,8 +81,13 @@ func (r *recurringJobValidator) Create(request *admission.Request, newObj runtim
 func (r *recurringJobValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
 	newRecurringJob := newObj.(*longhorn.RecurringJob)
 
-	if newRecurringJob.Spec.Retain > datastore.MaxRecurringJobRetain {
-		return werror.NewInvalidError(fmt.Sprintf(RecurringJobErrRetainValueFmt, datastore.MaxRecurringJobRetain), "")
+	maxRecurringJobRetain, err := r.ds.GetSettingAsInt(types.SettingNameRecurringJobMaxRetention)
+	if err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
+	if newRecurringJob.Spec.Retain > int(maxRecurringJobRetain) {
+		return werror.NewInvalidError(fmt.Sprintf(RecurringJobErrRetainValueFmt, maxRecurringJobRetain), "")
 	}
 
 	jobs := []longhorn.RecurringJobSpec{
@@ -90,7 +101,7 @@ func (r *recurringJobValidator) Update(request *admission.Request, oldObj runtim
 			Labels:      newRecurringJob.Spec.Labels,
 		},
 	}
-	if err := datastore.ValidateRecurringJobs(jobs); err != nil {
+	if err := r.ds.ValidateRecurringJobs(jobs); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
