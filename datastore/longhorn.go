@@ -3745,6 +3745,52 @@ func (s *DataStore) ListBackupVolumes() (map[string]*longhorn.BackupVolume, erro
 	return itemMap, nil
 }
 
+// ListBackupVolumesWithBackupTargetNameRO returns an object contains all backup volumes in the cluster BackupVolumes CR
+// of the given backup target name
+func (s *DataStore) ListBackupVolumesWithBackupTargetNameRO(backupTargetName string) (map[string]*longhorn.BackupVolume, error) {
+	selector, err := getBackupTargetSelector(backupTargetName)
+	if err != nil {
+		return nil, err
+	}
+
+	list, err := s.backupVolumeLister.BackupVolumes(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.BackupVolume{}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO
+	}
+	return itemMap, nil
+}
+
+// ListBackupVolumesWithVolumeNameRO returns an object contains all backup volumes in the cluster BackupVolumes CR
+// of the given volume name
+func (s *DataStore) ListBackupVolumesWithVolumeNameRO(volumeName string) (map[string]*longhorn.BackupVolume, error) {
+	selector, err := getBackupVolumeSelector(volumeName)
+	if err != nil {
+		return nil, err
+	}
+
+	list, err := s.backupVolumeLister.BackupVolumes(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.BackupVolume{}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO
+	}
+	return itemMap, nil
+}
+
+func getBackupTargetSelector(backupTargetName string) (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetBackupTargetLabels(backupTargetName),
+	})
+}
+
 func getBackupVolumeSelector(backupVolumeName string) (labels.Selector, error) {
 	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: types.GetBackupVolumeLabels(backupVolumeName),
@@ -3764,6 +3810,34 @@ func (s *DataStore) GetBackupVolume(name string) (*longhorn.BackupVolume, error)
 	}
 	// Cannot use cached object from lister
 	return resultRO.DeepCopy(), nil
+}
+
+// GetLastUpdatedBackupVolumeWithVolumeNameRO returns a copy of last updated BackupVolume with the given volume name in the cluster
+func (s *DataStore) GetLastUpdatedBackupVolumeWithVolumeNameRO(volumeName string) (*longhorn.BackupVolume, error) {
+	backupVolumeMap, err := s.ListBackupVolumesWithVolumeNameRO(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	var lastUpdatedBackupVolume *longhorn.BackupVolume
+	for _, backupVolume := range backupVolumeMap {
+		if lastUpdatedBackupVolume == nil {
+			lastUpdatedBackupVolume = backupVolume
+			continue
+		}
+		lastUpdatedBackupVolumeLastBackupTime, err := util.ParseTimeZ(lastUpdatedBackupVolume.Status.LastBackupAt)
+		if err != nil {
+			return nil, err
+		}
+		backupVolumeLastBackupTime, err := util.ParseTimeZ(backupVolume.Status.LastBackupAt)
+		if err != nil {
+			return nil, err
+		}
+		if lastUpdatedBackupVolumeLastBackupTime.Before(backupVolumeLastBackupTime) {
+			lastUpdatedBackupVolume = backupVolume
+		}
+	}
+	// Cannot use cached object from lister
+	return lastUpdatedBackupVolume, nil
 }
 
 // UpdateBackupVolume updates the given Longhorn backup volume in the cluster BackupVolume CR and verifies update
