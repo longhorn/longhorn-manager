@@ -1012,15 +1012,25 @@ func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[st
 	}, nil
 }
 
-func ValidateCPUReservationValues(instanceManagerCPUStr string) error {
+func ValidateCPUReservationValues(settingName SettingName, instanceManagerCPUStr string) error {
 	instanceManagerCPU, err := strconv.Atoi(instanceManagerCPUStr)
 	if err != nil {
 		return errors.Wrapf(err, "invalid guaranteed/requested instance manager CPU value (%v)", instanceManagerCPUStr)
 	}
-	isUnderLimit := instanceManagerCPU < 0
-	isOverLimit := instanceManagerCPU > 40
-	if isUnderLimit || isOverLimit {
-		return fmt.Errorf("invalid requested instance manager CPUs. Valid instance manager CPU range between 0%% - 40%%")
+
+	switch settingName {
+	case SettingNameGuaranteedInstanceManagerCPU:
+		isUnderLimit := instanceManagerCPU < 0
+		isOverLimit := instanceManagerCPU > 40
+		if isUnderLimit || isOverLimit {
+			return fmt.Errorf("invalid requested v1 data engine instance manager CPUs. Valid instance manager CPU range between 0%% - 40%%")
+		}
+	case SettingNameV2DataEngineGuaranteedInstanceManagerCPU:
+		isUnderLimit := instanceManagerCPU < 1000
+		isOverLimit := instanceManagerCPU > 8000
+		if isUnderLimit || isOverLimit {
+			return fmt.Errorf("invalid requested v2 data engine instance manager CPUs. Valid instance manager CPU range between 1000 - 8000 millicpu")
+		}
 	}
 	return nil
 }

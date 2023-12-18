@@ -348,15 +348,13 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 		if !volumesDetached {
 			return &types.ErrorInvalidState{Reason: "cannot modify priority class setting before all volumes are detached"}
 		}
-	case types.SettingNameGuaranteedInstanceManagerCPU:
-		guaranteedInstanceManagerCPU, err := s.GetSettingWithAutoFillingRO(types.SettingNameGuaranteedInstanceManagerCPU)
+	case types.SettingNameGuaranteedInstanceManagerCPU, types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU:
+		guaranteedInstanceManagerCPU, err := s.GetSettingWithAutoFillingRO(sName)
 		if err != nil {
 			return err
 		}
-		if sName == types.SettingNameGuaranteedInstanceManagerCPU {
-			guaranteedInstanceManagerCPU.Value = value
-		}
-		if err := types.ValidateCPUReservationValues(guaranteedInstanceManagerCPU.Value); err != nil {
+		guaranteedInstanceManagerCPU.Value = value
+		if err := types.ValidateCPUReservationValues(sName, guaranteedInstanceManagerCPU.Value); err != nil {
 			return err
 		}
 	case types.SettingNameStorageNetwork:

@@ -115,9 +115,7 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 				return werror.NewInvalidError(err.Error(), "")
 			}
 			logrus.Warnf("Kubernetes node %v has been deleted", oldNode.Name)
-		}
-
-		if err == nil {
+		} else {
 			allocatableCPU := float64(kubeNode.Status.Allocatable.Cpu().MilliValue())
 			instanceManagerCPUSetting, err := n.ds.GetSettingWithAutoFillingRO(types.SettingNameGuaranteedInstanceManagerCPU)
 			if err != nil {
@@ -127,7 +125,8 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 			if newNode.Spec.InstanceManagerCPURequest > 0 {
 				instanceManagerCPUInPercentage = fmt.Sprintf("%.0f", math.Round(float64(newNode.Spec.InstanceManagerCPURequest)/allocatableCPU*100.0))
 			}
-			if err := types.ValidateCPUReservationValues(instanceManagerCPUInPercentage); err != nil {
+			// TODO: Support v2 data engine
+			if err := types.ValidateCPUReservationValues(types.SettingNameGuaranteedInstanceManagerCPU, instanceManagerCPUInPercentage); err != nil {
 				return werror.NewInvalidError(err.Error(), "")
 			}
 		}
