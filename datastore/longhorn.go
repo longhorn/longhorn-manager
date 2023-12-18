@@ -3668,7 +3668,17 @@ func (s *DataStore) GetBackupTarget(name string) (*longhorn.BackupTarget, error)
 
 // UpdateBackupTarget updates the given Longhorn backup target in the cluster BackupTargets CR and verifies update
 func (s *DataStore) UpdateBackupTarget(backupTarget *longhorn.BackupTarget) (*longhorn.BackupTarget, error) {
+	if backupTarget.Annotations == nil {
+		backupTarget.Annotations = make(map[string]string)
+	}
+	backupTarget.Annotations[types.GetLonghornLabelKey(types.UpdateBackupTargetFromLonghorn)] = ""
 	obj, err := s.lhClient.LonghornV1beta2().BackupTargets(s.namespace).Update(context.TODO(), backupTarget, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	delete(obj.Annotations, types.GetLonghornLabelKey(types.UpdateBackupTargetFromLonghorn))
+	obj, err = s.lhClient.LonghornV1beta2().BackupTargets(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
 	}
