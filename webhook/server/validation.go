@@ -11,6 +11,7 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	"github.com/longhorn/longhorn-manager/webhook/resources/backingimage"
 	"github.com/longhorn/longhorn-manager/webhook/resources/backup"
+	"github.com/longhorn/longhorn-manager/webhook/resources/backuptarget"
 	"github.com/longhorn/longhorn-manager/webhook/resources/engine"
 	"github.com/longhorn/longhorn-manager/webhook/resources/instancemanager"
 	"github.com/longhorn/longhorn-manager/webhook/resources/node"
@@ -39,6 +40,7 @@ func Validation(ds *datastore.DataStore) (http.Handler, []admission.Resource, er
 		recurringjob.NewValidator(ds),
 		backingimage.NewValidator(ds),
 		backup.NewValidator(ds),
+		backuptarget.NewValidator(ds),
 		volume.NewValidator(ds, currentNodeID),
 		orphan.NewValidator(ds),
 		snapshot.NewValidator(ds),

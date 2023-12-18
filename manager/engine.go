@@ -370,6 +370,10 @@ func (m *VolumeManager) UpdateBackupTarget(backupTargetName string, backupTarget
 		return nil, err
 	}
 
+	if existingBackupTarget.Spec.Default && !backupTargetSpec.Default {
+		return nil, fmt.Errorf("prohibit disabling a default backup target directly")
+	}
+
 	if backupTargetSpec.BackupTargetURL != existingBackupTarget.Spec.BackupTargetURL ||
 		backupTargetSpec.CredentialSecret != existingBackupTarget.Spec.CredentialSecret ||
 		backupTargetSpec.Default != existingBackupTarget.Spec.Default ||
