@@ -4264,7 +4264,7 @@ func (c *VolumeController) ReconcileBackupVolumeState(volume *longhorn.Volume) e
 		backupVolumeName = volume.Name
 	}
 
-	bv, err := c.ds.GetBackupVolumeRO(backupVolumeName)
+	bv, err := c.ds.GetLastUpdatedBackupVolumeWithVolumeNameRO(backupVolumeName)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return errors.Wrapf(err, "failed to get backup volume %s for volume %v", backupVolumeName, volume.Name)
 	}
