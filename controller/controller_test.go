@@ -179,6 +179,23 @@ func newEngineImage(image string, state longhorn.EngineImageState) *longhorn.Eng
 	}
 }
 
+func newOrphan(spec longhorn.OrphanSpec, status longhorn.OrphanStatus) *longhorn.Orphan {
+	return &longhorn.Orphan{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: types.GetOrphanChecksumNameForOrphanedDirectory(
+				spec.NodeID,
+				spec.Parameters[longhorn.OrphanDiskName],
+				spec.Parameters[longhorn.OrphanDiskPath],
+				spec.Parameters[longhorn.OrphanDiskUUID],
+				spec.Parameters[longhorn.OrphanDataName],
+			),
+			Namespace: TestNamespace,
+		},
+		Spec:   spec,
+		Status: status,
+	}
+}
+
 func newEngineImageDaemonSet() *appsv1.DaemonSet {
 	return &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
