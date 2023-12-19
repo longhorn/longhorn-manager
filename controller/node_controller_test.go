@@ -75,7 +75,7 @@ type NodeControllerSuite struct {
 
 // This data type contains resource that exist in the cluster environment, like
 // nodes and pods
-type TestCase struct {
+type NodeControllerFixture struct {
 	lhNodes            map[string]*longhorn.Node
 	lhReplicas         []*longhorn.Replica
 	lhSettings         map[string]*longhorn.Setting
@@ -90,7 +90,7 @@ type TestCase struct {
 // initialize the mock API with initTest, execute a function of the controller
 // and finally execute a set of assertions, which compare the actual contents of
 // the mock API to the expected results
-type Expectation struct {
+type NodeControllerExpectation struct {
 	nodeStatus       map[string]*longhorn.NodeStatus
 	instanceManagers map[string]*longhorn.InstanceManager
 	orphans          map[string]*longhorn.Orphan
@@ -122,7 +122,7 @@ func (s *NodeControllerSuite) SetUpTest(c *C) {
 func (s *NodeControllerSuite) TestManagerPodUp(c *C) {
 	var err error
 
-	tc := &TestCase{
+	fixture := &NodeControllerFixture{
 		lhNodes: map[string]*longhorn.Node{
 			TestNode1: newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
 			TestNode2: newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
@@ -163,7 +163,7 @@ func (s *NodeControllerSuite) TestManagerPodUp(c *C) {
 			),
 		},
 	}
-	expectation := &Expectation{
+	expectation := &NodeControllerExpectation{
 		nodeStatus: map[string]*longhorn.NodeStatus{
 			TestNode1: {
 				Conditions: []longhorn.Condition{
@@ -184,9 +184,9 @@ func (s *NodeControllerSuite) TestManagerPodUp(c *C) {
 		},
 	}
 
-	s.initTest(c, tc)
+	s.initTest(c, fixture)
 
-	for _, node := range tc.lhNodes {
+	for _, node := range fixture.lhNodes {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
@@ -198,16 +198,16 @@ func (s *NodeControllerSuite) TestManagerPodUp(c *C) {
 		n, err := s.lhClient.LonghornV1beta2().Nodes(TestNamespace).Get(context.TODO(), node.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
 
-		s.checkNodeConditions(c, tc, expectation, n)
+		s.checkNodeConditions(c, expectation, n)
 	}
 
-	s.checkOrphans(c, tc, expectation)
+	s.checkOrphans(c, expectation)
 }
 
 func (s *NodeControllerSuite) TestManagerPodDown(c *C) {
 	var err error
 
-	tc := &TestCase{
+	fixture := &NodeControllerFixture{
 		lhNodes: map[string]*longhorn.Node{
 			TestNode1: newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
 			TestNode2: newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
@@ -249,7 +249,7 @@ func (s *NodeControllerSuite) TestManagerPodDown(c *C) {
 		},
 	}
 
-	expectation := &Expectation{
+	expectation := &NodeControllerExpectation{
 		nodeStatus: map[string]*longhorn.NodeStatus{
 			TestNode1: {
 				Conditions: []longhorn.Condition{
@@ -270,9 +270,9 @@ func (s *NodeControllerSuite) TestManagerPodDown(c *C) {
 		},
 	}
 
-	s.initTest(c, tc)
+	s.initTest(c, fixture)
 
-	for _, node := range tc.lhNodes {
+	for _, node := range fixture.lhNodes {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
@@ -284,16 +284,16 @@ func (s *NodeControllerSuite) TestManagerPodDown(c *C) {
 		n, err := s.lhClient.LonghornV1beta2().Nodes(TestNamespace).Get(context.TODO(), node.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
 
-		s.checkNodeConditions(c, tc, expectation, n)
+		s.checkNodeConditions(c, expectation, n)
 	}
 
-	s.checkOrphans(c, tc, expectation)
+	s.checkOrphans(c, expectation)
 }
 
 func (s *NodeControllerSuite) TestKubeNodeDown(c *C) {
 	var err error
 
-	tc := &TestCase{
+	fixture := &NodeControllerFixture{
 		lhNodes: map[string]*longhorn.Node{
 			TestNode1: newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
 			TestNode2: newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
@@ -335,7 +335,7 @@ func (s *NodeControllerSuite) TestKubeNodeDown(c *C) {
 		},
 	}
 
-	expectation := &Expectation{
+	expectation := &NodeControllerExpectation{
 		nodeStatus: map[string]*longhorn.NodeStatus{
 			TestNode1: {
 				Conditions: []longhorn.Condition{
@@ -356,9 +356,9 @@ func (s *NodeControllerSuite) TestKubeNodeDown(c *C) {
 		},
 	}
 
-	s.initTest(c, tc)
+	s.initTest(c, fixture)
 
-	for _, node := range tc.lhNodes {
+	for _, node := range fixture.lhNodes {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
@@ -370,16 +370,16 @@ func (s *NodeControllerSuite) TestKubeNodeDown(c *C) {
 		n, err := s.lhClient.LonghornV1beta2().Nodes(TestNamespace).Get(context.TODO(), node.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
 
-		s.checkNodeConditions(c, tc, expectation, n)
+		s.checkNodeConditions(c, expectation, n)
 	}
 
-	s.checkOrphans(c, tc, expectation)
+	s.checkOrphans(c, expectation)
 }
 
 func (s *NodeControllerSuite) TestKubeNodePressure(c *C) {
 	var err error
 
-	tc := &TestCase{
+	fixture := &NodeControllerFixture{
 		lhNodes: map[string]*longhorn.Node{
 			TestNode1: newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
 			TestNode2: newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
@@ -421,7 +421,7 @@ func (s *NodeControllerSuite) TestKubeNodePressure(c *C) {
 		},
 	}
 
-	expectation := &Expectation{
+	expectation := &NodeControllerExpectation{
 		nodeStatus: map[string]*longhorn.NodeStatus{
 			TestNode1: {
 				Conditions: []longhorn.Condition{
@@ -442,9 +442,9 @@ func (s *NodeControllerSuite) TestKubeNodePressure(c *C) {
 		},
 	}
 
-	s.initTest(c, tc)
+	s.initTest(c, fixture)
 
-	for _, node := range tc.lhNodes {
+	for _, node := range fixture.lhNodes {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
@@ -456,10 +456,10 @@ func (s *NodeControllerSuite) TestKubeNodePressure(c *C) {
 		n, err := s.lhClient.LonghornV1beta2().Nodes(TestNamespace).Get(context.TODO(), node.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
 
-		s.checkNodeConditions(c, tc, expectation, n)
+		s.checkNodeConditions(c, expectation, n)
 	}
 
-	s.checkOrphans(c, tc, expectation)
+	s.checkOrphans(c, expectation)
 }
 
 func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
@@ -488,7 +488,7 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 	vol := newVolume(TestVolumeName, 2)
 	eng := newEngineForVolume(vol)
 
-	tc := &TestCase{
+	fixture := &NodeControllerFixture{
 		lhNodes: map[string]*longhorn.Node{
 			TestNode1: node1,
 			TestNode2: node2,
@@ -534,7 +534,7 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 		},
 	}
 
-	expectation := &Expectation{
+	expectation := &NodeControllerExpectation{
 		nodeStatus: map[string]*longhorn.NodeStatus{
 			TestNode1: {
 				Conditions: []longhorn.Condition{
@@ -550,7 +550,7 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 							newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskPressure)),
 						},
 						ScheduledReplica: map[string]int64{
-							tc.lhReplicas[0].Name: tc.lhReplicas[0].Spec.VolumeSize,
+							fixture.lhReplicas[0].Name: fixture.lhReplicas[0].Spec.VolumeSize,
 						},
 						DiskUUID: TestDiskID1,
 						Type:     longhorn.DiskTypeFilesystem,
@@ -579,9 +579,9 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 		},
 	}
 
-	s.initTest(c, tc)
+	s.initTest(c, fixture)
 
-	for _, node := range tc.lhNodes {
+	for _, node := range fixture.lhNodes {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
@@ -593,10 +593,11 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 		n, err := s.lhClient.LonghornV1beta2().Nodes(TestNamespace).Get(context.TODO(), node.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
 
-		s.checkNodeConditions(c, tc, expectation, n)
+		s.checkNodeConditions(c, expectation, n)
+		s.checkDiskConditions(c, expectation, n)
 	}
 
-	s.checkOrphans(c, tc, expectation)
+	s.checkOrphans(c, expectation)
 }
 
 func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
@@ -628,7 +629,7 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 		},
 	}
 
-	tc := &TestCase{
+	fixture := &NodeControllerFixture{
 		lhNodes: map[string]*longhorn.Node{
 			TestNode1: node1,
 			TestNode2: node2,
@@ -670,7 +671,7 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 		},
 	}
 
-	expectation := &Expectation{
+	expectation := &NodeControllerExpectation{
 		nodeStatus: map[string]*longhorn.NodeStatus{
 			TestNode1: {
 				Conditions: []longhorn.Condition{
@@ -711,9 +712,9 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 		},
 	}
 
-	s.initTest(c, tc)
+	s.initTest(c, fixture)
 
-	for _, node := range tc.lhNodes {
+	for _, node := range fixture.lhNodes {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
@@ -725,10 +726,11 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 		n, err := s.lhClient.LonghornV1beta2().Nodes(TestNamespace).Get(context.TODO(), node.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
 
-		s.checkNodeConditions(c, tc, expectation, n)
+		s.checkNodeConditions(c, expectation, n)
+		s.checkDiskConditions(c, expectation, n)
 	}
 
-	s.checkOrphans(c, tc, expectation)
+	s.checkOrphans(c, expectation)
 }
 
 func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
@@ -766,7 +768,7 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 		},
 	}
 
-	tc := &TestCase{
+	fixture := &NodeControllerFixture{
 		lhNodes: map[string]*longhorn.Node{
 			TestNode1: node1,
 			TestNode2: node2,
@@ -808,7 +810,7 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 		},
 	}
 
-	expectation := &Expectation{
+	expectation := &NodeControllerExpectation{
 		nodeStatus: map[string]*longhorn.NodeStatus{
 			TestNode1: {
 				Conditions: []longhorn.Condition{
@@ -849,9 +851,9 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 		},
 	}
 
-	s.initTest(c, tc)
+	s.initTest(c, fixture)
 
-	for _, node := range tc.lhNodes {
+	for _, node := range fixture.lhNodes {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
@@ -863,10 +865,11 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 		n, err := s.lhClient.LonghornV1beta2().Nodes(TestNamespace).Get(context.TODO(), node.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
 
-		s.checkNodeConditions(c, tc, expectation, n)
+		s.checkNodeConditions(c, expectation, n)
+		s.checkDiskConditions(c, expectation, n)
 	}
 
-	s.checkOrphans(c, tc, expectation)
+	s.checkOrphans(c, expectation)
 }
 
 func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
@@ -884,7 +887,7 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 		},
 	}
 
-	tc := &TestCase{
+	fixture := &NodeControllerFixture{
 		lhNodes: map[string]*longhorn.Node{
 			TestNode1: node1,
 		},
@@ -925,7 +928,7 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 		},
 	}
 
-	expectation := &Expectation{
+	expectation := &NodeControllerExpectation{
 		nodeStatus: map[string]*longhorn.NodeStatus{
 			TestNode1: {
 				Conditions: []longhorn.Condition{
@@ -962,9 +965,9 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 		},
 	}
 
-	s.initTest(c, tc)
+	s.initTest(c, fixture)
 
-	for _, node := range tc.lhNodes {
+	for _, node := range fixture.lhNodes {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
@@ -976,11 +979,12 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 		n, err := s.lhClient.LonghornV1beta2().Nodes(TestNamespace).Get(context.TODO(), node.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
 
-		s.checkNodeConditions(c, tc, expectation, n)
+		s.checkNodeConditions(c, expectation, n)
+		s.checkDiskConditions(c, expectation, n)
 	}
 
-	s.checkInstanceManagers(c, tc, expectation)
-	s.checkOrphans(c, tc, expectation)
+	s.checkInstanceManagers(c, expectation)
+	s.checkOrphans(c, expectation)
 }
 
 func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
@@ -1017,7 +1021,7 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 	)
 	extraInstanceManager.Spec.Image = TestExtraInstanceManagerImage
 
-	tc := &TestCase{
+	fixture := &NodeControllerFixture{
 		lhNodes: map[string]*longhorn.Node{
 			TestNode1: node1,
 		},
@@ -1059,7 +1063,7 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 		},
 	}
 
-	expectation := &Expectation{
+	expectation := &NodeControllerExpectation{
 		nodeStatus: map[string]*longhorn.NodeStatus{
 			TestNode1: {
 				Conditions: []longhorn.Condition{
@@ -1097,9 +1101,9 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 		},
 	}
 
-	s.initTest(c, tc)
+	s.initTest(c, fixture)
 
-	for _, node := range tc.lhNodes {
+	for _, node := range fixture.lhNodes {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
@@ -1111,11 +1115,12 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 		n, err := s.lhClient.LonghornV1beta2().Nodes(TestNamespace).Get(context.TODO(), node.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
 
-		s.checkNodeConditions(c, tc, expectation, n)
+		s.checkNodeConditions(c, expectation, n)
+		s.checkDiskConditions(c, expectation, n)
 	}
 
-	s.checkInstanceManagers(c, tc, expectation)
-	s.checkOrphans(c, tc, expectation)
+	s.checkInstanceManagers(c, expectation)
+	s.checkOrphans(c, expectation)
 }
 
 func (s *NodeControllerSuite) TestCleanupAllInstanceManagers(c *C) {
@@ -1125,7 +1130,7 @@ func (s *NodeControllerSuite) TestCleanupAllInstanceManagers(c *C) {
 	node1.Spec.Disks = map[string]longhorn.DiskSpec{}
 	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{}
 
-	tc := &TestCase{
+	fixture := &NodeControllerFixture{
 		lhNodes: map[string]*longhorn.Node{
 			TestNode1: node1,
 		},
@@ -1166,7 +1171,7 @@ func (s *NodeControllerSuite) TestCleanupAllInstanceManagers(c *C) {
 		},
 	}
 
-	expectation := &Expectation{
+	expectation := &NodeControllerExpectation{
 		nodeStatus: map[string]*longhorn.NodeStatus{
 			TestNode1: {
 				Conditions: []longhorn.Condition{
@@ -1188,9 +1193,9 @@ func (s *NodeControllerSuite) TestCleanupAllInstanceManagers(c *C) {
 		},
 	}
 
-	s.initTest(c, tc)
+	s.initTest(c, fixture)
 
-	for _, node := range tc.lhNodes {
+	for _, node := range fixture.lhNodes {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
@@ -1202,15 +1207,15 @@ func (s *NodeControllerSuite) TestCleanupAllInstanceManagers(c *C) {
 		n, err := s.lhClient.LonghornV1beta2().Nodes(TestNamespace).Get(context.TODO(), node.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
 
-		s.checkNodeConditions(c, tc, expectation, n)
+		s.checkNodeConditions(c, expectation, n)
 	}
 
-	s.checkInstanceManagers(c, tc, expectation)
+	s.checkInstanceManagers(c, expectation)
 }
 
 // -- Helpers --
 
-func (s *NodeControllerSuite) checkNodeConditions(c *C, tc *TestCase, exp *Expectation, node *longhorn.Node) {
+func (s *NodeControllerSuite) checkNodeConditions(c *C, expectation *NodeControllerExpectation, node *longhorn.Node) {
 	// Check that all node status conditions match the expected node status
 	// conditions - save for the last transition timestamp and the actual
 	// message
@@ -1219,10 +1224,10 @@ func (s *NodeControllerSuite) checkNodeConditions(c *C, tc *TestCase, exp *Expec
 		condition.Message = ""
 		node.Status.Conditions[idx] = condition
 	}
-	c.Assert(node.Status.Conditions, DeepEquals, exp.nodeStatus[node.Name].Conditions)
+	c.Assert(node.Status.Conditions, DeepEquals, expectation.nodeStatus[node.Name].Conditions)
 }
 
-func (s *NodeControllerSuite) checkDiskConditions(c *C, tc *TestCase, exp *Expectation, node *longhorn.Node) {
+func (s *NodeControllerSuite) checkDiskConditions(c *C, expectation *NodeControllerExpectation, node *longhorn.Node) {
 	// Check that all disk status conditions match the expected disk status
 	// conditions - save for the last transition timestamp and the actual message
 	for fsid, diskStatus := range node.Status.DiskStatus {
@@ -1236,49 +1241,49 @@ func (s *NodeControllerSuite) checkDiskConditions(c *C, tc *TestCase, exp *Expec
 		}
 		node.Status.DiskStatus[fsid] = diskStatus
 	}
-	c.Assert(node.Status.DiskStatus, DeepEquals, exp.nodeStatus[node.Name].DiskStatus)
+	c.Assert(node.Status.DiskStatus, DeepEquals, expectation.nodeStatus[node.Name].DiskStatus)
 }
 
-func (s *NodeControllerSuite) checkInstanceManagers(c *C, tc *TestCase, exp *Expectation) {
+func (s *NodeControllerSuite) checkInstanceManagers(c *C, expectation *NodeControllerExpectation) {
 	// Check that all existing instance managers are expected and all expected
 	// instance managers are existing
 	imList, err := s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).List(context.TODO(), metav1.ListOptions{})
 	c.Assert(err, IsNil)
 
 	for _, im := range imList.Items {
-		_, exists := exp.instanceManagers[im.Name]
+		_, exists := expectation.instanceManagers[im.Name]
 		c.Assert(exists, Equals, true)
 	}
 
-	for _, im := range exp.instanceManagers {
+	for _, im := range expectation.instanceManagers {
 		_, err := s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Get(context.TODO(), im.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
 	}
 }
 
-func (s *NodeControllerSuite) checkOrphans(c *C, tc *TestCase, exp *Expectation) {
+func (s *NodeControllerSuite) checkOrphans(c *C, expectation *NodeControllerExpectation) {
 	// Check that all existing orphans are expected and all expected orphans are
 	// existing
 	orphanList, err := s.lhClient.LonghornV1beta2().Orphans(TestNamespace).List(context.TODO(), metav1.ListOptions{})
 	c.Assert(err, IsNil)
 
 	for _, orphan := range orphanList.Items {
-		_, exists := exp.orphans[orphan.Name]
+		_, exists := expectation.orphans[orphan.Name]
 		c.Assert(exists, Equals, true)
 	}
 
-	for _, expect := range exp.orphans {
+	for _, expect := range expectation.orphans {
 		_, err := s.lhClient.LonghornV1beta2().Orphans(TestNamespace).Get(context.TODO(), expect.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
 	}
 }
 
-func (s *NodeControllerSuite) initTest(c *C, tc *TestCase) {
+func (s *NodeControllerSuite) initTest(c *C, fixture *NodeControllerFixture) {
 	c.Assert(s.kubeClient, NotNil)
 	c.Assert(s.lhClient, NotNil)
 	c.Assert(s.extensionsClient, NotNil)
 
-	for _, node := range tc.lhNodes {
+	for _, node := range fixture.lhNodes {
 		n, err := s.lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		c.Assert(n, NotNil)
@@ -1286,7 +1291,7 @@ func (s *NodeControllerSuite) initTest(c *C, tc *TestCase) {
 		c.Assert(err, IsNil)
 	}
 
-	for _, replica := range tc.lhReplicas {
+	for _, replica := range fixture.lhReplicas {
 		r, err := s.lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), replica, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		c.Assert(r, NotNil)
@@ -1294,7 +1299,7 @@ func (s *NodeControllerSuite) initTest(c *C, tc *TestCase) {
 		c.Assert(err, IsNil)
 	}
 
-	for _, setting := range tc.lhSettings {
+	for _, setting := range fixture.lhSettings {
 		set, err := s.lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), setting, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		c.Assert(set, NotNil)
@@ -1302,7 +1307,7 @@ func (s *NodeControllerSuite) initTest(c *C, tc *TestCase) {
 		c.Assert(err, IsNil)
 	}
 
-	for _, instanceManager := range tc.lhInstanceManagers {
+	for _, instanceManager := range fixture.lhInstanceManagers {
 		im, err := s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), instanceManager, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		c.Assert(im, NotNil)
@@ -1310,7 +1315,7 @@ func (s *NodeControllerSuite) initTest(c *C, tc *TestCase) {
 		c.Assert(err, IsNil)
 	}
 
-	for _, orphan := range tc.lhOrphans {
+	for _, orphan := range fixture.lhOrphans {
 		o, err := s.lhClient.LonghornV1beta2().Orphans(TestNamespace).Create(context.TODO(), orphan, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		c.Assert(o, NotNil)
@@ -1318,7 +1323,7 @@ func (s *NodeControllerSuite) initTest(c *C, tc *TestCase) {
 		c.Assert(err, IsNil)
 	}
 
-	for _, node := range tc.nodes {
+	for _, node := range fixture.nodes {
 		n, err := s.kubeClient.CoreV1().Nodes().Create(context.TODO(), node, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		c.Assert(n, NotNil)
@@ -1326,7 +1331,7 @@ func (s *NodeControllerSuite) initTest(c *C, tc *TestCase) {
 		c.Assert(err, IsNil)
 	}
 
-	for _, pod := range tc.pods {
+	for _, pod := range fixture.pods {
 		p, err := s.kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 		c.Assert(p, NotNil)
