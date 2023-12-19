@@ -1014,7 +1014,7 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 				}
 			}
 			if cleanupRequired {
-				log.Infof("Cleaning up the redundant instance manager %v when there is no running/starting instance", im.Name)
+				log.Infof("Cleaning up the redundant instance manager %v when there is no running/starting instance: %v", im.Name, dumpInstanceState(im.Status.Instances))
 				if err := nc.ds.DeleteInstanceManager(im.Name); err != nil {
 					return err
 				}
@@ -1564,4 +1564,12 @@ func (nc *NodeController) shouldEvictReplica(node *longhorn.Node, kubeNode *core
 	}
 
 	return false, constant.EventReasonEvictionCanceled, nil
+}
+
+func dumpInstanceState(instanceMap map[string]longhorn.InstanceProcess) map[string]string {
+	output := map[string]string{}
+	for _, instance := range instanceMap {
+		output[instance.Spec.Name] = string(instance.Status.State)
+	}
+	return output
 }

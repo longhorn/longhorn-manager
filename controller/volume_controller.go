@@ -1297,6 +1297,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 					log.WithField("replica", r.Name).WithError(err).Warnf("Failed to check if node %v is still running for failed replica", r.Spec.NodeID)
 					continue
 				} else if isDownOrDeleted {
+					log.WithField("replica", r.Name).Warnf("Node %v is NotReady or Deleted for failed replica", r.Spec.NodeID)
 					continue
 				}
 				node, err := c.ds.GetNodeRO(r.Spec.NodeID)
@@ -1313,6 +1314,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 					}
 				}
 				if !diskSchedulable {
+					log.WithField("replica", r.Name).Warnf("Disk %v is not schedulable for failed replica", r.Spec.DiskID)
 					continue
 				}
 				failedAt, err := util.ParseTime(r.Spec.FailedAt)
@@ -1921,11 +1923,13 @@ func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.E
 }
 
 func (c *VolumeController) canInstanceManagerLaunchReplica(r *longhorn.Replica) (bool, error) {
+	log := c.logger.WithField("replica", r.Name)
 	nodeDown, err := c.ds.IsNodeDownOrDeleted(r.Spec.NodeID)
 	if err != nil {
 		return false, errors.Wrapf(err, "fail to check IsNodeDownOrDeleted %v", r.Spec.NodeID)
 	}
 	if nodeDown {
+		log.Warnf("Cannot launch replica due to node %v is NotReady or Deleted", r.Spec.NodeID)
 		return false, nil
 	}
 	// Replica already had IM
@@ -4074,12 +4078,14 @@ func (c *VolumeController) IsReplicaUnavailable(r *longhorn.Replica) (bool, erro
 	if r.Spec.NodeID == "" || r.Spec.DiskID == "" || r.Spec.DiskPath == "" || r.Spec.DataDirectoryName == "" {
 		return true, nil
 	}
+	log := c.logger.WithField("replica", r.Name)
 
 	isDownOrDeleted, err := c.ds.IsNodeDownOrDeleted(r.Spec.NodeID)
 	if err != nil {
 		return true, errors.Wrapf(err, "failed  to check if node %v is still running for failed replica %v", r.Spec.NodeID, r.Name)
 	}
 	if isDownOrDeleted {
+		log.Warnf("Replica is unavailable due to Node %v is NotReady or Deleted", r.Spec.NodeID)
 		return true, nil
 	}
 
