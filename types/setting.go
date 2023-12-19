@@ -887,7 +887,7 @@ var (
 
 	SettingDefinitionGuaranteedInstanceManagerCPU = SettingDefinition{
 		DisplayName: "Guaranteed Instance Manager CPU for V1 Data Engine",
-		Description: "This integer value indicates how many percentage of the total allocatable CPU on each node will be reserved for each instance manager Pod for v1 data engine. For example, 10 means 10% of the total CPU on a node will be allocated to each instance manager pod on this node. This will help maintain engine and replica stability during high node workload. \n\n" +
+		Description: "Percentage of the total allocatable CPU resources on each node to be reserved for each instance manager pod when the V1 Data Engine is enabled. For example, 10 means 10% of the total CPU on a node will be allocated to each instance manager pod on this node. This will help maintain engine and replica stability during high node workload. \n\n" +
 			"In order to prevent unexpected volume instance (engine/replica) crash as well as guarantee a relative acceptable IO performance, you can use the following formula to calculate a value for this setting: \n\n" +
 			"`Guaranteed Instance Manager CPU = The estimated max Longhorn volume engine and replica count on a node * 0.1 / The total allocatable CPUs on the node * 100` \n\n" +
 			"The result of above calculation doesn't mean that's the maximum CPU resources the Longhorn workloads require. To fully exploit the Longhorn volume I/O performance, you can allocate/guarantee more CPU resources via this setting. \n\n" +
@@ -907,7 +907,7 @@ var (
 
 	SettingDefinitionKubernetesClusterAutoscalerEnabled = SettingDefinition{
 		DisplayName: "Kubernetes Cluster Autoscaler Enabled (Experimental)",
-		Description: "Enabling this setting will notify Longhorn that the cluster is using Kubernetes Cluster Autoscaler. \n\n" +
+		Description: "Setting that notifies Longhorn that the cluster is using the Kubernetes Cluster Autoscaler. \n\n" +
 			"Longhorn prevents data loss by only allowing the Cluster Autoscaler to scale down a node that met all conditions: \n\n" +
 			"  - No volume attached to the node \n\n" +
 			"  - Is not the last node containing the replica of any volume. \n\n" +
@@ -1149,7 +1149,7 @@ var (
 
 	SettingDefinitionV1DataEngine = SettingDefinition{
 		DisplayName: "V1 Data Engine",
-		Description: "This setting allows users to activate v1 data engine.\n\n" +
+		Description: "Setting that allows you to enable the V1 Data Engine. \n\n" +
 			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached volumes. \n\n",
 		Category: SettingCategoryGeneral,
 		Type:     SettingTypeBool,
@@ -1183,7 +1183,7 @@ var (
 
 	SettingDefinitionV2DataEngineGuaranteedInstanceManagerCPU = SettingDefinition{
 		DisplayName: "Guaranteed Instance Manager CPU for V2 Data Engine",
-		Description: "This integer value indicates how many millicpus on each node are reserved for each instance manager Pod for v2 data engine. By default, the SPDK target daemon within an instance manager Pod utilizes 1 CPU core. Ensuring a minimum CPU usage is essential for sustaining engine and replica stability, especially during periods of high node workload. \n\n" +
+		Description: "Number of millicpus on each node to be reserved for each instance manager pod when the V2 Data Engine is enabled. By default, the Storage Performance Development Kit (SPDK) target daemon within each instance manager pod uses 1 CPU core. Configuring a minimum CPU usage value is essential for maintaining engine and replica stability, especially during periods of high node workload. \n\n" +
 			"WARNING: \n\n" +
 			"  - Value 0 means unsetting CPU requests for instance manager pods for v2 data engine. \n\n" +
 			"  - This integer value is range from 1000 to 8000. \n\n" +

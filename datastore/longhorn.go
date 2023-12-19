@@ -358,12 +358,27 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			return err
 		}
 	case types.SettingNameStorageNetwork:
-		volumesDetached, err := s.AreAllVolumesDetached()
+		volumesDetached, err := s.AreAllVolumesDetached(longhorn.BackendStoreDriverTypeAll)
 		if err != nil {
 			return errors.Wrapf(err, "failed to check volume detachment for %v setting update", name)
 		}
 		if !volumesDetached {
 			return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot apply %v setting to Longhorn workloads when there are attached volumes", name)}
+		}
+	case types.SettingNameV1DataEngine:
+		old, err := s.GetSettingWithAutoFillingRO(types.SettingNameV1DataEngine)
+		if err != nil {
+			return err
+		}
+		if old.Value != value {
+			dataEngineEnabled, err := strconv.ParseBool(value)
+			if err != nil {
+				return err
+			}
+			err = s.ValidateV1DataEngineEnabled(dataEngineEnabled)
+			if err != nil {
+				return err
+			}
 		}
 	case types.SettingNameV2DataEngine:
 		old, err := s.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngine)
@@ -371,11 +386,11 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			return err
 		}
 		if old.Value != value {
-			v2DataEngineEnabled, err := strconv.ParseBool(value)
+			dataEngineEnabled, err := strconv.ParseBool(value)
 			if err != nil {
 				return err
 			}
-			err = s.ValidateV2DataEngine(v2DataEngineEnabled)
+			err = s.ValidateV2DataEngineEnabled(dataEngineEnabled)
 			if err != nil {
 				return err
 			}
@@ -400,21 +415,35 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 	return nil
 }
 
-func (s *DataStore) ValidateV2DataEngine(v2DataEngineEnabled bool) error {
-	if !v2DataEngineEnabled {
-		allV2VolumesDetached, err := s.AreAllV2VolumesDetached()
+func (s *DataStore) ValidateV1DataEngineEnabled(dataEngineEnabled bool) error {
+	if !dataEngineEnabled {
+		allVolumesDetached, err := s.AreAllVolumesDetached(longhorn.BackendStoreDriverTypeV1)
+		if err != nil {
+			return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameV1DataEngine)
+		}
+		if !allVolumesDetached {
+			return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot apply %v setting to Longhorn workloads when there are attached v1 volumes", types.SettingNameV1DataEngine)}
+		}
+	}
+
+	return nil
+}
+
+func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) error {
+	if !dataEngineEnabled {
+		allVolumesDetached, err := s.AreAllVolumesDetached(longhorn.BackendStoreDriverTypeV2)
 		if err != nil {
 			return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameV2DataEngine)
 		}
-		if !allV2VolumesDetached {
-			return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot apply %v setting to Longhorn workloads when there are attached volumes", types.SettingNameV2DataEngine)}
+		if !allVolumesDetached {
+			return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot apply %v setting to Longhorn workloads when there are attached v2 volumes", types.SettingNameV2DataEngine)}
 		}
 
-		allBlockTypeDisksRemoved, err := s.AreAllBlockTypeDisksRemoved()
+		allDisksRemoved, err := s.AreAllDisksRemovedByDiskType(longhorn.DiskTypeBlock)
 		if err != nil {
 			return errors.Wrapf(err, "failed to check block-type disk removal for %v setting update", types.SettingNameV2DataEngine)
 		}
-		if !allBlockTypeDisksRemoved {
+		if !allDisksRemoved {
 			return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot apply %v setting to Longhorn workloads when there are block-type disks", types.SettingNameV2DataEngine)}
 		}
 		return nil
@@ -441,7 +470,7 @@ func (s *DataStore) ValidateV2DataEngine(v2DataEngineEnabled bool) error {
 			continue
 		}
 
-		if v2DataEngineEnabled {
+		if dataEngineEnabled {
 			capacity, ok := node.Status.Capacity["hugepages-2Mi"]
 			if !ok {
 				return errors.Errorf("failed to get hugepages-2Mi capacity for node %v", node.Name)
@@ -469,19 +498,19 @@ func (s *DataStore) ValidateV2DataEngine(v2DataEngineEnabled bool) error {
 	return nil
 }
 
-func (s *DataStore) AreAllVolumesDetached() (bool, error) {
+func (s *DataStore) AreAllVolumesDetached(backendStoreDriver longhorn.BackendStoreDriverType) (bool, error) {
 	nodes, err := s.ListNodes()
 	if err != nil {
 		return false, err
 	}
 
 	for node := range nodes {
-		engineInstanceManagers, err := s.ListInstanceManagersBySelectorRO(node, "", longhorn.InstanceManagerTypeEngine, longhorn.BackendStoreDriverTypeV1)
+
+		engineInstanceManagers, err := s.ListInstanceManagersBySelectorRO(node, "", longhorn.InstanceManagerTypeEngine, backendStoreDriver)
 		if err != nil && !ErrorIsNotFound(err) {
 			return false, err
 		}
-
-		aioInstanceManagers, err := s.ListInstanceManagersBySelectorRO(node, "", longhorn.InstanceManagerTypeAllInOne, "")
+		aioInstanceManagers, err := s.ListInstanceManagersBySelectorRO(node, "", longhorn.InstanceManagerTypeAllInOne, backendStoreDriver)
 		if err != nil && !ErrorIsNotFound(err) {
 			return false, err
 		}
@@ -493,33 +522,10 @@ func (s *DataStore) AreAllVolumesDetached() (bool, error) {
 			}
 		}
 	}
-
 	return true, nil
 }
 
-func (s *DataStore) AreAllV2VolumesDetached() (bool, error) {
-	nodes, err := s.ListNodesRO()
-	if err != nil {
-		return false, err
-	}
-
-	for _, node := range nodes {
-		aioInstanceManagers, err := s.ListInstanceManagersBySelectorRO(node.Name, "", longhorn.InstanceManagerTypeAllInOne, longhorn.BackendStoreDriverTypeV2)
-		if err != nil && !ErrorIsNotFound(err) {
-			return false, err
-		}
-
-		for _, instanceManager := range aioInstanceManagers {
-			if len(instanceManager.Status.InstanceEngines)+len(instanceManager.Status.Instances) > 0 {
-				return false, nil
-			}
-		}
-	}
-
-	return true, nil
-}
-
-func (s *DataStore) AreAllBlockTypeDisksRemoved() (bool, error) {
+func (s *DataStore) AreAllDisksRemovedByDiskType(diskType longhorn.DiskType) (bool, error) {
 	nodes, err := s.ListNodesRO()
 	if err != nil {
 		return false, err
@@ -527,7 +533,7 @@ func (s *DataStore) AreAllBlockTypeDisksRemoved() (bool, error) {
 
 	for _, node := range nodes {
 		for _, disk := range node.Spec.Disks {
-			if disk.Type == longhorn.DiskTypeBlock {
+			if disk.Type == diskType {
 				return false, nil
 			}
 		}
@@ -1747,11 +1753,9 @@ func (s *DataStore) CheckEngineImageCompatiblityByImage(image string) error {
 // CheckEngineImageReadiness return true if the engine IMAGE is deployed on all nodes in the NODES list
 func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (isReady bool, err error) {
 	if len(nodes) == 0 {
-		logrus.Warnf("CheckEngineImageReadiness: no nodes specified")
 		return false, nil
 	}
 	if len(nodes) == 1 && nodes[0] == "" {
-		logrus.Warnf("CheckEngineImageReadiness: only one node specified and it's empty")
 		return false, nil
 	}
 	ei, err := s.GetEngineImageRO(types.GetEngineImageChecksumName(image))

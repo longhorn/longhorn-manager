@@ -432,7 +432,7 @@ func GetInstanceManagerLabels(node, imImage string, imType longhorn.InstanceMana
 	if imImage != "" {
 		labels[GetLonghornLabelKey(LonghornLabelInstanceManagerImage)] = GetInstanceManagerImageChecksumName(GetImageCanonicalName(imImage))
 	}
-	if backendStoreDriver != "" {
+	if backendStoreDriver != "" && backendStoreDriver != longhorn.BackendStoreDriverTypeAll {
 		labels[GetLonghornLabelKey(LonghornLabelBackendStoreDriver)] = string(backendStoreDriver)
 	}
 
