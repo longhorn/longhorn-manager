@@ -117,6 +117,7 @@ const (
 	SettingNameAllowEmptyNodeSelectorVolume                             = SettingName("allow-empty-node-selector-volume")
 	SettingNameAllowEmptyDiskSelectorVolume                             = SettingName("allow-empty-disk-selector-volume")
 	SettingNameDisableSnapshotPurge                                     = SettingName("disable-snapshot-purge")
+	SettingNameV1DataEngine                                             = SettingName("v1-data-engine")
 	SettingNameV2DataEngine                                             = SettingName("v2-data-engine")
 	SettingNameV2DataEngineHugepageLimit                                = SettingName("v2-data-engine-hugepage-limit")
 	SettingNameV2DataEngineGuaranteedInstanceManagerCPU                 = SettingName("v2-data-engine-guaranteed-instance-manager-cpu")
@@ -192,6 +193,7 @@ var (
 		SettingNameBackupConcurrentLimit,
 		SettingNameRestoreConcurrentLimit,
 		SettingNameLogLevel,
+		SettingNameV1DataEngine,
 		SettingNameV2DataEngine,
 		SettingNameV2DataEngineHugepageLimit,
 		SettingNameV2DataEngineGuaranteedInstanceManagerCPU,
@@ -298,6 +300,7 @@ var (
 		SettingNameBackupConcurrentLimit:                                    SettingDefinitionBackupConcurrentLimit,
 		SettingNameRestoreConcurrentLimit:                                   SettingDefinitionRestoreConcurrentLimit,
 		SettingNameLogLevel:                                                 SettingDefinitionLogLevel,
+		SettingNameV1DataEngine:                                             SettingDefinitionV1DataEngine,
 		SettingNameV2DataEngine:                                             SettingDefinitionV2DataEngine,
 		SettingNameV2DataEngineHugepageLimit:                                SettingDefinitionV2DataEngineHugepageLimit,
 		SettingNameV2DataEngineGuaranteedInstanceManagerCPU:                 SettingDefinitionV2DataEngineGuaranteedInstanceManagerCPU,
@@ -1144,6 +1147,17 @@ var (
 		},
 	}
 
+	SettingDefinitionV1DataEngine = SettingDefinition{
+		DisplayName: "V1 Data Engine",
+		Description: "This setting allows users to activate v1 data engine.\n\n" +
+			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached volumes. \n\n",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeBool,
+		Required: true,
+		ReadOnly: false,
+		Default:  "true",
+	}
+
 	SettingDefinitionV2DataEngine = SettingDefinition{
 		DisplayName: "V2 Data Engine",
 		Description: "This setting allows users to activate v2 data engine which is based on SPDK. Currently, it is in the preview phase and should not be utilized in a production environment.\n\n" +
@@ -1261,10 +1275,6 @@ const (
 	CNIAnnotationNetworksStatus = CNIAnnotation("k8s.v1.cni.cncf.io/networks-status")
 )
 
-const (
-	V2DataEngineAnnotation = "longhorn.io/v2-data-engine"
-)
-
 func ValidateSetting(name, value string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "value %v of settings %v is invalid", value, name)
@@ -1331,6 +1341,8 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameFastReplicaRebuildEnabled:
 		fallthrough
 	case SettingNameUpgradeChecker:
+		fallthrough
+	case SettingNameV1DataEngine:
 		fallthrough
 	case SettingNameV2DataEngine:
 		fallthrough
