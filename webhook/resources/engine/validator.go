@@ -10,10 +10,10 @@ import (
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
-	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	wcommon "github.com/longhorn/longhorn-manager/webhook/common"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
 )
 
@@ -55,15 +55,9 @@ func (e *engineValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInternalError(err.Error())
 	}
 
-	if datastore.IsBackendStoreDriverV2(engine.Spec.BackendStoreDriver) {
-		v2DataEngineEnabled, err := e.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
-		if err != nil {
-			err = errors.Wrapf(err, "failed to get spdk setting")
-			return werror.NewInvalidError(err.Error(), "")
-		}
-		if !v2DataEngineEnabled {
-			return werror.NewInvalidError("v2 data engine is not enabled", "")
-		}
+	err = wcommon.ValidateRequiredDataEngineEnabled(e.ds, engine.Spec.BackendStoreDriver)
+	if err != nil {
+		return err
 	}
 
 	if err := e.ds.CheckEngineImageCompatiblityByImage(engine.Spec.Image); err != nil {

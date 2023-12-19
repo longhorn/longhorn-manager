@@ -259,8 +259,8 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		if err := sc.updateLogLevel(); err != nil {
 			return err
 		}
-	case string(types.SettingNameV2DataEngine):
-		if err := sc.updateV2DataEngine(); err != nil {
+	case string(types.SettingNameV1DataEngine), string(types.SettingNameV2DataEngine):
+		if err := sc.updateDataEngine(types.SettingName(name)); err != nil {
 			return err
 		}
 	}
@@ -752,7 +752,7 @@ func (sc *SettingController) updateCNI() error {
 		return err
 	}
 
-	volumesDetached, err := sc.ds.AreAllVolumesDetached()
+	volumesDetached, err := sc.ds.AreAllVolumesDetached(longhorn.BackendStoreDriverTypeAll)
 	if err != nil {
 		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameStorageNetwork)
 	}
@@ -804,36 +804,49 @@ func (sc *SettingController) updateLogLevel() error {
 	return nil
 }
 
-func (sc *SettingController) updateV2DataEngine() error {
-	v2DataEngineEnabled, err := sc.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
+func (sc *SettingController) updateDataEngine(setting types.SettingName) error {
+	enabled, err := sc.ds.GetSettingAsBool(setting)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "failed to get %v setting for updating data engine", setting)
 	}
 
-	if err := sc.ds.ValidateV2DataEngine(v2DataEngineEnabled); err != nil {
-		return err
+	var backednStoreDriver longhorn.BackendStoreDriverType
+	switch setting {
+	case types.SettingNameV1DataEngine:
+		backednStoreDriver = longhorn.BackendStoreDriverTypeV1
+		if err := sc.ds.ValidateV1DataEngineEnabled(enabled); err != nil {
+			return err
+		}
+	case types.SettingNameV2DataEngine:
+		backednStoreDriver = longhorn.BackendStoreDriverTypeV2
+		if err := sc.ds.ValidateV2DataEngineEnabled(enabled); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unknown setting %v for updating data engine", setting)
 	}
 
-	if !v2DataEngineEnabled {
-		return sc.cleanupInstanceManagerForV2DataEngine()
+	if !enabled {
+		return sc.cleanupInstanceManager(backednStoreDriver)
 	}
 
 	return nil
 }
 
-func (sc *SettingController) cleanupInstanceManagerForV2DataEngine() error {
-	imMap, err := sc.ds.ListInstanceManagersBySelectorRO("", "", longhorn.InstanceManagerTypeAllInOne, longhorn.BackendStoreDriverTypeV2)
+func (sc *SettingController) cleanupInstanceManager(backendStoreDriver longhorn.BackendStoreDriverType) error {
+	sc.logger.Infof("Cleaning up the instance manager for %v data engine", backendStoreDriver)
+	imMap, err := sc.ds.ListInstanceManagersBySelectorRO("", "", longhorn.InstanceManagerTypeAllInOne, backendStoreDriver)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "failed to list instance managers for cleaning up %v data engine", backendStoreDriver)
 	}
 
 	for _, im := range imMap {
 		if len(im.Status.InstanceEngines) != 0 || len(im.Status.InstanceReplicas) != 0 || len(im.Status.Instances) != 0 {
-			sc.logger.Infof("Skipping cleaning up the instance manager %v for v2 data engine since there are still instances running on it", im.Name)
+			sc.logger.Infof("Skipping cleaning up the instance manager %v for %v data engine since there are still instances running on it", im.Name, backendStoreDriver)
 			continue
 		}
 
-		sc.logger.Infof("Cleaning up the instance manager %v for v2 data engine", im.Name)
+		sc.logger.Infof("Cleaning up the instance manager %v for %v data engine", im.Name, backendStoreDriver)
 		if err := sc.ds.DeleteInstanceManager(im.Name); err != nil {
 			return err
 		}
@@ -1473,6 +1486,7 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameStorageReservedPercentageForDefaultDisk:                  true,
 		types.SettingNameSupportBundleFailedHistoryLimit:                          true,
 		types.SettingNameSystemManagedPodsImagePullPolicy:                         true,
+		types.SettingNameV1DataEngine:                                             true,
 		types.SettingNameV2DataEngine:                                             true,
 		types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU:                 true,
 		types.SettingNameOfflineReplicaRebuilding:                                 true,

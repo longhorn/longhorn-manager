@@ -141,15 +141,22 @@ func (m *NodeMonitor) run(value interface{}) error {
 }
 
 func (m *NodeMonitor) getBackendStoreDrivers() []longhorn.BackendStoreDriverType {
-	backendStoreDrivers := []longhorn.BackendStoreDriverType{longhorn.BackendStoreDriverTypeV1}
+	backendStoreDrivers := []longhorn.BackendStoreDriverType{}
 
-	v2DataEngineEnabled, err := m.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
-	if err != nil {
-		m.logger.WithError(err).Errorf("Failed to get setting %v", types.SettingNameV2DataEngine)
-		return backendStoreDrivers
-	}
-	if v2DataEngineEnabled {
-		backendStoreDrivers = append(backendStoreDrivers, longhorn.BackendStoreDriverTypeV2)
+	for _, setting := range []types.SettingName{types.SettingNameV1DataEngine, types.SettingNameV2DataEngine} {
+		dataEngineEnabled, err := m.ds.GetSettingAsBool(setting)
+		if err != nil {
+			m.logger.WithError(err).Warnf("Failed to get setting %v", setting)
+			continue
+		}
+		if dataEngineEnabled {
+			switch setting {
+			case types.SettingNameV1DataEngine:
+				backendStoreDrivers = append(backendStoreDrivers, longhorn.BackendStoreDriverTypeV1)
+			case types.SettingNameV2DataEngine:
+				backendStoreDrivers = append(backendStoreDrivers, longhorn.BackendStoreDriverTypeV2)
+			}
+		}
 	}
 
 	return backendStoreDrivers

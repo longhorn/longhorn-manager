@@ -10,10 +10,10 @@ import (
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
-	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	wcommon "github.com/longhorn/longhorn-manager/webhook/common"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
 )
 
@@ -46,15 +46,10 @@ func (r *replicaValidator) Create(request *admission.Request, newObj runtime.Obj
 	if !ok {
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Replica", newObj), "")
 	}
-	if datastore.IsBackendStoreDriverV2(replica.Spec.BackendStoreDriver) {
-		v2DataEngineEnabled, err := r.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
-		if err != nil {
-			err = errors.Wrapf(err, "failed to get spdk setting")
-			return werror.NewInvalidError(err.Error(), "")
-		}
-		if !v2DataEngineEnabled {
-			return werror.NewInvalidError("v2 data engine is not enabled", "")
-		}
+
+	err := wcommon.ValidateRequiredDataEngineEnabled(r.ds, replica.Spec.BackendStoreDriver)
+	if err != nil {
+		return err
 	}
 
 	if err := r.ds.CheckEngineImageCompatiblityByImage(replica.Spec.Image); err != nil {
@@ -88,7 +83,10 @@ func (r *replicaValidator) Update(request *admission.Request, oldObj runtime.Obj
 }
 
 func (r *replicaValidator) Delete(request *admission.Request, oldObj runtime.Object) error {
-	replica := oldObj.(*longhorn.Replica)
+	replica, ok := oldObj.(*longhorn.Replica)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Replica", oldObj), "")
+	}
 
 	if err := r.validateReplicaDeletion(replica); err != nil {
 		return werror.NewInvalidError(err.Error(), "")

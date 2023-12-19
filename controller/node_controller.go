@@ -978,40 +978,38 @@ func (nc *NodeController) syncNodeStatus(pod *corev1.Pod, node *longhorn.Node) e
 func (nc *NodeController) getImTypeBackendStoreDrivers(node *longhorn.Node) map[longhorn.InstanceManagerType][]longhorn.BackendStoreDriverType {
 	log := getLoggerForNode(nc.logger, node)
 
-	// Check if v1 data engine is enabled
+	// TODO: remove InstanceManagerTypeEngine and InstanceManagerTypeReplica in the future.
 	backendStoreDrivers := map[longhorn.InstanceManagerType][]longhorn.BackendStoreDriverType{
-		longhorn.InstanceManagerTypeAllInOne: {
-			longhorn.BackendStoreDriverTypeV1,
-		},
-		longhorn.InstanceManagerTypeEngine: {
-			longhorn.BackendStoreDriverTypeV1,
-		},
+		longhorn.InstanceManagerTypeAllInOne: {},
+		longhorn.InstanceManagerTypeEngine:   {},
+		longhorn.InstanceManagerTypeReplica:  {},
 	}
-	if len(node.Spec.Disks) != 0 {
-		backendStoreDrivers[longhorn.InstanceManagerTypeReplica] = []longhorn.BackendStoreDriverType{
-			longhorn.BackendStoreDriverTypeV1,
+
+	for _, setting := range []types.SettingName{types.SettingNameV1DataEngine, types.SettingNameV2DataEngine} {
+		enabled, err := nc.ds.GetSettingAsBool(setting)
+		if err != nil {
+			log.WithError(err).Warnf("Failed to get %v setting", setting)
+			continue
+		}
+		if !enabled {
+			continue
+		}
+
+		switch setting {
+		case types.SettingNameV1DataEngine:
+			backendStoreDrivers[longhorn.InstanceManagerTypeAllInOne] = append(backendStoreDrivers[longhorn.InstanceManagerTypeAllInOne], longhorn.BackendStoreDriverTypeV1)
+			backendStoreDrivers[longhorn.InstanceManagerTypeEngine] = append(backendStoreDrivers[longhorn.InstanceManagerTypeEngine], longhorn.BackendStoreDriverTypeV1)
+			if len(node.Spec.Disks) != 0 {
+				backendStoreDrivers[longhorn.InstanceManagerTypeReplica] = append(backendStoreDrivers[longhorn.InstanceManagerTypeReplica], longhorn.BackendStoreDriverTypeV1)
+			}
+		case types.SettingNameV2DataEngine:
+			if err := nc.ds.ValidateV2DataEngineEnabled(enabled); err == nil {
+				backendStoreDrivers[longhorn.InstanceManagerTypeAllInOne] = append(backendStoreDrivers[longhorn.InstanceManagerTypeAllInOne], longhorn.BackendStoreDriverTypeV2)
+			} else {
+				log.WithError(err).Warnf("Failed to validate %v setting", types.SettingNameV2DataEngine)
+			}
 		}
 	}
-
-	// Check if v2 data engine is enabled
-	v2DataEngineEnabled, err := nc.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
-	if err != nil {
-		log.WithError(err).Warnf("Failed to get %v setting", types.SettingNameV2DataEngine)
-		return backendStoreDrivers
-	}
-
-	if !v2DataEngineEnabled {
-		return backendStoreDrivers
-	}
-
-	err = nc.ds.ValidateV2DataEngine(v2DataEngineEnabled)
-	if err != nil {
-		log.WithError(err).Warnf("Failed to validate %v setting", types.SettingNameV2DataEngine)
-		return backendStoreDrivers
-	}
-
-	backendStoreDrivers[longhorn.InstanceManagerTypeAllInOne] =
-		append(backendStoreDrivers[longhorn.InstanceManagerTypeAllInOne], longhorn.BackendStoreDriverTypeV2)
 
 	return backendStoreDrivers
 }
@@ -1060,7 +1058,7 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 			}
 			for _, im := range imMap {
 				if im.Labels[types.GetLonghornLabelKey(types.LonghornLabelNode)] != im.Spec.NodeID {
-					return fmt.Errorf("instance manager %v NodeID %v is not consistent with the label %v=%v",
+					return fmt.Errorf("instance manager %v nodeID %v is not consistent with the label %v=%v",
 						im.Name, im.Spec.NodeID, types.GetLonghornLabelKey(types.LonghornLabelNode), im.Labels[types.GetLonghornLabelKey(types.LonghornLabelNode)])
 				}
 				cleanupRequired := true

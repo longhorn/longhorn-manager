@@ -163,8 +163,9 @@ const (
 type BackendStoreDriverType string
 
 const (
-	BackendStoreDriverTypeV1 = BackendStoreDriverType("v1")
-	BackendStoreDriverTypeV2 = BackendStoreDriverType("v2")
+	BackendStoreDriverTypeV1  = BackendStoreDriverType("v1")
+	BackendStoreDriverTypeV2  = BackendStoreDriverType("v2")
+	BackendStoreDriverTypeAll = BackendStoreDriverType("all")
 )
 
 type OfflineReplicaRebuilding string

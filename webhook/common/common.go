@@ -13,6 +13,7 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	werror "github.com/longhorn/longhorn-manager/webhook/error"
 )
 
 var (
@@ -88,4 +89,22 @@ func GetLonghornLabelsPatchOp(obj runtime.Object, requiredLabels, removingLabels
 	}
 
 	return fmt.Sprintf(`{"op": "replace", "path": "/metadata/labels", "value": %v}`, string(bytes)), nil
+}
+
+func ValidateRequiredDataEngineEnabled(ds *datastore.DataStore, backendStoreDriver longhorn.BackendStoreDriverType) error {
+	dataEngineSetting := types.SettingNameV1DataEngine
+	if datastore.IsBackendStoreDriverV2(backendStoreDriver) {
+		dataEngineSetting = types.SettingNameV2DataEngine
+	}
+
+	enabled, err := ds.GetSettingAsBool(dataEngineSetting)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to get %v setting", dataEngineSetting)
+		return werror.NewInternalError(err.Error())
+	}
+	if !enabled {
+		err := fmt.Errorf("%v data engine is not enabled", dataEngineSetting)
+		return werror.NewForbiddenError(err.Error())
+	}
+	return nil
 }
