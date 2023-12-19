@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"strings"
 
 	monitor "github.com/longhorn/longhorn-manager/controller/monitor"
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -21,6 +22,10 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	. "gopkg.in/check.v1"
+)
+
+const (
+	eventRecorderBufferSize = 100
 )
 
 var (
@@ -71,6 +76,8 @@ type NodeControllerSuite struct {
 	podIndexer  cache.Indexer
 	nodeIndexer cache.Indexer
 
+	eventRecorder *record.FakeRecorder
+
 	controller *NodeController
 }
 
@@ -95,6 +102,7 @@ type NodeControllerExpectation struct {
 	nodeStatus       map[string]*longhorn.NodeStatus
 	instanceManagers map[string]*longhorn.InstanceManager
 	orphans          map[string]*longhorn.Orphan
+	events           map[string]*corev1.Event
 }
 
 var _ = Suite(&NodeControllerSuite{})
@@ -117,7 +125,9 @@ func (s *NodeControllerSuite) SetUpTest(c *C) {
 	s.podIndexer = s.informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 	s.nodeIndexer = s.informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
 
-	s.controller = newTestNodeController(s.lhClient, s.kubeClient, s.extensionsClient, s.informerFactories, TestNode1)
+	s.eventRecorder = record.NewFakeRecorder(eventRecorderBufferSize)
+
+	s.controller = newTestNodeController(s.lhClient, s.kubeClient, s.extensionsClient, s.informerFactories, s.eventRecorder, TestNode1)
 }
 
 func (s *NodeControllerSuite) TestManagerPodUp(c *C) {
@@ -1233,6 +1243,101 @@ func (s *NodeControllerSuite) TestCleanupAllInstanceManagers(c *C) {
 	s.checkInstanceManagers(c, expectation)
 }
 
+func (s *NodeControllerSuite) TestNoEventOnUnknownTrueNodeCondition(c *C) {
+	var err error
+
+	node1 := newKubernetesNode(
+		TestNode1,
+		corev1.ConditionTrue,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionTrue,
+	)
+	node1.Status.Conditions = append(node1.Status.Conditions, corev1.NodeCondition{
+		Type:    "EtcdIsVoter",
+		Status:  corev1.ConditionTrue,
+		Reason:  "MemberNotLearner",
+		Message: "Node is a voting member of the etcd cluster",
+	})
+
+	node2 := newKubernetesNode(
+		TestNode2,
+		corev1.ConditionTrue,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionTrue,
+	)
+
+	fixture := &NodeControllerFixture{
+		lhNodes: map[string]*longhorn.Node{
+			TestNode1: newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
+			TestNode2: newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
+		},
+		lhSettings: map[string]*longhorn.Setting{
+			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
+		},
+		lhInstanceManagers: map[string]*longhorn.InstanceManager{
+			TestInstanceManagerName: DefaultInstanceManagerTestNode1,
+		},
+		lhOrphans: map[string]*longhorn.Orphan{
+			DefaultOrphanTestNode1.Name: DefaultOrphanTestNode1,
+		},
+		pods: map[string]*corev1.Pod{
+			TestDaemon1: newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, &MountPropagationBidirectional),
+			TestDaemon2: newDaemonPod(corev1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, &MountPropagationBidirectional),
+		},
+		nodes: map[string]*corev1.Node{
+			TestNode1: node1,
+			TestNode2: node2,
+		},
+	}
+
+	expectation := &NodeControllerExpectation{
+		events: map[string]*corev1.Event{
+			"node1-ready": {
+				Type:    "Normal",
+				Reason:  "Ready",
+				Message: "Node test-node-name-1 is ready",
+			},
+			"node2-ready": {
+				Type:    "Normal",
+				Reason:  "Ready",
+				Message: "Node test-node-name-2 is ready",
+			},
+			"node-schedulable": {
+				Type:    "Normal",
+				Reason:  "Schedulable",
+				Message: "",
+			},
+			"": {
+				Type:    "Warning",
+				Reason:  "Schedulable",
+				Message: "the disk fsid(/var/lib/longhorn) on the node test-node-name-1 has 0 available, but requires reserved 0, minimal 25% to schedule more replicas",
+			},
+		},
+	}
+
+	s.initTest(c, fixture)
+
+	for _, node := range fixture.lhNodes {
+		if s.controller.controllerID == node.Name {
+			err = s.controller.diskMonitor.RunOnce()
+			c.Assert(err, IsNil)
+		}
+
+		err = s.controller.syncNode(getKey(node, c))
+		c.Assert(err, IsNil)
+	}
+
+	s.checkEvents(c, expectation)
+}
+
 // -- Helpers --
 
 func (s *NodeControllerSuite) checkNodeConditions(c *C, expectation *NodeControllerExpectation, node *longhorn.Node) {
@@ -1295,6 +1400,51 @@ func (s *NodeControllerSuite) checkOrphans(c *C, expectation *NodeControllerExpe
 	for _, expect := range expectation.orphans {
 		_, err := s.lhClient.LonghornV1beta2().Orphans(TestNamespace).Get(context.TODO(), expect.Name, metav1.GetOptions{})
 		c.Assert(err, IsNil)
+	}
+}
+
+func (s *NodeControllerSuite) checkEvents(c *C, expectation *NodeControllerExpectation) {
+	recordedEvents := []string{}
+
+	// extract recorded events from buffered channel into array for easier
+	// handling
+out:
+	for i := 0; i < eventRecorderBufferSize; i++ {
+		select {
+		case event, ok := <-(s.eventRecorder).Events:
+			if ok {
+				recordedEvents = append(recordedEvents, event)
+				c.Logf("recorded event: %v", event)
+			} else {
+				break out
+			}
+		default:
+			break out
+		}
+	}
+
+	// check that there have not been any unexpected events
+	for _, event := range recordedEvents {
+		match := false
+		for _, expect := range expectation.events {
+			if strings.Contains(event, expect.Type) && strings.Contains(event, expect.Reason) && strings.Contains(event, expect.Message) {
+				match = true
+				break
+			}
+		}
+		c.Assert(match, Equals, true, Commentf("unexpected event \"%v\"", event))
+	}
+
+	// check that all expected events have been emitted
+	for _, expect := range expectation.events {
+		match := false
+		for _, event := range recordedEvents {
+			if strings.Contains(event, expect.Type) && strings.Contains(event, expect.Reason) && strings.Contains(event, expect.Message) {
+				match = true
+				break
+			}
+		}
+		c.Assert(match, Equals, true, Commentf("failed to find expected event \"%v %v %v\"", expect.Type, expect.Reason, expect.Message))
 	}
 }
 
@@ -1361,13 +1511,12 @@ func (s *NodeControllerSuite) initTest(c *C, fixture *NodeControllerFixture) {
 }
 
 func newTestNodeController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
-	informerFactories *util.InformerFactories, controllerID string) *NodeController {
+	informerFactories *util.InformerFactories, eventRecorder *record.FakeRecorder, controllerID string) *NodeController {
 	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	logger := logrus.StandardLogger()
 	nc := NewNodeController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID)
-	fakeRecorder := record.NewFakeRecorder(100)
-	nc.eventRecorder = fakeRecorder
+	nc.eventRecorder = eventRecorder
 	nc.topologyLabelsChecker = fakeTopologyLabelsChecker
 
 	enqueueNodeForMonitor := func(key string) {
