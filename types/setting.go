@@ -1515,7 +1515,7 @@ func isValidChoice(choices []string, value string) bool {
 func GetCustomizedDefaultSettings(defaultSettingCM *corev1.ConfigMap) (defaultSettings map[string]string, err error) {
 	defaultSettingYAMLData := []byte(defaultSettingCM.Data[DefaultSettingYAMLFileName])
 
-	defaultSettings, err = getDefaultSettingFromYAML(defaultSettingYAMLData)
+	defaultSettings, err = GetDefaultSettingFromYAML(defaultSettingYAMLData)
 	if err != nil {
 		return nil, err
 	}
@@ -1563,7 +1563,8 @@ func GetCustomizedDefaultSettings(defaultSettingCM *corev1.ConfigMap) (defaultSe
 	return defaultSettings, nil
 }
 
-func getDefaultSettingFromYAML(defaultSettingYAMLData []byte) (map[string]string, error) {
+// GetDefaultSettingFromYAML returns a default setting map by parsing the default setting yaml data of the default setting config map
+func GetDefaultSettingFromYAML(defaultSettingYAMLData []byte) (map[string]string, error) {
 	defaultSettings := map[string]string{}
 
 	if err := yaml.Unmarshal(defaultSettingYAMLData, &defaultSettings); err != nil {

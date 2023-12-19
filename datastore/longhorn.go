@@ -198,13 +198,25 @@ func (s *DataStore) applyCustomizedDefaultSettingsToDefinitions(customizedDefaul
 func (s *DataStore) syncSettingCRsWithCustomizedDefaultSettings(customizedDefaultSettings map[string]string, defaultSettingCMResourceVersion string) error {
 	for _, sName := range types.SettingNameList {
 		configMapResourceVersion := ""
-		if s, err := s.GetSettingExactRO(sName); err != nil {
+		setting, err := s.GetSettingExactRO(sName)
+		if err != nil {
 			if !apierrors.IsNotFound(err) {
 				return err
 			}
 		} else {
-			if s.Annotations != nil {
-				configMapResourceVersion = s.Annotations[types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey)]
+			if setting.Annotations != nil {
+				configMapResourceVersion = setting.Annotations[types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey)]
+			}
+		}
+
+		if sName == types.SettingNamePriorityClass {
+			volumesDetached, err := s.AreAllVolumesDetachedState()
+			if err != nil {
+				return errors.Wrapf(err, "failed to list volumes to check if all volumes are detached")
+			}
+			if !volumesDetached {
+				logrus.Warnf("the setting %v will not be updated as one or more volumes are attached, or the setting has been customized by users", types.SettingNamePriorityClass)
+				continue
 			}
 		}
 

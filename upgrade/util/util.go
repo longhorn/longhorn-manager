@@ -299,6 +299,20 @@ func removeFirstChar(v string) string {
 	return v
 }
 
+// AreAllVolumesDetached returns true if all volumes are detached; otherwise, false.
+func AreAllVolumesDetached(namespace string, lhClient *lhclientset.Clientset) (bool, error) {
+	volumeList, err := lhClient.LonghornV1beta2().Volumes(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return false, err
+	}
+	for _, v := range volumeList.Items {
+		if v.Status.State != longhorn.VolumeStateDetached {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 // ListAndUpdateSettingsInProvidedCache list all settings and save them into the provided cached `resourceMap`. This method is not thread-safe.
 func ListAndUpdateSettingsInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*longhorn.Setting, error) {
 	if v, ok := resourceMaps[types.LonghornKindSetting]; ok {
@@ -603,6 +617,25 @@ func ListAndUpdateVolumeAttachmentsInProvidedCache(namespace string, lhClient *l
 	return volumeAttachments, nil
 }
 
+// ListAndUpdateConfigMapsInProvidedCache list all configmaps and save them into the provided cached `resourceMap`. This method is not thread-safe.
+func ListAndUpdateConfigMapsInProvidedCache(namespace string, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) (map[string]*corev1.ConfigMap, error) {
+	if cm, ok := resourceMaps[types.LonghornKindConfigMap]; ok {
+		return cm.(map[string]*corev1.ConfigMap), nil
+	}
+	configMaps := map[string]*corev1.ConfigMap{}
+	configMapList, err := kubeClient.CoreV1().ConfigMaps(namespace).List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	for i, configMap := range configMapList.Items {
+		configMaps[configMap.Name] = &configMapList.Items[i]
+	}
+
+	resourceMaps[types.LonghornKindConfigMap] = configMaps
+
+	return configMaps, nil
+}
+
 // CreateAndUpdateRecurringJobInProvidedCache creates a recurringJob and saves it into the provided cached `resourceMap`. This method is not thread-safe.
 func CreateAndUpdateRecurringJobInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, job *longhorn.RecurringJob) (*longhorn.RecurringJob, error) {
 	obj, err := lhClient.LonghornV1beta2().RecurringJobs(namespace).Create(context.TODO(), job, metav1.CreateOptions{})
@@ -644,7 +677,7 @@ func CreateAndUpdateBackingImageInProvidedCache(namespace string, lhClient *lhcl
 }
 
 // UpdateResources persists all the resources' spec changes in provided cached `resourceMap`. This method is not thread-safe.
-func UpdateResources(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) error {
+func UpdateResources(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) error {
 	var err error
 
 	for resourceKind, resourceMap := range resourceMaps {
@@ -677,6 +710,8 @@ func UpdateResources(namespace string, lhClient *lhclientset.Clientset, resource
 			err = updateSnapshots(namespace, lhClient, resourceMap.(map[string]*longhorn.Snapshot))
 		case types.LonghornKindOrphan:
 			err = updateOrphans(namespace, lhClient, resourceMap.(map[string]*longhorn.Orphan))
+		case types.LonghornKindConfigMap:
+			err = updateConfigMaps(namespace, kubeClient, resourceMap.(map[string]*corev1.ConfigMap))
 		default:
 			return fmt.Errorf("resource kind %v is not able to updated", resourceKind)
 		}
@@ -974,6 +1009,26 @@ func updateVolumeAttachments(namespace string, lhClient *lhclientset.Clientset, 
 		if !reflect.DeepEqual(existingVolumeAttachment.Spec, volumeAttachment.Spec) ||
 			!reflect.DeepEqual(existingVolumeAttachment.ObjectMeta, volumeAttachment.ObjectMeta) {
 			if _, err = lhClient.LonghornV1beta2().VolumeAttachments(namespace).Update(context.TODO(), volumeAttachment, metav1.UpdateOptions{}); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+func updateConfigMaps(namespace string, kubeClient *clientset.Clientset, configMaps map[string]*corev1.ConfigMap) error {
+	configMapList, err := kubeClient.CoreV1().ConfigMaps(namespace).List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, existingConfigMap := range configMapList.Items {
+		configMap, ok := configMaps[existingConfigMap.Name]
+		if !ok {
+			continue
+		}
+		if !reflect.DeepEqual(existingConfigMap.Data, configMap.Data) ||
+			!reflect.DeepEqual(existingConfigMap.ObjectMeta, configMap.ObjectMeta) {
+			if _, err = kubeClient.CoreV1().ConfigMaps(namespace).Update(context.TODO(), configMap, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
 		}

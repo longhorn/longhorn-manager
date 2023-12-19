@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/mod/semver"
+	"gopkg.in/yaml.v2"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/clientcmd"
@@ -237,7 +238,10 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 			return err
 		}
 	}
-	if err := upgradeutil.UpdateResources(namespace, lhClient, resourceMaps); err != nil {
+	if err := upgradeConfigMaps(namespace, lhClient, kubeClient, resourceMaps); err != nil {
+		return err
+	}
+	if err := upgradeutil.UpdateResources(namespace, lhClient, kubeClient, resourceMaps); err != nil {
 		return err
 	}
 
@@ -293,4 +297,61 @@ func isOldManagerPod(pod corev1.Pod, managerImage string) (bool, string) {
 		}
 	}
 	return false, ""
+}
+
+func upgradeConfigMaps(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "upgrade config map failed")
+	}()
+
+	existingPriorityClass, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNamePriorityClass), metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to get the existing Longhorn setting %v during the config map upgrade", types.SettingNamePriorityClass)
+	}
+	areAllVolumeDetached, err := upgradeutil.AreAllVolumesDetached(namespace, lhClient)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get all volume detached state during the config map upgrade")
+	}
+
+	configMapMap, err := upgradeutil.ListAndUpdateConfigMapsInProvidedCache(namespace, kubeClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn config maps during the config map upgrade")
+	}
+
+	for _, cm := range configMapMap {
+		if cm.Name == types.DefaultDefaultSettingConfigMapName {
+			defaultSettingYAMLData := []byte(cm.Data[types.DefaultSettingYAMLFileName])
+			defaultSettings, err := types.GetDefaultSettingFromYAML(defaultSettingYAMLData)
+			if err != nil {
+				return errors.Wrapf(err, "failed to get default setting map from YAML data during the config map upgrade")
+			}
+			_, exists := defaultSettings[string(types.SettingNamePriorityClass)]
+			if exists && (!areAllVolumeDetached || existingPriorityClass.Value != "") {
+				defaultSettings[string(types.SettingNamePriorityClass)] = existingPriorityClass.Value
+				cmData, err := yaml.Marshal(defaultSettings)
+				if err != nil {
+					return errors.Wrapf(err, "failed to get YAML data default setting map during the config map upgrade")
+				}
+				cm.Data[types.DefaultSettingYAMLFileName] = string(cmData)
+			}
+		}
+	}
+	return nil
+}
+
+func GetYAMLDataFromDefaultSetting(defaultSettingYAMLData []byte) (map[string]string, error) {
+	defaultSettings := map[string]string{}
+
+	if err := yaml.Unmarshal(defaultSettingYAMLData, &defaultSettings); err != nil {
+		logrus.WithError(err).Errorf("Failed to unmarshal customized default settings from yaml data %v, will give up using them", string(defaultSettingYAMLData))
+		defaultSettings = map[string]string{}
+	}
+
+	return defaultSettings, nil
 }
