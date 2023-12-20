@@ -916,15 +916,23 @@ func (nc *NodeController) updateDiskStatusSchedulableCondition(node *longhorn.No
 
 func (nc *NodeController) syncNodeStatus(pod *corev1.Pod, node *longhorn.Node) error {
 	// sync bidirectional mount propagation for node status to check whether the node could deploy CSI driver
-	for _, mount := range pod.Spec.Containers[0].VolumeMounts {
+	var mgrContainer *corev1.Container
+	for _, container := range pod.Spec.Containers {
+		if container.Name == types.LonghornManagerContainerName {
+			mgrContainer = &container
+			break
+		}
+	}
+	if mgrContainer == nil {
+		return fmt.Errorf("failed to find the %v container in the pod %v", types.LonghornManagerDaemonSetName, pod.Name)
+	}
+	for _, mount := range mgrContainer.VolumeMounts {
 		if mount.Name == types.LonghornSystemKey {
 			mountPropagationStr := ""
-			if mount.MountPropagation == nil {
-				mountPropagationStr = "nil"
-			} else {
+			if mount.MountPropagation != nil {
 				mountPropagationStr = string(*mount.MountPropagation)
 			}
-			if mount.MountPropagation == nil || *mount.MountPropagation != corev1.MountPropagationBidirectional {
+			if mountPropagationStr != string(corev1.MountPropagationBidirectional) {
 				node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusFalse,
 					string(longhorn.NodeConditionReasonNoMountPropagationSupport),
 					fmt.Sprintf("The MountPropagation value %s is not detected from pod %s, node %s", mountPropagationStr, pod.Name, pod.Spec.NodeName))
