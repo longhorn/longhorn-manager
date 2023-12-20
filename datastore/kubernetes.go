@@ -524,11 +524,7 @@ func (s *DataStore) ListPodsBySelectorRO(selector labels.Selector) ([]*corev1.Po
 		return nil, err
 	}
 
-	res := make([]*corev1.Pod, len(podList))
-	for idx, item := range podList {
-		res[idx] = item
-	}
-	return res, nil
+	return podList, nil
 }
 
 // ListKubeNodesRO returns a list of all Kubernetes Nodes for the given namespace,
