@@ -1173,7 +1173,7 @@ func newDaemonPod(phase corev1.PodPhase, name, namespace, nodeID, podIP string, 
 			NodeName: nodeID,
 			Containers: []corev1.Container{
 				{
-					Name:  "test-container",
+					Name:  "longhorn-manager",
 					Image: TestEngineImage,
 					VolumeMounts: []corev1.VolumeMount{
 						{

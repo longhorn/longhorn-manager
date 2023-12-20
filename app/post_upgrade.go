@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -13,6 +14,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 
 	"github.com/longhorn/longhorn-manager/types"
 )
@@ -98,19 +100,25 @@ func (u *postUpgrader) waitManagerUpgradeComplete() error {
 			continue
 		}
 
-		podList, err := u.kubeClient.CoreV1().Pods(u.namespace).List(context.TODO(), metav1.ListOptions{})
+		podList, err := u.kubeClient.CoreV1().Pods(u.namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labels.Set(types.GetManagerLabels()).String()})
 		if err != nil {
 			logrus.Warnf("failed to list pods: %v", err)
 			continue
 		}
 		complete = true
+	PodLookupLoop:
 		for _, pod := range podList.Items {
-			if app, ok := pod.Labels["app"]; !ok || app != types.LonghornManagerDaemonSetName {
-				continue
-			}
-			if len(pod.Spec.Containers) != 1 || pod.Spec.Containers[0].Image != ds.Spec.Template.Spec.Containers[0].Image {
-				complete = false
-				break
+			newImage := ds.Spec.Template.Spec.Containers[0].Image
+			if len(pod.Spec.Containers) != 1 || pod.Spec.Containers[0].Image != newImage {
+				// we should disregard linkerd service or other sidecar containers that are not created by Longhorn
+				// https://github.com/longhorn/longhorn/issues/3809
+				for _, container := range pod.Spec.Containers {
+					if !strings.HasPrefix(container.Name, "longhorn") {
+						continue
+					}
+					complete = container.Image == newImage
+					break PodLookupLoop
+				}
 			}
 		}
 		if complete {
