@@ -9,6 +9,7 @@ import (
 
 const (
 	LonghornManagerDaemonSetName = "longhorn-manager"
+	LonghornManagerContainerName = LonghornManagerDaemonSetName
 	LonghornUIDeploymentName     = "longhorn-ui"
 
 	DriverDeployerName = "longhorn-driver-deployer"
