@@ -138,6 +138,12 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		}
 	}
 
+	if volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+		if volume.Spec.Encrypted {
+			return werror.NewInvalidError("encrypted volume is not supported for backend store driver v2", "")
+		}
+	}
+
 	return nil
 }
 
