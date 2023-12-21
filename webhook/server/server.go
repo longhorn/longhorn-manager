@@ -34,11 +34,9 @@ var (
 	mutationPath   = "/v1/webhook/" + admission.AdmissionTypeMutation
 	conversionPath = "/v1/webhook/conversion"
 
-	failPolicyFail   = admissionregv1.Fail
-	failPolicyIgnore = admissionregv1.Ignore
+	failPolicyFail = admissionregv1.Fail
 
-	matchPolicyEquivalent = admissionregv1.Equivalent
-	matchPolicyExact      = admissionregv1.Exact
+	matchPolicyExact = admissionregv1.Exact
 
 	sideEffectClassNone = admissionregv1.SideEffectClassNone
 )
