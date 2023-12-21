@@ -130,19 +130,6 @@ func (rcs *ReplicaScheduler) getNodeCandidates(nodesInfo map[string]*longhorn.No
 	return nodeCandidates, nil
 }
 
-// getNodesWithEvictingReplicas returns nodes that have replicas being evicted
-func getNodesWithEvictingReplicas(replicas map[string]*longhorn.Replica, nodeInfo map[string]*longhorn.Node) map[string]*longhorn.Node {
-	nodesWithEvictingReplicas := map[string]*longhorn.Node{}
-	for _, r := range replicas {
-		if r.Spec.EvictionRequested {
-			if node, ok := nodeInfo[r.Spec.NodeID]; ok {
-				nodesWithEvictingReplicas[r.Spec.NodeID] = node
-			}
-		}
-	}
-	return nodesWithEvictingReplicas
-}
-
 func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Node, nodeDisksMap map[string]map[string]struct{}, replicas map[string]*longhorn.Replica, volume *longhorn.Volume, requireSchedulingCheck bool) (map[string]*Disk, util.MultiError) {
 	multiError := util.NewMultiError()
 
@@ -505,11 +492,7 @@ func (rcs *ReplicaScheduler) CheckAndReuseFailedReplica(replicas map[string]*lon
 		availableNodesInfo[r.Spec.NodeID] = allNodesInfo[r.Spec.NodeID]
 		availableNodeDisksMap[r.Spec.NodeID] = disks
 
-		if replicas, exists := reusableNodeReplicasMap[r.Spec.NodeID]; exists {
-			reusableNodeReplicasMap[r.Spec.NodeID] = append(replicas, r)
-		} else {
-			reusableNodeReplicasMap[r.Spec.NodeID] = []*longhorn.Replica{r}
-		}
+		reusableNodeReplicasMap[r.Spec.NodeID] = append(reusableNodeReplicasMap[r.Spec.NodeID], r)
 	}
 
 	diskCandidates, _ := rcs.getDiskCandidates(availableNodesInfo, availableNodeDisksMap, replicas, volume, false)
