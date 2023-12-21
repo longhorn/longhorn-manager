@@ -2693,7 +2693,7 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 		if v.Status.State != longhorn.VolumeStateAttached || v.Status.Robustness != longhorn.VolumeRobustnessDegraded {
 			return nil
 		}
-		// Clean up inactive replica corresponding to non-existing active replica.
+		// Clean up inactive replica which doesn't have any matching replica.
 		// This will allow volume controller to schedule and rebuild a new active replica
 		// and make the volume healthy again for the live upgrade to be able to continue.
 		// https://github.com/longhorn/longhorn/issues/7012
@@ -2708,13 +2708,13 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 		var inactiveReplicaToCleanup *longhorn.Replica
 		for _, rName := range sortedReplicaNames {
 			r := rs[rName]
-			if !r.Spec.Active && !hasMatchingActiveReplica(r, rs) {
+			if !r.Spec.Active && !hasMatchingReplica(r, rs) {
 				inactiveReplicaToCleanup = r
 				break
 			}
 		}
 		if inactiveReplicaToCleanup != nil {
-			log.Infof("Cleaning up inactive replica %v which doesn't have corresponding active replica", inactiveReplicaToCleanup.Name)
+			log.Infof("Cleaning up inactive replica %v which doesn't have any matching replica", inactiveReplicaToCleanup.Name)
 			if err := c.deleteReplica(inactiveReplicaToCleanup, rs); err != nil {
 				return errors.Wrapf(err, "failed to cleanup inactive replica %v", inactiveReplicaToCleanup.Name)
 			}
