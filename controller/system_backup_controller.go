@@ -211,7 +211,7 @@ func (c *SystemBackupController) handleErr(err error, key interface{}) {
 	c.queue.Forget(key)
 }
 
-func (c *SystemBackupController) handleStatusUpdate(record *systemBackupRecord, systemBackup *longhorn.SystemBackup, existingSystemBackup *longhorn.SystemBackup, err error, log logrus.FieldLogger) {
+func (c *SystemBackupController) handleStatusUpdate(record *systemBackupRecord, systemBackup *longhorn.SystemBackup, existingSystemBackup *longhorn.SystemBackup, log logrus.FieldLogger) {
 	switch record.recordType {
 	case systemBackupRecordTypeError:
 		c.recordErrorState(record, systemBackup)
@@ -223,10 +223,9 @@ func (c *SystemBackupController) handleStatusUpdate(record *systemBackupRecord, 
 
 	if !reflect.DeepEqual(existingSystemBackup.Status, systemBackup.Status) {
 		systemBackup.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
-		if _, err = c.ds.UpdateSystemBackupStatus(systemBackup); err != nil {
+		if _, err := c.ds.UpdateSystemBackupStatus(systemBackup); err != nil {
 			log.WithError(err).Debugf("Requeue %v due to error", systemBackup.Name)
 			c.enqueue(systemBackup)
-			err = nil
 			return
 		}
 	}
@@ -347,7 +346,7 @@ func (c *SystemBackupController) reconcile(name string, backupTargetClient engin
 
 	record := &systemBackupRecord{}
 	existingSystemBackup := systemBackup.DeepCopy()
-	defer c.handleStatusUpdate(record, systemBackup, existingSystemBackup, err, log)
+	defer c.handleStatusUpdate(record, systemBackup, existingSystemBackup, log)
 
 	if !systemBackup.DeletionTimestamp.IsZero() &&
 		systemBackup.Status.State != longhorn.SystemBackupStateDeleting {
@@ -533,7 +532,7 @@ func (c *SystemBackupController) UploadSystemBackup(systemBackup *longhorn.Syste
 			)
 		}
 
-		c.handleStatusUpdate(record, systemBackup, existingSystemBackup, recordErr, log)
+		c.handleStatusUpdate(record, systemBackup, existingSystemBackup, log)
 	}()
 
 	defaultEngineImage, err := c.ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
@@ -663,7 +662,7 @@ func (c *SystemBackupController) GenerateSystemBackup(systemBackup *longhorn.Sys
 			)
 		}
 
-		c.handleStatusUpdate(record, systemBackup, existingSystemBackup, err, log)
+		c.handleStatusUpdate(record, systemBackup, existingSystemBackup, log)
 	}()
 
 	systemBackupMeta, err := c.newSystemBackupMeta(systemBackup)
@@ -768,7 +767,7 @@ func (c *SystemBackupController) WaitForVolumeBackupToComplete(backups map[strin
 			constant.EventReasonStart, SystemBackupMsgStarting,
 		)
 
-		c.handleStatusUpdate(record, systemBackup, existingSystemBackup, err, log)
+		c.handleStatusUpdate(record, systemBackup, existingSystemBackup, log)
 	}()
 
 	startTime := time.Now()
