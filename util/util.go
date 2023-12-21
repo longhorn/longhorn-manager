@@ -692,10 +692,30 @@ func TrimFilesystem(volumeName string, encryptedDevice bool) error {
 		err = errors.Wrapf(err, "failed to trim filesystem for Volume %v", volumeName)
 	}()
 
-	procMountsPath := filepath.Join(lhtypes.HostProcDirectory, "1", "mounts")
-	content, err := lhio.ReadFileContent(procMountsPath)
+	validMountpoint, err := getValidMountPoint(volumeName, lhtypes.HostProcDirectory, encryptedDevice)
 	if err != nil {
 		return err
+	}
+
+	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceNet}
+	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	if err != nil {
+		return err
+	}
+
+	_, err = nsexec.Execute(lhtypes.BinaryFstrim, []string{validMountpoint}, lhtypes.ExecuteDefaultTimeout)
+	if err != nil {
+		return errors.Wrapf(err, "cannot find volume %v mount info on host", volumeName)
+	}
+
+	return nil
+}
+
+func getValidMountPoint(volumeName, procDir string, encryptedDevice bool) (string, error) {
+	procMountsPath := filepath.Join(procDir, "1", "mounts")
+	content, err := lhio.ReadFileContent(procMountsPath)
+	if err != nil {
+		return "", err
 	}
 
 	deviceDir := RegularDeviceDirectory
@@ -725,21 +745,10 @@ func TrimFilesystem(volumeName string, encryptedDevice bool) error {
 	}
 
 	if validMountpoint == "" {
-		return fmt.Errorf("failed to find valid mountpoint")
+		return "", fmt.Errorf("failed to find valid mountpoint")
 	}
 
-	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceNet}
-	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
-	if err != nil {
-		return err
-	}
-
-	_, err = nsexec.Execute(lhtypes.BinaryFstrim, []string{validMountpoint}, lhtypes.ExecuteDefaultTimeout)
-	if err != nil {
-		return errors.Wrapf(err, "cannot find volume %v mount info on host", volumeName)
-	}
-
-	return nil
+	return validMountpoint, nil
 }
 
 // SortKeys accepts a map with string keys and returns a sorted slice of keys
