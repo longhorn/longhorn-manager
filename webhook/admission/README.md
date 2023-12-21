@@ -11,4 +11,3 @@ logics for DELETE operations should be added carefully to prevent from the
 uninstallation failure.
 
 Reference: https://github.com/longhorn/longhorn-manager/pull/1279
-

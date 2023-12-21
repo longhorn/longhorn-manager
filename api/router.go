@@ -231,7 +231,7 @@ func NewRouter(s *Server) *mux.Router {
 
 	// TODO:
 	// We haven't found a way to allow passing the volume name as a parameter to filter
-	// per-backup volume's backups change thru. WebSocket endpoint. Either by:
+	// per-backup volume's backups change through. WebSocket endpoint. Either by:
 	// - `/v1/ws/backups/{volName}`
 	// - `/v1/ws/backups?volName=<volName>`
 	// - `/v1/ws/backupvolumes/{backupName}`
