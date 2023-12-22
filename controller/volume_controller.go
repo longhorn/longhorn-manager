@@ -1611,7 +1611,7 @@ func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longh
 		if r.Spec.NodeID != "" {
 			continue
 		}
-		if v.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
+		if isDataLocalityStrictLocal(v) {
 			if v.Spec.NodeID == "" {
 				continue
 			}
@@ -4389,7 +4389,7 @@ func (c *VolumeController) ReconcilePersistentVolume(volume *longhorn.Volume) er
 		}
 	}()
 
-	if volume.Spec.DataLocality == longhorn.DataLocalityStrictLocal && volume.Spec.NodeID != "" {
+	if isDataLocalityStrictLocal(volume) && volume.Spec.NodeID != "" {
 		pv.Spec.NodeAffinity = &corev1.VolumeNodeAffinity{
 			Required: &corev1.NodeSelector{NodeSelectorTerms: []corev1.NodeSelectorTerm{
 				util.GetNodeSelectorTermMatchExpressionNodeName(volume.Spec.NodeID),
