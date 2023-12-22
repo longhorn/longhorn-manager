@@ -4,14 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	rpc "github.com/longhorn/longhorn-instance-manager/pkg/imrpc"
 )
 
 func (c *ProxyClient) CleanupBackupMountPoints() (err error) {
-	_, err = c.service.CleanupBackupMountPoints(getContextWithGRPCTimeout(c.ctx), &empty.Empty{})
+	_, err = c.service.CleanupBackupMountPoints(getContextWithGRPCTimeout(c.ctx), &emptypb.Empty{})
 	if err != nil {
 		return err
 	}
