@@ -266,10 +266,6 @@ func getLoggerForUninstallDeployment(logger logrus.FieldLogger, name string) *lo
 	return logger.WithField("deployment", name)
 }
 
-func getLoggerForUninstallService(logger logrus.FieldLogger, name string) *logrus.Entry {
-	return logger.WithField("service", name)
-}
-
 func (c *UninstallController) uninstall() error {
 	if ready, err := c.managerReady(); err != nil {
 		return err
@@ -994,27 +990,7 @@ func (c *UninstallController) deleteDriver() (bool, error) {
 	}
 	wait := false
 	for _, name := range deploymentsToClean {
-		log := getLoggerForUninstallDeployment(c.logger, name)
-
-		if driver, err := c.ds.GetDeployment(name); err != nil {
-			if apierrors.IsNotFound(err) {
-				continue
-			}
-			log.WithError(err).Warn("Failed to get for deletion")
-			wait = true
-			continue
-		} else if driver.DeletionTimestamp == nil {
-			if err := c.ds.DeleteDeployment(name); err != nil {
-				log.Warn("Failed to mark for deletion")
-				wait = true
-				continue
-			}
-			log.Info("Marked for deletion")
-			wait = true
-			continue
-		}
-		log.Info("Already marked for deletion")
-		wait = true
+		wait, _ = c.deleteDeployment(name)
 	}
 
 	daemonSetsToClean := []string{
