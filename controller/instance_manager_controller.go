@@ -39,7 +39,6 @@ import (
 
 var (
 	mountPropagationHostToContainer = corev1.MountPropagationHostToContainer
-	mountPropagationBidirectional   = corev1.MountPropagationBidirectional
 )
 
 type InstanceManagerController struct {
