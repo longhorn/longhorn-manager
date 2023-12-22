@@ -34,7 +34,7 @@ import (
 
 var (
 	nodeControllerResyncPeriod = 30 * time.Second
-	ignoreKubeletNotReadyTime  = 10 * time.Second
+	ignoreKubeletNotReadyTime  = 15 * time.Second
 
 	unknownFsid = "UNKNOWN_FSID"
 
