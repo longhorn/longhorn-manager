@@ -478,17 +478,6 @@ func (job *Job) eventCreate(eventType, eventReason, message string) error {
 	return nil
 }
 
-func (job *Job) deleteSnapshots(names []string, volume *longhornclient.Volume, volumeAPI longhornclient.VolumeOperations) error {
-	for _, name := range names {
-		_, err := volumeAPI.ActionSnapshotDelete(volume, &longhornclient.SnapshotInput{Name: name})
-		if err != nil {
-			return err
-		}
-		job.logger.WithField("volume", volume.Name).Infof("Deleted snapshot %v", name)
-	}
-	return nil
-}
-
 func (job *Job) purgeSnapshots(volume *longhornclient.Volume, volumeAPI longhornclient.VolumeOperations) error {
 	// Trigger snapshot purge of the volume
 	if _, err := volumeAPI.ActionSnapshotPurge(volume); err != nil {
@@ -804,24 +793,6 @@ func (job *Job) GetSettingAsBool(name types.SettingName) (bool, error) {
 	}
 
 	return value, nil
-}
-
-// waitForVolumeState timeout in second
-func (job *Job) waitForVolumeState(state string, timeout int) (*longhornclient.Volume, error) {
-	volumeAPI := job.api.Volume
-	volumeName := job.volumeName
-
-	for i := 0; i < timeout; i++ {
-		volume, err := volumeAPI.ById(volumeName)
-		if err == nil {
-			if volume.State == state {
-				return volume, nil
-			}
-		}
-		time.Sleep(1 * time.Second)
-	}
-
-	return nil, fmt.Errorf("timeout waiting for volume %v to be in state %v", volumeName, state)
 }
 
 func filterSnapshotCRs(snapshotCRs []longhornclient.SnapshotCR, predicate func(snapshot longhornclient.SnapshotCR) bool) []longhornclient.SnapshotCR {
