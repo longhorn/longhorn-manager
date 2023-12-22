@@ -561,7 +561,7 @@ func (bic *BackingImageController) handleBackingImageManagers(bi *longhorn.Backi
 			if bim.DeletionTimestamp == nil && bim.Spec.Image == bic.bimImageName {
 				if uuidInManager, exists := bim.Spec.BackingImages[bi.Name]; !exists || uuidInManager != bi.Status.UUID {
 					bim.Spec.BackingImages[bi.Name] = bi.Status.UUID
-					if bim, err = bic.ds.UpdateBackingImageManager(bim); err != nil {
+					if _, err = bic.ds.UpdateBackingImageManager(bim); err != nil {
 						return err
 					}
 				}
