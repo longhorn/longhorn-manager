@@ -42,7 +42,11 @@ func (s *snapShotMutator) Resource() admission.Resource {
 }
 
 func (s *snapShotMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
-	snapshot := newObj.(*longhorn.Snapshot)
+	snapshot, ok := newObj.(*longhorn.Snapshot)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Snapshot", newObj), "")
+	}
+
 	var patchOps admission.PatchOps
 
 	var err error
@@ -84,7 +88,11 @@ func (s *snapShotMutator) Update(request *admission.Request, oldObj runtime.Obje
 
 // mutate contains functionality shared by Create and Update.
 func mutate(newObj runtime.Object) (admission.PatchOps, error) {
-	snapshot := newObj.(*longhorn.Snapshot)
+	snapshot, ok := newObj.(*longhorn.Snapshot)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Snapshot", newObj), "")
+	}
+
 	var patchOps admission.PatchOps
 
 	patchOp, err := common.GetLonghornFinalizerPatchOpIfNeeded(snapshot)

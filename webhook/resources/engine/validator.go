@@ -41,7 +41,10 @@ func (e *engineValidator) Resource() admission.Resource {
 }
 
 func (e *engineValidator) Create(request *admission.Request, newObj runtime.Object) error {
-	engine := newObj.(*longhorn.Engine)
+	engine, ok := newObj.(*longhorn.Engine)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Engine", newObj), "")
+	}
 
 	volume, err := e.ds.GetVolume(engine.Spec.VolumeName)
 	if err != nil {
@@ -67,8 +70,14 @@ func (e *engineValidator) Create(request *admission.Request, newObj runtime.Obje
 }
 
 func (e *engineValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
-	oldEngine := oldObj.(*longhorn.Engine)
-	newEngine := newObj.(*longhorn.Engine)
+	oldEngine, ok := oldObj.(*longhorn.Engine)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Engine", oldObj), "")
+	}
+	newEngine, ok := newObj.(*longhorn.Engine)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Engine", newObj), "")
+	}
 
 	if oldEngine.Spec.BackendStoreDriver != "" {
 		if oldEngine.Spec.BackendStoreDriver != newEngine.Spec.BackendStoreDriver {

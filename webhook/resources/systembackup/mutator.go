@@ -50,7 +50,11 @@ func (m *systemBackupMutator) Update(request *admission.Request, oldObj runtime.
 
 // mutate contains functionality shared by Create and Update.
 func mutate(newObj runtime.Object) (admission.PatchOps, error) {
-	systemBackup := newObj.(*longhorn.SystemBackup)
+	systemBackup, ok := newObj.(*longhorn.SystemBackup)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.SystemBackup", newObj), "")
+	}
+
 	var patchOps admission.PatchOps
 
 	patchOp, err := common.GetLonghornFinalizerPatchOpIfNeeded(systemBackup)

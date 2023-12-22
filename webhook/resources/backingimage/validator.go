@@ -42,8 +42,10 @@ func (b *backingImageValidator) Resource() admission.Resource {
 }
 
 func (b *backingImageValidator) Create(request *admission.Request, newObj runtime.Object) error {
-	backingImage := newObj.(*longhorn.BackingImage)
-
+	backingImage, ok := newObj.(*longhorn.BackingImage)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.BackingImage", newObj), "")
+	}
 	if !util.ValidateName(backingImage.Name) {
 		return werror.NewInvalidError(fmt.Sprintf("invalid name %v", backingImage.Name), "")
 	}
@@ -91,7 +93,10 @@ func (b *backingImageValidator) Create(request *admission.Request, newObj runtim
 }
 
 func (b *backingImageValidator) Delete(request *admission.Request, oldObj runtime.Object) error {
-	backingImage := oldObj.(*longhorn.BackingImage)
+	backingImage, ok := oldObj.(*longhorn.BackingImage)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.BackingImage", oldObj), "")
+	}
 
 	replicas, err := b.ds.ListReplicasByBackingImage(backingImage.Name)
 	if err != nil {

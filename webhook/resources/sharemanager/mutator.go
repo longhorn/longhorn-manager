@@ -1,6 +1,8 @@
 package sharemanager
 
 import (
+	"fmt"
+
 	"github.com/pkg/errors"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -48,7 +50,11 @@ func (s *shareManagerMutator) Update(request *admission.Request, oldObj runtime.
 
 // mutate contains functionality shared by Create and Update.
 func mutate(newObj runtime.Object) (admission.PatchOps, error) {
-	shareManager := newObj.(*longhorn.ShareManager)
+	shareManager, ok := newObj.(*longhorn.ShareManager)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.ShareManager", newObj), "")
+	}
+
 	var patchOps admission.PatchOps
 
 	patchOp, err := common.GetLonghornFinalizerPatchOpIfNeeded(shareManager)

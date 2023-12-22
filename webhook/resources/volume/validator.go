@@ -47,7 +47,10 @@ func (v *volumeValidator) Resource() admission.Resource {
 }
 
 func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Object) error {
-	volume := newObj.(*longhorn.Volume)
+	volume, ok := newObj.(*longhorn.Volume)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Volume", newObj), "")
+	}
 
 	if !util.ValidateName(volume.Name) {
 		return werror.NewInvalidError(fmt.Sprintf("invalid name %v", volume.Name), "")
@@ -148,8 +151,14 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 }
 
 func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
-	oldVolume := oldObj.(*longhorn.Volume)
-	newVolume := newObj.(*longhorn.Volume)
+	oldVolume, ok := oldObj.(*longhorn.Volume)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Volume", oldObj), "")
+	}
+	newVolume, ok := newObj.(*longhorn.Volume)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Volume", newObj), "")
+	}
 
 	if err := v.validateExpansionSize(oldVolume, newVolume); err != nil {
 		return werror.NewInvalidError(err.Error(), "")

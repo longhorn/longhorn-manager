@@ -52,7 +52,10 @@ func (n *nodeMutator) Update(request *admission.Request, oldObj runtime.Object, 
 
 // mutate contains functionality shared by Create and Update.
 func mutate(newObj runtime.Object) (admission.PatchOps, error) {
-	node := newObj.(*longhorn.Node)
+	node, ok := newObj.(*longhorn.Node)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Node", newObj), "")
+	}
 	var patchOps admission.PatchOps
 
 	if node.Spec.Tags == nil {

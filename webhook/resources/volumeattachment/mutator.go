@@ -44,7 +44,10 @@ func (m *volumeAttachmentMutator) Resource() admission.Resource {
 }
 
 func (m *volumeAttachmentMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
-	va := newObj.(*longhorn.VolumeAttachment)
+	va, ok := newObj.(*longhorn.VolumeAttachment)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.VolumeAttachment", newObj), "")
+	}
 	var patchOps admission.PatchOps
 
 	var err error
@@ -79,8 +82,15 @@ func (m *volumeAttachmentMutator) Create(request *admission.Request, newObj runt
 }
 
 func (m *volumeAttachmentMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
-	oldVa := oldObj.(*longhorn.VolumeAttachment)
-	newVa := newObj.(*longhorn.VolumeAttachment)
+	oldVa, ok := oldObj.(*longhorn.VolumeAttachment)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.VolumeAttachment", oldVa), "")
+	}
+	newVa, ok := newObj.(*longhorn.VolumeAttachment)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.VolumeAttachment", newVa), "")
+	}
+
 	var patchOps admission.PatchOps
 
 	var err error

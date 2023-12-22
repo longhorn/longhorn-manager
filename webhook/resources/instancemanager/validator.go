@@ -38,7 +38,11 @@ func (i *instanceManagerValidator) Resource() admission.Resource {
 }
 
 func (i *instanceManagerValidator) Create(request *admission.Request, newObj runtime.Object) error {
-	if err := validate(newObj.(*longhorn.InstanceManager)); err != nil {
+	im, ok := newObj.(*longhorn.InstanceManager)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.InstanceManager", newObj), "")
+	}
+	if err := validate(im); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
@@ -46,7 +50,12 @@ func (i *instanceManagerValidator) Create(request *admission.Request, newObj run
 }
 
 func (i *instanceManagerValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
-	if err := validate(newObj.(*longhorn.InstanceManager)); err != nil {
+	newIm, ok := newObj.(*longhorn.InstanceManager)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.InstanceManager", newObj), "")
+	}
+
+	if err := validate(newIm); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
 

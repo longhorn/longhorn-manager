@@ -1,6 +1,8 @@
 package supportbundle
 
 import (
+	"fmt"
+
 	"github.com/pkg/errors"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -48,7 +50,11 @@ func (m *supportBundleMutator) Update(request *admission.Request, oldObj runtime
 
 // mutate contains functionality shared by Create and Update.
 func mutate(newObj runtime.Object) (admission.PatchOps, error) {
-	supportBundle := newObj.(*longhorn.SupportBundle)
+	supportBundle, ok := newObj.(*longhorn.SupportBundle)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.SupportBundle", newObj), "")
+	}
+
 	var patchOps admission.PatchOps
 
 	patchOp, err := common.GetLonghornFinalizerPatchOpIfNeeded(supportBundle)

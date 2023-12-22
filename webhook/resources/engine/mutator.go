@@ -50,7 +50,11 @@ func (e *engineMutator) Update(request *admission.Request, oldObj runtime.Object
 
 // mutate contains functionality shared by Create and Update.
 func mutate(newObj runtime.Object) (admission.PatchOps, error) {
-	engine := newObj.(*longhorn.Engine)
+	engine, ok := newObj.(*longhorn.Engine)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Engine", newObj), "")
+	}
+
 	var patchOps admission.PatchOps
 
 	if engine.Spec.ReplicaAddressMap == nil {

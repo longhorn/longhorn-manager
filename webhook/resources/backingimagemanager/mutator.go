@@ -1,6 +1,8 @@
 package backingimagemanager
 
 import (
+	"fmt"
+
 	"github.com/pkg/errors"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -48,7 +50,11 @@ func (b *backingImageManagerMutator) Update(request *admission.Request, oldObj r
 
 // mutate contains functionality shared by Create and Update.
 func mutate(newObj runtime.Object) (admission.PatchOps, error) {
-	backingImageManager := newObj.(*longhorn.BackingImageManager)
+	backingImageManager, ok := newObj.(*longhorn.BackingImageManager)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.backingImageManager", newObj), "")
+	}
+
 	var patchOps admission.PatchOps
 
 	if backingImageManager.Spec.BackingImages == nil {
