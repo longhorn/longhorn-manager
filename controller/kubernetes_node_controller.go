@@ -266,6 +266,8 @@ func (knc *KubernetesNodeController) enqueueNode(node interface{}) {
 // This allows for the default Disk to be customized and created even if the node has been labeled after initial registration with Longhorn,
 // provided that there are no existing disks remaining on the node.
 func (knc *KubernetesNodeController) syncDefaultDisks(node *longhorn.Node) (err error) {
+	var disks map[string]longhorn.DiskSpec
+
 	requireLabel, err := knc.ds.GetSettingAsBool(types.SettingNameCreateDefaultDiskLabeledNodes)
 	if err != nil {
 		return err
@@ -287,7 +289,6 @@ func (knc *KubernetesNodeController) syncDefaultDisks(node *longhorn.Node) (err 
 	}
 	val = strings.ToLower(val)
 
-	disks := map[string]longhorn.DiskSpec{}
 	switch val {
 	case types.NodeCreateDefaultDiskLabelValueTrue:
 		dataPath, err := knc.ds.GetSettingValueExisted(types.SettingNameDefaultDataPath)
