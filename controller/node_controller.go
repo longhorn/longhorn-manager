@@ -963,18 +963,25 @@ func (nc *NodeController) syncNodeStatus(pod *corev1.Pod, node *longhorn.Node) e
 	return nil
 }
 
-func (nc *NodeController) getBackendStoreDrivers(node *longhorn.Node) map[longhorn.InstanceManagerType]map[longhorn.BackendStoreDriverType]struct{} {
+func (nc *NodeController) getImTypeBackendStoreDrivers(node *longhorn.Node) map[longhorn.InstanceManagerType][]longhorn.BackendStoreDriverType {
 	log := getLoggerForNode(nc.logger, node)
 
-	backendStoreDrivers := map[longhorn.InstanceManagerType]map[longhorn.BackendStoreDriverType]struct{}{
-		longhorn.InstanceManagerTypeEngine: {
-			longhorn.BackendStoreDriverTypeV1: {},
-		},
+	// Check if v1 data engine is enabled
+	backendStoreDrivers := map[longhorn.InstanceManagerType][]longhorn.BackendStoreDriverType{
 		longhorn.InstanceManagerTypeAllInOne: {
-			longhorn.BackendStoreDriverTypeV1: {},
+			longhorn.BackendStoreDriverTypeV1,
+		},
+		longhorn.InstanceManagerTypeEngine: {
+			longhorn.BackendStoreDriverTypeV1,
 		},
 	}
+	if len(node.Spec.Disks) != 0 {
+		backendStoreDrivers[longhorn.InstanceManagerTypeReplica] = []longhorn.BackendStoreDriverType{
+			longhorn.BackendStoreDriverTypeV1,
+		}
+	}
 
+	// Check if v2 data engine is enabled
 	v2DataEngineEnabled, err := nc.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
 	if err != nil {
 		log.WithError(err).Warnf("Failed to get %v setting", types.SettingNameV2DataEngine)
@@ -991,22 +998,10 @@ func (nc *NodeController) getBackendStoreDrivers(node *longhorn.Node) map[longho
 		return backendStoreDrivers
 	}
 
-	backendStoreDrivers[longhorn.InstanceManagerTypeAllInOne][longhorn.BackendStoreDriverTypeV2] = struct{}{}
+	backendStoreDrivers[longhorn.InstanceManagerTypeAllInOne] =
+		append(backendStoreDrivers[longhorn.InstanceManagerTypeAllInOne], longhorn.BackendStoreDriverTypeV2)
 
 	return backendStoreDrivers
-}
-
-func getSupportedInstanceManagerTypes(node *longhorn.Node) []longhorn.InstanceManagerType {
-	imTypes := []longhorn.InstanceManagerType{
-		longhorn.InstanceManagerTypeAllInOne,
-		longhorn.InstanceManagerTypeEngine,
-	}
-
-	if len(node.Spec.Disks) != 0 {
-		imTypes = append(imTypes, longhorn.InstanceManagerTypeReplica)
-	}
-
-	return imTypes
 }
 
 func (nc *NodeController) cleanupAllReplicaManagers(node *longhorn.Node) error {
@@ -1035,9 +1030,6 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 
 	log := getLoggerForNode(nc.logger, node)
 
-	imTypes := getSupportedInstanceManagerTypes(node)
-	backendStoreDrivers := nc.getBackendStoreDrivers(node)
-
 	// Clean up all replica managers if there is no disk on the node
 	if len(node.Spec.Disks) == 0 {
 		if err := nc.cleanupAllReplicaManagers(node); err != nil {
@@ -1045,8 +1037,10 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 		}
 	}
 
-	for _, imType := range imTypes {
-		for backendStoreDriver := range backendStoreDrivers[imType] {
+	imTypeBackendStoreDrivers := nc.getImTypeBackendStoreDrivers(node)
+
+	for imType, backendStoreDrivers := range imTypeBackendStoreDrivers {
+		for _, backendStoreDriver := range backendStoreDrivers {
 			defaultInstanceManagerCreated := false
 			imMap, err := nc.ds.ListInstanceManagersByNodeRO(node.Name, imType, backendStoreDriver)
 			if err != nil {
