@@ -1178,10 +1178,6 @@ func (c *SystemBackupController) generateSystemBackupYAMLsForAPIExtensions(dir s
 	return getObjectsAndPrintToYAML(dir, "customresourcedefinitions", c.ds.GetAllLonghornCustomResourceDefinitions, scheme)
 }
 
-func (c *SystemBackupController) getVolumeBackupName(systemBackupName, volumeName string) string {
-	return fmt.Sprintf("%s-%s-%s", SystemBackupControllerName, systemBackupName, volumeName)
-}
-
 type GetRuntimeObjectListFunc func() (runtime.Object, error)
 
 func getObjectsAndPrintToYAML(dir, name string, getListFunc GetRuntimeObjectListFunc, scheme *runtime.Scheme) (err error) {
