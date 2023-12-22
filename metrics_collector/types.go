@@ -26,6 +26,7 @@ const (
 	instanceManagerType  = "instance_manager_type"
 	managerLabel         = "manager"
 	backupLabel          = "backup"
+	snapshotLabel        = "snapshot"
 	pvcLabel             = "pvc"
 	pvcNamespaceLabel    = "pvc_namespace"
 	userCreatedLabel     = "user_created"
