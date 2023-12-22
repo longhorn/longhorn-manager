@@ -40,14 +40,23 @@ func (v *volumeAttachmentValidator) Resource() admission.Resource {
 }
 
 func (v *volumeAttachmentValidator) Create(request *admission.Request, newObj runtime.Object) error {
-	va := newObj.(*longhorn.VolumeAttachment)
+	va, ok := newObj.(*longhorn.VolumeAttachment)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.VolumeAttachment", newObj), "")
+	}
 
 	return verifyAttachmentTicketIDConsistency(va.Spec.AttachmentTickets)
 }
 
 func (v *volumeAttachmentValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
-	oldVA := oldObj.(*longhorn.VolumeAttachment)
-	newVA := newObj.(*longhorn.VolumeAttachment)
+	oldVA, ok := oldObj.(*longhorn.VolumeAttachment)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.VolumeAttachment", oldObj), "")
+	}
+	newVA, ok := newObj.(*longhorn.VolumeAttachment)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.VolumeAttachment", newObj), "")
+	}
 
 	if newVA.Spec.Volume != oldVA.Spec.Volume {
 		return werror.NewInvalidError("spec.volume field is immutable", "spec.volume")

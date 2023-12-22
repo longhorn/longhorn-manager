@@ -1,6 +1,8 @@
 package orphan
 
 import (
+	"fmt"
+
 	"github.com/pkg/errors"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -40,7 +42,11 @@ func (o *orphanMutator) Resource() admission.Resource {
 }
 
 func (o *orphanMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
-	orphan := newObj.(*longhorn.Orphan)
+	orphan, ok := newObj.(*longhorn.Orphan)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Orphan", newObj), "")
+	}
+
 	var patchOps admission.PatchOps
 
 	var err error
@@ -74,7 +80,11 @@ func (o *orphanMutator) Update(request *admission.Request, oldObj runtime.Object
 
 // mutate contains functionality shared by Create and Update.
 func mutate(newObj runtime.Object) (admission.PatchOps, error) {
-	orphan := newObj.(*longhorn.Orphan)
+	orphan, ok := newObj.(*longhorn.Orphan)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Orphan", newObj), "")
+	}
+
 	var patchOps admission.PatchOps
 
 	patchOp, err := common.GetLonghornFinalizerPatchOpIfNeeded(orphan)

@@ -46,7 +46,11 @@ func (b *backingImageMutator) Resource() admission.Resource {
 }
 
 func (b *backingImageMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
-	backingImage := newObj.(*longhorn.BackingImage)
+	backingImage, ok := newObj.(*longhorn.BackingImage)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.BackingImage", newObj), "")
+	}
+
 	var patchOps admission.PatchOps
 
 	var err error
@@ -99,7 +103,11 @@ func (b *backingImageMutator) Create(request *admission.Request, newObj runtime.
 }
 
 func (b *backingImageMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
-	backingImage := newObj.(*longhorn.BackingImage)
+	backingImage, ok := newObj.(*longhorn.BackingImage)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.BackingImage", newObj), "")
+	}
+
 	var patchOps admission.PatchOps
 
 	var err error

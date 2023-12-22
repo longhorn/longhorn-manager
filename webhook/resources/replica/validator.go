@@ -42,8 +42,10 @@ func (r *replicaValidator) Resource() admission.Resource {
 }
 
 func (r *replicaValidator) Create(request *admission.Request, newObj runtime.Object) error {
-	replica := newObj.(*longhorn.Replica)
-
+	replica, ok := newObj.(*longhorn.Replica)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Replica", newObj), "")
+	}
 	if datastore.IsBackendStoreDriverV2(replica.Spec.BackendStoreDriver) {
 		v2DataEngineEnabled, err := r.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
 		if err != nil {
@@ -59,9 +61,14 @@ func (r *replicaValidator) Create(request *admission.Request, newObj runtime.Obj
 }
 
 func (r *replicaValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
-	oldReplica := oldObj.(*longhorn.Replica)
-	newReplica := newObj.(*longhorn.Replica)
-
+	oldReplica, ok := oldObj.(*longhorn.Replica)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Replica", oldObj), "")
+	}
+	newReplica, ok := newObj.(*longhorn.Replica)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Replica", newObj), "")
+	}
 	if oldReplica.Spec.BackendStoreDriver != "" {
 		if oldReplica.Spec.BackendStoreDriver != newReplica.Spec.BackendStoreDriver {
 			err := fmt.Errorf("changing backend store driver for replica %v is not supported", oldReplica.Name)

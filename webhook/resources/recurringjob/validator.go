@@ -44,7 +44,10 @@ func (r *recurringJobValidator) Resource() admission.Resource {
 }
 
 func (r *recurringJobValidator) Create(request *admission.Request, newObj runtime.Object) error {
-	recurringJob := newObj.(*longhorn.RecurringJob)
+	recurringJob, ok := newObj.(*longhorn.RecurringJob)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.RecurringJob", newObj), "")
+	}
 
 	if !util.ValidateName(recurringJob.Name) {
 		return werror.NewInvalidError(fmt.Sprintf("invalid name %v", recurringJob.Name), "")
@@ -79,7 +82,10 @@ func (r *recurringJobValidator) Create(request *admission.Request, newObj runtim
 }
 
 func (r *recurringJobValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
-	newRecurringJob := newObj.(*longhorn.RecurringJob)
+	newRecurringJob, ok := newObj.(*longhorn.RecurringJob)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.RecurringJob", newObj), "")
+	}
 
 	maxRecurringJobRetain, err := r.ds.GetSettingAsInt(types.SettingNameRecurringJobMaxRetention)
 	if err != nil {

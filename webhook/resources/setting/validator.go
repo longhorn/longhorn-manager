@@ -44,7 +44,10 @@ func (v *settingValidator) Create(request *admission.Request, newObj runtime.Obj
 }
 
 func (v *settingValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
-	setting := newObj.(*longhorn.Setting)
+	setting, ok := newObj.(*longhorn.Setting)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Setting", newObj), "")
+	}
 
 	settingDef, isExist := types.GetSettingDefinition(types.SettingName(setting.Name))
 	if !isExist {
@@ -61,7 +64,11 @@ func (v *settingValidator) Update(request *admission.Request, oldObj runtime.Obj
 }
 
 func (v *settingValidator) Delete(request *admission.Request, oldObj runtime.Object) error {
-	setting := oldObj.(*longhorn.Setting)
+	setting, ok := oldObj.(*longhorn.Setting)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Setting", oldObj), "")
+	}
+
 	if _, ok := types.GetSettingDefinition(types.SettingName(setting.Name)); ok {
 		return werror.NewInvalidError(fmt.Sprintf("setting %s can be modified but not deleted", setting.Name),
 			"metadata.name")
@@ -71,7 +78,10 @@ func (v *settingValidator) Delete(request *admission.Request, oldObj runtime.Obj
 }
 
 func (v *settingValidator) validateSetting(newObj runtime.Object) error {
-	setting := newObj.(*longhorn.Setting)
+	setting, ok := newObj.(*longhorn.Setting)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Setting", newObj), "")
+	}
 
 	err := v.ds.ValidateSetting(setting.Name, setting.Value)
 	if err == nil {

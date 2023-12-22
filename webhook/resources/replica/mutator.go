@@ -50,7 +50,11 @@ func (e *replicaMutator) Update(request *admission.Request, oldObj runtime.Objec
 
 // mutate contains functionality shared by Create and Update.
 func mutate(newObj runtime.Object) (admission.PatchOps, error) {
-	replica := newObj.(*longhorn.Replica)
+	replica, ok := newObj.(*longhorn.Replica)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Replica", newObj), "")
+	}
+
 	var patchOps admission.PatchOps
 
 	labels := replica.Labels

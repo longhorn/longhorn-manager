@@ -38,7 +38,10 @@ func (o *orphanValidator) Resource() admission.Resource {
 }
 
 func (o *orphanValidator) Create(request *admission.Request, newObj runtime.Object) error {
-	orphan := newObj.(*longhorn.Orphan)
+	orphan, ok := newObj.(*longhorn.Orphan)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Orphan", newObj), "")
+	}
 
 	var err error
 	switch {
@@ -55,7 +58,10 @@ func (o *orphanValidator) Create(request *admission.Request, newObj runtime.Obje
 }
 
 func (o *orphanValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
-	newOrphan := newObj.(*longhorn.Orphan)
+	newOrphan, ok := newObj.(*longhorn.Orphan)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Orphan", newObj), "")
+	}
 
 	if err := checkOrphanParameters(newOrphan); err != nil {
 		return werror.NewInvalidError(err.Error(), "")

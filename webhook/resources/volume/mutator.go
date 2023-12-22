@@ -47,7 +47,10 @@ func (v *volumeMutator) Resource() admission.Resource {
 }
 
 func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
-	volume := newObj.(*longhorn.Volume)
+	volume, ok := newObj.(*longhorn.Volume)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Volume", newObj), "")
+	}
 	var patchOps admission.PatchOps
 
 	name := util.AutoCorrectName(volume.Name, datastore.NameMaximumLength)
@@ -223,7 +226,10 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 }
 
 func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
-	volume := newObj.(*longhorn.Volume)
+	volume, ok := newObj.(*longhorn.Volume)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Volume", newObj), "")
+	}
 	var patchOps admission.PatchOps
 
 	if volume.Spec.AccessMode == "" {

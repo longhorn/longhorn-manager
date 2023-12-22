@@ -43,7 +43,10 @@ func (o *snapshotValidator) Resource() admission.Resource {
 }
 
 func (o *snapshotValidator) Create(request *admission.Request, newObj runtime.Object) error {
-	snapshot := newObj.(*longhorn.Snapshot)
+	snapshot, ok := newObj.(*longhorn.Snapshot)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Snapshot", newObj), "")
+	}
 
 	if err := util.VerifySnapshotLabels(snapshot.Labels); err != nil {
 		return werror.NewInvalidError(err.Error(), "")

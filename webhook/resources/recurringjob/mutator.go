@@ -12,6 +12,7 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
+	werror "github.com/longhorn/longhorn-manager/webhook/error"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -40,7 +41,11 @@ func (r *recurringJobMutator) Resource() admission.Resource {
 }
 
 func (r *recurringJobMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
-	recurringjob := newObj.(*longhorn.RecurringJob)
+	recurringjob, ok := newObj.(*longhorn.RecurringJob)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.RecurringJob", newObj), "")
+	}
+
 	var patchOps admission.PatchOps
 
 	name := util.AutoCorrectName(recurringjob.Name, datastore.NameMaximumLength)
@@ -80,7 +85,10 @@ func (r *recurringJobMutator) Create(request *admission.Request, newObj runtime.
 }
 
 func (r *recurringJobMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
-	newRecurringjob := newObj.(*longhorn.RecurringJob)
+	newRecurringjob, ok := newObj.(*longhorn.RecurringJob)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.RecurringJob", newObj), "")
+	}
 	var patchOps admission.PatchOps
 
 	if newRecurringjob.Spec.Name == "" {

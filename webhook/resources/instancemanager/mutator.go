@@ -41,7 +41,10 @@ func (i *instanceManagerMutator) Resource() admission.Resource {
 }
 
 func (i *instanceManagerMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
-	im := newObj.(*longhorn.InstanceManager)
+	im, ok := newObj.(*longhorn.InstanceManager)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.InstanceManager", newObj), "")
+	}
 
 	patchOps := mutate(im)
 
@@ -75,7 +78,12 @@ func (i *instanceManagerMutator) Create(request *admission.Request, newObj runti
 }
 
 func (i *instanceManagerMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
-	patchOps := mutate(newObj.(*longhorn.InstanceManager))
+	newIm, ok := newObj.(*longhorn.InstanceManager)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.InstanceManager", newObj), "")
+	}
+
+	patchOps := mutate(newIm)
 
 	return patchOps, nil
 }

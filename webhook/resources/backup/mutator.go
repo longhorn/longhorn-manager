@@ -43,7 +43,11 @@ func (b *backupMutator) Resource() admission.Resource {
 }
 
 func (b *backupMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
-	backup := newObj.(*longhorn.Backup)
+	backup, ok := newObj.(*longhorn.Backup)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Backup", newObj), "")
+	}
+
 	var patchOps admission.PatchOps
 
 	var err error
@@ -86,7 +90,10 @@ func (b *backupMutator) Update(request *admission.Request, oldObj runtime.Object
 
 // mutate contains functionality shared by Create and Update.
 func mutate(newObj runtime.Object) (admission.PatchOps, error) {
-	backup := newObj.(*longhorn.Backup)
+	backup, ok := newObj.(*longhorn.Backup)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Backup", newObj), "")
+	}
 	var patchOps admission.PatchOps
 
 	if backup.Spec.Labels == nil {

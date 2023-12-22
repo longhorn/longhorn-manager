@@ -43,7 +43,11 @@ func (e *engineImageMutator) Resource() admission.Resource {
 }
 
 func (e *engineImageMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
-	engineImage := newObj.(*longhorn.EngineImage)
+	engineImage, ok := newObj.(*longhorn.EngineImage)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.EngineImage", newObj), "")
+	}
+
 	var patchOps admission.PatchOps
 
 	var err error
@@ -78,7 +82,11 @@ func (e *engineImageMutator) Update(request *admission.Request, oldObj runtime.O
 
 // mutate contains functionality shared by Create and Update.
 func mutate(newObj runtime.Object) (admission.PatchOps, error) {
-	engineImage := newObj.(*longhorn.EngineImage)
+	engineImage, ok := newObj.(*longhorn.EngineImage)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.EngineImage", newObj), "")
+	}
+
 	var patchOps admission.PatchOps
 
 	patchOp, err := common.GetLonghornFinalizerPatchOpIfNeeded(engineImage)

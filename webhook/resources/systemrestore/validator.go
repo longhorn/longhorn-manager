@@ -37,6 +37,11 @@ func (v *systemRestoreValidator) Resource() admission.Resource {
 }
 
 func (v *systemRestoreValidator) Create(request *admission.Request, newObj runtime.Object) error {
+	systemRestore, ok := newObj.(*longhorn.SystemRestore)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.SystemRestore", newObj), "")
+	}
+
 	areAllVolumesDetached, err := v.ds.AreAllVolumesDetached()
 	if err != nil {
 		return werror.NewInvalidError(err.Error(), "")
@@ -56,7 +61,6 @@ func (v *systemRestoreValidator) Create(request *admission.Request, newObj runti
 		return werror.NewInvalidError(fmt.Sprintf("found %v SystemRestore in progress", count), "")
 	}
 
-	systemRestore := newObj.(*longhorn.SystemRestore)
 	_, err = v.ds.GetSystemBackupRO(systemRestore.Spec.SystemBackup)
 	if err != nil {
 		return werror.NewInvalidError(err.Error(), "")

@@ -44,7 +44,11 @@ func (n *nodeValidator) Resource() admission.Resource {
 }
 
 func (n *nodeValidator) Create(request *admission.Request, newObj runtime.Object) error {
-	node := newObj.(*longhorn.Node)
+	node, ok := newObj.(*longhorn.Node)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Node", newObj), "")
+	}
+
 	if node.Spec.InstanceManagerCPURequest < 0 {
 		return werror.NewInvalidError("instanceManagerCPURequest should be greater than or equal to 0", "")
 	}
@@ -73,8 +77,14 @@ func (n *nodeValidator) Create(request *admission.Request, newObj runtime.Object
 }
 
 func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
-	oldNode := oldObj.(*longhorn.Node)
-	newNode := newObj.(*longhorn.Node)
+	oldNode, ok := oldObj.(*longhorn.Node)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Node", oldObj), "")
+	}
+	newNode, ok := newObj.(*longhorn.Node)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Node", newObj), "")
+	}
 
 	if newNode.Spec.InstanceManagerCPURequest < 0 {
 		return werror.NewInvalidError("instanceManagerCPURequest should be greater than or equal to 0", "")

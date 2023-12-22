@@ -50,9 +50,12 @@ func (b *backingImageDataSourceMutator) Update(request *admission.Request, oldOb
 
 // mutate contains functionality shared by Create and Update.
 func mutate(newObj runtime.Object) (admission.PatchOps, error) {
-	var patchOps admission.PatchOps
+	backingImageDataSource, ok := newObj.(*longhorn.BackingImageDataSource)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.BackingImageDataSource", newObj), "")
+	}
 
-	backingImageDataSource := newObj.(*longhorn.BackingImageDataSource)
+	var patchOps admission.PatchOps
 
 	if backingImageDataSource.Spec.SourceType == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/sourceType", "value": "%s"}`, longhorn.BackingImageDataSourceTypeDownload))
