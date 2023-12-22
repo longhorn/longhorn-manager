@@ -28,7 +28,7 @@ func NewSnapshotCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemSnapshot, "actual_size_bytes"),
 			"Actual size of this snapshot",
-			[]string{volumeLabel, userCreatedLabel},
+			[]string{snapshotLabel, volumeLabel, userCreatedLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -75,6 +75,6 @@ func (c *SnapshotCollector) Collect(ch chan<- prometheus.Metric) {
 			isUserCreated = "true"
 		}
 
-		ch <- prometheus.MustNewConstMetric(c.sizeMetric.Desc, c.sizeMetric.Type, float64(snapshot.Status.Size), volume.Name, isUserCreated)
+		ch <- prometheus.MustNewConstMetric(c.sizeMetric.Desc, c.sizeMetric.Type, float64(snapshot.Status.Size), snapshot.Name, volume.Name, isUserCreated)
 	}
 }
