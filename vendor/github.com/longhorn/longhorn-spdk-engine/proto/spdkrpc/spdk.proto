@@ -2,6 +2,8 @@ syntax="proto3";
 
 package spdkrpc;
 
+option go_package = "github.com/longhorn/longhorn-spdk-engine/proto/spdkrpc";
+
 import "google/protobuf/empty.proto";
 
 service SPDKService {
@@ -59,6 +61,7 @@ message Replica {
     map<string, Lvol> snapshots = 10;
     bool rebuilding = 11;
     string state = 12;
+    string error_msg = 13;
 }
 
 message ReplicaCreateRequest {
@@ -131,6 +134,7 @@ message Engine {
     string frontend = 9;
     string endpoint = 10;
     string state = 11;
+    string error_msg = 12;
 }
 
 message EngineCreateRequest {

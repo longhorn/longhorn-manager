@@ -5,9 +5,9 @@ import (
 	"crypto/tls"
 	"fmt"
 
-	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/longhorn/longhorn-instance-manager/pkg/api"
 	rpc "github.com/longhorn/longhorn-instance-manager/pkg/imrpc"
@@ -217,7 +217,7 @@ func (c *InstanceServiceClient) InstanceList() (map[string]*api.Instance, error)
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
 	defer cancel()
 
-	instances, err := client.InstanceList(ctx, &empty.Empty{})
+	instances, err := client.InstanceList(ctx, &emptypb.Empty{})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list instances")
 	}
@@ -248,7 +248,7 @@ func (c *InstanceServiceClient) InstanceLog(ctx context.Context, backendStoreDri
 
 func (c *InstanceServiceClient) InstanceWatch(ctx context.Context) (*api.InstanceStream, error) {
 	client := c.getControllerServiceClient()
-	stream, err := client.InstanceWatch(ctx, &empty.Empty{})
+	stream, err := client.InstanceWatch(ctx, &emptypb.Empty{})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to open instance update stream")
 	}
@@ -299,7 +299,7 @@ func (c *InstanceServiceClient) VersionGet() (*meta.VersionOutput, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
 	defer cancel()
 
-	resp, err := client.VersionGet(ctx, &empty.Empty{})
+	resp, err := client.VersionGet(ctx, &emptypb.Empty{})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get version")
 	}

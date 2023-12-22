@@ -12,6 +12,12 @@ const (
 	ProcessStateStopped  = "stopped"
 	ProcessStateStopping = "stopping"
 	ProcessStateError    = "error"
+
+	DiskGrpcService           = "disk gRPC server"
+	SpdkGrpcService           = "spdk gRPC server"
+	ProcessManagerGrpcService = "process-manager gRPC server"
+	InstanceGrpcService       = "instance gRPC server"
+	ProxyGRPCService          = "proxy gRPC server"
 )
 
 var (
