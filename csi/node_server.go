@@ -621,7 +621,7 @@ func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 		}
 		return &csi.NodeGetVolumeStatsResponse{
 			Usage: []*csi.VolumeUsage{
-				&csi.VolumeUsage{
+				{
 					Total: volCapacity,
 					Unit:  csi.VolumeUsage_BYTES,
 				},
@@ -641,13 +641,13 @@ func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 
 	return &csi.NodeGetVolumeStatsResponse{
 		Usage: []*csi.VolumeUsage{
-			&csi.VolumeUsage{
+			{
 				Available: stats.availableBytes,
 				Total:     stats.totalBytes,
 				Used:      stats.usedBytes,
 				Unit:      csi.VolumeUsage_BYTES,
 			},
-			&csi.VolumeUsage{
+			{
 				Available: stats.availableInodes,
 				Total:     stats.totalInodes,
 				Used:      stats.usedInodes,
@@ -740,6 +740,9 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 
 		return devicePath, nil
 	}()
+	if err != nil {
+		return nil, err
+	}
 
 	resizer := mount.NewResizeFs(utilexec.New())
 	if needsResize, err := resizer.NeedResize(devicePath, req.StagingTargetPath); err != nil {
