@@ -38,7 +38,7 @@ import (
 
 const (
 	nodeControllerResyncPeriod = 30 * time.Second
-	ignoreKubeletNotReadyTime  = 10 * time.Second
+	ignoreKubeletNotReadyTime  = 15 * time.Second
 
 	unknownDiskID = "UNKNOWN_DISKID"
 
