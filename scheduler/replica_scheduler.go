@@ -401,22 +401,29 @@ func (rcs *ReplicaScheduler) getNodeInfo() (map[string]*longhorn.Node, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	scheduledNode := map[string]*longhorn.Node{}
 
 	for _, node := range nodeInfo {
-		// First check node ready condition
-		nodeReadyCondition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
-		// Get Schedulable condition
-		nodeSchedulableCondition :=
-			types.GetCondition(node.Status.Conditions,
-				longhorn.NodeConditionTypeSchedulable)
-		if node != nil && node.DeletionTimestamp == nil &&
-			nodeReadyCondition.Status == longhorn.ConditionStatusTrue &&
-			nodeSchedulableCondition.Status == longhorn.ConditionStatusTrue &&
-			node.Spec.AllowScheduling {
-			scheduledNode[node.Name] = node
+		if node == nil || node.DeletionTimestamp != nil {
+			continue
 		}
+
+		nodeReadyCondition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
+		nodeSchedulableCondition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeSchedulable)
+
+		if nodeReadyCondition.Status != longhorn.ConditionStatusTrue {
+			continue
+		}
+		if nodeSchedulableCondition.Status != longhorn.ConditionStatusTrue {
+			continue
+		}
+		if !node.Spec.AllowScheduling {
+			continue
+		}
+		scheduledNode[node.Name] = node
 	}
+
 	return scheduledNode, nil
 }
 
@@ -493,8 +500,8 @@ func (rcs *ReplicaScheduler) CheckAndReuseFailedReplica(replicas map[string]*lon
 		availableNodesInfo[r.Spec.NodeID] = allNodesInfo[r.Spec.NodeID]
 		availableNodeDisksMap[r.Spec.NodeID] = disks
 
-		if _, exists := reusableNodeReplicasMap[r.Spec.NodeID]; exists {
-			reusableNodeReplicasMap[r.Spec.NodeID] = append(reusableNodeReplicasMap[r.Spec.NodeID], r)
+		if replicas, exists := reusableNodeReplicasMap[r.Spec.NodeID]; exists {
+			reusableNodeReplicasMap[r.Spec.NodeID] = append(replicas, r)
 		} else {
 			reusableNodeReplicasMap[r.Spec.NodeID] = []*longhorn.Replica{r}
 		}

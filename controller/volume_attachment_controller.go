@@ -313,7 +313,6 @@ func (vac *VolumeAttachmentController) reconcile(vaName string) (err error) {
 				return
 			}
 		}
-		return
 	}()
 
 	// Note that in this controller the desire state is recorded in VA.Spec
@@ -843,9 +842,9 @@ func (vac *VolumeAttachmentController) updateStatusForDesiredAttachingAttachment
 func verifyAttachmentParameters(parameters map[string]string, vol *longhorn.Volume) bool {
 	disableFrontendString, ok := parameters["disableFrontend"]
 	if !ok || disableFrontendString == longhorn.FalseValue {
-		return vol.Spec.DisableFrontend == false
+		return !vol.Spec.DisableFrontend
 	} else if disableFrontendString == longhorn.TrueValue {
-		return vol.Spec.DisableFrontend == true
+		return vol.Spec.DisableFrontend
 	}
 	return true
 }
