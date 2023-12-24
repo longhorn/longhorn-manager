@@ -966,11 +966,18 @@ func UnmarshalToNodeTags(s string) ([]string, error) {
 func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[string]longhorn.DiskSpec, error) {
 	fileInfo, err := os.Stat(dataPath)
 	if err != nil {
-		return nil, err
+		if !os.IsNotExist(err) {
+			return nil, errors.Wrapf(err, "failed to stat %v for creating default disk", dataPath)
+		}
+
+		// Longhorn is unable to create block-type disk automatically
+		if strings.HasPrefix(dataPath, "/dev/") {
+			return nil, errors.Wrapf(err, "creating default block-type disk %v is not supported", dataPath)
+		}
 	}
 
-	// block-type disk
-	if (fileInfo.Mode() & os.ModeDevice) == os.ModeDevice {
+	// Block-type disk
+	if fileInfo != nil && (fileInfo.Mode()&os.ModeDevice) == os.ModeDevice {
 		return map[string]longhorn.DiskSpec{
 			DefaultDiskPrefix + util.RandomID(): {
 				Type:              longhorn.DiskTypeBlock,
@@ -983,14 +990,16 @@ func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[st
 		}, nil
 	}
 
-	// filesystem-type disk
+	// Currently, we create a filesystem-type disk for any disk path except for that in /dev/
 	if _, err := lhns.CreateDirectory(filepath.Join(dataPath, util.ReplicaDirectory), time.Now()); err != nil {
-		return nil, errors.Wrapf(err, "failed to create replica subdirectory %v", dataPath)
+		return nil, errors.Wrapf(err, "failed to create filesystem-type disk %v", dataPath)
 	}
+
 	diskStat, err := lhns.GetDiskStat(dataPath)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to get disk stat for creating default disk %v", dataPath)
 	}
+
 	return map[string]longhorn.DiskSpec{
 		DefaultDiskPrefix + diskStat.DiskID: {
 			Type:              longhorn.DiskTypeFilesystem,
