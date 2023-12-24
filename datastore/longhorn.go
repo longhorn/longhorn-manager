@@ -1735,19 +1735,26 @@ func (s *DataStore) ListEngineImages() (map[string]*longhorn.EngineImage, error)
 
 // CheckEngineImageReadiness return true if the engine IMAGE is deployed on all nodes in the NODES list
 func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (isReady bool, err error) {
-	if len(nodes) == 0 || (len(nodes) == 1 && nodes[0] == "") {
+	if len(nodes) == 0 {
+		logrus.Warnf("CheckEngineImageReadiness: no nodes specified")
+		return false, nil
+	}
+	if len(nodes) == 1 && nodes[0] == "" {
+		logrus.Warnf("CheckEngineImageReadiness: only one node specified and it's empty")
 		return false, nil
 	}
 	ei, err := s.GetEngineImageRO(types.GetEngineImageChecksumName(image))
 	if err != nil {
-		return false, fmt.Errorf("unable to get engine image %v: %v", image, err)
+		return false, errors.Wrapf(err, "failed to get engine image %v", image)
 	}
-	if ei.Status.State != longhorn.EngineImageStateDeployed && ei.Status.State != longhorn.EngineImageStateDeploying {
+	if ei.Status.State != longhorn.EngineImageStateDeployed &&
+		ei.Status.State != longhorn.EngineImageStateDeploying {
+		logrus.Warnf("CheckEngineImageReadiness: engine image %v is in state %v", image, ei.Status.State)
 		return false, nil
 	}
 	nodesHaveEngineImage, err := s.ListNodesContainingEngineImageRO(ei)
 	if err != nil {
-		return false, errors.Wrapf(err, "failed CheckEngineImageReadiness for nodes %v", nodes)
+		return false, errors.Wrapf(err, "failed to list nodes containing engine image %v", image)
 	}
 	undeployedNodes := []string{}
 	for _, node := range nodes {
@@ -1785,7 +1792,7 @@ func (s *DataStore) CheckImageReadyOnAtLeastOneVolumeReplica(image, volumeName, 
 
 	replicas, err := s.ListVolumeReplicas(volumeName)
 	if err != nil {
-		return false, errors.Wrapf(err, "cannot get replicas for volume %v", volumeName)
+		return false, errors.Wrapf(err, "failed to get replicas for volume %v", volumeName)
 	}
 
 	hasScheduledReplica := false
@@ -1808,7 +1815,7 @@ func (s *DataStore) CheckImageReadyOnAtLeastOneVolumeReplica(image, volumeName, 
 func (s *DataStore) CheckImageReadyOnAllVolumeReplicas(image, volumeName, nodeID string, backendStoreDriver longhorn.BackendStoreDriverType) (bool, error) {
 	replicas, err := s.ListVolumeReplicas(volumeName)
 	if err != nil {
-		return false, fmt.Errorf("cannot get replicas for volume %v: %w", volumeName, err)
+		return false, errors.Wrapf(err, "failed to get replicas for volume %v", volumeName)
 	}
 	nodes := []string{}
 	if nodeID != "" {
@@ -2591,7 +2598,7 @@ func (s *DataStore) ListReadyAndSchedulableNodesRO() (map[string]*longhorn.Node,
 func (s *DataStore) ListReadyNodesContainingEngineImageRO(image string) (map[string]*longhorn.Node, error) {
 	ei, err := s.GetEngineImageRO(types.GetEngineImageChecksumName(image))
 	if err != nil {
-		return nil, fmt.Errorf("unable to get engine image %v: %v", image, err)
+		return nil, errors.Wrapf(err, "failed to get engine image %v", image)
 	}
 	if ei.Status.State != longhorn.EngineImageStateDeployed && ei.Status.State != longhorn.EngineImageStateDeploying {
 		return map[string]*longhorn.Node{}, nil
@@ -3344,7 +3351,7 @@ func verifyCreation(name, kind string, getMethod func(name string) (runtime.Obje
 		time.Sleep(VerificationRetryInterval)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("unable to verify the existence of newly created %s %s: %v", kind, name, err)
+		return nil, errors.Wrapf(err, "failed to verify the existence of newly created %s %s", kind, name)
 	}
 	return ret, nil
 }
