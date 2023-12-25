@@ -9,7 +9,7 @@ type Schemas struct {
 	Collection
 	Data          []Schema `json:"data,omitempty"`
 	schemasByName map[string]*Schema
-
+	// test comment
 	unusedField string
 }
 
