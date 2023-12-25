@@ -11,6 +11,8 @@ type Schemas struct {
 	schemasByName map[string]*Schema
 	// test comment
 	unusedField string
+
+	unusedField2 string
 }
 
 func (s *Schema) CheckField(name string) (Field, bool) {
