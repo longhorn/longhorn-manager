@@ -141,9 +141,13 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		}
 	}
 
-	if volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
+	// TODO: remove this check when we support the following features for SPDK volumes
+	if datastore.IsBackendStoreDriverV2(volume.Spec.BackendStoreDriver) {
 		if volume.Spec.Encrypted {
 			return werror.NewInvalidError("encrypted volume is not supported for backend store driver v2", "")
+		}
+		if volume.Spec.BackingImage != "" {
+			return werror.NewInvalidError("backing image is not supported for backend store driver v2", "")
 		}
 	}
 
