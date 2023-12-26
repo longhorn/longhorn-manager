@@ -2088,22 +2088,22 @@ func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineIm
 		}
 	}
 
-	preferredOwnerEngineAvailable, err := ec.ds.CheckImageReadiness(e.Status.CurrentImage, e.Spec.BackendStoreDriver, e.Spec.NodeID)
+	preferredOwnerDataEngineAvailable, err := ec.ds.CheckDataEngineImageReadiness(e.Status.CurrentImage, e.Spec.BackendStoreDriver, e.Spec.NodeID)
 	if err != nil {
 		return false, err
 	}
-	currentOwnerEngineAvailable, err := ec.ds.CheckImageReadiness(e.Status.CurrentImage, e.Spec.BackendStoreDriver, e.Status.OwnerID)
+	currentOwnerDataEngineAvailable, err := ec.ds.CheckDataEngineImageReadiness(e.Status.CurrentImage, e.Spec.BackendStoreDriver, e.Status.OwnerID)
 	if err != nil {
 		return false, err
 	}
-	currentNodeEngineAvailable, err := ec.ds.CheckImageReadiness(e.Status.CurrentImage, e.Spec.BackendStoreDriver, ec.controllerID)
+	currentNodeDataEngineAvailable, err := ec.ds.CheckDataEngineImageReadiness(e.Status.CurrentImage, e.Spec.BackendStoreDriver, ec.controllerID)
 	if err != nil {
 		return false, err
 	}
 
-	isPreferredOwner := currentNodeEngineAvailable && isResponsible
-	continueToBeOwner := currentNodeEngineAvailable && !preferredOwnerEngineAvailable && ec.controllerID == e.Status.OwnerID
-	requiresNewOwner := currentNodeEngineAvailable && !preferredOwnerEngineAvailable && !currentOwnerEngineAvailable
+	isPreferredOwner := currentNodeDataEngineAvailable && isResponsible
+	continueToBeOwner := currentNodeDataEngineAvailable && !preferredOwnerDataEngineAvailable && ec.controllerID == e.Status.OwnerID
+	requiresNewOwner := currentNodeDataEngineAvailable && !preferredOwnerDataEngineAvailable && !currentOwnerDataEngineAvailable
 
 	return isPreferredOwner || continueToBeOwner || requiresNewOwner, nil
 }

@@ -1787,7 +1787,7 @@ func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (is
 	return true, nil
 }
 
-func (s *DataStore) CheckImageReadiness(image string, backendStoreDriver longhorn.BackendStoreDriverType, nodes ...string) (isReady bool, err error) {
+func (s *DataStore) CheckDataEngineImageReadiness(image string, backendStoreDriver longhorn.BackendStoreDriverType, nodes ...string) (isReady bool, err error) {
 	if IsBackendStoreDriverV2(backendStoreDriver) {
 		return true, nil
 	}
@@ -1796,7 +1796,7 @@ func (s *DataStore) CheckImageReadiness(image string, backendStoreDriver longhor
 
 // CheckImageReadyOnAtLeastOneVolumeReplica checks if the IMAGE is deployed on the NODEID and on at least one of the the volume's replicas
 func (s *DataStore) CheckImageReadyOnAtLeastOneVolumeReplica(image, volumeName, nodeID string, dataLocality longhorn.DataLocality, backendStoreDriver longhorn.BackendStoreDriverType) (bool, error) {
-	isReady, err := s.CheckImageReadiness(image, backendStoreDriver, nodeID)
+	isReady, err := s.CheckDataEngineImageReadiness(image, backendStoreDriver, nodeID)
 	if err != nil {
 		return false, errors.Wrapf(err, "failed to check image readiness of node %v", nodeID)
 	}
@@ -1812,7 +1812,7 @@ func (s *DataStore) CheckImageReadyOnAtLeastOneVolumeReplica(image, volumeName, 
 
 	hasScheduledReplica := false
 	for _, r := range replicas {
-		isReady, err := s.CheckImageReadiness(image, r.Spec.BackendStoreDriver, r.Spec.NodeID)
+		isReady, err := s.CheckDataEngineImageReadiness(image, r.Spec.BackendStoreDriver, r.Spec.NodeID)
 		if err != nil || isReady {
 			return isReady, err
 		}
@@ -1841,7 +1841,7 @@ func (s *DataStore) CheckImageReadyOnAllVolumeReplicas(image, volumeName, nodeID
 			nodes = append(nodes, r.Spec.NodeID)
 		}
 	}
-	return s.CheckImageReadiness(image, backendStoreDriver, nodes...)
+	return s.CheckDataEngineImageReadiness(image, backendStoreDriver, nodes...)
 }
 
 // CreateBackingImage creates a Longhorn BackingImage resource and verifies
