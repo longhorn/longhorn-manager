@@ -69,6 +69,12 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceM
 			v.Spec.Image = v.Spec.EngineImage
 			v.Spec.EngineImage = ""
 		}
+
+		if v.Spec.BackendStoreDriver == "" {
+			v.Spec.DataEngine = longhorn.DataEngineTypeV1
+		} else {
+			v.Spec.DataEngine = longhorn.DataEngineType(v.Spec.BackendStoreDriver)
+		}
 	}
 
 	return nil
@@ -118,6 +124,12 @@ func upgradeEngines(namespace string, lhClient *lhclientset.Clientset, resourceM
 			e.Spec.Image = e.Spec.EngineImage
 			e.Spec.EngineImage = ""
 		}
+
+		if e.Spec.BackendStoreDriver == "" {
+			e.Spec.DataEngine = longhorn.DataEngineTypeV1
+		} else {
+			e.Spec.DataEngine = longhorn.DataEngineType(e.Spec.BackendStoreDriver)
+		}
 	}
 
 	return nil
@@ -140,6 +152,12 @@ func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset, resource
 		if r.Spec.Image == "" {
 			r.Spec.Image = r.Spec.EngineImage
 			r.Spec.EngineImage = ""
+		}
+
+		if r.Spec.BackendStoreDriver == "" {
+			r.Spec.DataEngine = longhorn.DataEngineTypeV1
+		} else {
+			r.Spec.DataEngine = longhorn.DataEngineType(r.Spec.BackendStoreDriver)
 		}
 
 		r.Spec.EvictionRequested = r.Status.EvictionRequested
