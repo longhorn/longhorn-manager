@@ -118,7 +118,7 @@ func (rcs *ReplicaScheduler) getNodeCandidates(nodesInfo map[string]*longhorn.No
 
 	nodeCandidates = map[string]*longhorn.Node{}
 	for _, node := range nodesInfo {
-		if isReady, _ := rcs.ds.CheckImageReadiness(schedulingReplica.Spec.Image, schedulingReplica.Spec.BackendStoreDriver, node.Name); isReady {
+		if isReady, _ := rcs.ds.CheckDataEngineImageReadiness(schedulingReplica.Spec.Image, schedulingReplica.Spec.BackendStoreDriver, node.Name); isReady {
 			nodeCandidates[node.Name] = node
 		}
 	}
@@ -603,7 +603,7 @@ func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *lon
 		return false, nil
 	}
 
-	if isReady, _ := rcs.ds.CheckImageReadiness(r.Spec.Image, r.Spec.BackendStoreDriver, r.Spec.NodeID); !isReady {
+	if isReady, _ := rcs.ds.CheckDataEngineImageReadiness(r.Spec.Image, r.Spec.BackendStoreDriver, r.Spec.NodeID); !isReady {
 		return false, nil
 	}
 

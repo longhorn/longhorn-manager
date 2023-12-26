@@ -2334,11 +2334,9 @@ func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume,
 			continue
 		}
 
-		if datastore.IsBackendStoreDriverV1(v.Spec.BackendStoreDriver) {
-			if isReady, _ := c.ds.CheckEngineImageReadiness(ei.Spec.Image, nodeName); !isReady {
-				log.Warnf("Failed to use node %v, engine image is not ready", nodeName)
-				continue
-			}
+		if isReady, _ := c.ds.CheckDataEngineImageReadiness(ei.Spec.Image, v.Spec.BackendStoreDriver, nodeName); !isReady {
+			log.Warnf("Failed to use node %v, image %v is not ready", nodeName, ei.Spec.Image)
+			continue
 		}
 
 		unusedZone[node.Status.Zone] = append(unusedZone[node.Status.Zone], nodeName)
@@ -2477,12 +2475,10 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 			continue
 		}
 
-		if datastore.IsBackendStoreDriverV1(v.Spec.BackendStoreDriver) {
-			if isReady, _ := c.ds.CheckEngineImageReadiness(ei.Spec.Image, node.Name); !isReady {
-				log.Warnf("Failed to use node %v, engine image is not ready", nodeName)
-				delete(readyNodes, nodeName)
-				continue
-			}
+		if isReady, _ := c.ds.CheckDataEngineImageReadiness(ei.Spec.Image, v.Spec.BackendStoreDriver, node.Name); !isReady {
+			log.Warnf("Failed to use node %v, image %v is not ready", nodeName, ei.Spec.Image)
+			delete(readyNodes, nodeName)
+			continue
 		}
 	}
 	if len(nodeExtraRs) == len(readyNodes) {
@@ -2608,12 +2604,10 @@ func (c *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volum
 			continue
 		}
 
-		if datastore.IsBackendStoreDriverV1(v.Spec.BackendStoreDriver) {
-			if isReady, _ := c.ds.CheckEngineImageReadiness(ei.Spec.Image, nName); !isReady {
-				// cannot use node, engine image is not ready
-				delete(readyNodes, nName)
-				continue
-			}
+		if isReady, _ := c.ds.CheckDataEngineImageReadiness(ei.Spec.Image, v.Spec.BackendStoreDriver, nName); !isReady {
+			// cannot use node, engine image is not ready
+			delete(readyNodes, nName)
+			continue
 		}
 
 		for _, r := range rs {
@@ -3979,22 +3973,22 @@ func (c *VolumeController) isResponsibleFor(v *longhorn.Volume, defaultEngineIma
 		}
 	}
 
-	preferredOwnerEngineAvailable, err := c.ds.CheckEngineImageReadiness(defaultEngineImage, v.Spec.NodeID)
+	preferredOwnerDataEngineAvailable, err := c.ds.CheckDataEngineImageReadiness(defaultEngineImage, v.Spec.BackendStoreDriver, v.Spec.NodeID)
 	if err != nil {
 		return false, err
 	}
-	currentOwnerEngineAvailable, err := c.ds.CheckEngineImageReadiness(defaultEngineImage, v.Status.OwnerID)
+	currentOwnerDataEngineAvailable, err := c.ds.CheckDataEngineImageReadiness(defaultEngineImage, v.Spec.BackendStoreDriver, v.Status.OwnerID)
 	if err != nil {
 		return false, err
 	}
-	currentNodeEngineAvailable, err := c.ds.CheckEngineImageReadiness(defaultEngineImage, c.controllerID)
+	currentNodeDataEngineAvailable, err := c.ds.CheckDataEngineImageReadiness(defaultEngineImage, v.Spec.BackendStoreDriver, c.controllerID)
 	if err != nil {
 		return false, err
 	}
 
-	isPreferredOwner := currentNodeEngineAvailable && isResponsible
-	continueToBeOwner := currentNodeEngineAvailable && !preferredOwnerEngineAvailable && c.controllerID == v.Status.OwnerID
-	requiresNewOwner := currentNodeEngineAvailable && !preferredOwnerEngineAvailable && !currentOwnerEngineAvailable
+	isPreferredOwner := currentNodeDataEngineAvailable && isResponsible
+	continueToBeOwner := currentNodeDataEngineAvailable && !preferredOwnerDataEngineAvailable && c.controllerID == v.Status.OwnerID
+	requiresNewOwner := currentNodeDataEngineAvailable && !preferredOwnerDataEngineAvailable && !currentOwnerDataEngineAvailable
 
 	return isPreferredOwner || continueToBeOwner || requiresNewOwner, nil
 }
