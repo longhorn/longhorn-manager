@@ -636,6 +636,32 @@ func (s *DataStore) ListSettings() (map[types.SettingName]*longhorn.Setting, err
 	return itemMap, nil
 }
 
+func (s *DataStore) GetAutoBalancedReplicasSetting(volume *longhorn.Volume) (longhorn.ReplicaAutoBalance, error) {
+	var setting longhorn.ReplicaAutoBalance
+
+	volumeSetting := volume.Spec.ReplicaAutoBalance
+	if volumeSetting != longhorn.ReplicaAutoBalanceIgnored {
+		setting = volumeSetting
+	}
+
+	var err error
+	if setting == "" {
+		globalSetting, _ := s.GetSettingValueExisted(types.SettingNameReplicaAutoBalance)
+
+		if globalSetting == string(longhorn.ReplicaAutoBalanceIgnored) {
+			globalSetting = string(longhorn.ReplicaAutoBalanceDisabled)
+		}
+
+		setting = longhorn.ReplicaAutoBalance(globalSetting)
+	}
+
+	err = types.ValidateReplicaAutoBalance(longhorn.ReplicaAutoBalance(setting))
+	if err != nil {
+		setting = longhorn.ReplicaAutoBalanceDisabled
+	}
+	return setting, errors.Wrapf(err, "replica auto-balance is disabled")
+}
+
 // GetCredentialFromSecret gets the Secret of the given name and namespace
 // Returns a new credential object or error
 func (s *DataStore) GetCredentialFromSecret(secretName string) (map[string]string, error) {

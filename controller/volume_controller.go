@@ -1160,16 +1160,17 @@ func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *lo
 		if err != nil {
 			return false, err
 		}
+
 		log.Infof("Found replica deletion candidates %v", rNames)
 	} else {
 		log.Infof("Found replica deletion candidates %v with best-effort", rNames)
 	}
 
-	// Randomly delete extra non-local healthy replicas in the preferred candidate list rNames
-	// Sometime cleanupExtraHealthyReplicas() is called more than once with the same input (v,e,rs).
-	// To make the deleting operation idempotent and prevent deleting more replica than needed,
-	// we always delete the replica with the smallest name.
-	sort.Strings(rNames)
+	rNames, err = c.getSortedReplicasByStorageAvailable(rNames, rs)
+	if err != nil {
+		return false, err
+	}
+
 	r := rs[rNames[0]]
 	log.Infof("Deleting replica %v", r.Name)
 	if err := c.deleteReplica(r, rs); err != nil {
@@ -1204,6 +1205,7 @@ func (c *VolumeController) cleanupDataLocalityReplicas(v *longhorn.Volume, e *lo
 	return false, nil
 }
 
+// TODO: remove this method and replace with GetAutoBalancedReplicasSetting() in datastore
 func (c *VolumeController) getAutoBalancedReplicasSetting(v *longhorn.Volume) (longhorn.ReplicaAutoBalance, error) {
 	var setting longhorn.ReplicaAutoBalance
 
@@ -2114,6 +2116,64 @@ func (c *VolumeController) getPreferredReplicaCandidatesForDeletion(rs map[strin
 	return deletionCandidates, nil
 }
 
+// getSortedReplicasByStorageAvailable retrieves a sorted list of replica names
+// based on the storage available of the disk the replica is located.
+// If any error occurs, the function wraps the error with additional information
+// and returns it.
+func (c *VolumeController) getSortedReplicasByStorageAvailable(replicaCandidates []string, replicas map[string]*longhorn.Replica) ([]string, error) {
+	var err error
+	defer func() {
+		if err != nil {
+			err = errors.Wrap(err, "failed to get replica with the least disk storage available")
+		}
+	}()
+
+	nodeList, err := c.ds.ListNodesRO()
+	if err != nil {
+		return nil, err
+	}
+
+	// Build a map for quick lookup of nodes
+	nodeMap := make(map[string]*longhorn.Node, len(nodeList))
+	for _, node := range nodeList {
+		nodeMap[node.Name] = node
+	}
+
+	// Build a map of replicas by storage available
+	replicaMapByStorage := make(map[string][]string)
+	for _, replicaName := range replicaCandidates {
+		replica := replicas[replicaName]
+		if replica.Spec.NodeID == "" {
+			continue
+		}
+
+		node := nodeMap[replica.Spec.NodeID]
+		for _, diskStatus := range node.Status.DiskStatus {
+			if diskStatus.DiskUUID != replica.Spec.DiskID {
+				continue
+			}
+
+			storageAvailable := fmt.Sprintf("%d", diskStatus.StorageAvailable)
+			replicaMapByStorage[storageAvailable] = append(replicaMapByStorage[storageAvailable], replica.Name)
+		}
+	}
+
+	// Sort the available storages
+	availableStorages, err := util.SortKeys(replicaMapByStorage)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build the final sorted list of replicas by storage available
+	var sortedReplicas []string
+	for _, storage := range availableStorages {
+		sortedReplicas = append(sortedReplicas, sort.StringSlice(replicaMapByStorage[storage])...)
+	}
+
+	c.logger.Debugf("Replicas sorted by storage available: %v", sortedReplicas)
+	return sortedReplicas, nil
+}
+
 func findValueWithBiggestLength(m map[string][]string) []string {
 	targetKey, currentMax := "", 0
 	for k, v := range m {
@@ -2323,10 +2383,12 @@ func (c *VolumeController) getReplicaCountForAutoBalanceBestEffort(v *longhorn.V
 		return 0, nil, []string{}
 	}
 
+	adjustCount := 0
+
 	var unusedCount int
 	unusedCount, extraRNames, err := fnCount(v, e, rs)
 	if unusedCount == 0 && len(extraRNames) <= 1 {
-		return 0, nil, []string{}
+		extraRNames = nil
 	}
 
 	var mostExtraRList []string
@@ -2349,12 +2411,158 @@ func (c *VolumeController) getReplicaCountForAutoBalanceBestEffort(v *longhorn.V
 	}
 
 	if mostExtraRCount == 0 || mostExtraRCount == leastExtraRCount {
-		return 0, nil, []string{}
+		mostExtraRList = nil
+		leastExtraROwners = []string{}
+	} else {
+		adjustCount = mostExtraRCount - leastExtraRCount - 1
+		log.Infof("Found %v replicas from %v to balance to one of node in %v", adjustCount, mostExtraRList, leastExtraROwners)
 	}
 
-	adjustCount := mostExtraRCount - leastExtraRCount - 1
-	log.Infof("Found %v replicas from %v to balance to one of node in %v", adjustCount, mostExtraRList, leastExtraROwners)
+	if adjustCount == 0 {
+		replicasInPressure, err := c.getReplicasInPressure()
+		if err != nil {
+			return 0, nil, []string{}
+		}
+
+		for replicaName, replica := range rs {
+			if !replicasInPressure[replicaName] {
+				continue
+			}
+
+			recheduleCandidate := c.getReplicasDiskPressureRescheduleCandidates(v, replica)
+			if len(recheduleCandidate) == 0 {
+				c.logger.Debugf("Replica %v is in disk pressure, but no reschedule candidate", replica)
+				continue
+			}
+
+			adjustCount++
+			mostExtraRList = append(mostExtraRList, replicaName)
+			leastExtraROwners = append(leastExtraROwners, replica.Spec.NodeID)
+		}
+
+		if adjustCount == 0 {
+			log.Trace("No replicas in disk pressure")
+		} else {
+			log.Infof("Found %v replicas in disk pressure", adjustCount)
+		}
+	}
+
 	return adjustCount, mostExtraRList, leastExtraROwners
+}
+
+func (c *VolumeController) getReplicasInPressure() (map[string]bool, error) {
+	settingDiskPressurePercentage, err := c.ds.GetSettingAsInt(types.SettingNameReplicaAutoBalanceDiskPressurePercentage)
+	if err != nil {
+		return nil, err
+	}
+
+	if settingDiskPressurePercentage == 0 {
+		return nil, nil
+	}
+
+	nodes, err := c.ds.ListNodesRO()
+	if err != nil {
+		return nil, err
+	}
+
+	replicasInPressure := make(map[string]bool)
+
+	for _, node := range nodes {
+		if !c.ds.IsNodeSchedulable(node.Name) {
+			continue
+		}
+
+		for diskName, diskStatus := range node.Status.DiskStatus {
+			diskSpec := node.Spec.Disks[diskName]
+
+			storageUnusedPercentage := int64(0)
+			storageUnused := diskStatus.StorageAvailable - diskSpec.StorageReserved
+			if storageUnused > 0 && diskStatus.StorageMaximum > 0 {
+				storageUnusedPercentage = storageUnused * 100 / diskStatus.StorageMaximum
+			}
+
+			diskPressuredPercentage := 100 - settingDiskPressurePercentage
+
+			if storageUnusedPercentage < diskPressuredPercentage {
+				for replicaName := range diskStatus.ScheduledReplica {
+					replicasInPressure[replicaName] = true
+				}
+			}
+		}
+	}
+	return replicasInPressure, nil
+}
+
+func (c *VolumeController) getReplicasDiskPressureRescheduleCandidates(volume *longhorn.Volume, replica *longhorn.Replica) map[string]bool {
+	var err error
+	defer func() {
+		if err != nil {
+			logrus.WithError(err).Warn("Failed to get replicas disk pressure reschedule candidates")
+		}
+	}()
+
+	nodeSoftAntiAffinity, err := c.ds.GetSettingAsBool(types.SettingNameReplicaSoftAntiAffinity)
+	if err != nil {
+		return nil
+	}
+
+	if volume.Spec.ReplicaSoftAntiAffinity != longhorn.ReplicaSoftAntiAffinityDefault &&
+		volume.Spec.ReplicaSoftAntiAffinity != "" {
+		nodeSoftAntiAffinity = volume.Spec.ReplicaSoftAntiAffinity == longhorn.ReplicaSoftAntiAffinityEnabled
+	}
+
+	if nodeSoftAntiAffinity {
+		c.logger.Warnf("Node soft anti-affinity is enabled, skip auto-balance replicas in disk pressure")
+	}
+
+	autoBalanceDiskPressurePercentage, err := c.ds.GetSettingAsInt(types.SettingNameReplicaAutoBalanceDiskPressurePercentage)
+	if err != nil {
+		return nil
+	}
+
+	if autoBalanceDiskPressurePercentage == 0 {
+		return nil
+	}
+
+	nodes, err := c.ds.ListNodesRO()
+	if err != nil {
+		return nil
+	}
+
+	schedulableDisks := make(map[string]bool)
+
+	for _, node := range nodes {
+		if node.Name != replica.Spec.NodeID {
+			continue
+		}
+
+		for diskName, diskStatus := range node.Status.DiskStatus {
+			diskSpec, exist := node.Spec.Disks[diskName]
+			if !exist {
+				continue
+			}
+
+			if _, exist := diskStatus.ScheduledReplica[replica.Name]; exist {
+				continue
+			}
+
+			if !diskSpec.AllowScheduling {
+				continue
+			}
+
+			diskInfo, err := c.scheduler.GetDiskSchedulingInfo(diskSpec, diskStatus)
+			if err != nil {
+				logrus.WithError(err).Debugf("Failed to get disk scheduling info for disk %v on node %v", diskName, node.Name)
+				continue
+			}
+
+			if c.scheduler.IsSchedulableToDiskConsiderDiskPressure(autoBalanceDiskPressurePercentage, volume.Spec.Size, volume.Status.ActualSize, diskInfo) {
+				schedulableDisks[diskName] = true
+			}
+		}
+	}
+
+	return schedulableDisks
 }
 
 func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (int, map[string][]string, error) {
@@ -2532,6 +2740,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 	if err != nil {
 		return 0, nil, err
 	}
+
 	nodeExtraRs := make(map[string][]string)
 	for _, r := range rs {
 		if r.Status.CurrentState != longhorn.InstanceStateRunning {
@@ -2571,6 +2780,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 			return 0, nodeExtraRs, err
 		}
 	}
+
 	for nodeName, node := range readyNodes {
 		_, exist := nodeExtraRs[nodeName]
 		if exist {
@@ -2589,6 +2799,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 			continue
 		}
 	}
+
 	if len(nodeExtraRs) == len(readyNodes) {
 		log.Debugf("Balanced, all ready nodes are used by this volume")
 		return 0, nodeExtraRs, nil
@@ -2657,6 +2868,7 @@ func (c *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[
 			// TODO: https://github.com/longhorn/longhorn/issues/2667
 			return adjustCount, nCandidates[0]
 		}
+
 		return adjustCount, ""
 	}
 	return 0, ""
