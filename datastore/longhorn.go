@@ -656,6 +656,44 @@ func (s *DataStore) ListSettings() (map[types.SettingName]*longhorn.Setting, err
 	return itemMap, nil
 }
 
+// GetAutoBalancedReplicasSetting retrieves the replica auto-balance setting for
+// a Longhorn Volume.
+//
+// This function prioritized the replica auto-balance setting in the Volume spec (`volume.Spec.ReplicaAutoBalance`).
+// If not defined or set to `Ignored`, the global setting will be used.
+//
+// Parameters:
+//   - volume: The Longhorn Volume object.
+//
+// Returns:
+// - longhorn.ReplicaAutoBalance: The auto-balance setting value for the Volume.
+// - Error for any errors encountered.
+func (s *DataStore) GetAutoBalancedReplicasSetting(volume *longhorn.Volume) (longhorn.ReplicaAutoBalance, error) {
+	var setting longhorn.ReplicaAutoBalance
+
+	volumeSetting := volume.Spec.ReplicaAutoBalance
+	if volumeSetting != longhorn.ReplicaAutoBalanceIgnored {
+		setting = volumeSetting
+	}
+
+	var err error
+	if setting == "" {
+		globalSetting, _ := s.GetSettingValueExisted(types.SettingNameReplicaAutoBalance)
+
+		if globalSetting == string(longhorn.ReplicaAutoBalanceIgnored) {
+			globalSetting = string(longhorn.ReplicaAutoBalanceDisabled)
+		}
+
+		setting = longhorn.ReplicaAutoBalance(globalSetting)
+	}
+
+	err = types.ValidateReplicaAutoBalance(longhorn.ReplicaAutoBalance(setting))
+	if err != nil {
+		setting = longhorn.ReplicaAutoBalanceDisabled
+	}
+	return setting, errors.Wrapf(err, "replica auto-balance is disabled")
+}
+
 func (s *DataStore) GetEncryptionSecret(secretNamespace, secretName string) (map[string]string, error) {
 	secret, err := s.GetSecretRO(secretNamespace, secretName)
 	if err != nil {
