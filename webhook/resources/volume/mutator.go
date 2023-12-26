@@ -182,13 +182,6 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 
 	// TODO: Remove the mutations below after they are implemented for SPDK volumes
 	if datastore.IsBackendStoreDriverV2(volume.Spec.BackendStoreDriver) {
-		if volume.Spec.Encrypted {
-			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/encrypted", "value": false}`)
-		}
-
-		if volume.Spec.BackingImage != "" {
-			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/backingImage", "value": ""}`)
-		}
 		if volume.Spec.DataLocality != longhorn.DataLocalityDisabled {
 			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataLocality", "value": "%s"}`, longhorn.DataLocalityDisabled))
 		}
