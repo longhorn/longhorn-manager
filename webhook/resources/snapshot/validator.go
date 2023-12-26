@@ -60,8 +60,8 @@ func (o *snapshotValidator) Create(request *admission.Request, newObj runtime.Ob
 		err := errors.Wrapf(err, "failed to get volume %v", snapshot.Spec.Volume)
 		return werror.NewInvalidError(err.Error(), "")
 	}
-	if datastore.IsBackendStoreDriverV2(volume.Spec.BackendStoreDriver) {
-		err := errors.Errorf("creating snapshot for volume %v with backend store driver %v is not supported", volume.Name, volume.Spec.BackendStoreDriver)
+	if datastore.IsDataEngineV2(volume.Spec.DataEngine) {
+		err := errors.Errorf("creating snapshot for volume %v with data engine %v is not supported", volume.Name, volume.Spec.DataEngine)
 		return werror.NewInvalidError(err.Error(), "")
 	}
 

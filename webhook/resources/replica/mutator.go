@@ -77,8 +77,8 @@ func mutate(newObj runtime.Object) (admission.PatchOps, error) {
 		patchOps = append(patchOps, patchOp)
 	}
 
-	if string(replica.Spec.BackendStoreDriver) == "" {
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeV1))
+	if string(replica.Spec.DataEngine) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataEngine", "value": "%s"}`, longhorn.DataEngineTypeV1))
 	}
 
 	return patchOps, nil

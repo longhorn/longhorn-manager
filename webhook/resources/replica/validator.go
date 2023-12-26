@@ -47,7 +47,7 @@ func (r *replicaValidator) Create(request *admission.Request, newObj runtime.Obj
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Replica", newObj), "")
 	}
 
-	err := wcommon.ValidateRequiredDataEngineEnabled(r.ds, replica.Spec.BackendStoreDriver)
+	err := wcommon.ValidateRequiredDataEngineEnabled(r.ds, replica.Spec.DataEngine)
 	if err != nil {
 		return err
 	}
@@ -68,9 +68,9 @@ func (r *replicaValidator) Update(request *admission.Request, oldObj runtime.Obj
 	if !ok {
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Replica", newObj), "")
 	}
-	if oldReplica.Spec.BackendStoreDriver != "" {
-		if oldReplica.Spec.BackendStoreDriver != newReplica.Spec.BackendStoreDriver {
-			err := fmt.Errorf("changing backend store driver for replica %v is not supported", oldReplica.Name)
+	if oldReplica.Spec.DataEngine != "" {
+		if oldReplica.Spec.DataEngine != newReplica.Spec.DataEngine {
+			err := fmt.Errorf("changing data engine for replica %v is not supported", oldReplica.Name)
 			return werror.NewInvalidError(err.Error(), "")
 		}
 	}

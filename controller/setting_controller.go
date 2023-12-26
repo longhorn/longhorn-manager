@@ -752,7 +752,7 @@ func (sc *SettingController) updateCNI() error {
 		return err
 	}
 
-	volumesDetached, err := sc.ds.AreAllVolumesDetached(longhorn.BackendStoreDriverTypeAll)
+	volumesDetached, err := sc.ds.AreAllVolumesDetached(longhorn.DataEngineTypeAll)
 	if err != nil {
 		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameStorageNetwork)
 	}
@@ -810,15 +810,15 @@ func (sc *SettingController) updateDataEngine(setting types.SettingName) error {
 		return errors.Wrapf(err, "failed to get %v setting for updating data engine", setting)
 	}
 
-	var backednStoreDriver longhorn.BackendStoreDriverType
+	var dataEngine longhorn.DataEngineType
 	switch setting {
 	case types.SettingNameV1DataEngine:
-		backednStoreDriver = longhorn.BackendStoreDriverTypeV1
+		dataEngine = longhorn.DataEngineTypeV1
 		if err := sc.ds.ValidateV1DataEngineEnabled(enabled); err != nil {
 			return err
 		}
 	case types.SettingNameV2DataEngine:
-		backednStoreDriver = longhorn.BackendStoreDriverTypeV2
+		dataEngine = longhorn.DataEngineTypeV2
 		if err := sc.ds.ValidateV2DataEngineEnabled(enabled); err != nil {
 			return err
 		}
@@ -827,26 +827,26 @@ func (sc *SettingController) updateDataEngine(setting types.SettingName) error {
 	}
 
 	if !enabled {
-		return sc.cleanupInstanceManager(backednStoreDriver)
+		return sc.cleanupInstanceManager(dataEngine)
 	}
 
 	return nil
 }
 
-func (sc *SettingController) cleanupInstanceManager(backendStoreDriver longhorn.BackendStoreDriverType) error {
-	sc.logger.Infof("Cleaning up the instance manager for %v data engine", backendStoreDriver)
-	imMap, err := sc.ds.ListInstanceManagersBySelectorRO("", "", longhorn.InstanceManagerTypeAllInOne, backendStoreDriver)
+func (sc *SettingController) cleanupInstanceManager(dataEngine longhorn.DataEngineType) error {
+	sc.logger.Infof("Cleaning up the instance manager for %v data engine", dataEngine)
+	imMap, err := sc.ds.ListInstanceManagersBySelectorRO("", "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
 	if err != nil {
-		return errors.Wrapf(err, "failed to list instance managers for cleaning up %v data engine", backendStoreDriver)
+		return errors.Wrapf(err, "failed to list instance managers for cleaning up %v data engine", dataEngine)
 	}
 
 	for _, im := range imMap {
 		if len(im.Status.InstanceEngines) != 0 || len(im.Status.InstanceReplicas) != 0 || len(im.Status.Instances) != 0 {
-			sc.logger.Infof("Skipping cleaning up the instance manager %v for %v data engine since there are still instances running on it", im.Name, backendStoreDriver)
+			sc.logger.Infof("Skipping cleaning up the instance manager %v for %v data engine since there are still instances running on it", im.Name, dataEngine)
 			continue
 		}
 
-		sc.logger.Infof("Cleaning up the instance manager %v for %v data engine", im.Name, backendStoreDriver)
+		sc.logger.Infof("Cleaning up the instance manager %v for %v data engine", im.Name, dataEngine)
 		if err := sc.ds.DeleteInstanceManager(im.Name); err != nil {
 			return err
 		}
@@ -1291,7 +1291,7 @@ const (
 	ClusterInfoPodAvgMemoryUsageFmt                      = "Longhorn%sAverageMemoryUsageBytes"
 	ClusterInfoSettingFmt                                = "LonghornSetting%s"
 	ClusterInfoVolumeAccessModeCountFmt                  = "LonghornVolumeAccessMode%sCount"
-	ClusterInfoVolumeBackendStoreDriverCountFmt          = "LonghornVolumeBackendStoreDriver%sCount"
+	ClusterInfoVolumeDataEngineCountFmt                  = "LonghornVolumeDataEngine%sCount"
 	ClusterInfoVolumeDataLocalityCountFmt                = "LonghornVolumeDataLocality%sCount"
 	ClusterInfoVolumeFrontendCountFmt                    = "LonghornVolumeFrontend%sCount"
 	ClusterInfoVolumeOfflineReplicaRebuildingCountFmt    = "LonghornVolumeOfflineReplicaRebuilding%sCount"
@@ -1567,7 +1567,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	volumeCount := len(volumesRO)
 	volumeCountV1 := 0
 	for _, volume := range volumesRO {
-		if volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 {
+		if volume.Spec.DataEngine == longhorn.DataEngineTypeV1 {
 			volumeCountV1++
 		}
 	}
@@ -1577,7 +1577,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	var totalVolumeNumOfReplicas int
 	newStruct := func() map[util.StructName]int { return make(map[util.StructName]int, volumeCount) }
 	accessModeCountStruct := newStruct()
-	backendStoreDriverCountStruct := newStruct()
+	dataEngineCountStruct := newStruct()
 	dataLocalityCountStruct := newStruct()
 	frontendCountStruct := newStruct()
 	offlineReplicaRebuildingCountStruct := newStruct()
@@ -1589,15 +1589,15 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	snapshotDataIntegrityCountStruct := newStruct()
 	unmapMarkSnapChainRemovedCountStruct := newStruct()
 	for _, volume := range volumesRO {
-		backendStoreDriver := types.ValueUnknown
-		if volume.Spec.BackendStoreDriver != "" {
-			backendStoreDriver = util.ConvertToCamel(string(volume.Spec.BackendStoreDriver), "-")
+		dataEngine := types.ValueUnknown
+		if volume.Spec.DataEngine != "" {
+			dataEngine = util.ConvertToCamel(string(volume.Spec.DataEngine), "-")
 		}
-		backendStoreDriverCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeBackendStoreDriverCountFmt, backendStoreDriver))]++
+		dataEngineCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeDataEngineCountFmt, dataEngine))]++
 
 		// TODO: Remove this condition when v2 volume actual size is implemented.
 		//       https://github.com/longhorn/longhorn/issues/5947
-		isVolumeUsingV2DataEngine := datastore.IsBackendStoreDriverV2(volume.Spec.BackendStoreDriver)
+		isVolumeUsingV2DataEngine := datastore.IsDataEngineV2(volume.Spec.DataEngine)
 		if !isVolumeUsingV2DataEngine {
 			totalVolumeSize += int(volume.Spec.Size)
 			totalVolumeActualSize += int(volume.Status.ActualSize)
@@ -1646,7 +1646,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 		unmapMarkSnapChainRemovedCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeUnmapMarkSnapChainRemovedCountFmt, util.ConvertToCamel(string(unmapMarkSnapChainRemoved), "-")))]++
 	}
 	info.structFields.fields.AppendCounted(accessModeCountStruct)
-	info.structFields.fields.AppendCounted(backendStoreDriverCountStruct)
+	info.structFields.fields.AppendCounted(dataEngineCountStruct)
 	info.structFields.fields.AppendCounted(dataLocalityCountStruct)
 	info.structFields.fields.AppendCounted(frontendCountStruct)
 	info.structFields.fields.AppendCounted(offlineReplicaRebuildingCountStruct)

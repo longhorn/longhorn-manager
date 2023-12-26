@@ -975,11 +975,11 @@ func (nc *NodeController) syncNodeStatus(pod *corev1.Pod, node *longhorn.Node) e
 	return nil
 }
 
-func (nc *NodeController) getImTypeBackendStoreDrivers(node *longhorn.Node) map[longhorn.InstanceManagerType][]longhorn.BackendStoreDriverType {
+func (nc *NodeController) getImTypeDataEngines(node *longhorn.Node) map[longhorn.InstanceManagerType][]longhorn.DataEngineType {
 	log := getLoggerForNode(nc.logger, node)
 
 	// TODO: remove InstanceManagerTypeEngine and InstanceManagerTypeReplica in the future.
-	backendStoreDrivers := map[longhorn.InstanceManagerType][]longhorn.BackendStoreDriverType{
+	dataEngines := map[longhorn.InstanceManagerType][]longhorn.DataEngineType{
 		longhorn.InstanceManagerTypeAllInOne: {},
 		longhorn.InstanceManagerTypeEngine:   {},
 		longhorn.InstanceManagerTypeReplica:  {},
@@ -997,21 +997,21 @@ func (nc *NodeController) getImTypeBackendStoreDrivers(node *longhorn.Node) map[
 
 		switch setting {
 		case types.SettingNameV1DataEngine:
-			backendStoreDrivers[longhorn.InstanceManagerTypeAllInOne] = append(backendStoreDrivers[longhorn.InstanceManagerTypeAllInOne], longhorn.BackendStoreDriverTypeV1)
-			backendStoreDrivers[longhorn.InstanceManagerTypeEngine] = append(backendStoreDrivers[longhorn.InstanceManagerTypeEngine], longhorn.BackendStoreDriverTypeV1)
+			dataEngines[longhorn.InstanceManagerTypeAllInOne] = append(dataEngines[longhorn.InstanceManagerTypeAllInOne], longhorn.DataEngineTypeV1)
+			dataEngines[longhorn.InstanceManagerTypeEngine] = append(dataEngines[longhorn.InstanceManagerTypeEngine], longhorn.DataEngineTypeV1)
 			if len(node.Spec.Disks) != 0 {
-				backendStoreDrivers[longhorn.InstanceManagerTypeReplica] = append(backendStoreDrivers[longhorn.InstanceManagerTypeReplica], longhorn.BackendStoreDriverTypeV1)
+				dataEngines[longhorn.InstanceManagerTypeReplica] = append(dataEngines[longhorn.InstanceManagerTypeReplica], longhorn.DataEngineTypeV1)
 			}
 		case types.SettingNameV2DataEngine:
 			if err := nc.ds.ValidateV2DataEngineEnabled(enabled); err == nil {
-				backendStoreDrivers[longhorn.InstanceManagerTypeAllInOne] = append(backendStoreDrivers[longhorn.InstanceManagerTypeAllInOne], longhorn.BackendStoreDriverTypeV2)
+				dataEngines[longhorn.InstanceManagerTypeAllInOne] = append(dataEngines[longhorn.InstanceManagerTypeAllInOne], longhorn.DataEngineTypeV2)
 			} else {
 				log.WithError(err).Warnf("Failed to validate %v setting", types.SettingNameV2DataEngine)
 			}
 		}
 	}
 
-	return backendStoreDrivers
+	return dataEngines
 }
 
 func (nc *NodeController) cleanupAllReplicaManagers(node *longhorn.Node) error {
@@ -1047,12 +1047,12 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 		}
 	}
 
-	imTypeBackendStoreDrivers := nc.getImTypeBackendStoreDrivers(node)
+	imTypeDataEngines := nc.getImTypeDataEngines(node)
 
-	for imType, backendStoreDrivers := range imTypeBackendStoreDrivers {
-		for _, backendStoreDriver := range backendStoreDrivers {
+	for imType, dataEngines := range imTypeDataEngines {
+		for _, dataEngine := range dataEngines {
 			defaultInstanceManagerCreated := false
-			imMap, err := nc.ds.ListInstanceManagersByNodeRO(node.Name, imType, backendStoreDriver)
+			imMap, err := nc.ds.ListInstanceManagersByNodeRO(node.Name, imType, dataEngine)
 			if err != nil {
 				return err
 			}
@@ -1063,7 +1063,7 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 				}
 				cleanupRequired := true
 
-				if im.Spec.Image == defaultInstanceManagerImage && im.Spec.BackendStoreDriver == backendStoreDriver {
+				if im.Spec.Image == defaultInstanceManagerImage && im.Spec.DataEngine == dataEngine {
 					// Create default instance manager if needed.
 					defaultInstanceManagerCreated = true
 					cleanupRequired = false
@@ -1090,12 +1090,12 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 				}
 			}
 			if !defaultInstanceManagerCreated && imType == longhorn.InstanceManagerTypeAllInOne {
-				imName, err := types.GetInstanceManagerName(imType, node.Name, defaultInstanceManagerImage, string(backendStoreDriver))
+				imName, err := types.GetInstanceManagerName(imType, node.Name, defaultInstanceManagerImage, string(dataEngine))
 				if err != nil {
 					return err
 				}
-				log.Infof("Creating default instance manager %v, image: %v, backendStoreDriver: %v", imName, defaultInstanceManagerImage, backendStoreDriver)
-				if _, err := nc.createInstanceManager(node, imName, defaultInstanceManagerImage, imType, backendStoreDriver); err != nil {
+				log.Infof("Creating default instance manager %v, image: %v, dataEngine: %v", imName, defaultInstanceManagerImage, dataEngine)
+				if _, err := nc.createInstanceManager(node, imName, defaultInstanceManagerImage, imType, dataEngine); err != nil {
 					return err
 				}
 			}
@@ -1104,16 +1104,16 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 	return nil
 }
 
-func (nc *NodeController) createInstanceManager(node *longhorn.Node, imName, imImage string, imType longhorn.InstanceManagerType, backendStoreDriver longhorn.BackendStoreDriverType) (*longhorn.InstanceManager, error) {
+func (nc *NodeController) createInstanceManager(node *longhorn.Node, imName, imImage string, imType longhorn.InstanceManagerType, dataEngine longhorn.DataEngineType) (*longhorn.InstanceManager, error) {
 	instanceManager := &longhorn.InstanceManager{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: imName,
 		},
 		Spec: longhorn.InstanceManagerSpec{
-			Image:              imImage,
-			NodeID:             node.Name,
-			Type:               imType,
-			BackendStoreDriver: backendStoreDriver,
+			Image:      imImage,
+			NodeID:     node.Name,
+			Type:       imType,
+			DataEngine: dataEngine,
 		},
 	}
 
@@ -1465,9 +1465,9 @@ func (nc *NodeController) deleteDisk(node *longhorn.Node, diskType longhorn.Disk
 		return nil
 	}
 
-	backendStoreDriver := util.GetBackendStoreDriverForDiskType(diskType)
+	dataEngine := util.GetDataEngineForDiskType(diskType)
 
-	im, err := nc.ds.GetDefaultInstanceManagerByNodeRO(nc.controllerID, backendStoreDriver)
+	im, err := nc.ds.GetDefaultInstanceManagerByNodeRO(nc.controllerID, dataEngine)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get default engine instance manager")
 	}

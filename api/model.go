@@ -57,7 +57,7 @@ type Volume struct {
 	ReplicaSoftAntiAffinity          longhorn.ReplicaSoftAntiAffinity       `json:"replicaSoftAntiAffinity"`
 	ReplicaZoneSoftAntiAffinity      longhorn.ReplicaZoneSoftAntiAffinity   `json:"replicaZoneSoftAntiAffinity"`
 	ReplicaDiskSoftAntiAffinity      longhorn.ReplicaDiskSoftAntiAffinity   `json:"replicaDiskSoftAntiAffinity"`
-	BackendStoreDriver               longhorn.BackendStoreDriverType        `json:"backendStoreDriver"`
+	DataEngine                       longhorn.DataEngineType                `json:"dataEngine"`
 	OfflineReplicaRebuilding         longhorn.OfflineReplicaRebuilding      `json:"offlineReplicaRebuilding"`
 	OfflineReplicaRebuildingRequired bool                                   `json:"offlineReplicaRebuildingRequired"`
 
@@ -194,12 +194,12 @@ type Controller struct {
 type Replica struct {
 	Instance
 
-	DiskID             string `json:"diskID"`
-	DiskPath           string `json:"diskPath"`
-	DataPath           string `json:"dataPath"`
-	Mode               string `json:"mode"`
-	FailedAt           string `json:"failedAt"`
-	BackendStoreDriver string `json:"backendStoreDriver"`
+	DiskID     string `json:"diskID"`
+	DiskPath   string `json:"diskPath"`
+	DataPath   string `json:"dataPath"`
+	Mode       string `json:"mode"`
+	FailedAt   string `json:"failedAt"`
+	DataEngine string `json:"dataEngine"`
 }
 
 type Attachment struct {
@@ -491,12 +491,12 @@ type RebuildStatus struct {
 
 type InstanceManager struct {
 	client.Resource
-	CurrentState       longhorn.InstanceManagerState `json:"currentState"`
-	Image              string                        `json:"image"`
-	Name               string                        `json:"name"`
-	NodeID             string                        `json:"nodeID"`
-	ManagerType        string                        `json:"managerType"`
-	BackendStoreDriver string                        `json:"backendStoreDriver"`
+	CurrentState longhorn.InstanceManagerState `json:"currentState"`
+	Image        string                        `json:"image"`
+	Name         string                        `json:"name"`
+	NodeID       string                        `json:"nodeID"`
+	ManagerType  string                        `json:"managerType"`
+	DataEngine   string                        `json:"dataEngine"`
 
 	InstanceEngines  map[string]longhorn.InstanceProcess `json:"instanceEngines"`
 	InstanceReplicas map[string]longhorn.InstanceProcess `json:"instanceReplicas"`
@@ -1075,11 +1075,11 @@ func volumeSchema(volume *client.Schema) {
 	replicaDiskSoftAntiAffinity.Default = longhorn.ReplicaDiskSoftAntiAffinityDefault
 	volume.ResourceFields["replicaDiskSoftAntiAffinity"] = replicaDiskSoftAntiAffinity
 
-	backendStoreDriver := volume.ResourceFields["backendStoreDriver"]
-	backendStoreDriver.Required = true
-	backendStoreDriver.Create = true
-	backendStoreDriver.Default = longhorn.BackendStoreDriverTypeV1
-	volume.ResourceFields["backendStoreDriver"] = backendStoreDriver
+	dataEngine := volume.ResourceFields["dataEngine"]
+	dataEngine.Required = true
+	dataEngine.Create = true
+	dataEngine.Default = longhorn.DataEngineTypeV1
+	volume.ResourceFields["dataEngine"] = dataEngine
 
 	conditions := volume.ResourceFields["conditions"]
 	conditions.Type = "map[volumeCondition]"
@@ -1332,12 +1332,12 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 				CurrentImage:        r.Status.CurrentImage,
 				InstanceManagerName: r.Status.InstanceManagerName,
 			},
-			DiskID:             r.Spec.DiskID,
-			DiskPath:           r.Spec.DiskPath,
-			DataPath:           types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName),
-			Mode:               mode,
-			FailedAt:           r.Spec.FailedAt,
-			BackendStoreDriver: string(r.Spec.BackendStoreDriver),
+			DiskID:     r.Spec.DiskID,
+			DiskPath:   r.Spec.DiskPath,
+			DataPath:   types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName),
+			Mode:       mode,
+			FailedAt:   r.Spec.FailedAt,
+			DataEngine: string(r.Spec.DataEngine),
 		})
 	}
 
@@ -1438,7 +1438,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		ReplicaSoftAntiAffinity:          v.Spec.ReplicaSoftAntiAffinity,
 		ReplicaZoneSoftAntiAffinity:      v.Spec.ReplicaZoneSoftAntiAffinity,
 		ReplicaDiskSoftAntiAffinity:      v.Spec.ReplicaDiskSoftAntiAffinity,
-		BackendStoreDriver:               v.Spec.BackendStoreDriver,
+		DataEngine:                       v.Spec.DataEngine,
 		OfflineReplicaRebuilding:         v.Spec.OfflineReplicaRebuilding,
 		OfflineReplicaRebuildingRequired: v.Status.OfflineReplicaRebuildingRequired,
 		Ready:                            ready,
@@ -2050,15 +2050,15 @@ func toInstanceManagerResource(im *longhorn.InstanceManager) *InstanceManager {
 			Id:   im.Name,
 			Type: "instanceManager",
 		},
-		CurrentState:       im.Status.CurrentState,
-		Image:              im.Spec.Image,
-		Name:               im.Name,
-		NodeID:             im.Spec.NodeID,
-		ManagerType:        string(im.Spec.Type),
-		BackendStoreDriver: string(im.Spec.BackendStoreDriver),
-		InstanceEngines:    im.Status.InstanceEngines,
-		InstanceReplicas:   im.Status.InstanceReplicas,
-		Instances:          im.Status.Instances,
+		CurrentState:     im.Status.CurrentState,
+		Image:            im.Spec.Image,
+		Name:             im.Name,
+		NodeID:           im.Spec.NodeID,
+		ManagerType:      string(im.Spec.Type),
+		DataEngine:       string(im.Spec.DataEngine),
+		InstanceEngines:  im.Status.InstanceEngines,
+		InstanceReplicas: im.Status.InstanceReplicas,
+		Instances:        im.Status.Instances,
 	}
 }
 

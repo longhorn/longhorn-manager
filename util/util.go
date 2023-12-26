@@ -838,9 +838,9 @@ func WaitForResourceDeletion(kubeClient *clientset.Clientset, name, namespace, r
 	return fmt.Errorf("foreground deletion of %s %s timed out", resource, name)
 }
 
-func GetBackendStoreDriverForDiskType(diskType longhorn.DiskType) longhorn.BackendStoreDriverType {
+func GetDataEngineForDiskType(diskType longhorn.DiskType) longhorn.DataEngineType {
 	if diskType == longhorn.DiskTypeBlock {
-		return longhorn.BackendStoreDriverTypeV2
+		return longhorn.DataEngineTypeV2
 	}
-	return longhorn.BackendStoreDriverTypeV1
+	return longhorn.DataEngineTypeV1
 }

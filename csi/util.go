@@ -231,9 +231,9 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 		vol.NodeSelector = strings.Split(nodeSelector, ",")
 	}
 
-	vol.BackendStoreDriver = string(longhorn.BackendStoreDriverTypeV1)
-	if driver, ok := volOptions["backendStoreDriver"]; ok {
-		vol.BackendStoreDriver = driver
+	vol.DataEngine = string(longhorn.DataEngineTypeV1)
+	if driver, ok := volOptions["dataEngine"]; ok {
+		vol.DataEngine = driver
 	}
 	return vol, nil
 }

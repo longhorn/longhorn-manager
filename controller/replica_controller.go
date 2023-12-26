@@ -249,7 +249,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		if replica.Spec.NodeID != "" && replica.Spec.NodeID != rc.controllerID {
 			log.Warn("Failed to cleanup replica's data because the replica's data is not on this node")
 		} else if replica.Spec.NodeID != "" {
-			if datastore.IsBackendStoreDriverV1(replica.Spec.BackendStoreDriver) {
+			if datastore.IsDataEngineV1(replica.Spec.DataEngine) {
 				// Clean up the data directory if this is the active replica or if this inactive replica is the only one
 				// using it.
 				if (replica.Spec.Active || !hasMatchingReplica(replica, rs)) && dataPath != "" {
@@ -354,7 +354,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		return nil, err
 	}
 
-	cliAPIVersion, err := rc.ds.GetDataEngineImageCLIAPIVersion(r.Spec.Image, r.Spec.BackendStoreDriver)
+	cliAPIVersion, err := rc.ds.GetDataEngineImageCLIAPIVersion(r.Spec.Image, r.Spec.DataEngine)
 	if err != nil {
 		return nil, err
 	}
@@ -503,7 +503,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	}
 	log := getLoggerForReplica(rc.logger, r)
 
-	if datastore.IsBackendStoreDriverV1(r.Spec.BackendStoreDriver) {
+	if datastore.IsDataEngineV1(r.Spec.DataEngine) {
 		if err := rc.deleteInstanceWithCLIAPIVersionOne(r); err != nil {
 			return err
 		}
@@ -550,7 +550,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	if canDeleteInstance(r) {
 		cleanupRequired = true
 	}
-	err = c.InstanceDelete(r.Spec.BackendStoreDriver, r.Name, string(longhorn.InstanceManagerTypeReplica), r.Spec.DiskID, cleanupRequired)
+	err = c.InstanceDelete(r.Spec.DataEngine, r.Name, string(longhorn.InstanceManagerTypeReplica), r.Spec.DiskID, cleanupRequired)
 	if err != nil && !types.ErrorIsNotFound(err) {
 		return err
 	}
@@ -572,8 +572,8 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 }
 
 func canDeleteInstance(r *longhorn.Replica) bool {
-	return datastore.IsBackendStoreDriverV1(r.Spec.BackendStoreDriver) ||
-		(datastore.IsBackendStoreDriverV2(r.Spec.BackendStoreDriver) && r.DeletionTimestamp != nil)
+	return datastore.IsDataEngineV1(r.Spec.DataEngine) ||
+		(datastore.IsDataEngineV2(r.Spec.DataEngine) && r.DeletionTimestamp != nil)
 }
 
 func deleteUnixSocketFile(volumeName string) error {
@@ -664,12 +664,12 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstancePro
 	}
 	defer c.Close()
 
-	instance, err := c.InstanceGet(r.Spec.BackendStoreDriver, r.Name, string(longhorn.InstanceManagerTypeReplica))
+	instance, err := c.InstanceGet(r.Spec.DataEngine, r.Name, string(longhorn.InstanceManagerTypeReplica))
 	if err != nil {
 		return nil, err
 	}
 
-	if datastore.IsBackendStoreDriverV2(instance.Spec.BackendStoreDriver) {
+	if datastore.IsDataEngineV2(instance.Spec.DataEngine) {
 		if instance.Status.State == longhorn.InstanceStateStopped {
 			return nil, fmt.Errorf("instance %v is stopped", instance.Spec.Name)
 		}
@@ -694,7 +694,7 @@ func (rc *ReplicaController) LogInstance(ctx context.Context, obj interface{}) (
 	}
 
 	// TODO: #2441 refactor this when we do the resource monitoring refactor
-	stream, err := c.InstanceLog(ctx, r.Spec.BackendStoreDriver, r.Name, string(longhorn.InstanceManagerTypeReplica))
+	stream, err := c.InstanceLog(ctx, r.Spec.DataEngine, r.Name, string(longhorn.InstanceManagerTypeReplica))
 	return c, stream, err
 }
 
