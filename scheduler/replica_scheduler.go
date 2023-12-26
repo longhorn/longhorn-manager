@@ -32,6 +32,7 @@ type Disk struct {
 }
 
 type DiskSchedulingInfo struct {
+	DiskUUID                   string
 	StorageAvailable           int64
 	StorageMaximum             int64
 	StorageReserved            int64
@@ -253,6 +254,13 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		creatingNewReplicasForReplenishment = timeToReplacementReplica == 0
 	}
 
+	replicaAutoBalance, err := rcs.ds.GetAutoBalancedReplicasSetting(volume)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to get %v setting", types.SettingNameReplicaAutoBalance)
+		multiError.Append(util.NewMultiError(err.Error()))
+		return map[string]*Disk{}, multiError
+	}
+
 	getDiskCandidatesFromNodes := func(nodes map[string]*longhorn.Node) (diskCandidates map[string]*Disk, multiError util.MultiError) {
 		diskCandidates = map[string]*Disk{}
 		multiError = util.NewMultiError()
@@ -302,10 +310,14 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 
 		if _, ok := usedNodes[nodeName]; !ok {
 			unusedNodes[nodeName] = node
+		} else if replicaAutoBalance == longhorn.ReplicaAutoBalanceBestEffort {
+			unusedNodes[nodeName] = node
 		}
 		if onlyEvictingNodes[nodeName] {
 			unusedNodesAfterEviction[nodeName] = node
 			if onlyEvictingZones[node.Status.Zone] {
+				unusedNodesInUnusedZonesAfterEviction[nodeName] = node
+			} else if replicaAutoBalance == longhorn.ReplicaAutoBalanceBestEffort {
 				unusedNodesInUnusedZonesAfterEviction[nodeName] = node
 			}
 		}
@@ -457,8 +469,8 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 	return preferredDisks, multiError
 }
 
-// filterDisksWithMatchingReplicas filters the input disks map and returns only the disks that have the fewest matching
-// replicas. If diskSoftAntiAffinity is false, it only returns disks that have no matching replicas.
+// filterDiskWithMatchingReplicas returns disk that have no matching replicas when diskSoftAntiAffinity is false.
+// Otherwise, it returns the input disks map.
 func filterDisksWithMatchingReplicas(disks map[string]*Disk, replicas map[string]*longhorn.Replica,
 	diskSoftAntiAffinity bool) map[string]*Disk {
 	replicasCountPerDisk := map[string]int{}
@@ -466,7 +478,6 @@ func filterDisksWithMatchingReplicas(disks map[string]*Disk, replicas map[string
 		replicasCountPerDisk[r.Spec.DiskID]++
 	}
 
-	highestReplicaCount := 0
 	disksByReplicaCount := map[int]map[string]*Disk{}
 	for diskUUID, disk := range disks {
 		count := replicasCountPerDisk[diskUUID]
@@ -474,22 +485,13 @@ func filterDisksWithMatchingReplicas(disks map[string]*Disk, replicas map[string
 			disksByReplicaCount[count] = map[string]*Disk{}
 		}
 		disksByReplicaCount[count][diskUUID] = disk
-		if count > highestReplicaCount {
-			highestReplicaCount = count
-		}
 	}
 
 	if len(disksByReplicaCount[0]) > 0 || !diskSoftAntiAffinity {
 		return disksByReplicaCount[0]
 	}
 
-	for i := 1; i <= highestReplicaCount; i++ {
-		if len(disksByReplicaCount[i]) > 0 {
-			return disksByReplicaCount[i]
-		}
-	}
-
-	return map[string]*Disk{}
+	return disks
 }
 
 func (rcs *ReplicaScheduler) getNodeInfo() (map[string]*longhorn.Node, error) {
@@ -538,6 +540,7 @@ func (rcs *ReplicaScheduler) scheduleReplicaToDisk(replica *longhorn.Replica, di
 	}).Infof("Schedule replica to node %v", replica.Spec.NodeID)
 }
 
+// Investigate
 func (rcs *ReplicaScheduler) getDiskWithMostUsableStorage(disks map[string]*Disk) *Disk {
 	diskWithMostUsableStorage := &Disk{}
 	for _, disk := range disks {
@@ -792,6 +795,32 @@ func (rcs *ReplicaScheduler) IsSchedulableToDisk(size int64, requiredStorage int
 		(size+info.StorageScheduled) <= int64(float64(info.StorageMaximum-info.StorageReserved)*float64(info.OverProvisioningPercentage)/100)
 }
 
+func (rcs *ReplicaScheduler) IsSchedulableToDiskConsiderDiskPressure(diskPressurePercentage, size, requiredStorage int64, info *DiskSchedulingInfo) bool {
+	newDiskUsagePercentage := (requiredStorage + info.StorageScheduled + info.StorageReserved) * 100 / info.StorageMaximum
+	logrus.WithFields(logrus.Fields{
+		"diskUUID":               info.DiskUUID,
+		"diskPressurePercentage": diskPressurePercentage,
+		"requiredStorage":        requiredStorage,
+		"storageScheduled":       info.StorageScheduled,
+		"storageReserved":        info.StorageReserved,
+		"storageMaximum":         info.StorageMaximum,
+	}).Debugf("Evaluated new disk usage percentage after scheduling replica: %v%%", newDiskUsagePercentage)
+
+	return rcs.IsSchedulableToDisk(size, requiredStorage, info) &&
+		newDiskUsagePercentage < int64(diskPressurePercentage)
+}
+
+// IsDiskUnderPressure checks if the disk is under pressure based the provided
+// threshold percentage.
+func (rcs *ReplicaScheduler) IsDiskUnderPressure(diskPressurePercentage int64, info *DiskSchedulingInfo) bool {
+	storageUnusedPercentage := int64(0)
+	storageUnused := info.StorageAvailable - info.StorageReserved
+	if storageUnused > 0 && info.StorageMaximum > 0 {
+		storageUnusedPercentage = storageUnused * 100 / info.StorageMaximum
+	}
+	return storageUnusedPercentage < 100-int64(diskPressurePercentage)
+}
+
 // FilterNodesSchedulableForVolume filters nodes that are schedulable for a given volume based on the disk space.
 func (rcs *ReplicaScheduler) FilterNodesSchedulableForVolume(nodes map[string]*longhorn.Node, volume *longhorn.Volume) map[string]*longhorn.Node {
 	filteredNodes := map[string]*longhorn.Node{}
@@ -845,6 +874,7 @@ func (rcs *ReplicaScheduler) GetDiskSchedulingInfo(disk longhorn.DiskSpec, diskS
 		return nil, err
 	}
 	info := &DiskSchedulingInfo{
+		DiskUUID:                   diskStatus.DiskUUID,
 		StorageAvailable:           diskStatus.StorageAvailable,
 		StorageScheduled:           diskStatus.StorageScheduled,
 		StorageReserved:            disk.StorageReserved,
