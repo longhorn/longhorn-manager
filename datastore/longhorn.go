@@ -1733,6 +1733,19 @@ func (s *DataStore) ListEngineImages() (map[string]*longhorn.EngineImage, error)
 	return itemMap, nil
 }
 
+func (s *DataStore) CheckEngineImageCompatiblityByImage(image string) error {
+	engineImage, err := s.GetEngineImageByImage(image)
+	if err != nil {
+		return err
+	}
+
+	if engineImage.Status.State == longhorn.EngineImageStateIncompatible {
+		return errors.Errorf("engine image %v is incompatible", engineImage.Name)
+	}
+
+	return nil
+}
+
 // CheckEngineImageReadiness return true if the engine IMAGE is deployed on all nodes in the NODES list
 func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (isReady bool, err error) {
 	if len(nodes) == 0 {
