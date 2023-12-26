@@ -55,7 +55,7 @@ func (e *engineValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInternalError(err.Error())
 	}
 
-	err = wcommon.ValidateRequiredDataEngineEnabled(e.ds, engine.Spec.BackendStoreDriver)
+	err = wcommon.ValidateRequiredDataEngineEnabled(e.ds, engine.Spec.DataEngine)
 	if err != nil {
 		return err
 	}
@@ -77,9 +77,9 @@ func (e *engineValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Engine", newObj), "")
 	}
 
-	if oldEngine.Spec.BackendStoreDriver != "" {
-		if oldEngine.Spec.BackendStoreDriver != newEngine.Spec.BackendStoreDriver {
-			err := fmt.Errorf("changing backend store driver for engine %v is not supported", oldEngine.Name)
+	if oldEngine.Spec.DataEngine != "" {
+		if oldEngine.Spec.DataEngine != newEngine.Spec.DataEngine {
+			err := fmt.Errorf("changing data engine for engine %v is not supported", oldEngine.Name)
 			return werror.NewInvalidError(err.Error(), "")
 		}
 	}

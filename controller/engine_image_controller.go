@@ -436,8 +436,8 @@ func (ic *EngineImageController) handleAutoUpgradeEngineImageToDefaultEngineImag
 		for _, v := range vs {
 			ic.logger.WithFields(logrus.Fields{"volume": v.Name, "image": v.Spec.Image}).Infof("Upgrading volume engine image to the default engine image %v automatically", defaultEngineImage)
 
-			if datastore.IsBackendStoreDriverV2(v.Spec.BackendStoreDriver) {
-				ic.logger.WithFields(logrus.Fields{"volume": v.Name, "image": v.Spec.Image}).Infof("Skip upgrading volume engine image to the default engine image %v automatically since it is using v2 backend store", defaultEngineImage)
+			if datastore.IsDataEngineV2(v.Spec.DataEngine) {
+				ic.logger.WithFields(logrus.Fields{"volume": v.Name, "image": v.Spec.Image}).Infof("Skip upgrading volume engine image to the default engine image %v automatically since it is using v2 data engine", defaultEngineImage)
 				continue
 			}
 
@@ -486,8 +486,8 @@ func (ic *EngineImageController) getVolumesForEngineImageUpgrading(volumes map[s
 			continue
 		}
 		canBeUpgraded := ic.canDoOfflineEngineImageUpgrade(v, newEngineImageResource) || ic.canDoLiveEngineImageUpgrade(v, newEngineImageResource)
-		isCurrentEIAvailable, _ := ic.ds.CheckImageReadyOnAllVolumeReplicas(v.Status.CurrentImage, v.Name, v.Status.CurrentNodeID, v.Spec.BackendStoreDriver)
-		isNewEIAvailable, _ := ic.ds.CheckImageReadyOnAllVolumeReplicas(newEngineImageResource.Spec.Image, v.Name, v.Status.CurrentNodeID, v.Spec.BackendStoreDriver)
+		isCurrentEIAvailable, _ := ic.ds.CheckImageReadyOnAllVolumeReplicas(v.Status.CurrentImage, v.Name, v.Status.CurrentNodeID, v.Spec.DataEngine)
+		isNewEIAvailable, _ := ic.ds.CheckImageReadyOnAllVolumeReplicas(newEngineImageResource.Spec.Image, v.Name, v.Status.CurrentNodeID, v.Spec.DataEngine)
 		validCandidate := v.Spec.Image != newEngineImageResource.Spec.Image && canBeUpgraded && isCurrentEIAvailable && isNewEIAvailable
 		if validCandidate {
 			candidates[v.Status.OwnerID] = append(candidates[v.Status.OwnerID], v)

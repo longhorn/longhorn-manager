@@ -55,7 +55,7 @@ func (i *instanceManagerMutator) Create(request *admission.Request, newObj runti
 	}
 
 	// Set labels
-	labels := types.GetInstanceManagerLabels(im.Spec.NodeID, im.Spec.Image, im.Spec.Type, im.Spec.BackendStoreDriver)
+	labels := types.GetInstanceManagerLabels(im.Spec.NodeID, im.Spec.Image, im.Spec.Type, im.Spec.DataEngine)
 	bytes, err := json.Marshal(labels)
 	if err != nil {
 		err = errors.Wrapf(err, "failed to get JSON encoding labels of %v ", im.Name)
@@ -96,8 +96,8 @@ func mutate(im *longhorn.InstanceManager) admission.PatchOps {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/labels", "value": {}}`)
 	}
 
-	if string(im.Spec.BackendStoreDriver) == "" {
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeV1))
+	if string(im.Spec.DataEngine) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataEngine", "value": "%s"}`, longhorn.DataEngineTypeV1))
 	}
 
 	return patchOps

@@ -246,8 +246,8 @@ func parseInstance(p *imapi.Instance) *longhorn.InstanceProcess {
 
 	return &longhorn.InstanceProcess{
 		Spec: longhorn.InstanceProcessSpec{
-			Name:               p.Name,
-			BackendStoreDriver: longhorn.BackendStoreDriverType(p.BackendStoreDriver),
+			Name:       p.Name,
+			DataEngine: longhorn.DataEngineType(p.BackendStoreDriver),
 		},
 		Status: longhorn.InstanceProcessStatus{
 			Type:       getTypeForInstance(longhorn.InstanceType(p.Type), p.PortCount),
@@ -271,8 +271,8 @@ func parseProcess(p *imapi.Process) *longhorn.InstanceProcess {
 
 	return &longhorn.InstanceProcess{
 		Spec: longhorn.InstanceProcessSpec{
-			Name:               p.Name,
-			BackendStoreDriver: longhorn.BackendStoreDriverTypeV1,
+			Name:       p.Name,
+			DataEngine: longhorn.DataEngineTypeV1,
 		},
 		Status: longhorn.InstanceProcessStatus{
 			Type:       getTypeForProcess(p.PortCount),
@@ -415,18 +415,18 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 
 	var err error
 
-	frontend, err := GetEngineInstanceFrontend(req.Engine.Spec.BackendStoreDriver, req.VolumeFrontend)
+	frontend, err := GetEngineInstanceFrontend(req.Engine.Spec.DataEngine, req.VolumeFrontend)
 	if err != nil {
 		return nil, err
 	}
 
-	switch req.Engine.Spec.BackendStoreDriver {
-	case longhorn.BackendStoreDriverTypeV1:
+	switch req.Engine.Spec.DataEngine {
+	case longhorn.DataEngineTypeV1:
 		binary, args, err = getBinaryAndArgsForEngineProcessCreation(req.Engine, frontend, req.EngineReplicaTimeout, req.ReplicaFileSyncHTTPClientTimeout, req.DataLocality, req.EngineCLIAPIVersion)
 		if err != nil {
 			return nil, err
 		}
-	case longhorn.BackendStoreDriverTypeV2:
+	case longhorn.DataEngineTypeV2:
 		replicaAddresses = req.Engine.Status.CurrentReplicaAddressMap
 	}
 
@@ -440,7 +440,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 	}
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
-		BackendStoreDriver: string(req.Engine.Spec.BackendStoreDriver),
+		BackendStoreDriver: string(req.Engine.Spec.DataEngine),
 		Name:               req.Engine.Name,
 		InstanceType:       string(longhorn.InstanceManagerTypeEngine),
 		VolumeName:         req.Engine.Spec.VolumeName,
@@ -482,7 +482,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 
 	binary := ""
 	args := []string{}
-	if datastore.IsBackendStoreDriverV1(req.Replica.Spec.BackendStoreDriver) {
+	if datastore.IsDataEngineV1(req.Replica.Spec.DataEngine) {
 		binary, args = getBinaryAndArgsForReplicaProcessCreation(req.Replica, req.DataPath, req.BackingImagePath, req.DataLocality, DefaultReplicaPortCountV1, req.EngineCLIAPIVersion)
 	}
 
@@ -496,12 +496,12 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 	}
 
 	portCount := DefaultReplicaPortCountV1
-	if datastore.IsBackendStoreDriverV2(req.Replica.Spec.BackendStoreDriver) {
+	if datastore.IsDataEngineV2(req.Replica.Spec.DataEngine) {
 		portCount = DefaultReplicaPortCountV2
 	}
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
-		BackendStoreDriver: string(req.Replica.Spec.BackendStoreDriver),
+		BackendStoreDriver: string(req.Replica.Spec.DataEngine),
 		Name:               req.Replica.Name,
 		InstanceType:       string(longhorn.InstanceManagerTypeReplica),
 		VolumeName:         req.Replica.Spec.VolumeName,
@@ -525,19 +525,19 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 }
 
 // InstanceDelete deletes the instance
-func (c *InstanceManagerClient) InstanceDelete(backendStoreDriver longhorn.BackendStoreDriverType, name, kind, diskUUID string, cleanupRequired bool) (err error) {
+func (c *InstanceManagerClient) InstanceDelete(dataEngine longhorn.DataEngineType, name, kind, diskUUID string, cleanupRequired bool) (err error) {
 	if c.GetAPIVersion() < 4 {
 		/* Fall back to the old way of deleting process */
 		_, err = c.processManagerGrpcClient.ProcessDelete(name)
 	} else {
-		_, err = c.instanceServiceGrpcClient.InstanceDelete(string(backendStoreDriver), name, kind, diskUUID, cleanupRequired)
+		_, err = c.instanceServiceGrpcClient.InstanceDelete(string(dataEngine), name, kind, diskUUID, cleanupRequired)
 	}
 
 	return err
 }
 
 // InstanceGet returns the instance process
-func (c *InstanceManagerClient) InstanceGet(backendStoreDriver longhorn.BackendStoreDriverType, name, kind string) (*longhorn.InstanceProcess, error) {
+func (c *InstanceManagerClient) InstanceGet(dataEngine longhorn.DataEngineType, name, kind string) (*longhorn.InstanceProcess, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -551,7 +551,7 @@ func (c *InstanceManagerClient) InstanceGet(backendStoreDriver longhorn.BackendS
 		return parseProcess(imapi.RPCToProcess(process)), nil
 	}
 
-	instance, err := c.instanceServiceGrpcClient.InstanceGet(string(backendStoreDriver), name, kind)
+	instance, err := c.instanceServiceGrpcClient.InstanceGet(string(dataEngine), name, kind)
 	if err != nil {
 		return nil, err
 	}
@@ -559,7 +559,7 @@ func (c *InstanceManagerClient) InstanceGet(backendStoreDriver longhorn.BackendS
 }
 
 // InstanceGetBinary returns the binary name of the instance
-func (c *InstanceManagerClient) InstanceGetBinary(backendStoreDriver longhorn.BackendStoreDriverType, name, kind, diskUUID string) (string, error) {
+func (c *InstanceManagerClient) InstanceGetBinary(dataEngine longhorn.DataEngineType, name, kind, diskUUID string) (string, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return "", err
 	}
@@ -573,7 +573,7 @@ func (c *InstanceManagerClient) InstanceGetBinary(backendStoreDriver longhorn.Ba
 		return imapi.RPCToProcess(process).Binary, nil
 	}
 
-	instance, err := c.instanceServiceGrpcClient.InstanceGet(string(backendStoreDriver), name, kind)
+	instance, err := c.instanceServiceGrpcClient.InstanceGet(string(dataEngine), name, kind)
 	if err != nil {
 		return "", err
 	}
@@ -585,7 +585,7 @@ func (c *InstanceManagerClient) InstanceGetBinary(backendStoreDriver longhorn.Ba
 }
 
 // InstanceLog returns a grpc stream that will be closed when the passed context is cancelled or the underlying grpc client is closed
-func (c *InstanceManagerClient) InstanceLog(ctx context.Context, backendStoreDriver longhorn.BackendStoreDriverType, name, kind string) (*imapi.LogStream, error) {
+func (c *InstanceManagerClient) InstanceLog(ctx context.Context, dataEngine longhorn.DataEngineType, name, kind string) (*imapi.LogStream, error) {
 	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return nil, err
 	}
@@ -595,7 +595,7 @@ func (c *InstanceManagerClient) InstanceLog(ctx context.Context, backendStoreDri
 		return c.processManagerGrpcClient.ProcessLog(ctx, name)
 	}
 
-	return c.instanceServiceGrpcClient.InstanceLog(ctx, string(backendStoreDriver), name, kind)
+	return c.instanceServiceGrpcClient.InstanceLog(ctx, string(dataEngine), name, kind)
 }
 
 // InstanceWatch returns a grpc stream that will be closed when the passed context is cancelled or the underlying grpc client is closed
@@ -656,14 +656,14 @@ type EngineInstanceUpgradeRequest struct {
 // EngineInstanceUpgrade upgrades the engine process
 func (c *InstanceManagerClient) EngineInstanceUpgrade(req *EngineInstanceUpgradeRequest) (*longhorn.InstanceProcess, error) {
 	engine := req.Engine
-	switch engine.Spec.BackendStoreDriver {
-	case longhorn.BackendStoreDriverTypeV1:
+	switch engine.Spec.DataEngine {
+	case longhorn.DataEngineTypeV1:
 		return c.engineInstanceUpgrade(req)
-	case longhorn.BackendStoreDriverTypeV2:
+	case longhorn.DataEngineTypeV2:
 		/* TODO: Handle SPDK engine upgrade */
 		return nil, fmt.Errorf("SPDK engine upgrade is not supported yet")
 	default:
-		return nil, fmt.Errorf("unknown backend store driver %v", engine.Spec.BackendStoreDriver)
+		return nil, fmt.Errorf("unknown data engine %v", engine.Spec.DataEngine)
 	}
 }
 
@@ -672,7 +672,7 @@ func (c *InstanceManagerClient) engineInstanceUpgrade(req *EngineInstanceUpgrade
 		return nil, err
 	}
 
-	frontend, err := GetEngineInstanceFrontend(req.Engine.Spec.BackendStoreDriver, req.VolumeFrontend)
+	frontend, err := GetEngineInstanceFrontend(req.Engine.Spec.DataEngine, req.VolumeFrontend)
 	if err != nil {
 		return nil, err
 	}
@@ -717,7 +717,7 @@ func (c *InstanceManagerClient) engineInstanceUpgrade(req *EngineInstanceUpgrade
 		return parseProcess(imapi.RPCToProcess(process)), nil
 	}
 
-	instance, err := c.instanceServiceGrpcClient.InstanceReplace(string(req.Engine.Spec.BackendStoreDriver), req.Engine.Name,
+	instance, err := c.instanceServiceGrpcClient.InstanceReplace(string(req.Engine.Spec.DataEngine), req.Engine.Name,
 		string(longhorn.InstanceManagerTypeEngine), binary, DefaultEnginePortCount, args, []string{DefaultPortArg}, DefaultTerminateSignal)
 	if err != nil {
 		return nil, err

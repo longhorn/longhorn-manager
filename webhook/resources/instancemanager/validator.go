@@ -75,8 +75,8 @@ func validate(im *longhorn.InstanceManager) error {
 		return fmt.Errorf("type for instanceManager %s is not set", im.Name)
 	}
 
-	if im.Spec.BackendStoreDriver == "" {
-		return fmt.Errorf("backend store driver for instanceManager %s is not set", im.Name)
+	if im.Spec.DataEngine == "" {
+		return fmt.Errorf("data engine for instanceManager %s is not set", im.Name)
 	}
 
 	return nil

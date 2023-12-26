@@ -313,7 +313,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	}()
 
 	isCLIAPIVersionOne := false
-	if datastore.IsBackendStoreDriverV1(engine.Spec.BackendStoreDriver) {
+	if datastore.IsDataEngineV1(engine.Spec.DataEngine) {
 		if engine.Status.CurrentImage != "" {
 			isCLIAPIVersionOne, err = ec.ds.IsEngineImageCLIAPIVersionOne(engine.Status.CurrentImage)
 			if err != nil {
@@ -467,7 +467,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		return nil, err
 	}
 
-	cliAPIVersion, err := ec.ds.GetDataEngineImageCLIAPIVersion(e.Spec.Image, e.Spec.BackendStoreDriver)
+	cliAPIVersion, err := ec.ds.GetDataEngineImageCLIAPIVersion(e.Spec.Image, e.Spec.DataEngine)
 	if err != nil {
 		return nil, err
 	}
@@ -490,7 +490,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 	}
 	log := getLoggerForEngine(ec.logger, e)
 
-	if datastore.IsBackendStoreDriverV1(e.Spec.BackendStoreDriver) {
+	if datastore.IsDataEngineV1(e.Spec.DataEngine) {
 		err = ec.deleteInstanceWithCLIAPIVersionOne(e)
 		if err != nil {
 			return err
@@ -597,7 +597,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 	}
 	defer c.Close()
 
-	err = c.InstanceDelete(e.Spec.BackendStoreDriver, e.Name, string(longhorn.InstanceManagerTypeEngine), "", true)
+	err = c.InstanceDelete(e.Spec.DataEngine, e.Name, string(longhorn.InstanceManagerTypeEngine), "", true)
 	if err != nil && !types.ErrorIsNotFound(err) {
 		return err
 	}
@@ -687,7 +687,7 @@ func (ec *EngineController) GetInstance(obj interface{}) (*longhorn.InstanceProc
 	}
 	defer c.Close()
 
-	return c.InstanceGet(e.Spec.BackendStoreDriver, e.Name, string(longhorn.InstanceManagerTypeEngine))
+	return c.InstanceGet(e.Spec.DataEngine, e.Name, string(longhorn.InstanceManagerTypeEngine))
 }
 
 func (ec *EngineController) LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error) {
@@ -706,7 +706,7 @@ func (ec *EngineController) LogInstance(ctx context.Context, obj interface{}) (*
 	}
 
 	// TODO: #2441 refactor this when we do the resource monitoring refactor
-	stream, err := c.InstanceLog(ctx, e.Spec.BackendStoreDriver, e.Name, string(longhorn.InstanceManagerTypeEngine))
+	stream, err := c.InstanceLog(ctx, e.Spec.DataEngine, e.Name, string(longhorn.InstanceManagerTypeEngine))
 	return c, stream, err
 }
 
@@ -921,13 +921,13 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		return err
 	}
 
-	cliAPIVersion, err := m.ds.GetDataEngineImageCLIAPIVersion(engine.Status.CurrentImage, engine.Spec.BackendStoreDriver)
+	cliAPIVersion, err := m.ds.GetDataEngineImageCLIAPIVersion(engine.Status.CurrentImage, engine.Spec.DataEngine)
 	if err != nil {
 		return err
 	}
 
-	if (datastore.IsBackendStoreDriverV1(engine.Spec.BackendStoreDriver) && cliAPIVersion >= emeta.CLIAPIMinVersion) ||
-		datastore.IsBackendStoreDriverV2(engine.Spec.BackendStoreDriver) {
+	if (datastore.IsDataEngineV1(engine.Spec.DataEngine) && cliAPIVersion >= emeta.CLIAPIMinVersion) ||
+		datastore.IsDataEngineV2(engine.Spec.DataEngine) {
 		volumeInfo, err := engineClientProxy.VolumeGet(engine)
 		if err != nil {
 			return err
@@ -1616,7 +1616,7 @@ func GetBinaryClientForEngine(e *longhorn.Engine, engines engineapi.EngineClient
 		err = errors.Wrapf(err, "cannot get client for engine %v", e.Name)
 	}()
 
-	if datastore.IsBackendStoreDriverV2(e.Spec.BackendStoreDriver) {
+	if datastore.IsDataEngineV2(e.Spec.DataEngine) {
 		return nil, nil
 	}
 
@@ -2029,12 +2029,12 @@ func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logru
 		return err
 	}
 
-	cliAPIVersion, err := ec.ds.GetDataEngineImageCLIAPIVersion(e.Spec.Image, e.Spec.BackendStoreDriver)
+	cliAPIVersion, err := ec.ds.GetDataEngineImageCLIAPIVersion(e.Spec.Image, e.Spec.DataEngine)
 	if err != nil {
 		return err
 	}
 
-	processBinary, err := c.InstanceGetBinary(e.Spec.BackendStoreDriver, e.Name, string(longhorn.InstanceManagerTypeEngine), "")
+	processBinary, err := c.InstanceGetBinary(e.Spec.DataEngine, e.Name, string(longhorn.InstanceManagerTypeEngine), "")
 	if err != nil {
 		return errors.Wrapf(err, "failed to get the binary of the current engine instance")
 	}
@@ -2076,7 +2076,7 @@ func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineIm
 		return isResponsible, nil
 	}
 
-	if datastore.IsBackendStoreDriverV1(e.Spec.BackendStoreDriver) {
+	if datastore.IsDataEngineV1(e.Spec.DataEngine) {
 		readyNodesWithEI, err := ec.ds.ListReadyNodesContainingEngineImageRO(e.Status.CurrentImage)
 		if err != nil {
 			return false, errors.Wrapf(err, "failed to list ready nodes containing engine image %v", e.Status.CurrentImage)
@@ -2088,15 +2088,15 @@ func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineIm
 		}
 	}
 
-	preferredOwnerDataEngineAvailable, err := ec.ds.CheckDataEngineImageReadiness(e.Status.CurrentImage, e.Spec.BackendStoreDriver, e.Spec.NodeID)
+	preferredOwnerDataEngineAvailable, err := ec.ds.CheckDataEngineImageReadiness(e.Status.CurrentImage, e.Spec.DataEngine, e.Spec.NodeID)
 	if err != nil {
 		return false, err
 	}
-	currentOwnerDataEngineAvailable, err := ec.ds.CheckDataEngineImageReadiness(e.Status.CurrentImage, e.Spec.BackendStoreDriver, e.Status.OwnerID)
+	currentOwnerDataEngineAvailable, err := ec.ds.CheckDataEngineImageReadiness(e.Status.CurrentImage, e.Spec.DataEngine, e.Status.OwnerID)
 	if err != nil {
 		return false, err
 	}
-	currentNodeDataEngineAvailable, err := ec.ds.CheckDataEngineImageReadiness(e.Status.CurrentImage, e.Spec.BackendStoreDriver, ec.controllerID)
+	currentNodeDataEngineAvailable, err := ec.ds.CheckDataEngineImageReadiness(e.Status.CurrentImage, e.Spec.DataEngine, ec.controllerID)
 	if err != nil {
 		return false, err
 	}

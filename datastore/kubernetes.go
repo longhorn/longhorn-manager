@@ -447,9 +447,9 @@ func (s *DataStore) ListInstanceManagerPods() ([]*corev1.Pod, error) {
 }
 
 // ListInstanceManagerPodsBy returns a list of instance manager pods that fulfill the below conditions
-func (s *DataStore) ListInstanceManagerPodsBy(node string, imImage string, imType longhorn.InstanceManagerType, backendStoreDriver longhorn.BackendStoreDriverType) ([]*corev1.Pod, error) {
+func (s *DataStore) ListInstanceManagerPodsBy(node string, imImage string, imType longhorn.InstanceManagerType, dataEngine longhorn.DataEngineType) ([]*corev1.Pod, error) {
 	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: types.GetInstanceManagerLabels(node, imImage, imType, backendStoreDriver),
+		MatchLabels: types.GetInstanceManagerLabels(node, imImage, imType, dataEngine),
 	})
 	if err != nil {
 		return nil, err

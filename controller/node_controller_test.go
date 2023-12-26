@@ -48,7 +48,7 @@ var (
 		TestOwnerID1, TestNode1, TestIP1,
 		map[string]longhorn.InstanceProcess{},
 		map[string]longhorn.InstanceProcess{},
-		longhorn.BackendStoreDriverTypeV1,
+		longhorn.DataEngineTypeV1,
 		false,
 	)
 )
@@ -971,7 +971,7 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 				TestOwnerID1, TestNode1, TestIP1,
 				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
-				longhorn.BackendStoreDriverTypeV1,
+				longhorn.DataEngineTypeV1,
 				false,
 			),
 		},
@@ -1033,7 +1033,7 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 			},
 		},
 		map[string]longhorn.InstanceProcess{},
-		longhorn.BackendStoreDriverTypeV1,
+		longhorn.DataEngineTypeV1,
 		false,
 	)
 	extraInstanceManager.Spec.Image = TestExtraInstanceManagerImage
@@ -1110,7 +1110,7 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 				TestOwnerID1, TestNode1, TestIP1,
 				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
-				longhorn.BackendStoreDriverTypeV1,
+				longhorn.DataEngineTypeV1,
 				false,
 			),
 			"extra-instance-manger-name": extraInstanceManager,
@@ -1207,7 +1207,7 @@ func (s *NodeControllerSuite) TestCleanupAllInstanceManagers(c *C) {
 				TestOwnerID1, TestNode1, TestIP1,
 				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
-				longhorn.BackendStoreDriverTypeV1,
+				longhorn.DataEngineTypeV1,
 				false,
 			),
 		},

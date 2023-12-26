@@ -835,7 +835,7 @@ func (imc *InstanceManagerController) generateInstanceManagerPDBManifest(im *lon
 		},
 		Spec: policyv1.PodDisruptionBudgetSpec{
 			Selector: &metav1.LabelSelector{
-				MatchLabels: types.GetInstanceManagerLabels(im.Spec.NodeID, im.Spec.Image, im.Spec.Type, im.Spec.BackendStoreDriver),
+				MatchLabels: types.GetInstanceManagerLabels(im.Spec.NodeID, im.Spec.Image, im.Spec.Type, im.Spec.DataEngine),
 			},
 			MinAvailable: &intstr.IntOrString{IntVal: 1},
 		},
@@ -970,7 +970,7 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 	registrySecret := registrySecretSetting.Value
 
 	var podSpec *corev1.Pod
-	podSpec, err = imc.createInstanceManagerPodSpec(im, tolerations, registrySecret, nodeSelector, im.Spec.BackendStoreDriver)
+	podSpec, err = imc.createInstanceManagerPodSpec(im, tolerations, registrySecret, nodeSelector, im.Spec.DataEngine)
 	if err != nil {
 		return err
 	}
@@ -1071,17 +1071,17 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 	return podSpec, nil
 }
 
-func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.InstanceManager, tolerations []corev1.Toleration, registrySecret string, nodeSelector map[string]string, backendStoreDriver longhorn.BackendStoreDriverType) (*corev1.Pod, error) {
+func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.InstanceManager, tolerations []corev1.Toleration, registrySecret string, nodeSelector map[string]string, dataEngine longhorn.DataEngineType) (*corev1.Pod, error) {
 	podSpec, err := imc.createGenericManagerPodSpec(im, tolerations, registrySecret, nodeSelector)
 	if err != nil {
 		return nil, err
 	}
 
 	secretIsOptional := true
-	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, longhorn.InstanceManagerTypeAllInOne, backendStoreDriver)
+	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, longhorn.InstanceManagerTypeAllInOne, dataEngine)
 	podSpec.Spec.Containers[0].Name = "instance-manager"
 
-	if datastore.IsBackendStoreDriverV2(backendStoreDriver) {
+	if datastore.IsDataEngineV2(dataEngine) {
 		podSpec.Spec.Containers[0].Args = []string{
 			"instance-manager", "--enable-spdk", "--debug", "daemon", "--spdk-enabled", "--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort),
 		}
@@ -1176,7 +1176,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		},
 	}
 
-	if datastore.IsBackendStoreDriverV2(backendStoreDriver) {
+	if datastore.IsDataEngineV2(dataEngine) {
 		podSpec.Spec.Containers[0].VolumeMounts = append(podSpec.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
 			MountPath: "/hugepages",
 			Name:      "hugepage",

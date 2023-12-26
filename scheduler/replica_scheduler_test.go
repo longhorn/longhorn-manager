@@ -174,7 +174,7 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 			ReplicaSoftAntiAffinity:     longhorn.ReplicaSoftAntiAffinityDefault,
 			ReplicaZoneSoftAntiAffinity: longhorn.ReplicaZoneSoftAntiAffinityDefault,
 			ReplicaDiskSoftAntiAffinity: longhorn.ReplicaDiskSoftAntiAffinityDefault,
-			BackendStoreDriver:          longhorn.BackendStoreDriverTypeV1,
+			DataEngine:                  longhorn.DataEngineTypeV1,
 		},
 		Status: longhorn.VolumeStatus{
 			OwnerID: TestOwnerID1,

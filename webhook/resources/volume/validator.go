@@ -117,7 +117,7 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 
 	// Check engine version before disable revision counter
 	if volume.Spec.RevisionCounterDisabled {
-		if ok, err := v.canDisableRevisionCounter(volume.Spec.Image, volume.Spec.BackendStoreDriver); !ok {
+		if ok, err := v.canDisableRevisionCounter(volume.Spec.Image, volume.Spec.DataEngine); !ok {
 			err := errors.Wrapf(err, "can not create volume with current engine image that doesn't support disable revision counter")
 			return werror.NewInvalidError(err.Error(), "")
 		}
@@ -127,18 +127,18 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
-	err := wcommon.ValidateRequiredDataEngineEnabled(v.ds, volume.Spec.BackendStoreDriver)
+	err := wcommon.ValidateRequiredDataEngineEnabled(v.ds, volume.Spec.DataEngine)
 	if err != nil {
 		return err
 	}
 
 	// TODO: remove this check when we support the following features for SPDK volumes
-	if datastore.IsBackendStoreDriverV2(volume.Spec.BackendStoreDriver) {
+	if datastore.IsDataEngineV2(volume.Spec.DataEngine) {
 		if volume.Spec.Encrypted {
-			return werror.NewInvalidError("encrypted volume is not supported for backend store driver v2", "")
+			return werror.NewInvalidError("encrypted volume is not supported for data engine v2", "")
 		}
 		if volume.Spec.BackingImage != "" {
-			return werror.NewInvalidError("backing image is not supported for backend store driver v2", "")
+			return werror.NewInvalidError("backing image is not supported for data engine v2", "")
 		}
 	}
 
@@ -222,90 +222,90 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		}
 	}
 
-	if oldVolume.Spec.BackendStoreDriver != "" {
-		if oldVolume.Spec.BackendStoreDriver != newVolume.Spec.BackendStoreDriver {
-			err := fmt.Errorf("changing backend store driver for volume %v is not supported", oldVolume.Name)
+	if oldVolume.Spec.DataEngine != "" {
+		if oldVolume.Spec.DataEngine != newVolume.Spec.DataEngine {
+			err := fmt.Errorf("changing data engine for volume %v is not supported", oldVolume.Name)
 			return werror.NewInvalidError(err.Error(), "")
 		}
 	}
 
-	if datastore.IsBackendStoreDriverV2(newVolume.Spec.BackendStoreDriver) {
+	if datastore.IsDataEngineV2(newVolume.Spec.DataEngine) {
 		// TODO: remove this check when we support the following features for SPDK volumes
 		if oldVolume.Spec.Size != newVolume.Spec.Size {
-			err := fmt.Errorf("changing volume size for volume %v is not supported for backend store driver %v",
-				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			err := fmt.Errorf("changing volume size for volume %v is not supported for data engine %v",
+				newVolume.Name, newVolume.Spec.DataEngine)
 			return werror.NewInvalidError(err.Error(), "")
 		}
 
 		if oldVolume.Spec.NumberOfReplicas != newVolume.Spec.NumberOfReplicas {
-			err := fmt.Errorf("changing number of replicas for volume %v is not supported for backend store driver %v",
-				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			err := fmt.Errorf("changing number of replicas for volume %v is not supported for data engine %v",
+				newVolume.Name, newVolume.Spec.DataEngine)
 			return werror.NewInvalidError(err.Error(), "")
 		}
 
 		if oldVolume.Spec.BackingImage != newVolume.Spec.BackingImage {
-			err := fmt.Errorf("changing backing image for volume %v is not supported for backend store driver %v",
-				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			err := fmt.Errorf("changing backing image for volume %v is not supported for data engine %v",
+				newVolume.Name, newVolume.Spec.DataEngine)
 			return werror.NewInvalidError(err.Error(), "")
 		}
 
 		if oldVolume.Spec.Encrypted != newVolume.Spec.Encrypted {
-			err := fmt.Errorf("changing encryption for volume %v is not supported for backend store driver %v",
-				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			err := fmt.Errorf("changing encryption for volume %v is not supported for data engine %v",
+				newVolume.Name, newVolume.Spec.DataEngine)
 			return werror.NewInvalidError(err.Error(), "")
 		}
 
 		if oldVolume.Spec.DataLocality != newVolume.Spec.DataLocality {
-			err := fmt.Errorf("changing data locality for volume %v is not supported for backend store driver %v",
-				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			err := fmt.Errorf("changing data locality for volume %v is not supported for data engine %v",
+				newVolume.Name, newVolume.Spec.DataEngine)
 			return werror.NewInvalidError(err.Error(), "")
 		}
 
 		if oldVolume.Spec.SnapshotDataIntegrity != newVolume.Spec.SnapshotDataIntegrity {
-			err := fmt.Errorf("changing snapshot data integrity for volume %v is not supported for backend store driver %v",
-				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			err := fmt.Errorf("changing snapshot data integrity for volume %v is not supported for data engine %v",
+				newVolume.Name, newVolume.Spec.DataEngine)
 			return werror.NewInvalidError(err.Error(), "")
 		}
 
 		if oldVolume.Spec.ReplicaAutoBalance != newVolume.Spec.ReplicaAutoBalance {
-			err := fmt.Errorf("changing replica auto balance for volume %v is not supported for backend store driver %v",
-				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			err := fmt.Errorf("changing replica auto balance for volume %v is not supported for data engine %v",
+				newVolume.Name, newVolume.Spec.DataEngine)
 			return werror.NewInvalidError(err.Error(), "")
 		}
 
 		if oldVolume.Spec.RestoreVolumeRecurringJob != newVolume.Spec.RestoreVolumeRecurringJob {
-			err := fmt.Errorf("changing restore volume recurring job for volume %v is not supported for backend store driver %v",
-				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			err := fmt.Errorf("changing restore volume recurring job for volume %v is not supported for data engine %v",
+				newVolume.Name, newVolume.Spec.DataEngine)
 			return werror.NewInvalidError(err.Error(), "")
 		}
 
 		if oldVolume.Spec.ReplicaSoftAntiAffinity != newVolume.Spec.ReplicaSoftAntiAffinity {
-			err := fmt.Errorf("changing replica soft anti-affinity for volume %v is not supported for backend store driver %v",
-				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			err := fmt.Errorf("changing replica soft anti-affinity for volume %v is not supported for data engine %v",
+				newVolume.Name, newVolume.Spec.DataEngine)
 			return werror.NewInvalidError(err.Error(), "")
 		}
 
 		if oldVolume.Spec.ReplicaZoneSoftAntiAffinity != newVolume.Spec.ReplicaZoneSoftAntiAffinity {
-			err := fmt.Errorf("changing replica zone soft anti-affinity for volume %v is not supported for backend store driver %v",
-				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			err := fmt.Errorf("changing replica zone soft anti-affinity for volume %v is not supported for data engine %v",
+				newVolume.Name, newVolume.Spec.DataEngine)
 			return werror.NewInvalidError(err.Error(), "")
 		}
 
 		if oldVolume.Spec.ReplicaDiskSoftAntiAffinity != newVolume.Spec.ReplicaDiskSoftAntiAffinity {
-			err := fmt.Errorf("changing replica disk soft anti-affinity for volume %v is not supported for backend store driver %v",
-				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			err := fmt.Errorf("changing replica disk soft anti-affinity for volume %v is not supported for data engine %v",
+				newVolume.Name, newVolume.Spec.DataEngine)
 			return werror.NewInvalidError(err.Error(), "")
 		}
 
 		if oldVolume.Spec.Image != newVolume.Spec.Image {
-			err := fmt.Errorf("changing engine image for volume %v is not supported for backend store driver %v",
-				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			err := fmt.Errorf("changing engine image for volume %v is not supported for data engine %v",
+				newVolume.Name, newVolume.Spec.DataEngine)
 			return werror.NewInvalidError(err.Error(), "")
 		}
 	} else {
 		if newVolume.Spec.OfflineReplicaRebuilding != longhorn.OfflineReplicaRebuildingDisabled {
-			err := fmt.Errorf("changing offline replica rebuilding for volume %v is not supported for backend store driver %v",
-				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			err := fmt.Errorf("changing offline replica rebuilding for volume %v is not supported for data engine %v",
+				newVolume.Name, newVolume.Spec.DataEngine)
 			return werror.NewInvalidError(err.Error(), "")
 		}
 	}
@@ -343,7 +343,7 @@ func (v *volumeValidator) validateExpansionSize(oldVolume *longhorn.Volume, newV
 			return err
 		}
 		diskStatus := node.Status.DiskStatus[diskName]
-		if !datastore.IsSupportedVolumeSize(replica.Spec.BackendStoreDriver, diskStatus.FSType, newSize) {
+		if !datastore.IsSupportedVolumeSize(replica.Spec.DataEngine, diskStatus.FSType, newSize) {
 			return fmt.Errorf("file system %s does not support volume size %v", diskStatus.Type, newSize)
 		}
 		break
@@ -440,8 +440,8 @@ func validateReplicaCount(dataLocality longhorn.DataLocality, replicaCount int) 
 	return nil
 }
 
-func (v *volumeValidator) canDisableRevisionCounter(image string, backendStoreDriver longhorn.BackendStoreDriverType) (bool, error) {
-	if datastore.IsBackendStoreDriverV2(backendStoreDriver) {
+func (v *volumeValidator) canDisableRevisionCounter(image string, dataEngine longhorn.DataEngineType) (bool, error) {
+	if datastore.IsDataEngineV2(dataEngine) {
 		// v2 volume does not have revision counter
 		return true, nil
 	}

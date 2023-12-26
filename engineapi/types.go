@@ -244,11 +244,11 @@ func CheckCLICompatibility(cliVersion, cliMinVersion int) error {
 	return nil
 }
 
-func GetEngineInstanceFrontend(backendStoreDriver longhorn.BackendStoreDriverType, volumeFrontend longhorn.VolumeFrontend) (frontend string, err error) {
+func GetEngineInstanceFrontend(dataEngine longhorn.DataEngineType, volumeFrontend longhorn.VolumeFrontend) (frontend string, err error) {
 	switch volumeFrontend {
 	case longhorn.VolumeFrontendBlockDev:
 		frontend = string(iscsidevtypes.FrontendTGTBlockDev)
-		if datastore.IsBackendStoreDriverV2(backendStoreDriver) {
+		if datastore.IsDataEngineV2(dataEngine) {
 			frontend = string(spdkdevtypes.FrontendSPDKTCPBlockdev)
 		}
 	case longhorn.VolumeFrontendISCSI:

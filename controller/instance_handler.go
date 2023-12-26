@@ -232,7 +232,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 	}
 
 	isCLIAPIVersionOne := false
-	if datastore.IsBackendStoreDriverV1(spec.BackendStoreDriver) {
+	if datastore.IsDataEngineV1(spec.DataEngine) {
 		if status.CurrentImage != "" {
 			isCLIAPIVersionOne, err = h.ds.IsEngineImageCLIAPIVersionOne(status.CurrentImage)
 			if err != nil {
@@ -269,8 +269,8 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 
 	if spec.LogRequested {
 		if !status.LogFetched {
-			// No need to get the log for instance manager if the backend store driver is not "longhorn"
-			if datastore.IsBackendStoreDriverV1(spec.BackendStoreDriver) {
+			// No need to get the log for instance manager if the data engine is not "longhorn"
+			if datastore.IsDataEngineV1(spec.DataEngine) {
 				logrus.Warnf("Getting requested log for %v in instance manager %v", instanceName, status.InstanceManagerName)
 				if im == nil {
 					logrus.Warnf("Failed to get the log for %v due to Instance Manager is already gone", status.InstanceManagerName)
@@ -321,7 +321,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 			break
 		}
 
-		err = h.createInstance(instanceName, spec.BackendStoreDriver, runtimeObj)
+		err = h.createInstance(instanceName, spec.DataEngine, runtimeObj)
 		if err != nil {
 			return err
 		}
@@ -389,7 +389,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 					longhorn.InstanceConditionReasonInstanceCreationFailure, instance.Status.ErrorMsg)
 			}
 
-			if datastore.IsBackendStoreDriverV1(instance.Spec.BackendStoreDriver) {
+			if datastore.IsDataEngineV1(instance.Spec.DataEngine) {
 				logrus.Warnf("Instance %v crashed on Instance Manager %v at %v, getting log",
 					instanceName, im.Name, im.Spec.NodeID)
 				if err := h.printInstanceLogs(instanceName, runtimeObj); err != nil {
@@ -405,7 +405,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 func shouldDeleteInstance(instance *longhorn.InstanceProcess) bool {
 	// For a replica of a SPDK volume, a stopped replica means the lvol is not exposed,
 	// but the lvol is still there. We don't need to delete it.
-	if datastore.IsBackendStoreDriverV2(instance.Spec.BackendStoreDriver) {
+	if datastore.IsDataEngineV2(instance.Spec.DataEngine) {
 		if instance.Status.State == longhorn.InstanceStateStopped {
 			return false
 		}
@@ -444,12 +444,12 @@ func (h *InstanceHandler) printInstanceLogs(instanceName string, obj runtime.Obj
 	return nil
 }
 
-func (h *InstanceHandler) createInstance(instanceName string, backendStoreDriver longhorn.BackendStoreDriverType, obj runtime.Object) error {
+func (h *InstanceHandler) createInstance(instanceName string, dataEngine longhorn.DataEngineType, obj runtime.Object) error {
 	_, err := h.instanceManagerHandler.GetInstance(obj)
 	if err == nil {
 		return nil
 	}
-	if !types.ErrorIsNotFound(err) && !(datastore.IsBackendStoreDriverV2(backendStoreDriver) && types.ErrorIsStopped(err)) {
+	if !types.ErrorIsNotFound(err) && !(datastore.IsDataEngineV2(dataEngine) && types.ErrorIsStopped(err)) {
 		return errors.Wrapf(err, "Failed to get instance process %v", instanceName)
 	}
 

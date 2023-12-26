@@ -162,7 +162,7 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 
 	// Mutate the image to the default one
 	defaultImageSetting := types.SettingNameDefaultEngineImage
-	if datastore.IsBackendStoreDriverV2(volume.Spec.BackendStoreDriver) {
+	if datastore.IsDataEngineV2(volume.Spec.DataEngine) {
 		defaultImageSetting = types.SettingNameDefaultInstanceManagerImage
 	}
 	defaultImage, _ := v.ds.GetSettingValueExisted(defaultImageSetting)
@@ -181,7 +181,7 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 
 	// TODO: Remove the mutations below after they are implemented for SPDK volumes
-	if datastore.IsBackendStoreDriverV2(volume.Spec.BackendStoreDriver) {
+	if datastore.IsDataEngineV2(volume.Spec.DataEngine) {
 		if volume.Spec.DataLocality != longhorn.DataLocalityDisabled {
 			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataLocality", "value": "%s"}`, longhorn.DataLocalityDisabled))
 		}
@@ -291,10 +291,10 @@ func mutate(newObj runtime.Object, moreLabels map[string]string) (admission.Patc
 	if string(volume.Spec.ReplicaDiskSoftAntiAffinity) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaDiskSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaDiskSoftAntiAffinityDefault))
 	}
-	if string(volume.Spec.BackendStoreDriver) == "" {
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeV1))
+	if string(volume.Spec.DataEngine) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataEngine", "value": "%s"}`, longhorn.DataEngineTypeV1))
 	}
-	if string(volume.Spec.OfflineReplicaRebuilding) == "" && datastore.IsBackendStoreDriverV1(volume.Spec.BackendStoreDriver) {
+	if string(volume.Spec.OfflineReplicaRebuilding) == "" && datastore.IsDataEngineV1(volume.Spec.DataEngine) {
 		// Always mutate the offlineReplicaRebuilding to disabled for non-SPDK volumes
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/offlineReplicaRebuilding", "value": "%s"}`, longhorn.OfflineReplicaRebuildingDisabled))
 	}

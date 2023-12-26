@@ -89,11 +89,11 @@ func upgradeInstanceManagers(namespace string, lhClient *lhclientset.Clientset, 
 
 	for _, im := range imMap {
 		if im.Labels != nil {
-			im.Labels[types.GetLonghornLabelKey(types.LonghornLabelBackendStoreDriver)] = string(longhorn.BackendStoreDriverTypeV1)
+			im.Labels[types.GetLonghornLabelKey(types.LonghornLabelDataEngine)] = string(longhorn.DataEngineTypeV1)
 		}
 
-		if im.Spec.BackendStoreDriver == "" {
-			im.Spec.BackendStoreDriver = longhorn.BackendStoreDriverTypeV1
+		if im.Spec.DataEngine == "" {
+			im.Spec.DataEngine = longhorn.DataEngineTypeV1
 		}
 	}
 

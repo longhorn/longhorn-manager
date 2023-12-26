@@ -148,8 +148,8 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 	}
 
 	cpuRequest := 0
-	switch im.Spec.BackendStoreDriver {
-	case longhorn.BackendStoreDriverTypeV1:
+	switch im.Spec.DataEngine {
+	case longhorn.DataEngineTypeV1:
 		cpuRequest = lhNode.Spec.InstanceManagerCPURequest
 		if cpuRequest == 0 {
 			guaranteedCPUSetting, err := ds.GetSettingWithAutoFillingRO(types.SettingNameGuaranteedInstanceManagerCPU)
@@ -163,7 +163,7 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 			allocatableMilliCPU := float64(kubeNode.Status.Allocatable.Cpu().MilliValue())
 			cpuRequest = int(math.Round(allocatableMilliCPU * guaranteedCPUPercentage / 100.0))
 		}
-	case longhorn.BackendStoreDriverTypeV2:
+	case longhorn.DataEngineTypeV2:
 		// TODO: Support CPU request per node for v2 volumes
 		guaranteedCPUSetting, err := ds.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU)
 		if err != nil {
@@ -175,7 +175,7 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 		}
 		cpuRequest = int(guaranteedCPURequest)
 	default:
-		return nil, fmt.Errorf("unknown backend store driver %v", im.Spec.BackendStoreDriver)
+		return nil, fmt.Errorf("unknown data engine %v", im.Spec.DataEngine)
 	}
 
 	return ParseResourceRequirement(fmt.Sprintf("%dm", cpuRequest))

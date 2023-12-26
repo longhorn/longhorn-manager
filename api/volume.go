@@ -191,7 +191,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		ReplicaSoftAntiAffinity:     volume.ReplicaSoftAntiAffinity,
 		ReplicaZoneSoftAntiAffinity: volume.ReplicaZoneSoftAntiAffinity,
 		ReplicaDiskSoftAntiAffinity: volume.ReplicaDiskSoftAntiAffinity,
-		BackendStoreDriver:          volume.BackendStoreDriver,
+		DataEngine:                  volume.DataEngine,
 		OfflineReplicaRebuilding:    volume.OfflineReplicaRebuilding,
 	}, volume.RecurringJobSelector)
 	if err != nil {

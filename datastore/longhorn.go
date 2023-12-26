@@ -358,7 +358,7 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			return err
 		}
 	case types.SettingNameStorageNetwork:
-		volumesDetached, err := s.AreAllVolumesDetached(longhorn.BackendStoreDriverTypeAll)
+		volumesDetached, err := s.AreAllVolumesDetached(longhorn.DataEngineTypeAll)
 		if err != nil {
 			return errors.Wrapf(err, "failed to check volume detachment for %v setting update", name)
 		}
@@ -417,7 +417,7 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 
 func (s *DataStore) ValidateV1DataEngineEnabled(dataEngineEnabled bool) error {
 	if !dataEngineEnabled {
-		allVolumesDetached, err := s.AreAllVolumesDetached(longhorn.BackendStoreDriverTypeV1)
+		allVolumesDetached, err := s.AreAllVolumesDetached(longhorn.DataEngineTypeV1)
 		if err != nil {
 			return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameV1DataEngine)
 		}
@@ -431,7 +431,7 @@ func (s *DataStore) ValidateV1DataEngineEnabled(dataEngineEnabled bool) error {
 
 func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) error {
 	if !dataEngineEnabled {
-		allVolumesDetached, err := s.AreAllVolumesDetached(longhorn.BackendStoreDriverTypeV2)
+		allVolumesDetached, err := s.AreAllVolumesDetached(longhorn.DataEngineTypeV2)
 		if err != nil {
 			return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameV2DataEngine)
 		}
@@ -498,7 +498,7 @@ func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) error {
 	return nil
 }
 
-func (s *DataStore) AreAllVolumesDetached(backendStoreDriver longhorn.BackendStoreDriverType) (bool, error) {
+func (s *DataStore) AreAllVolumesDetached(dataEngine longhorn.DataEngineType) (bool, error) {
 	nodes, err := s.ListNodes()
 	if err != nil {
 		return false, err
@@ -506,11 +506,11 @@ func (s *DataStore) AreAllVolumesDetached(backendStoreDriver longhorn.BackendSto
 
 	for node := range nodes {
 
-		engineInstanceManagers, err := s.ListInstanceManagersBySelectorRO(node, "", longhorn.InstanceManagerTypeEngine, backendStoreDriver)
+		engineInstanceManagers, err := s.ListInstanceManagersBySelectorRO(node, "", longhorn.InstanceManagerTypeEngine, dataEngine)
 		if err != nil && !ErrorIsNotFound(err) {
 			return false, err
 		}
-		aioInstanceManagers, err := s.ListInstanceManagersBySelectorRO(node, "", longhorn.InstanceManagerTypeAllInOne, backendStoreDriver)
+		aioInstanceManagers, err := s.ListInstanceManagersBySelectorRO(node, "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
 		if err != nil && !ErrorIsNotFound(err) {
 			return false, err
 		}
@@ -1787,16 +1787,16 @@ func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (is
 	return true, nil
 }
 
-func (s *DataStore) CheckDataEngineImageReadiness(image string, backendStoreDriver longhorn.BackendStoreDriverType, nodes ...string) (isReady bool, err error) {
-	if IsBackendStoreDriverV2(backendStoreDriver) {
+func (s *DataStore) CheckDataEngineImageReadiness(image string, dataEngine longhorn.DataEngineType, nodes ...string) (isReady bool, err error) {
+	if IsDataEngineV2(dataEngine) {
 		return true, nil
 	}
 	return s.CheckEngineImageReadiness(image, nodes...)
 }
 
 // CheckImageReadyOnAtLeastOneVolumeReplica checks if the IMAGE is deployed on the NODEID and on at least one of the the volume's replicas
-func (s *DataStore) CheckImageReadyOnAtLeastOneVolumeReplica(image, volumeName, nodeID string, dataLocality longhorn.DataLocality, backendStoreDriver longhorn.BackendStoreDriverType) (bool, error) {
-	isReady, err := s.CheckDataEngineImageReadiness(image, backendStoreDriver, nodeID)
+func (s *DataStore) CheckImageReadyOnAtLeastOneVolumeReplica(image, volumeName, nodeID string, dataLocality longhorn.DataLocality, dataEngine longhorn.DataEngineType) (bool, error) {
+	isReady, err := s.CheckDataEngineImageReadiness(image, dataEngine, nodeID)
 	if err != nil {
 		return false, errors.Wrapf(err, "failed to check image readiness of node %v", nodeID)
 	}
@@ -1812,7 +1812,7 @@ func (s *DataStore) CheckImageReadyOnAtLeastOneVolumeReplica(image, volumeName, 
 
 	hasScheduledReplica := false
 	for _, r := range replicas {
-		isReady, err := s.CheckDataEngineImageReadiness(image, r.Spec.BackendStoreDriver, r.Spec.NodeID)
+		isReady, err := s.CheckDataEngineImageReadiness(image, r.Spec.DataEngine, r.Spec.NodeID)
 		if err != nil || isReady {
 			return isReady, err
 		}
@@ -1827,7 +1827,7 @@ func (s *DataStore) CheckImageReadyOnAtLeastOneVolumeReplica(image, volumeName, 
 }
 
 // CheckImageReadyOnAllVolumeReplicas checks if the IMAGE is deployed on the NODEID as well as all the volume's replicas
-func (s *DataStore) CheckImageReadyOnAllVolumeReplicas(image, volumeName, nodeID string, backendStoreDriver longhorn.BackendStoreDriverType) (bool, error) {
+func (s *DataStore) CheckImageReadyOnAllVolumeReplicas(image, volumeName, nodeID string, dataEngine longhorn.DataEngineType) (bool, error) {
 	replicas, err := s.ListVolumeReplicas(volumeName)
 	if err != nil {
 		return false, errors.Wrapf(err, "failed to get replicas for volume %v", volumeName)
@@ -1841,7 +1841,7 @@ func (s *DataStore) CheckImageReadyOnAllVolumeReplicas(image, volumeName, nodeID
 			nodes = append(nodes, r.Spec.NodeID)
 		}
 	}
-	return s.CheckDataEngineImageReadiness(image, backendStoreDriver, nodes...)
+	return s.CheckDataEngineImageReadiness(image, dataEngine, nodes...)
 }
 
 // CreateBackingImage creates a Longhorn BackingImage resource and verifies
@@ -3169,13 +3169,13 @@ func (s *DataStore) GetInstanceManager(name string) (*longhorn.InstanceManager, 
 // that is using the default instance manager image.
 // The object is the direct reference to the internal cache object and should not be mutated.
 // Consider using this function when you can guarantee read only access and don't want the overhead of deep copy.
-func (s *DataStore) GetDefaultInstanceManagerByNodeRO(name string, backendStoreDriver longhorn.BackendStoreDriverType) (*longhorn.InstanceManager, error) {
+func (s *DataStore) GetDefaultInstanceManagerByNodeRO(name string, dataEngine longhorn.DataEngineType) (*longhorn.InstanceManager, error) {
 	defaultInstanceManagerImage, err := s.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
 	if err != nil {
 		return nil, err
 	}
 
-	instanceManagers, err := s.ListInstanceManagersBySelectorRO(name, defaultInstanceManagerImage, longhorn.InstanceManagerTypeAllInOne, backendStoreDriver)
+	instanceManagers, err := s.ListInstanceManagersBySelectorRO(name, defaultInstanceManagerImage, longhorn.InstanceManagerTypeAllInOne, dataEngine)
 	if err != nil {
 		return nil, err
 	}
@@ -3218,9 +3218,9 @@ func CheckInstanceManagerType(im *longhorn.InstanceManager) (longhorn.InstanceMa
 // the given namespace,
 // the list contains direct references to the internal cache objects and should not be mutated.
 // Consider using this function when you can guarantee read only access and don't want the overhead of deep copies.
-func (s *DataStore) ListInstanceManagersBySelectorRO(node, imImage string, imType longhorn.InstanceManagerType, backendStoreDriver longhorn.BackendStoreDriverType) (map[string]*longhorn.InstanceManager, error) {
+func (s *DataStore) ListInstanceManagersBySelectorRO(node, imImage string, imType longhorn.InstanceManagerType, dataEngine longhorn.DataEngineType) (map[string]*longhorn.InstanceManager, error) {
 	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: types.GetInstanceManagerLabels(node, imImage, imType, backendStoreDriver),
+		MatchLabels: types.GetInstanceManagerLabels(node, imImage, imType, dataEngine),
 	})
 	if err != nil {
 		return nil, err
@@ -3251,20 +3251,20 @@ func (s *DataStore) GetInstanceManagerByInstance(obj interface{}) (*longhorn.Ins
 
 func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.InstanceManager, error) {
 	var (
-		name               string // name of the object
-		nodeID             string
-		backendStoreDriver longhorn.BackendStoreDriverType
+		name       string // name of the object
+		nodeID     string
+		dataEngine longhorn.DataEngineType
 	)
 
 	switch obj := obj.(type) {
 	case *longhorn.Engine:
 		name = obj.Name
 		nodeID = obj.Spec.NodeID
-		backendStoreDriver = obj.Spec.BackendStoreDriver
+		dataEngine = obj.Spec.DataEngine
 	case *longhorn.Replica:
 		name = obj.Name
 		nodeID = obj.Spec.NodeID
-		backendStoreDriver = obj.Spec.BackendStoreDriver
+		dataEngine = obj.Spec.DataEngine
 	default:
 		return nil, fmt.Errorf("unknown type for GetInstanceManagerByInstance, %+v", obj)
 	}
@@ -3277,7 +3277,7 @@ func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.I
 		return nil, err
 	}
 
-	imMap, err := s.ListInstanceManagersBySelectorRO(nodeID, image, longhorn.InstanceManagerTypeAllInOne, backendStoreDriver)
+	imMap, err := s.ListInstanceManagersBySelectorRO(nodeID, image, longhorn.InstanceManagerTypeAllInOne, dataEngine)
 	if err != nil {
 		return nil, err
 	}
@@ -3290,8 +3290,8 @@ func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.I
 	return nil, fmt.Errorf("cannot find the only available instance manager for instance %v, node %v, instance manager image %v, type %v", name, nodeID, image, longhorn.InstanceManagerTypeAllInOne)
 }
 
-func (s *DataStore) ListInstanceManagersByNodeRO(node string, imType longhorn.InstanceManagerType, backendStoreDriver longhorn.BackendStoreDriverType) (map[string]*longhorn.InstanceManager, error) {
-	return s.ListInstanceManagersBySelectorRO(node, "", imType, backendStoreDriver)
+func (s *DataStore) ListInstanceManagersByNodeRO(node string, imType longhorn.InstanceManagerType, dataEngine longhorn.DataEngineType) (map[string]*longhorn.InstanceManager, error) {
+	return s.ListInstanceManagersBySelectorRO(node, "", imType, dataEngine)
 }
 
 // ListInstanceManagers gets a list of InstanceManagers for the given namespace.
@@ -3450,12 +3450,12 @@ func (s *DataStore) GetEngineImageCLIAPIVersion(imageName string) (int, error) {
 }
 
 // GetDataEngineImageCLIAPIVersion get engine or instance manager image for the given name and returns the CLIAPIVersion
-func (s *DataStore) GetDataEngineImageCLIAPIVersion(imageName string, backendStoreDriver longhorn.BackendStoreDriverType) (int, error) {
+func (s *DataStore) GetDataEngineImageCLIAPIVersion(imageName string, dataEngine longhorn.DataEngineType) (int, error) {
 	if imageName == "" {
 		return -1, fmt.Errorf("cannot check the CLI API Version based on empty image name")
 	}
 
-	if IsBackendStoreDriverV2(backendStoreDriver) {
+	if IsDataEngineV2(dataEngine) {
 		return 0, nil
 	}
 
@@ -4874,14 +4874,14 @@ func (s *DataStore) DeleteLHVolumeAttachment(vaName string) error {
 	return s.lhClient.LonghornV1beta2().VolumeAttachments(s.namespace).Delete(context.TODO(), vaName, metav1.DeleteOptions{})
 }
 
-// IsBackendStoreDriverV1 returns true if the given backendstoreDriver is v1
-func IsBackendStoreDriverV1(backendstoreDriver longhorn.BackendStoreDriverType) bool {
-	return backendstoreDriver != longhorn.BackendStoreDriverTypeV2
+// IsDataEngineV1 returns true if the given dataEngine is v1
+func IsDataEngineV1(dataEngine longhorn.DataEngineType) bool {
+	return dataEngine != longhorn.DataEngineTypeV2
 }
 
-// IsBackendStoreDriverV2 returns true if the given backendstoreDriver is v2
-func IsBackendStoreDriverV2(backendstoreDriver longhorn.BackendStoreDriverType) bool {
-	return backendstoreDriver == longhorn.BackendStoreDriverTypeV2
+// IsDataEngineV2 returns true if the given dataEngine is v2
+func IsDataEngineV2(dataEngine longhorn.DataEngineType) bool {
+	return dataEngine == longhorn.DataEngineTypeV2
 }
 
 // IsSupportedVolumeSize returns turn if the v1 volume size is supported by the given fsType file system.

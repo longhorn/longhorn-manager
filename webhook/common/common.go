@@ -91,9 +91,9 @@ func GetLonghornLabelsPatchOp(obj runtime.Object, requiredLabels, removingLabels
 	return fmt.Sprintf(`{"op": "replace", "path": "/metadata/labels", "value": %v}`, string(bytes)), nil
 }
 
-func ValidateRequiredDataEngineEnabled(ds *datastore.DataStore, backendStoreDriver longhorn.BackendStoreDriverType) error {
+func ValidateRequiredDataEngineEnabled(ds *datastore.DataStore, dataEngine longhorn.DataEngineType) error {
 	dataEngineSetting := types.SettingNameV1DataEngine
-	if datastore.IsBackendStoreDriverV2(backendStoreDriver) {
+	if datastore.IsDataEngineV2(dataEngine) {
 		dataEngineSetting = types.SettingNameV2DataEngine
 	}
 

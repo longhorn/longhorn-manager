@@ -127,7 +127,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	// Check volume attachment status
-	if datastore.IsBackendStoreDriverV1(longhorn.BackendStoreDriverType(volume.BackendStoreDriver)) {
+	if datastore.IsDataEngineV1(longhorn.DataEngineType(volume.DataEngine)) {
 		if volume.State != string(longhorn.VolumeStateAttached) || volume.Controllers[0].Endpoint == "" {
 			log.Infof("Volume %v hasn't been attached yet, unmounting potential mount point %v", volumeID, targetPath)
 			if err := unmount(targetPath, mounter); err != nil {
@@ -164,7 +164,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	// we validate the staging path to make sure the global mount is still valid
 	unstageVolumeRequired := true
-	if volume.BackendStoreDriver == string(longhorn.BackendStoreDriverTypeV2) {
+	if volume.DataEngine == string(longhorn.DataEngineTypeV2) {
 		err = fmt.Errorf("always unstage v2 volume %v", volumeID)
 	} else {
 		isMnt, err := ensureMountPoint(stagingTargetPath, mounter)
@@ -565,7 +565,7 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	// optionally try to retrieve the volume and check if it's an RWX volume
 	// if it is we let the share-manager clean up the crypto device
 	volume, _ := ns.apiClient.Volume.ById(volumeID)
-	if volume == nil || datastore.IsBackendStoreDriverV1(longhorn.BackendStoreDriverType(volume.BackendStoreDriver)) {
+	if volume == nil || datastore.IsDataEngineV1(longhorn.DataEngineType(volume.DataEngine)) {
 		// Currently, only "RWO v1 volumes" and "block device with v1 volume.Migratable is true" supports encryption.
 		cleanupCryptoDevice := !requiresSharedAccess(volume, nil)
 		if cleanupCryptoDevice {

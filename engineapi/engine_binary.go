@@ -29,13 +29,13 @@ func GetEngineBinaryClient(ds *datastore.DataStore, volumeName, nodeID string) (
 	for _, e = range es {
 		break
 	}
-	if datastore.IsBackendStoreDriverV2(e.Spec.BackendStoreDriver) {
+	if datastore.IsDataEngineV2(e.Spec.DataEngine) {
 		return nil, nil
 	}
 	if e.Status.CurrentState != longhorn.InstanceStateRunning {
 		return nil, fmt.Errorf("engine is not running")
 	}
-	if isReady, err := ds.CheckDataEngineImageReadiness(e.Status.CurrentImage, e.Spec.BackendStoreDriver, nodeID); !isReady {
+	if isReady, err := ds.CheckDataEngineImageReadiness(e.Status.CurrentImage, e.Spec.DataEngine, nodeID); !isReady {
 		if err != nil {
 			return nil, errors.Wrapf(err, "cannot get engine client with image %v", e.Status.CurrentImage)
 		}

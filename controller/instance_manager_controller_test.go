@@ -262,7 +262,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			TestInstanceManagerName, tc.currentState,
 			tc.currentOwnerID, tc.nodeID, currentIP,
 			tc.currentEngines, tc.currentReplicas,
-			longhorn.BackendStoreDriverTypeV1,
+			longhorn.DataEngineTypeV1,
 			false,
 		)
 		err = imIndexer.Add(im)

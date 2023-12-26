@@ -118,7 +118,7 @@ func (rcs *ReplicaScheduler) getNodeCandidates(nodesInfo map[string]*longhorn.No
 
 	nodeCandidates = map[string]*longhorn.Node{}
 	for _, node := range nodesInfo {
-		if isReady, _ := rcs.ds.CheckDataEngineImageReadiness(schedulingReplica.Spec.Image, schedulingReplica.Spec.BackendStoreDriver, node.Name); isReady {
+		if isReady, _ := rcs.ds.CheckDataEngineImageReadiness(schedulingReplica.Spec.Image, schedulingReplica.Spec.DataEngine, node.Name); isReady {
 			nodeCandidates[node.Name] = node
 		}
 	}
@@ -314,13 +314,13 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 			continue
 		}
 
-		if !(datastore.IsBackendStoreDriverV1(volume.Spec.BackendStoreDriver) && diskSpec.Type == longhorn.DiskTypeFilesystem) &&
-			!(datastore.IsBackendStoreDriverV2(volume.Spec.BackendStoreDriver) && diskSpec.Type == longhorn.DiskTypeBlock) {
+		if !(datastore.IsDataEngineV1(volume.Spec.DataEngine) && diskSpec.Type == longhorn.DiskTypeFilesystem) &&
+			!(datastore.IsDataEngineV2(volume.Spec.DataEngine) && diskSpec.Type == longhorn.DiskTypeBlock) {
 			logrus.Debugf("Volume %v is not compatible with disk %v", volume.Name, diskName)
 			continue
 		}
 
-		if !datastore.IsSupportedVolumeSize(volume.Spec.BackendStoreDriver, diskStatus.FSType, volume.Spec.Size) {
+		if !datastore.IsSupportedVolumeSize(volume.Spec.DataEngine, diskStatus.FSType, volume.Spec.Size) {
 			logrus.Debugf("Volume %v size %v is not compatible with the file system %v of the disk %v", volume.Name, volume.Spec.Size, diskStatus.Type, diskName)
 			continue
 		}
@@ -603,7 +603,7 @@ func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *lon
 		return false, nil
 	}
 
-	if isReady, _ := rcs.ds.CheckDataEngineImageReadiness(r.Spec.Image, r.Spec.BackendStoreDriver, r.Spec.NodeID); !isReady {
+	if isReady, _ := rcs.ds.CheckDataEngineImageReadiness(r.Spec.Image, r.Spec.DataEngine, r.Spec.NodeID); !isReady {
 		return false, nil
 	}
 
@@ -688,7 +688,7 @@ func IsPotentiallyReusableReplica(r *longhorn.Replica, hardNodeAffinity string) 
 		return false
 	}
 	// TODO: Reuse failed replicas for a SPDK volume
-	if datastore.IsBackendStoreDriverV2(r.Spec.BackendStoreDriver) {
+	if datastore.IsDataEngineV2(r.Spec.DataEngine) {
 		return false
 	}
 	return true

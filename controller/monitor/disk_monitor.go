@@ -140,8 +140,8 @@ func (m *NodeMonitor) run(value interface{}) error {
 	return nil
 }
 
-func (m *NodeMonitor) getBackendStoreDrivers() []longhorn.BackendStoreDriverType {
-	backendStoreDrivers := []longhorn.BackendStoreDriverType{}
+func (m *NodeMonitor) getDataEngines() []longhorn.DataEngineType {
+	dataEngines := []longhorn.DataEngineType{}
 
 	for _, setting := range []types.SettingName{types.SettingNameV1DataEngine, types.SettingNameV2DataEngine} {
 		dataEngineEnabled, err := m.ds.GetSettingAsBool(setting)
@@ -152,29 +152,29 @@ func (m *NodeMonitor) getBackendStoreDrivers() []longhorn.BackendStoreDriverType
 		if dataEngineEnabled {
 			switch setting {
 			case types.SettingNameV1DataEngine:
-				backendStoreDrivers = append(backendStoreDrivers, longhorn.BackendStoreDriverTypeV1)
+				dataEngines = append(dataEngines, longhorn.DataEngineTypeV1)
 			case types.SettingNameV2DataEngine:
-				backendStoreDrivers = append(backendStoreDrivers, longhorn.BackendStoreDriverTypeV2)
+				dataEngines = append(dataEngines, longhorn.DataEngineTypeV2)
 			}
 		}
 	}
 
-	return backendStoreDrivers
+	return dataEngines
 }
 
-func (m *NodeMonitor) getRunningInstanceManagerRO(backendStoreDriver longhorn.BackendStoreDriverType) (*longhorn.InstanceManager, error) {
-	switch backendStoreDriver {
-	case longhorn.BackendStoreDriverTypeV1:
-		return m.ds.GetDefaultInstanceManagerByNodeRO(m.nodeName, backendStoreDriver)
-	case longhorn.BackendStoreDriverTypeV2:
-		im, err := m.ds.GetDefaultInstanceManagerByNodeRO(m.nodeName, backendStoreDriver)
+func (m *NodeMonitor) getRunningInstanceManagerRO(dataEngine longhorn.DataEngineType) (*longhorn.InstanceManager, error) {
+	switch dataEngine {
+	case longhorn.DataEngineTypeV1:
+		return m.ds.GetDefaultInstanceManagerByNodeRO(m.nodeName, dataEngine)
+	case longhorn.DataEngineTypeV2:
+		im, err := m.ds.GetDefaultInstanceManagerByNodeRO(m.nodeName, dataEngine)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get default instance manager for node %v", m.nodeName)
 		}
 		if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
 			return im, nil
 		}
-		ims, err := m.ds.ListInstanceManagersByNodeRO(m.nodeName, longhorn.InstanceManagerTypeAllInOne, backendStoreDriver)
+		ims, err := m.ds.ListInstanceManagersByNodeRO(m.nodeName, longhorn.InstanceManagerTypeAllInOne, dataEngine)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to list instance managers for node %v", m.nodeName)
 		}
@@ -185,16 +185,16 @@ func (m *NodeMonitor) getRunningInstanceManagerRO(backendStoreDriver longhorn.Ba
 		}
 		return nil, fmt.Errorf("failed to find running instance manager for node %v", m.nodeName)
 	}
-	return nil, fmt.Errorf("unknown backend store driver %v", backendStoreDriver)
+	return nil, fmt.Errorf("unknown data engine %v", dataEngine)
 }
 
-func (m *NodeMonitor) newDiskServiceClients(node *longhorn.Node) (map[longhorn.BackendStoreDriverType]*engineapi.DiskService, error) {
-	clients := map[longhorn.BackendStoreDriverType]*engineapi.DiskService{}
+func (m *NodeMonitor) newDiskServiceClients(node *longhorn.Node) (map[longhorn.DataEngineType]*engineapi.DiskService, error) {
+	clients := map[longhorn.DataEngineType]*engineapi.DiskService{}
 
-	backendStoreDrivers := m.getBackendStoreDrivers()
+	dataEngines := m.getDataEngines()
 
-	for _, backendStoreDriver := range backendStoreDrivers {
-		im, err := m.getRunningInstanceManagerRO(backendStoreDriver)
+	for _, dataEngine := range dataEngines {
+		im, err := m.getRunningInstanceManagerRO(dataEngine)
 		if err != nil {
 			return clients, errors.Wrapf(err, "failed to get running instance manager for node %v", m.nodeName)
 		}
@@ -204,7 +204,7 @@ func (m *NodeMonitor) newDiskServiceClients(node *longhorn.Node) (map[longhorn.B
 			return clients, errors.Wrapf(err, "failed to create disk service client for node %v", m.nodeName)
 		}
 
-		clients[backendStoreDriver] = client
+		clients[dataEngine] = client
 	}
 
 	return clients, nil
@@ -227,14 +227,14 @@ func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 	}()
 
 	for diskName, disk := range node.Spec.Disks {
-		backendStoreDriver := util.GetBackendStoreDriverForDiskType(disk.Type)
-		diskServiceClient := diskServiceClients[backendStoreDriver]
+		dataEngine := util.GetDataEngineForDiskType(disk.Type)
+		diskServiceClient := diskServiceClients[dataEngine]
 		orphanedReplicaInstanceNames := map[string]string{}
 		nodeOrDiskEvicted := isNodeOrDiskEvicted(node, disk)
 
 		if diskServiceClient == nil {
 			// TODO: disk service is not used by filesystem-type disk, so we can skip it for now.
-			if datastore.IsBackendStoreDriverV2(backendStoreDriver) {
+			if datastore.IsDataEngineV2(dataEngine) {
 				diskInfoMap[diskName] = NewDiskInfo(disk.Path, "", nodeOrDiskEvicted, nil,
 					orphanedReplicaInstanceNames, string(longhorn.DiskConditionReasonDiskServiceUnreachable),
 					fmt.Sprintf("Disk %v(%v) on node %v is not ready: disk service is unreachable",

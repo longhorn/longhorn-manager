@@ -60,7 +60,7 @@ func (s *snapShotMutator) Create(request *admission.Request, newObj runtime.Obje
 		return nil, werror.NewInvalidError(err.Error(), "spec.Volume")
 	}
 
-	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, volume.Spec.BackendStoreDriver))
+	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataEngine", "value": "%s"}`, volume.Spec.DataEngine))
 
 	patchOp, err := common.GetLonghornLabelsPatchOp(snapshot, types.GetVolumeLabels(volume.Name), nil)
 	if err != nil {
