@@ -66,6 +66,10 @@ func (e *engineValidator) Create(request *admission.Request, newObj runtime.Obje
 		}
 	}
 
+	if err := e.ds.CheckEngineImageCompatiblityByImage(engine.Spec.Image); err != nil {
+		return werror.NewInvalidError(err.Error(), "engine.spec.image")
+	}
+
 	return e.validateNumberOfEngines(engine, volume)
 }
 
@@ -84,6 +88,10 @@ func (e *engineValidator) Update(request *admission.Request, oldObj runtime.Obje
 			err := fmt.Errorf("changing backend store driver for engine %v is not supported", oldEngine.Name)
 			return werror.NewInvalidError(err.Error(), "")
 		}
+	}
+
+	if err := e.ds.CheckEngineImageCompatiblityByImage(newEngine.Spec.Image); err != nil {
+		return werror.NewInvalidError(err.Error(), "engine.spec.image")
 	}
 
 	return nil

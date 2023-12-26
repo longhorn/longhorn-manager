@@ -57,6 +57,10 @@ func (r *replicaValidator) Create(request *admission.Request, newObj runtime.Obj
 		}
 	}
 
+	if err := r.ds.CheckEngineImageCompatiblityByImage(replica.Spec.Image); err != nil {
+		return werror.NewInvalidError(err.Error(), "replica.spec.image")
+	}
+
 	return nil
 }
 
@@ -74,6 +78,10 @@ func (r *replicaValidator) Update(request *admission.Request, oldObj runtime.Obj
 			err := fmt.Errorf("changing backend store driver for replica %v is not supported", oldReplica.Name)
 			return werror.NewInvalidError(err.Error(), "")
 		}
+	}
+
+	if err := r.ds.CheckEngineImageCompatiblityByImage(newReplica.Spec.Image); err != nil {
+		return werror.NewInvalidError(err.Error(), "replica.spec.image")
 	}
 
 	return nil
