@@ -109,10 +109,11 @@ type ProcessStatus struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	State     string `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`
-	ErrorMsg  string `protobuf:"bytes,2,opt,name=error_msg,json=errorMsg,proto3" json:"error_msg,omitempty"`
-	PortStart int32  `protobuf:"varint,3,opt,name=port_start,json=portStart,proto3" json:"port_start,omitempty"`
-	PortEnd   int32  `protobuf:"varint,4,opt,name=port_end,json=portEnd,proto3" json:"port_end,omitempty"`
+	State      string          `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`
+	ErrorMsg   string          `protobuf:"bytes,2,opt,name=error_msg,json=errorMsg,proto3" json:"error_msg,omitempty"`
+	PortStart  int32           `protobuf:"varint,3,opt,name=port_start,json=portStart,proto3" json:"port_start,omitempty"`
+	PortEnd    int32           `protobuf:"varint,4,opt,name=port_end,json=portEnd,proto3" json:"port_end,omitempty"`
+	Conditions map[string]bool `protobuf:"bytes,5,rep,name=conditions,proto3" json:"conditions,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"varint,2,opt,name=value,proto3"`
 }
 
 func (x *ProcessStatus) Reset() {
@@ -173,6 +174,13 @@ func (x *ProcessStatus) GetPortEnd() int32 {
 		return x.PortEnd
 	}
 	return 0
+}
+
+func (x *ProcessStatus) GetConditions() map[string]bool {
+	if x != nil {
+		return x.Conditions
+	}
+	return nil
 }
 
 type ProcessCreateRequest struct {
@@ -725,15 +733,23 @@ var file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_imrpc_proto_raw
 	0x67, 0x73, 0x12, 0x1d, 0x0a, 0x0a, 0x70, 0x6f, 0x72, 0x74, 0x5f, 0x63, 0x6f, 0x75, 0x6e, 0x74,
 	0x18, 0x04, 0x20, 0x01, 0x28, 0x05, 0x52, 0x09, 0x70, 0x6f, 0x72, 0x74, 0x43, 0x6f, 0x75, 0x6e,
 	0x74, 0x12, 0x1b, 0x0a, 0x09, 0x70, 0x6f, 0x72, 0x74, 0x5f, 0x61, 0x72, 0x67, 0x73, 0x18, 0x05,
-	0x20, 0x03, 0x28, 0x09, 0x52, 0x08, 0x70, 0x6f, 0x72, 0x74, 0x41, 0x72, 0x67, 0x73, 0x22, 0x7c,
-	0x0a, 0x0d, 0x50, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x53, 0x74, 0x61, 0x74, 0x75, 0x73, 0x12,
-	0x14, 0x0a, 0x05, 0x73, 0x74, 0x61, 0x74, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05,
-	0x73, 0x74, 0x61, 0x74, 0x65, 0x12, 0x1b, 0x0a, 0x09, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x5f, 0x6d,
-	0x73, 0x67, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x4d,
-	0x73, 0x67, 0x12, 0x1d, 0x0a, 0x0a, 0x70, 0x6f, 0x72, 0x74, 0x5f, 0x73, 0x74, 0x61, 0x72, 0x74,
-	0x18, 0x03, 0x20, 0x01, 0x28, 0x05, 0x52, 0x09, 0x70, 0x6f, 0x72, 0x74, 0x53, 0x74, 0x61, 0x72,
-	0x74, 0x12, 0x19, 0x0a, 0x08, 0x70, 0x6f, 0x72, 0x74, 0x5f, 0x65, 0x6e, 0x64, 0x18, 0x04, 0x20,
-	0x01, 0x28, 0x05, 0x52, 0x07, 0x70, 0x6f, 0x72, 0x74, 0x45, 0x6e, 0x64, 0x22, 0x38, 0x0a, 0x14,
+	0x20, 0x03, 0x28, 0x09, 0x52, 0x08, 0x70, 0x6f, 0x72, 0x74, 0x41, 0x72, 0x67, 0x73, 0x22, 0xfb,
+	0x01, 0x0a, 0x0d, 0x50, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x53, 0x74, 0x61, 0x74, 0x75, 0x73,
+	0x12, 0x14, 0x0a, 0x05, 0x73, 0x74, 0x61, 0x74, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52,
+	0x05, 0x73, 0x74, 0x61, 0x74, 0x65, 0x12, 0x1b, 0x0a, 0x09, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x5f,
+	0x6d, 0x73, 0x67, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x65, 0x72, 0x72, 0x6f, 0x72,
+	0x4d, 0x73, 0x67, 0x12, 0x1d, 0x0a, 0x0a, 0x70, 0x6f, 0x72, 0x74, 0x5f, 0x73, 0x74, 0x61, 0x72,
+	0x74, 0x18, 0x03, 0x20, 0x01, 0x28, 0x05, 0x52, 0x09, 0x70, 0x6f, 0x72, 0x74, 0x53, 0x74, 0x61,
+	0x72, 0x74, 0x12, 0x19, 0x0a, 0x08, 0x70, 0x6f, 0x72, 0x74, 0x5f, 0x65, 0x6e, 0x64, 0x18, 0x04,
+	0x20, 0x01, 0x28, 0x05, 0x52, 0x07, 0x70, 0x6f, 0x72, 0x74, 0x45, 0x6e, 0x64, 0x12, 0x3e, 0x0a,
+	0x0a, 0x63, 0x6f, 0x6e, 0x64, 0x69, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x18, 0x05, 0x20, 0x03, 0x28,
+	0x0b, 0x32, 0x1e, 0x2e, 0x50, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x53, 0x74, 0x61, 0x74, 0x75,
+	0x73, 0x2e, 0x43, 0x6f, 0x6e, 0x64, 0x69, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x45, 0x6e, 0x74, 0x72,
+	0x79, 0x52, 0x0a, 0x63, 0x6f, 0x6e, 0x64, 0x69, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x1a, 0x3d, 0x0a,
+	0x0f, 0x43, 0x6f, 0x6e, 0x64, 0x69, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x45, 0x6e, 0x74, 0x72, 0x79,
+	0x12, 0x10, 0x0a, 0x03, 0x6b, 0x65, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x03, 0x6b,
+	0x65, 0x79, 0x12, 0x14, 0x0a, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28,
+	0x08, 0x52, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x3a, 0x02, 0x38, 0x01, 0x22, 0x38, 0x0a, 0x14,
 	0x50, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x52, 0x65, 0x71,
 	0x75, 0x65, 0x73, 0x74, 0x12, 0x20, 0x0a, 0x04, 0x73, 0x70, 0x65, 0x63, 0x18, 0x01, 0x20, 0x01,
 	0x28, 0x0b, 0x32, 0x0c, 0x2e, 0x50, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73, 0x53, 0x70, 0x65, 0x63,
@@ -846,7 +862,7 @@ func file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_imrpc_proto_ra
 	return file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_imrpc_proto_rawDescData
 }
 
-var file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_imrpc_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_imrpc_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_imrpc_proto_goTypes = []interface{}{
 	(*ProcessSpec)(nil),           // 0: ProcessSpec
 	(*ProcessStatus)(nil),         // 1: ProcessStatus
@@ -860,37 +876,39 @@ var file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_imrpc_proto_goT
 	(*ProcessReplaceRequest)(nil), // 9: ProcessReplaceRequest
 	(*LogResponse)(nil),           // 10: LogResponse
 	(*VersionResponse)(nil),       // 11: VersionResponse
-	nil,                           // 12: ProcessListResponse.ProcessesEntry
-	(*emptypb.Empty)(nil),         // 13: google.protobuf.Empty
+	nil,                           // 12: ProcessStatus.ConditionsEntry
+	nil,                           // 13: ProcessListResponse.ProcessesEntry
+	(*emptypb.Empty)(nil),         // 14: google.protobuf.Empty
 }
 var file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_imrpc_proto_depIdxs = []int32{
-	0,  // 0: ProcessCreateRequest.spec:type_name -> ProcessSpec
-	0,  // 1: ProcessResponse.spec:type_name -> ProcessSpec
-	1,  // 2: ProcessResponse.status:type_name -> ProcessStatus
-	12, // 3: ProcessListResponse.processes:type_name -> ProcessListResponse.ProcessesEntry
-	0,  // 4: ProcessReplaceRequest.spec:type_name -> ProcessSpec
-	5,  // 5: ProcessListResponse.ProcessesEntry.value:type_name -> ProcessResponse
-	2,  // 6: ProcessManagerService.ProcessCreate:input_type -> ProcessCreateRequest
-	3,  // 7: ProcessManagerService.ProcessDelete:input_type -> ProcessDeleteRequest
-	4,  // 8: ProcessManagerService.ProcessGet:input_type -> ProcessGetRequest
-	6,  // 9: ProcessManagerService.ProcessList:input_type -> ProcessListRequest
-	8,  // 10: ProcessManagerService.ProcessLog:input_type -> LogRequest
-	13, // 11: ProcessManagerService.ProcessWatch:input_type -> google.protobuf.Empty
-	9,  // 12: ProcessManagerService.ProcessReplace:input_type -> ProcessReplaceRequest
-	13, // 13: ProcessManagerService.VersionGet:input_type -> google.protobuf.Empty
-	5,  // 14: ProcessManagerService.ProcessCreate:output_type -> ProcessResponse
-	5,  // 15: ProcessManagerService.ProcessDelete:output_type -> ProcessResponse
-	5,  // 16: ProcessManagerService.ProcessGet:output_type -> ProcessResponse
-	7,  // 17: ProcessManagerService.ProcessList:output_type -> ProcessListResponse
-	10, // 18: ProcessManagerService.ProcessLog:output_type -> LogResponse
-	5,  // 19: ProcessManagerService.ProcessWatch:output_type -> ProcessResponse
-	5,  // 20: ProcessManagerService.ProcessReplace:output_type -> ProcessResponse
-	11, // 21: ProcessManagerService.VersionGet:output_type -> VersionResponse
-	14, // [14:22] is the sub-list for method output_type
-	6,  // [6:14] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	12, // 0: ProcessStatus.conditions:type_name -> ProcessStatus.ConditionsEntry
+	0,  // 1: ProcessCreateRequest.spec:type_name -> ProcessSpec
+	0,  // 2: ProcessResponse.spec:type_name -> ProcessSpec
+	1,  // 3: ProcessResponse.status:type_name -> ProcessStatus
+	13, // 4: ProcessListResponse.processes:type_name -> ProcessListResponse.ProcessesEntry
+	0,  // 5: ProcessReplaceRequest.spec:type_name -> ProcessSpec
+	5,  // 6: ProcessListResponse.ProcessesEntry.value:type_name -> ProcessResponse
+	2,  // 7: ProcessManagerService.ProcessCreate:input_type -> ProcessCreateRequest
+	3,  // 8: ProcessManagerService.ProcessDelete:input_type -> ProcessDeleteRequest
+	4,  // 9: ProcessManagerService.ProcessGet:input_type -> ProcessGetRequest
+	6,  // 10: ProcessManagerService.ProcessList:input_type -> ProcessListRequest
+	8,  // 11: ProcessManagerService.ProcessLog:input_type -> LogRequest
+	14, // 12: ProcessManagerService.ProcessWatch:input_type -> google.protobuf.Empty
+	9,  // 13: ProcessManagerService.ProcessReplace:input_type -> ProcessReplaceRequest
+	14, // 14: ProcessManagerService.VersionGet:input_type -> google.protobuf.Empty
+	5,  // 15: ProcessManagerService.ProcessCreate:output_type -> ProcessResponse
+	5,  // 16: ProcessManagerService.ProcessDelete:output_type -> ProcessResponse
+	5,  // 17: ProcessManagerService.ProcessGet:output_type -> ProcessResponse
+	7,  // 18: ProcessManagerService.ProcessList:output_type -> ProcessListResponse
+	10, // 19: ProcessManagerService.ProcessLog:output_type -> LogResponse
+	5,  // 20: ProcessManagerService.ProcessWatch:output_type -> ProcessResponse
+	5,  // 21: ProcessManagerService.ProcessReplace:output_type -> ProcessResponse
+	11, // 22: ProcessManagerService.VersionGet:output_type -> VersionResponse
+	15, // [15:23] is the sub-list for method output_type
+	7,  // [7:15] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_imrpc_proto_init() }
@@ -1050,7 +1068,7 @@ func file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_imrpc_proto_in
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_imrpc_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
