@@ -293,6 +293,12 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 				newVolume.Name, newVolume.Spec.BackendStoreDriver)
 			return werror.NewInvalidError(err.Error(), "")
 		}
+
+		if oldVolume.Spec.Image != newVolume.Spec.Image {
+			err := fmt.Errorf("changing engine image for volume %v is not supported for backend store driver %v",
+				newVolume.Name, newVolume.Spec.BackendStoreDriver)
+			return werror.NewInvalidError(err.Error(), "")
+		}
 	} else {
 		if newVolume.Spec.OfflineReplicaRebuilding != longhorn.OfflineReplicaRebuildingDisabled {
 			err := fmt.Errorf("changing offline replica rebuilding for volume %v is not supported for backend store driver %v",
