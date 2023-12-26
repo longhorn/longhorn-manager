@@ -160,12 +160,21 @@ const (
 	ReplicaDiskSoftAntiAffinityDisabled = ReplicaDiskSoftAntiAffinity("disabled")
 )
 
+// Deprecated.
 type BackendStoreDriverType string
 
 const (
 	BackendStoreDriverTypeV1  = BackendStoreDriverType("v1")
 	BackendStoreDriverTypeV2  = BackendStoreDriverType("v2")
 	BackendStoreDriverTypeAll = BackendStoreDriverType("all")
+)
+
+type DataEngineType string
+
+const (
+	DataEngineTypeV1  = DataEngineType("v1")
+	DataEngineTypeV2  = DataEngineType("v2")
+	DataEngineTypeAll = DataEngineType("all")
 )
 
 type OfflineReplicaRebuilding string
@@ -274,9 +283,12 @@ type VolumeSpec struct {
 	// +kubebuilder:validation:Enum=none;lz4;gzip
 	// +optional
 	BackupCompressionMethod BackupCompressionMethod `json:"backupCompressionMethod"`
-	// +kubebuilder:validation:Enum=v1;v2
+	// Deprecated.
 	// +optional
 	BackendStoreDriver BackendStoreDriverType `json:"backendStoreDriver"`
+	// +kubebuilder:validation:Enum=v1;v2
+	// +optional
+	DataEngine DataEngineType `json:"dataEngine"`
 	// OfflineReplicaRebuilding is used to determine if the offline replica rebuilding feature is enabled or not
 	// +kubebuilder:validation:Enum=ignored;disabled;enabled
 	// +optional

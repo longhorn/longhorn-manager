@@ -1313,11 +1313,14 @@ spec:
               active:
                 type: boolean
               backendStoreDriver:
+                description: Deprecated.
+                type: string
+              backupVolume:
+                type: string
+              dataEngine:
                 enum:
                 - v1
                 - v2
-                type: string
-              backupVolume:
                 type: string
               desireState:
                 type: string
@@ -1634,7 +1637,7 @@ spec:
       name: Type
       type: string
     - description: The data engine of the instance manager
-      jsonPath: .spec.backendStoreDriver
+      jsonPath: .spec.dataEngine
       name: Data Engine
       type: string
     - description: The node that the instance manager is running on
@@ -1660,7 +1663,7 @@ spec:
           spec:
             description: InstanceManagerSpec defines the desired state of the Longhorn instancer manager
             properties:
-              backendStoreDriver:
+              dataEngine:
                 type: string
               image:
                 type: string
@@ -1688,6 +1691,9 @@ spec:
                     spec:
                       properties:
                         backendStoreDriver:
+                          description: Deprecated.
+                          type: string
+                        dataEngine:
                           type: string
                         name:
                           type: string
@@ -1727,6 +1733,9 @@ spec:
                     spec:
                       properties:
                         backendStoreDriver:
+                          description: Deprecated.
+                          type: string
+                        dataEngine:
                           type: string
                         name:
                           type: string
@@ -1766,6 +1775,9 @@ spec:
                     spec:
                       properties:
                         backendStoreDriver:
+                          description: Deprecated.
+                          type: string
+                        dataEngine:
                           type: string
                         name:
                           type: string
@@ -2437,13 +2449,16 @@ spec:
               active:
                 type: boolean
               backendStoreDriver:
-                enum:
-                - v1
-                - v2
+                description: Deprecated.
                 type: string
               backingImage:
                 type: string
               dataDirectoryName:
+                type: string
+              dataEngine:
+                enum:
+                - v1
+                - v2
                 type: string
               desireState:
                 type: string
@@ -3466,9 +3481,7 @@ spec:
                 - rwx
                 type: string
               backendStoreDriver:
-                enum:
-                - v1
-                - v2
+                description: Deprecated.
                 type: string
               backingImage:
                 type: string
@@ -3477,6 +3490,11 @@ spec:
                 - none
                 - lz4
                 - gzip
+                type: string
+              dataEngine:
+                enum:
+                - v1
+                - v2
                 type: string
               dataLocality:
                 enum:
