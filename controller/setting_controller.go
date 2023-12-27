@@ -841,12 +841,6 @@ func (sc *SettingController) cleanupInstanceManager(dataEngine longhorn.DataEngi
 	}
 
 	for _, im := range imMap {
-		if len(im.Status.InstanceEngines) != 0 || len(im.Status.InstanceReplicas) != 0 || len(im.Status.Instances) != 0 {
-			sc.logger.Infof("Skipping cleaning up the instance manager %v for %v data engine since there are still instances running on it", im.Name, dataEngine)
-			continue
-		}
-
-		sc.logger.Infof("Cleaning up the instance manager %v for %v data engine", im.Name, dataEngine)
 		if err := sc.ds.DeleteInstanceManager(im.Name); err != nil {
 			return err
 		}
