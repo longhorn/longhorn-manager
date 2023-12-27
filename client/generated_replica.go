@@ -9,9 +9,9 @@ type Replica struct {
 
 	Address string `json:"address,omitempty" yaml:"address,omitempty"`
 
-	BackendStoreDriver string `json:"backendStoreDriver,omitempty" yaml:"backend_store_driver,omitempty"`
-
 	CurrentImage string `json:"currentImage,omitempty" yaml:"current_image,omitempty"`
+
+	DataEngine string `json:"dataEngine,omitempty" yaml:"data_engine,omitempty"`
 
 	DataPath string `json:"dataPath,omitempty" yaml:"data_path,omitempty"`
 
