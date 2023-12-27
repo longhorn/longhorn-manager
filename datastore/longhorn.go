@@ -1737,7 +1737,11 @@ func (s *DataStore) ListEngineImages() (map[string]*longhorn.EngineImage, error)
 	return itemMap, nil
 }
 
-func (s *DataStore) CheckEngineImageCompatiblityByImage(image string) error {
+func (s *DataStore) CheckDataEngineImageCompatiblityByImage(image string, dataEngine longhorn.DataEngineType) error {
+	if IsDataEngineV2(dataEngine) {
+		return nil
+	}
+
 	engineImage, err := s.GetEngineImageByImage(image)
 	if err != nil {
 		return err
