@@ -9,8 +9,6 @@ type Volume struct {
 
 	AccessMode string `json:"accessMode,omitempty" yaml:"access_mode,omitempty"`
 
-	BackendStoreDriver string `json:"backendStoreDriver,omitempty" yaml:"backend_store_driver,omitempty"`
-
 	BackingImage string `json:"backingImage,omitempty" yaml:"backing_image,omitempty"`
 
 	BackupCompressionMethod string `json:"backupCompressionMethod,omitempty" yaml:"backup_compression_method,omitempty"`
@@ -26,6 +24,8 @@ type Volume struct {
 	Created string `json:"created,omitempty" yaml:"created,omitempty"`
 
 	CurrentImage string `json:"currentImage,omitempty" yaml:"current_image,omitempty"`
+
+	DataEngine string `json:"dataEngine,omitempty" yaml:"data_engine,omitempty"`
 
 	DataLocality string `json:"dataLocality,omitempty" yaml:"data_locality,omitempty"`
 
