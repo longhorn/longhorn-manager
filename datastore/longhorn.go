@@ -438,15 +438,6 @@ func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) error {
 		if !allVolumesDetached {
 			return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot apply %v setting to Longhorn workloads when there are attached v2 volumes", types.SettingNameV2DataEngine)}
 		}
-
-		allDisksRemoved, err := s.AreAllDisksRemovedByDiskType(longhorn.DiskTypeBlock)
-		if err != nil {
-			return errors.Wrapf(err, "failed to check block-type disk removal for %v setting update", types.SettingNameV2DataEngine)
-		}
-		if !allDisksRemoved {
-			return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot apply %v setting to Longhorn workloads when there are block-type disks", types.SettingNameV2DataEngine)}
-		}
-		return nil
 	}
 
 	// Check if there is enough hugepages-2Mi capacity for all nodes
@@ -480,17 +471,6 @@ func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) error {
 
 			if hugepageCapacity.Cmp(hugepageRequested) < 0 {
 				return errors.Errorf("not enough hugepages-2Mi capacity for node %v, requested %v, capacity %v", node.Name, hugepageRequested.String(), hugepageCapacity.String())
-			}
-		} else {
-			lhNode, err := s.GetNodeRO(im.Spec.NodeID)
-			if err != nil {
-				return errors.Wrapf(err, "failed to get Longhorn node %v for %v setting update", im.Spec.NodeID, types.SettingNameV2DataEngine)
-			}
-
-			for _, disk := range lhNode.Spec.Disks {
-				if disk.Type == longhorn.DiskTypeBlock {
-					return fmt.Errorf("failed to disable %v setting because there are block-type disks on node %v", types.SettingNameV2DataEngine, node.Name)
-				}
 			}
 		}
 	}
