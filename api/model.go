@@ -501,7 +501,6 @@ type InstanceManager struct {
 	InstanceEngines  map[string]longhorn.InstanceProcess `json:"instanceEngines"`
 	InstanceReplicas map[string]longhorn.InstanceProcess `json:"instanceReplicas"`
 
-	// Deprecated
 	Instances map[string]longhorn.InstanceProcess `json:"instances"`
 }
 
