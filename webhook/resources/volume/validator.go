@@ -132,6 +132,10 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return err
 	}
 
+	if err := v.ds.CheckDataEngineImageCompatiblityByImage(volume.Spec.Image, volume.Spec.DataEngine); err != nil {
+		return werror.NewInvalidError(err.Error(), "volume.spec.image")
+	}
+
 	// TODO: remove this check when we support the following features for SPDK volumes
 	if datastore.IsDataEngineV2(volume.Spec.DataEngine) {
 		if volume.Spec.Encrypted {
@@ -140,10 +144,6 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		if volume.Spec.BackingImage != "" {
 			return werror.NewInvalidError("backing image is not supported for data engine v2", "")
 		}
-	}
-
-	if err := v.ds.CheckEngineImageCompatiblityByImage(volume.Spec.Image); err != nil {
-		return werror.NewInvalidError(err.Error(), "volume.spec.image")
 	}
 
 	return nil
@@ -195,7 +195,7 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
-	if err := v.ds.CheckEngineImageCompatiblityByImage(newVolume.Spec.Image); err != nil {
+	if err := v.ds.CheckDataEngineImageCompatiblityByImage(newVolume.Spec.Image, newVolume.Spec.DataEngine); err != nil {
 		return werror.NewInvalidError(err.Error(), "volume.spec.image")
 	}
 

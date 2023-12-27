@@ -52,7 +52,7 @@ func (r *replicaValidator) Create(request *admission.Request, newObj runtime.Obj
 		return err
 	}
 
-	if err := r.ds.CheckEngineImageCompatiblityByImage(replica.Spec.Image); err != nil {
+	if err := r.ds.CheckDataEngineImageCompatiblityByImage(replica.Spec.Image, replica.Spec.DataEngine); err != nil {
 		return werror.NewInvalidError(err.Error(), "replica.spec.image")
 	}
 
@@ -75,7 +75,7 @@ func (r *replicaValidator) Update(request *admission.Request, oldObj runtime.Obj
 		}
 	}
 
-	if err := r.ds.CheckEngineImageCompatiblityByImage(newReplica.Spec.Image); err != nil {
+	if err := r.ds.CheckDataEngineImageCompatiblityByImage(newReplica.Spec.Image, newReplica.Spec.DataEngine); err != nil {
 		return werror.NewInvalidError(err.Error(), "replica.spec.image")
 	}
 
