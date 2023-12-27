@@ -292,15 +292,11 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		}
 
 		if oldVolume.Spec.ReplicaDiskSoftAntiAffinity != newVolume.Spec.ReplicaDiskSoftAntiAffinity {
-			err := fmt.Errorf("changing replica disk soft anti-affinity for volume %v is not supported for data engine %v",
-				newVolume.Name, newVolume.Spec.DataEngine)
-			return werror.NewInvalidError(err.Error(), "")
-		}
-
-		if oldVolume.Spec.Image != newVolume.Spec.Image {
-			err := fmt.Errorf("changing engine image for volume %v is not supported for data engine %v",
-				newVolume.Name, newVolume.Spec.DataEngine)
-			return werror.NewInvalidError(err.Error(), "")
+			if oldVolume.Spec.ReplicaDiskSoftAntiAffinity != "" && newVolume.Spec.ReplicaDiskSoftAntiAffinity != longhorn.ReplicaDiskSoftAntiAffinityDefault {
+				err := fmt.Errorf("changing replica disk soft anti-affinity for volume %v is not supported for data engine %v",
+					newVolume.Name, newVolume.Spec.DataEngine)
+				return werror.NewInvalidError(err.Error(), "")
+			}
 		}
 	} else {
 		if newVolume.Spec.OfflineReplicaRebuilding != longhorn.OfflineReplicaRebuildingDisabled {
