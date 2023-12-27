@@ -51,7 +51,6 @@ type InstanceManagerClient struct {
 	// The gRPC client supports backward compatibility.
 	instanceServiceGrpcClient *imclient.InstanceServiceClient
 	processManagerGrpcClient  *imclient.ProcessManagerClient
-	diskServiceGrpcClient     *imclient.DiskServiceClient
 }
 
 func (c *InstanceManagerClient) GetAPIVersion() int {
@@ -63,10 +62,6 @@ func (c *InstanceManagerClient) Close() error {
 
 	if c.processManagerGrpcClient != nil {
 		err = multierr.Append(err, c.processManagerGrpcClient.Close())
-	}
-
-	if c.diskServiceGrpcClient != nil {
-		err = multierr.Append(err, c.diskServiceGrpcClient.Close())
 	}
 
 	if c.instanceServiceGrpcClient != nil {
@@ -141,24 +136,6 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 		return instanceClient, nil
 	}
 
-	initDiskServiceTLSClient := func(endpoint string) (*imclient.DiskServiceClient, error) {
-		// check for tls cert file presence
-		diskClient, err := imclient.NewDiskServiceClientWithTLS(endpoint,
-			filepath.Join(types.TLSDirectoryInContainer, types.TLSCAFile),
-			filepath.Join(types.TLSDirectoryInContainer, types.TLSCertFile),
-			filepath.Join(types.TLSDirectoryInContainer, types.TLSKeyFile),
-			"longhorn-backend.longhorn-system",
-		)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to load Instance Manager Disk Service Client TLS files")
-		}
-		if _, err = diskClient.VersionGet(); err != nil {
-			return nil, errors.Wrap(err, "failed to check version of  Instance Manager Disk Service Client with TLS connection")
-		}
-
-		return diskClient, nil
-	}
-
 	// Create a new process manager client
 	// HACK: TODO: fix me
 	endpoint := "tcp://" + imutil.GetURL(im.Status.IP, InstanceManagerProcessManagerServiceDefaultPort)
@@ -209,23 +186,6 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 		logrus.Tracef("Instance Manager Instance Service Client Version: %+v", version)
 	}
 
-	// Create a new disk service client
-	endpoint = "tcp://" + imutil.GetURL(im.Status.IP, InstanceManagerDiskServiceDefaultPort)
-	diskServiceClient, err := initDiskServiceTLSClient(endpoint)
-	if err != nil {
-		diskServiceClient, err = imclient.NewDiskServiceClient(endpoint, nil)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to initialize Instance Manager Disk Service Client for %v, state: %v, IP: %v, TLS: %v",
-				im.Name, im.Status.CurrentState, im.Status.IP, false)
-		}
-		version, err := diskServiceClient.VersionGet()
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to get Version of Instance Manager Disk Service Client for %v, state: %v, IP: %v, TLS: %v",
-				im.Name, im.Status.CurrentState, im.Status.IP, false)
-		}
-		logrus.Tracef("Instance Manager Disk Service Client Version: %+v", version)
-	}
-
 	// TODO: consider evaluating im client version since we do the call anyway to validate the connection, i.e. fallback to non tls
 	// This way we don't need the per call compatibility check, ref: `CheckInstanceManagerCompatibility`
 
@@ -235,7 +195,6 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 		apiVersion:                im.Status.APIVersion,
 		instanceServiceGrpcClient: instanceServiceClient,
 		processManagerGrpcClient:  processManagerClient,
-		diskServiceGrpcClient:     diskServiceClient,
 	}, nil
 }
 

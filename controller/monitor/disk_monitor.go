@@ -194,20 +194,32 @@ func (m *NodeMonitor) newDiskServiceClients(node *longhorn.Node) (map[longhorn.D
 	dataEngines := m.getDataEngines()
 
 	for _, dataEngine := range dataEngines {
-		im, err := m.getRunningInstanceManagerRO(dataEngine)
-		if err != nil {
-			return clients, errors.Wrapf(err, "failed to get running instance manager for node %v", m.nodeName)
-		}
+		var client *engineapi.DiskService
+		// TODO: disk service is not used by filesystem-type disk, so we can skip it for now.
+		if datastore.IsDataEngineV2(dataEngine) {
+			im, err := m.getRunningInstanceManagerRO(dataEngine)
+			if err != nil {
+				return clients, errors.Wrapf(err, "failed to get running instance manager for node %v", m.nodeName)
+			}
 
-		client, err := engineapi.NewDiskServiceClient(im, m.logger)
-		if err != nil {
-			return clients, errors.Wrapf(err, "failed to create disk service client for node %v", m.nodeName)
+			client, err = engineapi.NewDiskServiceClient(im, m.logger)
+			if err != nil {
+				return clients, errors.Wrapf(err, "failed to create disk service client for node %v", m.nodeName)
+			}
 		}
 
 		clients[dataEngine] = client
 	}
 
 	return clients, nil
+}
+
+func (m *NodeMonitor) closeDiskServiceClients(clients map[longhorn.DataEngineType]*engineapi.DiskService) {
+	for _, client := range clients {
+		if client != nil {
+			client.Close()
+		}
+	}
 }
 
 // Collect disk data and generate disk UUID blindly.
@@ -221,9 +233,7 @@ func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 		m.logger.WithError(err).Warnf("Failed to create disk service client")
 	}
 	defer func() {
-		for _, diskServiceClient := range diskServiceClients {
-			diskServiceClient.Close()
-		}
+		m.closeDiskServiceClients(diskServiceClients)
 	}()
 
 	for diskName, disk := range node.Spec.Disks {
