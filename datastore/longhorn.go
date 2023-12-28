@@ -273,52 +273,6 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 	}
 
 	switch sName {
-	case types.SettingNameBackupTarget:
-		vs, err := s.ListDRVolumesRO()
-		if err != nil {
-			return errors.Wrapf(err, "failed to list standby volume when modifying BackupTarget")
-		}
-		if len(vs) != 0 {
-			standbyVolumeNames := make([]string, len(vs))
-			for k := range vs {
-				standbyVolumeNames = append(standbyVolumeNames, k)
-			}
-			return fmt.Errorf("cannot modify BackupTarget since there are existing standby volumes: %v", standbyVolumeNames)
-		}
-	case types.SettingNameBackupTargetCredentialSecret:
-		secret, err := s.GetSecretRO(s.namespace, value)
-		if err != nil {
-			if !apierrors.IsNotFound(err) {
-				return errors.Wrapf(err, "failed to get the secret before modifying backup target credential secret setting")
-			}
-			return nil
-		}
-		checkKeyList := []string{
-			types.AWSAccessKey,
-			types.AWSIAMRoleAnnotation,
-			types.AWSIAMRoleArn,
-			types.AWSAccessKey,
-			types.AWSSecretKey,
-			types.AWSEndPoint,
-			types.AWSCert,
-			types.CIFSUsername,
-			types.CIFSPassword,
-			types.AZBlobAccountName,
-			types.AZBlobAccountKey,
-			types.AZBlobEndpoint,
-			types.AZBlobCert,
-			types.HTTPSProxy,
-			types.HTTPProxy,
-			types.NOProxy,
-			types.VirtualHostedStyle,
-		}
-		for _, checkKey := range checkKeyList {
-			if value, ok := secret.Data[checkKey]; ok {
-				if strings.TrimSpace(string(value)) != string(value) {
-					return fmt.Errorf("there is space or new line in %s", checkKey)
-				}
-			}
-		}
 	case types.SettingNameTaintToleration:
 		volumesDetached, err := s.AreAllVolumesDetachedState()
 		if err != nil {
@@ -3618,9 +3572,37 @@ func (s *DataStore) ListBackupTargets() (map[string]*longhorn.BackupTarget, erro
 	return itemMap, nil
 }
 
+// ListBackupTargetsRO returns an object contains all backup targets in the cluster BackupTargets CR
+func (s *DataStore) ListBackupTargetsRO() (map[string]*longhorn.BackupTarget, error) {
+	list, err := s.backupTargetLister.BackupTargets(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.BackupTarget{}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO
+	}
+	return itemMap, nil
+}
+
 // GetDefaultBackupTargetRO returns the BackupTarget for the default backup target
 func (s *DataStore) GetDefaultBackupTargetRO() (*longhorn.BackupTarget, error) {
-	return s.GetBackupTargetRO(types.DefaultBackupTargetName)
+	var defaultBackupTarget *longhorn.BackupTarget
+	backupTargetMap, err := s.ListBackupTargets()
+	if err != nil {
+		return nil, err
+	}
+	for _, backupTarget := range backupTargetMap {
+		if backupTarget.Status.Default {
+			defaultBackupTarget = backupTarget
+			break
+		}
+	}
+	if defaultBackupTarget == nil {
+		return nil, fmt.Errorf("failed to find default backup target")
+	}
+	return defaultBackupTarget, nil
 }
 
 // GetBackupTargetRO returns the BackupTarget with the given backup target name in the cluster
@@ -3640,7 +3622,17 @@ func (s *DataStore) GetBackupTarget(name string) (*longhorn.BackupTarget, error)
 
 // UpdateBackupTarget updates the given Longhorn backup target in the cluster BackupTargets CR and verifies update
 func (s *DataStore) UpdateBackupTarget(backupTarget *longhorn.BackupTarget) (*longhorn.BackupTarget, error) {
+	if backupTarget.Annotations == nil {
+		backupTarget.Annotations = make(map[string]string)
+	}
+	backupTarget.Annotations[types.GetLonghornLabelKey(types.UpdateBackupTargetFromLonghorn)] = ""
 	obj, err := s.lhClient.LonghornV1beta2().BackupTargets(s.namespace).Update(context.TODO(), backupTarget, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	delete(obj.Annotations, types.GetLonghornLabelKey(types.UpdateBackupTargetFromLonghorn))
+	obj, err = s.lhClient.LonghornV1beta2().BackupTargets(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -3665,6 +3657,26 @@ func (s *DataStore) UpdateBackupTargetStatus(backupTarget *longhorn.BackupTarget
 // DeleteBackupTarget won't result in immediately deletion since finalizer was set by default
 func (s *DataStore) DeleteBackupTarget(backupTargetName string) error {
 	return s.lhClient.LonghornV1beta2().BackupTargets(s.namespace).Delete(context.TODO(), backupTargetName, metav1.DeleteOptions{})
+}
+
+// RemoveFinalizerForBackupTarget will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForBackupTarget(backupTarget *longhorn.BackupTarget) error {
+	if !util.FinalizerExists(longhornFinalizerKey, backupTarget) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, backupTarget); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta2().BackupTargets(s.namespace).Update(context.TODO(), backupTarget, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if backupTarget.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for backup target %s", backupTarget.Name)
+	}
+	return nil
 }
 
 // CreateBackupVolume creates a Longhorn BackupVolumes CR and verifies creation
@@ -3704,15 +3716,85 @@ func (s *DataStore) ListBackupVolumes() (map[string]*longhorn.BackupVolume, erro
 	return itemMap, nil
 }
 
-func getBackupVolumeSelector(backupVolumeName string) (labels.Selector, error) {
+// ListBackupVolumesWithBackupTargetNameRO returns an object contains all backup volumes in the cluster BackupVolumes CR
+// of the given backup target name
+func (s *DataStore) ListBackupVolumesWithBackupTargetNameRO(backupTargetName string) (map[string]*longhorn.BackupVolume, error) {
+	selector, err := getBackupTargetSelector(backupTargetName)
+	if err != nil {
+		return nil, err
+	}
+
+	list, err := s.backupVolumeLister.BackupVolumes(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.BackupVolume{}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO
+	}
+	return itemMap, nil
+}
+
+// ListBackupVolumesWithVolumeNameRO returns an object contains all backup volumes in the cluster BackupVolumes CR
+// of the given volume name
+func (s *DataStore) ListBackupVolumesWithVolumeNameRO(volumeName string) (map[string]*longhorn.BackupVolume, error) {
+	selector, err := getBackupVolumeSelector(volumeName)
+	if err != nil {
+		return nil, err
+	}
+
+	list, err := s.backupVolumeLister.BackupVolumes(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.BackupVolume{}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO
+	}
+	return itemMap, nil
+}
+
+func getBackupTargetSelector(backupTargetName string) (labels.Selector, error) {
 	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: types.GetBackupVolumeLabels(backupVolumeName),
+		MatchLabels: types.GetBackupTargetLabels(backupTargetName),
+	})
+}
+
+func getBackupVolumeSelector(volumeName string) (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetBackupVolumeLabels(volumeName),
+	})
+}
+
+func getBackupVolumeCRSelector(backupVolumeName string) (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetBackupVolumeCRLabels(backupVolumeName),
 	})
 }
 
 // GetBackupVolumeRO returns the BackupVolume with the given backup volume name in the cluster
 func (s *DataStore) GetBackupVolumeRO(backupVolumeName string) (*longhorn.BackupVolume, error) {
 	return s.backupVolumeLister.BackupVolumes(s.namespace).Get(backupVolumeName)
+}
+
+// GetBackupVolumeByCRLabelRO returns the read-only BackupVolume with the given backup volume name by matching it with the CR label in the cluster
+func (s *DataStore) GetBackupVolumeByCRLabelRO(backupVolumeName string) (*longhorn.BackupVolume, error) {
+	selector, err := getBackupVolumeCRSelector(backupVolumeName)
+	if err != nil {
+		return nil, err
+	}
+
+	list, err := s.backupVolumeLister.BackupVolumes(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+	if len(list) == 0 {
+		return nil, apierrors.NewNotFound(longhorn.Resource("backupvolume"), backupVolumeName)
+	}
+
+	return list[0], nil
 }
 
 // GetBackupVolume returns a copy of BackupVolume with the given backup volume name in the cluster
@@ -3725,6 +3807,43 @@ func (s *DataStore) GetBackupVolume(name string) (*longhorn.BackupVolume, error)
 	return resultRO.DeepCopy(), nil
 }
 
+// GetBackupVolumeByCRLabel returns the BackupVolume with the given backup volume name by matching it with the CR label in the cluster
+func (s *DataStore) GetBackupVolumeByCRLabel(backupVolumeName string) (*longhorn.BackupVolume, error) {
+	resultRO, err := s.GetBackupVolumeByCRLabelRO(backupVolumeName)
+	if err != nil {
+		return nil, err
+	}
+	return resultRO.DeepCopy(), nil
+}
+
+// GetLastUpdatedBackupVolumeWithVolumeNameRO returns a copy of last updated BackupVolume with the given volume name in the cluster
+func (s *DataStore) GetLastUpdatedBackupVolumeWithVolumeNameRO(volumeName string) (*longhorn.BackupVolume, error) {
+	backupVolumeMap, err := s.ListBackupVolumesWithVolumeNameRO(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	var lastUpdatedBackupVolume *longhorn.BackupVolume
+	for _, backupVolume := range backupVolumeMap {
+		if lastUpdatedBackupVolume == nil {
+			lastUpdatedBackupVolume = backupVolume
+			continue
+		}
+		lastUpdatedBackupVolumeLastBackupTime, err := util.ParseTimeZ(lastUpdatedBackupVolume.Status.LastBackupAt)
+		if err != nil {
+			return nil, err
+		}
+		backupVolumeLastBackupTime, err := util.ParseTimeZ(backupVolume.Status.LastBackupAt)
+		if err != nil {
+			return nil, err
+		}
+		if lastUpdatedBackupVolumeLastBackupTime.Before(backupVolumeLastBackupTime) {
+			lastUpdatedBackupVolume = backupVolume
+		}
+	}
+	// Cannot use cached object from lister
+	return lastUpdatedBackupVolume, nil
+}
+
 // UpdateBackupVolume updates the given Longhorn backup volume in the cluster BackupVolume CR and verifies update
 func (s *DataStore) UpdateBackupVolume(backupVolume *longhorn.BackupVolume) (*longhorn.BackupVolume, error) {
 	obj, err := s.lhClient.LonghornV1beta2().BackupVolumes(s.namespace).Update(context.TODO(), backupVolume, metav1.UpdateOptions{})
@@ -3732,7 +3851,7 @@ func (s *DataStore) UpdateBackupVolume(backupVolume *longhorn.BackupVolume) (*lo
 		return nil, err
 	}
 	verifyUpdate(backupVolume.Name, obj, func(name string) (runtime.Object, error) {
-		return s.GetBackupVolumeRO(name)
+		return s.GetBackupVolumeByCRLabelRO(name)
 	})
 	return obj, nil
 }
@@ -3744,7 +3863,7 @@ func (s *DataStore) UpdateBackupVolumeStatus(backupVolume *longhorn.BackupVolume
 		return nil, err
 	}
 	verifyUpdate(backupVolume.Name, obj, func(name string) (runtime.Object, error) {
-		return s.GetBackupVolumeRO(name)
+		return s.GetBackupVolumeByCRLabelRO(name)
 	})
 	return obj, nil
 }
@@ -3800,10 +3919,37 @@ func (s *DataStore) CreateBackup(backup *longhorn.Backup, backupVolumeName strin
 	return ret.DeepCopy(), nil
 }
 
-// ListBackupsWithBackupVolumeName returns an object contains all backups in the cluster Backups CR
+// ListBackupsWithBackupVolumeNameRO returns an object contains all backups in the cluster Backups CR
 // of the given backup volume name
-func (s *DataStore) ListBackupsWithBackupVolumeName(backupVolumeName string) (map[string]*longhorn.Backup, error) {
-	selector, err := getBackupVolumeSelector(backupVolumeName)
+func (s *DataStore) ListBackupsWithBackupVolumeNameRO(backupVolumeName string) (map[string]*longhorn.Backup, error) {
+	backupMap, err := s.ListBackupsRO()
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.Backup{}
+	for _, backup := range backupMap {
+		volumeName, exists := backup.Labels[types.LonghornLabelBackupVolume]
+		if !exists {
+			continue
+		}
+		bvName := volumeName + "-" + backup.Spec.BackupTargetName
+		if backup.Annotations != nil {
+			if _, exists := backup.Annotations[types.UpgradedOldBackupFrom15x]; exists {
+				bvName = volumeName
+			}
+		}
+		if bvName == backupVolumeName {
+			itemMap[backup.Name] = backup
+		}
+	}
+	return itemMap, nil
+}
+
+// ListBackupsWithVolumeName returns an object contains all backups in the cluster Backups CR
+// of the given volume name
+func (s *DataStore) ListBackupsWithVolumeName(volumeName string) (map[string]*longhorn.Backup, error) {
+	selector, err := getBackupVolumeSelector(volumeName)
 	if err != nil {
 		return nil, err
 	}

@@ -11,6 +11,8 @@ type BackupVolume struct {
 
 	BackingImageName string `json:"backingImageName,omitempty" yaml:"backing_image_name,omitempty"`
 
+	BackupTargetName string `json:"backupTargetName,omitempty" yaml:"backup_target_name,omitempty"`
+
 	Created string `json:"created,omitempty" yaml:"created,omitempty"`
 
 	DataStored string `json:"dataStored,omitempty" yaml:"data_stored,omitempty"`
@@ -28,6 +30,8 @@ type BackupVolume struct {
 	Size string `json:"size,omitempty" yaml:"size,omitempty"`
 
 	StorageClassName string `json:"storageClassName,omitempty" yaml:"storage_class_name,omitempty"`
+
+	VolumeName string `json:"volumeName,omitempty" yaml:"volume_name,omitempty"`
 }
 
 type BackupVolumeCollection struct {

@@ -7,6 +7,8 @@ const (
 type SnapshotInput struct {
 	Resource `yaml:"-"`
 
+	BackupTargetName string `json:"backupTargetName,omitempty" yaml:"backup_target_name,omitempty"`
+
 	Labels map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`

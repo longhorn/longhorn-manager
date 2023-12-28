@@ -410,15 +410,12 @@ func (c *UninstallController) deleteCRDs() (bool, error) {
 	//   Remove the setting CRs and add OwnerReferences on BackupTarget CR.
 	//   After that when deleting setting CRs, the default BackupTarget CR
 	//   be cascading deleted automatically.
-	targetSetting, err := c.ds.GetSetting(types.SettingNameBackupTarget)
-	if err != nil {
+	// Delete the BackupTarget CRs
+	if backupTargets, err := c.ds.ListBackupTargets(); err != nil {
 		return true, err
-	}
-	if targetSetting.Value != "" {
-		targetSetting.Value = ""
-		if _, err := c.ds.UpdateSetting(targetSetting); err != nil {
-			return true, err
-		}
+	} else if len(backupTargets) > 0 {
+		c.logger.Infof("Found %d backuptargets remaining", len(backupTargets))
+		return true, c.deleteBackupTargets(backupTargets)
 	}
 
 	// Waits the BackupVolume CRs be clean up by backup_target_controller
@@ -447,14 +444,6 @@ func (c *UninstallController) deleteCRDs() (bool, error) {
 		return true, err
 	} else if len(systemBackups) > 0 {
 		return true, fmt.Errorf("found %d SystemBackups remaining", len(systemBackups))
-	}
-
-	// Delete the BackupTarget CRs
-	if backupTargets, err := c.ds.ListBackupTargets(); err != nil {
-		return true, err
-	} else if len(backupTargets) > 0 {
-		c.logger.Infof("Found %d backuptargets remaining", len(backupTargets))
-		return true, c.deleteBackupTargets(backupTargets)
 	}
 
 	if engineImages, err := c.ds.ListEngineImages(); err != nil {
@@ -659,7 +648,18 @@ func (c *UninstallController) deleteBackupTargets(backupTargets map[string]*long
 	}()
 	for _, bt := range backupTargets {
 		log := getLoggerForBackupTarget(c.logger, bt)
+		if bt.Annotations == nil {
+			bt.Annotations = make(map[string]string)
+		}
 		if bt.DeletionTimestamp == nil {
+			if bt.Annotations == nil {
+				bt.Annotations = make(map[string]string)
+			}
+			bt.Annotations[types.GetLonghornLabelKey(types.DeleteBackupTargetFromLonghorn)] = ""
+			if _, err := c.ds.UpdateBackupTarget(bt); err != nil {
+				return errors.Wrap(err, "failed to update backup target annotations to mark for deletion")
+			}
+
 			if err = c.ds.DeleteBackupTarget(bt.Name); err != nil {
 				return errors.Wrap(err, "failed to mark for deletion")
 			}

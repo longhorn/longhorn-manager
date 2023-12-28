@@ -39,12 +39,7 @@ func (v *systemBackupValidator) Resource() admission.Resource {
 }
 
 func (v *systemBackupValidator) Create(request *admission.Request, newObj runtime.Object) error {
-	_, err := v.ds.GetSettingValueExisted(types.SettingNameBackupTarget)
-	if err != nil {
-		return werror.NewBadRequest(err.Error())
-	}
-
-	backupTarget, err := v.ds.GetBackupTargetRO(types.DefaultBackupTargetName)
+	backupTarget, err := v.ds.GetDefaultBackupTargetRO()
 	if err != nil {
 		return werror.NewBadRequest(err.Error())
 	}

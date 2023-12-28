@@ -29,6 +29,8 @@ const (
 	LonghornKindEngine              = "Engine"
 	LonghornKindReplica             = "Replica"
 	LonghornKindBackup              = "Backup"
+	LonghornKindBackupTarget        = "BackupTarget"
+	LonghornKindBackupVolume        = "BackupVolume"
 	LonghornKindSnapshot            = "Snapshot"
 	LonghornKindEngineImage         = "EngineImage"
 	LonghornKindInstanceManager     = "InstanceManager"
@@ -132,6 +134,10 @@ const (
 	ConfigMapResourceVersionKey = "configmap-resource-version"
 	UpdateSettingFromLonghorn   = "update-setting-from-longhorn"
 
+	UpgradedOldBackupFrom15x       = "upgraded-dld-backup-from-15x"
+	DeleteBackupTargetFromLonghorn = "delete-backup-target-from-longhorn"
+	UpdateBackupTargetFromLonghorn = "update-backup-target-from-longhorn"
+
 	KubernetesStatusLabel = "KubernetesStatus"
 	KubernetesReplicaSet  = "ReplicaSet"
 	KubernetesStatefulSet = "StatefulSet"
@@ -160,7 +166,9 @@ const (
 	LonghornLabelManagedBy                  = "managed-by"
 	LonghornLabelSnapshotForCloningVolume   = "for-cloning-volume"
 	LonghornLabelBackingImageDataSource     = "backing-image-data-source"
+	LonghornLabelBackupTarget               = "backup-target"
 	LonghornLabelBackupVolume               = "backup-volume"
+	LonghornLabelBackupVolumeCRName         = "backup-volume-cr-name"
 	LonghornLabelRecurringJob               = "job"
 	LonghornLabelRecurringJobGroup          = "job-group"
 	LonghornLabelRecurringJobSource         = "source"
@@ -223,6 +231,7 @@ const (
 
 	BackupStoreTypeS3     = "s3"
 	BackupStoreTypeCIFS   = "cifs"
+	BackupStoreTypeNFS    = "nfs"
 	BackupStoreTypeAZBlob = "azblob"
 
 	AWSIAMRoleAnnotation = "iam.amazonaws.com/role"
@@ -518,9 +527,21 @@ func GetBackingImageDataSourceLabels(name, nodeID, diskUUID string) map[string]s
 	return labels
 }
 
+func GetBackupTargetLabels(backupTargetName string) map[string]string {
+	return map[string]string{
+		LonghornLabelBackupTarget: backupTargetName,
+	}
+}
+
 func GetBackupVolumeLabels(volumeName string) map[string]string {
 	return map[string]string{
 		LonghornLabelBackupVolume: volumeName,
+	}
+}
+
+func GetBackupVolumeCRLabels(backupVolumeName string) map[string]string {
+	return map[string]string{
+		LonghornLabelBackupVolumeCRName: backupVolumeName,
 	}
 }
 

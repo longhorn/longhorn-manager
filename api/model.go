@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/base64"
 	"fmt"
 	"strconv"
 	"time"
@@ -119,6 +120,14 @@ type SnapshotCR struct {
 	Checksum     string            `json:"checksum"`
 }
 
+type SecretInput struct {
+	client.Resource
+
+	Name       string            `json:"name"`
+	SecretType string            `json:"secretType"`
+	Data       map[string]string `json:"data"`
+}
+
 type BackupTarget struct {
 	client.Resource
 	engineapi.BackupTarget
@@ -138,6 +147,8 @@ type BackupVolume struct {
 	BackingImageName     string            `json:"backingImageName"`
 	BackingImageChecksum string            `json:"backingImageChecksum"`
 	StorageClassName     string            `json:"storageClassName"`
+	BackupTargetName     string            `json:"backupTargetName"`
+	VolumeName           string            `json:"volumeName"`
 }
 
 type Backup struct {
@@ -159,6 +170,7 @@ type Backup struct {
 	VolumeCreated          string               `json:"volumeCreated"`
 	VolumeBackingImageName string               `json:"volumeBackingImageName"`
 	CompressionMethod      string               `json:"compressionMethod"`
+	BackupTargetName       string               `json:"backupTargetName"`
 }
 
 type Setting struct {
@@ -260,9 +272,11 @@ type DetachInput struct {
 	ForceDetach  bool   `json:"forceDetach"`
 }
 
+// SnapshotInput struct is used for the actions of APIs
 type SnapshotInput struct {
-	Name   string            `json:"name"`
-	Labels map[string]string `json:"labels"`
+	Name             string            `json:"name"`
+	Labels           map[string]string `json:"labels"`
+	BackupTargetName string            `json:"backupTargetName"`
 }
 
 type SnapshotCRInput struct {
@@ -550,7 +564,6 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("detachInput", DetachInput{})
 	schemas.AddType("snapshotInput", SnapshotInput{})
 	schemas.AddType("snapshotCRInput", SnapshotCRInput{})
-	schemas.AddType("backupTarget", BackupTarget{})
 	schemas.AddType("backup", Backup{})
 	schemas.AddType("backupInput", BackupInput{})
 	schemas.AddType("backupStatus", BackupStatus{})
@@ -612,6 +625,8 @@ func NewSchema() *client.Schemas {
 	snapshotSchema(schemas.AddType("snapshot", Snapshot{}))
 	snapshotCRSchema(schemas.AddType("snapshotCR", SnapshotCR{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
+	backupTargetSchema(schemas.AddType("backupTarget", BackupTarget{}))
+	secretSchema(schemas.AddType("secret", SecretInput{}))
 	settingSchema(schemas.AddType("setting", Setting{}))
 	recurringJobSchema(schemas.AddType("recurringJob", RecurringJob{}))
 	engineImageSchema(schemas.AddType("engineImage", EngineImage{}))
@@ -786,6 +801,64 @@ func backupVolumeSchema(backupVolume *client.Schema) {
 			Output: "backupVolume",
 		},
 	}
+}
+
+func secretSchema(secret *client.Schema) {
+	secret.CollectionMethods = []string{"GET", "POST"}
+	secret.ResourceMethods = []string{"GET", "PUT", "DELETE"}
+
+	name := secret.ResourceFields["name"]
+	name.Required = true
+	name.Unique = true
+	name.Create = true
+	secret.ResourceFields["name"] = name
+
+	secretType := secret.ResourceFields["type"]
+	secretType.Required = true
+	secretType.Unique = false
+	secretType.Create = true
+	secret.ResourceFields["type"] = secretType
+
+	data := secret.ResourceFields["data"]
+	data.Type = "map[string]"
+	data.Nullable = true
+	secret.ResourceFields["data"] = data
+}
+
+func backupTargetSchema(backupTarget *client.Schema) {
+	backupTarget.CollectionMethods = []string{"GET", "POST"}
+	backupTarget.ResourceMethods = []string{"GET", "PUT", "DELETE"}
+
+	backupTargetName := backupTarget.ResourceFields["name"]
+	backupTargetName.Required = true
+	backupTargetName.Unique = true
+	backupTargetName.Create = true
+	backupTarget.ResourceFields["name"] = backupTargetName
+
+	backupTargetURL := backupTarget.ResourceFields["backupTargetURL"]
+	backupTargetURL.Create = true
+	backupTargetURL.Default = ""
+	backupTarget.ResourceFields["backupTargetURL"] = backupTargetURL
+
+	credentialSecret := backupTarget.ResourceFields["credentialSecret"]
+	credentialSecret.Create = true
+	credentialSecret.Default = ""
+	backupTarget.ResourceFields["credentialSecret"] = credentialSecret
+
+	backupTargetPollInterval := backupTarget.ResourceFields["pollInterval"]
+	backupTargetPollInterval.Create = true
+	backupTargetPollInterval.Default = "300"
+	backupTarget.ResourceFields["pollInterval"] = backupTargetPollInterval
+
+	defaultBackupTarget := backupTarget.ResourceFields["default"]
+	defaultBackupTarget.Create = true
+	defaultBackupTarget.Default = false
+	backupTarget.ResourceFields["default"] = defaultBackupTarget
+
+	backupTargetReadOnly := backupTarget.ResourceFields["readOnly"]
+	backupTargetReadOnly.Create = true
+	backupTargetReadOnly.Default = false
+	backupTarget.ResourceFields["readOnly"] = backupTargetReadOnly
 }
 
 func settingSchema(setting *client.Schema) {
@@ -1653,14 +1726,49 @@ func toBackupTargetResource(bt *longhorn.BackupTarget) *BackupTarget {
 			Links: map[string]string{},
 		},
 		BackupTarget: engineapi.BackupTarget{
+			Name:             bt.Name,
 			BackupTargetURL:  bt.Spec.BackupTargetURL,
 			CredentialSecret: bt.Spec.CredentialSecret,
+			Default:          bt.Status.Default,
 			PollInterval:     bt.Spec.PollInterval.Duration.String(),
 			Available:        bt.Status.Available,
 			Message:          types.GetCondition(bt.Status.Conditions, longhorn.BackupTargetConditionTypeUnavailable).Message,
+			ReadyOnly:        bt.Spec.ReadOnly,
 		},
 	}
 	return res
+}
+
+func toSecretResource(s *corev1.Secret) *SecretInput {
+	if s == nil {
+		return nil
+	}
+
+	dataMap := make(map[string]string, len(s.Data))
+	for key, data := range s.Data {
+		dataMap[key] = base64.StdEncoding.EncodeToString(data)
+	}
+
+	res := &SecretInput{
+		Resource: client.Resource{
+			Id:    s.Name,
+			Type:  "secret",
+			Links: map[string]string{},
+		},
+
+		Name:       s.Name,
+		SecretType: string(s.Type),
+		Data:       dataMap,
+	}
+	return res
+}
+
+func toSecretCollection(ss []*corev1.Secret) *client.GenericCollection {
+	data := []interface{}{}
+	for _, s := range ss {
+		data = append(data, toSecretResource(s))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "secret"}}
 }
 
 func toBackupVolumeResource(bv *longhorn.BackupVolume, apiContext *api.ApiContext) *BackupVolume {
@@ -1684,6 +1792,8 @@ func toBackupVolumeResource(bv *longhorn.BackupVolume, apiContext *api.ApiContex
 		BackingImageName:     bv.Status.BackingImageName,
 		BackingImageChecksum: bv.Status.BackingImageChecksum,
 		StorageClassName:     bv.Status.StorageClassName,
+		BackupTargetName:     bv.Spec.BackupTargetName,
+		VolumeName:           bv.Spec.VolumeName,
 	}
 	b.Actions = map[string]string{
 		"backupList":   apiContext.UrlBuilder.ActionLink(b.Resource, "backupList"),
@@ -1743,6 +1853,7 @@ func toBackupResource(b *longhorn.Backup) *Backup {
 		VolumeCreated:          b.Status.VolumeCreated,
 		VolumeBackingImageName: b.Status.VolumeBackingImageName,
 		CompressionMethod:      string(b.Status.CompressionMethod),
+		BackupTargetName:       b.Spec.BackupTargetName,
 	}
 	// Set the volume name from backup CR's label if it's empty.
 	// This field is empty probably because the backup state is not Ready

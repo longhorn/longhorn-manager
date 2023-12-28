@@ -6,6 +6,7 @@ import (
 
 	"github.com/pkg/errors"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
@@ -80,6 +81,25 @@ func (b *backupMutator) Create(request *admission.Request, newObj runtime.Object
 		return nil, werror.NewInvalidError(errors.Wrapf(err, "failed to convert backup labels into JSON string").Error(), "")
 	}
 	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/labels", "value": %s}`, string(valueBackupLabels)))
+
+	if backup.Spec.BackupTargetURL == "" {
+		backupTarget, err := b.ds.GetBackupTargetRO(backup.Spec.BackupTargetName)
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				return nil, werror.NewInvalidError(errors.Wrapf(err, "failed to get backup target of backup").Error(), "")
+			}
+			backupTarget, err = b.ds.GetDefaultBackupTargetRO()
+			if err != nil {
+				return nil, werror.NewInvalidError(errors.Wrapf(err, "failed to get default backup target").Error(), "")
+			}
+			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupTargetName", "value": %s}`, string(backupTarget.Name)))
+		}
+		backupTargetURL, err := json.Marshal(backupTarget.Spec.BackupTargetURL)
+		if err != nil {
+			return nil, werror.NewInvalidError(errors.Wrapf(err, "failed to convert backup target url into JSON string").Error(), "")
+		}
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupTargetURL", "value": %s}`, string(backupTargetURL)))
+	}
 
 	return patchOps, nil
 }
