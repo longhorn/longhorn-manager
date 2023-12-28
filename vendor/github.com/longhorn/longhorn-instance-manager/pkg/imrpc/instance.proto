@@ -35,7 +35,8 @@ message SpdkInstanceSpec {
 }
 
 message InstanceSpec {
-	BackendStoreDriver backend_store_driver = 1;
+	// Deprecated: Replaced by `data_engine`.
+	BackendStoreDriver backend_store_driver = 1 [deprecated=true];
 	string name = 2;
 	string type = 3;
 	string volume_name = 4;
@@ -45,6 +46,7 @@ message InstanceSpec {
 
 	ProcessInstanceSpec process_instance_spec = 7;
 	SpdkInstanceSpec spdk_instance_spec = 8;
+	DataEngine data_engine = 9;
 }
 
 message InstanceStatus {
@@ -60,18 +62,22 @@ message InstanceCreateRequest {
 }
 
 message InstanceDeleteRequest {
-	BackendStoreDriver backend_store_driver = 1;
+	// Deprecated: Replaced by `data_engine`.
+	BackendStoreDriver backend_store_driver = 1 [deprecated=true];
 	string name = 2;
 	string type = 3;
 
 	string disk_uuid = 4;
 	bool cleanup_required = 5;
+	DataEngine data_engine = 6;
 }
 
 message InstanceGetRequest {
-	BackendStoreDriver backend_store_driver = 1;
+	// Deprecated: Replaced by `data_engine`.
+	BackendStoreDriver backend_store_driver = 1 [deprecated=true];
 	string name = 2;
 	string type = 3;
+	DataEngine data_engine = 4;
 }
 
 message InstanceResponse {
@@ -85,9 +91,11 @@ message InstanceListResponse{
 }
 
 message InstanceLogRequest {
-	BackendStoreDriver backend_store_driver = 1;
+	// Deprecated: Replaced by `data_engine`.
+	BackendStoreDriver backend_store_driver = 1 [deprecated=true];
 	string name = 2;
 	string type = 3;
+	DataEngine data_engine = 4;
 }
 
 message InstanceReplaceRequest {

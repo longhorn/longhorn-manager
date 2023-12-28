@@ -49,9 +49,11 @@ service ProxyEngineService {
 
 message ProxyEngineRequest{
 	string address = 1;
-	BackendStoreDriver backend_store_driver = 2;
+	// Deprecated: Replaced by `data_engine`.
+	BackendStoreDriver backend_store_driver = 2 [deprecated=true];
 	string engine_name = 3;
 	string volume_name = 4;
+	DataEngine data_engine = 5;
 }
 
 message EngineVersionProxyResponse {

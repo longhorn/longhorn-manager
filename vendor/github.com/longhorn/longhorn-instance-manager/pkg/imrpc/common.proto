@@ -8,3 +8,8 @@ enum BackendStoreDriver {
     v1 = 0;
     v2 = 1;
 }
+
+enum DataEngine {
+    DATA_ENGINE_V1 = 0;
+    DATA_ENGINE_V2 = 1;
+}
