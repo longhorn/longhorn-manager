@@ -1275,6 +1275,10 @@ spec:
     subresources:
       status: {}
   - additionalPrinterColumns:
+    - description: The data engine of the engine
+      jsonPath: .spec.dataEngine
+      name: Data Engine
+      type: string
     - description: The current state of the engine
       jsonPath: .status.currentState
       name: State
@@ -1628,6 +1632,10 @@ spec:
     subresources:
       status: {}
   - additionalPrinterColumns:
+    - description: The data engine of the instance manager
+      jsonPath: .spec.dataEngine
+      name: Data Engine
+      type: string
     - description: The state of the instance manager
       jsonPath: .status.currentState
       name: State
@@ -1635,10 +1643,6 @@ spec:
     - description: The type of the instance manager (engine or replica)
       jsonPath: .spec.type
       name: Type
-      type: string
-    - description: The data engine of the instance manager
-      jsonPath: .spec.dataEngine
-      name: Data Engine
       type: string
     - description: The node that the instance manager is running on
       jsonPath: .spec.nodeID
@@ -2407,6 +2411,10 @@ spec:
     subresources:
       status: {}
   - additionalPrinterColumns:
+    - description: The data engine of the replica
+      jsonPath: .spec.dataEngine
+      name: Data Engine
+      type: string
     - description: The current state of the replica
       jsonPath: .status.currentState
       name: State
@@ -3434,6 +3442,10 @@ spec:
     subresources:
       status: {}
   - additionalPrinterColumns:
+    - description: The data engine of the volume
+      jsonPath: .spec.dataEngine
+      name: Data Engine
+      type: string
     - description: The state of the volume
       jsonPath: .status.state
       name: State
