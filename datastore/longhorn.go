@@ -4869,13 +4869,28 @@ func IsDataEngineV2(dataEngine longhorn.DataEngineType) bool {
 }
 
 // IsSupportedVolumeSize returns turn if the v1 volume size is supported by the given fsType file system.
-func IsSupportedVolumeSize(backendstoreDriver longhorn.BackendStoreDriverType, fsType string, volumeSize int64) bool {
+func IsSupportedVolumeSize(dataEngine longhorn.DataEngineType, fsType string, volumeSize int64) bool {
 	// TODO: check the logical volume maximum size limit
-	if IsBackendStoreDriverV1(backendstoreDriver) {
+	if IsDataEngineV1(dataEngine) {
 		// unix.Statfs can not differentiate the ext2/ext3/ext4 file systems.
 		if (strings.HasPrefix(fsType, "ext") && volumeSize >= util.MaxExt4VolumeSize) || (fsType == "xfs" && volumeSize >= util.MaxXfsVolumeSize) {
 			return false
 		}
 	}
 	return true
+}
+
+// IsDataEngineEnabled returns true if the given dataEngine is enabled
+func (s *DataStore) IsDataEngineEnabled(dataEngine longhorn.DataEngineType) (bool, error) {
+	dataEngineSetting := types.SettingNameV1DataEngine
+	if dataEngine == longhorn.DataEngineTypeV2 {
+		dataEngineSetting = types.SettingNameV2DataEngine
+	}
+
+	enabled, err := s.GetSettingAsBool(dataEngineSetting)
+	if err != nil {
+		return true, errors.Wrapf(err, "failed to get %v setting", dataEngineSetting)
+	}
+
+	return enabled, nil
 }
