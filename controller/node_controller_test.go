@@ -472,6 +472,7 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
 			Type:             longhorn.DiskTypeFilesystem,
+			FSType:           TestDiskPathFSType,
 		},
 	}
 	node2 := newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, "")
@@ -482,7 +483,8 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 			Conditions: []longhorn.Condition{
 				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusUnknown, ""),
 			},
-			Type: longhorn.DiskTypeFilesystem,
+			Type:   longhorn.DiskTypeFilesystem,
+			FSType: TestDiskPathFSType,
 		},
 	}
 
@@ -555,6 +557,7 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 						},
 						DiskUUID: TestDiskID1,
 						Type:     longhorn.DiskTypeFilesystem,
+						FSType:   TestDiskPathFSType,
 					},
 				},
 			},
@@ -570,7 +573,8 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 						Conditions: []longhorn.Condition{
 							newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusUnknown, ""),
 						},
-						Type: longhorn.DiskTypeFilesystem,
+						Type:   longhorn.DiskTypeFilesystem,
+						FSType: TestDiskPathFSType,
 					},
 				},
 			},
@@ -627,6 +631,7 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
 			Type:             longhorn.DiskTypeFilesystem,
+			FSType:           TestDiskPathFSType,
 		},
 	}
 
@@ -691,6 +696,7 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 						ScheduledReplica: map[string]int64{},
 						DiskUUID:         TestDiskID1,
 						Type:             longhorn.DiskTypeFilesystem,
+						FSType:           TestDiskPathFSType,
 					},
 				},
 			},
@@ -704,6 +710,7 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 						StorageScheduled: 0,
 						StorageAvailable: 0,
 						Type:             longhorn.DiskTypeFilesystem,
+						FSType:           TestDiskPathFSType,
 					},
 				},
 			},
@@ -757,6 +764,7 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 			},
 			DiskUUID: "new-uuid",
 			Type:     longhorn.DiskTypeFilesystem,
+			FSType:   TestDiskPathFSType,
 		},
 	}
 
@@ -766,6 +774,7 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
 			Type:             longhorn.DiskTypeFilesystem,
+			FSType:           TestDiskPathFSType,
 		},
 	}
 
@@ -830,6 +839,7 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 						ScheduledReplica: map[string]int64{},
 						DiskUUID:         "new-uuid",
 						Type:             longhorn.DiskTypeFilesystem,
+						FSType:           TestDiskPathFSType,
 					},
 				},
 			},
@@ -843,6 +853,7 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 						StorageScheduled: 0,
 						StorageAvailable: 0,
 						Type:             longhorn.DiskTypeFilesystem,
+						FSType:           TestDiskPathFSType,
 					},
 				},
 			},
@@ -884,7 +895,8 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 			Conditions: []longhorn.Condition{
 				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 			},
-			Type: longhorn.DiskTypeFilesystem,
+			Type:   longhorn.DiskTypeFilesystem,
+			FSType: TestDiskPathFSType,
 		},
 	}
 
@@ -948,6 +960,7 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 						ScheduledReplica: map[string]int64{},
 						DiskUUID:         TestDiskID1,
 						Type:             longhorn.DiskTypeFilesystem,
+						FSType:           TestDiskPathFSType,
 					},
 				},
 			},
@@ -1000,7 +1013,8 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 			Conditions: []longhorn.Condition{
 				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 			},
-			Type: longhorn.DiskTypeFilesystem,
+			Type:   longhorn.DiskTypeFilesystem,
+			FSType: TestDiskPathFSType,
 		},
 	}
 
@@ -1085,6 +1099,7 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 						ScheduledReplica: map[string]int64{},
 						DiskUUID:         TestDiskID1,
 						Type:             longhorn.DiskTypeFilesystem,
+						FSType:           TestDiskPathFSType,
 					},
 				},
 			},
