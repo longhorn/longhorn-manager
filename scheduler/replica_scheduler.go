@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -322,6 +323,13 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 		if !(volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV1 && diskSpec.Type == longhorn.DiskTypeFilesystem) &&
 			!(volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 && diskSpec.Type == longhorn.DiskTypeBlock) {
 			logrus.Debugf("Volume %v is not compatible with disk %v", volume.Name, diskName)
+			continue
+		}
+
+		volumeSize := volume.Spec.Size
+		// unix.Statfs can not differentiate the ext2/ext3/ext4 file systems.
+		if (strings.HasPrefix(diskStatus.FSType, "ext") && volumeSize >= util.MaxExt4VolumeSize) || (diskStatus.FSType == "xfs" && volumeSize >= util.MaxXfsVolumeSize) {
+			logrus.Debugf("Volume %v size %v is not compatible with the file system %v of the disk %v", volume.Name, volume.Spec.Size, diskStatus.Type, diskName)
 			continue
 		}
 

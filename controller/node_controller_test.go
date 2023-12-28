@@ -232,6 +232,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
 			Type:             longhorn.DiskTypeFilesystem,
+			FSType:           TestDiskPathFSType,
 		},
 	}
 	node2 := newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue, "")
@@ -242,7 +243,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			Conditions: []longhorn.Condition{
 				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusUnknown, ""),
 			},
-			Type: longhorn.DiskTypeFilesystem,
+			Type:   longhorn.DiskTypeFilesystem,
+			FSType: TestDiskPathFSType,
 		},
 	}
 	tc.nodes = map[string]*longhorn.Node{
@@ -273,6 +275,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 					ScheduledReplica: map[string]int64{
 						replica1.Name: replica1.Spec.VolumeSize,
 					},
+					FSType:   TestDiskPathFSType,
 					DiskUUID: TestDiskID1,
 					Type:     longhorn.DiskTypeFilesystem,
 				},
@@ -290,7 +293,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 					Conditions: []longhorn.Condition{
 						newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusUnknown, ""),
 					},
-					Type: longhorn.DiskTypeFilesystem,
+					FSType: TestDiskPathFSType,
+					Type:   longhorn.DiskTypeFilesystem,
 				},
 			},
 		},
@@ -341,6 +345,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
 			Type:             longhorn.DiskTypeFilesystem,
+			FSType:           TestDiskPathFSType,
 		},
 	}
 	tc.nodes = map[string]*longhorn.Node{
@@ -363,6 +368,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 						newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					},
 					ScheduledReplica: map[string]int64{},
+					FSType:           TestDiskPathFSType,
 					DiskUUID:         TestDiskID1,
 					Type:             longhorn.DiskTypeFilesystem,
 				},
@@ -378,6 +384,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 					StorageScheduled: 0,
 					StorageAvailable: 0,
 					Type:             longhorn.DiskTypeFilesystem,
+					FSType:           TestDiskPathFSType,
 				},
 			},
 		},
@@ -425,6 +432,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			},
 			DiskUUID: "new-uuid",
 			Type:     longhorn.DiskTypeFilesystem,
+			FSType:   TestDiskPathFSType,
 		},
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue, "")
@@ -433,6 +441,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
 			Type:             longhorn.DiskTypeFilesystem,
+			FSType:           TestDiskPathFSType,
 		},
 	}
 	tc.nodes = map[string]*longhorn.Node{
@@ -456,6 +465,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 					},
 					ScheduledReplica: map[string]int64{},
 					DiskUUID:         "new-uuid",
+					FSType:           TestDiskPathFSType,
 					Type:             longhorn.DiskTypeFilesystem,
 				},
 			},
@@ -469,6 +479,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				TestDiskID1: {
 					StorageScheduled: 0,
 					StorageAvailable: 0,
+					FSType:           TestDiskPathFSType,
 					Type:             longhorn.DiskTypeFilesystem,
 				},
 			},
@@ -504,7 +515,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			Conditions: []longhorn.Condition{
 				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 			},
-			Type: longhorn.DiskTypeFilesystem,
+			Type:   longhorn.DiskTypeFilesystem,
+			FSType: TestDiskPathFSType,
 		},
 	}
 	tc.nodes = map[string]*longhorn.Node{
@@ -528,6 +540,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 					},
 					ScheduledReplica: map[string]int64{},
 					DiskUUID:         TestDiskID1,
+					FSType:           TestDiskPathFSType,
 					Type:             longhorn.DiskTypeFilesystem,
 				},
 			},
@@ -574,7 +587,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			Conditions: []longhorn.Condition{
 				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 			},
-			Type: longhorn.DiskTypeFilesystem,
+			Type:   longhorn.DiskTypeFilesystem,
+			FSType: TestDiskPathFSType,
 		},
 	}
 	tc.nodes = map[string]*longhorn.Node{
