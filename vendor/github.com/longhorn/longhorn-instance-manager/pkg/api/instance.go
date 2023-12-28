@@ -7,28 +7,40 @@ import (
 	"github.com/longhorn/longhorn-spdk-engine/proto/spdkrpc"
 )
 
+var (
+	dataEngines = map[string]string{
+		"DATA_ENGINE_V1": "v1",
+		"DATA_ENGINE_V2": "v2",
+	}
+)
+
 type InstanceProcessSpec struct {
 	Binary string   `json:"binary"`
 	Args   []string `json:"args"`
 }
 
 type Instance struct {
-	Name               string         `json:"name"`
-	Type               string         `json:"type"`
-	BackendStoreDriver string         `json:"backendStoreDriver"`
-	PortCount          int32          `json:"portCount"`
-	PortArgs           []string       `json:"portArgs"`
-	InstanceStatus     InstanceStatus `json:"instanceStatus"`
-	Deleted            bool           `json:"deleted"`
+	Name           string         `json:"name"`
+	Type           string         `json:"type"`
+	DataEngine     string         `json:"dataEngine"`
+	PortCount      int32          `json:"portCount"`
+	PortArgs       []string       `json:"portArgs"`
+	InstanceStatus InstanceStatus `json:"instanceStatus"`
+	Deleted        bool           `json:"deleted"`
 
 	InstanceProccessSpec *InstanceProcessSpec
+
+	// Deprecated: replaced by DataEngine.
+	BackendStoreDriver string `json:"backendStoreDriver"`
 }
 
 func RPCToInstance(obj *rpc.InstanceResponse) *Instance {
 	instance := &Instance{
-		Name:               obj.Spec.Name,
-		Type:               obj.Spec.Type,
+		Name: obj.Spec.Name,
+		Type: obj.Spec.Type,
+		// Deprecated
 		BackendStoreDriver: obj.Spec.BackendStoreDriver.String(),
+		DataEngine:         dataEngines[obj.Spec.DataEngine.String()],
 		PortCount:          obj.Spec.PortCount,
 		PortArgs:           obj.Spec.PortArgs,
 		InstanceStatus:     RPCToInstanceStatus(obj.Status),

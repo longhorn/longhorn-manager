@@ -18,7 +18,7 @@ func (c *ProxyClient) CleanupBackupMountPoints() (err error) {
 	return nil
 }
 
-func (c *ProxyClient) SnapshotBackup(backendStoreDriver, engineName, volumeName, serviceAddress, backupName,
+func (c *ProxyClient) SnapshotBackup(dataEngine, engineName, volumeName, serviceAddress, backupName,
 	snapshotName, backupTarget, backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int,
 	storageClassName string, labels map[string]string, envs []string) (backupID, replicaAddress string, err error) {
 	input := map[string]string{
@@ -30,9 +30,9 @@ func (c *ProxyClient) SnapshotBackup(backendStoreDriver, engineName, volumeName,
 		return "", "", errors.Wrap(err, "failed to backup snapshot")
 	}
 
-	driver, ok := rpc.BackendStoreDriver_value[backendStoreDriver]
+	driver, ok := rpc.DataEngine_value[getDataEngine(dataEngine)]
 	if !ok {
-		return "", "", fmt.Errorf("failed to backup snapshot: invalid backend store driver %v", backendStoreDriver)
+		return "", "", fmt.Errorf("failed to backup snapshot: invalid data engine %v", dataEngine)
 	}
 
 	defer func() {
@@ -41,9 +41,11 @@ func (c *ProxyClient) SnapshotBackup(backendStoreDriver, engineName, volumeName,
 
 	req := &rpc.EngineSnapshotBackupRequest{
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
-			Address:            serviceAddress,
-			EngineName:         engineName,
+			Address:    serviceAddress,
+			EngineName: engineName,
+			// Deprecated
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
+			DataEngine:         rpc.DataEngine(driver),
 			VolumeName:         volumeName,
 		},
 		Envs:                 envs,
@@ -65,7 +67,7 @@ func (c *ProxyClient) SnapshotBackup(backendStoreDriver, engineName, volumeName,
 	return recv.BackupId, recv.Replica, nil
 }
 
-func (c *ProxyClient) SnapshotBackupStatus(backendStoreDriver, engineName, volumeName, serviceAddress, backupName,
+func (c *ProxyClient) SnapshotBackupStatus(dataEngine, engineName, volumeName, serviceAddress, backupName,
 	replicaAddress, replicaName string) (status *SnapshotBackupStatus, err error) {
 	input := map[string]string{
 		"engineName":     engineName,
@@ -77,9 +79,9 @@ func (c *ProxyClient) SnapshotBackupStatus(backendStoreDriver, engineName, volum
 		return nil, errors.Wrap(err, "failed to get backup status")
 	}
 
-	driver, ok := rpc.BackendStoreDriver_value[backendStoreDriver]
+	driver, ok := rpc.DataEngine_value[getDataEngine(dataEngine)]
 	if !ok {
-		return nil, fmt.Errorf("failed to get backup status: invalid backend store driver %v", backendStoreDriver)
+		return nil, fmt.Errorf("failed to get backup status: invalid data engine %v", dataEngine)
 	}
 
 	defer func() {
@@ -88,9 +90,11 @@ func (c *ProxyClient) SnapshotBackupStatus(backendStoreDriver, engineName, volum
 
 	req := &rpc.EngineSnapshotBackupStatusRequest{
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
-			Address:            serviceAddress,
-			EngineName:         engineName,
+			Address:    serviceAddress,
+			EngineName: engineName,
+			// Deprecated
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
+			DataEngine:         rpc.DataEngine(driver),
 			VolumeName:         volumeName,
 		},
 		BackupName:     backupName,
@@ -115,7 +119,7 @@ func (c *ProxyClient) SnapshotBackupStatus(backendStoreDriver, engineName, volum
 	return status, nil
 }
 
-func (c *ProxyClient) BackupRestore(backendStoreDriver, engineName, volumeName, serviceAddress, url, target,
+func (c *ProxyClient) BackupRestore(dataEngine, engineName, volumeName, serviceAddress, url, target,
 	backupVolumeName string, envs []string, concurrentLimit int) (err error) {
 	input := map[string]string{
 		"engineName":       engineName,
@@ -129,9 +133,9 @@ func (c *ProxyClient) BackupRestore(backendStoreDriver, engineName, volumeName, 
 		return errors.Wrap(err, "failed to restore backup to volume")
 	}
 
-	driver, ok := rpc.BackendStoreDriver_value[backendStoreDriver]
+	driver, ok := rpc.DataEngine_value[getDataEngine(dataEngine)]
 	if !ok {
-		return fmt.Errorf("failed to restore backup to volume: invalid backend store driver %v", backendStoreDriver)
+		return fmt.Errorf("failed to restore backup to volume: invalid data engine %v", dataEngine)
 	}
 
 	defer func() {
@@ -144,9 +148,11 @@ func (c *ProxyClient) BackupRestore(backendStoreDriver, engineName, volumeName, 
 
 	req := &rpc.EngineBackupRestoreRequest{
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
-			Address:            serviceAddress,
-			EngineName:         engineName,
+			Address:    serviceAddress,
+			EngineName: engineName,
+			// Deprecated
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
+			DataEngine:         rpc.DataEngine(driver),
 			// This is the name we will use for validation when communicating with the restoring engine.
 			VolumeName: volumeName,
 		},
@@ -176,7 +182,7 @@ func (c *ProxyClient) BackupRestore(backendStoreDriver, engineName, volumeName, 
 	return nil
 }
 
-func (c *ProxyClient) BackupRestoreStatus(backendStoreDriver, engineName, volumeName,
+func (c *ProxyClient) BackupRestoreStatus(dataEngine, engineName, volumeName,
 	serviceAddress string) (status map[string]*BackupRestoreStatus, err error) {
 	input := map[string]string{
 		"engineName":     engineName,
@@ -187,9 +193,9 @@ func (c *ProxyClient) BackupRestoreStatus(backendStoreDriver, engineName, volume
 		return nil, errors.Wrap(err, "failed to get backup restore status")
 	}
 
-	driver, ok := rpc.BackendStoreDriver_value[backendStoreDriver]
+	driver, ok := rpc.DataEngine_value[getDataEngine(dataEngine)]
 	if !ok {
-		return nil, fmt.Errorf("failed to get backup restore status: invalid backend store driver %v", backendStoreDriver)
+		return nil, fmt.Errorf("failed to get backup restore status: invalid data engine %v", dataEngine)
 	}
 
 	defer func() {
@@ -197,8 +203,10 @@ func (c *ProxyClient) BackupRestoreStatus(backendStoreDriver, engineName, volume
 	}()
 
 	req := &rpc.ProxyEngineRequest{
-		Address:            serviceAddress,
+		Address: serviceAddress,
+		// Deprecated
 		BackendStoreDriver: rpc.BackendStoreDriver(driver),
+		DataEngine:         rpc.DataEngine(driver),
 		EngineName:         engineName,
 		VolumeName:         volumeName,
 	}
