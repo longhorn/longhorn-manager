@@ -778,6 +778,10 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 		return nil, err
 	}
 
+	if datastore.IsDataEngineV2(v.Spec.DataEngine) {
+		return nil, fmt.Errorf("cannot upgrade engine for volume %v using image %v because the volume is using data engine v2", volumeName, image)
+	}
+
 	if v.Spec.Image == image {
 		return nil, fmt.Errorf("upgrading in process for volume %v engine image from %v to %v already",
 			v.Name, v.Status.CurrentImage, v.Spec.Image)
