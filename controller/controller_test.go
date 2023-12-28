@@ -107,6 +107,8 @@ const (
 
 	TestCustomResourceDefinitionName = "test-crd"
 	TestVolumeAttachmentName         = "test-volume"
+
+	TestDiskPathFSType = "ext4"
 )
 
 var (
@@ -539,6 +541,7 @@ func newNode(name, namespace string, allowScheduling bool, status longhorn.Condi
 					},
 					DiskUUID: TestDiskID1,
 					Type:     longhorn.DiskTypeFilesystem,
+					FSType:   TestDiskPathFSType,
 				},
 			},
 		},

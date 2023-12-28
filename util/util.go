@@ -51,6 +51,13 @@ import (
 )
 
 const (
+	KiB = 1024
+	MiB = 1024 * KiB
+	GiB = 1024 * MiB
+	TiB = 1024 * GiB
+	PiB = 1024 * TiB
+	EiB = 1024 * PiB
+
 	VolumeStackPrefix     = "volume-"
 	ControllerServiceName = "controller"
 	ReplicaServiceName    = "replica"
@@ -66,6 +73,9 @@ const (
 
 	SizeAlignment     = 2 * 1024 * 1024
 	MinimalVolumeSize = 10 * 1024 * 1024
+
+	MaxExt4VolumeSize = 16 * TiB
+	MaxXfsVolumeSize  = 8*EiB - 1
 
 	RandomIDLenth = 8
 
