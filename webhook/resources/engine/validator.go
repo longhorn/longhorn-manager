@@ -66,8 +66,10 @@ func (e *engineValidator) Create(request *admission.Request, newObj runtime.Obje
 		}
 	}
 
-	if err := e.ds.CheckEngineImageCompatiblityByImage(engine.Spec.Image); err != nil {
-		return werror.NewInvalidError(err.Error(), "engine.spec.image")
+	if datastore.IsBackendStoreDriverV1(engine.Spec.BackendStoreDriver) {
+		if err := e.ds.CheckEngineImageCompatiblityByImage(engine.Spec.Image); err != nil {
+			return werror.NewInvalidError(err.Error(), "engine.spec.image")
+		}
 	}
 
 	return e.validateNumberOfEngines(engine, volume)
@@ -90,8 +92,10 @@ func (e *engineValidator) Update(request *admission.Request, oldObj runtime.Obje
 		}
 	}
 
-	if err := e.ds.CheckEngineImageCompatiblityByImage(newEngine.Spec.Image); err != nil {
-		return werror.NewInvalidError(err.Error(), "engine.spec.image")
+	if datastore.IsBackendStoreDriverV1(newEngine.Spec.BackendStoreDriver) {
+		if err := e.ds.CheckEngineImageCompatiblityByImage(newEngine.Spec.Image); err != nil {
+			return werror.NewInvalidError(err.Error(), "engine.spec.image")
+		}
 	}
 
 	return nil

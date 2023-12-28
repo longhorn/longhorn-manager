@@ -151,8 +151,10 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		}
 	}
 
-	if err := v.ds.CheckEngineImageCompatiblityByImage(volume.Spec.Image); err != nil {
-		return werror.NewInvalidError(err.Error(), "volume.spec.image")
+	if datastore.IsBackendStoreDriverV1(volume.Spec.BackendStoreDriver) {
+		if err := v.ds.CheckEngineImageCompatiblityByImage(volume.Spec.Image); err != nil {
+			return werror.NewInvalidError(err.Error(), "volume.spec.image")
+		}
 	}
 
 	return nil
@@ -204,8 +206,10 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
-	if err := v.ds.CheckEngineImageCompatiblityByImage(newVolume.Spec.Image); err != nil {
-		return werror.NewInvalidError(err.Error(), "volume.spec.image")
+	if datastore.IsBackendStoreDriverV1(newVolume.Spec.BackendStoreDriver) {
+		if err := v.ds.CheckEngineImageCompatiblityByImage(newVolume.Spec.Image); err != nil {
+			return werror.NewInvalidError(err.Error(), "volume.spec.image")
+		}
 	}
 
 	if newVolume.Spec.DataLocality == longhorn.DataLocalityStrictLocal {

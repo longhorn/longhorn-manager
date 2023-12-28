@@ -57,8 +57,10 @@ func (r *replicaValidator) Create(request *admission.Request, newObj runtime.Obj
 		}
 	}
 
-	if err := r.ds.CheckEngineImageCompatiblityByImage(replica.Spec.Image); err != nil {
-		return werror.NewInvalidError(err.Error(), "replica.spec.image")
+	if datastore.IsBackendStoreDriverV1(replica.Spec.BackendStoreDriver) {
+		if err := r.ds.CheckEngineImageCompatiblityByImage(replica.Spec.Image); err != nil {
+			return werror.NewInvalidError(err.Error(), "replica.spec.image")
+		}
 	}
 
 	return nil
@@ -80,8 +82,10 @@ func (r *replicaValidator) Update(request *admission.Request, oldObj runtime.Obj
 		}
 	}
 
-	if err := r.ds.CheckEngineImageCompatiblityByImage(newReplica.Spec.Image); err != nil {
-		return werror.NewInvalidError(err.Error(), "replica.spec.image")
+	if datastore.IsBackendStoreDriverV1(newReplica.Spec.BackendStoreDriver) {
+		if err := r.ds.CheckEngineImageCompatiblityByImage(newReplica.Spec.Image); err != nil {
+			return werror.NewInvalidError(err.Error(), "replica.spec.image")
+		}
 	}
 
 	return nil
