@@ -668,6 +668,36 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 		cmd = append(cmd, "--checksum", bids.Spec.Checksum)
 	}
 
+	if bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeRestore {
+		var credential map[string]string
+		backupTarget, err := c.ds.GetBackupTargetRO(types.DefaultBackupTargetName)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil, err
+			}
+			return nil, errors.Wrapf(err, "failed to get the backup target %v", types.DefaultBackupTargetName)
+		}
+
+		backupType, err := util.CheckBackupType(backupTarget.Spec.BackupTargetURL)
+		if err != nil {
+			return nil, err
+		}
+
+		if types.BackupStoreRequireCredential(backupType) {
+			if backupTarget.Spec.CredentialSecret == "" {
+				return nil, fmt.Errorf("failed to access %s without credential secret", backupType)
+			}
+			credential, err = c.ds.GetCredentialFromSecret(backupTarget.Spec.CredentialSecret)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		for key, value := range credential {
+			cmd = append(cmd, "--credential", fmt.Sprintf("%s=%s", key, value))
+		}
+	}
+
 	privileged := true
 	podSpec := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
