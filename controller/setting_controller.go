@@ -709,14 +709,14 @@ func (sc *SettingController) updateKubernetesClusterAutoscalerEnabled() error {
 			}
 
 			anno[evictKey] = strconv.FormatBool(clusterAutoscalerEnabled)
-			sc.logger.Infof("Update the %v annotation to %v for %v", types.KubernetesClusterAutoscalerSafeToEvictKey, clusterAutoscalerEnabled, dp.Name)
+			sc.logger.Infof("Updating the %v annotation to %v for %v", evictKey, clusterAutoscalerEnabled, dp.Name)
 		} else {
 			if _, exists := anno[evictKey]; !exists {
 				continue
 			}
 
 			delete(anno, evictKey)
-			sc.logger.Infof("Delete the %v annotation for %v", types.KubernetesClusterAutoscalerSafeToEvictKey, clusterAutoscalerEnabled, dp.Name)
+			sc.logger.Infof("Deleting the %v annotation for %v", evictKey, dp.Name)
 		}
 		dp.Spec.Template.Annotations = anno
 		if _, err := sc.ds.UpdateDeployment(dp); err != nil {
