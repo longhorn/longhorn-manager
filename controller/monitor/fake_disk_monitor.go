@@ -10,7 +10,6 @@ import (
 	lhtypes "github.com/longhorn/go-common-libs/types"
 
 	"github.com/longhorn/longhorn-manager/datastore"
-	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -45,13 +44,13 @@ func NewFakeNodeMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, node
 	return m, nil
 }
 
-func fakeGetReplicaDirectoryNames(diskType longhorn.DiskType, node *longhorn.Node, diskName, diskUUID, diskPath string, client *engineapi.DiskService) (map[string]string, error) {
+func fakeGetReplicaDirectoryNames(diskType longhorn.DiskType, node *longhorn.Node, diskName, diskUUID, diskPath string, client *DiskServiceClient) (map[string]string, error) {
 	return map[string]string{
 		TestOrphanedReplicaDirectoryName: "",
 	}, nil
 }
 
-func fakeGetDiskStat(diskType longhorn.DiskType, name, directory string, client *engineapi.DiskService) (*lhtypes.DiskStat, error) {
+func fakeGetDiskStat(diskType longhorn.DiskType, name, directory string, client *DiskServiceClient) (*lhtypes.DiskStat, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return &lhtypes.DiskStat{
@@ -82,7 +81,7 @@ func fakeGetDiskStat(diskType longhorn.DiskType, name, directory string, client 
 	}
 }
 
-func fakeGetDiskConfig(diskType longhorn.DiskType, name, path string, client *engineapi.DiskService) (*util.DiskConfig, error) {
+func fakeGetDiskConfig(diskType longhorn.DiskType, name, path string, client *DiskServiceClient) (*util.DiskConfig, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return &util.DiskConfig{
@@ -97,7 +96,7 @@ func fakeGetDiskConfig(diskType longhorn.DiskType, name, path string, client *en
 	}
 }
 
-func fakeGenerateDiskConfig(diskType longhorn.DiskType, name, uuid, path string, client *engineapi.DiskService) (*util.DiskConfig, error) {
+func fakeGenerateDiskConfig(diskType longhorn.DiskType, name, uuid, path string, client *DiskServiceClient) (*util.DiskConfig, error) {
 	return &util.DiskConfig{
 		DiskUUID: TestDiskID1,
 	}, nil
