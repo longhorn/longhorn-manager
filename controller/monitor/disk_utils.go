@@ -25,7 +25,7 @@ const (
 )
 
 // GetDiskStat returns the disk stat of the given directory
-func getDiskStat(diskType longhorn.DiskType, name, path string, client *engineapi.DiskService) (stat *lhtypes.DiskStat, err error) {
+func getDiskStat(diskType longhorn.DiskType, name, path string, client *DiskServiceClient) (stat *lhtypes.DiskStat, err error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return lhns.GetDiskStat(path)
@@ -36,12 +36,12 @@ func getDiskStat(diskType longhorn.DiskType, name, path string, client *engineap
 	}
 }
 
-func getBlockTypeDiskStat(client *engineapi.DiskService, name, path string) (stat *lhtypes.DiskStat, err error) {
-	if client == nil {
+func getBlockTypeDiskStat(client *DiskServiceClient, name, path string) (stat *lhtypes.DiskStat, err error) {
+	if client == nil || client.c == nil {
 		return nil, errors.New("disk service client is nil")
 	}
 
-	info, err := client.DiskGet(string(longhorn.DiskTypeBlock), name, path)
+	info, err := client.c.DiskGet(string(longhorn.DiskTypeBlock), name, path)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func getBlockTypeDiskStat(client *engineapi.DiskService, name, path string) (sta
 }
 
 // GetDiskConfig returns the disk config of the given directory
-func getDiskConfig(diskType longhorn.DiskType, name, path string, client *engineapi.DiskService) (*util.DiskConfig, error) {
+func getDiskConfig(diskType longhorn.DiskType, name, path string, client *DiskServiceClient) (*util.DiskConfig, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return getFilesystemTypeDiskConfig(path)
@@ -88,12 +88,12 @@ func getFilesystemTypeDiskConfig(path string) (*util.DiskConfig, error) {
 	return cfg, nil
 }
 
-func getBlockTypeDiskConfig(client *engineapi.DiskService, name, path string) (config *util.DiskConfig, err error) {
-	if client == nil {
+func getBlockTypeDiskConfig(client *DiskServiceClient, name, path string) (config *util.DiskConfig, err error) {
+	if client == nil || client.c == nil {
 		return nil, errors.New("disk service client is nil")
 	}
 
-	info, err := client.DiskGet(string(longhorn.DiskTypeBlock), name, path)
+	info, err := client.c.DiskGet(string(longhorn.DiskTypeBlock), name, path)
 	if err != nil {
 		if grpcstatus.Code(err) == grpccodes.NotFound {
 			return nil, errors.Wrapf(err, "cannot find disk info")
@@ -106,7 +106,7 @@ func getBlockTypeDiskConfig(client *engineapi.DiskService, name, path string) (c
 }
 
 // GenerateDiskConfig generates a disk config for the given directory
-func generateDiskConfig(diskType longhorn.DiskType, name, uuid, path string, client *engineapi.DiskService) (*util.DiskConfig, error) {
+func generateDiskConfig(diskType longhorn.DiskType, name, uuid, path string, client *DiskServiceClient) (*util.DiskConfig, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return generateFilesystemTypeDiskConfig(path)
@@ -159,12 +159,12 @@ func generateFilesystemTypeDiskConfig(path string) (*util.DiskConfig, error) {
 	return cfg, nil
 }
 
-func generateBlockTypeDiskConfig(client *engineapi.DiskService, name, uuid, path string, blockSize int64) (*util.DiskConfig, error) {
-	if client == nil {
+func generateBlockTypeDiskConfig(client *DiskServiceClient, name, uuid, path string, blockSize int64) (*util.DiskConfig, error) {
+	if client == nil || client.c == nil {
 		return nil, errors.New("disk service client is nil")
 	}
 
-	info, err := client.DiskCreate(string(longhorn.DiskTypeBlock), name, uuid, path, blockSize)
+	info, err := client.c.DiskCreate(string(longhorn.DiskTypeBlock), name, uuid, path, blockSize)
 	if err != nil {
 		return nil, err
 	}
@@ -183,12 +183,12 @@ func DeleteDisk(diskType longhorn.DiskType, diskName, diskUUID string, client *e
 }
 
 // getSpdkReplicaInstanceNames returns the replica lvol names of the given disk
-func getSpdkReplicaInstanceNames(client *engineapi.DiskService, diskType, diskName string) (map[string]string, error) {
-	if client == nil {
+func getSpdkReplicaInstanceNames(client *DiskServiceClient, diskType, diskName string) (map[string]string, error) {
+	if client == nil || client.c == nil {
 		return nil, errors.New("disk service client is nil")
 	}
 
-	instances, err := client.DiskReplicaInstanceList(diskType, diskName)
+	instances, err := client.c.DiskReplicaInstanceList(diskType, diskName)
 	if err != nil {
 		return nil, err
 	}

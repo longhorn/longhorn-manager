@@ -30,6 +30,11 @@ const (
 	volumeMetaData = "volume.meta"
 )
 
+type DiskServiceClient struct {
+	c   *engineapi.DiskService
+	err error
+}
+
 type NodeMonitor struct {
 	*baseMonitor
 
@@ -56,10 +61,10 @@ type CollectedDiskInfo struct {
 	OrphanedReplicaDirectoryNames map[string]string
 }
 
-type GetDiskStatHandler func(longhorn.DiskType, string, string, *engineapi.DiskService) (*lhtypes.DiskStat, error)
-type GetDiskConfigHandler func(longhorn.DiskType, string, string, *engineapi.DiskService) (*util.DiskConfig, error)
-type GenerateDiskConfigHandler func(longhorn.DiskType, string, string, string, *engineapi.DiskService) (*util.DiskConfig, error)
-type GetReplicaInstanceNamesHandler func(longhorn.DiskType, *longhorn.Node, string, string, string, *engineapi.DiskService) (map[string]string, error)
+type GetDiskStatHandler func(longhorn.DiskType, string, string, *DiskServiceClient) (*lhtypes.DiskStat, error)
+type GetDiskConfigHandler func(longhorn.DiskType, string, string, *DiskServiceClient) (*util.DiskConfig, error)
+type GenerateDiskConfigHandler func(longhorn.DiskType, string, string, string, *DiskServiceClient) (*util.DiskConfig, error)
+type GetReplicaInstanceNamesHandler func(longhorn.DiskType, *longhorn.Node, string, string, string, *DiskServiceClient) (map[string]string, error)
 
 func NewDiskMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName string, syncCallback func(key string)) (*NodeMonitor, error) {
 	ctx, quit := context.WithCancel(context.Background())
@@ -188,36 +193,38 @@ func (m *NodeMonitor) getRunningInstanceManagerRO(dataEngine longhorn.DataEngine
 	return nil, fmt.Errorf("unknown data engine %v", dataEngine)
 }
 
-func (m *NodeMonitor) newDiskServiceClients(node *longhorn.Node) (map[longhorn.DataEngineType]*engineapi.DiskService, error) {
-	clients := map[longhorn.DataEngineType]*engineapi.DiskService{}
+func (m *NodeMonitor) newDiskServiceClients(node *longhorn.Node) map[longhorn.DataEngineType]*DiskServiceClient {
+	clients := map[longhorn.DataEngineType]*DiskServiceClient{}
 
 	dataEngines := m.getDataEngines()
 
 	for _, dataEngine := range dataEngines {
-		var client *engineapi.DiskService
-		// TODO: disk service is not used by filesystem-type disk, so we can skip it for now.
-		if datastore.IsDataEngineV2(dataEngine) {
-			im, err := m.getRunningInstanceManagerRO(dataEngine)
-			if err != nil {
-				return clients, errors.Wrapf(err, "failed to get running instance manager for node %v", m.nodeName)
-			}
-
-			client, err = engineapi.NewDiskServiceClient(im, m.logger)
-			if err != nil {
-				return clients, errors.Wrapf(err, "failed to create disk service client for node %v", m.nodeName)
-			}
+		// TODO: disk service is currently not used by filesystem-type disk for v1 data engine,
+		// so we can skip it for now.
+		if datastore.IsDataEngineV1(dataEngine) {
+			continue
 		}
 
-		clients[dataEngine] = client
+		var client *engineapi.DiskService
+
+		im, err := m.getRunningInstanceManagerRO(dataEngine)
+		if err == nil {
+			client, err = engineapi.NewDiskServiceClient(im, m.logger)
+		}
+
+		clients[dataEngine] = &DiskServiceClient{
+			c:   client,
+			err: err,
+		}
 	}
 
-	return clients, nil
+	return clients
 }
 
-func (m *NodeMonitor) closeDiskServiceClients(clients map[longhorn.DataEngineType]*engineapi.DiskService) {
+func (m *NodeMonitor) closeDiskServiceClients(clients map[longhorn.DataEngineType]*DiskServiceClient) {
 	for _, client := range clients {
-		if client != nil {
-			client.Close()
+		if client.c != nil {
+			client.c.Close()
 		}
 	}
 }
@@ -226,12 +233,7 @@ func (m *NodeMonitor) closeDiskServiceClients(clients map[longhorn.DataEngineTyp
 func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*CollectedDiskInfo {
 	diskInfoMap := make(map[string]*CollectedDiskInfo, 0)
 
-	diskServiceClients, err := m.newDiskServiceClients(node)
-	if err != nil {
-		// If failed to create disk service client, just log a warning and continue.
-		// The error out will hinder the following logics in syncNode.
-		m.logger.WithError(err).Warnf("Failed to create disk service client")
-	}
+	diskServiceClients := m.newDiskServiceClients(node)
 	defer func() {
 		m.closeDiskServiceClients(diskServiceClients)
 	}()
@@ -242,13 +244,22 @@ func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 		orphanedReplicaInstanceNames := map[string]string{}
 		nodeOrDiskEvicted := isNodeOrDiskEvicted(node, disk)
 
-		if diskServiceClient == nil {
-			// TODO: disk service is not used by filesystem-type disk, so we can skip it for now.
-			if datastore.IsDataEngineV2(dataEngine) {
+		// TODO: disk service is currently not used by filesystem-type disk for v1 data engine.
+		if datastore.IsDataEngineV2(dataEngine) {
+			errMsg := ""
+			if diskServiceClient == nil {
+				errMsg = fmt.Sprintf("Disk %v (%v) on node %v is not ready: data engine is disabled",
+					diskName, disk.Path, node.Name)
+			} else {
+				if diskServiceClient.err != nil {
+					errMsg = fmt.Sprintf("Disk %v (%v) on node %v is not ready: %v",
+						diskName, disk.Path, node.Name, diskServiceClient.err.Error())
+				}
+			}
+			if errMsg != "" {
 				diskInfoMap[diskName] = NewDiskInfo(disk.Path, "", nodeOrDiskEvicted, nil,
 					orphanedReplicaInstanceNames, string(longhorn.DiskConditionReasonDiskServiceUnreachable),
-					fmt.Sprintf("Disk %v(%v) on node %v is not ready: disk service is unreachable",
-						diskName, disk.Path, node.Name))
+					errMsg)
 				continue
 			}
 		}
@@ -316,7 +327,7 @@ func isNodeOrDiskEvicted(node *longhorn.Node, disk longhorn.DiskSpec) bool {
 	return node.Spec.EvictionRequested || disk.EvictionRequested
 }
 
-func getReplicaInstanceNames(diskType longhorn.DiskType, node *longhorn.Node, diskName, diskUUID, diskPath string, client *engineapi.DiskService) (map[string]string, error) {
+func getReplicaInstanceNames(diskType longhorn.DiskType, node *longhorn.Node, diskName, diskUUID, diskPath string, client *DiskServiceClient) (map[string]string, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return getReplicaDirectoryNames(node, diskName, diskUUID, diskPath)

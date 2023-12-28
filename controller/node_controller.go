@@ -874,7 +874,7 @@ func (nc *NodeController) updateDiskStatusSchedulableCondition(node *longhorn.No
 			diskStatus.Conditions = types.SetConditionAndRecord(diskStatus.Conditions,
 				longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse,
 				string(longhorn.DiskConditionReasonDiskNotReady),
-				fmt.Sprintf("the disk %v(%v) on the node %v is not ready", diskName, disk.Path, node.Name),
+				fmt.Sprintf("Disk %v (%v) on the node %v is not ready", diskName, disk.Path, node.Name),
 				nc.eventRecorder, node, corev1.EventTypeWarning)
 		} else {
 			// sync backing image managers
@@ -926,7 +926,7 @@ func (nc *NodeController) updateDiskStatusSchedulableCondition(node *longhorn.No
 				diskStatus.Conditions = types.SetConditionAndRecord(diskStatus.Conditions,
 					longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse,
 					string(longhorn.DiskConditionReasonDiskPressure),
-					fmt.Sprintf("the disk %v(%v) on the node %v has %v available, but requires reserved %v, minimal %v%s to schedule more replicas",
+					fmt.Sprintf("Disk %v (%v) on the node %v has %v available, but requires reserved %v, minimal %v%s to schedule more replicas",
 						diskName, disk.Path, node.Name, diskStatus.StorageAvailable, disk.StorageReserved, minimalAvailablePercentage, "%"),
 					nc.eventRecorder, node, corev1.EventTypeWarning)
 			} else {
