@@ -253,6 +253,13 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		}
 		// There should be an available instance manager for a scheduled instance when its related engine image is compatible
 		if im == nil && spec.Image != "" && spec.NodeID != "" {
+			dataEngineEnabled, err := h.ds.IsDataEngineEnabled(spec.DataEngine)
+			if err != nil {
+				return err
+			}
+			if !dataEngineEnabled {
+				return nil
+			}
 			// The related node maybe cleaned up then there is no available instance manager for this instance (typically it's replica).
 			isNodeDownOrDeleted, err := h.ds.IsNodeDownOrDeleted(spec.NodeID)
 			if err != nil {
