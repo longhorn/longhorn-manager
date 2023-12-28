@@ -366,6 +366,10 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 			return errors.Wrap(err, "failed to clean up SystemBackups")
 		}
 
+		if err := btc.cleanupBackupBackingImages(); err != nil {
+			return errors.Wrap(err, "failed to clean up BackupBackingImages")
+		}
+
 		return nil
 	}
 
@@ -384,6 +388,16 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	if err = btc.syncBackupVolume(backupTarget, backupTargetClient, syncTime, log); err != nil {
 		return err
 	}
+
+	if err = btc.syncBackupBackingImage(backupTarget, backupTargetClient, syncTime, log); err != nil {
+		return err
+	}
+
+	// Update the backup target status
+	backupTarget.Status.Available = true
+	backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
+		longhorn.BackupTargetConditionTypeUnavailable, longhorn.ConditionStatusFalse,
+		"", "")
 
 	if !backupTarget.Status.Available {
 		return nil
@@ -479,11 +493,63 @@ func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.Backu
 		}
 	}
 
-	// Update the backup target status
-	backupTarget.Status.Available = true
-	backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
-		longhorn.BackupTargetConditionTypeUnavailable, longhorn.ConditionStatusFalse,
-		"", "")
+	return nil
+}
+
+func (btc *BackupTargetController) syncBackupBackingImage(backupTarget *longhorn.BackupTarget, backupTargetClient *engineapi.BackupTargetClient, syncTime metav1.Time, log logrus.FieldLogger) error {
+	// Get a list of all the backup backing images that are stored in the backup target
+	res, err := backupTargetClient.BackupBackingImageNameList()
+	if err != nil {
+		backupTarget.Status.Available = false
+		backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
+			longhorn.BackupTargetConditionTypeUnavailable, longhorn.ConditionStatusTrue,
+			longhorn.BackupTargetConditionReasonUnavailable, err.Error())
+		log.WithError(err).Error("Failed to list backup backing images from backup target")
+		return nil // Ignore error to allow status update as well as preventing enqueue
+	}
+	backupStoreBackupBackingImages := sets.NewString(res...)
+
+	// Get a list of all the backup volumes that exist as custom resources in the cluster
+	clusterBackupBackingImages, err := btc.ds.ListBackupBackingImages()
+	if err != nil {
+		log.WithError(err).Error("Failed to list backup backing images in the cluster")
+		return err
+	}
+
+	clusterBackupBackingImagesSet := sets.NewString()
+	for _, b := range clusterBackupBackingImages {
+		clusterBackupBackingImagesSet.Insert(b.Name)
+	}
+
+	backupBackingImagesToPull := backupStoreBackupBackingImages.Difference(clusterBackupBackingImagesSet)
+	if count := backupBackingImagesToPull.Len(); count > 0 {
+		log.Infof("Found %d backup backing images in the backup target that do not exist in the cluster and need to be pulled", count)
+	}
+	for backupBackingImageName := range backupBackingImagesToPull {
+		backupBackingImage := &longhorn.BackupBackingImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: backupBackingImageName,
+			},
+			Spec: longhorn.BackupBackingImageSpec{
+				UserCreated: false,
+			},
+		}
+		if _, err = btc.ds.CreateBackupBackingImage(backupBackingImage); err != nil && !apierrors.IsAlreadyExists(err) {
+			return errors.Wrapf(err, "failed to create backup backing image %s in the cluster", backupBackingImageName)
+		}
+	}
+
+	backupBackingImagesToDelete := clusterBackupBackingImagesSet.Difference(backupStoreBackupBackingImages)
+	if count := backupBackingImagesToDelete.Len(); count > 0 {
+		log.Infof("Found %d backup backing images in the cluster that do not exist in the backup target and need to be deleted", count)
+	}
+	for backupBackingImageName := range backupBackingImagesToDelete {
+		log.WithField("backupBackingImage", backupBackingImageName).Info("Deleting backup backing image from cluster")
+		if err = btc.ds.DeleteBackupBackingImage(backupBackingImageName); err != nil {
+			return errors.Wrapf(err, "failed to delete backup backing image %s from cluster", backupBackingImageName)
+		}
+	}
+
 	return nil
 }
 
@@ -581,6 +647,26 @@ func (btc *BackupTargetController) cleanupBackupVolumes() error {
 	var errs []string
 	for backupVolumeName := range clusterBackupVolumes {
 		if err = btc.ds.DeleteBackupVolume(backupVolumeName); err != nil && !apierrors.IsNotFound(err) {
+			errs = append(errs, err.Error())
+			continue
+		}
+	}
+	if len(errs) > 0 {
+		return errors.New(strings.Join(errs, ","))
+	}
+	return nil
+}
+
+// cleanupSystemBackups deletes all BackupBackingImage CRs
+func (btc *BackupTargetController) cleanupBackupBackingImages() error {
+	clusterBackupBackingImages, err := btc.ds.ListBackupBackingImages()
+	if err != nil {
+		return err
+	}
+
+	var errs []string
+	for backupBackingImageName := range clusterBackupBackingImages {
+		if err = btc.ds.DeleteBackupBackingImage(backupBackingImageName); err != nil && !apierrors.IsNotFound(err) {
 			errs = append(errs, err.Error())
 			continue
 		}
