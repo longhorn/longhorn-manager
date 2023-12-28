@@ -4881,3 +4881,15 @@ func IsBackendStoreDriverV1(backendstoreDriver longhorn.BackendStoreDriverType) 
 func IsBackendStoreDriverV2(backendstoreDriver longhorn.BackendStoreDriverType) bool {
 	return backendstoreDriver == longhorn.BackendStoreDriverTypeV2
 }
+
+// IsSupportedVolumeSize returns turn if the v1 volume size is supported by the given fsType file system.
+func IsSupportedVolumeSize(backendstoreDriver longhorn.BackendStoreDriverType, fsType string, volumeSize int64) bool {
+	// TODO: check the logical volume maximum size limit
+	if IsBackendStoreDriverV1(backendstoreDriver) {
+		// unix.Statfs can not differentiate the ext2/ext3/ext4 file systems.
+		if (strings.HasPrefix(fsType, "ext") && volumeSize >= util.MaxExt4VolumeSize) || (fsType == "xfs" && volumeSize >= util.MaxXfsVolumeSize) {
+			return false
+		}
+	}
+	return true
+}
