@@ -699,6 +699,7 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node, collectedDataInfo 
 
 	for fsid, diskInfoMap := range readyDiskInfoMap {
 		nc.updateReadyDiskStatusReadyCondition(node, fsid, diskInfoMap)
+		nc.updateReadyDiskStatusFileSystemType(node, diskInfoMap)
 	}
 
 	return nc.updateDiskStatusSchedulableCondition(node)
@@ -813,6 +814,17 @@ func (nc *NodeController) updateReadyDiskStatusReadyCondition(node *longhorn.Nod
 				longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue,
 				"", fmt.Sprintf("Disk %v(%v) on node %v is ready", diskName, diskInfoMap[diskName].Path, node.Name),
 				nc.eventRecorder, node, v1.EventTypeNormal)
+		}
+		diskStatusMap[diskName] = diskStatus
+	}
+}
+
+func (nc *NodeController) updateReadyDiskStatusFileSystemType(node *longhorn.Node, diskInfoMap map[string]*monitor.CollectedDiskInfo) {
+	diskStatusMap := node.Status.DiskStatus
+	for diskName, info := range diskInfoMap {
+		diskStatus := diskStatusMap[diskName]
+		if diskStatus.DiskUUID == info.DiskUUID && diskStatus.Type == longhorn.DiskTypeFilesystem {
+			diskStatus.FSType = info.DiskStat.Type
 		}
 		diskStatusMap[diskName] = diskStatus
 	}

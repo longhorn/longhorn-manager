@@ -97,6 +97,8 @@ const (
 	TestRecurringJobGroupName = "test-recurring-job-group"
 
 	TestCustomResourceDefinitionName = "test-crd"
+
+	TestDiskPathFSType = "ext4"
 )
 
 var (

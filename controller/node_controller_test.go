@@ -233,6 +233,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		TestDiskID1: {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
+			FSType:           TestDiskPathFSType,
 		},
 	}
 	node2 := newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue, "")
@@ -243,6 +244,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			Conditions: []longhorn.Condition{
 				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusUnknown, ""),
 			},
+			FSType: TestDiskPathFSType,
 		},
 	}
 	tc.nodes = map[string]*longhorn.Node{
@@ -273,6 +275,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 					ScheduledReplica: map[string]int64{
 						replica1.Name: replica1.Spec.VolumeSize,
 					},
+					FSType:   TestDiskPathFSType,
 					DiskUUID: TestDiskID1,
 				},
 			},
@@ -289,6 +292,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 					Conditions: []longhorn.Condition{
 						newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusUnknown, ""),
 					},
+					FSType: TestDiskPathFSType,
 				},
 			},
 		},
@@ -338,6 +342,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		TestDiskID1: {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
+			FSType:           TestDiskPathFSType,
 		},
 	}
 	tc.nodes = map[string]*longhorn.Node{
@@ -360,6 +365,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 						newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					},
 					ScheduledReplica: map[string]int64{},
+					FSType:           TestDiskPathFSType,
 					DiskUUID:         TestDiskID1,
 				},
 			},
@@ -373,6 +379,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				TestDiskID1: {
 					StorageScheduled: 0,
 					StorageAvailable: 0,
+					FSType:           TestDiskPathFSType,
 				},
 			},
 		},
@@ -418,6 +425,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 			},
 			DiskUUID: "new-uuid",
+			FSType:   TestDiskPathFSType,
 		},
 	}
 	node2 = newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusTrue, "")
@@ -425,6 +433,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 		TestDiskID1: {
 			StorageScheduled: 0,
 			StorageAvailable: 0,
+			FSType:           TestDiskPathFSType,
 		},
 	}
 	tc.nodes = map[string]*longhorn.Node{
@@ -448,6 +457,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 					},
 					ScheduledReplica: map[string]int64{},
 					DiskUUID:         "new-uuid",
+					FSType:           TestDiskPathFSType,
 				},
 			},
 		},
@@ -460,6 +470,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 				TestDiskID1: {
 					StorageScheduled: 0,
 					StorageAvailable: 0,
+					FSType:           TestDiskPathFSType,
 				},
 			},
 		},
@@ -494,6 +505,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			Conditions: []longhorn.Condition{
 				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 			},
+			FSType: TestDiskPathFSType,
 		},
 	}
 	tc.nodes = map[string]*longhorn.Node{
@@ -516,6 +528,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 					},
 					ScheduledReplica: map[string]int64{},
 					DiskUUID:         TestDiskID1,
+					FSType:           TestDiskPathFSType,
 				},
 			},
 		},
@@ -556,6 +569,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			Conditions: []longhorn.Condition{
 				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 			},
+			FSType: TestDiskPathFSType,
 		},
 	}
 	tc.nodes = map[string]*longhorn.Node{
