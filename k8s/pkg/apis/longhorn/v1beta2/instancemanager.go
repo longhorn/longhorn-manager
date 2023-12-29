@@ -47,7 +47,7 @@ type InstanceProcess struct {
 type InstanceProcessSpec struct {
 	// +optional
 	Name string `json:"name"`
-	// Deprecated.
+	// Deprecated:Replaced by field `dataEngine`.
 	// +optional
 	BackendStoreDriver BackendStoreDriverType `json:"backendStoreDriver"`
 	// +optional
@@ -84,7 +84,7 @@ type InstanceSpec struct {
 	LogRequested bool `json:"logRequested"`
 	// +optional
 	SalvageRequested bool `json:"salvageRequested"`
-	// Deprecated.
+	// Deprecated:Replaced by field `dataEngine`.
 	// +optional
 	BackendStoreDriver BackendStoreDriverType `json:"backendStoreDriver"`
 	// +kubebuilder:validation:Enum=v1;v2
