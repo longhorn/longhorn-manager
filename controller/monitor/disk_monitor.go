@@ -145,28 +145,6 @@ func (m *NodeMonitor) run(value interface{}) error {
 	return nil
 }
 
-func (m *NodeMonitor) getDataEngines() []longhorn.DataEngineType {
-	dataEngines := []longhorn.DataEngineType{}
-
-	for _, setting := range []types.SettingName{types.SettingNameV1DataEngine, types.SettingNameV2DataEngine} {
-		dataEngineEnabled, err := m.ds.GetSettingAsBool(setting)
-		if err != nil {
-			m.logger.WithError(err).Warnf("Failed to get setting %v", setting)
-			continue
-		}
-		if dataEngineEnabled {
-			switch setting {
-			case types.SettingNameV1DataEngine:
-				dataEngines = append(dataEngines, longhorn.DataEngineTypeV1)
-			case types.SettingNameV2DataEngine:
-				dataEngines = append(dataEngines, longhorn.DataEngineTypeV2)
-			}
-		}
-	}
-
-	return dataEngines
-}
-
 func (m *NodeMonitor) getRunningInstanceManagerRO(dataEngine longhorn.DataEngineType) (*longhorn.InstanceManager, error) {
 	switch dataEngine {
 	case longhorn.DataEngineTypeV1:
@@ -196,9 +174,9 @@ func (m *NodeMonitor) getRunningInstanceManagerRO(dataEngine longhorn.DataEngine
 func (m *NodeMonitor) newDiskServiceClients(node *longhorn.Node) map[longhorn.DataEngineType]*DiskServiceClient {
 	clients := map[longhorn.DataEngineType]*DiskServiceClient{}
 
-	dataEngines := m.getDataEngines()
+	dataEngines := m.ds.GetDataEngines()
 
-	for _, dataEngine := range dataEngines {
+	for dataEngine := range dataEngines {
 		// TODO: disk service is currently not used by filesystem-type disk for v1 data engine,
 		// so we can skip it for now.
 		if datastore.IsDataEngineV1(dataEngine) {

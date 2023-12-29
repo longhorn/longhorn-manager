@@ -213,8 +213,26 @@ func getLoggerForBackupTarget(logger logrus.FieldLogger, backupTarget *longhorn.
 	)
 }
 
+func getAvailableDataEngine(ds *datastore.DataStore) (longhorn.DataEngineType, error) {
+	dataEngines := ds.GetDataEngines()
+	if len(dataEngines) > 0 {
+		for _, dataEngine := range []longhorn.DataEngineType{longhorn.DataEngineTypeV2, longhorn.DataEngineTypeV1} {
+			if _, ok := dataEngines[dataEngine]; ok {
+				return dataEngine, nil
+			}
+		}
+	}
+
+	return "", errors.New("no data engine available")
+}
+
 func getBackupTarget(controllerID string, backupTarget *longhorn.BackupTarget, ds *datastore.DataStore, log logrus.FieldLogger, proxyConnCounter util.Counter) (engineClientProxy engineapi.EngineClientProxy, backupTargetClient *engineapi.BackupTargetClient, err error) {
-	instanceManager, err := ds.GetDefaultInstanceManagerByNodeRO(controllerID, longhorn.DataEngineTypeV1)
+	dataEngine, err := getAvailableDataEngine(ds)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to get available data engine for getting backup target")
+	}
+
+	instanceManager, err := ds.GetDefaultInstanceManagerByNodeRO(controllerID, dataEngine)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "failed to get default engine instance manager for proxy client")
 	}
