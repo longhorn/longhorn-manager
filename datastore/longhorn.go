@@ -4894,3 +4894,25 @@ func (s *DataStore) IsDataEngineEnabled(dataEngine longhorn.DataEngineType) (boo
 
 	return enabled, nil
 }
+
+func (s *DataStore) GetDataEngines() map[longhorn.DataEngineType]struct{} {
+	dataEngines := map[longhorn.DataEngineType]struct{}{}
+
+	for _, setting := range []types.SettingName{types.SettingNameV1DataEngine, types.SettingNameV2DataEngine} {
+		dataEngineEnabled, err := s.GetSettingAsBool(setting)
+		if err != nil {
+			logrus.WithError(err).Warnf("Failed to get setting %v", setting)
+			continue
+		}
+		if dataEngineEnabled {
+			switch setting {
+			case types.SettingNameV1DataEngine:
+				dataEngines[longhorn.DataEngineTypeV1] = struct{}{}
+			case types.SettingNameV2DataEngine:
+				dataEngines[longhorn.DataEngineTypeV2] = struct{}{}
+			}
+		}
+	}
+
+	return dataEngines
+}
