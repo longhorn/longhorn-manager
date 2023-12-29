@@ -139,7 +139,7 @@ type InstanceProcessStatus struct {
 	ResourceVersion int64 `json:"resourceVersion"`
 }
 
-// InstanceManagerSpec defines the desired state of the Longhorn instancer manager
+// InstanceManagerSpec defines the desired state of the Longhorn instance manager
 type InstanceManagerSpec struct {
 	// +optional
 	Image string `json:"image"`
