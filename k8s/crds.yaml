@@ -1665,7 +1665,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: InstanceManagerSpec defines the desired state of the Longhorn instancer manager
+            description: InstanceManagerSpec defines the desired state of the Longhorn instance manager
             properties:
               dataEngine:
                 type: string
