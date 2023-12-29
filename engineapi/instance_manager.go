@@ -206,7 +206,7 @@ func parseInstance(p *imapi.Instance) *longhorn.InstanceProcess {
 	return &longhorn.InstanceProcess{
 		Spec: longhorn.InstanceProcessSpec{
 			Name:       p.Name,
-			DataEngine: longhorn.DataEngineType(p.BackendStoreDriver),
+			DataEngine: getDataEngineFromInstanceProcess(p),
 		},
 		Status: longhorn.InstanceProcessStatus{
 			Type:       getTypeForInstance(longhorn.InstanceType(p.Type), p.PortCount),
@@ -216,7 +216,7 @@ func parseInstance(p *imapi.Instance) *longhorn.InstanceProcess {
 			PortStart:  p.InstanceStatus.PortStart,
 			PortEnd:    p.InstanceStatus.PortEnd,
 
-			// These fields are not used, maybe we can deprecate them later.
+			// FIXME: These fields are not used, maybe we can deprecate them later.
 			Listen:   "",
 			Endpoint: "",
 		},
@@ -240,8 +240,21 @@ func parseProcess(p *imapi.Process) *longhorn.InstanceProcess {
 			Conditions: p.ProcessStatus.Conditions,
 			PortStart:  p.ProcessStatus.PortStart,
 			PortEnd:    p.ProcessStatus.PortEnd,
+
+			// FIXME: These fields are not used, maybe we can deprecate them later.
+			Listen:   "",
+			Endpoint: "",
 		},
 	}
+}
+
+func getDataEngineFromInstanceProcess(p *imapi.Instance) longhorn.DataEngineType {
+	if p.DataEngine != "" {
+		return longhorn.DataEngineType(p.DataEngine)
+	}
+
+	// nolint:all
+	return longhorn.DataEngineType(p.BackendStoreDriver)
 }
 
 func getTypeForInstance(instanceType longhorn.InstanceType, portCount int32) longhorn.InstanceType {
@@ -400,6 +413,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
 		BackendStoreDriver: string(req.Engine.Spec.DataEngine),
+		DataEngine:         string(req.Engine.Spec.DataEngine),
 		Name:               req.Engine.Name,
 		InstanceType:       string(longhorn.InstanceManagerTypeEngine),
 		VolumeName:         req.Engine.Spec.VolumeName,
@@ -461,6 +475,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 
 	instance, err := c.instanceServiceGrpcClient.InstanceCreate(&imclient.InstanceCreateRequest{
 		BackendStoreDriver: string(req.Replica.Spec.DataEngine),
+		DataEngine:         string(req.Replica.Spec.DataEngine),
 		Name:               req.Replica.Name,
 		InstanceType:       string(longhorn.InstanceManagerTypeReplica),
 		VolumeName:         req.Replica.Spec.VolumeName,
