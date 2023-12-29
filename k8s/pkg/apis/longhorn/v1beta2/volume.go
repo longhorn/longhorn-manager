@@ -283,7 +283,7 @@ type VolumeSpec struct {
 	// +kubebuilder:validation:Enum=none;lz4;gzip
 	// +optional
 	BackupCompressionMethod BackupCompressionMethod `json:"backupCompressionMethod"`
-	// Deprecated.
+	// Deprecated:Replaced by field `dataEngine`.'
 	// +optional
 	BackendStoreDriver BackendStoreDriverType `json:"backendStoreDriver"`
 	// +kubebuilder:validation:Enum=v1;v2

@@ -1317,7 +1317,7 @@ spec:
               active:
                 type: boolean
               backendStoreDriver:
-                description: Deprecated.
+                description: Deprecated:Replaced by field `dataEngine`.
                 type: string
               backupVolume:
                 type: string
@@ -1695,7 +1695,7 @@ spec:
                     spec:
                       properties:
                         backendStoreDriver:
-                          description: Deprecated.
+                          description: Deprecated:Replaced by field `dataEngine`.
                           type: string
                         dataEngine:
                           type: string
@@ -1737,7 +1737,7 @@ spec:
                     spec:
                       properties:
                         backendStoreDriver:
-                          description: Deprecated.
+                          description: Deprecated:Replaced by field `dataEngine`.
                           type: string
                         dataEngine:
                           type: string
@@ -1779,7 +1779,7 @@ spec:
                     spec:
                       properties:
                         backendStoreDriver:
-                          description: Deprecated.
+                          description: Deprecated:Replaced by field `dataEngine`.
                           type: string
                         dataEngine:
                           type: string
@@ -2457,7 +2457,7 @@ spec:
               active:
                 type: boolean
               backendStoreDriver:
-                description: Deprecated.
+                description: Deprecated:Replaced by field `dataEngine`.
                 type: string
               backingImage:
                 type: string
@@ -3493,7 +3493,7 @@ spec:
                 - rwx
                 type: string
               backendStoreDriver:
-                description: Deprecated.
+                description: Deprecated:Replaced by field `dataEngine`.'
                 type: string
               backingImage:
                 type: string
