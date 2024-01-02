@@ -3240,15 +3240,15 @@ func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.I
 		dataEngine longhorn.DataEngineType
 	)
 
-	switch obj := obj.(type) {
+	switch instance := obj.(type) {
 	case *longhorn.Engine:
-		name = obj.Name
-		nodeID = obj.Spec.NodeID
-		dataEngine = obj.Spec.DataEngine
+		name = instance.Name
+		nodeID = instance.Spec.NodeID
+		dataEngine = instance.Spec.DataEngine
 	case *longhorn.Replica:
-		name = obj.Name
-		nodeID = obj.Spec.NodeID
-		dataEngine = obj.Spec.DataEngine
+		name = instance.Name
+		nodeID = instance.Spec.NodeID
+		dataEngine = instance.Spec.DataEngine
 	default:
 		return nil, fmt.Errorf("unknown type for GetInstanceManagerByInstance, %+v", obj)
 	}
