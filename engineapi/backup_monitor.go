@@ -62,8 +62,6 @@ func NewBackupMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, backup
 		engine:            engine,
 		engineClientProxy: engineClientProxy,
 
-		compressionMethod: compressionMethod,
-
 		backupStatusLock: sync.RWMutex{},
 
 		syncCallback: syncCallback,
