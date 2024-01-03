@@ -159,13 +159,11 @@ func (s *NodeControllerSuite) TestManagerPodUp(c *C) {
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
-				corev1.ConditionFalse,
 				corev1.ConditionTrue,
 			),
 			TestNode2: newKubernetesNode(
 				TestNode2,
 				corev1.ConditionTrue,
-				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
@@ -244,13 +242,11 @@ func (s *NodeControllerSuite) TestManagerPodDown(c *C) {
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
-				corev1.ConditionFalse,
 				corev1.ConditionTrue,
 			),
 			TestNode2: newKubernetesNode(
 				TestNode2,
 				corev1.ConditionTrue,
-				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
@@ -330,13 +326,11 @@ func (s *NodeControllerSuite) TestKubeNodeDown(c *C) {
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
-				corev1.ConditionFalse,
 				corev1.ConditionTrue,
 			),
 			TestNode2: newKubernetesNode(
 				TestNode2,
 				corev1.ConditionTrue,
-				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
@@ -416,13 +410,11 @@ func (s *NodeControllerSuite) TestKubeNodePressure(c *C) {
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
-				corev1.ConditionFalse,
 				corev1.ConditionTrue,
 			),
 			TestNode2: newKubernetesNode(
 				TestNode2,
 				corev1.ConditionTrue,
-				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
@@ -531,13 +523,11 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
-				corev1.ConditionFalse,
 				corev1.ConditionTrue,
 			),
 			TestNode2: newKubernetesNode(
 				TestNode2,
 				corev1.ConditionTrue,
-				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
@@ -671,13 +661,11 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
-				corev1.ConditionFalse,
 				corev1.ConditionTrue,
 			),
 			TestNode2: newKubernetesNode(
 				TestNode2,
 				corev1.ConditionTrue,
-				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
@@ -814,13 +802,11 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
-				corev1.ConditionFalse,
 				corev1.ConditionTrue,
 			),
 			TestNode2: newKubernetesNode(
 				TestNode2,
 				corev1.ConditionTrue,
-				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
@@ -935,13 +921,11 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
-				corev1.ConditionFalse,
 				corev1.ConditionTrue,
 			),
 			TestNode2: newKubernetesNode(
 				TestNode2,
 				corev1.ConditionTrue,
-				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
@@ -1074,13 +1058,11 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
-				corev1.ConditionFalse,
 				corev1.ConditionTrue,
 			),
 			TestNode2: newKubernetesNode(
 				TestNode2,
 				corev1.ConditionTrue,
-				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
@@ -1184,13 +1166,11 @@ func (s *NodeControllerSuite) TestCleanupAllInstanceManagers(c *C) {
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
-				corev1.ConditionFalse,
 				corev1.ConditionTrue,
 			),
 			TestNode2: newKubernetesNode(
 				TestNode2,
 				corev1.ConditionTrue,
-				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
 				corev1.ConditionFalse,
@@ -1243,13 +1223,472 @@ func (s *NodeControllerSuite) TestCleanupAllInstanceManagers(c *C) {
 	s.checkInstanceManagers(c, expectation)
 }
 
+func (s *NodeControllerSuite) TestEventOnNotReady(c *C) {
+	var err error
+
+	node1 := newKubernetesNode(
+		TestNode1,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionTrue,
+	)
+
+	node2 := newKubernetesNode(
+		TestNode2,
+		corev1.ConditionTrue,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionTrue,
+	)
+
+	fixture := &NodeControllerFixture{
+		lhNodes: map[string]*longhorn.Node{
+			TestNode1: newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
+			TestNode2: newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
+		},
+		lhSettings: map[string]*longhorn.Setting{
+			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
+		},
+		lhInstanceManagers: map[string]*longhorn.InstanceManager{
+			TestInstanceManagerName: DefaultInstanceManagerTestNode1,
+		},
+		lhOrphans: map[string]*longhorn.Orphan{
+			DefaultOrphanTestNode1.Name: DefaultOrphanTestNode1,
+		},
+		pods: map[string]*corev1.Pod{
+			TestDaemon1: newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, &MountPropagationBidirectional),
+			TestDaemon2: newDaemonPod(corev1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, &MountPropagationBidirectional),
+		},
+		nodes: map[string]*corev1.Node{
+			TestNode1: node1,
+			TestNode2: node2,
+		},
+	}
+
+	expectation := &NodeControllerExpectation{
+		events: map[string]*corev1.Event{
+			"node1-ready": {
+				Type:    "Normal",
+				Reason:  "Ready",
+				Message: "Node test-node-name-1 is ready",
+			},
+			"node2-ready": {
+				Type:    "Normal",
+				Reason:  "Ready",
+				Message: "Node test-node-name-2 is ready",
+			},
+			"node-schedulable": {
+				Type:    "Normal",
+				Reason:  "Schedulable",
+				Message: "",
+			},
+			"": {
+				Type:    "Warning",
+				Reason:  "Schedulable",
+				Message: "the disk fsid(/var/lib/longhorn) on the node test-node-name-1 has 0 available, but requires reserved 0, minimal 25% to schedule more replicas",
+			},
+			"node1-not-ready": {
+				Type:    "Warning",
+				Reason:  "Ready",
+				Message: "Kubernetes node test-node-name-1 not ready",
+			},
+		},
+	}
+
+	s.initTest(c, fixture)
+
+	for _, node := range fixture.lhNodes {
+		if s.controller.controllerID == node.Name {
+			err = s.controller.diskMonitor.RunOnce()
+			c.Assert(err, IsNil)
+		}
+
+		err = s.controller.syncNode(getKey(node, c))
+		c.Assert(err, IsNil)
+	}
+
+	s.checkEvents(c, expectation)
+}
+
+func (s *NodeControllerSuite) TestEventOnDiskPressure(c *C) {
+	var err error
+
+	node1 := newKubernetesNode(
+		TestNode1,
+		corev1.ConditionTrue,
+		corev1.ConditionTrue,  // disk
+		corev1.ConditionFalse, // memory
+		corev1.ConditionFalse, // pid
+		corev1.ConditionFalse, // network
+		corev1.ConditionTrue,
+	)
+
+	node2 := newKubernetesNode(
+		TestNode2,
+		corev1.ConditionTrue,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionTrue,
+	)
+
+	fixture := &NodeControllerFixture{
+		lhNodes: map[string]*longhorn.Node{
+			TestNode1: newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
+			TestNode2: newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
+		},
+		lhSettings: map[string]*longhorn.Setting{
+			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
+		},
+		lhInstanceManagers: map[string]*longhorn.InstanceManager{
+			TestInstanceManagerName: DefaultInstanceManagerTestNode1,
+		},
+		lhOrphans: map[string]*longhorn.Orphan{
+			DefaultOrphanTestNode1.Name: DefaultOrphanTestNode1,
+		},
+		pods: map[string]*corev1.Pod{
+			TestDaemon1: newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, &MountPropagationBidirectional),
+			TestDaemon2: newDaemonPod(corev1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, &MountPropagationBidirectional),
+		},
+		nodes: map[string]*corev1.Node{
+			TestNode1: node1,
+			TestNode2: node2,
+		},
+	}
+
+	expectation := &NodeControllerExpectation{
+		events: map[string]*corev1.Event{
+			"node1-ready": {
+				Type:    "Normal",
+				Reason:  "Ready",
+				Message: "Node test-node-name-1 is ready",
+			},
+			"node2-ready": {
+				Type:    "Normal",
+				Reason:  "Ready",
+				Message: "Node test-node-name-2 is ready",
+			},
+			"node-schedulable": {
+				Type:    "Normal",
+				Reason:  "Schedulable",
+				Message: "",
+			},
+			"": {
+				Type:    "Warning",
+				Reason:  "Schedulable",
+				Message: "the disk fsid(/var/lib/longhorn) on the node test-node-name-1 has 0 available, but requires reserved 0, minimal 25% to schedule more replicas",
+			},
+			"node1-disk-pressure": {
+				Type:    "Warning",
+				Reason:  "Ready",
+				Message: "Kubernetes node test-node-name-1 has pressure",
+			},
+		},
+	}
+
+	s.initTest(c, fixture)
+
+	for _, node := range fixture.lhNodes {
+		if s.controller.controllerID == node.Name {
+			err = s.controller.diskMonitor.RunOnce()
+			c.Assert(err, IsNil)
+		}
+
+		err = s.controller.syncNode(getKey(node, c))
+		c.Assert(err, IsNil)
+	}
+
+	s.checkEvents(c, expectation)
+}
+
+func (s *NodeControllerSuite) TestEventOnMemoryPressure(c *C) {
+	var err error
+
+	node1 := newKubernetesNode(
+		TestNode1,
+		corev1.ConditionTrue,
+		corev1.ConditionFalse, // disk
+		corev1.ConditionTrue,  // memory
+		corev1.ConditionFalse, // pid
+		corev1.ConditionFalse, // network
+		corev1.ConditionTrue,
+	)
+
+	node2 := newKubernetesNode(
+		TestNode2,
+		corev1.ConditionTrue,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionTrue,
+	)
+
+	fixture := &NodeControllerFixture{
+		lhNodes: map[string]*longhorn.Node{
+			TestNode1: newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
+			TestNode2: newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
+		},
+		lhSettings: map[string]*longhorn.Setting{
+			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
+		},
+		lhInstanceManagers: map[string]*longhorn.InstanceManager{
+			TestInstanceManagerName: DefaultInstanceManagerTestNode1,
+		},
+		lhOrphans: map[string]*longhorn.Orphan{
+			DefaultOrphanTestNode1.Name: DefaultOrphanTestNode1,
+		},
+		pods: map[string]*corev1.Pod{
+			TestDaemon1: newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, &MountPropagationBidirectional),
+			TestDaemon2: newDaemonPod(corev1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, &MountPropagationBidirectional),
+		},
+		nodes: map[string]*corev1.Node{
+			TestNode1: node1,
+			TestNode2: node2,
+		},
+	}
+
+	expectation := &NodeControllerExpectation{
+		events: map[string]*corev1.Event{
+			"node1-ready": {
+				Type:    "Normal",
+				Reason:  "Ready",
+				Message: "Node test-node-name-1 is ready",
+			},
+			"node2-ready": {
+				Type:    "Normal",
+				Reason:  "Ready",
+				Message: "Node test-node-name-2 is ready",
+			},
+			"node-schedulable": {
+				Type:    "Normal",
+				Reason:  "Schedulable",
+				Message: "",
+			},
+			"": {
+				Type:    "Warning",
+				Reason:  "Schedulable",
+				Message: "the disk fsid(/var/lib/longhorn) on the node test-node-name-1 has 0 available, but requires reserved 0, minimal 25% to schedule more replicas",
+			},
+			"node1-memory-pressure": {
+				Type:    "Warning",
+				Reason:  "Ready",
+				Message: "Kubernetes node test-node-name-1 has pressure",
+			},
+		},
+	}
+
+	s.initTest(c, fixture)
+
+	for _, node := range fixture.lhNodes {
+		if s.controller.controllerID == node.Name {
+			err = s.controller.diskMonitor.RunOnce()
+			c.Assert(err, IsNil)
+		}
+
+		err = s.controller.syncNode(getKey(node, c))
+		c.Assert(err, IsNil)
+	}
+
+	s.checkEvents(c, expectation)
+}
+
+func (s *NodeControllerSuite) TestEventOnPidPressure(c *C) {
+	var err error
+
+	node1 := newKubernetesNode(
+		TestNode1,
+		corev1.ConditionTrue,
+		corev1.ConditionFalse, // disk
+		corev1.ConditionFalse, // memory
+		corev1.ConditionTrue,  // pid
+		corev1.ConditionFalse, // network
+		corev1.ConditionTrue,
+	)
+
+	node2 := newKubernetesNode(
+		TestNode2,
+		corev1.ConditionTrue,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionTrue,
+	)
+
+	fixture := &NodeControllerFixture{
+		lhNodes: map[string]*longhorn.Node{
+			TestNode1: newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
+			TestNode2: newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
+		},
+		lhSettings: map[string]*longhorn.Setting{
+			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
+		},
+		lhInstanceManagers: map[string]*longhorn.InstanceManager{
+			TestInstanceManagerName: DefaultInstanceManagerTestNode1,
+		},
+		lhOrphans: map[string]*longhorn.Orphan{
+			DefaultOrphanTestNode1.Name: DefaultOrphanTestNode1,
+		},
+		pods: map[string]*corev1.Pod{
+			TestDaemon1: newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, &MountPropagationBidirectional),
+			TestDaemon2: newDaemonPod(corev1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, &MountPropagationBidirectional),
+		},
+		nodes: map[string]*corev1.Node{
+			TestNode1: node1,
+			TestNode2: node2,
+		},
+	}
+
+	expectation := &NodeControllerExpectation{
+		events: map[string]*corev1.Event{
+			"node1-ready": {
+				Type:    "Normal",
+				Reason:  "Ready",
+				Message: "Node test-node-name-1 is ready",
+			},
+			"node2-ready": {
+				Type:    "Normal",
+				Reason:  "Ready",
+				Message: "Node test-node-name-2 is ready",
+			},
+			"node-schedulable": {
+				Type:    "Normal",
+				Reason:  "Schedulable",
+				Message: "",
+			},
+			"": {
+				Type:    "Warning",
+				Reason:  "Schedulable",
+				Message: "the disk fsid(/var/lib/longhorn) on the node test-node-name-1 has 0 available, but requires reserved 0, minimal 25% to schedule more replicas",
+			},
+			"node1-pid-pressure": {
+				Type:    "Warning",
+				Reason:  "Ready",
+				Message: "Kubernetes node test-node-name-1 has pressure",
+			},
+		},
+	}
+
+	s.initTest(c, fixture)
+
+	for _, node := range fixture.lhNodes {
+		if s.controller.controllerID == node.Name {
+			err = s.controller.diskMonitor.RunOnce()
+			c.Assert(err, IsNil)
+		}
+
+		err = s.controller.syncNode(getKey(node, c))
+		c.Assert(err, IsNil)
+	}
+
+	s.checkEvents(c, expectation)
+}
+
+func (s *NodeControllerSuite) TestEventOnNetworkPressure(c *C) {
+	var err error
+
+	node1 := newKubernetesNode(
+		TestNode1,
+		corev1.ConditionTrue,
+		corev1.ConditionFalse, // disk
+		corev1.ConditionFalse, // memory
+		corev1.ConditionFalse, // pid
+		corev1.ConditionTrue,  // network
+		corev1.ConditionTrue,
+	)
+
+	node2 := newKubernetesNode(
+		TestNode2,
+		corev1.ConditionTrue,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionFalse,
+		corev1.ConditionTrue,
+	)
+
+	fixture := &NodeControllerFixture{
+		lhNodes: map[string]*longhorn.Node{
+			TestNode1: newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
+			TestNode2: newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
+		},
+		lhSettings: map[string]*longhorn.Setting{
+			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
+		},
+		lhInstanceManagers: map[string]*longhorn.InstanceManager{
+			TestInstanceManagerName: DefaultInstanceManagerTestNode1,
+		},
+		lhOrphans: map[string]*longhorn.Orphan{
+			DefaultOrphanTestNode1.Name: DefaultOrphanTestNode1,
+		},
+		pods: map[string]*corev1.Pod{
+			TestDaemon1: newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, &MountPropagationBidirectional),
+			TestDaemon2: newDaemonPod(corev1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, &MountPropagationBidirectional),
+		},
+		nodes: map[string]*corev1.Node{
+			TestNode1: node1,
+			TestNode2: node2,
+		},
+	}
+
+	expectation := &NodeControllerExpectation{
+		events: map[string]*corev1.Event{
+			"node1-ready": {
+				Type:    "Normal",
+				Reason:  "Ready",
+				Message: "Node test-node-name-1 is ready",
+			},
+			"node2-ready": {
+				Type:    "Normal",
+				Reason:  "Ready",
+				Message: "Node test-node-name-2 is ready",
+			},
+			"node-schedulable": {
+				Type:    "Normal",
+				Reason:  "Schedulable",
+				Message: "",
+			},
+			"": {
+				Type:    "Warning",
+				Reason:  "Schedulable",
+				Message: "the disk fsid(/var/lib/longhorn) on the node test-node-name-1 has 0 available, but requires reserved 0, minimal 25% to schedule more replicas",
+			},
+			"node1-network-pressure": {
+				Type:    "Warning",
+				Reason:  "Ready",
+				Message: "Kubernetes node test-node-name-1 has pressure",
+			},
+		},
+	}
+
+	s.initTest(c, fixture)
+
+	for _, node := range fixture.lhNodes {
+		if s.controller.controllerID == node.Name {
+			err = s.controller.diskMonitor.RunOnce()
+			c.Assert(err, IsNil)
+		}
+
+		err = s.controller.syncNode(getKey(node, c))
+		c.Assert(err, IsNil)
+	}
+
+	s.checkEvents(c, expectation)
+}
+
 func (s *NodeControllerSuite) TestNoEventOnUnknownTrueNodeCondition(c *C) {
 	var err error
 
 	node1 := newKubernetesNode(
 		TestNode1,
 		corev1.ConditionTrue,
-		corev1.ConditionFalse,
 		corev1.ConditionFalse,
 		corev1.ConditionFalse,
 		corev1.ConditionFalse,
@@ -1266,7 +1705,6 @@ func (s *NodeControllerSuite) TestNoEventOnUnknownTrueNodeCondition(c *C) {
 	node2 := newKubernetesNode(
 		TestNode2,
 		corev1.ConditionTrue,
-		corev1.ConditionFalse,
 		corev1.ConditionFalse,
 		corev1.ConditionFalse,
 		corev1.ConditionFalse,
