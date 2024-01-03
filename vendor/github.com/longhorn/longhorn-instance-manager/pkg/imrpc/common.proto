@@ -4,6 +4,7 @@ package imrpc;
 
 option go_package = "github.com/longhorn/longhorn-instance-manager/pkg/imrpc";
 
+// Deprecated: Use DataEngine instead.
 enum BackendStoreDriver {
     v1 = 0;
     v2 = 1;

@@ -42,7 +42,7 @@ func (c *ProxyClient) ReplicaAdd(dataEngine, engineName, volumeName, serviceAddr
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
 			Address:    serviceAddress,
 			EngineName: engineName,
-			// Deprecated
+			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),
 			VolumeName:         volumeName,
@@ -86,7 +86,7 @@ func (c *ProxyClient) ReplicaList(dataEngine, engineName, volumeName,
 	req := &rpc.ProxyEngineRequest{
 		Address:    serviceAddress,
 		EngineName: engineName,
-		// Deprecated
+		// nolint:all replaced with DataEngine
 		BackendStoreDriver: rpc.BackendStoreDriver(driver),
 		DataEngine:         rpc.DataEngine(driver),
 		VolumeName:         volumeName,
@@ -129,7 +129,7 @@ func (c *ProxyClient) ReplicaRebuildingStatus(dataEngine, engineName, volumeName
 	req := &rpc.ProxyEngineRequest{
 		Address:    serviceAddress,
 		EngineName: engineName,
-		// Deprecated
+		// nolint:all replaced with DataEngine
 		BackendStoreDriver: rpc.BackendStoreDriver(driver),
 		DataEngine:         rpc.DataEngine(driver),
 		VolumeName:         volumeName,
@@ -178,7 +178,7 @@ func (c *ProxyClient) ReplicaVerifyRebuild(dataEngine, engineName, volumeName, s
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
 			Address:    serviceAddress,
 			EngineName: engineName,
-			// Deprecated
+			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),
 			VolumeName:         volumeName,
@@ -217,7 +217,7 @@ func (c *ProxyClient) ReplicaRemove(dataEngine, serviceAddress, engineName, repl
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
 			Address:    serviceAddress,
 			EngineName: engineName,
-			// Deprecated
+			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),
 		},
@@ -253,7 +253,7 @@ func (c *ProxyClient) ReplicaModeUpdate(dataEngine, serviceAddress, replicaAddre
 	req := &rpc.EngineReplicaModeUpdateRequest{
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
 			Address: serviceAddress,
-			// Deprecated
+			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),
 		},
