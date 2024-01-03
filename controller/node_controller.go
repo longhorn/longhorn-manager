@@ -1541,6 +1541,9 @@ func (nc *NodeController) shouldEvictReplica(node *longhorn.Node, kubeNode *core
 	} else if isDownOrDeleted {
 		return false, longhorn.NodeConditionReasonKubernetesNodeNotReady, nil
 	}
+	if kubeNode == nil {
+		return false, longhorn.NodeConditionReasonKubernetesNodeGone, nil
+	}
 
 	if node.Spec.EvictionRequested || diskSpec.EvictionRequested {
 		return true, constant.EventReasonEvictionUserRequested, nil
