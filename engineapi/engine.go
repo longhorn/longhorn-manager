@@ -290,6 +290,26 @@ func (e *EngineBinary) VolumeUnmapMarkSnapChainRemovedSet(engine *longhorn.Engin
 	return nil
 }
 
+// VolumeSnapshotMaxCountSet calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) VolumeSnapshotMaxCountSet(engine *longhorn.Engine) error {
+	cmdline := []string{"snapshot-max-count", strconv.Itoa(engine.Spec.SnapshotMaxCount)}
+	if _, err := e.ExecuteEngineBinary(cmdline...); err != nil {
+		return errors.Wrapf(err, "error setting volume flag SnapshotMaxCount to %d", engine.Spec.SnapshotMaxCount)
+	}
+	return nil
+}
+
+// VolumeSnapshotMaxSizeSet calls engine binary
+// TODO: Deprecated, replaced by gRPC proxy
+func (e *EngineBinary) VolumeSnapshotMaxSizeSet(engine *longhorn.Engine) error {
+	cmdline := []string{"snapshot-max-size", strconv.FormatInt(engine.Spec.SnapshotMaxSize, 10)}
+	if _, err := e.ExecuteEngineBinary(cmdline...); err != nil {
+		return errors.Wrapf(err, "error setting volume flag SnapshotMaxSize to %d", engine.Spec.SnapshotMaxSize)
+	}
+	return nil
+}
+
 // ReplicaRebuildVerify calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
 func (e *EngineBinary) ReplicaRebuildVerify(engine *longhorn.Engine, replicaName, url string) error {

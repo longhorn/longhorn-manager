@@ -180,6 +180,16 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupCompressionMethod", "value": "%s"}`, defaultCompressionMethod))
 	}
 
+	if volume.Spec.SnapshotMaxCount == 0 {
+		snapshotMaxCount, err := v.getSnapshotMaxCount()
+		if err != nil {
+			err = errors.Wrap(err, "BUG: cannot get valid number for setting snapshot max count")
+			return nil, werror.NewInvalidError(err.Error(), "")
+		}
+		logrus.Infof("Use the default snapshot max count %v", snapshotMaxCount)
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/snapshotMaxCount", "value": %v}`, snapshotMaxCount))
+	}
+
 	// TODO: Remove the mutations below after they are implemented for SPDK volumes
 	if datastore.IsDataEngineV2(volume.Spec.DataEngine) {
 		if volume.Spec.DataLocality != longhorn.DataLocalityDisabled {
@@ -219,6 +229,10 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 }
 
 func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
+	oldVolume, ok := oldObj.(*longhorn.Volume)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Volume", oldObj), "")
+	}
 	volume, ok := newObj.(*longhorn.Volume)
 	if !ok {
 		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Volume", newObj), "")
@@ -237,6 +251,21 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 
 	if string(volume.Spec.BackupCompressionMethod) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupCompressionMethod", "value": "%s"}`, longhorn.BackupCompressionMethodGzip))
+	}
+
+	if volume.Spec.SnapshotMaxCount == 0 {
+		snapshotMaxCount, err := v.getSnapshotMaxCount()
+		if err != nil {
+			err = errors.Wrap(err, "BUG: cannot get valid number for setting snapshot max count")
+			return nil, werror.NewInvalidError(err.Error(), "")
+		}
+		logrus.Infof("Use the default snapshot max count %v", snapshotMaxCount)
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/snapshotMaxCount", "value": %v}`, snapshotMaxCount))
+	}
+
+	// if user expand volume size, we don't want snapshotMaxSize < size*2 blocks the change
+	if oldVolume.Spec.Size != volume.Spec.Size && volume.Spec.SnapshotMaxSize != 0 && volume.Spec.SnapshotMaxSize < volume.Spec.Size*2 {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/snapshotMaxSize", "value": "%s"}`, strconv.FormatInt(volume.Spec.Size*2, 10)))
 	}
 
 	var patchOpsInCommon admission.PatchOps
@@ -325,6 +354,14 @@ func mutate(newObj runtime.Object, moreLabels map[string]string) (admission.Patc
 
 func (v *volumeMutator) getDefaultReplicaCount() (int, error) {
 	c, err := v.ds.GetSettingAsInt(types.SettingNameDefaultReplicaCount)
+	if err != nil {
+		return 0, err
+	}
+	return int(c), nil
+}
+
+func (v *volumeMutator) getSnapshotMaxCount() (int, error) {
+	c, err := v.ds.GetSettingAsInt(types.SettingNameSnapshotMaxCount)
 	if err != nil {
 		return 0, err
 	}

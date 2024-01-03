@@ -986,6 +986,24 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 						volumeInfo.UnmapMarkSnapChainRemoved, engine.Spec.UnmapMarkSnapChainRemovedEnabled)
 				}
 			}
+
+			engine.Status.SnapshotMaxCount = volumeInfo.SnapshotMaxCount
+			if engine.Spec.SnapshotMaxCount != volumeInfo.SnapshotMaxCount {
+				logrus.Infof("Correcting flag SnapshotMaxCount from %d to %d", volumeInfo.SnapshotMaxCount, engine.Spec.SnapshotMaxCount)
+				if err := engineClientProxy.VolumeSnapshotMaxCountSet(engine); err != nil {
+					return errors.Wrapf(err, "failed to correct flag SnapshotMaxCount from %d to %d",
+						volumeInfo.SnapshotMaxCount, engine.Spec.SnapshotMaxCount)
+				}
+			}
+
+			engine.Status.SnapshotMaxSize = volumeInfo.SnapshotMaxSize
+			if engine.Spec.SnapshotMaxSize != volumeInfo.SnapshotMaxSize {
+				logrus.Infof("Correcting flag SnapshotMaxSize from %d to %d", volumeInfo.SnapshotMaxSize, engine.Spec.SnapshotMaxSize)
+				if err := engineClientProxy.VolumeSnapshotMaxSizeSet(engine); err != nil {
+					return errors.Wrapf(err, "failed to correct flag SnapshotMaxSize from %d to %d",
+						volumeInfo.SnapshotMaxSize, engine.Spec.SnapshotMaxSize)
+				}
+			}
 		}
 	} else {
 		// For incompatible running engine, the current size is always `engine.Spec.VolumeSize`.

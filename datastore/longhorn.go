@@ -411,6 +411,14 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 		if value == "true" && autoCleanupValue {
 			return errors.Errorf("cannot set %v setting to true when %v setting is true", name, types.SettingNameAutoCleanupSystemGeneratedSnapshot)
 		}
+	case types.SettingNameSnapshotMaxCount:
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+		if v < 2 || v > 250 {
+			return fmt.Errorf("%s should be between 2 and 250", name)
+		}
 	}
 	return nil
 }

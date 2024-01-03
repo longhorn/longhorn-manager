@@ -1143,3 +1143,55 @@ func (m *VolumeManager) verifyDataSourceForVolumeCreation(dataSource longhorn.Vo
 	}
 	return nil
 }
+
+func (m *VolumeManager) UpdateSnapshotMaxCount(name string, snapshotMaxCount int) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to update field SnapshotMaxCount for volume %s", name)
+	}()
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if v.Spec.SnapshotMaxCount == snapshotMaxCount {
+		logrus.Debugf("Volume %s already set field SnapshotMaxCount to %d", v.Name, snapshotMaxCount)
+		return v, nil
+	}
+
+	oldSnapshotMaxCount := v.Spec.SnapshotMaxCount
+	v.Spec.SnapshotMaxCount = snapshotMaxCount
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+
+	logrus.Infof("Updated volume %s field SnapshotMaxCount from %d to %d", v.Name, oldSnapshotMaxCount, snapshotMaxCount)
+	return v, nil
+}
+
+func (m *VolumeManager) UpdateSnapshotMaxSize(name string, snapshotMaxSize int64) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to update field SnapshotMaxSize for volume %s", name)
+	}()
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if v.Spec.SnapshotMaxSize == snapshotMaxSize {
+		logrus.Debugf("Volume %s already set field SnapshotMaxSize to %d", v.Name, snapshotMaxSize)
+		return v, nil
+	}
+
+	oldSnapshotMaxSize := v.Spec.SnapshotMaxSize
+	v.Spec.SnapshotMaxSize = snapshotMaxSize
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+
+	logrus.Infof("Updated volume %s field SnapshotMaxSize from %d to %d", v.Name, oldSnapshotMaxSize, snapshotMaxSize)
+	return v, nil
+}

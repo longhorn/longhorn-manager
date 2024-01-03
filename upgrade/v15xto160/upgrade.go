@@ -75,6 +75,8 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceM
 		} else {
 			v.Spec.DataEngine = longhorn.DataEngineType(v.Spec.BackendStoreDriver)
 		}
+
+		v.Spec.SnapshotMaxCount = types.MaxSnapshotNum
 	}
 
 	return nil

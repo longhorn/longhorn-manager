@@ -313,6 +313,8 @@ func getBinaryAndArgsForEngineProcessCreation(e *longhorn.Engine,
 
 	if engineCLIAPIVersion >= 9 {
 		args = append([]string{"--engine-instance-name", e.Name}, args...)
+		args = append(args, "--snapshot-max-count", strconv.Itoa(e.Spec.SnapshotMaxCount))
+		args = append(args, "--snapshot-max-size", strconv.FormatInt(e.Spec.SnapshotMaxSize, 10))
 	}
 
 	for _, addr := range e.Status.CurrentReplicaAddressMap {
@@ -354,6 +356,8 @@ func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
 	if engineCLIAPIVersion >= 9 {
 		args = append(args, "--replica-instance-name", r.Name)
 		args = append([]string{"--volume-name", r.Spec.VolumeName}, args...)
+		args = append(args, "--snapshot-max-count", strconv.Itoa(r.Spec.SnapshotMaxCount))
+		args = append(args, "--snapshot-max-size", strconv.FormatInt(r.Spec.SnapshotMaxSize, 10))
 	}
 
 	// 3 ports are already used by replica server, data server and syncagent server
