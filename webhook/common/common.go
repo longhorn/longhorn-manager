@@ -88,3 +88,51 @@ func GetLonghornLabelsPatchOp(obj runtime.Object, requiredLabels, removingLabels
 
 	return fmt.Sprintf(`{"op": "replace", "path": "/metadata/labels", "value": %v}`, string(bytes)), nil
 }
+
+func IsRemovingLonghornFinalizer(oldObj runtime.Object, newObj runtime.Object) (bool, error) {
+	oldMeta, err := meta.Accessor(oldObj)
+	if err != nil {
+		return false, err
+	}
+	newMeta, err := meta.Accessor(newObj)
+	if err != nil {
+		return false, err
+	}
+	oldFinalizers := oldMeta.GetFinalizers()
+	newFinalizers := newMeta.GetFinalizers()
+
+	if oldMeta.GetDeletionTimestamp() == nil {
+		// The object is not being deleted.
+		return false, nil
+	}
+
+	if len(newFinalizers) != len(oldFinalizers)-1 {
+		// More or less than one finalizer is being removed.
+		return false, nil
+	}
+
+	hadFinalizer := false
+	for _, finalizer := range oldFinalizers {
+		if finalizer == longhornFinalizerKey {
+			hadFinalizer = true
+			break
+		}
+	}
+	if !hadFinalizer {
+		// The old object didn't have the longhorn.io finalizer.
+		return false, nil
+	}
+
+	hasFinalizer := false
+	for _, finalizer := range newFinalizers {
+		if finalizer == longhornFinalizerKey {
+			hasFinalizer = true
+		}
+	}
+	if hasFinalizer {
+		// The new object still has the longhorn.io finalizer.
+		return false, nil
+	}
+
+	return true, nil
+}
