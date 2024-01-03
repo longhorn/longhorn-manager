@@ -138,6 +138,11 @@ type EngineSpec struct {
 	UnmapMarkSnapChainRemovedEnabled bool `json:"unmapMarkSnapChainRemovedEnabled"`
 	// +optional
 	Active bool `json:"active"`
+	// +optional
+	SnapshotMaxCount int `json:"snapshotMaxCount"`
+	// +kubebuilder:validation:Type=string
+	// +optional
+	SnapshotMaxSize int64 `json:"snapshotMaxSize,string"`
 }
 
 // EngineStatus defines the observed state of the Longhorn engine
@@ -184,6 +189,11 @@ type EngineStatus struct {
 	LastExpansionFailedAt string `json:"lastExpansionFailedAt"`
 	// +optional
 	UnmapMarkSnapChainRemovedEnabled bool `json:"unmapMarkSnapChainRemovedEnabled"`
+	// +optional
+	SnapshotMaxCount int `json:"snapshotMaxCount"`
+	// +kubebuilder:validation:Type=string
+	// +optional
+	SnapshotMaxSize int64 `json:"snapshotMaxSize,string"`
 }
 
 // +genclient

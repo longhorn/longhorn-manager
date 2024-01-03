@@ -48,6 +48,11 @@ type ReplicaSpec struct {
 	RebuildRetryCount int `json:"rebuildRetryCount"`
 	// +optional
 	EvictionRequested bool `json:"evictionRequested"`
+	// +optional
+	SnapshotMaxCount int `json:"snapshotMaxCount"`
+	// +kubebuilder:validation:Type=string
+	// +optional
+	SnapshotMaxSize int64 `json:"snapshotMaxSize,string"`
 }
 
 // ReplicaStatus defines the observed state of the Longhorn replica
