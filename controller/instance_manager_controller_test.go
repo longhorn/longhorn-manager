@@ -229,7 +229,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 
 		// Create Nodes for test. Conditionally add the first Node.
 		if !tc.nodeDown {
-			kubeNode1 := newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+			kubeNode1 := newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
 			err = kubeNodeIndexer.Add(kubeNode1)
 			c.Assert(err, IsNil)
 			_, err = kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode1, metav1.CreateOptions{})
@@ -242,7 +242,7 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 			c.Assert(err, IsNil)
 		}
 
-		kubeNode2 := newKubernetesNode(TestNode2, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+		kubeNode2 := newKubernetesNode(TestNode2, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
 		err = kubeNodeIndexer.Add(kubeNode2)
 		c.Assert(err, IsNil)
 		_, err = kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode2, metav1.CreateOptions{})

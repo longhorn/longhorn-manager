@@ -475,7 +475,7 @@ func newBackup(name string) *longhorn.Backup {
 	}
 }
 
-func newKubernetesNode(name string, readyStatus, diskPressureStatus, memoryStatus, outOfDiskStatus, pidStatus, networkStatus, kubeletStatus corev1.ConditionStatus) *corev1.Node {
+func newKubernetesNode(name string, readyStatus, diskPressureStatus, memoryStatus, pidStatus, networkStatus, kubeletStatus corev1.ConditionStatus) *corev1.Node {
 	return &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,

@@ -1405,7 +1405,7 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			if condition.Status != longhorn.ConditionStatusTrue {
 				knodeCondition = corev1.ConditionFalse
 			}
-			knode := newKubernetesNode(node.Name, knodeCondition, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+			knode := newKubernetesNode(node.Name, knodeCondition, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
 			kn, err := kubeClient.CoreV1().Nodes().Create(context.TODO(), knode, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			err = knIndexer.Add(kn)
