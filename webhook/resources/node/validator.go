@@ -15,6 +15,7 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
+	"github.com/longhorn/longhorn-manager/webhook/common"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
@@ -70,6 +71,16 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 	oldNode := oldObj.(*longhorn.Node)
 	newNode := newObj.(*longhorn.Node)
 
+	isRemovingLonghornFinalizer, err := common.IsRemovingLonghornFinalizer(oldObj, newObj)
+	if err != nil {
+		err = errors.Wrap(err, "failed to check if removing longhorn.io finalizer from deleted object")
+		return werror.NewInvalidError(err.Error(), "")
+	} else if isRemovingLonghornFinalizer {
+		// We always allow the removal of the longhorn.io finalizer while an object is being deleted. It is the
+		// controller's responsibility to wait for the correct conditions to attempt to remove it.
+		return nil
+	}
+
 	if newNode.Spec.InstanceManagerCPURequest < 0 {
 		return werror.NewInvalidError("instanceManagerCPURequest should be greater than or equal to 0", "")
 	}
@@ -87,7 +98,7 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 	}
 
 	// We need to make sure the tags passed in are valid before updating the node.
-	_, err := util.ValidateTags(newNode.Spec.Tags)
+	_, err = util.ValidateTags(newNode.Spec.Tags)
 	if err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
