@@ -330,6 +330,14 @@ type UpdateReplicaDiskSoftAntiAffinityInput struct {
 	ReplicaDiskSoftAntiAffinity string `json:"replicaDiskSoftAntiAffinity"`
 }
 
+type UpdateSnapshotMaxCount struct {
+	SnapshotMaxCount int `json:"snapshotMaxCount"`
+}
+
+type UpdateSnapshotMaxSize struct {
+	SnapshotMaxSize int64 `json:"snapshotMaxSize"`
+}
+
 type PVCreateInput struct {
 	PVName string `json:"pvName"`
 	FSType string `json:"fsType"`

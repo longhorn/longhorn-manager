@@ -75,6 +75,8 @@ type EngineClient interface {
 	VolumeFrontendStart(*longhorn.Engine) error
 	VolumeFrontendShutdown(*longhorn.Engine) error
 	VolumeUnmapMarkSnapChainRemovedSet(engine *longhorn.Engine) error
+	VolumeSnapshotMaxCountSet(engine *longhorn.Engine) error
+	VolumeSnapshotMaxSizeSet(engine *longhorn.Engine) error
 
 	ReplicaList(*longhorn.Engine) (map[string]*Replica, error)
 	ReplicaAdd(engine *longhorn.Engine, replicaName, url string, isRestoreVolume, fastSync bool, replicaFileSyncHTTPClientTimeout int64) error
@@ -128,6 +130,8 @@ type Volume struct {
 	LastExpansionError        string `json:"lastExpansionError"`
 	LastExpansionFailedAt     string `json:"lastExpansionFailedAt"`
 	UnmapMarkSnapChainRemoved bool   `json:"unmapMarkSnapChainRemoved"`
+	SnapshotMaxCount          int    `json:"snapshotMaxCount"`
+	SnapshotMaxSize           int64  `json:"SnapshotMaxSize"`
 }
 
 type BackupTarget struct {

@@ -132,6 +132,14 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return err
 	}
 
+	if err := validateSnapshotMaxCount(volume.Spec.SnapshotMaxCount); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.snapshotMaxCount")
+	}
+
+	if err := validateSnapshotMaxSize(volume.Spec.Size, volume.Spec.SnapshotMaxSize); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.snapshotMaxSize")
+	}
+
 	if err := v.ds.CheckDataEngineImageCompatiblityByImage(volume.Spec.Image, volume.Spec.DataEngine); err != nil {
 		return werror.NewInvalidError(err.Error(), "volume.spec.image")
 	}
@@ -315,6 +323,19 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
+	if err := validateSnapshotMaxCount(newVolume.Spec.SnapshotMaxCount); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.snapshotMaxCount")
+	}
+
+	if err := validateSnapshotMaxSize(newVolume.Spec.Size, newVolume.Spec.SnapshotMaxSize); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.snapshotMaxSize")
+	}
+
+	if (oldVolume.Spec.SnapshotMaxCount != newVolume.Spec.SnapshotMaxCount) || (oldVolume.Spec.SnapshotMaxSize != newVolume.Spec.SnapshotMaxSize) {
+		if err := v.validateUpdatingSnapshotMaxCountAndSize(newVolume); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -451,4 +472,55 @@ func (v *volumeValidator) canDisableRevisionCounter(image string, dataEngine lon
 	}
 
 	return true, nil
+}
+
+func validateSnapshotMaxCount(snapshotMaxCount int) error {
+	if snapshotMaxCount < 2 || snapshotMaxCount > 250 {
+		return fmt.Errorf("snapshot max count should be between 2 to 250")
+	}
+	return nil
+}
+
+func validateSnapshotMaxSize(size, snapshotMaxSize int64) error {
+	if snapshotMaxSize != 0 && snapshotMaxSize < size*2 {
+		return fmt.Errorf("snapshot max size can not be 0 and at least twice of volume size")
+	}
+	return nil
+}
+
+func (v *volumeValidator) validateUpdatingSnapshotMaxCountAndSize(newVolume *longhorn.Volume) error {
+	var (
+		currentSnapshotCount     int
+		currentTotalSnapshotSize int64
+		engine                   *longhorn.Engine
+	)
+	engines, err := v.ds.ListVolumeEngines(newVolume.Name)
+	if err != nil && !datastore.ErrorIsNotFound(err) {
+		return werror.NewInternalError(fmt.Sprintf("can't list engines for volume %s, err %v", newVolume.Name, err))
+	} else if len(engines) >= 2 {
+		return werror.NewInvalidError("can't update snapshotMaxCount or snapshotMaxSize during migration", "")
+	} else if len(engines) == 0 {
+		return nil
+	}
+
+	for _, e := range engines {
+		engine = e
+	}
+
+	for _, snapshotInfo := range engine.Status.Snapshots {
+		if snapshotInfo == nil || snapshotInfo.Removed || snapshotInfo.Name == "volume-head" {
+			continue
+		}
+		currentSnapshotCount++
+		snapshotSize, err := strconv.ParseInt(snapshotInfo.Size, 10, 64)
+		if err != nil {
+			return werror.NewInternalError(fmt.Sprintf("can't parse size %s from snapshot %s in volume %s, err %v", snapshotInfo.Size, snapshotInfo.Name, newVolume.Name, err))
+		}
+		currentTotalSnapshotSize += snapshotSize
+	}
+
+	if currentSnapshotCount > newVolume.Spec.SnapshotMaxCount || (newVolume.Spec.SnapshotMaxSize != 0 && currentTotalSnapshotSize > newVolume.Spec.SnapshotMaxSize) {
+		return werror.NewInvalidError("can't make snapshotMaxCount or snapshotMaxSize be smaller than current usage, please remove snapshots first", "")
+	}
+	return nil
 }

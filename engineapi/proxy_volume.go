@@ -43,3 +43,13 @@ func (p *Proxy) VolumeUnmapMarkSnapChainRemovedSet(e *longhorn.Engine) error {
 	return p.grpcClient.VolumeUnmapMarkSnapChainRemovedSet(string(e.Spec.DataEngine), e.Name, e.Spec.VolumeName,
 		p.DirectToURL(e), e.Spec.UnmapMarkSnapChainRemovedEnabled)
 }
+
+func (p *Proxy) VolumeSnapshotMaxCountSet(e *longhorn.Engine) error {
+	return p.grpcClient.VolumeSnapshotMaxCountSet(string(e.Spec.BackendStoreDriver), e.Name, e.Spec.VolumeName,
+		p.DirectToURL(e), e.Spec.SnapshotMaxCount)
+}
+
+func (p *Proxy) VolumeSnapshotMaxSizeSet(e *longhorn.Engine) error {
+	return p.grpcClient.VolumeSnapshotMaxSizeSet(string(e.Spec.BackendStoreDriver), e.Name, e.Spec.VolumeName,
+		p.DirectToURL(e), e.Spec.SnapshotMaxSize)
+}

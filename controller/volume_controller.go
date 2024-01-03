@@ -459,6 +459,10 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 		return err
 	}
 
+	if err := c.syncVolumeSnapshotSetting(volume, engines, replicas); err != nil {
+		return err
+	}
+
 	if err := c.updateRecurringJobs(volume); err != nil {
 		return err
 	}
@@ -1183,6 +1187,23 @@ func (c *VolumeController) syncVolumeUnmapMarkSnapChainRemovedSetting(v *longhor
 	}
 	for _, r := range rs {
 		r.Spec.UnmapMarkDiskChainRemovedEnabled = unmapMarkEnabled
+	}
+
+	return nil
+}
+
+func (c *VolumeController) syncVolumeSnapshotSetting(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) error {
+	if es == nil && rs == nil {
+		return nil
+	}
+
+	for _, e := range es {
+		e.Spec.SnapshotMaxCount = v.Spec.SnapshotMaxCount
+		e.Spec.SnapshotMaxSize = v.Spec.SnapshotMaxSize
+	}
+	for _, r := range rs {
+		r.Spec.SnapshotMaxCount = v.Spec.SnapshotMaxCount
+		r.Spec.SnapshotMaxSize = v.Spec.SnapshotMaxSize
 	}
 
 	return nil
@@ -3191,6 +3212,8 @@ func (c *VolumeController) createEngine(v *longhorn.Volume, currentEngineName st
 			ReplicaAddressMap:         map[string]string{},
 			UpgradedReplicaAddressMap: map[string]string{},
 			RevisionCounterDisabled:   v.Spec.RevisionCounterDisabled,
+			SnapshotMaxCount:          v.Spec.SnapshotMaxCount,
+			SnapshotMaxSize:           v.Spec.SnapshotMaxSize,
 		},
 	}
 
@@ -3242,6 +3265,8 @@ func (c *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine,
 			HardNodeAffinity:                 hardNodeAffinity,
 			RevisionCounterDisabled:          v.Spec.RevisionCounterDisabled,
 			UnmapMarkDiskChainRemovedEnabled: e.Spec.UnmapMarkSnapChainRemovedEnabled,
+			SnapshotMaxCount:                 v.Spec.SnapshotMaxCount,
+			SnapshotMaxSize:                  v.Spec.SnapshotMaxSize,
 		},
 	}
 	if isRebuildingReplica {

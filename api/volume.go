@@ -779,3 +779,47 @@ func (s *Server) EngineUpgrade(rw http.ResponseWriter, req *http.Request) error 
 
 	return s.responseWithVolume(rw, req, id, v)
 }
+
+func (s *Server) VolumeUpdateSnapshotMaxCount(rw http.ResponseWriter, req *http.Request) error {
+	var input UpdateSnapshotMaxCount
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrap(err, "failed to read SnapshotMaxCount input")
+	}
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.UpdateSnapshotMaxCount(id, input.SnapshotMaxCount)
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("failed to convert to volume %v object", id)
+	}
+	return s.responseWithVolume(rw, req, "", v)
+}
+
+func (s *Server) VolumeUpdateSnapshotMaxSize(rw http.ResponseWriter, req *http.Request) error {
+	var input UpdateSnapshotMaxSize
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrap(err, "failed to read SnapshotMaxSize input")
+	}
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.UpdateSnapshotMaxSize(id, input.SnapshotMaxSize)
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("failed to convert to volume %v object", id)
+	}
+	return s.responseWithVolume(rw, req, "", v)
+}

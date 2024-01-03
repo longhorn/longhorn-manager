@@ -29,7 +29,7 @@ const (
 	ValueUnknown = "unknown"
 
 	// From `maximumChainLength` in longhorn-engine/pkg/replica/replica.go
-	maxSnapshotNum = 250
+	MaxSnapshotNum = 250
 )
 
 type SettingType string
@@ -104,6 +104,7 @@ const (
 	SettingNameSnapshotDataIntegrity                                    = SettingName("snapshot-data-integrity")
 	SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation = SettingName("snapshot-data-integrity-immediate-check-after-snapshot-creation")
 	SettingNameSnapshotDataIntegrityCronJob                             = SettingName("snapshot-data-integrity-cronjob")
+	SettingNameSnapshotMaxCount                                         = SettingName("snapshot-max-count")
 	SettingNameRestoreVolumeRecurringJobs                               = SettingName("restore-volume-recurring-jobs")
 	SettingNameRemoveSnapshotsDuringFilesystemTrim                      = SettingName("remove-snapshots-during-filesystem-trim")
 	SettingNameFastReplicaRebuildEnabled                                = SettingName("fast-replica-rebuild-enabled")
@@ -185,6 +186,7 @@ var (
 		SettingNameSnapshotDataIntegrity,
 		SettingNameSnapshotDataIntegrityCronJob,
 		SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation,
+		SettingNameSnapshotMaxCount,
 		SettingNameRestoreVolumeRecurringJobs,
 		SettingNameRemoveSnapshotsDuringFilesystemTrim,
 		SettingNameFastReplicaRebuildEnabled,
@@ -292,6 +294,7 @@ var (
 		SettingNameSnapshotDataIntegrity:                                    SettingDefinitionSnapshotDataIntegrity,
 		SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation: SettingDefinitionSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation,
 		SettingNameSnapshotDataIntegrityCronJob:                             SettingDefinitionSnapshotDataIntegrityCronJob,
+		SettingNameSnapshotMaxCount:                                         SettingDefinitionSnapshotMaxCount,
 		SettingNameRestoreVolumeRecurringJobs:                               SettingDefinitionRestoreVolumeRecurringJobs,
 		SettingNameRemoveSnapshotsDuringFilesystemTrim:                      SettingDefinitionRemoveSnapshotsDuringFilesystemTrim,
 		SettingNameFastReplicaRebuildEnabled:                                SettingDefinitionFastReplicaRebuildEnabled,
@@ -1052,6 +1055,16 @@ var (
 		Default:  "0 0 */7 * *",
 	}
 
+	SettingDefinitionSnapshotMaxCount = SettingDefinition{
+		DisplayName: "Snapshot Maximum Count",
+		Description: "Maximum snapshot count for a volume. The value should be between 2 to 250",
+		Category:    SettingCategorySnapshot,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     strconv.Itoa(MaxSnapshotNum),
+	}
+
 	SettingDefinitionRemoveSnapshotsDuringFilesystemTrim = SettingDefinition{
 		DisplayName: "Remove Snapshots During Filesystem Trim",
 		Description: "This setting allows Longhorn filesystem trim feature to automatically mark the latest snapshot and its ancestors as removed and stops at the snapshot containing multiple children.\n\n" +
@@ -1455,8 +1468,8 @@ func ValidateSetting(name, value string) (err error) {
 		if err != nil {
 			return errors.Wrapf(err, "value %v is not a number", value)
 		}
-		if maxNumber < 1 || maxNumber > maxSnapshotNum {
-			return fmt.Errorf("the value %v should be between 1 and %v", maxNumber, maxSnapshotNum)
+		if maxNumber < 1 || maxNumber > MaxSnapshotNum {
+			return fmt.Errorf("the value %v should be between 1 and %v", maxNumber, MaxSnapshotNum)
 		}
 	case SettingNameEngineReplicaTimeout:
 		timeout, err := strconv.Atoi(value)
