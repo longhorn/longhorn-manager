@@ -38,7 +38,7 @@ func RPCToInstance(obj *rpc.InstanceResponse) *Instance {
 	instance := &Instance{
 		Name: obj.Spec.Name,
 		Type: obj.Spec.Type,
-		// Deprecated
+		//lint:ignore SA1019 replaced with DataEngine
 		BackendStoreDriver: obj.Spec.BackendStoreDriver.String(),
 		DataEngine:         dataEngines[obj.Spec.DataEngine.String()],
 		PortCount:          obj.Spec.PortCount,

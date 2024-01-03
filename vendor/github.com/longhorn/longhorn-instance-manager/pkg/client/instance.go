@@ -145,7 +145,7 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 
 	p, err := client.InstanceCreate(ctx, &rpc.InstanceCreateRequest{
 		Spec: &rpc.InstanceSpec{
-			// Deprecated
+			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),
 			Name:               req.Name,
@@ -182,7 +182,7 @@ func (c *InstanceServiceClient) InstanceDelete(dataEngine, name, instanceType, d
 	p, err := client.InstanceDelete(ctx, &rpc.InstanceDeleteRequest{
 		Name: name,
 		Type: instanceType,
-		// Deprecated
+		// nolint:all replaced with DataEngine
 		BackendStoreDriver: rpc.BackendStoreDriver(driver),
 		DataEngine:         rpc.DataEngine(driver),
 		DiskUuid:           diskUUID,
@@ -211,7 +211,7 @@ func (c *InstanceServiceClient) InstanceGet(dataEngine, name, instanceType strin
 	p, err := client.InstanceGet(ctx, &rpc.InstanceGetRequest{
 		Name: name,
 		Type: instanceType,
-		// Deprecated
+		// nolint:all replaced with DataEngine
 		BackendStoreDriver: rpc.BackendStoreDriver(driver),
 		DataEngine:         rpc.DataEngine(driver),
 	})
@@ -247,7 +247,7 @@ func (c *InstanceServiceClient) InstanceLog(ctx context.Context, dataEngine, nam
 	stream, err := client.InstanceLog(ctx, &rpc.InstanceLogRequest{
 		Name: name,
 		Type: instanceType,
-		// Deprecated
+		// nolint:all replaced with DataEngine
 		BackendStoreDriver: rpc.BackendStoreDriver(driver),
 		DataEngine:         rpc.DataEngine(driver),
 	})
@@ -289,7 +289,7 @@ func (c *InstanceServiceClient) InstanceReplace(dataEngine, name, instanceType, 
 		Spec: &rpc.InstanceSpec{
 			Name: name,
 			Type: instanceType,
-			// Deprecated
+			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),
 			ProcessInstanceSpec: &rpc.ProcessInstanceSpec{

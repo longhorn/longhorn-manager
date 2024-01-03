@@ -50,7 +50,7 @@ func (c *ProxyClient) VolumeSnapshot(dataEngine, engineName, volumeName, service
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
 			Address:    serviceAddress,
 			EngineName: engineName,
-			// Deprecated
+			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),
 			VolumeName:         volumeName,
@@ -91,7 +91,7 @@ func (c *ProxyClient) SnapshotList(dataEngine, engineName, volumeName,
 	req := &rpc.ProxyEngineRequest{
 		Address:    serviceAddress,
 		EngineName: engineName,
-		// Deprecated
+		// nolint:all replaced with DataEngine
 		BackendStoreDriver: rpc.BackendStoreDriver(driver),
 		DataEngine:         rpc.DataEngine(driver),
 		VolumeName:         volumeName,
@@ -152,7 +152,7 @@ func (c *ProxyClient) SnapshotClone(dataEngine, engineName, volumeName, serviceA
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
 			Address:    serviceAddress,
 			EngineName: engineName,
-			// Deprecated
+			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),
 			VolumeName:         volumeName,
@@ -194,7 +194,7 @@ func (c *ProxyClient) SnapshotCloneStatus(dataEngine, engineName, volumeName, se
 	req := &rpc.ProxyEngineRequest{
 		Address:    serviceAddress,
 		EngineName: engineName,
-		// Deprecated
+		// nolint:all replaced with DataEngine
 		BackendStoreDriver: rpc.BackendStoreDriver(driver),
 		DataEngine:         rpc.DataEngine(driver),
 		VolumeName:         volumeName,
@@ -248,7 +248,7 @@ func (c *ProxyClient) SnapshotRevert(dataEngine, engineName, volumeName, service
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
 			Address:    serviceAddress,
 			EngineName: engineName,
-			// Deprecated
+			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),
 			VolumeName:         volumeName,
@@ -287,7 +287,7 @@ func (c *ProxyClient) SnapshotPurge(dataEngine, engineName, volumeName, serviceA
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
 			Address:    serviceAddress,
 			EngineName: engineName,
-			// Deprecated
+			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),
 			VolumeName:         volumeName,
@@ -324,7 +324,7 @@ func (c *ProxyClient) SnapshotPurgeStatus(dataEngine, engineName, volumeName, se
 	req := &rpc.ProxyEngineRequest{
 		Address:    serviceAddress,
 		EngineName: engineName,
-		// Deprecated
+		// nolint:all replaced with DataEngine
 		BackendStoreDriver: rpc.BackendStoreDriver(driver),
 		DataEngine:         rpc.DataEngine(driver),
 		VolumeName:         volumeName,
@@ -371,7 +371,7 @@ func (c *ProxyClient) SnapshotRemove(dataEngine, engineName, volumeName, service
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
 			Address:    serviceAddress,
 			EngineName: engineName,
-			// Deprecated
+			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),
 			VolumeName:         volumeName,
@@ -410,7 +410,7 @@ func (c *ProxyClient) SnapshotHash(dataEngine, engineName, volumeName, serviceAd
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
 			Address:    serviceAddress,
 			EngineName: engineName,
-			// Deprecated
+			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),
 			VolumeName:         volumeName,
@@ -450,7 +450,7 @@ func (c *ProxyClient) SnapshotHashStatus(dataEngine, engineName, volumeName, ser
 		ProxyEngineRequest: &rpc.ProxyEngineRequest{
 			Address:    serviceAddress,
 			EngineName: engineName,
-			// Deprecated
+			// nolint:all replaced with DataEngine
 			BackendStoreDriver: rpc.BackendStoreDriver(driver),
 			DataEngine:         rpc.DataEngine(driver),
 			VolumeName:         volumeName,

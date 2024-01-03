@@ -37,7 +37,7 @@ replace (
 require (
 	github.com/container-storage-interface/spec v1.8.0
 	github.com/docker/go-connections v0.4.0
-	github.com/google/uuid v1.3.1
+	github.com/google/uuid v1.4.0
 	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.0
@@ -46,13 +46,13 @@ require (
 	github.com/longhorn/backing-image-manager v1.4.0-rc1.0.20231226061407-a8bf86a98a90
 	github.com/longhorn/backupstore v0.0.0-20231229024807-ccb82ae17a0e
 	github.com/longhorn/go-common-libs v0.0.0-20240103081802-3993c5908447
-	github.com/longhorn/go-iscsi-helper v0.0.0-20231220091133-38e296e68ad2
-	github.com/longhorn/go-spdk-helper v0.0.0-20231225123608-84cedbc12ba3
+	github.com/longhorn/go-iscsi-helper v0.0.0-20240103085736-72aee873888a
+	github.com/longhorn/go-spdk-helper v0.0.0-20240103085800-6ac35f37b3a7
 	github.com/longhorn/longhorn-engine v1.6.0-dev-20231217.0.20240103105254-12e92e847462
-	github.com/longhorn/longhorn-instance-manager v0.0.0-20240103134309-e09a1a821a26
+	github.com/longhorn/longhorn-instance-manager v1.6.0-dev-20231217.0.20240103160643-ab68378cb16e
 	github.com/longhorn/longhorn-share-manager v1.6.0-dev-20231217.0.20231226052309-99d57c1695ea
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.16.0
+	github.com/prometheus/client_golang v1.17.0
 	github.com/rancher/dynamiclistener v0.3.6
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
 	github.com/rancher/wrangler v1.1.1
@@ -139,7 +139,7 @@ require (
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de // indirect
-	github.com/longhorn/longhorn-spdk-engine v0.0.0-20231225122448-779b72c5fcf8 // indirect
+	github.com/longhorn/longhorn-spdk-engine v0.0.0-20240103153911-6a7bd563c7f2 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
@@ -153,9 +153,9 @@ require (
 	github.com/opencontainers/selinux v1.10.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.17 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/prometheus/client_model v0.4.0 // indirect
+	github.com/prometheus/client_model v0.4.1-0.20230718164431-9a2bf3000d16 // indirect
 	github.com/prometheus/common v0.44.0 // indirect
-	github.com/prometheus/procfs v0.10.1 // indirect
+	github.com/prometheus/procfs v0.11.1 // indirect
 	github.com/rancher/lasso v0.0.0-20230830164424-d684fdeb6f29
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rogpeppe/go-internal v1.11.0 // indirect

@@ -20,6 +20,14 @@ const (
 	ProxyGRPCService          = "proxy gRPC server"
 )
 
+const (
+	InstanceManagerProcessManagerServiceDefaultPort = 8500
+	InstanceManagerProxyServiceDefaultPort          = InstanceManagerProcessManagerServiceDefaultPort + 1 // 8501
+	InstanceManagerDiskServiceDefaultPort           = InstanceManagerProcessManagerServiceDefaultPort + 2 // 8502
+	InstanceManagerInstanceServiceDefaultPort       = InstanceManagerProcessManagerServiceDefaultPort + 3 // 8503
+	InstanceManagerSpdkServiceDefaultPort           = InstanceManagerProcessManagerServiceDefaultPort + 4 // 8504
+)
+
 var (
 	WaitInterval = 100 * time.Millisecond
 	WaitCount    = 600
