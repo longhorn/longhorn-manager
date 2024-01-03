@@ -55,6 +55,8 @@ func (c *ProxyClient) VolumeGet(dataEngine, engineName, volumeName, serviceAddre
 		LastExpansionError:        resp.Volume.LastExpansionError,
 		LastExpansionFailedAt:     resp.Volume.LastExpansionFailedAt,
 		UnmapMarkSnapChainRemoved: resp.Volume.UnmapMarkSnapChainRemoved,
+		SnapshotMaxCount:          int(resp.Volume.SnapshotMaxCount),
+		SnapshotMaxSize:           resp.Volume.SnapshotMaxSize,
 	}
 	return info, nil
 }
@@ -208,6 +210,82 @@ func (c *ProxyClient) VolumeUnmapMarkSnapChainRemovedSet(dataEngine, engineName,
 		UnmapMarkSnap: &eptypes.VolumeUnmapMarkSnapChainRemovedSetRequest{Enabled: enabled},
 	}
 	_, err = c.service.VolumeUnmapMarkSnapChainRemovedSet(getContextWithGRPCTimeout(c.ctx), req)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *ProxyClient) VolumeSnapshotMaxCountSet(backendStoreDriver, engineName, volumeName,
+	serviceAddress string, count int) (err error) {
+	input := map[string]string{
+		"engineName":     engineName,
+		"volumeName":     volumeName,
+		"serviceAddress": serviceAddress,
+		"count":          strconv.Itoa(count),
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return errors.Wrap(err, "failed to set volume flag SnapshotMaxCount")
+	}
+
+	driver, ok := rpc.BackendStoreDriver_value[backendStoreDriver]
+	if !ok {
+		return fmt.Errorf("failed to set volume flag SnapshotMaxCount: invalid backend store driver %v", backendStoreDriver)
+	}
+
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to set SnapshotMaxCount", c.getProxyErrorPrefix(serviceAddress))
+	}()
+
+	req := &rpc.EngineVolumeSnapshotMaxCountSetRequest{
+		ProxyEngineRequest: &rpc.ProxyEngineRequest{
+			Address:            serviceAddress,
+			EngineName:         engineName,
+			BackendStoreDriver: rpc.BackendStoreDriver(driver),
+			VolumeName:         volumeName,
+		},
+		Count: &eptypes.VolumeSnapshotMaxCountSetRequest{Count: int32(count)},
+	}
+	_, err = c.service.VolumeSnapshotMaxCountSet(getContextWithGRPCTimeout(c.ctx), req)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *ProxyClient) VolumeSnapshotMaxSizeSet(backendStoreDriver, engineName, volumeName,
+	serviceAddress string, size int64) (err error) {
+	input := map[string]string{
+		"engineName":     engineName,
+		"volumeName":     volumeName,
+		"serviceAddress": serviceAddress,
+		"size":           strconv.FormatInt(size, 10),
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return errors.Wrap(err, "failed to set volume flag SnapshotMaxSize")
+	}
+
+	driver, ok := rpc.BackendStoreDriver_value[backendStoreDriver]
+	if !ok {
+		return fmt.Errorf("failed to set volume flag SnapshotMaxSize: invalid backend store driver %v", backendStoreDriver)
+	}
+
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to set SnapshotMaxSize", c.getProxyErrorPrefix(serviceAddress))
+	}()
+
+	req := &rpc.EngineVolumeSnapshotMaxSizeSetRequest{
+		ProxyEngineRequest: &rpc.ProxyEngineRequest{
+			Address:            serviceAddress,
+			EngineName:         engineName,
+			BackendStoreDriver: rpc.BackendStoreDriver(driver),
+			VolumeName:         volumeName,
+		},
+		Size: &eptypes.VolumeSnapshotMaxSizeSetRequest{Size: size},
+	}
+	_, err = c.service.VolumeSnapshotMaxSizeSet(getContextWithGRPCTimeout(c.ctx), req)
 	if err != nil {
 		return err
 	}
