@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	. "gopkg.in/check.v1"
@@ -180,5 +181,27 @@ func (s *TestSuite) TestGetValidMountPoint(c *C) {
 			c.Assert(err, IsNil)
 			c.Assert(validMountPoint, Equals, expectedMountPointPath)
 		}
+	}
+}
+
+func TestTimestampAfterTimestamp(t *testing.T) {
+	tests := map[string]struct {
+		before string
+		after  string
+		want   bool
+	}{
+		"beforeBadFormat": {"2024-01-02T18:37Z", "2024-01-02T18:16:37Z", false},
+		"afterBadFormat":  {"2024-01-02T18:16:37Z", "2024-01-02T18:37Z", false},
+		"actuallyAfter":   {"2024-01-02T18:17:37Z", "2024-01-02T18:16:37Z", true},
+		"actuallyBefore":  {"2024-01-02T18:16:37Z", "2024-01-02T18:17:37Z", false},
+		"sameTime":        {"2024-01-02T18:16:37Z", "2024-01-02T18:16:37Z", false},
+	}
+
+	assert := assert.New(t)
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := TimestampAfterTimestamp(tc.before, tc.after)
+			assert.Equal(tc.want, got)
+		})
 	}
 }
