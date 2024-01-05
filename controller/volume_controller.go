@@ -654,7 +654,9 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 					r.Name, r.Status.CurrentState, r.Spec.EngineName, r.Spec.Active, isNoAvailableBackend)
 				e.Spec.LogRequested = true
 				r.Spec.LogRequested = true
-				r.Spec.FailedAt = c.nowHandler()
+				now := c.nowHandler()
+				r.Spec.FailedAt = now
+				r.Spec.LastFailedAt = now
 				r.Spec.DesireState = longhorn.InstanceStateStopped
 			}
 		}
@@ -708,7 +710,9 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 			}
 			if r.Spec.FailedAt == "" {
 				log.Warnf("Replica %v is marked as failed, current state %v, mode %v, engine name %v, active %v", r.Name, r.Status.CurrentState, mode, r.Spec.EngineName, r.Spec.Active)
-				r.Spec.FailedAt = c.nowHandler()
+				now := c.nowHandler()
+				r.Spec.FailedAt = now
+				r.Spec.LastFailedAt = now
 				e.Spec.LogRequested = true
 				r.Spec.LogRequested = true
 			}
@@ -719,7 +723,9 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 			// from replica failed during rebuilding
 			if r.Spec.HealthyAt == "" {
 				c.backoff.DeleteEntry(r.Name)
-				r.Spec.HealthyAt = c.nowHandler()
+				now := c.nowHandler()
+				r.Spec.HealthyAt = now
+				r.Spec.LastHealthyAt = now
 				r.Spec.RebuildRetryCount = 0
 			}
 			healthyCount++
@@ -733,7 +739,9 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 				r.Name, r.Status.CurrentState, r.Spec.EngineName, r.Spec.Active)
 			e.Spec.LogRequested = true
 			r.Spec.LogRequested = true
-			r.Spec.FailedAt = c.nowHandler()
+			now := c.nowHandler()
+			r.Spec.FailedAt = now
+			r.Spec.LastFailedAt = now
 			r.Spec.DesireState = longhorn.InstanceStateStopped
 		}
 	}
@@ -888,10 +896,46 @@ func isFirstAttachment(rs map[string]*longhorn.Replica) bool {
 	return true
 }
 
+func isHealthyAndActiveReplica(r *longhorn.Replica) bool {
+	if r.Spec.FailedAt != "" {
+		return false
+	}
+	if r.Spec.HealthyAt == "" {
+		return false
+	}
+	if !r.Spec.Active {
+		return false
+	}
+	return true
+}
+
+func isDefinitelyHealthyAndActiveReplica(r *longhorn.Replica) bool {
+	if !isHealthyAndActiveReplica(r) {
+		return false
+	}
+	// An empty r.Spec.FailedAt doesn't necessarily indicate a healthy replica. The replica could be caught in an
+	// autosalvage loop. If it is, its r.Spec.FailedAt is repeatedly transitioning between empty and some time. Ensure
+	// the replica has become healthyAt since it last became failedAt.
+	if r.Spec.LastFailedAt != "" && !util.TimestampAfterTimestamp(r.Spec.LastHealthyAt, r.Spec.LastFailedAt) {
+		return false
+	}
+	return true
+}
+
 func getHealthyAndActiveReplicaCount(rs map[string]*longhorn.Replica) int {
 	count := 0
 	for _, r := range rs {
-		if r.Spec.FailedAt == "" && r.Spec.HealthyAt != "" && r.Spec.Active {
+		if isHealthyAndActiveReplica(r) {
+			count++
+		}
+	}
+	return count
+}
+
+func getDefinitelyHealthyAndActiveReplicaCount(rs map[string]*longhorn.Replica) int {
+	count := 0
+	for _, r := range rs {
+		if isDefinitelyHealthyAndActiveReplica(r) {
 			count++
 		}
 	}
@@ -944,7 +988,7 @@ func (c *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*lo
 }
 
 func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
-	healthyCount := getHealthyAndActiveReplicaCount(rs)
+	healthyCount := getDefinitelyHealthyAndActiveReplicaCount(rs)
 	cleanupLeftoverReplicas := !c.isVolumeUpgrading(v) && !isVolumeMigrating(v)
 	log := getLoggerForVolume(c.logger, v)
 
@@ -972,19 +1016,8 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 			continue
 		}
 
-		staled := false
-		if v.Spec.StaleReplicaTimeout > 0 &&
-			util.TimestampAfterTimeout(r.Spec.FailedAt, time.Duration(int64(v.Spec.StaleReplicaTimeout*60))*time.Second) {
-
-			staled = true
-		}
-
 		if datastore.IsDataEngineV1(v.Spec.DataEngine) {
-			// 1. failed for multiple times or failed at rebuilding (`Spec.RebuildRetryCount` of a newly created rebuilding replica
-			//    is `FailedReplicaMaxRetryCount`) before ever became healthy/ mode RW,
-			// 2. failed too long ago, became stale and unnecessary to keep around, unless we don't have any healthy replicas
-			// 3. failed for race condition at upgrading when waiting IM-r to start and it would never became healty
-			if (r.Spec.RebuildRetryCount >= scheduler.FailedReplicaMaxRetryCount) || (healthyCount != 0 && staled) || (r.Spec.Image != v.Status.CurrentImage) {
+			if shouldCleanUpFailedReplicaV1(r, v.Spec.StaleReplicaTimeout, healthyCount, v.Spec.Image) {
 				log.WithField("replica", r.Name).Info("Cleaning up corrupted, staled replica")
 				if err := c.deleteReplica(r, rs); err != nil {
 					return errors.Wrapf(err, "cannot clean up staled replica %v", r.Name)
@@ -1004,6 +1037,8 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 }
 
 func (c *VolumeController) cleanupFailedToScheduledReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) (err error) {
+	// We don't need the more rigorous getDefinitelyHealthyAndActiveReplicaCount here, because the replicas we will
+	// potentially delete are definitely worthless (contain no data).
 	healthyCount := getHealthyAndActiveReplicaCount(rs)
 	hasEvictionRequestedReplicas := hasReplicaEvictionRequested(rs)
 
@@ -1025,7 +1060,7 @@ func (c *VolumeController) cleanupFailedToScheduledReplicas(v *longhorn.Volume, 
 }
 
 func (c *VolumeController) cleanupExtraHealthyReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
-	healthyCount := getHealthyAndActiveReplicaCount(rs)
+	healthyCount := getDefinitelyHealthyAndActiveReplicaCount(rs)
 	if healthyCount <= v.Spec.NumberOfReplicas {
 		return nil
 	}
@@ -1799,7 +1834,9 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 				}
 				log.WithField("replica", r.Name).Warn(msg)
 				if r.Spec.FailedAt == "" {
-					r.Spec.FailedAt = c.nowHandler()
+					now := c.nowHandler()
+					r.Spec.FailedAt = now
+					r.Spec.LastFailedAt = now
 				}
 				r.Spec.DesireState = longhorn.InstanceStateStopped
 			}
@@ -1921,7 +1958,9 @@ func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *
 	for _, r := range rs {
 		if r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" && dataExists {
 			// This replica must have been rebuilding. Mark it as failed.
-			r.Spec.FailedAt = c.nowHandler()
+			now := c.nowHandler()
+			r.Spec.FailedAt = now
+			r.Spec.LastFailedAt = now
 			// Unscheduled replicas are marked failed here when volume is detached.
 			// Check if NodeId or DiskID is empty to avoid deleting reusableFailedReplica when replenished.
 			if r.Spec.NodeID == "" || r.Spec.DiskID == "" {
@@ -4470,4 +4509,28 @@ func (c *VolumeController) ReconcilePersistentVolume(volume *longhorn.Volume) er
 		}
 	}
 	return nil
+}
+
+func shouldCleanUpFailedReplicaV1(r *longhorn.Replica, staleReplicaTimeout, definitelyHealthyCount int,
+	volumeCurrentImage string) bool {
+	// Even if healthyAt == "", lastHealthyAt != "" indicates this replica has some (potentially invalid) data. We MUST
+	// NOT delete it until we're sure the engine can start with another replica. In the worst case scenario, maybe we
+	// can recover data from this replica.
+	if r.Spec.LastHealthyAt != "" && definitelyHealthyCount == 0 {
+		return false
+	}
+	// Failed to rebuild too many times.
+	if r.Spec.RebuildRetryCount >= scheduler.FailedReplicaMaxRetryCount {
+		return true
+	}
+	// Failed too long ago to be useful during a rebuild.
+	if staleReplicaTimeout > 0 &&
+		util.TimestampAfterTimeout(r.Spec.FailedAt, time.Duration(staleReplicaTimeout)*time.Minute) {
+		return true
+	}
+	// Failed for race condition at upgrading when waiting for instance-manager-r to start. Can never become healthy.
+	if r.Spec.Image != volumeCurrentImage {
+		return true
+	}
+	return false
 }
