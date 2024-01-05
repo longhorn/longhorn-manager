@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -1029,17 +1030,6 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 				{
 					Image:           im.Spec.Image,
 					ImagePullPolicy: imagePullPolicy,
-					LivenessProbe: &corev1.Probe{
-						ProbeHandler: corev1.ProbeHandler{
-							TCPSocket: &corev1.TCPSocketAction{
-								Port: intstr.FromInt(engineapi.InstanceManagerProcessManagerServiceDefaultPort),
-							},
-						},
-						InitialDelaySeconds: datastore.PodProbeInitialDelay,
-						TimeoutSeconds:      datastore.PodProbeTimeoutSeconds,
-						PeriodSeconds:       datastore.PodProbePeriodSeconds,
-						FailureThreshold:    datastore.PodLivenessProbeFailureThreshold,
-					},
 					SecurityContext: &corev1.SecurityContext{
 						Privileged: &privileged,
 					},
@@ -1106,6 +1096,42 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		}
 	}
 
+	// Create a liveness probe to check if all the required ports and processes are open.
+	var livenessProbes []string
+	ports := []int{
+		engineapi.InstanceManagerProcessManagerServiceDefaultPort,
+		engineapi.InstanceManagerProxyServiceDefaultPort,
+		engineapi.InstanceManagerDiskServiceDefaultPort,
+		engineapi.InstanceManagerInstanceServiceDefaultPort,
+	}
+	for _, port := range ports {
+		livenessProbes = append(livenessProbes, fmt.Sprintf("nc -zv localhost %d > /dev/null 2>&1", port))
+	}
+	if datastore.IsDataEngineV2(dataEngine) {
+		livenessProbes = append(livenessProbes, fmt.Sprintf("nc -zv localhost %d > /dev/null 2>&1", engineapi.InstanceManagerSpdkServiceDefaultPort))
+
+		processProbe := "[ $(ps aux | grep 'spdk_tgt' | grep -v 'grep' | grep -v 'tee' | wc -l) != 0 ]"
+		livenessProbes = append(livenessProbes, processProbe)
+	}
+	livenessProbeCommand := fmt.Sprintf("test $(%s; echo $?) -eq 0", strings.Join(livenessProbes, " && "))
+
+	podSpec.Spec.Containers[0].LivenessProbe = &corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{
+			Exec: &corev1.ExecAction{
+				Command: []string{
+					"/bin/sh",
+					"-c",
+					livenessProbeCommand,
+				},
+			},
+		},
+		InitialDelaySeconds: datastore.PodProbeInitialDelay,
+		TimeoutSeconds:      datastore.PodProbeTimeoutSeconds,
+		PeriodSeconds:       datastore.PodProbePeriodSeconds,
+		FailureThreshold:    datastore.PodLivenessProbeFailureThreshold,
+	}
+
+	// Set environment variables
 	podSpec.Spec.Containers[0].Env = []corev1.EnvVar{
 		{
 			Name:  "TLS_DIR",
@@ -1120,6 +1146,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			},
 		},
 	}
+	// Set volume mounts
 	podSpec.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
 		{
 			MountPath:        "/host",
