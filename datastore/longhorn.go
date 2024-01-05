@@ -4137,7 +4137,7 @@ func ValidateRecurringJob(job longhorn.RecurringJobSpec) error {
 		return fmt.Errorf("job name %v must be %v characters or less", job.Name, NameMaximumLength)
 	}
 	for _, group := range job.Groups {
-		if !util.ValidateName(group) {
+		if !util.ValidateString(group) {
 			return fmt.Errorf("invalid group name %v", group)
 		}
 	}

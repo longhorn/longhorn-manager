@@ -158,7 +158,9 @@ func parseBackupVolumeNamesList(output string) ([]string, error) {
 
 	volumeNames := []string{}
 	for volumeName := range data {
-		volumeNames = append(volumeNames, volumeName)
+		if util.ValidateName(volumeName) {
+			volumeNames = append(volumeNames, volumeName)
+		}
 	}
 	sort.Strings(volumeNames)
 	return volumeNames, nil

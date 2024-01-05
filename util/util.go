@@ -261,8 +261,13 @@ func TimestampWithinLimit(latest time.Time, ts string, limit time.Duration) bool
 	return deadline.After(latest)
 }
 
-func ValidateName(name string) bool {
+func ValidateString(name string) bool {
 	validName := regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]+$`)
+	return validName.MatchString(name)
+}
+
+func ValidateName(name string) bool {
+	validName := regexp.MustCompile(`^[a-z0-9][a-z0-9_.-]+$`)
 	return validName.MatchString(name)
 }
 
