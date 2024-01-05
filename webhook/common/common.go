@@ -147,6 +147,7 @@ func IsRemovingLonghornFinalizer(oldObj runtime.Object, newObj runtime.Object) (
 	for _, finalizer := range newFinalizers {
 		if finalizer == longhornFinalizerKey {
 			hasFinalizer = true
+			break
 		}
 	}
 	if hasFinalizer {
