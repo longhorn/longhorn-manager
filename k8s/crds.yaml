@@ -2647,6 +2647,10 @@ spec:
                 type: string
               image:
                 type: string
+              lastFailedAt:
+                type: string
+              lastHealthyAt:
+                type: string
               logRequested:
                 type: boolean
               nodeID:
