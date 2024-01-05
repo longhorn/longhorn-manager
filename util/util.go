@@ -333,6 +333,20 @@ func TimestampWithinLimit(latest time.Time, ts string, limit time.Duration) bool
 	return deadline.After(latest)
 }
 
+func TimestampAfterTimestamp(after string, before string) bool {
+	afterT, err := time.Parse(time.RFC3339, after)
+	if err != nil {
+		logrus.Errorf("Cannot parse after time %v", after)
+		return false
+	}
+	beforeT, err := time.Parse(time.RFC3339, before)
+	if err != nil {
+		logrus.Errorf("Cannot parse before time %v", before)
+		return false
+	}
+	return afterT.After(beforeT)
+}
+
 func ValidateName(name string) bool {
 	validName := regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]+$`)
 	return validName.MatchString(name)

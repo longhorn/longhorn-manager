@@ -2454,6 +2454,10 @@ spec:
                 type: string
               healthyAt:
                 type: string
+              lastFailedAt:
+                type: string
+              lastHealthyAt:
+                type: string
               logRequested:
                 type: boolean
               nodeID:
