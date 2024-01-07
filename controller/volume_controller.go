@@ -350,6 +350,29 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 				}
 			}
 		}
+		if datastore.IsDataEngineV2(volume.Spec.DataEngine) {
+			// To prevent from the "no such device" error in spdk_tgt,
+			// remove the raid bdev before tearing down the replicas.
+			engines, err := c.ds.ListVolumeEnginesRO(volume.Name)
+			if err != nil {
+				return err
+			}
+			if len(engines) > 0 {
+				replicaDeleted := false
+				for _, r := range replicas {
+					if r.DeletionTimestamp != nil {
+						replicaDeleted = true
+						break
+					}
+				}
+				if !replicaDeleted {
+					c.logger.Infof("Volume (%s) %v still has engines %v, so skip deleting its replicas until the engines have been deleted",
+						volume.Spec.DataEngine, volume.Name, engines)
+					return nil
+				}
+			}
+		}
+
 		for _, r := range replicas {
 			if r.DeletionTimestamp == nil {
 				if err := c.ds.DeleteReplica(r.Name); err != nil {
