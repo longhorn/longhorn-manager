@@ -834,13 +834,13 @@ func (sc *SettingController) updateDataEngine(setting types.SettingName) error {
 }
 
 func (sc *SettingController) cleanupInstanceManager(dataEngine longhorn.DataEngineType) error {
-	sc.logger.Infof("Cleaning up the instance manager for %v data engine", dataEngine)
 	imMap, err := sc.ds.ListInstanceManagersBySelectorRO("", "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
 	if err != nil {
 		return errors.Wrapf(err, "failed to list instance managers for cleaning up %v data engine", dataEngine)
 	}
 
 	for _, im := range imMap {
+		sc.logger.Infof("Cleaning up the instance manager for %v data engine", dataEngine)
 		if err := sc.ds.DeleteInstanceManager(im.Name); err != nil {
 			return err
 		}

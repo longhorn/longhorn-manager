@@ -312,31 +312,6 @@ func (m *VolumeManager) Detach(name, attachmentID, hostID string, forceDetach bo
 	return v, nil
 }
 
-func (m *VolumeManager) isVolumeAvailableOnNode(volume, node string) bool {
-	es, _ := m.ds.ListVolumeEngines(volume)
-	for _, e := range es {
-		if e.Spec.NodeID != node {
-			continue
-		}
-		if e.DeletionTimestamp != nil {
-			continue
-		}
-		if e.Spec.DesireState != longhorn.InstanceStateRunning || e.Status.CurrentState != longhorn.InstanceStateRunning {
-			continue
-		}
-		hasAvailableReplica := false
-		for _, mode := range e.Status.ReplicaModeMap {
-			hasAvailableReplica = hasAvailableReplica || mode == longhorn.ReplicaModeRW
-		}
-		if !hasAvailableReplica {
-			continue
-		}
-		return true
-	}
-
-	return false
-}
-
 func (m *VolumeManager) Salvage(volumeName string, replicaNames []string) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to salvage volume %v", volumeName)

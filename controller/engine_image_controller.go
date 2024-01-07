@@ -296,7 +296,7 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 	// TODO: Will remove this reference kind correcting after all Longhorn components having used the new kinds
 	if len(ds.OwnerReferences) < 1 || ds.OwnerReferences[0].Kind != types.LonghornKindEngineImage {
 		ds.OwnerReferences = datastore.GetOwnerReferencesForEngineImage(engineImage)
-		ds, err = ic.kubeClient.AppsV1().DaemonSets(ic.namespace).Update(context.TODO(), ds, metav1.UpdateOptions{})
+		_, err = ic.kubeClient.AppsV1().DaemonSets(ic.namespace).Update(context.TODO(), ds, metav1.UpdateOptions{})
 		if err != nil {
 			return err
 		}
