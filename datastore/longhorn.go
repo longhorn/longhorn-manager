@@ -1781,16 +1781,23 @@ func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (is
 
 func (s *DataStore) CheckDataEngineImageReadiness(image string, dataEngine longhorn.DataEngineType, nodes ...string) (isReady bool, err error) {
 	if IsDataEngineV2(dataEngine) {
+		if len(nodes) == 0 {
+			return false, nil
+		}
+		if len(nodes) == 1 && nodes[0] == "" {
+			return false, nil
+		}
 		return true, nil
 	}
+	// For data engine v1, we need to check the engine image readiness
 	return s.CheckEngineImageReadiness(image, nodes...)
 }
 
-// CheckImageReadyOnAtLeastOneVolumeReplica checks if the IMAGE is deployed on the NODEID and on at least one of the the volume's replicas
-func (s *DataStore) CheckImageReadyOnAtLeastOneVolumeReplica(image, volumeName, nodeID string, dataLocality longhorn.DataLocality, dataEngine longhorn.DataEngineType) (bool, error) {
+// CheckDataEngineImageReadyOnAtLeastOneVolumeReplica checks if the IMAGE is deployed on the NODEID and on at least one of the the volume's replicas
+func (s *DataStore) CheckDataEngineImageReadyOnAtLeastOneVolumeReplica(image, volumeName, nodeID string, dataLocality longhorn.DataLocality, dataEngine longhorn.DataEngineType) (bool, error) {
 	isReady, err := s.CheckDataEngineImageReadiness(image, dataEngine, nodeID)
 	if err != nil {
-		return false, errors.Wrapf(err, "failed to check image readiness of node %v", nodeID)
+		return false, errors.Wrapf(err, "failed to check data engine image readiness of node %v", nodeID)
 	}
 
 	if !isReady || dataLocality == longhorn.DataLocalityStrictLocal {

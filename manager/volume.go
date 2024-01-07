@@ -225,11 +225,11 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 		return nil, err
 	}
 
-	if isReady, err := m.ds.CheckImageReadyOnAtLeastOneVolumeReplica(v.Spec.Image, v.Name, node.Name, v.Spec.DataLocality, v.Spec.DataEngine); !isReady {
+	if isReady, err := m.ds.CheckDataEngineImageReadyOnAtLeastOneVolumeReplica(v.Spec.Image, v.Name, node.Name, v.Spec.DataLocality, v.Spec.DataEngine); !isReady {
 		if err != nil {
 			return nil, errors.Wrapf(err, "cannot attach volume %v with image %v", v.Name, v.Spec.Image)
 		}
-		return nil, fmt.Errorf("cannot attach volume %v because the image %v is not deployed on at least one of the the replicas' nodes or the node that the volume is going to attach to", v.Name, v.Spec.Image)
+		return nil, fmt.Errorf("cannot attach volume %v because the data engine image %v is not deployed on at least one of the the replicas' nodes or the node that the volume is going to attach to", v.Name, v.Spec.Image)
 	}
 
 	restoreCondition := types.GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeRestore)
