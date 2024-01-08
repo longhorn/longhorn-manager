@@ -43,6 +43,7 @@ const (
 	FlagSupportBundleManagerImage = "support-bundle-manager-image"
 	FlagServiceAccount            = "service-account"
 	FlagKubeConfig                = "kube-config"
+	FlagUpgradeVersionCheck       = "upgrade-version-check"
 )
 
 func DaemonCmd() cli.Command {
@@ -80,6 +81,10 @@ func DaemonCmd() cli.Command {
 			cli.StringFlag{
 				Name:  FlagKubeConfig,
 				Usage: "Specify path to kube config (optional)",
+			},
+			cli.BoolFlag{
+				Name:  FlagUpgradeVersionCheck,
+				Usage: "Enforce version checking for upgrades. If disabled, there will be no requirement for the necessary upgrade source version",
 			},
 		},
 		Action: func(c *cli.Context) {
@@ -159,7 +164,7 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
-	if err := upgrade.Upgrade(kubeconfigPath, currentNodeID, managerImage); err != nil {
+	if err := upgrade.Upgrade(kubeconfigPath, currentNodeID, managerImage, c.Bool(FlagUpgradeVersionCheck)); err != nil {
 		return err
 	}
 

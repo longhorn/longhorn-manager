@@ -52,7 +52,7 @@ func preUpgrade(c *cli.Context) error {
 		return errors.Wrap(err, "failed to get clientset")
 	}
 
-	if err := upgradeutil.CheckUpgradePathSupported(namespace, lhClient); err != nil {
+	if err := upgradeutil.CheckUpgradePath(namespace, lhClient, nil, true); err != nil {
 		return err
 	}
 
