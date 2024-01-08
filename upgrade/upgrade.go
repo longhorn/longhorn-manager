@@ -14,11 +14,13 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
+	"k8s.io/client-go/tools/record"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	restclient "k8s.io/client-go/rest"
 
 	"github.com/longhorn/longhorn-manager/meta"
@@ -37,7 +39,7 @@ const (
 	LeaseLockName = "longhorn-manager-upgrade-lock"
 )
 
-func Upgrade(kubeconfigPath, currentNodeID, managerImage string) error {
+func Upgrade(kubeconfigPath, currentNodeID, managerImage string, enableUpgradeVersionCheck bool) error {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, "+
@@ -69,7 +71,13 @@ func Upgrade(kubeconfigPath, currentNodeID, managerImage string) error {
 		return errors.Wrap(err, "unable to create scheme")
 	}
 
-	if err := upgradeutil.CheckUpgradePathSupported(namespace, lhClient); err != nil {
+	eventBroadcaster := record.NewBroadcaster()
+	eventBroadcaster.StartLogging(logrus.Infof)
+	// TODO: remove the wrapper when every clients have moved to use the clientset.
+	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events("")})
+	eventRecorder := eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-upgrade"})
+
+	if err := upgradeutil.CheckUpgradePath(namespace, lhClient, eventRecorder, enableUpgradeVersionCheck); err != nil {
 		return err
 	}
 

@@ -16,6 +16,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/tools/record"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -24,6 +25,7 @@ import (
 
 	emeta "github.com/longhorn/longhorn-engine/pkg/meta"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/meta"
 	"github.com/longhorn/longhorn-manager/types"
 
@@ -35,6 +37,8 @@ const (
 	// LonghornV1ToV2MinorVersionNum v1 minimal minor version when the upgrade path is from v1.x to v2.0
 	// TODO: decide the v1 minimum version that could be upgraded to v2.0
 	LonghornV1ToV2MinorVersionNum = 30
+
+	skipUpgradeVersionCheckMsg = "It is not recommended to disable the upgrade version check from %s to %s"
 )
 
 type ProgressMonitor struct {
@@ -205,8 +209,8 @@ func CreateOrUpdateLonghornVersionSetting(namespace string, lhClient *lhclientse
 	return nil
 }
 
-func CheckUpgradePathSupported(namespace string, lhClient lhclientset.Interface) error {
-	if err := checkLHUpgradePathSupported(namespace, lhClient); err != nil {
+func CheckUpgradePath(namespace string, lhClient lhclientset.Interface, eventRecorder record.EventRecorder, enableUpgradeVersionCheck bool) error {
+	if err := checkLHUpgradePathSupported(namespace, lhClient, eventRecorder, enableUpgradeVersionCheck); err != nil {
 		return err
 	}
 
@@ -219,7 +223,7 @@ func CheckUpgradePathSupported(namespace string, lhClient lhclientset.Interface)
 //	0 <= a-x <= 1 is supported, and y should be after a specific version if a-x == 1
 //	0 <= b-y <= 1 is supported when a-x == 0
 //	all downgrade is not supported
-func checkLHUpgradePathSupported(namespace string, lhClient lhclientset.Interface) error {
+func checkLHUpgradePathSupported(namespace string, lhClient lhclientset.Interface, eventRecorder record.EventRecorder, enableUpgradeVersionCheck bool) error {
 	lhCurrentVersion, err := GetCurrentLonghornVersion(namespace, lhClient)
 	if err != nil {
 		return err
@@ -233,6 +237,15 @@ func checkLHUpgradePathSupported(namespace string, lhClient lhclientset.Interfac
 
 	if !semver.IsValid(meta.Version) {
 		return fmt.Errorf("failed to upgrade since upgrading version %v is not valid", meta.Version)
+	}
+
+	if !enableUpgradeVersionCheck {
+		if semver.Compare(lhCurrentVersion, "v1.4.0") < 0 {
+			return fmt.Errorf("failed to skip the upgrade check for %s to upgrade to %s, as it only supports the current version larger than v1.4.0", lhCurrentVersion, meta.Version)
+		}
+		logrus.Warnf(skipUpgradeVersionCheckMsg, lhCurrentVersion, meta.Version)
+		eventRecorder.Eventf(&corev1.ObjectReference{Namespace: namespace, Name: "longhorn-upgrade"}, corev1.EventTypeWarning, constant.EventReasonUpgrade, skipUpgradeVersionCheckMsg, lhCurrentVersion, meta.Version)
+		return nil
 	}
 
 	lhNewMajorVersion := semver.Major(meta.Version)

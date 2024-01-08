@@ -188,7 +188,7 @@ func TestCheckUpgradePathSupported(t *testing.T) {
 }
 
 func newCheckLHUpgradePathSupported(lhClient lhclientset.Interface) error {
-	return checkLHUpgradePathSupported(TestNamespace, lhClient)
+	return checkLHUpgradePathSupported(TestNamespace, lhClient, nil, true)
 }
 
 func Test(t *testing.T) { TestingT(t) }
