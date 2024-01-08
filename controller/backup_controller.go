@@ -204,7 +204,7 @@ func (bc *BackupController) isBackupNotBeingUsedForVolumeRestore(backupName, bac
 		for _, e := range engines {
 			for _, status := range e.Status.RestoreStatus {
 				if status.IsRestoring {
-					return false, errors.Wrapf(err, "backup %v cannot be deleted due to the ongoing volume %v restoration", backupName, v.Name)
+					return false, fmt.Errorf("backup %v cannot be deleted due to the ongoing volume %v restoration", backupName, v.Name)
 				}
 			}
 		}
