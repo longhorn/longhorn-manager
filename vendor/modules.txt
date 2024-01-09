@@ -167,7 +167,7 @@ github.com/google/go-cmp/cmp/internal/value
 ## explicit; go 1.12
 github.com/google/gofuzz
 github.com/google/gofuzz/bytesource
-# github.com/google/uuid v1.4.0
+# github.com/google/uuid v1.5.0
 ## explicit
 github.com/google/uuid
 # github.com/gorilla/context v1.1.1
@@ -234,7 +234,7 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20240103081802-3993c5908447
+# github.com/longhorn/go-common-libs v0.0.0-20240104171131-82e5e6e6fe65
 ## explicit; go 1.21
 github.com/longhorn/go-common-libs/exec
 github.com/longhorn/go-common-libs/io
@@ -253,7 +253,7 @@ github.com/longhorn/go-iscsi-helper/util
 # github.com/longhorn/go-spdk-helper v0.0.0-20240103085800-6ac35f37b3a7
 ## explicit; go 1.21
 github.com/longhorn/go-spdk-helper/pkg/types
-# github.com/longhorn/longhorn-engine v1.6.0-dev-20231217.0.20240103105254-12e92e847462
+# github.com/longhorn/longhorn-engine v1.6.0-dev-20231217.0.20240108015411-54457db02db4
 ## explicit; go 1.21
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
@@ -576,8 +576,8 @@ golang.org/x/exp/slices
 # golang.org/x/mod v0.10.0
 ## explicit; go 1.17
 golang.org/x/mod/semver
-# golang.org/x/net v0.17.0
-## explicit; go 1.17
+# golang.org/x/net v0.19.0
+## explicit; go 1.18
 golang.org/x/net/context
 golang.org/x/net/http/httpguts
 golang.org/x/net/http2
@@ -597,7 +597,7 @@ golang.org/x/oauth2/internal
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
 golang.org/x/sync/singleflight
-# golang.org/x/sys v0.15.0
+# golang.org/x/sys v0.16.0
 ## explicit; go 1.18
 golang.org/x/sys/cpu
 golang.org/x/sys/execabs
@@ -658,17 +658,17 @@ google.golang.org/appengine/internal/log
 google.golang.org/appengine/internal/remote_api
 google.golang.org/appengine/internal/urlfetch
 google.golang.org/appengine/urlfetch
-# google.golang.org/genproto v0.0.0-20231002182017-d307bd883b97
+# google.golang.org/genproto v0.0.0-20231212172506-995d672761c0
 ## explicit; go 1.19
 google.golang.org/genproto/internal
 google.golang.org/genproto/protobuf/field_mask
-# google.golang.org/genproto/googleapis/api v0.0.0-20231002182017-d307bd883b97
+# google.golang.org/genproto/googleapis/api v0.0.0-20231211222908-989df2bf70f3
 ## explicit; go 1.19
 google.golang.org/genproto/googleapis/api
 google.golang.org/genproto/googleapis/api/annotations
 google.golang.org/genproto/googleapis/api/expr/v1alpha1
 google.golang.org/genproto/googleapis/api/httpbody
-# google.golang.org/genproto/googleapis/rpc v0.0.0-20231002182017-d307bd883b97
+# google.golang.org/genproto/googleapis/rpc v0.0.0-20240102182953-50ed04b92917
 ## explicit; go 1.19
 google.golang.org/genproto/googleapis/rpc/errdetails
 google.golang.org/genproto/googleapis/rpc/status
@@ -728,8 +728,8 @@ google.golang.org/grpc/serviceconfig
 google.golang.org/grpc/stats
 google.golang.org/grpc/status
 google.golang.org/grpc/tap
-# google.golang.org/protobuf v1.31.0
-## explicit; go 1.11
+# google.golang.org/protobuf v1.32.0
+## explicit; go 1.17
 google.golang.org/protobuf/encoding/protojson
 google.golang.org/protobuf/encoding/prototext
 google.golang.org/protobuf/encoding/protowire
