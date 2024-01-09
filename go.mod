@@ -37,7 +37,7 @@ replace (
 require (
 	github.com/container-storage-interface/spec v1.8.0
 	github.com/docker/go-connections v0.4.0
-	github.com/google/uuid v1.4.0
+	github.com/google/uuid v1.5.0
 	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.0
@@ -45,10 +45,10 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.6.0-dev-20231217.0.20240103150452-7f8aea1edd03
 	github.com/longhorn/backupstore v0.0.0-20231229024807-ccb82ae17a0e
-	github.com/longhorn/go-common-libs v0.0.0-20240103081802-3993c5908447
+	github.com/longhorn/go-common-libs v0.0.0-20240104171131-82e5e6e6fe65
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240103085736-72aee873888a
 	github.com/longhorn/go-spdk-helper v0.0.0-20240103085800-6ac35f37b3a7
-	github.com/longhorn/longhorn-engine v1.6.0-dev-20231217.0.20240103105254-12e92e847462
+	github.com/longhorn/longhorn-engine v1.6.0-dev-20231217.0.20240108015411-54457db02db4
 	github.com/longhorn/longhorn-instance-manager v1.6.0-dev-20231217.0.20240103160643-ab68378cb16e
 	github.com/longhorn/longhorn-share-manager v1.6.0-dev-20231217.0.20231226052309-99d57c1695ea
 	github.com/pkg/errors v0.9.1
@@ -61,8 +61,8 @@ require (
 	github.com/stretchr/testify v1.8.4
 	github.com/urfave/cli v1.22.13
 	golang.org/x/mod v0.10.0
-	golang.org/x/net v0.17.0
-	golang.org/x/sys v0.15.0
+	golang.org/x/net v0.19.0
+	golang.org/x/sys v0.16.0
 	golang.org/x/time v0.3.0
 	google.golang.org/grpc v1.60.1
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
@@ -90,8 +90,8 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.3 // indirect
 	golang.org/x/exp v0.0.0-20220827204233-334a2380cb91 // indirect
 	golang.org/x/tools v0.8.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20231002182017-d307bd883b97 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20231002182017-d307bd883b97 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20231211222908-989df2bf70f3 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240102182953-50ed04b92917 // indirect
 )
 
 require (
@@ -186,8 +186,8 @@ require (
 	golang.org/x/term v0.15.0 // indirect
 	golang.org/x/text v0.14.0
 	google.golang.org/appengine v1.6.8 // indirect
-	google.golang.org/genproto v0.0.0-20231002182017-d307bd883b97 // indirect
-	google.golang.org/protobuf v1.31.0
+	google.golang.org/genproto v0.0.0-20231212172506-995d672761c0 // indirect
+	google.golang.org/protobuf v1.32.0
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
