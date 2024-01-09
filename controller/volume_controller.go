@@ -2960,6 +2960,10 @@ func (c *VolumeController) checkAndInitVolumeOfflineReplicaRebuilding(v *longhor
 		return nil
 	}
 
+	if v.Status.RestoreRequired {
+		return nil
+	}
+
 	switch v.Spec.OfflineReplicaRebuilding {
 	case longhorn.OfflineReplicaRebuildingIgnored:
 		offlineReplicaRebuilding, err := c.ds.GetSettingValueExisted(types.SettingNameOfflineReplicaRebuilding)
