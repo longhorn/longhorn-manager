@@ -188,7 +188,7 @@ func TestCheckUpgradePathSupported(t *testing.T) {
 }
 
 func newCheckLHUpgradePathSupported(lhClient lhclientset.Interface) error {
-	return checkLHUpgradePathSupported(TestNamespace, lhClient, nil, true)
+	return checkLHUpgradePath(TestNamespace, lhClient, nil, true)
 }
 
 func Test(t *testing.T) { TestingT(t) }
@@ -209,7 +209,7 @@ func (s *TestSuite) TestCheckEngineUpgradePathSupported(c *C) {
 		expectError     bool
 	}
 	testCases := map[string]testCase{
-		"checkEngineUpgradePathSupported(...)": {
+		"checkEngineUpgradePath(...)": {
 			currentVersions: []emeta.VersionOutput{
 				{
 					ControllerAPIVersion: emeta.ControllerAPIMinVersion,
@@ -217,7 +217,7 @@ func (s *TestSuite) TestCheckEngineUpgradePathSupported(c *C) {
 				},
 			},
 		},
-		"checkEngineUpgradePathSupported(...): multiple engine": {
+		"checkEngineUpgradePath(...): multiple engine": {
 			currentVersions: []emeta.VersionOutput{
 				{
 					ControllerAPIVersion: emeta.ControllerAPIMinVersion + 1,
@@ -235,7 +235,7 @@ func (s *TestSuite) TestCheckEngineUpgradePathSupported(c *C) {
 				CLIAPIMinVersion:        emeta.CLIAPIMinVersion,
 			},
 		},
-		"checkEngineUpgradePathSupported(...): single engine upgrade path not supported": {
+		"checkEngineUpgradePath(...): single engine upgrade path not supported": {
 			currentVersions: []emeta.VersionOutput{
 				{
 					ControllerAPIVersion: emeta.ControllerAPIMinVersion - 1,
@@ -244,7 +244,7 @@ func (s *TestSuite) TestCheckEngineUpgradePathSupported(c *C) {
 			},
 			expectError: true,
 		},
-		"checkEngineUpgradePathSupported(...): multiple engine upgrade path not supported": {
+		"checkEngineUpgradePath(...): multiple engine upgrade path not supported": {
 			currentVersions: []emeta.VersionOutput{
 				{
 					ControllerAPIVersion: emeta.ControllerAPIMinVersion,
@@ -257,7 +257,7 @@ func (s *TestSuite) TestCheckEngineUpgradePathSupported(c *C) {
 			},
 			expectError: true,
 		},
-		"checkEngineUpgradePathSupported(...): downgrade": {
+		"checkEngineUpgradePath(...): downgrade": {
 			currentVersions: []emeta.VersionOutput{
 				{
 					ControllerAPIVersion: emeta.ControllerAPIVersion + 1,
@@ -266,7 +266,7 @@ func (s *TestSuite) TestCheckEngineUpgradePathSupported(c *C) {
 			},
 			expectError: true,
 		},
-		"checkEngineUpgradePathSupported(...): engine image not found": {
+		"checkEngineUpgradePath(...): engine image not found": {
 			currentVersions: []emeta.VersionOutput{},
 		},
 	}
@@ -305,7 +305,7 @@ func (s *TestSuite) TestCheckEngineUpgradePathSupported(c *C) {
 			}
 		}
 
-		err = checkEngineUpgradePathSupported(TestNamespace, lhClient, *testCase.upgradeVersion)
+		err = checkEngineUpgradePath(TestNamespace, lhClient, *testCase.upgradeVersion)
 		if testCase.expectError {
 			c.Assert(err, NotNil)
 		} else {

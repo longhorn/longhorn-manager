@@ -210,20 +210,20 @@ func CreateOrUpdateLonghornVersionSetting(namespace string, lhClient *lhclientse
 }
 
 func CheckUpgradePath(namespace string, lhClient lhclientset.Interface, eventRecorder record.EventRecorder, enableUpgradeVersionCheck bool) error {
-	if err := checkLHUpgradePathSupported(namespace, lhClient, eventRecorder, enableUpgradeVersionCheck); err != nil {
+	if err := checkLHUpgradePath(namespace, lhClient, eventRecorder, enableUpgradeVersionCheck); err != nil {
 		return err
 	}
 
-	return checkEngineUpgradePathSupported(namespace, lhClient, emeta.GetVersion())
+	return checkEngineUpgradePath(namespace, lhClient, emeta.GetVersion())
 }
 
-// checkLHUpgradePathSupported returns if the upgrade path from lhCurrentVersion to meta.Version is supported.
+// checkLHUpgradePath returns if the upgrade path from lhCurrentVersion to meta.Version is supported.
 //
 //	For example: upgrade path is from x.y.z to a.b.c,
 //	0 <= a-x <= 1 is supported, and y should be after a specific version if a-x == 1
 //	0 <= b-y <= 1 is supported when a-x == 0
 //	all downgrade is not supported
-func checkLHUpgradePathSupported(namespace string, lhClient lhclientset.Interface, eventRecorder record.EventRecorder, enableUpgradeVersionCheck bool) error {
+func checkLHUpgradePath(namespace string, lhClient lhclientset.Interface, eventRecorder record.EventRecorder, enableUpgradeVersionCheck bool) error {
 	lhCurrentVersion, err := GetCurrentLonghornVersion(namespace, lhClient)
 	if err != nil {
 		return err
@@ -290,9 +290,9 @@ func checkLHUpgradePathSupported(namespace string, lhClient lhclientset.Interfac
 	return nil
 }
 
-// checkEngineUpgradePathSupported returns error if the upgrade path from
-// current EngineImage version to emeta.ControllerAPIVersion is not supported.
-func checkEngineUpgradePathSupported(namespace string, lhClient lhclientset.Interface, newEngineVersion emeta.VersionOutput) (err error) {
+// checkEngineUpgradePath returns error if the upgrade path from
+// the current EngineImage version to emeta.ControllerAPIVersion is not supported.
+func checkEngineUpgradePath(namespace string, lhClient lhclientset.Interface, newEngineVersion emeta.VersionOutput) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed checking Engine upgrade path")
 	}()
