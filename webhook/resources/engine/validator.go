@@ -84,8 +84,10 @@ func (e *engineValidator) Update(request *admission.Request, oldObj runtime.Obje
 		}
 	}
 
-	if err := e.ds.CheckDataEngineImageCompatiblityByImage(newEngine.Spec.Image, newEngine.Spec.DataEngine); err != nil {
-		return werror.NewInvalidError(err.Error(), "engine.spec.image")
+	if oldEngine.Spec.Image != newEngine.Spec.Image {
+		if err := e.ds.CheckDataEngineImageCompatiblityByImage(newEngine.Spec.Image, newEngine.Spec.DataEngine); err != nil {
+			return werror.NewInvalidError(err.Error(), "engine.spec.image")
+		}
 	}
 
 	return nil

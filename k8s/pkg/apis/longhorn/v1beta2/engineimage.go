@@ -5,10 +5,9 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 type EngineImageState string
 
 const (
-	EngineImageStateDeploying    = EngineImageState("deploying")
-	EngineImageStateDeployed     = EngineImageState("deployed")
-	EngineImageStateIncompatible = EngineImageState("incompatible")
-	EngineImageStateError        = EngineImageState("error")
+	EngineImageStateDeploying = EngineImageState("deploying")
+	EngineImageStateDeployed  = EngineImageState("deployed")
+	EngineImageStateError     = EngineImageState("error")
 )
 
 const (
@@ -55,6 +54,8 @@ type EngineImageStatus struct {
 	RefCount int `json:"refCount"`
 	// +optional
 	NoRefSince string `json:"noRefSince"`
+	// +optional
+	Incompatible bool `json:"incompatible"`
 	// +optional
 	// +nullable
 	Conditions []Condition `json:"conditions"`

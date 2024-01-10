@@ -1326,6 +1326,8 @@ spec:
                 type: integer
               gitCommit:
                 type: string
+              incompatible:
+                type: boolean
               noRefSince:
                 type: string
               nodeDeploymentMap:

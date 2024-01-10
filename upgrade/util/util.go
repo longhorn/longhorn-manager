@@ -210,7 +210,20 @@ func CreateOrUpdateLonghornVersionSetting(namespace string, lhClient *lhclientse
 }
 
 func CheckUpgradePath(namespace string, lhClient lhclientset.Interface, eventRecorder record.EventRecorder, enableUpgradeVersionCheck bool) error {
-	if err := checkLHUpgradePath(namespace, lhClient, eventRecorder, enableUpgradeVersionCheck); err != nil {
+	lhCurrentVersion, err := GetCurrentLonghornVersion(namespace, lhClient)
+	if err != nil {
+		return err
+	}
+	if !enableUpgradeVersionCheck && lhCurrentVersion != "" {
+		if semver.Compare(lhCurrentVersion, "v1.4.0") < 0 {
+			return fmt.Errorf("failed to skip the upgrade check for %s to upgrade to %s, as it only supports the current version larger than v1.4.0", lhCurrentVersion, meta.Version)
+		}
+		logrus.Warnf(skipUpgradeVersionCheckMsg, lhCurrentVersion, meta.Version)
+		eventRecorder.Eventf(&corev1.ObjectReference{Namespace: namespace, Name: "longhorn-upgrade"}, corev1.EventTypeWarning, constant.EventReasonUpgrade, skipUpgradeVersionCheckMsg, lhCurrentVersion, meta.Version)
+		return nil
+	}
+
+	if err := checkLHUpgradePath(namespace, lhClient); err != nil {
 		return err
 	}
 
@@ -223,7 +236,7 @@ func CheckUpgradePath(namespace string, lhClient lhclientset.Interface, eventRec
 //	0 <= a-x <= 1 is supported, and y should be after a specific version if a-x == 1
 //	0 <= b-y <= 1 is supported when a-x == 0
 //	all downgrade is not supported
-func checkLHUpgradePath(namespace string, lhClient lhclientset.Interface, eventRecorder record.EventRecorder, enableUpgradeVersionCheck bool) error {
+func checkLHUpgradePath(namespace string, lhClient lhclientset.Interface) error {
 	lhCurrentVersion, err := GetCurrentLonghornVersion(namespace, lhClient)
 	if err != nil {
 		return err
@@ -237,15 +250,6 @@ func checkLHUpgradePath(namespace string, lhClient lhclientset.Interface, eventR
 
 	if !semver.IsValid(meta.Version) {
 		return fmt.Errorf("failed to upgrade since upgrading version %v is not valid", meta.Version)
-	}
-
-	if !enableUpgradeVersionCheck {
-		if semver.Compare(lhCurrentVersion, "v1.4.0") < 0 {
-			return fmt.Errorf("failed to skip the upgrade check for %s to upgrade to %s, as it only supports the current version larger than v1.4.0", lhCurrentVersion, meta.Version)
-		}
-		logrus.Warnf(skipUpgradeVersionCheckMsg, lhCurrentVersion, meta.Version)
-		eventRecorder.Eventf(&corev1.ObjectReference{Namespace: namespace, Name: "longhorn-upgrade"}, corev1.EventTypeWarning, constant.EventReasonUpgrade, skipUpgradeVersionCheckMsg, lhCurrentVersion, meta.Version)
-		return nil
 	}
 
 	lhNewMajorVersion := semver.Major(meta.Version)
@@ -768,7 +772,7 @@ func UpdateResources(namespace string, lhClient *lhclientset.Clientset, resource
 		case types.LonghornKindSetting:
 			err = updateSettings(namespace, lhClient, resourceMap.(map[string]*longhorn.Setting))
 		case types.LonghornKindVolumeAttachment:
-			err = updateVolumeAttachments(namespace, lhClient, resourceMap.(map[string]*longhorn.VolumeAttachment))
+			err = createOrUpdateVolumeAttachments(namespace, lhClient, resourceMap.(map[string]*longhorn.VolumeAttachment))
 		case types.LonghornKindSnapshot:
 			err = updateSnapshots(namespace, lhClient, resourceMap.(map[string]*longhorn.Snapshot))
 		case types.LonghornKindOrphan:
@@ -1057,21 +1061,29 @@ func updateOrphans(namespace string, lhClient *lhclientset.Clientset, orphans ma
 	return nil
 }
 
-func updateVolumeAttachments(namespace string, lhClient *lhclientset.Clientset, volumeAttachments map[string]*longhorn.VolumeAttachment) error {
+func createOrUpdateVolumeAttachments(namespace string, lhClient *lhclientset.Clientset, volumeAttachments map[string]*longhorn.VolumeAttachment) error {
 	existingVolumeAttachmentList, err := lhClient.LonghornV1beta2().VolumeAttachments(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
-	for _, existingVolumeAttachment := range existingVolumeAttachmentList.Items {
-		volumeAttachment, ok := volumeAttachments[existingVolumeAttachment.Name]
-		if !ok {
+	existingVolumeAttachmentMap := map[string]longhorn.VolumeAttachment{}
+	for _, va := range existingVolumeAttachmentList.Items {
+		existingVolumeAttachmentMap[va.Name] = va
+	}
+
+	// create VolumeAttachments for volumes upgraded from v1.4.x
+	for _, va := range volumeAttachments {
+		if existingVolumeAttachment, ok := existingVolumeAttachmentMap[va.Name]; ok {
+			if !reflect.DeepEqual(existingVolumeAttachment.Spec, va.Spec) ||
+				!reflect.DeepEqual(existingVolumeAttachment.ObjectMeta, va.ObjectMeta) {
+				if _, err = lhClient.LonghornV1beta2().VolumeAttachments(namespace).Update(context.TODO(), va, metav1.UpdateOptions{}); err != nil {
+					return err
+				}
+			}
 			continue
 		}
-		if !reflect.DeepEqual(existingVolumeAttachment.Spec, volumeAttachment.Spec) ||
-			!reflect.DeepEqual(existingVolumeAttachment.ObjectMeta, volumeAttachment.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().VolumeAttachments(namespace).Update(context.TODO(), volumeAttachment, metav1.UpdateOptions{}); err != nil {
-				return err
-			}
+		if _, err = lhClient.LonghornV1beta2().VolumeAttachments(namespace).Create(context.TODO(), va, metav1.CreateOptions{}); err != nil {
+			return err
 		}
 	}
 

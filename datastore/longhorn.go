@@ -1735,7 +1735,7 @@ func (s *DataStore) CheckDataEngineImageCompatiblityByImage(image string, dataEn
 		return err
 	}
 
-	if engineImage.Status.State == longhorn.EngineImageStateIncompatible {
+	if engineImage.Status.Incompatible {
 		return errors.Errorf("engine image %v is incompatible", engineImage.Name)
 	}
 
