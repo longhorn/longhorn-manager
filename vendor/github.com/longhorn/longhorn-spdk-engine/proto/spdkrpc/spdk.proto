@@ -17,10 +17,13 @@ service SPDKService {
     rpc ReplicaWatch(google.protobuf.Empty) returns (stream google.protobuf.Empty) {}
     rpc ReplicaRebuildingSrcStart(ReplicaRebuildingSrcStartRequest) returns (google.protobuf.Empty) {}
     rpc ReplicaRebuildingSrcFinish(ReplicaRebuildingSrcFinishRequest) returns (google.protobuf.Empty) {}
+    rpc ReplicaRebuildingSrcAttach(ReplicaRebuildingSrcAttachRequest) returns (google.protobuf.Empty) {}
+    rpc ReplicaRebuildingSrcDetach(ReplicaRebuildingSrcDetachRequest) returns (google.protobuf.Empty) {}
     rpc ReplicaSnapshotShallowCopy(ReplicaSnapshotShallowCopyRequest) returns (google.protobuf.Empty);
     rpc ReplicaRebuildingDstStart(ReplicaRebuildingDstStartRequest) returns (ReplicaRebuildingDstStartResponse) {}
     rpc ReplicaRebuildingDstFinish(ReplicaRebuildingDstFinishRequest) returns (google.protobuf.Empty) {}
     rpc ReplicaRebuildingDstSnapshotCreate(SnapshotRequest) returns (google.protobuf.Empty);
+    rpc ReplicaRebuildingDstSnapshotRevert(SnapshotRequest) returns (google.protobuf.Empty);
     rpc ReplicaBackupCreate(BackupCreateRequest) returns (BackupCreateResponse) {}
     rpc ReplicaBackupStatus(BackupStatusRequest) returns (BackupStatusResponse) {}
     rpc ReplicaBackupRestore(ReplicaBackupRestoreRequest) returns (google.protobuf.Empty) {}
@@ -111,6 +114,17 @@ message ReplicaRebuildingSrcStartRequest {
 }
 
 message ReplicaRebuildingSrcFinishRequest {
+    string name = 1;
+    string dst_replica_name = 2;
+}
+
+message ReplicaRebuildingSrcAttachRequest {
+    string name = 1;
+    string dst_replica_name = 2;
+    string dst_rebuilding_lvol_address = 3;
+}
+
+message ReplicaRebuildingSrcDetachRequest {
     string name = 1;
     string dst_replica_name = 2;
 }
