@@ -1191,7 +1191,7 @@ var (
 		Type:        SettingTypeInt,
 		Required:    true,
 		ReadOnly:    true,
-		Default:     "1024",
+		Default:     "2048",
 	}
 
 	SettingDefinitionV2DataEngineGuaranteedInstanceManagerCPU = SettingDefinition{
