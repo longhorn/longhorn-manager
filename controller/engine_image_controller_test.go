@@ -182,7 +182,8 @@ func generateEngineImageControllerTestCases() map[string]*EngineImageControllerT
 	tc.currentEngineImage.Status.EngineVersionDetails = incompatibleVersion
 	tc.currentDaemonSetPod = createEngineImageDaemonSetPod(getTestEngineImageDaemonSetName()+TestPod1, true, TestNode1)
 	tc.copyCurrentToExpected()
-	tc.expectedEngineImage.Status.State = longhorn.EngineImageStateIncompatible
+	tc.expectedEngineImage.Status.State = longhorn.EngineImageStateDeployed
+	tc.expectedEngineImage.Status.Incompatible = true
 	tc.expectedEngineImage.Status.Conditions = types.SetConditionWithoutTimestamp(tc.expectedEngineImage.Status.Conditions, longhorn.EngineImageConditionTypeReady, longhorn.ConditionStatusFalse, longhorn.EngineImageConditionTypeReadyReasonBinary, "")
 	tc.expectedEngineImage.Status.NodeDeploymentMap = map[string]bool{TestNode1: true}
 	testCases["Incompatible engine image"] = tc

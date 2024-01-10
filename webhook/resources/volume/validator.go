@@ -206,8 +206,10 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
-	if err := v.ds.CheckDataEngineImageCompatiblityByImage(newVolume.Spec.Image, newVolume.Spec.DataEngine); err != nil {
-		return werror.NewInvalidError(err.Error(), "volume.spec.image")
+	if oldVolume.Spec.Image != newVolume.Spec.Image {
+		if err := v.ds.CheckDataEngineImageCompatiblityByImage(newVolume.Spec.Image, newVolume.Spec.DataEngine); err != nil {
+			return werror.NewInvalidError(err.Error(), "volume.spec.image")
+		}
 	}
 
 	if newVolume.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
