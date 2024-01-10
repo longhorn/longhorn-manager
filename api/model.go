@@ -60,6 +60,8 @@ type Volume struct {
 	DataEngine                       longhorn.DataEngineType                `json:"dataEngine"`
 	OfflineReplicaRebuilding         longhorn.OfflineReplicaRebuilding      `json:"offlineReplicaRebuilding"`
 	OfflineReplicaRebuildingRequired bool                                   `json:"offlineReplicaRebuildingRequired"`
+	SnapshotMaxCount                 int                                    `json:"snapshotMaxCount"`
+	SnapshotMaxSize                  string                                 `json:"snapshotMaxSize"`
 
 	DiskSelector         []string                      `json:"diskSelector"`
 	NodeSelector         []string                      `json:"nodeSelector"`
@@ -1423,6 +1425,8 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		ReplicaAutoBalance:        v.Spec.ReplicaAutoBalance,
 		DataLocality:              v.Spec.DataLocality,
 		SnapshotDataIntegrity:     v.Spec.SnapshotDataIntegrity,
+		SnapshotMaxCount:          v.Spec.SnapshotMaxCount,
+		SnapshotMaxSize:           strconv.FormatInt(v.Spec.SnapshotMaxSize, 10),
 		BackupCompressionMethod:   v.Spec.BackupCompressionMethod,
 		StaleReplicaTimeout:       v.Spec.StaleReplicaTimeout,
 		Created:                   v.CreationTimestamp.String(),

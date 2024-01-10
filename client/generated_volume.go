@@ -101,6 +101,10 @@ type Volume struct {
 
 	SnapshotDataIntegrity string `json:"snapshotDataIntegrity,omitempty" yaml:"snapshot_data_integrity,omitempty"`
 
+	SnapshotMaxCount int64 `json:"snapshotMaxCount,omitempty" yaml:"snapshot_max_count,omitempty"`
+
+	SnapshotMaxSize string `json:"snapshotMaxSize,omitempty" yaml:"snapshot_max_size,omitempty"`
+
 	StaleReplicaTimeout int64 `json:"staleReplicaTimeout,omitempty" yaml:"stale_replica_timeout,omitempty"`
 
 	Standby bool `json:"standby,omitempty" yaml:"standby,omitempty"`
