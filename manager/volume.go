@@ -180,6 +180,8 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			NodeSelector:                spec.NodeSelector,
 			RevisionCounterDisabled:     spec.RevisionCounterDisabled,
 			SnapshotDataIntegrity:       spec.SnapshotDataIntegrity,
+			SnapshotMaxCount:            spec.SnapshotMaxCount,
+			SnapshotMaxSize:             spec.SnapshotMaxSize,
 			BackupCompressionMethod:     spec.BackupCompressionMethod,
 			UnmapMarkSnapChainRemoved:   spec.UnmapMarkSnapChainRemoved,
 			ReplicaSoftAntiAffinity:     spec.ReplicaSoftAntiAffinity,

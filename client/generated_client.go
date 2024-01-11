@@ -30,6 +30,8 @@ type RancherClient struct {
 	UpdateDataLocalityInput                UpdateDataLocalityInputOperations
 	UpdateAccessModeInput                  UpdateAccessModeInputOperations
 	UpdateSnapshotDataIntegrityInput       UpdateSnapshotDataIntegrityInputOperations
+	UpdateSnapshotMaxCountInput            UpdateSnapshotMaxCountInputOperations
+	UpdateSnapshotMaxSizeInput             UpdateSnapshotMaxSizeInputOperations
 	UpdateOfflineReplicaRebuildingInput    UpdateOfflineReplicaRebuildingInputOperations
 	UpdateBackupCompressionInput           UpdateBackupCompressionInputOperations
 	UpdateUnmapMarkSnapChainRemovedInput   UpdateUnmapMarkSnapChainRemovedInputOperations
@@ -107,6 +109,8 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.UpdateDataLocalityInput = newUpdateDataLocalityInputClient(client)
 	client.UpdateAccessModeInput = newUpdateAccessModeInputClient(client)
 	client.UpdateSnapshotDataIntegrityInput = newUpdateSnapshotDataIntegrityInputClient(client)
+	client.UpdateSnapshotMaxCountInput = newUpdateSnapshotMaxCountInputClient(client)
+	client.UpdateSnapshotMaxSizeInput = newUpdateSnapshotMaxSizeInputClient(client)
 	client.UpdateOfflineReplicaRebuildingInput = newUpdateOfflineReplicaRebuildingInputClient(client)
 	client.UpdateBackupCompressionInput = newUpdateBackupCompressionInputClient(client)
 	client.UpdateUnmapMarkSnapChainRemovedInput = newUpdateUnmapMarkSnapChainRemovedInputClient(client)
