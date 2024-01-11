@@ -152,6 +152,9 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		if volume.Spec.BackingImage != "" {
 			return werror.NewInvalidError("backing image is not supported for data engine v2", "")
 		}
+		if volume.Spec.Standby {
+			return werror.NewInvalidError("standby is not supported for data engine v2", "")
+		}
 	}
 
 	return nil
@@ -305,6 +308,9 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 					newVolume.Name, newVolume.Spec.DataEngine)
 				return werror.NewInvalidError(err.Error(), "")
 			}
+		}
+		if newVolume.Spec.Standby {
+			return werror.NewInvalidError("standby is not supported for data engine v2", "")
 		}
 	} else {
 		if newVolume.Spec.OfflineReplicaRebuilding != longhorn.OfflineReplicaRebuildingDisabled {
