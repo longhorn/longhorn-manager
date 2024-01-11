@@ -32,7 +32,7 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
-	monitor "github.com/longhorn/longhorn-manager/controller/monitor"
+	"github.com/longhorn/longhorn-manager/controller/monitor"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
@@ -1003,7 +1003,7 @@ func (nc *NodeController) getImTypeDataEngines(node *longhorn.Node) map[longhorn
 				dataEngines[longhorn.InstanceManagerTypeReplica] = append(dataEngines[longhorn.InstanceManagerTypeReplica], longhorn.DataEngineTypeV1)
 			}
 		case types.SettingNameV2DataEngine:
-			if err := nc.ds.ValidateV2DataEngineEnabled(enabled); err == nil {
+			if _, err := nc.ds.ValidateV2DataEngineEnabled(enabled); err == nil {
 				dataEngines[longhorn.InstanceManagerTypeAllInOne] = append(dataEngines[longhorn.InstanceManagerTypeAllInOne], longhorn.DataEngineTypeV2)
 			} else {
 				log.WithError(err).Warnf("Failed to validate %v setting", types.SettingNameV2DataEngine)

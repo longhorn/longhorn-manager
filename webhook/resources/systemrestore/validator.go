@@ -42,7 +42,7 @@ func (v *systemRestoreValidator) Create(request *admission.Request, newObj runti
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.SystemRestore", newObj), "")
 	}
 
-	areAllVolumesDetached, err := v.ds.AreAllVolumesDetached(longhorn.DataEngineTypeAll)
+	areAllVolumesDetached, _, err := v.ds.AreAllVolumesDetached(longhorn.DataEngineTypeAll)
 	if err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -218,50 +219,112 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 	if err != nil {
 		return err
 	}
-	switch name {
-	case string(types.SettingNameUpgradeChecker):
+
+	if err := sc.syncNonDangerZoneSettingsForManagedComponents(types.SettingName(name)); err != nil {
+		return err
+	}
+
+	return sc.syncDangerZoneSettingsForManagedComponents(types.SettingName(name))
+}
+
+func (sc *SettingController) syncNonDangerZoneSettingsForManagedComponents(settingName types.SettingName) error {
+	switch settingName {
+	case types.SettingNameUpgradeChecker:
 		if err := sc.syncUpgradeChecker(); err != nil {
 			return err
 		}
-	case string(types.SettingNameBackupTarget), string(types.SettingNameBackupTargetCredentialSecret), string(types.SettingNameBackupstorePollInterval):
+	case types.SettingNameBackupTarget, types.SettingNameBackupTargetCredentialSecret, types.SettingNameBackupstorePollInterval:
 		if err := sc.syncBackupTarget(); err != nil {
 			return err
 		}
-	case string(types.SettingNameTaintToleration):
-		if err := sc.updateTaintToleration(); err != nil {
-			return err
-		}
-	case string(types.SettingNameSystemManagedComponentsNodeSelector):
-		if err := sc.updateNodeSelector(); err != nil {
-			return err
-		}
-	case string(types.SettingNameGuaranteedInstanceManagerCPU), string(types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU):
-		if err := sc.updateInstanceManagerCPURequest(); err != nil {
-			return err
-		}
-	case string(types.SettingNamePriorityClass):
-		if err := sc.updatePriorityClass(); err != nil {
-			return err
-		}
-	case string(types.SettingNameKubernetesClusterAutoscalerEnabled):
+	case types.SettingNameKubernetesClusterAutoscalerEnabled:
 		if err := sc.updateKubernetesClusterAutoscalerEnabled(); err != nil {
 			return err
 		}
-	case string(types.SettingNameStorageNetwork):
-		if err := sc.updateCNI(); err != nil {
-			return err
-		}
-	case string(types.SettingNameSupportBundleFailedHistoryLimit):
+	case types.SettingNameSupportBundleFailedHistoryLimit:
 		if err := sc.cleanupFailedSupportBundles(); err != nil {
 			return err
 		}
-	case string(types.SettingNameLogLevel):
+	case types.SettingNameLogLevel:
 		if err := sc.updateLogLevel(); err != nil {
 			return err
 		}
-	case string(types.SettingNameV1DataEngine), string(types.SettingNameV2DataEngine):
-		if err := sc.updateDataEngine(types.SettingName(name)); err != nil {
-			return err
+	}
+
+	return nil
+}
+
+func (sc *SettingController) isDangerZoneSetting(settingName types.SettingName) bool {
+	settingDefinition, exists := types.GetSettingDefinition(settingName)
+	if !exists {
+		sc.logger.Debugf("Setting %s does not exist", settingName)
+		return false
+	}
+
+	return settingDefinition.Category == types.SettingCategoryDangerZone
+}
+
+func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingName types.SettingName) error {
+	if !sc.isDangerZoneSetting(settingName) {
+		return nil
+	}
+
+	dangerSettingsRequiringAllVolumesDetached := []types.SettingName{
+		types.SettingNameTaintToleration,
+		types.SettingNameSystemManagedComponentsNodeSelector,
+		types.SettingNameGuaranteedInstanceManagerCPU,
+		types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU,
+		types.SettingNamePriorityClass,
+		types.SettingNameStorageNetwork,
+	}
+
+	if slices.Contains(dangerSettingsRequiringAllVolumesDetached, settingName) {
+		detached, _, err := sc.ds.AreAllVolumesDetached(longhorn.DataEngineTypeAll)
+		if err != nil {
+			return errors.Wrapf(err, "failed to check volume detachment for %v setting update", settingName)
+		}
+
+		if !detached {
+			return errors.Errorf("failed to apply %v setting to Longhorn components when there are attached volumes. It will be eventually applied", settingName)
+		}
+
+		switch settingName {
+		case types.SettingNameTaintToleration:
+			if err := sc.updateTaintToleration(); err != nil {
+				return err
+			}
+		case types.SettingNameSystemManagedComponentsNodeSelector:
+			if err := sc.updateNodeSelector(); err != nil {
+				return err
+			}
+		case types.SettingNameGuaranteedInstanceManagerCPU, types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU:
+			if err := sc.updateInstanceManagerCPURequest(); err != nil {
+				return err
+			}
+		case types.SettingNamePriorityClass:
+			if err := sc.updatePriorityClass(); err != nil {
+				return err
+			}
+		case types.SettingNameStorageNetwork:
+			if err := sc.updateCNI(); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+
+	// These settings are also protected by webhook validators, when there are new updates.
+	// Updating them is only allowed when all volumes of the data engine are detached.
+	dangerSettingsRequiringSpecificDataEngineVolumesDetached := []types.SettingName{
+		types.SettingNameV1DataEngine,
+		types.SettingNameV2DataEngine,
+	}
+
+	if slices.Contains(dangerSettingsRequiringSpecificDataEngineVolumesDetached, settingName) {
+		if err := sc.updateDataEngine(settingName); err != nil {
+			return errors.Wrapf(err, "failed to apply %v setting to Longhorn instance managers when there are attached volumes. "+
+				"It will be eventually applied", settingName)
 		}
 	}
 
@@ -483,6 +546,7 @@ func (sc *SettingController) removePodsAWSIAMRoleAnnotation() error {
 	return nil
 }
 
+// updateTaintToleration deletes all user-deployed and system-managed components immediately with the updated taint toleration.
 func (sc *SettingController) updateTaintToleration() error {
 	setting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameTaintToleration)
 	if err != nil {
@@ -603,6 +667,7 @@ func (sc *SettingController) updateTolerationForDaemonset(ds *appsv1.DaemonSet, 
 	return nil
 }
 
+// getLastAppliedTolerationsList returns last applied tolerations list.
 func getLastAppliedTolerationsList(obj runtime.Object) ([]corev1.Toleration, error) {
 	lastAppliedTolerations, err := util.GetAnnotation(obj, types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix))
 	if err != nil {
@@ -613,7 +678,7 @@ func getLastAppliedTolerationsList(obj runtime.Object) ([]corev1.Toleration, err
 		lastAppliedTolerations = "[]"
 	}
 
-	lastAppliedTolerationsList := []corev1.Toleration{}
+	var lastAppliedTolerationsList []corev1.Toleration
 	if err := json.Unmarshal([]byte(lastAppliedTolerations), &lastAppliedTolerationsList); err != nil {
 		return nil, err
 	}
@@ -621,6 +686,7 @@ func getLastAppliedTolerationsList(obj runtime.Object) ([]corev1.Toleration, err
 	return lastAppliedTolerationsList, nil
 }
 
+// updatePriorityClass deletes all user-deployed and system-managed components immediately with the updated priority class.
 func (sc *SettingController) updatePriorityClass() error {
 	setting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNamePriorityClass)
 	if err != nil {
@@ -746,19 +812,11 @@ func (sc *SettingController) updateKubernetesClusterAutoscalerEnabled() error {
 	return nil
 }
 
+// updateCNI deletes all system-managed data plane components immediately with the updated CNI annotation.
 func (sc *SettingController) updateCNI() error {
 	storageNetwork, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
 	if err != nil {
 		return err
-	}
-
-	volumesDetached, err := sc.ds.AreAllVolumesDetached(longhorn.DataEngineTypeAll)
-	if err != nil {
-		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameStorageNetwork)
-	}
-
-	if !volumesDetached {
-		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting to Longhorn workloads when there are attached volumes", types.SettingNameStorageNetwork)}
 	}
 
 	nadAnnot := string(types.CNIAnnotationNetworks)
@@ -804,6 +862,7 @@ func (sc *SettingController) updateLogLevel() error {
 	return nil
 }
 
+// updateDataEngine deletes the corresponding instance manager pods immediately if the data engine setting is disabled.
 func (sc *SettingController) updateDataEngine(setting types.SettingName) error {
 	enabled, err := sc.ds.GetSettingAsBool(setting)
 	if err != nil {
@@ -811,15 +870,19 @@ func (sc *SettingController) updateDataEngine(setting types.SettingName) error {
 	}
 
 	var dataEngine longhorn.DataEngineType
+	var ims []*longhorn.InstanceManager
+
 	switch setting {
 	case types.SettingNameV1DataEngine:
 		dataEngine = longhorn.DataEngineTypeV1
-		if err := sc.ds.ValidateV1DataEngineEnabled(enabled); err != nil {
+		ims, err = sc.ds.ValidateV1DataEngineEnabled(enabled)
+		if err != nil {
 			return err
 		}
 	case types.SettingNameV2DataEngine:
 		dataEngine = longhorn.DataEngineTypeV2
-		if err := sc.ds.ValidateV2DataEngineEnabled(enabled); err != nil {
+		ims, err = sc.ds.ValidateV2DataEngineEnabled(enabled)
+		if err != nil {
 			return err
 		}
 	default:
@@ -827,20 +890,21 @@ func (sc *SettingController) updateDataEngine(setting types.SettingName) error {
 	}
 
 	if !enabled {
-		return sc.cleanupInstanceManager(dataEngine)
+		return sc.cleanupInstanceManager(ims, dataEngine)
 	}
 
 	return nil
 }
 
-func (sc *SettingController) cleanupInstanceManager(dataEngine longhorn.DataEngineType) error {
-	imMap, err := sc.ds.ListInstanceManagersBySelectorRO("", "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
-	if err != nil {
-		return errors.Wrapf(err, "failed to list instance managers for cleaning up %v data engine", dataEngine)
+func (sc *SettingController) cleanupInstanceManager(ims []*longhorn.InstanceManager, dataEngine longhorn.DataEngineType) error {
+	if len(ims) == 0 {
+		return nil
 	}
 
-	for _, im := range imMap {
-		sc.logger.Infof("Cleaning up the instance manager %v for %v data engine", im.Name, dataEngine)
+	sc.logger.Infof("Cleaning up %v instance managers immediately if all volumes are detached", dataEngine)
+
+	for _, im := range ims {
+		sc.logger.Infof("Cleaning up the %v instance manager %v", dataEngine, im.Name)
 		if err := sc.ds.DeleteInstanceManager(im.Name); err != nil {
 			return err
 		}
@@ -872,6 +936,7 @@ func getFinalTolerations(existingTolerations, lastAppliedTolerations, newTolerat
 	return resultSlice
 }
 
+// updateNodeSelector deletes all user-deployed and system-managed components immediately with the updated node selector.
 func (sc *SettingController) updateNodeSelector() error {
 	setting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameSystemManagedComponentsNodeSelector)
 	if err != nil {
@@ -1139,6 +1204,7 @@ func (sc *SettingController) enqueueSettingForBackupTarget(obj interface{}) {
 	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameBackupTarget))
 }
 
+// updateInstanceManagerCPURequest deletes all instance manager pods immediately with the updated CPU request.
 func (sc *SettingController) updateInstanceManagerCPURequest() error {
 	imPodList, err := sc.ds.ListInstanceManagerPods()
 	if err != nil {
@@ -1148,6 +1214,7 @@ func (sc *SettingController) updateInstanceManagerCPURequest() error {
 	if err != nil {
 		return err
 	}
+
 	for _, imPod := range imPodList {
 		if _, exists := imMap[imPod.Name]; !exists {
 			continue

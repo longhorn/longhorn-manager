@@ -2801,6 +2801,7 @@ spec:
           metadata:
             type: object
           value:
+            description: The value of the setting.
             type: string
         required:
         - value

@@ -13,6 +13,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -272,6 +273,12 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 
 		if tc.currentPodStatus != nil {
 			pod := newPod(tc.currentPodStatus, im.Name, im.Namespace, im.Spec.NodeID)
+			var containers []corev1.Container
+			containers = append(containers, corev1.Container{
+				Name:      "instance-manager",
+				Resources: corev1.ResourceRequirements{Requests: corev1.ResourceList{"cpu": resource.MustParse("480m")}}},
+			)
+			pod.Spec.Containers = containers
 			err = pIndexer.Add(pod)
 			c.Assert(err, IsNil)
 			_, err = kubeClient.CoreV1().Pods(im.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
