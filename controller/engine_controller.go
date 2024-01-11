@@ -30,7 +30,6 @@ import (
 	lhexec "github.com/longhorn/go-common-libs/exec"
 	lhtypes "github.com/longhorn/go-common-libs/types"
 
-	emeta "github.com/longhorn/longhorn-engine/pkg/meta"
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
@@ -926,7 +925,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		return err
 	}
 
-	if (datastore.IsDataEngineV1(engine.Spec.DataEngine) && cliAPIVersion >= emeta.CLIAPIMinVersion) ||
+	if (datastore.IsDataEngineV1(engine.Spec.DataEngine) && cliAPIVersion >= engineapi.CLIAPIMinVersionForExistingEngineBeforeUpgrade) ||
 		datastore.IsDataEngineV2(engine.Spec.DataEngine) {
 		volumeInfo, err := engineClientProxy.VolumeGet(engine)
 		if err != nil {
@@ -1258,9 +1257,11 @@ func IsValidForExpansion(engine *longhorn.Engine, cliAPIVersion, imAPIVersion in
 	if engine.Spec.VolumeSize < engine.Status.CurrentSize {
 		return false, fmt.Errorf("the expected size %v of engine %v should not be smaller than the current size %v", engine.Spec.VolumeSize, engine.Name, engine.Status.CurrentSize)
 	}
-	if cliAPIVersion < emeta.CLIAPIMinVersion {
+
+	if cliAPIVersion < engineapi.CLIAPIMinVersionForExistingEngineBeforeUpgrade {
 		return false, nil
 	}
+
 	if !engineapi.IsEndpointTGTBlockDev(engine.Status.Endpoint) {
 		return true, nil
 	}
@@ -1306,7 +1307,7 @@ func preRestoreCheckAndSync(log logrus.FieldLogger, engine *longhorn.Engine,
 		return false, fmt.Errorf("backup volume is empty for backup restoration of engine %v", engine.Name)
 	}
 
-	if cliAPIVersion >= emeta.CLIAPIMinVersion {
+	if cliAPIVersion >= engineapi.CLIAPIMinVersionForExistingEngineBeforeUpgrade {
 		return checkSizeBeforeRestoration(log, engine, ds)
 	}
 

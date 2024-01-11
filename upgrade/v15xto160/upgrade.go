@@ -44,7 +44,17 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 		return err
 	}
 
+	if err := upgradeEngineImages(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
 	return deleteCSIServices(namespace, kubeClient)
+}
+
+func UpgradeResourcesStatus(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) error {
+	// Currently there are no statuses to upgrade. See UpgradeResources -> upgradeVolumes or previous Longhorn versions
+	// for examples.
+	return nil
 }
 
 func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
@@ -168,6 +178,36 @@ func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset, resource
 	return nil
 }
 
+func deleteCSIServices(namespace string, kubeClient *clientset.Clientset) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"delete CSI service failed")
+	}()
+
+	servicesToDelete := map[string]struct{}{
+		types.CSIAttacherName:    {},
+		types.CSIProvisionerName: {},
+		types.CSIResizerName:     {},
+		types.CSISnapshotterName: {},
+	}
+
+	servicesInCluster, err := kubeClient.CoreV1().Services(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return errors.Wrapf(err, "failed to list all existing Longhorn services during the CSI service deletion")
+	}
+
+	for _, serviceInCluster := range servicesInCluster.Items {
+		if _, ok := servicesToDelete[serviceInCluster.Name]; !ok {
+			continue
+		}
+		if err = kubeClient.CoreV1().Services(namespace).Delete(context.TODO(), serviceInCluster.Name, metav1.DeleteOptions{}); err != nil {
+			// Best effort. Dummy services have no function and no finalizer, so we can proceed on failure.
+			logrus.Warnf("Deprecated CSI dummy service could not be deleted during upgrade: %v", err)
+		}
+	}
+
+	return nil
+}
+
 func upgradeVolumeAttachments(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade VolumeAttachment failed")
@@ -210,38 +250,24 @@ func upgradeVolumeAttachments(namespace string, lhClient *lhclientset.Clientset,
 	return nil
 }
 
-func deleteCSIServices(namespace string, kubeClient *clientset.Clientset) (err error) {
+func upgradeEngineImages(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, upgradeLogPrefix+"delete CSI service failed")
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade engine images failed")
 	}()
 
-	servicesToDelete := map[string]struct{}{
-		types.CSIAttacherName:    {},
-		types.CSIProvisionerName: {},
-		types.CSIResizerName:     {},
-		types.CSISnapshotterName: {},
-	}
-
-	servicesInCluster, err := kubeClient.CoreV1().Services(namespace).List(context.TODO(), metav1.ListOptions{})
+	engineImages, err := upgradeutil.ListAndUpdateEngineImagesInProvidedCache(namespace, lhClient, resourceMaps)
 	if err != nil {
-		return errors.Wrapf(err, "failed to list all existing Longhorn services during the CSI service deletion")
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing engine images during the upgrade")
 	}
 
-	for _, serviceInCluster := range servicesInCluster.Items {
-		if _, ok := servicesToDelete[serviceInCluster.Name]; !ok {
-			continue
-		}
-		if err = kubeClient.CoreV1().Services(namespace).Delete(context.TODO(), serviceInCluster.Name, metav1.DeleteOptions{}); err != nil {
-			// Best effort. Dummy services have no function and no finalizer, so we can proceed on failure.
-			logrus.Warnf("Deprecated CSI dummy service could not be deleted during upgrade: %v", err)
+	for _, ei := range engineImages {
+		if ei.Status.State == longhorn.EngineImageStateIncompatible {
+			ei.Status.Incompatible = true
 		}
 	}
 
-	return nil
-}
-
-func UpgradeResourcesStatus(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) error {
-	// Currently there are no statuses to upgrade. See UpgradeResources -> upgradeVolumes or previous Longhorn versions
-	// for examples.
 	return nil
 }

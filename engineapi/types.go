@@ -19,6 +19,12 @@ const (
 	CLIVersionFour = 4
 	CLIVersionFive = 5
 
+	// CLIAPIMinVersionForExistingEngineBeforeUpgrade will enable already created volumes before the upgrade to operate normally.
+	// Additionally, they will not be impacted by the new engine upgrade enforcement mechanism.
+	// This mechanism exclusively focuses on preventing users from creating or updating a volume, engine, or replica using any incompatible version.
+	// It is strictly bound to the default engine image of the release, emeta.CLIAPIMinVersion.
+	CLIAPIMinVersionForExistingEngineBeforeUpgrade = 3
+
 	InstanceManagerProcessManagerServiceDefaultPort = 8500
 	InstanceManagerProxyServiceDefaultPort          = InstanceManagerProcessManagerServiceDefaultPort + 1 // 8501
 	InstanceManagerDiskServiceDefaultPort           = InstanceManagerProcessManagerServiceDefaultPort + 2 // 8502
@@ -242,9 +248,11 @@ func ValidateReplicaURL(url string) error {
 func CheckCLICompatibility(cliVersion, cliMinVersion int) error {
 	currentCLIVersion := emeta.CLIAPIVersion
 	minCLIVersion := emeta.CLIAPIMinVersion
+
 	if minCLIVersion > cliVersion || currentCLIVersion < cliMinVersion {
 		return fmt.Errorf("manager current CLI version %v and min CLI version %v is not compatible with CLIVersion %v and CLIMinVersion %v", currentCLIVersion, minCLIVersion, cliVersion, cliMinVersion)
 	}
+
 	return nil
 }
 

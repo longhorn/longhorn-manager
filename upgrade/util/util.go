@@ -1071,7 +1071,6 @@ func createOrUpdateVolumeAttachments(namespace string, lhClient *lhclientset.Cli
 		existingVolumeAttachmentMap[va.Name] = va
 	}
 
-	// create VolumeAttachments for volumes upgraded from v1.4.x
 	for _, va := range volumeAttachments {
 		if existingVolumeAttachment, ok := existingVolumeAttachmentMap[va.Name]; ok {
 			if !reflect.DeepEqual(existingVolumeAttachment.Spec, va.Spec) ||
@@ -1080,10 +1079,10 @@ func createOrUpdateVolumeAttachments(namespace string, lhClient *lhclientset.Cli
 					return err
 				}
 			}
-			continue
-		}
-		if _, err = lhClient.LonghornV1beta2().VolumeAttachments(namespace).Create(context.TODO(), va, metav1.CreateOptions{}); err != nil {
-			return err
+		} else {
+			if _, err = lhClient.LonghornV1beta2().VolumeAttachments(namespace).Create(context.TODO(), va, metav1.CreateOptions{}); err != nil {
+				return err
+			}
 		}
 	}
 
