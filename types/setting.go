@@ -16,6 +16,8 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
+	"k8s.io/apimachinery/pkg/util/sets"
+
 	"github.com/longhorn/longhorn-manager/meta"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -1164,7 +1166,7 @@ var (
 		DisplayName: "V1 Data Engine",
 		Description: "Setting that allows you to enable the V1 Data Engine. \n\n" +
 			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached volumes. \n\n",
-		Category: SettingCategoryGeneral,
+		Category: SettingCategoryDangerZone,
 		Type:     SettingTypeBool,
 		Required: true,
 		ReadOnly: false,
@@ -1177,7 +1179,7 @@ var (
 			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached volumes. \n\n" +
 			"  - When applying the setting, Longhorn will restart all instance-manager pods. \n\n" +
 			"  - When the V2 Data Engine is enabled, each instance-manager pod utilizes 1 CPU core. This high CPU usage is attributed to the spdk_tgt process running within each instance-manager pod. The spdk_tgt process is responsible for handling input/output (IO) operations and requires intensive polling. As a result, it consumes 100% of a dedicated CPU core to efficiently manage and process the IO requests, ensuring optimal performance and responsiveness for storage operations. \n\n",
-		Category: SettingCategoryV2DataEngine,
+		Category: SettingCategoryDangerZone,
 		Type:     SettingTypeBool,
 		Required: true,
 		ReadOnly: false,
@@ -1201,7 +1203,7 @@ var (
 			"  - Value 0 means unsetting CPU requests for instance manager pods for v2 data engine. \n\n" +
 			"  - This integer value is range from 1000 to 8000. \n\n" +
 			"  - After this setting is changed, all instance manager pods using this global setting on all the nodes will be automatically restarted. In other words, DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. \n\n",
-		Category: SettingCategoryV2DataEngine,
+		Category: SettingCategoryDangerZone,
 		Type:     SettingTypeInt,
 		Required: true,
 		ReadOnly: false,
@@ -1725,4 +1727,15 @@ func SetSettingDefinition(name SettingName, definition SettingDefinition) {
 	settingDefinitionsLock.Lock()
 	defer settingDefinitionsLock.Unlock()
 	settingDefinitions[name] = definition
+}
+
+func GetDangerZoneSettings() sets.Set[SettingName] {
+	settingList := sets.New[SettingName]()
+	for settingName, setting := range settingDefinitions {
+		if setting.Category == SettingCategoryDangerZone {
+			settingList = settingList.Insert(settingName)
+		}
+	}
+
+	return settingList
 }

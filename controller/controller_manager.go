@@ -134,6 +134,7 @@ func ParseResourceRequirement(val string) (*corev1.ResourceRequirements, error) 
 	}, nil
 }
 
+// GetInstanceManagerCPURequirement returns the instance manager CPU requirement
 func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*corev1.ResourceRequirements, error) {
 	im, err := ds.GetInstanceManager(imName)
 	if err != nil {
@@ -210,6 +211,7 @@ func EnhancedDefaultControllerRateLimiter() workqueue.RateLimiter {
 	)
 }
 
+// IsSameGuaranteedCPURequirement returns true if the resource requirement a is equal to the resource requirement b
 func IsSameGuaranteedCPURequirement(a, b *corev1.ResourceRequirements) bool {
 	var aQ, bQ resource.Quantity
 	if a != nil && a.Requests != nil {

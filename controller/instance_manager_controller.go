@@ -453,7 +453,15 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		return err
 	}
 
-	if im.Status.CurrentState != longhorn.InstanceManagerStateError && im.Status.CurrentState != longhorn.InstanceManagerStateStopped {
+	isSettingSynced, isPodDeletedOrNotRunning, areInstancesRunningInPod, err := imc.areDangerZoneSettingsSyncedToIMPod(im)
+	if err != nil {
+		return err
+	}
+
+	isPodDeletionNotRequired := isSettingSynced || areInstancesRunningInPod || isPodDeletedOrNotRunning
+	if im.Status.CurrentState != longhorn.InstanceManagerStateError &&
+		im.Status.CurrentState != longhorn.InstanceManagerStateStopped &&
+		isPodDeletionNotRequired {
 		return nil
 	}
 
@@ -466,15 +474,14 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 	}
 
 	// Since `spec.nodeName` is specified during the pod creation,
-	// the node cordon can not prevent the pod being launched.
-	if unschedulable, err := imc.ds.IsKubeNodeUnschedulable(im.Spec.NodeID); unschedulable || err != nil {
+	// the node cordon cannot prevent the pod being launched.
+	if unscheduled, err := imc.ds.IsKubeNodeUnschedulable(im.Spec.NodeID); unscheduled || err != nil {
 		return err
 	}
 
 	if err := imc.createInstanceManagerPod(im); err != nil {
 		return err
 	}
-	// The instance manager state will be updated in the next reconcile loop.
 
 	return nil
 }
@@ -513,6 +520,128 @@ func (imc *InstanceManagerController) annotateCASafeToEvict(im *longhorn.Instanc
 	}
 
 	return nil
+}
+
+func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *longhorn.InstanceManager) (isSynced, isPodDeletedOrNotRunning, areInstancesRunningInPod bool, err error) {
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+		return false, true, false, nil
+	}
+
+	// nolint:all
+	for _, instance := range types.ConsolidateInstances(im.Status.InstanceEngines, im.Status.InstanceReplicas, im.Status.Instances) {
+		if instance.Status.State == longhorn.InstanceStateRunning || instance.Status.State == longhorn.InstanceStateStarting {
+			return false, false, true, nil
+		}
+	}
+
+	pod, err := imc.ds.GetPod(im.Name)
+	if err != nil {
+		return false, false, false, errors.Wrapf(err, "cannot get pod for instance manager %v", im.Name)
+	}
+	if pod == nil {
+		return false, true, false, nil
+	}
+
+	for settingName := range types.GetDangerZoneSettings() {
+		isSettingSynced := true
+		setting, err := imc.ds.GetSettingWithAutoFillingRO(settingName)
+		if err != nil {
+			return false, false, false, err
+		}
+		switch settingName {
+		case types.SettingNameTaintToleration:
+			isSettingSynced, err = imc.isSettingTaintTolerationSynced(setting, pod)
+		case types.SettingNameSystemManagedComponentsNodeSelector:
+			isSettingSynced, err = imc.isSettingNodeSelectorSynced(setting, pod)
+		case types.SettingNameGuaranteedInstanceManagerCPU, types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU:
+			isSettingSynced, err = imc.isSettingGuaranteedInstanceManagerCPUSynced(setting, pod)
+		case types.SettingNamePriorityClass:
+			isSettingSynced, err = imc.isSettingPriorityClassSynced(setting, pod)
+		case types.SettingNameStorageNetwork:
+			isSettingSynced, err = imc.isSettingStorageNetworkSynced(setting, pod)
+		case types.SettingNameV1DataEngine, types.SettingNameV2DataEngine:
+			isSettingSynced, err = imc.isSettingDataEngineSynced(settingName, im)
+		}
+		if err != nil {
+			return false, false, false, err
+		}
+		if !isSettingSynced {
+			return false, false, false, nil
+		}
+	}
+
+	return true, false, false, nil
+}
+
+func (imc *InstanceManagerController) isSettingTaintTolerationSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
+	newTolerationsList, err := types.UnmarshalTolerations(setting.Value)
+	if err != nil {
+		return false, err
+	}
+	newTolerationsMap := util.TolerationListToMap(newTolerationsList)
+	lastAppliedTolerations, err := getLastAppliedTolerationsList(pod)
+	if err != nil {
+		return false, err
+	}
+
+	return reflect.DeepEqual(util.TolerationListToMap(lastAppliedTolerations), newTolerationsMap), nil
+}
+
+func (imc *InstanceManagerController) isSettingNodeSelectorSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
+	newNodeSelector, err := types.UnmarshalNodeSelector(setting.Value)
+	if err != nil {
+		return false, err
+	}
+	if pod.Spec.NodeSelector == nil && len(newNodeSelector) == 0 {
+		return true, nil
+	}
+
+	return reflect.DeepEqual(pod.Spec.NodeSelector, newNodeSelector), nil
+}
+
+func (imc *InstanceManagerController) isSettingGuaranteedInstanceManagerCPUSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
+	lhNode, err := imc.ds.GetNode(pod.Spec.NodeName)
+	if err != nil {
+		return false, err
+	}
+	if types.GetCondition(lhNode.Status.Conditions, longhorn.NodeConditionTypeReady).Status != longhorn.ConditionStatusTrue {
+		return true, nil
+	}
+
+	resourceReq, err := GetInstanceManagerCPURequirement(imc.ds, pod.Name)
+	if err != nil {
+		return false, err
+	}
+	podResourceReq := pod.Spec.Containers[0].Resources
+	return IsSameGuaranteedCPURequirement(resourceReq, &podResourceReq), nil
+}
+
+func (imc *InstanceManagerController) isSettingPriorityClassSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
+	return pod.Spec.PriorityClassName == setting.Value, nil
+}
+
+func (imc *InstanceManagerController) isSettingStorageNetworkSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
+	nadAnnot := string(types.CNIAnnotationNetworks)
+
+	return pod.Annotations[nadAnnot] == setting.Value, nil
+}
+
+func (imc *InstanceManagerController) isSettingDataEngineSynced(settingName types.SettingName, im *longhorn.InstanceManager) (bool, error) {
+	enabled, err := imc.ds.GetSettingAsBool(settingName)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get %v setting for updating data engine", settingName)
+	}
+	var dataEngine longhorn.DataEngineType
+	switch settingName {
+	case types.SettingNameV1DataEngine:
+		dataEngine = longhorn.DataEngineTypeV1
+	case types.SettingNameV2DataEngine:
+		dataEngine = longhorn.DataEngineTypeV2
+	}
+	if !enabled && im.Spec.DataEngine == dataEngine {
+		return false, nil
+	}
+	return true, nil
 }
 
 func (imc *InstanceManagerController) syncInstanceManagerAPIVersion(im *longhorn.InstanceManager) error {

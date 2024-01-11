@@ -319,34 +319,11 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 				}
 			}
 		}
-	case types.SettingNameTaintToleration:
-		volumesDetached, err := s.AreAllVolumesDetachedState()
-		if err != nil {
-			return errors.Wrapf(err, "failed to list volumes before modifying toleration setting")
-		}
-		if !volumesDetached {
-			return &types.ErrorInvalidState{Reason: "cannot modify toleration setting before all volumes are detached"}
-		}
-	case types.SettingNameSystemManagedComponentsNodeSelector:
-		volumesDetached, err := s.AreAllVolumesDetachedState()
-		if err != nil {
-			return errors.Wrapf(err, "failed to list volumes before modifying node selector for managed components setting")
-		}
-		if !volumesDetached {
-			return &types.ErrorInvalidState{Reason: "cannot modify node selector for managed components setting before all volumes are detached"}
-		}
 	case types.SettingNamePriorityClass:
 		if value != "" {
 			if _, err := s.GetPriorityClass(value); err != nil {
 				return errors.Wrapf(err, "failed to get priority class %v before modifying priority class setting", value)
 			}
-		}
-		volumesDetached, err := s.AreAllVolumesDetachedState()
-		if err != nil {
-			return errors.Wrapf(err, "failed to list volumes before modifying priority class setting")
-		}
-		if !volumesDetached {
-			return &types.ErrorInvalidState{Reason: "cannot modify priority class setting before all volumes are detached"}
 		}
 	case types.SettingNameGuaranteedInstanceManagerCPU, types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU:
 		guaranteedInstanceManagerCPU, err := s.GetSettingWithAutoFillingRO(sName)
@@ -357,44 +334,42 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 		if err := types.ValidateCPUReservationValues(sName, guaranteedInstanceManagerCPU.Value); err != nil {
 			return err
 		}
-	case types.SettingNameStorageNetwork:
-		volumesDetached, err := s.AreAllVolumesDetached(longhorn.DataEngineTypeAll)
-		if err != nil {
-			return errors.Wrapf(err, "failed to check volume detachment for %v setting update", name)
-		}
-		if !volumesDetached {
-			return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot apply %v setting to Longhorn workloads when there are attached volumes", name)}
-		}
 	case types.SettingNameV1DataEngine:
 		old, err := s.GetSettingWithAutoFillingRO(types.SettingNameV1DataEngine)
 		if err != nil {
 			return err
 		}
+
 		if old.Value != value {
 			dataEngineEnabled, err := strconv.ParseBool(value)
 			if err != nil {
 				return err
 			}
-			err = s.ValidateV1DataEngineEnabled(dataEngineEnabled)
+
+			_, err = s.ValidateV1DataEngineEnabled(dataEngineEnabled)
 			if err != nil {
 				return err
 			}
 		}
+
 	case types.SettingNameV2DataEngine:
 		old, err := s.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngine)
 		if err != nil {
 			return err
 		}
+
 		if old.Value != value {
 			dataEngineEnabled, err := strconv.ParseBool(value)
 			if err != nil {
 				return err
 			}
-			err = s.ValidateV2DataEngineEnabled(dataEngineEnabled)
+
+			_, err = s.ValidateV2DataEngineEnabled(dataEngineEnabled)
 			if err != nil {
 				return err
 			}
 		}
+
 	case types.SettingNameAutoCleanupSystemGeneratedSnapshot:
 		disablePurgeValue, err := s.GetSettingAsBool(types.SettingNameDisableSnapshotPurge)
 		if err != nil {
@@ -423,94 +398,107 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 	return nil
 }
 
-func (s *DataStore) ValidateV1DataEngineEnabled(dataEngineEnabled bool) error {
+func (s *DataStore) ValidateV1DataEngineEnabled(dataEngineEnabled bool) (ims []*longhorn.InstanceManager, err error) {
 	if !dataEngineEnabled {
-		allVolumesDetached, err := s.AreAllVolumesDetached(longhorn.DataEngineTypeV1)
+		allVolumesDetached, _ims, err := s.AreAllVolumesDetached(longhorn.DataEngineTypeV1)
 		if err != nil {
-			return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameV1DataEngine)
+			return nil, errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameV1DataEngine)
 		}
+		ims = _ims
+
 		if !allVolumesDetached {
-			return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot apply %v setting to Longhorn workloads when there are attached v1 volumes", types.SettingNameV1DataEngine)}
+			return nil, &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot apply %v setting to Longhorn workloads when there are attached v1 volumes", types.SettingNameV1DataEngine)}
 		}
 	}
 
-	return nil
+	return ims, nil
 }
 
-func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) error {
+func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) (ims []*longhorn.InstanceManager, err error) {
 	if !dataEngineEnabled {
-		allVolumesDetached, err := s.AreAllVolumesDetached(longhorn.DataEngineTypeV2)
+		allVolumesDetached, _ims, err := s.AreAllVolumesDetached(longhorn.DataEngineTypeV2)
 		if err != nil {
-			return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameV2DataEngine)
+			return nil, errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameV2DataEngine)
 		}
+		ims = _ims
+
 		if !allVolumesDetached {
-			return &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot apply %v setting to Longhorn workloads when there are attached v2 volumes", types.SettingNameV2DataEngine)}
+			return nil, &types.ErrorInvalidState{Reason: fmt.Sprintf("cannot apply %v setting to Longhorn workloads when there are attached v2 volumes", types.SettingNameV2DataEngine)}
 		}
 	}
 
 	// Check if there is enough hugepages-2Mi capacity for all nodes
 	hugepageRequestedInMiB, err := s.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngineHugepageLimit)
 	if err != nil {
-		return err
-	}
-	hugepageRequested := resource.MustParse(hugepageRequestedInMiB.Value + "Mi")
-
-	ims, err := s.ListInstanceManagersRO()
-	if err != nil {
-		return errors.Wrapf(err, "failed to list instance managers for %v setting update", types.SettingNameV2DataEngine)
+		return nil, err
 	}
 
-	for _, im := range ims {
-		node, err := s.GetKubernetesNodeRO(im.Spec.NodeID)
+	{
+		hugepageRequested := resource.MustParse(hugepageRequestedInMiB.Value + "Mi")
+
+		_ims, err := s.ListInstanceManagersRO()
 		if err != nil {
-			if !apierrors.IsNotFound(err) {
-				return errors.Wrapf(err, "failed to get Kubernetes node %v for %v setting update", im.Spec.NodeID, types.SettingNameV2DataEngine)
-			}
-			continue
+			return nil, errors.Wrapf(err, "failed to list instance managers for %v setting update", types.SettingNameV2DataEngine)
 		}
 
-		if dataEngineEnabled {
-			capacity, ok := node.Status.Capacity["hugepages-2Mi"]
-			if !ok {
-				return errors.Errorf("failed to get hugepages-2Mi capacity for node %v", node.Name)
+		for _, im := range _ims {
+			node, err := s.GetKubernetesNodeRO(im.Spec.NodeID)
+			if err != nil {
+				if !apierrors.IsNotFound(err) {
+					return nil, errors.Wrapf(err, "failed to get Kubernetes node %v for %v setting update", im.Spec.NodeID, types.SettingNameV2DataEngine)
+				}
+
+				continue
 			}
 
-			hugepageCapacity := resource.MustParse(capacity.String())
+			if dataEngineEnabled {
+				capacity, ok := node.Status.Capacity["hugepages-2Mi"]
+				if !ok {
+					return nil, errors.Errorf("failed to get hugepages-2Mi capacity for node %v", node.Name)
+				}
 
-			if hugepageCapacity.Cmp(hugepageRequested) < 0 {
-				return errors.Errorf("not enough hugepages-2Mi capacity for node %v, requested %v, capacity %v", node.Name, hugepageRequested.String(), hugepageCapacity.String())
+				hugepageCapacity := resource.MustParse(capacity.String())
+
+				if hugepageCapacity.Cmp(hugepageRequested) < 0 {
+					return nil, errors.Errorf("not enough hugepages-2Mi capacity for node %v, requested %v, capacity %v", node.Name, hugepageRequested.String(), hugepageCapacity.String())
+				}
 			}
 		}
 	}
 
-	return nil
+	return
 }
 
-func (s *DataStore) AreAllVolumesDetached(dataEngine longhorn.DataEngineType) (bool, error) {
+func (s *DataStore) AreAllVolumesDetached(dataEngine longhorn.DataEngineType) (bool, []*longhorn.InstanceManager, error) {
+	var ims []*longhorn.InstanceManager
+
 	nodes, err := s.ListNodes()
 	if err != nil {
-		return false, err
+		return false, ims, err
 	}
 
 	for node := range nodes {
-
 		engineInstanceManagers, err := s.ListInstanceManagersBySelectorRO(node, "", longhorn.InstanceManagerTypeEngine, dataEngine)
 		if err != nil && !ErrorIsNotFound(err) {
-			return false, err
-		}
-		aioInstanceManagers, err := s.ListInstanceManagersBySelectorRO(node, "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
-		if err != nil && !ErrorIsNotFound(err) {
-			return false, err
+			return false, ims, err
 		}
 
-		instanceManagers := types.ConsolidateInstanceManagers(engineInstanceManagers, aioInstanceManagers)
-		for _, instanceManager := range instanceManagers {
+		aioInstanceManagers, err := s.ListInstanceManagersBySelectorRO(node, "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
+		if err != nil && !ErrorIsNotFound(err) {
+			return false, ims, err
+		}
+
+		imMap := types.ConsolidateInstanceManagers(engineInstanceManagers, aioInstanceManagers)
+		for _, instanceManager := range imMap {
 			if len(instanceManager.Status.InstanceEngines)+len(instanceManager.Status.Instances) > 0 {
-				return false, nil
+				return false, ims, err
 			}
+
+			ims = append(ims, instanceManager)
 		}
 	}
-	return true, nil
+
+	return true, ims, err
 }
 
 func (s *DataStore) AreAllDisksRemovedByDiskType(diskType longhorn.DiskType) (bool, error) {
