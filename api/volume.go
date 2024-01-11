@@ -818,8 +818,13 @@ func (s *Server) VolumeUpdateSnapshotMaxSize(rw http.ResponseWriter, req *http.R
 		return errors.Wrap(err, "failed to read SnapshotMaxSize input")
 	}
 
+	snapshotMaxSize, err := util.ConvertSize(input.SnapshotMaxSize)
+	if err != nil {
+		return fmt.Errorf("failed to parse snapshot max size %v", err)
+	}
+
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
-		return s.m.UpdateSnapshotMaxSize(id, input.SnapshotMaxSize)
+		return s.m.UpdateSnapshotMaxSize(id, snapshotMaxSize)
 	})
 	if err != nil {
 		return err

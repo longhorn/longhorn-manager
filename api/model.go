@@ -337,7 +337,7 @@ type UpdateSnapshotMaxCount struct {
 }
 
 type UpdateSnapshotMaxSize struct {
-	SnapshotMaxSize int64 `json:"snapshotMaxSize"`
+	SnapshotMaxSize string `json:"snapshotMaxSize"`
 }
 
 type PVCreateInput struct {
@@ -926,6 +926,14 @@ func volumeSchema(volume *client.Schema) {
 			Input: "UpdateSnapshotDataIntegrityInput",
 		},
 
+		"updateSnapshotMaxCount": {
+			Input: "UpdateSnapshotMaxCountInput",
+		},
+
+		"updateSnapshotMaxSize": {
+			Input: "UpdateSnapshotMaxSizeInput",
+		},
+
 		"updateOfflineReplicaRebuilding": {
 			Input: "UpdateOfflineReplicaRebuildingInput",
 		},
@@ -1506,6 +1514,8 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["updateReplicaAutoBalance"] = struct{}{}
 			actions["updateUnmapMarkSnapChainRemoved"] = struct{}{}
 			actions["updateSnapshotDataIntegrity"] = struct{}{}
+			actions["updateSnapshotMaxCount"] = struct{}{}
+			actions["updateSnapshotMaxSize"] = struct{}{}
 			actions["updateOfflineReplicaRebuilding"] = struct{}{}
 			actions["updateBackupCompressionMethod"] = struct{}{}
 			actions["updateReplicaSoftAntiAffinity"] = struct{}{}
@@ -1535,6 +1545,8 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["updateReplicaAutoBalance"] = struct{}{}
 			actions["updateUnmapMarkSnapChainRemoved"] = struct{}{}
 			actions["updateSnapshotDataIntegrity"] = struct{}{}
+			actions["updateSnapshotMaxCount"] = struct{}{}
+			actions["updateSnapshotMaxSize"] = struct{}{}
 			actions["updateOfflineReplicaRebuilding"] = struct{}{}
 			actions["updateBackupCompressionMethod"] = struct{}{}
 			actions["updateReplicaSoftAntiAffinity"] = struct{}{}
