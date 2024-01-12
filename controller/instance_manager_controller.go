@@ -622,8 +622,8 @@ func (imc *InstanceManagerController) isSettingPriorityClassSynced(setting *long
 
 func (imc *InstanceManagerController) isSettingStorageNetworkSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
 	nadAnnot := string(types.CNIAnnotationNetworks)
-
-	return pod.Annotations[nadAnnot] == setting.Value, nil
+	nadAnnotValue := types.CreateCniAnnotationFromSetting(setting)
+	return pod.Annotations[nadAnnot] == nadAnnotValue, nil
 }
 
 func (imc *InstanceManagerController) isSettingDataEngineSynced(settingName types.SettingName, im *longhorn.InstanceManager) (bool, error) {
