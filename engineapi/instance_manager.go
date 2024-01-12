@@ -359,6 +359,9 @@ func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
 	if engineCLIAPIVersion >= 9 {
 		args = append(args, "--replica-instance-name", r.Name)
 		args = append([]string{"--volume-name", r.Spec.VolumeName}, args...)
+	}
+
+	if engineCLIAPIVersion >= 10 {
 		args = append(args, "--snapshot-max-count", strconv.Itoa(r.Spec.SnapshotMaxCount))
 		args = append(args, "--snapshot-max-size", strconv.FormatInt(r.Spec.SnapshotMaxSize, 10))
 	}
