@@ -313,6 +313,9 @@ func getBinaryAndArgsForEngineProcessCreation(e *longhorn.Engine,
 
 	if engineCLIAPIVersion >= 9 {
 		args = append([]string{"--engine-instance-name", e.Name}, args...)
+	}
+
+	if engineCLIAPIVersion >= 10 {
 		args = append(args, "--snapshot-max-count", strconv.Itoa(e.Spec.SnapshotMaxCount))
 		args = append(args, "--snapshot-max-size", strconv.FormatInt(e.Spec.SnapshotMaxSize, 10))
 	}
