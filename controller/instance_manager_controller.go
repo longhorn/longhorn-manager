@@ -534,7 +534,7 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 		}
 	}
 
-	pod, err := imc.ds.GetPod(im.Name)
+	pod, err := imc.ds.GetPodRO(im.Namespace, im.Name)
 	if err != nil {
 		return false, false, false, errors.Wrapf(err, "cannot get pod for instance manager %v", im.Name)
 	}
