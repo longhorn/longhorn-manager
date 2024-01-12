@@ -90,12 +90,6 @@ const (
 	DefaultAdmissionWebhookPort      = 9502
 	DefaultRecoveryBackendServerPort = 9503
 
-	WebhookTypeConversion = "conversion"
-	WebhookTypeAdmission  = "admission"
-
-	ValidatingWebhookName = "longhorn-webhook-validator"
-	MutatingWebhookName   = "longhorn-webhook-mutator"
-
 	EngineBinaryDirectoryInContainer = "/engine-binaries/"
 	EngineBinaryDirectoryOnHost      = "/var/lib/longhorn/engine-binaries/"
 	ReplicaHostPrefix                = "/host"
