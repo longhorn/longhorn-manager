@@ -23,14 +23,6 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 )
 
-const (
-	conversionWebhookServiceName = "longhorn-conversion-webhook"
-	admissionWebhookServiceName  = "longhorn-admission-webhook"
-
-	caName   = "longhorn-webhook-ca"
-	certName = "longhorn-webhook-tls"
-)
-
 var (
 	validationPath = "/v1/webhook/" + admission.AdmissionTypeValidation
 	mutationPath   = "/v1/webhook/" + admission.AdmissionTypeMutation
@@ -124,7 +116,7 @@ func (s *WebhookServer) ListenAndServe() error {
 func (s *WebhookServer) runAdmissionWebhookListenAndServe(client *client.Client, handler http.Handler, validationResources []admission.Resource, mutationResources []admission.Resource) error {
 	apply := client.Apply.WithDynamicLookup()
 	client.Core.Secret().OnChange(s.context, "secrets", func(key string, secret *corev1.Secret) (*corev1.Secret, error) {
-		if secret == nil || secret.Name != caName || secret.Namespace != s.namespace || len(secret.Data[corev1.TLSCertKey]) == 0 {
+		if secret == nil || secret.Name != types.CaName || secret.Namespace != s.namespace || len(secret.Data[corev1.TLSCertKey]) == 0 {
 			return nil, nil
 		}
 
@@ -145,7 +137,7 @@ func (s *WebhookServer) runAdmissionWebhookListenAndServe(client *client.Client,
 					ClientConfig: admissionregv1.WebhookClientConfig{
 						Service: &admissionregv1.ServiceReference{
 							Namespace: s.namespace,
-							Name:      admissionWebhookServiceName,
+							Name:      types.AdmissionWebhookServiceName,
 							Path:      &validationPath,
 							Port:      &port,
 						},
@@ -170,7 +162,7 @@ func (s *WebhookServer) runAdmissionWebhookListenAndServe(client *client.Client,
 					ClientConfig: admissionregv1.WebhookClientConfig{
 						Service: &admissionregv1.ServiceReference{
 							Namespace: s.namespace,
-							Name:      admissionWebhookServiceName,
+							Name:      types.AdmissionWebhookServiceName,
 							Path:      &mutationPath,
 							Port:      &port,
 						},
@@ -188,13 +180,13 @@ func (s *WebhookServer) runAdmissionWebhookListenAndServe(client *client.Client,
 		return secret, apply.WithOwner(secret).ApplyObjects(validatingWebhookConfiguration, mutatingWebhookConfiguration)
 	})
 
-	tlsName := fmt.Sprintf("%s.%s.svc", admissionWebhookServiceName, s.namespace)
+	tlsName := fmt.Sprintf("%s.%s.svc", types.AdmissionWebhookServiceName, s.namespace)
 
 	return server.ListenAndServe(s.context, types.DefaultWebhookServerPort, 0, handler, &server.ListenOpts{
 		Secrets:       client.Core.Secret(),
 		CertNamespace: s.namespace,
-		CertName:      certName,
-		CAName:        caName,
+		CertName:      types.CertName,
+		CAName:        types.CaName,
 		TLSListenerConfig: dynamiclistener.Config{
 			SANs: []string{
 				tlsName,
@@ -206,7 +198,7 @@ func (s *WebhookServer) runAdmissionWebhookListenAndServe(client *client.Client,
 
 func (s *WebhookServer) runConversionWebhookListenAndServe(client *client.Client, handler http.Handler, conversionResources []string) error {
 	client.Core.Secret().OnChange(s.context, "secrets", func(key string, secret *corev1.Secret) (*corev1.Secret, error) {
-		if secret == nil || secret.Name != caName || secret.Namespace != s.namespace || len(secret.Data[corev1.TLSCertKey]) == 0 {
+		if secret == nil || secret.Name != types.CaName || secret.Namespace != s.namespace || len(secret.Data[corev1.TLSCertKey]) == 0 {
 			return nil, nil
 		}
 
@@ -226,7 +218,7 @@ func (s *WebhookServer) runConversionWebhookListenAndServe(client *client.Client
 					ClientConfig: &apiextv1.WebhookClientConfig{
 						Service: &apiextv1.ServiceReference{
 							Namespace: s.namespace,
-							Name:      conversionWebhookServiceName,
+							Name:      types.ConversionWebhookServiceName,
 							Path:      &conversionPath,
 							Port:      &port,
 						},
@@ -247,13 +239,13 @@ func (s *WebhookServer) runConversionWebhookListenAndServe(client *client.Client
 		return secret, nil
 	})
 
-	tlsName := fmt.Sprintf("%s.%s.svc", conversionWebhookServiceName, s.namespace)
+	tlsName := fmt.Sprintf("%s.%s.svc", types.ConversionWebhookServiceName, s.namespace)
 
 	return server.ListenAndServe(s.context, types.DefaultWebhookServerPort, 0, handler, &server.ListenOpts{
 		Secrets:       client.Core.Secret(),
 		CertNamespace: s.namespace,
-		CertName:      certName,
-		CAName:        caName,
+		CertName:      types.CertName,
+		CAName:        types.CaName,
 		TLSListenerConfig: dynamiclistener.Config{
 			SANs: []string{
 				tlsName,
