@@ -550,6 +550,12 @@ func (btc *BackupTargetController) isResponsibleFor(bt *longhorn.BackupTarget, d
 		return false, err
 	}
 
+	if instanceManager, err := btc.ds.GetDefaultEngineInstanceManagerByNode(btc.controllerID); err != nil {
+		return false, err
+	} else if instanceManager == nil || instanceManager.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+		return false, errors.New("failed to get default running engine instance manager")
+	}
+
 	isPreferredOwner := currentNodeEngineAvailable && isResponsible
 	continueToBeOwner := currentNodeEngineAvailable && btc.controllerID == bt.Status.OwnerID
 	requiresNewOwner := currentNodeEngineAvailable && !currentOwnerEngineAvailable
