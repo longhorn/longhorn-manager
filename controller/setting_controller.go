@@ -763,6 +763,8 @@ func (sc *SettingController) updateCNI() error {
 	}
 
 	nadAnnot := string(types.CNIAnnotationNetworks)
+	nadAnnotValue := types.CreateCniAnnotationFromSetting(storageNetwork)
+
 	imPodList, err := sc.ds.ListInstanceManagerPods()
 	if err != nil {
 		return errors.Wrapf(err, "failed to list instance manager Pods for %v setting update", types.SettingNameStorageNetwork)
@@ -775,9 +777,15 @@ func (sc *SettingController) updateCNI() error {
 
 	pods := append(imPodList, bimPodList...)
 	for _, pod := range pods {
-		if pod.Annotations[nadAnnot] == storageNetwork.Value {
+		if pod.Annotations[nadAnnot] == nadAnnotValue {
 			continue
 		}
+
+		logrus.WithFields(logrus.Fields{
+			"pod":      pod.Name,
+			"oldValue": pod.Annotations[nadAnnot],
+			"newValue": nadAnnotValue,
+		}).Infof("Deleting pod to update the %v annotation", nadAnnot)
 
 		if err := sc.ds.DeletePod(pod.Name); err != nil {
 			return err
