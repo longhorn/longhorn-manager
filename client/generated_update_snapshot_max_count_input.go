@@ -7,7 +7,7 @@ const (
 type UpdateSnapshotMaxCountInput struct {
 	Resource `yaml:"-"`
 
-	SnapshotMaxCount int `json:"snapshotMaxCount,omitempty" yaml:"snapshot_max_count,omitempty"`
+	SnapshotMaxCount int64 `json:"snapshotMaxCount,omitempty" yaml:"snapshot_max_count,omitempty"`
 }
 
 type UpdateSnapshotMaxCountInputCollection struct {
