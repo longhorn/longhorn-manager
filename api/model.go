@@ -308,6 +308,14 @@ type UpdateSnapshotDataIntegrityInput struct {
 	SnapshotDataIntegrity string `json:"snapshotDataIntegrity"`
 }
 
+type UpdateSnapshotMaxCountInput struct {
+	SnapshotMaxCount int `json:"snapshotMaxCount"`
+}
+
+type UpdateSnapshotMaxSizeInput struct {
+	SnapshotMaxSize string `json:"snapshotMaxSize"`
+}
+
 type UpdateOfflineReplicaRebuildingInput struct {
 	OfflineReplicaRebuilding string `json:"offlineReplicaRebuilding"`
 }
@@ -580,6 +588,8 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("UpdateDataLocalityInput", UpdateDataLocalityInput{})
 	schemas.AddType("UpdateAccessModeInput", UpdateAccessModeInput{})
 	schemas.AddType("UpdateSnapshotDataIntegrityInput", UpdateSnapshotDataIntegrityInput{})
+	schemas.AddType("UpdateSnapshotMaxCountInput", UpdateSnapshotMaxCountInput{})
+	schemas.AddType("UpdateSnapshotMaxSizeInput", UpdateSnapshotMaxSizeInput{})
 	schemas.AddType("UpdateOfflineReplicaRebuildingInput", UpdateOfflineReplicaRebuildingInput{})
 	schemas.AddType("UpdateBackupCompressionInput", UpdateBackupCompressionMethodInput{})
 	schemas.AddType("UpdateUnmapMarkSnapChainRemovedInput", UpdateUnmapMarkSnapChainRemovedInput{})
