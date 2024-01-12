@@ -9,6 +9,8 @@ type InstanceManager struct {
 
 	CurrentState string `json:"currentState,omitempty" yaml:"current_state,omitempty"`
 
+	DataEngine string `json:"dataEngine,omitempty" yaml:"data_engine,omitempty"`
+
 	Image string `json:"image,omitempty" yaml:"image,omitempty"`
 
 	InstanceEngines map[string]string `json:"instanceEngines,omitempty" yaml:"instance_engines,omitempty"`
