@@ -3056,7 +3056,7 @@ func (s *DataStore) GetDefaultInstanceManagerByNodeRO(name string) (*longhorn.In
 		instanceManager = im
 
 		if len(instanceManagers) != 1 {
-			logrus.Warnf("Found more than 1 %v instance manager with %v on %v, use %v", longhorn.InstanceManagerTypeEngine, defaultInstanceManagerImage, name, instanceManager.Name)
+			logrus.Debugf("Found more than 1 %v instance manager with %v on %v, use %v", longhorn.InstanceManagerTypeEngine, defaultInstanceManagerImage, name, instanceManager.Name)
 			break
 		}
 	}
