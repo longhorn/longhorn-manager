@@ -949,27 +949,18 @@ func (c *UninstallController) deleteDeployment(deployment string) (bool, error) 
 }
 
 func (c *UninstallController) deleteWebhookConfiguration() error {
-	validatingCfg, err := c.kubeClient.AdmissionregistrationV1().ValidatingWebhookConfigurations().Get(context.TODO(), types.ValidatingWebhookName, metav1.GetOptions{})
-	if err != nil && !apierrors.IsNotFound(err) {
-		return err
-	}
-	if validatingCfg != nil {
-		if err := c.kubeClient.AdmissionregistrationV1().ValidatingWebhookConfigurations().Delete(context.TODO(), types.ValidatingWebhookName, metav1.DeleteOptions{}); err != nil {
-			return err
-		}
+	if err := c.kubeClient.AdmissionregistrationV1().ValidatingWebhookConfigurations().Delete(context.TODO(), types.ValidatingWebhookName, metav1.DeleteOptions{}); err == nil {
 		c.logger.Infof("Successfully clean up the validating webhook configuration %s", types.ValidatingWebhookName)
+	} else if !datastore.ErrorIsNotFound(err) {
+		return err
 	}
 
-	mutatingCfg, err := c.kubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), types.MutatingWebhookName, metav1.GetOptions{})
-	if err != nil && !apierrors.IsNotFound(err) {
+	if err := c.kubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Delete(context.TODO(), types.MutatingWebhookName, metav1.DeleteOptions{}); err == nil {
+		c.logger.Infof("Successfully clean up the mutating webhook configuration %s", types.MutatingWebhookName)
+	} else if !datastore.ErrorIsNotFound(err) {
 		return err
 	}
-	if mutatingCfg != nil {
-		if err := c.kubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Delete(context.TODO(), types.MutatingWebhookName, metav1.DeleteOptions{}); err != nil {
-			return err
-		}
-		c.logger.Infof("Successfully clean up the mutating webhook configuration %s", types.MutatingWebhookName)
-	}
+
 	return nil
 }
 
