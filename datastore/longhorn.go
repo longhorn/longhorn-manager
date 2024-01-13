@@ -2901,8 +2901,13 @@ func (s *DataStore) GetDefaultEngineInstanceManagerByNode(name string) (*longhor
 	for _, im := range engineIMs {
 		engineIM = im
 
+<<<<<<< HEAD
 		if len(engineIMs) != 1 {
 			logrus.Warnf("Found more than 1 %v instance manager with %v on %v, use %v", longhorn.InstanceManagerTypeEngine, defaultInstanceManagerImage, name, engineIM.Name)
+=======
+		if len(instanceManagers) != 1 {
+			logrus.Debugf("Found more than 1 %v instance manager with %v on %v, use %v", longhorn.InstanceManagerTypeEngine, defaultInstanceManagerImage, name, instanceManager.Name)
+>>>>>>> a78c2a41 (Prevent flooding warning messages)
 			break
 		}
 	}
