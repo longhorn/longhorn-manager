@@ -285,7 +285,7 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 		}
 
 		if !detached {
-			return errors.Errorf("failed to apply %v setting to Longhorn components when there are attached volumes. It will be eventually applied", settingName)
+			return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting to Longhorn components when there are attached volumes. It will be eventually applied", settingName)}
 		}
 
 		switch settingName {
