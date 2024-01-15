@@ -498,6 +498,7 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	// optionally try to retrieve the volume and check if it's an RWX volume
 	// if it is we let the share-manager clean up the crypto device
 	volume, _ := ns.apiClient.Volume.ById(volumeID)
+<<<<<<< HEAD
 	cleanupCryptoDevice := !requiresSharedAccess(volume, nil)
 
 	if cleanupCryptoDevice {
@@ -507,6 +508,15 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 		} else if isOpen {
 			logrus.Debugf("NodeUnstagehVolume: volume %s has active crypto device %s", volumeID, cryptoDevice)
 			if err := crypto.CloseVolume(volumeID); err != nil {
+=======
+	if volume == nil || datastore.IsDataEngineV1(longhorn.DataEngineType(volume.DataEngine)) {
+		// Currently, only "RWO v1 volumes" and "block device with v1 volume.Migratable is true" supports encryption.
+		sharedAccess := requiresSharedAccess(volume, nil)
+		cleanupCryptoDevice := !sharedAccess || (sharedAccess && volume.Migratable)
+		if cleanupCryptoDevice {
+			cryptoDevice := crypto.VolumeMapper(volumeID)
+			if isOpen, err := crypto.IsDeviceOpen(cryptoDevice); err != nil {
+>>>>>>> 6c2408b6 (Crypto device mapper of RWX volume with migratable=true is not cleaned up)
 				return nil, status.Error(codes.Internal, err.Error())
 			}
 			logrus.Infof("NodeUnstageVolume: volume %s closed active crypto device %s", volumeID, cryptoDevice)
