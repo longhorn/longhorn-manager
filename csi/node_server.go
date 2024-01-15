@@ -567,7 +567,8 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	volume, _ := ns.apiClient.Volume.ById(volumeID)
 	if volume == nil || datastore.IsDataEngineV1(longhorn.DataEngineType(volume.DataEngine)) {
 		// Currently, only "RWO v1 volumes" and "block device with v1 volume.Migratable is true" supports encryption.
-		cleanupCryptoDevice := !requiresSharedAccess(volume, nil)
+		sharedAccess := requiresSharedAccess(volume, nil)
+		cleanupCryptoDevice := !sharedAccess || (sharedAccess && volume.Migratable)
 		if cleanupCryptoDevice {
 			cryptoDevice := crypto.VolumeMapper(volumeID)
 			if isOpen, err := crypto.IsDeviceOpen(cryptoDevice); err != nil {
