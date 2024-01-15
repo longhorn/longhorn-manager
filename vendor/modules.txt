@@ -231,7 +231,7 @@ github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/rpc
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20240110081942-bd231cfb0c7b
+# github.com/longhorn/backupstore v0.0.0-20240126140439-9c90a8728ca2
 ## explicit; go 1.21
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/backupbackingimage
@@ -259,7 +259,7 @@ github.com/longhorn/go-iscsi-helper/util
 # github.com/longhorn/go-spdk-helper v0.0.0-20240117135122-26f8acb2a13d
 ## explicit; go 1.21
 github.com/longhorn/go-spdk-helper/pkg/types
-# github.com/longhorn/longhorn-engine v1.6.0-dev-20240105.0.20240110095344-deb8b18a1558
+# github.com/longhorn/longhorn-engine v1.6.0-dev-20240105.0.20240110095344-deb8b18a1558 => github.com/c3y1huang/longhorn-engine v1.6.0-dev-20240105.0.20240201041530-b0e5b9da243c
 ## explicit; go 1.21
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
@@ -1591,3 +1591,4 @@ sigs.k8s.io/yaml
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.28.5
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.28.5
 # k8s.io/sample-controller => k8s.io/sample-controller v0.28.5
+# github.com/longhorn/longhorn-engine => github.com/c3y1huang/longhorn-engine v1.6.0-dev-20240105.0.20240201041530-b0e5b9da243c
