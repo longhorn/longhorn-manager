@@ -36,6 +36,8 @@ replace (
 
 replace github.com/longhorn/longhorn-engine => github.com/c3y1huang/longhorn-engine v1.6.0-dev-20240105.0.20240201041530-b0e5b9da243c
 
+replace github.com/longhorn/longhorn-instance-manager => github.com/c3y1huang/longhorn-instance-manager v1.6.0-dev-20240105.0.20240201065454-cfeb74abb194
+
 require (
 	github.com/container-storage-interface/spec v1.8.0
 	github.com/docker/go-connections v0.4.0
@@ -50,7 +52,7 @@ require (
 	github.com/longhorn/go-common-libs v0.0.0-20240109042507-23627e6416b7
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240103085736-72aee873888a
 	github.com/longhorn/go-spdk-helper v0.0.0-20240117135122-26f8acb2a13d
-	github.com/longhorn/longhorn-engine v1.6.0-dev-20240105.0.20240110095344-deb8b18a1558
+	github.com/longhorn/longhorn-engine v1.6.0-dev-20240105.0.20240126141003-067f67803ee8
 	github.com/longhorn/longhorn-instance-manager v1.6.0-dev-20240105.0.20240126085307-467528c95307
 	github.com/longhorn/longhorn-share-manager v1.6.0-dev-20231217.0.20231226052309-99d57c1695ea
 	github.com/pkg/errors v0.9.1
