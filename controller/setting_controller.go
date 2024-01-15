@@ -272,8 +272,6 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 	dangerSettingsRequiringAllVolumesDetached := []types.SettingName{
 		types.SettingNameTaintToleration,
 		types.SettingNameSystemManagedComponentsNodeSelector,
-		types.SettingNameGuaranteedInstanceManagerCPU,
-		types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU,
 		types.SettingNamePriorityClass,
 		types.SettingNameStorageNetwork,
 	}
@@ -297,10 +295,6 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 			if err := sc.updateNodeSelector(); err != nil {
 				return err
 			}
-		case types.SettingNameGuaranteedInstanceManagerCPU, types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU:
-			if err := sc.updateInstanceManagerCPURequest(); err != nil {
-				return err
-			}
 		case types.SettingNamePriorityClass:
 			if err := sc.updatePriorityClass(); err != nil {
 				return err
@@ -319,12 +313,35 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 	dangerSettingsRequiringSpecificDataEngineVolumesDetached := []types.SettingName{
 		types.SettingNameV1DataEngine,
 		types.SettingNameV2DataEngine,
+		types.SettingNameGuaranteedInstanceManagerCPU,
+		types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU,
 	}
 
 	if slices.Contains(dangerSettingsRequiringSpecificDataEngineVolumesDetached, settingName) {
-		if err := sc.updateDataEngine(settingName); err != nil {
-			return errors.Wrapf(err, "failed to apply %v setting to Longhorn instance managers when there are attached volumes. "+
-				"It will be eventually applied", settingName)
+		switch settingName {
+		case types.SettingNameV1DataEngine, types.SettingNameV2DataEngine:
+			if err := sc.updateDataEngine(settingName); err != nil {
+				return errors.Wrapf(err, "failed to apply %v setting to Longhorn instance managers when there are attached volumes. "+
+					"It will be eventually applied", settingName)
+			}
+		case types.SettingNameGuaranteedInstanceManagerCPU, types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU:
+			dataEngine := longhorn.DataEngineTypeV1
+			if settingName == types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU {
+				dataEngine = longhorn.DataEngineTypeV2
+			}
+
+			detached, _, err := sc.ds.AreAllVolumesDetached(dataEngine)
+			if err != nil {
+				return errors.Wrapf(err, "failed to check volume detachment for %v setting update", settingName)
+			}
+
+			if !detached {
+				return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting to Longhorn components when there are attached volumes. It will be eventually applied", settingName)}
+			}
+
+			if err := sc.updateInstanceManagerCPURequest(dataEngine); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -1213,12 +1230,12 @@ func (sc *SettingController) enqueueSettingForBackupTarget(obj interface{}) {
 }
 
 // updateInstanceManagerCPURequest deletes all instance manager pods immediately with the updated CPU request.
-func (sc *SettingController) updateInstanceManagerCPURequest() error {
-	imPodList, err := sc.ds.ListInstanceManagerPods()
+func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn.DataEngineType) error {
+	imPodList, err := sc.ds.ListInstanceManagerPodsBy("", "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
 	if err != nil {
 		return errors.Wrap(err, "failed to list instance manager pods for toleration update")
 	}
-	imMap, err := sc.ds.ListInstanceManagersRO()
+	imMap, err := sc.ds.ListInstanceManagersBySelectorRO("", "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
 	if err != nil {
 		return err
 	}
