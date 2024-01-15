@@ -60,10 +60,6 @@ func (e *engineValidator) Create(request *admission.Request, newObj runtime.Obje
 		return err
 	}
 
-	if err := e.ds.CheckDataEngineImageCompatiblityByImage(engine.Spec.Image, engine.Spec.DataEngine); err != nil {
-		return werror.NewInvalidError(err.Error(), "engine.spec.image")
-	}
-
 	return e.validateNumberOfEngines(engine, volume)
 }
 
@@ -81,12 +77,6 @@ func (e *engineValidator) Update(request *admission.Request, oldObj runtime.Obje
 		if oldEngine.Spec.DataEngine != newEngine.Spec.DataEngine {
 			err := fmt.Errorf("changing data engine for engine %v is not supported", oldEngine.Name)
 			return werror.NewInvalidError(err.Error(), "")
-		}
-	}
-
-	if oldEngine.Spec.Image != newEngine.Spec.Image {
-		if err := e.ds.CheckDataEngineImageCompatiblityByImage(newEngine.Spec.Image, newEngine.Spec.DataEngine); err != nil {
-			return werror.NewInvalidError(err.Error(), "engine.spec.image")
 		}
 	}
 

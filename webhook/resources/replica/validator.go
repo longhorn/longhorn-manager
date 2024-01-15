@@ -52,10 +52,6 @@ func (r *replicaValidator) Create(request *admission.Request, newObj runtime.Obj
 		return err
 	}
 
-	if err := r.ds.CheckDataEngineImageCompatiblityByImage(replica.Spec.Image, replica.Spec.DataEngine); err != nil {
-		return werror.NewInvalidError(err.Error(), "replica.spec.image")
-	}
-
 	return nil
 }
 
@@ -72,12 +68,6 @@ func (r *replicaValidator) Update(request *admission.Request, oldObj runtime.Obj
 		if oldReplica.Spec.DataEngine != newReplica.Spec.DataEngine {
 			err := fmt.Errorf("changing data engine for replica %v is not supported", oldReplica.Name)
 			return werror.NewInvalidError(err.Error(), "")
-		}
-	}
-
-	if oldReplica.Spec.Image != newReplica.Spec.Image {
-		if err := r.ds.CheckDataEngineImageCompatiblityByImage(newReplica.Spec.Image, newReplica.Spec.DataEngine); err != nil {
-			return werror.NewInvalidError(err.Error(), "replica.spec.image")
 		}
 	}
 
