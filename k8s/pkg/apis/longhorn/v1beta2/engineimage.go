@@ -72,6 +72,7 @@ type EngineImageStatus struct {
 // +kubebuilder:resource:shortName=lhei
 // +kubebuilder:subresource:status
 // +kubebuilder:storageversion
+// +kubebuilder:printcolumn:name="Incompatible",type=boolean,JSONPath=`.status.incompatible`,description="Compatibility of the engine image"
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`,description="State of the engine image"
 // +kubebuilder:printcolumn:name="Image",type=string,JSONPath=`.spec.image`,description="The Longhorn engine image"
 // +kubebuilder:printcolumn:name="RefCount",type=integer,JSONPath=`.status.refCount`,description="Number of resources using the engine image"
