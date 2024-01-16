@@ -916,6 +916,7 @@ func isDefinitelyHealthyAndActiveReplica(r *longhorn.Replica) bool {
 	// An empty r.Spec.FailedAt doesn't necessarily indicate a healthy replica. The replica could be caught in an
 	// autosalvage loop. If it is, its r.Spec.FailedAt is repeatedly transitioning between empty and some time. Ensure
 	// the replica has become healthyAt since it last became failedAt.
+	// We know r.Spec.LastHealthyAt != "" because r.Spec.HealthyAt != "" from isHealthyAndActiveReplica.
 	if r.Spec.LastFailedAt != "" && !util.TimestampAfterTimestamp(r.Spec.LastHealthyAt, r.Spec.LastFailedAt) {
 		return false
 	}
