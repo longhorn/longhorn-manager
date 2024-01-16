@@ -608,8 +608,7 @@ var (
 			"* `key1=value1:NoSchedule; key2:NoExecute` \n\n" +
 			"* `:` this toleration tolerates everything because an empty key with operator `Exists` matches all keys, values and effects \n\n" +
 			"* `key1=value1:`  this toleration has empty effect. It matches all effects with key `key1` \n\n" +
-			"Because `kubernetes.io` is used as the key of all Kubernetes default tolerations, it should not be used in the toleration settings.\n\n " +
-			"WARNING: DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES! ",
+			"Because `kubernetes.io` is used as the key of all Kubernetes default tolerations, it should not be used in the toleration settings.\n\n",
 		Category: SettingCategoryDangerZone,
 		Type:     SettingTypeString,
 		Required: false,
@@ -627,7 +626,6 @@ var (
 			"We recommend setting node selector during Longhorn deployment because the Longhorn system cannot be operated during the update. " +
 			"Multiple label key-value pairs are separated by semicolon. For example: \n\n" +
 			"* `label-key1=label-value1; label-key2=label-value2` \n\n" +
-			"WARNING: DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES! \n\n" +
 			"Please see the documentation at https://longhorn.io for more detailed instructions about changing node selector",
 		Category: SettingCategoryDangerZone,
 		Type:     SettingTypeString,
@@ -754,8 +752,7 @@ var (
 		Description: "The name of the Priority Class to set on the Longhorn components. This can help prevent Longhorn components from being evicted under Node Pressure. \n" +
 			"Longhorn system contains user deployed components (e.g, Longhorn manager, Longhorn driver, Longhorn UI) and system managed components (e.g, instance manager, engine image, CSI driver, etc.) " +
 			"Note that this setting only sets Priority Class for system managed components. " +
-			"Depending on how you deployed Longhorn, you need to set Priority Class for user deployed components in Helm chart or deployment YAML file. \n" +
-			"WARNING: DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES.",
+			"Depending on how you deployed Longhorn, you need to set Priority Class for user deployed components in Helm chart or deployment YAML file. \n",
 		Category: SettingCategoryDangerZone,
 		Required: false,
 		ReadOnly: false,
@@ -902,7 +899,7 @@ var (
 			"  - Considering the possible new instance manager pods in the further system upgrade, this integer value is range from 0 to 40. \n\n" +
 			"  - One more set of instance manager pods may need to be deployed when the Longhorn system is upgraded. If current available CPUs of the nodes are not enough for the new instance manager pods, you need to detach the volumes using the oldest instance manager pods so that Longhorn can clean up the old pods automatically and release the CPU resources. And the new pods with the latest instance manager image will be launched then. \n\n" +
 			"  - This global setting will be ignored for a node if the field \"InstanceManagerCPURequest\" on the node is set. \n\n" +
-			"  - After this setting is changed, all instance manager pods using this global setting on all the nodes will be automatically restarted. In other words, DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. \n\n",
+			"  - After this setting is changed, the v1 instance manager pod using this global setting will be automatically restarted without instances running on the v1 instance manager. \n\n",
 		Category: SettingCategoryDangerZone,
 		Type:     SettingTypeInt,
 		Required: true,
@@ -942,8 +939,7 @@ var (
 			"To segregate the storage network, input the pre-existing NetworkAttachmentDefinition in **<namespace>/<name>** format. \n\n" +
 			"WARNING: \n\n" +
 			"  - The cluster must have pre-existing Multus installed, and NetworkAttachmentDefinition IPs are reachable between nodes. \n\n" +
-			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will try to block this setting update when there are attached volumes. \n\n" +
-			"  - When applying the setting, Longhorn will restart all instance-manager, and backing-image-manager pods. \n\n",
+			"  - When applying the setting, Longhorn will try to restart all instance-manager, and backing-image-manager pods if all volumes are detached and eventually restart the instance manager pod without instances running on the instance manager. \n\n",
 		Category: SettingCategoryDangerZone,
 		Type:     SettingTypeString,
 		Required: false,
@@ -1165,7 +1161,7 @@ var (
 	SettingDefinitionV1DataEngine = SettingDefinition{
 		DisplayName: "V1 Data Engine",
 		Description: "Setting that allows you to enable the V1 Data Engine. \n\n" +
-			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached volumes. \n\n",
+			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached v1 volumes. \n\n",
 		Category: SettingCategoryDangerZone,
 		Type:     SettingTypeBool,
 		Required: true,
@@ -1176,7 +1172,7 @@ var (
 	SettingDefinitionV2DataEngine = SettingDefinition{
 		DisplayName: "V2 Data Engine",
 		Description: "This setting allows users to activate v2 data engine which is based on SPDK. Currently, it is in the preview phase and should not be utilized in a production environment.\n\n" +
-			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached volumes. \n\n" +
+			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached v2 volumes. \n\n" +
 			"  - When the V2 Data Engine is enabled, each instance-manager pod utilizes 1 CPU core. This high CPU usage is attributed to the spdk_tgt process running within each instance-manager pod. The spdk_tgt process is responsible for handling input/output (IO) operations and requires intensive polling. As a result, it consumes 100% of a dedicated CPU core to efficiently manage and process the IO requests, ensuring optimal performance and responsiveness for storage operations. \n\n",
 		Category: SettingCategoryDangerZone,
 		Type:     SettingTypeBool,
@@ -1201,7 +1197,7 @@ var (
 			"WARNING: \n\n" +
 			"  - Value 0 means unsetting CPU requests for instance manager pods for v2 data engine. \n\n" +
 			"  - This integer value is range from 1000 to 8000. \n\n" +
-			"  - After this setting is changed, all instance manager pods using this global setting on all the nodes will be automatically restarted. In other words, DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. \n\n",
+			"  - After this setting is changed, the v2 instance manager pod using this global setting will be automatically restarted without instances running on the v2 instance manager. \n\n",
 		Category: SettingCategoryDangerZone,
 		Type:     SettingTypeInt,
 		Required: true,
