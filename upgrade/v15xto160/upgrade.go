@@ -44,16 +44,16 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 		return err
 	}
 
-	if err := upgradeEngineImages(namespace, lhClient, resourceMaps); err != nil {
-		return err
-	}
-
 	return deleteCSIServices(namespace, kubeClient)
 }
 
 func UpgradeResourcesStatus(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) error {
 	// Currently there are no statuses to upgrade. See UpgradeResources -> upgradeVolumes or previous Longhorn versions
 	// for examples.
+	if err := upgradeEngineImagesStatus(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -250,7 +250,7 @@ func upgradeVolumeAttachments(namespace string, lhClient *lhclientset.Clientset,
 	return nil
 }
 
-func upgradeEngineImages(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+func upgradeEngineImagesStatus(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade engine images failed")
 	}()
@@ -264,9 +264,7 @@ func upgradeEngineImages(namespace string, lhClient *lhclientset.Clientset, reso
 	}
 
 	for _, ei := range engineImages {
-		if ei.Status.State == longhorn.EngineImageStateIncompatible {
-			ei.Status.Incompatible = true
-		}
+		ei.Status.Incompatible = ei.Status.State == longhorn.EngineImageStateIncompatible
 	}
 
 	return nil
