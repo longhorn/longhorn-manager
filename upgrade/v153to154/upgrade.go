@@ -38,6 +38,17 @@ func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset, resource
 		// mirrors it. Otherwise, Status.EvictionRequested was previously in use. Either way, it is fine to set the
 		// (potentially new) Spec.EvictionRequested to Status.EvictionRequested.
 		r.Spec.EvictionRequested = r.Status.EvictionRequested
+
+		if r.Spec.LastHealthyAt == "" {
+			// We could attempt to figure out if the replica is currently RW in an engine and set its
+			// Spec.LastHealthyAt = now, but it is safer and easier to start updating it after the upgrade.
+			r.Spec.LastHealthyAt = r.Spec.HealthyAt
+		}
+		if r.Spec.LastFailedAt == "" {
+			// There is no way for us to know the right time for Spec.LastFailedAt if the replica isn't currently
+			// failed. Start updating it after the upgrade.
+			r.Spec.LastFailedAt = r.Spec.FailedAt
+		}
 	}
 
 	return nil
