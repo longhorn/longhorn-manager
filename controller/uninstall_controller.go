@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -319,6 +320,14 @@ func (c *UninstallController) uninstall() error {
 		return err
 	}
 
+	if err := c.deleteSecrets(); err != nil {
+		return err
+	}
+
+	if err := c.deletePDBs(); err != nil {
+		return err
+	}
+
 	// Success
 	close(c.stopCh)
 	return nil
@@ -375,9 +384,48 @@ func (c *UninstallController) deleteStorageClass() error {
 }
 
 func (c *UninstallController) deleteLease() error {
-	err := c.ds.DeleteLease(upgrade.LeaseLockName)
-	if err != nil && !datastore.ErrorIsNotFound(err) {
+	for _, leaseName := range []string{upgrade.LeaseLockName,
+		"driver-longhorn-io",
+		"external-attacher-leader-driver-longhorn-io",
+		"external-resizer-driver-longhorn-io",
+		"external-snapshotter-leader-driver-longhorn-io"} {
+		err := c.ds.DeleteLease(leaseName)
+		if err != nil && !datastore.ErrorIsNotFound(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *UninstallController) deleteSecrets() error {
+	if err := c.ds.DeleteSecret(c.namespace, types.CaName); err != nil && !datastore.ErrorIsNotFound(err) {
 		return err
+	}
+	if err := c.ds.DeleteSecret(c.namespace, types.CertName); err != nil && !datastore.ErrorIsNotFound(err) {
+		return err
+	}
+	return nil
+}
+
+func (c *UninstallController) deletePDBs() error {
+	pdbs, err := c.ds.ListPDBsRO()
+	if err != nil {
+		if !datastore.ErrorIsNotFound(err) {
+			return err
+		}
+		return nil
+	}
+	for pdbName := range pdbs {
+		if pdbName != types.CSIAttacherName &&
+			pdbName != types.CSIProvisionerName &&
+			pdbName != types.LonghornAdmissionWebhookDeploymentName &&
+			pdbName != types.LonghornConversionWebhookDeploymentName &&
+			!strings.HasPrefix(pdbName, "instance-manager") {
+			continue
+		}
+		if err := c.ds.DeletePDB(pdbName); err != nil && !datastore.ErrorIsNotFound(err) {
+			return err
+		}
 	}
 	return nil
 }

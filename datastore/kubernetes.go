@@ -213,6 +213,22 @@ func (s *DataStore) GetPDBRO(name string) (*policyv1.PodDisruptionBudget, error)
 	return s.podDisruptionBudgetLister.PodDisruptionBudgets(s.namespace).Get(name)
 }
 
+// ListPDBsRO gets a map of PDB in s.namespace
+// This function returns direct reference to the internal cache objects and should not be mutated.
+// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
+func (s *DataStore) ListPDBsRO() (map[string]*policyv1.PodDisruptionBudget, error) {
+	pdbList, err := s.podDisruptionBudgetLister.PodDisruptionBudgets(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	pdbMap := make(map[string]*policyv1.PodDisruptionBudget, len(pdbList))
+	for _, pdbRO := range pdbList {
+		pdbMap[pdbRO.Name] = pdbRO
+	}
+	return pdbMap, nil
+}
+
 // ListPDBs gets a map of PDB in s.namespace
 func (s *DataStore) ListPDBs() (map[string]*policyv1.PodDisruptionBudget, error) {
 	itemMap := map[string]*policyv1.PodDisruptionBudget{}
@@ -672,6 +688,11 @@ func (s *DataStore) GetSecret(namespace, name string) (*corev1.Secret, error) {
 // UpdateSecret updates the Secret resource with the given object and namespace
 func (s *DataStore) UpdateSecret(namespace string, secret *corev1.Secret) (*corev1.Secret, error) {
 	return s.kubeClient.CoreV1().Secrets(namespace).Update(context.TODO(), secret, metav1.UpdateOptions{})
+}
+
+// DeleteSecret deletes the Secret for the given name and namespace
+func (s *DataStore) DeleteSecret(namespace, name string) error {
+	return s.kubeClient.CoreV1().Secrets(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 }
 
 // GetPriorityClass gets the PriorityClass from the index for the
