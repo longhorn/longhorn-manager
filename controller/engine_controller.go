@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -1923,17 +1924,22 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 			return
 		}
 
+		localSync, err := ec.getFileLocalSync(replica, e)
+		if err != nil {
+			ec.logger.WithError(err).Warnf("Failed to initiate file local sync for replica %v, use remote sync", replicaName)
+		}
+
 		// start rebuild
 		if e.Spec.RequestedBackupRestore != "" {
 			if e.Spec.NodeID != "" {
 				ec.eventRecorder.Eventf(e, corev1.EventTypeNormal, constant.EventReasonRebuilding,
 					"Start rebuilding replica %v with Address %v for restore engine %v and volume %v", replicaName, addr, e.Name, e.Spec.VolumeName)
-				err = engineClientProxy.ReplicaAdd(e, replicaName, replicaURL, true, fastReplicaRebuild, fileSyncHTTPClientTimeout, 0)
+				err = engineClientProxy.ReplicaAdd(e, replicaName, replicaURL, true, fastReplicaRebuild, localSync, fileSyncHTTPClientTimeout, 0)
 			}
 		} else {
 			ec.eventRecorder.Eventf(e, corev1.EventTypeNormal, constant.EventReasonRebuilding,
 				"Start rebuilding replica %v with Address %v for normal engine %v and volume %v", replicaName, addr, e.Name, e.Spec.VolumeName)
-			err = engineClientProxy.ReplicaAdd(e, replicaName, replicaURL, false, fastReplicaRebuild, fileSyncHTTPClientTimeout, grpcTimeoutSeconds)
+			err = engineClientProxy.ReplicaAdd(e, replicaName, replicaURL, false, fastReplicaRebuild, localSync, fileSyncHTTPClientTimeout, grpcTimeoutSeconds)
 		}
 		if err != nil {
 			replicaRebuildErrMsg := err.Error()
@@ -2005,6 +2011,55 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 		return err
 	}
 	return nil
+}
+
+// getFileLocalSync retrieves details for local file sync between the target replica
+// and another eligible replica on the same node. It returns an object with the source
+// and target paths for the local sync, or nil if no other eligible replica is found.
+// Any error encountered during the process is returned.
+func (ec *EngineController) getFileLocalSync(targetReplica *longhorn.Replica, engine *longhorn.Engine) (*etypes.FileLocalSync, error) {
+	// Retrieve a map of replicas grouped by node for the engine's volume
+	replicaMapByNode, err := ec.ds.ListVolumeReplicasROMapByNode(engine.Spec.VolumeName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if there are multiple replicas on the target replica's node,
+	// do nothing if there is no other available replica to sync locally from.
+	if len(replicaMapByNode[targetReplica.Spec.InstanceSpec.NodeID]) <= 1 {
+		return nil, nil
+	}
+
+	var localSync *etypes.FileLocalSync
+	for _, nodeReplica := range replicaMapByNode[targetReplica.Spec.InstanceSpec.NodeID] {
+		// Skip the target replica itself
+		if nodeReplica.Name == targetReplica.Name {
+			continue
+		}
+
+		// Skip replicas marked for deletion
+		if nodeReplica.DeletionTimestamp != nil {
+			continue
+		}
+
+		// Skip replicas that are not in the running state
+		if nodeReplica.Status.CurrentState != longhorn.InstanceStateRunning {
+			continue
+		}
+
+		// Set the local sync details
+		localSync = &etypes.FileLocalSync{
+			SourcePath: filepath.Join(nodeReplica.Spec.DiskPath, "replicas", nodeReplica.Spec.DataDirectoryName),
+			TargetPath: filepath.Join(targetReplica.Spec.DiskPath, "replicas", targetReplica.Spec.DataDirectoryName),
+		}
+		break
+	}
+
+	if localSync == nil {
+		return nil, errors.New("no other eligible replica found for local sync")
+	}
+
+	return localSync, nil
 }
 
 // updateReplicaRebuildFailedCondition updates the rebuild failed condition if replica rebuilding failed

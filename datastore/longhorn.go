@@ -1571,6 +1571,42 @@ func (s *DataStore) ListVolumeReplicasRO(volumeName string) (map[string]*longhor
 	return rMap, nil
 }
 
+// ListVolumeReplicasROMapByNode returns a map of read-only replicas grouped by
+// the node ID for the given volume.
+// The function organizes the replicas into a map where the keys is the node ID,
+// and the values are maps of replica names to the replica objects.
+// If successful, the function returns the map of replicas by node. Otherwise,
+// an error is returned.
+func (s *DataStore) ListVolumeReplicasROMapByNode(volumeName string) (map[string]map[string]*longhorn.Replica, error) {
+	// Get volume selector
+	selector, err := getVolumeSelector(volumeName)
+	if err != nil {
+		return nil, err
+	}
+
+	// List replicas based on the volume selector
+	replicaList, err := s.replicaLister.Replicas(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	// Organize the replicas by node
+	replicaMapByNode := make(map[string]map[string]*longhorn.Replica)
+	for _, replica := range replicaList {
+		nodeID := replica.Spec.NodeID
+
+		// Create the map if it doesn't exist for the current replica's node
+		if _, exists := replicaMapByNode[nodeID]; !exists {
+			replicaMapByNode[nodeID] = make(map[string]*longhorn.Replica)
+		}
+
+		// Add the replica to the map
+		replicaMapByNode[nodeID][replica.Name] = replica
+	}
+
+	return replicaMapByNode, nil
+}
+
 // ReplicaAddressToReplicaName will directly return the address if the format
 // is invalid or the replica is not found.
 func ReplicaAddressToReplicaName(address string, rs []*longhorn.Replica) string {
