@@ -294,7 +294,7 @@ func syncMountPointDirectory(targetPath string) error {
 // the underlying implementation utilizes mounter.IsLikelyNotMountPoint so it cannot detect bind mounts
 func ensureMountPoint(path string, mounter mount.Interface) (bool, error) {
 	logrus.Infof("Trying to ensure mount point %v", path)
-	notMnt, err := mount.IsNotMountPoint(mounter, path)
+	isMnt, err := mounter.IsMountPoint(path)
 	if os.IsNotExist(err) {
 		return false, os.MkdirAll(path, 0750)
 	}
@@ -318,7 +318,7 @@ func ensureMountPoint(path string, mounter mount.Interface) (bool, error) {
 		return false, fmt.Errorf("unmounted existing corrupt mount point %v", path)
 	}
 
-	return !notMnt, err
+	return isMnt, err
 }
 
 func unmount(path string, mounter mount.Interface) (err error) {
