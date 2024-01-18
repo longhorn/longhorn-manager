@@ -19,6 +19,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	"k8s.io/mount-utils"
+
+	corev1 "k8s.io/api/core/v1"
 	utilexec "k8s.io/utils/exec"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
@@ -118,7 +120,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	// Check volume attachment status
 	if volume.State != string(longhorn.VolumeStateAttached) || volume.Controllers[0].Endpoint == "" {
-		logrus.Debugf("volume %v hasn't been attached yet, try unmounting potential mount point %v", volumeID, targetPath)
+		logrus.WithField("state", volume.State).Debugf("volume %v hasn't been attached yet, try unmounting potential mount point %v", volumeID, targetPath)
 		if err := unmount(targetPath, mounter); err != nil {
 			logrus.WithError(err).Warnf("Failed to unmount: %v", targetPath)
 		}
@@ -127,6 +129,11 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	if !volume.Ready {
 		return nil, status.Errorf(codes.Aborted, "volume %s is not ready for workloads", volumeID)
+	}
+
+	podsStatus := ns.collectWorkloadPodsStatus(volume)
+	if len(podsStatus[corev1.PodPending]) == 0 {
+		return nil, status.Errorf(codes.Aborted, "no %v workload pods for volume %v to be mounted: %+v", corev1.PodPending, volumeID, podsStatus)
 	}
 
 	if volumeCapability.GetBlock() != nil {
@@ -194,6 +201,17 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	return &csi.NodePublishVolumeResponse{}, nil
+}
+
+func (ns *NodeServer) collectWorkloadPodsStatus(volume *longhornclient.Volume) map[corev1.PodPhase][]string {
+	podsStatus := map[corev1.PodPhase][]string{}
+
+	for _, workload := range volume.KubernetesStatus.WorkloadsStatus {
+		phase := corev1.PodPhase(workload.PodStatus)
+		podsStatus[phase] = append(podsStatus[phase], workload.PodName)
+	}
+
+	return podsStatus
 }
 
 func (ns *NodeServer) nodeStageSharedVolume(volumeID, shareEndpoint, targetPath string, mounter mount.Interface, customMountOptions []string) error {
