@@ -18,6 +18,7 @@ import (
 
 	"k8s.io/mount-utils"
 
+	corev1 "k8s.io/api/core/v1"
 	utilexec "k8s.io/utils/exec"
 
 	"github.com/longhorn/longhorn-manager/csi/crypto"
@@ -129,7 +130,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	// Check volume attachment status
 	if datastore.IsDataEngineV1(longhorn.DataEngineType(volume.DataEngine)) {
 		if volume.State != string(longhorn.VolumeStateAttached) || volume.Controllers[0].Endpoint == "" {
-			log.Infof("Volume %v hasn't been attached yet, unmounting potential mount point %v", volumeID, targetPath)
+			log.WithField("state", volume.State).Infof("Volume %v hasn't been attached yet, unmounting potential mount point %v", volumeID, targetPath)
 			if err := unmount(targetPath, mounter); err != nil {
 				log.WithError(err).Warnf("Failed to unmount targetPath %v", targetPath)
 			}
@@ -139,6 +140,11 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 
 	if !volume.Ready {
 		return nil, status.Errorf(codes.Aborted, "volume %s is not ready for workloads", volumeID)
+	}
+
+	podsStatus := ns.collectWorkloadPodsStatus(volume, log)
+	if len(podsStatus[corev1.PodPending]) == 0 {
+		return nil, status.Errorf(codes.Aborted, "no %v workload pods for volume %v to be mounted: %+v", corev1.PodPending, volumeID, podsStatus)
 	}
 
 	if volumeCapability.GetBlock() != nil {
@@ -222,6 +228,17 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	return &csi.NodePublishVolumeResponse{}, nil
+}
+
+func (ns *NodeServer) collectWorkloadPodsStatus(volume *longhornclient.Volume, log *logrus.Entry) map[corev1.PodPhase][]string {
+	podsStatus := map[corev1.PodPhase][]string{}
+
+	for _, workload := range volume.KubernetesStatus.WorkloadsStatus {
+		phase := corev1.PodPhase(workload.PodStatus)
+		podsStatus[phase] = append(podsStatus[phase], workload.PodName)
+	}
+
+	return podsStatus
 }
 
 func (ns *NodeServer) nodeStageSharedVolume(volumeID, shareEndpoint, targetPath string, mounter mount.Interface, customMountOptions []string) error {
