@@ -224,7 +224,7 @@ func (ns *NodeServer) nodeStageSharedVolume(volumeID, shareEndpoint, targetPath 
 	export := fmt.Sprintf("%s:%s", server, exportPath)
 
 	defaultMountOptions := []string{
-		"vers=4.2",
+		"vers=4.1",
 		"noresvport",
 		//"sync",    // sync mode is prohibitively expensive on the client, so we allow for host defaults
 		//"intr",
