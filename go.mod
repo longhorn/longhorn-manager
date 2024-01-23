@@ -44,7 +44,7 @@ require (
 	github.com/longhorn/backupstore v0.0.0-20230606110118-7c0666bcb0cf
 	github.com/longhorn/go-iscsi-helper v0.0.0-20231113050545-9df1e6b605c7
 	github.com/longhorn/longhorn-engine v1.4.4-rc2
-	github.com/longhorn/longhorn-instance-manager v1.4.5-0.20231128104111-ec26f77865da
+	github.com/longhorn/longhorn-instance-manager v1.4.5-0.20240123080948-c39a4cac7a20
 	github.com/longhorn/longhorn-share-manager v1.4.5-0.20231115141251-cb28f2149b7c
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.1

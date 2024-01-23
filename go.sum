@@ -498,8 +498,8 @@ github.com/longhorn/go-iscsi-helper v0.0.0-20231113050545-9df1e6b605c7/go.mod h1
 github.com/longhorn/longhorn-engine v1.2.0-preview1.0.20210818142058-32cb7dfd0630/go.mod h1:mtvBHZBmXJIHBcLL828FY5mGq4hoh7bV2EFK6LFLmhE=
 github.com/longhorn/longhorn-engine v1.4.4-rc2 h1:9zysTzPyPVTHcina9d5t6li+J/ff7usS4+GZ/skh/hw=
 github.com/longhorn/longhorn-engine v1.4.4-rc2/go.mod h1:1Q1w/dd0EkwtjEK96hfRsSwX2wuL6omesDhb3iwFbYY=
-github.com/longhorn/longhorn-instance-manager v1.4.5-0.20231128104111-ec26f77865da h1:cMGjdTE0CWRW4ZZkrt28RpNp5TSGZvf6AfGL5h+EJBY=
-github.com/longhorn/longhorn-instance-manager v1.4.5-0.20231128104111-ec26f77865da/go.mod h1:0gBD+2Gs4zb8rSppoiJqHP5ZN3eilzdLAm6rXy5YfZU=
+github.com/longhorn/longhorn-instance-manager v1.4.5-0.20240123080948-c39a4cac7a20 h1:fk1mwdkCW02qfwm/7nAJpJWIlE1MTw/6REOS8JZA1EY=
+github.com/longhorn/longhorn-instance-manager v1.4.5-0.20240123080948-c39a4cac7a20/go.mod h1:0gBD+2Gs4zb8rSppoiJqHP5ZN3eilzdLAm6rXy5YfZU=
 github.com/longhorn/longhorn-share-manager v1.4.5-0.20231115141251-cb28f2149b7c h1:b2oBPMBT1ELNsuDkbopQ7ugnEPXnlGT7ONp4FLPHXAc=
 github.com/longhorn/longhorn-share-manager v1.4.5-0.20231115141251-cb28f2149b7c/go.mod h1:O9X5B9T8SkdUh6Qt3GMNQ7pvi6DHteSlW0pYRnOmPzo=
 github.com/longhorn/nsfilelock v0.0.0-20200723175406-fa7c83ad0003/go.mod h1:0CLeXlf59Lg6C0kjLSDf47ft73Dh37CwymYRKWwAn04=

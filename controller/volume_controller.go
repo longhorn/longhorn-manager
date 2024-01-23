@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
+	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -27,6 +28,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/backupstore"
+	imtypes "github.com/longhorn/longhorn-instance-manager/pkg/types"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/constant"
@@ -1227,6 +1229,9 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 
 	vc.updateReplicaLogRequested(e, rs)
 
+	// check volume mount status
+	vc.requestRemountIfFileSystemReadOnly(v, e)
+
 	scheduled := true
 	aggregatedReplicaScheduledError := util.NewMultiError()
 	for _, r := range rs {
@@ -1715,6 +1720,41 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 		}
 	}
 	return nil
+}
+
+func (c *VolumeController) requestRemountIfFileSystemReadOnly(v *longhorn.Volume, e *longhorn.Engine) {
+	log := getLoggerForVolume(c.logger, v)
+	if v.Status.State == longhorn.VolumeStateAttached && e.Status.CurrentState == longhorn.InstanceStateRunning {
+		fileSystemReadOnlyCondition := types.GetCondition(e.Status.Conditions, imtypes.EngineConditionFilesystemReadOnly)
+
+		isPVMountOptionReadOnly := false
+		kubeStatus := v.Status.KubernetesStatus
+		if kubeStatus.PVName != "" {
+			pv, err := c.ds.GetPersistentVolumeRO(kubeStatus.PVName)
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					return
+				}
+				log.WithError(err).Warnf("Failed to get PV when checking the mount option of the volume")
+				return
+			}
+			if pv != nil {
+				for _, opt := range pv.Spec.MountOptions {
+					if opt == "ro" {
+						isPVMountOptionReadOnly = true
+						break
+					}
+				}
+			}
+		}
+
+		if fileSystemReadOnlyCondition.Status == longhorn.ConditionStatusTrue && !isPVMountOptionReadOnly {
+			v.Status.RemountRequestedAt = c.nowHandler()
+			log.Infof("Volume request remount at %v due to engine detected read-only filesystem", v.Status.RemountRequestedAt)
+			msg := fmt.Sprintf("Volume %s requested remount at %v due to engine detected read-only filesystem", v.Name, v.Status.RemountRequestedAt)
+			c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonRemount, msg)
+		}
+	}
 }
 
 func (vc *VolumeController) canInstanceManagerLaunchReplica(r *longhorn.Replica) (bool, error) {

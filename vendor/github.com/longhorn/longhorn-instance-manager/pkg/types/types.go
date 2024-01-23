@@ -23,3 +23,9 @@ const (
 	RetryInterval = 3 * time.Second
 	RetryCounts   = 3
 )
+
+const (
+	GlobalMountPathPattern = "/host/var/lib/kubelet/plugins/kubernetes.io/csi/driver.longhorn.io/*/globalmount"
+
+	EngineConditionFilesystemReadOnly = "FilesystemReadOnly"
+)
