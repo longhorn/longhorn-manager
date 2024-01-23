@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
+	imtypes "github.com/longhorn/longhorn-instance-manager/pkg/types"
 
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -66,6 +67,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.IP = ""
 		status.StorageIP = ""
 		status.Port = 0
+		h.resetInstanceErrorCondition(status)
 		return
 	}
 
@@ -84,6 +86,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.IP = ""
 		status.StorageIP = ""
 		status.Port = 0
+		h.resetInstanceErrorCondition(status)
 		return
 	}
 
@@ -97,6 +100,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			status.IP = ""
 			status.StorageIP = ""
 			status.Port = 0
+			h.resetInstanceErrorCondition(status)
 		}
 		return
 	}
@@ -115,6 +119,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.IP = ""
 		status.StorageIP = ""
 		status.Port = 0
+		h.resetInstanceErrorCondition(status)
 		return
 	}
 
@@ -136,6 +141,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.IP = ""
 		status.StorageIP = ""
 		status.Port = 0
+		h.resetInstanceErrorCondition(status)
 	case longhorn.InstanceStateRunning:
 		status.CurrentState = longhorn.InstanceStateRunning
 
@@ -169,6 +175,8 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		if status.CurrentImage == "" {
 			status.CurrentImage = spec.EngineImage
 		}
+		h.syncInstanceCondition(instance, status)
+
 	case longhorn.InstanceStateStopping:
 		if status.Started {
 			status.CurrentState = longhorn.InstanceStateError
@@ -179,6 +187,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.IP = ""
 		status.StorageIP = ""
 		status.Port = 0
+		h.resetInstanceErrorCondition(status)
 	case longhorn.InstanceStateStopped:
 		if status.Started {
 			status.CurrentState = longhorn.InstanceStateError
@@ -189,6 +198,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.IP = ""
 		status.StorageIP = ""
 		status.Port = 0
+		h.resetInstanceErrorCondition(status)
 	default:
 		if status.CurrentState != longhorn.InstanceStateError {
 			logrus.Warnf("Instance %v is state %v, error message: %v", instanceName, instance.Status.State, instance.Status.ErrorMsg)
@@ -198,7 +208,23 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.IP = ""
 		status.StorageIP = ""
 		status.Port = 0
+		h.resetInstanceErrorCondition(status)
 	}
+}
+
+func (h *InstanceHandler) syncInstanceCondition(instance longhorn.InstanceProcess, status *longhorn.InstanceStatus) {
+	for condition, flag := range instance.Status.Conditions {
+		conditionStatus := longhorn.ConditionStatusFalse
+		if flag {
+			conditionStatus = longhorn.ConditionStatusTrue
+		}
+		status.Conditions = types.SetCondition(status.Conditions, condition, conditionStatus, "", "")
+	}
+}
+
+// resetInstanceErrorCondition resets the error condition to false when the instance is not running
+func (h *InstanceHandler) resetInstanceErrorCondition(status *longhorn.InstanceStatus) {
+	status.Conditions = types.SetCondition(status.Conditions, imtypes.EngineConditionFilesystemReadOnly, longhorn.ConditionStatusFalse, "", "")
 }
 
 // getNameFromObj will get the name from the object metadata, which will be used

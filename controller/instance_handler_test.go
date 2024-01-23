@@ -15,6 +15,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
+	imtypes "github.com/longhorn/longhorn-instance-manager/pkg/types"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -79,6 +80,10 @@ func newEngine(name, currentImage, imName, nodeName, ip string, port int, starte
 	var conditions []longhorn.Condition
 	conditions = types.SetCondition(conditions,
 		longhorn.InstanceConditionTypeInstanceCreation, longhorn.ConditionStatusTrue,
+		"", "")
+
+	conditions = types.SetCondition(conditions,
+		imtypes.EngineConditionFilesystemReadOnly, longhorn.ConditionStatusFalse,
 		"", "")
 
 	return &longhorn.Engine{
