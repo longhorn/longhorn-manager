@@ -28,6 +28,8 @@ import (
 
 const (
 	controllerAgentName = "longhorn-kubernetes-pod-controller"
+
+	remountRequestDelayDuration = 5 * time.Second
 )
 
 type KubernetesPodController struct {
@@ -335,9 +337,13 @@ func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *
 		}
 
 		timeNow := time.Now()
-		delayDuration := time.Duration(int64(5)) * time.Second
+		if podStartTime.Before(remountRequestedAt) {
+			if !timeNow.After(remountRequestedAt.Add(remountRequestDelayDuration)) {
+				kc.logger.Infof("Current time is not %v seconds after request remount, requeue the pod %v to handle it later", remountRequestDelayDuration.Seconds(), pod.GetName())
+				kc.enqueuePod(pod)
+				return nil
+			}
 
-		if podStartTime.Before(remountRequestedAt) && timeNow.After(remountRequestedAt.Add(delayDuration)) {
 			gracePeriod := int64(30)
 			err := kc.kubeClient.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.GetName(), metav1.DeleteOptions{
 				GracePeriodSeconds: &gracePeriod,
@@ -467,4 +473,14 @@ func (kc *KubernetesPodController) getAssociatedVolumes(pod *v1.Pod) ([]*longhor
 	}
 
 	return volumeList, nil
+}
+
+func (kc *KubernetesPodController) enqueuePod(obj interface{}) {
+	key, err := controller.KeyFunc(obj)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
+		return
+	}
+
+	kc.queue.Add(key)
 }
