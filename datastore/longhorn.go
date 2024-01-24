@@ -4776,3 +4776,25 @@ func (s *DataStore) RemoveFinalizerForLHVolumeAttachment(va *longhorn.VolumeAtta
 func (s *DataStore) DeleteLHVolumeAttachment(vaName string) error {
 	return s.lhClient.LonghornV1beta2().VolumeAttachments(s.namespace).Delete(context.TODO(), vaName, metav1.DeleteOptions{})
 }
+
+// IsBackendStoreDriverV1 returns true if the given backendstoreDriver is v1
+func IsBackendStoreDriverV1(backendstoreDriver longhorn.BackendStoreDriverType) bool {
+	return backendstoreDriver != longhorn.BackendStoreDriverTypeV2
+}
+
+// IsBackendStoreDriverV2 returns true if the given backendstoreDriver is v2
+func IsBackendStoreDriverV2(backendstoreDriver longhorn.BackendStoreDriverType) bool {
+	return backendstoreDriver == longhorn.BackendStoreDriverTypeV2
+}
+
+// IsSupportedVolumeSize returns turn if the v1 volume size is supported by the given fsType file system.
+func IsSupportedVolumeSize(backendstoreDriver longhorn.BackendStoreDriverType, fsType string, volumeSize int64) bool {
+	// TODO: check the logical volume maximum size limit
+	if IsBackendStoreDriverV1(backendstoreDriver) {
+		// unix.Statfs can not differentiate the ext2/ext3/ext4 file systems.
+		if (strings.HasPrefix(fsType, "ext") && volumeSize >= util.MaxExt4VolumeSize) || (fsType == "xfs" && volumeSize >= util.MaxXfsVolumeSize) {
+			return false
+		}
+	}
+	return true
+}

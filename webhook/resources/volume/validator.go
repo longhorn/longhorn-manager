@@ -294,6 +294,23 @@ func (v *volumeValidator) validateExpansionSize(oldVolume *longhorn.Volume, newV
 		return fmt.Errorf("shrinking volume %v size from %v to %v is not supported", newVolume.Name, oldSize, newSize)
 	}
 
+	replicas, err := v.ds.ListVolumeReplicasRO(newVolume.Name)
+	if err != nil {
+		return err
+	}
+	for _, replica := range replicas {
+		diskUUID := replica.Spec.DiskID
+		node, diskName, err := v.ds.GetReadyDiskNode(diskUUID)
+		if err != nil {
+			return err
+		}
+		diskStatus := node.Status.DiskStatus[diskName]
+		if !datastore.IsSupportedVolumeSize(replica.Spec.BackendStoreDriver, diskStatus.FSType, newSize) {
+			return fmt.Errorf("file system %s does not support volume size %v", diskStatus.Type, newSize)
+		}
+		break
+	}
+
 	newKubernetesStatus := &newVolume.Status.KubernetesStatus
 	namespace := newKubernetesStatus.Namespace
 	pvcName := newKubernetesStatus.PVCName
