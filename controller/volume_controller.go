@@ -1722,15 +1722,15 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 	return nil
 }
 
-func (c *VolumeController) requestRemountIfFileSystemReadOnly(v *longhorn.Volume, e *longhorn.Engine) {
-	log := getLoggerForVolume(c.logger, v)
+func (vc *VolumeController) requestRemountIfFileSystemReadOnly(v *longhorn.Volume, e *longhorn.Engine) {
+	log := getLoggerForVolume(vc.logger, v)
 	if v.Status.State == longhorn.VolumeStateAttached && e.Status.CurrentState == longhorn.InstanceStateRunning {
 		fileSystemReadOnlyCondition := types.GetCondition(e.Status.Conditions, imtypes.EngineConditionFilesystemReadOnly)
 
 		isPVMountOptionReadOnly := false
 		kubeStatus := v.Status.KubernetesStatus
 		if kubeStatus.PVName != "" {
-			pv, err := c.ds.GetPersistentVolumeRO(kubeStatus.PVName)
+			pv, err := vc.ds.GetPersistentVolumeRO(kubeStatus.PVName)
 			if err != nil {
 				if apierrors.IsNotFound(err) {
 					return
@@ -1749,10 +1749,10 @@ func (c *VolumeController) requestRemountIfFileSystemReadOnly(v *longhorn.Volume
 		}
 
 		if fileSystemReadOnlyCondition.Status == longhorn.ConditionStatusTrue && !isPVMountOptionReadOnly {
-			v.Status.RemountRequestedAt = c.nowHandler()
+			v.Status.RemountRequestedAt = vc.nowHandler()
 			log.Infof("Volume request remount at %v due to engine detected read-only filesystem", v.Status.RemountRequestedAt)
 			msg := fmt.Sprintf("Volume %s requested remount at %v due to engine detected read-only filesystem", v.Name, v.Status.RemountRequestedAt)
-			c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonRemount, msg)
+			vc.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonRemount, msg)
 		}
 	}
 }
