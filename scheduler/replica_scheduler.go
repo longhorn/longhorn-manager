@@ -2,7 +2,6 @@ package scheduler
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -326,9 +325,7 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 			continue
 		}
 
-		volumeSize := volume.Spec.Size
-		// unix.Statfs can not differentiate the ext2/ext3/ext4 file systems.
-		if (strings.HasPrefix(diskStatus.FSType, "ext") && volumeSize >= util.MaxExt4VolumeSize) || (diskStatus.FSType == "xfs" && volumeSize >= util.MaxXfsVolumeSize) {
+		if !datastore.IsSupportedVolumeSize(volume.Spec.BackendStoreDriver, diskStatus.FSType, volume.Spec.Size) {
 			logrus.Debugf("Volume %v size %v is not compatible with the file system %v of the disk %v", volume.Name, volume.Spec.Size, diskStatus.Type, diskName)
 			continue
 		}
