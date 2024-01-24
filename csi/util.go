@@ -34,6 +34,8 @@ const (
 	defaultForceUmountTimeout = 30 * time.Second
 
 	tempTestMountPointValidStatusFile = ".longhorn-volume-mount-point-test.tmp"
+
+	errorUnmountCorruptMountPoint = "unmounted existing corrupt mount point"
 )
 
 // NewForcedParamsExec creates a osExecutor that allows for adding additional params to later occurring Run calls
@@ -307,7 +309,8 @@ func ensureMountPoint(targetPath string, mounter mount.Interface) (bool, error) 
 				targetPath, unmountErr, err)
 		}
 
-		return false, fmt.Errorf("unmounted existing corrupt mount point %v", targetPath)
+		logrus.Infof("Unmounted existing corrupt mount point %v", targetPath)
+		return false, fmt.Errorf("%v %v", errorUnmountCorruptMountPoint, targetPath)
 	}
 
 	return isMnt, err
