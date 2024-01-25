@@ -81,25 +81,34 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 
 	initTLSClient := func() (*imclient.ProcessManagerClient, error) {
 		// check for tls cert file presence
-		pmClient, err := imclient.NewProcessManagerClientWithTLS(endpoint,
+		processManagerClient, err := imclient.NewProcessManagerClientWithTLS(endpoint,
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSCAFile),
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSCertFile),
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSKeyFile),
 			"longhorn-backend.longhorn-system",
 		)
+		defer func() {
+			if err != nil && processManagerClient != nil {
+				processManagerClient.Close()
+			}
+		}()
 		if err != nil {
 			return nil, fmt.Errorf("failed to load Instance Manager Client TLS files Error: %w", err)
 		}
+<<<<<<< HEAD
 
 		if _, err = pmClient.VersionGet(); err != nil {
 <<<<<<< HEAD
 			return nil, fmt.Errorf("failed to check check version of Instance Manager Client with TLS connection Error: %w", err)
 =======
+=======
+		if _, err = processManagerClient.VersionGet(); err != nil {
+>>>>>>> 9a798439 (Fix connection leak during TLS fallback)
 			return nil, errors.Wrap(err, "failed to check version of Instance Manager Process Manager Service Client with TLS connection")
 >>>>>>> 181c414a (Support proxy connections over TLS)
 		}
 
-		return pmClient, nil
+		return processManagerClient, nil
 	}
 
 <<<<<<< HEAD
@@ -108,20 +117,25 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 =======
 	initInstanceServiceTLSClient := func(endpoint string) (*imclient.InstanceServiceClient, error) {
 		// check for tls cert file presence
-		instanceClient, err := imclient.NewInstanceServiceClientWithTLS(endpoint,
+		instanceServiceClient, err := imclient.NewInstanceServiceClientWithTLS(endpoint,
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSCAFile),
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSCertFile),
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSKeyFile),
 			"longhorn-backend.longhorn-system",
 		)
+		defer func() {
+			if err != nil && instanceServiceClient != nil {
+				instanceServiceClient.Close()
+			}
+		}()
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to load Instance Manager Instance Service Client TLS files")
 		}
-		if _, err = instanceClient.VersionGet(); err != nil {
+		if _, err = instanceServiceClient.VersionGet(); err != nil {
 			return nil, errors.Wrap(err, "failed to check version of Instance Manager Instance Service Client with TLS connection")
 		}
 
-		return instanceClient, nil
+		return instanceServiceClient, nil
 	}
 
 	// Create a new process manager client
@@ -131,6 +145,11 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 	endpoint := "tcp://" + imutil.GetURL(im.Status.IP, InstanceManagerProcessManagerServiceDefaultPort)
 	if im.Status.APIVersion < 4 {
 		processManagerClient, err = initProcessManagerTLSClient(endpoint)
+		defer func() {
+			if err != nil && processManagerClient != nil {
+				processManagerClient.Close()
+			}
+		}()
 		if err != nil {
 			logrus.WithError(err).Tracef("Falling back to non-tls client for Instance Manager Process Manager Service Client for %v IP %v",
 				im.Name, im.Status.IP)
@@ -161,6 +180,11 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 	// Create a new instance service  client
 	endpoint = "tcp://" + imutil.GetURL(im.Status.IP, InstanceManagerInstanceServiceDefaultPort)
 	instanceServiceClient, err := initInstanceServiceTLSClient(endpoint)
+	defer func() {
+		if err != nil && instanceServiceClient != nil {
+			instanceServiceClient.Close()
+		}
+	}()
 	if err != nil {
 		logrus.WithError(err).Tracef("Falling back to non-tls client for Instance Manager Instance Service Client for %v, IP %v",
 			im.Name, im.Status.IP)
