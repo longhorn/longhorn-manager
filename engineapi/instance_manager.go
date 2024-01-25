@@ -160,26 +160,30 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 
 	// Create a new process manager client
 	// HACK: TODO: fix me
+	var err error
+	var processManagerClient *imclient.ProcessManagerClient
 	endpoint := "tcp://" + imutil.GetURL(im.Status.IP, InstanceManagerProcessManagerServiceDefaultPort)
-	processManagerClient, err := initProcessManagerTLSClient(endpoint)
-	if err != nil {
-		// fallback to non tls client, there is no way to differentiate between im versions unless we get the version via the im client
-		// TODO: remove this im client fallback mechanism in a future version maybe 2.4 / 2.5 or the next time we update the api version
-		processManagerClient, err = imclient.NewProcessManagerClient(endpoint, nil)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to initialize Instance Manager Process Manager Service Client for %v, state: %v, IP: %v, TLS: %v",
-				im.Name, im.Status.CurrentState, im.Status.IP, false)
-		}
-
-		version, err := processManagerClient.VersionGet()
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to get Version of Instance Manager Process Manager Service Client for %v, state: %v, IP: %v, TLS: %v",
-				im.Name, im.Status.CurrentState, im.Status.IP, false)
-		}
-		logrus.Tracef("Instance Manager Process Manager Service Client Version: %+v", version)
-	}
-
 	if im.Status.APIVersion < 4 {
+		processManagerClient, err = initProcessManagerTLSClient(endpoint)
+		if err != nil {
+			logrus.WithError(err).Warnf("Falling back to non-tls client for Instance Manager Process Manager Service Client for %v, state: %v, IP: %v",
+				im.Name, im.Status.CurrentState, im.Status.IP)
+			// fallback to non tls client, there is no way to differentiate between im versions unless we get the version via the im client
+			// TODO: remove this im client fallback mechanism in a future version maybe 2.4 / 2.5 or the next time we update the api version
+			processManagerClient, err = imclient.NewProcessManagerClient(endpoint, nil)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to initialize Instance Manager Process Manager Service Client for %v, state: %v, IP: %v, TLS: %v",
+					im.Name, im.Status.CurrentState, im.Status.IP, false)
+			}
+
+			version, err := processManagerClient.VersionGet()
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to get Version of Instance Manager Process Manager Service Client for %v, state: %v, IP: %v, TLS: %v",
+					im.Name, im.Status.CurrentState, im.Status.IP, false)
+			}
+			logrus.Tracef("Instance Manager Process Manager Service Client Version: %+v", version)
+		}
+
 		return &InstanceManagerClient{
 			ip:                       im.Status.IP,
 			apiMinVersion:            im.Status.APIMinVersion,
@@ -192,6 +196,8 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 	endpoint = "tcp://" + imutil.GetURL(im.Status.IP, InstanceManagerInstanceServiceDefaultPort)
 	instanceServiceClient, err := initInstanceServiceTLSClient(endpoint)
 	if err != nil {
+		logrus.WithError(err).Warnf("Falling back to non-tls client for Instance Manager Instance Service Client for %v, state: %v, IP: %v",
+			im.Name, im.Status.CurrentState, im.Status.IP)
 		// fallback to non tls client, there is no way to differentiate between im versions unless we get the version via the im client
 		// TODO: remove this im client fallback mechanism in a future version maybe 2.4 / 2.5 or the next time we update the api version
 		instanceServiceClient, err = imclient.NewInstanceServiceClient(endpoint, nil)
