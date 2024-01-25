@@ -4,6 +4,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+<<<<<<< HEAD
+=======
+## [1.11.0] - 2023-05-02
+### Fixed
+- Fix initialization of `Value` wrappers.
+
+### Added
+- Add `String` method to `atomic.Pointer[T]` type allowing users to safely print
+underlying values of pointers.
+
+[1.11.0]: https://github.com/uber-go/atomic/compare/v1.10.0...v1.11.0
+
+## [1.10.0] - 2022-08-11
+### Added
+- Add `atomic.Float32` type for atomic operations on `float32`.
+- Add `CompareAndSwap` and `Swap` methods to `atomic.String`, `atomic.Error`,
+  and `atomic.Value`.
+- Add generic `atomic.Pointer[T]` type for atomic operations on pointers of any
+  type. This is present only for Go 1.18 or higher, and is a drop-in for
+  replacement for the standard library's `sync/atomic.Pointer` type.
+
+### Changed
+- Deprecate `CAS` methods on all types in favor of corresponding
+  `CompareAndSwap` methods.
+
+Thanks to @eNV25 and @icpd for their contributions to this release.
+
+[1.10.0]: https://github.com/uber-go/atomic/compare/v1.9.0...v1.10.0
+
+## [1.9.0] - 2021-07-15
+### Added
+- Add `Float64.Swap` to match int atomic operations.
+- Add `atomic.Time` type for atomic operations on `time.Time` values.
+
+[1.9.0]: https://github.com/uber-go/atomic/compare/v1.8.0...v1.9.0
+
+## [1.8.0] - 2021-06-09
+### Added
+- Add `atomic.Uintptr` type for atomic operations on `uintptr` values.
+- Add `atomic.UnsafePointer` type for atomic operations on `unsafe.Pointer` values.
+
+[1.8.0]: https://github.com/uber-go/atomic/compare/v1.7.0...v1.8.0
+
+>>>>>>> 181c414a (Support proxy connections over TLS)
 ## [1.7.0] - 2020-09-14
 ### Added
 - Support JSON serialization and deserialization of primitive atomic types.

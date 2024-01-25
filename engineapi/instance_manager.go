@@ -92,18 +92,84 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 		}
 
 		if _, err = pmClient.VersionGet(); err != nil {
+<<<<<<< HEAD
 			return nil, fmt.Errorf("failed to check check version of Instance Manager Client with TLS connection Error: %w", err)
+=======
+			return nil, errors.Wrap(err, "failed to check version of Instance Manager Process Manager Service Client with TLS connection")
+>>>>>>> 181c414a (Support proxy connections over TLS)
 		}
 
 		return pmClient, nil
 	}
 
+<<<<<<< HEAD
 	pmClient, err := initTLSClient()
 	if err != nil {
+=======
+	initInstanceServiceTLSClient := func(endpoint string) (*imclient.InstanceServiceClient, error) {
+		// check for tls cert file presence
+		instanceClient, err := imclient.NewInstanceServiceClientWithTLS(endpoint,
+			filepath.Join(types.TLSDirectoryInContainer, types.TLSCAFile),
+			filepath.Join(types.TLSDirectoryInContainer, types.TLSCertFile),
+			filepath.Join(types.TLSDirectoryInContainer, types.TLSKeyFile),
+			"longhorn-backend.longhorn-system",
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to load Instance Manager Instance Service Client TLS files")
+		}
+		if _, err = instanceClient.VersionGet(); err != nil {
+			return nil, errors.Wrap(err, "failed to check version of Instance Manager Instance Service Client with TLS connection")
+		}
+
+		return instanceClient, nil
+	}
+
+	// Create a new process manager client
+	// HACK: TODO: fix me
+	var err error
+	var processManagerClient *imclient.ProcessManagerClient
+	endpoint := "tcp://" + imutil.GetURL(im.Status.IP, InstanceManagerProcessManagerServiceDefaultPort)
+	if im.Status.APIVersion < 4 {
+		processManagerClient, err = initProcessManagerTLSClient(endpoint)
+		if err != nil {
+			logrus.WithError(err).Tracef("Falling back to non-tls client for Instance Manager Process Manager Service Client for %v IP %v",
+				im.Name, im.Status.IP)
+			// fallback to non tls client, there is no way to differentiate between im versions unless we get the version via the im client
+			// TODO: remove this im client fallback mechanism in a future version maybe 2.4 / 2.5 or the next time we update the api version
+			processManagerClient, err = imclient.NewProcessManagerClient(endpoint, nil)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to initialize Instance Manager Process Manager Service Client for %v IP %v",
+					im.Name, im.Status.IP)
+			}
+
+			version, err := processManagerClient.VersionGet()
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to check version of Instance Manager Process Manager Service Client without TLS for %v IP %v",
+					im.Name, im.Status.IP)
+			}
+			logrus.Tracef("Instance Manager Process Manager Service Client Version: %+v", version)
+		}
+
+		return &InstanceManagerClient{
+			ip:                       im.Status.IP,
+			apiMinVersion:            im.Status.APIMinVersion,
+			apiVersion:               im.Status.APIVersion,
+			processManagerGrpcClient: processManagerClient,
+		}, nil
+	}
+
+	// Create a new instance service  client
+	endpoint = "tcp://" + imutil.GetURL(im.Status.IP, InstanceManagerInstanceServiceDefaultPort)
+	instanceServiceClient, err := initInstanceServiceTLSClient(endpoint)
+	if err != nil {
+		logrus.WithError(err).Tracef("Falling back to non-tls client for Instance Manager Instance Service Client for %v, IP %v",
+			im.Name, im.Status.IP)
+>>>>>>> 181c414a (Support proxy connections over TLS)
 		// fallback to non tls client, there is no way to differentiate between im versions unless we get the version via the im client
 		// TODO: remove this im client fallback mechanism in a future version maybe 2.4 / 2.5 or the next time we update the api version
 		pmClient, err = imclient.NewProcessManagerClient(endpoint, nil)
 		if err != nil {
+<<<<<<< HEAD
 			return nil, fmt.Errorf("failed to initialize Instance Manager Client for %v, state: %v, IP: %v, TLS: %v, Error: %w",
 				im.Name, im.Status.CurrentState, im.Status.IP, false, err)
 		}
@@ -111,6 +177,16 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 		if _, err = pmClient.VersionGet(); err != nil {
 			return nil, fmt.Errorf("failed to get Version of Instance Manager Client for %v, state: %v, IP: %v, TLS: %v, Error: %w",
 				im.Name, im.Status.CurrentState, im.Status.IP, false, err)
+=======
+			return nil, errors.Wrapf(err, "failed to initialize Instance Manager Instance Service Client for %v IP %v",
+				im.Name, im.Status.IP)
+		}
+
+		version, err := instanceServiceClient.VersionGet()
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to check version of Instance Manager Instance Service Client without TLS for %v IP %v",
+				im.Name, im.Status.IP)
+>>>>>>> 181c414a (Support proxy connections over TLS)
 		}
 	}
 
