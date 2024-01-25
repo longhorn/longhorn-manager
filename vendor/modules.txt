@@ -1,7 +1,9 @@
-# github.com/Microsoft/go-winio v0.6.0
+# github.com/Microsoft/go-winio v0.6.1
 ## explicit; go 1.17
 github.com/Microsoft/go-winio
+github.com/Microsoft/go-winio/internal/fs
 github.com/Microsoft/go-winio/internal/socket
+github.com/Microsoft/go-winio/internal/stringbuffer
 github.com/Microsoft/go-winio/pkg/guid
 # github.com/NYTimes/gziphandler v1.1.1
 ## explicit; go 1.11
@@ -19,6 +21,8 @@ github.com/asaskevich/govalidator
 # github.com/avast/retry-go v3.0.0+incompatible
 ## explicit
 github.com/avast/retry-go
+# github.com/benbjohnson/clock v1.3.0
+## explicit; go 1.15
 # github.com/beorn7/perks v1.0.1
 ## explicit; go 1.11
 github.com/beorn7/perks/quantile
@@ -50,7 +54,7 @@ github.com/coreos/go-systemd/v22/journal
 # github.com/cpuguy83/go-md2man/v2 v2.0.2
 ## explicit; go 1.11
 github.com/cpuguy83/go-md2man/v2/md2man
-# github.com/davecgh/go-spew v1.1.1
+# github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 ## explicit
 github.com/davecgh/go-spew/spew
 # github.com/docker/distribution v2.8.2+incompatible
@@ -163,7 +167,13 @@ github.com/google/go-cmp/cmp/internal/value
 ## explicit; go 1.12
 github.com/google/gofuzz
 github.com/google/gofuzz/bytesource
+<<<<<<< HEAD
 # github.com/google/uuid v1.3.0
+=======
+# github.com/google/pprof v0.0.0-20230817174616-7a8ec2ada47b
+## explicit; go 1.19
+# github.com/google/uuid v1.5.0
+>>>>>>> 181c414a (Support proxy connections over TLS)
 ## explicit
 github.com/google/uuid
 # github.com/gorilla/context v1.1.1
@@ -243,7 +253,11 @@ github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
 github.com/longhorn/longhorn-engine/proto/ptypes
+<<<<<<< HEAD
 # github.com/longhorn/longhorn-instance-manager v1.5.4-0.20240123063535-d25af4d0515a
+=======
+# github.com/longhorn/longhorn-instance-manager v1.6.0-dev-20240105.0.20240125214727-a2885cab1406
+>>>>>>> 181c414a (Support proxy connections over TLS)
 ## explicit; go 1.21
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -261,8 +275,13 @@ github.com/longhorn/longhorn-share-manager/pkg/server/nfs
 github.com/longhorn/longhorn-share-manager/pkg/types
 github.com/longhorn/longhorn-share-manager/pkg/util
 github.com/longhorn/longhorn-share-manager/pkg/volume
+<<<<<<< HEAD
 # github.com/longhorn/longhorn-spdk-engine v0.0.0-20231005170812-e9b634e07e47
 ## explicit; go 1.17
+=======
+# github.com/longhorn/longhorn-spdk-engine v0.0.0-20240123044045-c5f14845bd83
+## explicit; go 1.21
+>>>>>>> 181c414a (Support proxy connections over TLS)
 github.com/longhorn/longhorn-spdk-engine/pkg/types
 github.com/longhorn/longhorn-spdk-engine/proto/spdkrpc
 # github.com/mailru/easyjson v0.7.7
@@ -315,7 +334,7 @@ github.com/pierrec/lz4/v4/internal/xxh32
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors
-# github.com/pmezard/go-difflib v1.0.0
+# github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 ## explicit
 github.com/pmezard/go-difflib/difflib
 # github.com/prometheus/client_golang v1.16.0
@@ -434,6 +453,14 @@ github.com/stretchr/testify/require
 # github.com/urfave/cli v1.22.13
 ## explicit; go 1.11
 github.com/urfave/cli
+<<<<<<< HEAD
+=======
+# github.com/yusufpapurcu/wmi v1.2.3
+## explicit; go 1.16
+github.com/yusufpapurcu/wmi
+# go.etcd.io/bbolt v1.3.8
+## explicit; go 1.17
+>>>>>>> 181c414a (Support proxy connections over TLS)
 # go.etcd.io/etcd/api/v3 v3.5.9
 ## explicit; go 1.19
 go.etcd.io/etcd/api/v3/authpb
@@ -515,16 +542,17 @@ go.opentelemetry.io/proto/otlp/collector/trace/v1
 go.opentelemetry.io/proto/otlp/common/v1
 go.opentelemetry.io/proto/otlp/resource/v1
 go.opentelemetry.io/proto/otlp/trace/v1
-# go.uber.org/atomic v1.10.0
+# go.uber.org/atomic v1.11.0
 ## explicit; go 1.18
 go.uber.org/atomic
 # go.uber.org/multierr v1.11.0
 ## explicit; go 1.19
 go.uber.org/multierr
-# go.uber.org/zap v1.19.0
-## explicit; go 1.13
+# go.uber.org/zap v1.24.0
+## explicit; go 1.19
 go.uber.org/zap
 go.uber.org/zap/buffer
+go.uber.org/zap/internal
 go.uber.org/zap/internal/bufferpool
 go.uber.org/zap/internal/color
 go.uber.org/zap/internal/exit
@@ -541,12 +569,12 @@ golang.org/x/crypto/internal/alias
 golang.org/x/crypto/internal/poly1305
 golang.org/x/crypto/nacl/secretbox
 golang.org/x/crypto/salsa20/salsa
-# golang.org/x/exp v0.0.0-20220827204233-334a2380cb91
-## explicit; go 1.18
+# golang.org/x/exp v0.0.0-20230725012225-302865e7556b
+## explicit; go 1.20
 golang.org/x/exp/constraints
 golang.org/x/exp/slices
-# golang.org/x/mod v0.10.0
-## explicit; go 1.17
+# golang.org/x/mod v0.13.0
+## explicit; go 1.18
 golang.org/x/mod/semver
 # golang.org/x/net v0.17.0
 ## explicit; go 1.17
@@ -603,7 +631,7 @@ golang.org/x/text/width
 # golang.org/x/time v0.3.0
 ## explicit
 golang.org/x/time/rate
-# golang.org/x/tools v0.8.0
+# golang.org/x/tools v0.14.0
 ## explicit; go 1.18
 golang.org/x/tools/cmd/stringer
 golang.org/x/tools/go/gcexportdata
@@ -614,6 +642,7 @@ golang.org/x/tools/internal/event
 golang.org/x/tools/internal/event/core
 golang.org/x/tools/internal/event/keys
 golang.org/x/tools/internal/event/label
+golang.org/x/tools/internal/event/tag
 golang.org/x/tools/internal/gcimporter
 golang.org/x/tools/internal/gocommand
 golang.org/x/tools/internal/packagesinternal
