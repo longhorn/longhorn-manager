@@ -139,7 +139,7 @@ require (
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de // indirect
-	github.com/longhorn/longhorn-spdk-engine v0.0.0-20240119021855-5f54798d937f // indirect
+	github.com/longhorn/longhorn-spdk-engine v0.0.0-20240123044045-c5f14845bd83 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
@@ -207,3 +207,5 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
+
+replace github.com/longhorn/longhorn-instance-manager v1.6.0-dev-20240105.0.20240119023626-79f2c8303d35 => github.com/sfackler/longhorn-instance-manager v0.0.0-20240124185244-a0c0fa299379

@@ -260,7 +260,7 @@ github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
 github.com/longhorn/longhorn-engine/proto/ptypes
-# github.com/longhorn/longhorn-instance-manager v1.6.0-dev-20240105.0.20240119023626-79f2c8303d35
+# github.com/longhorn/longhorn-instance-manager v1.6.0-dev-20240105.0.20240119023626-79f2c8303d35 => github.com/sfackler/longhorn-instance-manager v0.0.0-20240124185244-a0c0fa299379
 ## explicit; go 1.21
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -278,7 +278,7 @@ github.com/longhorn/longhorn-share-manager/pkg/server/nfs
 github.com/longhorn/longhorn-share-manager/pkg/types
 github.com/longhorn/longhorn-share-manager/pkg/util
 github.com/longhorn/longhorn-share-manager/pkg/volume
-# github.com/longhorn/longhorn-spdk-engine v0.0.0-20240119021855-5f54798d937f
+# github.com/longhorn/longhorn-spdk-engine v0.0.0-20240123044045-c5f14845bd83
 ## explicit; go 1.21
 github.com/longhorn/longhorn-spdk-engine/pkg/types
 github.com/longhorn/longhorn-spdk-engine/proto/spdkrpc
