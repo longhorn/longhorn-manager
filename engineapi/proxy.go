@@ -95,6 +95,11 @@ func NewEngineClientProxy(im *longhorn.InstanceManager, logger logrus.FieldLogge
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSKeyFile),
 			"longhorn-backend.longhorn-system",
 		)
+		defer func() {
+			if err != nil && proxyClient != nil {
+				proxyClient.Close()
+			}
+		}()
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to load Instance Manager Proxy Client TLS files")
 		}
@@ -105,20 +110,25 @@ func NewEngineClientProxy(im *longhorn.InstanceManager, logger logrus.FieldLogge
 		return proxyClient, nil
 	}
 
-	client, err := initProxyTLSClient(im.Status.IP)
+	proxyClient, err := initProxyTLSClient(im.Status.IP)
 	if err != nil {
 		logrus.WithError(err).Tracef("Falling back to non-tls client for Proxy Service Client for %v IP %v",
 			im.Name, im.Status.IP)
 		// fallback to non tls client, there is no way to differentiate between im versions unless we get the version via the im client
 		// TODO: remove this im client fallback mechanism in a future version maybe 2.4 / 2.5 or the next time we update the api version
 		ctx, cancel := context.WithCancel(context.Background())
-		client, err = imclient.NewProxyClient(ctx, cancel, im.Status.IP, InstanceManagerProxyServiceDefaultPort, nil)
+		proxyClient, err = imclient.NewProxyClient(ctx, cancel, im.Status.IP, InstanceManagerProxyServiceDefaultPort, nil)
+		defer func() {
+			if err != nil && proxyClient != nil {
+				proxyClient.Close()
+			}
+		}()
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to initialize Proxy Service Client for %v IP %v",
 				im.Name, im.Status.IP)
 		}
 
-		if err = client.CheckConnection(); err != nil {
+		if err = proxyClient.CheckConnection(); err != nil {
 			return nil, errors.Wrapf(err, "failed to check Proxy Service Client connection for %v IP %v",
 				im.Name, im.Status.IP)
 		}
@@ -128,7 +138,7 @@ func NewEngineClientProxy(im *longhorn.InstanceManager, logger logrus.FieldLogge
 
 	return &Proxy{
 		logger:           logger,
-		grpcClient:       client,
+		grpcClient:       proxyClient,
 		proxyConnCounter: proxyConnCounter,
 	}, nil
 }
