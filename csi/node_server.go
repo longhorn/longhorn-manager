@@ -182,7 +182,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	isMnt, err := ensureMountPoint(targetPath, mounter)
-	if err != nil && !strings.HasPrefix(err.Error(), errorUnmountCorruptMountPoint) {
+	if err != nil {
 		msg := fmt.Sprintf("Failed to prepare mount point for volume %v error %v", volumeID, err)
 		log.Error(msg)
 		return nil, status.Error(codes.Internal, msg)
