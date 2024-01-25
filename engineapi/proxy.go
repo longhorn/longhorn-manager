@@ -1,6 +1,8 @@
 package engineapi
 
 import (
+	"path/filepath"
+
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
@@ -9,6 +11,7 @@ import (
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -81,9 +84,19 @@ func NewEngineClientProxy(im *longhorn.InstanceManager, logger logrus.FieldLogge
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	client, err := imclient.NewProxyClient(ctx, cancel, im.Status.IP, InstanceManagerProxyServiceDefaultPort)
+	client, err := imclient.NewProxyClientWithTLS(ctx, cancel, im.Status.IP, InstanceManagerProxyServiceDefaultPort,
+		filepath.Join(types.TLSDirectoryInContainer, types.TLSCAFile),
+		filepath.Join(types.TLSDirectoryInContainer, types.TLSCertFile),
+		filepath.Join(types.TLSDirectoryInContainer, types.TLSKeyFile),
+		"longhorn-backend.longhorn-system")
 	if err != nil {
-		return nil, err
+		logrus.WithError(err).Tracef("Falling back to non-tls client for Proxy Service Client for %v IP %v",
+			im.Name, im.Status.IP)
+		client, err = imclient.NewProxyClient(ctx, cancel, im.Status.IP, InstanceManagerProxyServiceDefaultPort, nil)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to initialize Proxy Service Client for %v IP %v",
+				im.Name, im.Status.IP)
+		}
 	}
 
 	proxyConnCounter.IncreaseCount()
