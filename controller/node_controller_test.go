@@ -328,6 +328,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 			Conditions: []longhorn.Condition{
 				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 			},
+			FSType: TestDiskPathFSType,
 		},
 		"unavailable-disk": {
 			StorageScheduled: 0,
@@ -365,8 +366,8 @@ func (s *TestSuite) TestSyncNode(c *C) {
 						newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					},
 					ScheduledReplica: map[string]int64{},
-					FSType:           TestDiskPathFSType,
 					DiskUUID:         TestDiskID1,
+					FSType:           TestDiskPathFSType,
 				},
 			},
 		},
@@ -592,6 +593,7 @@ func (s *TestSuite) TestSyncNode(c *C) {
 					},
 					ScheduledReplica: map[string]int64{},
 					DiskUUID:         TestDiskID1,
+					FSType:           TestDiskPathFSType,
 				},
 			},
 		},

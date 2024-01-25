@@ -4438,3 +4438,13 @@ func (s *DataStore) listSystemRestores(selector labels.Selector) (map[string]*lo
 func (s *DataStore) ListSystemRestores() (map[string]*longhorn.SystemRestore, error) {
 	return s.listSystemRestores(labels.Everything())
 }
+
+// IsSupportedVolumeSize returns turn if the volume size is supported by the given fsType file system.
+func IsSupportedVolumeSize(fsType string, volumeSize int64) bool {
+	// TODO: check the logical volume maximum size limit
+	// unix.Statfs can not differentiate the ext2/ext3/ext4 file systems.
+	if (strings.HasPrefix(fsType, "ext") && volumeSize >= util.MaxExt4VolumeSize) || (fsType == "xfs" && volumeSize >= util.MaxXfsVolumeSize) {
+		return false
+	}
+	return true
+}
