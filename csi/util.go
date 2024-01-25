@@ -321,6 +321,29 @@ func ensureMountPoint(path string, mounter mount.Interface) (bool, error) {
 	return isMnt, err
 }
 
+// ensureDirectory checks if a folder exists at the specified path.
+// If not, it creates the folder and returns true, otherwise returns false.
+// If the path exists but is not a folder, it returns an error.
+func ensureDirectory(path string) (bool, error) {
+	fileInfo, err := os.Stat(path)
+
+	if os.IsNotExist(err) {
+		err := os.MkdirAll(path, os.ModePerm)
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	} else if err != nil {
+		return false, err
+	}
+
+	if fileInfo.IsDir() {
+		return true, nil
+	}
+
+	return false, fmt.Errorf("path %v exists but is not a folder", path)
+}
+
 func unmount(path string, mounter mount.Interface) (err error) {
 	forceUnmounter, ok := mounter.(mount.MounterForceUnmounter)
 	if ok {
