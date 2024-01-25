@@ -328,7 +328,7 @@ func (ns *NodeServer) nodePublishBlockVolume(volumeID, devicePath, targetPath st
 	log := ns.log.WithFields(logrus.Fields{"function": "nodePublishBlockVolume"})
 
 	// we ensure the parent directory exists and is valid
-	if _, err := ensureMountPoint(filepath.Dir(targetPath), mounter); err != nil {
+	if _, err := ensureDirectory(filepath.Dir(targetPath)); err != nil {
 		return status.Errorf(codes.Internal, errors.Wrapf(err, "failed to prepare mount point for block device %v", devicePath).Error())
 	}
 
