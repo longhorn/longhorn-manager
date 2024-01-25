@@ -59,6 +59,7 @@ const (
 	SettingNameSupportBundleManagerImage                                = SettingName("support-bundle-manager-image")
 	SettingNameReplicaSoftAntiAffinity                                  = SettingName("replica-soft-anti-affinity")
 	SettingNameReplicaAutoBalance                                       = SettingName("replica-auto-balance")
+	SettingNameReplicaAutoBalanceDiskPressurePercentage                 = SettingName("replica-auto-balance-disk-pressure-percentage")
 	SettingNameStorageOverProvisioningPercentage                        = SettingName("storage-over-provisioning-percentage")
 	SettingNameStorageMinimalAvailablePercentage                        = SettingName("storage-minimal-available-percentage")
 	SettingNameStorageReservedPercentageForDefaultDisk                  = SettingName("storage-reserved-percentage-for-default-disk")
@@ -149,6 +150,7 @@ var (
 		SettingNameSupportBundleManagerImage,
 		SettingNameReplicaSoftAntiAffinity,
 		SettingNameReplicaAutoBalance,
+		SettingNameReplicaAutoBalanceDiskPressurePercentage,
 		SettingNameStorageOverProvisioningPercentage,
 		SettingNameStorageMinimalAvailablePercentage,
 		SettingNameStorageReservedPercentageForDefaultDisk,
@@ -267,6 +269,7 @@ var (
 		SettingNameSupportBundleManagerImage:                                SettingDefinitionSupportBundleManagerImage,
 		SettingNameReplicaSoftAntiAffinity:                                  SettingDefinitionReplicaSoftAntiAffinity,
 		SettingNameReplicaAutoBalance:                                       SettingDefinitionReplicaAutoBalance,
+		SettingNameReplicaAutoBalanceDiskPressurePercentage:                 SettingDefinitionReplicaAutoBalanceDiskPressurePercentage,
 		SettingNameStorageOverProvisioningPercentage:                        SettingDefinitionStorageOverProvisioningPercentage,
 		SettingNameStorageMinimalAvailablePercentage:                        SettingDefinitionStorageMinimalAvailablePercentage,
 		SettingNameStorageReservedPercentageForDefaultDisk:                  SettingDefinitionStorageReservedPercentageForDefaultDisk,
@@ -519,6 +522,22 @@ var (
 			string(longhorn.ReplicaAutoBalanceLeastEffort),
 			string(longhorn.ReplicaAutoBalanceBestEffort),
 		},
+	}
+
+	SettingDefinitionReplicaAutoBalanceDiskPressurePercentage = SettingDefinition{
+		DisplayName: "Replica Auto Balance Disk Pressure Threshold (%)",
+		Description: "Percentage of currently used storage that triggers automatic replica rebalancing.\n\n" +
+			"When the threshold is reached, Longhorn automatically rebuilds replicas that are under disk pressure on another disk within the same node.\n\n" +
+			"To disable this feature, set the value to 0.\n\n" +
+			"**Note:** This setting takes effect only when the following conditions are met:\n" +
+			"- **Replica Auto Balance** is set to **best-effort**.\n" +
+			"- At least one other disk on the node has sufficient available space.\n\n" +
+			"**Note:** This feature is not affected by the **Replica Node Level Soft Anti-Affinity** setting.",
+		Category: SettingCategoryScheduling,
+		Type:     SettingTypeInt,
+		Required: true,
+		ReadOnly: false,
+		Default:  "90",
 	}
 
 	SettingDefinitionStorageOverProvisioningPercentage = SettingDefinition{
