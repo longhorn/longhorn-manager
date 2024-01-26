@@ -171,7 +171,7 @@ func (m *NodeMonitor) getRunningInstanceManagerRO(dataEngine longhorn.DataEngine
 	return nil, fmt.Errorf("unknown data engine %v", dataEngine)
 }
 
-func (m *NodeMonitor) newDiskServiceClients(node *longhorn.Node) map[longhorn.DataEngineType]*DiskServiceClient {
+func (m *NodeMonitor) newDiskServiceClients(ctx context.Context, ctxCancel context.CancelFunc, node *longhorn.Node) map[longhorn.DataEngineType]*DiskServiceClient {
 	clients := map[longhorn.DataEngineType]*DiskServiceClient{}
 
 	dataEngines := m.ds.GetDataEngines()
@@ -187,7 +187,7 @@ func (m *NodeMonitor) newDiskServiceClients(node *longhorn.Node) map[longhorn.Da
 
 		im, err := m.getRunningInstanceManagerRO(dataEngine)
 		if err == nil {
-			client, err = engineapi.NewDiskServiceClient(im, m.logger)
+			client, err = engineapi.NewDiskServiceClient(ctx, ctxCancel, im, m.logger)
 		}
 
 		clients[dataEngine] = &DiskServiceClient{
@@ -211,7 +211,8 @@ func (m *NodeMonitor) closeDiskServiceClients(clients map[longhorn.DataEngineTyp
 func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*CollectedDiskInfo {
 	diskInfoMap := make(map[string]*CollectedDiskInfo, 0)
 
-	diskServiceClients := m.newDiskServiceClients(node)
+	ctx, cancel := context.WithCancel(context.Background())
+	diskServiceClients := m.newDiskServiceClients(ctx, cancel, node)
 	defer func() {
 		m.closeDiskServiceClients(diskServiceClients)
 	}()
