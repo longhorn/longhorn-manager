@@ -1080,6 +1080,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 			r.Status.Port = randomPort()
 		}
 		r.Spec.HealthyAt = getTestNow()
+		r.Spec.LastHealthyAt = r.Spec.HealthyAt
 		for _, e := range tc.engines {
 			if r.Spec.FailedAt == "" {
 				e.Status.ReplicaModeMap[name] = "RW"
