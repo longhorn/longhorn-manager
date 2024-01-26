@@ -178,10 +178,14 @@ github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
 github.com/longhorn/longhorn-engine/proto/ptypes
 <<<<<<< HEAD
+<<<<<<< HEAD
 # github.com/longhorn/longhorn-instance-manager v1.4.5-0.20240123080948-c39a4cac7a20
 =======
 # github.com/longhorn/longhorn-instance-manager v1.6.0-dev-20240105.0.20240125214727-a2885cab1406
 >>>>>>> 181c414a (Support proxy connections over TLS)
+=======
+# github.com/longhorn/longhorn-instance-manager v1.6.0-dev-20240105.0.20240126085307-467528c95307
+>>>>>>> 5f0b239a (vendor: update dependencies)
 ## explicit; go 1.21
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
