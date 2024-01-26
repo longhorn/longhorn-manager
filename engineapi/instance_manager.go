@@ -92,7 +92,7 @@ func CheckInstanceManagerProxySupport(im *longhorn.InstanceManager) error {
 }
 
 // NewInstanceManagerClient creates a new instance manager client
-func NewInstanceManagerClient(ctx context.Context, ctxCancel context.CancelFunc, im *longhorn.InstanceManager) (*InstanceManagerClient, error) {
+func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerClient, error) {
 	// Do not check the major version here. Since IM cannot get the major version without using this client to call VersionGet().
 	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning || im.Status.IP == "" {
 		return nil, fmt.Errorf("invalid Instance Manager %v, state: %v, IP: %v", im.Name, im.Status.CurrentState, im.Status.IP)
@@ -104,11 +104,14 @@ func NewInstanceManagerClient(ctx context.Context, ctxCancel context.CancelFunc,
 		defer func() {
 			if err != nil && processManagerClient != nil {
 				_ = processManagerClient.Close()
+				processManagerClient = nil
 			}
 		}()
 
+		ctx, cancel := context.WithCancel(context.Background())
+
 		// check for tls cert file presence
-		processManagerClient, err = imclient.NewProcessManagerClientWithTLS(ctx, ctxCancel, endpoint,
+		processManagerClient, err = imclient.NewProcessManagerClientWithTLS(ctx, cancel, endpoint,
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSCAFile),
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSCertFile),
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSKeyFile),
@@ -119,7 +122,7 @@ func NewInstanceManagerClient(ctx context.Context, ctxCancel context.CancelFunc,
 		}
 
 		if err = processManagerClient.CheckConnection(); err != nil {
-			return processManagerClient, errors.Wrapf(err, "failed to check Instance Manager Process Manager Service Client connection for %v ip %v",
+			return processManagerClient, errors.Wrapf(err, "failed to check Instance Manager Process Manager Service Client TLS connection for %v IP %v",
 				im.Name, im.Status.IP)
 		}
 
@@ -134,11 +137,14 @@ func NewInstanceManagerClient(ctx context.Context, ctxCancel context.CancelFunc,
 		defer func() {
 			if err != nil && instanceServiceClient != nil {
 				_ = instanceServiceClient.Close()
+				instanceServiceClient = nil
 			}
 		}()
 
+		ctx, cancel := context.WithCancel(context.Background())
+
 		// check for tls cert file presence
-		instanceServiceClient, err = imclient.NewInstanceServiceClientWithTLS(ctx, ctxCancel, endpoint,
+		instanceServiceClient, err = imclient.NewInstanceServiceClientWithTLS(ctx, cancel, endpoint,
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSCAFile),
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSCertFile),
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSKeyFile),
@@ -149,7 +155,7 @@ func NewInstanceManagerClient(ctx context.Context, ctxCancel context.CancelFunc,
 		}
 
 		if err = instanceServiceClient.CheckConnection(); err != nil {
-			return instanceServiceClient, errors.Wrapf(err, "failed to check Instance Manager Instance Service Client connection for %v IP %v",
+			return instanceServiceClient, errors.Wrapf(err, "failed to check Instance Manager Instance Service Client TLS connection for %v IP %v",
 				im.Name, im.Status.IP)
 		}
 
@@ -170,6 +176,7 @@ func NewInstanceManagerClient(ctx context.Context, ctxCancel context.CancelFunc,
 		defer func() {
 			if err != nil && processManagerClient != nil {
 				processManagerClient.Close()
+				processManagerClient = nil
 			}
 		}()
 		if err != nil {
@@ -177,7 +184,8 @@ func NewInstanceManagerClient(ctx context.Context, ctxCancel context.CancelFunc,
 				im.Name, im.Status.IP)
 			// fallback to non tls client, there is no way to differentiate between im versions unless we get the version via the im client
 			// TODO: remove this im client fallback mechanism in a future version maybe 2.4 / 2.5 or the next time we update the api version
-			processManagerClient, err = imclient.NewProcessManagerClient(ctx, ctxCancel, endpoint, nil)
+			ctx, cancel := context.WithCancel(context.Background())
+			processManagerClient, err = imclient.NewProcessManagerClient(ctx, cancel, endpoint, nil)
 			if err != nil {
 				return nil, errors.Wrapf(err, "failed to initialize Instance Manager Process Manager Service Client for %v IP %v",
 					im.Name, im.Status.IP)
@@ -189,7 +197,7 @@ func NewInstanceManagerClient(ctx context.Context, ctxCancel context.CancelFunc,
 
 			version, err := processManagerClient.VersionGet()
 			if err != nil {
-				return nil, errors.Wrapf(err, "failed to check version of Instance Manager Process Manager Service Client without TLS for %v IP %v",
+				return nil, errors.Wrapf(err, "failed to check version of Instance Manager Process Manager Service Client for %v IP %v",
 					im.Name, im.Status.IP)
 			}
 			logrus.Tracef("Instance Manager Process Manager Service Client Version: %+v", version)
@@ -209,6 +217,7 @@ func NewInstanceManagerClient(ctx context.Context, ctxCancel context.CancelFunc,
 	defer func() {
 		if err != nil && instanceServiceClient != nil {
 			instanceServiceClient.Close()
+			instanceServiceClient = nil
 		}
 	}()
 	if err != nil {
@@ -216,7 +225,8 @@ func NewInstanceManagerClient(ctx context.Context, ctxCancel context.CancelFunc,
 			im.Name, im.Status.IP)
 		// fallback to non tls client, there is no way to differentiate between im versions unless we get the version via the im client
 		// TODO: remove this im client fallback mechanism in a future version maybe 2.4 / 2.5 or the next time we update the api version
-		instanceServiceClient, err = imclient.NewInstanceServiceClient(ctx, ctxCancel, endpoint, nil)
+		ctx, cancel := context.WithCancel(context.Background())
+		instanceServiceClient, err = imclient.NewInstanceServiceClient(ctx, cancel, endpoint, nil)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to initialize Instance Manager Instance Service Client for %v IP %v",
 				im.Name, im.Status.IP)
@@ -228,7 +238,7 @@ func NewInstanceManagerClient(ctx context.Context, ctxCancel context.CancelFunc,
 
 		version, err := instanceServiceClient.VersionGet()
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to check version of Instance Manager Instance Service Client without TLS for %v IP %v",
+			return nil, errors.Wrapf(err, "failed to check version of Instance Manager Instance Service Client for %v IP %v",
 				im.Name, im.Status.IP)
 		}
 		logrus.Tracef("Instance Manager Instance Service Client Version: %+v", version)
