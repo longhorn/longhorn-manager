@@ -104,7 +104,7 @@ func NewEngineClientProxy(im *longhorn.InstanceManager, logger logrus.FieldLogge
 			return nil, errors.Wrap(err, "failed to load Instance Manager Proxy Client TLS files")
 		}
 		if err = proxyClient.CheckConnection(); err != nil {
-			return nil, errors.Wrap(err, "failed to check Instance Manager Proxy Client with TLS connection")
+			return proxyClient, errors.Wrap(err, "failed to check Instance Manager Proxy Client with TLS connection")
 		}
 
 		return proxyClient, nil
