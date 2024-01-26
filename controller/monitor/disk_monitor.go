@@ -138,10 +138,62 @@ func (m *NodeMonitor) run(value interface{}) error {
 	return nil
 }
 
+<<<<<<< HEAD
 func (m *NodeMonitor) newDiskServiceClient(node *longhorn.Node) (*engineapi.DiskService, error) {
 	im, err := m.ds.GetDefaultInstanceManagerByNodeRO(m.nodeName)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get default instance manager for node %v", m.nodeName)
+=======
+func (m *NodeMonitor) getRunningInstanceManagerRO(dataEngine longhorn.DataEngineType) (*longhorn.InstanceManager, error) {
+	switch dataEngine {
+	case longhorn.DataEngineTypeV1:
+		return m.ds.GetDefaultInstanceManagerByNodeRO(m.nodeName, dataEngine)
+	case longhorn.DataEngineTypeV2:
+		im, err := m.ds.GetDefaultInstanceManagerByNodeRO(m.nodeName, dataEngine)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get default instance manager for node %v", m.nodeName)
+		}
+		if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+			return im, nil
+		}
+		ims, err := m.ds.ListInstanceManagersByNodeRO(m.nodeName, longhorn.InstanceManagerTypeAllInOne, dataEngine)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to list instance managers for node %v", m.nodeName)
+		}
+		for _, im := range ims {
+			if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+				return im, nil
+			}
+		}
+		return nil, fmt.Errorf("failed to find running instance manager for node %v", m.nodeName)
+	}
+	return nil, fmt.Errorf("unknown data engine %v", dataEngine)
+}
+
+func (m *NodeMonitor) newDiskServiceClients(ctx context.Context, ctxCancel context.CancelFunc, node *longhorn.Node) map[longhorn.DataEngineType]*DiskServiceClient {
+	clients := map[longhorn.DataEngineType]*DiskServiceClient{}
+
+	dataEngines := m.ds.GetDataEngines()
+
+	for dataEngine := range dataEngines {
+		// TODO: disk service is currently not used by filesystem-type disk for v1 data engine,
+		// so we can skip it for now.
+		if datastore.IsDataEngineV1(dataEngine) {
+			continue
+		}
+
+		var client *engineapi.DiskService
+
+		im, err := m.getRunningInstanceManagerRO(dataEngine)
+		if err == nil {
+			client, err = engineapi.NewDiskServiceClient(ctx, ctxCancel, im, m.logger)
+		}
+
+		clients[dataEngine] = &DiskServiceClient{
+			c:   client,
+			err: err,
+		}
+>>>>>>> 62620bce (Pass ctx and cancel function to instance and disk clients)
 	}
 
 	return engineapi.NewDiskServiceClient(im, m.logger)
@@ -151,6 +203,7 @@ func (m *NodeMonitor) newDiskServiceClient(node *longhorn.Node) (*engineapi.Disk
 func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*CollectedDiskInfo {
 	diskInfoMap := make(map[string]*CollectedDiskInfo, 0)
 
+<<<<<<< HEAD
 	v2DataEngineEnabled, err := m.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
 	if err != nil {
 		m.logger.Errorf("Failed to get setting %v: %v", types.SettingNameV2DataEngine, err)
@@ -163,6 +216,10 @@ func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 		// The error out will hinder the following logics in syncNode.
 		logrus.WithError(err).Warnf("Failed to create disk service client")
 	}
+=======
+	ctx, cancel := context.WithCancel(context.Background())
+	diskServiceClients := m.newDiskServiceClients(ctx, cancel, node)
+>>>>>>> 62620bce (Pass ctx and cancel function to instance and disk clients)
 	defer func() {
 		if diskServiceClient != nil {
 			diskServiceClient.Close()

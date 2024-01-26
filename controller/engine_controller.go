@@ -440,7 +440,9 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 	if err != nil {
 		return nil, err
 	}
-	c, err := engineapi.NewInstanceManagerClient(im)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	c, err := engineapi.NewInstanceManagerClient(ctx, cancel, im)
 	if err != nil {
 		return nil, err
 	}
@@ -490,6 +492,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 	}
 
 	var im *longhorn.InstanceManager
+
 	// Not assigned or not updated, try best to delete
 	if e.Status.InstanceManagerName == "" {
 		if e.Spec.NodeID == "" {
@@ -581,7 +584,8 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 		return nil
 	}
 
-	c, err := engineapi.NewInstanceManagerClient(im)
+	ctx, cancel := context.WithCancel(context.Background())
+	c, err := engineapi.NewInstanceManagerClient(ctx, cancel, im)
 	if err != nil {
 		return err
 	}
@@ -671,7 +675,8 @@ func (ec *EngineController) GetInstance(obj interface{}) (*longhorn.InstanceProc
 			return nil, err
 		}
 	}
-	c, err := engineapi.NewInstanceManagerClient(im)
+	ctx, cancel := context.WithCancel(context.Background())
+	c, err := engineapi.NewInstanceManagerClient(ctx, cancel, im)
 	if err != nil {
 		return nil, err
 	}
@@ -690,7 +695,9 @@ func (ec *EngineController) LogInstance(ctx context.Context, obj interface{}) (*
 	if err != nil {
 		return nil, nil, err
 	}
-	c, err := engineapi.NewInstanceManagerClient(im)
+
+	ctx, cancel := context.WithCancel(ctx)
+	c, err := engineapi.NewInstanceManagerClient(ctx, cancel, im)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1995,7 +2002,9 @@ func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logru
 	if err != nil {
 		return err
 	}
-	c, err := engineapi.NewInstanceManagerClient(im)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	c, err := engineapi.NewInstanceManagerClient(ctx, cancel, im)
 	if err != nil {
 		return err
 	}
