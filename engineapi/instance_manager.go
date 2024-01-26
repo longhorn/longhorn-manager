@@ -100,22 +100,24 @@ func NewInstanceManagerClient(ctx context.Context, ctxCancel context.CancelFunc,
 
 	// TODO: Initialize the following gRPC clients are similar. This can be simplified via factory method.
 
-	initProcessManagerTLSClient := func(endpoint string) (*imclient.ProcessManagerClient, error) {
+	initProcessManagerTLSClient := func(endpoint string) (processManagerClient *imclient.ProcessManagerClient, err error) {
+		defer func() {
+			if err != nil && processManagerClient != nil {
+				_ = processManagerClient.Close()
+			}
+		}()
+
 		// check for tls cert file presence
-		processManagerClient, err := imclient.NewProcessManagerClientWithTLS(ctx, ctxCancel, endpoint,
+		processManagerClient, err = imclient.NewProcessManagerClientWithTLS(ctx, ctxCancel, endpoint,
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSCAFile),
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSCertFile),
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSKeyFile),
 			"longhorn-backend.longhorn-system",
 		)
-		defer func() {
-			if err != nil && processManagerClient != nil {
-				processManagerClient.Close()
-			}
-		}()
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to load Instance Manager Process Manager Service Client TLS files")
 		}
+
 		if err = processManagerClient.CheckConnection(); err != nil {
 			return processManagerClient, errors.Wrapf(err, "failed to check Instance Manager Process Manager Service Client connection for %v ip %v",
 				im.Name, im.Status.IP)
@@ -128,22 +130,24 @@ func NewInstanceManagerClient(ctx context.Context, ctxCancel context.CancelFunc,
 		return processManagerClient, nil
 	}
 
-	initInstanceServiceTLSClient := func(endpoint string) (*imclient.InstanceServiceClient, error) {
+	initInstanceServiceTLSClient := func(endpoint string) (instanceServiceClient *imclient.InstanceServiceClient, err error) {
+		defer func() {
+			if err != nil && instanceServiceClient != nil {
+				_ = instanceServiceClient.Close()
+			}
+		}()
+
 		// check for tls cert file presence
-		instanceServiceClient, err := imclient.NewInstanceServiceClientWithTLS(ctx, ctxCancel, endpoint,
+		instanceServiceClient, err = imclient.NewInstanceServiceClientWithTLS(ctx, ctxCancel, endpoint,
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSCAFile),
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSCertFile),
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSKeyFile),
 			"longhorn-backend.longhorn-system",
 		)
-		defer func() {
-			if err != nil && instanceServiceClient != nil {
-				instanceServiceClient.Close()
-			}
-		}()
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to load Instance Manager Instance Service Client TLS files")
 		}
+
 		if err = instanceServiceClient.CheckConnection(); err != nil {
 			return instanceServiceClient, errors.Wrapf(err, "failed to check Instance Manager Instance Service Client connection for %v IP %v",
 				im.Name, im.Status.IP)
