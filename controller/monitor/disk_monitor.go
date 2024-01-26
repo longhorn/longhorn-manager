@@ -136,10 +136,84 @@ func (m *NodeMonitor) run(value interface{}) error {
 	return nil
 }
 
+<<<<<<< HEAD
 // Collect disk data and generate disk UUID blindly.
 func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*CollectedDiskInfo {
 	diskInfoMap := make(map[string]*CollectedDiskInfo, 0)
 	orphanedReplicaDirectoryNames := map[string]string{}
+=======
+func (m *NodeMonitor) getRunningInstanceManagerRO(dataEngine longhorn.DataEngineType) (*longhorn.InstanceManager, error) {
+	switch dataEngine {
+	case longhorn.DataEngineTypeV1:
+		return m.ds.GetDefaultInstanceManagerByNodeRO(m.nodeName, dataEngine)
+	case longhorn.DataEngineTypeV2:
+		im, err := m.ds.GetDefaultInstanceManagerByNodeRO(m.nodeName, dataEngine)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get default instance manager for node %v", m.nodeName)
+		}
+		if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+			return im, nil
+		}
+		ims, err := m.ds.ListInstanceManagersByNodeRO(m.nodeName, longhorn.InstanceManagerTypeAllInOne, dataEngine)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to list instance managers for node %v", m.nodeName)
+		}
+		for _, im := range ims {
+			if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+				return im, nil
+			}
+		}
+		return nil, fmt.Errorf("failed to find running instance manager for node %v", m.nodeName)
+	}
+	return nil, fmt.Errorf("unknown data engine %v", dataEngine)
+}
+
+func (m *NodeMonitor) newDiskServiceClients(ctx context.Context, ctxCancel context.CancelFunc, node *longhorn.Node) map[longhorn.DataEngineType]*DiskServiceClient {
+	clients := map[longhorn.DataEngineType]*DiskServiceClient{}
+
+	dataEngines := m.ds.GetDataEngines()
+
+	for dataEngine := range dataEngines {
+		// TODO: disk service is currently not used by filesystem-type disk for v1 data engine,
+		// so we can skip it for now.
+		if datastore.IsDataEngineV1(dataEngine) {
+			continue
+		}
+
+		var client *engineapi.DiskService
+
+		im, err := m.getRunningInstanceManagerRO(dataEngine)
+		if err == nil {
+			client, err = engineapi.NewDiskServiceClient(ctx, ctxCancel, im, m.logger)
+		}
+
+		clients[dataEngine] = &DiskServiceClient{
+			c:   client,
+			err: err,
+		}
+	}
+
+	return clients
+}
+
+func (m *NodeMonitor) closeDiskServiceClients(clients map[longhorn.DataEngineType]*DiskServiceClient) {
+	for _, client := range clients {
+		if client.c != nil {
+			client.c.Close()
+		}
+	}
+}
+
+// Collect disk data and generate disk UUID blindly.
+func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*CollectedDiskInfo {
+	diskInfoMap := make(map[string]*CollectedDiskInfo, 0)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	diskServiceClients := m.newDiskServiceClients(ctx, cancel, node)
+	defer func() {
+		m.closeDiskServiceClients(diskServiceClients)
+	}()
+>>>>>>> 62620bce (Pass ctx and cancel function to instance and disk clients)
 
 	for diskName, disk := range node.Spec.Disks {
 		nodeOrDiskEvicted := isNodeOrDiskEvicted(node, disk)
