@@ -654,9 +654,7 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 					r.Name, r.Status.CurrentState, r.Spec.EngineName, r.Spec.Active, isNoAvailableBackend)
 				e.Spec.LogRequested = true
 				r.Spec.LogRequested = true
-				now := c.nowHandler()
-				r.Spec.FailedAt = now
-				r.Spec.LastFailedAt = now
+				setReplicaFailedAt(r, c.nowHandler())
 				r.Spec.DesireState = longhorn.InstanceStateStopped
 			}
 		}
@@ -710,24 +708,21 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 			}
 			if r.Spec.FailedAt == "" {
 				log.Warnf("Replica %v is marked as failed, current state %v, mode %v, engine name %v, active %v", r.Name, r.Status.CurrentState, mode, r.Spec.EngineName, r.Spec.Active)
-				now := c.nowHandler()
-				r.Spec.FailedAt = now
-				r.Spec.LastFailedAt = now
+				setReplicaFailedAt(r, c.nowHandler())
 				e.Spec.LogRequested = true
 				r.Spec.LogRequested = true
 			}
 			r.Spec.DesireState = longhorn.InstanceStateStopped
 		} else if mode == longhorn.ReplicaModeRW {
-			// record once replica became healthy, so if it
-			// failed in the future, we can tell it apart
-			// from replica failed during rebuilding
+			now := c.nowHandler()
 			if r.Spec.HealthyAt == "" {
 				c.backoff.DeleteEntry(r.Name)
-				now := c.nowHandler()
+				// Set HealthyAt to distinguish this replica from one that has never been rebuilt.
 				r.Spec.HealthyAt = now
-				r.Spec.LastHealthyAt = now
 				r.Spec.RebuildRetryCount = 0
 			}
+			// Set LastHealthyAt to record the last time this replica became RW in an engine.
+			r.Spec.LastHealthyAt = now
 			healthyCount++
 		}
 	}
@@ -739,9 +734,7 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 				r.Name, r.Status.CurrentState, r.Spec.EngineName, r.Spec.Active)
 			e.Spec.LogRequested = true
 			r.Spec.LogRequested = true
-			now := c.nowHandler()
-			r.Spec.FailedAt = now
-			r.Spec.LastFailedAt = now
+			setReplicaFailedAt(r, c.nowHandler())
 			r.Spec.DesireState = longhorn.InstanceStateStopped
 		}
 	}
@@ -909,16 +902,29 @@ func isHealthyAndActiveReplica(r *longhorn.Replica) bool {
 	return true
 }
 
-func isDefinitelyHealthyAndActiveReplica(r *longhorn.Replica) bool {
+// Usually, we consider a replica to be healthy if its spec.HealthyAt != "". However, a corrupted replica can also have
+// spec.HealthyAt != "". In the normal flow of events, such a replica will eventually fail and be rebuilt when the
+// corruption is detected. However, in rare cases, all replicas may fail and the corrupted replica may temporarily be
+// the only one available for autosalvage. When this happens, we clear spec.FailedAt from the corrupted replica and
+// repeatedly fail to run an engine with it. We can likely manually recover from this situation, but only if we avoid
+// cleaning up the other, non-corrupted replicas. This function provides a extra check in addition to
+// isHealthyAndActiveReplica. If we see a replica with spec.LastFailedAt (indicating it has failed sometime in the past,
+// even if we are currently attempting to use it), we confirm that it has spec.LastHealthyAt (indicating the last time
+// it successfully became read/write in an engine) after spec.LastFailedAt. If the replica does not meet this condition,
+// it is not "safe as last replica", and we should not clean up the other replicas for its volume.
+func isSafeAsLastReplica(r *longhorn.Replica) bool {
 	if !isHealthyAndActiveReplica(r) {
 		return false
 	}
-	// An empty r.Spec.FailedAt doesn't necessarily indicate a healthy replica. The replica could be caught in an
-	// autosalvage loop. If it is, its r.Spec.FailedAt is repeatedly transitioning between empty and some time. Ensure
-	// the replica has become healthyAt since it last became failedAt.
 	// We know r.Spec.LastHealthyAt != "" because r.Spec.HealthyAt != "" from isHealthyAndActiveReplica.
-	if r.Spec.LastFailedAt != "" && !util.TimestampAfterTimestamp(r.Spec.LastHealthyAt, r.Spec.LastFailedAt) {
-		return false
+	if r.Spec.LastFailedAt != "" {
+		healthyAfterFailed, err := util.TimestampAfterTimestamp(r.Spec.LastHealthyAt, r.Spec.LastFailedAt)
+		if err != nil {
+			logrus.WithField("replica", r.Name).Errorf("Failed to verify if safe as last replica: %v", err)
+		}
+		if !healthyAfterFailed || err != nil {
+			return false
+		}
 	}
 	return true
 }
@@ -933,10 +939,11 @@ func getHealthyAndActiveReplicaCount(rs map[string]*longhorn.Replica) int {
 	return count
 }
 
-func getDefinitelyHealthyAndActiveReplicaCount(rs map[string]*longhorn.Replica) int {
+// See comments for isSafeAsLastReplica for an explanation of why we need this.
+func getSafeAsLastReplicaCount(rs map[string]*longhorn.Replica) int {
 	count := 0
 	for _, r := range rs {
-		if isDefinitelyHealthyAndActiveReplica(r) {
+		if isSafeAsLastReplica(r) {
 			count++
 		}
 	}
@@ -989,7 +996,9 @@ func (c *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*lo
 }
 
 func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
-	healthyCount := getDefinitelyHealthyAndActiveReplicaCount(rs)
+	// See comments for isSafeAsLastReplica for an explanation of why we call getSafeAsLastReplicaCount instead of
+	// getHealthyAndActiveReplicaCount here.
+	safeAsLastReplicaCount := getSafeAsLastReplicaCount(rs)
 	cleanupLeftoverReplicas := !c.isVolumeUpgrading(v) && !isVolumeMigrating(v)
 	log := getLoggerForVolume(c.logger, v)
 
@@ -1018,7 +1027,7 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 		}
 
 		if datastore.IsDataEngineV1(v.Spec.DataEngine) {
-			if shouldCleanUpFailedReplicaV1(r, v.Spec.StaleReplicaTimeout, healthyCount, v.Spec.Image) {
+			if shouldCleanUpFailedReplicaV1(r, v.Spec.StaleReplicaTimeout, safeAsLastReplicaCount, v.Spec.Image) {
 				log.WithField("replica", r.Name).Info("Cleaning up corrupted, staled replica")
 				if err := c.deleteReplica(r, rs); err != nil {
 					return errors.Wrapf(err, "cannot clean up staled replica %v", r.Name)
@@ -1026,7 +1035,7 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 			}
 		} else {
 			// TODO: check `staled` flag after v2 volume supports online replica rebuilding
-			if healthyCount != 0 {
+			if safeAsLastReplicaCount != 0 {
 				if err := c.deleteReplica(r, rs); err != nil {
 					return errors.Wrapf(err, "failed to clean up staled replica %v", r.Name)
 				}
@@ -1038,8 +1047,6 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 }
 
 func (c *VolumeController) cleanupFailedToScheduledReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) (err error) {
-	// We don't need the more rigorous getDefinitelyHealthyAndActiveReplicaCount here, because the replicas we will
-	// potentially delete are definitely worthless (contain no data).
 	healthyCount := getHealthyAndActiveReplicaCount(rs)
 	hasEvictionRequestedReplicas := hasReplicaEvictionRequested(rs)
 
@@ -1061,7 +1068,7 @@ func (c *VolumeController) cleanupFailedToScheduledReplicas(v *longhorn.Volume, 
 }
 
 func (c *VolumeController) cleanupExtraHealthyReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
-	healthyCount := getDefinitelyHealthyAndActiveReplicaCount(rs)
+	healthyCount := getHealthyAndActiveReplicaCount(rs)
 	if healthyCount <= v.Spec.NumberOfReplicas {
 		return nil
 	}
@@ -1413,7 +1420,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 				// Bring up the replicas for auto-salvage
 				for _, r := range failedUsableReplicas {
 					if util.TimestampWithinLimit(lastFailedAt, r.Spec.FailedAt, AutoSalvageTimeLimit) {
-						r.Spec.FailedAt = ""
+						setReplicaFailedAt(r, "")
 						log.WithField("replica", r.Name).Warn("Automatically salvaging volume replica")
 						msg := fmt.Sprintf("Replica %v of volume %v will be automatically salvaged", r.Name, v.Name)
 						c.eventRecorder.Event(v, corev1.EventTypeWarning, constant.EventReasonAutoSalvaged, msg)
@@ -1835,9 +1842,7 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 				}
 				log.WithField("replica", r.Name).Warn(msg)
 				if r.Spec.FailedAt == "" {
-					now := c.nowHandler()
-					r.Spec.FailedAt = now
-					r.Spec.LastFailedAt = now
+					setReplicaFailedAt(r, c.nowHandler())
 				}
 				r.Spec.DesireState = longhorn.InstanceStateStopped
 			}
@@ -1959,9 +1964,7 @@ func (c *VolumeController) closeVolumeDependentResources(v *longhorn.Volume, e *
 	for _, r := range rs {
 		if r.Spec.HealthyAt == "" && r.Spec.FailedAt == "" && dataExists {
 			// This replica must have been rebuilding. Mark it as failed.
-			now := c.nowHandler()
-			r.Spec.FailedAt = now
-			r.Spec.LastFailedAt = now
+			setReplicaFailedAt(r, c.nowHandler())
 			// Unscheduled replicas are marked failed here when volume is detached.
 			// Check if NodeId or DiskID is empty to avoid deleting reusableFailedReplica when replenished.
 			if r.Spec.NodeID == "" || r.Spec.DiskID == "" {
@@ -2212,7 +2215,7 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 		if reusableFailedReplica != nil {
 			if !c.backoff.IsInBackOffSinceUpdate(reusableFailedReplica.Name, time.Now()) {
 				log.Infof("Failed replica %v will be reused during rebuilding", reusableFailedReplica.Name)
-				reusableFailedReplica.Spec.FailedAt = ""
+				setReplicaFailedAt(reusableFailedReplica, "")
 				reusableFailedReplica.Spec.HealthyAt = ""
 
 				if datastore.IsReplicaRebuildingFailed(reusableFailedReplica) {
@@ -4512,12 +4515,12 @@ func (c *VolumeController) ReconcilePersistentVolume(volume *longhorn.Volume) er
 	return nil
 }
 
-func shouldCleanUpFailedReplicaV1(r *longhorn.Replica, staleReplicaTimeout, definitelyHealthyCount int,
+func shouldCleanUpFailedReplicaV1(r *longhorn.Replica, staleReplicaTimeout, safeAsLastReplicaCount int,
 	volumeCurrentImage string) bool {
 	// Even if healthyAt == "", lastHealthyAt != "" indicates this replica has some (potentially invalid) data. We MUST
 	// NOT delete it until we're sure the engine can start with another replica. In the worst case scenario, maybe we
 	// can recover data from this replica.
-	if r.Spec.LastHealthyAt != "" && definitelyHealthyCount == 0 {
+	if r.Spec.LastHealthyAt != "" && safeAsLastReplicaCount == 0 {
 		return false
 	}
 	// Failed to rebuild too many times.
