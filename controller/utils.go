@@ -72,3 +72,12 @@ func handleReconcileErrorLogging(logger logrus.FieldLogger, err error, mesg stri
 		logger.WithError(err).Error(mesg)
 	}
 }
+
+// r.Spec.FailedAt and r.Spec.LastFailedAt should both be set when a replica failure occurs.
+// r.Spec.FailedAt may be cleared (before rebuilding), but r.Spec.LastFailedAt must not be.
+func setReplicaFailedAt(r *longhorn.Replica, timestamp string) {
+	r.Spec.FailedAt = timestamp
+	if timestamp != "" {
+		r.Spec.LastFailedAt = timestamp
+	}
+}
