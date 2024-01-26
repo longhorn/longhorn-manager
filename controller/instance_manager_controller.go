@@ -84,7 +84,8 @@ type InstanceManagerMonitor struct {
 }
 
 func updateInstanceManagerVersion(im *longhorn.InstanceManager) error {
-	cli, err := engineapi.NewInstanceManagerClient(im)
+	ctx, cancel := context.WithCancel(context.Background())
+	cli, err := engineapi.NewInstanceManagerClient(ctx, cancel, im)
 	if err != nil {
 		return err
 	}
@@ -1368,7 +1369,8 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 	}
 
 	// TODO: #2441 refactor this when we do the resource monitoring refactor
-	client, err := engineapi.NewInstanceManagerClient(im)
+	ctx, cancel := context.WithCancel(context.Background())
+	client, err := engineapi.NewInstanceManagerClient(ctx, cancel, im)
 	if err != nil {
 		log.WithError(err).Errorf("Failed to initialize im client to %v before monitoring", im.Name)
 		return
