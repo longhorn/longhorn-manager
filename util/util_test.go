@@ -186,22 +186,28 @@ func (s *TestSuite) TestGetValidMountPoint(c *C) {
 
 func TestTimestampAfterTimestamp(t *testing.T) {
 	tests := map[string]struct {
-		before string
-		after  string
-		want   bool
+		timestamp1 string
+		timestamp2 string
+		want       bool
+		wantErr    bool
 	}{
-		"beforeBadFormat": {"2024-01-02T18:37Z", "2024-01-02T18:16:37Z", false},
-		"afterBadFormat":  {"2024-01-02T18:16:37Z", "2024-01-02T18:37Z", false},
-		"actuallyAfter":   {"2024-01-02T18:17:37Z", "2024-01-02T18:16:37Z", true},
-		"actuallyBefore":  {"2024-01-02T18:16:37Z", "2024-01-02T18:17:37Z", false},
-		"sameTime":        {"2024-01-02T18:16:37Z", "2024-01-02T18:16:37Z", false},
+		"timestamp1BadFormat": {"2024-01-02T18:37Z", "2024-01-02T18:16:37Z", false, true},
+		"timestamp2BadFormat": {"2024-01-02T18:16:37Z", "2024-01-02T18:37Z", false, true},
+		"timestamp1After":     {"2024-01-02T18:17:37Z", "2024-01-02T18:16:37Z", true, false},
+		"timestamp1NotAfter":  {"2024-01-02T18:16:37Z", "2024-01-02T18:17:37Z", false, false},
+		"sameTime":            {"2024-01-02T18:16:37Z", "2024-01-02T18:16:37Z", false, false},
 	}
 
 	assert := assert.New(t)
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			got := TimestampAfterTimestamp(tc.before, tc.after)
+			got, err := TimestampAfterTimestamp(tc.timestamp1, tc.timestamp2)
 			assert.Equal(tc.want, got)
+			if tc.wantErr {
+				assert.Error(err)
+			} else {
+				assert.NoError(err)
+			}
 		})
 	}
 }
