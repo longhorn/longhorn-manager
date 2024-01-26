@@ -71,7 +71,12 @@ func CheckInstanceManagerProxySupport(im *longhorn.InstanceManager) error {
 	return nil
 }
 
+<<<<<<< HEAD
 func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerClient, error) {
+=======
+// NewInstanceManagerClient creates a new instance manager client
+func NewInstanceManagerClient(ctx context.Context, ctxCancel context.CancelFunc, im *longhorn.InstanceManager) (*InstanceManagerClient, error) {
+>>>>>>> 2f891130 (Check connections to instance and process manager services)
 	// Do not check the major version here. Since IM cannot get the major version without using this client to call VersionGet().
 	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning || im.Status.IP == "" {
 		return nil, fmt.Errorf("invalid Instance Manager %v, state: %v, IP: %v", im.Name, im.Status.CurrentState, im.Status.IP)
@@ -81,7 +86,7 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 
 	initTLSClient := func() (*imclient.ProcessManagerClient, error) {
 		// check for tls cert file presence
-		processManagerClient, err := imclient.NewProcessManagerClientWithTLS(endpoint,
+		processManagerClient, err := imclient.NewProcessManagerClientWithTLS(ctx, ctxCancel, endpoint,
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSCAFile),
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSCertFile),
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSKeyFile),
@@ -96,6 +101,7 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 			return nil, fmt.Errorf("failed to load Instance Manager Client TLS files Error: %w", err)
 		}
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 		if _, err = pmClient.VersionGet(); err != nil {
 <<<<<<< HEAD
@@ -106,6 +112,15 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 >>>>>>> 9a798439 (Fix connection leak during TLS fallback)
 			return nil, errors.Wrap(err, "failed to check version of Instance Manager Process Manager Service Client with TLS connection")
 >>>>>>> 181c414a (Support proxy connections over TLS)
+=======
+		if err = processManagerClient.CheckConnection(); err != nil {
+			return processManagerClient, errors.Wrapf(err, "failed to check Instance Manager Process Manager Service Client connection for %v ip %v",
+				im.Name, im.Status.IP)
+		}
+
+		if _, err = processManagerClient.VersionGet(); err != nil {
+			return processManagerClient, errors.Wrap(err, "failed to check version of Instance Manager Process Manager Service Client with TLS connection")
+>>>>>>> 2f891130 (Check connections to instance and process manager services)
 		}
 
 		return processManagerClient, nil
@@ -117,7 +132,7 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 =======
 	initInstanceServiceTLSClient := func(endpoint string) (*imclient.InstanceServiceClient, error) {
 		// check for tls cert file presence
-		instanceServiceClient, err := imclient.NewInstanceServiceClientWithTLS(endpoint,
+		instanceServiceClient, err := imclient.NewInstanceServiceClientWithTLS(ctx, ctxCancel, endpoint,
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSCAFile),
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSCertFile),
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSKeyFile),
@@ -131,8 +146,13 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to load Instance Manager Instance Service Client TLS files")
 		}
+		if err = instanceServiceClient.CheckConnection(); err != nil {
+			return instanceServiceClient, errors.Wrapf(err, "failed to check Instance Manager Instance Service Client connection for %v IP %v",
+				im.Name, im.Status.IP)
+		}
+
 		if _, err = instanceServiceClient.VersionGet(); err != nil {
-			return nil, errors.Wrap(err, "failed to check version of Instance Manager Instance Service Client with TLS connection")
+			return instanceServiceClient, errors.Wrap(err, "failed to check version of Instance Manager Instance Service Client with TLS connection")
 		}
 
 		return instanceServiceClient, nil
@@ -155,9 +175,13 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 				im.Name, im.Status.IP)
 			// fallback to non tls client, there is no way to differentiate between im versions unless we get the version via the im client
 			// TODO: remove this im client fallback mechanism in a future version maybe 2.4 / 2.5 or the next time we update the api version
-			processManagerClient, err = imclient.NewProcessManagerClient(endpoint, nil)
+			processManagerClient, err = imclient.NewProcessManagerClient(ctx, ctxCancel, endpoint, nil)
 			if err != nil {
 				return nil, errors.Wrapf(err, "failed to initialize Instance Manager Process Manager Service Client for %v IP %v",
+					im.Name, im.Status.IP)
+			}
+			if err = processManagerClient.CheckConnection(); err != nil {
+				return nil, errors.Wrapf(err, "failed to check Instance Manager Process Manager Service Client connection for %v IP %v",
 					im.Name, im.Status.IP)
 			}
 
@@ -191,7 +215,11 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 >>>>>>> 181c414a (Support proxy connections over TLS)
 		// fallback to non tls client, there is no way to differentiate between im versions unless we get the version via the im client
 		// TODO: remove this im client fallback mechanism in a future version maybe 2.4 / 2.5 or the next time we update the api version
+<<<<<<< HEAD
 		pmClient, err = imclient.NewProcessManagerClient(endpoint, nil)
+=======
+		instanceServiceClient, err = imclient.NewInstanceServiceClient(ctx, ctxCancel, endpoint, nil)
+>>>>>>> 2f891130 (Check connections to instance and process manager services)
 		if err != nil {
 <<<<<<< HEAD
 			return nil, fmt.Errorf("failed to initialize Instance Manager Client for %v, state: %v, IP: %v, TLS: %v, Error: %w",
@@ -203,6 +231,10 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 				im.Name, im.Status.CurrentState, im.Status.IP, false, err)
 =======
 			return nil, errors.Wrapf(err, "failed to initialize Instance Manager Instance Service Client for %v IP %v",
+				im.Name, im.Status.IP)
+		}
+		if err = instanceServiceClient.CheckConnection(); err != nil {
+			return nil, errors.Wrapf(err, "failed to check Instance Manager Instance Service Client connection for %v IP %v",
 				im.Name, im.Status.IP)
 		}
 
