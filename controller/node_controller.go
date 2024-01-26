@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strings"
@@ -1501,7 +1502,8 @@ func (nc *NodeController) deleteDisk(node *longhorn.Node, diskType longhorn.Disk
 		return errors.Wrapf(err, "failed to get default engine instance manager")
 	}
 
-	diskServiceClient, err := engineapi.NewDiskServiceClient(im, nc.logger)
+	ctx, cancel := context.WithCancel(context.Background())
+	diskServiceClient, err := engineapi.NewDiskServiceClient(ctx, cancel, im, nc.logger)
 	if err != nil {
 		return errors.Wrapf(err, "failed to create disk service client")
 	}
