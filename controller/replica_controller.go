@@ -344,8 +344,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		return nil, err
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	c, err := engineapi.NewInstanceManagerClient(ctx, cancel, im)
+	c, err := engineapi.NewInstanceManagerClient(im)
 	if err != nil {
 		return nil, err
 	}
@@ -541,8 +540,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 		return nil
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	c, err := engineapi.NewInstanceManagerClient(ctx, cancel, im)
+	c, err := engineapi.NewInstanceManagerClient(im)
 	if err != nil {
 		return err
 	}
@@ -665,8 +663,7 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstancePro
 		}
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	c, err := engineapi.NewInstanceManagerClient(ctx, cancel, im)
+	c, err := engineapi.NewInstanceManagerClient(im)
 	if err != nil {
 		return nil, err
 	}
@@ -697,8 +694,7 @@ func (rc *ReplicaController) LogInstance(ctx context.Context, obj interface{}) (
 		return nil, nil, err
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	c, err := engineapi.NewInstanceManagerClient(ctx, cancel, im)
+	c, err := engineapi.NewInstanceManagerClient(im)
 	if err != nil {
 		return nil, nil, err
 	}
