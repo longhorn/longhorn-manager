@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"context"
 	"fmt"
 	"reflect"
 	"strings"
@@ -336,8 +335,7 @@ func (oc *OrphanController) DeleteSpdkReplicaInstance(diskName, diskUUID, replic
 		return errors.Wrapf(err, "failed to get instance manager for node %v for deleting SPDK replica instance  %v", oc.controllerID, replicaInstanceName)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	c, err := engineapi.NewDiskServiceClient(ctx, cancel, im, oc.logger)
+	c, err := engineapi.NewDiskServiceClient(im, oc.logger)
 	if err != nil {
 		return err
 	}

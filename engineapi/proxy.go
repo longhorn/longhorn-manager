@@ -87,6 +87,7 @@ func NewEngineClientProxy(im *longhorn.InstanceManager, logger logrus.FieldLogge
 		defer func() {
 			if err != nil && proxyClient != nil {
 				proxyClient.Close()
+				proxyClient = nil
 			}
 		}()
 
@@ -115,6 +116,7 @@ func NewEngineClientProxy(im *longhorn.InstanceManager, logger logrus.FieldLogge
 	defer func() {
 		if err != nil && proxyClient != nil {
 			proxyClient.Close()
+			proxyClient = nil
 		}
 	}()
 	if err != nil {

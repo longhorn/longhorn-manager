@@ -13,7 +13,7 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
-func NewDiskServiceClient(ctx context.Context, ctxCancel context.CancelFunc, im *longhorn.InstanceManager, logger logrus.FieldLogger) (c *DiskService, err error) {
+func NewDiskServiceClient(im *longhorn.InstanceManager, logger logrus.FieldLogger) (c *DiskService, err error) {
 	defer func() {
 		err = errors.Wrap(err, "failed to get disk service client")
 	}()
@@ -30,8 +30,9 @@ func NewDiskServiceClient(ctx context.Context, ctxCancel context.CancelFunc, im 
 		return nil, err
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	endpoint := "tcp://" + imutil.GetURL(im.Status.IP, InstanceManagerDiskServiceDefaultPort)
-	client, err := imclient.NewDiskServiceClient(ctx, ctxCancel, endpoint, nil)
+	client, err := imclient.NewDiskServiceClient(ctx, cancel, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
