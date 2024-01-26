@@ -88,13 +88,23 @@ func NewEngineClientProxy(im *longhorn.InstanceManager, logger logrus.FieldLogge
 	}
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 	ctx, cancel := context.WithCancel(context.Background())
 	client, err := imclient.NewProxyClient(ctx, cancel, im.Status.IP, InstanceManagerProxyDefaultPort)
 =======
 	initProxyTLSClient := func(ip string) (*imclient.ProxyClient, error) {
+=======
+	initProxyTLSClient := func(ip string) (proxyClient *imclient.ProxyClient, err error) {
+		defer func() {
+			if err != nil && proxyClient != nil {
+				proxyClient.Close()
+			}
+		}()
+
+>>>>>>> 0dc53fe4 (Close connections to process manager, instance and proxy services after encountering and error)
 		// check for tls cert file presence
 		ctx, cancel := context.WithCancel(context.Background())
-		proxyClient, err := imclient.NewProxyClientWithTLS(ctx,
+		proxyClient, err = imclient.NewProxyClientWithTLS(ctx,
 			cancel,
 			ip,
 			InstanceManagerProxyServiceDefaultPort,
@@ -103,11 +113,6 @@ func NewEngineClientProxy(im *longhorn.InstanceManager, logger logrus.FieldLogge
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSKeyFile),
 			"longhorn-backend.longhorn-system",
 		)
-		defer func() {
-			if err != nil && proxyClient != nil {
-				proxyClient.Close()
-			}
-		}()
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to load Instance Manager Proxy Client TLS files")
 		}
@@ -123,7 +128,15 @@ func NewEngineClientProxy(im *longhorn.InstanceManager, logger logrus.FieldLogge
 >>>>>>> 181c414a (Support proxy connections over TLS)
 =======
 	proxyClient, err := initProxyTLSClient(im.Status.IP)
+<<<<<<< HEAD
 >>>>>>> 9a798439 (Fix connection leak during TLS fallback)
+=======
+	defer func() {
+		if err != nil && proxyClient != nil {
+			proxyClient.Close()
+		}
+	}()
+>>>>>>> 0dc53fe4 (Close connections to process manager, instance and proxy services after encountering and error)
 	if err != nil {
 		logrus.WithError(err).Tracef("Falling back to non-tls client for Proxy Service Client for %v IP %v",
 			im.Name, im.Status.IP)
@@ -131,11 +144,6 @@ func NewEngineClientProxy(im *longhorn.InstanceManager, logger logrus.FieldLogge
 		// TODO: remove this im client fallback mechanism in a future version maybe 2.4 / 2.5 or the next time we update the api version
 		ctx, cancel := context.WithCancel(context.Background())
 		proxyClient, err = imclient.NewProxyClient(ctx, cancel, im.Status.IP, InstanceManagerProxyServiceDefaultPort, nil)
-		defer func() {
-			if err != nil && proxyClient != nil {
-				proxyClient.Close()
-			}
-		}()
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to initialize Proxy Service Client for %v IP %v",
 				im.Name, im.Status.IP)
