@@ -83,10 +83,16 @@ func NewEngineClientProxy(im *longhorn.InstanceManager, logger logrus.FieldLogge
 		return nil, err
 	}
 
-	initProxyTLSClient := func(ip string) (*imclient.ProxyClient, error) {
+	initProxyTLSClient := func(ip string) (proxyClient *imclient.ProxyClient, err error) {
+		defer func() {
+			if err != nil && proxyClient != nil {
+				proxyClient.Close()
+			}
+		}()
+
 		// check for tls cert file presence
 		ctx, cancel := context.WithCancel(context.Background())
-		proxyClient, err := imclient.NewProxyClientWithTLS(ctx,
+		proxyClient, err = imclient.NewProxyClientWithTLS(ctx,
 			cancel,
 			ip,
 			InstanceManagerProxyServiceDefaultPort,
@@ -95,11 +101,6 @@ func NewEngineClientProxy(im *longhorn.InstanceManager, logger logrus.FieldLogge
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSKeyFile),
 			"longhorn-backend.longhorn-system",
 		)
-		defer func() {
-			if err != nil && proxyClient != nil {
-				proxyClient.Close()
-			}
-		}()
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to load Instance Manager Proxy Client TLS files")
 		}
@@ -111,6 +112,11 @@ func NewEngineClientProxy(im *longhorn.InstanceManager, logger logrus.FieldLogge
 	}
 
 	proxyClient, err := initProxyTLSClient(im.Status.IP)
+	defer func() {
+		if err != nil && proxyClient != nil {
+			proxyClient.Close()
+		}
+	}()
 	if err != nil {
 		logrus.WithError(err).Tracef("Falling back to non-tls client for Proxy Service Client for %v IP %v",
 			im.Name, im.Status.IP)
@@ -118,11 +124,6 @@ func NewEngineClientProxy(im *longhorn.InstanceManager, logger logrus.FieldLogge
 		// TODO: remove this im client fallback mechanism in a future version maybe 2.4 / 2.5 or the next time we update the api version
 		ctx, cancel := context.WithCancel(context.Background())
 		proxyClient, err = imclient.NewProxyClient(ctx, cancel, im.Status.IP, InstanceManagerProxyServiceDefaultPort, nil)
-		defer func() {
-			if err != nil && proxyClient != nil {
-				proxyClient.Close()
-			}
-		}()
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to initialize Proxy Service Client for %v IP %v",
 				im.Name, im.Status.IP)
