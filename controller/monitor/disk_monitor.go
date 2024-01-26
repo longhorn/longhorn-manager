@@ -143,10 +143,7 @@ func (m *NodeMonitor) newDiskServiceClient(node *longhorn.Node) (*engineapi.Disk
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get default instance manager for node %v", m.nodeName)
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	return engineapi.NewDiskServiceClient(ctx, cancel, im, m.logger)
+	return engineapi.NewDiskServiceClient(im, m.logger)
 }
 
 // Collect disk data and generate disk UUID blindly.
