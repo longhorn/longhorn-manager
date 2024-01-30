@@ -27,11 +27,7 @@ type ReplicaSpec struct {
 	// +optional
 	HealthyAt string `json:"healthyAt"`
 	// +optional
-	LastHealthyAt string `json:"lastHealthyAt"`
-	// +optional
 	FailedAt string `json:"failedAt"`
-	// +optional
-	LastFailedAt string `json:"lastFailedAt"`
 	// +optional
 	DiskID string `json:"diskID"`
 	// +optional

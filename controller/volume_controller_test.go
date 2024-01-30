@@ -236,7 +236,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.CurrentNodeID = tc.volume.Spec.NodeID
 	for _, r := range tc.expectReplicas {
 		r.Spec.HealthyAt = getTestNow()
-		r.Spec.LastHealthyAt = r.Spec.HealthyAt
 	}
 	testCases["volume attached"] = tc
 
@@ -259,7 +258,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	for _, r := range tc.replicas {
 		r.Spec.HealthyAt = getTestNow()
-		r.Spec.LastHealthyAt = r.Spec.HealthyAt
 		r.Spec.DesireState = longhorn.InstanceStateRunning
 		r.Spec.Image = TestEngineImage
 		r.Status.CurrentState = longhorn.InstanceStateRunning
@@ -315,7 +313,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	for name, r := range tc.replicas {
 		r.Spec.HealthyAt = getTestNow()
-		r.Spec.LastHealthyAt = r.Spec.HealthyAt
 		r.Spec.DesireState = longhorn.InstanceStateRunning
 		r.Spec.Image = TestEngineImage
 		r.Status.CurrentState = longhorn.InstanceStateRunning
@@ -371,7 +368,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	for name, r := range tc.replicas {
 		r.Spec.HealthyAt = getTestNow()
-		r.Spec.LastHealthyAt = r.Spec.HealthyAt
 		r.Status.IP = randomIP()
 		r.Status.StorageIP = r.Status.IP
 		r.Status.Port = randomPort()
@@ -418,7 +414,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	for name, r := range tc.replicas {
 		r.Spec.HealthyAt = getTestNow()
-		r.Spec.LastHealthyAt = r.Spec.HealthyAt
 		r.Status.IP = randomIP()
 		r.Status.StorageIP = r.Status.IP
 		r.Status.Port = randomPort()
@@ -446,7 +441,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		longhorn.VolumeConditionTypeRestore, longhorn.ConditionStatusFalse, "", "")
 	for _, r := range tc.expectReplicas {
 		r.Spec.HealthyAt = getTestNow()
-		r.Spec.LastHealthyAt = r.Spec.HealthyAt
 	}
 	testCases["try to detach newly restored volume after restoration completed"] = tc
 
@@ -483,7 +477,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	for name, r := range tc.replicas {
 		r.Spec.HealthyAt = getTestNow()
-		r.Spec.LastHealthyAt = r.Spec.HealthyAt
 		r.Status.IP = randomIP()
 		r.Status.StorageIP = r.Status.IP
 		r.Status.Port = randomPort()
@@ -501,7 +494,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.Robustness = longhorn.VolumeRobustnessUnknown
 	for _, r := range tc.expectReplicas {
 		r.Spec.HealthyAt = getTestNow()
-		r.Spec.LastHealthyAt = r.Spec.HealthyAt
 	}
 	testCases["newly restored volume is being detaching after restoration completed"] = tc
 
@@ -547,7 +539,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	for name, r := range tc.replicas {
 		r.Spec.NodeID = TestNode1
 		r.Spec.HealthyAt = getTestNow()
-		r.Spec.LastHealthyAt = r.Spec.HealthyAt
 		r.Spec.DesireState = longhorn.InstanceStateRunning
 		if name != failedReplicaName {
 			r.Status.CurrentState = longhorn.InstanceStateRunning
@@ -619,7 +610,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	for name, r := range tc.replicas {
 		r.Spec.HealthyAt = getTestNow()
-		r.Spec.LastHealthyAt = r.Spec.HealthyAt
 		r.Status.IP = randomIP()
 		r.Status.StorageIP = r.Status.IP
 		r.Status.Port = randomPort()
@@ -653,7 +643,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	for _, r := range tc.expectReplicas {
 		r.Spec.FailedAt = getTestNow()
-		r.Spec.LastFailedAt = r.Spec.FailedAt
 		r.Spec.DesireState = longhorn.InstanceStateStopped
 		r.Spec.LogRequested = true
 	}
@@ -680,7 +669,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	for _, r := range tc.replicas {
 		r.Spec.HealthyAt = ""
-		r.Spec.LastHealthyAt = r.Spec.HealthyAt
 		r.Status.CurrentState = longhorn.InstanceStateStopped
 	}
 	tc.copyCurrentToExpect()
@@ -724,7 +712,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	}
 	for name, r := range tc.replicas {
 		r.Spec.HealthyAt = getTestNow()
-		r.Spec.LastHealthyAt = r.Spec.HealthyAt
 		r.Spec.DesireState = longhorn.InstanceStateRunning
 		r.Status.CurrentState = longhorn.InstanceStateRunning
 		r.Status.IP = randomIP()
@@ -758,7 +745,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	for name, r := range tc.replicas {
 		r.Spec.DesireState = longhorn.InstanceStateRunning
 		r.Spec.HealthyAt = getTestNow()
-		r.Spec.LastHealthyAt = r.Spec.HealthyAt
 		r.Status.CurrentState = longhorn.InstanceStateRunning
 		r.Status.IP = randomIP()
 		r.Status.StorageIP = r.Status.IP
@@ -793,7 +779,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	for name, r := range tc.replicas {
 		r.Spec.DesireState = longhorn.InstanceStateRunning
 		r.Spec.HealthyAt = getTestNow()
-		r.Spec.LastHealthyAt = r.Spec.HealthyAt
 		r.Status.CurrentState = longhorn.InstanceStateRunning
 		r.Status.IP = randomIP()
 		r.Status.StorageIP = r.Status.IP
@@ -834,7 +819,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	for _, r := range tc.replicas {
 		// Assume the volume is previously attached then detached.
 		r.Spec.HealthyAt = getTestNow()
-		r.Spec.LastHealthyAt = r.Spec.HealthyAt
 		r.Status.CurrentState = longhorn.InstanceStateStopped
 	}
 	tc.copyCurrentToExpect()
@@ -845,7 +829,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		if r.Spec.NodeID == TestNode2 {
 			r.Spec.DesireState = longhorn.InstanceStateStopped
 			r.Spec.FailedAt = getTestNow()
-			r.Spec.LastFailedAt = r.Spec.FailedAt
 		} else {
 			r.Spec.DesireState = longhorn.InstanceStateRunning
 		}
@@ -904,9 +887,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	for _, r := range tc.replicas {
 		r.Status.CurrentState = longhorn.InstanceStateStopped
 		r.Spec.HealthyAt = getTestNow()
-		r.Spec.LastHealthyAt = r.Spec.HealthyAt
 		r.Spec.FailedAt = getTestNow()
-		r.Spec.LastFailedAt = r.Spec.FailedAt
 		r.Spec.DesireState = longhorn.InstanceStateStopped
 	}
 
@@ -923,7 +904,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	for _, r := range tc.expectReplicas {
 		r.Spec.DesireState = longhorn.InstanceStateStopped
 		r.Spec.FailedAt = ""
-		// r.Spec.LastFailedAt will NOT be "".
 		expectRs[r.Name] = r
 	}
 	tc.expectReplicas = expectRs
@@ -970,7 +950,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	for name, r := range tc.replicas {
 		r.Spec.DesireState = longhorn.InstanceStateRunning
 		r.Spec.HealthyAt = getTestNow()
-		r.Spec.LastHealthyAt = r.Spec.HealthyAt
 		r.Status.CurrentState = longhorn.InstanceStateRunning
 		r.Status.IP = randomIP()
 		r.Status.StorageIP = r.Status.IP
@@ -1013,7 +992,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 			r.Spec.DesireState = longhorn.InstanceStateStopped
 			r.Status.CurrentState = longhorn.InstanceStateStopped
 			r.Spec.FailedAt = getTestNow()
-			r.Spec.LastFailedAt = r.Spec.FailedAt
 			failedReplica = r
 		} else {
 			r.Spec.DesireState = longhorn.InstanceStateRunning
@@ -1023,7 +1001,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 			r.Status.Port = randomPort()
 		}
 		r.Spec.HealthyAt = getTestNow()
-		r.Spec.LastHealthyAt = r.Spec.HealthyAt
 		for _, e := range tc.engines {
 			if r.Spec.FailedAt == "" {
 				e.Status.ReplicaModeMap[name] = "RW"
@@ -1036,9 +1013,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		if r.Name == failedReplica.Name {
 			r.Spec.DesireState = longhorn.InstanceStateRunning
 			r.Spec.FailedAt = ""
-			// r.Spec.LastFailedAt will NOT be "".
 			r.Spec.HealthyAt = ""
-			// r.Spec.LastHealthyAt will NOT be "".
 			r.Spec.RebuildRetryCount = 1
 			break
 		}
@@ -1070,7 +1045,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 			r.Spec.DesireState = longhorn.InstanceStateStopped
 			r.Status.CurrentState = longhorn.InstanceStateStopped
 			r.Spec.FailedAt = time.Now().UTC().Format(time.RFC3339)
-			r.Spec.LastFailedAt = r.Spec.FailedAt
 			failedReplica = r
 		} else {
 			r.Spec.DesireState = longhorn.InstanceStateRunning
