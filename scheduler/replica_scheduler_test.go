@@ -153,6 +153,7 @@ func newDisk(path string, allowScheduling bool, storageReserved int64) longhorn.
 	return longhorn.DiskSpec{
 		Type:            longhorn.DiskTypeFilesystem,
 		Path:            path,
+		DiskDriver:      longhorn.DiskDriverNone,
 		AllowScheduling: allowScheduling,
 		StorageReserved: storageReserved,
 	}

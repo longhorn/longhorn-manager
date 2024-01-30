@@ -55,6 +55,16 @@ const (
 	DiskTypeBlock = DiskType("block")
 )
 
+type DiskDriver string
+
+const (
+	DiskDriverNone   = DiskDriver("")
+	DiskDriverAuto   = DiskDriver("auto")
+	DiskDriverAio    = DiskDriver("aio")
+	DiskDriverNvme   = DiskDriver("nvme")
+	DiskDriverVirtio = DiskDriver("virtio")
+)
+
 type SnapshotCheckStatus struct {
 	// +optional
 	LastPeriodicCheckedAt metav1.Time `json:"lastPeriodicCheckedAt"`
@@ -66,6 +76,9 @@ type DiskSpec struct {
 	Type DiskType `json:"diskType"`
 	// +optional
 	Path string `json:"path"`
+	// +kubebuilder:validation:Enum="";auto;aio;nvme;virtio
+	// +optional
+	DiskDriver DiskDriver `json:"diskDriver"`
 	// +optional
 	AllowScheduling bool `json:"allowScheduling"`
 	// +optional
@@ -92,7 +105,13 @@ type DiskStatus struct {
 	// +optional
 	DiskUUID string `json:"diskUUID"`
 	// +optional
+	DiskName string `json:"diskName"`
+	// +optional
+	DiskPath string `json:"diskPath"`
+	// +optional
 	Type DiskType `json:"diskType"`
+	// +optional
+	DiskDriver DiskDriver `json:"diskDriver"`
 	// +optional
 	FSType string `json:"filesystemType"`
 }

@@ -747,6 +747,7 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 		TestDiskID1: {
 			Type:            longhorn.DiskTypeFilesystem,
 			Path:            TestDefaultDataPath,
+			DiskDriver:      longhorn.DiskDriverNone,
 			AllowScheduling: true,
 			StorageReserved: 0,
 		},

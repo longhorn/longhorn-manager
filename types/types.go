@@ -1002,6 +1002,7 @@ func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[st
 			DefaultDiskPrefix + util.RandomID(): {
 				Type:              longhorn.DiskTypeBlock,
 				Path:              dataPath,
+				DiskDriver:        longhorn.DiskDriverNone,
 				AllowScheduling:   true,
 				EvictionRequested: false,
 				StorageReserved:   0,
@@ -1024,6 +1025,7 @@ func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[st
 		DefaultDiskPrefix + diskStat.DiskID: {
 			Type:              longhorn.DiskTypeFilesystem,
 			Path:              diskStat.Path,
+			DiskDriver:        longhorn.DiskDriverNone,
 			AllowScheduling:   true,
 			EvictionRequested: false,
 			StorageReserved:   diskStat.StorageMaximum * storageReservedPercentage / 100,
