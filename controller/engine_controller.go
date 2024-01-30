@@ -1893,7 +1893,9 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 					return
 				}
 
-				setReplicaFailedAt(replica, util.Now())
+				now := util.Now()
+				replica.Spec.FailedAt = now
+				replica.Spec.LastFailedAt = now
 				replica.Spec.DesireState = longhorn.InstanceStateStopped
 				if _, err := ec.ds.UpdateReplica(replica); err != nil {
 					log.WithError(err).Errorf("Unable to mark failed rebuild on replica %v", replicaName)
