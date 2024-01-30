@@ -261,18 +261,18 @@ func TimestampWithinLimit(latest time.Time, ts string, limit time.Duration) bool
 	return deadline.After(latest)
 }
 
-// TimestampAfterTimestamp returns true if timestamp1 is after timestamp2. It returns false otherwise and an error if
-// either timestamp cannot be parsed.
-func TimestampAfterTimestamp(timestamp1 string, timestamp2 string) (bool, error) {
-	time1, err := time.Parse(time.RFC3339, timestamp1)
+func TimestampAfterTimestamp(after string, before string) bool {
+	afterT, err := time.Parse(time.RFC3339, after)
 	if err != nil {
-		return false, errors.Wrapf(err, "cannot parse timestamp %v", timestamp1)
+		logrus.Errorf("Cannot parse after time %v", after)
+		return false
 	}
-	time2, err := time.Parse(time.RFC3339, timestamp2)
+	beforeT, err := time.Parse(time.RFC3339, before)
 	if err != nil {
-		return false, errors.Wrapf(err, "cannot parse timestamp %v", timestamp2)
+		logrus.Errorf("Cannot parse before time %v", before)
+		return false
 	}
-	return time1.After(time2), nil
+	return afterT.After(beforeT)
 }
 
 func ValidateString(name string) bool {
