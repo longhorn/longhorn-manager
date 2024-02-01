@@ -135,10 +135,11 @@ func (c *InstanceManagerClient) parseProcess(p *imapi.Process) *longhorn.Instanc
 			Name: p.Name,
 		},
 		Status: longhorn.InstanceProcessStatus{
-			State:     longhorn.InstanceState(p.ProcessStatus.State),
-			ErrorMsg:  p.ProcessStatus.ErrorMsg,
-			PortStart: p.ProcessStatus.PortStart,
-			PortEnd:   p.ProcessStatus.PortEnd,
+			State:      longhorn.InstanceState(p.ProcessStatus.State),
+			ErrorMsg:   p.ProcessStatus.ErrorMsg,
+			Conditions: p.ProcessStatus.Conditions,
+			PortStart:  p.ProcessStatus.PortStart,
+			PortEnd:    p.ProcessStatus.PortEnd,
 
 			// These fields are not used, maybe we can deprecate them later.
 			Type:     "",
