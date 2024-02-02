@@ -799,7 +799,7 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 				}
 			}
 
-			setting, err := c.getAutoBalancedReplicasSetting(v)
+			setting, err := c.ds.GetAutoBalancedReplicasSetting(v)
 			if err != nil {
 				c.logger.Warnf(err.Error())
 			}
@@ -1138,7 +1138,7 @@ func (c *VolumeController) cleanupEvictionRequestedReplicas(v *longhorn.Volume, 
 func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (bool, error) {
 	log := getLoggerForVolume(c.logger, v).WithField("replicaAutoBalanceType", "delete")
 
-	setting, err := c.getAutoBalancedReplicasSetting(v)
+	setting, err := c.ds.GetAutoBalancedReplicasSetting(v)
 	if err != nil {
 		log.Warnf(err.Error())
 	}
@@ -1201,33 +1201,6 @@ func (c *VolumeController) cleanupDataLocalityReplicas(v *longhorn.Volume, e *lo
 		}
 	}
 	return false, nil
-}
-
-// TODO: remove this method and replace with GetAutoBalancedReplicasSetting() in datastore
-func (c *VolumeController) getAutoBalancedReplicasSetting(v *longhorn.Volume) (longhorn.ReplicaAutoBalance, error) {
-	var setting longhorn.ReplicaAutoBalance
-
-	volumeSetting := v.Spec.ReplicaAutoBalance
-	if volumeSetting != longhorn.ReplicaAutoBalanceIgnored {
-		setting = volumeSetting
-	}
-
-	var err error
-	if setting == "" {
-		globalSetting, _ := c.ds.GetSettingValueExisted(types.SettingNameReplicaAutoBalance)
-
-		if globalSetting == string(longhorn.ReplicaAutoBalanceIgnored) {
-			globalSetting = string(longhorn.ReplicaAutoBalanceDisabled)
-		}
-
-		setting = longhorn.ReplicaAutoBalance(globalSetting)
-	}
-
-	err = types.ValidateReplicaAutoBalance(longhorn.ReplicaAutoBalance(setting))
-	if err != nil {
-		setting = longhorn.ReplicaAutoBalanceDisabled
-	}
-	return setting, errors.Wrapf(err, "replica auto-balance is disabled")
 }
 
 func (c *VolumeController) isUnmapMarkSnapChainRemovedEnabled(v *longhorn.Volume) (bool, error) {
@@ -2369,7 +2342,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceLeastEffort(v *longhorn.
 		}
 	}()
 
-	setting, err := c.getAutoBalancedReplicasSetting(v)
+	setting, err := c.ds.GetAutoBalancedReplicasSetting(v)
 	// Verifying `least-effort` and `best-effort` here because we've set
 	// replica auto-balance to always try adjusting replica count with
 	// `least-effort` first to achieve minimal redundancy.
@@ -2408,7 +2381,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceBestEffort(v *longhorn.V
 		}
 	}()
 
-	setting, err := c.getAutoBalancedReplicasSetting(v)
+	setting, err := c.ds.GetAutoBalancedReplicasSetting(v)
 	if err != nil || setting != longhorn.ReplicaAutoBalanceBestEffort {
 		return 0, nil, []string{}
 	}
@@ -4649,7 +4622,7 @@ func (c *VolumeController) enqueueNodeChange(obj interface{}) {
 			utilruntime.HandleError(fmt.Errorf("failed to get volume %v of replica %v when enqueuing node %v: %v", r.Spec.VolumeName, r.Name, node.Name, err))
 			continue
 		}
-		replicaAutoBalance, err := c.getAutoBalancedReplicasSetting(vol)
+		replicaAutoBalance, err := c.ds.GetAutoBalancedReplicasSetting(vol)
 		if err != nil {
 			c.logger.Warnf(err.Error())
 		}
