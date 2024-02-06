@@ -170,26 +170,6 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 		return instanceServiceClient, nil
 	}
 
-	initDiskServiceTLSClient := func(endpoint string) (*imclient.DiskServiceClient, error) {
-		ctx, cancel := context.WithCancel(context.Background())
-
-		// check for tls cert file presence
-		diskClient, err := imclient.NewDiskServiceClientWithTLS(ctx, cancel, endpoint,
-			filepath.Join(types.TLSDirectoryInContainer, types.TLSCAFile),
-			filepath.Join(types.TLSDirectoryInContainer, types.TLSCertFile),
-			filepath.Join(types.TLSDirectoryInContainer, types.TLSKeyFile),
-			"longhorn-backend.longhorn-system",
-		)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to load Instance Manager Disk Service Client TLS files")
-		}
-		if _, err = diskClient.VersionGet(); err != nil {
-			return nil, errors.Wrap(err, "failed to check version of  Instance Manager Disk Service Client with TLS connection")
-		}
-
-		return diskClient, nil
-	}
-
 	// Create a new process manager client
 	// HACK: TODO: fix me
 	var err error
@@ -269,22 +249,19 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager) (*InstanceManagerCli
 	}
 
 	// Create a new disk service client
+	ctx, cancel := context.WithCancel(context.Background())
 	endpoint = "tcp://" + imutil.GetURL(im.Status.IP, InstanceManagerDiskServiceDefaultPort)
-	diskServiceClient, err := initDiskServiceTLSClient(endpoint)
+	diskServiceClient, err := imclient.NewDiskServiceClient(ctx, cancel, endpoint, nil)
 	if err != nil {
-		ctx, cancel := context.WithCancel(context.Background())
-		diskServiceClient, err = imclient.NewDiskServiceClient(ctx, cancel, endpoint, nil)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to initialize Instance Manager Disk Service Client for %v, state: %v, IP: %v, TLS: %v",
-				im.Name, im.Status.CurrentState, im.Status.IP, false)
-		}
-		version, err := diskServiceClient.VersionGet()
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to get Version of Instance Manager Disk Service Client for %v, state: %v, IP: %v, TLS: %v",
-				im.Name, im.Status.CurrentState, im.Status.IP, false)
-		}
-		logrus.Tracef("Instance Manager Disk Service Client Version: %+v", version)
+		return nil, errors.Wrapf(err, "failed to initialize Instance Manager Disk Service Client for %v, state: %v, IP: %v, TLS: %v",
+			im.Name, im.Status.CurrentState, im.Status.IP, false)
 	}
+	version, err := diskServiceClient.VersionGet()
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get Version of Instance Manager Disk Service Client for %v, state: %v, IP: %v, TLS: %v",
+			im.Name, im.Status.CurrentState, im.Status.IP, false)
+	}
+	logrus.Tracef("Instance Manager Disk Service Client Version: %+v", version)
 
 	// TODO: consider evaluating im client version since we do the call anyway to validate the connection, i.e. fallback to non tls
 	// This way we don't need the per call compatibility check, ref: `CheckInstanceManagerCompatibility`
