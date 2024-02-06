@@ -166,7 +166,7 @@ func NewInstanceManagerClient(ctx context.Context, ctxCancel context.CancelFunc,
 
 	initDiskServiceTLSClient := func(endpoint string) (*imclient.DiskServiceClient, error) {
 		// check for tls cert file presence
-		diskClient, err := imclient.NewDiskServiceClientWithTLS(endpoint,
+		diskClient, err := imclient.NewDiskServiceClientWithTLS(ctx, ctxCancel, endpoint,
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSCAFile),
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSCertFile),
 			filepath.Join(types.TLSDirectoryInContainer, types.TLSKeyFile),
@@ -260,7 +260,7 @@ func NewInstanceManagerClient(ctx context.Context, ctxCancel context.CancelFunc,
 	endpoint = "tcp://" + imutil.GetURL(im.Status.IP, InstanceManagerDiskServiceDefaultPort)
 	diskServiceClient, err := initDiskServiceTLSClient(endpoint)
 	if err != nil {
-		diskServiceClient, err = imclient.NewDiskServiceClient(endpoint, nil)
+		diskServiceClient, err = imclient.NewDiskServiceClient(ctx, ctxCancel, endpoint, nil)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to initialize Instance Manager Disk Service Client for %v, state: %v, IP: %v, TLS: %v",
 				im.Name, im.Status.CurrentState, im.Status.IP, false)
