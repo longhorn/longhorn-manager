@@ -9,11 +9,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
-<<<<<<< HEAD
-	"google.golang.org/grpc/keepalive"
-=======
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
->>>>>>> 181c414a (Support proxy connections over TLS)
 
 	rpc "github.com/longhorn/longhorn-instance-manager/pkg/imrpc"
 	"github.com/longhorn/longhorn-instance-manager/pkg/meta"
@@ -67,18 +63,7 @@ type ProxyClient struct {
 
 func NewProxyClient(ctx context.Context, ctxCancel context.CancelFunc, address string, port int, tlsConfig *tls.Config) (*ProxyClient, error) {
 	getServiceCtx := func(serviceUrl string) (ServiceContext, error) {
-<<<<<<< HEAD
-		dialOptions := []grpc.DialOption{
-			grpc.WithInsecure(),
-			grpc.WithKeepaliveParams(keepalive.ClientParameters{
-				Time:                time.Second * 10,
-				PermitWithoutStream: true,
-			}),
-		}
-		connection, err := grpc.Dial(serviceUrl, dialOptions...)
-=======
 		connection, err := util.Connect(serviceUrl, tlsConfig)
->>>>>>> 181c414a (Support proxy connections over TLS)
 		if err != nil {
 			return ServiceContext{}, errors.Wrapf(err, "cannot connect to ProxyService %v", serviceUrl)
 		}

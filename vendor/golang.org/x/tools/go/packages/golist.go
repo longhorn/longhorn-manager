@@ -9,6 +9,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"go/types"
+	"io/ioutil"
 	"log"
 	"os"
 	"path"
@@ -151,10 +153,10 @@ func goListDriver(cfg *Config, patterns ...string) (*driverResponse, error) {
 	if cfg.Mode&NeedTypesSizes != 0 || cfg.Mode&NeedTypes != 0 {
 		sizeswg.Add(1)
 		go func() {
-			compiler, arch, err := packagesdriver.GetSizesForArgsGolist(ctx, state.cfgInvocation(), cfg.gocmdRunner)
-			sizeserr = err
-			response.dr.Compiler = compiler
-			response.dr.Arch = arch
+			var sizes types.Sizes
+			sizes, sizeserr = packagesdriver.GetSizesGolist(ctx, state.cfgInvocation(), cfg.gocmdRunner)
+			// types.SizesFor always returns nil or a *types.StdSizes.
+			response.dr.Sizes, _ = sizes.(*types.StdSizes)
 			sizeswg.Done()
 		}()
 	}
@@ -623,12 +625,7 @@ func (state *golistState) createDriverResponse(words ...string) (*driverResponse
 		}
 
 		if pkg.PkgPath == "unsafe" {
-			pkg.CompiledGoFiles = nil // ignore fake unsafe.go file (#59929)
-		} else if len(pkg.CompiledGoFiles) == 0 {
-			// Work around for pre-go.1.11 versions of go list.
-			// TODO(matloob): they should be handled by the fallback.
-			// Can we delete this?
-			pkg.CompiledGoFiles = pkg.GoFiles
+			pkg.GoFiles = nil // ignore fake unsafe.go file
 		}
 
 		// Assume go list emits only absolute paths for Dir.
@@ -666,12 +663,16 @@ func (state *golistState) createDriverResponse(words ...string) (*driverResponse
 			response.Roots = append(response.Roots, pkg.ID)
 		}
 
+		// Work around for pre-go.1.11 versions of go list.
+		// TODO(matloob): they should be handled by the fallback.
+		// Can we delete this?
+		if len(pkg.CompiledGoFiles) == 0 {
+			pkg.CompiledGoFiles = pkg.GoFiles
+		}
+
 		// Temporary work-around for golang/go#39986. Parse filenames out of
 		// error messages. This happens if there are unrecoverable syntax
 		// errors in the source, so we can't match on a specific error message.
-		//
-		// TODO(rfindley): remove this heuristic, in favor of considering
-		// InvalidGoFiles from the list driver.
 		if err := p.Error; err != nil && state.shouldAddFilenameFromError(p) {
 			addFilenameFromPos := func(pos string) bool {
 				split := strings.Split(pos, ":")
@@ -890,15 +891,6 @@ func golistargs(cfg *Config, words []string, goVersion int) []string {
 		// probably because you'd just get the TestMain.
 		fmt.Sprintf("-find=%t", !cfg.Tests && cfg.Mode&findFlags == 0 && !usesExportData(cfg)),
 	}
-
-	// golang/go#60456: with go1.21 and later, go list serves pgo variants, which
-	// can be costly to compute and may result in redundant processing for the
-	// caller. Disable these variants. If someone wants to add e.g. a NeedPGO
-	// mode flag, that should be a separate proposal.
-	if goVersion >= 21 {
-		fullargs = append(fullargs, "-pgo=off")
-	}
-
 	fullargs = append(fullargs, cfg.BuildFlags...)
 	fullargs = append(fullargs, "--")
 	fullargs = append(fullargs, words...)
@@ -1108,7 +1100,7 @@ func (state *golistState) writeOverlays() (filename string, cleanup func(), err 
 	if len(state.cfg.Overlay) == 0 {
 		return "", func() {}, nil
 	}
-	dir, err := os.MkdirTemp("", "gopackages-*")
+	dir, err := ioutil.TempDir("", "gopackages-*")
 	if err != nil {
 		return "", nil, err
 	}
@@ -1127,7 +1119,7 @@ func (state *golistState) writeOverlays() (filename string, cleanup func(), err 
 		// Create a unique filename for the overlaid files, to avoid
 		// creating nested directories.
 		noSeparator := strings.Join(strings.Split(filepath.ToSlash(k), "/"), "")
-		f, err := os.CreateTemp(dir, fmt.Sprintf("*-%s", noSeparator))
+		f, err := ioutil.TempFile(dir, fmt.Sprintf("*-%s", noSeparator))
 		if err != nil {
 			return "", func() {}, err
 		}
@@ -1145,7 +1137,7 @@ func (state *golistState) writeOverlays() (filename string, cleanup func(), err 
 	}
 	// Write out the overlay file that contains the filepath mappings.
 	filename = filepath.Join(dir, "overlay.json")
-	if err := os.WriteFile(filename, b, 0665); err != nil {
+	if err := ioutil.WriteFile(filename, b, 0665); err != nil {
 		return "", func() {}, err
 	}
 	return filename, cleanup, nil
