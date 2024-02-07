@@ -57,6 +57,8 @@ github.com/Azure/go-autorest/tracing v0.6.0/go.mod h1:+vhtPC754Xsa23ID7GlGsrdKBp
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/BurntSushi/toml v0.4.1/go.mod h1:CxXYINrC8qIiEnFrOxCa7Jy5BFHlXnUU2pbicEuybxQ=
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
+github.com/ChanYiLin/longhorn-instance-manager v1.4.2-0.20240207144653-632a19d8ab06 h1:LpY2uiVj7YU0caBeMRSQ7aP/NG0m1lCnJGjFkG6TPPo=
+github.com/ChanYiLin/longhorn-instance-manager v1.4.2-0.20240207144653-632a19d8ab06/go.mod h1:0gBD+2Gs4zb8rSppoiJqHP5ZN3eilzdLAm6rXy5YfZU=
 github.com/GoogleCloudPlatform/k8s-cloud-provider v1.16.1-0.20210702024009-ea6160c1d0e3/go.mod h1:8XasY4ymP2V/tn2OOV9ZadmiTE1FIB/h3W+yNlPttKw=
 github.com/JeffAshton/win_pdh v0.0.0-20161109143554-76bb4ee9f0ab/go.mod h1:3VYc5hodBMJ5+l/7J4xAyMeuM2PNuepvHlGs8yilUCA=
 github.com/MakeNowJust/heredoc v0.0.0-20170808103936-bb23615498cd/go.mod h1:64YHyfSL2R96J44Nlwm39UHepQbyR5q10x7iYa1ks2E=
@@ -498,8 +500,6 @@ github.com/longhorn/go-iscsi-helper v0.0.0-20231113050545-9df1e6b605c7/go.mod h1
 github.com/longhorn/longhorn-engine v1.2.0-preview1.0.20210818142058-32cb7dfd0630/go.mod h1:mtvBHZBmXJIHBcLL828FY5mGq4hoh7bV2EFK6LFLmhE=
 github.com/longhorn/longhorn-engine v1.4.4-rc2 h1:9zysTzPyPVTHcina9d5t6li+J/ff7usS4+GZ/skh/hw=
 github.com/longhorn/longhorn-engine v1.4.4-rc2/go.mod h1:1Q1w/dd0EkwtjEK96hfRsSwX2wuL6omesDhb3iwFbYY=
-github.com/longhorn/longhorn-instance-manager v1.4.5-0.20240123080948-c39a4cac7a20 h1:fk1mwdkCW02qfwm/7nAJpJWIlE1MTw/6REOS8JZA1EY=
-github.com/longhorn/longhorn-instance-manager v1.4.5-0.20240123080948-c39a4cac7a20/go.mod h1:0gBD+2Gs4zb8rSppoiJqHP5ZN3eilzdLAm6rXy5YfZU=
 github.com/longhorn/longhorn-share-manager v1.4.5-0.20231115141251-cb28f2149b7c h1:b2oBPMBT1ELNsuDkbopQ7ugnEPXnlGT7ONp4FLPHXAc=
 github.com/longhorn/longhorn-share-manager v1.4.5-0.20231115141251-cb28f2149b7c/go.mod h1:O9X5B9T8SkdUh6Qt3GMNQ7pvi6DHteSlW0pYRnOmPzo=
 github.com/longhorn/nsfilelock v0.0.0-20200723175406-fa7c83ad0003/go.mod h1:0CLeXlf59Lg6C0kjLSDf47ft73Dh37CwymYRKWwAn04=

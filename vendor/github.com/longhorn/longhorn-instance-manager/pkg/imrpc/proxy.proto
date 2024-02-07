@@ -41,6 +41,7 @@ service ProxyEngineService {
 	rpc ReplicaModeUpdate(EngineReplicaModeUpdateRequest) returns (google.protobuf.Empty);
 
 	rpc MetricsGet(ProxyEngineRequest) returns (EngineMetricsGetProxyResponse);
+	rpc RemountReadOnlyVolume(RemountVolumeRequest) returns (google.protobuf.Empty);
 }
 
 message ProxyEngineRequest{
@@ -255,4 +256,8 @@ message EngineSnapshotHashStatusProxyResponse {
 
 message EngineMetricsGetProxyResponse {
 	ptypes.Metrics metrics = 1;
+}
+
+message RemountVolumeRequest {
+	string volume_name = 1;
 }

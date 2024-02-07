@@ -12,7 +12,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -1749,10 +1748,24 @@ func (vc *VolumeController) requestRemountIfFileSystemReadOnly(v *longhorn.Volum
 		}
 
 		if fileSystemReadOnlyCondition.Status == longhorn.ConditionStatusTrue && !isPVMountOptionReadOnly {
-			v.Status.RemountRequestedAt = vc.nowHandler()
-			log.Infof("Volume request remount at %v due to engine detected read-only filesystem", v.Status.RemountRequestedAt)
-			msg := fmt.Sprintf("Volume %s requested remount at %v due to engine detected read-only filesystem", v.Name, v.Status.RemountRequestedAt)
-			vc.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonRemount, msg)
+			log.Infof("Auto remount volume to read write at due to engine detected read-only filesystem")
+			engineCliClient, err := engineapi.GetEngineBinaryClient(vc.ds, v.Name, vc.controllerID)
+			if err != nil {
+				log.WithError(err).Warnf("Failed to get engineCliClient when remounting read only volume")
+				return
+			}
+
+			engineClientProxy, err := engineapi.GetCompatibleClient(e, engineCliClient, vc.ds, vc.logger, vc.proxyConnCounter)
+			if err != nil {
+				log.WithError(err).Warnf("Failed to get engineClientProxy when remounting read only volume")
+				return
+			}
+			defer engineClientProxy.Close()
+
+			if err := engineClientProxy.RemountReadOnlyVolume(e); err != nil {
+				log.WithError(err).Warnf("Failed to remount read only volume")
+				return
+			}
 		}
 	}
 }

@@ -7,13 +7,12 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/longhorn/longhorn-instance-manager/pkg/types"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"k8s.io/mount-utils"
@@ -123,12 +122,10 @@ func GetVolumeMountPointMap() (map[string]mount.MountPoint, error) {
 		return nil, err
 	}
 
+	regex := regexp.MustCompile(`.*/globalmount$`)
+
 	for _, mp := range mountPoints {
-		match, err := path.Match(types.GlobalMountPathPattern, mp.Path)
-		if err != nil {
-			return nil, err
-		}
-		if match {
+		if regex.MatchString(mp.Path) {
 			volumeNameSHAStr := GetVolumeNameSHAStrFromPath(mp.Path)
 			volumeMountPointMap[volumeNameSHAStr] = mp
 		}

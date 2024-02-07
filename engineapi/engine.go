@@ -304,3 +304,7 @@ func (e *EngineBinary) ReplicaModeUpdate(engine *longhorn.Engine, url, mode stri
 func (e *EngineBinary) MetricsGet(*longhorn.Engine) (*Metrics, error) {
 	return nil, fmt.Errorf(ErrNotImplement)
 }
+
+func (e *EngineBinary) RemountReadOnlyVolume(*longhorn.Engine) error {
+	return fmt.Errorf(ErrNotImplement)
+}

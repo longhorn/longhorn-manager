@@ -264,3 +264,7 @@ func (e *EngineSimulator) MetricsGet(*longhorn.Engine) (*Metrics, error) {
 func (e *EngineSimulator) CleanupBackupMountPoints() error {
 	return fmt.Errorf(ErrNotImplement)
 }
+
+func (e *EngineSimulator) RemountReadOnlyVolume(*longhorn.Engine) error {
+	return fmt.Errorf(ErrNotImplement)
+}
