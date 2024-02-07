@@ -678,7 +678,7 @@ func (vc *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es m
 	}
 
 	// Cannot continue evicting or replenishing replicas during engine migration.
-	isMigratingDone := !vc.isVolumeMigrating(v) && len(es) == 1
+	isMigratingDone := !util.IsVolumeMigrating(v) && len(es) == 1
 
 	oldRobustness := v.Status.Robustness
 	if healthyCount == 0 { // no healthy replica exists, going to faulted
@@ -825,7 +825,7 @@ func (vc *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*l
 	// 	then during cleanupExtraHealthyReplicas the condition `healthyCount > v.Spec.NumberOfReplicas` will be true
 	//  which can lead to incorrect deletion of replicas.
 	//  Allow to delete replicas in `cleanupCorruptedOrStaleReplicas` marked as failed before IM-r started during engine image update.
-	if vc.isVolumeMigrating(v) {
+	if util.IsVolumeMigrating(v) {
 		return nil
 	}
 
@@ -856,7 +856,7 @@ func (vc *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*l
 
 func (vc *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
 	healthyCount := getHealthyAndActiveReplicaCount(rs)
-	cleanupLeftoverReplicas := !vc.isVolumeUpgrading(v) && !vc.isVolumeMigrating(v)
+	cleanupLeftoverReplicas := !vc.isVolumeUpgrading(v) && !util.IsVolumeMigrating(v)
 	log := getLoggerForVolume(vc.logger, v)
 
 	for _, r := range rs {
@@ -1676,7 +1676,7 @@ func (vc *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[stri
 					continue
 				}
 			}
-			if _, ok := e.Spec.ReplicaAddressMap[r.Name]; !ok && vc.isVolumeMigrating(v) && e.Spec.NodeID == v.Spec.NodeID {
+			if _, ok := e.Spec.ReplicaAddressMap[r.Name]; !ok && util.IsVolumeMigrating(v) && e.Spec.NodeID == v.Spec.NodeID {
 				// The volume is migrating from this engine. Don't allow new replicas to be added until migration is
 				// complete per https://github.com/longhorn/longhorn/issues/6961.
 				log.WithField("replica", r.Name).Warn("Replica is running, but can't be added while migration is ongoing")
@@ -1872,7 +1872,7 @@ func (vc *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.En
 		return nil
 	}
 
-	if vc.isVolumeMigrating(v) {
+	if util.IsVolumeMigrating(v) {
 		return nil
 	}
 
@@ -3382,10 +3382,6 @@ func (vc *VolumeController) isVolumeUpgrading(v *longhorn.Volume) bool {
 	return v.Status.CurrentImage != v.Spec.EngineImage
 }
 
-func (vc *VolumeController) isVolumeMigrating(v *longhorn.Volume) bool {
-	return v.Spec.MigrationNodeID != ""
-}
-
 func (vc *VolumeController) getEngineImage(image string) (*longhorn.EngineImage, error) {
 	name := types.GetEngineImageChecksumName(image)
 	img, err := vc.ds.GetEngineImage(name)
@@ -3495,7 +3491,7 @@ func (vc *VolumeController) processMigration(v *longhorn.Volume, es map[string]*
 
 	// the only time there should be more then 1 engines is when we are migrating or upgrading
 	// if there are more then 1 and we no longer have a migration id set we can cleanup the extra engine
-	if !vc.isVolumeMigrating(v) {
+	if !util.IsVolumeMigrating(v) {
 		if len(es) < 2 {
 			return nil
 		}

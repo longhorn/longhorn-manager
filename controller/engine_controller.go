@@ -1160,7 +1160,7 @@ func (ec *EngineController) syncSnapshotCRs(engine *longhorn.Engine) error {
 	if err != nil {
 		return err
 	}
-	if vol.Spec.MigrationNodeID != "" {
+	if util.IsVolumeMigrating(vol) {
 		return nil
 	}
 
