@@ -111,6 +111,7 @@ type EngineClient interface {
 	CleanupBackupMountPoints() error
 
 	MetricsGet(engine *longhorn.Engine) (*Metrics, error)
+	RemountReadOnlyVolume(engine *longhorn.Engine) error
 }
 
 type EngineClientRequest struct {
