@@ -1530,7 +1530,8 @@ func (c *VolumeController) requestRemountIfFileSystemReadOnly(v *longhorn.Volume
 }
 
 func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, isNewVolume bool, log *logrus.Entry) error {
-	// TODO: link the state machine graph here
+	// Here is the AD state machine graph
+	// https://github.com/longhorn/longhorn/blob/master/enhancements/assets/images/longhorn-volumeattachment/volume-controller-ad-logic.png
 
 	if isNewVolume || v.Status.State == "" {
 		v.Status.State = longhorn.VolumeStateCreating
