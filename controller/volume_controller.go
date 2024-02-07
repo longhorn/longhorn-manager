@@ -1521,10 +1521,25 @@ func (c *VolumeController) requestRemountIfFileSystemReadOnly(v *longhorn.Volume
 		}
 
 		if fileSystemReadOnlyCondition.Status == longhorn.ConditionStatusTrue && !isPVMountOptionReadOnly {
-			v.Status.RemountRequestedAt = c.nowHandler()
-			log.Infof("Volume request remount at %v due to engine detected read-only filesystem", v.Status.RemountRequestedAt)
-			msg := fmt.Sprintf("Volume %s requested remount at %v due to engine detected read-only filesystem", v.Name, v.Status.RemountRequestedAt)
-			c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonRemount, msg)
+			log.Infof("Auto remount volume to read write at due to engine detected read-only filesystem")
+			engineCliClient, err := engineapi.GetEngineBinaryClient(c.ds, v.Name, c.controllerID)
+			if err != nil {
+				log.WithError(err).Warnf("Failed to get engineCliClient when remounting read only volume")
+				return
+			}
+
+			engineClientProxy, err := engineapi.GetCompatibleClient(e, engineCliClient, c.ds, c.logger, c.proxyConnCounter)
+			if err != nil {
+				log.WithError(err).Warnf("Failed to get engineClientProxy when remounting read only volume")
+				return
+			}
+			defer engineClientProxy.Close()
+
+			if err := engineClientProxy.RemountReadOnlyVolume(e); err != nil {
+				log.WithError(err).Warnf("Failed to remount read only volume")
+				return
+			}
+
 		}
 	}
 }
