@@ -789,7 +789,7 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 		return nil, fmt.Errorf("cannot upgrade engine image for volume %v from image %v to image %v because the volume's current engine image %v is not deployed on the replicas' nodes or the node that the volume is attached to", v.Name, v.Spec.Image, image, v.Status.CurrentImage)
 	}
 
-	if v.Spec.MigrationNodeID != "" {
+	if util.IsVolumeMigrating(v) {
 		return nil, fmt.Errorf("cannot upgrade during migration")
 	}
 
