@@ -501,7 +501,8 @@ func (ic *EngineImageController) canDoOfflineEngineImageUpgrade(v *longhorn.Volu
 //  2. Volume's robustness is healthy AND
 //  3. Volume is not a DR volume AND
 //  4. Volume is not expanding AND
-//  5. The current volume's engine image is compatible with the new engine image
+//  5. Volume is not migrating AND
+//  6. The current volume's engine image is compatible with the new engine image
 func (ic *EngineImageController) canDoLiveEngineImageUpgrade(v *longhorn.Volume, newEngineImageResource *longhorn.EngineImage) bool {
 	if v.Status.State != longhorn.VolumeStateAttached {
 		return false
@@ -513,6 +514,9 @@ func (ic *EngineImageController) canDoLiveEngineImageUpgrade(v *longhorn.Volume,
 		return false
 	}
 	if v.Status.ExpansionRequired {
+		return false
+	}
+	if util.IsVolumeMigrating(v) {
 		return false
 	}
 	oldEngineImageResource, err := ic.ds.GetEngineImage(types.GetEngineImageChecksumName(v.Status.CurrentImage))
