@@ -344,21 +344,6 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 									Protocol:      corev1.ProtocolTCP,
 								},
 							},
-							StartupProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{
-										Path: "/healthz",
-										Port: intstr.FromInt(DefaultCSILivenessProbePort),
-									},
-								},
-								InitialDelaySeconds: datastore.PodProbeInitialDelay,
-								TimeoutSeconds:      datastore.PodProbeTimeoutSeconds,
-								PeriodSeconds:       datastore.PodProbePeriodSeconds,
-								// Ensure we are allowed at least the maximum container restart backoff time (five
-								// minutes) in case the livenessprobe container is in CrashLoopBackoff. See
-								// https://github.com/longhorn/longhorn/issues/7116.
-								FailureThreshold: (300 + datastore.PodProbePeriodSeconds - 1) / datastore.PodProbePeriodSeconds,
-							},
 							LivenessProbe: &corev1.Probe{
 								ProbeHandler: corev1.ProbeHandler{
 									HTTPGet: &corev1.HTTPGetAction{
