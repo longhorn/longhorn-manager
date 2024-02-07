@@ -242,6 +242,12 @@ message EngineReplicaAddRequest {
 	bool fast_sync = 6;
 	int32 file_sync_http_client_timeout = 7;
 	string replica_name = 8;
+	EngineReplicaLocalSync local_sync = 9;
+}
+
+message EngineReplicaLocalSync{
+	string source = 1;
+	string target = 2;
 }
 
 message EngineReplicaListProxyResponse {

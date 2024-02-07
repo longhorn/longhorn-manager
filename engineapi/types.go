@@ -9,6 +9,7 @@ import (
 	spdkdevtypes "github.com/longhorn/go-spdk-helper/pkg/types"
 
 	emeta "github.com/longhorn/longhorn-engine/pkg/meta"
+	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 
@@ -85,7 +86,7 @@ type EngineClient interface {
 	VolumeSnapshotMaxSizeSet(engine *longhorn.Engine) error
 
 	ReplicaList(*longhorn.Engine) (map[string]*Replica, error)
-	ReplicaAdd(engine *longhorn.Engine, replicaName, url string, isRestoreVolume, fastSync bool, replicaFileSyncHTTPClientTimeout int64) error
+	ReplicaAdd(engine *longhorn.Engine, replicaName, url string, isRestoreVolume, fastSync bool, replicaFileSyncHTTPClientTimeout int64, localSync *etypes.FileLocalSync) error
 	ReplicaRemove(engine *longhorn.Engine, url string) error
 	ReplicaRebuildStatus(*longhorn.Engine) (map[string]*longhorn.RebuildStatus, error)
 	ReplicaRebuildVerify(engine *longhorn.Engine, replicaName, url string) error
