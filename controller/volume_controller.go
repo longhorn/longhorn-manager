@@ -722,7 +722,7 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 	}
 
 	// Cannot continue evicting or replenishing replicas during engine migration.
-	isMigratingDone := !isVolumeMigrating(v) && len(es) == 1
+	isMigratingDone := !util.IsVolumeMigrating(v) && len(es) == 1
 
 	oldRobustness := v.Status.Robustness
 	if healthyCount == 0 { // no healthy replica exists, going to faulted
@@ -937,7 +937,7 @@ func (c *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*lo
 	// 	then during cleanupExtraHealthyReplicas the condition `healthyCount > v.Spec.NumberOfReplicas` will be true
 	//  which can lead to incorrect deletion of replicas.
 	//  Allow to delete replicas in `cleanupCorruptedOrStaleReplicas` marked as failed before IM-r started during engine image update.
-	if isVolumeMigrating(v) {
+	if util.IsVolumeMigrating(v) {
 		return nil
 	}
 
@@ -970,7 +970,7 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 	// See comments for isSafeAsLastReplica for an explanation of why we call getSafeAsLastReplicaCount instead of
 	// getHealthyAndActiveReplicaCount here.
 	safeAsLastReplicaCount := getSafeAsLastReplicaCount(rs)
-	cleanupLeftoverReplicas := !c.isVolumeUpgrading(v) && !isVolumeMigrating(v)
+	cleanupLeftoverReplicas := !c.isVolumeUpgrading(v) && !util.IsVolumeMigrating(v)
 	log := getLoggerForVolume(c.logger, v)
 
 	for _, r := range rs {
@@ -1842,7 +1842,8 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 			log.WithField("replica", r.Name).Warn("Replica is running but Port is empty")
 			continue
 		}
-		if _, ok := e.Spec.ReplicaAddressMap[r.Name]; !ok && isVolumeMigrating(v) && e.Spec.NodeID == v.Spec.NodeID {
+		if _, ok := e.Spec.ReplicaAddressMap[r.Name]; !ok && util.IsVolumeMigrating(v) &&
+			e.Spec.NodeID == v.Spec.NodeID {
 			// The volume is migrating from this engine. Don't allow new replicas to be added until migration is
 			// complete per https://github.com/longhorn/longhorn/issues/6961.
 			log.WithField("replica", r.Name).Warn("Replica is running, but can't be added while migration is ongoing")
@@ -2121,7 +2122,7 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 		return nil
 	}
 
-	if isVolumeMigrating(v) {
+	if util.IsVolumeMigrating(v) {
 		return nil
 	}
 
