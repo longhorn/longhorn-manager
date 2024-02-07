@@ -34,16 +34,6 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
-var (
-	// maxRetriesOnAcquireLockError should guarantee the cumulative retry time
-	// is larger than 150 seconds.
-	// With the current rate-limiter in use (5ms*2^(maxRetries-1)) the following numbers represent the times
-	// a deployment is going to be requeued:
-	//
-	// 5ms, 10ms, 20ms, ... , 81.92s, 163.84s
-	maxRetriesOnAcquireLockError = 16
-)
-
 type BackupController struct {
 	*baseController
 
@@ -358,7 +348,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			if !apierrors.IsNotFound(err) {
 				return err
 			}
-			err = fmt.Errorf("Cannot find the corresponding volume: %v", err)
+			err = errors.Wrap(err, "cannot find the corresponding volume")
 			log.WithError(err).Error()
 			backup.Status.Error = err.Error()
 			backup.Status.State = longhorn.BackupStateError

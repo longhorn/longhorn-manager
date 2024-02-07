@@ -28,7 +28,7 @@ pull_request_rules:
       title: "[BACKPORT][{{ destination_branch }}] {{ title }}"
       body: |
         This is an automatic backport of pull request #{{number}}.
-        
+
         {{cherry_pick_error}}
       assignees:
       - "{{ author }}"

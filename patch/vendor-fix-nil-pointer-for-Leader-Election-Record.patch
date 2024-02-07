@@ -24,7 +24,7 @@ index 285f9440..75492fe6 100644
 +++ b/vendor/k8s.io/client-go/tools/leaderelection/resourcelock/leaselock.go
 @@ -90,25 +90,24 @@ func (ll *LeaseLock) Identity() string {
  }
- 
+
  func LeaseSpecToLeaderElectionRecord(spec *coordinationv1.LeaseSpec) *LeaderElectionRecord {
 -	holderIdentity := ""
 +	var r LeaderElectionRecord
@@ -57,8 +57,7 @@ index 285f9440..75492fe6 100644
 +	return &r
 +
  }
- 
- func LeaderElectionRecordToLeaseSpec(ler *LeaderElectionRecord) coordinationv1.LeaseSpec {
--- 
-2.28.0
 
+ func LeaderElectionRecordToLeaseSpec(ler *LeaderElectionRecord) coordinationv1.LeaseSpec {
+--
+2.28.0

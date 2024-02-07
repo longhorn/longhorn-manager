@@ -188,10 +188,7 @@ func getTargetObject(scheme *runtime.Scheme, apiVersion, kind string) (runtime.O
 // with a formatted embedded error message
 func conversionResponseFailureWithMessagef(msg string, params ...interface{}) *apiextv1.ConversionResponse {
 	return &apiextv1.ConversionResponse{
-		Result: metav1.Status{
-			Message: fmt.Sprintf(msg, params...),
-			Status:  metav1.StatusFailure,
-		},
+		Result: statusErrorWithMessage(msg, params...),
 	}
 
 }

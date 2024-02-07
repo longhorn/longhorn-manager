@@ -1,0 +1,20 @@
+#
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v2.3.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v1.16.0
+    hooks:
+      - id: codespell
+        entry: codespell -c -f -q 3 -I .codespellignore
+
+exclude: |
+  (?x)^(
+    vendor/.*|
+    go.sum
+  )$
