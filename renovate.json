@@ -16,12 +16,29 @@
     },
     {
       "matchBaseBranches": ["master", "main"],
-      "matchUpdateTypes": ["minor", "digest"],
+      "matchUpdateTypes": ["minor"],
       "groupSlug": "group-minor"
     },
     {
       "matchUpdateTypes": ["patch"],
-      "groupSlug": "group-patch",
+      "groupSlug": "group-patch-automerge",
+      "automerge": true
+    },
+    {
+      "matchUpdateTypes": ["digest"],
+      "groupSlug": "group-digest",
+    },
+    {
+      "matchUpdateTypes": ["digest"],
+      "matchPackageNames": [
+        "github.com/longhorn/backupstore", 
+        "github.com/longhorn/go-common-libs", 
+        "github.com/longhorn/go-iscsi-helper", 
+        "github.com/longhorn/go-spdk-helper", 
+        "github.com/longhorn/sparse-tools", 
+        "github.com/longhorn/backupstore"
+      ],
+      "groupSlug": "group-digest-automerge",
       "automerge": true
     }
   ]
