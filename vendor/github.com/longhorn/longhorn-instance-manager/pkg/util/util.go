@@ -7,7 +7,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -18,7 +18,6 @@ import (
 	"k8s.io/mount-utils"
 
 	spdkhelpertypes "github.com/longhorn/go-spdk-helper/pkg/types"
-	"github.com/longhorn/longhorn-instance-manager/pkg/types"
 )
 
 const (
@@ -157,12 +156,10 @@ func GetVolumeMountPointMap() (map[string]mount.MountPoint, error) {
 		return nil, err
 	}
 
+	regex := regexp.MustCompile(`.*/globalmount$`)
+
 	for _, mp := range mountPoints {
-		match, err := path.Match(types.GlobalMountPathPattern, mp.Path)
-		if err != nil {
-			return nil, err
-		}
-		if match {
+		if regex.MatchString(mp.Path) {
 			volumeNameSHAStr := GetVolumeNameSHAStrFromPath(mp.Path)
 			volumeMountPointMap[volumeNameSHAStr] = mp
 		}
