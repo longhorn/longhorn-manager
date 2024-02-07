@@ -23,6 +23,7 @@ import (
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -377,7 +378,7 @@ func (vac *VolumeAttachmentController) handleVolumeMigration(va *longhorn.Volume
 }
 
 func (vac *VolumeAttachmentController) handleVolumeMigrationStart(va *longhorn.VolumeAttachment, vol *longhorn.Volume) {
-	if isVolumeMigrating(vol) {
+	if util.IsVolumeMigrating(vol) {
 		return
 	}
 	// migration start
@@ -544,7 +545,7 @@ func (vac *VolumeAttachmentController) shouldDoDetach(va *longhorn.VolumeAttachm
 	if vol.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 		return true
 	}
-	if isMigratableVolume(vol) && isVolumeMigrating(vol) {
+	if isMigratableVolume(vol) && util.IsVolumeMigrating(vol) {
 		// if the volume is migrating, the detachment will be handled by handleVolumeMigration()
 		return false
 	}
@@ -907,7 +908,7 @@ func isMigratingCSIAttacherTicket(attachmentTicket *longhorn.AttachmentTicket, v
 	}
 	isCSIAttacherTicket := attachmentTicket.Type == longhorn.AttacherTypeCSIAttacher
 	isMigratingTicket := attachmentTicket.NodeID == vol.Status.CurrentMigrationNodeID
-	return isMigratableVolume(vol) && isVolumeMigrating(vol) && isCSIAttacherTicket && isMigratingTicket
+	return isMigratableVolume(vol) && util.IsVolumeMigrating(vol) && isCSIAttacherTicket && isMigratingTicket
 }
 
 func isVolumeShareAvailable(vol *longhorn.Volume) bool {
