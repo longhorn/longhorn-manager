@@ -24,7 +24,7 @@ const (
 	DefaultCSIResizerImage             = "longhornio/csi-resizer:v1.9.2"
 	DefaultCSISnapshotterImage         = "longhornio/csi-snapshotter:v6.3.2"
 	DefaultCSINodeDriverRegistrarImage = "longhornio/csi-node-driver-registrar:v2.9.2"
-	DefaultCSILivenessProbeImage       = "longhornio/livenessprobe:v2.11.0"
+	DefaultCSILivenessProbeImage       = "longhornio/livenessprobe:v2.12.0"
 
 	DefaultCSIAttacherReplicaCount    = 3
 	DefaultCSIProvisionerReplicaCount = 3
