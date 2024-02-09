@@ -107,6 +107,9 @@ func (kc *KubernetesConfigMapController) Run(workers int, stopCh <-chan struct{}
 }
 
 func (kc *KubernetesConfigMapController) worker() {
+	// Since we don't apply a finalizer to the longhorn-storageclass ConfigMap, we may miss its deletion while we are
+	// not running. Try to reconcile it once at startup.
+	kc.queue.Add(kc.namespace + "/" + types.DefaultStorageClassConfigMapName)
 	for kc.processNextWorkItem() {
 	}
 }
@@ -166,6 +169,18 @@ func (kc *KubernetesConfigMapController) reconcile(namespace, cfmName string) er
 	case types.DefaultStorageClassConfigMapName:
 		storageCFM, err := kc.ds.GetConfigMapRO(kc.namespace, types.DefaultStorageClassConfigMapName)
 		if err != nil {
+			if datastore.ErrorIsNotFound(err) {
+				// If the longhorn-storageclass ConfigMap doesn't exist, the user has opted out of having a default
+				// Longhorn StorageClass. We should try to clean it up if it exists. If it doesn't exist, that's fine.
+				err = kc.ds.DeleteStorageClass(types.DefaultStorageClassName)
+				if err == nil {
+					kc.logger.Info("Removed the default Longhorn StorageClass")
+					return nil
+				} else if datastore.ErrorIsNotFound(err) {
+					// Don't log repeatedly.
+					return nil
+				}
+			}
 			return err
 		}
 
