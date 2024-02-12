@@ -6,6 +6,6 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: volumes.longhorn.io
+  name: replicas.longhorn.io
 spec:
   preserveUnknownFields: false
