@@ -55,6 +55,8 @@ if ! command -v kustomize > /dev/null; then
 	popd
 fi
 
+# The generators use GOPATH when locating boilerplate.go.txt, so it must be made available in the child shell.
+export GOPATH
 bash ${GOPATH}/src/k8s.io/code-generator/generate-groups.sh \
   deepcopy,client,lister,informer \
   ${OUTPUT_DIR} \
