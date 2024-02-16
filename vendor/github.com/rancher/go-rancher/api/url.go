@@ -32,7 +32,7 @@ var (
 )
 
 type UrlBuilder interface {
-	ActionLink(resource client.Resource, name string) string
+	//ActionLink(resource client.Resource, name string) string
 	Current() string
 	Collection(resourceType string) string
 	Link(resource client.Resource, name string) string
@@ -91,10 +91,6 @@ func (u *urlBuilder) ReferenceLink(resource client.Resource) string {
 
 func (u *urlBuilder) ReferenceByIdLink(resourceType string, id string) string {
 	return u.constructBasicUrl(u.getPluralName(resourceType), id)
-}
-
-func (u *urlBuilder) ActionLink(resource client.Resource, action string) string {
-	return u.constructBasicUrl(u.getPluralName(resource.Type), resource.Id) + "?action=" + action
 }
 
 func (u *urlBuilder) Version(version string) string {

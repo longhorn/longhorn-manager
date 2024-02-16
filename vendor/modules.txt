@@ -12,6 +12,9 @@ github.com/NYTimes/gziphandler
 ## explicit; go 1.14
 github.com/RoaringBitmap/roaring
 github.com/RoaringBitmap/roaring/internal
+# github.com/Sirupsen/logrus v1.0.6
+## explicit
+github.com/Sirupsen/logrus
 # github.com/antlr/antlr4/runtime/Go/antlr/v4 v4.0.0-20230305170008-8188dc5388df
 ## explicit; go 1.18
 github.com/antlr/antlr4/runtime/Go/antlr/v4
@@ -298,13 +301,11 @@ github.com/mailru/easyjson/jwriter
 github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/mitchellh/copystructure v1.2.0
 ## explicit; go 1.15
-github.com/mitchellh/copystructure
 # github.com/mitchellh/go-ps v1.0.0
 ## explicit; go 1.13
 github.com/mitchellh/go-ps
 # github.com/mitchellh/reflectwalk v1.0.2
 ## explicit
-github.com/mitchellh/reflectwalk
 # github.com/moby/sys/mountinfo v0.6.2
 ## explicit; go 1.16
 github.com/moby/sys/mountinfo
@@ -374,10 +375,11 @@ github.com/rancher/dynamiclistener/server
 github.com/rancher/dynamiclistener/storage/file
 github.com/rancher/dynamiclistener/storage/kubernetes
 github.com/rancher/dynamiclistener/storage/memory
-# github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
+# github.com/rancher/go-rancher v0.1.1-0.20200505164325-7577995d47c0
 ## explicit
 github.com/rancher/go-rancher/api
 github.com/rancher/go-rancher/client
+github.com/rancher/go-rancher/v2
 # github.com/rancher/lasso v0.0.0-20230830164424-d684fdeb6f29
 ## explicit; go 1.20
 github.com/rancher/lasso/pkg/cache
@@ -578,6 +580,7 @@ golang.org/x/crypto/internal/alias
 golang.org/x/crypto/internal/poly1305
 golang.org/x/crypto/nacl/secretbox
 golang.org/x/crypto/salsa20/salsa
+golang.org/x/crypto/ssh/terminal
 # golang.org/x/exp v0.0.0-20230725012225-302865e7556b
 ## explicit; go 1.20
 golang.org/x/exp/constraints

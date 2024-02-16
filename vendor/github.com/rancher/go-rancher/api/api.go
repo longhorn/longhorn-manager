@@ -6,7 +6,7 @@ import (
 	"reflect"
 
 	"github.com/rancher/go-rancher/client"
-	"github.com/sirupsen/logrus"
+	v2client "github.com/rancher/go-rancher/v2"
 )
 
 func toMap(obj interface{}) (map[string]interface{}, error) {
@@ -43,28 +43,46 @@ func getEmbedded(obj interface{}, checkType reflect.Type) interface{} {
 	return nil
 }
 
-func getCollection(obj interface{}) *client.Collection {
+func getCollection(obj interface{}) interface{} {
 	val := getEmbedded(obj, reflect.TypeOf(client.Collection{}))
 	if val == nil {
-		return nil
+		val = getEmbedded(obj, reflect.TypeOf(v2client.Collection{}))
+		if val == nil {
+			return nil
+		}
 	}
-	return val.(*client.Collection)
+	return val
 }
 
-func getResource(obj interface{}) *client.Resource {
+func getResource(obj interface{}) (*client.Resource, *v2client.Resource) {
 	r, ok := obj.(*client.Resource)
 	if ok {
-		return r
+		return r, nil
 	}
 	rObj, ok := obj.(client.Resource)
 	if ok {
-		return &rObj
+		return &rObj, nil
+	}
+	v2r, ok := obj.(*v2client.Resource)
+	if ok {
+		return nil, v2r
+	}
+	v2rObj, ok := obj.(v2client.Resource)
+	if ok {
+		return nil, &v2rObj
 	}
 	val := getEmbedded(obj, reflect.TypeOf(client.Resource{}))
 	if val == nil {
-		return nil
+		val = getEmbedded(obj, reflect.TypeOf(v2client.Resource{}))
+		if val == nil {
+			return nil, nil
+		}
 	}
-	return val.(*client.Resource)
+	v1Resource, ok := val.(*client.Resource)
+	if ok {
+		return v1Resource, nil
+	}
+	return nil, val.(*v2client.Resource)
 }
 
 func CollectionToMap(obj interface{}, schemas *client.Schemas) (map[string]interface{}, []map[string]interface{}, error) {
@@ -108,14 +126,21 @@ func CollectionToMap(obj interface{}, schemas *client.Schemas) (map[string]inter
 }
 
 func ResourceToMap(obj interface{}, schemas *client.Schemas) (map[string]interface{}, error) {
+	var resourceType string
 	result := map[string]interface{}{}
 	if obj == nil {
 		return result, nil
 	}
 
-	resource := getResource(obj)
-	if resource == nil {
+	v1resource, v2resource := getResource(obj)
+	if v1resource == nil && v2resource == nil {
 		return result, errors.New("value is not a Resource")
+	}
+
+	if v1resource != nil {
+		resourceType = v1resource.Type
+	} else {
+		resourceType = v2resource.Type
 	}
 
 	objMap, err := toMap(obj)
@@ -123,12 +148,7 @@ func ResourceToMap(obj interface{}, schemas *client.Schemas) (map[string]interfa
 		return result, err
 	}
 
-	schema, ok := schemas.CheckSchema(resource.Type)
-	if !ok {
-		logrus.Errorf("Attempting to Write an unknown type: %s", resource.Type)
-		return result, nil
-	}
-
+	schema := schemas.Schema(resourceType)
 	for k, v := range objMap {
 		_, ok := schema.CheckField(k)
 		if !ok {

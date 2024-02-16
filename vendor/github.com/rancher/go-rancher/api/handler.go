@@ -3,18 +3,11 @@ package api
 import (
 	"net/http"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/gorilla/context"
 	"github.com/gorilla/mux"
-	"github.com/mitchellh/copystructure"
 	"github.com/rancher/go-rancher/client"
-	"github.com/sirupsen/logrus"
 )
-
-func ApiHandlerFunc(schemas *client.Schemas, f http.HandlerFunc) http.HandlerFunc {
-	return func(rw http.ResponseWriter, r *http.Request) {
-		ApiHandler(schemas, f).ServeHTTP(rw, r)
-	}
-}
 
 func ApiHandler(schemas *client.Schemas, f http.Handler) http.Handler {
 	return context.ClearHandler(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
@@ -89,25 +82,11 @@ func VersionHandler(schemas *client.Schemas, version string) http.Handler {
 func SchemasHandler(schemas *client.Schemas) http.Handler {
 	return ApiHandler(schemas, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		apiContext := GetApiContext(r)
-
-		copy, err := copystructure.Copy(schemas)
-		if err != nil {
-			logrus.WithField("err", err).Errorf("Failed to deep copy schemas")
-			rw.WriteHeader(500)
-			return
-		}
-
-		schemasCopy, ok := copy.(*client.Schemas)
-		if !ok {
-			logrus.WithField("err", err).Errorf("Invalid deep copy schemas")
-			rw.WriteHeader(500)
-			return
-		}
-
+		schemasCopy := *schemas
 		for i := range schemasCopy.Data {
 			populateSchema(apiContext, &schemasCopy.Data[i])
 		}
-		apiContext.Write(schemasCopy)
+		apiContext.Write(&schemasCopy)
 	}))
 }
 
@@ -122,22 +101,9 @@ func SchemaHandler(schemas *client.Schemas) http.Handler {
 		apiContext := GetApiContext(r)
 
 		schema := schemas.Schema(mux.Vars(r)["id"])
-		copy, err := copystructure.Copy(schema)
-		if err != nil {
-			logrus.WithField("err", err).Errorf("Failed to deep copy schema")
-			rw.WriteHeader(500)
-			return
-		}
 
-		schemaCopy, ok := copy.(client.Schema)
-		if !ok {
-			logrus.WithField("err", err).Errorf("Invalid deep copy schema")
-			rw.WriteHeader(500)
-			return
-		}
+		populateSchema(apiContext, &schema)
 
-		populateSchema(apiContext, &schemaCopy)
-
-		apiContext.Write(&schemaCopy)
+		apiContext.Write(&schema)
 	}))
 }

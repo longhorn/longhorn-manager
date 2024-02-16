@@ -54,7 +54,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.17.0
 	github.com/rancher/dynamiclistener v0.3.6
-	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
+	github.com/rancher/go-rancher v0.1.1-0.20200505164325-7577995d47c0
 	github.com/rancher/wrangler v1.1.1
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.9.3
@@ -80,6 +80,7 @@ require (
 )
 
 require (
+	github.com/Sirupsen/logrus v1.0.6 // indirect
 	github.com/antlr/antlr4/runtime/Go/antlr/v4 v4.0.0-20230305170008-8188dc5388df // indirect
 	github.com/benbjohnson/clock v1.3.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
