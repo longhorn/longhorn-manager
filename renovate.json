@@ -5,10 +5,9 @@
     ],
     "baseBranches": [
         "master",
-        "main",
         "v1.6.x",
         "v1.5.x",
-        "v1.4.x",
+        "v1.4.x"
     ],
     "packageRules": [
         {
