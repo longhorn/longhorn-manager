@@ -124,6 +124,8 @@ const (
 	SettingNameV2DataEngine                                             = SettingName("v2-data-engine")
 	SettingNameV2DataEngineHugepageLimit                                = SettingName("v2-data-engine-hugepage-limit")
 	SettingNameV2DataEngineGuaranteedInstanceManagerCPU                 = SettingName("v2-data-engine-guaranteed-instance-manager-cpu")
+	SettingNameV2DataEngineLogLevel                                     = SettingName("v2-data-engine-log-level")
+	SettingNameV2DataEngineLogFlags                                     = SettingName("v2-data-engine-log-flags")
 )
 
 var (
@@ -201,6 +203,8 @@ var (
 		SettingNameV2DataEngine,
 		SettingNameV2DataEngineHugepageLimit,
 		SettingNameV2DataEngineGuaranteedInstanceManagerCPU,
+		SettingNameV2DataEngineLogLevel,
+		SettingNameV2DataEngineLogFlags,
 		SettingNameOfflineReplicaRebuilding,
 		SettingNameReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume,
@@ -309,6 +313,8 @@ var (
 		SettingNameV2DataEngine:                                             SettingDefinitionV2DataEngine,
 		SettingNameV2DataEngineHugepageLimit:                                SettingDefinitionV2DataEngineHugepageLimit,
 		SettingNameV2DataEngineGuaranteedInstanceManagerCPU:                 SettingDefinitionV2DataEngineGuaranteedInstanceManagerCPU,
+		SettingNameV2DataEngineLogLevel:                                     SettingDefinitionV2DataEngineLogLevel,
+		SettingNameV2DataEngineLogFlags:                                     SettingDefinitionV2DataEngineLogFlags,
 		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
 		SettingNameReplicaDiskSoftAntiAffinity:                              SettingDefinitionReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume:                             SettingDefinitionAllowEmptyNodeSelectorVolume,
@@ -1244,6 +1250,26 @@ var (
 		ReadOnly:    false,
 		Default:     "false",
 	}
+
+	SettingDefinitionV2DataEngineLogLevel = SettingDefinition{
+		DisplayName: "V2 Data Engine Log Level",
+		Description: "The log level used in SPDK target daemon (spdk_tgt) of V2 Data Engine. Supported values are: Disabled, Error, Warn, Notice, Info and Debug. By default Notice.",
+		Category:    SettingCategoryV2DataEngine,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "Notice",
+	}
+
+	SettingDefinitionV2DataEngineLogFlags = SettingDefinition{
+		DisplayName: "V2 Data Engine Log Flags",
+		Description: "The log flags used in SPDK target daemon (spdk_tgt) of V2 Data Engine.",
+		Category:    SettingCategoryV2DataEngine,
+		Type:        SettingTypeString,
+		Required:    false,
+		ReadOnly:    false,
+		Default:     "",
+	}
 )
 
 type NodeDownPodDeletionPolicy string
@@ -1543,6 +1569,14 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameLogLevel:
 		if err := ValidateLogLevel(value); err != nil {
 			return errors.Wrapf(err, "failed to validate log level %v", value)
+		}
+	case SettingNameV2DataEngineLogLevel:
+		if err := ValidateV2DataEngineLogLevel(value); err != nil {
+			return errors.Wrapf(err, "failed to validate v2 data engine log level %v", value)
+		}
+	case SettingNameV2DataEngineLogFlags:
+		if err := ValidateV2DataEngineLogFlags(value); err != nil {
+			return errors.Wrapf(err, "failed to validate v2 data engine log flags %v", value)
 		}
 	}
 	return nil
