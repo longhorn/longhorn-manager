@@ -240,7 +240,7 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20240207150648-1e655f4e19ea
+# github.com/longhorn/go-common-libs v0.0.0-20240207153251-d5e1ceae50ac
 ## explicit; go 1.21
 github.com/longhorn/go-common-libs/exec
 github.com/longhorn/go-common-libs/io
@@ -256,7 +256,7 @@ github.com/longhorn/go-common-libs/utils
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.0.0-20240117135122-26f8acb2a13d
+# github.com/longhorn/go-spdk-helper v0.0.0-20240207162828-b64c3bc30abe
 ## explicit; go 1.21
 github.com/longhorn/go-spdk-helper/pkg/types
 # github.com/longhorn/longhorn-engine v1.6.0-dev-20240105.0.20240110095344-deb8b18a1558
@@ -378,7 +378,7 @@ github.com/rancher/dynamiclistener/storage/memory
 ## explicit
 github.com/rancher/go-rancher/api
 github.com/rancher/go-rancher/client
-# github.com/rancher/lasso v0.0.0-20230830164424-d684fdeb6f29
+# github.com/rancher/lasso v0.0.0-20240123150939-7055397d6dfa
 ## explicit; go 1.20
 github.com/rancher/lasso/pkg/cache
 github.com/rancher/lasso/pkg/client
@@ -792,7 +792,7 @@ gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
-# k8s.io/api v0.28.5 => k8s.io/api v0.28.5
+# k8s.io/api v0.28.6 => k8s.io/api v0.28.5
 ## explicit; go 1.20
 k8s.io/api/admission/v1
 k8s.io/api/admission/v1beta1
@@ -870,7 +870,7 @@ k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions/internalint
 k8s.io/apiextensions-apiserver/pkg/client/listers/apiextensions/v1
 k8s.io/apiextensions-apiserver/pkg/client/listers/apiextensions/v1beta1
 k8s.io/apiextensions-apiserver/pkg/features
-# k8s.io/apimachinery v0.28.5 => k8s.io/apimachinery v0.28.5
+# k8s.io/apimachinery v0.28.6 => k8s.io/apimachinery v0.28.5
 ## explicit; go 1.20
 k8s.io/apimachinery/pkg/api/equality
 k8s.io/apimachinery/pkg/api/errors
@@ -1078,7 +1078,7 @@ k8s.io/apiserver/plugin/pkg/authorizer/webhook
 # k8s.io/cli-runtime v0.28.5 => k8s.io/cli-runtime v0.28.5
 ## explicit; go 1.20
 k8s.io/cli-runtime/pkg/printers
-# k8s.io/client-go v0.28.5 => k8s.io/client-go v0.28.5
+# k8s.io/client-go v0.28.6 => k8s.io/client-go v0.28.5
 ## explicit; go 1.20
 k8s.io/client-go/applyconfigurations/admissionregistration/v1
 k8s.io/client-go/applyconfigurations/admissionregistration/v1alpha1
