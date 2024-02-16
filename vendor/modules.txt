@@ -251,7 +251,7 @@ github.com/longhorn/go-common-libs/sys
 github.com/longhorn/go-common-libs/test/fake
 github.com/longhorn/go-common-libs/types
 github.com/longhorn/go-common-libs/utils
-# github.com/longhorn/go-iscsi-helper v0.0.0-20240207144754-dfe699fd78f5
+# github.com/longhorn/go-iscsi-helper v0.0.0-20240207150711-0713d1c9f5d1
 ## explicit; go 1.21
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/types
