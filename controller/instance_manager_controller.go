@@ -1201,9 +1201,20 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	podSpec.Spec.Containers[0].Name = "instance-manager"
 
 	if datastore.IsDataEngineV2(dataEngine) {
-		podSpec.Spec.Containers[0].Args = []string{
-			"instance-manager", "--enable-spdk", "--debug", "daemon", "--spdk-enabled", "--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort),
+		setting, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameLogLevel)
+		if err != nil {
+			return nil, err
 		}
+
+		logLevel := strings.ToLower(setting.Value)
+
+		args := []string{"instance-manager"}
+		if logLevel == "debug" || logLevel == "trace" {
+			args = append(args, "--spdk-log", "all")
+		}
+		args = append(args, "--enable-spdk", "--debug", "daemon", "--spdk-enabled", "--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort))
+
+		podSpec.Spec.Containers[0].Args = args
 
 		hugepage, err := imc.ds.GetSettingAsInt(types.SettingNameV2DataEngineHugepageLimit)
 		if err != nil {
