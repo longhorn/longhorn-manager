@@ -1045,6 +1045,8 @@ github.com/longhorn/backupstore v0.0.0-20240110081942-bd231cfb0c7b h1:euBbfDb6bn
 github.com/longhorn/backupstore v0.0.0-20240110081942-bd231cfb0c7b/go.mod h1:4cbJWtlrD2cGTQxQLtdlPTYopiJiusXH7CpOBrn/s3k=
 github.com/longhorn/backupstore v0.0.0-20240207023845-915898cee71c h1:Pr08Ip8fo9lZhKGBTjyyeeXos6AIu/twkiDzhUe0Hx8=
 github.com/longhorn/backupstore v0.0.0-20240207023845-915898cee71c/go.mod h1:4cbJWtlrD2cGTQxQLtdlPTYopiJiusXH7CpOBrn/s3k=
+github.com/longhorn/backupstore v0.0.0-20240207150630-b375644f1c57 h1:4yP0EwQ3tmTwOws1hXa5T5QxtDyibwKaFNocgLHyrjU=
+github.com/longhorn/backupstore v0.0.0-20240207150630-b375644f1c57/go.mod h1:4cbJWtlrD2cGTQxQLtdlPTYopiJiusXH7CpOBrn/s3k=
 github.com/longhorn/go-common-libs v0.0.0-20240109042507-23627e6416b7 h1:t8F+BjCcn0qqHdVlGktqnEH5EOGigFnAFmVbQPe0nnY=
 github.com/longhorn/go-common-libs v0.0.0-20240109042507-23627e6416b7/go.mod h1:nIECQARppamt2zwFSdzADRTVKo/7izFwWIS3VWi7D/s=
 github.com/longhorn/go-common-libs v0.0.0-20240207150648-1e655f4e19ea h1:BsxiPf75KImDJty7fKRJ/3eBmtjm1yuR+tDjE6BkQac=
