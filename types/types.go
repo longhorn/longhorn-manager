@@ -738,6 +738,30 @@ func ValidateLogLevel(level string) error {
 	return nil
 }
 
+func ValidateV2DataEngineLogLevel(level string) error {
+	switch strings.ToLower(level) {
+	case "disabled", "error", "warn", "notice", "info", "debug":
+		return nil
+	default:
+		return fmt.Errorf("log level %s is invalid", level)
+	}
+}
+
+func ValidateV2DataEngineLogFlags(flags string) error {
+	if flags == "" {
+		return nil
+	}
+
+	pattern := "^[a-zA-Z,]+$"
+	reg := regexp.MustCompile(pattern)
+
+	if !reg.MatchString(flags) {
+		return fmt.Errorf("log flags %s is invalid", flags)
+	}
+
+	return nil
+}
+
 func ValidateDataLocalityAndReplicaCount(mode longhorn.DataLocality, count int) error {
 	if mode == longhorn.DataLocalityStrictLocal && count != 1 {
 		return fmt.Errorf("replica count should be 1 in data locality %v mode", longhorn.DataLocalityStrictLocal)
