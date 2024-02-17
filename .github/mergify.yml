@@ -1,1 +1,17 @@
-extends: longhorn/release
+pull_request_rules:
+- name: automatic merge after review
+  conditions:
+  - check-success=continuous-integration/drone/pr
+  - check-success=DCO
+  - "#approved-reviews-by>=2"
+  - approved-reviews-by=@longhorn/maintainer
+  actions:
+    merge:
+      method: rebase
+
+- name: ask to resolve conflict
+  conditions:
+  - conflict
+  actions:
+    comment:
+      message: This pull request is now in conflict. Could you fix it @{{author}}? 🙏
