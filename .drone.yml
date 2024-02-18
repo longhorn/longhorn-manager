@@ -14,7 +14,7 @@ trigger:
 
 steps:
 - name: fetch
-  image: ubuntu:18.04
+  image: ubuntu:22.04
   commands:
   - apt-get update
   - apt-get install -y git
@@ -22,7 +22,7 @@ steps:
 
 - name: build
   pull: default
-  image: rancher/dapper:v0.6.0
+  image: rancher/dapper:1.12.1
   commands:
   - dapper ci
   volumes:
@@ -128,7 +128,7 @@ trigger:
 
 steps:
 - name: fetch
-  image: ubuntu:18.04
+  image: ubuntu:22.04
   commands:
   - apt-get update
   - apt-get install -y git
@@ -136,7 +136,7 @@ steps:
 
 - name: build
   pull: default
-  image: rancher/dapper:v0.6.0
+  image: rancher/dapper:1.12.1
   commands:
   - dapper ci
   volumes:
