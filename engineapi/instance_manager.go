@@ -784,3 +784,27 @@ func (c *InstanceManagerClient) VersionGet() (int, int, int, int, error) {
 	return output.InstanceManagerAPIMinVersion, output.InstanceManagerAPIVersion,
 		output.InstanceManagerProxyAPIMinVersion, output.InstanceManagerProxyAPIVersion, nil
 }
+
+func (c *InstanceManagerClient) LogSetLevel(dataEngine longhorn.DataEngineType, component, level string) error {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
+		return err
+	}
+
+	if c.GetAPIVersion() < 6 {
+		return nil
+	}
+
+	return c.instanceServiceGrpcClient.LogSetLevel(string(dataEngine), component, level)
+}
+
+func (c *InstanceManagerClient) LogSetFlags(dataEngine longhorn.DataEngineType, component, flags string) error {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
+		return err
+	}
+
+	if c.GetAPIVersion() < 6 {
+		return nil
+	}
+
+	return c.instanceServiceGrpcClient.LogSetFlags(string(dataEngine), component, flags)
+}
