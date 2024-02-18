@@ -447,10 +447,55 @@ func (imc *InstanceManagerController) syncInstanceStatus(im *longhorn.InstanceMa
 	return nil
 }
 
+func (imc *InstanceManagerController) syncLogSettingsToIMPod(im *longhorn.InstanceManager) error {
+	if datastore.IsDataEngineV1(im.Spec.DataEngine) {
+		return nil
+	}
+
+	client, err := engineapi.NewInstanceManagerClient(im)
+	if err != nil {
+		return errors.Wrapf(err, "failed to create instance manager client for %v", im.Name)
+	}
+
+	settingNames := []types.SettingName{
+		types.SettingNameV2DataEngineLogLevel,
+		types.SettingNameV2DataEngineLogFlags,
+	}
+
+	for _, settingName := range settingNames {
+		setting, err := imc.ds.GetSettingWithAutoFillingRO(settingName)
+		if err != nil {
+			return err
+		}
+
+		switch settingName {
+		case types.SettingNameV2DataEngineLogLevel:
+			err = client.LogSetLevel(longhorn.DataEngineTypeV2, "spdk_tgt", setting.Value)
+			if err != nil {
+				return errors.Wrapf(err, "failed to set log level for %v", settingName)
+			}
+		case types.SettingNameV2DataEngineLogFlags:
+			err = client.LogSetFlags(longhorn.DataEngineTypeV2, "spdk_tgt", setting.Value)
+			if err != nil {
+				return errors.Wrapf(err, "failed to set log flags for %v", settingName)
+			}
+		}
+	}
+
+	return nil
+}
+
 func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) error {
+	log := getLoggerForInstanceManager(imc.logger, im)
+
 	err := imc.annotateCASafeToEvict(im)
 	if err != nil {
 		return err
+	}
+
+	err = imc.syncLogSettingsToIMPod(im)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to sync log settings to instance manager pod")
 	}
 
 	isSettingSynced, isPodDeletedOrNotRunning, areInstancesRunningInPod, err := imc.areDangerZoneSettingsSyncedToIMPod(im)
