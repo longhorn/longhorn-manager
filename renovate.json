@@ -1,3 +1,9 @@
 {
-  "extends": ["github>longhorn/release:renovate-default"]
+  "extends": ["github>longhorn/release:renovate-default"],
+  "packageRules": [
+    {
+      "matchBaseBranches": ["master", "main", "/^v\\d+\\.\\d+\\.x/"],
+      "excludePackageNames": ["github.com/rancher/go-rancher"]
+    }
+  ]
 }
