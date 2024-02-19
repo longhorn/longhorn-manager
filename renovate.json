@@ -3,7 +3,8 @@
   "packageRules": [
     {
       "matchBaseBranches": ["master", "main", "/^v\\d+\\.\\d+\\.x/"],
-      "excludePackageNames": ["github.com/rancher/go-rancher"]
+      "matchPackageNames": ["github.com/rancher/go-rancher"],
+      "enabled": false
     }
   ]
 }
