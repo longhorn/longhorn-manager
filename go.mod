@@ -39,28 +39,28 @@ require (
 	github.com/docker/go-connections v0.4.0
 	github.com/go-co-op/gocron v1.37.0
 	github.com/google/uuid v1.6.0
-	github.com/gorilla/handlers v1.5.1
-	github.com/gorilla/mux v1.8.0
-	github.com/gorilla/websocket v1.5.0
+	github.com/gorilla/handlers v1.5.2
+	github.com/gorilla/mux v1.8.1
+	github.com/gorilla/websocket v1.5.1
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
-	github.com/longhorn/backing-image-manager v1.6.0-dev-20231217.0.20240103150452-7f8aea1edd03
-	github.com/longhorn/backupstore v0.0.0-20240207023845-915898cee71c
-	github.com/longhorn/go-common-libs v0.0.0-20240207153251-d5e1ceae50ac
-	github.com/longhorn/go-iscsi-helper v0.0.0-20240207144754-dfe699fd78f5
-	github.com/longhorn/go-spdk-helper v0.0.0-20240207162828-b64c3bc30abe
-	github.com/longhorn/longhorn-engine v1.6.0-dev-20240105.0.20240110095344-deb8b18a1558
-	github.com/longhorn/longhorn-instance-manager v1.6.0-dev-20240105.0.20240126085307-467528c95307
-	github.com/longhorn/longhorn-share-manager v1.6.0-dev-20231217.0.20231226052309-99d57c1695ea
+	github.com/longhorn/backing-image-manager v1.6.0
+	github.com/longhorn/backupstore v0.0.0-20240207150630-b375644f1c57
+	github.com/longhorn/go-common-libs v0.0.0-20240219024942-c0c78c3ba273
+	github.com/longhorn/go-iscsi-helper v0.0.0-20240207150711-0713d1c9f5d1
+	github.com/longhorn/go-spdk-helper v0.0.0-20240219034107-a6d23f96da54
+	github.com/longhorn/longhorn-engine v1.6.0
+	github.com/longhorn/longhorn-instance-manager v1.6.0
+	github.com/longhorn/longhorn-share-manager v1.6.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.17.0
 	github.com/rancher/dynamiclistener v0.3.6
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
-	github.com/rancher/wrangler v1.1.1
+	github.com/rancher/wrangler v1.1.2
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.8.4
-	github.com/urfave/cli v1.22.13
+	github.com/urfave/cli v1.22.14
 	golang.org/x/mod v0.14.0
 	golang.org/x/net v0.20.0
 	golang.org/x/sys v0.16.0
@@ -77,7 +77,7 @@ require (
 	k8s.io/kubernetes v1.28.5
 	k8s.io/metrics v0.28.5
 	k8s.io/mount-utils v0.28.5
-	k8s.io/utils v0.0.0-20230406110748-d93618cff8a2
+	k8s.io/utils v0.0.0-20240102154912-e7106e64919e
 	sigs.k8s.io/controller-runtime v0.10.1
 )
 
