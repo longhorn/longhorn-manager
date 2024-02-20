@@ -44,19 +44,20 @@ func NewFakeNodeMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, node
 	return m, nil
 }
 
-func fakeGetReplicaDirectoryNames(diskType longhorn.DiskType, node *longhorn.Node, diskName, diskUUID, diskPath string, client *DiskServiceClient) (map[string]string, error) {
+func fakeGetReplicaDirectoryNames(diskType longhorn.DiskType, node *longhorn.Node, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient) (map[string]string, error) {
 	return map[string]string{
 		TestOrphanedReplicaDirectoryName: "",
 	}, nil
 }
 
-func fakeGetDiskStat(diskType longhorn.DiskType, name, directory string, client *DiskServiceClient) (*lhtypes.DiskStat, error) {
+func fakeGetDiskStat(diskType longhorn.DiskType, name, directory string, diskDriver longhorn.DiskDriver, client *DiskServiceClient) (*lhtypes.DiskStat, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return &lhtypes.DiskStat{
 			DiskID:      "fsid",
 			Path:        directory,
 			Type:        "ext4",
+			Driver:      "",
 			FreeBlocks:  0,
 			TotalBlocks: 0,
 			BlockSize:   0,
@@ -69,6 +70,7 @@ func fakeGetDiskStat(diskType longhorn.DiskType, name, directory string, client 
 			DiskID:      "block",
 			Path:        directory,
 			Type:        "ext4",
+			Driver:      "",
 			FreeBlocks:  0,
 			TotalBlocks: 0,
 			BlockSize:   0,
@@ -81,14 +83,16 @@ func fakeGetDiskStat(diskType longhorn.DiskType, name, directory string, client 
 	}
 }
 
-func fakeGetDiskConfig(diskType longhorn.DiskType, name, path string, client *DiskServiceClient) (*util.DiskConfig, error) {
+func fakeGetDiskConfig(diskType longhorn.DiskType, name, path string, diskDriver longhorn.DiskDriver, client *DiskServiceClient) (*util.DiskConfig, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return &util.DiskConfig{
+			DiskName: "",
 			DiskUUID: TestDiskID1,
 		}, nil
 	case longhorn.DiskTypeBlock:
 		return &util.DiskConfig{
+			DiskName: "",
 			DiskUUID: TestDiskID1,
 		}, nil
 	default:
@@ -96,8 +100,9 @@ func fakeGetDiskConfig(diskType longhorn.DiskType, name, path string, client *Di
 	}
 }
 
-func fakeGenerateDiskConfig(diskType longhorn.DiskType, name, uuid, path string, client *DiskServiceClient) (*util.DiskConfig, error) {
+func fakeGenerateDiskConfig(diskType longhorn.DiskType, name, uuid, path, diskDriver string, client *DiskServiceClient) (*util.DiskConfig, error) {
 	return &util.DiskConfig{
+		DiskName: "",
 		DiskUUID: TestDiskID1,
 	}, nil
 }

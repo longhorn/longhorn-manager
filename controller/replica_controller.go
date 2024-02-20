@@ -387,9 +387,9 @@ func (rc *ReplicaController) getDiskNameFromUUID(r *longhorn.Replica) (string, e
 	if err != nil {
 		return "", err
 	}
-	for name, disk := range node.Status.DiskStatus {
+	for _, disk := range node.Status.DiskStatus {
 		if disk.DiskUUID == r.Spec.DiskID {
-			return name, nil
+			return disk.DiskName, nil
 		}
 	}
 	return "", fmt.Errorf("cannot find disk name for replica %v", r.Name)

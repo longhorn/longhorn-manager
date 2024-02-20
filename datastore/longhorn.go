@@ -2379,14 +2379,41 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		disks, err := types.CreateDefaultDisk(dataPath, storageReservedPercentageForDefaultDisk)
-		if err != nil {
-			return nil, err
+
+		if s.needDefaultDiskCreation(dataPath) {
+			disks, err := types.CreateDefaultDisk(dataPath, storageReservedPercentageForDefaultDisk)
+			if err != nil {
+				return nil, err
+			}
+			node.Spec.Disks = disks
 		}
-		node.Spec.Disks = disks
 	}
 
 	return s.CreateNode(node)
+}
+
+func (s *DataStore) needDefaultDiskCreation(dataPath string) bool {
+	v2DataEngineEnabled, err := s.GetSettingAsBool(types.SettingNameV2DataEngine)
+	if err != nil {
+		logrus.WithError(err).Errorf("Failed to get setting %v", types.SettingNameV2DataEngine)
+		return false
+	}
+
+	if v2DataEngineEnabled {
+		return true
+	}
+
+	// Do not create default block-type disk if v2 data engine is disabled
+	ok, err := types.IsBlockDisk(dataPath)
+	if err != nil {
+		logrus.WithError(err).Errorf("Failed to check if the data path %v is block-type", dataPath)
+		return false
+	}
+	if ok {
+		return false
+	}
+
+	return true
 }
 
 func (s *DataStore) GetNodeRO(name string) (*longhorn.Node, error) {
