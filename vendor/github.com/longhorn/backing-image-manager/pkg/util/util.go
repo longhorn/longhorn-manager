@@ -3,6 +3,7 @@ package util
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha512"
 	"encoding/hex"
@@ -287,4 +288,29 @@ func FileModificationTime(filePath string) string {
 		return ""
 	}
 	return fi.ModTime().UTC().String()
+}
+
+func GunzipFile(filePath string, dstFilePath string) error {
+	gzipfile, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer gzipfile.Close()
+
+	reader, err := gzip.NewReader(gzipfile)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+
+	writer, err := os.Create(dstFilePath)
+	if err != nil {
+		return err
+	}
+	defer writer.Close()
+
+	if _, err = io.Copy(writer, reader); err != nil {
+		return err
+	}
+	return nil
 }

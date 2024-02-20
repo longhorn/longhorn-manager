@@ -1,6 +1,7 @@
 syntax="proto3";
 
 import "google/protobuf/empty.proto";
+option go_package = "github.com/longhorn/longhorn-instance-manager/pkg/imrpc";
 
 service ProcessManagerService {
 	rpc ProcessCreate(ProcessCreateRequest) returns (ProcessResponse) {}
