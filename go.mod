@@ -33,34 +33,34 @@ replace (
 require (
 	github.com/container-storage-interface/spec v1.5.0
 	github.com/docker/go-connections v0.4.0
-	github.com/golang/protobuf v1.5.2
+	github.com/golang/protobuf v1.5.3
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/handlers v1.4.2
-	github.com/gorilla/mux v1.8.0
-	github.com/gorilla/websocket v1.5.0
+	github.com/gorilla/mux v1.8.1
+	github.com/gorilla/websocket v1.5.1
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v0.0.0-20220609065820-a08f7f47442f
-	github.com/longhorn/backupstore v0.0.0-20230606110118-7c0666bcb0cf
+	github.com/longhorn/backupstore 3a87ee02df77
 	github.com/longhorn/go-iscsi-helper v0.0.0-20231113050545-9df1e6b605c7
 	github.com/longhorn/longhorn-engine v1.4.4-rc2
 	github.com/longhorn/longhorn-instance-manager v1.4.5-0.20240123080948-c39a4cac7a20
 	github.com/longhorn/longhorn-share-manager v1.4.5-0.20231115141251-cb28f2149b7c
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.1
-	github.com/rancher/dynamiclistener v0.3.1
+	github.com/rancher/dynamiclistener v0.3.6
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
 	github.com/rancher/wrangler v0.8.11
 	github.com/robfig/cron v1.2.0
-	github.com/sirupsen/logrus v1.9.0
-	github.com/stretchr/testify v1.8.1
-	github.com/urfave/cli v1.22.5
+	github.com/sirupsen/logrus v1.9.3
+	github.com/stretchr/testify v1.8.4
+	github.com/urfave/cli v1.22.14
 	golang.org/x/mod v0.8.0
 	golang.org/x/net v0.17.0
 	golang.org/x/sys v0.13.0
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac
 	google.golang.org/grpc v1.40.0
-	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f
+	gopkg.in/check.v1 10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.23.6
 	k8s.io/apiextensions-apiserver v0.18.0
@@ -70,7 +70,7 @@ require (
 	k8s.io/kubernetes v1.23.6
 	k8s.io/metrics v0.23.6
 	k8s.io/mount-utils v0.27.1
-	k8s.io/utils v0.0.0-20230406110748-d93618cff8a2
+	k8s.io/utils e7106e64919e
 	sigs.k8s.io/controller-runtime v0.4.0
 	sigs.k8s.io/yaml v1.2.0
 )
