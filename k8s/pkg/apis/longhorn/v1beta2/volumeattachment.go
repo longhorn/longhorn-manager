@@ -52,6 +52,7 @@ const (
 	AttacherTypeVolumeExpansionController        = AttacherType("volume-expansion-controller")
 	AttacherTypeBackingImageDataSourceController = AttacherType("bim-ds-controller")
 	AttacherTypeVolumeRebuildingController       = AttacherType("volume-rebuilding-controller")
+	AttacherTypeRecurringJobApp                  = AttacherType("recurring-job-app")
 )
 
 const (
