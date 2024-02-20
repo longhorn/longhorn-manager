@@ -3094,6 +3094,9 @@ func (c *VolumeController) checkAndFinishVolumeRestore(v *longhorn.Volume, e *lo
 	// 3) The restore/DR volume is
 	//   3.1) it's state `Healthy`;
 	//   3.2) or it's state `Degraded` with all the scheduled replica included in the engine
+	if v.Spec.FromBackup == "" || !v.Status.IsStandby {
+		return nil
+	}
 	isPurging := false
 	for _, status := range e.Status.PurgeStatus {
 		if status.IsPurging {
@@ -3103,6 +3106,26 @@ func (c *VolumeController) checkAndFinishVolumeRestore(v *longhorn.Volume, e *lo
 	}
 	if !(e.Spec.RequestedBackupRestore != "" && e.Spec.RequestedBackupRestore == e.Status.LastRestoredBackup &&
 		!v.Spec.Standby) {
+		return nil
+	}
+
+	// Make sure the backup volume is up-to-date and the latest backup is restored
+	_, bvName, _, err := backupstore.DecodeBackupURL(v.Spec.FromBackup)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get backup name from volume %s backup URL %v", v.Name, v.Spec.FromBackup)
+	}
+	bv, err := c.ds.GetBackupVolumeRO(bvName)
+	if err != nil {
+		return err
+	}
+	if !bv.Status.LastSyncedAt.IsZero() &&
+		bv.Spec.SyncRequestedAt.After(bv.Status.LastSyncedAt.Time) {
+		log.Infof("Restore/DR volume needs to wait for backup volume %s update", bvName)
+		return nil
+	}
+	if e.Status.LastRestoredBackup != bv.Status.LastBackupName {
+		log.Infof("Restore/DR volume needs to restore the latest backup %s, and the current restored backup is %s", bv.Status.LastBackupName, e.Status.LastRestoredBackup)
+		c.enqueueVolume(v)
 		return nil
 	}
 
@@ -3117,7 +3140,7 @@ func (c *VolumeController) checkAndFinishVolumeRestore(v *longhorn.Volume, e *lo
 	}
 
 	if !isPurging && ((v.Status.Robustness == longhorn.VolumeRobustnessHealthy && allScheduledReplicasIncluded) || (v.Status.Robustness == longhorn.VolumeRobustnessDegraded && degradedVolumeSupported)) {
-		log.Info("Restore/DR volume finished")
+		log.Infof("Restore/DR volume finished with the last restored backup %s", e.Status.LastRestoredBackup)
 		v.Status.IsStandby = false
 		v.Status.RestoreRequired = false
 	}
