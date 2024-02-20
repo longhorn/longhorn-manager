@@ -980,21 +980,40 @@ func UnmarshalToNodeTags(s string) ([]string, error) {
 	return res, nil
 }
 
-func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[string]longhorn.DiskSpec, error) {
-	fileInfo, err := os.Stat(dataPath)
+func IsBDF(addr string) bool {
+	bdfFormat := "[a-f0-9]{4}:[a-f0-9]{2}:[a-f0-9]{2}\\.[a-f0-9]{1}"
+	bdfPattern := regexp.MustCompile(bdfFormat)
+	return bdfPattern.MatchString(addr)
+}
+
+func IsBlockDisk(path string) (bool, error) {
+	if IsBDF(path) {
+		return true, nil
+	}
+
+	fileInfo, err := os.Stat(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return nil, errors.Wrapf(err, "failed to stat %v for creating default disk", dataPath)
+			return false, errors.Wrapf(err, "failed to stat %v for creating default disk", path)
 		}
-
-		// Longhorn is unable to create block-type disk automatically
-		if strings.HasPrefix(dataPath, "/dev/") {
-			return nil, errors.Wrapf(err, "creating default block-type disk %v is not supported", dataPath)
+		if strings.HasPrefix(path, "/dev/") {
+			return false, errors.Wrapf(err, "creating default block-type disk %v is not supported", path)
 		}
 	}
 
-	// Block-type disk
 	if fileInfo != nil && (fileInfo.Mode()&os.ModeDevice) == os.ModeDevice {
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[string]longhorn.DiskSpec, error) {
+	ok, err := IsBlockDisk(dataPath)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to check if %v is a block device", dataPath)
+	}
+	if ok {
 		return map[string]longhorn.DiskSpec{
 			DefaultDiskPrefix + util.RandomID(): {
 				Type:              longhorn.DiskTypeBlock,
