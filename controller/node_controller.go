@@ -767,7 +767,7 @@ func (nc *NodeController) findNotReadyAndReadyDiskMaps(node *longhorn.Node, coll
 
 			if errorMessage != "" {
 				notReadyDiskInfoMap[diskID][diskName] =
-					monitor.NewDiskInfo(diskInfo.Path, diskInfo.DiskUUID,
+					monitor.NewDiskInfo(diskInfo.DiskName, diskInfo.DiskUUID, diskInfo.Path, diskInfo.DiskDriver,
 						diskInfo.NodeOrDiskEvicted, diskInfo.DiskStat,
 						diskInfo.OrphanedReplicaDirectoryNames,
 						string(longhorn.DiskConditionReasonDiskFilesystemChanged), errorMessage)
@@ -788,7 +788,7 @@ func (nc *NodeController) findNotReadyAndReadyDiskMaps(node *longhorn.Node, coll
 			if nc.isDiskIDDuplicatedWithExistingReadyDisk(diskName, diskInfoMap, node.Status.DiskStatus) ||
 				isReadyDiskFound(readyDiskInfoMap[diskID]) {
 				notReadyDiskInfoMap[diskID][diskName] =
-					monitor.NewDiskInfo(diskInfo.Path, diskInfo.DiskUUID, diskInfo.NodeOrDiskEvicted, diskInfo.DiskStat,
+					monitor.NewDiskInfo(diskInfo.DiskName, diskInfo.DiskUUID, diskInfo.Path, diskInfo.DiskDriver, diskInfo.NodeOrDiskEvicted, diskInfo.DiskStat,
 						diskInfo.OrphanedReplicaDirectoryNames,
 						string(longhorn.DiskConditionReasonDiskFilesystemChanged),
 						fmt.Sprintf("Disk %v(%v) on node %v is not ready: disk has same file system ID %v as other disks %+v",
@@ -797,6 +797,9 @@ func (nc *NodeController) findNotReadyAndReadyDiskMaps(node *longhorn.Node, coll
 			}
 
 			node.Status.DiskStatus[diskName].DiskUUID = diskInfo.DiskUUID
+			node.Status.DiskStatus[diskName].DiskDriver = diskInfo.DiskDriver
+			node.Status.DiskStatus[diskName].DiskName = diskInfo.DiskName
+			node.Status.DiskStatus[diskName].DiskPath = diskInfo.Path
 			readyDiskInfoMap[diskID][diskName] = diskInfo
 		}
 	}
@@ -1478,17 +1481,21 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 				continue
 			}
 
-			// Blindingly send disk deletion request to instance manager regardless of the disk type,
+			// Blindly send disk deletion request to instance manager regardless of the disk type,
 			// because the disk type is not recorded in the disk status.
-			if err := nc.deleteDisk(node, diskStatus.Type, diskName, diskStatus.DiskUUID); err != nil {
-				nc.logger.WithError(err).Warnf("Failed to delete disk %v", diskName)
+			diskInstanceName := diskStatus.DiskName
+			if diskInstanceName == "" {
+				diskInstanceName = diskName
+			}
+			if err := nc.deleteDisk(node, diskStatus.Type, diskInstanceName, diskStatus.DiskUUID, diskStatus.DiskPath, string(diskStatus.DiskDriver)); err != nil {
+				nc.logger.WithError(err).Warnf("Failed to delete disk %v", diskInstanceName)
 			}
 			delete(node.Status.DiskStatus, diskName)
 		}
 	}
 }
 
-func (nc *NodeController) deleteDisk(node *longhorn.Node, diskType longhorn.DiskType, diskName, diskUUID string) error {
+func (nc *NodeController) deleteDisk(node *longhorn.Node, diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string) error {
 	if diskUUID == "" {
 		log.Infof("Disk %v has no diskUUID, skip deleting", diskName)
 		return nil
@@ -1498,16 +1505,16 @@ func (nc *NodeController) deleteDisk(node *longhorn.Node, diskType longhorn.Disk
 
 	im, err := nc.ds.GetDefaultInstanceManagerByNodeRO(nc.controllerID, dataEngine)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get default engine instance manager")
+		return errors.Wrapf(err, "failed to get default instance manager")
 	}
 
 	diskServiceClient, err := engineapi.NewDiskServiceClient(im, nc.logger)
 	if err != nil {
-		return errors.Wrapf(err, "failed to create disk service client")
+		return errors.Wrapf(err, "failed to create disk service client for deleting disk %v", diskName)
 	}
 	defer diskServiceClient.Close()
 
-	if err := monitor.DeleteDisk(diskType, diskName, diskUUID, diskServiceClient); err != nil {
+	if err := monitor.DeleteDisk(diskType, diskName, diskUUID, diskPath, diskDriver, diskServiceClient); err != nil {
 		return errors.Wrapf(err, "failed to delete disk %v", diskName)
 	}
 

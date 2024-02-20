@@ -983,7 +983,28 @@ func UnmarshalToNodeTags(s string) ([]string, error) {
 	return res, nil
 }
 
+func isBDF(addr string) bool {
+	bdfFormat := "[a-f0-9]{4}:[a-f0-9]{2}:[a-f0-9]{2}\\.[a-f0-9]{1}"
+	bdfPattern := regexp.MustCompile(bdfFormat)
+	return bdfPattern.MatchString(addr)
+}
+
 func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[string]longhorn.DiskSpec, error) {
+	if isBDF(dataPath) {
+		logrus.Infof("Given disk path %v is a BDF format", dataPath)
+		return map[string]longhorn.DiskSpec{
+			DefaultDiskPrefix + util.RandomID(): {
+				Type:              longhorn.DiskTypeBlock,
+				Path:              dataPath,
+				DiskDriver:        longhorn.DiskDriverAuto,
+				AllowScheduling:   true,
+				EvictionRequested: false,
+				StorageReserved:   0,
+				Tags:              []string{},
+			},
+		}, nil
+	}
+
 	fileInfo, err := os.Stat(dataPath)
 	if err != nil {
 		if !os.IsNotExist(err) {

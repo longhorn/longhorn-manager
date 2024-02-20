@@ -622,7 +622,9 @@ func IsKubernetesVersionAtLeast(kubeClient clientset.Interface, vers string) (bo
 }
 
 type DiskConfig struct {
-	DiskUUID string `json:"diskUUID"`
+	DiskName   string              `json:"diskName"`
+	DiskUUID   string              `json:"diskUUID"`
+	DiskDriver longhorn.DiskDriver `json:"diskDriver"`
 }
 
 func MinInt(a, b int) int {
