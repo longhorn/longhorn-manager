@@ -241,7 +241,7 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20240219024942-c0c78c3ba273
+# github.com/longhorn/go-common-libs v0.0.0-20240219094750-e7176c332156
 ## explicit; go 1.21
 github.com/longhorn/go-common-libs/exec
 github.com/longhorn/go-common-libs/io
@@ -252,12 +252,12 @@ github.com/longhorn/go-common-libs/sys
 github.com/longhorn/go-common-libs/test/fake
 github.com/longhorn/go-common-libs/types
 github.com/longhorn/go-common-libs/utils
-# github.com/longhorn/go-iscsi-helper v0.0.0-20240207150711-0713d1c9f5d1
+# github.com/longhorn/go-iscsi-helper v0.0.0-20240220070055-d137da5111d9
 ## explicit; go 1.21
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.0.0-20240219034107-a6d23f96da54
+# github.com/longhorn/go-spdk-helper v0.0.0-20240219160403-5fe20e7f7542
 ## explicit; go 1.21
 github.com/longhorn/go-spdk-helper/pkg/types
 # github.com/longhorn/longhorn-engine v1.6.0
@@ -267,7 +267,7 @@ github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
 github.com/longhorn/longhorn-engine/proto/ptypes
-# github.com/longhorn/longhorn-instance-manager v1.6.0-dev-20240105.0.20240219053144-677fbd99cc56
+# github.com/longhorn/longhorn-instance-manager v1.6.0-dev-20240105.0.20240219053144-677fbd99cc56 => github.com/derekbit/longhorn-instance-manager v0.0.0-20240220061956-86c183cd4fb1
 ## explicit; go 1.21
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -285,7 +285,7 @@ github.com/longhorn/longhorn-share-manager/pkg/server/nfs
 github.com/longhorn/longhorn-share-manager/pkg/types
 github.com/longhorn/longhorn-share-manager/pkg/util
 github.com/longhorn/longhorn-share-manager/pkg/volume
-# github.com/longhorn/longhorn-spdk-engine v0.0.0-20240123044045-c5f14845bd83
+# github.com/longhorn/longhorn-spdk-engine v0.0.0-20240220053426-01d75ca9502c
 ## explicit; go 1.21
 github.com/longhorn/longhorn-spdk-engine/pkg/types
 github.com/longhorn/longhorn-spdk-engine/proto/spdkrpc
@@ -608,7 +608,7 @@ golang.org/x/oauth2/internal
 ## explicit; go 1.18
 golang.org/x/sync/errgroup
 golang.org/x/sync/singleflight
-# golang.org/x/sys v0.16.0
+# golang.org/x/sys v0.17.0
 ## explicit; go 1.18
 golang.org/x/sys/cpu
 golang.org/x/sys/plan9
