@@ -3094,7 +3094,7 @@ func (c *VolumeController) checkAndFinishVolumeRestore(v *longhorn.Volume, e *lo
 	// 3) The restore/DR volume is
 	//   3.1) it's state `Healthy`;
 	//   3.2) or it's state `Degraded` with all the scheduled replica included in the engine
-	if v.Spec.FromBackup == "" || !v.Status.IsStandby {
+	if v.Spec.FromBackup == "" {
 		return nil
 	}
 	isPurging := false
@@ -3109,24 +3109,26 @@ func (c *VolumeController) checkAndFinishVolumeRestore(v *longhorn.Volume, e *lo
 		return nil
 	}
 
-	// Make sure the backup volume is up-to-date and the latest backup is restored
-	_, bvName, _, err := backupstore.DecodeBackupURL(v.Spec.FromBackup)
-	if err != nil {
-		return errors.Wrapf(err, "failed to get backup name from volume %s backup URL %v", v.Name, v.Spec.FromBackup)
-	}
-	bv, err := c.ds.GetBackupVolumeRO(bvName)
-	if err != nil {
-		return err
-	}
-	if !bv.Status.LastSyncedAt.IsZero() &&
-		bv.Spec.SyncRequestedAt.After(bv.Status.LastSyncedAt.Time) {
-		log.Infof("Restore/DR volume needs to wait for backup volume %s update", bvName)
-		return nil
-	}
-	if e.Status.LastRestoredBackup != bv.Status.LastBackupName {
-		log.Infof("Restore/DR volume needs to restore the latest backup %s, and the current restored backup is %s", bv.Status.LastBackupName, e.Status.LastRestoredBackup)
-		c.enqueueVolume(v)
-		return nil
+	if v.Status.IsStandby {
+		// For DR volume, make sure the backup volume is up-to-date and the latest backup is restored
+		_, bvName, _, err := backupstore.DecodeBackupURL(v.Spec.FromBackup)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get backup name from volume %s backup URL %v", v.Name, v.Spec.FromBackup)
+		}
+		bv, err := c.ds.GetBackupVolumeRO(bvName)
+		if err != nil {
+			return err
+		}
+		if !bv.Status.LastSyncedAt.IsZero() &&
+			bv.Spec.SyncRequestedAt.After(bv.Status.LastSyncedAt.Time) {
+			log.Infof("Restore/DR volume needs to wait for backup volume %s update", bvName)
+			return nil
+		}
+		if e.Status.LastRestoredBackup != bv.Status.LastBackupName {
+			log.Infof("Restore/DR volume needs to restore the latest backup %s, and the current restored backup is %s", bv.Status.LastBackupName, e.Status.LastRestoredBackup)
+			c.enqueueVolume(v)
+			return nil
+		}
 	}
 
 	allScheduledReplicasIncluded, err := c.checkAllScheduledReplicasIncluded(v, e, rs)
