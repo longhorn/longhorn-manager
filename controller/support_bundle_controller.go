@@ -680,7 +680,7 @@ func (c *SupportBundleController) newSupportBundleManager(supportBundle *longhor
 							Name:            "manager",
 							Image:           supportBundle.Status.Image,
 							Args:            []string{"/usr/bin/support-bundle-kit", "manager"},
-							ImagePullPolicy: corev1.PullPolicy(api.PullAlways),
+							ImagePullPolicy: corev1.PullPolicy(api.PullIfNotPresent),
 							Env: []corev1.EnvVar{
 								{
 									Name: "POD_NAMESPACE",
@@ -724,7 +724,7 @@ func (c *SupportBundleController) newSupportBundleManager(supportBundle *longhor
 								},
 								{
 									Name:  "SUPPORT_BUNDLE_IMAGE_PULL_POLICY",
-									Value: string(api.PullAlways),
+									Value: string(api.PullIfNotPresent),
 								},
 								{
 									Name:  "SUPPORT_BUNDLE_REGISTRY_SECRET",
