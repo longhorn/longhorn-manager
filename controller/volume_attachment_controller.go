@@ -813,7 +813,7 @@ func (vac *VolumeAttachmentController) updateStatusForDesiredAttachingAttachment
 		return
 	}
 
-	if vol.Status.CurrentNodeID == attachmentTicket.NodeID && vol.Status.State == longhorn.VolumeStateAttached {
+	if vol.Spec.NodeID == attachmentTicket.NodeID && vol.Status.CurrentNodeID == attachmentTicket.NodeID && vol.Status.State == longhorn.VolumeStateAttached {
 		if !verifyAttachmentParameters(attachmentTicket.Parameters, vol) {
 			attachmentTicketStatus.Satisfied = false
 			cond := types.GetCondition(attachmentTicketStatus.Conditions, longhorn.AttachmentStatusConditionTypeSatisfied)
