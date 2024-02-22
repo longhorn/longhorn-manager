@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -447,6 +448,12 @@ func (m *VolumeManager) triggerBackupVolumeToSync(volume *longhorn.Volume) error
 
 	backupVolume, err := m.ds.GetBackupVolume(backupVolumeName)
 	if err != nil {
+		// The backup volume may be deleted already.
+		// hence it's better not to block the caller to continue the handlings like DR volume activation.
+		if apierrors.IsNotFound(err) {
+			logrus.Infof("Cannot find backup volume %v to trigger the sync-up, will skip it", backupVolumeName)
+			return nil
+		}
 		return errors.Wrapf(err, "failed to get backup volume: %v", backupVolumeName)
 	}
 	requestSyncTime := metav1.Time{Time: time.Now().UTC()}
