@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"strings"
+	"testing"
 
 	monitor "github.com/longhorn/longhorn-manager/controller/monitor"
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -11,6 +12,7 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -179,6 +181,7 @@ func (s *NodeControllerSuite) TestManagerPodUp(c *C) {
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeEnvironmentCheck, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKernelVersionCheckFailed),
 				},
 			},
 			TestNode2: {
@@ -263,6 +266,7 @@ func (s *NodeControllerSuite) TestManagerPodDown(c *C) {
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonManagerPodDown),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonNoMountPropagationSupport),
+					newNodeCondition(longhorn.NodeConditionTypeEnvironmentCheck, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKernelVersionCheckFailed),
 				},
 			},
 			TestNode2: {
@@ -347,6 +351,7 @@ func (s *NodeControllerSuite) TestKubeNodeDown(c *C) {
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKubernetesNodeNotReady),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeEnvironmentCheck, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKernelVersionCheckFailed),
 				},
 			},
 			TestNode2: {
@@ -431,6 +436,7 @@ func (s *NodeControllerSuite) TestKubeNodePressure(c *C) {
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKubernetesNodePressure),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeEnvironmentCheck, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKernelVersionCheckFailed),
 				},
 			},
 			TestNode2: {
@@ -544,6 +550,7 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeEnvironmentCheck, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKernelVersionCheckFailed),
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{
 					TestDiskID1: {
@@ -682,6 +689,7 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeEnvironmentCheck, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKernelVersionCheckFailed),
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{
 					TestDiskID1: {
@@ -823,6 +831,7 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeEnvironmentCheck, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKernelVersionCheckFailed),
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{
 					TestDiskID1: {
@@ -941,6 +950,7 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeEnvironmentCheck, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKernelVersionCheckFailed),
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{
 					TestDiskID1: {
@@ -1077,6 +1087,7 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeEnvironmentCheck, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKernelVersionCheckFailed),
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{
 					TestDiskID1: {
@@ -1185,6 +1196,7 @@ func (s *NodeControllerSuite) TestCleanupAllInstanceManagers(c *C) {
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeEnvironmentCheck, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKernelVersionCheckFailed),
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{},
 			},
@@ -1972,4 +1984,37 @@ func newTestNodeController(lhClient *lhfake.Clientset, kubeClient *fake.Clientse
 
 func fakeTopologyLabelsChecker(kubeClient clientset.Interface, vers string) (bool, error) {
 	return false, nil
+}
+
+func TestIsDefectiveKernel(t *testing.T) {
+	// For reference, the test criteria are based on this pair of kernel ranges:
+	// var knownDefectiveKernels = []defectiveKernelRange{
+	//   {"5.15.0-94", "5.15.0-100"},
+	//   {"6.5.6",     "6.5.9"},
+
+	tests := map[string]struct {
+		kernelVersion string
+		want          bool
+	}{
+		"Before both ranges":              {"5.15.0-67-generic", false},
+		"First broken version":            {"5.15.0-94", true},
+		"First broken version plus label": {"5.15.0-94-generic", true}, // semver gets this wrong.
+		"First broken version plus build": {"5.15.0-94+5ac3", true},    // semver gets this wrong.
+		"First fixed version":             {"5.15.0-100", false},
+		"Not in either range":             {"6.1.0-1029-oem", false},
+		"Second minor version":            {"6.5.0-18-generic", false},
+		"Before seconde broken version":   {"6.5.5", false},
+		"Second broken versions":          {"6.5.6", true},
+		"In second broken range":          {"6.5.8", true},
+		"Second fixed version":            {"6.5.9", false},
+		"After both ranges":               {"6.5.10", false},
+	}
+
+	assert := assert.New(t)
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := isDefectiveKernel(tc.kernelVersion)
+			assert.Equal(tc.want, got)
+		})
+	}
 }

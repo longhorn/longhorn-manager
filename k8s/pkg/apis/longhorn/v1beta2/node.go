@@ -6,6 +6,7 @@ const (
 	NodeConditionTypeReady            = "Ready"
 	NodeConditionTypeMountPropagation = "MountPropagation"
 	NodeConditionTypeSchedulable      = "Schedulable"
+	NodeConditionTypeEnvironmentCheck = "EnvironmentCheckPassed"
 )
 
 const (
@@ -17,6 +18,7 @@ const (
 	NodeConditionReasonUnknownNodeConditionTrue  = "UnknownNodeConditionTrue"
 	NodeConditionReasonNoMountPropagationSupport = "NoMountPropagationSupport"
 	NodeConditionReasonKubernetesNodeCordoned    = "KubernetesNodeCordoned"
+	NodeConditionReasonKernelVersionCheckFailed  = "KernelVersionCheckFailed"
 )
 
 const (

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"os/exec"
 	"reflect"
 	"strings"
 	"sync"
@@ -32,6 +33,7 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
+	lhns "github.com/longhorn/go-common-libs/ns"
 	"github.com/longhorn/longhorn-manager/controller/monitor"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -72,6 +74,18 @@ type NodeController struct {
 }
 
 type TopologyLabelsChecker func(kubeClient clientset.Interface, vers string) (bool, error)
+
+// Ref: https://github.com/longhorn/longhorn/issues/7931
+type defectiveKernelRange struct {
+	broken string
+	fixed  string
+}
+
+// TODO: Keep an up-to-date bad kernel list in upgrade-responder and pull the latest info from there.
+var knownDefectiveKernels = []defectiveKernelRange{
+	{"5.15.0-94", "5.15.0-100"},
+	{"6.5.6", "6.5.9"},
+}
 
 func NewNodeController(
 	logger logrus.FieldLogger,
@@ -539,7 +553,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		}
 	}
 
-	// sync mount propagation status on current node
+	// sync status Conditions on current node.
 	for _, pod := range managerPods {
 		if pod.Spec.NodeName == node.Name {
 			if err := nc.syncNodeStatus(pod, node); err != nil {
@@ -972,7 +986,50 @@ func (nc *NodeController) syncNodeStatus(pod *corev1.Pod, node *longhorn.Node) e
 		}
 	}
 
+	// invoke environment check (kernel version first, but others may follow
+	kernelRelease, err := lhns.GetKernelRelease()
+	if err != nil {
+		node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeEnvironmentCheck, longhorn.ConditionStatusFalse,
+			string(longhorn.NodeConditionReasonKernelVersionCheckFailed),
+			fmt.Sprintf("The kernel version could not be read from pod %s, node %s", pod.Name, pod.Spec.NodeName))
+	} else {
+		isDefective := isDefectiveKernel(kernelRelease)
+		if isDefective {
+			node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeEnvironmentCheck, longhorn.ConditionStatusFalse,
+				string(longhorn.NodeConditionReasonKernelVersionCheckFailed),
+				fmt.Sprintf("Unsupported kernel version %s found on pod %s, node %s", kernelRelease, pod.Name, pod.Spec.NodeName))
+		} else {
+			node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeEnvironmentCheck, longhorn.ConditionStatusTrue, "",
+				fmt.Sprintf("Node %s running kernel %s", pod.Spec.NodeName, kernelRelease))
+		}
+	}
+
 	return nil
+}
+
+// isDefectiveKernel duplicates the logic of longhorn/scripts/environment_check.sh because
+// * It should get the same answer, and
+// * "sort -V" is more accurate than "semver", because Linux kernels are not semver.
+func isDefectiveKernel(kernelRelease string) bool {
+	verlte := func(v1, v2 string) bool {
+		in := v1 + "\n" + v2
+		cmd := exec.Command("bash", "-c", "sort -C -V")
+		cmd.Stdin = strings.NewReader(in)
+		_, err := cmd.Output()
+		return err == nil
+	}
+	verlt := func(v1, v2 string) bool {
+		return !verlte(v2, v1)
+	}
+	isKernelInRange := func(kver, vlow, vhigh string) bool {
+		return verlte(vlow, kver) && verlt(kver, vhigh)
+	}
+	for _, span := range knownDefectiveKernels {
+		if isKernelInRange(kernelRelease, span.broken, span.fixed) {
+			return true
+		}
+	}
+	return false
 }
 
 func (nc *NodeController) getImTypeDataEngines(node *longhorn.Node) map[longhorn.InstanceManagerType][]longhorn.DataEngineType {
