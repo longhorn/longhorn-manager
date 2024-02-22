@@ -7,6 +7,7 @@ type InstanceType string
 const (
 	InstanceTypeEngine  = InstanceType("engine")
 	InstanceTypeReplica = InstanceType("replica")
+	InstanceTypeNone    = InstanceType("")
 )
 
 type InstanceManagerState string
