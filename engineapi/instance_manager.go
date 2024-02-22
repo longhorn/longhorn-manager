@@ -10,14 +10,16 @@ import (
 	"github.com/sirupsen/logrus"
 	"go.uber.org/multierr"
 
+	lhutils "github.com/longhorn/go-common-libs/utils"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 	immeta "github.com/longhorn/longhorn-instance-manager/pkg/meta"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/datastore"
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 const (
@@ -267,7 +269,7 @@ func parseInstance(p *imapi.Instance) *longhorn.InstanceProcess {
 			DataEngine: getDataEngineFromInstanceProcess(p),
 		},
 		Status: longhorn.InstanceProcessStatus{
-			Type:       getTypeForInstance(longhorn.InstanceType(p.Type), p.PortCount),
+			Type:       getTypeForInstance(longhorn.InstanceType(p.Type), p.Name),
 			State:      longhorn.InstanceState(p.InstanceStatus.State),
 			ErrorMsg:   p.InstanceStatus.ErrorMsg,
 			Conditions: p.InstanceStatus.Conditions,
@@ -292,7 +294,7 @@ func parseProcess(p *imapi.Process) *longhorn.InstanceProcess {
 			DataEngine: longhorn.DataEngineTypeV1,
 		},
 		Status: longhorn.InstanceProcessStatus{
-			Type:       getTypeForProcess(p.PortCount),
+			Type:       getTypeForProcess(p.Name),
 			State:      longhorn.InstanceState(p.ProcessStatus.State),
 			ErrorMsg:   p.ProcessStatus.ErrorMsg,
 			Conditions: p.ProcessStatus.Conditions,
@@ -315,22 +317,20 @@ func getDataEngineFromInstanceProcess(p *imapi.Instance) longhorn.DataEngineType
 	return longhorn.DataEngineType(p.BackendStoreDriver)
 }
 
-func getTypeForInstance(instanceType longhorn.InstanceType, portCount int32) longhorn.InstanceType {
-	if instanceType != longhorn.InstanceType("") {
+func getTypeForInstance(instanceType longhorn.InstanceType, name string) longhorn.InstanceType {
+	if instanceType != longhorn.InstanceTypeNone {
 		return instanceType
 	}
 
-	if portCount == DefaultEnginePortCount {
+	if lhutils.IsEngineProcess(name) {
 		return longhorn.InstanceTypeEngine
 	}
+
 	return longhorn.InstanceTypeReplica
 }
 
-func getTypeForProcess(portCount int32) longhorn.InstanceType {
-	if portCount == DefaultEnginePortCount {
-		return longhorn.InstanceTypeEngine
-	}
-	return longhorn.InstanceTypeReplica
+func getTypeForProcess(name string) longhorn.InstanceType {
+	return getTypeForInstance(longhorn.InstanceTypeNone, name)
 }
 
 func getBinaryAndArgsForEngineProcessCreation(e *longhorn.Engine,
