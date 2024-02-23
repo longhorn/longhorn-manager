@@ -141,6 +141,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		return nil, status.Errorf(codes.Aborted, "no %v workload pods for volume %v to be mounted: %+v", corev1.PodPending, volumeID, podsStatus)
 	}
 
+<<<<<<< HEAD
 	if volumeCapability.GetBlock() != nil {
 		devicePath := volume.Controllers[0].Endpoint
 		if err := ns.nodePublishBlockVolume(volumeID, devicePath, targetPath, mounter); err != nil {
@@ -155,11 +156,17 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	if isMnt, err := ensureMountPoint(stagingPath, mounter); err != nil || !isMnt {
 		msg := fmt.Sprintf("Staging path is no longer valid for volume %v", volumeID)
 		log.Error(msg)
+=======
+	// It may be necessary to restage the volume before we can publish it. For example, sometimes kubelet calls
+	// NodePublishVolume without calling NodeStageVolume. According to the CSI spec, we should be able to respond with
+	// FailedPrecondition and expect kubelet to call NodeStageVolume again, but as of Kubernetes v1.27 it does not.
+	isBlock := volumeCapability.GetBlock() != nil
+	restageRequired, err := restageRequired(volume, volumeID, stagingTargetPath, mounter, isBlock)
+	if restageRequired {
+		msg := fmt.Sprintf("Staging target path %v is no longer valid for volume %v", stagingTargetPath, volumeID)
+		log.WithError(err).Warn(msg)
+>>>>>>> 3b3a949b (Automatically restage block volumes if necessary)
 
-		// HACK: normally when we return FailedPrecondition below kubelet should call NodeStageVolume again
-		//	but currently it does not, so we manually call NodeStageVolume to remount the block device globally
-		//	we currently don't reuse the previously mapped block device (major:minor) so the initial mount even after
-		//	reattachment of the longhorn block dev is no longer valid
 		log.Warnf("Calling NodeUnstageVolume for volume %v", volumeID)
 		_, _ = ns.NodeUnstageVolume(ctx, &csi.NodeUnstageVolumeRequest{
 			VolumeId:          volumeID,
@@ -179,6 +186,24 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 			log.Errorf("Failed NodeStageVolume staging path is still in a bad state for volume %v", volumeID)
 			return nil, status.Error(codes.FailedPrecondition, msg)
 		}
+	}
+
+	if isBlock {
+		devicePath := getStageBlockVolumePath(stagingTargetPath, volumeID)
+		_, err := os.Stat(devicePath)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				return nil, status.Errorf(codes.Internal, errors.Wrapf(err, "failed to stat device %s", devicePath).Error())
+			}
+		}
+
+		if err := ns.nodePublishBlockVolume(volumeID, devicePath, targetPath, mounter); err != nil {
+			log.WithError(err).Errorf("Failed to publish BlockVolume %s", volumeID)
+			return nil, err
+		}
+
+		log.Infof("Published BlockVolume %s", volumeID)
+		return &csi.NodePublishVolumeResponse{}, nil
 	}
 
 	isMnt, err := ensureMountPoint(targetPath, mounter)
@@ -790,4 +815,32 @@ func (ns *NodeServer) getMounter(volume *longhornclient.Volume, volumeCapability
 	}
 
 	return nil, fmt.Errorf("failed to get mounter for volume %v unsupported volume capability %v", volume.Name, volumeCapability.GetAccessType())
+}
+
+// restageRequired determines whether it is necessary to manually call NodeUnstageVolume and NodeStageVolume again
+// before publishing. If it returns true, it may also return an error containing the underlying reason restaging is
+// required. restageRequired has side effects for v1 mount volumes due to its use of ensureMountPoint. These side
+// effects are neither harmful nor helpful, as ensureMountPoint will be called again in the restage flow.
+func restageRequired(volume *longhornclient.Volume,
+	volumeID, stagingTargetPath string,
+	mounter mount.Interface,
+	isBlock bool) (bool, error) {
+
+	if volume.DataEngine == string(longhorn.DataEngineTypeV2) {
+		return true, fmt.Errorf("always unstage v2 volume %v", volumeID)
+	}
+	if isBlock {
+		stageBlockVolumePath := getStageBlockVolumePath(stagingTargetPath, volumeID)
+		isStaged, err := mounter.IsMountPoint(stageBlockVolumePath)
+		// Before v1.6.0, NodeStageVolume was a no-op for block volumes. Instead, we directly bind mounted the
+		// device from /dev/longhorn to targetPath. It is possible that we are responding to a NodePublishVolume request
+		// for a volume that was "staged" using the old flow. If we are, nothing exists at stageBlockVolumePath, and we
+		// will return restageRequired == true. This is fine, because:
+		// - NodeUnstageVolume will do nothing for a volume staged with this flow.
+		// - NodeStageVolume will add an additional bind mount at stageBlockVolumePath. This additional bind mount will
+		//   not affect the original direct bind mount.
+		return !isStaged, err
+	}
+	isStaged, err := ensureMountPoint(stagingTargetPath, mounter)
+	return !isStaged, err
 }
