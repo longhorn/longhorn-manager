@@ -2112,8 +2112,6 @@ spec:
                       - ""
                       - auto
                       - aio
-                      - nvme
-                      - virtio
                       type: string
                     diskType:
                       enum:
@@ -2204,13 +2202,13 @@ spec:
                       type: string
                     diskName:
                       type: string
+                    diskPath:
+                      type: string
                     diskType:
                       type: string
                     diskUUID:
                       type: string
                     filesystemType:
-                      type: string
-                    path:
                       type: string
                     scheduledReplica:
                       additionalProperties:

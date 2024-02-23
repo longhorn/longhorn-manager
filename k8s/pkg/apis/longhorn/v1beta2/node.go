@@ -58,11 +58,9 @@ const (
 type DiskDriver string
 
 const (
-	DiskDriverNone   = DiskDriver("")
-	DiskDriverAuto   = DiskDriver("auto")
-	DiskDriverAio    = DiskDriver("aio")
-	DiskDriverNvme   = DiskDriver("nvme")
-	DiskDriverVirtio = DiskDriver("virtio")
+	DiskDriverNone = DiskDriver("")
+	DiskDriverAuto = DiskDriver("auto")
+	DiskDriverAio  = DiskDriver("aio")
 )
 
 type SnapshotCheckStatus struct {
@@ -76,7 +74,7 @@ type DiskSpec struct {
 	Type DiskType `json:"diskType"`
 	// +optional
 	Path string `json:"path"`
-	// +kubebuilder:validation:Enum="";auto;aio;nvme;virtio
+	// +kubebuilder:validation:Enum="";auto;aio
 	// +optional
 	DiskDriver DiskDriver `json:"diskDriver"`
 	// +optional
