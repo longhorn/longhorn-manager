@@ -3116,18 +3116,24 @@ func (c *VolumeController) checkAndFinishVolumeRestore(v *longhorn.Volume, e *lo
 			return errors.Wrapf(err, "failed to get backup name from volume %s backup URL %v", v.Name, v.Spec.FromBackup)
 		}
 		bv, err := c.ds.GetBackupVolumeRO(bvName)
-		if err != nil {
+		if err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
-		if !bv.Status.LastSyncedAt.IsZero() &&
-			bv.Spec.SyncRequestedAt.After(bv.Status.LastSyncedAt.Time) {
-			log.Infof("Restore/DR volume needs to wait for backup volume %s update", bvName)
-			return nil
-		}
-		if e.Status.LastRestoredBackup != bv.Status.LastBackupName {
-			log.Infof("Restore/DR volume needs to restore the latest backup %s, and the current restored backup is %s", bv.Status.LastBackupName, e.Status.LastRestoredBackup)
-			c.enqueueVolume(v)
-			return nil
+		if bv != nil {
+			if bv.Status.LastBackupName != "" {
+				// If the backup CR does not exist, the Longhorn system may be still syncing up the info with the remote backup target.
+				// If the backup is removed already, the backup volume should receive the notification and update bv.Status.LastBackupName.
+				// Hence we cannot continue the activation when the backup get call returns error IsNotFound.
+				b, err := c.ds.GetBackup(bv.Status.LastBackupName)
+				if err != nil {
+					return err
+				}
+				if b.Name != e.Status.LastRestoredBackup {
+					log.Infof("Restore/DR volume needs to restore the latest backup %s, and the current restored backup is %s", b.Name, e.Status.LastRestoredBackup)
+					c.enqueueVolume(v)
+					return nil
+				}
+			}
 		}
 	}
 
