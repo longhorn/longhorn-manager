@@ -725,15 +725,12 @@ func ErrorIsInvalidState(err error) bool {
 }
 
 func ValidateReplicaCount(count int) error {
-	if count < 1 || count > 20 {
-		return fmt.Errorf("replica count value must between 1 to 20")
-	}
-	return nil
-}
 
-func ValidateLogLevel(level string) error {
-	if _, err := logrus.ParseLevel(level); err != nil {
-		return fmt.Errorf("log level is invalid")
+	definition, _ := GetSettingDefinition(SettingNameDefaultReplicaCount)
+	valueIntRange := definition.ValueIntRange
+
+	if count < valueIntRange[ValueIntRangeMinimum] || count > valueIntRange[ValueIntRangeMaximum] {
+		return fmt.Errorf("replica count value %v must between %v to %v", count, valueIntRange[ValueIntRangeMinimum], valueIntRange[ValueIntRangeMaximum])
 	}
 	return nil
 }
@@ -1038,18 +1035,15 @@ func ValidateCPUReservationValues(settingName SettingName, instanceManagerCPUStr
 		return errors.Wrapf(err, "invalid guaranteed/requested instance manager CPU value (%v)", instanceManagerCPUStr)
 	}
 
+	definition, _ := GetSettingDefinition(settingName)
+	valueIntRange := definition.ValueIntRange
+
 	switch settingName {
-	case SettingNameGuaranteedInstanceManagerCPU:
-		isUnderLimit := instanceManagerCPU < 0
-		isOverLimit := instanceManagerCPU > 40
+	case SettingNameGuaranteedInstanceManagerCPU, SettingNameV2DataEngineGuaranteedInstanceManagerCPU:
+		isUnderLimit := instanceManagerCPU < valueIntRange[ValueIntRangeMinimum]
+		isOverLimit := instanceManagerCPU > valueIntRange[ValueIntRangeMaximum]
 		if isUnderLimit || isOverLimit {
-			return fmt.Errorf("invalid requested v1 data engine instance manager CPUs. Valid instance manager CPU range between 0%% - 40%%")
-		}
-	case SettingNameV2DataEngineGuaranteedInstanceManagerCPU:
-		isUnderLimit := instanceManagerCPU < 1000
-		isOverLimit := instanceManagerCPU > 8000
-		if isUnderLimit || isOverLimit {
-			return fmt.Errorf("invalid requested v2 data engine instance manager CPUs. Valid instance manager CPU range between 1000 - 8000 millicpu")
+			return fmt.Errorf("invalid requested instance manager CPUs. Valid instance manager CPU range between %v - %v millicpu", valueIntRange[ValueIntRangeMinimum], valueIntRange[ValueIntRangeMaximum])
 		}
 	}
 	return nil
