@@ -666,6 +666,16 @@ func (bic *BackingImageController) syncBackingImageFileInfo(bi *longhorn.Backing
 				return fmt.Errorf("found mismatching size %v reported by backing image manager %v in disk %v, the size recorded in status is %v", info.Size, bim.Name, bim.Spec.DiskUUID, bi.Status.Size)
 			}
 		}
+		if info.VirtualSize > 0 {
+			if bi.Status.VirtualSize == 0 {
+				bi.Status.VirtualSize = info.VirtualSize
+				bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, constant.EventReasonUpdate, "Set virtualSize to %v", bi.Status.VirtualSize)
+			}
+			if bi.Status.VirtualSize != info.VirtualSize {
+				return fmt.Errorf("found mismatching virtualSize %v reported by backing image manager %v in disk %v, the virtualSize recorded in status is %v",
+					info.VirtualSize, bim.Name, bim.Spec.DiskUUID, bi.Status.VirtualSize)
+			}
+		}
 	}
 
 	for diskUUID := range bi.Status.DiskFileStatusMap {
