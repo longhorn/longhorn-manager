@@ -531,8 +531,9 @@ func (bc *BackupController) VerifyAttachment(backup *longhorn.Backup, volumeName
 	}
 
 	attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeBackupController, backup.Name)
+	isVolumeStillDesiredToAttachToSameNodeAsAttachmentTicket := vol.Spec.NodeID == longhorn.GetNodeIdOfAttachmentTicket(attachmentTicketID, va)
 
-	return longhorn.IsAttachmentTicketSatisfied(attachmentTicketID, va), nil
+	return isVolumeStillDesiredToAttachToSameNodeAsAttachmentTicket && longhorn.IsAttachmentTicketSatisfied(attachmentTicketID, va), nil
 }
 
 func (bc *BackupController) isResponsibleFor(b *longhorn.Backup, defaultEngineImage string) (bool, error) {
