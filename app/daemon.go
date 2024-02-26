@@ -21,7 +21,7 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/meta"
-	"github.com/longhorn/longhorn-manager/recovery_backend"
+	recoverybackend "github.com/longhorn/longhorn-manager/recovery_backend"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/upgrade"
 	"github.com/longhorn/longhorn-manager/util"
@@ -145,9 +145,15 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
+	// Conversion webhook needs to be started first since we use its port 9501 as readiness port.
+	// longhorn-manager pod becomes ready only when conversion webhook is running.
+	// The services in the longhorn-manager can then start to receive the requests.
 	webhookTypes := []string{types.WebhookTypeConversion, types.WebhookTypeAdmission}
 	for _, webhookType := range webhookTypes {
 		if err := webhook.StartWebhook(ctx, webhookType, clients); err != nil {
+			return err
+		}
+		if err := webhook.CheckWebhookServiceAvailability(webhookType); err != nil {
 			return err
 		}
 	}
