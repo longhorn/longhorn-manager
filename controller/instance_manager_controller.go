@@ -448,7 +448,7 @@ func (imc *InstanceManagerController) syncInstanceStatus(im *longhorn.InstanceMa
 }
 
 func (imc *InstanceManagerController) syncLogSettingsToIMPod(im *longhorn.InstanceManager) error {
-	if datastore.IsDataEngineV1(im.Spec.DataEngine) {
+	if types.IsDataEngineV1(im.Spec.DataEngine) {
 		return nil
 	}
 
@@ -1245,7 +1245,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, longhorn.InstanceManagerTypeAllInOne, dataEngine)
 	podSpec.Spec.Containers[0].Name = "instance-manager"
 
-	if datastore.IsDataEngineV2(dataEngine) {
+	if types.IsDataEngineV2(dataEngine) {
 		// spdk_tgt doesn't support log level option, so we don't need to pass the log level to the instance manager.
 		// The log level will be applied in the reconciliation of instance manager controller.
 		logFlagsSetting, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngineLogFlags)
@@ -1295,7 +1295,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	for _, port := range ports {
 		livenessProbes = append(livenessProbes, fmt.Sprintf("nc -zv localhost %d > /dev/null 2>&1", port))
 	}
-	if datastore.IsDataEngineV2(dataEngine) {
+	if types.IsDataEngineV2(dataEngine) {
 		livenessProbes = append(livenessProbes, fmt.Sprintf("nc -zv localhost %d > /dev/null 2>&1", engineapi.InstanceManagerSpdkServiceDefaultPort))
 
 		processProbe := "[ $(ps aux | grep 'spdk_tgt' | grep -v 'grep' | grep -v 'tee' | wc -l) != 0 ]"
@@ -1391,7 +1391,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		},
 	}
 
-	if datastore.IsDataEngineV2(dataEngine) {
+	if types.IsDataEngineV2(dataEngine) {
 		podSpec.Spec.Containers[0].VolumeMounts = append(podSpec.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
 			MountPath: "/hugepages",
 			Name:      "hugepage",
