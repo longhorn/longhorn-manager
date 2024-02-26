@@ -77,7 +77,7 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
-	if err := types.ValidateUnmapMarkSnapChainRemoved(volume.Spec.UnmapMarkSnapChainRemoved); err != nil {
+	if err := types.ValidateUnmapMarkSnapChainRemoved(volume.Spec.DataEngine, volume.Spec.UnmapMarkSnapChainRemoved); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
@@ -190,7 +190,7 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
-	if err := types.ValidateUnmapMarkSnapChainRemoved(newVolume.Spec.UnmapMarkSnapChainRemoved); err != nil {
+	if err := types.ValidateUnmapMarkSnapChainRemoved(newVolume.Spec.DataEngine, newVolume.Spec.UnmapMarkSnapChainRemoved); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
 

@@ -834,8 +834,16 @@ func ValidateBackupCompressionMethod(method string) error {
 	return nil
 }
 
-func ValidateUnmapMarkSnapChainRemoved(unmapValue longhorn.UnmapMarkSnapChainRemoved) error {
-	if unmapValue != longhorn.UnmapMarkSnapChainRemovedIgnored && unmapValue != longhorn.UnmapMarkSnapChainRemovedEnabled && unmapValue != longhorn.UnmapMarkSnapChainRemovedDisabled {
+func ValidateUnmapMarkSnapChainRemoved(dataEngine longhorn.DataEngineType, unmapValue longhorn.UnmapMarkSnapChainRemoved) error {
+	if IsDataEngineV2(dataEngine) {
+		if unmapValue != longhorn.UnmapMarkSnapChainRemovedDisabled {
+			return fmt.Errorf("invalid UnmapMarkSnapChainRemoved setting: %v", unmapValue)
+		}
+	}
+
+	if unmapValue != longhorn.UnmapMarkSnapChainRemovedIgnored &&
+		unmapValue != longhorn.UnmapMarkSnapChainRemovedEnabled &&
+		unmapValue != longhorn.UnmapMarkSnapChainRemovedDisabled {
 		return fmt.Errorf("invalid UnmapMarkSnapChainRemoved setting: %v", unmapValue)
 	}
 	return nil
