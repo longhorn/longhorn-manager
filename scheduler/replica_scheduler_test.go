@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/kubernetes/pkg/controller"
 
 	corev1 "k8s.io/api/core/v1"
@@ -49,6 +51,9 @@ const (
 	// TestDiskID2           = "diskID2"
 	TestDiskSize          = 5000000000
 	TestDiskAvailableSize = 3000000000
+
+	TestTimeNow          = "2015-01-02T00:00:00Z"
+	TestTimeOneMinuteAgo = "2015-01-01T23:59:00Z"
 )
 
 var longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
@@ -59,7 +64,9 @@ func newReplicaScheduler(lhClient *lhfake.Clientset, kubeClient *fake.Clientset,
 
 	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
-	return NewReplicaScheduler(ds)
+	rcs := NewReplicaScheduler(ds)
+	rcs.nowHandler = getTestNow
+	return rcs
 }
 
 func newDaemonPod(phase corev1.PodPhase, name, namespace, nodeID, podIP string) *corev1.Pod {
@@ -226,35 +233,50 @@ func (s *TestSuite) SetUpTest(c *C) {
 
 type ReplicaSchedulerTestCase struct {
 	volume                            *longhorn.Volume
-	replicas                          map[string]*longhorn.Replica
 	daemons                           []*corev1.Pod
 	nodes                             map[string]*longhorn.Node
 	engineImage                       *longhorn.EngineImage
 	storageOverProvisioningPercentage string
 	storageMinimalAvailablePercentage string
 	replicaNodeSoftAntiAffinity       string
+	replicaZoneSoftAntiAffinity       string
+	replicaReplenishmentWaitInterval  string
+
+	// some test cases only try to schedule a subset of a volume's replicas
+	allReplicas        map[string]*longhorn.Replica
+	replicasToSchedule map[string]struct{}
 
 	// schedule state
 	expectedNodes map[string]*longhorn.Node
 	// scheduler exception
 	err bool
-	// couldn't schedule replica
-	isNilReplica bool
+	// first replica expected to fail scheduling
+	//   -1 = default in constructor, don't fail to schedule
+	//    0 = fail to schedule first
+	//    1 = schedule first, fail to schedule second
+	//    etc...
+	firstNilReplica int
 }
 
 func generateSchedulerTestCase() *ReplicaSchedulerTestCase {
 	v := newVolume(TestVolumeName, 2)
 	replica1 := newReplicaForVolume(v)
 	replica2 := newReplicaForVolume(v)
-	replicas := map[string]*longhorn.Replica{
+	allReplicas := map[string]*longhorn.Replica{
 		replica1.Name: replica1,
 		replica2.Name: replica2,
 	}
+	replicasToSchedule := map[string]struct{}{}
+	for name := range allReplicas {
+		replicasToSchedule[name] = struct{}{}
+	}
 	engineImage := newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed)
 	return &ReplicaSchedulerTestCase{
-		volume:      v,
-		replicas:    replicas,
-		engineImage: engineImage,
+		volume:             v,
+		engineImage:        engineImage,
+		allReplicas:        allReplicas,
+		replicasToSchedule: replicasToSchedule,
+		firstNilReplica:    -1,
 	}
 }
 
@@ -329,7 +351,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	}
 	tc.expectedNodes = expectedNodes
 	tc.err = false
-	tc.isNilReplica = false
+	tc.firstNilReplica = -1
 	// Set replica node soft anti-affinity
 	tc.replicaNodeSoftAntiAffinity = "true"
 	testCases["nodes could not schedule"] = tc
@@ -354,7 +376,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	expectedNodes = map[string]*longhorn.Node{}
 	tc.expectedNodes = expectedNodes
 	tc.err = false
-	tc.isNilReplica = true
+	tc.firstNilReplica = 0
 	testCases["there's no disk for replica"] = tc
 
 	// Test engine image is not deployed on any node
@@ -407,7 +429,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	expectedNodes = map[string]*longhorn.Node{}
 	tc.expectedNodes = expectedNodes
 	tc.err = false
-	tc.isNilReplica = true
+	tc.firstNilReplica = 0
 	testCases["there's no engine image deployed on any node"] = tc
 
 	// Test anti affinity nodes, replica should schedule to both node1 and node2
@@ -498,17 +520,17 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	}
 	tc.expectedNodes = expectedNodes
 	tc.err = false
-	tc.isNilReplica = false
+	tc.firstNilReplica = -1
 	testCases["anti-affinity nodes"] = tc
 
 	// Test scheduler error when replica.NodeID is not ""
 	tc = generateSchedulerTestCase()
-	replicas := tc.replicas
+	replicas := tc.allReplicas
 	for _, replica := range replicas {
 		replica.Spec.NodeID = TestNode1
 	}
 	tc.err = true
-	tc.isNilReplica = true
+	tc.firstNilReplica = 0
 	testCases["scheduler error when replica has NodeID"] = tc
 
 	// Test no available disks
@@ -575,7 +597,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	expectedNodes = map[string]*longhorn.Node{}
 	tc.expectedNodes = expectedNodes
 	tc.err = false
-	tc.isNilReplica = true
+	tc.firstNilReplica = 0
 	tc.storageOverProvisioningPercentage = "0"
 	tc.storageMinimalAvailablePercentage = "100"
 	testCases["there's no available disks for scheduling"] = tc
@@ -645,7 +667,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	expectedNodes = map[string]*longhorn.Node{}
 	tc.expectedNodes = expectedNodes
 	tc.err = false
-	tc.isNilReplica = true
+	tc.firstNilReplica = 0
 	tc.storageOverProvisioningPercentage = "200"
 	tc.storageMinimalAvailablePercentage = "20"
 	testCases["there's no available disks for scheduling due to required storage"] = tc
@@ -738,8 +760,37 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	}
 	tc.expectedNodes = expectedNodes
 	tc.err = false
-	tc.isNilReplica = false
+	tc.firstNilReplica = -1
 	testCases["schedule to disk with the most usable storage"] = tc
+
+	// Test potentially reusable replica before interval expires
+	// We should fail to schedule a new replica to this node until the interval expires.
+	tc = generateFailedReplicaTestCase(true, false)
+	tc.err = false
+	tc.firstNilReplica = 0
+	testCases["potentially reusable replica before interval expires"] = tc
+
+	// Test potentially reusable replica after interval expires
+	// We should succeed to schedule a new replica to this node because the interval expired.
+	tc = generateFailedReplicaTestCase(true, true)
+	tc.err = false
+	tc.firstNilReplica = -1
+	testCases["potentially reusable replica after interval expires"] = tc
+
+	// Test non-reusable replica before interval expires
+	// We should succeed to schedule a new replica to this node because the existing replica is not reusable.
+	tc = generateFailedReplicaTestCase(false, false)
+	tc.err = false
+	tc.firstNilReplica = -1
+	testCases["non-reusable replica before interval expires"] = tc
+
+	// Test non-reusable replica after interval expires
+	// We should succeed to schedule a new replica to this node because the existing replica is not reusable and the
+	// interval expired anyway.
+	tc = generateFailedReplicaTestCase(false, true)
+	tc.err = false
+	tc.firstNilReplica = -1
+	testCases["non-reusable replica after interval expires"] = tc
 
 	for name, tc := range testCases {
 		fmt.Printf("testing %v\n", name)
@@ -786,43 +837,21 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		err = vIndexer.Add(volume)
 		c.Assert(err, IsNil)
 		// set settings
-		if tc.storageOverProvisioningPercentage != "" && tc.storageMinimalAvailablePercentage != "" {
-			s := initSettings(string(types.SettingNameStorageOverProvisioningPercentage), tc.storageOverProvisioningPercentage)
-			setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-			err = sIndexer.Add(setting)
-			c.Assert(err, IsNil)
-
-			s = initSettings(string(types.SettingNameStorageMinimalAvailablePercentage), tc.storageMinimalAvailablePercentage)
-			setting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-			err = sIndexer.Add(setting)
-			c.Assert(err, IsNil)
-		}
-		// Set replica node soft anti-affinity setting
-		if tc.replicaNodeSoftAntiAffinity != "" {
-			s := initSettings(
-				string(types.SettingNameReplicaSoftAntiAffinity),
-				tc.replicaNodeSoftAntiAffinity)
-			setting, err :=
-				lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
-			c.Assert(err, IsNil)
-			err = sIndexer.Add(setting)
-			c.Assert(err, IsNil)
-		}
+		setSettings(tc, lhClient, sIndexer, c)
 		// validate scheduler
-		for _, replica := range tc.replicas {
-			r, err := lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), replica, metav1.CreateOptions{})
+		numScheduled := 0
+		for replicaName := range tc.replicasToSchedule {
+			r, err := lhClient.LonghornV1beta2().Replicas(TestNamespace).Create(context.TODO(), tc.allReplicas[replicaName], metav1.CreateOptions{})
 			c.Assert(err, IsNil)
 			c.Assert(r, NotNil)
 			err = rIndexer.Add(r)
 			c.Assert(err, IsNil)
 
-			sr, _, err := s.ScheduleReplica(r, tc.replicas, volume)
+			sr, _, err := s.ScheduleReplica(r, tc.allReplicas, volume)
 			if tc.err {
 				c.Assert(err, NotNil)
 			} else {
-				if tc.isNilReplica {
+				if numScheduled == tc.firstNilReplica {
 					c.Assert(sr, IsNil)
 				} else {
 					c.Assert(err, IsNil)
@@ -831,17 +860,138 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 					c.Assert(sr.Spec.DiskID, Not(Equals), "")
 					c.Assert(sr.Spec.DiskPath, Not(Equals), "")
 					c.Assert(sr.Spec.DataDirectoryName, Not(Equals), "")
-					tc.replicas[sr.Name] = sr
+					tc.allReplicas[sr.Name] = sr
 					// check expected node
-					for nname, node := range tc.expectedNodes {
-						if sr.Spec.NodeID == nname {
+					for name, node := range tc.expectedNodes {
+						if sr.Spec.NodeID == name {
 							c.Assert(sr.Spec.DiskPath, Equals, node.Spec.Disks[sr.Spec.DiskID].Path)
-							delete(tc.expectedNodes, nname)
+							delete(tc.expectedNodes, name)
 						}
 					}
+					numScheduled++
 				}
 			}
 		}
 		c.Assert(len(tc.expectedNodes), Equals, 0)
 	}
+}
+
+// generateFailedReplicaTestCase helps generate test cases in which a node contains a failed replica and the scheduler
+// must decide whether to allow additional replicas to schedule to it.
+func generateFailedReplicaTestCase(
+	replicaReusable, waitIntervalExpired bool) (tc *ReplicaSchedulerTestCase) {
+	tc = generateSchedulerTestCase()
+	daemon1 := newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+	tc.daemons = []*corev1.Pod{
+		daemon1,
+	}
+	node1 := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
+	disk := newDisk(TestDefaultDataPath, true, 0)
+	node1.Spec.Disks = map[string]longhorn.DiskSpec{
+		getDiskID(TestNode1, "1"): disk,
+	}
+
+	// We are specifically interested in situations in which a replica is ONLY schedulable to a node because its
+	// existing replica is failed.
+	tc.replicaNodeSoftAntiAffinity = "false"
+
+	// A failed replica is already scheduled.
+	var alreadyScheduledReplica *longhorn.Replica
+	for _, replica := range tc.allReplicas {
+		alreadyScheduledReplica = replica
+		break
+	}
+	delete(tc.replicasToSchedule, alreadyScheduledReplica.Name)
+	alreadyScheduledReplica.Spec.NodeID = TestNode1
+	alreadyScheduledReplica.Spec.DiskID = getDiskID(TestNode1, "1")
+	alreadyScheduledReplica.Spec.FailedAt = TestTimeNow
+	tc.volume.Status.Robustness = longhorn.VolumeRobustnessDegraded
+	tc.volume.Status.LastDegradedAt = TestTimeOneMinuteAgo
+
+	if replicaReusable {
+		alreadyScheduledReplica.Spec.RebuildRetryCount = 0
+	} else {
+		alreadyScheduledReplica.Spec.RebuildRetryCount = 5
+	}
+
+	if waitIntervalExpired {
+		tc.replicaReplenishmentWaitInterval = "30"
+	} else {
+		tc.replicaReplenishmentWaitInterval = "90"
+	}
+
+	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		getDiskID(TestNode1, "1"): {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: TestVolumeSize,
+			StorageMaximum:   TestDiskSize,
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			},
+			DiskUUID:         getDiskID(TestNode1, "1"),
+			Type:             longhorn.DiskTypeFilesystem,
+			ScheduledReplica: map[string]int64{alreadyScheduledReplica.Name: TestVolumeSize},
+		},
+	}
+	nodes := map[string]*longhorn.Node{
+		TestNode1: node1,
+	}
+	tc.nodes = nodes
+	return
+}
+
+func setSettings(tc *ReplicaSchedulerTestCase, lhClient *lhfake.Clientset, sIndexer cache.Indexer, c *C) {
+	// Set storage over-provisioning percentage settings
+	if tc.storageOverProvisioningPercentage != "" && tc.storageMinimalAvailablePercentage != "" {
+		s := initSettings(string(types.SettingNameStorageOverProvisioningPercentage), tc.storageOverProvisioningPercentage)
+		setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(setting)
+		c.Assert(err, IsNil)
+
+		s = initSettings(string(types.SettingNameStorageMinimalAvailablePercentage), tc.storageMinimalAvailablePercentage)
+		setting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(setting)
+		c.Assert(err, IsNil)
+	}
+	// Set replica node soft anti-affinity setting
+	if tc.replicaNodeSoftAntiAffinity != "" {
+		s := initSettings(
+			string(types.SettingNameReplicaSoftAntiAffinity),
+			tc.replicaNodeSoftAntiAffinity)
+		setting, err :=
+			lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(setting)
+		c.Assert(err, IsNil)
+	}
+	// Set replica zone soft anti-affinity setting
+	if tc.replicaZoneSoftAntiAffinity != "" {
+		s := initSettings(
+			string(types.SettingNameReplicaZoneSoftAntiAffinity),
+			tc.replicaZoneSoftAntiAffinity)
+		setting, err :=
+			lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(setting)
+		c.Assert(err, IsNil)
+	}
+	// Set replica replenishment wait interval setting
+	if tc.replicaReplenishmentWaitInterval != "" {
+		s := initSettings(
+			string(types.SettingNameReplicaReplenishmentWaitInterval),
+			tc.replicaReplenishmentWaitInterval)
+		setting, err :=
+			lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(setting)
+		c.Assert(err, IsNil)
+	}
+}
+
+func getTestNow() time.Time {
+	now, _ := time.Parse(time.RFC3339, TestTimeNow)
+	return now
 }
