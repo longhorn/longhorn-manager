@@ -475,6 +475,7 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 			StorageAvailable: 0,
 			Type:             longhorn.DiskTypeFilesystem,
 			FSType:           TestDiskPathFSType,
+			DiskPath:         TestDefaultDataPath,
 		},
 	}
 	node2 := newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, "")
@@ -485,8 +486,9 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 			Conditions: []longhorn.Condition{
 				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusUnknown, ""),
 			},
-			Type:   longhorn.DiskTypeFilesystem,
-			FSType: TestDiskPathFSType,
+			Type:     longhorn.DiskTypeFilesystem,
+			FSType:   TestDiskPathFSType,
+			DiskPath: TestDefaultDataPath,
 		},
 	}
 
@@ -558,6 +560,7 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 						DiskUUID: TestDiskID1,
 						Type:     longhorn.DiskTypeFilesystem,
 						FSType:   TestDiskPathFSType,
+						DiskPath: TestDefaultDataPath,
 					},
 				},
 			},
@@ -573,8 +576,9 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 						Conditions: []longhorn.Condition{
 							newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusUnknown, ""),
 						},
-						Type:   longhorn.DiskTypeFilesystem,
-						FSType: TestDiskPathFSType,
+						Type:     longhorn.DiskTypeFilesystem,
+						FSType:   TestDiskPathFSType,
+						DiskPath: TestDefaultDataPath,
 					},
 				},
 			},
@@ -632,6 +636,7 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 			StorageAvailable: 0,
 			Type:             longhorn.DiskTypeFilesystem,
 			FSType:           TestDiskPathFSType,
+			DiskPath:         TestDefaultDataPath,
 		},
 	}
 
@@ -695,6 +700,7 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 						DiskUUID:         TestDiskID1,
 						Type:             longhorn.DiskTypeFilesystem,
 						FSType:           TestDiskPathFSType,
+						DiskPath:         TestDefaultDataPath,
 					},
 				},
 			},
@@ -709,6 +715,7 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 						StorageAvailable: 0,
 						Type:             longhorn.DiskTypeFilesystem,
 						FSType:           TestDiskPathFSType,
+						DiskPath:         TestDefaultDataPath,
 					},
 				},
 			},
@@ -764,6 +771,7 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 			DiskUUID: "new-uuid",
 			Type:     longhorn.DiskTypeFilesystem,
 			FSType:   TestDiskPathFSType,
+			DiskPath: TestDefaultDataPath,
 		},
 	}
 
@@ -774,6 +782,7 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 			StorageAvailable: 0,
 			Type:             longhorn.DiskTypeFilesystem,
 			FSType:           TestDiskPathFSType,
+			DiskPath:         TestDefaultDataPath,
 		},
 	}
 
@@ -837,6 +846,7 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 						DiskUUID:         "new-uuid",
 						Type:             longhorn.DiskTypeFilesystem,
 						FSType:           TestDiskPathFSType,
+						DiskPath:         TestDefaultDataPath,
 					},
 				},
 			},
@@ -851,6 +861,7 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 						StorageAvailable: 0,
 						Type:             longhorn.DiskTypeFilesystem,
 						FSType:           TestDiskPathFSType,
+						DiskPath:         TestDefaultDataPath,
 					},
 				},
 			},
@@ -955,6 +966,7 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 						DiskUUID:         TestDiskID1,
 						Type:             longhorn.DiskTypeFilesystem,
 						FSType:           TestDiskPathFSType,
+						DiskPath:         TestDefaultDataPath,
 					},
 				},
 			},
@@ -1091,6 +1103,7 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 						DiskUUID:         TestDiskID1,
 						Type:             longhorn.DiskTypeFilesystem,
 						FSType:           TestDiskPathFSType,
+						DiskPath:         TestDefaultDataPath,
 					},
 				},
 			},
