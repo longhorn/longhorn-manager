@@ -1182,3 +1182,13 @@ func GetPDBNameFromIMName(imName string) string {
 func GetIMNameFromPDBName(pdbName string) string {
 	return pdbName
 }
+
+// IsDataEngineV1 returns true if the given dataEngine is v1
+func IsDataEngineV1(dataEngine longhorn.DataEngineType) bool {
+	return dataEngine != longhorn.DataEngineTypeV2
+}
+
+// IsDataEngineV2 returns true if the given dataEngine is v2
+func IsDataEngineV2(dataEngine longhorn.DataEngineType) bool {
+	return dataEngine == longhorn.DataEngineTypeV2
+}

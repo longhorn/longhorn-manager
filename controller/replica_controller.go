@@ -249,7 +249,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		if replica.Spec.NodeID != "" && replica.Spec.NodeID != rc.controllerID {
 			log.Warn("Failed to cleanup replica's data because the replica's data is not on this node")
 		} else if replica.Spec.NodeID != "" {
-			if datastore.IsDataEngineV1(replica.Spec.DataEngine) {
+			if types.IsDataEngineV1(replica.Spec.DataEngine) {
 				// Clean up the data directory if this is the active replica or if this inactive replica is the only one
 				// using it.
 				if (replica.Spec.Active || !hasMatchingReplica(replica, rs)) && dataPath != "" {
@@ -504,7 +504,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	}
 	log := getLoggerForReplica(rc.logger, r)
 
-	if datastore.IsDataEngineV1(r.Spec.DataEngine) {
+	if types.IsDataEngineV1(r.Spec.DataEngine) {
 		if err := rc.deleteInstanceWithCLIAPIVersionOne(r); err != nil {
 			return err
 		}
@@ -576,8 +576,8 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 }
 
 func canDeleteInstance(r *longhorn.Replica) bool {
-	return datastore.IsDataEngineV1(r.Spec.DataEngine) ||
-		(datastore.IsDataEngineV2(r.Spec.DataEngine) && r.DeletionTimestamp != nil)
+	return types.IsDataEngineV1(r.Spec.DataEngine) ||
+		(types.IsDataEngineV2(r.Spec.DataEngine) && r.DeletionTimestamp != nil)
 }
 
 func deleteUnixSocketFile(volumeName string) error {
@@ -674,7 +674,7 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstancePro
 		return nil, err
 	}
 
-	if datastore.IsDataEngineV2(instance.Spec.DataEngine) {
+	if types.IsDataEngineV2(instance.Spec.DataEngine) {
 		if instance.Status.State == longhorn.InstanceStateStopped {
 			return nil, fmt.Errorf("instance %v is stopped", instance.Spec.Name)
 		}

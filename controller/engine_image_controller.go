@@ -436,7 +436,7 @@ func (ic *EngineImageController) handleAutoUpgradeEngineImageToDefaultEngineImag
 		for _, v := range vs {
 			ic.logger.WithFields(logrus.Fields{"volume": v.Name, "image": v.Spec.Image}).Infof("Upgrading volume engine image to the default engine image %v automatically", defaultEngineImage)
 
-			if datastore.IsDataEngineV2(v.Spec.DataEngine) {
+			if types.IsDataEngineV2(v.Spec.DataEngine) {
 				ic.logger.WithFields(logrus.Fields{"volume": v.Name, "image": v.Spec.Image}).Infof("Skip upgrading volume engine image to the default engine image %v automatically since it is using v2 data engine", defaultEngineImage)
 				continue
 			}

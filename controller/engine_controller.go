@@ -312,7 +312,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	}()
 
 	isCLIAPIVersionOne := false
-	if datastore.IsDataEngineV1(engine.Spec.DataEngine) {
+	if types.IsDataEngineV1(engine.Spec.DataEngine) {
 		if engine.Status.CurrentImage != "" {
 			isCLIAPIVersionOne, err = ec.ds.IsEngineImageCLIAPIVersionOne(engine.Status.CurrentImage)
 			if err != nil {
@@ -490,7 +490,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 	}
 	log := getLoggerForEngine(ec.logger, e)
 
-	if datastore.IsDataEngineV1(e.Spec.DataEngine) {
+	if types.IsDataEngineV1(e.Spec.DataEngine) {
 		err = ec.deleteInstanceWithCLIAPIVersionOne(e)
 		if err != nil {
 			return err
@@ -928,8 +928,8 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		return err
 	}
 
-	if (datastore.IsDataEngineV1(engine.Spec.DataEngine) && cliAPIVersion >= engineapi.CLIAPIMinVersionForExistingEngineBeforeUpgrade) ||
-		datastore.IsDataEngineV2(engine.Spec.DataEngine) {
+	if (types.IsDataEngineV1(engine.Spec.DataEngine) && cliAPIVersion >= engineapi.CLIAPIMinVersionForExistingEngineBeforeUpgrade) ||
+		types.IsDataEngineV2(engine.Spec.DataEngine) {
 		volumeInfo, err := engineClientProxy.VolumeGet(engine)
 		if err != nil {
 			return err
@@ -1640,7 +1640,7 @@ func GetBinaryClientForEngine(e *longhorn.Engine, engines engineapi.EngineClient
 		err = errors.Wrapf(err, "cannot get client for engine %v", e.Name)
 	}()
 
-	if datastore.IsDataEngineV2(e.Spec.DataEngine) {
+	if types.IsDataEngineV2(e.Spec.DataEngine) {
 		return nil, nil
 	}
 
@@ -2101,7 +2101,7 @@ func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineIm
 		return isResponsible, nil
 	}
 
-	if datastore.IsDataEngineV1(e.Spec.DataEngine) {
+	if types.IsDataEngineV1(e.Spec.DataEngine) {
 		readyNodesWithEI, err := ec.ds.ListReadyNodesContainingEngineImageRO(e.Status.CurrentImage)
 		if err != nil {
 			return false, errors.Wrapf(err, "failed to list ready nodes containing engine image %v", e.Status.CurrentImage)

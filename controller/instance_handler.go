@@ -250,7 +250,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 	}
 
 	isCLIAPIVersionOne := false
-	if datastore.IsDataEngineV1(spec.DataEngine) {
+	if types.IsDataEngineV1(spec.DataEngine) {
 		if status.CurrentImage != "" {
 			isCLIAPIVersionOne, err = h.ds.IsEngineImageCLIAPIVersionOne(status.CurrentImage)
 			if err != nil {
@@ -295,7 +295,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 	if spec.LogRequested {
 		if !status.LogFetched {
 			// No need to get the log for instance manager if the data engine is not "longhorn"
-			if datastore.IsDataEngineV1(spec.DataEngine) {
+			if types.IsDataEngineV1(spec.DataEngine) {
 				logrus.Warnf("Getting requested log for %v in instance manager %v", instanceName, status.InstanceManagerName)
 				if im == nil {
 					logrus.Warnf("Failed to get the log for %v due to Instance Manager is already gone", status.InstanceManagerName)
@@ -414,7 +414,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 					longhorn.InstanceConditionReasonInstanceCreationFailure, instance.Status.ErrorMsg)
 			}
 
-			if datastore.IsDataEngineV1(instance.Spec.DataEngine) {
+			if types.IsDataEngineV1(instance.Spec.DataEngine) {
 				logrus.Warnf("Instance %v crashed on Instance Manager %v at %v, getting log",
 					instanceName, im.Name, im.Spec.NodeID)
 				if err := h.printInstanceLogs(instanceName, runtimeObj); err != nil {
@@ -430,7 +430,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 func shouldDeleteInstance(instance *longhorn.InstanceProcess) bool {
 	// For a replica of a SPDK volume, a stopped replica means the lvol is not exposed,
 	// but the lvol is still there. We don't need to delete it.
-	if datastore.IsDataEngineV2(instance.Spec.DataEngine) {
+	if types.IsDataEngineV2(instance.Spec.DataEngine) {
 		if instance.Status.State == longhorn.InstanceStateStopped {
 			return false
 		}
@@ -474,7 +474,7 @@ func (h *InstanceHandler) createInstance(instanceName string, dataEngine longhor
 	if err == nil {
 		return nil
 	}
-	if !types.ErrorIsNotFound(err) && !(datastore.IsDataEngineV2(dataEngine) && types.ErrorIsStopped(err)) {
+	if !types.ErrorIsNotFound(err) && !(types.IsDataEngineV2(dataEngine) && types.ErrorIsStopped(err)) {
 		return errors.Wrapf(err, "Failed to get instance process %v", instanceName)
 	}
 

@@ -180,7 +180,7 @@ func (m *NodeMonitor) newDiskServiceClients(node *longhorn.Node) map[longhorn.Da
 
 	for dataEngine := range dataEngines {
 		// so we can skip it for now.
-		if datastore.IsDataEngineV1(dataEngine) {
+		if types.IsDataEngineV1(dataEngine) {
 			continue
 		}
 
@@ -231,7 +231,7 @@ func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 		}
 
 		// TODO: disk service is currently not used by filesystem-type disk for v1 data engine.
-		if datastore.IsDataEngineV2(dataEngine) {
+		if types.IsDataEngineV2(dataEngine) {
 			errMsg := ""
 			if diskServiceClient == nil {
 				errMsg = fmt.Sprintf("Disk %v (%v) on node %v is not ready: data engine is disabled",
