@@ -55,6 +55,7 @@ func fakeGetDiskStat(diskType longhorn.DiskType, name, directory string, diskDri
 	case longhorn.DiskTypeFilesystem:
 		return &lhtypes.DiskStat{
 			DiskID:      "fsid",
+			Name:        name,
 			Path:        directory,
 			Type:        "ext4",
 			Driver:      "",
@@ -68,6 +69,7 @@ func fakeGetDiskStat(diskType longhorn.DiskType, name, directory string, diskDri
 	case longhorn.DiskTypeBlock:
 		return &lhtypes.DiskStat{
 			DiskID:      "block",
+			Name:        name,
 			Path:        directory,
 			Type:        "ext4",
 			Driver:      "",
@@ -87,12 +89,12 @@ func fakeGetDiskConfig(diskType longhorn.DiskType, name, path string, diskDriver
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return &util.DiskConfig{
-			DiskName: "",
+			DiskName: name,
 			DiskUUID: TestDiskID1,
 		}, nil
 	case longhorn.DiskTypeBlock:
 		return &util.DiskConfig{
-			DiskName: "",
+			DiskName: name,
 			DiskUUID: TestDiskID1,
 		}, nil
 	default:
@@ -102,7 +104,7 @@ func fakeGetDiskConfig(diskType longhorn.DiskType, name, path string, diskDriver
 
 func fakeGenerateDiskConfig(diskType longhorn.DiskType, name, uuid, path, diskDriver string, client *DiskServiceClient) (*util.DiskConfig, error) {
 	return &util.DiskConfig{
-		DiskName: "",
+		DiskName: name,
 		DiskUUID: TestDiskID1,
 	}, nil
 }
