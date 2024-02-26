@@ -88,7 +88,7 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 		nodeDisksMap[node.Name] = disks
 	}
 
-	diskCandidates, multiError := rcs.getDiskCandidates(nodeCandidates, nodeDisksMap, replicas, volume, true)
+	diskCandidates, multiError := rcs.getDiskCandidates(nodeCandidates, nodeDisksMap, replicas, volume, true, false)
 
 	// there's no disk that fit for current replica
 	if len(diskCandidates) == 0 {
@@ -154,7 +154,17 @@ func getNodesWithEvictingReplicas(replicas map[string]*longhorn.Replica, nodeInf
 	return nodesWithEvictingReplicas
 }
 
-func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Node, nodeDisksMap map[string]map[string]struct{}, replicas map[string]*longhorn.Replica, volume *longhorn.Volume, requireSchedulingCheck bool) (map[string]*Disk, util.MultiError) {
+// getDiskCandidates returns a map of the most appropriate disks a replica can be scheduled to (assuming it can be
+// scheduled at all). For example, consider a case in which there are two disks on nodes without a replica for a volume
+// and two disks on nodes with a replica for the same volume. getDiskCandidates only returns the disks without a
+// replica, even if the replica can legally be scheduled on all four disks.
+// Some callers (e.g. CheckAndReuseFailedReplicas) do not consider a node or zone to be used if it contains a failed
+// replica. ignoreFailedReplicas == true supports this use case.
+func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Node,
+	nodeDisksMap map[string]map[string]struct{},
+	replicas map[string]*longhorn.Replica,
+	volume *longhorn.Volume,
+	requireSchedulingCheck, ignoreFailedReplicas bool) (map[string]*Disk, util.MultiError) {
 	multiError := util.NewMultiError()
 
 	nodeSoftAntiAffinity, err := rcs.ds.GetSettingAsBool(types.SettingNameReplicaSoftAntiAffinity)
@@ -206,7 +216,8 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		return diskCandidates, multiError
 	}
 
-	usedNodes, usedZones, onlyEvictingNodes, onlyEvictingZones := getCurrentNodesAndZones(replicas, nodeInfo)
+	usedNodes, usedZones, onlyEvictingNodes, onlyEvictingZones := getCurrentNodesAndZones(replicas, nodeInfo,
+		ignoreFailedReplicas)
 
 	allowEmptyNodeSelectorVolume, err := rcs.ds.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
 	if err != nil {
@@ -523,7 +534,9 @@ func (rcs *ReplicaScheduler) CheckAndReuseFailedReplica(replicas map[string]*lon
 		}
 	}
 
-	diskCandidates, _ := rcs.getDiskCandidates(availableNodesInfo, availableNodeDisksMap, replicas, volume, false)
+	// Call getDiskCandidates with ignoreFailedReplicas == true since we want the list of candidates to include disks
+	// that already contain a failed replica.
+	diskCandidates, _ := rcs.getDiskCandidates(availableNodesInfo, availableNodeDisksMap, replicas, volume, false, true)
 
 	var reusedReplica *longhorn.Replica
 	for _, suggestDisk := range diskCandidates {
@@ -852,7 +865,10 @@ func findDiskSpecAndDiskStatusInNode(diskUUID string, node *longhorn.Node) (long
 	return longhorn.DiskSpec{}, longhorn.DiskStatus{}, false
 }
 
-func getCurrentNodesAndZones(replicas map[string]*longhorn.Replica, nodeInfo map[string]*longhorn.Node) (map[string]*longhorn.Node,
+// getCurrentNodesAndZones returns the nodes and zones a replica is already scheduled to. Some callers do not consider a
+// node or zone to be used if it contains a failed replica. ignoreFailedReplicas == true supports this use case.
+func getCurrentNodesAndZones(replicas map[string]*longhorn.Replica, nodeInfo map[string]*longhorn.Node,
+	ignoreFailedReplicas bool) (map[string]*longhorn.Node,
 	map[string]bool, map[string]bool, map[string]bool) {
 	usedNodes := map[string]*longhorn.Node{}
 	usedZones := map[string]bool{}
@@ -860,29 +876,37 @@ func getCurrentNodesAndZones(replicas map[string]*longhorn.Replica, nodeInfo map
 	onlyEvictingZones := map[string]bool{}
 
 	for _, r := range replicas {
-		if r.Spec.NodeID != "" && r.DeletionTimestamp == nil && r.Spec.FailedAt == "" {
-			if node, ok := nodeInfo[r.Spec.NodeID]; ok {
-				if r.Spec.EvictionRequested {
-					if _, ok := usedNodes[r.Spec.NodeID]; !ok {
-						// This is an evicting replica on a thus far unused node. We won't change this again unless we
-						// find a non-evicting replica on this node.
-						onlyEvictingNodes[node.Name] = true
-					}
-					if used := usedZones[node.Status.Zone]; !used {
-						// This is an evicting replica in a thus far unused zone. We won't change this again unless we
-						// find a non-evicting replica in this zone.
-						onlyEvictingZones[node.Status.Zone] = true
-					}
-				} else {
-					// There is now at least one replica on this node and in this zone that is not evicting.
-					onlyEvictingNodes[node.Name] = false
-					onlyEvictingZones[node.Status.Zone] = false
-				}
+		if r.Spec.NodeID == "" {
+			continue
+		}
+		if r.DeletionTimestamp != nil {
+			continue
+		}
+		if r.Spec.FailedAt != "" && ignoreFailedReplicas {
+			continue
+		}
 
-				usedNodes[node.Name] = node
-				// For empty zone label, we treat them as one zone.
-				usedZones[node.Status.Zone] = true
+		if node, ok := nodeInfo[r.Spec.NodeID]; ok {
+			if r.Spec.EvictionRequested {
+				if _, ok := usedNodes[r.Spec.NodeID]; !ok {
+					// This is an evicting replica on a thus far unused node. We won't change this again unless we
+					// find a non-evicting replica on this node.
+					onlyEvictingNodes[node.Name] = true
+				}
+				if used := usedZones[node.Status.Zone]; !used {
+					// This is an evicting replica in a thus far unused zone. We won't change this again unless we
+					// find a non-evicting replica in this zone.
+					onlyEvictingZones[node.Status.Zone] = true
+				}
+			} else {
+				// There is now at least one replica on this node and in this zone that is not evicting.
+				onlyEvictingNodes[node.Name] = false
+				onlyEvictingZones[node.Status.Zone] = false
 			}
+
+			usedNodes[node.Name] = node
+			// For empty zone label, we treat them as one zone.
+			usedZones[node.Status.Zone] = true
 		}
 	}
 
