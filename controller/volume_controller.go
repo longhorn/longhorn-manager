@@ -3120,6 +3120,11 @@ func (c *VolumeController) checkAndFinishVolumeRestore(v *longhorn.Volume, e *lo
 			return err
 		}
 		if bv != nil {
+			if !bv.Status.LastSyncedAt.IsZero() &&
+				bv.Spec.SyncRequestedAt.After(bv.Status.LastSyncedAt.Time) {
+				log.Infof("Restore/DR volume needs to wait for backup volume %s update", bvName)
+				return nil
+			}
 			if bv.Status.LastBackupName != "" {
 				// If the backup CR does not exist, the Longhorn system may be still syncing up the info with the remote backup target.
 				// If the backup is removed already, the backup volume should receive the notification and update bv.Status.LastBackupName.
