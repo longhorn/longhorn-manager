@@ -53,6 +53,8 @@ const (
 
 	TestZone1 = "test-zone-1"
 	TestZone2 = "test-zone-2"
+
+	TestTimeNow = "2015-01-02T00:00:00Z"
 )
 
 var longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
@@ -1097,7 +1099,24 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	tc.replicaZoneSoftAntiAffinity = "false" // Do not allow replicas to schedule to the same zone.
 	testCases["fail scheduling when doing so would reuse an invalid evicting node"] = tc
 
-	for name, tc := range testCases {
+	// Test fail to schedule to node with failed replica
+	// If replicaNodeSoftAntiAffinity == false, this shouldn't be possible.
+	tc = generateFailedReplicaTestCase("false")
+	tc.err = false
+	tc.firstNilReplica = 0
+	testCases["fail to schedule to node with failed replica"] = tc
+
+	// Test succeed to schedule to node with failed replica
+	// If replicaNodeSoftAntiAffinity == true, this should be possible.
+	tc = generateFailedReplicaTestCase("true")
+	tc.err = false
+	tc.firstNilReplica = -1
+	testCases["succeed to schedule to node with failed replica"] = tc
+
+	testCasesActual := map[string]*ReplicaSchedulerTestCase{}
+	testCasesActual["fail to schedule to node with failed replica"] = testCases["fail to schedule to node with failed replica"]
+	testCasesActual["succeed to schedule to node with failed replica"] = testCases["succeed to schedule to node with failed replica"]
+	for name, tc := range testCasesActual {
 		fmt.Printf("testing %v\n", name)
 
 		kubeClient := fake.NewSimpleClientset()
@@ -1186,6 +1205,52 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		c.Assert(len(tc.expectedNodes), Equals, 0)
 		c.Assert(len(tc.expectedDisks), Equals, 0)
 	}
+}
+
+func generateFailedReplicaTestCase(replicaNodeSoftAntiAffinity string) (tc *ReplicaSchedulerTestCase) {
+	tc = generateSchedulerTestCase()
+	tc.replicaNodeSoftAntiAffinity = replicaNodeSoftAntiAffinity
+	tc.replicaDiskSoftAntiAffinity = "true" // Do not hinder replica scheduling except for node.
+	tc.replicaZoneSoftAntiAffinity = "true" // Do not hinder replica scheduling except for node.
+	daemon1 := newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+	tc.daemons = []*corev1.Pod{
+		daemon1,
+	}
+	node1 := newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
+	disk := newDisk(TestDefaultDataPath, true, 0)
+	node1.Spec.Disks = map[string]longhorn.DiskSpec{
+		getDiskID(TestNode1, "1"): disk,
+	}
+
+	// A failed replica is already scheduled.
+	var alreadyScheduledReplica *longhorn.Replica
+	for _, replica := range tc.allReplicas {
+		alreadyScheduledReplica = replica
+		break
+	}
+	delete(tc.replicasToSchedule, alreadyScheduledReplica.Name)
+	alreadyScheduledReplica.Spec.NodeID = TestNode1
+	alreadyScheduledReplica.Spec.FailedAt = TestTimeNow
+
+	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		getDiskID(TestNode1, "1"): {
+			StorageAvailable: TestDiskAvailableSize,
+			StorageScheduled: TestVolumeSize,
+			StorageMaximum:   TestDiskSize,
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			},
+			DiskUUID:         getDiskID(TestNode1, "1"),
+			Type:             longhorn.DiskTypeFilesystem,
+			ScheduledReplica: map[string]int64{alreadyScheduledReplica.Name: TestVolumeSize},
+		},
+	}
+	nodes := map[string]*longhorn.Node{
+		TestNode1: node1,
+	}
+	tc.nodes = nodes
+	return
 }
 
 func setSettings(tc *ReplicaSchedulerTestCase, lhClient *lhfake.Clientset, sIndexer cache.Indexer, c *C) {
@@ -1456,7 +1521,8 @@ func (s *TestSuite) TestGetCurrentNodesAndZones(c *C) {
 
 	for name, tc := range testCases {
 		fmt.Printf("testing %v\n", name)
-		usedNodes, usedZones, onlyEvictingNodes, onlyEvictingZones := getCurrentNodesAndZones(tc.replicas, tc.nodeInfo)
+		usedNodes, usedZones, onlyEvictingNodes, onlyEvictingZones := getCurrentNodesAndZones(tc.replicas, tc.nodeInfo,
+			false)
 		verifyNodeNames(tc.expectUsedNodeNames, usedNodes)
 		verifyZoneNames(tc.expectUsedZoneNames, usedZones)
 		verifyOnlyEvictingNodeNames(tc.expectOnlyEvictingNodeNames, onlyEvictingNodes)
