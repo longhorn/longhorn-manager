@@ -93,7 +93,7 @@ func GetLonghornLabelsPatchOp(obj runtime.Object, requiredLabels, removingLabels
 
 func ValidateRequiredDataEngineEnabled(ds *datastore.DataStore, dataEngine longhorn.DataEngineType) error {
 	dataEngineSetting := types.SettingNameV1DataEngine
-	if datastore.IsDataEngineV2(dataEngine) {
+	if types.IsDataEngineV2(dataEngine) {
 		dataEngineSetting = types.SettingNameV2DataEngine
 	}
 

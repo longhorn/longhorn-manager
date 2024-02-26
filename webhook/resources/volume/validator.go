@@ -146,7 +146,7 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 	}
 
 	// TODO: remove this check when we support the following features for SPDK volumes
-	if datastore.IsDataEngineV2(volume.Spec.DataEngine) {
+	if types.IsDataEngineV2(volume.Spec.DataEngine) {
 		if volume.Spec.Encrypted {
 			return werror.NewInvalidError("encrypted volume is not supported for data engine v2", "")
 		}
@@ -243,7 +243,7 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		}
 	}
 
-	if datastore.IsDataEngineV2(newVolume.Spec.DataEngine) {
+	if types.IsDataEngineV2(newVolume.Spec.DataEngine) {
 		// TODO: remove this check when we support the following features for SPDK volumes
 		if oldVolume.Spec.Size != newVolume.Spec.Size {
 			err := fmt.Errorf("changing volume size for volume %v is not supported for data engine %v",
@@ -468,7 +468,7 @@ func validateReplicaCount(dataLocality longhorn.DataLocality, replicaCount int) 
 }
 
 func (v *volumeValidator) canDisableRevisionCounter(image string, dataEngine longhorn.DataEngineType) (bool, error) {
-	if datastore.IsDataEngineV2(dataEngine) {
+	if types.IsDataEngineV2(dataEngine) {
 		// v2 volume does not have revision counter
 		return true, nil
 	}

@@ -350,7 +350,7 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 				}
 			}
 		}
-		if datastore.IsDataEngineV2(volume.Spec.DataEngine) {
+		if types.IsDataEngineV2(volume.Spec.DataEngine) {
 			// To prevent from the "no such device" error in spdk_tgt,
 			// remove the raid bdev before tearing down the replicas.
 			engines, err := c.ds.ListVolumeEnginesRO(volume.Name)
@@ -816,7 +816,7 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		//   2. the volume is old restore/DR volumes.
 		//   3. the volume is expanding size.
 		isOldRestoreVolume := (v.Status.IsStandby || v.Status.RestoreRequired) &&
-			(datastore.IsDataEngineV1(e.Spec.DataEngine) && cliAPIVersion < engineapi.CLIVersionFour)
+			(types.IsDataEngineV1(e.Spec.DataEngine) && cliAPIVersion < engineapi.CLIVersionFour)
 		isInExpansion := v.Spec.Size != e.Status.CurrentSize
 		if isMigratingDone && !isOldRestoreVolume && !isInExpansion {
 			if err := c.replenishReplicas(v, e, rs, ""); err != nil {
@@ -864,7 +864,7 @@ func areAllReplicasFailed(rs map[string]*longhorn.Replica) bool {
 }
 
 func (c *VolumeController) shouldStopOfflineReplicaRebuilding(v *longhorn.Volume, healthyCount int) (bool, error) {
-	if datastore.IsDataEngineV1(v.Spec.DataEngine) {
+	if types.IsDataEngineV1(v.Spec.DataEngine) {
 		return true, nil
 	}
 
@@ -1037,7 +1037,7 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 			continue
 		}
 
-		if datastore.IsDataEngineV1(v.Spec.DataEngine) {
+		if types.IsDataEngineV1(v.Spec.DataEngine) {
 			if shouldCleanUpFailedReplicaV1(r, v.Spec.StaleReplicaTimeout, safeAsLastReplicaCount, v.Spec.Image) {
 				log.WithField("replica", r.Name).Info("Cleaning up corrupted, staled replica")
 				if err := c.deleteReplica(r, rs); err != nil {
@@ -1373,7 +1373,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 		if autoSalvage && !v.Status.IsStandby && !v.Status.RestoreRequired {
 			// Since all replica failed and autoSalvage is enable, mark engine controller salvage requested
 			// TODO: SalvageRequested is meanningless for v2 volume
-			if datastore.IsDataEngineV1(v.Spec.DataEngine) {
+			if types.IsDataEngineV1(v.Spec.DataEngine) {
 				e.Spec.SalvageRequested = true
 				log.Infof("All replicas are failed, set engine salvageRequested to %v", e.Spec.SalvageRequested)
 			}
@@ -2239,7 +2239,7 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 	for i := 0; i < replenishCount; i++ {
 		var reusableFailedReplica *longhorn.Replica
 		// TODO: reuse failed replica for replica rebuilding of SPDK volumes
-		if datastore.IsDataEngineV1(v.Spec.DataEngine) {
+		if types.IsDataEngineV1(v.Spec.DataEngine) {
 			reusableFailedReplica, err = c.scheduler.CheckAndReuseFailedReplica(rs, v, hardNodeAffinity)
 			if err != nil {
 				return errors.Wrapf(err, "failed to reuse a failed replica during replica replenishment")
@@ -2452,7 +2452,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume,
 	}
 
 	ei := &longhorn.EngineImage{}
-	if datastore.IsDataEngineV1(v.Spec.DataEngine) {
+	if types.IsDataEngineV1(v.Spec.DataEngine) {
 		ei, err = c.getEngineImageRO(v.Status.CurrentImage)
 		if err != nil {
 			return 0, nil, err
@@ -2599,7 +2599,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 	}
 
 	ei := &longhorn.EngineImage{}
-	if datastore.IsDataEngineV1(v.Spec.DataEngine) {
+	if types.IsDataEngineV1(v.Spec.DataEngine) {
 		ei, err = c.getEngineImageRO(v.Status.CurrentImage)
 		if err != nil {
 			return 0, nodeExtraRs, err
@@ -2726,7 +2726,7 @@ func (c *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volum
 	}
 
 	ei := &longhorn.EngineImage{}
-	if datastore.IsDataEngineV1(v.Spec.DataEngine) {
+	if types.IsDataEngineV1(v.Spec.DataEngine) {
 		ei, err = c.getEngineImageRO(v.Status.CurrentImage)
 		if err != nil {
 			return candidateNames
@@ -2902,7 +2902,7 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 		volumeAndReplicaNodes = append(volumeAndReplicaNodes, r.Spec.NodeID)
 	}
 
-	if datastore.IsDataEngineV1(v.Spec.DataEngine) {
+	if types.IsDataEngineV1(v.Spec.DataEngine) {
 		oldImage, err := c.getEngineImageRO(v.Status.CurrentImage)
 		if err != nil {
 			log.WithError(err).Warnf("Failed to get engine image %v for live upgrade", v.Status.CurrentImage)
@@ -3054,7 +3054,7 @@ func (c *VolumeController) updateRequestedBackupForVolumeRestore(v *longhorn.Vol
 func (c *VolumeController) checkAndInitVolumeOfflineReplicaRebuilding(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
 	log := getLoggerForVolume(c.logger, v)
 
-	if datastore.IsDataEngineV1(v.Spec.DataEngine) {
+	if types.IsDataEngineV1(v.Spec.DataEngine) {
 		return nil
 	}
 
@@ -3432,7 +3432,7 @@ func (c *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine,
 	}
 	if isRebuildingReplica {
 		// TODO: reuse failed replica for replica rebuilding of SPDK volumes
-		if datastore.IsDataEngineV2(v.Spec.DataEngine) {
+		if types.IsDataEngineV2(v.Spec.DataEngine) {
 			if !v.Spec.DisableFrontend || !v.Status.OfflineReplicaRebuildingRequired {
 				log.Tracef("Online replica rebuilding for replica %v is not supported for SPDK volumes", replica.Name)
 				return nil
@@ -4147,7 +4147,7 @@ func (c *VolumeController) isResponsibleFor(v *longhorn.Volume, defaultEngineIma
 
 	isResponsible := isControllerResponsibleFor(c.controllerID, c.ds, v.Name, v.Spec.NodeID, v.Status.OwnerID)
 
-	if datastore.IsDataEngineV1(v.Spec.DataEngine) {
+	if types.IsDataEngineV1(v.Spec.DataEngine) {
 		readyNodesWithDefaultEI, err := c.ds.ListReadyNodesContainingEngineImageRO(defaultEngineImage)
 		if err != nil {
 			return false, err

@@ -1083,7 +1083,7 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 					defaultInstanceManagerCreated = true
 					cleanupRequired = false
 
-					if datastore.IsDataEngineV2(dataEngine) {
+					if types.IsDataEngineV2(dataEngine) {
 						disabled, err := nc.ds.IsV2DataEngineDisabledForNode(node.Name)
 						if err != nil {
 							return errors.Wrapf(err, "failed to check if v2 data engine is disabled on node %v", node.Name)
@@ -1116,7 +1116,7 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 				if err != nil {
 					return err
 				}
-				if datastore.IsDataEngineV2(dataEngine) {
+				if types.IsDataEngineV2(dataEngine) {
 					disabled, err := nc.ds.IsV2DataEngineDisabledForNode(node.Name)
 					if err != nil {
 						return errors.Wrapf(err, "failed to check if v2 data engine is disabled on node %v", node.Name)

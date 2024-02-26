@@ -9,8 +9,7 @@ import (
 	spdkdevtypes "github.com/longhorn/go-spdk-helper/pkg/types"
 
 	emeta "github.com/longhorn/longhorn-engine/pkg/meta"
-
-	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -261,7 +260,7 @@ func GetEngineInstanceFrontend(dataEngine longhorn.DataEngineType, volumeFronten
 	switch volumeFrontend {
 	case longhorn.VolumeFrontendBlockDev:
 		frontend = string(iscsidevtypes.FrontendTGTBlockDev)
-		if datastore.IsDataEngineV2(dataEngine) {
+		if types.IsDataEngineV2(dataEngine) {
 			frontend = string(spdkdevtypes.FrontendSPDKTCPBlockdev)
 		}
 	case longhorn.VolumeFrontendISCSI:
