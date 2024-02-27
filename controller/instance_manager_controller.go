@@ -537,6 +537,15 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		return err
 	}
 
+	// An instance manager pod for v2 volume need to consume huge pages, and disks managed by the
+	// pod is unable to managed by another pod. Therefore, if an instance manager pod is running on a node,
+	// an extra instance manager pod for v2 volume should not be created.
+	if types.IsDataEngineV2(im.Spec.DataEngine) {
+		if im.Spec.DesireState == longhorn.InstanceManagerStateStopped {
+			return nil
+		}
+	}
+
 	if err := imc.createInstanceManagerPod(im); err != nil {
 		return err
 	}
