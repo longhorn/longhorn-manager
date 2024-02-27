@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
 
@@ -92,8 +93,12 @@ func DetectGRPCServerAvailability(address string, waitIntervalInSecond int, shou
 		<-ticker.C
 
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		conn, err := grpc.DialContext(ctx, address, grpc.WithInsecure())
-		cancel()
+		grpcOpts := []grpc.DialOption{
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithBlock(),
+		}
+		conn, err := grpc.DialContext(ctx, address, grpcOpts...)
+		defer cancel()
 		if !shouldAvailable {
 			if err != nil {
 				return true
