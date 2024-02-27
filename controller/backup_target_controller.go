@@ -315,14 +315,17 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 
 	var backupTargetClient *engineapi.BackupTargetClient
 	existingBackupTarget := backupTarget.DeepCopy()
+
 	syncTime := metav1.Time{Time: time.Now().UTC()}
+	syncTimeRequired := false
+
 	defer func() {
 		if err != nil {
 			return
 		}
-		if backupTargetClient != nil {
+		if backupTargetClient != nil && syncTimeRequired {
 			// If there is something wrong with the backup target config and Longhorn cannot launch the client,
-			// lacking the credential for example, Longhorn won't even try to connect with the remote backupstore.
+			// lacking the credential; for example, Longhorn won't even try to connect with the remote backupstore.
 			// In this case, the controller should not update `Status.LastSyncedAt`.
 			backupTarget.Status.LastSyncedAt = syncTime
 		}
@@ -363,7 +366,7 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	}
 	defer engineClientProxy.Close()
 
-	if err = btc.syncBackupVolume(backupTarget, backupTargetClient, syncTime, log); err != nil {
+	if syncTimeRequired, err = btc.syncBackupVolume(backupTarget, backupTargetClient, syncTime, log); err != nil {
 		return err
 	}
 
@@ -393,7 +396,9 @@ func (btc *BackupTargetController) cleanUpAllMounts(backupTarget *longhorn.Backu
 	return err
 }
 
-func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.BackupTarget, backupTargetClient *engineapi.BackupTargetClient, syncTime metav1.Time, log logrus.FieldLogger) error {
+func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.BackupTarget, backupTargetClient *engineapi.BackupTargetClient, syncTime metav1.Time, log logrus.FieldLogger) (syncTimeRequired bool, err error) {
+	syncTimeRequired = true
+
 	// Get a list of all the backup volumes that are stored in the backup target
 	res, err := backupTargetClient.BackupVolumeNameList(backupTargetClient.URL, backupTargetClient.Credential)
 	if err != nil {
@@ -402,7 +407,8 @@ func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.Backu
 			longhorn.BackupTargetConditionTypeUnavailable, longhorn.ConditionStatusTrue,
 			longhorn.BackupTargetConditionReasonUnavailable, err.Error())
 		log.WithError(err).Error("Failed to list backup volumes from backup target")
-		return nil // Ignore error to allow status update as well as preventing enqueue
+		syncTimeRequired = false
+		return syncTimeRequired, nil // Ignore error to allow status update as well as preventing enqueue
 	}
 	backupStoreBackupVolumes := sets.NewString(res...)
 
@@ -410,7 +416,7 @@ func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.Backu
 	clusterBackupVolumes, err := btc.ds.ListBackupVolumes()
 	if err != nil {
 		log.WithError(err).Error("Failed to list backup volumes in the cluster")
-		return err
+		return syncTimeRequired, err
 	}
 
 	clusterBackupVolumesSet := sets.NewString()
@@ -433,7 +439,7 @@ func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.Backu
 		}
 		if _, err = btc.ds.CreateBackupVolume(backupVolume); err != nil && !apierrors.IsAlreadyExists(err) {
 			log.WithError(err).Errorf("Failed to create backup volume %s in the cluster", backupVolumeName)
-			return err
+			return syncTimeRequired, err
 		}
 	}
 
@@ -448,7 +454,7 @@ func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.Backu
 		log.WithField("backupVolume", backupVolumeName).Info("Deleting backup volume from cluster")
 		if err = btc.ds.DeleteBackupVolume(backupVolumeName); err != nil {
 			log.WithError(err).Errorf("Failed to delete backup volume %s from cluster", backupVolumeName)
-			return err
+			return syncTimeRequired, err
 		}
 	}
 
@@ -466,7 +472,7 @@ func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.Backu
 	backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
 		longhorn.BackupTargetConditionTypeUnavailable, longhorn.ConditionStatusFalse,
 		"", "")
-	return nil
+	return syncTimeRequired, nil
 }
 
 func (btc *BackupTargetController) syncSystemBackup(backupTargetClient *engineapi.BackupTargetClient, log logrus.FieldLogger) error {
