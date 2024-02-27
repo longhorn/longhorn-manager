@@ -33,7 +33,6 @@ func isTargetVolumeOfCloning(v *longhorn.Volume) bool {
 func isVolumeFullyDetached(vol *longhorn.Volume) bool {
 	return vol.Spec.NodeID == "" &&
 		vol.Spec.MigrationNodeID == "" &&
-		vol.Status.PendingNodeID == "" &&
 		vol.Status.State == longhorn.VolumeStateDetached
 }
 

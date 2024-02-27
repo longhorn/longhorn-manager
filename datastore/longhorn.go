@@ -1045,8 +1045,7 @@ func GetNewCurrentEngineAndExtras(v *longhorn.Volume, es map[string]*longhorn.En
 			oldEngineName = e.Name
 		}
 		if (v.Spec.NodeID != "" && v.Spec.NodeID == e.Spec.NodeID) ||
-			(v.Status.CurrentNodeID != "" && v.Status.CurrentNodeID == e.Spec.NodeID) ||
-			(v.Status.PendingNodeID != "" && v.Status.PendingNodeID == e.Spec.NodeID) {
+			(v.Status.CurrentNodeID != "" && v.Status.CurrentNodeID == e.Spec.NodeID) {
 			if currentEngine != nil {
 				return nil, nil, fmt.Errorf("BUG: found the second new active engine %v besides %v", e.Name, currentEngine.Name)
 			}
