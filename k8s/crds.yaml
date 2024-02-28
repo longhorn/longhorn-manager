@@ -2231,6 +2231,8 @@ spec:
                       type: string
                     filesystemType:
                       type: string
+                    instanceManagerName:
+                      type: string
                     scheduledReplica:
                       additionalProperties:
                         format: int64
