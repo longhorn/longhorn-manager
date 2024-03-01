@@ -4944,7 +4944,7 @@ func (s *DataStore) CreateBackupBackingImage(backupBackingImage *longhorn.Backup
 	}
 
 	obj, err := verifyCreation(ret.Name, "backup backing image", func(name string) (runtime.Object, error) {
-		return s.getBackupBackingImageRO(name)
+		return s.GetBackupBackingImageRO(name)
 	})
 	if err != nil {
 		return nil, err
@@ -4964,7 +4964,7 @@ func (s *DataStore) UpdateBackupBackingImage(backupBackingImage *longhorn.Backup
 		return nil, err
 	}
 	verifyUpdate(backupBackingImage.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getBackupBackingImageRO(name)
+		return s.GetBackupBackingImageRO(name)
 	})
 	return obj, nil
 }
@@ -4977,7 +4977,7 @@ func (s *DataStore) UpdateBackupBackingImageStatus(backupBackingImage *longhorn.
 		return nil, err
 	}
 	verifyUpdate(backupBackingImage.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getBackupBackingImageRO(name)
+		return s.GetBackupBackingImageRO(name)
 	})
 	return obj, nil
 }
@@ -5008,14 +5008,14 @@ func (s *DataStore) RemoveFinalizerForBackupBackingImage(obj *longhorn.BackupBac
 	return nil
 }
 
-func (s *DataStore) getBackupBackingImageRO(name string) (*longhorn.BackupBackingImage, error) {
+func (s *DataStore) GetBackupBackingImageRO(name string) (*longhorn.BackupBackingImage, error) {
 	return s.backupBackingImageLister.BackupBackingImages(s.namespace).Get(name)
 }
 
 // GetBackupBackingImage returns a new BackupBackingImage object for the given name and
 // namespace
 func (s *DataStore) GetBackupBackingImage(name string) (*longhorn.BackupBackingImage, error) {
-	resultRO, err := s.getBackupBackingImageRO(name)
+	resultRO, err := s.GetBackupBackingImageRO(name)
 	if err != nil {
 		return nil, err
 	}
@@ -5037,4 +5037,8 @@ func (s *DataStore) ListBackupBackingImages() (map[string]*longhorn.BackupBackin
 		itemMap[itemRO.Name] = itemRO.DeepCopy()
 	}
 	return itemMap, nil
+}
+
+func (s *DataStore) ListBackupBackingImagesRO() ([]*longhorn.BackupBackingImage, error) {
+	return s.backupBackingImageLister.BackupBackingImages(s.namespace).List(labels.Everything())
 }
