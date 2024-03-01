@@ -20,6 +20,9 @@ const (
 
 type ReplicaScheduler struct {
 	ds *datastore.DataStore
+
+	// Required for unit testing.
+	nowHandler func() time.Time
 }
 
 type Disk struct {
@@ -40,6 +43,9 @@ type DiskSchedulingInfo struct {
 func NewReplicaScheduler(ds *datastore.DataStore) *ReplicaScheduler {
 	rcScheduler := &ReplicaScheduler{
 		ds: ds,
+
+		// Required for unit testing.
+		nowHandler: time.Now,
 	}
 	return rcScheduler
 }
@@ -201,6 +207,13 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		diskSoftAntiAffinity = volume.Spec.ReplicaDiskSoftAntiAffinity == longhorn.ReplicaDiskSoftAntiAffinityEnabled
 	}
 
+	timeToReplacementReplica, _, err := rcs.timeToReplacementReplica(volume)
+	if err != nil {
+		err = errors.Wrap(err, "failed to get time until replica replacement")
+		multiError.Append(util.NewMultiError(err.Error()))
+		return map[string]*Disk{}, multiError
+	}
+
 	getDiskCandidatesFromNodes := func(nodes map[string]*longhorn.Node) (diskCandidates map[string]*Disk, multiError util.MultiError) {
 		diskCandidates = map[string]*Disk{}
 		multiError = util.NewMultiError()
@@ -217,7 +230,7 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 	}
 
 	usedNodes, usedZones, onlyEvictingNodes, onlyEvictingZones := getCurrentNodesAndZones(replicas, nodeInfo,
-		ignoreFailedReplicas)
+		ignoreFailedReplicas, timeToReplacementReplica == 0)
 
 	allowEmptyNodeSelectorVolume, err := rcs.ds.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
 	if err != nil {
@@ -578,7 +591,7 @@ func (rcs *ReplicaScheduler) RequireNewReplica(replicas map[string]*longhorn.Rep
 
 	hasPotentiallyReusableReplica := false
 	for _, r := range replicas {
-		if IsPotentiallyReusableReplica(r, hardNodeAffinity) {
+		if IsPotentiallyReusableReplica(r) {
 			hasPotentiallyReusableReplica = true
 			break
 		}
@@ -587,42 +600,23 @@ func (rcs *ReplicaScheduler) RequireNewReplica(replicas map[string]*longhorn.Rep
 		return 0
 	}
 
-	// Otherwise Longhorn will relay the new replica creation then there is a chance to reuse failed replicas later.
-	settingValue, err := rcs.ds.GetSettingAsInt(types.SettingNameReplicaReplenishmentWaitInterval)
+	timeUntilNext, timeOfNext, err := rcs.timeToReplacementReplica(volume)
 	if err != nil {
-		logrus.Errorf("Failed to get Setting ReplicaReplenishmentWaitInterval, will directly replenish a new replica: %v", err)
-		return 0
+		msg := "Failed to get time until replica replacement, will directly replenish a new replica"
+		logrus.WithError(err).Errorf(msg)
 	}
-	waitInterval := time.Duration(settingValue) * time.Second
-	lastDegradedAt, err := util.ParseTime(volume.Status.LastDegradedAt)
-
-	if err != nil {
-		logrus.Errorf("Failed to get parse volume last degraded timestamp %v, will directly replenish a new replica: %v", volume.Status.LastDegradedAt, err)
-		return 0
+	if timeUntilNext > 0 {
+		logrus.Infof("Replica replenishment is delayed until %v", timeOfNext)
 	}
-	now := time.Now()
-	if now.After(lastDegradedAt.Add(waitInterval)) {
-		return 0
-	}
-
-	logrus.Infof("Replica replenishment is delayed until %v", lastDegradedAt.Add(waitInterval))
-	// Adding 1 more second to the check back interval to avoid clock skew
-	return lastDegradedAt.Add(waitInterval).Sub(now) + time.Second
+	return timeUntilNext
 }
 
 func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *longhorn.Volume, nodeInfo map[string]*longhorn.Node, hardNodeAffinity string) (bool, error) {
-	if r.Spec.FailedAt == "" {
+	// All failedReusableReplicas are also potentiallyFailedReusableReplicas.
+	if !IsPotentiallyReusableReplica(r) {
 		return false, nil
 	}
-	if r.Spec.NodeID == "" || r.Spec.DiskID == "" {
-		return false, nil
-	}
-	if r.Spec.RebuildRetryCount >= FailedReplicaMaxRetryCount {
-		return false, nil
-	}
-	if r.Spec.EvictionRequested {
-		return false, nil
-	}
+
 	if hardNodeAffinity != "" && r.Spec.NodeID != hardNodeAffinity {
 		return false, nil
 	}
@@ -693,9 +687,9 @@ func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *lon
 	return true, nil
 }
 
-// IsPotentiallyReusableReplica is used to check if a failed replica is potentially reusable.
-// A potentially reusable replica means this failed replica may be able to reuse it later but it’s not valid now due to node/disk down issue.
-func IsPotentiallyReusableReplica(r *longhorn.Replica, hardNodeAffinity string) bool {
+// IsPotentiallyReusableReplica checks if a failed replica is potentially reusable. A potentially reusable replica means
+// this failed replica may be able to reuse it later but it’s not valid now due to node/disk down issue.
+func IsPotentiallyReusableReplica(r *longhorn.Replica) bool {
 	if r.Spec.FailedAt == "" {
 		return false
 	}
@@ -706,9 +700,6 @@ func IsPotentiallyReusableReplica(r *longhorn.Replica, hardNodeAffinity string) 
 		return false
 	}
 	if r.Spec.EvictionRequested {
-		return false
-	}
-	if hardNodeAffinity != "" && r.Spec.NodeID != hardNodeAffinity {
 		return false
 	}
 	// TODO: Reuse failed replicas for a SPDK volume
@@ -865,10 +856,14 @@ func findDiskSpecAndDiskStatusInNode(diskUUID string, node *longhorn.Node) (long
 	return longhorn.DiskSpec{}, longhorn.DiskStatus{}, false
 }
 
-// getCurrentNodesAndZones returns the nodes and zones a replica is already scheduled to. Some callers do not consider a
-// node or zone to be used if it contains a failed replica. ignoreFailedReplicas == true supports this use case.
+// getCurrentNodesAndZones returns the nodes and zones a replica is already scheduled to.
+//   - Some callers do not consider a node or zone to be used if it contains a failed replica.
+//     ignoreFailedReplicas == true supports this use case.
+//   - Otherwise, getCurrentNodesAndZones does not consider a node or zone to be occupied by a failed replica that can
+//     no longer be used or is likely actively being replaced. This makes nodes and zones with useless replicas
+//     available for scheduling.
 func getCurrentNodesAndZones(replicas map[string]*longhorn.Replica, nodeInfo map[string]*longhorn.Node,
-	ignoreFailedReplicas bool) (map[string]*longhorn.Node,
+	ignoreFailedReplicas, creatingNewReplicasForReplenishment bool) (map[string]*longhorn.Node,
 	map[string]bool, map[string]bool, map[string]bool) {
 	usedNodes := map[string]*longhorn.Node{}
 	usedZones := map[string]bool{}
@@ -882,8 +877,16 @@ func getCurrentNodesAndZones(replicas map[string]*longhorn.Replica, nodeInfo map
 		if r.DeletionTimestamp != nil {
 			continue
 		}
-		if r.Spec.FailedAt != "" && ignoreFailedReplicas {
-			continue
+		if r.Spec.FailedAt != "" {
+			if ignoreFailedReplicas {
+				continue
+			}
+			if !IsPotentiallyReusableReplica(r) {
+				continue // This replica can never be used again, so it does not count in scheduling decisions.
+			}
+			if creatingNewReplicasForReplenishment {
+				continue // Maybe this replica can be used again, but it is being actively replaced anyway.
+			}
 		}
 
 		if node, ok := nodeInfo[r.Spec.NodeID]; ok {
@@ -911,4 +914,39 @@ func getCurrentNodesAndZones(replicas map[string]*longhorn.Replica, nodeInfo map
 	}
 
 	return usedNodes, usedZones, onlyEvictingNodes, onlyEvictingZones
+}
+
+// timeToReplacementReplica returns the amount of time until Longhorn should create a new replica for a degraded volume,
+// even if there are potentially reusable failed replicas. It returns:
+//   - -time.Duration if there is no need for a replacement replica,
+//   - 0              if a replacement replica is needed right now (replica-replenishment-wait-interval has elapsed),
+//   - +time.Duration if a replacement replica will be needed (replica-replenishment-wait-interval has not elapsed).
+func (rcs *ReplicaScheduler) timeToReplacementReplica(volume *longhorn.Volume) (time.Duration, time.Time, error) {
+	if volume.Status.Robustness != longhorn.VolumeRobustnessDegraded {
+		// No replacement replica is needed.
+		return -1, time.Time{}, nil
+	}
+
+	settingValue, err := rcs.ds.GetSettingAsInt(types.SettingNameReplicaReplenishmentWaitInterval)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to get setting ReplicaReplenishmentWaitInterval")
+		return 0, time.Time{}, err
+	}
+	waitInterval := time.Duration(settingValue) * time.Second
+
+	lastDegradedAt, err := util.ParseTime(volume.Status.LastDegradedAt)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to parse last degraded timestamp %v", volume.Status.LastDegradedAt)
+		return 0, time.Time{}, err
+	}
+
+	now := rcs.nowHandler()
+	if now.After(lastDegradedAt.Add(waitInterval)) {
+		// A replacement replica is needed now.
+		return 0, time.Time{}, nil
+	}
+
+	timeOfNext := lastDegradedAt.Add(waitInterval)
+	// Adding 1 more second to the check back interval to avoid clock skew
+	return timeOfNext.Sub(now) + time.Second, timeOfNext, nil
 }

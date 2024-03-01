@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/client-go/kubernetes/fake"
@@ -54,7 +55,8 @@ const (
 	TestZone1 = "test-zone-1"
 	TestZone2 = "test-zone-2"
 
-	TestTimeNow = "2015-01-02T00:00:00Z"
+	TestTimeNow          = "2015-01-02T00:00:00Z"
+	TestTimeOneMinuteAgo = "2015-01-01T23:59:00Z"
 )
 
 var longhornFinalizerKey = longhorn.SchemeGroupVersion.Group
@@ -65,7 +67,9 @@ func newReplicaScheduler(lhClient *lhfake.Clientset, kubeClient *fake.Clientset,
 
 	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
-	return NewReplicaScheduler(ds)
+	rcs := NewReplicaScheduler(ds)
+	rcs.nowHandler = getTestNow
+	return rcs
 }
 
 func newDaemonPod(phase corev1.PodPhase, name, namespace, nodeID, podIP string) *corev1.Pod {
@@ -242,6 +246,7 @@ type ReplicaSchedulerTestCase struct {
 	replicaNodeSoftAntiAffinity       string
 	replicaZoneSoftAntiAffinity       string
 	replicaDiskSoftAntiAffinity       string
+	ReplicaReplenishmentWaitInterval  string
 
 	// some test cases only try to schedule a subset of a volume's replicas
 	allReplicas        map[string]*longhorn.Replica
@@ -1099,24 +1104,36 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	tc.replicaZoneSoftAntiAffinity = "false" // Do not allow replicas to schedule to the same zone.
 	testCases["fail scheduling when doing so would reuse an invalid evicting node"] = tc
 
-	// Test fail to schedule to node with failed replica
-	// If replicaNodeSoftAntiAffinity == false, this shouldn't be possible.
-	tc = generateFailedReplicaTestCase("false")
+	// Test potentially reusable replica before interval expires
+	// We should fail to schedule a new replica to this node until the interval expires.
+	tc = generateFailedReplicaTestCase(true, false)
 	tc.err = false
 	tc.firstNilReplica = 0
-	testCases["fail to schedule to node with failed replica"] = tc
+	testCases["potentially reusable replica before interval expires"] = tc
 
-	// Test succeed to schedule to node with failed replica
-	// If replicaNodeSoftAntiAffinity == true, this should be possible.
-	tc = generateFailedReplicaTestCase("true")
+	// Test potentially reusable replica after interval expires
+	// We should succeed to schedule a new replica to this node because the interval expired.
+	tc = generateFailedReplicaTestCase(true, true)
 	tc.err = false
 	tc.firstNilReplica = -1
-	testCases["succeed to schedule to node with failed replica"] = tc
+	testCases["potentially reusable replica after interval expires"] = tc
 
-	testCasesActual := map[string]*ReplicaSchedulerTestCase{}
-	testCasesActual["fail to schedule to node with failed replica"] = testCases["fail to schedule to node with failed replica"]
-	testCasesActual["succeed to schedule to node with failed replica"] = testCases["succeed to schedule to node with failed replica"]
-	for name, tc := range testCasesActual {
+	// Test non-reusable replica before interval expires
+	// We should succeed to schedule a new replica to this node because the existing replica is not reusable.
+	tc = generateFailedReplicaTestCase(false, false)
+	tc.err = false
+	tc.firstNilReplica = -1
+	testCases["non-reusable replica before interval expires"] = tc
+
+	// Test non-reusable replica after interval expires
+	// We should succeed to schedule a new replica to this node because the existing replica is not reusable and the
+	// interval expired anyway.
+	tc = generateFailedReplicaTestCase(false, true)
+	tc.err = false
+	tc.firstNilReplica = -1
+	testCases["non-reusable replica after interval expires"] = tc
+
+	for name, tc := range testCases {
 		fmt.Printf("testing %v\n", name)
 
 		kubeClient := fake.NewSimpleClientset()
@@ -1207,11 +1224,11 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	}
 }
 
-func generateFailedReplicaTestCase(replicaNodeSoftAntiAffinity string) (tc *ReplicaSchedulerTestCase) {
+// generateFailedReplicaTestCase helps generate test cases in which a node contains a failed replica and the scheduler
+// must decide whether to allow additional replicas to schedule to it.
+func generateFailedReplicaTestCase(
+	replicaReusable, waitIntervalExpired bool) (tc *ReplicaSchedulerTestCase) {
 	tc = generateSchedulerTestCase()
-	tc.replicaNodeSoftAntiAffinity = replicaNodeSoftAntiAffinity
-	tc.replicaDiskSoftAntiAffinity = "true" // Do not hinder replica scheduling except for node.
-	tc.replicaZoneSoftAntiAffinity = "true" // Do not hinder replica scheduling except for node.
 	daemon1 := newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
 	tc.daemons = []*corev1.Pod{
 		daemon1,
@@ -1223,6 +1240,10 @@ func generateFailedReplicaTestCase(replicaNodeSoftAntiAffinity string) (tc *Repl
 		getDiskID(TestNode1, "1"): disk,
 	}
 
+	// We are specifically interested in situations in which a replica is ONLY schedulable to a node because its
+	// existing replica is failed.
+	tc.replicaNodeSoftAntiAffinity = "false"
+
 	// A failed replica is already scheduled.
 	var alreadyScheduledReplica *longhorn.Replica
 	for _, replica := range tc.allReplicas {
@@ -1231,7 +1252,22 @@ func generateFailedReplicaTestCase(replicaNodeSoftAntiAffinity string) (tc *Repl
 	}
 	delete(tc.replicasToSchedule, alreadyScheduledReplica.Name)
 	alreadyScheduledReplica.Spec.NodeID = TestNode1
+	alreadyScheduledReplica.Spec.DiskID = getDiskID(TestNode1, "1")
 	alreadyScheduledReplica.Spec.FailedAt = TestTimeNow
+	tc.volume.Status.Robustness = longhorn.VolumeRobustnessDegraded
+	tc.volume.Status.LastDegradedAt = TestTimeOneMinuteAgo
+
+	if replicaReusable {
+		alreadyScheduledReplica.Spec.RebuildRetryCount = 0
+	} else {
+		alreadyScheduledReplica.Spec.RebuildRetryCount = 5
+	}
+
+	if waitIntervalExpired {
+		tc.ReplicaReplenishmentWaitInterval = "30"
+	} else {
+		tc.ReplicaReplenishmentWaitInterval = "90"
+	}
 
 	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{
 		getDiskID(TestNode1, "1"): {
@@ -1295,6 +1331,17 @@ func setSettings(tc *ReplicaSchedulerTestCase, lhClient *lhfake.Clientset, sInde
 		s := initSettings(
 			string(types.SettingNameReplicaDiskSoftAntiAffinity),
 			tc.replicaDiskSoftAntiAffinity)
+		setting, err :=
+			lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(setting)
+		c.Assert(err, IsNil)
+	}
+	// Set replica replenishment wait interval setting
+	if tc.ReplicaReplenishmentWaitInterval != "" {
+		s := initSettings(
+			string(types.SettingNameReplicaReplenishmentWaitInterval),
+			tc.ReplicaReplenishmentWaitInterval)
 		setting, err :=
 			lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
@@ -1522,10 +1569,15 @@ func (s *TestSuite) TestGetCurrentNodesAndZones(c *C) {
 	for name, tc := range testCases {
 		fmt.Printf("testing %v\n", name)
 		usedNodes, usedZones, onlyEvictingNodes, onlyEvictingZones := getCurrentNodesAndZones(tc.replicas, tc.nodeInfo,
-			false)
+			false, false)
 		verifyNodeNames(tc.expectUsedNodeNames, usedNodes)
 		verifyZoneNames(tc.expectUsedZoneNames, usedZones)
 		verifyOnlyEvictingNodeNames(tc.expectOnlyEvictingNodeNames, onlyEvictingNodes)
 		verifyOnlyEvictingZoneNames(tc.expectOnlyEvictingZoneNames, onlyEvictingZones)
 	}
+}
+
+func getTestNow() time.Time {
+	now, _ := time.Parse(time.RFC3339, TestTimeNow)
+	return now
 }
