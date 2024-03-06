@@ -1262,6 +1262,12 @@ func (c *VolumeController) syncVolumeSnapshotSetting(v *longhorn.Volume, es map[
 	if es == nil && rs == nil {
 		return nil
 	}
+	// The webhook ONLY allows volume.spec.snapshotMaxCount to be modified during a migration if a Longhorn upgrade is
+	// changing the value from 0 (unset) to 250 (the maximum). To be safe, don't apply the change to engines or replicas
+	// until the migration is complete.
+	if util.IsVolumeMigrating(v) {
+		return nil
+	}
 
 	for _, e := range es {
 		e.Spec.SnapshotMaxCount = v.Spec.SnapshotMaxCount
