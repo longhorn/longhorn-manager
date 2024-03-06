@@ -207,11 +207,15 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		diskSoftAntiAffinity = volume.Spec.ReplicaDiskSoftAntiAffinity == longhorn.ReplicaDiskSoftAntiAffinityEnabled
 	}
 
-	timeToReplacementReplica, _, err := rcs.timeToReplacementReplica(volume)
-	if err != nil {
-		err = errors.Wrap(err, "failed to get time until replica replacement")
-		multiError.Append(util.NewMultiError(err.Error()))
-		return map[string]*Disk{}, multiError
+	creatingNewReplicasForReplenishment := false
+	if volume.Status.Robustness == longhorn.VolumeRobustnessDegraded {
+		timeToReplacementReplica, _, err := rcs.timeToReplacementReplica(volume)
+		if err != nil {
+			err = errors.Wrap(err, "failed to get time until replica replacement")
+			multiError.Append(util.NewMultiError(err.Error()))
+			return map[string]*Disk{}, multiError
+		}
+		creatingNewReplicasForReplenishment = timeToReplacementReplica == 0
 	}
 
 	getDiskCandidatesFromNodes := func(nodes map[string]*longhorn.Node) (diskCandidates map[string]*Disk, multiError util.MultiError) {
@@ -230,7 +234,7 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 	}
 
 	usedNodes, usedZones, onlyEvictingNodes, onlyEvictingZones := getCurrentNodesAndZones(replicas, nodeInfo,
-		ignoreFailedReplicas, timeToReplacementReplica == 0)
+		ignoreFailedReplicas, creatingNewReplicasForReplenishment)
 
 	allowEmptyNodeSelectorVolume, err := rcs.ds.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
 	if err != nil {
@@ -606,7 +610,9 @@ func (rcs *ReplicaScheduler) RequireNewReplica(replicas map[string]*longhorn.Rep
 		logrus.WithError(err).Errorf(msg)
 	}
 	if timeUntilNext > 0 {
-		logrus.Infof("Replica replenishment is delayed until %v", timeOfNext)
+		// Adding another second to the checkBackDuration to avoid clock skew.
+		timeUntilNext = timeUntilNext + time.Second
+		logrus.Infof("Replica replenishment is delayed until %v", timeOfNext.Add(time.Second))
 	}
 	return timeUntilNext
 }
@@ -917,16 +923,9 @@ func getCurrentNodesAndZones(replicas map[string]*longhorn.Replica, nodeInfo map
 }
 
 // timeToReplacementReplica returns the amount of time until Longhorn should create a new replica for a degraded volume,
-// even if there are potentially reusable failed replicas. It returns:
-//   - -time.Duration if there is no need for a replacement replica,
-//   - 0              if a replacement replica is needed right now (replica-replenishment-wait-interval has elapsed),
-//   - +time.Duration if a replacement replica will be needed (replica-replenishment-wait-interval has not elapsed).
+// even if there are potentially reusable failed replicas. It returns 0 if replica-replenishment-wait-interval has
+// elapsed and a new replica is needed right now.
 func (rcs *ReplicaScheduler) timeToReplacementReplica(volume *longhorn.Volume) (time.Duration, time.Time, error) {
-	if volume.Status.Robustness != longhorn.VolumeRobustnessDegraded {
-		// No replacement replica is needed.
-		return -1, time.Time{}, nil
-	}
-
 	settingValue, err := rcs.ds.GetSettingAsInt(types.SettingNameReplicaReplenishmentWaitInterval)
 	if err != nil {
 		err = errors.Wrapf(err, "failed to get setting ReplicaReplenishmentWaitInterval")
@@ -941,12 +940,11 @@ func (rcs *ReplicaScheduler) timeToReplacementReplica(volume *longhorn.Volume) (
 	}
 
 	now := rcs.nowHandler()
-	if now.After(lastDegradedAt.Add(waitInterval)) {
+	timeOfNext := lastDegradedAt.Add(waitInterval)
+	if now.After(timeOfNext) {
 		// A replacement replica is needed now.
 		return 0, time.Time{}, nil
 	}
 
-	timeOfNext := lastDegradedAt.Add(waitInterval)
-	// Adding 1 more second to the check back interval to avoid clock skew
-	return timeOfNext.Sub(now) + time.Second, timeOfNext, nil
+	return timeOfNext.Sub(now), timeOfNext, nil
 }
