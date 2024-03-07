@@ -414,7 +414,7 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 								},
 								{
 									Name:             "host",
-									MountPath:        "/rootfs", // path is required for namespaced mounter
+									MountPath:        "/host",
 									MountPropagation: &MountPropagationBidirectional,
 								},
 								{
