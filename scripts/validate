@@ -22,7 +22,7 @@ elif [ ! -z "${DRONE_COMMIT_REF}" ]; then
 	echo "Running: golangci-lint run --new-from-rev=${DRONE_COMMIT_REF}"
 	golangci-lint run --new-from-rev=${DRONE_COMMIT_REF}
 else
-	git symbolic-ref -q HEAD && REV="origin/HEAD" || REV="HEAD^"
+	git symbolic-ref -q HEAD && REV="HEAD" || REV="HEAD^"
 	headSHA=$(git rev-parse --short=12 ${REV})
 	echo "Running: golangci-lint run --new-from-rev=${headSHA}"
 	golangci-lint run --new-from-rev=${headSHA}
