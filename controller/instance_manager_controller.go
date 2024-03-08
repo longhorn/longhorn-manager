@@ -447,10 +447,55 @@ func (imc *InstanceManagerController) syncInstanceStatus(im *longhorn.InstanceMa
 	return nil
 }
 
+func (imc *InstanceManagerController) syncLogSettingsToIMPod(im *longhorn.InstanceManager) error {
+	if types.IsDataEngineV1(im.Spec.DataEngine) {
+		return nil
+	}
+
+	client, err := engineapi.NewInstanceManagerClient(im)
+	if err != nil {
+		return errors.Wrapf(err, "failed to create instance manager client for %v", im.Name)
+	}
+
+	settingNames := []types.SettingName{
+		types.SettingNameV2DataEngineLogLevel,
+		types.SettingNameV2DataEngineLogFlags,
+	}
+
+	for _, settingName := range settingNames {
+		setting, err := imc.ds.GetSettingWithAutoFillingRO(settingName)
+		if err != nil {
+			return err
+		}
+
+		switch settingName {
+		case types.SettingNameV2DataEngineLogLevel:
+			err = client.LogSetLevel(longhorn.DataEngineTypeV2, "spdk_tgt", setting.Value)
+			if err != nil {
+				return errors.Wrapf(err, "failed to set log level for %v", settingName)
+			}
+		case types.SettingNameV2DataEngineLogFlags:
+			err = client.LogSetFlags(longhorn.DataEngineTypeV2, "spdk_tgt", setting.Value)
+			if err != nil {
+				return errors.Wrapf(err, "failed to set log flags for %v", settingName)
+			}
+		}
+	}
+
+	return nil
+}
+
 func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) error {
+	log := getLoggerForInstanceManager(imc.logger, im)
+
 	err := imc.annotateCASafeToEvict(im)
 	if err != nil {
 		return err
+	}
+
+	err = imc.syncLogSettingsToIMPod(im)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to sync log settings to instance manager pod")
 	}
 
 	isSettingSynced, isPodDeletedOrNotRunning, areInstancesRunningInPod, err := imc.areDangerZoneSettingsSyncedToIMPod(im)
@@ -1200,10 +1245,27 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, longhorn.InstanceManagerTypeAllInOne, dataEngine)
 	podSpec.Spec.Containers[0].Name = "instance-manager"
 
-	if datastore.IsDataEngineV2(dataEngine) {
-		podSpec.Spec.Containers[0].Args = []string{
-			"instance-manager", "--enable-spdk", "--debug", "daemon", "--spdk-enabled", "--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort),
+	if types.IsDataEngineV2(dataEngine) {
+		logLevelSetting, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngineLogLevel)
+		if err != nil {
+			return nil, err
 		}
+
+		logFlagsSetting, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngineLogFlags)
+		if err != nil {
+			return nil, err
+		}
+
+		logLevel := strings.ToLower(logLevelSetting.Value)
+		logFlags := strings.ToLower(logFlagsSetting.Value)
+
+		args := []string{"instance-manager"}
+		if logLevel == "debug" {
+			args = append(args, "--spdk-log", logFlags)
+		}
+		args = append(args, "--enable-spdk", "--debug", "daemon", "--spdk-enabled", "--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort))
+
+		podSpec.Spec.Containers[0].Args = args
 
 		hugepage, err := imc.ds.GetSettingAsInt(types.SettingNameV2DataEngineHugepageLimit)
 		if err != nil {
@@ -1236,7 +1298,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	for _, port := range ports {
 		livenessProbes = append(livenessProbes, fmt.Sprintf("nc -zv localhost %d > /dev/null 2>&1", port))
 	}
-	if datastore.IsDataEngineV2(dataEngine) {
+	if types.IsDataEngineV2(dataEngine) {
 		livenessProbes = append(livenessProbes, fmt.Sprintf("nc -zv localhost %d > /dev/null 2>&1", engineapi.InstanceManagerSpdkServiceDefaultPort))
 
 		processProbe := "[ $(ps aux | grep 'spdk_tgt' | grep -v 'grep' | grep -v 'tee' | wc -l) != 0 ]"
@@ -1332,7 +1394,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		},
 	}
 
-	if datastore.IsDataEngineV2(dataEngine) {
+	if types.IsDataEngineV2(dataEngine) {
 		podSpec.Spec.Containers[0].VolumeMounts = append(podSpec.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
 			MountPath: "/hugepages",
 			Name:      "hugepage",

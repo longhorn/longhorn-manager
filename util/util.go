@@ -622,7 +622,9 @@ func IsKubernetesVersionAtLeast(kubeClient clientset.Interface, vers string) (bo
 }
 
 type DiskConfig struct {
-	DiskUUID string `json:"diskUUID"`
+	DiskName   string              `json:"diskName"`
+	DiskUUID   string              `json:"diskUUID"`
+	DiskDriver longhorn.DiskDriver `json:"diskDriver"`
 }
 
 func MinInt(a, b int) int {
@@ -734,7 +736,7 @@ func TrimFilesystem(volumeName string, encryptedDevice bool) error {
 		return err
 	}
 
-	_, err = nsexec.Execute(lhtypes.BinaryFstrim, []string{validMountpoint}, lhtypes.ExecuteDefaultTimeout)
+	_, err = nsexec.Execute(nil, lhtypes.BinaryFstrim, []string{validMountpoint}, lhtypes.ExecuteDefaultTimeout)
 	if err != nil {
 		return errors.Wrapf(err, "cannot find volume %v mount info on host", volumeName)
 	}

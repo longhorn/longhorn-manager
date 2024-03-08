@@ -814,6 +814,304 @@ func (x *InstanceReplaceRequest) GetTerminateSignal() string {
 	return ""
 }
 
+type LogSetLevelRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	DataEngine DataEngine `protobuf:"varint,1,opt,name=data_engine,json=dataEngine,proto3,enum=imrpc.DataEngine" json:"data_engine,omitempty"`
+	Level      string     `protobuf:"bytes,2,opt,name=level,proto3" json:"level,omitempty"`
+}
+
+func (x *LogSetLevelRequest) Reset() {
+	*x = LogSetLevelRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_msgTypes[11]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *LogSetLevelRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LogSetLevelRequest) ProtoMessage() {}
+
+func (x *LogSetLevelRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_msgTypes[11]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LogSetLevelRequest.ProtoReflect.Descriptor instead.
+func (*LogSetLevelRequest) Descriptor() ([]byte, []int) {
+	return file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *LogSetLevelRequest) GetDataEngine() DataEngine {
+	if x != nil {
+		return x.DataEngine
+	}
+	return DataEngine_DATA_ENGINE_V1
+}
+
+func (x *LogSetLevelRequest) GetLevel() string {
+	if x != nil {
+		return x.Level
+	}
+	return ""
+}
+
+type LogSetFlagsRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	DataEngine DataEngine `protobuf:"varint,1,opt,name=data_engine,json=dataEngine,proto3,enum=imrpc.DataEngine" json:"data_engine,omitempty"`
+	Flags      string     `protobuf:"bytes,2,opt,name=flags,proto3" json:"flags,omitempty"`
+}
+
+func (x *LogSetFlagsRequest) Reset() {
+	*x = LogSetFlagsRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_msgTypes[12]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *LogSetFlagsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LogSetFlagsRequest) ProtoMessage() {}
+
+func (x *LogSetFlagsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_msgTypes[12]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LogSetFlagsRequest.ProtoReflect.Descriptor instead.
+func (*LogSetFlagsRequest) Descriptor() ([]byte, []int) {
+	return file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *LogSetFlagsRequest) GetDataEngine() DataEngine {
+	if x != nil {
+		return x.DataEngine
+	}
+	return DataEngine_DATA_ENGINE_V1
+}
+
+func (x *LogSetFlagsRequest) GetFlags() string {
+	if x != nil {
+		return x.Flags
+	}
+	return ""
+}
+
+type LogGetLevelRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	DataEngine DataEngine `protobuf:"varint,1,opt,name=data_engine,json=dataEngine,proto3,enum=imrpc.DataEngine" json:"data_engine,omitempty"`
+}
+
+func (x *LogGetLevelRequest) Reset() {
+	*x = LogGetLevelRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_msgTypes[13]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *LogGetLevelRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LogGetLevelRequest) ProtoMessage() {}
+
+func (x *LogGetLevelRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_msgTypes[13]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LogGetLevelRequest.ProtoReflect.Descriptor instead.
+func (*LogGetLevelRequest) Descriptor() ([]byte, []int) {
+	return file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *LogGetLevelRequest) GetDataEngine() DataEngine {
+	if x != nil {
+		return x.DataEngine
+	}
+	return DataEngine_DATA_ENGINE_V1
+}
+
+type LogGetLevelResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Level string `protobuf:"bytes,1,opt,name=level,proto3" json:"level,omitempty"`
+}
+
+func (x *LogGetLevelResponse) Reset() {
+	*x = LogGetLevelResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_msgTypes[14]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *LogGetLevelResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LogGetLevelResponse) ProtoMessage() {}
+
+func (x *LogGetLevelResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_msgTypes[14]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LogGetLevelResponse.ProtoReflect.Descriptor instead.
+func (*LogGetLevelResponse) Descriptor() ([]byte, []int) {
+	return file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *LogGetLevelResponse) GetLevel() string {
+	if x != nil {
+		return x.Level
+	}
+	return ""
+}
+
+type LogGetFlagsRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	DataEngine DataEngine `protobuf:"varint,1,opt,name=data_engine,json=dataEngine,proto3,enum=imrpc.DataEngine" json:"data_engine,omitempty"`
+}
+
+func (x *LogGetFlagsRequest) Reset() {
+	*x = LogGetFlagsRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_msgTypes[15]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *LogGetFlagsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LogGetFlagsRequest) ProtoMessage() {}
+
+func (x *LogGetFlagsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_msgTypes[15]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LogGetFlagsRequest.ProtoReflect.Descriptor instead.
+func (*LogGetFlagsRequest) Descriptor() ([]byte, []int) {
+	return file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *LogGetFlagsRequest) GetDataEngine() DataEngine {
+	if x != nil {
+		return x.DataEngine
+	}
+	return DataEngine_DATA_ENGINE_V1
+}
+
+type LogGetFlagsResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Flags string `protobuf:"bytes,1,opt,name=flags,proto3" json:"flags,omitempty"`
+}
+
+func (x *LogGetFlagsResponse) Reset() {
+	*x = LogGetFlagsResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_msgTypes[16]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *LogGetFlagsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LogGetFlagsResponse) ProtoMessage() {}
+
+func (x *LogGetFlagsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_msgTypes[16]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LogGetFlagsResponse.ProtoReflect.Descriptor instead.
+func (*LogGetFlagsResponse) Descriptor() ([]byte, []int) {
+	return file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *LogGetFlagsResponse) GetFlags() string {
+	if x != nil {
+		return x.Flags
+	}
+	return ""
+}
+
 var File_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto protoreflect.FileDescriptor
 
 var file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_rawDesc = []byte{
@@ -973,47 +1271,91 @@ var file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_
 	0x6e, 0x63, 0x65, 0x53, 0x70, 0x65, 0x63, 0x52, 0x04, 0x73, 0x70, 0x65, 0x63, 0x12, 0x29, 0x0a,
 	0x10, 0x74, 0x65, 0x72, 0x6d, 0x69, 0x6e, 0x61, 0x74, 0x65, 0x5f, 0x73, 0x69, 0x67, 0x6e, 0x61,
 	0x6c, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0f, 0x74, 0x65, 0x72, 0x6d, 0x69, 0x6e, 0x61,
-	0x74, 0x65, 0x53, 0x69, 0x67, 0x6e, 0x61, 0x6c, 0x32, 0xb9, 0x04, 0x0a, 0x0f, 0x49, 0x6e, 0x73,
-	0x74, 0x61, 0x6e, 0x63, 0x65, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12, 0x49, 0x0a, 0x0e,
-	0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x12, 0x1c,
-	0x2e, 0x69, 0x6d, 0x72, 0x70, 0x63, 0x2e, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x43,
-	0x72, 0x65, 0x61, 0x74, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x17, 0x2e, 0x69,
-	0x6d, 0x72, 0x70, 0x63, 0x2e, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x52, 0x65, 0x73,
-	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x49, 0x0a, 0x0e, 0x49, 0x6e, 0x73, 0x74, 0x61,
-	0x6e, 0x63, 0x65, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x12, 0x1c, 0x2e, 0x69, 0x6d, 0x72, 0x70,
-	0x63, 0x2e, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65,
-	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x17, 0x2e, 0x69, 0x6d, 0x72, 0x70, 0x63, 0x2e,
-	0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
-	0x22, 0x00, 0x12, 0x43, 0x0a, 0x0b, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x47, 0x65,
-	0x74, 0x12, 0x19, 0x2e, 0x69, 0x6d, 0x72, 0x70, 0x63, 0x2e, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e,
-	0x63, 0x65, 0x47, 0x65, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x17, 0x2e, 0x69,
-	0x6d, 0x72, 0x70, 0x63, 0x2e, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x52, 0x65, 0x73,
-	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x45, 0x0a, 0x0c, 0x49, 0x6e, 0x73, 0x74, 0x61,
-	0x6e, 0x63, 0x65, 0x4c, 0x69, 0x73, 0x74, 0x12, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65,
-	0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x1a,
-	0x1b, 0x2e, 0x69, 0x6d, 0x72, 0x70, 0x63, 0x2e, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65,
-	0x4c, 0x69, 0x73, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x3a,
-	0x0a, 0x0b, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x4c, 0x6f, 0x67, 0x12, 0x19, 0x2e,
-	0x69, 0x6d, 0x72, 0x70, 0x63, 0x2e, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x4c, 0x6f,
-	0x67, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x0c, 0x2e, 0x4c, 0x6f, 0x67, 0x52, 0x65,
-	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x30, 0x01, 0x12, 0x43, 0x0a, 0x0d, 0x49, 0x6e,
-	0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x57, 0x61, 0x74, 0x63, 0x68, 0x12, 0x16, 0x2e, 0x67, 0x6f,
-	0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d,
-	0x70, 0x74, 0x79, 0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f,
-	0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x22, 0x00, 0x30, 0x01, 0x12,
-	0x4b, 0x0a, 0x0f, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x52, 0x65, 0x70, 0x6c, 0x61,
-	0x63, 0x65, 0x12, 0x1d, 0x2e, 0x69, 0x6d, 0x72, 0x70, 0x63, 0x2e, 0x49, 0x6e, 0x73, 0x74, 0x61,
-	0x6e, 0x63, 0x65, 0x52, 0x65, 0x70, 0x6c, 0x61, 0x63, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
-	0x74, 0x1a, 0x17, 0x2e, 0x69, 0x6d, 0x72, 0x70, 0x63, 0x2e, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e,
-	0x63, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x36, 0x0a, 0x0a,
-	0x56, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x47, 0x65, 0x74, 0x12, 0x16, 0x2e, 0x67, 0x6f, 0x6f,
-	0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70,
-	0x74, 0x79, 0x1a, 0x10, 0x2e, 0x56, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70,
-	0x6f, 0x6e, 0x73, 0x65, 0x42, 0x39, 0x5a, 0x37, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63,
-	0x6f, 0x6d, 0x2f, 0x6c, 0x6f, 0x6e, 0x67, 0x68, 0x6f, 0x72, 0x6e, 0x2f, 0x6c, 0x6f, 0x6e, 0x67,
-	0x68, 0x6f, 0x72, 0x6e, 0x2d, 0x69, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x2d, 0x6d, 0x61,
-	0x6e, 0x61, 0x67, 0x65, 0x72, 0x2f, 0x70, 0x6b, 0x67, 0x2f, 0x69, 0x6d, 0x72, 0x70, 0x63, 0x62,
-	0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x74, 0x65, 0x53, 0x69, 0x67, 0x6e, 0x61, 0x6c, 0x22, 0x5e, 0x0a, 0x12, 0x4c, 0x6f, 0x67, 0x53,
+	0x65, 0x74, 0x4c, 0x65, 0x76, 0x65, 0x6c, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x32,
+	0x0a, 0x0b, 0x64, 0x61, 0x74, 0x61, 0x5f, 0x65, 0x6e, 0x67, 0x69, 0x6e, 0x65, 0x18, 0x01, 0x20,
+	0x01, 0x28, 0x0e, 0x32, 0x11, 0x2e, 0x69, 0x6d, 0x72, 0x70, 0x63, 0x2e, 0x44, 0x61, 0x74, 0x61,
+	0x45, 0x6e, 0x67, 0x69, 0x6e, 0x65, 0x52, 0x0a, 0x64, 0x61, 0x74, 0x61, 0x45, 0x6e, 0x67, 0x69,
+	0x6e, 0x65, 0x12, 0x14, 0x0a, 0x05, 0x6c, 0x65, 0x76, 0x65, 0x6c, 0x18, 0x02, 0x20, 0x01, 0x28,
+	0x09, 0x52, 0x05, 0x6c, 0x65, 0x76, 0x65, 0x6c, 0x22, 0x5e, 0x0a, 0x12, 0x4c, 0x6f, 0x67, 0x53,
+	0x65, 0x74, 0x46, 0x6c, 0x61, 0x67, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x32,
+	0x0a, 0x0b, 0x64, 0x61, 0x74, 0x61, 0x5f, 0x65, 0x6e, 0x67, 0x69, 0x6e, 0x65, 0x18, 0x01, 0x20,
+	0x01, 0x28, 0x0e, 0x32, 0x11, 0x2e, 0x69, 0x6d, 0x72, 0x70, 0x63, 0x2e, 0x44, 0x61, 0x74, 0x61,
+	0x45, 0x6e, 0x67, 0x69, 0x6e, 0x65, 0x52, 0x0a, 0x64, 0x61, 0x74, 0x61, 0x45, 0x6e, 0x67, 0x69,
+	0x6e, 0x65, 0x12, 0x14, 0x0a, 0x05, 0x66, 0x6c, 0x61, 0x67, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28,
+	0x09, 0x52, 0x05, 0x66, 0x6c, 0x61, 0x67, 0x73, 0x22, 0x48, 0x0a, 0x12, 0x4c, 0x6f, 0x67, 0x47,
+	0x65, 0x74, 0x4c, 0x65, 0x76, 0x65, 0x6c, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x32,
+	0x0a, 0x0b, 0x64, 0x61, 0x74, 0x61, 0x5f, 0x65, 0x6e, 0x67, 0x69, 0x6e, 0x65, 0x18, 0x01, 0x20,
+	0x01, 0x28, 0x0e, 0x32, 0x11, 0x2e, 0x69, 0x6d, 0x72, 0x70, 0x63, 0x2e, 0x44, 0x61, 0x74, 0x61,
+	0x45, 0x6e, 0x67, 0x69, 0x6e, 0x65, 0x52, 0x0a, 0x64, 0x61, 0x74, 0x61, 0x45, 0x6e, 0x67, 0x69,
+	0x6e, 0x65, 0x22, 0x2b, 0x0a, 0x13, 0x4c, 0x6f, 0x67, 0x47, 0x65, 0x74, 0x4c, 0x65, 0x76, 0x65,
+	0x6c, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x14, 0x0a, 0x05, 0x6c, 0x65, 0x76,
+	0x65, 0x6c, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05, 0x6c, 0x65, 0x76, 0x65, 0x6c, 0x22,
+	0x48, 0x0a, 0x12, 0x4c, 0x6f, 0x67, 0x47, 0x65, 0x74, 0x46, 0x6c, 0x61, 0x67, 0x73, 0x52, 0x65,
+	0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x32, 0x0a, 0x0b, 0x64, 0x61, 0x74, 0x61, 0x5f, 0x65, 0x6e,
+	0x67, 0x69, 0x6e, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x11, 0x2e, 0x69, 0x6d, 0x72,
+	0x70, 0x63, 0x2e, 0x44, 0x61, 0x74, 0x61, 0x45, 0x6e, 0x67, 0x69, 0x6e, 0x65, 0x52, 0x0a, 0x64,
+	0x61, 0x74, 0x61, 0x45, 0x6e, 0x67, 0x69, 0x6e, 0x65, 0x22, 0x2b, 0x0a, 0x13, 0x4c, 0x6f, 0x67,
+	0x47, 0x65, 0x74, 0x46, 0x6c, 0x61, 0x67, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
+	0x12, 0x14, 0x0a, 0x05, 0x66, 0x6c, 0x61, 0x67, 0x73, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52,
+	0x05, 0x66, 0x6c, 0x61, 0x67, 0x73, 0x32, 0xc9, 0x06, 0x0a, 0x0f, 0x49, 0x6e, 0x73, 0x74, 0x61,
+	0x6e, 0x63, 0x65, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12, 0x49, 0x0a, 0x0e, 0x49, 0x6e,
+	0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x12, 0x1c, 0x2e, 0x69,
+	0x6d, 0x72, 0x70, 0x63, 0x2e, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x43, 0x72, 0x65,
+	0x61, 0x74, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x17, 0x2e, 0x69, 0x6d, 0x72,
+	0x70, 0x63, 0x2e, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f,
+	0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x49, 0x0a, 0x0e, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63,
+	0x65, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x12, 0x1c, 0x2e, 0x69, 0x6d, 0x72, 0x70, 0x63, 0x2e,
+	0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x52, 0x65,
+	0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x17, 0x2e, 0x69, 0x6d, 0x72, 0x70, 0x63, 0x2e, 0x49, 0x6e,
+	0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00,
+	0x12, 0x43, 0x0a, 0x0b, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x47, 0x65, 0x74, 0x12,
+	0x19, 0x2e, 0x69, 0x6d, 0x72, 0x70, 0x63, 0x2e, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65,
+	0x47, 0x65, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x17, 0x2e, 0x69, 0x6d, 0x72,
+	0x70, 0x63, 0x2e, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f,
+	0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x45, 0x0a, 0x0c, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63,
+	0x65, 0x4c, 0x69, 0x73, 0x74, 0x12, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70,
+	0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x1a, 0x1b, 0x2e,
+	0x69, 0x6d, 0x72, 0x70, 0x63, 0x2e, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x4c, 0x69,
+	0x73, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x3a, 0x0a, 0x0b,
+	0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x4c, 0x6f, 0x67, 0x12, 0x19, 0x2e, 0x69, 0x6d,
+	0x72, 0x70, 0x63, 0x2e, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x4c, 0x6f, 0x67, 0x52,
+	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x0c, 0x2e, 0x4c, 0x6f, 0x67, 0x52, 0x65, 0x73, 0x70,
+	0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x30, 0x01, 0x12, 0x43, 0x0a, 0x0d, 0x49, 0x6e, 0x73, 0x74,
+	0x61, 0x6e, 0x63, 0x65, 0x57, 0x61, 0x74, 0x63, 0x68, 0x12, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67,
+	0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74,
+	0x79, 0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f,
+	0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x22, 0x00, 0x30, 0x01, 0x12, 0x4b, 0x0a,
+	0x0f, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x52, 0x65, 0x70, 0x6c, 0x61, 0x63, 0x65,
+	0x12, 0x1d, 0x2e, 0x69, 0x6d, 0x72, 0x70, 0x63, 0x2e, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63,
+	0x65, 0x52, 0x65, 0x70, 0x6c, 0x61, 0x63, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a,
+	0x17, 0x2e, 0x69, 0x6d, 0x72, 0x70, 0x63, 0x2e, 0x49, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65,
+	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x40, 0x0a, 0x0b, 0x4c, 0x6f,
+	0x67, 0x53, 0x65, 0x74, 0x4c, 0x65, 0x76, 0x65, 0x6c, 0x12, 0x19, 0x2e, 0x69, 0x6d, 0x72, 0x70,
+	0x63, 0x2e, 0x4c, 0x6f, 0x67, 0x53, 0x65, 0x74, 0x4c, 0x65, 0x76, 0x65, 0x6c, 0x52, 0x65, 0x71,
+	0x75, 0x65, 0x73, 0x74, 0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72,
+	0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x12, 0x40, 0x0a, 0x0b,
+	0x4c, 0x6f, 0x67, 0x53, 0x65, 0x74, 0x46, 0x6c, 0x61, 0x67, 0x73, 0x12, 0x19, 0x2e, 0x69, 0x6d,
+	0x72, 0x70, 0x63, 0x2e, 0x4c, 0x6f, 0x67, 0x53, 0x65, 0x74, 0x46, 0x6c, 0x61, 0x67, 0x73, 0x52,
+	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e,
+	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x12, 0x44,
+	0x0a, 0x0b, 0x4c, 0x6f, 0x67, 0x47, 0x65, 0x74, 0x4c, 0x65, 0x76, 0x65, 0x6c, 0x12, 0x19, 0x2e,
+	0x69, 0x6d, 0x72, 0x70, 0x63, 0x2e, 0x4c, 0x6f, 0x67, 0x47, 0x65, 0x74, 0x4c, 0x65, 0x76, 0x65,
+	0x6c, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x1a, 0x2e, 0x69, 0x6d, 0x72, 0x70, 0x63,
+	0x2e, 0x4c, 0x6f, 0x67, 0x47, 0x65, 0x74, 0x4c, 0x65, 0x76, 0x65, 0x6c, 0x52, 0x65, 0x73, 0x70,
+	0x6f, 0x6e, 0x73, 0x65, 0x12, 0x44, 0x0a, 0x0b, 0x4c, 0x6f, 0x67, 0x47, 0x65, 0x74, 0x46, 0x6c,
+	0x61, 0x67, 0x73, 0x12, 0x19, 0x2e, 0x69, 0x6d, 0x72, 0x70, 0x63, 0x2e, 0x4c, 0x6f, 0x67, 0x47,
+	0x65, 0x74, 0x46, 0x6c, 0x61, 0x67, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x1a,
+	0x2e, 0x69, 0x6d, 0x72, 0x70, 0x63, 0x2e, 0x4c, 0x6f, 0x67, 0x47, 0x65, 0x74, 0x46, 0x6c, 0x61,
+	0x67, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x36, 0x0a, 0x0a, 0x56, 0x65,
+	0x72, 0x73, 0x69, 0x6f, 0x6e, 0x47, 0x65, 0x74, 0x12, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c,
+	0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79,
+	0x1a, 0x10, 0x2e, 0x56, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
+	0x73, 0x65, 0x42, 0x39, 0x5a, 0x37, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d,
+	0x2f, 0x6c, 0x6f, 0x6e, 0x67, 0x68, 0x6f, 0x72, 0x6e, 0x2f, 0x6c, 0x6f, 0x6e, 0x67, 0x68, 0x6f,
+	0x72, 0x6e, 0x2d, 0x69, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x63, 0x65, 0x2d, 0x6d, 0x61, 0x6e, 0x61,
+	0x67, 0x65, 0x72, 0x2f, 0x70, 0x6b, 0x67, 0x2f, 0x69, 0x6d, 0x72, 0x70, 0x63, 0x62, 0x06, 0x70,
+	0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -1028,7 +1370,7 @@ func file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto
 	return file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_rawDescData
 }
 
-var file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_goTypes = []interface{}{
 	(*ProcessInstanceSpec)(nil),    // 0: imrpc.ProcessInstanceSpec
 	(*SpdkInstanceSpec)(nil),       // 1: imrpc.SpdkInstanceSpec
@@ -1041,55 +1383,73 @@ var file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_
 	(*InstanceListResponse)(nil),   // 8: imrpc.InstanceListResponse
 	(*InstanceLogRequest)(nil),     // 9: imrpc.InstanceLogRequest
 	(*InstanceReplaceRequest)(nil), // 10: imrpc.InstanceReplaceRequest
-	nil,                            // 11: imrpc.SpdkInstanceSpec.ReplicaAddressMapEntry
-	nil,                            // 12: imrpc.InstanceStatus.ConditionsEntry
-	nil,                            // 13: imrpc.InstanceListResponse.InstancesEntry
-	(BackendStoreDriver)(0),        // 14: imrpc.BackendStoreDriver
-	(DataEngine)(0),                // 15: imrpc.DataEngine
-	(*emptypb.Empty)(nil),          // 16: google.protobuf.Empty
-	(*LogResponse)(nil),            // 17: LogResponse
-	(*VersionResponse)(nil),        // 18: VersionResponse
+	(*LogSetLevelRequest)(nil),     // 11: imrpc.LogSetLevelRequest
+	(*LogSetFlagsRequest)(nil),     // 12: imrpc.LogSetFlagsRequest
+	(*LogGetLevelRequest)(nil),     // 13: imrpc.LogGetLevelRequest
+	(*LogGetLevelResponse)(nil),    // 14: imrpc.LogGetLevelResponse
+	(*LogGetFlagsRequest)(nil),     // 15: imrpc.LogGetFlagsRequest
+	(*LogGetFlagsResponse)(nil),    // 16: imrpc.LogGetFlagsResponse
+	nil,                            // 17: imrpc.SpdkInstanceSpec.ReplicaAddressMapEntry
+	nil,                            // 18: imrpc.InstanceStatus.ConditionsEntry
+	nil,                            // 19: imrpc.InstanceListResponse.InstancesEntry
+	(BackendStoreDriver)(0),        // 20: imrpc.BackendStoreDriver
+	(DataEngine)(0),                // 21: imrpc.DataEngine
+	(*emptypb.Empty)(nil),          // 22: google.protobuf.Empty
+	(*LogResponse)(nil),            // 23: LogResponse
+	(*VersionResponse)(nil),        // 24: VersionResponse
 }
 var file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_depIdxs = []int32{
-	11, // 0: imrpc.SpdkInstanceSpec.replica_address_map:type_name -> imrpc.SpdkInstanceSpec.ReplicaAddressMapEntry
-	14, // 1: imrpc.InstanceSpec.backend_store_driver:type_name -> imrpc.BackendStoreDriver
+	17, // 0: imrpc.SpdkInstanceSpec.replica_address_map:type_name -> imrpc.SpdkInstanceSpec.ReplicaAddressMapEntry
+	20, // 1: imrpc.InstanceSpec.backend_store_driver:type_name -> imrpc.BackendStoreDriver
 	0,  // 2: imrpc.InstanceSpec.process_instance_spec:type_name -> imrpc.ProcessInstanceSpec
 	1,  // 3: imrpc.InstanceSpec.spdk_instance_spec:type_name -> imrpc.SpdkInstanceSpec
-	15, // 4: imrpc.InstanceSpec.data_engine:type_name -> imrpc.DataEngine
-	12, // 5: imrpc.InstanceStatus.conditions:type_name -> imrpc.InstanceStatus.ConditionsEntry
+	21, // 4: imrpc.InstanceSpec.data_engine:type_name -> imrpc.DataEngine
+	18, // 5: imrpc.InstanceStatus.conditions:type_name -> imrpc.InstanceStatus.ConditionsEntry
 	2,  // 6: imrpc.InstanceCreateRequest.spec:type_name -> imrpc.InstanceSpec
-	14, // 7: imrpc.InstanceDeleteRequest.backend_store_driver:type_name -> imrpc.BackendStoreDriver
-	15, // 8: imrpc.InstanceDeleteRequest.data_engine:type_name -> imrpc.DataEngine
-	14, // 9: imrpc.InstanceGetRequest.backend_store_driver:type_name -> imrpc.BackendStoreDriver
-	15, // 10: imrpc.InstanceGetRequest.data_engine:type_name -> imrpc.DataEngine
+	20, // 7: imrpc.InstanceDeleteRequest.backend_store_driver:type_name -> imrpc.BackendStoreDriver
+	21, // 8: imrpc.InstanceDeleteRequest.data_engine:type_name -> imrpc.DataEngine
+	20, // 9: imrpc.InstanceGetRequest.backend_store_driver:type_name -> imrpc.BackendStoreDriver
+	21, // 10: imrpc.InstanceGetRequest.data_engine:type_name -> imrpc.DataEngine
 	2,  // 11: imrpc.InstanceResponse.spec:type_name -> imrpc.InstanceSpec
 	3,  // 12: imrpc.InstanceResponse.status:type_name -> imrpc.InstanceStatus
-	13, // 13: imrpc.InstanceListResponse.instances:type_name -> imrpc.InstanceListResponse.InstancesEntry
-	14, // 14: imrpc.InstanceLogRequest.backend_store_driver:type_name -> imrpc.BackendStoreDriver
-	15, // 15: imrpc.InstanceLogRequest.data_engine:type_name -> imrpc.DataEngine
+	19, // 13: imrpc.InstanceListResponse.instances:type_name -> imrpc.InstanceListResponse.InstancesEntry
+	20, // 14: imrpc.InstanceLogRequest.backend_store_driver:type_name -> imrpc.BackendStoreDriver
+	21, // 15: imrpc.InstanceLogRequest.data_engine:type_name -> imrpc.DataEngine
 	2,  // 16: imrpc.InstanceReplaceRequest.spec:type_name -> imrpc.InstanceSpec
-	7,  // 17: imrpc.InstanceListResponse.InstancesEntry.value:type_name -> imrpc.InstanceResponse
-	4,  // 18: imrpc.InstanceService.InstanceCreate:input_type -> imrpc.InstanceCreateRequest
-	5,  // 19: imrpc.InstanceService.InstanceDelete:input_type -> imrpc.InstanceDeleteRequest
-	6,  // 20: imrpc.InstanceService.InstanceGet:input_type -> imrpc.InstanceGetRequest
-	16, // 21: imrpc.InstanceService.InstanceList:input_type -> google.protobuf.Empty
-	9,  // 22: imrpc.InstanceService.InstanceLog:input_type -> imrpc.InstanceLogRequest
-	16, // 23: imrpc.InstanceService.InstanceWatch:input_type -> google.protobuf.Empty
-	10, // 24: imrpc.InstanceService.InstanceReplace:input_type -> imrpc.InstanceReplaceRequest
-	16, // 25: imrpc.InstanceService.VersionGet:input_type -> google.protobuf.Empty
-	7,  // 26: imrpc.InstanceService.InstanceCreate:output_type -> imrpc.InstanceResponse
-	7,  // 27: imrpc.InstanceService.InstanceDelete:output_type -> imrpc.InstanceResponse
-	7,  // 28: imrpc.InstanceService.InstanceGet:output_type -> imrpc.InstanceResponse
-	8,  // 29: imrpc.InstanceService.InstanceList:output_type -> imrpc.InstanceListResponse
-	17, // 30: imrpc.InstanceService.InstanceLog:output_type -> LogResponse
-	16, // 31: imrpc.InstanceService.InstanceWatch:output_type -> google.protobuf.Empty
-	7,  // 32: imrpc.InstanceService.InstanceReplace:output_type -> imrpc.InstanceResponse
-	18, // 33: imrpc.InstanceService.VersionGet:output_type -> VersionResponse
-	26, // [26:34] is the sub-list for method output_type
-	18, // [18:26] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	21, // 17: imrpc.LogSetLevelRequest.data_engine:type_name -> imrpc.DataEngine
+	21, // 18: imrpc.LogSetFlagsRequest.data_engine:type_name -> imrpc.DataEngine
+	21, // 19: imrpc.LogGetLevelRequest.data_engine:type_name -> imrpc.DataEngine
+	21, // 20: imrpc.LogGetFlagsRequest.data_engine:type_name -> imrpc.DataEngine
+	7,  // 21: imrpc.InstanceListResponse.InstancesEntry.value:type_name -> imrpc.InstanceResponse
+	4,  // 22: imrpc.InstanceService.InstanceCreate:input_type -> imrpc.InstanceCreateRequest
+	5,  // 23: imrpc.InstanceService.InstanceDelete:input_type -> imrpc.InstanceDeleteRequest
+	6,  // 24: imrpc.InstanceService.InstanceGet:input_type -> imrpc.InstanceGetRequest
+	22, // 25: imrpc.InstanceService.InstanceList:input_type -> google.protobuf.Empty
+	9,  // 26: imrpc.InstanceService.InstanceLog:input_type -> imrpc.InstanceLogRequest
+	22, // 27: imrpc.InstanceService.InstanceWatch:input_type -> google.protobuf.Empty
+	10, // 28: imrpc.InstanceService.InstanceReplace:input_type -> imrpc.InstanceReplaceRequest
+	11, // 29: imrpc.InstanceService.LogSetLevel:input_type -> imrpc.LogSetLevelRequest
+	12, // 30: imrpc.InstanceService.LogSetFlags:input_type -> imrpc.LogSetFlagsRequest
+	13, // 31: imrpc.InstanceService.LogGetLevel:input_type -> imrpc.LogGetLevelRequest
+	15, // 32: imrpc.InstanceService.LogGetFlags:input_type -> imrpc.LogGetFlagsRequest
+	22, // 33: imrpc.InstanceService.VersionGet:input_type -> google.protobuf.Empty
+	7,  // 34: imrpc.InstanceService.InstanceCreate:output_type -> imrpc.InstanceResponse
+	7,  // 35: imrpc.InstanceService.InstanceDelete:output_type -> imrpc.InstanceResponse
+	7,  // 36: imrpc.InstanceService.InstanceGet:output_type -> imrpc.InstanceResponse
+	8,  // 37: imrpc.InstanceService.InstanceList:output_type -> imrpc.InstanceListResponse
+	23, // 38: imrpc.InstanceService.InstanceLog:output_type -> LogResponse
+	22, // 39: imrpc.InstanceService.InstanceWatch:output_type -> google.protobuf.Empty
+	7,  // 40: imrpc.InstanceService.InstanceReplace:output_type -> imrpc.InstanceResponse
+	22, // 41: imrpc.InstanceService.LogSetLevel:output_type -> google.protobuf.Empty
+	22, // 42: imrpc.InstanceService.LogSetFlags:output_type -> google.protobuf.Empty
+	14, // 43: imrpc.InstanceService.LogGetLevel:output_type -> imrpc.LogGetLevelResponse
+	16, // 44: imrpc.InstanceService.LogGetFlags:output_type -> imrpc.LogGetFlagsResponse
+	24, // 45: imrpc.InstanceService.VersionGet:output_type -> VersionResponse
+	34, // [34:46] is the sub-list for method output_type
+	22, // [22:34] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_init() }
@@ -1232,6 +1592,78 @@ func file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto
 				return nil
 			}
 		}
+		file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_msgTypes[11].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*LogSetLevelRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_msgTypes[12].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*LogSetFlagsRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_msgTypes[13].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*LogGetLevelRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_msgTypes[14].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*LogGetLevelResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_msgTypes[15].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*LogGetFlagsRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_msgTypes[16].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*LogGetFlagsResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1239,7 +1671,7 @@ func file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_github_com_longhorn_longhorn_instance_manager_pkg_imrpc_instance_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   14,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
@@ -1272,6 +1704,10 @@ type InstanceServiceClient interface {
 	InstanceLog(ctx context.Context, in *InstanceLogRequest, opts ...grpc.CallOption) (InstanceService_InstanceLogClient, error)
 	InstanceWatch(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (InstanceService_InstanceWatchClient, error)
 	InstanceReplace(ctx context.Context, in *InstanceReplaceRequest, opts ...grpc.CallOption) (*InstanceResponse, error)
+	LogSetLevel(ctx context.Context, in *LogSetLevelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	LogSetFlags(ctx context.Context, in *LogSetFlagsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	LogGetLevel(ctx context.Context, in *LogGetLevelRequest, opts ...grpc.CallOption) (*LogGetLevelResponse, error)
+	LogGetFlags(ctx context.Context, in *LogGetFlagsRequest, opts ...grpc.CallOption) (*LogGetFlagsResponse, error)
 	VersionGet(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*VersionResponse, error)
 }
 
@@ -1392,6 +1828,42 @@ func (c *instanceServiceClient) InstanceReplace(ctx context.Context, in *Instanc
 	return out, nil
 }
 
+func (c *instanceServiceClient) LogSetLevel(ctx context.Context, in *LogSetLevelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, "/imrpc.InstanceService/LogSetLevel", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *instanceServiceClient) LogSetFlags(ctx context.Context, in *LogSetFlagsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, "/imrpc.InstanceService/LogSetFlags", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *instanceServiceClient) LogGetLevel(ctx context.Context, in *LogGetLevelRequest, opts ...grpc.CallOption) (*LogGetLevelResponse, error) {
+	out := new(LogGetLevelResponse)
+	err := c.cc.Invoke(ctx, "/imrpc.InstanceService/LogGetLevel", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *instanceServiceClient) LogGetFlags(ctx context.Context, in *LogGetFlagsRequest, opts ...grpc.CallOption) (*LogGetFlagsResponse, error) {
+	out := new(LogGetFlagsResponse)
+	err := c.cc.Invoke(ctx, "/imrpc.InstanceService/LogGetFlags", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *instanceServiceClient) VersionGet(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*VersionResponse, error) {
 	out := new(VersionResponse)
 	err := c.cc.Invoke(ctx, "/imrpc.InstanceService/VersionGet", in, out, opts...)
@@ -1410,6 +1882,10 @@ type InstanceServiceServer interface {
 	InstanceLog(*InstanceLogRequest, InstanceService_InstanceLogServer) error
 	InstanceWatch(*emptypb.Empty, InstanceService_InstanceWatchServer) error
 	InstanceReplace(context.Context, *InstanceReplaceRequest) (*InstanceResponse, error)
+	LogSetLevel(context.Context, *LogSetLevelRequest) (*emptypb.Empty, error)
+	LogSetFlags(context.Context, *LogSetFlagsRequest) (*emptypb.Empty, error)
+	LogGetLevel(context.Context, *LogGetLevelRequest) (*LogGetLevelResponse, error)
+	LogGetFlags(context.Context, *LogGetFlagsRequest) (*LogGetFlagsResponse, error)
 	VersionGet(context.Context, *emptypb.Empty) (*VersionResponse, error)
 }
 
@@ -1437,6 +1913,18 @@ func (*UnimplementedInstanceServiceServer) InstanceWatch(*emptypb.Empty, Instanc
 }
 func (*UnimplementedInstanceServiceServer) InstanceReplace(context.Context, *InstanceReplaceRequest) (*InstanceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method InstanceReplace not implemented")
+}
+func (*UnimplementedInstanceServiceServer) LogSetLevel(context.Context, *LogSetLevelRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method LogSetLevel not implemented")
+}
+func (*UnimplementedInstanceServiceServer) LogSetFlags(context.Context, *LogSetFlagsRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method LogSetFlags not implemented")
+}
+func (*UnimplementedInstanceServiceServer) LogGetLevel(context.Context, *LogGetLevelRequest) (*LogGetLevelResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method LogGetLevel not implemented")
+}
+func (*UnimplementedInstanceServiceServer) LogGetFlags(context.Context, *LogGetFlagsRequest) (*LogGetFlagsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method LogGetFlags not implemented")
 }
 func (*UnimplementedInstanceServiceServer) VersionGet(context.Context, *emptypb.Empty) (*VersionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method VersionGet not implemented")
@@ -1578,6 +2066,78 @@ func _InstanceService_InstanceReplace_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _InstanceService_LogSetLevel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LogSetLevelRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InstanceServiceServer).LogSetLevel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/imrpc.InstanceService/LogSetLevel",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InstanceServiceServer).LogSetLevel(ctx, req.(*LogSetLevelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _InstanceService_LogSetFlags_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LogSetFlagsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InstanceServiceServer).LogSetFlags(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/imrpc.InstanceService/LogSetFlags",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InstanceServiceServer).LogSetFlags(ctx, req.(*LogSetFlagsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _InstanceService_LogGetLevel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LogGetLevelRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InstanceServiceServer).LogGetLevel(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/imrpc.InstanceService/LogGetLevel",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InstanceServiceServer).LogGetLevel(ctx, req.(*LogGetLevelRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _InstanceService_LogGetFlags_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LogGetFlagsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InstanceServiceServer).LogGetFlags(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/imrpc.InstanceService/LogGetFlags",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InstanceServiceServer).LogGetFlags(ctx, req.(*LogGetFlagsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _InstanceService_VersionGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
@@ -1619,6 +2179,22 @@ var _InstanceService_serviceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "InstanceReplace",
 			Handler:    _InstanceService_InstanceReplace_Handler,
+		},
+		{
+			MethodName: "LogSetLevel",
+			Handler:    _InstanceService_LogSetLevel_Handler,
+		},
+		{
+			MethodName: "LogSetFlags",
+			Handler:    _InstanceService_LogSetFlags_Handler,
+		},
+		{
+			MethodName: "LogGetLevel",
+			Handler:    _InstanceService_LogGetLevel_Handler,
+		},
+		{
+			MethodName: "LogGetFlags",
+			Handler:    _InstanceService_LogGetFlags_Handler,
 		},
 		{
 			MethodName: "VersionGet",

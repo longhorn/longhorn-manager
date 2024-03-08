@@ -15,9 +15,9 @@ import (
 	immeta "github.com/longhorn/longhorn-instance-manager/pkg/meta"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
-	"github.com/longhorn/longhorn-manager/datastore"
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 const (
@@ -523,7 +523,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 
 	binary := ""
 	args := []string{}
-	if datastore.IsDataEngineV1(req.Replica.Spec.DataEngine) {
+	if types.IsDataEngineV1(req.Replica.Spec.DataEngine) {
 		binary, args = getBinaryAndArgsForReplicaProcessCreation(req.Replica, req.DataPath, req.BackingImagePath, req.DataLocality, DefaultReplicaPortCountV1, req.EngineCLIAPIVersion)
 	}
 
@@ -537,7 +537,7 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 	}
 
 	portCount := DefaultReplicaPortCountV1
-	if datastore.IsDataEngineV2(req.Replica.Spec.DataEngine) {
+	if types.IsDataEngineV2(req.Replica.Spec.DataEngine) {
 		portCount = DefaultReplicaPortCountV2
 	}
 
@@ -783,4 +783,28 @@ func (c *InstanceManagerClient) VersionGet() (int, int, int, int, error) {
 	}
 	return output.InstanceManagerAPIMinVersion, output.InstanceManagerAPIVersion,
 		output.InstanceManagerProxyAPIMinVersion, output.InstanceManagerProxyAPIVersion, nil
+}
+
+func (c *InstanceManagerClient) LogSetLevel(dataEngine longhorn.DataEngineType, component, level string) error {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
+		return err
+	}
+
+	if c.GetAPIVersion() < 6 {
+		return nil
+	}
+
+	return c.instanceServiceGrpcClient.LogSetLevel(string(dataEngine), component, level)
+}
+
+func (c *InstanceManagerClient) LogSetFlags(dataEngine longhorn.DataEngineType, component, flags string) error {
+	if err := CheckInstanceManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
+		return err
+	}
+
+	if c.GetAPIVersion() < 6 {
+		return nil
+	}
+
+	return c.instanceServiceGrpcClient.LogSetFlags(string(dataEngine), component, flags)
 }

@@ -738,6 +738,30 @@ func ValidateLogLevel(level string) error {
 	return nil
 }
 
+func ValidateV2DataEngineLogLevel(level string) error {
+	switch strings.ToLower(level) {
+	case "disabled", "error", "warn", "notice", "info", "debug":
+		return nil
+	default:
+		return fmt.Errorf("log level %s is invalid", level)
+	}
+}
+
+func ValidateV2DataEngineLogFlags(flags string) error {
+	if flags == "" {
+		return nil
+	}
+
+	pattern := "^[a-zA-Z,]+$"
+	reg := regexp.MustCompile(pattern)
+
+	if !reg.MatchString(flags) {
+		return fmt.Errorf("log flags %s is invalid", flags)
+	}
+
+	return nil
+}
+
 func ValidateDataLocalityAndReplicaCount(mode longhorn.DataLocality, count int) error {
 	if mode == longhorn.DataLocalityStrictLocal && count != 1 {
 		return fmt.Errorf("replica count should be 1 in data locality %v mode", longhorn.DataLocalityStrictLocal)
@@ -810,8 +834,16 @@ func ValidateBackupCompressionMethod(method string) error {
 	return nil
 }
 
-func ValidateUnmapMarkSnapChainRemoved(unmapValue longhorn.UnmapMarkSnapChainRemoved) error {
-	if unmapValue != longhorn.UnmapMarkSnapChainRemovedIgnored && unmapValue != longhorn.UnmapMarkSnapChainRemovedEnabled && unmapValue != longhorn.UnmapMarkSnapChainRemovedDisabled {
+func ValidateUnmapMarkSnapChainRemoved(dataEngine longhorn.DataEngineType, unmapValue longhorn.UnmapMarkSnapChainRemoved) error {
+	if IsDataEngineV2(dataEngine) {
+		if unmapValue != longhorn.UnmapMarkSnapChainRemovedDisabled {
+			return fmt.Errorf("invalid UnmapMarkSnapChainRemoved setting: %v", unmapValue)
+		}
+	}
+
+	if unmapValue != longhorn.UnmapMarkSnapChainRemovedIgnored &&
+		unmapValue != longhorn.UnmapMarkSnapChainRemovedEnabled &&
+		unmapValue != longhorn.UnmapMarkSnapChainRemovedDisabled {
 		return fmt.Errorf("invalid UnmapMarkSnapChainRemoved setting: %v", unmapValue)
 	}
 	return nil
@@ -959,7 +991,28 @@ func UnmarshalToNodeTags(s string) ([]string, error) {
 	return res, nil
 }
 
+func isBDF(addr string) bool {
+	bdfFormat := "[a-f0-9]{4}:[a-f0-9]{2}:[a-f0-9]{2}\\.[a-f0-9]{1}"
+	bdfPattern := regexp.MustCompile(bdfFormat)
+	return bdfPattern.MatchString(addr)
+}
+
 func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[string]longhorn.DiskSpec, error) {
+	if isBDF(dataPath) {
+		logrus.Infof("Given disk path %v is a BDF format", dataPath)
+		return map[string]longhorn.DiskSpec{
+			DefaultDiskPrefix + util.RandomID(): {
+				Type:              longhorn.DiskTypeBlock,
+				Path:              dataPath,
+				DiskDriver:        longhorn.DiskDriverAuto,
+				AllowScheduling:   true,
+				EvictionRequested: false,
+				StorageReserved:   0,
+				Tags:              []string{},
+			},
+		}, nil
+	}
+
 	fileInfo, err := os.Stat(dataPath)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -978,6 +1031,7 @@ func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[st
 			DefaultDiskPrefix + util.RandomID(): {
 				Type:              longhorn.DiskTypeBlock,
 				Path:              dataPath,
+				DiskDriver:        longhorn.DiskDriverNone,
 				AllowScheduling:   true,
 				EvictionRequested: false,
 				StorageReserved:   0,
@@ -1000,6 +1054,7 @@ func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[st
 		DefaultDiskPrefix + diskStat.DiskID: {
 			Type:              longhorn.DiskTypeFilesystem,
 			Path:              diskStat.Path,
+			DiskDriver:        longhorn.DiskDriverNone,
 			AllowScheduling:   true,
 			EvictionRequested: false,
 			StorageReserved:   diskStat.StorageMaximum * storageReservedPercentage / 100,
@@ -1134,4 +1189,14 @@ func GetPDBNameFromIMName(imName string) string {
 
 func GetIMNameFromPDBName(pdbName string) string {
 	return pdbName
+}
+
+// IsDataEngineV1 returns true if the given dataEngine is v1
+func IsDataEngineV1(dataEngine longhorn.DataEngineType) bool {
+	return dataEngine != longhorn.DataEngineTypeV2
+}
+
+// IsDataEngineV2 returns true if the given dataEngine is v2
+func IsDataEngineV2(dataEngine longhorn.DataEngineType) bool {
+	return dataEngine == longhorn.DataEngineTypeV2
 }

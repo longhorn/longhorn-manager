@@ -175,7 +175,7 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 	}
 
 	if unmapMarkSnapChainRemoved, ok := volOptions["unmapMarkSnapChainRemoved"]; ok {
-		if err := types.ValidateUnmapMarkSnapChainRemoved(longhorn.UnmapMarkSnapChainRemoved(unmapMarkSnapChainRemoved)); err != nil {
+		if err := types.ValidateUnmapMarkSnapChainRemoved(longhorn.DataEngineType(vol.DataEngine), longhorn.UnmapMarkSnapChainRemoved(unmapMarkSnapChainRemoved)); err != nil {
 			return nil, errors.Wrap(err, "invalid parameter unmapMarkSnapChainRemoved")
 		}
 		vol.UnmapMarkSnapChainRemoved = unmapMarkSnapChainRemoved
