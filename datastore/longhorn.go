@@ -3049,6 +3049,7 @@ func (s *DataStore) ResetMonitoringEngineStatus(e *longhorn.Engine) (*longhorn.E
 	e.Status.Endpoint = ""
 	e.Status.LastRestoredBackup = ""
 	e.Status.ReplicaModeMap = nil
+	e.Status.ReplicaTransitionTimeMap = nil
 	e.Status.RestoreStatus = nil
 	e.Status.PurgeStatus = nil
 	e.Status.RebuildStatus = nil
