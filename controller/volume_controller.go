@@ -695,7 +695,18 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 				r.Spec.RebuildRetryCount = 0
 			}
 			// Set LastHealthyAt to record the last time this replica became RW in an engine.
-			r.Spec.LastHealthyAt = now
+			if transitionTime, ok := e.Status.ReplicaTransitionTimeMap[rName]; !ok {
+				log.Errorf("BUG: Replica %v is in mode %v but transition time was not recorded", r.Name, mode)
+				r.Spec.LastHealthyAt = now
+			} else {
+				after, err := util.TimestampAfterTimestamp(transitionTime, r.Spec.LastHealthyAt)
+				if err != nil {
+					log.Errorf("Failed to check if replica %v transitioned to mode %v after it was last healthy", r.Name, mode)
+				}
+				if after || err != nil {
+					r.Spec.LastHealthyAt = now
+				}
+			}
 			healthyCount++
 		}
 	}
