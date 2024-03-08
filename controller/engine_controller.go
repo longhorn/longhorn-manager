@@ -348,6 +348,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		if engine.Status.CurrentState != longhorn.InstanceStateRunning {
 			engine.Status.Endpoint = ""
 			engine.Status.ReplicaModeMap = nil
+			engine.Status.ReplicaTransitionTimeMap = nil
 		}
 		return nil
 	}
@@ -875,6 +876,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 
 	currentReplicaModeMap := map[string]longhorn.ReplicaMode{}
+	currentReplicaTransitionTimeMap := map[string]string{}
 	for url, r := range replicaURLModeMap {
 		addr := engineapi.GetAddressFromBackendReplicaURL(url)
 		replica, exists := addressReplicaMap[addr]
@@ -897,17 +899,29 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 				switch r.Mode {
 				case longhorn.ReplicaModeERR:
 					m.eventRecorder.Eventf(engine, corev1.EventTypeWarning, constant.EventReasonFaulted, "Detected replica %v (%v) in error", replica, addr)
+					currentReplicaTransitionTimeMap[replica] = util.Now()
 				case longhorn.ReplicaModeWO:
 					m.eventRecorder.Eventf(engine, corev1.EventTypeNormal, constant.EventReasonRebuilding, "Detected rebuilding replica %v (%v)", replica, addr)
+					currentReplicaTransitionTimeMap[replica] = util.Now()
 				case longhorn.ReplicaModeRW:
 					m.eventRecorder.Eventf(engine, corev1.EventTypeNormal, constant.EventReasonRebuilt, "Detected replica %v (%v) has been rebuilt", replica, addr)
+					currentReplicaTransitionTimeMap[replica] = util.Now()
 				default:
 					m.logger.Errorf("Invalid engine replica mode %v", r.Mode)
+				}
+			} else {
+				oldTime, ok := engine.Status.ReplicaTransitionTimeMap[replica]
+				if !ok {
+					m.logger.Errorf("BUG: Replica %v (%v) was previously in mode %v but transition time was not recorded", replica, addr, engine.Status.ReplicaModeMap[replica])
+					currentReplicaTransitionTimeMap[replica] = util.Now()
+				} else {
+					currentReplicaTransitionTimeMap[replica] = oldTime
 				}
 			}
 		}
 	}
 	engine.Status.ReplicaModeMap = currentReplicaModeMap
+	engine.Status.ReplicaTransitionTimeMap = currentReplicaTransitionTimeMap
 
 	snapshots, err := engineClientProxy.SnapshotList(engine)
 	if err != nil {
@@ -2017,6 +2031,7 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err 
 	e.Status.CurrentReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap
 	// reset ReplicaModeMap to reflect the new replicas
 	e.Status.ReplicaModeMap = nil
+	e.Status.ReplicaTransitionTimeMap = nil
 	e.Status.RestoreStatus = nil
 	e.Status.RebuildStatus = nil
 	return nil
