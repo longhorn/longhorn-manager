@@ -3,10 +3,9 @@ package api
 import (
 	"context"
 
+	rpc "github.com/longhorn/types/pkg/bimrpc"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
-
-	"github.com/longhorn/backing-image-manager/pkg/rpc"
 )
 
 type BackingImage struct {
