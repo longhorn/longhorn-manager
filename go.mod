@@ -45,8 +45,8 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.6.0
 	github.com/longhorn/backupstore v0.0.0-20240219094812-3a87ee02df77
-	github.com/longhorn/go-common-libs v0.0.0-20240305104227-2dc630b0df92
-	github.com/longhorn/go-iscsi-helper v0.0.0-20240220070055-d137da5111d9
+	github.com/longhorn/go-common-libs v0.0.0-20240307063052-6e77996eda29
+	github.com/longhorn/go-iscsi-helper v0.0.0-20240308033847-bc3aab599425
 	github.com/longhorn/go-spdk-helper v0.0.0-20240219034107-a6d23f96da54
 	github.com/longhorn/longhorn-engine v1.6.0
 	github.com/longhorn/longhorn-instance-manager v1.6.1-0.20240219091348-48aa52a5fbd9
@@ -64,7 +64,7 @@ require (
 	golang.org/x/net v0.20.0
 	golang.org/x/sys v0.18.0
 	golang.org/x/time v0.3.0
-	google.golang.org/grpc v1.62.0
+	google.golang.org/grpc v1.62.1
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.28.6
@@ -74,7 +74,7 @@ require (
 	k8s.io/client-go v0.28.6
 	k8s.io/kubernetes v1.28.5
 	k8s.io/metrics v0.28.5
-	k8s.io/mount-utils v0.28.5
+	k8s.io/mount-utils v0.29.2
 	k8s.io/utils v0.0.0-20240102154912-e7106e64919e
 	sigs.k8s.io/controller-runtime v0.10.1
 )
@@ -124,7 +124,7 @@ require (
 	github.com/gammazero/deque v0.2.1 // indirect
 	github.com/gammazero/workerpool v1.1.3 // indirect
 	github.com/go-co-op/gocron v1.18.0
-	github.com/go-logr/logr v1.2.4 // indirect
+	github.com/go-logr/logr v1.3.0 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/jsonpointer v0.19.6 // indirect
 	github.com/go-openapi/jsonreference v0.20.2 // indirect
@@ -193,7 +193,7 @@ require (
 	golang.org/x/text v0.14.0
 	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/genproto v0.0.0-20240123012728-ef4313101c80 // indirect
-	google.golang.org/protobuf v1.32.0
+	google.golang.org/protobuf v1.33.0
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	k8s.io/apiserver v0.28.5 // indirect
@@ -202,7 +202,7 @@ require (
 	k8s.io/component-helpers v0.28.5 // indirect
 	k8s.io/controller-manager v0.28.5 // indirect
 	k8s.io/klog v1.0.0 // indirect
-	k8s.io/klog/v2 v2.100.1 // indirect
+	k8s.io/klog/v2 v2.110.1 // indirect
 	k8s.io/kms v0.28.5 // indirect
 	k8s.io/kube-aggregator v0.25.4 // indirect
 	k8s.io/kube-openapi v0.0.0-20230717233707-2695361300d9 // indirect
