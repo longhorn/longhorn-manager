@@ -162,12 +162,22 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("POST").Path("/v1/backingimages").Handler(f(schemas, s.BackingImageCreate))
 	r.Methods("DELETE").Path("/v1/backingimages/{name}").Handler(f(schemas, s.BackingImageDelete))
 	backingImageActions := map[string]func(http.ResponseWriter, *http.Request) error{
-		"backingImageCleanup": s.BackingImageCleanup,
-
-		BackingImageUpload: s.fwd.Handler(s.fwd.HandleProxyRequestForBackingImageUpload, UploadParametersForBackingImage(s.m), s.BackingImageGet),
+		"backingImageCleanup":      s.BackingImageCleanup,
+		BackingImageUpload:         s.fwd.Handler(s.fwd.HandleProxyRequestForBackingImageUpload, UploadParametersForBackingImage(s.m), s.BackingImageGet),
+		"backupBackingImageCreate": s.BackupBackingImageCreate,
 	}
 	for name, action := range backingImageActions {
 		r.Methods("POST").Path("/v1/backingimages/{name}").Queries("action", name).Handler(f(schemas, action))
+	}
+
+	r.Methods("GET").Path("/v1/backupbackingimages").Handler(f(schemas, s.BackupBackingImageList))
+	r.Methods("GET").Path("/v1/backupbackingimages/{name}").Handler(f(schemas, s.BackupBackingImageGet))
+	r.Methods("DELETE").Path("/v1/backupbackingimages/{name}").Handler(f(schemas, s.BackupBackingImageDelete))
+	backupBackingImageActions := map[string]func(http.ResponseWriter, *http.Request) error{
+		"backupBackingImageRestore": s.BackupBackingImageRestore,
+	}
+	for name, action := range backupBackingImageActions {
+		r.Methods("POST").Path("/v1/backupbackingimages/{name}").Queries("action", name).Handler(f(schemas, action))
 	}
 
 	r.Methods("GET").Path("/v1/recurringjobs").Handler(f(schemas, s.RecurringJobList))

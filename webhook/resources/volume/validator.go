@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -339,8 +340,9 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.snapshotMaxSize")
 	}
 
-	if (oldVolume.Spec.SnapshotMaxCount != newVolume.Spec.SnapshotMaxCount) || (oldVolume.Spec.SnapshotMaxSize != newVolume.Spec.SnapshotMaxSize) {
-		if err := v.validateUpdatingSnapshotMaxCountAndSize(newVolume); err != nil {
+	if (oldVolume.Spec.SnapshotMaxCount != newVolume.Spec.SnapshotMaxCount) ||
+		(oldVolume.Spec.SnapshotMaxSize != newVolume.Spec.SnapshotMaxSize) {
+		if err := v.validateUpdatingSnapshotMaxCountAndSize(oldVolume, newVolume); err != nil {
 			return err
 		}
 	}
@@ -496,7 +498,7 @@ func validateSnapshotMaxSize(size, snapshotMaxSize int64) error {
 	return nil
 }
 
-func (v *volumeValidator) validateUpdatingSnapshotMaxCountAndSize(newVolume *longhorn.Volume) error {
+func (v *volumeValidator) validateUpdatingSnapshotMaxCountAndSize(oldVolume, newVolume *longhorn.Volume) error {
 	var (
 		currentSnapshotCount     int
 		currentTotalSnapshotSize int64
@@ -505,10 +507,22 @@ func (v *volumeValidator) validateUpdatingSnapshotMaxCountAndSize(newVolume *lon
 	engines, err := v.ds.ListVolumeEngines(newVolume.Name)
 	if err != nil && !datastore.ErrorIsNotFound(err) {
 		return werror.NewInternalError(fmt.Sprintf("can't list engines for volume %s, err %v", newVolume.Name, err))
-	} else if len(engines) >= 2 {
-		return werror.NewInvalidError("can't update snapshotMaxCount or snapshotMaxSize during migration", "")
 	} else if len(engines) == 0 {
 		return nil
+	}
+
+	// It is dangerous to update snapshotMaxCount and snapshotMaxSize while  migrating. However, when upgrading to a
+	// Longhorn version that includes these fields from one that does not, we automatically set snapshotMaxCount = 250,
+	// and we do not want a validation failure here to stop the upgrade. We accept the change, but do not propagate it
+	// to engines or replicas until the migration is complete.
+	if len(engines) >= 2 {
+		if oldVolume.Spec.SnapshotMaxCount == 0 &&
+			newVolume.Spec.SnapshotMaxCount == types.MaxSnapshotNum &&
+			oldVolume.Spec.SnapshotMaxSize == newVolume.Spec.SnapshotMaxSize {
+			logrus.WithField("volumeName", newVolume.Name).Debugf("Allowing snapshotMaxCount of a migrating volume to change from 0 to %v during upgrade", types.MaxSnapshotNum)
+		} else {
+			return werror.NewInvalidError("can't update snapshotMaxCount or snapshotMaxSize during migration", "")
+		}
 	}
 
 	for _, e := range engines {

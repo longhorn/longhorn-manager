@@ -931,7 +931,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.State = longhorn.VolumeStateDetached
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.Image
 	tc.expectVolume.Status.CurrentNodeID = ""
-	tc.expectVolume.Status.PendingNodeID = ""
 	tc.expectVolume.Status.Robustness = longhorn.VolumeRobustnessUnknown
 	tc.expectVolume.Status.RemountRequestedAt = getTestNow()
 
@@ -961,7 +960,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc = generateVolumeTestCaseTemplate()
 	tc.volume.Spec.NodeID = ""
 	tc.volume.Status.CurrentNodeID = ""
-	tc.volume.Status.PendingNodeID = TestNode1
 	tc.volume.Status.State = longhorn.VolumeStateDetaching
 	for _, e := range tc.engines {
 		e.Spec.NodeID = ""

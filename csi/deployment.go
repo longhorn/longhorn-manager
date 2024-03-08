@@ -24,7 +24,7 @@ const (
 	DefaultCSIResizerImage             = "longhornio/csi-resizer:v1.9.2"
 	DefaultCSISnapshotterImage         = "longhornio/csi-snapshotter:v6.3.2"
 	DefaultCSINodeDriverRegistrarImage = "longhornio/csi-node-driver-registrar:v2.9.2"
-	DefaultCSILivenessProbeImage       = "longhornio/livenessprobe:v2.11.0"
+	DefaultCSILivenessProbeImage       = "longhornio/livenessprobe:v2.12.0"
 
 	DefaultCSIAttacherReplicaCount    = 3
 	DefaultCSIProvisionerReplicaCount = 3
@@ -343,21 +343,6 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 									ContainerPort: DefaultCSILivenessProbePort,
 									Protocol:      corev1.ProtocolTCP,
 								},
-							},
-							StartupProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{
-										Path: "/healthz",
-										Port: intstr.FromInt(DefaultCSILivenessProbePort),
-									},
-								},
-								InitialDelaySeconds: datastore.PodProbeInitialDelay,
-								TimeoutSeconds:      datastore.PodProbeTimeoutSeconds,
-								PeriodSeconds:       datastore.PodProbePeriodSeconds,
-								// Ensure we are allowed at least the maximum container restart backoff time (five
-								// minutes) in case the livenessprobe container is in CrashLoopBackoff. See
-								// https://github.com/longhorn/longhorn/issues/7116.
-								FailureThreshold: (300 + datastore.PodProbePeriodSeconds - 1) / datastore.PodProbePeriodSeconds,
 							},
 							LivenessProbe: &corev1.Probe{
 								ProbeHandler: corev1.ProbeHandler{

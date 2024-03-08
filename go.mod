@@ -37,45 +37,46 @@ replace (
 require (
 	github.com/container-storage-interface/spec v1.8.0
 	github.com/docker/go-connections v0.4.0
-	github.com/google/uuid v1.5.0
-	github.com/gorilla/handlers v1.5.1
-	github.com/gorilla/mux v1.8.0
-	github.com/gorilla/websocket v1.5.0
+	github.com/go-co-op/gocron v1.37.0
+	github.com/google/uuid v1.6.0
+	github.com/gorilla/handlers v1.5.2
+	github.com/gorilla/mux v1.8.1
+	github.com/gorilla/websocket v1.5.1
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
-	github.com/longhorn/backing-image-manager v1.6.0-dev-20231217.0.20240103150452-7f8aea1edd03
-	github.com/longhorn/backupstore v0.0.0-20240110081942-bd231cfb0c7b
-	github.com/longhorn/go-common-libs v0.0.0-20240109042507-23627e6416b7
-	github.com/longhorn/go-iscsi-helper v0.0.0-20240103085736-72aee873888a
-	github.com/longhorn/go-spdk-helper v0.0.0-20240117135122-26f8acb2a13d
-	github.com/longhorn/longhorn-engine v1.6.0-dev-20240105.0.20240110095344-deb8b18a1558
-	github.com/longhorn/longhorn-instance-manager v1.6.0-dev-20240105.0.20240126085307-467528c95307
-	github.com/longhorn/longhorn-share-manager v1.6.0-dev-20231217.0.20231226052309-99d57c1695ea
+	github.com/longhorn/backing-image-manager v1.6.0
+	github.com/longhorn/backupstore v0.0.0-20240207150630-b375644f1c57
+	github.com/longhorn/go-common-libs v0.0.0-20240219024942-c0c78c3ba273
+	github.com/longhorn/go-iscsi-helper v0.0.0-20240207150711-0713d1c9f5d1
+	github.com/longhorn/go-spdk-helper v0.0.0-20240219034107-a6d23f96da54
+	github.com/longhorn/longhorn-engine v1.6.0
+	github.com/longhorn/longhorn-instance-manager v1.6.0-dev-20240105.0.20240219053144-677fbd99cc56
+	github.com/longhorn/longhorn-share-manager v1.6.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.17.0
 	github.com/rancher/dynamiclistener v0.3.6
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
-	github.com/rancher/wrangler v1.1.1
+	github.com/rancher/wrangler v1.1.2
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.8.4
-	github.com/urfave/cli v1.22.13
-	golang.org/x/mod v0.13.0
+	github.com/urfave/cli v1.22.14
+	golang.org/x/mod v0.14.0
 	golang.org/x/net v0.20.0
 	golang.org/x/sys v0.16.0
 	golang.org/x/time v0.3.0
 	google.golang.org/grpc v1.60.1
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
-	k8s.io/api v0.28.5
+	k8s.io/api v0.28.6
 	k8s.io/apiextensions-apiserver v0.25.4
-	k8s.io/apimachinery v0.28.5
+	k8s.io/apimachinery v0.28.6
 	k8s.io/cli-runtime v0.28.5
-	k8s.io/client-go v0.28.5
+	k8s.io/client-go v0.28.6
 	k8s.io/kubernetes v1.28.5
 	k8s.io/metrics v0.28.5
 	k8s.io/mount-utils v0.28.5
-	k8s.io/utils v0.0.0-20230406110748-d93618cff8a2
+	k8s.io/utils v0.0.0-20240102154912-e7106e64919e
 	sigs.k8s.io/controller-runtime v0.10.1
 )
 
@@ -86,15 +87,18 @@ require (
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/google/pprof v0.0.0-20230817174616-7a8ec2ada47b // indirect
+	github.com/jonboulle/clockwork v0.4.0 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/shirou/gopsutil/v3 v3.23.7 // indirect
 	github.com/yusufpapurcu/wmi v1.2.3 // indirect
 	go.etcd.io/bbolt v1.3.8 // indirect
-	golang.org/x/exp v0.0.0-20230725012225-302865e7556b // indirect
-	golang.org/x/tools v0.14.0 // indirect
+	go.uber.org/goleak v1.3.0 // indirect
+	golang.org/x/exp v0.0.0-20231219180239-dc181d75b848 // indirect
+	golang.org/x/tools v0.16.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20231212172506-995d672761c0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240108191215-35c7eff3a6b1 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 require (
@@ -120,7 +124,6 @@ require (
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/gammazero/deque v0.2.1 // indirect
 	github.com/gammazero/workerpool v1.1.3 // indirect
-	github.com/go-co-op/gocron v1.18.0
 	github.com/go-logr/logr v1.2.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/jsonpointer v0.19.6 // indirect
@@ -159,7 +162,7 @@ require (
 	github.com/prometheus/client_model v0.4.1-0.20230718164431-9a2bf3000d16 // indirect
 	github.com/prometheus/common v0.44.0 // indirect
 	github.com/prometheus/procfs v0.11.1 // indirect
-	github.com/rancher/lasso v0.0.0-20230830164424-d684fdeb6f29
+	github.com/rancher/lasso v0.0.0-20240123150939-7055397d6dfa
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rogpeppe/go-internal v1.11.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
@@ -185,7 +188,7 @@ require (
 	go.uber.org/zap v1.24.0 // indirect
 	golang.org/x/crypto v0.18.0 // indirect
 	golang.org/x/oauth2 v0.13.0 // indirect
-	golang.org/x/sync v0.4.0
+	golang.org/x/sync v0.5.0
 	golang.org/x/term v0.16.0 // indirect
 	golang.org/x/text v0.14.0
 	google.golang.org/appengine v1.6.8 // indirect
@@ -193,7 +196,6 @@ require (
 	google.golang.org/protobuf v1.32.0
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/apiserver v0.28.5 // indirect
 	k8s.io/cloud-provider v0.0.0 // indirect
 	k8s.io/component-base v0.28.5 // indirect

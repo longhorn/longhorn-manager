@@ -291,7 +291,6 @@ func syncMountPointDirectory(targetPath string) error {
 // ensureMountPoint evaluates whether a path is a valid mountPoint
 // in case the path does not exists it will create a path and return false
 // in case where the mount point exists but is corrupt, the mount point will be cleaned up and a error is returned
-// the underlying implementation utilizes mounter.IsLikelyNotMountPoint so it cannot detect bind mounts
 func ensureMountPoint(path string, mounter mount.Interface) (bool, error) {
 	logrus.Infof("Trying to ensure mount point %v", path)
 	isMnt, err := mounter.IsMountPoint(path)

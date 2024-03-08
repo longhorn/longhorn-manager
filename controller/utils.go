@@ -18,10 +18,6 @@ func hasReplicaEvictionRequested(rs map[string]*longhorn.Replica) bool {
 	return false
 }
 
-func isVolumeMigrating(v *longhorn.Volume) bool {
-	return v.Spec.MigrationNodeID != "" || v.Status.CurrentMigrationNodeID != ""
-}
-
 func (vc *VolumeController) isVolumeUpgrading(v *longhorn.Volume) bool {
 	return v.Status.CurrentImage != v.Spec.Image
 }
@@ -37,7 +33,6 @@ func isTargetVolumeOfCloning(v *longhorn.Volume) bool {
 func isVolumeFullyDetached(vol *longhorn.Volume) bool {
 	return vol.Spec.NodeID == "" &&
 		vol.Spec.MigrationNodeID == "" &&
-		vol.Status.PendingNodeID == "" &&
 		vol.Status.State == longhorn.VolumeStateDetached
 }
 

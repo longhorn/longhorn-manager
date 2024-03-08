@@ -121,6 +121,9 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceM
 		if v.Spec.OfflineReplicaRebuilding == "" {
 			v.Spec.OfflineReplicaRebuilding = longhorn.OfflineReplicaRebuildingDisabled
 		}
+		if v.Status.PendingNodeID != "" {
+			v.Status.PendingNodeID = ""
+		}
 	}
 
 	return nil

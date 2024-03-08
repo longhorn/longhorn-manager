@@ -1195,7 +1195,7 @@ func (ec *EngineController) syncSnapshotCRs(engine *longhorn.Engine) error {
 	if err != nil {
 		return err
 	}
-	if isVolumeMigrating(vol) {
+	if util.IsVolumeMigrating(vol) {
 		return nil
 	}
 

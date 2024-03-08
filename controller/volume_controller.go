@@ -749,7 +749,7 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 	}
 
 	// Cannot continue evicting or replenishing replicas during engine migration.
-	isMigratingDone := !isVolumeMigrating(v) && len(es) == 1
+	isMigratingDone := !util.IsVolumeMigrating(v) && len(es) == 1
 
 	oldRobustness := v.Status.Robustness
 	if healthyCount == 0 { // no healthy replica exists, going to faulted
@@ -966,7 +966,7 @@ func (c *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*lo
 	// 	then during cleanupExtraHealthyReplicas the condition `healthyCount > v.Spec.NumberOfReplicas` will be true
 	//  which can lead to incorrect deletion of replicas.
 	//  Allow to delete replicas in `cleanupCorruptedOrStaleReplicas` marked as failed before IM-r started during engine image update.
-	if isVolumeMigrating(v) {
+	if util.IsVolumeMigrating(v) {
 		return nil
 	}
 
@@ -999,7 +999,7 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 	// See comments for isSafeAsLastReplica for an explanation of why we call getSafeAsLastReplicaCount instead of
 	// getHealthyAndActiveReplicaCount here.
 	safeAsLastReplicaCount := getSafeAsLastReplicaCount(rs)
-	cleanupLeftoverReplicas := !c.isVolumeUpgrading(v) && !isVolumeMigrating(v)
+	cleanupLeftoverReplicas := !c.isVolumeUpgrading(v) && !util.IsVolumeMigrating(v)
 	log := getLoggerForVolume(c.logger, v)
 
 	for _, r := range rs {
@@ -1262,6 +1262,12 @@ func (c *VolumeController) syncVolumeSnapshotSetting(v *longhorn.Volume, es map[
 	if es == nil && rs == nil {
 		return nil
 	}
+	// The webhook ONLY allows volume.spec.snapshotMaxCount to be modified during a migration if a Longhorn upgrade is
+	// changing the value from 0 (unset) to 250 (the maximum). To be safe, don't apply the change to engines or replicas
+	// until the migration is complete.
+	if util.IsVolumeMigrating(v) {
+		return nil
+	}
 
 	for _, e := range es {
 		e.Spec.SnapshotMaxCount = v.Spec.SnapshotMaxCount
@@ -1521,16 +1527,32 @@ func (c *VolumeController) requestRemountIfFileSystemReadOnly(v *longhorn.Volume
 		}
 
 		if fileSystemReadOnlyCondition.Status == longhorn.ConditionStatusTrue && !isPVMountOptionReadOnly {
-			v.Status.RemountRequestedAt = c.nowHandler()
-			log.Infof("Volume request remount at %v due to engine detected read-only filesystem", v.Status.RemountRequestedAt)
-			msg := fmt.Sprintf("Volume %s requested remount at %v due to engine detected read-only filesystem", v.Name, v.Status.RemountRequestedAt)
-			c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonRemount, msg)
+			log.Infof("Auto remount volume to read write at due to engine detected read-only filesystem")
+			engineCliClient, err := engineapi.GetEngineBinaryClient(c.ds, v.Name, c.controllerID)
+			if err != nil {
+				log.WithError(err).Warnf("Failed to get engineCliClient when remounting read only volume")
+				return
+			}
+
+			engineClientProxy, err := engineapi.GetCompatibleClient(e, engineCliClient, c.ds, c.logger, c.proxyConnCounter)
+			if err != nil {
+				log.WithError(err).Warnf("Failed to get engineClientProxy when remounting read only volume")
+				return
+			}
+			defer engineClientProxy.Close()
+
+			if err := engineClientProxy.RemountReadOnlyVolume(e); err != nil {
+				log.WithError(err).Warnf("Failed to remount read only volume")
+				return
+			}
+
 		}
 	}
 }
 
 func (c *VolumeController) reconcileAttachDetachStateMachine(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, isNewVolume bool, log *logrus.Entry) error {
-	// TODO: link the state machine graph here
+	// Here is the AD state machine graph
+	// https://github.com/longhorn/longhorn/blob/master/enhancements/assets/images/longhorn-volumeattachment/volume-controller-ad-logic.png
 
 	if isNewVolume || v.Status.State == "" {
 		v.Status.State = longhorn.VolumeStateCreating
@@ -1884,7 +1906,8 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 			log.WithField("replica", r.Name).Warn("Replica is running but Port is empty")
 			continue
 		}
-		if _, ok := e.Spec.ReplicaAddressMap[r.Name]; !ok && isVolumeMigrating(v) && e.Spec.NodeID == v.Spec.NodeID {
+		if _, ok := e.Spec.ReplicaAddressMap[r.Name]; !ok && util.IsVolumeMigrating(v) &&
+			e.Spec.NodeID == v.Spec.NodeID {
 			// The volume is migrating from this engine. Don't allow new replicas to be added until migration is
 			// complete per https://github.com/longhorn/longhorn/issues/6961.
 			log.WithField("replica", r.Name).Warn("Replica is running, but can't be added while migration is ongoing")
@@ -2163,7 +2186,7 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 		return nil
 	}
 
-	if isVolumeMigrating(v) {
+	if util.IsVolumeMigrating(v) {
 		return nil
 	}
 
@@ -3141,6 +3164,9 @@ func (c *VolumeController) checkAndFinishVolumeRestore(v *longhorn.Volume, e *lo
 	// 3) The restore/DR volume is
 	//   3.1) it's state `Healthy`;
 	//   3.2) or it's state `Degraded` with all the scheduled replica included in the engine
+	if v.Spec.FromBackup == "" {
+		return nil
+	}
 	isPurging := false
 	for _, status := range e.Status.PurgeStatus {
 		if status.IsPurging {
@@ -3151,6 +3177,39 @@ func (c *VolumeController) checkAndFinishVolumeRestore(v *longhorn.Volume, e *lo
 	if !(e.Spec.RequestedBackupRestore != "" && e.Spec.RequestedBackupRestore == e.Status.LastRestoredBackup &&
 		!v.Spec.Standby) {
 		return nil
+	}
+
+	if v.Status.IsStandby {
+		// For DR volume, make sure the backup volume is up-to-date and the latest backup is restored
+		_, bvName, _, err := backupstore.DecodeBackupURL(v.Spec.FromBackup)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get backup name from volume %s backup URL %v", v.Name, v.Spec.FromBackup)
+		}
+		bv, err := c.ds.GetBackupVolumeRO(bvName)
+		if err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+		if bv != nil {
+			if !bv.Status.LastSyncedAt.IsZero() &&
+				bv.Spec.SyncRequestedAt.After(bv.Status.LastSyncedAt.Time) {
+				log.Infof("Restore/DR volume needs to wait for backup volume %s update", bvName)
+				return nil
+			}
+			if bv.Status.LastBackupName != "" {
+				// If the backup CR does not exist, the Longhorn system may be still syncing up the info with the remote backup target.
+				// If the backup is removed already, the backup volume should receive the notification and update bv.Status.LastBackupName.
+				// Hence we cannot continue the activation when the backup get call returns error IsNotFound.
+				b, err := c.ds.GetBackup(bv.Status.LastBackupName)
+				if err != nil {
+					return err
+				}
+				if b.Name != e.Status.LastRestoredBackup {
+					log.Infof("Restore/DR volume needs to restore the latest backup %s, and the current restored backup is %s", b.Name, e.Status.LastRestoredBackup)
+					c.enqueueVolume(v)
+					return nil
+				}
+			}
+		}
 	}
 
 	allScheduledReplicasIncluded, err := c.checkAllScheduledReplicasIncluded(v, e, rs)
@@ -3164,7 +3223,7 @@ func (c *VolumeController) checkAndFinishVolumeRestore(v *longhorn.Volume, e *lo
 	}
 
 	if !isPurging && ((v.Status.Robustness == longhorn.VolumeRobustnessHealthy && allScheduledReplicasIncluded) || (v.Status.Robustness == longhorn.VolumeRobustnessDegraded && degradedVolumeSupported)) {
-		log.Info("Restore/DR volume finished")
+		log.Infof("Restore/DR volume finished with the last restored backup %s", e.Status.LastRestoredBackup)
 		v.Status.IsStandby = false
 		v.Status.RestoreRequired = false
 	}

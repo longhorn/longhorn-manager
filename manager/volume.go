@@ -431,6 +431,12 @@ func (m *VolumeManager) triggerBackupVolumeToSync(volume *longhorn.Volume) error
 
 	backupVolume, err := m.ds.GetBackupVolume(backupVolumeName)
 	if err != nil {
+		// The backup volume may be deleted already.
+		// hence it's better not to block the caller to continue the handlings like DR volume activation.
+		if apierrors.IsNotFound(err) {
+			logrus.Infof("Cannot find backup volume %v to trigger the sync-up, will skip it", backupVolumeName)
+			return nil
+		}
 		return errors.Wrapf(err, "failed to get backup volume: %v", backupVolumeName)
 	}
 	requestSyncTime := metav1.Time{Time: time.Now().UTC()}
@@ -789,7 +795,7 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 		return nil, fmt.Errorf("cannot upgrade engine image for volume %v from image %v to image %v because the volume's current engine image %v is not deployed on the replicas' nodes or the node that the volume is attached to", v.Name, v.Spec.Image, image, v.Status.CurrentImage)
 	}
 
-	if v.Spec.MigrationNodeID != "" {
+	if util.IsVolumeMigrating(v) {
 		return nil, fmt.Errorf("cannot upgrade during migration")
 	}
 
@@ -1183,7 +1189,7 @@ func (m *VolumeManager) restoreBackingImage(biName string) error {
 	if biName == "" {
 		return nil
 	}
-	bi, err := m.ds.GetBackingImage(biName)
+	bi, err := m.ds.GetBackingImageRO(biName)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return errors.Wrapf(err, "failed to get backing image %v", biName)
@@ -1195,7 +1201,7 @@ func (m *VolumeManager) restoreBackingImage(biName string) error {
 	}
 
 	// try find the backup backing image
-	bbi, err := m.ds.GetBackupBackingImage(biName)
+	bbi, err := m.ds.GetBackupBackingImageRO(biName)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get backup backing image %v", biName)
 	}
