@@ -17,6 +17,11 @@ service InstanceService {
 	rpc InstanceWatch(google.protobuf.Empty) returns (stream google.protobuf.Empty) {}
 	rpc InstanceReplace(InstanceReplaceRequest) returns (InstanceResponse) {}
 
+	rpc LogSetLevel(LogSetLevelRequest) returns (google.protobuf.Empty);
+	rpc LogSetFlags(LogSetFlagsRequest) returns (google.protobuf.Empty);
+	rpc LogGetLevel(LogGetLevelRequest) returns (LogGetLevelResponse);
+	rpc LogGetFlags(LogGetFlagsRequest) returns (LogGetFlagsResponse);
+
 	rpc VersionGet(google.protobuf.Empty) returns (VersionResponse);
 }
 
@@ -101,4 +106,30 @@ message InstanceLogRequest {
 message InstanceReplaceRequest {
 	InstanceSpec spec = 1;
 	string terminate_signal = 2;
+}
+
+message LogSetLevelRequest {
+	DataEngine data_engine = 1;
+	string level = 2;
+}
+
+message LogSetFlagsRequest {
+	DataEngine data_engine = 1;
+	string flags = 2;
+}
+
+message LogGetLevelRequest {
+	DataEngine data_engine = 1;
+}
+
+message LogGetLevelResponse {
+	string level = 1;
+}
+
+message LogGetFlagsRequest {
+	DataEngine data_engine = 1;
+}
+
+message LogGetFlagsResponse {
+	string flags = 1;
 }

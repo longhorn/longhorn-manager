@@ -343,6 +343,78 @@ func (c *InstanceServiceClient) VersionGet() (*meta.VersionOutput, error) {
 	}, nil
 }
 
+func (c *InstanceServiceClient) LogSetLevel(dataEngine, service, level string) error {
+	client := c.getControllerServiceClient()
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	driver, ok := rpc.DataEngine_value[getDataEngine(dataEngine)]
+	if !ok {
+		return fmt.Errorf("failed to set log level: invalid data engine %v", dataEngine)
+	}
+
+	_, err := client.LogSetLevel(ctx, &rpc.LogSetLevelRequest{
+		DataEngine: rpc.DataEngine(driver),
+		Level:      level,
+	})
+	return err
+}
+
+func (c *InstanceServiceClient) LogSetFlags(dataEngine, service, flags string) error {
+	client := c.getControllerServiceClient()
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	driver, ok := rpc.DataEngine_value[getDataEngine(dataEngine)]
+	if !ok {
+		return fmt.Errorf("failed to set log flags: invalid data engine %v", dataEngine)
+	}
+
+	_, err := client.LogSetFlags(ctx, &rpc.LogSetFlagsRequest{
+		DataEngine: rpc.DataEngine(driver),
+		Flags:      flags,
+	})
+	return err
+}
+
+func (c *InstanceServiceClient) LogGetLevel(dataEngine, service string) (string, error) {
+	client := c.getControllerServiceClient()
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	driver, ok := rpc.DataEngine_value[getDataEngine(dataEngine)]
+	if !ok {
+		return "", fmt.Errorf("failed to get log level: invalid data engine %v", dataEngine)
+	}
+
+	resp, err := client.LogGetLevel(ctx, &rpc.LogGetLevelRequest{
+		DataEngine: rpc.DataEngine(driver),
+	})
+	if err != nil {
+		return "", err
+	}
+	return resp.Level, nil
+}
+
+func (c *InstanceServiceClient) LogGetFlags(dataEngine, service string) (string, error) {
+	client := c.getControllerServiceClient()
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	driver, ok := rpc.DataEngine_value[getDataEngine(dataEngine)]
+	if !ok {
+		return "", fmt.Errorf("failed to get log flags: invalid data engine %v", dataEngine)
+	}
+
+	resp, err := client.LogGetFlags(ctx, &rpc.LogGetFlagsRequest{
+		DataEngine: rpc.DataEngine(driver),
+	})
+	if err != nil {
+		return "", err
+	}
+	return resp.Flags, nil
+}
+
 func (c *InstanceServiceClient) CheckConnection() error {
 	req := &healthpb.HealthCheckRequest{}
 	_, err := c.health.Check(getContextWithGRPCTimeout(c.ctx), req)
