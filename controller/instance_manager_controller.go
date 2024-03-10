@@ -1246,24 +1246,21 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	podSpec.Spec.Containers[0].Name = "instance-manager"
 
 	if datastore.IsDataEngineV2(dataEngine) {
-		logLevelSetting, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngineLogLevel)
-		if err != nil {
-			return nil, err
-		}
-
+		// spdk_tgt doesn't support log level option, so we don't need to pass the log level to the instance manager.
+		// The log level will be applied in the reconciliation of instance manager controller.
 		logFlagsSetting, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngineLogFlags)
 		if err != nil {
 			return nil, err
 		}
 
-		logLevel := strings.ToLower(logLevelSetting.Value)
-		logFlags := strings.ToLower(logFlagsSetting.Value)
-
-		args := []string{"instance-manager"}
-		if logLevel == "debug" {
-			args = append(args, "--spdk-log", logFlags)
+		logFlags := "all"
+		if logFlagsSetting.Value != "" {
+			logFlags = strings.ToLower(logFlagsSetting.Value)
 		}
-		args = append(args, "--enable-spdk", "--debug", "daemon", "--spdk-enabled", "--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort))
+
+		args := []string{
+			"instance-manager", "--spdk-log", logFlags, "--enable-spdk", "--debug",
+			"daemon", "--spdk-enabled", "--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort)}
 
 		podSpec.Spec.Containers[0].Args = args
 
