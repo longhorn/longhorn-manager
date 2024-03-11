@@ -14,6 +14,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/wait"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -48,13 +50,13 @@ type NodeMonitor struct {
 type CollectedDiskInfo struct {
 	Path                          string
 	NodeOrDiskEvicted             bool
-	DiskStat                      *util.DiskStat
+	DiskStat                      *lhtypes.DiskStat
 	DiskUUID                      string
 	Condition                     *longhorn.Condition
 	OrphanedReplicaDirectoryNames map[string]string
 }
 
-type GetDiskStatHandler func(longhorn.DiskType, string, string, *engineapi.DiskService) (*util.DiskStat, error)
+type GetDiskStatHandler func(longhorn.DiskType, string, string, *engineapi.DiskService) (*lhtypes.DiskStat, error)
 type GetDiskConfigHandler func(longhorn.DiskType, string, string, *engineapi.DiskService) (*util.DiskConfig, error)
 type GenerateDiskConfigHandler func(longhorn.DiskType, string, string, string, *engineapi.DiskService) (*util.DiskConfig, error)
 type GetReplicaInstanceNamesHandler func(longhorn.DiskType, *longhorn.Node, string, string, string, *engineapi.DiskService) (map[string]string, error)
@@ -276,7 +278,7 @@ func canCollectDiskData(node *longhorn.Node, diskName, diskUUID, diskPath string
 		types.GetCondition(node.Status.DiskStatus[diskName].Conditions, longhorn.DiskConditionTypeReady).Status == longhorn.ConditionStatusTrue
 }
 
-func NewDiskInfo(path, diskUUID string, nodeOrDiskEvicted bool, stat *util.DiskStat, orphanedReplicaDirectoryNames map[string]string, errorReason, errorMessage string) *CollectedDiskInfo {
+func NewDiskInfo(path, diskUUID string, nodeOrDiskEvicted bool, stat *lhtypes.DiskStat, orphanedReplicaDirectoryNames map[string]string, errorReason, errorMessage string) *CollectedDiskInfo {
 	diskInfo := &CollectedDiskInfo{
 		Path:                          path,
 		NodeOrDiskEvicted:             nodeOrDiskEvicted,

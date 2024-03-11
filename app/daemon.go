@@ -16,6 +16,9 @@ import (
 
 	iscsiutil "github.com/longhorn/go-iscsi-helper/util"
 
+	lhns "github.com/longhorn/go-common-libs/ns"
+	lhtypes "github.com/longhorn/go-common-libs/types"
+
 	"github.com/longhorn/longhorn-manager/api"
 	"github.com/longhorn/longhorn-manager/controller"
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -237,15 +240,13 @@ func startManager(c *cli.Context) error {
 }
 
 func environmentCheck() error {
-	initiatorNSPath := iscsiutil.GetHostNamespacePath(util.HostProcPath)
-	namespace, err := iscsiutil.NewNamespaceExecutor(initiatorNSPath)
+	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceNet}
+	nsexec, err := lhns.NewNamespaceExecutor(iscsiutil.ISCSIdProcess, lhtypes.HostProcDirectory, namespaces)
 	if err != nil {
 		return err
 	}
-	if err := iscsi.CheckForInitiatorExistence(namespace); err != nil {
-		return err
-	}
-	return nil
+
+	return iscsi.CheckForInitiatorExistence(nsexec)
 }
 
 func updateRegistrySecretName(m *manager.VolumeManager) error {

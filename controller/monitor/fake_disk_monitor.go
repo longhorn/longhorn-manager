@@ -7,6 +7,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/util"
@@ -49,10 +50,10 @@ func fakeGetReplicaDirectoryNames(diskType longhorn.DiskType, node *longhorn.Nod
 	}, nil
 }
 
-func fakeGetDiskStat(diskType longhorn.DiskType, name, directory string, client *engineapi.DiskService) (*util.DiskStat, error) {
+func fakeGetDiskStat(diskType longhorn.DiskType, name, directory string, client *engineapi.DiskService) (*lhtypes.DiskStat, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
-		return &util.DiskStat{
+		return &lhtypes.DiskStat{
 			DiskID:      "fsid",
 			Path:        directory,
 			Type:        "ext4",
@@ -64,7 +65,7 @@ func fakeGetDiskStat(diskType longhorn.DiskType, name, directory string, client 
 			StorageAvailable: 0,
 		}, nil
 	case longhorn.DiskTypeBlock:
-		return &util.DiskStat{
+		return &lhtypes.DiskStat{
 			DiskID:      "block",
 			Path:        directory,
 			Type:        "ext4",
