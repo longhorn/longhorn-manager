@@ -519,6 +519,7 @@ func newNode(name, namespace string, allowScheduling bool, status longhorn.Condi
 				TestDiskID1: {
 					Type:            longhorn.DiskTypeFilesystem,
 					Path:            TestDefaultDataPath,
+					DiskDriver:          longhorn.DiskDriverNone,
 					AllowScheduling: true,
 					StorageReserved: 0,
 				},
