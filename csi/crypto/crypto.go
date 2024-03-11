@@ -7,6 +7,9 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+
+	lhns "github.com/longhorn/go-common-libs/ns"
+	lhtypes "github.com/longhorn/go-common-libs/types"
 )
 
 const (
@@ -66,8 +69,20 @@ func VolumeMapper(volume string) string {
 
 // EncryptVolume encrypts provided device with LUKS.
 func EncryptVolume(devicePath, passphrase string, cryptoParams *EncryptParams) error {
+	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceIpc}
+	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.ProcDirectory, namespaces)
+	if err != nil {
+		return err
+	}
+
 	logrus.Infof("Encrypting device %s with LUKS", devicePath)
-	if _, err := luksFormat(devicePath, passphrase, cryptoParams); err != nil {
+	if _, err := nsexec.LuksFormat(
+		devicePath, passphrase,
+		cryptoParams.GetKeyCipher(),
+		cryptoParams.GetKeyHash(),
+		cryptoParams.GetKeySize(),
+		cryptoParams.GetPBKDF(),
+		lhtypes.LuksTimeout); err != nil {
 		return errors.Wrapf(err, "failed to encrypt device %s with LUKS", devicePath)
 	}
 	return nil
@@ -80,8 +95,14 @@ func OpenVolume(volume, devicePath, passphrase string) error {
 		return nil
 	}
 
+	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceIpc}
+	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.ProcDirectory, namespaces)
+	if err != nil {
+		return err
+	}
+
 	logrus.Infof("Opening device %s with LUKS on %s", devicePath, volume)
-	_, err := luksOpen(volume, devicePath, passphrase)
+	_, err = nsexec.LuksOpen(volume, devicePath, passphrase, lhtypes.LuksTimeout)
 	if err != nil {
 		logrus.WithError(err).Warnf("Failed to open LUKS device %s", devicePath)
 	}
@@ -90,8 +111,14 @@ func OpenVolume(volume, devicePath, passphrase string) error {
 
 // CloseVolume closes encrypted volume so it can be detached.
 func CloseVolume(volume string) error {
+	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceIpc}
+	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.ProcDirectory, namespaces)
+	if err != nil {
+		return err
+	}
+
 	logrus.Infof("Closing LUKS device %s", volume)
-	_, err := luksClose(volume)
+	_, err = nsexec.LuksClose(volume, lhtypes.LuksTimeout)
 	return err
 }
 
@@ -102,7 +129,13 @@ func ResizeEncryptoDevice(volume, passphrase string) error {
 		return fmt.Errorf("volume %v encrypto device is closed for resizing", volume)
 	}
 
-	_, err := luksResize(volume, passphrase)
+	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceIpc}
+	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.ProcDirectory, namespaces)
+	if err != nil {
+		return err
+	}
+
+	_, err = nsexec.LuksResize(volume, passphrase, lhtypes.LuksTimeout)
 	return err
 }
 
@@ -119,20 +152,30 @@ func DeviceEncryptionStatus(devicePath string) (mappedDevice, mapper string, err
 	if !strings.HasPrefix(devicePath, mapperFilePathPrefix) {
 		return devicePath, "", nil
 	}
+
+	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceIpc}
+	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.ProcDirectory, namespaces)
+	if err != nil {
+		return devicePath, "", err
+	}
+
 	volume := strings.TrimPrefix(devicePath, mapperFilePathPrefix+"/")
-	stdout, err := luksStatus(volume)
+	stdout, err := nsexec.LuksStatus(volume, lhtypes.LuksTimeout)
 	if err != nil {
 		logrus.WithError(err).Warnf("Device %s is not an active LUKS device", devicePath)
 		return devicePath, "", nil
 	}
+
 	lines := strings.Split(string(stdout), "\n")
 	if len(lines) < 1 {
 		return "", "", fmt.Errorf("device encryption status returned no stdout for %s", devicePath)
 	}
+
 	if !strings.Contains(lines[0], " is active") {
 		// Implies this is not a LUKS device
 		return devicePath, "", nil
 	}
+
 	for i := 1; i < len(lines); i++ {
 		kv := strings.SplitN(strings.TrimSpace(lines[i]), ":", 2)
 		if len(kv) < 1 {

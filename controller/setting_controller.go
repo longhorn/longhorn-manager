@@ -33,6 +33,8 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
+	lhns "github.com/longhorn/go-common-libs/ns"
+
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -1678,7 +1680,7 @@ func (info *ClusterInfo) collectNodeScope() {
 }
 
 func (info *ClusterInfo) collectHostKernelRelease() error {
-	kernelRelease, err := util.GetHostKernelRelease()
+	kernelRelease, err := lhns.GetKernelRelease()
 	if err == nil {
 		info.structFields.tags.Append(ClusterInfoHostKernelRelease, kernelRelease)
 	}
@@ -1687,7 +1689,7 @@ func (info *ClusterInfo) collectHostKernelRelease() error {
 
 func (info *ClusterInfo) collectHostOSDistro() (err error) {
 	if info.osDistro == "" {
-		info.osDistro, err = util.GetHostOSDistro()
+		info.osDistro, err = lhns.GetOSDistro()
 		if err != nil {
 			return err
 		}

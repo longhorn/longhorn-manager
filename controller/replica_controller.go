@@ -28,11 +28,12 @@ import (
 
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 
+	lhns "github.com/longhorn/go-common-libs/ns"
+
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
-	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -257,7 +258,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 						return fmt.Errorf("%v doesn't look like a replica data path", dataPath)
 					}
 					log.Info("Cleaning up replica")
-					if err := util.RemoveHostDirectoryContent(dataPath); err != nil {
+					if err := lhns.DeleteDirectory(dataPath); err != nil {
 						return errors.Wrapf(err, "cannot cleanup after replica %v at %v", replica.Name, dataPath)
 					}
 				} else {

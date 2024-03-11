@@ -27,6 +27,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	lhexec "github.com/longhorn/go-common-libs/exec"
+	lhtypes "github.com/longhorn/go-common-libs/types"
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
@@ -570,7 +572,9 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 		url := imutil.GetURL(im.Status.IP, engineapi.InstanceManagerProcessManagerServiceDefaultPort)
 		args := []string{"--url", url, "engine", "delete", "--name", e.Name}
 
-		_, err = util.ExecuteWithoutTimeout([]string{}, engineapi.GetDeprecatedInstanceManagerBinary(e.Status.CurrentImage), args...)
+		execute := lhexec.NewExecutor().Execute
+		deprecatedIMBinary := engineapi.GetDeprecatedInstanceManagerBinary(e.Status.CurrentImage)
+		_, err = execute([]string{}, deprecatedIMBinary, args, lhtypes.ExecuteNoTimeout)
 		if err != nil && !types.ErrorIsNotFound(err) {
 			return err
 		}

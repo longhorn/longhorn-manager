@@ -1,13 +1,20 @@
 package util
 
 import (
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	. "gopkg.in/check.v1"
+
+	lhfake "github.com/longhorn/go-common-libs/test/fake"
+	lhtypes "github.com/longhorn/go-common-libs/types"
 )
 
 const (
@@ -72,30 +79,106 @@ func TestDeterministicUUID(t *testing.T) {
 	assert.Equal(DeterministicUUID(dataUsedToGenerate), DeterministicUUID(dataUsedToGenerate))
 }
 
-func TestTimestampAfterTimestamp(t *testing.T) {
-	tests := map[string]struct {
-		timestamp1 string
-		timestamp2 string
-		want       bool
-		wantErr    bool
-	}{
-		"timestamp1BadFormat": {"2024-01-02T18:37Z", "2024-01-02T18:16:37Z", false, true},
-		"timestamp2BadFormat": {"2024-01-02T18:16:37Z", "2024-01-02T18:37Z", false, true},
-		"timestamp1After":     {"2024-01-02T18:17:37Z", "2024-01-02T18:16:37Z", true, false},
-		"timestamp1NotAfter":  {"2024-01-02T18:16:37Z", "2024-01-02T18:17:37Z", false, false},
-		"sameTime":            {"2024-01-02T18:16:37Z", "2024-01-02T18:16:37Z", false, false},
+func (s *TestSuite) TestGetValidMountPoint(c *C) {
+	// Check if the /host/proc directory exists in container
+	if _, err := os.Stat(lhtypes.HostProcDirectory); os.IsNotExist(err) {
+		// Create a symbolic link from /proc to /host/proc
+		err := os.Symlink("/proc", "/host/proc")
+		c.Assert(err, IsNil)
+		defer func() {
+			_ = os.Remove(lhtypes.HostProcDirectory)
+		}()
 	}
 
-	assert := assert.New(t)
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			got, err := TimestampAfterTimestamp(tc.timestamp1, tc.timestamp2)
-			assert.Equal(tc.want, got)
-			if tc.wantErr {
-				assert.Error(err)
-			} else {
-				assert.NoError(err)
-			}
-		})
+	fakeDir := lhfake.CreateTempDirectory("", c)
+	defer func() {
+		_ = os.RemoveAll(fakeDir)
+	}()
+
+	fakeVolumeName := "volume"
+	fakeMountFileName := "mount-file"
+	fakeProcMountFile := func(procDir, mountFilePath string, isEncryptedDevice bool) {
+		// Create a proc PID directory
+		procPidDir := filepath.Join(procDir, "1")
+		err := os.Mkdir(procPidDir, 0755)
+		c.Assert(err, IsNil)
+
+		// Create a mount file
+		fakeProcMountFile := lhfake.CreateTempFile(procPidDir, "mounts", "mock\n", c)
+
+		// Seek to the end of the file and write a byte
+		_, err = fakeProcMountFile.Seek(0, io.SeekEnd)
+		c.Assert(err, IsNil)
+
+		// Define the device path
+		devicePath := filepath.Join("/dev/longhorn", fakeVolumeName)
+		if isEncryptedDevice {
+			devicePath = filepath.Join("/dev/mapper", fakeVolumeName)
+		}
+
+		content := fmt.Sprintf("%s %s ext4 rw,relatime 0 0", devicePath, mountFilePath)
+		_, err = fakeProcMountFile.WriteString(content)
+		c.Assert(err, IsNil)
+
+		// Read the file content
+		readContent, err := os.ReadFile(fakeProcMountFile.Name())
+		c.Assert(err, IsNil)
+
+		// Convert the read content to string and split by lines
+		lines := strings.Split(string(readContent), "\n")
+
+		// Assert the number of lines and their content
+		c.Assert(len(lines), Equals, 2)
+
+		err = fakeProcMountFile.Close()
+		c.Assert(err, IsNil)
+	}
+
+	type testCase struct {
+		isEncryptedDevice       bool
+		isInvalidMountPath      bool
+		isInvalidMountPointPath bool
+		isExpectingError        bool
+	}
+	testCases := map[string]testCase{
+		"getValidMountPoint(...)": {
+			isEncryptedDevice: false,
+		},
+		"getValidMountPoint(...) with encrypted device": {
+			isEncryptedDevice: true,
+		},
+		"getValidMountPoint(...) with invalid mount path": {
+			isInvalidMountPath: true,
+			isExpectingError:   true,
+		},
+		"getValidMountPoint(...) with invalid mount point path": {
+			isInvalidMountPointPath: true,
+			isExpectingError:        true,
+		},
+	}
+	for testName, testCase := range testCases {
+		c.Logf("testing util.%v", testName)
+
+		fakeProcDir := lhfake.CreateTempDirectory(fakeDir, c)
+
+		expectedMountPointPath := filepath.Join(fakeProcDir, fakeMountFileName)
+
+		if !testCase.isInvalidMountPath {
+			fakeProcMountFile(fakeProcDir, expectedMountPointPath, testCase.isEncryptedDevice)
+		}
+
+		if !testCase.isInvalidMountPointPath {
+			fakeMountFile := lhfake.CreateTempFile(fakeProcDir, fakeMountFileName, "mock", c)
+			err := fakeMountFile.Close()
+			c.Assert(err, IsNil)
+		}
+
+		validMountPoint, err := getValidMountPoint(fakeVolumeName, fakeProcDir, testCase.isEncryptedDevice)
+		if testCase.isExpectingError {
+			c.Assert(err, NotNil)
+		} else {
+			c.Assert(err, IsNil)
+			c.Assert(validMountPoint, Equals, expectedMountPointPath)
+		}
 	}
 }

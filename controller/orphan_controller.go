@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"time"
@@ -21,10 +22,11 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	lhns "github.com/longhorn/go-common-libs/ns"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
-	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -315,7 +317,10 @@ func (oc *OrphanController) deleteOrphanedReplica(orphan *longhorn.Orphan) error
 
 	switch longhorn.DiskType(diskType) {
 	case longhorn.DiskTypeFilesystem:
-		return util.DeleteReplicaDirectory(orphan.Spec.Parameters[longhorn.OrphanDiskPath], orphan.Spec.Parameters[longhorn.OrphanDataName])
+		diskPath := orphan.Spec.Parameters[longhorn.OrphanDiskPath]
+		replicaDirectoryName := orphan.Spec.Parameters[longhorn.OrphanDataName]
+		err := lhns.DeletePath(filepath.Join(diskPath, "replicas", replicaDirectoryName))
+		return errors.Wrapf(err, "failed to delete orphan replica directory %v in disk %v", replicaDirectoryName, diskPath)
 	case longhorn.DiskTypeBlock:
 		return oc.DeleteSpdkReplicaInstance(orphan.Spec.Parameters[longhorn.OrphanDiskName], orphan.Spec.Parameters[longhorn.OrphanDiskUUID], orphan.Spec.Parameters[longhorn.OrphanDataName])
 	default:
