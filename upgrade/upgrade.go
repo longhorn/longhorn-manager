@@ -287,6 +287,13 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 			return err
 		}
 	}
+	// When lhVersionBeforeUpgrade < v1.7.0, it is v1.6.x. The `CheckUpgradePathSupported` method would have failed us out earlier if it was not v1.6.x.
+	if semver.Compare(lhVersionBeforeUpgrade, "v1.7.0") < 0 {
+		logrus.Info("Walking through the resource status upgrade path v1.6.x to v1.7.0")
+		if err := v16xto170.UpgradeResourcesStatus(namespace, lhClient, kubeClient, resourceMaps); err != nil {
+			return err
+		}
+	}
 	if err := upgradeutil.UpdateResourcesStatus(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
