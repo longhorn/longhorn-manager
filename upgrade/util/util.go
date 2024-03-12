@@ -1000,6 +1000,8 @@ func UpdateResourcesStatus(namespace string, lhClient *lhclientset.Clientset, re
 		switch resourceKind {
 		case types.LonghornKindNode:
 			err = updateNodesStatus(namespace, lhClient, resourceMap.(map[string]*longhorn.Node))
+		case types.LonghornKindEngine:
+			err = updateEngineStatus(namespace, lhClient, resourceMap.(map[string]*longhorn.Engine))
 		default:
 			return fmt.Errorf("resource kind %v is not able to updated", resourceKind)
 		}
@@ -1026,6 +1028,24 @@ func updateNodesStatus(namespace string, lhClient *lhclientset.Clientset, nodes 
 			if _, err = lhClient.LonghornV1beta2().Nodes(namespace).UpdateStatus(context.TODO(), node, metav1.UpdateOptions{}); err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+func updateEngineStatus(namespace string, lhClient *lhclientset.Clientset, engines map[string]*longhorn.Engine) error {
+	existingEngineList, err := lhClient.LonghornV1beta2().Engines(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, existingEngine := range existingEngineList.Items {
+		engine, ok := engines[existingEngine.Name]
+		if !ok {
+			continue
+		}
+
+		if _, err = lhClient.LonghornV1beta2().Engines(namespace).UpdateStatus(context.TODO(), engine, metav1.UpdateOptions{}); err != nil {
+			return err
 		}
 	}
 	return nil

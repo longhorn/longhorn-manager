@@ -40,6 +40,9 @@ func upgradeEngineStatus(namespace string, lhClient *lhclientset.Clientset, reso
 	}
 
 	for _, e := range engineMap {
+		if e.Status.ReplicaTransitionTimeMap == nil {
+			e.Status.ReplicaTransitionTimeMap = map[string]string{}
+		}
 		for replicaName := range e.Status.ReplicaModeMap {
 			// We don't have any historical information to rely on. Starting at the time of the upgrade.
 			if _, ok := e.Status.ReplicaTransitionTimeMap[replicaName]; !ok {
