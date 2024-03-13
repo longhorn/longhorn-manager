@@ -894,7 +894,11 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 
 		currentReplicaModeMap[replica] = r.Mode
 
-		if engine.Status.ReplicaModeMap != nil {
+		if engine.Status.ReplicaModeMap == nil {
+			// We are constructing the ReplicaModeMap for the first time. Construct the ReplicaTransitionTimeMap
+			// alongside it.
+			currentReplicaTransitionTimeMap[replica] = util.Now()
+		} else {
 			if r.Mode != engine.Status.ReplicaModeMap[replica] {
 				switch r.Mode {
 				case longhorn.ReplicaModeERR:
