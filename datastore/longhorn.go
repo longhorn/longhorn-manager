@@ -54,7 +54,7 @@ func (s *DataStore) UpdateCustomizedSettings(defaultImages map[types.SettingName
 		return err
 	}
 
-	availableCustomizedDefaultSettings := s.filterCustomizedDefaultSettings(customizedDefaultSettings)
+	availableCustomizedDefaultSettings := s.filterCustomizedDefaultSettings(customizedDefaultSettings, defaultSettingCM.ResourceVersion)
 
 	if err := s.applyCustomizedDefaultSettingsToDefinitions(availableCustomizedDefaultSettings); err != nil {
 		return err
@@ -96,11 +96,11 @@ func (s *DataStore) createNonExistingSettingCRsWithDefaultSetting(configMapResou
 	return nil
 }
 
-func (s *DataStore) filterCustomizedDefaultSettings(customizedDefaultSettings map[string]string) map[string]string {
+func (s *DataStore) filterCustomizedDefaultSettings(customizedDefaultSettings map[string]string, defaultSettingCMResourceVersion string) map[string]string {
 	availableCustomizedDefaultSettings := make(map[string]string)
 
 	for name, value := range customizedDefaultSettings {
-		if !s.isSettingValueChanged(types.SettingName(name), value) {
+		if !s.shouldApplyCustomizedSettingValue(types.SettingName(name), value, defaultSettingCMResourceVersion) {
 			continue
 		}
 
@@ -114,8 +114,7 @@ func (s *DataStore) filterCustomizedDefaultSettings(customizedDefaultSettings ma
 	return availableCustomizedDefaultSettings
 }
 
-// isSettingValueChanged check if the customized default setting and value was changed
-func (s *DataStore) isSettingValueChanged(name types.SettingName, value string) bool {
+func (s *DataStore) shouldApplyCustomizedSettingValue(name types.SettingName, value string, defaultSettingCMResourceVersion string) bool {
 	setting, err := s.GetSettingExactRO(name)
 	if err != nil {
 		if !ErrorIsNotFound(err) {
@@ -124,10 +123,20 @@ func (s *DataStore) isSettingValueChanged(name types.SettingName, value string) 
 		}
 		return true
 	}
-	if setting.Value == value {
-		return false
+
+	configMapResourceVersion := ""
+	if setting.Annotations != nil {
+		configMapResourceVersion = setting.Annotations[types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey)]
 	}
-	return true
+
+	// Also check the setting definition.
+	definition, ok := types.GetSettingDefinition(name)
+	if !ok {
+		logrus.Errorf("customized default setting %v is not defined", name)
+		return true
+	}
+
+	return (setting.Value != value || configMapResourceVersion != defaultSettingCMResourceVersion || definition.Default != value)
 }
 
 func (s *DataStore) syncSettingsWithDefaultImages(defaultImages map[types.SettingName]string) error {
@@ -197,16 +206,6 @@ func (s *DataStore) applyCustomizedDefaultSettingsToDefinitions(customizedDefaul
 
 func (s *DataStore) syncSettingCRsWithCustomizedDefaultSettings(customizedDefaultSettings map[string]string, defaultSettingCMResourceVersion string) error {
 	for _, sName := range types.SettingNameList {
-		configMapResourceVersion := ""
-		if s, err := s.GetSettingExactRO(sName); err != nil {
-			if !apierrors.IsNotFound(err) {
-				return err
-			}
-		} else {
-			if s.Annotations != nil {
-				configMapResourceVersion = s.Annotations[types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey)]
-			}
-		}
 
 		definition, ok := types.GetSettingDefinition(sName)
 		if !ok {
@@ -218,13 +217,12 @@ func (s *DataStore) syncSettingCRsWithCustomizedDefaultSettings(customizedDefaul
 			continue
 		}
 
-		if configMapResourceVersion != defaultSettingCMResourceVersion {
-			if definition.Required && value == "" {
-				continue
-			}
-			if err := s.createOrUpdateSetting(sName, value, defaultSettingCMResourceVersion); err != nil {
-				return err
-			}
+		if definition.Required && value == "" {
+			continue
+		}
+
+		if err := s.createOrUpdateSetting(sName, value, defaultSettingCMResourceVersion); err != nil {
+			return err
 		}
 	}
 
@@ -1079,8 +1077,7 @@ func GetNewCurrentEngineAndExtras(v *longhorn.Volume, es map[string]*longhorn.En
 			oldEngineName = e.Name
 		}
 		if (v.Spec.NodeID != "" && v.Spec.NodeID == e.Spec.NodeID) ||
-			(v.Status.CurrentNodeID != "" && v.Status.CurrentNodeID == e.Spec.NodeID) ||
-			(v.Status.PendingNodeID != "" && v.Status.PendingNodeID == e.Spec.NodeID) {
+			(v.Status.CurrentNodeID != "" && v.Status.CurrentNodeID == e.Spec.NodeID) {
 			if currentEngine != nil {
 				return nil, nil, fmt.Errorf("BUG: found the second new active engine %v besides %v", e.Name, currentEngine.Name)
 			}
@@ -3052,6 +3049,7 @@ func (s *DataStore) ResetMonitoringEngineStatus(e *longhorn.Engine) (*longhorn.E
 	e.Status.Endpoint = ""
 	e.Status.LastRestoredBackup = ""
 	e.Status.ReplicaModeMap = nil
+	e.Status.ReplicaTransitionTimeMap = nil
 	e.Status.RestoreStatus = nil
 	e.Status.PurgeStatus = nil
 	e.Status.RebuildStatus = nil
@@ -4944,7 +4942,7 @@ func (s *DataStore) CreateBackupBackingImage(backupBackingImage *longhorn.Backup
 	}
 
 	obj, err := verifyCreation(ret.Name, "backup backing image", func(name string) (runtime.Object, error) {
-		return s.getBackupBackingImageRO(name)
+		return s.GetBackupBackingImageRO(name)
 	})
 	if err != nil {
 		return nil, err
@@ -4964,7 +4962,7 @@ func (s *DataStore) UpdateBackupBackingImage(backupBackingImage *longhorn.Backup
 		return nil, err
 	}
 	verifyUpdate(backupBackingImage.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getBackupBackingImageRO(name)
+		return s.GetBackupBackingImageRO(name)
 	})
 	return obj, nil
 }
@@ -4977,7 +4975,7 @@ func (s *DataStore) UpdateBackupBackingImageStatus(backupBackingImage *longhorn.
 		return nil, err
 	}
 	verifyUpdate(backupBackingImage.Name, obj, func(name string) (runtime.Object, error) {
-		return s.getBackupBackingImageRO(name)
+		return s.GetBackupBackingImageRO(name)
 	})
 	return obj, nil
 }
@@ -5008,14 +5006,14 @@ func (s *DataStore) RemoveFinalizerForBackupBackingImage(obj *longhorn.BackupBac
 	return nil
 }
 
-func (s *DataStore) getBackupBackingImageRO(name string) (*longhorn.BackupBackingImage, error) {
+func (s *DataStore) GetBackupBackingImageRO(name string) (*longhorn.BackupBackingImage, error) {
 	return s.backupBackingImageLister.BackupBackingImages(s.namespace).Get(name)
 }
 
 // GetBackupBackingImage returns a new BackupBackingImage object for the given name and
 // namespace
 func (s *DataStore) GetBackupBackingImage(name string) (*longhorn.BackupBackingImage, error) {
-	resultRO, err := s.getBackupBackingImageRO(name)
+	resultRO, err := s.GetBackupBackingImageRO(name)
 	if err != nil {
 		return nil, err
 	}
@@ -5037,4 +5035,8 @@ func (s *DataStore) ListBackupBackingImages() (map[string]*longhorn.BackupBackin
 		itemMap[itemRO.Name] = itemRO.DeepCopy()
 	}
 	return itemMap, nil
+}
+
+func (s *DataStore) ListBackupBackingImagesRO() ([]*longhorn.BackupBackingImage, error) {
+	return s.backupBackingImageLister.BackupBackingImages(s.namespace).List(labels.Everything())
 }

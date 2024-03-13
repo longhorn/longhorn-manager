@@ -163,6 +163,20 @@ type Backup struct {
 	CompressionMethod      string               `json:"compressionMethod"`
 }
 
+type BackupBackingImage struct {
+	client.Resource
+	Name              string               `json:"name"`
+	State             longhorn.BackupState `json:"state"`
+	Progress          int                  `json:"progress"`
+	Error             string               `json:"error"`
+	URL               string               `json:"url"`
+	Created           string               `json:"created"`
+	Size              int64                `json:"size"`
+	Labels            map[string]string    `json:"labels"`
+	Messages          map[string]string    `json:"messages"`
+	CompressionMethod string               `json:"compressionMethod"`
+}
+
 type Setting struct {
 	client.Resource
 	Name       string                  `json:"name"`
@@ -631,6 +645,7 @@ func NewSchema() *client.Schemas {
 	snapshotSchema(schemas.AddType("snapshot", Snapshot{}))
 	snapshotCRSchema(schemas.AddType("snapshotCR", SnapshotCR{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
+	backupBackingImageSchema(schemas.AddType("backupBackingImage", BackupBackingImage{}))
 	settingSchema(schemas.AddType("setting", Setting{}))
 	recurringJobSchema(schemas.AddType("recurringJob", RecurringJob{}))
 	engineImageSchema(schemas.AddType("engineImage", EngineImage{}))
@@ -715,7 +730,8 @@ func backingImageSchema(backingImage *client.Schema) {
 			Input:  "backingImageCleanupInput",
 			Output: "backingImage",
 		},
-		BackingImageUpload: {},
+		BackingImageUpload:         {},
+		"backupBackingImageCreate": {},
 	}
 
 	name := backingImage.ResourceFields["name"]
@@ -742,6 +758,15 @@ func backingImageSchema(backingImage *client.Schema) {
 	diskFileStatusMap := backingImage.ResourceFields["diskFileStatusMap"]
 	diskFileStatusMap.Type = "map[backingImageDiskFileStatus]"
 	backingImage.ResourceFields["diskFileStatusMap"] = diskFileStatusMap
+}
+
+func backupBackingImageSchema(backupBackingImage *client.Schema) {
+	backupBackingImage.CollectionMethods = []string{"GET"}
+	backupBackingImage.ResourceMethods = []string{"GET", "DELETE"}
+
+	backupBackingImage.ResourceActions = map[string]client.Action{
+		"backupBackingImageRestore": {},
+	}
 }
 
 func recurringJobSchema(job *client.Schema) {
@@ -1742,6 +1767,45 @@ func toBackupVolumeCollection(bvs []*longhorn.BackupVolume, apiContext *api.ApiC
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "backupVolume"}}
 }
 
+func toBackupBackingImageResource(bbi *longhorn.BackupBackingImage, apiContext *api.ApiContext) *BackupBackingImage {
+	if bbi == nil {
+		return nil
+	}
+
+	backupBackingImage := &BackupBackingImage{
+		Resource: client.Resource{
+			Id:    bbi.Name,
+			Type:  "backupBackingImage",
+			Links: map[string]string{},
+		},
+		Name:              bbi.Name,
+		State:             bbi.Status.State,
+		Progress:          bbi.Status.Progress,
+		Error:             bbi.Status.Error,
+		URL:               bbi.Status.URL,
+		Created:           bbi.Status.BackupCreatedAt,
+		Size:              bbi.Status.Size,
+		Labels:            bbi.Status.Labels,
+		Messages:          bbi.Status.Messages,
+		CompressionMethod: string(bbi.Status.CompressionMethod),
+	}
+
+	backupBackingImage.Actions = map[string]string{
+		"backupBackingImageRestore": apiContext.UrlBuilder.ActionLink(backupBackingImage.Resource, "backupBackingImageRestore"),
+	}
+
+	return backupBackingImage
+}
+
+func toBackupBackingImageCollection(bbis []*longhorn.BackupBackingImage, apiContext *api.ApiContext) *client.GenericCollection {
+	data := []interface{}{}
+	for _, bbi := range bbis {
+		data = append(data, toBackupBackingImageResource(bbi, apiContext))
+	}
+
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "backupBackingImage"}}
+}
+
 func toBackupResource(b *longhorn.Backup) *Backup {
 	if b == nil {
 		return nil
@@ -1860,8 +1924,9 @@ func toBackingImageResource(bi *longhorn.BackingImage, apiContext *api.ApiContex
 		DeletionTimestamp: deletionTimestamp,
 	}
 	res.Actions = map[string]string{
-		"backingImageCleanup": apiContext.UrlBuilder.ActionLink(res.Resource, "backingImageCleanup"),
-		BackingImageUpload:    apiContext.UrlBuilder.ActionLink(res.Resource, BackingImageUpload),
+		"backingImageCleanup":      apiContext.UrlBuilder.ActionLink(res.Resource, "backingImageCleanup"),
+		BackingImageUpload:         apiContext.UrlBuilder.ActionLink(res.Resource, BackingImageUpload),
+		"backupBackingImageCreate": apiContext.UrlBuilder.ActionLink(res.Resource, "backupBackingImageCreate"),
 	}
 	return res
 }

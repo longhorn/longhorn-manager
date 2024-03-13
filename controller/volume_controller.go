@@ -722,7 +722,18 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 				r.Spec.RebuildRetryCount = 0
 			}
 			// Set LastHealthyAt to record the last time this replica became RW in an engine.
-			r.Spec.LastHealthyAt = now
+			if transitionTime, ok := e.Status.ReplicaTransitionTimeMap[rName]; !ok {
+				log.Errorf("BUG: Replica %v is in mode %v but transition time was not recorded", r.Name, mode)
+				r.Spec.LastHealthyAt = now
+			} else {
+				after, err := util.TimestampAfterTimestamp(transitionTime, r.Spec.LastHealthyAt)
+				if err != nil {
+					log.Errorf("Failed to check if replica %v transitioned to mode %v after it was last healthy", r.Name, mode)
+				}
+				if after || err != nil {
+					r.Spec.LastHealthyAt = now
+				}
+			}
 			healthyCount++
 		}
 	}
@@ -1260,6 +1271,12 @@ func (c *VolumeController) syncVolumeUnmapMarkSnapChainRemovedSetting(v *longhor
 
 func (c *VolumeController) syncVolumeSnapshotSetting(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) error {
 	if es == nil && rs == nil {
+		return nil
+	}
+	// The webhook ONLY allows volume.spec.snapshotMaxCount to be modified during a migration if a Longhorn upgrade is
+	// changing the value from 0 (unset) to 250 (the maximum). To be safe, don't apply the change to engines or replicas
+	// until the migration is complete.
+	if util.IsVolumeMigrating(v) {
 		return nil
 	}
 
@@ -3184,6 +3201,11 @@ func (c *VolumeController) checkAndFinishVolumeRestore(v *longhorn.Volume, e *lo
 			return err
 		}
 		if bv != nil {
+			if !bv.Status.LastSyncedAt.IsZero() &&
+				bv.Spec.SyncRequestedAt.After(bv.Status.LastSyncedAt.Time) {
+				log.Infof("Restore/DR volume needs to wait for backup volume %s update", bvName)
+				return nil
+			}
 			if bv.Status.LastBackupName != "" {
 				// If the backup CR does not exist, the Longhorn system may be still syncing up the info with the remote backup target.
 				// If the backup is removed already, the backup volume should receive the notification and update bv.Status.LastBackupName.

@@ -447,10 +447,55 @@ func (imc *InstanceManagerController) syncInstanceStatus(im *longhorn.InstanceMa
 	return nil
 }
 
+func (imc *InstanceManagerController) syncLogSettingsToIMPod(im *longhorn.InstanceManager) error {
+	if datastore.IsDataEngineV1(im.Spec.DataEngine) {
+		return nil
+	}
+
+	client, err := engineapi.NewInstanceManagerClient(im)
+	if err != nil {
+		return errors.Wrapf(err, "failed to create instance manager client for %v", im.Name)
+	}
+
+	settingNames := []types.SettingName{
+		types.SettingNameV2DataEngineLogLevel,
+		types.SettingNameV2DataEngineLogFlags,
+	}
+
+	for _, settingName := range settingNames {
+		setting, err := imc.ds.GetSettingWithAutoFillingRO(settingName)
+		if err != nil {
+			return err
+		}
+
+		switch settingName {
+		case types.SettingNameV2DataEngineLogLevel:
+			err = client.LogSetLevel(longhorn.DataEngineTypeV2, "spdk_tgt", setting.Value)
+			if err != nil {
+				return errors.Wrapf(err, "failed to set log level for %v", settingName)
+			}
+		case types.SettingNameV2DataEngineLogFlags:
+			err = client.LogSetFlags(longhorn.DataEngineTypeV2, "spdk_tgt", setting.Value)
+			if err != nil {
+				return errors.Wrapf(err, "failed to set log flags for %v", settingName)
+			}
+		}
+	}
+
+	return nil
+}
+
 func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) error {
+	log := getLoggerForInstanceManager(imc.logger, im)
+
 	err := imc.annotateCASafeToEvict(im)
 	if err != nil {
 		return err
+	}
+
+	err = imc.syncLogSettingsToIMPod(im)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to sync log settings to instance manager pod")
 	}
 
 	isSettingSynced, isPodDeletedOrNotRunning, areInstancesRunningInPod, err := imc.areDangerZoneSettingsSyncedToIMPod(im)
@@ -1201,9 +1246,23 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	podSpec.Spec.Containers[0].Name = "instance-manager"
 
 	if datastore.IsDataEngineV2(dataEngine) {
-		podSpec.Spec.Containers[0].Args = []string{
-			"instance-manager", "--enable-spdk", "--debug", "daemon", "--spdk-enabled", "--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort),
+		// spdk_tgt doesn't support log level option, so we don't need to pass the log level to the instance manager.
+		// The log level will be applied in the reconciliation of instance manager controller.
+		logFlagsSetting, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngineLogFlags)
+		if err != nil {
+			return nil, err
 		}
+
+		logFlags := "all"
+		if logFlagsSetting.Value != "" {
+			logFlags = strings.ToLower(logFlagsSetting.Value)
+		}
+
+		args := []string{
+			"instance-manager", "--spdk-log", logFlags, "--enable-spdk", "--debug",
+			"daemon", "--spdk-enabled", "--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort)}
+
+		podSpec.Spec.Containers[0].Args = args
 
 		hugepage, err := imc.ds.GetSettingAsInt(types.SettingNameV2DataEngineHugepageLimit)
 		if err != nil {

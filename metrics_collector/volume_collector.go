@@ -173,40 +173,47 @@ func (vc *VolumeCollector) Collect(ch chan<- prometheus.Metric) {
 
 	for _, v := range volumeLists {
 		if v.Status.OwnerID == vc.currentNodeID {
-			var err error
-			var e *longhorn.Engine
-			var engineClientProxy engineapi.EngineClientProxy
-			var metrics *engineapi.Metrics
-
-			e, err = vc.ds.GetVolumeCurrentEngine(v.Name)
-			if err == nil {
-				engineClientProxy, err = vc.getEngineClientProxy(e)
-				if err == nil {
-					defer engineClientProxy.Close()
-
-					metrics, err = engineClientProxy.MetricsGet(e)
-					if err != nil {
-						vc.logger.WithError(err).Warnf("Failed to get metrics from volume %v from engine %v", e.Spec.VolumeName, e.Name)
-					}
-				} else {
-					vc.logger.WithError(err).Warnf("Failed to get engine proxy of %v for volume %v", e.Name, v.Name)
-				}
-			} else {
-				vc.logger.WithError(err).Warnf("Failed to get engine for volume %v", v.Name)
-			}
-
-			ch <- prometheus.MustNewConstMetric(vc.capacityMetric.Desc, vc.capacityMetric.Type, float64(v.Spec.Size), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
-			ch <- prometheus.MustNewConstMetric(vc.sizeMetric.Desc, vc.sizeMetric.Type, float64(v.Status.ActualSize), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
-			ch <- prometheus.MustNewConstMetric(vc.stateMetric.Desc, vc.stateMetric.Type, float64(getVolumeStateValue(v)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
-			ch <- prometheus.MustNewConstMetric(vc.robustnessMetric.Desc, vc.robustnessMetric.Type, float64(getVolumeRobustnessValue(v)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
-			ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.throughputMetrics.read.Desc, vc.volumePerfMetrics.throughputMetrics.read.Type, float64(vc.getVolumeReadThroughput(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
-			ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.throughputMetrics.write.Desc, vc.volumePerfMetrics.throughputMetrics.write.Type, float64(vc.getVolumeWriteThroughput(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
-			ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.iopsMetrics.read.Desc, vc.volumePerfMetrics.iopsMetrics.read.Type, float64(vc.getVolumeReadIOPS(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
-			ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.iopsMetrics.write.Desc, vc.volumePerfMetrics.iopsMetrics.write.Type, float64(vc.getVolumeWriteIOPS(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
-			ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.latencyMetrics.read.Desc, vc.volumePerfMetrics.latencyMetrics.read.Type, float64(vc.getVolumeReadLatency(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
-			ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.latencyMetrics.write.Desc, vc.volumePerfMetrics.latencyMetrics.write.Type, float64(vc.getVolumeWriteLatency(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
+			vc.collectMetrics(ch, v)
 		}
 	}
+}
+
+func (vc *VolumeCollector) collectMetrics(ch chan<- prometheus.Metric, v *longhorn.Volume) {
+	defer func() {
+		if err := recover(); err != nil {
+			vc.logger.WithField("error", err).Warnf("Panic during collecting metrics for volume %v", v.Name)
+		}
+	}()
+
+	ch <- prometheus.MustNewConstMetric(vc.capacityMetric.Desc, vc.capacityMetric.Type, float64(v.Spec.Size), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
+	ch <- prometheus.MustNewConstMetric(vc.sizeMetric.Desc, vc.sizeMetric.Type, float64(v.Status.ActualSize), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
+	ch <- prometheus.MustNewConstMetric(vc.stateMetric.Desc, vc.stateMetric.Type, float64(getVolumeStateValue(v)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
+	ch <- prometheus.MustNewConstMetric(vc.robustnessMetric.Desc, vc.robustnessMetric.Type, float64(getVolumeRobustnessValue(v)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
+
+	e, err := vc.ds.GetVolumeCurrentEngine(v.Name)
+	if err != nil {
+		vc.logger.WithError(err).Warnf("Failed to get engine for volume %v", v.Name)
+		return
+	}
+
+	engineClientProxy, err := vc.getEngineClientProxy(e)
+	if err != nil {
+		vc.logger.WithError(err).Warnf("Failed to get engine proxy of %v for volume %v", e.Name, v.Name)
+		return
+	}
+	defer engineClientProxy.Close()
+
+	metrics, err := engineClientProxy.MetricsGet(e)
+	if err != nil {
+		vc.logger.WithError(err).Warnf("Failed to get metrics from volume %v from engine %v", e.Spec.VolumeName, e.Name)
+	}
+
+	ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.throughputMetrics.read.Desc, vc.volumePerfMetrics.throughputMetrics.read.Type, float64(vc.getVolumeReadThroughput(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
+	ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.throughputMetrics.write.Desc, vc.volumePerfMetrics.throughputMetrics.write.Type, float64(vc.getVolumeWriteThroughput(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
+	ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.iopsMetrics.read.Desc, vc.volumePerfMetrics.iopsMetrics.read.Type, float64(vc.getVolumeReadIOPS(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
+	ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.iopsMetrics.write.Desc, vc.volumePerfMetrics.iopsMetrics.write.Type, float64(vc.getVolumeWriteIOPS(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
+	ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.latencyMetrics.read.Desc, vc.volumePerfMetrics.latencyMetrics.read.Type, float64(vc.getVolumeReadLatency(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
+	ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.latencyMetrics.write.Desc, vc.volumePerfMetrics.latencyMetrics.write.Type, float64(vc.getVolumeWriteLatency(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
 }
 
 func (vc *VolumeCollector) getEngineClientProxy(engine *longhorn.Engine) (c engineapi.EngineClientProxy, err error) {
