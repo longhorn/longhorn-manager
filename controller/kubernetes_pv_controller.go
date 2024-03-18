@@ -434,6 +434,12 @@ func (kc *KubernetesPVController) getAssociatedPods(ks *longhorn.KubernetesStatu
 			if v.PersistentVolumeClaim != nil && v.PersistentVolumeClaim.ClaimName == ks.PVCName {
 				return true
 			}
+			// Generic ephemeral volumes have an Ephemeral section instead of a PersistentVolumeClaim section. The name
+			// of the PersistentVolumeClaim associated with a generic ephemeral volume is deterministic:
+			// https://kubernetes.io/docs/concepts/storage/ephemeral-volumes/#persistentvolumeclaim-naming.
+			if v.Ephemeral != nil && fmt.Sprintf("%s-%s", pod.Name, v.Name) == ks.PVCName {
+				return true
+			}
 		}
 		return false
 	})
