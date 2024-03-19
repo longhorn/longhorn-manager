@@ -15,6 +15,7 @@ import (
 	"github.com/urfave/cli"
 	"golang.org/x/sync/errgroup"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
@@ -28,6 +29,7 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
+	btypes "github.com/longhorn/backupstore/types"
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
@@ -609,6 +611,29 @@ func (job *Job) doRecurringBackup() (err error) {
 
 	if err := job.doSnapshot(); err != nil {
 		return err
+	}
+
+	if intervalStr, exists := job.labels[types.GetLonghornLabelKey(btypes.LonghornBackupOptionFullBackupInterval)]; exists {
+		interval, err := strconv.Atoi(intervalStr)
+		if err != nil {
+			return errors.Wrapf(err, "interval %v is not number", intervalStr)
+		}
+
+		backupVolume, err := job.api.BackupVolume.ById(job.volumeName)
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				return errors.Wrapf(err, "failed to get backup volume %v", job.volumeName)
+			}
+		}
+
+		backupTimes := 0
+		if backupVolume != nil {
+			backupTimes = int(backupVolume.BackupTimes)
+		}
+
+		if backupTimes%interval == 0 {
+			job.labels[types.GetLonghornLabelKey(btypes.LonghornBackupOptionBackupMode)] = btypes.LonghornBackupModeFull
+		}
 	}
 
 	if _, err := job.api.Volume.ActionSnapshotBackup(volume, &longhornclient.SnapshotInput{

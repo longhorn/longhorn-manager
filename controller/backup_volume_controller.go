@@ -408,6 +408,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	backupVolume.Status.BackingImageChecksum = backupVolumeInfo.BackingImageChecksum
 	backupVolume.Status.StorageClassName = backupVolumeInfo.StorageClassName
 	backupVolume.Status.LastSyncedAt = syncTime
+	backupVolume.Status.BackupTimes = backupVolumeInfo.BackupTimes
 	return nil
 }
 

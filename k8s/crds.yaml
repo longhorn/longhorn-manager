@@ -1111,6 +1111,10 @@ spec:
               backingImageName:
                 description: The backing image name.
                 type: string
+              backupTimes:
+                description: The number of backups that have been created.
+                format: int64
+                type: integer
               createdAt:
                 description: The backup volume creation time.
                 type: string

@@ -3,6 +3,7 @@ module github.com/longhorn/longhorn-manager
 go 1.21
 
 replace (
+	github.com/longhorn/backupstore v0.0.0-20240219094812-3a87ee02df77 => github.com/ChanYiLin/backupstore v0.0.0-20240321072722-823fe2cd73ef
 	k8s.io/api => k8s.io/api v0.28.5
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.28.5
 	k8s.io/apimachinery => k8s.io/apimachinery v0.28.5

@@ -140,6 +140,7 @@ type BackupVolume struct {
 	BackingImageName     string            `json:"backingImageName"`
 	BackingImageChecksum string            `json:"backingImageChecksum"`
 	StorageClassName     string            `json:"storageClassName"`
+	BackupTimes          int64             `json:"backupTimes"`
 }
 
 type Backup struct {
@@ -1742,6 +1743,7 @@ func toBackupVolumeResource(bv *longhorn.BackupVolume, apiContext *api.ApiContex
 		BackingImageName:     bv.Status.BackingImageName,
 		BackingImageChecksum: bv.Status.BackingImageChecksum,
 		StorageClassName:     bv.Status.StorageClassName,
+		BackupTimes:          bv.Status.BackupTimes,
 	}
 	b.Actions = map[string]string{
 		"backupList":   apiContext.UrlBuilder.ActionLink(b.Resource, "backupList"),

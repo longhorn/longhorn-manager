@@ -162,6 +162,7 @@ type BackupVolume struct {
 	BackingImageName     string             `json:"backingImageName"`
 	BackingImageChecksum string             `json:"backingImageChecksum"`
 	StorageClassName     string             `json:"storageClassName"`
+	BackupTimes          int64              `json:"backupTimes"`
 }
 
 type Backup struct {
