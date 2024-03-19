@@ -63,6 +63,7 @@ func (s *Server) RecurringJobCreate(rw http.ResponseWriter, req *http.Request) e
 		Retain:      input.Retain,
 		Concurrency: input.Concurrency,
 		Labels:      input.Labels,
+		Parameters:  input.Parameters,
 	})
 	if err != nil {
 		return errors.Wrapf(err, "failed to create recurring job %v", input.Name)
@@ -90,6 +91,7 @@ func (s *Server) RecurringJobUpdate(rw http.ResponseWriter, req *http.Request) e
 			Retain:      input.Retain,
 			Concurrency: input.Concurrency,
 			Labels:      input.Labels,
+			Parameters:  input.Parameters,
 		})
 	})
 	if err != nil {

@@ -53,6 +53,9 @@ type RecurringJobSpec struct {
 	// The label of the snapshot/backup.
 	// +optional
 	Labels map[string]string `json:"labels,omitempty"`
+	// The parameters of the snapshot/backup.
+	// +optional
+	Parameters map[string]string `json:"parameters,omitempty"`
 }
 
 // RecurringJobStatus defines the observed state of the Longhorn recurring job

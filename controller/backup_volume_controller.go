@@ -383,6 +383,8 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		return nil
 	}
 
+	logrus.Infof("[DEBUG]: backupVolumeInfo: %v", backupVolumeInfo)
+
 	// Update the Backup CR spec.syncRequestAt to request the
 	// backup_controller to reconcile the Backup CR if the last backup changed
 	if backupVolume.Status.LastBackupName != backupVolumeInfo.LastBackupName {
@@ -408,6 +410,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	backupVolume.Status.BackingImageChecksum = backupVolumeInfo.BackingImageChecksum
 	backupVolume.Status.StorageClassName = backupVolumeInfo.StorageClassName
 	backupVolume.Status.LastSyncedAt = syncTime
+	backupVolume.Status.BackupCount = backupVolumeInfo.BackupCount
 	return nil
 }
 

@@ -186,6 +186,14 @@ func (s *Server) SnapshotBackup(w http.ResponseWriter, req *http.Request) (err e
 		return err
 	}
 
+	backupParameters := map[string]string{}
+	if input.Parameters == nil {
+		backupParameters = input.Parameters
+	}
+	if err := util.ValidateBackupParameters(backupParameters); err != nil {
+		return err
+	}
+
 	// Cannot directly compare the structs since KubernetesStatus contains a slice which cannot be compared.
 	if !reflect.DeepEqual(vol.Status.KubernetesStatus, longhorn.KubernetesStatus{}) {
 		kubeStatus, err := json.Marshal(vol.Status.KubernetesStatus)
@@ -195,7 +203,7 @@ func (s *Server) SnapshotBackup(w http.ResponseWriter, req *http.Request) (err e
 		labels[types.KubernetesStatusLabel] = string(kubeStatus)
 	}
 
-	if err := s.m.BackupSnapshot(bsutil.GenerateName("backup"), volName, input.Name, labels); err != nil {
+	if err := s.m.BackupSnapshot(bsutil.GenerateName("backup"), volName, input.Name, labels, backupParameters); err != nil {
 		return err
 	}
 

@@ -208,6 +208,10 @@ const (
 )
 
 const (
+	RecurringJobBackupParameterFullBackupInterval = "full-backup-interval"
+)
+
+const (
 	KubernetesMinVersion = "v1.18.0"
 )
 

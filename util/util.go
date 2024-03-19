@@ -47,6 +47,7 @@ import (
 	lhns "github.com/longhorn/go-common-libs/ns"
 	lhtypes "github.com/longhorn/go-common-libs/types"
 
+	btypes "github.com/longhorn/backupstore/types"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
@@ -500,6 +501,29 @@ func ValidateSnapshotLabels(labels map[string]string) (map[string]string, error)
 	}
 
 	return validLabels, nil
+}
+
+func ValidateBackupParameters(parameters map[string]string) error {
+	for key, value := range parameters {
+		if err := validateBackupParameter(key, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateBackupParameter(key, value string) error {
+	switch key {
+	case btypes.LonghornBackupOptionBackupMode:
+		if value != btypes.LonghornBackupModeFull &&
+			value != btypes.LonghornBackupModeIncremental {
+			return fmt.Errorf("%v:%v is not a valid option", key, value)
+		}
+	default:
+		return fmt.Errorf("%v:%v is not a valid option", key, value)
+	}
+
+	return nil
 }
 
 func ValidateTags(inputTags []string) ([]string, error) {

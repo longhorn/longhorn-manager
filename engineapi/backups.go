@@ -232,6 +232,7 @@ func (btc *BackupTargetClient) BackupVolumeDelete(destURL, volumeName string, cr
 // parseBackupVolumeConfig parses a backup volume config
 func parseBackupVolumeConfig(output string) (*BackupVolume, error) {
 	backupVolume := new(BackupVolume)
+	logrus.Infof("[DEBUG] parseBackupVolumeConfig output: %v", output)
 	if err := json.Unmarshal([]byte(output), backupVolume); err != nil {
 		return nil, errors.Wrapf(err, "error parsing one backup volume config: \n%s", output)
 	}
@@ -318,7 +319,7 @@ func (btc *BackupTargetClient) BackupCleanUpAllMounts() (err error) {
 // TODO: Deprecated, replaced by gRPC proxy
 func (e *EngineBinary) SnapshotBackup(engine *longhorn.Engine, snapName, backupName, backupTarget,
 	backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int, storageClassName string,
-	labels, credential map[string]string) (string, string, error) {
+	labels, credential, parameters map[string]string) (string, string, error) {
 	if snapName == etypes.VolumeHeadName {
 		return "", "", fmt.Errorf("invalid operation: cannot backup %v", etypes.VolumeHeadName)
 	}
