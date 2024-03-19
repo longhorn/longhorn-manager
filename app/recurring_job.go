@@ -48,14 +48,16 @@ const (
 )
 
 type Job struct {
-	logger       logrus.FieldLogger
-	lhClient     lhclientset.Interface
-	namespace    string
-	volumeName   string
-	snapshotName string
-	retain       int
-	task         longhorn.RecurringJobType
-	labels       map[string]string
+	logger         logrus.FieldLogger
+	lhClient       lhclientset.Interface
+	namespace      string
+	volumeName     string
+	snapshotName   string
+	retain         int
+	task           longhorn.RecurringJobType
+	labels         map[string]string
+	parameters     map[string]string
+	executionCount int
 
 	eventRecorder record.EventRecorder
 
@@ -111,6 +113,13 @@ func recurringJob(c *cli.Context) (err error) {
 	var jobConcurrent int = recurringJob.Spec.Concurrency
 	jobTask := recurringJob.Spec.Task
 
+	recurringJob.Status.ExecutionCount += 1
+	if _, err = lhClient.LonghornV1beta2().RecurringJobs(namespace).UpdateStatus(context.TODO(), recurringJob, metav1.UpdateOptions{}); err != nil {
+		return errors.Wrap(err, "failed to update job execution count")
+	}
+
+	jobExecutionCount := recurringJob.Status.ExecutionCount
+
 	jobLabelMap := map[string]string{}
 	if recurringJob.Spec.Labels != nil {
 		jobLabelMap = recurringJob.Spec.Labels
@@ -119,6 +128,11 @@ func recurringJob(c *cli.Context) (err error) {
 	labelJSON, err := json.Marshal(jobLabelMap)
 	if err != nil {
 		return errors.Wrap(err, "failed to get JSON encoding for labels")
+	}
+
+	jobParameterMap := map[string]string{}
+	if recurringJob.Spec.Parameters != nil {
+		jobParameterMap = recurringJob.Spec.Parameters
 	}
 
 	allowDetachedSetting := types.SettingNameAllowRecurringJobWhileVolumeDetached
@@ -153,7 +167,7 @@ func recurringJob(c *cli.Context) (err error) {
 	for _, volumeName := range filteredVolumes {
 		startJobVolumeName := volumeName
 		ewg.Go(func() error {
-			return startVolumeJob(startJobVolumeName, logger, concurrentLimiter, managerURL, jobName, jobTask, jobRetain, jobConcurrent, jobGroups, jobLabelMap, labelJSON)
+			return startVolumeJob(startJobVolumeName, logger, concurrentLimiter, managerURL, jobName, jobTask, jobRetain, jobConcurrent, jobGroups, jobLabelMap, labelJSON, jobParameterMap, jobExecutionCount)
 		})
 	}
 
@@ -162,7 +176,7 @@ func recurringJob(c *cli.Context) (err error) {
 
 func startVolumeJob(
 	volumeName string, logger *logrus.Logger, concurrentLimiter chan struct{}, managerURL string,
-	jobName string, jobTask longhorn.RecurringJobType, jobRetain int, jobConcurrent int, jobGroups []string, jobLabelMap map[string]string, labelJSON []byte) error {
+	jobName string, jobTask longhorn.RecurringJobType, jobRetain int, jobConcurrent int, jobGroups []string, jobLabelMap map[string]string, labelJSON []byte, jobParameterMap map[string]string, jobExecutionCount int) error {
 
 	concurrentLimiter <- struct{}{}
 	defer func() {
@@ -170,13 +184,15 @@ func startVolumeJob(
 	}()
 
 	log := logger.WithFields(logrus.Fields{
-		"job":        jobName,
-		"volume":     volumeName,
-		"task":       jobTask,
-		"retain":     jobRetain,
-		"concurrent": jobConcurrent,
-		"groups":     strings.Join(jobGroups, ","),
-		"labels":     string(labelJSON),
+		"job":            jobName,
+		"volume":         volumeName,
+		"task":           jobTask,
+		"retain":         jobRetain,
+		"concurrent":     jobConcurrent,
+		"groups":         strings.Join(jobGroups, ","),
+		"labels":         string(labelJSON),
+		"parameters":     jobParameterMap,
+		"executionCount": jobExecutionCount,
 	})
 	log.Info("Creating job")
 
@@ -187,8 +203,10 @@ func startVolumeJob(
 		volumeName,
 		snapshotName,
 		jobLabelMap,
+		jobParameterMap,
 		jobRetain,
-		jobTask)
+		jobTask,
+		jobExecutionCount)
 	if err != nil {
 		log.WithError(err).Error("Failed to create new job for volume")
 		return err
@@ -213,7 +231,7 @@ func sliceStringSafely(s string, begin, end int) string {
 	return s[begin:end]
 }
 
-func newJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName string, labels map[string]string, retain int, task longhorn.RecurringJobType) (*Job, error) {
+func newJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName string, labels map[string]string, parameters map[string]string, retain int, task longhorn.RecurringJobType, executionCount int) (*Job, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		return nil, fmt.Errorf("failed detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
@@ -238,12 +256,13 @@ func newJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName stri
 	}
 
 	logger = logger.WithFields(logrus.Fields{
-		"namespace":    namespace,
-		"volumeName":   volumeName,
-		"snapshotName": snapshotName,
-		"labels":       labels,
-		"retain":       retain,
-		"task":         task,
+		"namespace":      namespace,
+		"volumeName":     volumeName,
+		"snapshotName":   snapshotName,
+		"labels":         labels,
+		"retain":         retain,
+		"task":           task,
+		"executionCount": executionCount,
 	})
 
 	scheme := runtime.NewScheme()
@@ -257,15 +276,17 @@ func newJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName stri
 	}
 
 	return &Job{
-		logger:       logger,
-		lhClient:     lhClient,
-		namespace:    namespace,
-		volumeName:   volumeName,
-		snapshotName: snapshotName,
-		labels:       labels,
-		retain:       retain,
-		task:         task,
-		api:          apiClient,
+		logger:         logger,
+		lhClient:       lhClient,
+		namespace:      namespace,
+		volumeName:     volumeName,
+		snapshotName:   snapshotName,
+		labels:         labels,
+		parameters:     parameters,
+		executionCount: executionCount,
+		retain:         retain,
+		task:           task,
+		api:            apiClient,
 
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-recurring-job"}),
 	}, nil
@@ -600,9 +621,24 @@ func (job *Job) doRecurringBackup() (err error) {
 		return err
 	}
 
+	backupMode := longhorn.BackupModeIncremental
+	if intervalStr, exists := job.parameters[types.RecurringJobBackupParameterFullBackupInterval]; exists {
+		interval, err := strconv.Atoi(intervalStr)
+		if err != nil {
+			return errors.Wrapf(err, "interval %v is not number", intervalStr)
+		}
+
+		if interval != 0 {
+			if job.executionCount%interval == 0 {
+				backupMode = longhorn.BackupModeFull
+			}
+		}
+	}
+
 	if _, err := job.api.Volume.ActionSnapshotBackup(volume, &longhornclient.SnapshotInput{
-		Labels: job.labels,
-		Name:   job.snapshotName,
+		Labels:     job.labels,
+		Name:       job.snapshotName,
+		BackupMode: string(backupMode),
 	}); err != nil {
 		return err
 	}

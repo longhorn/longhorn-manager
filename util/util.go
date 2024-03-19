@@ -503,6 +503,14 @@ func ValidateSnapshotLabels(labels map[string]string) (map[string]string, error)
 	return validLabels, nil
 }
 
+func ValidateBackupMode(backupMode string) error {
+	if longhorn.BackupMode(backupMode) != longhorn.BackupModeFull &&
+		longhorn.BackupMode(backupMode) != longhorn.BackupModeIncremental {
+		return fmt.Errorf("backup mode: %v is not a valid option", backupMode)
+	}
+	return nil
+}
+
 func ValidateTags(inputTags []string) ([]string, error) {
 	foundTags := make(map[string]struct{})
 	var tags []string
