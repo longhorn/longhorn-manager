@@ -4193,6 +4193,41 @@ func ValidateRecurringJob(job longhorn.RecurringJobSpec) error {
 			return err
 		}
 	}
+	if job.Parameters != nil {
+		if err := ValidateRecurringJobParameters(job.Task, job.Labels); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ValidateRecurringJobParameters(task longhorn.RecurringJobType, parameters map[string]string) (err error) {
+	switch task {
+	case longhorn.RecurringJobTypeBackup, longhorn.RecurringJobTypeBackupForceCreate:
+		for key, value := range parameters {
+			if err := validateRecurringJobBackupParameter(key, value); err != nil {
+				return errors.Wrapf(err, "failed to validate recurring job backup task parameters")
+			}
+		}
+	// we don't support any parameters for other tasks currently
+	default:
+		return nil
+	}
+
+	return nil
+}
+
+func validateRecurringJobBackupParameter(key, value string) error {
+	switch key {
+	case types.RecurringJobBackupParameterFullBackupInterval:
+		_, err := strconv.Atoi(value)
+		if err != nil {
+			return errors.Wrapf(err, "%v:%v is not number", key, value)
+		}
+	default:
+		return fmt.Errorf("%v:%v is not a valid parameter", key, value)
+	}
+
 	return nil
 }
 

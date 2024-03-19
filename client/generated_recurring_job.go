@@ -11,6 +11,8 @@ type RecurringJob struct {
 
 	Cron string `json:"cron,omitempty" yaml:"cron,omitempty"`
 
+	ExecutionCount int64 `json:"executionCount,omitempty" yaml:"execution_count,omitempty"`
+
 	Groups []string `json:"groups,omitempty" yaml:"groups,omitempty"`
 
 	Labels map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`

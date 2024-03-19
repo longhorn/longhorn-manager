@@ -64,7 +64,7 @@ require (
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240624090318-a8ef86edd9a5
 	github.com/longhorn/go-spdk-helper v0.0.0-20240625071858-89fcb1c09841
 	github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240625050518-004f204f31da
-	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240624015009-6b9dfdf982e7
+	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240625145042-4961e1548d64
 	github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240625050532-badefc86cd57
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.18.0
@@ -196,11 +196,10 @@ require (
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.26.0 // indirect
 	golang.org/x/crypto v0.24.0 // indirect
-	golang.org/x/oauth2 v0.18.0 // indirect
+	golang.org/x/oauth2 v0.19.0 // indirect
 	golang.org/x/sync v0.7.0
 	golang.org/x/term v0.21.0 // indirect
 	golang.org/x/text v0.16.0
-	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/genproto v0.0.0-20240227224415-6ceb2ff114de // indirect
 	google.golang.org/protobuf v1.34.2
 	gopkg.in/inf.v0 v0.9.1 // indirect

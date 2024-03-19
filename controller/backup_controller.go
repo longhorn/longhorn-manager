@@ -484,6 +484,8 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	backup.Status.VolumeBackingImageName = backupInfo.VolumeBackingImageName
 	backup.Status.CompressionMethod = longhorn.BackupCompressionMethod(backupInfo.CompressionMethod)
 	backup.Status.LastSyncedAt = syncTime
+	backup.Status.NewlyUploadedDataSize = backupInfo.NewlyUploadedDataSize
+	backup.Status.ReUploadedDataSize = backupInfo.ReUploadedDataSize
 	return nil
 }
 

@@ -28,6 +28,10 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 		return err
 	}
 
+	if err := upgradeBackups(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
 	return upgradeNodes(namespace, lhClient, resourceMaps)
 }
 
@@ -168,5 +172,24 @@ func upgradeNodes(namespace string, lhClient *lhclientset.Clientset, resourceMap
 		nodeMap[key] = node
 	}
 
+	return nil
+}
+
+func upgradeBackups(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade backup failed")
+	}()
+
+	backupMap, err := upgradeutil.ListAndUpdateBackupsInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn backups during the backup upgrade")
+	}
+
+	for _, b := range backupMap {
+		b.Spec.BackupMode = longhorn.BackupModeIncremental
+	}
 	return nil
 }
