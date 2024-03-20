@@ -64,6 +64,8 @@ type Interface interface {
 	SystemBackups() SystemBackupInformer
 	// SystemRestores returns a SystemRestoreInformer.
 	SystemRestores() SystemRestoreInformer
+	// Upgrades returns a UpgradeInformer.
+	Upgrades() UpgradeInformer
 	// Volumes returns a VolumeInformer.
 	Volumes() VolumeInformer
 	// VolumeAttachments returns a VolumeAttachmentInformer.
@@ -179,6 +181,11 @@ func (v *version) SystemBackups() SystemBackupInformer {
 // SystemRestores returns a SystemRestoreInformer.
 func (v *version) SystemRestores() SystemRestoreInformer {
 	return &systemRestoreInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// Upgrades returns a UpgradeInformer.
+func (v *version) Upgrades() UpgradeInformer {
+	return &upgradeInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // Volumes returns a VolumeInformer.
