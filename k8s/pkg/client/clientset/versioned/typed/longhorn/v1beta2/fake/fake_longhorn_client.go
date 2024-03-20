@@ -108,6 +108,10 @@ func (c *FakeLonghornV1beta2) SystemRestores(namespace string) v1beta2.SystemRes
 	return &FakeSystemRestores{c, namespace}
 }
 
+func (c *FakeLonghornV1beta2) Upgrades(namespace string) v1beta2.UpgradeInterface {
+	return &FakeUpgrades{c, namespace}
+}
+
 func (c *FakeLonghornV1beta2) Volumes(namespace string) v1beta2.VolumeInterface {
 	return &FakeVolumes{c, namespace}
 }
