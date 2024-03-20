@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strings"
@@ -1347,6 +1348,36 @@ func alignDiskSpecAndStatus(node *longhorn.Node) {
 	}
 }
 
+<<<<<<< HEAD
+=======
+func (nc *NodeController) deleteDisk(node *longhorn.Node, diskType longhorn.DiskType, diskName, diskUUID string) error {
+	if diskUUID == "" {
+		log.Infof("Disk %v has no diskUUID, skip deleting", diskName)
+		return nil
+	}
+
+	dataEngine := util.GetDataEngineForDiskType(diskType)
+
+	im, err := nc.ds.GetDefaultInstanceManagerByNodeRO(nc.controllerID, dataEngine)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get default engine instance manager")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	diskServiceClient, err := engineapi.NewDiskServiceClient(ctx, cancel, im, nc.logger)
+	if err != nil {
+		return errors.Wrapf(err, "failed to create disk service client")
+	}
+	defer diskServiceClient.Close()
+
+	if err := monitor.DeleteDisk(diskType, diskName, diskUUID, diskServiceClient); err != nil {
+		return errors.Wrapf(err, "failed to delete disk %v", diskName)
+	}
+
+	return nil
+}
+
+>>>>>>> 62620bce (Pass ctx and cancel function to instance and disk clients)
 func isReadyDiskFound(diskInfoMap map[string]*monitor.CollectedDiskInfo) bool {
 	return len(diskInfoMap) > 0
 }

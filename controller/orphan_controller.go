@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strings"
@@ -305,7 +306,53 @@ func (oc *OrphanController) deleteOrphanedReplica(orphan *longhorn.Orphan) error
 		orphan.Name, orphan.Spec.Parameters[longhorn.OrphanDataName],
 		orphan.Spec.Parameters[longhorn.OrphanDiskPath], orphan.Status.OwnerID)
 
+<<<<<<< HEAD
 	return util.DeleteReplicaDirectoryName(orphan.Spec.Parameters[longhorn.OrphanDiskPath], orphan.Spec.Parameters[longhorn.OrphanDataName])
+=======
+	diskType, ok := orphan.Spec.Parameters[longhorn.OrphanDiskType]
+	if !ok {
+		return fmt.Errorf("failed to get disk type for orphan %v", orphan.Name)
+	}
+
+	switch longhorn.DiskType(diskType) {
+	case longhorn.DiskTypeFilesystem:
+		diskPath := orphan.Spec.Parameters[longhorn.OrphanDiskPath]
+		replicaDirectoryName := orphan.Spec.Parameters[longhorn.OrphanDataName]
+		err := lhns.DeletePath(filepath.Join(diskPath, "replicas", replicaDirectoryName))
+		return errors.Wrapf(err, "failed to delete orphan replica directory %v in disk %v", replicaDirectoryName, diskPath)
+	case longhorn.DiskTypeBlock:
+		return oc.DeleteSpdkReplicaInstance(orphan.Spec.Parameters[longhorn.OrphanDiskName], orphan.Spec.Parameters[longhorn.OrphanDiskUUID], orphan.Spec.Parameters[longhorn.OrphanDataName])
+	default:
+		return fmt.Errorf("unknown disk type %v for orphan %v", diskType, orphan.Name)
+	}
+}
+
+func (oc *OrphanController) DeleteSpdkReplicaInstance(diskName, diskUUID, replicaInstanceName string) (err error) {
+	logrus.Infof("Deleting SPDK replica instance %v on disk %v on node %v", replicaInstanceName, diskUUID, oc.controllerID)
+
+	defer func() {
+		err = errors.Wrapf(err, "cannot delete SPDK replica instance %v", replicaInstanceName)
+	}()
+
+	im, err := oc.ds.GetDefaultInstanceManagerByNodeRO(oc.controllerID, longhorn.DataEngineTypeV2)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get instance manager for node %v for deleting SPDK replica instance  %v", oc.controllerID, replicaInstanceName)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	c, err := engineapi.NewDiskServiceClient(ctx, cancel, im, oc.logger)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	err = c.DiskReplicaInstanceDelete(string(longhorn.DiskTypeBlock), diskName, diskUUID, replicaInstanceName)
+	if err != nil && !types.ErrorIsNotFound(err) {
+		return err
+	}
+
+	return nil
+>>>>>>> 62620bce (Pass ctx and cancel function to instance and disk clients)
 }
 
 func (oc *OrphanController) updateConditions(orphan *longhorn.Orphan) error {

@@ -13,11 +13,17 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+<<<<<<< HEAD
+=======
+
+	"golang.org/x/sys/windows"
+
+	"github.com/Microsoft/go-winio/internal/fs"
+>>>>>>> 181c414a (Support proxy connections over TLS)
 )
 
 //sys connectNamedPipe(pipe syscall.Handle, o *syscall.Overlapped) (err error) = ConnectNamedPipe
 //sys createNamedPipe(name string, flags uint32, pipeMode uint32, maxInstances uint32, outSize uint32, inSize uint32, defaultTimeout uint32, sa *syscall.SecurityAttributes) (handle syscall.Handle, err error)  [failretval==syscall.InvalidHandle] = CreateNamedPipeW
-//sys createFile(name string, access uint32, mode uint32, sa *syscall.SecurityAttributes, createmode uint32, attrs uint32, templatefile syscall.Handle) (handle syscall.Handle, err error) [failretval==syscall.InvalidHandle] = CreateFileW
 //sys getNamedPipeInfo(pipe syscall.Handle, flags *uint32, outSize *uint32, inSize *uint32, maxInstances *uint32) (err error) = GetNamedPipeInfo
 //sys getNamedPipeHandleState(pipe syscall.Handle, state *uint32, curInstances *uint32, maxCollectionCount *uint32, collectDataTimeout *uint32, userName *uint16, maxUserNameSize uint32) (err error) = GetNamedPipeHandleStateW
 //sys localAlloc(uFlags uint32, length uint32) (ptr uintptr) = LocalAlloc
@@ -182,14 +188,26 @@ func (s pipeAddress) String() string {
 }
 
 // tryDialPipe attempts to dial the pipe at `path` until `ctx` cancellation or timeout.
-func tryDialPipe(ctx context.Context, path *string, access uint32) (syscall.Handle, error) {
+func tryDialPipe(ctx context.Context, path *string, access fs.AccessMask) (syscall.Handle, error) {
 	for {
 
 		select {
 		case <-ctx.Done():
 			return syscall.Handle(0), ctx.Err()
 		default:
+<<<<<<< HEAD
 			h, err := createFile(*path, access, 0, nil, syscall.OPEN_EXISTING, syscall.FILE_FLAG_OVERLAPPED|cSECURITY_SQOS_PRESENT|cSECURITY_ANONYMOUS, 0)
+=======
+			wh, err := fs.CreateFile(*path,
+				access,
+				0,   // mode
+				nil, // security attributes
+				fs.OPEN_EXISTING,
+				fs.FILE_FLAG_OVERLAPPED|fs.SECURITY_SQOS_PRESENT|fs.SECURITY_ANONYMOUS,
+				0, // template file handle
+			)
+			h := syscall.Handle(wh)
+>>>>>>> 181c414a (Support proxy connections over TLS)
 			if err == nil {
 				return h, nil
 			}
@@ -232,7 +250,7 @@ func DialPipeContext(ctx context.Context, path string) (net.Conn, error) {
 func DialPipeAccess(ctx context.Context, path string, access uint32) (net.Conn, error) {
 	var err error
 	var h syscall.Handle
-	h, err = tryDialPipe(ctx, &path, access)
+	h, err = tryDialPipe(ctx, &path, fs.AccessMask(access))
 	if err != nil {
 		return nil, err
 	}
@@ -288,6 +306,7 @@ func makeServerPipeHandle(path string, sd []byte, c *PipeConfig, first bool) (sy
 	}
 	defer localFree(ntPath.Buffer)
 	oa.ObjectName = &ntPath
+	oa.Attributes = windows.OBJ_CASE_INSENSITIVE
 
 	// The security descriptor is only needed for the first pipe.
 	if first {
