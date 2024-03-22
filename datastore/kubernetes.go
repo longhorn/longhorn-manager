@@ -20,7 +20,6 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
-	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -839,7 +838,7 @@ func NewPVCManifest(size int64, pvName, ns, pvcName, storageClassName string, ac
 			AccessModes: []corev1.PersistentVolumeAccessMode{
 				accessMode,
 			},
-			Resources: corev1.ResourceRequirements{
+			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{
 					corev1.ResourceStorage: *resource.NewQuantity(size, resource.BinarySI),
 				},
@@ -1012,21 +1011,6 @@ func (s *DataStore) GetClusterRoleBinding(name string) (*rbacv1.ClusterRoleBindi
 // UpdateClusterRoleBinding updates the ClusterRoleBinding resource with the given ClusterRoleBinding object
 func (s *DataStore) UpdateClusterRoleBinding(clusterRoleBinding *rbacv1.ClusterRoleBinding) (*rbacv1.ClusterRoleBinding, error) {
 	return s.kubeClient.RbacV1().ClusterRoleBindings().Update(context.TODO(), clusterRoleBinding, metav1.UpdateOptions{})
-}
-
-// CreatePodSecurityPolicy create a PodSecurityPolicy resource with the given PodSecurityPolicy object
-func (s *DataStore) CreatePodSecurityPolicy(podSecurityPolicy *policyv1beta1.PodSecurityPolicy) (*policyv1beta1.PodSecurityPolicy, error) {
-	return s.kubeClient.PolicyV1beta1().PodSecurityPolicies().Create(context.TODO(), podSecurityPolicy, metav1.CreateOptions{})
-}
-
-// GetPodSecurityPolicy get the PodSecurityPolicy resource of the given name
-func (s *DataStore) GetPodSecurityPolicy(name string) (*policyv1beta1.PodSecurityPolicy, error) {
-	return s.kubeClient.PolicyV1beta1().PodSecurityPolicies().Get(context.TODO(), name, metav1.GetOptions{})
-}
-
-// UpdatePodSecurityPolicy updates the PodSecurityPolicy resource with the given PodSecurityPolicy object
-func (s *DataStore) UpdatePodSecurityPolicy(podSecurityPolicy *policyv1beta1.PodSecurityPolicy) (*policyv1beta1.PodSecurityPolicy, error) {
-	return s.kubeClient.PolicyV1beta1().PodSecurityPolicies().Update(context.TODO(), podSecurityPolicy, metav1.UpdateOptions{})
 }
 
 // CreateRole create a Role resource with the given Role object in the Longhorn namespace

@@ -520,7 +520,7 @@ func (m *VolumeManager) checkAndExpandPVC(namespace string, pvcName string, size
 	requestedSize := resource.MustParse(strconv.FormatInt(size, 10))
 
 	if pvcSpecValue.Cmp(requestedSize) < 0 {
-		pvc.Spec.Resources = corev1.ResourceRequirements{
+		pvc.Spec.Resources = corev1.VolumeResourceRequirements{
 			Requests: corev1.ResourceList{
 				corev1.ResourceStorage: requestedSize,
 			},

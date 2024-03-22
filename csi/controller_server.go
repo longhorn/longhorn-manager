@@ -1331,3 +1331,10 @@ func (cs *ControllerServer) waitForSnapshotToBeReady(snapshotName, volumeName st
 		}
 	}
 }
+
+func (cs *ControllerServer) ControllerModifyVolume(ctx context.Context, req *csi.ControllerModifyVolumeRequest) (*csi.ControllerModifyVolumeResponse, error) {
+	log := cs.log.WithFields(logrus.Fields{"function": "ControllerExpandVolume"})
+	log.Infof("ControllerModifyVolume: called with args %+v", *req)
+
+	return nil, status.Error(codes.Unimplemented, "")
+}

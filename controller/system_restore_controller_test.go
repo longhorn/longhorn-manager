@@ -18,7 +18,6 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -540,39 +539,6 @@ func fakeSystemRolloutPersistentVolumeClaims(fakeObjs map[SystemRolloutCRName]*c
 		persistentVolumeClaim.Spec.Resources = fakeObj.Spec.Resources
 		persistentVolumeClaim.Spec.StorageClassName = fakeObj.Spec.StorageClassName
 		exist, err := clientInterface.Create(context.TODO(), persistentVolumeClaim, metav1.CreateOptions{})
-		c.Assert(err, IsNil)
-
-		err = indexer.Add(exist)
-		c.Assert(err, IsNil)
-	}
-}
-
-func fakeSystemRolloutPodSecurityPolicies(fakeObjs map[SystemRolloutCRName]*policyv1beta1.PodSecurityPolicy, c *C, informerFactory informers.SharedInformerFactory, client *fake.Clientset) {
-	indexer := informerFactory.Policy().V1beta1().PodSecurityPolicies().Informer().GetIndexer()
-
-	clientInterface := client.PolicyV1beta1().PodSecurityPolicies()
-
-	exists, err := clientInterface.List(context.TODO(), metav1.ListOptions{})
-	c.Assert(err, IsNil)
-
-	for _, exist := range exists.Items {
-		exist, err := clientInterface.Get(context.TODO(), exist.Name, metav1.GetOptions{})
-		c.Assert(err, IsNil)
-
-		err = clientInterface.Delete(context.TODO(), exist.Name, metav1.DeleteOptions{})
-		c.Assert(err, IsNil)
-
-		err = indexer.Delete(exist)
-		c.Assert(err, IsNil)
-	}
-
-	for k, fakeObj := range fakeObjs {
-		name := string(k)
-		if strings.HasSuffix(name, TestIgnoreSuffix) {
-			continue
-		}
-
-		exist, err := clientInterface.Create(context.TODO(), newPodSecurityPolicy(fakeObj.Spec), metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
 		err = indexer.Add(exist)
