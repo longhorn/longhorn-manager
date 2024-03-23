@@ -5,11 +5,11 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 type UpgradeState string
 
 const (
-	UpgradeStateUndefined = UpgradeState("")
-	UpgradeStatePending   = UpgradeState("pending")
-	UpgradeStateUpgrading = UpgradeState("upgrading")
-	UpgradeStateCompleted = UpgradeState("completed")
-	UpgradeStateError     = UpgradeState("error")
+	UpgradeStateUndefined    = UpgradeState("")
+	UpgradeStateInitializing = UpgradeState("initializing")
+	UpgradeStateUpgrading    = UpgradeState("upgrading")
+	UpgradeStateCompleted    = UpgradeState("completed")
+	UpgradeStateError        = UpgradeState("error")
 )
 
 type UpgradedVolume struct {
