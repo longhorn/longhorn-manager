@@ -61,6 +61,7 @@ type SystemRolloutTestCase struct {
 	backupSettings               map[SystemRolloutCRName]*longhorn.Setting
 	backupStorageClasses         map[SystemRolloutCRName]*storagev1.StorageClass
 	backupVolumes                map[SystemRolloutCRName]*longhorn.Volume
+	backupBackingImages          map[SystemRolloutCRName]*longhorn.BackingImage
 
 	existClusterRoles           map[SystemRolloutCRName]*rbacv1.ClusterRole
 	existClusterRoleBindings    map[SystemRolloutCRName]*rbacv1.ClusterRoleBinding
@@ -79,6 +80,7 @@ type SystemRolloutTestCase struct {
 	existSettings               map[SystemRolloutCRName]*longhorn.Setting
 	existStorageClasses         map[SystemRolloutCRName]*storagev1.StorageClass
 	existVolumes                map[SystemRolloutCRName]*longhorn.Volume
+	existBackingImages          map[SystemRolloutCRName]*longhorn.BackingImage
 
 	expectRestoredClusterRoles           map[SystemRolloutCRName]*rbacv1.ClusterRole
 	expectRestoredClusterRoleBindings    map[SystemRolloutCRName]*rbacv1.ClusterRoleBinding
@@ -97,6 +99,7 @@ type SystemRolloutTestCase struct {
 	expectRestoredSettings               map[SystemRolloutCRName]*longhorn.Setting
 	expectRestoredStorageClasses         map[SystemRolloutCRName]*storagev1.StorageClass
 	expectRestoredVolumes                map[SystemRolloutCRName]*longhorn.Volume
+	expectRestoredBackingImages          map[SystemRolloutCRName]*longhorn.BackingImage
 
 	expectError                 string
 	expectErrorConditionMessage string
@@ -864,6 +867,57 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 				},
 			},
 		},
+		"system rollout BackingImage exist in cluster": {
+			state:        longhorn.SystemRestoreStateRestoring,
+			isInProgress: true,
+			expectState:  longhorn.SystemRestoreStateCompleted,
+
+			existBackingImages: map[SystemRolloutCRName]*longhorn.BackingImage{
+				SystemRolloutCRName(TestBackingImage): {
+					Spec: longhorn.BackingImageSpec{
+						SourceType: longhorn.BackingImageDataSourceTypeDownload,
+					},
+				},
+			},
+			backupBackingImages: map[SystemRolloutCRName]*longhorn.BackingImage{
+				SystemRolloutCRName(TestBackingImage): {
+					Spec: longhorn.BackingImageSpec{
+						SourceType: longhorn.BackingImageDataSourceTypeUpload,
+					},
+				},
+			},
+			expectRestoredBackingImages: map[SystemRolloutCRName]*longhorn.BackingImage{
+				SystemRolloutCRName(TestBackingImage): {
+					Spec: longhorn.BackingImageSpec{
+						SourceType: longhorn.BackingImageDataSourceTypeDownload,
+					},
+				},
+			},
+		},
+		"system rollout BackingImage not exist in cluster": {
+			state:        longhorn.SystemRestoreStateRestoring,
+			isInProgress: true,
+			expectState:  longhorn.SystemRestoreStateCompleted,
+
+			existBackingImages: nil,
+			// The original sourceType is upload,
+			// but when restoring, we recreate the BackingImage with type restore.
+			backupBackingImages: map[SystemRolloutCRName]*longhorn.BackingImage{
+				SystemRolloutCRName(TestBackingImage): {
+					Spec: longhorn.BackingImageSpec{
+						SourceType: longhorn.BackingImageDataSourceTypeUpload,
+					},
+				},
+			},
+			expectRestoredBackingImages: map[SystemRolloutCRName]*longhorn.BackingImage{
+				SystemRolloutCRName(TestBackingImage): {
+					Spec: longhorn.BackingImageSpec{
+						SourceType: longhorn.BackingImageDataSourceTypeRestore,
+					},
+				},
+			},
+		},
+
 		"system rollout Service exist in cluster": {
 			state:        longhorn.SystemRestoreStateRestoring,
 			isInProgress: true,
@@ -951,6 +1005,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 		fakeSystemRolloutServiceAccounts(tc.backupServiceAccounts, c, informerFactories.KubeInformerFactory, kubeClient)
 		fakeSystemRolloutStorageClasses(tc.backupStorageClasses, c, informerFactories.KubeInformerFactory, kubeClient)
 		fakeSystemRolloutVolumes(tc.backupVolumes, c, informerFactories.LhInformerFactory, lhClient)
+		fakeSystemRolloutBackingImages(tc.backupBackingImages, c, informerFactories.LhInformerFactory, lhClient)
 
 		ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 		doneCh := make(chan struct{})
@@ -999,6 +1054,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 		fakeSystemRolloutServiceAccounts(tc.existServiceAccounts, c, informerFactories.KubeInformerFactory, kubeClient)
 		fakeSystemRolloutSettings(tc.existSettings, c, informerFactories.LhInformerFactory, lhClient)
 		fakeSystemRolloutVolumes(tc.existVolumes, c, informerFactories.LhInformerFactory, lhClient)
+		fakeSystemRolloutBackingImages(tc.existBackingImages, c, informerFactories.LhInformerFactory, lhClient)
 
 		if tc.state == longhorn.SystemRestoreStateRestoring {
 			err := controller.Unpack(controller.logger)
@@ -1039,6 +1095,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			assertRolloutServices(tc.expectRestoredServices, c, kubeClient)
 			assertRolloutServiceAccounts(tc.expectRestoredServiceAccounts, c, kubeClient)
 			assertRolloutVolumes(tc.expectRestoredVolumes, tc.backupVolumes, c, lhClient)
+			assertRolloutBackingImages(tc.expectRestoredBackingImages, tc.backupBackingImages, c, lhClient)
 			assertRolloutSettings(tc.expectRestoredSettings, tc.existSettings, c, lhClient)
 		}
 
@@ -1365,6 +1422,14 @@ func (tc *SystemRolloutTestCase) initTestCase() {
 		}
 		tc.backupVolumes[volumeName] = tc.expectRestoredVolumes[volumeName]
 	}
+
+	// init BackingImages
+	if tc.existBackingImages == nil {
+		tc.existBackingImages = map[SystemRolloutCRName]*longhorn.BackingImage{}
+	}
+	if tc.expectRestoredBackingImages == nil {
+		tc.expectRestoredBackingImages = tc.existBackingImages
+	}
 }
 
 func fakeSystemBackupArchieve(c *C, systemBackupName, systemRolloutOwnerID, rolloutControllerID, tempDir, downloadPath string,
@@ -1682,6 +1747,28 @@ func assertRolloutVolumes(expectRestored map[SystemRolloutCRName]*longhorn.Volum
 		if exist.Spec.NumberOfReplicas != backup.Spec.NumberOfReplicas {
 			assertAnnotateSkippedLastSystemRestore(exist.Annotations, c)
 		}
+	}
+}
+
+func assertRolloutBackingImages(expectRestored map[SystemRolloutCRName]*longhorn.BackingImage, backups map[SystemRolloutCRName]*longhorn.BackingImage, c *C, client *lhfake.Clientset) {
+	objList, err := client.LonghornV1beta2().BackingImages(TestNamespace).List(context.TODO(), metav1.ListOptions{})
+	c.Assert(err, IsNil)
+	c.Assert(len(objList.Items), Equals, len(expectRestored))
+
+	exists := map[SystemRolloutCRName]longhorn.BackingImage{}
+	for _, obj := range objList.Items {
+		exists[SystemRolloutCRName(obj.Name)] = obj
+	}
+
+	for name, restored := range expectRestored {
+		exist, found := exists[name]
+		c.Assert(found, Equals, true)
+		c.Assert(exist.Spec.SourceType, Equals, restored.Spec.SourceType)
+	}
+
+	for name := range backups {
+		_, found := exists[name]
+		c.Assert(found, Equals, true)
 	}
 }
 

@@ -45,6 +45,7 @@ type SystemBackupTestCase struct {
 
 	existPersistentVolumes map[SystemRolloutCRName]*corev1.PersistentVolume
 	existVolumes           map[SystemRolloutCRName]*longhorn.Volume
+	existBackingImages     map[SystemRolloutCRName]*longhorn.BackingImage
 
 	expectError                 bool
 	expectErrorConditionMessage string
@@ -87,7 +88,7 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 					},
 				},
 			},
-			expectState:               longhorn.SystemBackupStateGenerating,
+			expectState:               longhorn.SystemBackupStateBackingImageBackup,
 			expectNewVolumBackupCount: 1,
 		},
 		"system backup create volume backup if-not-present when backup exists": {
@@ -100,7 +101,7 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 					},
 				},
 			},
-			expectState:               longhorn.SystemBackupStateGenerating,
+			expectState:               longhorn.SystemBackupStateBackingImageBackup,
 			expectNewVolumBackupCount: 0,
 		},
 		"system backup create volume backup always": {
@@ -113,8 +114,12 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 					},
 				},
 			},
-			expectState:               longhorn.SystemBackupStateGenerating,
+			expectState:               longhorn.SystemBackupStateBackingImageBackup,
 			expectNewVolumBackupCount: 1,
+		},
+		"system backup create backingimage backup": {
+			state:       longhorn.SystemBackupStateBackingImageBackup,
+			expectState: longhorn.SystemBackupStateGenerating,
 		},
 		"system backup generate": {
 			state:       longhorn.SystemBackupStateGenerating,
@@ -229,6 +234,7 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 		fakeSystemRolloutStorageClassesDefault(c, informerFactories.KubeInformerFactory, kubeClient)
 
 		fakeSystemRolloutVolumes(tc.existVolumes, c, informerFactories.LhInformerFactory, lhClient)
+		fakeSystemRolloutBackingImages(tc.existBackingImages, c, informerFactories.LhInformerFactory, lhClient)
 		fakeSystemRolloutPersistentVolumes(tc.existPersistentVolumes, c, informerFactories.KubeInformerFactory, kubeClient)
 
 		systemBackupController, err := newFakeSystemBackupController(lhClient, kubeClient, extensionsClient, informerFactories, tc.controllerID)
@@ -256,6 +262,14 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 			fakeSystemRolloutBackups(backups, c, informerFactories.LhInformerFactory, lhClient)
 			err = systemBackupController.WaitForVolumeBackupToComplete(backups, systemBackup)
 			c.Assert(err, IsNil)
+
+		case longhorn.SystemBackupStateBackingImageBackup:
+			backupBackingImages, _ := systemBackupController.BackupBackingImage()
+			for _, backupBackingImage := range backupBackingImages {
+				backupBackingImage.Status.State = longhorn.BackupStateCompleted
+			}
+			fakeSystemRolloutBackupBackingImages(backupBackingImages, c, informerFactories.LhInformerFactory, lhClient)
+			systemBackupController.WaitForBackingImageBackupToComplete(backupBackingImages, systemBackup)
 
 		case longhorn.SystemBackupStateGenerating:
 			systemBackupController.GenerateSystemBackup(systemBackup, archievePath, tempDir)

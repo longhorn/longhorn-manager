@@ -1936,6 +1936,7 @@ func (s *DataStore) ListBackingImages() (map[string]*longhorn.BackingImage, erro
 	return itemMap, nil
 }
 
+// ListBackingImagesRO returns object includes all BackingImage in namespace
 func (s *DataStore) ListBackingImagesRO() ([]*longhorn.BackingImage, error) {
 	return s.backingImageLister.BackingImages(s.namespace).List(labels.Everything())
 }
