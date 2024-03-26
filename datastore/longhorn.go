@@ -1963,6 +1963,14 @@ func (s *DataStore) ListBackingImages() (map[string]*longhorn.BackingImage, erro
 	return itemMap, nil
 }
 
+<<<<<<< HEAD
+=======
+// ListBackingImagesRO returns object includes all BackingImage in namespace
+func (s *DataStore) ListBackingImagesRO() ([]*longhorn.BackingImage, error) {
+	return s.backingImageLister.BackingImages(s.namespace).List(labels.Everything())
+}
+
+>>>>>>> 1f86d763 (feat(system-backup): support backup backing image)
 // GetOwnerReferencesForBackingImage returns OwnerReference for the given
 // backing image name and UID
 func GetOwnerReferencesForBackingImage(backingImage *longhorn.BackingImage) []metav1.OwnerReference {
