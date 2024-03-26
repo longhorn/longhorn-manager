@@ -33,6 +33,9 @@ var (
 
 	// VolumeBackupTimeout is the timeout for volume backups
 	VolumeBackupTimeout = 24 * time.Hour
+
+	// BackingImageBackupTimeout is the timeout for backing image backups
+	BackingImageBackupTimeout = 24 * time.Hour
 )
 
 // DataStore object
