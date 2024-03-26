@@ -23,7 +23,6 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -111,8 +110,6 @@ type extractedResources struct {
 	serviceAccountList        *corev1.ServiceAccountList
 
 	storageClassList *storagev1.StorageClassList
-
-	podSecurityPolicyList *policyv1beta1.PodSecurityPolicyList
 
 	engineImageList  *longhorn.EngineImageList
 	recurringJobList *longhorn.RecurringJobList
@@ -436,7 +433,6 @@ func (c *SystemRolloutController) systemRollout() error {
 			types.KubernetesKindServiceAccountList:        c.restoreServiceAccounts,
 			types.KubernetesKindClusterRoleList:           c.restoreClusterRoles,
 			types.KubernetesKindClusterRoleBindingList:    c.restoreClusterRoleBindings,
-			types.KubernetesKindPodSecurityPolicyList:     c.restorePodSecurityPolicies,
 			types.KubernetesKindRoleList:                  c.restoreRoles,
 			types.KubernetesKindRoleBindingList:           c.restoreRoleBindings,
 			types.KubernetesKindStorageClassList:          c.restoreStorageClasses,
@@ -678,9 +674,6 @@ func (c *SystemRolloutController) cacheResourcesFromDirectory(name string, schem
 		// Kubernetes Storage
 		case types.KubernetesKindStorageClassList:
 			c.storageClassList = obj.(*storagev1.StorageClassList)
-		// Kubernetes Policy
-		case types.KubernetesKindPodSecurityPolicyList:
-			c.podSecurityPolicyList = obj.(*policyv1beta1.PodSecurityPolicyList)
 		// Longhorn
 		case types.LonghornKindEngineImageList:
 			c.engineImageList = obj.(*longhorn.EngineImageList)
@@ -1382,61 +1375,6 @@ func (c *SystemRolloutController) restorePersistentVolumeClaims() (err error) {
 			return c.ds.UpdatePersistentVolumeClaim(obj.GetNamespace(), obj)
 		}
 		_, err = c.rolloutResource(exist, fnUpdate, true, log, SystemRolloutMsgSkipIdentical)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (c *SystemRolloutController) restorePodSecurityPolicies() (err error) {
-	if c.podSecurityPolicyList == nil {
-		return nil
-	}
-
-	for _, restore := range c.podSecurityPolicyList.Items {
-		log := c.logger.WithField(types.KubernetesKindPodSecurityPolicy, restore.Name)
-
-		exist, err := c.ds.GetPodSecurityPolicy(restore.Name)
-		if err != nil {
-			if !datastore.ErrorIsNotFound(err) {
-				return err
-			}
-
-			restore.ResourceVersion = ""
-
-			log.Info(SystemRolloutMsgCreating)
-
-			fnCreate := func(restore runtime.Object) (runtime.Object, error) {
-				obj, ok := restore.(*policyv1beta1.PodSecurityPolicy)
-				if !ok {
-					return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.KubernetesKindPodSecurityPolicy)
-				}
-				return c.ds.CreatePodSecurityPolicy(obj)
-			}
-			_, err := c.rolloutResource(&restore, fnCreate, false, log, SystemRolloutMsgRestoredItem)
-			if err != nil && !apierrors.IsAlreadyExists(err) {
-				return err
-			}
-			continue
-		}
-
-		isSkipped := true
-		if !reflect.DeepEqual(exist.Spec, restore.Spec) {
-			log.Info(SystemRolloutMsgUpdating)
-			exist.Spec = restore.Spec
-
-			isSkipped = false
-		}
-		fnUpdate := func(exist runtime.Object) (runtime.Object, error) {
-			obj, ok := exist.(*policyv1beta1.PodSecurityPolicy)
-			if !ok {
-				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.KubernetesKindPodSecurityPolicy)
-			}
-			return c.ds.UpdatePodSecurityPolicy(obj)
-		}
-		_, err = c.rolloutResource(exist, fnUpdate, isSkipped, log, SystemRolloutMsgSkipIdentical)
 		if err != nil {
 			return err
 		}

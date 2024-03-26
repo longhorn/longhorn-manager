@@ -190,13 +190,6 @@ func (s *DataStore) GetAllRoleBindingList() (runtime.Object, error) {
 	return s.kubeClient.RbacV1().RoleBindings(s.namespace).List(context.TODO(), metav1.ListOptions{})
 }
 
-// GetAllPodSecurityPolicyList returns an uncached list of PodSecurityPolicys
-// directly from the API server.
-// Direct retrieval from the API server should only be used for one-shot tasks.
-func (s *DataStore) GetAllPodSecurityPolicyList() (runtime.Object, error) {
-	return s.kubeClient.PolicyV1beta1().PodSecurityPolicies().List(context.TODO(), metav1.ListOptions{})
-}
-
 // GetAllLonghornStorageClassList returns an uncached list of Longhorn
 // StorageClasses directly from the API server.
 // Using cached informers should be preferred but current lister doesn't have a
