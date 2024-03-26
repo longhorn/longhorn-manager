@@ -392,3 +392,12 @@ func (s *DataStore) GetConfigMapWithoutCache(namespace, name string) (*corev1.Co
 func (s *DataStore) GetLonghornSnapshotUncached(name string) (*longhorn.Snapshot, error) {
 	return s.lhClient.LonghornV1beta2().Snapshots(s.namespace).Get(context.TODO(), name, metav1.GetOptions{})
 }
+
+// GetAllBackingImages returns an uncached list of BackingImage in Longhorn
+// namespace directly from the API server.
+// Using cached informers should be preferred but current lister doesn't have a
+// field selector.
+// Direct retrieval from the API server should only be used for one-shot tasks.
+func (s *DataStore) GetAllLonghornBackingImages() (runtime.Object, error) {
+	return s.lhClient.LonghornV1beta2().BackingImages(s.namespace).List(context.TODO(), metav1.ListOptions{})
+}

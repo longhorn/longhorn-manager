@@ -435,6 +435,18 @@ func (c *SystemBackupController) reconcile(name string, backupTargetClient engin
 		// TODO: handle error check
 		go c.WaitForVolumeBackupToComplete(backups, systemBackup) // nolint: errcheck
 
+	case longhorn.SystemBackupStateBackingImageBackup:
+		backupBackingImages, err := c.BackupBackingImage()
+		if err != nil {
+			c.updateSystemBackupRecord(record,
+				systemBackupRecordTypeError, longhorn.SystemBackupStateError,
+				constant.EventReasonStart, err.Error(),
+			)
+			return nil
+		}
+
+		go c.WaitForBackingImageBackupToComplete(backupBackingImages, systemBackup)
+
 	case longhorn.SystemBackupStateGenerating:
 		go c.GenerateSystemBackup(systemBackup, tempBackupArchivePath, tempBackupDir)
 
@@ -764,12 +776,12 @@ func (c *SystemBackupController) WaitForVolumeBackupToComplete(backups map[strin
 				systemBackupRecordTypeError, longhorn.SystemBackupStateError,
 				constant.EventReasonStart, err.Error(),
 			)
+		} else {
+			c.updateSystemBackupRecord(record,
+				systemBackupRecordTypeNormal, longhorn.SystemBackupStateBackingImageBackup,
+				constant.EventReasonStart, SystemBackupMsgStarting,
+			)
 		}
-
-		c.updateSystemBackupRecord(record,
-			systemBackupRecordTypeNormal, longhorn.SystemBackupStateGenerating,
-			constant.EventReasonStart, SystemBackupMsgStarting,
-		)
 
 		c.handleStatusUpdate(record, systemBackup, existingSystemBackup, err, log)
 	}()
@@ -785,6 +797,7 @@ func (c *SystemBackupController) WaitForVolumeBackupToComplete(backups map[strin
 			backup, err = c.ds.GetBackup(name)
 			if err != nil {
 				if apierrors.IsNotFound(err) {
+					log.Warnf("Backup %v not found when checking the volume backup status in system backup", name)
 					continue
 				}
 				break
@@ -844,6 +857,112 @@ func (c *SystemBackupController) createVolumeBackup(volume *longhorn.Volume, sys
 	return backup, nil
 }
 
+func (c *SystemBackupController) BackupBackingImage() (map[string]*longhorn.BackupBackingImage, error) {
+	backingImages, err := c.ds.ListBackingImagesRO()
+	if err != nil {
+		return nil, err
+	}
+
+	backingImageBackups := make(map[string]*longhorn.BackupBackingImage, len(backingImages))
+	for _, backingImage := range backingImages {
+		backupBackingImage, err := c.createBackingImageBackup(backingImage)
+		if err != nil {
+			return nil, err
+		}
+
+		backingImageBackups[backupBackingImage.Name] = backupBackingImage
+	}
+
+	return backingImageBackups, nil
+}
+
+func (c *SystemBackupController) WaitForBackingImageBackupToComplete(backupBackingImages map[string]*longhorn.BackupBackingImage, systemBackup *longhorn.SystemBackup) {
+	var err error
+	log := getLoggerForSystemBackup(c.logger, systemBackup)
+
+	existingSystemBackup := systemBackup.DeepCopy()
+	defer func() {
+		record := &systemBackupRecord{}
+		if err != nil {
+			c.updateSystemBackupRecord(record,
+				systemBackupRecordTypeError, longhorn.SystemBackupStateError,
+				constant.EventReasonStart, err.Error(),
+			)
+		} else {
+			c.updateSystemBackupRecord(record,
+				systemBackupRecordTypeNormal, longhorn.SystemBackupStateGenerating,
+				constant.EventReasonStart, SystemBackupMsgStarting,
+			)
+		}
+
+		c.handleStatusUpdate(record, systemBackup, existingSystemBackup, err, log)
+	}()
+
+	startTime := time.Now()
+	ticker := time.NewTicker(time.Second * 5)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		for name := range backupBackingImages {
+			// Retrieve the latest backup
+			var backupBackingImage *longhorn.BackupBackingImage
+			backupBackingImage, err = c.ds.GetBackupBackingImageRO(name)
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					log.Warnf("Backup backing image %v not found when checking the backing image backup status in system backup", name)
+					continue
+				}
+				break
+			}
+
+			switch backupBackingImage.Status.State {
+			case longhorn.BackupStateCompleted:
+				delete(backupBackingImages, name)
+			case longhorn.BackupStateError:
+				log.Warnf(errors.Wrapf(fmt.Errorf(backupBackingImage.Status.Error), "Failed to create BackingImage backup %v", name).Error())
+				return
+			}
+		}
+
+		if len(backupBackingImages) == 0 {
+			return
+		}
+
+		// Return when BackingImage backup exceeds timeout
+		if time.Since(startTime) > datastore.BackingImageBackupTimeout {
+			log.Warn("Timed out waiting for BackingImage backups to complete")
+			return
+		}
+	}
+	// This should never be reached.
+	log.Warn("Unexpected error: stopped waiting for BackingImage backups without completing, failing or timing out")
+}
+
+func (c *SystemBackupController) createBackingImageBackup(backingImage *longhorn.BackingImage) (backupBackingImage *longhorn.BackupBackingImage, err error) {
+	backupBackingImage, err = c.ds.GetBackupBackingImage(backingImage.Name)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return nil, errors.Wrapf(err, "failed to get backup backing image %v", backingImage.Name)
+		}
+	}
+
+	if backupBackingImage == nil {
+		backupBackingImage = &longhorn.BackupBackingImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: backingImage.Name,
+			},
+			Spec: longhorn.BackupBackingImageSpec{
+				UserCreated: true,
+			},
+		}
+		backupBackingImage, err = c.ds.CreateBackupBackingImage(backupBackingImage)
+		if err != nil && !apierrors.IsAlreadyExists(err) {
+			return nil, errors.Wrapf(err, "failed to create backup backing image %s", backingImage.Name)
+		}
+	}
+	return backupBackingImage, nil
+}
+
 func (c *SystemBackupController) generateSystemBackup(systemBackupMeta *systemBackupMeta, tempDir string) (err error) {
 	metaFile := filepath.Join(tempDir, "metadata.yaml")
 	err = util.EncodeToYAMLFile(systemBackupMeta, metaFile)
@@ -886,6 +1005,7 @@ func (c *SystemBackupController) generateSystemBackupYAMLsForLonghorn(dir string
 		"engineimages":  c.ds.GetAllLonghornEngineImages,
 		"volumes":       c.ds.GetAllLonghornVolumes,
 		"recurringjobs": c.ds.GetAllLonghornRecurringJobs,
+		"backingimages": c.ds.GetAllLonghornBackingImages,
 	}
 
 	for name, fn := range resourceGetFns {
