@@ -22,7 +22,7 @@ import (
 	utilexec "k8s.io/utils/exec"
 
 	"github.com/longhorn/longhorn-manager/csi/crypto"
-	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -128,7 +128,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	}
 
 	// Check volume attachment status
-	if datastore.IsDataEngineV1(longhorn.DataEngineType(volume.DataEngine)) {
+	if types.IsDataEngineV1(longhorn.DataEngineType(volume.DataEngine)) {
 		if volume.State != string(longhorn.VolumeStateAttached) || volume.Controllers[0].Endpoint == "" {
 			log.WithField("state", volume.State).Infof("Volume %v hasn't been attached yet, unmounting potential mount point %v", volumeID, targetPath)
 			if err := unmount(targetPath, mounter); err != nil {
@@ -570,7 +570,7 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	// optionally try to retrieve the volume and check if it's an RWX volume
 	// if it is we let the share-manager clean up the crypto device
 	volume, _ := ns.apiClient.Volume.ById(volumeID)
-	if volume == nil || datastore.IsDataEngineV1(longhorn.DataEngineType(volume.DataEngine)) {
+	if volume == nil || types.IsDataEngineV1(longhorn.DataEngineType(volume.DataEngine)) {
 		// Currently, only "RWO v1 volumes" and "block device with v1 volume.Migratable is true" supports encryption.
 		sharedAccess := requiresSharedAccess(volume, nil)
 		cleanupCryptoDevice := !sharedAccess || (sharedAccess && volume.Migratable)

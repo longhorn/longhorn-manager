@@ -25,30 +25,33 @@ const (
 )
 
 // GetDiskStat returns the disk stat of the given directory
-func getDiskStat(diskType longhorn.DiskType, name, path string, client *DiskServiceClient) (stat *lhtypes.DiskStat, err error) {
+func getDiskStat(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, client *DiskServiceClient) (stat *lhtypes.DiskStat, err error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
-		return lhns.GetDiskStat(path)
+		return lhns.GetDiskStat(diskPath)
 	case longhorn.DiskTypeBlock:
-		return getBlockTypeDiskStat(client, name, path)
+		return getBlockTypeDiskStat(client, diskName, diskPath, diskDriver)
 	default:
 		return nil, fmt.Errorf("unknown disk type %v", diskType)
 	}
 }
 
-func getBlockTypeDiskStat(client *DiskServiceClient, name, path string) (stat *lhtypes.DiskStat, err error) {
+func getBlockTypeDiskStat(client *DiskServiceClient, diskName, diskPath string, diskDriver longhorn.DiskDriver) (stat *lhtypes.DiskStat, err error) {
 	if client == nil || client.c == nil {
 		return nil, errors.New("disk service client is nil")
 	}
 
-	info, err := client.c.DiskGet(string(longhorn.DiskTypeBlock), name, path)
+	info, err := client.c.DiskGet(string(longhorn.DiskTypeBlock), diskName, diskPath, string(diskDriver))
 	if err != nil {
 		return nil, err
 	}
+
 	return &lhtypes.DiskStat{
 		DiskID:           info.ID,
+		Name:             info.Name,
 		Path:             info.Path,
 		Type:             info.Type,
+		Driver:           lhtypes.DiskDriver(info.Driver),
 		TotalBlocks:      info.TotalBlocks,
 		FreeBlocks:       info.FreeBlocks,
 		BlockSize:        info.BlockSize,
@@ -57,13 +60,13 @@ func getBlockTypeDiskStat(client *DiskServiceClient, name, path string) (stat *l
 	}, nil
 }
 
-// GetDiskConfig returns the disk config of the given directory
-func getDiskConfig(diskType longhorn.DiskType, name, path string, client *DiskServiceClient) (*util.DiskConfig, error) {
+// getDiskConfig returns the disk config of the given directory
+func getDiskConfig(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, client *DiskServiceClient) (*util.DiskConfig, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
-		return getFilesystemTypeDiskConfig(path)
+		return getFilesystemTypeDiskConfig(diskPath)
 	case longhorn.DiskTypeBlock:
-		return getBlockTypeDiskConfig(client, name, path)
+		return getBlockTypeDiskConfig(client, diskName, diskPath, diskDriver)
 	default:
 		return nil, fmt.Errorf("unknown disk type %v", diskType)
 	}
@@ -88,58 +91,62 @@ func getFilesystemTypeDiskConfig(path string) (*util.DiskConfig, error) {
 	return cfg, nil
 }
 
-func getBlockTypeDiskConfig(client *DiskServiceClient, name, path string) (config *util.DiskConfig, err error) {
+func getBlockTypeDiskConfig(client *DiskServiceClient, diskName, diskPath string, diskDriver longhorn.DiskDriver) (config *util.DiskConfig, err error) {
 	if client == nil || client.c == nil {
 		return nil, errors.New("disk service client is nil")
 	}
 
-	info, err := client.c.DiskGet(string(longhorn.DiskTypeBlock), name, path)
+	info, err := client.c.DiskGet(string(longhorn.DiskTypeBlock), diskName, diskPath, string(diskDriver))
 	if err != nil {
 		if grpcstatus.Code(err) == grpccodes.NotFound {
 			return nil, errors.Wrapf(err, "cannot find disk info")
 		}
 		return nil, err
 	}
+
 	return &util.DiskConfig{
-		DiskUUID: info.UUID,
+		DiskName:   info.Name,
+		DiskUUID:   info.UUID,
+		DiskDriver: longhorn.DiskDriver(info.Driver),
 	}, nil
 }
 
 // GenerateDiskConfig generates a disk config for the given directory
-func generateDiskConfig(diskType longhorn.DiskType, name, uuid, path string, client *DiskServiceClient) (*util.DiskConfig, error) {
+func generateDiskConfig(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient) (*util.DiskConfig, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
-		return generateFilesystemTypeDiskConfig(path)
+		return generateFilesystemTypeDiskConfig(diskPath)
 	case longhorn.DiskTypeBlock:
-		return generateBlockTypeDiskConfig(client, name, uuid, path, defaultBlockSize)
+		return generateBlockTypeDiskConfig(client, diskName, diskUUID, diskPath, diskDriver, defaultBlockSize)
 	default:
 		return nil, fmt.Errorf("unknown disk type %v", diskType)
 	}
 }
 
-func generateFilesystemTypeDiskConfig(path string) (*util.DiskConfig, error) {
+func generateFilesystemTypeDiskConfig(diskPath string) (*util.DiskConfig, error) {
 	var err error
 	defer func() {
-		err = errors.Wrapf(err, "failed to generate disk config for %v", path)
+		err = errors.Wrapf(err, "failed to generate disk config for %v", diskPath)
 	}()
 
 	cfg := &util.DiskConfig{
+		DiskName: "",
 		DiskUUID: util.UUID(),
 	}
 	encoded, err := json.Marshal(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("BUG: Cannot marshal %+v: %v", cfg, err)
+		return nil, errors.Wrapf(err, "failed to marshal %+v", cfg)
 	}
 
-	diskCfgFilePath := filepath.Join(path, util.DiskConfigFile)
+	diskCfgFilePath := filepath.Join(diskPath, util.DiskConfigFile)
 	if _, err := lhns.GetFileInfo(diskCfgFilePath); err == nil {
-		return nil, fmt.Errorf("disk cfg on %v exists, cannot override", diskCfgFilePath)
+		return nil, errors.Wrapf(err, "disk cfg on %v exists, cannot override", diskCfgFilePath)
 	}
 
 	defer func() {
 		if err != nil {
-			if derr := util.DeleteDiskPathReplicaSubdirectoryAndDiskCfgFile(path); derr != nil {
-				err = errors.Wrapf(err, "cleaning up disk config path %v failed with error: %v", path, derr)
+			if derr := util.DeleteDiskPathReplicaSubdirectoryAndDiskCfgFile(diskPath); derr != nil {
+				err = errors.Wrapf(err, "cleaning up disk config path %v failed with error: %v", diskPath, derr)
 			}
 		}
 	}()
@@ -148,8 +155,8 @@ func generateFilesystemTypeDiskConfig(path string) (*util.DiskConfig, error) {
 		return nil, err
 	}
 
-	if _, err := lhns.CreateDirectory(filepath.Join(path, util.ReplicaDirectory), time.Now()); err != nil {
-		return nil, errors.Wrapf(err, "failed to create replica subdirectory %v", path)
+	if _, err := lhns.CreateDirectory(filepath.Join(diskPath, util.ReplicaDirectory), time.Now()); err != nil {
+		return nil, errors.Wrapf(err, "failed to create replica subdirectory %v", diskPath)
 	}
 
 	if err := lhns.SyncFile(diskCfgFilePath); err != nil {
@@ -159,36 +166,39 @@ func generateFilesystemTypeDiskConfig(path string) (*util.DiskConfig, error) {
 	return cfg, nil
 }
 
-func generateBlockTypeDiskConfig(client *DiskServiceClient, name, uuid, path string, blockSize int64) (*util.DiskConfig, error) {
+func generateBlockTypeDiskConfig(client *DiskServiceClient, diskName, diskUUID, diskPath, diskDriver string, blockSize int64) (*util.DiskConfig, error) {
 	if client == nil || client.c == nil {
 		return nil, errors.New("disk service client is nil")
 	}
 
-	info, err := client.c.DiskCreate(string(longhorn.DiskTypeBlock), name, uuid, path, blockSize)
+	info, err := client.c.DiskCreate(string(longhorn.DiskTypeBlock), diskName, diskUUID, diskPath, diskDriver, blockSize)
 	if err != nil {
 		return nil, err
 	}
+
 	return &util.DiskConfig{
-		DiskUUID: info.UUID,
+		DiskName:   info.Name,
+		DiskUUID:   info.UUID,
+		DiskDriver: longhorn.DiskDriver(info.Driver),
 	}, nil
 }
 
-// DeleteDisk deletes the disk with the given name and uuid
-func DeleteDisk(diskType longhorn.DiskType, diskName, diskUUID string, client *engineapi.DiskService) error {
+// DeleteDisk deletes the disk with the given name, uuid, path and driver
+func DeleteDisk(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, client *engineapi.DiskService) error {
 	if client == nil {
 		return errors.New("disk service client is nil")
 	}
 
-	return client.DiskDelete(string(diskType), diskName, diskUUID)
+	return client.DiskDelete(string(diskType), diskName, diskUUID, diskPath, diskDriver)
 }
 
 // getSpdkReplicaInstanceNames returns the replica lvol names of the given disk
-func getSpdkReplicaInstanceNames(client *DiskServiceClient, diskType, diskName string) (map[string]string, error) {
+func getSpdkReplicaInstanceNames(client *DiskServiceClient, diskType, diskName, diskDriver string) (map[string]string, error) {
 	if client == nil || client.c == nil {
 		return nil, errors.New("disk service client is nil")
 	}
 
-	instances, err := client.c.DiskReplicaInstanceList(diskType, diskName)
+	instances, err := client.c.DiskReplicaInstanceList(diskType, diskName, diskDriver)
 	if err != nil {
 		return nil, err
 	}

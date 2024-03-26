@@ -30,6 +30,9 @@ message Disk {
 
     int64 block_size = 9;
     int64 cluster_size = 10;
+
+    string driver = 11;
+    string name = 12;
 }
 
 message ReplicaInstance {
@@ -53,6 +56,7 @@ message DiskCreateRequest{
     string disk_uuid = 3;
     string disk_path = 4;
     int64 block_size = 5;
+    string disk_driver = 6;
 }
 
 message DiskGetRequest {
@@ -60,6 +64,7 @@ message DiskGetRequest {
 
     string disk_name = 2;
     string disk_path = 3;
+    string disk_driver = 4;
 }
 
 message DiskDeleteRequest {
@@ -67,12 +72,15 @@ message DiskDeleteRequest {
 
     string disk_name = 2;
     string disk_uuid = 3;
+    string disk_path = 4;
+    string disk_driver = 5;
 }
 
 message DiskReplicaInstanceListRequest {
     DiskType disk_type = 1;
 
     string disk_name = 2;
+    string disk_driver = 3;
 }
 
 message DiskReplicaInstanceListResponse {
@@ -85,6 +93,7 @@ message DiskReplicaInstanceDeleteRequest {
     string disk_name = 2;
     string disk_uuid = 3;
     string replcia_instance_name = 4;
+    string disk_driver = 5;
 }
 
 message DiskVersionResponse {

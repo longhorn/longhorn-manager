@@ -6,9 +6,11 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	clientset "k8s.io/client-go/kubernetes"
 
+	"github.com/longhorn/longhorn-manager/util"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
-	"github.com/longhorn/longhorn-manager/util"
 )
 
 const (
@@ -18,7 +20,11 @@ const (
 func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) error {
 	// We will probably need to upgrade other resources as well. See upgradeReplicas or previous Longhorn versions for
 	// examples.
-	return upgradeReplicas(namespace, lhClient, resourceMaps)
+	if err := upgradeReplicas(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	return upgradeNodes(namespace, lhClient, resourceMaps)
 }
 
 func UpgradeResourcesStatus(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) error {
@@ -77,6 +83,30 @@ func upgradeEngineStatus(namespace string, lhClient *lhclientset.Clientset, reso
 			// We don't have any historical information to rely on. Starting at the time of the upgrade.
 			if _, ok := e.Status.ReplicaTransitionTimeMap[replicaName]; !ok {
 				e.Status.ReplicaTransitionTimeMap[replicaName] = util.Now()
+			}
+		}
+	}
+
+	return nil
+}
+
+func upgradeNodes(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade node failed")
+	}()
+
+	nodeMap, err := upgradeutil.ListAndUpdateNodesInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn nodes during the node upgrade")
+	}
+
+	for _, node := range nodeMap {
+		for _, disk := range node.Spec.Disks {
+			if disk.Type == longhorn.DiskTypeBlock && disk.DiskDriver == "" {
+				disk.DiskDriver = longhorn.DiskDriverAio
 			}
 		}
 	}

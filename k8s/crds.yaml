@@ -2112,6 +2112,14 @@ spec:
                   properties:
                     allowScheduling:
                       type: boolean
+                    diskDriver:
+                      enum:
+                      - ""
+                      - auto
+                      - aio
+                      - nvme
+                      - virtio
+                      type: string
                     diskType:
                       enum:
                       - filesystem
@@ -2197,6 +2205,12 @@ spec:
                         type: object
                       nullable: true
                       type: array
+                    diskDriver:
+                      type: string
+                    diskName:
+                      type: string
+                    diskPath:
+                      type: string
                     diskType:
                       type: string
                     diskUUID:

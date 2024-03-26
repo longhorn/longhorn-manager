@@ -1683,7 +1683,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 
 		// TODO: Remove this condition when v2 volume actual size is implemented.
 		//       https://github.com/longhorn/longhorn/issues/5947
-		isVolumeUsingV2DataEngine := datastore.IsDataEngineV2(volume.Spec.DataEngine)
+		isVolumeUsingV2DataEngine := types.IsDataEngineV2(volume.Spec.DataEngine)
 		if !isVolumeUsingV2DataEngine {
 			totalVolumeSize += int(volume.Spec.Size)
 			totalVolumeActualSize += int(volume.Status.ActualSize)

@@ -1711,7 +1711,7 @@ func (s *DataStore) ListEngineImages() (map[string]*longhorn.EngineImage, error)
 }
 
 func (s *DataStore) CheckDataEngineImageCompatiblityByImage(image string, dataEngine longhorn.DataEngineType) error {
-	if IsDataEngineV2(dataEngine) {
+	if types.IsDataEngineV2(dataEngine) {
 		return nil
 	}
 
@@ -1765,7 +1765,7 @@ func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (is
 }
 
 func (s *DataStore) CheckDataEngineImageReadiness(image string, dataEngine longhorn.DataEngineType, nodes ...string) (isReady bool, err error) {
-	if IsDataEngineV2(dataEngine) {
+	if types.IsDataEngineV2(dataEngine) {
 		if len(nodes) == 0 {
 			return false, nil
 		}
@@ -3440,7 +3440,7 @@ func (s *DataStore) GetDataEngineImageCLIAPIVersion(imageName string, dataEngine
 		return -1, fmt.Errorf("cannot check the CLI API Version based on empty image name")
 	}
 
-	if IsDataEngineV2(dataEngine) {
+	if types.IsDataEngineV2(dataEngine) {
 		return 0, nil
 	}
 
@@ -4859,20 +4859,10 @@ func (s *DataStore) DeleteLHVolumeAttachment(vaName string) error {
 	return s.lhClient.LonghornV1beta2().VolumeAttachments(s.namespace).Delete(context.TODO(), vaName, metav1.DeleteOptions{})
 }
 
-// IsDataEngineV1 returns true if the given dataEngine is v1
-func IsDataEngineV1(dataEngine longhorn.DataEngineType) bool {
-	return dataEngine != longhorn.DataEngineTypeV2
-}
-
-// IsDataEngineV2 returns true if the given dataEngine is v2
-func IsDataEngineV2(dataEngine longhorn.DataEngineType) bool {
-	return dataEngine == longhorn.DataEngineTypeV2
-}
-
 // IsSupportedVolumeSize returns turn if the v1 volume size is supported by the given fsType file system.
 func IsSupportedVolumeSize(dataEngine longhorn.DataEngineType, fsType string, volumeSize int64) bool {
 	// TODO: check the logical volume maximum size limit
-	if IsDataEngineV1(dataEngine) {
+	if types.IsDataEngineV1(dataEngine) {
 		// unix.Statfs can not differentiate the ext2/ext3/ext4 file systems.
 		if (strings.HasPrefix(fsType, "ext") && volumeSize >= util.MaxExt4VolumeSize) || (fsType == "xfs" && volumeSize >= util.MaxXfsVolumeSize) {
 			return false

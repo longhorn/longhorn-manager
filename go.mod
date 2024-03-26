@@ -48,7 +48,7 @@ require (
 	github.com/longhorn/backupstore v0.0.0-20240219094812-3a87ee02df77
 	github.com/longhorn/go-common-libs v0.0.0-20240319112414-b75404dc7fbc
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240308033847-bc3aab599425
-	github.com/longhorn/go-spdk-helper v0.0.0-20240319142717-116729b98b89
+	github.com/longhorn/go-spdk-helper v0.0.0-20240325073158-8d33f2aada15
 	github.com/longhorn/longhorn-engine v1.6.0
 	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240308123529-28ec1b59c683
 	github.com/longhorn/longhorn-share-manager v1.6.0
@@ -83,13 +83,13 @@ require (
 require (
 	github.com/antlr/antlr4/runtime/Go/antlr/v4 v4.0.0-20230305170008-8188dc5388df // indirect
 	github.com/benbjohnson/clock v1.3.0 // indirect
-	github.com/go-ole/go-ole v1.2.6 // indirect
+	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/google/pprof v0.0.0-20230817174616-7a8ec2ada47b // indirect
 	github.com/jonboulle/clockwork v0.4.0 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
-	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
+	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/shirou/gopsutil/v3 v3.24.2 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.etcd.io/bbolt v1.3.8 // indirect
@@ -145,7 +145,7 @@ require (
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de // indirect
-	github.com/longhorn/longhorn-spdk-engine v0.0.0-20240308061103-33861f26f36e // indirect
+	github.com/longhorn/longhorn-spdk-engine v0.0.0-20240319114738-c9046e18cf8c // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
@@ -212,3 +212,5 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.3 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
+
+replace github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240308123529-28ec1b59c683 => github.com/derekbit/longhorn-instance-manager v0.0.0-20240326073731-b2526e3df81e

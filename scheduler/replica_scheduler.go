@@ -124,7 +124,7 @@ func (rcs *ReplicaScheduler) getNodeCandidates(nodesInfo map[string]*longhorn.No
 
 	nodeCandidates = map[string]*longhorn.Node{}
 	for _, node := range nodesInfo {
-		if datastore.IsDataEngineV2(schedulingReplica.Spec.DataEngine) {
+		if types.IsDataEngineV2(schedulingReplica.Spec.DataEngine) {
 			disabled, err := rcs.ds.IsV2DataEngineDisabledForNode(node.Name)
 			if err != nil {
 				logrus.WithError(err).Errorf("Failed to check if v2 data engine is disabled on node %v", node.Name)
@@ -353,8 +353,8 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 			continue
 		}
 
-		if !(datastore.IsDataEngineV1(volume.Spec.DataEngine) && diskSpec.Type == longhorn.DiskTypeFilesystem) &&
-			!(datastore.IsDataEngineV2(volume.Spec.DataEngine) && diskSpec.Type == longhorn.DiskTypeBlock) {
+		if !(types.IsDataEngineV1(volume.Spec.DataEngine) && diskSpec.Type == longhorn.DiskTypeFilesystem) &&
+			!(types.IsDataEngineV2(volume.Spec.DataEngine) && diskSpec.Type == longhorn.DiskTypeBlock) {
 			logrus.Debugf("Volume %v is not compatible with disk %v", volume.Name, diskName)
 			continue
 		}
@@ -709,7 +709,7 @@ func IsPotentiallyReusableReplica(r *longhorn.Replica) bool {
 		return false
 	}
 	// TODO: Reuse failed replicas for a SPDK volume
-	if datastore.IsDataEngineV2(r.Spec.DataEngine) {
+	if types.IsDataEngineV2(r.Spec.DataEngine) {
 		return false
 	}
 	return true
