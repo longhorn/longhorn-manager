@@ -126,6 +126,10 @@ type BackupTarget struct {
 	engineapi.BackupTarget
 }
 
+type SyncBackupTarget struct {
+	SyncBackupTarget bool `json:"syncBackupTarget"`
+}
+
 type BackupVolume struct {
 	client.Resource
 
@@ -140,6 +144,10 @@ type BackupVolume struct {
 	BackingImageName     string            `json:"backingImageName"`
 	BackingImageChecksum string            `json:"backingImageChecksum"`
 	StorageClassName     string            `json:"storageClassName"`
+}
+
+type UpdateBackupVolume struct {
+	SyncBackupVolume bool `json:"syncBackupVolume"`
 }
 
 type Backup struct {
@@ -581,7 +589,6 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("detachInput", DetachInput{})
 	schemas.AddType("snapshotInput", SnapshotInput{})
 	schemas.AddType("snapshotCRInput", SnapshotCRInput{})
-	schemas.AddType("backupTarget", BackupTarget{})
 	schemas.AddType("backup", Backup{})
 	schemas.AddType("backupInput", BackupInput{})
 	schemas.AddType("backupStatus", BackupStatus{})
@@ -644,6 +651,7 @@ func NewSchema() *client.Schemas {
 	volumeSchema(schemas.AddType("volume", Volume{}))
 	snapshotSchema(schemas.AddType("snapshot", Snapshot{}))
 	snapshotCRSchema(schemas.AddType("snapshotCR", SnapshotCR{}))
+	backupTargetSchema(schemas.AddType("backupTarget", BackupTarget{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
 	backupBackingImageSchema(schemas.AddType("backupBackingImage", BackupBackingImage{}))
 	settingSchema(schemas.AddType("setting", Setting{}))
@@ -814,9 +822,21 @@ func kubernetesStatusSchema(status *client.Schema) {
 	status.ResourceFields["workloadsStatus"] = workloadsStatus
 }
 
+func backupTargetSchema(backupTarget *client.Schema) {
+	backupTarget.CollectionMethods = []string{"GET"}
+	backupTarget.ResourceMethods = []string{"GET", "PUT"}
+
+	backupTarget.ResourceActions = map[string]client.Action{
+		"syncBackupTarget": {
+			Input:  "syncBackupTarget",
+			Output: "backupTarget",
+		},
+	}
+}
+
 func backupVolumeSchema(backupVolume *client.Schema) {
 	backupVolume.CollectionMethods = []string{"GET"}
-	backupVolume.ResourceMethods = []string{"GET", "DELETE"}
+	backupVolume.ResourceMethods = []string{"GET", "PUT", "DELETE"}
 	backupVolume.ResourceActions = map[string]client.Action{
 		"backupList": {
 			Output: "backupListOutput",
@@ -1699,7 +1719,7 @@ func toVolumeRecurringJobCollection(recurringJobs map[string]*longhorn.VolumeRec
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "volumeRecurringJob"}}
 }
 
-func toBackupTargetResource(bt *longhorn.BackupTarget) *BackupTarget {
+func toBackupTargetResource(bt *longhorn.BackupTarget, apiContext *api.ApiContext) *BackupTarget {
 	if bt == nil {
 		return nil
 	}
@@ -1711,6 +1731,7 @@ func toBackupTargetResource(bt *longhorn.BackupTarget) *BackupTarget {
 			Links: map[string]string{},
 		},
 		BackupTarget: engineapi.BackupTarget{
+			Name:             bt.Name,
 			BackupTargetURL:  bt.Spec.BackupTargetURL,
 			CredentialSecret: bt.Spec.CredentialSecret,
 			PollInterval:     bt.Spec.PollInterval.Duration.String(),
@@ -1718,6 +1739,10 @@ func toBackupTargetResource(bt *longhorn.BackupTarget) *BackupTarget {
 			Message:          types.GetCondition(bt.Status.Conditions, longhorn.BackupTargetConditionTypeUnavailable).Message,
 		},
 	}
+	res.Actions = map[string]string{
+		"syncBackupTarget": apiContext.UrlBuilder.ActionLink(res.Resource, "syncBackupTarget"),
+	}
+
 	return res
 }
 
@@ -1751,10 +1776,10 @@ func toBackupVolumeResource(bv *longhorn.BackupVolume, apiContext *api.ApiContex
 	return b
 }
 
-func toBackupTargetCollection(bts []*longhorn.BackupTarget) *client.GenericCollection {
+func toBackupTargetCollection(bts []*longhorn.BackupTarget, apiContext *api.ApiContext) *client.GenericCollection {
 	data := []interface{}{}
 	for _, bt := range bts {
-		data = append(data, toBackupTargetResource(bt))
+		data = append(data, toBackupTargetResource(bt, apiContext))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "backupTarget"}}
 }
