@@ -43,7 +43,11 @@ require (
 	github.com/gorilla/websocket v1.5.1
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
+<<<<<<< HEAD
 	github.com/longhorn/backing-image-manager v1.6.1
+=======
+	github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240326182459-c5288d745f4a
+>>>>>>> ffe9a837 (vendor: Update longhorn/backing-image-manager to get VirtualSize)
 	github.com/longhorn/backupstore v0.0.0-20240219094812-3a87ee02df77
 	github.com/longhorn/go-common-libs v0.0.0-20240319112414-b75404dc7fbc
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240308033847-bc3aab599425

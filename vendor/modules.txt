@@ -224,7 +224,11 @@ github.com/kubernetes-csi/csi-lib-utils/protosanitizer
 # github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de
 ## explicit
 github.com/liggitt/tabwriter
+<<<<<<< HEAD
 # github.com/longhorn/backing-image-manager v1.6.1
+=======
+# github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240326182459-c5288d745f4a
+>>>>>>> ffe9a837 (vendor: Update longhorn/backing-image-manager to get VirtualSize)
 ## explicit; go 1.21
 github.com/longhorn/backing-image-manager/api
 github.com/longhorn/backing-image-manager/pkg/client
