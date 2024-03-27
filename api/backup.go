@@ -18,7 +18,38 @@ func (s *Server) BackupTargetList(w http.ResponseWriter, req *http.Request) erro
 	if err != nil {
 		return errors.Wrap(err, "failed to list backup targets")
 	}
-	apiContext.Write(toBackupTargetCollection(backupTargets))
+	apiContext.Write(toBackupTargetCollection(backupTargets, apiContext))
+	return nil
+}
+
+func (s *Server) SyncBackupTarget(w http.ResponseWriter, req *http.Request) error {
+	var input SyncBackupTarget
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return err
+	}
+
+	btName := mux.Vars(req)["btName"]
+
+	bt, err := s.m.GetBackupTarget(btName)
+	if err != nil {
+		return errors.Wrap(err, "failed to list backup targets")
+	}
+
+	if input.SyncBackupTarget {
+		_, err = s.m.SyncBackupTarget(bt)
+		if err != nil {
+			return errors.Wrapf(err, "failed to update backup target '%s'", btName)
+		}
+	}
+
+	bts, err := s.m.ListBackupTargetsSorted()
+	if err != nil {
+		return errors.Wrap(err, "failed to list backup targets")
+	}
+
+	apiContext.Write(toBackupTargetCollection(bts, apiContext))
 	return nil
 }
 
@@ -50,6 +81,31 @@ func (s *Server) BackupVolumeGet(w http.ResponseWriter, req *http.Request) error
 	if err != nil {
 		return errors.Wrapf(err, "failed to get backup volume '%s'", volName)
 	}
+	apiContext.Write(toBackupVolumeResource(bv, apiContext))
+	return nil
+}
+
+func (s *Server) UpdateBackupVolume(w http.ResponseWriter, req *http.Request) error {
+	var input UpdateBackupVolume
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return err
+	}
+
+	volName := mux.Vars(req)["volName"]
+	bv, err := s.m.GetBackupVolume(volName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get backup volume '%s'", volName)
+	}
+
+	if input.SyncBackupVolume {
+		bv, err = s.m.SyncBackupVolume(bv)
+		if err != nil {
+			return errors.Wrapf(err, "failed to update backup volume '%s'", volName)
+		}
+	}
+
 	apiContext.Write(toBackupVolumeResource(bv, apiContext))
 	return nil
 }

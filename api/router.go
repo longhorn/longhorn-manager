@@ -120,8 +120,15 @@ func NewRouter(s *Server) *mux.Router {
 	}
 
 	r.Methods("GET").Path("/v1/backuptargets").Handler(f(schemas, s.BackupTargetList))
+	backupTargetActions := map[string]func(http.ResponseWriter, *http.Request) error{
+		"syncBackupTarget": s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.SyncBackupTarget),
+	}
+	for name, action := range backupTargetActions {
+		r.Methods("POST").Path("/v1/backuptargets/{btName}").Queries("action", name).Handler(f(schemas, action))
+	}
 	r.Methods("GET").Path("/v1/backupvolumes").Handler(f(schemas, s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupVolumeList)))
 	r.Methods("GET").Path("/v1/backupvolumes/{volName}").Handler(f(schemas, s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupVolumeGet)))
+	r.Methods("PUT").Path("/v1/backupvolumes/{volName}").Handler(f(schemas, s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.UpdateBackupVolume)))
 	r.Methods("DELETE").Path("/v1/backupvolumes/{volName}").Handler(f(schemas, s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupVolumeDelete)))
 	backupActions := map[string]func(http.ResponseWriter, *http.Request) error{
 		"backupList":   s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupList),
