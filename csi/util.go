@@ -24,6 +24,11 @@ import (
 
 	"github.com/longhorn/longhorn-manager/types"
 
+	lhio "github.com/longhorn/go-common-libs/io"
+	lhns "github.com/longhorn/go-common-libs/ns"
+	lhsys "github.com/longhorn/go-common-libs/sys"
+	lhtypes "github.com/longhorn/go-common-libs/types"
+
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -459,4 +464,63 @@ func requiresSharedAccess(vol *longhornclient.Volume, cap *csi.VolumeCapability)
 
 func getStageBlockVolumePath(stagingTargetPath, volumeID string) string {
 	return filepath.Join(stagingTargetPath, volumeID)
+}
+
+// We use this utility function because the one in go-common-lib/ns defaults to /host/proc.
+func RunFunc(fn func() (interface{}, error)) (interface{}, error) {
+	csiProcDirectory := "/rootfs/proc"
+	joiner, err := lhns.NewJoiner(csiProcDirectory, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	return joiner.Run(fn)
+}
+
+// These functions mirror the ones in go-common-libs/ns, except they use the local RunFunc above.
+func GetKernelRelease() (string, error) {
+	var err error
+	defer func() {
+		err = errors.Wrap(err, "failed to get kernel release")
+	}()
+
+	fn := func() (interface{}, error) {
+		return lhsys.GetKernelRelease()
+	}
+
+	rawResult, err := RunFunc(fn)
+	if err != nil {
+		return "", err
+	}
+
+	var result string
+	var ableToCast bool
+	result, ableToCast = rawResult.(string)
+	if !ableToCast {
+		return "", errors.Errorf(lhtypes.ErrNamespaceCastResultFmt, result, rawResult)
+	}
+	return result, nil
+}
+
+func GetOSDistro() (result string, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to get host OS distro")
+	}()
+
+	fn := func() (interface{}, error) {
+		return lhio.ReadFileContent(lhtypes.OsReleaseFilePath)
+	}
+
+	rawResult, err := RunFunc(fn)
+	if err != nil {
+		return "", err
+	}
+
+	var ableToCast bool
+	result, ableToCast = rawResult.(string)
+	if !ableToCast {
+		return "", errors.Errorf(lhtypes.ErrNamespaceCastResultFmt, result, rawResult)
+	}
+
+	return lhsys.GetOSDistro(result)
 }
