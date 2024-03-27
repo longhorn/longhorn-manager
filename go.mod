@@ -46,9 +46,9 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.6.0
 	github.com/longhorn/backupstore v0.0.0-20240219094812-3a87ee02df77
-	github.com/longhorn/go-common-libs v0.0.0-20240307063052-6e77996eda29
+	github.com/longhorn/go-common-libs v0.0.0-20240319112414-b75404dc7fbc
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240308033847-bc3aab599425
-	github.com/longhorn/go-spdk-helper v0.0.0-20240308030201-9b252d6f7250
+	github.com/longhorn/go-spdk-helper v0.0.0-20240319142717-116729b98b89
 	github.com/longhorn/longhorn-engine v1.6.0
 	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240308123529-28ec1b59c683
 	github.com/longhorn/longhorn-share-manager v1.6.0
@@ -70,12 +70,12 @@ require (
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.28.6
 	k8s.io/apiextensions-apiserver v0.25.4
-	k8s.io/apimachinery v0.29.2
+	k8s.io/apimachinery v0.29.3
 	k8s.io/cli-runtime v0.28.5
 	k8s.io/client-go v0.28.6
 	k8s.io/kubernetes v1.28.5
 	k8s.io/metrics v0.28.5
-	k8s.io/mount-utils v0.29.2
+	k8s.io/mount-utils v0.29.3
 	k8s.io/utils v0.0.0-20240310230437-4693a0247e57
 	sigs.k8s.io/controller-runtime v0.10.1
 )

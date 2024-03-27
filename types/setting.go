@@ -19,7 +19,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/longhorn/longhorn-manager/meta"
-	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -41,6 +40,9 @@ const (
 	SettingTypeInt        = SettingType("int")
 	SettingTypeBool       = SettingType("bool")
 	SettingTypeDeprecated = SettingType("deprecated")
+
+	ValueIntRangeMinimum = "minimum"
+	ValueIntRangeMaximum = "maximum"
 )
 
 type SettingName string
@@ -234,6 +236,8 @@ type SettingDefinition struct {
 	ReadOnly    bool            `json:"readOnly"`
 	Default     string          `json:"default"`
 	Choices     []string        `json:"options,omitempty"` // +optional
+	// Use map to present minimum and maximum value instead of using int directly, so we can omitempy and distinguish 0 or nil at the same time.
+	ValueIntRange map[string]int `json:"range,omitempty"` // +optional
 }
 
 var settingDefinitionsLock sync.RWMutex
@@ -360,6 +364,9 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "300",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
 	}
 
 	SettingDefinitionFailedBackupTTL = SettingDefinition{
@@ -373,6 +380,9 @@ var (
 		Required: true,
 		ReadOnly: false,
 		Default:  "1440",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
 	}
 
 	SettingDefinitionRestoreVolumeRecurringJobs = SettingDefinition{
@@ -491,6 +501,9 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "100",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
 	}
 
 	SettingDefinitionStorageMinimalAvailablePercentage = SettingDefinition{
@@ -501,6 +514,10 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "25",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+			ValueIntRangeMaximum: 100,
+		},
 	}
 
 	SettingDefinitionStorageReservedPercentageForDefaultDisk = SettingDefinition{
@@ -511,6 +528,10 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "30",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+			ValueIntRangeMaximum: 100,
+		},
 	}
 
 	SettingDefinitionUpgradeChecker = SettingDefinition{
@@ -570,6 +591,10 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "3",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 1,
+			ValueIntRangeMaximum: 20,
+		},
 	}
 
 	SettingDefinitionDefaultDataLocality = SettingDefinition{
@@ -783,6 +808,9 @@ var (
 		Required: true,
 		ReadOnly: false,
 		Default:  "600",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
 	}
 
 	SettingDefinitionConcurrentReplicaRebuildPerNodeLimit = SettingDefinition{
@@ -798,6 +826,9 @@ var (
 		Required: true,
 		ReadOnly: false,
 		Default:  "5",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
 	}
 
 	SettingDefinitionConcurrentVolumeBackupRestorePerNodeLimit = SettingDefinition{
@@ -810,6 +841,9 @@ var (
 		Required: true,
 		ReadOnly: false,
 		Default:  "5",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
 	}
 
 	SettingDefinitionSystemManagedPodsImagePullPolicy = SettingDefinition{
@@ -868,6 +902,9 @@ var (
 		Required: true,
 		ReadOnly: false,
 		Default:  "0",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
 	}
 
 	SettingDefinitionBackingImageCleanupWaitInterval = SettingDefinition{
@@ -878,6 +915,9 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "60",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
 	}
 
 	SettingDefinitionBackingImageRecoveryWaitInterval = SettingDefinition{
@@ -891,6 +931,9 @@ var (
 		Required: true,
 		ReadOnly: false,
 		Default:  "300",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
 	}
 
 	SettingDefinitionGuaranteedInstanceManagerCPU = SettingDefinition{
@@ -911,6 +954,10 @@ var (
 		Required: true,
 		ReadOnly: false,
 		Default:  "12",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+			ValueIntRangeMaximum: 40,
+		},
 	}
 
 	SettingDefinitionKubernetesClusterAutoscalerEnabled = SettingDefinition{
@@ -962,6 +1009,9 @@ var (
 		Required: false,
 		ReadOnly: false,
 		Default:  "1",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
 	}
 
 	SettingDefinitionRecurringFailedJobsHistoryLimit = SettingDefinition{
@@ -973,6 +1023,9 @@ var (
 		Required: false,
 		ReadOnly: false,
 		Default:  "1",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
 	}
 
 	SettingDefinitionRecurringJobMaxRetention = SettingDefinition{
@@ -983,6 +1036,10 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "100",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 1,
+			ValueIntRangeMaximum: MaxSnapshotNum,
+		},
 	}
 
 	SettingDefinitionSupportBundleFailedHistoryLimit = SettingDefinition{
@@ -995,6 +1052,9 @@ var (
 		Required: false,
 		ReadOnly: false,
 		Default:  "1",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
 	}
 
 	SettingDefinitionDeletingConfirmationFlag = SettingDefinition{
@@ -1017,6 +1077,10 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "8",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 8,
+			ValueIntRangeMaximum: 30,
+		},
 	}
 
 	SettingDefinitionSnapshotDataIntegrity = SettingDefinition{
@@ -1099,6 +1163,10 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "30",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 5,
+			ValueIntRangeMaximum: 120,
+		},
 	}
 
 	SettingDefinitionBackupCompressionMethod = SettingDefinition{
@@ -1128,6 +1196,9 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "2",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 1,
+		},
 	}
 
 	SettingDefinitionRestoreConcurrentLimit = SettingDefinition{
@@ -1138,6 +1209,9 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "2",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 1,
+		},
 	}
 
 	SettingDefinitionLogLevel = SettingDefinition{
@@ -1148,6 +1222,7 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "Info",
+		Choices:     []string{"Panic", "Fatal", "Error", "Warn", "Info", "Debug", "Trace"},
 	}
 
 	SettingDefinitionOfflineReplicaRebuilding = SettingDefinition{
@@ -1195,6 +1270,9 @@ var (
 		Required:    true,
 		ReadOnly:    true,
 		Default:     "2048",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
 	}
 
 	SettingDefinitionV2DataEngineGuaranteedInstanceManagerCPU = SettingDefinition{
@@ -1209,6 +1287,10 @@ var (
 		Required: true,
 		ReadOnly: false,
 		Default:  "1250",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 1000,
+			ValueIntRangeMaximum: 8000,
+		},
 	}
 
 	SettingDefinitionReplicaDiskSoftAntiAffinity = SettingDefinition{
@@ -1325,260 +1407,18 @@ func ValidateSetting(name, value string) (err error) {
 		return fmt.Errorf("required setting %v shouldn't be empty", sName)
 	}
 
-	switch sName {
-	case SettingNameBackupTarget:
-		u, err := url.Parse(value)
-		if err != nil {
-			return errors.Wrapf(err, "failed to parse %v as url", value)
-		}
-
-		// Check whether have $ or , have been set in BackupTarget path
-		regStr := `[\$\,]`
-		if u.Scheme == "cifs" {
-			// The $ in SMB/CIFS URIs means that the share is hidden.
-			regStr = `[\,]`
-		}
-
-		reg := regexp.MustCompile(regStr)
-		findStr := reg.FindAllString(u.Path, -1)
-		if len(findStr) != 0 {
-			return fmt.Errorf("value %s, contains %v", value, strings.Join(findStr, " or "))
-		}
-
-	// boolean
-	case SettingNameCreateDefaultDiskLabeledNodes:
-		fallthrough
-	case SettingNameAllowRecurringJobWhileVolumeDetached:
-		fallthrough
-	case SettingNameReplicaSoftAntiAffinity:
-		fallthrough
-	case SettingNameDisableSchedulingOnCordonedNode:
-		fallthrough
-	case SettingNameReplicaZoneSoftAntiAffinity:
-		fallthrough
-	case SettingNameAllowVolumeCreationWithDegradedAvailability:
-		fallthrough
-	case SettingNameAutoCleanupSystemGeneratedSnapshot:
-		fallthrough
-	case SettingNameAutoCleanupRecurringJobBackupSnapshot:
-		fallthrough
-	case SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly:
-		fallthrough
-	case SettingNameKubernetesClusterAutoscalerEnabled:
-		fallthrough
-	case SettingNameOrphanAutoDeletion:
-		fallthrough
-	case SettingNameDeletingConfirmationFlag:
-		fallthrough
-	case SettingNameRestoreVolumeRecurringJobs:
-		fallthrough
-	case SettingNameRemoveSnapshotsDuringFilesystemTrim:
-		fallthrough
-	case SettingNameFastReplicaRebuildEnabled:
-		fallthrough
-	case SettingNameUpgradeChecker:
-		fallthrough
-	case SettingNameV1DataEngine:
-		fallthrough
-	case SettingNameV2DataEngine:
-		fallthrough
-	case SettingNameAllowEmptyNodeSelectorVolume:
-		fallthrough
-	case SettingNameAllowEmptyDiskSelectorVolume:
-		fallthrough
-	case SettingNameAllowCollectingLonghornUsage:
-		fallthrough
-	case SettingNameDetachManuallyAttachedVolumesWhenCordoned:
-		fallthrough
-	case SettingNameReplicaDiskSoftAntiAffinity:
-		fallthrough
-	case SettingNameDisableSnapshotPurge:
-		if value != "true" && value != "false" {
-			return fmt.Errorf("value %v of setting %v should be true or false", value, sName)
-		}
-
-	case SettingNameStorageOverProvisioningPercentage:
-		if _, err := strconv.Atoi(value); err != nil {
-			return errors.Wrapf(err, "value %v is not a number", value)
-		}
-		// additional check whether over provisioning percentage is positive
-		value, err := util.ConvertSize(value)
-		if err != nil {
-			return errors.Wrapf(err, "failed to parse %v as size", value)
-		}
-		if value < 0 {
-			return fmt.Errorf("value %v should be positive", value)
-		}
-	case SettingNameStorageReservedPercentageForDefaultDisk:
-		fallthrough
-	case SettingNameStorageMinimalAvailablePercentage:
-		if _, err := strconv.Atoi(value); err != nil {
-			return errors.Wrapf(err, "value %v is not a number", value)
-		}
-		// additional check whether minimal available percentage is between 0 to 100
-		value, err := util.ConvertSize(value)
-		if err != nil {
-			return errors.Wrapf(err, "failed to parse %v as size", value)
-		}
-		if value < 0 || value > 100 {
-			return fmt.Errorf("value %v should between 0 to 100", value)
-		}
-	case SettingNameDefaultReplicaCount:
-		c, err := strconv.Atoi(value)
-		if err != nil {
-			return errors.Wrapf(err, "value %v is not number", value)
-		}
-		if err := ValidateReplicaCount(c); err != nil {
-			return errors.Wrapf(err, "failed to validate replica count %v", c)
-		}
-	case SettingNameReplicaAutoBalance:
-		if err := ValidateReplicaAutoBalance(longhorn.ReplicaAutoBalance(value)); err != nil {
-			return errors.Wrapf(err, "failed to validate replica auto balance: %v", value)
-		}
-	case SettingNameBackingImageCleanupWaitInterval:
-		fallthrough
-	case SettingNameBackingImageRecoveryWaitInterval:
-		fallthrough
-	case SettingNameReplicaReplenishmentWaitInterval:
-		fallthrough
-	case SettingNameConcurrentReplicaRebuildPerNodeLimit:
-		fallthrough
-	case SettingNameConcurrentBackupRestorePerNodeLimit:
-		fallthrough
-	case SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit:
-		fallthrough
-	case SettingNameSupportBundleFailedHistoryLimit:
-		fallthrough
-	case SettingNameBackupstorePollInterval:
-		fallthrough
-	case SettingNameRecurringSuccessfulJobsHistoryLimit:
-		fallthrough
-	case SettingNameRecurringFailedJobsHistoryLimit:
-		fallthrough
-	case SettingNameFailedBackupTTL:
-		fallthrough
-	case SettingNameV2DataEngineHugepageLimit:
-		value, err := strconv.Atoi(value)
-		if err != nil {
-			errors.Wrapf(err, "value %v is not a number", value)
-		}
-		if value < 0 {
-			return fmt.Errorf("the value %v shouldn't be less than 0", value)
-		}
-	case SettingNameTaintToleration:
-		if _, err = UnmarshalTolerations(value); err != nil {
-			return errors.Wrapf(err, "the value of %v is invalid", sName)
-		}
-	case SettingNameSystemManagedComponentsNodeSelector:
-		if _, err = UnmarshalNodeSelector(value); err != nil {
-			return errors.Wrapf(err, "the value of %v is invalid", sName)
-		}
-	case SettingNameStorageNetwork:
-		if err = ValidateStorageNetwork(value); err != nil {
-			return errors.Wrapf(err, "the value of %v is invalid", sName)
-		}
-	case SettingNameReplicaFileSyncHTTPClientTimeout:
-		timeout, err := strconv.Atoi(value)
-		if err != nil {
-			return errors.Wrapf(err, "value %v is not a number", value)
-		}
-
-		if timeout < 5 || timeout > 120 {
-			return fmt.Errorf("the value %v should be between 5 and 120", value)
-		}
-	case SettingNameRecurringJobMaxRetention:
-		maxNumber, err := strconv.Atoi(value)
-		if err != nil {
-			return errors.Wrapf(err, "value %v is not a number", value)
-		}
-		if maxNumber < 1 || maxNumber > MaxSnapshotNum {
-			return fmt.Errorf("the value %v should be between 1 and %v", maxNumber, MaxSnapshotNum)
-		}
-	case SettingNameEngineReplicaTimeout:
-		timeout, err := strconv.Atoi(value)
-		if err != nil {
-			return errors.Wrapf(err, "value %v is not a number", value)
-		}
-
-		if timeout < 8 || timeout > 30 {
-			return fmt.Errorf("the value %v should be between 8 and 30", value)
-		}
-	case SettingNameBackupConcurrentLimit:
-		fallthrough
-	case SettingNameRestoreConcurrentLimit:
-		val, err := strconv.Atoi(value)
-		if err != nil {
-			return errors.Wrapf(err, "value %v is not a number", value)
-		}
-
-		if val < 1 {
-			return fmt.Errorf("the value %v shouldn't be less than 1", value)
-		}
-	case SettingNameOfflineReplicaRebuilding:
-		if err = ValidateOfflineReplicaRebuilding(value); err != nil {
-			return errors.Wrapf(err, "the value of %v is invalid", sName)
-		}
-	case SettingNameSnapshotDataIntegrity:
-		if err = ValidateSnapshotDataIntegrity(value); err != nil {
-			return errors.Wrapf(err, "the value of %v is invalid", sName)
-		}
-	case SettingNameBackupCompressionMethod:
-		if err = ValidateBackupCompressionMethod(value); err != nil {
-			return errors.Wrapf(err, "the value of %v is invalid", sName)
-		}
-	case SettingNameSnapshotDataIntegrityCronJob:
-		schedule, err := cron.ParseStandard(value)
-		if err != nil {
-			return errors.Wrapf(err, "invalid cron job format: %v", value)
-		}
-
-		runAt := schedule.Next(time.Unix(0, 0))
-		nextRunAt := schedule.Next(runAt)
-
-		logrus.Infof("The interval between two data integrity checks is %v seconds", nextRunAt.Sub(runAt).Seconds())
-
-	// multi-choices
-	case SettingNameNodeDownPodDeletionPolicy:
-		fallthrough
-	case SettingNameDefaultDataLocality:
-		fallthrough
-	case SettingNameNodeDrainPolicy:
-		fallthrough
-	case SettingNameSystemManagedPodsImagePullPolicy:
-		definition, _ := GetSettingDefinition(sName)
-		choices := definition.Choices
-		if !isValidChoice(choices, value) {
-			return fmt.Errorf("value %v is not a valid choice, available choices %v", value, choices)
-		}
-	case SettingNameGuaranteedInstanceManagerCPU:
-		i, err := strconv.Atoi(value)
-		if err != nil {
-			return errors.Wrapf(err, "guaranteed v1 data engine instance manager cpu value %v is not a valid integer", value)
-		}
-		if i < 0 || i > 40 {
-			return fmt.Errorf("guaranteed v1 data engine instance manager cpu value %v should be between 0 to 40", value)
-		}
-	case SettingNameV2DataEngineGuaranteedInstanceManagerCPU:
-		i, err := strconv.Atoi(value)
-		if err != nil {
-			return errors.Wrapf(err, "guaranteed v2 data engine instance manager cpu value %v is not a valid integer", value)
-		}
-		if i < 1000 || i > 8000 {
-			return fmt.Errorf("guaranteed v2 data engine instance manager cpu value %v should be between 1000 to 8000", value)
-		}
-	case SettingNameLogLevel:
-		if err := ValidateLogLevel(value); err != nil {
-			return errors.Wrapf(err, "failed to validate log level %v", value)
-		}
-	case SettingNameV2DataEngineLogLevel:
-		if err := ValidateV2DataEngineLogLevel(value); err != nil {
-			return errors.Wrapf(err, "failed to validate v2 data engine log level %v", value)
-		}
-	case SettingNameV2DataEngineLogFlags:
-		if err := ValidateV2DataEngineLogFlags(value); err != nil {
-			return errors.Wrapf(err, "failed to validate v2 data engine log flags %v", value)
-		}
+	if err := validateBool(definition, value); err != nil {
+		return errors.Wrapf(err, "failed to validate the setting %v", sName)
 	}
+
+	if err := validateInt(definition, value); err != nil {
+		return errors.Wrapf(err, "failed to validate the setting %v", sName)
+	}
+
+	if err := validateString(sName, definition, value); err != nil {
+		return errors.Wrapf(err, "failed to validate the setting %v", sName)
+	}
+
 	return nil
 }
 
@@ -1767,4 +1607,111 @@ func GetDangerZoneSettings() sets.Set[SettingName] {
 	}
 
 	return settingList
+}
+
+func validateBool(definition SettingDefinition, value string) error {
+	if definition.Type != SettingTypeBool {
+		return nil
+	}
+
+	if value != "true" && value != "false" {
+		return fmt.Errorf("value %v should be true or false", value)
+	}
+	return nil
+}
+
+func validateInt(definition SettingDefinition, value string) error {
+	if definition.Type != SettingTypeInt {
+		return nil
+	}
+
+	intValue, err := strconv.Atoi(value)
+	if err != nil {
+		return errors.Wrapf(err, "value %v is not a number", value)
+	}
+
+	valueIntRange := definition.ValueIntRange
+	if minValue, exists := valueIntRange[ValueIntRangeMinimum]; exists {
+		if intValue < minValue {
+			return fmt.Errorf("value %v should be larger than %v", intValue, minValue)
+		}
+	}
+
+	if maxValue, exists := valueIntRange[ValueIntRangeMaximum]; exists {
+		if intValue > maxValue {
+			return fmt.Errorf("value %v should be less than %v", intValue, maxValue)
+		}
+	}
+	return nil
+}
+
+func validateString(sName SettingName, definition SettingDefinition, value string) error {
+	if definition.Type != SettingTypeString {
+		return nil
+	}
+
+	// multi-choices
+	if definition.Choices != nil && len(definition.Choices) > 0 {
+		if !isValidChoice(definition.Choices, value) {
+			return fmt.Errorf("value %v is not a valid choice, available choices %v", value, definition.Choices)
+		}
+		return nil
+	}
+
+	switch sName {
+	case SettingNameSnapshotDataIntegrityCronJob:
+		schedule, err := cron.ParseStandard(value)
+		if err != nil {
+			return errors.Wrapf(err, "invalid cron job format: %v", value)
+		}
+
+		runAt := schedule.Next(time.Unix(0, 0))
+		nextRunAt := schedule.Next(runAt)
+
+		logrus.Infof("The interval between two data integrity checks is %v seconds", nextRunAt.Sub(runAt).Seconds())
+
+	case SettingNameTaintToleration:
+		if _, err := UnmarshalTolerations(value); err != nil {
+			return errors.Wrapf(err, "the value of %v is invalid", sName)
+		}
+	case SettingNameSystemManagedComponentsNodeSelector:
+		if _, err := UnmarshalNodeSelector(value); err != nil {
+			return errors.Wrapf(err, "the value of %v is invalid", sName)
+		}
+
+	case SettingNameBackupTarget:
+		u, err := url.Parse(value)
+		if err != nil {
+			return errors.Wrapf(err, "failed to parse %v as url", value)
+		}
+
+		// Check whether have $ or , have been set in BackupTarget path
+		regStr := `[\$\,]`
+		if u.Scheme == "cifs" {
+			// The $ in SMB/CIFS URIs means that the share is hidden.
+			regStr = `[\,]`
+		}
+
+		reg := regexp.MustCompile(regStr)
+		findStr := reg.FindAllString(u.Path, -1)
+		if len(findStr) != 0 {
+			return fmt.Errorf("value %s, contains %v", value, strings.Join(findStr, " or "))
+		}
+
+	case SettingNameStorageNetwork:
+		if err := ValidateStorageNetwork(value); err != nil {
+			return errors.Wrapf(err, "the value of %v is invalid", sName)
+		}
+
+	case SettingNameV2DataEngineLogLevel:
+		if err := ValidateV2DataEngineLogLevel(value); err != nil {
+			return errors.Wrapf(err, "failed to validate v2 data engine log level %v", value)
+		}
+	case SettingNameV2DataEngineLogFlags:
+		if err := ValidateV2DataEngineLogFlags(value); err != nil {
+			return errors.Wrapf(err, "failed to validate v2 data engine log flags %v", value)
+		}
+	}
+
+	return nil
 }
