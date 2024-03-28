@@ -663,7 +663,13 @@ func (bic *BackingImageController) syncBackingImageFileInfo(bi *longhorn.Backing
 				bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, constant.EventReasonUpdate, "Set size to %v", bi.Status.Size)
 			}
 			if bi.Status.Size != info.Size {
-				return fmt.Errorf("found mismatching size %v reported by backing image manager %v in disk %v, the size recorded in status is %v", info.Size, bim.Name, bim.Spec.DiskUUID, bi.Status.Size)
+				if bi.Status.DiskFileStatusMap[bim.Spec.DiskUUID].State != longhorn.BackingImageStateFailed {
+					msg := fmt.Sprintf("found mismatching size %v reported by backing image manager %v in disk %v, the size recorded in status is %v",
+						info.Size, bim.Name, bim.Spec.DiskUUID, bi.Status.Size)
+					log.Error(msg)
+					bi.Status.DiskFileStatusMap[bim.Spec.DiskUUID].State = longhorn.BackingImageStateFailed
+					bi.Status.DiskFileStatusMap[bim.Spec.DiskUUID].Message = msg
+				}
 			}
 		}
 		if info.VirtualSize > 0 {
@@ -672,8 +678,13 @@ func (bic *BackingImageController) syncBackingImageFileInfo(bi *longhorn.Backing
 				bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, constant.EventReasonUpdate, "Set virtualSize to %v", bi.Status.VirtualSize)
 			}
 			if bi.Status.VirtualSize != info.VirtualSize {
-				return fmt.Errorf("found mismatching virtualSize %v reported by backing image manager %v in disk %v, the virtualSize recorded in status is %v",
-					info.VirtualSize, bim.Name, bim.Spec.DiskUUID, bi.Status.VirtualSize)
+				if bi.Status.DiskFileStatusMap[bim.Spec.DiskUUID].State != longhorn.BackingImageStateFailed {
+					msg := fmt.Sprintf("found mismatching virtualSize %v reported by backing image manager %v in disk %v, the virtualSize recorded in status is %v",
+						info.VirtualSize, bim.Name, bim.Spec.DiskUUID, bi.Status.VirtualSize)
+					log.Error(msg)
+					bi.Status.DiskFileStatusMap[bim.Spec.DiskUUID].State = longhorn.BackingImageStateFailed
+					bi.Status.DiskFileStatusMap[bim.Spec.DiskUUID].Message = msg
+				}
 			}
 		}
 	}
