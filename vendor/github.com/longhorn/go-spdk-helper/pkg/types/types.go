@@ -37,3 +37,13 @@ const (
 func GetNQN(name string) string {
 	return fmt.Sprintf("%s:%s", NQNPrefix, name)
 }
+
+type DiskStatus struct {
+	Bdf          string
+	Type         string
+	Driver       string
+	Vendor       string
+	Numa         string
+	Device       string
+	BlockDevices string
+}
