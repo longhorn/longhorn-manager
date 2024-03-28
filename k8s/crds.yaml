@@ -739,6 +739,11 @@ spec:
                   type: string
                 description: The labels of snapshot backup.
                 type: object
+              parameters:
+                additionalProperties:
+                  type: string
+                description: The parameters of snapshot backup.
+                type: object
               snapshotName:
                 description: The snapshot name.
                 type: string
@@ -777,12 +782,18 @@ spec:
                 description: The error messages when calling longhorn engine on listing or inspecting backups.
                 nullable: true
                 type: object
+              newlyUploadDataSize:
+                description: Size of newly uploaded data
+                type: string
               ownerID:
                 description: The node ID on which the controller is responsible to reconcile this backup CR.
                 type: string
               progress:
                 description: The snapshot backup progress.
                 type: integer
+              reUploadedDataSize:
+                description: Size of reuploaded data
+                type: string
               replicaAddress:
                 description: The address of the replica that runs snapshot backup.
                 type: string
@@ -831,22 +842,11 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.7.0
+  creationTimestamp: null
   labels:
     longhorn-manager: ""
   name: backuptargets.longhorn.io
 spec:
-  conversion:
-    strategy: Webhook
-    webhook:
-      clientConfig:
-        service:
-          name: longhorn-conversion-webhook
-          namespace: longhorn-system
-          path: /v1/webhook/conversion
-          port: 9443
-      conversionReviewVersions:
-      - v1beta2
-      - v1beta1
   group: longhorn.io
   names:
     kind: BackupTarget
@@ -1110,6 +1110,9 @@ spec:
                 type: string
               backingImageName:
                 description: The backing image name.
+                type: string
+              backupCount:
+                description: The number of backups that have been created.
                 type: string
               createdAt:
                 description: The backup volume creation time.
@@ -2476,6 +2479,11 @@ spec:
               name:
                 description: The recurring job name.
                 type: string
+              parameters:
+                additionalProperties:
+                  type: string
+                description: The parameters of the snapshot/backup.
+                type: object
               retain:
                 description: The retain count of the snapshot/backup.
                 type: integer

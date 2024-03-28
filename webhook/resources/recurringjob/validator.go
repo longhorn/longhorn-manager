@@ -71,6 +71,7 @@ func (r *recurringJobValidator) Create(request *admission.Request, newObj runtim
 			Retain:      recurringJob.Spec.Retain,
 			Concurrency: recurringJob.Spec.Concurrency,
 			Labels:      recurringJob.Spec.Labels,
+			Parameters:  recurringJob.Spec.Parameters,
 		},
 	}
 	if err := r.ds.ValidateRecurringJobs(jobs); err != nil {
@@ -105,6 +106,7 @@ func (r *recurringJobValidator) Update(request *admission.Request, oldObj runtim
 			Retain:      newRecurringJob.Spec.Retain,
 			Concurrency: newRecurringJob.Spec.Concurrency,
 			Labels:      newRecurringJob.Spec.Labels,
+			Parameters:  newRecurringJob.Spec.Parameters,
 		},
 	}
 	if err := r.ds.ValidateRecurringJobs(jobs); err != nil {

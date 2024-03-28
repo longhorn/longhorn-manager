@@ -35,6 +35,9 @@ type BackupSpec struct {
 	// The labels of snapshot backup.
 	// +optional
 	Labels map[string]string `json:"labels"`
+	// The parameters of snapshot backup.
+	// +optional
+	Parameters map[string]string `json:"parameters"`
 }
 
 // BackupStatus defines the observed state of the Longhorn backup
@@ -97,6 +100,12 @@ type BackupStatus struct {
 	// Compression method
 	// +optional
 	CompressionMethod BackupCompressionMethod `json:"compressionMethod"`
+	// Size of newly uploaded data
+	// +optional
+	NewlyUploadedDataSize string `json:"newlyUploadDataSize"`
+	// Size of reuploaded data
+	// +optional
+	ReUploadedDataSize string `json:"reUploadedDataSize"`
 }
 
 // +genclient

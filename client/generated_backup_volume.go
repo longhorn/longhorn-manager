@@ -28,6 +28,8 @@ type BackupVolume struct {
 	Size string `json:"size,omitempty" yaml:"size,omitempty"`
 
 	StorageClassName string `json:"storageClassName,omitempty" yaml:"storage_class_name,omitempty"`
+
+	BackupCount string `json:"backupCount,omitempty" yaml:"backup_count,omitempty"`
 }
 
 type BackupVolumeCollection struct {

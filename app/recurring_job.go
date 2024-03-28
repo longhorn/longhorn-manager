@@ -15,6 +15,7 @@ import (
 	"github.com/urfave/cli"
 	"golang.org/x/sync/errgroup"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
@@ -28,6 +29,7 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
+	btypes "github.com/longhorn/backupstore/types"
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
@@ -56,6 +58,7 @@ type Job struct {
 	retain       int
 	task         longhorn.RecurringJobType
 	labels       map[string]string
+	parameters   map[string]string
 
 	eventRecorder record.EventRecorder
 
@@ -121,6 +124,15 @@ func recurringJob(c *cli.Context) (err error) {
 		return errors.Wrap(err, "failed to get JSON encoding for labels")
 	}
 
+	jobParameterMap := map[string]string{}
+	if recurringJob.Spec.Parameters != nil {
+		jobParameterMap = recurringJob.Spec.Parameters
+	}
+	parameterJSON, err := json.Marshal(jobParameterMap)
+	if err != nil {
+		return errors.Wrap(err, "failed to get JSON encoding for parameters")
+	}
+
 	allowDetachedSetting := types.SettingNameAllowRecurringJobWhileVolumeDetached
 	allowDetached, err := getSettingAsBoolean(allowDetachedSetting, namespace, lhClient)
 	if err != nil {
@@ -153,7 +165,7 @@ func recurringJob(c *cli.Context) (err error) {
 	for _, volumeName := range filteredVolumes {
 		startJobVolumeName := volumeName
 		ewg.Go(func() error {
-			return startVolumeJob(startJobVolumeName, logger, concurrentLimiter, managerURL, jobName, jobTask, jobRetain, jobConcurrent, jobGroups, jobLabelMap, labelJSON)
+			return startVolumeJob(startJobVolumeName, logger, concurrentLimiter, managerURL, jobName, jobTask, jobRetain, jobConcurrent, jobGroups, jobLabelMap, labelJSON, jobParameterMap, parameterJSON)
 		})
 	}
 
@@ -162,7 +174,7 @@ func recurringJob(c *cli.Context) (err error) {
 
 func startVolumeJob(
 	volumeName string, logger *logrus.Logger, concurrentLimiter chan struct{}, managerURL string,
-	jobName string, jobTask longhorn.RecurringJobType, jobRetain int, jobConcurrent int, jobGroups []string, jobLabelMap map[string]string, labelJSON []byte) error {
+	jobName string, jobTask longhorn.RecurringJobType, jobRetain int, jobConcurrent int, jobGroups []string, jobLabelMap map[string]string, labelJSON []byte, jobParameterMap map[string]string, parameterJSON []byte) error {
 
 	concurrentLimiter <- struct{}{}
 	defer func() {
@@ -177,6 +189,7 @@ func startVolumeJob(
 		"concurrent": jobConcurrent,
 		"groups":     strings.Join(jobGroups, ","),
 		"labels":     string(labelJSON),
+		"parameters": string(parameterJSON),
 	})
 	log.Info("Creating job")
 
@@ -187,6 +200,7 @@ func startVolumeJob(
 		volumeName,
 		snapshotName,
 		jobLabelMap,
+		jobParameterMap,
 		jobRetain,
 		jobTask)
 	if err != nil {
@@ -213,7 +227,7 @@ func sliceStringSafely(s string, begin, end int) string {
 	return s[begin:end]
 }
 
-func newJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName string, labels map[string]string, retain int, task longhorn.RecurringJobType) (*Job, error) {
+func newJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName string, labels map[string]string, parameters map[string]string, retain int, task longhorn.RecurringJobType) (*Job, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		return nil, fmt.Errorf("failed detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
@@ -263,6 +277,7 @@ func newJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName stri
 		volumeName:   volumeName,
 		snapshotName: snapshotName,
 		labels:       labels,
+		parameters:   parameters,
 		retain:       retain,
 		task:         task,
 		api:          apiClient,
@@ -611,9 +626,37 @@ func (job *Job) doRecurringBackup() (err error) {
 		return err
 	}
 
+	backupParameters := map[string]string{}
+	if intervalStr, exists := job.parameters[types.RecurringJobBackupParameterFullBackupInterval]; exists {
+		interval, err := strconv.Atoi(intervalStr)
+		if err != nil {
+			return errors.Wrapf(err, "interval %v is not number", intervalStr)
+		}
+
+		backupVolume, err := job.api.BackupVolume.ById(job.volumeName)
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				return errors.Wrapf(err, "failed to get backup volume %v", job.volumeName)
+			}
+		}
+
+		backupCount := 0
+		if backupVolume != nil && backupVolume.BackupCount != "" {
+			backupCount, err = strconv.Atoi(backupVolume.BackupCount)
+			if err != nil {
+				return errors.Wrapf(err, "backup count %v is not number", backupVolume.BackupCount)
+			}
+		}
+
+		if backupCount%interval == 0 {
+			backupParameters[btypes.LonghornBackupOptionBackupMode] = btypes.LonghornBackupModeFull
+		}
+	}
+
 	if _, err := job.api.Volume.ActionSnapshotBackup(volume, &longhornclient.SnapshotInput{
-		Labels: job.labels,
-		Name:   job.snapshotName,
+		Labels:     job.labels,
+		Name:       job.snapshotName,
+		Parameters: job.parameters,
 	}); err != nil {
 		return err
 	}
