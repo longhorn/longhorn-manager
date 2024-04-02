@@ -744,6 +744,36 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 	return nil
 }
 
+func (c *ShareManagerController) getAffinityFromStorageClass(sc *storagev1.StorageClass) *corev1.Affinity {
+	var matchLabelExpressions []corev1.NodeSelectorRequirement
+
+	for _, topology := range sc.AllowedTopologies {
+		for _, expression := range topology.MatchLabelExpressions {
+			matchLabelExpressions = append(matchLabelExpressions, corev1.NodeSelectorRequirement{
+				Key:      expression.Key,
+				Operator: corev1.NodeSelectorOpIn,
+				Values:   expression.Values,
+			})
+		}
+	}
+
+	if len(matchLabelExpressions) == 0 {
+		return nil
+	}
+
+	return &corev1.Affinity{
+		NodeAffinity: &corev1.NodeAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+				NodeSelectorTerms: []corev1.NodeSelectorTerm{
+					{
+						MatchExpressions: matchLabelExpressions,
+					},
+				},
+			},
+		},
+	}
+}
+
 func (c *ShareManagerController) getShareManagerNodeSelectorFromStorageClass(sc *storagev1.StorageClass) map[string]string {
 	value, ok := sc.Parameters["shareManagerNodeSelector"]
 	if !ok {
@@ -815,15 +845,18 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 		return nil, err
 	}
 
+	var affinity *corev1.Affinity
 	if pv.Spec.StorageClassName != "" {
 		sc, err := c.ds.GetStorageClass(pv.Spec.StorageClassName)
 		if err != nil {
 			c.logger.WithError(err).Warnf("Failed to get storage class %v, will continue the share manager pod creation", pv.Spec.StorageClassName)
 		} else {
+			affinity = c.getAffinityFromStorageClass(sc)
+
+			// Find the node selector from the storage class and merge it with the system managed components node selector
 			if nodeSelector == nil {
 				nodeSelector = map[string]string{}
 			}
-			// Find the node selector from the storage class and merge it with the system managed components node selector
 			nodeSelectorFromStorageClass := c.getShareManagerNodeSelectorFromStorageClass(sc)
 			for k, v := range nodeSelectorFromStorageClass {
 				nodeSelector[k] = v
@@ -855,7 +888,7 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 			string(secret.Data[csi.CryptoPBKDF]))
 	}
 
-	manifest := c.createPodManifest(sm, annotations, tolerations, imagePullPolicy, nil, registrySecret,
+	manifest := c.createPodManifest(sm, annotations, tolerations, affinity, imagePullPolicy, nil, registrySecret,
 		priorityClass, nodeSelector, fsType, mountOptions, cryptoKey, cryptoParams)
 	pod, err := c.ds.CreatePod(manifest)
 	if err != nil {
@@ -891,7 +924,7 @@ func (c *ShareManagerController) createServiceManifest(sm *longhorn.ShareManager
 }
 
 func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, annotations map[string]string, tolerations []corev1.Toleration,
-	pullPolicy corev1.PullPolicy, resourceReq *corev1.ResourceRequirements, registrySecret, priorityClass string,
+	affinity *corev1.Affinity, pullPolicy corev1.PullPolicy, resourceReq *corev1.ResourceRequirements, registrySecret, priorityClass string,
 	nodeSelector map[string]string, fsType string, mountOptions []string, cryptoKey string, cryptoParams *crypto.EncryptParams) *corev1.Pod {
 
 	// command args for the share-manager
@@ -915,6 +948,7 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 			OwnerReferences: datastore.GetOwnerReferencesForShareManager(sm, true),
 		},
 		Spec: corev1.PodSpec{
+			Affinity:           affinity,
 			ServiceAccountName: c.serviceAccount,
 			Tolerations:        util.GetDistinctTolerations(tolerations),
 			NodeSelector:       nodeSelector,
