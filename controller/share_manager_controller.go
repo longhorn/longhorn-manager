@@ -18,6 +18,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -743,12 +744,28 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 	return nil
 }
 
+func (c *ShareManagerController) getShareManagerNodeSelectorFromStorageClass(sc *storagev1.StorageClass) map[string]string {
+	value, ok := sc.Parameters["shareManagerNodeSelector"]
+	if !ok {
+		return map[string]string{}
+	}
+
+	nodeSelector, err := types.UnmarshalNodeSelector(value)
+	if err != nil {
+		c.logger.WithError(err).Warnf("Failed to unmarshal node selector %v", value)
+		return map[string]string{}
+	}
+
+	return nodeSelector
+}
+
 // createShareManagerPod ensures existence of service, it's assumed that the pvc for this share manager already exists
 func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager) (*corev1.Pod, error) {
 	tolerations, err := c.ds.GetSettingTaintToleration()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get taint toleration setting before creating share manager pod")
 	}
+
 	nodeSelector, err := c.ds.GetSettingSystemManagedComponentsNodeSelector()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get node selector setting before creating share manager pod")
@@ -798,6 +815,22 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 		return nil, err
 	}
 
+	if pv.Spec.StorageClassName != "" {
+		sc, err := c.ds.GetStorageClass(pv.Spec.StorageClassName)
+		if err != nil {
+			c.logger.WithError(err).Warnf("Failed to get storage class %v, will continue the share manager pod creation", pv.Spec.StorageClassName)
+		} else {
+			if nodeSelector == nil {
+				nodeSelector = map[string]string{}
+			}
+			// Find the node selector from the storage class and merge it with the system managed components node selector
+			nodeSelectorFromStorageClass := c.getShareManagerNodeSelectorFromStorageClass(sc)
+			for k, v := range nodeSelectorFromStorageClass {
+				nodeSelector[k] = v
+			}
+		}
+	}
+
 	fsType := pv.Spec.CSI.FSType
 	mountOptions := pv.Spec.MountOptions
 
@@ -822,8 +855,8 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 			string(secret.Data[csi.CryptoPBKDF]))
 	}
 
-	manifest := c.createPodManifest(sm, annotations, tolerations, imagePullPolicy, nil, registrySecret, priorityClass, nodeSelector,
-		fsType, mountOptions, cryptoKey, cryptoParams)
+	manifest := c.createPodManifest(sm, annotations, tolerations, imagePullPolicy, nil, registrySecret,
+		priorityClass, nodeSelector, fsType, mountOptions, cryptoKey, cryptoParams)
 	pod, err := c.ds.CreatePod(manifest)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create pod for share manager %v", sm.Name)
@@ -858,8 +891,8 @@ func (c *ShareManagerController) createServiceManifest(sm *longhorn.ShareManager
 }
 
 func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, annotations map[string]string, tolerations []corev1.Toleration,
-	pullPolicy corev1.PullPolicy, resourceReq *corev1.ResourceRequirements, registrySecret, priorityClass string, nodeSelector map[string]string,
-	fsType string, mountOptions []string, cryptoKey string, cryptoParams *crypto.EncryptParams) *corev1.Pod {
+	pullPolicy corev1.PullPolicy, resourceReq *corev1.ResourceRequirements, registrySecret, priorityClass string,
+	nodeSelector map[string]string, fsType string, mountOptions []string, cryptoKey string, cryptoParams *crypto.EncryptParams) *corev1.Pod {
 
 	// command args for the share-manager
 	args := []string{"--debug", "daemon", "--volume", sm.Name}
