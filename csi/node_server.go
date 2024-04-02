@@ -271,17 +271,17 @@ func (ns *NodeServer) nodeStageSharedVolume(volumeID, shareEndpoint, targetPath 
 			if err == nil {
 				return nil
 			}
-			// Still failed.  Log with mounting node and kernel version for possible troubleshooting.  Don't step on actual mount error.
-			kernelRelease, err1 := lhns.GetKernelRelease()
-			if err1 != nil {
-				kernelRelease = err1.Error()
-			}
-			osDistro, err2 := lhns.GetOSDistro()
-			if err2 != nil {
-				osDistro = err2.Error()
-			}
-			log.WithError(err).Warnf("Failed to mount volume %v on node %s with kernel release %s, os distro %s", volumeID, ns.nodeID, kernelRelease, osDistro)
 		}
+		// Log with mounting node and kernel version for possible troubleshooting.  Don't step on actual mount error.
+		kernelRelease, err1 := lhns.GetKernelRelease()
+		if err1 != nil {
+			kernelRelease = err1.Error()
+		}
+		osDistro, err2 := lhns.GetOSDistro()
+		if err2 != nil {
+			osDistro = err2.Error()
+		}
+		log.WithError(err).Warnf("Failed to mount volume %v on node %s with kernel release %s, os distro %s", volumeID, ns.nodeID, kernelRelease, osDistro)
 		return status.Error(codes.Internal, err.Error())
 	}
 
