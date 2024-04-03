@@ -789,6 +789,21 @@ func (c *ShareManagerController) getShareManagerNodeSelectorFromStorageClass(sc 
 	return nodeSelector
 }
 
+func (c *ShareManagerController) getShareManagerTolerationsFromStorageClass(sc *storagev1.StorageClass) []corev1.Toleration {
+	value, ok := sc.Parameters["shareManagerTolerations"]
+	if !ok {
+		return []corev1.Toleration{}
+	}
+
+	tolerations, err := types.UnmarshalTolerations(value)
+	if err != nil {
+		c.logger.WithError(err).Warnf("Failed to unmarshal tolerations %v", value)
+		return []corev1.Toleration{}
+	}
+
+	return tolerations
+}
+
 // createShareManagerPod ensures existence of service, it's assumed that the pvc for this share manager already exists
 func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager) (*corev1.Pod, error) {
 	tolerations, err := c.ds.GetSettingTaintToleration()
@@ -846,6 +861,7 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 	}
 
 	var affinity *corev1.Affinity
+
 	if pv.Spec.StorageClassName != "" {
 		sc, err := c.ds.GetStorageClass(pv.Spec.StorageClassName)
 		if err != nil {
@@ -861,6 +877,13 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 			for k, v := range nodeSelectorFromStorageClass {
 				nodeSelector[k] = v
 			}
+
+			// Find the tolerations from the storage class and merge it with the global tolerations
+			if tolerations == nil {
+				tolerations = []corev1.Toleration{}
+			}
+			tolerationsFromStorageClass := c.getShareManagerTolerationsFromStorageClass(sc)
+			tolerations = append(tolerations, tolerationsFromStorageClass...)
 		}
 	}
 
