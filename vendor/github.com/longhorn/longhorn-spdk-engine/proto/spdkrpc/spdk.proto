@@ -341,6 +341,9 @@ message Disk {
 
     int64 block_size = 9;
     int64 cluster_size = 10;
+
+    string driver = 11;
+    string name = 12;
 }
 
 message DiskCreateRequest {
@@ -348,15 +351,20 @@ message DiskCreateRequest {
     string disk_uuid = 2;
     string disk_path = 3;
     int64 block_size = 4;
+    string disk_driver = 5;
 }
 
 message DiskGetRequest {
     string disk_name = 1;
+    string disk_driver = 2;
+    string disk_path = 3;
 }
 
 message DiskDeleteRequest {
     string disk_name = 1;
     string disk_uuid = 2;
+    string disk_path = 3;
+    string disk_driver = 4;
 }
 
 message LogSetLevelRequest {
