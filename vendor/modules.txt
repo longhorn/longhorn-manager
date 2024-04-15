@@ -252,12 +252,12 @@ github.com/longhorn/go-common-libs/sys
 github.com/longhorn/go-common-libs/test/fake
 github.com/longhorn/go-common-libs/types
 github.com/longhorn/go-common-libs/utils
-# github.com/longhorn/go-iscsi-helper v0.0.0-20240308033847-bc3aab599425
+# github.com/longhorn/go-iscsi-helper v0.0.0-20240329081212-26b6406b3b2b
 ## explicit; go 1.21
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.0.0-20240328085119-7ab2393959d9
+# github.com/longhorn/go-spdk-helper v0.0.0-20240415074119-eb1e91922189
 ## explicit; go 1.21
 github.com/longhorn/go-spdk-helper/pkg/types
 # github.com/longhorn/longhorn-engine v1.6.0
@@ -377,7 +377,7 @@ github.com/rancher/dynamiclistener/storage/memory
 ## explicit
 github.com/rancher/go-rancher/api
 github.com/rancher/go-rancher/client
-# github.com/rancher/lasso v0.0.0-20240123150939-7055397d6dfa
+# github.com/rancher/lasso v0.0.0-20240415182150-5993b260dd08
 ## explicit; go 1.20
 github.com/rancher/lasso/pkg/cache
 github.com/rancher/lasso/pkg/client
