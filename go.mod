@@ -47,8 +47,8 @@ require (
 	github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240326182459-c5288d745f4a
 	github.com/longhorn/backupstore v0.0.0-20240219094812-3a87ee02df77
 	github.com/longhorn/go-common-libs v0.0.0-20240411093823-b8862efb8e03
-	github.com/longhorn/go-iscsi-helper v0.0.0-20240308033847-bc3aab599425
-	github.com/longhorn/go-spdk-helper v0.0.0-20240328085119-7ab2393959d9
+	github.com/longhorn/go-iscsi-helper v0.0.0-20240329081212-26b6406b3b2b
+	github.com/longhorn/go-spdk-helper v0.0.0-20240415074119-eb1e91922189
 	github.com/longhorn/longhorn-engine v1.6.0
 	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240308123529-28ec1b59c683
 	github.com/longhorn/longhorn-share-manager v1.6.0
@@ -161,7 +161,7 @@ require (
 	github.com/prometheus/client_model v0.5.0 // indirect
 	github.com/prometheus/common v0.47.0 // indirect
 	github.com/prometheus/procfs v0.12.0 // indirect
-	github.com/rancher/lasso v0.0.0-20240123150939-7055397d6dfa
+	github.com/rancher/lasso v0.0.0-20240415182150-5993b260dd08
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rogpeppe/go-internal v1.11.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
