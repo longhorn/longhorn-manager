@@ -180,6 +180,7 @@ func (s *DataStore) createOrUpdateSetting(name types.SettingName, value, default
 	}
 	setting.Annotations[types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey)] = defaultSettingCMResourceVersion
 	setting.Value = value
+	setting.Applied = true
 
 	_, err = s.UpdateSetting(setting)
 	return err
