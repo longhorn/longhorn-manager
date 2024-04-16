@@ -626,6 +626,12 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 		if !isSettingSynced {
 			return false, false, false, nil
 		}
+		if !setting.Applied {
+			setting.Applied = true
+			if _, err := imc.ds.UpdateSetting(setting); err != nil {
+				imc.logger.WithError(err).Debugf("Failed to update setting %v applied", setting.Name)
+			}
+		}
 	}
 
 	return true, false, false, nil
