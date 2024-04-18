@@ -44,14 +44,14 @@ require (
 	github.com/gorilla/websocket v1.5.1
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
-	github.com/longhorn/backing-image-manager v1.5.5-rc1
+	github.com/longhorn/backing-image-manager v1.5.5-rc2
 	github.com/longhorn/backupstore v0.0.0-20240219094812-3a87ee02df77
 	github.com/longhorn/go-common-libs v0.0.0-20240411093823-b8862efb8e03
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240329081212-26b6406b3b2b
 	github.com/longhorn/go-spdk-helper v0.0.0-20231113055029-9acddd184246
-	github.com/longhorn/longhorn-engine v1.5.5-0.20240319113652-9cdc0f5750a7
-	github.com/longhorn/longhorn-instance-manager v1.5.5-0.20240326065406-8d925c0e7e1e
-	github.com/longhorn/longhorn-share-manager v1.5.5-0.20240319114127-58303a9ff61f
+	github.com/longhorn/longhorn-engine v1.5.5-rc2
+	github.com/longhorn/longhorn-instance-manager v1.5.5-rc2
+	github.com/longhorn/longhorn-share-manager v1.5.5-rc2
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.16.0
 	github.com/rancher/dynamiclistener v0.3.6
@@ -61,7 +61,7 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.9.0
 	github.com/urfave/cli v1.22.14
-	golang.org/x/mod v0.10.0
+	golang.org/x/mod v0.12.0
 	golang.org/x/net v0.21.0
 	golang.org/x/sys v0.19.0
 	golang.org/x/time v0.3.0
@@ -89,7 +89,7 @@ require (
 	github.com/shirou/gopsutil/v3 v3.24.3 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	golang.org/x/exp v0.0.0-20220827204233-334a2380cb91 // indirect
-	golang.org/x/tools v0.8.0 // indirect
+	golang.org/x/tools v0.13.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240227224415-6ceb2ff114de // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240227224415-6ceb2ff114de // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
@@ -127,7 +127,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/cel-go v0.16.1 // indirect
-	github.com/google/fscrypt v0.3.4 // indirect
+	github.com/google/fscrypt v0.3.5 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/gorilla/context v1.1.1 // indirect
