@@ -6,7 +6,7 @@ replace (
 	k8s.io/api => k8s.io/api v0.28.2
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.28.2
 	k8s.io/apimachinery => k8s.io/apimachinery v0.28.2
-	k8s.io/apiserver => k8s.io/apiserver v0.28.2
+	k8s.io/apiserver => k8s.io/apiserver v0.28.5
 	k8s.io/cli-runtime => k8s.io/cli-runtime v0.28.2
 	k8s.io/client-go => k8s.io/client-go v0.28.2
 	k8s.io/cloud-provider => k8s.io/cloud-provider v0.28.2
@@ -73,7 +73,7 @@ require (
 	k8s.io/apimachinery v0.28.6
 	k8s.io/cli-runtime v0.28.2
 	k8s.io/client-go v0.28.6
-	k8s.io/kubernetes v1.28.2
+	k8s.io/kubernetes v1.28.5
 	k8s.io/metrics v0.28.2
 	k8s.io/mount-utils v0.29.4
 	k8s.io/utils v0.0.0-20240310230437-4693a0247e57
@@ -193,12 +193,12 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/apiserver v0.28.2 // indirect
 	k8s.io/cloud-provider v0.0.0 // indirect
-	k8s.io/component-base v0.28.2 // indirect
+	k8s.io/component-base v0.28.5 // indirect
 	k8s.io/component-helpers v0.28.2 // indirect
 	k8s.io/controller-manager v0.28.2 // indirect
 	k8s.io/klog v1.0.0 // indirect
 	k8s.io/klog/v2 v2.110.1 // indirect
-	k8s.io/kms v0.28.2 // indirect
+	k8s.io/kms v0.28.5 // indirect
 	k8s.io/kube-aggregator v0.25.4 // indirect
 	k8s.io/kube-openapi v0.0.0-20230717233707-2695361300d9 // indirect
 	k8s.io/kubelet v0.0.0 // indirect
