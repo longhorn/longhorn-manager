@@ -45,13 +45,13 @@ require (
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.5.5-rc2
-	github.com/longhorn/backupstore v0.0.0-20240219094812-3a87ee02df77
+	github.com/longhorn/backupstore v0.0.0-20240417071544-3bd377eeefeb
 	github.com/longhorn/go-common-libs v0.0.0-20240411093823-b8862efb8e03
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240329081212-26b6406b3b2b
 	github.com/longhorn/go-spdk-helper v0.0.0-20231113055029-9acddd184246
-	github.com/longhorn/longhorn-engine v1.5.5-rc2
-	github.com/longhorn/longhorn-instance-manager v1.5.5-rc2
-	github.com/longhorn/longhorn-share-manager v1.5.5-rc2
+	github.com/longhorn/longhorn-engine v1.5.5-rc2.0.20240418040645-8f85db1d1393
+	github.com/longhorn/longhorn-instance-manager v1.5.5-rc2.0.20240418040836-76e2cfc24682
+	github.com/longhorn/longhorn-share-manager v1.5.5-rc2.0.20240418040725-83c6ad488883
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.16.0
 	github.com/rancher/dynamiclistener v0.3.6
