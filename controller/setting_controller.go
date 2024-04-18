@@ -277,15 +277,6 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 	}
 
 	if slices.Contains(dangerSettingsRequiringAllVolumesDetached, settingName) {
-		detached, _, err := sc.ds.AreAllVolumesDetached(longhorn.DataEngineTypeAll)
-		if err != nil {
-			return errors.Wrapf(err, "failed to check volume detachment for %v setting update", settingName)
-		}
-
-		if !detached {
-			return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting to Longhorn components when there are attached volumes. It will be eventually applied", settingName)}
-		}
-
 		switch settingName {
 		case types.SettingNameTaintToleration:
 			if err := sc.updateTaintToleration(); err != nil {
@@ -328,15 +319,6 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 			dataEngine := longhorn.DataEngineTypeV1
 			if settingName == types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU {
 				dataEngine = longhorn.DataEngineTypeV2
-			}
-
-			detached, _, err := sc.ds.AreAllVolumesDetached(dataEngine)
-			if err != nil {
-				return errors.Wrapf(err, "failed to check volume detachment for %v setting update", settingName)
-			}
-
-			if !detached {
-				return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting to Longhorn components when there are attached volumes. It will be eventually applied", settingName)}
 			}
 
 			if err := sc.updateInstanceManagerCPURequest(dataEngine); err != nil {
@@ -576,74 +558,110 @@ func (sc *SettingController) updateTaintToleration() error {
 	}
 	newTolerationsMap := util.TolerationListToMap(newTolerationsList)
 
-	daemonsetList, err := sc.ds.ListDaemonSetWithLabels(types.GetBaseLabelsForSystemManagedComponent())
+	updatingRuntimeObjects, err := sc.collectRuntimeObjects()
 	if err != nil {
-		return errors.Wrap(err, "failed to list Longhorn daemonsets for toleration update")
+		return errors.Wrap(err, "failed to collect runtime objects for toleration update")
+	}
+	notUpdatedTolerationObjs, err := getNotUpdatedTolerationList(newTolerationsMap, updatingRuntimeObjects...)
+	if err != nil {
+		return err
+	}
+	if len(notUpdatedTolerationObjs) == 0 {
+		return nil
 	}
 
-	deploymentList, err := sc.ds.ListDeploymentWithLabels(types.GetBaseLabelsForSystemManagedComponent())
+	detached, _, err := sc.ds.AreAllVolumesDetached(longhorn.DataEngineTypeAll)
 	if err != nil {
-		return errors.Wrap(err, "failed to list Longhorn deployments for toleration update")
+		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameTaintToleration)
+	}
+	if !detached {
+		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting to Longhorn components when there are attached volumes. It will be eventually applied", types.SettingNameTaintToleration)}
 	}
 
-	imPodList, err := sc.ds.ListInstanceManagerPods()
-	if err != nil {
-		return errors.Wrap(err, "failed to list instance manager pods for toleration update")
-	}
-
-	smPodList, err := sc.ds.ListShareManagerPods()
-	if err != nil {
-		return errors.Wrap(err, "failed to list share manager pods for toleration update")
-	}
-
-	bimPodList, err := sc.ds.ListBackingImageManagerPods()
-	if err != nil {
-		return errors.Wrap(err, "failed to list backing image manager pods for toleration update")
-	}
-
-	for _, dp := range deploymentList {
-		lastAppliedTolerationsList, err := getLastAppliedTolerationsList(dp)
+	for _, obj := range notUpdatedTolerationObjs {
+		lastAppliedTolerationsList, err := getLastAppliedTolerationsList(obj)
 		if err != nil {
 			return err
 		}
-		if reflect.DeepEqual(util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap) {
-			continue
-		}
-		if err := sc.updateTolerationForDeployment(dp, lastAppliedTolerationsList, newTolerationsList); err != nil {
-			return err
-		}
-	}
-
-	for _, ds := range daemonsetList {
-		lastAppliedTolerationsList, err := getLastAppliedTolerationsList(ds)
-		if err != nil {
-			return err
-		}
-		if reflect.DeepEqual(util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap) {
-			continue
-		}
-		if err := sc.updateTolerationForDaemonset(ds, lastAppliedTolerationsList, newTolerationsList); err != nil {
-			return err
-		}
-	}
-
-	pods := append(imPodList, smPodList...)
-	pods = append(pods, bimPodList...)
-	for _, pod := range pods {
-		lastAppliedTolerations, err := getLastAppliedTolerationsList(pod)
-		if err != nil {
-			return err
-		}
-		if reflect.DeepEqual(util.TolerationListToMap(lastAppliedTolerations), newTolerationsMap) {
-			continue
-		}
-		sc.logger.Infof("Deleting pod %v to update tolerations from %v to %v", pod.Name, util.TolerationListToMap(lastAppliedTolerations), newTolerationsMap)
-		if err := sc.ds.DeletePod(pod.Name); err != nil {
-			return err
+		switch objType := obj.(type) {
+		case *appsv1.DaemonSet:
+			ds := obj.(*appsv1.DaemonSet)
+			sc.logger.Infof("Deleting daemonset %v to update tolerations from %v to %v", ds.Name, util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap)
+			if err := sc.updateTolerationForDaemonset(ds, lastAppliedTolerationsList, newTolerationsList); err != nil {
+				return err
+			}
+		case *appsv1.Deployment:
+			dp := obj.(*appsv1.Deployment)
+			sc.logger.Infof("Updating deployment %v to update tolerations from %v to %v", dp.Name, util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap)
+			if err := sc.updateTolerationForDeployment(dp, lastAppliedTolerationsList, newTolerationsList); err != nil {
+				return err
+			}
+		case *corev1.Pod:
+			pod := obj.(*corev1.Pod)
+			sc.logger.Infof("Deleting pod %v to update tolerations from %v to %v", pod.Name, util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap)
+			if err := sc.ds.DeletePod(pod.Name); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unknown object type %v when updating %v setting", objType, types.SettingNameTaintToleration)
 		}
 	}
 
 	return nil
+}
+
+func (sc *SettingController) collectRuntimeObjects() (returnCollectRuntimeObjects []runtime.Object, err error) {
+	dsList, err := sc.ds.ListDeploymentWithLabels(types.GetBaseLabelsForSystemManagedComponent())
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list Longhorn deployments for collecting runtime objects")
+	}
+
+	dpList, err := sc.ds.ListDaemonSetWithLabels(types.GetBaseLabelsForSystemManagedComponent())
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list Longhorn daemonsets for collecting runtime objects")
+	}
+
+	imPodList, err := sc.ds.ListInstanceManagerPods()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list instance manager pods for collecting runtime objects")
+	}
+	smPodList, err := sc.ds.ListShareManagerPods()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list share manager pods for collecting runtime objects")
+	}
+	bimPodList, err := sc.ds.ListBackingImageManagerPods()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list backing image manager pods for collecting runtime objects")
+	}
+	podList := append(imPodList, smPodList...)
+	podList = append(podList, bimPodList...)
+
+	for _, ds := range dsList {
+		returnCollectRuntimeObjects = append(returnCollectRuntimeObjects, runtime.Object(ds))
+	}
+	for _, dp := range dpList {
+		returnCollectRuntimeObjects = append(returnCollectRuntimeObjects, runtime.Object(dp))
+	}
+	for _, pod := range podList {
+		returnCollectRuntimeObjects = append(returnCollectRuntimeObjects, runtime.Object(pod))
+	}
+
+	return returnCollectRuntimeObjects, nil
+}
+
+func getNotUpdatedTolerationList(newTolerationsMap map[string]corev1.Toleration, objs ...runtime.Object) ([]runtime.Object, error) {
+	notUpdatedObjsList := []runtime.Object{}
+	for _, obj := range objs {
+		lastAppliedTolerationsList, err := getLastAppliedTolerationsList(obj)
+		if err != nil {
+			return notUpdatedObjsList, err
+		}
+		if !reflect.DeepEqual(util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap) {
+			notUpdatedObjsList = append(notUpdatedObjsList, obj)
+		}
+	}
+
+	return notUpdatedObjsList, nil
 }
 
 func (sc *SettingController) updateTolerationForDeployment(dp *appsv1.Deployment, lastAppliedTolerations, newTolerations []corev1.Toleration) error {
@@ -711,65 +729,81 @@ func (sc *SettingController) updatePriorityClass() error {
 	}
 	newPriorityClass := setting.Value
 
-	daemonsetList, err := sc.ds.ListDaemonSetWithLabels(types.GetBaseLabelsForSystemManagedComponent())
+	updatingRuntimeObjects, err := sc.collectRuntimeObjects()
 	if err != nil {
-		return errors.Wrap(err, "failed to list Longhorn daemonsets for priority class update")
+		return errors.Wrap(err, "failed to collect runtime objects for priority class update")
 	}
-
-	deploymentList, err := sc.ds.ListDeploymentWithLabels(types.GetBaseLabelsForSystemManagedComponent())
+	notUpdatedPriorityClassObjs, err := getNotUpdatedPriorityClassList(newPriorityClass, updatingRuntimeObjects...)
 	if err != nil {
-		return errors.Wrap(err, "failed to list Longhorn deployments for priority class update")
+		return err
+	}
+	if len(notUpdatedPriorityClassObjs) == 0 {
+		return nil
 	}
 
-	imPodList, err := sc.ds.ListInstanceManagerPods()
+	detached, _, err := sc.ds.AreAllVolumesDetached(longhorn.DataEngineTypeAll)
 	if err != nil {
-		return errors.Wrap(err, "failed to list instance manager pods for priority class update")
+		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNamePriorityClass)
+	}
+	if !detached {
+		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting to Longhorn components when there are attached volumes. It will be eventually applied", types.SettingNamePriorityClass)}
 	}
 
-	smPodList, err := sc.ds.ListShareManagerPods()
-	if err != nil {
-		return errors.Wrap(err, "failed to list share manager pods for priority class update")
-	}
-
-	bimPodList, err := sc.ds.ListBackingImageManagerPods()
-	if err != nil {
-		return errors.Wrap(err, "failed to list backing image manager pods for priority class update")
-	}
-
-	for _, dp := range deploymentList {
-		if dp.Spec.Template.Spec.PriorityClassName == newPriorityClass {
-			continue
-		}
-		sc.logger.Infof("Updating the priority class from %v to %v for %v", dp.Spec.Template.Spec.PriorityClassName, newPriorityClass, dp.Name)
-		dp.Spec.Template.Spec.PriorityClassName = newPriorityClass
-		if _, err := sc.ds.UpdateDeployment(dp); err != nil {
-			return err
-		}
-	}
-	for _, ds := range daemonsetList {
-		if ds.Spec.Template.Spec.PriorityClassName == newPriorityClass {
-			continue
-		}
-		sc.logger.Infof("Updating the priority class from %v to %v for %v", ds.Spec.Template.Spec.PriorityClassName, newPriorityClass, ds.Name)
-		ds.Spec.Template.Spec.PriorityClassName = newPriorityClass
-		if _, err := sc.ds.UpdateDaemonSet(ds); err != nil {
-			return err
-		}
-	}
-
-	pods := append(imPodList, smPodList...)
-	pods = append(pods, bimPodList...)
-	for _, pod := range pods {
-		if pod.Spec.PriorityClassName == newPriorityClass {
-			continue
-		}
-		sc.logger.Infof("Deleting pod %v to update the priority class from %v to %v", pod.Name, pod.Spec.PriorityClassName, newPriorityClass)
-		if err := sc.ds.DeletePod(pod.Name); err != nil {
-			return err
+	for _, obj := range notUpdatedPriorityClassObjs {
+		switch objType := obj.(type) {
+		case *appsv1.DaemonSet:
+			ds := obj.(*appsv1.DaemonSet)
+			sc.logger.Infof("Updating the priority class from %v to %v for %v", ds.Spec.Template.Spec.PriorityClassName, newPriorityClass, ds.Name)
+			ds.Spec.Template.Spec.PriorityClassName = newPriorityClass
+			if _, err := sc.ds.UpdateDaemonSet(ds); err != nil {
+				return err
+			}
+		case *appsv1.Deployment:
+			dp := obj.(*appsv1.Deployment)
+			sc.logger.Infof("Updating the priority class from %v to %v for %v", dp.Spec.Template.Spec.PriorityClassName, newPriorityClass, dp.Name)
+			dp.Spec.Template.Spec.PriorityClassName = newPriorityClass
+			if _, err := sc.ds.UpdateDeployment(dp); err != nil {
+				return err
+			}
+		case *corev1.Pod:
+			pod := obj.(*corev1.Pod)
+			sc.logger.Infof("Deleting pod %v to update the priority class from %v to %v", pod.Name, pod.Spec.PriorityClassName, newPriorityClass)
+			if err := sc.ds.DeletePod(pod.Name); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unknown object type %v when updating %v setting", objType, types.SettingNamePriorityClass)
 		}
 	}
 
 	return nil
+}
+
+func getNotUpdatedPriorityClassList(newPriorityClassName string, objs ...runtime.Object) ([]runtime.Object, error) {
+	notUpdatedObjsList := []runtime.Object{}
+	oldPriorityClassName := ""
+	for _, obj := range objs {
+		switch objType := obj.(type) {
+		case *appsv1.DaemonSet:
+			ds := obj.(*appsv1.DaemonSet)
+			oldPriorityClassName = ds.Spec.Template.Spec.PriorityClassName
+		case *appsv1.Deployment:
+			dp := obj.(*appsv1.Deployment)
+			oldPriorityClassName = dp.Spec.Template.Spec.PriorityClassName
+		case *corev1.Pod:
+			pod := obj.(*corev1.Pod)
+			oldPriorityClassName = pod.Spec.PriorityClassName
+		default:
+			return nil, fmt.Errorf("unknown object type %v when updating %v setting", objType, types.SettingNamePriorityClass)
+		}
+		if oldPriorityClassName == newPriorityClassName {
+			continue
+		}
+
+		notUpdatedObjsList = append(notUpdatedObjsList, obj)
+	}
+
+	return notUpdatedObjsList, nil
 }
 
 func (sc *SettingController) updateKubernetesClusterAutoscalerEnabled() error {
@@ -838,6 +872,7 @@ func (sc *SettingController) updateCNI() error {
 
 	nadAnnot := string(types.CNIAnnotationNetworks)
 	nadAnnotValue := types.CreateCniAnnotationFromSetting(storageNetwork)
+	notUpdatedPods := []*corev1.Pod{}
 
 	imPodList, err := sc.ds.ListInstanceManagerPods()
 	if err != nil {
@@ -848,13 +883,27 @@ func (sc *SettingController) updateCNI() error {
 	if err != nil {
 		return errors.Wrapf(err, "failed to list backing image manager Pods for %v setting update", types.SettingNameStorageNetwork)
 	}
-
 	pods := append(imPodList, bimPodList...)
 	for _, pod := range pods {
 		if pod.Annotations[nadAnnot] == nadAnnotValue {
 			continue
 		}
+		notUpdatedPods = append(notUpdatedPods, pod)
+	}
 
+	if len(notUpdatedPods) == 0 {
+		return nil
+	}
+
+	detached, _, err := sc.ds.AreAllVolumesDetached(longhorn.DataEngineTypeAll)
+	if err != nil {
+		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameStorageNetwork)
+	}
+	if !detached {
+		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting to Longhorn components when there are attached volumes. It will be eventually applied", types.SettingNameStorageNetwork)}
+	}
+
+	for _, pod := range notUpdatedPods {
 		logrus.WithFields(logrus.Fields{
 			"pod":      pod.Name,
 			"oldValue": pod.Annotations[nadAnnot],
@@ -971,75 +1020,87 @@ func (sc *SettingController) updateNodeSelector() error {
 	if err != nil {
 		return err
 	}
-	deploymentList, err := sc.ds.ListDeploymentWithLabels(types.GetBaseLabelsForSystemManagedComponent())
+
+	updatingRuntimeObjects, err := sc.collectRuntimeObjects()
 	if err != nil {
-		return errors.Wrap(err, "failed to list Longhorn deployments for node selector update")
+		return errors.Wrap(err, "failed to collect runtime objects for node selector update")
 	}
-	daemonsetList, err := sc.ds.ListDaemonSetWithLabels(types.GetBaseLabelsForSystemManagedComponent())
+	notUpdatedNodeSelectorObjs, err := getNotUpdatedNodeSelectorList(newNodeSelector, updatingRuntimeObjects...)
 	if err != nil {
-		return errors.Wrap(err, "failed to list Longhorn daemonsets for node selector update")
+		return err
 	}
-	imPodList, err := sc.ds.ListInstanceManagerPods()
+	if len(notUpdatedNodeSelectorObjs) == 0 {
+		return nil
+	}
+
+	detached, _, err := sc.ds.AreAllVolumesDetached(longhorn.DataEngineTypeAll)
 	if err != nil {
-		return errors.Wrap(err, "failed to list instance manager pods for node selector update")
+		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameSystemManagedComponentsNodeSelector)
 	}
-	smPodList, err := sc.ds.ListShareManagerPods()
-	if err != nil {
-		return errors.Wrap(err, "failed to list share manager pods for node selector update")
+	if !detached {
+		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting to Longhorn components when there are attached volumes. It will be eventually applied", types.SettingNameSystemManagedComponentsNodeSelector)}
 	}
-	bimPodList, err := sc.ds.ListBackingImageManagerPods()
-	if err != nil {
-		return errors.Wrap(err, "failed to list backing image manager pods for node selector update")
-	}
-	for _, dp := range deploymentList {
-		if dp.Spec.Template.Spec.NodeSelector == nil {
-			if len(newNodeSelector) == 0 {
-				continue
-			}
-		}
-		if reflect.DeepEqual(dp.Spec.Template.Spec.NodeSelector, newNodeSelector) {
-			continue
-		}
-		sc.logger.Infof("Updating the node selector from %v to %v for %v", dp.Spec.Template.Spec.NodeSelector, newNodeSelector, dp.Name)
-		dp.Spec.Template.Spec.NodeSelector = newNodeSelector
-		if _, err := sc.ds.UpdateDeployment(dp); err != nil {
-			return err
-		}
-	}
-	for _, ds := range daemonsetList {
-		if ds.Spec.Template.Spec.NodeSelector == nil {
-			if len(newNodeSelector) == 0 {
-				continue
-			}
-		}
-		if reflect.DeepEqual(ds.Spec.Template.Spec.NodeSelector, newNodeSelector) {
-			continue
-		}
-		sc.logger.Infof("Updating the node selector from %v to %v for %v", ds.Spec.Template.Spec.NodeSelector, newNodeSelector, ds.Name)
-		ds.Spec.Template.Spec.NodeSelector = newNodeSelector
-		if _, err := sc.ds.UpdateDaemonSet(ds); err != nil {
-			return err
-		}
-	}
-	pods := append(imPodList, smPodList...)
-	pods = append(pods, bimPodList...)
-	for _, pod := range pods {
-		if pod.Spec.NodeSelector == nil {
-			if len(newNodeSelector) == 0 {
-				continue
-			}
-		}
-		if reflect.DeepEqual(pod.Spec.NodeSelector, newNodeSelector) {
-			continue
-		}
-		if pod.DeletionTimestamp == nil {
-			sc.logger.Infof("Deleting pod %v to update the node selector from %v to %v", pod.Name, pod.Spec.NodeSelector, newNodeSelector)
-			if err := sc.ds.DeletePod(pod.Name); err != nil {
+
+	for _, obj := range notUpdatedNodeSelectorObjs {
+		switch objType := obj.(type) {
+		case *appsv1.DaemonSet:
+			ds := obj.(*appsv1.DaemonSet)
+			sc.logger.Infof("Updating the node selector from %v to %v for %v", ds.Spec.Template.Spec.NodeSelector, newNodeSelector, ds.Name)
+			ds.Spec.Template.Spec.NodeSelector = newNodeSelector
+			if _, err := sc.ds.UpdateDaemonSet(ds); err != nil {
 				return err
 			}
+		case *appsv1.Deployment:
+			dp := obj.(*appsv1.Deployment)
+			sc.logger.Infof("Updating the node selector from %v to %v for %v", dp.Spec.Template.Spec.NodeSelector, newNodeSelector, dp.Name)
+			dp.Spec.Template.Spec.NodeSelector = newNodeSelector
+			if _, err := sc.ds.UpdateDeployment(dp); err != nil {
+				return err
+			}
+		case *corev1.Pod:
+			pod := obj.(*corev1.Pod)
+			if pod.DeletionTimestamp == nil {
+				sc.logger.Infof("Deleting pod %v to update the node selector from %v to %v", pod.Name, pod.Spec.NodeSelector, newNodeSelector)
+				if err := sc.ds.DeletePod(pod.Name); err != nil {
+					return err
+				}
+			}
+		default:
+			return fmt.Errorf("unknown object type %v when updating %v setting", objType, types.SettingNamePriorityClass)
 		}
 	}
+
 	return nil
+}
+
+func getNotUpdatedNodeSelectorList(newNodeSelector map[string]string, objs ...runtime.Object) ([]runtime.Object, error) {
+	notUpdatedObjsList := []runtime.Object{}
+	var oldNodeSelector map[string]string
+	for _, obj := range objs {
+		switch objType := obj.(type) {
+		case *appsv1.DaemonSet:
+			ds := obj.(*appsv1.DaemonSet)
+			oldNodeSelector = ds.Spec.Template.Spec.NodeSelector
+		case *appsv1.Deployment:
+			dp := obj.(*appsv1.Deployment)
+			oldNodeSelector = dp.Spec.Template.Spec.NodeSelector
+		case *corev1.Pod:
+			pod := obj.(*corev1.Pod)
+			oldNodeSelector = pod.Spec.NodeSelector
+		default:
+			return nil, fmt.Errorf("unknown object type %v when updating %v setting", objType, types.SettingNameSystemManagedComponentsNodeSelector)
+		}
+		if oldNodeSelector == nil && len(newNodeSelector) == 0 {
+			continue
+		}
+		if reflect.DeepEqual(oldNodeSelector, newNodeSelector) {
+			continue
+		}
+
+		notUpdatedObjsList = append(notUpdatedObjsList, obj)
+	}
+
+	return notUpdatedObjsList, nil
 }
 
 func (bst *BackupStoreTimer) Start() {
@@ -1231,6 +1292,10 @@ func (sc *SettingController) enqueueSettingForBackupTarget(obj interface{}) {
 
 // updateInstanceManagerCPURequest deletes all instance manager pods immediately with the updated CPU request.
 func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn.DataEngineType) error {
+	settingName := types.SettingNameGuaranteedInstanceManagerCPU
+	if dataEngine == longhorn.DataEngineTypeV2 {
+		settingName = types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU
+	}
 	imPodList, err := sc.ds.ListInstanceManagerPodsBy("", "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
 	if err != nil {
 		return errors.Wrap(err, "failed to list instance manager pods for toleration update")
@@ -1239,6 +1304,7 @@ func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn
 	if err != nil {
 		return err
 	}
+	notUpdatedPods := []*corev1.Pod{}
 
 	for _, imPod := range imPodList {
 		if _, exists := imMap[imPod.Name]; !exists {
@@ -1260,8 +1326,25 @@ func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn
 		if IsSameGuaranteedCPURequirement(resourceReq, &podResourceReq) {
 			continue
 		}
-		sc.logger.Infof("Deleting instance manager pod %v to refresh CPU request option", imPod.Name)
-		if err := sc.ds.DeletePod(imPod.Name); err != nil {
+
+		notUpdatedPods = append(notUpdatedPods, imPod)
+	}
+
+	if len(notUpdatedPods) == 0 {
+		return nil
+	}
+
+	detached, _, err := sc.ds.AreAllVolumesDetached(dataEngine)
+	if err != nil {
+		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", settingName)
+	}
+	if !detached {
+		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting to Longhorn components when there are attached volumes. It will be eventually applied", settingName)}
+	}
+
+	for _, pod := range notUpdatedPods {
+		sc.logger.Infof("Deleting instance manager pod %v to refresh CPU request option", pod.Name)
+		if err := sc.ds.DeletePod(pod.Name); err != nil {
 			return err
 		}
 	}
