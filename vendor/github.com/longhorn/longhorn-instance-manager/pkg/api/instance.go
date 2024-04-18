@@ -1,10 +1,9 @@
 package api
 
 import (
+	rpc "github.com/longhorn/types/pkg/generated/imrpc"
+	"github.com/longhorn/types/pkg/generated/spdkrpc"
 	"google.golang.org/protobuf/types/known/emptypb"
-
-	rpc "github.com/longhorn/longhorn-instance-manager/pkg/imrpc"
-	"github.com/longhorn/longhorn-spdk-engine/proto/spdkrpc"
 )
 
 var (

@@ -3,11 +3,11 @@ package client
 import (
 	"context"
 
+	rpc "github.com/longhorn/types/pkg/generated/smrpc"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	rpc "github.com/longhorn/longhorn-share-manager/pkg/rpc"
 	"github.com/longhorn/longhorn-share-manager/pkg/types"
 )
 

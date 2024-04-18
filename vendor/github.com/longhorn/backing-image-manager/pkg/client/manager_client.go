@@ -3,6 +3,7 @@ package client
 import (
 	"fmt"
 
+	rpc "github.com/longhorn/types/pkg/generated/bimrpc"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/longhorn/backing-image-manager/api"
 	"github.com/longhorn/backing-image-manager/pkg/meta"
-	"github.com/longhorn/backing-image-manager/pkg/rpc"
 	"github.com/longhorn/backing-image-manager/pkg/types"
 )
 
