@@ -7,9 +7,8 @@ import (
 
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	eutil "github.com/longhorn/longhorn-engine/pkg/util"
-	eptypes "github.com/longhorn/longhorn-engine/proto/ptypes"
-
-	rpc "github.com/longhorn/longhorn-instance-manager/pkg/imrpc"
+	"github.com/longhorn/types/pkg/generated/enginerpc"
+	rpc "github.com/longhorn/types/pkg/generated/imrpc"
 )
 
 func (c *ProxyClient) VolumeSnapshot(dataEngine, engineName, volumeName, serviceAddress,
@@ -55,7 +54,7 @@ func (c *ProxyClient) VolumeSnapshot(dataEngine, engineName, volumeName, service
 			DataEngine:         rpc.DataEngine(driver),
 			VolumeName:         volumeName,
 		},
-		SnapshotVolume: &eptypes.VolumeSnapshotRequest{
+		SnapshotVolume: &enginerpc.VolumeSnapshotRequest{
 			Name:   volumeSnapshotName,
 			Labels: labels,
 		},
