@@ -225,7 +225,7 @@ github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/rpc
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20240219094812-3a87ee02df77
+# github.com/longhorn/backupstore v0.0.0-20240417071544-3bd377eeefeb
 ## explicit; go 1.21
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/logging
@@ -251,14 +251,14 @@ github.com/longhorn/go-iscsi-helper/util
 # github.com/longhorn/go-spdk-helper v0.0.0-20231113055029-9acddd184246
 ## explicit; go 1.21
 github.com/longhorn/go-spdk-helper/pkg/types
-# github.com/longhorn/longhorn-engine v1.5.5-rc2
+# github.com/longhorn/longhorn-engine v1.5.5-rc2.0.20240418040645-8f85db1d1393
 ## explicit; go 1.21
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
 github.com/longhorn/longhorn-engine/proto/ptypes
-# github.com/longhorn/longhorn-instance-manager v1.5.5-rc2
+# github.com/longhorn/longhorn-instance-manager v1.5.5-rc2.0.20240418040836-76e2cfc24682
 ## explicit; go 1.21
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -266,7 +266,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/imrpc
 github.com/longhorn/longhorn-instance-manager/pkg/meta
 github.com/longhorn/longhorn-instance-manager/pkg/types
 github.com/longhorn/longhorn-instance-manager/pkg/util
-# github.com/longhorn/longhorn-share-manager v1.5.5-rc2
+# github.com/longhorn/longhorn-share-manager v1.5.5-rc2.0.20240418040725-83c6ad488883
 ## explicit; go 1.21
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/crypto
