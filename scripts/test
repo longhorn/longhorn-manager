@@ -19,7 +19,7 @@ echo Packages: "${PACKAGES}"
 
 [ "${ARCH}" == "amd64" ] && RACE=-race
 if [ -n "${TESTS}" ]; then
-  go test -v "${RACE}" "${args[@]}" ${PACKAGES} -check.f "${TESTS}"
+  go test -v "${RACE}" "${args[@]}" ${PACKAGES} -check.f "${TESTS}" -coverprofile=coverage.out
 else
-  go test -v "${RACE}" "${args[@]}" ${PACKAGES}
+  go test -v "${RACE}" "${args[@]}" ${PACKAGES} -coverprofile=coverage.out
 fi
