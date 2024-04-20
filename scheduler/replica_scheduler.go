@@ -503,6 +503,11 @@ func filterActiveReplicas(replicas map[string]*longhorn.Replica) map[string]*lon
 }
 
 func (rcs *ReplicaScheduler) CheckAndReuseFailedReplica(replicas map[string]*longhorn.Replica, volume *longhorn.Volume, hardNodeAffinity string) (*longhorn.Replica, error) {
+	if types.IsDataEngineV2(volume.Spec.DataEngine) {
+		logrus.Infof("Cannot reuse failed replicas for a v2 volume %v", volume.Name)
+		return nil, nil
+	}
+
 	replicas = filterActiveReplicas(replicas)
 
 	allNodesInfo, err := rcs.getNodeInfo()

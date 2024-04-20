@@ -1054,19 +1054,10 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 			continue
 		}
 
-		if types.IsDataEngineV1(v.Spec.DataEngine) {
-			if shouldCleanUpFailedReplicaV1(r, v.Spec.StaleReplicaTimeout, safeAsLastReplicaCount, v.Spec.Image) {
+		if shouldCleanUpFailedReplica(v, r, safeAsLastReplicaCount) {
 				log.WithField("replica", r.Name).Info("Cleaning up corrupted, staled replica")
 				if err := c.deleteReplica(r, rs); err != nil {
 					return errors.Wrapf(err, "cannot clean up staled replica %v", r.Name)
-				}
-			}
-		} else {
-			// TODO: check `staled` flag after v2 volume supports online replica rebuilding
-			if safeAsLastReplicaCount != 0 {
-				if err := c.deleteReplica(r, rs); err != nil {
-					return errors.Wrapf(err, "failed to clean up staled replica %v", r.Name)
-				}
 			}
 		}
 	}
@@ -2250,13 +2241,9 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 		replenishCount = 1
 	}
 	for i := 0; i < replenishCount; i++ {
-		var reusableFailedReplica *longhorn.Replica
-		// TODO: reuse failed replica for replica rebuilding of SPDK volumes
-		if types.IsDataEngineV1(v.Spec.DataEngine) {
-			reusableFailedReplica, err = c.scheduler.CheckAndReuseFailedReplica(rs, v, hardNodeAffinity)
+		reusableFailedReplica, err := c.scheduler.CheckAndReuseFailedReplica(rs, v, hardNodeAffinity)
 			if err != nil {
 				return errors.Wrapf(err, "failed to reuse a failed replica during replica replenishment")
-			}
 		}
 
 		if reusableFailedReplica != nil {
@@ -4600,8 +4587,11 @@ func (c *VolumeController) ReconcilePersistentVolume(volume *longhorn.Volume) er
 	return nil
 }
 
-func shouldCleanUpFailedReplicaV1(r *longhorn.Replica, staleReplicaTimeout, safeAsLastReplicaCount int,
-	volumeCurrentImage string) bool {
+func shouldCleanUpFailedReplica(v *longhorn.Volume, r *longhorn.Replica, safeAsLastReplicaCount int) bool {
+	if types.IsDataEngineV2(v.Spec.DataEngine) {
+		return safeAsLastReplicaCount != 0
+	}
+
 	// Even if healthyAt == "", lastHealthyAt != "" indicates this replica has some (potentially invalid) data. We MUST
 	// NOT delete it until we're sure the engine can start with another replica. In the worst case scenario, maybe we
 	// can recover data from this replica.
@@ -4613,12 +4603,12 @@ func shouldCleanUpFailedReplicaV1(r *longhorn.Replica, staleReplicaTimeout, safe
 		return true
 	}
 	// Failed too long ago to be useful during a rebuild.
-	if staleReplicaTimeout > 0 &&
-		util.TimestampAfterTimeout(r.Spec.FailedAt, time.Duration(staleReplicaTimeout)*time.Minute) {
+	if v.Spec.StaleReplicaTimeout > 0 &&
+		util.TimestampAfterTimeout(r.Spec.FailedAt, time.Duration(v.Spec.StaleReplicaTimeout)*time.Minute) {
 		return true
 	}
 	// Failed for race condition at upgrading when waiting for instance-manager-r to start. Can never become healthy.
-	if r.Spec.Image != volumeCurrentImage {
+	if r.Spec.Image != v.Spec.Image {
 		return true
 	}
 	return false
