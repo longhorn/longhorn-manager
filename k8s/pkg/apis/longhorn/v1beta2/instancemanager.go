@@ -151,6 +151,9 @@ type InstanceManagerSpec struct {
 	Type InstanceManagerType `json:"type"`
 	// +optional
 	DataEngine DataEngineType `json:"dataEngine"`
+	// +kubebuilder:validation:Enum=running;stopped
+	// +optional
+	DesireState InstanceManagerState `json:"desireState"`
 }
 
 // InstanceManagerStatus defines the observed state of the Longhorn instance manager
