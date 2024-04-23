@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	_ "net/http/pprof" // for runtime profiling
@@ -11,6 +12,13 @@ import (
 	"github.com/rancher/wrangler/pkg/signals"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
+
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/tools/clientcmd"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clientset "k8s.io/client-go/kubernetes"
 
 	"github.com/longhorn/go-iscsi-helper/iscsi"
 
@@ -130,13 +138,13 @@ func startManager(c *cli.Context) error {
 	}
 	kubeconfigPath := c.String(FlagKubeConfig)
 
-	if err := environmentCheck(); err != nil {
-		return errors.Wrap(err, "Failed environment check, please make sure you have iscsiadm/open-iscsi installed on the host")
-	}
-
 	currentNodeID, err := util.GetRequiredEnv(types.EnvNodeName)
 	if err != nil {
 		return fmt.Errorf("failed to detect the node name")
+	}
+
+	if err := environmentCheck(kubeconfigPath, currentNodeID); err != nil {
+		return errors.Wrap(err, "Failed environment check, please make sure you have iscsiadm/open-iscsi installed on the host")
 	}
 
 	currentIP, err := util.GetRequiredEnv(types.EnvPodIP)
@@ -252,14 +260,76 @@ func startManager(c *cli.Context) error {
 	return nil
 }
 
-func environmentCheck() error {
+func environmentCheck(kubeconfigPath, currentNodeID string) error {
 	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceNet}
+
+	// Check if mount propagation is supported
+	if err := checkMountPropagation(kubeconfigPath, currentNodeID); err != nil {
+		return err
+	}
+
+	// Check if multipath is supported
+
+	// Check if nfs client versions are supported
+
 	nsexec, err := lhns.NewNamespaceExecutor(iscsiutil.ISCSIdProcess, lhtypes.HostProcDirectory, namespaces)
 	if err != nil {
 		return err
 	}
 
 	return iscsi.CheckForInitiatorExistence(nsexec)
+}
+
+func checkMountPropagation(kubeconfigPath, currentNodeID string) error {
+	namespace := os.Getenv(types.EnvPodNamespace)
+	if namespace == "" {
+		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, using default namespace", types.EnvPodNamespace)
+		namespace = corev1.NamespaceDefault
+	}
+
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	if err != nil {
+		return errors.Wrap(err, "unable to get client config")
+	}
+
+	kubeClient, err := clientset.NewForConfig(config)
+	if err != nil {
+		return errors.Wrap(err, "unable to get k8s client")
+	}
+
+	managerPodsList, err := kubeClient.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: labels.Set(types.GetManagerLabels()).String(),
+	})
+	if err != nil {
+		return err
+	}
+
+	mountPropagationBidirectionalChecked := false
+	dataMountPointName := "longhorn"
+
+CHECKED:
+	for _, pod := range managerPodsList.Items {
+		if pod.Spec.NodeName != currentNodeID {
+			continue
+		}
+		for _, container := range pod.Spec.Containers {
+			for _, volumeMount := range container.VolumeMounts {
+				if volumeMount.Name != dataMountPointName {
+					continue
+				}
+				if volumeMount.MountPropagation != nil && *volumeMount.MountPropagation == corev1.MountPropagationBidirectional {
+					mountPropagationBidirectionalChecked = true
+					break CHECKED
+				}
+
+			}
+		}
+	}
+	if !mountPropagationBidirectionalChecked {
+		return fmt.Errorf("failed to check mount propagation, please make sure the mount propagation is set to %v for the volume mount %v in the longhorn-manager pod spec", corev1.MountPropagationBidirectional, dataMountPointName)
+	}
+
+	return nil
 }
 
 func updateRegistrySecretName(m *manager.VolumeManager) error {
