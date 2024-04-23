@@ -1843,6 +1843,11 @@ spec:
             properties:
               dataEngine:
                 type: string
+              desireState:
+                enum:
+                - running
+                - stopped
+                type: string
               image:
                 type: string
               nodeID:
