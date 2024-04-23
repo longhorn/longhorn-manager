@@ -1641,7 +1641,11 @@ func (m *InstanceManagerMonitor) updateInstanceMap(im *longhorn.InstanceManager,
 				replicaProcess[name] = process
 			}
 		}
-		if reflect.DeepEqual(im.Status.InstanceEngines, engineProcess) && reflect.DeepEqual(im.Status.InstanceReplicas, replicaProcess) {
+
+		// reflect.DeepEqual treats the two maps `var m1 map[string]process` and `m2 := map[string]process` as different maps.
+		// Therefore, to prevent unnecessary updates, we must check both that the length of the maps is zero and that the maps are identical.
+		if ((len(im.Status.InstanceEngines) == 0 && len(engineProcess) == 0) || reflect.DeepEqual(im.Status.InstanceEngines, engineProcess)) &&
+			((len(im.Status.InstanceReplicas) == 0 && len(replicaProcess) == 0) || reflect.DeepEqual(im.Status.InstanceReplicas, replicaProcess)) {
 			return false
 		}
 
