@@ -563,7 +563,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 		cleanupRequired = true
 	}
 
-	log.Info("Deleting replica instance")
+	log.WithField("cleanupRequired", cleanupRequired).Infof("Deleting replica instance on disk %v", r.Spec.DiskPath)
 
 	err = c.InstanceDelete(r.Spec.DataEngine, r.Name, string(longhorn.InstanceManagerTypeReplica), r.Spec.DiskID, cleanupRequired)
 	if err != nil && !types.ErrorIsNotFound(err) {
@@ -650,6 +650,10 @@ func (rc *ReplicaController) deleteOldReplicaPod(pod *corev1.Pod, r *longhorn.Re
 		return
 	}
 	rc.eventRecorder.Eventf(r, corev1.EventTypeNormal, constant.EventReasonStop, "Stops pod for old replica %v", pod.Name)
+}
+
+func (rc *ReplicaController) SuspendInstance(obj interface{}) error {
+	return fmt.Errorf("replica instance doesn't support suspension")
 }
 
 func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {

@@ -3268,7 +3268,7 @@ func (s *DataStore) GetInstanceManagerByInstance(obj interface{}) (*longhorn.Ins
 func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.InstanceManager, error) {
 	imImage, err := s.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get instance manager image: %w", err)
+		return nil, errors.Wrap(err, "failed to get instance manager image")
 	}
 
 	instanceInfo, err := extractInstanceInfo(obj)

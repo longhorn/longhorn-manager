@@ -460,6 +460,10 @@ func (imc *InstanceManagerController) syncLogSettingsToIMPod(im *longhorn.Instan
 		return nil
 	}
 
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+		return nil
+	}
+
 	client, err := engineapi.NewInstanceManagerClient(im)
 	if err != nil {
 		return errors.Wrapf(err, "failed to create instance manager client for %v", im.Name)

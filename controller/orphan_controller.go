@@ -337,12 +337,12 @@ func (oc *OrphanController) DeleteSpdkReplicaInstance(diskName, diskUUID, diskDr
 	logrus.Infof("Deleting SPDK replica instance %v on disk %v on node %v", replicaInstanceName, diskUUID, oc.controllerID)
 
 	defer func() {
-		err = errors.Wrapf(err, "cannot delete SPDK replica instance %v", replicaInstanceName)
+		err = errors.Wrapf(err, "cannot delete v2 replica instance %v", replicaInstanceName)
 	}()
 
-	im, err := oc.ds.GetDefaultInstanceManagerByNodeRO(oc.controllerID, longhorn.DataEngineTypeV2)
+	im, err := oc.ds.GetRunningInstanceManagerRO(oc.controllerID, longhorn.DataEngineTypeV2)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get instance manager for node %v for deleting SPDK replica instance  %v", oc.controllerID, replicaInstanceName)
+		return errors.Wrapf(err, "failed to get running instance manager for node %v for deleting v2 replica instance %v", oc.controllerID, replicaInstanceName)
 	}
 
 	c, err := engineapi.NewDiskServiceClient(im, oc.logger)

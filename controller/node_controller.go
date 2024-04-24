@@ -176,6 +176,18 @@ func NewNodeController(
 	}
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.KubeNodeInformer.HasSynced)
 
+	if _, err = ds.InstanceManagerInformer.AddEventHandlerWithResyncPeriod(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: nc.isResponsibleForInstanceManager,
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc:    func(cur interface{}) { nc.enqueueInstanceManager(cur) },
+				UpdateFunc: func(old, cur interface{}) { nc.enqueueInstanceManager(cur) },
+			},
+		}, 0); err != nil {
+		return nil, err
+	}
+	nc.cacheSyncs = append(nc.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
+
 	return nc, nil
 }
 
@@ -238,6 +250,14 @@ func (nc *NodeController) isResponsibleForSnapshot(obj interface{}) bool {
 	}
 
 	return nc.snapshotHashRequired(volume)
+}
+
+func (nc *NodeController) isResponsibleForInstanceManager(obj interface{}) bool {
+	im, ok := obj.(*longhorn.InstanceManager)
+	if !ok {
+		return false
+	}
+	return im.Spec.NodeID == nc.controllerID
 }
 
 func (nc *NodeController) snapshotHashRequired(volume *longhorn.Volume) bool {
@@ -694,6 +714,31 @@ func (nc *NodeController) enqueueManagerPod(obj interface{}) {
 	for _, node := range nodes {
 		nc.enqueueNode(node)
 	}
+}
+
+func (nc *NodeController) enqueueInstanceManager(obj interface{}) {
+	im, ok := obj.(*longhorn.InstanceManager)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+		// use the last known state, to enqueue, dependent objects
+		im, ok = deletedState.Obj.(*longhorn.InstanceManager)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	node, err := nc.ds.GetNodeRO(im.Spec.NodeID)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to get node %v since %v", im.Spec.NodeID, err))
+		return
+	}
+
+	nc.enqueueNode(node)
 }
 
 func (nc *NodeController) enqueueKubernetesNode(obj interface{}) {
@@ -1601,7 +1646,7 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 			if diskInstanceName == "" {
 				diskInstanceName = diskName
 			}
-			if err := nc.deleteDisk(node, diskStatus.Type, diskInstanceName, diskStatus.DiskUUID, diskStatus.DiskPath, string(diskStatus.DiskDriver)); err != nil {
+			if err := nc.deleteDisk(diskStatus.Type, diskInstanceName, diskStatus.DiskUUID, diskStatus.DiskPath, string(diskStatus.DiskDriver)); err != nil {
 				nc.logger.WithError(err).Warnf("Failed to delete disk %v", diskInstanceName)
 			}
 			delete(node.Status.DiskStatus, diskName)
@@ -1609,7 +1654,7 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 	}
 }
 
-func (nc *NodeController) deleteDisk(node *longhorn.Node, diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string) error {
+func (nc *NodeController) deleteDisk(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string) error {
 	if diskUUID == "" {
 		log.Infof("Disk %v has no diskUUID, skip deleting", diskName)
 		return nil
@@ -1617,9 +1662,9 @@ func (nc *NodeController) deleteDisk(node *longhorn.Node, diskType longhorn.Disk
 
 	dataEngine := util.GetDataEngineForDiskType(diskType)
 
-	im, err := nc.ds.GetDefaultInstanceManagerByNodeRO(nc.controllerID, dataEngine)
+	im, err := nc.ds.GetRunningInstanceManagerRO(nc.controllerID, dataEngine)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get default instance manager")
+		return errors.Wrapf(err, "failed to get running instance manager for data engine %v", dataEngine)
 	}
 
 	diskServiceClient, err := engineapi.NewDiskServiceClient(im, nc.logger)

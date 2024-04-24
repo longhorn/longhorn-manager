@@ -26,6 +26,10 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
+const (
+	upgradeControllerResyncPeriod = 5 * time.Second
+)
+
 type UpgradeController struct {
 	*baseController
 
@@ -69,11 +73,11 @@ func NewUpgradeController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-upgrade-controller"}),
 	}
 
-	ds.UpgradeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	ds.UpgradeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    uc.enqueueUpgrade,
 		UpdateFunc: func(old, cur interface{}) { uc.enqueueUpgrade(cur) },
 		DeleteFunc: uc.enqueueUpgrade,
-	})
+	}, upgradeControllerResyncPeriod)
 	uc.cacheSyncs = append(uc.cacheSyncs, ds.UpgradeInformer.HasSynced)
 
 	return uc, nil
