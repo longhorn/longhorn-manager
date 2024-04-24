@@ -452,6 +452,9 @@ func (rcs *ReplicaScheduler) getNodeInfo() (map[string]*longhorn.Node, error) {
 		if !node.Spec.AllowScheduling {
 			continue
 		}
+		if node.Spec.UpgradeRequested {
+			continue
+		}
 		scheduledNode[node.Name] = node
 	}
 
