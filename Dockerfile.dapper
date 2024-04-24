@@ -1,6 +1,6 @@
 FROM registry.suse.com/bci/bci-base:15.5
 
-ARG DAPPER_HOST_ARCH=amd64
+ARG DAPPER_HOST_ARCH
 ARG http_proxy
 ARG https_proxy
 ENV HOST_ARCH=${DAPPER_HOST_ARCH} ARCH=${DAPPER_HOST_ARCH}
@@ -19,6 +19,11 @@ ENV GOLANG_ARCH_amd64=amd64 GOLANG_ARCH_arm64=arm64 GOLANG_ARCH_s390x=s390x GOLA
 RUN wget -O - https://storage.googleapis.com/golang/go1.21.3.linux-${!GOLANG_ARCH}.tar.gz | tar -xzf - -C /usr/local
 
 RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
+
+# The docker version in dapper is too old to have buildx. Install it manually.
+RUN wget https://github.com/docker/buildx/releases/download/v0.13.1/buildx-v0.13.1.linux-${ARCH} && \
+    chmod +x buildx-v0.13.1.linux-${ARCH} && \
+    mv buildx-v0.13.1.linux-${ARCH} /usr/local/bin/buildx
 
 ENV DAPPER_SOURCE /go/src/github.com/longhorn/longhorn-manager
 ENV DAPPER_OUTPUT ./bin coverage.out
