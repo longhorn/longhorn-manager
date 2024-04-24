@@ -1,8 +1,6 @@
 module github.com/longhorn/longhorn-manager
 
-go 1.22
-
-toolchain go1.22.2
+go 1.22.2
 
 replace (
 	github.com/google/cel-go => github.com/google/cel-go v0.16.1
@@ -54,8 +52,8 @@ require (
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240417063713-e20db15bb989
 	github.com/longhorn/go-spdk-helper v0.0.0-20240424110116-b282f131d75a
 	github.com/longhorn/longhorn-engine v1.6.0-dev-20231217.0.20240418025706-519598108463
-	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240418070517-74c78b7744c3
-	github.com/longhorn/longhorn-share-manager v0.0.0-20240418035326-c6bd5823a659
+	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240424110142-e60417f3506d
+	github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240420130308-5b297774fe5d
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.18.0
 	github.com/rancher/dynamiclistener v0.3.6
@@ -74,10 +72,10 @@ require (
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.28.6
 	k8s.io/apiextensions-apiserver v0.25.4
-	k8s.io/apimachinery v0.29.4
+	k8s.io/apimachinery v0.30.0
 	k8s.io/cli-runtime v0.28.5
 	k8s.io/client-go v0.28.6
-	k8s.io/kubernetes v1.29.4
+	k8s.io/kubernetes v1.30.0
 	k8s.io/metrics v0.28.5
 	k8s.io/mount-utils v0.30.0
 	k8s.io/utils v0.0.0-20240423183400-0849a56e8f22
