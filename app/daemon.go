@@ -6,6 +6,7 @@ import (
 	"net/http"
 	_ "net/http/pprof" // for runtime profiling
 	"os"
+	"strings"
 
 	"github.com/gorilla/handlers"
 	"github.com/pkg/errors"
@@ -13,7 +14,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/clientcmd"
 
 	corev1 "k8s.io/api/core/v1"
@@ -32,7 +32,6 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/meta"
-	recoverybackend "github.com/longhorn/longhorn-manager/recovery_backend"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/upgrade"
 	"github.com/longhorn/longhorn-manager/util"
@@ -40,6 +39,8 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook"
 
 	metricscollector "github.com/longhorn/longhorn-manager/metrics_collector"
+	recoverybackend "github.com/longhorn/longhorn-manager/recovery_backend"
+	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
 )
 
 const (
@@ -261,32 +262,6 @@ func startManager(c *cli.Context) error {
 }
 
 func environmentCheck(kubeconfigPath, currentNodeID string) error {
-	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceNet}
-
-	// Check if mount propagation is supported
-	if err := checkMountPropagation(kubeconfigPath, currentNodeID); err != nil {
-		return err
-	}
-
-	// Check if multipath is supported
-
-	// Check if nfs client versions are supported
-
-	nsexec, err := lhns.NewNamespaceExecutor(iscsiutil.ISCSIdProcess, lhtypes.HostProcDirectory, namespaces)
-	if err != nil {
-		return err
-	}
-
-	return iscsi.CheckForInitiatorExistence(nsexec)
-}
-
-func checkMountPropagation(kubeconfigPath, currentNodeID string) error {
-	namespace := os.Getenv(types.EnvPodNamespace)
-	if namespace == "" {
-		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, using default namespace", types.EnvPodNamespace)
-		namespace = corev1.NamespaceDefault
-	}
-
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
 		return errors.Wrap(err, "unable to get client config")
@@ -297,9 +272,43 @@ func checkMountPropagation(kubeconfigPath, currentNodeID string) error {
 		return errors.Wrap(err, "unable to get k8s client")
 	}
 
-	managerPodsList, err := kubeClient.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{
-		LabelSelector: labels.Set(types.GetManagerLabels()).String(),
-	})
+	namespace := os.Getenv(types.EnvPodNamespace)
+	if namespace == "" {
+		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, using default namespace", types.EnvPodNamespace)
+		namespace = corev1.NamespaceDefault
+	}
+
+	// Check if mount propagation is supported
+	if err := checkMountPropagation(kubeClient, namespace, currentNodeID); err != nil {
+		return err
+	}
+
+	kubeNode, err := kubeClient.CoreV1().Nodes().Get(context.Background(), currentNodeID, metav1.GetOptions{})
+	if err != nil {
+		return errors.Wrap(err, "failed to get node when checking kernel version")
+	}
+
+	// Check if kernel version is recommended
+	if err := checkKernelVersion(kubeNode, currentNodeID); err != nil {
+		return err
+	}
+
+	// Check if multipath is supported
+
+	// Check if nfs client versions are supported
+
+	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceNet}
+	nsexec, err := lhns.NewNamespaceExecutor(iscsiutil.ISCSIdProcess, lhtypes.HostProcDirectory, namespaces)
+	if err != nil {
+		return err
+	}
+
+	return iscsi.CheckForInitiatorExistence(nsexec)
+}
+
+func checkMountPropagation(kubeClient *clientset.Clientset, namespace, currentNodeID string) error {
+
+	managerPodsList, err := upgradeutil.ListManagerPods(namespace, kubeClient)
 	if err != nil {
 		return err
 	}
@@ -308,7 +317,7 @@ func checkMountPropagation(kubeconfigPath, currentNodeID string) error {
 	dataMountPointName := "longhorn"
 
 CHECKED:
-	for _, pod := range managerPodsList.Items {
+	for _, pod := range managerPodsList {
 		if pod.Spec.NodeName != currentNodeID {
 			continue
 		}
@@ -329,6 +338,29 @@ CHECKED:
 		return fmt.Errorf("failed to check mount propagation, please make sure the mount propagation is set to %v for the volume mount %v in the longhorn-manager pod spec", corev1.MountPropagationBidirectional, dataMountPointName)
 	}
 
+	return nil
+}
+
+func checkKernelVersion(kubeNode *corev1.Node, currentNodeID string) error {
+	kernelVersion := kubeNode.Status.NodeInfo.KernelVersion
+	brokenKernelVersion := []string{"5.15.0", "6.5.6"}
+	majorKernel5150Version := 5
+	brokenKernel5150PatchVersion := 94
+	fixedKernel5150PatchVersion := 100
+
+	for _, version := range brokenKernelVersion {
+		if !strings.Contains(kernelVersion, version) {
+			continue
+		}
+		var kernel, major, minor, patch int
+		if _, err := fmt.Sscanf(kernelVersion, "%d.%d.%d-%d", &kernel, &major, &minor, &patch); err != nil {
+			return errors.Wrap(err, "failed to parse kernel version "+kernelVersion)
+		}
+		if kernel == majorKernel5150Version && (fixedKernel5150PatchVersion <= patch || patch < brokenKernel5150PatchVersion) {
+			break
+		}
+		logrus.Warnf("Node %v has a kernel version %v known to have a breakage that affects Longhorn. See description and solution at https://longhorn.io/kb/troubleshooting-rwx-volume-fails-to-attached-caused-by-protocol-not-supported", currentNodeID, kernelVersion)
+	}
 	return nil
 }
 
