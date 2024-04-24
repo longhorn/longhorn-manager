@@ -260,15 +260,15 @@ github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240418070517-74c78b7744c3
-## explicit; go 1.21
+# github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240424110142-e60417f3506d
+## explicit; go 1.22.0
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
 github.com/longhorn/longhorn-instance-manager/pkg/meta
 github.com/longhorn/longhorn-instance-manager/pkg/types
 github.com/longhorn/longhorn-instance-manager/pkg/util
-# github.com/longhorn/longhorn-share-manager v0.0.0-20240418035326-c6bd5823a659
-## explicit; go 1.21
+# github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240420130308-5b297774fe5d
+## explicit; go 1.22.2
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
 # github.com/longhorn/types v0.0.0-20240417112740-a0d8514936b8
@@ -853,7 +853,7 @@ k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions/internalint
 k8s.io/apiextensions-apiserver/pkg/client/listers/apiextensions/v1
 k8s.io/apiextensions-apiserver/pkg/client/listers/apiextensions/v1beta1
 k8s.io/apiextensions-apiserver/pkg/features
-# k8s.io/apimachinery v0.29.4 => k8s.io/apimachinery v0.28.5
+# k8s.io/apimachinery v0.30.0 => k8s.io/apimachinery v0.28.5
 ## explicit; go 1.20
 k8s.io/apimachinery/pkg/api/equality
 k8s.io/apimachinery/pkg/api/errors
@@ -1471,7 +1471,7 @@ k8s.io/kube-openapi/pkg/validation/strfmt/bson
 # k8s.io/kubelet v0.0.0 => k8s.io/kubelet v0.28.5
 ## explicit; go 1.20
 k8s.io/kubelet/pkg/apis
-# k8s.io/kubernetes v1.29.4 => k8s.io/kubernetes v1.28.5
+# k8s.io/kubernetes v1.30.0 => k8s.io/kubernetes v1.28.5
 ## explicit; go 1.20
 k8s.io/kubernetes/pkg/api/legacyscheme
 k8s.io/kubernetes/pkg/api/service
