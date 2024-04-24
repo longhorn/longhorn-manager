@@ -5,11 +5,7 @@ source $(dirname $0)/version
 
 cd $(dirname $0)/..
 
-ARCH=${ARCH:-amd64}
-SUFFIX=""
-[ "${ARCH}" != "amd64" ] && SUFFIX="_${ARCH}"
-
-TAG=${TAG:-${IMAGE_TAG_PREFIX}${SUFFIX}}
+TAG=${TAG:-${IMAGE_TAG_PREFIX}}
 REPO=${REPO:-longhornio}
 IMAGE=${IMAGE:-${REPO}/longhorn-manager:${TAG}}
 
@@ -17,13 +13,15 @@ if [ ! -e ./bin/longhorn-manager ]; then
     ./scripts/build
 fi
 
+cp -r bin package/
+
 trap 'rm -rf ./package/bin' exit
 
 # update base image to get latest changes
 BASE_IMAGE=`grep FROM package/Dockerfile  | awk '{print $2}'`
 docker pull ${BASE_IMAGE}
 
-docker build -t ${IMAGE} -f package/Dockerfile .
+buildx build --load -t ${IMAGE} -f package/Dockerfile .
 
 echo Built ${IMAGE}
 
