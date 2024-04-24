@@ -293,11 +293,15 @@ func environmentCheck(kubeconfigPath, currentNodeID string) error {
 		return err
 	}
 
+	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceNet}
+
 	// Check if multipath is supported
+	if err := checkMultipathd(namespaces, currentNodeID); err != nil {
+		return err
+	}
 
 	// Check if nfs client versions are supported
 
-	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceNet}
 	nsexec, err := lhns.NewNamespaceExecutor(iscsiutil.ISCSIdProcess, lhtypes.HostProcDirectory, namespaces)
 	if err != nil {
 		return err
@@ -361,6 +365,19 @@ func checkKernelVersion(kubeNode *corev1.Node, currentNodeID string) error {
 		}
 		logrus.Warnf("Node %v has a kernel version %v known to have a breakage that affects Longhorn. See description and solution at https://longhorn.io/kb/troubleshooting-rwx-volume-fails-to-attached-caused-by-protocol-not-supported", currentNodeID, kernelVersion)
 	}
+	return nil
+}
+
+func checkMultipathd(namespaces []lhtypes.Namespace, currentNodeID string) error {
+	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	if err != nil {
+		return err
+	}
+	args := []string{"show", "status"}
+	if result, _ := nsexec.Execute(nil, "multipathd", args, lhtypes.ExecuteDefaultTimeout); result != "" {
+		logrus.Warnf("Multipathd is running on %v known to have a breakage that affects Longhorn. See description and solution at https://longhorn.io/kb/troubleshooting-volume-with-multipath", currentNodeID)
+	}
+
 	return nil
 }
 
