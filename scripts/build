@@ -20,4 +20,5 @@ cd $(dirname $0)/..
 
 mkdir -p bin
 
-CGO_ENABLED=0 go build -o bin/longhorn-manager -ldflags "$LINKFLAGS $OTHER_LINKFLAGS" $COVER $COVERPKG
+CGO_ENABLED=0 GOARCH=amd64 go build -o bin/longhorn-manager-amd64 -ldflags "$LINKFLAGS $OTHER_LINKFLAGS" $COVER $COVERPKG
+CGO_ENABLED=0 GOARCH=arm64 go build -o bin/longhorn-manager-arm64 -ldflags "$LINKFLAGS $OTHER_LINKFLAGS" $COVER $COVERPKG
