@@ -30,6 +30,7 @@ const (
 	DefaultTransportAckTimeout = 14
 
 	DefaultKeepAliveTimeoutMs = 10000
+	DefaultMultipath          = "disable"
 
 	ExecuteTimeout = 60 * time.Second
 )
