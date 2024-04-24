@@ -1054,10 +1054,10 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 			continue
 		}
 
-		if shouldCleanUpFailedReplica(v, r, safeAsLastReplicaCount) {
+		if c.shouldCleanUpFailedReplica(v, r, safeAsLastReplicaCount) {
 				log.WithField("replica", r.Name).Info("Cleaning up corrupted, staled replica")
 				if err := c.deleteReplica(r, rs); err != nil {
-					return errors.Wrapf(err, "cannot clean up staled replica %v", r.Name)
+				return errors.Wrapf(err, "failed to clean up staled replica %v", r.Name)
 			}
 		}
 	}
@@ -4587,10 +4587,8 @@ func (c *VolumeController) ReconcilePersistentVolume(volume *longhorn.Volume) er
 	return nil
 }
 
-func shouldCleanUpFailedReplica(v *longhorn.Volume, r *longhorn.Replica, safeAsLastReplicaCount int) bool {
-	if types.IsDataEngineV2(v.Spec.DataEngine) {
-		return safeAsLastReplicaCount != 0
-	}
+func (c *VolumeController) shouldCleanUpFailedReplica(v *longhorn.Volume, r *longhorn.Replica, safeAsLastReplicaCount int) bool {
+	log := getLoggerForVolume(c.logger, v).WithField("replica", r.Name)
 
 	// Even if healthyAt == "", lastHealthyAt != "" indicates this replica has some (potentially invalid) data. We MUST
 	// NOT delete it until we're sure the engine can start with another replica. In the worst case scenario, maybe we
@@ -4600,15 +4598,18 @@ func shouldCleanUpFailedReplica(v *longhorn.Volume, r *longhorn.Replica, safeAsL
 	}
 	// Failed to rebuild too many times.
 	if r.Spec.RebuildRetryCount >= scheduler.FailedReplicaMaxRetryCount {
+		log.Warnf("Replica %v failed to rebuild too many times", r.Name)
 		return true
 	}
 	// Failed too long ago to be useful during a rebuild.
 	if v.Spec.StaleReplicaTimeout > 0 &&
 		util.TimestampAfterTimeout(r.Spec.FailedAt, time.Duration(v.Spec.StaleReplicaTimeout)*time.Minute) {
+		log.Warnf("Replica %v failed too long ago to be useful during a rebuild", r.Name)
 		return true
 	}
 	// Failed for race condition at upgrading when waiting for instance-manager-r to start. Can never become healthy.
 	if r.Spec.Image != v.Spec.Image {
+		log.Warnf("Replica %v image %v is different from volume image %v", r.Name, r.Spec.Image, v.Spec.Image)
 		return true
 	}
 	return false
