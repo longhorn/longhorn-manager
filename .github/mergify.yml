@@ -24,7 +24,7 @@ pull_request_rules:
     review:
       type: APPROVE
 
-- name: ask to resolve conflict
+- name: Ask to resolve conflict
   conditions:
   - conflict
   actions:
