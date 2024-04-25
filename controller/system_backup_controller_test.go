@@ -231,7 +231,8 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 		fakeSystemRolloutVolumes(tc.existVolumes, c, informerFactories.LhInformerFactory, lhClient)
 		fakeSystemRolloutPersistentVolumes(tc.existPersistentVolumes, c, informerFactories.KubeInformerFactory, kubeClient)
 
-		systemBackupController := newFakeSystemBackupController(lhClient, kubeClient, extensionsClient, informerFactories, tc.controllerID)
+		systemBackupController, err := newFakeSystemBackupController(lhClient, kubeClient, extensionsClient, informerFactories, tc.controllerID)
+		c.Assert(err, IsNil)
 
 		systemBackup := fakeSystemBackup(tc.systemBackupName, rolloutOwnerID, tc.systemBackupVersion, tc.isDeleting, tc.volumeBackupPolicy, tc.state, c, informerFactories.LhInformerFactory, lhClient)
 		if tc.notExist {
@@ -253,7 +254,8 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 				backup.Status.State = longhorn.BackupStateCompleted
 			}
 			fakeSystemRolloutBackups(backups, c, informerFactories.LhInformerFactory, lhClient)
-			systemBackupController.WaitForVolumeBackupToComplete(backups, systemBackup)
+			err = systemBackupController.WaitForVolumeBackupToComplete(backups, systemBackup)
+			c.Assert(err, IsNil)
 
 		case longhorn.SystemBackupStateGenerating:
 			systemBackupController.GenerateSystemBackup(systemBackup, archievePath, tempDir)
@@ -298,19 +300,22 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 }
 
 func newFakeSystemBackupController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
-	informerFactories *util.InformerFactories, controllerID string) *SystemBackupController {
+	informerFactories *util.InformerFactories, controllerID string) (*SystemBackupController, error) {
 	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	logger := logrus.StandardLogger()
 	logrus.SetLevel(logrus.DebugLevel)
 
-	c := NewSystemBackupController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID, TestManagerImage)
+	c, err := NewSystemBackupController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID, TestManagerImage)
+	if err != nil {
+		return nil, err
+	}
 	c.eventRecorder = record.NewFakeRecorder(100)
 	for index := range c.cacheSyncs {
 		c.cacheSyncs[index] = alwaysReady
 	}
 
-	return c
+	return c, nil
 }
 
 func fakeSystemBackup(name, currentOwnerID, longhornVersion string, isDeleting bool,

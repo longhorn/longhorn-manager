@@ -83,7 +83,7 @@ func uninstall(c *cli.Context) error {
 	logger := logrus.StandardLogger()
 
 	doneCh := make(chan struct{})
-	ctrl := controller.NewUninstallController(
+	ctrl, err := controller.NewUninstallController(
 		logger,
 		namespace,
 		c.Bool(FlagForce),
@@ -92,6 +92,9 @@ func uninstall(c *cli.Context) error {
 		kubeClient,
 		extensionsClient,
 	)
+	if err != nil {
+		return errors.Wrap(err, "failed to create uninstall controller")
+	}
 
 	informerFactories.Start(doneCh)
 

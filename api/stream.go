@@ -23,12 +23,15 @@ const (
 	writeWait = 10 * time.Second
 )
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
-}
+var (
+	upgrader = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
+	}
+	randFunc *rand.Rand
+)
 
 func init() {
-	rand.Seed(time.Now().UnixNano())
+	randFunc = rand.New(rand.NewSource(time.Now().UnixNano()))
 }
 
 func NewStreamHandlerFunc(streamType string, watcher *controller.Watcher, listFunc func(ctx *api.ApiContext) (*client.GenericCollection, error)) func(w http.ResponseWriter, r *http.Request) error {
@@ -38,7 +41,7 @@ func NewStreamHandlerFunc(streamType string, watcher *controller.Watcher, listFu
 			return err
 		}
 		fields := logrus.Fields{
-			"id":   strconv.Itoa(rand.Int()),
+			"id":   strconv.Itoa(randFunc.Int()),
 			"type": streamType,
 		}
 		logrus.WithFields(fields).Debug("websocket: open")
