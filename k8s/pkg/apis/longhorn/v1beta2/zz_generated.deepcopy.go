@@ -393,6 +393,16 @@ func (in *BackingImageSpec) DeepCopyInto(out *BackingImageSpec) {
 			(*out)[key] = val
 		}
 	}
+	if in.DiskSelector != nil {
+		in, out := &in.DiskSelector, &out.DiskSelector
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
+	if in.NodeSelector != nil {
+		in, out := &in.NodeSelector, &out.NodeSelector
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	return
 }
 

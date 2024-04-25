@@ -2125,7 +2125,7 @@ func (s *DataStore) ListBackingImageManagers() (map[string]*longhorn.BackingImag
 // ListBackingImageManagersByNode gets a list of BackingImageManager
 // on a specific node with the given namespace.
 func (s *DataStore) ListBackingImageManagersByNode(nodeName string) (map[string]*longhorn.BackingImageManager, error) {
-	nodeSelector, err := getNodeSelector(nodeName)
+	nodeSelector, err := getLonghornNodeSelector(nodeName)
 	if err != nil {
 		return nil, err
 	}
@@ -2133,7 +2133,7 @@ func (s *DataStore) ListBackingImageManagersByNode(nodeName string) (map[string]
 }
 
 func (s *DataStore) ListBackingImageManagersByNodeRO(nodeName string) ([]*longhorn.BackingImageManager, error) {
-	nodeSelector, err := getNodeSelector(nodeName)
+	nodeSelector, err := getLonghornNodeSelector(nodeName)
 	if err != nil {
 		return nil, err
 	}
@@ -2664,18 +2664,32 @@ func (s *DataStore) ListReadyNodesContainingEngineImageRO(image string) (map[str
 	return readyNodes, nil
 }
 
-// GetRandomReadyNodeDisk a list of all Node the in the given namespace and
+// GetReadyNodeDiskForBackingImage a list of all Node the in the given namespace and
 // returns the first Node && the first Disk of the Node marked with condition ready and allow scheduling
-func (s *DataStore) GetRandomReadyNodeDisk() (*longhorn.Node, string, error) {
+func (s *DataStore) GetReadyNodeDiskForBackingImage(backingImage *longhorn.BackingImage, usedDisks map[string]bool) (*longhorn.Node, string, error) {
 	logrus.Info("Preparing to find a random ready node disk")
 	nodes, err := s.ListNodesRO()
 	if err != nil {
 		return nil, "", errors.Wrapf(err, "failed to get random ready node disk")
 	}
 
+	allowEmptyNodeSelectorVolume, err := s.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
+	if err != nil {
+		return nil, "", errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyNodeSelectorVolume)
+	}
+
+	allowEmptyDiskSelectorVolume, err := s.GetSettingAsBool(types.SettingNameAllowEmptyDiskSelectorVolume)
+	if err != nil {
+		return nil, "", errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyDiskSelectorVolume)
+	}
+
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	r.Shuffle(len(nodes), func(i, j int) { nodes[i], nodes[j] = nodes[j], nodes[i] })
 	for _, node := range nodes {
+		if !types.IsSelectorsInTags(node.Spec.Tags, backingImage.Spec.NodeSelector, allowEmptyNodeSelectorVolume) {
+			continue
+		}
+
 		if !node.Spec.AllowScheduling {
 			continue
 		}
@@ -2685,6 +2699,12 @@ func (s *DataStore) GetRandomReadyNodeDisk() (*longhorn.Node, string, error) {
 		for diskName, diskStatus := range node.Status.DiskStatus {
 			diskSpec, exists := node.Spec.Disks[diskName]
 			if !exists {
+				continue
+			}
+			if !types.IsSelectorsInTags(diskSpec.Tags, backingImage.Spec.DiskSelector, allowEmptyDiskSelectorVolume) {
+				continue
+			}
+			if _, exists := usedDisks[diskStatus.DiskUUID]; exists {
 				continue
 			}
 			// TODO: Jack add block type disk for spdk version BackingImage
@@ -2800,6 +2820,14 @@ func getNodeSelector(nodeName string) (labels.Selector, error) {
 	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: map[string]string{
 			types.LonghornNodeKey: nodeName,
+		},
+	})
+}
+
+func getLonghornNodeSelector(nodeName string) (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			types.GetLonghornLabelKey(types.LonghornLabelNode): nodeName,
 		},
 	})
 }
@@ -5045,6 +5073,22 @@ func (s *DataStore) IsV2DataEngineDisabledForNode(nodeName string) (bool, error)
 	return false, nil
 }
 
+func (s *DataStore) GetDiskBackingImageMap(node *longhorn.Node) (map[string][]*longhorn.BackingImage, error) {
+	diskBackingImageMap := map[string][]*longhorn.BackingImage{}
+	backingImages, err := s.ListBackingImages()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, bi := range backingImages {
+		for diskUIID := range bi.Status.DiskFileStatusMap {
+			diskBackingImageMap[diskUIID] = append(diskBackingImageMap[diskUIID], bi)
+		}
+	}
+
+	return diskBackingImageMap, nil
+}
+
 // CreateBackupBackingImage creates a Longhorn BackupBackingImage resource and verifies
 func (s *DataStore) CreateBackupBackingImage(backupBackingImage *longhorn.BackupBackingImage) (*longhorn.BackupBackingImage, error) {
 	ret, err := s.lhClient.LonghornV1beta2().BackupBackingImages(s.namespace).Create(context.TODO(), backupBackingImage, metav1.CreateOptions{})
@@ -5193,4 +5237,33 @@ func (s *DataStore) GetFreezeFilesystemForSnapshotSetting(e *longhorn.Engine) (b
 	}
 
 	return s.GetSettingAsBool(types.SettingNameFreezeFilesystemForSnapshot)
+}
+
+func (s *DataStore) CanPutBackingImageOnDisk(backingImage *longhorn.BackingImage, diskUUID string) (bool, error) {
+	node, diskName, err := s.GetReadyDiskNodeRO(diskUUID)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get the node of the disk %v", diskUUID)
+	}
+
+	allowEmptyNodeSelectorVolume, err := s.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyNodeSelectorVolume)
+	}
+
+	allowEmptyDiskSelectorVolume, err := s.GetSettingAsBool(types.SettingNameAllowEmptyDiskSelectorVolume)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyDiskSelectorVolume)
+	}
+
+	if !types.IsSelectorsInTags(node.Spec.Tags, backingImage.Spec.NodeSelector, allowEmptyNodeSelectorVolume) {
+		return false, nil
+	}
+
+	diskSpec, exists := node.Spec.Disks[diskName]
+	if exists {
+		if !types.IsSelectorsInTags(diskSpec.Tags, backingImage.Spec.DiskSelector, allowEmptyDiskSelectorVolume) {
+			return false, nil
+		}
+	}
+	return true, nil
 }

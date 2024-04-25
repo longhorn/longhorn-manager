@@ -86,17 +86,20 @@ func (m *VolumeManager) GetDefaultBackingImageManagersByDiskUUID(diskUUID string
 	return nil, fmt.Errorf("default backing image manager for disk %v is not found", diskUUID)
 }
 
-func (m *VolumeManager) CreateBackingImage(name, checksum, sourceType string, parameters map[string]string) (bi *longhorn.BackingImage, err error) {
+func (m *VolumeManager) CreateBackingImage(name, checksum, sourceType string, parameters map[string]string, minNumberOfCopies int, nodeSelector, diskSelector []string) (bi *longhorn.BackingImage, err error) {
 	bi = &longhorn.BackingImage{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   name,
 			Labels: types.GetBackingImageLabels(),
 		},
 		Spec: longhorn.BackingImageSpec{
-			Disks:            map[string]string{},
-			Checksum:         checksum,
-			SourceType:       longhorn.BackingImageDataSourceType(sourceType),
-			SourceParameters: parameters,
+			Disks:             map[string]string{},
+			Checksum:          checksum,
+			SourceType:        longhorn.BackingImageDataSourceType(sourceType),
+			SourceParameters:  parameters,
+			MinNumberOfCopies: minNumberOfCopies,
+			NodeSelector:      nodeSelector,
+			DiskSelector:      diskSelector,
 		},
 	}
 	if bi, err = m.ds.CreateBackingImage(bi); err != nil {
@@ -201,8 +204,7 @@ func (m *VolumeManager) CleanUpBackingImageDiskFiles(name string, diskFileList [
 		}
 	}
 
-	// TODO: Make `haBackingImageCount` configure when introducing HA backing image feature
-	haBackingImageCount := 1
+	haBackingImageCount := existingBI.Spec.MinNumberOfCopies
 	if haBackingImageCount <= readyActiveFileCount {
 		return bi, nil
 	}
@@ -224,5 +226,25 @@ func (m *VolumeManager) CleanUpBackingImageDiskFiles(name string, diskFileList [
 		return nil, fmt.Errorf("cannot do cleanup since there are no enough files for HA")
 	}
 
+	return bi, nil
+}
+
+func (m *VolumeManager) UpdateBackingImageMinNumberOfCopies(name string, minNumberOfCopies int) (bi *longhorn.BackingImage, err error) {
+	bi, err = m.GetBackingImage(name)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to get backing image %v", name)
+	}
+
+	existingBI := bi.DeepCopy()
+	defer func() {
+		if err == nil {
+			if !reflect.DeepEqual(bi.Spec, existingBI.Spec) {
+				bi, err = m.ds.UpdateBackingImage(bi)
+				return
+			}
+		}
+	}()
+
+	bi.Spec.MinNumberOfCopies = minNumberOfCopies
 	return bi, nil
 }

@@ -1713,6 +1713,7 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit:             true,
 		types.SettingNameConcurrentBackupRestorePerNodeLimit:                      true,
 		types.SettingNameConcurrentReplicaRebuildPerNodeLimit:                     true,
+		types.SettingNameConcurrentBackingImageReplenishPerNodeLimit:              true,
 		types.SettingNameCRDAPIVersion:                                            true,
 		types.SettingNameCreateDefaultDiskLabeledNodes:                            true,
 		types.SettingNameDefaultDataLocality:                                      true,
@@ -1750,6 +1751,7 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameV2DataEngine:                                             true,
 		types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU:                 true,
 		types.SettingNameOfflineReplicaRebuilding:                                 true,
+		types.SettingNameDefaultMinNumberOfBackingImageCopies:                     true,
 	}
 
 	settings, err := info.ds.ListSettings()

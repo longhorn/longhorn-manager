@@ -52,7 +52,7 @@ func (s *Server) BackingImageCreate(rw http.ResponseWriter, req *http.Request) e
 		return err
 	}
 
-	bi, err := s.m.CreateBackingImage(input.Name, input.ExpectedChecksum, input.SourceType, input.Parameters)
+	bi, err := s.m.CreateBackingImage(input.Name, input.ExpectedChecksum, input.SourceType, input.Parameters, input.MinNumberOfCopies, input.NodeSelector, input.DiskSelector)
 	if err != nil {
 		return errors.Wrapf(err, "failed to create backing image %v from source type %v with parameters %+v", input.Name, input.SourceType, input.Parameters)
 	}
@@ -95,4 +95,21 @@ func (s *Server) BackingImageProxyFallback(rw http.ResponseWriter, req *http.Req
 	}
 
 	return fmt.Errorf("failed to proxy the request to other servers for backing image %v(%v)", bi.Name, bi.Status.UUID)
+}
+
+func (s *Server) UpdateMinNumberOfCopies(w http.ResponseWriter, req *http.Request) error {
+	var input UpdateMinNumberOfCopiesInput
+	apiContext := api.GetApiContext(req)
+
+	id := mux.Vars(req)["name"]
+	if err := apiContext.Read(&input); err != nil {
+		return err
+	}
+
+	bi, err := s.m.UpdateBackingImageMinNumberOfCopies(id, input.MinNumberOfCopies)
+	if err != nil {
+		return errors.Wrapf(err, "failed to update backing image %v minNumberOfCopies to %v", bi.Name, input.MinNumberOfCopies)
+	}
+	apiContext.Write(toBackingImageResource(bi, apiContext))
+	return nil
 }
