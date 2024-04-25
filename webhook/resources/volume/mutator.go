@@ -213,8 +213,8 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		if volume.Spec.ReplicaDiskSoftAntiAffinity != longhorn.ReplicaDiskSoftAntiAffinityDisabled {
 			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaDiskSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaDiskSoftAntiAffinityDefault))
 		}
-		if string(volume.Spec.OfflineReplicaRebuilding) == "" {
-			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/offlineReplicaRebuilding", "value": "%s"}`, longhorn.OfflineReplicaRebuildingIgnored))
+		if volume.Spec.OfflineReplicaRebuilding != longhorn.OfflineReplicaRebuildingDisabled {
+			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/offlineReplicaRebuilding", "value": "%s"}`, longhorn.OfflineReplicaRebuildingDisabled))
 		}
 	}
 
@@ -328,8 +328,7 @@ func mutate(newObj runtime.Object, moreLabels map[string]string) (admission.Patc
 	if string(volume.Spec.DataEngine) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataEngine", "value": "%s"}`, longhorn.DataEngineTypeV1))
 	}
-	if string(volume.Spec.OfflineReplicaRebuilding) == "" && types.IsDataEngineV1(volume.Spec.DataEngine) {
-		// Always mutate the offlineReplicaRebuilding to disabled for non-SPDK volumes
+	if volume.Spec.OfflineReplicaRebuilding != longhorn.OfflineReplicaRebuildingDisabled {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/offlineReplicaRebuilding", "value": "%s"}`, longhorn.OfflineReplicaRebuildingDisabled))
 	}
 	if volume.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
