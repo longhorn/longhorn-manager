@@ -441,10 +441,22 @@ func (s *DataStore) ValidateV2DataEngine(v2DataEngineEnabled bool) error {
 			continue
 		}
 
+<<<<<<< HEAD
 		if v2DataEngineEnabled {
 			capacity, ok := node.Status.Capacity["hugepages-2Mi"]
 			if !ok {
 				return errors.Errorf("failed to get hugepages-2Mi capacity for node %v", node.Name)
+=======
+		aioInstanceManagers, err := s.ListInstanceManagersBySelectorRO(node, "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
+		if err != nil && !ErrorIsNotFound(err) {
+			return false, ims, err
+		}
+
+		imMap := types.ConsolidateInstanceManagers(engineInstanceManagers, aioInstanceManagers)
+		for _, instanceManager := range imMap {
+			if len(instanceManager.Status.InstanceEngines)+len(instanceManager.Status.Instances) > 0 { // nolint: staticcheck
+				return false, ims, err
+>>>>>>> 2306e97d (fix: golangci-lint error)
 			}
 
 			hugepageCapacity := resource.MustParse(capacity.String())
@@ -2576,8 +2588,8 @@ func (s *DataStore) GetRandomReadyNodeDisk() (*longhorn.Node, string, error) {
 		return nil, "", errors.Wrapf(err, "failed to get random ready node disk")
 	}
 
-	rand.Seed(time.Now().UnixNano())
-	rand.Shuffle(len(nodes), func(i, j int) { nodes[i], nodes[j] = nodes[j], nodes[i] })
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	r.Shuffle(len(nodes), func(i, j int) { nodes[i], nodes[j] = nodes[j], nodes[i] })
 	for _, node := range nodes {
 		if !node.Spec.AllowScheduling {
 			continue

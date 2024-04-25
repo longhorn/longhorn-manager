@@ -6,7 +6,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -293,7 +293,11 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 								},
 							},
 							SecurityContext: &corev1.SecurityContext{
+<<<<<<< HEAD
 								Privileged: pointer.BoolPtr(true),
+=======
+								Privileged: ptr.To(true),
+>>>>>>> 2306e97d (fix: golangci-lint error)
 							},
 							Args: []string{
 								"--v=2",
@@ -336,13 +340,21 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 						{
 							Name: types.CSIPluginName,
 							SecurityContext: &corev1.SecurityContext{
+<<<<<<< HEAD
 								Privileged: pointer.BoolPtr(true),
+=======
+								Privileged: ptr.To(true),
+>>>>>>> 2306e97d (fix: golangci-lint error)
 								Capabilities: &corev1.Capabilities{
 									Add: []corev1.Capability{
 										"SYS_ADMIN",
 									},
 								},
+<<<<<<< HEAD
 								AllowPrivilegeEscalation: pointer.BoolPtr(true),
+=======
+								AllowPrivilegeEscalation: ptr.To(true),
+>>>>>>> 2306e97d (fix: golangci-lint error)
 							},
 							Image:           managerImage,
 							ImagePullPolicy: imagePullPolicy,

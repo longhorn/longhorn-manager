@@ -57,12 +57,15 @@ func fakeInstanceManagerVersionUpdater(im *longhorn.InstanceManager) error {
 }
 
 func newTestInstanceManagerController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
-	informerFactories *util.InformerFactories, controllerID string) *InstanceManagerController {
+	informerFactories *util.InformerFactories, controllerID string) (*InstanceManagerController, error) {
 	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	logger := logrus.StandardLogger()
 
-	imc := NewInstanceManagerController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID, TestServiceAccount)
+	imc, err := NewInstanceManagerController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID, TestServiceAccount)
+	if err != nil {
+		return nil, err
+	}
 	fakeRecorder := record.NewFakeRecorder(100)
 	imc.eventRecorder = fakeRecorder
 	for index := range imc.cacheSyncs {
@@ -70,7 +73,7 @@ func newTestInstanceManagerController(lhClient *lhfake.Clientset, kubeClient *fa
 	}
 	imc.versionUpdater = fakeInstanceManagerVersionUpdater
 
-	return imc
+	return imc, nil
 }
 
 func (s *TestSuite) TestSyncInstanceManager(c *C) {
@@ -213,7 +216,8 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
 		lhNodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
 
-		imc := newTestInstanceManagerController(lhClient, kubeClient, extensionsClient, informerFactories, tc.controllerID)
+		imc, error := newTestInstanceManagerController(lhClient, kubeClient, extensionsClient, informerFactories, tc.controllerID)
+		c.Assert(error, IsNil)
 
 		// Controller logic depends on the existence of DefaultInstanceManagerImage Setting and Toleration Setting.
 		tolerationSetting := newTolerationSetting()

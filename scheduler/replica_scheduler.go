@@ -136,19 +136,6 @@ func (rcs *ReplicaScheduler) getNodeCandidates(nodesInfo map[string]*longhorn.No
 	return nodeCandidates, nil
 }
 
-// getNodesWithEvictingReplicas returns nodes that have replicas being evicted
-func getNodesWithEvictingReplicas(replicas map[string]*longhorn.Replica, nodeInfo map[string]*longhorn.Node) map[string]*longhorn.Node {
-	nodesWithEvictingReplicas := map[string]*longhorn.Node{}
-	for _, r := range replicas {
-		if r.Spec.EvictionRequested {
-			if node, ok := nodeInfo[r.Spec.NodeID]; ok {
-				nodesWithEvictingReplicas[r.Spec.NodeID] = node
-			}
-		}
-	}
-	return nodesWithEvictingReplicas
-}
-
 // getDiskCandidates returns a map of the most appropriate disks a replica can be scheduled to (assuming it can be
 // scheduled at all). For example, consider a case in which there are two disks on nodes without a replica for a volume
 // and two disks on nodes with a replica for the same volume. getDiskCandidates only returns the disks without a

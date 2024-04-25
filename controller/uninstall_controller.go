@@ -74,7 +74,7 @@ func NewUninstallController(
 	stopCh chan struct{},
 	kubeClient clientset.Interface,
 	extensionsClient apiextensionsclientset.Interface,
-) *UninstallController {
+) (*UninstallController, error) {
 	c := &UninstallController{
 		baseController: newBaseControllerWithQueue("longhorn-uninstall", logger,
 			workqueue.NewNamedRateLimitingQueue(workqueue.NewMaxOfRateLimiter(
@@ -90,9 +90,16 @@ func NewUninstallController(
 		kubeClient: kubeClient,
 	}
 
-	ds.CSIDriverInformer.AddEventHandler(c.controlleeHandler())
-	ds.DaemonSetInformer.AddEventHandler(c.namespacedControlleeHandler())
-	ds.DeploymentInformer.AddEventHandler(c.namespacedControlleeHandler())
+	var err error
+	if _, err = ds.CSIDriverInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+		return nil, err
+	}
+	if _, err = ds.DaemonSetInformer.AddEventHandler(c.namespacedControlleeHandler()); err != nil {
+		return nil, err
+	}
+	if _, err = ds.DeploymentInformer.AddEventHandler(c.namespacedControlleeHandler()); err != nil {
+		return nil, err
+	}
 	cacheSyncs := []cache.InformerSynced{
 		ds.CSIDriverInformer.HasSynced,
 		ds.DaemonSetInformer.HasSynced,
@@ -100,73 +107,105 @@ func NewUninstallController(
 	}
 
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDEngineName, metav1.GetOptions{}); err == nil {
-		ds.EngineInformer.AddEventHandler(c.controlleeHandler())
+		if _, err = ds.EngineInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
 		cacheSyncs = append(cacheSyncs, ds.EngineInformer.HasSynced)
 	}
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDReplicaName, metav1.GetOptions{}); err == nil {
-		ds.ReplicaInformer.AddEventHandler(c.controlleeHandler())
+		if _, err = ds.ReplicaInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
 		cacheSyncs = append(cacheSyncs, ds.ReplicaInformer.HasSynced)
 	}
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDVolumeName, metav1.GetOptions{}); err == nil {
-		ds.VolumeInformer.AddEventHandler(c.controlleeHandler())
+		if _, err = ds.VolumeInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
 		cacheSyncs = append(cacheSyncs, ds.VolumeInformer.HasSynced)
 	}
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDEngineImageName, metav1.GetOptions{}); err == nil {
-		ds.EngineImageInformer.AddEventHandler(c.controlleeHandler())
+		if _, err = ds.EngineImageInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
 		cacheSyncs = append(cacheSyncs, ds.EngineImageInformer.HasSynced)
 	}
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDNodeName, metav1.GetOptions{}); err == nil {
-		ds.NodeInformer.AddEventHandler(c.controlleeHandler())
+		if _, err = ds.NodeInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
 		cacheSyncs = append(cacheSyncs, ds.NodeInformer.HasSynced)
 	}
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDInstanceManagerName, metav1.GetOptions{}); err == nil {
-		ds.InstanceManagerInformer.AddEventHandler(c.controlleeHandler())
+		if _, err = ds.InstanceManagerInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
 		cacheSyncs = append(cacheSyncs, ds.InstanceManagerInformer.HasSynced)
 	}
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDShareManagerName, metav1.GetOptions{}); err == nil {
-		ds.ShareManagerInformer.AddEventHandler(c.controlleeHandler())
+		if _, err = ds.ShareManagerInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
 		cacheSyncs = append(cacheSyncs, ds.ShareManagerInformer.HasSynced)
 	}
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDBackingImageName, metav1.GetOptions{}); err == nil {
-		ds.BackingImageInformer.AddEventHandler(c.controlleeHandler())
+		if _, err = ds.BackingImageInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
 		cacheSyncs = append(cacheSyncs, ds.BackingImageInformer.HasSynced)
 	}
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDBackingImageManagerName, metav1.GetOptions{}); err == nil {
-		ds.BackingImageManagerInformer.AddEventHandler(c.controlleeHandler())
+		if _, err = ds.BackingImageManagerInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
 		cacheSyncs = append(cacheSyncs, ds.BackingImageManagerInformer.HasSynced)
 	}
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDBackingImageDataSourceName, metav1.GetOptions{}); err == nil {
-		ds.BackingImageDataSourceInformer.AddEventHandler(c.controlleeHandler())
+		if _, err = ds.BackingImageDataSourceInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
 		cacheSyncs = append(cacheSyncs, ds.BackingImageDataSourceInformer.HasSynced)
 	}
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDBackupTargetName, metav1.GetOptions{}); err == nil {
-		ds.BackupTargetInformer.AddEventHandler(c.controlleeHandler())
+		if _, err = ds.BackupTargetInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
 		cacheSyncs = append(cacheSyncs, ds.BackupTargetInformer.HasSynced)
 	}
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDBackupVolumeName, metav1.GetOptions{}); err == nil {
-		ds.BackupVolumeInformer.AddEventHandler(c.controlleeHandler())
+		if _, err = ds.BackupVolumeInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
 		cacheSyncs = append(cacheSyncs, ds.BackupVolumeInformer.HasSynced)
 	}
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDBackupName, metav1.GetOptions{}); err == nil {
-		ds.BackupInformer.AddEventHandler(c.controlleeHandler())
+		if _, err = ds.BackupInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
 		cacheSyncs = append(cacheSyncs, ds.BackupInformer.HasSynced)
 	}
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDRecurringJobName, metav1.GetOptions{}); err == nil {
-		ds.RecurringJobInformer.AddEventHandler(c.controlleeHandler())
+		if _, err = ds.RecurringJobInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
 		cacheSyncs = append(cacheSyncs, ds.RecurringJobInformer.HasSynced)
 	}
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDOrphanName, metav1.GetOptions{}); err == nil {
-		ds.OrphanInformer.AddEventHandler(c.controlleeHandler())
+		if _, err = ds.OrphanInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
 		cacheSyncs = append(cacheSyncs, ds.OrphanInformer.HasSynced)
 	}
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDSnapshotName, metav1.GetOptions{}); err == nil {
-		ds.SnapshotInformer.AddEventHandler(c.controlleeHandler())
+		if _, err = ds.SnapshotInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
 		cacheSyncs = append(cacheSyncs, ds.SnapshotInformer.HasSynced)
 	}
 
 	c.cacheSyncs = cacheSyncs
 
-	return c
+	return c, nil
 }
 
 func (c *UninstallController) controlleeHandler() cache.ResourceEventHandler {
@@ -265,10 +304,6 @@ func getLoggerForUninstallDaemonSet(logger logrus.FieldLogger, name string) *log
 
 func getLoggerForUninstallDeployment(logger logrus.FieldLogger, name string) *logrus.Entry {
 	return logger.WithField("deployment", name)
-}
-
-func getLoggerForUninstallService(logger logrus.FieldLogger, name string) *logrus.Entry {
-	return logger.WithField("service", name)
 }
 
 func (c *UninstallController) uninstall() error {
@@ -981,26 +1016,6 @@ func (c *UninstallController) deleteManager() (bool, error) {
 		return true, err
 	} else if ds.DeletionTimestamp == nil {
 		if err := c.ds.DeleteDaemonSet(types.LonghornManagerDaemonSetName); err != nil {
-			log.Warn("Failed to mark for deletion")
-			return true, err
-		}
-		log.Info("Marked for deletion")
-		return true, nil
-	}
-	log.Info("Already marked for deletion")
-	return true, nil
-}
-
-func (c *UninstallController) deleteDeployment(deployment string) (bool, error) {
-	log := getLoggerForUninstallDeployment(c.logger, deployment)
-
-	if ds, err := c.ds.GetDeployment(deployment); err != nil {
-		if apierrors.IsNotFound(err) {
-			return false, nil
-		}
-		return true, err
-	} else if ds.DeletionTimestamp == nil {
-		if err := c.ds.DeleteDeployment(deployment); err != nil {
 			log.Warn("Failed to mark for deletion")
 			return true, err
 		}

@@ -57,7 +57,7 @@ func NewSnapshotController(
 	controllerID string,
 	engineClientCollection engineapi.EngineClientCollection,
 	proxyConnCounter util.Counter,
-) *SnapshotController {
+) (*SnapshotController, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 	// TODO: remove the wrapper when every clients have moved to use the clientset.
@@ -77,29 +77,38 @@ func NewSnapshotController(
 		proxyConnCounter:       proxyConnCounter,
 	}
 
-	ds.SnapshotInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.SnapshotInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.enqueueSnapshot,
 		UpdateFunc: func(old, cur interface{}) { sc.enqueueSnapshot(cur) },
 		DeleteFunc: sc.enqueueSnapshot,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	sc.cacheSyncs = append(sc.cacheSyncs, ds.SnapshotInformer.HasSynced)
 
-	ds.EngineInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.EngineInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: sc.enqueueEngineChange,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	sc.cacheSyncs = append(sc.cacheSyncs, ds.EngineInformer.HasSynced)
 
-	ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		DeleteFunc: sc.enqueueVolumeChange,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	sc.cacheSyncs = append(sc.cacheSyncs, ds.VolumeInformer.HasSynced)
 
-	ds.SettingInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.SettingInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { sc.enqueueSettingChange(cur) },
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	sc.cacheSyncs = append(sc.cacheSyncs, ds.SettingInformer.HasSynced)
 
-	return sc
+	return sc, nil
 }
 
 func (sc *SnapshotController) enqueueSnapshot(obj interface{}) {

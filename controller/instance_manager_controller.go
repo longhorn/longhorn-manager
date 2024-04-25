@@ -39,7 +39,6 @@ import (
 
 var (
 	mountPropagationHostToContainer = corev1.MountPropagationHostToContainer
-	mountPropagationBidirectional   = corev1.MountPropagationBidirectional
 )
 
 type InstanceManagerController struct {
@@ -105,7 +104,7 @@ func NewInstanceManagerController(
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
 	namespace, controllerID, serviceAccount string,
-) *InstanceManagerController {
+) (*InstanceManagerController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -129,39 +128,48 @@ func NewInstanceManagerController(
 		versionUpdater: updateInstanceManagerVersion,
 	}
 
-	ds.InstanceManagerInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.InstanceManagerInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    imc.enqueueInstanceManager,
 		UpdateFunc: func(old, cur interface{}) { imc.enqueueInstanceManager(cur) },
 		DeleteFunc: imc.enqueueInstanceManager,
-	})
+	}); err != nil {
+		return nil, err
+	}
 	imc.cacheSyncs = append(imc.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
 
-	ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+	if _, err = ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
 		FilterFunc: isInstanceManagerPod,
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    imc.enqueueInstanceManagerPod,
 			UpdateFunc: func(old, cur interface{}) { imc.enqueueInstanceManagerPod(cur) },
 			DeleteFunc: imc.enqueueInstanceManagerPod,
 		},
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	imc.cacheSyncs = append(imc.cacheSyncs, ds.PodInformer.HasSynced)
 
-	ds.KubeNodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.KubeNodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(oldObj, cur interface{}) { imc.enqueueKubernetesNode(cur) },
 		DeleteFunc: imc.enqueueKubernetesNode,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	imc.cacheSyncs = append(imc.cacheSyncs, ds.KubeNodeInformer.HasSynced)
 
-	ds.SettingInformer.AddEventHandlerWithResyncPeriod(
+	if _, err = ds.SettingInformer.AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: imc.isResponsibleForSetting,
 			Handler: cache.ResourceEventHandlerFuncs{
 				UpdateFunc: func(old, cur interface{}) { imc.enqueueSettingChange(cur) },
 			},
-		}, 0)
+		}, 0); err != nil {
+		return nil, err
+	}
 	imc.cacheSyncs = append(imc.cacheSyncs, ds.SettingInformer.HasSynced)
 
-	return imc
+	return imc, nil
 }
 
 func (imc *InstanceManagerController) isResponsibleForSetting(obj interface{}) bool {
@@ -439,7 +447,7 @@ func (imc *InstanceManagerController) syncInstanceStatus(im *longhorn.InstanceMa
 		// In these states, instance processes either are not running or will soon not be running.
 		// This step prevents other controllers from being confused by stale information.
 		// InstanceManagerMonitor will change this when/if it polls.
-		im.Status.Instances = nil
+		im.Status.Instances = nil // nolint: staticcheck
 		im.Status.InstanceEngines = nil
 		im.Status.InstanceReplicas = nil
 	}
@@ -694,7 +702,7 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 	// it means that all volumes are detached.
 	// We can delete the PodDisruptionBudget for the engine instance manager.
 	if im.Spec.Type == longhorn.InstanceManagerTypeEngine {
-		if len(im.Status.InstanceEngines)+len(im.Status.Instances) == 0 {
+		if len(im.Status.InstanceEngines)+len(im.Status.Instances) == 0 { // nolint: staticcheck
 			return true, nil
 		}
 		return false, nil
@@ -807,7 +815,7 @@ func (imc *InstanceManagerController) areAllInstanceRemovedFromNodeByType(nodeNa
 	}
 
 	for _, im := range ims {
-		if len(im.Status.InstanceEngines)+len(im.Status.Instances) > 0 {
+		if len(im.Status.InstanceEngines)+len(im.Status.Instances) > 0 { // nolint: staticcheck
 			return false, nil
 		}
 	}
@@ -1410,11 +1418,11 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() (needStop bool) {
 func (m *InstanceManagerMonitor) updateInstanceMap(im *longhorn.InstanceManager, resp map[string]longhorn.InstanceProcess) bool {
 	switch {
 	case im.Status.APIVersion < 4:
-		if reflect.DeepEqual(im.Status.Instances, resp) {
+		if reflect.DeepEqual(im.Status.Instances, resp) { // nolint: staticcheck
 			return false
 		}
 
-		im.Status.Instances = resp
+		im.Status.Instances = resp // nolint: staticcheck
 	default:
 		engineProcess := map[string]longhorn.InstanceProcess{}
 		replicaProcess := map[string]longhorn.InstanceProcess{}

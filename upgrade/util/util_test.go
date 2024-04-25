@@ -6,6 +6,12 @@ import (
 	"sync"
 	"testing"
 
+<<<<<<< HEAD
+=======
+	"github.com/sirupsen/logrus"
+
+	"github.com/stretchr/testify/assert"
+>>>>>>> 2306e97d (fix: golangci-lint error)
 	"github.com/stretchr/testify/require"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -159,7 +165,8 @@ func TestCheckUpgradePathSupported(t *testing.T) {
 			},
 			Value: tt.currentVersion,
 		}
-		lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), setting, metav1.CreateOptions{})
+		_, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), setting, metav1.CreateOptions{})
+		assert.Nil(t, err)
 
 		t.Run(tt.name, func(t *testing.T) {
 			assert := require.New(t)

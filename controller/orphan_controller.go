@@ -53,7 +53,7 @@ func NewOrphanController(
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
 	controllerID string,
-	namespace string) *OrphanController {
+	namespace string) (*OrphanController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -74,21 +74,26 @@ func NewOrphanController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-orphan-controller"}),
 	}
 
-	ds.OrphanInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.OrphanInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    oc.enqueueOrphan,
 		UpdateFunc: func(old, cur interface{}) { oc.enqueueOrphan(cur) },
 		DeleteFunc: oc.enqueueOrphan,
-	})
+	}); err != nil {
+		return nil, err
+	}
 	oc.cacheSyncs = append(oc.cacheSyncs, ds.OrphanInformer.HasSynced)
 
-	ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    func(cur interface{}) { oc.enqueueForLonghornNode(cur) },
 		UpdateFunc: func(old, cur interface{}) { oc.enqueueForLonghornNode(cur) },
 		DeleteFunc: func(cur interface{}) { oc.enqueueForLonghornNode(cur) },
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	oc.cacheSyncs = append(oc.cacheSyncs, ds.NodeInformer.HasSynced)
 
-	return oc
+	return oc, nil
 }
 
 func (oc *OrphanController) enqueueOrphan(obj interface{}) {

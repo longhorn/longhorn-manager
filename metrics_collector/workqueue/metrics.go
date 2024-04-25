@@ -2,6 +2,7 @@ package workqueue
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/sirupsen/logrus"
 
 	"k8s.io/client-go/util/workqueue"
 
@@ -90,7 +91,9 @@ type prometheusMetricsProvider struct {
 
 func init() {
 	for _, m := range metrics {
-		registry.Register(m)
+		if err := registry.Register(m); err != nil {
+			logrus.WithError(err).WithField("metric", m).Error("Failed to register workqueue metrics")
+		}
 	}
 	workqueue.SetProvider(prometheusMetricsProvider{})
 }

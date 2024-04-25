@@ -58,7 +58,7 @@ func NewBackupTargetController(
 	kubeClient clientset.Interface,
 	controllerID string,
 	namespace string,
-	proxyConnCounter util.Counter) *BackupTargetController {
+	proxyConnCounter util.Counter) (*BackupTargetController, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 	// TODO: remove the wrapper when every clients have moved to use the clientset.
@@ -80,13 +80,16 @@ func NewBackupTargetController(
 		proxyConnCounter: proxyConnCounter,
 	}
 
-	ds.BackupTargetInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.BackupTargetInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    btc.enqueueBackupTarget,
 		UpdateFunc: func(old, cur interface{}) { btc.enqueueBackupTarget(cur) },
-	})
+	}); err != nil {
+		return nil, err
+	}
 	btc.cacheSyncs = append(btc.cacheSyncs, ds.BackupTargetInformer.HasSynced)
 
-	ds.EngineImageInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.EngineImageInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) {
 			oldEI := old.(*longhorn.EngineImage)
 			curEI := cur.(*longhorn.EngineImage)
@@ -98,10 +101,12 @@ func NewBackupTargetController(
 			}
 			btc.enqueueEngineImage(cur)
 		},
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	btc.cacheSyncs = append(btc.cacheSyncs, ds.EngineImageInformer.HasSynced)
 
-	return btc
+	return btc, nil
 }
 
 func (btc *BackupTargetController) enqueueBackupTarget(obj interface{}) {

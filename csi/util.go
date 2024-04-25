@@ -13,7 +13,6 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/pkg/errors"
-	"github.com/robfig/cron"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 
@@ -228,20 +227,6 @@ func getVolumeOptions(volOptions map[string]string) (*longhornclient.Volume, err
 		vol.BackendStoreDriver = driver
 	}
 	return vol, nil
-}
-
-func parseJSONRecurringJobs(jsonRecurringJobs string) ([]longhornclient.RecurringJob, error) {
-	recurringJobs := []longhornclient.RecurringJob{}
-	err := json.Unmarshal([]byte(jsonRecurringJobs), &recurringJobs)
-	if err != nil {
-		return nil, fmt.Errorf("invalid json format of recurringJobs: %v  %v", jsonRecurringJobs, err)
-	}
-	for _, recurringJob := range recurringJobs {
-		if _, err := cron.ParseStandard(recurringJob.Cron); err != nil {
-			return nil, fmt.Errorf("invalid cron format(%v): %v", recurringJob.Cron, err)
-		}
-	}
-	return recurringJobs, nil
 }
 
 func syncMountPointDirectory(targetPath string) error {

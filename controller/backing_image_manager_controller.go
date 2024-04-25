@@ -102,7 +102,7 @@ func NewBackingImageManagerController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
-	namespace, controllerID, serviceAccount, backingImageManagerImage string) *BackingImageManagerController {
+	namespace, controllerID, serviceAccount, backingImageManagerImage string) (*BackingImageManagerController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -129,37 +129,46 @@ func NewBackingImageManagerController(
 		versionUpdater: updateBackingImageManagerVersion,
 	}
 
-	ds.BackingImageManagerInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.BackingImageManagerInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueBackingImageManager,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueBackingImageManager(cur) },
 		DeleteFunc: c.enqueueBackingImageManager,
-	})
+	}); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.BackingImageManagerInformer.HasSynced)
 
-	ds.BackingImageInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.BackingImageInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueForBackingImage,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueForBackingImage(cur) },
 		DeleteFunc: c.enqueueForBackingImage,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.BackingImageInformer.HasSynced)
 
-	ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(oldObj, cur interface{}) { c.enqueueForLonghornNode(cur) },
 		DeleteFunc: c.enqueueForLonghornNode,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.NodeInformer.HasSynced)
 
-	ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+	if _, err = ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
 		FilterFunc: isBackingImageManagerPod,
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    c.enqueueForBackingImageManagerPod,
 			UpdateFunc: func(old, cur interface{}) { c.enqueueForBackingImageManagerPod(cur) },
 			DeleteFunc: c.enqueueForBackingImageManagerPod,
 		},
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.PodInformer.HasSynced)
 
-	return c
+	return c, nil
 }
 
 func (c *BackingImageManagerController) Run(workers int, stopCh <-chan struct{}) {

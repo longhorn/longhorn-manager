@@ -49,7 +49,7 @@ func NewKubernetesSecretController(
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
 	controllerID string,
-	namespace string) *KubernetesSecretController {
+	namespace string) (*KubernetesSecretController, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 	// TODO: remove the wrapper when every clients have moved to use the clientset.
@@ -69,7 +69,8 @@ func NewKubernetesSecretController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-kubernetes-secret-controller"}),
 	}
 
-	ds.SecretInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.SecretInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: ks.enqueueSecretChange,
 		UpdateFunc: func(old, cur interface{}) {
 			oldSecret := old.(*corev1.Secret)
@@ -83,10 +84,12 @@ func NewKubernetesSecretController(
 			ks.enqueueSecretChange(cur)
 		},
 		DeleteFunc: ks.enqueueSecretChange,
-	})
+	}); err != nil {
+		return nil, err
+	}
 	ks.cacheSyncs = append(ks.cacheSyncs, ds.SecretInformer.HasSynced)
 
-	return ks
+	return ks, nil
 }
 
 func (ks *KubernetesSecretController) Run(workers int, stopCh <-chan struct{}) {

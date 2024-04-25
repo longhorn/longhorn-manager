@@ -34,16 +34,6 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
-var (
-	// maxRetriesOnAcquireLockError should guarantee the cumulative retry time
-	// is larger than 150 seconds.
-	// With the current rate-limiter in use (5ms*2^(maxRetries-1)) the following numbers represent the times
-	// a deployment is going to be requeued:
-	//
-	// 5ms, 10ms, 20ms, ... , 81.92s, 163.84s
-	maxRetriesOnAcquireLockError = 16
-)
-
 type BackupController struct {
 	*baseController
 
@@ -73,7 +63,7 @@ func NewBackupController(
 	controllerID string,
 	namespace string,
 	proxyConnCounter util.Counter,
-) *BackupController {
+) (*BackupController, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 	// TODO: remove the wrapper when every clients have moved to use the clientset.
@@ -98,14 +88,17 @@ func NewBackupController(
 		proxyConnCounter: proxyConnCounter,
 	}
 
-	ds.BackupInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.BackupInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    bc.enqueueBackup,
 		UpdateFunc: func(old, cur interface{}) { bc.enqueueBackup(cur) },
 		DeleteFunc: bc.enqueueBackup,
-	})
+	}); err != nil {
+		return nil, err
+	}
 	bc.cacheSyncs = append(bc.cacheSyncs, ds.BackupInformer.HasSynced)
 
-	return bc
+	return bc, nil
 }
 
 func (bc *BackupController) enqueueBackup(obj interface{}) {
@@ -334,7 +327,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		if _, err := bc.ds.UpdateBackupStatus(backup); err != nil && apierrors.IsConflict(errors.Cause(err)) {
 			log.WithError(err).Debugf("Requeue %v due to conflict", backupName)
 			bc.enqueueBackup(backup)
-			err = nil
+			err = nil // nolint: ineffassign
 			return
 		}
 		if backup.Status.State == longhorn.BackupStateCompleted && existingBackupState != backup.Status.State {

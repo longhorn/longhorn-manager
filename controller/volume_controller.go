@@ -93,7 +93,7 @@ func NewVolumeController(
 	namespace,
 	controllerID, shareManagerImage string,
 	proxyConnCounter util.Counter,
-) *VolumeController {
+) (*VolumeController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -120,64 +120,81 @@ func NewVolumeController(
 
 	c.scheduler = scheduler.NewReplicaScheduler(ds)
 
-	ds.VolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.VolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueVolume,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueVolume(cur) },
 		DeleteFunc: c.enqueueVolume,
-	})
+	}); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.VolumeInformer.HasSynced)
 
-	ds.EngineInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.EngineInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueControlleeChange,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueControlleeChange(cur) },
 		DeleteFunc: c.enqueueControlleeChange,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.EngineInformer.HasSynced)
 
-	ds.ReplicaInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.ReplicaInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueControlleeChange,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueControlleeChange(cur) },
 		DeleteFunc: c.enqueueControlleeChange,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.ReplicaInformer.HasSynced)
 
-	ds.ShareManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.ShareManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueVolumesForShareManager,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueVolumesForShareManager(cur) },
 		DeleteFunc: c.enqueueVolumesForShareManager,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.ShareManagerInformer.HasSynced)
 
-	ds.BackupVolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.BackupVolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { c.enqueueVolumesForBackupVolume(cur) },
 		DeleteFunc: c.enqueueVolumesForBackupVolume,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.BackupVolumeInformer.HasSynced)
 
-	ds.BackingImageDataSourceInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.BackingImageDataSourceInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueVolumesForBackingImageDataSource,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueVolumesForBackingImageDataSource(cur) },
 		DeleteFunc: c.enqueueVolumesForBackingImageDataSource,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.BackingImageDataSourceInformer.HasSynced)
 
-	ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueNodeChange,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueNodeChange(cur) },
 		DeleteFunc: c.enqueueNodeChange,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.NodeInformer.HasSynced)
 
-	ds.SettingInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+	if _, err = ds.SettingInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
 		FilterFunc: isSettingRelatedToVolume,
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    c.enqueueSettingChange,
 			UpdateFunc: func(old, cur interface{}) { c.enqueueSettingChange(cur) },
 		},
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.SettingInformer.HasSynced)
 
-	return c
+	return c, nil
 }
 
 func (c *VolumeController) Run(workers int, stopCh <-chan struct{}) {
@@ -2128,10 +2145,6 @@ func isDataLocalityBestEffort(v *longhorn.Volume) bool {
 	return v.Spec.DataLocality == longhorn.DataLocalityBestEffort
 }
 
-func isDataLocalityStrictLocal(v *longhorn.Volume) bool {
-	return v.Spec.DataLocality == longhorn.DataLocalityStrictLocal
-}
-
 func isDataLocalityDisabled(v *longhorn.Volume) bool {
 	return string(v.Spec.DataLocality) == "" || v.Spec.DataLocality == longhorn.DataLocalityDisabled
 }
@@ -3750,7 +3763,9 @@ func (c *VolumeController) restoreVolumeRecurringJobs(v *longhorn.Volume) error 
 		if jobName, err = createRecurringJobNotExist(log, c.ds, v, jobName, &job); err != nil {
 			return err
 		}
-		restoreVolumeRecurringJobLabel(v, jobName, &job)
+		if err = restoreVolumeRecurringJobLabel(v, jobName, &job); err != nil {
+			return err
+		}
 	}
 
 	return nil

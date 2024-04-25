@@ -54,7 +54,7 @@ func NewRecurringJobController(
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
 	namespace, controllerID, serviceAccount, managerImage string,
-) *RecurringJobController {
+) (*RecurringJobController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -75,14 +75,17 @@ func NewRecurringJobController(
 		ds: ds,
 	}
 
-	ds.RecurringJobInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.RecurringJobInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueRecurringJob,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueRecurringJob(cur) },
 		DeleteFunc: c.enqueueRecurringJob,
-	})
+	}); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.RecurringJobInformer.HasSynced)
 
-	return c
+	return c, nil
 }
 
 func (c *RecurringJobController) enqueueRecurringJob(obj interface{}) {

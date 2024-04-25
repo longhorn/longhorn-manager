@@ -49,7 +49,7 @@ func NewKubernetesConfigMapController(
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
 	controllerID string,
-	namespace string) *KubernetesConfigMapController {
+	namespace string) (*KubernetesConfigMapController, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 	// TODO: remove the wrapper when every clients have moved to use the clientset.
@@ -69,25 +69,30 @@ func NewKubernetesConfigMapController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-kubernetes-configmap-controller"}),
 	}
 
-	ds.ConfigMapInformer.AddEventHandlerWithResyncPeriod(
+	var err error
+	if _, err = ds.ConfigMapInformer.AddEventHandlerWithResyncPeriod(
 		cache.ResourceEventHandlerFuncs{
 			AddFunc:    kc.enqueueConfigMapChange,
 			UpdateFunc: func(old, cur interface{}) { kc.enqueueConfigMapChange(cur) },
 			DeleteFunc: kc.enqueueConfigMapChange,
-		}, 0)
+		}, 0); err != nil {
+		return nil, err
+	}
 
-	ds.StorageClassInformer.AddEventHandlerWithResyncPeriod(
+	if _, err = ds.StorageClassInformer.AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: isLonghornStorageClass,
 			Handler: cache.ResourceEventHandlerFuncs{
 				UpdateFunc: func(old, cur interface{}) { kc.enqueueConfigMapForStorageClassChange(cur) },
 				DeleteFunc: kc.enqueueConfigMapForStorageClassChange,
 			},
-		}, 0)
+		}, 0); err != nil {
+		return nil, err
+	}
 
 	kc.cacheSyncs = append(kc.cacheSyncs, ds.ConfigMapInformer.HasSynced, ds.StorageClassInformer.HasSynced)
 
-	return kc
+	return kc, nil
 }
 
 func (kc *KubernetesConfigMapController) Run(workers int, stopCh <-chan struct{}) {

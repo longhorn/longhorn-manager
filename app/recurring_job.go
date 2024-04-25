@@ -478,17 +478,6 @@ func (job *Job) eventCreate(eventType, eventReason, message string) error {
 	return nil
 }
 
-func (job *Job) deleteSnapshots(names []string, volume *longhornclient.Volume, volumeAPI longhornclient.VolumeOperations) error {
-	for _, name := range names {
-		_, err := volumeAPI.ActionSnapshotDelete(volume, &longhornclient.SnapshotInput{Name: name})
-		if err != nil {
-			return err
-		}
-		job.logger.WithField("volume", volume.Name).Infof("Deleted snapshot %v", name)
-	}
-	return nil
-}
-
 func (job *Job) purgeSnapshots(volume *longhornclient.Volume, volumeAPI longhornclient.VolumeOperations) error {
 	// Trigger snapshot purge of the volume
 	if _, err := volumeAPI.ActionSnapshotPurge(volume); err != nil {
@@ -785,6 +774,7 @@ func (job *Job) UpdateVolumeStatus(v *longhorn.Volume) (*longhorn.Volume, error)
 	return job.lhClient.LonghornV1beta2().Volumes(job.namespace).UpdateStatus(context.TODO(), v, metav1.UpdateOptions{})
 }
 
+<<<<<<< HEAD
 // waitForVolumeState timeout in second
 func (job *Job) waitForVolumeState(state string, timeout int) (*longhornclient.Volume, error) {
 	volumeAPI := job.api.Volume
@@ -801,6 +791,20 @@ func (job *Job) waitForVolumeState(state string, timeout int) (*longhornclient.V
 	}
 
 	return nil, fmt.Errorf("timeout waiting for volume %v to be in state %v", volumeName, state)
+=======
+// GetSettingAsBool returns boolean of the setting value searching by name.
+func (job *Job) GetSettingAsBool(name types.SettingName) (bool, error) {
+	obj, err := job.lhClient.LonghornV1beta2().Settings(job.namespace).Get(context.TODO(), string(name), metav1.GetOptions{})
+	if err != nil {
+		return false, err
+	}
+	value, err := strconv.ParseBool(obj.Value)
+	if err != nil {
+		return false, err
+	}
+
+	return value, nil
+>>>>>>> 2306e97d (fix: golangci-lint error)
 }
 
 func filterSnapshotCRs(snapshotCRs []longhornclient.SnapshotCR, predicate func(snapshot longhornclient.SnapshotCR) bool) []longhornclient.SnapshotCR {

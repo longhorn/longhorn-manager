@@ -48,17 +48,20 @@ type EngineImageControllerTestCase struct {
 	expectedDaemonSet   *appv1.DaemonSet
 }
 
-func newTestEngineImageController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset, informerFactories *util.InformerFactories) *EngineImageController {
+func newTestEngineImageController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset, informerFactories *util.InformerFactories) (*EngineImageController, error) {
 	// Skip the Lister check that occurs on creation of an Instance Manager.
 	datastore.SkipListerCheck = true
 
 	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	logger := logrus.StandardLogger()
-	ic := NewEngineImageController(
+	ic, err := NewEngineImageController(
 		logger,
 		ds, scheme.Scheme,
 		kubeClient, TestNamespace, TestNode1, TestServiceAccount)
+	if err != nil {
+		return nil, err
+	}
 
 	fakeRecorder := record.NewFakeRecorder(100)
 	ic.eventRecorder = fakeRecorder
@@ -69,7 +72,7 @@ func newTestEngineImageController(lhClient *lhfake.Clientset, kubeClient *fake.C
 	ic.engineBinaryChecker = fakeEngineBinaryChecker
 	ic.engineImageVersionUpdater = fakeEngineImageUpdater
 
-	return ic
+	return ic, nil
 }
 
 func getEngineImageControllerTestTemplate() *EngineImageControllerTestCase {
@@ -211,7 +214,8 @@ func (s *TestSuite) TestEngineImage(c *C) {
 		vIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
 		eIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Engines().Informer().GetIndexer()
 
-		ic := newTestEngineImageController(lhClient, kubeClient, extentionClient, informerFactories)
+		ic, err := newTestEngineImageController(lhClient, kubeClient, extentionClient, informerFactories)
+		c.Assert(err, IsNil)
 
 		setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), newSetting(string(types.SettingNameDefaultEngineImage), tc.defaultEngineImage), metav1.CreateOptions{})
 		c.Assert(err, IsNil)

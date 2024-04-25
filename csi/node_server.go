@@ -709,6 +709,9 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 
 		return devicePath, nil
 	}()
+	if err != nil {
+		return nil, err
+	}
 
 	resizer := mount.NewResizeFs(utilexec.New())
 	if needsResize, err := resizer.NeedResize(devicePath, req.StagingTargetPath); err != nil {

@@ -47,7 +47,7 @@ func NewVolumeEvictionController(
 	kubeClient clientset.Interface,
 	controllerID string,
 	namespace string,
-) *VolumeEvictionController {
+) (*VolumeEvictionController, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 
@@ -63,16 +63,19 @@ func NewVolumeEvictionController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-volume-eviction-controller"}),
 	}
 
-	ds.VolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.VolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vec.enqueueVolume,
 		UpdateFunc: func(old, cur interface{}) { vec.enqueueVolume(cur) },
 		DeleteFunc: vec.enqueueVolume,
-	})
+	}); err != nil {
+		return nil, err
+	}
 	vec.cacheSyncs = append(vec.cacheSyncs, ds.VolumeInformer.HasSynced)
 
 	// TODO: do we need to watch replica CR?
 
-	return vec
+	return vec, nil
 }
 
 func (vec *VolumeEvictionController) enqueueVolume(obj interface{}) {
