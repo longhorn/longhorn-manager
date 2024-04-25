@@ -63,7 +63,7 @@ func NewBackupBackingImageController(
 	controllerID string,
 	namespace string,
 	proxyConnCounter util.Counter,
-) *BackupBackingImageController {
+) (*BackupBackingImageController, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 	// TODO: remove the wrapper when every clients have moved to use the clientset.
@@ -88,14 +88,17 @@ func NewBackupBackingImageController(
 		proxyConnCounter: proxyConnCounter,
 	}
 
-	ds.BackupBackingImageInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{ //nolint:errcheck
+	var err error
+	if _, err = ds.BackupBackingImageInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{ //nolint:errcheck
 		AddFunc:    bc.enqueueBackupBackingImage,
 		UpdateFunc: func(old, cur interface{}) { bc.enqueueBackupBackingImage(cur) },
 		DeleteFunc: bc.enqueueBackupBackingImage,
-	})
+	}); err != nil {
+		return nil, err
+	}
 	bc.cacheSyncs = append(bc.cacheSyncs, ds.BackupBackingImageInformer.HasSynced)
 
-	return bc
+	return bc, nil
 }
 
 func (bc *BackupBackingImageController) enqueueBackupBackingImage(obj interface{}) {

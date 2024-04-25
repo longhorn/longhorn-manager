@@ -6,7 +6,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -285,7 +285,7 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 								},
 							},
 							SecurityContext: &corev1.SecurityContext{
-								Privileged: pointer.Bool(true),
+								Privileged: ptr.To(true),
 							},
 							Args: []string{
 								"--v=2",
@@ -328,13 +328,13 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 						{
 							Name: types.CSIPluginName,
 							SecurityContext: &corev1.SecurityContext{
-								Privileged: pointer.Bool(true),
+								Privileged: ptr.To(true),
 								Capabilities: &corev1.Capabilities{
 									Add: []corev1.Capability{
 										"SYS_ADMIN",
 									},
 								},
-								AllowPrivilegeEscalation: pointer.Bool(true),
+								AllowPrivilegeEscalation: ptr.To(true),
 							},
 							Image:           managerImage,
 							ImagePullPolicy: imagePullPolicy,

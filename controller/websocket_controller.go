@@ -41,40 +41,67 @@ type WebsocketController struct {
 func NewWebsocketController(
 	logger logrus.FieldLogger,
 	ds *datastore.DataStore,
-) *WebsocketController {
+) (*WebsocketController, error) {
 
 	wc := &WebsocketController{
 		baseController: newBaseController("longhorn-websocket", logger),
 	}
 
-	ds.VolumeInformer.AddEventHandler(wc.notifyWatchersHandler("volume"))
+	var err error
+	if _, err = ds.VolumeInformer.AddEventHandler(wc.notifyWatchersHandler("volume")); err != nil {
+		return nil, err
+	}
 	wc.cacheSyncs = append(wc.cacheSyncs, ds.VolumeInformer.HasSynced)
-	ds.EngineInformer.AddEventHandler(wc.notifyWatchersHandler("engine"))
+	if _, err = ds.EngineInformer.AddEventHandler(wc.notifyWatchersHandler("engine")); err != nil {
+		return nil, err
+	}
 	wc.cacheSyncs = append(wc.cacheSyncs, ds.EngineInformer.HasSynced)
-	ds.ReplicaInformer.AddEventHandler(wc.notifyWatchersHandler("replica"))
+	if _, err = ds.ReplicaInformer.AddEventHandler(wc.notifyWatchersHandler("replica")); err != nil {
+		return nil, err
+	}
 	wc.cacheSyncs = append(wc.cacheSyncs, ds.ReplicaInformer.HasSynced)
-	ds.SettingInformer.AddEventHandler(wc.notifyWatchersHandler("setting"))
+	if _, err = ds.SettingInformer.AddEventHandler(wc.notifyWatchersHandler("setting")); err != nil {
+		return nil, err
+	}
 	wc.cacheSyncs = append(wc.cacheSyncs, ds.SettingInformer.HasSynced)
-	ds.EngineImageInformer.AddEventHandler(wc.notifyWatchersHandler("engineImage"))
+	if _, err = ds.EngineImageInformer.AddEventHandler(wc.notifyWatchersHandler("engineImage")); err != nil {
+		return nil, err
+	}
 	wc.cacheSyncs = append(wc.cacheSyncs, ds.EngineImageInformer.HasSynced)
-	ds.BackingImageInformer.AddEventHandler(wc.notifyWatchersHandler("backingImage"))
+	if _, err = ds.BackingImageInformer.AddEventHandler(wc.notifyWatchersHandler("backingImage")); err != nil {
+		return nil, err
+	}
 	wc.cacheSyncs = append(wc.cacheSyncs, ds.BackingImageInformer.HasSynced)
-	ds.NodeInformer.AddEventHandler(wc.notifyWatchersHandler("node"))
+	if _, err = ds.NodeInformer.AddEventHandler(wc.notifyWatchersHandler("node")); err != nil {
+		return nil, err
+	}
 	wc.cacheSyncs = append(wc.cacheSyncs, ds.NodeInformer.HasSynced)
-	ds.BackupTargetInformer.AddEventHandler(wc.notifyWatchersHandler("backupTarget"))
+	if _, err = ds.BackupTargetInformer.AddEventHandler(wc.notifyWatchersHandler("backupTarget")); err != nil {
+		return nil, err
+	}
 	wc.cacheSyncs = append(wc.cacheSyncs, ds.BackupTargetInformer.HasSynced)
-	ds.BackupVolumeInformer.AddEventHandler(wc.notifyWatchersHandler("backupVolume"))
+	if _, err = ds.BackupVolumeInformer.AddEventHandler(wc.notifyWatchersHandler("backupVolume")); err != nil {
+		return nil, err
+	}
 	wc.cacheSyncs = append(wc.cacheSyncs, ds.BackupVolumeInformer.HasSynced)
-	ds.BackupInformer.AddEventHandler(wc.notifyWatchersHandler("backup"))
+	if _, err = ds.BackupInformer.AddEventHandler(wc.notifyWatchersHandler("backup")); err != nil {
+		return nil, err
+	}
 	wc.cacheSyncs = append(wc.cacheSyncs, ds.BackupInformer.HasSynced)
-	ds.RecurringJobInformer.AddEventHandler(wc.notifyWatchersHandler("recurringJob"))
+	if _, err = ds.RecurringJobInformer.AddEventHandler(wc.notifyWatchersHandler("recurringJob")); err != nil {
+		return nil, err
+	}
 	wc.cacheSyncs = append(wc.cacheSyncs, ds.RecurringJobInformer.HasSynced)
-	ds.SystemBackupInformer.AddEventHandler(wc.notifyWatchersHandler("systemBackup"))
+	if _, err = ds.SystemBackupInformer.AddEventHandler(wc.notifyWatchersHandler("systemBackup")); err != nil {
+		return nil, err
+	}
 	wc.cacheSyncs = append(wc.cacheSyncs, ds.SystemBackupInformer.HasSynced)
-	ds.SystemRestoreInformer.AddEventHandler(wc.notifyWatchersHandler("systemRestore"))
+	if _, err = ds.SystemRestoreInformer.AddEventHandler(wc.notifyWatchersHandler("systemRestore")); err != nil {
+		return nil, err
+	}
 	wc.cacheSyncs = append(wc.cacheSyncs, ds.SystemRestoreInformer.HasSynced)
 
-	return wc
+	return wc, nil
 }
 
 func (wc *WebsocketController) NewWatcher(resources ...string) *Watcher {

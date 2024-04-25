@@ -90,7 +90,7 @@ func NewSupportBundleController(
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
 	controllerID string,
-	namespace, serviceAccount string) *SupportBundleController {
+	namespace, serviceAccount string) (*SupportBundleController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -114,14 +114,17 @@ func NewSupportBundleController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-support-bundle-controller"}),
 	}
 
-	ds.SupportBundleInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.SupportBundleInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueue,
 		UpdateFunc: func(old, cur interface{}) { c.enqueue(cur) },
 		DeleteFunc: c.enqueue,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.SupportBundleInformer.HasSynced)
 
-	return c
+	return c, nil
 }
 
 func (c *SupportBundleController) enqueue(obj interface{}) {
@@ -213,10 +216,16 @@ func (c *SupportBundleController) handleStatusUpdate(record *supportBundleRecord
 			break
 		}
 
-		c.updateSupportBundleRecord(record,
+		err = c.updateSupportBundleRecord(record,
 			supportBundleRecordNormal, longhorn.SupportBundleStatePurging,
 			constant.EventReasonDeleting, SupportBundleMsgPurging,
 		)
+		if err != nil {
+			log.WithError(err).
+				WithFields(logrus.Fields{
+					"record": record,
+				}).Warn("Failed to update support bundle record")
+		}
 		fallthrough
 
 	case supportBundleRecordNormal:
@@ -336,10 +345,13 @@ func (c *SupportBundleController) reconcile(name string) (err error) {
 		}
 
 		supportBundle.Status.Image = supportBundleManagerImage
-		c.updateSupportBundleRecord(record,
+		err = c.updateSupportBundleRecord(record,
 			supportBundleRecordNormal, longhorn.SupportBundleStateStarted,
 			constant.EventReasonStart, fmt.Sprintf(longhorn.SupportBundleMsgInitFmt, supportBundle.Name),
 		)
+		if err != nil {
+			log.WithError(err).WithFields(logrus.Fields{"record": record}).Warn("Failed to update support bundle record")
+		}
 
 	case longhorn.SupportBundleStateStarted:
 		var supportBundleManagerDeployment *appsv1.Deployment
@@ -363,10 +375,13 @@ func (c *SupportBundleController) reconcile(name string) (err error) {
 			return nil
 		}
 
-		c.updateSupportBundleRecord(record,
+		err = c.updateSupportBundleRecord(record,
 			supportBundleRecordNormal, longhorn.SupportBundleStateGenerating,
 			constant.EventReasonCreate, fmt.Sprintf(longhorn.SupportBundleMsgCreateManagerFmt, supportBundleManagerDeployment.Name),
 		)
+		if err != nil {
+			log.WithError(err).WithFields(logrus.Fields{"record": record}).Warn("Failed to update support bundle record")
+		}
 
 	case longhorn.SupportBundleStateGenerating:
 		var supportBundleManager *SupportBundleManager
@@ -389,10 +404,13 @@ func (c *SupportBundleController) reconcile(name string) (err error) {
 			supportBundle.Status.Filename,
 			fmt.Sprintf(types.SupportBundleURLDownloadFmt, supportBundleManager.podIP, types.SupportBundleURLPort),
 		)
-		c.updateSupportBundleRecord(record,
+		err = c.updateSupportBundleRecord(record,
 			supportBundleRecordNormal, longhorn.SupportBundleStateReady,
 			constant.EventReasonCreate, message,
 		)
+		if err != nil {
+			log.WithError(err).WithFields(logrus.Fields{"record": record}).Warn("Failed to update support bundle record")
+		}
 
 	case longhorn.SupportBundleStateDeleting:
 		log.Info("Deleting SupportBundle")

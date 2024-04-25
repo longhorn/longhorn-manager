@@ -83,7 +83,8 @@ type BackupStoreTimer struct {
 	ds           *datastore.DataStore
 
 	pollInterval time.Duration
-	stopCh       chan struct{}
+	ctx          context.Context
+	cancel       context.CancelFunc
 }
 
 type Version struct {
@@ -112,7 +113,7 @@ func NewSettingController(
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
 	metricsClient metricsclientset.Interface,
-	namespace, controllerID, version string) *SettingController {
+	namespace, controllerID, version string) (*SettingController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -134,26 +135,33 @@ func NewSettingController(
 		version: version,
 	}
 
-	ds.SettingInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.SettingInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.enqueueSetting,
 		UpdateFunc: func(old, cur interface{}) { sc.enqueueSetting(cur) },
 		DeleteFunc: sc.enqueueSetting,
-	}, settingControllerResyncPeriod)
+	}, settingControllerResyncPeriod); err != nil {
+		return nil, err
+	}
 	sc.cacheSyncs = append(sc.cacheSyncs, ds.SettingInformer.HasSynced)
 
-	ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.enqueueSettingForNode,
 		UpdateFunc: func(old, cur interface{}) { sc.enqueueSettingForNode(cur) },
 		DeleteFunc: sc.enqueueSettingForNode,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	sc.cacheSyncs = append(sc.cacheSyncs, ds.NodeInformer.HasSynced)
 
-	ds.BackupTargetInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.BackupTargetInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		DeleteFunc: sc.enqueueSettingForBackupTarget,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	sc.cacheSyncs = append(sc.cacheSyncs, ds.BackupTargetInformer.HasSynced)
 
-	return sc
+	return sc, nil
 }
 
 func (sc *SettingController) Run(stopCh <-chan struct{}) {
@@ -443,6 +451,7 @@ func (sc *SettingController) syncBackupTarget() (err error) {
 		stopTimer()
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	// Start backup store timer
 	sc.bsTimer = &BackupStoreTimer{
 		logger:       sc.logger.WithField("component", "backup-store-timer"),
@@ -450,7 +459,8 @@ func (sc *SettingController) syncBackupTarget() (err error) {
 		ds:           sc.ds,
 
 		pollInterval: pollInterval,
-		stopCh:       make(chan struct{}),
+		ctx:          ctx,
+		cancel:       cancel,
 	}
 	go sc.bsTimer.Start()
 	return nil
@@ -1112,7 +1122,7 @@ func (bst *BackupStoreTimer) Start() {
 	})
 	log.Info("Starting backup store timer")
 
-	wait.PollUntil(bst.pollInterval, func() (done bool, err error) {
+	if err := wait.PollUntilContextCancel(bst.ctx, bst.pollInterval, false, func(context.Context) (done bool, err error) {
 		backupTarget, err := bst.ds.GetBackupTarget(types.DefaultBackupTargetName)
 		if err != nil {
 			log.WithError(err).Errorf("Failed to get %s backup target", types.DefaultBackupTargetName)
@@ -1125,7 +1135,9 @@ func (bst *BackupStoreTimer) Start() {
 			log.WithError(err).Warn("Failed to updating backup target")
 		}
 		return false, nil
-	}, bst.stopCh)
+	}); err != nil {
+		log.WithError(err).Error("Failed to sync backup target")
+	}
 
 	log.Infof("Stopped backup store timer")
 }
@@ -1134,7 +1146,7 @@ func (bst *BackupStoreTimer) Stop() {
 	if bst == nil {
 		return
 	}
-	bst.stopCh <- struct{}{}
+	bst.cancel()
 }
 
 func (sc *SettingController) syncUpgradeChecker() error {

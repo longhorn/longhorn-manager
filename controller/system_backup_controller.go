@@ -116,7 +116,7 @@ func NewSystemBackupController(
 	kubeClient clientset.Interface,
 	namespace string,
 	controllerID string,
-	managerImage string) *SystemBackupController {
+	managerImage string) (*SystemBackupController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -138,14 +138,17 @@ func NewSystemBackupController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: SystemBackupControllerName + "-controller"}),
 	}
 
-	ds.SystemBackupInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.SystemBackupInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueue,
 		UpdateFunc: func(old, cur interface{}) { c.enqueue(cur) },
 		DeleteFunc: c.enqueue,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.SystemBackupInformer.HasSynced)
 
-	return c
+	return c, nil
 }
 
 func (c *SystemBackupController) enqueue(obj interface{}) {
@@ -211,7 +214,7 @@ func (c *SystemBackupController) handleErr(err error, key interface{}) {
 	c.queue.Forget(key)
 }
 
-func (c *SystemBackupController) handleStatusUpdate(record *systemBackupRecord, systemBackup *longhorn.SystemBackup, existingSystemBackup *longhorn.SystemBackup, err error, log logrus.FieldLogger) {
+func (c *SystemBackupController) handleStatusUpdate(record *systemBackupRecord, systemBackup *longhorn.SystemBackup, existingSystemBackup *longhorn.SystemBackup, err error, log logrus.FieldLogger) { // nolint: staticcheck
 	switch record.recordType {
 	case systemBackupRecordTypeError:
 		c.recordErrorState(record, systemBackup)
@@ -223,10 +226,10 @@ func (c *SystemBackupController) handleStatusUpdate(record *systemBackupRecord, 
 
 	if !reflect.DeepEqual(existingSystemBackup.Status, systemBackup.Status) {
 		systemBackup.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
-		if _, err = c.ds.UpdateSystemBackupStatus(systemBackup); err != nil {
+		if _, err = c.ds.UpdateSystemBackupStatus(systemBackup); err != nil { // nolint: staticcheck
 			log.WithError(err).Debugf("Requeue %v due to error", systemBackup.Name)
 			c.enqueue(systemBackup)
-			err = nil
+			err = nil // nolint: ineffassign
 			return
 		}
 	}
@@ -430,7 +433,8 @@ func (c *SystemBackupController) reconcile(name string, backupTargetClient engin
 			return nil
 		}
 
-		go c.WaitForVolumeBackupToComplete(backups, systemBackup)
+		// TODO: handle error check
+		go c.WaitForVolumeBackupToComplete(backups, systemBackup) // nolint: errcheck
 
 	case longhorn.SystemBackupStateGenerating:
 		go c.GenerateSystemBackup(systemBackup, tempBackupArchivePath, tempBackupDir)
@@ -1177,10 +1181,6 @@ func (c *SystemBackupController) generateSystemBackupYAMLsForAPIExtensions(dir s
 	}
 
 	return getObjectsAndPrintToYAML(dir, "customresourcedefinitions", c.ds.GetAllLonghornCustomResourceDefinitions, scheme)
-}
-
-func (c *SystemBackupController) getVolumeBackupName(systemBackupName, volumeName string) string {
-	return fmt.Sprintf("%s-%s-%s", SystemBackupControllerName, systemBackupName, volumeName)
 }
 
 type GetRuntimeObjectListFunc func() (runtime.Object, error)

@@ -291,28 +291,6 @@ func cleanup(kubeClient *clientset.Clientset, obj runtime.Object, resource strin
 	return util.WaitForResourceDeletion(kubeClient, name, namespace, resource, maxRetryForDeletion, getFunc)
 }
 
-func serviceCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) error {
-	o, ok := obj.(*corev1.Service)
-	if !ok {
-		return fmt.Errorf("failed to convert back the object")
-	}
-	_, err := kubeClient.CoreV1().Services(o.Namespace).Create(context.TODO(), o, metav1.CreateOptions{})
-	return err
-}
-
-func serviceDeleteFunc(kubeClient *clientset.Clientset, name, namespace string) error {
-	propagation := metav1.DeletePropagationForeground
-	return kubeClient.CoreV1().Services(namespace).Delete(
-		context.TODO(),
-		name,
-		metav1.DeleteOptions{PropagationPolicy: &propagation},
-	)
-}
-
-func serviceGetFunc(kubeClient *clientset.Clientset, name, namespace string) (runtime.Object, error) {
-	return kubeClient.CoreV1().Services(namespace).Get(context.TODO(), name, metav1.GetOptions{})
-}
-
 func deploymentCreateFunc(kubeClient *clientset.Clientset, obj runtime.Object) error {
 	o, ok := obj.(*appsv1.Deployment)
 	if !ok {
@@ -382,6 +360,9 @@ func CheckMountPropagationWithNode(managerURL string) error {
 		return err
 	}
 	nodeCollection, err := apiClient.Node.List(&longhornclient.ListOpts{})
+	if err != nil {
+		return err
+	}
 	for _, node := range nodeCollection.Data {
 		con := node.Conditions[string(longhorn.NodeConditionTypeMountPropagation)]
 		var condition map[string]interface{}

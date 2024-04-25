@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/sirupsen/logrus"
 
 	clientmetrics "k8s.io/client-go/tools/metrics"
 
@@ -54,18 +55,18 @@ var (
 		},
 		[]string{"code", "method", "host"},
 	)
+
+	metrics = []prometheus.Collector{
+		requestLatency, requestResult, rateLimiterLatency,
+	}
 )
 
 func init() {
-	registerClientMetrics()
-}
-
-// registerClientMetrics sets up the client latency metrics from client-go
-func registerClientMetrics() {
-	// register the metrics with our registry
-	registry.Register(requestLatency)
-	registry.Register(requestResult)
-	registry.Register(rateLimiterLatency)
+	for _, m := range metrics {
+		if err := registry.Register(m); err != nil {
+			logrus.WithError(err).WithField("metric", m).Error("Failed to register client metrics")
+		}
+	}
 
 	// register the metrics with client-go
 	clientmetrics.Register(clientmetrics.RegisterOpts{
