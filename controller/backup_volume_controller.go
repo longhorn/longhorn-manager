@@ -57,7 +57,7 @@ func NewBackupVolumeController(
 	controllerID string,
 	namespace string,
 	proxyConnCounter util.Counter,
-) *BackupVolumeController {
+) (*BackupVolumeController, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 	// TODO: remove the wrapper when every clients have moved to use the clientset.
@@ -79,14 +79,17 @@ func NewBackupVolumeController(
 		proxyConnCounter: proxyConnCounter,
 	}
 
-	ds.BackupVolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.BackupVolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    bvc.enqueueBackupVolume,
 		UpdateFunc: func(old, cur interface{}) { bvc.enqueueBackupVolume(cur) },
 		DeleteFunc: bvc.enqueueBackupVolume,
-	})
+	}); err != nil {
+		return nil, err
+	}
 	bvc.cacheSyncs = append(bvc.cacheSyncs, ds.BackupVolumeInformer.HasSynced)
 
-	return bvc
+	return bvc, nil
 }
 
 func (bvc *BackupVolumeController) enqueueBackupVolume(obj interface{}) {

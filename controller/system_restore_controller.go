@@ -79,7 +79,7 @@ func NewSystemRestoreController(
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
 	namespace string,
-	controllerID string) *SystemRestoreController {
+	controllerID string) (*SystemRestoreController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -100,14 +100,17 @@ func NewSystemRestoreController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: SystemRestoreControllerName + "-controller"}),
 	}
 
-	ds.SystemRestoreInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.SystemRestoreInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueSystemRestore,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueSystemRestore(cur) },
 		DeleteFunc: c.enqueueSystemRestore,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.SystemRestoreInformer.HasSynced)
 
-	return c
+	return c, nil
 }
 
 func (c *SystemRestoreController) enqueueSystemRestore(obj interface{}) {
@@ -314,7 +317,7 @@ func (c *SystemRestoreController) handleStatusUpdate(record *systemRestoreRecord
 		if err != nil {
 			log.WithError(err).Debugf("Requeue %v due to error", systemRestore.Name)
 			c.enqueueSystemRestore(systemRestore)
-			err = nil
+			err = nil // nolint: ineffassign
 			return
 		}
 		systemRestore = updated

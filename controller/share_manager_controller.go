@@ -56,7 +56,7 @@ func NewShareManagerController(
 	scheme *runtime.Scheme,
 
 	kubeClient clientset.Interface,
-	namespace, controllerID, serviceAccount string) *ShareManagerController {
+	namespace, controllerID, serviceAccount string) (*ShareManagerController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -79,34 +79,41 @@ func NewShareManagerController(
 		ds: ds,
 	}
 
+	var err error
 	// need shared volume manager informer
-	ds.ShareManagerInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.ShareManagerInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueShareManager,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueShareManager(cur) },
 		DeleteFunc: c.enqueueShareManager,
-	})
+	}); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.ShareManagerInformer.HasSynced)
 
 	// need information for volumes, to be able to claim them
-	ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueShareManagerForVolume,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueShareManagerForVolume(cur) },
 		DeleteFunc: c.enqueueShareManagerForVolume,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.VolumeInformer.HasSynced)
 
 	// we are only interested in pods for which we are responsible for managing
-	ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+	if _, err = ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
 		FilterFunc: isShareManagerPod,
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    c.enqueueShareManagerForPod,
 			UpdateFunc: func(old, cur interface{}) { c.enqueueShareManagerForPod(cur) },
 			DeleteFunc: c.enqueueShareManagerForPod,
 		},
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.PodInformer.HasSynced)
 
-	return c
+	return c, nil
 }
 
 func getLoggerForShareManager(logger logrus.FieldLogger, sm *longhorn.ShareManager) *logrus.Entry {

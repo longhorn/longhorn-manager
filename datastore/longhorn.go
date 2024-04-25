@@ -488,7 +488,7 @@ func (s *DataStore) AreAllVolumesDetached(dataEngine longhorn.DataEngineType) (b
 
 		imMap := types.ConsolidateInstanceManagers(engineInstanceManagers, aioInstanceManagers)
 		for _, instanceManager := range imMap {
-			if len(instanceManager.Status.InstanceEngines)+len(instanceManager.Status.Instances) > 0 {
+			if len(instanceManager.Status.InstanceEngines)+len(instanceManager.Status.Instances) > 0 { // nolint: staticcheck
 				return false, ims, err
 			}
 
@@ -2650,8 +2650,8 @@ func (s *DataStore) GetRandomReadyNodeDisk() (*longhorn.Node, string, error) {
 		return nil, "", errors.Wrapf(err, "failed to get random ready node disk")
 	}
 
-	rand.Seed(time.Now().UnixNano())
-	rand.Shuffle(len(nodes), func(i, j int) { nodes[i], nodes[j] = nodes[j], nodes[i] })
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	r.Shuffle(len(nodes), func(i, j int) { nodes[i], nodes[j] = nodes[j], nodes[i] })
 	for _, node := range nodes {
 		if !node.Spec.AllowScheduling {
 			continue

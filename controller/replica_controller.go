@@ -64,7 +64,7 @@ func NewReplicaController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
-	namespace string, controllerID string) *ReplicaController {
+	namespace string, controllerID string) (*ReplicaController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -87,7 +87,8 @@ func NewReplicaController(
 	}
 	rc.instanceHandler = NewInstanceHandler(ds, rc, rc.eventRecorder)
 
-	ds.ReplicaInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.ReplicaInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: rc.enqueueReplica,
 		UpdateFunc: func(old, cur interface{}) {
 			rc.enqueueReplica(cur)
@@ -99,36 +100,46 @@ func NewReplicaController(
 			}
 		},
 		DeleteFunc: rc.enqueueReplica,
-	})
+	}); err != nil {
+		return nil, err
+	}
 	rc.cacheSyncs = append(rc.cacheSyncs, ds.ReplicaInformer.HasSynced)
 
-	ds.InstanceManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.InstanceManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    rc.enqueueInstanceManagerChange,
 		UpdateFunc: func(old, cur interface{}) { rc.enqueueInstanceManagerChange(cur) },
 		DeleteFunc: rc.enqueueInstanceManagerChange,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	rc.cacheSyncs = append(rc.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
 
-	ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    rc.enqueueNodeAddOrDelete,
 		UpdateFunc: rc.enqueueNodeChange,
 		DeleteFunc: rc.enqueueNodeAddOrDelete,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	rc.cacheSyncs = append(rc.cacheSyncs, ds.NodeInformer.HasSynced)
 
-	ds.BackingImageInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.BackingImageInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    rc.enqueueBackingImageChange,
 		UpdateFunc: func(old, cur interface{}) { rc.enqueueBackingImageChange(cur) },
 		DeleteFunc: rc.enqueueBackingImageChange,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	rc.cacheSyncs = append(rc.cacheSyncs, ds.BackingImageInformer.HasSynced)
 
-	ds.SettingInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.SettingInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { rc.enqueueSettingChange(cur) },
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	rc.cacheSyncs = append(rc.cacheSyncs, ds.SettingInformer.HasSynced)
 
-	return rc
+	return rc, nil
 }
 
 func (rc *ReplicaController) Run(workers int, stopCh <-chan struct{}) {
@@ -285,7 +296,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 	}()
 
 	// Deprecated and no longer used by Longhorn, but maybe someone's external tooling uses it? Remove in v1.7.0.
-	replica.Status.EvictionRequested = replica.Spec.EvictionRequested
+	replica.Status.EvictionRequested = replica.Spec.EvictionRequested // nolint: staticcheck
 
 	return rc.instanceHandler.ReconcileInstanceState(replica, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus)
 }
@@ -566,7 +577,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	// Directly remove the instance from the map. Best effort.
 	if im.Status.APIVersion == engineapi.IncompatibleInstanceManagerAPIVersion {
 		delete(im.Status.InstanceReplicas, r.Name)
-		delete(im.Status.Instances, r.Name)
+		delete(im.Status.Instances, r.Name) // nolint: staticcheck
 		if _, err := rc.ds.UpdateInstanceManagerStatus(im); err != nil {
 			return err
 		}

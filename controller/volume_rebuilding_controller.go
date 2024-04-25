@@ -47,7 +47,7 @@ func NewVolumeRebuildingController(
 	kubeClient clientset.Interface,
 	controllerID string,
 	namespace string,
-) *VolumeRebuildingController {
+) (*VolumeRebuildingController, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 
@@ -63,14 +63,17 @@ func NewVolumeRebuildingController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-volume-rebuilding-controller"}),
 	}
 
-	ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vbc.enqueueVolume,
 		UpdateFunc: func(old, cur interface{}) { vbc.enqueueVolume(cur) },
 		DeleteFunc: vbc.enqueueVolume,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	vbc.cacheSyncs = append(vbc.cacheSyncs, ds.VolumeInformer.HasSynced)
 
-	return vbc
+	return vbc, nil
 }
 
 func (vbc *VolumeRebuildingController) enqueueVolume(obj interface{}) {

@@ -112,10 +112,10 @@ func fixupVolumes(namespace string, lhClient *lhclientset.Clientset) error {
 			obj.Spec.NodeSelector = []string{}
 		}
 		if obj.Spec.RecurringJobs == nil {
-			obj.Spec.RecurringJobs = make([]longhornV1beta1.VolumeRecurringJobSpec, 0)
+			obj.Spec.RecurringJobs = make([]longhornV1beta1.VolumeRecurringJobSpec, 0) // nolint: staticcheck
 		}
 		for i, src := range obj.Spec.RecurringJobs {
-			dst := longhornV1beta1.VolumeRecurringJobSpec{}
+			dst := longhornV1beta1.VolumeRecurringJobSpec{} // nolint: staticcheck
 			if err := copier.Copy(&dst, &src); err != nil {
 				return err
 			}

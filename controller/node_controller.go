@@ -78,7 +78,7 @@ func NewNodeController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
-	namespace, controllerID string) *NodeController {
+	namespace, controllerID string) (*NodeController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -105,27 +105,32 @@ func NewNodeController(
 
 	nc.scheduler = scheduler.NewReplicaScheduler(ds)
 
+	var err error
 	// We want to check the real time usage of disk on nodes.
 	// Therefore, we add a small resync for the NodeInformer here
-	ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    nc.enqueueNode,
 		UpdateFunc: func(old, cur interface{}) { nc.enqueueNode(cur) },
 		DeleteFunc: nc.enqueueNode,
-	}, nodeControllerResyncPeriod)
+	}, nodeControllerResyncPeriod); err != nil {
+		return nil, err
+	}
 
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.NodeInformer.HasSynced)
 
-	ds.SettingInformer.AddEventHandlerWithResyncPeriod(
+	if _, err = ds.SettingInformer.AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: nc.isResponsibleForSetting,
 			Handler: cache.ResourceEventHandlerFuncs{
 				AddFunc:    nc.enqueueSetting,
 				UpdateFunc: func(old, cur interface{}) { nc.enqueueSetting(cur) },
 			},
-		}, 0)
+		}, 0); err != nil {
+		return nil, err
+	}
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.SettingInformer.HasSynced)
 
-	ds.ReplicaInformer.AddEventHandlerWithResyncPeriod(
+	if _, err = ds.ReplicaInformer.AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: nc.isResponsibleForReplica,
 			Handler: cache.ResourceEventHandlerFuncs{
@@ -133,19 +138,23 @@ func NewNodeController(
 				UpdateFunc: func(old, cur interface{}) { nc.enqueueReplica(cur) },
 				DeleteFunc: nc.enqueueReplica,
 			},
-		}, 0)
+		}, 0); err != nil {
+		return nil, err
+	}
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.ReplicaInformer.HasSynced)
 
-	ds.SnapshotInformer.AddEventHandlerWithResyncPeriod(
+	if _, err = ds.SnapshotInformer.AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: nc.isResponsibleForSnapshot,
 			Handler: cache.ResourceEventHandlerFuncs{
 				UpdateFunc: func(old, cur interface{}) { nc.enqueueSnapshot(old, cur) },
 			},
-		}, 0)
+		}, 0); err != nil {
+		return nil, err
+	}
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.SnapshotInformer.HasSynced)
 
-	ds.PodInformer.AddEventHandlerWithResyncPeriod(
+	if _, err = ds.PodInformer.AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: isManagerPod,
 			Handler: cache.ResourceEventHandlerFuncs{
@@ -153,16 +162,20 @@ func NewNodeController(
 				UpdateFunc: func(old, cur interface{}) { nc.enqueueManagerPod(cur) },
 				DeleteFunc: nc.enqueueManagerPod,
 			},
-		}, 0)
+		}, 0); err != nil {
+		return nil, err
+	}
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.PodInformer.HasSynced)
 
-	ds.KubeNodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.KubeNodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { nc.enqueueKubernetesNode(cur) },
 		DeleteFunc: nc.enqueueKubernetesNode,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.KubeNodeInformer.HasSynced)
 
-	return nc
+	return nc, nil
 }
 
 func (nc *NodeController) isResponsibleForSetting(obj interface{}) bool {
@@ -1553,7 +1566,7 @@ func isDiskMatched(node *longhorn.Node, collectedDiskInfo map[string]*monitor.Co
 func (nc *NodeController) createSnapshotMonitor() (mon monitor.Monitor, err error) {
 	defer func() {
 		if err == nil {
-			nc.snapshotMonitor.UpdateConfiguration(map[string]interface{}{})
+			err = nc.snapshotMonitor.UpdateConfiguration(map[string]interface{}{})
 		}
 	}()
 

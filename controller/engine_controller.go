@@ -129,7 +129,7 @@ func NewEngineController(
 	kubeClient clientset.Interface,
 	engines engineapi.EngineClientCollection,
 	namespace string, controllerID string,
-	proxyConnCounter util.Counter) *EngineController {
+	proxyConnCounter util.Counter) (*EngineController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -158,21 +158,26 @@ func NewEngineController(
 	}
 	ec.instanceHandler = NewInstanceHandler(ds, ec, ec.eventRecorder)
 
-	ds.EngineInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.EngineInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    ec.enqueueEngine,
 		UpdateFunc: func(old, cur interface{}) { ec.enqueueEngine(cur) },
 		DeleteFunc: ec.enqueueEngine,
-	})
+	}); err != nil {
+		return nil, err
+	}
 	ec.cacheSyncs = append(ec.cacheSyncs, ds.EngineInformer.HasSynced)
 
-	ds.InstanceManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.InstanceManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    ec.enqueueInstanceManagerChange,
 		UpdateFunc: func(old, cur interface{}) { ec.enqueueInstanceManagerChange(cur) },
 		DeleteFunc: ec.enqueueInstanceManagerChange,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	ec.cacheSyncs = append(ec.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
 
-	return ec
+	return ec, nil
 }
 
 func (ec *EngineController) Run(workers int, stopCh <-chan struct{}) {
@@ -586,7 +591,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 		}
 
 		// Directly remove the instance from the map. Best effort.
-		delete(im.Status.Instances, e.Name)
+		delete(im.Status.Instances, e.Name) // nolint: staticcheck
 		if _, err := ec.ds.UpdateInstanceManagerStatus(im); err != nil {
 			return err
 		}
@@ -1946,7 +1951,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 	}()
 
 	// Wait until engine confirmed that rebuild started
-	if err := wait.PollImmediate(EnginePollInterval, EnginePollTimeout, func() (bool, error) {
+	if err := wait.PollUntilContextTimeout(context.Background(), EnginePollInterval, EnginePollTimeout, true, func(context.Context) (bool, error) {
 		return doesAddressExistInEngine(e, addr, engineClientProxy)
 	}); err != nil {
 		return err
