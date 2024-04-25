@@ -7,6 +7,9 @@ const (
 	BackingImageParameterDataSourceType       = "backingImageDataSourceType"
 	BackingImageParameterChecksum             = "backingImageChecksum"
 	BackingImageParameterDataSourceParameters = "backingImageDataSourceParameters"
+	BackingImageParameterMinNumberOfCopies    = "backingImageMinNumberOfCopies"
+	BackingImageParameterNodeSelector         = "backingImageNodeSelector"
+	BackingImageParameterDiskSelector         = "backingImageDiskSelector"
 )
 
 // BackingImageDownloadState is replaced by BackingImageState.
@@ -34,6 +37,8 @@ type BackingImageDiskFileStatus struct {
 	Message string `json:"message"`
 	// +optional
 	LastStateTransitionTime string `json:"lastStateTransitionTime"`
+	// +optional
+	EvictionRequested bool `json:"evictionRequested"`
 }
 
 // BackingImageSpec defines the desired state of the Longhorn backing image
@@ -46,6 +51,12 @@ type BackingImageSpec struct {
 	SourceType BackingImageDataSourceType `json:"sourceType"`
 	// +optional
 	SourceParameters map[string]string `json:"sourceParameters"`
+	// +optional
+	MinNumberOfCopies int `json:"minNumberOfCopies"`
+	// +optional
+	DiskSelector []string `json:"diskSelector"`
+	// +optional
+	NodeSelector []string `json:"nodeSelector"`
 }
 
 // BackingImageStatus defines the observed state of the Longhorn backing image status

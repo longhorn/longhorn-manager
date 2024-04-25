@@ -56,6 +56,10 @@ func (b *backingImageValidator) Create(request *admission.Request, newObj runtim
 		}
 	}
 
+	if err := validateMinNumberOfBackingImageCopies(backingImage.Spec.MinNumberOfCopies); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
 	switch longhorn.BackingImageDataSourceType(backingImage.Spec.SourceType) {
 	case longhorn.BackingImageDataSourceTypeDownload:
 		if backingImage.Spec.SourceParameters[longhorn.DataSourceTypeDownloadParameterURL] == "" {
@@ -92,6 +96,23 @@ func (b *backingImageValidator) Create(request *admission.Request, newObj runtim
 	return nil
 }
 
+func (v *backingImageValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
+	_, ok := oldObj.(*longhorn.BackingImage)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.BackingImage", oldObj), "")
+	}
+	newBackingImage, ok := newObj.(*longhorn.BackingImage)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.BackingImage", newObj), "")
+	}
+
+	if err := validateMinNumberOfBackingImageCopies(newBackingImage.Spec.MinNumberOfCopies); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
+	return nil
+}
+
 func (b *backingImageValidator) Delete(request *admission.Request, oldObj runtime.Object) error {
 	backingImage, ok := oldObj.(*longhorn.BackingImage)
 	if !ok {
@@ -104,6 +125,13 @@ func (b *backingImageValidator) Delete(request *admission.Request, oldObj runtim
 	}
 	if len(replicas) != 0 {
 		return werror.NewInvalidError(fmt.Sprintf("cannot delete backing image %v since there are replicas using it", backingImage.Name), "")
+	}
+	return nil
+}
+
+func validateMinNumberOfBackingImageCopies(number int) error {
+	if err := types.ValidateMinNumberOfBackingIamgeCopies(number); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
 	}
 	return nil
 }

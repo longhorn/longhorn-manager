@@ -734,6 +734,17 @@ func ValidateReplicaCount(count int) error {
 	return nil
 }
 
+func ValidateMinNumberOfBackingIamgeCopies(number int) error {
+
+	definition, _ := GetSettingDefinition(SettingNameDefaultMinNumberOfBackingImageCopies)
+	valueIntRange := definition.ValueIntRange
+
+	if number < valueIntRange[ValueIntRangeMinimum] {
+		return fmt.Errorf("minimum number of backing image copies %v must larger than %v", number, valueIntRange[ValueIntRangeMaximum])
+	}
+	return nil
+}
+
 func ValidateV2DataEngineLogLevel(level string) error {
 	switch strings.ToLower(level) {
 	case "disabled", "error", "warn", "notice", "info", "debug":

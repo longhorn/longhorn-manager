@@ -578,6 +578,10 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		return err
 	}
 
+	if err := nc.syncBackingImageEvictionRequested(node); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -1191,7 +1195,7 @@ func (nc *NodeController) cleanUpBackingImagesInDisks(node *longhorn.Node) error
 			continue
 		}
 		existingBackingImage := bi.DeepCopy()
-		BackingImageDiskFileCleanup(node, bi, bids, waitInterval, 1)
+		BackingImageDiskFileCleanup(node, bi, bids, waitInterval, bi.Spec.MinNumberOfCopies)
 		if !reflect.DeepEqual(existingBackingImage.Spec, bi.Spec) {
 			if _, err := nc.ds.UpdateBackingImage(bi); err != nil {
 				log.WithError(err).Warn("Failed to update backing image when cleaning up the images in disks")
@@ -1205,13 +1209,13 @@ func (nc *NodeController) cleanUpBackingImagesInDisks(node *longhorn.Node) error
 	return nil
 }
 
-func BackingImageDiskFileCleanup(node *longhorn.Node, bi *longhorn.BackingImage, bids *longhorn.BackingImageDataSource, waitInterval time.Duration, haRequirement int) {
-	if bi.Spec.Disks == nil || bi.Status.DiskLastRefAtMap == nil {
+func BackingImageDiskFileCleanup(node *longhorn.Node, bi *longhorn.BackingImage, bids *longhorn.BackingImageDataSource, waitInterval time.Duration, minNumberOfCopies int) {
+	if bi.Spec.Disks == nil || bi.Status.DiskLastRefAtMap == nil || !bids.Spec.FileTransferred {
 		return
 	}
 
-	if haRequirement < 1 {
-		haRequirement = 1
+	if minNumberOfCopies < 1 {
+		minNumberOfCopies = 1
 	}
 
 	var readyDiskFileCount, handlingDiskFileCount, failedDiskFileCount int
@@ -1235,10 +1239,6 @@ func BackingImageDiskFileCleanup(node *longhorn.Node, bi *longhorn.BackingImage,
 	for _, diskStatus := range node.Status.DiskStatus {
 		diskUUID := diskStatus.DiskUUID
 		if _, exists := bi.Spec.Disks[diskUUID]; !exists {
-			continue
-		}
-		isFirstFile := bids != nil && !bids.Spec.FileTransferred && diskUUID == bids.Spec.DiskUUID
-		if isFirstFile {
 			continue
 		}
 		lastRefAtStr, exists := bi.Status.DiskLastRefAtMap[diskUUID]
@@ -1267,17 +1267,17 @@ func BackingImageDiskFileCleanup(node *longhorn.Node, bi *longhorn.BackingImage,
 		}
 		switch fileStatus.State {
 		case longhorn.BackingImageStateFailed:
-			if haRequirement >= readyDiskFileCount+handlingDiskFileCount+failedDiskFileCount {
+			if minNumberOfCopies >= readyDiskFileCount+handlingDiskFileCount+failedDiskFileCount {
 				continue
 			}
 			failedDiskFileCount--
 		case longhorn.BackingImageStateReadyForTransfer, longhorn.BackingImageStateReady:
-			if haRequirement >= readyDiskFileCount {
+			if minNumberOfCopies >= readyDiskFileCount {
 				continue
 			}
 			readyDiskFileCount--
 		default:
-			if haRequirement >= readyDiskFileCount+handlingDiskFileCount {
+			if minNumberOfCopies >= readyDiskFileCount+handlingDiskFileCount {
 				continue
 			}
 			handlingDiskFileCount--
@@ -1588,6 +1588,70 @@ func (nc *NodeController) createSnapshotMonitor() (mon monitor.Monitor, err erro
 	return mon, nil
 }
 
+func (nc *NodeController) syncBackingImageEvictionRequested(node *longhorn.Node) error {
+	// preventing periodically list all backingimage.
+	if !isNodeOrDisksEvictionRequested(node) {
+		return nil
+	}
+	log := getLoggerForNode(nc.logger, node)
+
+	diskBackingImageMap, err := nc.ds.GetDiskBackingImageMap(node)
+	if err != nil {
+		return err
+	}
+
+	type backingImageToSync struct {
+		*longhorn.BackingImage
+		diskUUID string
+		evict    bool
+	}
+	backingImagesToSync := []backingImageToSync{}
+
+	for diskName, diskSpec := range node.Spec.Disks {
+		diskStatus := node.Status.DiskStatus[diskName]
+		diskUUID := diskStatus.DiskUUID
+
+		if diskSpec.EvictionRequested || node.Spec.EvictionRequested {
+			for _, backingImage := range diskBackingImageMap[diskUUID] {
+				// trigger eviction request
+				backingImage.Status.DiskFileStatusMap[diskUUID].EvictionRequested = true
+				backingImagesToSync = append(backingImagesToSync, backingImageToSync{backingImage, diskUUID, true})
+			}
+		} else {
+			for _, backingImage := range diskBackingImageMap[diskUUID] {
+				if backingImage.Status.DiskFileStatusMap[diskUUID].EvictionRequested {
+					// if it is previously set to true, cancel the eviction request
+					backingImage.Status.DiskFileStatusMap[diskUUID].EvictionRequested = false
+					backingImagesToSync = append(backingImagesToSync, backingImageToSync{backingImage, diskUUID, false})
+				}
+			}
+		}
+	}
+
+	for _, backingImageToSync := range backingImagesToSync {
+		backingImageLog := log.WithField("backingimage", backingImageToSync.Name).WithField("disk", backingImageToSync.diskUUID)
+		if backingImageToSync.evict {
+			backingImageLog.Infof("Requesting backing image copy eviction")
+			if _, err := nc.ds.UpdateBackingImageStatus(backingImageToSync.BackingImage); err != nil {
+				backingImageLog.Warn("Failed to request backing image copy eviction, will enqueue then resync the node")
+				nc.enqueueNodeRateLimited(node)
+				continue
+			}
+			nc.eventRecorder.Eventf(backingImageToSync.BackingImage, corev1.EventTypeNormal, constant.EventReasonEvictionUserRequested, "Requesting backing image %v eviction from node %v and disk %v", backingImageToSync.Name, node.Spec.Name, backingImageToSync.diskUUID)
+		} else {
+			backingImageLog.Infof("Cancelling backing image copy eviction")
+			if _, err := nc.ds.UpdateBackingImageStatus(backingImageToSync.BackingImage); err != nil {
+				backingImageLog.Warn("Failed to cancel backing image copy eviction, will enqueue then resync the node")
+				nc.enqueueNodeRateLimited(node)
+				continue
+			}
+			nc.eventRecorder.Eventf(backingImageToSync.BackingImage, corev1.EventTypeNormal, constant.EventReasonEvictionCanceled, "Requesting backing image %v eviction from node %v and disk %v", backingImageToSync.Name, node.Spec.Name, backingImageToSync.diskUUID)
+		}
+	}
+
+	return nil
+}
+
 func (nc *NodeController) syncReplicaEvictionRequested(node *longhorn.Node, kubeNode *corev1.Node) error {
 	log := getLoggerForNode(nc.logger, node)
 	node.Status.AutoEvicting = false
@@ -1693,4 +1757,18 @@ func (nc *NodeController) shouldEvictReplica(node *longhorn.Node, kubeNode *core
 	}
 
 	return false, constant.EventReasonEvictionCanceled, nil
+}
+
+func isNodeOrDisksEvictionRequested(node *longhorn.Node) bool {
+	if node.Spec.EvictionRequested {
+		return true
+	}
+
+	for _, diskSpec := range node.Spec.Disks {
+		if diskSpec.EvictionRequested {
+			return true
+		}
+	}
+
+	return false
 }

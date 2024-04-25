@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -299,12 +300,29 @@ func (cs *ControllerServer) checkAndPrepareBackingImage(volumeName, backingImage
 			return fmt.Errorf("volume %s backing image type %v is not supported via CSI", volumeName, bidsType)
 		}
 
-		_, err = cs.apiClient.BackingImage.Create(&longhornclient.BackingImage{
+		backingImage := &longhornclient.BackingImage{
 			Name:             backingImageName,
 			ExpectedChecksum: biChecksum,
 			SourceType:       bidsType,
 			Parameters:       bidsParameters,
-		})
+		}
+
+		if minNumberOfCopies, ok := volumeParameters[longhorn.BackingImageParameterMinNumberOfCopies]; ok {
+			mnoc, err := strconv.Atoi(minNumberOfCopies)
+			if err != nil || mnoc < 0 {
+				return errors.Wrap(err, "invalid parameter minNumberOfCopies of backing image")
+			}
+			backingImage.MinNumberOfCopies = int64(mnoc)
+		}
+
+		if nodeSelector, ok := volumeParameters[longhorn.BackingImageParameterNodeSelector]; ok {
+			backingImage.NodeSelector = strings.Split(nodeSelector, ",")
+		}
+		if diskSelector, ok := volumeParameters[longhorn.BackingImageParameterDiskSelector]; ok {
+			backingImage.DiskSelector = strings.Split(diskSelector, ",")
+		}
+
+		_, err = cs.apiClient.BackingImage.Create(backingImage)
 		return err
 	}
 

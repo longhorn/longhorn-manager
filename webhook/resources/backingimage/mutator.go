@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -108,6 +109,17 @@ func (b *backingImageMutator) Create(request *admission.Request, newObj runtime.
 		err := errors.Wrapf(err, "failed to get label patch for backingImage %v", backingImage.Name)
 		return nil, werror.NewInvalidError(err.Error(), "")
 	}
+
+	if backingImage.Spec.MinNumberOfCopies == 0 {
+		minNumberOfCopies, err := b.getDefaultMinNumberOfBackingImageCopies()
+		if err != nil {
+			err = errors.Wrap(err, "BUG: cannot get valid number for setting default min number of backing image copies")
+			return nil, werror.NewInvalidError(err.Error(), "")
+		}
+		logrus.Infof("Use the default number of minimum number of copies %v", minNumberOfCopies)
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/minNumberOfCopies", "value": %v}`, minNumberOfCopies))
+	}
+
 	patchOps = append(patchOps, patchOp)
 
 	return patchOps, nil
@@ -157,4 +169,12 @@ func mutate(newObj runtime.Object) (admission.PatchOps, error) {
 	}
 
 	return patchOps, nil
+}
+
+func (b *backingImageMutator) getDefaultMinNumberOfBackingImageCopies() (int, error) {
+	c, err := b.ds.GetSettingAsInt(types.SettingNameDefaultMinNumberOfBackingImageCopies)
+	if err != nil {
+		return 0, err
+	}
+	return int(c), nil
 }

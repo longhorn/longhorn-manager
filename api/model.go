@@ -253,11 +253,14 @@ type EngineImage struct {
 type BackingImage struct {
 	client.Resource
 
-	Name             string            `json:"name"`
-	UUID             string            `json:"uuid"`
-	SourceType       string            `json:"sourceType"`
-	Parameters       map[string]string `json:"parameters"`
-	ExpectedChecksum string            `json:"expectedChecksum"`
+	Name              string            `json:"name"`
+	UUID              string            `json:"uuid"`
+	SourceType        string            `json:"sourceType"`
+	Parameters        map[string]string `json:"parameters"`
+	DiskSelector      []string          `json:"diskSelector"`
+	NodeSelector      []string          `json:"nodeSelector"`
+	MinNumberOfCopies int               `json:"minNumberOfCopies"`
+	ExpectedChecksum  string            `json:"expectedChecksum"`
 
 	DiskFileStatusMap map[string]longhorn.BackingImageDiskFileStatus `json:"diskFileStatusMap"`
 	Size              int64                                          `json:"size"`
@@ -268,6 +271,10 @@ type BackingImage struct {
 
 type BackingImageCleanupInput struct {
 	Disks []string `json:"disks"`
+}
+
+type UpdateMinNumberOfCopiesInput struct {
+	MinNumberOfCopies int `json:"minNumberOfCopies"`
 }
 
 type AttachInput struct {
@@ -656,6 +663,7 @@ func NewSchema() *client.Schemas {
 
 	schemas.AddType("backingImageDiskFileStatus", longhorn.BackingImageDiskFileStatus{})
 	schemas.AddType("backingImageCleanupInput", BackingImageCleanupInput{})
+	schemas.AddType("updateMinNumberOfCopiesInput", UpdateMinNumberOfCopiesInput{})
 
 	attachmentSchema(schemas.AddType("attachment", Attachment{}))
 	volumeAttachmentSchema(schemas.AddType("volumeAttachment", VolumeAttachment{}))
@@ -753,6 +761,10 @@ func backingImageSchema(backingImage *client.Schema) {
 		},
 		BackingImageUpload:         {},
 		"backupBackingImageCreate": {},
+		"updateMinNumberOfCopies": {
+			Input:  "updateMinNumberOfCopiesInput",
+			Output: "backingImage",
+		},
 	}
 
 	name := backingImage.ResourceFields["name"]
@@ -1982,6 +1994,7 @@ func toBackingImageResource(bi *longhorn.BackingImage, apiContext *api.ApiContex
 		"backingImageCleanup":      apiContext.UrlBuilder.ActionLink(res.Resource, "backingImageCleanup"),
 		BackingImageUpload:         apiContext.UrlBuilder.ActionLink(res.Resource, BackingImageUpload),
 		"backupBackingImageCreate": apiContext.UrlBuilder.ActionLink(res.Resource, "backupBackingImageCreate"),
+		"updateMinNumberOfCopies":  apiContext.UrlBuilder.ActionLink(res.Resource, "updateMinNumberOfCopies"),
 	}
 	return res
 }

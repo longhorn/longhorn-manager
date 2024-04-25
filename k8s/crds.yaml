@@ -441,10 +441,20 @@ spec:
             properties:
               checksum:
                 type: string
+              diskSelector:
+                items:
+                  type: string
+                type: array
               disks:
                 additionalProperties:
                   type: string
                 type: object
+              minNumberOfCopies:
+                type: integer
+              nodeSelector:
+                items:
+                  type: string
+                type: array
               sourceParameters:
                 additionalProperties:
                   type: string
@@ -465,6 +475,8 @@ spec:
               diskFileStatusMap:
                 additionalProperties:
                   properties:
+                    evictionRequested:
+                      type: boolean
                     lastStateTransitionTime:
                       type: string
                     message:

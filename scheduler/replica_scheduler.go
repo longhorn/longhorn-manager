@@ -160,6 +160,19 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 	requireSchedulingCheck, ignoreFailedReplicas bool) (map[string]*Disk, util.MultiError) {
 	multiError := util.NewMultiError()
 
+	biNodeSelector := []string{}
+	biDiskSelector := []string{}
+	if volume.Spec.BackingImage != "" {
+		bi, err := rcs.ds.GetBackingImageRO(volume.Spec.BackingImage)
+		if err != nil {
+			err = errors.Wrapf(err, "failed to get backing image %v", volume.Spec.BackingImage)
+			multiError.Append(util.NewMultiError(err.Error()))
+			return map[string]*Disk{}, multiError
+		}
+		biNodeSelector = bi.Spec.NodeSelector
+		biDiskSelector = bi.Spec.DiskSelector
+	}
+
 	nodeSoftAntiAffinity, err := rcs.ds.GetSettingAsBool(types.SettingNameReplicaSoftAntiAffinity)
 	if err != nil {
 		err = errors.Wrapf(err, "failed to get %v setting", types.SettingNameReplicaSoftAntiAffinity)
@@ -210,7 +223,7 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		multiError = util.NewMultiError()
 		for _, node := range nodes {
 			diskCandidatesFromNode, errors := rcs.filterNodeDisksForReplica(node, nodeDisksMap[node.Name], replicas,
-				volume, requireSchedulingCheck)
+				volume, requireSchedulingCheck, biDiskSelector)
 			for k, v := range diskCandidatesFromNode {
 				diskCandidates[k] = v
 			}
@@ -244,6 +257,14 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		if !types.IsSelectorsInTags(node.Spec.Tags, volume.Spec.NodeSelector, allowEmptyNodeSelectorVolume) {
 			continue
 		}
+		// If the Nodes don't match the tags of the backing image of this volume,
+		// don't schedule the replica on it because it will hang there
+		if volume.Spec.BackingImage != "" {
+			if !types.IsSelectorsInTags(node.Spec.Tags, biNodeSelector, allowEmptyNodeSelectorVolume) {
+				continue
+			}
+		}
+
 		if _, ok := usedNodes[nodeName]; !ok {
 			unusedNodes[nodeName] = node
 		}
@@ -302,7 +323,7 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 	return map[string]*Disk{}, multiError
 }
 
-func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disks map[string]struct{}, replicas map[string]*longhorn.Replica, volume *longhorn.Volume, requireSchedulingCheck bool) (preferredDisks map[string]*Disk, multiError util.MultiError) {
+func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disks map[string]struct{}, replicas map[string]*longhorn.Replica, volume *longhorn.Volume, requireSchedulingCheck bool, biDiskSelector []string) (preferredDisks map[string]*Disk, multiError util.MultiError) {
 	multiError = util.NewMultiError()
 	preferredDisks = map[string]*Disk{}
 
@@ -379,6 +400,15 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 		if !types.IsSelectorsInTags(diskSpec.Tags, volume.Spec.DiskSelector, allowEmptyDiskSelectorVolume) {
 			multiError.Append(util.NewMultiError(longhorn.ErrorReplicaScheduleTagsNotFulfilled))
 			continue
+		}
+
+		if volume.Spec.BackingImage != "" {
+			// If the disks don't match the tags of the backing image of this volume,
+			// don't schedule the replica on it because it will hang there
+			if !types.IsSelectorsInTags(diskSpec.Tags, biDiskSelector, allowEmptyDiskSelectorVolume) {
+				multiError.Append(util.NewMultiError(longhorn.ErrorReplicaScheduleTagsNotFulfilled))
+				continue
+			}
 		}
 
 		suggestDisk := &Disk{
