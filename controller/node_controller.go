@@ -1048,6 +1048,39 @@ func (nc *NodeController) cleanupAllReplicaManagers(node *longhorn.Node) error {
 	return nil
 }
 
+func (nc *NodeController) areEnginesAndReplicasReadyToUpgrade(node *longhorn.Node, im *longhorn.InstanceManager) (bool, error) {
+	engines, err := nc.ds.ListEnginesByNodeRO(node.Name)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to list engine images")
+	}
+
+	for _, e := range engines {
+		if e.Status.InstanceManagerName != im.Name {
+			continue
+		}
+
+		if (e.Spec.DesireState != longhorn.InstanceStateStopped || e.Status.CurrentState != longhorn.InstanceStateStopped) &&
+			(e.Spec.DesireState != longhorn.InstanceStateSuspended || e.Status.CurrentState != longhorn.InstanceStateSuspended) {
+			return false, nil
+		}
+
+		replicas, err := nc.ds.ListVolumeReplicasRO(e.Spec.VolumeName)
+		if err != nil {
+			return false, errors.Wrapf(err, "failed to list replicas for volume %v", e.Spec.VolumeName)
+		}
+		for _, r := range replicas {
+			if r.Status.InstanceManagerName != im.Name {
+				continue
+			}
+			if r.Spec.DesireState != longhorn.InstanceStateStopped || r.Status.CurrentState != longhorn.InstanceStateStopped {
+				return false, nil
+			}
+		}
+	}
+
+	return true, nil
+}
+
 func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 	defaultInstanceManagerImage, err := nc.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
 	if err != nil {
@@ -1078,13 +1111,24 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 						im.Name, im.Spec.NodeID, types.GetLonghornLabelKey(types.LonghornLabelNode), im.Labels[types.GetLonghornLabelKey(types.LonghornLabelNode)])
 				}
 
+				runningOrStartingEngineInstanceFound := false
+				runningOrStartingReplicaInstanceFound := false
+				runningOrStartingUnknownInstanceFound := false
 				runningOrStartingInstanceFound := false
 				if im.Status.CurrentState == longhorn.InstanceManagerStateRunning && im.DeletionTimestamp == nil {
 					// nolint:all
 					for _, instance := range types.ConsolidateInstances(im.Status.InstanceEngines, im.Status.InstanceReplicas, im.Status.Instances) {
 						if instance.Status.State == longhorn.InstanceStateRunning || instance.Status.State == longhorn.InstanceStateStarting {
-							runningOrStartingInstanceFound = true
-							break
+							if instance.Status.Type == longhorn.InstanceTypeEngine {
+								runningOrStartingEngineInstanceFound = true
+							} else if instance.Status.Type == longhorn.InstanceTypeReplica {
+								runningOrStartingReplicaInstanceFound = true
+							} else {
+								runningOrStartingUnknownInstanceFound = true
+							}
+							if runningOrStartingEngineInstanceFound || runningOrStartingReplicaInstanceFound || runningOrStartingUnknownInstanceFound {
+								runningOrStartingInstanceFound = true
+							}
 						}
 					}
 				}
@@ -1107,9 +1151,29 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 						}
 					}
 				} else {
-					// Clean up old instance managers if there is no running instance.
-					if runningOrStartingInstanceFound {
-						cleanupRequired = false
+					if types.IsDataEngineV1(dataEngine) {
+						//Clean up old instance managers if there is no running instance.
+						if runningOrStartingInstanceFound {
+							cleanupRequired = false
+						}
+					} else {
+						if node.Spec.UpgradeRequested {
+							if runningOrStartingEngineInstanceFound {
+								cleanupRequired = false
+							} else {
+								ready, err := nc.areEnginesAndReplicasReadyToUpgrade(node, im)
+								if err != nil {
+									return errors.Wrapf(err, "failed to check if engines and replicas are ready to upgrade for instance manager %v", im.Name)
+								}
+								if !ready {
+									cleanupRequired = false
+								}
+							}
+						} else {
+							if runningOrStartingInstanceFound {
+								cleanupRequired = false
+							}
+						}
 					}
 
 					if im.Status.CurrentState == longhorn.InstanceManagerStateUnknown && im.DeletionTimestamp == nil {
