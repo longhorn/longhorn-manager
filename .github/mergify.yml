@@ -1,16 +1,16 @@
 pull_request_rules:
 - name: Automatically merge PRs
   conditions:
-  - check-success=continuous-integration/drone/pr
+  - check-success="Build binaries"
   - "#approved-reviews-by>=2"
   - approved-reviews-by=@longhorn/maintainer
   actions:
     merge:
       method: rebase
-      
+
 - name: Automatically merge Renovate PRs
   conditions:
-  - check-success=continuous-integration/drone/pr
+  - check-success="Build binaries"
   - author = renovate[bot]
   actions:
     merge:
