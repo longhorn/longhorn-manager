@@ -48,7 +48,7 @@ func NewVolumeCloneController(
 	kubeClient clientset.Interface,
 	controllerID string,
 	namespace string,
-) *VolumeCloneController {
+) (*VolumeCloneController, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 
@@ -64,14 +64,17 @@ func NewVolumeCloneController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-volume-clone-controller"}),
 	}
 
-	ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vcc.enqueueVolume,
 		UpdateFunc: func(old, cur interface{}) { vcc.enqueueVolume(cur) },
 		DeleteFunc: vcc.enqueueVolume,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	vcc.cacheSyncs = append(vcc.cacheSyncs, ds.VolumeInformer.HasSynced)
 
-	return vcc
+	return vcc, nil
 }
 
 func (vcc *VolumeCloneController) enqueueVolume(obj interface{}) {

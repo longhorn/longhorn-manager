@@ -94,7 +94,7 @@ func systemRollout(c *cli.Context) error {
 	doneCh := make(chan struct{})
 	informerFactories.Start(doneCh)
 
-	ctrl := controller.NewSystemRolloutController(
+	ctrl, err := controller.NewSystemRolloutController(
 		systemRestoreName,
 		logger,
 		currentNodeID,
@@ -104,5 +104,8 @@ func systemRollout(c *cli.Context) error {
 		kubeClient,
 		extensionsClient,
 	)
+	if err != nil {
+		return errors.Wrap(err, "failed to create system rollout controller")
+	}
 	return ctrl.Run()
 }

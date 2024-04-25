@@ -122,7 +122,8 @@ func (s *TestSuite) TestReconcileSystemRestore(c *C) {
 		fakeSystemRolloutBackupTargetDefault(c, informerFactories.LhInformerFactory, lhClient)
 		fakeSystemBackup(tc.systemBackupName, systemRestoreOwnerID, "", false, "", longhorn.SystemBackupStateGenerating, c, informerFactories.LhInformerFactory, lhClient)
 
-		systemRestoreController := newFakeSystemRestoreController(lhClient, kubeClient, extensionsClient, informerFactories, tc.controllerID)
+		systemRestoreController, err := newFakeSystemRestoreController(lhClient, kubeClient, extensionsClient, informerFactories, tc.controllerID)
+		c.Assert(err, IsNil)
 
 		if !tc.notExist {
 			if tc.state == "" {
@@ -136,7 +137,7 @@ func (s *TestSuite) TestReconcileSystemRestore(c *C) {
 			}
 		}
 
-		err := systemRestoreController.reconcile(systemRestoreName, backupTargetClient)
+		err = systemRestoreController.reconcile(systemRestoreName, backupTargetClient)
 		if tc.expectError {
 			c.Assert(err, NotNil)
 		} else {
@@ -163,19 +164,22 @@ func (s *TestSuite) TestReconcileSystemRestore(c *C) {
 }
 
 func newFakeSystemRestoreController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
-	informerFactories *util.InformerFactories, controllerID string) *SystemRestoreController {
+	informerFactories *util.InformerFactories, controllerID string) (*SystemRestoreController, error) {
 	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	logger := logrus.StandardLogger()
 	logrus.SetLevel(logrus.DebugLevel)
 
-	c := NewSystemRestoreController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID)
+	c, err := NewSystemRestoreController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID)
+	if err != nil {
+		return nil, err
+	}
 	c.eventRecorder = record.NewFakeRecorder(100)
 	for index := range c.cacheSyncs {
 		c.cacheSyncs[index] = alwaysReady
 	}
 
-	return c
+	return c, nil
 }
 
 func fakeSystemRestore(name, currentOwnerID string, isInProgress, isDeleting bool, state longhorn.SystemRestoreState,

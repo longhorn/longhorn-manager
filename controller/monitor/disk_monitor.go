@@ -94,12 +94,14 @@ func NewDiskMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName
 }
 
 func (m *NodeMonitor) Start() {
-	wait.PollImmediateUntil(m.syncPeriod, func() (done bool, err error) {
+	if err := wait.PollUntilContextCancel(m.ctx, m.syncPeriod, false, func(context.Context) (bool, error) {
 		if err := m.run(struct{}{}); err != nil {
 			m.logger.Errorf("Stop monitoring because of %v", err)
 		}
 		return false, nil
-	}, m.ctx.Done())
+	}); err != nil {
+		m.logger.WithError(err).Error("Failed to start node monitor")
+	}
 }
 
 func (m *NodeMonitor) Close() {

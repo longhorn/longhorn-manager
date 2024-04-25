@@ -51,14 +51,17 @@ func initSettingsNameValue(name, value string) *longhorn.Setting {
 }
 
 func newTestVolumeController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
-	informerFactories *util.InformerFactories, controllerID string) *VolumeController {
+	informerFactories *util.InformerFactories, controllerID string) (*VolumeController, error) {
 	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	proxyConnCounter := util.NewAtomicCounter()
 
 	logger := logrus.StandardLogger()
 
-	vc := NewVolumeController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID, TestShareManagerImage, proxyConnCounter)
+	vc, err := NewVolumeController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID, TestShareManagerImage, proxyConnCounter)
+	if err != nil {
+		return nil, err
+	}
 
 	fakeRecorder := record.NewFakeRecorder(100)
 	vc.eventRecorder = fakeRecorder
@@ -67,7 +70,7 @@ func newTestVolumeController(lhClient *lhfake.Clientset, kubeClient *fake.Client
 	}
 	vc.nowHandler = getTestNow
 
-	return vc
+	return vc, nil
 }
 
 type VolumeTestCase struct {
@@ -1289,17 +1292,20 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		knIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
 		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
 
-		vc := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+		vc, err := newTestVolumeController(lhClient, kubeClient, extensionsClient, informerFactories, TestOwnerID1)
+		c.Assert(err, IsNil)
 
 		// Need to create daemon pod for node
 		daemon1 := newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1, nil)
 		p, err := kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), daemon1, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
-		pIndexer.Add(p)
+		err = pIndexer.Add(p)
+		c.Assert(err, IsNil)
 		daemon2 := newDaemonPod(corev1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2, nil)
 		p, err = kubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), daemon2, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
-		pIndexer.Add(p)
+		err = pIndexer.Add(p)
+		c.Assert(err, IsNil)
 
 		ei, err := lhClient.LonghornV1beta2().EngineImages(TestNamespace).Create(context.TODO(), tc.engineImage, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
@@ -1370,7 +1376,8 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			setting, err :=
 				lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
-			sIndexer.Add(setting)
+			err = sIndexer.Add(setting)
+			c.Assert(err, IsNil)
 		}
 		// Set replica node soft anti-affinity setting
 		if tc.replicaNodeSoftAntiAffinity != "" {
@@ -1380,7 +1387,8 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			setting, err :=
 				lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
-			sIndexer.Add(setting)
+			err = sIndexer.Add(setting)
+			c.Assert(err, IsNil)
 		}
 		// Set auto salvage setting
 		if tc.volumeAutoSalvage != "" {
@@ -1390,7 +1398,8 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			setting, err :=
 				lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
-			sIndexer.Add(setting)
+			err = sIndexer.Add(setting)
+			c.Assert(err, IsNil)
 		}
 		// Set New Replica Replenishment Wait Interval
 		if tc.replicaReplenishmentWaitInterval != "" {
@@ -1399,7 +1408,8 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 			setting, err :=
 				lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 			c.Assert(err, IsNil)
-			sIndexer.Add(setting)
+			err = sIndexer.Add(setting)
+			c.Assert(err, IsNil)
 		}
 		// Set Default Engine Image
 		s := initSettingsNameValue(
@@ -1407,14 +1417,16 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 		setting, err :=
 			lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
-		sIndexer.Add(setting)
+		err = sIndexer.Add(setting)
+		c.Assert(err, IsNil)
 		// Set Default Instance Manager Image
 		s = initSettingsNameValue(
 			string(types.SettingNameDefaultInstanceManagerImage), TestInstanceManagerImage)
 		setting, err =
 			lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
-		sIndexer.Add(setting)
+		err = sIndexer.Add(setting)
+		c.Assert(err, IsNil)
 
 		// need to create default node
 		for _, node := range tc.nodes {

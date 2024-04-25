@@ -47,7 +47,7 @@ func NewVolumeExpansionController(
 	kubeClient clientset.Interface,
 	controllerID string,
 	namespace string,
-) *VolumeExpansionController {
+) (*VolumeExpansionController, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 
@@ -63,14 +63,17 @@ func NewVolumeExpansionController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-volume-expansion-controller"}),
 	}
 
-	ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vec.enqueueVolume,
 		UpdateFunc: func(old, cur interface{}) { vec.enqueueVolume(cur) },
 		DeleteFunc: vec.enqueueVolume,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	vec.cacheSyncs = append(vec.cacheSyncs, ds.VolumeInformer.HasSynced)
 
-	return vec
+	return vec, nil
 }
 
 func (vec *VolumeExpansionController) enqueueVolume(obj interface{}) {

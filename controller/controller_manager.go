@@ -41,42 +41,144 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	stopCh := clients.StopCh
 
 	// Longhorn controllers
-	replicaController := NewReplicaController(logger, ds, scheme, kubeClient, namespace, controllerID)
-	engineController := NewEngineController(logger, ds, scheme, kubeClient, &engineapi.EngineCollection{}, namespace, controllerID, proxyConnCounter)
-	volumeController := NewVolumeController(logger, ds, scheme, kubeClient, namespace, controllerID, shareManagerImage, proxyConnCounter)
-	engineImageController := NewEngineImageController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount)
-	nodeController := NewNodeController(logger, ds, scheme, kubeClient, namespace, controllerID)
-	websocketController := NewWebsocketController(logger, ds)
-	settingController := NewSettingController(logger, ds, scheme, kubeClient, metricsClient, namespace, controllerID, version)
-	backupTargetController := NewBackupTargetController(logger, ds, scheme, kubeClient, controllerID, namespace, proxyConnCounter)
-	backupVolumeController := NewBackupVolumeController(logger, ds, scheme, kubeClient, controllerID, namespace, proxyConnCounter)
-	backupController := NewBackupController(logger, ds, scheme, kubeClient, controllerID, namespace, proxyConnCounter)
-	backupBackingImageController := NewBackupBackingImageController(logger, ds, scheme, kubeClient, controllerID, namespace, proxyConnCounter)
-	instanceManagerController := NewInstanceManagerController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount)
-	shareManagerController := NewShareManagerController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount)
-	backingImageController := NewBackingImageController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount, backingImageManagerImage)
-	backingImageManagerController := NewBackingImageManagerController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount, backingImageManagerImage)
-	backingImageDataSourceController := NewBackingImageDataSourceController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount, backingImageManagerImage, proxyConnCounter)
-	recurringJobController := NewRecurringJobController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount, managerImage)
-	orphanController := NewOrphanController(logger, ds, scheme, kubeClient, controllerID, namespace)
-	snapshotController := NewSnapshotController(logger, ds, scheme, kubeClient, namespace, controllerID, &engineapi.EngineCollection{}, proxyConnCounter)
-	supportBundleController := NewSupportBundleController(logger, ds, scheme, kubeClient, controllerID, namespace, serviceAccount)
-	systemBackupController := NewSystemBackupController(logger, ds, scheme, kubeClient, namespace, controllerID, managerImage)
-	systemRestoreController := NewSystemRestoreController(logger, ds, scheme, kubeClient, namespace, controllerID)
-	volumeAttachmentController := NewLonghornVolumeAttachmentController(logger, ds, scheme, kubeClient, controllerID, namespace)
-	volumeRestoreController := NewVolumeRestoreController(logger, ds, scheme, kubeClient, controllerID, namespace)
-	volumeRebuildingController := NewVolumeRebuildingController(logger, ds, scheme, kubeClient, controllerID, namespace)
-	volumeEvictionController := NewVolumeEvictionController(logger, ds, scheme, kubeClient, controllerID, namespace)
-	volumeCloneController := NewVolumeCloneController(logger, ds, scheme, kubeClient, controllerID, namespace)
-	volumeExpansionController := NewVolumeExpansionController(logger, ds, scheme, kubeClient, controllerID, namespace)
+	replicaController, err := NewReplicaController(logger, ds, scheme, kubeClient, namespace, controllerID)
+	if err != nil {
+		return nil, err
+	}
+	engineController, err := NewEngineController(logger, ds, scheme, kubeClient, &engineapi.EngineCollection{}, namespace, controllerID, proxyConnCounter)
+	if err != nil {
+		return nil, err
+	}
+	volumeController, err := NewVolumeController(logger, ds, scheme, kubeClient, namespace, controllerID, shareManagerImage, proxyConnCounter)
+	if err != nil {
+		return nil, err
+	}
+	engineImageController, err := NewEngineImageController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount)
+	if err != nil {
+		return nil, err
+	}
+	nodeController, err := NewNodeController(logger, ds, scheme, kubeClient, namespace, controllerID)
+	if err != nil {
+		return nil, err
+	}
+	websocketController, err := NewWebsocketController(logger, ds)
+	if err != nil {
+		return nil, err
+	}
+	settingController, err := NewSettingController(logger, ds, scheme, kubeClient, metricsClient, namespace, controllerID, version)
+	if err != nil {
+		return nil, err
+	}
+	backupTargetController, err := NewBackupTargetController(logger, ds, scheme, kubeClient, controllerID, namespace, proxyConnCounter)
+	if err != nil {
+		return nil, err
+	}
+	backupVolumeController, err := NewBackupVolumeController(logger, ds, scheme, kubeClient, controllerID, namespace, proxyConnCounter)
+	if err != nil {
+		return nil, err
+	}
+	backupController, err := NewBackupController(logger, ds, scheme, kubeClient, controllerID, namespace, proxyConnCounter)
+	if err != nil {
+		return nil, err
+	}
+	backupBackingImageController, err := NewBackupBackingImageController(logger, ds, scheme, kubeClient, controllerID, namespace, proxyConnCounter)
+	if err != nil {
+		return nil, err
+	}
+	instanceManagerController, err := NewInstanceManagerController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount)
+	if err != nil {
+		return nil, err
+	}
+	shareManagerController, err := NewShareManagerController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount)
+	if err != nil {
+		return nil, err
+	}
+	backingImageController, err := NewBackingImageController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount, backingImageManagerImage)
+	if err != nil {
+		return nil, err
+	}
+	backingImageManagerController, err := NewBackingImageManagerController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount, backingImageManagerImage)
+	if err != nil {
+		return nil, err
+	}
+	backingImageDataSourceController, err := NewBackingImageDataSourceController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount, backingImageManagerImage, proxyConnCounter)
+	if err != nil {
+		return nil, err
+	}
+	recurringJobController, err := NewRecurringJobController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount, managerImage)
+	if err != nil {
+		return nil, err
+	}
+	orphanController, err := NewOrphanController(logger, ds, scheme, kubeClient, controllerID, namespace)
+	if err != nil {
+		return nil, err
+	}
+	snapshotController, err := NewSnapshotController(logger, ds, scheme, kubeClient, namespace, controllerID, &engineapi.EngineCollection{}, proxyConnCounter)
+	if err != nil {
+		return nil, err
+	}
+	supportBundleController, err := NewSupportBundleController(logger, ds, scheme, kubeClient, controllerID, namespace, serviceAccount)
+	if err != nil {
+		return nil, err
+	}
+	systemBackupController, err := NewSystemBackupController(logger, ds, scheme, kubeClient, namespace, controllerID, managerImage)
+	if err != nil {
+		return nil, err
+	}
+	systemRestoreController, err := NewSystemRestoreController(logger, ds, scheme, kubeClient, namespace, controllerID)
+	if err != nil {
+		return nil, err
+	}
+	volumeAttachmentController, err := NewLonghornVolumeAttachmentController(logger, ds, scheme, kubeClient, controllerID, namespace)
+	if err != nil {
+		return nil, err
+	}
+	volumeRestoreController, err := NewVolumeRestoreController(logger, ds, scheme, kubeClient, controllerID, namespace)
+	if err != nil {
+		return nil, err
+	}
+	volumeRebuildingController, err := NewVolumeRebuildingController(logger, ds, scheme, kubeClient, controllerID, namespace)
+	if err != nil {
+		return nil, err
+	}
+	volumeEvictionController, err := NewVolumeEvictionController(logger, ds, scheme, kubeClient, controllerID, namespace)
+	if err != nil {
+		return nil, err
+	}
+	volumeCloneController, err := NewVolumeCloneController(logger, ds, scheme, kubeClient, controllerID, namespace)
+	if err != nil {
+		return nil, err
+	}
+	volumeExpansionController, err := NewVolumeExpansionController(logger, ds, scheme, kubeClient, controllerID, namespace)
+	if err != nil {
+		return nil, err
+	}
 
 	// Kubernetes controllers
-	kubernetesPVController := NewKubernetesPVController(logger, ds, scheme, kubeClient, controllerID)
-	kubernetesNodeController := NewKubernetesNodeController(logger, ds, scheme, kubeClient, controllerID)
-	kubernetesPodController := NewKubernetesPodController(logger, ds, scheme, kubeClient, controllerID)
-	kubernetesConfigMapController := NewKubernetesConfigMapController(logger, ds, scheme, kubeClient, controllerID, namespace)
-	kubernetesSecretController := NewKubernetesSecretController(logger, ds, scheme, kubeClient, controllerID, namespace)
-	kubernetesPDBController := NewKubernetesPDBController(logger, ds, kubeClient, controllerID, namespace)
+	kubernetesPVController, err := NewKubernetesPVController(logger, ds, scheme, kubeClient, controllerID)
+	if err != nil {
+		return nil, err
+	}
+	kubernetesNodeController, err := NewKubernetesNodeController(logger, ds, scheme, kubeClient, controllerID)
+	if err != nil {
+		return nil, err
+	}
+	kubernetesPodController, err := NewKubernetesPodController(logger, ds, scheme, kubeClient, controllerID)
+	if err != nil {
+		return nil, err
+	}
+	kubernetesConfigMapController, err := NewKubernetesConfigMapController(logger, ds, scheme, kubeClient, controllerID, namespace)
+	if err != nil {
+		return nil, err
+	}
+	kubernetesSecretController, err := NewKubernetesSecretController(logger, ds, scheme, kubeClient, controllerID, namespace)
+	if err != nil {
+		return nil, err
+	}
+	kubernetesPDBController, err := NewKubernetesPDBController(logger, ds, kubeClient, controllerID, namespace)
+	if err != nil {
+		return nil, err
+	}
 
 	// Start goroutines for Longhorn controllers
 	go replicaController.Run(Workers, stopCh)

@@ -161,7 +161,7 @@ func NewSystemRolloutController(
 	stopCh chan struct{},
 	kubeClient clientset.Interface,
 	extensionsClient apiextensionsclientset.Interface,
-) *SystemRolloutController {
+) (*SystemRolloutController, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
 	// TODO: remove the wrapper when every clients have moved to use the clientset.
@@ -187,13 +187,16 @@ func NewSystemRolloutController(
 		systemRestoreName: systemRestoreName,
 	}
 
-	ds.SystemRestoreInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.SystemRestoreInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    func(obj interface{}) { c.enqueue() },
 		UpdateFunc: func(old, cur interface{}) { c.enqueue() },
-	})
+	}); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.SystemRestoreInformer.HasSynced)
 
-	return c
+	return c, nil
 }
 
 func (c *SystemRolloutController) enqueue() {

@@ -7,8 +7,7 @@ import (
 
 type Schemas struct {
 	Collection
-	Data          []Schema `json:"data,omitempty"`
-	schemasByName map[string]*Schema
+	Data []Schema `json:"data,omitempty"`
 }
 
 func (s *Schema) CheckField(name string) (Field, bool) {
