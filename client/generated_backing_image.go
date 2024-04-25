@@ -11,11 +11,17 @@ type BackingImage struct {
 
 	DeletionTimestamp string `json:"deletionTimestamp,omitempty" yaml:"deletion_timestamp,omitempty"`
 
-	DiskFileStatusMap map[string]BackingImageDiskFileStatus `json:"diskFileStatusMap,omitempty" yaml:"disk_file_status_map,omitempty"`
+	DiskFileStatusMap map[string]interface{} `json:"diskFileStatusMap,omitempty" yaml:"disk_file_status_map,omitempty"`
+
+	DiskSelector []string `json:"diskSelector,omitempty" yaml:"disk_selector,omitempty"`
 
 	ExpectedChecksum string `json:"expectedChecksum,omitempty" yaml:"expected_checksum,omitempty"`
 
+	MinNumberOfCopies int64 `json:"minNumberOfCopies,omitempty" yaml:"min_number_of_copies,omitempty"`
+
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
+
+	NodeSelector []string `json:"nodeSelector,omitempty" yaml:"node_selector,omitempty"`
 
 	Parameters map[string]string `json:"parameters,omitempty" yaml:"parameters,omitempty"`
 
@@ -44,6 +50,8 @@ type BackingImageOperations interface {
 	Delete(container *BackingImage) error
 
 	ActionBackingImageCleanup(*BackingImage, *BackingImageCleanupInput) (*BackingImage, error)
+
+	ActionUpdateMinNumberOfCopies(*BackingImage, *UpdateMinNumberOfCopiesInput) (*BackingImage, error)
 }
 
 func newBackingImageClient(rancherClient *RancherClient) *BackingImageClient {
@@ -101,6 +109,15 @@ func (c *BackingImageClient) ActionBackingImageCleanup(resource *BackingImage, i
 	resp := &BackingImage{}
 
 	err := c.rancherClient.doAction(BACKING_IMAGE_TYPE, "backingImageCleanup", &resource.Resource, input, resp)
+
+	return resp, err
+}
+
+func (c *BackingImageClient) ActionUpdateMinNumberOfCopies(resource *BackingImage, input *UpdateMinNumberOfCopiesInput) (*BackingImage, error) {
+
+	resp := &BackingImage{}
+
+	err := c.rancherClient.doAction(BACKING_IMAGE_TYPE, "updateMinNumberOfCopies", &resource.Resource, input, resp)
 
 	return resp, err
 }

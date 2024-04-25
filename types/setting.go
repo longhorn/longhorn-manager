@@ -86,6 +86,7 @@ const (
 	SettingNameDisableRevisionCounter                                   = SettingName("disable-revision-counter")
 	SettingNameReplicaReplenishmentWaitInterval                         = SettingName("replica-replenishment-wait-interval")
 	SettingNameConcurrentReplicaRebuildPerNodeLimit                     = SettingName("concurrent-replica-rebuild-per-node-limit")
+	SettingNameConcurrentBackingImageReplenishPerNodeLimit              = SettingName("concurrent-backing-image-replenish-per-node-limit")
 	SettingNameConcurrentBackupRestorePerNodeLimit                      = SettingName("concurrent-volume-backup-restore-per-node-limit")
 	SettingNameSystemManagedPodsImagePullPolicy                         = SettingName("system-managed-pods-image-pull-policy")
 	SettingNameAllowVolumeCreationWithDegradedAvailability              = SettingName("allow-volume-creation-with-degraded-availability")
@@ -132,6 +133,7 @@ const (
 	SettingNameV2DataEngineLogFlags                                     = SettingName("v2-data-engine-log-flags")
 	SettingNameFreezeFilesystemForSnapshot                              = SettingName("freeze-filesystem-for-snapshot")
 	SettingNameAutoCleanupSnapshotWhenDeleteBackup                      = SettingName("auto-cleanup-when-delete-backup")
+	SettingNameDefaultMinNumberOfBackingImageCopies                     = SettingName("default-min-number-of-backing-image-copies")
 )
 
 var (
@@ -174,6 +176,7 @@ var (
 		SettingNameDisableRevisionCounter,
 		SettingNameReplicaReplenishmentWaitInterval,
 		SettingNameConcurrentReplicaRebuildPerNodeLimit,
+		SettingNameConcurrentBackingImageReplenishPerNodeLimit,
 		SettingNameConcurrentBackupRestorePerNodeLimit,
 		SettingNameSystemManagedPodsImagePullPolicy,
 		SettingNameAllowVolumeCreationWithDegradedAvailability,
@@ -220,6 +223,7 @@ var (
 		SettingNameDisableSnapshotPurge,
 		SettingNameFreezeFilesystemForSnapshot,
 		SettingNameAutoCleanupSnapshotWhenDeleteBackup,
+		SettingNameDefaultMinNumberOfBackingImageCopies,
 	}
 )
 
@@ -290,6 +294,7 @@ var (
 		SettingNameDisableRevisionCounter:                                   SettingDefinitionDisableRevisionCounter,
 		SettingNameReplicaReplenishmentWaitInterval:                         SettingDefinitionReplicaReplenishmentWaitInterval,
 		SettingNameConcurrentReplicaRebuildPerNodeLimit:                     SettingDefinitionConcurrentReplicaRebuildPerNodeLimit,
+		SettingNameConcurrentBackingImageReplenishPerNodeLimit:              SettingDefinitionConcurrentBackingImageReplenishPerNodeLimit,
 		SettingNameConcurrentBackupRestorePerNodeLimit:                      SettingDefinitionConcurrentVolumeBackupRestorePerNodeLimit,
 		SettingNameSystemManagedPodsImagePullPolicy:                         SettingDefinitionSystemManagedPodsImagePullPolicy,
 		SettingNameAllowVolumeCreationWithDegradedAvailability:              SettingDefinitionAllowVolumeCreationWithDegradedAvailability,
@@ -336,6 +341,7 @@ var (
 		SettingNameDisableSnapshotPurge:                                     SettingDefinitionDisableSnapshotPurge,
 		SettingNameFreezeFilesystemForSnapshot:                              SettingDefinitionFreezeFilesystemForSnapshot,
 		SettingNameAutoCleanupSnapshotWhenDeleteBackup:                      SettingDefinitionAutoCleanupSnapshotWhenDeleteBackup,
+		SettingNameDefaultMinNumberOfBackingImageCopies:                     SettingDefinitionDefaultMinNumberOfBackingImageCopies,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -843,6 +849,20 @@ var (
 			"  - The old setting \"Disable Replica Rebuild\" is replaced by this setting. \n\n" +
 			"  - Different from relying on replica starting delay to limit the concurrent rebuilding, if the rebuilding is disabled, replica object replenishment will be directly skipped. \n\n" +
 			"  - When the value is 0, the eviction and data locality feature won't work. But this shouldn't have any impact to any current replica rebuild and backup restore.",
+		Category: SettingCategoryDangerZone,
+		Type:     SettingTypeInt,
+		Required: true,
+		ReadOnly: false,
+		Default:  "5",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
+	}
+
+	SettingDefinitionConcurrentBackingImageReplenishPerNodeLimit = SettingDefinition{
+		DisplayName: "Concurrent Backing Image Replenish Per Node Limit",
+		Description: "This setting controls how many backing images copy on a node can be replenished simultaneously. \n\n" +
+			"Typically, Longhorn can block the backing image copy starting once the current replenishing count on a node exceeds the limit. But when the value is 0, it means disabling the backing image replenish.",
 		Category: SettingCategoryDangerZone,
 		Type:     SettingTypeInt,
 		Required: true,
@@ -1412,6 +1432,19 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "false",
+	}
+
+	SettingDefinitionDefaultMinNumberOfBackingImageCopies = SettingDefinition{
+		DisplayName: "Default Minimum Number of BackingImage Copies",
+		Description: "The default minimum number of backing image copies Longhorn maintains",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "1",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 1,
+		},
 	}
 )
 

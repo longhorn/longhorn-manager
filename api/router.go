@@ -175,6 +175,7 @@ func NewRouter(s *Server) *mux.Router {
 		"backingImageCleanup":      s.BackingImageCleanup,
 		BackingImageUpload:         s.fwd.Handler(s.fwd.HandleProxyRequestForBackingImageUpload, UploadParametersForBackingImage(s.m), s.BackingImageGet),
 		"backupBackingImageCreate": s.BackupBackingImageCreate,
+		"updateMinNumberOfCopies":  s.UpdateMinNumberOfCopies,
 	}
 	for name, action := range backingImageActions {
 		r.Methods("POST").Path("/v1/backingimages/{name}").Queries("action", name).Handler(f(schemas, action))

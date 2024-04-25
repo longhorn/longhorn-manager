@@ -110,6 +110,13 @@ func NewBackingImageController(
 	}
 	bic.cacheSyncs = append(bic.cacheSyncs, ds.ReplicaInformer.HasSynced)
 
+	if _, err = ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: bic.enqueueBackingImageForNodeUpdate,
+	}, 0); err != nil {
+		return nil, err
+	}
+	bic.cacheSyncs = append(bic.cacheSyncs, ds.NodeInformer.HasSynced)
+
 	return bic, nil
 }
 
@@ -254,6 +261,12 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 		if err != nil {
 			return
 		}
+		if !reflect.DeepEqual(existingBackingImage.Spec, backingImage.Spec) {
+			if _, err := bic.ds.UpdateBackingImage(backingImage); err != nil && apierrors.IsConflict(errors.Cause(err)) {
+				log.WithError(err).Debugf("Requeue %v due to conflict", key)
+				bic.enqueueBackingImage(backingImage)
+			}
+		}
 		if reflect.DeepEqual(existingBackingImage.Status, backingImage.Status) {
 			return
 		}
@@ -291,7 +304,130 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 		return err
 	}
 
+	if err := bic.replenishBackingImageCopies(backingImage); err != nil {
+		return err
+	}
+
+	bic.cleanupEvictionRequestedBackingImageCopies(backingImage)
+
 	return nil
+}
+
+func (bic *BackingImageController) replenishBackingImageCopies(bi *longhorn.BackingImage) (err error) {
+	bids, err := bic.ds.GetBackingImageDataSource(bi.Name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrap(err, "failed to get the backing image data source")
+	}
+	// only maintain the minNumberOfReplicas after BackingImage is transferred to BackingImageManager
+	if !bids.Spec.FileTransferred {
+		return nil
+	}
+
+	concurrentReplenishLimit, err := bic.ds.GetSettingAsInt(types.SettingNameConcurrentBackingImageReplenishPerNodeLimit)
+	if err != nil {
+		return err
+	}
+
+	// If disabled backing image replenishing, skip all the replenish except first copy.
+	if concurrentReplenishLimit == 0 {
+		return nil
+	}
+
+	nonFailedCopies := 0
+	usedDisks := map[string]bool{}
+	for diskUUID := range bi.Spec.Disks {
+		fileStatus, exists := bi.Status.DiskFileStatusMap[diskUUID]
+		if !exists || (fileStatus.State != longhorn.BackingImageStateFailed &&
+			fileStatus.State != longhorn.BackingImageStateFailedAndCleanUp &&
+			fileStatus.State != longhorn.BackingImageStateUnknown) {
+
+			// Non-existing file in status could due to not being synced from backing image manager yet.
+			// Consider it as newly created copy and count it as non-failed copies.
+			// So we don't create extra copy when handling copies evictions.
+			usedDisks[diskUUID] = true
+			nonFailedCopies += 1
+		}
+	}
+
+	if nonFailedCopies == 0 {
+		return nil
+	} else if nonFailedCopies >= bi.Spec.MinNumberOfCopies {
+		if err := bic.handleBackingImageCopiesEvictions(nonFailedCopies, bi, usedDisks); err != nil {
+			return nil
+		}
+	} else { //nonFailedCopies < bi.Spec.MinNumberOfCopies
+		readyNode, readyDiskName, err := bic.ds.GetReadyNodeDiskForBackingImage(bi, usedDisks)
+		logrus.Infof("replicate the copy to node: %v, disk: %v", readyNode, readyDiskName)
+		if err != nil {
+			logrus.WithError(err).Warnf("failed to create the backing image copy")
+			return nil
+		}
+		// BackingImageManager will then sync the BackingImage to the disk
+		bi.Spec.Disks[readyNode.Status.DiskStatus[readyDiskName].DiskUUID] = ""
+	}
+
+	return nil
+}
+
+// handleBackingImageCopiesEvictions do creating one more replica for eviction, if requested
+func (bic *BackingImageController) handleBackingImageCopiesEvictions(nonFailedCopies int, bi *longhorn.BackingImage, usedDisks map[string]bool) (err error) {
+	log := getLoggerForBackingImage(bic.logger, bi)
+	NonEvictingCount := nonFailedCopies
+
+	for _, fileStatus := range bi.Status.DiskFileStatusMap {
+		if fileStatus.EvictionRequested {
+			NonEvictingCount--
+		}
+	}
+
+	if NonEvictingCount < bi.Spec.MinNumberOfCopies {
+		log.Infof("Creating one more backing image copy for eviction")
+		readyNode, readyDiskName, err := bic.ds.GetReadyNodeDiskForBackingImage(bi, usedDisks)
+		if err != nil {
+			logrus.WithError(err).Warnf("failed to create the backing image copy")
+			return nil
+		}
+		// BackingImageManager will then sync the BackingImage to the disk
+		bi.Spec.Disks[readyNode.Status.DiskStatus[readyDiskName].DiskUUID] = ""
+	}
+
+	return nil
+}
+
+func (bic *BackingImageController) cleanupEvictionRequestedBackingImageCopies(bi *longhorn.BackingImage) {
+	log := getLoggerForBackingImage(bic.logger, bi)
+
+	// If there is no non-evicting healthy backing image copy,
+	// Longhorn should retain one evicting healthy backing image copy for replenishing.
+	hasNonEvictingHealthyBackingImageCopy := false
+	evictingHealthyBackingImageCopyDiskUUID := ""
+	for diskUUID, fileStatus := range bi.Status.DiskFileStatusMap {
+		if fileStatus.State != longhorn.BackingImageStateReady {
+			continue
+		}
+		if !fileStatus.EvictionRequested {
+			hasNonEvictingHealthyBackingImageCopy = true
+			break
+		}
+		evictingHealthyBackingImageCopyDiskUUID = diskUUID
+	}
+
+	for diskUUID, fileStatus := range bi.Status.DiskFileStatusMap {
+		if !fileStatus.EvictionRequested {
+			continue
+		}
+		if !hasNonEvictingHealthyBackingImageCopy && diskUUID == evictingHealthyBackingImageCopyDiskUUID {
+			msg := fmt.Sprintf("Failed to evict backing image copy on disk %v for now since there is no other healthy backing image copy", diskUUID)
+			log.Warn(msg)
+			bic.eventRecorder.Event(bi, corev1.EventTypeNormal, constant.EventReasonFailedDeleting, msg)
+			continue
+		}
+		delete(bi.Spec.Disks, diskUUID)
+		log.Infof("Evicted backing image copy on disk %v", diskUUID)
+	}
 }
 
 func (bic *BackingImageController) IsBackingImageDataSourceCleaned(bi *longhorn.BackingImage) (cleaned bool, err error) {
@@ -396,8 +532,10 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 				}
 			}
 		}
+
+		// JackLin: BackingIamge Data Source choose node/disk
 		if !foundReadyDisk {
-			readyNode, readyDiskName, err := bic.ds.GetRandomReadyNodeDisk()
+			readyNode, readyDiskName, err := bic.ds.GetReadyNodeDiskForBackingImage(bi, map[string]bool{})
 			if err != nil {
 				return err
 			}
@@ -528,7 +666,7 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 		changeNodeDisk := err != nil || node.Name != bids.Spec.NodeID || node.Spec.Disks[diskName].Path != bids.Spec.DiskPath || node.Status.DiskStatus[diskName].DiskUUID != bids.Spec.DiskUUID
 		if changeNodeDisk {
 			log.Warn("Backing image data source current node and disk is not ready, need to switch to another ready node and disk")
-			readyNode, readyDiskName, err := bic.ds.GetRandomReadyNodeDisk()
+			readyNode, readyDiskName, err := bic.ds.GetReadyNodeDiskForBackingImage(bi, map[string]bool{})
 			if err != nil {
 				return err
 			}
@@ -825,6 +963,60 @@ func (bic *BackingImageController) enqueueBackingImageForBackingImageManager(obj
 
 func (bic *BackingImageController) enqueueBackingImageForBackingImageDataSource(obj interface{}) {
 	bic.enqueueBackingImage(obj)
+}
+
+func (bic *BackingImageController) enqueueBackingImageForNodeUpdate(oldObj, currObj interface{}) {
+	oldNode, ok := oldObj.(*longhorn.Node)
+	if !ok {
+		deletedState, ok := oldObj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", oldObj))
+			return
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		oldNode, ok = deletedState.Obj.(*longhorn.Node)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	currNode, ok := currObj.(*longhorn.Node)
+	if !ok {
+		deletedState, ok := currObj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", currObj))
+			return
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		currNode, ok = deletedState.Obj.(*longhorn.Node)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	diskBackingImageMap, err := bic.ds.GetDiskBackingImageMap(oldNode)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to get disk backing image map when handling node update"))
+		return
+	}
+
+	// if a node or disk changes its EvictionRequested, enqueue all backing image copies on that node/disk
+	evictionRequestedChangeOnNodeLevel := currNode.Spec.EvictionRequested != oldNode.Spec.EvictionRequested
+	for diskName, newDiskSpec := range currNode.Spec.Disks {
+		oldDiskSpec, ok := oldNode.Spec.Disks[diskName]
+		evictionRequestedChangeOnDiskLevel := !ok || (newDiskSpec.EvictionRequested != oldDiskSpec.EvictionRequested)
+		if diskStatus, existed := currNode.Status.DiskStatus[diskName]; existed && (evictionRequestedChangeOnNodeLevel || evictionRequestedChangeOnDiskLevel) {
+			diskUUID := diskStatus.DiskUUID
+			for _, backingImage := range diskBackingImageMap[diskUUID] {
+				bic.enqueueBackingImage(backingImage)
+			}
+		}
+	}
+
 }
 
 func (bic *BackingImageController) enqueueBackingImageForReplica(obj interface{}) {

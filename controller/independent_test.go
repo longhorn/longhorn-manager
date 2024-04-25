@@ -184,18 +184,4 @@ func (s *TestSuite) TestBackingImageCleanup(c *C) {
 	expectedBI = bi.DeepCopy()
 	BackingImageDiskFileCleanup(node, bi, bidsTemplate, time.Duration(0), 3)
 	c.Assert(bi.Spec.Disks, DeepEquals, expectedBI.Spec.Disks)
-
-	// Test case 4: retain the 1st file anyway
-	bi = biTemplate.DeepCopy()
-	bi.Status.DiskFileStatusMap = map[string]*longhorn.BackingImageDiskFileStatus{
-		TestDiskID1: {},
-	}
-	bi.Status.DiskLastRefAtMap = map[string]string{
-		TestDiskID1: util.Now(),
-	}
-	expectedBI = bi.DeepCopy()
-	bids := bidsTemplate.DeepCopy()
-	bids.Spec.FileTransferred = false
-	BackingImageDiskFileCleanup(node, bi, bids, time.Duration(0), 0)
-	c.Assert(bi.Spec.Disks, DeepEquals, expectedBI.Spec.Disks)
 }
