@@ -127,7 +127,9 @@ func (s *NodeControllerSuite) SetUpTest(c *C) {
 
 	s.eventRecorder = record.NewFakeRecorder(eventRecorderBufferSize)
 
-	s.controller = newTestNodeController(s.lhClient, s.kubeClient, s.extensionsClient, s.informerFactories, s.eventRecorder, TestNode1)
+	var err error
+	s.controller, err = newTestNodeController(s.lhClient, s.kubeClient, s.extensionsClient, s.informerFactories, s.eventRecorder, TestNode1)
+	c.Assert(err, IsNil)
 }
 
 func (s *NodeControllerSuite) TestManagerPodUp(c *C) {
@@ -1947,11 +1949,14 @@ func (s *NodeControllerSuite) initTest(c *C, fixture *NodeControllerFixture) {
 }
 
 func newTestNodeController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
-	informerFactories *util.InformerFactories, eventRecorder *record.FakeRecorder, controllerID string) *NodeController {
+	informerFactories *util.InformerFactories, eventRecorder *record.FakeRecorder, controllerID string) (*NodeController, error) {
 	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	logger := logrus.StandardLogger()
-	nc := NewNodeController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID)
+	nc, err := NewNodeController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID)
+	if err != nil {
+		return nil, err
+	}
 	nc.eventRecorder = eventRecorder
 	nc.topologyLabelsChecker = fakeTopologyLabelsChecker
 
@@ -1960,14 +1965,14 @@ func newTestNodeController(lhClient *lhfake.Clientset, kubeClient *fake.Clientse
 	}
 	mon, err := monitor.NewFakeNodeMonitor(nc.logger, nc.ds, controllerID, enqueueNodeForMonitor)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	nc.diskMonitor = mon
 
 	for index := range nc.cacheSyncs {
 		nc.cacheSyncs[index] = alwaysReady
 	}
-	return nc
+	return nc, nil
 }
 
 func fakeTopologyLabelsChecker(kubeClient clientset.Interface, vers string) (bool, error) {

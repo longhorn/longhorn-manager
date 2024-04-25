@@ -196,15 +196,6 @@ func conversionResponseFailureWithMessagef(msg string, params ...interface{}) *a
 
 }
 
-// statusErrorWithMessage is a helper function to create an metav1 failure status
-// with an error message
-func statusErrorWithMessage(msg string, params ...interface{}) metav1.Status {
-	return metav1.Status{
-		Message: fmt.Sprintf(msg, params...),
-		Status:  metav1.StatusFailure,
-	}
-}
-
 // statusSucceed is a helper function to create a metav1 success status
 func statusSucceed() metav1.Status {
 	return metav1.Status{Status: metav1.StatusSuccess}

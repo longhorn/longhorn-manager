@@ -433,7 +433,9 @@ func (s *TestSuite) runVolumeAttachmentTestCase(c *C, tc *volumeAttachmentTestCa
 	volumeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Volumes().Informer().GetIndexer()
 	volumeAttachmentIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().VolumeAttachments().Informer().GetIndexer()
 
-	vac := NewLonghornVolumeAttachmentController(logger, ds, scheme.Scheme, kubeClient, TestOwnerID1, TestNamespace)
+	vac, err := NewLonghornVolumeAttachmentController(logger, ds, scheme.Scheme, kubeClient, TestOwnerID1, TestNamespace)
+	c.Assert(err, IsNil)
+
 	fakeRecorder := record.NewFakeRecorder(100)
 	vac.eventRecorder = fakeRecorder
 	for index := range vac.cacheSyncs {
@@ -456,7 +458,8 @@ func (s *TestSuite) runVolumeAttachmentTestCase(c *C, tc *volumeAttachmentTestCa
 
 	////////////////////////////////////
 	// main test func
-	vac.syncHandler(getKey(volAttachment, c))
+	err = vac.syncHandler(getKey(volAttachment, c))
+	c.Assert(err, IsNil)
 	///////////////////////////////////
 
 	retVol, err := lhClient.LonghornV1beta2().Volumes(TestNamespace).Get(context.TODO(), tc.vol.Name, metav1.GetOptions{})

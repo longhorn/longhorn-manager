@@ -45,7 +45,7 @@ func NewKubernetesNodeController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
-	controllerID string) *KubernetesNodeController {
+	controllerID string) (*KubernetesNodeController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -63,30 +63,37 @@ func NewKubernetesNodeController(
 		ds: ds,
 	}
 
-	ds.KubeNodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.KubeNodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { knc.enqueueNode(cur) },
 		DeleteFunc: knc.enqueueNode,
-	})
+	}); err != nil {
+		return nil, err
+	}
 	knc.cacheSyncs = append(knc.cacheSyncs, ds.KubeNodeInformer.HasSynced)
 
-	ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    knc.enqueueLonghornNode,
 		UpdateFunc: func(old, cur interface{}) { knc.enqueueLonghornNode(cur) },
 		DeleteFunc: knc.enqueueLonghornNode,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	knc.cacheSyncs = append(knc.cacheSyncs, ds.NodeInformer.HasSynced)
 
-	ds.SettingInformer.AddEventHandlerWithResyncPeriod(
+	if _, err = ds.SettingInformer.AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: isSettingCreateDefaultDiskLabeledNodes,
 			Handler: cache.ResourceEventHandlerFuncs{
 				AddFunc:    knc.enqueueSetting,
 				UpdateFunc: func(old, cur interface{}) { knc.enqueueSetting(cur) },
 			},
-		}, 0)
+		}, 0); err != nil {
+		return nil, err
+	}
 	knc.cacheSyncs = append(knc.cacheSyncs, ds.SettingInformer.HasSynced)
 
-	return knc
+	return knc, nil
 }
 
 func isSettingCreateDefaultDiskLabeledNodes(obj interface{}) bool {
@@ -287,7 +294,7 @@ func (knc *KubernetesNodeController) syncDefaultDisks(node *longhorn.Node) (err 
 	}
 	val = strings.ToLower(val)
 
-	disks := map[string]longhorn.DiskSpec{}
+	disks := map[string]longhorn.DiskSpec{} // nolint: ineffassign,staticcheck
 	switch val {
 	case types.NodeCreateDefaultDiskLabelValueTrue:
 		dataPath, err := knc.ds.GetSettingValueExisted(types.SettingNameDefaultDataPath)

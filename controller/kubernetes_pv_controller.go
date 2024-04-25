@@ -55,7 +55,7 @@ func NewKubernetesPVController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
-	controllerID string) *KubernetesPVController {
+	controllerID string) (*KubernetesPVController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -77,24 +77,29 @@ func NewKubernetesPVController(
 		nowHandler: util.Now,
 	}
 
-	ds.PersistentVolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.PersistentVolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    kc.enqueuePersistentVolume,
 		UpdateFunc: func(old, cur interface{}) { kc.enqueuePersistentVolume(cur) },
 		DeleteFunc: func(obj interface{}) {
 			kc.enqueuePersistentVolume(obj)
 			kc.enqueuePVDeletion(obj)
 		},
-	})
+	}); err != nil {
+		return nil, err
+	}
 	kc.cacheSyncs = append(kc.cacheSyncs, ds.PersistentVolumeInformer.HasSynced)
 
-	ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    kc.enqueuePodChange,
 		UpdateFunc: func(old, cur interface{}) { kc.enqueuePodChange(cur) },
 		DeleteFunc: kc.enqueuePodChange,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	kc.cacheSyncs = append(kc.cacheSyncs, ds.PodInformer.HasSynced)
 
-	return kc
+	return kc, nil
 }
 
 func (kc *KubernetesPVController) Run(workers int, stopCh <-chan struct{}) {

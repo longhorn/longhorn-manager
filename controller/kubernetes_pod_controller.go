@@ -52,7 +52,7 @@ func NewKubernetesPodController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
-	controllerID string) *KubernetesPodController {
+	controllerID string) (*KubernetesPodController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -72,14 +72,17 @@ func NewKubernetesPodController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-kubernetes-pod-controller"}),
 	}
 
-	ds.PodInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.PodInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    kc.enqueuePodChange,
 		UpdateFunc: func(old, cur interface{}) { kc.enqueuePodChange(cur) },
 		DeleteFunc: kc.enqueuePodChange,
-	})
+	}); err != nil {
+		return nil, err
+	}
 	kc.cacheSyncs = append(kc.cacheSyncs, ds.PodInformer.HasSynced)
 
-	return kc
+	return kc, nil
 }
 
 func (kc *KubernetesPodController) Run(workers int, stopCh <-chan struct{}) {

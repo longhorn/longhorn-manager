@@ -76,8 +76,8 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceM
 		}
 
 		if v.Spec.Image == "" {
-			v.Spec.Image = v.Spec.EngineImage
-			v.Spec.EngineImage = ""
+			v.Spec.Image = v.Spec.EngineImage // nolint: staticcheck
+			v.Spec.EngineImage = ""           // nolint: staticcheck
 		}
 
 		if v.Spec.BackendStoreDriver == "" {
@@ -133,8 +133,8 @@ func upgradeEngines(namespace string, lhClient *lhclientset.Clientset, resourceM
 
 	for _, e := range engineMap {
 		if e.Spec.Image == "" {
-			e.Spec.Image = e.Spec.EngineImage
-			e.Spec.EngineImage = ""
+			e.Spec.Image = e.Spec.EngineImage // nolint: staticcheck
+			e.Spec.EngineImage = ""           // nolint: staticcheck
 		}
 
 		if e.Spec.BackendStoreDriver == "" {
@@ -162,8 +162,8 @@ func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset, resource
 
 	for _, r := range replicaMap {
 		if r.Spec.Image == "" {
-			r.Spec.Image = r.Spec.EngineImage
-			r.Spec.EngineImage = ""
+			r.Spec.Image = r.Spec.EngineImage // nolint: staticcheck
+			r.Spec.EngineImage = ""           // nolint: staticcheck
 		}
 
 		if r.Spec.BackendStoreDriver == "" {
@@ -172,7 +172,7 @@ func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset, resource
 			r.Spec.DataEngine = longhorn.DataEngineType(r.Spec.BackendStoreDriver)
 		}
 
-		r.Spec.EvictionRequested = r.Status.EvictionRequested
+		r.Spec.EvictionRequested = r.Status.EvictionRequested // nolint: staticcheck
 	}
 
 	return nil

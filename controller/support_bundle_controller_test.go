@@ -169,7 +169,8 @@ func (s *TestSuite) TestReconcileSupportBundle(c *C) {
 		fakeSupportBundleManagerImageSetting(c, informerFactories.LhInformerFactory, lhClient)
 		fakeSupportBundleFailedHistoryLimitSetting(tc.supportBundleFailedHistoryLimit, c, informerFactories.LhInformerFactory, lhClient)
 
-		supportBundleController := newFakeSupportBundleController(lhClient, kubeClient, extensionsClient, informerFactories, tc.controllerID)
+		supportBundleController, err := newFakeSupportBundleController(lhClient, kubeClient, extensionsClient, informerFactories, tc.controllerID)
+		c.Assert(err, IsNil)
 
 		var supportBundle *longhorn.SupportBundle
 		for _, supportBundleName := range tc.supportBundleNames {
@@ -185,7 +186,7 @@ func (s *TestSuite) TestReconcileSupportBundle(c *C) {
 		}
 		c.Assert(supportBundle, NotNil)
 
-		err := supportBundleController.reconcile(tc.supportBundleNames[0])
+		err = supportBundleController.reconcile(tc.supportBundleNames[0])
 		c.Assert(err, IsNil)
 
 		for _, supportBundleName := range tc.supportBundleNames {
@@ -214,13 +215,16 @@ func (s *TestSuite) TestReconcileSupportBundle(c *C) {
 }
 
 func newFakeSupportBundleController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
-	informerFactories *util.InformerFactories, controllerID string) *SupportBundleController {
+	informerFactories *util.InformerFactories, controllerID string) (*SupportBundleController, error) {
 	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	logger := logrus.StandardLogger()
 	logrus.SetLevel(logrus.DebugLevel)
 
-	c := NewSupportBundleController(logger, ds, scheme.Scheme, kubeClient, controllerID, TestNamespace, TestSupportBundleServiceAccount)
+	c, err := NewSupportBundleController(logger, ds, scheme.Scheme, kubeClient, controllerID, TestNamespace, TestSupportBundleServiceAccount)
+	if err != nil {
+		return nil, err
+	}
 	c.eventRecorder = record.NewFakeRecorder(100)
 	for index := range c.cacheSyncs {
 		c.cacheSyncs[index] = alwaysReady
@@ -228,7 +232,7 @@ func newFakeSupportBundleController(lhClient *lhfake.Clientset, kubeClient *fake
 
 	c.httpClient = &fakeSupportBundleHTTPClient{}
 
-	return c
+	return c, nil
 }
 
 func fakeSupportBundle(name, currentOwnerID string, state longhorn.SupportBundleState, c *C, informerFactory lhinformers.SharedInformerFactory, client *lhfake.Clientset) *longhorn.SupportBundle {

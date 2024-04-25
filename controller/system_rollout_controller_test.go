@@ -997,13 +997,13 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			doneChs = append(doneChs, doneCh)
 		}
 
-		controller := newFakeSystemRolloutController(tc.systemRestoreName, controllerID, ds, doneCh, kubeClient, extensionsClient)
+		controller, err := newFakeSystemRolloutController(tc.systemRestoreName, controllerID, ds, doneCh, kubeClient, extensionsClient)
+		c.Assert(err, IsNil)
 		controller.systemRestoreVersion = TestSystemBackupLonghornVersion
 		controller.cacheErrors = util.MultiError{}
 
 		fakeSystemRestore(tc.systemRestoreName, systemRolloutOwnerID, tc.isInProgress, false, tc.state, c, informerFactories.LhInformerFactory, lhClient, controller.ds)
 
-		var err error
 		controller.systemRestore, err = lhClient.LonghornV1beta2().SystemRestores(TestNamespace).Get(context.TODO(), tc.systemRestoreName, metav1.GetOptions{})
 		c.Assert(err, IsNil)
 
@@ -1102,11 +1102,14 @@ func newFakeSystemRolloutController(
 	ds *datastore.DataStore,
 	stopCh chan struct{},
 	kubeClient *fake.Clientset,
-	extensionsClient *apiextensionsfake.Clientset) *SystemRolloutController {
+	extensionsClient *apiextensionsfake.Clientset) (*SystemRolloutController, error) {
 	logger := logrus.StandardLogger()
 	logrus.SetLevel(logrus.DebugLevel)
 
-	c := NewSystemRolloutController(systemRestoreName, logger, controllerID, ds, scheme.Scheme, stopCh, kubeClient, extensionsClient)
+	c, err := NewSystemRolloutController(systemRestoreName, logger, controllerID, ds, scheme.Scheme, stopCh, kubeClient, extensionsClient)
+	if err != nil {
+		return nil, err
+	}
 	c.eventRecorder = record.NewFakeRecorder(100)
 	for index := range c.cacheSyncs {
 		c.cacheSyncs[index] = alwaysReady
@@ -1117,7 +1120,7 @@ func newFakeSystemRolloutController(
 		version: TestSystemBackupLonghornVersion,
 	}
 
-	return c
+	return c, nil
 }
 
 func (tc *SystemRolloutTestCase) initTestCase() {
@@ -1422,11 +1425,13 @@ func fakeSystemBackupArchieve(c *C, systemBackupName, systemRolloutOwnerID, roll
 	kubeClient *fake.Clientset, lhClient *lhfake.Clientset, extensionsClient *apiextensionsfake.Clientset, informerFactories *util.InformerFactories) {
 	fakeSystemRolloutNamespace(c, informerFactories.KubeInformerFactory, kubeClient)
 
-	systemBackupController := newFakeSystemBackupController(lhClient, kubeClient, extensionsClient, informerFactories, rolloutControllerID)
+	systemBackupController, err := newFakeSystemBackupController(lhClient, kubeClient, extensionsClient, informerFactories, rolloutControllerID)
+	c.Assert(err, IsNil)
+
 	systemBackup := fakeSystemBackup(systemBackupName, systemRolloutOwnerID, "", false, "", longhorn.SystemBackupStateGenerating, c, informerFactories.LhInformerFactory, lhClient)
 
 	systemBackupController.GenerateSystemBackup(systemBackup, downloadPath, tempDir)
-	systemBackup, err := lhClient.LonghornV1beta2().SystemBackups(TestNamespace).Get(context.TODO(), systemBackupName, metav1.GetOptions{})
+	systemBackup, err = lhClient.LonghornV1beta2().SystemBackups(TestNamespace).Get(context.TODO(), systemBackupName, metav1.GetOptions{})
 	c.Assert(err, IsNil)
 	c.Assert(systemBackup.Status.State, Equals, longhorn.SystemBackupStateUploading)
 }
