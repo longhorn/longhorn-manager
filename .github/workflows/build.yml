@@ -72,7 +72,7 @@ jobs:
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
 
-    # longhorn/longhorn-manager image
+    # longhornio/longhorn-manager image
     - name: docker-publish
       if: ${{ startsWith(github.ref, 'refs/heads/') }}
       uses: docker/build-push-action@v5
@@ -80,7 +80,7 @@ jobs:
         context: ./
         push: true
         platforms: linux/amd64,linux/arm64
-        tags: longhorn/longhorn-manager:${{ env.branch }}-head
+        tags: longhornio/longhorn-manager:${{ env.branch }}-head
         file: package/Dockerfile
 
     - name: docker-publish-with-tag
@@ -90,5 +90,5 @@ jobs:
         context: ./
         push: true
         platforms: linux/amd64,linux/arm64
-        tags: longhorn/longhorn-manager:${{ github.ref_name }}
+        tags: longhornio/longhorn-manager:${{ github.ref_name }}
         file: package/Dockerfile
