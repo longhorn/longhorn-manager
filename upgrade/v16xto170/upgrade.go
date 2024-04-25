@@ -20,6 +20,10 @@ const (
 func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) error {
 	// We will probably need to upgrade other resources as well. See upgradeReplicas or previous Longhorn versions for
 	// examples.
+	if err := upgradeVolumes(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
 	if err := upgradeReplicas(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
@@ -31,6 +35,26 @@ func UpgradeResourcesStatus(namespace string, lhClient *lhclientset.Clientset, k
 	// We will probably need to upgrade other resource status as well. See upgradeEngineStatus or previous Longhorn
 	// versions for examples.
 	return upgradeEngineStatus(namespace, lhClient, resourceMaps)
+}
+
+func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade volume failed")
+	}()
+
+	volumeMap, err := upgradeutil.ListAndUpdateVolumesInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn volumes during the volume upgrade")
+	}
+
+	for _, v := range volumeMap {
+		v.Spec.OfflineReplicaRebuilding = longhorn.OfflineReplicaRebuildingDisabled
+	}
+
+	return nil
 }
 
 func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
