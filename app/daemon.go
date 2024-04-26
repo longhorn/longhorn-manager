@@ -305,6 +305,9 @@ func environmentCheck(kubeconfigPath, currentNodeID string) error {
 	}
 
 	// Check if nfs client versions are supported
+	if err := checkNFSClientVersion(kubeNode, namespaces, currentNodeID); err != nil {
+		return err
+	}
 
 	nsexec, err := lhns.NewNamespaceExecutor(iscsiutil.ISCSIdProcess, lhtypes.HostProcDirectory, namespaces)
 	if err != nil {
@@ -426,6 +429,44 @@ func checkMultipathd(namespaces []lhtypes.Namespace, currentNodeID string) error
 	}
 
 	return nil
+}
+
+func checkNFSClientVersion(kubeNode *corev1.Node, namespaces []lhtypes.Namespace, currentNodeID string) error {
+	kernelVersion := kubeNode.Status.NodeInfo.KernelVersion
+	nfsClientVersions := []string{"CONFIG_NFS_V4_2", "CONFIG_NFS_V4_1", "CONFIG_NFS_V4"}
+
+	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	if err != nil {
+		return err
+	}
+
+	kernelConfigPath := "/boot/config-" + kernelVersion
+	args := []string{kernelConfigPath}
+	if _, err := nsexec.Execute(nil, "ls", args, lhtypes.ExecuteDefaultTimeout); err != nil {
+		logrus.WithError(err).Warnf("Failed to check %v on node %v, because %v does not exist on node %v", nfsClientVersions, currentNodeID, kernelConfigPath, currentNodeID)
+	}
+
+	for _, ver := range nfsClientVersions {
+		args := []string{ver + "=", kernelConfigPath}
+		result, err := nsexec.Execute(nil, "grep", args, lhtypes.ExecuteDefaultTimeout)
+		if err != nil {
+			logrus.WithError(err).Warnf("Failed to find kernel config %v on node %v", ver, currentNodeID)
+		}
+		enabled := strings.TrimSpace(strings.Split(result, "=")[1])
+		switch enabled {
+		case "y":
+			return nil
+		case "m":
+			opts := []string{"|grep", "nfs"}
+			if _, err := nsexec.Execute(nil, "lsmod", opts, lhtypes.ExecuteDefaultTimeout); err != nil {
+				logrus.WithError(err).Warnf("Failed to check %v enabled on node %v", ver, currentNodeID)
+			}
+		default:
+			logrus.Warnf("Unknown kernel config value for %v: %v", ver, enabled)
+		}
+	}
+
+	return fmt.Errorf("NFS clients %v not found. At least one should be enabled", nfsClientVersions)
 }
 
 func updateRegistrySecretName(m *manager.VolumeManager) error {
