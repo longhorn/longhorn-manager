@@ -294,6 +294,10 @@ func environmentCheck(kubeconfigPath, currentNodeID string) error {
 	}
 
 	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceNet}
+	// Check if necessary packages are installed
+	if err := checkPackagesInstalled(kubeNode, namespaces, currentNodeID); err != nil {
+		return err
+	}
 
 	// Check if multipath is supported
 	if err := checkMultipathd(namespaces, currentNodeID); err != nil {
@@ -365,6 +369,49 @@ func checkKernelVersion(kubeNode *corev1.Node, currentNodeID string) error {
 		}
 		logrus.Warnf("Node %v has a kernel version %v known to have a breakage that affects Longhorn. See description and solution at https://longhorn.io/kb/troubleshooting-rwx-volume-fails-to-attached-caused-by-protocol-not-supported", currentNodeID, kernelVersion)
 	}
+	return nil
+}
+
+func checkPackagesInstalled(kubeNode *corev1.Node, namespaces []lhtypes.Namespace, currentNodeID string) error {
+	osImage := strings.ToLower(kubeNode.Status.NodeInfo.OSImage)
+	queryPackagesCmd := ""
+	packages := []string{}
+	switch {
+	case strings.Contains(osImage, "ubuntu"):
+	case strings.Contains(osImage, "debian"):
+		queryPackagesCmd = "dpkg -l | grep -w"
+		packages = []string{"nfs-common", "open-iscsi", "cryptsetup", "dmsetup"}
+	case strings.Contains(osImage, "centos"):
+	case strings.Contains(osImage, "fedora"):
+	case strings.Contains(osImage, "rocky"):
+	case strings.Contains(osImage, "ol"):
+		queryPackagesCmd = "rpm -q"
+		packages = []string{"nfs-utils", "iscsi-initiator-utils", "cryptsetup", "device-mapper"}
+	case strings.Contains(osImage, "suse"):
+		queryPackagesCmd = "rpm -q"
+		packages = []string{"nfs-client", "open-iscsi", "cryptsetup", "device-mapper"}
+	case strings.Contains(osImage, "arch"):
+		queryPackagesCmd = "pacman -Q"
+		packages = []string{"nfs-utils", "open-iscsi", "cryptsetup", "device-mapper"}
+	case strings.Contains(osImage, "gentoo"):
+		queryPackagesCmd = "qlist -I"
+		packages = []string{"net-fs/nfs-utils", "sys-block/open-iscsi", "sys-fs/cryptsetup", "sys-fs/lvm2"}
+	default:
+		logrus.Warnf("Node %v has an unknown OS image %v, please make sure the necessary packages are installed", currentNodeID, osImage)
+		return nil
+	}
+
+	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	if err != nil {
+		return err
+	}
+	for _, pkg := range packages {
+		args := []string{pkg}
+		if _, err := nsexec.Execute(nil, queryPackagesCmd, args, lhtypes.ExecuteDefaultTimeout); err != nil {
+			logrus.WithError(err).Warnf("Package %v is not found in node %v", pkg, currentNodeID)
+		}
+	}
+
 	return nil
 }
 
