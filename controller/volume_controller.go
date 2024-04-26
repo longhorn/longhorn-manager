@@ -767,15 +767,6 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		}
 	}
 
-	shouldStop, err := c.shouldStopOfflineReplicaRebuilding(v, healthyCount)
-	if err != nil {
-		log.WithError(err).Errorf("Failed to check if offline replica rebuilding should be stopped")
-		return err
-	}
-	if shouldStop {
-		v.Status.OfflineReplicaRebuildingRequired = false
-	}
-
 	// Cannot continue evicting or replenishing replicas during engine migration.
 	isMigratingDone := !util.IsVolumeMigrating(v) && len(es) == 1
 
@@ -814,8 +805,6 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 				}
 			}
 		}
-
-		v.Status.OfflineReplicaRebuildingRequired = false
 	} else { // healthyCount < v.Spec.NumberOfReplicas
 		v.Status.Robustness = longhorn.VolumeRobustnessDegraded
 		if oldRobustness != longhorn.VolumeRobustnessDegraded {
@@ -878,32 +867,6 @@ func areAllReplicasFailed(rs map[string]*longhorn.Replica) bool {
 		}
 	}
 	return true
-}
-
-func (c *VolumeController) shouldStopOfflineReplicaRebuilding(v *longhorn.Volume, healthyCount int) (bool, error) {
-	if types.IsDataEngineV1(v.Spec.DataEngine) {
-		return true, nil
-	}
-
-	if healthyCount == v.Spec.NumberOfReplicas {
-		return true, nil
-	}
-
-	if v.Spec.OfflineReplicaRebuilding == longhorn.OfflineReplicaRebuildingDisabled {
-		return true, nil
-	}
-
-	if v.Spec.OfflineReplicaRebuilding == longhorn.OfflineReplicaRebuildingIgnored {
-		offlineReplicaRebuilding, err := c.ds.GetSettingValueExisted(types.SettingNameOfflineReplicaRebuilding)
-		if err != nil {
-			return false, err
-		}
-		if offlineReplicaRebuilding == string(longhorn.OfflineReplicaRebuildingDisabled) {
-			return true, nil
-		}
-	}
-
-	return false, nil
 }
 
 // isFirstAttachment returns true if this is the first time the volume is attached.
@@ -1055,8 +1018,8 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 		}
 
 		if c.shouldCleanUpFailedReplica(v, r, safeAsLastReplicaCount) {
-				log.WithField("replica", r.Name).Info("Cleaning up corrupted, staled replica")
-				if err := c.deleteReplica(r, rs); err != nil {
+			log.WithField("replica", r.Name).Info("Cleaning up corrupted, staled replica")
+			if err := c.deleteReplica(r, rs); err != nil {
 				return errors.Wrapf(err, "failed to clean up staled replica %v", r.Name)
 			}
 		}
@@ -1315,10 +1278,6 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 
 	if v.Status.CurrentImage == "" {
 		v.Status.CurrentImage = v.Spec.Image
-	}
-
-	if err := c.checkAndInitVolumeOfflineReplicaRebuilding(v, rs); err != nil {
-		return err
 	}
 
 	if err := c.checkAndInitVolumeRestore(v); err != nil {
@@ -2242,8 +2201,8 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 	}
 	for i := 0; i < replenishCount; i++ {
 		reusableFailedReplica, err := c.scheduler.CheckAndReuseFailedReplica(rs, v, hardNodeAffinity)
-			if err != nil {
-				return errors.Wrapf(err, "failed to reuse a failed replica during replica replenishment")
+		if err != nil {
+			return errors.Wrapf(err, "failed to reuse a failed replica during replica replenishment")
 		}
 
 		if reusableFailedReplica != nil {
@@ -3051,64 +3010,6 @@ func (c *VolumeController) updateRequestedBackupForVolumeRestore(v *longhorn.Vol
 	return nil
 }
 
-func (c *VolumeController) checkAndInitVolumeOfflineReplicaRebuilding(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
-	log := getLoggerForVolume(c.logger, v)
-
-	if types.IsDataEngineV1(v.Spec.DataEngine) {
-		return nil
-	}
-
-	if v.Status.RestoreRequired {
-		return nil
-	}
-
-	switch v.Spec.OfflineReplicaRebuilding {
-	case longhorn.OfflineReplicaRebuildingIgnored:
-		offlineReplicaRebuilding, err := c.ds.GetSettingValueExisted(types.SettingNameOfflineReplicaRebuilding)
-		if err != nil {
-			log.WithError(err).Errorf("Failed to get setting %v", types.SettingNameOfflineReplicaRebuilding)
-			return nil
-		}
-		if offlineReplicaRebuilding == string(longhorn.OfflineReplicaRebuildingDisabled) {
-			return nil
-		}
-	case longhorn.OfflineReplicaRebuildingDisabled:
-		return nil
-	}
-
-	if len(rs) == 0 {
-		return nil
-	}
-
-	healthyReplicaCount := 0
-
-	replicas, err := c.ds.ListVolumeReplicasRO(v.Name)
-	if err != nil {
-		return errors.Wrapf(err, "failed to get replicas for volume %v offline replica rebuilding", v.Name)
-	}
-	for _, r := range replicas {
-		if r.Spec.HealthyAt != "" && r.Spec.FailedAt == "" {
-			healthyReplicaCount++
-		}
-	}
-
-	if healthyReplicaCount == 0 {
-		return nil
-	}
-
-	if healthyReplicaCount >= v.Spec.NumberOfReplicas {
-		return nil
-	}
-
-	if !v.Status.OfflineReplicaRebuildingRequired {
-		log.Info("Requesting offline replica rebuilding for the volume")
-	}
-
-	v.Status.OfflineReplicaRebuildingRequired = true
-
-	return nil
-}
-
 func (c *VolumeController) checkAndInitVolumeRestore(v *longhorn.Volume) error {
 	log := getLoggerForVolume(c.logger, v)
 
@@ -3433,7 +3334,7 @@ func (c *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine,
 	if isRebuildingReplica {
 		// TODO: reuse failed replica for replica rebuilding of SPDK volumes
 		if types.IsDataEngineV2(v.Spec.DataEngine) {
-			if !v.Spec.DisableFrontend || !v.Status.OfflineReplicaRebuildingRequired {
+			if !v.Spec.DisableFrontend {
 				log.Tracef("Online replica rebuilding for replica %v is not supported for SPDK volumes", replica.Name)
 				return nil
 			}
