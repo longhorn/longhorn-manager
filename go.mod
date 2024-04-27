@@ -46,7 +46,7 @@ require (
 	github.com/gorilla/websocket v1.5.1
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
-	github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240427164523-e68bcc993c87
+	github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240427202038-c706793f6770
 	github.com/longhorn/backupstore v0.0.0-20240427164602-c8721e8ea31a
 	github.com/longhorn/go-common-libs v0.0.0-20240427164621-70d1933bfa90
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240417063713-e20db15bb989
