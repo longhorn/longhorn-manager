@@ -46,14 +46,14 @@ require (
 	github.com/gorilla/websocket v1.5.1
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
-	github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240427022236-28c011d018c1
+	github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240427134432-3faadca8ae5a
 	github.com/longhorn/backupstore v0.0.0-20240426093637-ac3867f121c0
 	github.com/longhorn/go-common-libs v0.0.0-20240426033718-77710d2242df
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240417063713-e20db15bb989
 	github.com/longhorn/go-spdk-helper v0.0.0-20240426112700-a797602bf7fe
 	github.com/longhorn/longhorn-engine v1.6.0-dev-20231217.0.20240418025706-519598108463
-	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240427052252-a4b926b28b1f
-	github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240427042921-96cdd7f05166
+	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240427142826-1cafc504af22
+	github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240427131147-d2b5741fb515
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.18.0
 	github.com/rancher/dynamiclistener v0.3.6
@@ -62,7 +62,7 @@ require (
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.9.0
-	github.com/urfave/cli v1.22.14
+	github.com/urfave/cli v1.22.15
 	golang.org/x/mod v0.14.0
 	golang.org/x/net v0.24.0
 	golang.org/x/sys v0.19.0
@@ -119,7 +119,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
-	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
+	github.com/cpuguy83/go-md2man/v2 v2.0.4 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
 	github.com/evanphx/json-patch v4.12.0+incompatible // indirect

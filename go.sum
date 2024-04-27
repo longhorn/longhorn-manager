@@ -705,6 +705,8 @@ github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f/go.mod h1:E3G3o1h8I7cfc
 github.com/cpuguy83/go-md2man/v2 v2.0.0/go.mod h1:maD7wRr/U5Z6m/iR4s+kqSMx2CaBsrgA7czyZG/E6dU=
 github.com/cpuguy83/go-md2man/v2 v2.0.2 h1:p1EgwI/C7NhT0JmVkwCD2ZBK8j4aeHQX2pMHHBfMQ6w=
 github.com/cpuguy83/go-md2man/v2 v2.0.2/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=
+github.com/cpuguy83/go-md2man/v2 v2.0.4 h1:wfIWP927BUkWJb2NmU/kNDYIBTh/ziUX91+lVfRxZq4=
+github.com/cpuguy83/go-md2man/v2 v2.0.4/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/creack/pty v1.1.11/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/creack/pty v1.1.18/go.mod h1:MOBLtS5ELjhRRrroQr9kyvTxUAFNvYEK993ew/Vr4O4=
@@ -1051,6 +1053,8 @@ github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240424163548-d631464f5d
 github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240424163548-d631464f5de8/go.mod h1:m4p4EK3/3thAQ3rrEh3YCeyHyUjDK4gmr3AgS74BYoI=
 github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240427022236-28c011d018c1 h1:M6zfzsglz2iOA+KKMpEDt8NgePjW/0iUVSbyTNppzyQ=
 github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240427022236-28c011d018c1/go.mod h1:LdAzkDOAgSwXjY6ansWyPhauJHejs7bbnDuxV6EBsCk=
+github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240427134432-3faadca8ae5a h1:CioDzB9StwJJoLObyNsSKRUBzJ7x6We3e9hA+p1Or0M=
+github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240427134432-3faadca8ae5a/go.mod h1:LUjmnsvxsUFtSlNn2rKjHJiog0by3Iunz2AlGUV0lSU=
 github.com/longhorn/backupstore v0.0.0-20240417071544-3bd377eeefeb h1:GkAG0P7QI32PYgjLBV6VvaEAM/Z9dKyPohccU1js+Uk=
 github.com/longhorn/backupstore v0.0.0-20240417071544-3bd377eeefeb/go.mod h1:4cbJWtlrD2cGTQxQLtdlPTYopiJiusXH7CpOBrn/s3k=
 github.com/longhorn/backupstore v0.0.0-20240426093637-ac3867f121c0 h1:sb9HK8uWApqrBbpjnxlNSmIB5f4oi3UqfeRHVniPcqo=
@@ -1081,6 +1085,8 @@ github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240426152234-5ae373
 github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240426152234-5ae373f1c4d7/go.mod h1:R8TUnnK/SE7SNndXobLBkSp7BKDuxmE/zSFtNNvOxXg=
 github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240427052252-a4b926b28b1f h1:sojOwgwqZQknXc5p8QIzW1lKBUUw6C6HdZE5Kq9RY4g=
 github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240427052252-a4b926b28b1f/go.mod h1:DuEiU4jngt5loaFxs15D48x1GnAeedVGKWHP1zemW2k=
+github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240427142826-1cafc504af22 h1:QWq47LqsRgO28TidAVPeYrCN/Dk9Np6pAwObSFfWVgE=
+github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240427142826-1cafc504af22/go.mod h1:/66vp3RCJQJkw6a8mlK/0N+60ZThFq+rej3IYkkD6cc=
 github.com/longhorn/longhorn-share-manager v0.0.0-20240418035326-c6bd5823a659 h1:xGXCh78i3V20gjRCGrdvrD8wwGm711Eqor8jyddkNa4=
 github.com/longhorn/longhorn-share-manager v0.0.0-20240418035326-c6bd5823a659/go.mod h1:iFrl89P0XolTpBpOYODCvR1c6DXFXXvHugSDMJEJsVo=
 github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240420130308-5b297774fe5d h1:uflrWURkd3cIMVQXd1k5kEK6DQcYxRM7thTAMuXYkFo=
@@ -1089,6 +1095,8 @@ github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240426083712-2190a317a
 github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240426083712-2190a317a9db/go.mod h1:flAcrfS1bMXdcRJpcBcaXrHQQU2sxc5E+RUak4YyMJ4=
 github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240427042921-96cdd7f05166 h1:esVA2AhvzLnYpwwq6vluG/y/y+twmqqkI3JsIkvkU6g=
 github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240427042921-96cdd7f05166/go.mod h1:2XwhtpbLNmNRq0LF3wk76HUYqFvNymj5aixjSeC6kcg=
+github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240427131147-d2b5741fb515 h1:hkhEgxTPi8lfzE28hKHciI+b8I/j5rUVRtMeL6bd3D4=
+github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240427131147-d2b5741fb515/go.mod h1:UMqrcCVCKAwNldhkdtE7cB1andiDtw7ugaBCE701ODA=
 github.com/longhorn/types v0.0.0-20240417112740-a0d8514936b8 h1:M9TQLN379VNN3JsuLuKHDRIy/11jYeIuxYLFuekjcPw=
 github.com/longhorn/types v0.0.0-20240417112740-a0d8514936b8/go.mod h1:pqT+7B8T+nkyUZYe8tL3CwPDCHjkbe3mHUDY5ntJFyQ=
 github.com/longhorn/types v0.0.0-20240424162824-4995e1e42438 h1:nSuJa62e6F9YsP06Js4jnKr0AsvEMGwBRLm9fXTlmns=
@@ -1347,6 +1355,8 @@ github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75 h1:6fotK7
 github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75/go.mod h1:KO6IkyS8Y3j8OdNO85qEYBsRPuteD+YciPomcXdrMnk=
 github.com/urfave/cli v1.22.14 h1:ebbhrRiGK2i4naQJr+1Xj92HXZCrK7MsyTS/ob3HnAk=
 github.com/urfave/cli v1.22.14/go.mod h1:X0eDS6pD6Exaclxm99NJ3FiCDRED7vIHpx2mDOHLvkA=
+github.com/urfave/cli v1.22.15 h1:nuqt+pdC/KqswQKhETJjo7pvn/k4xMUxgW6liI7XpnM=
+github.com/urfave/cli v1.22.15/go.mod h1:wSan1hmo5zeyLGBjRJbzRTNk8gwoYa2B9n4q9dmRIc0=
 github.com/xhit/go-str2duration v1.2.0/go.mod h1:3cPSlfZlUHVlneIVfePFWcJZsuwf+P1v2SRTV4cUmp4=
 github.com/xhit/go-str2duration/v2 v2.1.0/go.mod h1:ohY8p+0f07DiV6Em5LKB0s2YpLtXVyJfNt1+BlmyAsU=
 github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2 h1:eY9dn8+vbi4tKz5Qo6v2eYzo7kUS51QINcR5jNpbZS8=
