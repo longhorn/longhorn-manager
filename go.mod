@@ -49,7 +49,7 @@ require (
 	github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240427022236-28c011d018c1
 	github.com/longhorn/backupstore v0.0.0-20240426093637-ac3867f121c0
 	github.com/longhorn/go-common-libs v0.0.0-20240426033718-77710d2242df
-	github.com/longhorn/go-iscsi-helper v0.0.0-20240417063713-e20db15bb989
+	github.com/longhorn/go-iscsi-helper v0.0.0-20240426065530-1ff1e567f43d
 	github.com/longhorn/go-spdk-helper v0.0.0-20240426112700-a797602bf7fe
 	github.com/longhorn/longhorn-engine v1.6.0-dev-20231217.0.20240418025706-519598108463
 	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240427052252-a4b926b28b1f
@@ -70,11 +70,11 @@ require (
 	google.golang.org/grpc v1.63.2
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
-	k8s.io/api v0.28.6
+	k8s.io/api v0.29.3
 	k8s.io/apiextensions-apiserver v0.25.4
 	k8s.io/apimachinery v0.30.0
 	k8s.io/cli-runtime v0.28.5
-	k8s.io/client-go v0.28.6
+	k8s.io/client-go v0.29.3
 	k8s.io/kubernetes v1.30.0
 	k8s.io/metrics v0.28.5
 	k8s.io/mount-utils v0.30.0
@@ -161,7 +161,7 @@ require (
 	github.com/prometheus/client_model v0.5.0 // indirect
 	github.com/prometheus/common v0.47.0 // indirect
 	github.com/prometheus/procfs v0.12.0 // indirect
-	github.com/rancher/lasso v0.0.0-20240415182150-5993b260dd08
+	github.com/rancher/lasso v0.0.0-20240424194130-d87ec407d941
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rogpeppe/go-internal v1.11.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
@@ -203,7 +203,7 @@ require (
 	k8s.io/klog/v2 v2.120.1 // indirect
 	k8s.io/kms v0.28.5 // indirect
 	k8s.io/kube-aggregator v0.25.4 // indirect
-	k8s.io/kube-openapi v0.0.0-20230717233707-2695361300d9 // indirect
+	k8s.io/kube-openapi v0.0.0-20231010175941-2dd684a91f00 // indirect
 	k8s.io/kubelet v0.0.0 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.28.0 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
