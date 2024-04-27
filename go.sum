@@ -1057,6 +1057,8 @@ github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240427134432-3faadca8ae
 github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240427134432-3faadca8ae5a/go.mod h1:LUjmnsvxsUFtSlNn2rKjHJiog0by3Iunz2AlGUV0lSU=
 github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240427164523-e68bcc993c87 h1:/Y4EAYvkR6wVoDakS/WYyMRb1iy+weevjTdcxQT85XM=
 github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240427164523-e68bcc993c87/go.mod h1:LUjmnsvxsUFtSlNn2rKjHJiog0by3Iunz2AlGUV0lSU=
+github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240427202038-c706793f6770 h1:bBYH5DF7gnjM1euYwLExA5YoxWchMMktWkFYj7Gx3xA=
+github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240427202038-c706793f6770/go.mod h1:bi2/Ghq053vNUKYArfJs9xidwhahS+FkIcecnOEegAQ=
 github.com/longhorn/backupstore v0.0.0-20240417071544-3bd377eeefeb h1:GkAG0P7QI32PYgjLBV6VvaEAM/Z9dKyPohccU1js+Uk=
 github.com/longhorn/backupstore v0.0.0-20240417071544-3bd377eeefeb/go.mod h1:4cbJWtlrD2cGTQxQLtdlPTYopiJiusXH7CpOBrn/s3k=
 github.com/longhorn/backupstore v0.0.0-20240426093637-ac3867f121c0 h1:sb9HK8uWApqrBbpjnxlNSmIB5f4oi3UqfeRHVniPcqo=
