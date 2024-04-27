@@ -32,7 +32,8 @@ func Connect(endpoint string, tlsConfig *tls.Config, dialOptions ...grpc.DialOpt
 
 	dialOptions = append(dialOptions, grpc.WithConnectParams(grpc.ConnectParams{
 		Backoff: backoff.Config{
-			MaxDelay: time.Second,
+			BaseDelay: time.Second,
+			MaxDelay:  time.Second,
 		},
 	}))
 

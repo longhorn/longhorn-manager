@@ -1059,6 +1059,8 @@ github.com/longhorn/go-common-libs v0.0.0-20240411093823-b8862efb8e03 h1:RN7mq4F
 github.com/longhorn/go-common-libs v0.0.0-20240411093823-b8862efb8e03/go.mod h1:7onp+E4hSg2DnB40dJU0Y7adrvykGg6jHxOb48imPGg=
 github.com/longhorn/go-common-libs v0.0.0-20240422073843-1578e42a50bd h1:Jjg8nogQ04/DaofTXsHWCRrBEf4g2ufwfzrsAP4SgrQ=
 github.com/longhorn/go-common-libs v0.0.0-20240422073843-1578e42a50bd/go.mod h1:qppGSy9WsxH1C9T6yhSMvG53ynpasyKOH/n9e1jr8mw=
+github.com/longhorn/go-common-libs v0.0.0-20240426033718-77710d2242df h1:q2a/IL7zoPkYxIMsz46E6uWDamu9z4k+h/4u4pHsdqE=
+github.com/longhorn/go-common-libs v0.0.0-20240426033718-77710d2242df/go.mod h1:qppGSy9WsxH1C9T6yhSMvG53ynpasyKOH/n9e1jr8mw=
 github.com/longhorn/go-iscsi-helper v0.0.0-20240329081212-26b6406b3b2b h1:Cp8eBy4tKAaqOfycyLcCKIzhJd+K04/WfE9/OIALOaA=
 github.com/longhorn/go-iscsi-helper v0.0.0-20240329081212-26b6406b3b2b/go.mod h1:tynRAH865oFPQQw4rY4wgL7a/JEYQsAhy+DXglx51eI=
 github.com/longhorn/go-iscsi-helper v0.0.0-20240417063713-e20db15bb989 h1:4ddaq015o2NoMQeNqlKOZArN/aSr1IEbK9hExDCVFVM=
@@ -1067,6 +1069,8 @@ github.com/longhorn/go-spdk-helper v0.0.0-20240415074119-eb1e91922189 h1:g4CoDfm
 github.com/longhorn/go-spdk-helper v0.0.0-20240415074119-eb1e91922189/go.mod h1:99yD4ZjORUMmuxZRTDd9+AzTwc0mpKCWQJoTkKwEZJU=
 github.com/longhorn/go-spdk-helper v0.0.0-20240424110116-b282f131d75a h1:LhDh8QbJKXDsvTvugvvLOUCgcUTMNSewue1Ea8ONBo4=
 github.com/longhorn/go-spdk-helper v0.0.0-20240424110116-b282f131d75a/go.mod h1:CiKgQ6CKWCE4CrAUgQx7inzRT7Xzbo6JuDhdRTpaVkY=
+github.com/longhorn/go-spdk-helper v0.0.0-20240426112700-a797602bf7fe h1:RWugaxgHq79c9o62bSdBBlvoE90eIGb7YkJFu9NZDR8=
+github.com/longhorn/go-spdk-helper v0.0.0-20240426112700-a797602bf7fe/go.mod h1:CiKgQ6CKWCE4CrAUgQx7inzRT7Xzbo6JuDhdRTpaVkY=
 github.com/longhorn/longhorn-engine v1.6.0-dev-20231217.0.20240418025706-519598108463 h1:KxddgUYC9InOhe8MxfbxzOL5v9q7f5DyThxQGGKvqVw=
 github.com/longhorn/longhorn-engine v1.6.0-dev-20231217.0.20240418025706-519598108463/go.mod h1:WNiZl2l51I36/c8dewxkyWd0yBA5Anznzki0knKO88U=
 github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240418070517-74c78b7744c3 h1:8WDveKerBMXFNX6JhiRsGBSSY7Sk7Oa5SFsQMXYxX/w=
@@ -1075,12 +1079,16 @@ github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240424110142-e60417
 github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240424110142-e60417f3506d/go.mod h1:R8TUnnK/SE7SNndXobLBkSp7BKDuxmE/zSFtNNvOxXg=
 github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240426152234-5ae373f1c4d7 h1:JPIf6KvzZx3/NGUNjLCRgU8HoqFyGKNS9g0Y45/ISrA=
 github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240426152234-5ae373f1c4d7/go.mod h1:R8TUnnK/SE7SNndXobLBkSp7BKDuxmE/zSFtNNvOxXg=
+github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240427052252-a4b926b28b1f h1:sojOwgwqZQknXc5p8QIzW1lKBUUw6C6HdZE5Kq9RY4g=
+github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240427052252-a4b926b28b1f/go.mod h1:DuEiU4jngt5loaFxs15D48x1GnAeedVGKWHP1zemW2k=
 github.com/longhorn/longhorn-share-manager v0.0.0-20240418035326-c6bd5823a659 h1:xGXCh78i3V20gjRCGrdvrD8wwGm711Eqor8jyddkNa4=
 github.com/longhorn/longhorn-share-manager v0.0.0-20240418035326-c6bd5823a659/go.mod h1:iFrl89P0XolTpBpOYODCvR1c6DXFXXvHugSDMJEJsVo=
 github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240420130308-5b297774fe5d h1:uflrWURkd3cIMVQXd1k5kEK6DQcYxRM7thTAMuXYkFo=
 github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240420130308-5b297774fe5d/go.mod h1:flAcrfS1bMXdcRJpcBcaXrHQQU2sxc5E+RUak4YyMJ4=
 github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240426083712-2190a317a9db h1:35URTsA9XD6To6PhWGGkE/y1rSAHtyZfglCDRX5/sD4=
 github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240426083712-2190a317a9db/go.mod h1:flAcrfS1bMXdcRJpcBcaXrHQQU2sxc5E+RUak4YyMJ4=
+github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240427042921-96cdd7f05166 h1:esVA2AhvzLnYpwwq6vluG/y/y+twmqqkI3JsIkvkU6g=
+github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240427042921-96cdd7f05166/go.mod h1:2XwhtpbLNmNRq0LF3wk76HUYqFvNymj5aixjSeC6kcg=
 github.com/longhorn/types v0.0.0-20240417112740-a0d8514936b8 h1:M9TQLN379VNN3JsuLuKHDRIy/11jYeIuxYLFuekjcPw=
 github.com/longhorn/types v0.0.0-20240417112740-a0d8514936b8/go.mod h1:pqT+7B8T+nkyUZYe8tL3CwPDCHjkbe3mHUDY5ntJFyQ=
 github.com/longhorn/types v0.0.0-20240424162824-4995e1e42438 h1:nSuJa62e6F9YsP06Js4jnKr0AsvEMGwBRLm9fXTlmns=
