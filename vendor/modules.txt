@@ -218,14 +218,14 @@ github.com/kubernetes-csi/csi-lib-utils/protosanitizer
 # github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de
 ## explicit
 github.com/liggitt/tabwriter
-# github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240424163548-d631464f5de8
+# github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240427022236-28c011d018c1
 ## explicit; go 1.21
 github.com/longhorn/backing-image-manager/api
 github.com/longhorn/backing-image-manager/pkg/client
 github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20240417071544-3bd377eeefeb
+# github.com/longhorn/backupstore v0.0.0-20240426093637-ac3867f121c0
 ## explicit; go 1.21
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/backupbackingimage
@@ -271,7 +271,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/util
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/types v0.0.0-20240417112740-a0d8514936b8
+# github.com/longhorn/types v0.0.0-20240424162824-4995e1e42438
 ## explicit; go 1.21
 github.com/longhorn/types/pkg/generated/bimrpc
 github.com/longhorn/types/pkg/generated/enginerpc

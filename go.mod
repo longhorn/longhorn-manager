@@ -46,8 +46,8 @@ require (
 	github.com/gorilla/websocket v1.5.1
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
-	github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240424163548-d631464f5de8
-	github.com/longhorn/backupstore v0.0.0-20240417071544-3bd377eeefeb
+	github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240427022236-28c011d018c1
+	github.com/longhorn/backupstore v0.0.0-20240426093637-ac3867f121c0
 	github.com/longhorn/go-common-libs v0.0.0-20240422073843-1578e42a50bd
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240417063713-e20db15bb989
 	github.com/longhorn/go-spdk-helper v0.0.0-20240424110116-b282f131d75a
@@ -91,7 +91,7 @@ require (
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/google/pprof v0.0.0-20230817174616-7a8ec2ada47b // indirect
 	github.com/jonboulle/clockwork v0.4.0 // indirect
-	github.com/longhorn/types v0.0.0-20240417112740-a0d8514936b8 // indirect
+	github.com/longhorn/types v0.0.0-20240424162824-4995e1e42438 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/shirou/gopsutil/v3 v3.24.3 // indirect
