@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
@@ -29,7 +30,12 @@ func Connect(endpoint string, tlsConfig *tls.Config, dialOptions ...grpc.DialOpt
 		return nil, err
 	}
 
-	dialOptions = append(dialOptions, grpc.WithBackoffMaxDelay(time.Second))
+	dialOptions = append(dialOptions, grpc.WithConnectParams(grpc.ConnectParams{
+		Backoff: backoff.Config{
+			MaxDelay: time.Second,
+		},
+	}))
+
 	if tlsConfig != nil {
 		dialOptions = append(dialOptions, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
 	} else {
