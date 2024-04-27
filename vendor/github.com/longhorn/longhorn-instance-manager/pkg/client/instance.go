@@ -88,6 +88,7 @@ func NewInstanceServiceClientWithTLS(ctx context.Context, ctxCancel context.Canc
 type EngineCreateRequest struct {
 	ReplicaAddressMap map[string]string
 	Frontend          string
+	UpgradeRequired   bool
 }
 
 type ReplicaCreateRequest struct {
@@ -115,6 +116,17 @@ type InstanceCreateRequest struct {
 	BackendStoreDriver string
 }
 
+type InstanceSuspendRequest struct {
+	DataEngine   string
+	Name         string
+	InstanceType string
+	VolumeName   string
+
+	Engine  EngineCreateRequest
+	Replica ReplicaCreateRequest
+}
+
+// InstanceCreate creates an instance.
 func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api.Instance, error) {
 	if req.Name == "" || req.InstanceType == "" {
 		return nil, fmt.Errorf("failed to create instance: missing required parameter")
@@ -169,6 +181,8 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 
 			ProcessInstanceSpec: processInstanceSpec,
 			SpdkInstanceSpec:    spdkInstanceSpec,
+
+			UpgradeRequired: req.Engine.UpgradeRequired,
 		},
 	})
 	if err != nil {
@@ -178,6 +192,7 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 	return api.RPCToInstance(p), nil
 }
 
+// InstanceDelete deletes the instance by name.
 func (c *InstanceServiceClient) InstanceDelete(dataEngine, name, instanceType, diskUUID string, cleanupRequired bool) (*api.Instance, error) {
 	if name == "" {
 		return nil, fmt.Errorf("failed to delete instance: missing required parameter name")
@@ -207,6 +222,7 @@ func (c *InstanceServiceClient) InstanceDelete(dataEngine, name, instanceType, d
 	return api.RPCToInstance(p), nil
 }
 
+// InstanceGet returns the instance by name.
 func (c *InstanceServiceClient) InstanceGet(dataEngine, name, instanceType string) (*api.Instance, error) {
 	if name == "" {
 		return nil, fmt.Errorf("failed to get instance: missing required parameter name")
@@ -246,6 +262,7 @@ func (c *InstanceServiceClient) InstanceList() (map[string]*api.Instance, error)
 	return api.RPCToInstanceList(instances), nil
 }
 
+// InstanceLog returns the log stream of an instance.
 func (c *InstanceServiceClient) InstanceLog(ctx context.Context, dataEngine, name, instanceType string) (*api.LogStream, error) {
 	if name == "" {
 		return nil, fmt.Errorf("failed to get instance: missing required parameter name")
@@ -270,6 +287,7 @@ func (c *InstanceServiceClient) InstanceLog(ctx context.Context, dataEngine, nam
 	return api.NewLogStream(stream), nil
 }
 
+// InstanceWatch watches for instance updates.
 func (c *InstanceServiceClient) InstanceWatch(ctx context.Context) (*api.InstanceStream, error) {
 	client := c.getControllerServiceClient()
 	stream, err := client.InstanceWatch(ctx, &emptypb.Empty{})
@@ -280,6 +298,7 @@ func (c *InstanceServiceClient) InstanceWatch(ctx context.Context) (*api.Instanc
 	return api.NewInstanceStream(stream), nil
 }
 
+// InstanceReplace replaces an instance with a new one.
 func (c *InstanceServiceClient) InstanceReplace(dataEngine, name, instanceType, binary string, portCount int, args, portArgs []string, terminateSignal string) (*api.Instance, error) {
 	if name == "" || binary == "" {
 		return nil, fmt.Errorf("failed to replace instance: missing required parameter")
@@ -320,6 +339,34 @@ func (c *InstanceServiceClient) InstanceReplace(dataEngine, name, instanceType, 
 	return api.RPCToInstance(p), nil
 }
 
+// InstanceSuspend suspends an instance.
+func (c *InstanceServiceClient) InstanceSuspend(dataEngine, name, instanceType string) error {
+	if name == "" {
+		return fmt.Errorf("failed to suspend instance: missing required parameter name")
+	}
+
+	driver, ok := rpc.DataEngine_value[getDataEngine(dataEngine)]
+	if !ok {
+		return fmt.Errorf("failed to suspend instance: invalid data engine %v", dataEngine)
+	}
+
+	client := c.getControllerServiceClient()
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	_, err := client.InstanceSuspend(ctx, &rpc.InstanceSuspendRequest{
+		Name:       name,
+		Type:       instanceType,
+		DataEngine: rpc.DataEngine(driver),
+	})
+	if err != nil {
+		return errors.Wrapf(err, "failed to suspend instance %v", name)
+	}
+
+	return nil
+}
+
+// InstanceResume resumes an instance.
 func (c *InstanceServiceClient) VersionGet() (*meta.VersionOutput, error) {
 	client := c.getControllerServiceClient()
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
@@ -343,6 +390,7 @@ func (c *InstanceServiceClient) VersionGet() (*meta.VersionOutput, error) {
 	}, nil
 }
 
+// LogSetLevel sets the log level of the service.
 func (c *InstanceServiceClient) LogSetLevel(dataEngine, service, level string) error {
 	client := c.getControllerServiceClient()
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
@@ -360,6 +408,7 @@ func (c *InstanceServiceClient) LogSetLevel(dataEngine, service, level string) e
 	return err
 }
 
+// LogSetFlags sets the log flags of the service.x
 func (c *InstanceServiceClient) LogSetFlags(dataEngine, service, flags string) error {
 	client := c.getControllerServiceClient()
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
@@ -377,6 +426,7 @@ func (c *InstanceServiceClient) LogSetFlags(dataEngine, service, flags string) e
 	return err
 }
 
+// LogGetLevel returns the log level of the service.
 func (c *InstanceServiceClient) LogGetLevel(dataEngine, service string) (string, error) {
 	client := c.getControllerServiceClient()
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
@@ -396,6 +446,7 @@ func (c *InstanceServiceClient) LogGetLevel(dataEngine, service string) (string,
 	return resp.Level, nil
 }
 
+// LogGetFlags returns the log flags of the service.
 func (c *InstanceServiceClient) LogGetFlags(dataEngine, service string) (string, error) {
 	client := c.getControllerServiceClient()
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
