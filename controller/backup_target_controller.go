@@ -237,9 +237,9 @@ func getBackupTarget(controllerID string, backupTarget *longhorn.BackupTarget, d
 		return nil, nil, errors.Wrap(err, "failed to get available data engine for getting backup target")
 	}
 
-	instanceManager, err := ds.GetDefaultInstanceManagerByNodeRO(controllerID, dataEngine)
+	instanceManager, err := ds.GetRunningInstanceManagerByNodeRO(controllerID, dataEngine)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to get default engine instance manager for proxy client")
+		return nil, nil, errors.Wrap(err, "failed to get running instance manager for proxy client")
 	}
 
 	engineClientProxy, err = engineapi.NewEngineClientProxy(instanceManager, log, proxyConnCounter)
@@ -635,10 +635,12 @@ func (btc *BackupTargetController) isResponsibleFor(bt *longhorn.BackupTarget, d
 		return false, err
 	}
 
-	if instanceManager, err := btc.ds.GetDefaultInstanceManagerByNodeRO(btc.controllerID, ""); err != nil {
+	instanceManager, err := btc.ds.GetRunningInstanceManagerByNodeRO(btc.controllerID, "")
+	if err != nil {
 		return false, err
-	} else if instanceManager == nil || instanceManager.Status.CurrentState != longhorn.InstanceManagerStateRunning {
-		return false, errors.New("failed to get default running instance manager")
+	}
+	if instanceManager == nil {
+		return false, errors.New("failed to get running instance manager")
 	}
 
 	isPreferredOwner := currentNodeEngineAvailable && isResponsible

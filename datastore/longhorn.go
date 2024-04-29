@@ -3268,7 +3268,7 @@ func (s *DataStore) GetInstanceManagerByInstance(obj interface{}) (*longhorn.Ins
 func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.InstanceManager, error) {
 	imImage, err := s.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get instance manager image: %w", err)
+		return nil, errors.Wrap(err, "failed to get instance manager image")
 	}
 
 	instanceInfo, err := extractInstanceInfo(obj)
@@ -5116,4 +5116,29 @@ func (s *DataStore) ListBackupBackingImages() (map[string]*longhorn.BackupBackin
 
 func (s *DataStore) ListBackupBackingImagesRO() ([]*longhorn.BackupBackingImage, error) {
 	return s.backupBackingImageLister.BackupBackingImages(s.namespace).List(labels.Everything())
+}
+
+// GetRunningInstanceManagerByNodeRO returns the running instance manager for the given node and data engine
+func (s *DataStore) GetRunningInstanceManagerByNodeRO(node string, dataEngine longhorn.DataEngineType) (*longhorn.InstanceManager, error) {
+	// Trying to get the default instance manager first.
+	// If the default instance manager is not running, then try to get another running instance manager.
+	im, err := s.GetDefaultInstanceManagerByNodeRO(node, dataEngine)
+	if err == nil {
+		if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+			return im, nil
+		}
+	}
+
+	ims, err := s.ListInstanceManagersByNodeRO(node, longhorn.InstanceManagerTypeAllInOne, dataEngine)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to list instance managers for node %v", node)
+	}
+
+	for _, im := range ims {
+		if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+			return im, nil
+		}
+	}
+
+	return nil, fmt.Errorf("failed to find a running instance manager for node %v", node)
 }
