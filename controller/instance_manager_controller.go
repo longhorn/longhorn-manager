@@ -455,8 +455,12 @@ func (imc *InstanceManagerController) syncInstanceStatus(im *longhorn.InstanceMa
 	return nil
 }
 
-func (imc *InstanceManagerController) syncLogSettingsToIMPod(im *longhorn.InstanceManager) error {
+func (imc *InstanceManagerController) syncLogSettingsToInstanceManagerPod(im *longhorn.InstanceManager) error {
 	if types.IsDataEngineV1(im.Spec.DataEngine) {
+		return nil
+	}
+
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
 		return nil
 	}
 
@@ -501,9 +505,9 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		return err
 	}
 
-	err = imc.syncLogSettingsToIMPod(im)
+	err = imc.syncLogSettingsToInstanceManagerPod(im)
 	if err != nil {
-		log.WithError(err).Warnf("Failed to sync log settings to instance manager pod")
+		log.WithError(err).Warnf("Failed to sync log settings to instance manager pod %v", im.Name)
 	}
 
 	isSettingSynced, isPodDeletedOrNotRunning, areInstancesRunningInPod, err := imc.areDangerZoneSettingsSyncedToIMPod(im)
