@@ -5118,6 +5118,118 @@ func (s *DataStore) ListBackupBackingImagesRO() ([]*longhorn.BackupBackingImage,
 	return s.backupBackingImageLister.BackupBackingImages(s.namespace).List(labels.Everything())
 }
 
+// CreateUpgrade creates a Longhorn Upgrade resource and verifies creation
+func (s *DataStore) CreateUpgrade(upgrade *longhorn.Upgrade) (*longhorn.Upgrade, error) {
+	ret, err := s.lhClient.LonghornV1beta2().Upgrades(s.namespace).Create(context.TODO(), upgrade, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(ret.Name, "upgrade", func(name string) (runtime.Object, error) {
+		return s.GetUpgradeRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.Upgrade)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for upgrade")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// GetUpgradeRO returns the Upgrade with the given upgrade name in the cluster
+func (s *DataStore) GetUpgradeRO(upgradeName string) (*longhorn.Upgrade, error) {
+	return s.upgradeLister.Upgrades(s.namespace).Get(upgradeName)
+}
+
+// GetUpgrade returns a copy of Upgrade with the given upgrade name in the cluster
+func (s *DataStore) GetUpgrade(name string) (*longhorn.Upgrade, error) {
+	resultRO, err := s.GetUpgradeRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// UpdateUpgrade updates the given Longhorn upgrade in the cluster Upgrade CR and verifies update
+func (s *DataStore) UpdateUpgrade(upgrade *longhorn.Upgrade) (*longhorn.Upgrade, error) {
+	obj, err := s.lhClient.LonghornV1beta2().Upgrades(s.namespace).Update(context.TODO(), upgrade, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(upgrade.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetUpgradeRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateUpgradeStatus updates the given Longhorn upgrade status in the cluster Upgrades CR status and verifies update
+func (s *DataStore) UpdateUpgradeStatus(upgrade *longhorn.Upgrade) (*longhorn.Upgrade, error) {
+	obj, err := s.lhClient.LonghornV1beta2().Upgrades(s.namespace).UpdateStatus(context.TODO(), upgrade, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(upgrade.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetUpgradeRO(name)
+	})
+	return obj, nil
+}
+
+// RemoveFinalizerForUpgrade will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForUpgrade(upgrade *longhorn.Upgrade) error {
+	if !util.FinalizerExists(longhornFinalizerKey, upgrade) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, upgrade); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta2().Upgrades(s.namespace).Update(context.TODO(), upgrade, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if upgrade.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for upgrade %s", upgrade.Name)
+	}
+	return nil
+}
+
+func (s *DataStore) listUpgrades(selector labels.Selector) (map[string]*longhorn.Upgrade, error) {
+	list, err := s.upgradeLister.Upgrades(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.Upgrade{}
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// ListUpgrades returns an object contains all Upgrades for the given namespace
+func (s *DataStore) ListUpgrades() (map[string]*longhorn.Upgrade, error) {
+	return s.listUpgrades(labels.Everything())
+}
+
+// ListUpgradesRO returns a list of all Upgrades for the given namespace
+func (s *DataStore) ListUpgradesRO() ([]*longhorn.Upgrade, error) {
+	return s.upgradeLister.Upgrades(s.namespace).List(labels.Everything())
+}
+
+// DeleteUpgrade won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteUpgrade(upgradeName string) error {
+	return s.lhClient.LonghornV1beta2().Upgrades(s.namespace).Delete(context.TODO(), upgradeName, metav1.DeleteOptions{})
+}
+
 // GetRunningInstanceManagerByNodeRO returns the running instance manager for the given node and data engine
 func (s *DataStore) GetRunningInstanceManagerByNodeRO(node string, dataEngine longhorn.DataEngineType) (*longhorn.InstanceManager, error) {
 	// Trying to get the default instance manager first.
