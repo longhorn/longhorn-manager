@@ -1077,6 +1077,8 @@ github.com/longhorn/go-iscsi-helper v0.0.0-20240329081212-26b6406b3b2b h1:Cp8eBy
 github.com/longhorn/go-iscsi-helper v0.0.0-20240329081212-26b6406b3b2b/go.mod h1:tynRAH865oFPQQw4rY4wgL7a/JEYQsAhy+DXglx51eI=
 github.com/longhorn/go-iscsi-helper v0.0.0-20240417063713-e20db15bb989 h1:4ddaq015o2NoMQeNqlKOZArN/aSr1IEbK9hExDCVFVM=
 github.com/longhorn/go-iscsi-helper v0.0.0-20240417063713-e20db15bb989/go.mod h1:4fs0E8kJuGqlYjXbpsQF0yEA6oOsgfDCxZAnLJuPaOU=
+github.com/longhorn/go-iscsi-helper v0.0.0-20240427164656-e9439c0018ce h1:PxKniE9F6IZ2DMKfmxDsbqeAxQI1TZhnw7/HOBMs1Is=
+github.com/longhorn/go-iscsi-helper v0.0.0-20240427164656-e9439c0018ce/go.mod h1:d9t3gtE+UPjescbCFluXd4xBc8OQT/JrC2cdkk2IXWQ=
 github.com/longhorn/go-spdk-helper v0.0.0-20240415074119-eb1e91922189 h1:g4CoDfmj1rrJPNUJWPAp4LKa+9IGr+nQbQLOfOnxg4s=
 github.com/longhorn/go-spdk-helper v0.0.0-20240415074119-eb1e91922189/go.mod h1:99yD4ZjORUMmuxZRTDd9+AzTwc0mpKCWQJoTkKwEZJU=
 github.com/longhorn/go-spdk-helper v0.0.0-20240424110116-b282f131d75a h1:LhDh8QbJKXDsvTvugvvLOUCgcUTMNSewue1Ea8ONBo4=
@@ -1085,6 +1087,8 @@ github.com/longhorn/go-spdk-helper v0.0.0-20240426112700-a797602bf7fe h1:RWugaxg
 github.com/longhorn/go-spdk-helper v0.0.0-20240426112700-a797602bf7fe/go.mod h1:CiKgQ6CKWCE4CrAUgQx7inzRT7Xzbo6JuDhdRTpaVkY=
 github.com/longhorn/go-spdk-helper v0.0.0-20240427164640-8cb919fb8e53 h1:7JOAKtVr0zOBvBcKJw76IJjbiyJZLI7x5O6GFAifUm0=
 github.com/longhorn/go-spdk-helper v0.0.0-20240427164640-8cb919fb8e53/go.mod h1:CiKgQ6CKWCE4CrAUgQx7inzRT7Xzbo6JuDhdRTpaVkY=
+github.com/longhorn/go-spdk-helper v0.0.0-20240429014623-d272f0f0848a h1:+0gozHUn5LXkOSnoGF/2gLUxeKmhilmn4INBiQRYmh4=
+github.com/longhorn/go-spdk-helper v0.0.0-20240429014623-d272f0f0848a/go.mod h1:CiKgQ6CKWCE4CrAUgQx7inzRT7Xzbo6JuDhdRTpaVkY=
 github.com/longhorn/longhorn-engine v1.6.0-dev-20231217.0.20240418025706-519598108463 h1:KxddgUYC9InOhe8MxfbxzOL5v9q7f5DyThxQGGKvqVw=
 github.com/longhorn/longhorn-engine v1.6.0-dev-20231217.0.20240418025706-519598108463/go.mod h1:WNiZl2l51I36/c8dewxkyWd0yBA5Anznzki0knKO88U=
 github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240418070517-74c78b7744c3 h1:8WDveKerBMXFNX6JhiRsGBSSY7Sk7Oa5SFsQMXYxX/w=
@@ -1282,6 +1286,8 @@ github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b h1:so40GMVZOZ
 github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b/go.mod h1:7oQvGNiJsGvrUgB+7AH8bmdzuR0uhULfwKb43Ht0hUk=
 github.com/rancher/lasso v0.0.0-20240415182150-5993b260dd08 h1:2dQYQSaS5KQf8ihRfAsFqp/7OOQV22y5R0JnEZaXY2c=
 github.com/rancher/lasso v0.0.0-20240415182150-5993b260dd08/go.mod h1:dmHjzbEBayE//ikiAHie/oVtfgtwAAB3pkL+HBgl9K8=
+github.com/rancher/lasso v0.0.0-20240424194130-d87ec407d941 h1:1SvuoeyfANRvKVJUSzHWa1P781iuH8ktUjW9cPOxAAk=
+github.com/rancher/lasso v0.0.0-20240424194130-d87ec407d941/go.mod h1:pYKOe2r/5O0w3ypoc7xHQF8LvWCp5PsNRea1Jpq3vBU=
 github.com/rancher/wrangler v1.1.2 h1:oXbXo9k7y/H4drUpb4RM1c++vT9O3rpoNEfyusGykiU=
 github.com/rancher/wrangler v1.1.2/go.mod h1:2k9MyhlBdjcutcBGoOJSUAz0HgDAXnMjv81d3n/AaQc=
 github.com/remyoudompheng/bigfft v0.0.0-20200410134404-eec4a21b6bb0/go.mod h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=
@@ -2282,6 +2288,8 @@ k8s.io/kube-aggregator v0.28.5 h1:gUe597PoEXlBjlKtHoce6T6W5F38IG2WlYMqwBqpwvE=
 k8s.io/kube-aggregator v0.28.5/go.mod h1:lj/n7X1CDY2V8aMSnxVEtpU+nWW5TWgwi2u4kuVixQw=
 k8s.io/kube-openapi v0.0.0-20230717233707-2695361300d9 h1:LyMgNKD2P8Wn1iAwQU5OhxCKlKJy0sHc+PcDwFB24dQ=
 k8s.io/kube-openapi v0.0.0-20230717233707-2695361300d9/go.mod h1:wZK2AVp1uHCp4VamDVgBP2COHZjqD1T68Rf0CM3YjSM=
+k8s.io/kube-openapi v0.0.0-20231010175941-2dd684a91f00 h1:aVUu9fTY98ivBPKR9Y5w/AuzbMm96cd3YHRTU83I780=
+k8s.io/kube-openapi v0.0.0-20231010175941-2dd684a91f00/go.mod h1:AsvuZPBlUDVuCdzJ87iajxtXuR9oktsTctW/R9wwouA=
 k8s.io/kubelet v0.28.5 h1:2FeXUIdMyJVHDqHsT5Q2Lx4nEZMJwI2Zpakx5szdOMM=
 k8s.io/kubelet v0.28.5/go.mod h1:GJUj63wNtQDa5eQEM/mnS8kygxfyo5qo6ouyLJ/cILo=
 k8s.io/kubernetes v1.28.5 h1:sqgm0Tk6lqfsfcLUxZ0rfNmtugtABSLUhCqhXtfV1C0=
