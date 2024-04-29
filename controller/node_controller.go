@@ -1500,7 +1500,7 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 			if diskInstanceName == "" {
 				diskInstanceName = diskName
 			}
-			if err := nc.deleteDisk(node, diskStatus.Type, diskInstanceName, diskStatus.DiskUUID, diskStatus.DiskPath, string(diskStatus.DiskDriver)); err != nil {
+			if err := nc.deleteDisk(diskStatus.Type, diskInstanceName, diskStatus.DiskUUID, diskStatus.DiskPath, string(diskStatus.DiskDriver)); err != nil {
 				nc.logger.WithError(err).Warnf("Failed to delete disk %v", diskInstanceName)
 			}
 			delete(node.Status.DiskStatus, diskName)
@@ -1508,7 +1508,7 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 	}
 }
 
-func (nc *NodeController) deleteDisk(node *longhorn.Node, diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string) error {
+func (nc *NodeController) deleteDisk(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string) error {
 	if diskUUID == "" {
 		log.Infof("Disk %v has no diskUUID, skip deleting", diskName)
 		return nil
@@ -1516,9 +1516,9 @@ func (nc *NodeController) deleteDisk(node *longhorn.Node, diskType longhorn.Disk
 
 	dataEngine := util.GetDataEngineForDiskType(diskType)
 
-	im, err := nc.ds.GetDefaultInstanceManagerByNodeRO(nc.controllerID, dataEngine)
+	im, err := nc.ds.GetRunningInstanceManagerByNodeRO(nc.controllerID, dataEngine)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get default instance manager")
+		return errors.Wrapf(err, "failed to get running instance manager for data engine %v", dataEngine)
 	}
 
 	diskServiceClient, err := engineapi.NewDiskServiceClient(im, nc.logger)
