@@ -1446,7 +1446,7 @@ k8s.io/kms/pkg/util
 ## explicit; go 1.20
 k8s.io/kube-aggregator/pkg/apis/apiregistration
 k8s.io/kube-aggregator/pkg/apis/apiregistration/v1
-# k8s.io/kube-openapi v0.0.0-20231010175941-2dd684a91f00
+# k8s.io/kube-openapi v0.0.0-20231010175941-2dd684a91f00 => k8s.io/kube-openapi v0.0.0-20230717233707-2695361300d9
 ## explicit; go 1.19
 k8s.io/kube-openapi/pkg/builder
 k8s.io/kube-openapi/pkg/builder3
@@ -1458,6 +1458,7 @@ k8s.io/kube-openapi/pkg/handler
 k8s.io/kube-openapi/pkg/handler3
 k8s.io/kube-openapi/pkg/internal
 k8s.io/kube-openapi/pkg/internal/third_party/go-json-experiment/json
+k8s.io/kube-openapi/pkg/openapiconv
 k8s.io/kube-openapi/pkg/schemaconv
 k8s.io/kube-openapi/pkg/schemamutation
 k8s.io/kube-openapi/pkg/spec3
@@ -1564,6 +1565,7 @@ sigs.k8s.io/yaml
 # k8s.io/kms => k8s.io/kms v0.28.5
 # k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.28.5
 # k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.28.5
+# k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20230717233707-2695361300d9
 # k8s.io/kube-proxy => k8s.io/kube-proxy v0.28.5
 # k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.28.5
 # k8s.io/kubectl => k8s.io/kubectl v0.28.5
