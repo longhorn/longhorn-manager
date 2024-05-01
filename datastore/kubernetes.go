@@ -524,9 +524,7 @@ func (s *DataStore) ListPodsBySelectorRO(selector labels.Selector) ([]*corev1.Po
 	}
 
 	res := make([]*corev1.Pod, len(podList))
-	for idx, item := range podList {
-		res[idx] = item
-	}
+	copy(res, podList)
 	return res, nil
 }
 

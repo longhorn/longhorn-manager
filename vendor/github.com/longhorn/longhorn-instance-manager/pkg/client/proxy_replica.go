@@ -3,12 +3,9 @@ package client
 import (
 	"fmt"
 
-	"github.com/pkg/errors"
-
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
-	eptypes "github.com/longhorn/longhorn-engine/proto/ptypes"
-
-	rpc "github.com/longhorn/longhorn-instance-manager/pkg/imrpc"
+	rpc "github.com/longhorn/types/pkg/generated/imrpc"
+	"github.com/pkg/errors"
 )
 
 func (c *ProxyClient) ReplicaAdd(dataEngine, engineName, volumeName, serviceAddress, replicaName,
@@ -99,7 +96,7 @@ func (c *ProxyClient) ReplicaList(dataEngine, engineName, volumeName,
 	for _, cr := range resp.ReplicaList.Replicas {
 		rInfoList = append(rInfoList, &etypes.ControllerReplicaInfo{
 			Address: cr.Address.Address,
-			Mode:    eptypes.GRPCReplicaModeToReplicaMode(cr.Mode),
+			Mode:    etypes.GRPCReplicaModeToReplicaMode(cr.Mode),
 		})
 	}
 
@@ -258,7 +255,7 @@ func (c *ProxyClient) ReplicaModeUpdate(dataEngine, serviceAddress, replicaAddre
 			DataEngine:         rpc.DataEngine(driver),
 		},
 		ReplicaAddress: replicaAddress,
-		Mode:           eptypes.ReplicaModeToGRPCReplicaMode(etypes.Mode(mode)),
+		Mode:           etypes.ReplicaModeToGRPCReplicaMode(etypes.Mode(mode)),
 	}
 	_, err = c.service.ReplicaModeUpdate(getContextWithGRPCTimeout(c.ctx), req)
 	if err != nil {

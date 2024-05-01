@@ -78,7 +78,7 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
-	if err := types.ValidateUnmapMarkSnapChainRemoved(volume.Spec.UnmapMarkSnapChainRemoved); err != nil {
+	if err := types.ValidateUnmapMarkSnapChainRemoved(volume.Spec.DataEngine, volume.Spec.UnmapMarkSnapChainRemoved); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
@@ -146,7 +146,7 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 	}
 
 	// TODO: remove this check when we support the following features for SPDK volumes
-	if datastore.IsDataEngineV2(volume.Spec.DataEngine) {
+	if types.IsDataEngineV2(volume.Spec.DataEngine) {
 		if volume.Spec.Encrypted {
 			return werror.NewInvalidError("encrypted volume is not supported for data engine v2", "")
 		}
@@ -191,7 +191,7 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
-	if err := types.ValidateUnmapMarkSnapChainRemoved(newVolume.Spec.UnmapMarkSnapChainRemoved); err != nil {
+	if err := types.ValidateUnmapMarkSnapChainRemoved(newVolume.Spec.DataEngine, newVolume.Spec.UnmapMarkSnapChainRemoved); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
@@ -243,7 +243,7 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		}
 	}
 
-	if datastore.IsDataEngineV2(newVolume.Spec.DataEngine) {
+	if types.IsDataEngineV2(newVolume.Spec.DataEngine) {
 		// TODO: remove this check when we support the following features for SPDK volumes
 		if oldVolume.Spec.Size != newVolume.Spec.Size {
 			err := fmt.Errorf("changing volume size for volume %v is not supported for data engine %v",
@@ -315,12 +315,12 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		if newVolume.Spec.Standby {
 			return werror.NewInvalidError("standby is not supported for data engine v2", "")
 		}
-	} else {
-		if newVolume.Spec.OfflineReplicaRebuilding != longhorn.OfflineReplicaRebuildingDisabled {
-			err := fmt.Errorf("changing offline replica rebuilding for volume %v is not supported for data engine %v",
-				newVolume.Name, newVolume.Spec.DataEngine)
-			return werror.NewInvalidError(err.Error(), "")
-		}
+	}
+
+	if newVolume.Spec.OfflineReplicaRebuilding != longhorn.OfflineReplicaRebuildingDisabled {
+		err := fmt.Errorf("changing offline replica rebuilding for volume %v is not supported for data engine %v",
+			newVolume.Name, newVolume.Spec.DataEngine)
+		return werror.NewInvalidError(err.Error(), "")
 	}
 
 	// prevent the changing v.Spec.MigrationNodeID to different node when the volume is doing live migration (when v.Status.CurrentMigrationNodeID != "")
@@ -468,7 +468,7 @@ func validateReplicaCount(dataLocality longhorn.DataLocality, replicaCount int) 
 }
 
 func (v *volumeValidator) canDisableRevisionCounter(image string, dataEngine longhorn.DataEngineType) (bool, error) {
-	if datastore.IsDataEngineV2(dataEngine) {
+	if types.IsDataEngineV2(dataEngine) {
 		// v2 volume does not have revision counter
 		return true, nil
 	}

@@ -52,7 +52,7 @@ func NewBackingImageController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
-	namespace string, controllerID, serviceAccount, backingImageManagerImage string) *BackingImageController {
+	namespace string, controllerID, serviceAccount, backingImageManagerImage string) (*BackingImageController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -73,35 +73,44 @@ func NewBackingImageController(
 		ds: ds,
 	}
 
-	ds.BackingImageInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.BackingImageInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    bic.enqueueBackingImage,
 		UpdateFunc: func(old, cur interface{}) { bic.enqueueBackingImage(cur) },
 		DeleteFunc: bic.enqueueBackingImage,
-	})
+	}); err != nil {
+		logrus.WithError(err).Fatal("Failed to register event handler for backing image")
+	}
 	bic.cacheSyncs = append(bic.cacheSyncs, ds.BackingImageInformer.HasSynced)
 
-	ds.BackingImageManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.BackingImageManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    bic.enqueueBackingImageForBackingImageManager,
 		UpdateFunc: func(old, cur interface{}) { bic.enqueueBackingImageForBackingImageManager(cur) },
 		DeleteFunc: bic.enqueueBackingImageForBackingImageManager,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	bic.cacheSyncs = append(bic.cacheSyncs, ds.BackingImageManagerInformer.HasSynced)
 
-	ds.BackingImageDataSourceInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.BackingImageDataSourceInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    bic.enqueueBackingImageForBackingImageDataSource,
 		UpdateFunc: func(old, cur interface{}) { bic.enqueueBackingImageForBackingImageDataSource(cur) },
 		DeleteFunc: bic.enqueueBackingImageForBackingImageDataSource,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	bic.cacheSyncs = append(bic.cacheSyncs, ds.BackingImageDataSourceInformer.HasSynced)
 
-	ds.ReplicaInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.ReplicaInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    bic.enqueueBackingImageForReplica,
 		UpdateFunc: func(old, cur interface{}) { bic.enqueueBackingImageForReplica(cur) },
 		DeleteFunc: bic.enqueueBackingImageForReplica,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	bic.cacheSyncs = append(bic.cacheSyncs, ds.ReplicaInformer.HasSynced)
 
-	return bic
+	return bic, nil
 }
 
 func (bic *BackingImageController) Run(workers int, stopCh <-chan struct{}) {
@@ -561,7 +570,7 @@ func (bic *BackingImageController) handleBackingImageManagers(bi *longhorn.Backi
 			if bim.DeletionTimestamp == nil && bim.Spec.Image == bic.bimImageName {
 				if uuidInManager, exists := bim.Spec.BackingImages[bi.Name]; !exists || uuidInManager != bi.Status.UUID {
 					bim.Spec.BackingImages[bi.Name] = bi.Status.UUID
-					if bim, err = bic.ds.UpdateBackingImageManager(bim); err != nil {
+					if _, err = bic.ds.UpdateBackingImageManager(bim); err != nil {
 						return err
 					}
 				}
@@ -663,7 +672,28 @@ func (bic *BackingImageController) syncBackingImageFileInfo(bi *longhorn.Backing
 				bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, constant.EventReasonUpdate, "Set size to %v", bi.Status.Size)
 			}
 			if bi.Status.Size != info.Size {
-				return fmt.Errorf("found mismatching size %v reported by backing image manager %v in disk %v, the size recorded in status is %v", info.Size, bim.Name, bim.Spec.DiskUUID, bi.Status.Size)
+				if bi.Status.DiskFileStatusMap[bim.Spec.DiskUUID].State != longhorn.BackingImageStateFailed {
+					msg := fmt.Sprintf("found mismatching size %v reported by backing image manager %v in disk %v, the size recorded in status is %v",
+						info.Size, bim.Name, bim.Spec.DiskUUID, bi.Status.Size)
+					log.Error(msg)
+					bi.Status.DiskFileStatusMap[bim.Spec.DiskUUID].State = longhorn.BackingImageStateFailed
+					bi.Status.DiskFileStatusMap[bim.Spec.DiskUUID].Message = msg
+				}
+			}
+		}
+		if info.VirtualSize > 0 {
+			if bi.Status.VirtualSize == 0 {
+				bi.Status.VirtualSize = info.VirtualSize
+				bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, constant.EventReasonUpdate, "Set virtualSize to %v", bi.Status.VirtualSize)
+			}
+			if bi.Status.VirtualSize != info.VirtualSize {
+				if bi.Status.DiskFileStatusMap[bim.Spec.DiskUUID].State != longhorn.BackingImageStateFailed {
+					msg := fmt.Sprintf("found mismatching virtualSize %v reported by backing image manager %v in disk %v, the virtualSize recorded in status is %v",
+						info.VirtualSize, bim.Name, bim.Spec.DiskUUID, bi.Status.VirtualSize)
+					log.Error(msg)
+					bi.Status.DiskFileStatusMap[bim.Spec.DiskUUID].State = longhorn.BackingImageStateFailed
+					bi.Status.DiskFileStatusMap[bim.Spec.DiskUUID].Message = msg
+				}
 			}
 		}
 	}

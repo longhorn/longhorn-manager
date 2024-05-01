@@ -1,10 +1,9 @@
 package api
 
 import (
+	rpc "github.com/longhorn/types/pkg/generated/imrpc"
+	"github.com/longhorn/types/pkg/generated/spdkrpc"
 	"google.golang.org/protobuf/types/known/emptypb"
-
-	rpc "github.com/longhorn/longhorn-instance-manager/pkg/imrpc"
-	"github.com/longhorn/longhorn-spdk-engine/proto/spdkrpc"
 )
 
 var (
@@ -39,7 +38,7 @@ func RPCToInstance(obj *rpc.InstanceResponse) *Instance {
 		Name: obj.Spec.Name,
 		Type: obj.Spec.Type,
 		//lint:ignore SA1019 replaced with DataEngine
-		BackendStoreDriver: obj.Spec.BackendStoreDriver.String(),
+		BackendStoreDriver: obj.Spec.BackendStoreDriver.String(), // nolint: staticcheck
 		DataEngine:         dataEngines[obj.Spec.DataEngine.String()],
 		PortCount:          obj.Spec.PortCount,
 		PortArgs:           obj.Spec.PortArgs,

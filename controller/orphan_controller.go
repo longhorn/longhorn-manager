@@ -53,7 +53,7 @@ func NewOrphanController(
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
 	controllerID string,
-	namespace string) *OrphanController {
+	namespace string) (*OrphanController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -74,21 +74,26 @@ func NewOrphanController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-orphan-controller"}),
 	}
 
-	ds.OrphanInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.OrphanInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    oc.enqueueOrphan,
 		UpdateFunc: func(old, cur interface{}) { oc.enqueueOrphan(cur) },
 		DeleteFunc: oc.enqueueOrphan,
-	})
+	}); err != nil {
+		return nil, err
+	}
 	oc.cacheSyncs = append(oc.cacheSyncs, ds.OrphanInformer.HasSynced)
 
-	ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    func(cur interface{}) { oc.enqueueForLonghornNode(cur) },
 		UpdateFunc: func(old, cur interface{}) { oc.enqueueForLonghornNode(cur) },
 		DeleteFunc: func(cur interface{}) { oc.enqueueForLonghornNode(cur) },
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	oc.cacheSyncs = append(oc.cacheSyncs, ds.NodeInformer.HasSynced)
 
-	return oc
+	return oc, nil
 }
 
 func (oc *OrphanController) enqueueOrphan(obj interface{}) {
@@ -322,13 +327,13 @@ func (oc *OrphanController) deleteOrphanedReplica(orphan *longhorn.Orphan) error
 		err := lhns.DeletePath(filepath.Join(diskPath, "replicas", replicaDirectoryName))
 		return errors.Wrapf(err, "failed to delete orphan replica directory %v in disk %v", replicaDirectoryName, diskPath)
 	case longhorn.DiskTypeBlock:
-		return oc.DeleteSpdkReplicaInstance(orphan.Spec.Parameters[longhorn.OrphanDiskName], orphan.Spec.Parameters[longhorn.OrphanDiskUUID], orphan.Spec.Parameters[longhorn.OrphanDataName])
+		return oc.DeleteSpdkReplicaInstance(orphan.Spec.Parameters[longhorn.OrphanDiskName], orphan.Spec.Parameters[longhorn.OrphanDiskUUID], "", orphan.Spec.Parameters[longhorn.OrphanDataName])
 	default:
 		return fmt.Errorf("unknown disk type %v for orphan %v", diskType, orphan.Name)
 	}
 }
 
-func (oc *OrphanController) DeleteSpdkReplicaInstance(diskName, diskUUID, replicaInstanceName string) (err error) {
+func (oc *OrphanController) DeleteSpdkReplicaInstance(diskName, diskUUID, diskDriver, replicaInstanceName string) (err error) {
 	logrus.Infof("Deleting SPDK replica instance %v on disk %v on node %v", replicaInstanceName, diskUUID, oc.controllerID)
 
 	defer func() {
@@ -346,7 +351,7 @@ func (oc *OrphanController) DeleteSpdkReplicaInstance(diskName, diskUUID, replic
 	}
 	defer c.Close()
 
-	err = c.DiskReplicaInstanceDelete(string(longhorn.DiskTypeBlock), diskName, diskUUID, replicaInstanceName)
+	err = c.DiskReplicaInstanceDelete(string(longhorn.DiskTypeBlock), diskName, diskUUID, diskDriver, replicaInstanceName)
 	if err != nil && !types.ErrorIsNotFound(err) {
 		return err
 	}

@@ -168,11 +168,14 @@ func newPodWithPVC(podName string) *corev1.Pod {
 	}
 }
 
-func newTestKubernetesPVController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset, informerFactories *util.InformerFactories) *KubernetesPVController {
+func newTestKubernetesPVController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset, informerFactories *util.InformerFactories) (*KubernetesPVController, error) {
 	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	logger := logrus.StandardLogger()
-	kc := NewKubernetesPVController(logger, ds, scheme.Scheme, kubeClient, TestNode1)
+	kc, err := NewKubernetesPVController(logger, ds, scheme.Scheme, kubeClient, TestNode1)
+	if err != nil {
+		return nil, err
+	}
 
 	fakeRecorder := record.NewFakeRecorder(100)
 	kc.eventRecorder = fakeRecorder
@@ -181,7 +184,7 @@ func newTestKubernetesPVController(lhClient *lhfake.Clientset, kubeClient *fake.
 	}
 	kc.nowHandler = getTestNow
 
-	return kc
+	return kc, nil
 }
 
 func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
@@ -470,7 +473,8 @@ func (s *TestSuite) runKubernetesTestCases(c *C, testCases map[string]*Kubernete
 		pvcIndexer := informerFactories.KubeInformerFactory.Core().V1().PersistentVolumeClaims().Informer().GetIndexer()
 		pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 
-		kc := newTestKubernetesPVController(lhClient, kubeClient, extensionsClient, informerFactories)
+		kc, err := newTestKubernetesPVController(lhClient, kubeClient, extensionsClient, informerFactories)
+		c.Assert(err, IsNil)
 
 		// Need to create pv, pvc, pod and longhorn volume
 		var v *longhorn.Volume

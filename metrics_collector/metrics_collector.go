@@ -27,6 +27,8 @@ func InitMetricsCollectorSystem(logger logrus.FieldLogger, currentNodeID string,
 	diskCollector := NewDiskCollector(logger, currentNodeID, ds)
 	backupCollector := NewBackupCollector(logger, currentNodeID, ds)
 	snapshotController := NewSnapshotCollector(logger, currentNodeID, ds)
+	backingImageCollector := NewBackingImageCollector(logger, currentNodeID, ds)
+	backupBackingImageCollector := NewBackupBackingImageCollector(logger, currentNodeID, ds)
 
 	if err := registry.Register(volumeCollector); err != nil {
 		logger.WithField("collector", subsystemVolume).WithError(err).Warn("Failed to register collector")
@@ -42,6 +44,14 @@ func InitMetricsCollectorSystem(logger logrus.FieldLogger, currentNodeID string,
 
 	if err := registry.Register(snapshotController); err != nil {
 		logger.WithField("collector", subsystemSnapshot).WithError(err).Warn("Failed to register collector")
+	}
+
+	if err := registry.Register(backingImageCollector); err != nil {
+		logger.WithField("collector", subsystemBackingImage).WithError(err).Warn("Failed to register collector")
+	}
+
+	if err := registry.Register(backupBackingImageCollector); err != nil {
+		logger.WithField("collector", subsystemBackupBackingImage).WithError(err).Warn("Failed to register collector")
 	}
 
 	namespace := os.Getenv(types.EnvPodNamespace)

@@ -64,7 +64,7 @@ func NewReplicaController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
-	namespace string, controllerID string) *ReplicaController {
+	namespace string, controllerID string) (*ReplicaController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -87,7 +87,8 @@ func NewReplicaController(
 	}
 	rc.instanceHandler = NewInstanceHandler(ds, rc, rc.eventRecorder)
 
-	ds.ReplicaInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.ReplicaInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: rc.enqueueReplica,
 		UpdateFunc: func(old, cur interface{}) {
 			rc.enqueueReplica(cur)
@@ -99,36 +100,46 @@ func NewReplicaController(
 			}
 		},
 		DeleteFunc: rc.enqueueReplica,
-	})
+	}); err != nil {
+		return nil, err
+	}
 	rc.cacheSyncs = append(rc.cacheSyncs, ds.ReplicaInformer.HasSynced)
 
-	ds.InstanceManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.InstanceManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    rc.enqueueInstanceManagerChange,
 		UpdateFunc: func(old, cur interface{}) { rc.enqueueInstanceManagerChange(cur) },
 		DeleteFunc: rc.enqueueInstanceManagerChange,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	rc.cacheSyncs = append(rc.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
 
-	ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    rc.enqueueNodeAddOrDelete,
 		UpdateFunc: rc.enqueueNodeChange,
 		DeleteFunc: rc.enqueueNodeAddOrDelete,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	rc.cacheSyncs = append(rc.cacheSyncs, ds.NodeInformer.HasSynced)
 
-	ds.BackingImageInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.BackingImageInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    rc.enqueueBackingImageChange,
 		UpdateFunc: func(old, cur interface{}) { rc.enqueueBackingImageChange(cur) },
 		DeleteFunc: rc.enqueueBackingImageChange,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	rc.cacheSyncs = append(rc.cacheSyncs, ds.BackingImageInformer.HasSynced)
 
-	ds.SettingInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.SettingInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { rc.enqueueSettingChange(cur) },
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	rc.cacheSyncs = append(rc.cacheSyncs, ds.SettingInformer.HasSynced)
 
-	return rc
+	return rc, nil
 }
 
 func (rc *ReplicaController) Run(workers int, stopCh <-chan struct{}) {
@@ -249,7 +260,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		if replica.Spec.NodeID != "" && replica.Spec.NodeID != rc.controllerID {
 			log.Warn("Failed to cleanup replica's data because the replica's data is not on this node")
 		} else if replica.Spec.NodeID != "" {
-			if datastore.IsDataEngineV1(replica.Spec.DataEngine) {
+			if types.IsDataEngineV1(replica.Spec.DataEngine) {
 				// Clean up the data directory if this is the active replica or if this inactive replica is the only one
 				// using it.
 				if (replica.Spec.Active || !hasMatchingReplica(replica, rs)) && dataPath != "" {
@@ -285,7 +296,7 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 	}()
 
 	// Deprecated and no longer used by Longhorn, but maybe someone's external tooling uses it? Remove in v1.7.0.
-	replica.Status.EvictionRequested = replica.Spec.EvictionRequested
+	replica.Status.EvictionRequested = replica.Spec.EvictionRequested // nolint: staticcheck
 
 	return rc.instanceHandler.ReconcileInstanceState(replica, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus)
 }
@@ -387,9 +398,9 @@ func (rc *ReplicaController) getDiskNameFromUUID(r *longhorn.Replica) (string, e
 	if err != nil {
 		return "", err
 	}
-	for name, disk := range node.Status.DiskStatus {
+	for _, disk := range node.Status.DiskStatus {
 		if disk.DiskUUID == r.Spec.DiskID {
-			return name, nil
+			return disk.DiskName, nil
 		}
 	}
 	return "", fmt.Errorf("cannot find disk name for replica %v", r.Name)
@@ -504,7 +515,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	}
 	log := getLoggerForReplica(rc.logger, r)
 
-	if datastore.IsDataEngineV1(r.Spec.DataEngine) {
+	if types.IsDataEngineV1(r.Spec.DataEngine) {
 		if err := rc.deleteInstanceWithCLIAPIVersionOne(r); err != nil {
 			return err
 		}
@@ -566,7 +577,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	// Directly remove the instance from the map. Best effort.
 	if im.Status.APIVersion == engineapi.IncompatibleInstanceManagerAPIVersion {
 		delete(im.Status.InstanceReplicas, r.Name)
-		delete(im.Status.Instances, r.Name)
+		delete(im.Status.Instances, r.Name) // nolint: staticcheck
 		if _, err := rc.ds.UpdateInstanceManagerStatus(im); err != nil {
 			return err
 		}
@@ -576,8 +587,8 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 }
 
 func canDeleteInstance(r *longhorn.Replica) bool {
-	return datastore.IsDataEngineV1(r.Spec.DataEngine) ||
-		(datastore.IsDataEngineV2(r.Spec.DataEngine) && r.DeletionTimestamp != nil)
+	return types.IsDataEngineV1(r.Spec.DataEngine) ||
+		(types.IsDataEngineV2(r.Spec.DataEngine) && r.DeletionTimestamp != nil)
 }
 
 func deleteUnixSocketFile(volumeName string) error {
@@ -674,7 +685,7 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstancePro
 		return nil, err
 	}
 
-	if datastore.IsDataEngineV2(instance.Spec.DataEngine) {
+	if types.IsDataEngineV2(instance.Spec.DataEngine) {
 		if instance.Status.State == longhorn.InstanceStateStopped {
 			return nil, fmt.Errorf("instance %v is stopped", instance.Spec.Name)
 		}

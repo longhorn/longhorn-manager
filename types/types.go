@@ -723,15 +723,12 @@ func ErrorIsInvalidState(err error) bool {
 }
 
 func ValidateReplicaCount(count int) error {
-	if count < 1 || count > 20 {
-		return fmt.Errorf("replica count value must between 1 to 20")
-	}
-	return nil
-}
 
-func ValidateLogLevel(level string) error {
-	if _, err := logrus.ParseLevel(level); err != nil {
-		return fmt.Errorf("log level is invalid")
+	definition, _ := GetSettingDefinition(SettingNameDefaultReplicaCount)
+	valueIntRange := definition.ValueIntRange
+
+	if count < valueIntRange[ValueIntRangeMinimum] || count > valueIntRange[ValueIntRangeMaximum] {
+		return fmt.Errorf("replica count value %v must between %v to %v", count, valueIntRange[ValueIntRangeMinimum], valueIntRange[ValueIntRangeMaximum])
 	}
 	return nil
 }
@@ -832,8 +829,16 @@ func ValidateBackupCompressionMethod(method string) error {
 	return nil
 }
 
-func ValidateUnmapMarkSnapChainRemoved(unmapValue longhorn.UnmapMarkSnapChainRemoved) error {
-	if unmapValue != longhorn.UnmapMarkSnapChainRemovedIgnored && unmapValue != longhorn.UnmapMarkSnapChainRemovedEnabled && unmapValue != longhorn.UnmapMarkSnapChainRemovedDisabled {
+func ValidateUnmapMarkSnapChainRemoved(dataEngine longhorn.DataEngineType, unmapValue longhorn.UnmapMarkSnapChainRemoved) error {
+	if IsDataEngineV2(dataEngine) {
+		if unmapValue != longhorn.UnmapMarkSnapChainRemovedDisabled {
+			return fmt.Errorf("invalid UnmapMarkSnapChainRemoved setting: %v", unmapValue)
+		}
+	}
+
+	if unmapValue != longhorn.UnmapMarkSnapChainRemovedIgnored &&
+		unmapValue != longhorn.UnmapMarkSnapChainRemovedEnabled &&
+		unmapValue != longhorn.UnmapMarkSnapChainRemovedDisabled {
 		return fmt.Errorf("invalid UnmapMarkSnapChainRemoved setting: %v", unmapValue)
 	}
 	return nil
@@ -981,25 +986,45 @@ func UnmarshalToNodeTags(s string) ([]string, error) {
 	return res, nil
 }
 
-func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[string]longhorn.DiskSpec, error) {
-	fileInfo, err := os.Stat(dataPath)
+func IsBDF(addr string) bool {
+	bdfFormat := "[a-f0-9]{4}:[a-f0-9]{2}:[a-f0-9]{2}\\.[a-f0-9]{1}"
+	bdfPattern := regexp.MustCompile(bdfFormat)
+	return bdfPattern.MatchString(addr)
+}
+
+func IsBlockDisk(path string) (bool, error) {
+	if IsBDF(path) {
+		return true, nil
+	}
+
+	fileInfo, err := os.Stat(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return nil, errors.Wrapf(err, "failed to stat %v for creating default disk", dataPath)
+			return false, errors.Wrapf(err, "failed to stat %v for creating default disk", path)
 		}
-
-		// Longhorn is unable to create block-type disk automatically
-		if strings.HasPrefix(dataPath, "/dev/") {
-			return nil, errors.Wrapf(err, "creating default block-type disk %v is not supported", dataPath)
+		if strings.HasPrefix(path, "/dev/") {
+			return false, errors.Wrapf(err, "creating default block-type disk %v is not supported", path)
 		}
 	}
 
-	// Block-type disk
 	if fileInfo != nil && (fileInfo.Mode()&os.ModeDevice) == os.ModeDevice {
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[string]longhorn.DiskSpec, error) {
+	ok, err := IsBlockDisk(dataPath)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to check if %v is a block device", dataPath)
+	}
+	if ok {
 		return map[string]longhorn.DiskSpec{
 			DefaultDiskPrefix + util.RandomID(): {
 				Type:              longhorn.DiskTypeBlock,
 				Path:              dataPath,
+				DiskDriver:        longhorn.DiskDriverAuto,
 				AllowScheduling:   true,
 				EvictionRequested: false,
 				StorageReserved:   0,
@@ -1022,6 +1047,7 @@ func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[st
 		DefaultDiskPrefix + diskStat.DiskID: {
 			Type:              longhorn.DiskTypeFilesystem,
 			Path:              diskStat.Path,
+			DiskDriver:        longhorn.DiskDriverNone,
 			AllowScheduling:   true,
 			EvictionRequested: false,
 			StorageReserved:   diskStat.StorageMaximum * storageReservedPercentage / 100,
@@ -1036,18 +1062,15 @@ func ValidateCPUReservationValues(settingName SettingName, instanceManagerCPUStr
 		return errors.Wrapf(err, "invalid guaranteed/requested instance manager CPU value (%v)", instanceManagerCPUStr)
 	}
 
+	definition, _ := GetSettingDefinition(settingName)
+	valueIntRange := definition.ValueIntRange
+
 	switch settingName {
-	case SettingNameGuaranteedInstanceManagerCPU:
-		isUnderLimit := instanceManagerCPU < 0
-		isOverLimit := instanceManagerCPU > 40
+	case SettingNameGuaranteedInstanceManagerCPU, SettingNameV2DataEngineGuaranteedInstanceManagerCPU:
+		isUnderLimit := instanceManagerCPU < valueIntRange[ValueIntRangeMinimum]
+		isOverLimit := instanceManagerCPU > valueIntRange[ValueIntRangeMaximum]
 		if isUnderLimit || isOverLimit {
-			return fmt.Errorf("invalid requested v1 data engine instance manager CPUs. Valid instance manager CPU range between 0%% - 40%%")
-		}
-	case SettingNameV2DataEngineGuaranteedInstanceManagerCPU:
-		isUnderLimit := instanceManagerCPU < 1000
-		isOverLimit := instanceManagerCPU > 8000
-		if isUnderLimit || isOverLimit {
-			return fmt.Errorf("invalid requested v2 data engine instance manager CPUs. Valid instance manager CPU range between 1000 - 8000 millicpu")
+			return fmt.Errorf("invalid requested instance manager CPUs. Valid instance manager CPU range between %v - %v millicpu", valueIntRange[ValueIntRangeMinimum], valueIntRange[ValueIntRangeMaximum])
 		}
 	}
 	return nil
@@ -1156,4 +1179,14 @@ func GetPDBNameFromIMName(imName string) string {
 
 func GetIMNameFromPDBName(pdbName string) string {
 	return pdbName
+}
+
+// IsDataEngineV1 returns true if the given dataEngine is v1
+func IsDataEngineV1(dataEngine longhorn.DataEngineType) bool {
+	return dataEngine != longhorn.DataEngineTypeV2
+}
+
+// IsDataEngineV2 returns true if the given dataEngine is v2
+func IsDataEngineV2(dataEngine longhorn.DataEngineType) bool {
+	return dataEngine == longhorn.DataEngineTypeV2
 }

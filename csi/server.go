@@ -118,15 +118,13 @@ func parseEndpoint(ep string) (string, string, error) {
 
 func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	log := logrus.StandardLogger()
-	logLevel := logrus.InfoLevel
 
 	cut := strings.LastIndex(info.FullMethod, "/") + 1
 	method := info.FullMethod[cut:]
+	logLevel := logrus.InfoLevel
 	switch method {
 	case "NodeGetCapabilities", "NodeGetVolumeStats", "Probe":
 		logLevel = logrus.TraceLevel
-	default:
-		logLevel = logrus.InfoLevel
 	}
 
 	log.Logf(logLevel, "%s: req: %+v", method, protosanitizer.StripSecrets(req))

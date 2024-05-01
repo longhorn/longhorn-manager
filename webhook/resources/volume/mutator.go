@@ -162,7 +162,7 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 
 	// Mutate the image to the default one
 	defaultImageSetting := types.SettingNameDefaultEngineImage
-	if datastore.IsDataEngineV2(volume.Spec.DataEngine) {
+	if types.IsDataEngineV2(volume.Spec.DataEngine) {
 		defaultImageSetting = types.SettingNameDefaultInstanceManagerImage
 	}
 	defaultImage, _ := v.ds.GetSettingValueExisted(defaultImageSetting)
@@ -191,7 +191,7 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 
 	// TODO: Remove the mutations below after they are implemented for SPDK volumes
-	if datastore.IsDataEngineV2(volume.Spec.DataEngine) {
+	if types.IsDataEngineV2(volume.Spec.DataEngine) {
 		if volume.Spec.DataLocality != longhorn.DataLocalityDisabled {
 			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataLocality", "value": "%s"}`, longhorn.DataLocalityDisabled))
 		}
@@ -213,8 +213,8 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		if volume.Spec.ReplicaDiskSoftAntiAffinity != longhorn.ReplicaDiskSoftAntiAffinityDisabled {
 			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaDiskSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaDiskSoftAntiAffinityDefault))
 		}
-		if string(volume.Spec.OfflineReplicaRebuilding) == "" {
-			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/offlineReplicaRebuilding", "value": "%s"}`, longhorn.OfflineReplicaRebuildingIgnored))
+		if volume.Spec.OfflineReplicaRebuilding != longhorn.OfflineReplicaRebuildingDisabled {
+			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/offlineReplicaRebuilding", "value": "%s"}`, longhorn.OfflineReplicaRebuildingDisabled))
 		}
 	}
 
@@ -308,8 +308,13 @@ func mutate(newObj runtime.Object, moreLabels map[string]string) (admission.Patc
 	if string(volume.Spec.RestoreVolumeRecurringJob) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/restoreVolumeRecurringJob", "value": "%s"}`, longhorn.RestoreVolumeRecurringJobDefault))
 	}
-	if volume.Spec.UnmapMarkSnapChainRemoved == "" {
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/unmapMarkSnapChainRemoved", "value": "%s"}`, longhorn.UnmapMarkSnapChainRemovedIgnored))
+	if types.IsDataEngineV2(volume.Spec.DataEngine) {
+		// The field is not meaningful for v2 volumes
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/unmapMarkSnapChainRemoved", "value": "%s"}`, longhorn.UnmapMarkSnapChainRemovedDisabled))
+	} else {
+		if volume.Spec.UnmapMarkSnapChainRemoved == "" {
+			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/unmapMarkSnapChainRemoved", "value": "%s"}`, longhorn.UnmapMarkSnapChainRemovedIgnored))
+		}
 	}
 	if string(volume.Spec.ReplicaSoftAntiAffinity) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaSoftAntiAffinityDefault))
@@ -323,8 +328,7 @@ func mutate(newObj runtime.Object, moreLabels map[string]string) (admission.Patc
 	if string(volume.Spec.DataEngine) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataEngine", "value": "%s"}`, longhorn.DataEngineTypeV1))
 	}
-	if string(volume.Spec.OfflineReplicaRebuilding) == "" && datastore.IsDataEngineV1(volume.Spec.DataEngine) {
-		// Always mutate the offlineReplicaRebuilding to disabled for non-SPDK volumes
+	if volume.Spec.OfflineReplicaRebuilding != longhorn.OfflineReplicaRebuildingDisabled {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/offlineReplicaRebuilding", "value": "%s"}`, longhorn.OfflineReplicaRebuildingDisabled))
 	}
 	if volume.Spec.DataLocality == longhorn.DataLocalityStrictLocal {

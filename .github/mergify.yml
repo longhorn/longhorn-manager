@@ -1,15 +1,30 @@
 pull_request_rules:
-- name: automatic merge after review
+- name: Automatically merge PRs
   conditions:
-  - check-success=continuous-integration/drone/pr
-  - check-success=DCO
+  - check-success="Build binaries"
   - "#approved-reviews-by>=2"
   - approved-reviews-by=@longhorn/maintainer
   actions:
     merge:
       method: rebase
 
-- name: ask to resolve conflict
+- name: Automatically merge Renovate PRs
+  conditions:
+  - check-success="Build binaries"
+  - author = renovate[bot]
+  actions:
+    merge:
+      method: rebase
+
+- name: Automatically approve Renovate PRs
+  conditions:
+  - check-success="Build binaries"
+  - author = renovate[bot]
+  actions:
+    review:
+      type: APPROVE
+
+- name: Ask to resolve conflict
   conditions:
   - conflict
   actions:

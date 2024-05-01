@@ -67,7 +67,7 @@ func NewEngineImageController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
-	namespace string, controllerID, serviceAccount string) *EngineImageController {
+	namespace string, controllerID, serviceAccount string) (*EngineImageController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -91,28 +91,35 @@ func NewEngineImageController(
 		engineImageVersionUpdater: updateEngineImageVersion,
 	}
 
-	ds.EngineImageInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.EngineImageInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    ic.enqueueEngineImage,
 		UpdateFunc: func(old, cur interface{}) { ic.enqueueEngineImage(cur) },
 		DeleteFunc: ic.enqueueEngineImage,
-	})
+	}); err != nil {
+		return nil, err
+	}
 	ic.cacheSyncs = append(ic.cacheSyncs, ds.EngineImageInformer.HasSynced)
 
-	ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    func(obj interface{}) { ic.enqueueVolumes(obj) },
 		UpdateFunc: func(old, cur interface{}) { ic.enqueueVolumes(old, cur) },
 		DeleteFunc: func(obj interface{}) { ic.enqueueVolumes(obj) },
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	ic.cacheSyncs = append(ic.cacheSyncs, ds.VolumeInformer.HasSynced)
 
-	ds.DaemonSetInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.DaemonSetInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    ic.enqueueControlleeChange,
 		UpdateFunc: func(old, cur interface{}) { ic.enqueueControlleeChange(cur) },
 		DeleteFunc: ic.enqueueControlleeChange,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	ic.cacheSyncs = append(ic.cacheSyncs, ds.DaemonSetInformer.HasSynced)
 
-	return ic
+	return ic, nil
 }
 
 func (ic *EngineImageController) Run(workers int, stopCh <-chan struct{}) {
@@ -436,7 +443,7 @@ func (ic *EngineImageController) handleAutoUpgradeEngineImageToDefaultEngineImag
 		for _, v := range vs {
 			ic.logger.WithFields(logrus.Fields{"volume": v.Name, "image": v.Spec.Image}).Infof("Upgrading volume engine image to the default engine image %v automatically", defaultEngineImage)
 
-			if datastore.IsDataEngineV2(v.Spec.DataEngine) {
+			if types.IsDataEngineV2(v.Spec.DataEngine) {
 				ic.logger.WithFields(logrus.Fields{"volume": v.Name, "image": v.Spec.Image}).Infof("Skip upgrading volume engine image to the default engine image %v automatically since it is using v2 data engine", defaultEngineImage)
 				continue
 			}

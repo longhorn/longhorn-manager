@@ -49,7 +49,7 @@ func NewKubernetesPDBController(
 	ds *datastore.DataStore,
 	kubeClient clientset.Interface,
 	controllerID string,
-	namespace string) *KubernetesPDBController {
+	namespace string) (*KubernetesPDBController, error) {
 
 	pc := &KubernetesPDBController{
 		baseController: newBaseController("kubernetes-pdb", logger),
@@ -61,21 +61,26 @@ func NewKubernetesPDBController(
 		kubeClient: kubeClient,
 	}
 
-	ds.DeploymentInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.DeploymentInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    pc.enqueueDeployment,
 		UpdateFunc: func(old, cur interface{}) { pc.enqueueDeployment(cur) },
 		DeleteFunc: pc.enqueueDeployment,
-	})
+	}); err != nil {
+		return nil, err
+	}
 	pc.cacheSyncs = append(pc.cacheSyncs, ds.DeploymentInformer.HasSynced)
 
-	ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    pc.enqueueVolume,
 		UpdateFunc: func(old, cur interface{}) { pc.enqueueVolume(cur) },
 		DeleteFunc: pc.enqueueVolume,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	pc.cacheSyncs = append(pc.cacheSyncs, ds.VolumeInformer.HasSynced)
 
-	return pc
+	return pc, nil
 }
 
 func (pc *KubernetesPDBController) Run(workers int, stopCh <-chan struct{}) {

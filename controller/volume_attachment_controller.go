@@ -50,7 +50,7 @@ func NewLonghornVolumeAttachmentController(
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
 	controllerID string,
-	namespace string) *VolumeAttachmentController {
+	namespace string) (*VolumeAttachmentController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -72,33 +72,42 @@ func NewLonghornVolumeAttachmentController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-volume-attachment-controller"}),
 	}
 
-	ds.LHVolumeAttachmentInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.LHVolumeAttachmentInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vac.enqueueVolumeAttachment,
 		UpdateFunc: func(old, cur interface{}) { vac.enqueueVolumeAttachment(cur) },
 		DeleteFunc: vac.enqueueVolumeAttachment,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	vac.cacheSyncs = append(vac.cacheSyncs, ds.LHVolumeAttachmentInformer.HasSynced)
 
-	ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vac.enqueueForLonghornVolume,
 		UpdateFunc: func(old, cur interface{}) { vac.enqueueForLonghornVolume(cur) },
 		DeleteFunc: vac.enqueueForLonghornVolume,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	vac.cacheSyncs = append(vac.cacheSyncs, ds.VolumeInformer.HasSynced)
 
-	ds.EngineInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.EngineInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    vac.enqueueEngineChange,
 		UpdateFunc: func(old, cur interface{}) { vac.enqueueEngineChange(cur) },
 		DeleteFunc: vac.enqueueEngineChange,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	vac.cacheSyncs = append(vac.cacheSyncs, ds.EngineInformer.HasSynced)
 
-	ds.KubeNodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.KubeNodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { vac.enqueueNodeChange(cur) },
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	vac.cacheSyncs = append(vac.cacheSyncs, ds.KubeNodeInformer.HasSynced)
 
-	return vac
+	return vac, nil
 }
 
 func (vac *VolumeAttachmentController) enqueueVolumeAttachment(obj interface{}) {

@@ -124,7 +124,7 @@ func (rcs *ReplicaScheduler) getNodeCandidates(nodesInfo map[string]*longhorn.No
 
 	nodeCandidates = map[string]*longhorn.Node{}
 	for _, node := range nodesInfo {
-		if datastore.IsDataEngineV2(schedulingReplica.Spec.DataEngine) {
+		if types.IsDataEngineV2(schedulingReplica.Spec.DataEngine) {
 			disabled, err := rcs.ds.IsV2DataEngineDisabledForNode(node.Name)
 			if err != nil {
 				logrus.WithError(err).Errorf("Failed to check if v2 data engine is disabled on node %v", node.Name)
@@ -145,19 +145,6 @@ func (rcs *ReplicaScheduler) getNodeCandidates(nodesInfo map[string]*longhorn.No
 	}
 
 	return nodeCandidates, nil
-}
-
-// getNodesWithEvictingReplicas returns nodes that have replicas being evicted
-func getNodesWithEvictingReplicas(replicas map[string]*longhorn.Replica, nodeInfo map[string]*longhorn.Node) map[string]*longhorn.Node {
-	nodesWithEvictingReplicas := map[string]*longhorn.Node{}
-	for _, r := range replicas {
-		if r.Spec.EvictionRequested {
-			if node, ok := nodeInfo[r.Spec.NodeID]; ok {
-				nodesWithEvictingReplicas[r.Spec.NodeID] = node
-			}
-		}
-	}
-	return nodesWithEvictingReplicas
 }
 
 // getDiskCandidates returns a map of the most appropriate disks a replica can be scheduled to (assuming it can be
@@ -353,8 +340,8 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 			continue
 		}
 
-		if !(datastore.IsDataEngineV1(volume.Spec.DataEngine) && diskSpec.Type == longhorn.DiskTypeFilesystem) &&
-			!(datastore.IsDataEngineV2(volume.Spec.DataEngine) && diskSpec.Type == longhorn.DiskTypeBlock) {
+		if !(types.IsDataEngineV1(volume.Spec.DataEngine) && diskSpec.Type == longhorn.DiskTypeFilesystem) &&
+			!(types.IsDataEngineV2(volume.Spec.DataEngine) && diskSpec.Type == longhorn.DiskTypeBlock) {
 			logrus.Debugf("Volume %v is not compatible with disk %v", volume.Name, diskName)
 			continue
 		}
@@ -706,10 +693,6 @@ func IsPotentiallyReusableReplica(r *longhorn.Replica) bool {
 		return false
 	}
 	if r.Spec.EvictionRequested {
-		return false
-	}
-	// TODO: Reuse failed replicas for a SPDK volume
-	if datastore.IsDataEngineV2(r.Spec.DataEngine) {
 		return false
 	}
 	return true

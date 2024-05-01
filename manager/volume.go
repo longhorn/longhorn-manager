@@ -468,6 +468,15 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 
 	size = util.RoundUpSize(size)
 
+	if v.Spec.Size >= size {
+		logrus.Infof("Volume %v expansion is not allowable since current size %v >= %v", v.Name, v.Spec.Size, size)
+		return v, nil
+	}
+
+	if _, err := m.scheduler.CheckReplicasSizeExpansion(v, v.Spec.Size, size); err != nil {
+		return nil, err
+	}
+
 	kubernetesStatus := &v.Status.KubernetesStatus
 	if kubernetesStatus.PVCName != "" && kubernetesStatus.LastPVCRefAt == "" {
 		waitForPVCExpansion, size, err := m.checkAndExpandPVC(kubernetesStatus.Namespace, kubernetesStatus.PVCName, size)
@@ -481,15 +490,6 @@ func (m *VolumeManager) Expand(volumeName string, size int64) (v *longhorn.Volum
 		}
 
 		logrus.Infof("CSI plugin call to expand volume %v to size %v", v.Name, size)
-	}
-
-	if v.Spec.Size >= size {
-		logrus.Infof("Volume %v expansion is not necessary since current size %v >= %v", v.Name, v.Spec.Size, size)
-		return v, nil
-	}
-
-	if _, err := m.scheduler.CheckReplicasSizeExpansion(v, v.Spec.Size, size); err != nil {
-		return nil, err
 	}
 
 	previousSize := v.Spec.Size
@@ -767,7 +767,7 @@ func (m *VolumeManager) EngineUpgrade(volumeName, image string) (v *longhorn.Vol
 		return nil, err
 	}
 
-	if datastore.IsDataEngineV2(v.Spec.DataEngine) {
+	if types.IsDataEngineV2(v.Spec.DataEngine) {
 		return nil, fmt.Errorf("cannot upgrade engine for volume %v using image %v because the volume is using data engine v2", volumeName, image)
 	}
 

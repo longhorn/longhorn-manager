@@ -83,7 +83,7 @@ func NewBackingImageDataSourceController(
 	kubeClient clientset.Interface,
 	namespace, controllerID, serviceAccount, imageManagerImage string,
 	proxyConnCounter util.Counter,
-) *BackingImageDataSourceController {
+) (*BackingImageDataSourceController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -110,42 +110,53 @@ func NewBackingImageDataSourceController(
 		proxyConnCounter: proxyConnCounter,
 	}
 
-	ds.BackingImageDataSourceInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.BackingImageDataSourceInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueBackingImageDataSource,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueBackingImageDataSource(cur) },
 		DeleteFunc: c.enqueueBackingImageDataSource,
-	})
+	}); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.BackingImageDataSourceInformer.HasSynced)
 
-	ds.BackingImageInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.BackingImageInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueForBackingImage,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueForBackingImage(cur) },
 		DeleteFunc: c.enqueueForBackingImage,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.BackingImageInformer.HasSynced)
 
-	ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { c.enqueueForVolume(cur) },
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.VolumeInformer.HasSynced)
 
-	ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(oldObj, cur interface{}) { c.enqueueForLonghornNode(cur) },
 		DeleteFunc: c.enqueueForLonghornNode,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.NodeInformer.HasSynced)
 
-	ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+	if _, err = ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
 		FilterFunc: isBackingImageDataSourcePod,
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    c.enqueueForBackingImageDataSourcePod,
 			UpdateFunc: func(old, cur interface{}) { c.enqueueForBackingImageDataSourcePod(cur) },
 			DeleteFunc: c.enqueueForBackingImageDataSourcePod,
 		},
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.PodInformer.HasSynced)
 
-	return c
+	return c, nil
 }
 
 func (c *BackingImageDataSourceController) Run(workers int, stopCh <-chan struct{}) {

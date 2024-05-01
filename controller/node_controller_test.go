@@ -127,7 +127,9 @@ func (s *NodeControllerSuite) SetUpTest(c *C) {
 
 	s.eventRecorder = record.NewFakeRecorder(eventRecorderBufferSize)
 
-	s.controller = newTestNodeController(s.lhClient, s.kubeClient, s.extensionsClient, s.informerFactories, s.eventRecorder, TestNode1)
+	var err error
+	s.controller, err = newTestNodeController(s.lhClient, s.kubeClient, s.extensionsClient, s.informerFactories, s.eventRecorder, TestNode1)
+	c.Assert(err, IsNil)
 }
 
 func (s *NodeControllerSuite) TestManagerPodUp(c *C) {
@@ -475,6 +477,8 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 			StorageAvailable: 0,
 			Type:             longhorn.DiskTypeFilesystem,
 			FSType:           TestDiskPathFSType,
+			DiskPath:         TestDefaultDataPath,
+			DiskName:         TestDiskID1,
 		},
 	}
 	node2 := newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, "")
@@ -485,8 +489,10 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 			Conditions: []longhorn.Condition{
 				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusUnknown, ""),
 			},
-			Type:   longhorn.DiskTypeFilesystem,
-			FSType: TestDiskPathFSType,
+			Type:     longhorn.DiskTypeFilesystem,
+			FSType:   TestDiskPathFSType,
+			DiskPath: TestDefaultDataPath,
+			DiskName: TestDiskID1,
 		},
 	}
 
@@ -555,9 +561,11 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 						ScheduledReplica: map[string]int64{
 							fixture.lhReplicas[0].Name: fixture.lhReplicas[0].Spec.VolumeSize,
 						},
+						DiskName: TestDiskID1,
 						DiskUUID: TestDiskID1,
 						Type:     longhorn.DiskTypeFilesystem,
 						FSType:   TestDiskPathFSType,
+						DiskPath: TestDefaultDataPath,
 					},
 				},
 			},
@@ -573,8 +581,10 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 						Conditions: []longhorn.Condition{
 							newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusUnknown, ""),
 						},
-						Type:   longhorn.DiskTypeFilesystem,
-						FSType: TestDiskPathFSType,
+						Type:     longhorn.DiskTypeFilesystem,
+						FSType:   TestDiskPathFSType,
+						DiskPath: TestDefaultDataPath,
+						DiskName: TestDiskID1,
 					},
 				},
 			},
@@ -616,6 +626,7 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 			Conditions: []longhorn.Condition{
 				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 			},
+			DiskName: TestDiskID1,
 		},
 		"unavailable-disk": {
 			StorageScheduled: 0,
@@ -632,6 +643,8 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 			StorageAvailable: 0,
 			Type:             longhorn.DiskTypeFilesystem,
 			FSType:           TestDiskPathFSType,
+			DiskPath:         TestDefaultDataPath,
+			DiskName:         TestDiskID1,
 		},
 	}
 
@@ -692,9 +705,11 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 							newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 						},
 						ScheduledReplica: map[string]int64{},
+						DiskName:         TestDiskID1,
 						DiskUUID:         TestDiskID1,
 						Type:             longhorn.DiskTypeFilesystem,
 						FSType:           TestDiskPathFSType,
+						DiskPath:         TestDefaultDataPath,
 					},
 				},
 			},
@@ -709,6 +724,8 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 						StorageAvailable: 0,
 						Type:             longhorn.DiskTypeFilesystem,
 						FSType:           TestDiskPathFSType,
+						DiskPath:         TestDefaultDataPath,
+						DiskName:         TestDiskID1,
 					},
 				},
 			},
@@ -747,6 +764,7 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 		TestDiskID1: {
 			Type:            longhorn.DiskTypeFilesystem,
 			Path:            TestDefaultDataPath,
+			DiskDriver:      longhorn.DiskDriverNone,
 			AllowScheduling: true,
 			StorageReserved: 0,
 		},
@@ -760,19 +778,23 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 				newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 			},
+			DiskName: TestDiskID1,
 			DiskUUID: "new-uuid",
 			Type:     longhorn.DiskTypeFilesystem,
 			FSType:   TestDiskPathFSType,
+			DiskPath: TestDefaultDataPath,
 		},
 	}
 
 	node2 := newNode(TestNode2, TestNamespace, true, longhorn.ConditionStatusUnknown, "")
 	node2.Status.DiskStatus = map[string]*longhorn.DiskStatus{
 		TestDiskID1: {
+			DiskName:         TestDiskID1,
 			StorageScheduled: 0,
 			StorageAvailable: 0,
 			Type:             longhorn.DiskTypeFilesystem,
 			FSType:           TestDiskPathFSType,
+			DiskPath:         TestDefaultDataPath,
 		},
 	}
 
@@ -833,9 +855,11 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 							newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskFilesystemChanged)),
 						},
 						ScheduledReplica: map[string]int64{},
+						DiskName:         TestDiskID1,
 						DiskUUID:         "new-uuid",
 						Type:             longhorn.DiskTypeFilesystem,
 						FSType:           TestDiskPathFSType,
+						DiskPath:         TestDefaultDataPath,
 					},
 				},
 			},
@@ -846,10 +870,12 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{
 					TestDiskID1: {
+						DiskName:         TestDiskID1,
 						StorageScheduled: 0,
 						StorageAvailable: 0,
 						Type:             longhorn.DiskTypeFilesystem,
 						FSType:           TestDiskPathFSType,
+						DiskPath:         TestDefaultDataPath,
 					},
 				},
 			},
@@ -891,7 +917,8 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 			Conditions: []longhorn.Condition{
 				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 			},
-			Type: longhorn.DiskTypeFilesystem,
+			Type:     longhorn.DiskTypeFilesystem,
+			DiskName: TestDiskID1,
 		},
 	}
 
@@ -950,10 +977,12 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 							newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse, string(longhorn.DiskConditionReasonDiskPressure)),
 							newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 						},
+						DiskName:         TestDiskID1,
 						ScheduledReplica: map[string]int64{},
 						DiskUUID:         TestDiskID1,
 						Type:             longhorn.DiskTypeFilesystem,
 						FSType:           TestDiskPathFSType,
+						DiskPath:         TestDefaultDataPath,
 					},
 				},
 			},
@@ -1006,7 +1035,8 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 			Conditions: []longhorn.Condition{
 				newNodeCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 			},
-			Type: longhorn.DiskTypeFilesystem,
+			Type:     longhorn.DiskTypeFilesystem,
+			DiskName: TestDiskID1,
 		},
 	}
 
@@ -1087,9 +1117,11 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 							newNodeCondition(longhorn.DiskConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 						},
 						ScheduledReplica: map[string]int64{},
+						DiskName:         TestDiskID1,
 						DiskUUID:         TestDiskID1,
 						Type:             longhorn.DiskTypeFilesystem,
 						FSType:           TestDiskPathFSType,
+						DiskPath:         TestDefaultDataPath,
 					},
 				},
 			},
@@ -1947,11 +1979,14 @@ func (s *NodeControllerSuite) initTest(c *C, fixture *NodeControllerFixture) {
 }
 
 func newTestNodeController(lhClient *lhfake.Clientset, kubeClient *fake.Clientset, extensionsClient *apiextensionsfake.Clientset,
-	informerFactories *util.InformerFactories, eventRecorder *record.FakeRecorder, controllerID string) *NodeController {
+	informerFactories *util.InformerFactories, eventRecorder *record.FakeRecorder, controllerID string) (*NodeController, error) {
 	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	logger := logrus.StandardLogger()
-	nc := NewNodeController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID)
+	nc, err := NewNodeController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID)
+	if err != nil {
+		return nil, err
+	}
 	nc.eventRecorder = eventRecorder
 	nc.topologyLabelsChecker = fakeTopologyLabelsChecker
 
@@ -1960,14 +1995,14 @@ func newTestNodeController(lhClient *lhfake.Clientset, kubeClient *fake.Clientse
 	}
 	mon, err := monitor.NewFakeNodeMonitor(nc.logger, nc.ds, controllerID, enqueueNodeForMonitor)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	nc.diskMonitor = mon
 
 	for index := range nc.cacheSyncs {
 		nc.cacheSyncs[index] = alwaysReady
 	}
-	return nc
+	return nc, nil
 }
 
 func fakeTopologyLabelsChecker(kubeClient clientset.Interface, vers string) (bool, error) {

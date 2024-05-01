@@ -18,6 +18,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -55,7 +56,7 @@ func NewShareManagerController(
 	scheme *runtime.Scheme,
 
 	kubeClient clientset.Interface,
-	namespace, controllerID, serviceAccount string) *ShareManagerController {
+	namespace, controllerID, serviceAccount string) (*ShareManagerController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -78,34 +79,41 @@ func NewShareManagerController(
 		ds: ds,
 	}
 
+	var err error
 	// need shared volume manager informer
-	ds.ShareManagerInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.ShareManagerInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueShareManager,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueShareManager(cur) },
 		DeleteFunc: c.enqueueShareManager,
-	})
+	}); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.ShareManagerInformer.HasSynced)
 
 	// need information for volumes, to be able to claim them
-	ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueShareManagerForVolume,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueShareManagerForVolume(cur) },
 		DeleteFunc: c.enqueueShareManagerForVolume,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.VolumeInformer.HasSynced)
 
 	// we are only interested in pods for which we are responsible for managing
-	ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+	if _, err = ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
 		FilterFunc: isShareManagerPod,
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    c.enqueueShareManagerForPod,
 			UpdateFunc: func(old, cur interface{}) { c.enqueueShareManagerForPod(cur) },
 			DeleteFunc: c.enqueueShareManagerForPod,
 		},
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.PodInformer.HasSynced)
 
-	return c
+	return c, nil
 }
 
 func getLoggerForShareManager(logger logrus.FieldLogger, sm *longhorn.ShareManager) *logrus.Entry {
@@ -743,12 +751,73 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 	return nil
 }
 
+func (c *ShareManagerController) getAffinityFromStorageClass(sc *storagev1.StorageClass) *corev1.Affinity {
+	var matchLabelExpressions []corev1.NodeSelectorRequirement
+
+	for _, topology := range sc.AllowedTopologies {
+		for _, expression := range topology.MatchLabelExpressions {
+			matchLabelExpressions = append(matchLabelExpressions, corev1.NodeSelectorRequirement{
+				Key:      expression.Key,
+				Operator: corev1.NodeSelectorOpIn,
+				Values:   expression.Values,
+			})
+		}
+	}
+
+	if len(matchLabelExpressions) == 0 {
+		return nil
+	}
+
+	return &corev1.Affinity{
+		NodeAffinity: &corev1.NodeAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+				NodeSelectorTerms: []corev1.NodeSelectorTerm{
+					{
+						MatchExpressions: matchLabelExpressions,
+					},
+				},
+			},
+		},
+	}
+}
+
+func (c *ShareManagerController) getShareManagerNodeSelectorFromStorageClass(sc *storagev1.StorageClass) map[string]string {
+	value, ok := sc.Parameters["shareManagerNodeSelector"]
+	if !ok {
+		return map[string]string{}
+	}
+
+	nodeSelector, err := types.UnmarshalNodeSelector(value)
+	if err != nil {
+		c.logger.WithError(err).Warnf("Failed to unmarshal node selector %v", value)
+		return map[string]string{}
+	}
+
+	return nodeSelector
+}
+
+func (c *ShareManagerController) getShareManagerTolerationsFromStorageClass(sc *storagev1.StorageClass) []corev1.Toleration {
+	value, ok := sc.Parameters["shareManagerTolerations"]
+	if !ok {
+		return []corev1.Toleration{}
+	}
+
+	tolerations, err := types.UnmarshalTolerations(value)
+	if err != nil {
+		c.logger.WithError(err).Warnf("Failed to unmarshal tolerations %v", value)
+		return []corev1.Toleration{}
+	}
+
+	return tolerations
+}
+
 // createShareManagerPod ensures existence of service, it's assumed that the pvc for this share manager already exists
 func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager) (*corev1.Pod, error) {
 	tolerations, err := c.ds.GetSettingTaintToleration()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get taint toleration setting before creating share manager pod")
 	}
+
 	nodeSelector, err := c.ds.GetSettingSystemManagedComponentsNodeSelector()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get node selector setting before creating share manager pod")
@@ -798,6 +867,33 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 		return nil, err
 	}
 
+	var affinity *corev1.Affinity
+
+	if pv.Spec.StorageClassName != "" {
+		sc, err := c.ds.GetStorageClass(pv.Spec.StorageClassName)
+		if err != nil {
+			c.logger.WithError(err).Warnf("Failed to get storage class %v, will continue the share manager pod creation", pv.Spec.StorageClassName)
+		} else {
+			affinity = c.getAffinityFromStorageClass(sc)
+
+			// Find the node selector from the storage class and merge it with the system managed components node selector
+			if nodeSelector == nil {
+				nodeSelector = map[string]string{}
+			}
+			nodeSelectorFromStorageClass := c.getShareManagerNodeSelectorFromStorageClass(sc)
+			for k, v := range nodeSelectorFromStorageClass {
+				nodeSelector[k] = v
+			}
+
+			// Find the tolerations from the storage class and merge it with the global tolerations
+			if tolerations == nil {
+				tolerations = []corev1.Toleration{}
+			}
+			tolerationsFromStorageClass := c.getShareManagerTolerationsFromStorageClass(sc)
+			tolerations = append(tolerations, tolerationsFromStorageClass...)
+		}
+	}
+
 	fsType := pv.Spec.CSI.FSType
 	mountOptions := pv.Spec.MountOptions
 
@@ -822,8 +918,8 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 			string(secret.Data[csi.CryptoPBKDF]))
 	}
 
-	manifest := c.createPodManifest(sm, annotations, tolerations, imagePullPolicy, nil, registrySecret, priorityClass, nodeSelector,
-		fsType, mountOptions, cryptoKey, cryptoParams)
+	manifest := c.createPodManifest(sm, annotations, tolerations, affinity, imagePullPolicy, nil, registrySecret,
+		priorityClass, nodeSelector, fsType, mountOptions, cryptoKey, cryptoParams)
 	pod, err := c.ds.CreatePod(manifest)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create pod for share manager %v", sm.Name)
@@ -858,8 +954,8 @@ func (c *ShareManagerController) createServiceManifest(sm *longhorn.ShareManager
 }
 
 func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, annotations map[string]string, tolerations []corev1.Toleration,
-	pullPolicy corev1.PullPolicy, resourceReq *corev1.ResourceRequirements, registrySecret, priorityClass string, nodeSelector map[string]string,
-	fsType string, mountOptions []string, cryptoKey string, cryptoParams *crypto.EncryptParams) *corev1.Pod {
+	affinity *corev1.Affinity, pullPolicy corev1.PullPolicy, resourceReq *corev1.ResourceRequirements, registrySecret, priorityClass string,
+	nodeSelector map[string]string, fsType string, mountOptions []string, cryptoKey string, cryptoParams *crypto.EncryptParams) *corev1.Pod {
 
 	// command args for the share-manager
 	args := []string{"--debug", "daemon", "--volume", sm.Name}
@@ -882,6 +978,7 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 			OwnerReferences: datastore.GetOwnerReferencesForShareManager(sm, true),
 		},
 		Spec: corev1.PodSpec{
+			Affinity:           affinity,
 			ServiceAccountName: c.serviceAccount,
 			Tolerations:        util.GetDistinctTolerations(tolerations),
 			NodeSelector:       nodeSelector,

@@ -40,7 +40,6 @@ import (
 
 var (
 	mountPropagationHostToContainer = corev1.MountPropagationHostToContainer
-	mountPropagationBidirectional   = corev1.MountPropagationBidirectional
 )
 
 type InstanceManagerController struct {
@@ -106,7 +105,7 @@ func NewInstanceManagerController(
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
 	namespace, controllerID, serviceAccount string,
-) *InstanceManagerController {
+) (*InstanceManagerController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -130,39 +129,48 @@ func NewInstanceManagerController(
 		versionUpdater: updateInstanceManagerVersion,
 	}
 
-	ds.InstanceManagerInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.InstanceManagerInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    imc.enqueueInstanceManager,
 		UpdateFunc: func(old, cur interface{}) { imc.enqueueInstanceManager(cur) },
 		DeleteFunc: imc.enqueueInstanceManager,
-	})
+	}); err != nil {
+		return nil, err
+	}
 	imc.cacheSyncs = append(imc.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
 
-	ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+	if _, err = ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
 		FilterFunc: isInstanceManagerPod,
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    imc.enqueueInstanceManagerPod,
 			UpdateFunc: func(old, cur interface{}) { imc.enqueueInstanceManagerPod(cur) },
 			DeleteFunc: imc.enqueueInstanceManagerPod,
 		},
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	imc.cacheSyncs = append(imc.cacheSyncs, ds.PodInformer.HasSynced)
 
-	ds.KubeNodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.KubeNodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(oldObj, cur interface{}) { imc.enqueueKubernetesNode(cur) },
 		DeleteFunc: imc.enqueueKubernetesNode,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	imc.cacheSyncs = append(imc.cacheSyncs, ds.KubeNodeInformer.HasSynced)
 
-	ds.SettingInformer.AddEventHandlerWithResyncPeriod(
+	if _, err = ds.SettingInformer.AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: imc.isResponsibleForSetting,
 			Handler: cache.ResourceEventHandlerFuncs{
 				UpdateFunc: func(old, cur interface{}) { imc.enqueueSettingChange(cur) },
 			},
-		}, 0)
+		}, 0); err != nil {
+		return nil, err
+	}
 	imc.cacheSyncs = append(imc.cacheSyncs, ds.SettingInformer.HasSynced)
 
-	return imc
+	return imc, nil
 }
 
 func (imc *InstanceManagerController) isResponsibleForSetting(obj interface{}) bool {
@@ -440,15 +448,19 @@ func (imc *InstanceManagerController) syncInstanceStatus(im *longhorn.InstanceMa
 		// In these states, instance processes either are not running or will soon not be running.
 		// This step prevents other controllers from being confused by stale information.
 		// InstanceManagerMonitor will change this when/if it polls.
-		im.Status.Instances = nil
+		im.Status.Instances = nil // nolint: staticcheck
 		im.Status.InstanceEngines = nil
 		im.Status.InstanceReplicas = nil
 	}
 	return nil
 }
 
-func (imc *InstanceManagerController) syncLogSettingsToIMPod(im *longhorn.InstanceManager) error {
-	if datastore.IsDataEngineV1(im.Spec.DataEngine) {
+func (imc *InstanceManagerController) syncLogSettingsToInstanceManagerPod(im *longhorn.InstanceManager) error {
+	if types.IsDataEngineV1(im.Spec.DataEngine) {
+		return nil
+	}
+
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
 		return nil
 	}
 
@@ -493,9 +505,9 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		return err
 	}
 
-	err = imc.syncLogSettingsToIMPod(im)
+	err = imc.syncLogSettingsToInstanceManagerPod(im)
 	if err != nil {
-		log.WithError(err).Warnf("Failed to sync log settings to instance manager pod")
+		log.WithError(err).Warnf("Failed to sync log settings to instance manager pod %v", im.Name)
 	}
 
 	isSettingSynced, isPodDeletedOrNotRunning, areInstancesRunningInPod, err := imc.areDangerZoneSettingsSyncedToIMPod(im)
@@ -869,7 +881,7 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 	// it means that all volumes are detached.
 	// We can delete the PodDisruptionBudget for the engine instance manager.
 	if im.Spec.Type == longhorn.InstanceManagerTypeEngine {
-		if len(im.Status.InstanceEngines)+len(im.Status.Instances) == 0 {
+		if len(im.Status.InstanceEngines)+len(im.Status.Instances) == 0 { // nolint: staticcheck
 			return true, nil
 		}
 		return false, nil
@@ -982,7 +994,7 @@ func (imc *InstanceManagerController) areAllInstanceRemovedFromNodeByType(nodeNa
 	}
 
 	for _, im := range ims {
-		if len(im.Status.InstanceEngines)+len(im.Status.Instances) > 0 {
+		if len(im.Status.InstanceEngines)+len(im.Status.Instances) > 0 { // nolint: staticcheck
 			return false, nil
 		}
 	}
@@ -1245,7 +1257,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, longhorn.InstanceManagerTypeAllInOne, dataEngine)
 	podSpec.Spec.Containers[0].Name = "instance-manager"
 
-	if datastore.IsDataEngineV2(dataEngine) {
+	if types.IsDataEngineV2(dataEngine) {
 		// spdk_tgt doesn't support log level option, so we don't need to pass the log level to the instance manager.
 		// The log level will be applied in the reconciliation of instance manager controller.
 		logFlagsSetting, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngineLogFlags)
@@ -1295,7 +1307,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	for _, port := range ports {
 		livenessProbes = append(livenessProbes, fmt.Sprintf("nc -zv localhost %d > /dev/null 2>&1", port))
 	}
-	if datastore.IsDataEngineV2(dataEngine) {
+	if types.IsDataEngineV2(dataEngine) {
 		livenessProbes = append(livenessProbes, fmt.Sprintf("nc -zv localhost %d > /dev/null 2>&1", engineapi.InstanceManagerSpdkServiceDefaultPort))
 
 		processProbe := "[ $(ps aux | grep 'spdk_tgt' | grep -v 'grep' | grep -v 'tee' | wc -l) != 0 ]"
@@ -1391,7 +1403,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		},
 	}
 
-	if datastore.IsDataEngineV2(dataEngine) {
+	if types.IsDataEngineV2(dataEngine) {
 		podSpec.Spec.Containers[0].VolumeMounts = append(podSpec.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
 			MountPath: "/hugepages",
 			Name:      "hugepage",
@@ -1617,11 +1629,11 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() (needStop bool) {
 func (m *InstanceManagerMonitor) updateInstanceMap(im *longhorn.InstanceManager, resp map[string]longhorn.InstanceProcess) bool {
 	switch {
 	case im.Status.APIVersion < 4:
-		if reflect.DeepEqual(im.Status.Instances, resp) {
+		if reflect.DeepEqual(im.Status.Instances, resp) { // nolint: staticcheck
 			return false
 		}
 
-		im.Status.Instances = resp
+		im.Status.Instances = resp // nolint: staticcheck
 	default:
 		engineProcess := map[string]longhorn.InstanceProcess{}
 		replicaProcess := map[string]longhorn.InstanceProcess{}
@@ -1633,7 +1645,11 @@ func (m *InstanceManagerMonitor) updateInstanceMap(im *longhorn.InstanceManager,
 				replicaProcess[name] = process
 			}
 		}
-		if reflect.DeepEqual(im.Status.InstanceEngines, engineProcess) && reflect.DeepEqual(im.Status.InstanceReplicas, replicaProcess) {
+
+		// reflect.DeepEqual treats the two maps `var m1 map[string]process` and `m2 := map[string]process` as different maps.
+		// Therefore, to prevent unnecessary updates, we must check both that the length of the maps is zero and that the maps are identical.
+		if ((len(im.Status.InstanceEngines) == 0 && len(engineProcess) == 0) || reflect.DeepEqual(im.Status.InstanceEngines, engineProcess)) &&
+			((len(im.Status.InstanceReplicas) == 0 && len(replicaProcess) == 0) || reflect.DeepEqual(im.Status.InstanceReplicas, replicaProcess)) {
 			return false
 		}
 

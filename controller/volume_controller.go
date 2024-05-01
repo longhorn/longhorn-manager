@@ -93,7 +93,7 @@ func NewVolumeController(
 	namespace,
 	controllerID, shareManagerImage string,
 	proxyConnCounter util.Counter,
-) *VolumeController {
+) (*VolumeController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -120,64 +120,81 @@ func NewVolumeController(
 
 	c.scheduler = scheduler.NewReplicaScheduler(ds)
 
-	ds.VolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	var err error
+	if _, err = ds.VolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueVolume,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueVolume(cur) },
 		DeleteFunc: c.enqueueVolume,
-	})
+	}); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.VolumeInformer.HasSynced)
 
-	ds.EngineInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.EngineInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueControlleeChange,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueControlleeChange(cur) },
 		DeleteFunc: c.enqueueControlleeChange,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.EngineInformer.HasSynced)
 
-	ds.ReplicaInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.ReplicaInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueControlleeChange,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueControlleeChange(cur) },
 		DeleteFunc: c.enqueueControlleeChange,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.ReplicaInformer.HasSynced)
 
-	ds.ShareManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.ShareManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueVolumesForShareManager,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueVolumesForShareManager(cur) },
 		DeleteFunc: c.enqueueVolumesForShareManager,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.ShareManagerInformer.HasSynced)
 
-	ds.BackupVolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.BackupVolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { c.enqueueVolumesForBackupVolume(cur) },
 		DeleteFunc: c.enqueueVolumesForBackupVolume,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.BackupVolumeInformer.HasSynced)
 
-	ds.BackingImageDataSourceInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.BackingImageDataSourceInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueVolumesForBackingImageDataSource,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueVolumesForBackingImageDataSource(cur) },
 		DeleteFunc: c.enqueueVolumesForBackingImageDataSource,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.BackingImageDataSourceInformer.HasSynced)
 
-	ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.enqueueNodeChange,
 		UpdateFunc: func(old, cur interface{}) { c.enqueueNodeChange(cur) },
 		DeleteFunc: c.enqueueNodeChange,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.NodeInformer.HasSynced)
 
-	ds.SettingInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+	if _, err = ds.SettingInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
 		FilterFunc: isSettingRelatedToVolume,
 		Handler: cache.ResourceEventHandlerFuncs{
 			AddFunc:    c.enqueueSettingChange,
 			UpdateFunc: func(old, cur interface{}) { c.enqueueSettingChange(cur) },
 		},
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.SettingInformer.HasSynced)
 
-	return c
+	return c, nil
 }
 
 func (c *VolumeController) Run(workers int, stopCh <-chan struct{}) {
@@ -350,7 +367,7 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 				}
 			}
 		}
-		if datastore.IsDataEngineV2(volume.Spec.DataEngine) {
+		if types.IsDataEngineV2(volume.Spec.DataEngine) {
 			// To prevent from the "no such device" error in spdk_tgt,
 			// remove the raid bdev before tearing down the replicas.
 			engines, err := c.ds.ListVolumeEnginesRO(volume.Name)
@@ -750,15 +767,6 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		}
 	}
 
-	shouldStop, err := c.shouldStopOfflineReplicaRebuilding(v, healthyCount)
-	if err != nil {
-		log.WithError(err).Errorf("Failed to check if offline replica rebuilding should be stopped")
-		return err
-	}
-	if shouldStop {
-		v.Status.OfflineReplicaRebuildingRequired = false
-	}
-
 	// Cannot continue evicting or replenishing replicas during engine migration.
 	isMigratingDone := !util.IsVolumeMigrating(v) && len(es) == 1
 
@@ -797,8 +805,6 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 				}
 			}
 		}
-
-		v.Status.OfflineReplicaRebuildingRequired = false
 	} else { // healthyCount < v.Spec.NumberOfReplicas
 		v.Status.Robustness = longhorn.VolumeRobustnessDegraded
 		if oldRobustness != longhorn.VolumeRobustnessDegraded {
@@ -816,7 +822,7 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 		//   2. the volume is old restore/DR volumes.
 		//   3. the volume is expanding size.
 		isOldRestoreVolume := (v.Status.IsStandby || v.Status.RestoreRequired) &&
-			(datastore.IsDataEngineV1(e.Spec.DataEngine) && cliAPIVersion < engineapi.CLIVersionFour)
+			(types.IsDataEngineV1(e.Spec.DataEngine) && cliAPIVersion < engineapi.CLIVersionFour)
 		isInExpansion := v.Spec.Size != e.Status.CurrentSize
 		if isMigratingDone && !isOldRestoreVolume && !isInExpansion {
 			if err := c.replenishReplicas(v, e, rs, ""); err != nil {
@@ -861,32 +867,6 @@ func areAllReplicasFailed(rs map[string]*longhorn.Replica) bool {
 		}
 	}
 	return true
-}
-
-func (c *VolumeController) shouldStopOfflineReplicaRebuilding(v *longhorn.Volume, healthyCount int) (bool, error) {
-	if datastore.IsDataEngineV1(v.Spec.DataEngine) {
-		return true, nil
-	}
-
-	if healthyCount == v.Spec.NumberOfReplicas {
-		return true, nil
-	}
-
-	if v.Spec.OfflineReplicaRebuilding == longhorn.OfflineReplicaRebuildingDisabled {
-		return true, nil
-	}
-
-	if v.Spec.OfflineReplicaRebuilding == longhorn.OfflineReplicaRebuildingIgnored {
-		offlineReplicaRebuilding, err := c.ds.GetSettingValueExisted(types.SettingNameOfflineReplicaRebuilding)
-		if err != nil {
-			return false, err
-		}
-		if offlineReplicaRebuilding == string(longhorn.OfflineReplicaRebuildingDisabled) {
-			return true, nil
-		}
-	}
-
-	return false, nil
 }
 
 // isFirstAttachment returns true if this is the first time the volume is attached.
@@ -1037,19 +1017,10 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 			continue
 		}
 
-		if datastore.IsDataEngineV1(v.Spec.DataEngine) {
-			if shouldCleanUpFailedReplicaV1(r, v.Spec.StaleReplicaTimeout, safeAsLastReplicaCount, v.Spec.Image) {
-				log.WithField("replica", r.Name).Info("Cleaning up corrupted, staled replica")
-				if err := c.deleteReplica(r, rs); err != nil {
-					return errors.Wrapf(err, "cannot clean up staled replica %v", r.Name)
-				}
-			}
-		} else {
-			// TODO: check `staled` flag after v2 volume supports online replica rebuilding
-			if safeAsLastReplicaCount != 0 {
-				if err := c.deleteReplica(r, rs); err != nil {
-					return errors.Wrapf(err, "failed to clean up staled replica %v", r.Name)
-				}
+		if c.shouldCleanUpFailedReplica(v, r, safeAsLastReplicaCount) {
+			log.WithField("replica", r.Name).Info("Cleaning up corrupted, staled replica")
+			if err := c.deleteReplica(r, rs); err != nil {
+				return errors.Wrapf(err, "failed to clean up staled replica %v", r.Name)
 			}
 		}
 	}
@@ -1309,10 +1280,6 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 		v.Status.CurrentImage = v.Spec.Image
 	}
 
-	if err := c.checkAndInitVolumeOfflineReplicaRebuilding(v, rs); err != nil {
-		return err
-	}
-
 	if err := c.checkAndInitVolumeRestore(v); err != nil {
 		return err
 	}
@@ -1373,7 +1340,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 		if autoSalvage && !v.Status.IsStandby && !v.Status.RestoreRequired {
 			// Since all replica failed and autoSalvage is enable, mark engine controller salvage requested
 			// TODO: SalvageRequested is meanningless for v2 volume
-			if datastore.IsDataEngineV1(v.Spec.DataEngine) {
+			if types.IsDataEngineV1(v.Spec.DataEngine) {
 				e.Spec.SalvageRequested = true
 				log.Infof("All replicas are failed, set engine salvageRequested to %v", e.Spec.SalvageRequested)
 			}
@@ -2162,10 +2129,6 @@ func isDataLocalityBestEffort(v *longhorn.Volume) bool {
 	return v.Spec.DataLocality == longhorn.DataLocalityBestEffort
 }
 
-func isDataLocalityStrictLocal(v *longhorn.Volume) bool {
-	return v.Spec.DataLocality == longhorn.DataLocalityStrictLocal
-}
-
 func isDataLocalityDisabled(v *longhorn.Volume) bool {
 	return string(v.Spec.DataLocality) == "" || v.Spec.DataLocality == longhorn.DataLocalityDisabled
 }
@@ -2237,13 +2200,9 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 		replenishCount = 1
 	}
 	for i := 0; i < replenishCount; i++ {
-		var reusableFailedReplica *longhorn.Replica
-		// TODO: reuse failed replica for replica rebuilding of SPDK volumes
-		if datastore.IsDataEngineV1(v.Spec.DataEngine) {
-			reusableFailedReplica, err = c.scheduler.CheckAndReuseFailedReplica(rs, v, hardNodeAffinity)
-			if err != nil {
-				return errors.Wrapf(err, "failed to reuse a failed replica during replica replenishment")
-			}
+		reusableFailedReplica, err := c.scheduler.CheckAndReuseFailedReplica(rs, v, hardNodeAffinity)
+		if err != nil {
+			return errors.Wrapf(err, "failed to reuse a failed replica during replica replenishment")
 		}
 
 		if reusableFailedReplica != nil {
@@ -2452,7 +2411,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceZone(v *longhorn.Volume,
 	}
 
 	ei := &longhorn.EngineImage{}
-	if datastore.IsDataEngineV1(v.Spec.DataEngine) {
+	if types.IsDataEngineV1(v.Spec.DataEngine) {
 		ei, err = c.getEngineImageRO(v.Status.CurrentImage)
 		if err != nil {
 			return 0, nil, err
@@ -2599,7 +2558,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceNode(v *longhorn.Volume,
 	}
 
 	ei := &longhorn.EngineImage{}
-	if datastore.IsDataEngineV1(v.Spec.DataEngine) {
+	if types.IsDataEngineV1(v.Spec.DataEngine) {
 		ei, err = c.getEngineImageRO(v.Status.CurrentImage)
 		if err != nil {
 			return 0, nodeExtraRs, err
@@ -2726,7 +2685,7 @@ func (c *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volum
 	}
 
 	ei := &longhorn.EngineImage{}
-	if datastore.IsDataEngineV1(v.Spec.DataEngine) {
+	if types.IsDataEngineV1(v.Spec.DataEngine) {
 		ei, err = c.getEngineImageRO(v.Status.CurrentImage)
 		if err != nil {
 			return candidateNames
@@ -2902,7 +2861,7 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 		volumeAndReplicaNodes = append(volumeAndReplicaNodes, r.Spec.NodeID)
 	}
 
-	if datastore.IsDataEngineV1(v.Spec.DataEngine) {
+	if types.IsDataEngineV1(v.Spec.DataEngine) {
 		oldImage, err := c.getEngineImageRO(v.Status.CurrentImage)
 		if err != nil {
 			log.WithError(err).Warnf("Failed to get engine image %v for live upgrade", v.Status.CurrentImage)
@@ -3047,64 +3006,6 @@ func (c *VolumeController) updateRequestedBackupForVolumeRestore(v *longhorn.Vol
 		e.Spec.RequestedBackupRestore = backupName
 		return nil
 	}
-
-	return nil
-}
-
-func (c *VolumeController) checkAndInitVolumeOfflineReplicaRebuilding(v *longhorn.Volume, rs map[string]*longhorn.Replica) error {
-	log := getLoggerForVolume(c.logger, v)
-
-	if datastore.IsDataEngineV1(v.Spec.DataEngine) {
-		return nil
-	}
-
-	if v.Status.RestoreRequired {
-		return nil
-	}
-
-	switch v.Spec.OfflineReplicaRebuilding {
-	case longhorn.OfflineReplicaRebuildingIgnored:
-		offlineReplicaRebuilding, err := c.ds.GetSettingValueExisted(types.SettingNameOfflineReplicaRebuilding)
-		if err != nil {
-			log.WithError(err).Errorf("Failed to get setting %v", types.SettingNameOfflineReplicaRebuilding)
-			return nil
-		}
-		if offlineReplicaRebuilding == string(longhorn.OfflineReplicaRebuildingDisabled) {
-			return nil
-		}
-	case longhorn.OfflineReplicaRebuildingDisabled:
-		return nil
-	}
-
-	if len(rs) == 0 {
-		return nil
-	}
-
-	healthyReplicaCount := 0
-
-	replicas, err := c.ds.ListVolumeReplicasRO(v.Name)
-	if err != nil {
-		return errors.Wrapf(err, "failed to get replicas for volume %v offline replica rebuilding", v.Name)
-	}
-	for _, r := range replicas {
-		if r.Spec.HealthyAt != "" && r.Spec.FailedAt == "" {
-			healthyReplicaCount++
-		}
-	}
-
-	if healthyReplicaCount == 0 {
-		return nil
-	}
-
-	if healthyReplicaCount >= v.Spec.NumberOfReplicas {
-		return nil
-	}
-
-	if !v.Status.OfflineReplicaRebuildingRequired {
-		log.Info("Requesting offline replica rebuilding for the volume")
-	}
-
-	v.Status.OfflineReplicaRebuildingRequired = true
 
 	return nil
 }
@@ -3432,8 +3333,8 @@ func (c *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine,
 	}
 	if isRebuildingReplica {
 		// TODO: reuse failed replica for replica rebuilding of SPDK volumes
-		if datastore.IsDataEngineV2(v.Spec.DataEngine) {
-			if !v.Spec.DisableFrontend || !v.Status.OfflineReplicaRebuildingRequired {
+		if types.IsDataEngineV2(v.Spec.DataEngine) {
+			if !v.Spec.DisableFrontend {
 				log.Tracef("Online replica rebuilding for replica %v is not supported for SPDK volumes", replica.Name)
 				return nil
 			}
@@ -3632,7 +3533,9 @@ func (c *VolumeController) restoreVolumeRecurringJobs(v *longhorn.Volume) error 
 		if jobName, err = createRecurringJobNotExist(log, c.ds, v, jobName, &job); err != nil {
 			return err
 		}
-		restoreVolumeRecurringJobLabel(v, jobName, &job)
+		if err = restoreVolumeRecurringJobLabel(v, jobName, &job); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -4147,7 +4050,7 @@ func (c *VolumeController) isResponsibleFor(v *longhorn.Volume, defaultEngineIma
 
 	isResponsible := isControllerResponsibleFor(c.controllerID, c.ds, v.Name, v.Spec.NodeID, v.Status.OwnerID)
 
-	if datastore.IsDataEngineV1(v.Spec.DataEngine) {
+	if types.IsDataEngineV1(v.Spec.DataEngine) {
 		readyNodesWithDefaultEI, err := c.ds.ListReadyNodesContainingEngineImageRO(defaultEngineImage)
 		if err != nil {
 			return false, err
@@ -4585,8 +4488,9 @@ func (c *VolumeController) ReconcilePersistentVolume(volume *longhorn.Volume) er
 	return nil
 }
 
-func shouldCleanUpFailedReplicaV1(r *longhorn.Replica, staleReplicaTimeout, safeAsLastReplicaCount int,
-	volumeCurrentImage string) bool {
+func (c *VolumeController) shouldCleanUpFailedReplica(v *longhorn.Volume, r *longhorn.Replica, safeAsLastReplicaCount int) bool {
+	log := getLoggerForVolume(c.logger, v).WithField("replica", r.Name)
+
 	// Even if healthyAt == "", lastHealthyAt != "" indicates this replica has some (potentially invalid) data. We MUST
 	// NOT delete it until we're sure the engine can start with another replica. In the worst case scenario, maybe we
 	// can recover data from this replica.
@@ -4595,15 +4499,18 @@ func shouldCleanUpFailedReplicaV1(r *longhorn.Replica, staleReplicaTimeout, safe
 	}
 	// Failed to rebuild too many times.
 	if r.Spec.RebuildRetryCount >= scheduler.FailedReplicaMaxRetryCount {
+		log.Warnf("Replica %v failed to rebuild too many times", r.Name)
 		return true
 	}
 	// Failed too long ago to be useful during a rebuild.
-	if staleReplicaTimeout > 0 &&
-		util.TimestampAfterTimeout(r.Spec.FailedAt, time.Duration(staleReplicaTimeout)*time.Minute) {
+	if v.Spec.StaleReplicaTimeout > 0 &&
+		util.TimestampAfterTimeout(r.Spec.FailedAt, time.Duration(v.Spec.StaleReplicaTimeout)*time.Minute) {
+		log.Warnf("Replica %v failed too long ago to be useful during a rebuild", r.Name)
 		return true
 	}
 	// Failed for race condition at upgrading when waiting for instance-manager-r to start. Can never become healthy.
-	if r.Spec.Image != volumeCurrentImage {
+	if r.Spec.Image != v.Spec.Image {
+		log.Warnf("Replica %v image %v is different from volume image %v", r.Name, r.Spec.Image, v.Spec.Image)
 		return true
 	}
 	return false

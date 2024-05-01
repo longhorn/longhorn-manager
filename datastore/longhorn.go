@@ -488,7 +488,7 @@ func (s *DataStore) AreAllVolumesDetached(dataEngine longhorn.DataEngineType) (b
 
 		imMap := types.ConsolidateInstanceManagers(engineInstanceManagers, aioInstanceManagers)
 		for _, instanceManager := range imMap {
-			if len(instanceManager.Status.InstanceEngines)+len(instanceManager.Status.Instances) > 0 {
+			if len(instanceManager.Status.InstanceEngines)+len(instanceManager.Status.Instances) > 0 { // nolint: staticcheck
 				return false, ims, err
 			}
 
@@ -1711,7 +1711,7 @@ func (s *DataStore) ListEngineImages() (map[string]*longhorn.EngineImage, error)
 }
 
 func (s *DataStore) CheckDataEngineImageCompatiblityByImage(image string, dataEngine longhorn.DataEngineType) error {
-	if IsDataEngineV2(dataEngine) {
+	if types.IsDataEngineV2(dataEngine) {
 		return nil
 	}
 
@@ -1765,7 +1765,7 @@ func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (is
 }
 
 func (s *DataStore) CheckDataEngineImageReadiness(image string, dataEngine longhorn.DataEngineType, nodes ...string) (isReady bool, err error) {
-	if IsDataEngineV2(dataEngine) {
+	if types.IsDataEngineV2(dataEngine) {
 		if len(nodes) == 0 {
 			return false, nil
 		}
@@ -1934,6 +1934,10 @@ func (s *DataStore) ListBackingImages() (map[string]*longhorn.BackingImage, erro
 		itemMap[itemRO.Name] = itemRO.DeepCopy()
 	}
 	return itemMap, nil
+}
+
+func (s *DataStore) ListBackingImagesRO() ([]*longhorn.BackingImage, error) {
+	return s.backingImageLister.BackingImages(s.namespace).List(labels.Everything())
 }
 
 // GetOwnerReferencesForBackingImage returns OwnerReference for the given
@@ -2379,14 +2383,41 @@ func (s *DataStore) CreateDefaultNode(name string) (*longhorn.Node, error) {
 		if err != nil {
 			return nil, err
 		}
-		disks, err := types.CreateDefaultDisk(dataPath, storageReservedPercentageForDefaultDisk)
-		if err != nil {
-			return nil, err
+
+		if s.needDefaultDiskCreation(dataPath) {
+			disks, err := types.CreateDefaultDisk(dataPath, storageReservedPercentageForDefaultDisk)
+			if err != nil {
+				return nil, err
+			}
+			node.Spec.Disks = disks
 		}
-		node.Spec.Disks = disks
 	}
 
 	return s.CreateNode(node)
+}
+
+func (s *DataStore) needDefaultDiskCreation(dataPath string) bool {
+	v2DataEngineEnabled, err := s.GetSettingAsBool(types.SettingNameV2DataEngine)
+	if err != nil {
+		logrus.WithError(err).Errorf("Failed to get setting %v", types.SettingNameV2DataEngine)
+		return false
+	}
+
+	if v2DataEngineEnabled {
+		return true
+	}
+
+	// Do not create default block-type disk if v2 data engine is disabled
+	ok, err := types.IsBlockDisk(dataPath)
+	if err != nil {
+		logrus.WithError(err).Errorf("Failed to check if the data path %v is block-type", dataPath)
+		return false
+	}
+	if ok {
+		return false
+	}
+
+	return true
 }
 
 func (s *DataStore) GetNodeRO(name string) (*longhorn.Node, error) {
@@ -2619,8 +2650,8 @@ func (s *DataStore) GetRandomReadyNodeDisk() (*longhorn.Node, string, error) {
 		return nil, "", errors.Wrapf(err, "failed to get random ready node disk")
 	}
 
-	rand.Seed(time.Now().UnixNano())
-	rand.Shuffle(len(nodes), func(i, j int) { nodes[i], nodes[j] = nodes[j], nodes[i] })
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	r.Shuffle(len(nodes), func(i, j int) { nodes[i], nodes[j] = nodes[j], nodes[i] })
 	for _, node := range nodes {
 		if !node.Spec.AllowScheduling {
 			continue
@@ -3440,7 +3471,7 @@ func (s *DataStore) GetDataEngineImageCLIAPIVersion(imageName string, dataEngine
 		return -1, fmt.Errorf("cannot check the CLI API Version based on empty image name")
 	}
 
-	if IsDataEngineV2(dataEngine) {
+	if types.IsDataEngineV2(dataEngine) {
 		return 0, nil
 	}
 
@@ -4859,20 +4890,10 @@ func (s *DataStore) DeleteLHVolumeAttachment(vaName string) error {
 	return s.lhClient.LonghornV1beta2().VolumeAttachments(s.namespace).Delete(context.TODO(), vaName, metav1.DeleteOptions{})
 }
 
-// IsDataEngineV1 returns true if the given dataEngine is v1
-func IsDataEngineV1(dataEngine longhorn.DataEngineType) bool {
-	return dataEngine != longhorn.DataEngineTypeV2
-}
-
-// IsDataEngineV2 returns true if the given dataEngine is v2
-func IsDataEngineV2(dataEngine longhorn.DataEngineType) bool {
-	return dataEngine == longhorn.DataEngineTypeV2
-}
-
 // IsSupportedVolumeSize returns turn if the v1 volume size is supported by the given fsType file system.
 func IsSupportedVolumeSize(dataEngine longhorn.DataEngineType, fsType string, volumeSize int64) bool {
 	// TODO: check the logical volume maximum size limit
-	if IsDataEngineV1(dataEngine) {
+	if types.IsDataEngineV1(dataEngine) {
 		// unix.Statfs can not differentiate the ext2/ext3/ext4 file systems.
 		if (strings.HasPrefix(fsType, "ext") && volumeSize >= util.MaxExt4VolumeSize) || (fsType == "xfs" && volumeSize >= util.MaxXfsVolumeSize) {
 			return false

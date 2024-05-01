@@ -78,7 +78,7 @@ func NewNodeController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
-	namespace, controllerID string) *NodeController {
+	namespace, controllerID string) (*NodeController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -105,27 +105,32 @@ func NewNodeController(
 
 	nc.scheduler = scheduler.NewReplicaScheduler(ds)
 
+	var err error
 	// We want to check the real time usage of disk on nodes.
 	// Therefore, we add a small resync for the NodeInformer here
-	ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    nc.enqueueNode,
 		UpdateFunc: func(old, cur interface{}) { nc.enqueueNode(cur) },
 		DeleteFunc: nc.enqueueNode,
-	}, nodeControllerResyncPeriod)
+	}, nodeControllerResyncPeriod); err != nil {
+		return nil, err
+	}
 
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.NodeInformer.HasSynced)
 
-	ds.SettingInformer.AddEventHandlerWithResyncPeriod(
+	if _, err = ds.SettingInformer.AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: nc.isResponsibleForSetting,
 			Handler: cache.ResourceEventHandlerFuncs{
 				AddFunc:    nc.enqueueSetting,
 				UpdateFunc: func(old, cur interface{}) { nc.enqueueSetting(cur) },
 			},
-		}, 0)
+		}, 0); err != nil {
+		return nil, err
+	}
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.SettingInformer.HasSynced)
 
-	ds.ReplicaInformer.AddEventHandlerWithResyncPeriod(
+	if _, err = ds.ReplicaInformer.AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: nc.isResponsibleForReplica,
 			Handler: cache.ResourceEventHandlerFuncs{
@@ -133,19 +138,23 @@ func NewNodeController(
 				UpdateFunc: func(old, cur interface{}) { nc.enqueueReplica(cur) },
 				DeleteFunc: nc.enqueueReplica,
 			},
-		}, 0)
+		}, 0); err != nil {
+		return nil, err
+	}
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.ReplicaInformer.HasSynced)
 
-	ds.SnapshotInformer.AddEventHandlerWithResyncPeriod(
+	if _, err = ds.SnapshotInformer.AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: nc.isResponsibleForSnapshot,
 			Handler: cache.ResourceEventHandlerFuncs{
 				UpdateFunc: func(old, cur interface{}) { nc.enqueueSnapshot(old, cur) },
 			},
-		}, 0)
+		}, 0); err != nil {
+		return nil, err
+	}
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.SnapshotInformer.HasSynced)
 
-	ds.PodInformer.AddEventHandlerWithResyncPeriod(
+	if _, err = ds.PodInformer.AddEventHandlerWithResyncPeriod(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: isManagerPod,
 			Handler: cache.ResourceEventHandlerFuncs{
@@ -153,16 +162,20 @@ func NewNodeController(
 				UpdateFunc: func(old, cur interface{}) { nc.enqueueManagerPod(cur) },
 				DeleteFunc: nc.enqueueManagerPod,
 			},
-		}, 0)
+		}, 0); err != nil {
+		return nil, err
+	}
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.PodInformer.HasSynced)
 
-	ds.KubeNodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+	if _, err = ds.KubeNodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { nc.enqueueKubernetesNode(cur) },
 		DeleteFunc: nc.enqueueKubernetesNode,
-	}, 0)
+	}, 0); err != nil {
+		return nil, err
+	}
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.KubeNodeInformer.HasSynced)
 
-	return nc
+	return nc, nil
 }
 
 func (nc *NodeController) isResponsibleForSetting(obj interface{}) bool {
@@ -767,7 +780,7 @@ func (nc *NodeController) findNotReadyAndReadyDiskMaps(node *longhorn.Node, coll
 
 			if errorMessage != "" {
 				notReadyDiskInfoMap[diskID][diskName] =
-					monitor.NewDiskInfo(diskInfo.Path, diskInfo.DiskUUID,
+					monitor.NewDiskInfo(diskInfo.DiskName, diskInfo.DiskUUID, diskInfo.Path, diskInfo.DiskDriver,
 						diskInfo.NodeOrDiskEvicted, diskInfo.DiskStat,
 						diskInfo.OrphanedReplicaDirectoryNames,
 						string(longhorn.DiskConditionReasonDiskFilesystemChanged), errorMessage)
@@ -788,7 +801,7 @@ func (nc *NodeController) findNotReadyAndReadyDiskMaps(node *longhorn.Node, coll
 			if nc.isDiskIDDuplicatedWithExistingReadyDisk(diskName, diskInfoMap, node.Status.DiskStatus) ||
 				isReadyDiskFound(readyDiskInfoMap[diskID]) {
 				notReadyDiskInfoMap[diskID][diskName] =
-					monitor.NewDiskInfo(diskInfo.Path, diskInfo.DiskUUID, diskInfo.NodeOrDiskEvicted, diskInfo.DiskStat,
+					monitor.NewDiskInfo(diskInfo.DiskName, diskInfo.DiskUUID, diskInfo.Path, diskInfo.DiskDriver, diskInfo.NodeOrDiskEvicted, diskInfo.DiskStat,
 						diskInfo.OrphanedReplicaDirectoryNames,
 						string(longhorn.DiskConditionReasonDiskFilesystemChanged),
 						fmt.Sprintf("Disk %v(%v) on node %v is not ready: disk has same file system ID %v as other disks %+v",
@@ -797,6 +810,9 @@ func (nc *NodeController) findNotReadyAndReadyDiskMaps(node *longhorn.Node, coll
 			}
 
 			node.Status.DiskStatus[diskName].DiskUUID = diskInfo.DiskUUID
+			node.Status.DiskStatus[diskName].DiskDriver = diskInfo.DiskDriver
+			node.Status.DiskStatus[diskName].DiskName = diskInfo.DiskName
+			node.Status.DiskStatus[diskName].DiskPath = diskInfo.Path
 			readyDiskInfoMap[diskID][diskName] = diskInfo
 		}
 	}
@@ -1080,7 +1096,7 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 					defaultInstanceManagerCreated = true
 					cleanupRequired = false
 
-					if datastore.IsDataEngineV2(dataEngine) {
+					if types.IsDataEngineV2(dataEngine) {
 						disabled, err := nc.ds.IsV2DataEngineDisabledForNode(node.Name)
 						if err != nil {
 							return errors.Wrapf(err, "failed to check if v2 data engine is disabled on node %v", node.Name)
@@ -1113,7 +1129,7 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 				if err != nil {
 					return err
 				}
-				if datastore.IsDataEngineV2(dataEngine) {
+				if types.IsDataEngineV2(dataEngine) {
 					disabled, err := nc.ds.IsV2DataEngineDisabledForNode(node.Name)
 					if err != nil {
 						return errors.Wrapf(err, "failed to check if v2 data engine is disabled on node %v", node.Name)
@@ -1478,17 +1494,21 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 				continue
 			}
 
-			// Blindingly send disk deletion request to instance manager regardless of the disk type,
+			// Blindly send disk deletion request to instance manager regardless of the disk type,
 			// because the disk type is not recorded in the disk status.
-			if err := nc.deleteDisk(node, diskStatus.Type, diskName, diskStatus.DiskUUID); err != nil {
-				nc.logger.WithError(err).Warnf("Failed to delete disk %v", diskName)
+			diskInstanceName := diskStatus.DiskName
+			if diskInstanceName == "" {
+				diskInstanceName = diskName
+			}
+			if err := nc.deleteDisk(node, diskStatus.Type, diskInstanceName, diskStatus.DiskUUID, diskStatus.DiskPath, string(diskStatus.DiskDriver)); err != nil {
+				nc.logger.WithError(err).Warnf("Failed to delete disk %v", diskInstanceName)
 			}
 			delete(node.Status.DiskStatus, diskName)
 		}
 	}
 }
 
-func (nc *NodeController) deleteDisk(node *longhorn.Node, diskType longhorn.DiskType, diskName, diskUUID string) error {
+func (nc *NodeController) deleteDisk(node *longhorn.Node, diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string) error {
 	if diskUUID == "" {
 		log.Infof("Disk %v has no diskUUID, skip deleting", diskName)
 		return nil
@@ -1498,16 +1518,16 @@ func (nc *NodeController) deleteDisk(node *longhorn.Node, diskType longhorn.Disk
 
 	im, err := nc.ds.GetDefaultInstanceManagerByNodeRO(nc.controllerID, dataEngine)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get default engine instance manager")
+		return errors.Wrapf(err, "failed to get default instance manager")
 	}
 
 	diskServiceClient, err := engineapi.NewDiskServiceClient(im, nc.logger)
 	if err != nil {
-		return errors.Wrapf(err, "failed to create disk service client")
+		return errors.Wrapf(err, "failed to create disk service client for deleting disk %v", diskName)
 	}
 	defer diskServiceClient.Close()
 
-	if err := monitor.DeleteDisk(diskType, diskName, diskUUID, diskServiceClient); err != nil {
+	if err := monitor.DeleteDisk(diskType, diskName, diskUUID, diskPath, diskDriver, diskServiceClient); err != nil {
 		return errors.Wrapf(err, "failed to delete disk %v", diskName)
 	}
 
@@ -1546,7 +1566,7 @@ func isDiskMatched(node *longhorn.Node, collectedDiskInfo map[string]*monitor.Co
 func (nc *NodeController) createSnapshotMonitor() (mon monitor.Monitor, err error) {
 	defer func() {
 		if err == nil {
-			nc.snapshotMonitor.UpdateConfiguration(map[string]interface{}{})
+			err = nc.snapshotMonitor.UpdateConfiguration(map[string]interface{}{})
 		}
 	}()
 

@@ -4,6 +4,9 @@ import (
 	"crypto/tls"
 	"fmt"
 
+	emeta "github.com/longhorn/longhorn-engine/pkg/meta"
+	eclient "github.com/longhorn/longhorn-engine/pkg/replica/client"
+	rpc "github.com/longhorn/types/pkg/generated/imrpc"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
@@ -11,12 +14,8 @@ import (
 	"google.golang.org/grpc/connectivity"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
-	rpc "github.com/longhorn/longhorn-instance-manager/pkg/imrpc"
 	"github.com/longhorn/longhorn-instance-manager/pkg/meta"
 	"github.com/longhorn/longhorn-instance-manager/pkg/util"
-
-	emeta "github.com/longhorn/longhorn-engine/pkg/meta"
-	eclient "github.com/longhorn/longhorn-engine/pkg/replica/client"
 )
 
 var (
