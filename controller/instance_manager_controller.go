@@ -468,6 +468,7 @@ func (imc *InstanceManagerController) syncLogSettingsToInstanceManagerPod(im *lo
 	if err != nil {
 		return errors.Wrapf(err, "failed to create instance manager client for %v", im.Name)
 	}
+	defer client.Close()
 
 	settingNames := []types.SettingName{
 		types.SettingNameV2DataEngineLogLevel,
