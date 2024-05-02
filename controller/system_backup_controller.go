@@ -19,7 +19,6 @@ import (
 	"k8s.io/kubernetes/pkg/controller"
 
 	corev1 "k8s.io/api/core/v1"
-	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -907,7 +906,7 @@ func (c *SystemBackupController) generateSystemBackupYAMLsForKubernetes(dir stri
 		return
 	}
 
-	err = c.generateSystemBackupYAMLsForPodSecurityPolicy(dir, "roles", "rolebindings", "podsecuritypolicies", scheme)
+	err = c.generateSystemBackupYAMLsForRoles(dir, "roles", "rolebindings", scheme)
 	if err != nil {
 		return
 	}
@@ -981,9 +980,7 @@ func (c *SystemBackupController) generateSystemBackupYAMLsForServices(dir, name 
 	}, scheme)
 }
 
-func (c *SystemBackupController) generateSystemBackupYAMLsForPodSecurityPolicy(dir,
-	roleName, roleBindingName, podSecurityPolicyName string,
-	scheme *runtime.Scheme) (err error) {
+func (c *SystemBackupController) generateSystemBackupYAMLsForRoles(dir, roleName, roleBindingName string, scheme *runtime.Scheme) (err error) {
 	// Generate Role YAML
 	roleObj, err := c.ds.GetAllRoleList()
 	if err != nil && !apierrors.IsNotFound(err) {
@@ -1002,55 +999,8 @@ func (c *SystemBackupController) generateSystemBackupYAMLsForPodSecurityPolicy(d
 		return
 	}
 
-	// Generate PodSecurityPolicy YAML
-	err = c.generateSystemBackupYAMLsForPodSecurityPoliciesByRoles(roleList, dir, podSecurityPolicyName, scheme)
-	if err != nil {
-		return
-	}
-
 	// Generate RoleBinding YAML
 	return getObjectsAndPrintToYAML(dir, roleBindingName, c.ds.GetAllRoleBindingList, scheme)
-
-}
-
-func (c *SystemBackupController) generateSystemBackupYAMLsForPodSecurityPoliciesByRoles(
-	roleList *rbacv1.RoleList,
-	dir, name string, scheme *runtime.Scheme) (err error) {
-	pspObj, err := c.ds.GetAllPodSecurityPolicyList()
-	if err != nil && !apierrors.IsNotFound(err) {
-		return errors.Wrap(err, "failed to get all podSecurityPolicies")
-	}
-
-	pspList, ok := pspObj.(*policyv1beta1.PodSecurityPolicyList)
-	if !ok {
-		return errors.Wrap(err, "failed to convert to podSecurityPolicyList object")
-	}
-
-	filtered := []policyv1beta1.PodSecurityPolicy{}
-	for _, psp := range pspList.Items {
-		shouldBackup := false
-		for _, role := range roleList.Items {
-			for _, rule := range role.Rules {
-				if util.Contains(rule.ResourceNames, psp.Name) {
-					shouldBackup = true
-					break
-				}
-			}
-
-			if shouldBackup {
-				break
-			}
-		}
-
-		if shouldBackup {
-			filtered = append(filtered, psp)
-		}
-	}
-	pspList.Items = filtered
-
-	return getObjectsAndPrintToYAML(dir, name, func() (runtime.Object, error) {
-		return pspList, nil
-	}, scheme)
 }
 
 func (c *SystemBackupController) generateSystemBackupYAMLsForServiceAccount(dir,

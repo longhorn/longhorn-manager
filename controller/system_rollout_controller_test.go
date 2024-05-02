@@ -19,7 +19,6 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -54,7 +53,6 @@ type SystemRolloutTestCase struct {
 	backupEngineImages           map[SystemRolloutCRName]*longhorn.EngineImage
 	backupPersistentVolumes      map[SystemRolloutCRName]*corev1.PersistentVolume
 	backupPersistentVolumeClaims map[SystemRolloutCRName]*corev1.PersistentVolumeClaim
-	backupPodSecurityPolicies    map[SystemRolloutCRName]*policyv1beta1.PodSecurityPolicy
 	backupRecurringJobs          map[SystemRolloutCRName]*longhorn.RecurringJob
 	backupRoles                  map[SystemRolloutCRName]*rbacv1.Role
 	backupRoleBindings           map[SystemRolloutCRName]*rbacv1.RoleBinding
@@ -73,7 +71,6 @@ type SystemRolloutTestCase struct {
 	existEngineImages           map[SystemRolloutCRName]*longhorn.EngineImage
 	existPersistentVolumes      map[SystemRolloutCRName]*corev1.PersistentVolume
 	existPersistentVolumeClaims map[SystemRolloutCRName]*corev1.PersistentVolumeClaim
-	existPodSecurityPolicies    map[SystemRolloutCRName]*policyv1beta1.PodSecurityPolicy
 	existRecurringJobs          map[SystemRolloutCRName]*longhorn.RecurringJob
 	existRoles                  map[SystemRolloutCRName]*rbacv1.Role
 	existRoleBindings           map[SystemRolloutCRName]*rbacv1.RoleBinding
@@ -92,7 +89,6 @@ type SystemRolloutTestCase struct {
 	expectRestoredEngineImages           map[SystemRolloutCRName]*longhorn.EngineImage
 	expectRestoredPersistentVolumes      map[SystemRolloutCRName]*corev1.PersistentVolume
 	expectRestoredPersistentVolumeClaims map[SystemRolloutCRName]*corev1.PersistentVolumeClaim
-	expectRestoredPodSecurityPolicies    map[SystemRolloutCRName]*policyv1beta1.PodSecurityPolicy
 	expectRestoredRecurringJobs          map[SystemRolloutCRName]*longhorn.RecurringJob
 	expectRestoredRoles                  map[SystemRolloutCRName]*rbacv1.Role
 	expectRestoredRoleBindings           map[SystemRolloutCRName]*rbacv1.RoleBinding
@@ -609,7 +605,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 					Spec: corev1.PersistentVolumeClaimSpec{
 						StorageClassName: &testStorageClassName,
 						VolumeName:       TestVolumeName,
-						Resources: corev1.ResourceRequirements{
+						Resources: corev1.VolumeResourceRequirements{
 							Requests: corev1.ResourceList{
 								corev1.ResourceStorage: request100Mi,
 							},
@@ -622,7 +618,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 					Spec: corev1.PersistentVolumeClaimSpec{
 						StorageClassName: &testStorageClassName,
 						VolumeName:       TestVolumeName,
-						Resources: corev1.ResourceRequirements{
+						Resources: corev1.VolumeResourceRequirements{
 							Requests: corev1.ResourceList{
 								corev1.ResourceStorage: request200Mi,
 							},
@@ -635,7 +631,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 					Spec: corev1.PersistentVolumeClaimSpec{
 						StorageClassName: &testStorageClassName,
 						VolumeName:       TestVolumeName,
-						Resources: corev1.ResourceRequirements{
+						Resources: corev1.VolumeResourceRequirements{
 							Requests: corev1.ResourceList{
 								corev1.ResourceStorage: request100Mi,
 							},
@@ -655,45 +651,11 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 					Spec: corev1.PersistentVolumeClaimSpec{
 						StorageClassName: &testStorageClassName,
 						VolumeName:       TestVolumeName,
-						Resources: corev1.ResourceRequirements{
+						Resources: corev1.VolumeResourceRequirements{
 							Requests: corev1.ResourceList{
 								corev1.ResourceStorage: request100Mi,
 							},
 						},
-					},
-				},
-			},
-		},
-		"system rollout PodSecurityPolicies exist in cluster": {
-			state:        longhorn.SystemRestoreStateRestoring,
-			isInProgress: true,
-			expectState:  longhorn.SystemRestoreStateCompleted,
-
-			existPodSecurityPolicies: map[SystemRolloutCRName]*policyv1beta1.PodSecurityPolicy{
-				SystemRolloutCRName(TestPodSecurityPolicyName): {
-					Spec: policyv1beta1.PodSecurityPolicySpec{
-						Privileged: false,
-					},
-				},
-			},
-			expectRestoredPodSecurityPolicies: map[SystemRolloutCRName]*policyv1beta1.PodSecurityPolicy{
-				SystemRolloutCRName(TestPodSecurityPolicyName): {
-					Spec: policyv1beta1.PodSecurityPolicySpec{
-						Privileged: true,
-					},
-				},
-			},
-		},
-		"system rollout PodSecurityPolicies not exist in cluster": {
-			state:        longhorn.SystemRestoreStateRestoring,
-			isInProgress: true,
-			expectState:  longhorn.SystemRestoreStateCompleted,
-
-			existPodSecurityPolicies: nil,
-			expectRestoredPodSecurityPolicies: map[SystemRolloutCRName]*policyv1beta1.PodSecurityPolicy{
-				SystemRolloutCRName(TestPodSecurityPolicyName): {
-					Spec: policyv1beta1.PodSecurityPolicySpec{
-						Privileged: true,
 					},
 				},
 			},
@@ -982,7 +944,6 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 		fakeSystemRolloutEngineImages(tc.backupEngineImages, c, informerFactories.LhInformerFactory, lhClient)
 		fakeSystemRolloutPersistentVolumes(tc.backupPersistentVolumes, c, informerFactories.KubeInformerFactory, kubeClient)
 		fakeSystemRolloutPersistentVolumeClaims(tc.backupPersistentVolumeClaims, c, informerFactories.KubeInformerFactory, kubeClient)
-		fakeSystemRolloutPodSecurityPolicies(tc.backupPodSecurityPolicies, c, informerFactories.KubeInformerFactory, kubeClient)
 		fakeSystemRolloutRecurringJobs(tc.backupRecurringJobs, c, informerFactories.LhInformerFactory, lhClient)
 		fakeSystemRolloutRoles(tc.backupRoles, c, informerFactories.KubeInformerFactory, kubeClient)
 		fakeSystemRolloutRoleBindings(tc.backupRoleBindings, c, informerFactories.KubeInformerFactory, kubeClient)
@@ -1031,7 +992,6 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 		fakeSystemRolloutEngineImages(tc.existEngineImages, c, informerFactories.LhInformerFactory, lhClient)
 		fakeSystemRolloutPersistentVolumes(tc.existPersistentVolumes, c, informerFactories.KubeInformerFactory, kubeClient)
 		fakeSystemRolloutPersistentVolumeClaims(tc.existPersistentVolumeClaims, c, informerFactories.KubeInformerFactory, kubeClient)
-		fakeSystemRolloutPodSecurityPolicies(tc.existPodSecurityPolicies, c, informerFactories.KubeInformerFactory, kubeClient)
 		fakeSystemRolloutRecurringJobs(tc.existRecurringJobs, c, informerFactories.LhInformerFactory, lhClient)
 		fakeSystemRolloutRoles(tc.existRoles, c, informerFactories.KubeInformerFactory, kubeClient)
 		fakeSystemRolloutRoleBindings(tc.existRoleBindings, c, informerFactories.KubeInformerFactory, kubeClient)
@@ -1073,7 +1033,6 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			assertRolloutEngineImages(tc.expectRestoredEngineImages, c, lhClient)
 			assertRolloutPersistentVolumes(tc.expectRestoredPersistentVolumes, tc.backupPersistentVolumes, c, kubeClient)
 			assertRolloutPersistentVolumeClaims(tc.expectRestoredPersistentVolumeClaims, tc.backupPersistentVolumeClaims, c, kubeClient)
-			assertRolloutPodSecurityPolicies(tc.expectRestoredPodSecurityPolicies, c, kubeClient)
 			assertRolloutRecurringJobs(tc.expectRestoredRecurringJobs, c, lhClient)
 			assertRolloutRoles(tc.expectRestoredRoles, c, kubeClient)
 			assertRolloutRoleBindings(tc.expectRestoredRoleBindings, c, kubeClient)
@@ -1266,17 +1225,6 @@ func (tc *SystemRolloutTestCase) initTestCase() {
 		tc.backupPersistentVolumeClaims = tc.expectRestoredPersistentVolumeClaims
 	}
 
-	// init PodSecurityPolicies
-	if tc.existPodSecurityPolicies == nil {
-		tc.existPodSecurityPolicies = map[SystemRolloutCRName]*policyv1beta1.PodSecurityPolicy{}
-	}
-	if tc.expectRestoredPodSecurityPolicies == nil {
-		tc.expectRestoredPodSecurityPolicies = tc.existPodSecurityPolicies
-	}
-	if tc.backupPodSecurityPolicies == nil {
-		tc.backupPodSecurityPolicies = tc.expectRestoredPodSecurityPolicies
-	}
-
 	// init RecurringJobs
 	if tc.existRecurringJobs == nil {
 		tc.existRecurringJobs = map[SystemRolloutCRName]*longhorn.RecurringJob{}
@@ -1299,9 +1247,7 @@ func (tc *SystemRolloutTestCase) initTestCase() {
 		tc.backupRoles = tc.expectRestoredRoles
 	}
 	addRoleRuleResources := map[string]struct{}{}
-	for pspName := range tc.expectRestoredPodSecurityPolicies {
-		addRoleRuleResources[string(pspName)] = struct{}{}
-	}
+	addRoleRuleResources[TestPodSecurityPolicyName] = struct{}{}
 	for _, role := range tc.expectRestoredRoles {
 		for _, rule := range role.Rules {
 			for _, resourceName := range rule.ResourceNames {
@@ -1604,23 +1550,6 @@ func assertRolloutPersistentVolumeClaims(expectRestored map[SystemRolloutCRName]
 		if !reflect.DeepEqual(exist.Spec.Resources.Requests, backup.Spec.Resources.Requests) {
 			assertAnnotateSkippedLastSystemRestore(exist.Annotations, c)
 		}
-	}
-}
-
-func assertRolloutPodSecurityPolicies(expectRestored map[SystemRolloutCRName]*policyv1beta1.PodSecurityPolicy, c *C, client *fake.Clientset) {
-	objList, err := client.PolicyV1beta1().PodSecurityPolicies().List(context.TODO(), metav1.ListOptions{})
-	c.Assert(err, IsNil)
-	c.Assert(len(objList.Items), Equals, len(expectRestored))
-
-	exists := map[SystemRolloutCRName]policyv1beta1.PodSecurityPolicy{}
-	for _, obj := range objList.Items {
-		exists[SystemRolloutCRName(obj.Name)] = obj
-	}
-
-	for name, restored := range expectRestored {
-		exist, found := exists[name]
-		c.Assert(found, Equals, true)
-		c.Assert(reflect.DeepEqual(exist.Spec, restored.Spec), Equals, true)
 	}
 }
 
