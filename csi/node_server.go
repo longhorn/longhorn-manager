@@ -817,11 +817,6 @@ func (ns *NodeServer) getMounter(volume *longhornclient.Volume, volumeCapability
 		return mount.New(""), nil
 	}
 
-	// HACK: to nsenter host namespaces for the nfs mounts to stay available after csi plugin dies
-	if requiresSharedAccess(volume, volumeCapability) && !volume.Migratable {
-		return mount.New("/usr/local/sbin/nsmounter"), nil
-	}
-
 	// mounter that can format and use hard coded filesystem params
 	if volumeCapability.GetMount() != nil {
 		fsType := volumeCapability.GetMount().GetFsType()
