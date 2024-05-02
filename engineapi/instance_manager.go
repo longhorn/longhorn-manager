@@ -807,3 +807,20 @@ func (c *InstanceManagerClient) LogSetFlags(dataEngine longhorn.DataEngineType, 
 
 	return c.instanceServiceGrpcClient.LogSetFlags(string(dataEngine), component, flags)
 }
+
+type EngineInstanceSuspendRequest struct {
+	Engine *longhorn.Engine
+}
+
+// EngineInstanceSuspend suspends engine instance
+func (c *InstanceManagerClient) EngineInstanceSuspend(req *EngineInstanceSuspendRequest) error {
+	engine := req.Engine
+	switch engine.Spec.DataEngine {
+	case longhorn.DataEngineTypeV1:
+		return fmt.Errorf("engine suspension for date engine %v is not supported yet", longhorn.DataEngineTypeV1)
+	case longhorn.DataEngineTypeV2:
+		return c.instanceServiceGrpcClient.InstanceSuspend(string(engine.Spec.DataEngine), req.Engine.Name, string(longhorn.InstanceManagerTypeEngine))
+	default:
+		return fmt.Errorf("unknown data engine %v", engine.Spec.DataEngine)
+	}
+}
