@@ -4,6 +4,20 @@ go 1.22
 
 toolchain go1.22.2
 
+// Replace directives are required for dependencies in this section because:
+// - This module imports k8s.io/kubernetes.
+// - The development for all of these dependencies is done at kubernetes/staging and then synced to other repos.
+// - The go.mod file for k8s.io/kubernetes imports these dependencies with version v0.0.0 (which does not exist) and \
+//   uses its own replace directives to load the appropriate code from kubernetes/staging.
+// - Go is not able to find a version v0.0.0 for these dependencies and cannot meaningfully follow replace directives in
+//   another go.mod file.
+//
+// The solution (which is used by all projects that import k8s.io/kubernetes) is to add replace directives for all
+// k8s.io dependencies of k8s.io/kubernetes that k8s.io/kubernetes itself replaces in its go.mod file. The replace
+// directives should pin the version of each dependency to the version of k8s.io/kubernetes that is imported. For
+// example, if we import k8s.io/kubernetes v1.28.5, we should use v0.28.5 of all the replace directives. Depending on
+// the portions of k8s.io/kubernetes code this module actually uses, not all of the replace directives may strictly be
+// necessary. However, it is better to include all of them for consistency.
 replace (
 	k8s.io/api => k8s.io/api v0.28.2
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.28.2
