@@ -15,6 +15,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 )
 
@@ -250,7 +251,7 @@ type PluginDeployment struct {
 }
 
 func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, livenessProbeImage, managerImage, managerURL, rootDir string,
-	tolerations []corev1.Toleration, tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string) *PluginDeployment {
+	tolerations []corev1.Toleration, tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string, storageNetworkSetting *longhorn.Setting) *PluginDeployment {
 
 	daemonSet := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -277,7 +278,8 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 					Tolerations:        tolerations,
 					NodeSelector:       nodeSelector,
 					PriorityClassName:  priorityClass,
-					HostPID:            true,
+					HostNetwork:        true,
+					DNSPolicy:          corev1.DNSClusterFirstWithHostNet,
 					Containers: []corev1.Container{
 						{
 							Name:  "node-driver-registrar",
@@ -421,11 +423,6 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 									MountPath: "/sys",
 								},
 								{
-									Name:             "host",
-									MountPath:        "/host",
-									MountPropagation: &MountPropagationBidirectional,
-								},
-								{
 									Name:      "lib-modules",
 									MountPath: "/lib/modules",
 									ReadOnly:  true,
@@ -487,14 +484,6 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 							},
 						},
 						{
-							Name: "host",
-							VolumeSource: corev1.VolumeSource{
-								HostPath: &corev1.HostPathVolumeSource{
-									Path: "/",
-								},
-							},
-						},
-						{
 							Name: "lib-modules",
 							VolumeSource: corev1.VolumeSource{
 								HostPath: &corev1.HostPathVolumeSource{
@@ -516,6 +505,8 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 		}
 	}
 	types.AddGoCoverDirToDaemonSet(daemonSet)
+
+	types.UpdateDaemonSetTemplateBasedOnStorageNetwork(storageNetworkSetting, daemonSet)
 
 	return &PluginDeployment{
 		daemonSet: daemonSet,

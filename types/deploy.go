@@ -102,6 +102,15 @@ func UpdateDaemonSetTemplateBasedOnStorageNetwork(storageNetwork *longhorn.Setti
 	logger := logrus.WithField("daemonSet", daemonSet.Name)
 	logger.Infof("Updating DaemonSet template for storage network %v", storageNetwork)
 
+	updateHostNetwork := func() {
+		newHostNetwork := storageNetwork.Value == ""
+		logger.WithFields(logrus.Fields{
+			"oldValue": daemonSet.Spec.Template.Spec.HostNetwork,
+			"newValue": newHostNetwork,
+		}).Debugf("Updating hostNetwork")
+		daemonSet.Spec.Template.Spec.HostNetwork = newHostNetwork
+	}
+
 	updateAnnotation := func() {
 		annotKey := string(CNIAnnotationNetworks)
 		annotValue := CreateCniAnnotationFromSetting(storageNetwork)
@@ -123,5 +132,6 @@ func UpdateDaemonSetTemplateBasedOnStorageNetwork(storageNetwork *longhorn.Setti
 		}
 	}
 
+	updateHostNetwork()
 	updateAnnotation()
 }
