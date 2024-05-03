@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -31,6 +32,17 @@ var (
 	matchPolicyExact = admissionregv1.Exact // nolint: unused
 
 	sideEffectClassNone = admissionregv1.SideEffectClassNone
+)
+
+var (
+	whiteListedCiphers = []uint16{
+		tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+		tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+		tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+		tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
+		tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
+	}
 )
 
 type WebhookServer struct {
@@ -178,6 +190,10 @@ func (s *WebhookServer) runAdmissionWebhookListenAndServe(handler http.Handler, 
 				tlsName,
 			},
 			FilterCN: dynamiclistener.OnlyAllow(tlsName),
+			TLSConfig: &tls.Config{
+				MinVersion:   tls.VersionTLS12,
+				CipherSuites: whiteListedCiphers,
+			},
 		},
 	})
 }
@@ -237,6 +253,10 @@ func (s *WebhookServer) runConversionWebhookListenAndServe(handler http.Handler,
 				tlsName,
 			},
 			FilterCN: dynamiclistener.OnlyAllow(tlsName),
+			TLSConfig: &tls.Config{
+				MinVersion:   tls.VersionTLS12,
+				CipherSuites: whiteListedCiphers,
+			},
 		},
 	})
 }
