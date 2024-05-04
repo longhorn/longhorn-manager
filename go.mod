@@ -65,7 +65,7 @@ require (
 	github.com/longhorn/go-spdk-helper v0.0.0-20240430055420-fe00de2fc195
 	github.com/longhorn/longhorn-engine v1.6.0-dev-20231217.0.20240418025706-519598108463
 	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240504040929-cb2f1f3b5fc0
-	github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240504051810-9c3a9ab8b579
+	github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240504162809-88d4db12400c
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.18.0
 	github.com/rancher/dynamiclistener v0.3.6
@@ -77,7 +77,7 @@ require (
 	github.com/urfave/cli v1.22.15
 	golang.org/x/mod v0.15.0
 	golang.org/x/net v0.24.0
-	golang.org/x/sys v0.19.0
+	golang.org/x/sys v0.20.0
 	golang.org/x/time v0.3.0
 	google.golang.org/grpc v1.63.2
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
