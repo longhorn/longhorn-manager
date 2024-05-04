@@ -187,6 +187,18 @@ func NewEngineController(
 	}
 	ec.cacheSyncs = append(ec.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
 
+	if _, err = ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+		FilterFunc: isShareManagerPod,
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc:    ec.enqueueShareManagerPodChange,
+			UpdateFunc: func(old, cur interface{}) { ec.enqueueShareManagerPodChange(cur) },
+			DeleteFunc: ec.enqueueShareManagerPodChange,
+		},
+	}, 0); err != nil {
+		return nil, err
+	}
+	ec.cacheSyncs = append(ec.cacheSyncs, ds.PodInformer.HasSynced)
+
 	return ec, nil
 }
 
@@ -292,6 +304,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	if !isResponsible {
 		return nil
 	}
+
 	if engine.Status.OwnerID != ec.controllerID {
 		engine.Status.OwnerID = ec.controllerID
 		engine, err = ec.ds.UpdateEngineStatus(engine)
@@ -455,7 +468,43 @@ func (ec *EngineController) enqueueInstanceManagerChange(obj interface{}) {
 	for _, e := range engineMap {
 		ec.enqueueEngine(e)
 	}
+}
 
+func (ec *EngineController) enqueueShareManagerPodChange(obj interface{}) {
+	pod, isPod := obj.(*corev1.Pod)
+	if !isPod {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		pod, ok = deletedState.Obj.(*corev1.Pod)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("cannot convert DeletedFinalStateUnknown to ShareManager Pod object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	engineMap := map[string]*longhorn.Engine{}
+
+	smName := pod.Labels[types.GetLonghornLabelKey(types.LonghornLabelShareManager)]
+
+	es, err := ec.ds.ListEnginesRO()
+	if err != nil {
+		ec.logger.WithError(err).Warn("Failed to list engines")
+	}
+	for _, e := range es {
+		// Volume name is the same as share manager name.
+		if e.Spec.VolumeName == smName {
+			engineMap[e.Name] = e
+		}
+	}
+
+	for _, e := range engineMap {
+		ec.enqueueEngine(e)
+	}
 }
 
 func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
@@ -556,16 +605,9 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 		}
 	}
 
-	v, err := ec.ds.GetVolumeRO(e.Spec.VolumeName)
+	isRWXVolume, err := ec.ds.IsRegularRWXVolume(e.Spec.VolumeName)
 	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return err
-		}
-	}
-
-	isRWXVolume := false
-	if v != nil && v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !v.Spec.Migratable {
-		isRWXVolume = true
+		return err
 	}
 
 	// For a RWX volume, the node down, for example, caused by kubelet restart, leads to share-manager pod deletion/recreation
@@ -576,6 +618,20 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 	if !isRWXVolume {
 		if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
 			log.Infof("Skipping deleting engine %v since instance manager is in %v state", e.Name, im.Status.CurrentState)
+			return nil
+		}
+	}
+
+	// If the node is unreachable, don't bother with the successive timeouts we would spend attempting to contact
+	// its client proxy to delete the engine.
+	if isRWXVolume {
+		isDelinquent, _ := ec.ds.IsNodeDelinquent(im.Spec.NodeID, e.Spec.VolumeName)
+		if isDelinquent {
+			log.Infof("Skipping deleting RWX engine %v since IM node %v is delinquent", e.Name, im.Spec.NodeID)
+			if e.Spec.NodeID != "" {
+				log.Infof("Clearing delinquent nodeID for RWX engine %v", e.Name)
+				e.Spec.NodeID = ""
+			}
 			return nil
 		}
 	}
@@ -2227,6 +2283,17 @@ func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineIm
 	defer func() {
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
+
+	// If there is a share manager pod for this and it has an owner, engine should use that too.
+	if isRWX, _ := ec.ds.IsRegularRWXVolume(e.Spec.VolumeName); isRWX {
+		if isDelinquent, _ := ec.ds.IsNodeDownOrDeletedOrDelinquent(e.Status.OwnerID, e.Spec.VolumeName); isDelinquent {
+			pod, err := ec.ds.GetPodRO(e.Namespace, types.GetShareManagerPodNameFromShareManagerName(e.Spec.VolumeName))
+			if err == nil && pod != nil {
+				return ec.controllerID == pod.Spec.NodeName, nil
+
+			}
+		}
+	}
 
 	isResponsible := isControllerResponsibleFor(ec.controllerID, ec.ds, e.Name, e.Spec.NodeID, e.Status.OwnerID)
 

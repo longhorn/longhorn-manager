@@ -56,7 +56,19 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		}
 	}()
 
-	if im == nil || im.Status.CurrentState == longhorn.InstanceManagerStateUnknown {
+	isDelinquent := false
+	if im != nil {
+		isDelinquent, _ = h.ds.IsNodeDelinquent(im.Spec.NodeID, spec.VolumeName)
+	}
+	imName := "nil"
+	nodeName := "empty"
+	if im != nil {
+		imName = im.Name
+		nodeName = im.Spec.NodeID
+	}
+	logrus.Infof("==================> instanceName: %v -------- isDelinquent: %v --------- im: %v ------------ nodeName: %v", instanceName, isDelinquent, imName, nodeName)
+
+	if im == nil || im.Status.CurrentState == longhorn.InstanceManagerStateUnknown || isDelinquent {
 		if status.Started {
 			if status.CurrentState != longhorn.InstanceStateUnknown {
 				logrus.Warnf("Marking the instance as state UNKNOWN since the related node %v of instance %v is down or deleted", spec.NodeID, instanceName)
@@ -281,7 +293,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 				return nil
 			}
 			// The related node maybe cleaned up then there is no available instance manager for this instance (typically it's replica).
-			isNodeDownOrDeleted, err := h.ds.IsNodeDownOrDeleted(spec.NodeID)
+			isNodeDownOrDeleted, err := h.ds.IsNodeDownOrDeletedOrDelinquent(spec.NodeID, spec.VolumeName)
 			if err != nil {
 				return err
 			}

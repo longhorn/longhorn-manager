@@ -940,13 +940,6 @@ func isCSIAttacherTicketOfRegularRWXVolume(attachmentTicket *longhorn.Attachment
 	return isRegularRWXVolume(v) && isCSIAttacherTicket(attachmentTicket)
 }
 
-func isRegularRWXVolume(v *longhorn.Volume) bool {
-	if v == nil {
-		return false
-	}
-	return v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !v.Spec.Migratable
-}
-
 func isCSIAttacherTicket(ticket *longhorn.AttachmentTicket) bool {
 	if ticket == nil {
 		return false
