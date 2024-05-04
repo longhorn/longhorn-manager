@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	_ "net/http/pprof" // for runtime profiling
@@ -11,6 +12,7 @@ import (
 	"github.com/rancher/wrangler/pkg/signals"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/go-iscsi-helper/iscsi"
 
@@ -144,6 +146,16 @@ func startManager(c *cli.Context) error {
 		return fmt.Errorf("failed to detect the node IP")
 	}
 
+	podName, err := util.GetRequiredEnv(types.EnvPodName)
+	if err != nil {
+		return fmt.Errorf("failed to detect the manager pod name")
+	}
+
+	podNamespace, err := util.GetRequiredEnv(types.EnvPodNamespace)
+	if err != nil {
+		return fmt.Errorf("failed to detect the manager pod namespace")
+	}
+
 	ctx := signals.SetupSignalContext()
 
 	logger := logrus.StandardLogger().WithField("node", currentNodeID)
@@ -151,12 +163,24 @@ func startManager(c *cli.Context) error {
 	// Conversion webhook needs to be started first since we use its port 9501 as readiness port.
 	// longhorn-manager pod becomes ready only when conversion webhook is running.
 	// The services in the longhorn-manager can then start to receive the requests.
-	// Conversion webhook does not longhorn datastore.
+	// Conversion webhook does not use datastore, since it is a prerequisite for
+	// datastore operation.
 	clientsWithoutDatastore, err := client.NewClients(kubeconfigPath, false, ctx.Done())
 	if err != nil {
 		return err
 	}
 	if err := webhook.StartWebhook(ctx, types.WebhookTypeConversion, clientsWithoutDatastore); err != nil {
+		return err
+	}
+
+	// This adds the label for the conversion webhook's selector.  We do it the hard way without datastore to avoid chicken-and-egg.
+	pod, _ := clientsWithoutDatastore.Clients.K8s.CoreV1().Pods(podNamespace).Get(context.Background(), podName, v1.GetOptions{})
+	labels := types.GetConversionWebhookLabel()
+	for key, value := range labels {
+		pod.Labels[key] = value
+	}
+	_, err = clientsWithoutDatastore.Clients.K8s.CoreV1().Pods(podNamespace).Update(context.Background(), pod, v1.UpdateOptions{})
+	if err != nil {
 		return err
 	}
 	if err := webhook.CheckWebhookServiceAvailability(types.WebhookTypeConversion); err != nil {
@@ -167,7 +191,11 @@ func startManager(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
+
 	if err := webhook.StartWebhook(ctx, types.WebhookTypeAdmission, clients); err != nil {
+		return err
+	}
+	if err := clients.Datastore.AddLabelToManagerPod(currentNodeID, types.GetAdmissionWebhookLabel()); err != nil {
 		return err
 	}
 	if err := webhook.CheckWebhookServiceAvailability(types.WebhookTypeAdmission); err != nil {
@@ -209,7 +237,7 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
-	if err := initDaemonNode(clients.Datastore); err != nil {
+	if err := initDaemonNode(clients.Datastore, currentNodeID); err != nil {
 		return err
 	}
 
@@ -286,8 +314,7 @@ func updateRegistrySecretName(m *manager.VolumeManager) error {
 	return nil
 }
 
-func initDaemonNode(ds *datastore.DataStore) error {
-	nodeName := os.Getenv("NODE_NAME")
+func initDaemonNode(ds *datastore.DataStore, nodeName string) error {
 	if _, err := ds.GetNode(nodeName); err != nil {
 		// init default disk on node when starting longhorn-manager
 		if datastore.ErrorIsNotFound(err) {
