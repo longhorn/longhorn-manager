@@ -152,14 +152,17 @@ func NewVolumeController(
 	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.ReplicaInformer.HasSynced)
 
-	if _, err = ds.ShareManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
-		AddFunc:    c.enqueueVolumesForShareManager,
-		UpdateFunc: func(old, cur interface{}) { c.enqueueVolumesForShareManager(cur) },
-		DeleteFunc: c.enqueueVolumesForShareManager,
+	if _, err = ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+		FilterFunc: isShareManagerPod,
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc:    c.enqueueVolumesForShareManager,
+			UpdateFunc: func(old, cur interface{}) { c.enqueueVolumesForShareManager(cur) },
+			DeleteFunc: c.enqueueVolumesForShareManager,
+		},
 	}, 0); err != nil {
 		return nil, err
 	}
-	c.cacheSyncs = append(c.cacheSyncs, ds.ShareManagerInformer.HasSynced)
+	c.cacheSyncs = append(c.cacheSyncs, ds.PodInformer.HasSynced)
 
 	if _, err = ds.BackupVolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { c.enqueueVolumesForBackupVolume(cur) },
@@ -2038,7 +2041,7 @@ func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.E
 }
 
 func (c *VolumeController) canInstanceManagerLaunchReplica(r *longhorn.Replica) (bool, error) {
-	nodeDown, err := c.ds.IsNodeDownOrDeleted(r.Spec.NodeID)
+	nodeDown, err := c.ds.IsNodeDownOrDeletedOrDelinquent(r.Spec.NodeID, r.Spec.VolumeName)
 	if err != nil {
 		return false, errors.Wrapf(err, "fail to check IsNodeDownOrDeleted %v", r.Spec.NodeID)
 	}
@@ -4343,6 +4346,12 @@ func (c *VolumeController) IsReplicaUnavailable(r *longhorn.Replica) (bool, erro
 		return true, nil
 	}
 
+	if isRWX, _ := c.ds.IsRegularRWXVolume(r.Spec.VolumeName); isRWX {
+		if isDelinquent, _ := c.ds.IsNodeDelinquent(r.Spec.NodeID, r.Spec.VolumeName); isDelinquent {
+			return true, nil
+		}
+	}
+
 	node, err := c.ds.GetNodeRO(r.Spec.NodeID)
 	if err != nil {
 		return true, errors.Wrapf(err, "failed to get node %v for failed replica %v", r.Spec.NodeID, r.Name)
@@ -4367,6 +4376,16 @@ func (c *VolumeController) isResponsibleFor(v *longhorn.Volume, defaultEngineIma
 	defer func() {
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
+
+	// If there is a share manager pod and it has an owner, we should use that too.
+	if isRWX := isRegularRWXVolume(v); isRWX {
+		if isDelinquent, _ := c.ds.IsNodeDownOrDeletedOrDelinquent(v.Status.OwnerID, v.Name); isDelinquent {
+			pod, err := c.ds.GetPodRO(v.Namespace, types.GetShareManagerPodNameFromShareManagerName(v.Name))
+			if err == nil && pod != nil {
+				return c.controllerID == pod.Spec.NodeName, nil
+			}
+		}
+	}
 
 	isResponsible := isControllerResponsibleFor(c.controllerID, c.ds, v.Name, v.Spec.NodeID, v.Status.OwnerID)
 
@@ -4428,8 +4447,8 @@ func (c *VolumeController) deleteEngine(e *longhorn.Engine, es map[string]*longh
 
 // enqueueVolumesForShareManager enqueues all volumes that are currently claimed by this share manager
 func (c *VolumeController) enqueueVolumesForShareManager(obj interface{}) {
-	sm, isShareManager := obj.(*longhorn.ShareManager)
-	if !isShareManager {
+	pod, isPod := obj.(*corev1.Pod)
+	if !isPod {
 		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
@@ -4437,16 +4456,16 @@ func (c *VolumeController) enqueueVolumesForShareManager(obj interface{}) {
 		}
 
 		// use the last known state, to requeue the claimed volumes
-		sm, ok = deletedState.Obj.(*longhorn.ShareManager)
+		pod, ok = deletedState.Obj.(*corev1.Pod)
 		if !ok {
-			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained non ShareManager object: %#v", deletedState.Obj))
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained non ShareManager Pod object: %#v", deletedState.Obj))
 			return
 		}
 	}
 
-	// we can queue the key directly since a share manager only manages a single volume from it's own namespace
-	// and there is no need for us to retrieve the whole object, since we already know the volume name
-	key := sm.Namespace + "/" + sm.Name
+	// sharemanager name is the same as volume name.
+	smName := pod.Labels[types.GetLonghornLabelKey(types.LonghornLabelShareManager)]
+	key := pod.Namespace + "/" + smName
 	c.queue.Add(key)
 }
 

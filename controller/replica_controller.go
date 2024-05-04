@@ -553,6 +553,20 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 		return nil
 	}
 
+	isRWXVolume, err := rc.ds.IsRegularRWXVolume(r.Spec.VolumeName)
+	if err != nil {
+		return err
+	}
+	// If the node is unreachable, don't bother with the successive timeouts we would spend attempting to contact
+	// its client proxy to delete the engine.
+	if isRWXVolume {
+		isDelinquent, _ := rc.ds.IsNodeDelinquent(im.Spec.NodeID, r.Spec.VolumeName)
+		if isDelinquent {
+			log.Infof("Skipping deleting RWX replica %v since IM node %v is delinquent", r.Name, im.Spec.NodeID)
+			return nil
+		}
+	}
+
 	c, err := engineapi.NewInstanceManagerClient(im)
 	if err != nil {
 		return err
@@ -901,6 +915,14 @@ func (rc *ReplicaController) enqueueAllRebuildingReplicaOnCurrentNode() {
 }
 
 func (rc *ReplicaController) isResponsibleFor(r *longhorn.Replica) bool {
+	if isRWX, _ := rc.ds.IsRegularRWXVolume(r.Spec.VolumeName); isRWX {
+		if isDelinquent, _ := rc.ds.IsNodeDownOrDeletedOrDelinquent(r.Status.OwnerID, r.Spec.VolumeName); isDelinquent {
+			pod, err := rc.ds.GetPodRO(r.Namespace, types.GetShareManagerPodNameFromShareManagerName(r.Spec.VolumeName))
+			if err == nil && pod != nil {
+				return rc.controllerID == pod.Spec.NodeName
+			}
+		}
+	}
 	return isControllerResponsibleFor(rc.controllerID, rc.ds, r.Name, r.Spec.NodeID, r.Status.OwnerID)
 }
 

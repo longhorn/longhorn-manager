@@ -383,7 +383,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 
 	existingNode := node.DeepCopy()
 	defer func() {
-		// we're going to update volume assume things changes
+		// we're going to update node assume things changes
 		if err == nil && !reflect.DeepEqual(existingNode.Status, node.Status) {
 			_, err = nc.ds.UpdateNodeStatus(node)
 		}
@@ -517,6 +517,12 @@ func (nc *NodeController) syncNode(key string) (err error) {
 
 	if nc.controllerID != node.Name {
 		return nil
+	}
+
+	// Getting here is enough proof of life to Turn on the webhook endpoint,
+	// if it has been turned off for RWX failover.
+	if err := nc.ds.AddLabelToManagerPod(node.Name, types.GetAdmissionWebhookLabel()); err != nil {
+		log.Warnf("Node %v faied to restore its admission webhook", node.Name)
 	}
 
 	// Create a monitor for collecting disk information

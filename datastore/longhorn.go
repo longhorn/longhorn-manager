@@ -962,6 +962,20 @@ func (s *DataStore) ListVolumes() (map[string]*longhorn.Volume, error) {
 	return itemMap, nil
 }
 
+func (s *DataStore) IsRegularRWXVolume(volumeName string) (bool, error) {
+	v, err := s.GetVolumeRO(volumeName)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return false, err
+		}
+	}
+
+	if v != nil && v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !v.Spec.Migratable {
+		return true, nil
+	}
+	return false, nil
+}
+
 func MarshalLabelToVolumeRecurringJob(labels map[string]string) map[string]*longhorn.VolumeRecurringJob {
 	groupPrefix := fmt.Sprintf(types.LonghornLabelRecurringJobKeyPrefixFmt, types.LonghornLabelRecurringJobGroup) + "/"
 	jobPrefix := fmt.Sprintf(types.LonghornLabelRecurringJobKeyPrefixFmt, types.LonghornLabelRecurringJob) + "/"
@@ -2930,6 +2944,53 @@ func (s *DataStore) IsNodeDownOrDeleted(name string) (bool, error) {
 	return false, nil
 }
 
+// IsNodeDelinquent checks an early-warning condition of Lease expiration
+// that is of interest to share-manager types.
+func (s *DataStore) IsNodeDelinquent(nodeName string, volumeName string) (bool, error) {
+	if nodeName == "" {
+		return false, errors.New("no node name provided to IsNodeDelinquent")
+	}
+
+	if volumeName == "" {
+		return false, errors.New("no volume name provided to IsNodeDelinquent")
+	}
+	isRWX, _ := s.IsRegularRWXVolume(volumeName)
+	if isRWX {
+		inFailover, delinquentNode, err := s.IsRWXVolumeInFailover(volumeName)
+		if err != nil {
+			return false, err
+		}
+		if inFailover && delinquentNode == nodeName {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// IsNodeDownOrDeletedOrDelinquent gets Node for the given name and checks
+// if the Node condition is gone or not ready or, if we are asking on behalf
+// of an RWX-related resource, delinquent for that resource's volume.
+func (s *DataStore) IsNodeDownOrDeletedOrDelinquent(nodeName string, volumeName string) (bool, error) {
+	if nodeName == "" {
+		return false, errors.New("no node name provided to check node down or deleted or delinquent")
+	}
+	node, err := s.GetNodeRO(nodeName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return true, nil
+		}
+		return false, err
+	}
+	cond := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
+	if cond.Status == longhorn.ConditionStatusFalse &&
+		(cond.Reason == string(longhorn.NodeConditionReasonKubernetesNodeGone) ||
+			cond.Reason == string(longhorn.NodeConditionReasonKubernetesNodeNotReady)) {
+		return true, nil
+	}
+
+	return s.IsNodeDelinquent(nodeName, volumeName)
+}
+
 // IsNodeDeleted checks whether the node does not exist by passing in the node name
 func (s *DataStore) IsNodeDeleted(name string) (bool, error) {
 	if name == "" {
@@ -3833,6 +3894,10 @@ func (s *DataStore) ListShareManagers() (map[string]*longhorn.ShareManager, erro
 		itemMap[itemRO.Name] = itemRO.DeepCopy()
 	}
 	return itemMap, nil
+}
+
+func (s *DataStore) ListShareManagersRO() ([]*longhorn.ShareManager, error) {
+	return s.shareManagerLister.ShareManagers(s.namespace).List(labels.Everything())
 }
 
 // CreateBackupTarget creates a Longhorn BackupTargets CR and verifies creation
