@@ -370,8 +370,8 @@ github.com/rancher/dynamiclistener/storage/memory
 ## explicit
 github.com/rancher/go-rancher/api
 github.com/rancher/go-rancher/client
-# github.com/rancher/lasso v0.0.0-20240424194130-d87ec407d941
-## explicit; go 1.21
+# github.com/rancher/lasso v0.0.0-20240430201833-6f3def65ffc5
+## explicit; go 1.22.0
 github.com/rancher/lasso/pkg/cache
 github.com/rancher/lasso/pkg/client
 github.com/rancher/lasso/pkg/controller
@@ -1533,7 +1533,7 @@ k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1beta1
 # k8s.io/mount-utils v0.30.0 => k8s.io/mount-utils v0.30.0
 ## explicit; go 1.22.0
 k8s.io/mount-utils
-# k8s.io/utils v0.0.0-20240423183400-0849a56e8f22
+# k8s.io/utils v0.0.0-20240502163921-fe8a2dddb1d0
 ## explicit; go 1.18
 k8s.io/utils/buffer
 k8s.io/utils/clock
