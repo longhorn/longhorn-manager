@@ -174,6 +174,8 @@ const (
 	LonghornLabelLastSystemRestoreBackup    = "last-system-restored-backup"
 	LonghornLabelDataEngine                 = "data-engine"
 	LonghornLabelVersion                    = "version"
+	LonghornLabelAdmissionWebhook           = "admission-webhook"
+	LonghornLabelConversionWebhook          = "conversion-webhook"
 
 	LonghornLabelValueEnabled = "enabled"
 	LonghornLabelValueIgnored = "ignored"
@@ -220,6 +222,7 @@ const (
 
 const (
 	EnvNodeName       = "NODE_NAME"
+	EnvPodName        = "POD_NAME"
 	EnvPodNamespace   = "POD_NAMESPACE"
 	EnvPodIP          = "POD_IP"
 	EnvServiceAccount = "SERVICE_ACCOUNT"
@@ -418,6 +421,18 @@ func GetLonghornLabelCRDAPIVersionKey() string {
 func GetManagerLabels() map[string]string {
 	return map[string]string{
 		"app": LonghornManagerDaemonSetName,
+	}
+}
+
+func GetAdmissionWebhookLabel() map[string]string {
+	return map[string]string{
+		GetLonghornLabelKey(LonghornLabelAdmissionWebhook): AdmissionWebhookServiceName,
+	}
+}
+
+func GetConversionWebhookLabel() map[string]string {
+	return map[string]string{
+		GetLonghornLabelKey(LonghornLabelConversionWebhook): ConversionWebhookServiceName,
 	}
 }
 
