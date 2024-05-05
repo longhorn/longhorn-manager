@@ -17,6 +17,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
 
+	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -857,6 +858,17 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 		}
 	}
 
+	// likewise for the lease
+	if _, err := c.ds.GetLeaseRO(sm.Name); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return nil, errors.Wrapf(err, "failed to get lease for share manager %v", sm.Name)
+		}
+
+		if _, err = c.ds.CreateLease(c.createLeaseManifest(sm)); err != nil {
+			return nil, errors.Wrapf(err, "failed to create lease for share manager %v", sm.Name)
+		}
+	}
+
 	volume, err := c.ds.GetVolume(sm.Name)
 	if err != nil {
 		return nil, err
@@ -951,6 +963,32 @@ func (c *ShareManagerController) createServiceManifest(sm *longhorn.ShareManager
 	}
 
 	return service
+}
+
+func (c *ShareManagerController) createLeaseManifest(sm *longhorn.ShareManager) *coordinationv1.Lease {
+	// No current holder, share-manager pod will fill it with its owning node.
+	holderIdentity := ""
+	leaseDurationSeconds := int32(3) // Move this to a constant.
+	leaseTransitions := int32(0)
+	now := time.Now()
+
+	lease := &coordinationv1.Lease{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            sm.Name,
+			Namespace:       c.namespace,
+			OwnerReferences: datastore.GetOwnerReferencesForShareManager(sm, false),
+			Labels:          types.GetShareManagerInstanceLabel(sm.Name),
+		},
+		Spec: coordinationv1.LeaseSpec{
+			HolderIdentity:       &holderIdentity,
+			LeaseDurationSeconds: &leaseDurationSeconds,
+			AcquireTime:          &metav1.MicroTime{Time: now},
+			RenewTime:            &metav1.MicroTime{Time: now},
+			LeaseTransitions:     &leaseTransitions,
+		},
+	}
+
+	return lease
 }
 
 func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, annotations map[string]string, tolerations []corev1.Toleration,
