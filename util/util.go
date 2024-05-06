@@ -71,8 +71,9 @@ const (
 
 	DiskConfigFile = "longhorn-disk.cfg"
 
-	SizeAlignment     = 2 * 1024 * 1024
-	MinimalVolumeSize = 10 * 1024 * 1024
+	SizeAlignment        = 2 * MiB
+	MinimalVolumeSize    = 10 * MiB
+	MinimalVolumeSizeXFS = 300 * MiB // See https://github.com/longhorn/longhorn/issues/8488
 
 	MaxExt4VolumeSize = 16 * TiB
 	MaxXfsVolumeSize  = 8*EiB - 1
