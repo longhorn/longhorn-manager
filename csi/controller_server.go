@@ -170,6 +170,15 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		default:
 			return nil, status.Errorf(codes.InvalidArgument, "%v not a proper volume source", volumeSource)
 		}
+	} else {
+		// Refuse to create a NEW XFS volume smaller than 300 MiB, since mkfs.xfs will eventually fail in the node
+		// server. Don't refuse for clones/restores though, as they may have an existing filesystem.
+		for _, cap := range req.VolumeCapabilities {
+			if cap.GetMount().GetFsType() == "xfs" && reqVolSizeBytes < util.MinimalVolumeSizeXFS {
+				return nil, fmt.Errorf("XFS filesystems with size %d, smaller than %d, are not supported",
+					reqVolSizeBytes, util.MinimalVolumeSizeXFS)
+			}
+		}
 	}
 
 	existVol, err := cs.apiClient.Volume.ById(volumeID)
