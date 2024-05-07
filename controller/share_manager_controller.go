@@ -696,14 +696,20 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 	}
 
 	// If the node where the pod is running on become defective, we clean up the pod by setting sm.Status.State to STOPPED or ERROR
-	// A new pod will be recreated by the share manager controller.
+	// A new pod will be recreated by the share manager controller.  We might get an early warning of that by the pod going stale.
+	isStale, err := c.isShareManagerPodStale(sm)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to check isShareManagerPodStale(%v) when syncShareManagerPod", sm.Name)
+	} else if isStale {
+		log.Infof("ShareManager Pod %v is stale", pod.Name)
+	}
 	isDown, err := c.ds.IsNodeDownOrDeleted(pod.Spec.NodeName)
 	if err != nil {
 		log.WithError(err).Warnf("Failed to check IsNodeDownOrDeleted(%v) when syncShareManagerPod", pod.Spec.NodeName)
 	} else if isDown {
 		log.Infof("Node %v is down", pod.Spec.NodeName)
 	}
-	if pod.DeletionTimestamp != nil || isDown {
+	if pod.DeletionTimestamp != nil || isDown || isStale {
 		// if we just transitioned to the starting state, while the prior cleanup is still in progress we will switch to error state
 		// which will lead to a bad loop of starting (new workload) -> error (remount) -> stopped (cleanup sm)
 		if sm.Status.State == longhorn.ShareManagerStateStopping {
@@ -968,7 +974,7 @@ func (c *ShareManagerController) createServiceManifest(sm *longhorn.ShareManager
 func (c *ShareManagerController) createLeaseManifest(sm *longhorn.ShareManager) *coordinationv1.Lease {
 	// No current holder, share-manager pod will fill it with its owning node.
 	holderIdentity := ""
-	leaseDurationSeconds := int32(3) // Move this to a constant.
+	leaseDurationSeconds := int32(5) // Make this a setting, share-manager-stale-timeout
 	leaseTransitions := int32(0)
 	now := time.Now()
 
@@ -1150,8 +1156,7 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 }
 
 // isResponsibleFor in most controllers we only checks if the node of the current owner is down
-// but in the case where the node is unschedulable we want to transfer ownership,
-// since we will create sm pod on the sm.Status.OwnerID when the sm starts
+// but in the case where the node is unschedulable we want to transfer ownership.
 func (c *ShareManagerController) isResponsibleFor(sm *longhorn.ShareManager) (bool, error) {
 	// We prefer keeping the owner of the share manager CR to be the same node
 	// where the share manager pod is running on.
@@ -1181,4 +1186,34 @@ func (c *ShareManagerController) isResponsibleFor(sm *longhorn.ShareManager) (bo
 	requiresNewOwner := currentNodeSchedulable && !preferredOwnerSchedulable && !currentOwnerSchedulable
 
 	return isPreferredOwner || continueToBeOwner || requiresNewOwner, nil
+}
+
+// isShareManagerPodStale checks the associated lease CR to see whether the current pod (if any)
+// has fallen behind on renewing the lease.  If there is any error finding out, we assume not stale.
+func (c *ShareManagerController) isShareManagerPodStale(sm *longhorn.ShareManager) (bool, error) {
+	log := getLoggerForShareManager(c.logger, sm)
+
+	leaseName := sm.Name
+	lease, err := c.ds.GetLeaseRO(leaseName)
+	if err != nil {
+		// Even NotFound would be odd.
+		return false, errors.Wrapf(err, "failed to retrieve lease for%v", leaseName)
+	}
+
+	// Consider it stale if there is a lease-holding node, if it has been renewed at least once since
+	// acquisition by that holder, and if the time of renewal is longer ago than the lease duration.
+	if *lease.Spec.HolderIdentity == "" {
+		log.Infof("Lease for %v has no holder", leaseName)
+		return false, nil
+	}
+	if lease.Spec.RenewTime == lease.Spec.AcquireTime {
+		log.Warnf("Lease for %v held by %v has never been renewed by share-manager", leaseName, *lease.Spec.HolderIdentity)
+		return false, nil
+	}
+	if time.Now().After(lease.Spec.RenewTime.Add(time.Duration(*lease.Spec.LeaseDurationSeconds) * time.Second)) {
+		log.Warnf("Lease for %v held by %v is stale", leaseName, *lease.Spec.HolderIdentity)
+		return true, nil
+	}
+
+	return false, nil
 }
