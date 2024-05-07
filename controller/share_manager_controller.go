@@ -1197,7 +1197,7 @@ func (c *ShareManagerController) isShareManagerPodStale(sm *longhorn.ShareManage
 	lease, err := c.ds.GetLeaseRO(leaseName)
 	if err != nil {
 		// Even NotFound would be odd.
-		return false, errors.Wrapf(err, "failed to retrieve lease for%v", leaseName)
+		return false, errors.Wrapf(err, "failed to retrieve lease for %v", leaseName)
 	}
 
 	// Consider it stale if there is a lease-holding node, if it has been renewed at least once since
