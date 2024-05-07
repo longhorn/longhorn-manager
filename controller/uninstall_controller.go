@@ -310,15 +310,18 @@ func (c *UninstallController) uninstall() error {
 	if ready, err := c.managerReady(); err != nil {
 		return err
 	} else if ready {
-		if waitForUpdate, err := c.deleteCRDs(); err != nil || waitForUpdate {
+		if waitForUpdate, err := c.deleteCRs(); err != nil || waitForUpdate {
 			return err
 		}
 	}
 
-	// A race condition exists where manager may attempt to recreate certain
-	// CRDs after their deletion. We must delete manager and do a final check
-	// for CRDs, just in case.
+	// A race condition exists where manager may attempt to recreate certain CRs after their deletion, e.g. BackupTarget.
+	// We must delete manager first and then delete those CRs.
 	if waitForUpdate, err := c.deleteManager(); err != nil || waitForUpdate {
+		return err
+	}
+
+	if waitForUpdate, err := c.deleteRecreatedCRs(); err != nil || waitForUpdate {
 		return err
 	}
 
@@ -329,7 +332,7 @@ func (c *UninstallController) uninstall() error {
 	// We set gracePeriod=0s because there is no possibility of graceful
 	// cleanup without a running manager.
 	gracePeriod = 0 * time.Second
-	if waitForUpdate, err := c.deleteCRDs(); err != nil || waitForUpdate {
+	if waitForUpdate, err := c.deleteCRs(); err != nil || waitForUpdate {
 		return err
 	}
 
@@ -453,7 +456,22 @@ func (c *UninstallController) deletePDBs() error {
 	return nil
 }
 
-func (c *UninstallController) deleteCRDs() (bool, error) {
+// deleteRecreatedCR deletes the CRs which will be recreated by managers once they are deleted.
+// This function is triggered after all managers are deleted so they will not be recreated.
+func (c *UninstallController) deleteRecreatedCRs() (bool, error) {
+	// Delete the BackupTarget CRs
+	if backupTargets, err := c.ds.ListBackupTargets(); err != nil {
+		return true, err
+	} else if len(backupTargets) > 0 {
+		c.logger.Infof("Found %d backuptargets remaining", len(backupTargets))
+		return true, c.deleteBackupTargets(backupTargets)
+	}
+	return false, nil
+}
+
+// deleteCRs deletes all the longhorn CRs.
+// Note that this function is for those CRs which won't be recreated by managers after deletion.
+func (c *UninstallController) deleteCRs() (bool, error) {
 	if volumes, err := c.ds.ListVolumes(); err != nil {
 		return true, err
 	} else if len(volumes) > 0 {
@@ -528,14 +546,6 @@ func (c *UninstallController) deleteCRDs() (bool, error) {
 		return true, err
 	} else if len(systemBackups) > 0 {
 		return true, fmt.Errorf("found %d SystemBackups remaining", len(systemBackups))
-	}
-
-	// Delete the BackupTarget CRs
-	if backupTargets, err := c.ds.ListBackupTargets(); err != nil {
-		return true, err
-	} else if len(backupTargets) > 0 {
-		c.logger.Infof("Found %d backuptargets remaining", len(backupTargets))
-		return true, c.deleteBackupTargets(backupTargets)
 	}
 
 	if engineImages, err := c.ds.ListEngineImages(); err != nil {
