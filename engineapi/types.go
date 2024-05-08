@@ -142,6 +142,7 @@ type Volume struct {
 }
 
 type BackupTarget struct {
+	Name             string `json:"name"`
 	BackupTargetURL  string `json:"backupTargetURL"`
 	CredentialSecret string `json:"credentialSecret"`
 	PollInterval     string `json:"pollInterval"`
