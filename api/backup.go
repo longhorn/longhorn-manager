@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -18,7 +19,61 @@ func (s *Server) BackupTargetList(w http.ResponseWriter, req *http.Request) erro
 	if err != nil {
 		return errors.Wrap(err, "failed to list backup targets")
 	}
-	apiContext.Write(toBackupTargetCollection(backupTargets))
+	apiContext.Write(toBackupTargetCollection(backupTargets, apiContext))
+	return nil
+}
+
+func (s *Server) BackupTargetSyncAll(w http.ResponseWriter, req *http.Request) error {
+	var input SyncBackupResource
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return err
+	}
+
+	bts, err := s.m.ListBackupTargetsSorted()
+	if err != nil {
+		return errors.Wrap(err, "failed to list backup targets")
+	}
+
+	if input.SyncAllBackupTargets {
+		for _, bt := range bts {
+			if _, err := s.m.SyncBackupTarget(bt); err != nil {
+				logrus.WithError(err).Warnf("Failed to synchronize backup target %v", bt.Name)
+			}
+		}
+	}
+
+	apiContext.Write(toBackupTargetCollection(bts, apiContext))
+	return nil
+}
+
+func (s *Server) BackupTargetSync(w http.ResponseWriter, req *http.Request) error {
+	var input SyncBackupResource
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return err
+	}
+
+	backupTargetName := mux.Vars(req)["backupTargetName"]
+	if backupTargetName == "" {
+		return fmt.Errorf("backup target name is required")
+	}
+
+	bt, err := s.m.GetBackupTarget(backupTargetName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get backup target %v", backupTargetName)
+	}
+
+	if input.SyncBackupTarget {
+		bt, err = s.m.SyncBackupTarget(bt)
+		if err != nil {
+			return errors.Wrapf(err, "failed to synchronize backup target %v", backupTargetName)
+		}
+	}
+
+	apiContext.Write(toBackupTargetResource(bt, apiContext))
 	return nil
 }
 
@@ -50,6 +105,60 @@ func (s *Server) BackupVolumeGet(w http.ResponseWriter, req *http.Request) error
 	if err != nil {
 		return errors.Wrapf(err, "failed to get backup volume '%s'", volName)
 	}
+	apiContext.Write(toBackupVolumeResource(bv, apiContext))
+	return nil
+}
+
+func (s *Server) BackupVolumeSyncAll(w http.ResponseWriter, req *http.Request) error {
+	var input SyncBackupResource
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return err
+	}
+
+	bvs, err := s.m.ListBackupVolumesSorted()
+	if err != nil {
+		return errors.Wrap(err, "failed to list backup volumes")
+	}
+
+	if input.SyncAllBackupVolumes {
+		for _, bv := range bvs {
+			if _, err := s.m.SyncBackupVolume(bv); err != nil {
+				logrus.WithError(err).Warnf("Failed to synchronize backup volume %v", bv.Name)
+			}
+		}
+	}
+
+	apiContext.Write(toBackupVolumeCollection(bvs, apiContext))
+	return nil
+}
+
+func (s *Server) SyncBackupVolume(w http.ResponseWriter, req *http.Request) error {
+	var input SyncBackupResource
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return err
+	}
+
+	volName := mux.Vars(req)["volName"]
+	if volName == "" {
+		return fmt.Errorf("backup volume name is required")
+	}
+
+	bv, err := s.m.GetBackupVolume(volName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get backup volume '%s'", volName)
+	}
+
+	if input.SyncBackupVolume {
+		bv, err = s.m.SyncBackupVolume(bv)
+		if err != nil {
+			return errors.Wrapf(err, "failed to synchronize backup volume %v", volName)
+		}
+	}
+
 	apiContext.Write(toBackupVolumeResource(bv, apiContext))
 	return nil
 }

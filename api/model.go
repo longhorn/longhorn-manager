@@ -142,6 +142,14 @@ type BackupVolume struct {
 	StorageClassName     string            `json:"storageClassName"`
 }
 
+// SyncBackupResource is used for the Backup*Sync* actions
+type SyncBackupResource struct {
+	SyncAllBackupTargets bool `json:"syncAllBackupTargets"`
+	SyncBackupTarget     bool `json:"syncBackupTarget"`
+	SyncAllBackupVolumes bool `json:"syncAllBackupVolumes"`
+	SyncBackupVolume     bool `json:"syncBackupVolume"`
+}
+
 type Backup struct {
 	client.Resource
 
@@ -542,6 +550,16 @@ type VolumeRecurringJobInput struct {
 	longhorn.VolumeRecurringJob
 }
 
+type BackupTargetListOutput struct {
+	Data []BackupTarget `json:"data"`
+	Type string         `json:"type"`
+}
+
+type BackupVolumeListOutput struct {
+	Data []BackupVolume `json:"data"`
+	Type string         `json:"type"`
+}
+
 type BackupListOutput struct {
 	Data []Backup `json:"data"`
 	Type string   `json:"type"`
@@ -567,10 +585,10 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("detachInput", DetachInput{})
 	schemas.AddType("snapshotInput", SnapshotInput{})
 	schemas.AddType("snapshotCRInput", SnapshotCRInput{})
-	schemas.AddType("backupTarget", BackupTarget{})
 	schemas.AddType("backup", Backup{})
 	schemas.AddType("backupInput", BackupInput{})
 	schemas.AddType("backupStatus", BackupStatus{})
+	schemas.AddType("syncBackupResource", SyncBackupResource{})
 	schemas.AddType("orphan", Orphan{})
 	schemas.AddType("restoreStatus", RestoreStatus{})
 	schemas.AddType("purgeStatus", PurgeStatus{})
@@ -630,6 +648,7 @@ func NewSchema() *client.Schemas {
 	volumeSchema(schemas.AddType("volume", Volume{}))
 	snapshotSchema(schemas.AddType("snapshot", Snapshot{}))
 	snapshotCRSchema(schemas.AddType("snapshotCR", SnapshotCR{}))
+	backupTargetSchema(schemas.AddType("backupTarget", BackupTarget{}))
 	backupVolumeSchema(schemas.AddType("backupVolume", BackupVolume{}))
 	settingSchema(schemas.AddType("setting", Setting{}))
 	recurringJobSchema(schemas.AddType("recurringJob", RecurringJob{}))
@@ -639,6 +658,8 @@ func NewSchema() *client.Schemas {
 	diskSchema(schemas.AddType("diskUpdateInput", DiskUpdateInput{}))
 	diskInfoSchema(schemas.AddType("diskInfo", DiskInfo{}))
 	kubernetesStatusSchema(schemas.AddType("kubernetesStatus", longhorn.KubernetesStatus{}))
+	backupTargetListOutputSchema(schemas.AddType("backupTargetListOutput", BackupTargetListOutput{}))
+	backupVolumeListOutputSchema(schemas.AddType("backupVolumeListOutput", BackupVolumeListOutput{}))
 	backupListOutputSchema(schemas.AddType("backupListOutput", BackupListOutput{}))
 	snapshotListOutputSchema(schemas.AddType("snapshotListOutput", SnapshotListOutput{}))
 	systemBackupSchema(schemas.AddType("systemBackup", SystemBackup{}))
@@ -789,9 +810,21 @@ func kubernetesStatusSchema(status *client.Schema) {
 	status.ResourceFields["workloadsStatus"] = workloadsStatus
 }
 
+func backupTargetSchema(backupTarget *client.Schema) {
+	backupTarget.CollectionMethods = []string{"GET"}
+	backupTarget.ResourceMethods = []string{"GET", "PUT"}
+
+	backupTarget.ResourceActions = map[string]client.Action{
+		"backupTargetSync": {
+			Input:  "syncBackupResource",
+			Output: "backupTargetListOutput",
+		},
+	}
+}
+
 func backupVolumeSchema(backupVolume *client.Schema) {
 	backupVolume.CollectionMethods = []string{"GET"}
-	backupVolume.ResourceMethods = []string{"GET", "DELETE"}
+	backupVolume.ResourceMethods = []string{"GET", "PUT", "DELETE"}
 	backupVolume.ResourceActions = map[string]client.Action{
 		"backupList": {
 			Output: "backupListOutput",
@@ -803,6 +836,10 @@ func backupVolumeSchema(backupVolume *client.Schema) {
 		"backupDelete": {
 			Input:  "backupInput",
 			Output: "backupVolume",
+		},
+		"backupVolumeSync": {
+			Input:  "syncBackupResource",
+			Output: "backupVolumeListOutput",
 		},
 	}
 }
@@ -1159,6 +1196,18 @@ func snapshotCRSchema(snapshotCR *client.Schema) {
 	children := snapshotCR.ResourceFields["children"]
 	children.Type = "map[bool]"
 	snapshotCR.ResourceFields["children"] = children
+}
+
+func backupTargetListOutputSchema(backupTargetList *client.Schema) {
+	data := backupTargetList.ResourceFields["data"]
+	data.Type = "array[backupTarget]"
+	backupTargetList.ResourceFields["data"] = data
+}
+
+func backupVolumeListOutputSchema(backupVolumeList *client.Schema) {
+	data := backupVolumeList.ResourceFields["data"]
+	data.Type = "array[backupVolume]"
+	backupVolumeList.ResourceFields["data"] = data
 }
 
 func backupListOutputSchema(backupList *client.Schema) {
@@ -1674,7 +1723,7 @@ func toVolumeRecurringJobCollection(recurringJobs map[string]*longhorn.VolumeRec
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "volumeRecurringJob"}}
 }
 
-func toBackupTargetResource(bt *longhorn.BackupTarget) *BackupTarget {
+func toBackupTargetResource(bt *longhorn.BackupTarget, apiContext *api.ApiContext) *BackupTarget {
 	if bt == nil {
 		return nil
 	}
@@ -1686,6 +1735,7 @@ func toBackupTargetResource(bt *longhorn.BackupTarget) *BackupTarget {
 			Links: map[string]string{},
 		},
 		BackupTarget: engineapi.BackupTarget{
+			Name:             bt.Name,
 			BackupTargetURL:  bt.Spec.BackupTargetURL,
 			CredentialSecret: bt.Spec.CredentialSecret,
 			PollInterval:     bt.Spec.PollInterval.Duration.String(),
@@ -1693,6 +1743,10 @@ func toBackupTargetResource(bt *longhorn.BackupTarget) *BackupTarget {
 			Message:          types.GetCondition(bt.Status.Conditions, longhorn.BackupTargetConditionTypeUnavailable).Message,
 		},
 	}
+	res.Actions = map[string]string{
+		"backupTargetSync": apiContext.UrlBuilder.ActionLink(res.Resource, "backupTargetSync"),
+	}
+
 	return res
 }
 
@@ -1719,17 +1773,18 @@ func toBackupVolumeResource(bv *longhorn.BackupVolume, apiContext *api.ApiContex
 		StorageClassName:     bv.Status.StorageClassName,
 	}
 	b.Actions = map[string]string{
-		"backupList":   apiContext.UrlBuilder.ActionLink(b.Resource, "backupList"),
-		"backupGet":    apiContext.UrlBuilder.ActionLink(b.Resource, "backupGet"),
-		"backupDelete": apiContext.UrlBuilder.ActionLink(b.Resource, "backupDelete"),
+		"backupList":       apiContext.UrlBuilder.ActionLink(b.Resource, "backupList"),
+		"backupGet":        apiContext.UrlBuilder.ActionLink(b.Resource, "backupGet"),
+		"backupDelete":     apiContext.UrlBuilder.ActionLink(b.Resource, "backupDelete"),
+		"backupVolumeSync": apiContext.UrlBuilder.ActionLink(b.Resource, "backupVolumeSync"),
 	}
 	return b
 }
 
-func toBackupTargetCollection(bts []*longhorn.BackupTarget) *client.GenericCollection {
+func toBackupTargetCollection(bts []*longhorn.BackupTarget, apiContext *api.ApiContext) *client.GenericCollection {
 	data := []interface{}{}
 	for _, bt := range bts {
-		data = append(data, toBackupTargetResource(bt))
+		data = append(data, toBackupTargetResource(bt, apiContext))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "backupTarget"}}
 }
