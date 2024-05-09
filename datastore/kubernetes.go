@@ -255,6 +255,16 @@ func (s *DataStore) GetLeaseRO(name string) (*coordinationv1.Lease, error) {
 	// return s.kubeClient.CoordinationV1().Leases(namespace).Get(context.Background(), name, metav1.GetOptions{})
 }
 
+// GetLease returns a new Lease object for the given name
+func (s *DataStore) GetLease(name string) (*coordinationv1.Lease, error) {
+	resultRO, err := s.GetLeaseRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
 // DeleteLease deletes Lease with the given name in s.namespace
 func (s *DataStore) DeleteLease(name string) error {
 	return s.kubeClient.CoordinationV1().Leases(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})

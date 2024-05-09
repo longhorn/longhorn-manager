@@ -622,6 +622,21 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 
 func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManager) error {
 	log := getLoggerForShareManager(c.logger, sm)
+
+	lease, err := c.ds.GetLease(sm.Name)
+	if err != nil && !apierrors.IsNotFound(err) {
+		log.WithError(err).Warn("Failed to retrieve lease for share manager from datastore")
+	}
+
+	// Clear holder of lease.  Staleness is now dealt with or moot.
+	if lease != nil {
+		*lease.Spec.HolderIdentity = ""
+		_, err := c.ds.UpdateLease(lease)
+		if err != nil {
+			log.WithError(err).Warn("Failed to clear lease holder for share manager")
+		}
+	}
+
 	podName := types.GetShareManagerPodNameFromShareManagerName(sm.Name)
 	pod, err := c.ds.GetPod(podName)
 	if err != nil && !apierrors.IsNotFound(err) {
@@ -709,7 +724,7 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 	} else if isDown {
 		log.Infof("Node %v is down", pod.Spec.NodeName)
 	}
-	if pod.DeletionTimestamp != nil || isDown || isStale {
+	if pod.DeletionTimestamp != nil || isDown {
 		// if we just transitioned to the starting state, while the prior cleanup is still in progress we will switch to error state
 		// which will lead to a bad loop of starting (new workload) -> error (remount) -> stopped (cleanup sm)
 		if sm.Status.State == longhorn.ShareManagerStateStopping {
@@ -974,7 +989,7 @@ func (c *ShareManagerController) createServiceManifest(sm *longhorn.ShareManager
 func (c *ShareManagerController) createLeaseManifest(sm *longhorn.ShareManager) *coordinationv1.Lease {
 	// No current holder, share-manager pod will fill it with its owning node.
 	holderIdentity := ""
-	leaseDurationSeconds := int32(5) // Make this a setting, share-manager-stale-timeout
+	leaseDurationSeconds := int32(5) // TODO - Make this a setting, share-manager-stale-timeout, 5 <= x <= 3600
 	leaseTransitions := int32(0)
 	now := time.Now()
 
