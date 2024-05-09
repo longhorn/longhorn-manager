@@ -379,7 +379,7 @@ func (ic *EngineImageController) syncNodeDeploymentMap(engineImage *longhorn.Eng
 		return err
 	}
 
-	eiDaemonSetPods, err := ic.ds.ListEngineImageDaemonSetPodsFromEngineImageName(engineImage.Name)
+	eiDaemonSetPods, err := ic.ds.ListEngineImageDaemonSetPodsFromEngineImageNameRO(engineImage.Name)
 	if err != nil {
 		return err
 	}
@@ -558,7 +558,7 @@ func updateEngineImageVersion(ei *longhorn.EngineImage) error {
 }
 
 func (ic *EngineImageController) countVolumesUsingEngineImage(image string) (int, error) {
-	volumes, err := ic.ds.ListVolumes()
+	volumes, err := ic.ds.ListVolumesRO()
 	if err != nil {
 		return 0, err
 	}
@@ -573,7 +573,7 @@ func (ic *EngineImageController) countVolumesUsingEngineImage(image string) (int
 }
 
 func (ic *EngineImageController) countEnginesUsingEngineImage(image string) (int, error) {
-	engines, err := ic.ds.ListEngines()
+	engines, err := ic.ds.ListEnginesRO()
 	if err != nil {
 		return 0, err
 	}
@@ -588,7 +588,7 @@ func (ic *EngineImageController) countEnginesUsingEngineImage(image string) (int
 }
 
 func (ic *EngineImageController) countReplicasUsingEngineImage(image string) (int, error) {
-	replicas, err := ic.ds.ListReplicas()
+	replicas, err := ic.ds.ListReplicasRO()
 	if err != nil {
 		return 0, err
 	}
