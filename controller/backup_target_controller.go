@@ -590,7 +590,7 @@ func (btc *BackupTargetController) getInfoFromBackupStore(backupTarget *longhorn
 }
 
 func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.BackupTarget, backupStoreBackupVolumeNames []string, syncTime metav1.Time, log logrus.FieldLogger) error {
-	backupStoreBackupVolumes := sets.NewString(backupStoreBackupVolumeNames...)
+	backupStoreBackupVolumes := sets.New[string](backupStoreBackupVolumeNames...)
 
 	// Get a list of all the backup volumes that exist as custom resources in the cluster
 	clusterBackupVolumes, err := btc.ds.ListBackupVolumesWithBackupTargetNameRO(backupTarget.Name)
@@ -599,7 +599,7 @@ func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.Backu
 	}
 
 	clusterVolumeBVMap := make(map[string]*longhorn.BackupVolume, len(clusterBackupVolumes))
-	clusterBackupVolumesSet := sets.NewString()
+	clusterBackupVolumesSet := sets.New[string]()
 	for _, bv := range clusterBackupVolumes {
 		clusterBackupVolumesSet.Insert(bv.Spec.VolumeName)
 		clusterVolumeBVMap[bv.Spec.VolumeName] = bv
@@ -633,7 +633,7 @@ func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.Backu
 	return nil
 }
 
-func (btc *BackupTargetController) pullBackupVolumeFromBackupTarget(backupTarget *longhorn.BackupTarget, backupStoreBackupVolumes, clusterBackupVolumesSet sets.String, log logrus.FieldLogger) (err error) {
+func (btc *BackupTargetController) pullBackupVolumeFromBackupTarget(backupTarget *longhorn.BackupTarget, backupStoreBackupVolumes, clusterBackupVolumesSet sets.Set[string], log logrus.FieldLogger) (err error) {
 	backupVolumesToPull := backupStoreBackupVolumes.Difference(clusterBackupVolumesSet)
 	if count := backupVolumesToPull.Len(); count > 0 {
 		log.Infof("Found %d backup volumes in the backup target that do not exist in the cluster and need to be pulled", count)
@@ -663,7 +663,7 @@ func (btc *BackupTargetController) pullBackupVolumeFromBackupTarget(backupTarget
 	return nil
 }
 
-func (btc *BackupTargetController) cleanupBackupVolumeNotExistOnBackupTarget(clusterVolumeBVMap map[string]*longhorn.BackupVolume, backupStoreBackupVolumes, clusterBackupVolumesSet sets.String, log logrus.FieldLogger) (err error) {
+func (btc *BackupTargetController) cleanupBackupVolumeNotExistOnBackupTarget(clusterVolumeBVMap map[string]*longhorn.BackupVolume, backupStoreBackupVolumes, clusterBackupVolumesSet sets.Set[string], log logrus.FieldLogger) (err error) {
 	backupVolumesToDelete := clusterBackupVolumesSet.Difference(backupStoreBackupVolumes)
 	if count := backupVolumesToDelete.Len(); count > 0 {
 		log.Infof("Found %d backup volumes in the backup target that do not exist in the backup target and need to be deleted", count)
@@ -686,7 +686,7 @@ func (btc *BackupTargetController) cleanupBackupVolumeNotExistOnBackupTarget(clu
 }
 
 func (btc *BackupTargetController) syncBackupBackingImage(backupStoreBackingImageNames []string, syncTime metav1.Time, log logrus.FieldLogger) error {
-	backupStoreBackupBackingImages := sets.NewString(backupStoreBackingImageNames...)
+	backupStoreBackupBackingImages := sets.New[string](backupStoreBackingImageNames...)
 
 	// Get a list of all the backup volumes that exist as custom resources in the cluster
 	clusterBackupBackingImages, err := btc.ds.ListBackupBackingImages()
@@ -694,7 +694,7 @@ func (btc *BackupTargetController) syncBackupBackingImage(backupStoreBackingImag
 		return err
 	}
 
-	clusterBackupBackingImagesSet := sets.NewString()
+	clusterBackupBackingImagesSet := sets.New[string]()
 	for _, b := range clusterBackupBackingImages {
 		clusterBackupBackingImagesSet.Insert(b.Name)
 	}
@@ -737,7 +737,7 @@ func (btc *BackupTargetController) syncSystemBackup(backupStoreSystemBackups sys
 		return errors.Wrap(err, "failed to list SystemBackups")
 	}
 
-	clusterReadySystemBackupNames := sets.NewString()
+	clusterReadySystemBackupNames := sets.New[string]()
 	for _, systemBackup := range clusterSystemBackups {
 		if systemBackup.Status.State != longhorn.SystemBackupStateReady {
 			continue
@@ -745,7 +745,7 @@ func (btc *BackupTargetController) syncSystemBackup(backupStoreSystemBackups sys
 		clusterReadySystemBackupNames.Insert(systemBackup.Name)
 	}
 
-	backupstoreSystemBackupNames := sets.NewString(util.GetSortedKeysFromMap(backupStoreSystemBackups)...)
+	backupstoreSystemBackupNames := sets.New[string](util.GetSortedKeysFromMap(backupStoreSystemBackups)...)
 
 	// Create SystemBackup from the system backups in the backup store if not already exist in the cluster.
 	addSystemBackupsToCluster := backupstoreSystemBackupNames.Difference(clusterReadySystemBackupNames)
