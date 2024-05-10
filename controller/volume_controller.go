@@ -975,7 +975,7 @@ func (c *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*lo
 		return nil
 	}
 
-	if err := c.cleanupFailedToScheduledReplicas(v, rs); err != nil {
+	if err := c.cleanupFailedToScheduleReplicas(v, rs); err != nil {
 		return err
 	}
 
@@ -1028,21 +1028,35 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 	return nil
 }
 
-func (c *VolumeController) cleanupFailedToScheduledReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) (err error) {
+func (c *VolumeController) cleanupFailedToScheduleReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) (err error) {
 	healthyCount := getHealthyAndActiveReplicaCount(rs)
-	hasEvictionRequestedReplicas := hasReplicaEvictionRequested(rs)
+	var replicaToCleanUp *longhorn.Replica
 
-	if healthyCount >= v.Spec.NumberOfReplicas {
-		for _, r := range rs {
-			if !hasEvictionRequestedReplicas {
-				if r.Spec.HealthyAt == "" && r.Spec.NodeID == "" &&
-					(isDataLocalityDisabled(v) || r.Spec.HardNodeAffinity != v.Status.CurrentNodeID) {
-					logrus.Infof("Cleaning up failed to scheduled replica %v", r.Name)
-					if err := c.deleteReplica(r, rs); err != nil {
-						return errors.Wrapf(err, "failed to cleanup failed to scheduled replica %v", r.Name)
-					}
-				}
+	if hasReplicaEvictionRequested(rs) {
+		return nil
+	}
+
+	for _, r := range rs {
+		if r.Spec.HealthyAt == "" && r.Spec.NodeID == "" {
+			// If this unscheduled replica has HardNodeAffinity when DataLocality is disabled, we can delete it
+			// immediately. It is better to replenish a new replica without HardNodeAffinity so we can avoid corner
+			// cases like https://github.com/longhorn/longhorn/issues/8522.
+			if isDataLocalityDisabled(v) && r.Spec.HardNodeAffinity != "" {
+				replicaToCleanUp = r
+				break
 			}
+			// Otherwise, only clean up failed to schedule replicas when there are enough existing healthy ones.
+			if healthyCount >= v.Spec.NumberOfReplicas && r.Spec.HardNodeAffinity != v.Status.CurrentNodeID {
+				replicaToCleanUp = r
+				break
+			}
+		}
+	}
+
+	if replicaToCleanUp != nil {
+		logrus.Infof("Cleaning up failed to scheduled replica %v", replicaToCleanUp.Name)
+		if err := c.deleteReplica(replicaToCleanUp, rs); err != nil {
+			return errors.Wrapf(err, "failed to cleanup failed to scheduled replica %v", replicaToCleanUp.Name)
 		}
 	}
 
