@@ -4,10 +4,16 @@ Longhorn Manager
 
 Manager for Longhorn.
 
-## Requirement
+## Requirements
 
-1. Existing Kubernetes Cluster 1.16+.
-2. Make sure `iscsiadm`/`open-iscsi` has been installed on the host.
+- Kubernetes cluster:
+  - Kubernetes v1.21 or later is installed.
+  - [Mount propagation](https://kubernetes-csi.github.io/docs/deploying.html#enabling-mount-propagation) is enabled.
+- Host:
+  - `iscsiadm`/`open-iscsi` and `nfs-common`/`nfs-utils`/`nfs-client` are installed.
+  - The filesystem (ext4 or XFS) supports the `file extents` feature for data storage.
+
+Run the [environment_check.sh](https://raw.githubusercontent.com/longhorn/longhorn/master/scripts/environment_check.sh) script to check if your system meets the listed requirements. For more information, see the [Longhorn documentation](https://longhorn.io/docs/latest/deploy/install/#installation-requirements).
 
 ## Build
 
@@ -15,12 +21,16 @@ Manager for Longhorn.
 
 ## Deployment
 
-`kubectl create -Rf deploy/install`
+- `kubectl create -f https://raw.githubusercontent.com/longhorn/longhorn/master/deploy/longhorn.yaml`
 
 It will deploy the following components in the `longhorn-system` namespace:
-1. Longhorn Manager
-2. Longhorn Flexvolume Driver for Kubernetes
-3. Longhorn UI
+
+- Longhorn Manager
+- Longhorn Instance Manager
+- Longhorn CSI plugin components
+- Longhorn UI
+
+For more information, see the [Longhorn documentation](https://longhorn.io/docs/latest/deploy/install/).
 
 ## Cleanup
 
@@ -28,32 +38,42 @@ Longhorn CRD has finalizers in them, so user should delete the volumes and relat
 
 To prevent damage to the Kubernetes cluster, we recommend deleting all Kubernetes workloads using Longhorn volumes (PersistentVolume, PersistentVolumeClaim, StorageClass, Deployment, StatefulSet, DaemonSet, etc).
 
-1. Create the uninstallation job to cleanly purge CRDs from the system and wait for success:
-  ```
-  kubectl create -f deploy/uninstall/uninstall.yaml
-  kubectl get job/longhorn-uninstall -w
-  ```
+1. Ensure that the value of the Longhorn setting `deleting-confirmation-flag` is `true`.
+
+```bash
+kubectl -n longhorn-system edit setting deleting-confirmation-flag
+```
+
+2. Create the uninstallation job to cleanly purge CRDs from the system. Verify that uninstallation was successful.
+
+```bash
+kubectl create -f https://raw.githubusercontent.com/longhorn/longhorn/master/uninstall/uninstall.yaml
+kubectl get job/longhorn-uninstall -w
+```
 
 Example output:
-```
-$ kubectl create -f https://raw.githubusercontent.com/rancher/longhorn/master/uninstall/uninstall.yaml
+
+```bash
+$ kubectl create -f https://raw.githubusercontent.com/longhorn/longhorn/master/uninstall/uninstall.yaml
 serviceaccount/longhorn-uninstall-service-account created
 clusterrole.rbac.authorization.k8s.io/longhorn-uninstall-role created
 clusterrolebinding.rbac.authorization.k8s.io/longhorn-uninstall-bind created
 job.batch/longhorn-uninstall created
 
-$ kubectl get job/longhorn-uninstall -w
+$ kubectl -n longhorn-system get job/longhorn-uninstall -w
 NAME                 COMPLETIONS   DURATION   AGE
 longhorn-uninstall   0/1           3s         3s
 longhorn-uninstall   1/1           20s        20s
 ^C
 ```
 
-2. Remove remaining components:
-  ```
-  kubectl delete -Rf deploy/install
-  kubectl delete -f deploy/uninstall/uninstall.yaml
-  ```
+3. Remove remaining components.
+
+```bash
+kubectl delete -f https://raw.githubusercontent.com/longhorn/longhorn/master/uninstall/uninstall.yaml
+kubectl delete -f https://raw.githubusercontent.com/longhorn/longhorn/master/deploy/longhorn.yaml
+
+```
 
 Tip: If you try `kubectl delete -Rf deploy/install` first and get stuck there, pressing `Ctrl C` then running `kubectl create -f deploy/uninstall/uninstall.yaml` can also help you remove Longhorn. Finally, don't forget to cleanup remaining components by running `kubectl delete -f deploy/uninstall/uninstall.yaml`.
 
@@ -61,14 +81,14 @@ Tip: If you try `kubectl delete -Rf deploy/install` first and get stuck there, p
 
 To execute all unit tests, make sure there are no uncommitted changes and run:
 
-```
+```bash
 make test
 ```
 
 If there are uncommitted changes, only the affected modules will be tested.
 To execute specific unit tests or all tests matching a regex, run:
 
-```
+```bash
 TESTS=="NodeControllerSuite.*" make test
 ```
 
@@ -81,7 +101,8 @@ See [longhorn-tests repo](https://github.com/rancher/longhorn-tests/tree/master/
 Please check [the Longhorn repo](https://github.com/longhorn/longhorn#community) for the contributing guide.
 
 ## License
-Copyright (c) 2014-2021 The Longhorn Authors
+
+Copyright (c) 2014-2024 The Longhorn Authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
