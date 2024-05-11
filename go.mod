@@ -58,14 +58,14 @@ require (
 	github.com/gorilla/websocket v1.5.1
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
-	github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240504053304-4476eded9b5d
-	github.com/longhorn/backupstore v0.0.0-20240501152902-3fa6a4a2e3e3
+	github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240511041821-f9fac8fddd51
+	github.com/longhorn/backupstore v0.0.0-20240509144945-3bce6e69af15
 	github.com/longhorn/go-common-libs v0.0.0-20240501153456-f7a5b1a1edb0
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240427164656-e9439c0018ce
 	github.com/longhorn/go-spdk-helper v0.0.0-20240430055420-fe00de2fc195
-	github.com/longhorn/longhorn-engine v1.6.0-dev-20231217.0.20240418025706-519598108463
-	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240504040929-cb2f1f3b5fc0
-	github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240504162809-88d4db12400c
+	github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240509154612-5fdc92a2d526
+	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240510091533-e263d5435089
+	github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240511024635-f08ca0331d1b
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.18.0
 	github.com/rancher/dynamiclistener v0.3.6
@@ -76,7 +76,7 @@ require (
 	github.com/stretchr/testify v1.9.0
 	github.com/urfave/cli v1.22.15
 	golang.org/x/mod v0.15.0
-	golang.org/x/net v0.24.0
+	golang.org/x/net v0.25.0
 	golang.org/x/sys v0.20.0
 	golang.org/x/time v0.3.0
 	google.golang.org/grpc v1.63.2
@@ -103,7 +103,7 @@ require (
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/google/pprof v0.0.0-20230817174616-7a8ec2ada47b // indirect
 	github.com/jonboulle/clockwork v0.4.0 // indirect
-	github.com/longhorn/types v0.0.0-20240427164854-38dbed8528d3 // indirect
+	github.com/longhorn/types v0.0.0-20240510221052-ab949bbedea3 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/moby/term v0.0.0-20221205130635-1aeaba878587 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
@@ -195,14 +195,14 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.26.0 // indirect
-	golang.org/x/crypto v0.22.0 // indirect
+	golang.org/x/crypto v0.23.0 // indirect
 	golang.org/x/oauth2 v0.17.0 // indirect
 	golang.org/x/sync v0.7.0
-	golang.org/x/term v0.19.0 // indirect
-	golang.org/x/text v0.14.0
+	golang.org/x/term v0.20.0 // indirect
+	golang.org/x/text v0.15.0
 	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/genproto v0.0.0-20240227224415-6ceb2ff114de // indirect
-	google.golang.org/protobuf v1.34.0
+	google.golang.org/protobuf v1.34.1
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	k8s.io/apiserver v0.30.0 // indirect
