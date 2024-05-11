@@ -250,12 +250,12 @@ github.com/longhorn/go-common-libs/sys
 github.com/longhorn/go-common-libs/test/fake
 github.com/longhorn/go-common-libs/types
 github.com/longhorn/go-common-libs/utils
-# github.com/longhorn/go-iscsi-helper v0.0.0-20240511041242-88cb5555bc2c
+# github.com/longhorn/go-iscsi-helper v0.0.0-20240511074247-87672523a862
 ## explicit; go 1.22.0
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.0.0-20240511041007-fe07a44053b6
+# github.com/longhorn/go-spdk-helper v0.0.0-20240511070845-856928309b2c
 ## explicit; go 1.22.0
 github.com/longhorn/go-spdk-helper/pkg/types
 # github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240510091613-ac50090f23cc
