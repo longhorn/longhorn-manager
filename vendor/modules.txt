@@ -258,7 +258,7 @@ github.com/longhorn/go-iscsi-helper/util
 # github.com/longhorn/go-spdk-helper v0.0.0-20240511041007-fe07a44053b6
 ## explicit; go 1.22.0
 github.com/longhorn/go-spdk-helper/pkg/types
-# github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240509154612-5fdc92a2d526
+# github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240510091613-ac50090f23cc
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-engine/pkg/interceptor
 github.com/longhorn/longhorn-engine/pkg/meta
