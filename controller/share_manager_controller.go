@@ -301,7 +301,10 @@ func (c *ShareManagerController) syncShareManager(key string) (err error) {
 			}
 			return err
 		}
-		log.Infof("Share manager got new owner %v", c.controllerID)
+		// This is only temporary until the pod is created and scheduled, at which point
+		// ownership will transfer to the pod's spec.nodename.  But we need some controller
+		// to assume responsibility and do the restart in the mean time.
+		log.Infof("Share manager got new owner %v to control pod restart", c.controllerID)
 	}
 
 	if sm.DeletionTimestamp != nil {
@@ -620,22 +623,41 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 	return nil
 }
 
-func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManager) error {
+func (c *ShareManagerController) clearShareManagerLeaseHolder(sm *longhorn.ShareManager) (holder string) {
 	log := getLoggerForShareManager(c.logger, sm)
 
 	lease, err := c.ds.GetLease(sm.Name)
 	if err != nil && !apierrors.IsNotFound(err) {
 		log.WithError(err).Warn("Failed to retrieve lease for share manager from datastore")
+		return
 	}
 
-	// Clear holder of lease.  Staleness is now dealt with or moot.
 	if lease != nil {
-		*lease.Spec.HolderIdentity = ""
-		_, err := c.ds.UpdateLease(lease)
-		if err != nil {
-			log.WithError(err).Warn("Failed to clear lease holder for share manager")
+		holder = *lease.Spec.HolderIdentity
+		if holder != "" {
+			log.Infof("Clearing lease holder %v for share manager.", holder)
+			*lease.Spec.HolderIdentity = ""
+			_, err := c.ds.UpdateLease(lease)
+			if err != nil {
+				log.WithError(err).Warn("Failed to clear lease holder for share manager")
+			}
 		}
 	}
+	return holder
+}
+
+func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManager) error {
+	log := getLoggerForShareManager(c.logger, sm)
+
+	// Are we cleaning up after a lease timeout?
+	leaseExpired, err := c.isShareManagerPodStale(sm)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to check isShareManagerPodStale(%v) when cleanupShareManagerPod", sm.Name)
+	}
+
+	// Clear the lease holder.  Staleness is now either dealt with or moot.
+	// But remember which node it was to decide whether it is likely dead.
+	formerLeaseHolder := c.clearShareManagerLeaseHolder(sm)
 
 	podName := types.GetShareManagerPodNameFromShareManagerName(sm.Name)
 	pod, err := c.ds.GetPod(podName)
@@ -652,7 +674,10 @@ func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManage
 		return err
 	}
 
-	if nodeFailed, _ := c.ds.IsNodeDownOrDeleted(pod.Spec.NodeName); nodeFailed {
+	// Force delete if the pod's node is known dead, or likely so since it let
+	// the lease time out and another node's controller is cleaning up after it.
+	nodeFailed, _ := c.ds.IsNodeDownOrDeleted(pod.Spec.NodeName)
+	if nodeFailed || (leaseExpired && formerLeaseHolder != c.controllerID) {
 		log.Info("Force deleting pod to allow fail over since node of share manager pod is down")
 		gracePeriod := int64(0)
 		err := c.kubeClient.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{GracePeriodSeconds: &gracePeriod})
@@ -1170,9 +1195,47 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 	return podSpec
 }
 
-// isResponsibleFor in most controllers we only checks if the node of the current owner is down
-// but in the case where the node is unschedulable we want to transfer ownership.
+// isShareManagerPodStale checks the associated lease CR to see whether the current pod (if any)
+// has fallen behind on renewing the lease.  If there is any error finding out, we assume not stale.
+func (c *ShareManagerController) isShareManagerPodStale(sm *longhorn.ShareManager) (bool, error) {
+	log := getLoggerForShareManager(c.logger, sm)
+
+	leaseName := sm.Name
+	lease, err := c.ds.GetLeaseRO(leaseName)
+	if err != nil {
+		// Even NotFound would be odd.
+		return false, errors.Wrapf(err, "failed to retrieve lease for %v", leaseName)
+	}
+
+	// Consider it stale if there is a lease-holding node, if it has been renewed at least once since
+	// acquisition by that holder, and if the time of renewal is longer ago than the lease duration.
+	if *lease.Spec.HolderIdentity == "" {
+		// log.Infof("Lease for %v has no holder", leaseName)
+		return false, nil
+	}
+	if lease.Spec.RenewTime == lease.Spec.AcquireTime {
+		log.Warnf("Lease for %v held by %v has never been renewed by share-manager", leaseName, *lease.Spec.HolderIdentity)
+		return false, nil
+	}
+	if time.Now().After(lease.Spec.RenewTime.Add(time.Duration(*lease.Spec.LeaseDurationSeconds) * time.Second)) {
+		log.Warnf("Lease for %v held by %v is stale", leaseName, *lease.Spec.HolderIdentity)
+		return true, nil
+	}
+
+	return false, nil
+}
+
+// isResponsibleFor in most controllers only checks if the node of the current owner is down
+// but in the case where the lease is stale or the node is unschedulable we want to transfer
+// ownership.
 func (c *ShareManagerController) isResponsibleFor(sm *longhorn.ShareManager) (bool, error) {
+	// If the lease is stale, we assume the owning is down but not officially dead.
+	// Some node has to take over, and it might as well be this one.
+	isStale, err := c.isShareManagerPodStale(sm)
+	if err == nil && isStale {
+		return true, nil
+	}
+
 	// We prefer keeping the owner of the share manager CR to be the same node
 	// where the share manager pod is running on.
 	preferredOwnerID := ""
@@ -1182,6 +1245,7 @@ func (c *ShareManagerController) isResponsibleFor(sm *longhorn.ShareManager) (bo
 		preferredOwnerID = pod.Spec.NodeName
 	}
 
+	// Base class method is used to decide based on node schedulable condition.
 	isResponsible := isControllerResponsibleFor(c.controllerID, c.ds, sm.Name, preferredOwnerID, sm.Status.OwnerID)
 
 	readyAndSchedulableNodes, err := c.ds.ListReadyAndSchedulableNodesRO()
@@ -1201,34 +1265,4 @@ func (c *ShareManagerController) isResponsibleFor(sm *longhorn.ShareManager) (bo
 	requiresNewOwner := currentNodeSchedulable && !preferredOwnerSchedulable && !currentOwnerSchedulable
 
 	return isPreferredOwner || continueToBeOwner || requiresNewOwner, nil
-}
-
-// isShareManagerPodStale checks the associated lease CR to see whether the current pod (if any)
-// has fallen behind on renewing the lease.  If there is any error finding out, we assume not stale.
-func (c *ShareManagerController) isShareManagerPodStale(sm *longhorn.ShareManager) (bool, error) {
-	log := getLoggerForShareManager(c.logger, sm)
-
-	leaseName := sm.Name
-	lease, err := c.ds.GetLeaseRO(leaseName)
-	if err != nil {
-		// Even NotFound would be odd.
-		return false, errors.Wrapf(err, "failed to retrieve lease for %v", leaseName)
-	}
-
-	// Consider it stale if there is a lease-holding node, if it has been renewed at least once since
-	// acquisition by that holder, and if the time of renewal is longer ago than the lease duration.
-	if *lease.Spec.HolderIdentity == "" {
-		log.Infof("Lease for %v has no holder", leaseName)
-		return false, nil
-	}
-	if lease.Spec.RenewTime == lease.Spec.AcquireTime {
-		log.Warnf("Lease for %v held by %v has never been renewed by share-manager", leaseName, *lease.Spec.HolderIdentity)
-		return false, nil
-	}
-	if time.Now().After(lease.Spec.RenewTime.Add(time.Duration(*lease.Spec.LeaseDurationSeconds) * time.Second)) {
-		log.Warnf("Lease for %v held by %v is stale", leaseName, *lease.Spec.HolderIdentity)
-		return true, nil
-	}
-
-	return false, nil
 }
