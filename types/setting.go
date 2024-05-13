@@ -1434,7 +1434,7 @@ func ValidateSetting(name, value string) (err error) {
 	case SettingNameV2DataEngineHugepageLimit:
 		value, err := strconv.Atoi(value)
 		if err != nil {
-			errors.Wrapf(err, "value %v is not a number", value)
+			return errors.Wrapf(err, "value %v is not a number", value)
 		}
 		if value < 0 {
 			return fmt.Errorf("the value %v shouldn't be less than 0", value)
