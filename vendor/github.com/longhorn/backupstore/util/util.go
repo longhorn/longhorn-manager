@@ -23,7 +23,6 @@ import (
 	lz4 "github.com/pierrec/lz4/v4"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"go.uber.org/multierr"
 	"golang.org/x/sys/unix"
 
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -131,39 +130,6 @@ func DecompressAndVerify(method string, src io.Reader, checksum string) (io.Read
 		return nil, fmt.Errorf("checksum verification failed for block")
 	}
 	return bytes.NewReader(block), nil
-}
-
-// DecompressAndVerifyWithFallback decompresses the given data and verifies the data integrity.
-// If the decompression fails, it will try to decompress with the fallback method.
-func DecompressAndVerifyWithFallback(decompression string, rc io.ReadCloser, checksum string) (io.Reader, error) {
-	r, err := DecompressAndVerify(decompression, rc, checksum)
-	if err == nil {
-		return r, nil
-	}
-	// Fall back to other decompression method if the current one fails
-	// The mitigation will be removed after identifying https://github.com/longhorn/longhorn/issues/7687
-	// Seek rc to offset 0
-	seeker, ok := rc.(io.Seeker)
-	if !ok {
-		return nil, errors.Wrapf(err, "failed to cast to io.Seeker for block %v", checksum)
-	}
-
-	_, errFallback := seeker.Seek(0, io.SeekStart)
-	if errFallback != nil {
-		// Merge the err1 and err2 and error out
-		return nil, errors.Wrapf(multierr.Append(err, errFallback), "failed to seek to offset 0 for block %v", checksum)
-	}
-
-	if strings.Contains(err.Error(), gzip.ErrHeader.Error()) {
-		r, errFallback = DecompressAndVerify("lz4", rc, checksum)
-	} else if strings.Contains(err.Error(), "lz4: bad magic number") {
-		r, errFallback = DecompressAndVerify("gzip", rc, checksum)
-	}
-	if errFallback != nil {
-		return nil, errors.Wrapf(multierr.Append(err, errFallback), "failed to decompress and verify block %v with fallback", checksum)
-	}
-
-	return r, err
 }
 
 func newCompressionWriter(method string, buffer io.Writer) (io.WriteCloser, error) {
@@ -333,7 +299,7 @@ func EnsureMountPoint(Kind, mountPoint string, mounter mount.Interface, log logr
 		}
 	}()
 
-	notMounted, err := mount.IsNotMountPoint(mounter, mountPoint)
+	isMoundPoint, err := mounter.IsMountPoint(mountPoint)
 	if err == fs.ErrNotExist {
 		return false, nil
 	}
@@ -352,10 +318,10 @@ func EnsureMountPoint(Kind, mountPoint string, mounter mount.Interface, log logr
 		if mntErr := cleanupMount(mountPoint, mounter, log); mntErr != nil {
 			return true, errors.Wrapf(mntErr, "failed to clean up corrupted mount point %v", mountPoint)
 		}
-		notMounted = true
+		isMoundPoint = false
 	}
 
-	if notMounted {
+	if !isMoundPoint {
 		return false, nil
 	}
 
@@ -400,36 +366,30 @@ func MountWithTimeout(mounter mount.Interface, source string, target string, fst
 
 // CleanUpMountPoints tries to clean up all existing mount points for existing backup stores
 func CleanUpMountPoints(mounter mount.Interface, log logrus.FieldLogger) error {
-	var errs error
-
-	filepath.Walk(MountDir, func(path string, info os.FileInfo, err error) error {
+	return filepath.Walk(MountDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			errs = multierr.Append(errs, errors.Wrapf(err, "failed to get file info of %v", path))
-			return nil
+			return errors.Wrapf(err, "failed to get file info of %v", path)
 		}
 
 		if !info.IsDir() {
 			return nil
 		}
 
-		notMounted, err := mount.IsNotMountPoint(mounter, path)
+		isMountPoint, err := mounter.IsMountPoint(path)
 		if err != nil {
-			errs = multierr.Append(errs, errors.Wrapf(err, "failed to check if %s is not mounted", path))
-			return nil
+			return errors.Wrapf(err, "failed to check if %s is not mounted", path)
 		}
 
-		if notMounted {
+		if !isMountPoint {
 			return nil
 		}
 
 		if err := cleanupMount(path, mounter, log); err != nil {
-			errs = multierr.Append(errs, errors.Wrapf(err, "failed to clean up mount point %v", path))
+			return errors.Wrapf(err, "failed to clean up mount point %v", path)
 		}
 
 		return nil
 	})
-
-	return errs
 }
 
 func CheckBackupType(backupTarget string) (string, error) {
