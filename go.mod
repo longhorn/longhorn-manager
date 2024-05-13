@@ -2,7 +2,7 @@ module github.com/longhorn/longhorn-manager
 
 go 1.22.0
 
-toolchain go1.22.2
+toolchain go1.22.3
 
 // Replace directives are required for dependencies in this section because:
 // - This module imports k8s.io/kubernetes.
@@ -60,10 +60,10 @@ require (
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.6.2-0.20240404003834-5de115f2b76f
-	github.com/longhorn/backupstore v0.0.0-20240501152902-3fa6a4a2e3e3
-	github.com/longhorn/go-common-libs v0.0.0-20240501153456-f7a5b1a1edb0
-	github.com/longhorn/go-iscsi-helper v0.0.0-20240427164656-e9439c0018ce
-	github.com/longhorn/go-spdk-helper v0.0.0-20240430055420-fe00de2fc195
+	github.com/longhorn/backupstore v0.0.0-20240509144945-3bce6e69af15
+	github.com/longhorn/go-common-libs v0.0.0-20240511041328-e68a6cd889d4
+	github.com/longhorn/go-iscsi-helper v0.0.0-20240513041205-7a18d2fd85bf
+	github.com/longhorn/go-spdk-helper v0.0.0-20240513081816-b39d930c60ca
 	github.com/longhorn/longhorn-engine v1.6.1
 	github.com/longhorn/longhorn-instance-manager v1.6.1
 	github.com/longhorn/longhorn-share-manager v1.6.1
@@ -78,7 +78,7 @@ require (
 	github.com/urfave/cli v1.22.15
 	golang.org/x/mod v0.14.0
 	golang.org/x/net v0.23.0
-	golang.org/x/sys v0.19.0
+	golang.org/x/sys v0.20.0
 	golang.org/x/time v0.3.0
 	google.golang.org/grpc v1.63.2
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
@@ -105,7 +105,7 @@ require (
 	github.com/jonboulle/clockwork v0.4.0 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
-	github.com/shirou/gopsutil/v3 v3.24.3 // indirect
+	github.com/shirou/gopsutil/v3 v3.24.4 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.etcd.io/bbolt v1.3.8 // indirect
 	go.uber.org/goleak v1.3.0 // indirect
@@ -209,7 +209,7 @@ require (
 	golang.org/x/text v0.14.0
 	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/genproto v0.0.0-20240227224415-6ceb2ff114de // indirect
-	google.golang.org/protobuf v1.33.0
+	google.golang.org/protobuf v1.34.1
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	k8s.io/apiserver v0.28.5 // indirect
