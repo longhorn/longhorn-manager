@@ -45,7 +45,6 @@ func (m *VolumeManager) CreateOrUpdateSetting(s *longhorn.Setting) (*longhorn.Se
 	if err != nil {
 		return nil, err
 	}
-	s.Applied = true
 	setting, err := m.ds.UpdateSetting(s)
 	if err != nil {
 		if apierrors.IsNotFound(err) {

@@ -28,17 +28,17 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 		return err
 	}
 
-	if err := upgradeNodes(namespace, lhClient, resourceMaps); err != nil {
-		return err
-	}
-
-	return upgradeSetting(namespace, lhClient, resourceMaps)
+	return upgradeNodes(namespace, lhClient, resourceMaps)
 }
 
 func UpgradeResourcesStatus(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) error {
 	// We will probably need to upgrade other resource status as well. See upgradeEngineStatus or previous Longhorn
 	// versions for examples.
-	return upgradeEngineStatus(namespace, lhClient, resourceMaps)
+	if err := upgradeEngineStatus(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	return upgradeSettingStatus(namespace, lhClient, resourceMaps)
 }
 
 func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
@@ -90,7 +90,7 @@ func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset, resource
 	return nil
 }
 
-func upgradeSetting(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+func upgradeSettingStatus(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade setting failed")
 	}()
@@ -104,7 +104,7 @@ func upgradeSetting(namespace string, lhClient *lhclientset.Clientset, resourceM
 	}
 
 	for _, s := range settingMap {
-		s.Applied = true
+		s.Status.Applied = true
 	}
 
 	return nil
