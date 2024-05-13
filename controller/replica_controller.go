@@ -376,18 +376,13 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		return nil, err
 	}
 
-	exposeRequired := true
-	if v.Spec.NodeID == rc.controllerID {
-		exposeRequired = false
-	}
-
 	return c.ReplicaInstanceCreate(&engineapi.ReplicaInstanceCreateRequest{
 		Replica:             r,
 		DiskName:            diskName,
 		DataPath:            dataPath,
 		BackingImagePath:    backingImagePath,
 		DataLocality:        v.Spec.DataLocality,
-		ExposeRequired:      exposeRequired,
+		ExposeRequired:      true,
 		ImIP:                im.Status.IP,
 		EngineCLIAPIVersion: cliAPIVersion,
 	})
