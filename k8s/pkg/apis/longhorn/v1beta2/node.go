@@ -112,6 +112,8 @@ type DiskStatus struct {
 	DiskDriver DiskDriver `json:"diskDriver"`
 	// +optional
 	FSType string `json:"filesystemType"`
+	// +optional
+	InstanceManagerName string `json:"instanceManagerName"`
 }
 
 // NodeSpec defines the desired state of the Longhorn node
