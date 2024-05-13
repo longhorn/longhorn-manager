@@ -1730,7 +1730,6 @@ func (c *SystemRolloutController) restoreSettings() (err error) {
 			if !ok {
 				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.LonghornKindSetting)
 			}
-			obj.Applied = true
 			return c.ds.UpdateSetting(obj)
 		}
 		_, err = c.rolloutResource(exist, fnUpdate, isSkipped, log, SystemRolloutMsgSkipIdentical)

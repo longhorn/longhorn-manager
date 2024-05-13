@@ -219,22 +219,29 @@ func (sc *SettingController) handleErr(err error, key interface{}) {
 }
 
 func (sc *SettingController) syncSetting(key string) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to sync setting for %v", key)
+	}()
+
 	_, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		return err
 	}
 
 	defer func() {
-		err = errors.Wrapf(err, "failed to sync setting for %v", key)
-
 		setting, dsErr := sc.ds.GetSettingExact(types.SettingName(name))
 		if dsErr != nil {
 			sc.logger.WithError(dsErr).Warnf("Failed to get setting: %v", name)
 			return
 		}
-		if setting.Applied != (err == nil) {
-			setting.Applied = err == nil
-			if _, dsErr := sc.ds.UpdateSetting(setting); dsErr != nil {
+		existingApplied := setting.Status.Applied
+		if !setting.Status.Applied && err == nil {
+			setting.Status.Applied = true
+		} else if err != nil {
+			setting.Status.Applied = false
+		}
+		if setting.Status.Applied != existingApplied {
+			if _, dsErr := sc.ds.UpdateSettingStatus(setting); dsErr != nil {
 				sc.logger.WithError(dsErr).Warnf("Failed to update setting: %v", name)
 			}
 		}
@@ -1178,16 +1185,13 @@ func (sc *SettingController) syncUpgradeChecker() error {
 
 	if !upgradeCheckerEnabled {
 		if latestLonghornVersion.Value != "" {
-
 			latestLonghornVersion.Value = ""
-			latestLonghornVersion.Applied = false
 			if _, err := sc.ds.UpdateSetting(latestLonghornVersion); err != nil {
 				return err
 			}
 		}
 		if stableLonghornVersions.Value != "" {
 			stableLonghornVersions.Value = ""
-			stableLonghornVersions.Applied = false
 			if _, err := sc.ds.UpdateSetting(stableLonghornVersions); err != nil {
 				return err
 			}
@@ -1215,7 +1219,6 @@ func (sc *SettingController) syncUpgradeChecker() error {
 	sc.lastUpgradeCheckedTimestamp = now
 
 	if latestLonghornVersion.Value != currentLatestVersion {
-		stableLonghornVersions.Applied = true
 		sc.logger.Infof("Latest Longhorn version is %v", latestLonghornVersion.Value)
 		if _, err := sc.ds.UpdateSetting(latestLonghornVersion); err != nil {
 			// non-critical error, don't retry
@@ -1224,7 +1227,6 @@ func (sc *SettingController) syncUpgradeChecker() error {
 		}
 	}
 	if stableLonghornVersions.Value != currentStableVersions {
-		stableLonghornVersions.Applied = true
 		sc.logger.Infof("The latest stable version of every minor release line: %v", stableLonghornVersions.Value)
 		if _, err := sc.ds.UpdateSetting(stableLonghornVersions); err != nil {
 			// non-critical error, don't retry
