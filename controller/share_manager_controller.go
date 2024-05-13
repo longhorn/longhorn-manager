@@ -1219,7 +1219,7 @@ func (c *ShareManagerController) isShareManagerPodStale(sm *longhorn.ShareManage
 	}
 	expireTime := lease.Spec.RenewTime.Add(time.Duration(*lease.Spec.LeaseDurationSeconds) * time.Second)
 	if time.Now().After(expireTime) {
-		log.Warnf("Lease for %v held by %v is stale, expired %v seconds ago", leaseName, *lease.Spec.HolderIdentity, time.Now().Sub(expireTime))
+		log.Warnf("Lease for %v held by %v is stale, expired %v seconds ago", leaseName, *lease.Spec.HolderIdentity, time.Since(expireTime))
 		return true, nil
 	}
 
