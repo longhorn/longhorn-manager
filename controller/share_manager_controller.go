@@ -301,10 +301,10 @@ func (c *ShareManagerController) syncShareManager(key string) (err error) {
 			}
 			return err
 		}
-		// This is only temporary until the pod is created and scheduled, at which point
-		// ownership will transfer to the pod's spec.nodename.  But we need some controller
-		// to assume responsibility and do the restart in the mean time.
-		log.Infof("Share manager got new owner %v to control pod restart", c.controllerID)
+		// This node will be an interim owner until the pod is created and scheduled,
+		// at which point ownership will transfer to the pod's spec.nodename.
+		// But we need some controller to assume responsibility and do the restart.
+		log.Infof("Share manager got interim owner %v to control pod restart", c.controllerID)
 	}
 
 	if sm.DeletionTimestamp != nil {
@@ -749,7 +749,7 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 	} else if isDown {
 		log.Infof("Node %v is down", pod.Spec.NodeName)
 	}
-	if pod.DeletionTimestamp != nil || isDown {
+	if pod.DeletionTimestamp != nil || isDown || isStale {
 		// if we just transitioned to the starting state, while the prior cleanup is still in progress we will switch to error state
 		// which will lead to a bad loop of starting (new workload) -> error (remount) -> stopped (cleanup sm)
 		if sm.Status.State == longhorn.ShareManagerStateStopping {
@@ -1217,8 +1217,9 @@ func (c *ShareManagerController) isShareManagerPodStale(sm *longhorn.ShareManage
 		log.Warnf("Lease for %v held by %v has never been renewed by share-manager", leaseName, *lease.Spec.HolderIdentity)
 		return false, nil
 	}
-	if time.Now().After(lease.Spec.RenewTime.Add(time.Duration(*lease.Spec.LeaseDurationSeconds) * time.Second)) {
-		log.Warnf("Lease for %v held by %v is stale", leaseName, *lease.Spec.HolderIdentity)
+	expireTime := lease.Spec.RenewTime.Add(time.Duration(*lease.Spec.LeaseDurationSeconds) * time.Second)
+	if time.Now().After(expireTime) {
+		log.Warnf("Lease for %v held by %v is stale, expired %v seconds ago", leaseName, *lease.Spec.HolderIdentity, time.Now().Sub(expireTime))
 		return true, nil
 	}
 
@@ -1233,6 +1234,7 @@ func (c *ShareManagerController) isResponsibleFor(sm *longhorn.ShareManager) (bo
 	// Some node has to take over, and it might as well be this one.
 	isStale, err := c.isShareManagerPodStale(sm)
 	if err == nil && isStale {
+		// TODO - could avoid race between nodes by checking for an interim owner here.
 		return true, nil
 	}
 
