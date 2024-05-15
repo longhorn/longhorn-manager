@@ -114,6 +114,19 @@ func NewShareManagerController(
 	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.PodInformer.HasSynced)
 
+	// we are only interested in leases that apply to share-manager pods.
+	if _, err = ds.LeaseInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+		FilterFunc: isShareManagerLease,
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc:    c.enqueueShareManagerForLease,
+			UpdateFunc: func(old, cur interface{}) { c.enqueueShareManagerForLease(cur) },
+			DeleteFunc: c.enqueueShareManagerForLease,
+		},
+	}, 0); err != nil {
+		return nil, err
+	}
+	c.cacheSyncs = append(c.cacheSyncs, ds.PodInformer.HasSynced)
+
 	return c, nil
 }
 
@@ -211,6 +224,52 @@ func isShareManagerPod(obj interface{}) bool {
 		}
 	}
 	return false
+}
+
+func (c *ShareManagerController) enqueueShareManagerForLease(obj interface{}) {
+	lease, isLease := obj.(*coordinationv1.Lease)
+	if !isLease {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to enqueue the ShareManager
+		lease, ok = deletedState.Obj.(*coordinationv1.Lease)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained non Lease object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	// we can queue the key directly since a share manager only manages leases from its own namespace
+	// and there is no need for us to retrieve the whole object, since the share manager name is stored in the label
+	smName := lease.Labels[types.GetLonghornLabelKey(types.LonghornLabelShareManager)]
+	key := lease.Namespace + "/" + smName
+	duration := time.Duration(*lease.Spec.LeaseDurationSeconds) * time.Second
+	c.queue.AddAfter(key, duration)
+
+	// c.logger.Infof("Enqueued a sync for lease on %v after %v ", key, duration)
+}
+
+func isShareManagerLease(obj interface{}) bool {
+	lease, ok := obj.(*coordinationv1.Lease)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			return false
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		lease, ok = deletedState.Obj.(*coordinationv1.Lease)
+		if !ok {
+			return false
+		}
+	}
+
+	smName := lease.Labels[types.GetLonghornLabelKey(types.LonghornLabelShareManager)]
+	return smName != ""
 }
 
 func (c *ShareManagerController) Run(workers int, stopCh <-chan struct{}) {
@@ -334,11 +393,11 @@ func (c *ShareManagerController) syncShareManager(key string) (err error) {
 		}
 	}()
 
-	if err = c.syncShareManagerVolume(sm); err != nil {
+	if err = c.syncShareManagerPod(sm); err != nil {
 		return err
 	}
 
-	if err = c.syncShareManagerPod(sm); err != nil {
+	if err = c.syncShareManagerVolume(sm); err != nil {
 		return err
 	}
 
@@ -589,6 +648,7 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 	// of the share manager pod and need to ensure that the volume gets detached, so that the engine can be stopped as well
 	// we only check for running, since we don't want to nuke valid pods, not schedulable only means no new pods.
 	// in the case of a drain kubernetes will terminate the running pod, which we will mark as error in the sync pod method
+	// TODO - does setting an interim owner mess with this logic?  You would think so.
 	if !c.ds.IsNodeSchedulable(sm.Status.OwnerID) {
 		c.unmountShareManagerVolume(sm)
 
@@ -1219,7 +1279,7 @@ func (c *ShareManagerController) isShareManagerPodStale(sm *longhorn.ShareManage
 	}
 	expireTime := lease.Spec.RenewTime.Add(time.Duration(*lease.Spec.LeaseDurationSeconds) * time.Second)
 	if time.Now().After(expireTime) {
-		log.Warnf("Lease for %v held by %v is stale, expired %v seconds ago", leaseName, *lease.Spec.HolderIdentity, time.Since(expireTime))
+		log.Warnf("Lease for %v held by %v is stale, expired %v ago", leaseName, *lease.Spec.HolderIdentity, time.Since(expireTime))
 		return true, nil
 	}
 
