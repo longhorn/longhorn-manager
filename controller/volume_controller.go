@@ -1059,7 +1059,7 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 
 func (c *VolumeController) cleanupFailedToScheduleReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) (err error) {
 	healthyCount := getHealthyAndActiveReplicaCount(rs)
-	var replicaToCleanUp *longhorn.Replica
+	var replicasToCleanUp []*longhorn.Replica
 
 	if hasReplicaEvictionRequested(rs) {
 		return nil
@@ -1071,21 +1071,19 @@ func (c *VolumeController) cleanupFailedToScheduleReplicas(v *longhorn.Volume, r
 			// immediately. It is better to replenish a new replica without HardNodeAffinity so we can avoid corner
 			// cases like https://github.com/longhorn/longhorn/issues/8522.
 			if isDataLocalityDisabled(v) && r.Spec.HardNodeAffinity != "" {
-				replicaToCleanUp = r
-				break
+				replicasToCleanUp = append(replicasToCleanUp, r)
 			}
 			// Otherwise, only clean up failed to schedule replicas when there are enough existing healthy ones.
 			if healthyCount >= v.Spec.NumberOfReplicas && r.Spec.HardNodeAffinity != v.Status.CurrentNodeID {
-				replicaToCleanUp = r
-				break
+				replicasToCleanUp = append(replicasToCleanUp, r)
 			}
 		}
 	}
 
-	if replicaToCleanUp != nil {
-		logrus.Infof("Cleaning up failed to scheduled replica %v", replicaToCleanUp.Name)
-		if err := c.deleteReplica(replicaToCleanUp, rs); err != nil {
-			return errors.Wrapf(err, "failed to cleanup failed to scheduled replica %v", replicaToCleanUp.Name)
+	for _, r := range replicasToCleanUp {
+		logrus.Infof("Cleaning up failed-to-schedule replica %v", r.Name)
+		if err := c.deleteReplica(r, rs); err != nil {
+			return errors.Wrapf(err, "failed to clean up failed-to-schedule replica %v", r.Name)
 		}
 	}
 
