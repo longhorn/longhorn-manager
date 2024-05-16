@@ -60,9 +60,9 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240511041821-f9fac8fddd51
 	github.com/longhorn/backupstore v0.0.0-20240509144945-3bce6e69af15
-	github.com/longhorn/go-common-libs v0.0.0-20240511041328-e68a6cd889d4
+	github.com/longhorn/go-common-libs v0.0.0-20240514074907-351459694cbf
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240511074247-87672523a862
-	github.com/longhorn/go-spdk-helper v0.0.0-20240511070845-856928309b2c
+	github.com/longhorn/go-spdk-helper v0.0.0-20240514082311-4069f4804017
 	github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240510091613-ac50090f23cc
 	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240510091533-e263d5435089
 	github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240511082734-42ed56aa10e3
@@ -84,12 +84,12 @@ require (
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.30.3
 	k8s.io/apiextensions-apiserver v0.25.4
-	k8s.io/apimachinery v0.30.0
+	k8s.io/apimachinery v0.30.1
 	k8s.io/cli-runtime v0.28.5
 	k8s.io/client-go v0.30.3
 	k8s.io/kubernetes v1.30.0
 	k8s.io/metrics v0.28.5
-	k8s.io/mount-utils v0.30.0
+	k8s.io/mount-utils v0.30.1
 	k8s.io/utils v0.0.0-20240502163921-fe8a2dddb1d0
 	sigs.k8s.io/controller-runtime v0.10.1
 )
@@ -112,7 +112,7 @@ require (
 	golang.org/x/exp v0.0.0-20231219180239-dc181d75b848 // indirect
 	golang.org/x/tools v0.18.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240227224415-6ceb2ff114de // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240227224415-6ceb2ff114de // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240429193739-8cf5692501f6 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
@@ -134,7 +134,7 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
 	github.com/evanphx/json-patch v4.12.0+incompatible // indirect
-	github.com/felixge/httpsnoop v1.0.3 // indirect
+	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/gammazero/deque v0.2.1 // indirect
 	github.com/gammazero/workerpool v1.1.3 // indirect
@@ -221,3 +221,9 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
+
+replace github.com/longhorn/go-spdk-helper v0.0.0-20240514082311-4069f4804017 => github.com/derekbit/go-spdk-helper v0.0.0-20240606090350-913beff2d073
+
+replace github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240510091533-e263d5435089 => github.com/derekbit/longhorn-instance-manager v0.0.0-20240606090852-614e25d483f1
+
+replace github.com/longhorn/types v0.0.0-20240510221052-ab949bbedea3 => github.com/derekbit/longhorn-types v0.0.0-20240605052427-ffacf1b180e6

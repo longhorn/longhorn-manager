@@ -20,18 +20,21 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	InstanceService_InstanceCreate_FullMethodName  = "/imrpc.InstanceService/InstanceCreate"
-	InstanceService_InstanceDelete_FullMethodName  = "/imrpc.InstanceService/InstanceDelete"
-	InstanceService_InstanceGet_FullMethodName     = "/imrpc.InstanceService/InstanceGet"
-	InstanceService_InstanceList_FullMethodName    = "/imrpc.InstanceService/InstanceList"
-	InstanceService_InstanceLog_FullMethodName     = "/imrpc.InstanceService/InstanceLog"
-	InstanceService_InstanceWatch_FullMethodName   = "/imrpc.InstanceService/InstanceWatch"
-	InstanceService_InstanceReplace_FullMethodName = "/imrpc.InstanceService/InstanceReplace"
-	InstanceService_LogSetLevel_FullMethodName     = "/imrpc.InstanceService/LogSetLevel"
-	InstanceService_LogSetFlags_FullMethodName     = "/imrpc.InstanceService/LogSetFlags"
-	InstanceService_LogGetLevel_FullMethodName     = "/imrpc.InstanceService/LogGetLevel"
-	InstanceService_LogGetFlags_FullMethodName     = "/imrpc.InstanceService/LogGetFlags"
-	InstanceService_VersionGet_FullMethodName      = "/imrpc.InstanceService/VersionGet"
+	InstanceService_InstanceCreate_FullMethodName     = "/imrpc.InstanceService/InstanceCreate"
+	InstanceService_InstanceDelete_FullMethodName     = "/imrpc.InstanceService/InstanceDelete"
+	InstanceService_InstanceGet_FullMethodName        = "/imrpc.InstanceService/InstanceGet"
+	InstanceService_InstanceList_FullMethodName       = "/imrpc.InstanceService/InstanceList"
+	InstanceService_InstanceLog_FullMethodName        = "/imrpc.InstanceService/InstanceLog"
+	InstanceService_InstanceWatch_FullMethodName      = "/imrpc.InstanceService/InstanceWatch"
+	InstanceService_InstanceReplace_FullMethodName    = "/imrpc.InstanceService/InstanceReplace"
+	InstanceService_InstanceSuspend_FullMethodName    = "/imrpc.InstanceService/InstanceSuspend"
+	InstanceService_InstanceResume_FullMethodName     = "/imrpc.InstanceService/InstanceResume"
+	InstanceService_InstanceSwitchOver_FullMethodName = "/imrpc.InstanceService/InstanceSwitchOver"
+	InstanceService_LogSetLevel_FullMethodName        = "/imrpc.InstanceService/LogSetLevel"
+	InstanceService_LogSetFlags_FullMethodName        = "/imrpc.InstanceService/LogSetFlags"
+	InstanceService_LogGetLevel_FullMethodName        = "/imrpc.InstanceService/LogGetLevel"
+	InstanceService_LogGetFlags_FullMethodName        = "/imrpc.InstanceService/LogGetFlags"
+	InstanceService_VersionGet_FullMethodName         = "/imrpc.InstanceService/VersionGet"
 )
 
 // InstanceServiceClient is the client API for InstanceService service.
@@ -45,6 +48,9 @@ type InstanceServiceClient interface {
 	InstanceLog(ctx context.Context, in *InstanceLogRequest, opts ...grpc.CallOption) (InstanceService_InstanceLogClient, error)
 	InstanceWatch(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (InstanceService_InstanceWatchClient, error)
 	InstanceReplace(ctx context.Context, in *InstanceReplaceRequest, opts ...grpc.CallOption) (*InstanceResponse, error)
+	InstanceSuspend(ctx context.Context, in *InstanceSuspendRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	InstanceResume(ctx context.Context, in *InstanceResumeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	InstanceSwitchOver(ctx context.Context, in *InstanceSwitchOverRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	LogSetLevel(ctx context.Context, in *LogSetLevelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	LogSetFlags(ctx context.Context, in *LogSetFlagsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	LogGetLevel(ctx context.Context, in *LogGetLevelRequest, opts ...grpc.CallOption) (*LogGetLevelResponse, error)
@@ -169,6 +175,33 @@ func (c *instanceServiceClient) InstanceReplace(ctx context.Context, in *Instanc
 	return out, nil
 }
 
+func (c *instanceServiceClient) InstanceSuspend(ctx context.Context, in *InstanceSuspendRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, InstanceService_InstanceSuspend_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *instanceServiceClient) InstanceResume(ctx context.Context, in *InstanceResumeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, InstanceService_InstanceResume_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *instanceServiceClient) InstanceSwitchOver(ctx context.Context, in *InstanceSwitchOverRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, InstanceService_InstanceSwitchOver_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *instanceServiceClient) LogSetLevel(ctx context.Context, in *LogSetLevelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, InstanceService_LogSetLevel_FullMethodName, in, out, opts...)
@@ -225,6 +258,9 @@ type InstanceServiceServer interface {
 	InstanceLog(*InstanceLogRequest, InstanceService_InstanceLogServer) error
 	InstanceWatch(*emptypb.Empty, InstanceService_InstanceWatchServer) error
 	InstanceReplace(context.Context, *InstanceReplaceRequest) (*InstanceResponse, error)
+	InstanceSuspend(context.Context, *InstanceSuspendRequest) (*emptypb.Empty, error)
+	InstanceResume(context.Context, *InstanceResumeRequest) (*emptypb.Empty, error)
+	InstanceSwitchOver(context.Context, *InstanceSwitchOverRequest) (*emptypb.Empty, error)
 	LogSetLevel(context.Context, *LogSetLevelRequest) (*emptypb.Empty, error)
 	LogSetFlags(context.Context, *LogSetFlagsRequest) (*emptypb.Empty, error)
 	LogGetLevel(context.Context, *LogGetLevelRequest) (*LogGetLevelResponse, error)
@@ -257,6 +293,15 @@ func (UnimplementedInstanceServiceServer) InstanceWatch(*emptypb.Empty, Instance
 }
 func (UnimplementedInstanceServiceServer) InstanceReplace(context.Context, *InstanceReplaceRequest) (*InstanceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method InstanceReplace not implemented")
+}
+func (UnimplementedInstanceServiceServer) InstanceSuspend(context.Context, *InstanceSuspendRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method InstanceSuspend not implemented")
+}
+func (UnimplementedInstanceServiceServer) InstanceResume(context.Context, *InstanceResumeRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method InstanceResume not implemented")
+}
+func (UnimplementedInstanceServiceServer) InstanceSwitchOver(context.Context, *InstanceSwitchOverRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method InstanceSwitchOver not implemented")
 }
 func (UnimplementedInstanceServiceServer) LogSetLevel(context.Context, *LogSetLevelRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method LogSetLevel not implemented")
@@ -418,6 +463,60 @@ func _InstanceService_InstanceReplace_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _InstanceService_InstanceSuspend_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InstanceSuspendRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InstanceServiceServer).InstanceSuspend(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InstanceService_InstanceSuspend_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InstanceServiceServer).InstanceSuspend(ctx, req.(*InstanceSuspendRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _InstanceService_InstanceResume_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InstanceResumeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InstanceServiceServer).InstanceResume(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InstanceService_InstanceResume_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InstanceServiceServer).InstanceResume(ctx, req.(*InstanceResumeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _InstanceService_InstanceSwitchOver_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InstanceSwitchOverRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InstanceServiceServer).InstanceSwitchOver(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InstanceService_InstanceSwitchOver_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InstanceServiceServer).InstanceSwitchOver(ctx, req.(*InstanceSwitchOverRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _InstanceService_LogSetLevel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(LogSetLevelRequest)
 	if err := dec(in); err != nil {
@@ -534,6 +633,18 @@ var InstanceService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "InstanceReplace",
 			Handler:    _InstanceService_InstanceReplace_Handler,
+		},
+		{
+			MethodName: "InstanceSuspend",
+			Handler:    _InstanceService_InstanceSuspend_Handler,
+		},
+		{
+			MethodName: "InstanceResume",
+			Handler:    _InstanceService_InstanceResume_Handler,
+		},
+		{
+			MethodName: "InstanceSwitchOver",
+			Handler:    _InstanceService_InstanceSwitchOver_Handler,
 		},
 		{
 			MethodName: "LogSetLevel",
