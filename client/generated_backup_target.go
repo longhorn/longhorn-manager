@@ -13,9 +13,15 @@ type BackupTarget struct {
 
 	CredentialSecret string `json:"credentialSecret,omitempty" yaml:"credential_secret,omitempty"`
 
+	Default bool `json:"default,omitempty" yaml:"default,omitempty"`
+
 	Message string `json:"message,omitempty" yaml:"message,omitempty"`
 
+	Name string `json:"name,omitempty" yaml:"name,omitempty"`
+
 	PollInterval string `json:"pollInterval,omitempty" yaml:"poll_interval,omitempty"`
+
+	ReadOnly bool `json:"readOnly,omitempty" yaml:"read_only,omitempty"`
 }
 
 type BackupTargetCollection struct {

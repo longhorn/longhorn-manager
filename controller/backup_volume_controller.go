@@ -223,17 +223,13 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 
 	// Examine DeletionTimestamp to determine if object is under deletion
 	if !backupVolume.DeletionTimestamp.IsZero() {
-		backupsOfVolume, err := bvc.ds.ListBackupsWithBackupVolumeName(backupVolume.Spec.VolumeName)
+		backupsOfVolume, err := bvc.ds.ListBackupsWithBackupVolumeNameRO(backupVolume.Name)
 		if err != nil {
-			return errors.Wrap(err, "failed to get backups by volume name")
+			return errors.Wrap(err, "failed to get backups by backup volume name")
 		}
 
-		for backupName := range backupsOfVolume {
-			backupObj, err := bvc.ds.GetBackupRO(backupName)
-			if err != nil {
-				return errors.Wrap(err, "failed to get the backup")
-			}
-			if backupObj.Spec.BackupTargetURL != backupVolume.Spec.BackupTargetURL {
+		for backupName, backupObj := range backupsOfVolume {
+			if backupObj.Spec.BackupTargetURL != backupVolume.Spec.BackupTargetURL || !backupObj.DeletionTimestamp.IsZero() {
 				continue
 			}
 			if err := bvc.ds.DeleteBackup(backupName); err != nil {
@@ -294,7 +290,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	backupStoreBackups := sets.NewString(res...)
 
 	// Get a list of all the backups that exist as custom resources in the cluster
-	clusterBackups, err := bvc.ds.ListBackupsWithBackupVolumeName(backupVolume.Spec.VolumeName)
+	clusterBackups, err := bvc.ds.ListBackupsWithBackupVolumeNameRO(backupVolume.Name)
 	if err != nil {
 		log.WithError(err).Error("Failed to list backups in the cluster")
 		return err
