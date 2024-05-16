@@ -3589,6 +3589,11 @@ func (s *DataStore) CreateBackupTarget(backupTarget *longhorn.BackupTarget) (*lo
 	return ret.DeepCopy(), nil
 }
 
+// ListBackupTargetsRO returns a list contains all backup targets read-only in the cluster BackupTargets CR
+func (s *DataStore) ListBackupTargetsRO() ([]*longhorn.BackupTarget, error) {
+	return s.backupTargetLister.BackupTargets(s.namespace).List(labels.Everything())
+}
+
 // ListBackupTargets returns an object contains all backup targets in the cluster BackupTargets CR
 func (s *DataStore) ListBackupTargets() (map[string]*longhorn.BackupTarget, error) {
 	list, err := s.backupTargetLister.BackupTargets(s.namespace).List(labels.Everything())
@@ -3611,6 +3616,21 @@ func (s *DataStore) GetDefaultBackupTargetRO() (*longhorn.BackupTarget, error) {
 // GetBackupTargetRO returns the BackupTarget with the given backup target name in the cluster
 func (s *DataStore) GetBackupTargetRO(backupTargetName string) (*longhorn.BackupTarget, error) {
 	return s.backupTargetLister.BackupTargets(s.namespace).Get(backupTargetName)
+}
+
+// GetBackupTargetWithURLRO returns a read-only BackupTarget with the given backup target URL in the cluster
+func (s *DataStore) GetBackupTargetWithURLRO(backupTargetURL string) (*longhorn.BackupTarget, error) {
+	list, err := s.ListBackupTargetsRO()
+	if err != nil {
+		return nil, err
+	}
+	for _, bt := range list {
+		if bt.Spec.BackupTargetURL == backupTargetURL {
+			return bt, nil
+		}
+	}
+
+	return nil, apierrors.NewNotFound(longhorn.Resource("backuptarget"), backupTargetURL)
 }
 
 // GetBackupTarget returns a copy of BackupTarget with the given backup target name in the cluster
