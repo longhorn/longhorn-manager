@@ -4064,6 +4064,12 @@ func (c *VolumeController) isResponsibleFor(v *longhorn.Volume, defaultEngineIma
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
+	// If there is a share manager and it has an owner, we should use that too.
+	sm, err := c.ds.GetShareManager(v.Name)
+	if err == nil && sm != nil {
+		return c.controllerID == sm.Status.OwnerID, nil
+	}
+
 	isResponsible := isControllerResponsibleFor(c.controllerID, c.ds, v.Name, v.Spec.NodeID, v.Status.OwnerID)
 
 	if types.IsDataEngineV1(v.Spec.DataEngine) {
