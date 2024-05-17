@@ -42,7 +42,6 @@ type ShareManagerController struct {
 	namespace      string
 	controllerID   string
 	serviceAccount string
-	staleNode      string
 
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
@@ -50,6 +49,8 @@ type ShareManagerController struct {
 	ds *datastore.DataStore
 
 	cacheSyncs []cache.InformerSynced
+
+	staleNodeMap map[string]string
 }
 
 func NewShareManagerController(
@@ -79,6 +80,8 @@ func NewShareManagerController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-share-manager-controller"}),
 
 		ds: ds,
+
+		staleNodeMap: map[string]string{},
 	}
 
 	var err error
@@ -716,7 +719,7 @@ func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManage
 	}
 	if leaseExpired {
 		// Remember this node so we can avoid it in the new pod we will create.
-		c.staleNode = leaseHolder
+		c.staleNodeMap[sm.Name] = leaseHolder
 	}
 
 	// Clear the lease holder.  Staleness is now either dealt with or moot.
@@ -1050,9 +1053,10 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 		}
 	}
 
-	if c.staleNode != "" {
-		affinity = c.addStaleNodeAntiAffinity(affinity, c.staleNode)
-		c.staleNode = ""
+	staleNode := c.staleNodeMap[sm.Name]
+	if staleNode != "" {
+		affinity = c.addStaleNodeAntiAffinity(affinity, staleNode)
+		delete(c.staleNodeMap, sm.Name)
 	}
 
 	fsType := pv.Spec.CSI.FSType
