@@ -1522,6 +1522,8 @@ spec:
               snapshotMaxSize:
                 format: int64
                 type: string
+              targetNodeID:
+                type: string
               unmapMarkSnapChainRemovedEnabled:
                 type: boolean
               upgradedReplicaAddressMap:
@@ -1608,6 +1610,8 @@ spec:
                 format: int64
                 type: string
               currentState:
+                type: string
+              currentTargetNodeID:
                 type: string
               endpoint:
                 type: string
@@ -2711,6 +2715,8 @@ spec:
               snapshotMaxSize:
                 format: int64
                 type: string
+              targetNodeID:
+                type: string
               unmapMarkDiskChainRemovedEnabled:
                 type: boolean
               volumeName:
@@ -2749,6 +2755,8 @@ spec:
               currentImage:
                 type: string
               currentState:
+                type: string
+              currentTargetNodeID:
                 type: string
               evictionRequested:
                 description: 'Deprecated: Replaced by field `spec.evictionRequested`.'

@@ -92,6 +92,8 @@ type InstanceSpec struct {
 	// +kubebuilder:validation:Enum=v1;v2
 	// +optional
 	DataEngine DataEngineType `json:"dataEngine"`
+	// +optional
+	TargetNodeID string `json:"targetNodeID"`
 }
 
 type InstanceStatus struct {
@@ -118,6 +120,8 @@ type InstanceStatus struct {
 	// +optional
 	// +nullable
 	Conditions []Condition `json:"conditions"`
+	// +optional
+	CurrentTargetNodeID string `json:"currentTargetNodeID"`
 }
 
 type InstanceProcessStatus struct {
