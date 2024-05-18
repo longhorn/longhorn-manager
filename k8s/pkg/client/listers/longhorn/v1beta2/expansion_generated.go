@@ -178,6 +178,14 @@ type SystemRestoreListerExpansion interface{}
 // SystemRestoreNamespaceLister.
 type SystemRestoreNamespaceListerExpansion interface{}
 
+// UpgradeListerExpansion allows custom methods to be added to
+// UpgradeLister.
+type UpgradeListerExpansion interface{}
+
+// UpgradeNamespaceListerExpansion allows custom methods to be added to
+// UpgradeNamespaceLister.
+type UpgradeNamespaceListerExpansion interface{}
+
 // VolumeListerExpansion allows custom methods to be added to
 // VolumeLister.
 type VolumeListerExpansion interface{}

@@ -130,6 +130,9 @@ type NodeSpec struct {
 	Tags []string `json:"tags"`
 	// +optional
 	InstanceManagerCPURequest int `json:"instanceManagerCPURequest"`
+	// Request to upgrade the instance manager for v2 volumes on the node.
+	// +optional
+	UpgradeRequested bool `json:"upgradeRequested"`
 }
 
 // NodeStatus defines the observed state of the Longhorn node

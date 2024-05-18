@@ -58,12 +58,13 @@ type InstanceProcessSpec struct {
 type InstanceState string
 
 const (
-	InstanceStateRunning  = InstanceState("running")
-	InstanceStateStopped  = InstanceState("stopped")
-	InstanceStateError    = InstanceState("error")
-	InstanceStateStarting = InstanceState("starting")
-	InstanceStateStopping = InstanceState("stopping")
-	InstanceStateUnknown  = InstanceState("unknown")
+	InstanceStateRunning   = InstanceState("running")
+	InstanceStateStopped   = InstanceState("stopped")
+	InstanceStateError     = InstanceState("error")
+	InstanceStateStarting  = InstanceState("starting")
+	InstanceStateStopping  = InstanceState("stopping")
+	InstanceStateUnknown   = InstanceState("unknown")
+	InstanceStateSuspended = InstanceState("suspended")
 )
 
 type InstanceSpec struct {
@@ -151,6 +152,9 @@ type InstanceManagerSpec struct {
 	Type InstanceManagerType `json:"type"`
 	// +optional
 	DataEngine DataEngineType `json:"dataEngine"`
+	// +kubebuilder:validation:Enum=running;stopped
+	// +optional
+	DesireState InstanceManagerState `json:"desireState"`
 }
 
 // InstanceManagerStatus defines the observed state of the Longhorn instance manager

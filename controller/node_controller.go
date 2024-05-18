@@ -176,6 +176,18 @@ func NewNodeController(
 	}
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.KubeNodeInformer.HasSynced)
 
+	if _, err = ds.InstanceManagerInformer.AddEventHandlerWithResyncPeriod(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: nc.isResponsibleForInstanceManager,
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc:    func(cur interface{}) { nc.enqueueInstanceManager(cur) },
+				UpdateFunc: func(old, cur interface{}) { nc.enqueueInstanceManager(cur) },
+			},
+		}, 0); err != nil {
+		return nil, err
+	}
+	nc.cacheSyncs = append(nc.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
+
 	return nc, nil
 }
 
@@ -238,6 +250,14 @@ func (nc *NodeController) isResponsibleForSnapshot(obj interface{}) bool {
 	}
 
 	return nc.snapshotHashRequired(volume)
+}
+
+func (nc *NodeController) isResponsibleForInstanceManager(obj interface{}) bool {
+	im, ok := obj.(*longhorn.InstanceManager)
+	if !ok {
+		return false
+	}
+	return im.Spec.NodeID == nc.controllerID
 }
 
 func (nc *NodeController) snapshotHashRequired(volume *longhorn.Volume) bool {
@@ -696,6 +716,31 @@ func (nc *NodeController) enqueueManagerPod(obj interface{}) {
 	}
 }
 
+func (nc *NodeController) enqueueInstanceManager(obj interface{}) {
+	im, ok := obj.(*longhorn.InstanceManager)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+		// use the last known state, to enqueue, dependent objects
+		im, ok = deletedState.Obj.(*longhorn.InstanceManager)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	node, err := nc.ds.GetNodeRO(im.Spec.NodeID)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to get node %v since %v", im.Spec.NodeID, err))
+		return
+	}
+
+	nc.enqueueNode(node)
+}
+
 func (nc *NodeController) enqueueKubernetesNode(obj interface{}) {
 	kubernetesNode, ok := obj.(*corev1.Node)
 	if !ok {
@@ -1126,6 +1171,21 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 					if err := nc.ds.DeleteInstanceManager(im.Name); err != nil {
 						return err
 					}
+
+					if types.IsDataEngineV2(dataEngine) {
+						im, err := nc.ds.GetDefaultInstanceManagerByNodeRO(nc.controllerID, dataEngine)
+						if err != nil {
+							return errors.Wrap(err, "failed to get default instance manager for v2 data engine")
+						}
+
+						if im.Spec.DesireState != longhorn.InstanceManagerStateRunning {
+							nc.logger.Infof("Updating default instance manager %v to running state for v2 data engine", im.Name)
+							im.Spec.DesireState = longhorn.InstanceManagerStateRunning
+							if _, err := nc.ds.UpdateInstanceManager(im); err != nil {
+								return errors.Wrap(err, "failed to update default instance manager for v2 data engine")
+							}
+						}
+					}
 				}
 			}
 			if !defaultInstanceManagerCreated && imType == longhorn.InstanceManagerTypeAllInOne {
@@ -1133,6 +1193,8 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 				if err != nil {
 					return err
 				}
+
+				desireState := longhorn.InstanceManagerStateRunning
 				if types.IsDataEngineV2(dataEngine) {
 					disabled, err := nc.ds.IsV2DataEngineDisabledForNode(node.Name)
 					if err != nil {
@@ -1141,10 +1203,25 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 					if disabled {
 						continue
 					}
+
+					ims, err := nc.ds.ListInstanceManagersBySelectorRO(nc.controllerID, "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
+					if err != nil {
+						return errors.Wrap(err, "failed to list instance managers for v2 data engine")
+					}
+					foundRunningInstanceManager := false
+					for _, im := range ims {
+						if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+							foundRunningInstanceManager = true
+							break
+						}
+					}
+					if foundRunningInstanceManager {
+						desireState = longhorn.InstanceManagerStateStopped
+					}
 				}
 
-				log.Infof("Creating default instance manager %v, image: %v, dataEngine: %v", imName, defaultInstanceManagerImage, dataEngine)
-				if _, err := nc.createInstanceManager(node, imName, defaultInstanceManagerImage, imType, dataEngine); err != nil {
+				log.Infof("Creating default instance manager %v, image: %v, dataEngine: %v, desireState: %v", imName, defaultInstanceManagerImage, dataEngine, desireState)
+				if _, err := nc.createInstanceManager(node, imName, defaultInstanceManagerImage, imType, dataEngine, desireState); err != nil {
 					return err
 				}
 			}
@@ -1153,16 +1230,17 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 	return nil
 }
 
-func (nc *NodeController) createInstanceManager(node *longhorn.Node, imName, imImage string, imType longhorn.InstanceManagerType, dataEngine longhorn.DataEngineType) (*longhorn.InstanceManager, error) {
+func (nc *NodeController) createInstanceManager(node *longhorn.Node, imName, imImage string, imType longhorn.InstanceManagerType, dataEngine longhorn.DataEngineType, desireState longhorn.InstanceManagerState) (*longhorn.InstanceManager, error) {
 	instanceManager := &longhorn.InstanceManager{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: imName,
 		},
 		Spec: longhorn.InstanceManagerSpec{
-			Image:      imImage,
-			NodeID:     node.Name,
-			Type:       imType,
-			DataEngine: dataEngine,
+			Image:       imImage,
+			NodeID:      node.Name,
+			Type:        imType,
+			DataEngine:  dataEngine,
+			DesireState: desireState,
 		},
 	}
 
