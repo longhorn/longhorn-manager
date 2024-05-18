@@ -12,6 +12,8 @@ const (
 	EventReasonStop              = "Stop"
 	EventReasonFailedStopping    = "FailedStopping"
 	EventReasonUpdate            = "Update"
+	EventReasonSuspend           = "Suspend"
+	EventReasonFailedSuspending  = "FailedSuspending"
 
 	EventReasonRebuilt          = "Rebuilt"
 	EventReasonRebuilding       = "Rebuilding"

@@ -39,6 +39,7 @@ type InstanceManagerHandler interface {
 	CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error)
 	DeleteInstance(obj interface{}) error
 	LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error)
+	SuspendInstance(obj interface{}) error
 }
 
 func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler InstanceManagerHandler, eventRecorder record.EventRecorder) *InstanceHandler {
@@ -82,7 +83,9 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			}
 			status.CurrentState = longhorn.InstanceStateError
 		} else {
-			status.CurrentState = longhorn.InstanceStateStopped
+			if status.CurrentState != longhorn.InstanceStateSuspended {
+				status.CurrentState = longhorn.InstanceStateStopped
+			}
 		}
 		status.CurrentImage = ""
 		status.IP = ""
@@ -115,7 +118,9 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			}
 			status.CurrentState = longhorn.InstanceStateError
 		} else {
-			status.CurrentState = longhorn.InstanceStateStopped
+			if status.CurrentState != longhorn.InstanceStateSuspended {
+				status.CurrentState = longhorn.InstanceStateStopped
+			}
 		}
 		status.CurrentImage = ""
 		status.IP = ""
@@ -178,7 +183,8 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			status.CurrentImage = spec.Image
 		}
 		h.syncInstanceCondition(instance, status)
-
+	case longhorn.InstanceStateSuspended:
+		status.CurrentState = longhorn.InstanceStateSuspended
 	case longhorn.InstanceStateStopping:
 		if status.Started {
 			status.CurrentState = longhorn.InstanceStateError
@@ -239,6 +245,15 @@ func (h *InstanceHandler) getNameFromObj(obj runtime.Object) (string, error) {
 	return metadata.GetName(), nil
 }
 
+func (h *InstanceHandler) getInstanceManagerRO(obj interface{}, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus) (*longhorn.InstanceManager, error) {
+	// Only happen when upgrading instance-manager image
+	if spec.DesireState == longhorn.InstanceStateRunning && status.CurrentState == longhorn.InstanceStateSuspended {
+		return h.ds.GetRunningInstanceManagerByNodeRO(spec.NodeID, spec.DataEngine)
+	}
+
+	return h.ds.GetInstanceManagerByInstanceRO(obj)
+}
+
 func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus) (err error) {
 	runtimeObj, ok := obj.(runtime.Object)
 	if !ok {
@@ -248,6 +263,8 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 	if err != nil {
 		return err
 	}
+
+	log := logrus.WithField("instance", instanceName)
 
 	isCLIAPIVersionOne := false
 	if types.IsDataEngineV1(spec.DataEngine) {
@@ -284,7 +301,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 				return err
 			}
 			if !isNodeDownOrDeleted {
-				im, err = h.ds.GetInstanceManagerByInstanceRO(obj)
+				im, err = h.getInstanceManagerRO(obj, spec, status)
 				if err != nil {
 					return errors.Wrapf(err, "failed to get instance manager for instance %v", instanceName)
 				}
@@ -296,11 +313,11 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		if !status.LogFetched {
 			// No need to get the log for instance manager if the data engine is not "longhorn"
 			if types.IsDataEngineV1(spec.DataEngine) {
-				logrus.Warnf("Getting requested log for %v in instance manager %v", instanceName, status.InstanceManagerName)
+				log.Warnf("Getting requested log for %v in instance manager %v", instanceName, status.InstanceManagerName)
 				if im == nil {
-					logrus.Warnf("Failed to get the log for %v due to Instance Manager is already gone", status.InstanceManagerName)
+					log.Warnf("Failed to get the log for %v due to Instance Manager is already gone", status.InstanceManagerName)
 				} else if err := h.printInstanceLogs(instanceName, runtimeObj); err != nil {
-					logrus.WithError(err).Warnf("Failed to get requested log for instance %v on node %v", instanceName, im.Spec.NodeID)
+					log.WithError(err).Warnf("Failed to get requested log for instance %v on node %v", instanceName, im.Spec.NodeID)
 				}
 			}
 			status.LogFetched = true
@@ -342,7 +359,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 
 		// there is a delay between createInstance() invocation and InstanceManager update,
 		// createInstance() may be called multiple times.
-		if status.CurrentState != longhorn.InstanceStateStopped {
+		if status.CurrentState != longhorn.InstanceStateStopped && status.CurrentState != longhorn.InstanceStateSuspended {
 			break
 		}
 
@@ -383,11 +400,19 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 			}
 		}
 		status.Started = false
+	case longhorn.InstanceStateSuspended:
+		err := h.suspendInstance(instanceName, spec.DataEngine, runtimeObj)
+		if err != nil {
+			return err
+		}
+		status.CurrentState = longhorn.InstanceStateSuspended
+		status.Started = false
 	default:
 		return fmt.Errorf("BUG: unknown instance desire state: desire %v", spec.DesireState)
 	}
 
 	h.syncStatusWithInstanceManager(im, instanceName, spec, status, instances)
+
 	switch status.CurrentState {
 	case longhorn.InstanceStateRunning:
 		// If `spec.DesireState` is `longhorn.InstanceStateStopped`, `spec.NodeID` has been unset by volume controller.
@@ -475,7 +500,7 @@ func (h *InstanceHandler) createInstance(instanceName string, dataEngine longhor
 		return nil
 	}
 	if !types.ErrorIsNotFound(err) && !(types.IsDataEngineV2(dataEngine) && types.ErrorIsStopped(err)) {
-		return errors.Wrapf(err, "Failed to get instance process %v", instanceName)
+		return errors.Wrapf(err, "failed to get instance %v", instanceName)
 	}
 
 	logrus.Infof("Creating instance %v", instanceName)
@@ -500,6 +525,26 @@ func (h *InstanceHandler) deleteInstance(instanceName string, obj runtime.Object
 		return err
 	}
 	h.eventRecorder.Eventf(obj, corev1.EventTypeNormal, constant.EventReasonStop, "Stops %v", instanceName)
+
+	return nil
+}
+
+func (h *InstanceHandler) suspendInstance(instanceName string, dataEngine longhorn.DataEngineType, obj runtime.Object) error {
+	logrus.Infof("Suspending instance %v", instanceName)
+
+	if types.IsDataEngineV1(dataEngine) {
+		return fmt.Errorf("suspending instance is not supported for data engine %v", dataEngine)
+	}
+
+	if _, err := h.instanceManagerHandler.GetInstance(obj); err != nil {
+		return errors.Wrapf(err, "failed to get instance %v for suspension", instanceName)
+	}
+
+	if err := h.instanceManagerHandler.SuspendInstance(obj); err != nil {
+		return errors.Wrapf(err, "failed to suspend instance %v", instanceName)
+	}
+
+	h.eventRecorder.Eventf(obj, corev1.EventTypeNormal, constant.EventReasonSuspend, "Suspends %v", instanceName)
 
 	return nil
 }

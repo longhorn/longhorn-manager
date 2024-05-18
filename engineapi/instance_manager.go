@@ -440,6 +440,7 @@ type EngineInstanceCreateRequest struct {
 	DataLocality                     longhorn.DataLocality
 	ImIP                             string
 	EngineCLIAPIVersion              int
+	UpgradeRequired                  bool
 }
 
 // EngineInstanceCreate creates a new engine instance
@@ -494,6 +495,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 		Engine: imclient.EngineCreateRequest{
 			ReplicaAddressMap: replicaAddresses,
 			Frontend:          frontend,
+			UpgradeRequired:   req.UpgradeRequired,
 		},
 	})
 

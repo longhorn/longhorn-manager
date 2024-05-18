@@ -72,6 +72,10 @@ func (imh *MockInstanceManagerHandler) DeleteInstance(obj interface{}) error {
 	return nil
 }
 
+func (imh *MockInstanceManagerHandler) SuspendInstance(obj interface{}) error {
+	return fmt.Errorf("SuspendInstance is not mocked")
+}
+
 func (imh *MockInstanceManagerHandler) LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error) {
 	return nil, nil, fmt.Errorf("LogInstance is not mocked")
 }
