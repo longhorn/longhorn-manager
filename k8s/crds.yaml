@@ -3972,6 +3972,8 @@ spec:
                 type: string
               staleReplicaTimeout:
                 type: integer
+              targetNodeID:
+                type: string
               unmapMarkSnapChainRemoved:
                 enum:
                 - ignored
@@ -4024,6 +4026,8 @@ spec:
                 description: the node that this volume is currently migrating to
                 type: string
               currentNodeID:
+                type: string
+              currentTargetNodeID:
                 type: string
               expansionRequired:
                 type: boolean
