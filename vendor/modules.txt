@@ -72,7 +72,7 @@ github.com/emicklei/go-restful/v3/log
 # github.com/evanphx/json-patch v4.12.0+incompatible
 ## explicit
 github.com/evanphx/json-patch
-# github.com/felixge/httpsnoop v1.0.3
+# github.com/felixge/httpsnoop v1.0.4
 ## explicit; go 1.13
 github.com/felixge/httpsnoop
 # github.com/fsnotify/fsnotify v1.7.0
@@ -223,8 +223,8 @@ github.com/kubernetes-csi/csi-lib-utils/protosanitizer
 # github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de
 ## explicit
 github.com/liggitt/tabwriter
-# github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240511041821-f9fac8fddd51
-## explicit; go 1.21
+# github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240513050229-901c2170abd2
+## explicit; go 1.22
 github.com/longhorn/backing-image-manager/api
 github.com/longhorn/backing-image-manager/pkg/client
 github.com/longhorn/backing-image-manager/pkg/meta
@@ -239,7 +239,7 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20240511041328-e68a6cd889d4
+# github.com/longhorn/go-common-libs v0.0.0-20240514074907-351459694cbf
 ## explicit; go 1.22.0
 github.com/longhorn/go-common-libs/exec
 github.com/longhorn/go-common-libs/io
@@ -253,26 +253,28 @@ github.com/longhorn/go-common-libs/utils
 # github.com/longhorn/go-iscsi-helper v0.0.0-20240511074247-87672523a862
 ## explicit; go 1.22.0
 github.com/longhorn/go-iscsi-helper/iscsi
+github.com/longhorn/go-iscsi-helper/iscsidev
+github.com/longhorn/go-iscsi-helper/longhorndev
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.0.0-20240511070845-856928309b2c
+# github.com/longhorn/go-spdk-helper v0.0.0-20240514082311-4069f4804017
 ## explicit; go 1.22.0
 github.com/longhorn/go-spdk-helper/pkg/types
-# github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240510091613-ac50090f23cc
+# github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240514224711-e39b7f0313b2
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-engine/pkg/interceptor
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240510091533-e263d5435089
+# github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240518031349-846c2f06887b
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
 github.com/longhorn/longhorn-instance-manager/pkg/meta
 github.com/longhorn/longhorn-instance-manager/pkg/types
 github.com/longhorn/longhorn-instance-manager/pkg/util
-# github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240511082734-42ed56aa10e3
+# github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240518040159-dc8535e54ff9
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
@@ -664,7 +666,7 @@ google.golang.org/genproto/googleapis/api
 google.golang.org/genproto/googleapis/api/annotations
 google.golang.org/genproto/googleapis/api/expr/v1alpha1
 google.golang.org/genproto/googleapis/api/httpbody
-# google.golang.org/genproto/googleapis/rpc v0.0.0-20240227224415-6ceb2ff114de
+# google.golang.org/genproto/googleapis/rpc v0.0.0-20240429193739-8cf5692501f6
 ## explicit; go 1.19
 google.golang.org/genproto/googleapis/rpc/errdetails
 google.golang.org/genproto/googleapis/rpc/status
@@ -1498,7 +1500,7 @@ k8s.io/kube-openapi/pkg/validation/strfmt/bson
 # k8s.io/kubelet v0.0.0 => k8s.io/kubelet v0.30.0
 ## explicit; go 1.22.0
 k8s.io/kubelet/pkg/apis
-# k8s.io/kubernetes v1.30.0
+# k8s.io/kubernetes v1.30.1
 ## explicit; go 1.22.0
 k8s.io/kubernetes/pkg/api/legacyscheme
 k8s.io/kubernetes/pkg/api/service
@@ -1530,7 +1532,7 @@ k8s.io/metrics/pkg/client/clientset/versioned
 k8s.io/metrics/pkg/client/clientset/versioned/scheme
 k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1alpha1
 k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1beta1
-# k8s.io/mount-utils v0.30.0 => k8s.io/mount-utils v0.30.0
+# k8s.io/mount-utils v0.30.1 => k8s.io/mount-utils v0.30.0
 ## explicit; go 1.22.0
 k8s.io/mount-utils
 # k8s.io/utils v0.0.0-20240502163921-fe8a2dddb1d0
