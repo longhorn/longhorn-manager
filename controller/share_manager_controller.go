@@ -906,12 +906,14 @@ func (c *ShareManagerController) addStaleNodeAntiAffinity(affinity *corev1.Affin
 		Values:   []string{staleNode},
 	})
 
+	// Note the difference between MatchFields and MatchExpressions.
+	//See https://stackoverflow.com/questions/67018171/kubernetes-what-are-valid-node-fields
 	nodeAntiAffinity := &corev1.NodeAffinity{
 		PreferredDuringSchedulingIgnoredDuringExecution: []corev1.PreferredSchedulingTerm{
 			corev1.PreferredSchedulingTerm{
 				Weight: 100,
 				Preference: corev1.NodeSelectorTerm{
-					MatchExpressions: matchFields,
+					MatchFields: matchFields,
 				},
 			},
 		},

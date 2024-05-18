@@ -2151,6 +2151,13 @@ func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineIm
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
+	// If there is a share manager and it has an owner, we should use that too.
+	// TODO - for this to be useful, we need to have a share manager informer to kick us.
+	// sm, err := ec.ds.GetShareManager(e.Spec.VolumeName)
+	// if err == nil && sm != nil {
+	// 		return ec.controllerID == sm.Status.OwnerID, nil
+	// 	}
+
 	isResponsible := isControllerResponsibleFor(ec.controllerID, ec.ds, e.Name, e.Spec.NodeID, e.Status.OwnerID)
 
 	// The engine is not running, the owner node doesn't need to have e.Status.CurrentImage
