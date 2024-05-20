@@ -651,7 +651,6 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 	// of the share manager pod and need to ensure that the volume gets detached, so that the engine can be stopped as well
 	// we only check for running, since we don't want to nuke valid pods, not schedulable only means no new pods.
 	// in the case of a drain kubernetes will terminate the running pod, which we will mark as error in the sync pod method
-	// TODO - does setting an interim owner mess with this logic?  You would think so.
 	if !c.ds.IsNodeSchedulable(sm.Status.OwnerID) {
 		c.unmountShareManagerVolume(sm)
 
@@ -725,7 +724,7 @@ func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManage
 	// Clear the lease holder.  Staleness is now either dealt with or moot.
 	err = c.clearShareManagerLeaseHolder(sm)
 	if err != nil {
-		log.WithError(err).Warnf("Failed to check isShareManagerPodStale(%v) when cleanupShareManagerPod", sm.Name)
+		log.WithError(err).Warnf("Failed to clear lease holder for share manager (%v) when cleanupShareManagerPod", sm.Name)
 	}
 
 	podName := types.GetShareManagerPodNameFromShareManagerName(sm.Name)
@@ -740,6 +739,7 @@ func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManage
 
 	log.Infof("Deleting share manager pod")
 	if err := c.ds.DeletePod(podName); err != nil && !apierrors.IsNotFound(err) {
+		log.WithError(err).Warnf("Failed to delete share manager pod")
 		return err
 	}
 
