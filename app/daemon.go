@@ -143,22 +143,30 @@ func startManager(c *cli.Context) error {
 
 	logger := logrus.StandardLogger().WithField("node", currentNodeID)
 
-	clients, err := client.NewClients(kubeconfigPath, ctx.Done())
-	if err != nil {
-		return err
-	}
-
 	// Conversion webhook needs to be started first since we use its port 9501 as readiness port.
 	// longhorn-manager pod becomes ready only when conversion webhook is running.
 	// The services in the longhorn-manager can then start to receive the requests.
-	webhookTypes := []string{types.WebhookTypeConversion, types.WebhookTypeAdmission}
-	for _, webhookType := range webhookTypes {
-		if err := webhook.StartWebhook(ctx, webhookType, clients); err != nil {
-			return err
-		}
-		if err := webhook.CheckWebhookServiceAvailability(webhookType); err != nil {
-			return err
-		}
+	// Conversion webhook does not longhorn datastore.
+	clientsWithoutDatastore, err := client.NewClients(kubeconfigPath, false, ctx.Done())
+	if err != nil {
+		return err
+	}
+	if err := webhook.StartWebhook(ctx, types.WebhookTypeConversion, clientsWithoutDatastore); err != nil {
+		return err
+	}
+	if err := webhook.CheckWebhookServiceAvailability(types.WebhookTypeConversion); err != nil {
+		return err
+	}
+
+	clients, err := client.NewClients(kubeconfigPath, true, ctx.Done())
+	if err != nil {
+		return err
+	}
+	if err := webhook.StartWebhook(ctx, types.WebhookTypeAdmission, clients); err != nil {
+		return err
+	}
+	if err := webhook.CheckWebhookServiceAvailability(types.WebhookTypeAdmission); err != nil {
+		return err
 	}
 
 	if err := recoverybackend.StartRecoveryBackend(clients); err != nil {
