@@ -62,9 +62,9 @@ require (
 	github.com/longhorn/backupstore v0.0.0-20240720163059-56c90cd23634
 	github.com/longhorn/go-common-libs v0.0.0-20240720044518-32fc527fe868
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240720064937-c6ce82d67032
-	github.com/longhorn/go-spdk-helper v0.0.0-20240720064915-d2ce0846d2a7
+	github.com/longhorn/go-spdk-helper v0.0.0-20240723045100-85e5737da4b5
 	github.com/longhorn/longhorn-engine v1.7.0-rc1
-	github.com/longhorn/longhorn-instance-manager v1.7.0-rc1
+	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240724045856-8b48e7b74784
 	github.com/longhorn/longhorn-share-manager v1.7.0-rc1
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.18.0
@@ -103,7 +103,7 @@ require (
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/google/pprof v0.0.0-20231023181126-ff6d637d2a7b // indirect
 	github.com/jonboulle/clockwork v0.4.0 // indirect
-	github.com/longhorn/types v0.0.0-20240706151541-33cb010c3544 // indirect
+	github.com/longhorn/types v0.0.0-20240723142222-56701c990023 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/moby/term v0.0.0-20221205130635-1aeaba878587 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
