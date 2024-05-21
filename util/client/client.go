@@ -9,7 +9,6 @@ import (
 	wranglerClients "github.com/rancher/wrangler/pkg/clients"
 	wranglerSchemes "github.com/rancher/wrangler/pkg/schemes"
 	"github.com/sirupsen/logrus"
-
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/clientcmd"
 
@@ -34,7 +33,7 @@ type Clients struct {
 	StopCh        <-chan struct{}
 }
 
-func NewClients(kubeconfigPath string, stopCh <-chan struct{}) (*Clients, error) {
+func NewClients(kubeconfigPath string, needDataStore bool, stopCh <-chan struct{}) (*Clients, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		logrus.Warnf("Cannot detect pod namespace, environment variable %v is missing, using default namespace", types.EnvPodNamespace)
@@ -82,18 +81,21 @@ func NewClients(kubeconfigPath string, stopCh <-chan struct{}) (*Clients, error)
 		return nil, errors.Wrap(err, "unable to get metrics client")
 	}
 
-	// TODO: there shouldn't be a need for a 30s resync period unless our code is buggy and our controllers aren't really
-	//  level based. What we are effectively doing with this is hiding faulty logic in production.
-	//  Another reason for increasing this substantially, is that it introduces a lot of unnecessary work and will
-	//  lead to scalability problems, since we dump the whole cache of each object back in to the reconciler every 30 seconds.
-	//  if a specific controller requires a periodic resync, one enable it only for that informer, add a resync to the event handler, go routine, etc.
-	//  some refs to look at: https://github.com/kubernetes-sigs/controller-runtime/issues/521
-	informerFactories := util.NewInformerFactories(namespace, clients.K8s, lhClient, 30*time.Second)
-	ds := datastore.NewDataStore(namespace, lhClient, clients.K8s, extensionsClient, informerFactories)
+	var ds *datastore.DataStore
+	if needDataStore {
+		// TODO: there shouldn't be a need for a 30s resync period unless our code is buggy and our controllers aren't really
+		//  level based. What we are effectively doing with this is hiding faulty logic in production.
+		//  Another reason for increasing this substantially, is that it introduces a lot of unnecessary work and will
+		//  lead to scalability problems, since we dump the whole cache of each object back in to the reconciler every 30 seconds.
+		//  if a specific controller requires a periodic resync, one enable it only for that informer, add a resync to the event handler, go routine, etc.
+		//  some refs to look at: https://github.com/kubernetes-sigs/controller-runtime/issues/521
+		informerFactories := util.NewInformerFactories(namespace, clients.K8s, lhClient, 30*time.Second)
+		ds = datastore.NewDataStore(namespace, lhClient, clients.K8s, extensionsClient, informerFactories)
 
-	informerFactories.Start(stopCh)
-	if !ds.Sync(stopCh) {
-		return nil, fmt.Errorf("datastore cache sync up failed")
+		informerFactories.Start(stopCh)
+		if !ds.Sync(stopCh) {
+			return nil, fmt.Errorf("datastore cache sync up failed")
+		}
 	}
 
 	return &Clients{
