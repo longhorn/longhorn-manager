@@ -3640,12 +3640,6 @@ func (c *VolumeController) createReplica(replica *longhorn.Replica, v *longhorn.
 
 	if isRebuildingReplica {
 		// TODO: reuse failed replica for replica rebuilding of SPDK volumes
-		if types.IsDataEngineV2(v.Spec.DataEngine) {
-			if !v.Spec.DisableFrontend {
-				log.Tracef("Online replica rebuilding for replica %v is not supported for SPDK volumes", replica.Name)
-				return nil
-			}
-		}
 
 		log.Infof("A new replica %v will be replenished during rebuilding", replica.Name)
 		// Prevent this new replica from being reused after rebuilding failure.
