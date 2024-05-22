@@ -204,17 +204,17 @@ func (bc *BackupBackingImageController) reconcile(backupBackingImageName string)
 	log := getLoggerForBackupBackingImage(bc.logger, bbi)
 
 	// Get default backup target
-	backupTarget, err := bc.ds.GetBackupTargetRO(types.DefaultBackupTargetName)
+	backupTarget, err := bc.ds.GetBackupTargetRO(bbi.Spec.BackupTargetName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
 		}
-		return errors.Wrapf(err, "failed to get the backup target %v", types.DefaultBackupTargetName)
+		return errors.Wrapf(err, "failed to get the backup target %v", bbi.Spec.BackupTargetName)
 	}
 
 	// Examine DeletionTimestamp to determine if object is under deletion
 	if !bbi.DeletionTimestamp.IsZero() {
-		if backupTarget.Spec.BackupTargetURL != "" {
+		if IsBackupTargetAvailable(backupTarget) {
 			backupTargetClient, err := newBackupTargetClientFromDefaultEngineImage(bc.ds, backupTarget)
 			if err != nil {
 				log.WithError(err).Warn("Failed to init backup target clients")
@@ -256,7 +256,7 @@ func (bc *BackupBackingImageController) reconcile(backupBackingImageName string)
 	}()
 
 	if bbi.Status.LastSyncedAt.IsZero() && bbi.Spec.UserCreated && bc.backupNotInFinalState(bbi) {
-		backingImage, err := bc.ds.GetBackingImage(backupBackingImageName)
+		backingImage, err := bc.ds.GetBackingImage(bbi.Spec.BackingImage)
 		if err != nil {
 			if !apierrors.IsNotFound(err) {
 				return err

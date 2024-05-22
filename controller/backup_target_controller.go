@@ -471,7 +471,7 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 		return err
 	}
 
-	if err = btc.syncBackupBackingImage(info.backupStoreBackingImageNames, syncTime, log); err != nil {
+	if err = btc.syncBackupBackingImage(backupTarget, info.backupStoreBackingImageNames, syncTime, log); err != nil {
 		return err
 	}
 
@@ -685,11 +685,11 @@ func (btc *BackupTargetController) cleanupBackupVolumeNotExistOnBackupTarget(clu
 	return nil
 }
 
-func (btc *BackupTargetController) syncBackupBackingImage(backupStoreBackingImageNames []string, syncTime metav1.Time, log logrus.FieldLogger) error {
+func (btc *BackupTargetController) syncBackupBackingImage(backupTarget *longhorn.BackupTarget, backupStoreBackingImageNames []string, syncTime metav1.Time, log logrus.FieldLogger) error {
 	backupStoreBackupBackingImages := sets.New[string](backupStoreBackingImageNames...)
 
 	// Get a list of all the backup volumes that exist as custom resources in the cluster
-	clusterBackupBackingImages, err := btc.ds.ListBackupBackingImages()
+	clusterBackupBackingImages, err := btc.ds.ListBackupBackingImagesWithBackupTargetNameRO(backupTarget.Name)
 	if err != nil {
 		return err
 	}
@@ -707,9 +707,14 @@ func (btc *BackupTargetController) syncBackupBackingImage(backupStoreBackingImag
 		backupBackingImage := &longhorn.BackupBackingImage{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: backupBackingImageName,
+				Labels: map[string]string{
+					types.LonghornLabelBackupTarget: backupTarget.Name,
+				},
 			},
 			Spec: longhorn.BackupBackingImageSpec{
-				UserCreated: false,
+				UserCreated:      false,
+				BackupTargetName: backupTarget.Name,
+				BackupTargetURL:  backupTarget.Spec.BackupTargetURL,
 			},
 		}
 		if _, err = btc.ds.CreateBackupBackingImage(backupBackingImage); err != nil && !apierrors.IsAlreadyExists(err) {

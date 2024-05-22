@@ -5236,6 +5236,26 @@ func (s *DataStore) ListBackupBackingImagesRO() ([]*longhorn.BackupBackingImage,
 	return s.backupBackingImageLister.BackupBackingImages(s.namespace).List(labels.Everything())
 }
 
+// ListBackupBackingImagesWithBackupTargetNameRO returns an object contains all backup backing images in the cluster BackupBackingImages CR
+// of the given backup target name
+func (s *DataStore) ListBackupBackingImagesWithBackupTargetNameRO(backupTargetName string) (map[string]*longhorn.BackupBackingImage, error) {
+	selector, err := getBackupTargetSelector(backupTargetName)
+	if err != nil {
+		return nil, err
+	}
+
+	list, err := s.backupBackingImageLister.BackupBackingImages(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.BackupBackingImage{}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO
+	}
+	return itemMap, nil
+}
+
 // GetRunningInstanceManagerByNodeRO returns the running instance manager for the given node and data engine
 func (s *DataStore) GetRunningInstanceManagerByNodeRO(node string, dataEngine longhorn.DataEngineType) (*longhorn.InstanceManager, error) {
 	// Trying to get the default instance manager first.

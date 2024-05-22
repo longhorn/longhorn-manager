@@ -82,6 +82,7 @@ type BackupBackingImageMonitor struct {
 	logger logrus.FieldLogger
 
 	backupBackingImageName string
+	backingImageName       string
 	client                 *BackingImageManagerClient
 
 	backupBackingImageStatus longhorn.BackupBackingImageStatus
@@ -101,6 +102,7 @@ func NewBackupBackingImageMonitor(logger logrus.FieldLogger, ds *datastore.DataS
 		logger: logger.WithFields(logrus.Fields{"backupBackingImage": bbi.Name}),
 
 		backupBackingImageName: bbi.Name,
+		backingImageName:       backingImage.Name,
 		client:                 bimClient,
 
 		backupStatusLock: sync.RWMutex{},
@@ -114,7 +116,7 @@ func NewBackupBackingImageMonitor(logger logrus.FieldLogger, ds *datastore.DataS
 
 	// Call backing image manager API snapshot backup
 	if bbi.Status.State == longhorn.BackupStateNew {
-		err := m.client.BackupCreate(bbi.Name, backingImage.Status.UUID, bbi.Status.Checksum,
+		err := m.client.BackupCreate(backingImage.Name, backingImage.Status.UUID, bbi.Status.Checksum,
 			backupTargetClient.URL, bbi.Spec.Labels, backupTargetClient.Credential, string(compressionMethod), concurrentLimit)
 		if err != nil {
 			if !strings.Contains(err.Error(), "DeadlineExceeded") {
@@ -237,7 +239,7 @@ func (m *BackupBackingImageMonitor) syncBackupStatusFromBackingImageManager() (c
 	m.backupBackingImageStatus.DeepCopyInto(&currentBackupStatus)
 	m.backupStatusLock.RUnlock()
 
-	backupBackingImageStatus, err = m.client.BackupStatus(m.backupBackingImageName)
+	backupBackingImageStatus, err = m.client.BackupStatus(m.backingImageName)
 	if err != nil {
 		return currentBackupStatus, err
 	}
