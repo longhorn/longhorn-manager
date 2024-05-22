@@ -8,9 +8,12 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
+	"github.com/longhorn/longhorn-manager/webhook/admission"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
@@ -156,4 +159,67 @@ func IsRemovingLonghornFinalizer(oldObj runtime.Object, newObj runtime.Object) (
 	}
 
 	return true, nil
+}
+
+func GetBackupTargetInfoPatchOp(ds *datastore.DataStore, backupTargetName, backupTargetURL string, labels map[string]string) (admission.PatchOps, string, error) {
+	var patchOps admission.PatchOps
+	returningBackupTargetName := ""
+
+	backupTarget, err := ds.GetBackupTargetRO(backupTargetName)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return nil, "", errors.Wrapf(err, "failed to get backup target")
+		}
+		if backupTargetURL != "" {
+			backupTarget, err = ds.GetBackupTargetWithURLRO(backupTargetURL)
+			if err != nil {
+				if !apierrors.IsNotFound(err) {
+					return nil, "", errors.Wrapf(err, "failed to get backup target by backup target URL")
+				}
+			}
+		}
+		if backupTarget == nil {
+			backupTarget, err = ds.GetDefaultBackupTargetRO()
+			if err != nil {
+				return nil, "", errors.Wrapf(err, "failed to get default backup target")
+			}
+		}
+		backupTargetName, err := json.Marshal(backupTarget.Name)
+		if err != nil {
+			return nil, "", errors.Wrapf(err, "failed to convert backup target name into JSON string")
+		}
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupTargetName", "value": %s}`, string(backupTargetName)))
+		returningBackupTargetName = backupTarget.Name
+	}
+	if backupTarget != nil {
+		returningBackupTargetName = backupTarget.Name
+	}
+
+	patchLabels := true
+	if labels == nil {
+		labels = map[string]string{
+			types.LonghornLabelBackupTarget: returningBackupTargetName,
+		}
+	} else if _, isExist := labels[types.LonghornLabelBackupTarget]; !isExist {
+		labels[types.LonghornLabelBackupTarget] = returningBackupTargetName
+	} else {
+		patchLabels = false
+	}
+	if patchLabels {
+		updatedJSONLabels, err := json.Marshal(labels)
+		if err != nil {
+			return nil, "", errors.Wrapf(err, "failed to convert backup labels into JSON string")
+		}
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/metadata/labels", "value": %s}`, string(updatedJSONLabels)))
+	}
+
+	if backupTargetURL != backupTarget.Spec.BackupTargetURL {
+		backupTargetURL, err := json.Marshal(backupTarget.Spec.BackupTargetURL)
+		if err != nil {
+			return nil, "", errors.Wrapf(err, "failed to convert backup target url into JSON string")
+		}
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupTargetURL", "value": %s}`, string(backupTargetURL)))
+	}
+
+	return patchOps, returningBackupTargetName, nil
 }
