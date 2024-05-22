@@ -562,6 +562,14 @@ spec:
           spec:
             description: BackupBackingImageSpec defines the desired state of the Longhorn backing image backup
             properties:
+              backupTargetName:
+                description: The backup target name.
+                nullable: true
+                type: string
+              backupTargetURL:
+                description: The backup target url.
+                nullable: true
+                type: string
               labels:
                 additionalProperties:
                   type: string
@@ -963,7 +971,7 @@ spec:
                 description: The backup target credential secret.
                 type: string
               default:
-                description: Default indicates if the remote backup target is default backup target set by user
+                description: Default indicates if the remote backup target is default backup target set by users.
                 type: boolean
               pollInterval:
                 description: The interval that the cluster needs to run sync with the backup target.
@@ -1009,7 +1017,7 @@ spec:
                 nullable: true
                 type: array
               default:
-                description: Default indicates if the remote backup target is default backup target or not.
+                description: Default indicates if the remote backup target is default backup target or not set by backup target controller.
                 type: boolean
               lastSyncedAt:
                 description: The last time that the controller synced with the remote backup target.
@@ -2512,14 +2520,14 @@ spec:
           spec:
             description: RecurringJobSpec defines the desired state of the Longhorn recurring job
             properties:
+              backupTargetName:
+                description: The backup target name for `backup*` job task.
+                type: string
               concurrency:
                 description: The concurrency of taking the snapshot/backup.
                 type: integer
               cron:
                 description: The cron setting.
-                type: string
-              backupTargetName:
-                description: The backup target name for backup job task.
                 type: string
               groups:
                 description: The recurring job group.
@@ -2883,7 +2891,7 @@ spec:
           metadata:
             type: object
           status:
-            description: SettingStatus defines the observed state of the Longhorn setting
+            description: The status of the setting.
             properties:
               applied:
                 description: The setting is applied.
