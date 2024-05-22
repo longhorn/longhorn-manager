@@ -183,6 +183,7 @@ func (s *NodeControllerSuite) TestManagerPodUp(c *C) {
 				Conditions: []longhorn.Condition{
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeDelinquent, longhorn.ConditionStatusFalse, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
 				},
 			},
@@ -267,6 +268,7 @@ func (s *NodeControllerSuite) TestManagerPodDown(c *C) {
 				Conditions: []longhorn.Condition{
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonManagerPodDown),
+					newNodeCondition(longhorn.NodeConditionTypeDelinquent, longhorn.ConditionStatusFalse, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonNoMountPropagationSupport),
 				},
 			},
@@ -351,6 +353,7 @@ func (s *NodeControllerSuite) TestKubeNodeDown(c *C) {
 				Conditions: []longhorn.Condition{
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKubernetesNodeNotReady),
+					newNodeCondition(longhorn.NodeConditionTypeDelinquent, longhorn.ConditionStatusFalse, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
 				},
 			},
@@ -435,6 +438,7 @@ func (s *NodeControllerSuite) TestKubeNodePressure(c *C) {
 				Conditions: []longhorn.Condition{
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKubernetesNodePressure),
+					newNodeCondition(longhorn.NodeConditionTypeDelinquent, longhorn.ConditionStatusFalse, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
 				},
 			},
@@ -554,6 +558,7 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 				Conditions: []longhorn.Condition{
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeDelinquent, longhorn.ConditionStatusFalse, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{
@@ -702,6 +707,7 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 				Conditions: []longhorn.Condition{
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeDelinquent, longhorn.ConditionStatusFalse, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{
@@ -856,6 +862,7 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 				Conditions: []longhorn.Condition{
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeDelinquent, longhorn.ConditionStatusFalse, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{
@@ -981,6 +988,7 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 				Conditions: []longhorn.Condition{
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeDelinquent, longhorn.ConditionStatusFalse, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{
@@ -1123,6 +1131,7 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 				Conditions: []longhorn.Condition{
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeDelinquent, longhorn.ConditionStatusFalse, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{
@@ -1235,6 +1244,7 @@ func (s *NodeControllerSuite) TestCleanupAllInstanceManagers(c *C) {
 				Conditions: []longhorn.Condition{
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeDelinquent, longhorn.ConditionStatusFalse, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{},

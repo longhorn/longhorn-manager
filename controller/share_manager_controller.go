@@ -1342,22 +1342,41 @@ func (c *ShareManagerController) isShareManagerPodStale(sm *longhorn.ShareManage
 
 // isResponsibleFor in most controllers only checks if the node of the current owner is known
 // by kubernetes to be down.  But in the case where the lease is stale or the node is unschedulable
-// we want to transfer ownership.
+// we want to transfer ownership and mark the node as delinquent for related status checking.
 func (c *ShareManagerController) isResponsibleFor(sm *longhorn.ShareManager) (bool, error) {
 	log := getLoggerForShareManager(c.logger, sm)
 
-	// If the lease is stale, we assume the owning is down but not officially dead.
+	// If the lease is stale, we assume the owning node is down but not officially dead.
 	// Some node has to take over, and it might as well be this one, if another one
 	// has not already.
 	leaseExpired, leaseHolder, err := c.isShareManagerPodStale(sm)
 	if err == nil && leaseExpired {
 		// Avoid race between nodes by checking for an existing interim owner.
-		if leaseHolder == sm.Status.OwnerID {
-			log.Infof("Interim owner %v taking responsibility for stale lease-holder %v", c.controllerID, leaseHolder)
-			return true, nil
+		if leaseHolder != sm.Status.OwnerID {
+			log.Infof("Interim owner %v already took responsibility for stale lease-holder %v", sm.Status.OwnerID, leaseHolder)
+			return false, nil
 		}
-		log.Infof("Interim owner %v already took responsibility for stale lease-holder %v", sm.Status.OwnerID, leaseHolder)
-		return false, nil
+
+		log.Infof("Interim owner %v taking responsibility for stale lease-holder %v", c.controllerID, leaseHolder)
+
+		// Mark expired lease holder as delinquent - best effort.
+		node, err := c.ds.GetNode(leaseHolder)
+		if err != nil {
+			log.WithError(err).Warnf("Failed to get node to set delinquent condition for %v", leaseHolder)
+		} else {
+			node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
+				longhorn.NodeConditionTypeDelinquent, longhorn.ConditionStatusTrue,
+				string(longhorn.NodeConditionReasonMissedLeaseRenewal),
+				fmt.Sprintf("Node %v marks %v as delinquent", c.controllerID, leaseHolder),
+				c.eventRecorder, node, corev1.EventTypeWarning)
+
+			if _, err := c.ds.UpdateNodeStatus(node); err != nil {
+				log.WithError(err).Warnf("Failed to update node to set delinquent condition for %v", leaseHolder)
+			}
+		}
+
+		// In any event, this node takes responsibility.
+		return true, nil
 	}
 
 	// We prefer keeping the owner of the share manager CR to be the node

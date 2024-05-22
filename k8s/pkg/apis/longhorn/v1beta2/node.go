@@ -6,6 +6,7 @@ const (
 	NodeConditionTypeReady            = "Ready"
 	NodeConditionTypeMountPropagation = "MountPropagation"
 	NodeConditionTypeSchedulable      = "Schedulable"
+	NodeConditionTypeDelinquent       = "Delinquent"
 )
 
 const (
@@ -17,6 +18,7 @@ const (
 	NodeConditionReasonUnknownNodeConditionTrue  = "UnknownNodeConditionTrue"
 	NodeConditionReasonNoMountPropagationSupport = "NoMountPropagationSupport"
 	NodeConditionReasonKubernetesNodeCordoned    = "KubernetesNodeCordoned"
+	NodeConditionReasonMissedLeaseRenewal        = "MissedLeaseRenewal"
 )
 
 const (
