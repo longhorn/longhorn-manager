@@ -310,6 +310,23 @@ func (c *UninstallController) uninstall() error {
 	if ready, err := c.managerReady(); err != nil {
 		return err
 	} else if ready {
+		// Hack: touch the backup target CRs to migrate the API version.
+		// This is needed because after Longhorn manager daemonset was
+		// deleted (aka conversion webhook is not running), we cannot
+		// delete CRs in older API version in deleteRecreatedCRs().
+		// TODO: A better solution for this issue would be touching
+		// and migrating API versions for all Longhorn CRs in the upgrade path
+		// or separating the conversion webhook from longhorn-manager daemonset
+		if backupTargets, err := c.ds.ListBackupTargets(); err != nil {
+			return err
+		} else if len(backupTargets) > 0 {
+			for _, bt := range backupTargets {
+				if _, err = c.ds.UpdateBackupTarget(bt); err != nil {
+					return errors.Wrap(err, "failed to touch the backup target CR for API version migration")
+				}
+			}
+		}
+
 		if waitForUpdate, err := c.deleteCRs(); err != nil || waitForUpdate {
 			return err
 		}
