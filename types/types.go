@@ -44,6 +44,7 @@ const (
 	LonghornKindOrphan              = "Orphan"
 
 	LonghornKindBackingImageDataSource = "BackingImageDataSource"
+	LonghornKindBackupBackingImage     = "BackupBackingImage"
 
 	LonghornKindEngineImageList  = "EngineImageList"
 	LonghornKindRecurringJobList = "RecurringJobList"
@@ -129,7 +130,7 @@ const (
 	ConfigMapResourceVersionKey = "configmap-resource-version"
 	UpdateSettingFromLonghorn   = "update-setting-from-longhorn"
 
-	UpgradedOldBackupFrom15x       = "upgraded-dld-backup-from-15x"
+	UpgradedOldBackupFrom16x       = "upgraded-dld-backup-from-16x"
 	DeleteBackupTargetFromLonghorn = "delete-backup-target-from-longhorn"
 	UpdateBackupTargetFromLonghorn = "update-backup-target-from-longhorn"
 

@@ -703,6 +703,26 @@ func ListAndUpdateBackingImageDataSourcesInProvidedCache(namespace string, lhCli
 	return bidss, nil
 }
 
+// ListAndUpdateBackupBackingImagesInProvidedCache list all backupBackingImages and save them into the provided cached `resourceMap`. This method is not thread-safe.
+func ListAndUpdateBackupBackingImagesInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*longhorn.BackupBackingImage, error) {
+	if v, ok := resourceMaps[types.LonghornKindBackupBackingImage]; ok {
+		return v.(map[string]*longhorn.BackupBackingImage), nil
+	}
+
+	bbis := map[string]*longhorn.BackupBackingImage{}
+	bbisList, err := lhClient.LonghornV1beta2().BackupBackingImages(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	for i, bids := range bbisList.Items {
+		bbis[bids.Name] = &bbisList.Items[i]
+	}
+
+	resourceMaps[types.LonghornKindBackingImageDataSource] = bbis
+
+	return bbis, nil
+}
+
 // ListAndUpdateRecurringJobsInProvidedCache list all recurringJobs and save them into the provided cached `resourceMap`. This method is not thread-safe.
 func ListAndUpdateRecurringJobsInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*longhorn.RecurringJob, error) {
 	if v, ok := resourceMaps[types.LonghornKindRecurringJob]; ok {

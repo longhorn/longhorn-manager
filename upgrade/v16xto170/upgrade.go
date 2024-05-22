@@ -49,6 +49,10 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 		return err
 	}
 
+	if err := upgradeBackupBackingImages(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
 	if err := upgradeRecurringJobs(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
@@ -213,12 +217,45 @@ func upgradeBackups(namespace string, lhClient *lhclientset.Clientset, resourceM
 		if b.Annotations == nil {
 			b.Annotations = make(map[string]string)
 		}
-		b.Annotations[types.UpgradedOldBackupFrom15x] = ""
+		b.Annotations[types.UpgradedOldBackupFrom16x] = ""
 		if b.Spec.BackupTargetName == "" {
 			b.Spec.BackupTargetName = backupTarget.Name
 		}
 		if b.Spec.BackupTargetURL == "" {
 			b.Spec.BackupTargetURL = backupTarget.Spec.BackupTargetURL
+		}
+	}
+
+	return nil
+}
+
+func upgradeBackupBackingImages(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade backup backing images failed")
+	}()
+
+	backupTarget, err := getOldDefaultBackupTarget(namespace, lhClient, resourceMaps)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get old default backup target during the Longhorn Backup Backing Images upgrade")
+	}
+
+	backupBackingImageMap, err := upgradeutil.ListAndUpdateBackupBackingImagesInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn Backups during the Longhorn Backup Backing Images upgrade")
+	}
+
+	for _, bbi := range backupBackingImageMap {
+		if bbi.Spec.BackingImage == "" {
+			bbi.Spec.BackingImage = bbi.Status.BackingImage
+		}
+		if bbi.Spec.BackupTargetName == "" {
+			bbi.Spec.BackupTargetName = backupTarget.Name
+		}
+		if bbi.Spec.BackupTargetURL == "" {
+			bbi.Spec.BackupTargetURL = backupTarget.Spec.BackupTargetURL
 		}
 	}
 
