@@ -919,10 +919,22 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 
 	manifest := c.createPodManifest(sm, annotations, tolerations, affinity, imagePullPolicy, nil, registrySecret,
 		priorityClass, nodeSelector, fsType, mountOptions, cryptoKey, cryptoParams)
+
+	storageNetwork, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
+	if err != nil {
+		return nil, err
+	}
+
+	nadAnnot := string(types.CNIAnnotationNetworks)
+	if storageNetwork.Value != types.CniNetworkNone {
+		manifest.Annotations[nadAnnot] = types.CreateCniAnnotationFromSetting(storageNetwork)
+	}
+
 	pod, err := c.ds.CreatePod(manifest)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create pod for share manager %v", sm.Name)
 	}
+
 	getLoggerForShareManager(c.logger, sm).WithField("pod", pod.Name).Infof("Created pod for share manager on node %v", pod.Spec.NodeName)
 	return pod, nil
 }
