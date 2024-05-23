@@ -342,6 +342,7 @@ type VolumeStatus struct {
 	// +optional
 	IsStandby bool `json:"isStandby"`
 	// +optional
+	// Actual size in bytes. May be truncated to reduce API server churn.
 	ActualSize int64 `json:"actualSize"`
 	// +optional
 	LastDegradedAt string `json:"lastDegradedAt"`

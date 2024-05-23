@@ -936,7 +936,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	if err != nil {
 		engine.Status.SnapshotsError = err.Error()
 	} else {
-		engine.Status.Snapshots = snapshots
+		engine.Status.Snapshots = m.prepareSnapshotsForStatus(snapshots, engine.Spec.VolumeSize)
 		engine.Status.SnapshotsError = ""
 	}
 
@@ -2214,4 +2214,43 @@ func shouldProceedToWaitAndRebuild(e *longhorn.Engine, replicaName, originalRepl
 	}
 
 	return true
+}
+
+// Truncate the size of the volume-head snapshot. If we do not, we will update the engine status with the new
+// volume-head size every five seconds as long as there is write activity. This can lead 17,280 API server requests and
+// etcd revisions per engine per day. In addition, every time we update the volume-head size, we also recalculate and
+// update the volume.status.actualSize, leading to another 17,280 API requests and etcd revisions per volume per day.
+// https://github.com/longhorn/longhorn/issues/8076
+func (m *EngineMonitor) prepareSnapshotsForStatus(
+	snapshots map[string]*longhorn.SnapshotInfo, nominalSize int64) map[string]*longhorn.SnapshotInfo {
+	if snapshot, ok := snapshots[etypes.VolumeHeadName]; ok {
+		if sizeInt, err := strconv.ParseInt(snapshot.Size, 10, 64); err != nil {
+			m.logger.WithError(err).Warnf("Failed to parse %s size %v", etypes.VolumeHeadName, snapshot.Size)
+		} else {
+			sizeInt = truncateSnapshotSize(sizeInt, nominalSize)
+			snapshot.Size = strconv.FormatInt(sizeInt, 10)
+		}
+	}
+	return snapshots
+}
+
+// The idea for this calculation:
+//   - The user intuitively expects the size to go up when they write to a volume.
+//   - For a small volume, e.g. 1 GiB, it would be very strange if the size only increased every fixed amount
+//     (e.g. 100 MiB). The user would have to write one tenth of the volume before seeing a size increase! With the
+//     nominalSize / 1024 calculation, they see a size increase every 1 MiB.
+//   - For a medium volume, e.g. 100 GiB, with the nominalSize / 1024 calculation, the user sees a size increase every
+//     100 MiB.
+//   - For a large volume, e.g. 1 TiB, it would be strange to follow the same calculation, as the user would only see
+//     a size increase every 1 GiB. They might think something is broken. So limit truncateTo to 100 MiB.
+func truncateSnapshotSize(size, nominalSize int64) int64 {
+	if nominalSize <= 0 {
+		// This shouldn't be possible, but we definitely don't want to attempt to divide by 0.
+		return size
+	}
+	truncateTo := nominalSize / 1024
+	if truncateTo > 100*util.MiB {
+		truncateTo = 100 * util.MiB
+	}
+	return (size / truncateTo) * truncateTo
 }

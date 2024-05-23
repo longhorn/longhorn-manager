@@ -109,6 +109,7 @@ type SnapshotInfo struct {
 	// +optional
 	Created string `json:"created"`
 	// +optional
+	// Actual size in bytes. May be truncated for volume-head to reduce API server churn.
 	Size string `json:"size"`
 	// +optional
 	// +nullable
