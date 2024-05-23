@@ -470,8 +470,9 @@ func (kc *KubernetesPVController) setWorkloads(ks *longhorn.KubernetesStatus, po
 	ks.LastPodRefAt = ""
 	for _, p := range pods {
 		ws := longhorn.WorkloadStatus{
-			PodName:   p.Name,
-			PodStatus: string(p.Status.Phase),
+			PodName:      p.Name,
+			PodNamespace: p.Namespace,
+			PodStatus:    string(p.Status.Phase),
 		}
 		ws.WorkloadName, ws.WorkloadType = kc.detectWorkload(p)
 		ks.WorkloadsStatus = append(ks.WorkloadsStatus, ws)
