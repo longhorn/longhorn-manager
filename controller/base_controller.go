@@ -17,7 +17,7 @@ var (
 
 type baseController struct {
 	name   string
-	logger logrus.FieldLogger
+	logger *logrus.Entry
 	queue  workqueue.RateLimitingInterface
 }
 
