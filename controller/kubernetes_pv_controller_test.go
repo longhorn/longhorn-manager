@@ -202,6 +202,7 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	for _, p := range tc.pods {
 		ws := longhorn.WorkloadStatus{
 			PodName:      p.Name,
+			PodNamespace: p.Namespace,
 			PodStatus:    string(p.Status.Phase),
 			WorkloadName: TestWorkloadName,
 			WorkloadType: TestWorkloadKind,
@@ -226,6 +227,7 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	for _, p := range tc.pods {
 		ws := longhorn.WorkloadStatus{
 			PodName:      p.Name,
+			PodNamespace: p.Namespace,
 			PodStatus:    string(p.Status.Phase),
 			WorkloadName: TestWorkloadName,
 			WorkloadType: TestWorkloadKind,
@@ -243,6 +245,7 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	for _, p := range tc.pods {
 		ws := longhorn.WorkloadStatus{
 			PodName:      p.Name,
+			PodNamespace: p.Namespace,
 			PodStatus:    string(p.Status.Phase),
 			WorkloadName: TestWorkloadName,
 			WorkloadType: TestWorkloadKind,
@@ -286,8 +289,9 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	for _, p := range tc.pods {
 		p.ObjectMeta.OwnerReferences = nil
 		ws := longhorn.WorkloadStatus{
-			PodName:   p.Name,
-			PodStatus: string(p.Status.Phase),
+			PodName:      p.Name,
+			PodNamespace: p.Namespace,
+			PodStatus:    string(p.Status.Phase),
 		}
 		workloads = append(workloads, ws)
 	}
@@ -307,6 +311,7 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	for _, p := range tc.pods {
 		ws := longhorn.WorkloadStatus{
 			PodName:      p.Name,
+			PodNamespace: p.Namespace,
 			PodStatus:    string(p.Status.Phase),
 			WorkloadName: TestWorkloadName,
 			WorkloadType: TestWorkloadKind,
@@ -326,6 +331,7 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 		p.Status.Phase = corev1.PodFailed
 		ws := longhorn.WorkloadStatus{
 			PodName:      p.Name,
+			PodNamespace: p.Namespace,
 			PodStatus:    string(p.Status.Phase),
 			WorkloadName: TestWorkloadName,
 			WorkloadType: TestWorkloadKind,
@@ -343,6 +349,7 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 		p.DeletionTimestamp = &deleteTime
 		ws := longhorn.WorkloadStatus{
 			PodName:      p.Name,
+			PodNamespace: p.Namespace,
 			PodStatus:    string(p.Status.Phase),
 			WorkloadName: TestWorkloadName,
 			WorkloadType: TestWorkloadKind,
@@ -368,6 +375,7 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 		p.DeletionTimestamp = &deleteTime
 		ws := longhorn.WorkloadStatus{
 			PodName:      p.Name,
+			PodNamespace: p.Namespace,
 			PodStatus:    string(p.Status.Phase),
 			WorkloadName: TestWorkloadName,
 			WorkloadType: TestWorkloadKind,
@@ -393,6 +401,7 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	for _, p := range tc.pods {
 		ws := longhorn.WorkloadStatus{
 			PodName:      p.Name,
+			PodNamespace: p.Namespace,
 			PodStatus:    string(p.Status.Phase),
 			WorkloadName: TestWorkloadName,
 			WorkloadType: TestWorkloadKind,
@@ -420,6 +429,7 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	for _, p := range tc.pods {
 		ws := longhorn.WorkloadStatus{
 			PodName:      p.Name,
+			PodNamespace: p.Namespace,
 			PodStatus:    string(p.Status.Phase),
 			WorkloadName: TestWorkloadName,
 			WorkloadType: TestWorkloadKind,
