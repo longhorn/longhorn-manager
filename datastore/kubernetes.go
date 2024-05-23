@@ -757,6 +757,16 @@ func (s *DataStore) UpdateService(namespace string, service *corev1.Service) (*c
 	return s.kubeClient.CoreV1().Services(namespace).Update(context.TODO(), service, metav1.UpdateOptions{})
 }
 
+// CreateKubernetesEndpoint creates a Kubernetes Endpoint resource.
+func (s *DataStore) CreateKubernetesEndpoint(endpoint *corev1.Endpoints) (*corev1.Endpoints, error) {
+	return s.kubeClient.CoreV1().Endpoints(endpoint.Namespace).Create(context.TODO(), endpoint, metav1.CreateOptions{})
+}
+
+// GetKubernetesEndpointRO gets the Kubernetes Endpoint of the given name in the Longhorn namespace.
+func (s *DataStore) GetKubernetesEndpointRO(name string) (*corev1.Endpoints, error) {
+	return s.endpointLister.Endpoints(s.namespace).Get(name)
+}
+
 // NewPVManifestForVolume returns a new PersistentVolume object for a longhorn volume
 func NewPVManifestForVolume(v *longhorn.Volume, pvName, storageClassName, fsType string) *corev1.PersistentVolume {
 	diskSelector := strings.Join(v.Spec.DiskSelector, ",")
