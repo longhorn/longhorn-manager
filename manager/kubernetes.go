@@ -55,7 +55,7 @@ func (m *VolumeManager) PVCreate(name, pvName, fsType, secretNamespace, secretNa
 		fsType = "ext4"
 	}
 	if fsType == "xfs" && v.Spec.Size < util.MinimalVolumeSizeXFS {
-		return nil, fmt.Errorf("XFS filesystems with size %d, larger than %d, are not supported", v.Spec.Size,
+		return nil, fmt.Errorf("XFS filesystems with size %d, smaller than %d, are not supported", v.Spec.Size,
 			util.MinimalVolumeSizeXFS)
 	}
 
