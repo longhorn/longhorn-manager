@@ -179,6 +179,10 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	if err != nil {
 		return nil, err
 	}
+	kubernetesEndpointController, err := NewKubernetesEndpointController(logger, ds, kubeClient, controllerID, namespace)
+	if err != nil {
+		return nil, err
+	}
 
 	// Start goroutines for Longhorn controllers
 	go replicaController.Run(Workers, stopCh)
@@ -217,6 +221,7 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	go kubernetesConfigMapController.Run(Workers, stopCh)
 	go kubernetesSecretController.Run(Workers, stopCh)
 	go kubernetesPDBController.Run(Workers, stopCh)
+	go kubernetesEndpointController.Run(Workers, stopCh)
 
 	return websocketController, nil
 }

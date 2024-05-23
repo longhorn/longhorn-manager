@@ -68,6 +68,7 @@ const (
 	KubernetesKindConfigMapList             = "ConfigMapList"
 	KubernetesKindDaemonSetList             = "DaemonSetList"
 	KubernetesKindDeploymentList            = "DeploymentList"
+	KubernetesKindPod                       = "Pod"
 	KubernetesKindPersistentVolumeList      = "PersistentVolumeList"
 	KubernetesKindPersistentVolumeClaimList = "PersistentVolumeClaimList"
 	KubernetesKindRoleList                  = "RoleList"
@@ -419,6 +420,7 @@ func GetManagerLabels() map[string]string {
 		"app": LonghornManagerDaemonSetName,
 	}
 }
+
 func GetEngineImageLabels(engineImageName string) map[string]string {
 	labels := GetBaseLabelsForSystemManagedComponent()
 	labels[GetLonghornLabelComponentKey()] = LonghornLabelEngineImage
