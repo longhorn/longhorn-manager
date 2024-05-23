@@ -361,16 +361,16 @@ func unmount(path string, mounter mount.Interface) (err error) {
 	return err
 }
 
-// cleanupMountPoint ensures all mount layers for the path are unmounted and the mount directory is removed
-func cleanupMountPoint(path string, mounter mount.Interface) error {
+// unnountAndCleanupMountPoint ensures all mount layers for the path are unmounted and the mount directory is removed
+func unmountAndCleanupMountPoint(path string, mounter mount.Interface) error {
 	// we just try to unmount since the path check would get stuck for nfs mounts
-	logrus.Infof("Trying to cleanup mount point %v", path)
+	logrus.Infof("Trying to umount mount point %v", path)
 	if err := unmount(path, mounter); err != nil {
 		logrus.WithError(err).Warnf("Failed to unmount %v during cleanup", path)
 		return err
 	}
 
-	logrus.Infof("Cleaned up mount point %v", path)
+	logrus.Infof("Trying to clean up mount point %v", path)
 	return mount.CleanupMountPoint(path, mounter, true)
 }
 
