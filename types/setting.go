@@ -103,6 +103,7 @@ const (
 	SettingNameRecurringFailedJobsHistoryLimit                          = SettingName("recurring-failed-jobs-history-limit")
 	SettingNameRecurringJobMaxRetention                                 = SettingName("recurring-job-max-retention")
 	SettingNameSupportBundleFailedHistoryLimit                          = SettingName("support-bundle-failed-history-limit")
+	SettingNameSupportBundleNodeCollectionTimeout                       = SettingName("support-bundle-node-collection-timeout")
 	SettingNameDeletingConfirmationFlag                                 = SettingName("deleting-confirmation-flag")
 	SettingNameEngineReplicaTimeout                                     = SettingName("engine-replica-timeout")
 	SettingNameSnapshotDataIntegrity                                    = SettingName("snapshot-data-integrity")
@@ -187,6 +188,7 @@ var (
 		SettingNameRecurringFailedJobsHistoryLimit,
 		SettingNameRecurringJobMaxRetention,
 		SettingNameSupportBundleFailedHistoryLimit,
+		SettingNameSupportBundleNodeCollectionTimeout,
 		SettingNameDeletingConfirmationFlag,
 		SettingNameEngineReplicaTimeout,
 		SettingNameSnapshotDataIntegrity,
@@ -299,6 +301,7 @@ var (
 		SettingNameRecurringFailedJobsHistoryLimit:                          SettingDefinitionRecurringFailedJobsHistoryLimit,
 		SettingNameRecurringJobMaxRetention:                                 SettingDefinitionRecurringJobMaxRetention,
 		SettingNameSupportBundleFailedHistoryLimit:                          SettingDefinitionSupportBundleFailedHistoryLimit,
+		SettingNameSupportBundleNodeCollectionTimeout:                       SettingDefinitionSupportBundleNodeCollectionTimeout,
 		SettingNameDeletingConfirmationFlag:                                 SettingDefinitionDeletingConfirmationFlag,
 		SettingNameEngineReplicaTimeout:                                     SettingDefinitionEngineReplicaTimeout,
 		SettingNameSnapshotDataIntegrity:                                    SettingDefinitionSnapshotDataIntegrity,
@@ -1052,6 +1055,20 @@ var (
 		Required: false,
 		ReadOnly: false,
 		Default:  "1",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
+	}
+
+	SettingDefinitionSupportBundleNodeCollectionTimeout = SettingDefinition{
+		DisplayName: "Timeout for Support Bundle Node Collection",
+		Description: "In minutes. The timeout for collecting node bundles for support bundle generation. The default value is 30.\n\n" +
+			"When the timeout is reached, the support bundle generation will proceed without requiring the collection of node bundles. \n\n",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeInt,
+		Required: true,
+		ReadOnly: false,
+		Default:  "30",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 		},
