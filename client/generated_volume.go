@@ -37,6 +37,8 @@ type Volume struct {
 
 	Encrypted bool `json:"encrypted,omitempty" yaml:"encrypted,omitempty"`
 
+	FreezeFilesystemForSnapshot string `json:"freezeFSForSnapshot,omitempty" yaml:"freeze_fsfor_snapshot,omitempty"`
+
 	FromBackup string `json:"fromBackup,omitempty" yaml:"from_backup,omitempty"`
 
 	Frontend string `json:"frontend,omitempty" yaml:"frontend,omitempty"`

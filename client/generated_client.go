@@ -38,6 +38,7 @@ type RancherClient struct {
 	UpdateReplicaSoftAntiAffinityInput     UpdateReplicaSoftAntiAffinityInputOperations
 	UpdateReplicaZoneSoftAntiAffinityInput UpdateReplicaZoneSoftAntiAffinityInputOperations
 	UpdateReplicaDiskSoftAntiAffinityInput UpdateReplicaDiskSoftAntiAffinityInputOperations
+	UpdateFreezeFSForSnapshotInput         UpdateFreezeFSForSnapshotInputOperations
 	WorkloadStatus                         WorkloadStatusOperations
 	CloneStatus                            CloneStatusOperations
 	Empty                                  EmptyOperations
@@ -62,11 +63,11 @@ type RancherClient struct {
 	Snapshot                               SnapshotOperations
 	SnapshotCR                             SnapshotCROperations
 	BackupVolume                           BackupVolumeOperations
+	BackupBackingImage                     BackupBackingImageOperations
 	Setting                                SettingOperations
 	RecurringJob                           RecurringJobOperations
 	EngineImage                            EngineImageOperations
 	BackingImage                           BackingImageOperations
-	BackupBackingImage                     BackupBackingImageOperations
 	Node                                   NodeOperations
 	DiskUpdateInput                        DiskUpdateInputOperations
 	DiskInfo                               DiskInfoOperations
@@ -118,6 +119,7 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.UpdateReplicaSoftAntiAffinityInput = newUpdateReplicaSoftAntiAffinityInputClient(client)
 	client.UpdateReplicaZoneSoftAntiAffinityInput = newUpdateReplicaZoneSoftAntiAffinityInputClient(client)
 	client.UpdateReplicaDiskSoftAntiAffinityInput = newUpdateReplicaDiskSoftAntiAffinityInputClient(client)
+	client.UpdateFreezeFSForSnapshotInput = newUpdateFreezeFSForSnapshotInputClient(client)
 	client.WorkloadStatus = newWorkloadStatusClient(client)
 	client.CloneStatus = newCloneStatusClient(client)
 	client.Empty = newEmptyClient(client)
@@ -142,6 +144,7 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.Snapshot = newSnapshotClient(client)
 	client.SnapshotCR = newSnapshotCRClient(client)
 	client.BackupVolume = newBackupVolumeClient(client)
+	client.BackupBackingImage = newBackupBackingImageClient(client)
 	client.Setting = newSettingClient(client)
 	client.RecurringJob = newRecurringJobClient(client)
 	client.EngineImage = newEngineImageClient(client)
@@ -155,7 +158,6 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.SystemBackup = newSystemBackupClient(client)
 	client.SystemRestore = newSystemRestoreClient(client)
 	client.SnapshotCRListOutput = newSnapshotCRListOutputClient(client)
-	client.BackupBackingImage = newBackupBackingImageClient(client)
 
 	return client
 }

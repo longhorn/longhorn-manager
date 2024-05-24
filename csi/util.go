@@ -196,7 +196,7 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 
 	if replicaDiskSoftAntiAffinity, ok := volOptions["replicaDiskSoftAntiAffinity"]; ok {
 		if err := types.ValidateReplicaDiskSoftAntiAffinity(longhorn.ReplicaDiskSoftAntiAffinity(replicaDiskSoftAntiAffinity)); err != nil {
-			return nil, errors.Wrap(err, "Invalid parameter replicaDiskSoftAntiAffinity")
+			return nil, errors.Wrap(err, "invalid parameter replicaDiskSoftAntiAffinity")
 		}
 		vol.ReplicaDiskSoftAntiAffinity = replicaDiskSoftAntiAffinity
 	}
@@ -234,6 +234,14 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 	if driver, ok := volOptions["dataEngine"]; ok {
 		vol.DataEngine = driver
 	}
+
+	if freezeFilesystemForSnapshot, ok := volOptions["freezeFilesystemForSnapshot"]; ok {
+		if err := types.ValidateFreezeFilesystemForSnapshot(longhorn.FreezeFilesystemForSnapshot(freezeFilesystemForSnapshot)); err != nil {
+			return nil, errors.Wrap(err, "invalid parameter freezeFilesystemForSnapshot")
+		}
+		vol.FreezeFilesystemForSnapshot = freezeFilesystemForSnapshot
+	}
+
 	return vol, nil
 }
 

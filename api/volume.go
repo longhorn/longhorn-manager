@@ -200,6 +200,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		ReplicaDiskSoftAntiAffinity: volume.ReplicaDiskSoftAntiAffinity,
 		DataEngine:                  volume.DataEngine,
 		OfflineReplicaRebuilding:    volume.OfflineReplicaRebuilding,
+		FreezeFilesystemForSnapshot: volume.FreezeFilesystemForSnapshot,
 	}, volume.RecurringJobSelector)
 	if err != nil {
 		return errors.Wrap(err, "failed to create volume")
@@ -825,6 +826,28 @@ func (s *Server) VolumeUpdateSnapshotMaxSize(rw http.ResponseWriter, req *http.R
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
 		return s.m.UpdateSnapshotMaxSize(id, snapshotMaxSize)
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("failed to convert to volume %v object", id)
+	}
+	return s.responseWithVolume(rw, req, "", v)
+}
+
+func (s *Server) VolumeUpdateFreezeFilesystemForSnapshot(rw http.ResponseWriter, req *http.Request) error {
+	var input UpdateFreezeFilesystemForSnapshotInput
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrap(err, "failed to read FreezeFilesystemForSnapshot input")
+	}
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.UpdateFreezeFilesystemForSnapshot(id, longhorn.FreezeFilesystemForSnapshot(input.FreezeFilesystemForSnapshot))
 	})
 	if err != nil {
 		return err

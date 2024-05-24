@@ -4,9 +4,10 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
-func (p *Proxy) SnapshotCreate(e *longhorn.Engine, name string, labels map[string]string) (string, error) {
+func (p *Proxy) SnapshotCreate(e *longhorn.Engine, name string, labels map[string]string,
+	freezeFilesystem bool) (string, error) {
 	return p.grpcClient.VolumeSnapshot(string(e.Spec.DataEngine), e.Name, e.Spec.VolumeName, p.DirectToURL(e),
-		name, labels)
+		name, labels, freezeFilesystem)
 }
 
 func (p *Proxy) SnapshotList(e *longhorn.Engine) (snapshots map[string]*longhorn.SnapshotInfo, err error) {
