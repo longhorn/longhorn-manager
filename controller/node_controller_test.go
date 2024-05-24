@@ -1055,7 +1055,7 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 	}
 
 	extraInstanceManager := newInstanceManager(
-		"extra-instance-manger-name", longhorn.InstanceManagerStateRunning,
+		"extra-instance-manager-name", longhorn.InstanceManagerStateRunning,
 		TestOwnerID1, TestNode1, TestIP1,
 		map[string]longhorn.InstanceProcess{
 			ExistingInstance: {
@@ -1150,7 +1150,7 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 				longhorn.DataEngineTypeV1,
 				false,
 			),
-			"extra-instance-manger-name": extraInstanceManager,
+			"extra-instance-manager-name": extraInstanceManager,
 		},
 		orphans: map[string]*longhorn.Orphan{
 			DefaultOrphanTestNode1.Name: DefaultOrphanTestNode1,
