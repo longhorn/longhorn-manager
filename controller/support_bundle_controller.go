@@ -635,7 +635,12 @@ func (c *SupportBundleController) createSupportBundleManagerDeployment(supportBu
 	}
 	registrySecret := registrySecretSetting.Value
 
-	newSupportBundleManager, err := c.newSupportBundleManager(supportBundle, nodeSelector, imagePullPolicy, priorityClass, registrySecret)
+	nodeCollectionTimeoutMinute, err := c.ds.GetSettingAsInt(types.SettingNameSupportBundleNodeCollectionTimeout)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get support bundle node collection timeout setting before creating support bundle manager deployment")
+	}
+
+	newSupportBundleManager, err := c.newSupportBundleManager(supportBundle, nodeSelector, imagePullPolicy, priorityClass, registrySecret, nodeCollectionTimeoutMinute)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create new support bundle manager")
 	}
@@ -643,7 +648,7 @@ func (c *SupportBundleController) createSupportBundleManagerDeployment(supportBu
 }
 
 func (c *SupportBundleController) newSupportBundleManager(supportBundle *longhorn.SupportBundle, nodeSelector map[string]string,
-	imagePullPolicy corev1.PullPolicy, priorityClass, registrySecret string) (*appsv1.Deployment, error) {
+	imagePullPolicy corev1.PullPolicy, priorityClass, registrySecret string, nodeCollectionTimeoutMinute int64) (*appsv1.Deployment, error) {
 
 	tolerationSetting, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameTaintToleration)
 	if err != nil {
@@ -741,6 +746,10 @@ func (c *SupportBundleController) newSupportBundleManager(supportBundle *longhor
 								{
 									Name:  "SUPPORT_BUNDLE_TAINT_TOLERATION",
 									Value: c.getTaintTolerationString(tolerationSetting),
+								},
+								{
+									Name:  "SUPPORT_BUNDLE_NODE_TIMEOUT",
+									Value: fmt.Sprintf("%dm", nodeCollectionTimeoutMinute),
 								},
 							},
 							Ports: []corev1.ContainerPort{
