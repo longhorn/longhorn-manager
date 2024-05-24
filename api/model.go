@@ -187,6 +187,7 @@ type BackupBackingImage struct {
 
 type Setting struct {
 	client.Resource
+	Applied    bool                    `json:"applied"`
 	Name       string                  `json:"name"`
 	Value      string                  `json:"value"`
 	Definition types.SettingDefinition `json:"definition"`
@@ -1309,8 +1310,9 @@ func toSettingResource(setting *longhorn.Setting) *Setting {
 			Type:  "setting",
 			Links: map[string]string{},
 		},
-		Name:  setting.Name,
-		Value: setting.Value,
+		Applied: setting.Status.Applied,
+		Name:    setting.Name,
+		Value:   setting.Value,
 
 		Definition: definition,
 	}
