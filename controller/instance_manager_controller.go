@@ -425,7 +425,7 @@ func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceMan
 func (imc *InstanceManagerController) syncStatusWithNode(im *longhorn.InstanceManager) error {
 	log := getLoggerForInstanceManager(imc.logger, im).WithField("node", im.Spec.NodeID)
 
-	isDown, err := imc.ds.IsNodeDownOrDeleted(im.Spec.NodeID)
+	isDown, err := imc.ds.IsNodeDownOrDeletedOrDelinquent(im.Spec.NodeID)
 	if err != nil {
 		return err
 	}

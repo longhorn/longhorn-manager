@@ -279,7 +279,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 				return nil
 			}
 			// The related node maybe cleaned up then there is no available instance manager for this instance (typically it's replica).
-			isNodeDownOrDeleted, err := h.ds.IsNodeDownOrDeleted(spec.NodeID)
+			isNodeDownOrDeleted, err := h.ds.IsNodeDownOrDeletedOrDelinquent(spec.NodeID)
 			if err != nil {
 				return err
 			}

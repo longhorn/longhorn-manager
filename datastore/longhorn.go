@@ -2746,6 +2746,33 @@ func (s *DataStore) IsNodeDownOrDeletedOrMissingManager(name string) (bool, erro
 	return false, nil
 }
 
+// IsNodeDownOrDeletedOrDelinquent is a variant that also considers an early-warning
+// condition of Lease expiration that is of interest to share-manager types.
+func (s *DataStore) IsNodeDownOrDeletedOrDelinquent(name string) (bool, error) {
+	if name == "" {
+		return false, errors.New("no node name provided to IsNodeDownOrDeletedOrDelinquent")
+	}
+	node, err := s.GetNodeRO(name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return true, nil
+		}
+		return false, err
+	}
+	cond := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
+	if cond.Status == longhorn.ConditionStatusFalse &&
+		(cond.Reason == string(longhorn.NodeConditionReasonKubernetesNodeGone) ||
+			cond.Reason == string(longhorn.NodeConditionReasonKubernetesNodeNotReady) ||
+			cond.Reason == string(longhorn.NodeConditionReasonManagerPodMissing)) {
+		return true, nil
+	}
+	cond = types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeDelinquent)
+	if cond.Status == longhorn.ConditionStatusTrue {
+		return true, nil
+	}
+	return false, nil
+}
+
 // IsNodeDownOrDeleted gets Node for the given name and namespace and checks
 // if the Node condition is gone or not ready
 func (s *DataStore) IsNodeDownOrDeleted(name string) (bool, error) {
