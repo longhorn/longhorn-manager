@@ -193,7 +193,7 @@ func (kc *KubernetesPodController) handleWorkloadPodDeletionIfCSIPluginPodIsDown
 		return nil
 	}
 
-	storageNetworkSetting, err := kc.ds.GetSetting(types.SettingNameStorageNetwork)
+	storageNetworkSetting, err := kc.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
 	if err != nil {
 		return nil
 	}
@@ -203,6 +203,15 @@ func (kc *KubernetesPodController) handleWorkloadPodDeletionIfCSIPluginPodIsDown
 	}
 
 	kc.logger.Infof("CSI plugin pod %v on node %v is down, handling workload pods", csiPod.Name, csiPod.Spec.NodeName)
+
+	autoDeletePodWhenVolumeDetachedUnexpectedly, err := kc.ds.GetSettingAsBool(types.SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly)
+	if err != nil {
+		return err
+	}
+	if !autoDeletePodWhenVolumeDetachedUnexpectedly {
+		kc.logger.Warnf("Aborting deletion of RWX volume workload pods for NFS remount. The setting %v is not enabled. Without restart the workload pod may lead to an unresponsive mount point", types.SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly)
+		return nil
+	}
 
 	var persistentVolumes []*corev1.PersistentVolume
 	persistentVolume, err := kc.ds.ListPersistentVolumesRO()
@@ -230,7 +239,7 @@ func (kc *KubernetesPodController) handleWorkloadPodDeletionIfCSIPluginPodIsDown
 
 		// Exclude non-RWX volumes.
 		if volume.Spec.AccessMode != longhorn.AccessModeReadWriteMany {
-			kc.logger.Infof("Skipping pod deletion forfor NFS remount because volume %v access mode is %v", volume.Name, volume.Spec.AccessMode)
+			kc.logger.Infof("Skipping pod deletion for NFS remount because volume %v access mode is %v", volume.Name, volume.Spec.AccessMode)
 			continue
 		}
 
