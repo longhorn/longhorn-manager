@@ -221,6 +221,16 @@ func (kc *KubernetesPodController) handleWorkloadPodDeletionIfCSIPluginPodIsDown
 
 	log.Info("CSI plugin pod on node is down, handling workload pods")
 
+	autoDeletePodWhenVolumeDetachedUnexpectedly, err := kc.ds.GetSettingAsBool(types.SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly)
+	if err != nil {
+		return err
+	}
+
+	if !autoDeletePodWhenVolumeDetachedUnexpectedly {
+		log.Warnf("%s. The setting %v is not enabled. Without restart the workload pod may lead to an unresponsive mount point", logAbort, types.SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly)
+		return nil
+	}
+
 	// Find relevant PersistentVolumes.
 	var persistentVolumes []*corev1.PersistentVolume
 	persistentVolume, err := kc.ds.ListPersistentVolumesRO()
