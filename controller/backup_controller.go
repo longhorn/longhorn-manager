@@ -704,6 +704,16 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 		return nil, fmt.Errorf("waiting for engine %v to be running before enabling backup monitor", engine.Name)
 	}
 
+	snapshot, err := bc.ds.GetSnapshotRO(backup.Spec.SnapshotName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get snapshot %v before enabling backup monitor", backup.Spec.SnapshotName)
+	}
+	if snapshot != nil {
+		if !snapshot.Status.ReadyToUse {
+			return nil, fmt.Errorf("waiting for snapshot %v to be ready before enabling backup monitor", backup.Spec.SnapshotName)
+		}
+	}
+
 	// Enable the backup monitor
 	monitor, err := bc.enableBackupMonitor(backup, volume, backupTargetClient, biChecksum,
 		volume.Spec.BackupCompressionMethod, int(concurrentLimit), storageClassName, engineClientProxy)

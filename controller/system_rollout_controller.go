@@ -438,20 +438,17 @@ func (c *SystemRolloutController) systemRollout() error {
 
 		wg := &sync.WaitGroup{}
 		restoreFns := map[string]func() error{
-			types.KubernetesKindServiceList:               c.restoreService,
-			types.KubernetesKindServiceAccountList:        c.restoreServiceAccounts,
-			types.KubernetesKindClusterRoleList:           c.restoreClusterRoles,
-			types.KubernetesKindClusterRoleBindingList:    c.restoreClusterRoleBindings,
-			types.KubernetesKindPodSecurityPolicyList:     c.restorePodSecurityPolicies,
-			types.KubernetesKindRoleList:                  c.restoreRoles,
-			types.KubernetesKindRoleBindingList:           c.restoreRoleBindings,
-			types.KubernetesKindStorageClassList:          c.restoreStorageClasses,
-			types.KubernetesKindConfigMapList:             c.restoreConfigMaps,
-			types.KubernetesKindDeploymentList:            c.restoreDeployments,
-			types.LonghornKindBackingImageList:            c.restoreBackingIamges,
-			types.KubernetesKindPersistentVolumeList:      c.restorePersistentVolumes,
-			types.KubernetesKindPersistentVolumeClaimList: c.restorePersistentVolumeClaims,
-			types.LonghornKindRecurringJobList:            c.restoreRecurringJobs,
+			types.KubernetesKindServiceList:            c.restoreService,
+			types.KubernetesKindServiceAccountList:     c.restoreServiceAccounts,
+			types.KubernetesKindClusterRoleList:        c.restoreClusterRoles,
+			types.KubernetesKindClusterRoleBindingList: c.restoreClusterRoleBindings,
+			types.KubernetesKindRoleList:               c.restoreRoles,
+			types.KubernetesKindRoleBindingList:        c.restoreRoleBindings,
+			types.KubernetesKindStorageClassList:       c.restoreStorageClasses,
+			types.KubernetesKindConfigMapList:          c.restoreConfigMaps,
+			types.KubernetesKindDeploymentList:         c.restoreDeployments,
+			types.LonghornKindBackingImageList:         c.restoreBackingIamges,
+			types.LonghornKindRecurringJobList:         c.restoreRecurringJobs,
 		}
 		wg.Add(len(restoreFns))
 		for k, v := range restoreFns {
@@ -464,7 +461,11 @@ func (c *SystemRolloutController) systemRollout() error {
 		wg.Wait()
 
 		// Need to wait until backingimages are restored, so the volumes with backingimages can be restored.
+		// Need to wait until backing images are restored, so the volumes with backingimages won't be rejected by webhook when restoring.
+		// PV/PVC restoration depends on Volume, so move them after volume restoration.
 		c.restore(types.LonghornKindVolumeList, c.restoreVolumes, log)
+		c.restore(types.KubernetesKindPersistentVolumeList, c.restorePersistentVolumes, log)
+		c.restore(types.KubernetesKindPersistentVolumeClaimList, c.restorePersistentVolumeClaims, log)
 
 		if len(c.cacheErrors) == 0 {
 			c.updateSystemRolloutRecord(record,
