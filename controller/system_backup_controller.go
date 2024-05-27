@@ -79,6 +79,10 @@ const (
 	systemBackupRecordTypeNormal = systemBackupRecordType("normal")
 )
 
+const (
+	SnapshotReadyTimeout = 300
+)
+
 type systemBackupRecord struct {
 	nextState longhorn.SystemBackupState
 
@@ -842,6 +846,10 @@ func (c *SystemBackupController) createVolumeBackup(volume *longhorn.Volume, sys
 		return nil, errors.Wrapf(err, "failed to create Volume %v snapshot %s", volume.Name, snapshot.Name)
 	}
 
+	if err = c.waitForSnaphotReady(volumeBackupName, SnapshotReadyTimeout); err != nil {
+		return nil, errors.Wrapf(err, "failed to wait for snapshot %v to be ready", volumeBackupName)
+	}
+
 	backup = &longhorn.Backup{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: volumeBackupName,
@@ -855,6 +863,24 @@ func (c *SystemBackupController) createVolumeBackup(volume *longhorn.Volume, sys
 		return nil, errors.Wrapf(err, "failed to create Volume %v backup %s", volume.Name, volumeBackupName)
 	}
 	return backup, nil
+}
+
+func (c *SystemBackupController) waitForSnaphotReady(snapshotName string, timeout int) error {
+	for i := 0; i < timeout; i++ {
+		snapshot, err := c.ds.GetSnapshotRO(snapshotName)
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				return errors.Wrapf(err, "failed to get snapshot %v", snapshotName)
+			}
+		}
+		if snapshot != nil {
+			if snapshot.Status.ReadyToUse {
+				return nil
+			}
+		}
+		time.Sleep(1 * time.Second)
+	}
+	return fmt.Errorf("timeout waiting for the the snapshot %v to be ready", snapshotName)
 }
 
 func (c *SystemBackupController) BackupBackingImage() (map[string]*longhorn.BackupBackingImage, error) {
