@@ -34,6 +34,16 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
+const (
+	MessageTypeReconcileInfo = "info"
+)
+
+const (
+	WaitForSnapshotMessage     = "Waiting for the snapshot %v to be ready"
+	WaitForEngineMessage       = "Waiting for the engine %v to be ready"
+	FailedToGetSnapshotMessage = "Failed to get the Snapshot %v"
+)
+
 type BackupController struct {
 	*baseController
 
@@ -371,10 +381,18 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			return err
 		}
 
+		if backup.Status.Messages == nil {
+			backup.Status.Messages = map[string]string{}
+		}
+
 		monitor, err := bc.checkMonitor(backup, volume, backupTarget)
 		if err != nil {
 			if backup.Status.State == longhorn.BackupStateError {
 				log.WithError(err).Warnf("Failed to enable the backup monitor for backup %v", backup.Name)
+				return nil
+			}
+			if backup.Status.State == longhorn.BackupStatePending {
+				log.WithError(err).Warnf("Waiting to enable the backup monitor for backup %v", backup.Name)
 				return nil
 			}
 			return err
@@ -701,7 +719,23 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 	if engine.Status.CurrentState != longhorn.InstanceStateRunning ||
 		engine.Spec.DesireState != longhorn.InstanceStateRunning ||
 		volume.Status.State != longhorn.VolumeStateAttached {
-		return nil, fmt.Errorf("waiting for engine %v to be running before enabling backup monitor", engine.Name)
+		backup.Status.State = longhorn.BackupStatePending
+		backup.Status.Messages[MessageTypeReconcileInfo] = fmt.Sprintf(WaitForEngineMessage, engine.Name)
+		return nil, fmt.Errorf("waiting for the engine %v to be running before enabling backup monitor", engine.Name)
+	}
+
+	snapshot, err := bc.ds.GetSnapshotRO(backup.Spec.SnapshotName)
+	if err != nil {
+		backup.Status.State = longhorn.BackupStatePending
+		backup.Status.Messages[MessageTypeReconcileInfo] = fmt.Sprintf(FailedToGetSnapshotMessage, backup.Spec.SnapshotName)
+		return nil, errors.Wrapf(err, "failed to get the snapshot %v before enabling backup monitor", backup.Spec.SnapshotName)
+	}
+	if snapshot != nil {
+		if !snapshot.Status.ReadyToUse {
+			backup.Status.State = longhorn.BackupStatePending
+			backup.Status.Messages[MessageTypeReconcileInfo] = fmt.Sprintf(WaitForSnapshotMessage, backup.Spec.SnapshotName)
+			return nil, fmt.Errorf("waiting for the snapshot %v to be ready before enabling backup monitor", backup.Spec.SnapshotName)
+		}
 	}
 
 	// Enable the backup monitor
