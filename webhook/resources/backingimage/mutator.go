@@ -103,6 +103,11 @@ func (b *backingImageMutator) Create(request *admission.Request, newObj runtime.
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/disks", "value": {}}`)
 	}
 
+	// Handle Spec.DiskFileSpecMap
+	if backingImage.Spec.DiskFileSpecMap == nil {
+		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/disks", "value": {}}`)
+	}
+
 	longhornLabels := types.GetBackingImageLabels()
 	patchOp, err := common.GetLonghornLabelsPatchOp(backingImage, longhornLabels, nil)
 	if err != nil {
@@ -147,6 +152,12 @@ func (b *backingImageMutator) Update(request *admission.Request, oldObj runtime.
 	if backingImage.Spec.Disks == nil {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/disks", "value": {}}`)
 	}
+
+	// Handle Spec.DiskFileSpecMap
+	if backingImage.Spec.DiskFileSpecMap == nil {
+		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/disks", "value": {}}`)
+	}
+
 	if backingImage.Spec.SourceParameters == nil {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/sourceParameters", "value": {}}`)
 	}

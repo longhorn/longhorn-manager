@@ -395,13 +395,13 @@ func (c *BackingImageDataSourceController) syncBackingImage(bids *longhorn.Backi
 		}
 	}()
 
-	if bi.Spec.Disks == nil {
-		bi.Spec.Disks = map[string]string{}
+	if bi.Spec.DiskFileSpecMap == nil {
+		bi.Spec.DiskFileSpecMap = map[string]*longhorn.BackingImageDiskFileSpec{}
 	}
 
 	if !bids.Spec.FileTransferred {
-		if _, exists := bi.Spec.Disks[bids.Spec.DiskUUID]; !exists {
-			bi.Spec.Disks[bids.Spec.DiskUUID] = ""
+		if _, exists := bi.Spec.DiskFileSpecMap[bids.Spec.DiskUUID]; !exists {
+			bi.Spec.DiskFileSpecMap[bids.Spec.DiskUUID] = &longhorn.BackingImageDiskFileSpec{}
 		}
 	}
 

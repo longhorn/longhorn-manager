@@ -1992,8 +1992,8 @@ func toBackingImageResource(bi *longhorn.BackingImage, apiContext *api.ApiContex
 			diskFileStatusMap[diskUUID] = *diskStatus
 		}
 	}
-	if bi.Spec.Disks != nil {
-		for diskUUID := range bi.Spec.Disks {
+	if bi.Spec.DiskFileSpecMap != nil {
+		for diskUUID := range bi.Spec.DiskFileSpecMap {
 			if _, exists := bi.Status.DiskFileStatusMap[diskUUID]; !exists {
 				diskFileStatusMap[diskUUID] = longhorn.BackingImageDiskFileStatus{
 					Message: "File processing is not started",

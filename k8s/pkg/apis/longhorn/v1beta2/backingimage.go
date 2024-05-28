@@ -37,14 +37,20 @@ type BackingImageDiskFileStatus struct {
 	Message string `json:"message"`
 	// +optional
 	LastStateTransitionTime string `json:"lastStateTransitionTime"`
+}
+
+type BackingImageDiskFileSpec struct {
 	// +optional
 	EvictionRequested bool `json:"evictionRequested"`
 }
 
 // BackingImageSpec defines the desired state of the Longhorn backing image
 type BackingImageSpec struct {
+	// Deprecated. We are now using DiskFileSpecMap to assign different spec to the file on different disks.
 	// +optional
 	Disks map[string]string `json:"disks"`
+	// +optional
+	DiskFileSpecMap map[string]*BackingImageDiskFileSpec `json:"diskFileSpecMap"`
 	// +optional
 	Checksum string `json:"checksum"`
 	// +optional

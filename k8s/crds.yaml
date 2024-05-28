@@ -441,6 +441,13 @@ spec:
             properties:
               checksum:
                 type: string
+              diskFileSpecMap:
+                additionalProperties:
+                  properties:
+                    evictionRequested:
+                      type: boolean
+                  type: object
+                type: object
               diskSelector:
                 items:
                   type: string
@@ -448,6 +455,7 @@ spec:
               disks:
                 additionalProperties:
                   type: string
+                description: Deprecated. We are now using DiskFileSpecMap to assign different spec to the file on different disks.
                 type: object
               minNumberOfCopies:
                 type: integer
@@ -475,8 +483,6 @@ spec:
               diskFileStatusMap:
                 additionalProperties:
                   properties:
-                    evictionRequested:
-                      type: boolean
                     lastStateTransitionTime:
                       type: string
                     message:

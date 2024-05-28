@@ -39,6 +39,10 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 		return err
 	}
 
+	if err := upgradeBackingImages(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
 	return upgradeNodes(namespace, lhClient, resourceMaps)
 }
 
@@ -99,6 +103,35 @@ func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset, resource
 			// There is no way for us to know the right time for Spec.LastFailedAt if the replica isn't currently
 			// failed. Start updating it after the upgrade.
 			r.Spec.LastFailedAt = r.Spec.FailedAt
+		}
+	}
+
+	return nil
+}
+
+func upgradeBackingImages(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade backing image failed")
+	}()
+
+	backingImageMap, err := upgradeutil.ListAndUpdateBackingImagesInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn backing images during the backing image upgrade")
+	}
+
+	// deprecate the field bi.Spec.Disks
+	for _, bi := range backingImageMap {
+		if bi.Spec.DiskFileSpecMap == nil {
+			bi.Spec.DiskFileSpecMap = map[string]*longhorn.BackingImageDiskFileSpec{}
+		}
+		if bi.Spec.Disks != nil {
+			for diskUUID := range bi.Spec.Disks {
+				bi.Spec.DiskFileSpecMap[diskUUID] = &longhorn.BackingImageDiskFileSpec{}
+				delete(bi.Spec.Disks, diskUUID)
+			}
 		}
 	}
 
