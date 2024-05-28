@@ -1654,6 +1654,7 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameStorageOverProvisioningPercentage:                        true,
 		types.SettingNameStorageReservedPercentageForDefaultDisk:                  true,
 		types.SettingNameSupportBundleFailedHistoryLimit:                          true,
+		types.SettingNameSupportBundleNodeCollectionTimeout:                       true,
 		types.SettingNameSystemManagedPodsImagePullPolicy:                         true,
 		types.SettingNameV1DataEngine:                                             true,
 		types.SettingNameV2DataEngine:                                             true,
