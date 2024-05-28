@@ -256,6 +256,7 @@ func newInstanceManager(
 	instanceEngines map[string]longhorn.InstanceProcess,
 	instanceReplicas map[string]longhorn.InstanceProcess,
 	dataEngine longhorn.DataEngineType,
+	instanceManagerImage string,
 	isDeleting bool) *longhorn.InstanceManager {
 
 	im := &longhorn.InstanceManager{
@@ -263,10 +264,10 @@ func newInstanceManager(
 			Name:      name,
 			Namespace: TestNamespace,
 			UID:       uuid.NewUUID(),
-			Labels:    types.GetInstanceManagerLabels(nodeID, TestInstanceManagerImage, longhorn.InstanceManagerTypeAllInOne, dataEngine),
+			Labels:    types.GetInstanceManagerLabels(nodeID, instanceManagerImage, longhorn.InstanceManagerTypeAllInOne, dataEngine),
 		},
 		Spec: longhorn.InstanceManagerSpec{
-			Image:      TestInstanceManagerImage,
+			Image:      instanceManagerImage,
 			NodeID:     nodeID,
 			Type:       longhorn.InstanceManagerTypeAllInOne,
 			DataEngine: dataEngine,

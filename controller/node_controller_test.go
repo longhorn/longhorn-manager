@@ -54,6 +54,7 @@ var (
 		map[string]longhorn.InstanceProcess{},
 		map[string]longhorn.InstanceProcess{},
 		longhorn.DataEngineTypeV1,
+		TestInstanceManagerImage,
 		false,
 	)
 )
@@ -965,6 +966,7 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
 				longhorn.DataEngineTypeV1,
+				TestInstanceManagerImage,
 				false,
 			),
 		},
@@ -1026,6 +1028,7 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 		},
 		map[string]longhorn.InstanceProcess{},
 		longhorn.DataEngineTypeV1,
+		TestExtraInstanceManagerImage,
 		false,
 	)
 	extraInstanceManager.Spec.Image = TestExtraInstanceManagerImage
@@ -1101,6 +1104,7 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
 				longhorn.DataEngineTypeV1,
+				TestInstanceManagerImage,
 				false,
 			),
 			"extra-instance-manger-name": extraInstanceManager,
@@ -1196,6 +1200,7 @@ func (s *NodeControllerSuite) TestCleanupAllInstanceManagers(c *C) {
 				map[string]longhorn.InstanceProcess{},
 				map[string]longhorn.InstanceProcess{},
 				longhorn.DataEngineTypeV1,
+				TestInstanceManagerImage,
 				false,
 			),
 		},
