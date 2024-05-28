@@ -1206,7 +1206,7 @@ func (nc *NodeController) cleanUpBackingImagesInDisks(node *longhorn.Node) error
 }
 
 func BackingImageDiskFileCleanup(node *longhorn.Node, bi *longhorn.BackingImage, bids *longhorn.BackingImageDataSource, waitInterval time.Duration, minNumberOfCopies int) {
-	if bi.Spec.Disks == nil || bi.Status.DiskLastRefAtMap == nil || !bids.Spec.FileTransferred {
+	if bi.Spec.DiskFileSpecMap == nil || bi.Status.DiskLastRefAtMap == nil || !bids.Spec.FileTransferred {
 		return
 	}
 
@@ -1215,7 +1215,7 @@ func BackingImageDiskFileCleanup(node *longhorn.Node, bi *longhorn.BackingImage,
 	}
 
 	var readyDiskFileCount, handlingDiskFileCount, failedDiskFileCount int
-	for diskUUID := range bi.Spec.Disks {
+	for diskUUID := range bi.Spec.DiskFileSpecMap {
 		// Consider non-existing files as pending/handling backing image files.
 		fileStatus, exists := bi.Status.DiskFileStatusMap[diskUUID]
 		if !exists {
@@ -1234,7 +1234,7 @@ func BackingImageDiskFileCleanup(node *longhorn.Node, bi *longhorn.BackingImage,
 
 	for _, diskStatus := range node.Status.DiskStatus {
 		diskUUID := diskStatus.DiskUUID
-		if _, exists := bi.Spec.Disks[diskUUID]; !exists {
+		if _, exists := bi.Spec.DiskFileSpecMap[diskUUID]; !exists {
 			continue
 		}
 		lastRefAtStr, exists := bi.Status.DiskLastRefAtMap[diskUUID]
@@ -1280,7 +1280,7 @@ func BackingImageDiskFileCleanup(node *longhorn.Node, bi *longhorn.BackingImage,
 		}
 
 		logrus.Infof("Cleaning up the unused file in disk %v for backing image %v", diskUUID, bi.Name)
-		delete(bi.Spec.Disks, diskUUID)
+		delete(bi.Spec.DiskFileSpecMap, diskUUID)
 	}
 }
 
@@ -1610,14 +1610,14 @@ func (nc *NodeController) syncBackingImageEvictionRequested(node *longhorn.Node)
 		if diskSpec.EvictionRequested || node.Spec.EvictionRequested {
 			for _, backingImage := range diskBackingImageMap[diskUUID] {
 				// trigger eviction request
-				backingImage.Status.DiskFileStatusMap[diskUUID].EvictionRequested = true
+				backingImage.Spec.DiskFileSpecMap[diskUUID].EvictionRequested = true
 				backingImagesToSync = append(backingImagesToSync, backingImageToSync{backingImage, diskUUID, true})
 			}
 		} else {
 			for _, backingImage := range diskBackingImageMap[diskUUID] {
-				if backingImage.Status.DiskFileStatusMap[diskUUID].EvictionRequested {
+				if backingImage.Spec.DiskFileSpecMap[diskUUID].EvictionRequested {
 					// if it is previously set to true, cancel the eviction request
-					backingImage.Status.DiskFileStatusMap[diskUUID].EvictionRequested = false
+					backingImage.Spec.DiskFileSpecMap[diskUUID].EvictionRequested = false
 					backingImagesToSync = append(backingImagesToSync, backingImageToSync{backingImage, diskUUID, false})
 				}
 			}

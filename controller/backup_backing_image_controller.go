@@ -359,7 +359,7 @@ func (bc *BackupBackingImageController) checkMonitor(bbi *longhorn.BackupBacking
 
 	// pick one backing image manager to do backup
 	var targetBim *longhorn.BackingImageManager
-	for diskUUID := range backingImage.Spec.Disks {
+	for diskUUID := range backingImage.Spec.DiskFileSpecMap {
 		bimMap, err := bc.ds.ListBackingImageManagersByDiskUUID(diskUUID)
 		if err != nil {
 			return nil, err

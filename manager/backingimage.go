@@ -94,6 +94,7 @@ func (m *VolumeManager) CreateBackingImage(name, checksum, sourceType string, pa
 		},
 		Spec: longhorn.BackingImageSpec{
 			Disks:             map[string]string{},
+			DiskFileSpecMap:   map[string]*longhorn.BackingImageDiskFileSpec{},
 			Checksum:          checksum,
 			SourceType:        longhorn.BackingImageDataSourceType(sourceType),
 			SourceParameters:  parameters,
@@ -129,7 +130,7 @@ func (m *VolumeManager) CleanUpBackingImageDiskFiles(name string, diskFileList [
 		logrus.Infof("Deleting backing image %v, there is no need to do disk cleanup for it", name)
 		return bi, nil
 	}
-	if bi.Spec.Disks == nil {
+	if bi.Spec.DiskFileSpecMap == nil {
 		logrus.Infof("backing image %v has not disk required, there is no need to do cleanup then", name)
 		return bi, nil
 	}
@@ -167,16 +168,16 @@ func (m *VolumeManager) CleanUpBackingImageDiskFiles(name string, diskFileList [
 		if _, exists := disksInUse[diskUUID]; exists {
 			return nil, fmt.Errorf("cannot clean up backing image %v in disk %v since there is at least one replica using it", name, diskUUID)
 		}
-		if _, exists := bi.Spec.Disks[diskUUID]; !exists {
+		if _, exists := bi.Spec.DiskFileSpecMap[diskUUID]; !exists {
 			continue
 		}
-		delete(bi.Spec.Disks, diskUUID)
+		delete(bi.Spec.DiskFileSpecMap, diskUUID)
 		cleanupFileMap[diskUUID] = struct{}{}
 	}
 
 	var readyActiveFileCount, handlingActiveFileCount, failedActiveFileCount int
 	var readyCleanupFileCount, handlingCleanupFileCount, failedCleanupFileCount int
-	for diskUUID := range existingBI.Spec.Disks {
+	for diskUUID := range existingBI.Spec.DiskFileSpecMap {
 		// Consider non-existing files as pending backing image files.
 		fileStatus, exists := bi.Status.DiskFileStatusMap[diskUUID]
 		if !exists {

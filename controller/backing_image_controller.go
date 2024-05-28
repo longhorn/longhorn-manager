@@ -287,8 +287,8 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 		return err
 	}
 
-	// We cannot continue without `Spec.Disks`. The backing image data source controller can update it.
-	if backingImage.Spec.Disks == nil {
+	// We cannot continue without `Spec.DiskFileSpecMap`. The backing image data source controller can update it.
+	if backingImage.Spec.DiskFileSpecMap == nil {
 		return nil
 	}
 
@@ -338,7 +338,7 @@ func (bic *BackingImageController) replenishBackingImageCopies(bi *longhorn.Back
 
 	nonFailedCopies := 0
 	usedDisks := map[string]bool{}
-	for diskUUID := range bi.Spec.Disks {
+	for diskUUID := range bi.Spec.DiskFileSpecMap {
 		fileStatus, exists := bi.Status.DiskFileStatusMap[diskUUID]
 		if !exists || (fileStatus.State != longhorn.BackingImageStateFailed &&
 			fileStatus.State != longhorn.BackingImageStateFailedAndCleanUp &&
@@ -366,7 +366,7 @@ func (bic *BackingImageController) replenishBackingImageCopies(bi *longhorn.Back
 			return nil
 		}
 		// BackingImageManager will then sync the BackingImage to the disk
-		bi.Spec.Disks[readyNode.Status.DiskStatus[readyDiskName].DiskUUID] = ""
+		bi.Spec.DiskFileSpecMap[readyNode.Status.DiskStatus[readyDiskName].DiskUUID] = &longhorn.BackingImageDiskFileSpec{}
 	}
 
 	return nil
@@ -377,8 +377,8 @@ func (bic *BackingImageController) handleBackingImageCopiesEvictions(nonFailedCo
 	log := getLoggerForBackingImage(bic.logger, bi)
 	NonEvictingCount := nonFailedCopies
 
-	for _, fileStatus := range bi.Status.DiskFileStatusMap {
-		if fileStatus.EvictionRequested {
+	for _, fileSpec := range bi.Spec.DiskFileSpecMap {
+		if fileSpec.EvictionRequested {
 			NonEvictingCount--
 		}
 	}
@@ -391,7 +391,7 @@ func (bic *BackingImageController) handleBackingImageCopiesEvictions(nonFailedCo
 			return nil
 		}
 		// BackingImageManager will then sync the BackingImage to the disk
-		bi.Spec.Disks[readyNode.Status.DiskStatus[readyDiskName].DiskUUID] = ""
+		bi.Spec.DiskFileSpecMap[readyNode.Status.DiskStatus[readyDiskName].DiskUUID] = &longhorn.BackingImageDiskFileSpec{}
 	}
 
 	return nil
@@ -404,19 +404,23 @@ func (bic *BackingImageController) cleanupEvictionRequestedBackingImageCopies(bi
 	// Longhorn should retain one evicting healthy backing image copy for replenishing.
 	hasNonEvictingHealthyBackingImageCopy := false
 	evictingHealthyBackingImageCopyDiskUUID := ""
-	for diskUUID, fileStatus := range bi.Status.DiskFileStatusMap {
-		if fileStatus.State != longhorn.BackingImageStateReady {
-			continue
+	for diskUUID, fileSpec := range bi.Spec.DiskFileSpecMap {
+		fileStatus, exists := bi.Status.DiskFileStatusMap[diskUUID]
+		if exists && fileStatus != nil {
+			if fileStatus.State != longhorn.BackingImageStateReady {
+				continue
+			}
 		}
-		if !fileStatus.EvictionRequested {
+
+		if !fileSpec.EvictionRequested {
 			hasNonEvictingHealthyBackingImageCopy = true
 			break
 		}
 		evictingHealthyBackingImageCopyDiskUUID = diskUUID
 	}
 
-	for diskUUID, fileStatus := range bi.Status.DiskFileStatusMap {
-		if !fileStatus.EvictionRequested {
+	for diskUUID, fileSpec := range bi.Spec.DiskFileSpecMap {
+		if !fileSpec.EvictionRequested {
 			continue
 		}
 		if !hasNonEvictingHealthyBackingImageCopy && diskUUID == evictingHealthyBackingImageCopyDiskUUID {
@@ -425,7 +429,7 @@ func (bic *BackingImageController) cleanupEvictionRequestedBackingImageCopies(bi
 			bic.eventRecorder.Event(bi, corev1.EventTypeNormal, constant.EventReasonFailedDeleting, msg)
 			continue
 		}
-		delete(bi.Spec.Disks, diskUUID)
+		delete(bi.Spec.DiskFileSpecMap, diskUUID)
 		log.Infof("Evicted backing image copy on disk %v", diskUUID)
 	}
 }
@@ -477,7 +481,7 @@ func (bic *BackingImageController) cleanupBackingImageManagers(bi *longhorn.Back
 			continue
 		}
 		// The entry in the backing image manager matches the current backing image.
-		if _, isStillRequiredByCurrentBI := bi.Spec.Disks[bim.Spec.DiskUUID]; isStillRequiredByCurrentBI && bi.DeletionTimestamp == nil {
+		if _, isStillRequiredByCurrentBI := bi.Spec.DiskFileSpecMap[bim.Spec.DiskUUID]; isStillRequiredByCurrentBI && bi.DeletionTimestamp == nil {
 			if bim.Spec.BackingImages[bi.Name] == bi.Status.UUID {
 				continue
 			}
@@ -512,8 +516,8 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 		var readyDiskUUID, readyDiskPath, readyNodeID string
 		isReadyFile := false
 		foundReadyDisk := false
-		if bi.Spec.Disks != nil {
-			for diskUUID := range bi.Spec.Disks {
+		if bi.Spec.DiskFileSpecMap != nil {
+			for diskUUID := range bi.Spec.DiskFileSpecMap {
 				node, diskName, err := bic.ds.GetReadyDiskNode(diskUUID)
 				if err != nil {
 					if !types.ErrorIsNotFound(err) {
@@ -590,8 +594,8 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 
 	// If all files in Spec.Disk becomes unavailable and there is no extra ready files.
 	allFilesUnavailable := true
-	if bi.Spec.Disks != nil {
-		for diskUUID := range bi.Spec.Disks {
+	if bi.Spec.DiskFileSpecMap != nil {
+		for diskUUID := range bi.Spec.DiskFileSpecMap {
 			fileStatus, ok := bi.Status.DiskFileStatusMap[diskUUID]
 			if !ok {
 				allFilesUnavailable = false
@@ -616,9 +620,9 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 		}
 	}
 	if allFilesUnavailable {
-		// Check if there are extra available files outside of Spec.Disks
+		// Check if there are extra available files outside of Spec.DiskFileSpecMap
 		for diskUUID, fileStatus := range bi.Status.DiskFileStatusMap {
-			if _, exists := bi.Spec.Disks[diskUUID]; exists {
+			if _, exists := bi.Spec.DiskFileSpecMap[diskUUID]; exists {
 				continue
 			}
 			if fileStatus.State != longhorn.BackingImageStateFailed {
@@ -695,7 +699,7 @@ func (bic *BackingImageController) handleBackingImageManagers(bi *longhorn.Backi
 		return err
 	}
 
-	for diskUUID := range bi.Spec.Disks {
+	for diskUUID := range bi.Spec.DiskFileSpecMap {
 		noDefaultBIM := true
 		requiredBIs := map[string]string{}
 
@@ -894,11 +898,11 @@ func (bic *BackingImageController) updateDiskLastReferenceMap(bi *longhorn.Backi
 		delete(bi.Status.DiskLastRefAtMap, replica.Spec.DiskID)
 	}
 	for diskUUID := range bi.Status.DiskLastRefAtMap {
-		if _, exists := bi.Spec.Disks[diskUUID]; !exists {
+		if _, exists := bi.Spec.DiskFileSpecMap[diskUUID]; !exists {
 			delete(bi.Status.DiskLastRefAtMap, diskUUID)
 		}
 	}
-	for diskUUID := range bi.Spec.Disks {
+	for diskUUID := range bi.Spec.DiskFileSpecMap {
 		_, isActiveFile := filesInUse[diskUUID]
 		_, isRecordedHistoricFile := bi.Status.DiskLastRefAtMap[diskUUID]
 		if !isActiveFile && !isRecordedHistoricFile {
