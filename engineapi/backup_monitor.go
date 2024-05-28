@@ -72,7 +72,7 @@ func NewBackupMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, backup
 	}
 
 	// Call engine API snapshot backup
-	if backup.Status.State == longhorn.BackupStateNew {
+	if backup.Status.State == longhorn.BackupStateNew || backup.Status.State == longhorn.BackupStatePending {
 		// volumeRecurringJobInfo could be "".
 		volumeRecurringJobInfo, err := m.getVolumeRecurringJobInfos(ds, volume)
 		if err != nil {
