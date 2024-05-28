@@ -254,6 +254,7 @@ func (c *ShareManagerController) enqueueShareManagerForLease(obj interface{}) {
 	key := lease.Namespace + "/" + smName
 	duration := time.Duration(*lease.Spec.LeaseDurationSeconds+1) * time.Second
 	c.queue.AddAfter(key, duration)
+	c.logger.WithField("ShareManager", key).Infof("Queued another lease-based sync in %v", duration)
 }
 
 func isShareManagerLease(obj interface{}) bool {
