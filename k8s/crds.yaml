@@ -1904,6 +1904,8 @@ spec:
                         portStart:
                           format: int32
                           type: integer
+                        remoteTarget:
+                          type: boolean
                         resourceVersion:
                           format: int64
                           type: integer
@@ -1947,6 +1949,8 @@ spec:
                         portStart:
                           format: int32
                           type: integer
+                        remoteTarget:
+                          type: boolean
                         resourceVersion:
                           format: int64
                           type: integer
@@ -1990,6 +1994,8 @@ spec:
                         portStart:
                           format: int32
                           type: integer
+                        remoteTarget:
+                          type: boolean
                         resourceVersion:
                           format: int64
                           type: integer
