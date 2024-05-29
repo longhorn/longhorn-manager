@@ -29,7 +29,8 @@ import (
 
 const (
 	// defaultStaleReplicaTimeout set to 48 hours (2880 minutes)
-	defaultStaleReplicaTimeout = 2880
+	defaultStaleReplicaTimeout                         = 2880
+	defaultStorageClassDisableRevisionCounterParameter = true
 
 	defaultForceUmountTimeout = 30 * time.Second
 
@@ -171,6 +172,8 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 			return nil, errors.Wrap(err, "invalid parameter disableRevisionCounter")
 		}
 		vol.RevisionCounterDisabled = revCounterDisabled
+	} else {
+		vol.RevisionCounterDisabled = defaultStorageClassDisableRevisionCounterParameter
 	}
 
 	if unmapMarkSnapChainRemoved, ok := volOptions["unmapMarkSnapChainRemoved"]; ok {
