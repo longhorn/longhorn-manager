@@ -22,6 +22,7 @@ import (
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/controller"
 
+	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -186,14 +187,17 @@ func NewEngineController(
 	}
 	ec.cacheSyncs = append(ec.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
 
-	if _, err = ds.ShareManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
-		AddFunc:    ec.enqueueShareManagerChange,
-		UpdateFunc: func(old, cur interface{}) { ec.enqueueShareManagerChange(cur) },
-		DeleteFunc: ec.enqueueShareManagerChange,
+	if _, err = ds.LeaseInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+		FilterFunc: isShareManagerLease,
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc:    ec.enqueueLeaseChange,
+			UpdateFunc: func(old, cur interface{}) { ec.enqueueLeaseChange(cur) },
+			DeleteFunc: ec.enqueueLeaseChange,
+		},
 	}, 0); err != nil {
 		return nil, err
 	}
-	ec.cacheSyncs = append(ec.cacheSyncs, ds.ShareManagerInformer.HasSynced)
+	ec.cacheSyncs = append(ec.cacheSyncs, ds.LeaseInformer.HasSynced)
 
 	return ec, nil
 }
@@ -451,9 +455,9 @@ func (ec *EngineController) enqueueInstanceManagerChange(obj interface{}) {
 	}
 }
 
-func (ec *EngineController) enqueueShareManagerChange(obj interface{}) {
-	sm, isShareManager := obj.(*longhorn.ShareManager)
-	if !isShareManager {
+func (ec *EngineController) enqueueLeaseChange(obj interface{}) {
+	lease, isLease := obj.(*coordinationv1.Lease)
+	if !isLease {
 		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
@@ -461,9 +465,9 @@ func (ec *EngineController) enqueueShareManagerChange(obj interface{}) {
 		}
 
 		// use the last known state, to enqueue, dependent objects
-		sm, ok = deletedState.Obj.(*longhorn.ShareManager)
+		lease, ok = deletedState.Obj.(*coordinationv1.Lease)
 		if !ok {
-			utilruntime.HandleError(fmt.Errorf("cannot convert DeletedFinalStateUnknown to ShareManager object: %#v", deletedState.Obj))
+			utilruntime.HandleError(fmt.Errorf("cannot convert DeletedFinalStateUnknown to Lease object: %#v", deletedState.Obj))
 			return
 		}
 	}
@@ -476,7 +480,7 @@ func (ec *EngineController) enqueueShareManagerChange(obj interface{}) {
 	}
 	for _, e := range es {
 		// Volume name is the same as share manager name.
-		if e.Spec.VolumeName == sm.Name {
+		if e.Spec.VolumeName == lease.Name {
 			engineMap[e.Name] = e
 		}
 	}
@@ -2194,10 +2198,10 @@ func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineIm
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
-	// If there is a share manager and it has an owner, we should use that too.
-	sm, err := ec.ds.GetShareManager(e.Spec.VolumeName)
-	if err == nil && sm != nil {
-		return ec.controllerID == sm.Status.OwnerID, nil
+	// If there is a share manager lease for this and it has a lease-holder, we should use that too.
+	lease, err := ec.ds.GetLease(e.Spec.VolumeName)
+	if err == nil && lease != nil {
+		return ec.controllerID == *lease.Spec.HolderIdentity, nil
 	}
 
 	isResponsible := isControllerResponsibleFor(ec.controllerID, ec.ds, e.Name, e.Spec.NodeID, e.Status.OwnerID)

@@ -20,6 +20,7 @@ import (
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/controller"
 
+	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -156,6 +157,18 @@ func NewVolumeController(
 		return nil, err
 	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.ShareManagerInformer.HasSynced)
+
+	if _, err = ds.LeaseInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+		FilterFunc: isShareManagerLease,
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc:    c.enqueueLeaseChange,
+			UpdateFunc: func(old, cur interface{}) { c.enqueueLeaseChange(cur) },
+			DeleteFunc: c.enqueueLeaseChange,
+		},
+	}, 0); err != nil {
+		return nil, err
+	}
+	c.cacheSyncs = append(c.cacheSyncs, ds.LeaseInformer.HasSynced)
 
 	if _, err = ds.BackupVolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { c.enqueueVolumesForBackupVolume(cur) },
@@ -4064,10 +4077,10 @@ func (c *VolumeController) isResponsibleFor(v *longhorn.Volume, defaultEngineIma
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
-	// If there is a share manager and it has an owner, we should use that too.
-	sm, err := c.ds.GetShareManager(v.Name)
-	if err == nil && sm != nil {
-		return c.controllerID == sm.Status.OwnerID, nil
+	// If there is a share manager lease for this and it has a lease-holder, we should use that too.
+	lease, err := c.ds.GetLease(v.Name)
+	if err == nil && lease != nil {
+		return c.controllerID == *lease.Spec.HolderIdentity, nil
 	}
 
 	isResponsible := isControllerResponsibleFor(c.controllerID, c.ds, v.Name, v.Spec.NodeID, v.Status.OwnerID)
@@ -4217,6 +4230,31 @@ func (c *VolumeController) createShareManagerForVolume(volume *longhorn.Volume, 
 	}
 
 	return c.ds.CreateShareManager(sm)
+}
+
+func (c *VolumeController) enqueueLeaseChange(obj interface{}) {
+	lease, isLease := obj.(*coordinationv1.Lease)
+	if !isLease {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to enqueue dependent objects
+		lease, ok = deletedState.Obj.(*coordinationv1.Lease)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("cannot convert DeletedFinalStateUnknown to Lease object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	// Volume name is the same as lease name.
+	volume, err := c.ds.GetVolumeRO(lease.Name)
+	if err != nil {
+		return
+	}
+	c.enqueueVolume(volume)
 }
 
 // enqueueVolumesForBackupVolume enqueues the volumes which is/are DR volumes or
