@@ -186,6 +186,15 @@ func NewEngineController(
 	}
 	ec.cacheSyncs = append(ec.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
 
+	if _, err = ds.ShareManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		AddFunc:    ec.enqueueShareManagerChange,
+		UpdateFunc: func(old, cur interface{}) { ec.enqueueShareManagerChange(cur) },
+		DeleteFunc: ec.enqueueShareManagerChange,
+	}, 0); err != nil {
+		return nil, err
+	}
+	ec.cacheSyncs = append(ec.cacheSyncs, ds.ShareManagerInformer.HasSynced)
+
 	return ec, nil
 }
 
@@ -440,7 +449,41 @@ func (ec *EngineController) enqueueInstanceManagerChange(obj interface{}) {
 	for _, e := range engineMap {
 		ec.enqueueEngine(e)
 	}
+}
 
+func (ec *EngineController) enqueueShareManagerChange(obj interface{}) {
+	sm, isShareManager := obj.(*longhorn.ShareManager)
+	if !isShareManager {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		sm, ok = deletedState.Obj.(*longhorn.ShareManager)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("cannot convert DeletedFinalStateUnknown to ShareManager object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	engineMap := map[string]*longhorn.Engine{}
+
+	es, err := ec.ds.ListEnginesRO()
+	if err != nil {
+		ec.logger.WithError(err).Warn("Failed to list engines")
+	}
+	for _, e := range es {
+		// Volume name is the same as share manager name.
+		if e.Spec.VolumeName == sm.Name {
+			engineMap[e.Name] = e
+		}
+	}
+
+	for _, e := range engineMap {
+		ec.enqueueEngine(e)
+	}
 }
 
 func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
@@ -2152,11 +2195,10 @@ func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineIm
 	}()
 
 	// If there is a share manager and it has an owner, we should use that too.
-	// TODO - for this to be useful, we need to have a share manager informer to kick us.
-	// sm, err := ec.ds.GetShareManager(e.Spec.VolumeName)
-	// if err == nil && sm != nil {
-	// 		return ec.controllerID == sm.Status.OwnerID, nil
-	// 	}
+	sm, err := ec.ds.GetShareManager(e.Spec.VolumeName)
+	if err == nil && sm != nil {
+		return ec.controllerID == sm.Status.OwnerID, nil
+	}
 
 	isResponsible := isControllerResponsibleFor(ec.controllerID, ec.ds, e.Name, e.Spec.NodeID, e.Status.OwnerID)
 

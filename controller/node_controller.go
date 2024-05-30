@@ -517,6 +517,8 @@ func (nc *NodeController) syncNode(key string) (err error) {
 
 	// Getting here is enough proof of life to clear Lease-based delinquency.
 	// The node clears itself here; setting it is done by share-manager lease checker.
+	// No good - there can be a race with a dying node clearing its condition
+	// immediately after it was set.
 	foundCondition := false
 	isDelinquent := false
 	for _, nodeCondition := range node.Status.Conditions {
@@ -531,6 +533,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		node.Status.Conditions = types.SetCondition(node.Status.Conditions,
 			longhorn.NodeConditionTypeDelinquent, longhorn.ConditionStatusFalse,
 			"", fmt.Sprintf("Node %v clears delinquency", node.Name))
+		log.Infof("Node %v clears its delinquency condition.", node.Name)
 	}
 
 	// Create a monitor for collecting disk information

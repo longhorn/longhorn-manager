@@ -254,7 +254,6 @@ func (c *ShareManagerController) enqueueShareManagerForLease(obj interface{}) {
 	key := lease.Namespace + "/" + smName
 	duration := time.Duration(*lease.Spec.LeaseDurationSeconds+1) * time.Second
 	c.queue.AddAfter(key, duration)
-	c.logger.WithField("ShareManager", key).Infof("Queued another lease-based sync in %v", duration)
 }
 
 func isShareManagerLease(obj interface{}) bool {
@@ -700,6 +699,7 @@ func (c *ShareManagerController) clearShareManagerLeaseHolder(sm *longhorn.Share
 		if holder != "" {
 			log.Infof("Clearing lease holder %v for share manager.", holder)
 			*lease.Spec.HolderIdentity = ""
+			*lease.Spec.AcquireTime = metav1.MicroTime{Time: time.Now()}
 			_, err := c.ds.UpdateLease(lease)
 			if err != nil {
 				log.WithError(err).Warn("Failed to clear lease holder for share manager")
@@ -814,13 +814,28 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 	} else if isStale {
 		log.Infof("ShareManager Pod %v is stale", pod.Name)
 	}
+	if isStale {
+		// if we just transitioned to the starting state, while the prior cleanup is still in progress we will switch to error state
+		// which will lead to a bad loop of starting (new workload) -> error (remount) -> stopped (cleanup sm)
+		if sm.Status.State == longhorn.ShareManagerStateStopping {
+			return nil
+		}
+
+		if sm.Status.State != longhorn.ShareManagerStateStopped {
+			log.Info("Updating share manager to stopping state")
+			sm.Status.State = longhorn.ShareManagerStateStopping
+		}
+
+		return nil
+	}
+
 	isDown, err := c.ds.IsNodeDownOrDeletedOrDelinquent(pod.Spec.NodeName)
 	if err != nil {
 		log.WithError(err).Warnf("Failed to check IsNodeDownOrDeleted(%v) when syncShareManagerPod", pod.Spec.NodeName)
 	} else if isDown {
 		log.Infof("Node %v is down", pod.Spec.NodeName)
 	}
-	if pod.DeletionTimestamp != nil || isDown || isStale {
+	if pod.DeletionTimestamp != nil || isDown {
 		// if we just transitioned to the starting state, while the prior cleanup is still in progress we will switch to error state
 		// which will lead to a bad loop of starting (new workload) -> error (remount) -> stopped (cleanup sm)
 		if sm.Status.State == longhorn.ShareManagerStateStopping {
