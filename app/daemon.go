@@ -145,7 +145,7 @@ func startManager(c *cli.Context) error {
 	}
 
 	if err := environmentCheck(kubeconfigPath, currentNodeID); err != nil {
-		return errors.Wrap(err, "Failed environment check, please make sure you have iscsiadm/open-iscsi installed on the host")
+		return errors.Wrap(err, "Failed environment check")
 	}
 
 	currentIP, err := util.GetRequiredEnv(types.EnvPodIP)
@@ -261,7 +261,7 @@ func startManager(c *cli.Context) error {
 	return nil
 }
 
-func environmentCheck(kubeconfigPath, currentNodeID string) error {
+func environmentCheck(kubeconfigPath, nodeID string) error {
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
 		return errors.Wrap(err, "unable to get client config")
@@ -279,33 +279,33 @@ func environmentCheck(kubeconfigPath, currentNodeID string) error {
 	}
 
 	// Check if mount propagation is supported
-	if err := checkMountPropagation(kubeClient, namespace, currentNodeID); err != nil {
+	if err := checkMountPropagation(kubeClient, namespace, nodeID); err != nil {
 		return err
 	}
 
-	kubeNode, err := kubeClient.CoreV1().Nodes().Get(context.Background(), currentNodeID, metav1.GetOptions{})
+	kubeNode, err := kubeClient.CoreV1().Nodes().Get(context.Background(), nodeID, metav1.GetOptions{})
 	if err != nil {
 		return errors.Wrap(err, "failed to get node when checking kernel version")
 	}
 
 	// Check if kernel version is recommended
-	if err := checkKernelVersion(kubeNode, currentNodeID); err != nil {
+	if err := checkKernelVersion(kubeNode); err != nil {
 		return err
 	}
 
 	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceNet}
 	// Check if necessary packages are installed
-	if err := checkPackagesInstalled(kubeNode, namespaces, currentNodeID); err != nil {
+	if err := checkPackagesInstalled(kubeNode, namespaces); err != nil {
 		return err
 	}
 
 	// Check if multipath is supported
-	if err := checkMultipathd(namespaces, currentNodeID); err != nil {
+	if err := checkMultipathd(namespaces, nodeID); err != nil {
 		return err
 	}
 
 	// Check if nfs client versions are supported
-	if err := checkNFSClientVersion(kubeNode, namespaces, currentNodeID); err != nil {
+	if err := checkNFSClientVersion(kubeNode, namespaces); err != nil {
 		return err
 	}
 
@@ -317,7 +317,7 @@ func environmentCheck(kubeconfigPath, currentNodeID string) error {
 	return iscsi.CheckForInitiatorExistence(nsexec)
 }
 
-func checkMountPropagation(kubeClient *clientset.Clientset, namespace, currentNodeID string) error {
+func checkMountPropagation(kubeClient *clientset.Clientset, namespace, nodeID string) error {
 
 	managerPodsList, err := upgradeutil.ListManagerPods(namespace, kubeClient)
 	if err != nil {
@@ -329,7 +329,7 @@ func checkMountPropagation(kubeClient *clientset.Clientset, namespace, currentNo
 
 CHECKED:
 	for _, pod := range managerPodsList {
-		if pod.Spec.NodeName != currentNodeID {
+		if pod.Spec.NodeName != nodeID {
 			continue
 		}
 		for _, container := range pod.Spec.Containers {
@@ -352,7 +352,7 @@ CHECKED:
 	return nil
 }
 
-func checkKernelVersion(kubeNode *corev1.Node, currentNodeID string) error {
+func checkKernelVersion(kubeNode *corev1.Node) error {
 	kernelVersion := kubeNode.Status.NodeInfo.KernelVersion
 	brokenKernelVersion := []string{"5.15.0", "6.5.6"}
 	majorKernel5150Version := 5
@@ -370,12 +370,12 @@ func checkKernelVersion(kubeNode *corev1.Node, currentNodeID string) error {
 		if kernel == majorKernel5150Version && (fixedKernel5150PatchVersion <= patch || patch < brokenKernel5150PatchVersion) {
 			break
 		}
-		logrus.Warnf("Node %v has a kernel version %v known to have a breakage that affects Longhorn. See description and solution at https://longhorn.io/kb/troubleshooting-rwx-volume-fails-to-attached-caused-by-protocol-not-supported", currentNodeID, kernelVersion)
+		logrus.Warnf("Node %v has a kernel version %v known to have a breakage that affects Longhorn. See description and solution at https://longhorn.io/kb/troubleshooting-rwx-volume-fails-to-attached-caused-by-protocol-not-supported", kubeNode.Name, kernelVersion)
 	}
 	return nil
 }
 
-func checkPackagesInstalled(kubeNode *corev1.Node, namespaces []lhtypes.Namespace, currentNodeID string) error {
+func checkPackagesInstalled(kubeNode *corev1.Node, namespaces []lhtypes.Namespace) error {
 	osImage := strings.ToLower(kubeNode.Status.NodeInfo.OSImage)
 	queryPackagesCmd := ""
 	packages := []string{}
@@ -399,8 +399,11 @@ func checkPackagesInstalled(kubeNode *corev1.Node, namespaces []lhtypes.Namespac
 	case strings.Contains(osImage, "gentoo"):
 		queryPackagesCmd = "qlist -I"
 		packages = []string{"net-fs/nfs-utils", "sys-block/open-iscsi", "sys-fs/cryptsetup", "sys-fs/lvm2"}
+	case strings.Contains(osImage, "Talos"):
+		logrus.Warnf("The OS %v is installed on this node %v, please make sure the necessary packages are installed", kubeNode.Name, osImage)
+		return nil
 	default:
-		logrus.Warnf("Node %v has an unknown OS image %v, please make sure the necessary packages are installed", currentNodeID, osImage)
+		logrus.Warnf("Node %v has an unknown OS image %v, please make sure the necessary packages are installed", kubeNode.Name, osImage)
 		return nil
 	}
 
@@ -411,62 +414,86 @@ func checkPackagesInstalled(kubeNode *corev1.Node, namespaces []lhtypes.Namespac
 	for _, pkg := range packages {
 		args := []string{pkg}
 		if _, err := nsexec.Execute(nil, queryPackagesCmd, args, lhtypes.ExecuteDefaultTimeout); err != nil {
-			logrus.WithError(err).Warnf("Package %v is not found in node %v", pkg, currentNodeID)
+			logrus.WithError(err).Warnf("Package %v is not found in node %v", pkg, kubeNode.Name)
 		}
 	}
 
 	return nil
 }
 
-func checkMultipathd(namespaces []lhtypes.Namespace, currentNodeID string) error {
+func checkMultipathd(namespaces []lhtypes.Namespace, nodeID string) error {
 	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
 	if err != nil {
 		return err
 	}
-	args := []string{"show", "status"}
-	if result, _ := nsexec.Execute(nil, "multipathd", args, lhtypes.ExecuteDefaultTimeout); result != "" {
-		logrus.Warnf("Multipathd is running on %v known to have a breakage that affects Longhorn. See description and solution at https://longhorn.io/kb/troubleshooting-volume-with-multipath", currentNodeID)
+	args := []string{"multipathd", "status"}
+	if result, _ := nsexec.Execute(nil, "service", args, lhtypes.ExecuteDefaultTimeout); result != "" {
+		logrus.Warnf("Multipathd is running on %v, result: %+v", nodeID, result)
+		logrus.Warnf("Multipathd is running on %v known to have a breakage that affects Longhorn. See description and solution at https://longhorn.io/kb/troubleshooting-volume-with-multipath", nodeID)
 	}
 
 	return nil
 }
 
-func checkNFSClientVersion(kubeNode *corev1.Node, namespaces []lhtypes.Namespace, currentNodeID string) error {
+func checkNFSClientVersion(kubeNode *corev1.Node, namespaces []lhtypes.Namespace) error {
+	configPath := "/boot"
 	kernelVersion := kubeNode.Status.NodeInfo.KernelVersion
 	nfsClientVersions := []string{"CONFIG_NFS_V4_2", "CONFIG_NFS_V4_1", "CONFIG_NFS_V4"}
 
-	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	files, err := lhns.ReadDirectory(configPath)
 	if err != nil {
 		return err
 	}
 
 	kernelConfigPath := "/boot/config-" + kernelVersion
-	args := []string{kernelConfigPath}
-	if _, err := nsexec.Execute(nil, "ls", args, lhtypes.ExecuteDefaultTimeout); err != nil {
-		logrus.WithError(err).Warnf("Failed to check %v on node %v, because %v does not exist on node %v", nfsClientVersions, currentNodeID, kernelConfigPath, currentNodeID)
+	configFileIsFound := false
+	for _, file := range files {
+		if file.Name() == kernelConfigPath {
+			configFileIsFound = true
+			break
+		}
+	}
+	if !configFileIsFound {
+		logrus.Warnf("Kernel config %v not found on node %v", kernelConfigPath, kubeNode.Name)
+		return nil
 	}
 
-	for _, ver := range nfsClientVersions {
-		args := []string{ver + "=", kernelConfigPath}
-		result, err := nsexec.Execute(nil, "grep", args, lhtypes.ExecuteDefaultTimeout)
-		if err != nil {
-			logrus.WithError(err).Warnf("Failed to find kernel config %v on node %v", ver, currentNodeID)
+	fileContentString, err := lhns.ReadFileContent(kernelConfigPath)
+	if err != nil {
+		return err
+	}
+
+	fileContents := strings.Split(fileContentString, "\n")
+	var nfsConfigContents []string
+	for _, config := range fileContents {
+		for _, ver := range nfsClientVersions {
+			if strings.Contains(config, ver) {
+				nfsConfigContents = append(nfsConfigContents, config)
+			}
 		}
-		enabled := strings.TrimSpace(strings.Split(result, "=")[1])
+
+	}
+	for _, config := range nfsConfigContents {
+		enabled := strings.TrimSpace(strings.Split(config, "=")[1])
 		switch enabled {
 		case "y":
 			return nil
 		case "m":
-			opts := []string{"|grep", "nfs"}
-			if _, err := nsexec.Execute(nil, "lsmod", opts, lhtypes.ExecuteDefaultTimeout); err != nil {
-				logrus.WithError(err).Warnf("Failed to check %v enabled on node %v", ver, currentNodeID)
+			modulesContentString, err := lhns.ReadFileContent("/proc/modules")
+			if err != nil {
+				return err
 			}
+			if strings.Contains(modulesContentString, "nfs") {
+				return nil
+			}
+			logrus.Warnf("%v is not enabled on node %v", config, kubeNode.Name)
 		default:
-			logrus.Warnf("Unknown kernel config value for %v: %v", ver, enabled)
+			logrus.Warnf("Unknown kernel config value for %v: %v", config, enabled)
 		}
 	}
 
-	return fmt.Errorf("NFS clients %v not found. At least one should be enabled", nfsClientVersions)
+	logrus.Warnf("NFS clients %v not found. At least one should be enabled", nfsClientVersions)
+	return nil
 }
 
 func updateRegistrySecretName(m *manager.VolumeManager) error {

@@ -1,6 +1,8 @@
 package app
 
 import (
+	"fmt"
+
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
@@ -8,6 +10,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
@@ -41,8 +44,9 @@ func PreUpgradeCmd() cli.Command {
 
 func preUpgrade(c *cli.Context) error {
 	namespace := c.String(FlagNamespace)
+	kubeconfigPath := c.String(FlagKubeConfig)
 
-	config, err := clientcmd.BuildConfigFromFlags("", c.String(FlagKubeConfig))
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
 		return errors.Wrap(err, "failed to get client config")
 	}
@@ -53,6 +57,15 @@ func preUpgrade(c *cli.Context) error {
 	}
 
 	if err := upgradeutil.CheckUpgradePath(namespace, lhClient, nil, true); err != nil {
+		return err
+	}
+
+	currentNodeID, err := util.GetRequiredEnv(types.EnvNodeName)
+	if err != nil {
+		return fmt.Errorf("failed to detect the node name")
+	}
+
+	if err := environmentCheck(kubeconfigPath, currentNodeID); err != nil {
 		return err
 	}
 
