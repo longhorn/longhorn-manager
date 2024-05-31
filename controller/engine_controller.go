@@ -13,6 +13,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
+	"golang.org/x/time/rate"
+
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
@@ -60,6 +62,11 @@ var (
 
 	// restoreMaxInterval: deleting the backup of big size volume takes a long time for retain policy and restoring backups would be in backoff period.
 	restoreMaxInterval = 1 * time.Hour
+
+	// amount of time between actual size updates that do not exceed threshold during periods with stable writes
+	sizeUpdateLimit = 30 * time.Second
+	// number of consecutive actual size updates allowed during bursts
+	sizeUpdateBurst = 3
 )
 
 const (
@@ -119,6 +126,8 @@ type EngineMonitor struct {
 	restoringCounter         util.Counter
 	restoringCounterAcquired bool
 	restoringCounterMutex    *sync.Mutex
+
+	sizeUpdateLimiter *rate.Limiter
 }
 
 func NewEngineController(
@@ -734,6 +743,7 @@ func (ec *EngineController) startMonitoring(e *longhorn.Engine) {
 		proxyConnCounter:       ec.proxyConnCounter,
 		restoringCounter:       ec.restoringCounter,
 		restoringCounterMutex:  ec.restoringCounterMutex,
+		sizeUpdateLimiter:      rate.NewLimiter(rate.Every(sizeUpdateLimit), sizeUpdateBurst),
 	}
 
 	ec.engineMonitorMutex.Lock()
@@ -1016,9 +1026,20 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	removeInvalidEngineOpStatus(engine)
 
 	// Make sure the engine object is updated before engineapi calls.
-	if !reflect.DeepEqual(existingEngine.Status, engine.Status) {
+	needStatusUpdate, rateLimited := m.needStatusUpdate(existingEngine, engine)
+	if needStatusUpdate && (!rateLimited || m.sizeUpdateLimiter.Tokens() >= 1) {
 		if engine, err = m.ds.UpdateEngineStatus(engine); err != nil {
 			return err
+		}
+		if rateLimited {
+			// Normally we would operate a Limiter by first obtaining a token, then taking an action. Here, we do not
+			// want to obtain a token unless the update succeeds. Otherwise the next attempt at an update (probably in a
+			// few milliseconds), will not be allowed. We might be able to refactor the engine controller so that update
+			// retries happen here instead of at the caller, but it's fine to operate the Limiter this way, since there
+			// is only one thread that uses it.
+			if obtainedToken := m.sizeUpdateLimiter.Allow(); !obtainedToken {
+				m.logger.Warnf("BUG: Size update bypassed rate limiting")
+			}
 		}
 		existingEngine = engine.DeepCopy()
 	}
@@ -1072,7 +1093,9 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 			}
 		}
 
-		if !reflect.DeepEqual(existingEngine.Status, engine.Status) {
+		// Ignore size change here to maintain rate limiting. (If we wanted to update status based on a size change,
+		// we already did so above.)
+		if needStatusUpdateBesidesSize(&existingEngine.Status, &engine.Status) {
 			e, err := m.ds.UpdateEngineStatus(engine)
 			if err != nil {
 				m.logger.WithError(err).Warn("Engine Monitor: Failed to update engine status")
@@ -2177,4 +2200,76 @@ func shouldProceedToWaitAndRebuild(e *longhorn.Engine, replicaName, originalRepl
 	}
 
 	return true
+}
+
+// needStatusUpdate checks whether we should update the engine status and whether that update should be rate limited. We
+// return:
+// - false, false if no fields change
+// - true, false if any field besides the size of the volume-head snapshot changes
+// - true, false if the change in size of the volume-head snapshot exceeds a threshold
+// - true, true if the change in size of the volume-head does not exceed a threshold
+func (m *EngineMonitor) needStatusUpdate(existing, new *longhorn.Engine) (needStatusUpdate, rateLimited bool) {
+	if needStatusUpdateBesidesSize(&existing.Status, &new.Status) {
+		return true, false
+	}
+
+	// Existence was already verified in needStatusUpdateBesidesSize.
+	existingSnapshot := existing.Status.Snapshots[etypes.VolumeHeadName]
+	newSnapshot := new.Status.Snapshots[etypes.VolumeHeadName]
+
+	// Now, compare only the volume-head sizes.
+	var existingSizeInt, newSizeInt int64
+	var err error
+	if existingSizeInt, err = strconv.ParseInt(existingSnapshot.Size, 10, 64); err != nil {
+		m.logger.WithError(err).Warnf("Failed to parse %s size %v", etypes.VolumeHeadName, existingSnapshot.Size)
+		return false, false
+	}
+	if newSizeInt, err = strconv.ParseInt(newSnapshot.Size, 10, 64); err != nil {
+		m.logger.WithError(err).Warnf("Failed to parse %s size %v", etypes.VolumeHeadName, newSnapshot.Size)
+		return false, false
+	}
+	return needSizeUpdate(existingSizeInt, newSizeInt, new.Spec.VolumeSize)
+}
+
+// needStatusUpdateBesidesSize does half of the work of needStatusUpdate. It is broken out because only one caller
+// should consider the size of the volume-head snapshot when deciding whether to update. All other callers should not
+// consider a change in volume-head snapshot size a reason to update. If they do, they will circumvent rate limiting.
+func needStatusUpdateBesidesSize(existing, new *longhorn.EngineStatus) bool {
+	// If we don't have a volume-head snapshot in new and old status, just compare statuses directly.
+	existingSnapshot, existingSnapshotOK := existing.Snapshots[etypes.VolumeHeadName]
+	newSnapshot, newSnapshotOK := new.Snapshots[etypes.VolumeHeadName]
+	if !existingSnapshotOK || !newSnapshotOK {
+		return !reflect.DeepEqual(existing, new)
+	}
+
+	// Otherwise, compare without the size of volume-head.
+	existingSize := existingSnapshot.Size
+	existingSnapshot.Size = newSnapshot.Size
+	needUpdate := !reflect.DeepEqual(existing, new)
+	existingSnapshot.Size = existingSize
+	return needUpdate
+}
+
+// needSizeUpdate returns needSizeUpdate == true if the caller should attempt to update the engine status based on size
+// alone. In addition, it returns rateLimited == true if the change in size does not exceed a threshold.
+func needSizeUpdate(existingSize, newSize, nominalSize int64) (needSizeUpdate, rateLimited bool) {
+	if newSize == existingSize {
+		return false, false
+	}
+	if newSize-existingSize >= sizeThreshold(nominalSize) {
+		// We don't need a reservation to update sizes exceeding the threshold.
+		return true, false
+	}
+	return true, true
+}
+
+// sizeThreshold calculates the difference in size for which we will update status (regardless of rate limiting).
+func sizeThreshold(nominalSize int64) int64 {
+	if nominalSize <= 0 {
+		return 0
+	}
+	if nominalSize <= 100*util.GiB {
+		return nominalSize / 1024 // Update status for change > 1/1024 nominal size.
+	}
+	return 100 * util.MiB // Update status for any change > 100 MiB.
 }
