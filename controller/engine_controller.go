@@ -2250,9 +2250,11 @@ func (m *EngineMonitor) needStatusUpdate(existing, new *longhorn.Engine) (needSt
 		return true, false
 	}
 
-	// Existence was already verified in needStatusUpdateBesidesSize.
-	existingSnapshot := existing.Status.Snapshots[etypes.VolumeHeadName]
-	newSnapshot := new.Status.Snapshots[etypes.VolumeHeadName]
+	existingSnapshot, existingSnapshotOK := existing.Status.Snapshots[etypes.VolumeHeadName]
+	newSnapshot, newSnapshotOK := new.Status.Snapshots[etypes.VolumeHeadName]
+	if !existingSnapshotOK || !newSnapshotOK {
+		return false, false // We can't do anything that needStatusUpdateBesidesSize hasn't already.
+	}
 
 	// Now, compare only the volume-head sizes.
 	var existingSizeInt, newSizeInt int64
