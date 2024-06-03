@@ -524,7 +524,7 @@ func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *
 		if podStartTime.Before(remountRequestedAt) {
 			if !timeNow.After(remountRequestedAt.Add(remountRequestDelayDuration)) {
 				kc.logger.Infof("Current time is not %v seconds after request remount, requeue the pod %v to handle it later", remountRequestDelayDuration.Seconds(), pod.GetName())
-				kc.enqueuePod(pod)
+				kc.enqueuePodAfter(pod, remountRequestDelayDuration)
 				return nil
 			}
 
@@ -666,14 +666,14 @@ func (kc *KubernetesPodController) getAssociatedVolumes(pod *corev1.Pod) ([]*lon
 	return volumeList, nil
 }
 
-func (kc *KubernetesPodController) enqueuePod(obj interface{}) {
+func (kc *KubernetesPodController) enqueuePodAfter(obj interface{}, delay time.Duration) {
 	key, err := controller.KeyFunc(obj)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
 		return
 	}
 
-	kc.queue.Add(key)
+	kc.queue.AddAfter(key, delay)
 }
 
 func isCSIPluginPod(obj interface{}) bool {
