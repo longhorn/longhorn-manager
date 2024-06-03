@@ -79,7 +79,7 @@ func NewBackingImageController(
 		UpdateFunc: func(old, cur interface{}) { bic.enqueueBackingImage(cur) },
 		DeleteFunc: bic.enqueueBackingImage,
 	}); err != nil {
-		logrus.WithError(err).Fatal("Failed to register event handler for backing image")
+		return nil, err
 	}
 	bic.cacheSyncs = append(bic.cacheSyncs, ds.BackingImageInformer.HasSynced)
 
