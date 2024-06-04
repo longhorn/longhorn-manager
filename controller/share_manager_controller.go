@@ -719,7 +719,6 @@ func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManage
 	}
 	if leaseExpired {
 		// Remember this node so we can avoid it in the new pod we will create.
-		// TODO - we might just avoid any and all in the Delinquent condition.
 		c.staleNodeMap[sm.Name] = leaseHolder
 	}
 
@@ -747,7 +746,7 @@ func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManage
 
 	// Force delete if the pod's node is known dead, or likely so since it let
 	// the lease time out and another node's controller is cleaning up after it.
-	nodeFailed, _ := c.ds.IsNodeDownOrDeletedOrDelinquent(pod.Spec.NodeName)
+	nodeFailed, _ := c.ds.IsNodeDownOrDeleted(pod.Spec.NodeName)
 	if nodeFailed || (leaseExpired && leaseHolder != c.controllerID) {
 		log.Info("Force deleting pod to allow fail over since node of share manager pod is down")
 		gracePeriod := int64(0)
@@ -829,7 +828,7 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 		return nil
 	}
 
-	isDown, err := c.ds.IsNodeDownOrDeletedOrDelinquent(pod.Spec.NodeName)
+	isDown, err := c.ds.IsNodeDownOrDeleted(pod.Spec.NodeName)
 	if err != nil {
 		log.WithError(err).Warnf("Failed to check IsNodeDownOrDeleted(%v) when syncShareManagerPod", pod.Spec.NodeName)
 	} else if isDown {
@@ -1074,7 +1073,6 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 		}
 	}
 
-	// TODO - Consider doing this for every Delinquent node, if there is more than one.
 	staleNode := c.staleNodeMap[sm.Name]
 	log.Infof("Cached stale node for share manager %v is %v", sm.Name, staleNode)
 	if staleNode != "" {
