@@ -18,7 +18,7 @@ func hasReplicaEvictionRequested(rs map[string]*longhorn.Replica) bool {
 	return false
 }
 
-func (vc *VolumeController) isVolumeUpgrading(v *longhorn.Volume) bool {
+func isVolumeUpgrading(v *longhorn.Volume) bool {
 	return v.Status.CurrentImage != v.Spec.Image
 }
 
