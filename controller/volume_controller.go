@@ -975,7 +975,7 @@ func (c *VolumeController) cleanupReplicas(v *longhorn.Volume, es map[string]*lo
 	}
 
 	// give a chance to delete new replicas failed when upgrading volume and waiting for IM-r starting
-	if c.isVolumeUpgrading(v) {
+	if isVolumeUpgrading(v) {
 		return nil
 	}
 
@@ -994,7 +994,7 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 	// See comments for isSafeAsLastReplica for an explanation of why we call getSafeAsLastReplicaCount instead of
 	// getHealthyAndActiveReplicaCount here.
 	safeAsLastReplicaCount := getSafeAsLastReplicaCount(rs)
-	cleanupLeftoverReplicas := !c.isVolumeUpgrading(v) && !util.IsVolumeMigrating(v)
+	cleanupLeftoverReplicas := !isVolumeUpgrading(v) && !util.IsVolumeMigrating(v)
 	log := getLoggerForVolume(c.logger, v)
 
 	for _, r := range rs {
@@ -1845,7 +1845,7 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 			}
 		} else {
 			// wait for IM is starting when volume is upgrading
-			if c.isVolumeUpgrading(v) {
+			if isVolumeUpgrading(v) {
 				continue
 			}
 
@@ -2815,7 +2815,7 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 		"volumeDesiredEngineImage": v.Spec.Image,
 	})
 
-	if !c.isVolumeUpgrading(v) {
+	if !isVolumeUpgrading(v) {
 		// it must be a rollback
 		if e.Spec.Image != v.Spec.Image {
 			e.Spec.Image = v.Spec.Image
@@ -3836,7 +3836,7 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 	}
 
 	// cannot process migrate when upgrading
-	if c.isVolumeUpgrading(v) {
+	if isVolumeUpgrading(v) {
 		log.Warn("Skip the migration processing since the volume is being upgraded")
 		return nil
 	}
@@ -3851,11 +3851,11 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 		// in the case of a confirmation we need to switch the v.Status.CurrentNodeID to v.Spec.NodeID
 		// so that currentEngine becomes the migration engine
 		if v.Status.CurrentNodeID != v.Spec.NodeID {
-			log.Infof("volume migration complete switching current node id from %v to %v", v.Status.CurrentNodeID, v.Spec.NodeID)
+			log.Infof("Volume migration complete switching current node id from %v to %v", v.Status.CurrentNodeID, v.Spec.NodeID)
 			v.Status.CurrentNodeID = v.Spec.NodeID
 		}
 
-		// The latest current engine is based on the multiple node related fields of the volume basides all engine desired node ID,
+		// The latest current engine is based on the multiple node related fields of the volume besides all engine desired node ID,
 		// If the new engine matches, it means a migration confirmation then it's time to remove the old engine.
 		// If the old engine matches, it means a migration rollback hence cleaning up the migration engine is required.
 		//
