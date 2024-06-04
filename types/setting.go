@@ -807,12 +807,12 @@ var (
 
 	SettingDefinitionDisableRevisionCounter = SettingDefinition{
 		DisplayName: "Disable Revision Counter",
-		Description: "This setting is only for volumes created by UI. By default, this is false meaning there will be a revision counter file to track every write to the volume. During salvage recovering Longhorn will pick the repica with largest revision counter as candidate to recover the whole volume. If revision counter is disabled, Longhorn will not track every write to the volume. During the salvage recovering, Longhorn will use the 'volume-head-xxx.img' file last modification time and file size to pick the replica candidate to recover the whole volume.",
+		Description: "This setting is only for volumes created by UI. By default, this is true meaning Longhorn will not have revision counter file to track every write to the volume. During the salvage recovering, Longhorn will use the 'volume-head-xxx.img' file last modification time and file size to pick the replica candidate to recover the whole volume. If this setting is false, there will be a revision counter file to track every write to the volume. During salvage recovering Longhorn will pick the replica with largest revision counter as candidate to recover the whole volume.",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeBool,
 		Required:    true,
 		ReadOnly:    false,
-		Default:     "false",
+		Default:     "true",
 	}
 
 	SettingDefinitionReplicaReplenishmentWaitInterval = SettingDefinition{
