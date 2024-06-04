@@ -202,6 +202,9 @@ const (
 
 	CniNetworkNone          = ""
 	StorageNetworkInterface = "lhnet1"
+
+	KubeApiQps   = 50
+	KubeApiBurst = 100
 )
 
 const (
