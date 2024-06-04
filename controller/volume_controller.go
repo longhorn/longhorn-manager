@@ -3736,12 +3736,7 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 
 	log := getLoggerForVolume(c.logger, v).WithField("migrationNodeID", v.Spec.MigrationNodeID)
 
-	// only process if volume is attached and running
 	if v.Spec.NodeID == "" || v.Status.CurrentNodeID == "" || len(es) == 0 {
-		return nil
-	}
-	if v.Status.Robustness != longhorn.VolumeRobustnessDegraded && v.Status.Robustness != longhorn.VolumeRobustnessHealthy {
-		log.Warnf("Skip the migration processing since the volume current robustness is %v", v.Status.Robustness)
 		return nil
 	}
 
@@ -3755,6 +3750,27 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 	// if there are more then 1 and we no longer have a migration id set we can cleanup the extra engine
 	if v.Spec.MigrationNodeID == "" {
 		if len(es) < 2 && v.Status.CurrentMigrationNodeID == "" {
+			return nil
+		}
+
+		// If the current node is down, the normal migration flow cannot make progress until it is back up. If the
+		// current node is deleted, the normal migration flow cannot make progress ever again. Cancel the migration for
+		// this special case if necessary before checking whether to proceed with the normal flow.
+		if downOrDeleted, err := c.ds.IsNodeDownOrDeleted(v.Status.CurrentNodeID); err != nil {
+			return err
+		} else if downOrDeleted {
+			log.Warnf("Canceling migration from down node %v", v.Status.CurrentNodeID)
+			if _, err := c.getCurrentEngineAndCleanupOthers(v, es); err != nil {
+				return err
+			}
+			v.Status.CurrentMigrationNodeID = ""
+			return nil
+		}
+
+		// Now check whether we can proceed with the normal migration flow.
+		if v.Status.Robustness != longhorn.VolumeRobustnessDegraded &&
+			v.Status.Robustness != longhorn.VolumeRobustnessHealthy {
+			log.Warnf("Skip the migration processing since the volume current robustness is %v", v.Status.Robustness)
 			return nil
 		}
 
@@ -3797,6 +3813,13 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 		// migration rollback or confirmation finished
 		v.Status.CurrentMigrationNodeID = ""
 
+		return nil
+	}
+
+	// Ensure we can safely proceed with the normal migration flow.
+	if v.Status.Robustness != longhorn.VolumeRobustnessDegraded &&
+		v.Status.Robustness != longhorn.VolumeRobustnessHealthy {
+		log.Warnf("Skip the migration processing since the volume current robustness is %v", v.Status.Robustness)
 		return nil
 	}
 
