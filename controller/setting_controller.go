@@ -1815,6 +1815,7 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameKubernetesClusterAutoscalerEnabled:                       true,
 		types.SettingNameNodeDownPodDeletionPolicy:                                true,
 		types.SettingNameNodeDrainPolicy:                                          true,
+		types.SettingNameOfflineReplicaRebuilding:                                 true,
 		types.SettingNameOrphanAutoDeletion:                                       true,
 		types.SettingNameRecurringFailedJobsHistoryLimit:                          true,
 		types.SettingNameRecurringSuccessfulJobsHistoryLimit:                      true,
@@ -1830,6 +1831,7 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameSnapshotDataIntegrity:                                    true,
 		types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation: true,
 		types.SettingNameStorageMinimalAvailablePercentage:                        true,
+		types.SettingNameStorageNetworkForRWXVolumeEnabled:                        true,
 		types.SettingNameStorageOverProvisioningPercentage:                        true,
 		types.SettingNameStorageReservedPercentageForDefaultDisk:                  true,
 		types.SettingNameSupportBundleFailedHistoryLimit:                          true,
@@ -1838,7 +1840,6 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameV1DataEngine:                                             true,
 		types.SettingNameV2DataEngine:                                             true,
 		types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU:                 true,
-		types.SettingNameOfflineReplicaRebuilding:                                 true,
 	}
 
 	settings, err := info.ds.ListSettings()
