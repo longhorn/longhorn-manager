@@ -100,6 +100,7 @@ const (
 	SettingNameKubernetesClusterAutoscalerEnabled                       = SettingName("kubernetes-cluster-autoscaler-enabled")
 	SettingNameOrphanAutoDeletion                                       = SettingName("orphan-auto-deletion")
 	SettingNameStorageNetwork                                           = SettingName("storage-network")
+	SettingNameStorageNetworkForRWXVolumeEnabled                        = SettingName("storage-network-for-rwx-volume-enabled")
 	SettingNameFailedBackupTTL                                          = SettingName("failed-backup-ttl")
 	SettingNameRecurringSuccessfulJobsHistoryLimit                      = SettingName("recurring-successful-jobs-history-limit")
 	SettingNameRecurringFailedJobsHistoryLimit                          = SettingName("recurring-failed-jobs-history-limit")
@@ -191,6 +192,7 @@ var (
 		SettingNameKubernetesClusterAutoscalerEnabled,
 		SettingNameOrphanAutoDeletion,
 		SettingNameStorageNetwork,
+		SettingNameStorageNetworkForRWXVolumeEnabled,
 		SettingNameFailedBackupTTL,
 		SettingNameRecurringSuccessfulJobsHistoryLimit,
 		SettingNameRecurringFailedJobsHistoryLimit,
@@ -310,6 +312,7 @@ var (
 		SettingNameKubernetesClusterAutoscalerEnabled:                       SettingDefinitionKubernetesClusterAutoscalerEnabled,
 		SettingNameOrphanAutoDeletion:                                       SettingDefinitionOrphanAutoDeletion,
 		SettingNameStorageNetwork:                                           SettingDefinitionStorageNetwork,
+		SettingNameStorageNetworkForRWXVolumeEnabled:                        SettingDefinitionStorageNetworkForRWXVolumeEnabled,
 		SettingNameFailedBackupTTL:                                          SettingDefinitionFailedBackupTTL,
 		SettingNameRecurringSuccessfulJobsHistoryLimit:                      SettingDefinitionRecurringSuccessfulJobsHistoryLimit,
 		SettingNameRecurringFailedJobsHistoryLimit:                          SettingDefinitionRecurringFailedJobsHistoryLimit,
@@ -1051,6 +1054,7 @@ var (
 		DisplayName: "Storage Network",
 		Description: "Longhorn uses the storage network for in-cluster data traffic. Leave this blank to use the Kubernetes cluster network. \n\n" +
 			"To segregate the storage network, input the pre-existing NetworkAttachmentDefinition in **<namespace>/<name>** format. \n\n" +
+			"By default, this setting applies only to RWO (Read-Write-Once) volumes. For RWX (Read-Write-Many) volumes, enable 'Storage Network for RWX Volume' setting.\n\n" +
 			"WARNING: \n\n" +
 			"  - The cluster must have pre-existing Multus installed, and NetworkAttachmentDefinition IPs are reachable between nodes. \n\n" +
 			"  - When applying the setting, Longhorn will try to restart all instance-manager, and backing-image-manager pods if all volumes are detached and eventually restart the instance manager pod without instances running on the instance manager. \n\n",
@@ -1059,6 +1063,22 @@ var (
 		Required: false,
 		ReadOnly: false,
 		Default:  CniNetworkNone,
+	}
+
+	SettingDefinitionStorageNetworkForRWXVolumeEnabled = SettingDefinition{
+		DisplayName: "Storage Network for RWX Volume Enabled",
+		Description: "This setting allows Longhorn to use the storage network for RWX (Read-Write-Many) volume.\n\n" +
+			"WARNING: \n\n" +
+			"  - This setting should change after all Longhorn RWX volumes are detached. \n\n" +
+			"  - Enabling this setting will allow the CSI plugin pod to restart with the storage network annotatation. \n\n" +
+			"  - The RWX volumes will be mounted with the storage network within the CSI plugin pod container network namespace. \n\n" +
+			"  - As result, restarting the CSI plugin pod may lead to unresponsive RWX volume mounts. If this occurs, you will need to restart the workload pod to re-establish the mount connection. \n\n" +
+			"  - Alternatively, you can enable the 'Automatically Delete Workload Pod when The Volume Is Detached Unexpectedly' setting. \n\n",
+		Category: SettingCategoryDangerZone,
+		Type:     SettingTypeBool,
+		Required: false,
+		ReadOnly: false,
+		Default:  "false",
 	}
 
 	SettingDefinitionRecurringSuccessfulJobsHistoryLimit = SettingDefinition{

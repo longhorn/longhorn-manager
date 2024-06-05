@@ -323,11 +323,28 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 				return err
 			}
 		case types.SettingNameStorageNetwork:
-			if err := sc.updateCNI(); err != nil {
+			fnAreAllVolumeDetached := func() (bool, error) {
+				isDetached, _, err := sc.ds.AreAllVolumesDetached(longhorn.DataEngineTypeAll)
+				return isDetached, err
+			}
+			if err := sc.updateCNI(fnAreAllVolumeDetached); err != nil {
 				return err
 			}
 		}
 
+		return nil
+	}
+
+	dangerSettingRequiringRWXVolumesDetached := []types.SettingName{
+		types.SettingNameStorageNetworkForRWXVolumeEnabled,
+	}
+	if slices.Contains(dangerSettingRequiringRWXVolumesDetached, settingName) {
+		switch settingName {
+		case types.SettingNameStorageNetworkForRWXVolumeEnabled:
+			if err := sc.updateCNI(sc.ds.AreAllRWXVolumesDetached); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 
@@ -898,13 +915,23 @@ func (sc *SettingController) updateKubernetesClusterAutoscalerEnabled() error {
 }
 
 // updateCNI deletes all system-managed data plane components immediately with the updated CNI annotation.
-func (sc *SettingController) updateCNI() error {
+func (sc *SettingController) updateCNI(fnCheckVolumeDetached func() (bool, error)) error {
 	storageNetwork, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
 	if err != nil {
 		return err
 	}
 
-	incorrectCNIDaemonSets, err := sc.getDaemonSetsWithIncorrectCNI(storageNetwork)
+	storageNetworkForRWXVolumeEnabled, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetworkForRWXVolumeEnabled)
+	if err != nil {
+		return err
+	}
+
+	isStorageNetworkForRWXVolumeEnabled, err := strconv.ParseBool(storageNetworkForRWXVolumeEnabled.Value)
+	if err != nil {
+		return err
+	}
+
+	incorrectCNIDaemonSets, err := sc.getDaemonSetsWithIncorrectCNI(storageNetwork, isStorageNetworkForRWXVolumeEnabled)
 	if err != nil {
 		return err
 	}
@@ -918,7 +945,7 @@ func (sc *SettingController) updateCNI() error {
 		return nil
 	}
 
-	detached, _, err := sc.ds.AreAllVolumesDetached(longhorn.DataEngineTypeAll)
+	detached, err := fnCheckVolumeDetached()
 	if err != nil {
 		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameStorageNetwork)
 	}
@@ -927,7 +954,7 @@ func (sc *SettingController) updateCNI() error {
 	}
 
 	for _, daemonSet := range incorrectCNIDaemonSets {
-		types.UpdateDaemonSetTemplateBasedOnStorageNetwork(storageNetwork, daemonSet)
+		types.UpdateDaemonSetTemplateBasedOnStorageNetwork(daemonSet, storageNetwork, isStorageNetworkForRWXVolumeEnabled)
 		if _, err := sc.ds.UpdateDaemonSet(daemonSet); err != nil {
 			return err
 		}
@@ -978,10 +1005,14 @@ func (sc *SettingController) getPodsWithIncorrectCNI(storageNetwork *longhorn.Se
 	return incorrectCNIPods, nil
 }
 
-func (sc *SettingController) getDaemonSetsWithIncorrectCNI(storageNetwork *longhorn.Setting) ([]*appsv1.DaemonSet, error) {
+func (sc *SettingController) getDaemonSetsWithIncorrectCNI(storageNetwork *longhorn.Setting, isStorageNetworkForRWXVolumeEnabled bool) ([]*appsv1.DaemonSet, error) {
 	// Get CNI annotation key and value.
 	annotKey := string(types.CNIAnnotationNetworks)
-	annotValue := types.CreateCniAnnotationFromSetting(storageNetwork)
+
+	annotValue := ""
+	if isStorageNetworkForRWXVolumeEnabled {
+		annotValue = types.CreateCniAnnotationFromSetting(storageNetwork)
+	}
 
 	var incorrectCNIDaemonSets []*appsv1.DaemonSet
 

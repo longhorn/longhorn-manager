@@ -1224,3 +1224,12 @@ func IsDataEngineV1(dataEngine longhorn.DataEngineType) bool {
 func IsDataEngineV2(dataEngine longhorn.DataEngineType) bool {
 	return dataEngine == longhorn.DataEngineTypeV2
 }
+
+// IsStorageNetworkForRWXVolume returns true if the storage network setting value is not empty.
+// And isStorageNetworkForRWXVolumeEnabled is true.
+func IsStorageNetworkForRWXVolume(storageNetwork *longhorn.Setting, isStorageNetworkForRWXVolumeEnabled bool) bool {
+	if storageNetwork == nil {
+		return false
+	}
+	return storageNetwork.Value != CniNetworkNone && isStorageNetworkForRWXVolumeEnabled
+}
