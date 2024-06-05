@@ -86,7 +86,7 @@ const (
 	SettingNameDisableRevisionCounter                                   = SettingName("disable-revision-counter")
 	SettingNameReplicaReplenishmentWaitInterval                         = SettingName("replica-replenishment-wait-interval")
 	SettingNameConcurrentReplicaRebuildPerNodeLimit                     = SettingName("concurrent-replica-rebuild-per-node-limit")
-	SettingNameConcurrentBackingImageReplenishPerNodeLimit              = SettingName("concurrent-backing-image-replenish-per-node-limit")
+	SettingNameConcurrentBackingImageCopyReplenishPerNodeLimit          = SettingName("concurrent-backing-image-replenish-per-node-limit")
 	SettingNameConcurrentBackupRestorePerNodeLimit                      = SettingName("concurrent-volume-backup-restore-per-node-limit")
 	SettingNameSystemManagedPodsImagePullPolicy                         = SettingName("system-managed-pods-image-pull-policy")
 	SettingNameAllowVolumeCreationWithDegradedAvailability              = SettingName("allow-volume-creation-with-degraded-availability")
@@ -176,7 +176,7 @@ var (
 		SettingNameDisableRevisionCounter,
 		SettingNameReplicaReplenishmentWaitInterval,
 		SettingNameConcurrentReplicaRebuildPerNodeLimit,
-		SettingNameConcurrentBackingImageReplenishPerNodeLimit,
+		SettingNameConcurrentBackingImageCopyReplenishPerNodeLimit,
 		SettingNameConcurrentBackupRestorePerNodeLimit,
 		SettingNameSystemManagedPodsImagePullPolicy,
 		SettingNameAllowVolumeCreationWithDegradedAvailability,
@@ -294,7 +294,7 @@ var (
 		SettingNameDisableRevisionCounter:                                   SettingDefinitionDisableRevisionCounter,
 		SettingNameReplicaReplenishmentWaitInterval:                         SettingDefinitionReplicaReplenishmentWaitInterval,
 		SettingNameConcurrentReplicaRebuildPerNodeLimit:                     SettingDefinitionConcurrentReplicaRebuildPerNodeLimit,
-		SettingNameConcurrentBackingImageReplenishPerNodeLimit:              SettingDefinitionConcurrentBackingImageReplenishPerNodeLimit,
+		SettingNameConcurrentBackingImageCopyReplenishPerNodeLimit:          SettingDefinitionConcurrentBackingImageCopyReplenishPerNodeLimit,
 		SettingNameConcurrentBackupRestorePerNodeLimit:                      SettingDefinitionConcurrentVolumeBackupRestorePerNodeLimit,
 		SettingNameSystemManagedPodsImagePullPolicy:                         SettingDefinitionSystemManagedPodsImagePullPolicy,
 		SettingNameAllowVolumeCreationWithDegradedAvailability:              SettingDefinitionAllowVolumeCreationWithDegradedAvailability,
@@ -859,7 +859,7 @@ var (
 		},
 	}
 
-	SettingDefinitionConcurrentBackingImageReplenishPerNodeLimit = SettingDefinition{
+	SettingDefinitionConcurrentBackingImageCopyReplenishPerNodeLimit = SettingDefinition{
 		DisplayName: "Concurrent Backing Image Replenish Per Node Limit",
 		Description: "This setting controls how many backing images copy on a node can be replenished simultaneously. \n\n" +
 			"Typically, Longhorn can block the backing image copy starting once the current replenishing count on a node exceeds the limit. But when the value is 0, it means disabling the backing image replenish.",
@@ -1441,7 +1441,7 @@ var (
 		Type:        SettingTypeInt,
 		Required:    true,
 		ReadOnly:    false,
-		Default:     "1",
+		Default:     "3",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 1,
 		},

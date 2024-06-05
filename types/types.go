@@ -742,8 +742,10 @@ func ValidateReplicaCount(count int) error {
 }
 
 func ValidateMinNumberOfBackingIamgeCopies(number int) error {
-
-	definition, _ := GetSettingDefinition(SettingNameDefaultMinNumberOfBackingImageCopies)
+	definition, exists := GetSettingDefinition(SettingNameDefaultMinNumberOfBackingImageCopies)
+	if !exists {
+		return fmt.Errorf("setting %v definition does not exists", SettingNameDefaultMinNumberOfBackingImageCopies)
+	}
 	valueIntRange := definition.ValueIntRange
 
 	if number < valueIntRange[ValueIntRangeMinimum] {

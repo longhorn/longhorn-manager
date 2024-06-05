@@ -63,7 +63,7 @@ type BackingImageManagerController struct {
 	versionUpdater func(*longhorn.BackingImageManager) error
 
 	replenishLock             *sync.Mutex
-	inProgressReplenishingMap map[string]struct{}
+	inProgressReplenishingMap map[string]string
 }
 
 type BackingImageManagerMonitor struct {
@@ -132,7 +132,7 @@ func NewBackingImageManagerController(
 		versionUpdater: updateBackingImageManagerVersion,
 
 		replenishLock:             &sync.Mutex{},
-		inProgressReplenishingMap: map[string]struct{}{},
+		inProgressReplenishingMap: map[string]string{},
 	}
 
 	var err error
@@ -360,6 +360,16 @@ func (c *BackingImageManagerController) cleanupBackingImageManager(bim *longhorn
 			}
 		}
 	}
+
+	// delete in progress record of this manager from the inProgressReplenishingMap
+	// each manager only controls only one disk
+	currentDiskUUID := bim.Spec.DiskUUID
+	for biNameDiskID, diskUUID := range c.inProgressReplenishingMap {
+		if currentDiskUUID == diskUUID {
+			delete(c.inProgressReplenishingMap, biNameDiskID)
+		}
+	}
+
 	if c.isMonitoring(bim.Name) {
 		c.stopMonitoring(bim.Name)
 	}
@@ -717,7 +727,7 @@ func (c *BackingImageManagerController) prepareBackingImageFiles(currentBIM *lon
 
 		// Before syncing the backing image copy to this backing image manager,
 		// check if there are more than ReplenishPerNodeLimit number of backing image copies are being synced on this node.
-		canSync, err := c.CanSyncCopy(currentBIM, biName, currentBIM.Spec.NodeID, currentBIM.Spec.DiskUUID)
+		canSync, err := c.canSyncCopy(currentBIM, biName, currentBIM.Spec.NodeID, currentBIM.Spec.DiskUUID)
 		if err != nil {
 			return err
 		}
@@ -1255,9 +1265,9 @@ func (c *BackingImageManagerController) isResponsibleFor(bim *longhorn.BackingIm
 	return isControllerResponsibleFor(c.controllerID, c.ds, bim.Name, bim.Spec.NodeID, bim.Status.OwnerID)
 }
 
-func (c *BackingImageManagerController) CanSyncCopy(bim *longhorn.BackingImageManager, biName, nodeID, diskUUID string) (bool, error) {
+func (c *BackingImageManagerController) canSyncCopy(bim *longhorn.BackingImageManager, biName, nodeID, diskUUID string) (bool, error) {
 	log := getLoggerForBackingImageManager(c.logger, bim)
-	concurrentReplenishLimit, err := c.ds.GetSettingAsInt(types.SettingNameConcurrentBackingImageReplenishPerNodeLimit)
+	concurrentReplenishLimit, err := c.ds.GetSettingAsInt(types.SettingNameConcurrentBackingImageCopyReplenishPerNodeLimit)
 	if err != nil {
 		return false, err
 	}
@@ -1288,7 +1298,7 @@ func (c *BackingImageManagerController) CanSyncCopy(bim *longhorn.BackingImageMa
 			biOnTheSameNodeMap[biNameDiskID] = fileInfo
 
 			if backingImageInProgress(fileInfo.State) {
-				c.inProgressReplenishingMap[biNameDiskID] = struct{}{}
+				c.inProgressReplenishingMap[biNameDiskID] = diskUUID
 			}
 		}
 	}
@@ -1316,7 +1326,7 @@ func (c *BackingImageManagerController) CanSyncCopy(bim *longhorn.BackingImageMa
 		return false, nil
 	}
 
-	c.inProgressReplenishingMap[currentBiNameDiskID] = struct{}{}
+	c.inProgressReplenishingMap[currentBiNameDiskID] = diskUUID
 	return true, nil
 }
 

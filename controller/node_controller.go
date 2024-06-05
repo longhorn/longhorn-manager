@@ -1190,6 +1190,9 @@ func (nc *NodeController) cleanUpBackingImagesInDisks(node *longhorn.Node) error
 			log.WithError(err).Warn("Failed to get the backing image data source when cleaning up the images in disks")
 			continue
 		}
+		if bids == nil {
+			continue
+		}
 		existingBackingImage := bi.DeepCopy()
 		BackingImageDiskFileCleanup(node, bi, bids, waitInterval, bi.Spec.MinNumberOfCopies)
 		if !reflect.DeepEqual(existingBackingImage.Spec, bi.Spec) {
@@ -1591,15 +1594,15 @@ func (nc *NodeController) syncBackingImageEvictionRequested(node *longhorn.Node)
 	}
 	log := getLoggerForNode(nc.logger, node)
 
-	diskBackingImageMap, err := nc.ds.GetDiskBackingImageMap(node)
+	diskBackingImageMap, err := nc.ds.GetDiskBackingImageMap()
 	if err != nil {
 		return err
 	}
 
 	type backingImageToSync struct {
 		*longhorn.BackingImage
-		diskUUID string
-		evict    bool
+		diskUUID          string
+		evictionRequested bool
 	}
 	backingImagesToSync := []backingImageToSync{}
 
@@ -1626,23 +1629,22 @@ func (nc *NodeController) syncBackingImageEvictionRequested(node *longhorn.Node)
 
 	for _, backingImageToSync := range backingImagesToSync {
 		backingImageLog := log.WithField("backingimage", backingImageToSync.Name).WithField("disk", backingImageToSync.diskUUID)
-		if backingImageToSync.evict {
-			backingImageLog.Infof("Requesting backing image copy eviction")
-			if _, err := nc.ds.UpdateBackingImageStatus(backingImageToSync.BackingImage); err != nil {
-				backingImageLog.Warn("Failed to request backing image copy eviction, will enqueue then resync the node")
-				nc.enqueueNodeRateLimited(node)
-				continue
-			}
-			nc.eventRecorder.Eventf(backingImageToSync.BackingImage, corev1.EventTypeNormal, constant.EventReasonEvictionUserRequested, "Requesting backing image %v eviction from node %v and disk %v", backingImageToSync.Name, node.Spec.Name, backingImageToSync.diskUUID)
-		} else {
-			backingImageLog.Infof("Cancelling backing image copy eviction")
-			if _, err := nc.ds.UpdateBackingImageStatus(backingImageToSync.BackingImage); err != nil {
-				backingImageLog.Warn("Failed to cancel backing image copy eviction, will enqueue then resync the node")
-				nc.enqueueNodeRateLimited(node)
-				continue
-			}
-			nc.eventRecorder.Eventf(backingImageToSync.BackingImage, corev1.EventTypeNormal, constant.EventReasonEvictionCanceled, "Requesting backing image %v eviction from node %v and disk %v", backingImageToSync.Name, node.Spec.Name, backingImageToSync.diskUUID)
+		eventReason := constant.EventReasonEvictionCanceled    // Default to "EvictionCanceled"
+		logMessage := "Cancelling backing image copy eviction" // Default message
+
+		if backingImageToSync.evictionRequested {
+			eventReason = constant.EventReasonEvictionUserRequested
+			logMessage = "Requesting backing image copy eviction"
 		}
+
+		backingImageLog.Infof(logMessage)
+		if _, err := nc.ds.UpdateBackingImage(backingImageToSync.BackingImage); err != nil {
+			backingImageLog.Warnf("Failed to %s, will enqueue then resync the node", strings.ToLower(logMessage))
+			nc.enqueueNodeRateLimited(node)
+			continue
+		}
+
+		nc.eventRecorder.Eventf(backingImageToSync.BackingImage, corev1.EventTypeNormal, eventReason, "%s from node %v and disk %v", logMessage, node.Spec.Name, backingImageToSync.diskUUID)
 	}
 
 	return nil

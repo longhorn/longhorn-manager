@@ -11,7 +11,7 @@ type BackingImage struct {
 
 	DeletionTimestamp string `json:"deletionTimestamp,omitempty" yaml:"deletion_timestamp,omitempty"`
 
-	DiskFileStatusMap map[string]interface{} `json:"diskFileStatusMap,omitempty" yaml:"disk_file_status_map,omitempty"`
+	DiskFileStatusMap map[string]BackingImageDiskFileStatus `json:"diskFileStatusMap,omitempty" yaml:"disk_file_status_map,omitempty"`
 
 	DiskSelector []string `json:"diskSelector,omitempty" yaml:"disk_selector,omitempty"`
 

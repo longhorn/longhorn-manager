@@ -814,19 +814,19 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 			expectState:  longhorn.SystemRestoreStateCompleted,
 
 			existSettings: map[SystemRolloutCRName]*longhorn.Setting{
-				SystemRolloutCRName(types.SettingNameConcurrentReplicaRebuildPerNodeLimit):        {Value: "4"},
-				SystemRolloutCRName(types.SettingNameConcurrentBackupRestorePerNodeLimit):         {Value: "5"},
-				SystemRolloutCRName(types.SettingNameConcurrentBackingImageReplenishPerNodeLimit): {Value: "5"},
+				SystemRolloutCRName(types.SettingNameConcurrentReplicaRebuildPerNodeLimit):            {Value: "4"},
+				SystemRolloutCRName(types.SettingNameConcurrentBackupRestorePerNodeLimit):             {Value: "5"},
+				SystemRolloutCRName(types.SettingNameConcurrentBackingImageCopyReplenishPerNodeLimit): {Value: "5"},
 			},
 			backupSettings: map[SystemRolloutCRName]*longhorn.Setting{
-				SystemRolloutCRName(types.SettingNameConcurrentReplicaRebuildPerNodeLimit):        {Value: "6"},
-				SystemRolloutCRName(types.SettingNameConcurrentBackupRestorePerNodeLimit):         {Value: "7"},
-				SystemRolloutCRName(types.SettingNameConcurrentBackingImageReplenishPerNodeLimit): {Value: "8"},
+				SystemRolloutCRName(types.SettingNameConcurrentReplicaRebuildPerNodeLimit):            {Value: "6"},
+				SystemRolloutCRName(types.SettingNameConcurrentBackupRestorePerNodeLimit):             {Value: "7"},
+				SystemRolloutCRName(types.SettingNameConcurrentBackingImageCopyReplenishPerNodeLimit): {Value: "8"},
 			},
 			expectRestoredSettings: map[SystemRolloutCRName]*longhorn.Setting{
-				SystemRolloutCRName(types.SettingNameConcurrentReplicaRebuildPerNodeLimit):        {Value: "4"},
-				SystemRolloutCRName(types.SettingNameConcurrentBackupRestorePerNodeLimit):         {Value: "5"},
-				SystemRolloutCRName(types.SettingNameConcurrentBackingImageReplenishPerNodeLimit): {Value: "5"},
+				SystemRolloutCRName(types.SettingNameConcurrentReplicaRebuildPerNodeLimit):            {Value: "4"},
+				SystemRolloutCRName(types.SettingNameConcurrentBackupRestorePerNodeLimit):             {Value: "5"},
+				SystemRolloutCRName(types.SettingNameConcurrentBackingImageCopyReplenishPerNodeLimit): {Value: "5"},
 			},
 		},
 		"system rollout Volume exist in cluster": {
