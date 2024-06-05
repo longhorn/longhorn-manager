@@ -844,7 +844,7 @@ func (c *ShareManagerController) createServiceAndEndpoint(shareManager *longhorn
 			return errors.Wrapf(err, "failed to get service for share manager %v", shareManager.Name)
 		}
 
-		c.logger.Debugf("Creating service for share manager %v", shareManager.Name)
+		c.logger.Infof("Creating Service for share manager %v", shareManager.Name)
 		_, err = c.ds.CreateService(c.namespace, c.createServiceManifest(shareManager))
 		if err != nil {
 			return errors.Wrapf(err, "failed to create service for share manager %v", shareManager.Name)
@@ -979,9 +979,16 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 		return nil, err
 	}
 
-	nadAnnot := string(types.CNIAnnotationNetworks)
-	if storageNetwork.Value != types.CniNetworkNone {
-		manifest.Annotations[nadAnnot] = types.CreateCniAnnotationFromSetting(storageNetwork)
+	storageNetworkForRWXVolumeEnabled, err := c.ds.GetSettingAsBool(types.SettingNameStorageNetworkForRWXVolumeEnabled)
+	if err != nil {
+		return nil, err
+	}
+
+	if types.IsStorageNetworkForRWXVolume(storageNetwork, storageNetworkForRWXVolumeEnabled) {
+		nadAnnot := string(types.CNIAnnotationNetworks)
+		if storageNetwork.Value != types.CniNetworkNone {
+			manifest.Annotations[nadAnnot] = types.CreateCniAnnotationFromSetting(storageNetwork)
+		}
 	}
 
 	pod, err := c.ds.CreatePod(manifest)
@@ -1020,16 +1027,21 @@ func (c *ShareManagerController) createServiceManifest(sm *longhorn.ShareManager
 		log.WithError(err).Warnf("Failed to get %v setting, fallback to cluster IP", types.SettingNameStorageNetwork)
 	}
 
-	if storageNetwork.Value == types.CniNetworkNone {
-		log.Debug("Using selector service for share manager because storage network is not detected")
-		service.Spec.ClusterIP = "" // we let the cluster assign a random ip
-		service.Spec.Selector = types.GetShareManagerInstanceLabel(sm.Name)
-	} else {
+	storageNetworkForRWXVolumeEnabled, err := c.ds.GetSettingAsBool(types.SettingNameStorageNetworkForRWXVolumeEnabled)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to get %v setting, fallback to cluster IP", types.SettingNameStorageNetworkForRWXVolumeEnabled)
+	}
+
+	if types.IsStorageNetworkForRWXVolume(storageNetwork, storageNetworkForRWXVolumeEnabled) {
 		// Create a headless service do it doesn't use a cluster IP. This allows
 		// directly reaching the share manager pods using their individual
 		// IP address.
 		log.Debug("Using headless service for share manager because storage network is detected")
 		service.Spec.ClusterIP = core.ClusterIPNone
+	} else {
+		log.Debug("Using selector service for share manager because storage network is not detected")
+		service.Spec.ClusterIP = "" // we let the cluster assign a random ip
+		service.Spec.Selector = types.GetShareManagerInstanceLabel(sm.Name)
 	}
 
 	return service

@@ -251,7 +251,8 @@ type PluginDeployment struct {
 }
 
 func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, livenessProbeImage, managerImage, managerURL, rootDir string,
-	tolerations []corev1.Toleration, tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string, storageNetworkSetting *longhorn.Setting) *PluginDeployment {
+	tolerations []corev1.Toleration, tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string,
+	storageNetworkSetting *longhorn.Setting, isStorageNetworkForRWXVolumeEnabled bool) *PluginDeployment {
 
 	daemonSet := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -506,7 +507,7 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 	}
 	types.AddGoCoverDirToDaemonSet(daemonSet)
 
-	types.UpdateDaemonSetTemplateBasedOnStorageNetwork(storageNetworkSetting, daemonSet)
+	types.UpdateDaemonSetTemplateBasedOnStorageNetwork(daemonSet, storageNetworkSetting, isStorageNetworkForRWXVolumeEnabled)
 
 	return &PluginDeployment{
 		daemonSet: daemonSet,

@@ -489,6 +489,14 @@ func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) (ims []*
 	return
 }
 
+func (s *DataStore) AreAllRWXVolumesDetached() (bool, error) {
+	pods, err := s.ListShareManagerPodsRO("")
+	if err != nil {
+		return false, err
+	}
+	return len(pods) == 0, nil
+}
+
 func (s *DataStore) AreAllVolumesDetached(dataEngine longhorn.DataEngineType) (bool, []*longhorn.InstanceManager, error) {
 	var ims []*longhorn.InstanceManager
 

@@ -215,7 +215,13 @@ func (kc *KubernetesPodController) handleWorkloadPodDeletionIfCSIPluginPodIsDown
 		return nil
 	}
 
-	if storageNetworkSetting.Value == "" {
+	storageNetworkForRWXVolumeEnabled, err := kc.ds.GetSettingAsBool(types.SettingNameStorageNetworkForRWXVolumeEnabled)
+	if err != nil {
+		log.WithError(err).Warnf("%s. Failed to get setting %v", logAbort, types.SettingNameStorageNetworkForRWXVolumeEnabled)
+		return nil
+	}
+
+	if !types.IsStorageNetworkForRWXVolume(storageNetworkSetting, storageNetworkForRWXVolumeEnabled) {
 		return nil
 	}
 
@@ -243,8 +249,6 @@ func (kc *KubernetesPodController) handleWorkloadPodDeletionIfCSIPluginPodIsDown
 		}
 	}
 
-	cniAnnotKey := string(types.CNIAnnotationNetworks)
-
 	// Find RWX volumes.
 	var filteredVolumes []*longhorn.Volume
 	for _, persistentVolume := range persistentVolumes {
@@ -262,32 +266,6 @@ func (kc *KubernetesPodController) handleWorkloadPodDeletionIfCSIPluginPodIsDown
 		// Exclude non-RWX volumes.
 		if volume.Spec.AccessMode != longhorn.AccessModeReadWriteMany {
 			_log.Debugf("%s. Volume access mode is %v", logSkip, volume.Spec.AccessMode)
-			continue
-		}
-
-		shareManager, err := kc.ds.GetShareManager(volume.Name)
-		if err != nil && !apierrors.IsNotFound(err) {
-			return err
-		}
-
-		shareManagerPodName := types.GetShareManagerPodNameFromShareManagerName(shareManager.Name)
-		shareManagerPod, err := kc.ds.GetPodRO(volume.Namespace, shareManagerPodName)
-		if err != nil {
-			return err
-		}
-
-		// If the share manager pod is missing the storage network CNI annotation,
-		// it indicates that the share manager was upgraded from a version before
-		// v1.7.0, and has not yet experienced a share manager pod restart.
-		// In this situation, Longhorn should skip deleting the workload pod to
-		// prevent unnecessary interruption, since the NFS client mount used by
-		// the workload pod remains valid in the host network namespace.
-		//
-		// Once the share manager pod restart, the pod will be recreated with the
-		// storage network CNI annotation, and workload pod will be restarted
-		// with new NFS client mount over the storage network.
-		if _, isAnnotated := shareManagerPod.Annotations[cniAnnotKey]; !isAnnotated {
-			kc.logger.Infof("Skipping pod deletion for NFS remount because volume %v is mounted in the host network", volume.Name)
 			continue
 		}
 

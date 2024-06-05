@@ -94,7 +94,7 @@ func AddGoCoverDirToDaemonSet(daemonset *appsv1.DaemonSet) {
 	)
 }
 
-func UpdateDaemonSetTemplateBasedOnStorageNetwork(storageNetwork *longhorn.Setting, daemonSet *appsv1.DaemonSet) {
+func UpdateDaemonSetTemplateBasedOnStorageNetwork(daemonSet *appsv1.DaemonSet, storageNetwork *longhorn.Setting, isStorageNetworkForRWXVolumeEnabled bool) {
 	if daemonSet == nil {
 		return
 	}
@@ -102,8 +102,10 @@ func UpdateDaemonSetTemplateBasedOnStorageNetwork(storageNetwork *longhorn.Setti
 	logger := logrus.WithField("daemonSet", daemonSet.Name)
 	logger.Infof("Updating DaemonSet template for storage network %v", storageNetwork)
 
+	isContainerNetworkNamespace := IsStorageNetworkForRWXVolume(storageNetwork, isStorageNetworkForRWXVolumeEnabled)
+
 	updateHostNetwork := func() {
-		newHostNetwork := storageNetwork.Value == ""
+		newHostNetwork := !isContainerNetworkNamespace
 		logger.WithFields(logrus.Fields{
 			"oldValue": daemonSet.Spec.Template.Spec.HostNetwork,
 			"newValue": newHostNetwork,
@@ -113,7 +115,10 @@ func UpdateDaemonSetTemplateBasedOnStorageNetwork(storageNetwork *longhorn.Setti
 
 	updateAnnotation := func() {
 		annotKey := string(CNIAnnotationNetworks)
-		annotValue := CreateCniAnnotationFromSetting(storageNetwork)
+		annotValue := ""
+		if isContainerNetworkNamespace {
+			annotValue = CreateCniAnnotationFromSetting(storageNetwork)
+		}
 
 		logger.WithFields(logrus.Fields{
 			"oldValue": daemonSet.Spec.Template.Annotations[annotKey],
