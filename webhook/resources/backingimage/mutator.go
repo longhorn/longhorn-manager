@@ -105,7 +105,7 @@ func (b *backingImageMutator) Create(request *admission.Request, newObj runtime.
 
 	// Handle Spec.DiskFileSpecMap
 	if backingImage.Spec.DiskFileSpecMap == nil {
-		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/disks", "value": {}}`)
+		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/diskFileSpecMap", "value": {}}`)
 	}
 
 	longhornLabels := types.GetBackingImageLabels()
@@ -118,10 +118,10 @@ func (b *backingImageMutator) Create(request *admission.Request, newObj runtime.
 	if backingImage.Spec.MinNumberOfCopies == 0 {
 		minNumberOfCopies, err := b.getDefaultMinNumberOfBackingImageCopies()
 		if err != nil {
-			err = errors.Wrap(err, "BUG: cannot get valid number for setting default min number of backing image copies")
+			err = errors.Wrap(err, "failed to get valid number for setting default min number of backing image copies")
 			return nil, werror.NewInvalidError(err.Error(), "")
 		}
-		logrus.Infof("Use the default number of minimum number of copies %v", minNumberOfCopies)
+		logrus.Infof("Use the default minimum number of copies %v for backing image %v", minNumberOfCopies, backingImage.Name)
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/minNumberOfCopies", "value": %v}`, minNumberOfCopies))
 	}
 
@@ -155,7 +155,7 @@ func (b *backingImageMutator) Update(request *admission.Request, oldObj runtime.
 
 	// Handle Spec.DiskFileSpecMap
 	if backingImage.Spec.DiskFileSpecMap == nil {
-		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/disks", "value": {}}`)
+		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/diskFileSpecMap", "value": {}}`)
 	}
 
 	if backingImage.Spec.SourceParameters == nil {

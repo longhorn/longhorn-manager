@@ -2666,7 +2666,7 @@ func (s *DataStore) ListReadyNodesContainingEngineImageRO(image string) (map[str
 
 // GetReadyNodeDiskForBackingImage a list of all Node the in the given namespace and
 // returns the first Node && the first Disk of the Node marked with condition ready and allow scheduling
-func (s *DataStore) GetReadyNodeDiskForBackingImage(backingImage *longhorn.BackingImage, usedDisks map[string]bool) (*longhorn.Node, string, error) {
+func (s *DataStore) GetReadyNodeDiskForBackingImage(backingImage *longhorn.BackingImage) (*longhorn.Node, string, error) {
 	logrus.Info("Preparing to find a random ready node disk")
 	nodes, err := s.ListNodesRO()
 	if err != nil {
@@ -2704,7 +2704,7 @@ func (s *DataStore) GetReadyNodeDiskForBackingImage(backingImage *longhorn.Backi
 			if !types.IsSelectorsInTags(diskSpec.Tags, backingImage.Spec.DiskSelector, allowEmptyDiskSelectorVolume) {
 				continue
 			}
-			if _, exists := usedDisks[diskStatus.DiskUUID]; exists {
+			if _, exists := backingImage.Spec.DiskFileSpecMap[diskStatus.DiskUUID]; exists {
 				continue
 			}
 			// TODO: Jack add block type disk for spdk version BackingImage
@@ -5073,7 +5073,7 @@ func (s *DataStore) IsV2DataEngineDisabledForNode(nodeName string) (bool, error)
 	return false, nil
 }
 
-func (s *DataStore) GetDiskBackingImageMap(node *longhorn.Node) (map[string][]*longhorn.BackingImage, error) {
+func (s *DataStore) GetDiskBackingImageMap() (map[string][]*longhorn.BackingImage, error) {
 	diskBackingImageMap := map[string][]*longhorn.BackingImage{}
 	backingImages, err := s.ListBackingImages()
 	if err != nil {
@@ -5081,8 +5081,8 @@ func (s *DataStore) GetDiskBackingImageMap(node *longhorn.Node) (map[string][]*l
 	}
 
 	for _, bi := range backingImages {
-		for diskUIID := range bi.Status.DiskFileStatusMap {
-			diskBackingImageMap[diskUIID] = append(diskBackingImageMap[diskUIID], bi)
+		for diskUUID := range bi.Status.DiskFileStatusMap {
+			diskBackingImageMap[diskUUID] = append(diskBackingImageMap[diskUUID], bi)
 		}
 	}
 

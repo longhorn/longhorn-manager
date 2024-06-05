@@ -236,16 +236,11 @@ func (m *VolumeManager) UpdateBackingImageMinNumberOfCopies(name string, minNumb
 		return nil, errors.Wrapf(err, "unable to get backing image %v", name)
 	}
 
-	existingBI := bi.DeepCopy()
-	defer func() {
-		if err == nil {
-			if !reflect.DeepEqual(bi.Spec, existingBI.Spec) {
-				bi, err = m.ds.UpdateBackingImage(bi)
-				return
-			}
-		}
-	}()
-
 	bi.Spec.MinNumberOfCopies = minNumberOfCopies
+	bi, err = m.ds.UpdateBackingImage(bi)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to update backing image %v", name)
+	}
+
 	return bi, nil
 }
