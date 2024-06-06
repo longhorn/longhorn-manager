@@ -122,6 +122,7 @@ const (
 	SettingNameReplicaDiskSoftAntiAffinity                              = SettingName("replica-disk-soft-anti-affinity")
 	SettingNameAllowEmptyNodeSelectorVolume                             = SettingName("allow-empty-node-selector-volume")
 	SettingNameAllowEmptyDiskSelectorVolume                             = SettingName("allow-empty-disk-selector-volume")
+	SettingNameStartPrePullManagerImages                                = SettingName("start-pre-pull-manager-images")
 	SettingNameDisableSnapshotPurge                                     = SettingName("disable-snapshot-purge")
 	SettingNameV1DataEngine                                             = SettingName("v1-data-engine")
 	SettingNameV2DataEngine                                             = SettingName("v2-data-engine")
@@ -214,6 +215,7 @@ var (
 		SettingNameReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume,
+		SettingNameStartPrePullManagerImages,
 		SettingNameDisableSnapshotPurge,
 		SettingNameFreezeFilesystemForSnapshot,
 	}
@@ -328,6 +330,7 @@ var (
 		SettingNameReplicaDiskSoftAntiAffinity:                              SettingDefinitionReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume:                             SettingDefinitionAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume:                             SettingDefinitionAllowEmptyDiskSelectorVolume,
+		SettingNameStartPrePullManagerImages:                                SettingDefinitionStartPrePullManagerImages,
 		SettingNameDisableSnapshotPurge:                                     SettingDefinitionDisableSnapshotPurge,
 		SettingNameFreezeFilesystemForSnapshot:                              SettingDefinitionFreezeFilesystemForSnapshot,
 	}
@@ -1347,6 +1350,16 @@ var (
 		DisplayName: "Allow Scheduling Empty Disk Selector Volumes To Any Disk",
 		Description: "Allow replica of the volume without disk selector to be scheduled on disk with tags, default true",
 		Category:    SettingCategoryScheduling,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "true",
+	}
+
+	SettingDefinitionStartPrePullManagerImages = SettingDefinition{
+		DisplayName: "Start Pre-Pull Manager Images",
+		Description: "Pre-pull Longhorn manager images on all worker nodes before starting the manager pods, default true",
+		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeBool,
 		Required:    true,
 		ReadOnly:    false,

@@ -82,6 +82,17 @@ func NewImageController(
 	}
 	ic.cacheSyncs = append(ic.cacheSyncs, ds.ImageInformer.HasSynced)
 
+	if _, err = ds.SettingInformer.AddEventHandlerWithResyncPeriod(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: ic.isImageAffectedBySetting,
+			Handler: cache.ResourceEventHandlerFuncs{
+				UpdateFunc: func(old, cur interface{}) { ic.enqueueSettingChange(cur) },
+			},
+		}, 0); err != nil {
+		return nil, err
+	}
+	ic.cacheSyncs = append(ic.cacheSyncs, ds.SettingInformer.HasSynced)
+
 	return ic, nil
 }
 
@@ -216,6 +227,11 @@ func (ic *ImageController) syncImage(key string) (err error) {
 		}
 	}()
 
+	isStartPrePullManagerImages, err := ic.ds.GetSettingAsBool(types.SettingNameStartPrePullManagerImages)
+	if err != nil {
+		return err
+	}
+
 	ds, err := ic.ds.GetImageDaemonSet(types.LonghornPrePullManagerImageDaemonSetName)
 	if err != nil {
 		return errors.Wrapf(err, "cannot get daemonset %v for image %v", types.LonghornPrePullManagerImageDaemonSetName, image.Name)
@@ -227,6 +243,11 @@ func (ic *ImageController) syncImage(key string) (err error) {
 	}
 
 	if ds == nil {
+		if !isStartPrePullManagerImages {
+			image.Status.State = longhorn.ImageStateUnknown
+			return nil
+		}
+
 		tolerations, err := ic.ds.GetSettingTaintToleration()
 		if err != nil {
 			return errors.Wrapf(err, "failed to get taint toleration setting before creating image daemonset")
@@ -260,6 +281,14 @@ func (ic *ImageController) syncImage(key string) (err error) {
 		}
 		image.Status.State = longhorn.ImageStateDeploying
 
+		return nil
+	}
+
+	if !isStartPrePullManagerImages {
+		if err := ic.ds.DeleteDaemonSet(types.LonghornPrePullManagerImageDaemonSetName); err != nil {
+			return errors.Wrapf(err, "failed to delete daemonset for image %v", image.Name)
+		}
+		image.Status.State = longhorn.ImageStateUnknown
 		return nil
 	}
 
@@ -437,6 +466,35 @@ func (ic *ImageController) enqueueImage(obj interface{}) {
 	}
 
 	ic.queue.Add(key)
+}
+
+func (ic *ImageController) isImageAffectedBySetting(obj interface{}) bool {
+	setting, ok := obj.(*longhorn.Setting)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			return false
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		setting, ok = deletedState.Obj.(*longhorn.Setting)
+		if !ok {
+			return false
+		}
+	}
+
+	return types.SettingName(setting.Name) == types.SettingNameStartPrePullManagerImages
+}
+
+func (ic *ImageController) enqueueSettingChange(obj interface{}) {
+	images, err := ic.ds.ListImagesRO()
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to list images: %v", err))
+		return
+	}
+	for _, image := range images {
+		ic.enqueueImage(image)
+	}
 }
 
 func (ic *ImageController) isResponsibleFor(image *longhorn.Image) (bool, error) {
