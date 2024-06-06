@@ -192,20 +192,20 @@ func (vc *VolumeCollector) collectMetrics(ch chan<- prometheus.Metric, v *longho
 
 	e, err := vc.ds.GetVolumeCurrentEngine(v.Name)
 	if err != nil {
-		vc.logger.WithError(err).Warnf("Failed to get engine for volume %v", v.Name)
+		vc.logger.WithError(err).Debugf("Failed to get engine for volume %v", v.Name)
 		return
 	}
 
 	engineClientProxy, err := vc.getEngineClientProxy(e)
 	if err != nil {
-		vc.logger.WithError(err).Warnf("Failed to get engine proxy of %v for volume %v", e.Name, v.Name)
+		vc.logger.WithError(err).Debugf("Failed to get engine proxy of %v for volume %v", e.Name, v.Name)
 		return
 	}
 	defer engineClientProxy.Close()
 
 	metrics, err := engineClientProxy.MetricsGet(e)
 	if err != nil {
-		vc.logger.WithError(err).Warnf("Failed to get metrics from volume %v from engine %v", e.Spec.VolumeName, e.Name)
+		vc.logger.WithError(err).Debugf("Failed to get metrics from volume %v from engine %v", e.Spec.VolumeName, e.Name)
 	}
 
 	ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.throughputMetrics.read.Desc, vc.volumePerfMetrics.throughputMetrics.read.Type, float64(vc.getVolumeReadThroughput(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
