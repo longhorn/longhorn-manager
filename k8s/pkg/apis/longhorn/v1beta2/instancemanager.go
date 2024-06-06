@@ -122,6 +122,8 @@ type InstanceStatus struct {
 	Conditions []Condition `json:"conditions"`
 	// +optional
 	CurrentTargetNodeID string `json:"currentTargetNodeID"`
+	// +optional
+	CurrentTargetConnected bool `json:"currentTargetConnected"`
 }
 
 type InstanceProcessStatus struct {

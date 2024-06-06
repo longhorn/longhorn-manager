@@ -1611,6 +1611,8 @@ spec:
                 type: string
               currentState:
                 type: string
+              currentTargetConnected:
+                type: boolean
               currentTargetNodeID:
                 type: string
               endpoint:
@@ -2762,6 +2764,8 @@ spec:
                 type: string
               currentState:
                 type: string
+              currentTargetConnected:
+                type: boolean
               currentTargetNodeID:
                 type: string
               evictionRequested:

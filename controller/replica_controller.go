@@ -311,7 +311,7 @@ func (rc *ReplicaController) enqueueReplica(obj interface{}) {
 	rc.queue.Add(key)
 }
 
-func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
+func (rc *ReplicaController) CreateInstance(obj interface{}, remoteTargetInstance bool) (*longhorn.InstanceProcess, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
 		return nil, fmt.Errorf("invalid object for replica instance creation: %v", obj)
@@ -350,7 +350,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		}
 	}
 
-	im, err := rc.ds.GetInstanceManagerByInstanceRO(obj)
+	im, err := rc.ds.GetInstanceManagerByInstanceRO(obj, remoteTargetInstance)
 	if err != nil {
 		return nil, err
 	}
@@ -524,7 +524,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 			log.Warnf("Replica %v does not set instance manager name and node ID, will skip the actual instance deletion", r.Name)
 			return nil
 		}
-		im, err = rc.ds.GetInstanceManagerByInstance(obj)
+		im, err = rc.ds.GetInstanceManagerByInstance(obj, false)
 		if err != nil {
 			log.WithError(err).Warnf("Failed to detect instance manager for replica %v, will skip the actual instance deletion", r.Name)
 			return nil
@@ -558,7 +558,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 		cleanupRequired = true
 	}
 
-	log.Info("Deleting replica instance")
+	log.WithField("cleanupRequired", cleanupRequired).Infof("Deleting replica instance on disk %v", r.Spec.DiskPath)
 
 	err = c.InstanceDelete(r.Spec.DataEngine, r.Name, string(longhorn.InstanceManagerTypeReplica), r.Spec.DiskID, cleanupRequired)
 	if err != nil && !types.ErrorIsNotFound(err) {
@@ -647,7 +647,23 @@ func (rc *ReplicaController) deleteOldReplicaPod(pod *corev1.Pod, r *longhorn.Re
 	rc.eventRecorder.Eventf(r, corev1.EventTypeNormal, constant.EventReasonStop, "Stops pod for old replica %v", pod.Name)
 }
 
-func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
+func (rc *ReplicaController) SuspendInstance(obj interface{}) error {
+	return fmt.Errorf("suspending replica instance is not supported")
+}
+
+func (rc *ReplicaController) ResumeInstance(obj interface{}) error {
+	return fmt.Errorf("resuming replica instance is not supported")
+}
+
+func (rc *ReplicaController) SwitchOverTargetInstance(obj interface{}, targetInstanceAddress string) error {
+	return fmt.Errorf("replica instance doesn't support switchover")
+}
+
+func (rc *ReplicaController) RequireTargetInstance(obj interface{}) (bool, error) {
+	return false, nil
+}
+
+func (rc *ReplicaController) GetInstance(obj interface{}, remoteTargetInstance bool) (*longhorn.InstanceProcess, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
 		return nil, fmt.Errorf("invalid object for replica instance get: %v", obj)
@@ -658,7 +674,7 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstancePro
 		err error
 	)
 	if r.Status.InstanceManagerName == "" {
-		im, err = rc.ds.GetInstanceManagerByInstanceRO(obj)
+		im, err = rc.ds.GetInstanceManagerByInstanceRO(obj, remoteTargetInstance)
 		if err != nil {
 			return nil, err
 		}

@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"net"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -434,7 +435,23 @@ func (ec *EngineController) enqueueInstanceManagerChange(obj interface{}) {
 
 }
 
-func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
+func (ec *EngineController) isEngineBeingUpgraded(e *longhorn.Engine) (bool, error) {
+	if e.Spec.TargetNodeID == "" || e.Status.CurrentTargetNodeID == "" {
+		return false, nil
+	}
+
+	if !e.Status.CurrentTargetConnected {
+		return false, nil
+	}
+
+	if e.Status.CurrentState != longhorn.InstanceStateRunning {
+		return false, nil
+	}
+
+	return e.Spec.Image != e.Status.CurrentImage, nil
+}
+
+func (ec *EngineController) CreateInstance(obj interface{}, remoteTargetInstance bool) (*longhorn.InstanceProcess, error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
 		return nil, fmt.Errorf("invalid object for engine process creation: %v", obj)
@@ -443,13 +460,31 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		return nil, fmt.Errorf("missing parameters for engine instance creation: %v", e)
 	}
 	frontend := e.Spec.Frontend
-	if e.Spec.DisableFrontend {
+	if e.Spec.DisableFrontend || remoteTargetInstance {
 		frontend = longhorn.VolumeFrontendEmpty
 	}
 
-	im, err := ec.ds.GetInstanceManagerByInstanceRO(obj)
+	var im *longhorn.InstanceManager
+
+	initiatorAddress := ""
+	initiatorIm, err := ec.ds.GetInstanceManagerByInstanceRO(obj, false)
 	if err != nil {
 		return nil, err
+	}
+	initiatorAddress = initiatorIm.Status.IP
+	im = initiatorIm
+
+	targetAddress := im.Status.IP
+	if e.Spec.TargetNodeID != "" {
+		targetIm, err := ec.ds.GetInstanceManagerByInstanceRO(obj, true)
+		if err != nil {
+			return nil, err
+		}
+		targetAddress = targetIm.Status.IP
+
+		if e.Spec.TargetNodeID != e.Status.CurrentTargetNodeID {
+			im = targetIm
+		}
 	}
 
 	c, err := engineapi.NewInstanceManagerClient(im)
@@ -478,6 +513,15 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		return nil, err
 	}
 
+	upgradeRequired, err := ec.isEngineBeingUpgraded(e)
+	if err != nil {
+		return nil, err
+	}
+
+	if upgradeRequired {
+		targetAddress = net.JoinHostPort(targetAddress, strconv.Itoa(e.Status.Port))
+	}
+
 	return c.EngineInstanceCreate(&engineapi.EngineInstanceCreateRequest{
 		Engine:                           e,
 		VolumeFrontend:                   frontend,
@@ -486,6 +530,9 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		DataLocality:                     v.Spec.DataLocality,
 		ImIP:                             im.Status.IP,
 		EngineCLIAPIVersion:              cliAPIVersion,
+		UpgradeRequired:                  upgradeRequired,
+		InitiatorAddress:                 initiatorAddress,
+		TargetAddress:                    targetAddress,
 	})
 }
 
@@ -511,7 +558,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 			log.Warn("Engine does not set instance manager name and node ID, will skip the actual instance deletion")
 			return nil
 		}
-		im, err = ec.ds.GetInstanceManagerByInstance(obj)
+		im, err = ec.ds.GetInstanceManagerByInstance(obj, false)
 		if err != nil {
 			log.WithError(err).Warn("Failed to detect instance manager for engine, will skip the actual instance deletion")
 			return nil
@@ -667,7 +714,96 @@ func (ec *EngineController) deleteOldEnginePod(pod *corev1.Pod, e *longhorn.Engi
 	ec.eventRecorder.Eventf(e, corev1.EventTypeNormal, constant.EventReasonStop, "Stops pod for old engine %v", pod.Name)
 }
 
-func (ec *EngineController) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
+func (ec *EngineController) SuspendInstance(obj interface{}) error {
+	e, ok := obj.(*longhorn.Engine)
+	if !ok {
+		return fmt.Errorf("invalid object for engine instance suspension: %v", obj)
+	}
+
+	if e.Spec.VolumeName == "" || e.Spec.NodeID == "" {
+		return fmt.Errorf("missing parameters for engine instance suspension: %+v", e)
+	}
+
+	im, err := ec.ds.GetInstanceManagerByInstanceRO(obj, false)
+	if err != nil {
+		return err
+	}
+	c, err := engineapi.NewInstanceManagerClient(im)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	return c.EngineInstanceSuspend(&engineapi.EngineInstanceSuspendRequest{
+		Engine: e,
+	})
+}
+
+func (ec *EngineController) ResumeInstance(obj interface{}) error {
+	e, ok := obj.(*longhorn.Engine)
+	if !ok {
+		return fmt.Errorf("invalid object for engine instance resumption: %v", obj)
+	}
+
+	if e.Spec.VolumeName == "" || e.Spec.NodeID == "" {
+		return fmt.Errorf("missing parameters for engine instance resumption: %+v", e)
+	}
+
+	im, err := ec.ds.GetInstanceManagerByInstanceRO(obj, false)
+	if err != nil {
+		return err
+	}
+	c, err := engineapi.NewInstanceManagerClient(im)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	return c.EngineInstanceResume(&engineapi.EngineInstanceResumeRequest{
+		Engine: e,
+	})
+}
+
+func (ec *EngineController) SwitchOverTargetInstance(obj interface{}, targetAddress string) error {
+	log := ec.logger.WithField("engine", obj)
+
+	log.Info("Switching over target instance")
+
+	e, ok := obj.(*longhorn.Engine)
+	if !ok {
+		return fmt.Errorf("invalid object for engine instance suspension: %v", obj)
+	}
+
+	if e.Spec.VolumeName == "" || e.Spec.NodeID == "" {
+		return fmt.Errorf("missing parameters for engine instance suspension: %+v", e)
+	}
+
+	im, err := ec.ds.GetInstanceManagerByInstanceRO(obj, false)
+	if err != nil {
+		return err
+	}
+	c, err := engineapi.NewInstanceManagerClient(im)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	return c.EngineInstanceSwitchOver(&engineapi.EngineInstanceSwitchOverRequest{
+		Engine:        e,
+		TargetAddress: targetAddress,
+	})
+}
+
+func (ec *EngineController) RequireTargetInstance(obj interface{}) (bool, error) {
+	e, ok := obj.(*longhorn.Engine)
+	if !ok {
+		return false, fmt.Errorf("invalid object for checking engine instance target requirement: %v", obj)
+	}
+
+	return e.Spec.TargetNodeID != "", nil
+}
+
+func (ec *EngineController) GetInstance(obj interface{}, remoteTargetInstance bool) (*longhorn.InstanceProcess, error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
 		return nil, fmt.Errorf("invalid object for engine instance get: %v", obj)
@@ -677,15 +813,43 @@ func (ec *EngineController) GetInstance(obj interface{}) (*longhorn.InstanceProc
 		im  *longhorn.InstanceManager
 		err error
 	)
-	if e.Status.InstanceManagerName == "" {
-		im, err = ec.ds.GetInstanceManagerByInstanceRO(obj)
+
+	nodeID := e.Spec.NodeID
+	instanceManagerName := e.Status.InstanceManagerName
+	if remoteTargetInstance {
+		nodeID = e.Spec.TargetNodeID
+		im, err := ec.ds.GetRunningInstanceManagerByNodeRO(nodeID, e.Spec.DataEngine)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get running instance manager for engine %v", e.Name)
+		}
+		instanceManagerName = im.Name
+	}
+
+	if instanceManagerName == "" {
+		if e.Spec.DesireState == longhorn.InstanceStateRunning && e.Status.CurrentState == longhorn.InstanceStateSuspended {
+			im, err = ec.ds.GetRunningInstanceManagerByNodeRO(nodeID, e.Spec.DataEngine)
+		} else {
+			im, err = ec.ds.GetInstanceManagerByInstanceRO(obj, false)
+		}
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		im, err = ec.ds.GetInstanceManagerRO(e.Status.InstanceManagerName)
-		if err != nil {
-			return nil, err
+		if im == nil {
+			im, err = ec.ds.GetInstanceManagerRO(instanceManagerName)
+			if err != nil {
+				if !apierrors.IsNotFound(err) {
+					return nil, err
+				}
+				if types.IsDataEngineV2(e.Spec.DataEngine) {
+					im, err = ec.ds.GetRunningInstanceManagerByNodeRO(nodeID, e.Spec.DataEngine)
+					if err != nil {
+						return nil, errors.Wrapf(err, "failed to get running instance manager for engine %v", e.Name)
+					}
+				} else {
+					return nil, err
+				}
+			}
 		}
 	}
 	c, err := engineapi.NewInstanceManagerClient(im)
@@ -1740,6 +1904,15 @@ func (ec *EngineController) rebuildNewReplica(e *longhorn.Engine) error {
 	for replica, addr := range e.Status.CurrentReplicaAddressMap {
 		// one is enough
 		if !replicaExists[replica] {
+			instanceManagerName := ""
+			r, err := ec.ds.GetReplicaRO(replica)
+			if err == nil {
+				instanceManagerName = r.Status.InstanceManagerName
+			}
+
+			ec.logger.WithFields(logrus.Fields{"volume": e.Spec.VolumeName, "engine": e.Name}).Infof("Rebuilding replica %v with address %v on instance manager %v",
+				replica, addr, instanceManagerName)
+
 			return ec.startRebuilding(e, replica, addr)
 		}
 	}
