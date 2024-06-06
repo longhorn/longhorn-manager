@@ -186,13 +186,13 @@ func (vc *VolumeCollector) Collect(ch chan<- prometheus.Metric) {
 
 					metrics, err = engineClientProxy.MetricsGet(e)
 					if err != nil {
-						vc.logger.WithError(err).Warnf("Failed to get metrics from volume %v from engine %v", e.Spec.VolumeName, e.Name)
+						vc.logger.WithError(err).Debugf("Failed to get metrics from volume %v from engine %v", e.Spec.VolumeName, e.Name)
 					}
 				} else {
-					vc.logger.WithError(err).Warnf("Failed to get engine proxy of %v for volume %v", e.Name, v.Name)
+					vc.logger.WithError(err).Debugf("Failed to get engine proxy of %v for volume %v", e.Name, v.Name)
 				}
 			} else {
-				vc.logger.WithError(err).Warnf("Failed to get engine for volume %v", v.Name)
+				vc.logger.WithError(err).Debugf("Failed to get engine for volume %v", v.Name)
 			}
 
 			ch <- prometheus.MustNewConstMetric(vc.capacityMetric.Desc, vc.capacityMetric.Type, float64(v.Spec.Size), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
