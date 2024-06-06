@@ -62,6 +62,7 @@ type Volume struct {
 	OfflineReplicaRebuildingRequired bool                                   `json:"offlineReplicaRebuildingRequired"`
 	SnapshotMaxCount                 int                                    `json:"snapshotMaxCount"`
 	SnapshotMaxSize                  string                                 `json:"snapshotMaxSize"`
+	FreezeFilesystemForSnapshot      longhorn.FreezeFilesystemForSnapshot   `json:"freezeFilesystemForSnapshot"`
 
 	DiskSelector         []string                      `json:"diskSelector"`
 	NodeSelector         []string                      `json:"nodeSelector"`
@@ -371,6 +372,10 @@ type UpdateSnapshotMaxSize struct {
 	SnapshotMaxSize string `json:"snapshotMaxSize"`
 }
 
+type UpdateFreezeFilesystemForSnapshotInput struct {
+	FreezeFilesystemForSnapshot string `json:"freezeFilesystemForSnapshot"`
+}
+
 type PVCreateInput struct {
 	PVName string `json:"pvName"`
 	FSType string `json:"fsType"`
@@ -629,6 +634,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("UpdateReplicaSoftAntiAffinityInput", UpdateReplicaSoftAntiAffinityInput{})
 	schemas.AddType("UpdateReplicaZoneSoftAntiAffinityInput", UpdateReplicaZoneSoftAntiAffinityInput{})
 	schemas.AddType("UpdateReplicaDiskSoftAntiAffinityInput", UpdateReplicaDiskSoftAntiAffinityInput{})
+	schemas.AddType("UpdateFreezeFilesystemForSnapshotInput", UpdateFreezeFilesystemForSnapshotInput{})
 	schemas.AddType("workloadStatus", longhorn.WorkloadStatus{})
 	schemas.AddType("cloneStatus", longhorn.VolumeCloneStatus{})
 	schemas.AddType("empty", Empty{})
@@ -1029,6 +1035,10 @@ func volumeSchema(volume *client.Schema) {
 
 		"updateReplicaDiskSoftAntiAffinity": {
 			Input: "UpdateReplicaDiskSoftAntiAffinityInput",
+		},
+
+		"updateFreezeFilesystemForSnapshot": {
+			Input: "UpdateFreezeFilesystemForSnapshotInput",
 		},
 
 		"pvCreate": {
@@ -1508,28 +1518,29 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			Actions: map[string]string{},
 			Links:   map[string]string{},
 		},
-		Name:                      v.Name,
-		Size:                      strconv.FormatInt(v.Spec.Size, 10),
-		Frontend:                  v.Spec.Frontend,
-		DisableFrontend:           v.Spec.DisableFrontend,
-		LastAttachedBy:            v.Spec.LastAttachedBy,
-		FromBackup:                v.Spec.FromBackup,
-		DataSource:                v.Spec.DataSource,
-		NumberOfReplicas:          v.Spec.NumberOfReplicas,
-		ReplicaAutoBalance:        v.Spec.ReplicaAutoBalance,
-		DataLocality:              v.Spec.DataLocality,
-		SnapshotDataIntegrity:     v.Spec.SnapshotDataIntegrity,
-		SnapshotMaxCount:          v.Spec.SnapshotMaxCount,
-		SnapshotMaxSize:           strconv.FormatInt(v.Spec.SnapshotMaxSize, 10),
-		BackupCompressionMethod:   v.Spec.BackupCompressionMethod,
-		StaleReplicaTimeout:       v.Spec.StaleReplicaTimeout,
-		Created:                   v.CreationTimestamp.String(),
-		Image:                     v.Spec.Image,
-		BackingImage:              v.Spec.BackingImage,
-		Standby:                   v.Spec.Standby,
-		DiskSelector:              v.Spec.DiskSelector,
-		NodeSelector:              v.Spec.NodeSelector,
-		RestoreVolumeRecurringJob: v.Spec.RestoreVolumeRecurringJob,
+		Name:                        v.Name,
+		Size:                        strconv.FormatInt(v.Spec.Size, 10),
+		Frontend:                    v.Spec.Frontend,
+		DisableFrontend:             v.Spec.DisableFrontend,
+		LastAttachedBy:              v.Spec.LastAttachedBy,
+		FromBackup:                  v.Spec.FromBackup,
+		DataSource:                  v.Spec.DataSource,
+		NumberOfReplicas:            v.Spec.NumberOfReplicas,
+		ReplicaAutoBalance:          v.Spec.ReplicaAutoBalance,
+		DataLocality:                v.Spec.DataLocality,
+		SnapshotDataIntegrity:       v.Spec.SnapshotDataIntegrity,
+		SnapshotMaxCount:            v.Spec.SnapshotMaxCount,
+		SnapshotMaxSize:             strconv.FormatInt(v.Spec.SnapshotMaxSize, 10),
+		BackupCompressionMethod:     v.Spec.BackupCompressionMethod,
+		StaleReplicaTimeout:         v.Spec.StaleReplicaTimeout,
+		Created:                     v.CreationTimestamp.String(),
+		Image:                       v.Spec.Image,
+		BackingImage:                v.Spec.BackingImage,
+		Standby:                     v.Spec.Standby,
+		DiskSelector:                v.Spec.DiskSelector,
+		NodeSelector:                v.Spec.NodeSelector,
+		RestoreVolumeRecurringJob:   v.Spec.RestoreVolumeRecurringJob,
+		FreezeFilesystemForSnapshot: v.Spec.FreezeFilesystemForSnapshot,
 
 		State:                            v.Status.State,
 		Robustness:                       v.Status.Robustness,
@@ -1607,6 +1618,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["updateReplicaSoftAntiAffinity"] = struct{}{}
 			actions["updateReplicaZoneSoftAntiAffinity"] = struct{}{}
 			actions["updateReplicaDiskSoftAntiAffinity"] = struct{}{}
+			actions["updateFreezeFilesystemForSnapshot"] = struct{}{}
 			actions["recurringJobAdd"] = struct{}{}
 			actions["recurringJobDelete"] = struct{}{}
 			actions["recurringJobList"] = struct{}{}
@@ -1638,6 +1650,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["updateReplicaSoftAntiAffinity"] = struct{}{}
 			actions["updateReplicaZoneSoftAntiAffinity"] = struct{}{}
 			actions["updateReplicaDiskSoftAntiAffinity"] = struct{}{}
+			actions["updateFreezeFilesystemForSnapshot"] = struct{}{}
 			actions["pvCreate"] = struct{}{}
 			actions["pvcCreate"] = struct{}{}
 			actions["cancelExpansion"] = struct{}{}

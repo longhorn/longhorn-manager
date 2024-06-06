@@ -32,7 +32,7 @@ GO111MODULE=off go get
 5. Generate code.
 
 ```bash
-scripts/generate-longhorn-schemas.sh http://<ip>:<port>
+GO111MODULE=off scripts/generate-longhorn-schemas.sh http://<ip>:<port>
 ```
 
 ## Copy code to longhorn-manager

@@ -189,6 +189,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			ReplicaDiskSoftAntiAffinity: spec.ReplicaDiskSoftAntiAffinity,
 			DataEngine:                  spec.DataEngine,
 			OfflineReplicaRebuilding:    spec.OfflineReplicaRebuilding,
+			FreezeFilesystemForSnapshot: spec.FreezeFilesystemForSnapshot,
 		},
 	}
 
@@ -1230,4 +1231,32 @@ func (m *VolumeManager) restoreBackingImage(biName string) error {
 	}
 
 	return nil
+}
+
+func (m *VolumeManager) UpdateFreezeFilesystemForSnapshot(name string,
+	freezeFilesystemForSnapshot longhorn.FreezeFilesystemForSnapshot) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to update field FreezeFilesystemForSnapshot for volume %v", name)
+	}()
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if v.Spec.FreezeFilesystemForSnapshot == freezeFilesystemForSnapshot {
+		logrus.Debugf("Volume %v already set field FreezeFilesystemForSnapshot to %v", v.Name, freezeFilesystemForSnapshot)
+		return v, nil
+	}
+
+	oldFreezeFilesystemForSnapshot := v.Spec.FreezeFilesystemForSnapshot
+	v.Spec.FreezeFilesystemForSnapshot = freezeFilesystemForSnapshot
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+
+	logrus.Infof("Updated volume %v field FreezeFilesystemForSnapshot from %v to %v", v.Name,
+		oldFreezeFilesystemForSnapshot, freezeFilesystemForSnapshot)
+	return v, nil
 }

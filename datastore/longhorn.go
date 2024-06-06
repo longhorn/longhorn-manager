@@ -5111,3 +5111,16 @@ func (s *DataStore) GetRunningInstanceManagerByNodeRO(node string, dataEngine lo
 
 	return nil, fmt.Errorf("failed to find a running instance manager for node %v", node)
 }
+
+func (s *DataStore) GetFreezeFilesystemForSnapshotSetting(e *longhorn.Engine) (bool, error) {
+	volume, err := s.GetVolumeRO(e.Spec.VolumeName)
+	if err != nil {
+		return false, err
+	}
+
+	if volume.Spec.FreezeFilesystemForSnapshot != longhorn.FreezeFilesystemForSnapshotDefault {
+		return volume.Spec.FreezeFilesystemForSnapshot == longhorn.FreezeFilesystemForSnapshotEnabled, nil
+	}
+
+	return s.GetSettingAsBool(types.SettingNameFreezeFilesystemForSnapshot)
+}

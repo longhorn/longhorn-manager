@@ -872,6 +872,15 @@ func ValidateReplicaDiskSoftAntiAffinity(value longhorn.ReplicaDiskSoftAntiAffin
 	return nil
 }
 
+func ValidateFreezeFilesystemForSnapshot(value longhorn.FreezeFilesystemForSnapshot) error {
+	if value != longhorn.FreezeFilesystemForSnapshotDefault &&
+		value != longhorn.FreezeFilesystemForSnapshotEnabled &&
+		value != longhorn.FreezeFilesystemForSnapshotDisabled {
+		return fmt.Errorf("invalid FreezeFilesystemForSnapshot setting: %v", value)
+	}
+	return nil
+}
+
 func GetDaemonSetNameFromEngineImageName(engineImageName string) string {
 	return "engine-image-" + engineImageName
 }
