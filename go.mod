@@ -63,9 +63,9 @@ require (
 	github.com/longhorn/go-common-libs v0.0.0-20240514074907-351459694cbf
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240513041205-7a18d2fd85bf
 	github.com/longhorn/go-spdk-helper v0.0.0-20240601023418-52e722327c43
-	github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240514224711-e39b7f0313b2
-	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240523160748-a4b542f30cb7
-	github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240518040159-dc8535e54ff9
+	github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240531032657-15c1e891387b
+	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240530104341-790d82a63861
+	github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240530104316-4ce14dabc6fe
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.18.0
 	github.com/rancher/dynamiclistener v0.3.6
