@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -92,6 +93,13 @@ func NewImageController(
 		return nil, err
 	}
 	ic.cacheSyncs = append(ic.cacheSyncs, ds.SettingInformer.HasSynced)
+
+	if _, err = ds.KubeNodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: func(oldObj, cur interface{}) { ic.enqueueKubernetesNode(cur) },
+	}, 0); err != nil {
+		return nil, err
+	}
+	ic.cacheSyncs = append(ic.cacheSyncs, ds.KubeNodeInformer.HasSynced)
 
 	return ic, nil
 }
@@ -495,6 +503,86 @@ func (ic *ImageController) enqueueSettingChange(obj interface{}) {
 	for _, image := range images {
 		ic.enqueueImage(image)
 	}
+}
+
+func (ic *ImageController) enqueueKubernetesNode(obj interface{}) {
+	kubernetesNode, ok := obj.(*corev1.Node)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		kubernetesNode, ok = deletedState.Obj.(*corev1.Node)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	ic.handleImagesForNode(kubernetesNode.Name)
+}
+
+func (ic *ImageController) handleImagesForNode(nodeName string) {
+	node, err := ic.ds.GetKubernetesNodeRO(nodeName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return
+		}
+		utilruntime.HandleError(fmt.Errorf("failed to get node %v: %v ", nodeName, err))
+		return
+	}
+
+	var imageNames []string
+	for _, image := range node.Status.Images {
+		for _, imageName := range image.Names {
+			if !strings.Contains(imageName, "@") {
+				imageNames = append(imageNames, imageName)
+			}
+		}
+	}
+
+	images, err := ic.ds.ListImagesRO()
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to list images: %v", err))
+		return
+	}
+
+	for _, image := range images {
+		isImageFound := false
+		for _, imageName := range imageNames {
+			if strings.HasSuffix(imageName, image.Spec.ImageURL) {
+				isImageFound = true
+				break
+			}
+		}
+		if !isImageFound {
+			if err := ic.deleteImagePodsOnNode(nodeName); err != nil {
+				utilruntime.HandleError(fmt.Errorf("failed to delete image pod on node %v: %v", nodeName, err))
+				return
+			}
+			break
+		}
+	}
+}
+
+func (ic *ImageController) deleteImagePodsOnNode(nodeName string) error {
+	imageDaemonSetPods, err := ic.ds.ListImageDaemonSetPods()
+	if err != nil {
+		return err
+	}
+
+	for _, pod := range imageDaemonSetPods {
+		if pod.Spec.NodeName == nodeName {
+			if err := ic.ds.DeletePod(pod.Name); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 func (ic *ImageController) isResponsibleFor(image *longhorn.Image) (bool, error) {
