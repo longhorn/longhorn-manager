@@ -96,8 +96,8 @@ func (bc *BackingImageCollector) getDiskNodeMap() (map[string]string, error) {
 	}
 
 	for _, node := range nodeList {
-		for diskID := range node.Spec.Disks {
-			diskNodeMap[diskID] = node.Name
+		for _, status := range node.Status.DiskStatus {
+			diskNodeMap[status.DiskUUID] = node.Name
 		}
 	}
 
