@@ -57,6 +57,10 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	if err != nil {
 		return nil, err
 	}
+	imageController, err := NewImageController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount)
+	if err != nil {
+		return nil, err
+	}
 	nodeController, err := NewNodeController(logger, ds, scheme, kubeClient, namespace, controllerID)
 	if err != nil {
 		return nil, err
@@ -185,6 +189,7 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	go engineController.Run(Workers, stopCh)
 	go volumeController.Run(Workers, stopCh)
 	go engineImageController.Run(Workers, stopCh)
+	go imageController.Run(Workers, stopCh)
 	go nodeController.Run(Workers, stopCh)
 	go websocketController.Run(stopCh)
 	go settingController.Run(stopCh)

@@ -31,6 +31,7 @@ const (
 	LonghornKindBackup              = "Backup"
 	LonghornKindSnapshot            = "Snapshot"
 	LonghornKindEngineImage         = "EngineImage"
+	LonghornKindImage               = "Image"
 	LonghornKindInstanceManager     = "InstanceManager"
 	LonghornKindShareManager        = "ShareManager"
 	LonghornKindBackingImage        = "BackingImage"
@@ -44,6 +45,7 @@ const (
 	LonghornKindBackingImageDataSource = "BackingImageDataSource"
 
 	LonghornKindEngineImageList  = "EngineImageList"
+	LonghornKindImageList        = "ImageList"
 	LonghornKindRecurringJobList = "RecurringJobList"
 	LonghornKindSettingList      = "SettingList"
 	LonghornKindVolumeList       = "VolumeList"
@@ -141,6 +143,7 @@ const (
 	LonghornLabelVolumeSettingKeyPrefix   = "setting.longhorn.io"
 
 	LonghornLabelEngineImage                = "engine-image"
+	LonghornLabelImage                      = "image"
 	LonghornLabelInstanceManager            = "instance-manager"
 	LonghornLabelNode                       = "node"
 	LonghornLabelDiskUUID                   = "disk-uuid"
@@ -289,6 +292,7 @@ const (
 	replicaSuffix   = "-r"
 	recurringSuffix = "-c"
 
+	imagePrefix                = "image-"
 	engineImagePrefix          = "ei-"
 	instanceManagerImagePrefix = "imi-"
 	shareManagerImagePrefix    = "smi-"
@@ -411,11 +415,26 @@ func GetEngineImageLabels(engineImageName string) map[string]string {
 	return labels
 }
 
+func GetImageLabels(imageName string) map[string]string {
+	labels := GetBaseLabelsForSystemManagedComponent()
+	labels[GetLonghornLabelComponentKey()] = LonghornLabelImage
+	labels[GetLonghornLabelKey(LonghornLabelImage)] = imageName
+	return labels
+}
+
 // GetEIDaemonSetLabelSelector returns labels for engine image daemonset's Spec.Selector.MatchLabels
 func GetEIDaemonSetLabelSelector(engineImageName string) map[string]string {
 	labels := make(map[string]string)
 	labels[GetLonghornLabelComponentKey()] = LonghornLabelEngineImage
 	labels[GetLonghornLabelKey(LonghornLabelEngineImage)] = engineImageName
+	return labels
+}
+
+// GetImageDaemonSetLabelSelector returns labels for image daemonset's Spec.Selector.MatchLabels
+func GetImageDaemonSetLabelSelector() map[string]string {
+	labels := make(map[string]string)
+	labels[GetLonghornLabelComponentKey()] = LonghornLabelImage
+	labels[GetLonghornLabelKey(LonghornLabelImage)] = LonghornPrePullManagerImageDaemonSetName
 	return labels
 }
 
@@ -628,16 +647,33 @@ func GetRegionAndZone(labels map[string]string) (string, string) {
 	return region, zone
 }
 
+// GetImageChecksumName returns the checksum name of the image with a prefix.
+func GetImageChecksumName(image string) string {
+	return imagePrefix + util.GetStringChecksum(strings.TrimSpace(image))[:ImageChecksumNameLength]
+}
+
 func GetEngineImageChecksumName(image string) string {
 	return engineImagePrefix + util.GetStringChecksum(strings.TrimSpace(image))[:ImageChecksumNameLength]
 }
 
+// GetInstanceManagerImageChecksumName returns the checksum name of the instance manager image.
 func GetInstanceManagerImageChecksumName(image string) string {
 	return instanceManagerImagePrefix + util.GetStringChecksum(strings.TrimSpace(image))[:ImageChecksumNameLength]
 }
 
+// GetInstanceManagerImagePrefix returns the prefix of the instance manager image name.
+func GetInstanceManagerImagePrefix() string {
+	return instanceManagerImagePrefix
+}
+
+// GetShareManagerImageChecksumName returns the checksum name of the share manager image.
 func GetShareManagerImageChecksumName(image string) string {
 	return shareManagerImagePrefix + util.GetStringChecksum(strings.TrimSpace(image))[:ImageChecksumNameLength]
+}
+
+// GetShareManagerImagePrefix returns the prefix of the share manager image name.
+func GetShareManagerImagePrefix() string {
+	return shareManagerImagePrefix
 }
 
 func GetOrphanChecksumNameForOrphanedDirectory(nodeID, diskName, diskPath, diskUUID, dirName string) string {
@@ -890,6 +926,16 @@ func GetDaemonSetNameFromEngineImageName(engineImageName string) string {
 
 func GetEngineImageNameFromDaemonSetName(dsName string) string {
 	return strings.TrimPrefix(dsName, "engine-image-")
+}
+
+// GetContainerNameFromImage returns the container name with the given image
+func GetContainerNameFromImage(image string) string {
+	return "image-" + image
+}
+
+// GetImageFromContainerName returns the image with the given container name
+func GetImageFromContainerName(containerName string) string {
+	return strings.TrimPrefix(containerName, "image-")
 }
 
 func GetVolumeSettingLabelKey(settingName string) string {

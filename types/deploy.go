@@ -12,6 +12,8 @@ const (
 	LonghornManagerContainerName = LonghornManagerDaemonSetName
 	LonghornUIDeploymentName     = "longhorn-ui"
 
+	LonghornPrePullManagerImageDaemonSetName = "longhorn-pre-pull-manager-image"
+
 	DriverDeployerName = "longhorn-driver-deployer"
 	CSIAttacherName    = "csi-attacher"
 	CSIProvisionerName = "csi-provisioner"

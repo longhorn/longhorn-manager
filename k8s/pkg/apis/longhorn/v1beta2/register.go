@@ -39,6 +39,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&EngineList{},
 		&EngineImage{},
 		&EngineImageList{},
+		&Image{},
+		&ImageList{},
 		&InstanceManager{},
 		&InstanceManagerList{},
 		&Node{},

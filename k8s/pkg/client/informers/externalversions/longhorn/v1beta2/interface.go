@@ -42,6 +42,8 @@ type Interface interface {
 	Engines() EngineInformer
 	// EngineImages returns a EngineImageInformer.
 	EngineImages() EngineImageInformer
+	// Images returns a ImageInformer.
+	Images() ImageInformer
 	// InstanceManagers returns a InstanceManagerInformer.
 	InstanceManagers() InstanceManagerInformer
 	// Nodes returns a NodeInformer.
@@ -124,6 +126,11 @@ func (v *version) Engines() EngineInformer {
 // EngineImages returns a EngineImageInformer.
 func (v *version) EngineImages() EngineImageInformer {
 	return &engineImageInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// Images returns a ImageInformer.
+func (v *version) Images() ImageInformer {
+	return &imageInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // InstanceManagers returns a InstanceManagerInformer.

@@ -217,6 +217,11 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
+	imageList := []string{instanceManagerImage, shareManagerImage}
+	if err := m.PrePullImage(imageList); err != nil {
+		return err
+	}
+
 	server := api.NewServer(m, wsc)
 	router := http.Handler(api.NewRouter(server))
 	router = util.FilteredLoggingHandler(map[string]struct{}{

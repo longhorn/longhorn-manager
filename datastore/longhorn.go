@@ -1701,6 +1701,17 @@ func (s *DataStore) GetEngineImage(name string) (*longhorn.EngineImage, error) {
 	return resultRO.DeepCopy(), nil
 }
 
+// GetDefaultEngineImage returns the default EngineImage by the setting `default-engine-image`
+func (s *DataStore) GetDefaultEngineImage() (*longhorn.EngineImage, error) {
+	defaultEngineImageName, err := s.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.GetEngineImageByImage(defaultEngineImageName)
+}
+
+// GetEngineImageByImage returns the EngineImage by the image name
 func (s *DataStore) GetEngineImageByImage(image string) (*longhorn.EngineImage, error) {
 	engineImages, err := s.ListEngineImages()
 	if err != nil {
@@ -1786,6 +1797,45 @@ func (s *DataStore) CheckEngineImageReadiness(image string, nodes ...string) (is
 	return true, nil
 }
 
+// CheckImageReadiness return true if the image is deployed on all nodes in the NODES list
+func (s *DataStore) CheckImageReadiness(image string, nodes ...string) (isReady bool, err error) {
+	if len(nodes) == 0 {
+		return false, nil
+	}
+	if len(nodes) == 1 && nodes[0] == "" {
+		return false, nil
+	}
+
+	imageObj, err := s.GetImageRO(image)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get image %v", image)
+	}
+	if imageObj.Status.State != longhorn.ImageStateDeployed &&
+		imageObj.Status.State != longhorn.ImageStateDeploying {
+		logrus.Warnf("CheckEngineImageReadiness: image %v is in state %v", image, imageObj.Status.State)
+		return false, nil
+	}
+	nodesHaveImage, err := s.ListNodesContainingImageRO(imageObj)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to list nodes containing image %v", image)
+	}
+	undeployedNodes := []string{}
+	for _, node := range nodes {
+		if node == "" {
+			continue
+		}
+		if _, ok := nodesHaveImage[node]; !ok {
+			undeployedNodes = append(undeployedNodes, node)
+		}
+	}
+	if len(undeployedNodes) > 0 {
+		logrus.Infof("CheckEngineImageReadiness: nodes %v don't have the image %v", undeployedNodes, image)
+		return false, nil
+	}
+	return true, nil
+}
+
+// CheckDataEngineImageReadiness return true if the data engine IMAGE is deployed on at least one node
 func (s *DataStore) CheckDataEngineImageReadiness(image string, dataEngine longhorn.DataEngineType, nodes ...string) (isReady bool, err error) {
 	if types.IsDataEngineV2(dataEngine) {
 		if len(nodes) == 0 {
@@ -1848,6 +1898,116 @@ func (s *DataStore) CheckImageReadyOnAllVolumeReplicas(image, volumeName, nodeID
 		}
 	}
 	return s.CheckDataEngineImageReadiness(image, dataEngine, nodes...)
+}
+
+// CreateImage creates a Longhorn Images resource and verifies
+// creation
+func (s *DataStore) CreateImage(img *longhorn.Image) (*longhorn.Image, error) {
+	ret, err := s.lhClient.LonghornV1beta2().Images(s.namespace).Create(context.TODO(), img, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(ret.Name, "image", func(name string) (runtime.Object, error) {
+		return s.GetImageRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.Image)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for image")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+func (s *DataStore) GetImageRO(name string) (*longhorn.Image, error) {
+	return s.imageLister.Images(s.namespace).Get(name)
+}
+
+// GetImage returns a new Image object for the given name and namespace
+func (s *DataStore) GetImage(name string) (*longhorn.Image, error) {
+	resultRO, err := s.GetImageRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// UpdateImage updates Longhorn Image and verifies update
+func (s *DataStore) UpdateImage(img *longhorn.Image) (*longhorn.Image, error) {
+	obj, err := s.lhClient.LonghornV1beta2().Images(s.namespace).Update(context.TODO(), img, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(img.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetImageRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateImageStatus updates Longhorn Image resource status and verifies update
+func (s *DataStore) UpdateImageStatus(img *longhorn.Image) (*longhorn.Image, error) {
+	obj, err := s.lhClient.LonghornV1beta2().Images(s.namespace).UpdateStatus(context.TODO(), img, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(img.Name, obj, func(name string) (runtime.Object, error) {
+		return s.GetImageRO(name)
+	})
+	return obj, nil
+}
+
+// DeleteImage won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteImage(name string) error {
+	propagation := metav1.DeletePropagationForeground
+	return s.lhClient.LonghornV1beta2().Images(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{PropagationPolicy: &propagation})
+}
+
+// RemoveFinalizerForImage will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForImage(obj *longhorn.Image) error {
+	if !util.FinalizerExists(longhornFinalizerKey, obj) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, obj); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta2().Images(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if obj.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for image %v", obj.Name)
+	}
+	return nil
+}
+
+// ListImagesRO returns object includes all read-only Image in namespace
+func (s *DataStore) ListImagesRO() ([]*longhorn.Image, error) {
+	return s.imageLister.Images(s.namespace).List(labels.Everything())
+}
+
+// ListImages returns object includes all Image in namespace
+func (s *DataStore) ListImages() (map[string]*longhorn.Image, error) {
+	itemMap := map[string]*longhorn.Image{}
+
+	list, err := s.ListImagesRO()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
 }
 
 // CreateBackingImage creates a Longhorn BackingImage resource and verifies
@@ -2559,6 +2719,7 @@ func (s *DataStore) ListNodesRO() ([]*longhorn.Node, error) {
 	return s.nodeLister.Nodes(s.namespace).List(labels.Everything())
 }
 
+// ListNodesContainingEngineImageRO returns a list of all Nodes that contain the given EngineImage
 func (s *DataStore) ListNodesContainingEngineImageRO(ei *longhorn.EngineImage) (map[string]*longhorn.Node, error) {
 	nodeList, err := s.ListNodesRO()
 	if err != nil {
@@ -2568,6 +2729,24 @@ func (s *DataStore) ListNodesContainingEngineImageRO(ei *longhorn.EngineImage) (
 	nodeMap := make(map[string]*longhorn.Node)
 	for _, node := range nodeList {
 		if !ei.Status.NodeDeploymentMap[node.Name] {
+			continue
+		}
+		nodeMap[node.Name] = node
+	}
+
+	return nodeMap, nil
+}
+
+// ListNodesContainingImageRO returns a list of all Nodes that contain the given Image
+func (s *DataStore) ListNodesContainingImageRO(image *longhorn.Image) (map[string]*longhorn.Node, error) {
+	nodeList, err := s.ListNodesRO()
+	if err != nil {
+		return nil, err
+	}
+
+	nodeMap := make(map[string]*longhorn.Node)
+	for _, node := range nodeList {
+		if !image.Status.NodeDeploymentMap[node.Name] {
 			continue
 		}
 		nodeMap[node.Name] = node
@@ -2662,6 +2841,23 @@ func (s *DataStore) ListReadyNodesContainingEngineImageRO(image string) (map[str
 	}
 	readyNodes := filterReadyNodes(nodes)
 	return readyNodes, nil
+}
+
+func (s *DataStore) ListReadyNodesContainingImageRO(imageName string) (map[string]*longhorn.Node, error) {
+	imageObj, err := s.GetImageRO(imageName)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get image %v", imageName)
+	}
+	if imageObj.Status.State != longhorn.ImageStateDeployed && imageObj.Status.State != longhorn.ImageStateDeploying {
+		return map[string]*longhorn.Node{}, nil
+	}
+
+	nodes, err := s.ListNodesContainingImageRO(imageObj)
+	if err != nil {
+		return nil, err
+	}
+
+	return filterReadyNodes(nodes), nil
 }
 
 // GetRandomReadyNodeDisk a list of all Node the in the given namespace and

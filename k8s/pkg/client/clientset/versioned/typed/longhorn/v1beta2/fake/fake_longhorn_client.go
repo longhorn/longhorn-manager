@@ -64,6 +64,10 @@ func (c *FakeLonghornV1beta2) EngineImages(namespace string) v1beta2.EngineImage
 	return &FakeEngineImages{c, namespace}
 }
 
+func (c *FakeLonghornV1beta2) Images(namespace string) v1beta2.ImageInterface {
+	return &FakeImages{c, namespace}
+}
+
 func (c *FakeLonghornV1beta2) InstanceManagers(namespace string) v1beta2.InstanceManagerInterface {
 	return &FakeInstanceManagers{c, namespace}
 }

@@ -33,6 +33,7 @@ const (
 	CRDEngineName                 = "engines.longhorn.io"
 	CRDReplicaName                = "replicas.longhorn.io"
 	CRDVolumeName                 = "volumes.longhorn.io"
+	CRDImageName                  = "images.longhorn.io"
 	CRDEngineImageName            = "engineimages.longhorn.io"
 	CRDNodeName                   = "nodes.longhorn.io"
 	CRDInstanceManagerName        = "instancemanagers.longhorn.io"
@@ -129,6 +130,12 @@ func NewUninstallController(
 			return nil, err
 		}
 		cacheSyncs = append(cacheSyncs, ds.EngineImageInformer.HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDImageName, metav1.GetOptions{}); err == nil {
+		if _, err = ds.ImageInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
+		cacheSyncs = append(cacheSyncs, ds.ImageInformer.HasSynced)
 	}
 	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDNodeName, metav1.GetOptions{}); err == nil {
 		if _, err = ds.NodeInformer.AddEventHandler(c.controlleeHandler()); err != nil {
@@ -572,6 +579,13 @@ func (c *UninstallController) deleteCRs() (bool, error) {
 		return true, c.deleteEngineImages(engineImages)
 	}
 
+	if images, err := c.ds.ListImages(); err != nil {
+		return true, err
+	} else if len(images) > 0 {
+		c.logger.Infof("Found %d images remaining", len(images))
+		return true, c.deleteImages(images)
+	}
+
 	if backingImages, err := c.ds.ListBackingImages(); err != nil {
 		return true, err
 	} else if len(backingImages) > 0 {
@@ -808,6 +822,41 @@ func (c *UninstallController) deleteEngineImages(engineImages map[string]*longho
 			log.Info("Removed finalizer")
 		}
 	}
+	return
+}
+
+func (c *UninstallController) deleteImages(images map[string]*longhorn.Image) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to delete images")
+	}()
+	for _, image := range images {
+		log := getLoggerForImage(c.logger, image)
+
+		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
+		if image.DeletionTimestamp == nil {
+			if err = c.ds.DeleteImage(image.Name); err != nil {
+				err = errors.Wrap(err, "failed to mark for deletion")
+				return
+			}
+			log.Info("Marked for deletion")
+		} else if image.DeletionTimestamp.Before(&timeout) {
+			if err = c.ds.RemoveFinalizerForImage(image); err != nil {
+				err = errors.Wrapf(err, "failed to remove finalizer")
+				return
+			}
+			log.Info("Removed finalizer")
+		}
+	}
+
+	if err = c.ds.DeleteDaemonSet(types.LonghornPrePullManagerImageDaemonSetName); err != nil {
+		if !apierrors.IsNotFound(err) {
+			err = errors.Wrapf(err, "failed to remove daemon set")
+			return
+		}
+		c.logger.Infof("Removed %v daemon set", types.LonghornPrePullManagerImageDaemonSetName)
+		err = nil
+	}
+
 	return
 }
 

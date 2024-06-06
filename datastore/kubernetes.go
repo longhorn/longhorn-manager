@@ -185,6 +185,35 @@ func (s *DataStore) GetEngineImageDaemonSet(name string) (*appsv1.DaemonSet, err
 	return resultRO.DeepCopy(), nil
 }
 
+// CreateImageDaemonSet sets Image labels in DaemonSet label and
+// creates a DaemonSet resource in the given namespace
+func (s *DataStore) CreateImageDaemonSet(ds *appsv1.DaemonSet) error {
+	if ds.Labels == nil {
+		ds.Labels = map[string]string{}
+	}
+	for k, v := range types.GetImageLabels("") {
+		ds.Labels[k] = v
+	}
+	if _, err := s.kubeClient.AppsV1().DaemonSets(s.namespace).Create(context.TODO(), ds, metav1.CreateOptions{}); err != nil {
+		return err
+	}
+	return nil
+}
+
+// GetImageDaemonSet get DaemonSet for the given name and namespace, and
+// returns a new DaemonSet object
+func (s *DataStore) GetImageDaemonSet(name string) (*appsv1.DaemonSet, error) {
+	resultRO, err := s.daemonSetLister.DaemonSets(s.namespace).Get(name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
 func (s *DataStore) ListEngineImageDaemonSetPodsFromEngineImageNameRO(EIName string) ([]*corev1.Pod, error) {
 	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: types.GetEIDaemonSetLabelSelector(EIName),
@@ -193,6 +222,17 @@ func (s *DataStore) ListEngineImageDaemonSetPodsFromEngineImageNameRO(EIName str
 		return nil, err
 	}
 	return s.ListPodsBySelectorRO(selector)
+}
+
+// ListImageDaemonSetPods returns a list of Pods by label selector with the LonghornPrePullManagerImageDaemonSetName name
+func (s *DataStore) ListImageDaemonSetPods() ([]*corev1.Pod, error) {
+	selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetImageDaemonSetLabelSelector(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.ListPodsBySelector(selector)
 }
 
 // CreatePDB creates a PodDisruptionBudget resource for the given PDB object and namespace
