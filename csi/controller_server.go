@@ -550,7 +550,7 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 		}
 
 		if !cs.waitForVolumeState(volumeID, "volume unpublished", checkVolumeUnpublished, false, true) {
-			return status.Errorf(codes.DeadlineExceeded, "Failed to detach volume %s from node %s", volumeID, volumeID)
+			return status.Errorf(codes.DeadlineExceeded, "Failed to detach volume %s from node %s", volumeID, nodeID)
 		}
 		return nil
 	})
