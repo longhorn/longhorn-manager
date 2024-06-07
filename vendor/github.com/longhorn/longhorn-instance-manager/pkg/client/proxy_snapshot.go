@@ -12,7 +12,7 @@ import (
 )
 
 func (c *ProxyClient) VolumeSnapshot(dataEngine, engineName, volumeName, serviceAddress,
-	volumeSnapshotName string, labels map[string]string) (snapshotName string, err error) {
+	volumeSnapshotName string, labels map[string]string, freezeFilesystem bool) (snapshotName string, err error) {
 	input := map[string]string{
 		"engineName":     engineName,
 		"volumeName":     volumeName,
@@ -55,8 +55,9 @@ func (c *ProxyClient) VolumeSnapshot(dataEngine, engineName, volumeName, service
 			VolumeName:         volumeName,
 		},
 		SnapshotVolume: &enginerpc.VolumeSnapshotRequest{
-			Name:   volumeSnapshotName,
-			Labels: labels,
+			Name:             volumeSnapshotName,
+			Labels:           labels,
+			FreezeFilesystem: freezeFilesystem,
 		},
 	}
 	recv, err := c.service.VolumeSnapshot(getContextWithGRPCTimeout(c.ctx), req)

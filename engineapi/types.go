@@ -90,7 +90,7 @@ type EngineClient interface {
 	ReplicaRebuildVerify(engine *longhorn.Engine, replicaName, url string) error
 	ReplicaModeUpdate(engine *longhorn.Engine, url string, mode string) error
 
-	SnapshotCreate(engine *longhorn.Engine, name string, labels map[string]string) (string, error)
+	SnapshotCreate(engine *longhorn.Engine, name string, labels map[string]string, freezeFilesystem bool) (string, error)
 	SnapshotList(engine *longhorn.Engine) (map[string]*longhorn.SnapshotInfo, error)
 	SnapshotGet(engine *longhorn.Engine, name string) (*longhorn.SnapshotInfo, error)
 	SnapshotDelete(engine *longhorn.Engine, name string) error

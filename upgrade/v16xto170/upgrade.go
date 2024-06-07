@@ -56,6 +56,10 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceM
 
 	for _, v := range volumeMap {
 		v.Spec.OfflineReplicaRebuilding = longhorn.OfflineReplicaRebuildingDisabled
+
+		if v.Spec.FreezeFilesystemForSnapshot == "" {
+			v.Spec.FreezeFilesystemForSnapshot = longhorn.FreezeFilesystemForSnapshotDefault
+		}
 	}
 
 	return nil

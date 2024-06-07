@@ -129,6 +129,7 @@ const (
 	SettingNameV2DataEngineGuaranteedInstanceManagerCPU                 = SettingName("v2-data-engine-guaranteed-instance-manager-cpu")
 	SettingNameV2DataEngineLogLevel                                     = SettingName("v2-data-engine-log-level")
 	SettingNameV2DataEngineLogFlags                                     = SettingName("v2-data-engine-log-flags")
+	SettingNameFreezeFilesystemForSnapshot                              = SettingName("freeze-filesystem-for-snapshot")
 )
 
 var (
@@ -214,6 +215,7 @@ var (
 		SettingNameAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume,
 		SettingNameDisableSnapshotPurge,
+		SettingNameFreezeFilesystemForSnapshot,
 	}
 )
 
@@ -327,6 +329,7 @@ var (
 		SettingNameAllowEmptyNodeSelectorVolume:                             SettingDefinitionAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume:                             SettingDefinitionAllowEmptyDiskSelectorVolume,
 		SettingNameDisableSnapshotPurge:                                     SettingDefinitionDisableSnapshotPurge,
+		SettingNameFreezeFilesystemForSnapshot:                              SettingDefinitionFreezeFilesystemForSnapshot,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -465,6 +468,16 @@ var (
 		DisplayName: "Replica Node Level Soft Anti-Affinity",
 		Description: "Allow scheduling on nodes with existing healthy replicas of the same volume",
 		Category:    SettingCategoryScheduling,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "false",
+	}
+
+	SettingDefinitionFreezeFilesystemForSnapshot = SettingDefinition{
+		DisplayName: "Freeze Filesystem For Snapshot",
+		Description: "Setting that freezes the filesystem on the root partition before a snapshot is created.",
+		Category:    SettingCategorySnapshot,
 		Type:        SettingTypeBool,
 		Required:    true,
 		ReadOnly:    false,

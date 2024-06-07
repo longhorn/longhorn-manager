@@ -628,6 +628,11 @@ func (sc *SnapshotController) getTheOnlyEngineCRforSnapshotRO(snapshot *longhorn
 }
 
 func (sc *SnapshotController) handleSnapshotCreate(snapshot *longhorn.Snapshot, engine *longhorn.Engine) error {
+	freezeFilesystem, err := sc.ds.GetFreezeFilesystemForSnapshotSetting(engine)
+	if err != nil {
+		return err
+	}
+
 	engineCliClient, err := GetBinaryClientForEngine(engine, sc.engineClientCollection, engine.Status.CurrentImage)
 	if err != nil {
 		return err
@@ -645,7 +650,7 @@ func (sc *SnapshotController) handleSnapshotCreate(snapshot *longhorn.Snapshot, 
 	}
 	if snapshotInfo == nil {
 		sc.logger.Infof("Creating snapshot %v of volume %v", snapshot.Name, snapshot.Spec.Volume)
-		_, err = engineClientProxy.SnapshotCreate(engine, snapshot.Name, snapshot.Spec.Labels)
+		_, err = engineClientProxy.SnapshotCreate(engine, snapshot.Name, snapshot.Spec.Labels, freezeFilesystem)
 		if err != nil {
 			return err
 		}
