@@ -910,8 +910,9 @@ github.com/envoyproxy/protoc-gen-validate v1.0.4 h1:gVPz/FMfvh57HdSJQyvBtF00j8JU
 github.com/envoyproxy/protoc-gen-validate v1.0.4/go.mod h1:qys6tmnRsYrQqIhm2bvKZH4Blx/1gTIZ2UKVY1M+Yew=
 github.com/evanphx/json-patch v0.5.2/go.mod h1:ZWS5hhDbVDyob71nXKNL0+PWn6ToqBHMikGIFbs31qQ=
 github.com/evanphx/json-patch v4.11.0+incompatible/go.mod h1:50XU6AFN0ol/bzJsmQLiYLvXMP4fmwYFNcr97nuDLSk=
-github.com/evanphx/json-patch v4.12.0+incompatible h1:4onqiflcdA9EOZ4RxV643DvftH5pOlLGNtQ5lPWQu84=
 github.com/evanphx/json-patch v4.12.0+incompatible/go.mod h1:50XU6AFN0ol/bzJsmQLiYLvXMP4fmwYFNcr97nuDLSk=
+github.com/evanphx/json-patch v5.6.0+incompatible h1:jBYDEEiFBPxA0v50tFdvOzQQTCvpL6mnFh5mB2/l16U=
+github.com/evanphx/json-patch v5.6.0+incompatible/go.mod h1:50XU6AFN0ol/bzJsmQLiYLvXMP4fmwYFNcr97nuDLSk=
 github.com/fatih/color v1.7.0/go.mod h1:Zm6kSWBoL9eyXnKyktHP6abPY2pDugNf5KwzbycvMj4=
 github.com/felixge/httpsnoop v1.0.3/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=
@@ -1218,8 +1219,8 @@ github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de h1:9TO3cAIGXtEhn
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de/go.mod h1:zAbeS9B/r2mtpb6U+EI2rYA5OAXxsYw6wTamcNW+zcE=
 github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240513050229-901c2170abd2 h1:O7o4QqKXm6JwbF6PcZ5Uh4JAbXn1iShYe4hrc8p4YN8=
 github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240513050229-901c2170abd2/go.mod h1:2lvW0k38CCvyyyaxA90tztlNrR6tyYsoE3BdxcpTTrM=
-github.com/longhorn/backupstore v0.0.0-20240509144945-3bce6e69af15 h1:D838/RWPKmP9ozjOM2Al8s11NbTGLC2m+ZKT3JAogfY=
-github.com/longhorn/backupstore v0.0.0-20240509144945-3bce6e69af15/go.mod h1:n210xpMUVrSn/W4Za/9BZhyXLCTVfAOq5lNdLrRSyz8=
+github.com/longhorn/backupstore v0.0.0-20240603134532-5ec9a300bef4 h1:FI2oBT6397aaQfspA3tDlYjkDaqhtXnwID4dMgVic0g=
+github.com/longhorn/backupstore v0.0.0-20240603134532-5ec9a300bef4/go.mod h1:n210xpMUVrSn/W4Za/9BZhyXLCTVfAOq5lNdLrRSyz8=
 github.com/longhorn/go-common-libs v0.0.0-20240605094403-68743dacbcb1 h1:Q0/LpqfbGG++p1S+3LaYmEWD5+QTP/hZou2f861zUMM=
 github.com/longhorn/go-common-libs v0.0.0-20240605094403-68743dacbcb1/go.mod h1:C1B3gmrgMK2bgQhU7wntbFy6PiJDucNFRcoQKjrTu8k=
 github.com/longhorn/go-iscsi-helper v0.0.0-20240513041205-7a18d2fd85bf h1:J3VeBJa5XBm6n/U7TEi0dqYIECzBVJndZBV6yoOpP+g=
@@ -1412,8 +1413,8 @@ github.com/rancher/dynamiclistener v0.3.6 h1:iAFWeiFNra6tYlt4k+jINrK3hOxZ8mjW2S/
 github.com/rancher/dynamiclistener v0.3.6/go.mod h1:VqBaJNi+bZmre0+gi+2Jb6jbn7ovHzRueW+M7QhVKsk=
 github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b h1:so40GMVZOZkQeIbAzaZRq6wDrMErvRLuXNsGTRZUpg8=
 github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b/go.mod h1:7oQvGNiJsGvrUgB+7AH8bmdzuR0uhULfwKb43Ht0hUk=
-github.com/rancher/lasso v0.0.0-20240529131504-37f557b0748b h1:zvdv4JrY8WovRS6gJAyE/nK0DF1Kj+L+YeOc26yn7hs=
-github.com/rancher/lasso v0.0.0-20240529131504-37f557b0748b/go.mod h1:7WkdfPEvWAdnHVioMUkhpZkshJzjDY62ocHVhcbw89M=
+github.com/rancher/lasso v0.0.0-20240603075835-701e919d08b7 h1:E5AeOkylBXf4APhnHgDvePdtpxOfIjhKnxfjm4sDIEk=
+github.com/rancher/lasso v0.0.0-20240603075835-701e919d08b7/go.mod h1:v0FJLrmL4m6zdWfIB0/qo7qN5QIjVMFyvFGaw8uyWsA=
 github.com/rancher/wrangler v1.1.2 h1:oXbXo9k7y/H4drUpb4RM1c++vT9O3rpoNEfyusGykiU=
 github.com/rancher/wrangler v1.1.2/go.mod h1:2k9MyhlBdjcutcBGoOJSUAz0HgDAXnMjv81d3n/AaQc=
 github.com/remyoudompheng/bigfft v0.0.0-20200410134404-eec4a21b6bb0/go.mod h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=
