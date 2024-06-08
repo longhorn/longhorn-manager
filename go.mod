@@ -60,12 +60,12 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240513050229-901c2170abd2
 	github.com/longhorn/backupstore v0.0.0-20240509144945-3bce6e69af15
-	github.com/longhorn/go-common-libs v0.0.0-20240514074907-351459694cbf
+	github.com/longhorn/go-common-libs v0.0.0-20240605094403-68743dacbcb1
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240513041205-7a18d2fd85bf
 	github.com/longhorn/go-spdk-helper v0.0.0-20240601023418-52e722327c43
-	github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240531032657-15c1e891387b
-	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240530104341-790d82a63861
-	github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240530104316-4ce14dabc6fe
+	github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240607022515-e9e63aac3882
+	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240607083414-b88bfcfbeda8
+	github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240608031550-6a04bc0e1024
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.18.0
 	github.com/rancher/dynamiclistener v0.3.6
@@ -103,7 +103,7 @@ require (
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/google/pprof v0.0.0-20230817174616-7a8ec2ada47b // indirect
 	github.com/jonboulle/clockwork v0.4.0 // indirect
-	github.com/longhorn/types v0.0.0-20240510221052-ab949bbedea3 // indirect
+	github.com/longhorn/types v0.0.0-20240605091135-ef450e1c04cd // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/moby/term v0.0.0-20221205130635-1aeaba878587 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
