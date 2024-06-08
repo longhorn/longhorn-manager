@@ -770,8 +770,8 @@ github.com/NYTimes/gziphandler v0.0.0-20170623195520-56545f4a5d46/go.mod h1:3wb0
 github.com/NYTimes/gziphandler v1.1.1 h1:ZUDjpQae29j0ryrS0u/B8HZfJBtBQHjqw2rQ2cqUQ3I=
 github.com/NYTimes/gziphandler v1.1.1/go.mod h1:n/CVRwUEOgIxrgPvAQhUUr9oeUtvrhMomdKFjzJNB0c=
 github.com/OneOfOne/xxhash v1.2.2/go.mod h1:HSdplMjZKSmBqAxg5vPj2TmRDmfkzw+cTzAElWljhcU=
-github.com/RoaringBitmap/roaring v1.9.3 h1:t4EbC5qQwnisr5PrP9nt0IRhRTb9gMUgQF4t4S2OByM=
-github.com/RoaringBitmap/roaring v1.9.3/go.mod h1:6AXUsoIEzDTFFQCe1RbGA6uFONMhvejWj5rqITANK90=
+github.com/RoaringBitmap/roaring v1.9.4 h1:yhEIoH4YezLYT04s1nHehNO64EKFTop/wBhxv2QzDdQ=
+github.com/RoaringBitmap/roaring v1.9.4/go.mod h1:6AXUsoIEzDTFFQCe1RbGA6uFONMhvejWj5rqITANK90=
 github.com/ajstarks/deck v0.0.0-20200831202436-30c9fc6549a9/go.mod h1:JynElWSGnm/4RlzPXRlREEwqTHAN3T56Bv2ITsFT3gY=
 github.com/ajstarks/deck/generate v0.0.0-20210309230005-c3f852c02e19/go.mod h1:T13YZdzov6OU0A1+RfKZiZN9ca6VeKdBdyDV+BY97Tk=
 github.com/ajstarks/svgo v0.0.0-20180226025133-644b8db467af/go.mod h1:K08gAheRH3/J6wwsYMMT4xOr94bZjxIelGM0+d/wbFw=
@@ -1217,8 +1217,8 @@ github.com/kubernetes-csi/csi-lib-utils v0.6.1 h1:+AZ58SRSRWh2vmMoWAAGcv7x6fIyBM
 github.com/kubernetes-csi/csi-lib-utils v0.6.1/go.mod h1:GVmlUmxZ+SUjVLXicRFjqWUUvWez0g0Y78zNV9t7KfQ=
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de h1:9TO3cAIGXtEhnIaL+V+BEER86oLrvS+kWobKpbJuye0=
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de/go.mod h1:zAbeS9B/r2mtpb6U+EI2rYA5OAXxsYw6wTamcNW+zcE=
-github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240513050229-901c2170abd2 h1:O7o4QqKXm6JwbF6PcZ5Uh4JAbXn1iShYe4hrc8p4YN8=
-github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240513050229-901c2170abd2/go.mod h1:2lvW0k38CCvyyyaxA90tztlNrR6tyYsoE3BdxcpTTrM=
+github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240608041220-73575e3dfe5c h1:Mv7EZL2Pjn8WryeehDrMYTCjkQHW7cBNfUIRf+iBR78=
+github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240608041220-73575e3dfe5c/go.mod h1:n4gokpvajg2NOz39tE1JQAmbT/72Z69i5tEQNoXHs/o=
 github.com/longhorn/backupstore v0.0.0-20240603134532-5ec9a300bef4 h1:FI2oBT6397aaQfspA3tDlYjkDaqhtXnwID4dMgVic0g=
 github.com/longhorn/backupstore v0.0.0-20240603134532-5ec9a300bef4/go.mod h1:n210xpMUVrSn/W4Za/9BZhyXLCTVfAOq5lNdLrRSyz8=
 github.com/longhorn/go-common-libs v0.0.0-20240605094403-68743dacbcb1 h1:Q0/LpqfbGG++p1S+3LaYmEWD5+QTP/hZou2f861zUMM=
