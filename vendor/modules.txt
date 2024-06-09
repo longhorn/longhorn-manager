@@ -239,7 +239,7 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20240608152738-1a76fc3def09
+# github.com/longhorn/go-common-libs v0.0.0-20240609084059-38227ce2cbc9
 ## explicit; go 1.22.0
 github.com/longhorn/go-common-libs/exec
 github.com/longhorn/go-common-libs/io
