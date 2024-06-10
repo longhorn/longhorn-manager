@@ -46,28 +46,28 @@ type NodeMonitor struct {
 
 	syncCallback func(key string)
 
-	getDiskStatHandler             GetDiskStatHandler
-	getDiskConfigHandler           GetDiskConfigHandler
-	generateDiskConfigHandler      GenerateDiskConfigHandler
-	getReplicaInstanceNamesHandler GetReplicaInstanceNamesHandler
+	getDiskStatHandler          GetDiskStatHandler
+	getDiskConfigHandler        GetDiskConfigHandler
+	generateDiskConfigHandler   GenerateDiskConfigHandler
+	getReplicaDataStoresHandler GetReplicaDataStoresHandler
 }
 
 type CollectedDiskInfo struct {
-	Path                          string
-	NodeOrDiskEvicted             bool
-	DiskStat                      *lhtypes.DiskStat
-	DiskName                      string
-	DiskUUID                      string
-	DiskDriver                    longhorn.DiskDriver
-	Condition                     *longhorn.Condition
-	OrphanedReplicaDirectoryNames map[string]string
-	InstanceManagerName           string
+	Path                      string
+	NodeOrDiskEvicted         bool
+	DiskStat                  *lhtypes.DiskStat
+	DiskName                  string
+	DiskUUID                  string
+	DiskDriver                longhorn.DiskDriver
+	Condition                 *longhorn.Condition
+	OrphanedReplicaDataStores map[string]string
+	InstanceManagerName       string
 }
 
 type GetDiskStatHandler func(longhorn.DiskType, string, string, longhorn.DiskDriver, *DiskServiceClient) (*lhtypes.DiskStat, error)
 type GetDiskConfigHandler func(longhorn.DiskType, string, string, longhorn.DiskDriver, *DiskServiceClient) (*util.DiskConfig, error)
 type GenerateDiskConfigHandler func(longhorn.DiskType, string, string, string, string, *DiskServiceClient) (*util.DiskConfig, error)
-type GetReplicaInstanceNamesHandler func(longhorn.DiskType, *longhorn.Node, string, string, string, string, *DiskServiceClient) (map[string]string, error)
+type GetReplicaDataStoresHandler func(longhorn.DiskType, *longhorn.Node, string, string, string, string, *DiskServiceClient) (map[string]string, error)
 
 func NewDiskMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName string, syncCallback func(key string)) (*NodeMonitor, error) {
 	ctx, quit := context.WithCancel(context.Background())
@@ -83,10 +83,10 @@ func NewDiskMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName
 
 		syncCallback: syncCallback,
 
-		getDiskStatHandler:             getDiskStat,
-		getDiskConfigHandler:           getDiskConfig,
-		generateDiskConfigHandler:      generateDiskConfig,
-		getReplicaInstanceNamesHandler: getReplicaInstanceNames,
+		getDiskStatHandler:          getDiskStat,
+		getDiskConfigHandler:        getDiskConfig,
+		generateDiskConfigHandler:   generateDiskConfig,
+		getReplicaDataStoresHandler: getReplicaDataStores,
 	}
 
 	go m.Start()
@@ -224,7 +224,7 @@ func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 	for diskName, disk := range node.Spec.Disks {
 		dataEngine := util.GetDataEngineForDiskType(disk.Type)
 		diskServiceClient := diskServiceClients[dataEngine]
-		orphanedReplicaInstanceNames := map[string]string{}
+		orphanedReplicaDataStores := map[string]string{}
 		nodeOrDiskEvicted := isNodeOrDiskEvicted(node, disk)
 
 		diskDriver := longhorn.DiskDriverNone
@@ -259,13 +259,13 @@ func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 		}
 
 		diskInfoMap[diskName] = NewDiskInfo(diskName, "", disk.Path, diskDriver, nodeOrDiskEvicted, nil,
-			orphanedReplicaInstanceNames, instanceManagerName, errReason, errMsg)
+			orphanedReplicaDataStores, instanceManagerName, errReason, errMsg)
 
 		diskConfig, err := m.getDiskConfigHandler(disk.Type, diskName, disk.Path, diskDriver, diskServiceClient)
 		if err != nil {
 			if !types.ErrorIsNotFound(err) {
 				diskInfoMap[diskName] = NewDiskInfo(diskName, "", disk.Path, diskDriver, nodeOrDiskEvicted, nil,
-					orphanedReplicaInstanceNames, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo),
+					orphanedReplicaDataStores, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo),
 					fmt.Sprintf("Disk %v(%v) on node %v is not ready: failed to get disk config: error: %v",
 						diskName, disk.Path, node.Name, err))
 				continue
@@ -289,7 +289,7 @@ func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 			//   Create a bdev lvstore
 			if diskConfig, err = m.generateDiskConfigHandler(disk.Type, diskName, diskUUID, disk.Path, string(diskDriver), diskServiceClient); err != nil {
 				diskInfoMap[diskName] = NewDiskInfo(diskName, diskUUID, disk.Path, diskDriver, nodeOrDiskEvicted, nil,
-					orphanedReplicaInstanceNames, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo),
+					orphanedReplicaDataStores, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo),
 					fmt.Sprintf("Disk %v(%v) on node %v is not ready: failed to generate disk config: error: %v",
 						diskName, disk.Path, node.Name, err))
 				continue
@@ -299,26 +299,26 @@ func (m *NodeMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 		stat, err := m.getDiskStatHandler(disk.Type, diskName, disk.Path, diskDriver, diskServiceClient)
 		if err != nil {
 			diskInfoMap[diskName] = NewDiskInfo(diskName, "", disk.Path, diskDriver, nodeOrDiskEvicted, nil,
-				orphanedReplicaInstanceNames, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo),
+				orphanedReplicaDataStores, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo),
 				fmt.Sprintf("Disk %v(%v) on node %v is not ready: Get disk information error: %v",
 					diskName, node.Spec.Disks[diskName].Path, node.Name, err))
 			continue
 		}
 
-		replicaInstanceNames, err := m.getReplicaInstanceNamesHandler(disk.Type, node, diskName, diskConfig.DiskUUID, disk.Path, string(disk.DiskDriver), diskServiceClient)
+		replicaDataStores, err := m.getReplicaDataStoresHandler(disk.Type, node, diskName, diskConfig.DiskUUID, disk.Path, string(disk.DiskDriver), diskServiceClient)
 		if err != nil {
-			m.logger.WithError(err).Warnf("Failed to get replica instance names for disk %v(%v) on node %v", diskName, disk.Path, node.Name)
+			m.logger.WithError(err).Warnf("Failed to get replica data stores for disk %v(%v) on node %v", diskName, disk.Path, node.Name)
 			continue
 		}
 
-		orphanedReplicaInstanceNames, err = m.getOrphanedReplicaInstanceNames(disk.Type, diskConfig.DiskUUID, disk.Path, replicaInstanceNames)
+		orphanedReplicaDataStores, err = m.getOrphanedReplicaDataStores(disk.Type, diskConfig.DiskUUID, disk.Path, replicaDataStores)
 		if err != nil {
-			m.logger.WithError(err).Warnf("Failed to get orphaned replica instance names for disk %v(%v) on node %v", diskName, disk.Path, node.Name)
+			m.logger.WithError(err).Warnf("Failed to get orphaned replica data stores for disk %v(%v) on node %v", diskName, disk.Path, node.Name)
 			continue
 		}
 
 		diskInfoMap[diskName] = NewDiskInfo(diskConfig.DiskName, diskConfig.DiskUUID, disk.Path, diskConfig.DiskDriver, nodeOrDiskEvicted, stat,
-			orphanedReplicaInstanceNames, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo), "")
+			orphanedReplicaDataStores, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo), "")
 	}
 
 	return diskInfoMap
@@ -328,7 +328,7 @@ func isNodeOrDiskEvicted(node *longhorn.Node, disk longhorn.DiskSpec) bool {
 	return node.Spec.EvictionRequested || disk.EvictionRequested
 }
 
-func getReplicaInstanceNames(diskType longhorn.DiskType, node *longhorn.Node, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient) (map[string]string, error) {
+func getReplicaDataStores(diskType longhorn.DiskType, node *longhorn.Node, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient) (map[string]string, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return getReplicaDirectoryNames(node, diskName, diskUUID, diskPath)
@@ -364,16 +364,16 @@ func canCollectDiskData(node *longhorn.Node, diskName, diskUUID, diskPath string
 }
 
 func NewDiskInfo(diskName, diskUUID, diskPath string, diskDriver longhorn.DiskDriver, nodeOrDiskEvicted bool, stat *lhtypes.DiskStat,
-	orphanedReplicaDirectoryNames map[string]string, instanceManagerName string, errorReason, errorMessage string) *CollectedDiskInfo {
+	orphanedReplicaDataStores map[string]string, instanceManagerName string, errorReason, errorMessage string) *CollectedDiskInfo {
 	diskInfo := &CollectedDiskInfo{
-		DiskName:                      diskName,
-		DiskUUID:                      diskUUID,
-		Path:                          diskPath,
-		NodeOrDiskEvicted:             nodeOrDiskEvicted,
-		DiskDriver:                    diskDriver,
-		DiskStat:                      stat,
-		OrphanedReplicaDirectoryNames: orphanedReplicaDirectoryNames,
-		InstanceManagerName:           instanceManagerName,
+		DiskName:                  diskName,
+		DiskUUID:                  diskUUID,
+		Path:                      diskPath,
+		NodeOrDiskEvicted:         nodeOrDiskEvicted,
+		DiskDriver:                diskDriver,
+		DiskStat:                  stat,
+		OrphanedReplicaDataStores: orphanedReplicaDataStores,
+		InstanceManagerName:       instanceManagerName,
 	}
 
 	if errorMessage != "" {
@@ -388,34 +388,34 @@ func NewDiskInfo(diskName, diskUUID, diskPath string, diskDriver longhorn.DiskDr
 	return diskInfo
 }
 
-func (m *NodeMonitor) getOrphanedReplicaInstanceNames(diskType longhorn.DiskType, diskUUID, diskPath string, replicaDirectoryNames map[string]string) (map[string]string, error) {
+func (m *NodeMonitor) getOrphanedReplicaDataStores(diskType longhorn.DiskType, diskUUID, diskPath string, replicaDataStores map[string]string) (map[string]string, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
-		return m.getOrphanedReplicaDirectoryNames(diskUUID, diskPath, replicaDirectoryNames)
+		return m.getOrphanedReplicaDirectoryNames(diskUUID, diskPath, replicaDataStores)
 	case longhorn.DiskTypeBlock:
-		return m.getOrphanedReplicaLvolNames(replicaDirectoryNames)
+		return m.getOrphanedReplicaLvolNames(replicaDataStores)
 	default:
 		return nil, fmt.Errorf("unknown disk type %v", diskType)
 	}
 }
 
-func (m *NodeMonitor) getOrphanedReplicaLvolNames(replicaDirectoryNames map[string]string) (map[string]string, error) {
-	if len(replicaDirectoryNames) == 0 {
+func (m *NodeMonitor) getOrphanedReplicaLvolNames(replicaDataStores map[string]string) (map[string]string, error) {
+	if len(replicaDataStores) == 0 {
 		return map[string]string{}, nil
 	}
 
-	for name := range replicaDirectoryNames {
+	for name := range replicaDataStores {
 		_, err := m.ds.GetReplica(name)
 		if err == nil || !datastore.ErrorIsNotFound(err) {
-			delete(replicaDirectoryNames, name)
+			delete(replicaDataStores, name)
 		}
 	}
 
-	return replicaDirectoryNames, nil
+	return replicaDataStores, nil
 }
 
-func (m *NodeMonitor) getOrphanedReplicaDirectoryNames(diskUUID, diskPath string, replicaDirectoryNames map[string]string) (map[string]string, error) {
-	if len(replicaDirectoryNames) == 0 {
+func (m *NodeMonitor) getOrphanedReplicaDirectoryNames(diskUUID, diskPath string, replicaDataStores map[string]string) (map[string]string, error) {
+	if len(replicaDataStores) == 0 {
 		return map[string]string{}, nil
 	}
 
@@ -428,19 +428,19 @@ func (m *NodeMonitor) getOrphanedReplicaDirectoryNames(diskUUID, diskPath string
 
 	for _, replica := range replicas {
 		if replica.Spec.DiskPath == diskPath {
-			delete(replicaDirectoryNames, replica.Spec.DataDirectoryName)
+			delete(replicaDataStores, replica.Spec.DataDirectoryName)
 		}
 	}
 
 	if m.checkVolumeMeta {
-		for name := range replicaDirectoryNames {
+		for name := range replicaDataStores {
 			if err := isVolumeMetaFileExist(diskPath, name); err != nil {
-				delete(replicaDirectoryNames, name)
+				delete(replicaDataStores, name)
 			}
 		}
 	}
 
-	return replicaDirectoryNames, nil
+	return replicaDataStores, nil
 }
 
 func isVolumeMetaFileExist(diskPath, replicaDirectoryName string) error {

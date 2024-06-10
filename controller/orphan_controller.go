@@ -311,7 +311,7 @@ func (oc *OrphanController) cleanupOrphanedData(orphan *longhorn.Orphan) (err er
 }
 
 func (oc *OrphanController) deleteOrphanedReplica(orphan *longhorn.Orphan) error {
-	oc.logger.Infof("Deleting orphan %v replica directory %v in disk %v on node %v",
+	oc.logger.Infof("Deleting orphan %v replica data store %v in disk %v on node %v",
 		orphan.Name, orphan.Spec.Parameters[longhorn.OrphanDataName],
 		orphan.Spec.Parameters[longhorn.OrphanDiskPath], orphan.Status.OwnerID)
 
