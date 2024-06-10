@@ -172,7 +172,7 @@ func (c *ShareManagerController) enqueueShareManagerForVolume(obj interface{}) {
 		}
 	}
 
-	if volume.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !volume.Spec.Migratable {
+	if isRegularRWXVolume(volume) {
 		// we can queue the key directly since a share manager only manages a single volume from it's own namespace
 		// and there is no need for us to retrieve the whole object, since we already know the volume name
 		key := volume.Namespace + "/" + volume.Name
@@ -1337,14 +1337,19 @@ func (c *ShareManagerController) isShareManagerPodStale(sm *longhorn.ShareManage
 		return
 	}
 
-	// Consider it stale if there is a lease-holding node, if it has been renewed at least once since
-	// acquisition by that holder, and if the time of renewal is longer ago than the lease duration.
+	// Consider it stale if there is a lease-holding node, if it has been renewed at least once
+	// since acquisition by that holder, if the duration is a sane value, and if the time of renewal
+	// is longer ago than the lease duration.
 	holder = *lease.Spec.HolderIdentity
 	if holder == "" {
 		return
 	}
 	if lease.Spec.RenewTime == lease.Spec.AcquireTime {
 		log.Warnf("Lease for %v held by %v has never been renewed by share-manager", leaseName, holder)
+		return
+	}
+	if *lease.Spec.LeaseDurationSeconds < 6 {
+		log.Warnf("Lease for %v has a crazy value for duration: %v seconds.  Ignoring.", leaseName, *lease.Spec.LeaseDurationSeconds)
 		return
 	}
 	expireTime := lease.Spec.RenewTime.Add(time.Duration(*lease.Spec.LeaseDurationSeconds) * time.Second)

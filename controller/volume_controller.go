@@ -4039,6 +4039,12 @@ func (c *VolumeController) IsReplicaUnavailable(r *longhorn.Replica) (bool, erro
 		return true, nil
 	}
 
+	if isRWX, _ := c.ds.IsRegularRWXVolume(r.Spec.VolumeName); isRWX {
+		if isDelinquent, _ := c.ds.IsNodeDelinquent(r.Spec.NodeID); isDelinquent {
+			return true, nil
+		}
+	}
+
 	node, err := c.ds.GetNodeRO(r.Spec.NodeID)
 	if err != nil {
 		return true, errors.Wrapf(err, "failed to get node %v for failed replica %v", r.Spec.NodeID, r.Name)
@@ -4065,9 +4071,13 @@ func (c *VolumeController) isResponsibleFor(v *longhorn.Volume, defaultEngineIma
 	}()
 
 	// If there is a share manager and it has an owner, we should use that too.
-	sm, err := c.ds.GetShareManager(v.Name)
-	if err == nil && sm != nil {
-		return c.controllerID == sm.Status.OwnerID, nil
+	if isRegularRWXVolume(v) {
+		if isDelinquent, _ := c.ds.IsNodeDelinquent(v.Status.OwnerID); isDelinquent {
+			sm, err := c.ds.GetShareManager(v.Name)
+			if err == nil && sm != nil {
+				return c.controllerID == sm.Status.OwnerID, nil
+			}
+		}
 	}
 
 	isResponsible := isControllerResponsibleFor(c.controllerID, c.ds, v.Name, v.Spec.NodeID, v.Status.OwnerID)

@@ -882,6 +882,20 @@ func (s *DataStore) ListVolumes() (map[string]*longhorn.Volume, error) {
 	return itemMap, nil
 }
 
+func (s *DataStore) IsRegularRWXVolume(volumeName string) (bool, error) {
+	v, err := s.GetVolumeRO(volumeName)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return false, err
+		}
+	}
+
+	if v != nil && v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !v.Spec.Migratable {
+		return true, nil
+	}
+	return false, nil
+}
+
 func MarshalLabelToVolumeRecurringJob(labels map[string]string) map[string]*longhorn.VolumeRecurringJob {
 	groupPrefix := fmt.Sprintf(types.LonghornLabelRecurringJobKeyPrefixFmt, types.LonghornLabelRecurringJobGroup) + "/"
 	jobPrefix := fmt.Sprintf(types.LonghornLabelRecurringJobKeyPrefixFmt, types.LonghornLabelRecurringJob) + "/"
@@ -2746,11 +2760,11 @@ func (s *DataStore) IsNodeDownOrDeletedOrMissingManager(name string) (bool, erro
 	return false, nil
 }
 
-// IsNodeDownOrDeletedOrDelinquent is a variant that also considers an early-warning
-// condition of Lease expiration that is of interest to share-manager types.
-func (s *DataStore) IsNodeDownOrDeletedOrDelinquent(name string) (bool, error) {
+// IsNodeDelinquent checks an early-warning condition of Lease expiration
+// that is of interest to share-manager types.
+func (s *DataStore) IsNodeDelinquent(name string) (bool, error) {
 	if name == "" {
-		return false, errors.New("no node name provided to IsNodeDownOrDeletedOrDelinquent")
+		return false, errors.New("no node name provided to IsNodeDelinquent")
 	}
 	node, err := s.GetNodeRO(name)
 	if err != nil {
@@ -2759,14 +2773,8 @@ func (s *DataStore) IsNodeDownOrDeletedOrDelinquent(name string) (bool, error) {
 		}
 		return false, err
 	}
-	cond := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
-	if cond.Status == longhorn.ConditionStatusFalse &&
-		(cond.Reason == string(longhorn.NodeConditionReasonKubernetesNodeGone) ||
-			cond.Reason == string(longhorn.NodeConditionReasonKubernetesNodeNotReady) ||
-			cond.Reason == string(longhorn.NodeConditionReasonManagerPodMissing)) {
-		return true, nil
-	}
-	cond = types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeDelinquent)
+
+	cond := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeDelinquent)
 	if cond.Status == longhorn.ConditionStatusTrue {
 		return true, nil
 	}

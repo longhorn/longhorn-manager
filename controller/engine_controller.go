@@ -300,6 +300,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	if !isResponsible {
 		return nil
 	}
+
 	if engine.Status.OwnerID != ec.controllerID {
 		engine.Status.OwnerID = ec.controllerID
 		engine, err = ec.ds.UpdateEngineStatus(engine)
@@ -581,16 +582,9 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 		}
 	}
 
-	v, err := ec.ds.GetVolumeRO(e.Spec.VolumeName)
+	isRWXVolume, err := ec.ds.IsRegularRWXVolume(e.Spec.VolumeName)
 	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return err
-		}
-	}
-
-	isRWXVolume := false
-	if v != nil && v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !v.Spec.Migratable {
-		isRWXVolume = true
+		return err
 	}
 
 	// For a RWX volume, the node down, for example, caused by kubelet restart, leads to share-manager pod deletion/recreation
@@ -601,6 +595,16 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 	if !isRWXVolume {
 		if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
 			log.Infof("Skipping deleting engine %v since instance manager is in %v state", e.Name, im.Status.CurrentState)
+			return nil
+		}
+	}
+
+	// If the node is unreachable, don't bother with the successive timeouts we would spend attempting to contact
+	// its client proxy to delete the engine.
+	if isRWXVolume {
+		isDelinquent, _ := ec.ds.IsNodeDelinquent(im.Spec.NodeID)
+		if isDelinquent {
+			log.Infof("Skipping deleting RWX engine %v since IM node %v is delinquent", e.Name, im.Spec.NodeID)
 			return nil
 		}
 	}
@@ -2194,10 +2198,15 @@ func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineIm
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
-	// If there is a share manager for this and it has an owner , we should use that too.
-	sm, err := ec.ds.GetShareManager(e.Spec.VolumeName)
-	if err == nil && sm != nil {
-		return ec.controllerID == sm.Status.OwnerID, nil
+	// If there is a share manager for this and it has an owner, engine should use that too.
+	// TODO - will we need to fiddle with image availability and all that?
+	if isRWX, _ := ec.ds.IsRegularRWXVolume(e.Spec.VolumeName); isRWX {
+		if isDelinquent, _ := ec.ds.IsNodeDelinquent(e.Status.OwnerID); isDelinquent {
+			sm, err := ec.ds.GetShareManager(e.Spec.VolumeName)
+			if err == nil && sm != nil {
+				return ec.controllerID == sm.Status.OwnerID, nil
+			}
+		}
 	}
 
 	isResponsible := isControllerResponsibleFor(ec.controllerID, ec.ds, e.Name, e.Spec.NodeID, e.Status.OwnerID)
