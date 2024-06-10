@@ -35,16 +35,16 @@ func NewFakeNodeMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, node
 
 		syncCallback: syncCallback,
 
-		getDiskStatHandler:             fakeGetDiskStat,
-		getDiskConfigHandler:           fakeGetDiskConfig,
-		generateDiskConfigHandler:      fakeGenerateDiskConfig,
-		getReplicaInstanceNamesHandler: fakeGetReplicaDirectoryNames,
+		getDiskStatHandler:          fakeGetDiskStat,
+		getDiskConfigHandler:        fakeGetDiskConfig,
+		generateDiskConfigHandler:   fakeGenerateDiskConfig,
+		getReplicaDataStoresHandler: fakeGetReplicaDataStores,
 	}
 
 	return m, nil
 }
 
-func fakeGetReplicaDirectoryNames(diskType longhorn.DiskType, node *longhorn.Node, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient) (map[string]string, error) {
+func fakeGetReplicaDataStores(diskType longhorn.DiskType, node *longhorn.Node, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient) (map[string]string, error) {
 	return map[string]string{
 		TestOrphanedReplicaDirectoryName: "",
 	}, nil
