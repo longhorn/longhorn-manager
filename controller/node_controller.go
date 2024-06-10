@@ -56,8 +56,7 @@ type NodeController struct {
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
 
-	diskMonitor       monitor.Monitor
-	collectedDiskInfo map[string]*monitor.CollectedDiskInfo
+	diskMonitor monitor.Monitor
 
 	snapshotMonitor              monitor.Monitor
 	snapshotChangeEventQueue     workqueue.Interface
@@ -96,8 +95,6 @@ func NewNodeController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-node-controller"}),
 
 		ds: ds,
-
-		collectedDiskInfo: make(map[string]*monitor.CollectedDiskInfo, 0),
 
 		topologyLabelsChecker: util.IsKubernetesVersionAtLeast,
 
@@ -531,7 +528,6 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		}
 		return err
 	}
-	nc.collectedDiskInfo = collectedDiskInfo
 
 	// sync disks status on current node
 	if err := nc.syncDiskStatus(node, collectedDiskInfo); err != nil {
