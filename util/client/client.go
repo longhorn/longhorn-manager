@@ -45,8 +45,8 @@ func NewClients(kubeconfigPath string, needDataStore bool, stopCh <-chan struct{
 		return nil, errors.Wrap(err, "unable to get client config")
 	}
 
-	config.QPS = types.KubeApiQps
-	config.Burst = types.KubeApiBurst
+	config.QPS = types.KubeAPIQPS
+	config.Burst = types.KubeAPIBurst
 
 	if err := wranglerSchemes.Register(appsv1.AddToScheme); err != nil {
 		return nil, err
