@@ -133,7 +133,9 @@ func (e *EngineBinary) ReplicaList(*longhorn.Engine) (map[string]*Replica, error
 
 // ReplicaAdd calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
-func (e *EngineBinary) ReplicaAdd(engine *longhorn.Engine, replicaName, url string, isRestoreVolume, fastSync bool, replicaFileSyncHTTPClientTimeout int64) error {
+func (e *EngineBinary) ReplicaAdd(engine *longhorn.Engine, replicaName, url string, isRestoreVolume, fastSync bool, replicaFileSyncHTTPClientTimeout, grpcTimeoutSeconds int64) error {
+	// Ignore grpcTimeoutSeconds because we expect that longhorn manager should use proxy gRPC to communicate with
+	// engine/replica who understands this field
 	if err := ValidateReplicaURL(url); err != nil {
 		return err
 	}

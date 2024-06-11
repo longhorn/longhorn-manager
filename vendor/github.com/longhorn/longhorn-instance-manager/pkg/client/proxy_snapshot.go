@@ -124,7 +124,7 @@ func (c *ProxyClient) SnapshotList(dataEngine, engineName, volumeName,
 }
 
 func (c *ProxyClient) SnapshotClone(dataEngine, engineName, volumeName, serviceAddress,
-	snapshotName, fromEngineAddress, fromVolumeName, fromEngineName string, fileSyncHTTPClientTimeout int) (err error) {
+	snapshotName, fromEngineAddress, fromVolumeName, fromEngineName string, fileSyncHTTPClientTimeout int, grpcTimeoutSeconds int64) (err error) {
 	input := map[string]string{
 		"engineName":        engineName,
 		"volumeName":        volumeName,
@@ -163,8 +163,9 @@ func (c *ProxyClient) SnapshotClone(dataEngine, engineName, volumeName, serviceA
 		FileSyncHttpClientTimeout: int32(fileSyncHTTPClientTimeout),
 		FromEngineName:            fromEngineName,
 		FromVolumeName:            fromVolumeName,
+		GrpcTimeoutSeconds:        grpcTimeoutSeconds,
 	}
-	_, err = c.service.SnapshotClone(getContextWithGRPCLongTimeout(c.ctx), req)
+	_, err = c.service.SnapshotClone(getContextWithGRPCLongTimeout(c.ctx, grpcTimeoutSeconds), req)
 	if err != nil {
 		return err
 	}
