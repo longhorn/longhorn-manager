@@ -406,7 +406,7 @@ func (m *NodeMonitor) getOrphanedReplicaLvolNames(replicaDataStores map[string]s
 
 	for name := range replicaDataStores {
 		_, err := m.ds.GetReplica(name)
-		if err == nil || !datastore.ErrorIsNotFound(err) {
+		if err == nil || !datastore.ErrorIsNotFound(err) || name == "" {
 			delete(replicaDataStores, name)
 		}
 	}
