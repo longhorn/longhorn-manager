@@ -3,6 +3,7 @@ package client
 import (
 	"crypto/tls"
 	"fmt"
+	"time"
 
 	emeta "github.com/longhorn/longhorn-engine/pkg/meta"
 	eclient "github.com/longhorn/longhorn-engine/pkg/replica/client"
@@ -99,6 +100,7 @@ func NewProxyClientWithTLS(ctx context.Context, ctxCancel context.CancelFunc, ad
 }
 
 const (
+	// We want to have a slightly bigger timeout on the proxy client-side compared to the actual timeout in the engine/replica because the proxy server adds some delay to the flow
 	GRPCServiceTimeout     = eclient.GRPCServiceCommonTimeout * 2
 	GRPCServiceLongTimeout = eclient.GRPCServiceLongTimeout + GRPCServiceTimeout
 )
@@ -108,8 +110,15 @@ func getContextWithGRPCTimeout(parent context.Context) context.Context {
 	return ctx
 }
 
-func getContextWithGRPCLongTimeout(parent context.Context) context.Context {
-	ctx, _ := context.WithTimeout(parent, GRPCServiceLongTimeout)
+// getContextWithGRPCLongTimeout returns a context with given grpcTimeoutSeconds + GRPCServiceTimeout timeout.
+// If grpcTimeoutSeconds is 0, use the default GRPCServiceLongTimeout instead.
+func getContextWithGRPCLongTimeout(parent context.Context, grpcTimeoutSeconds int64) context.Context {
+	grpcTimeout := GRPCServiceLongTimeout
+	if grpcTimeoutSeconds > 0 {
+		// We want to have a slightly bigger timeout on the proxy client-side compared to the actual timeout in the engine/replica because the proxy server adds some delay to the flow
+		grpcTimeout = (time.Second * time.Duration(grpcTimeoutSeconds)) + GRPCServiceTimeout
+	}
+	ctx, _ := context.WithTimeout(parent, grpcTimeout)
 	return ctx
 }
 

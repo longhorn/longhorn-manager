@@ -114,6 +114,7 @@ const (
 	SettingNameRemoveSnapshotsDuringFilesystemTrim                      = SettingName("remove-snapshots-during-filesystem-trim")
 	SettingNameFastReplicaRebuildEnabled                                = SettingName("fast-replica-rebuild-enabled")
 	SettingNameReplicaFileSyncHTTPClientTimeout                         = SettingName("replica-file-sync-http-client-timeout")
+	SettingNameLongGPRCTimeOut                                          = SettingName("long-grpc-timeout")
 	SettingNameBackupCompressionMethod                                  = SettingName("backup-compression-method")
 	SettingNameBackupConcurrentLimit                                    = SettingName("backup-concurrent-limit")
 	SettingNameRestoreConcurrentLimit                                   = SettingName("restore-concurrent-limit")
@@ -200,6 +201,7 @@ var (
 		SettingNameRemoveSnapshotsDuringFilesystemTrim,
 		SettingNameFastReplicaRebuildEnabled,
 		SettingNameReplicaFileSyncHTTPClientTimeout,
+		SettingNameLongGPRCTimeOut,
 		SettingNameBackupCompressionMethod,
 		SettingNameBackupConcurrentLimit,
 		SettingNameRestoreConcurrentLimit,
@@ -314,6 +316,7 @@ var (
 		SettingNameRemoveSnapshotsDuringFilesystemTrim:                      SettingDefinitionRemoveSnapshotsDuringFilesystemTrim,
 		SettingNameFastReplicaRebuildEnabled:                                SettingDefinitionFastReplicaRebuildEnabled,
 		SettingNameReplicaFileSyncHTTPClientTimeout:                         SettingDefinitionReplicaFileSyncHTTPClientTimeout,
+		SettingNameLongGPRCTimeOut:                                          SettingDefinitionLongGPRCTimeOut,
 		SettingNameBackupCompressionMethod:                                  SettingDefinitionBackupCompressionMethod,
 		SettingNameBackupConcurrentLimit:                                    SettingDefinitionBackupConcurrentLimit,
 		SettingNameRestoreConcurrentLimit:                                   SettingDefinitionRestoreConcurrentLimit,
@@ -1196,6 +1199,20 @@ var (
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 5,
 			ValueIntRangeMaximum: 120,
+		},
+	}
+
+	SettingDefinitionLongGPRCTimeOut = SettingDefinition{
+		DisplayName: "Long gRPC Timeout",
+		Description: "Number of seconds that Longhorn allows for the completion of replica rebuilding and snapshot cloning operations.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "86400",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 1,
+			ValueIntRangeMaximum: 604800,
 		},
 	}
 
