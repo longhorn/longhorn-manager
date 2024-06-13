@@ -398,31 +398,15 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationStart(va *longhorn.V
 		return
 	}
 
-	hasCSIAttachmentTicket := false
-	for _, attachmentTicket := range va.Spec.AttachmentTickets {
-		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
-			continue
-		}
-		// Found one csi attachmentTicket that is requesting volume to attach to the current node
-		if attachmentTicket.NodeID == vol.Spec.NodeID && verifyAttachmentParameters(attachmentTicket.Parameters, vol) {
-			hasCSIAttachmentTicket = true
-		}
-	}
-
-	if !hasCSIAttachmentTicket {
+	if !hasCSIAttachmentTicketRequestingNode(vol.Spec.NodeID, va, vol) {
 		return
 	}
+	// Found one csi attachmentTicket that is requesting volume to attach to the current node
 
-	for _, attachmentTicket := range va.Spec.AttachmentTickets {
-		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
-			continue
-		}
+	if attachmentTicket := getCSIAttachmentTicketNotRequestingNode(vol.Spec.NodeID, va, vol); attachmentTicket != nil {
 		// Found one csi attachmentTicket that is requesting volume to attach to a different node
-		if attachmentTicket.NodeID != vol.Spec.NodeID {
-			vol.Spec.MigrationNodeID = attachmentTicket.NodeID
-		}
+		vol.Spec.MigrationNodeID = attachmentTicket.NodeID
 	}
-
 }
 
 func (vac *VolumeAttachmentController) handleVolumeMigrationConfirmation(va *longhorn.VolumeAttachment, vol *longhorn.Volume) {
@@ -431,27 +415,20 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationConfirmation(va *lon
 		return
 	}
 
-	hasCSIAttachmentTicketRequestingPrevNode := false
-	for _, attachmentTicket := range va.Spec.AttachmentTickets {
-		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
-			continue
-		}
-		// Found one csi attachmentTicket that is requesting volume to attach to the current node
-		if attachmentTicket.NodeID == vol.Spec.NodeID && verifyAttachmentParameters(attachmentTicket.Parameters, vol) {
-			hasCSIAttachmentTicketRequestingPrevNode = true
-			break
-		}
+	if hasCSIAttachmentTicketRequestingNode(vol.Spec.NodeID, va, vol) {
+		return
 	}
+
 	migratingEngineSnapSynced, err := vac.checkMigratingEngineSyncSnapshots(va, vol)
 	if err != nil {
 		vac.logger.WithError(err).Warn("Failed to check migrating engine snapshot status")
+	}
+	if !migratingEngineSnapSynced {
 		return
 	}
-	if !hasCSIAttachmentTicketRequestingPrevNode && migratingEngineSnapSynced {
-		// TODO: Do we need check if the volume is available on the currentMigrationIDNode?
-		vol.Spec.NodeID = vol.Status.CurrentMigrationNodeID
-		vol.Spec.MigrationNodeID = ""
-	}
+
+	vol.Spec.NodeID = vol.Status.CurrentMigrationNodeID
+	vol.Spec.MigrationNodeID = ""
 }
 
 func (vac *VolumeAttachmentController) checkMigratingEngineSyncSnapshots(va *longhorn.VolumeAttachment, vol *longhorn.Volume) (bool, error) {
@@ -511,17 +488,7 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationRollback(va *longhor
 		return
 	}
 
-	hasCSIAttachmentTicketRequestingMigratingNode := false
-	for _, attachmentTicket := range va.Spec.AttachmentTickets {
-		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
-			continue
-		}
-		// Found one csi attachmentTicket that is requesting volume to attach to the current node
-		if attachmentTicket.NodeID == vol.Spec.MigrationNodeID {
-			hasCSIAttachmentTicketRequestingMigratingNode = true
-		}
-	}
-	if !hasCSIAttachmentTicketRequestingMigratingNode {
+	if !hasCSIAttachmentTicketRequestingNode(vol.Spec.MigrationNodeID, va, vol) {
 		vol.Spec.MigrationNodeID = ""
 	}
 }
@@ -949,4 +916,28 @@ func (vac *VolumeAttachmentController) isVolumeAvailableOnNode(volumeName, node 
 	}
 
 	return false
+}
+
+func hasCSIAttachmentTicketRequestingNode(nodeID string, va *longhorn.VolumeAttachment, vol *longhorn.Volume) bool {
+	for _, attachmentTicket := range va.Spec.AttachmentTickets {
+		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
+			continue
+		}
+		if attachmentTicket.NodeID == nodeID && verifyAttachmentParameters(attachmentTicket.Parameters, vol) {
+			return true
+		}
+	}
+	return false
+}
+
+func getCSIAttachmentTicketNotRequestingNode(nodeID string, va *longhorn.VolumeAttachment, vol *longhorn.Volume) *longhorn.AttachmentTicket {
+	for _, attachmentTicket := range va.Spec.AttachmentTickets {
+		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
+			continue
+		}
+		if attachmentTicket.NodeID != nodeID && verifyAttachmentParameters(attachmentTicket.Parameters, vol) {
+			return attachmentTicket
+		}
+	}
+	return nil
 }
