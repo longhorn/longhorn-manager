@@ -35,8 +35,8 @@ func (m *VolumeManager) DeleteBackupBackingImage(name string) error {
 	return m.ds.DeleteBackupBackingImage(name)
 }
 
-func (m *VolumeManager) RestoreBackupBackingImage(name string) error {
-	return m.restoreBackingImage(name)
+func (m *VolumeManager) RestoreBackupBackingImage(name, secret, secretNamespace string) error {
+	return m.restoreBackingImage(name, secret, secretNamespace)
 }
 
 func (m *VolumeManager) CreateBackupBackingImage(name string) error {

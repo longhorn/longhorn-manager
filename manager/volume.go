@@ -151,7 +151,10 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 	}
 
 	// restore backing image if needed
-	if err := m.restoreBackingImage(spec.BackingImage); err != nil {
+	// TODO: We should record the secret and secret namespace in the backing image
+	// so we can auto fill in the secret and namespace when auto restore the backing image in volume creation api.
+	// Currently, if the backing image is encrypted, users need to restore it first so they can specifically assign the secret and namespace
+	if err := m.restoreBackingImage(spec.BackingImage, "", ""); err != nil {
 		return nil, errors.Wrapf(err, "failed to restore backing image %v when create volume %v", spec.BackingImage, v.Name)
 	}
 
@@ -1186,7 +1189,14 @@ func (m *VolumeManager) UpdateSnapshotMaxSize(name string, snapshotMaxSize int64
 	return v, nil
 }
 
-func (m *VolumeManager) restoreBackingImage(biName string) error {
+func (m *VolumeManager) restoreBackingImage(biName, secret, secretNamespace string) error {
+	if secret != "" || secretNamespace != "" {
+		_, err := m.ds.GetSecretRO(secretNamespace, secret)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get secret %v in namespace %v for the backing image %v", secret, secretNamespace, biName)
+		}
+	}
+
 	if biName == "" {
 		return nil
 	}
@@ -1224,6 +1234,8 @@ func (m *VolumeManager) restoreBackingImage(biName string) error {
 				longhorn.DataSourceTypeRestoreParameterBackupURL:       bbi.Status.URL,
 				longhorn.DataSourceTypeRestoreParameterConcurrentLimit: strconv.FormatInt(concurrentLimit, 10),
 			},
+			Secret:          secret,
+			SecretNamespace: secretNamespace,
 		},
 	}
 	if _, err = m.ds.CreateBackingImage(restoreBi); err != nil && !apierrors.IsAlreadyExists(err) {

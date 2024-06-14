@@ -31,15 +31,6 @@ import (
 )
 
 const (
-	// CryptoKeyProvider specifies how the CryptoKeyValue is retrieved
-	// We currently only support passphrase retrieval via direct secret values
-	CryptoKeyProvider = "CRYPTO_KEY_PROVIDER"
-	CryptoKeyValue    = "CRYPTO_KEY_VALUE"
-	CryptoKeyCipher   = "CRYPTO_KEY_CIPHER"
-	CryptoKeyHash     = "CRYPTO_KEY_HASH"
-	CryptoKeySize     = "CRYPTO_KEY_SIZE"
-	CryptoPBKDF       = "CRYPTO_PBKDF"
-
 	defaultFsType = "ext4"
 )
 
@@ -463,8 +454,8 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 
 	if volume.Encrypted {
 		secrets := req.GetSecrets()
-		keyProvider := secrets[CryptoKeyProvider]
-		passphrase := secrets[CryptoKeyValue]
+		keyProvider := secrets[types.CryptoKeyProvider]
+		passphrase := secrets[types.CryptoKeyValue]
 		if keyProvider != "" && keyProvider != "secret" {
 			return nil, status.Errorf(codes.InvalidArgument, "unsupported key provider %v for encrypted volume %v", keyProvider, volumeID)
 		}
@@ -477,7 +468,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 			return nil, status.Errorf(codes.InvalidArgument, "unsupported disk encryption format %v", diskFormat)
 		}
 
-		cryptoParams := crypto.NewEncryptParams(keyProvider, secrets[CryptoKeyCipher], secrets[CryptoKeyHash], secrets[CryptoKeySize], secrets[CryptoPBKDF])
+		cryptoParams := crypto.NewEncryptParams(keyProvider, secrets[types.CryptoKeyCipher], secrets[types.CryptoKeyHash], secrets[types.CryptoKeySize], secrets[types.CryptoPBKDF])
 
 		// initial setup of longhorn device for crypto
 		if diskFormat == "" {
@@ -747,8 +738,8 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 			log.Infof("Skip encrypto device resizing for volume %v node expansion since the secret empty, maybe the related feature gate is not enabled", volumeID)
 			return devicePath, nil
 		}
-		keyProvider := secrets[CryptoKeyProvider]
-		passphrase := secrets[CryptoKeyValue]
+		keyProvider := secrets[types.CryptoKeyProvider]
+		passphrase := secrets[types.CryptoKeyValue]
 		if keyProvider != "" && keyProvider != "secret" {
 			return "", status.Errorf(codes.InvalidArgument, "unsupported key provider %v for encrypted volume %v", keyProvider, volumeID)
 		}

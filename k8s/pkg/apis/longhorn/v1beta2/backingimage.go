@@ -63,6 +63,10 @@ type BackingImageSpec struct {
 	DiskSelector []string `json:"diskSelector"`
 	// +optional
 	NodeSelector []string `json:"nodeSelector"`
+	// +optional
+	Secret string `json:"secret"`
+	// +optional
+	SecretNamespace string `json:"secretNamespace"`
 }
 
 // BackingImageStatus defines the observed state of the Longhorn backing image status

@@ -405,6 +405,17 @@ func (c *BackingImageDataSourceController) syncBackingImage(bids *longhorn.Backi
 		}
 	}
 
+	// Only copy the secret to spec if it is to encrypt other backing image
+	// because we use spec secret to check if it is encrypted.
+	if isEncryptionRequire(bi) {
+		if bi.Spec.SourceParameters[longhorn.DataSourceTypeCloneParameterSecret] != "" {
+			bi.Spec.Secret = bi.Spec.SourceParameters[longhorn.DataSourceTypeCloneParameterSecret]
+		}
+		if bi.Spec.SourceParameters[longhorn.DataSourceTypeCloneParameterSecretNamespace] != "" {
+			bi.Spec.SecretNamespace = bi.Spec.SourceParameters[longhorn.DataSourceTypeCloneParameterSecretNamespace]
+		}
+	}
+
 	return nil
 }
 
@@ -669,7 +680,11 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 		"--source-type", string(bids.Spec.SourceType),
 	}
 
-	if err := c.prepareRunningParameters(bids); err != nil {
+	bids.Status.RunningParameters = bids.Spec.Parameters
+	if err := c.prepareRunningParametersForClone(bids); err != nil {
+		return nil, err
+	}
+	if err := c.prepareRunningParametersForExport(bids); err != nil {
 		return nil, err
 	}
 	for key, value := range bids.Status.RunningParameters {
@@ -677,6 +692,21 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 	}
 	if bids.Spec.Checksum != "" {
 		cmd = append(cmd, "--checksum", bids.Spec.Checksum)
+	}
+
+	if bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeClone && secretExists(bids) {
+
+		credential, err := c.ds.GetEncryptionSecret(
+			bids.Spec.Parameters[longhorn.DataSourceTypeCloneParameterSecretNamespace],
+			bids.Spec.Parameters[longhorn.DataSourceTypeCloneParameterSecret],
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		for key, value := range credential {
+			cmd = append(cmd, "--credential", fmt.Sprintf("%s=%s", key, value))
+		}
 	}
 
 	if bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeRestore {
@@ -745,6 +775,14 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 							Name:      "disk-path",
 							MountPath: bimtypes.DiskPathInContainer,
 						},
+						{
+							Name:      "host-dev",
+							MountPath: "/dev",
+						},
+						{
+							Name:      "host-proc",
+							MountPath: "/host/proc", // we use this to enter the host namespace
+						},
 					},
 					Env: []corev1.EnvVar{
 						{
@@ -767,6 +805,22 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 					VolumeSource: corev1.VolumeSource{
 						HostPath: &corev1.HostPathVolumeSource{
 							Path: bids.Spec.DiskPath,
+						},
+					},
+				},
+				{
+					Name: "host-dev",
+					VolumeSource: corev1.VolumeSource{
+						HostPath: &corev1.HostPathVolumeSource{
+							Path: "/dev",
+						},
+					},
+				},
+				{
+					Name: "host-proc",
+					VolumeSource: corev1.VolumeSource{
+						HostPath: &corev1.HostPathVolumeSource{
+							Path: "/proc",
 						},
 					},
 				},
@@ -802,8 +856,21 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 	return podSpec, nil
 }
 
-func (c *BackingImageDataSourceController) prepareRunningParameters(bids *longhorn.BackingImageDataSource) error {
-	bids.Status.RunningParameters = bids.Spec.Parameters
+func (c *BackingImageDataSourceController) prepareRunningParametersForClone(bids *longhorn.BackingImageDataSource) error {
+	if bids.Spec.SourceType != longhorn.BackingImageDataSourceTypeClone {
+		return nil
+	}
+
+	sourceBackingImageName := bids.Spec.Parameters[longhorn.DataSourceTypeCloneParameterBackingImage]
+	sourceBackingImage, err := c.ds.GetBackingImageRO(sourceBackingImageName)
+	if err != nil {
+		return err
+	}
+	bids.Status.RunningParameters[longhorn.DataSourceTypeCloneParameterBackingImageUUID] = sourceBackingImage.Status.UUID
+	return nil
+}
+
+func (c *BackingImageDataSourceController) prepareRunningParametersForExport(bids *longhorn.BackingImageDataSource) error {
 	if bids.Spec.SourceType != longhorn.BackingImageDataSourceTypeExportFromVolume {
 		return nil
 	}
@@ -1172,4 +1239,14 @@ func (m *BackingImageDataSourceMonitor) sync() {
 
 func (c *BackingImageDataSourceController) isResponsibleFor(bids *longhorn.BackingImageDataSource) bool {
 	return isControllerResponsibleFor(c.controllerID, c.ds, bids.Name, bids.Spec.NodeID, bids.Status.OwnerID)
+}
+
+func isEncryptionRequire(bi *longhorn.BackingImage) bool {
+	encryptionType := bimtypes.EncryptionType(bi.Spec.SourceParameters[longhorn.DataSourceTypeCloneParameterEncryption])
+	return bi.Spec.SourceType == longhorn.BackingImageDataSourceTypeClone && encryptionType == bimtypes.EncryptionTypeEncrypt
+}
+
+func secretExists(bids *longhorn.BackingImageDataSource) bool {
+	return bids.Spec.Parameters[longhorn.DataSourceTypeCloneParameterSecretNamespace] != "" &&
+		bids.Spec.Parameters[longhorn.DataSourceTypeCloneParameterSecret] != ""
 }
