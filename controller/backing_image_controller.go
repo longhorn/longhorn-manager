@@ -527,6 +527,15 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 			if err != nil {
 				return err
 			}
+
+			// For clone, we choose the same node and disk as the source backing image
+			if bi.Spec.SourceType == longhorn.BackingImageDataSourceTypeClone {
+				readyNode, readyDiskName, err = bic.findReadyNodeAndDiskForClone(bi)
+				if err != nil {
+					return nil
+				}
+			}
+
 			foundReadyDisk = true
 			readyNodeID = readyNode.Name
 			readyDiskUUID = readyNode.Status.DiskStatus[readyDiskName].DiskUUID
@@ -658,6 +667,15 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 			if err != nil {
 				return err
 			}
+
+			// For clone, we choose the same node and disk as the source backing image
+			if bi.Spec.SourceType == longhorn.BackingImageDataSourceTypeClone {
+				readyNode, readyDiskName, err = bic.findReadyNodeAndDiskForClone(bi)
+				if err != nil {
+					return nil
+				}
+			}
+
 			bids.Spec.NodeID = readyNode.Name
 			bids.Spec.DiskUUID = readyNode.Status.DiskStatus[readyDiskName].DiskUUID
 			bids.Spec.DiskPath = readyNode.Spec.Disks[readyDiskName].Path
@@ -1033,4 +1051,18 @@ func (bic *BackingImageController) enqueueBackingImageForReplica(obj interface{}
 
 func (bic *BackingImageController) isResponsibleFor(bi *longhorn.BackingImage) bool {
 	return isControllerResponsibleFor(bic.controllerID, bic.ds, bi.Name, "", bi.Status.OwnerID)
+}
+
+// For cloning, we choose the same node and disk as the source backing image
+func (bic *BackingImageController) findReadyNodeAndDiskForClone(bi *longhorn.BackingImage) (*longhorn.Node, string, error) {
+	sourceBackingImageName := bi.Spec.SourceParameters[longhorn.DataSourceTypeCloneParameterBackingImage]
+	sourceBackingImage, err := bic.ds.GetBackingImageRO(sourceBackingImageName)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get source backing image %v during cloning", sourceBackingImageName)
+	}
+	readyNode, readyDiskName, err := bic.ds.GetOneBackingImageReadyNodeDisk(sourceBackingImage)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to find one ready source backing image %v during cloning", sourceBackingImageName)
+	}
+	return readyNode, readyDiskName, nil
 }

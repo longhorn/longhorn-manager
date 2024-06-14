@@ -13,6 +13,8 @@ import (
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 
+	bimtypes "github.com/longhorn/backing-image-manager/pkg/types"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/types"
@@ -91,6 +93,29 @@ func (b *backingImageMutator) Create(request *admission.Request, newObj runtime.
 		}
 	}
 
+	if longhorn.BackingImageDataSourceType(backingImage.Spec.SourceType) == longhorn.BackingImageDataSourceTypeClone {
+		// inherit the secret and secretNamespace when cloning from another backing image and the encryption is ignore
+		if bimtypes.EncryptionType(parameters[longhorn.DataSourceTypeCloneParameterEncryption]) == bimtypes.EncryptionTypeIgnore {
+			sourceBackingImageName := parameters[longhorn.DataSourceTypeCloneParameterBackingImage]
+			sourceBackingImage, err := b.ds.GetBackingImageRO(sourceBackingImageName)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to get source backing image %v", sourceBackingImageName)
+			}
+			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/secret", "value": "%s"}`, sourceBackingImage.Spec.Secret))
+			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/secretNamespace", "value": "%s"}`, sourceBackingImage.Spec.SecretNamespace))
+			// If source backing image does not have checksum, it means the source is not ready yet.
+			// Reject the creation anyway because it won't be able to clone from that source backing image in the following operation.
+			if sourceBackingImage.Status.Checksum == "" {
+				return nil, errors.Wrapf(err, "failed to get checksum of source backing image %v", sourceBackingImageName)
+			}
+			// use the source backing image's checksum as truth
+			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/checksum", "value": "%s"}`, sourceBackingImage.Status.Checksum))
+		} else {
+			// remove spec checksum because we don't trust the checksum provided by users for encryption and decryption
+			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/checksum", "value": ""}`)
+		}
+	}
+
 	bytes, err := json.Marshal(parameters)
 	if err != nil {
 		err = errors.Wrapf(err, "failed to get JSON encoding for backing image %v sourceParameters", backingImage.Name)
@@ -131,9 +156,28 @@ func (b *backingImageMutator) Create(request *admission.Request, newObj runtime.
 }
 
 func (b *backingImageMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
+	oldBackingImage, ok := oldObj.(*longhorn.BackingImage)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.BackingImage", oldObj), "")
+	}
+
 	backingImage, ok := newObj.(*longhorn.BackingImage)
 	if !ok {
 		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.BackingImage", newObj), "")
+	}
+
+	if oldBackingImage.Spec.Secret != "" {
+		if oldBackingImage.Spec.Secret != backingImage.Spec.Secret {
+			err := fmt.Errorf("changing secret for BackingImage %v is not supported", oldBackingImage.Name)
+			return nil, werror.NewInvalidError(err.Error(), "")
+		}
+	}
+
+	if oldBackingImage.Spec.SecretNamespace != "" {
+		if oldBackingImage.Spec.SecretNamespace != backingImage.Spec.SecretNamespace {
+			err := fmt.Errorf("changing secret namespace for BackingImage %v is not supported", oldBackingImage.Name)
+			return nil, werror.NewInvalidError(err.Error(), "")
+		}
 	}
 
 	var patchOps admission.PatchOps

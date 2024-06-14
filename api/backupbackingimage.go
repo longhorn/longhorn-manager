@@ -49,8 +49,14 @@ func (s *Server) BackupBackingImageDelete(w http.ResponseWriter, req *http.Reque
 }
 
 func (s *Server) BackupBackingImageRestore(w http.ResponseWriter, req *http.Request) error {
+	var input BackingImageRestoreInput
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return err
+	}
+
 	backupBackingImageName := mux.Vars(req)["name"]
-	if err := s.m.RestoreBackupBackingImage(backupBackingImageName); err != nil {
+	if err := s.m.RestoreBackupBackingImage(backupBackingImageName, input.Secret, input.SecretNamespace); err != nil {
 		return errors.Wrapf(err, "failed to restore backup backing image '%s'", backupBackingImageName)
 	}
 	return nil

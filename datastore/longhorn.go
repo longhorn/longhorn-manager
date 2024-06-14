@@ -656,6 +656,24 @@ func (s *DataStore) ListSettings() (map[types.SettingName]*longhorn.Setting, err
 	return itemMap, nil
 }
 
+func (s *DataStore) GetEncryptionSecret(secretNamespace, secretName string) (map[string]string, error) {
+	secret, err := s.GetSecretRO(secretNamespace, secretName)
+	if err != nil {
+		return nil, err
+	}
+	credentialSecret := make(map[string]string)
+	if secret.Data == nil {
+		return credentialSecret, nil
+	}
+	credentialSecret[types.CryptoKeyProvider] = string(secret.Data[types.CryptoKeyProvider])
+	credentialSecret[types.CryptoKeyValue] = string(secret.Data[types.CryptoKeyValue])
+	credentialSecret[types.CryptoKeyCipher] = string(secret.Data[types.CryptoKeyCipher])
+	credentialSecret[types.CryptoKeyHash] = string(secret.Data[types.CryptoKeyHash])
+	credentialSecret[types.CryptoKeySize] = string(secret.Data[types.CryptoKeySize])
+	credentialSecret[types.CryptoPBKDF] = string(secret.Data[types.CryptoPBKDF])
+	return credentialSecret, nil
+}
+
 // GetCredentialFromSecret gets the Secret of the given name and namespace
 // Returns a new credential object or error
 func (s *DataStore) GetCredentialFromSecret(secretName string) (map[string]string, error) {
@@ -5266,4 +5284,22 @@ func (s *DataStore) CanPutBackingImageOnDisk(backingImage *longhorn.BackingImage
 		}
 	}
 	return true, nil
+}
+
+func (s *DataStore) GetOneBackingImageReadyNodeDisk(backingImage *longhorn.BackingImage) (*longhorn.Node, string, error) {
+	for diskUUID := range backingImage.Spec.Disks {
+		bimMap, err := s.ListBackingImageManagersByDiskUUID(diskUUID)
+		if err != nil {
+			return nil, "", errors.Wrapf(err, "failed to get backing image manager by disk uuid %v", diskUUID)
+		}
+		for _, bim := range bimMap {
+			if bim.DeletionTimestamp == nil {
+				if info, exists := bim.Status.BackingImageFileMap[backingImage.Name]; exists && info.State == longhorn.BackingImageStateReady {
+					return s.GetReadyDiskNode(bim.Spec.DiskUUID)
+				}
+			}
+		}
+	}
+
+	return nil, "", fmt.Errorf("failed to find one ready backing image %v", backingImage.Name)
 }
