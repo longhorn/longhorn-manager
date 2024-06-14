@@ -37,7 +37,7 @@ func (m *VolumeManager) DeleteBackupBackingImage(name string) error {
 	return m.ds.DeleteBackupBackingImage(name)
 }
 
-func (m *VolumeManager) RestoreBackupBackingImage(name string) error {
+func (m *VolumeManager) RestoreBackupBackingImage(name string, secret, secretNamespace string) error {
 	if name == "" {
 		return fmt.Errorf("restore backing image name is not given")
 	}
@@ -52,7 +52,7 @@ func (m *VolumeManager) RestoreBackupBackingImage(name string) error {
 		return errors.Wrapf(err, "backing image %v already exists", name)
 	}
 
-	return m.restoreBackingImage(name)
+	return m.restoreBackingImage(name, secret, secretNamespace)
 }
 
 func (m *VolumeManager) CreateBackupBackingImage(name string) error {
