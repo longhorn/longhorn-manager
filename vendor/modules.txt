@@ -223,7 +223,7 @@ github.com/kubernetes-csi/csi-lib-utils/protosanitizer
 # github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de
 ## explicit
 github.com/liggitt/tabwriter
-# github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240613050040-55a4002f5c00
+# github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240615050238-281783071d09
 ## explicit; go 1.22
 github.com/longhorn/backing-image-manager/api
 github.com/longhorn/backing-image-manager/pkg/client
@@ -274,7 +274,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/client
 github.com/longhorn/longhorn-instance-manager/pkg/meta
 github.com/longhorn/longhorn-instance-manager/pkg/types
 github.com/longhorn/longhorn-instance-manager/pkg/util
-# github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240612073717-b3576447b02e
+# github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240615045100-ea19e7aa7fb0
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
