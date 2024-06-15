@@ -241,9 +241,12 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	// Do we have a better condition than this?
 	checkVolumeCreated := func(vol *longhornclient.Volume) bool {
-		return vol.State == string(longhorn.VolumeStateDetached)
+		// This condition should be enough to return OK to the CSI CreateVolume request.
+		// The volume may be still downloading data from backup target or from a different volume,
+		// and we will wait for this process to finish before allowing the workload pod to use the volume
+		// in the ControllerPublishVolume call
+		return vol.State != "" && vol.State != string(longhorn.VolumeStateCreating)
 	}
 
 	if !cs.waitForVolumeState(resVol.Id, "volume created", checkVolumeCreated, true, false) {
