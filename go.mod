@@ -60,10 +60,10 @@ require (
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.6.2
-	github.com/longhorn/backupstore v0.0.0-20240603134532-5ec9a300bef4
+	github.com/longhorn/backupstore v0.0.0-20240616091913-84428641a11d
 	github.com/longhorn/go-common-libs v0.0.0-20240616051056-103c7d62a0d5
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240610031841-3deb441d256f
-	github.com/longhorn/go-spdk-helper v0.0.0-20240610031152-f42eff36aa73
+	github.com/longhorn/go-spdk-helper v0.0.0-20240616091844-5afd86a1d892
 	github.com/longhorn/longhorn-engine v1.6.2
 	github.com/longhorn/longhorn-instance-manager v1.6.2
 	github.com/longhorn/longhorn-share-manager v1.6.2
@@ -173,7 +173,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/selinux v1.10.0 // indirect
-	github.com/pierrec/lz4/v4 v4.1.17 // indirect
+	github.com/pierrec/lz4/v4 v4.1.21 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_model v0.4.1-0.20230718164431-9a2bf3000d16 // indirect
 	github.com/prometheus/common v0.44.0 // indirect

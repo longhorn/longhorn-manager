@@ -231,7 +231,7 @@ github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/rpc
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20240603134532-5ec9a300bef4
+# github.com/longhorn/backupstore v0.0.0-20240616091913-84428641a11d
 ## explicit; go 1.21
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/backupbackingimage
@@ -256,7 +256,7 @@ github.com/longhorn/go-common-libs/utils
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.0.0-20240610031152-f42eff36aa73
+# github.com/longhorn/go-spdk-helper v0.0.0-20240616091844-5afd86a1d892
 ## explicit; go 1.22.0
 github.com/longhorn/go-spdk-helper/pkg/types
 # github.com/longhorn/longhorn-engine v1.6.2
@@ -328,7 +328,7 @@ github.com/opencontainers/go-digest
 github.com/opencontainers/selinux/go-selinux
 github.com/opencontainers/selinux/pkg/pwalk
 github.com/opencontainers/selinux/pkg/pwalkdir
-# github.com/pierrec/lz4/v4 v4.1.17
+# github.com/pierrec/lz4/v4 v4.1.21
 ## explicit; go 1.14
 github.com/pierrec/lz4/v4
 github.com/pierrec/lz4/v4/internal/lz4block
