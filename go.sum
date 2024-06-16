@@ -1231,8 +1231,8 @@ github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240614034019-c1370ebfd1f9 h1:
 github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240614034019-c1370ebfd1f9/go.mod h1:yLpvBGSORY9lWY4K9aRGvPNzvla2hIBU4t+A25AGeMA=
 github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240613151145-0c7a73712efe h1:uyqEGRsa6DCjpx3mlJzl1Bst/MVCGT+9r7O4/e8BbMQ=
 github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240613151145-0c7a73712efe/go.mod h1:D69IU15O/Amtsw0ksaPr7776wkh4r7SFWIPNpR75C9w=
-github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240615045100-ea19e7aa7fb0 h1:Qz1Xu6zY/7sKKml2EnIHe/f0CBR8DiWNs6GPjftcMF0=
-github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240615045100-ea19e7aa7fb0/go.mod h1:TC+L35cM4wKFhYZQ3rI6UFh3aeekBLndjCXosesjKKw=
+github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240616074346-1b1e052b2251 h1:JdVw6AistIbNDX3lkmqzavi3k9y829FLSF/evL+9AV0=
+github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240616074346-1b1e052b2251/go.mod h1:Yty1u/Wly5j42yUFOpyIvLhAteAiGp+JkeeQSwSCYKk=
 github.com/longhorn/types v0.0.0-20240612122407-553c71ad6514 h1:IUAe0Lw2Wz5GrUznw6Sp65qA8J0tWi9qVIIuFZZF5O0=
 github.com/longhorn/types v0.0.0-20240612122407-553c71ad6514/go.mod h1:fonrC6SwGpvt+YVlfJ3xMmg0MlOH94T1Qx2+ZEy8n3U=
 github.com/lyft/protoc-gen-star v0.6.0/go.mod h1:TGAoBVkt8w7MPG72TrKIu85MIdXwDuzJYeZuUPFPNwA=
