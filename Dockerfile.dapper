@@ -1,37 +1,10 @@
-<<<<<<< HEAD
-FROM registry.suse.com/bci/bci-base:15.5
-=======
 FROM registry.suse.com/bci/golang:1.22
->>>>>>> 69529971 (ci: use golang bci instead of manual download)
 
 ARG DAPPER_HOST_ARCH
 ARG http_proxy
 ARG https_proxy
 
 ENV HOST_ARCH=${DAPPER_HOST_ARCH} ARCH=${DAPPER_HOST_ARCH}
-<<<<<<< HEAD
-
-RUN zypper -n install gcc ca-certificates git wget curl vim less file python3-tox python3-devel iptables libdevmapper1_03 libltdl7 awk docker zip unzip && \
-    rm -f /bin/sh && ln -s /bin/bash /bin/sh && \
-    rm -rf /var/cache/zypp/*
-
-RUN if [ ${ARCH} == "s390x" ]; then \
-         ln -s /usr/bin/gcc /usr/bin/s390x-linux-gnu-gcc;\
-     fi
-
-ENV GOLANG_ARCH_amd64=amd64 GOLANG_ARCH_arm64=arm64 GOLANG_ARCH_s390x=s390x GOLANG_ARCH=GOLANG_ARCH_${ARCH} \
-    GOPATH=/go PATH=/go/bin:/usr/local/go/bin:${PATH} SHELL=/bin/bash
-
-RUN wget -O - https://storage.googleapis.com/golang/go1.21.3.linux-${!GOLANG_ARCH}.tar.gz | tar -xzf - -C /usr/local && \
-    go install golang.org/x/lint/golint@latest
-
-# The docker version in dapper is too old to have buildx. Install it manually.
-RUN wget https://github.com/docker/buildx/releases/download/v0.13.1/buildx-v0.13.1.linux-${ARCH} && \
-    chmod +x buildx-v0.13.1.linux-${ARCH} && \
-    mv buildx-v0.13.1.linux-${ARCH} /usr/local/bin/buildx
-
-=======
->>>>>>> 69529971 (ci: use golang bci instead of manual download)
 ENV DAPPER_SOURCE /go/src/github.com/longhorn/longhorn-manager
 ENV DAPPER_OUTPUT ./bin coverage.out
 ENV DAPPER_DOCKER_SOCKET true
