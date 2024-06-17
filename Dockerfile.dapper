@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-FROM registry.suse.com/bci/bci-base:15.5
-=======
 FROM registry.suse.com/bci/golang:1.22
->>>>>>> 69529971 (ci: use golang bci instead of manual download)
 
 ARG DAPPER_HOST_ARCH
 ARG http_proxy
