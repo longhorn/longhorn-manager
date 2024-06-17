@@ -2,7 +2,7 @@ module github.com/longhorn/longhorn-manager
 
 go 1.22.0
 
-toolchain go1.22.3
+toolchain go1.22.4
 
 // Replace directives are required for dependencies in this section because:
 // - This module imports k8s.io/kubernetes.
@@ -57,14 +57,14 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/handlers v1.5.2
 	github.com/gorilla/mux v1.8.1
-	github.com/gorilla/websocket v1.5.1
+	github.com/gorilla/websocket v1.5.3
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.5.5-rc2
-	github.com/longhorn/backupstore v0.0.0-20240509144945-3bce6e69af15
-	github.com/longhorn/go-common-libs v0.0.0-20240511041328-e68a6cd889d4
-	github.com/longhorn/go-iscsi-helper v0.0.0-20240513041205-7a18d2fd85bf
-	github.com/longhorn/go-spdk-helper v0.0.0-20240513081816-b39d930c60ca
+	github.com/longhorn/backupstore v0.0.0-20240616091913-84428641a11d
+	github.com/longhorn/go-common-libs v0.0.0-20240616051056-103c7d62a0d5
+	github.com/longhorn/go-iscsi-helper v0.0.0-20240617011911-febe418a1b19
+	github.com/longhorn/go-spdk-helper v0.0.0-20240616091844-5afd86a1d892
 	github.com/longhorn/longhorn-engine v1.5.5-rc2.0.20240418040645-8f85db1d1393
 	github.com/longhorn/longhorn-instance-manager v1.5.5-rc2.0.20240418040836-76e2cfc24682
 	github.com/longhorn/longhorn-share-manager v1.5.5-rc2.0.20240418040725-83c6ad488883
@@ -79,9 +79,9 @@ require (
 	github.com/urfave/cli v1.22.15
 	golang.org/x/mod v0.12.0
 	golang.org/x/net v0.23.0
-	golang.org/x/sys v0.20.0
+	golang.org/x/sys v0.21.0
 	golang.org/x/time v0.3.0
-	google.golang.org/grpc v1.63.2
+	google.golang.org/grpc v1.64.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.28.6
@@ -91,7 +91,7 @@ require (
 	k8s.io/client-go v0.28.6
 	k8s.io/kubernetes v1.28.5
 	k8s.io/metrics v0.28.2
-	k8s.io/mount-utils v0.30.0
+	k8s.io/mount-utils v0.30.2
 	k8s.io/utils v0.0.0-20240502163921-fe8a2dddb1d0
 	sigs.k8s.io/controller-runtime v0.10.1
 )
@@ -102,13 +102,13 @@ require (
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
-	github.com/shirou/gopsutil/v3 v3.24.4 // indirect
+	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	golang.org/x/exp v0.0.0-20220827204233-334a2380cb91 // indirect
 	golang.org/x/tools v0.13.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20240227224415-6ceb2ff114de // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240227224415-6ceb2ff114de // indirect
-	google.golang.org/protobuf v1.34.1 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20240318140521-94a12d6c2237 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240318140521-94a12d6c2237 // indirect
+	google.golang.org/protobuf v1.34.2 // indirect
 )
 
 require (
@@ -168,7 +168,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/selinux v1.10.0 // indirect
-	github.com/pierrec/lz4/v4 v4.1.17 // indirect
+	github.com/pierrec/lz4/v4 v4.1.21 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_model v0.4.0 // indirect
 	github.com/prometheus/common v0.44.0 // indirect
@@ -198,7 +198,7 @@ require (
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.19.0 // indirect
 	golang.org/x/crypto v0.21.0 // indirect
-	golang.org/x/oauth2 v0.17.0 // indirect
+	golang.org/x/oauth2 v0.18.0 // indirect
 	golang.org/x/sync v0.6.0
 	golang.org/x/term v0.18.0 // indirect
 	golang.org/x/text v0.14.0
