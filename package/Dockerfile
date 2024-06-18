@@ -20,6 +20,5 @@ RUN zypper -n ref && \
 RUN zypper -n install iputils iproute2 nfs-client cifs-utils bind-utils e2fsprogs xfsprogs zip unzip && \
     rm -rf /var/cache/zypp/*
 
-VOLUME /usr/local/sbin
 EXPOSE 9500
 CMD ["launch-manager"]
