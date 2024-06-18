@@ -1184,7 +1184,7 @@ func (cs *ControllerServer) waitForVolumeState(volumeID string, stateDescription
 	for {
 		select {
 		case <-timeout:
-			log.Warnf("Timeout wTile waiting for volume %s state %s", volumeID, stateDescription)
+			log.Warnf("Timeout while waiting for volume %s state %s", volumeID, stateDescription)
 			return false
 		case <-tick:
 			existVol, err := cs.apiClient.Volume.ById(volumeID)
