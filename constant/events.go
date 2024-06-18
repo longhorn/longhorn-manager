@@ -65,4 +65,6 @@ const (
 	EventReasonUpgrade = "Upgrade"
 
 	EventReasonRolloutSkippedFmt = "RolloutSkipped: %v %v"
+
+	EventReasonMigrationFailed = "MigrationFailed"
 )
