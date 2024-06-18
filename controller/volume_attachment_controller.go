@@ -377,7 +377,7 @@ func (vac *VolumeAttachmentController) handleNodeCordoned(va *longhorn.VolumeAtt
 }
 
 func (vac *VolumeAttachmentController) handleVolumeMigration(va *longhorn.VolumeAttachment, vol *longhorn.Volume) {
-	if !isMigratableVolume(vol) {
+	if !util.IsMigratableVolume(vol) {
 		return
 	}
 
@@ -554,7 +554,7 @@ func (vac *VolumeAttachmentController) shouldDoDetach(va *longhorn.VolumeAttachm
 	if vol.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 		return true
 	}
-	if isMigratableVolume(vol) && util.IsVolumeMigrating(vol) {
+	if util.IsMigratableVolume(vol) && util.IsVolumeMigrating(vol) {
 		// if the volume is migrating, the detachment will be handled by handleVolumeMigration()
 		return false
 	}
@@ -917,7 +917,7 @@ func isMigratingCSIAttacherTicket(attachmentTicket *longhorn.AttachmentTicket, v
 	}
 	isCSIAttacherTicket := attachmentTicket.Type == longhorn.AttacherTypeCSIAttacher
 	isMigratingTicket := attachmentTicket.NodeID == vol.Status.CurrentMigrationNodeID
-	return isMigratableVolume(vol) && util.IsVolumeMigrating(vol) && isCSIAttacherTicket && isMigratingTicket
+	return util.IsMigratableVolume(vol) && util.IsVolumeMigrating(vol) && isCSIAttacherTicket && isMigratingTicket
 }
 
 func isVolumeShareAvailable(vol *longhorn.Volume) bool {

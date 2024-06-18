@@ -3820,7 +3820,7 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 		err = errors.Wrapf(err, "failed to process migration for %v", v.Name)
 	}()
 
-	if !isMigratableVolume(v) {
+	if !util.IsMigratableVolume(v) {
 		return nil
 	}
 
@@ -3978,10 +3978,6 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 
 	log.Info("volume migration engine is ready")
 	return nil
-}
-
-func isMigratableVolume(v *longhorn.Volume) bool {
-	return v.Spec.Migratable && v.Spec.AccessMode == longhorn.AccessModeReadWriteMany
 }
 
 func (c *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Volume, currentEngine, migrationEngine *longhorn.Engine, rs map[string]*longhorn.Replica) (ready, revertRequired bool, err error) {
