@@ -3826,44 +3826,36 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 
 	log := getLoggerForVolume(c.logger, v).WithField("migrationNodeID", v.Spec.MigrationNodeID)
 
-	// only process if volume is attached and running
-	if v.Spec.NodeID == "" || v.Status.CurrentNodeID == "" || len(es) == 0 {
-		return nil
-	}
-	if v.Status.Robustness != longhorn.VolumeRobustnessDegraded && v.Status.Robustness != longhorn.VolumeRobustnessHealthy {
-		log.Warnf("Skip the migration processing since the volume current robustness is %v", v.Status.Robustness)
-		return nil
-	}
-
 	// cannot process migrate when upgrading
 	if isVolumeUpgrading(v) {
 		log.Warn("Skip the migration processing since the volume is being upgraded")
 		return nil
 	}
 
-	// the only time there should be more then 1 engines is when we are migrating or upgrading
-	// if there are more then 1 and we no longer have a migration id set we can cleanup the extra engine
 	if v.Spec.MigrationNodeID == "" {
+		// The volume attachment controller has stopped the migration (if one was ever started). We must clean up any
+		// extra engines/replicas and leave the volume in a "good" state.
+
+		// The only time there should be more then one engines is when we are migrating or upgrading. If there are more
+		// then one and we no longer have a MigrationNodeID set we can cleanup the extra engine.
 		if len(es) < 2 && v.Status.CurrentMigrationNodeID == "" {
-			return nil
+			return nil // There is nothing to do.
 		}
 
-		// in the case of a confirmation we need to switch the v.Status.CurrentNodeID to v.Spec.NodeID
-		// so that currentEngine becomes the migration engine
-		if v.Status.CurrentNodeID != v.Spec.NodeID {
+		// This is a migration confirmation. We need to switch the CurrentNodeID to NodeID so that currentEngine becomes
+		// the migration engine.
+		if v.Spec.NodeID != "" && v.Status.CurrentNodeID != v.Spec.NodeID {
 			log.Infof("Volume migration complete switching current node id from %v to %v", v.Status.CurrentNodeID, v.Spec.NodeID)
 			v.Status.CurrentNodeID = v.Spec.NodeID
 		}
 
-		// The latest current engine is based on the multiple node related fields of the volume besides all engine desired node ID,
-		// If the new engine matches, it means a migration confirmation then it's time to remove the old engine.
-		// If the old engine matches, it means a migration rollback hence cleaning up the migration engine is required.
-		//
-		// But once the volume is in the mid of the auto-recovery flow during migration rollback, there may be no engine considered as a current engine.
-		// Then all we have to do is waiting for the old engine back and running first. (Corner case)
+		// The latest current engine is based on the multiple node related fields of the volume and the NodeID of all
+		// engines. If the new engine matches, it means a migration confirmation then it's time to remove the old
+		// engine. If the old engine matches, it means a migration rollback hence cleaning up the migration engine is
+		// required.
 		currentEngine, extras, err := datastore.GetNewCurrentEngineAndExtras(v, es)
 		if err != nil {
-			log.WithError(err).Warn("Failed to finish the migration confirmation or rollback, need to wait for the current engine becoming attached first")
+			log.WithError(err).Warn("Failed to finalize the migration")
 			return nil
 		}
 		// The cleanup can be done only after the new current engine is found.
@@ -3887,6 +3879,16 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 		// migration rollback or confirmation finished
 		v.Status.CurrentMigrationNodeID = ""
 
+		return nil
+	}
+
+	// Only enter the migration flow when the volume is attached and running. Otherwise, the volume attachment
+	// controller will detach the volume soon and not reattach it until we resolve the migration above.
+	if v.Spec.NodeID == "" || v.Status.CurrentNodeID == "" || len(es) == 0 {
+		return nil
+	}
+	if v.Status.Robustness != longhorn.VolumeRobustnessDegraded && v.Status.Robustness != longhorn.VolumeRobustnessHealthy {
+		log.Warnf("Skip the migration processing since the volume current robustness is %v", v.Status.Robustness)
 		return nil
 	}
 
