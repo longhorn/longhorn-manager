@@ -381,6 +381,16 @@ func (vac *VolumeAttachmentController) handleVolumeMigration(va *longhorn.Volume
 		return
 	}
 
+	// If a volume was migrating and became detached (or is being detached):
+	// - We no longer know which node it was migrating from or to.
+	// - We cannot do an "online" migration anyways, because the volume already crashed.
+	// Now, we cancel the migration and wait to proceed until the volume is again exclusively attached.
+
+	if vol.Spec.NodeID == "" {
+		vol.Spec.MigrationNodeID = ""
+		return
+	}
+
 	vac.handleVolumeMigrationStart(va, vol)
 	vac.handleVolumeMigrationConfirmation(va, vol)
 	vac.handleVolumeMigrationRollback(va, vol)
