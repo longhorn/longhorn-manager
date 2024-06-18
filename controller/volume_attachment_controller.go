@@ -385,7 +385,6 @@ func (vac *VolumeAttachmentController) handleVolumeMigration(va *longhorn.Volume
 	// - We no longer know which node it was migrating from or to.
 	// - We cannot do an "online" migration anyways, because the volume already crashed.
 	// Now, we cancel the migration and wait to proceed until the volume is again exclusively attached.
-
 	if vol.Spec.NodeID == "" {
 		vol.Spec.MigrationNodeID = ""
 		return
@@ -631,7 +630,7 @@ func (vac *VolumeAttachmentController) handleVolumeAttachment(va *longhorn.Volum
 		return
 	}
 
-	attachmentTicket := selectAttachmentTicketToAttach(va, vol)
+	attachmentTicket := vac.selectAttachmentTicketToAttach(va, vol)
 	if attachmentTicket == nil {
 		return
 	}
@@ -642,7 +641,10 @@ func (vac *VolumeAttachmentController) handleVolumeAttachment(va *longhorn.Volum
 	setAttachmentParameter(attachmentTicket.Parameters, vol)
 }
 
-func selectAttachmentTicketToAttach(va *longhorn.VolumeAttachment, vol *longhorn.Volume) *longhorn.AttachmentTicket {
+func (vac *VolumeAttachmentController) selectAttachmentTicketToAttach(va *longhorn.VolumeAttachment,
+	vol *longhorn.Volume) *longhorn.AttachmentTicket {
+	log := getLoggerForLHVolumeAttachment(vac.logger, va)
+
 	ticketCandidates := []*longhorn.AttachmentTicket{}
 	for _, attachmentTicket := range va.Spec.AttachmentTickets {
 		if isCSIAttacherTicketOfRegularRWXVolume(attachmentTicket, vol) {
@@ -675,6 +677,9 @@ func selectAttachmentTicketToAttach(va *longhorn.VolumeAttachment, vol *longhorn
 	if util.IsMigratableVolume(vol) &&
 		maxAttacherPriorityLevel == longhorn.AttacherPriorityLevelCSIAttacher &&
 		len(highPriorityTicketCandidates) > 1 {
+		// The check uses > 1, but there should be only two tickets, so log two NodeIDs.
+		log.Warnf("Volume migration between %v and %v failed; detach volume from extra node to resume",
+			highPriorityTicketCandidates[0].NodeID, highPriorityTicketCandidates[1].NodeID)
 		return nil
 	}
 
