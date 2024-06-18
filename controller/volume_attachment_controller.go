@@ -657,6 +657,17 @@ func selectAttachmentTicketToAttach(va *longhorn.VolumeAttachment, vol *longhorn
 		}
 	}
 
+	// If a volume was migrating and became detached:
+	// - We no longer know which node it was migrating from or to.
+	// - We cannot do an "online" migration anyways, because the volume already crashed.
+	// Now, we refuse to attach the volume again until the caller resolves the situation by reducing the number of
+	// attachment tickets to one.
+	if util.IsMigratableVolume(vol) &&
+		maxAttacherPriorityLevel == longhorn.AttacherPriorityLevelCSIAttacher &&
+		len(highPriorityTicketCandidates) > 1 {
+		return nil
+	}
+
 	// TODO: sort by time
 
 	// sort by name
