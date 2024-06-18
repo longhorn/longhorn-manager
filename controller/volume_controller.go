@@ -3842,6 +3842,13 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 			return nil // There is nothing to do.
 		}
 
+		// The volume is no longer attached or should no longer be attached. We will clean up the migration below by
+		// removing the extra engine and replicas. Warn the user.
+		if v.Spec.NodeID == "" || v.Status.CurrentNodeID == "" {
+			msg := ("Volume migration failed unexpectedly; detach volume from extra node to resume")
+			c.eventRecorder.Event(v, corev1.EventTypeWarning, constant.EventReasonMigrationFailed, msg)
+		}
+
 		// This is a migration confirmation. We need to switch the CurrentNodeID to NodeID so that currentEngine becomes
 		// the migration engine.
 		if v.Spec.NodeID != "" && v.Status.CurrentNodeID != v.Spec.NodeID {
@@ -3978,7 +3985,7 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 		return nil
 	}
 
-	log.Info("volume migration engine is ready")
+	log.Info("Volume migration engine is ready")
 	return nil
 }
 
