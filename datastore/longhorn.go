@@ -1116,6 +1116,9 @@ func GetNewCurrentEngineAndExtras(v *longhorn.Volume, es map[string]*longhorn.En
 		if e.Spec.Active {
 			oldEngineName = e.Name
 		}
+		if e.DeletionTimestamp != nil {
+			continue // We cannot use a deleted engine.
+		}
 		if (v.Spec.NodeID != "" && v.Spec.NodeID == e.Spec.NodeID) ||
 			(v.Status.CurrentNodeID != "" && v.Status.CurrentNodeID == e.Spec.NodeID) {
 			if currentEngine != nil {
@@ -1124,6 +1127,29 @@ func GetNewCurrentEngineAndExtras(v *longhorn.Volume, es map[string]*longhorn.En
 			currentEngine = e
 		} else {
 			extras = append(extras, e)
+		}
+	}
+
+	// Corner case:
+	// During a migration confirmation, we make the following requests to the API server:
+	// 1. Delete the active engine (guaranteed to succeed or we don't do anything else).
+	// 2. Switch the new current replicas to active (might fail, preventing everything below).
+	// 3. Set the new current engine to active (might fail, preventing everything below).
+	// 4. Set the volume.Spec.CurrentNodeID (might fail).
+	// So we might delete the active engine, fail to set the new current engine to active, and fail to set the
+	// volume.Spec.CurrentNodeID. Then, the volume attachment controller might try to do a full detachment, setting
+	// volume.Spec.NodeID == "". At this point, there is no engine that can ever be considered active again by the rules
+	// above, but we want to use the new current engine. It's engine.Spec.NodeID ==
+	// volume.Status.CurrentMigrationNodeID.
+	if currentEngine == nil {
+		extrasCopy := extras
+		extras = []*longhorn.Engine{}
+		for _, e := range extrasCopy {
+			if e.Spec.NodeID != "" && e.Spec.NodeID == v.Status.CurrentMigrationNodeID {
+				currentEngine = e
+			} else {
+				extras = append(extras, e)
+			}
 		}
 	}
 
