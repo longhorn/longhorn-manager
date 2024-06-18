@@ -46,7 +46,8 @@ const (
 	SPDKService_EngineGet_FullMethodName                          = "/spdkrpc.SPDKService/EngineGet"
 	SPDKService_EngineSuspend_FullMethodName                      = "/spdkrpc.SPDKService/EngineSuspend"
 	SPDKService_EngineResume_FullMethodName                       = "/spdkrpc.SPDKService/EngineResume"
-	SPDKService_EngineSwitchOver_FullMethodName                   = "/spdkrpc.SPDKService/EngineSwitchOver"
+	SPDKService_EngineSwitchOverTarget_FullMethodName             = "/spdkrpc.SPDKService/EngineSwitchOverTarget"
+	SPDKService_EngineDeleteTarget_FullMethodName                 = "/spdkrpc.SPDKService/EngineDeleteTarget"
 	SPDKService_EngineSnapshotCreate_FullMethodName               = "/spdkrpc.SPDKService/EngineSnapshotCreate"
 	SPDKService_EngineSnapshotDelete_FullMethodName               = "/spdkrpc.SPDKService/EngineSnapshotDelete"
 	SPDKService_EngineSnapshotRevert_FullMethodName               = "/spdkrpc.SPDKService/EngineSnapshotRevert"
@@ -100,7 +101,8 @@ type SPDKServiceClient interface {
 	EngineGet(ctx context.Context, in *EngineGetRequest, opts ...grpc.CallOption) (*Engine, error)
 	EngineSuspend(ctx context.Context, in *EngineSuspendRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineResume(ctx context.Context, in *EngineResumeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	EngineSwitchOver(ctx context.Context, in *EngineSwitchOverRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	EngineSwitchOverTarget(ctx context.Context, in *EngineSwitchOverTargetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	EngineDeleteTarget(ctx context.Context, in *EngineDeleteTargetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineSnapshotCreate(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*SnapshotResponse, error)
 	EngineSnapshotDelete(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineSnapshotRevert(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -389,9 +391,18 @@ func (c *sPDKServiceClient) EngineResume(ctx context.Context, in *EngineResumeRe
 	return out, nil
 }
 
-func (c *sPDKServiceClient) EngineSwitchOver(ctx context.Context, in *EngineSwitchOverRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *sPDKServiceClient) EngineSwitchOverTarget(ctx context.Context, in *EngineSwitchOverTargetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, SPDKService_EngineSwitchOver_FullMethodName, in, out, opts...)
+	err := c.cc.Invoke(ctx, SPDKService_EngineSwitchOverTarget_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) EngineDeleteTarget(ctx context.Context, in *EngineDeleteTargetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_EngineDeleteTarget_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -640,7 +651,8 @@ type SPDKServiceServer interface {
 	EngineGet(context.Context, *EngineGetRequest) (*Engine, error)
 	EngineSuspend(context.Context, *EngineSuspendRequest) (*emptypb.Empty, error)
 	EngineResume(context.Context, *EngineResumeRequest) (*emptypb.Empty, error)
-	EngineSwitchOver(context.Context, *EngineSwitchOverRequest) (*emptypb.Empty, error)
+	EngineSwitchOverTarget(context.Context, *EngineSwitchOverTargetRequest) (*emptypb.Empty, error)
+	EngineDeleteTarget(context.Context, *EngineDeleteTargetRequest) (*emptypb.Empty, error)
 	EngineSnapshotCreate(context.Context, *SnapshotRequest) (*SnapshotResponse, error)
 	EngineSnapshotDelete(context.Context, *SnapshotRequest) (*emptypb.Empty, error)
 	EngineSnapshotRevert(context.Context, *SnapshotRequest) (*emptypb.Empty, error)
@@ -747,8 +759,11 @@ func (UnimplementedSPDKServiceServer) EngineSuspend(context.Context, *EngineSusp
 func (UnimplementedSPDKServiceServer) EngineResume(context.Context, *EngineResumeRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EngineResume not implemented")
 }
-func (UnimplementedSPDKServiceServer) EngineSwitchOver(context.Context, *EngineSwitchOverRequest) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method EngineSwitchOver not implemented")
+func (UnimplementedSPDKServiceServer) EngineSwitchOverTarget(context.Context, *EngineSwitchOverTargetRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineSwitchOverTarget not implemented")
+}
+func (UnimplementedSPDKServiceServer) EngineDeleteTarget(context.Context, *EngineDeleteTargetRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineDeleteTarget not implemented")
 }
 func (UnimplementedSPDKServiceServer) EngineSnapshotCreate(context.Context, *SnapshotRequest) (*SnapshotResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EngineSnapshotCreate not implemented")
@@ -1297,20 +1312,38 @@ func _SPDKService_EngineResume_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SPDKService_EngineSwitchOver_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(EngineSwitchOverRequest)
+func _SPDKService_EngineSwitchOverTarget_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EngineSwitchOverTargetRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SPDKServiceServer).EngineSwitchOver(ctx, in)
+		return srv.(SPDKServiceServer).EngineSwitchOverTarget(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SPDKService_EngineSwitchOver_FullMethodName,
+		FullMethod: SPDKService_EngineSwitchOverTarget_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SPDKServiceServer).EngineSwitchOver(ctx, req.(*EngineSwitchOverRequest))
+		return srv.(SPDKServiceServer).EngineSwitchOverTarget(ctx, req.(*EngineSwitchOverTargetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_EngineDeleteTarget_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EngineDeleteTargetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).EngineDeleteTarget(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_EngineDeleteTarget_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).EngineDeleteTarget(ctx, req.(*EngineDeleteTargetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1804,8 +1837,12 @@ var SPDKService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _SPDKService_EngineResume_Handler,
 		},
 		{
-			MethodName: "EngineSwitchOver",
-			Handler:    _SPDKService_EngineSwitchOver_Handler,
+			MethodName: "EngineSwitchOverTarget",
+			Handler:    _SPDKService_EngineSwitchOverTarget_Handler,
+		},
+		{
+			MethodName: "EngineDeleteTarget",
+			Handler:    _SPDKService_EngineDeleteTarget_Handler,
 		},
 		{
 			MethodName: "EngineSnapshotCreate",

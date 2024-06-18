@@ -222,8 +222,8 @@ require (
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
 
-replace github.com/longhorn/go-spdk-helper v0.0.0-20240514082311-4069f4804017 => github.com/derekbit/go-spdk-helper v0.0.0-20240606090350-913beff2d073
+replace github.com/longhorn/go-spdk-helper v0.0.0-20240514082311-4069f4804017 => github.com/derekbit/go-spdk-helper v0.0.0-20240619041159-83fd2aeaa306
 
-replace github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240510091533-e263d5435089 => github.com/derekbit/longhorn-instance-manager v0.0.0-20240606090852-614e25d483f1
+replace github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240510091533-e263d5435089 => github.com/derekbit/longhorn-instance-manager v0.0.0-20240619142407-a0e3d6a97193
 
-replace github.com/longhorn/types v0.0.0-20240510221052-ab949bbedea3 => github.com/derekbit/longhorn-types v0.0.0-20240605052427-ffacf1b180e6
+replace github.com/longhorn/types v0.0.0-20240510221052-ab949bbedea3 => github.com/derekbit/longhorn-types v0.0.0-20240619120948-1919c0a00aed

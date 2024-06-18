@@ -397,8 +397,8 @@ func (c *InstanceServiceClient) InstanceResume(dataEngine, name, instanceType st
 	return nil
 }
 
-// InstanceSwitchOver switches over the target for an instance.
-func (c *InstanceServiceClient) InstanceSwitchOver(dataEngine, name, instanceType, targetAddress string) error {
+// InstanceSwitchOverTarget switches over the target for an instance.
+func (c *InstanceServiceClient) InstanceSwitchOverTarget(dataEngine, name, instanceType, targetAddress string) error {
 	if name == "" {
 		return fmt.Errorf("failed to switch over target for instance: missing required parameter name")
 	}
@@ -416,14 +416,45 @@ func (c *InstanceServiceClient) InstanceSwitchOver(dataEngine, name, instanceTyp
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
 	defer cancel()
 
-	_, err := client.InstanceSwitchOver(ctx, &rpc.InstanceSwitchOverRequest{
+	_, err := client.InstanceSwitchOverTarget(ctx, &rpc.InstanceSwitchOverTargetRequest{
 		Name:          name,
 		Type:          instanceType,
 		DataEngine:    rpc.DataEngine(driver),
 		TargetAddress: targetAddress,
 	})
 	if err != nil {
-		return errors.Wrapf(err, "failed to switch over target instance %v", name)
+		return errors.Wrapf(err, "failed to switch over target for instance %v", name)
+	}
+
+	return nil
+}
+
+// InstanceDeleteTarget delete target for an instance.
+func (c *InstanceServiceClient) InstanceDeleteTarget(dataEngine, name, instanceType, targetAddress string) error {
+	if name == "" {
+		return fmt.Errorf("failed to delete target for instance: missing required parameter name")
+	}
+
+	if targetAddress == "" {
+		return fmt.Errorf("failed to delete target for instance: missing required parameter target address")
+	}
+
+	driver, ok := rpc.DataEngine_value[getDataEngine(dataEngine)]
+	if !ok {
+		return fmt.Errorf("failed to delete target instance: invalid data engine %v", dataEngine)
+	}
+
+	client := c.getControllerServiceClient()
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	_, err := client.InstanceDeleteTarget(ctx, &rpc.InstanceDeleteTargetRequest{
+		Name:       name,
+		Type:       instanceType,
+		DataEngine: rpc.DataEngine(driver),
+	})
+	if err != nil {
+		return errors.Wrapf(err, "failed to delete target for instance %v", name)
 	}
 
 	return nil
