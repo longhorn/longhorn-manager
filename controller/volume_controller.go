@@ -3,6 +3,7 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"reflect"
 	"sort"
 	"strings"
@@ -56,6 +57,9 @@ const (
 	VolumeSnapshotsWarningThreshold = 100
 
 	LastAppliedCronJobSpecAnnotationKeySuffix = "last-applied-cronjob-spec"
+
+	initialCloneRetryInterval = 30 * time.Second
+	maxCloneRetry             = 10
 )
 
 type VolumeController struct {
@@ -1300,7 +1304,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 		return err
 	}
 
-	if err := c.checkAndInitVolumeClone(v); err != nil {
+	if err := c.checkAndInitVolumeClone(v, e, log); err != nil {
 		return err
 	}
 
@@ -2641,7 +2645,7 @@ func (c *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[
 	}
 
 	// Only create 1 replica while volume is in cloning process
-	if isTargetVolumeOfCloning(v) {
+	if isCloningRequiredAndNotCompleted(v) {
 		if usableCount == 0 {
 			return 1, ""
 		}
@@ -3198,7 +3202,12 @@ func (c *VolumeController) updateRequestedDataSourceForVolumeCloning(v *longhorn
 	if e == nil {
 		return nil
 	}
-	if isTargetVolumeOfCloning(v) && v.Status.CloneStatus.State == longhorn.VolumeCloneStateInitiated {
+
+	if !isCloningRequiredAndNotCompleted(v) {
+		e.Spec.RequestedDataSource = ""
+	}
+
+	if isTargetVolumeOfAnActiveCloning(v) && v.Status.CloneStatus.State == longhorn.VolumeCloneStateInitiated {
 		ds, err := types.NewVolumeDataSource(longhorn.VolumeDataSourceTypeSnapshot, map[string]string{
 			types.VolumeNameKey:   v.Status.CloneStatus.SourceVolume,
 			types.SnapshotNameKey: v.Status.CloneStatus.Snapshot,
@@ -3209,17 +3218,42 @@ func (c *VolumeController) updateRequestedDataSourceForVolumeCloning(v *longhorn
 		e.Spec.RequestedDataSource = ds
 		return nil
 	}
-	e.Spec.RequestedDataSource = ""
 	return nil
 }
 
-func (c *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume) (err error) {
+func shouldInitVolumeClone(v *longhorn.Volume, log *logrus.Entry) bool {
+	if !types.IsDataFromVolume(v.Spec.DataSource) {
+		return false
+	}
+	if v.Status.CloneStatus.State == longhorn.VolumeCloneStateEmpty {
+		return true
+	}
+	if v.Status.CloneStatus.State == longhorn.VolumeCloneStateFailed &&
+		v.Status.CloneStatus.AttemptCount < maxCloneRetry {
+		if v.Status.CloneStatus.NextAllowedAttemptAt == "" {
+			return true
+		}
+		t, err := util.ParseTime(v.Status.CloneStatus.NextAllowedAttemptAt)
+		if err != nil {
+			log.Warnf("Failed to check shouldInitVolumeClone %v", err)
+			return false
+		}
+		return time.Now().After(t)
+	}
+	return false
+}
+
+func (c *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume, e *longhorn.Engine, log *logrus.Entry) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to checkAndInitVolumeClone for volume %v", v.Name)
 	}()
 
+	if e == nil {
+		return nil
+	}
+
 	dataSource := v.Spec.DataSource
-	if !types.IsDataFromVolume(dataSource) || v.Status.CloneStatus.State != longhorn.VolumeCloneStateEmpty {
+	if !shouldInitVolumeClone(v, log) {
 		return nil
 	}
 
@@ -3240,7 +3274,15 @@ func (c *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume) (err erro
 		return nil
 	}
 
-	e, err := c.ds.GetVolumeCurrentEngine(sourceVolName)
+	// Prepare engine for new a clone or a cloning retry
+	if e.Spec.RequestedDataSource != "" {
+		e.Spec.RequestedDataSource = ""
+	}
+	if len(e.Status.CloneStatus) > 0 {
+		return nil
+	}
+
+	sourceEngine, err := c.ds.GetVolumeCurrentEngine(sourceVolName)
 	if err != nil {
 		return err
 	}
@@ -3251,7 +3293,7 @@ func (c *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume) (err erro
 		// of the source and destination volume to avoid problems with reused volume names.
 		snapshotName = util.DeterministicUUID(string(sourceVol.GetUID()) + string(v.GetUID()))
 		labels := map[string]string{types.GetLonghornLabelKey(types.LonghornLabelSnapshotForCloningVolume): v.Name}
-		snapshot, err := c.createSnapshot(snapshotName, labels, sourceVol, e)
+		snapshot, err := c.createSnapshot(snapshotName, labels, sourceVol, sourceEngine)
 		if err != nil {
 			return errors.Wrapf(err, "failed to create snapshot of source volume %v", sourceVol.Name)
 		}
@@ -3263,6 +3305,9 @@ func (c *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume) (err erro
 	v.Status.CloneStatus.SourceVolume = sourceVolName
 	v.Status.CloneStatus.Snapshot = snapshotName
 	v.Status.CloneStatus.State = longhorn.VolumeCloneStateInitiated
+	d := time.Duration(math.Exp2(float64(v.Status.CloneStatus.AttemptCount))) * initialCloneRetryInterval
+	v.Status.CloneStatus.NextAllowedAttemptAt = util.TimestampAfterDuration(d)
+	v.Status.CloneStatus.AttemptCount += 1
 	c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonVolumeCloneInitiated, "source volume %v, snapshot %v", sourceVolName, snapshotName)
 
 	return nil

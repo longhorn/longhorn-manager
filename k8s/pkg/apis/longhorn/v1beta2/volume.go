@@ -96,6 +96,10 @@ type VolumeCloneStatus struct {
 	Snapshot string `json:"snapshot"`
 	// +optional
 	State VolumeCloneState `json:"state"`
+	// +optional
+	AttemptCount int `json:"attemptCount"`
+	// +optional
+	NextAllowedAttemptAt string `json:"nextAllowedAttemptAt"`
 }
 
 const (

@@ -1513,11 +1513,13 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	//   5. It's failed to clone
 	ready := true
 	scheduledCondition := types.GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeScheduled)
+	isCloningDesired := types.IsDataFromVolume(v.Spec.DataSource)
+	isCloningCompleted := v.Status.CloneStatus.State == longhorn.VolumeCloneStateCompleted
 	if (v.Spec.NodeID == "" && v.Status.State != longhorn.VolumeStateDetached) ||
 		(v.Status.State == longhorn.VolumeStateDetached && scheduledCondition.Status != longhorn.ConditionStatusTrue) ||
 		v.Status.Robustness == longhorn.VolumeRobustnessFaulted ||
 		v.Status.RestoreRequired ||
-		v.Status.CloneStatus.State == longhorn.VolumeCloneStateFailed {
+		(isCloningDesired && !isCloningCompleted) {
 		ready = false
 	}
 
