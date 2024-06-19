@@ -22,12 +22,19 @@ func (vc *VolumeController) isVolumeUpgrading(v *longhorn.Volume) bool {
 	return v.Status.CurrentImage != v.Spec.Image
 }
 
-// isTargetVolumeOfCloning checks if the input volume is the target volume of an on-going cloning process
-func isTargetVolumeOfCloning(v *longhorn.Volume) bool {
+// isTargetVolumeOfAnActiveCloning checks if the input volume is the target volume of an on-going cloning process
+func isTargetVolumeOfAnActiveCloning(v *longhorn.Volume) bool {
 	isCloningDesired := types.IsDataFromVolume(v.Spec.DataSource)
-	isCloningDone := v.Status.CloneStatus.State == longhorn.VolumeCloneStateCompleted ||
+	isCloningCompletedOrFailed := v.Status.CloneStatus.State == longhorn.VolumeCloneStateCompleted ||
 		v.Status.CloneStatus.State == longhorn.VolumeCloneStateFailed
-	return isCloningDesired && !isCloningDone
+	return isCloningDesired && !isCloningCompletedOrFailed
+}
+
+// isCloningRequiredAndNotCompleted returns true if the volume requires cloning and the cloning hasn't completed
+func isCloningRequiredAndNotCompleted(v *longhorn.Volume) bool {
+	isCloningDesired := types.IsDataFromVolume(v.Spec.DataSource)
+	isCloningCompleted := v.Status.CloneStatus.State == longhorn.VolumeCloneStateCompleted
+	return isCloningDesired && !isCloningCompleted
 }
 
 func isVolumeFullyDetached(vol *longhorn.Volume) bool {

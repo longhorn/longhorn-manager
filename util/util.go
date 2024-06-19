@@ -236,6 +236,10 @@ func Now() string {
 	return time.Now().UTC().Format(time.RFC3339)
 }
 
+func TimestampAfterDuration(d time.Duration) string {
+	return time.Now().Add(d).UTC().Format(time.RFC3339)
+}
+
 func ParseTime(t string) (time.Time, error) {
 	return time.Parse(time.RFC3339, t)
 

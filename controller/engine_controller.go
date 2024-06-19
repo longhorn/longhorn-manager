@@ -388,6 +388,11 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		return errors.Wrapf(err, "failed to sync with snapshot CRs for engine %v", engine.Name)
 	}
 
+	// Clean up CloneStatus for later retry
+	if engine.Spec.RequestedDataSource == "" {
+		engine.Status.CloneStatus = nil
+	}
+
 	return nil
 }
 
