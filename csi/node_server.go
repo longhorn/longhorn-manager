@@ -198,15 +198,6 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	if req.GetReadonly() {
 		mountOptions = append(mountOptions, "ro")
 	}
-	fsType := volumeCapability.GetMount().GetFsType()
-	if fsType == "" {
-		fsType = defaultFsType
-	}
-	if fsType == "xfs" {
-		// By default, xfs does not allow mounting of two volumes with the same filesystem uuid.
-		// Force ignore this uuid to be able to mount volume + its clone / restored snapshot on the same node.
-		mountOptions = append(mountOptions, "nouuid")
-	}
 	mountOptions = append(mountOptions, volumeCapability.GetMount().GetMountFlags()...)
 
 	if err := mounter.Mount(stagingPath, targetPath, "", mountOptions); err != nil {
