@@ -286,7 +286,7 @@ func (c *UninstallController) uninstall() error {
 			return err
 		} else if len(backupTargets) > 0 {
 			for _, bt := range backupTargets {
-				if _, err = c.ds.UpdateBackupTarget(bt); err != nil {
+				if _, err = c.ds.UpdateBackupTarget(bt); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
 					return errors.Wrap(err, "failed to touch the backup target CR for API version migration")
 				}
 			}
