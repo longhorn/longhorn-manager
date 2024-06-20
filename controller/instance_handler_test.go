@@ -36,7 +36,7 @@ const (
 
 type MockInstanceManagerHandler struct{}
 
-func (imh *MockInstanceManagerHandler) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
+func (imh *MockInstanceManagerHandler) GetInstance(obj interface{}, remoteTargetInstance bool) (*longhorn.InstanceProcess, error) {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
 		return nil, err
@@ -48,7 +48,7 @@ func (imh *MockInstanceManagerHandler) GetInstance(obj interface{}) (*longhorn.I
 	return &longhorn.InstanceProcess{}, nil
 }
 
-func (imh *MockInstanceManagerHandler) CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
+func (imh *MockInstanceManagerHandler) CreateInstance(obj interface{}, remoteTargetInstance bool) (*longhorn.InstanceProcess, error) {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
 		return nil, err
@@ -70,6 +70,22 @@ func (imh *MockInstanceManagerHandler) DeleteInstance(obj interface{}) error {
 		return fmt.Errorf("cannot find")
 	}
 	return nil
+}
+
+func (imh *MockInstanceManagerHandler) SuspendInstance(obj interface{}) error {
+	return fmt.Errorf("SuspendInstance is not mocked")
+}
+
+func (imh *MockInstanceManagerHandler) ResumeInstance(obj interface{}) error {
+	return fmt.Errorf("ResumeInstance is not mocked")
+}
+
+func (imh *MockInstanceManagerHandler) SwitchOverTarget(obj interface{}) error {
+	return fmt.Errorf("SwitchOverTarget is not mocked")
+}
+
+func (imh *MockInstanceManagerHandler) DeleteTarget(obj interface{}) error {
+	return fmt.Errorf("DeleteTarget is not mocked")
 }
 
 func (imh *MockInstanceManagerHandler) LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error) {

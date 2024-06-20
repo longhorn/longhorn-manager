@@ -19,7 +19,13 @@ func hasReplicaEvictionRequested(rs map[string]*longhorn.Replica) bool {
 }
 
 func (vc *VolumeController) isVolumeUpgrading(v *longhorn.Volume) bool {
-	return v.Status.CurrentImage != v.Spec.Image
+	imageNotUpdated := v.Status.CurrentImage != v.Spec.Image
+
+	if types.IsDataEngineV1(v.Spec.DataEngine) {
+		return imageNotUpdated
+	}
+
+	return imageNotUpdated || v.Spec.TargetNodeID != v.Status.CurrentTargetNodeID
 }
 
 // isTargetVolumeOfCloning checks if the input volume is the target volume of an on-going cloning process

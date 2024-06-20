@@ -1562,7 +1562,7 @@ func (s *DataStore) ListVolumePDBProtectedHealthyReplicasRO(volumeName string) (
 
 func (s *DataStore) getRunningReplicaInstanceManagerRO(r *longhorn.Replica) (im *longhorn.InstanceManager, err error) {
 	if r.Status.InstanceManagerName == "" {
-		im, err = s.GetInstanceManagerByInstanceRO(r)
+		im, err = s.GetInstanceManagerByInstanceRO(r, false)
 		if err != nil && !types.ErrorIsNotFound(err) {
 			return nil, err
 		}
@@ -3280,15 +3280,15 @@ func (s *DataStore) ListInstanceManagersBySelectorRO(node, imImage string, imTyp
 
 // GetInstanceManagerByInstance returns an InstanceManager for a given object,
 // or an error if more than one InstanceManager is found.
-func (s *DataStore) GetInstanceManagerByInstance(obj interface{}) (*longhorn.InstanceManager, error) {
-	im, err := s.GetInstanceManagerByInstanceRO(obj)
+func (s *DataStore) GetInstanceManagerByInstance(obj interface{}, remoteTargetInstance bool) (*longhorn.InstanceManager, error) {
+	im, err := s.GetInstanceManagerByInstanceRO(obj, remoteTargetInstance)
 	if err != nil {
 		return nil, err
 	}
 	return im.DeepCopy(), nil
 }
 
-func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.InstanceManager, error) {
+func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}, remoteTargetInstance bool) (*longhorn.InstanceManager, error) {
 	imImage, err := s.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get instance manager image: %w", err)
@@ -3299,31 +3299,45 @@ func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.I
 		return nil, err
 	}
 
-	if instanceInfo.nodeID == "" {
-		return nil, fmt.Errorf("invalid request for GetInstanceManagerByInstance: no NodeID specified for instance %v", instanceInfo.name)
+	dataEngnie := instanceInfo.dataEngine
+	nodeID := instanceInfo.nodeID
+	if remoteTargetInstance {
+		nodeID = instanceInfo.targetNodeID
+		imImage = instanceInfo.instanceManagerImage
 	}
 
-	imMap, err := s.getInstanceManagers(instanceInfo, imImage)
+	if nodeID == "" {
+		return nil, fmt.Errorf("invalid request for GetInstanceManagerByInstance: no NodeID specified for instance %v", instanceInfo.name)
+	}
+	if imImage == "" {
+		return nil, fmt.Errorf("invalid request for GetInstanceManagerByInstance: no InstanceManagerImage specified for instance %v", instanceInfo.name)
+	}
+
+	imMap, err := s.getInstanceManagers(nodeID, imImage, dataEngnie)
 	if err != nil {
 		return nil, err
 	}
 
-	return filterInstanceManagers(imMap, instanceInfo)
+	return filterInstanceManagers(nodeID, imMap, dataEngnie)
 }
 
 type instanceInfo struct {
-	name       string
-	nodeID     string
-	dataEngine longhorn.DataEngineType
+	name                 string
+	nodeID               string
+	dataEngine           longhorn.DataEngineType
+	targetNodeID         string
+	instanceManagerImage string
 }
 
 func extractInstanceInfo(obj interface{}) (instanceInfo, error) {
 	switch o := obj.(type) {
 	case *longhorn.Engine:
 		return instanceInfo{
-			name:       o.Name,
-			nodeID:     o.Spec.NodeID,
-			dataEngine: o.Spec.DataEngine,
+			name:                 o.Name,
+			nodeID:               o.Spec.NodeID,
+			dataEngine:           o.Spec.DataEngine,
+			targetNodeID:         o.Spec.TargetNodeID,
+			instanceManagerImage: o.Spec.Image,
 		}, nil
 	case *longhorn.Replica:
 		return instanceInfo{
@@ -3336,37 +3350,37 @@ func extractInstanceInfo(obj interface{}) (instanceInfo, error) {
 	}
 }
 
-func (s *DataStore) getInstanceManagers(info instanceInfo, imImage string) (map[string]*longhorn.InstanceManager, error) {
+func (s *DataStore) getInstanceManagers(nodeID, imImage string, dataEngine longhorn.DataEngineType) (map[string]*longhorn.InstanceManager, error) {
 	var err error
 	var imMap map[string]*longhorn.InstanceManager
 
-	if types.IsDataEngineV2(info.dataEngine) {
-		imMap, err = s.ListInstanceManagersByNodeRO(info.nodeID, longhorn.InstanceManagerTypeAllInOne, info.dataEngine)
+	if types.IsDataEngineV2(dataEngine) {
+		imMap, err = s.ListInstanceManagersByNodeRO(nodeID, longhorn.InstanceManagerTypeAllInOne, dataEngine)
 	} else {
-		imMap, err = s.ListInstanceManagersBySelectorRO(info.nodeID, imImage, longhorn.InstanceManagerTypeAllInOne, info.dataEngine)
+		imMap, err = s.ListInstanceManagersBySelectorRO(nodeID, imImage, longhorn.InstanceManagerTypeAllInOne, dataEngine)
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to list instance managers for node %v: %w", info.nodeID, err)
+		return nil, fmt.Errorf("failed to list instance managers for node %v: %w", nodeID, err)
 	}
 	return imMap, nil
 }
 
-func filterInstanceManagers(imMap map[string]*longhorn.InstanceManager, info instanceInfo) (*longhorn.InstanceManager, error) {
+func filterInstanceManagers(nodeID string, imMap map[string]*longhorn.InstanceManager, dataEngine longhorn.DataEngineType) (*longhorn.InstanceManager, error) {
 	switch len(imMap) {
 	case 1:
 		for _, im := range imMap {
 			return im, nil
 		}
 	case 0:
-		return nil, fmt.Errorf("no instance manager found for node %v", info.nodeID)
+		return nil, fmt.Errorf("no instance manager found for node %v", nodeID)
 	default:
-		if types.IsDataEngineV2(info.dataEngine) {
+		if types.IsDataEngineV2(dataEngine) {
 			return findRunningInstanceManager(imMap)
 		}
 	}
 
-	return nil, fmt.Errorf("ambiguous instance manager selection for node %v", info.nodeID)
+	return nil, fmt.Errorf("ambiguous instance manager selection for node %v", nodeID)
 }
 
 func findRunningInstanceManager(imMap map[string]*longhorn.InstanceManager) (*longhorn.InstanceManager, error) {
@@ -5264,7 +5278,7 @@ func (s *DataStore) GetRunningInstanceManagerByNodeRO(node string, dataEngine lo
 		}
 	}
 
-	logrus.WithError(err).Warnf("Failed to get the default instance manager for node %v and data engine %v, trying to get another running instance manager", node, dataEngine)
+	//logrus.WithError(err).Warnf("Failed to get the default instance manager for node %v and data engine %v, trying to get another running instance manager", node, dataEngine)
 
 	ims, err := s.ListInstanceManagersByNodeRO(node, longhorn.InstanceManagerTypeAllInOne, dataEngine)
 	if err != nil {

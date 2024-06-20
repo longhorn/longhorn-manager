@@ -3,6 +3,7 @@ package engineapi
 import (
 	"context"
 	"fmt"
+	"net"
 	"path/filepath"
 	"strconv"
 
@@ -268,12 +269,14 @@ func parseInstance(p *imapi.Instance) *longhorn.InstanceProcess {
 			DataEngine: getDataEngineFromInstanceProcess(p),
 		},
 		Status: longhorn.InstanceProcessStatus{
-			Type:       getTypeForInstance(longhorn.InstanceType(p.Type), p.Name),
-			State:      longhorn.InstanceState(p.InstanceStatus.State),
-			ErrorMsg:   p.InstanceStatus.ErrorMsg,
-			Conditions: p.InstanceStatus.Conditions,
-			PortStart:  p.InstanceStatus.PortStart,
-			PortEnd:    p.InstanceStatus.PortEnd,
+			Type:            getTypeForInstance(longhorn.InstanceType(p.Type), p.Name),
+			State:           longhorn.InstanceState(p.InstanceStatus.State),
+			ErrorMsg:        p.InstanceStatus.ErrorMsg,
+			Conditions:      p.InstanceStatus.Conditions,
+			PortStart:       p.InstanceStatus.PortStart,
+			PortEnd:         p.InstanceStatus.PortEnd,
+			TargetPortStart: p.InstanceStatus.TargetPortStart,
+			TargetPortEnd:   p.InstanceStatus.TargetPortEnd,
 
 			// FIXME: These fields are not used, maybe we can deprecate them later.
 			Listen:   "",
@@ -440,6 +443,27 @@ type EngineInstanceCreateRequest struct {
 	DataLocality                     longhorn.DataLocality
 	ImIP                             string
 	EngineCLIAPIVersion              int
+	UpgradeRequired                  bool
+	InitiatorAddress                 string
+	TargetAddress                    string
+}
+
+func getReplicaAddresses(replicaAddresses map[string]string, initiatorIP, targetIP string) (map[string]string, error) {
+	addresses := map[string]string{}
+
+	for name, addr := range replicaAddresses {
+		if initiatorIP != targetIP {
+			host, _, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			if initiatorIP == host {
+				continue
+			}
+		}
+		addresses[name] = addr
+	}
+	return addresses, nil
 }
 
 // EngineInstanceCreate creates a new engine instance
@@ -466,7 +490,10 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 			return nil, err
 		}
 	case longhorn.DataEngineTypeV2:
-		replicaAddresses = req.Engine.Status.CurrentReplicaAddressMap
+		replicaAddresses, err = getReplicaAddresses(req.Engine.Status.CurrentReplicaAddressMap, req.InitiatorAddress, req.TargetAddress)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if c.GetAPIVersion() < 4 {
@@ -494,6 +521,9 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 		Engine: imclient.EngineCreateRequest{
 			ReplicaAddressMap: replicaAddresses,
 			Frontend:          frontend,
+			UpgradeRequired:   req.UpgradeRequired,
+			InitiatorAddress:  req.InitiatorAddress,
+			TargetAddress:     req.TargetAddress,
 		},
 	})
 
@@ -820,6 +850,58 @@ func (c *InstanceManagerClient) EngineInstanceSuspend(req *EngineInstanceSuspend
 		return fmt.Errorf("engine suspension for date engine %v is not supported yet", longhorn.DataEngineTypeV1)
 	case longhorn.DataEngineTypeV2:
 		return c.instanceServiceGrpcClient.InstanceSuspend(string(engine.Spec.DataEngine), req.Engine.Name, string(longhorn.InstanceManagerTypeEngine))
+	default:
+		return fmt.Errorf("unknown data engine %v", engine.Spec.DataEngine)
+	}
+}
+
+type EngineInstanceResumeRequest struct {
+	Engine *longhorn.Engine
+}
+
+// EngineInstanceResume suspends engine instance
+func (c *InstanceManagerClient) EngineInstanceResume(req *EngineInstanceResumeRequest) error {
+	engine := req.Engine
+	switch engine.Spec.DataEngine {
+	case longhorn.DataEngineTypeV1:
+		return fmt.Errorf("engine resumption for date engine %v is not supported yet", longhorn.DataEngineTypeV1)
+	case longhorn.DataEngineTypeV2:
+		return c.instanceServiceGrpcClient.InstanceResume(string(engine.Spec.DataEngine), req.Engine.Name, string(longhorn.InstanceManagerTypeEngine))
+	default:
+		return fmt.Errorf("unknown data engine %v", engine.Spec.DataEngine)
+	}
+}
+
+type EngineInstanceSwitchOverTargetRequest struct {
+	Engine        *longhorn.Engine
+	TargetAddress string
+}
+
+// EngineInstanceSwitchOverTarget switches over target for engine instance
+func (c *InstanceManagerClient) EngineInstanceSwitchOverTarget(req *EngineInstanceSwitchOverTargetRequest) error {
+	engine := req.Engine
+	switch engine.Spec.DataEngine {
+	case longhorn.DataEngineTypeV1:
+		return fmt.Errorf("target switchover for date engine %v is not supported yet", longhorn.DataEngineTypeV1)
+	case longhorn.DataEngineTypeV2:
+		return c.instanceServiceGrpcClient.InstanceSwitchOverTarget(string(engine.Spec.DataEngine), req.Engine.Name, string(longhorn.InstanceManagerTypeEngine), req.TargetAddress)
+	default:
+		return fmt.Errorf("unknown data engine %v", engine.Spec.DataEngine)
+	}
+}
+
+type EngineInstanceDeleteTargetRequest struct {
+	Engine *longhorn.Engine
+}
+
+// EngineInstanceDeleteTarget deletes target for engine instance
+func (c *InstanceManagerClient) EngineInstanceDeleteTarget(req *EngineInstanceDeleteTargetRequest) error {
+	engine := req.Engine
+	switch engine.Spec.DataEngine {
+	case longhorn.DataEngineTypeV1:
+		return fmt.Errorf("target deletion for date engine %v is not supported yet", longhorn.DataEngineTypeV1)
+	case longhorn.DataEngineTypeV2:
+		return c.instanceServiceGrpcClient.InstanceDeleteTarget(string(engine.Spec.DataEngine), req.Engine.Name, string(longhorn.InstanceManagerTypeEngine))
 	default:
 		return fmt.Errorf("unknown data engine %v", engine.Spec.DataEngine)
 	}
