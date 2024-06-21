@@ -386,7 +386,11 @@ func (vac *VolumeAttachmentController) handleVolumeMigration(va *longhorn.Volume
 	// - We cannot do an "online" migration anyways, because the volume already crashed.
 	// Now, we cancel the migration and wait to proceed until the volume is again exclusively attached.
 	if vol.Spec.NodeID == "" {
-		vol.Spec.MigrationNodeID = ""
+		if vol.Spec.MigrationNodeID != "" {
+			vol.Spec.MigrationNodeID = ""
+			log := getLoggerForMigratingLHVolumeAttachment(vac.logger, va, vol)
+			log.Warn("Cancelling migration for detached volume")
+		}
 		return
 	}
 
@@ -415,6 +419,8 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationStart(va *longhorn.V
 	if attachmentTicket := getCSIAttachmentTicketNotRequestingNode(vol.Spec.NodeID, va, vol); attachmentTicket != nil {
 		// Found one csi attachmentTicket that is requesting volume to attach to a different node
 		vol.Spec.MigrationNodeID = attachmentTicket.NodeID
+		log := getLoggerForMigratingLHVolumeAttachment(vac.logger, va, vol)
+		log.Info("Starting migration")
 	}
 }
 
@@ -424,20 +430,25 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationConfirmation(va *lon
 		return
 	}
 
+	log := getLoggerForMigratingLHVolumeAttachment(vac.logger, va, vol)
+
 	if hasCSIAttachmentTicketRequestingNode(vol.Spec.NodeID, va, vol) {
 		return
 	}
 
 	migratingEngineSnapSynced, err := vac.checkMigratingEngineSyncSnapshots(va, vol)
 	if err != nil {
-		vac.logger.WithError(err).Warn("Failed to check migrating engine snapshot status")
+		log.WithError(err).Warn("Failed to check migrating engine snapshot status")
 	}
 	if !migratingEngineSnapSynced {
+		log.Warn("Waiting to confirm migration until snapshots have synced")
 		return
 	}
 
 	vol.Spec.NodeID = vol.Status.CurrentMigrationNodeID
 	vol.Spec.MigrationNodeID = ""
+	log = getLoggerForMigratingLHVolumeAttachment(vac.logger, va, vol)
+	log.Info("Confirming migration")
 }
 
 func (vac *VolumeAttachmentController) checkMigratingEngineSyncSnapshots(va *longhorn.VolumeAttachment, vol *longhorn.Volume) (bool, error) {
@@ -499,6 +510,8 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationRollback(va *longhor
 
 	if !hasCSIAttachmentTicketRequestingNode(vol.Spec.MigrationNodeID, va, vol) {
 		vol.Spec.MigrationNodeID = ""
+		log := getLoggerForMigratingLHVolumeAttachment(vac.logger, va, vol)
+		log.Info("Rolling back migration")
 	}
 }
 
@@ -882,6 +895,18 @@ func getLoggerForLHVolumeAttachment(logger logrus.FieldLogger, va *longhorn.Volu
 	return logger.WithFields(
 		logrus.Fields{
 			"longhornVolumeAttachment": va.Name,
+		},
+	)
+}
+
+func getLoggerForMigratingLHVolumeAttachment(logger logrus.FieldLogger, va *longhorn.VolumeAttachment,
+	vol *longhorn.Volume) *logrus.Entry {
+	return getLoggerForLHVolumeAttachment(logger, va).WithFields(
+		logrus.Fields{
+			"nodeID":                 vol.Spec.NodeID,
+			"currentNodeID":          vol.Status.CurrentNodeID,
+			"migrationNodeID":        vol.Spec.MigrationNodeID,
+			"currentMigrationNodeID": vol.Status.CurrentMigrationNodeID,
 		},
 	)
 }
