@@ -118,19 +118,6 @@ func NewShareManagerController(
 	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.PodInformer.HasSynced)
 
-	// we are only interested in leases that apply to share-manager pods.
-	if _, err = ds.LeaseInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
-		FilterFunc: isShareManagerLease,
-		Handler: cache.ResourceEventHandlerFuncs{
-			AddFunc:    c.enqueueShareManagerForLease,
-			UpdateFunc: func(old, cur interface{}) { c.enqueueShareManagerForLease(cur) },
-			DeleteFunc: c.enqueueShareManagerForLease,
-		},
-	}, 0); err != nil {
-		return nil, err
-	}
-	c.cacheSyncs = append(c.cacheSyncs, ds.PodInformer.HasSynced)
-
 	return c, nil
 }
 
@@ -231,31 +218,7 @@ func isShareManagerPod(obj interface{}) bool {
 	return false
 }
 
-func (c *ShareManagerController) enqueueShareManagerForLease(obj interface{}) {
-	lease, isLease := obj.(*coordinationv1.Lease)
-	if !isLease {
-		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
-			return
-		}
-
-		// use the last known state, to enqueue the ShareManager
-		lease, ok = deletedState.Obj.(*coordinationv1.Lease)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained non Lease object: %#v", deletedState.Obj))
-			return
-		}
-	}
-
-	// we can queue the key directly since a share manager only manages leases from its own namespace
-	// and there is no need for us to retrieve the whole object, since the share manager name is stored in the label
-	smName := lease.Labels[types.GetLonghornLabelKey(types.LonghornLabelShareManager)]
-	key := lease.Namespace + "/" + smName
-	duration := time.Duration(*lease.Spec.LeaseDurationSeconds+1) * time.Second
-	c.queue.AddAfter(key, duration)
-}
-
+/***
 func isShareManagerLease(obj interface{}) bool {
 	lease, ok := obj.(*coordinationv1.Lease)
 	if !ok {
@@ -274,6 +237,43 @@ func isShareManagerLease(obj interface{}) bool {
 	smName := lease.Labels[types.GetLonghornLabelKey(types.LonghornLabelShareManager)]
 	return smName != ""
 }
+***/
+
+func (c *ShareManagerController) checkLeasesAndEnqueueAnyStale() error {
+	sms, err := c.ds.ListShareManagersRO()
+	if err != nil {
+		return err
+	}
+	for _, sm := range sms {
+		isStale, _, err := c.isShareManagerPodStale(sm)
+		if err != nil {
+			return err
+		}
+		if isStale {
+			c.enqueueShareManager(sm)
+		}
+	}
+
+	return nil
+}
+
+func (c *ShareManagerController) runLeaseCheck(stopCh <-chan struct{}) {
+	c.logger.Infof("Starting lease check goroutine")
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-stopCh:
+			c.logger.Info("Share manager lease check is ending")
+			return
+		case <-ticker.C:
+			if err := c.checkLeasesAndEnqueueAnyStale(); err != nil {
+				c.logger.WithError(err).Warn("Failed to check share-manager leases.")
+			}
+		}
+	}
+}
 
 func (c *ShareManagerController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
@@ -288,6 +288,7 @@ func (c *ShareManagerController) Run(workers int, stopCh <-chan struct{}) {
 	for i := 0; i < workers; i++ {
 		go wait.Until(c.worker, time.Second, stopCh)
 	}
+	go c.runLeaseCheck(stopCh)
 	<-stopCh
 }
 
@@ -822,7 +823,7 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 
 		if sm.Status.State != longhorn.ShareManagerStateStopped {
 			log.Info("Updating share manager to stopping state")
-			sm.Status.State = longhorn.ShareManagerStateStopping
+			sm.Status.State = longhorn.ShareManagerStateError
 		}
 
 		return nil

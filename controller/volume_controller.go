@@ -4070,12 +4070,12 @@ func (c *VolumeController) isResponsibleFor(v *longhorn.Volume, defaultEngineIma
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
-	// If there is a share manager and it has an owner, we should use that too.
+	// If there is a share manager pod and it has an owner, we should use that too.
 	if isRegularRWXVolume(v) {
 		if isDelinquent, _ := c.ds.IsNodeDelinquent(v.Status.OwnerID); isDelinquent {
-			sm, err := c.ds.GetShareManager(v.Name)
-			if err == nil && sm != nil {
-				return c.controllerID == sm.Status.OwnerID, nil
+			pod, err := c.ds.GetPodRO(v.Namespace, types.GetShareManagerPodNameFromShareManagerName(v.Name))
+			if err == nil && pod != nil {
+				return c.controllerID == pod.Spec.NodeName, nil
 			}
 		}
 	}

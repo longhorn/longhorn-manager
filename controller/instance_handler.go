@@ -57,7 +57,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	}()
 
 	isDelinquent, _ := h.ds.IsNodeDelinquent(spec.NodeID)
-	if im == nil || im.Status.CurrentState == longhorn.InstanceManagerStateUnknown || isDelinquent {
+	if im == nil || im.Status.CurrentState == longhorn.InstanceManagerStateUnknown {
 		if status.Started {
 			if status.CurrentState != longhorn.InstanceStateUnknown {
 				logrus.Warnf("Marking the instance as state UNKNOWN since the related node %v of instance %v is down or deleted", spec.NodeID, instanceName)
@@ -77,7 +77,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	if im.Status.CurrentState == longhorn.InstanceManagerStateStopped ||
 		im.Status.CurrentState == longhorn.InstanceManagerStateError ||
 		im.DeletionTimestamp != nil {
-		if status.Started {
+		if status.Started || isDelinquent {
 			if status.CurrentState != longhorn.InstanceStateError {
 				logrus.Warnf("Marking the instance as state ERROR since failed to find the instance manager for the running instance %v", instanceName)
 			}

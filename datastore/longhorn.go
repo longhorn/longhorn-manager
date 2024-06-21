@@ -3657,6 +3657,10 @@ func (s *DataStore) ListShareManagers() (map[string]*longhorn.ShareManager, erro
 	return itemMap, nil
 }
 
+func (s *DataStore) ListShareManagersRO() ([]*longhorn.ShareManager, error) {
+	return s.shareManagerLister.ShareManagers(s.namespace).List(labels.Everything())
+}
+
 // CreateBackupTarget creates a Longhorn BackupTargets CR and verifies creation
 func (s *DataStore) CreateBackupTarget(backupTarget *longhorn.BackupTarget) (*longhorn.BackupTarget, error) {
 	ret, err := s.lhClient.LonghornV1beta2().BackupTargets(s.namespace).Create(context.TODO(), backupTarget, metav1.CreateOptions{})

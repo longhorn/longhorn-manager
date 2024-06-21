@@ -605,6 +605,8 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 		isDelinquent, _ := ec.ds.IsNodeDelinquent(im.Spec.NodeID)
 		if isDelinquent {
 			log.Infof("Skipping deleting RWX engine %v since IM node %v is delinquent", e.Name, im.Spec.NodeID)
+			e.Spec.NodeID = ""
+			log.Infof("Clearing delinquent nodeID for RWX engine %v", e.Name)
 			return nil
 		}
 	}
@@ -2198,13 +2200,14 @@ func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineIm
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
-	// If there is a share manager for this and it has an owner, engine should use that too.
+	// If there is a share manager pod for this and it has an owner, engine should use that too.
 	// TODO - will we need to fiddle with image availability and all that?
 	if isRWX, _ := ec.ds.IsRegularRWXVolume(e.Spec.VolumeName); isRWX {
 		if isDelinquent, _ := ec.ds.IsNodeDelinquent(e.Status.OwnerID); isDelinquent {
-			sm, err := ec.ds.GetShareManager(e.Spec.VolumeName)
-			if err == nil && sm != nil {
-				return ec.controllerID == sm.Status.OwnerID, nil
+			pod, err := ec.ds.GetPodRO(e.Namespace, types.GetShareManagerPodNameFromShareManagerName(e.Spec.VolumeName))
+			if err == nil && pod != nil {
+				return ec.controllerID == pod.Spec.NodeName, nil
+
 			}
 		}
 	}

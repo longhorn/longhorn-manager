@@ -265,6 +265,12 @@ func (s *DataStore) GetLease(name string) (*coordinationv1.Lease, error) {
 	return resultRO.DeepCopy(), nil
 }
 
+// ListLeasesRO returns a list of all Leases for the given namespace,
+// the list contains direct references to the internal cache objects and should not be mutated.
+func (s *DataStore) ListLeasesRO() ([]*coordinationv1.Lease, error) {
+	return s.leaseLister.Leases(s.namespace).List(labels.Everything())
+}
+
 // DeleteLease deletes Lease with the given name in s.namespace
 func (s *DataStore) DeleteLease(name string) error {
 	return s.kubeClient.CoordinationV1().Leases(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
