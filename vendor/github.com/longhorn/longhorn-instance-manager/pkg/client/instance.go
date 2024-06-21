@@ -430,13 +430,9 @@ func (c *InstanceServiceClient) InstanceSwitchOverTarget(dataEngine, name, insta
 }
 
 // InstanceDeleteTarget delete target for an instance.
-func (c *InstanceServiceClient) InstanceDeleteTarget(dataEngine, name, instanceType, targetAddress string) error {
+func (c *InstanceServiceClient) InstanceDeleteTarget(dataEngine, name, instanceType string) error {
 	if name == "" {
 		return fmt.Errorf("failed to delete target for instance: missing required parameter name")
-	}
-
-	if targetAddress == "" {
-		return fmt.Errorf("failed to delete target for instance: missing required parameter target address")
 	}
 
 	driver, ok := rpc.DataEngine_value[getDataEngine(dataEngine)]
