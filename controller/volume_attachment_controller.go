@@ -436,6 +436,11 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationConfirmation(va *lon
 		return
 	}
 
+	if !vac.isVolumeAvailableOnNode(vol.Name, vol.Status.CurrentMigrationNodeID) {
+		log.Warn("Waiting to confirm migration until migration engine is ready")
+		return
+	}
+
 	migratingEngineSnapSynced, err := vac.checkMigratingEngineSyncSnapshots(va, vol)
 	if err != nil {
 		log.WithError(err).Warn("Failed to check migrating engine snapshot status")
