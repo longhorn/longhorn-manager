@@ -1217,8 +1217,8 @@ github.com/kubernetes-csi/csi-lib-utils v0.6.1 h1:+AZ58SRSRWh2vmMoWAAGcv7x6fIyBM
 github.com/kubernetes-csi/csi-lib-utils v0.6.1/go.mod h1:GVmlUmxZ+SUjVLXicRFjqWUUvWez0g0Y78zNV9t7KfQ=
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de h1:9TO3cAIGXtEhnIaL+V+BEER86oLrvS+kWobKpbJuye0=
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de/go.mod h1:zAbeS9B/r2mtpb6U+EI2rYA5OAXxsYw6wTamcNW+zcE=
-github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240617135250-2ab49b9fce28 h1:xZSNJvslBqMq1SC5OpLgMO9szKb1u7fL3F6jme3YTJk=
-github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240617135250-2ab49b9fce28/go.mod h1:n4gokpvajg2NOz39tE1JQAmbT/72Z69i5tEQNoXHs/o=
+github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240622050737-f687eb6a1581 h1:QaK502qIyDmD1TFpIfhOjacaHYIJGVSSGHc5icwM9xI=
+github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240622050737-f687eb6a1581/go.mod h1:n4gokpvajg2NOz39tE1JQAmbT/72Z69i5tEQNoXHs/o=
 github.com/longhorn/backupstore v0.0.0-20240616091913-84428641a11d h1:N5xR9QHU1vbhhfUij+hEOWd5OaQOTD/Jml0jC4vlVqI=
 github.com/longhorn/backupstore v0.0.0-20240616091913-84428641a11d/go.mod h1:LxuU2n2baZOWFPE9modv3mYOjpFfD9AT7KPoWehCpk4=
 github.com/longhorn/go-common-libs v0.0.0-20240616051056-103c7d62a0d5 h1:Ljroa7ftGJQsu38xoUlRVqZpfpkoIdrpzLM2/Qov/Vw=
