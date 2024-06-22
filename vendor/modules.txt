@@ -223,7 +223,7 @@ github.com/kubernetes-csi/csi-lib-utils/protosanitizer
 # github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de
 ## explicit
 github.com/liggitt/tabwriter
-# github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240617135250-2ab49b9fce28
+# github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240622050737-f687eb6a1581
 ## explicit; go 1.22
 github.com/longhorn/backing-image-manager/api
 github.com/longhorn/backing-image-manager/pkg/client
