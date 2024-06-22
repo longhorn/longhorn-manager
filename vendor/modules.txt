@@ -223,7 +223,7 @@ github.com/kubernetes-csi/csi-lib-utils/protosanitizer
 # github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de
 ## explicit
 github.com/liggitt/tabwriter
-# github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240615050238-281783071d09
+# github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240617135250-2ab49b9fce28
 ## explicit; go 1.22
 github.com/longhorn/backing-image-manager/api
 github.com/longhorn/backing-image-manager/pkg/client
@@ -267,18 +267,18 @@ github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240618060929-d4d04d339470
+# github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240618065415-23380ad90d25
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
 github.com/longhorn/longhorn-instance-manager/pkg/meta
 github.com/longhorn/longhorn-instance-manager/pkg/types
 github.com/longhorn/longhorn-instance-manager/pkg/util
-# github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240616074346-1b1e052b2251
+# github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240617134023-383540409dcb
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/types v0.0.0-20240612122407-553c71ad6514
+# github.com/longhorn/types v0.0.0-20240617161402-fd4694118e17
 ## explicit; go 1.21
 github.com/longhorn/types/pkg/generated/bimrpc
 github.com/longhorn/types/pkg/generated/enginerpc
