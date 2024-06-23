@@ -14,7 +14,7 @@ COPY package/bin/longhorn-manager-${ARCH} /usr/local/sbin/longhorn-manager
 
 COPY package/launch-manager package/nsmounter /usr/local/sbin/
 
-RUN zypper -n install iputils iproute2 nfs-client cifs-utils bind-utils e2fsprogs xfsprogs zip unzip && \
+RUN zypper update -y && zypper -n install iputils iproute2 nfs-client cifs-utils bind-utils e2fsprogs xfsprogs zip unzip && \
     rm -rf /var/cache/zypp/*
 
 VOLUME /usr/local/sbin

@@ -9,9 +9,9 @@ TAG=${TAG:-${IMAGE_TAG_PREFIX}}
 REPO=${REPO:-longhornio}
 IMAGE=${IMAGE:-${REPO}/longhorn-manager:${TAG}}
 
-if [ ! -e ./bin/longhorn-manager ]; then
-    ./scripts/build
-fi
+#if [ ! -e ./bin/longhorn-manager ]; then
+#    ./scripts/build
+#fi
 
 cp -r bin package/
 
