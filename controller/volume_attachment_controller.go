@@ -436,6 +436,26 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationConfirmation(va *lon
 		return
 	}
 
+	// This is not technically a confirmation. However, there is no good reason to allow the volume to remain attached
+	// under these conditions.
+	// - Kubernetes does not want it attached to the old node.
+	// - We can't get a migration engine up on the new down node.
+	// Stop the migration and detach from the old node. If the upper layer changes nothing and the new node comes back,
+	// the volume can exclusively attach to it.
+	if downOrDeleted, err := vac.ds.IsNodeDownOrDeleted(vol.Status.CurrentMigrationNodeID); err != nil {
+		log.WithError(err).Warn("Failed to check if node is down")
+	} else if downOrDeleted {
+		vol.Spec.NodeID = ""
+		vol.Spec.MigrationNodeID = ""
+		log = getLoggerForMigratingLHVolumeAttachment(vac.logger, va, vol)
+		log.Warn("Detaching volume for attempted migration to down node")
+		return
+	}
+	// We can consider a similar optimization for the case in which the old node is down. However, in that case, the
+	// situation is eventually resolved when Longhorn realizes the old engine is no longer running (we have to wait
+	// until Kubernetes tries to evict its instance-manager). Then, the volume becomes detached automatically and the
+	// migration ends. For now, the existing behavior seems safest.
+
 	if !vac.isVolumeAvailableOnNode(vol.Name, vol.Status.CurrentMigrationNodeID) {
 		log.Warn("Waiting to confirm migration until migration engine is ready")
 		return
