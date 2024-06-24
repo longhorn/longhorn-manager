@@ -186,14 +186,17 @@ func NewEngineController(
 	}
 	ec.cacheSyncs = append(ec.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
 
-	if _, err = ds.ShareManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
-		AddFunc:    ec.enqueueShareManagerChange,
-		UpdateFunc: func(old, cur interface{}) { ec.enqueueShareManagerChange(cur) },
-		DeleteFunc: ec.enqueueShareManagerChange,
+	if _, err = ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+		FilterFunc: isShareManagerPod,
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc:    ec.enqueueShareManagerPodChange,
+			UpdateFunc: func(old, cur interface{}) { ec.enqueueShareManagerPodChange(cur) },
+			DeleteFunc: ec.enqueueShareManagerPodChange,
+		},
 	}, 0); err != nil {
 		return nil, err
 	}
-	ec.cacheSyncs = append(ec.cacheSyncs, ds.ShareManagerInformer.HasSynced)
+	ec.cacheSyncs = append(ec.cacheSyncs, ds.PodInformer.HasSynced)
 
 	return ec, nil
 }
@@ -452,9 +455,9 @@ func (ec *EngineController) enqueueInstanceManagerChange(obj interface{}) {
 	}
 }
 
-func (ec *EngineController) enqueueShareManagerChange(obj interface{}) {
-	sm, isShareManager := obj.(*longhorn.ShareManager)
-	if !isShareManager {
+func (ec *EngineController) enqueueShareManagerPodChange(obj interface{}) {
+	pod, isPod := obj.(*corev1.Pod)
+	if !isPod {
 		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
@@ -462,14 +465,16 @@ func (ec *EngineController) enqueueShareManagerChange(obj interface{}) {
 		}
 
 		// use the last known state, to enqueue, dependent objects
-		sm, ok = deletedState.Obj.(*longhorn.ShareManager)
+		pod, ok = deletedState.Obj.(*corev1.Pod)
 		if !ok {
-			utilruntime.HandleError(fmt.Errorf("cannot convert DeletedFinalStateUnknown to ShareManager object: %#v", deletedState.Obj))
+			utilruntime.HandleError(fmt.Errorf("cannot convert DeletedFinalStateUnknown to ShareManager Pod object: %#v", deletedState.Obj))
 			return
 		}
 	}
 
 	engineMap := map[string]*longhorn.Engine{}
+
+	smName := pod.Labels[types.GetLonghornLabelKey(types.LonghornLabelShareManager)]
 
 	es, err := ec.ds.ListEnginesRO()
 	if err != nil {
@@ -477,7 +482,7 @@ func (ec *EngineController) enqueueShareManagerChange(obj interface{}) {
 	}
 	for _, e := range es {
 		// Volume name is the same as share manager name.
-		if e.Spec.VolumeName == sm.Name {
+		if e.Spec.VolumeName == smName {
 			engineMap[e.Name] = e
 		}
 	}
