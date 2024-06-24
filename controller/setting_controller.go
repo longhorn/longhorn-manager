@@ -18,6 +18,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -135,7 +136,7 @@ func NewSettingController(
 
 	ds.SettingInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.enqueueSetting,
-		UpdateFunc: func(old, cur interface{}) { sc.enqueueSetting(cur) },
+		UpdateFunc: func(old, cur interface{}) { sc.enqueueUpdateSetting(old, cur) },
 		DeleteFunc: sc.enqueueSetting,
 	}, settingControllerResyncPeriod)
 	sc.cacheSyncs = append(sc.cacheSyncs, ds.SettingInformer.HasSynced)
@@ -261,6 +262,10 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 		}
 	case string(types.SettingNameV2DataEngine):
 		if err := sc.updateV2DataEngine(); err != nil {
+			return err
+		}
+	case string(types.SettingNameDefaultLonghornStaticStorageClass):
+		if err := sc.syncDefaultLonghornStaticStorageClass(); err != nil {
 			return err
 		}
 	default:
@@ -813,6 +818,34 @@ func (sc *SettingController) updateLogLevel() error {
 	return nil
 }
 
+func (sc *SettingController) syncDefaultLonghornStaticStorageClass() error {
+	setting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameDefaultLonghornStaticStorageClass)
+	if err != nil {
+		return err
+	}
+
+	defaultStaticStorageClassName := setting.Value
+	_, err = sc.ds.GetStorageClassRO(defaultStaticStorageClassName)
+	if err != nil && apierrors.IsNotFound(err) {
+		allowVolumeExpansion := true
+		storageClass := &storagev1.StorageClass{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: defaultStaticStorageClassName,
+			},
+			Provisioner:          types.LonghornDriverName,
+			AllowVolumeExpansion: &allowVolumeExpansion,
+			Parameters:           map[string]string{"staleReplicaTimeout": "30"},
+		}
+
+		if _, err := sc.ds.CreateStorageClass(storageClass); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	return err
+}
+
 func (sc *SettingController) updateV2DataEngine() error {
 	v2DataEngineEnabled, err := sc.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
 	if err != nil {
@@ -1111,6 +1144,31 @@ func (sc *SettingController) enqueueSetting(obj interface{}) {
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("failed to get key for object %#v: %v", obj, err))
 		return
+	}
+
+	sc.queue.Add(key)
+}
+
+func (sc *SettingController) enqueueUpdateSetting(oldObj, newObj interface{}) {
+	key, err := controller.KeyFunc(newObj)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to get key for object %#v: %v", newObj, err))
+		return
+	}
+
+	oldSetting := oldObj.(*longhorn.Setting)
+	if oldSetting.Name == string(types.SettingNameDefaultLonghornStaticStorageClass) {
+		_, err := sc.ds.GetStorageClassRO(oldSetting.Value)
+		if err == nil {
+			if err := sc.ds.DeleteStorageClass(oldSetting.Value); err != nil {
+				utilruntime.HandleError(fmt.Errorf("failed to delete old %v for object %#v: %v", types.SettingNameDefaultLonghornStaticStorageClass, oldObj, err))
+				return
+			}
+		}
+		if err != nil && !apierrors.IsNotFound(err) {
+			utilruntime.HandleError(fmt.Errorf("failed to get old %v for object %#v: %v", types.SettingNameDefaultLonghornStaticStorageClass, oldObj, err))
+			return
+		}
 	}
 
 	sc.queue.Add(key)
