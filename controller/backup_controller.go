@@ -317,6 +317,31 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			bc.eventRecorder.Eventf(backup, corev1.EventTypeWarning, string(backup.Status.State), "Failed backup %s has been deleted: %s", backup.Name, backup.Status.Error)
 		}
 
+		autocleanup, err := bc.ds.GetSettingAsBool(types.SettingNameAutoCleanupSnapshotWhenDeleteBackup)
+		if err != nil {
+			logrus.WithError(err).WithFields(logrus.Fields{
+				"name": types.SettingNameAutoCleanupSnapshotWhenDeleteBackup,
+			}).Warn("Failed to get the setting")
+		}
+		if autocleanup {
+			// do the best effort to delete the snapshot
+			snapshot, err := bc.ds.GetSnapshotRO(backup.Spec.SnapshotName)
+			if err != nil {
+				if !apierrors.IsNotFound(err) {
+					logrus.WithError(err).WithFields(logrus.Fields{
+						"backup":   backup.Name,
+						"snapshot": snapshot.Name,
+					}).Warn("Failed to get snapshot")
+				}
+				return nil
+			}
+			if err = bc.ds.DeleteSnapshot(snapshot.Name); err != nil {
+				logrus.WithError(err).WithFields(logrus.Fields{
+					"backup":   backup.Name,
+					"snapshot": snapshot.Name,
+				}).Warn("Failed to delete snapshot")
+			}
+		}
 		return bc.ds.RemoveFinalizerForBackup(backup)
 	}
 

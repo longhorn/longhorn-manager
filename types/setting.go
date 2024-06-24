@@ -131,6 +131,7 @@ const (
 	SettingNameV2DataEngineLogLevel                                     = SettingName("v2-data-engine-log-level")
 	SettingNameV2DataEngineLogFlags                                     = SettingName("v2-data-engine-log-flags")
 	SettingNameFreezeFilesystemForSnapshot                              = SettingName("freeze-filesystem-for-snapshot")
+	SettingNameAutoCleanupSnapshotWhenDeleteBackup                      = SettingName("auto-cleanup-when-delete-backup")
 )
 
 var (
@@ -218,6 +219,7 @@ var (
 		SettingNameAllowEmptyDiskSelectorVolume,
 		SettingNameDisableSnapshotPurge,
 		SettingNameFreezeFilesystemForSnapshot,
+		SettingNameAutoCleanupSnapshotWhenDeleteBackup,
 	}
 )
 
@@ -333,6 +335,7 @@ var (
 		SettingNameAllowEmptyDiskSelectorVolume:                             SettingDefinitionAllowEmptyDiskSelectorVolume,
 		SettingNameDisableSnapshotPurge:                                     SettingDefinitionDisableSnapshotPurge,
 		SettingNameFreezeFilesystemForSnapshot:                              SettingDefinitionFreezeFilesystemForSnapshot,
+		SettingNameAutoCleanupSnapshotWhenDeleteBackup:                      SettingDefinitionAutoCleanupSnapshotWhenDeleteBackup,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -1398,6 +1401,16 @@ var (
 		Required:    false,
 		ReadOnly:    false,
 		Default:     "",
+	}
+
+	SettingDefinitionAutoCleanupSnapshotWhenDeleteBackup = SettingDefinition{
+		DisplayName: "Automatically Cleanup Snapshot When Deleting Backup",
+		Description: "This setting enables Longhorn to automatically cleanup snapshots when removing backup.",
+		Category:    SettingCategorySnapshot,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "false",
 	}
 )
 
