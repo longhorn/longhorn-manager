@@ -151,23 +151,30 @@ func startManager(c *cli.Context) error {
 	// Conversion webhook needs to be started first since we use its port 9501 as readiness port.
 	// longhorn-manager pod becomes ready only when conversion webhook is running.
 	// The services in the longhorn-manager can then start to receive the requests.
-	// Conversion webhook does not longhorn datastore.
+	// Conversion webhook does not need or use longhorn datastore.
 	clientsWithoutDatastore, err := client.NewClients(kubeconfigPath, false, ctx.Done())
 	if err != nil {
 		return err
 	}
+	clients, err := client.NewClients(kubeconfigPath, true, ctx.Done())
+	if err != nil {
+		return err
+	}
+
 	if err := webhook.StartWebhook(ctx, types.WebhookTypeConversion, clientsWithoutDatastore); err != nil {
+		return err
+	}
+	if err := clients.Datastore.AddLabelToManagerPod(currentNodeID, types.GetConversionWebhookLabel()); err != nil {
 		return err
 	}
 	if err := webhook.CheckWebhookServiceAvailability(types.WebhookTypeConversion); err != nil {
 		return err
 	}
 
-	clients, err := client.NewClients(kubeconfigPath, true, ctx.Done())
-	if err != nil {
+	if err := webhook.StartWebhook(ctx, types.WebhookTypeAdmission, clients); err != nil {
 		return err
 	}
-	if err := webhook.StartWebhook(ctx, types.WebhookTypeAdmission, clients); err != nil {
+	if err := clients.Datastore.AddLabelToManagerPod(currentNodeID, types.GetAdmissionWebhookLabel()); err != nil {
 		return err
 	}
 	if err := webhook.CheckWebhookServiceAvailability(types.WebhookTypeAdmission); err != nil {
@@ -209,7 +216,7 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
-	if err := initDaemonNode(clients.Datastore); err != nil {
+	if err := initDaemonNode(clients.Datastore, currentNodeID); err != nil {
 		return err
 	}
 
@@ -284,8 +291,7 @@ func updateRegistrySecretName(m *manager.VolumeManager) error {
 	return nil
 }
 
-func initDaemonNode(ds *datastore.DataStore) error {
-	nodeName := os.Getenv("NODE_NAME")
+func initDaemonNode(ds *datastore.DataStore, nodeName string) error {
 	if _, err := ds.GetNode(nodeName); err != nil {
 		// init default disk on node when starting longhorn-manager
 		if datastore.ErrorIsNotFound(err) {
