@@ -10,7 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"go.uber.org/multierr"
 
-	lhutils "github.com/longhorn/go-common-libs/utils"
+	lhlonghorn "github.com/longhorn/go-common-libs/longhorn"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
 	immeta "github.com/longhorn/longhorn-instance-manager/pkg/meta"
@@ -321,7 +321,7 @@ func getTypeForInstance(instanceType longhorn.InstanceType, name string) longhor
 		return instanceType
 	}
 
-	if lhutils.IsEngineProcess(name) {
+	if lhlonghorn.IsEngineProcess(name) {
 		return longhorn.InstanceTypeEngine
 	}
 
