@@ -430,7 +430,11 @@ func (m *VolumeManager) triggerBackupVolumeToSync(volume *longhorn.Volume) error
 		return errors.Errorf("cannot find the backup volume label for volume: %v", volume.Name)
 	}
 
-	backupVolume, err := m.ds.GetBackupVolume(backupVolumeName)
+	backupTargetName, exists := volume.Labels[types.LonghornLabelBackupTarget]
+	if !exists || backupVolumeName == "" {
+		return errors.Errorf("cannot find the backup target label for volume: %v", volume.Name)
+	}
+	backupVolume, err := m.ds.GetBackupVolumeByCRLabel(backupVolumeName + "-" + backupTargetName)
 	if err != nil {
 		// The backup volume may be deleted already.
 		// hence it's better not to block the caller to continue the handlings like DR volume activation.
@@ -438,12 +442,12 @@ func (m *VolumeManager) triggerBackupVolumeToSync(volume *longhorn.Volume) error
 			logrus.Infof("Cannot find backup volume %v to trigger the sync-up, will skip it", backupVolumeName)
 			return nil
 		}
-		return errors.Wrapf(err, "failed to get backup volume: %v", backupVolumeName)
+		return errors.Wrapf(err, "failed to get backup volume: %v", backupVolumeName+"-"+backupTargetName)
 	}
 	requestSyncTime := metav1.Time{Time: time.Now().UTC()}
 	backupVolume.Spec.SyncRequestedAt = requestSyncTime
 	if _, err = m.ds.UpdateBackupVolume(backupVolume); err != nil {
-		return errors.Wrapf(err, "failed to update backup volume: %v", backupVolumeName)
+		return errors.Wrapf(err, "failed to update backup volume: %v", backupVolume.Name)
 	}
 
 	return nil

@@ -10,6 +10,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
@@ -252,7 +253,7 @@ func (m *VolumeManager) PurgeSnapshot(volumeName string) error {
 	return nil
 }
 
-func (m *VolumeManager) BackupSnapshot(backupName, volumeName, snapshotName string, labels map[string]string) error {
+func (m *VolumeManager) BackupSnapshot(backupName, volumeName, snapshotName, backupTargetName string, labels map[string]string) error {
 	if volumeName == "" || snapshotName == "" {
 		return fmt.Errorf("volume and snapshot name required")
 	}
@@ -266,8 +267,9 @@ func (m *VolumeManager) BackupSnapshot(backupName, volumeName, snapshotName stri
 			Name: backupName,
 		},
 		Spec: longhorn.BackupSpec{
-			SnapshotName: snapshotName,
-			Labels:       labels,
+			SnapshotName:     snapshotName,
+			Labels:           labels,
+			BackupTargetName: backupTargetName,
 		},
 	}
 	_, err := m.ds.CreateBackup(backupCR, volumeName)
@@ -321,7 +323,7 @@ func (m *VolumeManager) GetRunningEngineByVolume(name string) (e *longhorn.Engin
 }
 
 func (m *VolumeManager) ListBackupTargetsSorted() ([]*longhorn.BackupTarget, error) {
-	backupTargetMap, err := m.ds.ListBackupTargets()
+	backupTargetMap, err := m.ds.ListBackupTargetsRO()
 	if err != nil {
 		return []*longhorn.BackupTarget{}, err
 	}
@@ -337,7 +339,66 @@ func (m *VolumeManager) ListBackupTargetsSorted() ([]*longhorn.BackupTarget, err
 }
 
 func (m *VolumeManager) GetBackupTarget(backupTargetName string) (*longhorn.BackupTarget, error) {
-	return m.ds.GetBackupTarget(backupTargetName)
+	backupTarget, err := m.ds.GetBackupTargetRO(backupTargetName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			// If the BackupTarget CR is not found, return succeeded result
+
+			return &longhorn.BackupTarget{ObjectMeta: metav1.ObjectMeta{Name: backupTargetName}}, nil
+		}
+		return nil, err
+	}
+	return backupTarget, nil
+}
+
+func (m *VolumeManager) CreateBackupTarget(backupTargetName string, backupTargetSpec *longhorn.BackupTargetSpec) (*longhorn.BackupTarget, error) {
+	backupTarget, err := m.ds.GetBackupTarget(backupTargetName)
+	if err != nil {
+		if !datastore.ErrorIsNotFound(err) {
+			return nil, err
+		}
+
+		// Create the default BackupTarget CR if not present
+		backupTarget, err = m.ds.CreateBackupTarget(&longhorn.BackupTarget{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: backupTargetName,
+			},
+			Spec: *backupTargetSpec,
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return backupTarget, nil
+}
+
+func (m *VolumeManager) UpdateBackupTarget(backupTargetName string, backupTargetSpec *longhorn.BackupTargetSpec) (*longhorn.BackupTarget, error) {
+	existingBackupTarget, err := m.ds.GetBackupTarget(backupTargetName)
+	if err != nil {
+		return nil, err
+	}
+
+	if existingBackupTarget.Spec.Default && !backupTargetSpec.Default {
+		return nil, fmt.Errorf("prohibit disabling a default backup target directly")
+	}
+
+	if backupTargetSpec.BackupTargetURL != existingBackupTarget.Spec.BackupTargetURL ||
+		backupTargetSpec.CredentialSecret != existingBackupTarget.Spec.CredentialSecret ||
+		backupTargetSpec.Default != existingBackupTarget.Spec.Default ||
+		backupTargetSpec.PollInterval != existingBackupTarget.Spec.PollInterval ||
+		backupTargetSpec.ReadOnly != existingBackupTarget.Spec.ReadOnly {
+		existingBackupTarget.Spec.BackupTargetURL = backupTargetSpec.BackupTargetURL
+		existingBackupTarget.Spec.CredentialSecret = backupTargetSpec.CredentialSecret
+		existingBackupTarget.Spec.Default = backupTargetSpec.Default
+		existingBackupTarget.Spec.PollInterval = backupTargetSpec.PollInterval
+		existingBackupTarget.Spec.ReadOnly = backupTargetSpec.ReadOnly
+		existingBackupTarget, err = m.ds.UpdateBackupTarget(existingBackupTarget)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to update backup target spec")
+		}
+	}
+
+	return existingBackupTarget, nil
 }
 
 func (m *VolumeManager) SyncBackupTarget(backupTarget *longhorn.BackupTarget) (*longhorn.BackupTarget, error) {
@@ -347,6 +408,10 @@ func (m *VolumeManager) SyncBackupTarget(backupTarget *longhorn.BackupTarget) (*
 	}
 	backupTarget.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
 	return m.ds.UpdateBackupTarget(backupTarget)
+}
+
+func (m *VolumeManager) DeleteBackupTarget(backupTargetName string) error {
+	return m.ds.DeleteBackupTarget(backupTargetName)
 }
 
 func (m *VolumeManager) ListBackupVolumes() (map[string]*longhorn.BackupVolume, error) {
@@ -413,12 +478,15 @@ func (m *VolumeManager) ListAllBackupsSorted() ([]*longhorn.Backup, error) {
 	return backups, nil
 }
 
-func (m *VolumeManager) ListBackupsForVolume(volumeName string) (map[string]*longhorn.Backup, error) {
-	return m.ds.ListBackupsWithBackupVolumeName(volumeName)
+func (m *VolumeManager) ListBackupsForVolume(volumeName string, isBVName bool) (map[string]*longhorn.Backup, error) {
+	if isBVName {
+		return m.ds.ListBackupsWithBackupVolumeNameRO(volumeName)
+	}
+	return m.ds.ListBackupsWithVolumeName(volumeName)
 }
 
-func (m *VolumeManager) ListBackupsForVolumeSorted(volumeName string) ([]*longhorn.Backup, error) {
-	backupMap, err := m.ListBackupsForVolume(volumeName)
+func (m *VolumeManager) ListBackupsForVolumeSorted(volumeName string, isBVName bool) ([]*longhorn.Backup, error) {
+	backupMap, err := m.ListBackupsForVolume(volumeName, isBVName)
 	if err != nil {
 		return []*longhorn.Backup{}, err
 	}

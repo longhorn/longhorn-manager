@@ -251,17 +251,16 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 
 	log := getLoggerForBackup(bc.logger, backup)
 
-	// Get default backup target
-	backupTarget, err := bc.ds.GetBackupTargetRO(types.DefaultBackupTargetName)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return errors.Wrapf(err, "failed to get the backup target %v", types.DefaultBackupTargetName)
+	backupTarget, err := bc.ds.GetBackupTargetRO(backup.Spec.BackupTargetName)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return errors.Wrapf(err, "failed to get the backup target %v", backup.Spec.BackupTargetName)
+	}
+	if backupTarget == nil && backup.DeletionTimestamp == nil {
+		return fmt.Errorf("Failed to find the backup target %v for the backup %v", backup.Spec.BackupTargetName, backup.Name)
 	}
 
 	// Find the backup volume name from label
-	backupVolumeName, err := bc.getBackupVolumeName(backup)
+	volumeName, err := bc.getBackupVolumeName(backup)
 	if err != nil {
 		if types.ErrorIsNotFound(err) {
 			return nil // Ignore error to prevent enqueue
@@ -271,39 +270,38 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 
 	// Examine DeletionTimestamp to determine if object is under deletion
 	if !backup.DeletionTimestamp.IsZero() {
-		if err := bc.handleAttachmentTicketDeletion(backup, backupVolumeName); err != nil {
+		if err := bc.handleAttachmentTicketDeletion(backup, volumeName); err != nil {
 			return err
 		}
 
-		backupVolume, err := bc.ds.GetBackupVolume(backupVolumeName)
+		backupVolume, err := bc.ds.GetBackupVolumeByCRLabel(volumeName + "-" + backup.Spec.BackupTargetName)
 		if err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
 
-		if backupTarget.Spec.BackupTargetURL != "" &&
-			backupVolume != nil && backupVolume.DeletionTimestamp == nil {
+		if IsBackupTargetAvailable(backupTarget) && backupVolume != nil && backupVolume.DeletionTimestamp == nil {
 			backupTargetClient, err := newBackupTargetClientFromDefaultEngineImage(bc.ds, backupTarget)
 			if err != nil {
 				log.WithError(err).Warn("Failed to init backup target clients")
 				return nil // Ignore error to prevent enqueue
 			}
 
-			if unused, err := bc.isBackupNotBeingUsedForVolumeRestore(backup.Name, backupVolumeName); !unused {
+			if unused, err := bc.isBackupNotBeingUsedForVolumeRestore(backup.Name, volumeName); !unused {
 				log.WithError(err).Warn("Failed to delete remote backup")
 				return nil
 			}
 
-			backupURL := backupstore.EncodeBackupURL(backup.Name, backupVolumeName, backupTargetClient.URL)
+			backupURL := backupstore.EncodeBackupURL(backup.Name, volumeName, backupTargetClient.URL)
 			if err := backupTargetClient.BackupDelete(backupURL, backupTargetClient.Credential); err != nil {
 				return errors.Wrap(err, "failed to delete remote backup")
 			}
 		}
 
 		// Request backup_volume_controller to reconcile BackupVolume immediately if it's the last backup
-		if backupVolume != nil && backupVolume.Status.LastBackupName == backup.Name {
+		if backupVolume != nil && backupVolume.DeletionTimestamp == nil && backupVolume.Status.LastBackupName == backup.Name {
 			backupVolume.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
 			if _, err = bc.ds.UpdateBackupVolume(backupVolume); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				log.WithError(err).Errorf("Failed to update backup volume %s spec", backupVolumeName)
+				log.WithError(err).Errorf("Failed to update backup volume %s spec", backupVolume.Name)
 				// Do not return err to enqueue since backup_controller is responsible to
 				// reconcile Backup CR spec, waits the backup_volume_controller next reconcile time
 				// to update it's BackupVolume CR status
@@ -354,7 +352,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		}
 
 		if bc.backupInFinalState(backup) && (!backup.Status.LastSyncedAt.IsZero() || backup.Spec.SnapshotName == "") {
-			err = bc.handleAttachmentTicketDeletion(backup, backupVolumeName)
+			err = bc.handleAttachmentTicketDeletion(backup, volumeName)
 		}
 		if reflect.DeepEqual(existingBackup.Status, backup.Status) {
 			return
@@ -366,8 +364,8 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			return
 		}
 		if backup.Status.State == longhorn.BackupStateCompleted && existingBackupState != backup.Status.State {
-			if err := bc.syncBackupVolume(backupVolumeName); err != nil {
-				log.Warnf("failed to sync Backup Volume: %v", backupVolumeName)
+			if err := bc.syncBackupVolume(volumeName, backup.Spec.BackupTargetName); err != nil {
+				log.Warnf("failed to sync Backup Volume: %v", volumeName)
 				return
 			}
 		}
@@ -381,12 +379,12 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	// exists in the remote backup target before the CR creation.
 	// What the controller needs to do for this case is retrieve the info from the remote backup target.
 	if backup.Status.LastSyncedAt.IsZero() && backup.Spec.SnapshotName != "" && !bc.backupInFinalState(backup) {
-		volume, err := bc.ds.GetVolume(backupVolumeName)
+		volume, err := bc.ds.GetVolume(volumeName)
 		if err != nil {
 			if !apierrors.IsNotFound(err) {
 				return err
 			}
-			err = fmt.Errorf("Cannot find the corresponding volume: %v", err)
+			err = fmt.Errorf("cannot find the corresponding volume: %v", err)
 			log.WithError(err).Error()
 			backup.Status.Error = err.Error()
 			backup.Status.State = longhorn.BackupStateError
@@ -394,7 +392,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			return nil // Ignore error to prevent enqueue
 		}
 
-		if err := bc.handleAttachmentTicketCreation(backup, backupVolumeName); err != nil {
+		if err := bc.handleAttachmentTicketCreation(backup, volumeName); err != nil {
 			return err
 		}
 
@@ -402,7 +400,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			bc.syncBackupStatusWithSnapshotCreationTimeAndVolumeSize(volume, backup)
 		}
 
-		if err := bc.backupBackingImage(volume); err != nil {
+		if err := bc.backupBackingImage(volume, backup); err != nil {
 			return err
 		}
 
@@ -452,7 +450,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		return nil // Ignore error to prevent enqueue
 	}
 
-	backupURL := backupstore.EncodeBackupURL(backup.Name, backupVolumeName, backupTargetClient.URL)
+	backupURL := backupstore.EncodeBackupURL(backup.Name, volumeName, backupTargetClient.URL)
 	backupInfo, err := backupTargetClient.BackupGet(backupURL, backupTargetClient.Credential)
 	if err != nil {
 		if !strings.Contains(err.Error(), "in progress") {
@@ -640,7 +638,7 @@ func (bc *BackupController) validateBackingImageChecksum(volName, biName string)
 	return bi.Status.Checksum, nil
 }
 
-func (bc *BackupController) backupBackingImage(volume *longhorn.Volume) error {
+func (bc *BackupController) backupBackingImage(volume *longhorn.Volume, backup *longhorn.Backup) error {
 	if volume == nil {
 		return nil
 	}
@@ -669,7 +667,9 @@ func (bc *BackupController) backupBackingImage(volume *longhorn.Volume) error {
 				Name: biName,
 			},
 			Spec: longhorn.BackupBackingImageSpec{
-				UserCreated: true,
+				UserCreated:      true,
+				BackupTargetName: backup.Spec.BackupTargetName,
+				BackupTargetURL:  backup.Spec.BackupTargetURL,
 			},
 		}
 		if _, err = bc.ds.CreateBackupBackingImage(backupBackingImage); err != nil && !apierrors.IsAlreadyExists(err) {
@@ -808,9 +808,9 @@ func (bc *BackupController) syncWithMonitor(backup *longhorn.Backup, volume *lon
 
 // syncBackupVolume triggers the backup_volume_controller/backup_target_controller
 // to run reconcile immediately
-func (bc *BackupController) syncBackupVolume(volumeName string) error {
+func (bc *BackupController) syncBackupVolume(volumeName, backupTargetName string) error {
 	syncTime := metav1.Time{Time: time.Now().UTC()}
-	backupVolume, err := bc.ds.GetBackupVolume(volumeName)
+	backupVolume, err := bc.ds.GetBackupVolumeByCRLabel(volumeName + "-" + backupTargetName)
 	if err == nil {
 		// Request backup_volume_controller to reconcile BackupVolume immediately.
 		backupVolume.Spec.SyncRequestedAt = syncTime
@@ -819,7 +819,7 @@ func (bc *BackupController) syncBackupVolume(volumeName string) error {
 		}
 	} else if err != nil && apierrors.IsNotFound(err) {
 		// Request backup_target_controller to reconcile BackupTarget immediately.
-		backupTarget, err := bc.ds.GetBackupTarget(types.DefaultBackupTargetName)
+		backupTarget, err := bc.ds.GetBackupTarget(backupTargetName)
 		if err != nil {
 			return errors.Wrap(err, "failed to get backup target")
 		}

@@ -1457,7 +1457,7 @@ func syncWithRestoreStatusForCompatibleEngine(log logrus.FieldLogger, engine *lo
 }
 
 func checkSizeBeforeRestoration(log logrus.FieldLogger, engine *longhorn.Engine, ds *datastore.DataStore) (bool, error) {
-	bv, err := ds.GetBackupVolumeRO(engine.Spec.BackupVolume)
+	bv, err := ds.GetBackupVolumeByCRLabelRO(engine.Spec.BackupVolume + "-" + engine.Spec.BackupTargetName)
 	if err != nil {
 		return false, err
 	}
@@ -1498,12 +1498,12 @@ func checkSizeBeforeRestoration(log logrus.FieldLogger, engine *longhorn.Engine,
 }
 
 func (m *EngineMonitor) restoreBackup(engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, cliAPIVersion int, engineClientProxy engineapi.EngineClientProxy) error {
-	backupTarget, err := m.ds.GetBackupTargetRO(types.DefaultBackupTargetName)
+	backupTarget, err := m.ds.GetBackupTargetRO(engine.Spec.BackupTargetName)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return err
 		}
-		return fmt.Errorf("cannot find the backup target %s", types.DefaultBackupTargetName)
+		return fmt.Errorf("cannot find the backup target %s", engine.Spec.BackupTargetName)
 	}
 
 	backupTargetClient, err := newBackupTargetClientFromDefaultEngineImage(m.ds, backupTarget)

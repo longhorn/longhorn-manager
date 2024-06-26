@@ -1353,10 +1353,19 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 
 			backupVolume := &longhorn.BackupVolume{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: bvName,
+					Name: bvName + "-" + TestBackupTargetName,
 					Finalizers: []string{
 						longhorn.SchemeGroupVersion.Group,
 					},
+					Labels: map[string]string{
+						types.LonghornLabelBackupTarget: TestBackupTargetName,
+						types.LonghornLabelBackupVolume: bvName,
+					},
+				},
+				Spec: longhorn.BackupVolumeSpec{
+					BackupTargetName: TestBackupTargetName,
+					BackupTargetURL:  TestBackupTarget,
+					VolumeName:       bvName,
 				},
 				Status: longhorn.BackupVolumeStatus{
 					LastBackupName: bName,

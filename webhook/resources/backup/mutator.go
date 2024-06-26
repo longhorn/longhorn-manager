@@ -81,6 +81,12 @@ func (b *backupMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/labels", "value": %s}`, string(valueBackupLabels)))
 
+	backupTargetPatchOps, _, err := common.GetBackupTargetInfoPatchOp(b.ds, backup.Spec.BackupTargetName, backup.Spec.BackupTargetURL, backup.Labels)
+	if err != nil {
+		return nil, werror.NewInvalidError(errors.Wrapf(err, "failed to update backup target information of backup").Error(), "")
+	}
+	patchOps = append(patchOps, backupTargetPatchOps...)
+
 	return patchOps, nil
 }
 

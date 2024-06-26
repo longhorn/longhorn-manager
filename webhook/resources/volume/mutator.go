@@ -105,28 +105,29 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 			return nil, werror.NewInvalidError(fmt.Sprintf("cannot get backup and volume name from backup URL %v: %v", volume.Spec.FromBackup, err), "")
 		}
 
-		bv, err := v.ds.GetBackupVolumeRO(bvName)
-		if err != nil {
-			return nil, werror.NewInvalidError(fmt.Sprintf("cannot get backup volume %s: %v", bvName, err), "")
-		}
-
 		backup, err := v.ds.GetBackupRO(bName)
 		if err != nil {
 			return nil, werror.NewInvalidError(fmt.Sprintf("cannot get backup %s: %v", bName, err), "")
 		}
 
-		if bv != nil && backup != nil && backup.Status.VolumeBackingImageName != "" {
-			if bv.Status.BackingImageName != backup.Status.VolumeBackingImageName {
-				err = fmt.Errorf("backup volume's backing image %v does not match backup's backing image %v. The backup volume resource is being updated and please retry later", bv.Status.BackingImageName, backup.Status.VolumeBackingImageName)
+		backupVolumeName := bvName + "-" + backup.Spec.BackupTargetName
+		backupVolume, err := v.ds.GetBackupVolumeByCRLabelRO(backupVolumeName)
+		if err != nil {
+			return nil, werror.NewInvalidError(fmt.Sprintf("cannot get backup volume %s: %v", backupVolumeName, err), "")
+		}
+
+		if backupVolume != nil && backup != nil && backup.Status.VolumeBackingImageName != "" {
+			if backupVolume.Status.BackingImageName != backup.Status.VolumeBackingImageName {
+				err = fmt.Errorf("backup volume's backing image %v does not match backup's backing image %v. The backup volume resource is being updated and please retry later", backupVolume.Status.BackingImageName, backup.Status.VolumeBackingImageName)
 				return nil, werror.NewForbiddenError(err.Error())
 			}
 
 			if volume.Spec.BackingImage == "" {
-				volume.Spec.BackingImage = bv.Status.BackingImageName
-				patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backingImage", "value": "%s"}`, bv.Status.BackingImageName))
+				volume.Spec.BackingImage = backupVolume.Status.BackingImageName
+				patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backingImage", "value": "%s"}`, backupVolume.Status.BackingImageName))
 				logrus.Debugf("Since the backing image is not specified during the restore, "+
 					"the previous backing image %v used by backup volume %v will be set for volume %v creation",
-					bv.Status.BackingImageName, bvName, name)
+					backupVolume.Status.BackingImageName, bvName, name)
 			}
 			bi, err := v.ds.GetBackingImage(volume.Spec.BackingImage)
 			if err != nil {
@@ -135,9 +136,9 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 			}
 			// Validate the checksum only when the chosen backing image name is the same as the record in the backup volume.
 			// If user picks up a backing image different from `backupVolume.BackingImageName`, there is no need to do verification.
-			if volume.Spec.BackingImage == bv.Status.BackingImageName {
-				if bv.Status.BackingImageChecksum != "" && bi.Status.Checksum != "" &&
-					bv.Status.BackingImageChecksum != bi.Status.Checksum {
+			if volume.Spec.BackingImage == backupVolume.Status.BackingImageName {
+				if backupVolume.Status.BackingImageChecksum != "" && bi.Status.Checksum != "" &&
+					backupVolume.Status.BackingImageChecksum != bi.Status.Checksum {
 					return nil, werror.NewInvalidError(fmt.Sprintf("backing image %v current checksum doesn't match the recoreded checksum in backup volume", volume.Spec.BackingImage), "")
 				}
 			}
@@ -151,6 +152,7 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		}
 
 		moreLabels[types.LonghornLabelBackupVolume] = bvName
+		moreLabels[types.LonghornLabelBackupTarget] = backupVolume.Spec.BackupTargetName
 	}
 
 	// Round up the size to the unit in bytes

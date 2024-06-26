@@ -16,9 +16,15 @@ type BackupTargetSpec struct {
 	// The backup target credential secret.
 	// +optional
 	CredentialSecret string `json:"credentialSecret"`
+	// Default indicates if the remote backup target is default backup target set by users.
+	// +optional
+	Default bool `json:"default"`
 	// The interval that the cluster needs to run sync with the backup target.
 	// +optional
 	PollInterval metav1.Duration `json:"pollInterval"`
+	// ReadOnly indicates if it can create a backup on the remote backup target or not.
+	// +optional
+	ReadOnly bool `json:"readOnly"`
 	// The time to request run sync the remote backup target.
 	// +optional
 	// +nullable
@@ -33,6 +39,9 @@ type BackupTargetStatus struct {
 	// Available indicates if the remote backup target is available or not.
 	// +optional
 	Available bool `json:"available"`
+	// Default indicates if the remote backup target is default backup target or not set by backup target controller.
+	// +optional
+	Default bool `json:"default"`
 	// Records the reason on why the backup target is unavailable.
 	// +optional
 	// +nullable

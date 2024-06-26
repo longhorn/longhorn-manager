@@ -2,6 +2,7 @@ package backupbackingimage
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/pkg/errors"
 
@@ -39,7 +40,29 @@ func (b *backupBackingImageMutator) Resource() admission.Resource {
 }
 
 func (b *backupBackingImageMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
-	return mutate(newObj)
+	backupBackingImage, ok := newObj.(*longhorn.BackupBackingImage)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.BackupBackingImage", newObj), "")
+	}
+
+	var patchOps admission.PatchOps
+
+	var err error
+	if patchOps, err = mutate(newObj); err != nil {
+		return nil, err
+	}
+
+	backupTargetPatchOps, returningBackupTargetName, err := common.GetBackupTargetInfoPatchOp(b.ds, backupBackingImage.Spec.BackupTargetName, backupBackingImage.Spec.BackupTargetURL, backupBackingImage.Labels)
+	if err != nil {
+		return nil, werror.NewInvalidError(errors.Wrapf(err, "failed to update backup target information of backup backing image").Error(), "")
+	}
+	patchOps = append(patchOps, backupTargetPatchOps...)
+
+	if !strings.HasSuffix(backupBackingImage.Name, returningBackupTargetName) {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/metadata/name", "value": "%s"}`, string(backupBackingImage.Name+"-"+returningBackupTargetName)))
+	}
+
+	return patchOps, nil
 }
 
 func (b *backupBackingImageMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
