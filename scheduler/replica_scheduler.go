@@ -143,6 +143,17 @@ func (rcs *ReplicaScheduler) getNodeCandidates(nodesInfo map[string]*longhorn.No
 	for _, node := range nodesInfo {
 		log := logrus.WithField("node", node.Name)
 
+		// After a node reboot, it might be listed in the nodeInfo but its InstanceManager
+		// is not ready. To prevent scheduling replicas on such nodes, verify the
+		// InstanceManager's readiness before including it in the candidate list.
+		if isReady, err := rcs.ds.CheckInstanceManagersReadiness(node.Name); !isReady {
+			if err != nil {
+				log = log.WithError(err)
+			}
+			log.Debugf("Excluding node in node candidates because instance manager on node is not ready")
+			continue
+		}
+
 		if isReady, err := rcs.ds.CheckEngineImageReadiness(schedulingReplica.Spec.EngineImage, node.Name); isReady {
 			nodeCandidates[node.Name] = node
 		} else {
