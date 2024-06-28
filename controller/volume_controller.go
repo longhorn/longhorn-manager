@@ -2232,7 +2232,14 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 			c.enqueueVolumeAfter(v, c.backoff.Get(reusableFailedReplica.Name))
 		}
 		if checkBackDuration := c.scheduler.RequireNewReplica(rs, v, hardNodeAffinity); checkBackDuration == 0 {
-			if err := c.createReplica(v, e, rs, hardNodeAffinity, !newVolume); err != nil {
+			newReplica := c.newReplica(v, e, hardNodeAffinity)
+
+			if err := c.precheckCreateReplica(newReplica, rs, v); err != nil {
+				log.WithError(err).Warnf("Unable to create new replica %v", newReplica.Name)
+				continue
+			}
+
+			if err := c.createReplica(newReplica, v, rs, !newVolume); err != nil {
 				return err
 			}
 		} else {
@@ -3523,11 +3530,8 @@ func (c *VolumeController) createEngine(v *longhorn.Volume, currentEngineName st
 	return c.ds.CreateEngine(engine)
 }
 
-func (c *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica,
-	hardNodeAffinity string, isRebuildingReplica bool) error {
-	log := getLoggerForVolume(c.logger, v)
-
-	replica := &longhorn.Replica{
+func (c *VolumeController) newReplica(v *longhorn.Volume, e *longhorn.Engine, hardNodeAffinity string) *longhorn.Replica {
+	return &longhorn.Replica{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            types.GenerateReplicaNameForVolume(v.Name),
 			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
@@ -3548,6 +3552,24 @@ func (c *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine,
 			UnmapMarkDiskChainRemovedEnabled: e.Spec.UnmapMarkSnapChainRemovedEnabled,
 		},
 	}
+}
+
+func (c *VolumeController) precheckCreateReplica(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume) error {
+	diskCandidates, _, err := c.scheduler.FindDiskCandidates(replica, replicas, volume)
+	if err != nil {
+		return err
+	}
+
+	if len(diskCandidates) == 0 {
+		return errors.Errorf("No available disk candidates to create a new replica of size %v", replica.Spec.VolumeSize)
+	}
+
+	return nil
+}
+
+func (c *VolumeController) createReplica(replica *longhorn.Replica, v *longhorn.Volume, rs map[string]*longhorn.Replica, isRebuildingReplica bool) error {
+	log := getLoggerForVolume(c.logger, v)
+
 	if isRebuildingReplica {
 		// TODO: reuse failed replica for replica rebuilding of SPDK volumes
 		if v.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
@@ -3561,6 +3583,11 @@ func (c *VolumeController) createReplica(v *longhorn.Volume, e *longhorn.Engine,
 		// Prevent this new replica from being reused after rebuilding failure.
 		replica.Spec.RebuildRetryCount = scheduler.FailedReplicaMaxRetryCount
 	}
+
+	log.WithFields(logrus.Fields{
+		"replica":          replica.Name,
+		"hardNodeAffinity": replica.Spec.HardNodeAffinity,
+	}).Info("Creating new Replica")
 
 	replica, err := c.ds.CreateReplica(replica)
 	if err != nil {
