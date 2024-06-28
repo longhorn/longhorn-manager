@@ -34,8 +34,9 @@ const (
 	TestNode2     = "test-node-name-2"
 	TestNode3     = "test-node-name-3"
 
-	TestOwnerID1    = TestNode1
-	TestEngineImage = "longhorn-engine:latest"
+	TestOwnerID1             = TestNode1
+	TestEngineImage          = "longhorn-engine:latest"
+	TestInstanceManagerImage = "longhorn-instance-manager:latest"
 
 	TestVolumeName         = "test-volume"
 	TestVolumeSize         = 1073741824
@@ -102,6 +103,24 @@ func newNode(name, namespace string, allowScheduling bool, status longhorn.Condi
 				newCondition(longhorn.NodeConditionTypeSchedulable, status),
 				newCondition(longhorn.NodeConditionTypeReady, status),
 			},
+		},
+	}
+}
+
+func newInstanceManager(nodeName string) *longhorn.InstanceManager {
+	return &longhorn.InstanceManager{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "instance-manager-" + util.RandomID(),
+			Namespace: TestNamespace,
+			Labels:    types.GetInstanceManagerLabels(nodeName, TestInstanceManagerImage, longhorn.InstanceManagerTypeAllInOne),
+		},
+		Spec: longhorn.InstanceManagerSpec{
+			Image:  TestInstanceManagerImage,
+			NodeID: nodeName,
+			Type:   longhorn.InstanceManagerTypeAllInOne,
+		},
+		Status: longhorn.InstanceManagerStatus{
+			CurrentState: longhorn.InstanceManagerStateRunning,
 		},
 	}
 }
@@ -805,6 +824,7 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		rIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Replicas().Informer().GetIndexer()
 		nIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
 		eiIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer()
+		imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
 		sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
 		pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
 
@@ -830,6 +850,15 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 		c.Assert(ei, NotNil)
 		err = eiIndexer.Add(ei)
 		c.Assert(err, IsNil)
+		// Create instance manager
+		for _, node := range tc.nodes {
+			fakeInstanceManager := newInstanceManager(node.Name)
+			im, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), fakeInstanceManager, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			c.Assert(im, NotNil)
+			err = imIndexer.Add(im)
+			c.Assert(err, IsNil)
+		}
 		// create volume
 		volume, err := lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), tc.volume, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
@@ -942,6 +971,13 @@ func generateFailedReplicaTestCase(
 }
 
 func setSettings(tc *ReplicaSchedulerTestCase, lhClient *lhfake.Clientset, sIndexer cache.Indexer, c *C) {
+	// Set default-instance-manager-image setting
+	s := initSettings(string(types.SettingNameDefaultInstanceManagerImage), TestInstanceManagerImage)
+	setting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = sIndexer.Add(setting)
+	c.Assert(err, IsNil)
+
 	// Set storage over-provisioning percentage settings
 	if tc.storageOverProvisioningPercentage != "" && tc.storageMinimalAvailablePercentage != "" {
 		s := initSettings(string(types.SettingNameStorageOverProvisioningPercentage), tc.storageOverProvisioningPercentage)
