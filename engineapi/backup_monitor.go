@@ -14,6 +14,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/utils/clock"
 
+	lhbackup "github.com/longhorn/go-common-libs/backup"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -73,6 +75,9 @@ func NewBackupMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, backup
 
 	// Call engine API snapshot backup
 	if backup.Status.State == longhorn.BackupStateNew || backup.Status.State == longhorn.BackupStatePending {
+
+		backupParameters := getBackupParameters(backup)
+
 		// volumeRecurringJobInfo could be "".
 		volumeRecurringJobInfo, err := m.getVolumeRecurringJobInfos(ds, volume)
 		if err != nil {
@@ -84,7 +89,7 @@ func NewBackupMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, backup
 		}
 		_, replicaAddress, err := engineClientProxy.SnapshotBackup(engine, backup.Spec.SnapshotName, backup.Name,
 			backupTargetClient.URL, volume.Spec.BackingImage, biChecksum, string(compressionMethod), concurrentLimit, storageClassName,
-			backup.Spec.Labels, backupTargetClient.Credential)
+			backup.Spec.Labels, backupTargetClient.Credential, backupParameters)
 		if err != nil {
 			if !strings.Contains(err.Error(), "DeadlineExceeded") {
 				m.logger.WithError(err).Warn("Cannot take snapshot backup")
@@ -319,4 +324,10 @@ func (m *BackupMonitor) GetBackupStatus() longhorn.BackupStatus {
 func (m *BackupMonitor) Close() {
 	m.engineClientProxy.Close()
 	m.quit()
+}
+
+func getBackupParameters(backup *longhorn.Backup) map[string]string {
+	parameters := map[string]string{}
+	parameters[lhbackup.LonghornBackupParameterBackupMode] = string(backup.Spec.BackupMode)
+	return parameters
 }

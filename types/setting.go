@@ -114,6 +114,7 @@ const (
 	SettingNameRemoveSnapshotsDuringFilesystemTrim                      = SettingName("remove-snapshots-during-filesystem-trim")
 	SettingNameFastReplicaRebuildEnabled                                = SettingName("fast-replica-rebuild-enabled")
 	SettingNameReplicaFileSyncHTTPClientTimeout                         = SettingName("replica-file-sync-http-client-timeout")
+	SettingNameLongGPRCTimeOut                                          = SettingName("long-grpc-timeout")
 	SettingNameBackupCompressionMethod                                  = SettingName("backup-compression-method")
 	SettingNameBackupConcurrentLimit                                    = SettingName("backup-concurrent-limit")
 	SettingNameRestoreConcurrentLimit                                   = SettingName("restore-concurrent-limit")
@@ -130,6 +131,7 @@ const (
 	SettingNameV2DataEngineLogLevel                                     = SettingName("v2-data-engine-log-level")
 	SettingNameV2DataEngineLogFlags                                     = SettingName("v2-data-engine-log-flags")
 	SettingNameFreezeFilesystemForSnapshot                              = SettingName("freeze-filesystem-for-snapshot")
+	SettingNameAutoCleanupSnapshotWhenDeleteBackup                      = SettingName("auto-cleanup-when-delete-backup")
 )
 
 var (
@@ -200,6 +202,7 @@ var (
 		SettingNameRemoveSnapshotsDuringFilesystemTrim,
 		SettingNameFastReplicaRebuildEnabled,
 		SettingNameReplicaFileSyncHTTPClientTimeout,
+		SettingNameLongGPRCTimeOut,
 		SettingNameBackupCompressionMethod,
 		SettingNameBackupConcurrentLimit,
 		SettingNameRestoreConcurrentLimit,
@@ -216,6 +219,7 @@ var (
 		SettingNameAllowEmptyDiskSelectorVolume,
 		SettingNameDisableSnapshotPurge,
 		SettingNameFreezeFilesystemForSnapshot,
+		SettingNameAutoCleanupSnapshotWhenDeleteBackup,
 	}
 )
 
@@ -314,6 +318,7 @@ var (
 		SettingNameRemoveSnapshotsDuringFilesystemTrim:                      SettingDefinitionRemoveSnapshotsDuringFilesystemTrim,
 		SettingNameFastReplicaRebuildEnabled:                                SettingDefinitionFastReplicaRebuildEnabled,
 		SettingNameReplicaFileSyncHTTPClientTimeout:                         SettingDefinitionReplicaFileSyncHTTPClientTimeout,
+		SettingNameLongGPRCTimeOut:                                          SettingDefinitionLongGPRCTimeOut,
 		SettingNameBackupCompressionMethod:                                  SettingDefinitionBackupCompressionMethod,
 		SettingNameBackupConcurrentLimit:                                    SettingDefinitionBackupConcurrentLimit,
 		SettingNameRestoreConcurrentLimit:                                   SettingDefinitionRestoreConcurrentLimit,
@@ -330,6 +335,7 @@ var (
 		SettingNameAllowEmptyDiskSelectorVolume:                             SettingDefinitionAllowEmptyDiskSelectorVolume,
 		SettingNameDisableSnapshotPurge:                                     SettingDefinitionDisableSnapshotPurge,
 		SettingNameFreezeFilesystemForSnapshot:                              SettingDefinitionFreezeFilesystemForSnapshot,
+		SettingNameAutoCleanupSnapshotWhenDeleteBackup:                      SettingDefinitionAutoCleanupSnapshotWhenDeleteBackup,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -1199,6 +1205,20 @@ var (
 		},
 	}
 
+	SettingDefinitionLongGPRCTimeOut = SettingDefinition{
+		DisplayName: "Long gRPC Timeout",
+		Description: "Number of seconds that Longhorn allows for the completion of replica rebuilding and snapshot cloning operations.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "86400",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 1,
+			ValueIntRangeMaximum: 604800,
+		},
+	}
+
 	SettingDefinitionBackupCompressionMethod = SettingDefinition{
 		DisplayName: "Backup Compression Method",
 		Description: "This setting allows users to specify backup compression method.\n\n" +
@@ -1381,6 +1401,16 @@ var (
 		Required:    false,
 		ReadOnly:    false,
 		Default:     "",
+	}
+
+	SettingDefinitionAutoCleanupSnapshotWhenDeleteBackup = SettingDefinition{
+		DisplayName: "Automatically Cleanup Snapshot When Deleting Backup",
+		Description: "This setting enables Longhorn to automatically cleanup snapshots when removing backup.",
+		Category:    SettingCategorySnapshot,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "false",
 	}
 )
 

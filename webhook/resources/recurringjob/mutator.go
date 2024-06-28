@@ -58,6 +58,9 @@ func (r *recurringJobMutator) Create(request *admission.Request, newObj runtime.
 	if recurringjob.Spec.Labels == nil {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/labels", "value": {}}`)
 	}
+	if recurringjob.Spec.Parameters == nil {
+		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/parameters", "value": {}}`)
+	}
 
 	log := logrus.WithFields(logrus.Fields{
 		"recurringJob": recurringjob.Name,
@@ -99,6 +102,9 @@ func (r *recurringJobMutator) Update(request *admission.Request, oldObj runtime.
 	}
 	if newRecurringjob.Spec.Labels == nil {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/labels", "value": {}}`)
+	}
+	if newRecurringjob.Spec.Parameters == nil {
+		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/parameters", "value": {}}`)
 	}
 
 	log := logrus.WithFields(logrus.Fields{

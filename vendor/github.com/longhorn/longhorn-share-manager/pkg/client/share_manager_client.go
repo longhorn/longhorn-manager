@@ -19,7 +19,7 @@ type ShareManagerClient struct {
 }
 
 func NewShareManagerClient(address string) (*ShareManagerClient, error) {
-	conn, err := grpc.Dial(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to connect share manager service to %v", address)
 	}

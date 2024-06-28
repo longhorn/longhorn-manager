@@ -10,7 +10,7 @@ import (
 
 func (c *ProxyClient) ReplicaAdd(dataEngine, engineName, volumeName, serviceAddress, replicaName,
 	replicaAddress string, restore bool, size, currentSize int64, fileSyncHTTPClientTimeout int,
-	fastSync bool) (err error) {
+	fastSync bool, grpcTimeoutSeconds int64) (err error) {
 	input := map[string]string{
 		"engineName":     engineName,
 		"volumeName":     volumeName,
@@ -51,8 +51,9 @@ func (c *ProxyClient) ReplicaAdd(dataEngine, engineName, volumeName, serviceAddr
 		CurrentSize:               currentSize,
 		FastSync:                  fastSync,
 		FileSyncHttpClientTimeout: int32(fileSyncHTTPClientTimeout),
+		GrpcTimeoutSeconds:        grpcTimeoutSeconds,
 	}
-	_, err = c.service.ReplicaAdd(getContextWithGRPCLongTimeout(c.ctx), req)
+	_, err = c.service.ReplicaAdd(getContextWithGRPCLongTimeout(c.ctx, grpcTimeoutSeconds), req)
 	if err != nil {
 		return err
 	}

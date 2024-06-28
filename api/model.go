@@ -164,12 +164,15 @@ type Backup struct {
 	Created                string               `json:"created"`
 	Size                   string               `json:"size"`
 	Labels                 map[string]string    `json:"labels"`
+	BackupMode             longhorn.BackupMode  `json:"backupMode"`
 	Messages               map[string]string    `json:"messages"`
 	VolumeName             string               `json:"volumeName"`
 	VolumeSize             string               `json:"volumeSize"`
 	VolumeCreated          string               `json:"volumeCreated"`
 	VolumeBackingImageName string               `json:"volumeBackingImageName"`
 	CompressionMethod      string               `json:"compressionMethod"`
+	NewlyUploadedDataSize  string               `json:"newlyUploadDataSize"`
+	ReUploadedDataSize     string               `json:"reUploadedDataSize"`
 }
 
 type BackupBackingImage struct {
@@ -287,8 +290,9 @@ type DetachInput struct {
 }
 
 type SnapshotInput struct {
-	Name   string            `json:"name"`
-	Labels map[string]string `json:"labels"`
+	Name       string            `json:"name"`
+	Labels     map[string]string `json:"labels"`
+	BackupMode string            `json:"backupMode"`
 }
 
 type SnapshotCRInput struct {
@@ -553,6 +557,7 @@ type InstanceManager struct {
 type RecurringJob struct {
 	client.Resource
 	longhorn.RecurringJobSpec
+	longhorn.RecurringJobStatus
 }
 
 type Orphan struct {
@@ -834,6 +839,11 @@ func recurringJobSchema(job *client.Schema) {
 	labels.Type = "map[string]"
 	labels.Nullable = true
 	job.ResourceFields["labels"] = labels
+
+	parameters := job.ResourceFields["parameters"]
+	parameters.Type = "map[string]"
+	parameters.Nullable = true
+	job.ResourceFields["parameters"] = parameters
 }
 
 func kubernetesStatusSchema(status *client.Schema) {
@@ -1906,12 +1916,15 @@ func toBackupResource(b *longhorn.Backup) *Backup {
 		Created:                b.Status.BackupCreatedAt,
 		Size:                   b.Status.Size,
 		Labels:                 b.Status.Labels,
+		BackupMode:             b.Spec.BackupMode,
 		Messages:               b.Status.Messages,
 		VolumeName:             b.Status.VolumeName,
 		VolumeSize:             b.Status.VolumeSize,
 		VolumeCreated:          b.Status.VolumeCreated,
 		VolumeBackingImageName: b.Status.VolumeBackingImageName,
 		CompressionMethod:      string(b.Status.CompressionMethod),
+		NewlyUploadedDataSize:  b.Status.NewlyUploadedDataSize,
+		ReUploadedDataSize:     b.Status.ReUploadedDataSize,
 	}
 	// Set the volume name from backup CR's label if it's empty.
 	// This field is empty probably because the backup state is not Ready
@@ -2254,6 +2267,10 @@ func toRecurringJobResource(recurringJob *longhorn.RecurringJob, apiContext *api
 			Retain:      recurringJob.Spec.Retain,
 			Concurrency: recurringJob.Spec.Concurrency,
 			Labels:      recurringJob.Spec.Labels,
+			Parameters:  recurringJob.Spec.Parameters,
+		},
+		RecurringJobStatus: longhorn.RecurringJobStatus{
+			ExecutionCount: recurringJob.Status.ExecutionCount,
 		},
 	}
 }

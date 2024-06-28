@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.7.1
+# syntax=docker/dockerfile:1.8.1
 
 FROM registry.suse.com/bci/bci-base:15.6
 
@@ -20,6 +20,5 @@ RUN zypper -n ref && \
 RUN zypper -n install iputils iproute2 nfs-client cifs-utils bind-utils e2fsprogs xfsprogs zip unzip && \
     rm -rf /var/cache/zypp/*
 
-VOLUME /usr/local/sbin
 EXPOSE 9500
 CMD ["launch-manager"]

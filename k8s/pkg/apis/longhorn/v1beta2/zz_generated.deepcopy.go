@@ -1894,6 +1894,13 @@ func (in *RecurringJobSpec) DeepCopyInto(out *RecurringJobSpec) {
 			(*out)[key] = val
 		}
 	}
+	if in.Parameters != nil {
+		in, out := &in.Parameters, &out.Parameters
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
 	return
 }
 

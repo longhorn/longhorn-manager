@@ -81,6 +81,10 @@ func (b *backupMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/labels", "value": %s}`, string(valueBackupLabels)))
 
+	if backup.Spec.BackupMode == longhorn.BackupModeIncrementalNone {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupMpode", "value": %s}`, string(longhorn.BackupModeIncremental)))
+	}
+
 	return patchOps, nil
 }
 

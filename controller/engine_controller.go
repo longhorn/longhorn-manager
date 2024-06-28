@@ -1660,9 +1660,14 @@ func cloneSnapshot(engine *longhorn.Engine, engineClientProxy engineapi.EngineCl
 		return err
 	}
 
+	grpcTimeoutSeconds, err := ds.GetSettingAsInt(types.SettingNameLongGPRCTimeOut)
+	if err != nil {
+		return err
+	}
+
 	sourceEngineControllerURL := imutil.GetURL(sourceEngine.Status.StorageIP, sourceEngine.Status.Port)
 	if err := engineClientProxy.SnapshotClone(engine, snapshotName, sourceEngineControllerURL,
-		sourceEngine.Spec.VolumeName, sourceEngine.Name, fileSyncHTTPClientTimeout); err != nil {
+		sourceEngine.Spec.VolumeName, sourceEngine.Name, fileSyncHTTPClientTimeout, grpcTimeoutSeconds); err != nil {
 		// There is only 1 replica during volume cloning,
 		// so if the cloning failed, it must be that the replica failed to clone.
 		for _, status := range engine.Status.CloneStatus {
@@ -1834,6 +1839,12 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 			return
 		}
 
+		grpcTimeoutSeconds, err := ec.ds.GetSettingAsInt(types.SettingNameLongGPRCTimeOut)
+		if err != nil {
+			log.WithError(err).Errorf("Failed to get %v setting", types.SettingNameLongGPRCTimeOut)
+			return
+		}
+
 		engineClientProxy, err := ec.getEngineClientProxy(e, e.Status.CurrentImage)
 		if err != nil {
 			log.WithError(err).Errorf("Failed rebuilding of replica %v", addr)
@@ -1908,12 +1919,12 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 			if e.Spec.NodeID != "" {
 				ec.eventRecorder.Eventf(e, corev1.EventTypeNormal, constant.EventReasonRebuilding,
 					"Start rebuilding replica %v with Address %v for restore engine %v and volume %v", replicaName, addr, e.Name, e.Spec.VolumeName)
-				err = engineClientProxy.ReplicaAdd(e, replicaName, replicaURL, true, fastReplicaRebuild, fileSyncHTTPClientTimeout)
+				err = engineClientProxy.ReplicaAdd(e, replicaName, replicaURL, true, fastReplicaRebuild, fileSyncHTTPClientTimeout, 0)
 			}
 		} else {
 			ec.eventRecorder.Eventf(e, corev1.EventTypeNormal, constant.EventReasonRebuilding,
 				"Start rebuilding replica %v with Address %v for normal engine %v and volume %v", replicaName, addr, e.Name, e.Spec.VolumeName)
-			err = engineClientProxy.ReplicaAdd(e, replicaName, replicaURL, false, fastReplicaRebuild, fileSyncHTTPClientTimeout)
+			err = engineClientProxy.ReplicaAdd(e, replicaName, replicaURL, false, fastReplicaRebuild, fileSyncHTTPClientTimeout, grpcTimeoutSeconds)
 		}
 		if err != nil {
 			replicaRebuildErrMsg := err.Error()

@@ -19,7 +19,7 @@ func (c *ProxyClient) CleanupBackupMountPoints() (err error) {
 
 func (c *ProxyClient) SnapshotBackup(dataEngine, engineName, volumeName, serviceAddress, backupName,
 	snapshotName, backupTarget, backingImageName, backingImageChecksum, compressionMethod string, concurrentLimit int,
-	storageClassName string, labels map[string]string, envs []string) (backupID, replicaAddress string, err error) {
+	storageClassName string, labels map[string]string, envs []string, parameters map[string]string) (backupID, replicaAddress string, err error) {
 	input := map[string]string{
 		"engineName":     engineName,
 		"volumeName":     volumeName,
@@ -57,6 +57,7 @@ func (c *ProxyClient) SnapshotBackup(dataEngine, engineName, volumeName, service
 		ConcurrentLimit:      int32(concurrentLimit),
 		StorageClassName:     storageClassName,
 		Labels:               labels,
+		Parameters:           parameters,
 	}
 	recv, err := c.service.SnapshotBackup(getContextWithGRPCTimeout(c.ctx), req)
 	if err != nil {

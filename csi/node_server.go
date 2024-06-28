@@ -511,6 +511,11 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	if fsType == "" {
 		fsType = defaultFsType
 	}
+	if fsType == "xfs" {
+		// By default, xfs does not allow mounting of two volumes with the same filesystem uuid.
+		// Force ignore this uuid to be able to mount volume + its clone / restored snapshot on the same node.
+		options = append(options, "nouuid")
+	}
 
 	formatMounter, ok := mounter.(*mount.SafeFormatAndMount)
 	if !ok {
