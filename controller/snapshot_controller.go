@@ -22,6 +22,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -553,19 +554,19 @@ func (sc *SnapshotController) handleAttachmentTicketCreation(snap *longhorn.Snap
 
 func (sc *SnapshotController) generatingEventsForSnapshot(existingSnapshot, snapshot *longhorn.Snapshot) {
 	if !existingSnapshot.Status.MarkRemoved && snapshot.Status.MarkRemoved {
-		sc.eventRecorder.Event(snapshot, corev1.EventTypeWarning, "SnapshotDelete", "snapshot is marked as removed")
+		sc.eventRecorder.Event(snapshot, corev1.EventTypeWarning, constant.EventReasonDelete, "snapshot is marked as removed")
 	}
 	if snapshot.Spec.CreateSnapshot && existingSnapshot.Status.CreationTime == "" && snapshot.Status.CreationTime != "" {
-		sc.eventRecorder.Eventf(snapshot, corev1.EventTypeNormal, "SnapshotCreate", "successfully provisioned the snapshot")
+		sc.eventRecorder.Event(snapshot, corev1.EventTypeNormal, constant.EventReasonCreate, "successfully provisioned the snapshot")
 	}
 	if snapshot.Status.Error != "" && existingSnapshot.Status.Error != snapshot.Status.Error {
-		sc.eventRecorder.Eventf(snapshot, corev1.EventTypeWarning, "SnapshotError", "%v", snapshot.Status.Error)
+		sc.eventRecorder.Eventf(snapshot, corev1.EventTypeWarning, constant.EventReasonFailed, "%v", snapshot.Status.Error)
 	}
 	if existingSnapshot.Status.ReadyToUse != snapshot.Status.ReadyToUse {
 		if snapshot.Status.ReadyToUse {
-			sc.eventRecorder.Eventf(snapshot, corev1.EventTypeNormal, "SnapshotUpdate", "snapshot becomes ready to use")
+			sc.eventRecorder.Event(snapshot, corev1.EventTypeNormal, constant.EventReasonUpdate, "snapshot becomes ready to use")
 		} else {
-			sc.eventRecorder.Eventf(snapshot, corev1.EventTypeWarning, "SnapshotUpdate", "snapshot becomes not ready to use")
+			sc.eventRecorder.Event(snapshot, corev1.EventTypeWarning, constant.EventReasonUpdate, "snapshot becomes not ready to use")
 		}
 	}
 }
