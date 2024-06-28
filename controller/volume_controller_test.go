@@ -116,8 +116,9 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		tc.nodes[i].Spec.AllowScheduling = false
 	}
 	tc.copyCurrentToExpect()
-	// replicas and engine object would still be created
+	// replica object would not be created
 	tc.replicas = nil
+	// engine object would still be created
 	tc.engines = nil
 	for _, r := range tc.expectReplicas {
 		r.Spec.NodeID = ""
@@ -125,6 +126,28 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		r.Spec.DiskPath = ""
 		r.Spec.DataDirectoryName = ""
 	}
+	tc.expectVolume.Status.State = longhorn.VolumeStateCreating
+	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
+	tc.expectVolume.Status.Robustness = longhorn.VolumeRobustnessFaulted
+	testCases["volume create - replica creation failure"] = tc
+
+	// unable to create volume because no node to schedule
+	tc = generateVolumeTestCaseTemplate()
+	for i := range tc.nodes {
+		tc.nodes[i].Spec.AllowScheduling = false
+	}
+	tc.copyCurrentToExpect()
+	// engine object would still be created
+	tc.engines = nil
+	for _, r := range tc.expectReplicas {
+		r.Spec.NodeID = ""
+		r.Spec.DiskID = ""
+		r.Spec.DiskPath = ""
+		r.Spec.DataDirectoryName = ""
+	}
+	// replica object is already created
+	tc.replicas = tc.expectReplicas
+
 	tc.expectVolume.Status.State = longhorn.VolumeStateCreating
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.EngineImage
 	tc.expectVolume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.expectVolume.Status.Conditions,
