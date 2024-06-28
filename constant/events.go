@@ -62,10 +62,5 @@ const (
 	EventReasonReady    = "Ready"
 	EventReasonUploaded = "Uploaded"
 
-<<<<<<< HEAD
-=======
-	EventReasonUpgrade = "Upgrade"
-
->>>>>>> 147bdb67 (style(snapshot): use event reason constants in controller)
 	EventReasonRolloutSkippedFmt = "RolloutSkipped: %v %v"
 )
