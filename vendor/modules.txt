@@ -262,21 +262,21 @@ github.com/longhorn/go-iscsi-helper/util
 # github.com/longhorn/go-spdk-helper v0.0.0-20240627071357-3765b24418d9
 ## explicit; go 1.22.0
 github.com/longhorn/go-spdk-helper/pkg/types
-# github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240625050518-004f204f31da
+# github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240629043813-aa844e18d3f8
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-engine/pkg/interceptor
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240628012109-4dd756e9c266
+# github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240629051521-fbe397a3a3b4
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
 github.com/longhorn/longhorn-instance-manager/pkg/meta
 github.com/longhorn/longhorn-instance-manager/pkg/types
 github.com/longhorn/longhorn-instance-manager/pkg/util
-# github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240625052332-1f69285a5801
+# github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240629043243-fe205dfbd815
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
