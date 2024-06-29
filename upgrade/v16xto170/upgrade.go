@@ -1,9 +1,12 @@
 package v16xto170
 
 import (
+	"context"
+
 	"github.com/pkg/errors"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 
 	"github.com/longhorn/longhorn-manager/util"
@@ -29,6 +32,10 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 	}
 
 	if err := upgradeBackups(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	if err := deleteInstanceManagerServices(namespace, kubeClient); err != nil {
 		return err
 	}
 
@@ -190,6 +197,21 @@ func upgradeBackups(namespace string, lhClient *lhclientset.Clientset, resourceM
 
 	for _, b := range backupMap {
 		b.Spec.BackupMode = longhorn.BackupModeIncremental
+	}
+	return nil
+}
+
+func deleteInstanceManagerServices(namespace string, kubeClient *clientset.Clientset) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"delete instance manager service failed")
+	}()
+
+	instanceManagerServiceNames := []string{"longhorn-engine-manager", "longhorn-replica-manager"}
+
+	for _, serviceName := range instanceManagerServiceNames {
+		if err := kubeClient.CoreV1().Services(namespace).Delete(context.TODO(), serviceName, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
 	}
 	return nil
 }
