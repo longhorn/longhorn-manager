@@ -262,14 +262,14 @@ github.com/longhorn/go-iscsi-helper/util
 # github.com/longhorn/go-spdk-helper v0.0.0-20240630053246-99b2a18336b5
 ## explicit; go 1.22.0
 github.com/longhorn/go-spdk-helper/pkg/types
-# github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240629144251-3f33af038bdf
+# github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240630112621-0402d7096a3f
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-engine/pkg/interceptor
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240630071445-2319dfbdb928
+# github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240630132104-73cc005a5a22
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
