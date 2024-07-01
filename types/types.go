@@ -741,15 +741,6 @@ func ValidateReplicaCount(count int) error {
 	return nil
 }
 
-func ValidateV2DataEngineLogLevel(level string) error {
-	switch strings.ToLower(level) {
-	case "disabled", "error", "warn", "notice", "info", "debug":
-		return nil
-	default:
-		return fmt.Errorf("log level %s is invalid", level)
-	}
-}
-
 func ValidateV2DataEngineLogFlags(flags string) error {
 	if flags == "" {
 		return nil
