@@ -2528,22 +2528,6 @@ func (c *VolumeController) checkReplicaDiskPressuredSchedulableCandidates(volume
 		"replica": replica.Name,
 	})
 
-	// Check replica soft anti-affinity is enabled in global setting.
-	nodeSoftAntiAffinity, err := c.ds.GetSettingAsBool(types.SettingNameReplicaSoftAntiAffinity)
-	if err != nil {
-		return err
-	}
-
-	// Check replica soft anti-affinity is set specific to the volume.
-	if volume.Spec.ReplicaSoftAntiAffinity != longhorn.ReplicaSoftAntiAffinityDefault &&
-		volume.Spec.ReplicaSoftAntiAffinity != "" {
-		nodeSoftAntiAffinity = volume.Spec.ReplicaSoftAntiAffinity == longhorn.ReplicaSoftAntiAffinityEnabled
-	}
-
-	if !nodeSoftAntiAffinity {
-		return errors.New("replica soft anti-affinity is disabled, skip auto-balance replicas in disk pressure")
-	}
-
 	diskPressurePercentage, err := c.ds.GetSettingAsInt(types.SettingNameReplicaAutoBalanceDiskPressurePercentage)
 	if err != nil {
 		return err
