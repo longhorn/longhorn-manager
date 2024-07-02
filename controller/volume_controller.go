@@ -2247,9 +2247,11 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 		if checkBackDuration := c.scheduler.RequireNewReplica(rs, v, hardNodeAffinity); checkBackDuration == 0 {
 			newReplica := c.newReplica(v, e, hardNodeAffinity)
 
-			if err := c.precheckCreateReplica(newReplica, rs, v); err != nil {
-				log.WithError(err).Warnf("Unable to create new replica %v", newReplica.Name)
-				continue
+			if !isDataLocalityBestEffort(v) {
+				if err := c.precheckCreateReplica(newReplica, rs, v); err != nil {
+					log.WithError(err).Warnf("Unable to create new replica %v", newReplica.Name)
+					continue
+				}
 			}
 
 			if err := c.createReplica(newReplica, v, rs, !newVolume); err != nil {
