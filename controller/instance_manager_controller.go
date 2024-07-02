@@ -338,6 +338,19 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 		return err
 	}
 
+	// An instance manager pod for v2 volume need to consume huge pages, and disks managed by the
+	// pod is unable to managed by another pod. Therefore, if an instance manager pod is running on a node,
+	// an extra instance manager pod for v2 volume should not be created.
+	if types.IsDataEngineV2(im.Spec.DataEngine) {
+		syncable, err := imc.canProceedWithInstanceManagerSync(im)
+		if err != nil {
+			return err
+		}
+		if !syncable {
+			return nil
+		}
+	}
+
 	if err := imc.syncStatusWithNode(im); err != nil {
 		return err
 	}
@@ -363,6 +376,36 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 	}
 
 	return nil
+}
+
+func (imc *InstanceManagerController) canProceedWithInstanceManagerSync(currentIm *longhorn.InstanceManager) (bool, error) {
+	// If the instance manager is not stopped, proceed with the sync.
+	if currentIm.Status.CurrentState != longhorn.InstanceManagerStateStopped {
+		return true, nil
+	}
+
+	ims, err := imc.ds.ListInstanceManagersByNodeRO(currentIm.Spec.NodeID, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2)
+	if err != nil {
+		return false, err
+	}
+	// If there is another non-stopped instance manager pod for v2 volume, do not proceed with the sync.
+	for _, im := range ims {
+		if im.Name == currentIm.Name {
+			continue
+		}
+
+		if im.Status.CurrentState != longhorn.InstanceManagerStateStopped {
+			return false, nil
+		}
+	}
+
+	defaultInstanceManagerImage, err := imc.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+	if err != nil {
+		return false, err
+	}
+
+	// Only active the sync when the default instance manager image is used.
+	return currentIm.Spec.Image == defaultInstanceManagerImage, nil
 }
 
 // syncStatusWithPod updates the InstanceManager based on the pod current phase only,
