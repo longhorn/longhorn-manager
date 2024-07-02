@@ -1773,7 +1773,7 @@ func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longh
 	}
 
 	failureMessage := ""
-	if scheduled {
+	if scheduled && len(rs) >= v.Spec.NumberOfReplicas {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 			longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusTrue, "", "")
 	} else if v.Status.CurrentNodeID == "" {
@@ -2249,6 +2249,9 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 
 			if err := c.precheckCreateReplica(newReplica, rs, v); err != nil {
 				log.WithError(err).Warnf("Unable to create new replica %v", newReplica.Name)
+				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+					longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
+					longhorn.VolumeConditionReasonReplicaSchedulingFailure, longhorn.ErrorReplicaSchedulePrecheckNewReplicaFailed)
 				continue
 			}
 
