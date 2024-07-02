@@ -273,7 +273,7 @@ func (sc *SettingController) syncNonDangerZoneSettingsForManagedComponents(setti
 		if err := sc.cleanupFailedSupportBundles(); err != nil {
 			return err
 		}
-	case types.SettingNameLogLevel, types.SettingNameV2DataEngineLogLevel:
+	case types.SettingNameLogLevel:
 		if err := sc.updateLogLevel(settingName); err != nil {
 			return err
 		}
