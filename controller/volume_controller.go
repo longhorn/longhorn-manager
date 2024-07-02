@@ -2247,12 +2247,16 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 		if checkBackDuration := c.scheduler.RequireNewReplica(rs, v, hardNodeAffinity); checkBackDuration == 0 {
 			newReplica := c.newReplica(v, e, hardNodeAffinity)
 
-			if err := c.precheckCreateReplica(newReplica, rs, v); err != nil {
-				log.WithError(err).Warnf("Unable to create new replica %v", newReplica.Name)
-				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-					longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
-					longhorn.VolumeConditionReasonReplicaSchedulingFailure, longhorn.ErrorReplicaSchedulePrecheckNewReplicaFailed)
-				continue
+			// Bypassing the precheck when hardNodeAffinity is provided, because
+			// we expect the new replica to be relocated to a specific node.
+			if hardNodeAffinity == "" {
+				if err := c.precheckCreateReplica(newReplica, rs, v); err != nil {
+					log.WithError(err).Warnf("Unable to create new replica %v", newReplica.Name)
+					v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+						longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
+						longhorn.VolumeConditionReasonReplicaSchedulingFailure, longhorn.ErrorReplicaSchedulePrecheckNewReplicaFailed)
+					continue
+				}
 			}
 
 			if err := c.createReplica(newReplica, v, rs, !newVolume); err != nil {
