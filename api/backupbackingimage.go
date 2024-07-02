@@ -7,7 +7,16 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/rancher/go-rancher/api"
+	"github.com/rancher/go-rancher/client"
 )
+
+func (s *Server) backupBackingImageList(apiContext *api.ApiContext) (*client.GenericCollection, error) {
+	bbiList, err := s.m.ListBackupBackingImagesSorted()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list backup backing image")
+	}
+	return toBackupBackingImageCollection(bbiList, apiContext), nil
+}
 
 func (s *Server) BackupBackingImageList(rw http.ResponseWriter, req *http.Request) (err error) {
 	apiContext := api.GetApiContext(req)

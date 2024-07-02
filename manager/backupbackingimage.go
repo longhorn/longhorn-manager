@@ -1,6 +1,8 @@
 package manager
 
 import (
+	"fmt"
+
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/pkg/errors"
@@ -36,6 +38,20 @@ func (m *VolumeManager) DeleteBackupBackingImage(name string) error {
 }
 
 func (m *VolumeManager) RestoreBackupBackingImage(name string) error {
+	if name == "" {
+		return fmt.Errorf("restore backing image name is not given")
+	}
+	bi, err := m.ds.GetBackingImageRO(name)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return errors.Wrapf(err, "failed to get backing image %v to check if it exists", name)
+		}
+	}
+
+	if bi != nil {
+		return errors.Wrapf(err, "backing image %v already exists", name)
+	}
+
 	return m.restoreBackingImage(name)
 }
 
@@ -52,18 +68,20 @@ func (m *VolumeManager) CreateBackupBackingImage(name string) error {
 		}
 	}
 
-	if backupBackingImage == nil {
-		backupBackingImage := &longhorn.BackupBackingImage{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: name,
-			},
-			Spec: longhorn.BackupBackingImageSpec{
-				UserCreated: true,
-			},
-		}
-		if _, err = m.ds.CreateBackupBackingImage(backupBackingImage); err != nil && !apierrors.IsAlreadyExists(err) {
-			return errors.Wrapf(err, "failed to create backup backing image %s in the cluster", name)
-		}
+	if backupBackingImage != nil {
+		return fmt.Errorf("backup backing image %v already exists", name)
+	}
+
+	backupBackingImage = &longhorn.BackupBackingImage{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: longhorn.BackupBackingImageSpec{
+			UserCreated: true,
+		},
+	}
+	if _, err = m.ds.CreateBackupBackingImage(backupBackingImage); err != nil && !apierrors.IsAlreadyExists(err) {
+		return errors.Wrapf(err, "failed to create backup backing image %s in the cluster", name)
 	}
 
 	return nil
