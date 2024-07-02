@@ -22,12 +22,17 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+)
+
+const (
+	snapshotErrorLost = "lost track of the corresponding snapshot info inside volume engine"
 )
 
 type SnapshotController struct {
@@ -473,9 +478,10 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 	snapshotInfo, ok := engine.Status.Snapshots[snapshot.Name]
 	if !ok {
 		if !requestCreateNewSnapshot || alreadyCreatedBefore {
-			// The snapshotInfo exists inside engine.Status.Snapshots before but disappears now.
-			// Mark snapshotCR as lost track of the corresponding snapshotInfo
-			snapshot.Status.Error = "lost track of the corresponding snapshot info inside volume engine"
+			// The snapshotInfo existed inside engine.Status.Snapshots before but is gone now. This often doesn't
+			// signify an actual problem (e.g. if the snapshot is deleted by the engine process itself during a purge),
+			// but the snapshot controller can't reconcile the status anymore. Add a message to the CR.
+			snapshot.Status.Error = snapshotErrorLost
 		}
 		// Newly created snapshotCR, wait for the snapshotInfo to be appeared inside engine.Status.Snapshot
 		snapshot.Status.ReadyToUse = false
@@ -561,19 +567,26 @@ func (sc *SnapshotController) handleAttachmentTicketCreation(snap *longhorn.Snap
 
 func (sc *SnapshotController) generatingEventsForSnapshot(existingSnapshot, snapshot *longhorn.Snapshot) {
 	if !existingSnapshot.Status.MarkRemoved && snapshot.Status.MarkRemoved {
-		sc.eventRecorder.Event(snapshot, corev1.EventTypeWarning, "SnapshotDelete", "snapshot is marked as removed")
+		sc.eventRecorder.Event(snapshot, corev1.EventTypeNormal, constant.EventReasonDelete, "snapshot is marked as removed")
 	}
 	if snapshot.Spec.CreateSnapshot && existingSnapshot.Status.CreationTime == "" && snapshot.Status.CreationTime != "" {
-		sc.eventRecorder.Eventf(snapshot, corev1.EventTypeNormal, "SnapshotCreate", "successfully provisioned the snapshot")
+		sc.eventRecorder.Event(snapshot, corev1.EventTypeNormal, constant.EventReasonCreate, "successfully provisioned the snapshot")
 	}
 	if snapshot.Status.Error != "" && existingSnapshot.Status.Error != snapshot.Status.Error {
-		sc.eventRecorder.Eventf(snapshot, corev1.EventTypeWarning, "SnapshotError", "%v", snapshot.Status.Error)
+		if snapshot.Status.Error == snapshotErrorLost {
+			// There are probably scenarios when this is an actual problem, so we want to continue to emit the event.
+			// However, it most often occurs in scenarios like https://github.com/longhorn/longhorn/issues/4126, so we
+			// want to use EventTypeNormal instead of EventTypeWarning.
+			sc.eventRecorder.Event(snapshot, corev1.EventTypeNormal, constant.EventReasonDelete, "snapshot was removed from engine")
+		} else {
+			sc.eventRecorder.Eventf(snapshot, corev1.EventTypeWarning, constant.EventReasonFailed, "%v", snapshot.Status.Error)
+		}
 	}
 	if existingSnapshot.Status.ReadyToUse != snapshot.Status.ReadyToUse {
 		if snapshot.Status.ReadyToUse {
-			sc.eventRecorder.Eventf(snapshot, corev1.EventTypeNormal, "SnapshotUpdate", "snapshot becomes ready to use")
+			sc.eventRecorder.Event(snapshot, corev1.EventTypeNormal, constant.EventReasonUpdate, "snapshot becomes ready to use")
 		} else {
-			sc.eventRecorder.Eventf(snapshot, corev1.EventTypeWarning, "SnapshotUpdate", "snapshot becomes not ready to use")
+			sc.eventRecorder.Event(snapshot, corev1.EventTypeWarning, constant.EventReasonUpdate, "snapshot becomes not ready to use")
 		}
 	}
 }

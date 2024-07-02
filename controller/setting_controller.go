@@ -274,7 +274,7 @@ func (sc *SettingController) syncNonDangerZoneSettingsForManagedComponents(setti
 			return err
 		}
 	case types.SettingNameLogLevel:
-		if err := sc.updateLogLevel(); err != nil {
+		if err := sc.updateLogLevel(settingName); err != nil {
 			return err
 		}
 	case types.SettingNameDefaultLonghornStaticStorageClass:
@@ -952,8 +952,8 @@ func (sc *SettingController) updateCNI() error {
 	return nil
 }
 
-func (sc *SettingController) updateLogLevel() error {
-	setting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameLogLevel)
+func (sc *SettingController) updateLogLevel(settingName types.SettingName) error {
+	setting, err := sc.ds.GetSettingWithAutoFillingRO(settingName)
 	if err != nil {
 		return err
 	}

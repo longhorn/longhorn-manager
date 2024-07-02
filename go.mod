@@ -58,14 +58,14 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
-	github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240625050424-d5cdb2615297
+	github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240625060613-f8f2bdbc6bea
 	github.com/longhorn/backupstore v0.0.0-20240624084713-e98e31ebcebb
-	github.com/longhorn/go-common-libs v0.0.0-20240625070844-d22ff30a7739
+	github.com/longhorn/go-common-libs v0.0.0-20240627075631-d78642cff5e1
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240624090318-a8ef86edd9a5
-	github.com/longhorn/go-spdk-helper v0.0.0-20240625071858-89fcb1c09841
-	github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240625050518-004f204f31da
-	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240625145042-4961e1548d64
-	github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240625050532-badefc86cd57
+	github.com/longhorn/go-spdk-helper v0.0.0-20240630053246-99b2a18336b5
+	github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240630112621-0402d7096a3f
+	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240630132104-73cc005a5a22
+	github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240629043243-fe205dfbd815
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.18.0
 	github.com/rancher/dynamiclistener v0.3.6
@@ -78,7 +78,7 @@ require (
 	golang.org/x/mod v0.17.0
 	golang.org/x/net v0.26.0
 	golang.org/x/sys v0.21.0
-	golang.org/x/time v0.3.0
+	golang.org/x/time v0.5.0
 	google.golang.org/grpc v1.64.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0

@@ -63,7 +63,34 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 		return nil, nil, nil
 	}
 
-	// get all hosts
+	diskCandidates, multiError, err := rcs.FindDiskCandidates(replica, replicas, volume)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// there's no disk that fit for current replica
+	if len(diskCandidates) == 0 {
+		logrus.Errorf("There's no available disk for replica %v, size %v", replica.ObjectMeta.Name, replica.Spec.VolumeSize)
+		return nil, multiError, nil
+	}
+
+	rcs.scheduleReplicaToDisk(replica, diskCandidates)
+
+	return replica, nil, nil
+}
+
+// FindDiskCandidates identifies suitable disks on eligible nodes for the replica.
+//
+// Parameters:
+// - replica: The replica for which to find disk candidates.
+// - replicas: The map of existing replicas.
+// - volume: The volume associated with the replica.
+//
+// Returns:
+// - Map of disk candidates (disk UUID to Disk).
+// - MultiError for non-fatal errors encountered.
+// - Error for any fatal errors encountered.
+func (rcs *ReplicaScheduler) FindDiskCandidates(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume) (map[string]*Disk, util.MultiError, error) {
 	nodesInfo, err := rcs.getNodeInfo()
 	if err != nil {
 		return nil, nil, err
@@ -95,17 +122,7 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 	}
 
 	diskCandidates, multiError := rcs.getDiskCandidates(nodeCandidates, nodeDisksMap, replicas, volume, true, false)
-
-	// there's no disk that fit for current replica
-	if len(diskCandidates) == 0 {
-		logrus.Errorf("There's no available disk for replica %v, size %v", replica.ObjectMeta.Name, replica.Spec.VolumeSize)
-		return nil, multiError, nil
-	}
-
-	// schedule replica to disk
-	rcs.scheduleReplicaToDisk(replica, diskCandidates)
-
-	return replica, nil, nil
+	return diskCandidates, multiError, nil
 }
 
 func (rcs *ReplicaScheduler) getNodeCandidates(nodesInfo map[string]*longhorn.Node, schedulingReplica *longhorn.Replica) (nodeCandidates map[string]*longhorn.Node, multiError util.MultiError) {
@@ -135,8 +152,26 @@ func (rcs *ReplicaScheduler) getNodeCandidates(nodesInfo map[string]*longhorn.No
 			}
 		}
 
-		if isReady, _ := rcs.ds.CheckDataEngineImageReadiness(schedulingReplica.Spec.Image, schedulingReplica.Spec.DataEngine, node.Name); isReady {
+		log := logrus.WithField("node", node.Name)
+
+		// After a node reboot, it might be listed in the nodeInfo but its InstanceManager
+		// is not ready. To prevent scheduling replicas on such nodes, verify the
+		// InstanceManager's readiness before including it in the candidate list.
+		if isReady, err := rcs.ds.CheckInstanceManagersReadiness(schedulingReplica.Spec.DataEngine, node.Name); !isReady {
+			if err != nil {
+				log = log.WithError(err)
+			}
+			log.Debugf("Excluding node in node candidates because instance manager on node is not ready")
+			continue
+		}
+
+		if isReady, err := rcs.ds.CheckDataEngineImageReadiness(schedulingReplica.Spec.Image, schedulingReplica.Spec.DataEngine, node.Name); isReady {
 			nodeCandidates[node.Name] = node
+		} else {
+			if err != nil {
+				log = log.WithError(err)
+			}
+			log.Debugf("Excluding node in node candidates because data engine image on node is not ready")
 		}
 	}
 
@@ -670,7 +705,7 @@ func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *lon
 
 	im, err := rcs.ds.GetInstanceManagerByInstanceRO(r)
 	if err != nil {
-		logrus.Errorf("failed to get instance manager when checking replica %v is reusable: %v", r.Name, err)
+		logrus.Errorf("Failed to get instance manager when checking replica %v is reusable: %v", r.Name, err)
 		return false, nil
 	}
 	if im.DeletionTimestamp != nil || im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
