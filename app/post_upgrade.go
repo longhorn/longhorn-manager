@@ -95,11 +95,6 @@ func (u *postUpgrader) waitManagerUpgradeComplete() error {
 			logrus.Warnf("failed to get daemonset: %v", err)
 			continue
 		}
-		if len(ds.Spec.Template.Spec.Containers) != 1 {
-			logrus.Warnf("found %d containers in manager spec", len(ds.Spec.Template.Spec.Containers))
-			continue
-		}
-
 		podList, err := u.kubeClient.CoreV1().Pods(u.namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labels.Set(types.GetManagerLabels()).String()})
 		if err != nil {
 			logrus.Warnf("failed to list pods: %v", err)
