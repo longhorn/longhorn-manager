@@ -83,3 +83,10 @@ func setReplicaFailedAt(r *longhorn.Replica, timestamp string) {
 		r.Spec.LastFailedAt = timestamp
 	}
 }
+
+func isRegularRWXVolume(v *longhorn.Volume) bool {
+	if v == nil {
+		return false
+	}
+	return v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !v.Spec.Migratable
+}

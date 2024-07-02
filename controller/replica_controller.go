@@ -901,6 +901,14 @@ func (rc *ReplicaController) enqueueAllRebuildingReplicaOnCurrentNode() {
 }
 
 func (rc *ReplicaController) isResponsibleFor(r *longhorn.Replica) bool {
+	if isRWX, _ := rc.ds.IsRegularRWXVolume(r.Spec.VolumeName); isRWX {
+		if isDelinquent, _ := rc.ds.IsNodeDelinquent(r.Status.OwnerID); isDelinquent {
+			pod, err := rc.ds.GetPodRO(r.Namespace, types.GetShareManagerPodNameFromShareManagerName(r.Spec.VolumeName))
+			if err == nil && pod != nil {
+				return rc.controllerID == pod.Spec.NodeName
+			}
+		}
+	}
 	return isControllerResponsibleFor(rc.controllerID, rc.ds, r.Name, r.Spec.NodeID, r.Status.OwnerID)
 }
 

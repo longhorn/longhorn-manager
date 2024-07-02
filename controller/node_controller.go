@@ -379,7 +379,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 
 	existingNode := node.DeepCopy()
 	defer func() {
-		// we're going to update volume assume things changes
+		// we're going to update node assume things changes
 		if err == nil && !reflect.DeepEqual(existingNode.Status, node.Status) {
 			_, err = nc.ds.UpdateNodeStatus(node)
 		}
@@ -513,6 +513,27 @@ func (nc *NodeController) syncNode(key string) (err error) {
 
 	if nc.controllerID != node.Name {
 		return nil
+	}
+
+	// Getting here is enough proof of life to clear Lease-based delinquency.
+	// The node clears itself here; setting it is done by share-manager lease checker.
+	// No good - there can be a race with a dying node clearing its condition
+	// immediately after it was set.
+	foundCondition := false
+	isDelinquent := false
+	for _, nodeCondition := range node.Status.Conditions {
+		if nodeCondition.Type == longhorn.NodeConditionTypeDelinquent {
+			foundCondition = true
+			if nodeCondition.Status == longhorn.ConditionStatusTrue {
+				isDelinquent = true
+			}
+		}
+	}
+	if !foundCondition || isDelinquent {
+		node.Status.Conditions = types.SetCondition(node.Status.Conditions,
+			longhorn.NodeConditionTypeDelinquent, longhorn.ConditionStatusFalse,
+			"", fmt.Sprintf("Node %v clears delinquency", node.Name))
+		log.Infof("Node %v clears its delinquency condition.", node.Name)
 	}
 
 	// Create a monitor for collecting disk information
