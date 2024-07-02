@@ -377,7 +377,20 @@ func (vac *VolumeAttachmentController) handleNodeCordoned(va *longhorn.VolumeAtt
 }
 
 func (vac *VolumeAttachmentController) handleVolumeMigration(va *longhorn.VolumeAttachment, vol *longhorn.Volume) {
-	if !isMigratableVolume(vol) {
+	if !util.IsMigratableVolume(vol) {
+		return
+	}
+
+	// If a volume was migrating and became detached (or is being detached):
+	// - We no longer know which node it was migrating from or to.
+	// - We cannot do an "online" migration anyways, because the volume already crashed.
+	// Now, we cancel the migration and wait to proceed until the volume is again exclusively attached.
+	if vol.Spec.NodeID == "" {
+		if vol.Spec.MigrationNodeID != "" {
+			vol.Spec.MigrationNodeID = ""
+			log := getLoggerForMigratingLHVolumeAttachment(vac.logger, va, vol)
+			log.Warn("Cancelling migration for detached volume")
+		}
 		return
 	}
 
@@ -398,31 +411,17 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationStart(va *longhorn.V
 		return
 	}
 
-	hasCSIAttachmentTicket := false
-	for _, attachmentTicket := range va.Spec.AttachmentTickets {
-		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
-			continue
-		}
-		// Found one csi attachmentTicket that is requesting volume to attach to the current node
-		if attachmentTicket.NodeID == vol.Spec.NodeID && verifyAttachmentParameters(attachmentTicket.Parameters, vol) {
-			hasCSIAttachmentTicket = true
-		}
-	}
-
-	if !hasCSIAttachmentTicket {
+	if !hasCSIAttachmentTicketRequestingNode(vol.Spec.NodeID, va, vol) {
 		return
 	}
+	// Found one csi attachmentTicket that is requesting volume to attach to the current node
 
-	for _, attachmentTicket := range va.Spec.AttachmentTickets {
-		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
-			continue
-		}
+	if attachmentTicket := getCSIAttachmentTicketNotRequestingNode(vol.Spec.NodeID, va, vol); attachmentTicket != nil {
 		// Found one csi attachmentTicket that is requesting volume to attach to a different node
-		if attachmentTicket.NodeID != vol.Spec.NodeID {
-			vol.Spec.MigrationNodeID = attachmentTicket.NodeID
-		}
+		vol.Spec.MigrationNodeID = attachmentTicket.NodeID
+		log := getLoggerForMigratingLHVolumeAttachment(vac.logger, va, vol)
+		log.Info("Starting migration")
 	}
-
 }
 
 func (vac *VolumeAttachmentController) handleVolumeMigrationConfirmation(va *longhorn.VolumeAttachment, vol *longhorn.Volume) {
@@ -431,27 +430,50 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationConfirmation(va *lon
 		return
 	}
 
-	hasCSIAttachmentTicketRequestingPrevNode := false
-	for _, attachmentTicket := range va.Spec.AttachmentTickets {
-		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
-			continue
-		}
-		// Found one csi attachmentTicket that is requesting volume to attach to the current node
-		if attachmentTicket.NodeID == vol.Spec.NodeID && verifyAttachmentParameters(attachmentTicket.Parameters, vol) {
-			hasCSIAttachmentTicketRequestingPrevNode = true
-			break
-		}
-	}
-	migratingEngineSnapSynced, err := vac.checkMigratingEngineSyncSnapshots(va, vol)
-	if err != nil {
-		vac.logger.WithError(err).Warn("Failed to check migrating engine snapshot status")
+	log := getLoggerForMigratingLHVolumeAttachment(vac.logger, va, vol)
+
+	if hasCSIAttachmentTicketRequestingNode(vol.Spec.NodeID, va, vol) {
 		return
 	}
-	if !hasCSIAttachmentTicketRequestingPrevNode && migratingEngineSnapSynced {
-		// TODO: Do we need check if the volume is available on the currentMigrationIDNode?
-		vol.Spec.NodeID = vol.Status.CurrentMigrationNodeID
+
+	// This is not technically a confirmation. However, there is no good reason to allow the volume to remain attached
+	// under these conditions.
+	// - Kubernetes does not want it attached to the old node.
+	// - We can't get a migration engine up on the new down node.
+	// Stop the migration and detach from the old node. If the upper layer changes nothing and the new node comes back,
+	// the volume can exclusively attach to it.
+	if downOrDeleted, err := vac.ds.IsNodeDownOrDeleted(vol.Status.CurrentMigrationNodeID); err != nil {
+		log.WithError(err).Warn("Failed to check if node is down")
+	} else if downOrDeleted {
+		vol.Spec.NodeID = ""
 		vol.Spec.MigrationNodeID = ""
+		log = getLoggerForMigratingLHVolumeAttachment(vac.logger, va, vol)
+		log.Warn("Detaching volume for attempted migration to down node")
+		return
 	}
+	// We can consider a similar optimization for the case in which the old node is down. However, in that case, the
+	// situation is eventually resolved when Longhorn realizes the old engine is no longer running (we have to wait
+	// until Kubernetes tries to evict its instance-manager). Then, the volume becomes detached automatically and the
+	// migration ends. For now, the existing behavior seems safest.
+
+	if !vac.isVolumeAvailableOnNode(vol.Name, vol.Status.CurrentMigrationNodeID) {
+		log.Warn("Waiting to confirm migration until migration engine is ready")
+		return
+	}
+
+	migratingEngineSnapSynced, err := vac.checkMigratingEngineSyncSnapshots(va, vol)
+	if err != nil {
+		log.WithError(err).Warn("Failed to check migrating engine snapshot status")
+	}
+	if !migratingEngineSnapSynced {
+		log.Warn("Waiting to confirm migration until snapshots have synced")
+		return
+	}
+
+	vol.Spec.NodeID = vol.Status.CurrentMigrationNodeID
+	vol.Spec.MigrationNodeID = ""
+	log = getLoggerForMigratingLHVolumeAttachment(vac.logger, va, vol)
+	log.Info("Confirming migration")
 }
 
 func (vac *VolumeAttachmentController) checkMigratingEngineSyncSnapshots(va *longhorn.VolumeAttachment, vol *longhorn.Volume) (bool, error) {
@@ -511,18 +533,10 @@ func (vac *VolumeAttachmentController) handleVolumeMigrationRollback(va *longhor
 		return
 	}
 
-	hasCSIAttachmentTicketRequestingMigratingNode := false
-	for _, attachmentTicket := range va.Spec.AttachmentTickets {
-		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
-			continue
-		}
-		// Found one csi attachmentTicket that is requesting volume to attach to the current node
-		if attachmentTicket.NodeID == vol.Spec.MigrationNodeID {
-			hasCSIAttachmentTicketRequestingMigratingNode = true
-		}
-	}
-	if !hasCSIAttachmentTicketRequestingMigratingNode {
+	if !hasCSIAttachmentTicketRequestingNode(vol.Spec.MigrationNodeID, va, vol) {
 		vol.Spec.MigrationNodeID = ""
+		log := getLoggerForMigratingLHVolumeAttachment(vac.logger, va, vol)
+		log.Info("Rolling back migration")
 	}
 }
 
@@ -554,7 +568,7 @@ func (vac *VolumeAttachmentController) shouldDoDetach(va *longhorn.VolumeAttachm
 	if vol.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 		return true
 	}
-	if isMigratableVolume(vol) && util.IsVolumeMigrating(vol) {
+	if util.IsMigratableVolume(vol) && util.IsVolumeMigrating(vol) {
 		// if the volume is migrating, the detachment will be handled by handleVolumeMigration()
 		return false
 	}
@@ -654,7 +668,7 @@ func (vac *VolumeAttachmentController) handleVolumeAttachment(va *longhorn.Volum
 		return
 	}
 
-	attachmentTicket := selectAttachmentTicketToAttach(va, vol)
+	attachmentTicket := vac.selectAttachmentTicketToAttach(va, vol)
 	if attachmentTicket == nil {
 		return
 	}
@@ -665,7 +679,10 @@ func (vac *VolumeAttachmentController) handleVolumeAttachment(va *longhorn.Volum
 	setAttachmentParameter(attachmentTicket.Parameters, vol)
 }
 
-func selectAttachmentTicketToAttach(va *longhorn.VolumeAttachment, vol *longhorn.Volume) *longhorn.AttachmentTicket {
+func (vac *VolumeAttachmentController) selectAttachmentTicketToAttach(va *longhorn.VolumeAttachment,
+	vol *longhorn.Volume) *longhorn.AttachmentTicket {
+	log := getLoggerForLHVolumeAttachment(vac.logger, va)
+
 	ticketCandidates := []*longhorn.AttachmentTicket{}
 	for _, attachmentTicket := range va.Spec.AttachmentTickets {
 		if isCSIAttacherTicketOfRegularRWXVolume(attachmentTicket, vol) {
@@ -688,6 +705,20 @@ func selectAttachmentTicketToAttach(va *longhorn.VolumeAttachment, vol *longhorn
 		if priorityLevel == maxAttacherPriorityLevel {
 			highPriorityTicketCandidates = append(highPriorityTicketCandidates, attachmentTicket)
 		}
+	}
+
+	// If a volume was migrating and became detached:
+	// - We no longer know which node it was migrating from or to.
+	// - We cannot do an "online" migration anyways, because the volume already crashed.
+	// Now, we refuse to attach the volume again until the caller resolves the situation by reducing the number of
+	// attachment tickets to one.
+	if util.IsMigratableVolume(vol) &&
+		maxAttacherPriorityLevel == longhorn.AttacherPriorityLevelCSIAttacher &&
+		len(highPriorityTicketCandidates) > 1 {
+		// The check uses > 1, but there should be only two tickets, so log two NodeIDs.
+		log.Warnf("Volume migration between %v and %v failed; detach volume from extra node to resume",
+			highPriorityTicketCandidates[0].NodeID, highPriorityTicketCandidates[1].NodeID)
+		return nil
 	}
 
 	// TODO: sort by time
@@ -893,6 +924,18 @@ func getLoggerForLHVolumeAttachment(logger logrus.FieldLogger, va *longhorn.Volu
 	)
 }
 
+func getLoggerForMigratingLHVolumeAttachment(logger logrus.FieldLogger, va *longhorn.VolumeAttachment,
+	vol *longhorn.Volume) *logrus.Entry {
+	return getLoggerForLHVolumeAttachment(logger, va).WithFields(
+		logrus.Fields{
+			"nodeID":                 vol.Spec.NodeID,
+			"currentNodeID":          vol.Status.CurrentNodeID,
+			"migrationNodeID":        vol.Spec.MigrationNodeID,
+			"currentMigrationNodeID": vol.Status.CurrentMigrationNodeID,
+		},
+	)
+}
+
 func isCSIAttacherTicketOfRegularRWXVolume(attachmentTicket *longhorn.AttachmentTicket, v *longhorn.Volume) bool {
 	return isRegularRWXVolume(v) && isCSIAttacherTicket(attachmentTicket)
 }
@@ -917,7 +960,7 @@ func isMigratingCSIAttacherTicket(attachmentTicket *longhorn.AttachmentTicket, v
 	}
 	isCSIAttacherTicket := attachmentTicket.Type == longhorn.AttacherTypeCSIAttacher
 	isMigratingTicket := attachmentTicket.NodeID == vol.Status.CurrentMigrationNodeID
-	return isMigratableVolume(vol) && util.IsVolumeMigrating(vol) && isCSIAttacherTicket && isMigratingTicket
+	return util.IsMigratableVolume(vol) && util.IsVolumeMigrating(vol) && isCSIAttacherTicket && isMigratingTicket
 }
 
 func isVolumeShareAvailable(vol *longhorn.Volume) bool {
@@ -949,4 +992,28 @@ func (vac *VolumeAttachmentController) isVolumeAvailableOnNode(volumeName, node 
 	}
 
 	return false
+}
+
+func hasCSIAttachmentTicketRequestingNode(nodeID string, va *longhorn.VolumeAttachment, vol *longhorn.Volume) bool {
+	for _, attachmentTicket := range va.Spec.AttachmentTickets {
+		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
+			continue
+		}
+		if attachmentTicket.NodeID == nodeID && verifyAttachmentParameters(attachmentTicket.Parameters, vol) {
+			return true
+		}
+	}
+	return false
+}
+
+func getCSIAttachmentTicketNotRequestingNode(nodeID string, va *longhorn.VolumeAttachment, vol *longhorn.Volume) *longhorn.AttachmentTicket {
+	for _, attachmentTicket := range va.Spec.AttachmentTickets {
+		if attachmentTicket.Type != longhorn.AttacherTypeCSIAttacher {
+			continue
+		}
+		if attachmentTicket.NodeID != nodeID && verifyAttachmentParameters(attachmentTicket.Parameters, vol) {
+			return attachmentTicket
+		}
+	}
+	return nil
 }

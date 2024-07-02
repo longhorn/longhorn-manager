@@ -10,7 +10,10 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
+	"github.com/longhorn/longhorn-manager/webhook/common"
+	"github.com/pkg/errors"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
@@ -57,6 +60,15 @@ func (v *volumeAttachmentValidator) Update(request *admission.Request, oldObj ru
 	if !ok {
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.VolumeAttachment", newObj), "")
 	}
+	isRemovingLonghornFinalizer, err := common.IsRemovingLonghornFinalizer(oldObj, newObj)
+	if err != nil {
+		err = errors.Wrap(err, "failed to check if removing longhorn.io finalizer from deleted object")
+		return werror.NewInvalidError(err.Error(), "")
+	} else if isRemovingLonghornFinalizer {
+		// We always allow the removal of the longhorn.io finalizer while an object is being deleted. It is the
+		// controller's responsibility to wait for the correct conditions to attempt to remove it.
+		return nil
+	}
 
 	if newVA.Spec.Volume != oldVA.Spec.Volume {
 		return werror.NewInvalidError("spec.volume field is immutable", "spec.volume")
@@ -70,6 +82,10 @@ func (v *volumeAttachmentValidator) Update(request *admission.Request, oldObj ru
 		return werror.NewInvalidError(fmt.Sprintf("label %v is immutable", types.LonghornLabelVolume), "metadata.labels")
 	}
 
+	if err := v.verifyTicketCountForMigratableVolume(newVA); err != nil {
+		return err
+	}
+
 	return verifyAttachmentTicketIDConsistency(newVA.Spec.AttachmentTickets)
 }
 
@@ -80,4 +96,30 @@ func verifyAttachmentTicketIDConsistency(attachmentTickets map[string]*longhorn.
 		}
 	}
 	return nil
+}
+
+func (v *volumeAttachmentValidator) verifyTicketCountForMigratableVolume(va *longhorn.VolumeAttachment) error {
+	vol, err := v.ds.GetVolumeRO(va.Spec.Volume)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to get volume %v for attachment", va.Spec.Volume)
+		return werror.NewInvalidError(err.Error(), "spec.volume")
+	}
+
+	if !util.IsMigratableVolume(vol) {
+		return nil
+	}
+
+	switch numTickets := len(va.Spec.AttachmentTickets); {
+	case numTickets < 2:
+		return nil
+	case numTickets == 2:
+		if vol.Status.State != longhorn.VolumeStateAttached {
+			msg := fmt.Sprintf("cannot attach migratable volume %v to a second node while it is in state %v", vol.Name, vol.Status.State)
+			return werror.NewInvalidError(msg, "spec.attachmentTickets")
+		}
+		return nil
+	default:
+		msg := fmt.Sprintf("cannot attach migratable volume %v to more than two nodes", vol.Name)
+		return werror.NewInvalidError(msg, "spec.attachmentTickets")
+	}
 }

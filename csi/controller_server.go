@@ -572,8 +572,12 @@ func (cs *ControllerServer) ControllerUnpublishVolume(ctx context.Context, req *
 
 	return cs.unpublishVolume(volume, nodeID, attachmentID, func() error {
 		checkVolumeUnpublished := func(vol *longhornclient.Volume) bool {
+			isRegularRWXVolume := vol.AccessMode == string(longhorn.AccessModeReadWriteMany) && !vol.Migratable
 			_, ok := vol.VolumeAttachment.Attachments[attachmentID]
-			return !ok
+			if isRegularRWXVolume {
+				return !ok
+			}
+			return !ok && !isVolumeAvailableOn(vol, nodeID)
 		}
 
 		if !cs.waitForVolumeState(volumeID, "volume unpublished", checkVolumeUnpublished, false, true) {
@@ -1172,7 +1176,7 @@ func (cs *ControllerServer) waitForVolumeState(volumeID string, stateDescription
 	for {
 		select {
 		case <-timeout:
-			log.Warnf("Timeout wTile waiting for volume %s state %s", volumeID, stateDescription)
+			log.Warnf("Timeout while waiting for volume %s state %s", volumeID, stateDescription)
 			return false
 		case <-tick:
 			existVol, err := cs.apiClient.Volume.ById(volumeID)
