@@ -3836,8 +3836,8 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 		// The volume attachment controller has stopped the migration (if one was ever started). We must clean up any
 		// extra engines/replicas and leave the volume in a "good" state.
 
-		// The only time there should be more then one engines is when we are migrating or upgrading. If there are more
-		// then one and we no longer have a MigrationNodeID set we can cleanup the extra engine.
+		// The only time there should be more then one engines is when we are migrating. If there are more then one and
+		// we no longer have a MigrationNodeID set we can cleanup the extra engine.
 		if len(es) < 2 && v.Status.CurrentMigrationNodeID == "" {
 			return nil // There is nothing to do.
 		}
