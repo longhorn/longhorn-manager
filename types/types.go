@@ -173,6 +173,8 @@ const (
 	LonghornLabelLastSystemRestoreBackup    = "last-system-restored-backup"
 	LonghornLabelDataEngine                 = "data-engine"
 	LonghornLabelVersion                    = "version"
+	LonghornLabelAdmissionWebhook           = "admission-webhook"
+	LonghornLabelConversionWebhook          = "conversion-webhook"
 
 	LonghornLabelValueEnabled = "enabled"
 	LonghornLabelValueIgnored = "ignored"
@@ -408,6 +410,18 @@ func GetManagerLabels() map[string]string {
 		"app": LonghornManagerDaemonSetName,
 	}
 }
+func GetAdmissionWebhookLabel() map[string]string {
+	return map[string]string{
+		GetLonghornLabelKey(LonghornLabelAdmissionWebhook): AdmissionWebhookServiceName,
+	}
+}
+
+func GetConversionWebhookLabel() map[string]string {
+	return map[string]string{
+		GetLonghornLabelKey(LonghornLabelConversionWebhook): ConversionWebhookServiceName,
+	}
+}
+
 func GetEngineImageLabels(engineImageName string) map[string]string {
 	labels := GetBaseLabelsForSystemManagedComponent()
 	labels[GetLonghornLabelComponentKey()] = LonghornLabelEngineImage

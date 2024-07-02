@@ -11,6 +11,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/version"
@@ -428,6 +429,31 @@ func (s *DataStore) ListManagerPodsRO() ([]*corev1.Pod, error) {
 		return nil, err
 	}
 	return s.ListPodsBySelectorRO(selector)
+}
+
+func (s *DataStore) GetManagerPodForNode(nodeName string) (*corev1.Pod, error) {
+	pods, err := s.ListManagerPods()
+	if err != nil {
+		return nil, err
+	}
+	for _, pod := range pods {
+		if pod.Spec.NodeName == nodeName {
+			return pod, nil
+		}
+	}
+	return nil, errors.NewNotFound(corev1.Resource("pod"), nodeName)
+}
+
+func (s *DataStore) AddLabelToManagerPod(nodeName string, label map[string]string) error {
+	pod, err := s.GetManagerPodForNode(nodeName)
+	if err != nil {
+		return err
+	}
+	for key, value := range label {
+		pod.Labels[key] = value
+	}
+	_, err = s.UpdatePod(pod)
+	return err
 }
 
 func getInstanceManagerComponentSelector() (labels.Selector, error) {
