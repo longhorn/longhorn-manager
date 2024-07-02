@@ -372,6 +372,41 @@ func fakeSystemRolloutBackups(fakeObjs map[string]*longhorn.Backup, c *C, inform
 	}
 }
 
+func fakeSystemRolloutBackupBackingImages(fakeObjs map[string]*longhorn.BackupBackingImage, c *C, informerFactory lhinformers.SharedInformerFactory, client *lhfake.Clientset) {
+	indexer := informerFactory.Longhorn().V1beta2().BackupBackingImages().Informer().GetIndexer()
+
+	clientInterface := client.LonghornV1beta2().BackupBackingImages(TestNamespace)
+
+	exists, err := clientInterface.List(context.TODO(), metav1.ListOptions{})
+	c.Assert(err, IsNil)
+
+	for _, exist := range exists.Items {
+		exist, err := clientInterface.Get(context.TODO(), exist.Name, metav1.GetOptions{})
+		c.Assert(err, IsNil)
+
+		err = clientInterface.Delete(context.TODO(), exist.Name, metav1.DeleteOptions{})
+		c.Assert(err, IsNil)
+
+		err = indexer.Delete(exist)
+		c.Assert(err, IsNil)
+	}
+
+	for k, fakeObj := range fakeObjs {
+		name := string(k)
+		if strings.HasSuffix(name, TestIgnoreSuffix) {
+			continue
+		}
+
+		backupBackingImage := newBackupBackingImage(name)
+		backupBackingImage.Status = fakeObj.Status
+		exist, err := clientInterface.Create(context.TODO(), backupBackingImage, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+
+		err = indexer.Add(exist)
+		c.Assert(err, IsNil)
+	}
+}
+
 func fakeSystemRolloutDaemonSets(fakeObjs map[SystemRolloutCRName]*appsv1.DaemonSet, c *C, informerFactory informers.SharedInformerFactory, client *fake.Clientset) {
 	indexer := informerFactory.Apps().V1().DaemonSets().Informer().GetIndexer()
 
@@ -712,6 +747,40 @@ func fakeSystemRolloutVolumes(fakeObjs map[SystemRolloutCRName]*longhorn.Volume,
 		volume := newVolume(name, fakeObj.Spec.NumberOfReplicas)
 		volume.Status = fakeObj.Status
 		exist, err := clientInterface.Create(context.TODO(), volume, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+
+		err = indexer.Add(exist)
+		c.Assert(err, IsNil)
+	}
+}
+
+func fakeSystemRolloutBackingImages(fakeObjs map[SystemRolloutCRName]*longhorn.BackingImage, c *C, informerFactory lhinformers.SharedInformerFactory, client *lhfake.Clientset) {
+	indexer := informerFactory.Longhorn().V1beta2().BackingImages().Informer().GetIndexer()
+
+	clientInterface := client.LonghornV1beta2().BackingImages(TestNamespace)
+
+	exists, err := clientInterface.List(context.TODO(), metav1.ListOptions{})
+	c.Assert(err, IsNil)
+
+	for _, exist := range exists.Items {
+		exist, err := clientInterface.Get(context.TODO(), exist.Name, metav1.GetOptions{})
+		c.Assert(err, IsNil)
+
+		err = clientInterface.Delete(context.TODO(), exist.Name, metav1.DeleteOptions{})
+		c.Assert(err, IsNil)
+
+		err = indexer.Delete(exist)
+		c.Assert(err, IsNil)
+	}
+
+	for k, fakeObj := range fakeObjs {
+		name := string(k)
+		if strings.HasSuffix(name, TestIgnoreSuffix) {
+			continue
+		}
+
+		backingImage := newBackingIamge(name, fakeObj.Spec.SourceType)
+		exist, err := clientInterface.Create(context.TODO(), backingImage, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
 
 		err = indexer.Add(exist)
