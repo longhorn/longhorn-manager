@@ -25,6 +25,10 @@ type BackingImage struct {
 
 	Parameters map[string]string `json:"parameters,omitempty" yaml:"parameters,omitempty"`
 
+	Secret string `json:"secret,omitempty" yaml:"secret,omitempty"`
+
+	SecretNamespace string `json:"secretNamespace,omitempty" yaml:"secretNamespace,omitempty"`
+
 	Size int64 `json:"size,omitempty" yaml:"size,omitempty"`
 
 	SourceType string `json:"sourceType,omitempty" yaml:"source_type,omitempty"`

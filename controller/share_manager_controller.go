@@ -25,7 +25,6 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
-	"github.com/longhorn/longhorn-manager/csi"
 	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -906,16 +905,16 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 			return nil, err
 		}
 
-		cryptoKey = string(secret.Data[csi.CryptoKeyValue])
+		cryptoKey = string(secret.Data[types.CryptoKeyValue])
 		if len(cryptoKey) == 0 {
-			return nil, fmt.Errorf("missing %v in secret for encrypted RWX volume %v", csi.CryptoKeyValue, volume.Name)
+			return nil, fmt.Errorf("missing %v in secret for encrypted RWX volume %v", types.CryptoKeyValue, volume.Name)
 		}
 		cryptoParams = crypto.NewEncryptParams(
-			string(secret.Data[csi.CryptoKeyProvider]),
-			string(secret.Data[csi.CryptoKeyCipher]),
-			string(secret.Data[csi.CryptoKeyHash]),
-			string(secret.Data[csi.CryptoKeySize]),
-			string(secret.Data[csi.CryptoPBKDF]))
+			string(secret.Data[types.CryptoKeyProvider]),
+			string(secret.Data[types.CryptoKeyCipher]),
+			string(secret.Data[types.CryptoKeyHash]),
+			string(secret.Data[types.CryptoKeySize]),
+			string(secret.Data[types.CryptoPBKDF]))
 	}
 
 	manifest := c.createPodManifest(sm, annotations, tolerations, affinity, imagePullPolicy, nil, registrySecret,

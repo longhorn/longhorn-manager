@@ -271,6 +271,9 @@ type BackingImage struct {
 	Size              int64                                          `json:"size"`
 	CurrentChecksum   string                                         `json:"currentChecksum"`
 
+	Secret          string `json:"secret"`
+	SecretNamespace string `json:"secretNamespace"`
+
 	DeletionTimestamp string `json:"deletionTimestamp"`
 }
 
@@ -280,6 +283,11 @@ type BackingImageCleanupInput struct {
 
 type UpdateMinNumberOfCopiesInput struct {
 	MinNumberOfCopies int `json:"minNumberOfCopies"`
+}
+
+type BackingImageRestoreInput struct {
+	Secret          string `json:"secret"`
+	SecretNamespace string `json:"secretNamespace"`
 }
 
 type AttachInput struct {
@@ -676,6 +684,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("backingImageDiskFileStatus", longhorn.BackingImageDiskFileStatus{})
 	schemas.AddType("backingImageCleanupInput", BackingImageCleanupInput{})
 	schemas.AddType("updateMinNumberOfCopiesInput", UpdateMinNumberOfCopiesInput{})
+	schemas.AddType("backingImageRestoreInput", BackingImageRestoreInput{})
 
 	attachmentSchema(schemas.AddType("attachment", Attachment{}))
 	volumeAttachmentSchema(schemas.AddType("volumeAttachment", VolumeAttachment{}))
@@ -810,7 +819,9 @@ func backupBackingImageSchema(backupBackingImage *client.Schema) {
 	backupBackingImage.ResourceMethods = []string{"GET", "DELETE"}
 
 	backupBackingImage.ResourceActions = map[string]client.Action{
-		"backupBackingImageRestore": {},
+		"backupBackingImageRestore": {
+			Input: "backingImageRestoreInput",
+		},
 	}
 }
 
@@ -2017,6 +2028,9 @@ func toBackingImageResource(bi *longhorn.BackingImage, apiContext *api.ApiContex
 		DiskFileStatusMap: diskFileStatusMap,
 		Size:              bi.Status.Size,
 		CurrentChecksum:   bi.Status.Checksum,
+
+		Secret:          bi.Spec.Secret,
+		SecretNamespace: bi.Spec.SecretNamespace,
 
 		DeletionTimestamp: deletionTimestamp,
 	}
