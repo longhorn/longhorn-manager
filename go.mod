@@ -56,8 +56,8 @@ require (
 	github.com/gorilla/handlers v1.5.2
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.3
-	github.com/jinzhu/copier v0.3.5
-	github.com/kubernetes-csi/csi-lib-utils v0.6.1
+	github.com/jinzhu/copier v0.4.0
+	github.com/kubernetes-csi/csi-lib-utils v0.18.1
 	github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240625060613-f8f2bdbc6bea
 	github.com/longhorn/backupstore v0.0.0-20240624084713-e98e31ebcebb
 	github.com/longhorn/go-common-libs v0.0.0-20240627075631-d78642cff5e1
@@ -67,31 +67,31 @@ require (
 	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240630132104-73cc005a5a22
 	github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240629043243-fe205dfbd815
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.18.0
-	github.com/rancher/dynamiclistener v0.3.6
+	github.com/prometheus/client_golang v1.19.1
+	github.com/rancher/dynamiclistener v0.4.0
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
 	github.com/rancher/wrangler v1.1.2
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.9.0
 	github.com/urfave/cli v1.22.15
-	golang.org/x/mod v0.17.0
+	golang.org/x/mod v0.18.0
 	golang.org/x/net v0.26.0
 	golang.org/x/sys v0.21.0
 	golang.org/x/time v0.5.0
-	google.golang.org/grpc v1.64.0
+	google.golang.org/grpc v1.65.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.30.3
-	k8s.io/apiextensions-apiserver v0.25.4
+	k8s.io/apiextensions-apiserver v0.30.2
 	k8s.io/apimachinery v0.30.2
-	k8s.io/cli-runtime v0.28.5
+	k8s.io/cli-runtime v0.30.2
 	k8s.io/client-go v0.30.3
 	k8s.io/kubernetes v1.30.2
-	k8s.io/metrics v0.28.5
+	k8s.io/metrics v0.30.2
 	k8s.io/mount-utils v0.30.2
 	k8s.io/utils v0.0.0-20240502163921-fe8a2dddb1d0
-	sigs.k8s.io/controller-runtime v0.10.1
+	sigs.k8s.io/controller-runtime v0.18.4
 )
 
 require (
@@ -107,11 +107,12 @@ require (
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/moby/term v0.0.0-20221205130635-1aeaba878587 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
+	github.com/rancher/wrangler/v2 v2.1.3 // indirect
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	golang.org/x/exp v0.0.0-20231219180239-dc181d75b848 // indirect
 	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20240318140521-94a12d6c2237 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20240528184218-531527333157 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240528184218-531527333157 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
@@ -170,7 +171,7 @@ require (
 	github.com/pierrec/lz4/v4 v4.1.21 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_model v0.5.0 // indirect
-	github.com/prometheus/common v0.47.0 // indirect
+	github.com/prometheus/common v0.48.0 // indirect
 	github.com/prometheus/procfs v0.12.0 // indirect
 	github.com/rancher/lasso v0.0.0-20240603075835-701e919d08b7
 	github.com/robfig/cron/v3 v3.0.1 // indirect
@@ -183,20 +184,20 @@ require (
 	go.etcd.io/etcd/api/v3 v3.5.10 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.5.10 // indirect
 	go.etcd.io/etcd/client/v3 v3.5.10 // indirect
-	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.42.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.46.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.44.0 // indirect
-	go.opentelemetry.io/otel v1.19.0 // indirect
+	go.opentelemetry.io/otel v1.20.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.19.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.19.0 // indirect
-	go.opentelemetry.io/otel/metric v1.19.0 // indirect
+	go.opentelemetry.io/otel/metric v1.20.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.19.0 // indirect
-	go.opentelemetry.io/otel/trace v1.19.0 // indirect
+	go.opentelemetry.io/otel/trace v1.20.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.0.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.26.0 // indirect
 	golang.org/x/crypto v0.24.0 // indirect
-	golang.org/x/oauth2 v0.19.0 // indirect
+	golang.org/x/oauth2 v0.20.0 // indirect
 	golang.org/x/sync v0.7.0
 	golang.org/x/term v0.21.0 // indirect
 	golang.org/x/text v0.16.0
@@ -212,7 +213,7 @@ require (
 	k8s.io/klog v1.0.0 // indirect
 	k8s.io/klog/v2 v2.120.1 // indirect
 	k8s.io/kms v0.30.2 // indirect
-	k8s.io/kube-aggregator v0.25.4 // indirect
+	k8s.io/kube-aggregator v0.28.6 // indirect
 	k8s.io/kube-openapi v0.0.0-20240228011516-70dd3763d340 // indirect
 	k8s.io/kubelet v0.0.0 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.29.0 // indirect
