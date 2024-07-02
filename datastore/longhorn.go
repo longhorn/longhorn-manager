@@ -1135,7 +1135,7 @@ func GetNewCurrentEngineAndExtras(v *longhorn.Volume, es map[string]*longhorn.En
 	// 1. Delete the active engine (guaranteed to succeed or we don't do anything else).
 	// 2. Switch the new current replicas to active (might fail, preventing everything below).
 	// 3. Set the new current engine to active (might fail, preventing everything below).
-	// 4. Set the volume.Spec.CurrentNodeID (might fail).
+	// 4. Set the volume.Status.CurrentNodeID (might fail).
 	// So we might delete the active engine, fail to set the new current engine to active, and fail to set the
 	// volume.Spec.CurrentNodeID. Then, the volume attachment controller might try to do a full detachment, setting
 	// volume.Spec.NodeID == "". At this point, there is no engine that can ever be considered active again by the rules
