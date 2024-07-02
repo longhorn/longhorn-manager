@@ -262,14 +262,14 @@ github.com/longhorn/go-iscsi-helper/util
 # github.com/longhorn/go-spdk-helper v0.0.0-20240630053246-99b2a18336b5
 ## explicit; go 1.22.0
 github.com/longhorn/go-spdk-helper/pkg/types
-# github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240630112621-0402d7096a3f
+# github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240630112621-0402d7096a3f => github.com/c3y1huang/longhorn-engine v1.7.0-dev.0.20240702013516-b1f51c004d1e
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-engine/pkg/interceptor
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240630132104-73cc005a5a22
+# github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240630132104-73cc005a5a22 => github.com/c3y1huang/longhorn-instance-manager v1.7.0-dev.0.20240702013701-ace05a310754
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -280,7 +280,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/util
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/types v0.0.0-20240624083620-f11ba48bf396
+# github.com/longhorn/types v0.0.0-20240624083620-f11ba48bf396 => github.com/c3y1huang/types v0.0.0-20240701065019-3f48d762923b
 ## explicit; go 1.21
 github.com/longhorn/types/pkg/generated/bimrpc
 github.com/longhorn/types/pkg/generated/enginerpc
@@ -1594,3 +1594,6 @@ sigs.k8s.io/yaml
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.30.2
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.30.2
 # k8s.io/sample-controller => k8s.io/sample-controller v0.30.2
+# github.com/longhorn/types => github.com/c3y1huang/types v0.0.0-20240701065019-3f48d762923b
+# github.com/longhorn/longhorn-engine => github.com/c3y1huang/longhorn-engine v1.7.0-dev.0.20240702013516-b1f51c004d1e
+# github.com/longhorn/longhorn-instance-manager => github.com/c3y1huang/longhorn-instance-manager v1.7.0-dev.0.20240702013701-ace05a310754

@@ -1732,6 +1732,7 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameRecurringSuccessfulJobsHistoryLimit:                      true,
 		types.SettingNameRemoveSnapshotsDuringFilesystemTrim:                      true,
 		types.SettingNameReplicaAutoBalance:                                       true,
+		types.SettingNameReplicaAutoBalanceDiskPressurePercentage:                 true,
 		types.SettingNameReplicaFileSyncHTTPClientTimeout:                         true,
 		types.SettingNameReplicaReplenishmentWaitInterval:                         true,
 		types.SettingNameReplicaSoftAntiAffinity:                                  true,
