@@ -16,11 +16,13 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 
@@ -160,12 +162,132 @@ func (kc *KubernetesPodController) syncHandler(key string) (err error) {
 		kc.logger.WithField("pod", pod.Name).Trace("skipping pod check since pod is not scheduled yet")
 		return nil
 	}
+
+	if isCSIPluginPod(pod) {
+		return kc.handleWorkloadPodDeletionIfCSIPluginPodIsDown(pod)
+	}
+
 	if err := kc.handlePodDeletionIfNodeDown(pod, nodeID, namespace); err != nil {
 		return err
 	}
 
 	if err := kc.handlePodDeletionIfVolumeRequestRemount(pod); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// handleWorkloadPodDeletionIfCSIPluginPodIsDown deletes work load pod on the same node
+// of the CSI plugin pod if the CSI plugin pod is down.
+// This is required if the cluster is using storage network only. When the cluster
+// is using the cluster network, the CSI plugin pod is using host PID namespace hence the mount
+// entry exists on the host namespace which retains after the CSI plugin pod is down.
+// When the storage network is set up, the CSI plugin pod uses the container PID namespace because
+// Multus network only exist in the Kubernetes network and relies on the Kubernetes DNS for
+// the mount point, hence the lifecycle of the mount entry goes with the container. Hence when
+// the CSI plugin pod is down, Longhorn need to delete the share manager pod to trigger the
+// remount
+func (kc *KubernetesPodController) handleWorkloadPodDeletionIfCSIPluginPodIsDown(csiPod *corev1.Pod) error {
+	if csiPod.DeletionTimestamp.IsZero() {
+		return nil
+	}
+
+	storageNetworkSetting, err := kc.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
+	if err != nil {
+		return nil
+	}
+
+	storageNetworkForRWXVolumeEnabled, err := kc.ds.GetSettingAsBool(types.SettingNameStorageNetworkForRWXVolumeEnabled)
+	if err != nil {
+		return nil
+	}
+
+	if types.IsStorageNetworkForRWXVolume(storageNetworkSetting, storageNetworkForRWXVolumeEnabled) {
+		return nil
+	}
+
+	kc.logger.Infof("CSI plugin pod %v on node %v is down, handling workload pods", csiPod.Name, csiPod.Spec.NodeName)
+
+	autoDeletePodWhenVolumeDetachedUnexpectedly, err := kc.ds.GetSettingAsBool(types.SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly)
+	if err != nil {
+		return err
+	}
+	if !autoDeletePodWhenVolumeDetachedUnexpectedly {
+		kc.logger.Warnf("Aborting deletion of RWX volume workload pods for NFS remount. The setting %v is not enabled. Without restart the workload pod may lead to an unresponsive mount point", types.SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly)
+		return nil
+	}
+
+	var persistentVolumes []*corev1.PersistentVolume
+	persistentVolume, err := kc.ds.ListPersistentVolumesRO()
+	if err != nil {
+		return err
+	}
+	for _, pv := range persistentVolume {
+		if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == types.LonghornDriverName {
+			persistentVolumes = append(persistentVolumes, pv)
+		}
+	}
+
+	var filteredVolumes []*longhorn.Volume
+	for _, persistentVolume := range persistentVolumes {
+		volume, err := kc.ds.GetVolumeRO(persistentVolume.Name)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				kc.logger.WithError(err).Warnf("Skipping pod deletion for NFS remount because volume %v is not found", persistentVolume.Name)
+				continue
+			}
+			return err
+		}
+
+		// Exclude non-RWX volumes.
+		if volume.Spec.AccessMode != longhorn.AccessModeReadWriteMany {
+			kc.logger.Infof("Skipping pod deletion for NFS remount because volume %v access mode is %v", volume.Name, volume.Spec.AccessMode)
+			continue
+		}
+
+		filteredVolumes = append(filteredVolumes, volume)
+	}
+
+	var filteredPods []*corev1.Pod
+	for _, volume := range filteredVolumes {
+		for _, workloadstatus := range volume.Status.KubernetesStatus.WorkloadsStatus {
+			pod, err := kc.kubeClient.CoreV1().Pods(workloadstatus.PodNamespace).Get(context.TODO(), workloadstatus.PodName, metav1.GetOptions{})
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					kc.logger.WithError(err).Warnf("Skipping pod deletion for NFS remount because pod %v is not found", workloadstatus.PodName)
+					continue
+				}
+				return err
+			}
+
+			if !pod.DeletionTimestamp.IsZero() {
+				kc.logger.Infof("Skipping pod deletion for NFS remount because pod %v is being deleted", pod.Name)
+				continue
+			}
+
+			// Only delete pod which has controller to make sure that the pod will be recreated by its controller
+			if metav1.GetControllerOf(pod) == nil {
+				kc.logger.Infof("Skipping pod deletion for NFS remount because pod %v is managed by a controller", pod.Name)
+				continue
+			}
+
+			if pod.Spec.NodeName == csiPod.Spec.NodeName {
+				kc.eventRecorder.Eventf(volume, corev1.EventTypeWarning, constant.EventReasonRemount, "Requesting pod %v deletion to remount NFS share after unexpected CSI plugin pod %v restart on node %v", pod.Name, csiPod.Name, csiPod.Spec.NodeName)
+				filteredPods = append(filteredPods, pod)
+			}
+		}
+	}
+
+	for _, pod := range filteredPods {
+		kc.logger.Infof("Deleting pod %v on CSI plugin node %v", pod.Name, csiPod.Spec.NodeName)
+		err = kc.kubeClient.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
+		if err != nil {
+			if datastore.ErrorIsNotFound(err) {
+				return nil
+			}
+			return err
+		}
 	}
 
 	return nil
@@ -344,7 +466,7 @@ func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *
 		if podStartTime.Before(remountRequestedAt) {
 			if !timeNow.After(remountRequestedAt.Add(remountRequestDelayDuration)) {
 				kc.logger.Infof("Current time is not %v seconds after request remount, requeue the pod %v to handle it later", remountRequestDelayDuration.Seconds(), pod.GetName())
-				kc.enqueuePod(pod)
+				kc.enqueuePodAfter(pod, remountRequestDelayDuration)
 				return nil
 			}
 
@@ -400,6 +522,13 @@ func (kc *KubernetesPodController) enqueuePodChange(obj interface{}) {
 			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
 			return
 		}
+	}
+
+	if isCSIPluginPod(pod) {
+		if pod.Spec.NodeName == kc.controllerID {
+			kc.queue.Add(key)
+		}
+		return
 	}
 
 	for _, v := range pod.Spec.Volumes {
@@ -479,12 +608,43 @@ func (kc *KubernetesPodController) getAssociatedVolumes(pod *corev1.Pod) ([]*lon
 	return volumeList, nil
 }
 
-func (kc *KubernetesPodController) enqueuePod(obj interface{}) {
+func (kc *KubernetesPodController) enqueuePodAfter(obj interface{}, delay time.Duration) {
 	key, err := controller.KeyFunc(obj)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %#v: %v", obj, err))
 		return
 	}
 
-	kc.queue.Add(key)
+	kc.queue.AddAfter(key, delay)
+}
+
+func isCSIPluginPod(obj interface{}) bool {
+	pod, ok := obj.(*corev1.Pod)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			return false
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		pod, ok = deletedState.Obj.(*corev1.Pod)
+		if !ok {
+			return false
+		}
+	}
+
+	if pod.OwnerReferences != nil && len(pod.OwnerReferences) > 0 {
+		for _, ownerRef := range pod.OwnerReferences {
+			if ownerRef.Kind != types.KubernetesKindDaemonSet {
+				continue
+			}
+
+			if ownerRef.Name != types.CSIPluginName {
+				continue
+			}
+
+			return true
+		}
+	}
+	return false
 }

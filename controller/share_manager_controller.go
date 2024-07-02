@@ -15,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/controller"
 
 	corev1 "k8s.io/api/core/v1"
@@ -365,12 +366,10 @@ func (c *ShareManagerController) syncShareManagerEndpoint(sm *longhorn.ShareMana
 		sm.Status.Endpoint = ""
 		return nil
 	}
-	endpoint := service.Spec.ClusterIP
-	if service.Spec.IPFamilies[0] == corev1.IPv6Protocol {
-		endpoint = fmt.Sprintf("[%v]", endpoint)
-	}
 
-	sm.Status.Endpoint = fmt.Sprintf("nfs://%v/%v", endpoint, sm.Name)
+	serviceFqdn := fmt.Sprintf("%v.%v.svc.cluster.local", sm.Name, sm.Namespace)
+	sm.Status.Endpoint = fmt.Sprintf("nfs://%v/%v", serviceFqdn, sm.Name)
+
 	return nil
 }
 
@@ -619,6 +618,21 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 	return nil
 }
 
+func (c *ShareManagerController) cleanupShareManagerService(shareManager *longhorn.ShareManager) error {
+	log := getLoggerForShareManager(c.logger, shareManager)
+
+	service, err := c.ds.GetService(shareManager.Namespace, shareManager.Name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	log.Infof("Cleaning up share manager service %v", service.Name)
+	return c.ds.DeleteService(shareManager.Namespace, service.Name)
+}
+
 func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManager) error {
 	log := getLoggerForShareManager(c.logger, sm)
 	podName := types.GetShareManagerPodNameFromShareManagerName(sm.Name)
@@ -661,6 +675,18 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 			sm.Status.State == longhorn.ShareManagerStateStopped ||
 			sm.Status.State == longhorn.ShareManagerStateError {
 			err = c.cleanupShareManagerPod(sm)
+			if err != nil {
+				return
+			}
+
+			// Perform cleanup of the share manager Service
+			// This is to allow the creation of the correct Service
+			// and Endpoint when switching between cluster network
+			// and storage network.
+			err = c.cleanupShareManagerService(sm)
+			if err != nil {
+				return
+			}
 		}
 	}()
 
@@ -811,6 +837,40 @@ func (c *ShareManagerController) getShareManagerTolerationsFromStorageClass(sc *
 	return tolerations
 }
 
+func (c *ShareManagerController) createServiceAndEndpoint(shareManager *longhorn.ShareManager) error {
+	// check if we need to create the service
+	_, err := c.ds.GetService(c.namespace, shareManager.Name)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return errors.Wrapf(err, "failed to get service for share manager %v", shareManager.Name)
+		}
+
+		c.logger.Infof("Creating Service for share manager %v", shareManager.Name)
+		_, err = c.ds.CreateService(c.namespace, c.createServiceManifest(shareManager))
+		if err != nil {
+			return errors.Wrapf(err, "failed to create service for share manager %v", shareManager.Name)
+		}
+	}
+
+	// Only create the Endpoint if it doesn't exist. For service using the selector, the Endpoint will be created by the service controller.
+	_, err = c.ds.GetKubernetesEndpointRO(shareManager.Name)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return errors.Wrapf(err, "failed to get Endpoint for share manager %v", shareManager.Name)
+		}
+
+		_, err := c.createEndpoint(shareManager)
+		if err != nil {
+			if !apierrors.IsAlreadyExists(err) {
+				return errors.Wrapf(err, "failed to create Endpoint for share manager %v", shareManager.Name)
+			}
+			c.logger.Debugf("Found existing Endpoint for share manager %v", shareManager.Name)
+		}
+	}
+
+	return nil
+}
+
 // createShareManagerPod ensures existence of service, it's assumed that the pvc for this share manager already exists
 func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager) (*corev1.Pod, error) {
 	tolerations, err := c.ds.GetSettingTaintToleration()
@@ -846,15 +906,9 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 	}
 	priorityClass := setting.Value
 
-	// check if we need to create the service
-	if _, err := c.ds.GetService(c.namespace, sm.Name); err != nil {
-		if !apierrors.IsNotFound(err) {
-			return nil, errors.Wrapf(err, "failed to get service for share manager %v", sm.Name)
-		}
-
-		if _, err = c.ds.CreateService(c.namespace, c.createServiceManifest(sm)); err != nil {
-			return nil, errors.Wrapf(err, "failed to create service for share manager %v", sm.Name)
-		}
+	err = c.createServiceAndEndpoint(sm)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to create service and endpoint for share manager %v", sm.Name)
 	}
 
 	volume, err := c.ds.GetVolume(sm.Name)
@@ -920,10 +974,29 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 
 	manifest := c.createPodManifest(sm, annotations, tolerations, affinity, imagePullPolicy, nil, registrySecret,
 		priorityClass, nodeSelector, fsType, mountOptions, cryptoKey, cryptoParams)
+
+	storageNetwork, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
+	if err != nil {
+		return nil, err
+	}
+
+	storageNetworkForRWXVolumeEnabled, err := c.ds.GetSettingAsBool(types.SettingNameStorageNetworkForRWXVolumeEnabled)
+	if err != nil {
+		return nil, err
+	}
+
+	if types.IsStorageNetworkForRWXVolume(storageNetwork, storageNetworkForRWXVolumeEnabled) {
+		nadAnnot := string(types.CNIAnnotationNetworks)
+		if storageNetwork.Value != types.CniNetworkNone {
+			manifest.Annotations[nadAnnot] = types.CreateCniAnnotationFromSetting(storageNetwork)
+		}
+	}
+
 	pod, err := c.ds.CreatePod(manifest)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create pod for share manager %v", sm.Name)
 	}
+
 	getLoggerForShareManager(c.logger, sm).WithField("pod", pod.Name).Infof("Created pod for share manager on node %v", pod.Spec.NodeName)
 	return pod, nil
 }
@@ -937,9 +1010,7 @@ func (c *ShareManagerController) createServiceManifest(sm *longhorn.ShareManager
 			Labels:          types.GetShareManagerInstanceLabel(sm.Name),
 		},
 		Spec: corev1.ServiceSpec{
-			ClusterIP: "", // we let the cluster assign a random ip
-			Type:      corev1.ServiceTypeClusterIP,
-			Selector:  types.GetShareManagerInstanceLabel(sm.Name),
+			Type: corev1.ServiceTypeClusterIP,
 			Ports: []corev1.ServicePort{
 				{
 					Name:     "nfs",
@@ -950,7 +1021,48 @@ func (c *ShareManagerController) createServiceManifest(sm *longhorn.ShareManager
 		},
 	}
 
+	log := getLoggerForShareManager(c.logger, sm)
+
+	storageNetwork, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to get %v setting, fallback to cluster IP", types.SettingNameStorageNetwork)
+	}
+
+	storageNetworkForRWXVolumeEnabled, err := c.ds.GetSettingAsBool(types.SettingNameStorageNetworkForRWXVolumeEnabled)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to get %v setting, fallback to cluster IP", types.SettingNameStorageNetworkForRWXVolumeEnabled)
+	}
+
+	if types.IsStorageNetworkForRWXVolume(storageNetwork, storageNetworkForRWXVolumeEnabled) {
+		// Create a headless service do it doesn't use a cluster IP. This allows
+		// directly reaching the share manager pods using their individual
+		// IP address.
+		log.Debug("Using headless service for share manager because storage network is detected")
+		service.Spec.ClusterIP = core.ClusterIPNone
+	} else {
+		log.Debug("Using selector service for share manager because storage network is not detected")
+		service.Spec.ClusterIP = "" // we let the cluster assign a random ip
+		service.Spec.Selector = types.GetShareManagerInstanceLabel(sm.Name)
+	}
+
 	return service
+}
+
+func (c *ShareManagerController) createEndpoint(sm *longhorn.ShareManager) (*corev1.Endpoints, error) {
+	labels := types.GetShareManagerInstanceLabel(sm.Name)
+
+	newObj := &corev1.Endpoints{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            sm.Name,
+			Namespace:       sm.Namespace,
+			OwnerReferences: datastore.GetOwnerReferencesForShareManager(sm, false),
+			Labels:          labels,
+		},
+		Subsets: []corev1.EndpointSubset{},
+	}
+
+	c.logger.Infof("Creating Endpoint for share manager %v", sm.Name)
+	return c.ds.CreateKubernetesEndpoint(newObj)
 }
 
 func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, annotations map[string]string, tolerations []corev1.Toleration,

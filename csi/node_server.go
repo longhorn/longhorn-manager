@@ -153,7 +153,13 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 	// NodePublishVolume without calling NodeStageVolume. According to the CSI spec, we should be able to respond with
 	// FailedPrecondition and expect kubelet to call NodeStageVolume again, but as of Kubernetes v1.27 it does not.
 	isBlock := volumeCapability.GetBlock() != nil
-	restageRequired, err := restageRequired(volume, volumeID, stagingTargetPath, mounter, isBlock)
+
+	storageNetworkSetting, err := ns.apiClient.Setting.ById(string(types.SettingNameStorageNetwork))
+	if err != nil {
+		log.WithError(err).Warnf("Skipping restaging condition check for storage network setting")
+	}
+
+	restageRequired, err := restageRequired(volume, volumeID, stagingTargetPath, mounter, isBlock, storageNetworkSetting.Value != "")
 	if restageRequired {
 		msg := fmt.Sprintf("Staging target path %v is no longer valid for volume %v", stagingTargetPath, volumeID)
 		log.WithError(err).Warn(msg)
@@ -362,7 +368,7 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 		return nil, status.Error(codes.InvalidArgument, "volume id missing in request")
 	}
 
-	if err := cleanupMountPoint(targetPath, mount.New("")); err != nil {
+	if err := unmountAndCleanupMountPoint(targetPath, mount.New("")); err != nil {
 		return nil, status.Errorf(codes.Internal, errors.Wrapf(err, "failed to cleanup volume %s mount point %v", volumeID, targetPath).Error())
 	}
 
@@ -580,7 +586,7 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	//
 	// The unmount of the parent is a no op for block mode, this is also important for backwards compatibility of the existing block devices.
 	deviceFilePath := getStageBlockVolumePath(stagingTargetPath, volumeID)
-	if err := cleanupMountPoint(deviceFilePath, mounter); err != nil {
+	if err := unmountAndCleanupMountPoint(deviceFilePath, mounter); err != nil {
 		return nil, status.Error(codes.Internal, errors.Wrapf(err, "failed to clean up volume %s device mount point %v", volumeID, deviceFilePath).Error())
 	}
 
@@ -820,11 +826,6 @@ func (ns *NodeServer) getMounter(volume *longhornclient.Volume, volumeCapability
 		return mount.New(""), nil
 	}
 
-	// HACK: to nsenter host namespaces for the nfs mounts to stay available after csi plugin dies
-	if requiresSharedAccess(volume, volumeCapability) && !volume.Migratable {
-		return mount.New("/usr/local/sbin/nsmounter"), nil
-	}
-
 	// mounter that can format and use hard coded filesystem params
 	if volumeCapability.GetMount() != nil {
 		fsType := volumeCapability.GetMount().GetFsType()
@@ -868,11 +869,16 @@ func (ns *NodeServer) getMounter(volume *longhornclient.Volume, volumeCapability
 func restageRequired(volume *longhornclient.Volume,
 	volumeID, stagingTargetPath string,
 	mounter mount.Interface,
-	isBlock bool) (bool, error) {
+	isBlock, isStorageNetworkConfigured bool) (bool, error) {
 
 	if volume.DataEngine == string(longhorn.DataEngineTypeV2) {
 		return true, fmt.Errorf("always unstage v2 volume %v", volumeID)
 	}
+
+	if isStorageNetworkConfigured {
+		return true, fmt.Errorf("always unstage volume %v when storage network is configured", volumeID)
+	}
+
 	if isBlock {
 		stageBlockVolumePath := getStageBlockVolumePath(stagingTargetPath, volumeID)
 		isStaged, err := mounter.IsMountPoint(stageBlockVolumePath)

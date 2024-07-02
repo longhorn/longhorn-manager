@@ -462,12 +462,42 @@ func getShareManagerComponentSelector() (labels.Selector, error) {
 	})
 }
 
+func getShareManagerInstanceSelector(name string) (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetShareManagerInstanceLabel(name),
+	})
+}
+
 func (s *DataStore) ListShareManagerPods() ([]*corev1.Pod, error) {
 	selector, err := getShareManagerComponentSelector()
 	if err != nil {
 		return nil, err
 	}
 	return s.ListPodsBySelector(selector)
+}
+
+// ListShareManagerPodsRO returns a list of share manager pods.
+// If instanceName is not empty, only return share manager pods with label:
+// longhorn.io/share-manager: <instanceName>
+// Otherwise, return all pods with label:
+// longhorn.io/component: share-manager
+func (s *DataStore) ListShareManagerPodsRO(instanceName string) ([]*corev1.Pod, error) {
+	var err error
+	var selector labels.Selector
+
+	if instanceName != "" {
+		selector, err = getShareManagerInstanceSelector(instanceName)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		selector, err = getShareManagerComponentSelector()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return s.ListPodsBySelectorRO(selector)
 }
 
 func (s *DataStore) ListBackingImageManagerPods() ([]*corev1.Pod, error) {
@@ -755,6 +785,21 @@ func (s *DataStore) DeleteService(namespace, name string) error {
 // UpdateService updates the Service resource with the given object and namespace
 func (s *DataStore) UpdateService(namespace string, service *corev1.Service) (*corev1.Service, error) {
 	return s.kubeClient.CoreV1().Services(namespace).Update(context.TODO(), service, metav1.UpdateOptions{})
+}
+
+// CreateKubernetesEndpoint creates a Kubernetes Endpoint resource.
+func (s *DataStore) CreateKubernetesEndpoint(endpoint *corev1.Endpoints) (*corev1.Endpoints, error) {
+	return s.kubeClient.CoreV1().Endpoints(endpoint.Namespace).Create(context.TODO(), endpoint, metav1.CreateOptions{})
+}
+
+// UpdateKubernetesEndpoint updates the Kubernetes Endpoint of the given name in the Longhorn namespace.
+func (s *DataStore) UpdateKubernetesEndpoint(endpoint *corev1.Endpoints) (*corev1.Endpoints, error) {
+	return s.kubeClient.CoreV1().Endpoints(s.namespace).Update(context.TODO(), endpoint, metav1.UpdateOptions{})
+}
+
+// GetKubernetesEndpointRO gets the Kubernetes Endpoint of the given name in the Longhorn namespace.
+func (s *DataStore) GetKubernetesEndpointRO(name string) (*corev1.Endpoints, error) {
+	return s.endpointLister.Endpoints(s.namespace).Get(name)
 }
 
 // NewPVManifestForVolume returns a new PersistentVolume object for a longhorn volume

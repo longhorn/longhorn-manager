@@ -323,11 +323,28 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 				return err
 			}
 		case types.SettingNameStorageNetwork:
-			if err := sc.updateCNI(); err != nil {
+			fnAreAllVolumeDetached := func() (bool, error) {
+				isDetached, _, err := sc.ds.AreAllVolumesDetached(longhorn.DataEngineTypeAll)
+				return isDetached, err
+			}
+			if err := sc.updateCNI(fnAreAllVolumeDetached); err != nil {
 				return err
 			}
 		}
 
+		return nil
+	}
+
+	dangerSettingRequiringRWXVolumesDetached := []types.SettingName{
+		types.SettingNameStorageNetworkForRWXVolumeEnabled,
+	}
+	if slices.Contains(dangerSettingRequiringRWXVolumesDetached, settingName) {
+		switch settingName {
+		case types.SettingNameStorageNetworkForRWXVolumeEnabled:
+			if err := sc.updateCNI(sc.ds.AreAllRWXVolumesDetached); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 
@@ -898,38 +915,37 @@ func (sc *SettingController) updateKubernetesClusterAutoscalerEnabled() error {
 }
 
 // updateCNI deletes all system-managed data plane components immediately with the updated CNI annotation.
-func (sc *SettingController) updateCNI() error {
+func (sc *SettingController) updateCNI(fnCheckVolumeDetached func() (bool, error)) error {
 	storageNetwork, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
 	if err != nil {
 		return err
 	}
 
-	nadAnnot := string(types.CNIAnnotationNetworks)
-	nadAnnotValue := types.CreateCniAnnotationFromSetting(storageNetwork)
-	notUpdatedPods := []*corev1.Pod{}
-
-	imPodList, err := sc.ds.ListInstanceManagerPods()
+	storageNetworkForRWXVolumeEnabled, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetworkForRWXVolumeEnabled)
 	if err != nil {
-		return errors.Wrapf(err, "failed to list instance manager Pods for %v setting update", types.SettingNameStorageNetwork)
+		return err
 	}
 
-	bimPodList, err := sc.ds.ListBackingImageManagerPods()
+	isStorageNetworkForRWXVolumeEnabled, err := strconv.ParseBool(storageNetworkForRWXVolumeEnabled.Value)
 	if err != nil {
-		return errors.Wrapf(err, "failed to list backing image manager Pods for %v setting update", types.SettingNameStorageNetwork)
-	}
-	pods := append(imPodList, bimPodList...)
-	for _, pod := range pods {
-		if pod.Annotations[nadAnnot] == nadAnnotValue {
-			continue
-		}
-		notUpdatedPods = append(notUpdatedPods, pod)
+		return err
 	}
 
-	if len(notUpdatedPods) == 0 {
+	incorrectCNIDaemonSets, err := sc.getDaemonSetsWithIncorrectCNI(storageNetwork, isStorageNetworkForRWXVolumeEnabled)
+	if err != nil {
+		return err
+	}
+
+	incorrectCNIPods, err := sc.getPodsWithIncorrectCNI(storageNetwork)
+	if err != nil {
+		return err
+	}
+
+	if len(incorrectCNIDaemonSets) == 0 && len(incorrectCNIPods) == 0 {
 		return nil
 	}
 
-	detached, _, err := sc.ds.AreAllVolumesDetached(longhorn.DataEngineTypeAll)
+	detached, err := fnCheckVolumeDetached()
 	if err != nil {
 		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameStorageNetwork)
 	}
@@ -937,12 +953,17 @@ func (sc *SettingController) updateCNI() error {
 		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting to Longhorn components when there are attached volumes. It will be eventually applied", types.SettingNameStorageNetwork)}
 	}
 
-	for _, pod := range notUpdatedPods {
+	for _, daemonSet := range incorrectCNIDaemonSets {
+		types.UpdateDaemonSetTemplateBasedOnStorageNetwork(daemonSet, storageNetwork, isStorageNetworkForRWXVolumeEnabled)
+		if _, err := sc.ds.UpdateDaemonSet(daemonSet); err != nil {
+			return err
+		}
+	}
+
+	for _, pod := range incorrectCNIPods {
 		logrus.WithFields(logrus.Fields{
-			"pod":      pod.Name,
-			"oldValue": pod.Annotations[nadAnnot],
-			"newValue": nadAnnotValue,
-		}).Infof("Deleting pod to update the %v annotation", nadAnnot)
+			"pod": pod.Name,
+		}).Infof("Deleting pod for %v setting update", types.SettingNameStorageNetwork)
 
 		if err := sc.ds.DeletePod(pod.Name); err != nil {
 			return err
@@ -950,6 +971,74 @@ func (sc *SettingController) updateCNI() error {
 	}
 
 	return nil
+}
+
+func (sc *SettingController) getPodsWithIncorrectCNI(storageNetwork *longhorn.Setting) ([]*corev1.Pod, error) {
+	// Retrieve annotation key and value for CNI.
+	annotKey := string(types.CNIAnnotationNetworks)
+	annotValue := types.CreateCniAnnotationFromSetting(storageNetwork)
+
+	var incorrectCNIPods []*corev1.Pod
+
+	// Retrieve instance manager Pods.
+	imPodList, err := sc.ds.ListInstanceManagerPods()
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to list instance manager Pods for %v setting update", types.SettingNameStorageNetwork)
+	}
+
+	// Retrieve backing image manager Pods.
+	bimPodList, err := sc.ds.ListBackingImageManagerPods()
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to list backing image manager Pods for %v setting update", types.SettingNameStorageNetwork)
+	}
+
+	pods := append(imPodList, bimPodList...)
+
+	// Check Pods for incorrect CNI annotation.
+	for _, pod := range pods {
+		if pod.Annotations[annotKey] == annotValue {
+			continue
+		}
+		incorrectCNIPods = append(incorrectCNIPods, pod)
+	}
+
+	return incorrectCNIPods, nil
+}
+
+func (sc *SettingController) getDaemonSetsWithIncorrectCNI(storageNetwork *longhorn.Setting, isStorageNetworkForRWXVolumeEnabled bool) ([]*appsv1.DaemonSet, error) {
+	// Get CNI annotation key and value.
+	annotKey := string(types.CNIAnnotationNetworks)
+
+	annotValue := ""
+	if isStorageNetworkForRWXVolumeEnabled {
+		annotValue = types.CreateCniAnnotationFromSetting(storageNetwork)
+	}
+
+	var incorrectCNIDaemonSets []*appsv1.DaemonSet
+
+	// List of DaemonSet names to check.
+	daemonSetNames := []string{
+		types.CSIPluginName,
+	}
+
+	for _, daemonSetName := range daemonSetNames {
+		daemonSet, err := sc.ds.GetDaemonSet(daemonSetName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get daemonset %v for %v setting update", daemonSetName, types.SettingNameStorageNetwork)
+		}
+
+		if annotValue == "" {
+			if _, exist := daemonSet.Spec.Template.Annotations[annotKey]; exist {
+				// Not expecting CNI annotation to exist.
+				incorrectCNIDaemonSets = append(incorrectCNIDaemonSets, daemonSet)
+			}
+		} else if daemonSet.Spec.Template.Annotations[annotKey] != annotValue {
+			// Expecting CNI annotation to exist, but value mismatch.
+			incorrectCNIDaemonSets = append(incorrectCNIDaemonSets, daemonSet)
+		}
+	}
+
+	return incorrectCNIDaemonSets, nil
 }
 
 func (sc *SettingController) updateLogLevel(settingName types.SettingName) error {
@@ -1726,6 +1815,7 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameKubernetesClusterAutoscalerEnabled:                       true,
 		types.SettingNameNodeDownPodDeletionPolicy:                                true,
 		types.SettingNameNodeDrainPolicy:                                          true,
+		types.SettingNameOfflineReplicaRebuilding:                                 true,
 		types.SettingNameOrphanAutoDeletion:                                       true,
 		types.SettingNameRecurringFailedJobsHistoryLimit:                          true,
 		types.SettingNameRecurringSuccessfulJobsHistoryLimit:                      true,
@@ -1741,6 +1831,7 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameSnapshotDataIntegrity:                                    true,
 		types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation: true,
 		types.SettingNameStorageMinimalAvailablePercentage:                        true,
+		types.SettingNameStorageNetworkForRWXVolumeEnabled:                        true,
 		types.SettingNameStorageOverProvisioningPercentage:                        true,
 		types.SettingNameStorageReservedPercentageForDefaultDisk:                  true,
 		types.SettingNameSupportBundleFailedHistoryLimit:                          true,
@@ -1749,7 +1840,6 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameV1DataEngine:                                             true,
 		types.SettingNameV2DataEngine:                                             true,
 		types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU:                 true,
-		types.SettingNameOfflineReplicaRebuilding:                                 true,
 	}
 
 	settings, err := info.ds.ListSettings()

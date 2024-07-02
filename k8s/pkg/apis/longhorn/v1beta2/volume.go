@@ -222,6 +222,8 @@ type WorkloadStatus struct {
 	// +optional
 	PodName string `json:"podName"`
 	// +optional
+	PodNamespace string `json:"podNamespace"`
+	// +optional
 	PodStatus string `json:"podStatus"`
 	// +optional
 	WorkloadName string `json:"workloadName"`
