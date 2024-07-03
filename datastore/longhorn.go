@@ -4275,7 +4275,7 @@ func ValidateRecurringJob(job longhorn.RecurringJobSpec) error {
 		}
 	}
 	if job.Parameters != nil {
-		if err := ValidateRecurringJobParameters(job.Task, job.Labels); err != nil {
+		if err := ValidateRecurringJobParameters(job.Task, job.Parameters); err != nil {
 			return err
 		}
 	}
