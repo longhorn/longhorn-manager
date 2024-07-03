@@ -1773,7 +1773,8 @@ func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longh
 	}
 
 	failureMessage := ""
-	if scheduled && len(rs) >= v.Spec.NumberOfReplicas {
+	replenishCount, _ := c.getReplenishReplicasCount(v, rs, e)
+	if scheduled && replenishCount == 0 {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 			longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusTrue, "", "")
 	} else if v.Status.CurrentNodeID == "" {
