@@ -678,17 +678,29 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornBackingImage(req *csi.C
 	if !exist {
 		exportType = "raw"
 	}
-	biParameters := map[string]string{
-		longhorn.DataSourceTypeExportParameterVolumeName: csiVolumeName,
-		longhorn.DataSourceTypeExportParameterExportType: exportType,
-	}
+
 	if backingImage == nil {
-		log.Infof("Creating backing image type snapshot %v exported from volume %s", csiSnapshotName, vol.Name)
-		backingImage, err = cs.apiClient.BackingImage.Create(&longhornclient.BackingImage{
+		biParameters := map[string]string{
+			longhorn.DataSourceTypeExportParameterVolumeName: csiVolumeName,
+			longhorn.DataSourceTypeExportParameterExportType: exportType,
+		}
+
+		backingImage = &longhornclient.BackingImage{
 			Name:       csiSnapshotName,
 			SourceType: string(longhorn.BackingImageDataSourceTypeExportFromVolume),
 			Parameters: biParameters,
-		})
+		}
+
+		if diskSelector, ok := req.Parameters["diskSelector"]; ok {
+			backingImage.DiskSelector = strings.Split(diskSelector, ",")
+		}
+
+		if nodeSelector, ok := req.Parameters["nodeSelector"]; ok {
+			backingImage.NodeSelector = strings.Split(nodeSelector, ",")
+		}
+
+		log.Infof("Creating backing image type snapshot %v exported from volume %s", csiSnapshotName, vol.Name)
+		backingImage, err = cs.apiClient.BackingImage.Create(backingImage)
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
