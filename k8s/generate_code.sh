@@ -12,8 +12,8 @@ APIS_DIR="${LH_MANAGER_DIR}/k8s/pkg/apis"
 GROUP_VERSION="longhorn:v1beta1,v1beta2"
 CODE_GENERATOR_VERSION="v0.18.0"
 CRDS_DIR="crds"
-CONTROLLER_TOOLS_VERSION="v0.7.0"
-KUSTOMIZE_VERSION="kustomize/v3.10.0"
+CONTROLLER_TOOLS_VERSION="v0.15.0"
+KUSTOMIZE_VERSION="kustomize/v5.4.2"
 GOPATH="${GOPATH:-}"
 
 
@@ -26,7 +26,7 @@ if [[ -z "$GOPATH" ]]; then
   fi
 fi
 
-# https://github.com/kubernetes/code-generator/blob/v0.18.0/generate-groups.sh
+# https://github.com/kubernetes/code-generator/blob/${CODE_GENERATOR_VERSION}/generate-groups.sh
 if [[ ! -d "${GOPATH}/src/k8s.io/code-generator" ]]; then
   echo "${GOPATH}/src/k8s.io/code-generator is missing"
   echo "Prepare to install code-generator"
@@ -36,14 +36,14 @@ if [[ ! -d "${GOPATH}/src/k8s.io/code-generator" ]]; then
 	popd
 fi
 
-# https://github.com/kubernetes-sigs/controller-tools/tree/v0.7.0/cmd/controller-gen
+# https://github.com/kubernetes-sigs/controller-tools/tree/${CONTROLLER_TOOLS_VERSION}/cmd/controller-gen
 if ! command -v controller-gen > /dev/null; then
   echo "controller-gen is missing"
   echo "Prepare to install controller-gen"
   go install sigs.k8s.io/controller-tools/cmd/controller-gen@${CONTROLLER_TOOLS_VERSION}
 fi
 
-# https://github.com/kubernetes-sigs/kustomize/tree/kustomize/v3.10.0/kustomize
+# https://github.com/kubernetes-sigs/kustomize/tree/kustomize/${KUSTOMIZE_VERSION}/kustomize
 if ! command -v kustomize > /dev/null; then
   echo "kustomize is missing"
   echo "Prepare to install kustomize"
