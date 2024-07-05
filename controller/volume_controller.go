@@ -2251,11 +2251,17 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 			// Bypassing the precheck when hardNodeAffinity is provided, because
 			// we expect the new replica to be relocated to a specific node.
 			if hardNodeAffinity == "" {
-				if err := c.precheckCreateReplica(newReplica, rs, v); err != nil {
+				if multiError, err := c.precheckCreateReplica(newReplica, rs, v); err != nil {
 					log.WithError(err).Warnf("Unable to create new replica %v", newReplica.Name)
+
+					aggregatedReplicaScheduledError := util.NewMultiError(longhorn.ErrorReplicaSchedulePrecheckNewReplicaFailed)
+					if multiError != nil {
+						aggregatedReplicaScheduledError.Append(multiError)
+					}
+
 					v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 						longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
-						longhorn.VolumeConditionReasonReplicaSchedulingFailure, longhorn.ErrorReplicaSchedulePrecheckNewReplicaFailed)
+						longhorn.VolumeConditionReasonReplicaSchedulingFailure, aggregatedReplicaScheduledError.Join())
 					continue
 				}
 			}
@@ -3406,17 +3412,17 @@ func (c *VolumeController) newReplica(v *longhorn.Volume, e *longhorn.Engine, ha
 	}
 }
 
-func (c *VolumeController) precheckCreateReplica(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume) error {
-	diskCandidates, _, err := c.scheduler.FindDiskCandidates(replica, replicas, volume)
+func (c *VolumeController) precheckCreateReplica(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume) (util.MultiError, error) {
+	diskCandidates, multiError, err := c.scheduler.FindDiskCandidates(replica, replicas, volume)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if len(diskCandidates) == 0 {
-		return errors.Errorf("No available disk candidates to create a new replica of size %v", replica.Spec.VolumeSize)
+		return multiError, errors.Errorf("No available disk candidates to create a new replica of size %v", replica.Spec.VolumeSize)
 	}
 
-	return nil
+	return nil, nil
 }
 
 func (c *VolumeController) createReplica(replica *longhorn.Replica, v *longhorn.Volume, rs map[string]*longhorn.Replica, isRebuildingReplica bool) error {
