@@ -2115,6 +2115,12 @@ spec:
                           type: integer
                         state:
                           type: string
+                        targetPortEnd:
+                          format: int32
+                          type: integer
+                        targetPortStart:
+                          format: int32
+                          type: integer
                         type:
                           type: string
                       type: object
@@ -2158,6 +2164,12 @@ spec:
                           type: integer
                         state:
                           type: string
+                        targetPortEnd:
+                          format: int32
+                          type: integer
+                        targetPortStart:
+                          format: int32
+                          type: integer
                         type:
                           type: string
                       type: object
@@ -2201,6 +2213,12 @@ spec:
                           type: integer
                         state:
                           type: string
+                        targetPortEnd:
+                          format: int32
+                          type: integer
+                        targetPortStart:
+                          format: int32
+                          type: integer
                         type:
                           type: string
                       type: object
