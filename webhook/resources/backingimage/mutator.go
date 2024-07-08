@@ -94,7 +94,12 @@ func (b *backingImageMutator) Create(request *admission.Request, newObj runtime.
 	}
 
 	if longhorn.BackingImageDataSourceType(backingImage.Spec.SourceType) == longhorn.BackingImageDataSourceTypeClone {
-		// inherit the secret and secretNamespace when cloning from another backing image and the encryption is ignore
+		// Use ignore as default value when encryption is not set
+		if parameters[longhorn.DataSourceTypeCloneParameterEncryption] == "" {
+			parameters[longhorn.DataSourceTypeCloneParameterEncryption] = string(bimtypes.EncryptionTypeIgnore)
+		}
+
+		// Inherit the secret and secretNamespace when cloning from another backing image and the encryption is ignore
 		if bimtypes.EncryptionType(parameters[longhorn.DataSourceTypeCloneParameterEncryption]) == bimtypes.EncryptionTypeIgnore {
 			sourceBackingImageName := parameters[longhorn.DataSourceTypeCloneParameterBackingImage]
 			sourceBackingImage, err := b.ds.GetBackingImageRO(sourceBackingImageName)
@@ -108,10 +113,10 @@ func (b *backingImageMutator) Create(request *admission.Request, newObj runtime.
 			if sourceBackingImage.Status.Checksum == "" {
 				return nil, errors.Wrapf(err, "failed to get checksum of source backing image %v", sourceBackingImageName)
 			}
-			// use the source backing image's checksum as truth
+			// Use the source backing image's checksum as truth
 			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/checksum", "value": "%s"}`, sourceBackingImage.Status.Checksum))
 		} else {
-			// remove spec checksum because we don't trust the checksum provided by users for encryption and decryption
+			// Remove spec checksum because we don't trust the checksum provided by users for encryption and decryption
 			patchOps = append(patchOps, `{"op": "replace", "path": "/spec/checksum", "value": ""}`)
 		}
 	}
