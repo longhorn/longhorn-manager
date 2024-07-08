@@ -389,11 +389,20 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 	}
 
 	// Clean up CloneStatus for later retry
-	if engine.Spec.RequestedDataSource == "" {
+	if engine.Spec.RequestedDataSource == "" && failedCloneBefore(engine) {
 		engine.Status.CloneStatus = nil
 	}
 
 	return nil
+}
+
+func failedCloneBefore(e *longhorn.Engine) bool {
+	for _, status := range e.Status.CloneStatus {
+		if status.State == engineapi.ProcessStateError {
+			return true
+		}
+	}
+	return false
 }
 
 func (ec *EngineController) enqueueEngine(obj interface{}) {
