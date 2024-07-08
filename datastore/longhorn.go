@@ -5287,7 +5287,7 @@ func (s *DataStore) CanPutBackingImageOnDisk(backingImage *longhorn.BackingImage
 }
 
 func (s *DataStore) GetOneBackingImageReadyNodeDisk(backingImage *longhorn.BackingImage) (*longhorn.Node, string, error) {
-	for diskUUID := range backingImage.Spec.Disks {
+	for diskUUID := range backingImage.Spec.DiskFileSpecMap {
 		bimMap, err := s.ListBackingImageManagersByDiskUUID(diskUUID)
 		if err != nil {
 			return nil, "", errors.Wrapf(err, "failed to get backing image manager by disk uuid %v", diskUUID)
