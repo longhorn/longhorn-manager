@@ -532,7 +532,7 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 			if bi.Spec.SourceType == longhorn.BackingImageDataSourceTypeClone {
 				readyNode, readyDiskName, err = bic.findReadyNodeAndDiskForClone(bi)
 				if err != nil {
-					return nil
+					return err
 				}
 			}
 
