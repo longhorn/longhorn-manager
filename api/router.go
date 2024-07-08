@@ -249,8 +249,8 @@ func NewRouter(s *Server) *mux.Router {
 	r.Path("/v1/ws/{period}/backingimages").Handler(f(schemas, backingImageStream))
 
 	backupBackingImageStream := NewStreamHandlerFunc("backupbackingimages", s.wsc.NewWatcher("backupBackingImage"), s.backupBackingImageList)
-	r.Path("/v1/ws/backingimages").Handler(f(schemas, backupBackingImageStream))
-	r.Path("/v1/ws/{period}/backingimages").Handler(f(schemas, backupBackingImageStream))
+	r.Path("/v1/ws/backupbackingimages").Handler(f(schemas, backupBackingImageStream))
+	r.Path("/v1/ws/{period}/backupbackingimages").Handler(f(schemas, backupBackingImageStream))
 
 	backupVolumeStream := NewStreamHandlerFunc("backupvolumes", s.wsc.NewWatcher("backupVolume"), s.backupVolumeList)
 	r.Path("/v1/ws/backupvolumes").Handler(f(schemas, backupVolumeStream))
