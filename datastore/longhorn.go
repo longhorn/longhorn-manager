@@ -664,11 +664,11 @@ func (s *DataStore) ListSettings() (map[types.SettingName]*longhorn.Setting, err
 //
 // Parameters:
 //   - volume: The Longhorn Volume object.
+//   - logger: The logger to use.
 //
 // Returns:
 // - longhorn.ReplicaAutoBalance: The auto-balance setting value for the Volume.
-// - Error for any errors encountered.
-func (s *DataStore) GetAutoBalancedReplicasSetting(volume *longhorn.Volume) (longhorn.ReplicaAutoBalance, error) {
+func (s *DataStore) GetAutoBalancedReplicasSetting(volume *longhorn.Volume, logger *logrus.Entry) longhorn.ReplicaAutoBalance {
 	var setting longhorn.ReplicaAutoBalance
 
 	volumeSetting := volume.Spec.ReplicaAutoBalance
@@ -690,8 +690,9 @@ func (s *DataStore) GetAutoBalancedReplicasSetting(volume *longhorn.Volume) (lon
 	err = types.ValidateReplicaAutoBalance(longhorn.ReplicaAutoBalance(setting))
 	if err != nil {
 		setting = longhorn.ReplicaAutoBalanceDisabled
+		logger.WithError(err).Warnf("replica auto-balance is disabled")
 	}
-	return setting, errors.Wrapf(err, "replica auto-balance is disabled")
+	return setting
 }
 
 func (s *DataStore) GetEncryptionSecret(secretNamespace, secretName string) (map[string]string, error) {
