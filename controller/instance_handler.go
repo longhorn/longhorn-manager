@@ -249,6 +249,8 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		return err
 	}
 
+	log := logrus.WithField("instance", instanceName)
+
 	isCLIAPIVersionOne := false
 	if types.IsDataEngineV1(spec.DataEngine) {
 		if status.CurrentImage != "" {
@@ -296,11 +298,11 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		if !status.LogFetched {
 			// No need to get the log for instance manager if the data engine is not "longhorn"
 			if types.IsDataEngineV1(spec.DataEngine) {
-				logrus.Warnf("Getting requested log for %v in instance manager %v", instanceName, status.InstanceManagerName)
+				log.Warnf("Getting requested log for %v in instance manager %v", instanceName, status.InstanceManagerName)
 				if im == nil {
-					logrus.Warnf("Failed to get the log for %v due to Instance Manager is already gone", status.InstanceManagerName)
+					log.Warnf("Failed to get the log for %v due to Instance Manager is already gone", status.InstanceManagerName)
 				} else if err := h.printInstanceLogs(instanceName, runtimeObj); err != nil {
-					logrus.WithError(err).Warnf("Failed to get requested log for instance %v on node %v", instanceName, im.Spec.NodeID)
+					log.WithError(err).Warnf("Failed to get requested log for instance %v on node %v", instanceName, im.Spec.NodeID)
 				}
 			}
 			status.LogFetched = true
@@ -384,10 +386,11 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		}
 		status.Started = false
 	default:
-		return fmt.Errorf("BUG: unknown instance desire state: desire %v", spec.DesireState)
+		return fmt.Errorf("unknown instance desire state: desire %v", spec.DesireState)
 	}
 
 	h.syncStatusWithInstanceManager(im, instanceName, spec, status, instances)
+
 	switch status.CurrentState {
 	case longhorn.InstanceStateRunning:
 		// If `spec.DesireState` is `longhorn.InstanceStateStopped`, `spec.NodeID` has been unset by volume controller.
