@@ -1147,8 +1147,10 @@ func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *lo
 			_, rNames, _ = c.getReplicaCountForAutoBalanceBestEffort(v, e, rs, c.getReplicaCountForAutoBalanceZone)
 		}
 	}
+
+	var err error
 	if len(rNames) == 0 {
-		rNames, err := c.getPreferredReplicaCandidatesForDeletion(rs)
+		rNames, err = c.getPreferredReplicaCandidatesForDeletion(rs)
 		if err != nil {
 			return false, err
 		}
@@ -1158,7 +1160,7 @@ func (c *VolumeController) cleanupAutoBalancedReplicas(v *longhorn.Volume, e *lo
 		log.Infof("Found replica deletion candidates %v with best-effort", rNames)
 	}
 
-	rNames, err := c.getSortedReplicasByAscendingStorageAvailable(rNames, rs)
+	rNames, err = c.getSortedReplicasByAscendingStorageAvailable(rNames, rs)
 	if err != nil {
 		return false, err
 	}
