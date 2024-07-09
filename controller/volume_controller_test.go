@@ -134,7 +134,7 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.Robustness = longhorn.VolumeRobustnessFaulted
 	tc.expectVolume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.expectVolume.Status.Conditions,
 		longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse, longhorn.VolumeConditionReasonReplicaSchedulingFailure,
-		fmt.Sprintf("%s;%s", longhorn.ErrorReplicaSchedulePrecheckNewReplicaFailed, longhorn.ErrorReplicaScheduleNodeUnavailable))
+		fmt.Sprintf("%s;%s", longhorn.ErrorReplicaScheduleNodeUnavailable, longhorn.ErrorReplicaSchedulePrecheckNewReplicaFailed))
 	testCases["volume create - replica creation failure"] = tc
 
 	// unable to create volume because no node to schedule
