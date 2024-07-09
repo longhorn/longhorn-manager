@@ -510,6 +510,9 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		DataLocality:                     v.Spec.DataLocality,
 		ImIP:                             im.Status.IP,
 		EngineCLIAPIVersion:              cliAPIVersion,
+		UpgradeRequired:                  false,
+		InitiatorAddress:                 im.Status.IP,
+		TargetAddress:                    im.Status.IP,
 	})
 }
 
@@ -2119,25 +2122,30 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err 
 		err = errors.Wrapf(err, "failed to live upgrade image for %v", e.Name)
 	}()
 
-	engineClientProxy, err := ec.getEngineClientProxy(e, e.Spec.Image)
-	if err != nil {
-		return err
-	}
-	defer engineClientProxy.Close()
-
-	version, err := engineClientProxy.VersionGet(e, false)
-	if err != nil {
-		return err
-	}
-
-	// Don't use image with different image name but same commit here. It
-	// will cause live replica to be removed. Volume controller should filter those.
-	if version.ClientVersion.GitCommit != version.ServerVersion.GitCommit {
-		log.Infof("Upgrading engine from %v to %v", e.Status.CurrentImage, e.Spec.Image)
-		if err := ec.UpgradeEngineInstance(e, log); err != nil {
+	if types.IsDataEngineV1(e.Spec.DataEngine) {
+		engineClientProxy, err := ec.getEngineClientProxy(e, e.Spec.Image)
+		if err != nil {
 			return err
 		}
+		defer engineClientProxy.Close()
+
+		version, err := engineClientProxy.VersionGet(e, false)
+		if err != nil {
+			return err
+		}
+
+		// Don't use image with different image name but same commit here. It
+		// will cause live replica to be removed. Volume controller should filter those.
+		if version.ClientVersion.GitCommit != version.ServerVersion.GitCommit {
+			log.Infof("Upgrading engine from %v to %v", e.Status.CurrentImage, e.Spec.Image)
+			if err := ec.UpgradeEngineInstance(e, log); err != nil {
+				return err
+			}
+		}
+	} else {
+		return errors.Wrapf(err, "upgrading engine %v with data engine %v is not supported", e.Name, e.Spec.DataEngine)
 	}
+
 	log.Infof("Engine has been upgraded from %v to %v", e.Status.CurrentImage, e.Spec.Image)
 	e.Status.CurrentImage = e.Spec.Image
 	e.Status.CurrentReplicaAddressMap = e.Spec.UpgradedReplicaAddressMap

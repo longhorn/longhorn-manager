@@ -268,12 +268,14 @@ func parseInstance(p *imapi.Instance) *longhorn.InstanceProcess {
 			DataEngine: getDataEngineFromInstanceProcess(p),
 		},
 		Status: longhorn.InstanceProcessStatus{
-			Type:       getTypeForInstance(longhorn.InstanceType(p.Type), p.Name),
-			State:      longhorn.InstanceState(p.InstanceStatus.State),
-			ErrorMsg:   p.InstanceStatus.ErrorMsg,
-			Conditions: p.InstanceStatus.Conditions,
-			PortStart:  p.InstanceStatus.PortStart,
-			PortEnd:    p.InstanceStatus.PortEnd,
+			Type:            getTypeForInstance(longhorn.InstanceType(p.Type), p.Name),
+			State:           longhorn.InstanceState(p.InstanceStatus.State),
+			ErrorMsg:        p.InstanceStatus.ErrorMsg,
+			Conditions:      p.InstanceStatus.Conditions,
+			PortStart:       p.InstanceStatus.PortStart,
+			PortEnd:         p.InstanceStatus.PortEnd,
+			TargetPortStart: p.InstanceStatus.TargetPortStart,
+			TargetPortEnd:   p.InstanceStatus.TargetPortEnd,
 
 			// FIXME: These fields are not used, maybe we can deprecate them later.
 			Listen:   "",
@@ -440,6 +442,9 @@ type EngineInstanceCreateRequest struct {
 	DataLocality                     longhorn.DataLocality
 	ImIP                             string
 	EngineCLIAPIVersion              int
+	UpgradeRequired                  bool
+	InitiatorAddress                 string
+	TargetAddress                    string
 }
 
 // EngineInstanceCreate creates a new engine instance
@@ -494,6 +499,9 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 		Engine: imclient.EngineCreateRequest{
 			ReplicaAddressMap: replicaAddresses,
 			Frontend:          frontend,
+			UpgradeRequired:   req.UpgradeRequired,
+			InitiatorAddress:  req.InitiatorAddress,
+			TargetAddress:     req.TargetAddress,
 		},
 	})
 
