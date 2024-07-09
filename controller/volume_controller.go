@@ -3495,8 +3495,15 @@ func (c *VolumeController) checkAndInitVolumeClone(v *longhorn.Volume, e *longho
 	if e.Spec.RequestedDataSource != "" {
 		e.Spec.RequestedDataSource = ""
 	}
-	if len(e.Status.CloneStatus) > 0 {
-		return nil
+
+	for _, status := range e.Status.CloneStatus {
+		// Already "in_progress"/"complete"/"error" cloning the snapshot.
+		// For "complete" state, we never re-initiate the cloning.
+		// For "in_progress" state, we wait for the result.
+		// For "error" state, we wait for engine controller to clear it before re-initiate the cloning.
+		if status != nil && status.State != "" {
+			return nil
+		}
 	}
 
 	sourceEngine, err := c.ds.GetVolumeCurrentEngine(sourceVolName)
