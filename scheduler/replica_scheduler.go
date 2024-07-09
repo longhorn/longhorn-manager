@@ -254,13 +254,6 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		creatingNewReplicasForReplenishment = timeToReplacementReplica == 0
 	}
 
-	replicaAutoBalance, err := rcs.ds.GetAutoBalancedReplicasSetting(volume)
-	if err != nil {
-		err = errors.Wrapf(err, "failed to get %v setting", types.SettingNameReplicaAutoBalance)
-		multiError.Append(util.NewMultiError(err.Error()))
-		return map[string]*Disk{}, multiError
-	}
-
 	getDiskCandidatesFromNodes := func(nodes map[string]*longhorn.Node) (diskCandidates map[string]*Disk, multiError util.MultiError) {
 		diskCandidates = map[string]*Disk{}
 		multiError = util.NewMultiError()
@@ -285,6 +278,8 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		multiError.Append(util.NewMultiError(err.Error()))
 		return map[string]*Disk{}, multiError
 	}
+
+	replicaAutoBalance := rcs.ds.GetAutoBalancedReplicasSetting(volume, &logrus.Entry{})
 
 	unusedNodes := map[string]*longhorn.Node{}
 	unusedNodesInUnusedZones := map[string]*longhorn.Node{}
