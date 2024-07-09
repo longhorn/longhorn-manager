@@ -101,6 +101,11 @@ func NewWebsocketController(
 	}
 	wc.cacheSyncs = append(wc.cacheSyncs, ds.SystemRestoreInformer.HasSynced)
 
+	if _, err = ds.BackupBackingImageInformer.AddEventHandler(wc.notifyWatchersHandler("backupBackingImage")); err != nil {
+		return nil, err
+	}
+	wc.cacheSyncs = append(wc.cacheSyncs, ds.BackupBackingImageInformer.HasSynced)
+
 	return wc, nil
 }
 
