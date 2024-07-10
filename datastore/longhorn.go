@@ -3400,8 +3400,10 @@ func CheckInstanceManagerType(im *longhorn.InstanceManager) (longhorn.InstanceMa
 	return longhorn.InstanceManagerType(""), fmt.Errorf("unknown type %v for instance manager %v", imType, im.Name)
 }
 
-// CheckInstanceManagerReadiness checks if the InstanceManager is running on the
+// CheckInstanceManagersReadiness checks if the InstanceManager is running on the
 // specified set of nodes.
+// There is one running instance manager for v2 data engine on each node, so the function
+// find one running instance manager instead.
 //
 // Parameters:
 //   - dataEngine: the data engine type.
@@ -3412,7 +3414,13 @@ func CheckInstanceManagerType(im *longhorn.InstanceManager) (longhorn.InstanceMa
 // - Error for any errors encountered.
 func (s *DataStore) CheckInstanceManagersReadiness(dataEngine longhorn.DataEngineType, nodes ...string) (isReady bool, err error) {
 	for _, node := range nodes {
-		instanceManager, err := s.GetDefaultInstanceManagerByNodeRO(node, dataEngine)
+		var instanceManager *longhorn.InstanceManager
+
+		if dataEngine == longhorn.DataEngineTypeV2 {
+			instanceManager, err = s.GetRunningInstanceManagerByNodeRO(node, dataEngine)
+		} else {
+			instanceManager, err = s.GetDefaultInstanceManagerByNodeRO(node, dataEngine)
+		}
 		if err != nil {
 			return false, err
 		}
@@ -3427,7 +3435,7 @@ func (s *DataStore) CheckInstanceManagersReadiness(dataEngine longhorn.DataEngin
 					"instanceManager": instanceManager.Name,
 					"node":            node,
 				},
-			).Errorf("CheckInstanceManagerReadiness: instance manager is not running")
+			).Error("CheckInstanceManagersReadiness: instance manager is not running")
 			return false, nil
 		}
 	}
@@ -5329,7 +5337,7 @@ func (s *DataStore) GetRunningInstanceManagerByNodeRO(node string, dataEngine lo
 		}
 	}
 
-	logrus.WithError(err).Warnf("Failed to get the default instance manager for node %v and data engine %v, trying to get another running instance manager", node, dataEngine)
+	logrus.WithError(err).Debugf("Failed to get the default instance manager for node %v and data engine %v, trying to get another running instance manager", node, dataEngine)
 
 	ims, err := s.ListInstanceManagersByNodeRO(node, longhorn.InstanceManagerTypeAllInOne, dataEngine)
 	if err != nil {
