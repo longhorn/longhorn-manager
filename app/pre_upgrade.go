@@ -56,5 +56,9 @@ func preUpgrade(c *cli.Context) error {
 		return err
 	}
 
+	if err := environmentCheck(); err != nil {
+		return errors.Wrap(err, "failed to check environment, please make sure you have iscsiadm/open-iscsi installed on the host")
+	}
+
 	return nil
 }

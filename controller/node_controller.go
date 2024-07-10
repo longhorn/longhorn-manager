@@ -25,6 +25,10 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	lhexec "github.com/longhorn/go-common-libs/exec"
+	lhns "github.com/longhorn/go-common-libs/ns"
+	lhtypes "github.com/longhorn/go-common-libs/types"
+
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -558,6 +562,9 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		}
 	}
 
+	// check if environment settings meet the requirements on current node
+	nc.environmentCheck(kubeNode, node)
+
 	if err := nc.syncInstanceManagers(node); err != nil {
 		return err
 	}
@@ -993,6 +1000,152 @@ func (nc *NodeController) syncNodeStatus(pod *corev1.Pod, node *longhorn.Node) e
 	}
 
 	return nil
+}
+
+func (nc *NodeController) environmentCheck(kubeNode *corev1.Node, node *longhorn.Node) {
+	// Need to find the better way to check if various kernel versions are supported
+	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceNet}
+	nc.syncPackagesInstalled(kubeNode, node, namespaces)
+	nc.syncMultipathd(node, namespaces)
+	nc.syncNFSClientVersion(kubeNode, node, namespaces)
+}
+
+func (nc *NodeController) syncPackagesInstalled(kubeNode *corev1.Node, node *longhorn.Node, namespaces []lhtypes.Namespace) {
+	osImage := strings.ToLower(kubeNode.Status.NodeInfo.OSImage)
+	queryPackagesCmd := ""
+	packages := []string{}
+	switch {
+	case strings.Contains(osImage, "ubuntu"):
+	case strings.Contains(osImage, "debian"):
+		queryPackagesCmd = "dpkg -l | grep -w"
+		packages = []string{"nfs-common", "open-iscsi", "cryptsetup", "dmsetup"}
+	case strings.Contains(osImage, "centos"):
+	case strings.Contains(osImage, "fedora"):
+	case strings.Contains(osImage, "rocky"):
+	case strings.Contains(osImage, "ol"):
+		queryPackagesCmd = "rpm -q"
+		packages = []string{"nfs-utils", "iscsi-initiator-utils", "cryptsetup", "device-mapper"}
+	case strings.Contains(osImage, "suse"):
+		queryPackagesCmd = "rpm -q"
+		packages = []string{"nfs-client", "open-iscsi", "cryptsetup", "device-mapper"}
+	case strings.Contains(osImage, "arch"):
+		queryPackagesCmd = "pacman -Q"
+		packages = []string{"nfs-utils", "open-iscsi", "cryptsetup", "device-mapper"}
+	case strings.Contains(osImage, "gentoo"):
+		queryPackagesCmd = "qlist -I"
+		packages = []string{"net-fs/nfs-utils", "sys-block/open-iscsi", "sys-fs/cryptsetup", "sys-fs/lvm2"}
+	default:
+		node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusFalse,
+			string(longhorn.NodeConditionReasonUnknownOS),
+			fmt.Sprintf("Unable to verify the required packages because the OS image '%v' is unknown to the Longhorn system. Please ensure the required packages are installed.", osImage))
+		return
+	}
+
+	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	if err != nil {
+		node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusFalse,
+			string(longhorn.NodeConditionReasonNamespaceExecutorErr),
+			fmt.Sprintf("Failed to get namespace executor: %v", err.Error()))
+		return
+	}
+	notFoundPkgs := []string{}
+	for _, pkg := range packages {
+		args := []string{pkg}
+		if _, err := nsexec.Execute(nil, queryPackagesCmd, args, lhtypes.ExecuteDefaultTimeout); err != nil {
+			nc.logger.WithError(err).Debugf("Package %v is not found in node %v", pkg, node.Name)
+			notFoundPkgs = append(notFoundPkgs, pkg)
+		}
+	}
+
+	if len(notFoundPkgs) > 0 {
+		node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusFalse,
+			string(longhorn.NodeConditionReasonPackagesNotInstalled),
+			fmt.Sprintf("Missing packages: %v", notFoundPkgs))
+		return
+	}
+
+	node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusTrue, "", "")
+}
+
+func (nc *NodeController) syncMultipathd(node *longhorn.Node, namespaces []lhtypes.Namespace) {
+	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	if err != nil {
+		node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeMultipathd, longhorn.ConditionStatusFalse,
+			string(longhorn.NodeConditionReasonNamespaceExecutorErr),
+			fmt.Sprintf("Failed to get namespace executor: %v", err.Error()))
+		return
+	}
+	args := []string{"show", "status"}
+	if result, _ := nsexec.Execute(nil, "multipathd", args, lhtypes.ExecuteDefaultTimeout); result != "" {
+		node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeMultipathd, longhorn.ConditionStatusFalse,
+			string(longhorn.NodeConditionReasonMultipathdIsRunning),
+			"multipathd is running with a known issue that affects Longhorn. See description and solution at https://longhorn.io/kb/troubleshooting-volume-with-multipath")
+		return
+	}
+
+	node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeMultipathd, longhorn.ConditionStatusTrue, "", "")
+}
+
+func (nc *NodeController) syncNFSClientVersion(kubeNode *corev1.Node, node *longhorn.Node, namespaces []lhtypes.Namespace) {
+	kernelVersion := kubeNode.Status.NodeInfo.KernelVersion
+	nfsClientVersions := []string{"CONFIG_NFS_V4_2", "CONFIG_NFS_V4_1", "CONFIG_NFS_V4"}
+
+	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	if err != nil {
+		node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusFalse,
+			string(longhorn.NodeConditionReasonNamespaceExecutorErr),
+			fmt.Sprintf("Failed to get namespace executor: %v", err.Error()))
+		return
+	}
+
+	kernelConfigPath := "/boot/config-" + kernelVersion
+	args := []string{kernelConfigPath}
+	if _, err := nsexec.Execute(nil, "ls", args, lhtypes.ExecuteDefaultTimeout); err != nil {
+		node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusFalse,
+			string(longhorn.NodeConditionReasonKernelConfigIsNotFound),
+			fmt.Sprintf("Unable to find %v for checking %v: %v", kernelConfigPath, nfsClientVersions, err.Error()))
+		return
+	}
+
+	for _, ver := range nfsClientVersions {
+		args := []string{ver + "=", kernelConfigPath}
+		result, err := nsexec.Execute(nil, "grep", args, lhtypes.ExecuteDefaultTimeout)
+		if err != nil {
+			nc.logger.WithError(err).Debugf("Failed to find kernel config %v on node %v", ver, node.Name)
+			continue
+		}
+		enabled := strings.TrimSpace(strings.Split(result, "=")[1])
+		switch enabled {
+		case "y":
+			node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusTrue, "", "")
+			return
+		case "m":
+			kmodResult, err := lhexec.NewExecutor().Execute(nil, "kmod", []string{"list"}, lhtypes.ExecuteDefaultTimeout)
+			if err != nil {
+				node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusFalse,
+					string(longhorn.NodeConditionReasonNFSClientIsNotFound),
+					fmt.Sprintf("Failed to execute command `kmod`: %v", err.Error()))
+				return
+			}
+			res, err := lhexec.NewExecutor().ExecuteWithStdinPipe("grep", []string{"nfs"}, kmodResult, lhtypes.ExecuteDefaultTimeout)
+			if err != nil {
+				node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusFalse,
+					string(longhorn.NodeConditionReasonNFSClientIsNotFound),
+					fmt.Sprintf("Failed to execute command `grep`: %v", err.Error()))
+				return
+			}
+			if res != "" {
+				node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusTrue, "", "")
+				return
+			}
+		default:
+			nc.logger.Debugf("Unknown kernel config value for %v: %v", ver, enabled)
+		}
+	}
+
+	node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusFalse,
+		string(longhorn.NodeConditionReasonNFSClientIsNotFound),
+		fmt.Sprintf("NFS clients %v not found. At least one should be enabled", nfsClientVersions))
 }
 
 func (nc *NodeController) getImTypeDataEngines(node *longhorn.Node) map[longhorn.InstanceManagerType][]longhorn.DataEngineType {

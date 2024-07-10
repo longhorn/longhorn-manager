@@ -3,9 +3,12 @@ package v1beta2
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 const (
-	NodeConditionTypeReady            = "Ready"
-	NodeConditionTypeMountPropagation = "MountPropagation"
-	NodeConditionTypeSchedulable      = "Schedulable"
+	NodeConditionTypeReady              = "Ready"
+	NodeConditionTypeMountPropagation   = "MountPropagation"
+	NodeConditionTypeMultipathd         = "Multipathd"
+	NodeConditionTypeRequiredPackages   = "RequiredPackages"
+	NodeConditionTypeNFSClientInstalled = "NFSClientInstalled"
+	NodeConditionTypeSchedulable        = "Schedulable"
 )
 
 const (
@@ -16,6 +19,12 @@ const (
 	NodeConditionReasonKubernetesNodePressure    = "KubernetesNodePressure"
 	NodeConditionReasonUnknownNodeConditionTrue  = "UnknownNodeConditionTrue"
 	NodeConditionReasonNoMountPropagationSupport = "NoMountPropagationSupport"
+	NodeConditionReasonMultipathdIsRunning       = "MultipathdIsRunning"
+	NodeConditionReasonUnknownOS                 = "UnknownOS"
+	NodeConditionReasonNamespaceExecutorErr      = "NamespaceExecutorErr"
+	NodeConditionReasonPackagesNotInstalled      = "PackagesNotInstalled"
+	NodeConditionReasonKernelConfigIsNotFound    = "KernelConfigIsNotFound"
+	NodeConditionReasonNFSClientIsNotFound       = "NFSClientIsNotFound"
 	NodeConditionReasonKubernetesNodeCordoned    = "KubernetesNodeCordoned"
 )
 

@@ -17,7 +17,7 @@ COPY package/launch-manager package/nsmounter /usr/local/sbin/
 RUN zypper -n ref && \
     zypper update -y
 
-RUN zypper -n install iputils iproute2 nfs-client cifs-utils bind-utils e2fsprogs xfsprogs zip unzip && \
+RUN zypper -n install iputils iproute2 nfs-client cifs-utils bind-utils e2fsprogs xfsprogs zip unzip kmod && \
     rm -rf /var/cache/zypp/*
 
 EXPOSE 9500

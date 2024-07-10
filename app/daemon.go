@@ -24,7 +24,6 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/manager"
 	"github.com/longhorn/longhorn-manager/meta"
-	recoverybackend "github.com/longhorn/longhorn-manager/recovery_backend"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/upgrade"
 	"github.com/longhorn/longhorn-manager/util"
@@ -32,6 +31,7 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook"
 
 	metricscollector "github.com/longhorn/longhorn-manager/metrics_collector"
+	recoverybackend "github.com/longhorn/longhorn-manager/recovery_backend"
 )
 
 const (
@@ -131,7 +131,7 @@ func startManager(c *cli.Context) error {
 	kubeconfigPath := c.String(FlagKubeConfig)
 
 	if err := environmentCheck(); err != nil {
-		return errors.Wrap(err, "Failed environment check, please make sure you have iscsiadm/open-iscsi installed on the host")
+		return errors.Wrap(err, "failed to check environment, please make sure you have iscsiadm/open-iscsi installed on the host")
 	}
 
 	currentNodeID, err := util.GetRequiredEnv(types.EnvNodeName)
@@ -253,6 +253,8 @@ func startManager(c *cli.Context) error {
 }
 
 func environmentCheck() error {
+	// Here we only check if the necessary tool the iscsiadm is installed when Longhorn starts up.
+	// Others tools and settings like kernel versions, multipathd, nfs client, etc. are checked in the node controller (every 30 sec).
 	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceNet}
 	nsexec, err := lhns.NewNamespaceExecutor(iscsiutil.ISCSIdProcess, lhtypes.HostProcDirectory, namespaces)
 	if err != nil {
