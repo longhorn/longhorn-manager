@@ -184,6 +184,9 @@ func (s *NodeControllerSuite) TestManagerPodUp(c *C) {
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonUnknownOS),
+					newNodeCondition(longhorn.NodeConditionTypeMultipathd, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKernelConfigIsNotFound),
 				},
 			},
 			TestNode2: {
@@ -268,6 +271,9 @@ func (s *NodeControllerSuite) TestManagerPodDown(c *C) {
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonManagerPodDown),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonNoMountPropagationSupport),
+					newNodeCondition(longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonUnknownOS),
+					newNodeCondition(longhorn.NodeConditionTypeMultipathd, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKernelConfigIsNotFound),
 				},
 			},
 			TestNode2: {
@@ -352,6 +358,9 @@ func (s *NodeControllerSuite) TestKubeNodeDown(c *C) {
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKubernetesNodeNotReady),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonUnknownOS),
+					newNodeCondition(longhorn.NodeConditionTypeMultipathd, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKernelConfigIsNotFound),
 				},
 			},
 			TestNode2: {
@@ -436,6 +445,9 @@ func (s *NodeControllerSuite) TestKubeNodePressure(c *C) {
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKubernetesNodePressure),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonUnknownOS),
+					newNodeCondition(longhorn.NodeConditionTypeMultipathd, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKernelConfigIsNotFound),
 				},
 			},
 			TestNode2: {
@@ -555,6 +567,9 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonUnknownOS),
+					newNodeCondition(longhorn.NodeConditionTypeMultipathd, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKernelConfigIsNotFound),
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{
 					TestDiskID1: {
@@ -703,6 +718,9 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonUnknownOS),
+					newNodeCondition(longhorn.NodeConditionTypeMultipathd, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKernelConfigIsNotFound),
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{
 					TestDiskID1: {
@@ -857,6 +875,9 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonUnknownOS),
+					newNodeCondition(longhorn.NodeConditionTypeMultipathd, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKernelConfigIsNotFound),
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{
 					TestDiskID1: {
@@ -982,6 +1003,9 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonUnknownOS),
+					newNodeCondition(longhorn.NodeConditionTypeMultipathd, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKernelConfigIsNotFound),
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{
 					TestDiskID1: {
@@ -1124,6 +1148,9 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonUnknownOS),
+					newNodeCondition(longhorn.NodeConditionTypeMultipathd, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKernelConfigIsNotFound),
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{
 					TestDiskID1: {
@@ -1236,6 +1263,9 @@ func (s *NodeControllerSuite) TestCleanupAllInstanceManagers(c *C) {
 					newNodeCondition(longhorn.NodeConditionTypeSchedulable, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue, ""),
 					newNodeCondition(longhorn.NodeConditionTypeMountPropagation, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonUnknownOS),
+					newNodeCondition(longhorn.NodeConditionTypeMultipathd, longhorn.ConditionStatusTrue, ""),
+					newNodeCondition(longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusFalse, longhorn.NodeConditionReasonKernelConfigIsNotFound),
 				},
 				DiskStatus: map[string]*longhorn.DiskStatus{},
 			},
