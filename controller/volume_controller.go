@@ -3842,6 +3842,9 @@ func (c *VolumeController) restoreVolumeRecurringJobs(v *longhorn.Volume) error 
 		if job.JobSpec.Labels == nil {
 			job.JobSpec.Labels = map[string]string{}
 		}
+		if job.JobSpec.Parameters == nil {
+			job.JobSpec.Parameters = map[string]string{}
+		}
 		if jobName, err = createRecurringJobNotExist(log, c.ds, v, jobName, &job); err != nil {
 			return err
 		}
