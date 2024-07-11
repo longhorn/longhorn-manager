@@ -1069,11 +1069,8 @@ var (
 		DisplayName: "Storage Network for RWX Volume Enabled",
 		Description: "This setting allows Longhorn to use the storage network for RWX (Read-Write-Many) volume.\n\n" +
 			"WARNING: \n\n" +
-			"  - This setting should change after all Longhorn RWX volumes are detached. \n\n" +
-			"  - Enabling this setting will allow the CSI plugin pod to restart with the storage network annotatation. \n\n" +
-			"  - The RWX volumes will be mounted with the storage network within the CSI plugin pod container network namespace. \n\n" +
-			"  - As result, restarting the CSI plugin pod may lead to unresponsive RWX volume mounts. If this occurs, you will need to restart the workload pod to re-establish the mount connection. \n\n" +
-			"  - Alternatively, you can enable the 'Automatically Delete Workload Pod when The Volume Is Detached Unexpectedly' setting. \n\n",
+			"  - This setting should change after all Longhorn RWX volumes are detached because some Longhorn component pods will be recreated to apply the setting. \n\n" +
+			"  - When this setting is enabled, the RWX volumes are mounted with the storage network within the CSI plugin pod container network namespace. As a result, restarting the CSI plugin pod when there are attached RWX volumes may lead to its data path become unresponsive. When this occurs, you must restart the workload pod to re-establish the mount connection. Alternatively, you can enable the 'Automatically Delete Workload Pod when The Volume Is Detached Unexpectedly' setting to allow Longhorn to automatically delete the workload pod.\n\n",
 		Category: SettingCategoryDangerZone,
 		Type:     SettingTypeBool,
 		Required: false,
