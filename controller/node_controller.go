@@ -1013,27 +1013,40 @@ func (nc *NodeController) environmentCheck(kubeNode *corev1.Node, node *longhorn
 func (nc *NodeController) syncPackagesInstalled(kubeNode *corev1.Node, node *longhorn.Node, namespaces []lhtypes.Namespace) {
 	osImage := strings.ToLower(kubeNode.Status.NodeInfo.OSImage)
 	queryPackagesCmd := ""
+	options := []string{}
 	packages := []string{}
+	pipeFlag := false
+
 	switch {
 	case strings.Contains(osImage, "ubuntu"):
+		fallthrough
 	case strings.Contains(osImage, "debian"):
-		queryPackagesCmd = "dpkg -l | grep -w"
-		packages = []string{"nfs-common", "open-iscsi", "cryptsetup", "dmsetup"}
+		queryPackagesCmd = "dpkg"
+		options = append(options, "-l")
+		packages = append(packages, "nfs-common", "open-iscsi", "cryptsetup", "dmsetup")
+		pipeFlag = true
 	case strings.Contains(osImage, "centos"):
+		fallthrough
 	case strings.Contains(osImage, "fedora"):
+		fallthrough
 	case strings.Contains(osImage, "rocky"):
+		fallthrough
 	case strings.Contains(osImage, "ol"):
-		queryPackagesCmd = "rpm -q"
-		packages = []string{"nfs-utils", "iscsi-initiator-utils", "cryptsetup", "device-mapper"}
+		queryPackagesCmd = "rpm"
+		options = append(options, "-q")
+		packages = append(packages, "nfs-utils", "iscsi-initiator-utils", "cryptsetup", "device-mapper")
 	case strings.Contains(osImage, "suse"):
-		queryPackagesCmd = "rpm -q"
-		packages = []string{"nfs-client", "open-iscsi", "cryptsetup", "device-mapper"}
+		queryPackagesCmd = "rpm"
+		options = append(options, "-q")
+		packages = append(packages, "nfs-client", "open-iscsi", "cryptsetup", "device-mapper")
 	case strings.Contains(osImage, "arch"):
-		queryPackagesCmd = "pacman -Q"
-		packages = []string{"nfs-utils", "open-iscsi", "cryptsetup", "device-mapper"}
+		queryPackagesCmd = "pacman"
+		options = append(options, "-Q")
+		packages = append(packages, "nfs-utils", "open-iscsi", "cryptsetup", "device-mapper")
 	case strings.Contains(osImage, "gentoo"):
-		queryPackagesCmd = "qlist -I"
-		packages = []string{"net-fs/nfs-utils", "sys-block/open-iscsi", "sys-fs/cryptsetup", "sys-fs/lvm2"}
+		queryPackagesCmd = "qlist"
+		options = append(options, "-I")
+		packages = append(packages, "net-fs/nfs-utils", "sys-block/open-iscsi", "sys-fs/cryptsetup", "sys-fs/lvm2")
 	default:
 		node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusFalse,
 			string(longhorn.NodeConditionReasonUnknownOS),
@@ -1048,12 +1061,25 @@ func (nc *NodeController) syncPackagesInstalled(kubeNode *corev1.Node, node *lon
 			fmt.Sprintf("Failed to get namespace executor: %v", err.Error()))
 		return
 	}
+
 	notFoundPkgs := []string{}
 	for _, pkg := range packages {
-		args := []string{pkg}
-		if _, err := nsexec.Execute(nil, queryPackagesCmd, args, lhtypes.ExecuteDefaultTimeout); err != nil {
+		args := options
+		if !pipeFlag {
+			args = append(args, pkg)
+		}
+		queryResult, err := nsexec.Execute(nil, queryPackagesCmd, args, lhtypes.ExecuteDefaultTimeout)
+		if err != nil {
 			nc.logger.WithError(err).Debugf("Package %v is not found in node %v", pkg, node.Name)
 			notFoundPkgs = append(notFoundPkgs, pkg)
+			continue
+		}
+		if pipeFlag {
+			if _, err := lhexec.NewExecutor().ExecuteWithStdinPipe("grep", []string{"-w", pkg}, queryResult, lhtypes.ExecuteDefaultTimeout); err != nil {
+				nc.logger.WithError(err).Debugf("Package %v is not found in node %v", pkg, node.Name)
+				notFoundPkgs = append(notFoundPkgs, pkg)
+				continue
+			}
 		}
 	}
 
