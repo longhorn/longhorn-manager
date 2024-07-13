@@ -62,7 +62,7 @@ require (
 	github.com/longhorn/backupstore v0.0.0-20240709004445-1cadf9073de3
 	github.com/longhorn/go-common-libs v0.0.0-20240707062002-b9354601827e
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240708025845-7cc78e60866a
-	github.com/longhorn/go-spdk-helper v0.0.0-20240708060539-de887e9cc6db
+	github.com/longhorn/go-spdk-helper v0.0.0-20240712141652-3cdeed2b60e4
 	github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240707085442-0bfac42c4aff
 	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240709072210-84ba8e974de0
 	github.com/longhorn/longhorn-share-manager v1.7.0-dev.0.20240707073010-6d6d282d334a
@@ -90,7 +90,7 @@ require (
 	k8s.io/kubernetes v1.30.2
 	k8s.io/metrics v0.28.5
 	k8s.io/mount-utils v0.30.2
-	k8s.io/utils v0.0.0-20240502163921-fe8a2dddb1d0
+	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8
 	sigs.k8s.io/controller-runtime v0.10.1
 )
 
@@ -172,7 +172,7 @@ require (
 	github.com/prometheus/client_model v0.5.0 // indirect
 	github.com/prometheus/common v0.47.0 // indirect
 	github.com/prometheus/procfs v0.12.0 // indirect
-	github.com/rancher/lasso v0.0.0-20240705194423-b2a060d103c1
+	github.com/rancher/lasso v0.0.0-20240710130346-32d96874d344
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
