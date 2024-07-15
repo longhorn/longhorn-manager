@@ -847,6 +847,7 @@ func (ns *NodeServer) getMounter(volume *longhornclient.Volume, volumeCapability
 		} else {
 			logrus.Warnf("Volume %v with unsupported filesystem %v, use default fs creation params", volume.Name, fsType)
 		}
+
 		return mounter, nil
 	}
 

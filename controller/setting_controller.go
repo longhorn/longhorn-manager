@@ -344,6 +344,14 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 			if err := sc.updateCNI(sc.ds.AreAllRWXVolumesDetached); err != nil {
 				return err
 			}
+
+			// Perform cleanup of the share manager Service
+			// This is to allow the creation of the correct Service
+			// and Endpoint when switching between cluster network
+			// and storage network.
+			if err := sc.cleanupShareManagerServiceAndEndpoints(); err != nil {
+				return err
+			}
 		}
 		return nil
 	}
@@ -907,6 +915,38 @@ func (sc *SettingController) updateKubernetesClusterAutoscalerEnabled() error {
 		}
 		dp.Spec.Template.Annotations = anno
 		if _, err := sc.ds.UpdateDeployment(dp); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (sc *SettingController) cleanupShareManagerServiceAndEndpoints() error {
+	var err error
+	defer func() {
+		if err != nil {
+			err = errors.Wrapf(err, "failed to cleanup share manager service and endpoints for %s setting update", types.SettingNameStorageNetworkForRWXVolumeEnabled)
+		}
+	}()
+
+	shareManagers, err := sc.ds.ListShareManagers()
+	if err != nil {
+		return err
+	}
+
+	for _, shareManager := range shareManagers {
+		log := sc.logger.WithField("shareManager", shareManager.Name)
+
+		log.WithField("service", shareManager.Name).Infof("Deleting Service for %v setting update", types.SettingNameStorageNetworkForRWXVolumeEnabled)
+		err := sc.ds.DeleteService(shareManager.Namespace, shareManager.Name)
+		if err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+
+		log.WithField("endpoint", shareManager.Name).Infof("Deleting Endpoint for %v setting update", types.SettingNameStorageNetworkForRWXVolumeEnabled)
+		err = sc.ds.DeleteKubernetesEndpoint(shareManager.Namespace, shareManager.Name)
+		if err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
 	}
