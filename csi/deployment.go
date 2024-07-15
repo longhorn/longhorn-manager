@@ -420,6 +420,12 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 									MountPath: "/dev",
 								},
 								{
+									// The plugin must be able to switch to the host's namespaces in order to execute
+									// cryptsetup commands for encrypted devices.
+									Name:      "host-proc",
+									MountPath: "/host/proc",
+								},
+								{
 									Name:      "host-sys",
 									MountPath: "/sys",
 								},
@@ -473,6 +479,14 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 							VolumeSource: corev1.VolumeSource{
 								HostPath: &corev1.HostPathVolumeSource{
 									Path: "/dev",
+								},
+							},
+						},
+						{
+							Name: "host-proc",
+							VolumeSource: corev1.VolumeSource{
+								HostPath: &corev1.HostPathVolumeSource{
+									Path: "/proc",
 								},
 							},
 						},
