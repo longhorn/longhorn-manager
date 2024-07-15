@@ -792,6 +792,11 @@ func (s *DataStore) CreateKubernetesEndpoint(endpoint *corev1.Endpoints) (*corev
 	return s.kubeClient.CoreV1().Endpoints(endpoint.Namespace).Create(context.TODO(), endpoint, metav1.CreateOptions{})
 }
 
+// DeleteKubernetesEndpoint deletes the Kubernetes Endpoint of the given name in the Longhorn namespace.
+func (s *DataStore) DeleteKubernetesEndpoint(namespace, name string) error {
+	return s.kubeClient.CoreV1().Endpoints(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
 // UpdateKubernetesEndpoint updates the Kubernetes Endpoint of the given name in the Longhorn namespace.
 func (s *DataStore) UpdateKubernetesEndpoint(endpoint *corev1.Endpoints) (*corev1.Endpoints, error) {
 	return s.kubeClient.CoreV1().Endpoints(s.namespace).Update(context.TODO(), endpoint, metav1.UpdateOptions{})

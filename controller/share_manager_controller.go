@@ -617,21 +617,6 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 	return nil
 }
 
-func (c *ShareManagerController) cleanupShareManagerService(shareManager *longhorn.ShareManager) error {
-	log := getLoggerForShareManager(c.logger, shareManager)
-
-	service, err := c.ds.GetService(shareManager.Namespace, shareManager.Name)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-
-	log.Infof("Cleaning up share manager service %v", service.Name)
-	return c.ds.DeleteService(shareManager.Namespace, service.Name)
-}
-
 func (c *ShareManagerController) cleanupShareManagerPod(sm *longhorn.ShareManager) error {
 	log := getLoggerForShareManager(c.logger, sm)
 	podName := types.GetShareManagerPodNameFromShareManagerName(sm.Name)
@@ -674,15 +659,6 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 			sm.Status.State == longhorn.ShareManagerStateStopped ||
 			sm.Status.State == longhorn.ShareManagerStateError {
 			err = c.cleanupShareManagerPod(sm)
-			if err != nil {
-				return
-			}
-
-			// Perform cleanup of the share manager Service
-			// This is to allow the creation of the correct Service
-			// and Endpoint when switching between cluster network
-			// and storage network.
-			err = c.cleanupShareManagerService(sm)
 			if err != nil {
 				return
 			}
