@@ -361,7 +361,7 @@ func unmount(path string, mounter mount.Interface) (err error) {
 	return err
 }
 
-// unnountAndCleanupMountPoint ensures all mount layers for the path are unmounted and the mount directory is removed
+// unmountAndCleanupMountPoint ensures all mount layers for the path are unmounted and the mount directory is removed
 func unmountAndCleanupMountPoint(path string, mounter mount.Interface) error {
 	// we just try to unmount since the path check would get stuck for nfs mounts
 	logrus.Infof("Trying to umount mount point %v", path)
