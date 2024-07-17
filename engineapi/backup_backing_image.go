@@ -16,9 +16,13 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/utils/clock"
 
+	lhbackup "github.com/longhorn/go-common-libs/backup"
+
 	"github.com/longhorn/backupstore/backupbackingimage"
-	"github.com/longhorn/longhorn-manager/datastore"
+
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 )
 
@@ -112,10 +116,12 @@ func NewBackupBackingImageMonitor(logger logrus.FieldLogger, ds *datastore.DataS
 		quit: quit,
 	}
 
+	backupBackingImageParameters := getBackupBackingImageParameters(backingImage)
+
 	// Call backing image manager API snapshot backup
 	if bbi.Status.State == longhorn.BackupStateNew {
 		err := m.client.BackupCreate(bbi.Name, backingImage.Status.UUID, bbi.Status.Checksum,
-			backupTargetClient.URL, bbi.Spec.Labels, backupTargetClient.Credential, string(compressionMethod), concurrentLimit)
+			backupTargetClient.URL, bbi.Spec.Labels, backupTargetClient.Credential, string(compressionMethod), concurrentLimit, backupBackingImageParameters)
 		if err != nil {
 			if !strings.Contains(err.Error(), "DeadlineExceeded") {
 				m.logger.WithError(err).Warn("failed to take backing image backup")
@@ -257,4 +263,11 @@ func (m *BackupBackingImageMonitor) GetBackupBackingImageStatus() longhorn.Backu
 
 func (m *BackupBackingImageMonitor) Close() {
 	m.quit()
+}
+
+func getBackupBackingImageParameters(backingImage *longhorn.BackingImage) map[string]string {
+	parameters := map[string]string{}
+	parameters[lhbackup.LonghornBackupBackingImageParameterSecret] = string(backingImage.Spec.Secret)
+	parameters[lhbackup.LonghornBackupBackingImageParameterSecretNamespace] = string(backingImage.Spec.SecretNamespace)
+	return parameters
 }
