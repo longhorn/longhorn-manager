@@ -332,6 +332,8 @@ func (bc *BackupBackingImageController) reconcile(backupBackingImageName string)
 	bbi.Status.Checksum = backupBackingImageInfo.Checksum
 	bbi.Status.Size = backupBackingImageInfo.Size
 	bbi.Status.Labels = backupBackingImageInfo.Labels
+	bbi.Status.Secret = backupBackingImageInfo.Secret
+	bbi.Status.SecretNamespace = backupBackingImageInfo.SecretNamespace
 	bbi.Status.CompressionMethod = longhorn.BackupCompressionMethod(backupBackingImageInfo.CompressionMethod)
 	bbi.Status.LastSyncedAt = syncTime
 	return nil
