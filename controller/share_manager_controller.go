@@ -665,21 +665,6 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 	return nil
 }
 
-func (c *ShareManagerController) cleanupShareManagerService(shareManager *longhorn.ShareManager) error {
-	log := getLoggerForShareManager(c.logger, shareManager)
-
-	service, err := c.ds.GetService(shareManager.Namespace, shareManager.Name)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return err
-	}
-
-	log.Infof("Cleaning up share manager service %v", service.Name)
-	return c.ds.DeleteService(shareManager.Namespace, service.Name)
-}
-
 // markShareManagerLeaseDelinquent zeros the acquire time field as a flag that the volume
 // should be fast-tracked for failover away from the current lease-holding node.
 func (c *ShareManagerController) markShareManagerDelinquent(sm *longhorn.ShareManager) error {
