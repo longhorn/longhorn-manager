@@ -145,12 +145,12 @@ func (c *BackingImageManagerClient) VersionGet() (int, int, error) {
 	return output.BackingImageManagerAPIMinVersion, output.BackingImageManagerAPIVersion, nil
 }
 
-func (c *BackingImageManagerClient) BackupCreate(name, uuid, checksum, backupTargetURL string, labels, credential map[string]string, compressionMethod string, concurrentLimit int) error {
+func (c *BackingImageManagerClient) BackupCreate(name, uuid, checksum, backupTargetURL string, labels, credential map[string]string, compressionMethod string, concurrentLimit int, parameters map[string]string) error {
 
 	if err := CheckBackingImageManagerCompatibility(c.apiMinVersion, c.apiVersion); err != nil {
 		return err
 	}
-	return c.grpcClient.BackupCreate(name, uuid, checksum, backupTargetURL, labels, credential, compressionMethod, concurrentLimit)
+	return c.grpcClient.BackupCreate(name, uuid, checksum, backupTargetURL, labels, credential, compressionMethod, concurrentLimit, parameters)
 }
 
 func (c *BackingImageManagerClient) BackupStatus(name string) (*longhorn.BackupBackingImageStatus, error) {

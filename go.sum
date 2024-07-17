@@ -827,6 +827,14 @@ github.com/cespare/xxhash/v2 v2.1.2/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XL
 github.com/cespare/xxhash/v2 v2.2.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
+github.com/chanyilin/backing-image-manager v1.4.0-rc1.0.20240716084737-82b41eeaef6c h1:JmwT34fDctCXWBSJPfVpYohRhbJuY5jG9VYO1NTp/jM=
+github.com/chanyilin/backing-image-manager v1.4.0-rc1.0.20240716084737-82b41eeaef6c/go.mod h1:yDySyRZEP9J/xN27UwvMEzzEv38AlLYJjkf+GA133p4=
+github.com/chanyilin/backupstore v0.0.0-20240716083705-c30b8fd2d973 h1:xhIQYJINAZgcVpclvnPBLxMCUWRs1kZ18NVwPg58Wu0=
+github.com/chanyilin/backupstore v0.0.0-20240716083705-c30b8fd2d973/go.mod h1:n7cpM9QLOl1KxaTFA1t3WEtiCo3vM7KNHCWXkzmTwkE=
+github.com/chanyilin/go-common-libs v0.0.0-20240716074450-cdf55483e4fc h1:t2Sumlm9ZEw6QvH1k4LF1NAjFQIT3skTp3kRXsBMBQI=
+github.com/chanyilin/go-common-libs v0.0.0-20240716074450-cdf55483e4fc/go.mod h1:vX53A9KF4RHC1UTbEGouZHsZO6bwT3zk63l1hvwF5T8=
+github.com/chanyilin/types v0.0.0-20240716081512-9303475fbf48 h1:9jzwp7CVYzxHy4HOp6SEUgJOiHS40KUwUZxDzbSJALU=
+github.com/chanyilin/types v0.0.0-20240716081512-9303475fbf48/go.mod h1:KlJuZB8NfHchWshYxYgV9pPIxBKC04Vq05G2TfgMf7w=
 github.com/chzyer/logex v1.1.10/go.mod h1:+Ywpsq7O8HXn0nuIou7OrIPyXbp3wmkHB+jjWRnGsAI=
 github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e/go.mod h1:nSuG5e5PlCu98SY8svDHJxuZscDgtXS6KTTbou5AhLI=
 github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1/go.mod h1:Q3SI9o4m/ZMnBNeIyt5eFwwo7qiLfzFZmjNmxjkiQlU=
@@ -1220,12 +1228,6 @@ github.com/kubernetes-csi/csi-lib-utils v0.6.1 h1:+AZ58SRSRWh2vmMoWAAGcv7x6fIyBM
 github.com/kubernetes-csi/csi-lib-utils v0.6.1/go.mod h1:GVmlUmxZ+SUjVLXicRFjqWUUvWez0g0Y78zNV9t7KfQ=
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de h1:9TO3cAIGXtEhnIaL+V+BEER86oLrvS+kWobKpbJuye0=
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de/go.mod h1:zAbeS9B/r2mtpb6U+EI2rYA5OAXxsYw6wTamcNW+zcE=
-github.com/longhorn/backing-image-manager v1.7.0-rc1 h1:kD106yhLtofxDwXkvKs77VAFzTVdJnbxsD2m28X4tp0=
-github.com/longhorn/backing-image-manager v1.7.0-rc1/go.mod h1:ZXD/+yKwMer/eZzwQ2ev/eAyLvih7WNq6NDgfUpvQ+8=
-github.com/longhorn/backupstore v0.0.0-20240709004445-1cadf9073de3 h1:DCNyiGtXlYKMdXBm7p3l86pXEaP0klFpes+BtLYleQc=
-github.com/longhorn/backupstore v0.0.0-20240709004445-1cadf9073de3/go.mod h1:IJ7rVDB0l5J8YBFgvbYRM0dCF9pLhnIToia+4PDzNqY=
-github.com/longhorn/go-common-libs v0.0.0-20240707062002-b9354601827e h1:0SiyvTuovYc9kLJbjagTSxv3sOfCCU9FQJasRo7bgzU=
-github.com/longhorn/go-common-libs v0.0.0-20240707062002-b9354601827e/go.mod h1:vX53A9KF4RHC1UTbEGouZHsZO6bwT3zk63l1hvwF5T8=
 github.com/longhorn/go-iscsi-helper v0.0.0-20240708025845-7cc78e60866a h1:8FYqfmKkssHYiZqgpnodiyzjPkYmqSViEjXdCvij3rQ=
 github.com/longhorn/go-iscsi-helper v0.0.0-20240708025845-7cc78e60866a/go.mod h1:ZP3plRH+n4J+t16PdgQ8c8QGhoR1OZAs+/1mhPnpyP4=
 github.com/longhorn/go-spdk-helper v0.0.0-20240712141652-3cdeed2b60e4 h1:QgisqeLK3XaxImru/uF/S6B501fT16udzvxs9S8Jko4=
@@ -1236,8 +1238,6 @@ github.com/longhorn/longhorn-instance-manager v1.7.0-rc1 h1:9hugpEQEmK6tMa1zY87G
 github.com/longhorn/longhorn-instance-manager v1.7.0-rc1/go.mod h1:HIo3UCiH81EtTPwOujkKZIIQbvmJ1A3OeRHShHlAEV0=
 github.com/longhorn/longhorn-share-manager v1.7.0-rc1 h1:LsSkSajhG8tCfORKKfwK+8XHVrT/8rI9DRWb7fuoVls=
 github.com/longhorn/longhorn-share-manager v1.7.0-rc1/go.mod h1:R6+NscPU4lAV5ueO7//lBCAO3en0aDbZi5KkkOSUJvk=
-github.com/longhorn/types v0.0.0-20240706151541-33cb010c3544 h1:U08l+0SbxCsododsraBHB5PdXrQme3TEh9iaREhRLQs=
-github.com/longhorn/types v0.0.0-20240706151541-33cb010c3544/go.mod h1:KlJuZB8NfHchWshYxYgV9pPIxBKC04Vq05G2TfgMf7w=
 github.com/lyft/protoc-gen-star v0.6.0/go.mod h1:TGAoBVkt8w7MPG72TrKIu85MIdXwDuzJYeZuUPFPNwA=
 github.com/lyft/protoc-gen-star v0.6.1/go.mod h1:TGAoBVkt8w7MPG72TrKIu85MIdXwDuzJYeZuUPFPNwA=
 github.com/lyft/protoc-gen-star/v2 v2.0.1/go.mod h1:RcCdONR2ScXaYnQC5tUzxzlpA3WVYF7/opLeUgcQs/o=
