@@ -522,7 +522,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	// Getting here is enough proof of life to Turn on the webhook endpoint,
 	// if it has been turned off for RWX failover.
 	if err := nc.ds.AddLabelToManagerPod(node.Name, types.GetAdmissionWebhookLabel()); err != nil {
-		log.Warnf("Node %v faied to restore its admission webhook", node.Name)
+		log.Warnf("Node %v failed to restore its admission webhook", node.Name)
 	}
 
 	// TODO: polish this code
