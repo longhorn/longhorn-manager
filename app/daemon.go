@@ -206,6 +206,12 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
+	// TODO: polish this code
+	// longhorn.io/component: longhorn-recovery-backend
+	if err := clients.Datastore.AddLabelToManagerPod(currentNodeID, types.GetRecoveryBackendLabel()); err != nil {
+		return err
+	}
+
 	if err := upgrade.Upgrade(kubeconfigPath, currentNodeID, managerImage, c.Bool(FlagUpgradeVersionCheck)); err != nil {
 		return err
 	}

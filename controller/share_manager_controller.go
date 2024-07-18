@@ -351,6 +351,19 @@ func (c *ShareManagerController) syncShareManager(key string) (err error) {
 		log.Infof("Share manager got new owner %v", c.controllerID)
 	}
 
+	//// TODO: move this to main sync loop
+	//// This code should be moved from here to the sync loop, but it requires care.
+	//// The first naive attempt caused repeated calls to cleanup and delete/create.
+	//if err := c.markShareManagerDelinquent(sm); err != nil {
+	//	log.WithError(err).Warnf("Failed to update leease to set delinquent condition for %v", sm.Name)
+	//}
+	//
+	//// Also, turn off the admission webhook on the suspected node.  Trying to talk to it
+	//// will delay any effort to modify resources.
+	//if err := c.ds.RemoveLabelFromManagerPod(leaseHolder, types.GetAdmissionWebhookLabel()); err != nil {
+	//	log.WithError(err).Warnf("Failed to turn off admission webhook on node %v", leaseHolder)
+	//}
+
 	if sm.DeletionTimestamp != nil {
 		if err := c.cleanupShareManagerPod(sm); err != nil {
 			return err
@@ -1515,11 +1528,17 @@ func (c *ShareManagerController) isResponsibleFor(sm *longhorn.ShareManager) (bo
 			log.WithError(err).Warnf("Failed to update leease to set delinquent condition for %v", sm.Name)
 		}
 
+		// TODO: polish this code
 		// Also, turn off the admission webhook on the suspected node.  Trying to talk to it
 		// will delay any effort to modify resources.
 		if err := c.ds.RemoveLabelFromManagerPod(leaseHolder, types.GetAdmissionWebhookLabel()); err != nil {
-			log.WithError(err).Warnf("Failed to turn off admission webhook on node %v", leaseHolder)
+			log.WithError(err).Warnf("Failed to turn off admission webhook/recovery backed on node %v", leaseHolder)
 		}
+
+		//// TODO: polish this code
+		//if err := c.ds.RemoveLabelFromManagerPod(leaseHolder, types.GetRecoveryBackendLabel()); err != nil {
+		//	log.WithError(err).Warnf("Failed to turn off recovery backed on node %v", leaseHolder)
+		//}
 
 		return currentNodeSchedulable, nil
 	}
