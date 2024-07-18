@@ -427,6 +427,13 @@ func GetManagerLabels() map[string]string {
 func GetAdmissionWebhookLabel() map[string]string {
 	return map[string]string{
 		GetLonghornLabelKey(LonghornLabelAdmissionWebhook): AdmissionWebhookServiceName,
+		"longhorn.io/component":                            "longhorn-recovery-backend",
+	}
+}
+
+func GetRecoveryBackendLabel() map[string]string {
+	return map[string]string{
+		"longhorn.io/component": "longhorn-recovery-backend",
 	}
 }
 
