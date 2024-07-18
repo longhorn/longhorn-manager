@@ -525,6 +525,11 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		log.Warnf("Node %v faied to restore its admission webhook", node.Name)
 	}
 
+	// TODO: polish this code
+	if err := nc.ds.AddLabelToManagerPod(node.Name, types.GetRecoveryBackendLabel()); err != nil {
+		log.Warnf("Node %v faied to restore its recovery backend", node.Name)
+	}
+
 	// Create a monitor for collecting disk information
 	if _, err := nc.createDiskMonitor(); err != nil {
 		return err
