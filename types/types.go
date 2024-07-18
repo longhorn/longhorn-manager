@@ -212,6 +212,12 @@ const (
 
 	KubeAPIQPS   = 50
 	KubeAPIBurst = 100
+
+	CSISidecarMetricsPort         = 8000
+	CSISidecarPortNameAttacher    = "csi-attacher"
+	CSISidecarPortNameProvisioner = "csi-provisioner"
+	CSISidecarPortNameResizer     = "csi-resizer"
+	CSISidecarPortNameSnapshotter = "csi-snapshotter"
 )
 
 const (

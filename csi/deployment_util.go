@@ -35,7 +35,7 @@ const (
 )
 
 func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir string, args []string, replicaCount int32,
-	tolerations []corev1.Toleration, tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string) *appsv1.Deployment {
+	tolerations []corev1.Toleration, tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string, ports []corev1.ContainerPort) *appsv1.Deployment {
 
 	deploymentLabels := types.GetBaseLabelsForSystemManagedComponent()
 	deploymentLabels["app"] = commonName
@@ -91,6 +91,7 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 							Image:           image,
 							Args:            args,
 							ImagePullPolicy: imagePullPolicy,
+							Ports:           ports,
 							Env: []corev1.EnvVar{
 								{
 									Name:  "ADDRESS",

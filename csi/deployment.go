@@ -70,6 +70,7 @@ func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir str
 			"--leader-election-namespace=$(POD_NAMESPACE)",
 			fmt.Sprintf("--kube-api-qps=%v", types.KubeAPIQPS),
 			fmt.Sprintf("--kube-api-burst=%v", types.KubeAPIBurst),
+			fmt.Sprintf("--http-endpoint=:%v", types.CSISidecarMetricsPort),
 		},
 		int32(replicaCount),
 		tolerations,
@@ -78,6 +79,12 @@ func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir str
 		registrySecret,
 		imagePullPolicy,
 		nodeSelector,
+		[]corev1.ContainerPort{
+			{
+				Name:          types.CSISidecarPortNameAttacher,
+				ContainerPort: types.CSISidecarMetricsPort,
+			},
+		},
 	)
 
 	return &AttacherDeployment{
@@ -119,6 +126,7 @@ func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootD
 			"--default-fstype=ext4",
 			fmt.Sprintf("--kube-api-qps=%v", types.KubeAPIQPS),
 			fmt.Sprintf("--kube-api-burst=%v", types.KubeAPIBurst),
+			fmt.Sprintf("--http-endpoint=:%v", types.CSISidecarMetricsPort),
 		},
 		int32(replicaCount),
 		tolerations,
@@ -127,6 +135,12 @@ func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootD
 		registrySecret,
 		imagePullPolicy,
 		nodeSelector,
+		[]corev1.ContainerPort{
+			{
+				Name:          types.CSISidecarPortNameProvisioner,
+				ContainerPort: types.CSISidecarMetricsPort,
+			},
+		},
 	)
 
 	return &ProvisionerDeployment{
@@ -168,6 +182,7 @@ func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir strin
 			"--leader-election-namespace=$(POD_NAMESPACE)",
 			fmt.Sprintf("--kube-api-qps=%v", types.KubeAPIQPS),
 			fmt.Sprintf("--kube-api-burst=%v", types.KubeAPIBurst),
+			fmt.Sprintf("--http-endpoint=:%v", types.CSISidecarMetricsPort),
 			// Issue: https://github.com/longhorn/longhorn/issues/3303
 			// TODO: Remove this after upgrading the CSI resizer version that contains the fix of https://github.com/kubernetes-csi/external-resizer/issues/175
 			"--handle-volume-inuse-error=false",
@@ -179,6 +194,12 @@ func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir strin
 		registrySecret,
 		imagePullPolicy,
 		nodeSelector,
+		[]corev1.ContainerPort{
+			{
+				Name:          types.CSISidecarPortNameResizer,
+				ContainerPort: types.CSISidecarMetricsPort,
+			},
+		},
 	)
 
 	return &ResizerDeployment{
@@ -219,6 +240,7 @@ func NewSnapshotterDeployment(namespace, serviceAccount, snapshotterImage, rootD
 			"--leader-election-namespace=$(POD_NAMESPACE)",
 			fmt.Sprintf("--kube-api-qps=%v", types.KubeAPIQPS),
 			fmt.Sprintf("--kube-api-burst=%v", types.KubeAPIBurst),
+			fmt.Sprintf("--http-endpoint=:%v", types.CSISidecarMetricsPort),
 		},
 		int32(replicaCount),
 		tolerations,
@@ -227,6 +249,12 @@ func NewSnapshotterDeployment(namespace, serviceAccount, snapshotterImage, rootD
 		registrySecret,
 		imagePullPolicy,
 		nodeSelector,
+		[]corev1.ContainerPort{
+			{
+				Name:          types.CSISidecarPortNameSnapshotter,
+				ContainerPort: types.CSISidecarMetricsPort,
+			},
+		},
 	)
 
 	return &SnapshotterDeployment{
