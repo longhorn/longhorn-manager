@@ -323,11 +323,20 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 				return err
 			}
 		case types.SettingNameStorageNetwork:
-			fnAreAllVolumeDetached := func() (bool, error) {
-				isDetached, _, err := sc.ds.AreAllVolumesDetached(longhorn.DataEngineTypeAll)
-				return isDetached, err
+			funcPreupdate := func() error {
+				detached, _, err := sc.ds.AreAllVolumesDetached(longhorn.DataEngineTypeAll)
+				if err != nil {
+					return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameStorageNetwork)
+				}
+
+				if !detached {
+					return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting to Longhorn components when there are attached volumes. It will be eventually applied", types.SettingNameStorageNetwork)}
+				}
+
+				return nil
 			}
-			if err := sc.updateCNI(fnAreAllVolumeDetached); err != nil {
+
+			if err := sc.updateCNI(funcPreupdate); err != nil {
 				return err
 			}
 		}
@@ -341,15 +350,27 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 	if slices.Contains(dangerSettingRequiringRWXVolumesDetached, settingName) {
 		switch settingName {
 		case types.SettingNameStorageNetworkForRWXVolumeEnabled:
-			if err := sc.updateCNI(sc.ds.AreAllRWXVolumesDetached); err != nil {
-				return err
+			funcPreupdate := func() error {
+				detached, err := sc.ds.AreAllRWXVolumesDetached()
+				if err != nil {
+					return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameStorageNetworkForRWXVolumeEnabled)
+				}
+				if !detached {
+					return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting to Longhorn components when there are attached volumes. It will be eventually applied", types.SettingNameStorageNetworkForRWXVolumeEnabled)}
+				}
+
+				// Perform cleanup of the share manager Service
+				// This is to allow the creation of the correct Service
+				// and Endpoint when switching between cluster network
+				// and storage network.
+				if err := sc.cleanupShareManagerServiceAndEndpoints(); err != nil {
+					return err
+				}
+
+				return nil
 			}
 
-			// Perform cleanup of the share manager Service
-			// This is to allow the creation of the correct Service
-			// and Endpoint when switching between cluster network
-			// and storage network.
-			if err := sc.cleanupShareManagerServiceAndEndpoints(); err != nil {
+			if err := sc.updateCNI(funcPreupdate); err != nil {
 				return err
 			}
 		}
@@ -955,7 +976,7 @@ func (sc *SettingController) cleanupShareManagerServiceAndEndpoints() error {
 }
 
 // updateCNI deletes all system-managed data plane components immediately with the updated CNI annotation.
-func (sc *SettingController) updateCNI(fnCheckVolumeDetached func() (bool, error)) error {
+func (sc *SettingController) updateCNI(funcPreupdate func() error) error {
 	storageNetwork, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
 	if err != nil {
 		return err
@@ -985,12 +1006,9 @@ func (sc *SettingController) updateCNI(fnCheckVolumeDetached func() (bool, error
 		return nil
 	}
 
-	detached, err := fnCheckVolumeDetached()
+	err = funcPreupdate()
 	if err != nil {
-		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameStorageNetwork)
-	}
-	if !detached {
-		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting to Longhorn components when there are attached volumes. It will be eventually applied", types.SettingNameStorageNetwork)}
+		return err
 	}
 
 	for _, daemonSet := range incorrectCNIDaemonSets {
