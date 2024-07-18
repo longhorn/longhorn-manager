@@ -490,11 +490,26 @@ func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) (ims []*
 }
 
 func (s *DataStore) AreAllRWXVolumesDetached() (bool, error) {
-	pods, err := s.ListShareManagerPodsRO("")
+	volumes, err := s.ListVolumesRO()
 	if err != nil {
 		return false, err
 	}
-	return len(pods) == 0, nil
+	for _, volume := range volumes {
+		if volume.Spec.AccessMode != longhorn.AccessModeReadWriteMany {
+			continue
+		}
+
+		volumeAttachment, err := s.GetLHVolumeAttachmentByVolumeName(volume.Name)
+		if err != nil && !apierrors.IsNotFound(err) {
+			return false, err
+		}
+
+		if volumeAttachment != nil && len(volumeAttachment.Spec.AttachmentTickets) > 0 {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
 
 func (s *DataStore) AreAllVolumesDetached(dataEngine longhorn.DataEngineType) (bool, []*longhorn.InstanceManager, error) {
