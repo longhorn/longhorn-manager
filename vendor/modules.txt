@@ -223,14 +223,14 @@ github.com/kubernetes-csi/csi-lib-utils/protosanitizer
 # github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de
 ## explicit
 github.com/liggitt/tabwriter
-# github.com/longhorn/backing-image-manager v1.7.0-rc1
+# github.com/longhorn/backing-image-manager v1.7.0-rc1 => github.com/chanyilin/backing-image-manager v1.4.0-rc1.0.20240716084737-82b41eeaef6c
 ## explicit; go 1.22.0
 github.com/longhorn/backing-image-manager/api
 github.com/longhorn/backing-image-manager/pkg/client
 github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20240709004445-1cadf9073de3
+# github.com/longhorn/backupstore v0.0.0-20240709004445-1cadf9073de3 => github.com/chanyilin/backupstore v0.0.0-20240716083705-c30b8fd2d973
 ## explicit; go 1.22.0
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/backupbackingimage
@@ -239,7 +239,7 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20240707062002-b9354601827e
+# github.com/longhorn/go-common-libs v0.0.0-20240707062002-b9354601827e => github.com/chanyilin/go-common-libs v0.0.0-20240716074450-cdf55483e4fc
 ## explicit; go 1.22.0
 github.com/longhorn/go-common-libs/backup
 github.com/longhorn/go-common-libs/exec
@@ -280,7 +280,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/util
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/types v0.0.0-20240706151541-33cb010c3544
+# github.com/longhorn/types v0.0.0-20240706151541-33cb010c3544 => github.com/chanyilin/types v0.0.0-20240716081512-9303475fbf48
 ## explicit; go 1.21
 github.com/longhorn/types/pkg/generated/bimrpc
 github.com/longhorn/types/pkg/generated/enginerpc

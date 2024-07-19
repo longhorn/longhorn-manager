@@ -2,6 +2,14 @@ module github.com/longhorn/longhorn-manager
 
 go 1.22.2
 
+replace github.com/longhorn/types v0.0.0-20240706151541-33cb010c3544 => github.com/chanyilin/types v0.0.0-20240716081512-9303475fbf48
+
+replace github.com/longhorn/go-common-libs v0.0.0-20240707062002-b9354601827e => github.com/chanyilin/go-common-libs v0.0.0-20240716074450-cdf55483e4fc
+
+replace github.com/longhorn/backupstore v0.0.0-20240709004445-1cadf9073de3 => github.com/chanyilin/backupstore v0.0.0-20240716083705-c30b8fd2d973
+
+replace github.com/longhorn/backing-image-manager v1.7.0-rc1 => github.com/chanyilin/backing-image-manager v1.4.0-rc1.0.20240716084737-82b41eeaef6c
+
 // Replace directives are required for dependencies in this section because:
 // - This module imports k8s.io/kubernetes.
 // - The development for all of these dependencies is done at kubernetes/staging and then synced to other repos.
