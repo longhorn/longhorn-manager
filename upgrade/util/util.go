@@ -128,17 +128,6 @@ func ListManagerPods(namespace string, kubeClient *clientset.Clientset) ([]corev
 	return managerPodsList.Items, nil
 }
 
-func MergeStringMaps(baseMap, overwriteMap map[string]string) map[string]string {
-	result := map[string]string{}
-	for k, v := range baseMap {
-		result[k] = v
-	}
-	for k, v := range overwriteMap {
-		result[k] = v
-	}
-	return result
-}
-
 func GetCurrentLonghornVersion(namespace string, lhClient lhclientset.Interface) (string, error) {
 	currentLHVersionSetting, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameCurrentLonghornVersion), metav1.GetOptions{})
 	if err != nil {

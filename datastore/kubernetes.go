@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/version"
@@ -282,30 +282,39 @@ func (s *DataStore) UpdateLease(lease *coordinationv1.Lease) (*coordinationv1.Le
 	return s.kubeClient.CoordinationV1().Leases(s.namespace).Update(context.TODO(), lease, metav1.UpdateOptions{})
 }
 
-// IsRWXVolumeInFailover checks whether the volume has a lease by the same name, which an RWX volume should,
+// IsRWXVolumeInDelinquent checks whether the volume has a lease by the same name, which an RWX volume should,
 // and whether that lease's spec shows that its holder is delinquent (its acquire time has been zeroed.)
 // If so, return the delinquent holder.
 // Any hiccup yields a return of "false".
-func (s *DataStore) IsRWXVolumeInFailover(name string) (failover bool, holder string, err error) {
-	if enabled, _ := s.GetSettingAsBool(types.SettingNameEnableShareManagerFastFailover); !enabled {
-		// failover is false, holder is empty, err is nil
-		return
+func (s *DataStore) IsRWXVolumeInDelinquent(name string) (isDelinquent bool, holder string, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to check IsRWXVolumeInDelinquent")
+	}()
+
+	enabled, err := s.GetSettingAsBool(types.SettingNameEnableShareManagerFastFailover)
+	if err != nil {
+		return false, "", err
+	}
+	if !enabled {
+		return false, "", nil
 	}
 
 	lease, err := s.GetLeaseRO(name)
 	if err != nil {
-		logrus.WithError(err).Warnf("Failed to get lease for RWX volume %v", name)
-		return
+		if apierrors.IsNotFound(err) {
+			return false, "", nil
+		}
+		return false, "", err
 	}
 
 	holder = *lease.Spec.HolderIdentity
 	if holder == "" {
-		return
+		return false, "", nil
 	}
 	if (lease.Spec.AcquireTime).IsZero() {
-		failover = true
+		isDelinquent = true
 	}
-	return
+	return isDelinquent, holder, nil
 }
 
 // GetStorageClassRO gets StorageClass with the given name
@@ -500,7 +509,7 @@ func (s *DataStore) GetManagerPodForNode(nodeName string) (*corev1.Pod, error) {
 			return pod, nil
 		}
 	}
-	return nil, errors.NewNotFound(corev1.Resource("pod"), nodeName)
+	return nil, apierrors.NewNotFound(corev1.Resource("pod"), nodeName)
 }
 
 func (s *DataStore) AddLabelToManagerPod(nodeName string, label map[string]string) error {
