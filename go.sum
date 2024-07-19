@@ -2484,8 +2484,8 @@ k8s.io/kube-openapi v0.0.0-20240228011516-70dd3763d340 h1:BZqlfIlq5YbRMFko6/PM7F
 k8s.io/kube-openapi v0.0.0-20240228011516-70dd3763d340/go.mod h1:yD4MZYeKMBwQKVht279WycxKyM84kkAx2DPrTXaeb98=
 k8s.io/kubelet v0.30.2 h1:Ck4E/pHndI20IzDXxS57dElhDGASPO5pzXF7BcKfmCY=
 k8s.io/kubelet v0.30.2/go.mod h1:DSwwTbLQmdNkebAU7ypIALR4P9aXZNFwgRmedojUE94=
-k8s.io/kubernetes v1.30.2 h1:11WhS78OYX/lnSy6TXxPO6Hk+E5K9ZNrEsk9JgMSX8I=
-k8s.io/kubernetes v1.30.2/go.mod h1:yPbIk3MhmhGigX62FLJm+CphNtjxqCvAIFQXup6RKS0=
+k8s.io/kubernetes v1.30.3 h1:A0qoXI1YQNzrQZiff33y5zWxYHFT/HeZRK98/sRDJI0=
+k8s.io/kubernetes v1.30.3/go.mod h1:yPbIk3MhmhGigX62FLJm+CphNtjxqCvAIFQXup6RKS0=
 k8s.io/metrics v0.30.2 h1:zj4kIPTCfEbY0RHEogpA7QtlItU7xaO11+Gz1zVDxlc=
 k8s.io/metrics v0.30.2/go.mod h1:GpoO5XTy/g8CclVLtgA5WTrr2Cy5vCsqr5Xa/0ETWIk=
 k8s.io/mount-utils v0.30.2 h1:2KDVY9hXyDyRw9EO4lmox4+Nn5atVOq+4ffZ/br2aAU=
