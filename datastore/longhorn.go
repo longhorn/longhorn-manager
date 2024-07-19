@@ -2956,11 +2956,11 @@ func (s *DataStore) IsNodeDelinquent(nodeName string, volumeName string) (bool, 
 	}
 	isRWX, _ := s.IsRegularRWXVolume(volumeName)
 	if isRWX {
-		inFailover, delinquentNode, err := s.IsRWXVolumeInFailover(volumeName)
+		isDelinquent, delinquentNode, err := s.IsRWXVolumeInDelinquent(volumeName)
 		if err != nil {
 			return false, err
 		}
-		if inFailover && delinquentNode == nodeName {
+		if isDelinquent && delinquentNode == nodeName {
 			return true, nil
 		}
 	}

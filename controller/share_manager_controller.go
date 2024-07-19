@@ -351,19 +351,6 @@ func (c *ShareManagerController) syncShareManager(key string) (err error) {
 		log.Infof("Share manager got new owner %v", c.controllerID)
 	}
 
-	//// TODO: move this to main sync loop
-	//// This code should be moved from here to the sync loop, but it requires care.
-	//// The first naive attempt caused repeated calls to cleanup and delete/create.
-	//if err := c.markShareManagerDelinquent(sm); err != nil {
-	//	log.WithError(err).Warnf("Failed to update leease to set delinquent condition for %v", sm.Name)
-	//}
-	//
-	//// Also, turn off the admission webhook on the suspected node.  Trying to talk to it
-	//// will delay any effort to modify resources.
-	//if err := c.ds.RemoveLabelFromManagerPod(leaseHolder, types.GetAdmissionWebhookLabel()); err != nil {
-	//	log.WithError(err).Warnf("Failed to turn off admission webhook on node %v", leaseHolder)
-	//}
-
 	if sm.DeletionTimestamp != nil {
 		if err := c.cleanupShareManagerPod(sm); err != nil {
 			return err
@@ -375,6 +362,33 @@ func (c *ShareManagerController) syncShareManager(key string) (err error) {
 		}
 
 		return c.ds.RemoveFinalizerForShareManager(sm)
+	}
+
+	isStale, leaseHolder, err := c.isShareManagerPodStale(sm)
+	if err != nil {
+		return err
+	}
+	if isStale {
+		isDelinquent, _, err := c.ds.IsRWXVolumeInDelinquent(sm.Name)
+		if err != nil {
+			return err
+		}
+		if !isDelinquent {
+			// Turn off the traffic to the admission webhook and recovery backend on the suspected node.
+			// Trying to talk to it will delay any effort to modify resources.
+			// Only turn off the other nodes to avoid a deadlock in a single node cluster.
+			if c.controllerID != leaseHolder {
+				labels := types.MergeStringMaps(types.GetAdmissionWebhookLabel(), types.GetRecoveryBackendLabel())
+				if err := c.ds.RemoveLabelFromManagerPod(leaseHolder, labels); err != nil {
+					return errors.Wrapf(err, "failed to turn off admission webhook/recovery backed on node %v", leaseHolder)
+				}
+			}
+
+			log.Infof("Marking share manager %v delinquent", sm.Name)
+			if err := c.markShareManagerDelinquent(sm); err != nil {
+				return err
+			}
+		}
 	}
 
 	// update at the end, after the whole reconcile loop
@@ -679,26 +693,22 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 }
 
 // markShareManagerLeaseDelinquent zeros the acquire time field as a flag that the volume
-// should be fast-tracked for failover away from the current lease-holding node.
-func (c *ShareManagerController) markShareManagerDelinquent(sm *longhorn.ShareManager) error {
-	log := getLoggerForShareManager(c.logger, sm)
+// should be fast-tracked for detaching away from the current lease-holding node.
+func (c *ShareManagerController) markShareManagerDelinquent(sm *longhorn.ShareManager) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to markShareManagerDelinquent")
+	}()
 
 	lease, err := c.ds.GetLease(sm.Name)
-	if err != nil && !apierrors.IsNotFound(err) {
-		log.WithError(err).Warnf("Failed to retrieve lease for share manager %v from datastore", sm.Name)
+	if err != nil {
 		return err
 	}
 
-	if lease != nil {
-		holder := *lease.Spec.HolderIdentity
-		log.Infof("Marking lease %v held by suspect node %v for share manager failover.", sm.Name, holder)
-		lease.Spec.AcquireTime = &metav1.MicroTime{Time: time.Time{}}
-		_, err := c.ds.UpdateLease(lease)
-		if err != nil {
-			log.WithError(err).Warnf("Failed to update lease for share manager %v", sm.Name)
-		}
+	lease.Spec.AcquireTime = &metav1.MicroTime{Time: time.Time{}}
+	if _, err := c.ds.UpdateLease(lease); err != nil {
+		return err
 	}
-	return err
+	return nil
 }
 
 // clearShareManagerLease just zeros out the renew time field preparatory to pod
@@ -1429,17 +1439,27 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 // isShareManagerPodStale checks the associated lease CR to see whether the current pod (if any)
 // has fallen behind on renewing the lease.  If there is any error finding out, we assume not stale.
 func (c *ShareManagerController) isShareManagerPodStale(sm *longhorn.ShareManager) (stale bool, holder string, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to check isShareManagerPodStale")
+	}()
+
 	log := getLoggerForShareManager(c.logger, sm)
 
-	if enabled, _ := c.ds.GetSettingAsBool(types.SettingNameEnableShareManagerFastFailover); !enabled {
-		// stale is false, holder is empty, err is nil
-		return
+	enabled, err := c.ds.GetSettingAsBool(types.SettingNameEnableShareManagerFastFailover)
+	if err != nil {
+		return false, "", err
+	}
+	if !enabled {
+		return false, "", nil
 	}
 
 	leaseName := sm.Name
 	lease, err := c.ds.GetLeaseRO(leaseName)
 	if err != nil {
-		return
+		if !apierrors.IsNotFound(err) {
+			return false, "", err
+		}
+		return false, "", nil
 	}
 
 	// Consider it stale if
@@ -1449,15 +1469,14 @@ func (c *ShareManagerController) isShareManagerPodStale(sm *longhorn.ShareManage
 	// - the time of renewal is longer ago than the lease duration.
 	holder = *lease.Spec.HolderIdentity
 	if holder == "" {
-		return
+		return false, "", nil
 	}
 	if (lease.Spec.RenewTime).IsZero() {
-		// log.Warnf("Lease for %v held by %v has already been cleared for deletion", leaseName, holder)
-		return
+		return false, holder, nil
 	}
 	if *lease.Spec.LeaseDurationSeconds < shareManagerLeaseDurationSeconds {
-		// log.Warnf("Lease for %v has a crazy value for duration: %v seconds.  Ignoring.", leaseName, *lease.Spec.LeaseDurationSeconds)
-		return
+		log.Warnf("Lease for %v has a crazy value for duration: %v seconds.  Ignoring.", leaseName, *lease.Spec.LeaseDurationSeconds)
+		return false, holder, nil
 	}
 	expireTime := lease.Spec.RenewTime.Add(time.Duration(*lease.Spec.LeaseDurationSeconds) * time.Second)
 	if time.Now().After(expireTime) {
@@ -1465,7 +1484,7 @@ func (c *ShareManagerController) isShareManagerPodStale(sm *longhorn.ShareManage
 		stale = true
 	}
 
-	return
+	return stale, holder, nil
 }
 
 // isResponsibleFor in most controllers only checks if the node of the current owner is known
@@ -1511,7 +1530,10 @@ func (c *ShareManagerController) isResponsibleFor(sm *longhorn.ShareManager) (bo
 	// Some node has to take over, and it might as well be this one, if another one
 	// has not already.
 	isStale, leaseHolder, err := c.isShareManagerPodStale(sm)
-	if err == nil && isStale {
+	if err != nil {
+		return false, err
+	}
+	if isStale {
 		// Avoid race between nodes by checking for an existing interim owner.
 		if leaseHolder != sm.Status.OwnerID &&
 			c.controllerID != sm.Status.OwnerID &&
@@ -1520,26 +1542,6 @@ func (c *ShareManagerController) isResponsibleFor(sm *longhorn.ShareManager) (bo
 			return false, nil
 		}
 		log.Infof("Interim owner %v taking responsibility for stale lease-holder %v", c.controllerID, leaseHolder)
-
-		// TODO: move this to main sync loop
-		// This code should be moved from here to the sync loop, but it requires care.
-		// The first naive attempt caused repeated calls to cleanup and delete/create.
-		if err := c.markShareManagerDelinquent(sm); err != nil {
-			log.WithError(err).Warnf("Failed to update leease to set delinquent condition for %v", sm.Name)
-		}
-
-		// TODO: polish this code
-		// Also, turn off the admission webhook on the suspected node.  Trying to talk to it
-		// will delay any effort to modify resources.
-		if err := c.ds.RemoveLabelFromManagerPod(leaseHolder, types.GetAdmissionWebhookLabel()); err != nil {
-			log.WithError(err).Warnf("Failed to turn off admission webhook/recovery backed on node %v", leaseHolder)
-		}
-
-		//// TODO: polish this code
-		//if err := c.ds.RemoveLabelFromManagerPod(leaseHolder, types.GetRecoveryBackendLabel()); err != nil {
-		//	log.WithError(err).Warnf("Failed to turn off recovery backed on node %v", leaseHolder)
-		//}
-
 		return currentNodeSchedulable, nil
 	}
 
