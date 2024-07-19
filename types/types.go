@@ -1255,3 +1255,14 @@ func IsStorageNetworkForRWXVolume(storageNetwork *longhorn.Setting, isStorageNet
 	}
 	return storageNetwork.Value != CniNetworkNone && isStorageNetworkForRWXVolumeEnabled
 }
+
+func MergeStringMaps(baseMap, overwriteMap map[string]string) map[string]string {
+	result := map[string]string{}
+	for k, v := range baseMap {
+		result[k] = v
+	}
+	for k, v := range overwriteMap {
+		result[k] = v
+	}
+	return result
+}
