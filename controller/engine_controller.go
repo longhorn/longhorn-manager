@@ -2284,14 +2284,18 @@ func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineIm
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
-	// If there is a share manager pod for this and it has an owner, engine should use that too.
-	if isRWX, _ := ec.ds.IsRegularRWXVolume(e.Spec.VolumeName); isRWX {
-		if isDelinquent, _ := ec.ds.IsNodeDownOrDeletedOrDelinquent(e.Status.OwnerID, e.Spec.VolumeName); isDelinquent {
-			pod, err := ec.ds.GetPodRO(e.Namespace, types.GetShareManagerPodNameFromShareManagerName(e.Spec.VolumeName))
-			if err == nil && pod != nil {
-				return ec.controllerID == pod.Spec.NodeName, nil
-
-			}
+	// If a regular RWX is delinquent, try to switch ownership quickly to the node of the newly created share-manager pod
+	isDelinquent, err := ec.ds.IsNodeDelinquent(e.Status.OwnerID, e.Spec.VolumeName)
+	if err != nil {
+		return false, err
+	}
+	if isDelinquent {
+		pod, err := ec.ds.GetPodRO(ec.namespace, types.GetShareManagerPodNameFromShareManagerName(e.Spec.VolumeName))
+		if err != nil && !apierrors.IsNotFound(err) {
+			return false, err
+		}
+		if pod != nil && ec.controllerID == pod.Spec.NodeName {
+			return true, nil
 		}
 	}
 

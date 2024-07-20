@@ -2041,11 +2041,11 @@ func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.E
 }
 
 func (c *VolumeController) canInstanceManagerLaunchReplica(r *longhorn.Replica) (bool, error) {
-	nodeDown, err := c.ds.IsNodeDownOrDeletedOrDelinquent(r.Spec.NodeID, r.Spec.VolumeName)
+	isNodeDownOrDeletedOrDelinquent, err := c.ds.IsNodeDownOrDeletedOrDelinquent(r.Spec.NodeID, r.Spec.VolumeName)
 	if err != nil {
-		return false, errors.Wrapf(err, "fail to check IsNodeDownOrDeleted %v", r.Spec.NodeID)
+		return false, errors.Wrapf(err, "fail to check IsNodeDownOrDeletedOrDelinquent %v", r.Spec.NodeID)
 	}
-	if nodeDown {
+	if isNodeDownOrDeletedOrDelinquent {
 		return false, nil
 	}
 	// Replica already had IM
@@ -4346,12 +4346,6 @@ func (c *VolumeController) IsReplicaUnavailable(r *longhorn.Replica) (bool, erro
 		return true, nil
 	}
 
-	if isRWX, _ := c.ds.IsRegularRWXVolume(r.Spec.VolumeName); isRWX {
-		if isDelinquent, _ := c.ds.IsNodeDelinquent(r.Spec.NodeID, r.Spec.VolumeName); isDelinquent {
-			return true, nil
-		}
-	}
-
 	node, err := c.ds.GetNodeRO(r.Spec.NodeID)
 	if err != nil {
 		return true, errors.Wrapf(err, "failed to get node %v for failed replica %v", r.Spec.NodeID, r.Name)
@@ -4377,13 +4371,18 @@ func (c *VolumeController) isResponsibleFor(v *longhorn.Volume, defaultEngineIma
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
-	// If there is a share manager pod and it has an owner, we should use that too.
-	if isRWX := isRegularRWXVolume(v); isRWX {
-		if isDelinquent, _ := c.ds.IsNodeDownOrDeletedOrDelinquent(v.Status.OwnerID, v.Name); isDelinquent {
-			pod, err := c.ds.GetPodRO(v.Namespace, types.GetShareManagerPodNameFromShareManagerName(v.Name))
-			if err == nil && pod != nil {
-				return c.controllerID == pod.Spec.NodeName, nil
-			}
+	// If a regular RWX is delinquent, try to switch ownership quickly to the node of the newly created share-manager pod
+	isDelinquent, err := c.ds.IsNodeDelinquent(v.Status.OwnerID, v.Name)
+	if err != nil {
+		return false, err
+	}
+	if isDelinquent {
+		pod, err := c.ds.GetPodRO(v.Namespace, types.GetShareManagerPodNameFromShareManagerName(v.Name))
+		if err != nil && !apierrors.IsNotFound(err) {
+			return false, err
+		}
+		if pod != nil && c.controllerID == pod.Spec.NodeName {
+			return true, nil
 		}
 	}
 
