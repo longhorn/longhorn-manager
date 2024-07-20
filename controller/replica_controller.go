@@ -557,19 +557,20 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 		return nil
 	}
 
-	isRWXVolume, err := rc.ds.IsRegularRWXVolume(r.Spec.VolumeName)
+	isDelinquent, err := rc.ds.IsNodeDelinquent(im.Spec.NodeID, r.Spec.VolumeName)
 	if err != nil {
 		return err
 	}
-	// If the node is unreachable, don't bother with the successive timeouts we would spend attempting to contact
-	// its client proxy to delete the engine.
-	if isRWXVolume {
-		isDelinquent, _ := rc.ds.IsNodeDelinquent(im.Spec.NodeID, r.Spec.VolumeName)
-		if isDelinquent {
-			log.Infof("Skipping deleting RWX replica %v since IM node %v is delinquent", r.Name, im.Spec.NodeID)
-			return nil
+
+	defer func() {
+		if err != nil {
+			log.WithError(err).Warnf("Failed to delete replica process %v", r.Name)
 		}
-	}
+		if isDelinquent {
+			log.Warnf("Ignored the failure of deleting replica process %v because the RWX volume is currently delinquent", r.Name)
+			err = nil
+		}
+	}()
 
 	c, err := engineapi.NewInstanceManagerClient(im)
 	if err != nil {
