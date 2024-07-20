@@ -231,7 +231,11 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 
 	log := getLoggerForReplica(rc.logger, replica)
 
-	if !rc.isResponsibleFor(replica) {
+	isResponsible, err := rc.isResponsibleFor(replica)
+	if err != nil {
+		return err
+	}
+	if !isResponsible {
 		return nil
 	}
 	if replica.Status.OwnerID != rc.controllerID {
@@ -914,16 +918,23 @@ func (rc *ReplicaController) enqueueAllRebuildingReplicaOnCurrentNode() {
 	}
 }
 
-func (rc *ReplicaController) isResponsibleFor(r *longhorn.Replica) bool {
-	if isRWX, _ := rc.ds.IsRegularRWXVolume(r.Spec.VolumeName); isRWX {
-		if isDelinquent, _ := rc.ds.IsNodeDownOrDeletedOrDelinquent(r.Status.OwnerID, r.Spec.VolumeName); isDelinquent {
-			pod, err := rc.ds.GetPodRO(r.Namespace, types.GetShareManagerPodNameFromShareManagerName(r.Spec.VolumeName))
-			if err == nil && pod != nil {
-				return rc.controllerID == pod.Spec.NodeName
-			}
+func (rc *ReplicaController) isResponsibleFor(r *longhorn.Replica) (bool, error) {
+	// If a regular RWX is delinquent, try to switch ownership quickly to the node of the newly created share-manager pod
+	isDelinquent, err := rc.ds.IsNodeDelinquent(r.Status.OwnerID, r.Spec.VolumeName)
+	if err != nil {
+		return false, err
+	}
+	if isDelinquent {
+		pod, err := rc.ds.GetPodRO(rc.namespace, types.GetShareManagerPodNameFromShareManagerName(r.Spec.VolumeName))
+		if err != nil && !apierrors.IsNotFound(err) {
+			return false, err
+		}
+		if pod != nil && rc.controllerID == pod.Spec.NodeName {
+			return true, nil
 		}
 	}
-	return isControllerResponsibleFor(rc.controllerID, rc.ds, r.Name, r.Spec.NodeID, r.Status.OwnerID)
+
+	return isControllerResponsibleFor(rc.controllerID, rc.ds, r.Name, r.Spec.NodeID, r.Status.OwnerID), nil
 }
 
 func hasMatchingReplica(replica *longhorn.Replica, replicas map[string]*longhorn.Replica) bool {
