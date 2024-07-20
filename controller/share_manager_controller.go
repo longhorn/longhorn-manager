@@ -38,6 +38,12 @@ import (
 
 const shareManagerLeaseDurationSeconds = 7 // This should be slightly more than twice the share-manager lease renewal interval.
 
+type nfsServerConfig struct {
+	enableFastFailover bool
+	leaseLifetime      int
+	gracePeriod        int
+}
+
 type ShareManagerController struct {
 	*baseController
 
@@ -1089,15 +1095,33 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 		return nil, errors.Wrapf(err, "failed to create service and endpoint for share manager %v", sm.Name)
 	}
 
-	// likewise for the lease
-	if _, err := c.ds.GetLeaseRO(sm.Name); err != nil {
-		if !apierrors.IsNotFound(err) {
-			return nil, errors.Wrapf(err, "failed to get lease for share manager %v", sm.Name)
+	nfsConfig := &nfsServerConfig{
+		enableFastFailover: false,
+		leaseLifetime:      60,
+		gracePeriod:        90,
+	}
+
+	enabled, err := c.ds.GetSettingAsBool(types.SettingNameEnableShareManagerFastFailover)
+	if err != nil {
+		return nil, err
+	}
+	if enabled {
+		nfsConfig = &nfsServerConfig{
+			enableFastFailover: true,
+			leaseLifetime:      20,
+			gracePeriod:        30,
 		}
 
-		if _, err = c.ds.CreateLease(c.createLeaseManifest(sm)); err != nil {
-			return nil, errors.Wrapf(err, "failed to create lease for share manager %v", sm.Name)
+		if _, err := c.ds.GetLeaseRO(sm.Name); err != nil {
+			if !apierrors.IsNotFound(err) {
+				return nil, errors.Wrapf(err, "failed to get lease for share manager %v", sm.Name)
+			}
+
+			if _, err = c.ds.CreateLease(c.createLeaseManifest(sm)); err != nil {
+				return nil, errors.Wrapf(err, "failed to create lease for share manager %v", sm.Name)
+			}
 		}
+
 	}
 
 	volume, err := c.ds.GetVolume(sm.Name)
@@ -1171,7 +1195,7 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 	}
 
 	manifest := c.createPodManifest(sm, annotations, tolerations, affinity, imagePullPolicy, nil, registrySecret,
-		priorityClass, nodeSelector, fsType, mountOptions, cryptoKey, cryptoParams)
+		priorityClass, nodeSelector, fsType, mountOptions, cryptoKey, cryptoParams, nfsConfig)
 
 	storageNetwork, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
 	if err != nil {
@@ -1290,7 +1314,8 @@ func (c *ShareManagerController) createLeaseManifest(sm *longhorn.ShareManager) 
 
 func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, annotations map[string]string, tolerations []corev1.Toleration,
 	affinity *corev1.Affinity, pullPolicy corev1.PullPolicy, resourceReq *corev1.ResourceRequirements, registrySecret, priorityClass string,
-	nodeSelector map[string]string, fsType string, mountOptions []string, cryptoKey string, cryptoParams *crypto.EncryptParams) *corev1.Pod {
+	nodeSelector map[string]string, fsType string, mountOptions []string, cryptoKey string, cryptoParams *crypto.EncryptParams,
+	nfsConfig *nfsServerConfig) *corev1.Pod {
 
 	// command args for the share-manager
 	args := []string{"--debug", "daemon", "--volume", sm.Name}
@@ -1345,9 +1370,24 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 		},
 	}
 
+	podSpec.Spec.Containers[0].Env = []corev1.EnvVar{
+		{
+			Name:  "FAST_FAILOVER",
+			Value: fmt.Sprint(nfsConfig.enableFastFailover),
+		},
+		{
+			Name:  "LEASE_LIFETIME",
+			Value: fmt.Sprint(nfsConfig.leaseLifetime),
+		},
+		{
+			Name:  "GRACE_PERIOD",
+			Value: fmt.Sprint(nfsConfig.gracePeriod),
+		},
+	}
+
 	// this is an encrypted volume the cryptoKey is base64 encoded
 	if len(cryptoKey) > 0 {
-		podSpec.Spec.Containers[0].Env = []corev1.EnvVar{
+		podSpec.Spec.Containers[0].Env = append(podSpec.Spec.Containers[0].Env, []corev1.EnvVar{
 			{
 				Name:  "ENCRYPTED",
 				Value: "True",
@@ -1372,7 +1412,7 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, an
 				Name:  "CRYPTOPBKDF",
 				Value: string(cryptoParams.GetPBKDF()),
 			},
-		}
+		}...)
 	}
 
 	podSpec.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
