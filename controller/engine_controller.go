@@ -622,18 +622,9 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 		}
 	}
 
-	// If the node is unreachable, don't bother with the successive timeouts we would spend attempting to contact
-	// its client proxy to delete the engine.
-	if isRWXVolume {
-		isDelinquent, _ := ec.ds.IsNodeDelinquent(im.Spec.NodeID, e.Spec.VolumeName)
-		if isDelinquent {
-			log.Infof("Skipping deleting RWX engine %v since IM node %v is delinquent", e.Name, im.Spec.NodeID)
-			if e.Spec.NodeID != "" {
-				log.Infof("Clearing delinquent nodeID for RWX engine %v", e.Name)
-				e.Spec.NodeID = ""
-			}
-			return nil
-		}
+	isDelinquent, err := ec.ds.IsNodeDelinquent(im.Spec.NodeID, e.Spec.VolumeName)
+	if err != nil {
+		return err
 	}
 
 	log.Info("Deleting engine instance")
@@ -642,10 +633,10 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 		if err != nil {
 			log.WithError(err).Warnf("Failed to delete engine %v", e.Name)
 		}
-		if isRWXVolume && im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+		if isRWXVolume && (im.Status.CurrentState != longhorn.InstanceManagerStateRunning || isDelinquent) {
 			// Try the best to delete engine instance.
 			// To prevent that the volume is stuck at detaching state, ignore the error when volume is
-			// a RWX volume and the instance manager is not running.
+			// a RWX volume and the instance manager is not running or the RWX volume is currently delinquent
 			//
 			// If the engine instance of a RWX volume is not deleted successfully:
 			// If a RWX volume is on node A and the network of this node is partitioned,
@@ -655,7 +646,13 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 			// After shifting to node A, the first reattachment fail due to the IO error resulting from the
 			// orphaned engine instance and block device. Then, the detachment will trigger the teardown of the
 			// problematic engine instance and block device. The next reattachment then will succeed.
-			log.Warnf("Ignored the failure of deleting engine %v", e.Name)
+			if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+				log.Warnf("Ignored the failure of deleting engine %v because im.Status.CurrentState is %v", e.Name, im.Status.CurrentState)
+			}
+			if isDelinquent {
+				log.Warnf("Ignored the failure of deleting engine %v because the RWX volume is currently delinquent", e.Name)
+			}
+
 			err = nil
 		}
 	}()
