@@ -1489,7 +1489,7 @@ var (
 	SettingDefinitionEnableShareManagerFastFailover = SettingDefinition{
 		DisplayName: "Enable Share Manager Fast Failover",
 		Description: "Turn on logic to detect and move stale RWX volumes quickly (Experimental)",
-		Category:    SettingCategoryDangerZone,
+		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeBool,
 		Required:    true,
 		ReadOnly:    false,

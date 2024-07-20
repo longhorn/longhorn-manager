@@ -943,6 +943,7 @@ func (sc *SettingController) updateKubernetesClusterAutoscalerEnabled() error {
 	return nil
 }
 
+/*
 func (sc *SettingController) cleanupShareManagerServiceAndEndpoints() error {
 	var err error
 	defer func() {
@@ -974,6 +975,7 @@ func (sc *SettingController) cleanupShareManagerServiceAndEndpoints() error {
 
 	return nil
 }
+*/
 
 // updateCNI deletes all system-managed data plane components immediately with the updated CNI annotation.
 func (sc *SettingController) updateCNI(funcPreupdate func() error) error {
