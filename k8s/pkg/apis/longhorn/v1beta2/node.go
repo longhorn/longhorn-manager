@@ -26,7 +26,6 @@ const (
 	NodeConditionReasonKernelConfigIsNotFound    = "KernelConfigIsNotFound"
 	NodeConditionReasonNFSClientIsNotFound       = "NFSClientIsNotFound"
 	NodeConditionReasonKubernetesNodeCordoned    = "KubernetesNodeCordoned"
-	NodeConditionReasonMissedLeaseRenewal        = "MissedLeaseRenewal"
 )
 
 const (
