@@ -910,7 +910,6 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 		}
 
 		if !allContainersReady {
-			log.Infof("Share manager pod %v not all containers ready, requeuing with sharem manager in state : %v", sm.Name, sm.Status.State)
 			c.enqueueShareManager(sm)
 		} else if sm.Status.State == longhorn.ShareManagerStateStarting {
 			sm.Status.State = longhorn.ShareManagerStateRunning
