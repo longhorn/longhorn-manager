@@ -965,15 +965,12 @@ func (s *DataStore) ListVolumes() (map[string]*longhorn.Volume, error) {
 func (s *DataStore) IsRegularRWXVolume(volumeName string) (bool, error) {
 	v, err := s.GetVolumeRO(volumeName)
 	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return false, err
+		if apierrors.IsNotFound(err) {
+			return false, nil
 		}
+		return false, err
 	}
-
-	if v != nil && v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !v.Spec.Migratable {
-		return true, nil
-	}
-	return false, nil
+	return v.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !v.Spec.Migratable, nil
 }
 
 func MarshalLabelToVolumeRecurringJob(labels map[string]string) map[string]*longhorn.VolumeRecurringJob {
@@ -2947,24 +2944,23 @@ func (s *DataStore) IsNodeDownOrDeleted(name string) (bool, error) {
 // IsNodeDelinquent checks an early-warning condition of Lease expiration
 // that is of interest to share-manager types.
 func (s *DataStore) IsNodeDelinquent(nodeName string, volumeName string) (bool, error) {
-	if nodeName == "" {
-		return false, errors.New("no node name provided to IsNodeDelinquent")
+	if nodeName == "" || volumeName == "" {
+		return false, nil
 	}
 
-	if volumeName == "" {
-		return false, errors.New("no volume name provided to IsNodeDelinquent")
+	isRWX, err := s.IsRegularRWXVolume(volumeName)
+	if err != nil {
+		return false, err
 	}
-	isRWX, _ := s.IsRegularRWXVolume(volumeName)
-	if isRWX {
-		isDelinquent, delinquentNode, err := s.IsRWXVolumeInDelinquent(volumeName)
-		if err != nil {
-			return false, err
-		}
-		if isDelinquent && delinquentNode == nodeName {
-			return true, nil
-		}
+	if !isRWX {
+		return false, nil
 	}
-	return false, nil
+
+	isDelinquent, delinquentNode, err := s.IsRWXVolumeInDelinquent(volumeName)
+	if err != nil {
+		return false, err
+	}
+	return isDelinquent && delinquentNode == nodeName, nil
 }
 
 // IsNodeDownOrDeletedOrDelinquent gets Node for the given name and checks
