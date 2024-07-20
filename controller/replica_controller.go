@@ -514,7 +514,7 @@ func (rc *ReplicaController) CanStartRebuildingReplica(r *longhorn.Replica) (boo
 	return true, nil
 }
 
-func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
+func (rc *ReplicaController) DeleteInstance(obj interface{}) (err error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
 		return fmt.Errorf("invalid object for replica instance deletion: %v", obj)
@@ -528,7 +528,6 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 	}
 
 	var im *longhorn.InstanceManager
-	var err error
 	// Not assigned or not updated, try best to delete
 	if r.Status.InstanceManagerName == "" {
 		if r.Spec.NodeID == "" {
