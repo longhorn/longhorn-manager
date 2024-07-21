@@ -519,15 +519,12 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		return nil
 	}
 
-	// Getting here is enough proof of life to Turn on the webhook endpoint,
-	// if it has been turned off for RWX failover.
-	if err := nc.ds.AddLabelToManagerPod(node.Name, types.GetAdmissionWebhookLabel()); err != nil {
-		log.Warnf("Node %v failed to restore its admission webhook", node.Name)
-	}
-
-	// TODO: polish this code
-	if err := nc.ds.AddLabelToManagerPod(node.Name, types.GetRecoveryBackendLabel()); err != nil {
-		log.Warnf("Node %v faied to restore its recovery backend", node.Name)
+	// Getting here is enough proof of life to turn on the services that might
+	// have been turned off for RWX failover.
+	labels := types.MergeStringMaps(types.GetAdmissionWebhookLabel(), types.GetRecoveryBackendLabel())
+	if err := nc.ds.AddLabelToManagerPod(node.Name, labels); err != nil {
+		log.Warnf("Node %v failed to restore its admission webhook and recovery backend", node.Name)
+		return err
 	}
 
 	// Create a monitor for collecting disk information

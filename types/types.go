@@ -177,6 +177,8 @@ const (
 	LonghornLabelAdmissionWebhook           = "admission-webhook"
 	LonghornLabelConversionWebhook          = "conversion-webhook"
 
+	LonghornRecoveryBackendServiceName = "longhorn-recovery-backend"
+
 	LonghornLabelValueEnabled = "enabled"
 	LonghornLabelValueIgnored = "ignored"
 
@@ -427,13 +429,12 @@ func GetManagerLabels() map[string]string {
 func GetAdmissionWebhookLabel() map[string]string {
 	return map[string]string{
 		GetLonghornLabelKey(LonghornLabelAdmissionWebhook): AdmissionWebhookServiceName,
-		"longhorn.io/component":                            "longhorn-recovery-backend",
 	}
 }
 
 func GetRecoveryBackendLabel() map[string]string {
 	return map[string]string{
-		"longhorn.io/component": "longhorn-recovery-backend",
+		GetLonghornLabelKey(LonghornLabelRecoveryBackend): LonghornRecoveryBackendServiceName,
 	}
 }
 
