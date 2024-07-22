@@ -291,7 +291,7 @@ func (s *DataStore) IsRWXVolumeDelinquent(name string) (isDelinquent bool, holde
 		err = errors.Wrapf(err, "failed to check IsRWXVolumeDelinquent")
 	}()
 
-	enabled, err := s.GetSettingAsBool(types.SettingNameEnableShareManagerFastFailover)
+	enabled, err := s.GetSettingAsBool(types.SettingNameRWXVolumeFastFailover)
 	if err != nil {
 		return false, "", err
 	}

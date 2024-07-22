@@ -1100,7 +1100,7 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 		gracePeriod:        90,
 	}
 
-	enabled, err := c.ds.GetSettingAsBool(types.SettingNameEnableShareManagerFastFailover)
+	enabled, err := c.ds.GetSettingAsBool(types.SettingNameRWXVolumeFastFailover)
 	if err != nil {
 		return nil, err
 	}
@@ -1494,7 +1494,7 @@ func (c *ShareManagerController) isShareManagerPodStale(sm *longhorn.ShareManage
 
 	log := getLoggerForShareManager(c.logger, sm)
 
-	enabled, err := c.ds.GetSettingAsBool(types.SettingNameEnableShareManagerFastFailover)
+	enabled, err := c.ds.GetSettingAsBool(types.SettingNameRWXVolumeFastFailover)
 	if err != nil {
 		return false, "", err
 	}
