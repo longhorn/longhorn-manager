@@ -206,8 +206,6 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
-	// TODO: polish this code
-	// longhorn.io/component: longhorn-recovery-backend
 	if err := clients.Datastore.AddLabelToManagerPod(currentNodeID, types.GetRecoveryBackendLabel()); err != nil {
 		return err
 	}
