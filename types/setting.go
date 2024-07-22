@@ -136,7 +136,7 @@ const (
 	SettingNameFreezeFilesystemForSnapshot                              = SettingName("freeze-filesystem-for-snapshot")
 	SettingNameAutoCleanupSnapshotWhenDeleteBackup                      = SettingName("auto-cleanup-when-delete-backup")
 	SettingNameDefaultMinNumberOfBackingImageCopies                     = SettingName("default-min-number-of-backing-image-copies")
-	SettingNameEnableShareManagerFastFailover                           = SettingName("enable-share-manager-fast-failover")
+	SettingNameRWXVolumeFastFailover                                    = SettingName("rwx-volume-fast-failover")
 )
 
 var (
@@ -229,7 +229,7 @@ var (
 		SettingNameFreezeFilesystemForSnapshot,
 		SettingNameAutoCleanupSnapshotWhenDeleteBackup,
 		SettingNameDefaultMinNumberOfBackingImageCopies,
-		SettingNameEnableShareManagerFastFailover,
+		SettingNameRWXVolumeFastFailover,
 	}
 )
 
@@ -350,7 +350,7 @@ var (
 		SettingNameFreezeFilesystemForSnapshot:                              SettingDefinitionFreezeFilesystemForSnapshot,
 		SettingNameAutoCleanupSnapshotWhenDeleteBackup:                      SettingDefinitionAutoCleanupSnapshotWhenDeleteBackup,
 		SettingNameDefaultMinNumberOfBackingImageCopies:                     SettingDefinitionDefaultMinNumberOfBackingImageCopies,
-		SettingNameEnableShareManagerFastFailover:                           SettingDefinitionEnableShareManagerFastFailover,
+		SettingNameRWXVolumeFastFailover:                                    SettingDefinitionRWXVolumeFastFailover,
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
@@ -1486,8 +1486,8 @@ var (
 		},
 	}
 
-	SettingDefinitionEnableShareManagerFastFailover = SettingDefinition{
-		DisplayName: "Enable Share Manager Fast Failover",
+	SettingDefinitionRWXVolumeFastFailover = SettingDefinition{
+		DisplayName: "RWX Volume Fast Failover",
 		Description: "Turn on logic to detect and move stale RWX volumes quickly (Experimental)",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeBool,
