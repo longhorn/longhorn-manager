@@ -60,13 +60,6 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 	if im != nil {
 		isDelinquent, _ = h.ds.IsNodeDelinquent(im.Spec.NodeID, spec.VolumeName)
 	}
-	imName := "nil"
-	nodeName := "empty"
-	if im != nil {
-		imName = im.Name
-		nodeName = im.Spec.NodeID
-	}
-	logrus.Infof("==================> instanceName: %v -------- isDelinquent: %v --------- im: %v ------------ nodeName: %v", instanceName, isDelinquent, imName, nodeName)
 
 	if im == nil || im.Status.CurrentState == longhorn.InstanceManagerStateUnknown || isDelinquent {
 		if status.Started {
