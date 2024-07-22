@@ -152,17 +152,14 @@ func NewVolumeController(
 	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.ReplicaInformer.HasSynced)
 
-	if _, err = ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
-		FilterFunc: isShareManagerPod,
-		Handler: cache.ResourceEventHandlerFuncs{
-			AddFunc:    c.enqueueVolumesForShareManager,
-			UpdateFunc: func(old, cur interface{}) { c.enqueueVolumesForShareManager(cur) },
-			DeleteFunc: c.enqueueVolumesForShareManager,
-		},
+	if _, err = ds.ShareManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		AddFunc:    c.enqueueVolumesForShareManager,
+		UpdateFunc: func(old, cur interface{}) { c.enqueueVolumesForShareManager(cur) },
+		DeleteFunc: c.enqueueVolumesForShareManager,
 	}, 0); err != nil {
 		return nil, err
 	}
-	c.cacheSyncs = append(c.cacheSyncs, ds.PodInformer.HasSynced)
+	c.cacheSyncs = append(c.cacheSyncs, ds.ShareManagerInformer.HasSynced)
 
 	if _, err = ds.BackupVolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(old, cur interface{}) { c.enqueueVolumesForBackupVolume(cur) },
@@ -4446,8 +4443,8 @@ func (c *VolumeController) deleteEngine(e *longhorn.Engine, es map[string]*longh
 
 // enqueueVolumesForShareManager enqueues all volumes that are currently claimed by this share manager
 func (c *VolumeController) enqueueVolumesForShareManager(obj interface{}) {
-	pod, isPod := obj.(*corev1.Pod)
-	if !isPod {
+	sm, isShareManager := obj.(*longhorn.ShareManager)
+	if !isShareManager {
 		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
 			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
@@ -4455,16 +4452,16 @@ func (c *VolumeController) enqueueVolumesForShareManager(obj interface{}) {
 		}
 
 		// use the last known state, to requeue the claimed volumes
-		pod, ok = deletedState.Obj.(*corev1.Pod)
+		sm, ok = deletedState.Obj.(*longhorn.ShareManager)
 		if !ok {
-			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained non ShareManager Pod object: %#v", deletedState.Obj))
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained non ShareManager object: %#v", deletedState.Obj))
 			return
 		}
 	}
 
-	// sharemanager name is the same as volume name.
-	smName := pod.Labels[types.GetLonghornLabelKey(types.LonghornLabelShareManager)]
-	key := pod.Namespace + "/" + smName
+	// we can queue the key directly since a share manager only manages a single volume from it's own namespace
+	// and there is no need for us to retrieve the whole object, since we already know the volume name
+	key := sm.Namespace + "/" + sm.Name
 	c.queue.Add(key)
 }
 
