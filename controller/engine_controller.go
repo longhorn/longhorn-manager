@@ -458,43 +458,6 @@ func (ec *EngineController) enqueueInstanceManagerChange(obj interface{}) {
 	}
 }
 
-func (ec *EngineController) enqueueShareManagerPodChange(obj interface{}) {
-	pod, isPod := obj.(*corev1.Pod)
-	if !isPod {
-		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
-			return
-		}
-
-		// use the last known state, to enqueue, dependent objects
-		pod, ok = deletedState.Obj.(*corev1.Pod)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("cannot convert DeletedFinalStateUnknown to ShareManager Pod object: %#v", deletedState.Obj))
-			return
-		}
-	}
-
-	engineMap := map[string]*longhorn.Engine{}
-
-	smName := pod.Labels[types.GetLonghornLabelKey(types.LonghornLabelShareManager)]
-
-	es, err := ec.ds.ListEnginesRO()
-	if err != nil {
-		ec.logger.WithError(err).Warn("Failed to list engines")
-	}
-	for _, e := range es {
-		// Volume name is the same as share manager name.
-		if e.Spec.VolumeName == smName {
-			engineMap[e.Name] = e
-		}
-	}
-
-	for _, e := range engineMap {
-		ec.enqueueEngine(e)
-	}
-}
-
 func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
