@@ -636,7 +636,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 		if isRWXVolume && (im.Status.CurrentState != longhorn.InstanceManagerStateRunning || isDelinquent) {
 			// Try the best to delete engine instance.
 			// To prevent that the volume is stuck at detaching state, ignore the error when volume is
-			// a RWX volume and the instance manager is not running or the RWX volume is currently delinquent
+			// a RWX volume and the instance manager is not running or the RWX volume is currently delinquent.
 			//
 			// If the engine instance of a RWX volume is not deleted successfully:
 			// If a RWX volume is on node A and the network of this node is partitioned,
