@@ -187,18 +187,6 @@ func NewEngineController(
 	}
 	ec.cacheSyncs = append(ec.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
 
-	if _, err = ds.PodInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
-		FilterFunc: isShareManagerPod,
-		Handler: cache.ResourceEventHandlerFuncs{
-			AddFunc:    ec.enqueueShareManagerPodChange,
-			UpdateFunc: func(old, cur interface{}) { ec.enqueueShareManagerPodChange(cur) },
-			DeleteFunc: ec.enqueueShareManagerPodChange,
-		},
-	}, 0); err != nil {
-		return nil, err
-	}
-	ec.cacheSyncs = append(ec.cacheSyncs, ds.PodInformer.HasSynced)
-
 	return ec, nil
 }
 

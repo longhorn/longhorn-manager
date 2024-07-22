@@ -2956,7 +2956,7 @@ func (s *DataStore) IsNodeDelinquent(nodeName string, volumeName string) (bool, 
 		return false, nil
 	}
 
-	isDelinquent, delinquentNode, err := s.IsRWXVolumeInDelinquent(volumeName)
+	isDelinquent, delinquentNode, err := s.IsRWXVolumeDelinquent(volumeName)
 	if err != nil {
 		return false, err
 	}
