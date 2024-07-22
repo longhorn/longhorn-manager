@@ -282,13 +282,13 @@ func (s *DataStore) UpdateLease(lease *coordinationv1.Lease) (*coordinationv1.Le
 	return s.kubeClient.CoordinationV1().Leases(s.namespace).Update(context.TODO(), lease, metav1.UpdateOptions{})
 }
 
-// IsRWXVolumeInDelinquent checks whether the volume has a lease by the same name, which an RWX volume should,
+// IsRWXVolumeDelinquent checks whether the volume has a lease by the same name, which an RWX volume should,
 // and whether that lease's spec shows that its holder is delinquent (its acquire time has been zeroed.)
 // If so, return the delinquent holder.
 // Any hiccup yields a return of "false".
-func (s *DataStore) IsRWXVolumeInDelinquent(name string) (isDelinquent bool, holder string, err error) {
+func (s *DataStore) IsRWXVolumeDelinquent(name string) (isDelinquent bool, holder string, err error) {
 	defer func() {
-		err = errors.Wrapf(err, "failed to check IsRWXVolumeInDelinquent")
+		err = errors.Wrapf(err, "failed to check IsRWXVolumeDelinquent")
 	}()
 
 	enabled, err := s.GetSettingAsBool(types.SettingNameEnableShareManagerFastFailover)
