@@ -371,7 +371,7 @@ func (c *ShareManagerController) syncShareManager(key string) (err error) {
 		return err
 	}
 	if isStale {
-		isDelinquent, _, err := c.ds.IsRWXVolumeInDelinquent(sm.Name)
+		isDelinquent, _, err := c.ds.IsRWXVolumeDelinquent(sm.Name)
 		if err != nil {
 			return err
 		}
@@ -1160,7 +1160,7 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 		}
 	}
 
-	isDelinquent, delinquentNode, err := c.ds.IsRWXVolumeInDelinquent(sm.Name)
+	isDelinquent, delinquentNode, err := c.ds.IsRWXVolumeDelinquent(sm.Name)
 	if err != nil {
 		return nil, err
 	}
