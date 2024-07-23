@@ -1948,6 +1948,12 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 				"Start rebuilding replica %v with Address %v for normal engine %v and volume %v", replicaName, addr, e.Name, e.Spec.VolumeName)
 			err = engineClientProxy.ReplicaAdd(e, replicaName, replicaURL, false, fastReplicaRebuild, localSync, fileSyncHTTPClientTimeout, grpcTimeoutSeconds)
 		}
+
+		// For v2 engine, the rebuilding is an async call. We need to wait for the rebuilding start then complete here
+		if err == nil && types.IsDataEngineV2(e.Spec.DataEngine) {
+			err = ec.waitForV2EngineRebuild(e, replicaName, grpcTimeoutSeconds)
+		}
+
 		if err != nil {
 			replicaRebuildErrMsg := err.Error()
 
@@ -2118,6 +2124,64 @@ func getReplicaRebuildFailedReasonFromError(errMsg string) (string, longhorn.Con
 		return "", longhorn.ConditionStatusFalse, false
 	default:
 		return longhorn.ReplicaConditionReasonRebuildFailedGeneral, longhorn.ConditionStatusTrue, false
+	}
+}
+
+func (ec *EngineController) waitForV2EngineRebuild(e *longhorn.Engine, replicaName string, timeout int64) (err error) {
+	if !types.IsDataEngineV2(e.Spec.DataEngine) {
+		return nil
+	}
+
+	ticker := time.NewTicker(EnginePollInterval)
+	defer ticker.Stop()
+	timer := time.NewTimer(time.Duration(timeout) * time.Second)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			e, err = ec.ds.GetEngineRO(e.Name)
+			if err != nil {
+				// There is no need to continue if the engine is not found
+				if apierrors.IsNotFound(err) {
+					return err
+				}
+				// There may be something wrong with the indexer or the API sever, will retry
+				continue
+			}
+			if e.Spec.ReplicaAddressMap[replicaName] == "" {
+				return fmt.Errorf("unknown replica %v for engine", replicaName)
+			}
+			// There is no need to continue when the replica is not found or the replica is not in a valid state for rebuilding
+			r, err := ec.ds.GetReplicaRO(replicaName)
+			if err != nil {
+				return err
+			}
+			if r.Status.CurrentState != longhorn.InstanceStateRunning {
+				return fmt.Errorf("replica %v is state %s, which is invalid for rebuilding", replicaName, r.Status.CurrentState)
+			}
+			if e.Status.ReplicaModeMap[replicaName] == longhorn.ReplicaModeRW {
+				return nil
+			}
+			if e.Status.ReplicaModeMap[replicaName] == longhorn.ReplicaModeERR {
+				return fmt.Errorf("replica %v is in ERR mode, which is invalid for rebuilding", replicaName)
+			}
+			if e.Status.ReplicaModeMap[replicaName] == "" {
+				continue
+			}
+			// For a rebuilding replica (with mode WO), there should be a corresponding rebuilding status
+			rebuildingStatus := e.Status.RebuildStatus[engineapi.GetBackendReplicaURL(e.Status.CurrentReplicaAddressMap[replicaName])]
+			if rebuildingStatus == nil {
+				continue
+			}
+			if rebuildingStatus.State == engineapi.ProcessStateError || rebuildingStatus.Error != "" {
+				return fmt.Errorf(rebuildingStatus.Error)
+			}
+			if rebuildingStatus.State == engineapi.ProcessStateComplete {
+				return nil
+			}
+		case <-timer.C:
+			return fmt.Errorf("timeout waiting for replica %v to be rebuilt", replicaName)
+		}
 	}
 }
 
