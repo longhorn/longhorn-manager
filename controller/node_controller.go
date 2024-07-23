@@ -523,7 +523,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	// have been turned off for RWX failover.
 	labels := types.MergeStringMaps(types.GetAdmissionWebhookLabel(), types.GetRecoveryBackendLabel())
 	if err := nc.ds.AddLabelToManagerPod(node.Name, labels); err != nil {
-		log.Warnf("Node %v failed to restore its admission webhook and recovery backend", node.Name)
+		log.WithError(err).Error("Failed to restore its admission webhook and recovery backend")
 		return err
 	}
 
