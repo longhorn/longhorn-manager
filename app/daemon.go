@@ -174,7 +174,10 @@ func startManager(c *cli.Context) error {
 	}
 
 	// This adds the label for the conversion webhook's selector.  We do it the hard way without datastore to avoid chicken-and-egg.
-	pod, _ := clientsWithoutDatastore.Clients.K8s.CoreV1().Pods(podNamespace).Get(context.Background(), podName, v1.GetOptions{})
+	pod, err := clientsWithoutDatastore.Clients.K8s.CoreV1().Pods(podNamespace).Get(context.Background(), podName, v1.GetOptions{})
+	if err != nil {
+		return err
+	}
 	labels := types.GetConversionWebhookLabel()
 	for key, value := range labels {
 		pod.Labels[key] = value

@@ -564,10 +564,10 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) (err error) {
 	defer func() {
 		if err != nil {
 			log.WithError(err).Warnf("Failed to delete replica process %v", r.Name)
-		}
-		if isDelinquent {
-			log.Warnf("Ignored the failure of deleting replica process %v because the RWX volume is currently delinquent", r.Name)
-			err = nil
+			if isDelinquent {
+				log.Warnf("Ignored the failure of deleting replica process %v because the RWX volume is currently delinquent", r.Name)
+				err = nil
+			}
 		}
 	}()
 
