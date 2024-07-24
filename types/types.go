@@ -962,21 +962,23 @@ func UnmarshalToNodeTags(s string) ([]string, error) {
 	return res, nil
 }
 
-func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[string]longhorn.DiskSpec, error) {
-	fileInfo, err := os.Stat(dataPath)
+func IsPotentialBlockDisk(path string) bool {
+	fileInfo, err := os.Stat(path)
 	if err != nil {
-		if !os.IsNotExist(err) {
-			return nil, errors.Wrapf(err, "failed to stat %v for creating default disk", dataPath)
-		}
-
-		// Longhorn is unable to create block-type disk automatically
-		if strings.HasPrefix(dataPath, "/dev/") {
-			return nil, errors.Wrapf(err, "creating default block-type disk %v is not supported", dataPath)
-		}
+		logrus.WithError(err).Warnf("Failed to get file info for %v", path)
+		return strings.HasPrefix(path, "/dev/")
 	}
 
 	// Block-type disk
 	if fileInfo != nil && (fileInfo.Mode()&os.ModeDevice) == os.ModeDevice {
+		return true
+	}
+
+	return false
+}
+
+func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[string]longhorn.DiskSpec, error) {
+	if IsPotentialBlockDisk(dataPath) {
 		return map[string]longhorn.DiskSpec{
 			DefaultDiskPrefix + util.RandomID(): {
 				Type:              longhorn.DiskTypeBlock,
