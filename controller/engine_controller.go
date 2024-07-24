@@ -2296,22 +2296,27 @@ func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineIm
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
-	// If a regular RWX is delinquent, try to switch ownership quickly to the node of the newly created share-manager pod
-	isDelinquent, err := ec.ds.IsNodeDelinquent(e.Status.OwnerID, e.Spec.VolumeName)
+	// If a regular RWX is delinquent, try to switch ownership quickly to the owner node of the share manager CR
+	isOwnerNodeDelinquent, err := ec.ds.IsNodeDelinquent(e.Status.OwnerID, e.Spec.VolumeName)
 	if err != nil {
 		return false, err
 	}
-	if isDelinquent {
-		pod, err := ec.ds.GetPodRO(ec.namespace, types.GetShareManagerPodNameFromShareManagerName(e.Spec.VolumeName))
+	isSpecNodeDelinquent, err := ec.ds.IsNodeDelinquent(e.Spec.NodeID, e.Spec.VolumeName)
+	if err != nil {
+		return false, err
+	}
+	preferredOwnerID := e.Spec.NodeID
+	if isOwnerNodeDelinquent || isSpecNodeDelinquent {
+		sm, err := ec.ds.GetShareManager(e.Spec.VolumeName)
 		if err != nil && !apierrors.IsNotFound(err) {
 			return false, err
 		}
-		if pod != nil && ec.controllerID == pod.Spec.NodeName {
-			return true, nil
+		if sm != nil {
+			preferredOwnerID = sm.Status.OwnerID
 		}
 	}
 
-	isResponsible := isControllerResponsibleFor(ec.controllerID, ec.ds, e.Name, e.Spec.NodeID, e.Status.OwnerID)
+	isResponsible := isControllerResponsibleFor(ec.controllerID, ec.ds, e.Name, preferredOwnerID, e.Status.OwnerID)
 
 	// The engine is not running, the owner node doesn't need to have e.Status.CurrentImage
 	// Fall back to the default logic where we pick a running node to be the owner
