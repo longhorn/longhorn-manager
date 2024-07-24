@@ -1055,34 +1055,26 @@ func IsBDF(addr string) bool {
 	return bdfPattern.MatchString(addr)
 }
 
-func IsBlockDisk(path string) (bool, error) {
+func IsPotentialBlockDisk(path string) bool {
 	if IsBDF(path) {
-		return true, nil
+		return true
 	}
 
 	fileInfo, err := os.Stat(path)
 	if err != nil {
-		if !os.IsNotExist(err) {
-			return false, errors.Wrapf(err, "failed to stat %v for creating default disk", path)
-		}
-		if strings.HasPrefix(path, "/dev/") {
-			return false, errors.Wrapf(err, "creating default block-type disk %v is not supported", path)
-		}
+		logrus.WithError(err).Warnf("Failed to get file info for %v", path)
+		return strings.HasPrefix(path, "/dev/")
 	}
 
 	if fileInfo != nil && (fileInfo.Mode()&os.ModeDevice) == os.ModeDevice {
-		return true, nil
+		return true
 	}
 
-	return false, nil
+	return false
 }
 
 func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[string]longhorn.DiskSpec, error) {
-	ok, err := IsBlockDisk(dataPath)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to check if %v is a block device", dataPath)
-	}
-	if ok {
+	if IsPotentialBlockDisk(dataPath) {
 		return map[string]longhorn.DiskSpec{
 			DefaultDiskPrefix + util.RandomID(): {
 				Type:              longhorn.DiskTypeBlock,

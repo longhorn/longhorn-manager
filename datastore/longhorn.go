@@ -2584,16 +2584,7 @@ func (s *DataStore) needDefaultDiskCreation(dataPath string) bool {
 	}
 
 	// Do not create default block-type disk if v2 data engine is disabled
-	ok, err := types.IsBlockDisk(dataPath)
-	if err != nil {
-		logrus.WithError(err).Errorf("Failed to check if the data path %v is block-type", dataPath)
-		return false
-	}
-	if ok {
-		return false
-	}
-
-	return true
+	return !types.IsPotentialBlockDisk(dataPath)
 }
 
 func (s *DataStore) GetNodeRO(name string) (*longhorn.Node, error) {
