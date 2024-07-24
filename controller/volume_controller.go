@@ -4362,22 +4362,27 @@ func (c *VolumeController) isResponsibleFor(v *longhorn.Volume, defaultEngineIma
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
-	// If a regular RWX is delinquent, try to switch ownership quickly to the node of the newly created share-manager pod
-	isDelinquent, err := c.ds.IsNodeDelinquent(v.Status.OwnerID, v.Name)
+	// If a regular RWX is delinquent, try to switch ownership quickly to the owner node of the share manager CR
+	isOwnerNodeDelinquent, err := c.ds.IsNodeDelinquent(v.Status.OwnerID, v.Name)
 	if err != nil {
 		return false, err
 	}
-	if isDelinquent {
-		pod, err := c.ds.GetPodRO(v.Namespace, types.GetShareManagerPodNameFromShareManagerName(v.Name))
+	isSpecNodeDelinquent, err := c.ds.IsNodeDelinquent(v.Spec.NodeID, v.Name)
+	if err != nil {
+		return false, err
+	}
+	preferredOwnerID := v.Spec.NodeID
+	if isOwnerNodeDelinquent || isSpecNodeDelinquent {
+		sm, err := c.ds.GetShareManager(v.Name)
 		if err != nil && !apierrors.IsNotFound(err) {
 			return false, err
 		}
-		if pod != nil && c.controllerID == pod.Spec.NodeName {
-			return true, nil
+		if sm != nil {
+			preferredOwnerID = sm.Status.OwnerID
 		}
 	}
 
-	isResponsible := isControllerResponsibleFor(c.controllerID, c.ds, v.Name, v.Spec.NodeID, v.Status.OwnerID)
+	isResponsible := isControllerResponsibleFor(c.controllerID, c.ds, v.Name, preferredOwnerID, v.Status.OwnerID)
 
 	if types.IsDataEngineV1(v.Spec.DataEngine) {
 		readyNodesWithDefaultEI, err := c.ds.ListReadyNodesContainingEngineImageRO(defaultEngineImage)
