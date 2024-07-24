@@ -448,7 +448,7 @@ func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.Backu
 	// and delete the BackupVolume CR in the cluster
 	backupVolumesToDelete := clusterBackupVolumesSet.Difference(backupStoreBackupVolumes)
 	if count := backupVolumesToDelete.Len(); count > 0 {
-		log.Infof("Found %d backup volumes in the backup target that do not exist in the backup target and need to be deleted", count)
+		log.Infof("Found %d backup volumes in the backup target that do not exist in the cluster and need to be deleted from the cluster", count)
 	}
 	for backupVolumeName := range backupVolumesToDelete {
 		log.WithField("backupVolume", backupVolumeName).Info("Deleting backup volume from cluster")

@@ -348,7 +348,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	// and delete the Backup CR in the cluster
 	backupsToDelete := clustersSet.Difference(backupStoreBackups)
 	if count := backupsToDelete.Len(); count > 0 {
-		log.Infof("Found %d backups in the backup target that do not exist in the backup target and need to be deleted", count)
+		log.Infof("Found %d backups in the backup target that do not exist in the cluster and need to be deleted from the cluster", count)
 	}
 	for backupName := range backupsToDelete {
 		if err = bvc.ds.DeleteBackup(backupName); err != nil {
