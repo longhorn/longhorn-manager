@@ -1232,12 +1232,12 @@ github.com/longhorn/go-spdk-helper v0.0.0-20240723045100-85e5737da4b5 h1:zz0gXSR
 github.com/longhorn/go-spdk-helper v0.0.0-20240723045100-85e5737da4b5/go.mod h1:lt/eCeOltUM9QbMxS6qDJRr/+wvavxbLGTzkKrqyaSI=
 github.com/longhorn/longhorn-engine v1.7.0-rc1 h1:kQ4BwCvBemWsQvVnLdRsbiCXR3zmQBMA1J9Ezysh2q0=
 github.com/longhorn/longhorn-engine v1.7.0-rc1/go.mod h1:u0TZ1221YusDYA+ExdVLjLid1Ps6JuJXgh9185l5D9Y=
-github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240724045856-8b48e7b74784 h1:LVtcsdIlxWcISUN5uMG9C4x9qQlRfDTNbaLFL3+R5H0=
-github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240724045856-8b48e7b74784/go.mod h1:gLVS19NOiRcfxJoGBTVVdY6TntbXi/Ks6nWofoJZQsM=
+github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240725051303-147c857c546e h1:Im/zvlP3vEc0C4JeG+9gPLSydhe5TY5I9hk4oHLePcc=
+github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240725051303-147c857c546e/go.mod h1:TbZHqx0Ia9AXatQXmXU5b6n+BmFtrpH4Gr9IWnCXono=
 github.com/longhorn/longhorn-share-manager v1.7.0-rc1 h1:LsSkSajhG8tCfORKKfwK+8XHVrT/8rI9DRWb7fuoVls=
 github.com/longhorn/longhorn-share-manager v1.7.0-rc1/go.mod h1:R6+NscPU4lAV5ueO7//lBCAO3en0aDbZi5KkkOSUJvk=
-github.com/longhorn/types v0.0.0-20240723142222-56701c990023 h1:6BYl+2rZhXjYZiBeLnWZPUgOiEoXGFA9CjcIfETdP/o=
-github.com/longhorn/types v0.0.0-20240723142222-56701c990023/go.mod h1:KlJuZB8NfHchWshYxYgV9pPIxBKC04Vq05G2TfgMf7w=
+github.com/longhorn/types v0.0.0-20240725040629-473d671316c4 h1:L2g0sIJ2fXt4BSFRYNnF6ObtKryCUFm9qLcCXHWssCk=
+github.com/longhorn/types v0.0.0-20240725040629-473d671316c4/go.mod h1:KlJuZB8NfHchWshYxYgV9pPIxBKC04Vq05G2TfgMf7w=
 github.com/lyft/protoc-gen-star v0.6.0/go.mod h1:TGAoBVkt8w7MPG72TrKIu85MIdXwDuzJYeZuUPFPNwA=
 github.com/lyft/protoc-gen-star v0.6.1/go.mod h1:TGAoBVkt8w7MPG72TrKIu85MIdXwDuzJYeZuUPFPNwA=
 github.com/lyft/protoc-gen-star/v2 v2.0.1/go.mod h1:RcCdONR2ScXaYnQC5tUzxzlpA3WVYF7/opLeUgcQs/o=
