@@ -736,13 +736,15 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 			allContainersReady = allContainersReady && st.Ready
 		}
 
-		if !allContainersReady {
-			c.enqueueShareManager(sm)
-		} else if sm.Status.State == longhorn.ShareManagerStateStarting {
-			sm.Status.State = longhorn.ShareManagerStateRunning
-		} else if sm.Status.State != longhorn.ShareManagerStateRunning {
-			sm.Status.State = longhorn.ShareManagerStateError
+		if allContainersReady {
+			if sm.Status.State == longhorn.ShareManagerStateStarting {
+				sm.Status.State = longhorn.ShareManagerStateRunning
+			}
+			if sm.Status.State != longhorn.ShareManagerStateRunning {
+				sm.Status.State = longhorn.ShareManagerStateError
+			}
 		}
+		// If !allContainersReady, we will sync again when the situation changes.
 	default:
 		sm.Status.State = longhorn.ShareManagerStateError
 	}
