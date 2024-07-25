@@ -36,7 +36,10 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
-const shareManagerLeaseDurationSeconds = 7 // This should be slightly more than twice the share-manager lease renewal interval.
+const (
+	shareManagerLeaseDurationSeconds    = 7 // This should be slightly more than twice the share-manager lease renewal interval.
+	shareManagerPodNotReadyRequeueDelay = 1 * time.Second
+)
 
 type nfsServerConfig struct {
 	enableFastFailover bool
@@ -144,6 +147,16 @@ func (c *ShareManagerController) enqueueShareManager(obj interface{}) {
 	}
 
 	c.queue.Add(key)
+}
+
+func (c *ShareManagerController) enqueueShareManagerAfter(obj interface{}, duration time.Duration) {
+	key, err := controller.KeyFunc(obj)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("enqueueShareManagerAfter: couldn't get key for object %#v: %v", obj, err))
+		return
+	}
+
+	c.queue.AddAfter(key, duration)
 }
 
 func (c *ShareManagerController) enqueueShareManagerForVolume(obj interface{}) {
@@ -910,7 +923,8 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 		}
 
 		if !allContainersReady {
-			c.enqueueShareManager(sm)
+			// We must not requeue immediately to avoid thousands of near-simultaneous reconciles.
+			c.enqueueShareManagerAfter(sm, shareManagerPodNotReadyRequeueDelay)
 		} else if sm.Status.State == longhorn.ShareManagerStateStarting {
 			sm.Status.State = longhorn.ShareManagerStateRunning
 		} else if sm.Status.State != longhorn.ShareManagerStateRunning {
