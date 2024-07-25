@@ -407,11 +407,11 @@ func (c *ShareManagerController) syncShareManager(key string) (err error) {
 		}
 	}()
 
-	if err = c.syncShareManagerPod(sm); err != nil {
+	if err = c.syncShareManagerVolume(sm); err != nil {
 		return err
 	}
 
-	if err = c.syncShareManagerVolume(sm); err != nil {
+	if err = c.syncShareManagerPod(sm); err != nil {
 		return err
 	}
 
@@ -638,6 +638,11 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 		}
 	}()
 
+	isDelinquent, _, err := c.ds.IsRWXVolumeDelinquent(sm.Name)
+	if err != nil {
+		return err
+	}
+
 	if !c.isShareManagerRequiredForVolume(sm, volume, va) {
 		c.unmountShareManagerVolume(sm)
 
@@ -647,7 +652,7 @@ func (c *ShareManagerController) syncShareManagerVolume(sm *longhorn.ShareManage
 			sm.Status.State = longhorn.ShareManagerStateStopping
 		}
 		return nil
-	} else if sm.Status.State == longhorn.ShareManagerStateRunning {
+	} else if sm.Status.State == longhorn.ShareManagerStateRunning && !isDelinquent {
 		err := c.mountShareManagerVolume(sm)
 		if err != nil {
 			log.WithError(err).Error("Failed to mount share manager volume")
