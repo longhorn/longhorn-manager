@@ -26,6 +26,7 @@ const (
 	SPDKService_ReplicaSnapshotCreate_FullMethodName                = "/spdkrpc.SPDKService/ReplicaSnapshotCreate"
 	SPDKService_ReplicaSnapshotDelete_FullMethodName                = "/spdkrpc.SPDKService/ReplicaSnapshotDelete"
 	SPDKService_ReplicaSnapshotRevert_FullMethodName                = "/spdkrpc.SPDKService/ReplicaSnapshotRevert"
+	SPDKService_ReplicaSnapshotPurge_FullMethodName                 = "/spdkrpc.SPDKService/ReplicaSnapshotPurge"
 	SPDKService_ReplicaList_FullMethodName                          = "/spdkrpc.SPDKService/ReplicaList"
 	SPDKService_ReplicaWatch_FullMethodName                         = "/spdkrpc.SPDKService/ReplicaWatch"
 	SPDKService_ReplicaRebuildingSrcStart_FullMethodName            = "/spdkrpc.SPDKService/ReplicaRebuildingSrcStart"
@@ -54,6 +55,7 @@ const (
 	SPDKService_EngineSnapshotCreate_FullMethodName                 = "/spdkrpc.SPDKService/EngineSnapshotCreate"
 	SPDKService_EngineSnapshotDelete_FullMethodName                 = "/spdkrpc.SPDKService/EngineSnapshotDelete"
 	SPDKService_EngineSnapshotRevert_FullMethodName                 = "/spdkrpc.SPDKService/EngineSnapshotRevert"
+	SPDKService_EngineSnapshotPurge_FullMethodName                  = "/spdkrpc.SPDKService/EngineSnapshotPurge"
 	SPDKService_EngineList_FullMethodName                           = "/spdkrpc.SPDKService/EngineList"
 	SPDKService_EngineWatch_FullMethodName                          = "/spdkrpc.SPDKService/EngineWatch"
 	SPDKService_EngineReplicaList_FullMethodName                    = "/spdkrpc.SPDKService/EngineReplicaList"
@@ -84,6 +86,7 @@ type SPDKServiceClient interface {
 	ReplicaSnapshotCreate(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*Replica, error)
 	ReplicaSnapshotDelete(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ReplicaSnapshotRevert(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ReplicaSnapshotPurge(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ReplicaList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ReplicaListResponse, error)
 	ReplicaWatch(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (SPDKService_ReplicaWatchClient, error)
 	ReplicaRebuildingSrcStart(ctx context.Context, in *ReplicaRebuildingSrcStartRequest, opts ...grpc.CallOption) (*ReplicaRebuildingSrcStartResponse, error)
@@ -112,6 +115,7 @@ type SPDKServiceClient interface {
 	EngineSnapshotCreate(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*SnapshotResponse, error)
 	EngineSnapshotDelete(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineSnapshotRevert(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	EngineSnapshotPurge(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*EngineListResponse, error)
 	EngineWatch(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (SPDKService_EngineWatchClient, error)
 	EngineReplicaList(ctx context.Context, in *EngineReplicaListRequest, opts ...grpc.CallOption) (*EngineReplicaListResponse, error)
@@ -188,6 +192,15 @@ func (c *sPDKServiceClient) ReplicaSnapshotDelete(ctx context.Context, in *Snaps
 func (c *sPDKServiceClient) ReplicaSnapshotRevert(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, SPDKService_ReplicaSnapshotRevert_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ReplicaSnapshotPurge(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_ReplicaSnapshotPurge_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -469,6 +482,15 @@ func (c *sPDKServiceClient) EngineSnapshotRevert(ctx context.Context, in *Snapsh
 	return out, nil
 }
 
+func (c *sPDKServiceClient) EngineSnapshotPurge(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_EngineSnapshotPurge_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *sPDKServiceClient) EngineList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*EngineListResponse, error) {
 	out := new(EngineListResponse)
 	err := c.cc.Invoke(ctx, SPDKService_EngineList_FullMethodName, in, out, opts...)
@@ -664,6 +686,7 @@ type SPDKServiceServer interface {
 	ReplicaSnapshotCreate(context.Context, *SnapshotRequest) (*Replica, error)
 	ReplicaSnapshotDelete(context.Context, *SnapshotRequest) (*emptypb.Empty, error)
 	ReplicaSnapshotRevert(context.Context, *SnapshotRequest) (*emptypb.Empty, error)
+	ReplicaSnapshotPurge(context.Context, *SnapshotRequest) (*emptypb.Empty, error)
 	ReplicaList(context.Context, *emptypb.Empty) (*ReplicaListResponse, error)
 	ReplicaWatch(*emptypb.Empty, SPDKService_ReplicaWatchServer) error
 	ReplicaRebuildingSrcStart(context.Context, *ReplicaRebuildingSrcStartRequest) (*ReplicaRebuildingSrcStartResponse, error)
@@ -692,6 +715,7 @@ type SPDKServiceServer interface {
 	EngineSnapshotCreate(context.Context, *SnapshotRequest) (*SnapshotResponse, error)
 	EngineSnapshotDelete(context.Context, *SnapshotRequest) (*emptypb.Empty, error)
 	EngineSnapshotRevert(context.Context, *SnapshotRequest) (*emptypb.Empty, error)
+	EngineSnapshotPurge(context.Context, *SnapshotRequest) (*emptypb.Empty, error)
 	EngineList(context.Context, *emptypb.Empty) (*EngineListResponse, error)
 	EngineWatch(*emptypb.Empty, SPDKService_EngineWatchServer) error
 	EngineReplicaList(context.Context, *EngineReplicaListRequest) (*EngineReplicaListResponse, error)
@@ -734,6 +758,9 @@ func (UnimplementedSPDKServiceServer) ReplicaSnapshotDelete(context.Context, *Sn
 }
 func (UnimplementedSPDKServiceServer) ReplicaSnapshotRevert(context.Context, *SnapshotRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReplicaSnapshotRevert not implemented")
+}
+func (UnimplementedSPDKServiceServer) ReplicaSnapshotPurge(context.Context, *SnapshotRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReplicaSnapshotPurge not implemented")
 }
 func (UnimplementedSPDKServiceServer) ReplicaList(context.Context, *emptypb.Empty) (*ReplicaListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReplicaList not implemented")
@@ -818,6 +845,9 @@ func (UnimplementedSPDKServiceServer) EngineSnapshotDelete(context.Context, *Sna
 }
 func (UnimplementedSPDKServiceServer) EngineSnapshotRevert(context.Context, *SnapshotRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EngineSnapshotRevert not implemented")
+}
+func (UnimplementedSPDKServiceServer) EngineSnapshotPurge(context.Context, *SnapshotRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineSnapshotPurge not implemented")
 }
 func (UnimplementedSPDKServiceServer) EngineList(context.Context, *emptypb.Empty) (*EngineListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EngineList not implemented")
@@ -990,6 +1020,24 @@ func _SPDKService_ReplicaSnapshotRevert_Handler(srv interface{}, ctx context.Con
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SPDKServiceServer).ReplicaSnapshotRevert(ctx, req.(*SnapshotRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ReplicaSnapshotPurge_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SnapshotRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ReplicaSnapshotPurge(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ReplicaSnapshotPurge_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ReplicaSnapshotPurge(ctx, req.(*SnapshotRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1501,6 +1549,24 @@ func _SPDKService_EngineSnapshotRevert_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SPDKService_EngineSnapshotPurge_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SnapshotRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).EngineSnapshotPurge(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_EngineSnapshotPurge_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).EngineSnapshotPurge(ctx, req.(*SnapshotRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _SPDKService_EngineList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
@@ -1860,6 +1926,10 @@ var SPDKService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _SPDKService_ReplicaSnapshotRevert_Handler,
 		},
 		{
+			MethodName: "ReplicaSnapshotPurge",
+			Handler:    _SPDKService_ReplicaSnapshotPurge_Handler,
+		},
+		{
 			MethodName: "ReplicaList",
 			Handler:    _SPDKService_ReplicaList_Handler,
 		},
@@ -1966,6 +2036,10 @@ var SPDKService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "EngineSnapshotRevert",
 			Handler:    _SPDKService_EngineSnapshotRevert_Handler,
+		},
+		{
+			MethodName: "EngineSnapshotPurge",
+			Handler:    _SPDKService_EngineSnapshotPurge_Handler,
 		},
 		{
 			MethodName: "EngineList",
