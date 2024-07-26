@@ -1311,6 +1311,13 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 
 	if isAutoSalvageNeeded(rs) {
 		v.Status.Robustness = longhorn.VolumeRobustnessFaulted
+		// If the volume is faulted, we don't need to have RWX fast failover.
+		// If shareManager is delinquent, clear both delinquent and stale state.
+		// If we don't do that volume will stuck in auto-savage loop.
+		// See https://github.com/longhorn/longhorn/issues/9089
+		if err := c.handleDelinquentAndStaleStateForFaultedRWXVolume(v); err != nil {
+			return err
+		}
 
 		autoSalvage, err := c.ds.GetSettingAsBool(types.SettingNameAutoSalvage)
 		if err != nil {
@@ -1435,6 +1442,13 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 					}
 				}
 				v.Status.Robustness = longhorn.VolumeRobustnessFaulted
+				// If the volume is faulted, we don't need to have RWX fast failover.
+				// If shareManager is delinquent, clear both delinquent and stale state.
+				// If we don't do that volume will stuck in auto-savage loop.
+				// See https://github.com/longhorn/longhorn/issues/9089
+				if err := c.handleDelinquentAndStaleStateForFaultedRWXVolume(v); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -1463,6 +1477,13 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 	}
 
 	return c.checkAndFinishVolumeRestore(v, e, rs)
+}
+
+func (c *VolumeController) handleDelinquentAndStaleStateForFaultedRWXVolume(v *longhorn.Volume) error {
+	if !isRegularRWXVolume(v) {
+		return nil
+	}
+	return c.ds.ClearDelinquentAndStaleStateIfVolumeIsDelinquent(v.Name)
 }
 
 func (c *VolumeController) requestRemountIfFileSystemReadOnly(v *longhorn.Volume, e *longhorn.Engine) {
