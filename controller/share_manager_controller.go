@@ -1297,7 +1297,7 @@ func (c *ShareManagerController) createLeaseManifest(sm *longhorn.ShareManager) 
 	holderIdentity := ""
 	leaseDurationSeconds := int32(shareManagerLeaseDurationSeconds)
 	leaseTransitions := int32(0)
-	zeroTime := time.Now()
+	zeroTime := time.Time{}
 
 	lease := &coordinationv1.Lease{
 		ObjectMeta: metav1.ObjectMeta{
