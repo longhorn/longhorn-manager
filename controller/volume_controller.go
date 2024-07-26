@@ -1828,7 +1828,7 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 			}
 
 			if v.Status.State != longhorn.VolumeStateAttached || nodeDeleted {
-				msg := fmt.Sprintf("Replica %v is marked as failed since the volume %v is not attached because the instance manager is unable to launch the replica", r.Name, v.Name)
+				msg := fmt.Sprintf("Replica %v is marked as failed because the volume %v is not attached and the instance manager is unable to launch the replica", r.Name, v.Name)
 				if nodeDeleted {
 					msg = fmt.Sprintf("Replica %v is marked as failed since the node %v is deleted.", r.Name, r.Spec.NodeID)
 				}
