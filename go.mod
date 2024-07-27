@@ -60,11 +60,11 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.7.0-rc1
 	github.com/longhorn/backupstore v0.0.0-20240720163059-56c90cd23634
-	github.com/longhorn/go-common-libs v0.0.0-20240720044518-32fc527fe868
+	github.com/longhorn/go-common-libs v0.0.0-20240726063909-5c0987bc30d8
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240720064937-c6ce82d67032
-	github.com/longhorn/go-spdk-helper v0.0.0-20240723045100-85e5737da4b5
+	github.com/longhorn/go-spdk-helper v0.0.0-20240726083118-6a324e959796
 	github.com/longhorn/longhorn-engine v1.7.0-rc1
-	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240725051303-147c857c546e
+	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240726101413-d2e5901eb9d3
 	github.com/longhorn/longhorn-share-manager v1.7.0-rc1
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.18.0
