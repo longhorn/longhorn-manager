@@ -223,6 +223,14 @@ func isShareManagerPod(obj interface{}) bool {
 }
 
 func (c *ShareManagerController) checkLeasesAndEnqueueAnyStale() error {
+	enabled, err := c.ds.GetSettingAsBool(types.SettingNameRWXVolumeFastFailover)
+	if err != nil {
+		return err
+	}
+	if !enabled {
+		return nil
+	}
+
 	sms, err := c.ds.ListShareManagersRO()
 	if err != nil {
 		return err
