@@ -1699,7 +1699,6 @@ const (
 	ClusterInfoVolumeDataEngineCountFmt                  = "LonghornVolumeDataEngine%sCount"
 	ClusterInfoVolumeDataLocalityCountFmt                = "LonghornVolumeDataLocality%sCount"
 	ClusterInfoVolumeFrontendCountFmt                    = "LonghornVolumeFrontend%sCount"
-	ClusterInfoVolumeOfflineReplicaRebuildingCountFmt    = "LonghornVolumeOfflineReplicaRebuilding%sCount"
 	ClusterInfoVolumeReplicaAutoBalanceCountFmt          = "LonghornVolumeReplicaAutoBalance%sCount"
 	ClusterInfoVolumeReplicaSoftAntiAffinityCountFmt     = "LonghornVolumeReplicaSoftAntiAffinity%sCount"
 	ClusterInfoVolumeReplicaZoneSoftAntiAffinityCountFmt = "LonghornVolumeReplicaZoneSoftAntiAffinity%sCount"
@@ -1875,7 +1874,6 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameKubernetesClusterAutoscalerEnabled:                       true,
 		types.SettingNameNodeDownPodDeletionPolicy:                                true,
 		types.SettingNameNodeDrainPolicy:                                          true,
-		types.SettingNameOfflineReplicaRebuilding:                                 true,
 		types.SettingNameOrphanAutoDeletion:                                       true,
 		types.SettingNameRecurringFailedJobsHistoryLimit:                          true,
 		types.SettingNameRecurringSuccessfulJobsHistoryLimit:                      true,
@@ -1991,7 +1989,6 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	dataEngineCountStruct := newStruct()
 	dataLocalityCountStruct := newStruct()
 	frontendCountStruct := newStruct()
-	offlineReplicaRebuildingCountStruct := newStruct()
 	replicaAutoBalanceCountStruct := newStruct()
 	replicaSoftAntiAffinityCountStruct := newStruct()
 	replicaZoneSoftAntiAffinityCountStruct := newStruct()
@@ -2033,9 +2030,6 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 			frontendCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeFrontendCountFmt, frontend))]++
 		}
 
-		offlineReplicaRebuilding := info.collectSettingInVolume(string(volume.Spec.OfflineReplicaRebuilding), string(longhorn.OfflineReplicaRebuildingIgnored), types.SettingNameOfflineReplicaRebuilding)
-		offlineReplicaRebuildingCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeOfflineReplicaRebuildingCountFmt, util.ConvertToCamel(string(offlineReplicaRebuilding), "-")))]++
-
 		replicaAutoBalance := info.collectSettingInVolume(string(volume.Spec.ReplicaAutoBalance), string(longhorn.ReplicaAutoBalanceIgnored), types.SettingNameReplicaAutoBalance)
 		replicaAutoBalanceCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeReplicaAutoBalanceCountFmt, util.ConvertToCamel(string(replicaAutoBalance), "-")))]++
 
@@ -2064,7 +2058,6 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	info.structFields.fields.AppendCounted(dataEngineCountStruct)
 	info.structFields.fields.AppendCounted(dataLocalityCountStruct)
 	info.structFields.fields.AppendCounted(frontendCountStruct)
-	info.structFields.fields.AppendCounted(offlineReplicaRebuildingCountStruct)
 	info.structFields.fields.AppendCounted(replicaAutoBalanceCountStruct)
 	info.structFields.fields.AppendCounted(replicaSoftAntiAffinityCountStruct)
 	info.structFields.fields.AppendCounted(replicaZoneSoftAntiAffinityCountStruct)
