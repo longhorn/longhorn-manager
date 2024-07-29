@@ -317,12 +317,6 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		}
 	}
 
-	if newVolume.Spec.OfflineReplicaRebuilding != longhorn.OfflineReplicaRebuildingDisabled {
-		err := fmt.Errorf("changing offline replica rebuilding for volume %v is not supported for data engine %v",
-			newVolume.Name, newVolume.Spec.DataEngine)
-		return werror.NewInvalidError(err.Error(), "")
-	}
-
 	// prevent the changing v.Spec.MigrationNodeID to different node when the volume is doing live migration (when v.Status.CurrentMigrationNodeID != "")
 	if newVolume.Status.CurrentMigrationNodeID != "" &&
 		newVolume.Spec.MigrationNodeID != oldVolume.Spec.MigrationNodeID &&
