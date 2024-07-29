@@ -61,10 +61,6 @@ type Volume struct {
 
 	NumberOfReplicas int64 `json:"numberOfReplicas,omitempty" yaml:"number_of_replicas,omitempty"`
 
-	OfflineReplicaRebuilding string `json:"offlineReplicaRebuilding,omitempty" yaml:"offline_replica_rebuilding,omitempty"`
-
-	OfflineReplicaRebuildingRequired bool `json:"offlineReplicaRebuildingRequired,omitempty" yaml:"offline_replica_rebuilding_required,omitempty"`
-
 	PurgeStatus []PurgeStatus `json:"purgeStatus,omitempty" yaml:"purge_status,omitempty"`
 
 	Ready bool `json:"ready,omitempty" yaml:"ready,omitempty"`
