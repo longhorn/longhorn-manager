@@ -213,9 +213,6 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		if volume.Spec.ReplicaDiskSoftAntiAffinity != longhorn.ReplicaDiskSoftAntiAffinityDisabled {
 			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaDiskSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaDiskSoftAntiAffinityDefault))
 		}
-		if volume.Spec.OfflineReplicaRebuilding != longhorn.OfflineReplicaRebuildingDisabled {
-			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/offlineReplicaRebuilding", "value": "%s"}`, longhorn.OfflineReplicaRebuildingDisabled))
-		}
 	}
 
 	var patchOpsInCommon admission.PatchOps
@@ -327,9 +324,6 @@ func mutate(newObj runtime.Object, moreLabels map[string]string) (admission.Patc
 	}
 	if string(volume.Spec.DataEngine) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataEngine", "value": "%s"}`, longhorn.DataEngineTypeV1))
-	}
-	if volume.Spec.OfflineReplicaRebuilding != longhorn.OfflineReplicaRebuildingDisabled {
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/offlineReplicaRebuilding", "value": "%s"}`, longhorn.OfflineReplicaRebuildingDisabled))
 	}
 	if volume.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/revisionCounterDisabled", "value": true}`)

@@ -4213,14 +4213,6 @@ spec:
                 type: array
               numberOfReplicas:
                 type: integer
-              offlineReplicaRebuilding:
-                description: OfflineReplicaRebuilding is used to determine if the
-                  offline replica rebuilding feature is enabled or not
-                enum:
-                - ignored
-                - disabled
-                - enabled
-                type: string
               replicaAutoBalance:
                 enum:
                 - ignored
@@ -4382,8 +4374,6 @@ spec:
                 type: string
               lastDegradedAt:
                 type: string
-              offlineReplicaRebuildingRequired:
-                type: boolean
               ownerID:
                 type: string
               pendingNodeID:
