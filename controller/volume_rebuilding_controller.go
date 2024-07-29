@@ -193,11 +193,7 @@ func (vbc *VolumeRebuildingController) reconcile(volName string) (err error) {
 
 	rebuildingAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeRebuildingController, volName)
 
-	if vol.Status.OfflineReplicaRebuildingRequired {
-		createOrUpdateAttachmentTicket(va, rebuildingAttachmentTicketID, vol.Status.OwnerID, longhorn.TrueValue, longhorn.AttacherTypeVolumeRebuildingController)
-	} else {
-		delete(va.Spec.AttachmentTickets, rebuildingAttachmentTicketID)
-	}
+	delete(va.Spec.AttachmentTickets, rebuildingAttachmentTicketID)
 
 	return nil
 }

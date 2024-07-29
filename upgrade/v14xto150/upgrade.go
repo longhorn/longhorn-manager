@@ -118,9 +118,6 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceM
 		if v.Spec.BackendStoreDriver == "" {
 			v.Spec.BackendStoreDriver = longhorn.BackendStoreDriverTypeV1
 		}
-		if v.Spec.OfflineReplicaRebuilding == "" {
-			v.Spec.OfflineReplicaRebuilding = longhorn.OfflineReplicaRebuildingDisabled
-		}
 		if v.Status.PendingNodeID != "" {
 			v.Status.PendingNodeID = ""
 		}
