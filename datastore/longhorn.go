@@ -3209,6 +3209,41 @@ func CheckInstanceManagerType(im *longhorn.InstanceManager) (longhorn.InstanceMa
 	return longhorn.InstanceManagerType(""), fmt.Errorf("unknown type %v for instance manager %v", imType, im.Name)
 }
 
+// CheckInstanceManagerReadiness checks if the InstanceManager is running on the
+// specified set of nodes.
+//
+// Parameters:
+//   - dataEngine: the data engine type.
+//   - nodes: the list of node names.
+//
+// Returns:
+// - Boolean indicating if all InstanceManagers are running on the nodes.
+// - Error for any errors encountered.
+func (s *DataStore) CheckInstanceManagersReadiness(dataEngine longhorn.DataEngineType, nodes ...string) (isReady bool, err error) {
+	for _, node := range nodes {
+		instanceManager, err := s.GetDefaultInstanceManagerByNodeRO(node, dataEngine)
+		if err != nil {
+			return false, err
+		}
+
+		isRunning := instanceManager.Status.CurrentState == longhorn.InstanceManagerStateRunning
+		notDeleted := instanceManager.DeletionTimestamp == nil
+		if !isRunning && notDeleted {
+			logrus.WithFields(
+				logrus.Fields{
+					"currentState":    instanceManager.Status.CurrentState,
+					"dataEngine":      dataEngine,
+					"instanceManager": instanceManager.Name,
+					"node":            node,
+				},
+			).Errorf("CheckInstanceManagerReadiness: instance manager is not running")
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
 // ListInstanceManagersBySelectorRO gets a list of InstanceManager by labels for
 // the given namespace,
 // the list contains direct references to the internal cache objects and should not be mutated.
