@@ -476,6 +476,27 @@ func newBackup(name string) *longhorn.Backup {
 	}
 }
 
+func newBackupBackingImage(name string) *longhorn.BackupBackingImage {
+	return &longhorn.BackupBackingImage{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+		},
+	}
+}
+
+func newBackingIamge(name string, sourceType longhorn.BackingImageDataSourceType) *longhorn.BackingImage {
+	return &longhorn.BackingImage{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+		},
+		Spec: longhorn.BackingImageSpec{
+			SourceType: sourceType,
+		},
+	}
+}
+
 func newKubernetesNode(name string, readyStatus, diskPressureStatus, memoryStatus, pidStatus, networkStatus, kubeletStatus corev1.ConditionStatus) *corev1.Node {
 	return &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{

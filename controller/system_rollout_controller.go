@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"sync"
 	"time"
 
@@ -37,6 +38,7 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	"github.com/longhorn/backupstore"
+	"github.com/longhorn/backupstore/backupbackingimage"
 
 	systembackupstore "github.com/longhorn/backupstore/systembackup"
 
@@ -118,6 +120,7 @@ type extractedResources struct {
 	recurringJobList *longhorn.RecurringJobList
 	settingList      *longhorn.SettingList
 	volumeList       *longhorn.VolumeList
+	backingImageList *longhorn.BackingImageList
 }
 
 type SystemRolloutController struct {
@@ -435,20 +438,17 @@ func (c *SystemRolloutController) systemRollout() error {
 
 		wg := &sync.WaitGroup{}
 		restoreFns := map[string]func() error{
-			types.KubernetesKindServiceList:               c.restoreService,
-			types.KubernetesKindServiceAccountList:        c.restoreServiceAccounts,
-			types.KubernetesKindClusterRoleList:           c.restoreClusterRoles,
-			types.KubernetesKindClusterRoleBindingList:    c.restoreClusterRoleBindings,
-			types.KubernetesKindPodSecurityPolicyList:     c.restorePodSecurityPolicies,
-			types.KubernetesKindRoleList:                  c.restoreRoles,
-			types.KubernetesKindRoleBindingList:           c.restoreRoleBindings,
-			types.KubernetesKindStorageClassList:          c.restoreStorageClasses,
-			types.KubernetesKindConfigMapList:             c.restoreConfigMaps,
-			types.KubernetesKindDeploymentList:            c.restoreDeployments,
-			types.LonghornKindVolumeList:                  c.restoreVolumes,
-			types.KubernetesKindPersistentVolumeList:      c.restorePersistentVolumes,
-			types.KubernetesKindPersistentVolumeClaimList: c.restorePersistentVolumeClaims,
-			types.LonghornKindRecurringJobList:            c.restoreRecurringJobs,
+			types.KubernetesKindServiceList:            c.restoreService,
+			types.KubernetesKindServiceAccountList:     c.restoreServiceAccounts,
+			types.KubernetesKindClusterRoleList:        c.restoreClusterRoles,
+			types.KubernetesKindClusterRoleBindingList: c.restoreClusterRoleBindings,
+			types.KubernetesKindRoleList:               c.restoreRoles,
+			types.KubernetesKindRoleBindingList:        c.restoreRoleBindings,
+			types.KubernetesKindStorageClassList:       c.restoreStorageClasses,
+			types.KubernetesKindConfigMapList:          c.restoreConfigMaps,
+			types.KubernetesKindDeploymentList:         c.restoreDeployments,
+			types.LonghornKindBackingImageList:         c.restoreBackingIamges,
+			types.LonghornKindRecurringJobList:         c.restoreRecurringJobs,
 		}
 		wg.Add(len(restoreFns))
 		for k, v := range restoreFns {
@@ -459,6 +459,13 @@ func (c *SystemRolloutController) systemRollout() error {
 			}()
 		}
 		wg.Wait()
+
+		// Need to wait until backingimages are restored, so the volumes with backingimages can be restored.
+		// Need to wait until backing images are restored, so the volumes with backingimages won't be rejected by webhook when restoring.
+		// PV/PVC restoration depends on Volume, so move them after volume restoration.
+		c.restore(types.LonghornKindVolumeList, c.restoreVolumes, log)
+		c.restore(types.KubernetesKindPersistentVolumeList, c.restorePersistentVolumes, log)
+		c.restore(types.KubernetesKindPersistentVolumeClaimList, c.restorePersistentVolumeClaims, log)
 
 		if len(c.cacheErrors) == 0 {
 			c.updateSystemRolloutRecord(record,
@@ -693,6 +700,8 @@ func (c *SystemRolloutController) cacheResourcesFromDirectory(name string, schem
 			c.settingList = obj.(*longhorn.SettingList)
 		case types.LonghornKindVolumeList:
 			c.volumeList = obj.(*longhorn.VolumeList)
+		case types.LonghornKindBackingImageList:
+			c.backingImageList = obj.(*longhorn.BackingImageList)
 		default:
 			log := c.getLoggerForSystemRollout()
 			log.Warnf("Unknown resource kind %v", gvk.Kind)
@@ -1833,6 +1842,77 @@ func (c *SystemRolloutController) restoreStorageClasses() (err error) {
 				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.KubernetesKindStorageClass)
 			}
 			return c.ds.UpdateStorageClass(obj)
+		}
+		_, err = c.rolloutResource(exist, fnUpdate, true, log, SystemRolloutMsgSkipIdentical)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *SystemRolloutController) restoreBackingIamges() (err error) {
+	if c.backingImageList == nil {
+		return nil
+	}
+
+	for _, restore := range c.backingImageList.Items {
+		log := c.logger.WithField(types.LonghornKindBackingImage, restore.Name)
+		log = getLoggerForBackingImage(log, &restore)
+
+		exist, err := c.ds.GetBackingImage(restore.Name)
+		if err != nil {
+			if !datastore.ErrorIsNotFound(err) {
+				return err
+			}
+
+			concurrentLimit, err := c.ds.GetSettingAsInt(types.SettingNameBackupConcurrentLimit)
+			if err != nil {
+				return errors.Wrapf(err, "failed to get %v value", types.SettingNameBackupConcurrentLimit)
+			}
+			// restore by creating backing image with type restore
+			backingImage := &longhorn.BackingImage{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: restore.Name,
+				},
+				Spec: longhorn.BackingImageSpec{
+					Checksum:   restore.Status.Checksum,
+					SourceType: longhorn.BackingImageDataSourceTypeRestore,
+					SourceParameters: map[string]string{
+						longhorn.DataSourceTypeRestoreParameterBackupURL:       backupbackingimage.EncodeBackupBackingImageURL(restore.Name, c.backupTargetURL),
+						longhorn.DataSourceTypeRestoreParameterConcurrentLimit: strconv.FormatInt(concurrentLimit, 10),
+					},
+				},
+			}
+
+			log.Info(SystemRolloutMsgCreating)
+
+			fnCreate := func(backingImage runtime.Object) (runtime.Object, error) {
+				obj, ok := backingImage.(*longhorn.BackingImage)
+				if !ok {
+					return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.LonghornKindBackingImage)
+				}
+				return c.ds.CreateBackingImage(obj)
+			}
+			_, err = c.rolloutResource(backingImage, fnCreate, false, log, SystemRolloutMsgRestoredItem)
+			if err != nil && !apierrors.IsAlreadyExists(err) {
+				err = errors.Wrapf(err, SystemRolloutErrFailedToCreateFmt, types.LonghornKindBackingImage, restore.Name)
+				message := util.CapitalizeFirstLetter(err.Error())
+				log.Warn(message)
+
+				reason := fmt.Sprintf(constant.EventReasonFailedCreatingFmt, types.LonghornKindBackingImage, restore.Name)
+				c.eventRecorder.Event(c.systemRestore, corev1.EventTypeWarning, reason, message)
+			}
+			continue
+		}
+
+		fnUpdate := func(exist runtime.Object) (runtime.Object, error) {
+			obj, ok := exist.(*longhorn.BackingImage)
+			if !ok {
+				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.LonghornKindBackingImage)
+			}
+			return c.ds.UpdateBackingImage(obj)
 		}
 		_, err = c.rolloutResource(exist, fnUpdate, true, log, SystemRolloutMsgSkipIdentical)
 		if err != nil {
