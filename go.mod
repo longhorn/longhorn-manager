@@ -59,12 +59,12 @@ require (
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240823042906-1ae3d5073f60
-	github.com/longhorn/backupstore v0.0.0-20240823072635-7afd6aa10d3e
+	github.com/longhorn/backupstore v0.0.0-20240827054225-fe89e488b75f
 	github.com/longhorn/go-common-libs v0.0.0-20240821134112-907f57efd48f
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240811043302-df8de353dd58
 	github.com/longhorn/go-spdk-helper v0.0.0-20240820144231-33c0873802ff
 	github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240824053610-9d2b194f765f
-	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240824081444-10108a7c3ffc
+	github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20240825.0.20240828024302-1bdcacd93207
 	github.com/longhorn/longhorn-share-manager v1.7.0-rc1
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.18.0
@@ -103,7 +103,7 @@ require (
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/google/pprof v0.0.0-20231023181126-ff6d637d2a7b // indirect
 	github.com/jonboulle/clockwork v0.4.0 // indirect
-	github.com/longhorn/types v0.0.0-20240725040629-473d671316c4 // indirect
+	github.com/longhorn/types v0.0.0-20240827042720-af8f10eb57cd // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/moby/term v0.0.0-20221205130635-1aeaba878587 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
@@ -180,14 +180,14 @@ require (
 	go.etcd.io/etcd/api/v3 v3.5.10 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.5.10 // indirect
 	go.etcd.io/etcd/client/v3 v3.5.10 // indirect
-	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.45.0 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.45.0 // indirect
-	go.opentelemetry.io/otel v1.19.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.49.0 // indirect
+	go.opentelemetry.io/otel v1.24.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.19.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.19.0 // indirect
-	go.opentelemetry.io/otel/metric v1.19.0 // indirect
+	go.opentelemetry.io/otel/metric v1.24.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.19.0 // indirect
-	go.opentelemetry.io/otel/trace v1.19.0 // indirect
+	go.opentelemetry.io/otel/trace v1.24.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.0.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0

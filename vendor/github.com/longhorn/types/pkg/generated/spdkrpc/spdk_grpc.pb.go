@@ -64,7 +64,6 @@ const (
 	SPDKService_EngineBackupCreate_FullMethodName                   = "/spdkrpc.SPDKService/EngineBackupCreate"
 	SPDKService_EngineBackupStatus_FullMethodName                   = "/spdkrpc.SPDKService/EngineBackupStatus"
 	SPDKService_EngineBackupRestore_FullMethodName                  = "/spdkrpc.SPDKService/EngineBackupRestore"
-	SPDKService_EngineBackupRestoreFinish_FullMethodName            = "/spdkrpc.SPDKService/EngineBackupRestoreFinish"
 	SPDKService_EngineRestoreStatus_FullMethodName                  = "/spdkrpc.SPDKService/EngineRestoreStatus"
 	SPDKService_DiskCreate_FullMethodName                           = "/spdkrpc.SPDKService/DiskCreate"
 	SPDKService_DiskDelete_FullMethodName                           = "/spdkrpc.SPDKService/DiskDelete"
@@ -124,7 +123,6 @@ type SPDKServiceClient interface {
 	EngineBackupCreate(ctx context.Context, in *BackupCreateRequest, opts ...grpc.CallOption) (*BackupCreateResponse, error)
 	EngineBackupStatus(ctx context.Context, in *BackupStatusRequest, opts ...grpc.CallOption) (*BackupStatusResponse, error)
 	EngineBackupRestore(ctx context.Context, in *EngineBackupRestoreRequest, opts ...grpc.CallOption) (*EngineBackupRestoreResponse, error)
-	EngineBackupRestoreFinish(ctx context.Context, in *EngineBackupRestoreFinishRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineRestoreStatus(ctx context.Context, in *RestoreStatusRequest, opts ...grpc.CallOption) (*RestoreStatusResponse, error)
 	DiskCreate(ctx context.Context, in *DiskCreateRequest, opts ...grpc.CallOption) (*Disk, error)
 	DiskDelete(ctx context.Context, in *DiskDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -586,15 +584,6 @@ func (c *sPDKServiceClient) EngineBackupRestore(ctx context.Context, in *EngineB
 	return out, nil
 }
 
-func (c *sPDKServiceClient) EngineBackupRestoreFinish(ctx context.Context, in *EngineBackupRestoreFinishRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, SPDKService_EngineBackupRestoreFinish_FullMethodName, in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *sPDKServiceClient) EngineRestoreStatus(ctx context.Context, in *RestoreStatusRequest, opts ...grpc.CallOption) (*RestoreStatusResponse, error) {
 	out := new(RestoreStatusResponse)
 	err := c.cc.Invoke(ctx, SPDKService_EngineRestoreStatus_FullMethodName, in, out, opts...)
@@ -724,7 +713,6 @@ type SPDKServiceServer interface {
 	EngineBackupCreate(context.Context, *BackupCreateRequest) (*BackupCreateResponse, error)
 	EngineBackupStatus(context.Context, *BackupStatusRequest) (*BackupStatusResponse, error)
 	EngineBackupRestore(context.Context, *EngineBackupRestoreRequest) (*EngineBackupRestoreResponse, error)
-	EngineBackupRestoreFinish(context.Context, *EngineBackupRestoreFinishRequest) (*emptypb.Empty, error)
 	EngineRestoreStatus(context.Context, *RestoreStatusRequest) (*RestoreStatusResponse, error)
 	DiskCreate(context.Context, *DiskCreateRequest) (*Disk, error)
 	DiskDelete(context.Context, *DiskDeleteRequest) (*emptypb.Empty, error)
@@ -872,9 +860,6 @@ func (UnimplementedSPDKServiceServer) EngineBackupStatus(context.Context, *Backu
 }
 func (UnimplementedSPDKServiceServer) EngineBackupRestore(context.Context, *EngineBackupRestoreRequest) (*EngineBackupRestoreResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EngineBackupRestore not implemented")
-}
-func (UnimplementedSPDKServiceServer) EngineBackupRestoreFinish(context.Context, *EngineBackupRestoreFinishRequest) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method EngineBackupRestoreFinish not implemented")
 }
 func (UnimplementedSPDKServiceServer) EngineRestoreStatus(context.Context, *RestoreStatusRequest) (*RestoreStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EngineRestoreStatus not implemented")
@@ -1714,24 +1699,6 @@ func _SPDKService_EngineBackupRestore_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SPDKService_EngineBackupRestoreFinish_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(EngineBackupRestoreFinishRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(SPDKServiceServer).EngineBackupRestoreFinish(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: SPDKService_EngineBackupRestoreFinish_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SPDKServiceServer).EngineBackupRestoreFinish(ctx, req.(*EngineBackupRestoreFinishRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _SPDKService_EngineRestoreStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RestoreStatusRequest)
 	if err := dec(in); err != nil {
@@ -2068,10 +2035,6 @@ var SPDKService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "EngineBackupRestore",
 			Handler:    _SPDKService_EngineBackupRestore_Handler,
-		},
-		{
-			MethodName: "EngineBackupRestoreFinish",
-			Handler:    _SPDKService_EngineBackupRestoreFinish_Handler,
 		},
 		{
 			MethodName: "EngineRestoreStatus",
