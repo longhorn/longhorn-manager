@@ -1699,10 +1699,7 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 }
 
 func (nc *NodeController) deleteDisk(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string) error {
-	if diskUUID == "" {
-		log.Infof("Disk %v has no diskUUID, skip deleting", diskName)
-		return nil
-	}
+	log.Infof("Deleting disk %v with diskUUID %v", diskName, diskUUID)
 
 	dataEngine := util.GetDataEngineForDiskType(diskType)
 
