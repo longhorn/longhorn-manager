@@ -757,6 +757,10 @@ func ErrorIsNotFound(err error) bool {
 	return strings.Contains(err.Error(), "cannot find")
 }
 
+func ErrorIsInProgress(err error) bool {
+	return strings.Contains(err.Error(), "in progress")
+}
+
 func ErrorIsStopped(err error) bool {
 	return strings.Contains(err.Error(), "is stopped")
 }
