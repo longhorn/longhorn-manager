@@ -32,7 +32,7 @@ func NewBackupCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemBackup, "actual_size_bytes"),
 			"Actual size of this backup",
-			[]string{volumeLabel, backupLabel},
+			[]string{volumeLabel, backupLabel, recurringJobLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -42,7 +42,7 @@ func NewBackupCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemBackup, "state"),
 			"State of this backup",
-			[]string{volumeLabel, backupLabel},
+			[]string{volumeLabel, backupLabel, recurringJobLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -79,8 +79,9 @@ func (bc *BackupCollector) Collect(ch chan<- prometheus.Metric) {
 			if !ok {
 				bc.logger.WithError(err).Warn("Error get backup volume label")
 			}
-			ch <- prometheus.MustNewConstMetric(bc.sizeMetric.Desc, bc.sizeMetric.Type, size, backupVolumeName, backup.Name)
-			ch <- prometheus.MustNewConstMetric(bc.stateMetric.Desc, bc.stateMetric.Type, float64(getBackupStateValue(backup)), backupVolumeName, backup.Name)
+			backupRecurringJobName := backup.Labels[types.RecurringJobLabel]
+			ch <- prometheus.MustNewConstMetric(bc.sizeMetric.Desc, bc.sizeMetric.Type, size, backupVolumeName, backup.Name, backupRecurringJobName)
+			ch <- prometheus.MustNewConstMetric(bc.stateMetric.Desc, bc.stateMetric.Type, float64(getBackupStateValue(backup)), backupVolumeName, backup.Name, backupRecurringJobName)
 		}
 	}
 }

@@ -34,6 +34,7 @@ const (
 	userCreatedLabel        = "user_created"
 	backingImageLabel       = "backing_image"
 	backupBackingImageLabel = "backup_backing_image"
+	recurringJobLabel       = "recurring_job"
 )
 
 type metricInfo struct {
