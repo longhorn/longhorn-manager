@@ -24,6 +24,7 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	systembackupstore "github.com/longhorn/backupstore/systembackup"
+	lhtypes "github.com/longhorn/go-common-libs/types"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -276,7 +277,17 @@ func newBackupTargetClient(ds *datastore.DataStore, backupTarget *longhorn.Backu
 			return nil, err
 		}
 	}
-	return engineapi.NewBackupTargetClient(engineImage, backupTarget.Spec.BackupTargetURL, credential), nil
+
+	executeTimeout, err := ds.GetSettingAsInt(types.SettingNameBackupExecuteTimeout)
+	if err != nil {
+		return nil, err
+	}
+	timeout := time.Duration(executeTimeout) * time.Minute
+	if executeTimeout <= 0 {
+		timeout = lhtypes.ExecuteNoTimeout
+	}
+
+	return engineapi.NewBackupTargetClient(engineImage, backupTarget.Spec.BackupTargetURL, credential, timeout), nil
 }
 
 func newBackupTargetClientFromDefaultEngineImage(ds *datastore.DataStore, backupTarget *longhorn.BackupTarget) (*engineapi.BackupTargetClient, error) {

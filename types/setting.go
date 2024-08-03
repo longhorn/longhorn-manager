@@ -135,6 +135,7 @@ const (
 	SettingNameFreezeFilesystemForSnapshot                              = SettingName("freeze-filesystem-for-snapshot")
 	SettingNameAutoCleanupSnapshotWhenDeleteBackup                      = SettingName("auto-cleanup-when-delete-backup")
 	SettingNameDefaultMinNumberOfBackingImageCopies                     = SettingName("default-min-number-of-backing-image-copies")
+	SettingNameBackupExecuteTimeout                                     = SettingName("backup-execute-timeout")
 	SettingNameRWXVolumeFastFailover                                    = SettingName("rwx-volume-fast-failover")
 )
 
@@ -227,6 +228,7 @@ var (
 		SettingNameFreezeFilesystemForSnapshot,
 		SettingNameAutoCleanupSnapshotWhenDeleteBackup,
 		SettingNameDefaultMinNumberOfBackingImageCopies,
+		SettingNameBackupExecuteTimeout,
 		SettingNameRWXVolumeFastFailover,
 	}
 )
@@ -347,6 +349,7 @@ var (
 		SettingNameFreezeFilesystemForSnapshot:                              SettingDefinitionFreezeFilesystemForSnapshot,
 		SettingNameAutoCleanupSnapshotWhenDeleteBackup:                      SettingDefinitionAutoCleanupSnapshotWhenDeleteBackup,
 		SettingNameDefaultMinNumberOfBackingImageCopies:                     SettingDefinitionDefaultMinNumberOfBackingImageCopies,
+		SettingNameBackupExecuteTimeout:                                     SettingDefinitionBackupExecuteTimeout,
 		SettingNameRWXVolumeFastFailover:                                    SettingDefinitionRWXVolumeFastFailover,
 	}
 
@@ -404,6 +407,19 @@ var (
 		Required: true,
 		ReadOnly: false,
 		Default:  "1440",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
+	}
+
+	SettingDefinitionBackupExecuteTimeout = SettingDefinition{
+		DisplayName: "Backup Execute Timeout",
+		Description: "In minutes. This setting determines the timeout for the backup engine execution. Set to 0 to disable the timeout.",
+		Category:    SettingCategoryBackup,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "1",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 		},
