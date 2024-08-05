@@ -814,12 +814,13 @@ func (imc *InstanceManagerController) syncInstanceManagerPDB(im *longhorn.Instan
 			return nil
 		}
 
-		canDeletePDB, err := imc.canDeleteInstanceManagerPDB(im)
+		canDeletePDB, msg, err := imc.canDeleteInstanceManagerPDB(im)
 		if err != nil {
 			return err
 		}
 
 		if !canDeletePDB {
+			imc.logger.Infof("Node %v is marked unschedulable but removing %v PDB is blocked: %v ", im.Name, imc.controllerID, msg)
 			return nil
 		}
 
@@ -842,12 +843,13 @@ func (imc *InstanceManagerController) syncInstanceManagerPDB(im *longhorn.Instan
 	}
 
 	if clusterAutoscalerEnabled {
-		canDeletePDB, err := imc.canDeleteInstanceManagerPDB(im)
+		canDeletePDB, msg, err := imc.canDeleteInstanceManagerPDB(im)
 		if err != nil {
 			return err
 		}
 
 		if !canDeletePDB {
+			imc.logger.Debugf("Autoscaler is enabled but removing %v PDB for node %v is blocked: %v", im.Name, imc.controllerID, msg)
 			if imPDB == nil {
 				return imc.createInstanceManagerPDB(im)
 			}
@@ -920,52 +922,100 @@ func (imc *InstanceManagerController) deleteInstanceManagerPDB(im *longhorn.Inst
 	return nil
 }
 
-func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.InstanceManager) (bool, error) {
+const ITERATE_NAME_LIMIT = 5
+
+func formatInstanceMessage(im *longhorn.InstanceManager) string {
+	msg := ""
+	ieFormated := false
+	if len(im.Status.InstanceEngines) > 0 {
+		msg = fmt.Sprintf("InstanceEngines count %v", len(im.Status.InstanceEngines))
+		ieFormated = true
+		i := 0
+		// only fetch the key, format: pvc-546894e9-d41a-4e34-bfa8-a4442f8dce20-e-0
+		for k := range im.Status.InstanceEngines {
+			msg = msg + " " + k
+			if i++; i >= ITERATE_NAME_LIMIT {
+				break
+			}
+		}
+	}
+
+	if len(im.Status.Instances) > 0 {
+		if ieFormated {
+			msg = fmt.Sprintf("%v Instances count %v", msg, len(im.Status.Instances))
+		} else {
+			msg = fmt.Sprintf("Instances count %v", len(im.Status.Instances))
+		}
+		i := 0
+		for k := range im.Status.Instances {
+			msg = msg + " " + k
+			if i++; i >= ITERATE_NAME_LIMIT {
+				break
+			}
+		}
+	}
+
+	return msg
+}
+
+func formatReplicaMessage(rep []*longhorn.Replica) string {
+	limit := len(rep)
+	msg := fmt.Sprintf("count %v", limit)
+	if limit > ITERATE_NAME_LIMIT {
+		limit = ITERATE_NAME_LIMIT
+	}
+	for i := 0; i < limit; i++ {
+		msg = msg + " " + rep[i].Name
+	}
+	return msg
+}
+
+func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.InstanceManager) (bool, string, error) {
 	// If there is no engine instance process inside the engine instance manager,
 	// it means that all volumes are detached.
 	// We can delete the PodDisruptionBudget for the engine instance manager.
 	if im.Spec.Type == longhorn.InstanceManagerTypeEngine {
 		if len(im.Status.InstanceEngines)+len(im.Status.Instances) == 0 { // nolint: staticcheck
-			return true, nil
+			return true, "", nil
 		}
-		return false, nil
+		return false, fmt.Sprintf("some instances are still running %v", formatInstanceMessage(im)), nil
 	}
 
 	// Make sure that the instance manager is of type replica
 	if im.Spec.Type != longhorn.InstanceManagerTypeReplica && im.Spec.Type != longhorn.InstanceManagerTypeAllInOne {
-		return false, fmt.Errorf("the instance manager %v has invalid type: %v ", im.Name, im.Spec.Type)
+		return false, "", fmt.Errorf("the instance manager %v has invalid type: %v ", im.Name, im.Spec.Type)
 	}
 
 	// Must wait for all volumes detached from the current node first.
 	// This also means that we must wait until the PDB of engine instance manager
 	// on the current node is deleted
-	allVolumeDetached, err := imc.areAllVolumesDetachedFromNode(im.Spec.NodeID)
+	allVolumeDetached, msg, err := imc.areAllVolumesDetachedFromNode(im.Spec.NodeID)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	if !allVolumeDetached {
-		return false, nil
+		return false, fmt.Sprintf("some volumes are still attached %v", msg), nil
 	}
 
 	nodeDrainingPolicy, err := imc.ds.GetSettingValueExisted(types.SettingNameNodeDrainPolicy)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	if nodeDrainingPolicy == string(types.NodeDrainPolicyAlwaysAllow) {
-		return true, nil
+		return true, "", nil
 	}
 
 	replicasOnCurrentNode, err := imc.ds.ListReplicasByNodeRO(im.Spec.NodeID)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
-			return true, nil
+			return true, "", nil
 		}
-		return false, err
+		return false, "", err
 	}
 
 	if nodeDrainingPolicy == string(types.NodeDrainPolicyBlockForEviction) && len(replicasOnCurrentNode) > 0 {
 		// We must wait for ALL replicas to be evicted before removing the PDB.
-		return false, nil
+		return false, fmt.Sprintf("some replicas block eviction %v", formatReplicaMessage(replicasOnCurrentNode)), nil
 	}
 
 	targetReplicas := []*longhorn.Replica{}
@@ -987,7 +1037,7 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 
 		pdbProtectedHealthyReplicas, err := imc.ds.ListVolumePDBProtectedHealthyReplicasRO(replica.Spec.VolumeName)
 		if err != nil {
-			return false, err
+			return false, "", err
 		}
 		for _, pdbProtectedHealthyReplica := range pdbProtectedHealthyReplicas {
 			if pdbProtectedHealthyReplica.Spec.NodeID != im.Spec.NodeID {
@@ -1005,45 +1055,45 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 			replica.Spec.NodeID == im.Spec.NodeID
 
 		if !hasPDBOnAnotherNode && !isUnusedReplicaOnCurrentNode {
-			return false, nil
+			return false, fmt.Sprintf("replica %v has no pdb on another node", replica.Name), nil
 		}
 	}
 
-	return true, nil
+	return true, "", nil
 }
 
-func (imc *InstanceManagerController) areAllVolumesDetachedFromNode(nodeName string) (bool, error) {
-	detached, err := imc.areAllInstanceRemovedFromNodeByType(nodeName, longhorn.InstanceManagerTypeEngine)
+func (imc *InstanceManagerController) areAllVolumesDetachedFromNode(nodeName string) (bool, string, error) {
+	detached, msg, err := imc.areAllInstanceRemovedFromNodeByType(nodeName, longhorn.InstanceManagerTypeEngine)
 	if err != nil {
-		return false, err
+		return false, msg, err
 	}
 	if !detached {
-		return false, nil
+		return false, msg, nil
 	}
 
-	detached, err = imc.areAllInstanceRemovedFromNodeByType(nodeName, longhorn.InstanceManagerTypeAllInOne)
+	detached, msg, err = imc.areAllInstanceRemovedFromNodeByType(nodeName, longhorn.InstanceManagerTypeAllInOne)
 	if err != nil {
-		return false, err
+		return false, msg, err
 	}
-	return detached, nil
+	return detached, msg, nil
 }
 
-func (imc *InstanceManagerController) areAllInstanceRemovedFromNodeByType(nodeName string, imType longhorn.InstanceManagerType) (bool, error) {
+func (imc *InstanceManagerController) areAllInstanceRemovedFromNodeByType(nodeName string, imType longhorn.InstanceManagerType) (bool, string, error) {
 	ims, err := imc.ds.ListInstanceManagersByNodeRO(nodeName, imType, "")
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
-			return true, nil
+			return true, "", nil
 		}
-		return false, err
+		return false, "", err
 	}
 
 	for _, im := range ims {
 		if len(im.Status.InstanceEngines)+len(im.Status.Instances) > 0 { // nolint: staticcheck
-			return false, nil
+			return false, formatInstanceMessage(im), nil
 		}
 	}
 
-	return true, nil
+	return true, "", nil
 }
 
 func (imc *InstanceManagerController) createInstanceManagerPDB(im *longhorn.InstanceManager) error {
