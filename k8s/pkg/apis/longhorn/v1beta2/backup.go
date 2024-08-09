@@ -5,14 +5,17 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 type BackupState string
 
 const (
-	// non-final state
+	// Non-final state
 	BackupStateNew        = BackupState("")
 	BackupStatePending    = BackupState("Pending")
 	BackupStateInProgress = BackupState("InProgress")
-	// final state
+	// Final state
 	BackupStateCompleted = BackupState("Completed")
 	BackupStateError     = BackupState("Error")
 	BackupStateUnknown   = BackupState("Unknown")
+	// Deleting is also considered as final state
+	// as it only happens when the backup is being deleting and has deletion timestamp
+	BackupStateDeleting = BackupState("Deleting")
 )
 
 type BackupCompressionMethod string
