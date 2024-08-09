@@ -34,3 +34,12 @@ func CreateTempFile(directory, fileName, content string, c *check.C) *os.File {
 
 	return tempFile
 }
+
+func CreateTempSparseFile(directory, fileName string, fileSize int64, content string, c *check.C) *os.File {
+	tempFile := CreateTempFile(directory, fileName, content, c)
+
+	err := tempFile.Truncate(fileSize)
+	c.Assert(err, check.IsNil)
+
+	return tempFile
+}
