@@ -1224,10 +1224,10 @@ github.com/longhorn/backing-image-manager v1.7.0-rc3 h1:qJ2sOUFzrA7pHELefL2URIXP
 github.com/longhorn/backing-image-manager v1.7.0-rc3/go.mod h1:LnsiHjCOsTYJ8Bh9C/x3HnYY2ZtHT7ProEhbLDhYgPo=
 github.com/longhorn/backupstore v0.0.0-20240806234049-13b6333c9ddd h1:5mIK3tZVmqA47s61vRmsT5yoORAFESZ7KauxePbyLpY=
 github.com/longhorn/backupstore v0.0.0-20240806234049-13b6333c9ddd/go.mod h1:3LS9oGrEAUO59xbdACCbKlr7j9LkAvmx8RCJBCfnTaE=
-github.com/longhorn/go-common-libs v0.0.0-20240729132251-9e1e0e6045c6 h1:RysSv4aS6oZD1w3tqVIyisAmHDYn/oo30x2ACNVLI5w=
-github.com/longhorn/go-common-libs v0.0.0-20240729132251-9e1e0e6045c6/go.mod h1:n8qac+ubzVdubf0kuMzsjKZxn43IuhLAHeakwpnB7UM=
-github.com/longhorn/go-iscsi-helper v0.0.0-20240804172947-37affd6b656b h1:nHFK4rcJ+/EGvTmuAA5aPEXoELtzy4sF6pw2CRwQpFc=
-github.com/longhorn/go-iscsi-helper v0.0.0-20240804172947-37affd6b656b/go.mod h1:AySkNpVyc/P8hbR9Xn18lLSXDOlvwJAGxZYETWSM0dk=
+github.com/longhorn/go-common-libs v0.0.0-20240810080359-f043d8cb39c4 h1:maDRUfpBIWxrMIT7OgSIl9gtbzU3EUq74wMp9QQawWU=
+github.com/longhorn/go-common-libs v0.0.0-20240810080359-f043d8cb39c4/go.mod h1:T13a8UntfjpAY3ssYuDbGrgAAtzZm2RFQN3QSkNbmsU=
+github.com/longhorn/go-iscsi-helper v0.0.0-20240810084710-ec81ea5b2775 h1:GeYaVdg/Msl0p/bh47JiG+vkk7MCZWa3AhV9ucZrM4c=
+github.com/longhorn/go-iscsi-helper v0.0.0-20240810084710-ec81ea5b2775/go.mod h1:ohKdT7BRNElO+VWX0XBmMsJvfsfsa9bff43SzF3txaE=
 github.com/longhorn/go-spdk-helper v0.0.0-20240810030817-541cd738003e h1:zP1aK/ujr1DeYTXp7J6sQ3lq2qHyV7vTkKn/V+eTeQQ=
 github.com/longhorn/go-spdk-helper v0.0.0-20240810030817-541cd738003e/go.mod h1:ThWnOfQjcqViQPnxHNYKnP+IU2iQPhZPACSel9f/UCs=
 github.com/longhorn/longhorn-engine v1.7.0-rc3 h1:YTt++OeSrEOlifz++8VAOH/aJ4lGShD2TaJP1ZaQ3Uw=
