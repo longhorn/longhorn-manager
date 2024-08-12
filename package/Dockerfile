@@ -12,7 +12,7 @@ ENV ARCH ${TARGETPLATFORM#linux/}
 
 COPY package/bin/longhorn-manager-${ARCH} /usr/local/sbin/longhorn-manager
 
-COPY package/launch-manager /usr/local/sbin/
+COPY package/launch-manager package/nsmounter /usr/local/sbin/
 
 RUN zypper -n ref && \
     zypper update -y
