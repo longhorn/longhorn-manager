@@ -812,9 +812,47 @@ func getNodeServiceCapabilities(cs []csi.NodeServiceCapability_RPC_Type) []*csi.
 	return nscs
 }
 
+func (ns *NodeServer) requireHostNamespaceMounter(volume *longhornclient.Volume, volumeCapability *csi.VolumeCapability) (bool, error) {
+	if !requiresSharedAccess(volume, volumeCapability) {
+		return false, nil
+	}
+	if volume.Migratable {
+		return false, nil
+	}
+
+	storageNetworkSetting, err := ns.apiClient.Setting.ById(string(types.SettingNameStorageNetwork))
+	if err != nil {
+		return false, err
+	}
+	storageNetworkForRWXVolumeEnabledSetting, err := ns.apiClient.Setting.ById(string(types.SettingNameStorageNetworkForRWXVolumeEnabled))
+	if err != nil {
+		return false, err
+	}
+	storageNetworkForRWXVolumeEnabled, err := strconv.ParseBool(storageNetworkForRWXVolumeEnabledSetting.Value)
+	if err != nil {
+		return false, err
+	}
+
+	if storageNetworkSetting.Value != "" && storageNetworkForRWXVolumeEnabled {
+		return false, nil
+	}
+
+	return true, nil
+}
+
 func (ns *NodeServer) getMounter(volume *longhornclient.Volume, volumeCapability *csi.VolumeCapability, volumeContext map[string]string) (mount.Interface, error) {
 	if volumeCapability.GetBlock() != nil {
 		return mount.New(""), nil
+	}
+
+	// HACK: to nsenter host namespaces for the nfs mounts to stay available after csi plugin dies.
+	// Only do this for regular RWX volume with false storageNetworkForRWXVolumeEnabledSetting
+	requireHostNamespaceMounter, err := ns.requireHostNamespaceMounter(volume, volumeCapability)
+	if err != nil {
+		return nil, err
+	}
+	if requireHostNamespaceMounter {
+		return mount.New("/usr/local/sbin/nsmounter"), nil
 	}
 
 	// mounter that can format and use hard coded filesystem params
