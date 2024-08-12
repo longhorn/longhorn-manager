@@ -307,8 +307,7 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 					Tolerations:        tolerations,
 					NodeSelector:       nodeSelector,
 					PriorityClassName:  priorityClass,
-					HostNetwork:        true,
-					DNSPolicy:          corev1.DNSClusterFirstWithHostNet,
+					HostPID:            true,
 					Containers: []corev1.Container{
 						{
 							Name:  "node-driver-registrar",
@@ -458,6 +457,11 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 									MountPath: "/sys",
 								},
 								{
+									Name:             "host",
+									MountPath:        "/host",
+									MountPropagation: &MountPropagationBidirectional,
+								},
+								{
 									Name:      "lib-modules",
 									MountPath: "/lib/modules",
 									ReadOnly:  true,
@@ -523,6 +527,14 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 							VolumeSource: corev1.VolumeSource{
 								HostPath: &corev1.HostPathVolumeSource{
 									Path: "/sys",
+								},
+							},
+						},
+						{
+							Name: "host",
+							VolumeSource: corev1.VolumeSource{
+								HostPath: &corev1.HostPathVolumeSource{
+									Path: "/",
 								},
 							},
 						},
