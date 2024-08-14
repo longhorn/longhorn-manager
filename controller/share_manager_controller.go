@@ -451,8 +451,26 @@ func (c *ShareManagerController) syncShareManagerEndpoint(sm *longhorn.ShareMana
 		return nil
 	}
 
-	serviceFqdn := fmt.Sprintf("%v.%v.svc.cluster.local", sm.Name, sm.Namespace)
-	sm.Status.Endpoint = fmt.Sprintf("nfs://%v/%v", serviceFqdn, sm.Name)
+	storageNetwork, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
+	if err != nil {
+		return err
+	}
+
+	storageNetworkForRWXVolumeEnabled, err := c.ds.GetSettingAsBool(types.SettingNameStorageNetworkForRWXVolumeEnabled)
+	if err != nil {
+		return err
+	}
+
+	if types.IsStorageNetworkForRWXVolume(storageNetwork, storageNetworkForRWXVolumeEnabled) {
+		serviceFqdn := fmt.Sprintf("%v.%v.svc.cluster.local", sm.Name, sm.Namespace)
+		sm.Status.Endpoint = fmt.Sprintf("nfs://%v/%v", serviceFqdn, sm.Name)
+	} else {
+		endpoint := service.Spec.ClusterIP
+		if service.Spec.IPFamilies[0] == corev1.IPv6Protocol {
+			endpoint = fmt.Sprintf("[%v]", endpoint)
+		}
+		sm.Status.Endpoint = fmt.Sprintf("nfs://%v/%v", endpoint, sm.Name)
+	}
 
 	return nil
 }
