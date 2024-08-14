@@ -1,6 +1,6 @@
 #!/bin/bash
 
-PROC_DIR="/proc"
+PROC_DIR="/host/proc"
 
 os_distro_talos="talos"
 os_distro=""
@@ -43,4 +43,10 @@ get_os_distro
 
 [[ $os_distro = $os_distro_talos ]] && get_pid "kubelet"
 
-nsenter -t $target_pid -m -n -u -- "$@"
+# Use namespace files instead of -t to avoid the need for HostPID.
+ns_dir="$PROC_DIR/$target_pid/ns"
+ns_mnt="$ns_dir/mnt"
+ns_net="$ns_dir/net"
+ns_uts="$ns_dir/uts"
+
+nsenter --mount="$ns_mnt" --net="$ns_net" --uts="$ns_uts" -- "$@"
