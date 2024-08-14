@@ -419,8 +419,8 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 								},
 								{
 									// The plugin must be able to switch to the host's namespaces in order to execute
-									// cryptsetup commands for encrypted devices to mount RWX volumes when not using a
-									// storage network.
+									// cryptsetup commands for encrypted devices and to mount RWX volumes when not using
+									// a storage network.
 									Name:      "host-proc",
 									MountPath: "/host/proc",
 								},
