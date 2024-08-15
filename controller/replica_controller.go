@@ -21,7 +21,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -30,7 +29,6 @@ import (
 
 	lhns "github.com/longhorn/go-common-libs/ns"
 
-	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -520,12 +518,6 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) (err error) {
 	}
 	log := getLoggerForReplica(rc.logger, r)
 
-	if types.IsDataEngineV1(r.Spec.DataEngine) {
-		if err := rc.deleteInstanceWithCLIAPIVersionOne(r); err != nil {
-			return err
-		}
-	}
-
 	var im *longhorn.InstanceManager
 	// Not assigned or not updated, try best to delete
 	if r.Status.InstanceManagerName == "" {
@@ -612,63 +604,6 @@ func canDeleteInstance(r *longhorn.Replica) bool {
 
 func deleteUnixSocketFile(volumeName string) error {
 	return os.RemoveAll(filepath.Join(types.UnixDomainSocketDirectoryOnHost, volumeName+filepath.Ext(".sock")))
-}
-
-func (rc *ReplicaController) deleteInstanceWithCLIAPIVersionOne(r *longhorn.Replica) (err error) {
-	isCLIAPIVersionOne := false
-	if r.Status.CurrentImage != "" {
-		isCLIAPIVersionOne, err = rc.ds.IsEngineImageCLIAPIVersionOne(r.Status.CurrentImage)
-		if err != nil {
-			return err
-		}
-	}
-
-	if isCLIAPIVersionOne {
-		pod, err := rc.kubeClient.CoreV1().Pods(rc.namespace).Get(context.TODO(), r.Name, metav1.GetOptions{})
-		if err != nil && !apierrors.IsNotFound(err) {
-			return errors.Wrapf(err, "failed to get pod for old replica %v", r.Name)
-		}
-		if apierrors.IsNotFound(err) {
-			pod = nil
-		}
-
-		log := getLoggerForReplica(rc.logger, r)
-		log.Info("Deleting old version replica with running pod")
-		rc.deleteOldReplicaPod(pod, r)
-	}
-	return nil
-}
-
-func (rc *ReplicaController) deleteOldReplicaPod(pod *corev1.Pod, r *longhorn.Replica) {
-	// pod already stopped
-	if pod == nil {
-		return
-	}
-
-	if pod.DeletionTimestamp != nil {
-		if pod.DeletionGracePeriodSeconds != nil && *pod.DeletionGracePeriodSeconds != 0 {
-			// force deletion in the case of node lost
-			deletionDeadline := pod.DeletionTimestamp.Add(time.Duration(*pod.DeletionGracePeriodSeconds) * time.Second)
-			now := time.Now().UTC()
-			if now.After(deletionDeadline) {
-				log := rc.logger.WithField("pod", pod.Name)
-				log.Warnf("Replica pod still exists after grace period %v passed, force deletion: now %v, deadline %v",
-					pod.DeletionGracePeriodSeconds, now, deletionDeadline)
-				gracePeriod := int64(0)
-				if err := rc.kubeClient.CoreV1().Pods(rc.namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{GracePeriodSeconds: &gracePeriod}); err != nil {
-					log.WithError(err).Warn("Failed to force deleting replica pod")
-					return
-				}
-			}
-		}
-		return
-	}
-
-	if err := rc.kubeClient.CoreV1().Pods(rc.namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{}); err != nil {
-		rc.eventRecorder.Eventf(r, corev1.EventTypeWarning, constant.EventReasonFailedStopping, "Error stopping pod for old replica %v: %v", pod.Name, err)
-		return
-	}
-	rc.eventRecorder.Eventf(r, corev1.EventTypeNormal, constant.EventReasonStop, "Stops pod for old replica %v", pod.Name)
 }
 
 func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {

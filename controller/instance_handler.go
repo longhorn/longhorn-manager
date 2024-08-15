@@ -256,45 +256,33 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 
 	log := logrus.WithField("instance", instanceName)
 
-	isCLIAPIVersionOne := false
-	if types.IsDataEngineV1(spec.DataEngine) {
-		if status.CurrentImage != "" {
-			isCLIAPIVersionOne, err = h.ds.IsEngineImageCLIAPIVersionOne(status.CurrentImage)
-			if err != nil {
+	var im *longhorn.InstanceManager
+	if status.InstanceManagerName != "" {
+		im, err = h.ds.GetInstanceManagerRO(status.InstanceManagerName)
+		if err != nil {
+			if !datastore.ErrorIsNotFound(err) {
 				return err
 			}
 		}
 	}
-
-	var im *longhorn.InstanceManager
-	if !isCLIAPIVersionOne {
-		if status.InstanceManagerName != "" {
-			im, err = h.ds.GetInstanceManagerRO(status.InstanceManagerName)
-			if err != nil {
-				if !datastore.ErrorIsNotFound(err) {
-					return err
-				}
-			}
+	// There should be an available instance manager for a scheduled instance when its related engine image is compatible
+	if im == nil && spec.Image != "" && spec.NodeID != "" {
+		dataEngineEnabled, err := h.ds.IsDataEngineEnabled(spec.DataEngine)
+		if err != nil {
+			return err
 		}
-		// There should be an available instance manager for a scheduled instance when its related engine image is compatible
-		if im == nil && spec.Image != "" && spec.NodeID != "" {
-			dataEngineEnabled, err := h.ds.IsDataEngineEnabled(spec.DataEngine)
+		if !dataEngineEnabled {
+			return nil
+		}
+		// The related node maybe cleaned up then there is no available instance manager for this instance (typically it's replica).
+		isNodeDownOrDeleted, err := h.ds.IsNodeDownOrDeletedOrDelinquent(spec.NodeID, spec.VolumeName)
+		if err != nil {
+			return err
+		}
+		if !isNodeDownOrDeleted {
+			im, err = h.ds.GetInstanceManagerByInstanceRO(obj)
 			if err != nil {
-				return err
-			}
-			if !dataEngineEnabled {
-				return nil
-			}
-			// The related node maybe cleaned up then there is no available instance manager for this instance (typically it's replica).
-			isNodeDownOrDeleted, err := h.ds.IsNodeDownOrDeletedOrDelinquent(spec.NodeID, spec.VolumeName)
-			if err != nil {
-				return err
-			}
-			if !isNodeDownOrDeleted {
-				im, err = h.ds.GetInstanceManagerByInstanceRO(obj)
-				if err != nil {
-					return errors.Wrapf(err, "failed to get instance manager for instance %v", instanceName)
-				}
+				return errors.Wrapf(err, "failed to get instance manager for instance %v", instanceName)
 			}
 		}
 	}
@@ -334,10 +322,6 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 	// do nothing for incompatible instance except for deleting
 	switch spec.DesireState {
 	case longhorn.InstanceStateRunning:
-		if isCLIAPIVersionOne {
-			return nil
-		}
-
 		if im == nil {
 			break
 		}
@@ -364,20 +348,6 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		}
 
 	case longhorn.InstanceStateStopped:
-		if isCLIAPIVersionOne {
-			if err := h.deleteInstance(instanceName, runtimeObj); err != nil {
-				return err
-			}
-			status.Started = false
-			status.CurrentState = longhorn.InstanceStateStopped
-			status.CurrentImage = ""
-			status.InstanceManagerName = ""
-			status.IP = ""
-			status.StorageIP = ""
-			status.Port = 0
-			return nil
-		}
-
 		if im != nil && im.DeletionTimestamp == nil {
 			// there is a delay between deleteInstance() invocation and state/InstanceManager update,
 			// deleteInstance() may be called multiple times.
