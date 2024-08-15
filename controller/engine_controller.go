@@ -327,16 +327,6 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		}
 	}()
 
-	isCLIAPIVersionOne := false
-	if types.IsDataEngineV1(engine.Spec.DataEngine) {
-		if engine.Status.CurrentImage != "" {
-			isCLIAPIVersionOne, err = ec.ds.IsEngineImageCLIAPIVersionOne(engine.Status.CurrentImage)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
 	syncReplicaAddressMap := false
 	if len(engine.Spec.UpgradedReplicaAddressMap) != 0 && engine.Status.CurrentImage != engine.Spec.Image {
 		if err := ec.Upgrade(engine, log); err != nil {
@@ -357,16 +347,6 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 
 	if err := ec.instanceHandler.ReconcileInstanceState(engine, &engine.Spec.InstanceSpec, &engine.Status.InstanceStatus); err != nil {
 		return err
-	}
-
-	// For incompatible engine, skip starting engine monitor and clean up fields when the engine is not running
-	if isCLIAPIVersionOne {
-		if engine.Status.CurrentState != longhorn.InstanceStateRunning {
-			engine.Status.Endpoint = ""
-			engine.Status.ReplicaModeMap = nil
-			engine.Status.ReplicaTransitionTimeMap = nil
-		}
-		return nil
 	}
 
 	if engine.Status.CurrentState == longhorn.InstanceStateRunning {
@@ -521,15 +501,8 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 	if !ok {
 		return fmt.Errorf("invalid object for engine process deletion: %v", obj)
 	}
+
 	log := getLoggerForEngine(ec.logger, e)
-
-	if types.IsDataEngineV1(e.Spec.DataEngine) {
-		err = ec.deleteInstanceWithCLIAPIVersionOne(e)
-		if err != nil {
-			return err
-		}
-	}
-
 	var im *longhorn.InstanceManager
 
 	// Not assigned or not updated, try best to delete
@@ -641,61 +614,6 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 	}
 
 	return nil
-}
-
-func (ec *EngineController) deleteInstanceWithCLIAPIVersionOne(e *longhorn.Engine) (err error) {
-	isCLIAPIVersionOne := false
-	if e.Status.CurrentImage != "" {
-		isCLIAPIVersionOne, err = ec.ds.IsEngineImageCLIAPIVersionOne(e.Status.CurrentImage)
-		if err != nil {
-			return err
-		}
-	}
-
-	if isCLIAPIVersionOne {
-		pod, err := ec.kubeClient.CoreV1().Pods(ec.namespace).Get(context.TODO(), e.Name, metav1.GetOptions{})
-		if err != nil && !apierrors.IsNotFound(err) {
-			return errors.Wrapf(err, "failed to get pod for old engine %v", e.Name)
-		}
-		if apierrors.IsNotFound(err) {
-			pod = nil
-		}
-
-		ec.logger.WithField("engine", e.Name).Info("Deleting engine pod because of outdated version")
-		ec.deleteOldEnginePod(pod, e)
-	}
-	return nil
-}
-
-func (ec *EngineController) deleteOldEnginePod(pod *corev1.Pod, e *longhorn.Engine) {
-	// pod already stopped
-	if pod == nil {
-		return
-	}
-
-	log := ec.logger.WithField("pod", pod.Name)
-	if pod.DeletionTimestamp != nil {
-		if pod.DeletionGracePeriodSeconds != nil && *pod.DeletionGracePeriodSeconds != 0 {
-			// force deletion in the case of node lost
-			deletionDeadline := pod.DeletionTimestamp.Add(time.Duration(*pod.DeletionGracePeriodSeconds) * time.Second)
-			now := time.Now().UTC()
-			if now.After(deletionDeadline) {
-				log.Warnf("Engine pod still exists after grace period %v passed, force deletion: now %v, deadline %v", pod.DeletionGracePeriodSeconds, now, deletionDeadline)
-				gracePeriod := int64(0)
-				if err := ec.kubeClient.CoreV1().Pods(ec.namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{GracePeriodSeconds: &gracePeriod}); err != nil {
-					log.WithError(err).Warn("Failed to force delete engine pod")
-					return
-				}
-			}
-		}
-		return
-	}
-
-	if err := ec.kubeClient.CoreV1().Pods(ec.namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{}); err != nil {
-		ec.eventRecorder.Eventf(e, corev1.EventTypeWarning, constant.EventReasonFailedStopping, "Error stopping pod for old engine %v: %v", pod.Name, err)
-		return
-	}
-	ec.eventRecorder.Eventf(e, corev1.EventTypeNormal, constant.EventReasonStop, "Stops pod for old engine %v", pod.Name)
 }
 
 func (ec *EngineController) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {

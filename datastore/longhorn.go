@@ -3721,20 +3721,6 @@ func resourceVersionAtLeast(curr, min string) bool {
 	return currVersion >= minVersion
 }
 
-// IsEngineImageCLIAPIVersionOne get engine image CLIAPIVersion for the given name.
-// Returns true if CLIAPIVersion is 1
-func (s *DataStore) IsEngineImageCLIAPIVersionOne(imageName string) (bool, error) {
-	version, err := s.GetEngineImageCLIAPIVersion(imageName)
-	if err != nil {
-		return false, err
-	}
-
-	if version == 1 {
-		return true, nil
-	}
-	return false, nil
-}
-
 // GetEngineImageCLIAPIVersion get engine image for the given name and returns the
 // CLIAPIVersion
 func (s *DataStore) GetEngineImageCLIAPIVersion(imageName string) (int, error) {
