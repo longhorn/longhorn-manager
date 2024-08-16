@@ -940,14 +940,14 @@ func formatInstanceMessage(im *longhorn.InstanceManager) string {
 		}
 	}
 
-	if len(im.Status.Instances) > 0 {
+	if len(im.Status.Instances) > 0 { // nolint: staticcheck
 		if ieFormated {
-			msg = fmt.Sprintf("%v Instances count %v", msg, len(im.Status.Instances))
+			msg = fmt.Sprintf("%v Instances count %v", msg, len(im.Status.Instances)) // nolint: staticcheck
 		} else {
-			msg = fmt.Sprintf("Instances count %v", len(im.Status.Instances))
+			msg = fmt.Sprintf("Instances count %v", len(im.Status.Instances)) // nolint: staticcheck
 		}
 		i := 0
-		for k := range im.Status.Instances {
+		for k := range im.Status.Instances { // nolint: staticcheck
 			msg = msg + " " + k
 			if i++; i >= ITERATE_NAME_LIMIT {
 				break
