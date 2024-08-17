@@ -64,7 +64,7 @@ require (
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240811043302-df8de353dd58
 	github.com/longhorn/go-spdk-helper v0.0.0-20240811121608-9383fa59dd7c
 	github.com/longhorn/longhorn-engine v1.7.0-rc3
-	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240815035542-a1f4599dab26
+	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240817054840-ffe56cbdbc98
 	github.com/longhorn/longhorn-share-manager v1.7.0-rc1
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.18.0
@@ -89,7 +89,7 @@ require (
 	k8s.io/client-go v0.30.3
 	k8s.io/kubernetes v1.30.3
 	k8s.io/metrics v0.28.5
-	k8s.io/mount-utils v0.30.3
+	k8s.io/mount-utils v0.31.0
 	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8
 	sigs.k8s.io/controller-runtime v0.10.1
 )
@@ -210,7 +210,7 @@ require (
 	k8s.io/component-helpers v0.30.3 // indirect
 	k8s.io/controller-manager v0.30.3 // indirect
 	k8s.io/klog v1.0.0 // indirect
-	k8s.io/klog/v2 v2.120.1 // indirect
+	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kms v0.30.3 // indirect
 	k8s.io/kube-aggregator v0.25.4 // indirect
 	k8s.io/kube-openapi v0.0.0-20240228011516-70dd3763d340 // indirect
