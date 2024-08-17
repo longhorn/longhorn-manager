@@ -223,7 +223,7 @@ github.com/kubernetes-csi/csi-lib-utils/protosanitizer
 # github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de
 ## explicit
 github.com/liggitt/tabwriter
-# github.com/longhorn/backing-image-manager v1.7.0-rc3
+# github.com/longhorn/backing-image-manager v1.7.0-rc4
 ## explicit; go 1.22.0
 github.com/longhorn/backing-image-manager/api
 github.com/longhorn/backing-image-manager/pkg/client
@@ -262,21 +262,21 @@ github.com/longhorn/go-iscsi-helper/util
 # github.com/longhorn/go-spdk-helper v0.0.0-20240811121608-9383fa59dd7c
 ## explicit; go 1.22.0
 github.com/longhorn/go-spdk-helper/pkg/types
-# github.com/longhorn/longhorn-engine v1.7.0-rc3
+# github.com/longhorn/longhorn-engine v1.7.0-rc4
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-engine/pkg/interceptor
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.7.0-rc3
+# github.com/longhorn/longhorn-instance-manager v1.7.0-rc4
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
 github.com/longhorn/longhorn-instance-manager/pkg/meta
 github.com/longhorn/longhorn-instance-manager/pkg/types
 github.com/longhorn/longhorn-instance-manager/pkg/util
-# github.com/longhorn/longhorn-share-manager v1.7.0-rc3
+# github.com/longhorn/longhorn-share-manager v1.7.0-rc4
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
@@ -559,7 +559,7 @@ go.uber.org/zap/internal/pool
 go.uber.org/zap/internal/stacktrace
 go.uber.org/zap/zapcore
 go.uber.org/zap/zapgrpc
-# golang.org/x/crypto v0.25.0
+# golang.org/x/crypto v0.26.0
 ## explicit; go 1.20
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
@@ -577,7 +577,7 @@ golang.org/x/exp/slices
 # golang.org/x/mod v0.17.0
 ## explicit; go 1.18
 golang.org/x/mod/semver
-# golang.org/x/net v0.27.0
+# golang.org/x/net v0.28.0
 ## explicit; go 1.18
 golang.org/x/net/context
 golang.org/x/net/http/httpguts
@@ -591,7 +591,7 @@ golang.org/x/net/websocket
 ## explicit; go 1.18
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
-# golang.org/x/sync v0.7.0
+# golang.org/x/sync v0.8.0
 ## explicit; go 1.18
 golang.org/x/sync/errgroup
 golang.org/x/sync/singleflight
@@ -602,10 +602,10 @@ golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
-# golang.org/x/term v0.22.0
+# golang.org/x/term v0.23.0
 ## explicit; go 1.18
 golang.org/x/term
-# golang.org/x/text v0.16.0
+# golang.org/x/text v0.17.0
 ## explicit; go 1.18
 golang.org/x/text/cases
 golang.org/x/text/feature/plural
