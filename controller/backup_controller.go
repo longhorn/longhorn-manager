@@ -325,20 +325,10 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		}
 		if autocleanup {
 			// do the best effort to delete the snapshot
-			snapshot, err := bc.ds.GetSnapshotRO(backup.Spec.SnapshotName)
-			if err != nil {
-				if !apierrors.IsNotFound(err) {
-					logrus.WithError(err).WithFields(logrus.Fields{
-						"backup":   backup.Name,
-						"snapshot": snapshot.Name,
-					}).Warn("Failed to get snapshot")
-				}
-				return nil
-			}
-			if err = bc.ds.DeleteSnapshot(snapshot.Name); err != nil {
+			if err = bc.ds.DeleteSnapshot(backup.Spec.SnapshotName); err != nil {
 				logrus.WithError(err).WithFields(logrus.Fields{
 					"backup":   backup.Name,
-					"snapshot": snapshot.Name,
+					"snapshot": backup.Spec.SnapshotName,
 				}).Warn("Failed to delete snapshot")
 			}
 		}
