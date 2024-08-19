@@ -5517,3 +5517,37 @@ func (s *DataStore) GetOneBackingImageReadyNodeDisk(backingImage *longhorn.Backi
 
 	return nil, "", fmt.Errorf("failed to find one ready backing image %v", backingImage.Name)
 }
+
+func (s *DataStore) IsPVMountOptionReadOnly(volume *longhorn.Volume) (bool, error) {
+	kubeStatus := volume.Status.KubernetesStatus
+	if kubeStatus.PVName == "" {
+		return false, nil
+	}
+
+	pv, err := s.GetPersistentVolumeRO(kubeStatus.PVName)
+	if err != nil {
+		return false, err
+	}
+	if pv != nil {
+		for _, opt := range pv.Spec.MountOptions {
+			if opt == "ro" {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+func (s *DataStore) IsStorageNetworkForRWXVolume() (bool, error) {
+	storageNetworkSetting, err := s.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
+	if err != nil {
+		return false, errors.Wrapf(err, "Failed to get setting %v", types.SettingNameStorageNetwork)
+	}
+
+	storageNetworkForRWXVolumeEnabled, err := s.GetSettingAsBool(types.SettingNameStorageNetworkForRWXVolumeEnabled)
+	if err != nil {
+		return false, errors.Wrapf(err, "Failed to get setting %v", types.SettingNameStorageNetworkForRWXVolumeEnabled)
+	}
+
+	return types.IsStorageNetworkForRWXVolume(storageNetworkSetting, storageNetworkForRWXVolumeEnabled), nil
+}
