@@ -451,7 +451,7 @@ func (c *ShareManagerController) syncShareManagerEndpoint(sm *longhorn.ShareMana
 		return nil
 	}
 
-	storageNetworkForRWXVolume, err := c.isStorageNetworkForRWXVolume()
+	storageNetworkForRWXVolume, err := c.ds.IsStorageNetworkForRWXVolume()
 	if err != nil {
 		return err
 	}
@@ -1045,20 +1045,6 @@ func (c *ShareManagerController) getShareManagerTolerationsFromStorageClass(sc *
 	return tolerations
 }
 
-func (c *ShareManagerController) isStorageNetworkForRWXVolume() (bool, error) {
-	storageNetwork, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
-	if err != nil {
-		return false, errors.Wrapf(err, "failed to get setting value %v", types.SettingNameStorageNetwork)
-	}
-
-	storageNetworkForRWXVolumeEnabled, err := c.ds.GetSettingAsBool(types.SettingNameStorageNetworkForRWXVolumeEnabled)
-	if err != nil {
-		return false, errors.Wrapf(err, "failed to get setting value %v", types.SettingNameStorageNetworkForRWXVolumeEnabled)
-	}
-
-	return types.IsStorageNetworkForRWXVolume(storageNetwork, storageNetworkForRWXVolumeEnabled), nil
-}
-
 func (c *ShareManagerController) checkStorageNetworkApplied() (bool, error) {
 	targetSettings := []types.SettingName{types.SettingNameStorageNetwork, types.SettingNameStorageNetworkForRWXVolumeEnabled}
 	for _, item := range targetSettings {
@@ -1091,7 +1077,7 @@ func (c *ShareManagerController) canCleanupService(shareManagerName string) (boo
 		return false, nil
 	}
 
-	storageNetworkForRWXVolume, err := c.isStorageNetworkForRWXVolume()
+	storageNetworkForRWXVolume, err := c.ds.IsStorageNetworkForRWXVolume()
 	if err != nil {
 		return false, err
 	}
@@ -1362,7 +1348,7 @@ func (c *ShareManagerController) createServiceManifest(sm *longhorn.ShareManager
 
 	log := getLoggerForShareManager(c.logger, sm)
 
-	storageNetworkForRWXVolume, err := c.isStorageNetworkForRWXVolume()
+	storageNetworkForRWXVolume, err := c.ds.IsStorageNetworkForRWXVolume()
 	if err != nil {
 		log.WithError(err).Warnf("Failed to check storage network for RWX volume")
 	}
