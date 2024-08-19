@@ -4509,9 +4509,9 @@ func (c *VolumeController) ReconcileShareManagerState(volume *longhorn.Volume) e
 		log.Infof("Updated image for share manager from %v to %v", sm.Spec.Image, c.smImage)
 	}
 
-	// kill the workload pods, when the share manager goes into error state
-	// easiest approach is to set the RemountRequestedAt variable,
-	// since that is already responsible for killing the workload pods
+	// Give the workload pods a chance to restart when the share manager goes into error state.
+	// Easiest approach is to set the RemountRequestedAt variable.  Pods will make that decision
+	// in the kubernetes_pod_controller.
 	if sm.Status.State == longhorn.ShareManagerStateError || sm.Status.State == longhorn.ShareManagerStateUnknown {
 		volume.Status.RemountRequestedAt = c.nowHandler()
 		msg := fmt.Sprintf("Volume %v requested remount at %v", volume.Name, volume.Status.RemountRequestedAt)
