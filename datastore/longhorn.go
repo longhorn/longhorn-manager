@@ -5576,3 +5576,17 @@ func (s *DataStore) IsPVMountOptionReadOnly(volume *longhorn.Volume) (bool, erro
 	}
 	return false, nil
 }
+
+func (s *DataStore) IsStorageNetworkForRWXVolume() (bool, error) {
+	storageNetworkSetting, err := s.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
+	if err != nil {
+		return false, errors.Wrapf(err, "Failed to get setting %v", types.SettingNameStorageNetwork)
+	}
+
+	storageNetworkForRWXVolumeEnabled, err := s.GetSettingAsBool(types.SettingNameStorageNetworkForRWXVolumeEnabled)
+	if err != nil {
+		return false, errors.Wrapf(err, "Failed to get setting %v", types.SettingNameStorageNetworkForRWXVolumeEnabled)
+	}
+
+	return types.IsStorageNetworkForRWXVolume(storageNetworkSetting, storageNetworkForRWXVolumeEnabled), nil
+}
