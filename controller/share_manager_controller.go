@@ -451,17 +451,12 @@ func (c *ShareManagerController) syncShareManagerEndpoint(sm *longhorn.ShareMana
 		return nil
 	}
 
-	storageNetwork, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
+	storageNetworkForRWXVolume, err := c.isStorageNetworkForRWXVolume()
 	if err != nil {
 		return err
 	}
 
-	storageNetworkForRWXVolumeEnabled, err := c.ds.GetSettingAsBool(types.SettingNameStorageNetworkForRWXVolumeEnabled)
-	if err != nil {
-		return err
-	}
-
-	if types.IsStorageNetworkForRWXVolume(storageNetwork, storageNetworkForRWXVolumeEnabled) {
+	if storageNetworkForRWXVolume {
 		serviceFqdn := fmt.Sprintf("%v.%v.svc.cluster.local", sm.Name, sm.Namespace)
 		sm.Status.Endpoint = fmt.Sprintf("nfs://%v/%v", serviceFqdn, sm.Name)
 	} else {
@@ -1050,6 +1045,92 @@ func (c *ShareManagerController) getShareManagerTolerationsFromStorageClass(sc *
 	return tolerations
 }
 
+func (c *ShareManagerController) isStorageNetworkForRWXVolume() (bool, error) {
+	storageNetwork, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get setting value %v", types.SettingNameStorageNetwork)
+	}
+
+	storageNetworkForRWXVolumeEnabled, err := c.ds.GetSettingAsBool(types.SettingNameStorageNetworkForRWXVolumeEnabled)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get setting value %v", types.SettingNameStorageNetworkForRWXVolumeEnabled)
+	}
+
+	return types.IsStorageNetworkForRWXVolume(storageNetwork, storageNetworkForRWXVolumeEnabled), nil
+}
+
+func (c *ShareManagerController) checkStorageNetworkApplied() (bool, error) {
+	targetSettings := []types.SettingName{types.SettingNameStorageNetwork, types.SettingNameStorageNetworkForRWXVolumeEnabled}
+	for _, item := range targetSettings {
+		if applied, err := c.ds.GetSettingApplied(item); err != nil || !applied {
+			return applied, err
+		}
+	}
+	return true, nil
+}
+
+func (c *ShareManagerController) canCleanupService(shareManagerName string) (bool, error) {
+	service, err := c.ds.GetService(c.namespace, shareManagerName)
+	if err != nil {
+		// if NotFound, means the service/endpoint is already cleaned up
+		// The service and endpoint are related with the kubernetes endpoint controller.
+		// It means once the service is deleted, the corresponding endpoint will be deleted automatically.
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, errors.Wrap(err, "failed to get service")
+	}
+
+	// check the settings status of storage network and storage network for RWX volume
+	settingsApplied, err := c.checkStorageNetworkApplied()
+	if err != nil {
+		return false, errors.Wrap(err, "failed to check if the storage network settings are applied")
+	}
+	if !settingsApplied {
+		c.logger.Warn("Storage network settings are not applied, do nothing")
+		return false, nil
+	}
+
+	storageNetworkForRWXVolume, err := c.isStorageNetworkForRWXVolume()
+	if err != nil {
+		return false, err
+	}
+
+	// no need to cleanup because looks the service file is correct
+	if storageNetworkForRWXVolume {
+		if service.Spec.ClusterIP == core.ClusterIPNone {
+			return false, nil
+		}
+	} else {
+		if service.Spec.ClusterIP != core.ClusterIPNone {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func (c *ShareManagerController) cleanupService(shareManager *longhorn.ShareManager) error {
+	if ok, err := c.canCleanupService(shareManager.Name); !ok || err != nil {
+		if err != nil {
+			return errors.Wrapf(err, "failed to check if we can cleanup service and endpoint for share manager %v", shareManager.Name)
+		}
+		return nil
+	}
+
+	// let's cleanup
+	c.logger.Infof("Deleting Service for share manager %v", shareManager.Name)
+	err := c.ds.DeleteService(c.namespace, shareManager.Name)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return errors.Wrapf(err, "failed to delete service for share manager %v", shareManager.Name)
+	}
+
+	// we don't need to cleanup the endpoint because the kubernetes endpoints_controller
+	// will sync the service then clean up the corresponding endpoint.
+	// https://github.com/kubernetes/kubernetes/blob/v1.31.0/pkg/controller/endpoint/endpoints_controller.go#L374-L392
+
+	return nil
+}
+
 func (c *ShareManagerController) createServiceAndEndpoint(shareManager *longhorn.ShareManager) error {
 	// check if we need to create the service
 	_, err := c.ds.GetService(c.namespace, shareManager.Name)
@@ -1121,6 +1202,11 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 		return nil, errors.Wrap(err, "failed to get priority class setting before creating share manager pod")
 	}
 	priorityClass := setting.Value
+
+	err = c.cleanupService(sm)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to cleanup service for share manager %v", sm.Name)
+	}
 
 	err = c.createServiceAndEndpoint(sm)
 	if err != nil {
@@ -1276,17 +1362,12 @@ func (c *ShareManagerController) createServiceManifest(sm *longhorn.ShareManager
 
 	log := getLoggerForShareManager(c.logger, sm)
 
-	storageNetwork, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
+	storageNetworkForRWXVolume, err := c.isStorageNetworkForRWXVolume()
 	if err != nil {
-		log.WithError(err).Warnf("Failed to get %v setting, fallback to cluster IP", types.SettingNameStorageNetwork)
+		log.WithError(err).Warnf("Failed to check storage network for RWX volume")
 	}
 
-	storageNetworkForRWXVolumeEnabled, err := c.ds.GetSettingAsBool(types.SettingNameStorageNetworkForRWXVolumeEnabled)
-	if err != nil {
-		log.WithError(err).Warnf("Failed to get %v setting, fallback to cluster IP", types.SettingNameStorageNetworkForRWXVolumeEnabled)
-	}
-
-	if types.IsStorageNetworkForRWXVolume(storageNetwork, storageNetworkForRWXVolumeEnabled) {
+	if storageNetworkForRWXVolume {
 		// Create a headless service do it doesn't use a cluster IP. This allows
 		// directly reaching the share manager pods using their individual
 		// IP address.
