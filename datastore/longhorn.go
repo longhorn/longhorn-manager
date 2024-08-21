@@ -619,6 +619,14 @@ func (s *DataStore) GetSettingExactRO(sName types.SettingName) (*longhorn.Settin
 	return resultRO, nil
 }
 
+func (s *DataStore) GetSettingApplied(sName types.SettingName) (bool, error) {
+	resultRO, err := s.getSettingRO(string(sName))
+	if err != nil {
+		return false, err
+	}
+	return resultRO.Status.Applied, nil
+}
+
 // GetSetting will automatically fill the non-existing setting if it's a valid
 // setting name.
 // The function will not return nil for *longhorn.Setting when error is nil
