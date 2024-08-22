@@ -1491,25 +1491,10 @@ func (c *VolumeController) requestRemountIfFileSystemReadOnly(v *longhorn.Volume
 	if v.Status.State == longhorn.VolumeStateAttached && e.Status.CurrentState == longhorn.InstanceStateRunning {
 		fileSystemReadOnlyCondition := types.GetCondition(e.Status.Conditions, imtypes.EngineConditionFilesystemReadOnly)
 
-		isPVMountOptionReadOnly := false
-		kubeStatus := v.Status.KubernetesStatus
-		if kubeStatus.PVName != "" {
-			pv, err := c.ds.GetPersistentVolumeRO(kubeStatus.PVName)
-			if err != nil {
-				if apierrors.IsNotFound(err) {
-					return
-				}
-				log.WithError(err).Warnf("Failed to get PV when checking the mount option of the volume")
-				return
-			}
-			if pv != nil {
-				for _, opt := range pv.Spec.MountOptions {
-					if opt == "ro" {
-						isPVMountOptionReadOnly = true
-						break
-					}
-				}
-			}
+		isPVMountOptionReadOnly, err := c.ds.IsPVMountOptionReadOnly(v)
+		if err != nil {
+			log.WithError(err).Warn("Failed to check if volume's PV mount option is read only")
+			return
 		}
 
 		if fileSystemReadOnlyCondition.Status == longhorn.ConditionStatusTrue && !isPVMountOptionReadOnly {

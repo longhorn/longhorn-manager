@@ -2,13 +2,15 @@ package metricscollector
 
 import (
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 
-	"github.com/prometheus/client_golang/prometheus"
+	imtypes "github.com/longhorn/longhorn-instance-manager/pkg/types"
 
 	"github.com/longhorn/longhorn-manager/controller"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -19,10 +21,11 @@ type VolumeCollector struct {
 
 	proxyConnCounter util.Counter
 
-	capacityMetric   metricInfo
-	sizeMetric       metricInfo
-	stateMetric      metricInfo
-	robustnessMetric metricInfo
+	capacityMetric           metricInfo
+	sizeMetric               metricInfo
+	stateMetric              metricInfo
+	robustnessMetric         metricInfo
+	fileSystemReadOnlyMetric metricInfo
 
 	volumePerfMetrics
 }
@@ -46,6 +49,16 @@ func NewVolumeCollector(
 	vc := &VolumeCollector{
 		baseCollector:    newBaseCollector(subsystemVolume, logger, nodeID, ds),
 		proxyConnCounter: util.NewAtomicCounter(),
+	}
+
+	vc.fileSystemReadOnlyMetric = metricInfo{
+		Desc: prometheus.NewDesc(
+			prometheus.BuildFQName(longhornName, subsystemVolume, "file_system_read_only"),
+			"Volume whose mount point is in read-only mode",
+			[]string{nodeLabel, volumeLabel, pvcLabel, pvcNamespaceLabel},
+			nil,
+		),
+		Type: prometheus.GaugeValue,
 	}
 
 	vc.capacityMetric = metricInfo{
@@ -156,6 +169,7 @@ func (vc *VolumeCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- vc.sizeMetric.Desc
 	ch <- vc.stateMetric.Desc
 	ch <- vc.robustnessMetric.Desc
+	ch <- vc.fileSystemReadOnlyMetric.Desc
 }
 
 func (vc *VolumeCollector) Collect(ch chan<- prometheus.Metric) {
@@ -214,6 +228,18 @@ func (vc *VolumeCollector) collectMetrics(ch chan<- prometheus.Metric, v *longho
 	ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.iopsMetrics.write.Desc, vc.volumePerfMetrics.iopsMetrics.write.Type, float64(vc.getVolumeWriteIOPS(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
 	ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.latencyMetrics.read.Desc, vc.volumePerfMetrics.latencyMetrics.read.Type, float64(vc.getVolumeReadLatency(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
 	ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.latencyMetrics.write.Desc, vc.volumePerfMetrics.latencyMetrics.write.Type, float64(vc.getVolumeWriteLatency(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
+
+	fileSystemReadOnlyCondition := types.GetCondition(e.Status.Conditions, imtypes.EngineConditionFilesystemReadOnly)
+	isPVMountOptionReadOnly, err := vc.ds.IsPVMountOptionReadOnly(v)
+	if err != nil {
+		vc.logger.WithError(err).Warn("Failed to check if volume's PV mount option is read only during metric collection")
+		return
+	}
+
+	if fileSystemReadOnlyCondition.Status == longhorn.ConditionStatusTrue && !isPVMountOptionReadOnly {
+		ch <- prometheus.MustNewConstMetric(vc.fileSystemReadOnlyMetric.Desc, vc.fileSystemReadOnlyMetric.Type, float64(1), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
+	}
+
 }
 
 func (vc *VolumeCollector) getEngineClientProxy(engine *longhorn.Engine) (c engineapi.EngineClientProxy, err error) {
