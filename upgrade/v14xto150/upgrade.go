@@ -106,9 +106,6 @@ func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceM
 		if v.Spec.BackupCompressionMethod == "" {
 			v.Spec.BackupCompressionMethod = longhorn.BackupCompressionMethodGzip
 		}
-		if v.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
-			v.Spec.RevisionCounterDisabled = true
-		}
 		if v.Spec.ReplicaSoftAntiAffinity == "" {
 			v.Spec.ReplicaSoftAntiAffinity = longhorn.ReplicaSoftAntiAffinityDefault
 		}
