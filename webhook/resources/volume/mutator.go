@@ -232,6 +232,10 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backendStoreDriver", "value": "%s"}`, longhorn.BackendStoreDriverTypeV1))
 	}
 
+	if volume.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
+		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/revisionCounterDisabled", "value": true}`)
+	}
+
 	// TODO: Remove the mutations below after they are implemented for SPDK volumes
 	if volume.Spec.BackendStoreDriver == longhorn.BackendStoreDriverTypeV2 {
 		if volume.Spec.Encrypted {
@@ -316,10 +320,6 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 	if size != volume.Spec.Size {
 		logrus.Infof("Rounding up the requested volume spec size from %d to %d in the update mutator", volume.Spec.Size, size)
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/size", "value": "%s"}`, strconv.FormatInt(size, 10)))
-	}
-
-	if volume.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
-		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/revisionCounterDisabled", "value": true}`)
 	}
 
 	labels := volume.Labels
