@@ -190,6 +190,10 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/snapshotMaxCount", "value": %v}`, snapshotMaxCount))
 	}
 
+	if volume.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
+		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/revisionCounterDisabled", "value": true}`)
+	}
+
 	// TODO: Remove the mutations below after they are implemented for SPDK volumes
 	if datastore.IsDataEngineV2(volume.Spec.DataEngine) {
 		if volume.Spec.DataLocality != longhorn.DataLocalityDisabled {
@@ -326,9 +330,6 @@ func mutate(newObj runtime.Object, moreLabels map[string]string) (admission.Patc
 	if string(volume.Spec.OfflineReplicaRebuilding) == "" && datastore.IsDataEngineV1(volume.Spec.DataEngine) {
 		// Always mutate the offlineReplicaRebuilding to disabled for non-SPDK volumes
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/offlineReplicaRebuilding", "value": "%s"}`, longhorn.OfflineReplicaRebuildingDisabled))
-	}
-	if volume.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
-		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/revisionCounterDisabled", "value": true}`)
 	}
 
 	labels := volume.Labels
