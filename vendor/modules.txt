@@ -230,7 +230,7 @@ github.com/longhorn/backing-image-manager/pkg/client
 github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20240811043357-5c2b7879457f
+# github.com/longhorn/backupstore v0.0.0-20240823072635-7afd6aa10d3e
 ## explicit; go 1.22.0
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/backupbackingimage
@@ -259,7 +259,7 @@ github.com/longhorn/go-iscsi-helper/iscsidev
 github.com/longhorn/go-iscsi-helper/longhorndev
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.0.0-20240811121608-9383fa59dd7c
+# github.com/longhorn/go-spdk-helper v0.0.0-20240820144231-33c0873802ff
 ## explicit; go 1.22.0
 github.com/longhorn/go-spdk-helper/pkg/types
 # github.com/longhorn/longhorn-engine v1.7.0-rc4
@@ -1525,7 +1525,7 @@ k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1beta1
 # k8s.io/mount-utils v0.31.0 => k8s.io/mount-utils v0.30.3
 ## explicit; go 1.22.0
 k8s.io/mount-utils
-# k8s.io/utils v0.0.0-20240711033017-18e509b52bc8
+# k8s.io/utils v0.0.0-20240821151609-f90d01438635
 ## explicit; go 1.18
 k8s.io/utils/buffer
 k8s.io/utils/clock

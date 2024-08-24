@@ -59,10 +59,10 @@ require (
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.7.0-rc4
-	github.com/longhorn/backupstore v0.0.0-20240811043357-5c2b7879457f
+	github.com/longhorn/backupstore v0.0.0-20240823072635-7afd6aa10d3e
 	github.com/longhorn/go-common-libs v0.0.0-20240821134112-907f57efd48f
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240811043302-df8de353dd58
-	github.com/longhorn/go-spdk-helper v0.0.0-20240811121608-9383fa59dd7c
+	github.com/longhorn/go-spdk-helper v0.0.0-20240820144231-33c0873802ff
 	github.com/longhorn/longhorn-engine v1.7.0-rc4
 	github.com/longhorn/longhorn-instance-manager v1.7.1-0.20240822061242-db39f71745f6
 	github.com/longhorn/longhorn-share-manager v1.7.0-rc4
@@ -90,7 +90,7 @@ require (
 	k8s.io/kubernetes v1.30.3
 	k8s.io/metrics v0.28.5
 	k8s.io/mount-utils v0.31.0
-	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8
+	k8s.io/utils v0.0.0-20240821151609-f90d01438635
 	sigs.k8s.io/controller-runtime v0.10.1
 )
 
