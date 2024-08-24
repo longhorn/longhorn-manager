@@ -64,7 +64,7 @@ require (
 	github.com/longhorn/go-iscsi-helper v0.0.0-20240811043302-df8de353dd58
 	github.com/longhorn/go-spdk-helper v0.0.0-20240820144231-33c0873802ff
 	github.com/longhorn/longhorn-engine v1.7.0-rc3
-	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240823044346-7d9aee16a685
+	github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240824042822-69c0db4dbb1e
 	github.com/longhorn/longhorn-share-manager v1.7.0-rc1
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.18.0
