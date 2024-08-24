@@ -1233,8 +1233,8 @@ github.com/longhorn/go-spdk-helper v0.0.0-20240820144231-33c0873802ff h1:8vR29tk
 github.com/longhorn/go-spdk-helper v0.0.0-20240820144231-33c0873802ff/go.mod h1:Bzz7kGNYikAJqpmeV3cgN8jP1y9M+/oaiBc5iolIxuA=
 github.com/longhorn/longhorn-engine v1.7.0-rc3 h1:YTt++OeSrEOlifz++8VAOH/aJ4lGShD2TaJP1ZaQ3Uw=
 github.com/longhorn/longhorn-engine v1.7.0-rc3/go.mod h1:2Hq/3QzW4fF2yUg+kauiAT3ps5WCKLMkrwXW2Wyfj9o=
-github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240822052913-4c2672c0dbfc h1:oCKEG9be3V4HC9D1hPdg2zu0UBxM6bvtD2S1mi+Tjbo=
-github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240822052913-4c2672c0dbfc/go.mod h1:YeZMPPA79GMXjN4tISG5cKXj70OQVHI0hAAPq7HROzA=
+github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240823044346-7d9aee16a685 h1:awva8Yu18JJ2o7I4J6+kVao4Znqkcd3CEM2mv/rfTiI=
+github.com/longhorn/longhorn-instance-manager v1.7.0-dev.0.20240823044346-7d9aee16a685/go.mod h1:maS6q7kAqYHlw4Vd49LDV5W9AmCqaRtASgLoa8Fo1kM=
 github.com/longhorn/longhorn-share-manager v1.7.0-rc1 h1:LsSkSajhG8tCfORKKfwK+8XHVrT/8rI9DRWb7fuoVls=
 github.com/longhorn/longhorn-share-manager v1.7.0-rc1/go.mod h1:R6+NscPU4lAV5ueO7//lBCAO3en0aDbZi5KkkOSUJvk=
 github.com/longhorn/types v0.0.0-20240725040629-473d671316c4 h1:L2g0sIJ2fXt4BSFRYNnF6ObtKryCUFm9qLcCXHWssCk=
