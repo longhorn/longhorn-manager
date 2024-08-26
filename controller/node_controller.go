@@ -814,6 +814,10 @@ func (nc *NodeController) updateDiskStatusSchedulableCondition(node *longhorn.No
 	if err != nil {
 		return err
 	}
+	backingImages, err := nc.ds.ListBackingImagesRO()
+	if err != nil {
+		return err
+	}
 
 	for diskName, disk := range node.Spec.Disks {
 		diskStatus := diskStatusMap[diskName]
@@ -851,6 +855,7 @@ func (nc *NodeController) updateDiskStatusSchedulableCondition(node *longhorn.No
 				return err
 			}
 			scheduledReplica := map[string]int64{}
+			scheduledBackingImage := map[string]int64{}
 			storageScheduled := int64(0)
 			for _, replica := range replicas {
 				if replica.Spec.NodeID != node.Name || replica.Spec.DiskPath != disk.Path {
@@ -865,8 +870,17 @@ func (nc *NodeController) updateDiskStatusSchedulableCondition(node *longhorn.No
 				storageScheduled += replica.Spec.VolumeSize
 				scheduledReplica[replica.Name] = replica.Spec.VolumeSize
 			}
+
+			for _, backingImage := range backingImages {
+				if _, exists := backingImage.Spec.DiskFileSpecMap[diskStatus.DiskUUID]; exists {
+					storageScheduled += backingImage.Status.RealSize
+					scheduledBackingImage[backingImage.Name] = backingImage.Status.RealSize
+				}
+			}
+
 			diskStatus.StorageScheduled = storageScheduled
 			diskStatus.ScheduledReplica = scheduledReplica
+			diskStatus.ScheduledBackingImage = scheduledBackingImage
 			// check disk pressure
 			info, err := nc.scheduler.GetDiskSchedulingInfo(disk, diskStatus)
 			if err != nil {
@@ -1675,6 +1689,9 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 		}
 		if diskStatus.ScheduledReplica == nil {
 			diskStatus.ScheduledReplica = map[string]int64{}
+		}
+		if diskStatus.ScheduledBackingImage == nil {
+			diskStatus.ScheduledBackingImage = map[string]int64{}
 		}
 		// When condition are not ready, the old storage data should be cleaned.
 		diskStatus.StorageMaximum = 0

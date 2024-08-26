@@ -80,6 +80,9 @@ type BackingImageStatus struct {
 	// Virtual size of image, which may be larger than physical size. Will be zero until known (e.g. while a backing image is uploading)
 	// +optional
 	VirtualSize int64 `json:"virtualSize"`
+	// Real size of image, which may be smaller than the size when the file is a sparse file. Will be zero until known (e.g. while a backing image is uploading)
+	// +optional
+	RealSize int64 `json:"realSize"`
 	// +optional
 	Checksum string `json:"checksum"`
 	// +optional
