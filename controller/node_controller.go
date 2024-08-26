@@ -393,124 +393,29 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		}
 	}()
 
-	// sync node state by manager pod
 	managerPods, err := nc.ds.ListManagerPodsRO()
 	if err != nil {
 		return err
 	}
-	nodeManagerFound := false
-	for _, pod := range managerPods {
-		if pod.Spec.NodeName == node.Name {
-			nodeManagerFound = true
-			podConditions := pod.Status.Conditions
-			for _, podCondition := range podConditions {
-				if podCondition.Type == corev1.PodReady {
-					if podCondition.Status == corev1.ConditionTrue && pod.Status.Phase == corev1.PodRunning {
-						node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
-							longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue,
-							"", fmt.Sprintf("Node %v is ready", node.Name),
-							nc.eventRecorder, node, corev1.EventTypeNormal)
-					} else {
-						node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
-							longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse,
-							string(longhorn.NodeConditionReasonManagerPodDown),
-							fmt.Sprintf("Node %v is down: the manager pod %v is not running", node.Name, pod.Name),
-							nc.eventRecorder, node, corev1.EventTypeWarning)
-					}
-					break
-				}
-			}
-			break
-		}
-	}
 
-	if !nodeManagerFound {
-		node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
-			longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse,
-			string(longhorn.NodeConditionReasonManagerPodMissing),
-			fmt.Sprintf("manager pod missing: node %v has no manager pod running on it", node.Name),
-			nc.eventRecorder, node, corev1.EventTypeWarning)
-	}
-
-	// sync node state with kubernetes node status
 	kubeNode, err := nc.ds.GetKubernetesNodeRO(name)
 	if err != nil {
-		// if kubernetes node has been removed from cluster
 		if apierrors.IsNotFound(err) {
+			// Directly record condition and return. The Kubernetes node controller should delete this Longhorn node
+			// very soon. If we continue to reconcile with a nil pointer (e.g. on a node that is being removed), we are
+			// guaranteed to run into an exception later on anyways.
 			node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
 				longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse,
 				string(longhorn.NodeConditionReasonKubernetesNodeGone),
-				fmt.Sprintf("Kubernetes node missing: node %v has been removed from the cluster and there is no manager pod running on it", node.Name),
+				fmt.Sprintf("Kubernetes node missing: node %v has been removed from the cluster", node.Name),
 				nc.eventRecorder, node, corev1.EventTypeWarning)
-		} else {
-			return err
+			return nil
 		}
-	} else {
-		kubeConditions := kubeNode.Status.Conditions
-		for _, con := range kubeConditions {
-			switch con.Type {
-			case corev1.NodeReady:
-				if con.Status != corev1.ConditionTrue {
-					if con.Status == corev1.ConditionFalse &&
-						time.Since(con.LastTransitionTime.Time) < ignoreKubeletNotReadyTime {
-						// When kubelet restarts, it briefly reports Ready == False. Responding too quickly can cause
-						// undesirable churn. See https://github.com/longhorn/longhorn/issues/7302 for an example.
-						nc.logger.Warnf("Ignoring %v == %v condition due to %v until %v", corev1.NodeReady, con.Status,
-							con.Reason, con.LastTransitionTime.Add(ignoreKubeletNotReadyTime))
-					} else {
-						node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
-							longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse,
-							string(longhorn.NodeConditionReasonKubernetesNodeNotReady),
-							fmt.Sprintf("Kubernetes node %v not ready: %v", node.Name, con.Reason),
-							nc.eventRecorder, node, corev1.EventTypeWarning)
-					}
-				}
-			case corev1.NodeDiskPressure,
-				corev1.NodePIDPressure,
-				corev1.NodeMemoryPressure,
-				corev1.NodeNetworkUnavailable:
-				if con.Status == corev1.ConditionTrue {
-					node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
-						longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse,
-						string(longhorn.NodeConditionReasonKubernetesNodePressure),
-						fmt.Sprintf("Kubernetes node %v has pressure: %v, %v", node.Name, con.Reason, con.Message),
-						nc.eventRecorder, node, corev1.EventTypeWarning)
-				}
-			}
-		}
+		return err
+	}
 
-		DisableSchedulingOnCordonedNode, err :=
-			nc.ds.GetSettingAsBool(types.SettingNameDisableSchedulingOnCordonedNode)
-		if err != nil {
-			return errors.Wrapf(err, "failed to get %v setting", types.SettingNameDisableSchedulingOnCordonedNode)
-		}
-
-		// Update node condition based on
-		// DisableSchedulingOnCordonedNode setting and
-		// k8s node status
-		kubeSpec := kubeNode.Spec
-		if DisableSchedulingOnCordonedNode &&
-			kubeSpec.Unschedulable {
-			node.Status.Conditions =
-				types.SetConditionAndRecord(node.Status.Conditions,
-					longhorn.NodeConditionTypeSchedulable,
-					longhorn.ConditionStatusFalse,
-					string(longhorn.NodeConditionReasonKubernetesNodeCordoned),
-					fmt.Sprintf("Node %v is cordoned", node.Name),
-					nc.eventRecorder, node,
-					corev1.EventTypeNormal)
-		} else {
-			node.Status.Conditions =
-				types.SetConditionAndRecord(node.Status.Conditions,
-					longhorn.NodeConditionTypeSchedulable,
-					longhorn.ConditionStatusTrue,
-					"",
-					"",
-					nc.eventRecorder, node,
-					corev1.EventTypeNormal)
-		}
-
-		node.Status.Region, node.Status.Zone = types.GetRegionAndZone(kubeNode.Labels)
+	if err = nc.setReadyAndSchedulableConditions(node, kubeNode, managerPods); err != nil {
+		return err
 	}
 
 	if nc.controllerID != node.Name {
@@ -1682,4 +1587,118 @@ func (nc *NodeController) shouldEvictReplica(node *longhorn.Node, kubeNode *core
 	}
 
 	return false, constant.EventReasonEvictionCanceled, nil
+}
+
+func (nc *NodeController) setReadyAndSchedulableConditions(node *longhorn.Node, kubeNode *corev1.Node,
+	managerPods []*corev1.Pod) error {
+	nodeReady := true
+	defer func() {
+		// Only record true if we find no reason to record false.
+		if nodeReady {
+			node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
+				longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue,
+				"", fmt.Sprintf("Node %v is ready", node.Name),
+				nc.eventRecorder, node, corev1.EventTypeNormal)
+		}
+	}()
+
+	nodeManagerFound := false
+	for _, pod := range managerPods {
+		if pod.Spec.NodeName == node.Name {
+			nodeManagerFound = true
+			podConditions := pod.Status.Conditions
+			for _, podCondition := range podConditions {
+				if podCondition.Type == corev1.PodReady {
+					if podCondition.Status != corev1.ConditionTrue || pod.Status.Phase != corev1.PodRunning {
+						nodeReady = false
+						node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
+							longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse,
+							string(longhorn.NodeConditionReasonManagerPodDown),
+							fmt.Sprintf("Node %v is down: the manager pod %v is not running", node.Name, pod.Name),
+							nc.eventRecorder, node, corev1.EventTypeWarning)
+					}
+					break
+				}
+			}
+			break
+		}
+	}
+	if !nodeManagerFound {
+		nodeReady = false
+		node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
+			longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse,
+			string(longhorn.NodeConditionReasonManagerPodMissing),
+			fmt.Sprintf("manager pod missing: node %v has no manager pod running on it", node.Name),
+			nc.eventRecorder, node, corev1.EventTypeWarning)
+	}
+
+	kubeConditions := kubeNode.Status.Conditions
+	for _, con := range kubeConditions {
+		switch con.Type {
+		case corev1.NodeReady:
+			if con.Status != corev1.ConditionTrue {
+				if con.Status == corev1.ConditionFalse &&
+					time.Since(con.LastTransitionTime.Time) < ignoreKubeletNotReadyTime {
+					// When kubelet restarts, it briefly reports Ready == False. Responding too quickly can cause
+					// undesirable churn. See https://github.com/longhorn/longhorn/issues/7302 for an example.
+					nc.logger.Warnf("Ignoring %v == %v condition due to %v until %v", corev1.NodeReady, con.Status,
+						con.Reason, con.LastTransitionTime.Add(ignoreKubeletNotReadyTime))
+				} else {
+					nodeReady = false
+					node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
+						longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse,
+						string(longhorn.NodeConditionReasonKubernetesNodeNotReady), // This one.
+						fmt.Sprintf("Kubernetes node %v not ready: %v", node.Name, con.Reason),
+						nc.eventRecorder, node, corev1.EventTypeWarning)
+				}
+			}
+		case corev1.NodeDiskPressure,
+			corev1.NodePIDPressure,
+			corev1.NodeMemoryPressure,
+			corev1.NodeNetworkUnavailable:
+			if con.Status == corev1.ConditionTrue {
+				nodeReady = false
+				node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
+					longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse,
+					string(longhorn.NodeConditionReasonKubernetesNodePressure),
+					fmt.Sprintf("Kubernetes node %v has pressure: %v, %v", node.Name, con.Reason, con.Message),
+					nc.eventRecorder, node, corev1.EventTypeWarning)
+			}
+		}
+	}
+
+	DisableSchedulingOnCordonedNode, err :=
+		nc.ds.GetSettingAsBool(types.SettingNameDisableSchedulingOnCordonedNode)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameDisableSchedulingOnCordonedNode)
+	}
+
+	// Update node condition based on
+	// DisableSchedulingOnCordonedNode setting and
+	// k8s node status
+	kubeSpec := kubeNode.Spec
+	if DisableSchedulingOnCordonedNode &&
+		kubeSpec.Unschedulable {
+		node.Status.Conditions =
+			types.SetConditionAndRecord(node.Status.Conditions,
+				longhorn.NodeConditionTypeSchedulable,
+				longhorn.ConditionStatusFalse,
+				string(longhorn.NodeConditionReasonKubernetesNodeCordoned),
+				fmt.Sprintf("Node %v is cordoned", node.Name),
+				nc.eventRecorder, node,
+				corev1.EventTypeNormal)
+	} else {
+		node.Status.Conditions =
+			types.SetConditionAndRecord(node.Status.Conditions,
+				longhorn.NodeConditionTypeSchedulable,
+				longhorn.ConditionStatusTrue,
+				"",
+				"",
+				nc.eventRecorder, node,
+				corev1.EventTypeNormal)
+	}
+
+	node.Status.Region, node.Status.Zone = types.GetRegionAndZone(kubeNode.Labels)
+
+	return nil
 }
