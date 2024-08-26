@@ -648,16 +648,26 @@ func (c *UninstallController) deleteVolumes(vols map[string]*longhorn.Volume) (e
 		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if vol.DeletionTimestamp == nil {
 			if err = c.ds.DeleteVolume(vol.Name); err != nil {
-				err = errors.Wrap(err, "failed to mark for deletion")
-				return
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("Volume is not found")
+				} else {
+					err = errors.Wrap(err, "failed to mark for deletion")
+					return
+				}
+			} else {
+				log.Info("Marked for deletion")
 			}
-			log.Info("Marked for deletion")
 		} else if vol.DeletionTimestamp.Before(&timeout) {
 			if err = c.ds.RemoveFinalizerForVolume(vol); err != nil {
-				err = errors.Wrap(err, "failed to remove finalizer")
-				return
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("Volume is not found")
+				} else {
+					err = errors.Wrap(err, "failed to remove finalizer")
+					return
+				}
+			} else {
+				log.Info("Removed finalizer")
 			}
-			log.Info("Removed finalizer")
 		}
 	}
 	return
@@ -673,16 +683,26 @@ func (c *UninstallController) deleteSnapshots(snapshots map[string]*longhorn.Sna
 		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if snap.DeletionTimestamp == nil {
 			if err = c.ds.DeleteSnapshot(snap.Name); err != nil {
-				err = errors.Wrap(err, "failed to mark for deletion")
-				return
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("Snapshot is not found")
+				} else {
+					err = errors.Wrap(err, "failed to mark for deletion")
+					return
+				}
+			} else {
+				log.Info("Marked for deletion")
 			}
-			log.Info("Marked for deletion")
 		} else if snap.DeletionTimestamp.Before(&timeout) {
 			if err = c.ds.RemoveFinalizerForSnapshot(snap); err != nil {
-				err = errors.Wrap(err, "failed to remove finalizer")
-				return
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("Snapshot is not found")
+				} else {
+					err = errors.Wrap(err, "failed to remove finalizer")
+					return
+				}
+			} else {
+				log.Info("Removed finalizer")
 			}
-			log.Info("Removed finalizer")
 		}
 	}
 	return
@@ -698,14 +718,22 @@ func (c *UninstallController) deleteEngines(engines map[string]*longhorn.Engine)
 		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if engine.DeletionTimestamp == nil {
 			if err = c.ds.DeleteEngine(engine.Name); err != nil {
-				err = errors.Wrap(err, "failed to mark for deletion")
-				return
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("Engine is not found")
+				} else {
+					err = errors.Wrap(err, "failed to mark for deletion")
+					return
+				}
 			}
 			log.Info("Marked for deletion")
 		} else if engine.DeletionTimestamp.Before(&timeout) {
 			if err = c.ds.RemoveFinalizerForEngine(engine); err != nil {
-				err = errors.Wrapf(err, "failed to remove finalizer")
-				return
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("Engine is not found")
+				} else {
+					err = errors.Wrap(err, "failed to remove finalizer")
+					return
+				}
 			}
 			log.Info("Removed finalizer")
 		}
@@ -723,14 +751,22 @@ func (c *UninstallController) deleteReplicas(replicas map[string]*longhorn.Repli
 		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if replica.DeletionTimestamp == nil {
 			if err = c.ds.DeleteReplica(replica.Name); err != nil {
-				err = errors.Wrap(err, "failed to mark for deletion")
-				return
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("Replica is not found")
+				} else {
+					err = errors.Wrap(err, "failed to mark for deletion")
+					return
+				}
 			}
 			log.Info("Marked for deletion")
 		} else if replica.DeletionTimestamp.Before(&timeout) {
 			if err = c.ds.RemoveFinalizerForReplica(replica); err != nil {
-				err = errors.Wrapf(err, "failed to remove finalizer")
-				return
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("Replica is not found")
+				} else {
+					err = errors.Wrap(err, "failed to remove finalizer")
+					return
+				}
 			}
 			log.Info("Removed finalizer")
 		}
@@ -769,9 +805,15 @@ func (c *UninstallController) deleteBackupTargets(backupTargets map[string]*long
 		log := getLoggerForBackupTarget(c.logger, bt)
 		if bt.DeletionTimestamp == nil {
 			if err = c.ds.DeleteBackupTarget(bt.Name); err != nil {
-				return errors.Wrap(err, "failed to mark for deletion")
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("BackupTarget is not found")
+				} else {
+					err = errors.Wrap(err, "failed to mark for deletion")
+					return
+				}
+			} else {
+				log.Info("Marked for deletion")
 			}
-			log.Info("Marked for deletion")
 		}
 	}
 	return
@@ -787,25 +829,38 @@ func (c *UninstallController) deleteEngineImages(engineImages map[string]*longho
 		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if ei.DeletionTimestamp == nil {
 			if err = c.ds.DeleteEngineImage(ei.Name); err != nil {
-				err = errors.Wrap(err, "failed to mark for deletion")
-				return
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("EngineImage is not found")
+				} else {
+					err = errors.Wrap(err, "failed to mark for deletion")
+					return
+				}
+			} else {
+				log.Info("Marked for deletion")
 			}
-			log.Info("Marked for deletion")
 		} else if ei.DeletionTimestamp.Before(&timeout) {
 			dsName := types.GetDaemonSetNameFromEngineImageName(ei.Name)
 			if err = c.ds.DeleteDaemonSet(dsName); err != nil {
-				if !apierrors.IsNotFound(err) {
-					err = errors.Wrapf(err, "failed to remove daemon set")
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("EngineImage DaemonSet is not found")
+				} else {
+					err = errors.Wrapf(err, "failed to remove EngineImage DaemonSet")
 					return
 				}
-				log.Info("Removed daemon set")
+			} else {
+				log.Info("Removed EngineImage DaemonSet")
 				err = nil
 			}
 			if err = c.ds.RemoveFinalizerForEngineImage(ei); err != nil {
-				err = errors.Wrapf(err, "failed to remove finalizer")
-				return
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("EngineImage is not found")
+				} else {
+					err = errors.Wrap(err, "failed to remove finalizer")
+					return
+				}
+			} else {
+				log.Info("Removed finalizer")
 			}
-			log.Info("Removed finalizer")
 		}
 	}
 	return
@@ -820,16 +875,26 @@ func (c *UninstallController) deleteNodes(nodes map[string]*longhorn.Node) (err 
 
 		if node.DeletionTimestamp == nil {
 			if err = c.ds.DeleteNode(node.Name); err != nil {
-				err = errors.Wrap(err, "failed to mark for deletion")
-				return
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("Node is not found")
+				} else {
+					err = errors.Wrap(err, "failed to mark for deletion")
+					return
+				}
+			} else {
+				log.Info("Marked for deletion")
 			}
-			log.Info("Marked for deletion")
 		} else {
 			if err = c.ds.RemoveFinalizerForNode(node); err != nil {
-				err = errors.Wrapf(err, "failed to remove finalizer")
-				return
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("Node is not found")
+				} else {
+					err = errors.Wrap(err, "failed to remove finalizer")
+					return
+				}
+			} else {
+				log.Info("Removed finalizer")
 			}
-			log.Info("Removed finalizer")
 		}
 	}
 	return
@@ -843,10 +908,15 @@ func (c *UninstallController) deleteInstanceManagers(instanceManagers map[string
 		log := getLoggerForInstanceManager(c.logger, im)
 		if im.DeletionTimestamp == nil {
 			if err = c.ds.DeleteInstanceManager(im.Name); err != nil {
-				err = errors.Wrap(err, "failed to mark for deletion")
-				return
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("InstanceManager is not found")
+				} else {
+					err = errors.Wrap(err, "failed to mark for deletion")
+					return
+				}
+			} else {
+				log.Info("Marked for deletion")
 			}
-			log.Info("Marked for deletion")
 		}
 	}
 	return
@@ -862,22 +932,37 @@ func (c *UninstallController) deleteShareManagers(shareManagers map[string]*long
 		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if sm.DeletionTimestamp == nil {
 			if err = c.ds.DeleteShareManager(sm.Name); err != nil {
-				err = errors.Wrap(err, "failed to mark for deletion")
-				return
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("ShareManager is not found")
+				} else {
+					err = errors.Wrap(err, "failed to mark for deletion")
+					return
+				}
+			} else {
+				log.Info("Marked for deletion")
 			}
-			log.Info("Marked for deletion")
 		} else if sm.DeletionTimestamp.Before(&timeout) {
 			podName := types.GetShareManagerPodNameFromShareManagerName(sm.Name)
 			if err = c.ds.DeletePod(podName); err != nil {
-				return err
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("ShareManager pod is not found")
+				} else {
+					err = errors.Wrap(err, "failed to delete ShareManager pod")
+					return
+				}
+			} else {
+				log.Infof("Removing ShareManager pod %v", podName)
 			}
-			log.Infof("Removing share manager related pod %v", podName)
-
 			if err = c.ds.RemoveFinalizerForShareManager(sm); err != nil {
-				err = errors.Wrapf(err, "failed to remove finalizer")
-				return
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("ShareManager is not found")
+				} else {
+					err = errors.Wrap(err, "failed to remove finalizer")
+					return
+				}
+			} else {
+				log.Info("Removed finalizer")
 			}
-			log.Info("Removed finalizer")
 		}
 	}
 	return
@@ -893,14 +978,26 @@ func (c *UninstallController) deleteBackingImages(backingImages map[string]*long
 		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if bi.DeletionTimestamp == nil {
 			if err = c.ds.DeleteBackingImage(bi.Name); err != nil {
-				return errors.Wrap(err, "failed to mark for deletion")
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("BackingImage is not found")
+				} else {
+					err = errors.Wrap(err, "failed to mark for deletion")
+					return
+				}
+			} else {
+				log.Info("Marked for deletion")
 			}
-			log.Info("Marked for deletion")
 		} else if bi.DeletionTimestamp.Before(&timeout) {
 			if err = c.ds.RemoveFinalizerForBackingImage(bi); err != nil {
-				return errors.Wrapf(err, "failed to remove finalizer")
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("BackingImage is not found")
+				} else {
+					err = errors.Wrap(err, "failed to remove finalizer")
+					return
+				}
+			} else {
+				log.Info("Removed finalizer")
 			}
-			log.Info("Removed finalizer")
 		}
 	}
 	return nil
@@ -916,17 +1013,35 @@ func (c *UninstallController) deleteBackingImageManagers(backingImageManagers ma
 		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if bim.DeletionTimestamp == nil {
 			if err = c.ds.DeleteBackingImageManager(bim.Name); err != nil {
-				return errors.Wrap(err, "failed to mark for deletion")
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("BackingImageManager is not found")
+				} else {
+					err = errors.Wrap(err, "failed to mark for deletion")
+					return
+				}
+			} else {
+				log.Info("Marked for deletion")
 			}
-			log.Info("Marked for deletion")
 		} else if bim.DeletionTimestamp.Before(&timeout) {
-			if err := c.ds.DeletePod(bim.Name); err != nil && !apierrors.IsNotFound(err) {
-				return err
+			if err := c.ds.DeletePod(bim.Name); err != nil {
+				if apierrors.IsNotFound(err) {
+					log.Info("BackingImageManager pod is not found")
+				} else {
+					return err
+				}
+			} else {
+				log.Infof("Removing BackingImageManager pod %v", bim.Name)
 			}
 			if err = c.ds.RemoveFinalizerForBackingImageManager(bim); err != nil {
-				return errors.Wrapf(err, "failed to remove finalizer")
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("BackingImageManager is not found")
+				} else {
+					err = errors.Wrap(err, "failed to remove finalizer")
+					return
+				}
+			} else {
+				log.Info("Removed finalizer")
 			}
-			log.Info("Removed finalizer")
 		}
 	}
 	return nil
@@ -942,17 +1057,35 @@ func (c *UninstallController) deleteBackingImageDataSource(backingImageDataSourc
 		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if bids.DeletionTimestamp == nil {
 			if err = c.ds.DeleteBackingImageDataSource(bids.Name); err != nil {
-				return errors.Wrap(err, "failed to mark for deletion")
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("BackingImageDataSource is not found")
+				} else {
+					err = errors.Wrap(err, "failed to mark for deletion")
+					return
+				}
+			} else {
+				log.Info("Marked for deletion")
 			}
-			log.Info("Marked for deletion")
 		} else if bids.DeletionTimestamp.Before(&timeout) {
-			if err := c.ds.DeletePod(bids.Name); err != nil && !apierrors.IsNotFound(err) {
-				return err
+			if err := c.ds.DeletePod(bids.Name); err != nil {
+				if apierrors.IsNotFound(err) {
+					log.Info("BackingImageDataSource pod is not found")
+				} else {
+					return err
+				}
+			} else {
+				log.Infof("Removing BackingImageDataSource pod %v", bids.Name)
 			}
 			if err = c.ds.RemoveFinalizerForBackingImageDataSource(bids); err != nil {
-				return errors.Wrapf(err, "failed to remove finalizer")
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("BackingImageDataSource is not found")
+				} else {
+					err = errors.Wrap(err, "failed to remove finalizer")
+					return
+				}
+			} else {
+				log.Info("Removed finalizer")
 			}
-			log.Info("Removed finalizer")
 		}
 	}
 	return nil
@@ -966,9 +1099,15 @@ func (c *UninstallController) deleteRecurringJobs(recurringJobs map[string]*long
 		log := getLoggerForRecurringJob(c.logger, job)
 		if job.DeletionTimestamp == nil {
 			if err = c.ds.DeleteRecurringJob(job.Name); err != nil {
-				return errors.Wrap(err, "failed to mark for deletion")
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("RecurringJob is not found")
+				} else {
+					err = errors.Wrap(err, "failed to mark for deletion")
+					return
+				}
+			} else {
+				log.Info("Marked for deletion")
 			}
-			log.Info("Marked for deletion")
 		}
 	}
 	return nil
@@ -982,9 +1121,15 @@ func (c *UninstallController) deleteOrphans(orphans map[string]*longhorn.Orphan)
 		log := getLoggerForOrphan(c.logger, orphan)
 		if orphan.DeletionTimestamp == nil {
 			if err = c.ds.DeleteOrphan(orphan.Name); err != nil {
-				return errors.Wrap(err, "failed to mark for deletion")
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("Orphan is not found")
+				} else {
+					err = errors.Wrap(err, "failed to mark for deletion")
+					return
+				}
+			} else {
+				log.Info("Marked for deletion")
 			}
-			log.Info("Marked for deletion")
 		}
 	}
 	return nil
@@ -998,9 +1143,15 @@ func (c *UninstallController) deleteSystemRestores(systemRestores map[string]*lo
 		log := getLoggerForSystemRestore(c.logger, systemRestore)
 		if systemRestore.DeletionTimestamp == nil {
 			if err = c.ds.DeleteSystemRestore(systemRestore.Name); err != nil {
-				return errors.Wrap(err, "failed to mark for deletion")
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("SystemRestore is not found")
+				} else {
+					err = errors.Wrap(err, "failed to mark for deletion")
+					return
+				}
+			} else {
+				log.Info("Marked for deletion")
 			}
-			log.Info("Marked for deletion")
 		}
 	}
 	return nil
