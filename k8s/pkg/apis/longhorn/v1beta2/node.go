@@ -113,6 +113,9 @@ type DiskStatus struct {
 	// +nullable
 	ScheduledReplica map[string]int64 `json:"scheduledReplica"`
 	// +optional
+	// +nullable
+	ScheduledBackingImage map[string]int64 `json:"scheduledBackingImage"`
+	// +optional
 	DiskUUID string `json:"diskUUID"`
 	// +optional
 	DiskName string `json:"diskName"`

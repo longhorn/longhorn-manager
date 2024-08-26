@@ -1014,6 +1014,13 @@ func (in *DiskStatus) DeepCopyInto(out *DiskStatus) {
 			(*out)[key] = val
 		}
 	}
+	if in.ScheduledBackingImage != nil {
+		in, out := &in.ScheduledBackingImage, &out.ScheduledBackingImage
+		*out = make(map[string]int64, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
 	return
 }
 

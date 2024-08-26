@@ -22,6 +22,8 @@ type BackingImageFileInfo struct {
 	// +optional
 	VirtualSize int64 `json:"virtualSize"`
 	// +optional
+	RealSize int64 `json:"realSize"`
+	// +optional
 	State BackingImageState `json:"state"`
 	// +optional
 	CurrentChecksum string `json:"currentChecksum"`
