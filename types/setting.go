@@ -132,6 +132,7 @@ const (
 	SettingNameV2DataEngine                                             = SettingName("v2-data-engine")
 	SettingNameV2DataEngineHugepageLimit                                = SettingName("v2-data-engine-hugepage-limit")
 	SettingNameV2DataEngineGuaranteedInstanceManagerCPU                 = SettingName("v2-data-engine-guaranteed-instance-manager-cpu")
+	SettingNameV2DataEngineCPUMask                                      = SettingName("v2-data-engine-cpu-mask")
 	SettingNameV2DataEngineLogLevel                                     = SettingName("v2-data-engine-log-level")
 	SettingNameV2DataEngineLogFlags                                     = SettingName("v2-data-engine-log-flags")
 	SettingNameFreezeFilesystemForSnapshot                              = SettingName("freeze-filesystem-for-snapshot")
@@ -220,6 +221,7 @@ var (
 		SettingNameV2DataEngine,
 		SettingNameV2DataEngineHugepageLimit,
 		SettingNameV2DataEngineGuaranteedInstanceManagerCPU,
+		SettingNameV2DataEngineCPUMask,
 		SettingNameV2DataEngineLogLevel,
 		SettingNameV2DataEngineLogFlags,
 		SettingNameReplicaDiskSoftAntiAffinity,
@@ -340,6 +342,7 @@ var (
 		SettingNameV2DataEngine:                                             SettingDefinitionV2DataEngine,
 		SettingNameV2DataEngineHugepageLimit:                                SettingDefinitionV2DataEngineHugepageLimit,
 		SettingNameV2DataEngineGuaranteedInstanceManagerCPU:                 SettingDefinitionV2DataEngineGuaranteedInstanceManagerCPU,
+		SettingNameV2DataEngineCPUMask:                                      SettingDefinitionV2DataEngineCPUMask,
 		SettingNameV2DataEngineLogLevel:                                     SettingDefinitionV2DataEngineLogLevel,
 		SettingNameV2DataEngineLogFlags:                                     SettingDefinitionV2DataEngineLogFlags,
 		SettingNameReplicaDiskSoftAntiAffinity:                              SettingDefinitionReplicaDiskSoftAntiAffinity,
@@ -1371,7 +1374,7 @@ var (
 
 	SettingDefinitionV2DataEngineGuaranteedInstanceManagerCPU = SettingDefinition{
 		DisplayName: "Guaranteed Instance Manager CPU for V2 Data Engine",
-		Description: "Number of millicpus on each node to be reserved for each instance manager pod when the V2 Data Engine is enabled. By default, the Storage Performance Development Kit (SPDK) target daemon within each instance manager pod uses 1 CPU core. Configuring a minimum CPU usage value is essential for maintaining engine and replica stability, especially during periods of high node workload. \n\n" +
+		Description: "Number of millicpus on each node to be reserved for each instance manager pod when the V2 Data Engine is enabled. The Storage Performance Development Kit (SPDK) target daemon within each instance manager pod uses 1 or multiple CPU cores. Configuring a minimum CPU usage value is essential for maintaining engine and replica stability, especially during periods of high node workload. \n\n" +
 			"WARNING: \n\n" +
 			"  - Value 0 means unsetting CPU requests for instance manager pods for v2 data engine. \n\n" +
 			"  - This integer value is range from 1000 to 8000. \n\n" +
@@ -1385,6 +1388,16 @@ var (
 			ValueIntRangeMinimum: 1000,
 			ValueIntRangeMaximum: 8000,
 		},
+	}
+
+	SettingDefinitionV2DataEngineCPUMask = SettingDefinition{
+		DisplayName: "CPU Mask for V2 Data Engine",
+		Description: "CPU cores on which the Storage Performance Development Kit (SPDK) target daemon should run. The SPDK target daemon is located in each Instance Manager pod. Ensure that the number of cores is less than or equal to the guaranteed Instance Manager CPUs for the V2 Data Engine. The default value is 0x1. \n\n",
+		Category:    SettingCategoryDangerZone,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "0x1",
 	}
 
 	SettingDefinitionReplicaDiskSoftAntiAffinity = SettingDefinition{
