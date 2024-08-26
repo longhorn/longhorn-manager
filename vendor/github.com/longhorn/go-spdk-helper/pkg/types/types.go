@@ -18,9 +18,13 @@ const (
 	FrontendSPDKTCPNvmf     = "spdk-tcp-nvmf"
 	FrontendSPDKTCPBlockdev = "spdk-tcp-blockdev"
 
+	ShallowCopyStateInProgress = "in progress"
+	ShallowCopyStateComplete   = "complete"
+	ShallowCopyStateError      = "error"
+
 	DefaultCtrlrLossTimeoutSec = 30
 	// DefaultReconnectDelaySec can't be more than DefaultFastIoFailTimeoutSec, same for non-default values.
-	DefaultReconnectDelaySec    = 5
+	DefaultReconnectDelaySec    = 2
 	DefaultFastIOFailTimeoutSec = 15
 	// DefaultTransportAckTimeout value is not the timeout second.
 	// The timeout formula is 2^(transport_ack_timeout) msec.
