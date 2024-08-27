@@ -78,6 +78,7 @@ import (
 	"k8s.io/component-base/tracing"
 	"k8s.io/klog/v2"
 	openapicommon "k8s.io/kube-openapi/pkg/common"
+	"k8s.io/kube-openapi/pkg/spec3"
 	"k8s.io/kube-openapi/pkg/validation/spec"
 	"k8s.io/utils/clock"
 	utilsnet "k8s.io/utils/net"
@@ -194,7 +195,7 @@ type Config struct {
 	// OpenAPIConfig will be used in generating OpenAPI spec. This is nil by default. Use DefaultOpenAPIConfig for "working" defaults.
 	OpenAPIConfig *openapicommon.Config
 	// OpenAPIV3Config will be used in generating OpenAPI V3 spec. This is nil by default. Use DefaultOpenAPIV3Config for "working" defaults.
-	OpenAPIV3Config *openapicommon.Config
+	OpenAPIV3Config *openapicommon.OpenAPIV3Config
 	// SkipOpenAPIInstallation avoids installing the OpenAPI handler if set to true.
 	SkipOpenAPIInstallation bool
 
@@ -608,6 +609,45 @@ func completeOpenAPI(config *openapicommon.Config, version *version.Info) {
 	}
 }
 
+func completeOpenAPIV3(config *openapicommon.OpenAPIV3Config, version *version.Info) {
+	if config == nil {
+		return
+	}
+	if config.SecuritySchemes != nil {
+		// Setup OpenAPI security: all APIs will have the same authentication for now.
+		config.DefaultSecurity = []map[string][]string{}
+		keys := []string{}
+		for k := range config.SecuritySchemes {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			config.DefaultSecurity = append(config.DefaultSecurity, map[string][]string{k: {}})
+		}
+		if config.CommonResponses == nil {
+			config.CommonResponses = map[int]*spec3.Response{}
+		}
+		if _, exists := config.CommonResponses[http.StatusUnauthorized]; !exists {
+			config.CommonResponses[http.StatusUnauthorized] = &spec3.Response{
+				ResponseProps: spec3.ResponseProps{
+					Description: "Unauthorized",
+				},
+			}
+		}
+	}
+	// make sure we populate info, and info.version, if not manually set
+	if config.Info == nil {
+		config.Info = &spec.Info{}
+	}
+	if config.Info.Version == "" {
+		if version != nil {
+			config.Info.Version = strings.Split(version.String(), "-")[0]
+		} else {
+			config.Info.Version = "unversioned"
+		}
+	}
+}
+
 // DrainedNotify returns a lifecycle signal of genericapiserver already drained while shutting down.
 func (c *Config) DrainedNotify() <-chan struct{} {
 	return c.lifecycleSignals.InFlightRequestsDrained.Signaled()
@@ -633,7 +673,7 @@ func (c *Config) Complete(informers informers.SharedInformerFactory) CompletedCo
 	}
 
 	completeOpenAPI(c.OpenAPIConfig, c.Version)
-	completeOpenAPI(c.OpenAPIV3Config, c.Version)
+	completeOpenAPIV3(c.OpenAPIV3Config, c.Version)
 
 	if c.DiscoveryAddresses == nil {
 		c.DiscoveryAddresses = discovery.DefaultAddresses{DefaultAddress: c.ExternalAddress}
