@@ -471,6 +471,11 @@ func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) (ims []*
 				continue
 			}
 
+			if val, ok := node.Labels[types.NodeDisableV2DataEngineLabelKey]; ok && val == types.NodeDisableV2DataEngineLabelKeyTrue {
+				// V2 data engine is disabled on this node, don't worry about hugepages
+				continue
+			}
+
 			if dataEngineEnabled {
 				capacity, ok := node.Status.Capacity["hugepages-2Mi"]
 				if !ok {
