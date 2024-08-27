@@ -42,7 +42,7 @@ func (i *instanceManagerValidator) Create(request *admission.Request, newObj run
 	if !ok {
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.InstanceManager", newObj), "")
 	}
-	if err := validate(im); err != nil {
+	if err := i.validate(im); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
@@ -55,14 +55,14 @@ func (i *instanceManagerValidator) Update(request *admission.Request, oldObj run
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.InstanceManager", newObj), "")
 	}
 
-	if err := validate(newIm); err != nil {
+	if err := i.validate(newIm); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
 	return nil
 }
 
-func validate(im *longhorn.InstanceManager) error {
+func (i *instanceManagerValidator) validate(im *longhorn.InstanceManager) error {
 	if im.Labels == nil {
 		return fmt.Errorf("labels for instanceManager %s is not set", im.Name)
 	}
@@ -77,6 +77,13 @@ func validate(im *longhorn.InstanceManager) error {
 
 	if im.Spec.DataEngine == "" {
 		return fmt.Errorf("data engine for instanceManager %s is not set", im.Name)
+	}
+
+	if im.Spec.DataEngineSpec.V2.CPUMask != "" {
+		err := i.ds.ValidateCPUMask(im.Spec.DataEngineSpec.V2.CPUMask)
+		if err != nil {
+			return werror.NewInvalidError(err.Error(), "")
+		}
 	}
 
 	return nil

@@ -3,7 +3,10 @@ package datastore
 import (
 	"context"
 	"fmt"
+	"math/bits"
 	"math/rand"
+	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -15,8 +18,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation"
+
+	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -253,7 +257,7 @@ func (s *DataStore) UpdateSetting(setting *longhorn.Setting) (*longhorn.Setting,
 		return nil, err
 	}
 
-	verifyUpdate(setting.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(setting.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.getSettingRO(name)
 	})
 	return obj, nil
@@ -265,7 +269,7 @@ func (s *DataStore) UpdateSettingStatus(setting *longhorn.Setting) (*longhorn.Se
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(setting.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(setting.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.getSettingRO(name)
 	})
 	return obj, nil
@@ -389,7 +393,13 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 				return err
 			}
 		}
-
+	case types.SettingNameV2DataEngineCPUMask:
+		if value == "" {
+			return errors.Errorf("cannot set %v setting to empty value", name)
+		}
+		if err := s.ValidateCPUMask(value); err != nil {
+			return err
+		}
 	case types.SettingNameAutoCleanupSystemGeneratedSnapshot:
 		disablePurgeValue, err := s.GetSettingAsBool(types.SettingNameDisableSnapshotPurge)
 		if err != nil {
@@ -492,6 +502,49 @@ func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) (ims []*
 	}
 
 	return
+}
+
+func (s *DataStore) ValidateCPUMask(value string) error {
+	// CPU mask must start with 0x
+	cpuMaskRegex := regexp.MustCompile(`^0x[1-9a-fA-F][0-9a-fA-F]*$`)
+	if !cpuMaskRegex.MatchString(value) {
+		return fmt.Errorf("invalid CPU mask: %s", value)
+	}
+
+	maskValue, err := strconv.ParseUint(value[2:], 16, 64) // skip 0x prefix
+	if err != nil {
+		return fmt.Errorf("failed to parse CPU mask: %s", value)
+	}
+
+	// Validate the mask value is not larger than the number of available CPUs
+	numCPUs := runtime.NumCPU()
+	maxCPUMaskValue := (1 << numCPUs) - 1
+	if maskValue > uint64(maxCPUMaskValue) {
+		return fmt.Errorf("CPU mask exceeds the maximum allowed value %v for the current system: %s", maxCPUMaskValue, value)
+	}
+
+	guaranteedInstanceManagerCPU, err := s.GetSettingAsInt(types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get %v setting for CPU mask validation", types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU)
+	}
+
+	numMilliCPUsRequrestedByMaskValue := calculateMilliCPUs(maskValue)
+	if numMilliCPUsRequrestedByMaskValue > int(guaranteedInstanceManagerCPU) {
+		return fmt.Errorf("number of CPUs (%v) requested by CPU mask (%v) is larger than the %v setting value (%v)",
+			numMilliCPUsRequrestedByMaskValue, value, types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU, guaranteedInstanceManagerCPU)
+	}
+
+	return nil
+}
+
+func calculateMilliCPUs(mask uint64) int {
+	// Count the number of set bits in the mask
+	setBits := bits.OnesCount64(mask)
+
+	// Each set bit represents 1000 milliCPUs
+	numMilliCPUsRequestedByMaskValue := setBits * 1000
+
+	return numMilliCPUsRequestedByMaskValue
 }
 
 func (s *DataStore) AreAllRWXVolumesDetached() (bool, error) {
@@ -857,7 +910,7 @@ func (s *DataStore) CreateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(ret.Name, "volume", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "volume", func(name string) (k8sruntime.Object, error) {
 		return s.GetVolumeRO(name)
 	})
 	if err != nil {
@@ -881,7 +934,7 @@ func (s *DataStore) UpdateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(v.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(v.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetVolumeRO(name)
 	})
 	return obj, nil
@@ -893,7 +946,7 @@ func (s *DataStore) UpdateVolumeStatus(v *longhorn.Volume) (*longhorn.Volume, er
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(v.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(v.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetVolumeRO(name)
 	})
 	return obj, nil
@@ -1296,7 +1349,7 @@ func (s *DataStore) CreateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(e.Name, "engine", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(e.Name, "engine", func(name string) (k8sruntime.Object, error) {
 		return s.GetEngineRO(name)
 	})
 	if err != nil {
@@ -1323,7 +1376,7 @@ func (s *DataStore) UpdateEngine(e *longhorn.Engine) (*longhorn.Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(e.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(e.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetEngineRO(name)
 	})
 	return obj, nil
@@ -1335,7 +1388,7 @@ func (s *DataStore) UpdateEngineStatus(e *longhorn.Engine) (*longhorn.Engine, er
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(e.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(e.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetEngineRO(name)
 	})
 	return obj, nil
@@ -1470,7 +1523,7 @@ func (s *DataStore) CreateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(ret.Name, "replica", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "replica", func(name string) (k8sruntime.Object, error) {
 		return s.GetReplicaRO(name)
 	})
 	if err != nil {
@@ -1503,7 +1556,7 @@ func (s *DataStore) UpdateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(r.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(r.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetReplicaRO(name)
 	})
 	return obj, nil
@@ -1519,7 +1572,7 @@ func (s *DataStore) UpdateReplicaStatus(r *longhorn.Replica) (*longhorn.Replica,
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(r.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(r.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetReplicaRO(name)
 	})
 	return obj, nil
@@ -1786,7 +1839,7 @@ func (s *DataStore) CreateEngineImage(img *longhorn.EngineImage) (*longhorn.Engi
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(ret.Name, "engine image", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "engine image", func(name string) (k8sruntime.Object, error) {
 		return s.GetEngineImageRO(name)
 	})
 	if err != nil {
@@ -1806,7 +1859,7 @@ func (s *DataStore) UpdateEngineImage(img *longhorn.EngineImage) (*longhorn.Engi
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(img.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(img.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetEngineImageRO(name)
 	})
 	return obj, nil
@@ -1819,7 +1872,7 @@ func (s *DataStore) UpdateEngineImageStatus(img *longhorn.EngineImage) (*longhor
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(img.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(img.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetEngineImageRO(name)
 	})
 	return obj, nil
@@ -2027,7 +2080,7 @@ func (s *DataStore) CreateBackingImage(backingImage *longhorn.BackingImage) (*lo
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(ret.Name, "backing image", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "backing image", func(name string) (k8sruntime.Object, error) {
 		return s.GetBackingImageRO(name)
 	})
 	if err != nil {
@@ -2047,7 +2100,7 @@ func (s *DataStore) UpdateBackingImage(backingImage *longhorn.BackingImage) (*lo
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(backingImage.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(backingImage.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetBackingImageRO(name)
 	})
 	return obj, nil
@@ -2060,7 +2113,7 @@ func (s *DataStore) UpdateBackingImageStatus(backingImage *longhorn.BackingImage
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(backingImage.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(backingImage.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetBackingImageRO(name)
 	})
 	return obj, nil
@@ -2167,7 +2220,7 @@ func (s *DataStore) CreateBackingImageManager(backingImageManager *longhorn.Back
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(ret.Name, "backing image manager", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "backing image manager", func(name string) (k8sruntime.Object, error) {
 		return s.GetBackingImageManagerRO(name)
 	})
 	if err != nil {
@@ -2201,7 +2254,7 @@ func (s *DataStore) UpdateBackingImageManager(backingImageManager *longhorn.Back
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(backingImageManager.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(backingImageManager.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetBackingImageManagerRO(name)
 	})
 	return obj, nil
@@ -2214,7 +2267,7 @@ func (s *DataStore) UpdateBackingImageManagerStatus(backingImageManager *longhor
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(backingImageManager.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(backingImageManager.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetBackingImageManagerRO(name)
 	})
 	return obj, nil
@@ -2353,7 +2406,7 @@ func (s *DataStore) CreateBackingImageDataSource(backingImageDataSource *longhor
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(ret.Name, "backing image data source", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "backing image data source", func(name string) (k8sruntime.Object, error) {
 		return s.getBackingImageDataSourceRO(name)
 	})
 	if err != nil {
@@ -2380,7 +2433,7 @@ func (s *DataStore) UpdateBackingImageDataSource(backingImageDataSource *longhor
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(backingImageDataSource.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(backingImageDataSource.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.getBackingImageDataSourceRO(name)
 	})
 	return obj, nil
@@ -2393,7 +2446,7 @@ func (s *DataStore) UpdateBackingImageDataSourceStatus(backingImageDataSource *l
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(backingImageDataSource.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(backingImageDataSource.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.getBackingImageDataSourceRO(name)
 	})
 	return obj, nil
@@ -2523,7 +2576,7 @@ func (s *DataStore) CreateNode(node *longhorn.Node) (*longhorn.Node, error) {
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(ret.Name, "node", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "node", func(name string) (k8sruntime.Object, error) {
 		return s.GetNodeRO(name)
 	})
 	if err != nil {
@@ -2675,7 +2728,7 @@ func (s *DataStore) UpdateNode(node *longhorn.Node) (*longhorn.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(node.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(node.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetNodeRO(name)
 	})
 	return obj, nil
@@ -2687,7 +2740,7 @@ func (s *DataStore) UpdateNodeStatus(node *longhorn.Node) (*longhorn.Node, error
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(node.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(node.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetNodeRO(name)
 	})
 	return obj, nil
@@ -3085,7 +3138,7 @@ func (s *DataStore) ListReplicasByNodeRO(name string) ([]*longhorn.Replica, erro
 	return s.replicaLister.Replicas(s.namespace).List(nodeSelector)
 }
 
-func labelNode(nodeID string, obj runtime.Object) error {
+func labelNode(nodeID string, obj k8sruntime.Object) error {
 	// fix longhornnode label for object
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
@@ -3101,7 +3154,7 @@ func labelNode(nodeID string, obj runtime.Object) error {
 	return nil
 }
 
-func labelDiskUUID(diskUUID string, obj runtime.Object) error {
+func labelDiskUUID(diskUUID string, obj k8sruntime.Object) error {
 	// fix longhorndiskuuid label for object
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
@@ -3120,7 +3173,7 @@ func labelDiskUUID(diskUUID string, obj runtime.Object) error {
 // labelLonghornNode fixes the new label `longhorn.io/node` for object.
 // It can replace func `labelNode` if the old label `longhornnode` is
 // deprecated.
-func labelLonghornNode(nodeID string, obj runtime.Object) error {
+func labelLonghornNode(nodeID string, obj k8sruntime.Object) error {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
 		return err
@@ -3138,7 +3191,7 @@ func labelLonghornNode(nodeID string, obj runtime.Object) error {
 // labelLonghornDiskUUID fixes the new label `longhorn.io/disk-uuid` for
 // object. It can replace func `labelDiskUUID` if the old label
 // `longhorndiskuuid` is deprecated.
-func labelLonghornDiskUUID(diskUUID string, obj runtime.Object) error {
+func labelLonghornDiskUUID(diskUUID string, obj k8sruntime.Object) error {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
 		return err
@@ -3153,7 +3206,7 @@ func labelLonghornDiskUUID(diskUUID string, obj runtime.Object) error {
 	return nil
 }
 
-func labelBackingImage(backingImageName string, obj runtime.Object) error {
+func labelBackingImage(backingImageName string, obj k8sruntime.Object) error {
 	// fix longhorn.io/backing-image label for object
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
@@ -3169,7 +3222,7 @@ func labelBackingImage(backingImageName string, obj runtime.Object) error {
 	return nil
 }
 
-func labelBackupVolume(backupVolumeName string, obj runtime.Object) error {
+func labelBackupVolume(backupVolumeName string, obj k8sruntime.Object) error {
 	// fix longhorn.io/backup-volume label for object
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
@@ -3192,7 +3245,7 @@ func FixupRecurringJob(v *longhorn.Volume) error {
 	return nil
 }
 
-func labelRecurringJobDefault(obj runtime.Object) error {
+func labelRecurringJobDefault(obj k8sruntime.Object) error {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
 		return err
@@ -3399,7 +3452,7 @@ func (s *DataStore) CreateInstanceManager(im *longhorn.InstanceManager) (*longho
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(ret.Name, "instance manager", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "instance manager", func(name string) (k8sruntime.Object, error) {
 		return s.GetInstanceManagerRO(name)
 	})
 	if err != nil {
@@ -3643,7 +3696,7 @@ func (s *DataStore) UpdateInstanceManager(im *longhorn.InstanceManager) (*longho
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(im.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(im.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetInstanceManagerRO(name)
 	})
 	return obj, nil
@@ -3656,17 +3709,17 @@ func (s *DataStore) UpdateInstanceManagerStatus(im *longhorn.InstanceManager) (*
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(im.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(im.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetInstanceManagerRO(name)
 	})
 	return obj, nil
 }
 
-func verifyCreation(name, kind string, getMethod func(name string) (runtime.Object, error)) (runtime.Object, error) {
+func verifyCreation(name, kind string, getMethod func(name string) (k8sruntime.Object, error)) (k8sruntime.Object, error) {
 	// WORKAROUND: The immedidate read after object's creation can fail.
 	// See https://github.com/longhorn/longhorn/issues/133
 	var (
-		ret runtime.Object
+		ret k8sruntime.Object
 		err error
 	)
 	for i := 0; i < VerificationRetryCounts; i++ {
@@ -3684,7 +3737,7 @@ func verifyCreation(name, kind string, getMethod func(name string) (runtime.Obje
 	return ret, nil
 }
 
-func verifyUpdate(name string, obj runtime.Object, getMethod func(name string) (runtime.Object, error)) {
+func verifyUpdate(name string, obj k8sruntime.Object, getMethod func(name string) (k8sruntime.Object, error)) {
 	accessor, err := meta.Accessor(obj)
 	if err != nil {
 		logrus.WithError(err).Errorf("BUG: datastore: cannot verify update for %v (%+v) because cannot get accessor", name, obj)
@@ -3790,7 +3843,7 @@ func (s *DataStore) CreateShareManager(sm *longhorn.ShareManager) (*longhorn.Sha
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(ret.Name, "share manager", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "share manager", func(name string) (k8sruntime.Object, error) {
 		return s.getShareManagerRO(name)
 	})
 	if err != nil {
@@ -3810,7 +3863,7 @@ func (s *DataStore) UpdateShareManager(sm *longhorn.ShareManager) (*longhorn.Sha
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(sm.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(sm.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.getShareManagerRO(name)
 	})
 	return obj, nil
@@ -3822,7 +3875,7 @@ func (s *DataStore) UpdateShareManagerStatus(sm *longhorn.ShareManager) (*longho
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(sm.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(sm.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.getShareManagerRO(name)
 	})
 	return obj, nil
@@ -3896,7 +3949,7 @@ func (s *DataStore) CreateBackupTarget(backupTarget *longhorn.BackupTarget) (*lo
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(ret.Name, "backup target", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "backup target", func(name string) (k8sruntime.Object, error) {
 		return s.GetBackupTargetRO(name)
 	})
 	if err != nil {
@@ -3949,7 +4002,7 @@ func (s *DataStore) UpdateBackupTarget(backupTarget *longhorn.BackupTarget) (*lo
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(backupTarget.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(backupTarget.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetBackupTargetRO(name)
 	})
 	return obj, nil
@@ -3961,7 +4014,7 @@ func (s *DataStore) UpdateBackupTargetStatus(backupTarget *longhorn.BackupTarget
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(backupTarget.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(backupTarget.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetBackupTargetRO(name)
 	})
 	return obj, nil
@@ -3982,7 +4035,7 @@ func (s *DataStore) CreateBackupVolume(backupVolume *longhorn.BackupVolume) (*lo
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(ret.Name, "backup volume", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "backup volume", func(name string) (k8sruntime.Object, error) {
 		return s.GetBackupVolumeRO(name)
 	})
 	if err != nil {
@@ -4036,7 +4089,7 @@ func (s *DataStore) UpdateBackupVolume(backupVolume *longhorn.BackupVolume) (*lo
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(backupVolume.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(backupVolume.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetBackupVolumeRO(name)
 	})
 	return obj, nil
@@ -4048,7 +4101,7 @@ func (s *DataStore) UpdateBackupVolumeStatus(backupVolume *longhorn.BackupVolume
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(backupVolume.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(backupVolume.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetBackupVolumeRO(name)
 	})
 	return obj, nil
@@ -4092,7 +4145,7 @@ func (s *DataStore) CreateBackup(backup *longhorn.Backup, backupVolumeName strin
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(ret.Name, "backup", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "backup", func(name string) (k8sruntime.Object, error) {
 		return s.GetBackupRO(name)
 	})
 	if err != nil {
@@ -4165,7 +4218,7 @@ func (s *DataStore) UpdateBackup(backup *longhorn.Backup) (*longhorn.Backup, err
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(backup.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(backup.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetBackupRO(name)
 	})
 	return obj, nil
@@ -4177,7 +4230,7 @@ func (s *DataStore) UpdateBackupStatus(backup *longhorn.Backup) (*longhorn.Backu
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(backup.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(backup.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetBackupRO(name)
 	})
 	return obj, nil
@@ -4223,7 +4276,7 @@ func (s *DataStore) CreateSnapshot(snapshot *longhorn.Snapshot) (*longhorn.Snaps
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(snapshot.Name, "snapshot", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(snapshot.Name, "snapshot", func(name string) (k8sruntime.Object, error) {
 		return s.GetSnapshotRO(name)
 	})
 	if err != nil {
@@ -4257,7 +4310,7 @@ func (s *DataStore) UpdateSnapshotStatus(snap *longhorn.Snapshot) (*longhorn.Sna
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(snap.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(snap.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetSnapshotRO(name)
 	})
 	return obj, nil
@@ -4331,7 +4384,7 @@ func (s *DataStore) CreateRecurringJob(recurringJob *longhorn.RecurringJob) (*lo
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(ret.Name, "recurring job", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "recurring job", func(name string) (k8sruntime.Object, error) {
 		return s.getRecurringJobRO(name)
 	})
 	if err != nil {
@@ -4401,7 +4454,7 @@ func (s *DataStore) UpdateRecurringJob(recurringJob *longhorn.RecurringJob) (*lo
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(recurringJob.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(recurringJob.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetRecurringJobRO(name)
 	})
 	return obj, nil
@@ -4414,7 +4467,7 @@ func (s *DataStore) UpdateRecurringJobStatus(recurringJob *longhorn.RecurringJob
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(recurringJob.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(recurringJob.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.getRecurringJobRO(name)
 	})
 	return obj, nil
@@ -4540,7 +4593,7 @@ func (s *DataStore) CreateOrphan(orphan *longhorn.Orphan) (*longhorn.Orphan, err
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(ret.Name, "orphan", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "orphan", func(name string) (k8sruntime.Object, error) {
 		return s.GetOrphanRO(name)
 	})
 	if err != nil {
@@ -4575,7 +4628,7 @@ func (s *DataStore) UpdateOrphan(orphan *longhorn.Orphan) (*longhorn.Orphan, err
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(orphan.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(orphan.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetOrphanRO(name)
 	})
 	return obj, nil
@@ -4587,7 +4640,7 @@ func (s *DataStore) UpdateOrphanStatus(orphan *longhorn.Orphan) (*longhorn.Orpha
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(orphan.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(orphan.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetOrphanRO(name)
 	})
 	return obj, nil
@@ -4700,7 +4753,7 @@ func (s *DataStore) CreateLHVolumeAttachment(va *longhorn.VolumeAttachment) (*lo
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(ret.Name, "Longhorn VolumeAttachment", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "Longhorn VolumeAttachment", func(name string) (k8sruntime.Object, error) {
 		return s.GetLHVolumeAttachmentRO(name)
 	})
 	if err != nil {
@@ -4784,7 +4837,7 @@ func (s *DataStore) UpdateSupportBundleStatus(supportBundle *longhorn.SupportBun
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(supportBundle.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(supportBundle.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetSupportBundleRO(name)
 	})
 	return obj, nil
@@ -4800,7 +4853,7 @@ func (s *DataStore) CreateSupportBundle(supportBundle *longhorn.SupportBundle) (
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(ret.Name, "support bundle", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "support bundle", func(name string) (k8sruntime.Object, error) {
 		return s.GetSupportBundleRO(name)
 	})
 	if err != nil {
@@ -4831,7 +4884,7 @@ func (s *DataStore) CreateSystemBackup(systemBackup *longhorn.SystemBackup) (*lo
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(ret.Name, "system backup", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "system backup", func(name string) (k8sruntime.Object, error) {
 		return s.GetSystemBackupRO(name)
 	})
 	if err != nil {
@@ -4878,7 +4931,7 @@ func (s *DataStore) UpdateSystemBackup(systemBackup *longhorn.SystemBackup) (*lo
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(systemBackup.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(systemBackup.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetSystemBackupRO(name)
 	})
 	return obj, nil
@@ -4891,7 +4944,7 @@ func (s *DataStore) UpdateSystemBackupStatus(systemBackup *longhorn.SystemBackup
 		return nil, err
 	}
 
-	verifyUpdate(systemBackup.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(systemBackup.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetSystemBackupRO(name)
 	})
 	return obj, nil
@@ -4931,7 +4984,7 @@ func (s *DataStore) ListSystemBackupsRO() ([]*longhorn.SystemBackup, error) {
 	return s.systemBackupLister.SystemBackups(s.namespace).List(labels.Everything())
 }
 
-func LabelSystemBackupVersion(version string, obj runtime.Object) error {
+func LabelSystemBackupVersion(version string, obj k8sruntime.Object) error {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
 		return err
@@ -4957,7 +5010,7 @@ func (s *DataStore) CreateSystemRestore(systemRestore *longhorn.SystemRestore) (
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(ret.Name, "system restore", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "system restore", func(name string) (k8sruntime.Object, error) {
 		return s.GetSystemRestoreRO(name)
 	})
 	if err != nil {
@@ -5034,14 +5087,14 @@ func (s *DataStore) UpdateSystemRestore(systemRestore *longhorn.SystemRestore) (
 		return nil, err
 	}
 
-	verifyUpdate(systemRestore.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(systemRestore.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetSystemRestore(name)
 	})
 
 	return obj, nil
 }
 
-func labelLonghornSystemRestoreInProgress(obj runtime.Object) error {
+func labelLonghornSystemRestoreInProgress(obj k8sruntime.Object) error {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
 		return err
@@ -5063,7 +5116,7 @@ func (s *DataStore) UpdateSystemRestoreStatus(systemRestore *longhorn.SystemRest
 		return nil, err
 	}
 
-	verifyUpdate(systemRestore.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(systemRestore.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetSystemRestoreRO(name)
 	})
 
@@ -5154,7 +5207,7 @@ func (s *DataStore) UpdateLHVolumeAttachment(va *longhorn.VolumeAttachment) (*lo
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(va.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(va.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetLHVolumeAttachmentRO(name)
 	})
 	return obj, nil
@@ -5166,7 +5219,7 @@ func (s *DataStore) UpdateLHVolumeAttachmentStatus(va *longhorn.VolumeAttachment
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(va.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(va.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetLHVolumeAttachmentRO(name)
 	})
 	return obj, nil
@@ -5300,7 +5353,7 @@ func (s *DataStore) CreateBackupBackingImage(backupBackingImage *longhorn.Backup
 		return ret, nil
 	}
 
-	obj, err := verifyCreation(ret.Name, "backup backing image", func(name string) (runtime.Object, error) {
+	obj, err := verifyCreation(ret.Name, "backup backing image", func(name string) (k8sruntime.Object, error) {
 		return s.GetBackupBackingImageRO(name)
 	})
 	if err != nil {
@@ -5320,7 +5373,7 @@ func (s *DataStore) UpdateBackupBackingImage(backupBackingImage *longhorn.Backup
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(backupBackingImage.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(backupBackingImage.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetBackupBackingImageRO(name)
 	})
 	return obj, nil
@@ -5333,7 +5386,7 @@ func (s *DataStore) UpdateBackupBackingImageStatus(backupBackingImage *longhorn.
 	if err != nil {
 		return nil, err
 	}
-	verifyUpdate(backupBackingImage.Name, obj, func(name string) (runtime.Object, error) {
+	verifyUpdate(backupBackingImage.Name, obj, func(name string) (k8sruntime.Object, error) {
 		return s.GetBackupBackingImageRO(name)
 	})
 	return obj, nil
