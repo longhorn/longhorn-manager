@@ -188,7 +188,8 @@ func (imc *InstanceManagerController) isResponsibleForSetting(obj interface{}) b
 		}
 	}
 
-	return types.SettingName(setting.Name) == types.SettingNameKubernetesClusterAutoscalerEnabled
+	return types.SettingName(setting.Name) == types.SettingNameKubernetesClusterAutoscalerEnabled ||
+		types.SettingName(setting.Name) == types.SettingNameV2DataEngineCPUMask
 }
 
 func isInstanceManagerPod(obj interface{}) bool {
@@ -498,6 +499,27 @@ func (imc *InstanceManagerController) syncInstanceStatus(im *longhorn.InstanceMa
 	return nil
 }
 
+func (imc *InstanceManagerController) isDateEngineCPUMaskApplied(im *longhorn.InstanceManager) (bool, error) {
+	if types.IsDataEngineV1(im.Spec.DataEngine) {
+		return true, nil
+	}
+
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+		return true, nil
+	}
+
+	if im.Spec.DataEngineSpec.V2.CPUMask != "" {
+		return im.Spec.DataEngineSpec.V2.CPUMask == im.Status.DataEngineStatus.V2.CPUMask, nil
+	}
+
+	setting, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngineCPUMask)
+	if err != nil {
+		return true, errors.Wrapf(err, "failed to get %v setting for updating data engine CPU mask", types.SettingNameV2DataEngineCPUMask)
+	}
+
+	return setting.Value == im.Status.DataEngineStatus.V2.CPUMask, nil
+}
+
 func (imc *InstanceManagerController) syncLogSettingsToInstanceManagerPod(im *longhorn.InstanceManager) error {
 	if types.IsDataEngineV1(im.Spec.DataEngine) {
 		return nil
@@ -554,12 +576,17 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		log.WithError(err).Warnf("Failed to sync log settings to instance manager pod %v", im.Name)
 	}
 
+	dataEngineCPUMaskIsApplied, err := imc.isDateEngineCPUMaskApplied(im)
+	if err != nil {
+		log.WithError(err).Warnf("Failed to sync date engine CPU mask to instance manager pod %v", im.Name)
+	}
+
 	isSettingSynced, isPodDeletedOrNotRunning, areInstancesRunningInPod, err := imc.areDangerZoneSettingsSyncedToIMPod(im)
 	if err != nil {
 		return err
 	}
 
-	isPodDeletionNotRequired := isSettingSynced || areInstancesRunningInPod || isPodDeletedOrNotRunning
+	isPodDeletionNotRequired := (isSettingSynced && dataEngineCPUMaskIsApplied) || areInstancesRunningInPod || isPodDeletedOrNotRunning
 	if im.Status.CurrentState != longhorn.InstanceManagerStateError &&
 		im.Status.CurrentState != longhorn.InstanceManagerStateStopped &&
 		isPodDeletionNotRequired {
@@ -1364,9 +1391,28 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			logFlags = strings.ToLower(logFlagsSetting.Value)
 		}
 
+		cpuMask := im.Spec.DataEngineSpec.V2.CPUMask
+		if cpuMask == "" {
+			value, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngineCPUMask)
+			if err != nil {
+				return nil, err
+			}
+
+			cpuMask = value.Value
+		}
+
+		im.Status.DataEngineStatus.V2.CPUMask = cpuMask
+
 		args := []string{
-			"instance-manager", "--spdk-log", logFlags, "--enable-spdk", "--debug",
-			"daemon", "--spdk-enabled", "--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort)}
+			"instance-manager",
+			"--spdk-log", logFlags,
+			"--spdk-cpumask", cpuMask,
+			"--enable-spdk", "--debug",
+			"daemon",
+			"--spdk-enabled",
+			"--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort)}
+
+		imc.logger.Infof("Creating instance manager pod %v with args %+v", podSpec.Name, args)
 
 		podSpec.Spec.Containers[0].Args = args
 
