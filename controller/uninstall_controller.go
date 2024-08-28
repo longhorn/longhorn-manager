@@ -75,12 +75,13 @@ func NewUninstallController(
 	kubeClient clientset.Interface,
 	extensionsClient apiextensionsclientset.Interface,
 ) (*UninstallController, error) {
+	nameConfig := workqueue.TypedRateLimitingQueueConfig[any]{Name: "longhorn-uninstall"}
 	c := &UninstallController{
 		baseController: newBaseControllerWithQueue("longhorn-uninstall", logger,
-			workqueue.NewNamedRateLimitingQueue(workqueue.NewMaxOfRateLimiter(
-				workqueue.NewItemExponentialFailureRateLimiter(100*time.Millisecond, 2*time.Second),
-				&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(100), 1000)},
-			), "longhorn-uninstall"),
+			workqueue.NewTypedRateLimitingQueueWithConfig[any](workqueue.NewTypedMaxOfRateLimiter[any](
+				workqueue.NewTypedItemExponentialFailureRateLimiter[any](100*time.Millisecond, 2*time.Second),
+				&workqueue.TypedBucketRateLimiter[any]{Limiter: rate.NewLimiter(rate.Limit(100), 1000)},
+			), nameConfig),
 		),
 		namespace: namespace,
 		force:     force,

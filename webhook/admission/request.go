@@ -3,7 +3,7 @@ package admission
 import (
 	"fmt"
 
-	"github.com/rancher/wrangler/pkg/webhook"
+	"github.com/rancher/wrangler/v3/pkg/webhook"
 
 	"k8s.io/apimachinery/pkg/runtime"
 

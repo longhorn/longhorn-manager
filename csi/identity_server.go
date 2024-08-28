@@ -7,6 +7,7 @@ import (
 )
 
 type IdentityServer struct {
+	csi.UnimplementedIdentityServer
 	driverName string
 	version    string
 }

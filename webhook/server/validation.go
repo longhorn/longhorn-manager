@@ -3,7 +3,7 @@ package server
 import (
 	"net/http"
 
-	"github.com/rancher/wrangler/pkg/webhook"
+	"github.com/rancher/wrangler/v3/pkg/webhook"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
