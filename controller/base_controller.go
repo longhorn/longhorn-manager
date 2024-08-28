@@ -18,16 +18,17 @@ var (
 type baseController struct {
 	name   string
 	logger *logrus.Entry
-	queue  workqueue.RateLimitingInterface
+	queue  workqueue.TypedRateLimitingInterface[any]
 }
 
 func newBaseController(name string, logger logrus.FieldLogger) *baseController {
+	nameConfig := workqueue.TypedRateLimitingQueueConfig[any]{Name: name}
 	return newBaseControllerWithQueue(name, logger,
-		workqueue.NewNamedRateLimitingQueue(EnhancedDefaultControllerRateLimiter(), name))
+		workqueue.NewTypedRateLimitingQueueWithConfig[any](EnhancedDefaultControllerRateLimiter(), nameConfig))
 }
 
 func newBaseControllerWithQueue(name string, logger logrus.FieldLogger,
-	queue workqueue.RateLimitingInterface) *baseController {
+	queue workqueue.TypedRateLimitingInterface[any]) *baseController {
 	c := &baseController{
 		name:   name,
 		logger: logger.WithField("controller", name),

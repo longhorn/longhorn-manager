@@ -310,11 +310,11 @@ func isControllerResponsibleFor(controllerID string, ds *datastore.DataStore, na
 
 // EnhancedDefaultControllerRateLimiter is an enhanced version of workqueue.DefaultControllerRateLimiter()
 // See https://github.com/longhorn/longhorn/issues/1058 for details
-func EnhancedDefaultControllerRateLimiter() workqueue.RateLimiter {
-	return workqueue.NewMaxOfRateLimiter(
-		workqueue.NewItemExponentialFailureRateLimiter(5*time.Millisecond, 1000*time.Second),
+func EnhancedDefaultControllerRateLimiter() workqueue.TypedRateLimiter[any] {
+	return workqueue.NewTypedMaxOfRateLimiter[any](
+		workqueue.NewTypedItemExponentialFailureRateLimiter[any](5*time.Millisecond, 1000*time.Second),
 		// 100 qps, 1000 bucket size
-		&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(100), 1000)},
+		&workqueue.TypedBucketRateLimiter[any]{Limiter: rate.NewLimiter(rate.Limit(100), 1000)},
 	)
 }
 

@@ -70,8 +70,8 @@ type SnapshotMonitor struct {
 
 	checkScheduler *gocron.Scheduler
 
-	snapshotChangeEventQueue workqueue.Interface
-	snapshotCheckTaskQueue   workqueue.RateLimitingInterface
+	snapshotChangeEventQueue workqueue.TypedInterface[any]
+	snapshotCheckTaskQueue   workqueue.TypedRateLimitingInterface[any]
 
 	inProgressSnapshotCheckTasks     map[string]struct{}
 	inProgressSnapshotCheckTasksLock sync.RWMutex
@@ -86,7 +86,7 @@ type SnapshotMonitor struct {
 }
 
 func NewSnapshotMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName string, eventRecorder record.EventRecorder,
-	snapshotChangeEventQueue workqueue.Interface, syncCallback func(key string)) (*SnapshotMonitor, error) {
+	snapshotChangeEventQueue workqueue.TypedInterface[any], syncCallback func(key string)) (*SnapshotMonitor, error) {
 
 	ctx, quit := context.WithCancel(context.Background())
 
@@ -101,9 +101,9 @@ func NewSnapshotMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, node
 
 		snapshotChangeEventQueue: snapshotChangeEventQueue,
 
-		snapshotCheckTaskQueue: workqueue.NewRateLimitingQueue(workqueue.NewMaxOfRateLimiter(
-			workqueue.NewItemExponentialFailureRateLimiter(1*time.Second, 1000*time.Second),
-			&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+		snapshotCheckTaskQueue: workqueue.NewTypedRateLimitingQueue[any](workqueue.NewTypedMaxOfRateLimiter[any](
+			workqueue.NewTypedItemExponentialFailureRateLimiter[any](1*time.Second, 1000*time.Second),
+			&workqueue.TypedBucketRateLimiter[any]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
 		)),
 
 		inProgressSnapshotCheckTasks: map[string]struct{}{},

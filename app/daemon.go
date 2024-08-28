@@ -9,7 +9,7 @@ import (
 
 	"github.com/gorilla/handlers"
 	"github.com/pkg/errors"
-	"github.com/rancher/wrangler/pkg/signals"
+	"github.com/rancher/wrangler/v3/pkg/signals"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
