@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	wranglerClients "github.com/rancher/wrangler/pkg/clients"
-	wranglerSchemes "github.com/rancher/wrangler/pkg/schemes"
+	wranglerClients "github.com/rancher/wrangler/v3/pkg/clients"
+	wranglerSchemes "github.com/rancher/wrangler/v3/pkg/schemes"
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/clientcmd"

@@ -169,12 +169,13 @@ func NewSystemRolloutController(
 		Interface: v1core.New(kubeClient.CoreV1().RESTClient()).Events(""),
 	})
 
+	nameConfig := workqueue.TypedRateLimitingQueueConfig[any]{Name: SystemRolloutControllerName}
 	c := &SystemRolloutController{
 		baseController: newBaseControllerWithQueue(SystemRolloutControllerName, logger,
-			workqueue.NewNamedRateLimitingQueue(workqueue.NewMaxOfRateLimiter(
-				workqueue.NewItemExponentialFailureRateLimiter(100*time.Millisecond, 2*time.Second),
-				&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(100), 1000)},
-			), SystemRolloutControllerName),
+			workqueue.NewTypedRateLimitingQueueWithConfig[any](workqueue.NewTypedMaxOfRateLimiter[any](
+				workqueue.NewTypedItemExponentialFailureRateLimiter[any](100*time.Millisecond, 2*time.Second),
+				&workqueue.TypedBucketRateLimiter[any]{Limiter: rate.NewLimiter(rate.Limit(100), 1000)},
+			), nameConfig),
 		),
 		controllerID: controllerID,
 		stopCh:       stopCh,

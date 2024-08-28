@@ -48,6 +48,7 @@ var supportedFs = map[string]fsParameters{
 }
 
 type NodeServer struct {
+	csi.UnimplementedNodeServer
 	apiClient *longhornclient.RancherClient
 	nodeID    string
 	caps      []*csi.NodeServiceCapability

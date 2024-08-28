@@ -63,7 +63,7 @@ type NodeController struct {
 	diskMonitor monitor.Monitor
 
 	snapshotMonitor              monitor.Monitor
-	snapshotChangeEventQueue     workqueue.Interface
+	snapshotChangeEventQueue     workqueue.TypedInterface[any]
 	snapshotChangeEventQueueLock sync.Mutex
 
 	ds *datastore.DataStore
@@ -102,7 +102,7 @@ func NewNodeController(
 
 		topologyLabelsChecker: util.IsKubernetesVersionAtLeast,
 
-		snapshotChangeEventQueue: workqueue.New(),
+		snapshotChangeEventQueue: workqueue.NewTyped[any](),
 	}
 
 	nc.scheduler = scheduler.NewReplicaScheduler(ds)

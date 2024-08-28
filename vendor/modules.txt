@@ -400,49 +400,28 @@ github.com/rancher/lasso/pkg/log
 github.com/rancher/lasso/pkg/mapper
 github.com/rancher/lasso/pkg/metrics
 github.com/rancher/lasso/pkg/scheme
-# github.com/rancher/wrangler v1.1.2
-## explicit; go 1.19
-github.com/rancher/wrangler/pkg/apply
-github.com/rancher/wrangler/pkg/apply/injectors
-github.com/rancher/wrangler/pkg/clients
-github.com/rancher/wrangler/pkg/condition
-github.com/rancher/wrangler/pkg/data
-github.com/rancher/wrangler/pkg/data/convert
-github.com/rancher/wrangler/pkg/generated/controllers/admissionregistration.k8s.io
-github.com/rancher/wrangler/pkg/generated/controllers/admissionregistration.k8s.io/v1
-github.com/rancher/wrangler/pkg/generated/controllers/apiextensions.k8s.io
-github.com/rancher/wrangler/pkg/generated/controllers/apiextensions.k8s.io/v1
-github.com/rancher/wrangler/pkg/generated/controllers/apiregistration.k8s.io
-github.com/rancher/wrangler/pkg/generated/controllers/apiregistration.k8s.io/v1
-github.com/rancher/wrangler/pkg/generated/controllers/apps
-github.com/rancher/wrangler/pkg/generated/controllers/apps/v1
-github.com/rancher/wrangler/pkg/generated/controllers/batch
-github.com/rancher/wrangler/pkg/generated/controllers/batch/v1
-github.com/rancher/wrangler/pkg/generated/controllers/core
-github.com/rancher/wrangler/pkg/generated/controllers/core/v1
-github.com/rancher/wrangler/pkg/generated/controllers/rbac
-github.com/rancher/wrangler/pkg/generated/controllers/rbac/v1
-github.com/rancher/wrangler/pkg/generic
-github.com/rancher/wrangler/pkg/gvk
-github.com/rancher/wrangler/pkg/kv
-github.com/rancher/wrangler/pkg/merr
-github.com/rancher/wrangler/pkg/name
-github.com/rancher/wrangler/pkg/objectset
-github.com/rancher/wrangler/pkg/patch
-github.com/rancher/wrangler/pkg/ratelimit
-github.com/rancher/wrangler/pkg/schemes
-github.com/rancher/wrangler/pkg/signals
-github.com/rancher/wrangler/pkg/stringset
-github.com/rancher/wrangler/pkg/webhook
 # github.com/rancher/wrangler/v3 v3.0.0
 ## explicit; go 1.22.0
 github.com/rancher/wrangler/v3/pkg/apply
 github.com/rancher/wrangler/v3/pkg/apply/injectors
+github.com/rancher/wrangler/v3/pkg/clients
 github.com/rancher/wrangler/v3/pkg/condition
 github.com/rancher/wrangler/v3/pkg/data
 github.com/rancher/wrangler/v3/pkg/data/convert
+github.com/rancher/wrangler/v3/pkg/generated/controllers/admissionregistration.k8s.io
+github.com/rancher/wrangler/v3/pkg/generated/controllers/admissionregistration.k8s.io/v1
+github.com/rancher/wrangler/v3/pkg/generated/controllers/apiextensions.k8s.io
+github.com/rancher/wrangler/v3/pkg/generated/controllers/apiextensions.k8s.io/v1
+github.com/rancher/wrangler/v3/pkg/generated/controllers/apiregistration.k8s.io
+github.com/rancher/wrangler/v3/pkg/generated/controllers/apiregistration.k8s.io/v1
+github.com/rancher/wrangler/v3/pkg/generated/controllers/apps
+github.com/rancher/wrangler/v3/pkg/generated/controllers/apps/v1
+github.com/rancher/wrangler/v3/pkg/generated/controllers/batch
+github.com/rancher/wrangler/v3/pkg/generated/controllers/batch/v1
 github.com/rancher/wrangler/v3/pkg/generated/controllers/core
 github.com/rancher/wrangler/v3/pkg/generated/controllers/core/v1
+github.com/rancher/wrangler/v3/pkg/generated/controllers/rbac
+github.com/rancher/wrangler/v3/pkg/generated/controllers/rbac/v1
 github.com/rancher/wrangler/v3/pkg/generic
 github.com/rancher/wrangler/v3/pkg/gvk
 github.com/rancher/wrangler/v3/pkg/kv
@@ -450,9 +429,12 @@ github.com/rancher/wrangler/v3/pkg/merr
 github.com/rancher/wrangler/v3/pkg/name
 github.com/rancher/wrangler/v3/pkg/objectset
 github.com/rancher/wrangler/v3/pkg/patch
+github.com/rancher/wrangler/v3/pkg/ratelimit
 github.com/rancher/wrangler/v3/pkg/schemes
+github.com/rancher/wrangler/v3/pkg/signals
 github.com/rancher/wrangler/v3/pkg/start
 github.com/rancher/wrangler/v3/pkg/stringset
+github.com/rancher/wrangler/v3/pkg/webhook
 # github.com/robfig/cron v1.2.0
 ## explicit
 github.com/robfig/cron
