@@ -1277,11 +1277,6 @@ func (s *NodeControllerSuite) TestEventOnNotReady(c *C) {
 
 	expectation := &NodeControllerExpectation{
 		events: map[string]*corev1.Event{
-			"node1-ready": {
-				Type:    "Normal",
-				Reason:  "Ready",
-				Message: "Node test-node-name-1 is ready",
-			},
 			"node2-ready": {
 				Type:    "Normal",
 				Reason:  "Ready",
@@ -1369,11 +1364,6 @@ func (s *NodeControllerSuite) TestEventOnDiskPressure(c *C) {
 
 	expectation := &NodeControllerExpectation{
 		events: map[string]*corev1.Event{
-			"node1-ready": {
-				Type:    "Normal",
-				Reason:  "Ready",
-				Message: "Node test-node-name-1 is ready",
-			},
 			"node2-ready": {
 				Type:    "Normal",
 				Reason:  "Ready",
@@ -1461,11 +1451,6 @@ func (s *NodeControllerSuite) TestEventOnMemoryPressure(c *C) {
 
 	expectation := &NodeControllerExpectation{
 		events: map[string]*corev1.Event{
-			"node1-ready": {
-				Type:    "Normal",
-				Reason:  "Ready",
-				Message: "Node test-node-name-1 is ready",
-			},
 			"node2-ready": {
 				Type:    "Normal",
 				Reason:  "Ready",
@@ -1553,11 +1538,6 @@ func (s *NodeControllerSuite) TestEventOnPidPressure(c *C) {
 
 	expectation := &NodeControllerExpectation{
 		events: map[string]*corev1.Event{
-			"node1-ready": {
-				Type:    "Normal",
-				Reason:  "Ready",
-				Message: "Node test-node-name-1 is ready",
-			},
 			"node2-ready": {
 				Type:    "Normal",
 				Reason:  "Ready",
@@ -1645,11 +1625,6 @@ func (s *NodeControllerSuite) TestEventOnNetworkPressure(c *C) {
 
 	expectation := &NodeControllerExpectation{
 		events: map[string]*corev1.Event{
-			"node1-ready": {
-				Type:    "Normal",
-				Reason:  "Ready",
-				Message: "Node test-node-name-1 is ready",
-			},
 			"node2-ready": {
 				Type:    "Normal",
 				Reason:  "Ready",
