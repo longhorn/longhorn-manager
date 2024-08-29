@@ -1839,6 +1839,7 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameReplicaDiskSoftAntiAffinity:                              true,
 		types.SettingNameRestoreConcurrentLimit:                                   true,
 		types.SettingNameRestoreVolumeRecurringJobs:                               true,
+		types.SettingNameRWXVolumeFastFailover:                                    true,
 		types.SettingNameSnapshotDataIntegrity:                                    true,
 		types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation: true,
 		types.SettingNameStorageMinimalAvailablePercentage:                        true,
