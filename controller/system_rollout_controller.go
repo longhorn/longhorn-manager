@@ -1887,7 +1887,7 @@ func (c *SystemRolloutController) restoreVolumes() (err error) {
 			restore.ResourceVersion = ""
 			restore.Spec.NodeID = ""
 
-			if restore.Status.LastBackup != "" {
+			if restore.Status.LastBackup != "" && !restore.Status.IsStandby {
 				restore.Spec.FromBackup = backupstore.EncodeBackupURL(restore.Status.LastBackup, restore.Name, c.backupTargetURL)
 				log = log.WithField("fromBackup", restore.Spec.FromBackup)
 			}
