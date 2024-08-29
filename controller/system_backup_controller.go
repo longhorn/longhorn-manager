@@ -731,6 +731,13 @@ func (c *SystemBackupController) backupVolumesAlways(systemBackup *longhorn.Syst
 
 	volumeBackups := make(map[string]*longhorn.Backup, len(volumes))
 	for _, volume := range volumes {
+		// Don't need to create volume data backup for DR volumes since it will
+		// be restored from the source volume's backup.
+		if volume.Status.IsStandby {
+			c.logger.Infof("Skip backup for standby volume %v", volume.Name)
+			continue
+		}
+
 		backup, err := c.createVolumeBackup(volume, systemBackup)
 		if err != nil {
 			return nil, err
