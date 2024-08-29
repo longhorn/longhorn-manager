@@ -941,16 +941,10 @@ func RestoreDeltaBlockBackupIncrementally(ctx context.Context, config *DeltaRest
 		return err
 	}
 	go func() {
-		var err error
-		finalProgress := 0
-
 		defer func() {
 			if _err := deltaOps.CloseVolumeDev(volDev); _err != nil {
 				logrus.WithError(_err).Warnf("Failed to close volume device %v", volDevName)
 			}
-
-			deltaOps.UpdateRestoreStatus(volDevName, finalProgress, err)
-
 			if unlockErr := lock.Unlock(); unlockErr != nil {
 				logrus.WithError(unlockErr).Warn("Failed to unlock")
 			}
@@ -963,18 +957,18 @@ func RestoreDeltaBlockBackupIncrementally(ctx context.Context, config *DeltaRest
 		// We want to truncate regular files, but not device
 		if stat.Mode().IsRegular() {
 			log.Infof("Truncate %v to size %v", volDevName, vol.Size)
-			err = volDev.Truncate(vol.Size)
-			if err != nil {
+			if err := volDev.Truncate(vol.Size); err != nil {
+				deltaOps.UpdateRestoreStatus(volDevName, 0, err)
 				return
 			}
 		}
 
-		err = performIncrementalRestore(ctx, bsDriver, config, srcVolumeName, volDevPath, lastBackup, backup)
-		if err != nil {
+		if err := performIncrementalRestore(ctx, bsDriver, config, srcVolumeName, volDevPath, lastBackup, backup); err != nil {
+			deltaOps.UpdateRestoreStatus(volDevName, 0, err)
 			return
 		}
 
-		finalProgress = PROGRESS_PERCENTAGE_BACKUP_TOTAL
+		deltaOps.UpdateRestoreStatus(volDevName, PROGRESS_PERCENTAGE_BACKUP_TOTAL, nil)
 	}()
 	return nil
 }
