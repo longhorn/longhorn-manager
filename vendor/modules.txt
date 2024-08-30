@@ -374,8 +374,8 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/rancher/dynamiclistener v0.3.6
-## explicit; go 1.20
+# github.com/rancher/dynamiclistener v0.6.0
+## explicit; go 1.22.0
 github.com/rancher/dynamiclistener
 github.com/rancher/dynamiclistener/cert
 github.com/rancher/dynamiclistener/factory
@@ -397,25 +397,6 @@ github.com/rancher/lasso/pkg/log
 github.com/rancher/lasso/pkg/mapper
 github.com/rancher/lasso/pkg/metrics
 github.com/rancher/lasso/pkg/scheme
-# github.com/rancher/wrangler v1.1.1-0.20230831050635-df1bd5aae9df
-## explicit; go 1.20
-github.com/rancher/wrangler/pkg/apply
-github.com/rancher/wrangler/pkg/apply/injectors
-github.com/rancher/wrangler/pkg/condition
-github.com/rancher/wrangler/pkg/data
-github.com/rancher/wrangler/pkg/data/convert
-github.com/rancher/wrangler/pkg/generated/controllers/core
-github.com/rancher/wrangler/pkg/generated/controllers/core/v1
-github.com/rancher/wrangler/pkg/generic
-github.com/rancher/wrangler/pkg/gvk
-github.com/rancher/wrangler/pkg/kv
-github.com/rancher/wrangler/pkg/merr
-github.com/rancher/wrangler/pkg/name
-github.com/rancher/wrangler/pkg/objectset
-github.com/rancher/wrangler/pkg/patch
-github.com/rancher/wrangler/pkg/schemes
-github.com/rancher/wrangler/pkg/start
-github.com/rancher/wrangler/pkg/stringset
 # github.com/rancher/wrangler/v3 v3.0.0
 ## explicit; go 1.22.0
 github.com/rancher/wrangler/v3/pkg/apply
@@ -448,6 +429,7 @@ github.com/rancher/wrangler/v3/pkg/patch
 github.com/rancher/wrangler/v3/pkg/ratelimit
 github.com/rancher/wrangler/v3/pkg/schemes
 github.com/rancher/wrangler/v3/pkg/signals
+github.com/rancher/wrangler/v3/pkg/start
 github.com/rancher/wrangler/v3/pkg/stringset
 github.com/rancher/wrangler/v3/pkg/webhook
 # github.com/robfig/cron v1.2.0
