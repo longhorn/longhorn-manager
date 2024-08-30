@@ -534,11 +534,22 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) error {
 		}
 	}
 
-	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+	if shouldSkip, skipReason := shouldSkipReplicaDeletion(im.Status.CurrentState); shouldSkip {
+		log.Infof("Skipping deleting replica %v since %s", r.Name, skipReason)
 		return nil
 	}
 
-	c, err := engineapi.NewInstanceManagerClient(im, false)
+	defer func() {
+		if err != nil {
+			log.WithError(err).Warnf("Failed to delete replica process %v", r.Name)
+			if canIgnore, ignoreReason := canIgnoreReplicaDeletionFailure(im.Status.CurrentState); canIgnore {
+				log.Warnf("Ignored the failure to delete replica process %v because %s", r.Name, ignoreReason)
+				err = nil
+			}
+		}
+	}()
+
+	c, err := engineapi.NewInstanceManagerClient(im, true)
 	if err != nil {
 		return err
 	}
@@ -897,4 +908,22 @@ func hasMatchingReplica(replica *longhorn.Replica, replicas map[string]*longhorn
 		}
 	}
 	return false
+}
+
+func shouldSkipReplicaDeletion(imState longhorn.InstanceManagerState) (canSkip bool, reason string) {
+	// If the instance manager is in an unknown state, we should at least attempt instance deletion.
+	if imState == longhorn.InstanceManagerStateRunning || imState == longhorn.InstanceManagerStateUnknown {
+		return false, ""
+	}
+
+	return true, fmt.Sprintf("instance manager is in %v state", imState)
+}
+
+func canIgnoreReplicaDeletionFailure(imState longhorn.InstanceManagerState) (canIgnore bool, reason string) {
+	// Instance deletion is always best effort for an unknown instance manager.
+	if imState == longhorn.InstanceManagerStateUnknown {
+		return true, fmt.Sprintf("instance manager is in %v state", imState)
+	}
+
+	return false, ""
 }
