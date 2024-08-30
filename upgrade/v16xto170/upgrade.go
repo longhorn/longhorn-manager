@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -131,6 +132,8 @@ func upgradeBackingImages(namespace string, lhClient *lhclientset.Clientset, res
 				delete(bi.Spec.Disks, diskUUID)
 			}
 		}
+		// set the default value for bi.Spec.MinNumberOfCopies
+		bi.Spec.MinNumberOfCopies = types.DefaultMinNumberOfCopies
 	}
 
 	return nil
