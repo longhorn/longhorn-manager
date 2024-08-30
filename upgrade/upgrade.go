@@ -29,6 +29,8 @@ import (
 	"github.com/longhorn/longhorn-manager/upgrade/v151to152"
 	"github.com/longhorn/longhorn-manager/upgrade/v15xto160"
 	"github.com/longhorn/longhorn-manager/upgrade/v16xto170"
+	"github.com/longhorn/longhorn-manager/upgrade/v170to171"
+	"github.com/longhorn/longhorn-manager/upgrade/v17xto180"
 	"github.com/longhorn/longhorn-manager/upgrade/v1beta1"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -265,6 +267,19 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 	if semver.Compare(lhVersionBeforeUpgrade, "v1.7.0") < 0 {
 		logrus.Info("Walking through the resource upgrade path v1.6.x to v1.7.0")
 		if err := v16xto170.UpgradeResources(namespace, lhClient, kubeClient, resourceMaps); err != nil {
+			return err
+		}
+	}
+	if semver.Compare(lhVersionBeforeUpgrade, "v1.7.1") < 0 {
+		logrus.Info("Walking through the resource upgrade path v1.7.0 to v1.7.1")
+		if err := v170to171.UpgradeResources(namespace, lhClient, kubeClient, resourceMaps); err != nil {
+			return err
+		}
+	}
+	// When lhVersionBeforeUpgrade < v1.8.0, it is v1.7.x. The `CheckUpgradePathSupported` method would have failed us out earlier if it was not v1.7.x.
+	if semver.Compare(lhVersionBeforeUpgrade, "v1.8.0") < 0 {
+		logrus.Info("Walking through the resource upgrade path v1.7.x to v1.8.0")
+		if err := v17xto180.UpgradeResources(namespace, lhClient, kubeClient, resourceMaps); err != nil {
 			return err
 		}
 	}
