@@ -540,16 +540,9 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 		isRWXVolume = true
 	}
 
-	// For a RWX volume, the node down, for example, caused by kubelet restart, leads to share-manager pod deletion/recreation
-	// and volume detachment/attachment.
-	// Then, the newly created share-manager pod blindly mounts the longhorn volume inside /dev/longhorn/<pvc-name> and exports it.
-	// To avoid mounting a dead and orphaned volume, try to clean up the engine instance as well as the orphaned iscsi device
-	// regardless of the instance-manager status.
-	if !isRWXVolume {
-		if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
-			log.Infof("Skipping deleting engine %v since instance manager is in %v state", e.Name, im.Status.CurrentState)
-			return nil
-		}
+	if shouldSkip, skipReason := shouldSkipEngineDeletion(im.Status.CurrentState, isRWXVolume); shouldSkip {
+		log.Infof("Skipping deleting engine %v since %s", e.Name, skipReason)
+		return nil
 	}
 
 	log.Info("Deleting engine instance")
@@ -557,22 +550,10 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 	defer func() {
 		if err != nil {
 			log.WithError(err).Warnf("Failed to delete engine %v", e.Name)
-		}
-		if isRWXVolume && im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
-			// Try the best to delete engine instance.
-			// To prevent that the volume is stuck at detaching state, ignore the error when volume is
-			// a RWX volume and the instance manager is not running.
-			//
-			// If the engine instance of a RWX volume is not deleted successfully:
-			// If a RWX volume is on node A and the network of this node is partitioned,
-			// the owner of the share manager (SM) is transferred to node B. The engine instance and
-			// the block device (/dev/longhorn/pvc-xxx) on the node A become orphaned.
-			// If the network of the node A gets back to normal, the SM can be shifted back to node A.
-			// After shifting to node A, the first reattachment fail due to the IO error resulting from the
-			// orphaned engine instance and block device. Then, the detachment will trigger the teardown of the
-			// problematic engine instance and block device. The next reattachment then will succeed.
-			log.Warnf("Ignored the failure of deleting engine %v", e.Name)
-			err = nil
+			if canIgnore, ignoreReason := canIgnoreEngineDeletionFailure(im.Status.CurrentState, isRWXVolume); canIgnore {
+				log.Warnf("Ignored the failure to delete engine %v because %s", e.Name, ignoreReason)
+				err = nil
+			}
 		}
 	}()
 
@@ -2274,4 +2255,50 @@ func sizeThreshold(nominalSize int64) int64 {
 		return nominalSize / 1024 // Update status for change > 1/1024 nominal size.
 	}
 	return 100 * util.MiB // Update status for any change > 100 MiB.
+}
+
+func shouldSkipEngineDeletion(imState longhorn.InstanceManagerState, isRWXVolume bool) (canSkip bool, reason string) {
+	// For a RWX volume, the node down, for example, caused by kubelet restart, leads to share-manager pod
+	// deletion/recreation and volume detachment/attachment. Then, the newly created share-manager pod blindly mounts
+	// the longhorn volume inside /dev/longhorn/<pvc-name> and exports it. To avoid mounting a dead and orphaned volume,
+	// try to clean up the engine instance as well as the orphaned iscsi device regardless of the instance-manager
+	// status.
+	if isRWXVolume {
+		return false, ""
+	}
+
+	// If the instance manager is in an unknown state, we should at least attempt instance deletion.
+	if imState == longhorn.InstanceManagerStateRunning || imState == longhorn.InstanceManagerStateUnknown {
+		return false, ""
+	}
+
+	return true, fmt.Sprintf("instance manager is in %v state", imState)
+}
+
+func canIgnoreEngineDeletionFailure(imState longhorn.InstanceManagerState, isRWXVolume bool) (canIgnore bool, reason string) {
+	// Instance deletion is always best effort for an unknown instance manager.
+	if imState == longhorn.InstanceManagerStateUnknown {
+		return true, fmt.Sprintf("instance manager is in %v state", imState)
+	}
+
+	// The remaining reasons apply only to RWX volumes.
+	if !isRWXVolume {
+		return false, ""
+	}
+
+	// Try the best to delete engine instance.
+	// To prevent that the volume is stuck at detaching state, ignore the error when volume is a RWX volume and the
+	// instance manager is not running or the RWX volume is currently delinquent.
+	//
+	// If the engine instance of a RWX volume is not deleted successfully: If a RWX volume is on node A and the network
+	// of this node is partitioned, the owner of the share manager (SM) is transferred to node B. The engine instance
+	// and the block device (/dev/longhorn/pvc-xxx) on the node A become orphaned. If the network of the node A gets
+	// back to normal, the SM can be shifted back to node A. After shifting to node A, the first reattachment fail due
+	// to the IO error resulting from the orphaned engine instance and block device. Then, the detachment will trigger
+	// the teardown of the problematic engine instance and block device. The next reattachment then will succeed.
+	if imState != longhorn.InstanceManagerStateRunning {
+		return true, fmt.Sprintf("instance manager is in %v state for the RWX volume", imState)
+	}
+
+	return false, ""
 }
