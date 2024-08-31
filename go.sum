@@ -165,8 +165,8 @@ github.com/longhorn/go-common-libs v0.0.0-20240821134112-907f57efd48f h1:hjqUs3W
 github.com/longhorn/go-common-libs v0.0.0-20240821134112-907f57efd48f/go.mod h1:Qv34svr/msf6XoUwnrltNBTwMhQljbHEhb5ZKWiRdxo=
 github.com/longhorn/go-iscsi-helper v0.0.0-20240811043302-df8de353dd58 h1:fzLAnCLCecoUnsSYyyo7li5GD17xckyBl/zietxz168=
 github.com/longhorn/go-iscsi-helper v0.0.0-20240811043302-df8de353dd58/go.mod h1:TobRDCXmF0Ni+jz6+nLJamw3uVu+gNDZoZre1JczGwc=
-github.com/longhorn/go-spdk-helper v0.0.0-20240820144231-33c0873802ff h1:8vR29tkbmzmdqRVtOo5kL7Rs7nfhA6duXsmetIh1Tbg=
-github.com/longhorn/go-spdk-helper v0.0.0-20240820144231-33c0873802ff/go.mod h1:Bzz7kGNYikAJqpmeV3cgN8jP1y9M+/oaiBc5iolIxuA=
+github.com/longhorn/go-spdk-helper v0.0.0-20240827171022-9fe38fff5b51 h1:qU69qwOdcJyDG36Bgp4/b/lydmpJZsPVx+bpszrzQFc=
+github.com/longhorn/go-spdk-helper v0.0.0-20240827171022-9fe38fff5b51/go.mod h1:i9btdUP+14isigk+vOfANF7MQAbDO+u/ixeA/oOUwtA=
 github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240824053610-9d2b194f765f h1:Nsal/5akxiEyoBL+M0NOXiV5R96ACEgC64rK5w0VKcY=
 github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240824053610-9d2b194f765f/go.mod h1:E1ec7ub7SNGvASDtiFHL1dXX4bhEQiroBixD2GGeRbQ=
 github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20240825.0.20240828024302-1bdcacd93207 h1:07e35ywxlYhF2yFgYko6Ni6tL4NyjeZU7eSm5pOvF6o=
@@ -231,8 +231,8 @@ github.com/rancher/dynamiclistener v0.6.0 h1:M7x8Nq+GY0UORULANuW/AH1ocnyZaqlmTuv
 github.com/rancher/dynamiclistener v0.6.0/go.mod h1:7VNEQhAwzbYJ08S1MYb6B4vili6K7CcrG4cNZXq1j+s=
 github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b h1:so40GMVZOZkQeIbAzaZRq6wDrMErvRLuXNsGTRZUpg8=
 github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b/go.mod h1:7oQvGNiJsGvrUgB+7AH8bmdzuR0uhULfwKb43Ht0hUk=
-github.com/rancher/lasso v0.0.0-20240809125800-8da6f11865d5 h1:qlVhaHTT7wwrI5+AGdkYHpveuoe8Ot4TdQr7LtxmVSk=
-github.com/rancher/lasso v0.0.0-20240809125800-8da6f11865d5/go.mod h1:Efx/+BbH3ivmnTPLu5cA3Gc9wT5oyGS0LBcqEuYTx+A=
+github.com/rancher/lasso v0.0.0-20240828170735-d79536cac289 h1:gbV7qLOcEgyTgep2ocl8FFhfGOUMQuvfV5OIIENHWT4=
+github.com/rancher/lasso v0.0.0-20240828170735-d79536cac289/go.mod h1:Efx/+BbH3ivmnTPLu5cA3Gc9wT5oyGS0LBcqEuYTx+A=
 github.com/rancher/wrangler/v3 v3.0.0 h1:IHHCA+vrghJDPxjtLk4fmeSCFhNe9fFzLFj3m2B0YpA=
 github.com/rancher/wrangler/v3 v3.0.0/go.mod h1:Dfckuuq7MJk2JWVBDywRlZXMxEyPxHy4XqGrPEzu5Eg=
 github.com/robfig/cron v1.2.0 h1:ZjScXvvxeQ63Dbyxy76Fj3AT3Ut0aKsyd2/tl3DTMuQ=
