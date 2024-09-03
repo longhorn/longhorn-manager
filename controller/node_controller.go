@@ -418,6 +418,8 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		return err
 	}
 
+	node.Status.Region, node.Status.Zone = types.GetRegionAndZone(kubeNode.Labels)
+
 	if nc.controllerID != node.Name {
 		return nil
 	}
@@ -1591,17 +1593,29 @@ func (nc *NodeController) shouldEvictReplica(node *longhorn.Node, kubeNode *core
 
 func (nc *NodeController) setReadyAndSchedulableConditions(node *longhorn.Node, kubeNode *corev1.Node,
 	managerPods []*corev1.Pod) error {
-	nodeReady := true
-	defer func() {
-		// Only record true if we find no reason to record false.
-		if nodeReady {
-			node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
-				longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue,
-				"", fmt.Sprintf("Node %v is ready", node.Name),
-				nc.eventRecorder, node, corev1.EventTypeNormal)
-		}
-	}()
+	nodeReady := nc.setReadyConditionForManagerPod(node, managerPods)
+	nodeReady = nodeReady && nc.setReadyConditionForKubeNode(node, kubeNode)
+	if nodeReady {
+		// Only record true if we did not already record false.
+		node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
+			longhorn.NodeConditionTypeReady, longhorn.ConditionStatusTrue,
+			"", fmt.Sprintf("Node %v is ready", node.Name),
+			nc.eventRecorder, node, corev1.EventTypeNormal)
+	}
 
+	disableSchedulingOnCordonedNode, err :=
+		nc.ds.GetSettingAsBool(types.SettingNameDisableSchedulingOnCordonedNode)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameDisableSchedulingOnCordonedNode)
+	}
+	nc.SetSchedulableCondition(node, kubeNode, disableSchedulingOnCordonedNode)
+
+	return nil
+}
+
+func (nc *NodeController) setReadyConditionForManagerPod(node *longhorn.Node,
+	managerPods []*corev1.Pod) (nodeReady bool) {
+	nodeReady = true
 	nodeManagerFound := false
 	for _, pod := range managerPods {
 		if pod.Spec.NodeName == node.Name {
@@ -1614,7 +1628,7 @@ func (nc *NodeController) setReadyAndSchedulableConditions(node *longhorn.Node, 
 						node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
 							longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse,
 							string(longhorn.NodeConditionReasonManagerPodDown),
-							fmt.Sprintf("Node %v is down: the manager pod %v is not running", node.Name, pod.Name),
+							fmt.Sprintf("Node %v is down: manager pod %v is not running", node.Name, pod.Name),
 							nc.eventRecorder, node, corev1.EventTypeWarning)
 					}
 					break
@@ -1628,10 +1642,14 @@ func (nc *NodeController) setReadyAndSchedulableConditions(node *longhorn.Node, 
 		node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
 			longhorn.NodeConditionTypeReady, longhorn.ConditionStatusFalse,
 			string(longhorn.NodeConditionReasonManagerPodMissing),
-			fmt.Sprintf("manager pod missing: node %v has no manager pod running on it", node.Name),
+			fmt.Sprintf("Manager pod is missing: node %v has no manager pod running on it", node.Name),
 			nc.eventRecorder, node, corev1.EventTypeWarning)
 	}
+	return // nodeReady is already correctly set.
+}
 
+func (nc *NodeController) setReadyConditionForKubeNode(node *longhorn.Node, kubeNode *corev1.Node) (nodeReady bool) {
+	nodeReady = true
 	kubeConditions := kubeNode.Status.Conditions
 	for _, con := range kubeConditions {
 		switch con.Type {
@@ -1666,18 +1684,14 @@ func (nc *NodeController) setReadyAndSchedulableConditions(node *longhorn.Node, 
 			}
 		}
 	}
+	return // nodeReady is already correctly set.
+}
 
-	DisableSchedulingOnCordonedNode, err :=
-		nc.ds.GetSettingAsBool(types.SettingNameDisableSchedulingOnCordonedNode)
-	if err != nil {
-		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameDisableSchedulingOnCordonedNode)
-	}
-
-	// Update node condition based on
-	// DisableSchedulingOnCordonedNode setting and
-	// k8s node status
+// Update node condition based on DisableSchedulingOnCordonedNode setting and Kubernetes node status.
+func (nc *NodeController) SetSchedulableCondition(node *longhorn.Node, kubeNode *corev1.Node,
+	disableSchedulingOnCordonedNode bool) {
 	kubeSpec := kubeNode.Spec
-	if DisableSchedulingOnCordonedNode &&
+	if disableSchedulingOnCordonedNode &&
 		kubeSpec.Unschedulable {
 		node.Status.Conditions =
 			types.SetConditionAndRecord(node.Status.Conditions,
@@ -1697,8 +1711,4 @@ func (nc *NodeController) setReadyAndSchedulableConditions(node *longhorn.Node, 
 				nc.eventRecorder, node,
 				corev1.EventTypeNormal)
 	}
-
-	node.Status.Region, node.Status.Zone = types.GetRegionAndZone(kubeNode.Labels)
-
-	return nil
 }
