@@ -2551,6 +2551,8 @@ func (c *VolumeController) listReadySchedulableAndScheduledNodesRO(volume *longh
 		}
 	}
 
+	log.WithField("volume", volume.Name).Tracef("Found %v ready and schedulable nodes", len(filteredReadyNodes))
+
 	// Including unschedulable node because the replica is already scheduled and running
 	// Ref: https://github.com/longhorn/longhorn/issues/4502
 	for _, r := range rs {
@@ -2581,7 +2583,8 @@ func (c *VolumeController) listReadySchedulableAndScheduledNodesRO(volume *longh
 		log.WithFields(logrus.Fields{
 			"replica": r.Name,
 			"node":    node.Name,
-		}).Warnf("Including unschedulable node because the replica is scheduled and running")
+			"reason":  "replica is scheduled and running",
+		}).Trace("Including unschedulable node")
 	}
 
 	return filteredReadyNodes, nil
