@@ -442,6 +442,7 @@ func (c *SystemRolloutController) systemRollout() error {
 			types.KubernetesKindServiceAccountList:     c.restoreServiceAccounts,
 			types.KubernetesKindClusterRoleList:        c.restoreClusterRoles,
 			types.KubernetesKindClusterRoleBindingList: c.restoreClusterRoleBindings,
+			types.KubernetesKindPodSecurityPolicyList:  c.restorePodSecurityPolicies,
 			types.KubernetesKindRoleList:               c.restoreRoles,
 			types.KubernetesKindRoleBindingList:        c.restoreRoleBindings,
 			types.KubernetesKindStorageClassList:       c.restoreStorageClasses,

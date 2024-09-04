@@ -1189,7 +1189,7 @@ func (m *VolumeManager) restoreBackingImage(biName string) error {
 	if biName == "" {
 		return nil
 	}
-	bi, err := m.ds.GetBackingImage(biName)
+	bi, err := m.ds.GetBackingImageRO(biName)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return errors.Wrapf(err, "failed to get backing image %v", biName)
@@ -1201,7 +1201,7 @@ func (m *VolumeManager) restoreBackingImage(biName string) error {
 	}
 
 	// try find the backup backing image
-	bbi, err := m.ds.GetBackupBackingImage(biName)
+	bbi, err := m.ds.GetBackupBackingImageRO(biName)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get backup backing image %v", biName)
 	}
