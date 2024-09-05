@@ -1333,11 +1333,8 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 		// At this moment, Longhorn goes into the IF statement below this IF statement and salvage all replicas.
 		if autoSalvage && !v.Status.IsStandby && !v.Status.RestoreRequired {
 			// Since all replica failed and autoSalvage is enable, mark engine controller salvage requested
-			// TODO: SalvageRequested is meanningless for v2 volume
-			if types.IsDataEngineV1(v.Spec.DataEngine) {
-				e.Spec.SalvageRequested = true
-				log.Infof("All replicas are failed, set engine salvageRequested to %v", e.Spec.SalvageRequested)
-			}
+			e.Spec.SalvageRequested = true
+			log.Infof("All replicas are failed, set engine salvageRequested to %v", e.Spec.SalvageRequested)
 		}
 		// make sure the volume is detached before automatically salvage replicas
 		if autoSalvage && v.Status.State == longhorn.VolumeStateDetached && !v.Status.IsStandby && !v.Status.RestoreRequired {
