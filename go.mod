@@ -2,7 +2,7 @@ module github.com/longhorn/longhorn-manager
 
 go 1.22.5
 
-toolchain go1.23.0
+toolchain go1.23.1
 
 // Replace directives are required for dependencies in this section because:
 // - This module imports k8s.io/kubernetes.
@@ -61,15 +61,15 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.19.0
 	github.com/longhorn/backing-image-manager v1.7.0-dev.0.20240823042906-1ae3d5073f60
-	github.com/longhorn/backupstore v0.0.0-20240827054225-fe89e488b75f
-	github.com/longhorn/go-common-libs v0.0.0-20240821134112-907f57efd48f
-	github.com/longhorn/go-iscsi-helper v0.0.0-20240811043302-df8de353dd58
-	github.com/longhorn/go-spdk-helper v0.0.0-20240827171022-9fe38fff5b51
+	github.com/longhorn/backupstore v0.0.0-20240905092550-326b9844e10b
+	github.com/longhorn/go-common-libs v0.0.0-20240906072425-66d5f9e6ae4e
+	github.com/longhorn/go-iscsi-helper v0.0.0-20240906072517-88a14fe36c12
+	github.com/longhorn/go-spdk-helper v0.0.0-20240902084253-ba8761258885
 	github.com/longhorn/longhorn-engine v1.7.0-dev.0.20240824053610-9d2b194f765f
 	github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20240825.0.20240828024302-1bdcacd93207
 	github.com/longhorn/longhorn-share-manager v1.7.0-rc1
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.20.2
+	github.com/prometheus/client_golang v1.20.3
 	github.com/rancher/dynamiclistener v0.6.0
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
 	github.com/rancher/wrangler/v3 v3.0.0
@@ -79,7 +79,7 @@ require (
 	github.com/urfave/cli v1.22.15
 	golang.org/x/mod v0.20.0
 	golang.org/x/net v0.28.0
-	golang.org/x/sys v0.24.0
+	golang.org/x/sys v0.25.0
 	golang.org/x/time v0.6.0
 	google.golang.org/grpc v1.66.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
@@ -92,7 +92,7 @@ require (
 	k8s.io/kubernetes v1.31.0
 	k8s.io/metrics v0.31.0
 	k8s.io/mount-utils v0.31.0
-	k8s.io/utils v0.0.0-20240821151609-f90d01438635
+	k8s.io/utils v0.0.0-20240902221715-702e33fdd3c3
 	sigs.k8s.io/controller-runtime v0.19.0
 )
 
@@ -108,7 +108,7 @@ require (
 	github.com/jonboulle/clockwork v0.4.0 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
-	github.com/longhorn/types v0.0.0-20240827042720-af8f10eb57cd // indirect
+	github.com/longhorn/types v0.0.0-20240902072916-1bf23d310acb // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/moby/term v0.5.0 // indirect
 	github.com/opencontainers/runc v1.1.13 // indirect
