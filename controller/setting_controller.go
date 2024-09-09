@@ -139,7 +139,7 @@ func NewSettingController(
 	var err error
 	if _, err = ds.SettingInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.enqueueSetting,
-		UpdateFunc: func(old, cur interface{}) { sc.enqueueUpdateSetting(old, cur) },
+		UpdateFunc: func(old, cur interface{}) { sc.enqueueSetting(cur) },
 		DeleteFunc: sc.enqueueSetting,
 	}, settingControllerResyncPeriod); err != nil {
 		return nil, err
@@ -1084,6 +1084,18 @@ func (sc *SettingController) syncDefaultLonghornStaticStorageClass() error {
 	}
 
 	defaultStaticStorageClassName := setting.Value
+
+	definition, ok := types.GetSettingDefinition(types.SettingNameDefaultLonghornStaticStorageClass)
+	if !ok {
+		return fmt.Errorf("setting %v is not found", types.SettingNameDefaultLonghornStaticStorageClass)
+	}
+
+	// Only create the default Longhorn static storage class named 'longhorn-static' if it does not exist
+	// And validator will check if the storage class exists when the setting value is not 'longhorn-static'.
+	if defaultStaticStorageClassName != definition.Default {
+		return nil
+	}
+
 	_, err = sc.ds.GetStorageClassRO(defaultStaticStorageClassName)
 	if err != nil && apierrors.IsNotFound(err) {
 		allowVolumeExpansion := true
@@ -1439,31 +1451,6 @@ func (sc *SettingController) enqueueSetting(obj interface{}) {
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("failed to get key for object %#v: %v", obj, err))
 		return
-	}
-
-	sc.queue.Add(key)
-}
-
-func (sc *SettingController) enqueueUpdateSetting(oldObj, newObj interface{}) {
-	key, err := controller.KeyFunc(newObj)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("failed to get key for object %#v: %v", newObj, err))
-		return
-	}
-
-	oldSetting := oldObj.(*longhorn.Setting)
-	if oldSetting.Name == string(types.SettingNameDefaultLonghornStaticStorageClass) {
-		_, err := sc.ds.GetStorageClassRO(oldSetting.Value)
-		if err == nil {
-			if err := sc.ds.DeleteStorageClass(oldSetting.Value); err != nil {
-				utilruntime.HandleError(fmt.Errorf("failed to delete old %v for object %#v: %v", types.SettingNameDefaultLonghornStaticStorageClass, oldObj, err))
-				return
-			}
-		}
-		if err != nil && !apierrors.IsNotFound(err) {
-			utilruntime.HandleError(fmt.Errorf("failed to get old %v for object %#v: %v", types.SettingNameDefaultLonghornStaticStorageClass, oldObj, err))
-			return
-		}
 	}
 
 	sc.queue.Add(key)
