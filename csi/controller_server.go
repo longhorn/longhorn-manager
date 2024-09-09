@@ -158,7 +158,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 				// check size of source and requested
 				srcVolSizeBytes, err := strconv.ParseInt(longhornSrcVol.Size, 10, 64)
 				if err != nil {
-					return nil, status.Errorf(codes.Internal, err.Error())
+					return nil, status.Errorf(codes.Internal, "%v", err)
 				}
 				if reqVolSizeBytes != srcVolSizeBytes {
 					return nil, status.Errorf(codes.OutOfRange, "failed to clone volume: the requested size (%v bytes) is different than the source volume size (%v bytes)", reqVolSizeBytes, srcVolSizeBytes)
@@ -1082,7 +1082,7 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 
 	existVol, err := cs.apiClient.Volume.ById(volumeID)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 	if existVol == nil {
 		return nil, status.Errorf(codes.NotFound, "volume %s missing", volumeID)
@@ -1095,7 +1095,7 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 	}
 	existingSize, err := strconv.ParseInt(existVol.Size, 10, 64)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
 	isOnlineExpansion := existVol.State == string(longhorn.VolumeStateAttached)
@@ -1106,9 +1106,9 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 		// TODO: This manual error code parsing should be refactored once Longhorn API implements error code response
 		// https://github.com/longhorn/longhorn/issues/1875
 		if matched, _ := regexp.MatchString("failed to schedule .* more bytes to disk", err.Error()); matched {
-			return nil, status.Errorf(codes.OutOfRange, err.Error())
+			return nil, status.Errorf(codes.OutOfRange, "%v", err)
 		}
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
 	// kubernetes doesn't support volume shrinking and the csi spec specifies to return true
@@ -1135,7 +1135,7 @@ func (cs *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi
 
 	volumeSize, err := strconv.ParseInt(existVol.Size, 10, 64)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 
 	if !isOnlineExpansion {

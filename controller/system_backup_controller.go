@@ -814,7 +814,7 @@ func (c *SystemBackupController) WaitForVolumeBackupToComplete(backups map[strin
 			case longhorn.BackupStateCompleted:
 				delete(backups, name)
 			case longhorn.BackupStateError:
-				return errors.Wrapf(fmt.Errorf(backup.Status.Error), "failed creating Volume backup %v", name)
+				return errors.Wrapf(fmt.Errorf("%s", backup.Status.Error), "failed creating Volume backup %v", name)
 			}
 		}
 
@@ -926,7 +926,7 @@ func (c *SystemBackupController) WaitForBackingImageBackupToComplete(backupBacki
 			case longhorn.BackupStateCompleted:
 				delete(backupBackingImages, name)
 			case longhorn.BackupStateError:
-				log.Warnf(errors.Wrapf(fmt.Errorf(backupBackingImage.Status.Error), "Failed to create BackingImage backup %v", name).Error())
+				log.Warnf("Failed to create BackingImage backup %v: %v", name, backupBackingImage.Status.Error)
 				return
 			}
 		}

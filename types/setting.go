@@ -1808,7 +1808,7 @@ func validateString(sName SettingName, definition SettingDefinition, value strin
 	}
 
 	// multi-choices
-	if definition.Choices != nil && len(definition.Choices) > 0 {
+	if len(definition.Choices) > 0 {
 		if !isValidChoice(definition.Choices, value) {
 			return fmt.Errorf("value %v is not a valid choice, available choices %v", value, definition.Choices)
 		}

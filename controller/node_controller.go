@@ -1728,7 +1728,7 @@ func (nc *NodeController) syncBackingImageEvictionRequested(node *longhorn.Node)
 			logMessage = "Requesting backing image copy eviction"
 		}
 
-		backingImageLog.Infof(logMessage)
+		backingImageLog.Infof("%s", logMessage)
 		if _, err := nc.ds.UpdateBackingImage(backingImageToSync.BackingImage); err != nil {
 			backingImageLog.Warnf("Failed to %s, will enqueue then resync the node", strings.ToLower(logMessage))
 			nc.enqueueNodeRateLimited(node)

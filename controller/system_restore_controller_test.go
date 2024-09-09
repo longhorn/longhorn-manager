@@ -947,7 +947,7 @@ type FakeSystemBackupTargetClient struct {
 func (c *FakeSystemBackupTargetClient) UploadSystemBackup(name, localFile, longhornVersion, longhornGitCommit, managerImage, engineImage string) (string, error) {
 	switch name {
 	case TestSystemBackupNameUploadFailed, TestSystemRestoreNameUploadFailed:
-		return "", fmt.Errorf(name)
+		return "", fmt.Errorf("%v", name)
 	case TestSystemBackupNameUploadExceedTimeout, TestSystemRestoreNameUploadExceedTimeout:
 		time.Sleep(datastore.SystemBackupTimeout * 2)
 	}
