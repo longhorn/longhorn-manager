@@ -489,6 +489,18 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		cryptoDevice := crypto.VolumeMapper(volumeID)
 		log.Infof("Volume %s requires crypto device %s", volumeID, cryptoDevice)
 
+		// check if the crypto device is open at the null path.
+		// this will happen if the crypto device is not closed properly and a new attaching request is made on the same node.
+		// reference issue: https://github.com/longhorn/longhorn/issues/9385
+		if mappedToNullPath, err := crypto.IsDeviceMappedToNullPath(cryptoDevice); err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to check if the crypto device %s for volume %s is mapped to the null path: %v", cryptoDevice, volumeID, err.Error())
+		} else if mappedToNullPath {
+			log.Warnf("Closing active crypto device %s for volume %s since the volume is not closed properly before", cryptoDevice, volumeID)
+			if err := crypto.CloseVolume(volumeID); err != nil {
+				return nil, status.Errorf(codes.Internal, "failed to close active crypto device %s for volume %s: %v ", cryptoDevice, volumeID, err.Error())
+			}
+		}
+
 		if err := crypto.OpenVolume(volumeID, devicePath, passphrase); err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
