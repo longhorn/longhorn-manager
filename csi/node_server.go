@@ -182,7 +182,7 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		_, err := os.Stat(devicePath)
 		if err != nil {
 			if !os.IsNotExist(err) {
-				return nil, status.Errorf(codes.Internal, errors.Wrapf(err, "failed to stat device %s", devicePath).Error())
+				return nil, status.Errorf(codes.Internal, "failed to stat device %s: %v", devicePath, err)
 			}
 		}
 
@@ -234,7 +234,7 @@ func (ns *NodeServer) nodeStageSharedVolume(volumeID, shareEndpoint, targetPath 
 
 	isMnt, err := ensureMountPoint(targetPath, mounter)
 	if err != nil {
-		return status.Errorf(codes.Internal, errors.Wrapf(err, "failed to prepare mount point for shared volume %v", volumeID).Error())
+		return status.Errorf(codes.Internal, "failed to prepare mount point for shared volume %v: %v", volumeID, err)
 	}
 	if isMnt {
 		return nil
@@ -242,7 +242,7 @@ func (ns *NodeServer) nodeStageSharedVolume(volumeID, shareEndpoint, targetPath 
 
 	uri, err := url.Parse(shareEndpoint)
 	if err != nil {
-		return status.Errorf(codes.InvalidArgument, errors.Wrapf(err, "invalid share endpoint %v for volume %v", shareEndpoint, volumeID).Error())
+		return status.Errorf(codes.InvalidArgument, "invalid share endpoint %v for volume %v: %v", shareEndpoint, volumeID, err)
 	}
 
 	// share endpoint is of the form nfs://server/export
@@ -302,7 +302,7 @@ func (ns *NodeServer) nodeStageMountVolume(volumeID, devicePath, stagingTargetPa
 
 	isMnt, err := ensureMountPoint(stagingTargetPath, mounter)
 	if err != nil {
-		return status.Errorf(codes.Internal, errors.Wrapf(err, "failed to prepare mount point %v for volume %v", stagingTargetPath, volumeID).Error())
+		return status.Errorf(codes.Internal, "failed to prepare mount point %v for volume %v: %v", stagingTargetPath, volumeID, err)
 	}
 	if isMnt {
 		return nil
@@ -327,20 +327,20 @@ func (ns *NodeServer) nodePublishBlockVolume(volumeID, devicePath, targetPath st
 
 	// we ensure the parent directory exists and is valid
 	if _, err := ensureDirectory(filepath.Dir(targetPath)); err != nil {
-		return status.Errorf(codes.Internal, errors.Wrapf(err, "failed to prepare mount point for block device %v", devicePath).Error())
+		return status.Errorf(codes.Internal, "failed to prepare mount point for block device %v: %v", devicePath, err)
 	}
 
 	// create file where we can bind mount the device to
 	if err := makeFile(targetPath); err != nil {
-		return status.Errorf(codes.Internal, errors.Wrapf(err, "failed to create file %v", targetPath).Error())
+		return status.Errorf(codes.Internal, "failed to create file %v: %v", targetPath, err)
 	}
 
 	log.Infof("Bind mounting device %v at %v", devicePath, targetPath)
 	if err := mounter.Mount(devicePath, targetPath, "", []string{"bind"}); err != nil {
 		if removeErr := os.Remove(targetPath); removeErr != nil {
-			return status.Errorf(codes.Internal, errors.Wrapf(removeErr, "failed to remove mount target %q", targetPath).Error())
+			return status.Errorf(codes.Internal, "failed to remove mount target %q: %v", targetPath, removeErr)
 		}
-		return status.Errorf(codes.Internal, errors.Wrapf(err, "failed to bind mount %q at %q", devicePath, targetPath).Error())
+		return status.Errorf(codes.Internal, "failed to bind mount %q at %q: %v", devicePath, targetPath, err)
 	}
 	return nil
 }
@@ -361,7 +361,7 @@ func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpu
 	}
 
 	if err := unmountAndCleanupMountPoint(targetPath, mount.New("")); err != nil {
-		return nil, status.Errorf(codes.Internal, errors.Wrapf(err, "failed to cleanup volume %s mount point %v", volumeID, targetPath).Error())
+		return nil, status.Errorf(codes.Internal, "failed to cleanup volume %s mount point %v: %v", volumeID, targetPath, err)
 	}
 
 	log.Infof("Volume %s unmounted from path %s", volumeID, targetPath)
@@ -454,7 +454,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 	devicePath := volume.Controllers[0].Endpoint
 	diskFormat, err := getDiskFormat(devicePath)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, errors.Wrapf(err, "failed to evaluate device filesystem %v format", devicePath).Error())
+		return nil, status.Errorf(codes.Internal, "failed to evaluate device filesystem %v format: %v", devicePath, err)
 	}
 
 	log.Infof("Volume %v device %v contains filesystem of format %v", volumeID, devicePath, diskFormat)
@@ -644,13 +644,13 @@ func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 		if errors.Is(err, unix.ENOENT) {
 			return nil, status.Errorf(codes.NotFound, "volume %v is not mounted on path %v", volumeID, volumePath)
 		}
-		return nil, status.Errorf(codes.Internal, errors.Wrapf(err, "failed to check volume mode for volume path %v", volumePath).Error())
+		return nil, status.Errorf(codes.Internal, "failed to check volume mode for volume path %v: %v", volumePath, err)
 	}
 
 	if isBlockVolume {
 		volCapacity, err := strconv.ParseInt(existVol.Size, 10, 64)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, errors.Wrapf(err, "failed to convert volume size %v for volume %v", existVol.Size, volumeID).Error())
+			return nil, status.Errorf(codes.Internal, "failed to convert volume size %v for volume %v: %v", existVol.Size, volumeID, err)
 		}
 		return &csi.NodeGetVolumeStatsResponse{
 			Usage: []*csi.VolumeUsage{
@@ -669,7 +669,7 @@ func (ns *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVo
 		if errors.Is(err, unix.ENOENT) {
 			return nil, status.Errorf(codes.NotFound, "volume %v is not mounted on path %v", volumeID, volumePath)
 		}
-		return nil, status.Errorf(codes.Internal, errors.Wrapf(err, "failed to retrieve capacity statistics for volume path %v for volume %v", volumePath, volumeID).Error())
+		return nil, status.Errorf(codes.Internal, "failed to retrieve capacity statistics for volume path %v for volume %v: %v", volumePath, volumeID, err)
 	}
 
 	return &csi.NodeGetVolumeStatsResponse{
@@ -718,7 +718,7 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 
 	volume, err := ns.apiClient.Volume.ById(volumeID)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "%v", err)
 	}
 	if volume == nil {
 		return nil, status.Errorf(codes.NotFound, "volume %s missing", volumeID)
@@ -768,7 +768,7 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 
 		// blindly resize the encrypto device
 		if err := crypto.ResizeEncryptoDevice(volumeID, passphrase); err != nil {
-			return "", status.Errorf(codes.InvalidArgument, errors.Wrapf(err, "failed to resize crypto device %v for volume %v node expansion", devicePath, volumeID).Error())
+			return "", status.Errorf(codes.InvalidArgument, "failed to resize crypto device %v for volume %v node expansion: %v", devicePath, volumeID, err)
 		}
 
 		return devicePath, nil

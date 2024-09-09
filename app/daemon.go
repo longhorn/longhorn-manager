@@ -279,7 +279,7 @@ func startManager(c *cli.Context) error {
 		debugHandler := http.DefaultServeMux
 		logger.Infof("Debug Server listening on %s", debugAddress)
 		if err := http.ListenAndServe(debugAddress, debugHandler); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Errorf(fmt.Sprintf("ListenAndServe: %s", err))
+			logger.WithError(err).Error("Failed to start debug server")
 		}
 	}()
 

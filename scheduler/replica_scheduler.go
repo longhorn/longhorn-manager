@@ -667,7 +667,7 @@ func (rcs *ReplicaScheduler) RequireNewReplica(replicas map[string]*longhorn.Rep
 	timeUntilNext, timeOfNext, err := rcs.timeToReplacementReplica(volume)
 	if err != nil {
 		msg := "Failed to get time until replica replacement, will directly replenish a new replica"
-		logrus.WithError(err).Errorf(msg)
+		logrus.WithError(err).Errorf("%s", msg)
 	}
 	if timeUntilNext > 0 {
 		// Adding another second to the checkBackDuration to avoid clock skew.

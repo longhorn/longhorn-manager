@@ -2092,7 +2092,7 @@ func (ec *EngineController) waitForV2EngineRebuild(e *longhorn.Engine, replicaNa
 				continue
 			}
 			if rebuildingStatus.State == engineapi.ProcessStateError || rebuildingStatus.Error != "" {
-				return fmt.Errorf(rebuildingStatus.Error)
+				return errors.New(rebuildingStatus.Error)
 			}
 			if rebuildingStatus.State == engineapi.ProcessStateComplete {
 				return nil

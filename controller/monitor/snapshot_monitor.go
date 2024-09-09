@@ -463,7 +463,7 @@ func (m *SnapshotMonitor) syncHashStatusFromEngineReplicas(engine *longhorn.Engi
 		}
 
 		if status.State == string(engineapi.ProcessStateInProgress) {
-			return fmt.Errorf(string(engineapi.ProcessStateInProgress))
+			return errors.New(string(engineapi.ProcessStateInProgress))
 		}
 	}
 
