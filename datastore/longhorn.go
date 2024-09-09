@@ -414,6 +414,23 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 		if v < 2 || v > 250 {
 			return fmt.Errorf("%s should be between 2 and 250", name)
 		}
+	case types.SettingNameDefaultLonghornStaticStorageClass:
+		definition, ok := types.GetSettingDefinition(types.SettingNameDefaultLonghornStaticStorageClass)
+		if !ok {
+			return fmt.Errorf("setting %v is not found", types.SettingNameDefaultLonghornStaticStorageClass)
+		}
+
+		if value == definition.Default {
+			return nil
+		}
+
+		_, err := s.GetStorageClassRO(value)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return errors.Wrapf(err, "cannot use a storage class %v that does not exist to set the setting %v", value, types.SettingNameDefaultLonghornStaticStorageClass)
+			}
+			return errors.Wrapf(err, "failed to get the storage class %v for setting %v", value, types.SettingNameDefaultLonghornStaticStorageClass)
+		}
 	}
 	return nil
 }
