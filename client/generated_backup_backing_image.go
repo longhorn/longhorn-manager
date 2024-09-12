@@ -21,6 +21,10 @@ type BackupBackingImage struct {
 
 	Progress int64 `json:"progress,omitempty" yaml:"progress,omitempty"`
 
+	Secret string `json:"secret,omitempty" yaml:"secret,omitempty"`
+
+	SecretNamespace string `json:"secretNamespace,omitempty" yaml:"secretNamespace,omitempty"`
+
 	Size int64 `json:"size,omitempty" yaml:"size,omitempty"`
 
 	State string `json:"state,omitempty" yaml:"state,omitempty"`

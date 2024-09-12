@@ -64,6 +64,12 @@ type BackupBackingImageStatus struct {
 	// Compression method
 	// +optional
 	CompressionMethod BackupCompressionMethod `json:"compressionMethod"`
+	// Record the secret if this backup backing image is encrypted
+	// +optional
+	Secret string `json:"secret"`
+	// Record the secret namespace if this backup backing image is encrypted
+	// +optional
+	SecretNamespace string `json:"secretNamespace"`
 }
 
 // +genclient
