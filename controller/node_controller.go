@@ -1044,7 +1044,17 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 				}
 
 				log.Infof("Creating default instance manager %v, image: %v, dataEngine: %v", imName, defaultInstanceManagerImage, dataEngine)
-				if _, err := nc.createInstanceManager(node, imName, defaultInstanceManagerImage, imType, dataEngine); err != nil {
+				_, err = nc.createInstanceManager(node, imName, defaultInstanceManagerImage, imType, dataEngine)
+				if err != nil {
+					if apierrors.IsAlreadyExists(err) {
+						log.WithError(err).Warnf("Deleting instance manager %v because it cannot be obtained by selector labels", imName)
+						if err := nc.ds.DeleteInstanceManager(imName); err != nil {
+							return err
+						}
+
+						nc.enqueueNode(node)
+						return nil
+					}
 					return err
 				}
 			}
