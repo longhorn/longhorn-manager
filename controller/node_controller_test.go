@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	monitor "github.com/longhorn/longhorn-manager/controller/monitor"
@@ -13,6 +14,7 @@ import (
 	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	fake "k8s.io/client-go/kubernetes/fake"
@@ -1754,6 +1756,102 @@ func (s *NodeControllerSuite) TestNoEventOnUnknownTrueNodeCondition(c *C) {
 	}
 
 	s.checkEvents(c, expectation)
+}
+
+func (s *NodeControllerSuite) TestSyncInstanceManagers(c *C) {
+	// Skip the Lister check that occurs on creation of an Instance Manager.
+	datastore.SkipListerCheck = true
+
+	var err error
+
+	fixture := &NodeControllerFixture{
+		lhNodes: map[string]*longhorn.Node{
+			TestNode1: newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusUnknown, ""),
+		},
+		lhSettings: map[string]*longhorn.Setting{
+			string(types.SettingNameDefaultInstanceManagerImage): newDefaultInstanceManagerImageSetting(),
+		},
+	}
+
+	s.initTest(c, fixture)
+
+	defaultInstanceManager := DefaultInstanceManagerTestNode1.DeepCopy()
+	defaultInstanceManagerName, err := types.GetInstanceManagerName(
+		defaultInstanceManager.Spec.Type,
+		defaultInstanceManager.Spec.NodeID,
+		defaultInstanceManager.Spec.Image,
+		string(defaultInstanceManager.Spec.DataEngine))
+	c.Assert(err, IsNil)
+
+	defaultInstanceManager.Name = defaultInstanceManagerName
+
+	type instanceManagerCases struct {
+		existingInstanceManagers map[string]*longhorn.InstanceManager
+		isLabeled                bool
+		isExpectError            bool
+	}
+	testCases := map[string]instanceManagerCases{
+		"instance manager should be deleted and requeue node when instance manager labels are missing": {
+			existingInstanceManagers: map[string]*longhorn.InstanceManager{
+				defaultInstanceManagerName: defaultInstanceManager,
+			},
+			isLabeled:     false,
+			isExpectError: false,
+		},
+	}
+
+	for testName, testCase := range testCases {
+		fmt.Printf("testing %v", testName)
+
+		node := fixture.lhNodes[TestNode1]
+
+		if !testCase.isLabeled {
+			existingInstanceManagers := testCase.existingInstanceManagers
+			for name := range existingInstanceManagers {
+				existingInstanceManagers[name].Labels = nil
+			}
+			fixture.lhInstanceManagers = existingInstanceManagers
+		}
+
+		for _, instanceManager := range testCase.existingInstanceManagers {
+			im, err := s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Get(context.TODO(), instanceManager.Name, metav1.GetOptions{})
+			if err != nil && !apierrors.IsNotFound(err) {
+				c.Assert(err, IsNil)
+			}
+			if im != nil {
+				err := s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Delete(context.TODO(), instanceManager.Name, metav1.DeleteOptions{})
+				c.Assert(err, IsNil)
+			}
+
+			im, err = s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), instanceManager, metav1.CreateOptions{})
+			c.Assert(err, IsNil)
+			c.Assert(im, NotNil)
+
+			err = s.lhInstanceManagerIndexer.Add(im)
+			c.Assert(err, IsNil)
+		}
+
+		err = s.controller.syncInstanceManagers(node)
+		if len(testCase.existingInstanceManagers) > 0 {
+			instanceManagers, err := s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).List(context.TODO(), metav1.ListOptions{})
+			c.Assert(err, IsNil)
+			c.Assert(len(instanceManagers.Items), Equals, 0)
+		} else {
+			c.Assert(err, IsNil)
+		}
+
+		// Simulate the enqueue.
+		err = s.controller.syncInstanceManagers(node)
+		if testCase.isExpectError {
+			c.Assert(err, NotNil)
+			continue
+		}
+		c.Assert(err, IsNil)
+
+		instanceManagers, err := s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).List(context.TODO(), metav1.ListOptions{})
+		c.Assert(err, IsNil)
+		c.Assert(len(instanceManagers.Items), Equals, len(testCase.existingInstanceManagers))
+	}
 }
 
 // -- Helpers --
