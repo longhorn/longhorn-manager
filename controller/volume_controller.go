@@ -2026,7 +2026,7 @@ func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.E
 	if e == nil || rs == nil {
 		return nil
 	}
-	if e.Spec.VolumeSize == v.Spec.Size {
+	if e.Spec.VolumeSize == v.Spec.Size && e.Status.CurrentSize == v.Spec.Size {
 		return nil
 	}
 
