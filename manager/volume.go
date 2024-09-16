@@ -555,12 +555,6 @@ func (m *VolumeManager) CancelExpansion(volumeName string) (v *longhorn.Volume, 
 	if err != nil {
 		return nil, err
 	}
-	if !v.Status.ExpansionRequired {
-		return nil, fmt.Errorf("volume expansion is not started")
-	}
-	if v.Status.IsStandby {
-		return nil, fmt.Errorf("canceling expansion for standby volume is not supported")
-	}
 
 	var engine *longhorn.Engine
 	es, err := m.ds.ListVolumeEngines(v.Name)
@@ -572,6 +566,17 @@ func (m *VolumeManager) CancelExpansion(volumeName string) (v *longhorn.Volume, 
 	}
 	for _, e := range es {
 		engine = e
+	}
+
+	if !v.Status.ExpansionRequired {
+		if v.Spec.Size == engine.Spec.VolumeSize && v.Spec.Size != engine.Status.CurrentSize {
+			return nil, fmt.Errorf("volume has already been expanded to %v and cannot revert to size %v. Please manually expand it to %v to resolve the stuck cancellation",
+				engine.Status.CurrentSize, v.Spec.Size, engine.Status.CurrentSize)
+		}
+		return nil, fmt.Errorf("volume expansion is not started")
+	}
+	if v.Status.IsStandby {
+		return nil, fmt.Errorf("canceling expansion for standby volume is not supported")
 	}
 
 	if engine.Status.IsExpanding {
