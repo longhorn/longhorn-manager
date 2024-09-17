@@ -1,6 +1,8 @@
 package csi
 
 import (
+	"time"
+
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
@@ -13,6 +15,9 @@ type Manager struct {
 	cs  *ControllerServer
 }
 
+// It can take up to 10s for each try. So total retry time would be 180s
+const rancherClientInitMaxRetry = 18
+
 func init() {}
 
 func GetCSIManager() *Manager {
@@ -24,9 +29,9 @@ func (m *Manager) Run(driverName, nodeID, endpoint, identityVersion, managerURL 
 
 	// Longhorn API Client
 	clientOpts := &longhornclient.ClientOpts{Url: managerURL}
-	apiClient, err := longhornclient.NewRancherClient(clientOpts)
+	apiClient, err := initRancherClient(clientOpts)
 	if err != nil {
-		return errors.Wrap(err, "Failed to initialize Longhorn API client")
+		return err
 	}
 
 	// Create GRPC servers
@@ -38,4 +43,20 @@ func (m *Manager) Run(driverName, nodeID, endpoint, identityVersion, managerURL 
 	s.Wait()
 
 	return nil
+}
+
+func initRancherClient(clientOpts *longhornclient.ClientOpts) (*longhornclient.RancherClient, error) {
+	var lastErr error
+
+	for i := 0; i < rancherClientInitMaxRetry; i++ {
+		apiClient, err := longhornclient.NewRancherClient(clientOpts)
+		if err == nil {
+			return apiClient, nil
+		}
+		logrus.Warnf("Failed to initialize Longhorn API client %v. Retrying", err)
+		lastErr = err
+		time.Sleep(time.Second)
+	}
+
+	return nil, errors.Wrap(lastErr, "Failed to initialize Longhorn API client")
 }
