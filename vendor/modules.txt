@@ -278,7 +278,7 @@ github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20240922
+# github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20240922 => github.com/c3y1huang/longhorn-instance-manager v1.8.0-dev-20240908.0.20240927080458-479e2769617e
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -289,7 +289,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/util
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/types v0.0.0-20240902072916-1bf23d310acb
+# github.com/longhorn/types v0.0.0-20240902072916-1bf23d310acb => github.com/c3y1huang/types v0.0.0-20240927050527-1fc6fe5fa4f9
 ## explicit; go 1.21
 github.com/longhorn/types/pkg/generated/bimrpc
 github.com/longhorn/types/pkg/generated/enginerpc
@@ -1648,3 +1648,5 @@ sigs.k8s.io/yaml/goyaml.v2
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.31.1
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.31.1
 # k8s.io/sample-controller => k8s.io/sample-controller v0.31.1
+# github.com/longhorn/longhorn-instance-manager => github.com/c3y1huang/longhorn-instance-manager v1.8.0-dev-20240908.0.20240927080458-479e2769617e
+# github.com/longhorn/types => github.com/c3y1huang/types v0.0.0-20240927050527-1fc6fe5fa4f9
