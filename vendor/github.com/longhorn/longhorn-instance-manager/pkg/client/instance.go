@@ -91,6 +91,7 @@ type EngineCreateRequest struct {
 	InitiatorAddress  string
 	TargetAddress     string
 	UpgradeRequired   bool
+	SalvageRequested  bool
 }
 
 type ReplicaCreateRequest struct {
@@ -147,6 +148,7 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 				Size:              req.Size,
 				ReplicaAddressMap: req.Engine.ReplicaAddressMap,
 				Frontend:          req.Engine.Frontend,
+				SalvageRequested:  req.Engine.SalvageRequested,
 			}
 		case types.InstanceTypeReplica:
 			spdkInstanceSpec = &rpc.SpdkInstanceSpec{
