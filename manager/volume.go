@@ -608,6 +608,14 @@ func (m *VolumeManager) TrimFilesystem(name string) (v *longhorn.Volume, err err
 		return nil, fmt.Errorf("volume frontend is disabled")
 	}
 
+	// Blocks degraded v2 volume from being trimmed to maintain reliable volume
+	// head size for failed usable replica candidate selection.
+	if types.IsDataEngineV2(v.Spec.DataEngine) {
+		if v.Status.Robustness == longhorn.VolumeRobustnessDegraded {
+			return nil, fmt.Errorf("volume is degraded")
+		}
+	}
+
 	if v.Spec.AccessMode == longhorn.AccessModeReadWriteMany {
 		return v, m.trimRWXVolumeFilesystem(name, v.Spec.Encrypted)
 	}
