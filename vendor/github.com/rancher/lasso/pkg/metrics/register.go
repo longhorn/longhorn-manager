@@ -16,6 +16,10 @@ func init() {
 	}
 }
 
+func Enabled() bool {
+	return prometheusMetrics
+}
+
 // MustRegisterWithWorkqueue registers all metrics, including Kubernetes internal
 // workqueue metrics, with the provided registerer
 func MustRegisterWithWorkqueue(registerer prometheus.Registerer) {
