@@ -156,6 +156,7 @@ const (
 	LonghornLabelManagedBy                  = "managed-by"
 	LonghornLabelSnapshotForCloningVolume   = "for-cloning-volume"
 	LonghornLabelBackingImageDataSource     = "backing-image-data-source"
+	LonghornLabelBackupTarget               = "backup-target"
 	LonghornLabelBackupVolume               = "backup-volume"
 	LonghornLabelRecurringJob               = "job"
 	LonghornLabelRecurringJobGroup          = "job-group"
@@ -560,6 +561,19 @@ func GetBackingImageDataSourceLabels(name, nodeID, diskUUID string) map[string]s
 		labels[GetLonghornLabelKey(LonghornLabelNode)] = nodeID
 	}
 	return labels
+}
+
+func GetBackupVolumeWithBackupTargetLabels(backupTargetName, volumeName string) map[string]string {
+	return map[string]string{
+		LonghornLabelBackupVolume: volumeName,
+		LonghornLabelBackupTarget: backupTargetName,
+	}
+}
+
+func GetBackupTargetLabels(backupTargetName string) map[string]string {
+	return map[string]string{
+		LonghornLabelBackupTarget: backupTargetName,
+	}
 }
 
 func GetBackupVolumeLabels(volumeName string) map[string]string {
