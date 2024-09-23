@@ -1103,6 +1103,9 @@ spec:
                 description: The interval that the cluster needs to run sync with
                   the backup target.
                 type: string
+              readOnly:
+                description: ReadOnly indicates if it can create a backup on the remote backup target or not.
+                type: boolean
               syncRequestedAt:
                 description: The time to request run sync the remote backup target.
                 format: date-time

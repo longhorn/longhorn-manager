@@ -19,6 +19,9 @@ type BackupTargetSpec struct {
 	// The interval that the cluster needs to run sync with the backup target.
 	// +optional
 	PollInterval metav1.Duration `json:"pollInterval"`
+	// ReadOnly indicates if it can create a backup on the remote backup target or not.
+	// +optional
+	ReadOnly bool `json:"readOnly"`
 	// The time to request run sync the remote backup target.
 	// +optional
 	// +nullable
