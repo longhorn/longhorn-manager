@@ -664,7 +664,7 @@ func (btc *BackupTargetController) syncBackupBackingImage(backupTarget *longhorn
 			Spec: longhorn.BackupBackingImageSpec{
 				UserCreated:      false,
 				BackupTargetName: backupTarget.Name,
-				BackingImage:     backupBackingImageName,
+				BackingImage:     remoteBackingImageName,
 			},
 		}
 		if _, err = btc.ds.CreateBackupBackingImage(backupBackingImage); err != nil && !apierrors.IsAlreadyExists(err) {

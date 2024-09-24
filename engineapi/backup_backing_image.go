@@ -89,6 +89,7 @@ type BackupBackingImageMonitor struct {
 	client                 *BackingImageManagerClient
 
 	backupBackingImageStatus longhorn.BackupBackingImageStatus
+	backingImageName         string
 	backupStatusLock         sync.RWMutex
 
 	syncCallback func(key string)
@@ -101,10 +102,12 @@ type BackupBackingImageMonitor struct {
 func NewBackupBackingImageMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, bbi *longhorn.BackupBackingImage, backingImage *longhorn.BackingImage, backupTargetClient *BackupTargetClient,
 	compressionMethod longhorn.BackupCompressionMethod, concurrentLimit int, bimClient *BackingImageManagerClient, syncCallback func(key string)) (*BackupBackingImageMonitor, error) {
 	ctx, quit := context.WithCancel(context.Background())
+	biName := backingImage.Name
 	m := &BackupBackingImageMonitor{
 		logger: logger.WithFields(logrus.Fields{"backupBackingImage": bbi.Name}),
 
 		backupBackingImageName: bbi.Name,
+		backingImageName:       biName,
 		client:                 bimClient,
 
 		backupStatusLock: sync.RWMutex{},
@@ -120,7 +123,7 @@ func NewBackupBackingImageMonitor(logger logrus.FieldLogger, ds *datastore.DataS
 
 	// Call backing image manager API snapshot backup
 	if bbi.Status.State == longhorn.BackupStateNew {
-		err := m.client.BackupCreate(bbi.Name, backingImage.Status.UUID, bbi.Status.Checksum,
+		err := m.client.BackupCreate(biName, backingImage.Status.UUID, bbi.Status.Checksum,
 			backupTargetClient.URL, bbi.Spec.Labels, backupTargetClient.Credential, string(compressionMethod), concurrentLimit, backupBackingImageParameters)
 		if err != nil {
 			if !strings.Contains(err.Error(), "DeadlineExceeded") {
@@ -243,7 +246,7 @@ func (m *BackupBackingImageMonitor) syncBackupStatusFromBackingImageManager() (c
 	m.backupBackingImageStatus.DeepCopyInto(&currentBackupStatus)
 	m.backupStatusLock.RUnlock()
 
-	backupBackingImageStatus, err = m.client.BackupStatus(m.backupBackingImageName)
+	backupBackingImageStatus, err = m.client.BackupStatus(m.backingImageName)
 	if err != nil {
 		return currentBackupStatus, err
 	}
