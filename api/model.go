@@ -140,6 +140,8 @@ type BackupVolume struct {
 	BackingImageName     string            `json:"backingImageName"`
 	BackingImageChecksum string            `json:"backingImageChecksum"`
 	StorageClassName     string            `json:"storageClassName"`
+	BackupTargetName     string            `json:"backupTargetName"`
+	VolumeName           string            `json:"volumeName"`
 }
 
 // SyncBackupResource is used for the Backup*Sync* actions
@@ -172,6 +174,7 @@ type Backup struct {
 	CompressionMethod      string               `json:"compressionMethod"`
 	NewlyUploadedDataSize  string               `json:"newlyUploadDataSize"`
 	ReUploadedDataSize     string               `json:"reUploadedDataSize"`
+	BackupTargetName       string               `json:"backupTargetName"`
 }
 
 type BackupBackingImage struct {
@@ -874,12 +877,42 @@ func kubernetesStatusSchema(status *client.Schema) {
 }
 
 func backupTargetSchema(backupTarget *client.Schema) {
-	backupTarget.CollectionMethods = []string{"GET"}
-	backupTarget.ResourceMethods = []string{"GET", "PUT"}
+	backupTarget.CollectionMethods = []string{"GET", "POST"}
+	backupTarget.ResourceMethods = []string{"GET", "PUT", "DELETE"}
+
+	backupTargetName := backupTarget.ResourceFields["name"]
+	backupTargetName.Required = true
+	backupTargetName.Unique = true
+	backupTargetName.Create = true
+	backupTarget.ResourceFields["name"] = backupTargetName
+
+	backupTargetURL := backupTarget.ResourceFields["backupTargetURL"]
+	backupTargetURL.Create = true
+	backupTargetURL.Default = ""
+	backupTarget.ResourceFields["backupTargetURL"] = backupTargetURL
+
+	credentialSecret := backupTarget.ResourceFields["credentialSecret"]
+	credentialSecret.Create = true
+	credentialSecret.Default = ""
+	backupTarget.ResourceFields["credentialSecret"] = credentialSecret
+
+	backupTargetPollInterval := backupTarget.ResourceFields["pollInterval"]
+	backupTargetPollInterval.Create = true
+	backupTargetPollInterval.Default = "300"
+	backupTarget.ResourceFields["pollInterval"] = backupTargetPollInterval
+
+	backupTargetReadOnly := backupTarget.ResourceFields["readOnly"]
+	backupTargetReadOnly.Create = true
+	backupTargetReadOnly.Default = false
+	backupTarget.ResourceFields["readOnly"] = backupTargetReadOnly
 
 	backupTarget.ResourceActions = map[string]client.Action{
 		"backupTargetSync": {
 			Input:  "syncBackupResource",
+			Output: "backupTargetListOutput",
+		},
+		"backupTargetUpdate": {
+			Input:  "BackupTarget",
 			Output: "backupTargetListOutput",
 		},
 	}
@@ -1801,11 +1834,13 @@ func toBackupTargetResource(bt *longhorn.BackupTarget, apiContext *api.ApiContex
 			CredentialSecret: bt.Spec.CredentialSecret,
 			PollInterval:     bt.Spec.PollInterval.Duration.String(),
 			Available:        bt.Status.Available,
+			ReadyOnly:        bt.Spec.ReadOnly,
 			Message:          types.GetCondition(bt.Status.Conditions, longhorn.BackupTargetConditionTypeUnavailable).Message,
 		},
 	}
 	res.Actions = map[string]string{
-		"backupTargetSync": apiContext.UrlBuilder.ActionLink(res.Resource, "backupTargetSync"),
+		"backupTargetSync":   apiContext.UrlBuilder.ActionLink(res.Resource, "backupTargetSync"),
+		"backupTargetUpdate": apiContext.UrlBuilder.ActionLink(res.Resource, "backupTargetUpdate"),
 	}
 
 	return res
@@ -1832,6 +1867,8 @@ func toBackupVolumeResource(bv *longhorn.BackupVolume, apiContext *api.ApiContex
 		BackingImageName:     bv.Status.BackingImageName,
 		BackingImageChecksum: bv.Status.BackingImageChecksum,
 		StorageClassName:     bv.Status.StorageClassName,
+		BackupTargetName:     bv.Spec.BackupTargetName,
+		VolumeName:           bv.Spec.VolumeName,
 	}
 	b.Actions = map[string]string{
 		"backupList":       apiContext.UrlBuilder.ActionLink(b.Resource, "backupList"),
@@ -1938,6 +1975,7 @@ func toBackupResource(b *longhorn.Backup) *Backup {
 		CompressionMethod:      string(b.Status.CompressionMethod),
 		NewlyUploadedDataSize:  b.Status.NewlyUploadedDataSize,
 		ReUploadedDataSize:     b.Status.ReUploadedDataSize,
+		BackupTargetName:       b.Spec.BackupTargetName,
 	}
 	// Set the volume name from backup CR's label if it's empty.
 	// This field is empty probably because the backup state is not Ready
