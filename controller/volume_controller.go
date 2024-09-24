@@ -3615,15 +3615,24 @@ func (c *VolumeController) createEngine(v *longhorn.Volume, currentEngineName st
 	}
 
 	if v.Spec.FromBackup != "" && v.Status.RestoreRequired {
-		backupVolumeName, backupName, err := c.getInfoFromBackupURL(v)
+		remoteBackupVolumeName, backupName, err := c.getInfoFromBackupURL(v)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get backup volume when creating engine object of restored volume %v", v.Name)
 		}
-		engine.Spec.BackupVolume = backupVolumeName
+		backupRO, err := c.ds.GetBackupRO(backupName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get backup when creating engine object of restored volume %v", v.Name)
+		}
+		backupVolumeRO, err := c.ds.GetBackupVolumeWithBackupTargetAndVolumeRO(backupRO.Spec.BackupTargetName, remoteBackupVolumeName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get backup volume when creating engine object of restored volume %v", v.Name)
+		}
+
+		engine.Spec.BackupVolume = backupVolumeRO.Name
 		engine.Spec.RequestedBackupRestore = backupName
 
-		log.Infof("Creating engine %v for restored volume, BackupVolume is %v, RequestedBackupRestore is %v",
-			engine.Name, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore)
+		log.Infof("Creating engine %v for restored volume %v, BackupVolume is %v, Remote BackupVolume is %v, RequestedBackupRestore is %v",
+			engine.Name, v.Name, engine.Spec.BackupVolume, remoteBackupVolumeName, engine.Spec.RequestedBackupRestore)
 	}
 
 	unmapMarkEnabled, err := c.isUnmapMarkSnapChainRemovedEnabled(v)
