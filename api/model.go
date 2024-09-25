@@ -61,6 +61,7 @@ type Volume struct {
 	SnapshotMaxCount            int                                    `json:"snapshotMaxCount"`
 	SnapshotMaxSize             string                                 `json:"snapshotMaxSize"`
 	FreezeFilesystemForSnapshot longhorn.FreezeFilesystemForSnapshot   `json:"freezeFilesystemForSnapshot"`
+	BackupTargetName            string                                 `json:"backupTargetName"`
 
 	DiskSelector         []string                      `json:"diskSelector"`
 	NodeSelector         []string                      `json:"nodeSelector"`
@@ -1564,6 +1565,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		NodeSelector:                v.Spec.NodeSelector,
 		RestoreVolumeRecurringJob:   v.Spec.RestoreVolumeRecurringJob,
 		FreezeFilesystemForSnapshot: v.Spec.FreezeFilesystemForSnapshot,
+		BackupTargetName:            v.Spec.BackupTargetName,
 
 		State:                       v.Status.State,
 		Robustness:                  v.Status.Robustness,
