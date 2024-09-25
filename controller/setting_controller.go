@@ -1093,8 +1093,13 @@ func (sc *SettingController) CheckLatestAndStableLonghornVersions() (string, str
 	if err != nil {
 		return "", "", errors.Wrap(err, "failed to get extra info for upgrade checker")
 	}
+
+	version := sc.version
+	if strings.Contains(version, "dev") {
+		version = "dev"
+	}
 	req := &CheckUpgradeRequest{
-		AppVersion:     sc.version,
+		AppVersion:     version,
 		ExtraTagInfo:   extraTagInfo,
 		ExtraFieldInfo: extraFieldInfo,
 	}
