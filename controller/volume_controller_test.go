@@ -1137,6 +1137,7 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 			StaleReplicaTimeout: TestVolumeStaleTimeout,
 			Image:               TestEngineImage,
 			DataEngine:          longhorn.DataEngineTypeV1,
+			BackupTargetName:    TestBackupTargetName,
 		},
 		Status: longhorn.VolumeStatus{
 			OwnerID: TestOwnerID1,
