@@ -7,8 +7,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
+	"github.com/pkg/errors"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -24,12 +26,14 @@ func NewValidator(ds *datastore.DataStore) admission.Validator {
 
 func (b *backupValidator) Resource() admission.Resource {
 	return admission.Resource{
-		Name:           "backups",
-		Scope:          admissionregv1.NamespacedScope,
-		APIGroup:       longhorn.SchemeGroupVersion.Group,
-		APIVersion:     longhorn.SchemeGroupVersion.Version,
-		ObjectType:     &longhorn.Backup{},
-		OperationTypes: []admissionregv1.OperationType{},
+		Name:       "backups",
+		Scope:      admissionregv1.NamespacedScope,
+		APIGroup:   longhorn.SchemeGroupVersion.Group,
+		APIVersion: longhorn.SchemeGroupVersion.Version,
+		ObjectType: &longhorn.Backup{},
+		OperationTypes: []admissionregv1.OperationType{
+			admissionregv1.Create,
+		},
 	}
 }
 
@@ -39,9 +43,35 @@ func (b *backupValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Backup", newObj), "")
 	}
 
+	if !util.ValidateName(backup.Name) {
+		return werror.NewInvalidError(fmt.Sprintf("invalid name %v", backup.Name), "")
+	}
+
 	if backup.Spec.BackupMode != longhorn.BackupModeFull &&
 		backup.Spec.BackupMode != longhorn.BackupModeIncremental {
 		return werror.NewInvalidError(fmt.Sprintf("BackupMode %v is not a valid option", backup.Spec.BackupMode), "")
+	}
+
+	if backup.Spec.SnapshotName != "" {
+		snap, err := b.ds.GetSnapshotRO(backup.Spec.SnapshotName)
+		if err != nil {
+			return werror.NewInvalidError(errors.Wrapf(err, "failed to get snapshot %v of backup %v", backup.Spec.SnapshotName, backup.Name).Error(), "")
+		}
+		volume, err := b.ds.GetVolumeRO(snap.Spec.Volume)
+		if err != nil {
+			return werror.NewInvalidError(errors.Wrapf(err, "failed to get volume %v of snapshot %v", snap.Spec.Volume, backup.Spec.SnapshotName).Error(), "")
+		}
+		if backup.Spec.BackupTargetName != volume.Spec.BackupTargetName {
+			return werror.NewInvalidError(fmt.Sprintf("failed to create a new backup %v on a different backup target %v from the volume %v (%v)", backup.Name, backup.Spec.BackupTargetName, volume.Name, volume.Spec.BackupTargetName), "")
+		}
+
+		backupTarget, err := b.ds.GetBackupTargetRO(backup.Spec.BackupTargetName)
+		if err != nil {
+			return werror.NewInvalidError(errors.Wrapf(err, "failed to get backup target").Error(), "")
+		}
+		if backupTarget.Spec.ReadOnly {
+			return werror.NewInvalidError(fmt.Sprintf("failed to create a new backup %v on a read-only backup target %v ", backup.Name, backupTarget.Name), "")
+		}
 	}
 
 	return nil
