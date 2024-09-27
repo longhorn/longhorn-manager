@@ -108,6 +108,10 @@ const (
 	TestVolumeAttachmentName         = "test-volume"
 
 	TestDiskPathFSType = "ext4"
+
+	TestKernelVersion        = "6.2.0-32-generic"
+	TestKernelConfigDIR      = "/host/boot"
+	TestKernelConfigFilePath = TestKernelConfigDIR + "/config-" + TestKernelVersion
 )
 
 var (
@@ -514,6 +518,9 @@ func newKubernetesNode(name string, readyStatus, diskPressureStatus, memoryStatu
 					Type:   corev1.NodeNetworkUnavailable,
 					Status: networkStatus,
 				},
+			},
+			NodeInfo: corev1.NodeSystemInfo{
+				KernelVersion: TestKernelVersion,
 			},
 		},
 	}
