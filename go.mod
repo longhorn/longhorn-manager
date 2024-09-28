@@ -50,6 +50,10 @@ replace (
 	k8s.io/sample-controller => k8s.io/sample-controller v0.31.1
 )
 
+replace github.com/longhorn/longhorn-instance-manager => github.com/c3y1huang/longhorn-instance-manager v1.8.0-dev-20240908.0.20240927080458-479e2769617e
+
+replace github.com/longhorn/types => github.com/c3y1huang/types v0.0.0-20240927050527-1fc6fe5fa4f9
+
 require (
 	github.com/container-storage-interface/spec v1.10.0
 	github.com/docker/go-connections v0.5.0
