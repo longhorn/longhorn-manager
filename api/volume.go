@@ -104,7 +104,7 @@ func (s *Server) responseWithVolume(rw http.ResponseWriter, req *http.Request, i
 	if err != nil {
 		return err
 	}
-	backups, err := s.m.ListBackupsForVolumeSorted(id)
+	backups, err := s.m.ListBackupsForVolumeSorted(v.Name)
 	if err != nil {
 		return err
 	}
