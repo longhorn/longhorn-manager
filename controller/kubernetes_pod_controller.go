@@ -209,19 +209,12 @@ func (kc *KubernetesPodController) handleWorkloadPodDeletionIfCSIPluginPodIsDown
 		return nil
 	}
 
-	storageNetworkSetting, err := kc.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
+	isStorageNetworkForRWXVolume, err := kc.ds.IsStorageNetworkForRWXVolume()
 	if err != nil {
-		log.WithError(err).Warnf("%s. Failed to get setting %v", logAbort, types.SettingNameStorageNetwork)
+		log.WithError(err).Warnf("%s. Failed to check isStorageNetwork", logAbort)
 		return nil
 	}
-
-	storageNetworkForRWXVolumeEnabled, err := kc.ds.GetSettingAsBool(types.SettingNameStorageNetworkForRWXVolumeEnabled)
-	if err != nil {
-		log.WithError(err).Warnf("%s. Failed to get setting %v", logAbort, types.SettingNameStorageNetworkForRWXVolumeEnabled)
-		return nil
-	}
-
-	if !types.IsStorageNetworkForRWXVolume(storageNetworkSetting, storageNetworkForRWXVolumeEnabled) {
+	if !isStorageNetworkForRWXVolume {
 		return nil
 	}
 
@@ -476,6 +469,11 @@ func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *
 		return err
 	}
 
+	isStorageNetworkForRWXVolume, err := kc.ds.IsStorageNetworkForRWXVolume()
+	if err != nil {
+		kc.logger.WithError(err).Warn("Failed to check isStorageNetwork, assuming not")
+	}
+
 	// Only delete pod which has startTime < vol.Status.RemountRequestAt AND timeNow > vol.Status.RemountRequestAt + delayDuration
 	// The delayDuration is to make sure that we don't repeatedly delete the pod too fast
 	// when vol.Status.RemountRequestAt is updated too quickly by volumeController
@@ -493,6 +491,13 @@ func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *
 		if vol.Status.RemountRequestedAt == "" {
 			continue
 		}
+
+		// NFS clients can generally recover without a restart/remount when the NFS server restarts using the same Cluster IP.
+		// A remount is required when the storage network for RWX is in use because the new NFS server has a different IP.
+		if isRegularRWXVolume(vol) && !isStorageNetworkForRWXVolume {
+			continue
+		}
+
 		remountRequestedAt, err := time.Parse(time.RFC3339, vol.Status.RemountRequestedAt)
 		if err != nil {
 			return err
