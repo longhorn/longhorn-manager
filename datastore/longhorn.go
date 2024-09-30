@@ -4291,6 +4291,16 @@ func (s *DataStore) GetBackupVolumeWithBackupTargetAndVolumeRO(backupTargetName,
 	return nil, nil
 }
 
+// GetBackupVolumeWithBackupTargetAndVolume returns a copy of BackupVolume with the given backup target and volume name in the cluster
+func (s *DataStore) GetBackupVolumeWithBackupTargetAndVolume(backupTargetName, volumeName string) (*longhorn.BackupVolume, error) {
+	resultRO, err := s.GetBackupVolumeWithBackupTargetAndVolumeRO(backupTargetName, volumeName)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
 func getBackupTargetSelector(backupTargetName string) (labels.Selector, error) {
 	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: types.GetBackupTargetLabels(backupTargetName),
