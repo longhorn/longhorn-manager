@@ -55,8 +55,8 @@ func (m *VolumeManager) RestoreBackupBackingImage(name string, secret, secretNam
 	return m.restoreBackingImage(name, secret, secretNamespace)
 }
 
-func (m *VolumeManager) CreateBackupBackingImage(name string) error {
-	_, err := m.ds.GetBackingImageRO(name)
+func (m *VolumeManager) CreateBackupBackingImage(name, backingImageName, backupTargetName string) error {
+	_, err := m.ds.GetBackingImageRO(backingImageName)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get backing image %v", name)
 	}
@@ -77,7 +77,9 @@ func (m *VolumeManager) CreateBackupBackingImage(name string) error {
 			Name: name,
 		},
 		Spec: longhorn.BackupBackingImageSpec{
-			UserCreated: true,
+			UserCreated:      true,
+			BackingImage:     backingImageName,
+			BackupTargetName: backupTargetName,
 		},
 	}
 	if _, err = m.ds.CreateBackupBackingImage(backupBackingImage); err != nil && !apierrors.IsAlreadyExists(err) {
