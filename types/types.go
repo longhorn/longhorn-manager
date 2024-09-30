@@ -28,6 +28,7 @@ const (
 	LonghornKindVolumeAttachment    = "VolumeAttachment"
 	LonghornKindEngine              = "Engine"
 	LonghornKindReplica             = "Replica"
+	LonghornKindBackupTarget        = "BackupTarget"
 	LonghornKindBackup              = "Backup"
 	LonghornKindSnapshot            = "Snapshot"
 	LonghornKindEngineImage         = "EngineImage"
@@ -718,6 +719,14 @@ func GetConfigMapNameFromHostname(hostname string) string {
 
 func GetShareManagerNameFromShareManagerPodName(podName string) string {
 	return strings.TrimPrefix(podName, shareManagerPrefix)
+}
+
+func GetBackupVolumeNameFromVolumeName(volumeName string) string {
+	return util.GetStringChecksum(strings.TrimSpace(volumeName))[:util.RandomIDLenth] + "-" + util.RandomID()
+}
+
+func GetBackupBackingImageNameFromBIName(backingImageName string) string {
+	return util.GetStringChecksum(strings.TrimSpace(backingImageName))[:util.RandomIDLenth] + "-" + util.RandomID()
 }
 
 func ValidateEngineImageChecksumName(name string) bool {
