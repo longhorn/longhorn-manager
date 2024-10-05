@@ -42,6 +42,7 @@ const (
 	ProxyEngineService_SnapshotBackupStatus_FullMethodName               = "/imrpc.ProxyEngineService/SnapshotBackupStatus"
 	ProxyEngineService_BackupRestore_FullMethodName                      = "/imrpc.ProxyEngineService/BackupRestore"
 	ProxyEngineService_BackupRestoreStatus_FullMethodName                = "/imrpc.ProxyEngineService/BackupRestoreStatus"
+	ProxyEngineService_BackupRestoreFinish_FullMethodName                = "/imrpc.ProxyEngineService/BackupRestoreFinish"
 	ProxyEngineService_CleanupBackupMountPoints_FullMethodName           = "/imrpc.ProxyEngineService/CleanupBackupMountPoints"
 	ProxyEngineService_ReplicaAdd_FullMethodName                         = "/imrpc.ProxyEngineService/ReplicaAdd"
 	ProxyEngineService_ReplicaList_FullMethodName                        = "/imrpc.ProxyEngineService/ReplicaList"
@@ -79,6 +80,7 @@ type ProxyEngineServiceClient interface {
 	SnapshotBackupStatus(ctx context.Context, in *EngineSnapshotBackupStatusRequest, opts ...grpc.CallOption) (*EngineSnapshotBackupStatusProxyResponse, error)
 	BackupRestore(ctx context.Context, in *EngineBackupRestoreRequest, opts ...grpc.CallOption) (*EngineBackupRestoreProxyResponse, error)
 	BackupRestoreStatus(ctx context.Context, in *ProxyEngineRequest, opts ...grpc.CallOption) (*EngineBackupRestoreStatusProxyResponse, error)
+	BackupRestoreFinish(ctx context.Context, in *EngineBackupRestoreFinishRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	CleanupBackupMountPoints(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ReplicaAdd(ctx context.Context, in *EngineReplicaAddRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ReplicaList(ctx context.Context, in *ProxyEngineRequest, opts ...grpc.CallOption) (*EngineReplicaListProxyResponse, error)
@@ -296,6 +298,15 @@ func (c *proxyEngineServiceClient) BackupRestoreStatus(ctx context.Context, in *
 	return out, nil
 }
 
+func (c *proxyEngineServiceClient) BackupRestoreFinish(ctx context.Context, in *EngineBackupRestoreFinishRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ProxyEngineService_BackupRestoreFinish_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *proxyEngineServiceClient) CleanupBackupMountPoints(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, ProxyEngineService_CleanupBackupMountPoints_FullMethodName, in, out, opts...)
@@ -403,6 +414,7 @@ type ProxyEngineServiceServer interface {
 	SnapshotBackupStatus(context.Context, *EngineSnapshotBackupStatusRequest) (*EngineSnapshotBackupStatusProxyResponse, error)
 	BackupRestore(context.Context, *EngineBackupRestoreRequest) (*EngineBackupRestoreProxyResponse, error)
 	BackupRestoreStatus(context.Context, *ProxyEngineRequest) (*EngineBackupRestoreStatusProxyResponse, error)
+	BackupRestoreFinish(context.Context, *EngineBackupRestoreFinishRequest) (*emptypb.Empty, error)
 	CleanupBackupMountPoints(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
 	ReplicaAdd(context.Context, *EngineReplicaAddRequest) (*emptypb.Empty, error)
 	ReplicaList(context.Context, *ProxyEngineRequest) (*EngineReplicaListProxyResponse, error)
@@ -484,6 +496,9 @@ func (UnimplementedProxyEngineServiceServer) BackupRestore(context.Context, *Eng
 }
 func (UnimplementedProxyEngineServiceServer) BackupRestoreStatus(context.Context, *ProxyEngineRequest) (*EngineBackupRestoreStatusProxyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method BackupRestoreStatus not implemented")
+}
+func (UnimplementedProxyEngineServiceServer) BackupRestoreFinish(context.Context, *EngineBackupRestoreFinishRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BackupRestoreFinish not implemented")
 }
 func (UnimplementedProxyEngineServiceServer) CleanupBackupMountPoints(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CleanupBackupMountPoints not implemented")
@@ -921,6 +936,24 @@ func _ProxyEngineService_BackupRestoreStatus_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProxyEngineService_BackupRestoreFinish_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EngineBackupRestoreFinishRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProxyEngineServiceServer).BackupRestoreFinish(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProxyEngineService_BackupRestoreFinish_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProxyEngineServiceServer).BackupRestoreFinish(ctx, req.(*EngineBackupRestoreFinishRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ProxyEngineService_CleanupBackupMountPoints_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
@@ -1177,6 +1210,10 @@ var ProxyEngineService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "BackupRestoreStatus",
 			Handler:    _ProxyEngineService_BackupRestoreStatus_Handler,
+		},
+		{
+			MethodName: "BackupRestoreFinish",
+			Handler:    _ProxyEngineService_BackupRestoreFinish_Handler,
 		},
 		{
 			MethodName: "CleanupBackupMountPoints",
