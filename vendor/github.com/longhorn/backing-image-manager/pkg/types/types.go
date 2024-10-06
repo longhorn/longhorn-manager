@@ -13,7 +13,8 @@ const (
 	DiskPathInContainer              = "/data/"
 	DataSourceDirectoryName          = "/tmp/"
 
-	DefaultSectorSize = 512
+	DefaultSectorSize     = 512
+	DefaultLinuxBlcokSize = 512
 
 	DefaultManagerPort              = 8000
 	DefaultDataSourceServerPort     = 8000
