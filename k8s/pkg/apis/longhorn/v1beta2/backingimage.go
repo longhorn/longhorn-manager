@@ -77,10 +77,10 @@ type BackingImageStatus struct {
 	UUID string `json:"uuid"`
 	// +optional
 	Size int64 `json:"size"`
-	// Virtual size of image, which may be larger than physical size. Will be zero until known (e.g. while a backing image is uploading)
+	// Virtual size of image in bytes, which may be larger than physical size. Will be zero until known (e.g. while a backing image is uploading)
 	// +optional
 	VirtualSize int64 `json:"virtualSize"`
-	// Real size of image, which may be smaller than the size when the file is a sparse file. Will be zero until known (e.g. while a backing image is uploading)
+	// Real size of image in bytes, which may be smaller than the size when the file is a sparse file. Will be zero until known (e.g. while a backing image is uploading)
 	// +optional
 	RealSize int64 `json:"realSize"`
 	// +optional
