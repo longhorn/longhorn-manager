@@ -564,7 +564,7 @@ spec:
               ownerID:
                 type: string
               realSize:
-                description: Real size of image, which may be smaller than the size 
+                description: Real size of image in bytes, which may be smaller than the size 
                   when the file is a sparse file. Will be zero until known (e.g. while a backing image is uploading)
                 format: int64
                 type: integer
@@ -574,7 +574,7 @@ spec:
               uuid:
                 type: string
               virtualSize:
-                description: Virtual size of image, which may be larger than physical
+                description: Virtual size of image in bytes, which may be larger than physical
                   size. Will be zero until known (e.g. while a backing image is uploading)
                 format: int64
                 type: integer
