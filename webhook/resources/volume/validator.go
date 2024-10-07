@@ -156,6 +156,9 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		if volume.Spec.Standby {
 			return werror.NewInvalidError("standby is not supported for data engine v2", "")
 		}
+		if types.IsDataFromVolume(volume.Spec.DataSource) {
+			return werror.NewInvalidError("clone is not supported for data engine v2", "")
+		}
 	}
 
 	return nil
