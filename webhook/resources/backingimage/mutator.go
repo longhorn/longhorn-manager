@@ -91,6 +91,27 @@ func (b *backingImageMutator) Create(request *admission.Request, newObj runtime.
 			}
 			parameters[longhorn.DataSourceTypeRestoreParameterConcurrentLimit] = strconv.FormatInt(concurrentLimit, 10)
 		}
+
+		if parameters[longhorn.DataSourceTypeRestoreParameterBackupTargetName] == "" {
+			bbis, err := b.ds.ListBackupBackingImagesRO()
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to list backup backing images")
+			}
+			backupTargetURL, backingImageName, err := getBackupTargetURLAndBackingImageName(parameters[longhorn.DataSourceTypeRestoreParameterBackupURL])
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to get backup target URL and backing image name from restore parameters %v", parameters[longhorn.DataSourceTypeRestoreParameterBackupURL])
+			}
+			for _, bbi := range bbis {
+				bbiBackupTargetURL, bbiBackingImageName, err := getBackupTargetURLAndBackingImageName(bbi.Status.URL)
+				if err != nil {
+					return nil, errors.Wrapf(err, "failed to get backup target URL and backing image name from RUL %v of backup backing image %v", bbi.Status.URL, bbi.Name)
+				}
+				if backupTargetURL == bbiBackupTargetURL && backingImageName == bbiBackingImageName {
+					parameters[longhorn.DataSourceTypeRestoreParameterBackupTargetName] = bbi.Spec.BackupTargetName
+					break
+				}
+			}
+		}
 	}
 
 	if longhorn.BackingImageDataSourceType(backingImage.Spec.SourceType) == longhorn.BackingImageDataSourceTypeClone {
@@ -158,6 +179,17 @@ func (b *backingImageMutator) Create(request *admission.Request, newObj runtime.
 	patchOps = append(patchOps, patchOp)
 
 	return patchOps, nil
+}
+
+func getBackupTargetURLAndBackingImageName(backupURL string) (string, string, error) {
+	backupURLSplit := strings.Split(backupURL, "?")
+	if len(backupURLSplit) != 2 {
+		return "", "", errors.Errorf("invalid backupURL %v", backupURL)
+	}
+	backupTargetURL := backupURLSplit[0]
+	backingImageName := strings.Split(backupURLSplit[1], "=")[1]
+
+	return backupTargetURL, backingImageName, nil
 }
 
 func (b *backingImageMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {

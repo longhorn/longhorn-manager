@@ -122,11 +122,15 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("GET").Path("/v1/backuptargets").Handler(f(schemas, s.BackupTargetList))
 	r.Methods("PUT").Path("/v1/backuptargets").Handler(f(schemas, s.BackupTargetSyncAll))
 	backupTargetActions := map[string]func(http.ResponseWriter, *http.Request) error{
-		"backupTargetSync": s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupTargetSync),
+		"backupTargetSync":   s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupTargetSync),
+		"backupTargetUpdate": s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupTargetUpdate),
 	}
 	for name, action := range backupTargetActions {
 		r.Methods("POST").Path("/v1/backuptargets/{backupTargetName}").Queries("action", name).Handler(f(schemas, action))
 	}
+	r.Methods("GET").Path("/v1/backuptargets/{name}").Handler(f(schemas, s.BackupTargetGet))
+	r.Methods("POST").Path("/v1/backuptargets").Handler(f(schemas, s.BackupTargetCreate))
+	r.Methods("DELETE").Path("/v1/backuptargets/{name}").Handler(f(schemas, s.BackupTargetDelete))
 	r.Methods("GET").Path("/v1/backupvolumes").Handler(f(schemas, s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupVolumeList)))
 	r.Methods("PUT").Path("/v1/backupvolumes").Handler(f(schemas, s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupVolumeSyncAll)))
 	r.Methods("GET").Path("/v1/backupvolumes/{volName}").Handler(f(schemas, s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupVolumeGet)))
@@ -254,6 +258,10 @@ func NewRouter(s *Server) *mux.Router {
 	backupVolumeStream := NewStreamHandlerFunc("backupvolumes", s.wsc.NewWatcher("backupVolume"), s.backupVolumeList)
 	r.Path("/v1/ws/backupvolumes").Handler(f(schemas, backupVolumeStream))
 	r.Path("/v1/ws/{period}/backupvolumes").Handler(f(schemas, backupVolumeStream))
+
+	backupTargetStream := NewStreamHandlerFunc("backuptargets", s.wsc.NewWatcher("backupTarget"), s.backupTargetList)
+	r.Path("/v1/ws/backuptargets").Handler(f(schemas, backupTargetStream))
+	r.Path("/v1/ws/{period}/backuptargets").Handler(f(schemas, backupTargetStream))
 
 	// TODO:
 	// We haven't found a way to allow passing the volume name as a parameter to filter

@@ -41,7 +41,13 @@ func (m *VolumeManager) RestoreBackupBackingImage(name string, secret, secretNam
 	if name == "" {
 		return fmt.Errorf("restore backing image name is not given")
 	}
-	bi, err := m.ds.GetBackingImageRO(name)
+
+	bbi, err := m.ds.GetBackupBackingImageRO(name)
+	if err != nil {
+		return err
+	}
+	biName := bbi.Spec.BackingImage
+	bi, err := m.ds.GetBackingImageRO(biName)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return errors.Wrapf(err, "failed to get backing image %v to check if it exists", name)
@@ -52,11 +58,11 @@ func (m *VolumeManager) RestoreBackupBackingImage(name string, secret, secretNam
 		return errors.Wrapf(err, "backing image %v already exists", name)
 	}
 
-	return m.restoreBackingImage(name, secret, secretNamespace)
+	return m.restoreBackingImage(bbi.Spec.BackupTargetName, biName, secret, secretNamespace)
 }
 
-func (m *VolumeManager) CreateBackupBackingImage(name string) error {
-	_, err := m.ds.GetBackingImageRO(name)
+func (m *VolumeManager) CreateBackupBackingImage(name, backingImageName, backupTargetName string) error {
+	_, err := m.ds.GetBackingImageRO(backingImageName)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get backing image %v", name)
 	}
@@ -77,7 +83,9 @@ func (m *VolumeManager) CreateBackupBackingImage(name string) error {
 			Name: name,
 		},
 		Spec: longhorn.BackupBackingImageSpec{
-			UserCreated: true,
+			UserCreated:      true,
+			BackingImage:     backingImageName,
+			BackupTargetName: backupTargetName,
 		},
 	}
 	if _, err = m.ds.CreateBackupBackingImage(backupBackingImage); err != nil && !apierrors.IsAlreadyExists(err) {

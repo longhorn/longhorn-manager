@@ -145,6 +145,10 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "volume.spec.image")
 	}
 
+	if err := v.validateBackupTarget("", volume.Spec.BackupTargetName); err != nil {
+		return werror.NewInvalidError(err.Error(), "volume.spec.backupTarget")
+	}
+
 	// TODO: remove this check when we support the following features for SPDK volumes
 	if types.IsDataEngineV2(volume.Spec.DataEngine) {
 		if volume.Spec.Encrypted {
@@ -325,6 +329,10 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.snapshotMaxSize")
 	}
 
+	if err := v.validateBackupTarget(oldVolume.Spec.BackupTargetName, newVolume.Spec.BackupTargetName); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.backupTarget")
+	}
+
 	if (oldVolume.Spec.SnapshotMaxCount != newVolume.Spec.SnapshotMaxCount) ||
 		(oldVolume.Spec.SnapshotMaxSize != newVolume.Spec.SnapshotMaxSize) {
 		if err := v.validateUpdatingSnapshotMaxCountAndSize(oldVolume, newVolume); err != nil {
@@ -479,6 +487,19 @@ func validateSnapshotMaxCount(snapshotMaxCount int) error {
 func validateSnapshotMaxSize(size, snapshotMaxSize int64) error {
 	if snapshotMaxSize != 0 && snapshotMaxSize < size*2 {
 		return fmt.Errorf("snapshot max size can not be 0 and at least twice of volume size")
+	}
+	return nil
+}
+
+func (v *volumeValidator) validateBackupTarget(oldBackupTarget, newBackupTarget string) error {
+	if newBackupTarget == "" {
+		return fmt.Errorf("backup target name is required")
+	}
+	if oldBackupTarget == newBackupTarget {
+		return nil
+	}
+	if _, err := v.ds.GetBackupTarget(newBackupTarget); err != nil {
+		return err
 	}
 	return nil
 }
