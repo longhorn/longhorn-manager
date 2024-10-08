@@ -3752,6 +3752,7 @@ func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.I
 		name       string // name of the object
 		nodeID     string
 		dataEngine longhorn.DataEngineType
+		image      string
 	)
 
 	switch obj := obj.(type) {
@@ -3759,10 +3760,12 @@ func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.I
 		name = obj.Name
 		nodeID = obj.Spec.NodeID
 		dataEngine = obj.Spec.DataEngine
+		image = obj.Spec.Image
 	case *longhorn.Replica:
 		name = obj.Name
 		nodeID = obj.Spec.NodeID
 		dataEngine = obj.Spec.DataEngine
+		image = obj.Spec.Image
 	default:
 		return nil, fmt.Errorf("unknown type for GetInstanceManagerByInstance, %+v", obj)
 	}
@@ -3770,12 +3773,18 @@ func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.I
 		return nil, fmt.Errorf("invalid request for GetInstanceManagerByInstance: no NodeID specified for instance %v", name)
 	}
 
-	image, err := s.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+	instanceManagerImage, err := s.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
 	if err != nil {
 		return nil, err
 	}
 
-	imMap, err := s.ListInstanceManagersBySelectorRO(nodeID, image, longhorn.InstanceManagerTypeAllInOne, dataEngine)
+	// Because there is only one active instance manager image for v2 data engine,
+	// use spec.image as the instance manager image instead.
+	if dataEngine == longhorn.DataEngineTypeV2 {
+		instanceManagerImage = image
+	}
+
+	imMap, err := s.ListInstanceManagersBySelectorRO(nodeID, instanceManagerImage, longhorn.InstanceManagerTypeAllInOne, dataEngine)
 	if err != nil {
 		return nil, err
 	}
@@ -3785,7 +3794,8 @@ func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.I
 		}
 
 	}
-	return nil, fmt.Errorf("cannot find the only available instance manager for instance %v, node %v, instance manager image %v, type %v", name, nodeID, image, longhorn.InstanceManagerTypeAllInOne)
+	return nil, fmt.Errorf("cannot find the only available instance manager for instance %v, node %v, instance manager image %v, type %v",
+		name, nodeID, instanceManagerImage, longhorn.InstanceManagerTypeAllInOne)
 }
 
 func (s *DataStore) ListInstanceManagersByNodeRO(node string, imType longhorn.InstanceManagerType, dataEngine longhorn.DataEngineType) (map[string]*longhorn.InstanceManager, error) {
