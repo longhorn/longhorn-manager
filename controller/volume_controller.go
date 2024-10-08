@@ -1765,6 +1765,11 @@ func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longh
 	}
 
 	failureMessage := ""
+
+	if len(rs) != v.Spec.NumberOfReplicas {
+		scheduled = false
+	}
+
 	replenishCount, _ := c.getReplenishReplicasCount(v, rs, e)
 	if scheduled && replenishCount == 0 {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
@@ -1797,6 +1802,10 @@ func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longh
 		failureMessage = aggregatedReplicaScheduledError.Join()
 		scheduledCondition := types.GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeScheduled)
 		if scheduledCondition.Status == longhorn.ConditionStatusFalse {
+			if scheduledCondition.Reason == longhorn.VolumeConditionReasonReplicaSchedulingFailure &&
+				scheduledCondition.Message != "" {
+				failureMessage = scheduledCondition.Message
+			}
 			v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 				longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
 				scheduledCondition.Reason, failureMessage)
