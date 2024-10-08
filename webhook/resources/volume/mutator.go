@@ -46,6 +46,45 @@ func (v *volumeMutator) Resource() admission.Resource {
 	}
 }
 
+func (v *volumeMutator) areAllDefaultInstanceManagersStopped(defaultInstanceManagerImage string) (bool, error) {
+	ims, err := v.ds.ListInstanceManagersBySelectorRO("", defaultInstanceManagerImage, longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to list instance managers")
+	}
+
+	for _, im := range ims {
+		if im.Status.CurrentState != longhorn.InstanceManagerStateStopped {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func (v *volumeMutator) getActiveInstanceManagerImage(defaultInstanceManagerImage string) (string, error) {
+	// Check whether all default instance managers are stopped.
+	// If all default instance managers are stopped, we can use the current active instance manager image.
+	// If not, we use the default instance manager image because system is in the middle of upgrade.
+	allStopped, err := v.areAllDefaultInstanceManagersStopped(defaultInstanceManagerImage)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to check whether all default instance managers are stopped")
+	}
+
+	if allStopped {
+		// Get the active instance manager image from the non-default instance manager.
+		ims, err := v.ds.ListInstanceManagersBySelectorRO("", "", longhorn.InstanceManagerTypeAllInOne, longhorn.DataEngineTypeV2)
+		if err != nil {
+			return "", errors.Wrap(err, "failed to list instance managers")
+		}
+		for _, im := range ims {
+			if im.Spec.Image != defaultInstanceManagerImage {
+				return im.Spec.Image, nil
+			}
+		}
+	}
+
+	return defaultInstanceManagerImage, nil
+}
+
 func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object) (admission.PatchOps, error) {
 	volume, ok := newObj.(*longhorn.Volume)
 	if !ok {
@@ -169,6 +208,14 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	if defaultImage == "" {
 		return nil, werror.NewInvalidError(fmt.Sprintf("invalid empty setting %s", defaultImageSetting), "")
 	}
+	if types.IsDataEngineV2(volume.Spec.DataEngine) {
+		activeInstanceManagerImage, err := v.getActiveInstanceManagerImage(defaultImage)
+		if err != nil {
+			return nil, werror.NewInvalidError(fmt.Sprintf("failed to get active instance manager image for volume %v: %v", name, err), "")
+		}
+		defaultImage = activeInstanceManagerImage
+	}
+
 	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/image", "value": "%s"}`, defaultImage))
 
 	// Mutate the backup compression method to the default one
