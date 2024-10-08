@@ -271,9 +271,6 @@ func parseBackupConfig(output string) (*Backup, error) {
 func (btc *BackupTargetClient) BackupGet(backupConfigURL string, credential map[string]string) (*Backup, error) {
 	output, err := btc.ExecuteEngineBinary("backup", "inspect", backupConfigURL)
 	if err != nil {
-		if types.ErrorIsNotFound(err) {
-			return nil, nil
-		}
 		return nil, errors.Wrapf(err, "error getting backup config %s", backupConfigURL)
 	}
 	return parseBackupConfig(output)
@@ -302,6 +299,7 @@ func (btc *BackupTargetClient) BackupConfigMetaGet(url string, credential map[st
 
 // BackupDelete deletes the backup from the remote backup target
 func (btc *BackupTargetClient) BackupDelete(backupURL string, credential map[string]string) error {
+	logrus.Infof("Start deleting backup %s", backupURL)
 	_, err := btc.ExecuteEngineBinaryWithoutTimeout("backup", "rm", backupURL)
 	if err != nil {
 		if types.ErrorIsNotFound(err) {
