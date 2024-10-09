@@ -280,8 +280,12 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			return err
 		}
 
-		if backupTarget.Spec.BackupTargetURL != "" &&
-			backupVolume != nil && backupVolume.DeletionTimestamp == nil {
+		needsCleanupRemoteData, err := checkIfRemoteDataCleanupIsNeeded(backup, backupTarget)
+		if err != nil {
+			return errors.Wrap(err, "failed to check if it needs to delete remote backup data")
+		}
+
+		if needsCleanupRemoteData && backupVolume != nil && backupVolume.DeletionTimestamp == nil {
 			backupTargetClient, err := newBackupTargetClientFromDefaultEngineImage(bc.ds, backupTarget)
 			if err != nil {
 				log.WithError(err).Warn("Failed to init backup target clients")
