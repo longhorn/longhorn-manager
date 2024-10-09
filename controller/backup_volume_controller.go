@@ -223,13 +223,16 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 
 	// Examine DeletionTimestamp to determine if object is under deletion
 	if !backupVolume.DeletionTimestamp.IsZero() {
-
 		if err := bvc.ds.DeleteAllBackupsForBackupVolume(backupVolumeName); err != nil {
 			return errors.Wrap(err, "failed to delete backups")
 		}
 
+		needsCleanupRemoteData, err := checkIfRemoteDataCleanupIsNeeded(backupVolume, backupTarget)
+		if err != nil {
+			return errors.Wrap(err, "failed to check if it needs to delete remote backup volume data")
+		}
 		// Delete the backup volume from the remote backup target
-		if backupTarget.Spec.BackupTargetURL != "" {
+		if needsCleanupRemoteData {
 			engineClientProxy, backupTargetClient, err := getBackupTarget(bvc.controllerID, backupTarget, bvc.ds, log, bvc.proxyConnCounter)
 			if err != nil || engineClientProxy == nil {
 				log.WithError(err).Error("Failed to init backup target clients")
@@ -354,6 +357,9 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		log.Infof("Found %d backups in the backup target that do not exist in the cluster and need to be deleted from the cluster", count)
 	}
 	for backupName := range backupsToDelete {
+		if err = datastore.AddBackupDeleteCustomResourceOnlyLabel(bvc.ds, backupName); err != nil {
+			return errors.Wrapf(err, "failed to add label delete-custom-resource-only to backup %s", backupName)
+		}
 		if err = bvc.ds.DeleteBackup(backupName); err != nil {
 			return errors.Wrapf(err, "failed to delete backup %s from cluster", backupName)
 		}

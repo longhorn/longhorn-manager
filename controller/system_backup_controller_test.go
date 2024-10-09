@@ -264,7 +264,7 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 			systemBackupController.UploadSystemBackup(systemBackup, archievePath, tempDir, backupTargetClient)
 
 		default:
-			err = systemBackupController.reconcile(tc.systemBackupName, backupTargetClient)
+			err = systemBackupController.reconcile(tc.systemBackupName, backupTargetClient, nil)
 			if tc.expectError {
 				c.Assert(err, NotNil)
 			} else {

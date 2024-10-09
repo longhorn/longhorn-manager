@@ -499,9 +499,12 @@ func (btc *BackupTargetController) syncBackupVolume(backupStoreBackupVolumeNames
 		log.Infof("Found %d backup volumes in the backup target that do not exist in the cluster and need to be deleted from the cluster", count)
 	}
 	for backupVolumeName := range backupVolumesToDelete {
-		log.WithField("backupVolume", backupVolumeName).Info("Deleting backup volume from cluster")
+		log.WithField("backupVolume", backupVolumeName).Info("Deleting BackupVolume not exist in backupstore")
+		if err = datastore.AddBackupVolumeDeleteCustomResourceOnlyLabel(btc.ds, backupVolumeName); err != nil {
+			return errors.Wrapf(err, "failed to add label delete-custom-resource-only to Backupvolume %s", backupVolumeName)
+		}
 		if err = btc.ds.DeleteBackupVolume(backupVolumeName); err != nil {
-			return errors.Wrapf(err, "failed to delete backup volume %s from cluster", backupVolumeName)
+			return errors.Wrapf(err, "failed to delete BackupVolume %s not exist in backupstore", backupVolumeName)
 		}
 	}
 
@@ -554,9 +557,12 @@ func (btc *BackupTargetController) syncBackupBackingImage(backupStoreBackingImag
 		log.Infof("Found %d backup backing images in the cluster that do not exist in the backup target and need to be deleted", count)
 	}
 	for backupBackingImageName := range backupBackingImagesToDelete {
-		log.WithField("backupBackingImage", backupBackingImageName).Info("Deleting backup backing image from cluster")
+		log.WithField("backupBackingImage", backupBackingImageName).Info("Deleting BackupBackingImage not exist in backupstore")
+		if err = datastore.AddBackupBackingImageDeleteCustomResourceOnlyLabel(btc.ds, backupBackingImageName); err != nil {
+			return errors.Wrapf(err, "failed to add label delete-custom-resource-only to BackupBackingImage %s", backupBackingImageName)
+		}
 		if err = btc.ds.DeleteBackupBackingImage(backupBackingImageName); err != nil {
-			return errors.Wrapf(err, "failed to delete backup backing image %s from cluster", backupBackingImageName)
+			return errors.Wrapf(err, "failed to delete BackupBackingImage %s not exist in backupstore", backupBackingImageName)
 		}
 	}
 
@@ -610,6 +616,9 @@ func (btc *BackupTargetController) syncSystemBackup(backupStoreSystemBackups sys
 	delSystemBackupsInCluster := clusterReadySystemBackupNames.Difference(backupstoreSystemBackupNames)
 	for name := range delSystemBackupsInCluster {
 		log.WithField("systemBackup", name).Info("Deleting SystemBackup not exist in backupstore")
+		if err = datastore.AddSystemBackupDeleteCustomResourceOnlyLabel(btc.ds, name); err != nil {
+			return errors.Wrapf(err, "failed to add label delete-custom-resource-only to SystemBackup %v", name)
+		}
 		if err = btc.ds.DeleteSystemBackup(name); err != nil {
 			return errors.Wrapf(err, "failed to delete SystemBackup %v not exist in backupstore", name)
 		}
@@ -657,6 +666,10 @@ func (btc *BackupTargetController) cleanupBackupVolumes() error {
 
 	var errs []string
 	for backupVolumeName := range clusterBackupVolumes {
+		if err = datastore.AddBackupVolumeDeleteCustomResourceOnlyLabel(btc.ds, backupVolumeName); err != nil {
+			errs = append(errs, err.Error())
+			continue
+		}
 		if err = btc.ds.DeleteBackupVolume(backupVolumeName); err != nil && !apierrors.IsNotFound(err) {
 			errs = append(errs, err.Error())
 			continue
@@ -677,6 +690,10 @@ func (btc *BackupTargetController) cleanupBackupBackingImages() error {
 
 	var errs []string
 	for backupBackingImageName := range clusterBackupBackingImages {
+		if err = datastore.AddBackupBackingImageDeleteCustomResourceOnlyLabel(btc.ds, backupBackingImageName); err != nil {
+			errs = append(errs, err.Error())
+			continue
+		}
 		if err = btc.ds.DeleteBackupBackingImage(backupBackingImageName); err != nil && !apierrors.IsNotFound(err) {
 			errs = append(errs, err.Error())
 			continue
@@ -697,6 +714,10 @@ func (btc *BackupTargetController) cleanupSystemBackups() error {
 
 	var errs []string
 	for systemBackup := range systemBackups {
+		if err = datastore.AddSystemBackupDeleteCustomResourceOnlyLabel(btc.ds, systemBackup); err != nil {
+			errs = append(errs, err.Error())
+			continue
+		}
 		if err = btc.ds.DeleteSystemBackup(systemBackup); err != nil && !apierrors.IsNotFound(err) {
 			errs = append(errs, err.Error())
 			continue
