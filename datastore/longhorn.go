@@ -3255,6 +3255,121 @@ func labelBackupVolume(backupVolumeName string, obj k8sruntime.Object) error {
 	return nil
 }
 
+// labelLonghornDeleteCustomResourceOnly labels the object with the label `longhorn.io/delete-custom-resource-only: true`
+func labelLonghornDeleteCustomResourceOnly(obj k8sruntime.Object) error {
+	metadata, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	labels := metadata.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels[types.GetLonghornLabelKey(types.DeleteCustomResourceOnly)] = "true"
+	metadata.SetLabels(labels)
+	return nil
+}
+
+// IsLabelLonghornDeleteCustomResourceOnlyExisting check if the object label `longhorn.io/delete-custom-resource-only` exists
+func IsLabelLonghornDeleteCustomResourceOnlyExisting(obj k8sruntime.Object) (bool, error) {
+	metadata, err := meta.Accessor(obj)
+	if err != nil {
+		return false, err
+	}
+
+	labels := metadata.GetLabels()
+	if labels == nil {
+		return false, nil
+	}
+	_, ok := labels[types.GetLonghornLabelKey(types.DeleteCustomResourceOnly)]
+	return ok, nil
+}
+
+// AddBackupVolumeDeleteCustomResourceOnlyLabel adds the label `longhorn.io/delete-custom-resource-only: true` to the BackupVolume
+func AddBackupVolumeDeleteCustomResourceOnlyLabel(ds *DataStore, backupVolumeName string) error {
+	bv, err := ds.GetBackupVolume(backupVolumeName)
+	if err != nil {
+		return err
+	}
+	if exists, err := IsLabelLonghornDeleteCustomResourceOnlyExisting(bv); err != nil {
+		return err
+	} else if exists {
+		return nil
+	}
+	if err := labelLonghornDeleteCustomResourceOnly(bv); err != nil {
+		return err
+	}
+	if _, err = ds.UpdateBackupVolume(bv); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// AddBackupDeleteCustomResourceOnlyLabel adds the label `longhorn.io/delete-custom-resource-only: true` to the Backup
+func AddBackupDeleteCustomResourceOnlyLabel(ds *DataStore, backupName string) error {
+	backup, err := ds.GetBackup(backupName)
+	if err != nil {
+		return err
+	}
+	if exists, err := IsLabelLonghornDeleteCustomResourceOnlyExisting(backup); err != nil {
+		return err
+	} else if exists {
+		return nil
+	}
+	if err := labelLonghornDeleteCustomResourceOnly(backup); err != nil {
+		return err
+	}
+	if _, err = ds.UpdateBackup(backup); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// AddBackupBackingImageDeleteCustomResourceOnlyLabel adds the label `longhorn.io/delete-custom-resource-only: true` to the BackupBackingImage
+func AddBackupBackingImageDeleteCustomResourceOnlyLabel(ds *DataStore, backupBackingImageName string) error {
+	bbi, err := ds.GetBackupBackingImage(backupBackingImageName)
+	if err != nil {
+		return err
+	}
+	if exists, err := IsLabelLonghornDeleteCustomResourceOnlyExisting(bbi); err != nil {
+		return err
+	} else if exists {
+		return nil
+	}
+	if err := labelLonghornDeleteCustomResourceOnly(bbi); err != nil {
+		return err
+	}
+	if _, err = ds.UpdateBackupBackingImage(bbi); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// AddSystemBackupDeleteCustomResourceOnlyLabel adds the label `longhorn.io/delete-custom-resource-only: true` to the SystemBackup
+func AddSystemBackupDeleteCustomResourceOnlyLabel(ds *DataStore, systemBackupName string) error {
+	sb, err := ds.GetSystemBackup(systemBackupName)
+	if err != nil {
+		return err
+	}
+	if exists, err := IsLabelLonghornDeleteCustomResourceOnlyExisting(sb); err != nil {
+		return err
+	} else if exists {
+		return nil
+	}
+	if err := labelLonghornDeleteCustomResourceOnly(sb); err != nil {
+		return err
+	}
+	if _, err = ds.UpdateSystemBackup(sb); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func FixupRecurringJob(v *longhorn.Volume) error {
 	if err := labelRecurringJobDefault(v); err != nil {
 		return err
