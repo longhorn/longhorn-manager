@@ -45,7 +45,38 @@ func (b *backupVolumeMutator) Create(request *admission.Request, newObj runtime.
 }
 
 func (b *backupVolumeMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
+	backupVolume, ok := newObj.(*longhorn.BackupVolume)
+	if !ok {
+		return nil, werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.BackupVolume", newObj), "")
+	}
+
+	deleteCustomResourceOnlyLabelExists, err := datastore.IsLabelLonghornDeleteCustomResourceOnlyExisting(backupVolume)
+	if err != nil {
+		err := errors.Wrap(err, "failed to check if the label longhorn.io/delete-custom-resource-only exists")
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+	if deleteCustomResourceOnlyLabelExists {
+		if err := b.addBackupsDeleteCustomResourceLabel(backupVolume); err != nil {
+			err := errors.Wrapf(err, "failed to add the label longhorn.io/delete-custom-resource-only to backups of the backup volume %v", backupVolume.Name)
+			return nil, werror.NewInvalidError(err.Error(), "")
+		}
+	}
+
 	return mutate(newObj)
+}
+
+func (b *backupVolumeMutator) addBackupsDeleteCustomResourceLabel(bv *longhorn.BackupVolume) error {
+	backups, err := b.ds.ListBackupsWithBackupVolumeName(bv.Name)
+	if err != nil {
+		return errors.Wrap(err, "failed to list backups of the backup volume")
+	}
+	for _, backup := range backups {
+		if err = datastore.AddBackupDeleteCustomResourceOnlyLabel(b.ds, backup.Name); err != nil {
+			return errors.Wrapf(err, "failed to add the label longhorn.io/delete-custom-resource-only to backup %s", backup.Name)
+		}
+	}
+
+	return nil
 }
 
 // mutate contains functionality shared by Create and Update.

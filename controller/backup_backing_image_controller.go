@@ -214,7 +214,11 @@ func (bc *BackupBackingImageController) reconcile(backupBackingImageName string)
 
 	// Examine DeletionTimestamp to determine if object is under deletion
 	if !bbi.DeletionTimestamp.IsZero() {
-		if backupTarget.Spec.BackupTargetURL != "" {
+		needsCleanupRemoteData, err := checkIfRemoteDataCleanupIsNeeded(bbi, backupTarget)
+		if err != nil {
+			return errors.Wrap(err, "failed to check if it needs to delete remote backup backing image data")
+		}
+		if needsCleanupRemoteData {
 			backupTargetClient, err := newBackupTargetClientFromDefaultEngineImage(bc.ds, backupTarget)
 			if err != nil {
 				log.WithError(err).Warn("Failed to init backup target clients")

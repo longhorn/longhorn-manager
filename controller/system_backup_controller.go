@@ -275,7 +275,7 @@ func (c *SystemBackupController) syncSystemBackup(key string) (err error) {
 		return err
 	}
 
-	return c.reconcile(name, backupTargetClient)
+	return c.reconcile(name, backupTargetClient, backupTarget)
 }
 
 func getLoggerForSystemBackup(logger logrus.FieldLogger, systemBackup *longhorn.SystemBackup) logrus.FieldLogger {
@@ -318,7 +318,7 @@ func (c *SystemBackupController) updateSystemBackupRecord(record *systemBackupRe
 	record.message = message
 }
 
-func (c *SystemBackupController) reconcile(name string, backupTargetClient engineapi.SystemBackupOperationInterface) (err error) {
+func (c *SystemBackupController) reconcile(name string, backupTargetClient engineapi.SystemBackupOperationInterface, backupTarget *longhorn.BackupTarget) (err error) {
 	systemBackup, err := c.ds.GetSystemBackup(name)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
@@ -457,7 +457,7 @@ func (c *SystemBackupController) reconcile(name string, backupTargetClient engin
 		cleanupLocalSystemBackupFiles(tempBackupArchivePath, tempBackupDir, log)
 
 	case longhorn.SystemBackupStateDeleting:
-		cleanupRemoteSystemBackupFiles(systemBackup, backupTargetClient, log)
+		cleanupRemoteSystemBackupFiles(systemBackup, backupTargetClient, backupTarget, log)
 
 		cleanupLocalSystemBackupFiles(tempBackupArchivePath, tempBackupDir, log)
 
@@ -592,9 +592,15 @@ func (c *SystemBackupController) UploadSystemBackup(systemBackup *longhorn.Syste
 	}
 }
 
-func cleanupRemoteSystemBackupFiles(systemBackup *longhorn.SystemBackup, backupTargetClient engineapi.SystemBackupOperationInterface, log logrus.FieldLogger) {
+func cleanupRemoteSystemBackupFiles(systemBackup *longhorn.SystemBackup, backupTargetClient engineapi.SystemBackupOperationInterface, backupTarget *longhorn.BackupTarget, log logrus.FieldLogger) {
 	if systemBackup.Status.Version == "" {
 		// The backup store sync might not have finished
+		return
+	}
+	if needsCleanupRemoteData, err := checkIfRemoteDataCleanupIsNeeded(systemBackup, backupTarget); err != nil {
+		log.WithError(err).Warn("failed to check if it needs to delete remote system backup data")
+		return
+	} else if !needsCleanupRemoteData {
 		return
 	}
 
