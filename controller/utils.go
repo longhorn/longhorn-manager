@@ -1,9 +1,14 @@
 package controller
 
 import (
-	"github.com/longhorn/longhorn-manager/types"
 	"github.com/sirupsen/logrus"
+
+	"k8s.io/apimachinery/pkg/runtime"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
+	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -75,4 +80,16 @@ func setReplicaFailedAt(r *longhorn.Replica, timestamp string) {
 	if timestamp != "" {
 		r.Spec.LastFailedAt = timestamp
 	}
+}
+
+func checkIfRemoteDataCleanupIsNeeded(obj runtime.Object, bt *longhorn.BackupTarget) (bool, error) {
+	if obj == nil || bt == nil {
+		return false, nil
+	}
+	exists, err := datastore.IsLabelLonghornDeleteCustomResourceOnlyExisting(obj)
+	if err != nil {
+		return false, err
+	}
+
+	return !exists && bt.Spec.BackupTargetURL != "", nil
 }
