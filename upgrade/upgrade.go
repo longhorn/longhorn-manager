@@ -242,7 +242,7 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 		return nil
 	}
 
-	// When lhVersionBeforeUpgrade < v1.5.0, it is v1.4.x. The `CheckUpgradePathSupported` method would have failed us out earlier if it was not v1.4.x.
+	// When lhVersionBeforeUpgrade < v1.5.0, it is v1.4.x. The `CheckUpgradePath` method would have failed us out earlier if it was not v1.4.x.
 	resourceMaps := map[string]interface{}{}
 	if semver.Compare(lhVersionBeforeUpgrade, "v1.5.0") < 0 {
 		logrus.Info("Walking through the resource upgrade path v1.4.x to v1.5.0")
@@ -256,14 +256,14 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 			return err
 		}
 	}
-	// When lhVersionBeforeUpgrade < v1.6.0, it is v1.5.x. The `CheckUpgradePathSupported` method would have failed us out earlier if it was not v1.5.x.
+	// When lhVersionBeforeUpgrade < v1.6.0, it is v1.5.x. The `CheckUpgradePath` method would have failed us out earlier if it was not v1.5.x.
 	if semver.Compare(lhVersionBeforeUpgrade, "v1.6.0") < 0 {
 		logrus.Info("Walking through the resource upgrade path v1.5.x to v1.6.0")
 		if err := v15xto160.UpgradeResources(namespace, lhClient, kubeClient, resourceMaps); err != nil {
 			return err
 		}
 	}
-	// When lhVersionBeforeUpgrade < v1.7.0, it is v1.6.x. The `CheckUpgradePathSupported` method would have failed us out earlier if it was not v1.6.x.
+	// When lhVersionBeforeUpgrade < v1.7.0, it is v1.6.x. The `CheckUpgradePath` method would have failed us out earlier if it was not v1.6.x.
 	if semver.Compare(lhVersionBeforeUpgrade, "v1.7.0") < 0 {
 		logrus.Info("Walking through the resource upgrade path v1.6.x to v1.7.0")
 		if err := v16xto170.UpgradeResources(namespace, lhClient, kubeClient, resourceMaps); err != nil {
@@ -276,7 +276,7 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 			return err
 		}
 	}
-	// When lhVersionBeforeUpgrade < v1.8.0, it is v1.7.x. The `CheckUpgradePathSupported` method would have failed us out earlier if it was not v1.7.x.
+	// When lhVersionBeforeUpgrade < v1.8.0, it is v1.7.x. The `CheckUpgradePath` method would have failed us out earlier if it was not v1.7.x.
 	if semver.Compare(lhVersionBeforeUpgrade, "v1.8.0") < 0 {
 		logrus.Info("Walking through the resource upgrade path v1.7.x to v1.8.0")
 		if err := v17xto180.UpgradeResources(namespace, lhClient, kubeClient, resourceMaps); err != nil {
@@ -287,7 +287,7 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 		return err
 	}
 
-	// When lhVersionBeforeUpgrade < v1.5.0, it is v1.4.x. The `CheckUpgradePathSupported` method would have failed us out earlier if it was not v1.4.x.
+	// When lhVersionBeforeUpgrade < v1.5.0, it is v1.4.x. The `CheckUpgradePath` method would have failed us out earlier if it was not v1.4.x.
 	resourceMaps = map[string]interface{}{}
 	if semver.Compare(lhVersionBeforeUpgrade, "v1.5.0") < 0 {
 		logrus.Info("Walking through the resource status upgrade path v1.4.x to v1.5.0")
@@ -295,14 +295,14 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 			return err
 		}
 	}
-	// When lhVersionBeforeUpgrade < v1.6.0, it is v1.5.x. The `CheckUpgradePathSupported` method would have failed us out earlier if it was not v1.5.x.
+	// When lhVersionBeforeUpgrade < v1.6.0, it is v1.5.x. The `CheckUpgradePath` method would have failed us out earlier if it was not v1.5.x.
 	if semver.Compare(lhVersionBeforeUpgrade, "v1.6.0") < 0 {
 		logrus.Info("Walking through the resource status upgrade path v1.5.x to v1.6.0")
 		if err := v15xto160.UpgradeResourcesStatus(namespace, lhClient, kubeClient, resourceMaps); err != nil {
 			return err
 		}
 	}
-	// When lhVersionBeforeUpgrade < v1.7.0, it is v1.6.x. The `CheckUpgradePathSupported` method would have failed us out earlier if it was not v1.6.x.
+	// When lhVersionBeforeUpgrade < v1.7.0, it is v1.6.x. The `CheckUpgradePath` method would have failed us out earlier if it was not v1.6.x.
 	if semver.Compare(lhVersionBeforeUpgrade, "v1.7.0") < 0 {
 		logrus.Info("Walking through the resource status upgrade path v1.6.x to v1.7.0")
 		if err := v16xto170.UpgradeResourcesStatus(namespace, lhClient, kubeClient, resourceMaps); err != nil {
