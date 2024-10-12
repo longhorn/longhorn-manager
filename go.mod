@@ -60,7 +60,7 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.7.1
 	github.com/longhorn/backupstore v0.0.0-20241006011054-d46756322f43
-	github.com/longhorn/go-common-libs v0.0.0-20241005131830-a0195307257b
+	github.com/longhorn/go-common-libs v0.0.0-20241012153249-4c71f1cbdd9e
 	github.com/longhorn/go-iscsi-helper v0.0.0-20241006012607-08f5166d1fad
 	github.com/longhorn/go-spdk-helper v0.0.0-20240922062342-22115a91cbe9
 	github.com/longhorn/longhorn-engine v1.7.1
@@ -104,7 +104,7 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/jonboulle/clockwork v0.4.0 // indirect
-	github.com/longhorn/types v0.0.0-20240925015253-4dae7c529d85 // indirect
+	github.com/longhorn/types v0.0.0-20241007141758-3640f2357238 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/moby/term v0.5.0 // indirect
 	github.com/opencontainers/runc v1.1.14 // indirect
@@ -206,7 +206,7 @@ require (
 	golang.org/x/term v0.25.0 // indirect
 	golang.org/x/text v0.19.0
 	google.golang.org/genproto v0.0.0-20240401170217-c3f982113cda // indirect
-	google.golang.org/protobuf v1.34.2
+	google.golang.org/protobuf v1.35.1
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	k8s.io/apiserver v0.31.1 // indirect
