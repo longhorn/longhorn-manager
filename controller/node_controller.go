@@ -1961,10 +1961,10 @@ func isNodeOrDisksEvictionRequested(node *longhorn.Node) bool {
 	return false
 }
 
-func (nc *NodeController) setReadyAndSchedulableConditions(node *longhorn.Node, kubeNode *corev1.Node,
-	managerPods []*corev1.Pod) error {
-	nodeReady := nc.setReadyConditionForManagerPod(node, managerPods)
-	nodeReady = nodeReady && nc.setReadyConditionForKubeNode(node, kubeNode)
+func (nc *NodeController) setReadyAndSchedulableConditions(node *longhorn.Node, kubeNode *corev1.Node, managerPods []*corev1.Pod) error {
+	nodeReady := true
+	nodeReady = nc.setReadyConditionForManagerPod(node, managerPods, nodeReady)
+	nodeReady = nc.setReadyConditionForKubeNode(node, kubeNode, nodeReady)
 	if nodeReady {
 		// Only record true if we did not already record false.
 		node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
@@ -1983,9 +1983,7 @@ func (nc *NodeController) setReadyAndSchedulableConditions(node *longhorn.Node, 
 	return nil
 }
 
-func (nc *NodeController) setReadyConditionForManagerPod(node *longhorn.Node,
-	managerPods []*corev1.Pod) (nodeReady bool) {
-	nodeReady = true
+func (nc *NodeController) setReadyConditionForManagerPod(node *longhorn.Node, managerPods []*corev1.Pod, nodeReady bool) bool {
 	nodeManagerFound := false
 	for _, pod := range managerPods {
 		if pod.Spec.NodeName == node.Name {
@@ -2015,11 +2013,10 @@ func (nc *NodeController) setReadyConditionForManagerPod(node *longhorn.Node,
 			fmt.Sprintf("Manager pod is missing: node %v has no manager pod running on it", node.Name),
 			nc.eventRecorder, node, corev1.EventTypeWarning)
 	}
-	return // nodeReady is already correctly set.
+	return nodeReady
 }
 
-func (nc *NodeController) setReadyConditionForKubeNode(node *longhorn.Node, kubeNode *corev1.Node) (nodeReady bool) {
-	nodeReady = true
+func (nc *NodeController) setReadyConditionForKubeNode(node *longhorn.Node, kubeNode *corev1.Node, nodeReady bool) bool {
 	kubeConditions := kubeNode.Status.Conditions
 	for _, con := range kubeConditions {
 		switch con.Type {
@@ -2054,7 +2051,7 @@ func (nc *NodeController) setReadyConditionForKubeNode(node *longhorn.Node, kube
 			}
 		}
 	}
-	return // nodeReady is already correctly set.
+	return nodeReady
 }
 
 // Update node condition based on DisableSchedulingOnCordonedNode setting and Kubernetes node status.
