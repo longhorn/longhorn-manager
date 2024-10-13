@@ -54,7 +54,7 @@ github.com/coreos/go-semver/semver
 github.com/coreos/go-systemd/v22/daemon
 github.com/coreos/go-systemd/v22/dbus
 github.com/coreos/go-systemd/v22/journal
-# github.com/cpuguy83/go-md2man/v2 v2.0.4
+# github.com/cpuguy83/go-md2man/v2 v2.0.5
 ## explicit; go 1.11
 github.com/cpuguy83/go-md2man/v2/md2man
 # github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
@@ -471,7 +471,7 @@ github.com/stoewer/go-strcase
 ## explicit; go 1.17
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/require
-# github.com/urfave/cli v1.22.15
+# github.com/urfave/cli v1.22.16
 ## explicit; go 1.11
 github.com/urfave/cli
 # github.com/x448/float16 v0.8.4
