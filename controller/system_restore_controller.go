@@ -375,10 +375,19 @@ func (c *SystemRestoreController) CreateSystemRestoreJob(systemRestore *longhorn
 		return nil, err
 	}
 
-	return c.ds.CreateJob(c.newSystemRestoreJob(systemRestore, c.namespace, cfg.ManagerImage, serviceAccountName))
+	tolerationSetting, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameTaintToleration)
+	if err != nil {
+		return nil, err
+	}
+	tolerations, err := types.UnmarshalTolerations(tolerationSetting.Value)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.ds.CreateJob(c.newSystemRestoreJob(systemRestore, c.namespace, cfg.ManagerImage, serviceAccountName, tolerations))
 }
 
-func (c *SystemRestoreController) newSystemRestoreJob(systemRestore *longhorn.SystemRestore, namespace, managerImage, serviceAccount string) *batchv1.Job {
+func (c *SystemRestoreController) newSystemRestoreJob(systemRestore *longhorn.SystemRestore, namespace, managerImage, serviceAccount string, tolerations []corev1.Toleration) *batchv1.Job {
 	backoffLimit := int32(RestoreJobBackoffLimit)
 
 	// This is required for the NFS mount to access the backup store
@@ -446,6 +455,7 @@ func (c *SystemRestoreController) newSystemRestoreJob(systemRestore *longhorn.Sy
 					NodeSelector: map[string]string{
 						corev1.LabelHostname: c.controllerID,
 					},
+					Tolerations: tolerations,
 				},
 			},
 		},
