@@ -62,7 +62,10 @@ const (
 	EventReasonReady    = "Ready"
 	EventReasonUploaded = "Uploaded"
 
-	EventReasonUpgrade = "Upgrade"
+	EventReasonUpgrade                = "Upgrade"
+	EventReasonFailedUpgradePreCheck  = "FailedUpgradePreCheck"
+	EventReasonFailedUpgradePostCheck = "FailedUpgradePostCheck"
+	EventReasonPassedUpgradeCheck     = "PassedUpgradeCheck"
 
 	EventReasonRolloutSkippedFmt = "RolloutSkipped: %v %v"
 

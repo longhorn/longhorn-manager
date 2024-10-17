@@ -10,16 +10,24 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/record"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 
+	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/types"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 const (
+	PostUpgradeEventer = "longhorn-post-upgrade"
+
 	RetryCounts   = 360
 	RetryInterval = 5 * time.Second
 )
@@ -33,8 +41,10 @@ func PostUpgradeCmd() cli.Command {
 				Usage: "Specify path to kube config (optional)",
 			},
 			cli.StringFlag{
-				Name:   FlagNamespace,
-				EnvVar: types.EnvPodNamespace,
+				Name:     FlagNamespace,
+				EnvVar:   types.EnvPodNamespace,
+				Required: true,
+				Usage:    "Specify Longhorn namespace",
 			},
 		},
 		Action: func(c *cli.Context) {
@@ -50,34 +60,61 @@ func PostUpgradeCmd() cli.Command {
 
 func postUpgrade(c *cli.Context) error {
 	namespace := c.String(FlagNamespace)
-	if namespace == "" {
-		return errors.New("namespace is required")
-	}
 
 	config, err := clientcmd.BuildConfigFromFlags("", c.String(FlagKubeConfig))
 	if err != nil {
 		return errors.Wrap(err, "failed to get client config")
 	}
 
+	eventBroadcaster, err := createEventBroadcaster(config)
+	if err != nil {
+		return errors.Wrap(err, "failed to create event broadcaster")
+	}
+	defer eventBroadcaster.Shutdown()
+
+	scheme := runtime.NewScheme()
+	if err := longhorn.SchemeBuilder.AddToScheme(scheme); err != nil {
+		return errors.Wrap(err, "failed to create scheme")
+	}
+
+	eventRecorder := eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: PostUpgradeEventer})
+
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		return errors.Wrap(err, "failed to get k8s client")
 	}
 
-	return newPostUpgrader(namespace, kubeClient).Run()
+	err = newPostUpgrader(namespace, kubeClient, eventRecorder).Run()
+	if err != nil {
+		logrus.Warnf("Done with Run() ... err is %v", err)
+	}
+
+	return err
 }
 
 type postUpgrader struct {
-	namespace  string
-	kubeClient kubernetes.Interface
+	namespace     string
+	kubeClient    kubernetes.Interface
+	eventRecorder record.EventRecorder
 }
 
-func newPostUpgrader(namespace string, kubeClient kubernetes.Interface) *postUpgrader {
-	return &postUpgrader{namespace, kubeClient}
+func newPostUpgrader(namespace string, kubeClient kubernetes.Interface, eventRecorder record.EventRecorder) *postUpgrader {
+	return &postUpgrader{namespace, kubeClient, eventRecorder}
 }
 
 func (u *postUpgrader) Run() error {
-	if err := u.waitManagerUpgradeComplete(); err != nil {
+	var err error
+	defer func() {
+		if err != nil {
+			u.eventRecorder.Event(&corev1.ObjectReference{Namespace: u.namespace, Name: PostUpgradeEventer},
+				corev1.EventTypeWarning, constant.EventReasonFailedUpgradePostCheck, err.Error())
+		} else {
+			u.eventRecorder.Event(&corev1.ObjectReference{Namespace: u.namespace, Name: PostUpgradeEventer},
+				corev1.EventTypeNormal, constant.EventReasonPassedUpgradeCheck, "post-upgrade check passed")
+		}
+	}()
+
+	if err = u.waitManagerUpgradeComplete(); err != nil {
 		return err
 	}
 
