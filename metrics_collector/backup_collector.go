@@ -79,7 +79,7 @@ func (bc *BackupCollector) Collect(ch chan<- prometheus.Metric) {
 			if !ok {
 				bc.logger.WithError(err).Warn("Error get backup volume label")
 			}
-			backupRecurringJobName := backup.Labels[types.RecurringJobLabel]
+			backupRecurringJobName := backup.Status.Labels[types.RecurringJobLabel]
 			ch <- prometheus.MustNewConstMetric(bc.sizeMetric.Desc, bc.sizeMetric.Type, size, backupVolumeName, backup.Name, backupRecurringJobName)
 			ch <- prometheus.MustNewConstMetric(bc.stateMetric.Desc, bc.stateMetric.Type, float64(getBackupStateValue(backup)), backupVolumeName, backup.Name, backupRecurringJobName)
 		}
