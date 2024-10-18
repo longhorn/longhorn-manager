@@ -323,7 +323,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		backupLabelMap := map[string]string{}
 
 		backupURL := backupstore.EncodeBackupURL(backupName, backupVolumeName, backupTargetClient.URL)
-		if backupInfo, err := backupTargetClient.BackupGet(backupURL, backupTargetClient.Credential); err != nil {
+		if backupInfo, err := backupTargetClient.BackupGet(backupURL, backupTargetClient.Credential); err != nil && !types.ErrorIsNotFound(err) {
 			log.WithError(err).WithFields(logrus.Fields{
 				"backup":       backupName,
 				"backupvolume": backupVolumeName,
