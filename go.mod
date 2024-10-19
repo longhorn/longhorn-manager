@@ -61,15 +61,15 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.19.0
 	github.com/longhorn/backing-image-manager v1.8.0-dev-20241006
-	github.com/longhorn/backupstore v0.0.0-20241013024428-b52180a5191f
-	github.com/longhorn/go-common-libs v0.0.0-20241012153249-4c71f1cbdd9e
-	github.com/longhorn/go-iscsi-helper v0.0.0-20241006012607-08f5166d1fad
-	github.com/longhorn/go-spdk-helper v0.0.0-20240922062342-22115a91cbe9
+	github.com/longhorn/backupstore v0.0.0-20241019040107-9af970b538d9
+	github.com/longhorn/go-common-libs v0.0.0-20241018042323-54da24c0807f
+	github.com/longhorn/go-iscsi-helper v0.0.0-20241018035016-4f89087f131a
+	github.com/longhorn/go-spdk-helper v0.0.0-20241018034138-ef1671b8828a
 	github.com/longhorn/longhorn-engine v1.8.0-dev-20241006
 	github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241006
 	github.com/longhorn/longhorn-share-manager v1.7.0-rc1
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.20.4
+	github.com/prometheus/client_golang v1.20.5
 	github.com/rancher/dynamiclistener v0.6.0
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
 	github.com/rancher/wrangler/v3 v3.0.0
