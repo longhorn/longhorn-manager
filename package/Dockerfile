@@ -13,13 +13,15 @@ RUN if [ "$TARGETPLATFORM" != "linux/amd64" ] && [ "$TARGETPLATFORM" != "linux/a
 
 ENV ARCH ${TARGETPLATFORM#linux/}
 
-COPY package/bin/longhorn-manager-${ARCH} /usr/local/sbin/longhorn-manager
-
-COPY package/launch-manager package/nsmounter /usr/local/sbin/
 
 RUN zypper -n install iputils iproute2 nfs-client cifs-utils bind-utils e2fsprogs xfsprogs zip unzip && \
     rm -rf /var/cache/zypp/*
 
 VOLUME /usr/local/sbin
+
+COPY package/bin/longhorn-manager-${ARCH} /usr/local/sbin/longhorn-manager
+
+COPY package/launch-manager package/nsmounter /usr/local/sbin/
+
 EXPOSE 9500
 CMD ["launch-manager"]
