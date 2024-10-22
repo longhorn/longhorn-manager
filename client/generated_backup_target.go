@@ -15,7 +15,11 @@ type BackupTarget struct {
 
 	Message string `json:"message,omitempty" yaml:"message,omitempty"`
 
+	Name string `json:"name,omitempty" yaml:"name,omitempty"`
+
 	PollInterval string `json:"pollInterval,omitempty" yaml:"poll_interval,omitempty"`
+
+	ReadOnly bool `json:"readOnly,omitempty" yaml:"read_only,omitempty"`
 }
 
 type BackupTargetCollection struct {

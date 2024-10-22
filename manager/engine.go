@@ -10,10 +10,12 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 const (
@@ -326,7 +328,7 @@ func (m *VolumeManager) GetRunningEngineByVolume(name string) (e *longhorn.Engin
 }
 
 func (m *VolumeManager) ListBackupTargetsSorted() ([]*longhorn.BackupTarget, error) {
-	backupTargetMap, err := m.ds.ListBackupTargets()
+	backupTargetMap, err := m.ds.ListBackupTargetsRO()
 	if err != nil {
 		return []*longhorn.BackupTarget{}, err
 	}
@@ -342,7 +344,60 @@ func (m *VolumeManager) ListBackupTargetsSorted() ([]*longhorn.BackupTarget, err
 }
 
 func (m *VolumeManager) GetBackupTarget(backupTargetName string) (*longhorn.BackupTarget, error) {
-	return m.ds.GetBackupTarget(backupTargetName)
+	backupTarget, err := m.ds.GetBackupTargetRO(backupTargetName)
+	if err != nil {
+		return nil, err
+	}
+	return backupTarget, nil
+}
+
+func (m *VolumeManager) CreateBackupTarget(backupTargetName string, backupTargetSpec *longhorn.BackupTargetSpec) (*longhorn.BackupTarget, error) {
+	backupTarget, err := m.ds.GetBackupTarget(backupTargetName)
+	if err != nil {
+		if !datastore.ErrorIsNotFound(err) {
+			return nil, err
+		}
+
+		// Create the default BackupTarget CR if not present
+		backupTarget, err = m.ds.CreateBackupTarget(&longhorn.BackupTarget{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: backupTargetName,
+			},
+			Spec: *backupTargetSpec,
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return backupTarget, nil
+}
+
+func (m *VolumeManager) UpdateBackupTarget(backupTargetName string, backupTargetSpec *longhorn.BackupTargetSpec) (*longhorn.BackupTarget, error) {
+	existingBackupTarget, err := m.ds.GetBackupTarget(backupTargetName)
+	if err != nil {
+		return nil, err
+	}
+
+	if backupTargetSpec.BackupTargetURL != existingBackupTarget.Spec.BackupTargetURL ||
+		backupTargetSpec.CredentialSecret != existingBackupTarget.Spec.CredentialSecret ||
+		backupTargetSpec.PollInterval != existingBackupTarget.Spec.PollInterval ||
+		backupTargetSpec.ReadOnly != existingBackupTarget.Spec.ReadOnly {
+		existingBackupTarget.Spec.BackupTargetURL = backupTargetSpec.BackupTargetURL
+		existingBackupTarget.Spec.CredentialSecret = backupTargetSpec.CredentialSecret
+		existingBackupTarget.Spec.PollInterval = backupTargetSpec.PollInterval
+		existingBackupTarget.Spec.ReadOnly = backupTargetSpec.ReadOnly
+		existingBackupTarget.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
+		existingBackupTarget, err = m.ds.UpdateBackupTarget(existingBackupTarget)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to update backup target spec")
+		}
+	}
+
+	return existingBackupTarget, nil
+}
+
+func (m *VolumeManager) DeleteBackupTarget(backupTargetName string) error {
+	return m.ds.DeleteBackupTarget(backupTargetName)
 }
 
 func (m *VolumeManager) SyncBackupTarget(backupTarget *longhorn.BackupTarget) (*longhorn.BackupTarget, error) {
