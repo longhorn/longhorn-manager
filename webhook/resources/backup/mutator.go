@@ -85,6 +85,28 @@ func (b *backupMutator) Create(request *admission.Request, newObj runtime.Object
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupMode", "value": "%s"}`, string(longhorn.BackupModeIncremental)))
 	}
 
+	if backup.Spec.BackupTargetName == "" {
+		backupTargetName := types.DefaultBackupTargetName
+		if volume, err := b.ds.GetVolumeRO(volumeName); err == nil {
+			backupTargetName = volume.Spec.BackupTargetName
+		}
+		backup.Spec.BackupTargetName = backupTargetName
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupTargetName", "value": "%s"}`, backupTargetName))
+	}
+
+	labels := backup.Labels
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels[types.LonghornLabelBackupTarget] = backup.Spec.BackupTargetName
+
+	patchOp, err := common.GetLonghornLabelsPatchOp(backup, labels, nil)
+	if err != nil {
+		err := errors.Wrapf(err, "failed to get label patch for backup %v", backup.Name)
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+	patchOps = append(patchOps, patchOp)
+
 	return patchOps, nil
 }
 
