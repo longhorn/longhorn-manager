@@ -1137,6 +1137,7 @@ func newVolume(name string, replicaCount int) *longhorn.Volume {
 			StaleReplicaTimeout: TestVolumeStaleTimeout,
 			Image:               TestEngineImage,
 			DataEngine:          longhorn.DataEngineTypeV1,
+			BackupTargetName:    TestBackupTargetName,
 		},
 		Status: longhorn.VolumeStatus{
 			OwnerID: TestOwnerID1,
@@ -1383,6 +1384,14 @@ func (s *TestSuite) runTestCases(c *C, testCases map[string]*VolumeTestCase) {
 					Finalizers: []string{
 						longhorn.SchemeGroupVersion.Group,
 					},
+					Labels: map[string]string{
+						types.LonghornLabelBackupTarget: TestBackupTargetName,
+						types.LonghornLabelBackupVolume: bvName,
+					},
+				},
+				Spec: longhorn.BackupVolumeSpec{
+					BackupTargetName: TestBackupTargetName,
+					VolumeName:       bvName,
 				},
 				Status: longhorn.BackupVolumeStatus{
 					LastBackupName: bName,
