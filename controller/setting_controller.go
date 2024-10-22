@@ -1275,14 +1275,6 @@ func (sc *SettingController) enqueueSettingForNode(obj interface{}) {
 	}
 
 	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameGuaranteedInstanceManagerCPU))
-	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameBackupTarget))
-}
-
-func (sc *SettingController) enqueueSettingForBackupTarget(obj interface{}) {
-	if _, ok := obj.(*longhorn.BackupTarget); !ok {
-		return
-	}
-	sc.queue.Add(sc.namespace + "/" + string(types.SettingNameBackupTarget))
 }
 
 // updateInstanceManagerCPURequest deletes all instance manager pods immediately with the updated CPU request.
