@@ -1246,10 +1246,17 @@ spec:
           spec:
             description: BackupVolumeSpec defines the desired state of the Longhorn backup volume
             properties:
+              backupTargetName:
+                description: The backup target name that the backup volume was synced.
+                nullable: true
+                type: string
               syncRequestedAt:
                 description: The time to request run sync the remote backup volume.
                 format: date-time
                 nullable: true
+                type: string
+              volumeName:
+                description: The volume name that the backup volume was used to backup.
                 type: string
             type: object
           status:
