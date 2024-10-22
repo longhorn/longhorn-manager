@@ -3870,15 +3870,17 @@ func (c *VolumeController) restoreVolumeRecurringJobs(v *longhorn.Volume) error 
 	log := getLoggerForVolume(c.logger, v)
 
 	backupVolumeRecurringJobsInfo := make(map[string]longhorn.VolumeRecurringJobInfo)
-	bvName, exist := v.Labels[types.LonghornLabelBackupVolume]
+	btName := v.Spec.BackupTargetName
+
+	volName, exist := v.Labels[types.LonghornLabelBackupVolume]
 	if !exist {
 		log.Warn("Failed to find the backup volume label")
 		return nil
 	}
 
-	bv, err := c.ds.GetBackupVolumeRO(bvName)
+	bv, err := c.ds.GetBackupVolumeWithBackupTargetAndVolumeRO(btName, volName)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get the backup volume %v info", bvName)
+		return errors.Wrapf(err, "failed to get the backup volume %v of the backup target %s info", volName, btName)
 	}
 
 	volumeRecurringJobInfoStr, exist := bv.Status.Labels[types.VolumeRecurringJobInfoLabel]
@@ -3887,7 +3889,7 @@ func (c *VolumeController) restoreVolumeRecurringJobs(v *longhorn.Volume) error 
 	}
 
 	if err := json.Unmarshal([]byte(volumeRecurringJobInfoStr), &backupVolumeRecurringJobsInfo); err != nil {
-		return errors.Wrapf(err, "failed to unmarshal information of volume recurring jobs, backup volume %v", bvName)
+		return errors.Wrapf(err, "failed to unmarshal information of volume recurring jobs, backup volume %v of the backup target %s", volName, btName)
 	}
 
 	for jobName, job := range backupVolumeRecurringJobsInfo {
