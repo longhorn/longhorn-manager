@@ -131,6 +131,9 @@ const (
 
 	DeleteCustomResourceOnly = "delete-custom-resource-only"
 
+	DeleteBackupTargetFromLonghorn = "delete-backup-target-from-longhorn"
+	UpdateBackupTargetFromLonghorn = "update-backup-target-from-longhorn"
+
 	KubernetesStatusLabel = "KubernetesStatus"
 	KubernetesReplicaSet  = "ReplicaSet"
 	KubernetesStatefulSet = "StatefulSet"
@@ -241,6 +244,7 @@ const (
 
 	BackupStoreTypeS3     = "s3"
 	BackupStoreTypeCIFS   = "cifs"
+	BackupStoreTypeNFS    = "nfs"
 	BackupStoreTypeAZBlob = "azblob"
 
 	AWSIAMRoleAnnotation = "iam.amazonaws.com/role"
