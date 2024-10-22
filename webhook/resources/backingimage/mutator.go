@@ -3,6 +3,7 @@ package backingimage
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -91,6 +92,32 @@ func (b *backingImageMutator) Create(request *admission.Request, newObj runtime.
 			}
 			parameters[longhorn.DataSourceTypeRestoreParameterConcurrentLimit] = strconv.FormatInt(concurrentLimit, 10)
 		}
+
+		if parameters[longhorn.DataSourceTypeRestoreParameterBackupTargetName] == "" {
+			bbis, err := b.ds.ListBackupBackingImagesRO()
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to list backup backing images")
+			}
+			backupTargetURL, backingImageName, err := getBackupTargetURLAndBackingImageName(parameters[longhorn.DataSourceTypeRestoreParameterBackupURL])
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to get backup target URL and backing image name from restore parameters %v", parameters[longhorn.DataSourceTypeRestoreParameterBackupURL])
+			}
+			var found bool
+			for _, bbi := range bbis {
+				bbiBackupTargetURL, bbiBackingImageName, err := getBackupTargetURLAndBackingImageName(bbi.Status.URL)
+				if err != nil {
+					return nil, errors.Wrapf(err, "failed to get backup target URL and backing image name from RUL %v of backup backing image %v", bbi.Status.URL, bbi.Name)
+				}
+				if backupTargetURL == bbiBackupTargetURL && backingImageName == bbiBackingImageName {
+					parameters[longhorn.DataSourceTypeRestoreParameterBackupTargetName] = bbi.Spec.BackupTargetName
+					found = true
+					break
+				}
+			}
+			if !found {
+				return nil, errors.Errorf("failed to find backup backing image for backup target URL %v and backing image name %v", backupTargetURL, backingImageName)
+			}
+		}
 	}
 
 	if longhorn.BackingImageDataSourceType(backingImage.Spec.SourceType) == longhorn.BackingImageDataSourceTypeClone {
@@ -158,6 +185,24 @@ func (b *backingImageMutator) Create(request *admission.Request, newObj runtime.
 	patchOps = append(patchOps, patchOp)
 
 	return patchOps, nil
+}
+
+func getBackupTargetURLAndBackingImageName(backupURL string) (string, string, error) {
+	parsedURL, err := url.Parse(backupURL)
+	if err != nil {
+		return "", "", errors.Wrapf(err, "invalid backupURL %v", backupURL)
+	}
+	backingImageName := parsedURL.Query().Get("backingImage")
+	if backingImageName == "" {
+		return "", "", errors.Errorf("missing backingImage parameter in backupURL %v", backupURL)
+	}
+	switch parsedURL.Scheme {
+	case types.BackupStoreTypeCIFS, types.BackupStoreTypeNFS:
+		return strings.Split(parsedURL.String(), "&")[0], backingImageName, nil
+	case types.BackupStoreTypeAZBlob, types.BackupStoreTypeS3:
+		return parsedURL.Scheme + "://" + parsedURL.User.Username() + "@" + parsedURL.Host + parsedURL.Path, backingImageName, nil
+	}
+	return "", "", errors.Errorf("unsupported backupURL scheme %v", parsedURL.Scheme)
 }
 
 func (b *backingImageMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
