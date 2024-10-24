@@ -711,7 +711,11 @@ func (bc *BackupController) backupBackingImage(volume *longhorn.Volume) error {
 		return errors.Wrapf(err, "failed to get backing image %v", biName)
 	}
 
-	bbi, err := bc.ds.GetBackupBackingImage(biName)
+	backupTargetName := volume.Spec.BackupTargetName
+	if backupTargetName == "" {
+		backupTargetName = types.DefaultBackupTargetName
+	}
+	bbi, err := bc.ds.GetBackupBackingImagesWithBackupTargetNameRO(backupTargetName, biName)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return errors.Wrapf(err, "failed to get backup backing image %v", biName)
@@ -719,16 +723,23 @@ func (bc *BackupController) backupBackingImage(volume *longhorn.Volume) error {
 	}
 
 	if bbi == nil {
+		bbiName := types.GetBackupBackingImageNameFromBIName(biName)
 		backupBackingImage := &longhorn.BackupBackingImage{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: biName,
+				Name: bbiName,
+				Labels: map[string]string{
+					types.LonghornLabelBackupTarget: backupTargetName,
+					types.LonghornLabelBackingImage: biName,
+				},
 			},
 			Spec: longhorn.BackupBackingImageSpec{
-				UserCreated: true,
+				UserCreated:      true,
+				BackingImage:     biName,
+				BackupTargetName: backupTargetName,
 			},
 		}
 		if _, err = bc.ds.CreateBackupBackingImage(backupBackingImage); err != nil && !apierrors.IsAlreadyExists(err) {
-			return errors.Wrapf(err, "failed to create backup backing image %s in the cluster", biName)
+			return errors.Wrapf(err, "failed to create backup backing image %s for backing image %s of backup target %s in the cluster", bbiName, biName, backupTargetName)
 		}
 	}
 
