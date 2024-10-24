@@ -69,6 +69,8 @@ func NewControllerServer(apiClient *longhornclient.RancherClient, nodeID string)
 		accessModes: getVolumeCapabilityAccessModes(
 			[]csi.VolumeCapability_AccessMode_Mode{
 				csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+				csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER,
+				csi.VolumeCapability_AccessMode_SINGLE_NODE_MULTI_WRITER,
 				csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
 			}),
 		log: logrus.StandardLogger().WithField("component", "csi-controller-server"),
@@ -218,6 +220,10 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	for _, cap := range volumeCaps {
 		if requiresSharedAccess(nil, cap) {
 			volumeParameters["share"] = "true"
+			break
+		}
+		if requireExclusiveAccess(nil, cap) {
+			volumeParameters["exclusive"] = "true"
 			break
 		}
 	}
@@ -449,6 +455,13 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 
 	if requiresSharedAccess(volume, volumeCapability) {
 		volume, err = cs.updateVolumeAccessMode(volume, longhorn.AccessModeReadWriteMany)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if requireExclusiveAccess(volume, volumeCapability) {
+		volume, err = cs.updateVolumeAccessMode(volume, longhorn.AccessModeReadWriteOncePod)
 		if err != nil {
 			return nil, err
 		}
