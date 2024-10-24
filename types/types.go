@@ -844,7 +844,7 @@ func ValidateDataLocality(mode longhorn.DataLocality) error {
 }
 
 func ValidateAccessMode(mode longhorn.AccessMode) error {
-	if mode != longhorn.AccessModeReadWriteMany && mode != longhorn.AccessModeReadWriteOnce {
+	if mode != longhorn.AccessModeReadWriteMany && mode != longhorn.AccessModeReadWriteOnce  && mode != longhorn.AccessModeReadWriteOncePod {
 		return fmt.Errorf("invalid access mode: %v", mode)
 	}
 	return nil
