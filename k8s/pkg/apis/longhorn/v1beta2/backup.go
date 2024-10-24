@@ -51,6 +51,10 @@ type BackupSpec struct {
 	// Can be "full" or "incremental"
 	// +optional
 	BackupMode BackupMode `json:"backupMode"`
+	// The backup target name.
+	// +optional
+	// +nullable
+	BackupTargetName string `json:"backupTargetName"`
 }
 
 // BackupStatus defines the observed state of the Longhorn backup

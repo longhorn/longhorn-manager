@@ -28,7 +28,10 @@ const (
 	LonghornKindVolumeAttachment    = "VolumeAttachment"
 	LonghornKindEngine              = "Engine"
 	LonghornKindReplica             = "Replica"
+	LonghornKindBackupTarget        = "BackupTarget"
+	LonghornKindBackupVolume        = "BackupVolume"
 	LonghornKindBackup              = "Backup"
+	LonghornKindBackupBackingImage  = "BackupBackingImage"
 	LonghornKindSnapshot            = "Snapshot"
 	LonghornKindEngineImage         = "EngineImage"
 	LonghornKindInstanceManager     = "InstanceManager"
@@ -130,6 +133,9 @@ const (
 
 	DeleteCustomResourceOnly = "delete-custom-resource-only"
 
+	DeleteBackupTargetFromLonghorn = "delete-backup-target-from-longhorn"
+	UpdateBackupTargetFromLonghorn = "update-backup-target-from-longhorn"
+
 	KubernetesStatusLabel = "KubernetesStatus"
 	KubernetesReplicaSet  = "ReplicaSet"
 	KubernetesStatefulSet = "StatefulSet"
@@ -158,6 +164,7 @@ const (
 	LonghornLabelManagedBy                  = "managed-by"
 	LonghornLabelSnapshotForCloningVolume   = "for-cloning-volume"
 	LonghornLabelBackingImageDataSource     = "backing-image-data-source"
+	LonghornLabelBackupTarget               = "backup-target"
 	LonghornLabelBackupVolume               = "backup-volume"
 	LonghornLabelRecurringJob               = "job"
 	LonghornLabelRecurringJobGroup          = "job-group"
@@ -239,6 +246,7 @@ const (
 
 	BackupStoreTypeS3     = "s3"
 	BackupStoreTypeCIFS   = "cifs"
+	BackupStoreTypeNFS    = "nfs"
 	BackupStoreTypeAZBlob = "azblob"
 
 	AWSIAMRoleAnnotation = "iam.amazonaws.com/role"
@@ -537,6 +545,13 @@ func GetBackingImageLabels() map[string]string {
 	return labels
 }
 
+func GetBackingImageWithBackupTargetLabels(backupTargetName, backingImageName string) map[string]string {
+	return map[string]string{
+		LonghornLabelBackingImage: backingImageName,
+		LonghornLabelBackupTarget: backupTargetName,
+	}
+}
+
 func GetBackingImageManagerLabels(nodeID, diskUUID string) map[string]string {
 	labels := GetBaseLabelsForSystemManagedComponent()
 	labels[GetLonghornLabelComponentKey()] = LonghornLabelBackingImageManager
@@ -562,6 +577,19 @@ func GetBackingImageDataSourceLabels(name, nodeID, diskUUID string) map[string]s
 		labels[GetLonghornLabelKey(LonghornLabelNode)] = nodeID
 	}
 	return labels
+}
+
+func GetBackupVolumeWithBackupTargetLabels(backupTargetName, volumeName string) map[string]string {
+	return map[string]string{
+		LonghornLabelBackupVolume: volumeName,
+		LonghornLabelBackupTarget: backupTargetName,
+	}
+}
+
+func GetBackupTargetLabels(backupTargetName string) map[string]string {
+	return map[string]string{
+		LonghornLabelBackupTarget: backupTargetName,
+	}
 }
 
 func GetBackupVolumeLabels(volumeName string) map[string]string {
@@ -706,6 +734,14 @@ func GetConfigMapNameFromHostname(hostname string) string {
 
 func GetShareManagerNameFromShareManagerPodName(podName string) string {
 	return strings.TrimPrefix(podName, shareManagerPrefix)
+}
+
+func GetBackupVolumeNameFromVolumeName(volumeName string) string {
+	return util.GetStringChecksum(strings.TrimSpace(volumeName))[:util.RandomIDLength] + "-" + util.RandomID()
+}
+
+func GetBackupBackingImageNameFromBIName(backingImageName string) string {
+	return util.GetStringChecksum(strings.TrimSpace(backingImageName))[:util.RandomIDLength] + "-" + util.RandomID()
 }
 
 func ValidateEngineImageChecksumName(name string) bool {

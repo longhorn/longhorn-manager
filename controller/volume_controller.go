@@ -3624,15 +3624,24 @@ func (c *VolumeController) createEngine(v *longhorn.Volume, currentEngineName st
 	}
 
 	if v.Spec.FromBackup != "" && v.Status.RestoreRequired {
-		backupVolumeName, backupName, err := c.getInfoFromBackupURL(v)
+		remoteBackupVolumeName, backupName, err := c.getInfoFromBackupURL(v)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to get backup volume when creating engine object of restored volume %v", v.Name)
+			return nil, errors.Wrapf(err, "failed to get backup volume and backup name from parsing the backup URL when creating engine object of restored volume %v", v.Name)
 		}
-		engine.Spec.BackupVolume = backupVolumeName
+		backupRO, err := c.ds.GetBackupRO(backupName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get backup %v when creating engine object of restored volume %v", backupName, v.Name)
+		}
+		backupVolumeRO, err := c.ds.GetBackupVolumeWithBackupTargetAndVolumeRO(backupRO.Spec.BackupTargetName, remoteBackupVolumeName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get backup volume %v when creating engine object of restored volume %v", remoteBackupVolumeName, v.Name)
+		}
+
+		engine.Spec.BackupVolume = backupVolumeRO.Name
 		engine.Spec.RequestedBackupRestore = backupName
 
-		log.Infof("Creating engine %v for restored volume, BackupVolume is %v, RequestedBackupRestore is %v",
-			engine.Name, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore)
+		log.Infof("Creating engine %v for restored volume %v, BackupVolume is %v, Remote BackupVolume is %v, RequestedBackupRestore is %v",
+			engine.Name, v.Name, engine.Spec.BackupVolume, remoteBackupVolumeName, engine.Spec.RequestedBackupRestore)
 	}
 
 	unmapMarkEnabled, err := c.isUnmapMarkSnapChainRemovedEnabled(v)
@@ -3861,15 +3870,17 @@ func (c *VolumeController) restoreVolumeRecurringJobs(v *longhorn.Volume) error 
 	log := getLoggerForVolume(c.logger, v)
 
 	backupVolumeRecurringJobsInfo := make(map[string]longhorn.VolumeRecurringJobInfo)
-	bvName, exist := v.Labels[types.LonghornLabelBackupVolume]
+	btName := v.Spec.BackupTargetName
+
+	volName, exist := v.Labels[types.LonghornLabelBackupVolume]
 	if !exist {
 		log.Warn("Failed to find the backup volume label")
 		return nil
 	}
 
-	bv, err := c.ds.GetBackupVolumeRO(bvName)
+	bv, err := c.ds.GetBackupVolumeWithBackupTargetAndVolumeRO(btName, volName)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get the backup volume %v info", bvName)
+		return errors.Wrapf(err, "failed to get the backup volume %v of the backup target %s info", volName, btName)
 	}
 
 	volumeRecurringJobInfoStr, exist := bv.Status.Labels[types.VolumeRecurringJobInfoLabel]
@@ -3878,7 +3889,7 @@ func (c *VolumeController) restoreVolumeRecurringJobs(v *longhorn.Volume) error 
 	}
 
 	if err := json.Unmarshal([]byte(volumeRecurringJobInfoStr), &backupVolumeRecurringJobsInfo); err != nil {
-		return errors.Wrapf(err, "failed to unmarshal information of volume recurring jobs, backup volume %v", bvName)
+		return errors.Wrapf(err, "failed to unmarshal information of volume recurring jobs, backup volume %v of the backup target %s", volName, btName)
 	}
 
 	for jobName, job := range backupVolumeRecurringJobsInfo {
@@ -4751,7 +4762,7 @@ func (c *VolumeController) ReconcileBackupVolumeState(volume *longhorn.Volume) e
 		backupVolumeName = volume.Name
 	}
 
-	bv, err := c.ds.GetBackupVolumeRO(backupVolumeName)
+	bv, err := c.ds.GetBackupVolumeWithBackupTargetAndVolumeRO(volume.Spec.BackupTargetName, backupVolumeName)
 	if err != nil && !apierrors.IsNotFound(err) {
 		return errors.Wrapf(err, "failed to get backup volume %s for volume %v", backupVolumeName, volume.Name)
 	}

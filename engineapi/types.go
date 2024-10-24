@@ -149,6 +149,7 @@ type BackupTarget struct {
 	PollInterval     string `json:"pollInterval"`
 	Available        bool   `json:"available"`
 	Message          string `json:"message"`
+	ReadOnly         bool   `json:"readOnly"`
 }
 
 type BackupVolume struct {
@@ -164,6 +165,8 @@ type BackupVolume struct {
 	BackingImageName     string             `json:"backingImageName"`
 	BackingImageChecksum string             `json:"backingImageChecksum"`
 	StorageClassName     string             `json:"storageClassName"`
+	BackupTargetName     string             `json:"backupTargetName"`
+	VolumeName           string             `json:"volumeName"`
 }
 
 type Backup struct {
@@ -184,6 +187,7 @@ type Backup struct {
 	Parameters             map[string]string    `json:"parameters"`
 	NewlyUploadedDataSize  string               `json:"newlyUploadedDataSize"`
 	ReUploadedDataSize     string               `json:"reUploadedDataSize"`
+	BackupTargetName       string               `json:"backupTargetName"`
 }
 
 type ConfigMetadata struct {
