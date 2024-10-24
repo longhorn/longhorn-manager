@@ -50,6 +50,10 @@ replace (
 	k8s.io/sample-controller => k8s.io/sample-controller v0.31.1
 )
 
+replace github.com/longhorn/longhorn-instance-manager => github.com/c3y1huang/longhorn-instance-manager v1.8.0-dev-20240908.0.20241024084020-227ad470b189
+
+replace github.com/longhorn/types => github.com/c3y1huang/types v0.0.0-20241018031609-6c849ffa7789
+
 require (
 	github.com/container-storage-interface/spec v1.10.0
 	github.com/docker/go-connections v0.5.0
@@ -62,7 +66,7 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.19.0
 	github.com/longhorn/backing-image-manager v1.8.0-dev-20241020
 	github.com/longhorn/backupstore v0.0.0-20241019064138-ef7b22d3fcb0
-	github.com/longhorn/go-common-libs v0.0.0-20241018042323-54da24c0807f
+	github.com/longhorn/go-common-libs v0.0.0-20241024003634-9e7505c868e3
 	github.com/longhorn/go-iscsi-helper v0.0.0-20241018035016-4f89087f131a
 	github.com/longhorn/go-spdk-helper v0.0.0-20241018034138-ef1671b8828a
 	github.com/longhorn/longhorn-engine v1.8.0-dev-20241020

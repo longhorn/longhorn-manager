@@ -513,6 +513,7 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 			UpgradeRequired:   req.UpgradeRequired,
 			InitiatorAddress:  req.InitiatorAddress,
 			TargetAddress:     req.TargetAddress,
+			SalvageRequested:  req.Engine.Spec.SalvageRequested,
 		},
 	})
 
