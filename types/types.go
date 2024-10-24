@@ -29,6 +29,7 @@ const (
 	LonghornKindEngine              = "Engine"
 	LonghornKindReplica             = "Replica"
 	LonghornKindBackupTarget        = "BackupTarget"
+	LonghornKindBackupVolume        = "BackupVolume"
 	LonghornKindBackup              = "Backup"
 	LonghornKindSnapshot            = "Snapshot"
 	LonghornKindEngineImage         = "EngineImage"

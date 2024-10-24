@@ -781,7 +781,7 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 		}
 	}
 
-	clusterBackups, err := bc.ds.ListBackupsWithBackupVolumeName(volume.Name)
+	clusterBackups, err := bc.ds.ListBackupsWithBackupVolumeName(backupTarget.Name, volume.Name)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to list backups in the cluster")
 	}
