@@ -1388,7 +1388,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 			if !dataExists {
 				log.Warn("Failed to auto salvage volume: no data exists")
 			} else {
-				log.Info("Bringing up replicas for auto-salvage")
+				log.Infof("Bringing up %v replicas for auto-salvage", len(failedUsableReplicas))
 
 				// This salvage is for revision counter enabled case
 				salvaged := false
