@@ -219,15 +219,7 @@ func startManager(c *cli.Context) error {
 
 	server := api.NewServer(m, wsc)
 	router := http.Handler(api.NewRouter(server))
-	router = util.FilteredLoggingHandler(map[string]struct{}{
-		"/v1/apiversions":  {},
-		"/v1/schemas":      {},
-		"/v1/settings":     {},
-		"/v1/volumes":      {},
-		"/v1/nodes":        {},
-		"/v1/engineimages": {},
-		"/v1/events":       {},
-	}, os.Stdout, router)
+	router = util.FilteredLoggingHandler(os.Stdout, router)
 	router = handlers.ProxyHeaders(router)
 
 	listen := types.GetAPIServerAddressFromIP(currentIP)
