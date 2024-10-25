@@ -1,6 +1,8 @@
 package app
 
 import (
+	"time"
+
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
@@ -61,7 +63,10 @@ func preUpgrade(c *cli.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to create event broadcaster")
 	}
-	defer eventBroadcaster.Shutdown()
+	defer func() {
+		eventBroadcaster.Shutdown()
+		time.Sleep(5 * time.Second)
+	}()
 
 	scheme := runtime.NewScheme()
 	if err := longhorn.SchemeBuilder.AddToScheme(scheme); err != nil {
