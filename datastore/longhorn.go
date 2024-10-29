@@ -4207,6 +4207,26 @@ func (s *DataStore) DeleteBackupTarget(backupTargetName string) error {
 	return s.lhClient.LonghornV1beta2().BackupTargets(s.namespace).Delete(context.TODO(), backupTargetName, metav1.DeleteOptions{})
 }
 
+// RemoveFinalizerForBackupTarget will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForBackupTarget(backupTarget *longhorn.BackupTarget) error {
+	if !util.FinalizerExists(longhornFinalizerKey, backupTarget) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, backupTarget); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta2().BackupTargets(s.namespace).Update(context.TODO(), backupTarget, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if backupTarget.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for backup target %s", backupTarget.Name)
+	}
+	return nil
+}
+
 // CreateBackupVolume creates a Longhorn BackupVolumes CR and verifies creation
 func (s *DataStore) CreateBackupVolume(backupVolume *longhorn.BackupVolume) (*longhorn.BackupVolume, error) {
 	ret, err := s.lhClient.LonghornV1beta2().BackupVolumes(s.namespace).Create(context.TODO(), backupVolume, metav1.CreateOptions{})
