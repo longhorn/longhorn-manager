@@ -10,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rancher/lasso/pkg/log"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sys/unix"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -28,6 +29,7 @@ import (
 	lhexec "github.com/longhorn/go-common-libs/exec"
 	lhio "github.com/longhorn/go-common-libs/io"
 	lhns "github.com/longhorn/go-common-libs/ns"
+	lhproc "github.com/longhorn/go-common-libs/proc"
 	lhtypes "github.com/longhorn/go-common-libs/types"
 
 	"github.com/longhorn/longhorn-manager/constant"
@@ -49,6 +51,7 @@ const (
 	unknownDiskID = "UNKNOWN_DISKID"
 
 	kernelConfigFilePathPrefix = "/host/boot/config-"
+	kernelConfigGzFilePath     = "/proc/config.gz"
 
 	snapshotChangeEventQueueMax = 1048576
 )
@@ -1066,7 +1069,7 @@ func (nc *NodeController) checkKernelModulesLoaded(kubeNode *corev1.Node, node *
 		return
 	}
 
-	notLoadedModules, err := checkModulesLoadedByConfigFile(nc.logger, notFoundModulesUsingkmod, kubeNode.Status.NodeInfo.KernelVersion)
+	notLoadedModules, err := checkModulesLoadedByConfigFile(nc.logger, notFoundModulesUsingkmod, kubeNode.Status.NodeInfo.KernelVersion, namespaces)
 	if err != nil {
 		node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeKernelModulesLoaded, longhorn.ConditionStatusFalse,
 			string(longhorn.NodeConditionReasonCheckKernelConfigFailed),
@@ -1101,12 +1104,26 @@ func checkModulesLoadedUsingkmod(modules map[string]string) (map[string]string, 
 	return notFoundModules, nil
 }
 
-func checkModulesLoadedByConfigFile(log *logrus.Entry, modules map[string]string, kernelVersion string) ([]string, error) {
+func checkModulesLoadedByConfigFile(log *logrus.Entry, modules map[string]string, kernelVersion string, namespaces []lhtypes.Namespace) ([]string, error) {
 	kernelConfigPath := kernelConfigFilePathPrefix + kernelVersion
 	kernelConfigContent, err := lhio.ReadFileContent(kernelConfigPath)
 	if err != nil {
-		return nil, err
+		if !errors.Is(err, unix.ENOENT) {
+			return nil, err
+		}
+
+		// If the kernel config file is not found, try to get it from the host proc directory
+		nsexec, err := lhns.NewNamespaceExecutor(lhns.GetDefaultProcessName(), lhtypes.HostProcDirectory, namespaces)
+		if err != nil {
+			return nil, err
+		}
+
+		kernelConfigContent, err = nsexec.Execute(nil, "zcat", []string{kernelConfigGzFilePath}, lhtypes.ExecuteDefaultTimeout)
+		if err != nil {
+			return nil, err
+		}
 	}
+
 	kernelConfigMap := getKernelModuleConfigMap(kernelConfigContent)
 
 	notLoadedModules := []string{}
@@ -1174,7 +1191,7 @@ func getModulesConfigsList(modulesMap map[string]string, needModules bool) []str
 }
 
 func (nc *NodeController) syncNFSClientVersion(kubeNode *corev1.Node, node *longhorn.Node, namespaces []lhtypes.Namespace) {
-	notLoadedModules, err := checkModulesLoadedByConfigFile(nc.logger, nfsClientVersions, kubeNode.Status.NodeInfo.KernelVersion)
+	notLoadedModules, err := checkModulesLoadedByConfigFile(nc.logger, nfsClientVersions, kubeNode.Status.NodeInfo.KernelVersion, namespaces)
 	if err != nil {
 		node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusFalse,
 			string(longhorn.NodeConditionReasonCheckKernelConfigFailed),
