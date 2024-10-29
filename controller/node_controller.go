@@ -26,10 +26,11 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	iscsiutil "github.com/longhorn/go-iscsi-helper/util"
+
 	lhexec "github.com/longhorn/go-common-libs/exec"
 	lhio "github.com/longhorn/go-common-libs/io"
 	lhns "github.com/longhorn/go-common-libs/ns"
-	lhproc "github.com/longhorn/go-common-libs/proc"
 	lhtypes "github.com/longhorn/go-common-libs/types"
 
 	"github.com/longhorn/longhorn-manager/constant"
@@ -959,6 +960,9 @@ func (nc *NodeController) syncPackagesInstalled(kubeNode *corev1.Node, node *lon
 	pipeFlag := false
 
 	switch {
+	case strings.Contains(osImage, "talos"):
+		nc.syncPackagesInstalledTalosLinux(node, namespaces)
+		return
 	case strings.Contains(osImage, "ubuntu"):
 		fallthrough
 	case strings.Contains(osImage, "debian"):
@@ -1033,6 +1037,82 @@ func (nc *NodeController) syncPackagesInstalled(kubeNode *corev1.Node, node *lon
 
 	node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusTrue, "",
 		fmt.Sprintf("All required packages %v are installed on node %v", packages, node.Name))
+}
+
+func (nc *NodeController) syncPackagesInstalledTalosLinux(node *longhorn.Node, namespaces []lhtypes.Namespace) {
+	type validateCommand struct {
+		binary string
+		args   []string
+	}
+
+	packagesIsInstalled := map[string]bool{}
+
+	// Helper function to validate packages within a namespace and update node
+	// status if there is an error.
+	validatePackages := func(process string, binaryToValidateCommand map[string]validateCommand) (ok bool) {
+		nsexec, err := lhns.NewNamespaceExecutor(process, lhtypes.HostProcDirectory, namespaces)
+		if err != nil {
+			node.Status.Conditions = types.SetCondition(
+				node.Status.Conditions, longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusFalse,
+				string(longhorn.NodeConditionReasonNamespaceExecutorErr), fmt.Sprintf("Failed to get namespace executor: %v", err.Error()),
+			)
+			return false
+		}
+
+		for binary, command := range binaryToValidateCommand {
+			_, err := nsexec.Execute(nil, command.binary, command.args, lhtypes.ExecuteDefaultTimeout)
+			if err != nil {
+				nc.logger.WithError(err).Debugf("Package %v is not found in node %v", binary, node.Name)
+				packagesIsInstalled[binary] = false
+			} else {
+				packagesIsInstalled[binary] = true
+			}
+		}
+		return true
+	}
+
+	// The validation commands by process.
+	hostPackageToValidateCmd := map[string]validateCommand{
+		"cryptsetup": {binary: "cryptsetup", args: []string{"--version"}},
+		"dmsetup":    {binary: "dmsetup", args: []string{"--version"}},
+	}
+	kubeletPackageToValidateCmd := map[string]validateCommand{
+		"nfs-common": {binary: "dpkg", args: []string{"-s", "nfs-common"}},
+	}
+	iscsiPackageToValidateCmd := map[string]validateCommand{
+		"iscsiadm": {binary: "iscsiadm", args: []string{"--version"}},
+	}
+
+	// Check each set of packagesl return immediately if there is an error.
+	if !validatePackages(lhtypes.ProcessNone, hostPackageToValidateCmd) ||
+		!validatePackages(lhns.GetDefaultProcessName(), kubeletPackageToValidateCmd) ||
+		!validatePackages(iscsiutil.ISCSIdProcess, iscsiPackageToValidateCmd) {
+		return
+	}
+
+	// Organize the installed and not installed packages.
+	installedPackages := []string{}
+	notInstalledPackages := []string{}
+	for binary, isInstalled := range packagesIsInstalled {
+		if isInstalled {
+			installedPackages = append(installedPackages, binary)
+		} else {
+			notInstalledPackages = append(notInstalledPackages, binary)
+		}
+	}
+
+	// Update node condition based on  packages installed status.
+	if len(notInstalledPackages) > 0 {
+		node.Status.Conditions = types.SetCondition(
+			node.Status.Conditions, longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusFalse,
+			string(longhorn.NodeConditionReasonPackagesNotInstalled), fmt.Sprintf("Missing packages: %v", notInstalledPackages),
+		)
+	} else {
+		node.Status.Conditions = types.SetCondition(
+			node.Status.Conditions, longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusTrue,
+			"", fmt.Sprintf("All required packages %v are installed on node %v", installedPackages, node.Name),
+		)
+	}
 }
 
 func (nc *NodeController) syncMultipathd(node *longhorn.Node, namespaces []lhtypes.Namespace) {
