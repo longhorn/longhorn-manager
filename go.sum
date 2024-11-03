@@ -158,8 +158,8 @@ github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0
 github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de h1:9TO3cAIGXtEhnIaL+V+BEER86oLrvS+kWobKpbJuye0=
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de/go.mod h1:zAbeS9B/r2mtpb6U+EI2rYA5OAXxsYw6wTamcNW+zcE=
-github.com/longhorn/backing-image-manager v1.8.0-dev-20241020 h1:KK4mTv3ax+69r9zYgVLkO+F7W+bcUgQf3Qfn0TA1XtY=
-github.com/longhorn/backing-image-manager v1.8.0-dev-20241020/go.mod h1:v2Q0p/2vzqW39WYnJ6u33y4bKMKAAD10lnAS4CCuuKA=
+github.com/longhorn/backing-image-manager v1.8.0-dev-20241103 h1:llmnGJPbxq+sv8a3gYwZV+2ycgLSGJzeEx59Khn4Ln4=
+github.com/longhorn/backing-image-manager v1.8.0-dev-20241103/go.mod h1:FIvUE1HBz/cUTHO3NjqM7JNhl0p6Tw3OmW3COv0V+Yo=
 github.com/longhorn/backupstore v0.0.0-20241024044224-62c849e1f519 h1:cDLRmtKNlMFfhJUN57ZPe/sDveuriy0n+pqDPXkjhz8=
 github.com/longhorn/backupstore v0.0.0-20241024044224-62c849e1f519/go.mod h1:4K4Z8zeVXbp5pcozF8fGrZRXatxIreqNH/xWa93odAQ=
 github.com/longhorn/go-common-libs v0.0.0-20241102040927-43901cc2fa33 h1:mjHjHqmOmYpZlq4rCk5mJbT26zKfStNRjCxwRdx0aj0=
@@ -168,10 +168,10 @@ github.com/longhorn/go-iscsi-helper v0.0.0-20241102040755-8fc052c00ba0 h1:r/B43i
 github.com/longhorn/go-iscsi-helper v0.0.0-20241102040755-8fc052c00ba0/go.mod h1:djtU7RoJ88P9hTDf0xLFGsDMDJY0zMr7Zu3d+wCDW/I=
 github.com/longhorn/go-spdk-helper v0.0.0-20241031104652-f2633833477c h1:lYMdwPOdkn2GT0xCyo+DV1V+ttPrVQlKgKY1g6c1LkM=
 github.com/longhorn/go-spdk-helper v0.0.0-20241031104652-f2633833477c/go.mod h1:bu4kUbo/JdyNN10IlrR/OKXwDkeS2ZSzslKsmsoQq0U=
-github.com/longhorn/longhorn-engine v1.8.0-dev-20241020 h1:VL5Md+7+h74c4cl5TcT+0Yh8TLe1LiLGuyYkECOjFVY=
-github.com/longhorn/longhorn-engine v1.8.0-dev-20241020/go.mod h1:NFBHAqz7M5G09UibjZISBBx9i8ZAa0yqzs8/23xycHs=
-github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241020 h1:1dBogjEBrrhJAmwWZv9dfTVAsBi+4YctREe0DpGKDyc=
-github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241020/go.mod h1:44kaYa3MadDww8Y0l905bDUSSGAtTb38nmf4yARgoKk=
+github.com/longhorn/longhorn-engine v1.8.0-dev-20241103 h1:Q3RKmiD9SlxJ9bMRA+Rs0gbEFzQek2zkOjkbnuVpcPQ=
+github.com/longhorn/longhorn-engine v1.8.0-dev-20241103/go.mod h1:7c7M3uig+IpM252ewuQ3VZIRIWtwuLOOTBmvLm61QZw=
+github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241103 h1:Q2NlViVKqFNudHA51AW+vOJvg5jR3cLwJ8W6Ax3mKGo=
+github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241103/go.mod h1:AsT/MU1GLf6E+KMfJQywIcauCJQdcVt9a/PH5D/FSVw=
 github.com/longhorn/longhorn-share-manager v1.7.0-rc1 h1:LsSkSajhG8tCfORKKfwK+8XHVrT/8rI9DRWb7fuoVls=
 github.com/longhorn/longhorn-share-manager v1.7.0-rc1/go.mod h1:R6+NscPU4lAV5ueO7//lBCAO3en0aDbZi5KkkOSUJvk=
 github.com/longhorn/types v0.0.0-20241101010532-9e901229a935 h1:s6ngry7kCUdggXRKywHdwt98vjbOZQX8Txq166hxph0=
