@@ -30,6 +30,7 @@ const (
 	DataSourceTypeCloneParameterEncryption                           = "encryption"
 	DataSourceTypeCloneParameterSecret                               = "secret"
 	DataSourceTypeCloneParameterSecretNamespace                      = "secret-namespace"
+	DataSourceTypeParameterDataEngine                                = "data-engine"
 )
 
 // BackingImageDataSourceSpec defines the desired state of the Longhorn backing image data source

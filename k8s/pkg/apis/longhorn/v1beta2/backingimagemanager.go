@@ -12,6 +12,25 @@ const (
 	BackingImageManagerStateUnknown  = BackingImageManagerState("unknown")
 )
 
+type BackingImageV2CopyInfo struct {
+	// +optional
+	Name string `json:"name"`
+	// +optional
+	UUID string `json:"uuid"`
+	// +optional
+	DiskUUID string `json:"diskUUID"`
+	// +optional
+	Size int64 `json:"size"`
+	// +optional
+	Progress int `json:"progress"`
+	// +optional
+	State BackingImageState `json:"state"`
+	// +optional
+	CurrentChecksum string `json:"currentChecksum"`
+	// +optional
+	Message string `json:"message"`
+}
+
 type BackingImageFileInfo struct {
 	// +optional
 	Name string `json:"name"`

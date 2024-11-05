@@ -192,6 +192,8 @@ type InstanceManagerStatus struct {
 	// +nullable
 	InstanceReplicas map[string]InstanceProcess `json:"instanceReplicas,omitempty"`
 	// +optional
+	BackingImages map[string]BackingImageV2CopyInfo `json:"backingImages"`
+	// +optional
 	IP string `json:"ip"`
 	// +optional
 	APIMinVersion int `json:"apiMinVersion"`

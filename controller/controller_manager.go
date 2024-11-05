@@ -85,7 +85,7 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	if err != nil {
 		return nil, err
 	}
-	instanceManagerController, err := NewInstanceManagerController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount)
+	instanceManagerController, err := NewInstanceManagerController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount, proxyConnCounter)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +93,7 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	if err != nil {
 		return nil, err
 	}
-	backingImageController, err := NewBackingImageController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount, backingImageManagerImage)
+	backingImageController, err := NewBackingImageController(logger, ds, scheme, kubeClient, namespace, controllerID, serviceAccount, backingImageManagerImage, proxyConnCounter)
 	if err != nil {
 		return nil, err
 	}
