@@ -59,6 +59,8 @@ type InstanceManagerController struct {
 	instanceManagerMonitorMutex *sync.Mutex
 	instanceManagerMonitorMap   map[string]chan struct{}
 
+	proxyConnCounter util.Counter
+
 	// for unit test
 	versionUpdater func(*longhorn.InstanceManager) error
 }
@@ -67,6 +69,7 @@ type InstanceManagerMonitor struct {
 	logger logrus.FieldLogger
 
 	Name         string
+	imName       string
 	controllerID string
 
 	ds                 *datastore.DataStore
@@ -79,7 +82,8 @@ type InstanceManagerMonitor struct {
 
 	nodeCallback func(nodeName string)
 
-	client *engineapi.InstanceManagerClient
+	client      *engineapi.InstanceManagerClient
+	proxyClient engineapi.EngineClientProxy
 }
 
 func updateInstanceManagerVersion(im *longhorn.InstanceManager) error {
@@ -104,7 +108,7 @@ func NewInstanceManagerController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
-	namespace, controllerID, serviceAccount string,
+	namespace, controllerID, serviceAccount string, proxyConnCounter util.Counter,
 ) (*InstanceManagerController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
@@ -125,6 +129,8 @@ func NewInstanceManagerController(
 
 		instanceManagerMonitorMutex: &sync.Mutex{},
 		instanceManagerMonitorMap:   map[string]chan struct{}{},
+
+		proxyConnCounter: proxyConnCounter,
 
 		versionUpdater: updateInstanceManagerVersion,
 	}
@@ -497,6 +503,7 @@ func (imc *InstanceManagerController) syncInstanceStatus(im *longhorn.InstanceMa
 		im.Status.Instances = nil // nolint: staticcheck
 		im.Status.InstanceEngines = nil
 		im.Status.InstanceReplicas = nil
+		im.Status.BackingImages = nil
 	}
 	return nil
 }
@@ -815,10 +822,19 @@ func (imc *InstanceManagerController) syncMonitor(im *longhorn.InstanceManager) 
 	isMonitorRequired := im.Status.CurrentState == longhorn.InstanceManagerStateRunning &&
 		engineapi.CheckInstanceManagerCompatibility(im.Status.APIMinVersion, im.Status.APIVersion) == nil
 
+	// BackingImage monitoring is only required for v2 data engine
+	// and it uses proxy client instead of instance manager client.
+	// Thus, we use another monitor goroutine for backing image monitoring for better maintenance.
 	if isMonitorRequired {
 		imc.startMonitoring(im)
+		if types.IsDataEngineV2(im.Spec.DataEngine) {
+			imc.startBackingImageMonitoring(im)
+		}
 	} else {
 		imc.stopMonitoring(im.Name)
+		if types.IsDataEngineV2(im.Spec.DataEngine) {
+			imc.stopBackingImageMonitoring(im.Name)
+		}
 	}
 
 	return nil
@@ -1256,6 +1272,7 @@ func (imc *InstanceManagerController) enqueueSettingChange(obj interface{}) {
 
 func (imc *InstanceManagerController) cleanupInstanceManagerPod(imName string) error {
 	imc.stopMonitoring(imName)
+	imc.stopBackingImageMonitoring(imName)
 
 	pod, err := imc.ds.GetPodRO(imc.namespace, imName)
 	if err != nil {
@@ -1584,6 +1601,190 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	return podSpec, nil
 }
 
+func (imc *InstanceManagerController) startBackingImageMonitoring(im *longhorn.InstanceManager) {
+	log := imc.logger.WithField("instance manager", im.Name)
+
+	backingImageMonitorName := types.GetBackingImageMonitorName(im.Name)
+
+	if im.Status.IP == "" {
+		log.Errorf("IP is not set before monitoring")
+		return
+	}
+	imc.instanceManagerMonitorMutex.Lock()
+	defer imc.instanceManagerMonitorMutex.Unlock()
+
+	if _, ok := imc.instanceManagerMonitorMap[backingImageMonitorName]; ok {
+		return
+	}
+
+	engineClientProxy, err := engineapi.NewEngineClientProxy(im, log, imc.proxyConnCounter)
+	if err != nil {
+		log.Errorf("failed to get the engine client proxy for instance manager %v", im.Name)
+		return
+	}
+
+	stopCh := make(chan struct{}, 1)
+	monitorVoluntaryStopCh := make(chan struct{})
+	monitor := &InstanceManagerMonitor{
+		logger:                 log,
+		Name:                   backingImageMonitorName,
+		imName:                 im.Name,
+		controllerID:           imc.controllerID,
+		ds:                     imc.ds,
+		lock:                   &sync.RWMutex{},
+		stopCh:                 stopCh,
+		done:                   false,
+		monitorVoluntaryStopCh: monitorVoluntaryStopCh,
+		// notify monitor to update the instance map
+		updateNotification: true,
+		proxyClient:        engineClientProxy,
+
+		nodeCallback: imc.enqueueInstanceManagersForNode,
+	}
+
+	imc.instanceManagerMonitorMap[backingImageMonitorName] = stopCh
+	go monitor.BackingImageMonitorRun()
+
+	go func() {
+		<-monitorVoluntaryStopCh
+		engineClientProxy.Close()
+		imc.instanceManagerMonitorMutex.Lock()
+		delete(imc.instanceManagerMonitorMap, backingImageMonitorName)
+		imc.instanceManagerMonitorMutex.Unlock()
+	}()
+}
+
+func (imc *InstanceManagerController) stopBackingImageMonitoring(imName string) {
+	imc.instanceManagerMonitorMutex.Lock()
+	defer imc.instanceManagerMonitorMutex.Unlock()
+
+	backingImageMonitorName := types.GetBackingImageMonitorName(imName)
+	stopCh, ok := imc.instanceManagerMonitorMap[backingImageMonitorName]
+	if !ok {
+		return
+	}
+
+	select {
+	case <-stopCh:
+		// stopCh channel is already closed
+	default:
+		close(stopCh)
+	}
+}
+
+func (m *InstanceManagerMonitor) BackingImageMonitorRun() {
+	m.logger.Infof("Start SPDK backing image monitoring %v", m.Name)
+
+	ctx, cancel := context.WithCancel(context.TODO())
+	notifier, err := m.proxyClient.SPDKBackingImageWatch(ctx)
+	if err != nil {
+		m.logger.WithError(err).Errorf("Failed to get the notifier for monitoring")
+		cancel()
+		close(m.monitorVoluntaryStopCh)
+		return
+	}
+
+	defer func() {
+		m.logger.Infof("Stop monitoring spdk backing image %v", m.Name)
+		cancel()
+		m.StopMonitorWithLock()
+		close(m.monitorVoluntaryStopCh)
+	}()
+
+	go func() {
+		continuousFailureCount := 0
+		for {
+			if continuousFailureCount >= engineapi.MaxMonitorRetryCount {
+				m.logger.Errorf("Instance manager SPDK backing image monitor streaming continuously errors receiving items for %v times, will stop the monitor itself", engineapi.MaxMonitorRetryCount)
+				m.StopMonitorWithLock()
+			}
+
+			if m.CheckMonitorStoppedWithLock() {
+				return
+			}
+
+			_, err = notifier.Recv()
+			if err != nil {
+				m.logger.WithError(err).Error("Failed to receive next item in spdk backing image watch")
+				continuousFailureCount++
+				time.Sleep(engineapi.MinPollCount * engineapi.PollInterval)
+			} else {
+				m.lock.Lock()
+				m.updateNotification = true
+				m.lock.Unlock()
+				continuousFailureCount = 0
+			}
+		}
+	}()
+
+	timer := 0
+	ticker := time.NewTicker(engineapi.MinPollCount * engineapi.PollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			if m.CheckMonitorStoppedWithLock() {
+				return
+			}
+
+			needUpdate := false
+
+			m.lock.Lock()
+			timer++
+			if timer >= engineapi.MaxPollCount || m.updateNotification {
+				needUpdate = true
+				m.updateNotification = false
+				timer = 0
+			}
+			m.lock.Unlock()
+
+			if !needUpdate {
+				continue
+			}
+			if needStop := m.pollAndUpdateV2BackingImageMap(); needStop {
+				return
+			}
+		case <-m.stopCh:
+			return
+		}
+	}
+}
+
+func (m *InstanceManagerMonitor) pollAndUpdateV2BackingImageMap() (needStop bool) {
+	im, err := m.ds.GetInstanceManager(m.imName)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			m.logger.Warn("Stop monitoring because the instance manager no longer exists")
+			return true
+		}
+		utilruntime.HandleError(errors.Wrapf(err, "failed to get instance manager %v for monitoring", m.Name))
+		return false
+	}
+
+	if im.Status.OwnerID != m.controllerID {
+		m.logger.Warnf("Stop monitoring the instance manager on this node (%v) because the instance manager has new ownerID %v", m.controllerID, im.Status.OwnerID)
+		return true
+	}
+
+	// the key in the resp is in the form of "bi-%s-disk-%s" so we can distinguish the different disks in the same instance manager
+	resp, err := m.proxyClient.SPDKBackingImageList()
+	if err != nil {
+		utilruntime.HandleError(errors.Wrapf(err, "failed to poll spdk backing image info to update instance manager %v", m.Name))
+		return false
+	}
+
+	if reflect.DeepEqual(im.Status.BackingImages, resp) {
+		return false
+	}
+
+	im.Status.BackingImages = resp
+	if _, err := m.ds.UpdateInstanceManagerStatus(im); err != nil {
+		utilruntime.HandleError(errors.Wrapf(err, "failed to update v2 backing image map for instance manager %v", m.Name))
+		return false
+	}
+	return false
+}
+
 func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManager) {
 	log := imc.logger.WithField("instance manager", im.Name)
 
@@ -1743,7 +1944,7 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() (needStop bool) {
 	im, err := m.ds.GetInstanceManager(m.Name)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
-			m.logger.Warn("stop monitoring because the instance manager no longer exists")
+			m.logger.Warn("Stop monitoring because the instance manager no longer exists")
 			return true
 		}
 		utilruntime.HandleError(errors.Wrapf(err, "failed to get instance manager %v for monitoring", m.Name))
@@ -1751,7 +1952,7 @@ func (m *InstanceManagerMonitor) pollAndUpdateInstanceMap() (needStop bool) {
 	}
 
 	if im.Status.OwnerID != m.controllerID {
-		m.logger.Warnf("stop monitoring the instance manager on this node (%v) because the instance manager has new ownerID %v", m.controllerID, im.Status.OwnerID)
+		m.logger.Warnf("Stop monitoring the instance manager on this node (%v) because the instance manager has new ownerID %v", m.controllerID, im.Status.OwnerID)
 		return true
 	}
 

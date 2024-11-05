@@ -573,8 +573,9 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 		BinaryArgs: args,
 
 		Replica: imclient.ReplicaCreateRequest{
-			DiskName: req.DiskName,
-			DiskUUID: req.Replica.Spec.DiskID,
+			DiskName:         req.DiskName,
+			DiskUUID:         req.Replica.Spec.DiskID,
+			BackingImageName: req.Replica.Spec.BackingImage,
 		},
 	})
 	if err != nil {

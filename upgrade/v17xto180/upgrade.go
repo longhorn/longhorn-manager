@@ -210,6 +210,23 @@ func upgradeBackingImages(namespace string, lhClient *lhclientset.Clientset, res
 		if bi.Spec.MinNumberOfCopies == 0 {
 			bi.Spec.MinNumberOfCopies = types.DefaultMinNumberOfCopies
 		}
+		if string(bi.Spec.DataEngine) == "" {
+			bi.Spec.DataEngine = longhorn.DataEngineTypeV1
+		}
+
+		// before v1.8.0, there should not have any v2 data engine disk in the backing image.
+		for bi.Spec.DiskFileSpecMap != nil {
+			for diskUUID := range bi.Spec.DiskFileSpecMap {
+				bi.Spec.DiskFileSpecMap[diskUUID].DataEngine = longhorn.DataEngineTypeV1
+			}
+		}
+
+		// before v1.8.0, there should not have any v2 data engine disk in the backing image.
+		for bi.Status.DiskFileStatusMap != nil {
+			for diskUUID := range bi.Status.DiskFileStatusMap {
+				bi.Status.DiskFileStatusMap[diskUUID].DataEngine = longhorn.DataEngineTypeV1
+			}
+		}
 	}
 
 	return nil

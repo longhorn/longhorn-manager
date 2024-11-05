@@ -30,6 +30,9 @@ const (
 
 type BackingImageDiskFileStatus struct {
 	// +optional
+	// +kubebuilder:validation:Enum=v1;v2
+	DataEngine DataEngineType `json:"dataEngine"`
+	// +optional
 	State BackingImageState `json:"state"`
 	// +optional
 	Progress int `json:"progress"`
@@ -42,6 +45,9 @@ type BackingImageDiskFileStatus struct {
 type BackingImageDiskFileSpec struct {
 	// +optional
 	EvictionRequested bool `json:"evictionRequested"`
+	// +optional
+	// +kubebuilder:validation:Enum=v1;v2
+	DataEngine DataEngineType `json:"dataEngine"`
 }
 
 // BackingImageSpec defines the desired state of the Longhorn backing image
@@ -67,6 +73,10 @@ type BackingImageSpec struct {
 	Secret string `json:"secret"`
 	// +optional
 	SecretNamespace string `json:"secretNamespace"`
+	// +kubebuilder:validation:Enum=v1;v2
+	// +optional
+	// +kubebuilder:default:=v1
+	DataEngine DataEngineType `json:"dataEngine"`
 }
 
 // BackingImageStatus defines the observed state of the Longhorn backing image status
@@ -91,6 +101,11 @@ type BackingImageStatus struct {
 	// +optional
 	// +nullable
 	DiskLastRefAtMap map[string]string `json:"diskLastRefAtMap"`
+	// It is pending -> in-progress -> ready/failed
+	// +optional
+	V2FirstCopyStatus BackingImageState `json:"v2FirstCopyStatus"`
+	// +optional
+	V2FirstCopyDisk string `json:"v2FirstCopyDisk"`
 }
 
 // +genclient

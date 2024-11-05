@@ -99,8 +99,20 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 	}
 
 	if volume.Spec.BackingImage != "" {
-		if _, err := v.ds.GetBackingImage(volume.Spec.BackingImage); err != nil {
+		backingImage, err := v.ds.GetBackingImage(volume.Spec.BackingImage)
+		if err != nil {
 			return werror.NewInvalidError(err.Error(), "")
+		}
+		if backingImage != nil {
+			if backingImage.Spec.DataEngine != volume.Spec.DataEngine {
+				return werror.NewInvalidError("volume should have the same data engine as the backing image", "")
+			}
+		}
+		// For qcow2 files, VirtualSize may be larger than the physical image size on disk.
+		// For raw files, `qemu-img info` will report VirtualSize as being the same as the physical file size.
+		// Volume size should not be smaller than the backing image size.
+		if volume.Spec.Size < backingImage.Status.VirtualSize {
+			return werror.NewInvalidError("volume size should be larger than the backing image size", "")
 		}
 	}
 
@@ -157,9 +169,6 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 	if types.IsDataEngineV2(volume.Spec.DataEngine) {
 		if volume.Spec.Encrypted {
 			return werror.NewInvalidError("encrypted volume is not supported for data engine v2", "")
-		}
-		if volume.Spec.BackingImage != "" {
-			return werror.NewInvalidError("backing image is not supported for data engine v2", "")
 		}
 		if types.IsDataFromVolume(volume.Spec.DataSource) {
 			return werror.NewInvalidError("clone is not supported for data engine v2", "")

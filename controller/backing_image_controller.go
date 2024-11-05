@@ -2,7 +2,11 @@ package controller
 
 import (
 	"fmt"
+	"net"
+	"net/url"
 	"reflect"
+	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/pkg/errors"
@@ -12,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/controller"
 
 	corev1 "k8s.io/api/core/v1"
@@ -23,6 +28,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -45,6 +51,10 @@ type BackingImageController struct {
 	ds *datastore.DataStore
 
 	cacheSyncs []cache.InformerSynced
+
+	v2CopyBackoff *flowcontrol.Backoff
+
+	proxyConnCounter util.Counter
 }
 
 func NewBackingImageController(
@@ -52,7 +62,8 @@ func NewBackingImageController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
-	namespace string, controllerID, serviceAccount, backingImageManagerImage string) (*BackingImageController, error) {
+	namespace string, controllerID, serviceAccount, backingImageManagerImage string,
+	proxyConnCounter util.Counter) (*BackingImageController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -71,6 +82,10 @@ func NewBackingImageController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-backing-image-controller"}),
 
 		ds: ds,
+
+		v2CopyBackoff: flowcontrol.NewBackOff(time.Minute, time.Minute*5),
+
+		proxyConnCounter: proxyConnCounter,
 	}
 
 	var err error
@@ -116,6 +131,15 @@ func NewBackingImageController(
 		return nil, err
 	}
 	bic.cacheSyncs = append(bic.cacheSyncs, ds.NodeInformer.HasSynced)
+
+	if _, err = ds.InstanceManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		AddFunc:    bic.enqueueBackingImageForInstanceManagerUpdate,
+		UpdateFunc: func(old, cur interface{}) { bic.enqueueBackingImageForInstanceManagerUpdate(cur) },
+		DeleteFunc: bic.enqueueBackingImageForInstanceManagerUpdate,
+	}, 0); err != nil {
+		return nil, err
+	}
+	bic.cacheSyncs = append(bic.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
 
 	return bic, nil
 }
@@ -221,26 +245,6 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 		log.Infof("Backing image got new owner %v", bic.controllerID)
 	}
 
-	if backingImage.DeletionTimestamp != nil {
-		replicas, err := bic.ds.ListReplicasByBackingImage(backingImage.Name)
-		if err != nil {
-			return err
-		}
-		if len(replicas) != 0 {
-			log.Warn("Waiting for all replicas stopping using this backing image before removing the finalizer")
-			return nil
-		}
-		if _, err := bic.IsBackingImageDataSourceCleaned(backingImage); err != nil {
-			log.WithError(err).Warn("Waiting until backing image data source is cleaned before removing the finalizer")
-			return nil
-		}
-		log.Info("Cleaning up the record for backing image managers and remove the finalizer")
-		if err := bic.cleanupBackingImageManagers(backingImage); err != nil {
-			return err
-		}
-		return bic.ds.RemoveFinalizerForBackingImage(backingImage)
-	}
-
 	// UUID is immutable once it's set.
 	// Should make sure UUID is not empty before syncing with other resources.
 	if backingImage.Status.UUID == "" {
@@ -276,6 +280,39 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 		}
 	}()
 
+	if backingImage.DeletionTimestamp != nil {
+		replicas, err := bic.ds.ListReplicasByBackingImage(backingImage.Name)
+		if err != nil {
+			return err
+		}
+		if len(replicas) != 0 {
+			log.Warn("Waiting for all replicas stopping using this backing image before removing the finalizer")
+			return nil
+		}
+		if _, err := bic.IsBackingImageDataSourceCleaned(backingImage); err != nil {
+			log.WithError(err).Warn("Waiting until backing image data source is cleaned before removing the finalizer")
+			return nil
+		}
+		log.Info("Cleaning up the record for backing image managers and remove the finalizer")
+		if err := bic.cleanupBackingImageManagers(backingImage); err != nil {
+			return err
+		}
+
+		// delete all the v2 backing image in the instance-manager
+		if types.IsDataEngineV2(backingImage.Spec.DataEngine) {
+			cleaned, err := bic.cleanupAllV2BackingImageCopies(backingImage)
+			if err != nil {
+				return err
+			}
+			if !cleaned {
+				log.Warn("Waiting until all v2 backing image copies are cleaned up before removing the finalizer")
+				return nil
+			}
+		}
+
+		return bic.ds.RemoveFinalizerForBackingImage(backingImage)
+	}
+
 	if backingImage.Status.DiskFileStatusMap == nil {
 		backingImage.Status.DiskFileStatusMap = map[string]*longhorn.BackingImageDiskFileStatus{}
 	}
@@ -310,10 +347,451 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 
 	bic.cleanupEvictionRequestedBackingImageCopies(backingImage)
 
+	if types.IsDataEngineV2(backingImage.Spec.DataEngine) {
+		return bic.handleV2BackingImage(backingImage)
+	}
+
+	return nil
+}
+
+func (bic *BackingImageController) handleV2BackingImage(bi *longhorn.BackingImage) (err error) {
+	if err := bic.prepareFirstV2Copy(bi); err != nil {
+		return errors.Wrapf(err, "failed to prepare the first v2 backing image")
+	}
+
+	if err := bic.syncV2StatusWithInstanceManager(bi); err != nil {
+		return errors.Wrapf(err, "failed to sync v2 backing image status from instance manager")
+	}
+
+	if err := bic.deleteInvalidV2Copy(bi); err != nil {
+		return errors.Wrapf(err, "failed to delete invalid v2 backing image")
+	}
+
+	if err := bic.prepareV2Copy(bi); err != nil {
+		return errors.Wrapf(err, "failed to prepare v2 backing image")
+	}
+
+	return nil
+}
+
+func (bic *BackingImageController) isFirstV2CopyInState(bi *longhorn.BackingImage, state longhorn.BackingImageState) bool {
+	if bi.Status.V2FirstCopyDisk != "" && bi.Status.V2FirstCopyStatus == state {
+		return true
+	}
+
+	if bi.Status.V2FirstCopyDisk != "" {
+		if status, exists := bi.Status.DiskFileStatusMap[bi.Status.V2FirstCopyDisk]; exists && status.State == state {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (bic *BackingImageController) cleanupFirstFailedV2Copy(bi *longhorn.BackingImage) (err error) {
+	if bi.Status.V2FirstCopyDisk == "" {
+		return nil
+	}
+
+	log := getLoggerForBackingImage(bic.logger, bi)
+
+	node, _, err := bic.ds.GetReadyDiskNodeRO(bi.Status.V2FirstCopyDisk)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get the ready disk node for disk %v", bi.Status.V2FirstCopyDisk)
+	}
+
+	engineClientProxy, err := bic.getEngineClientProxy(node.Name, longhorn.DataEngineTypeV2, log)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get the engine client proxy for node %v", node.Name)
+	}
+	defer engineClientProxy.Close()
+
+	// clean up the failed first v2 copy
+	err = engineClientProxy.SPDKBackingImageDelete(bi.Name, bi.Status.V2FirstCopyDisk)
+	if err != nil {
+		return errors.Wrapf(err, "failed to delete the failed v2 copy on the disk %v", bi.Status.V2FirstCopyDisk)
+	}
+	delete(bi.Spec.DiskFileSpecMap, bi.Status.V2FirstCopyDisk)
+	delete(bi.Status.DiskFileStatusMap, bi.Status.V2FirstCopyDisk)
+	bi.Status.V2FirstCopyDisk = ""
+	bi.Status.V2FirstCopyStatus = longhorn.BackingImageStatePending
+	return nil
+}
+
+func (bic *BackingImageController) deleteAllV1FileCopies(bi *longhorn.BackingImage) {
+	for diskUUID, fileSpec := range bi.Spec.DiskFileSpecMap {
+		if types.IsDataEngineV1(fileSpec.DataEngine) {
+			delete(bi.Spec.DiskFileSpecMap, diskUUID)
+		}
+	}
+}
+
+func (bic *BackingImageController) prepareFirstV2Copy(bi *longhorn.BackingImage) (err error) {
+	log := getLoggerForBackingImage(bic.logger, bi)
+
+	// The preparation state transition: Pending -> InProgress -> Ready/Failed
+	// we retry when failed by deleting the failed copy and cleanup the state.
+
+	// If the first v2 copy is ready, we can delete all the v1 file copies and return.
+	isPrepared := bic.isFirstV2CopyInState(bi, longhorn.BackingImageStateReady)
+	if isPrepared {
+		bi.Status.V2FirstCopyStatus = longhorn.BackingImageStateReady
+		bic.deleteAllV1FileCopies(bi)
+		bic.v2CopyBackoff.DeleteEntry(bi.Status.V2FirstCopyDisk)
+		return nil
+	}
+
+	// If the first v2 copy is failed, we cleanup the failed copy and retry the preparation.
+	// If the first v2 copy is in unknown, that means the instance manager may crahsh when creating the first v2 copy.
+	// We cleanup the unknown copy and retry the preparation.
+	isFailedToPrepare := bic.isFirstV2CopyInState(bi, longhorn.BackingImageStateFailed)
+	isUnknown := bic.isFirstV2CopyInState(bi, longhorn.BackingImageStateUnknown)
+	if isFailedToPrepare || isUnknown {
+		bi.Status.V2FirstCopyStatus = longhorn.BackingImageStateFailed
+		return bic.cleanupFirstFailedV2Copy(bi)
+	}
+
+	// If the first v2 copy is in progress, we wait for the next reconciliation
+	isInProgress := bic.isFirstV2CopyInState(bi, longhorn.BackingImageStateInProgress)
+	if isInProgress {
+		bi.Status.V2FirstCopyStatus = longhorn.BackingImageStateInProgress
+		bi.Spec.DiskFileSpecMap[bi.Status.V2FirstCopyDisk] = &longhorn.BackingImageDiskFileSpec{DataEngine: longhorn.DataEngineTypeV2}
+		return nil
+	}
+
+	// Wait for the first v1 file to be ready.
+	bids, err := bic.ds.GetBackingImageDataSource(bi.Name)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Warn("Backing image data source not found when preparing first v2 copy, reconcile later")
+			return nil
+		}
+		return errors.Wrap(err, "failed to get the backing image data source when preparing first v2 copy")
+	}
+	if !bids.Spec.FileTransferred {
+		log.Info("Backing image data source has not prepared the first v1 file, reconcile later")
+		return nil
+	}
+	firstV1FileDiskUUID := bids.Spec.DiskUUID
+	if status, exists := bi.Status.DiskFileStatusMap[firstV1FileDiskUUID]; exists && status.State != longhorn.BackingImageStateReady {
+		log.Infof("The first v1 file copy is not ready, reconcile later")
+		return nil
+	}
+
+	firstV2CopyNode, firstV2CopyDiskName, err := bic.findReadyNodeAndDiskForFirstV2Copy(bi, firstV1FileDiskUUID, log)
+	if err != nil {
+		return errors.Wrap(err, "failed to find a ready disk for the first v2 backing image copy")
+	}
+
+	firstV2CopyNodeName := firstV2CopyNode.Name
+	firstV2CopyDiskUUID := firstV2CopyNode.Status.DiskStatus[firstV2CopyDiskName].DiskUUID
+	log.Infof("Found the ready node %v disk %v for the first v2 backing image copy", firstV2CopyNodeName, firstV2CopyDiskUUID)
+
+	if bic.v2CopyBackoff.IsInBackOffSinceUpdate(firstV2CopyDiskUUID, time.Now()) {
+		log.Debugf("Skip preparing first v2 backing image copy to disk %v since it is still in the backoff window", firstV2CopyDiskUUID)
+		return nil
+	}
+
+	// Get proxy client for creating v2 backing image copy
+	engineClientProxy, err := bic.getEngineClientProxy(firstV2CopyNodeName, longhorn.DataEngineTypeV2, log)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get the engine client proxy for node %v", firstV2CopyNodeName)
+	}
+	defer engineClientProxy.Close()
+
+	// Create v2 backing image copy by downloading the data from first file copy
+	fileDownloadAddress, err := bic.getFileDownloadAddress(bi, firstV1FileDiskUUID)
+	if err != nil {
+		return errors.Wrap(err, "failed to get the v1 file download address when preparing first v2 copy")
+	}
+	_, err = engineClientProxy.SPDKBackingImageCreate(bi.Name, bi.Status.UUID, firstV2CopyDiskUUID, bi.Status.Checksum, fileDownloadAddress, "", uint64(bi.Status.Size))
+	if err != nil {
+		if types.ErrorAlreadyExists(err) {
+			log.Infof("backing image already exists when preparing first v2 copy on disk %v", firstV2CopyDiskUUID)
+		}
+		bic.v2CopyBackoff.Next(firstV2CopyDiskUUID, time.Now())
+		return errors.Wrapf(err, "failed to create backing image on disk %v when preparing first v2 copy for backing image %v", firstV2CopyDiskUUID, bi.Name)
+	}
+
+	bi.Status.V2FirstCopyDisk = firstV2CopyDiskUUID
+	bi.Status.V2FirstCopyStatus = longhorn.BackingImageStateInProgress
+	bic.v2CopyBackoff.Next(firstV2CopyDiskUUID, time.Now())
+	return nil
+}
+
+func (bic *BackingImageController) getFileDownloadAddress(bi *longhorn.BackingImage, diskUUID string) (string, error) {
+	bimName := types.GetBackingImageManagerName(bic.bimImageName, diskUUID)
+	bim, err := bic.ds.GetBackingImageManager(bimName)
+	if err != nil {
+		return "", err
+	}
+	bimCli, err := engineapi.NewBackingImageManagerClient(bim)
+	if err != nil {
+		return "", err
+	}
+	// get the file download address of sync server in the backing image manager
+	filePath, addr, err := bimCli.PrepareDownload(bi.Name, bi.Status.UUID)
+	if err != nil {
+		return "", err
+	}
+
+	fileDownloadAddress := fmt.Sprintf("http://%s/v1/files/%s/download", addr, url.PathEscape(filePath))
+	return fileDownloadAddress, nil
+}
+
+func (bic *BackingImageController) deleteInvalidV2Copy(bi *longhorn.BackingImage) (err error) {
+	log := getLoggerForBackingImage(bic.logger, bi)
+
+	if bi.Status.V2FirstCopyStatus != longhorn.BackingImageStateReady {
+		return nil
+	}
+
+	v2CopiesUnknown := []string{}
+	v2CopiesFailed := []string{}
+	missingSpecV2Copies := []string{}
+	hasReadyV2BackingImage := false
+
+	for v2DiskUUID, copyStatus := range bi.Status.DiskFileStatusMap {
+		// only handle v2 copy in this function
+		if types.IsDataEngineV1(copyStatus.DataEngine) {
+			continue
+		}
+
+		// Delete the v2 copy if the spec record is removed
+		if _, exists := bi.Spec.DiskFileSpecMap[v2DiskUUID]; !exists {
+			missingSpecV2Copies = append(missingSpecV2Copies, v2DiskUUID)
+			continue
+		}
+
+		if copyStatus.State == longhorn.BackingImageStateReady {
+			hasReadyV2BackingImage = true
+			continue
+		}
+
+		if copyStatus.State == longhorn.BackingImageStateFailed {
+			v2CopiesFailed = append(v2CopiesFailed, v2DiskUUID)
+			continue
+		}
+		if copyStatus.State == longhorn.BackingImageStateUnknown {
+			v2CopiesUnknown = append(v2CopiesUnknown, v2DiskUUID)
+			continue
+		}
+	}
+
+	if err := bic.cleanupMissingSpecV2Copies(bi, missingSpecV2Copies, log); err != nil {
+		return errors.Wrap(err, "failed to delete the missing spec v2 copies")
+	}
+
+	if err := bic.cleanupUnknownV2Copies(bi, v2CopiesUnknown, hasReadyV2BackingImage, log); err != nil {
+		return errors.Wrap(err, "failed to delete the unknown v2 copies")
+	}
+
+	if err := bic.cleanupFailedV2Copies(bi, v2CopiesFailed, hasReadyV2BackingImage, log); err != nil {
+		return errors.Wrap(err, "failed to delete the failed v2 copies")
+	}
+
+	return nil
+}
+
+func (bic *BackingImageController) cleanupAllV2BackingImageCopies(bi *longhorn.BackingImage) (cleaned bool, err error) {
+	log := getLoggerForBackingImage(bic.logger, bi)
+
+	if err := bic.syncV2StatusWithInstanceManager(bi); err != nil {
+		return false, errors.Wrapf(err, "failed to sync v2 backing image status from instance manager")
+	}
+
+	// we can delete the backing image when all the v2 copies are deleted
+	if len(bi.Status.DiskFileStatusMap) == 0 {
+		return true, nil
+	}
+
+	allV2CopiesCleaned := true
+	for diskUUID := range bi.Status.DiskFileStatusMap {
+		// The v1 backing image file will be cleaned up in cleanupBackingImageManagers
+		if fileSpec, exists := bi.Spec.DiskFileSpecMap[diskUUID]; exists && !types.IsDataEngineV2(fileSpec.DataEngine) {
+			continue
+		}
+
+		allV2CopiesCleaned = false
+
+		node, _, err := bic.ds.GetReadyDiskNodeRO(diskUUID)
+		if err != nil {
+			return false, errors.Wrapf(err, "failed to get the ready disk node for disk %v", diskUUID)
+		}
+
+		log.Infof("Deleting the v2 copy on node %v disk %v for backing image %v", node.Name, diskUUID, bi.Name)
+		if err := bic.deleteV2Copy(bi, diskUUID, node, log); err != nil {
+			return false, errors.Wrapf(err, "failed to delete the v2 copy on disk %v", diskUUID)
+		}
+
+		delete(bi.Status.DiskFileStatusMap, diskUUID)
+		bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, constant.EventReasonDelete, "Deleted v2 backing image %v on disk %v on node %v", bi.Name, diskUUID, node.Name)
+	}
+	// only return true when there is no v2 disk file status after syncing the status from instance manager
+	return allV2CopiesCleaned, nil
+}
+
+func (bic *BackingImageController) prepareV2Copy(bi *longhorn.BackingImage) (err error) {
+	log := getLoggerForBackingImage(bic.logger, bi)
+
+	if bi.Status.V2FirstCopyStatus != longhorn.BackingImageStateReady {
+		return nil
+	}
+
+	readyV2CopyDiskUUIDs := []string{}
+	requireV2CopyDiskUUIDs := []string{}
+
+	for v2DiskUUID := range bi.Spec.DiskFileSpecMap {
+		biStatus, exists := bi.Status.DiskFileStatusMap[v2DiskUUID]
+		if exists {
+			if biStatus.State == longhorn.BackingImageStateReady {
+				readyV2CopyDiskUUIDs = append(readyV2CopyDiskUUIDs, v2DiskUUID)
+			}
+			if backingImageInProgress(biStatus.State) {
+				log.Info("There is one v2 backing image copy in progress, prepare the backing image one at a time")
+				return nil
+			}
+		} else {
+			requireV2CopyDiskUUIDs = append(requireV2CopyDiskUUIDs, v2DiskUUID)
+		}
+	}
+
+	if len(readyV2CopyDiskUUIDs) == 0 {
+		log.Infof("Only sync the backing image to other disks when there is one ready v2 backing image copy")
+		return nil
+	}
+
+	sourceV2DiskUUID := readyV2CopyDiskUUIDs[0]
+	// Only sync one backing image copy at a time, so we can control the concurrent limit of syncing for the backing image manager.
+	for _, v2DiskUUID := range requireV2CopyDiskUUIDs {
+		if bic.v2CopyBackoff.IsInBackOffSinceUpdate(v2DiskUUID, time.Now()) {
+			log.Debugf("Skip syncing backing image copy to disk %v immediately since it is still in the backoff window", v2DiskUUID)
+			continue
+		}
+
+		node, _, err := bic.ds.GetReadyDiskNodeRO(v2DiskUUID)
+		if err != nil {
+			bic.v2CopyBackoff.Next(v2DiskUUID, time.Now())
+			return errors.Wrapf(err, "failed to get the ready disk node for disk %v", v2DiskUUID)
+		}
+
+		if err := bic.syncV2Copies(bi, sourceV2DiskUUID, v2DiskUUID, node, log); err != nil {
+			return errors.Wrapf(err, "failed to sync the backing image to disk %v", v2DiskUUID)
+		}
+
+		// To prevent it from requesting the same disk again, the status will be updated later based on the status from the instance manager
+		bi.Status.DiskFileStatusMap[v2DiskUUID] = &longhorn.BackingImageDiskFileStatus{
+			State: longhorn.BackingImageStateInProgress,
+		}
+		bic.v2CopyBackoff.Next(v2DiskUUID, time.Now())
+		bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, constant.EventReasonCreate, "Created v2 backing image %v on disk %v on node %v", bi.Name, v2DiskUUID, node.Name)
+		return nil
+	}
+
+	return nil
+}
+
+// ExtractBackingImageAndDiskUUID extracts the BackingImageName and DiskUUID from the string pattern "bi-${BackingImageName}-disk-${DiskUUID}"
+func extractBackingImageAndDiskUUID(biNameDiskUUID string) (string, string, error) {
+	// Define the regular expression pattern
+	// This captures the BackingImageName and DiskUUID while allowing for hyphens in both.
+	re := regexp.MustCompile(`^bi-([a-zA-Z0-9-]+)-disk-([a-zA-Z0-9-]+)$`)
+
+	// Try to find a match
+	matches := re.FindStringSubmatch(biNameDiskUUID)
+	if matches == nil {
+		return "", "", fmt.Errorf("biNameDiskUUID does not match the expected pattern")
+	}
+
+	// Extract BackingImageName and DiskUUID from the matches
+	backingImageName := matches[1]
+	diskUUID := matches[2]
+
+	return backingImageName, diskUUID, nil
+}
+
+func (bic *BackingImageController) syncV2StatusWithInstanceManager(bi *longhorn.BackingImage) error {
+	ims, err := bic.ds.ListInstanceManagersRO()
+	if err != nil {
+		return err
+	}
+
+	updatedCopyDiskUUIDs := map[string]bool{}
+	for _, im := range ims {
+		if !types.IsDataEngineV2(im.Spec.DataEngine) {
+			continue
+		}
+		if im.DeletionTimestamp != nil {
+			continue
+		}
+
+		// If the instance manager is not in ready state
+		// update the v2 copy in that instance manager to unknown.
+		if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+			continue
+		}
+
+		for biNameDiskUUID, statusInfo := range im.Status.BackingImages {
+			biName, diskUUID, err := extractBackingImageAndDiskUUID(biNameDiskUUID)
+			if err != nil {
+				logrus.WithError(err).Warnf("failed to parse the backing image name and disk uuid from %v", biNameDiskUUID)
+				continue
+			}
+
+			if biName != bi.Name {
+				continue
+			}
+
+			if statusInfo.UUID != bi.Status.UUID {
+				continue
+			}
+
+			if err := bic.updateStatusWithFileInfo(bi,
+				diskUUID, statusInfo.Message, statusInfo.CurrentChecksum, statusInfo.State, statusInfo.Progress, longhorn.DataEngineTypeV2); err != nil {
+				return err
+			}
+			if statusInfo.Size > 0 {
+				if bi.Status.Size == 0 {
+					bi.Status.Size = statusInfo.Size
+					bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, constant.EventReasonUpdate, "Set size to %v", bi.Status.Size)
+				}
+				if bi.Status.Size != statusInfo.Size {
+					if bi.Status.DiskFileStatusMap[diskUUID].State != longhorn.BackingImageStateFailed {
+						msg := fmt.Sprintf("found mismatching size %v reported by instance manager %v in disk %v, the size recorded in status is %v",
+							statusInfo.Size, im.Name, diskUUID, bi.Status.Size)
+						bic.eventRecorder.Eventf(bi, corev1.EventTypeWarning, constant.EventReasonUpdate, msg)
+						bi.Status.DiskFileStatusMap[diskUUID].State = longhorn.BackingImageStateFailed
+						bi.Status.DiskFileStatusMap[diskUUID].Message = msg
+					}
+				}
+			}
+
+			updatedCopyDiskUUIDs[diskUUID] = true
+		}
+	}
+
+	for diskUUID, copyStatus := range bi.Status.DiskFileStatusMap {
+		// only handle v2 copies
+		if fileSpec, exists := bi.Spec.DiskFileSpecMap[diskUUID]; exists && !types.IsDataEngineV2(fileSpec.DataEngine) {
+			continue
+		}
+
+		if copyStatus.State == longhorn.BackingImageStateReady {
+			bic.v2CopyBackoff.DeleteEntry(diskUUID)
+		}
+
+		// Update the status to unknown if the instance manager is unknown or the status is not found from the instance manager
+		if _, exists := updatedCopyDiskUUIDs[diskUUID]; !exists {
+			bi.Status.DiskFileStatusMap[diskUUID].State = longhorn.BackingImageStateUnknown
+			bi.Status.DiskFileStatusMap[diskUUID].Message = "The copy status is unknown because the status is not found from the instance manager"
+		}
+	}
 	return nil
 }
 
 func (bic *BackingImageController) replenishBackingImageCopies(bi *longhorn.BackingImage) (err error) {
+	biDataEngine := bi.Spec.DataEngine
+
 	bids, err := bic.ds.GetBackingImageDataSource(bi.Name)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -321,9 +799,16 @@ func (bic *BackingImageController) replenishBackingImageCopies(bi *longhorn.Back
 		}
 		return errors.Wrap(err, "failed to get the backing image data source")
 	}
-	// only maintain the minNumberOfReplicas after BackingImage is transferred to BackingImageManager
+	// Only maintain the minNumberOfReplicas after BackingImage is transferred to BackingImageManager
 	if !bids.Spec.FileTransferred {
 		return nil
+	}
+
+	// Only maintain the minNumberOfReplicas after v2 BackingImage is prepared
+	if types.IsDataEngineV2(bi.Spec.DataEngine) {
+		if bi.Status.V2FirstCopyDisk == "" || bi.Status.V2FirstCopyStatus != longhorn.BackingImageStateReady {
+			return nil
+		}
 	}
 
 	concurrentReplenishLimit, err := bic.ds.GetSettingAsInt(types.SettingNameConcurrentBackingImageCopyReplenishPerNodeLimit)
@@ -362,14 +847,16 @@ func (bic *BackingImageController) replenishBackingImageCopies(bi *longhorn.Back
 		}
 
 		if nonEvictingCount < bi.Spec.MinNumberOfCopies {
-			readyNode, readyDiskName, err := bic.ds.GetReadyNodeDiskForBackingImage(bi)
+			readyNode, readyDiskName, err := bic.ds.GetReadyNodeDiskForBackingImage(bi, biDataEngine, nil)
 			logrus.Infof("replicate the copy to node: %v, disk: %v", readyNode, readyDiskName)
 			if err != nil {
 				logrus.WithError(err).Warnf("failed to create the backing image copy")
 				return nil
 			}
 			// BackingImageManager will then sync the BackingImage to the disk
-			bi.Spec.DiskFileSpecMap[readyNode.Status.DiskStatus[readyDiskName].DiskUUID] = &longhorn.BackingImageDiskFileSpec{}
+			bi.Spec.DiskFileSpecMap[readyNode.Status.DiskStatus[readyDiskName].DiskUUID] = &longhorn.BackingImageDiskFileSpec{
+				DataEngine: biDataEngine,
+			}
 		}
 	}
 
@@ -523,7 +1010,9 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 		}
 
 		if !foundReadyDisk {
-			readyNode, readyDiskName, err := bic.ds.GetReadyNodeDiskForBackingImage(bi)
+			// Backing image data source is only used for v1 backing image.
+			// For v2, we will wait until the first v1 backing image file is ready in the backing image manager then download from it.
+			readyNode, readyDiskName, err := bic.ds.GetReadyNodeDiskForBackingImage(bi, longhorn.DataEngineTypeV1, nil)
 			if err != nil {
 				return err
 			}
@@ -652,6 +1141,12 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 			bids.Spec.NodeID = ""
 			bids.Spec.DiskUUID = ""
 			bids.Spec.DiskPath = ""
+
+			if types.IsDataEngineV2(bi.Spec.DataEngine) {
+				log.Info("Prepare to re-prepare the first v2 copy")
+				bi.Status.V2FirstCopyDisk = ""
+				bi.Status.V2FirstCopyStatus = longhorn.BackingImageStatePending
+			}
 		default:
 			log.Warnf("Failed to recover backing image after all existing files becoming unavailable, since the data source with type %v doesn't support restarting", bids.Spec.SourceType)
 		}
@@ -663,7 +1158,7 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 		changeNodeDisk := err != nil || node.Name != bids.Spec.NodeID || node.Spec.Disks[diskName].Path != bids.Spec.DiskPath || node.Status.DiskStatus[diskName].DiskUUID != bids.Spec.DiskUUID
 		if changeNodeDisk {
 			log.Warn("Backing image data source current node and disk is not ready, need to switch to another ready node and disk")
-			readyNode, readyDiskName, err := bic.ds.GetReadyNodeDiskForBackingImage(bi)
+			readyNode, readyDiskName, err := bic.ds.GetReadyNodeDiskForBackingImage(bi, longhorn.DataEngineTypeV1, nil)
 			if err != nil {
 				return err
 			}
@@ -701,7 +1196,12 @@ func (bic *BackingImageController) handleBackingImageManagers(bi *longhorn.Backi
 		return err
 	}
 
-	for diskUUID := range bi.Spec.DiskFileSpecMap {
+	for diskUUID, fileSpec := range bi.Spec.DiskFileSpecMap {
+		// v2 backing image is not managed by backing image manager
+		if types.IsDataEngineV2(fileSpec.DataEngine) {
+			continue
+		}
+
 		noDefaultBIM := true
 		requiredBIs := map[string]string{}
 
@@ -777,7 +1277,7 @@ func (bic *BackingImageController) syncBackingImageFileInfo(bi *longhorn.Backing
 			bi.Status.Size = bids.Status.Size
 		}
 		if err := bic.updateStatusWithFileInfo(bi,
-			bids.Spec.DiskUUID, bids.Status.Message, bids.Status.Checksum, bids.Status.CurrentState, bids.Status.Progress); err != nil {
+			bids.Spec.DiskUUID, bids.Status.Message, bids.Status.Checksum, bids.Status.CurrentState, bids.Status.Progress, longhorn.DataEngineTypeV1); err != nil {
 			return err
 		}
 	}
@@ -807,7 +1307,7 @@ func (bic *BackingImageController) syncBackingImageFileInfo(bi *longhorn.Backing
 		}
 		currentDiskFiles[bim.Spec.DiskUUID] = struct{}{}
 		if err := bic.updateStatusWithFileInfo(bi,
-			bim.Spec.DiskUUID, info.Message, info.CurrentChecksum, info.State, info.Progress); err != nil {
+			bim.Spec.DiskUUID, info.Message, info.CurrentChecksum, info.State, info.Progress, longhorn.DataEngineTypeV1); err != nil {
 			return err
 		}
 		if info.Size > 0 {
@@ -857,13 +1357,21 @@ func (bic *BackingImageController) syncBackingImageFileInfo(bi *longhorn.Backing
 		}
 	}
 
-	for diskUUID := range bi.Status.DiskFileStatusMap {
+	for diskUUID, fileStatus := range bi.Status.DiskFileStatusMap {
+		// only handle v1 file status in this function
+		if types.IsDataEngineV2(fileStatus.DataEngine) {
+			continue
+		}
 		if _, exists := currentDiskFiles[diskUUID]; !exists {
 			delete(bi.Status.DiskFileStatusMap, diskUUID)
 		}
 	}
 
-	for diskUUID := range bi.Status.DiskFileStatusMap {
+	for diskUUID, fileStatus := range bi.Status.DiskFileStatusMap {
+		// only handle v1 file status in this function
+		if types.IsDataEngineV2(fileStatus.DataEngine) {
+			continue
+		}
 		if bi.Status.DiskFileStatusMap[diskUUID].LastStateTransitionTime == "" {
 			bi.Status.DiskFileStatusMap[diskUUID].LastStateTransitionTime = util.Now()
 		}
@@ -873,11 +1381,14 @@ func (bic *BackingImageController) syncBackingImageFileInfo(bi *longhorn.Backing
 }
 
 func (bic *BackingImageController) updateStatusWithFileInfo(bi *longhorn.BackingImage,
-	diskUUID, message, checksum string, state longhorn.BackingImageState, progress int) error {
+	diskUUID, message, checksum string, state longhorn.BackingImageState, progress int, dataEngine longhorn.DataEngineType) error {
 	log := getLoggerForBackingImage(bic.logger, bi)
 
 	if _, exists := bi.Status.DiskFileStatusMap[diskUUID]; !exists {
-		bi.Status.DiskFileStatusMap[diskUUID] = &longhorn.BackingImageDiskFileStatus{}
+		// status from backing-image-manager and backing-image-data-source will be v1 disk
+		bi.Status.DiskFileStatusMap[diskUUID] = &longhorn.BackingImageDiskFileStatus{
+			DataEngine: dataEngine,
+		}
 	}
 	if bi.Status.DiskFileStatusMap[diskUUID].State != state {
 		bi.Status.DiskFileStatusMap[diskUUID].LastStateTransitionTime = util.Now()
@@ -986,6 +1497,10 @@ func (bic *BackingImageController) enqueueBackingImageForBackingImageDataSource(
 	bic.enqueueBackingImage(obj)
 }
 
+func (bic *BackingImageController) enqueueBackingImageForInstanceManagerUpdate(obj interface{}) {
+	bic.enqueueBackingImage(obj)
+}
+
 func (bic *BackingImageController) enqueueBackingImageForNodeUpdate(oldObj, currObj interface{}) {
 	oldNode, ok := oldObj.(*longhorn.Node)
 	if !ok {
@@ -1080,4 +1595,187 @@ func (bic *BackingImageController) findReadyNodeAndDiskForClone(bi *longhorn.Bac
 		return nil, "", fmt.Errorf("failed to find one ready source backing image %v during cloning", sourceBackingImageName)
 	}
 	return readyNode, readyDiskName, nil
+}
+
+// For first v2 copy, we choose the same node and disk as the v1 file first to reduce the network overhead.
+// If not found, we will fallback to use random v2 disk
+func (bic *BackingImageController) findReadyNodeAndDiskForFirstV2Copy(bi *longhorn.BackingImage, firstV1FileDiskUUID string, log logrus.FieldLogger) (*longhorn.Node, string, error) {
+	node, _, err := bic.ds.GetReadyDiskNodeRO(firstV1FileDiskUUID)
+	if err != nil {
+		return nil, "", errors.Wrapf(err, "failed to get the ready disk node for first v2 file disk %v", firstV1FileDiskUUID)
+	}
+	nodeList := []*longhorn.Node{node}
+	firstV2CopyNode, firstV2CopyDiskName, err := bic.ds.GetReadyNodeDiskForBackingImage(bi, longhorn.DataEngineTypeV2, nodeList)
+	if err == nil {
+		return firstV2CopyNode, firstV2CopyDiskName, nil
+	}
+
+	log.WithError(err).Warnf("Failed to find a ready v2 disk on the same node %v as v1 file for the first v2 copy, will fallback to use random v2 disk", node.Name)
+
+	firstV2CopyNode, firstV2CopyDiskName, err = bic.ds.GetReadyNodeDiskForBackingImage(bi, longhorn.DataEngineTypeV2, nil)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return firstV2CopyNode, firstV2CopyDiskName, nil
+}
+
+func (bic *BackingImageController) getEngineClientProxy(nodeName string, dataEngineType longhorn.DataEngineType, log logrus.FieldLogger) (engineapi.EngineClientProxy, error) {
+	instanceManager, err := bic.ds.GetRunningInstanceManagerByNodeRO(nodeName, dataEngineType)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get the default instance manager for node %v", nodeName)
+	}
+	engineClientProxy, err := engineapi.NewEngineClientProxy(instanceManager, log, bic.proxyConnCounter)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get the engine client proxy for instance manager %v", instanceManager.Name)
+	}
+	return engineClientProxy, nil
+}
+
+func (bic *BackingImageController) syncV2Copies(bi *longhorn.BackingImage, sourceV2DiskUUID, v2DiskUUID string, node *longhorn.Node, log logrus.FieldLogger) (err error) {
+	engineClientProxy, err := bic.getEngineClientProxy(node.Name, longhorn.DataEngineTypeV2, log)
+	if err != nil {
+		bic.v2CopyBackoff.Next(v2DiskUUID, time.Now())
+		return errors.Wrapf(err, "failed to get the engine client proxy for node %v", node.Name)
+	}
+	defer engineClientProxy.Close()
+
+	log.Infof("Syncing the backing image to disk %v for backing image %v from disk: %v", v2DiskUUID, bi.Name, sourceV2DiskUUID)
+
+	srcNode, _, err := bic.ds.GetReadyDiskNodeRO(sourceV2DiskUUID)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get the ready disk node for disk %v", v2DiskUUID)
+	}
+	srcInstanceManager, err := bic.ds.GetRunningInstanceManagerByNodeRO(srcNode.Name, longhorn.DataEngineTypeV2)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get the default instance manager for node %v", node.Name)
+	}
+
+	// Create the backing image by syncing the backing image data from the SPDK server inside the instance manager holding the source disk
+	_, err = engineClientProxy.SPDKBackingImageCreate(bi.Name, bi.Status.UUID, v2DiskUUID, bi.Status.Checksum, net.JoinHostPort(srcInstanceManager.Status.IP, strconv.Itoa(engineapi.InstanceManagerSpdkServiceDefaultPort)), sourceV2DiskUUID, uint64(bi.Status.Size))
+	if err != nil {
+		bic.v2CopyBackoff.Next(v2DiskUUID, time.Now())
+		return errors.Wrapf(err, "failed to create the v2 backing image on diskUUID %v", v2DiskUUID)
+	}
+
+	return nil
+}
+
+func (bic *BackingImageController) cleanupMissingSpecV2Copies(bi *longhorn.BackingImage, missingSpecV2Copies []string, log logrus.FieldLogger) (err error) {
+	for _, v2DiskUUID := range missingSpecV2Copies {
+		node, _, err := bic.ds.GetReadyDiskNodeRO(v2DiskUUID)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get the ready disk node for disk %v", v2DiskUUID)
+		}
+
+		log.Infof("Deleting the missing spec v2 copy on disk %v", v2DiskUUID)
+		if err := bic.deleteV2Copy(bi, v2DiskUUID, node, log); err != nil {
+			return errors.Wrapf(err, "failed to delete the failed v2 copy on disk %v", v2DiskUUID)
+		}
+
+		delete(bi.Status.DiskFileStatusMap, v2DiskUUID)
+		bic.v2CopyBackoff.DeleteEntry(v2DiskUUID)
+		bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, constant.EventReasonDelete, "Deleted failed v2 backing image %v on disk %v on node %v", bi.Name, v2DiskUUID, node.Name)
+	}
+
+	return nil
+}
+
+func (bic *BackingImageController) cleanupUnknownV2Copies(bi *longhorn.BackingImage, v2CopiesUnknown []string, hasReadyV2BackingImage bool, log logrus.FieldLogger) (err error) {
+	// When the backing image is created on that disk, it is either ready, failed or unknown.
+	// We directly delete the failed v2 copy if there is ready copy
+	// For unknown v2 copy, it can happen in the following case,
+	// 1. If the instance-manager pod is not running or the instance-manager CR is not ready.
+	// 2. Backing image copy has status (ready or failed) before but can't get the ststus now.
+	// 3. Backing image copy is failed to be created on the disk and there is no lvol snapshot and at the same time the node is rebooted.
+	//    It will keeps in unknown state forever because spdk server has no snapshot lvol to pick up to reconstruct the record.
+	// For case 1 and case 2, the status will come back automatically when server pick the snapshot lvol up and reconstruct the record.
+	// We delete the unknown copy only for the case 3 if there is a ready copy so it can be recreated.
+	if !hasReadyV2BackingImage {
+		return nil
+	}
+
+	for _, v2DiskUUID := range v2CopiesUnknown {
+		node, _, err := bic.ds.GetReadyDiskNodeRO(v2DiskUUID)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get the ready disk node for disk %v", v2DiskUUID)
+		}
+
+		isDeleted, err := bic.deleteUnknownV2Copy(bi, v2DiskUUID, node, log)
+		if err != nil {
+			return errors.Wrapf(err, "failed to delete the unknown v2 copy on disk %v", v2DiskUUID)
+		}
+		// lvol is found so we didn't delete the unknown copy
+		if !isDeleted {
+			continue
+		}
+
+		delete(bi.Status.DiskFileStatusMap, v2DiskUUID)
+		bic.v2CopyBackoff.DeleteEntry(v2DiskUUID)
+		bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, constant.EventReasonDelete, "Deleted unknown v2 backing image %v on disk %v on node %v", bi.Name, v2DiskUUID, node.Name)
+	}
+	return nil
+}
+
+func (bic *BackingImageController) cleanupFailedV2Copies(bi *longhorn.BackingImage, v2CopiesFailed []string, hasReadyV2BackingImage bool, log logrus.FieldLogger) (err error) {
+	if !hasReadyV2BackingImage {
+		return nil
+	}
+
+	for _, v2DiskUUID := range v2CopiesFailed {
+		node, _, err := bic.ds.GetReadyDiskNodeRO(v2DiskUUID)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get the ready disk node for disk %v", v2DiskUUID)
+		}
+
+		log.Infof("Deleting the failed v2 copy on disk %v", v2DiskUUID)
+		if err := bic.deleteV2Copy(bi, v2DiskUUID, node, log); err != nil {
+			return errors.Wrapf(err, "failed to delete the failed v2 copy on disk %v", v2DiskUUID)
+		}
+
+		delete(bi.Status.DiskFileStatusMap, v2DiskUUID)
+		bic.v2CopyBackoff.DeleteEntry(v2DiskUUID)
+		bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, constant.EventReasonDelete, "Deleted failed v2 backing image %v on disk %v on node %v", bi.Name, v2DiskUUID, node.Name)
+	}
+	return nil
+}
+
+func (bic *BackingImageController) deleteV2Copy(bi *longhorn.BackingImage, v2DiskUUID string, node *longhorn.Node, log logrus.FieldLogger) (err error) {
+	engineClientProxy, err := bic.getEngineClientProxy(node.Name, longhorn.DataEngineTypeV2, log)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get the engine client proxy for node %v", node.Name)
+	}
+	defer engineClientProxy.Close()
+
+	err = engineClientProxy.SPDKBackingImageDelete(bi.Name, v2DiskUUID)
+	if err != nil {
+		return errors.Wrapf(err, "failed to delete the v2 copy on diskUUID %v", v2DiskUUID)
+	}
+
+	return nil
+}
+
+func (bic *BackingImageController) deleteUnknownV2Copy(bi *longhorn.BackingImage, v2DiskUUID string, node *longhorn.Node, log logrus.FieldLogger) (isDeleted bool, err error) {
+	engineClientProxy, err := bic.getEngineClientProxy(node.Name, longhorn.DataEngineTypeV2, log)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to get the engine client proxy for node %v", node.Name)
+	}
+	defer engineClientProxy.Close()
+
+	// Get will return different error if lvol is found on the disk but the record is not found.
+	// We don't delete the v2 copy in this case
+	_, err = engineClientProxy.SPDKBackingImageGet(bi.Name, v2DiskUUID)
+	if err != nil {
+		if types.ErrorRecordNotFoundButLvolFound(err) {
+			log.Infof("Unknown v2 Copy on disk %v has lvol but no record yet, wait for the server to reconstruct the record.", v2DiskUUID)
+			return false, nil
+		}
+	}
+
+	log.Infof("Deleting the unknown v2 copy on disk %v", v2DiskUUID)
+	err = engineClientProxy.SPDKBackingImageDelete(bi.Name, v2DiskUUID)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to delete the v2 copy on diskUUID %v", v2DiskUUID)
+	}
+	return true, nil
 }

@@ -401,7 +401,10 @@ func (c *BackingImageDataSourceController) syncBackingImage(bids *longhorn.Backi
 
 	if !bids.Spec.FileTransferred {
 		if _, exists := bi.Spec.DiskFileSpecMap[bids.Spec.DiskUUID]; !exists {
-			bi.Spec.DiskFileSpecMap[bids.Spec.DiskUUID] = &longhorn.BackingImageDiskFileSpec{}
+			// backing image data source always prepare the backing image on the v1 disk
+			bi.Spec.DiskFileSpecMap[bids.Spec.DiskUUID] = &longhorn.BackingImageDiskFileSpec{
+				DataEngine: longhorn.DataEngineTypeV1,
+			}
 		}
 	}
 
@@ -690,6 +693,11 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 	for key, value := range bids.Status.RunningParameters {
 		cmd = append(cmd, "--parameters", fmt.Sprintf("%s=%s", key, value))
 	}
+
+	if types.IsDataEngineV2(bi.Spec.DataEngine) {
+		cmd = append(cmd, "--parameters", fmt.Sprintf("%s=%s", longhorn.DataSourceTypeParameterDataEngine, longhorn.DataEngineTypeV2))
+	}
+
 	if bids.Spec.Checksum != "" {
 		cmd = append(cmd, "--checksum", bids.Spec.Checksum)
 	}

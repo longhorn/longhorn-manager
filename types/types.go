@@ -792,6 +792,10 @@ func GetReplicaMountedDataPath(dataPath string) string {
 	return dataPath
 }
 
+func ErrorRecordNotFoundButLvolFound(err error) bool {
+	return strings.Contains(err.Error(), "lvol found")
+}
+
 func ErrorIsNotFound(err error) bool {
 	return strings.Contains(err.Error(), "cannot find")
 }
@@ -1337,4 +1341,12 @@ func MergeStringMaps(baseMap, overwriteMap map[string]string) map[string]string 
 		result[k] = v
 	}
 	return result
+}
+
+func GetBackingImageMonitorName(imName string) string {
+	return fmt.Sprintf("backing-image-monitor-%s", imName)
+}
+
+func GetV2BackingImageWithDiskUUIDName(biName, v2DiskUUID string) string {
+	return fmt.Sprintf("%v-%v", biName, v2DiskUUID)
 }

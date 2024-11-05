@@ -164,6 +164,10 @@ func (b *backingImageMutator) Create(request *admission.Request, newObj runtime.
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/minNumberOfCopies", "value": %v}`, minNumberOfCopies))
 	}
 
+	if string(backingImage.Spec.DataEngine) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataEngine", "value": "%s"}`, longhorn.DataEngineTypeV1))
+	}
+
 	patchOps = append(patchOps, patchOp)
 
 	return patchOps, nil
@@ -235,6 +239,11 @@ func (b *backingImageMutator) Update(request *admission.Request, oldObj runtime.
 			err := fmt.Errorf("changing secret namespace for BackingImage %v is not supported", oldBackingImage.Name)
 			return nil, werror.NewInvalidError(err.Error(), "")
 		}
+	}
+
+	if oldBackingImage.Spec.DataEngine != backingImage.Spec.DataEngine {
+		err := fmt.Errorf("changing data engine for BackingImage %v is not supported", oldBackingImage.Name)
+		return nil, werror.NewInvalidError(err.Error(), "")
 	}
 
 	var patchOps admission.PatchOps
