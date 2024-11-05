@@ -426,8 +426,11 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			bc.syncBackupStatusWithSnapshotCreationTimeAndVolumeSize(volume, backup)
 		}
 
-		if err := bc.backupBackingImage(volume); err != nil {
-			return err
+		// v2 backing image currently doesn't support backup
+		if types.IsDataEngineV1(volume.Spec.DataEngine) {
+			if err := bc.backupBackingImage(volume); err != nil {
+				return err
+			}
 		}
 
 		monitor, err := bc.checkMonitor(backup, volume, backupTarget)

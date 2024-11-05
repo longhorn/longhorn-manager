@@ -63,12 +63,12 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.20.0
 	github.com/longhorn/backing-image-manager v1.8.0-dev-20241215
-	github.com/longhorn/backupstore v0.0.0-20241217122650-1663643255d4
-	github.com/longhorn/go-common-libs v0.0.0-20241217111348-5bad87d5320c
+	github.com/longhorn/backupstore v0.0.0-20241218004307-b75ee1322085
+	github.com/longhorn/go-common-libs v0.0.0-20241218045609-c76c9e237a7d
 	github.com/longhorn/go-iscsi-helper v0.0.0-20241216162435-a9bda5faf8b8
-	github.com/longhorn/go-spdk-helper v0.0.0-20241216160651-bcce92add55b
+	github.com/longhorn/go-spdk-helper v0.0.0-20241218003628-6c9c87b76aa0
 	github.com/longhorn/longhorn-engine v1.8.0-dev-20241215
-	github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241215
+	github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241215.0.20241218065256-ab4c0e0f94fc
 	github.com/longhorn/longhorn-share-manager v1.8.0-dev-20241215
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.20.5
@@ -143,8 +143,8 @@ require (
 	github.com/emicklei/go-restful/v3 v3.12.1 // indirect
 	github.com/evanphx/json-patch v5.9.0+incompatible // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/fsnotify/fsnotify v1.8.0 // indirect
-	github.com/gammazero/deque v0.2.1 // indirect
+	github.com/fsnotify/fsnotify v1.7.0 // indirect
+	github.com/gammazero/deque v1.0.0 // indirect
 	github.com/gammazero/workerpool v1.1.3 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

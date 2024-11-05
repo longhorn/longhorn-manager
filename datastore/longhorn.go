@@ -2924,11 +2924,14 @@ func (s *DataStore) ListReadyNodesContainingEngineImageRO(image string) (map[str
 
 // GetReadyNodeDiskForBackingImage a list of all Node the in the given namespace and
 // returns the first Node && the first Disk of the Node marked with condition ready and allow scheduling
-func (s *DataStore) GetReadyNodeDiskForBackingImage(backingImage *longhorn.BackingImage) (*longhorn.Node, string, error) {
+func (s *DataStore) GetReadyNodeDiskForBackingImage(backingImage *longhorn.BackingImage, dataEngine longhorn.DataEngineType, nodeList []*longhorn.Node) (*longhorn.Node, string, error) {
 	logrus.Info("Preparing to find a random ready node disk")
-	nodes, err := s.ListNodesRO()
-	if err != nil {
-		return nil, "", errors.Wrapf(err, "failed to get random ready node disk")
+	if nodeList == nil {
+		nodes, err := s.ListNodesRO()
+		if err != nil {
+			return nil, "", errors.Wrapf(err, "failed to get random ready node disk")
+		}
+		nodeList = nodes
 	}
 
 	allowEmptyNodeSelectorVolume, err := s.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
@@ -2942,8 +2945,8 @@ func (s *DataStore) GetReadyNodeDiskForBackingImage(backingImage *longhorn.Backi
 	}
 
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	r.Shuffle(len(nodes), func(i, j int) { nodes[i], nodes[j] = nodes[j], nodes[i] })
-	for _, node := range nodes {
+	r.Shuffle(len(nodeList), func(i, j int) { nodeList[i], nodeList[j] = nodeList[j], nodeList[i] })
+	for _, node := range nodeList {
 		if !types.IsSelectorsInTags(node.Spec.Tags, backingImage.Spec.NodeSelector, allowEmptyNodeSelectorVolume) {
 			continue
 		}
@@ -2962,11 +2965,16 @@ func (s *DataStore) GetReadyNodeDiskForBackingImage(backingImage *longhorn.Backi
 			if !types.IsSelectorsInTags(diskSpec.Tags, backingImage.Spec.DiskSelector, allowEmptyDiskSelectorVolume) {
 				continue
 			}
-			if _, exists := backingImage.Spec.DiskFileSpecMap[diskStatus.DiskUUID]; exists {
-				continue
+			if types.IsDataEngineV2(dataEngine) {
+				if diskSpec.Type != longhorn.DiskTypeBlock {
+					continue
+				}
+			} else {
+				if diskSpec.Type != longhorn.DiskTypeFilesystem {
+					continue
+				}
 			}
-			// TODO: Jack add block type disk for spdk version BackingImage
-			if diskSpec.Type != longhorn.DiskTypeFilesystem {
+			if _, exists := backingImage.Spec.DiskFileSpecMap[diskStatus.DiskUUID]; exists {
 				continue
 			}
 			if !diskSpec.AllowScheduling {
@@ -3716,7 +3724,7 @@ func (s *DataStore) CheckInstanceManagersReadiness(dataEngine longhorn.DataEngin
 	for _, node := range nodes {
 		var instanceManager *longhorn.InstanceManager
 
-		if dataEngine == longhorn.DataEngineTypeV2 {
+		if types.IsDataEngineV2(dataEngine) {
 			instanceManager, err = s.GetRunningInstanceManagerByNodeRO(node, dataEngine)
 		} else {
 			instanceManager, err = s.GetDefaultInstanceManagerByNodeRO(node, dataEngine)
@@ -5724,7 +5732,7 @@ func IsSupportedVolumeSize(dataEngine longhorn.DataEngineType, fsType string, vo
 // IsDataEngineEnabled returns true if the given dataEngine is enabled
 func (s *DataStore) IsDataEngineEnabled(dataEngine longhorn.DataEngineType) (bool, error) {
 	dataEngineSetting := types.SettingNameV1DataEngine
-	if dataEngine == longhorn.DataEngineTypeV2 {
+	if types.IsDataEngineV2(dataEngine) {
 		dataEngineSetting = types.SettingNameV2DataEngine
 	}
 

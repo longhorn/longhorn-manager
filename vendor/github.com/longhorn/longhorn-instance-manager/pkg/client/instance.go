@@ -95,9 +95,10 @@ type EngineCreateRequest struct {
 }
 
 type ReplicaCreateRequest struct {
-	DiskName       string
-	DiskUUID       string
-	ExposeRequired bool
+	DiskName         string
+	DiskUUID         string
+	ExposeRequired   bool
+	BackingImageName string
 }
 
 type InstanceCreateRequest struct {
@@ -152,10 +153,11 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 			}
 		case types.InstanceTypeReplica:
 			spdkInstanceSpec = &rpc.SpdkInstanceSpec{
-				Size:           req.Size,
-				DiskName:       req.Replica.DiskName,
-				DiskUuid:       req.Replica.DiskUUID,
-				ExposeRequired: req.Replica.ExposeRequired,
+				Size:             req.Size,
+				DiskName:         req.Replica.DiskName,
+				DiskUuid:         req.Replica.DiskUUID,
+				ExposeRequired:   req.Replica.ExposeRequired,
+				BackingImageName: req.Replica.BackingImageName,
 			}
 		default:
 			return nil, fmt.Errorf("failed to create instance: invalid instance type %v", req.InstanceType)

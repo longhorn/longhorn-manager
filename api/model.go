@@ -272,6 +272,7 @@ type BackingImage struct {
 	NodeSelector      []string          `json:"nodeSelector"`
 	MinNumberOfCopies int               `json:"minNumberOfCopies"`
 	ExpectedChecksum  string            `json:"expectedChecksum"`
+	DataEngine        string            `json:"dataEngine"`
 
 	DiskFileStatusMap map[string]longhorn.BackingImageDiskFileStatus `json:"diskFileStatusMap"`
 	Size              int64                                          `json:"size"`
@@ -2050,6 +2051,7 @@ func toBackingImageResource(bi *longhorn.BackingImage, apiContext *api.ApiContex
 		MinNumberOfCopies: bi.Spec.MinNumberOfCopies,
 		NodeSelector:      bi.Spec.NodeSelector,
 		DiskSelector:      bi.Spec.DiskSelector,
+		DataEngine:        string(bi.Spec.DataEngine),
 
 		DiskFileStatusMap: diskFileStatusMap,
 		Size:              bi.Status.Size,

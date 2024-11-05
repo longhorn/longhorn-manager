@@ -1280,7 +1280,7 @@ func (sc *SettingController) enqueueSettingForNode(obj interface{}) {
 // updateInstanceManagerCPURequest deletes all instance manager pods immediately with the updated CPU request.
 func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn.DataEngineType) error {
 	settingName := types.SettingNameGuaranteedInstanceManagerCPU
-	if dataEngine == longhorn.DataEngineTypeV2 {
+	if types.IsDataEngineV2(dataEngine) {
 		settingName = types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU
 	}
 	imPodList, err := sc.ds.ListInstanceManagerPodsBy("", "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
@@ -1728,7 +1728,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	volumeCount := len(volumesRO)
 	volumeCountV1 := 0
 	for _, volume := range volumesRO {
-		if volume.Spec.DataEngine == longhorn.DataEngineTypeV1 {
+		if types.IsDataEngineV1(volume.Spec.DataEngine) {
 			volumeCountV1++
 		}
 	}
