@@ -154,6 +154,16 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 		return nil, err
 	}
 
+	dataEngineUpgradeManagerController, err := NewDataEngineUpgradeManagerController(logger, ds, scheme, kubeClient, controllerID, namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	nodeDataEngineUpgradeController, err := NewNodeDataEngineUpgradeController(logger, ds, scheme, kubeClient, controllerID, namespace)
+	if err != nil {
+		return nil, err
+	}
+
 	// Kubernetes controllers
 	kubernetesPVController, err := NewKubernetesPVController(logger, ds, scheme, kubeClient, controllerID)
 	if err != nil {
@@ -213,6 +223,9 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	go volumeEvictionController.Run(Workers, stopCh)
 	go volumeCloneController.Run(Workers, stopCh)
 	go volumeExpansionController.Run(Workers, stopCh)
+	// The two controllers do not support upgrade in parallel
+	go dataEngineUpgradeManagerController.Run(1, stopCh)
+	go nodeDataEngineUpgradeController.Run(1, stopCh)
 
 	// Start goroutines for Kubernetes controllers
 	go kubernetesPVController.Run(Workers, stopCh)
