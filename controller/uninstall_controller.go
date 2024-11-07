@@ -804,7 +804,14 @@ func (c *UninstallController) deleteBackupTargets(backupTargets map[string]*long
 	}()
 	for _, bt := range backupTargets {
 		log := getLoggerForBackupTarget(c.logger, bt)
+		if bt.Annotations == nil {
+			bt.Annotations = make(map[string]string)
+		}
 		if bt.DeletionTimestamp == nil {
+			bt.Annotations[types.GetLonghornLabelKey(types.DeleteBackupTargetFromLonghorn)] = ""
+			if _, err := c.ds.UpdateBackupTarget(bt); err != nil {
+				return errors.Wrap(err, "failed to update backup target annotations to mark for deletion")
+			}
 			if errDelete := c.ds.DeleteBackupTarget(bt.Name); errDelete != nil {
 				if datastore.ErrorIsNotFound(errDelete) {
 					log.Info("BackupTarget is not found")
