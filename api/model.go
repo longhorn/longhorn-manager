@@ -187,6 +187,8 @@ type BackupBackingImage struct {
 	CompressionMethod string               `json:"compressionMethod"`
 	Secret            string               `json:"secret"`
 	SecretNamespace   string               `json:"secretNamespace"`
+	BackingImageName  string               `json:"backingImageName"`
+	BackupTargetName  string               `json:"backupTargetName"`
 }
 
 type Setting struct {
@@ -1878,6 +1880,8 @@ func toBackupBackingImageResource(bbi *longhorn.BackupBackingImage, apiContext *
 		CompressionMethod: string(bbi.Status.CompressionMethod),
 		Secret:            bbi.Status.Secret,
 		SecretNamespace:   bbi.Status.SecretNamespace,
+		BackingImageName:  bbi.Spec.BackingImage,
+		BackupTargetName:  bbi.Spec.BackupTargetName,
 	}
 
 	backupBackingImage.Actions = map[string]string{
