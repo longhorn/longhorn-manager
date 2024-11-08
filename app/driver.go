@@ -132,6 +132,10 @@ func DeployDriverCmd() cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) {
+			if err := validateFlags(c); err != nil {
+				logrus.Fatalf("Error validating flags: %v", err)
+			}
+
 			if err := deployDriver(c); err != nil {
 				logrus.Fatalf("Error deploying driver: %v", err)
 			}
@@ -139,15 +143,28 @@ func DeployDriverCmd() cli.Command {
 	}
 }
 
+func validateFlags(c *cli.Context) error {
+	for _, flag := range []string{
+		FlagManagerImage,
+		FlagManagerURL,
+		FlagCSIAttacherImage,
+		FlagCSIProvisionerImage,
+		FlagCSIResizerImage,
+		FlagCSISnapshotterImage,
+		FlagCSINodeDriverRegistrarImage,
+		FlagCSILivenessProbeImage,
+	} {
+		if c.String(flag) == "" {
+			return fmt.Errorf("%q cannot be empty", flag)
+		}
+	}
+
+	return nil
+}
+
 func deployDriver(c *cli.Context) error {
 	managerImage := c.String(FlagManagerImage)
-	if managerImage == "" {
-		return fmt.Errorf("require %v", FlagManagerImage)
-	}
 	managerURL := c.String(FlagManagerURL)
-	if managerURL == "" {
-		return fmt.Errorf("require %v", FlagManagerURL)
-	}
 
 	config, err := clientcmd.BuildConfigFromFlags("", c.String(FlagKubeConfig))
 	if err != nil {
