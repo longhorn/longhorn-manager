@@ -76,7 +76,6 @@ func DeployDriverCmd() cli.Command {
 				Name:   FlagCSIAttacherImage,
 				Usage:  "Specify CSI attacher image",
 				EnvVar: EnvCSIAttacherImage,
-				Value:  csi.DefaultCSIAttacherImage,
 			},
 			cli.IntFlag{
 				Name:   FlagCSIAttacherReplicaCount,
@@ -88,7 +87,6 @@ func DeployDriverCmd() cli.Command {
 				Name:   FlagCSIProvisionerImage,
 				Usage:  "Specify CSI provisioner image",
 				EnvVar: EnvCSIProvisionerImage,
-				Value:  csi.DefaultCSIProvisionerImage,
 			},
 			cli.IntFlag{
 				Name:   FlagCSIProvisionerReplicaCount,
@@ -100,7 +98,6 @@ func DeployDriverCmd() cli.Command {
 				Name:   FlagCSIResizerImage,
 				Usage:  "Specify CSI resizer image",
 				EnvVar: EnvCSIResizerImage,
-				Value:  csi.DefaultCSIResizerImage,
 			},
 			cli.IntFlag{
 				Name:   FlagCSIResizerReplicaCount,
@@ -112,7 +109,6 @@ func DeployDriverCmd() cli.Command {
 				Name:   FlagCSISnapshotterImage,
 				Usage:  "Specify CSI snapshotter image",
 				EnvVar: EnvCSISnapshotterImage,
-				Value:  csi.DefaultCSISnapshotterImage,
 			},
 			cli.IntFlag{
 				Name:   FlagCSISnapshotterReplicaCount,
@@ -124,13 +120,11 @@ func DeployDriverCmd() cli.Command {
 				Name:   FlagCSINodeDriverRegistrarImage,
 				Usage:  "Specify CSI node-driver-registrar image",
 				EnvVar: EnvCSINodeDriverRegistrarImage,
-				Value:  csi.DefaultCSINodeDriverRegistrarImage,
 			},
 			cli.StringFlag{
 				Name:   FlagCSILivenessProbeImage,
 				Usage:  "Specify CSI liveness probe image",
 				EnvVar: EnvCSILivenessProbeImage,
-				Value:  csi.DefaultCSILivenessProbeImage,
 			},
 			cli.StringFlag{
 				Name:  FlagKubeConfig,
