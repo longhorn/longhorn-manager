@@ -564,8 +564,9 @@ spec:
               ownerID:
                 type: string
               realSize:
-                description: Real size of image in bytes, which may be smaller than the size 
-                  when the file is a sparse file. Will be zero until known (e.g. while a backing image is uploading)
+                description: Real size of image in bytes, which may be smaller than
+                  the size when the file is a sparse file. Will be zero until known
+                  (e.g. while a backing image is uploading)
                 format: int64
                 type: integer
               size:
@@ -574,8 +575,9 @@ spec:
               uuid:
                 type: string
               virtualSize:
-                description: Virtual size of image in bytes, which may be larger than physical
-                  size. Will be zero until known (e.g. while a backing image is uploading)
+                description: Virtual size of image in bytes, which may be larger than
+                  physical size. Will be zero until known (e.g. while a backing image
+                  is uploading)
                 format: int64
                 type: integer
             type: object
@@ -653,8 +655,9 @@ spec:
               backing image backup
             properties:
               backingImage:
-                description: The backing image name..
-                nullable: true
+                description: |-
+                  The backing image name.
+                  Required
                 type: string
               backupTargetName:
                 description: The backup target name.
@@ -677,6 +680,7 @@ spec:
                   Required
                 type: boolean
             required:
+            - backingImage
             - userCreated
             type: object
           status:
@@ -732,7 +736,8 @@ spec:
                 description: Record the secret if this backup backing image is encrypted
                 type: string
               secretNamespace:
-                description: Record the secret namespace if this backup backing image is encrypted
+                description: Record the secret namespace if this backup backing image
+                  is encrypted
                 type: string
               size:
                 description: The backing image size.
@@ -837,6 +842,10 @@ spec:
       jsonPath: .status.snapshotCreatedAt
       name: SnapshotCreatedAt
       type: string
+    - description: The backup target name
+      jsonPath: .status.backupTarget
+      name: BackupTarget
+      type: string
     - description: The backup state
       jsonPath: .status.state
       name: State
@@ -878,9 +887,6 @@ spec:
                 - full
                 - incremental
                 - ""
-              backupTargetName:
-                description: The backup target name.
-                nullable: true
                 type: string
               labels:
                 additionalProperties:
@@ -901,6 +907,9 @@ spec:
             properties:
               backupCreatedAt:
                 description: The snapshot backup upload finished time.
+                type: string
+              backupTarget:
+                description: The backup target name.
                 type: string
               compressionMethod:
                 description: Compression method
@@ -4211,7 +4220,8 @@ spec:
                 - gzip
                 type: string
               backupTargetName:
-                description: 'The backup target name that the volume will be backed up to or is synced.'
+                description: The backup target name that the volume will be backed
+                  up to or is synced.
                 type: string
               dataEngine:
                 enum:
