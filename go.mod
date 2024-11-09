@@ -1,6 +1,6 @@
 module github.com/longhorn/longhorn-manager
 
-go 1.22.5
+go 1.22.7
 
 toolchain go1.23.3
 
@@ -72,16 +72,16 @@ require (
 	github.com/prometheus/client_golang v1.20.5
 	github.com/rancher/dynamiclistener v0.6.1
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
-	github.com/rancher/wrangler/v3 v3.0.1-rc.2
+	github.com/rancher/wrangler/v3 v3.1.0
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.9.0
 	github.com/urfave/cli v1.22.16
-	golang.org/x/mod v0.21.0
-	golang.org/x/net v0.30.0
-	golang.org/x/sys v0.26.0
-	golang.org/x/time v0.7.0
-	google.golang.org/grpc v1.67.1
+	golang.org/x/mod v0.22.0
+	golang.org/x/net v0.31.0
+	golang.org/x/sys v0.27.0
+	golang.org/x/time v0.8.0
+	google.golang.org/grpc v1.68.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.31.2
@@ -119,8 +119,8 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c // indirect
 	golang.org/x/tools v0.26.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20240814211410-ddb44dafa142 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240814211410-ddb44dafa142 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20240903143218-8af14fe29dc1 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240903143218-8af14fe29dc1 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
@@ -147,9 +147,9 @@ require (
 	github.com/gammazero/workerpool v1.1.3 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-openapi/jsonpointer v0.19.6 // indirect
+	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/jsonreference v0.20.2 // indirect
-	github.com/go-openapi/swag v0.22.4 // indirect
+	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/cel-go v0.20.1 // indirect
@@ -201,11 +201,11 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.26.0 // indirect
-	golang.org/x/crypto v0.28.0 // indirect
-	golang.org/x/oauth2 v0.22.0 // indirect
-	golang.org/x/sync v0.8.0
-	golang.org/x/term v0.25.0 // indirect
-	golang.org/x/text v0.19.0
+	golang.org/x/crypto v0.29.0 // indirect
+	golang.org/x/oauth2 v0.23.0 // indirect
+	golang.org/x/sync v0.9.0
+	golang.org/x/term v0.26.0 // indirect
+	golang.org/x/text v0.20.0
 	google.golang.org/genproto v0.0.0-20240401170217-c3f982113cda // indirect
 	google.golang.org/protobuf v1.35.1
 	gopkg.in/inf.v0 v0.9.1 // indirect
