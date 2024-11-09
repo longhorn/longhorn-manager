@@ -1,6 +1,8 @@
 module github.com/longhorn/longhorn-manager
 
-go 1.22.2
+go 1.22.7
+
+toolchain go1.23.3
 
 // Replace directives are required for dependencies in this section because:
 // - This module imports k8s.io/kubernetes.
@@ -59,8 +61,8 @@ require (
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.7.2
-	github.com/longhorn/backupstore v0.0.0-20241103035147-065450bb2340
-	github.com/longhorn/go-common-libs v0.0.0-20241102040927-43901cc2fa33
+	github.com/longhorn/backupstore v0.0.0-20241109114317-c5e1abe96eb2
+	github.com/longhorn/go-common-libs v0.0.0-20241109101504-614ae31d2212
 	github.com/longhorn/go-iscsi-helper v0.0.0-20241103035054-568634165efd
 	github.com/longhorn/go-spdk-helper v0.0.0-20241103044742-606c0ee8d532
 	github.com/longhorn/longhorn-engine v1.7.2
@@ -75,11 +77,11 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.9.0
 	github.com/urfave/cli v1.22.16
-	golang.org/x/mod v0.21.0
-	golang.org/x/net v0.30.0
-	golang.org/x/sys v0.26.0
+	golang.org/x/mod v0.22.0
+	golang.org/x/net v0.31.0
+	golang.org/x/sys v0.27.0
 	golang.org/x/time v0.5.0
-	google.golang.org/grpc v1.67.1
+	google.golang.org/grpc v1.68.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.31.2
@@ -113,10 +115,10 @@ require (
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c // indirect
-	golang.org/x/tools v0.26.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20240814211410-ddb44dafa142 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240814211410-ddb44dafa142 // indirect
+	golang.org/x/exp v0.0.0-20241108190413-2d47ceb2692f // indirect
+	golang.org/x/tools v0.27.0 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20240903143218-8af14fe29dc1 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240903143218-8af14fe29dc1 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
@@ -200,11 +202,11 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.26.0 // indirect
-	golang.org/x/crypto v0.28.0 // indirect
-	golang.org/x/oauth2 v0.22.0 // indirect
-	golang.org/x/sync v0.8.0
-	golang.org/x/term v0.25.0 // indirect
-	golang.org/x/text v0.19.0
+	golang.org/x/crypto v0.29.0 // indirect
+	golang.org/x/oauth2 v0.23.0 // indirect
+	golang.org/x/sync v0.9.0
+	golang.org/x/term v0.26.0 // indirect
+	golang.org/x/text v0.20.0
 	google.golang.org/genproto v0.0.0-20240401170217-c3f982113cda // indirect
 	google.golang.org/protobuf v1.35.1
 	gopkg.in/inf.v0 v0.9.1 // indirect
