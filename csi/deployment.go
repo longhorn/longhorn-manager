@@ -418,6 +418,14 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 									Name:  "CSI_ENDPOINT",
 									Value: GetCSIEndpoint(),
 								},
+								{
+									Name: "POD_NAMESPACE",
+									ValueFrom: &corev1.EnvVarSource{
+										FieldRef: &corev1.ObjectFieldSelector{
+											FieldPath: "metadata.namespace",
+										},
+									},
+								},
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{
