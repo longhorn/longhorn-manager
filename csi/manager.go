@@ -31,7 +31,11 @@ func (m *Manager) Run(driverName, nodeID, endpoint, identityVersion, managerURL 
 
 	// Create GRPC servers
 	m.ids = NewIdentityServer(driverName, identityVersion)
-	m.ns = NewNodeServer(apiClient, nodeID)
+	m.ns, err = NewNodeServer(apiClient, nodeID)
+	if err != nil {
+		return errors.Wrap(err, "Failed to create CSI node server ")
+	}
+
 	m.cs = NewControllerServer(apiClient, nodeID)
 	s := NewNonBlockingGRPCServer()
 	s.Start(endpoint, m.ids, m.cs, m.ns)
