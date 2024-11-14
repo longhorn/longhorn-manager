@@ -167,6 +167,10 @@ func (vec *VolumeEvictionController) reconcile(volName string) (err error) {
 		return nil
 	}
 
+	if vol.Spec.NodeID == "" {
+		return nil
+	}
+
 	if !vec.isResponsibleFor(vol) {
 		return nil
 	}
