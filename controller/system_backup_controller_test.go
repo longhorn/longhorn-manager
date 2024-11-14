@@ -55,6 +55,7 @@ type SystemBackupTestCase struct {
 }
 
 func (s *TestSuite) TestReconcileSystemBackup(c *C) {
+	datastore.SkipListerCheck = true
 	datastore.SystemBackupTimeout = 10 * time.Second
 	datastore.VolumeBackupTimeout = 10 * time.Second
 

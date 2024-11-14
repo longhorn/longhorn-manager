@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -46,20 +47,21 @@ const (
 
 	SystemBackupTempDir = "/tmp"
 
-	SystemBackupErrArchive       = "failed to archive system backup file"
-	SystemBackupErrDelete        = "failed to delete system backup in backup target"
-	SystemBackupErrGenerate      = "failed to generate system backup file"
-	SystemBackupErrGenerateYAML  = "failed to generate resource YAMLs"
-	SystemBackupErrGetFmt        = "failed to get %v"
-	SystemBackupErrGetConfig     = "failed to get system backup config"
-	SystemBackupErrMkdir         = "failed to create system backup file directory"
-	SystemBackupErrRemoveAll     = "failed to remove system backup directory"
-	SystemBackupErrRemove        = "failed to remove system backup file"
-	SystemBackupErrOSStat        = "failed to compute system backup file size"
-	SystemBackupErrSync          = "failed to sync from backup target"
-	SystemBackupErrTimeoutUpload = "timeout uploading system backup"
-	SystemBackupErrUpload        = "failed to upload system backup file"
-	SystemBackupErrVolumeBackup  = "failed to backup volumes"
+	SystemBackupErrArchive         = "failed to archive system backup file"
+	SystemBackupErrDelete          = "failed to delete system backup in backup target"
+	SystemBackupErrGenerate        = "failed to generate system backup file"
+	SystemBackupErrGenerateYAML    = "failed to generate resource YAMLs"
+	SystemBackupErrGetFmt          = "failed to get %v"
+	SystemBackupErrGetConfig       = "failed to get system backup config"
+	SystemBackupErrMkdir           = "failed to create system backup file directory"
+	SystemBackupErrRemoveAll       = "failed to remove system backup directory"
+	SystemBackupErrRemove          = "failed to remove system backup file"
+	SystemBackupErrOSStat          = "failed to compute system backup file size"
+	SystemBackupErrSync            = "failed to sync from backup target"
+	SystemBackupErrTimeoutSnapshot = "timeout taking volume snapshot for system backup"
+	SystemBackupErrTimeoutUpload   = "timeout uploading system backup"
+	SystemBackupErrUpload          = "failed to upload system backup file"
+	SystemBackupErrVolumeBackup    = "failed to backup volumes"
 
 	SystemBackupMsgCreatedArchieveFmt  = "Created system backup file: %v"
 	SystemBackupMsgDeletingRemote      = "Deleting system backup in backup target"
@@ -735,6 +737,9 @@ func (c *SystemBackupController) backupVolumesAlways(systemBackup *longhorn.Syst
 		return nil, err
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	volumeBackups := make(map[string]*longhorn.Backup, len(volumes))
 	for _, volume := range volumes {
 		// Don't need to create volume data backup for DR volumes since it will
@@ -744,7 +749,14 @@ func (c *SystemBackupController) backupVolumesAlways(systemBackup *longhorn.Syst
 			continue
 		}
 
-		backup, err := c.createVolumeBackup(volume, systemBackup)
+		volumeBackupName := bsutil.GenerateName("system-backup")
+
+		snapshot, err := c.createVolumeSnapshot(ctx, volume, volumeBackupName)
+		if err != nil {
+			return nil, err
+		}
+
+		backup, err := c.createVolumeBackupFromSnapshot(volume, snapshot)
 		if err != nil {
 			return nil, err
 		}
@@ -761,13 +773,28 @@ func (c *SystemBackupController) backupVolumesIfNotPresent(systemBackup *longhor
 		return nil, err
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	volumeBackups := make(map[string]*longhorn.Backup, len(volumes))
 	for _, volume := range volumes {
-		if volume.Status.LastBackup != "" {
+		volumeBackupName := bsutil.GenerateName("system-backup")
+
+		snapshot, err := c.createVolumeSnapshot(ctx, volume, volumeBackupName)
+		if err != nil {
+			return nil, err
+		}
+
+		isUpToDate, err := c.isVolumeBackupUpToDate(volume, systemBackup)
+		if err != nil {
+			return nil, err
+		}
+
+		if isUpToDate {
 			continue
 		}
 
-		backup, err := c.createVolumeBackup(volume, systemBackup)
+		backup, err := c.createVolumeBackupFromSnapshot(volume, snapshot)
 		if err != nil {
 			return nil, err
 		}
@@ -837,27 +864,61 @@ func (c *SystemBackupController) WaitForVolumeBackupToComplete(backups map[strin
 	return fmt.Errorf("unexpected error: stopped waiting for Volume backups without completing, failing or timing out")
 }
 
-func (c *SystemBackupController) createVolumeBackup(volume *longhorn.Volume, systemBackup *longhorn.SystemBackup) (backup *longhorn.Backup, err error) {
-	volumeBackupName := bsutil.GenerateName("system-backup")
+func (c *SystemBackupController) isVolumeBackupUpToDate(volume *longhorn.Volume, systemBackup *longhorn.SystemBackup) (bool, error) {
+	log := getLoggerForSystemBackup(c.logger, systemBackup)
+	log = log.WithField("volume", volume.Name)
 
-	snapshotCR := &longhorn.Snapshot{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: volumeBackupName,
-		},
-		Spec: longhorn.SnapshotSpec{
-			Volume:         volume.Name,
-			CreateSnapshot: true,
-		},
+	// Return early if there is no recorded last backup.
+	if volume.Status.LastBackup == "" {
+		return false, nil
 	}
 
-	snapshot, err := c.ds.CreateSnapshot(snapshotCR)
+	// Retrieve last backup and its snapshot.
+	lastBackup, err := c.ds.GetBackup(volume.Status.LastBackup)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create Volume %v snapshot %s", volume.Name, snapshot.Name)
+		return false, err
 	}
 
+	lastBackupSnapshot, err := c.ds.GetSnapshot(lastBackup.Status.SnapshotName)
+	if err != nil {
+		return false, err
+	}
+
+	lastBackupTime, err := time.Parse(time.RFC3339, lastBackupSnapshot.Status.CreationTime)
+	if err != nil {
+		return false, err
+	}
+
+	// Identify snapshots created after the last backup.
+	snapshots, err := c.ds.ListVolumeSnapshotsRO(volume.Name)
+	if err != nil {
+		return false, err
+	}
+
+	for _, snapshot := range snapshots {
+		if snapshot.Status.Size == 0 {
+			continue
+		}
+
+		snapshotTime, err := time.Parse(time.RFC3339, snapshot.Status.CreationTime)
+		if err != nil {
+			return false, err
+		}
+
+		if snapshotTime.After(lastBackupTime) {
+			log.WithField("snapshot", snapshot.Name).Infof("Detected new data in snapshot %v after last backup %v", snapshot.Name, lastBackup.Name)
+			return false, nil // Backup is not up-to-date
+		}
+	}
+
+	log.Infof("No snapshots with new data after last backup %v; backup is up-to-date", lastBackup.Name)
+	return true, nil // Backup is up-to-date
+}
+
+func (c *SystemBackupController) createVolumeBackupFromSnapshot(volume *longhorn.Volume, snapshot *longhorn.Snapshot) (backup *longhorn.Backup, err error) {
 	backup = &longhorn.Backup{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: volumeBackupName,
+			Name: snapshot.Name,
 		},
 		Spec: longhorn.BackupSpec{
 			SnapshotName: snapshot.Name,
@@ -865,9 +926,53 @@ func (c *SystemBackupController) createVolumeBackup(volume *longhorn.Volume, sys
 	}
 	backup, err = c.ds.CreateBackup(backup, volume.Name)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to create Volume %v backup %s", volume.Name, volumeBackupName)
+		return nil, errors.Wrapf(err, "failed to create Volume %v backup %s", volume.Name, snapshot.Name)
 	}
 	return backup, nil
+}
+
+func (c *SystemBackupController) createVolumeSnapshot(ctx context.Context, volume *longhorn.Volume, volumeSnapshotName string) (snapshot *longhorn.Snapshot, err error) {
+	snapshotCR := &longhorn.Snapshot{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: volumeSnapshotName,
+		},
+		Spec: longhorn.SnapshotSpec{
+			Volume:         volume.Name,
+			CreateSnapshot: true,
+		},
+	}
+
+	snapshot, err = c.ds.CreateSnapshot(snapshotCR)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to create Volume %v snapshot %s", volume.Name, volumeSnapshotName)
+	}
+
+	if datastore.SkipListerCheck {
+		return snapshot, nil
+	}
+
+	// Poll until snapshot is ready or timeout exceeded.
+	timeout := time.After(datastore.SystemBackupTimeout)
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-timeout:
+			return nil, errors.New(SystemBackupErrTimeoutSnapshot)
+		case <-ticker.C:
+			snapshot, err = c.ds.GetSnapshot(snapshot.Name)
+			if err != nil {
+				return nil, err
+			}
+
+			if snapshot.Status.ReadyToUse {
+				return snapshot, nil
+			}
+		}
+	}
 }
 
 func (c *SystemBackupController) BackupBackingImage() (map[string]*longhorn.BackupBackingImage, error) {

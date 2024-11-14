@@ -70,7 +70,11 @@ func postUpgrade(c *cli.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to create event broadcaster")
 	}
-	defer eventBroadcaster.Shutdown()
+	defer func() {
+		eventBroadcaster.Shutdown()
+		// Allow a little time for the event to flush, but not greatly delay response to the calling job.
+		time.Sleep(5 * time.Second)
+	}()
 
 	scheme := runtime.NewScheme()
 	if err := longhorn.SchemeBuilder.AddToScheme(scheme); err != nil {

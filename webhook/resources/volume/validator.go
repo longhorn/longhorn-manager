@@ -251,12 +251,6 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 			return werror.NewInvalidError(err.Error(), "")
 		}
 
-		if oldVolume.Spec.NumberOfReplicas != newVolume.Spec.NumberOfReplicas {
-			err := fmt.Errorf("changing number of replicas for volume %v is not supported for data engine %v",
-				newVolume.Name, newVolume.Spec.DataEngine)
-			return werror.NewInvalidError(err.Error(), "")
-		}
-
 		if oldVolume.Spec.BackingImage != newVolume.Spec.BackingImage {
 			err := fmt.Errorf("changing backing image for volume %v is not supported for data engine %v",
 				newVolume.Name, newVolume.Spec.DataEngine)
