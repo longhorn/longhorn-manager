@@ -61,10 +61,10 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.19.0
 	github.com/longhorn/backing-image-manager v1.8.0-dev-20241103
-	github.com/longhorn/backupstore v0.0.0-20241110035711-b5b0e7238e0d
+	github.com/longhorn/backupstore v0.0.0-20241112162019-b405e8f77dc3
 	github.com/longhorn/go-common-libs v0.0.0-20241109101504-614ae31d2212
 	github.com/longhorn/go-iscsi-helper v0.0.0-20241110033836-dd4b01aa15b8
-	github.com/longhorn/go-spdk-helper v0.0.0-20241110033706-a878ed0191b2
+	github.com/longhorn/go-spdk-helper v0.0.0-20241115132910-af0134eda2a6
 	github.com/longhorn/longhorn-engine v1.8.0-dev-20241103
 	github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241103.0.20241106043114-e5808281c3a5
 	github.com/longhorn/longhorn-share-manager v1.7.0-rc1
@@ -178,7 +178,7 @@ require (
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.55.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
-	github.com/rancher/lasso v0.0.0-20240924233157-8f384efc8813
+	github.com/rancher/lasso v0.0.0-20241115003608-cbc3210bd004
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
@@ -207,7 +207,7 @@ require (
 	golang.org/x/term v0.26.0 // indirect
 	golang.org/x/text v0.20.0
 	google.golang.org/genproto v0.0.0-20240401170217-c3f982113cda // indirect
-	google.golang.org/protobuf v1.35.1
+	google.golang.org/protobuf v1.35.2
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	k8s.io/apiserver v0.31.2 // indirect
