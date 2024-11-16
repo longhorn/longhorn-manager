@@ -61,10 +61,10 @@ require (
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.7.2
-	github.com/longhorn/backupstore v0.0.0-20241110035711-b5b0e7238e0d
+	github.com/longhorn/backupstore v0.0.0-20241112162019-b405e8f77dc3
 	github.com/longhorn/go-common-libs v0.0.0-20241109101504-614ae31d2212
 	github.com/longhorn/go-iscsi-helper v0.0.0-20241110033836-dd4b01aa15b8
-	github.com/longhorn/go-spdk-helper v0.0.0-20241110033706-a878ed0191b2
+	github.com/longhorn/go-spdk-helper v0.0.0-20241115132910-af0134eda2a6
 	github.com/longhorn/longhorn-engine v1.7.2
 	github.com/longhorn/longhorn-instance-manager v1.7.2
 	github.com/longhorn/longhorn-share-manager v1.7.2
@@ -208,7 +208,7 @@ require (
 	golang.org/x/term v0.26.0 // indirect
 	golang.org/x/text v0.20.0
 	google.golang.org/genproto v0.0.0-20240401170217-c3f982113cda // indirect
-	google.golang.org/protobuf v1.35.1
+	google.golang.org/protobuf v1.35.2
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	k8s.io/apiserver v0.31.2 // indirect
