@@ -239,7 +239,7 @@ github.com/longhorn/backing-image-manager/pkg/client
 github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20241110035711-b5b0e7238e0d
+# github.com/longhorn/backupstore v0.0.0-20241112162019-b405e8f77dc3
 ## explicit; go 1.22.7
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/backupbackingimage
@@ -268,7 +268,7 @@ github.com/longhorn/go-iscsi-helper/iscsidev
 github.com/longhorn/go-iscsi-helper/longhorndev
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.0.0-20241110033706-a878ed0191b2
+# github.com/longhorn/go-spdk-helper v0.0.0-20241115132910-af0134eda2a6
 ## explicit; go 1.22.7
 github.com/longhorn/go-spdk-helper/pkg/types
 # github.com/longhorn/longhorn-engine v1.8.0-dev-20241103
@@ -390,7 +390,7 @@ github.com/rancher/dynamiclistener/storage/memory
 ## explicit
 github.com/rancher/go-rancher/api
 github.com/rancher/go-rancher/client
-# github.com/rancher/lasso v0.0.0-20240924233157-8f384efc8813
+# github.com/rancher/lasso v0.0.0-20241115003608-cbc3210bd004
 ## explicit; go 1.22.0
 github.com/rancher/lasso/pkg/cache
 github.com/rancher/lasso/pkg/client
@@ -747,7 +747,7 @@ google.golang.org/grpc/serviceconfig
 google.golang.org/grpc/stats
 google.golang.org/grpc/status
 google.golang.org/grpc/tap
-# google.golang.org/protobuf v1.35.1
+# google.golang.org/protobuf v1.35.2
 ## explicit; go 1.21
 google.golang.org/protobuf/encoding/protodelim
 google.golang.org/protobuf/encoding/protojson
