@@ -232,8 +232,8 @@ github.com/kylelemons/godebug/diff
 # github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de
 ## explicit
 github.com/liggitt/tabwriter
-# github.com/longhorn/backing-image-manager v1.8.0-dev-20241103
-## explicit; go 1.22.2
+# github.com/longhorn/backing-image-manager v1.8.0-dev-20241117
+## explicit; go 1.22.7
 github.com/longhorn/backing-image-manager/api
 github.com/longhorn/backing-image-manager/pkg/client
 github.com/longhorn/backing-image-manager/pkg/meta
@@ -271,15 +271,15 @@ github.com/longhorn/go-iscsi-helper/util
 # github.com/longhorn/go-spdk-helper v0.0.0-20241115132910-af0134eda2a6
 ## explicit; go 1.22.7
 github.com/longhorn/go-spdk-helper/pkg/types
-# github.com/longhorn/longhorn-engine v1.8.0-dev-20241103
-## explicit; go 1.22.2
+# github.com/longhorn/longhorn-engine v1.8.0-dev-20241117
+## explicit; go 1.22.7
 github.com/longhorn/longhorn-engine/pkg/interceptor
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241103.0.20241106043114-e5808281c3a5
-## explicit; go 1.22.2
+# github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241117
+## explicit; go 1.22.7
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
 github.com/longhorn/longhorn-instance-manager/pkg/meta
@@ -289,8 +289,8 @@ github.com/longhorn/longhorn-instance-manager/pkg/util
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/types v0.0.0-20241101010532-9e901229a935
-## explicit; go 1.21
+# github.com/longhorn/types v0.0.0-20241110123431-85dca7039c42
+## explicit; go 1.22.7
 github.com/longhorn/types/pkg/generated/bimrpc
 github.com/longhorn/types/pkg/generated/enginerpc
 github.com/longhorn/types/pkg/generated/imrpc
