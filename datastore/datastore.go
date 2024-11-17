@@ -45,51 +45,55 @@ type DataStore struct {
 
 	cacheSyncs []cache.InformerSynced
 
-	lhClient                       lhclientset.Interface
-	volumeLister                   lhlisters.VolumeLister
-	VolumeInformer                 cache.SharedInformer
-	engineLister                   lhlisters.EngineLister
-	EngineInformer                 cache.SharedInformer
-	replicaLister                  lhlisters.ReplicaLister
-	ReplicaInformer                cache.SharedInformer
-	engineImageLister              lhlisters.EngineImageLister
-	EngineImageInformer            cache.SharedInformer
-	nodeLister                     lhlisters.NodeLister
-	NodeInformer                   cache.SharedInformer
-	settingLister                  lhlisters.SettingLister
-	SettingInformer                cache.SharedInformer
-	instanceManagerLister          lhlisters.InstanceManagerLister
-	InstanceManagerInformer        cache.SharedInformer
-	shareManagerLister             lhlisters.ShareManagerLister
-	ShareManagerInformer           cache.SharedInformer
-	backingImageLister             lhlisters.BackingImageLister
-	BackingImageInformer           cache.SharedInformer
-	backingImageManagerLister      lhlisters.BackingImageManagerLister
-	BackingImageManagerInformer    cache.SharedInformer
-	backingImageDataSourceLister   lhlisters.BackingImageDataSourceLister
-	BackingImageDataSourceInformer cache.SharedInformer
-	backupBackingImageLister       lhlisters.BackupBackingImageLister
-	BackupBackingImageInformer     cache.SharedInformer
-	backupTargetLister             lhlisters.BackupTargetLister
-	BackupTargetInformer           cache.SharedInformer
-	backupVolumeLister             lhlisters.BackupVolumeLister
-	BackupVolumeInformer           cache.SharedInformer
-	backupLister                   lhlisters.BackupLister
-	BackupInformer                 cache.SharedInformer
-	recurringJobLister             lhlisters.RecurringJobLister
-	RecurringJobInformer           cache.SharedInformer
-	orphanLister                   lhlisters.OrphanLister
-	OrphanInformer                 cache.SharedInformer
-	snapshotLister                 lhlisters.SnapshotLister
-	SnapshotInformer               cache.SharedInformer
-	supportBundleLister            lhlisters.SupportBundleLister
-	SupportBundleInformer          cache.SharedInformer
-	systemBackupLister             lhlisters.SystemBackupLister
-	SystemBackupInformer           cache.SharedInformer
-	systemRestoreLister            lhlisters.SystemRestoreLister
-	SystemRestoreInformer          cache.SharedInformer
-	lhVolumeAttachmentLister       lhlisters.VolumeAttachmentLister
-	LHVolumeAttachmentInformer     cache.SharedInformer
+	lhClient                         lhclientset.Interface
+	volumeLister                     lhlisters.VolumeLister
+	VolumeInformer                   cache.SharedInformer
+	engineLister                     lhlisters.EngineLister
+	EngineInformer                   cache.SharedInformer
+	replicaLister                    lhlisters.ReplicaLister
+	ReplicaInformer                  cache.SharedInformer
+	engineImageLister                lhlisters.EngineImageLister
+	EngineImageInformer              cache.SharedInformer
+	nodeLister                       lhlisters.NodeLister
+	NodeInformer                     cache.SharedInformer
+	settingLister                    lhlisters.SettingLister
+	SettingInformer                  cache.SharedInformer
+	instanceManagerLister            lhlisters.InstanceManagerLister
+	InstanceManagerInformer          cache.SharedInformer
+	shareManagerLister               lhlisters.ShareManagerLister
+	ShareManagerInformer             cache.SharedInformer
+	backingImageLister               lhlisters.BackingImageLister
+	BackingImageInformer             cache.SharedInformer
+	backingImageManagerLister        lhlisters.BackingImageManagerLister
+	BackingImageManagerInformer      cache.SharedInformer
+	backingImageDataSourceLister     lhlisters.BackingImageDataSourceLister
+	BackingImageDataSourceInformer   cache.SharedInformer
+	backupBackingImageLister         lhlisters.BackupBackingImageLister
+	BackupBackingImageInformer       cache.SharedInformer
+	backupTargetLister               lhlisters.BackupTargetLister
+	BackupTargetInformer             cache.SharedInformer
+	backupVolumeLister               lhlisters.BackupVolumeLister
+	BackupVolumeInformer             cache.SharedInformer
+	backupLister                     lhlisters.BackupLister
+	BackupInformer                   cache.SharedInformer
+	recurringJobLister               lhlisters.RecurringJobLister
+	RecurringJobInformer             cache.SharedInformer
+	orphanLister                     lhlisters.OrphanLister
+	OrphanInformer                   cache.SharedInformer
+	snapshotLister                   lhlisters.SnapshotLister
+	SnapshotInformer                 cache.SharedInformer
+	supportBundleLister              lhlisters.SupportBundleLister
+	SupportBundleInformer            cache.SharedInformer
+	systemBackupLister               lhlisters.SystemBackupLister
+	SystemBackupInformer             cache.SharedInformer
+	systemRestoreLister              lhlisters.SystemRestoreLister
+	SystemRestoreInformer            cache.SharedInformer
+	lhVolumeAttachmentLister         lhlisters.VolumeAttachmentLister
+	LHVolumeAttachmentInformer       cache.SharedInformer
+	dataEngineUpgradeManagerLister   lhlisters.DataEngineUpgradeManagerLister
+	DataEngineUpgradeManagerInformer cache.SharedInformer
+	nodeDataEngineUpgradeLister      lhlisters.NodeDataEngineUpgradeLister
+	NodeDataEngineUpgradeInformer    cache.SharedInformer
 
 	kubeClient                    clientset.Interface
 	podLister                     corelisters.PodLister
@@ -179,6 +183,10 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, systemRestoreInformer.Informer().HasSynced)
 	lhVolumeAttachmentInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().VolumeAttachments()
 	cacheSyncs = append(cacheSyncs, lhVolumeAttachmentInformer.Informer().HasSynced)
+	dataEngineUpgradeManagerInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().DataEngineUpgradeManagers()
+	cacheSyncs = append(cacheSyncs, dataEngineUpgradeManagerInformer.Informer().HasSynced)
+	nodeDataEngineUpgradeInformer := informerFactories.LhInformerFactory.Longhorn().V1beta2().NodeDataEngineUpgrades()
+	cacheSyncs = append(cacheSyncs, nodeDataEngineUpgradeInformer.Informer().HasSynced)
 
 	// Kube Informers
 	podInformer := informerFactories.KubeInformerFactory.Core().V1().Pods()
@@ -223,51 +231,55 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 
 		cacheSyncs: cacheSyncs,
 
-		lhClient:                       lhClient,
-		volumeLister:                   volumeInformer.Lister(),
-		VolumeInformer:                 volumeInformer.Informer(),
-		engineLister:                   engineInformer.Lister(),
-		EngineInformer:                 engineInformer.Informer(),
-		replicaLister:                  replicaInformer.Lister(),
-		ReplicaInformer:                replicaInformer.Informer(),
-		engineImageLister:              engineImageInformer.Lister(),
-		EngineImageInformer:            engineImageInformer.Informer(),
-		nodeLister:                     nodeInformer.Lister(),
-		NodeInformer:                   nodeInformer.Informer(),
-		settingLister:                  settingInformer.Lister(),
-		SettingInformer:                settingInformer.Informer(),
-		instanceManagerLister:          instanceManagerInformer.Lister(),
-		InstanceManagerInformer:        instanceManagerInformer.Informer(),
-		shareManagerLister:             shareManagerInformer.Lister(),
-		ShareManagerInformer:           shareManagerInformer.Informer(),
-		backingImageLister:             backingImageInformer.Lister(),
-		BackingImageInformer:           backingImageInformer.Informer(),
-		backingImageManagerLister:      backingImageManagerInformer.Lister(),
-		BackingImageManagerInformer:    backingImageManagerInformer.Informer(),
-		backingImageDataSourceLister:   backingImageDataSourceInformer.Lister(),
-		BackingImageDataSourceInformer: backingImageDataSourceInformer.Informer(),
-		backupBackingImageLister:       backupBackingImageInformer.Lister(),
-		BackupBackingImageInformer:     backupBackingImageInformer.Informer(),
-		backupTargetLister:             backupTargetInformer.Lister(),
-		BackupTargetInformer:           backupTargetInformer.Informer(),
-		backupVolumeLister:             backupVolumeInformer.Lister(),
-		BackupVolumeInformer:           backupVolumeInformer.Informer(),
-		backupLister:                   backupInformer.Lister(),
-		BackupInformer:                 backupInformer.Informer(),
-		recurringJobLister:             recurringJobInformer.Lister(),
-		RecurringJobInformer:           recurringJobInformer.Informer(),
-		orphanLister:                   orphanInformer.Lister(),
-		OrphanInformer:                 orphanInformer.Informer(),
-		snapshotLister:                 snapshotInformer.Lister(),
-		SnapshotInformer:               snapshotInformer.Informer(),
-		supportBundleLister:            supportBundleInformer.Lister(),
-		SupportBundleInformer:          supportBundleInformer.Informer(),
-		systemBackupLister:             systemBackupInformer.Lister(),
-		SystemBackupInformer:           systemBackupInformer.Informer(),
-		systemRestoreLister:            systemRestoreInformer.Lister(),
-		SystemRestoreInformer:          systemRestoreInformer.Informer(),
-		lhVolumeAttachmentLister:       lhVolumeAttachmentInformer.Lister(),
-		LHVolumeAttachmentInformer:     lhVolumeAttachmentInformer.Informer(),
+		lhClient:                         lhClient,
+		volumeLister:                     volumeInformer.Lister(),
+		VolumeInformer:                   volumeInformer.Informer(),
+		engineLister:                     engineInformer.Lister(),
+		EngineInformer:                   engineInformer.Informer(),
+		replicaLister:                    replicaInformer.Lister(),
+		ReplicaInformer:                  replicaInformer.Informer(),
+		engineImageLister:                engineImageInformer.Lister(),
+		EngineImageInformer:              engineImageInformer.Informer(),
+		nodeLister:                       nodeInformer.Lister(),
+		NodeInformer:                     nodeInformer.Informer(),
+		settingLister:                    settingInformer.Lister(),
+		SettingInformer:                  settingInformer.Informer(),
+		instanceManagerLister:            instanceManagerInformer.Lister(),
+		InstanceManagerInformer:          instanceManagerInformer.Informer(),
+		shareManagerLister:               shareManagerInformer.Lister(),
+		ShareManagerInformer:             shareManagerInformer.Informer(),
+		backingImageLister:               backingImageInformer.Lister(),
+		BackingImageInformer:             backingImageInformer.Informer(),
+		backingImageManagerLister:        backingImageManagerInformer.Lister(),
+		BackingImageManagerInformer:      backingImageManagerInformer.Informer(),
+		backingImageDataSourceLister:     backingImageDataSourceInformer.Lister(),
+		BackingImageDataSourceInformer:   backingImageDataSourceInformer.Informer(),
+		backupBackingImageLister:         backupBackingImageInformer.Lister(),
+		BackupBackingImageInformer:       backupBackingImageInformer.Informer(),
+		backupTargetLister:               backupTargetInformer.Lister(),
+		BackupTargetInformer:             backupTargetInformer.Informer(),
+		backupVolumeLister:               backupVolumeInformer.Lister(),
+		BackupVolumeInformer:             backupVolumeInformer.Informer(),
+		backupLister:                     backupInformer.Lister(),
+		BackupInformer:                   backupInformer.Informer(),
+		recurringJobLister:               recurringJobInformer.Lister(),
+		RecurringJobInformer:             recurringJobInformer.Informer(),
+		orphanLister:                     orphanInformer.Lister(),
+		OrphanInformer:                   orphanInformer.Informer(),
+		snapshotLister:                   snapshotInformer.Lister(),
+		SnapshotInformer:                 snapshotInformer.Informer(),
+		supportBundleLister:              supportBundleInformer.Lister(),
+		SupportBundleInformer:            supportBundleInformer.Informer(),
+		systemBackupLister:               systemBackupInformer.Lister(),
+		SystemBackupInformer:             systemBackupInformer.Informer(),
+		systemRestoreLister:              systemRestoreInformer.Lister(),
+		SystemRestoreInformer:            systemRestoreInformer.Informer(),
+		lhVolumeAttachmentLister:         lhVolumeAttachmentInformer.Lister(),
+		LHVolumeAttachmentInformer:       lhVolumeAttachmentInformer.Informer(),
+		dataEngineUpgradeManagerLister:   dataEngineUpgradeManagerInformer.Lister(),
+		DataEngineUpgradeManagerInformer: dataEngineUpgradeManagerInformer.Informer(),
+		nodeDataEngineUpgradeLister:      nodeDataEngineUpgradeInformer.Lister(),
+		NodeDataEngineUpgradeInformer:    nodeDataEngineUpgradeInformer.Informer(),
 
 		kubeClient:                    kubeClient,
 		podLister:                     podInformer.Lister(),
