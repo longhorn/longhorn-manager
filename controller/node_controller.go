@@ -960,6 +960,8 @@ func (nc *NodeController) syncPackagesInstalled(kubeNode *corev1.Node, node *lon
 		fallthrough
 	case strings.Contains(osImage, "fedora"):
 		fallthrough
+	case strings.Contains(osImage, "red hat"):
+		fallthrough
 	case strings.Contains(osImage, "rocky"):
 		fallthrough
 	case strings.Contains(osImage, "ol"):
