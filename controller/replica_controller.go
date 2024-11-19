@@ -313,7 +313,7 @@ func (rc *ReplicaController) enqueueReplica(obj interface{}) {
 	rc.queue.Add(key)
 }
 
-func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
+func (rc *ReplicaController) CreateInstance(obj interface{}, isInstanceOnRemoteNode bool) (*longhorn.InstanceProcess, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
 		return nil, fmt.Errorf("invalid object for replica instance creation: %v", obj)
@@ -352,7 +352,7 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		}
 	}
 
-	im, err := rc.ds.GetInstanceManagerByInstanceRO(obj)
+	im, err := rc.ds.GetInstanceManagerByInstanceRO(obj, isInstanceOnRemoteNode)
 	if err != nil {
 		return nil, err
 	}
@@ -525,7 +525,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) (err error) {
 			log.Warnf("Replica %v does not set instance manager name and node ID, will skip the actual instance deletion", r.Name)
 			return nil
 		}
-		im, err = rc.ds.GetInstanceManagerByInstance(obj)
+		im, err = rc.ds.GetInstanceManagerByInstance(obj, false)
 		if err != nil {
 			log.WithError(err).Warnf("Failed to detect instance manager for replica %v, will skip the actual instance deletion", r.Name)
 			return nil
@@ -608,7 +608,32 @@ func deleteUnixSocketFile(volumeName string) error {
 	return os.RemoveAll(filepath.Join(types.UnixDomainSocketDirectoryOnHost, volumeName+filepath.Ext(".sock")))
 }
 
-func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
+func (rc *ReplicaController) SuspendInstance(obj interface{}) error {
+	return nil
+}
+
+func (rc *ReplicaController) ResumeInstance(obj interface{}) error {
+	return nil
+}
+
+func (rc *ReplicaController) SwitchOverTarget(obj interface{}) error {
+	return nil
+}
+
+func (rc *ReplicaController) DeleteTarget(obj interface{}) error {
+	return nil
+}
+
+func (rc *ReplicaController) RequireRemoteTargetInstance(obj interface{}) (bool, error) {
+	return false, nil
+}
+
+func (rc *ReplicaController) IsEngine(obj interface{}) bool {
+	_, ok := obj.(*longhorn.Engine)
+	return ok
+}
+
+func (rc *ReplicaController) GetInstance(obj interface{}, isInstanceOnRemoteNode bool) (*longhorn.InstanceProcess, error) {
 	r, ok := obj.(*longhorn.Replica)
 	if !ok {
 		return nil, fmt.Errorf("invalid object for replica instance get: %v", obj)
@@ -619,7 +644,7 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstancePro
 		err error
 	)
 	if r.Status.InstanceManagerName == "" {
-		im, err = rc.ds.GetInstanceManagerByInstanceRO(obj)
+		im, err = rc.ds.GetInstanceManagerByInstanceRO(obj, isInstanceOnRemoteNode)
 		if err != nil {
 			return nil, err
 		}
