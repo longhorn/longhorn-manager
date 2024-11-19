@@ -1070,7 +1070,7 @@ func (sc *SettingController) updateLogLevel(settingName types.SettingName) error
 		return err
 	}
 	if oldLevel != newLevel {
-		logrus.Infof("Updating log level from %v to %v", oldLevel, newLevel)
+		logrus.Warnf("Updating log level from %v to %v", oldLevel, newLevel)
 		logrus.SetLevel(newLevel)
 	}
 
