@@ -499,10 +499,6 @@ func (imc *InstanceManagerController) syncInstanceStatus(im *longhorn.InstanceMa
 }
 
 func (imc *InstanceManagerController) syncLogSettingsToInstanceManagerPod(im *longhorn.InstanceManager) error {
-	if types.IsDataEngineV1(im.Spec.DataEngine) {
-		return nil
-	}
-
 	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
 		return nil
 	}
@@ -514,6 +510,7 @@ func (imc *InstanceManagerController) syncLogSettingsToInstanceManagerPod(im *lo
 	defer client.Close()
 
 	settingNames := []types.SettingName{
+		types.SettingNameLogLevel,
 		types.SettingNameV2DataEngineLogLevel,
 		types.SettingNameV2DataEngineLogFlags,
 	}
@@ -525,15 +522,26 @@ func (imc *InstanceManagerController) syncLogSettingsToInstanceManagerPod(im *lo
 		}
 
 		switch settingName {
-		case types.SettingNameV2DataEngineLogLevel:
-			err = client.LogSetLevel(longhorn.DataEngineTypeV2, "spdk_tgt", setting.Value)
+		case types.SettingNameLogLevel:
+			// We use this to set the instance-manager log level, for either engine type.
+			err = client.LogSetLevel("", "", setting.Value)
 			if err != nil {
-				return errors.Wrapf(err, "failed to set log level for %v", settingName)
+				return errors.Wrapf(err, "failed to set instance-manager log level to setting %v value: %v", settingName, setting.Value)
+			}
+		case types.SettingNameV2DataEngineLogLevel:
+			// We use this to set the spdk_tgt log level independently of the instance-manager's.
+			if types.IsDataEngineV2(im.Spec.DataEngine) {
+				err = client.LogSetLevel(longhorn.DataEngineTypeV2, "", setting.Value)
+				if err != nil {
+					return errors.Wrapf(err, "failed to set spdk_tgt log level to setting %v value: %v", settingName, setting.Value)
+				}
 			}
 		case types.SettingNameV2DataEngineLogFlags:
-			err = client.LogSetFlags(longhorn.DataEngineTypeV2, "spdk_tgt", setting.Value)
-			if err != nil {
-				return errors.Wrapf(err, "failed to set log flags for %v", settingName)
+			if types.IsDataEngineV2(im.Spec.DataEngine) {
+				err = client.LogSetFlags(longhorn.DataEngineTypeV2, "spdk_tgt", setting.Value)
+				if err != nil {
+					return errors.Wrapf(err, "failed to set spdk_tgt log flags to setting %v value: %v", settingName, setting.Value)
+				}
 			}
 		}
 	}
