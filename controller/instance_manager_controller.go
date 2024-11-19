@@ -455,6 +455,81 @@ func (imc *InstanceManagerController) syncInstanceStatus(im *longhorn.InstanceMa
 	return nil
 }
 
+<<<<<<< HEAD
+=======
+func (imc *InstanceManagerController) isDateEngineCPUMaskApplied(im *longhorn.InstanceManager) (bool, error) {
+	if types.IsDataEngineV1(im.Spec.DataEngine) {
+		return true, nil
+	}
+
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+		return true, nil
+	}
+
+	if im.Spec.DataEngineSpec.V2.CPUMask != "" {
+		return im.Spec.DataEngineSpec.V2.CPUMask == im.Status.DataEngineStatus.V2.CPUMask, nil
+	}
+
+	setting, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngineCPUMask)
+	if err != nil {
+		return true, errors.Wrapf(err, "failed to get %v setting for updating data engine CPU mask", types.SettingNameV2DataEngineCPUMask)
+	}
+
+	return setting.Value == im.Status.DataEngineStatus.V2.CPUMask, nil
+}
+
+func (imc *InstanceManagerController) syncLogSettingsToInstanceManagerPod(im *longhorn.InstanceManager) error {
+	if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+		return nil
+	}
+
+	client, err := engineapi.NewInstanceManagerClient(im, false)
+	if err != nil {
+		return errors.Wrapf(err, "failed to create instance manager client for %v", im.Name)
+	}
+	defer client.Close()
+
+	settingNames := []types.SettingName{
+		types.SettingNameLogLevel,
+		types.SettingNameV2DataEngineLogLevel,
+		types.SettingNameV2DataEngineLogFlags,
+	}
+
+	for _, settingName := range settingNames {
+		setting, err := imc.ds.GetSettingWithAutoFillingRO(settingName)
+		if err != nil {
+			return err
+		}
+
+		switch settingName {
+		case types.SettingNameLogLevel:
+			// We use this to set the instance-manager log level, for either engine type.
+			err = client.LogSetLevel("", "", setting.Value)
+			if err != nil {
+				return errors.Wrapf(err, "failed to set instance-manager log level to setting %v value: %v", settingName, setting.Value)
+			}
+		case types.SettingNameV2DataEngineLogLevel:
+			// We use this to set the spdk_tgt log level independently of the instance-manager's.
+			if types.IsDataEngineV2(im.Spec.DataEngine) {
+				err = client.LogSetLevel(longhorn.DataEngineTypeV2, "", setting.Value)
+				if err != nil {
+					return errors.Wrapf(err, "failed to set spdk_tgt log level to setting %v value: %v", settingName, setting.Value)
+				}
+			}
+		case types.SettingNameV2DataEngineLogFlags:
+			if types.IsDataEngineV2(im.Spec.DataEngine) {
+				err = client.LogSetFlags(longhorn.DataEngineTypeV2, "spdk_tgt", setting.Value)
+				if err != nil {
+					return errors.Wrapf(err, "failed to set spdk_tgt log flags to setting %v value: %v", settingName, setting.Value)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+>>>>>>> f3c86db3 (fix(logging): make RPC call to instance-manager to set log level)
 func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) error {
 	err := imc.annotateCASafeToEvict(im)
 	if err != nil {
