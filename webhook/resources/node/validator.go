@@ -67,11 +67,7 @@ func (n *nodeValidator) Create(request *admission.Request, newObj runtime.Object
 			}
 		}
 
-		if disk.Type == longhorn.DiskTypeBlock {
-			if disk.StorageReserved != 0 {
-				return werror.NewInvalidError(fmt.Sprintf("disk %v type %v is not supported to reserve storage", name, disk.Type), "")
-			}
-		} else {
+		if disk.Type != longhorn.DiskTypeBlock {
 			if disk.DiskDriver != longhorn.DiskDriverNone {
 				return werror.NewInvalidError(fmt.Sprintf("disk %v type %v is not supported to specify disk driver", name, disk.Type), "")
 			}
@@ -177,11 +173,7 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 					newNode.Name, name, disk.Path), "")
 			}
 		}
-		if disk.Type == longhorn.DiskTypeBlock {
-			if disk.StorageReserved != 0 {
-				return werror.NewInvalidError(fmt.Sprintf("disk %v type %v is not supported to reserve storage", name, disk.Type), "")
-			}
-		} else {
+		if disk.Type != longhorn.DiskTypeBlock {
 			if disk.DiskDriver != longhorn.DiskDriverNone {
 				return werror.NewInvalidError(fmt.Sprintf("disk %v type %v is not supported to specify disk driver", name, disk.Type), "")
 			}
