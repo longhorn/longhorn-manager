@@ -51,7 +51,7 @@ replace (
 )
 
 require (
-	github.com/container-storage-interface/spec v1.10.0
+	github.com/container-storage-interface/spec v1.11.0
 	github.com/docker/go-connections v0.5.0
 	github.com/go-co-op/gocron v1.37.0
 	github.com/google/uuid v1.6.0
