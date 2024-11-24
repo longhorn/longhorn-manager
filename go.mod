@@ -61,10 +61,10 @@ require (
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.7.2
-	github.com/longhorn/backupstore v0.0.0-20241117040525-542fb2c66652
+	github.com/longhorn/backupstore v0.0.0-20241124092526-138305866a87
 	github.com/longhorn/go-common-libs v0.0.0-20241124035508-d6221574e626
-	github.com/longhorn/go-iscsi-helper v0.0.0-20241123080407-29a913da4400
-	github.com/longhorn/go-spdk-helper v0.0.0-20241123080431-7e915c6e2fc5
+	github.com/longhorn/go-iscsi-helper v0.0.0-20241124090242-e1ca22338f8a
+	github.com/longhorn/go-spdk-helper v0.0.0-20241124090314-c396ae715a7f
 	github.com/longhorn/longhorn-engine v1.7.2
 	github.com/longhorn/longhorn-instance-manager v1.7.2
 	github.com/longhorn/longhorn-share-manager v1.7.2
@@ -75,7 +75,7 @@ require (
 	github.com/rancher/wrangler/v3 v3.0.1-rc.2
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.9.3
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli v1.22.16
 	golang.org/x/mod v0.22.0
 	golang.org/x/net v0.31.0
