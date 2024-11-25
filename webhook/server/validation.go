@@ -10,9 +10,11 @@ import (
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	"github.com/longhorn/longhorn-manager/webhook/resources/backingimage"
+	"github.com/longhorn/longhorn-manager/webhook/resources/dataengineupgrademanager"
 	"github.com/longhorn/longhorn-manager/webhook/resources/engine"
 	"github.com/longhorn/longhorn-manager/webhook/resources/instancemanager"
 	"github.com/longhorn/longhorn-manager/webhook/resources/node"
+	"github.com/longhorn/longhorn-manager/webhook/resources/nodedataengineupgrade"
 	"github.com/longhorn/longhorn-manager/webhook/resources/orphan"
 	"github.com/longhorn/longhorn-manager/webhook/resources/persistentvolumeclaim"
 	"github.com/longhorn/longhorn-manager/webhook/resources/recurringjob"
@@ -49,6 +51,8 @@ func Validation(ds *datastore.DataStore) (http.Handler, []admission.Resource, er
 		replica.NewValidator(ds),
 		instancemanager.NewValidator(ds),
 		persistentvolumeclaim.NewValidator(ds),
+		dataengineupgrademanager.NewValidator(ds),
+		nodedataengineupgrade.NewValidator(ds),
 	}
 
 	router := webhook.NewRouter()
