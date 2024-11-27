@@ -21,6 +21,8 @@ import (
 
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/scheduler"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -38,6 +40,7 @@ type VolumeEvictionController struct {
 
 	ds         *datastore.DataStore
 	cacheSyncs []cache.InformerSynced
+	scheduler  *scheduler.ReplicaScheduler
 }
 
 func NewVolumeEvictionController(
@@ -62,6 +65,8 @@ func NewVolumeEvictionController(
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-volume-eviction-controller"}),
 	}
+
+	vec.scheduler = scheduler.NewReplicaScheduler(ds)
 
 	var err error
 	if _, err = ds.VolumeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -167,10 +172,6 @@ func (vec *VolumeEvictionController) reconcile(volName string) (err error) {
 		return nil
 	}
 
-	if vol.Spec.NodeID == "" {
-		return nil
-	}
-
 	if !vec.isResponsibleFor(vol) {
 		return nil
 	}
@@ -205,12 +206,39 @@ func (vec *VolumeEvictionController) reconcile(volName string) (err error) {
 	evictingAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeEvictionController, volName)
 
 	if hasReplicaEvictionRequested(replicas) {
-		createOrUpdateAttachmentTicket(va, evictingAttachmentTicketID, vol.Status.OwnerID, longhorn.AnyValue, longhorn.AttacherTypeVolumeEvictionController)
+		if vec.hasDiskCandidateForReplicaEviction(replicas, vol) {
+			createOrUpdateAttachmentTicket(va, evictingAttachmentTicketID, vol.Status.OwnerID, longhorn.AnyValue, longhorn.AttacherTypeVolumeEvictionController)
+		}
 	} else {
 		delete(va.Spec.AttachmentTickets, evictingAttachmentTicketID)
 	}
 
 	return nil
+}
+
+func (vec *VolumeEvictionController) hasDiskCandidateForReplicaEviction(replicas map[string]*longhorn.Replica, volume *longhorn.Volume) bool {
+	for _, replica := range replicas {
+		replicaCopy := replica.DeepCopy()
+		replicaCopy.Spec.HardNodeAffinity = ""
+
+		diskCandidates, multiError, err := vec.scheduler.FindDiskCandidates(replicaCopy, replicas, volume)
+		if err != nil {
+			vec.logger.WithError(err).Warnf("Failed to find disk candidates for evicting replica %q", replica.Name)
+			return false
+		}
+
+		if len(diskCandidates) == 0 {
+			aggregatedReplicaScheduledError := util.NewMultiError(longhorn.ErrorReplicaScheduleEvictReplicaFailed)
+			if multiError != nil {
+				aggregatedReplicaScheduledError.Append(multiError)
+			}
+			vec.logger.Warnf("No disk candidates for evicting replica %q: %v", replica.Name, aggregatedReplicaScheduledError.Join())
+			return false
+		}
+	}
+
+	vec.logger.Infof("Found disk candidates for evicting replicas of volume %q", volume.Name)
+	return true
 }
 
 func (vec *VolumeEvictionController) isResponsibleFor(vol *longhorn.Volume) bool {
