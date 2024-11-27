@@ -56,6 +56,7 @@ const (
 	ErrorReplicaScheduleHardNodeAffinityNotSatisfied     = "hard affinity cannot be satisfied"
 	ErrorReplicaScheduleSchedulingFailed                 = "replica scheduling failed"
 	ErrorReplicaSchedulePrecheckNewReplicaFailed         = "precheck new replica failed"
+	ErrorReplicaScheduleEvictReplicaFailed               = "evict replica failed"
 )
 
 type DiskType string
