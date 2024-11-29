@@ -14,6 +14,8 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sys/unix"
+	"unsafe"
 
 	lhns "github.com/longhorn/go-common-libs/ns"
 
@@ -996,7 +998,7 @@ func LabelsToString(labels map[string]string) string {
 	return res
 }
 
-func CreateDisksFromAnnotation(annotation string) (map[string]longhorn.DiskSpec, error) {
+func CreateDisksFromAnnotation(annotation string, storageReservedPercentage int64) (map[string]longhorn.DiskSpec, error) {
 	validDisks := map[string]longhorn.DiskSpec{}
 	existDiskID := map[string]string{}
 
@@ -1035,6 +1037,23 @@ func CreateDisksFromAnnotation(annotation string) (map[string]longhorn.DiskSpec,
 
 		if disk.StorageReserved < 0 || disk.StorageReserved > diskStat.StorageMaximum {
 			return nil, fmt.Errorf("the storageReserved setting of disk %v is not valid, should be positive and no more than storageMaximum and storageAvailable", disk.Path)
+		}
+		if disk.StorageReserved == 0 {
+			if disk.Type == longhorn.DiskTypeBlock {
+				file, err := os.Open(ReplicaHostPrefix + disk.Path)
+				if err != nil {
+					return nil, fmt.Errorf("failed to open block device at %s: %w", disk.Path, err)
+				}
+				var size uint64
+				_, _, errno := unix.Syscall(unix.SYS_IOCTL, file.Fd(), 0x80081272, uintptr(unsafe.Pointer(&size)))
+				file.Close()
+				if errno != 0 {
+					return nil, fmt.Errorf("failed to get block device size for %s: errno=%v", disk.Path, errno)
+				}
+				disk.StorageReserved = int64(size) * storageReservedPercentage / 100
+			} else {
+				disk.StorageReserved = diskStat.StorageMaximum * storageReservedPercentage / 100
+			}
 		}
 		tags, err := util.ValidateTags(disk.Tags)
 		if err != nil {
