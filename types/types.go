@@ -1044,9 +1044,9 @@ func CreateDisksFromAnnotation(annotation string, storageReservedPercentage int6
 				if err != nil {
 					return nil, fmt.Errorf("failed to open block device at %s: %w", disk.Path, err)
 				}
+				defer file.Close()
 				var size uint64
 				_, _, errno := unix.Syscall(unix.SYS_IOCTL, file.Fd(), 0x80081272, uintptr(unsafe.Pointer(&size)))
-				file.Close()
 				if errno != 0 {
 					return nil, fmt.Errorf("failed to get block device size for %s: errno=%v", disk.Path, errno)
 				}
