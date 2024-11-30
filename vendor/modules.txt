@@ -248,7 +248,7 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20241124035508-d6221574e626
+# github.com/longhorn/go-common-libs v0.0.0-20241128023039-4d6c3a880dbc
 ## explicit; go 1.22.7
 github.com/longhorn/go-common-libs/backup
 github.com/longhorn/go-common-libs/exec
@@ -268,7 +268,7 @@ github.com/longhorn/go-iscsi-helper/iscsidev
 github.com/longhorn/go-iscsi-helper/longhorndev
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.0.0-20241124090314-c396ae715a7f
+# github.com/longhorn/go-spdk-helper v0.0.0-20241128153459-5dae730ad3d2
 ## explicit; go 1.22.7
 github.com/longhorn/go-spdk-helper/pkg/types
 # github.com/longhorn/longhorn-engine v1.8.0-dev-20241117
@@ -390,7 +390,7 @@ github.com/rancher/dynamiclistener/storage/memory
 ## explicit
 github.com/rancher/go-rancher/api
 github.com/rancher/go-rancher/client
-# github.com/rancher/lasso v0.0.0-20241115003608-cbc3210bd004
+# github.com/rancher/lasso v0.0.0-20241125180327-d19dc78eb0a8
 ## explicit; go 1.22.0
 github.com/rancher/lasso/pkg/cache
 github.com/rancher/lasso/pkg/client

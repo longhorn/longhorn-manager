@@ -22,10 +22,11 @@ const (
 	ShallowCopyStateComplete   = "complete"
 	ShallowCopyStateError      = "error"
 
-	DefaultCtrlrLossTimeoutSec = 30
-	// DefaultReconnectDelaySec can't be more than DefaultFastIoFailTimeoutSec, same for non-default values.
+	DefaultCtrlrLossTimeoutSec = 15
+	// DefaultReconnectDelaySec can't be more than DefaultFastIOFailTimeoutSec.
 	DefaultReconnectDelaySec    = 2
-	DefaultFastIOFailTimeoutSec = 15
+	DefaultFastIOFailTimeoutSec = 10
+
 	// DefaultTransportAckTimeout value is not the timeout second.
 	// The timeout formula is 2^(transport_ack_timeout) msec.
 	// DefaultTransportAckTimeout is 14, so the default timeout is 2^14 = 16384 msec = 16.384 sec.
