@@ -72,6 +72,9 @@ func (b *backingImageValidator) Create(request *admission.Request, newObj runtim
 		if err != nil {
 			return werror.NewInvalidError(fmt.Sprintf("invalid parameter %+v for source type %v", backingImage.Spec.SourceParameters, backingImage.Spec.SourceType), "")
 		}
+		if sourceBackingImage.Spec.DataEngine == longhorn.DataEngineTypeV2 {
+			return werror.NewInvalidError("clone from a v2 backing image is not supported", "")
+		}
 		return b.validateCloneParameters(sourceBackingImage, backingImage)
 	case longhorn.BackingImageDataSourceTypeDownload:
 		if backingImage.Spec.SourceParameters[longhorn.DataSourceTypeDownloadParameterURL] == "" {
@@ -87,6 +90,11 @@ func (b *backingImageValidator) Create(request *admission.Request, newObj runtim
 		if err != nil {
 			return werror.NewInvalidError(fmt.Sprintf("failed to get volume %v before exporting backing image", volumeName), "")
 		}
+
+		if v.Spec.DataEngine == longhorn.DataEngineTypeV2 {
+			return werror.NewInvalidError("exported from a v2 volume is not supported", "")
+		}
+
 		if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 			return werror.NewInvalidError(fmt.Sprintf("cannot export a backing image from faulted volume %v", volumeName), "")
 		}

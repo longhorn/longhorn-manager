@@ -63,7 +63,8 @@ func newTestInstanceManagerController(lhClient *lhfake.Clientset, kubeClient *fa
 
 	logger := logrus.StandardLogger()
 
-	imc, err := NewInstanceManagerController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID, TestServiceAccount)
+	proxyConnCounter := util.NewAtomicCounter()
+	imc, err := NewInstanceManagerController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, controllerID, TestServiceAccount, proxyConnCounter)
 	if err != nil {
 		return nil, err
 	}

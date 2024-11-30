@@ -1,6 +1,7 @@
 package engineapi
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
+	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -283,4 +285,24 @@ func (e *EngineSimulator) CleanupBackupMountPoints() error {
 
 func (e *EngineSimulator) RemountReadOnlyVolume(*longhorn.Engine) error {
 	return errors.New(ErrNotImplement)
+}
+
+func (e *EngineSimulator) SPDKBackingImageCreate(name, backingImageUUID, diskUUID, checksum, fromAddress, srcDiskUUID string, size uint64) (*imapi.BackingImage, error) {
+	return nil, errors.New(ErrNotImplement)
+}
+
+func (e *EngineSimulator) SPDKBackingImageDelete(name, diskUUID string) error {
+	return errors.New(ErrNotImplement)
+}
+
+func (e *EngineSimulator) SPDKBackingImageGet(name, diskUUID string) (*imapi.BackingImage, error) {
+	return nil, errors.New(ErrNotImplement)
+}
+
+func (e *EngineSimulator) SPDKBackingImageList() (map[string]longhorn.BackingImageV2CopyInfo, error) {
+	return nil, errors.New(ErrNotImplement)
+}
+
+func (e *EngineSimulator) SPDKBackingImageWatch(ctx context.Context) (*imapi.BackingImageStream, error) {
+	return nil, errors.New(ErrNotImplement)
 }

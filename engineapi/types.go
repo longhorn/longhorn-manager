@@ -1,12 +1,14 @@
 package engineapi
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
 
 	iscsidevtypes "github.com/longhorn/go-iscsi-helper/types"
 	spdkdevtypes "github.com/longhorn/go-spdk-helper/pkg/types"
+	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 
 	emeta "github.com/longhorn/longhorn-engine/pkg/meta"
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
@@ -108,6 +110,12 @@ type EngineClient interface {
 
 	BackupRestore(engine *longhorn.Engine, backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string, concurrentLimit int) error
 	BackupRestoreStatus(engine *longhorn.Engine) (map[string]*longhorn.RestoreStatus, error)
+
+	SPDKBackingImageCreate(name, backingImageUUID, diskUUID, checksum, fromAddress, srcDiskUUID string, size uint64) (*imapi.BackingImage, error)
+	SPDKBackingImageDelete(name, diskUUID string) error
+	SPDKBackingImageGet(name, diskUUID string) (*imapi.BackingImage, error)
+	SPDKBackingImageList() (map[string]longhorn.BackingImageV2CopyInfo, error)
+	SPDKBackingImageWatch(ctx context.Context) (*imapi.BackingImageStream, error)
 
 	CleanupBackupMountPoints() error
 

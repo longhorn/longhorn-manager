@@ -12,6 +12,10 @@ const (
 	// InstanceManagerDiskServiceAPIVersion used to communicate with the user e.g. longhorn-manager
 	InstanceManagerDiskServiceAPIVersion    = 1
 	InstanceManagerDiskServiceAPIMinVersion = 1
+
+	// InstanceManagerBackingImageServiceAPIVersion is used for compatibility check for longhorn-manager
+	InstanceManagerBackingImageServiceAPIVersion    = 1
+	InstanceManagerBackingImageServiceAPIMinVersion = 1
 )
 
 // Following variables are filled in by main.go
@@ -64,5 +68,25 @@ func GetDiskServiceVersion() DiskServiceVersionOutput {
 
 		InstanceManagerDiskServiceAPIVersion:    InstanceManagerDiskServiceAPIVersion,
 		InstanceManagerDiskServiceAPIMinVersion: InstanceManagerDiskServiceAPIMinVersion,
+	}
+}
+
+type BackingImageServiceVersionOutput struct {
+	Version   string `json:"version"`
+	GitCommit string `json:"gitCommit"`
+	BuildDate string `json:"buildDate"`
+
+	InstanceManagerBackingImageServiceAPIVersion    int `json:"instanceManagerBackingImageServiceAPIVersion"`
+	InstanceManagerBackingImageServiceAPIMinVersion int `json:"instanceManagerBackingImageServiceAPIMinVersion"`
+}
+
+func GetBackingImageServiceVersion() BackingImageServiceVersionOutput {
+	return BackingImageServiceVersionOutput{
+		Version:   Version,
+		GitCommit: GitCommit,
+		BuildDate: BuildDate,
+
+		InstanceManagerBackingImageServiceAPIVersion:    InstanceManagerBackingImageServiceAPIVersion,
+		InstanceManagerBackingImageServiceAPIMinVersion: InstanceManagerBackingImageServiceAPIMinVersion,
 	}
 }

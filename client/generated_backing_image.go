@@ -9,6 +9,8 @@ type BackingImage struct {
 
 	CurrentChecksum string `json:"currentChecksum,omitempty" yaml:"current_checksum,omitempty"`
 
+	DataEngine string `json:"dataEngine,omitempty" yaml:"data_engine,omitempty"`
+
 	DeletionTimestamp string `json:"deletionTimestamp,omitempty" yaml:"deletion_timestamp,omitempty"`
 
 	DiskFileStatusMap map[string]BackingImageDiskFileStatus `json:"diskFileStatusMap,omitempty" yaml:"disk_file_status_map,omitempty"`
@@ -27,7 +29,7 @@ type BackingImage struct {
 
 	Secret string `json:"secret,omitempty" yaml:"secret,omitempty"`
 
-	SecretNamespace string `json:"secretNamespace,omitempty" yaml:"secretNamespace,omitempty"`
+	SecretNamespace string `json:"secretNamespace,omitempty" yaml:"secret_namespace,omitempty"`
 
 	Size int64 `json:"size,omitempty" yaml:"size,omitempty"`
 
