@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.11.1
+# syntax=docker/dockerfile:1.12.0
 
 FROM registry.suse.com/bci/bci-base:15.6
 
