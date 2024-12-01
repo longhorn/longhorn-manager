@@ -143,14 +143,14 @@ func (e *EngineSimulator) ReplicaAdd(engine *longhorn.Engine, replicaName, url s
 	return nil
 }
 
-func (e *EngineSimulator) ReplicaRemove(engine *longhorn.Engine, addr string) error {
+func (e *EngineSimulator) ReplicaRemove(engine *longhorn.Engine, replicaAddress, replicaName string) error {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 
-	if e.replicas[addr] == nil {
-		return fmt.Errorf("unable to find replica %v", addr)
+	if e.replicas[replicaAddress] == nil {
+		return fmt.Errorf("unable to find replica %v", replicaAddress)
 	}
-	delete(e.replicas, addr)
+	delete(e.replicas, replicaAddress)
 	return nil
 }
 
