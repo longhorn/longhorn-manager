@@ -4,6 +4,11 @@ go 1.23.1
 
 toolchain go1.23.4
 
+replace (
+	github.com/longhorn/longhorn-instance-manager => github.com/shuo-wu/longhorn-instance-manager v0.0.0-20241221010736-e78d54cf1bdf
+	github.com/longhorn/longhorn-spdk-engine => github.com/shuo-wu/longhorn-spdk-engine v0.0.0-20241220193646-793fe7001495
+)
+
 // Replace directives are required for dependencies in this section because:
 // - This module imports k8s.io/kubernetes.
 // - The development for all of these dependencies is done at kubernetes/staging and then synced to other repos.
@@ -143,7 +148,7 @@ require (
 	github.com/emicklei/go-restful/v3 v3.12.1 // indirect
 	github.com/evanphx/json-patch v5.9.0+incompatible // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/fsnotify/fsnotify v1.7.0 // indirect
+	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/gammazero/deque v1.0.0 // indirect
 	github.com/gammazero/workerpool v1.1.3 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
