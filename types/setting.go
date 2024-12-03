@@ -132,6 +132,7 @@ const (
 	SettingNameV2DataEngineCPUMask                                      = SettingName("v2-data-engine-cpu-mask")
 	SettingNameV2DataEngineLogLevel                                     = SettingName("v2-data-engine-log-level")
 	SettingNameV2DataEngineLogFlags                                     = SettingName("v2-data-engine-log-flags")
+	SettingNameV2DataEngineFastReplicaRebuilding                        = SettingName("v2-data-engine-fast-replica-rebuilding")
 	SettingNameFreezeFilesystemForSnapshot                              = SettingName("freeze-filesystem-for-snapshot")
 	SettingNameAutoCleanupSnapshotWhenDeleteBackup                      = SettingName("auto-cleanup-when-delete-backup")
 	SettingNameDefaultMinNumberOfBackingImageCopies                     = SettingName("default-min-number-of-backing-image-copies")
@@ -225,6 +226,7 @@ var (
 		SettingNameV2DataEngineCPUMask,
 		SettingNameV2DataEngineLogLevel,
 		SettingNameV2DataEngineLogFlags,
+		SettingNameV2DataEngineFastReplicaRebuilding,
 		SettingNameReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume,
@@ -344,6 +346,7 @@ var (
 		SettingNameV2DataEngineCPUMask:                                      SettingDefinitionV2DataEngineCPUMask,
 		SettingNameV2DataEngineLogLevel:                                     SettingDefinitionV2DataEngineLogLevel,
 		SettingNameV2DataEngineLogFlags:                                     SettingDefinitionV2DataEngineLogFlags,
+		SettingNameV2DataEngineFastReplicaRebuilding:                        SettingDefinitionV2DataEngineFastReplicaRebuilding,
 		SettingNameReplicaDiskSoftAntiAffinity:                              SettingDefinitionReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume:                             SettingDefinitionAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume:                             SettingDefinitionAllowEmptyDiskSelectorVolume,
@@ -1441,6 +1444,16 @@ var (
 		Required:    false,
 		ReadOnly:    false,
 		Default:     "",
+	}
+
+	SettingDefinitionV2DataEngineFastReplicaRebuilding = SettingDefinition{
+		DisplayName: "V2 Data Engine Fast Replica Rebuilding",
+		Description: "This setting enables the fast replica rebuilding feature for v2 data engine. It relies on the snapshot checksums, so setting the snapshot-data-integrity to **enable** or **fast-check** is a prerequisite.",
+		Category:    SettingCategoryV2DataEngine,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "false",
 	}
 
 	SettingDefinitionAutoCleanupSnapshotWhenDeleteBackup = SettingDefinition{
