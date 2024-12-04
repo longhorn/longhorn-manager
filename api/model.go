@@ -430,12 +430,13 @@ type Node struct {
 }
 
 type DiskStatus struct {
-	Conditions       map[string]longhorn.Condition `json:"conditions"`
-	StorageAvailable int64                         `json:"storageAvailable"`
-	StorageScheduled int64                         `json:"storageScheduled"`
-	StorageMaximum   int64                         `json:"storageMaximum"`
-	ScheduledReplica map[string]int64              `json:"scheduledReplica"`
-	DiskUUID         string                        `json:"diskUUID"`
+	Conditions            map[string]longhorn.Condition `json:"conditions"`
+	StorageAvailable      int64                         `json:"storageAvailable"`
+	StorageScheduled      int64                         `json:"storageScheduled"`
+	StorageMaximum        int64                         `json:"storageMaximum"`
+	ScheduledReplica      map[string]int64              `json:"scheduledReplica"`
+	ScheduledBackingImage map[string]int64              `json:"scheduledBackingImage"`
+	DiskUUID              string                        `json:"diskUUID"`
 }
 
 type DiskInfo struct {
@@ -2080,12 +2081,13 @@ func toNodeResource(node *longhorn.Node, address string, apiContext *api.ApiCont
 		}
 		if node.Status.DiskStatus != nil && node.Status.DiskStatus[name] != nil {
 			di.DiskStatus = DiskStatus{
-				Conditions:       sliceToMap(node.Status.DiskStatus[name].Conditions),
-				StorageAvailable: node.Status.DiskStatus[name].StorageAvailable,
-				StorageScheduled: node.Status.DiskStatus[name].StorageScheduled,
-				StorageMaximum:   node.Status.DiskStatus[name].StorageMaximum,
-				ScheduledReplica: node.Status.DiskStatus[name].ScheduledReplica,
-				DiskUUID:         node.Status.DiskStatus[name].DiskUUID,
+				Conditions:            sliceToMap(node.Status.DiskStatus[name].Conditions),
+				StorageAvailable:      node.Status.DiskStatus[name].StorageAvailable,
+				StorageScheduled:      node.Status.DiskStatus[name].StorageScheduled,
+				StorageMaximum:        node.Status.DiskStatus[name].StorageMaximum,
+				ScheduledReplica:      node.Status.DiskStatus[name].ScheduledReplica,
+				ScheduledBackingImage: node.Status.DiskStatus[name].ScheduledBackingImage,
+				DiskUUID:              node.Status.DiskStatus[name].DiskUUID,
 			}
 		}
 		disks[name] = di

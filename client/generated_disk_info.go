@@ -19,6 +19,8 @@ type DiskInfo struct {
 
 	Path string `json:"path,omitempty" yaml:"path,omitempty"`
 
+	ScheduledBackingImage map[string]string `json:"scheduledBackingImage,omitempty" yaml:"scheduled_backing_image,omitempty"`
+
 	ScheduledReplica map[string]string `json:"scheduledReplica,omitempty" yaml:"scheduled_replica,omitempty"`
 
 	StorageAvailable int64 `json:"storageAvailable,omitempty" yaml:"storage_available,omitempty"`
