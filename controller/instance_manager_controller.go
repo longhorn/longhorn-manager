@@ -295,7 +295,8 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 	im, err := imc.ds.GetInstanceManager(name)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
-			return imc.cleanupInstanceManager(name)
+			imc.logger.Warnf("Deleting instance manager pod %v since the instance manager is not found", name)
+			return imc.cleanupInstanceManagerPod(name)
 		}
 		return errors.Wrap(err, "failed to get instance manager")
 	}
@@ -320,7 +321,8 @@ func (imc *InstanceManagerController) syncInstanceManager(key string) (err error
 	}
 
 	if im.DeletionTimestamp != nil {
-		return imc.cleanupInstanceManager(im.Name)
+		log.Warnf("Deleting instance manager pod %v since the instance manager is being deleted", name)
+		return imc.cleanupInstanceManagerPod(im.Name)
 	}
 
 	existingIM := im.DeepCopy()
@@ -601,7 +603,11 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		return nil
 	}
 
-	if err := imc.cleanupInstanceManager(im.Name); err != nil {
+	log.Warnf("Deleting instance manager pod %v since one of the following conditions is met: "+
+		"setting is not synced (%v) or data engine CPU mask is not applied (%v), instances are running in the pod (%v), "+
+		"or the pod is deleted or not running (%v)", im.Name, !isSettingSynced, !dataEngineCPUMaskIsApplied, areInstancesRunningInPod, isPodDeletedOrNotRunning)
+
+	if err := imc.cleanupInstanceManagerPod(im.Name); err != nil {
 		return err
 	}
 	// The instance manager pod should be created on the preferred node only.
@@ -1248,7 +1254,7 @@ func (imc *InstanceManagerController) enqueueSettingChange(obj interface{}) {
 	imc.enqueueInstanceManagersForNode(imc.controllerID)
 }
 
-func (imc *InstanceManagerController) cleanupInstanceManager(imName string) error {
+func (imc *InstanceManagerController) cleanupInstanceManagerPod(imName string) error {
 	imc.stopMonitoring(imName)
 
 	pod, err := imc.ds.GetPodRO(imc.namespace, imName)
