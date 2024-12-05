@@ -1798,7 +1798,7 @@ func (s *DataStore) ListVolumePDBProtectedHealthyReplicasRO(volumeName string) (
 
 func (s *DataStore) getRunningReplicaInstanceManagerRO(r *longhorn.Replica) (im *longhorn.InstanceManager, err error) {
 	if r.Status.InstanceManagerName == "" {
-		im, err = s.GetInstanceManagerByInstanceRO(r)
+		im, err = s.GetInstanceManagerByInstanceRO(r, false)
 		if err != nil && !types.ErrorIsNotFound(err) {
 			return nil, err
 		}
@@ -3739,33 +3739,33 @@ func (s *DataStore) ListInstanceManagersBySelectorRO(node, imImage string, imTyp
 
 // GetInstanceManagerByInstance returns an InstanceManager for a given object,
 // or an error if more than one InstanceManager is found.
-func (s *DataStore) GetInstanceManagerByInstance(obj interface{}) (*longhorn.InstanceManager, error) {
-	im, err := s.GetInstanceManagerByInstanceRO(obj)
+func (s *DataStore) GetInstanceManagerByInstance(obj interface{}, isInstanceOnRemoteNode bool) (*longhorn.InstanceManager, error) {
+	im, err := s.GetInstanceManagerByInstanceRO(obj, isInstanceOnRemoteNode)
 	if err != nil {
 		return nil, err
 	}
 	return im.DeepCopy(), nil
 }
 
-func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.InstanceManager, error) {
+func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}, isInstanceOnRemoteNode bool) (*longhorn.InstanceManager, error) {
 	var (
 		name       string // name of the object
 		nodeID     string
 		dataEngine longhorn.DataEngineType
-		image      string
 	)
 
 	switch obj := obj.(type) {
 	case *longhorn.Engine:
 		name = obj.Name
-		nodeID = obj.Spec.NodeID
 		dataEngine = obj.Spec.DataEngine
-		image = obj.Spec.Image
+		nodeID = obj.Spec.NodeID
+		if isInstanceOnRemoteNode {
+			nodeID = obj.Spec.TargetNodeID
+		}
 	case *longhorn.Replica:
 		name = obj.Name
-		nodeID = obj.Spec.NodeID
 		dataEngine = obj.Spec.DataEngine
-		image = obj.Spec.Image
+		nodeID = obj.Spec.NodeID
 	default:
 		return nil, fmt.Errorf("unknown type for GetInstanceManagerByInstance, %+v", obj)
 	}
@@ -3773,29 +3773,72 @@ func (s *DataStore) GetInstanceManagerByInstanceRO(obj interface{}) (*longhorn.I
 		return nil, fmt.Errorf("invalid request for GetInstanceManagerByInstance: no NodeID specified for instance %v", name)
 	}
 
-	instanceManagerImage, err := s.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+	imMap, err := s.listInstanceManagers(nodeID, dataEngine)
 	if err != nil {
 		return nil, err
 	}
 
-	// Because there is only one active instance manager image for v2 data engine,
-	// use spec.image as the instance manager image instead.
-	if dataEngine == longhorn.DataEngineTypeV2 {
-		instanceManagerImage = image
+	return filterInstanceManagers(nodeID, dataEngine, imMap)
+}
+
+func (s *DataStore) listInstanceManagers(nodeID string, dataEngine longhorn.DataEngineType) (imMap map[string]*longhorn.InstanceManager, err error) {
+	if types.IsDataEngineV2(dataEngine) {
+		// Because there is only one active instance manager image for v2 data engine,
+		// use spec.image as the instance manager image instead.
+		imMap, err = s.ListInstanceManagersByNodeRO(nodeID, longhorn.InstanceManagerTypeAllInOne, dataEngine)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list all instance managers for node %v: %w", nodeID, err)
+		}
+	} else {
+		// Always use the default instance manager image for v1 data engine
+		instanceManagerImage, err := s.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get default instance manager image")
+		}
+
+		imMap, err = s.ListInstanceManagersBySelectorRO(nodeID, instanceManagerImage, longhorn.InstanceManagerTypeAllInOne, dataEngine)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list instance managers with image %v for node %v: %w", instanceManagerImage, nodeID, err)
+		}
 	}
 
-	imMap, err := s.ListInstanceManagersBySelectorRO(nodeID, instanceManagerImage, longhorn.InstanceManagerTypeAllInOne, dataEngine)
-	if err != nil {
-		return nil, err
+	return imMap, nil
+}
+
+func filterInstanceManagers(nodeID string, dataEngine longhorn.DataEngineType, imMap map[string]*longhorn.InstanceManager) (*longhorn.InstanceManager, error) {
+	if len(imMap) == 0 {
+		return nil, fmt.Errorf("no instance manager found for node %v", nodeID)
 	}
+
 	if len(imMap) == 1 {
 		for _, im := range imMap {
 			return im, nil
 		}
-
 	}
-	return nil, fmt.Errorf("cannot find the only available instance manager for instance %v, node %v, instance manager image %v, type %v",
-		name, nodeID, instanceManagerImage, longhorn.InstanceManagerTypeAllInOne)
+
+	// Because there is only one active instance manager image for v2 data engine,
+	// use spec.image as the instance manager image instead.
+	if types.IsDataEngineV2(dataEngine) {
+		return findRunningInstanceManager(imMap)
+	}
+
+	return nil, fmt.Errorf("ambiguous instance manager selection for node %v", nodeID)
+}
+
+func findRunningInstanceManager(imMap map[string]*longhorn.InstanceManager) (*longhorn.InstanceManager, error) {
+	var runningIM *longhorn.InstanceManager
+	for _, im := range imMap {
+		if im.Status.CurrentState == longhorn.InstanceManagerStateRunning {
+			if runningIM != nil {
+				return nil, fmt.Errorf("found more than one running instance manager")
+			}
+			runningIM = im
+		}
+	}
+	if runningIM == nil {
+		return nil, fmt.Errorf("no running instance manager found")
+	}
+	return runningIM, nil
 }
 
 func (s *DataStore) ListInstanceManagersByNodeRO(node string, imType longhorn.InstanceManagerType, dataEngine longhorn.DataEngineType) (map[string]*longhorn.InstanceManager, error) {
@@ -3945,12 +3988,12 @@ func (s *DataStore) GetEngineImageCLIAPIVersion(imageName string) (int, error) {
 
 // GetDataEngineImageCLIAPIVersion get engine or instance manager image for the given name and returns the CLIAPIVersion
 func (s *DataStore) GetDataEngineImageCLIAPIVersion(imageName string, dataEngine longhorn.DataEngineType) (int, error) {
-	if imageName == "" {
-		return -1, fmt.Errorf("cannot check the CLI API Version based on empty image name")
-	}
-
 	if types.IsDataEngineV2(dataEngine) {
 		return 0, nil
+	}
+
+	if imageName == "" {
+		return -1, fmt.Errorf("cannot check the CLI API Version based on empty image name")
 	}
 
 	ei, err := s.GetEngineImageRO(types.GetEngineImageChecksumName(imageName))
@@ -5595,6 +5638,242 @@ func (s *DataStore) ListBackupBackingImagesRO() ([]*longhorn.BackupBackingImage,
 	return s.backupBackingImageLister.BackupBackingImages(s.namespace).List(labels.Everything())
 }
 
+// CreateDataEngineUpgradeManager creates a Longhorn DataEngineUpgradeManager resource and verifies creation
+func (s *DataStore) CreateDataEngineUpgradeManager(upgradeManager *longhorn.DataEngineUpgradeManager) (*longhorn.DataEngineUpgradeManager, error) {
+	ret, err := s.lhClient.LonghornV1beta2().DataEngineUpgradeManagers(s.namespace).Create(context.TODO(), upgradeManager, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(ret.Name, "dataEngineUpgradeManager", func(name string) (k8sruntime.Object, error) {
+		return s.GetDataEngineUpgradeManagerRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.DataEngineUpgradeManager)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for dataEngineUpgradeManager")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// GetDataEngineUpgradeManagerRO returns the DataEngineUpgradeManager with the given dataEngineUpgradeManager name in the cluster
+func (s *DataStore) GetDataEngineUpgradeManagerRO(upgradeManagerName string) (*longhorn.DataEngineUpgradeManager, error) {
+	return s.dataEngineUpgradeManagerLister.DataEngineUpgradeManagers(s.namespace).Get(upgradeManagerName)
+}
+
+// GetDataEngineUpgradeManager returns a copy of DataEngineUpgradeManager with the given dataEngineUpgradeManager name in the cluster
+func (s *DataStore) GetDataEngineUpgradeManager(name string) (*longhorn.DataEngineUpgradeManager, error) {
+	resultRO, err := s.GetDataEngineUpgradeManagerRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// UpdateDataEngineUpgradeManager updates the given Longhorn dataEngineUpgradeManager in the cluster DataEngineUpgradeManager CR and verifies update
+func (s *DataStore) UpdateDataEngineUpgradeManager(upgradeManager *longhorn.DataEngineUpgradeManager) (*longhorn.DataEngineUpgradeManager, error) {
+	obj, err := s.lhClient.LonghornV1beta2().DataEngineUpgradeManagers(s.namespace).Update(context.TODO(), upgradeManager, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(upgradeManager.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetDataEngineUpgradeManagerRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateDataEngineUpgradeManagerStatus updates the given Longhorn dataEngineUpgradeManager status in the cluster DataEngineUpgradeManagers CR status and verifies update
+func (s *DataStore) UpdateDataEngineUpgradeManagerStatus(upgradeManager *longhorn.DataEngineUpgradeManager) (*longhorn.DataEngineUpgradeManager, error) {
+	obj, err := s.lhClient.LonghornV1beta2().DataEngineUpgradeManagers(s.namespace).UpdateStatus(context.TODO(), upgradeManager, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(upgradeManager.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetDataEngineUpgradeManagerRO(name)
+	})
+	return obj, nil
+}
+
+// RemoveFinalizerForDataEngineUpgradeManager will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForDataEngineUpgradeManager(upgradeManager *longhorn.DataEngineUpgradeManager) error {
+	if !util.FinalizerExists(longhornFinalizerKey, upgradeManager) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, upgradeManager); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta2().DataEngineUpgradeManagers(s.namespace).Update(context.TODO(), upgradeManager, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if upgradeManager.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for dataEngineUpgradeManager %s", upgradeManager.Name)
+	}
+	return nil
+}
+
+func (s *DataStore) listDataEngineUpgradeManagers(selector labels.Selector) (map[string]*longhorn.DataEngineUpgradeManager, error) {
+	list, err := s.dataEngineUpgradeManagerLister.DataEngineUpgradeManagers(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.DataEngineUpgradeManager{}
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// ListDataEngineUpgradeManagers returns an object contains all DataEngineUpgradeManagers for the given namespace
+func (s *DataStore) ListDataEngineUpgradeManagers() (map[string]*longhorn.DataEngineUpgradeManager, error) {
+	return s.listDataEngineUpgradeManagers(labels.Everything())
+}
+
+// ListDataEngineUpgradeManagersRO returns a list of all UpgradeManagers for the given namespace
+func (s *DataStore) ListDataEngineUpgradeManagersRO() ([]*longhorn.DataEngineUpgradeManager, error) {
+	return s.dataEngineUpgradeManagerLister.DataEngineUpgradeManagers(s.namespace).List(labels.Everything())
+}
+
+// DeleteDataEngineUpgradeManager won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteDataEngineUpgradeManager(upgradeManagerName string) error {
+	return s.lhClient.LonghornV1beta2().DataEngineUpgradeManagers(s.namespace).Delete(context.TODO(), upgradeManagerName, metav1.DeleteOptions{})
+}
+
+// GetOwnerReferencesForDataEngineUpgradeManager returns OwnerReference for the given DataEngineUpgradeManager name and UID
+func GetOwnerReferencesForDataEngineUpgradeManager(upgradeManager *longhorn.DataEngineUpgradeManager) []metav1.OwnerReference {
+	return []metav1.OwnerReference{
+		{
+			APIVersion: longhorn.SchemeGroupVersion.String(),
+			Kind:       types.LonghornKindDataEngineUpgradeManager,
+			Name:       upgradeManager.Name,
+			UID:        upgradeManager.UID,
+		},
+	}
+}
+
+// CreateNodeDataEngineUpgrade creates a Longhorn NodeDataEngineUpgrade resource and verifies creation
+func (s *DataStore) CreateNodeDataEngineUpgrade(nodeUpgrade *longhorn.NodeDataEngineUpgrade) (*longhorn.NodeDataEngineUpgrade, error) {
+	ret, err := s.lhClient.LonghornV1beta2().NodeDataEngineUpgrades(s.namespace).Create(context.TODO(), nodeUpgrade, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if SkipListerCheck {
+		return ret, nil
+	}
+
+	obj, err := verifyCreation(ret.Name, "nodeDataEngineUpgrade", func(name string) (k8sruntime.Object, error) {
+		return s.GetNodeDataEngineUpgradeRO(name)
+	})
+	if err != nil {
+		return nil, err
+	}
+	ret, ok := obj.(*longhorn.NodeDataEngineUpgrade)
+	if !ok {
+		return nil, fmt.Errorf("BUG: datastore: verifyCreation returned wrong type for nodeDataEngineUpgrade")
+	}
+
+	return ret.DeepCopy(), nil
+}
+
+// GetNodeDataEngineUpgradeRO returns the NodeDataEngineUpgrade with the given nodeDataEngineUpgrade name in the cluster
+func (s *DataStore) GetNodeDataEngineUpgradeRO(upgradeName string) (*longhorn.NodeDataEngineUpgrade, error) {
+	return s.nodeDataEngineUpgradeLister.NodeDataEngineUpgrades(s.namespace).Get(upgradeName)
+}
+
+// GetNodeDataEngineUpgrade returns a copy of NodeDataEngineUpgrade with the given nodeDataEngineUpgrade name in the cluster
+func (s *DataStore) GetNodeDataEngineUpgrade(name string) (*longhorn.NodeDataEngineUpgrade, error) {
+	resultRO, err := s.GetNodeDataEngineUpgradeRO(name)
+	if err != nil {
+		return nil, err
+	}
+	// Cannot use cached object from lister
+	return resultRO.DeepCopy(), nil
+}
+
+// UpdateNodeDataEngineUpgrade updates the given Longhorn nodeDataEngineUpgrade in the cluster NodeDataEngineUpgrade CR and verifies update
+func (s *DataStore) UpdateNodeDataEngineUpgrade(upgrade *longhorn.NodeDataEngineUpgrade) (*longhorn.NodeDataEngineUpgrade, error) {
+	obj, err := s.lhClient.LonghornV1beta2().NodeDataEngineUpgrades(s.namespace).Update(context.TODO(), upgrade, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(upgrade.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetNodeDataEngineUpgradeRO(name)
+	})
+	return obj, nil
+}
+
+// UpdateNodeDataEngineUpgradeStatus updates the given Longhorn nodeDataEngineUpgrade status in the cluster NodeDataEngineUpgrades CR status and verifies update
+func (s *DataStore) UpdateNodeDataEngineUpgradeStatus(upgrade *longhorn.NodeDataEngineUpgrade) (*longhorn.NodeDataEngineUpgrade, error) {
+	obj, err := s.lhClient.LonghornV1beta2().NodeDataEngineUpgrades(s.namespace).UpdateStatus(context.TODO(), upgrade, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	verifyUpdate(upgrade.Name, obj, func(name string) (k8sruntime.Object, error) {
+		return s.GetNodeDataEngineUpgradeRO(name)
+	})
+	return obj, nil
+}
+
+// RemoveFinalizerForNodeDataEngineUpgrade will result in deletion if DeletionTimestamp was set
+func (s *DataStore) RemoveFinalizerForNodeDataEngineUpgrade(upgrade *longhorn.NodeDataEngineUpgrade) error {
+	if !util.FinalizerExists(longhornFinalizerKey, upgrade) {
+		// finalizer already removed
+		return nil
+	}
+	if err := util.RemoveFinalizer(longhornFinalizerKey, upgrade); err != nil {
+		return err
+	}
+	_, err := s.lhClient.LonghornV1beta2().NodeDataEngineUpgrades(s.namespace).Update(context.TODO(), upgrade, metav1.UpdateOptions{})
+	if err != nil {
+		// workaround `StorageError: invalid object, Code: 4` due to empty object
+		if upgrade.DeletionTimestamp != nil {
+			return nil
+		}
+		return errors.Wrapf(err, "unable to remove finalizer for nodeDataEngineUpgrade %s", upgrade.Name)
+	}
+	return nil
+}
+
+func (s *DataStore) listNodeDataEngineUpgrades(selector labels.Selector) (map[string]*longhorn.NodeDataEngineUpgrade, error) {
+	list, err := s.nodeDataEngineUpgradeLister.NodeDataEngineUpgrades(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.NodeDataEngineUpgrade{}
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// ListNodeDataEngineUpgrades returns an object contains all NodeDataEngineUpgrades for the given namespace
+func (s *DataStore) ListNodeDataEngineUpgrades() (map[string]*longhorn.NodeDataEngineUpgrade, error) {
+	return s.listNodeDataEngineUpgrades(labels.Everything())
+}
+
+// ListNodeDataEngineUpgradesRO returns a list of all NodeDataEngineUpgrades for the given namespace
+func (s *DataStore) ListNodeDataEngineUpgradesRO() ([]*longhorn.NodeDataEngineUpgrade, error) {
+	return s.nodeDataEngineUpgradeLister.NodeDataEngineUpgrades(s.namespace).List(labels.Everything())
+}
+
+// DeleteNodeDataEngineUpgrade won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteNodeDataEngineUpgrade(upgradeName string) error {
+	return s.lhClient.LonghornV1beta2().NodeDataEngineUpgrades(s.namespace).Delete(context.TODO(), upgradeName, metav1.DeleteOptions{})
+}
+
 // GetRunningInstanceManagerByNodeRO returns the running instance manager for the given node and data engine
 func (s *DataStore) GetRunningInstanceManagerByNodeRO(node string, dataEngine longhorn.DataEngineType) (*longhorn.InstanceManager, error) {
 	// Trying to get the default instance manager first.
@@ -5714,4 +5993,13 @@ func (s *DataStore) IsStorageNetworkForRWXVolume() (bool, error) {
 	}
 
 	return types.IsStorageNetworkForRWXVolume(storageNetworkSetting, storageNetworkForRWXVolumeEnabled), nil
+}
+
+func (s *DataStore) IsNodeDataEngineUpgradeRequested(name string) (bool, error) {
+	node, err := s.GetNodeRO(name)
+	if err != nil {
+		return false, err
+	}
+
+	return node.Spec.DataEngineUpgradeRequested, nil
 }

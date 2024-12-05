@@ -594,7 +594,16 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		return err
 	}
 
-	isPodDeletionNotRequired := (isSettingSynced && dataEngineCPUMaskIsApplied) || areInstancesRunningInPod || isPodDeletedOrNotRunning
+	dataEngineUpgradeRequested := false
+	if types.IsDataEngineV2(im.Spec.DataEngine) {
+		requested, err := imc.ds.IsNodeDataEngineUpgradeRequested(im.Spec.NodeID)
+		if err != nil {
+			return err
+		}
+		dataEngineUpgradeRequested = requested
+	}
+
+	isPodDeletionNotRequired := (isSettingSynced && dataEngineCPUMaskIsApplied) || areInstancesRunningInPod || isPodDeletedOrNotRunning || dataEngineUpgradeRequested
 	if im.Status.CurrentState != longhorn.InstanceManagerStateError &&
 		im.Status.CurrentState != longhorn.InstanceManagerStateStopped &&
 		isPodDeletionNotRequired {

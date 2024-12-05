@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"net"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -280,12 +281,7 @@ func (ec *EngineController) syncEngine(key string) (err error) {
 		return errors.Wrapf(err, "failed to get engine")
 	}
 
-	defaultEngineImage, err := ec.ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
-	if err != nil {
-		return err
-	}
-
-	isResponsible, err := ec.isResponsibleFor(engine, defaultEngineImage)
+	isResponsible, err := ec.isResponsibleFor(engine)
 	if err != nil {
 		return err
 	}
@@ -438,23 +434,66 @@ func (ec *EngineController) enqueueInstanceManagerChange(obj interface{}) {
 	}
 }
 
-func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
+func (ec *EngineController) findInstanceManagerAndIPs(obj interface{}) (im *longhorn.InstanceManager, initiatorIP string, targetIP string, err error) {
+	e, ok := obj.(*longhorn.Engine)
+	if !ok {
+		return nil, "", "", fmt.Errorf("invalid object for engine: %v", obj)
+	}
+
+	initiatorIM, err := ec.ds.GetInstanceManagerByInstanceRO(obj, false)
+	if err != nil {
+		return nil, "", "", err
+	}
+
+	initiatorIP = initiatorIM.Status.IP
+	targetIP = initiatorIM.Status.IP
+	im = initiatorIM
+
+	// Target, or called Target Instance, is on another node
+	if e.Spec.TargetNodeID != "" {
+		targetIM, err := ec.ds.GetInstanceManagerByInstanceRO(obj, true)
+		if err != nil {
+			return nil, "", "", err
+		}
+
+		targetIP = targetIM.Status.IP
+
+		if !e.Status.TargetInstanceReplacementCreated && e.Status.CurrentTargetNodeID == "" {
+			im = targetIM
+		}
+	}
+
+	return im, initiatorIP, targetIP, nil
+}
+
+func (ec *EngineController) CreateInstance(obj interface{}, isInstanceOnRemoteNode bool) (*longhorn.InstanceProcess, error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
 		return nil, fmt.Errorf("invalid object for engine process creation: %v", obj)
 	}
+
+	log := getLoggerForEngine(ec.logger, e)
+
 	if e.Spec.VolumeName == "" || e.Spec.NodeID == "" {
 		return nil, fmt.Errorf("missing parameters for engine instance creation: %v", e)
 	}
+
 	frontend := e.Spec.Frontend
 	if e.Spec.DisableFrontend {
 		frontend = longhorn.VolumeFrontendEmpty
 	}
 
-	im, err := ec.ds.GetInstanceManagerByInstanceRO(obj)
+	im, initiatorIP, targetIP, err := ec.findInstanceManagerAndIPs(obj)
 	if err != nil {
 		return nil, err
 	}
+
+	log.WithFields(logrus.Fields{
+		"instanceManager":      im.Name,
+		"instanceManagerImage": im.Spec.Image,
+		"initiatorIP":          initiatorIP,
+		"targetIP":             targetIP,
+	}).Info("Creating engine instance")
 
 	c, err := engineapi.NewInstanceManagerClient(im, false)
 	if err != nil {
@@ -482,6 +521,10 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		return nil, err
 	}
 
+	// No need to care about the initiator and target ports if the engine is not being upgraded.
+	initiatorAddress := net.JoinHostPort(initiatorIP, strconv.Itoa(0))
+	targetAddress := net.JoinHostPort(targetIP, strconv.Itoa(e.Status.Port))
+
 	return c.EngineInstanceCreate(&engineapi.EngineInstanceCreateRequest{
 		Engine:                           e,
 		VolumeFrontend:                   frontend,
@@ -490,9 +533,8 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		DataLocality:                     v.Spec.DataLocality,
 		ImIP:                             im.Status.IP,
 		EngineCLIAPIVersion:              cliAPIVersion,
-		UpgradeRequired:                  false,
-		InitiatorAddress:                 im.Status.IP,
-		TargetAddress:                    im.Status.IP,
+		InitiatorAddress:                 initiatorAddress,
+		TargetAddress:                    targetAddress,
 	})
 }
 
@@ -511,7 +553,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 			log.Warn("Engine does not set instance manager name and node ID, will skip the actual instance deletion")
 			return nil
 		}
-		im, err = ec.ds.GetInstanceManagerByInstance(obj)
+		im, err = ec.ds.GetInstanceManagerByInstance(obj, false)
 		if err != nil {
 			log.WithError(err).Warn("Failed to detect instance manager for engine, will skip the actual instance deletion")
 			return nil
@@ -589,28 +631,258 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 		return err
 	}
 
+	if e.Status.CurrentTargetNodeID != "" {
+		err = c.EngineInstanceDeleteTarget(&engineapi.EngineInstanceDeleteTargetRequest{
+			Engine: e,
+		})
+		if err != nil {
+			if !types.ErrorIsNotFound(err) {
+				return errors.Wrapf(err, "failed to delete target for engine %v", e.Name)
+			}
+			log.WithError(err).Warnf("Failed to delete target for engine %v", e.Name)
+		}
+	}
+
 	return nil
 }
 
-func (ec *EngineController) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
+func (ec *EngineController) SuspendInstance(obj interface{}) error {
+	e, ok := obj.(*longhorn.Engine)
+	if !ok {
+		return fmt.Errorf("invalid object for engine instance suspension: %v", obj)
+	}
+
+	if !types.IsDataEngineV2(e.Spec.DataEngine) {
+		return fmt.Errorf("suspending engine instance is not supported for data engine %v", e.Spec.DataEngine)
+	}
+
+	if e.Spec.VolumeName == "" || e.Spec.NodeID == "" {
+		return fmt.Errorf("missing parameters for engine instance suspension: %+v", e)
+	}
+
+	im, err := ec.ds.GetInstanceManagerByInstanceRO(obj, false)
+	if err != nil {
+		return err
+	}
+	c, err := engineapi.NewInstanceManagerClient(im, false)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	return c.EngineInstanceSuspend(&engineapi.EngineInstanceSuspendRequest{
+		Engine: e,
+	})
+}
+
+func (ec *EngineController) ResumeInstance(obj interface{}) error {
+	e, ok := obj.(*longhorn.Engine)
+	if !ok {
+		return fmt.Errorf("invalid object for engine instance resumption: %v", obj)
+	}
+
+	if !types.IsDataEngineV2(e.Spec.DataEngine) {
+		return fmt.Errorf("resuming engine instance is not supported for data engine %v", e.Spec.DataEngine)
+	}
+
+	if e.Spec.VolumeName == "" || e.Spec.NodeID == "" {
+		return fmt.Errorf("missing parameters for engine instance resumption: %+v", e)
+	}
+
+	im, err := ec.ds.GetInstanceManagerByInstanceRO(obj, false)
+	if err != nil {
+		return err
+	}
+	c, err := engineapi.NewInstanceManagerClient(im, false)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	return c.EngineInstanceResume(&engineapi.EngineInstanceResumeRequest{
+		Engine: e,
+	})
+}
+
+func (ec *EngineController) SwitchOverTarget(obj interface{}) error {
+	e, ok := obj.(*longhorn.Engine)
+	if !ok {
+		return fmt.Errorf("invalid object for target switchover: %v", obj)
+	}
+
+	if !types.IsDataEngineV2(e.Spec.DataEngine) {
+		return fmt.Errorf("target switchover is not supported for data engine %v", e.Spec.DataEngine)
+	}
+
+	if e.Spec.VolumeName == "" || e.Spec.NodeID == "" {
+		return fmt.Errorf("missing parameters for target switchover: %+v", e)
+	}
+
+	initiatorInstance, err := ec.GetInstance(obj, false)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get initiator instance %v for switchover", e.Name)
+	}
+
+	log := getLoggerForEngine(ec.logger, e)
+
+	log.Infof("Preparing to switch over target to node %v. Initiator instance port details: port=%v, targetPort=%v, standbyTargetPort=%v",
+		e.Spec.TargetNodeID, initiatorInstance.Status.PortStart, initiatorInstance.Status.TargetPortStart, initiatorInstance.Status.StandbyTargetPortStart)
+
+	targetInstance, err := ec.GetInstance(obj, true)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get target instance %v for switchover", e.Name)
+	}
+	log.Infof("Preparing to switch over target to node %v. Target instance port details: port=%v, targetPort=%v, standbyTargetPort=%v",
+		e.Spec.TargetNodeID, targetInstance.Status.PortStart, targetInstance.Status.TargetPortStart, targetInstance.Status.StandbyTargetPortStart)
+
+	targetIM, err := ec.getTargetInstanceManagerForSwitchOver(e)
+	if err != nil {
+		return err
+	}
+
+	initiatorIM, err := ec.ds.GetInstanceManagerByInstanceRO(obj, false)
+	if err != nil {
+		return err
+	}
+	c, err := engineapi.NewInstanceManagerClient(initiatorIM, false)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	port := targetInstance.Status.TargetPortStart
+	if targetInstance.Status.StandbyTargetPortStart != 0 {
+		port = targetInstance.Status.StandbyTargetPortStart
+	}
+
+	log.Infof("Switching over target to %v:%v", targetIM.Status.IP, port)
+	return c.EngineInstanceSwitchOverTarget(&engineapi.EngineInstanceSwitchOverTargetRequest{
+		Engine:        e,
+		TargetAddress: net.JoinHostPort(targetIM.Status.IP, fmt.Sprint(port)),
+	})
+}
+
+func (ec *EngineController) getTargetInstanceManagerForSwitchOver(e *longhorn.Engine) (targetIM *longhorn.InstanceManager, err error) {
+	if e.Spec.TargetNodeID != "" {
+		targetIM, err = ec.ds.GetRunningInstanceManagerByNodeRO(e.Spec.TargetNodeID, e.Spec.DataEngine)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get instance manager on node %v for switching over target", e.Spec.TargetNodeID)
+		}
+
+		return targetIM, nil
+	}
+
+	if e.Spec.NodeID == "" {
+		return nil, fmt.Errorf("nodeID is required for switching over target")
+	}
+
+	targetIM, err = ec.ds.GetDefaultInstanceManagerByNodeRO(e.Spec.NodeID, e.Spec.DataEngine)
+	if err != nil {
+		if !datastore.ErrorIsNotFound(err) {
+			return nil, err
+		}
+	}
+
+	return targetIM, nil
+}
+
+func (ec *EngineController) DeleteTarget(obj interface{}) error {
+	e, ok := obj.(*longhorn.Engine)
+	if !ok {
+		return fmt.Errorf("invalid object for engine target deletion: %v", obj)
+	}
+
+	if !types.IsDataEngineV2(e.Spec.DataEngine) {
+		return fmt.Errorf("deleting target for engine instance is not supported for data engine %v", e.Spec.DataEngine)
+	}
+
+	ec.logger.WithField("engine", e.Name).Info("Deleting target instance")
+
+	if e.Spec.VolumeName == "" || e.Spec.NodeID == "" {
+		return fmt.Errorf("missing parameters for engine target deletion: %+v", e)
+	}
+
+	targetNodeID := e.Spec.NodeID
+	if e.Spec.NodeID == e.Spec.TargetNodeID {
+		targetNodeID = e.Status.CurrentTargetNodeID
+	}
+	if targetNodeID == "" {
+		return fmt.Errorf("missing target node ID for target deletion: %+v", e)
+	}
+
+	im, err := ec.ds.GetRunningInstanceManagerByNodeRO(targetNodeID, e.Spec.DataEngine)
+	if err != nil {
+		return err
+	}
+	c, err := engineapi.NewInstanceManagerClient(im, false)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	return c.EngineInstanceDeleteTarget(&engineapi.EngineInstanceDeleteTargetRequest{
+		Engine: e,
+	})
+}
+
+func (ec *EngineController) RequireRemoteTargetInstance(obj interface{}) (bool, error) {
+	e, ok := obj.(*longhorn.Engine)
+	if !ok {
+		return false, fmt.Errorf("invalid object for checking engine instance remote target requirement: %v", obj)
+	}
+
+	return e.Spec.TargetNodeID != "" && e.Spec.TargetNodeID != e.Spec.NodeID, nil
+}
+
+func (ec *EngineController) IsEngine(obj interface{}) bool {
+	_, ok := obj.(*longhorn.Engine)
+	return ok
+}
+
+func (ec *EngineController) GetInstance(obj interface{}, isInstanceOnRemoteNode bool) (*longhorn.InstanceProcess, error) {
 	e, ok := obj.(*longhorn.Engine)
 	if !ok {
 		return nil, fmt.Errorf("invalid object for engine instance get: %v", obj)
 	}
-
 	var (
 		im  *longhorn.InstanceManager
 		err error
 	)
-	if e.Status.InstanceManagerName == "" {
-		im, err = ec.ds.GetInstanceManagerByInstanceRO(obj)
+
+	nodeID := e.Spec.NodeID
+	instanceManagerName := e.Status.InstanceManagerName
+	if isInstanceOnRemoteNode {
+		nodeID = e.Spec.TargetNodeID
+		im, err = ec.ds.GetRunningInstanceManagerByNodeRO(nodeID, e.Spec.DataEngine)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get running instance manager for engine %v", e.Name)
+		}
+		instanceManagerName = im.Name
+	}
+
+	if instanceManagerName == "" {
+		if e.Spec.DesireState == longhorn.InstanceStateRunning && e.Status.CurrentState == longhorn.InstanceStateSuspended {
+			im, err = ec.ds.GetRunningInstanceManagerByNodeRO(nodeID, e.Spec.DataEngine)
+		} else {
+			im, err = ec.ds.GetInstanceManagerByInstanceRO(obj, false)
+		}
 		if err != nil {
 			return nil, err
 		}
-	} else {
-		im, err = ec.ds.GetInstanceManagerRO(e.Status.InstanceManagerName)
+	} else if im == nil {
+		im, err = ec.ds.GetInstanceManagerRO(instanceManagerName)
 		if err != nil {
-			return nil, err
+			if !apierrors.IsNotFound(err) {
+				return nil, err
+			}
+			if types.IsDataEngineV2(e.Spec.DataEngine) {
+				im, err = ec.ds.GetRunningInstanceManagerByNodeRO(nodeID, e.Spec.DataEngine)
+				if err != nil {
+					return nil, errors.Wrapf(err, "failed to get running instance manager for engine %v", e.Name)
+				}
+			} else {
+				return nil, err
+			}
 		}
 	}
 	c, err := engineapi.NewInstanceManagerClient(im, false)
@@ -769,14 +1041,56 @@ func (m *EngineMonitor) sync() bool {
 			return false
 		}
 
-		if err := m.refresh(engine); err == nil || !apierrors.IsConflict(errors.Cause(err)) {
-			utilruntime.HandleError(errors.Wrapf(err, "failed to update status for engine %v", m.Name))
-			break
+		err = m.refresh(engine)
+		if err != nil && apierrors.IsConflict(errors.Cause(err)) {
+			// Retry if the error is due to conflict
+			continue
 		}
-		// Retry if the error is due to conflict
+		if types.IsDataEngineV2(engine.Spec.DataEngine) && err != nil && apierrors.IsNotFound(errors.Cause(err)) {
+			upgrading, upgradingCheckErr := m.ds.IsNodeDataEngineUpgradeRequested(engine.Spec.NodeID)
+			if upgrading {
+				updated, updatedCheckErr := m.isInstanceManagerUpdated(engine)
+				if updated {
+					for replicaName := range engine.Status.ReplicaModeMap {
+						replica, replicaErr := m.ds.GetReplicaRO(replicaName)
+						if replicaErr != nil {
+							m.logger.WithError(replicaErr).Errorf("Failed to get replica %v", replicaName)
+							continue
+						}
+						if replica.Spec.NodeID == engine.Spec.NodeID &&
+							replica.Status.CurrentState != longhorn.InstanceStateError &&
+							replica.Status.CurrentState != longhorn.InstanceStateStopped {
+							m.logger.Warnf("Replica %v in state %v is still on the node %v, will retry updating status later",
+								replicaName, replica.Status.CurrentState, replica.Spec.NodeID)
+							return false
+						}
+					}
+				} else {
+					m.logger.Warnf("v2 data engine %v is being upgraded, will retry updating status later", engine.Name)
+					return false
+				}
+				if updatedCheckErr != nil {
+					upgradingCheckErr = errors.Wrapf(updatedCheckErr, "failed to check if the instance manager is updated")
+				}
+			}
+			if upgradingCheckErr != nil {
+				err = errors.Wrapf(upgradingCheckErr, "failed to check if the engine %v is being upgraded", engine.Name)
+			}
+		}
+		utilruntime.HandleError(errors.Wrapf(err, "failed to update status for engine %v", m.Name))
+		break
 	}
 
 	return false
+}
+
+func (m *EngineMonitor) isInstanceManagerUpdated(engine *longhorn.Engine) (bool, error) {
+	defaultIM, err := m.ds.GetDefaultInstanceManagerByNodeRO(engine.Spec.NodeID, engine.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+
+	return defaultIM.Name == engine.Status.InstanceManagerName, nil
 }
 
 func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
@@ -1595,6 +1909,24 @@ func (ec *EngineController) ReconcileEngineState(e *longhorn.Engine) error {
 		return err
 	}
 
+	if types.IsDataEngineV2(e.Spec.DataEngine) {
+		for replicaName := range e.Status.CurrentReplicaAddressMap {
+			r, err := ec.ds.GetReplicaRO(replicaName)
+			if err != nil && !apierrors.IsNotFound(err) {
+				return err
+			}
+
+			requested, err := ec.ds.IsNodeDataEngineUpgradeRequested(r.Spec.NodeID)
+			if err != nil && !apierrors.IsNotFound(err) {
+				return err
+			}
+
+			if requested {
+				return nil
+			}
+		}
+	}
+
 	if err := ec.rebuildNewReplica(e); err != nil {
 		return err
 	}
@@ -1634,6 +1966,28 @@ func GetBinaryClientForEngine(e *longhorn.Engine, engines engineapi.EngineClient
 	return client, nil
 }
 
+func (ec *EngineController) removeFailedReplica(e *longhorn.Engine) error {
+	replicas, err := ec.ds.ListVolumeReplicasRO(e.Spec.VolumeName)
+	if err != nil {
+		return err
+	}
+
+	engineClientProxy, err := ec.getEngineClientProxy(e, e.Status.CurrentImage)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get the engine client %v for removing failed replica from engine", e.Name)
+	}
+	defer engineClientProxy.Close()
+
+	for _, r := range replicas {
+		if r.Spec.LastFailedAt != "" {
+			if err := engineClientProxy.ReplicaRemove(e, "", r.Name); err != nil && !apierrors.IsNotFound(err) {
+				return errors.Wrapf(err, "failed to remove failed replica %v from engine", r.Name)
+			}
+		}
+	}
+	return nil
+}
+
 func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
 	unknownReplicaMap := map[string]longhorn.ReplicaMode{}
 	for replica, mode := range e.Status.ReplicaModeMap {
@@ -1656,7 +2010,7 @@ func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
 			defer engineClientProxy.Close()
 
 			ec.eventRecorder.Eventf(e, corev1.EventTypeNormal, constant.EventReasonDelete, "Removing unknown replica %v in mode %v from engine", url, unknownReplicaMap[url])
-			if err := engineClientProxy.ReplicaRemove(e, url); err != nil {
+			if err := engineClientProxy.ReplicaRemove(e, url, ""); err != nil {
 				ec.eventRecorder.Eventf(e, corev1.EventTypeWarning, constant.EventReasonFailedDeleting, "Failed to remove unknown replica %v in mode %v from engine: %v", url, unknownReplicaMap[url], err)
 			} else {
 				ec.eventRecorder.Eventf(e, corev1.EventTypeNormal, constant.EventReasonDelete, "Removed unknown replica %v in mode %v from engine", url, unknownReplicaMap[url])
@@ -1859,7 +2213,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 			// the replica to failed.
 			// user can decide to delete it then we will try again
 			log.Infof("Removing failed rebuilding replica %v", addr)
-			if err := engineClientProxy.ReplicaRemove(e, replicaURL); err != nil {
+			if err := engineClientProxy.ReplicaRemove(e, replicaURL, ""); err != nil {
 				log.WithError(err).Warnf("Failed to remove rebuilding replica %v", addr)
 				ec.eventRecorder.Eventf(e, corev1.EventTypeWarning, constant.EventReasonFailedDeleting,
 					"Failed to remove rebuilding replica %v with address %v for engine %v and volume %v due to rebuilding failure: %v",
@@ -2105,7 +2459,53 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err 
 			}
 		}
 	} else {
-		return errors.Wrapf(err, "upgrading engine %v with data engine %v is not supported", e.Name, e.Spec.DataEngine)
+		// Check if the initiator instance is running
+		im, err := ec.ds.GetRunningInstanceManagerByNodeRO(e.Spec.NodeID, longhorn.DataEngineTypeV2)
+		if err != nil {
+			return err
+		}
+		if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+			return fmt.Errorf("instance manager %v for initiating instance %v is not running", im.Name, e.Name)
+		}
+
+		initiatorIMClient, err := engineapi.NewInstanceManagerClient(im, false)
+		if err != nil {
+			return err
+		}
+		defer initiatorIMClient.Close()
+
+		if _, err := initiatorIMClient.InstanceGet(e.Spec.DataEngine, e.Name, string(longhorn.InstanceManagerTypeEngine)); err != nil {
+			return err
+		}
+
+		_, ok := im.Status.InstanceEngines[e.Name]
+		if !ok {
+			return fmt.Errorf("initiator instance %v is not found in engine list", e.Name)
+		}
+
+		// Check whether the target instance is existing
+		im, err = ec.ds.GetRunningInstanceManagerByNodeRO(e.Spec.TargetNodeID, longhorn.DataEngineTypeV2)
+		if err != nil {
+			return err
+		}
+		if im.Status.CurrentState != longhorn.InstanceManagerStateRunning {
+			return fmt.Errorf("instance manager %v for target instance %v is not running", im.Name, e.Name)
+		}
+
+		targetIMClient, err := engineapi.NewInstanceManagerClient(im, false)
+		if err != nil {
+			return err
+		}
+		defer targetIMClient.Close()
+
+		if _, err := targetIMClient.InstanceGet(e.Spec.DataEngine, e.Name, string(longhorn.InstanceManagerTypeEngine)); err != nil {
+			return err
+		}
+
+		_, ok = im.Status.InstanceEngines[e.Name]
+		if !ok {
+			return fmt.Errorf("target instance %v is not found in engine list", e.Name)
+		}
 	}
 
 	log.Infof("Engine has been upgraded from %v to %v", e.Status.CurrentImage, e.Spec.Image)
@@ -2116,6 +2516,7 @@ func (ec *EngineController) Upgrade(e *longhorn.Engine, log *logrus.Entry) (err 
 	e.Status.ReplicaTransitionTimeMap = nil
 	e.Status.RestoreStatus = nil
 	e.Status.RebuildStatus = nil
+	e.Status.TargetInstanceReplacementCreated = false
 	return nil
 }
 
@@ -2184,7 +2585,7 @@ func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logru
 // isResponsibleFor picks a running node that has e.Status.CurrentImage deployed.
 // We need e.Status.CurrentImage deployed on the node to make request to the corresponding engine instance.
 // Prefer picking the node e.Spec.NodeID if it meet the above requirement.
-func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineImage string) (bool, error) {
+func (ec *EngineController) isResponsibleFor(e *longhorn.Engine) (bool, error) {
 	var err error
 	defer func() {
 		err = errors.Wrap(err, "error while checking isResponsibleFor")

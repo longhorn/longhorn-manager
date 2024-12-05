@@ -56,7 +56,7 @@ func (s *TestSuite) TestBasic(c *C) {
 	c.Assert(replicas[Replica1Addr].Mode, Equals, longhorn.ReplicaModeRW)
 	c.Assert(replicas[Replica2Addr].Mode, Equals, longhorn.ReplicaModeRW)
 
-	err = sim.ReplicaRemove(e, Replica2Addr)
+	err = sim.ReplicaRemove(e, Replica2Addr, "")
 	c.Assert(err, IsNil)
 
 	replicas, err = sim.ReplicaList(e)

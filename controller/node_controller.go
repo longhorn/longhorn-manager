@@ -1416,6 +1416,12 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 						cleanupRequired = false
 						log.Debugf("Skipping cleaning up non-default unknown instance manager %s", im.Name)
 					}
+
+					if types.IsDataEngineV2(dataEngine) {
+						if node.Spec.DataEngineUpgradeRequested {
+							cleanupRequired = false
+						}
+					}
 				}
 				if cleanupRequired {
 					log.Infof("Cleaning up the redundant instance manager %v when there is no running/starting instance", im.Name)
@@ -2174,15 +2180,29 @@ func (nc *NodeController) setReadyConditionForKubeNode(node *longhorn.Node, kube
 func (nc *NodeController) SetSchedulableCondition(node *longhorn.Node, kubeNode *corev1.Node,
 	disableSchedulingOnCordonedNode bool) {
 	kubeSpec := kubeNode.Spec
-	if disableSchedulingOnCordonedNode &&
-		kubeSpec.Unschedulable {
+	reason := ""
+	message := ""
+	disableScheduling := false
+
+	if disableSchedulingOnCordonedNode && kubeSpec.Unschedulable {
+		disableScheduling = true
+		reason = string(longhorn.NodeConditionReasonKubernetesNodeCordoned)
+		message = fmt.Sprintf("Node %v is cordoned", node.Name)
+	} else if node.Spec.DataEngineUpgradeRequested {
+		disableScheduling = true
+		reason = string(longhorn.NodeConditionReasonNodeDataEngineUpgradeRequested)
+		message = fmt.Sprintf("Data engine of node %v is being upgraded", node.Name)
+	}
+
+	if disableScheduling {
 		node.Status.Conditions =
 			types.SetConditionAndRecord(node.Status.Conditions,
 				longhorn.NodeConditionTypeSchedulable,
 				longhorn.ConditionStatusFalse,
-				string(longhorn.NodeConditionReasonKubernetesNodeCordoned),
-				fmt.Sprintf("Node %v is cordoned", node.Name),
-				nc.eventRecorder, node,
+				reason,
+				message,
+				nc.eventRecorder,
+				node,
 				corev1.EventTypeNormal)
 	} else {
 		node.Status.Conditions =
@@ -2191,7 +2211,8 @@ func (nc *NodeController) SetSchedulableCondition(node *longhorn.Node, kubeNode 
 				longhorn.ConditionStatusTrue,
 				"",
 				"",
-				nc.eventRecorder, node,
+				nc.eventRecorder,
+				node,
 				corev1.EventTypeNormal)
 	}
 }

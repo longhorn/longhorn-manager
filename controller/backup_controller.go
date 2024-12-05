@@ -596,6 +596,15 @@ func (bc *BackupController) isResponsibleFor(b *longhorn.Backup, defaultEngineIm
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
+	node, err := bc.ds.GetNodeRO(bc.controllerID)
+	if err != nil {
+		return false, err
+	}
+
+	if node.Spec.DataEngineUpgradeRequested {
+		return false, nil
+	}
+
 	isResponsible := isControllerResponsibleFor(bc.controllerID, bc.ds, b.Name, "", b.Status.OwnerID)
 
 	currentOwnerEngineAvailable, err := bc.ds.CheckEngineImageReadiness(defaultEngineImage, b.Status.OwnerID)

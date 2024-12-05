@@ -101,7 +101,7 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 	}
 
 	if volume.Spec.Image == "" {
-		return werror.NewInvalidError("BUG: Invalid empty Setting.EngineImage", "")
+		return werror.NewInvalidError("BUG: Invalid empty Setting.EngineImage", "spec.image")
 	}
 
 	if !volume.Spec.Standby {
@@ -128,8 +128,7 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
-	err := wcommon.ValidateRequiredDataEngineEnabled(v.ds, volume.Spec.DataEngine)
-	if err != nil {
+	if err := wcommon.ValidateRequiredDataEngineEnabled(v.ds, volume.Spec.DataEngine); err != nil {
 		return err
 	}
 
@@ -142,19 +141,40 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 	}
 
 	if err := v.ds.CheckDataEngineImageCompatiblityByImage(volume.Spec.Image, volume.Spec.DataEngine); err != nil {
-		return werror.NewInvalidError(err.Error(), "volume.spec.image")
+		return werror.NewInvalidError(err.Error(), "spec.image")
 	}
 
-	// TODO: remove this check when we support the following features for SPDK volumes
+	if volume.Spec.TargetNodeID != "" {
+		return werror.NewInvalidError("spec.targetNodeID should be empty for a new volume", "spec.targetNodeID")
+	}
+
 	if types.IsDataEngineV2(volume.Spec.DataEngine) {
+		// TODO: remove this check when we support the following features for SPDK volumes
 		if volume.Spec.Encrypted {
-			return werror.NewInvalidError("encrypted volume is not supported for data engine v2", "")
+			return werror.NewInvalidError("encrypted volume is not supported for data engine v2", "spec.encrypted")
 		}
+		// TODO: remove this check when we support the following features for SPDK volumes
 		if volume.Spec.BackingImage != "" {
-			return werror.NewInvalidError("backing image is not supported for data engine v2", "")
+			return werror.NewInvalidError("backing image is not supported for data engine v2", "spec.backingImage")
 		}
+		// TODO: remove this check when we support the following features for SPDK volumes
 		if types.IsDataFromVolume(volume.Spec.DataSource) {
-			return werror.NewInvalidError("clone is not supported for data engine v2", "")
+			return werror.NewInvalidError("clone is not supported for data engine v2", "spec.dataSource")
+		}
+
+		if volume.Spec.NodeID != "" {
+			node, err := v.ds.GetNodeRO(volume.Spec.NodeID)
+			if err != nil {
+				err = errors.Wrapf(err, "failed to get node %v", volume.Spec.NodeID)
+				return werror.NewInternalError(err.Error())
+			}
+
+			if node.Spec.DataEngineUpgradeRequested {
+				if volume.Spec.NodeID != "" {
+					return werror.NewInvalidError(fmt.Sprintf("volume %v is not allowed to attach to node %v during v2 data engine upgrade",
+						volume.Name, volume.Spec.NodeID), "spec.nodeID")
+				}
+			}
 		}
 	}
 
@@ -243,71 +263,13 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		}
 	}
 
-	if types.IsDataEngineV2(newVolume.Spec.DataEngine) {
-		// TODO: remove this check when we support the following features for SPDK volumes
-		if oldVolume.Spec.Size != newVolume.Spec.Size {
-			err := fmt.Errorf("changing volume size for volume %v is not supported for data engine %v",
-				newVolume.Name, newVolume.Spec.DataEngine)
-			return werror.NewInvalidError(err.Error(), "")
-		}
-
-		if oldVolume.Spec.BackingImage != newVolume.Spec.BackingImage {
-			err := fmt.Errorf("changing backing image for volume %v is not supported for data engine %v",
-				newVolume.Name, newVolume.Spec.DataEngine)
-			return werror.NewInvalidError(err.Error(), "")
-		}
-
-		if oldVolume.Spec.Encrypted != newVolume.Spec.Encrypted {
-			err := fmt.Errorf("changing encryption for volume %v is not supported for data engine %v",
-				newVolume.Name, newVolume.Spec.DataEngine)
-			return werror.NewInvalidError(err.Error(), "")
-		}
-
-		if oldVolume.Spec.SnapshotDataIntegrity != newVolume.Spec.SnapshotDataIntegrity {
-			err := fmt.Errorf("changing snapshot data integrity for volume %v is not supported for data engine %v",
-				newVolume.Name, newVolume.Spec.DataEngine)
-			return werror.NewInvalidError(err.Error(), "")
-		}
-
-		if oldVolume.Spec.ReplicaAutoBalance != newVolume.Spec.ReplicaAutoBalance {
-			err := fmt.Errorf("changing replica auto balance for volume %v is not supported for data engine %v",
-				newVolume.Name, newVolume.Spec.DataEngine)
-			return werror.NewInvalidError(err.Error(), "")
-		}
-
-		if oldVolume.Spec.RestoreVolumeRecurringJob != newVolume.Spec.RestoreVolumeRecurringJob {
-			err := fmt.Errorf("changing restore volume recurring job for volume %v is not supported for data engine %v",
-				newVolume.Name, newVolume.Spec.DataEngine)
-			return werror.NewInvalidError(err.Error(), "")
-		}
-
-		if oldVolume.Spec.ReplicaSoftAntiAffinity != newVolume.Spec.ReplicaSoftAntiAffinity {
-			err := fmt.Errorf("changing replica soft anti-affinity for volume %v is not supported for data engine %v",
-				newVolume.Name, newVolume.Spec.DataEngine)
-			return werror.NewInvalidError(err.Error(), "")
-		}
-
-		if oldVolume.Spec.ReplicaZoneSoftAntiAffinity != newVolume.Spec.ReplicaZoneSoftAntiAffinity {
-			err := fmt.Errorf("changing replica zone soft anti-affinity for volume %v is not supported for data engine %v",
-				newVolume.Name, newVolume.Spec.DataEngine)
-			return werror.NewInvalidError(err.Error(), "")
-		}
-
-		if oldVolume.Spec.ReplicaDiskSoftAntiAffinity != newVolume.Spec.ReplicaDiskSoftAntiAffinity {
-			if oldVolume.Spec.ReplicaDiskSoftAntiAffinity != "" && newVolume.Spec.ReplicaDiskSoftAntiAffinity != longhorn.ReplicaDiskSoftAntiAffinityDefault {
-				err := fmt.Errorf("changing replica disk soft anti-affinity for volume %v is not supported for data engine %v",
-					newVolume.Name, newVolume.Spec.DataEngine)
-				return werror.NewInvalidError(err.Error(), "")
-			}
-		}
-	}
-
 	// prevent the changing v.Spec.MigrationNodeID to different node when the volume is doing live migration (when v.Status.CurrentMigrationNodeID != "")
 	if newVolume.Status.CurrentMigrationNodeID != "" &&
 		newVolume.Spec.MigrationNodeID != oldVolume.Spec.MigrationNodeID &&
 		newVolume.Spec.MigrationNodeID != newVolume.Status.CurrentMigrationNodeID &&
 		newVolume.Spec.MigrationNodeID != "" {
-		err := fmt.Errorf("cannot change v.Spec.MigrationNodeID to node %v when the volume is doing live migration to node %v ", newVolume.Spec.MigrationNodeID, newVolume.Status.CurrentMigrationNodeID)
+		err := fmt.Errorf("cannot change v.Spec.MigrationNodeID to node %v when the volume is doing live migration to node %v ",
+			newVolume.Spec.MigrationNodeID, newVolume.Status.CurrentMigrationNodeID)
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
@@ -325,6 +287,126 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 			return err
 		}
 	}
+
+	if types.IsDataEngineV2(newVolume.Spec.DataEngine) {
+		// TODO: remove this check when we support the following features for SPDK volumes
+		if oldVolume.Spec.Size != newVolume.Spec.Size {
+			err := fmt.Errorf("changing volume size for volume %v is not supported for data engine %v",
+				newVolume.Name, newVolume.Spec.DataEngine)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+
+		// TODO: remove this check when we support the following features for SPDK volumes
+		if oldVolume.Spec.BackingImage != newVolume.Spec.BackingImage {
+			err := fmt.Errorf("changing backing image for volume %v is not supported for data engine %v",
+				newVolume.Name, newVolume.Spec.DataEngine)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+
+		// TODO: remove this check when we support the following features for SPDK volumes
+		if oldVolume.Spec.Encrypted != newVolume.Spec.Encrypted {
+			err := fmt.Errorf("changing encryption for volume %v is not supported for data engine %v",
+				newVolume.Name, newVolume.Spec.DataEngine)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+
+		// TODO: remove this check when we support the following features for SPDK volumes
+		if oldVolume.Spec.SnapshotDataIntegrity != newVolume.Spec.SnapshotDataIntegrity {
+			err := fmt.Errorf("changing snapshot data integrity for volume %v is not supported for data engine %v",
+				newVolume.Name, newVolume.Spec.DataEngine)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+
+		// TODO: remove this check when we support the following features for SPDK volumes
+		if oldVolume.Spec.ReplicaAutoBalance != newVolume.Spec.ReplicaAutoBalance {
+			err := fmt.Errorf("changing replica auto balance for volume %v is not supported for data engine %v",
+				newVolume.Name, newVolume.Spec.DataEngine)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+
+		// TODO: remove this check when we support the following features for SPDK volumes
+		if oldVolume.Spec.RestoreVolumeRecurringJob != newVolume.Spec.RestoreVolumeRecurringJob {
+			err := fmt.Errorf("changing restore volume recurring job for volume %v is not supported for data engine %v",
+				newVolume.Name, newVolume.Spec.DataEngine)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+
+		// TODO: remove this check when we support the following features for SPDK volumes
+		if oldVolume.Spec.ReplicaSoftAntiAffinity != newVolume.Spec.ReplicaSoftAntiAffinity {
+			err := fmt.Errorf("changing replica soft anti-affinity for volume %v is not supported for data engine %v",
+				newVolume.Name, newVolume.Spec.DataEngine)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+
+		// TODO: remove this check when we support the following features for SPDK volumes
+		if oldVolume.Spec.ReplicaZoneSoftAntiAffinity != newVolume.Spec.ReplicaZoneSoftAntiAffinity {
+			err := fmt.Errorf("changing replica zone soft anti-affinity for volume %v is not supported for data engine %v",
+				newVolume.Name, newVolume.Spec.DataEngine)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+
+		// TODO: remove this check when we support the following features for SPDK volumes
+		if oldVolume.Spec.ReplicaDiskSoftAntiAffinity != newVolume.Spec.ReplicaDiskSoftAntiAffinity {
+			if oldVolume.Spec.ReplicaDiskSoftAntiAffinity != "" && newVolume.Spec.ReplicaDiskSoftAntiAffinity != longhorn.ReplicaDiskSoftAntiAffinityDefault {
+				err := fmt.Errorf("changing replica disk soft anti-affinity for volume %v is not supported for data engine %v",
+					newVolume.Name, newVolume.Spec.DataEngine)
+				return werror.NewInvalidError(err.Error(), "")
+			}
+		}
+
+		// v2 data engine upgrade
+		node, err := v.ds.GetNodeRO(oldVolume.Status.OwnerID)
+		if err != nil {
+			return werror.NewInternalError(fmt.Sprintf("failed to get node %v, err %v", oldVolume.Status.OwnerID, err))
+		}
+
+		if node.Spec.DataEngineUpgradeRequested {
+			if oldVolume.Spec.NodeID == "" && newVolume.Spec.NodeID != "" {
+				return werror.NewInvalidError(fmt.Sprintf("volume %v is not allowed to attach to node %v during v2 data engine upgrade",
+					newVolume.Name, newVolume.Spec.NodeID), "spec.nodeID")
+			}
+
+			if oldVolume.Spec.TargetNodeID == "" && newVolume.Spec.TargetNodeID != "" {
+
+				if newVolume.Spec.NumberOfReplicas <= 1 {
+					return werror.NewInvalidError(fmt.Sprintf("unable to change targetNodeID for volume %v when the volume has only one replica during v2 data engine upgrade", newVolume.Name), "spec.targetNodeID")
+				}
+
+				// Setting targetNodeID to the same node is not meaningless and is not allowed
+				if newVolume.Spec.TargetNodeID == oldVolume.Spec.NodeID {
+					return werror.NewInvalidError(fmt.Sprintf("unable to change targetNodeID for volume %v to the same node %v during v2 data engine upgrade", newVolume.Name, newVolume.Spec.TargetNodeID), "spec.targetNodeID")
+				}
+
+				instanceManagerImage, err := v.ds.GetSettingValueExisted(types.SettingNameDefaultInstanceManagerImage)
+				if err != nil {
+					return werror.NewInternalError(fmt.Sprintf("failed to get setting %v, err %v", types.SettingNameDefaultInstanceManagerImage, err))
+				}
+
+				// Only allow to upgrade default instance manager image
+				if oldVolume.Spec.Image == instanceManagerImage {
+					return werror.NewInvalidError(fmt.Sprintf("volume %v is already using instance manager image %v", newVolume.Name, instanceManagerImage), "")
+				}
+				if newVolume.Spec.Image != instanceManagerImage {
+					return werror.NewInvalidError(fmt.Sprintf("volume %v should use instance manager image %v", newVolume.Name, instanceManagerImage), "")
+				}
+			}
+		} else {
+			if oldVolume.Spec.TargetNodeID != newVolume.Spec.TargetNodeID {
+				return werror.NewInvalidError(fmt.Errorf("unable to change targetNodeID for volume %v when the node has not requested v2 data engine upgrade", newVolume.Name).Error(), "spec.targetNodeID")
+			}
+
+			if oldVolume.Spec.NodeID != "" {
+				if oldVolume.Spec.Image != newVolume.Spec.Image {
+					return werror.NewInvalidError(fmt.Sprintf("unable to change image for attached volume %v when the node has not requested v2 data engine upgrade", newVolume.Name), "spec.image")
+				}
+			}
+		}
+	} else {
+		if newVolume.Spec.TargetNodeID != "" {
+			return werror.NewInvalidError("unable to set targetNodeID for volume when the volume is not using data engine v2", "spec.targetNodeID")
+		}
+	}
+
 	return nil
 }
 

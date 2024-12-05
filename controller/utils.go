@@ -23,10 +23,6 @@ func hasReplicaEvictionRequested(rs map[string]*longhorn.Replica) bool {
 	return false
 }
 
-func isVolumeUpgrading(v *longhorn.Volume) bool {
-	return v.Status.CurrentImage != v.Spec.Image
-}
-
 // isTargetVolumeOfAnActiveCloning checks if the input volume is the target volume of an on-going cloning process
 func isTargetVolumeOfAnActiveCloning(v *longhorn.Volume) bool {
 	isCloningDesired := types.IsDataFromVolume(v.Spec.DataSource)

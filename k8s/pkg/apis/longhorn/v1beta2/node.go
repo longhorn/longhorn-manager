@@ -13,21 +13,22 @@ const (
 )
 
 const (
-	NodeConditionReasonManagerPodDown            = "ManagerPodDown"
-	NodeConditionReasonManagerPodMissing         = "ManagerPodMissing"
-	NodeConditionReasonKubernetesNodeGone        = "KubernetesNodeGone"
-	NodeConditionReasonKubernetesNodeNotReady    = "KubernetesNodeNotReady"
-	NodeConditionReasonKubernetesNodePressure    = "KubernetesNodePressure"
-	NodeConditionReasonUnknownNodeConditionTrue  = "UnknownNodeConditionTrue"
-	NodeConditionReasonNoMountPropagationSupport = "NoMountPropagationSupport"
-	NodeConditionReasonMultipathdIsRunning       = "MultipathdIsRunning"
-	NodeConditionReasonUnknownOS                 = "UnknownOS"
-	NodeConditionReasonNamespaceExecutorErr      = "NamespaceExecutorErr"
-	NodeConditionReasonKernelModulesNotLoaded    = "KernelModulesNotLoaded"
-	NodeConditionReasonPackagesNotInstalled      = "PackagesNotInstalled"
-	NodeConditionReasonCheckKernelConfigFailed   = "CheckKernelConfigFailed"
-	NodeConditionReasonNFSClientIsNotFound       = "NFSClientIsNotFound"
-	NodeConditionReasonKubernetesNodeCordoned    = "KubernetesNodeCordoned"
+	NodeConditionReasonManagerPodDown                 = "ManagerPodDown"
+	NodeConditionReasonManagerPodMissing              = "ManagerPodMissing"
+	NodeConditionReasonKubernetesNodeGone             = "KubernetesNodeGone"
+	NodeConditionReasonKubernetesNodeNotReady         = "KubernetesNodeNotReady"
+	NodeConditionReasonKubernetesNodePressure         = "KubernetesNodePressure"
+	NodeConditionReasonUnknownNodeConditionTrue       = "UnknownNodeConditionTrue"
+	NodeConditionReasonNoMountPropagationSupport      = "NoMountPropagationSupport"
+	NodeConditionReasonMultipathdIsRunning            = "MultipathdIsRunning"
+	NodeConditionReasonUnknownOS                      = "UnknownOS"
+	NodeConditionReasonNamespaceExecutorErr           = "NamespaceExecutorErr"
+	NodeConditionReasonKernelModulesNotLoaded         = "KernelModulesNotLoaded"
+	NodeConditionReasonPackagesNotInstalled           = "PackagesNotInstalled"
+	NodeConditionReasonCheckKernelConfigFailed        = "CheckKernelConfigFailed"
+	NodeConditionReasonNFSClientIsNotFound            = "NFSClientIsNotFound"
+	NodeConditionReasonKubernetesNodeCordoned         = "KubernetesNodeCordoned"
+	NodeConditionReasonNodeDataEngineUpgradeRequested = "NodeDataEngineUpgradeRequested"
 )
 
 const (
@@ -146,6 +147,9 @@ type NodeSpec struct {
 	Tags []string `json:"tags"`
 	// +optional
 	InstanceManagerCPURequest int `json:"instanceManagerCPURequest"`
+	// Request to upgrade the instance manager for v2 volumes on the node.
+	// +optional
+	DataEngineUpgradeRequested bool `json:"dataEngineUpgradeRequested"`
 }
 
 // NodeStatus defines the observed state of the Longhorn node

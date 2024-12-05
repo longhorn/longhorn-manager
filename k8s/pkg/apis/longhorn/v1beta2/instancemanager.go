@@ -58,12 +58,13 @@ type InstanceProcessSpec struct {
 type InstanceState string
 
 const (
-	InstanceStateRunning  = InstanceState("running")
-	InstanceStateStopped  = InstanceState("stopped")
-	InstanceStateError    = InstanceState("error")
-	InstanceStateStarting = InstanceState("starting")
-	InstanceStateStopping = InstanceState("stopping")
-	InstanceStateUnknown  = InstanceState("unknown")
+	InstanceStateRunning   = InstanceState("running")
+	InstanceStateStopped   = InstanceState("stopped")
+	InstanceStateError     = InstanceState("error")
+	InstanceStateStarting  = InstanceState("starting")
+	InstanceStateStopping  = InstanceState("stopping")
+	InstanceStateSuspended = InstanceState("suspended")
+	InstanceStateUnknown   = InstanceState("unknown")
 )
 
 type InstanceSpec struct {
@@ -91,6 +92,9 @@ type InstanceSpec struct {
 	// +kubebuilder:validation:Enum=v1;v2
 	// +optional
 	DataEngine DataEngineType `json:"dataEngine"`
+	// TargetNodeID is specifies the node where the volume's initiator instance should be scheduled during data engine live upgrade.
+	// +optional
+	TargetNodeID string `json:"targetNodeID"`
 }
 
 type InstanceStatus struct {
@@ -109,6 +113,12 @@ type InstanceStatus struct {
 	// +optional
 	Port int `json:"port"`
 	// +optional
+	TargetIP string `json:"targetIP"`
+	// +optional
+	StorageTargetIP string `json:"storageTargetIP"`
+	// +optional
+	TargetPort int `json:"targetPort"`
+	// +optional
 	Started bool `json:"started"`
 	// +optional
 	LogFetched bool `json:"logFetched"`
@@ -117,6 +127,10 @@ type InstanceStatus struct {
 	// +optional
 	// +nullable
 	Conditions []Condition `json:"conditions"`
+	// +optional
+	CurrentTargetNodeID string `json:"currentTargetNodeID"`
+	// +optional
+	TargetInstanceReplacementCreated bool `json:"targetInstanceReplacementCreated"`
 }
 
 type InstanceProcessStatus struct {
@@ -137,6 +151,10 @@ type InstanceProcessStatus struct {
 	TargetPortEnd int32 `json:"targetPortEnd"`
 	// +optional
 	TargetPortStart int32 `json:"targetPortStart"`
+	// +optional
+	StandbyTargetPortEnd int32 `json:"standbyTargetPortEnd"`
+	// +optional
+	StandbyTargetPortStart int32 `json:"standbyTargetPortStart"`
 	// +optional
 	State InstanceState `json:"state"`
 	// +optional
@@ -219,6 +237,7 @@ type InstanceManagerStatus struct {
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.currentState`,description="The state of the instance manager"
 // +kubebuilder:printcolumn:name="Type",type=string,JSONPath=`.spec.type`,description="The type of the instance manager (engine or replica)"
 // +kubebuilder:printcolumn:name="Node",type=string,JSONPath=`.spec.nodeID`,description="The node that the instance manager is running on"
+// +kubebuilder:printcolumn:name="Image",type=string,JSONPath=`.spec.image`,description="The image used by the instance manager"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // InstanceManager is where Longhorn stores instance manager object.

@@ -66,7 +66,7 @@ require (
 	github.com/longhorn/backupstore v0.0.0-20241130163459-2b482603a2c6
 	github.com/longhorn/go-common-libs v0.0.0-20241128023039-4d6c3a880dbc
 	github.com/longhorn/go-iscsi-helper v0.0.0-20241130163427-b18631536a86
-	github.com/longhorn/go-spdk-helper v0.0.0-20241130163407-e912304fab8b
+	github.com/longhorn/go-spdk-helper v0.0.0-20241202131855-7d9a097456b2
 	github.com/longhorn/longhorn-engine v1.8.0-dev-20241201
 	github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241201
 	github.com/longhorn/longhorn-share-manager v1.8.0-dev-20241117.0.20241125222022-2a7cb41cd62a
@@ -227,3 +227,7 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.3 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
+
+replace github.com/longhorn/types v0.0.0-20241123075624-48c550af4eab => github.com/derekbit/longhorn-types v0.0.0-20241128141620-e298a5a080b7
+
+replace github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241201 => github.com/derekbit/longhorn-instance-manager v0.0.0-20241204043532-2a568b506202

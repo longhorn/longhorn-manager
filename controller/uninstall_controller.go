@@ -30,22 +30,24 @@ import (
 )
 
 const (
-	CRDEngineName                 = "engines.longhorn.io"
-	CRDReplicaName                = "replicas.longhorn.io"
-	CRDVolumeName                 = "volumes.longhorn.io"
-	CRDEngineImageName            = "engineimages.longhorn.io"
-	CRDNodeName                   = "nodes.longhorn.io"
-	CRDInstanceManagerName        = "instancemanagers.longhorn.io"
-	CRDShareManagerName           = "sharemanagers.longhorn.io"
-	CRDBackingImageName           = "backingimages.longhorn.io"
-	CRDBackingImageManagerName    = "backingimagemanagers.longhorn.io"
-	CRDBackingImageDataSourceName = "backingimagedatasources.longhorn.io"
-	CRDBackupTargetName           = "backuptargets.longhorn.io"
-	CRDBackupVolumeName           = "backupvolumes.longhorn.io"
-	CRDBackupName                 = "backups.longhorn.io"
-	CRDRecurringJobName           = "recurringjobs.longhorn.io"
-	CRDOrphanName                 = "orphans.longhorn.io"
-	CRDSnapshotName               = "snapshots.longhorn.io"
+	CRDEngineName                   = "engines.longhorn.io"
+	CRDReplicaName                  = "replicas.longhorn.io"
+	CRDVolumeName                   = "volumes.longhorn.io"
+	CRDEngineImageName              = "engineimages.longhorn.io"
+	CRDNodeName                     = "nodes.longhorn.io"
+	CRDInstanceManagerName          = "instancemanagers.longhorn.io"
+	CRDShareManagerName             = "sharemanagers.longhorn.io"
+	CRDBackingImageName             = "backingimages.longhorn.io"
+	CRDBackingImageManagerName      = "backingimagemanagers.longhorn.io"
+	CRDBackingImageDataSourceName   = "backingimagedatasources.longhorn.io"
+	CRDBackupTargetName             = "backuptargets.longhorn.io"
+	CRDBackupVolumeName             = "backupvolumes.longhorn.io"
+	CRDBackupName                   = "backups.longhorn.io"
+	CRDRecurringJobName             = "recurringjobs.longhorn.io"
+	CRDOrphanName                   = "orphans.longhorn.io"
+	CRDSnapshotName                 = "snapshots.longhorn.io"
+	CRDDataEngineUpgradeManagerName = "dataEngineUpgradeManagers.longhorn.io"
+	CRDNodeDataEngineUpgradeName    = "nodeDataEngineUpgrades.longhorn.io"
 
 	EnvLonghornNamespace = "LONGHORN_NAMESPACE"
 )
@@ -202,6 +204,18 @@ func NewUninstallController(
 			return nil, err
 		}
 		cacheSyncs = append(cacheSyncs, ds.SnapshotInformer.HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDDataEngineUpgradeManagerName, metav1.GetOptions{}); err == nil {
+		if _, err = ds.DataEngineUpgradeManagerInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
+		cacheSyncs = append(cacheSyncs, ds.DataEngineUpgradeManagerInformer.HasSynced)
+	}
+	if _, err := extensionsClient.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), CRDNodeDataEngineUpgradeName, metav1.GetOptions{}); err == nil {
+		if _, err = ds.NodeDataEngineUpgradeInformer.AddEventHandler(c.controlleeHandler()); err != nil {
+			return nil, err
+		}
+		cacheSyncs = append(cacheSyncs, ds.NodeDataEngineUpgradeInformer.HasSynced)
 	}
 
 	c.cacheSyncs = cacheSyncs
@@ -634,6 +648,20 @@ func (c *UninstallController) deleteCRs() (bool, error) {
 	} else if len(systemRestores) > 0 {
 		c.logger.Infof("Found %d SystemRestores remaining", len(systemRestores))
 		return true, c.deleteSystemRestores(systemRestores)
+	}
+
+	if upgradeManagers, err := c.ds.ListDataEngineUpgradeManagers(); err != nil {
+		return true, err
+	} else if len(upgradeManagers) > 0 {
+		c.logger.Infof("Found %d dataEngineUpgradeManagers remaining", len(upgradeManagers))
+		return true, c.deleteDataEngineUpgradeManagers(upgradeManagers)
+	}
+
+	if nodeUpgrades, err := c.ds.ListNodeDataEngineUpgrades(); err != nil {
+		return true, err
+	} else if len(nodeUpgrades) > 0 {
+		c.logger.Infof("Found %d nodeDataEngineUpgrades remaining", len(nodeUpgrades))
+		return true, c.deleteNodeDataEngineUpgrades(nodeUpgrades)
 	}
 
 	return false, nil
@@ -1153,6 +1181,74 @@ func (c *UninstallController) deleteSystemRestores(systemRestores map[string]*lo
 				}
 			} else {
 				log.Info("Marked for deletion")
+			}
+		}
+	}
+	return nil
+}
+
+func (c *UninstallController) deleteDataEngineUpgradeManagers(upgradeManagers map[string]*longhorn.DataEngineUpgradeManager) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to delete dataEngineUpgradeManagers")
+	}()
+	for _, upgradeManager := range upgradeManagers {
+		log := getLoggerForDataEngineUpgradeManager(c.logger, upgradeManager)
+		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
+		if upgradeManager.DeletionTimestamp == nil {
+			if errDelete := c.ds.DeleteDataEngineUpgradeManager(upgradeManager.Name); errDelete != nil {
+				if datastore.ErrorIsNotFound(errDelete) {
+					log.Info("DataEngineUpgradeManager is not found")
+				} else {
+					err = errors.Wrap(errDelete, "failed to mark for deletion")
+					return
+				}
+			} else {
+				log.Info("Marked for deletion")
+			}
+		} else if upgradeManager.DeletionTimestamp.Before(&timeout) {
+			if errRemove := c.ds.RemoveFinalizerForDataEngineUpgradeManager(upgradeManager); errRemove != nil {
+				if datastore.ErrorIsNotFound(errRemove) {
+					log.Info("DataEngineUpgradeManager is not found")
+				} else {
+					err = errors.Wrap(errRemove, "failed to remove finalizer")
+					return
+				}
+			} else {
+				log.Info("Removed finalizer")
+			}
+		}
+	}
+	return nil
+}
+
+func (c *UninstallController) deleteNodeDataEngineUpgrades(nodeDataEngineUpgrades map[string]*longhorn.NodeDataEngineUpgrade) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to delete nodeDataEngineUpgrades")
+	}()
+	for _, nodeDataEngineUpgrade := range nodeDataEngineUpgrades {
+		log := getLoggerForNodeDataEngineUpgrade(c.logger, nodeDataEngineUpgrade)
+		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
+		if nodeDataEngineUpgrade.DeletionTimestamp == nil {
+			if errDelete := c.ds.DeleteNodeDataEngineUpgrade(nodeDataEngineUpgrade.Name); errDelete != nil {
+				if datastore.ErrorIsNotFound(errDelete) {
+					log.Info("NodeDataEngineUpgrade is not found")
+				} else {
+					err = errors.Wrap(errDelete, "failed to mark for deletion")
+					return
+				}
+			} else {
+				log.Info("Marked for deletion")
+			}
+		} else if nodeDataEngineUpgrade.DeletionTimestamp.Before(&timeout) {
+			if errRemove := c.ds.RemoveFinalizerForNodeDataEngineUpgrade(nodeDataEngineUpgrade); errRemove != nil {
+				if datastore.ErrorIsNotFound(errRemove) {
+					log.Info("NodeDataEngineUpgrade is not found")
+				} else {
+					err = errors.Wrap(errRemove, "failed to remove finalizer")
+					return
+				}
+			} else {
+				log.Info("Removed finalizer")
 			}
 		}
 	}

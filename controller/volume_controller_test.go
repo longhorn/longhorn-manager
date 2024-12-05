@@ -503,8 +503,11 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 		e.Status.OwnerID = TestNode1
 		e.Status.CurrentState = longhorn.InstanceStateStopped
 		e.Status.IP = ""
+		e.Status.TargetIP = ""
 		e.Status.StorageIP = ""
+		e.Status.StorageTargetIP = ""
 		e.Status.Port = 0
+		e.Status.TargetPort = 0
 		e.Status.Endpoint = ""
 		e.Status.CurrentImage = ""
 		e.Status.ReplicaModeMap = map[string]longhorn.ReplicaMode{}
