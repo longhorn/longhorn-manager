@@ -4022,6 +4022,18 @@ func (c *VolumeController) createAndStartMatchingReplicas(v *longhorn.Volume,
 	rs, pathToOldRs, pathToNewRs map[string]*longhorn.Replica,
 	fixupFunc func(r *longhorn.Replica, obj string), obj string) error {
 	log := getLoggerForVolume(c.logger, v)
+	if types.IsDataEngineV2(v.Spec.DataEngine) {
+		for path, r := range pathToOldRs {
+			if pathToNewRs[path] != nil {
+				continue
+			}
+			fixupFunc(r, obj)
+			rs[r.Name] = r
+			pathToNewRs[path] = r
+		}
+		return nil
+	}
+
 	for path, r := range pathToOldRs {
 		if pathToNewRs[path] != nil {
 			continue
@@ -4041,7 +4053,7 @@ func (c *VolumeController) createAndStartMatchingReplicas(v *longhorn.Volume,
 	return nil
 }
 
-func (c *VolumeController) deleteInvalidMigrationReplicas(rs, pathToOldRs, pathToNewRs map[string]*longhorn.Replica) error {
+func (c *VolumeController) deleteInvalidMigrationReplicas(rs, pathToOldRs, pathToNewRs map[string]*longhorn.Replica, v *longhorn.Volume) error {
 	for path, r := range pathToNewRs {
 		matchTheOldReplica := pathToOldRs[path] != nil && r.Spec.DesireState == pathToOldRs[path].Spec.DesireState
 		newReplicaIsAvailable := r.DeletionTimestamp == nil && r.Spec.DesireState == longhorn.InstanceStateRunning &&
@@ -4050,8 +4062,12 @@ func (c *VolumeController) deleteInvalidMigrationReplicas(rs, pathToOldRs, pathT
 			continue
 		}
 		delete(pathToNewRs, path)
-		if err := c.deleteReplica(r, rs); err != nil {
-			return errors.Wrapf(err, "failed to delete the new replica %v when there is no matching old replica in path %v", r.Name, path)
+		if types.IsDataEngineV1(v.Spec.DataEngine) {
+			if err := c.deleteReplica(r, rs); err != nil {
+				return errors.Wrapf(err, "failed to delete the new replica %v when there is no matching old replica in path %v", r.Name, path)
+			}
+		} else {
+			r.Spec.MigrationEngineName = ""
 		}
 	}
 	return nil
@@ -4135,9 +4151,16 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 		currentEngine.Spec.Active = true
 
 		// cleanupCorruptedOrStaleReplicas() will take care of old replicas
-		c.switchActiveReplicas(rs, func(r *longhorn.Replica, engineName string) bool {
-			return r.Spec.EngineName == engineName && r.Spec.HealthyAt != ""
-		}, currentEngine.Name)
+		if types.IsDataEngineV1(v.Spec.DataEngine) {
+			c.switchActiveReplicas(rs, func(r *longhorn.Replica, engineName string) bool {
+				return r.Spec.EngineName == engineName && r.Spec.HealthyAt != ""
+			}, currentEngine.Name)
+		} else {
+			for _, r := range rs {
+				r.Spec.MigrationEngineName = ""
+				r.Spec.EngineName = currentEngine.Name
+			}
+		}
 
 		// migration rollback or confirmation finished
 		v.Status.CurrentMigrationNodeID = ""
@@ -4174,13 +4197,19 @@ func (c *VolumeController) processMigration(v *longhorn.Volume, es map[string]*l
 			return
 		}
 
-		for _, r := range rs {
-			if r.Spec.EngineName == currentEngine.Name {
-				continue
+		if types.IsDataEngineV1(v.Spec.DataEngine) {
+			for _, r := range rs {
+				if r.Spec.EngineName == currentEngine.Name {
+					continue
+				}
+				if err2 := c.deleteReplica(r, rs); err2 != nil {
+					err = errors.Wrapf(err, "failed to delete the migration replica %v during the migration revert: %v", r.Name, err2)
+					return
+				}
 			}
-			if err2 := c.deleteReplica(r, rs); err2 != nil {
-				err = errors.Wrapf(err, "failed to delete the migration replica %v during the migration revert: %v", r.Name, err2)
-				return
+		} else {
+			for _, r := range rs {
+				r.Spec.MigrationEngineName = ""
 			}
 		}
 	}()
@@ -4297,6 +4326,8 @@ func (c *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Volu
 			}
 		} else if r.Spec.EngineName == migrationEngine.Name {
 			migrationReplicas[dataPath] = r
+		} else if r.Spec.MigrationEngineName == migrationEngine.Name {
+			migrationReplicas[dataPath] = r
 		} else {
 			log.Warnf("During migration found unknown replica with engine %v, will directly remove it", r.Spec.EngineName)
 			if err := c.deleteReplica(r, rs); err != nil {
@@ -4305,12 +4336,16 @@ func (c *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Volu
 		}
 	}
 
-	if err := c.deleteInvalidMigrationReplicas(rs, currentAvailableReplicas, migrationReplicas); err != nil {
+	if err := c.deleteInvalidMigrationReplicas(rs, currentAvailableReplicas, migrationReplicas, v); err != nil {
 		return false, false, err
 	}
 
 	if err := c.createAndStartMatchingReplicas(v, rs, currentAvailableReplicas, migrationReplicas, func(r *longhorn.Replica, engineName string) {
-		r.Spec.EngineName = engineName
+		if types.IsDataEngineV1(v.Spec.DataEngine) {
+			r.Spec.EngineName = engineName
+		} else {
+			r.Spec.MigrationEngineName = engineName
+		}
 	}, migrationEngine.Name); err != nil {
 		return false, false, err
 	}
