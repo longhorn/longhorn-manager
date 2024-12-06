@@ -59,6 +59,7 @@ const (
 
 var (
 	kernelModules     = map[string]string{"CONFIG_DM_CRYPT": "dm_crypt"}
+	kernelModulesV2   = map[string]string{"CONFIG_VFIO_PCI": "vfio_pci", "CONFIG_UIO_PCI_GENERIC": "uio_pci_generic", "CONFIG_NVME_TCP": "nvme_tcp"}
 	nfsClientVersions = map[string]string{"CONFIG_NFS_V4_2": "nfs", "CONFIG_NFS_V4_1": "nfs", "CONFIG_NFS_V4": "nfs"}
 )
 
@@ -1137,7 +1138,24 @@ func (nc *NodeController) syncMultipathd(node *longhorn.Node, namespaces []lhtyp
 }
 
 func (nc *NodeController) checkKernelModulesLoaded(kubeNode *corev1.Node, node *longhorn.Node, namespaces []lhtypes.Namespace) {
-	notFoundModulesUsingkmod, err := checkModulesLoadedUsingkmod(kernelModules)
+	isV2DataEngine, err := nc.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
+	if err != nil {
+		nc.logger.Errorf("Failed to fetch v2-data-engine setting: %v", err)
+		isV2DataEngine = false
+	}
+
+	modulesToCheck := make(map[string]string)
+	for k, v := range kernelModules {
+		modulesToCheck[k] = v
+	}
+
+	if isV2DataEngine {
+		for k, v := range kernelModulesV2 {
+			modulesToCheck[k] = v
+		}
+	}
+
+	notFoundModulesUsingkmod, err := checkModulesLoadedUsingkmod(modulesToCheck)
 	if err != nil {
 		node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeKernelModulesLoaded, longhorn.ConditionStatusFalse,
 			string(longhorn.NodeConditionReasonNamespaceExecutorErr),
@@ -1147,7 +1165,7 @@ func (nc *NodeController) checkKernelModulesLoaded(kubeNode *corev1.Node, node *
 
 	if len(notFoundModulesUsingkmod) == 0 {
 		node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeKernelModulesLoaded, longhorn.ConditionStatusTrue, "",
-			fmt.Sprintf("Kernel modules %v are loaded on node %v", getModulesConfigsList(kernelModules, false), node.Name))
+			fmt.Sprintf("Kernel modules %v are loaded on node %v", getModulesConfigsList(modulesToCheck, false), node.Name))
 		return
 	}
 
@@ -1167,7 +1185,7 @@ func (nc *NodeController) checkKernelModulesLoaded(kubeNode *corev1.Node, node *
 	}
 
 	node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeKernelModulesLoaded, longhorn.ConditionStatusTrue, "",
-		fmt.Sprintf("Kernel modules %v are loaded on node %v", getModulesConfigsList(kernelModules, false), node.Name))
+		fmt.Sprintf("Kernel modules %v are loaded on node %v", getModulesConfigsList(modulesToCheck, false), node.Name))
 }
 
 func checkModulesLoadedUsingkmod(modules map[string]string) (map[string]string, error) {
