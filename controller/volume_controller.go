@@ -749,7 +749,7 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 			} else {
 				after, err := util.TimestampAfterTimestamp(transitionTime, r.Spec.LastHealthyAt)
 				if err != nil {
-					log.WithError(err).Errorf("Failed to check if replica %v transitioned to mode %v after it was last healthy", r.Name, mode)
+					log.WithError(err).Warnf("Failed to check if replica %v transitioned to mode %v after it was last healthy", r.Name, mode)
 				}
 				if after || err != nil {
 					r.Spec.LastHealthyAt = now
