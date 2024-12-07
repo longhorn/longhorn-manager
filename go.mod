@@ -64,7 +64,7 @@ require (
 	github.com/longhorn/backupstore v0.0.0-20241130163459-2b482603a2c6
 	github.com/longhorn/go-common-libs v0.0.0-20241206085105-b60ef86c0b25
 	github.com/longhorn/go-iscsi-helper v0.0.0-20241130163427-b18631536a86
-	github.com/longhorn/go-spdk-helper v0.0.0-20241202131855-7d9a097456b2
+	github.com/longhorn/go-spdk-helper v0.0.0-20241207070034-582021db73c8
 	github.com/longhorn/longhorn-engine v1.7.2
 	github.com/longhorn/longhorn-instance-manager v1.7.2
 	github.com/longhorn/longhorn-share-manager v1.7.2
@@ -79,7 +79,7 @@ require (
 	github.com/urfave/cli v1.22.16
 	golang.org/x/mod v0.22.0
 	golang.org/x/net v0.31.0
-	golang.org/x/sys v0.27.0
+	golang.org/x/sys v0.28.0
 	golang.org/x/time v0.5.0
 	google.golang.org/grpc v1.68.1
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
