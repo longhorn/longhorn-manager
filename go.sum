@@ -167,8 +167,8 @@ github.com/longhorn/longhorn-engine v1.8.0-dev-20241201 h1:64P8wCD58T5jT+94j/stA
 github.com/longhorn/longhorn-engine v1.8.0-dev-20241201/go.mod h1:wZq/+ku4F3s/WzWd33AdJ3YV6NxpNAHAE7P6aS4aYlk=
 github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241201 h1:TdV/SNoT8kbHYU//vv9Med0HZ0NgmeQOuKFCddAiW6k=
 github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241201/go.mod h1:mz09NmpaAdiaP6BuvWIJFYe0WPNGmjNxS9ZfjuU2cAs=
-github.com/longhorn/longhorn-share-manager v1.8.0-dev-20241117.0.20241125222022-2a7cb41cd62a h1:QFkQVXhPT/f5KSXTyXY6rupoPO8S5ihTaX8/bRQjfc0=
-github.com/longhorn/longhorn-share-manager v1.8.0-dev-20241117.0.20241125222022-2a7cb41cd62a/go.mod h1:8INxZacfgmVjzYKG6f794UG5WhVxvsByyfMS/2hDniY=
+github.com/longhorn/longhorn-share-manager v1.8.0-dev-20241201 h1:Rkc0eJjF0TLgnfTUDfVQMAjzg2canx4uA4LaeCe8loU=
+github.com/longhorn/longhorn-share-manager v1.8.0-dev-20241201/go.mod h1:pJKSJ4zbHX/S+cIFhYsj3FqnG7DwIhi/4L3QSeMz28M=
 github.com/longhorn/types v0.0.0-20241123075624-48c550af4eab h1:vW/sSHB0U/GPnornD1cdoKSEe9bdBwVKP68cZUs1Xh0=
 github.com/longhorn/types v0.0.0-20241123075624-48c550af4eab/go.mod h1:dIPa2yMBPOa514bn3pohT7kbVAQcZbZSWItpgxunuPs=
 github.com/mailru/easyjson v0.7.7 h1:UGYAvKxe3sBsEDzO8ZeWOSlIQfWFlxbzLZe7hwFURr0=
