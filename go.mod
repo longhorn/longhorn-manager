@@ -2,7 +2,7 @@ module github.com/longhorn/longhorn-manager
 
 go 1.23
 
-toolchain go1.23.3
+toolchain go1.23.4
 
 // Replace directives are required for dependencies in this section because:
 // - This module imports k8s.io/kubernetes.
@@ -64,9 +64,9 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.19.0
 	github.com/longhorn/backing-image-manager v1.8.0-dev-20241201
 	github.com/longhorn/backupstore v0.0.0-20241130163459-2b482603a2c6
-	github.com/longhorn/go-common-libs v0.0.0-20241128023039-4d6c3a880dbc
+	github.com/longhorn/go-common-libs v0.0.0-20241206085105-b60ef86c0b25
 	github.com/longhorn/go-iscsi-helper v0.0.0-20241130163427-b18631536a86
-	github.com/longhorn/go-spdk-helper v0.0.0-20241130163407-e912304fab8b
+	github.com/longhorn/go-spdk-helper v0.0.0-20241202131855-7d9a097456b2
 	github.com/longhorn/longhorn-engine v1.8.0-dev-20241201
 	github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241201
 	github.com/longhorn/longhorn-share-manager v1.8.0-dev-20241201
@@ -83,7 +83,7 @@ require (
 	golang.org/x/net v0.31.0
 	golang.org/x/sys v0.27.0
 	golang.org/x/time v0.8.0
-	google.golang.org/grpc v1.68.0
+	google.golang.org/grpc v1.68.1
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.31.3
@@ -95,7 +95,7 @@ require (
 	k8s.io/metrics v0.31.3
 	k8s.io/mount-utils v0.31.3
 	k8s.io/utils v0.0.0-20241104163129-6fe5fd82f078
-	sigs.k8s.io/controller-runtime v0.19.2
+	sigs.k8s.io/controller-runtime v0.19.3
 )
 
 require (
@@ -179,7 +179,7 @@ require (
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.55.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
-	github.com/rancher/lasso v0.0.0-20241125180327-d19dc78eb0a8
+	github.com/rancher/lasso v0.0.0-20241202185148-04649f379358
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
