@@ -69,7 +69,7 @@ require (
 	github.com/longhorn/go-spdk-helper v0.0.0-20241130163407-e912304fab8b
 	github.com/longhorn/longhorn-engine v1.8.0-dev-20241201
 	github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241201
-	github.com/longhorn/longhorn-share-manager v1.8.0-dev-20241117.0.20241125222022-2a7cb41cd62a
+	github.com/longhorn/longhorn-share-manager v1.8.0-dev-20241201
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.20.5
 	github.com/rancher/dynamiclistener v0.6.1
