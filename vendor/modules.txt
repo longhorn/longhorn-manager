@@ -235,7 +235,7 @@ github.com/longhorn/backing-image-manager/pkg/client
 github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20241130163459-2b482603a2c6
+# github.com/longhorn/backupstore v0.0.0-20241207165647-0292e7399ff4
 ## explicit; go 1.22.7
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/backupbackingimage
@@ -582,7 +582,7 @@ go.uber.org/zap/internal/pool
 go.uber.org/zap/internal/stacktrace
 go.uber.org/zap/zapcore
 go.uber.org/zap/zapgrpc
-# golang.org/x/crypto v0.29.0
+# golang.org/x/crypto v0.30.0
 ## explicit; go 1.20
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
@@ -600,7 +600,7 @@ golang.org/x/exp/slices
 # golang.org/x/mod v0.22.0
 ## explicit; go 1.22.0
 golang.org/x/mod/semver
-# golang.org/x/net v0.31.0
+# golang.org/x/net v0.32.0
 ## explicit; go 1.18
 golang.org/x/net/context
 golang.org/x/net/http/httpguts
@@ -614,7 +614,7 @@ golang.org/x/net/websocket
 ## explicit; go 1.18
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
-# golang.org/x/sync v0.9.0
+# golang.org/x/sync v0.10.0
 ## explicit; go 1.18
 golang.org/x/sync/errgroup
 golang.org/x/sync/singleflight
@@ -625,10 +625,10 @@ golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
-# golang.org/x/term v0.26.0
+# golang.org/x/term v0.27.0
 ## explicit; go 1.18
 golang.org/x/term
-# golang.org/x/text v0.20.0
+# golang.org/x/text v0.21.0
 ## explicit; go 1.18
 golang.org/x/text/cases
 golang.org/x/text/feature/plural
