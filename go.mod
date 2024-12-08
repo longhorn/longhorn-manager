@@ -64,8 +64,8 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.19.0
 	github.com/longhorn/backing-image-manager v1.8.0-dev-20241201
 	github.com/longhorn/backupstore v0.0.0-20241208060255-5c474bb003bd
-	github.com/longhorn/go-common-libs v0.0.0-20241208031806-6a06a4861f43
-	github.com/longhorn/go-iscsi-helper v0.0.0-20241130163427-b18631536a86
+	github.com/longhorn/go-common-libs v0.0.0-20241208100509-e1932c65c078
+	github.com/longhorn/go-iscsi-helper v0.0.0-20241208060313-a2a09dd8c2c7
 	github.com/longhorn/go-spdk-helper v0.0.0-20241208060229-9425f07f800a
 	github.com/longhorn/longhorn-engine v1.8.0-dev-20241201
 	github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241201
@@ -109,7 +109,7 @@ require (
 	github.com/jonboulle/clockwork v0.4.0 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
-	github.com/longhorn/types v0.0.0-20241123075624-48c550af4eab // indirect
+	github.com/longhorn/types v0.0.0-20241208031854-891e672bc453 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/moby/term v0.5.0 // indirect
