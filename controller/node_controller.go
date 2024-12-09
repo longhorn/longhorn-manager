@@ -10,7 +10,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rancher/lasso/pkg/log"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/sys/unix"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -29,8 +28,9 @@ import (
 	iscsiutil "github.com/longhorn/go-iscsi-helper/util"
 
 	lhexec "github.com/longhorn/go-common-libs/exec"
-	lhio "github.com/longhorn/go-common-libs/io"
+	lhnfs "github.com/longhorn/go-common-libs/nfs"
 	lhns "github.com/longhorn/go-common-libs/ns"
+	lhsys "github.com/longhorn/go-common-libs/sys"
 	lhtypes "github.com/longhorn/go-common-libs/types"
 
 	"github.com/longhorn/longhorn-manager/constant"
@@ -51,15 +51,22 @@ const (
 
 	unknownDiskID = "UNKNOWN_DISKID"
 
-	kernelConfigFilePathPrefix = "/host/boot/config-"
-	kernelConfigGzFilePath     = "/proc/config.gz"
+	kernelConfigDir = "/host/boot/"
+	systemConfigDir = "/host/etc/"
 
 	snapshotChangeEventQueueMax = 1048576
 )
 
 var (
+<<<<<<< HEAD
 	kernelModules     = map[string]string{"CONFIG_DM_CRYPT": "dm_crypt"}
 	nfsClientVersions = map[string]string{"CONFIG_NFS_V4_2": "nfs", "CONFIG_NFS_V4_1": "nfs", "CONFIG_NFS_V4": "nfs"}
+=======
+	kernelModules       = map[string]string{"CONFIG_DM_CRYPT": "dm_crypt"}
+	kernelModulesV2     = map[string]string{"CONFIG_VFIO_PCI": "vfio_pci", "CONFIG_UIO_PCI_GENERIC": "uio_pci_generic", "CONFIG_NVME_TCP": "nvme_tcp"}
+	nfsClientVersions   = map[string]string{"CONFIG_NFS_V4_2": "nfs", "CONFIG_NFS_V4_1": "nfs", "CONFIG_NFS_V4": "nfs"}
+	nfsProtocolVersions = map[string]bool{"4.0": true, "4.1": true, "4.2": true}
+>>>>>>> 2838f94e (feat(env-check): check NFS default protocal version)
 )
 
 type NodeController struct {
@@ -934,8 +941,8 @@ func (nc *NodeController) environmentCheck(kubeNode *corev1.Node, node *longhorn
 	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceNet}
 	nc.syncPackagesInstalled(kubeNode, node, namespaces)
 	nc.syncMultipathd(node, namespaces)
-	nc.checkKernelModulesLoaded(kubeNode, node, namespaces)
-	nc.syncNFSClientVersion(kubeNode, node, namespaces)
+	nc.checkKernelModulesLoaded(kubeNode, node)
+	nc.syncNFSClientVersion(kubeNode, node)
 }
 
 func (nc *NodeController) syncPackagesInstalled(kubeNode *corev1.Node, node *longhorn.Node, namespaces []lhtypes.Namespace) {
@@ -1122,8 +1129,32 @@ func (nc *NodeController) syncMultipathd(node *longhorn.Node, namespaces []lhtyp
 	node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeMultipathd, longhorn.ConditionStatusTrue, "", "")
 }
 
+<<<<<<< HEAD
 func (nc *NodeController) checkKernelModulesLoaded(kubeNode *corev1.Node, node *longhorn.Node, namespaces []lhtypes.Namespace) {
 	notFoundModulesUsingkmod, err := checkModulesLoadedUsingkmod(kernelModules)
+=======
+func (nc *NodeController) checkKernelModulesLoaded(kubeNode *corev1.Node, node *longhorn.Node) {
+	logger := getLoggerForNode(nc.logger, node)
+
+	isV2DataEngine, err := nc.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
+	if err != nil {
+		logger.WithError(err).Error("Failed to fetch v2-data-engine setting")
+		isV2DataEngine = false
+	}
+
+	modulesToCheck := make(map[string]string)
+	for k, v := range kernelModules {
+		modulesToCheck[k] = v
+	}
+
+	if isV2DataEngine {
+		for k, v := range kernelModulesV2 {
+			modulesToCheck[k] = v
+		}
+	}
+
+	notFoundModulesUsingkmod, err := checkModulesLoadedUsingkmod(modulesToCheck)
+>>>>>>> 2838f94e (feat(env-check): check NFS default protocal version)
 	if err != nil {
 		node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeKernelModulesLoaded, longhorn.ConditionStatusFalse,
 			string(longhorn.NodeConditionReasonNamespaceExecutorErr),
@@ -1137,7 +1168,7 @@ func (nc *NodeController) checkKernelModulesLoaded(kubeNode *corev1.Node, node *
 		return
 	}
 
-	notLoadedModules, err := checkModulesLoadedByConfigFile(nc.logger, notFoundModulesUsingkmod, kubeNode.Status.NodeInfo.KernelVersion, namespaces)
+	notLoadedModules, err := checkModulesLoadedByConfigFile(nc.logger, notFoundModulesUsingkmod, kubeNode.Status.NodeInfo.KernelVersion)
 	if err != nil {
 		node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeKernelModulesLoaded, longhorn.ConditionStatusFalse,
 			string(longhorn.NodeConditionReasonCheckKernelConfigFailed),
@@ -1172,31 +1203,17 @@ func checkModulesLoadedUsingkmod(modules map[string]string) (map[string]string, 
 	return notFoundModules, nil
 }
 
-func checkModulesLoadedByConfigFile(log *logrus.Entry, modules map[string]string, kernelVersion string, namespaces []lhtypes.Namespace) ([]string, error) {
-	kernelConfigPath := kernelConfigFilePathPrefix + kernelVersion
-	kernelConfigContent, err := lhio.ReadFileContent(kernelConfigPath)
+func checkModulesLoadedByConfigFile(log *logrus.Entry, modules map[string]string, kernelVersion string) ([]string, error) {
+	kernelConfigMap, err := lhsys.GetBootKernelConfigMap(kernelConfigDir, kernelVersion)
 	if err != nil {
-		if !errors.Is(err, unix.ENOENT) {
-			return nil, err
-		}
-
-		// If the kernel config file is not found, try to get it from the host proc directory
-		nsexec, err := lhns.NewNamespaceExecutor(lhns.GetDefaultProcessName(), lhtypes.HostProcDirectory, namespaces)
-		if err != nil {
-			return nil, err
-		}
-
-		kernelConfigContent, err = nsexec.Execute(nil, "zcat", []string{kernelConfigGzFilePath}, lhtypes.ExecuteDefaultTimeout)
-		if err != nil {
+		if kernelConfigMap, err = lhsys.GetProcKernelConfigMap(lhtypes.HostProcDirectory); err != nil {
 			return nil, err
 		}
 	}
 
-	kernelConfigMap := getKernelModuleConfigMap(kernelConfigContent)
-
 	notLoadedModules := []string{}
 	for config, module := range modules {
-		moduleEnabled, err := checkKernelModuleEnabled(log, kernelConfigContent, config, module, kernelConfigMap)
+		moduleEnabled, err := checkKernelModuleEnabled(log, config, module, kernelConfigMap)
 		if err != nil {
 			return nil, err
 		}
@@ -1208,20 +1225,23 @@ func checkModulesLoadedByConfigFile(log *logrus.Entry, modules map[string]string
 	return notLoadedModules, nil
 }
 
-func getKernelModuleConfigMap(kernelConfigContent string) map[string]string {
-	configMap := map[string]string{}
-	configs := strings.Split(kernelConfigContent, "\n")
-	for _, config := range configs {
-		if !strings.HasPrefix(config, "CONFIG_") {
-			continue
-		}
-		configSplits := strings.Split(config, "=")
-		configMap[strings.TrimSpace(configSplits[0])] = strings.TrimSpace(configSplits[1])
+func checkNFSMountConfigFile(log *logrus.Entry, supported map[string]bool, configFilePathPrefix string) (actualDefaultVer string, isAllowed bool, err error) {
+	var nfsVer string
+	nfsMajor, nfsMinor, err := lhnfs.GetSystemDefaultNFSVersion(configFilePathPrefix)
+	if err == nil {
+		nfsVer = fmt.Sprintf("%d.%d", nfsMajor, nfsMinor)
+		actualDefaultVer = nfsVer
+	} else if errors.Is(err, lhtypes.ErrNotConfigured) {
+		log.Debugf("NFS default version is 4 since the nfsmount.conf is absent under %s", configFilePathPrefix)
+		nfsVer = "4.0"
+		actualDefaultVer = ""
+	} else {
+		return "", false, errors.Wrap(err, "failed to check NFS default mount configurations")
 	}
-	return configMap
+	return actualDefaultVer, supported[nfsVer], nil
 }
 
-func checkKernelModuleEnabled(log *logrus.Entry, kernelConfigContent, module, kmodName string, kernelConfigMap map[string]string) (bool, error) {
+func checkKernelModuleEnabled(log *logrus.Entry, module, kmodName string, kernelConfigMap map[string]string) (bool, error) {
 	enabled, exists := kernelConfigMap[module]
 	if !exists {
 		log.Debugf("Kernel config value for %v is not found", module)
@@ -1258,8 +1278,8 @@ func getModulesConfigsList(modulesMap map[string]string, needModules bool) []str
 	return modulesConfigs
 }
 
-func (nc *NodeController) syncNFSClientVersion(kubeNode *corev1.Node, node *longhorn.Node, namespaces []lhtypes.Namespace) {
-	notLoadedModules, err := checkModulesLoadedByConfigFile(nc.logger, nfsClientVersions, kubeNode.Status.NodeInfo.KernelVersion, namespaces)
+func (nc *NodeController) syncNFSClientVersion(kubeNode *corev1.Node, node *longhorn.Node) {
+	notLoadedModules, err := checkModulesLoadedByConfigFile(nc.logger, nfsClientVersions, kubeNode.Status.NodeInfo.KernelVersion)
 	if err != nil {
 		node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusFalse,
 			string(longhorn.NodeConditionReasonCheckKernelConfigFailed),
@@ -1271,6 +1291,19 @@ func (nc *NodeController) syncNFSClientVersion(kubeNode *corev1.Node, node *long
 		node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusFalse,
 			string(longhorn.NodeConditionReasonNFSClientIsNotFound),
 			fmt.Sprintf("NFS clients %v not found. At least one should be enabled", getModulesConfigsList(nfsClientVersions, true)))
+		return
+	}
+
+	protocolVer, isAllowed, err := checkNFSMountConfigFile(nc.logger, nfsProtocolVersions, systemConfigDir)
+	if err != nil {
+		node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusFalse,
+			string(longhorn.NodeConditionReasonNFSClientIsMisconfigured),
+			fmt.Sprintf("Failed to check NFS clients default protocol version: %v", err.Error()))
+		return
+	} else if !isAllowed {
+		node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusFalse,
+			string(longhorn.NodeConditionReasonNFSClientIsMisconfigured),
+			fmt.Sprintf("NFS clients default protocol version is %v, which is not supported", protocolVer))
 		return
 	}
 
