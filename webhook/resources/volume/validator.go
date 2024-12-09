@@ -74,6 +74,10 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
+	if err := types.ValidateDataLocalityAndAccessMode(volume.Spec.DataLocality, volume.Spec.Migratable, volume.Spec.AccessMode); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
 	if err := types.ValidateReplicaAutoBalance(volume.Spec.ReplicaAutoBalance); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
