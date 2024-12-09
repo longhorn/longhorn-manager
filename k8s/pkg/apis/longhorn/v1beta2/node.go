@@ -27,6 +27,7 @@ const (
 	NodeConditionReasonPackagesNotInstalled      = "PackagesNotInstalled"
 	NodeConditionReasonCheckKernelConfigFailed   = "CheckKernelConfigFailed"
 	NodeConditionReasonNFSClientIsNotFound       = "NFSClientIsNotFound"
+	NodeConditionReasonNFSClientIsMisconfigured  = "NFSClientIsMisconfigured"
 	NodeConditionReasonKubernetesNodeCordoned    = "KubernetesNodeCordoned"
 )
 
