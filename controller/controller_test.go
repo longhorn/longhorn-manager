@@ -112,6 +112,8 @@ const (
 	TestKernelVersion        = "6.2.0-32-generic"
 	TestKernelConfigDIR      = "/host/boot"
 	TestKernelConfigFilePath = TestKernelConfigDIR + "/config-" + TestKernelVersion
+	TestSystemEtcDIR         = "/host/etc"
+	TestNFSMountConfigPath   = TestSystemEtcDIR + "/nfsmount.conf"
 )
 
 var (
