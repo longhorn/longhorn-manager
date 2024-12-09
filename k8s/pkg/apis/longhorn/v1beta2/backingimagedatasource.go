@@ -23,6 +23,7 @@ const (
 	DataSourceTypeExportFromVolumeParameterSnapshotName              = "snapshot-name"
 	DataSourceTypeExportFromVolumeParameterSenderAddress             = "sender-address"
 	DataSourceTypeExportFromVolumeParameterFileSyncHTTPClientTimeout = "file-sync-http-client-timeout"
+	DataSourceTypeRestoreParameterBackupTargetName                   = "backup-target-name"
 	DataSourceTypeRestoreParameterBackupURL                          = "backup-url"
 	DataSourceTypeRestoreParameterConcurrentLimit                    = "concurrent-limit"
 	DataSourceTypeCloneParameterBackingImage                         = "backing-image"
