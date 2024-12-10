@@ -3,10 +3,13 @@ package kubernetes
 import (
 	"github.com/pkg/errors"
 
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func GetInClusterConfig() (*rest.Config, error) {
@@ -22,4 +25,10 @@ func GetInClusterConfig() (*rest.Config, error) {
 	config.NegotiatedSerializer = serializer.WithoutConversionCodecFactory{CodecFactory: scheme.Codecs}
 
 	return config, nil
+}
+
+func NewLabelSelectorFromMap(labels map[string]string) (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: labels,
+	})
 }
