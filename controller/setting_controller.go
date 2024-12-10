@@ -73,19 +73,6 @@ type SettingController struct {
 	// upgrade checker
 	lastUpgradeCheckedTimestamp time.Time
 	version                     string
-
-	// backup store timer is responsible for updating the backupTarget.spec.syncRequestAt
-	bsTimer *BackupStoreTimer
-}
-
-type BackupStoreTimer struct {
-	logger       logrus.FieldLogger
-	controllerID string
-	ds           *datastore.DataStore
-
-	pollInterval time.Duration
-	ctx          context.Context
-	cancel       context.CancelFunc
 }
 
 type Version struct {
@@ -154,13 +141,6 @@ func NewSettingController(
 		return nil, err
 	}
 	sc.cacheSyncs = append(sc.cacheSyncs, ds.NodeInformer.HasSynced)
-
-	if _, err = ds.BackupTargetInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
-		DeleteFunc: sc.enqueueSettingForBackupTarget,
-	}, 0); err != nil {
-		return nil, err
-	}
-	sc.cacheSyncs = append(sc.cacheSyncs, ds.BackupTargetInformer.HasSynced)
 
 	return sc, nil
 }
@@ -262,7 +242,7 @@ func (sc *SettingController) syncNonDangerZoneSettingsForManagedComponents(setti
 			return err
 		}
 	case types.SettingNameBackupTarget, types.SettingNameBackupTargetCredentialSecret, types.SettingNameBackupstorePollInterval:
-		if err := sc.syncBackupTarget(); err != nil {
+		if err := sc.syncDefaultBackupTarget(); err != nil {
 			return err
 		}
 	case types.SettingNameKubernetesClusterAutoscalerEnabled:
@@ -421,28 +401,12 @@ func getResponsibleNodeID(ds *datastore.DataStore) (string, error) {
 	return responsibleNodes[0], nil
 }
 
-func (sc *SettingController) syncBackupTarget() (err error) {
+func (sc *SettingController) syncDefaultBackupTarget() (err error) {
 	defer func() {
 		err = errors.Wrap(err, "failed to sync backup target")
 	}()
 
-	stopTimer := func() {
-		if sc.bsTimer != nil {
-			sc.bsTimer.Stop()
-			sc.bsTimer = nil
-		}
-	}
-
-	responsibleNodeID, err := getResponsibleNodeID(sc.ds)
-	if err != nil {
-		return errors.Wrap(err, "failed to select node for sync backup target")
-	}
-	if responsibleNodeID != sc.controllerID {
-		stopTimer()
-		return nil
-	}
-
-	// Get settings
+	// Get default backup target settings
 	targetSetting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameBackupTarget)
 	if err != nil {
 		return err
@@ -482,138 +446,17 @@ func (sc *SettingController) syncBackupTarget() (err error) {
 	}
 
 	existingBackupTarget := backupTarget.DeepCopy()
-	defer func() {
-		backupTarget.Spec.BackupTargetURL = targetSetting.Value
-		backupTarget.Spec.CredentialSecret = secretSetting.Value
-		backupTarget.Spec.PollInterval = metav1.Duration{Duration: pollInterval}
-		if !reflect.DeepEqual(existingBackupTarget.Spec, backupTarget.Spec) {
-			// Force sync backup target once the BackupTarget spec be updated
-			backupTarget.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
-			if _, err = sc.ds.UpdateBackupTarget(backupTarget); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-				sc.logger.WithError(err).Warn("Failed to update backup target")
-			}
-			if err = sc.handleSecretsForAWSIAMRoleAnnotation(backupTarget.Spec.BackupTargetURL, existingBackupTarget.Spec.CredentialSecret, secretSetting.Value, existingBackupTarget.Spec.BackupTargetURL != targetSetting.Value); err != nil {
-				sc.logger.WithError(err).Warn("Failed to update secrets for AWSIAMRoleAnnotation")
-			}
-		}
-	}()
-
-	noNeedMonitor := targetSetting.Value == "" || pollInterval == time.Duration(0)
-	if noNeedMonitor {
-		stopTimer()
-		return nil
-	}
-
-	if sc.bsTimer != nil {
-		if sc.bsTimer.pollInterval == pollInterval {
-			// No need to start a new timer if there was one
-			return
-		}
-		// Stop the timer if the poll interval changes
-		stopTimer()
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	// Start backup store timer
-	sc.bsTimer = &BackupStoreTimer{
-		logger:       sc.logger.WithField("component", "backup-store-timer"),
-		controllerID: sc.controllerID,
-		ds:           sc.ds,
-
-		pollInterval: pollInterval,
-		ctx:          ctx,
-		cancel:       cancel,
-	}
-	go sc.bsTimer.Start()
-	return nil
-}
-
-func (sc *SettingController) handleSecretsForAWSIAMRoleAnnotation(backupTargetURL, oldSecretName, newSecretName string, isBackupTargetURLChanged bool) (err error) {
-	isSameSecretName := oldSecretName == newSecretName
-	if isSameSecretName && !isBackupTargetURLChanged {
-		return nil
-	}
-
-	isArnExists := false
-	if !isSameSecretName {
-		isArnExists, _, err = sc.updateSecretForAWSIAMRoleAnnotation(backupTargetURL, oldSecretName, true)
-		if err != nil {
+	backupTarget.Spec.BackupTargetURL = targetSetting.Value
+	backupTarget.Spec.CredentialSecret = secretSetting.Value
+	backupTarget.Spec.PollInterval = metav1.Duration{Duration: pollInterval}
+	if !reflect.DeepEqual(existingBackupTarget.Spec, backupTarget.Spec) {
+		// Force sync backup target once the BackupTarget spec be updated
+		backupTarget.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
+		if _, err = sc.ds.UpdateBackupTarget(backupTarget); err != nil {
 			return err
 		}
 	}
-	_, isValidSecret, err := sc.updateSecretForAWSIAMRoleAnnotation(backupTargetURL, newSecretName, false)
-	if err != nil {
-		return err
-	}
-	// kubernetes_secret_controller will not reconcile the secret that does not exist such as named "", so we remove AWS IAM role annotation of pods if new secret name is "".
-	if !isValidSecret && isArnExists {
-		if err = sc.removePodsAWSIAMRoleAnnotation(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
 
-// updateSecretForAWSIAMRoleAnnotation adds the AWS IAM Role annotation to make an update to reconcile in kubernetes secret controller and returns
-//
-//	isArnExists = true if annotation had been added to the secret for first parameter,
-//	isValidSecret = true if this secret is valid for second parameter.
-//	err != nil if there is an error occurred.
-func (sc *SettingController) updateSecretForAWSIAMRoleAnnotation(backupTargetURL, secretName string, isOldSecret bool) (isArnExists bool, isValidSecret bool, err error) {
-	if secretName == "" {
-		return false, false, nil
-	}
-
-	secret, err := sc.ds.GetSecret(sc.namespace, secretName)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return false, false, nil
-		}
-		return false, false, err
-	}
-
-	if isOldSecret {
-		delete(secret.Annotations, types.GetLonghornLabelKey(string(types.SettingNameBackupTarget)))
-		isArnExists = secret.Data[types.AWSIAMRoleArn] != nil
-	} else {
-		if secret.Annotations == nil {
-			secret.Annotations = make(map[string]string)
-		}
-		secret.Annotations[types.GetLonghornLabelKey(string(types.SettingNameBackupTarget))] = backupTargetURL
-	}
-
-	if _, err = sc.ds.UpdateSecret(sc.namespace, secret); err != nil {
-		return false, false, err
-	}
-	return isArnExists, true, nil
-}
-
-func (sc *SettingController) removePodsAWSIAMRoleAnnotation() error {
-	managerPods, err := sc.ds.ListManagerPods()
-	if err != nil {
-		return err
-	}
-
-	instanceManagerPods, err := sc.ds.ListInstanceManagerPods()
-	if err != nil {
-		return err
-	}
-	pods := append(managerPods, instanceManagerPods...)
-
-	for _, pod := range pods {
-		_, exist := pod.Annotations[types.AWSIAMRoleAnnotation]
-		if !exist {
-			continue
-		}
-		delete(pod.Annotations, types.AWSIAMRoleAnnotation)
-		sc.logger.Infof("Removing AWS IAM role for pod %v", pod.Name)
-		if _, err := sc.ds.UpdatePod(pod); err != nil {
-			if apierrors.IsNotFound(err) {
-				continue
-			}
-			return err
-		}
-	}
 	return nil
 }
 
@@ -1282,42 +1125,6 @@ func getNotUpdatedNodeSelectorList(newNodeSelector map[string]string, objs ...ru
 	}
 
 	return notUpdatedObjsList, nil
-}
-
-func (bst *BackupStoreTimer) Start() {
-	if bst == nil {
-		return
-	}
-	log := bst.logger.WithFields(logrus.Fields{
-		"interval": bst.pollInterval,
-	})
-	log.Info("Starting backup store timer")
-
-	if err := wait.PollUntilContextCancel(bst.ctx, bst.pollInterval, false, func(context.Context) (done bool, err error) {
-		backupTarget, err := bst.ds.GetBackupTarget(types.DefaultBackupTargetName)
-		if err != nil {
-			log.WithError(err).Errorf("Failed to get %s backup target", types.DefaultBackupTargetName)
-			return false, err
-		}
-
-		log.Debug("Triggering sync backup target")
-		backupTarget.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
-		if _, err = bst.ds.UpdateBackupTarget(backupTarget); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-			log.WithError(err).Warn("Failed to updating backup target")
-		}
-		return false, nil
-	}); err != nil {
-		log.WithError(err).Error("Failed to sync backup target")
-	}
-
-	log.Infof("Stopped backup store timer")
-}
-
-func (bst *BackupStoreTimer) Stop() {
-	if bst == nil {
-		return
-	}
-	bst.cancel()
 }
 
 func (sc *SettingController) syncUpgradeChecker() error {
