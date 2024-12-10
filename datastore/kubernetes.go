@@ -287,7 +287,7 @@ func (s *DataStore) UpdateLease(lease *coordinationv1.Lease) (*coordinationv1.Le
 	return s.kubeClient.CoordinationV1().Leases(s.namespace).Update(context.TODO(), lease, metav1.UpdateOptions{})
 }
 
-func (s *DataStore) ClearDelinquentAndStaleStateIfVolumeIsDelinquent(volumeName string) (err error) {
+func (s *DataStore) ClearDelinquentAndStaleStateIfVolumeIsDelinquent(volumeName string, nodeName string) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to ClearDelinquentAndStaleStateIfVolumeIsDelinquent")
 	}()
@@ -304,6 +304,10 @@ func (s *DataStore) ClearDelinquentAndStaleStateIfVolumeIsDelinquent(volumeName 
 	if holder == "" {
 		// Empty holder means not delinquent.
 		// Ref: IsRWXVolumeDelinquent() function
+		return nil
+	}
+	if nodeName != "" && nodeName != holder {
+		// If a node is specified, only clear state for it.
 		return nil
 	}
 	if !(lease.Spec.AcquireTime).IsZero() {
