@@ -43,6 +43,11 @@ const (
 	PodProbeTimeoutSeconds           = PodProbePeriodSeconds - 1
 	PodProbePeriodSeconds            = 5
 	PodLivenessProbeFailureThreshold = 3
+
+	IMPodProbeInitialDelay             = 3
+	IMPodProbeTimeoutSeconds           = IMPodProbePeriodSeconds - 1
+	IMPodProbePeriodSeconds            = 30
+	IMPodLivenessProbeFailureThreshold = 3
 )
 
 func labelMapToLabelSelector(labels map[string]string) (labels.Selector, error) {
