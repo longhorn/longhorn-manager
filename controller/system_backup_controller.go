@@ -916,9 +916,13 @@ func (c *SystemBackupController) isVolumeBackupUpToDate(volume *longhorn.Volume,
 }
 
 func (c *SystemBackupController) createVolumeBackupFromSnapshot(volume *longhorn.Volume, snapshot *longhorn.Snapshot) (backup *longhorn.Backup, err error) {
+	backupTargetName := volume.Spec.BackupTargetName
 	backup = &longhorn.Backup{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: snapshot.Name,
+			Labels: map[string]string{
+				types.LonghornLabelBackupTarget: backupTargetName,
+			},
 		},
 		Spec: longhorn.BackupSpec{
 			SnapshotName: snapshot.Name,
@@ -1057,25 +1061,30 @@ func (c *SystemBackupController) WaitForBackingImageBackupToComplete(backupBacki
 }
 
 func (c *SystemBackupController) createBackingImageBackup(backingImage *longhorn.BackingImage) (backupBackingImage *longhorn.BackupBackingImage, err error) {
-	backupBackingImage, err = c.ds.GetBackupBackingImage(backingImage.Name)
+	backupTargetName := types.DefaultBackupTargetName
+	backingImageName := backingImage.Name
+	backupBackingImage, err = c.ds.GetBackupBackingImagesWithBackupTargetNameRO(backupTargetName, backingImageName)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
-			return nil, errors.Wrapf(err, "failed to get backup backing image %v", backingImage.Name)
+			return nil, errors.Wrapf(err, "failed to get backup backing image %v", backingImageName)
 		}
 	}
 
 	if backupBackingImage == nil {
+		backupBackingImageName := types.GetBackupBackingImageNameFromBIName(backingImageName)
 		backupBackingImage = &longhorn.BackupBackingImage{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: backingImage.Name,
+				Name: backupBackingImageName,
 			},
 			Spec: longhorn.BackupBackingImageSpec{
-				UserCreated: true,
+				UserCreated:      true,
+				BackingImage:     backingImageName,
+				BackupTargetName: backupTargetName,
 			},
 		}
 		backupBackingImage, err = c.ds.CreateBackupBackingImage(backupBackingImage)
 		if err != nil && !apierrors.IsAlreadyExists(err) {
-			return nil, errors.Wrapf(err, "failed to create backup backing image %s", backingImage.Name)
+			return nil, errors.Wrapf(err, "failed to create backup backing image %s", backingImageName)
 		}
 	}
 	return backupBackingImage, nil
