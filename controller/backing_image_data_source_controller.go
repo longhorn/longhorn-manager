@@ -711,12 +711,12 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 
 	if bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeRestore {
 		var credential map[string]string
-		backupTarget, err := c.ds.GetBackupTargetRO(types.DefaultBackupTargetName)
+		backupTarget, err := c.ds.GetBackupTargetRO(bids.Spec.Parameters[longhorn.DataSourceTypeRestoreParameterBackupTargetName])
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				return nil, err
 			}
-			return nil, errors.Wrapf(err, "failed to get the backup target %v", types.DefaultBackupTargetName)
+			return nil, errors.Wrapf(err, "failed to get the backup target %v", bids.Spec.Parameters[longhorn.DataSourceTypeRestoreParameterBackupTargetName])
 		}
 
 		backupType, err := util.CheckBackupType(backupTarget.Spec.BackupTargetURL)
