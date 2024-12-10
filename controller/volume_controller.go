@@ -1480,7 +1480,7 @@ func (c *VolumeController) handleDelinquentAndStaleStateForFaultedRWXVolume(v *l
 	if !isRegularRWXVolume(v) {
 		return nil
 	}
-	return c.ds.ClearDelinquentAndStaleStateIfVolumeIsDelinquent(v.Name)
+	return c.ds.ClearDelinquentAndStaleStateIfVolumeIsDelinquent(v.Name, "")
 }
 
 func (c *VolumeController) requestRemountIfFileSystemReadOnly(v *longhorn.Volume, e *longhorn.Engine) {
