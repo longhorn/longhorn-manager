@@ -45,18 +45,24 @@ func (m *VolumeManager) RestoreBackupBackingImage(name string, secret, secretNam
 	if name == "" {
 		return fmt.Errorf("restore backing image name is not given")
 	}
-	bi, err := m.ds.GetBackingImageRO(name)
+
+	bbi, err := m.ds.GetBackupBackingImageRO(name)
+	if err != nil {
+		return err
+	}
+	biName := bbi.Spec.BackingImage
+	bi, err := m.ds.GetBackingImageRO(biName)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
-			return errors.Wrapf(err, "failed to get backing image %v to check if it exists", name)
+			return errors.Wrapf(err, "failed to get backing image %v to check if it exists", biName)
 		}
 	}
 
 	if bi != nil {
-		return errors.Wrapf(err, "backing image %v already exists", name)
+		return fmt.Errorf("backing image %v already exists", biName)
 	}
 
-	return m.restoreBackingImage(name, secret, secretNamespace)
+	return m.restoreBackingImage(bbi.Spec.BackupTargetName, biName, secret, secretNamespace)
 }
 
 func (m *VolumeManager) CreateBackupBackingImage(name, backingImageName, backupTargetName string) error {
