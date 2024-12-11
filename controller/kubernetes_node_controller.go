@@ -293,15 +293,14 @@ func (knc *KubernetesNodeController) syncDefaultDisks(node *longhorn.Node) (err 
 		return nil
 	}
 	val = strings.ToLower(val)
-
+	storageReservedPercentageForDefaultDisk, err := knc.ds.GetSettingAsInt(types.SettingNameStorageReservedPercentageForDefaultDisk)
+	if err != nil {
+		return err
+	}
 	disks := map[string]longhorn.DiskSpec{} // nolint: ineffassign,staticcheck
 	switch val {
 	case types.NodeCreateDefaultDiskLabelValueTrue:
 		dataPath, err := knc.ds.GetSettingValueExisted(types.SettingNameDefaultDataPath)
-		if err != nil {
-			return err
-		}
-		storageReservedPercentageForDefaultDisk, err := knc.ds.GetSettingAsInt(types.SettingNameStorageReservedPercentageForDefaultDisk)
 		if err != nil {
 			return err
 		}
@@ -314,7 +313,7 @@ func (knc *KubernetesNodeController) syncDefaultDisks(node *longhorn.Node) (err 
 		if !ok {
 			return nil
 		}
-		disks, err = types.CreateDisksFromAnnotation(annotation)
+		disks, err = types.CreateDisksFromAnnotation(annotation, storageReservedPercentageForDefaultDisk)
 		if err != nil {
 			knc.logger.WithError(err).Warnf("Failed to create disk from annotation, invalid annotation %v: %v", types.KubeNodeDefaultDiskConfigAnnotationKey, val)
 			return nil
