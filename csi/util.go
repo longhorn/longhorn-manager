@@ -115,9 +115,24 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 
 		if isShared {
 			vol.AccessMode = string(longhorn.AccessModeReadWriteMany)
-		} else {
-			vol.AccessMode = string(longhorn.AccessModeReadWriteOnce)
 		}
+	}
+
+	if exclusive, ok := volOptions["exclusive"]; ok {
+		isExclusive, err := strconv.ParseBool(exclusive)
+		if err != nil {
+			return nil, errors.Wrap(err, "invalid parameter exclusive")
+		}
+		if isExclusive && vol.AccessMode == string(longhorn.AccessModeReadWriteMany) {
+			return nil, errors.New("cannot set both share and exclusive to true")
+		}
+		if isExclusive {
+			vol.AccessMode = string(longhorn.AccessModeReadWriteOncePod)
+		}
+	}
+
+	if vol.AccessMode == "" {
+		vol.AccessMode = string(longhorn.AccessModeReadWriteOnce)
 	}
 
 	if migratable, ok := volOptions["migratable"]; ok {
@@ -451,6 +466,20 @@ func requiresSharedAccess(vol *longhornclient.Volume, cap *csi.VolumeCapability)
 		mode == csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY ||
 		mode == csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER ||
 		mode == csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER
+}
+
+func requireExclusiveAccess(vol *longhornclient.Volume, cap *csi.VolumeCapability) bool {
+	isExclusive := false
+	if vol != nil {
+		isExclusive = vol.AccessMode == string(longhorn.AccessModeReadWriteOncePod)
+	}
+
+	mode := csi.VolumeCapability_AccessMode_UNKNOWN
+	if cap != nil {
+		mode = cap.AccessMode.Mode
+	}
+
+	return isExclusive || mode == csi.VolumeCapability_AccessMode_SINGLE_NODE_SINGLE_WRITER
 }
 
 func getStageBlockVolumePath(stagingTargetPath, volumeID string) string {
