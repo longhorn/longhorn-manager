@@ -434,6 +434,13 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		return err
 	}
 
+	// Set any RWX leases to non-delinquent if owned by not-ready node.
+	// Usefulness of delinquent state has passed.
+	if err = nc.clearDelinquentLeasesIfNodeNotReady(node); err != nil {
+		log.WithError(err).Warnf("Failed to clear delinquent leases for node %v", node.Name)
+		return err
+	}
+
 	node.Status.Region, node.Status.Zone = types.GetRegionAndZone(kubeNode.Labels)
 
 	if nc.controllerID != node.Name {
@@ -2217,4 +2224,41 @@ func (nc *NodeController) SetSchedulableCondition(node *longhorn.Node, kubeNode 
 				nc.eventRecorder, node,
 				corev1.EventTypeNormal)
 	}
+}
+
+func (nc *NodeController) clearDelinquentLeasesIfNodeNotReady(node *longhorn.Node) error {
+	enabled, err := nc.ds.GetSettingAsBool(types.SettingNameRWXVolumeFastFailover)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get setting %v", types.SettingNameRWXVolumeFastFailover)
+	}
+	if !enabled {
+		return nil
+	}
+
+	isDownOrDeleted, err := nc.ds.IsNodeDownOrDeleted(node.Name)
+	if err != nil {
+		return errors.Wrapf(err, "failed to check IsNodeDownOrDeleted, node=%v", node.Name)
+	}
+	if !isDownOrDeleted {
+		return nil
+	}
+
+	sms, err := nc.ds.ListShareManagersRO()
+	if err != nil {
+		return errors.Wrap(err, "failed to list share managers")
+	}
+	var storedError error
+	for _, sm := range sms {
+		// It's tempting to filter by sm.Status.OwnerID here, but don't.  It's already been modified to a new node to handle the fast failover.
+		// Anyway, we just need its name.  Share manager name is volume name is lease name.
+		err = nc.ds.ClearDelinquentAndStaleStateIfVolumeIsDelinquent(sm.Name, node.Name)
+		if err != nil {
+			nc.logger.WithError(err).Warnf("failed to clear delinquent lease for volume %v, node %v", sm.Name, node.Name)
+			if storedError == nil {
+				storedError = errors.Wrapf(err, "failed to clear delinquent lease for volume %v, node %v", sm.Name, node.Name)
+			}
+		}
+	}
+
+	return storedError
 }
