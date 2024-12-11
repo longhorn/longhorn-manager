@@ -78,7 +78,7 @@ const (
 	MaxExt4VolumeSize = 16 * TiB
 	MaxXfsVolumeSize  = 8*EiB - 1
 
-	RandomIDLenth = 8
+	RandomIDLength = 8
 
 	DeterministicUUIDNamespace = "08958d54-65cd-4d87-8627-9831a1eab170" // Arbitrarily generated.
 )
@@ -185,7 +185,7 @@ func WaitForDevice(dev string, timeout int) error {
 }
 
 func RandomID() string {
-	return UUID()[:RandomIDLenth]
+	return UUID()[:RandomIDLength]
 }
 
 // DeterministicUUID returns a string representation of a version 5 UUID based on the provided string. The output is
@@ -198,7 +198,7 @@ func DeterministicUUID(data string) string {
 }
 
 func ValidateRandomID(id string) bool {
-	regex := fmt.Sprintf(`^[a-zA-Z0-9]{%d}$`, RandomIDLenth)
+	regex := fmt.Sprintf(`^[a-zA-Z0-9]{%d}$`, RandomIDLength)
 	validName := regexp.MustCompile(regex)
 	return validName.MatchString(id)
 }
