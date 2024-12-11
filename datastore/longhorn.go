@@ -930,6 +930,19 @@ func GetOwnerReferencesForBackupTarget(backupTarget *longhorn.BackupTarget) []me
 	}
 }
 
+// GetOwnerReferencesForBackupVolume returns a list contains single OwnerReference for the
+// given backup volume name
+func GetOwnerReferencesForBackupVolume(backupVolume *longhorn.BackupVolume) []metav1.OwnerReference {
+	return []metav1.OwnerReference{
+		{
+			APIVersion: longhorn.SchemeGroupVersion.String(),
+			Kind:       types.LonghornKindBackupVolume,
+			UID:        backupVolume.UID,
+			Name:       backupVolume.Name,
+		},
+	}
+}
+
 // CreateVolume creates a Longhorn Volume resource and verifies creation
 func (s *DataStore) CreateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 	if err := FixupRecurringJob(v); err != nil {
@@ -4558,15 +4571,33 @@ func (s *DataStore) CreateBackup(backup *longhorn.Backup, backupVolumeName strin
 	return ret.DeepCopy(), nil
 }
 
-// ListBackupsWithBackupVolumeName returns an object contains all backups in the cluster Backups CR
-// of the given backup volume name
-func (s *DataStore) ListBackupsWithBackupVolumeName(backupVolumeName string) (map[string]*longhorn.Backup, error) {
-	selector, err := getBackupVolumeSelector(backupVolumeName)
+func (s *DataStore) listBackupsWithBTAndVolNameRO(btName, volName string) ([]*longhorn.Backup, error) {
+	selector, err := getBackupVolumeWithBackupTargetSelector(btName, volName)
+	if err != nil {
+		return nil, err
+	}
+	return s.backupLister.Backups(s.namespace).List(selector)
+}
+
+// ListBackupsWithBackupTargetAndBackupVolumeRO returns an object contains all read-only backups in the cluster Backups CR
+// of the given volume name and backup target name
+func (s *DataStore) ListBackupsWithBackupTargetAndBackupVolumeRO(backupTargetName, volumeName string) (map[string]*longhorn.Backup, error) {
+	list, err := s.listBackupsWithBTAndVolNameRO(backupTargetName, volumeName)
 	if err != nil {
 		return nil, err
 	}
 
-	list, err := s.backupLister.Backups(s.namespace).List(selector)
+	itemMap := map[string]*longhorn.Backup{}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO
+	}
+	return itemMap, nil
+}
+
+// ListBackupsWithVolumeNameAndBackupTarget returns an object contains all backups in the cluster Backups CR
+// of the given volume name and backup target name
+func (s *DataStore) ListBackupsWithBackupVolumeName(backupTargetName, volumeName string) (map[string]*longhorn.Backup, error) {
+	list, err := s.listBackupsWithBTAndVolNameRO(backupTargetName, volumeName)
 	if err != nil {
 		return nil, err
 	}
@@ -4641,9 +4672,11 @@ func (s *DataStore) DeleteBackup(backupName string) error {
 	return s.lhClient.LonghornV1beta2().Backups(s.namespace).Delete(context.TODO(), backupName, metav1.DeleteOptions{})
 }
 
-// DeleteAllBackupsForBackupVolume won't result in immediately deletion since finalizer was set by default
-func (s *DataStore) DeleteAllBackupsForBackupVolume(backupVolumeName string) error {
-	return s.lhClient.LonghornV1beta2().Backups(s.namespace).DeleteCollection(context.TODO(), metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: fmt.Sprintf("%s=%s", types.LonghornLabelBackupVolume, backupVolumeName)})
+// DeleteAllBackupsForBackupVolumeWithBackupTarget won't result in immediately deletion since finalizer was set by default
+func (s *DataStore) DeleteAllBackupsForBackupVolumeWithBackupTarget(backuptargetName, volumeName string) error {
+	return s.lhClient.LonghornV1beta2().Backups(s.namespace).DeleteCollection(context.TODO(), metav1.DeleteOptions{}, metav1.ListOptions{
+		LabelSelector: labels.Set(types.GetBackupVolumeWithBackupTargetLabels(backuptargetName, volumeName)).String(),
+	})
 }
 
 // RemoveFinalizerForBackup will result in deletion if DeletionTimestamp was set

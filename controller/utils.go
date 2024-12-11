@@ -105,5 +105,13 @@ func checkIfRemoteDataCleanupIsNeeded(obj runtime.Object, bt *longhorn.BackupTar
 		return false, err
 	}
 
-	return !exists && bt.Spec.BackupTargetURL != "", nil
+	return !exists && isBackupTargetAvailable(bt), nil
+}
+
+// isBackupTargetAvailable returns a boolean that the backup target is available for true and not available for false
+func isBackupTargetAvailable(backupTarget *longhorn.BackupTarget) bool {
+	return backupTarget != nil &&
+		backupTarget.DeletionTimestamp == nil &&
+		backupTarget.Spec.BackupTargetURL != "" &&
+		backupTarget.Status.Available
 }
