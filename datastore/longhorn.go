@@ -913,6 +913,19 @@ func GetOwnerReferencesForRecurringJob(recurringJob *longhorn.RecurringJob) []me
 	}
 }
 
+// GetOwnerReferencesForBackupTarget returns a list contains single OwnerReference for the
+// given backup target name
+func GetOwnerReferencesForBackupTarget(backupTarget *longhorn.BackupTarget) []metav1.OwnerReference {
+	return []metav1.OwnerReference{
+		{
+			APIVersion: longhorn.SchemeGroupVersion.String(),
+			Kind:       types.LonghornKindBackupTarget,
+			UID:        backupTarget.UID,
+			Name:       backupTarget.Name,
+		},
+	}
+}
+
 // CreateVolume creates a Longhorn Volume resource and verifies creation
 func (s *DataStore) CreateVolume(v *longhorn.Volume) (*longhorn.Volume, error) {
 	if err := FixupRecurringJob(v); err != nil {
@@ -5725,6 +5738,27 @@ func (s *DataStore) ListBackupBackingImages() (map[string]*longhorn.BackupBackin
 	for _, itemRO := range list {
 		// Cannot use cached object from lister
 		itemMap[itemRO.Name] = itemRO.DeepCopy()
+	}
+	return itemMap, nil
+}
+
+// ListBackupBackingImagesWithBackupTargetNameRO returns object includes all BackupBackingImage in namespace
+func (s *DataStore) ListBackupBackingImagesWithBackupTargetNameRO(backupTargetName string) (map[string]*longhorn.BackupBackingImage, error) {
+	itemMap := map[string]*longhorn.BackupBackingImage{}
+
+	selector, err := getBackupTargetSelector(backupTargetName)
+	if err != nil {
+		return nil, err
+	}
+
+	list, err := s.backupBackingImageLister.BackupBackingImages(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, itemRO := range list {
+		// Cannot use cached object from lister
+		itemMap[itemRO.Name] = itemRO
 	}
 	return itemMap, nil
 }
