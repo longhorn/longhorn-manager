@@ -105,7 +105,7 @@ func (s *Server) responseWithVolume(rw http.ResponseWriter, req *http.Request, i
 		return err
 	}
 	backups, err := s.m.ListBackupsForVolumeSorted(id)
-	if err != nil {
+	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
 	volumeAttachment, err := s.m.GetVolumeAttachment(v.Name)

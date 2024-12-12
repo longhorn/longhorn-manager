@@ -212,21 +212,18 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 
 	log := getLoggerForBackupVolume(bvc.logger, backupVolume)
 
-	// Get default backup target
-	backupTarget, err := bvc.ds.GetBackupTargetRO(types.DefaultBackupTargetName)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return errors.Wrapf(err, "failed to get %s backup target", types.DefaultBackupTargetName)
+	// Get the backup target of the backup volume
+	backupTarget, err := bvc.ds.GetBackupTargetRO(backupVolume.Spec.BackupTargetName)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return errors.Wrapf(err, "failed to get %s backup target", backupVolume.Spec.BackupTargetName)
+	}
+	if backupTarget == nil && backupVolume.DeletionTimestamp == nil {
+		return fmt.Errorf("failed to find the backup target %v for the backup volume %v", backupVolume.Spec.BackupTargetName, backupVolume.Name)
 	}
 
+	canonicalBVName := backupVolume.Spec.VolumeName
 	// Examine DeletionTimestamp to determine if object is under deletion
 	if !backupVolume.DeletionTimestamp.IsZero() {
-		if err := bvc.ds.DeleteAllBackupsForBackupVolume(backupVolumeName); err != nil {
-			return errors.Wrap(err, "failed to delete backups")
-		}
-
 		needsCleanupRemoteData, err := checkIfRemoteDataCleanupIsNeeded(backupVolume, backupTarget)
 		if err != nil {
 			return errors.Wrap(err, "failed to check if it needs to delete remote backup volume data")
@@ -240,13 +237,14 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 			}
 			defer engineClientProxy.Close()
 
-			if err := backupTargetClient.BackupVolumeDelete(backupTargetClient.URL, backupVolumeName, backupTargetClient.Credential); err != nil {
+			if err := backupTargetClient.BackupVolumeDelete(backupTargetClient.URL, canonicalBVName, backupTargetClient.Credential); err != nil {
 				return errors.Wrap(err, "failed to delete remote backup volume")
 			}
 		}
 		return bvc.ds.RemoveFinalizerForBackupVolume(backupVolume)
 	}
 
+	backupTargetName := backupTarget.Name
 	syncTime := metav1.Time{Time: time.Now().UTC()}
 	existingBackupVolume := backupVolume.DeepCopy()
 	defer func() {
@@ -276,7 +274,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	defer engineClientProxy.Close()
 
 	// Get a list of all the backups that are stored in the backup target
-	res, err := backupTargetClient.BackupNameList(backupTargetClient.URL, backupVolumeName, backupTargetClient.Credential)
+	res, err := backupTargetClient.BackupNameList(backupTargetClient.URL, canonicalBVName, backupTargetClient.Credential)
 	if err != nil {
 		log.WithError(err).Error("Failed to list backups from backup target")
 		return nil // Ignore error to prevent enqueue
@@ -284,7 +282,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	backupStoreBackups := sets.NewString(res...)
 
 	// Get a list of all the backups that exist as custom resources in the cluster
-	clusterBackups, err := bvc.ds.ListBackupsWithBackupVolumeName(backupVolumeName)
+	clusterBackups, err := bvc.ds.ListBackupsWithBackupTargetAndBackupVolumeRO(backupTargetName, canonicalBVName)
 	if err != nil {
 		log.WithError(err).Error("Failed to list backups in the cluster")
 		return err
@@ -322,7 +320,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	for backupName := range backupsToPull {
 		backupLabelMap := map[string]string{}
 
-		backupURL := backupstore.EncodeBackupURL(backupName, backupVolumeName, backupTargetClient.URL)
+		backupURL := backupstore.EncodeBackupURL(backupName, canonicalBVName, backupTargetClient.URL)
 		if backupInfo, err := backupTargetClient.BackupGet(backupURL, backupTargetClient.Credential); err != nil && !types.ErrorIsNotFound(err) {
 			log.WithError(err).WithFields(logrus.Fields{
 				"backup":       backupName,
@@ -339,12 +337,16 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		backup := &longhorn.Backup{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: backupName,
+				Labels: map[string]string{
+					types.LonghornLabelBackupTarget: backupTarget.Name,
+				},
+				OwnerReferences: datastore.GetOwnerReferencesForBackupVolume(backupVolume),
 			},
 			Spec: longhorn.BackupSpec{
 				Labels: backupLabelMap,
 			},
 		}
-		if _, err = bvc.ds.CreateBackup(backup, backupVolumeName); err != nil && !apierrors.IsAlreadyExists(err) {
+		if _, err = bvc.ds.CreateBackup(backup, canonicalBVName); err != nil && !apierrors.IsAlreadyExists(err) {
 			log.WithError(err).Errorf("Failed to create backup %s in the cluster", backupName)
 			return err
 		}
@@ -365,7 +367,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		}
 	}
 
-	backupVolumeMetadataURL := backupstore.EncodeBackupURL("", backupVolumeName, backupTargetClient.URL)
+	backupVolumeMetadataURL := backupstore.EncodeBackupURL("", canonicalBVName, backupTargetClient.URL)
 	configMetadata, err := backupTargetClient.BackupConfigMetaGet(backupVolumeMetadataURL, backupTargetClient.Credential)
 	if err != nil {
 		log.WithError(err).Error("Failed to get backup volume config metadata from backup target")
@@ -397,6 +399,19 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 	if backupVolume.Status.LastBackupName != backupVolumeInfo.LastBackupName {
 		backup, err := bvc.ds.GetBackup(backupVolumeInfo.LastBackupName)
 		if err == nil {
+			if backup.OwnerReferences == nil {
+				backup.OwnerReferences = []metav1.OwnerReference{}
+			}
+			ownerExists := false
+			for _, ownerRef := range backup.OwnerReferences {
+				if ownerRef.UID == backupVolume.UID {
+					ownerExists = true
+					break
+				}
+			}
+			if !ownerExists {
+				backup.OwnerReferences = append(backup.OwnerReferences, datastore.GetOwnerReferencesForBackupVolume(backupVolume)...)
+			}
 			backup.Spec.SyncRequestedAt = syncTime
 			if _, err = bvc.ds.UpdateBackup(backup); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
 				log.WithError(err).Errorf("Failed to update backup %s spec", backup.Name)

@@ -66,7 +66,7 @@ func (b *backupVolumeMutator) Update(request *admission.Request, oldObj runtime.
 }
 
 func (b *backupVolumeMutator) addBackupsDeleteCustomResourceLabel(bv *longhorn.BackupVolume) error {
-	backups, err := b.ds.ListBackupsWithBackupVolumeName(bv.Name)
+	backups, err := b.ds.ListBackupsWithBackupVolumeName(bv.Spec.BackupTargetName, bv.Spec.VolumeName)
 	if err != nil {
 		return errors.Wrap(err, "failed to list backups of the backup volume")
 	}
