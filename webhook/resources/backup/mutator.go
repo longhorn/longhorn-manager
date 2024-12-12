@@ -59,6 +59,7 @@ func (b *backupMutator) Create(request *admission.Request, newObj runtime.Object
 	if backupLabels == nil {
 		backupLabels = make(map[string]string)
 	}
+
 	volumeName, isExist := backup.Labels[types.LonghornLabelBackupVolume]
 	if !isExist {
 		err := errors.Wrapf(err, "cannot find the backup volume label for backup %v", backup.Name)
@@ -84,6 +85,29 @@ func (b *backupMutator) Create(request *admission.Request, newObj runtime.Object
 	if backup.Spec.BackupMode == longhorn.BackupModeIncrementalNone {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupMode", "value": "%s"}`, string(longhorn.BackupModeIncremental)))
 	}
+
+	backupTargetName, ok := backup.Labels[types.LonghornLabelBackupTarget]
+	if !ok {
+		volume, err := b.ds.GetVolumeRO(volumeName)
+		if err != nil {
+			err := errors.Wrapf(err, "failed to get the volume %v of backup %v", volumeName, backup.Name)
+			return nil, werror.NewInvalidError(err.Error(), "")
+		}
+		backupTargetName = volume.Spec.BackupTargetName
+	}
+
+	labels := backup.Labels
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels[types.LonghornLabelBackupTarget] = backupTargetName
+
+	patchOp, err := common.GetLonghornLabelsPatchOp(backup, labels, nil)
+	if err != nil {
+		err := errors.Wrapf(err, "failed to get label patch for backup %v", backup.Name)
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+	patchOps = append(patchOps, patchOp)
 
 	return patchOps, nil
 }
