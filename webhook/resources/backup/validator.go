@@ -7,8 +7,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
+	"github.com/pkg/errors"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -24,12 +26,14 @@ func NewValidator(ds *datastore.DataStore) admission.Validator {
 
 func (b *backupValidator) Resource() admission.Resource {
 	return admission.Resource{
-		Name:           "backups",
-		Scope:          admissionregv1.NamespacedScope,
-		APIGroup:       longhorn.SchemeGroupVersion.Group,
-		APIVersion:     longhorn.SchemeGroupVersion.Version,
-		ObjectType:     &longhorn.Backup{},
-		OperationTypes: []admissionregv1.OperationType{},
+		Name:       "backups",
+		Scope:      admissionregv1.NamespacedScope,
+		APIGroup:   longhorn.SchemeGroupVersion.Group,
+		APIVersion: longhorn.SchemeGroupVersion.Version,
+		ObjectType: &longhorn.Backup{},
+		OperationTypes: []admissionregv1.OperationType{
+			admissionregv1.Create,
+		},
 	}
 }
 
@@ -39,9 +43,19 @@ func (b *backupValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Backup", newObj), "")
 	}
 
+	if !util.ValidateName(backup.Name) {
+		return werror.NewInvalidError(fmt.Sprintf("invalid name %v", backup.Name), "")
+	}
+
 	if backup.Spec.BackupMode != longhorn.BackupModeFull &&
 		backup.Spec.BackupMode != longhorn.BackupModeIncremental {
 		return werror.NewInvalidError(fmt.Sprintf("BackupMode %v is not a valid option", backup.Spec.BackupMode), "")
+	}
+
+	if backup.Spec.SnapshotName != "" {
+		if _, err := b.ds.GetSnapshotRO(backup.Spec.SnapshotName); err != nil {
+			return werror.NewInvalidError(errors.Wrapf(err, "failed to get snapshot %v of backup %v", backup.Spec.SnapshotName, backup.Name).Error(), "")
+		}
 	}
 
 	return nil
