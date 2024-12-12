@@ -3661,7 +3661,7 @@ func (c *VolumeController) getBackupVolumeInfo(v *longhorn.Volume) (string, stri
 		return "", "", "", errors.Wrapf(err, "failed to get backup %v for restoring volume %v", backupName, v.Name)
 	}
 
-	backupVolume, err := c.ds.GetBackupVolumeWithBackupTargetAndVolumeRO(backup.Spec.BackupTargetName, canonicalBVName)
+	backupVolume, err := c.ds.GetBackupVolumeByBackupTargetAndVolumeRO(backup.Spec.BackupTargetName, canonicalBVName)
 	if err != nil {
 		return "", "", "", errors.Wrapf(err, "failed to get backup volume %v with backup target %v for restoring volume %v", canonicalBVName, backup.Spec.BackupTargetName, v.Name)
 	}
@@ -3882,15 +3882,17 @@ func (c *VolumeController) restoreVolumeRecurringJobs(v *longhorn.Volume) error 
 	log := getLoggerForVolume(c.logger, v)
 
 	backupVolumeRecurringJobsInfo := make(map[string]longhorn.VolumeRecurringJobInfo)
-	bvName, exist := v.Labels[types.LonghornLabelBackupVolume]
+	btName := v.Spec.BackupTargetName
+
+	volName, exist := v.Labels[types.LonghornLabelBackupVolume]
 	if !exist {
 		log.Warn("Failed to find the backup volume label")
 		return nil
 	}
 
-	bv, err := c.ds.GetBackupVolumeRO(bvName)
+	bv, err := c.ds.GetBackupVolumeByBackupTargetAndVolumeRO(btName, volName)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get the backup volume %v info", bvName)
+		return errors.Wrapf(err, "failed to get the backup volume %v of the backup target %s info", volName, btName)
 	}
 
 	volumeRecurringJobInfoStr, exist := bv.Status.Labels[types.VolumeRecurringJobInfoLabel]
@@ -3899,7 +3901,7 @@ func (c *VolumeController) restoreVolumeRecurringJobs(v *longhorn.Volume) error 
 	}
 
 	if err := json.Unmarshal([]byte(volumeRecurringJobInfoStr), &backupVolumeRecurringJobsInfo); err != nil {
-		return errors.Wrapf(err, "failed to unmarshal information of volume recurring jobs, backup volume %v", bvName)
+		return errors.Wrapf(err, "failed to unmarshal information of volume recurring jobs, backup volume %v of the backup target %s", volName, btName)
 	}
 
 	for jobName, job := range backupVolumeRecurringJobsInfo {
