@@ -63,9 +63,16 @@ func (s *Server) BackupBackingImageRestore(w http.ResponseWriter, req *http.Requ
 }
 
 func (s *Server) BackupBackingImageCreate(w http.ResponseWriter, req *http.Request) error {
-	backupBackingImageName := mux.Vars(req)["name"]
-	if err := s.m.CreateBackupBackingImage(backupBackingImageName); err != nil {
-		return errors.Wrapf(err, "failed to create backup backing image '%s'", backupBackingImageName)
+	var input BackupBackingImage
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return err
+	}
+
+	backingImageName := mux.Vars(req)["name"]
+	if err := s.m.CreateBackupBackingImage(input.Name, backingImageName, input.BackupTargetName); err != nil {
+		return errors.Wrapf(err, "failed to create backup backing image '%s'", input.Name)
 	}
 	return nil
 }

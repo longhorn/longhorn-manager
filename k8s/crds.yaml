@@ -635,6 +635,14 @@ spec:
           spec:
             description: BackupBackingImageSpec defines the desired state of the Longhorn backing image backup
             properties:
+              backingImage:
+                description: The backing image name..
+                nullable: true
+                type: string
+              backupTargetName:
+                description: The backup target name.
+                nullable: true
+                type: string
               labels:
                 additionalProperties:
                   type: string

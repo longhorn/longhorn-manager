@@ -4,6 +4,14 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 // BackupBackingImageSpec defines the desired state of the Longhorn backing image backup
 type BackupBackingImageSpec struct {
+	// The backing image name.
+	// Required
+	// +kubebuilder:validation:Required
+	BackingImage string `json:"backingImage"`
+	// The backup target name.
+	// +optional
+	// +nullable
+	BackupTargetName string `json:"backupTargetName"`
 	// The time to request run sync the remote backing image backup.
 	// +optional
 	// +nullable
