@@ -51,6 +51,7 @@ const (
 	LonghornKindSettingList      = "SettingList"
 	LonghornKindVolumeList       = "VolumeList"
 	LonghornKindBackingImageList = "BackingImageList"
+	LonghornKindBackupTargetList = "BackupTargetList"
 
 	KubernetesKindClusterRole           = "ClusterRole"
 	KubernetesKindClusterRoleBinding    = "ClusterRoleBinding"

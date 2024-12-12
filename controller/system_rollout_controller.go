@@ -118,6 +118,7 @@ type extractedResources struct {
 	settingList      *longhorn.SettingList
 	volumeList       *longhorn.VolumeList
 	backingImageList *longhorn.BackingImageList
+	backupTargetList *longhorn.BackupTargetList
 }
 
 type SystemRolloutController struct {
@@ -445,6 +446,7 @@ func (c *SystemRolloutController) systemRollout() error {
 			types.KubernetesKindStorageClassList:       c.restoreStorageClasses,
 			types.KubernetesKindConfigMapList:          c.restoreConfigMaps,
 			types.KubernetesKindDeploymentList:         c.restoreDeployments,
+			types.LonghornKindBackupTargetList:         c.restoreBackupTargets,
 			types.LonghornKindBackingImageList:         c.restoreBackingIamges,
 			types.LonghornKindRecurringJobList:         c.restoreRecurringJobs,
 		}
@@ -696,6 +698,8 @@ func (c *SystemRolloutController) cacheResourcesFromDirectory(name string, schem
 			c.volumeList = obj.(*longhorn.VolumeList)
 		case types.LonghornKindBackingImageList:
 			c.backingImageList = obj.(*longhorn.BackingImageList)
+		case types.LonghornKindBackupTargetList:
+			c.backupTargetList = obj.(*longhorn.BackupTargetList)
 		default:
 			log := c.getLoggerForSystemRollout()
 			log.Warnf("Unknown resource kind %v", gvk.Kind)
@@ -1784,6 +1788,65 @@ func (c *SystemRolloutController) restoreStorageClasses() (err error) {
 			return c.ds.UpdateStorageClass(obj)
 		}
 		_, err = c.rolloutResource(exist, fnUpdate, true, log, SystemRolloutMsgSkipIdentical)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *SystemRolloutController) restoreBackupTargets() (err error) {
+	if c.backupTargetList == nil {
+		return nil
+	}
+
+	for _, restore := range c.backupTargetList.Items {
+		log := c.logger.WithField(types.LonghornKindBackupTarget, restore.Name)
+		log = getLoggerForBackupTarget(log, &restore)
+
+		existingBT, err := c.ds.GetBackupTarget(restore.Name)
+		if err != nil {
+			if !datastore.ErrorIsNotFound(err) {
+				return err
+			}
+
+			backupTarget := &longhorn.BackupTarget{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: restore.Name,
+				},
+				Spec: restore.Spec,
+			}
+
+			log.Info(SystemRolloutMsgCreating)
+
+			fnCreate := func(new runtime.Object) (runtime.Object, error) {
+				obj, ok := new.(*longhorn.BackupTarget)
+				if !ok {
+					return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, restore.GetObjectKind(), types.LonghornKindBackupTarget)
+				}
+				return c.ds.CreateBackupTarget(obj)
+			}
+			_, err = c.rolloutResource(backupTarget, fnCreate, false, log, SystemRolloutMsgRestoredItem)
+			if err != nil && !apierrors.IsAlreadyExists(err) {
+				err = errors.Wrapf(err, SystemRolloutErrFailedToCreateFmt, types.LonghornKindBackupTarget, restore.Name)
+				message := util.CapitalizeFirstLetter(err.Error())
+				log.Warn(message)
+
+				reason := fmt.Sprintf(constant.EventReasonFailedCreatingFmt, types.LonghornKindBackupTarget, restore.Name)
+				c.eventRecorder.Event(c.systemRestore, corev1.EventTypeWarning, reason, message)
+			}
+			continue
+		}
+
+		fnUpdate := func(exist runtime.Object) (runtime.Object, error) {
+			obj, ok := exist.(*longhorn.BackupTarget)
+			if !ok {
+				return nil, fmt.Errorf(SystemRolloutErrFailedConvertToObjectFmt, exist.GetObjectKind(), types.LonghornKindBackupTarget)
+			}
+			return c.ds.UpdateBackupTarget(obj)
+		}
+		_, err = c.rolloutResource(existingBT, fnUpdate, true, log, SystemRolloutMsgSkipIdentical)
 		if err != nil {
 			return err
 		}
