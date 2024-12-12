@@ -427,17 +427,22 @@ func (m *VolumeManager) Activate(volumeName string, frontend string) (v *longhor
 }
 
 func (m *VolumeManager) triggerBackupVolumeToSync(volume *longhorn.Volume) error {
+	if volume.Spec.BackupTargetName == "" {
+		return errors.Errorf("cannot find the backup target label for volume: %v", volume.Name)
+	}
+	backupTargetName := volume.Spec.BackupTargetName
+
 	backupVolumeName, isExist := volume.Labels[types.LonghornLabelBackupVolume]
 	if !isExist || backupVolumeName == "" {
 		return errors.Errorf("cannot find the backup volume label for volume: %v", volume.Name)
 	}
 
-	backupVolume, err := m.ds.GetBackupVolume(backupVolumeName)
+	backupVolume, err := m.ds.GetBackupVolumeByBackupTargetAndVolume(backupTargetName, backupVolumeName)
 	if err != nil {
 		// The backup volume may be deleted already.
 		// hence it's better not to block the caller to continue the handlings like DR volume activation.
 		if apierrors.IsNotFound(err) {
-			logrus.Infof("Cannot find backup volume %v to trigger the sync-up, will skip it", backupVolumeName)
+			logrus.Infof("Cannot find backup volume %v of backup target %s to trigger the sync-up, will skip it", backupVolumeName, backupTargetName)
 			return nil
 		}
 		return errors.Wrapf(err, "failed to get backup volume: %v", backupVolumeName)
