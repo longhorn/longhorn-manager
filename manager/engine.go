@@ -252,7 +252,7 @@ func (m *VolumeManager) PurgeSnapshot(volumeName string) error {
 	return nil
 }
 
-func (m *VolumeManager) BackupSnapshot(backupName, volumeName, snapshotName string, labels map[string]string, backupMode string) error {
+func (m *VolumeManager) BackupSnapshot(backupName, backupTargetName, volumeName, snapshotName string, labels map[string]string, backupMode string) error {
 	if volumeName == "" || snapshotName == "" {
 		return fmt.Errorf("volume and snapshot name required")
 	}
@@ -264,6 +264,9 @@ func (m *VolumeManager) BackupSnapshot(backupName, volumeName, snapshotName stri
 	backupCR := &longhorn.Backup{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: backupName,
+			Labels: map[string]string{
+				types.LonghornLabelBackupTarget: backupTargetName,
+			},
 		},
 		Spec: longhorn.BackupSpec{
 			SnapshotName: snapshotName,
