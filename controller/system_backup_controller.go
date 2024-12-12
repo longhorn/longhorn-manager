@@ -1133,6 +1133,7 @@ func (c *SystemBackupController) generateSystemBackupYAMLsForLonghorn(dir string
 		"volumes":       c.ds.GetAllLonghornVolumes,
 		"recurringjobs": c.ds.GetAllLonghornRecurringJobs,
 		"backingimages": c.ds.GetAllLonghornBackingImages,
+		"backuptargets": c.ds.GetAllLonghornBackupTargets,
 	}
 
 	for name, fn := range resourceGetFns {
