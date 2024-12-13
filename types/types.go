@@ -544,6 +544,13 @@ func GetBackingImageLabels() map[string]string {
 	return labels
 }
 
+func GetBackingImageWithBackupTargetLabels(backupTargetName, backingImageName string) map[string]string {
+	return map[string]string{
+		LonghornLabelBackingImage: backingImageName,
+		LonghornLabelBackupTarget: backupTargetName,
+	}
+}
+
 func GetBackingImageManagerLabels(nodeID, diskUUID string) map[string]string {
 	labels := GetBaseLabelsForSystemManagedComponent()
 	labels[GetLonghornLabelComponentKey()] = LonghornLabelBackingImageManager

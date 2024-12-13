@@ -203,13 +203,13 @@ func (bc *BackupBackingImageController) reconcile(backupBackingImageName string)
 
 	log := getLoggerForBackupBackingImage(bc.logger, bbi)
 
-	// Get default backup target
-	backupTarget, err := bc.ds.GetBackupTargetRO(types.DefaultBackupTargetName)
+	// Get backup target with the backup backing image spec backup target name
+	backupTarget, err := bc.ds.GetBackupTargetRO(bbi.Spec.BackupTargetName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
 		}
-		return errors.Wrapf(err, "failed to get the backup target %v", types.DefaultBackupTargetName)
+		return errors.Wrapf(err, "failed to get the backup target %v", bbi.Spec.BackupTargetName)
 	}
 
 	// Examine DeletionTimestamp to determine if object is under deletion
@@ -225,7 +225,7 @@ func (bc *BackupBackingImageController) reconcile(backupBackingImageName string)
 				return nil // Ignore error to prevent enqueue
 			}
 
-			backupURL := backupbackingimage.EncodeBackupBackingImageURL(bbi.Name, backupTargetClient.URL)
+			backupURL := backupbackingimage.EncodeBackupBackingImageURL(bbi.Spec.BackingImage, backupTargetClient.URL)
 
 			log.Infof("Deleting backup backing image %v", bbi.Name)
 			if err := backupTargetClient.BackupBackingImageDelete(backupURL); err != nil {
@@ -260,7 +260,7 @@ func (bc *BackupBackingImageController) reconcile(backupBackingImageName string)
 	}()
 
 	if bbi.Status.LastSyncedAt.IsZero() && bbi.Spec.UserCreated && bc.backupNotInFinalState(bbi) {
-		backingImage, err := bc.ds.GetBackingImage(backupBackingImageName)
+		backingImage, err := bc.ds.GetBackingImage(bbi.Spec.BackingImage)
 		if err != nil {
 			if !apierrors.IsNotFound(err) {
 				return err
@@ -315,7 +315,7 @@ func (bc *BackupBackingImageController) reconcile(backupBackingImageName string)
 		return nil // Ignore error to prevent enqueue
 	}
 
-	backupURL := backupbackingimage.EncodeBackupBackingImageURL(backupBackingImageName, backupTargetClient.URL)
+	backupURL := backupbackingimage.EncodeBackupBackingImageURL(bbi.Spec.BackingImage, backupTargetClient.URL)
 	backupBackingImageInfo, err := backupTargetClient.BackupBackingImageGet(backupURL)
 	if err != nil {
 		if !strings.Contains(err.Error(), "in progress") {
