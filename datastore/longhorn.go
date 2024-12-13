@@ -19,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation"
 
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
@@ -4460,7 +4461,7 @@ func (s *DataStore) GetBackupVolumeByBackupTargetAndVolumeRO(backupTargetName, v
 		return itemRO, nil
 	}
 
-	return nil, nil
+	return nil, apierrors.NewNotFound(schema.GroupResource{Resource: "backupVolumes"}, "")
 }
 
 // GetBackupVolumeByBackupTargetAndVolume returns a copy of BackupVolume with the given backup target and volume name in the cluster
@@ -5874,6 +5875,35 @@ func (s *DataStore) GetBackupBackingImage(name string) (*longhorn.BackupBackingI
 	}
 	// Cannot use cached object from lister
 	return resultRO.DeepCopy(), nil
+}
+
+// GetBackupBackingImagesWithBackupTargetBackingImageRO returns a new BackupBackingImage object for the given backup target and backing image name
+func (s *DataStore) GetBackupBackingImagesWithBackupTargetNameRO(backupTargetName, backingImageName string) (*longhorn.BackupBackingImage, error) {
+	selector, err := getBackingImageWithBackupTargetSelector(backupTargetName, backingImageName)
+	if err != nil {
+		return nil, err
+	}
+
+	list, err := s.backupBackingImageLister.BackupBackingImages(s.namespace).List(selector)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(list) >= 2 {
+		return nil, fmt.Errorf("datastore: found more than one backup backing image with backup target %v and backing image %v", backupTargetName, backingImageName)
+	}
+
+	for _, itemRO := range list {
+		return itemRO, nil
+	}
+
+	return nil, apierrors.NewNotFound(schema.GroupResource{Resource: "backupBackingImages"}, "")
+}
+
+func getBackingImageWithBackupTargetSelector(backupTargetName, backingImageName string) (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: types.GetBackingImageWithBackupTargetLabels(backupTargetName, backingImageName),
+	})
 }
 
 // ListBackupBackingImages returns object includes all BackupBackingImage in namespace
