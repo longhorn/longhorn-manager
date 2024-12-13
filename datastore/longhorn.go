@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/bits"
 	"math/rand"
+	"net/url"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -298,6 +299,9 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 				standbyVolumeNames = append(standbyVolumeNames, k)
 			}
 			return fmt.Errorf("cannot modify BackupTarget since there are existing standby volumes: %v", standbyVolumeNames)
+		}
+		if err := s.ValidateBackupTargetURL(value); err != nil {
+			return err
 		}
 	case types.SettingNameBackupTargetCredentialSecret:
 		secret, err := s.GetSecretRO(s.namespace, value)
@@ -4157,6 +4161,24 @@ func (s *DataStore) CreateBackupTarget(backupTarget *longhorn.BackupTarget) (*lo
 	return ret.DeepCopy(), nil
 }
 
+// ListBackupTargetsRO returns all BackupTargets in the cluster
+func (s *DataStore) ListBackupTargetsRO() (map[string]*longhorn.BackupTarget, error) {
+	list, err := s.backupTargetLister.BackupTargets(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	if len(list) == 0 {
+		logrus.Debug("No backup targets found in the cluster")
+	}
+
+	itemMap := map[string]*longhorn.BackupTarget{}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO
+	}
+	return itemMap, nil
+}
+
 // ListBackupTargets returns an object contains all backup targets in the cluster BackupTargets CR
 func (s *DataStore) ListBackupTargets() (map[string]*longhorn.BackupTarget, error) {
 	list, err := s.backupTargetLister.BackupTargets(s.namespace).List(labels.Everything())
@@ -4193,6 +4215,10 @@ func (s *DataStore) GetBackupTarget(name string) (*longhorn.BackupTarget, error)
 
 // UpdateBackupTarget updates the given Longhorn backup target in the cluster BackupTargets CR and verifies update
 func (s *DataStore) UpdateBackupTarget(backupTarget *longhorn.BackupTarget) (*longhorn.BackupTarget, error) {
+	if backupTarget.Annotations == nil {
+		backupTarget.Annotations = make(map[string]string)
+	}
+
 	obj, err := s.lhClient.LonghornV1beta2().BackupTargets(s.namespace).Update(context.TODO(), backupTarget, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
@@ -4238,6 +4264,87 @@ func (s *DataStore) RemoveFinalizerForBackupTarget(backupTarget *longhorn.Backup
 		return errors.Wrapf(err, "unable to remove finalizer for backup target %s", backupTarget.Name)
 	}
 	return nil
+}
+
+// ValidateBackupTargetURL checks if the given backup target URL is already used by other backup targets
+func (s *DataStore) ValidateBackupTargetURL(backupTargetURL string) error {
+	if backupTargetURL == "" {
+		return nil
+	}
+	u, err := url.Parse(backupTargetURL)
+	if err != nil {
+		return errors.Wrapf(err, "failed to parse %v as url", backupTargetURL)
+	}
+
+	if err := checkBackupTargetURLFormat(u); err != nil {
+		return err
+	}
+	if err := s.validateBackupTargetURLExisting(u); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func checkBackupTargetURLFormat(u *url.URL) error {
+	// Check whether have $ or , have been set in BackupTarget path
+	regStr := `[\$\,]`
+	if u.Scheme == "cifs" {
+		// The $ in SMB/CIFS URIs means that the share is hidden.
+		regStr = `[\,]`
+	}
+
+	reg := regexp.MustCompile(regStr)
+	findStr := reg.FindAllString(u.Path, -1)
+	if len(findStr) != 0 {
+		return fmt.Errorf("url %s, contains %v", u.String(), strings.Join(findStr, " or "))
+	}
+	return nil
+}
+
+// validateBackupTargetURLExisting checks if the given backup target URL is already used by other backup targets
+func (s *DataStore) validateBackupTargetURLExisting(u *url.URL) error {
+	newBackupTargetPath, err := getBackupTargetPath(u)
+	if err != nil {
+		return err
+	}
+
+	bts, err := s.ListBackupTargetsRO()
+	if err != nil {
+		return err
+	}
+	for _, bt := range bts {
+		existingURL, err := url.Parse(bt.Spec.BackupTargetURL)
+		if err != nil {
+			return errors.Wrapf(err, "failed to parse %v as url", bt.Spec.BackupTargetURL)
+		}
+		if existingURL.Scheme != u.Scheme {
+			continue
+		}
+
+		oldBackupTargetPath, err := getBackupTargetPath(existingURL)
+		if err != nil {
+			return err
+		}
+		if oldBackupTargetPath == newBackupTargetPath {
+			return fmt.Errorf("url %s is the same to backup target %v", u.String(), bt.Name)
+		}
+	}
+
+	return nil
+}
+
+func getBackupTargetPath(u *url.URL) (backupTargetPath string, err error) {
+	switch u.Scheme {
+	case types.BackupStoreTypeAZBlob, types.BackupStoreTypeS3:
+		backupTargetPath = strings.ToLower(u.String())
+	case types.BackupStoreTypeCIFS, types.BackupStoreTypeNFS:
+		backupTargetPath = strings.ToLower(strings.TrimRight(u.Host+u.Path, "/"))
+	default:
+		return "", fmt.Errorf("url %s with the unsupported protocol %v", u.String(), u.Scheme)
+	}
+
+	return backupTargetPath, nil
 }
 
 // CreateBackupVolume creates a Longhorn BackupVolumes CR and verifies creation
