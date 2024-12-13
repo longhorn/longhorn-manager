@@ -208,6 +208,10 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 		vol.FromBackup = fromBackup
 	}
 
+	if backupTargetName, ok := volOptions["backupTargetName"]; ok {
+		vol.BackupTargetName = backupTargetName
+	}
+
 	if dataSource, ok := volOptions["dataSource"]; ok {
 		vol.DataSource = dataSource
 	}
