@@ -218,7 +218,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		return errors.Wrapf(err, "failed to get %s backup target", backupVolume.Spec.BackupTargetName)
 	}
 	if backupTarget == nil && backupVolume.DeletionTimestamp == nil {
-		return fmt.Errorf("failed to find the backup target %v for the backup volume %v", backupVolume.Spec.BackupTargetName, backupVolume.Name)
+		return errors.Wrapf(err, "failed to find the backup target %v for the backup volume %v", backupVolume.Spec.BackupTargetName, backupVolume.Name)
 	}
 
 	canonicalBVName := backupVolume.Spec.VolumeName
