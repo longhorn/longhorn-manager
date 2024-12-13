@@ -359,8 +359,8 @@ var (
 	}
 
 	SettingDefinitionBackupTarget = SettingDefinition{
-		DisplayName: "Backup Target",
-		Description: "The endpoint used to access the backupstore. NFS, CIFS and S3 are supported.",
+		DisplayName: "Default Backup Target",
+		Description: "The endpoint used to access the default backupstore. NFS, CIFS and S3 are supported.",
 		Category:    SettingCategoryBackup,
 		Type:        SettingTypeString,
 		Required:    false,
@@ -368,8 +368,8 @@ var (
 	}
 
 	SettingDefinitionBackupTargetCredentialSecret = SettingDefinition{
-		DisplayName: "Backup Target Credential Secret",
-		Description: "The name of the Kubernetes secret associated with the backup target.",
+		DisplayName: "Default Backup Target Credential Secret",
+		Description: "The name of the Kubernetes secret associated with the default backup target.",
 		Category:    SettingCategoryBackup,
 		Type:        SettingTypeString,
 		Required:    false,
@@ -389,8 +389,8 @@ var (
 	}
 
 	SettingDefinitionBackupstorePollInterval = SettingDefinition{
-		DisplayName: "Backupstore Poll Interval",
-		Description: "In seconds. The backupstore poll interval determines how often Longhorn checks the backupstore for new backups. Set to 0 to disable the polling.",
+		DisplayName: "Default Backupstore Poll Interval",
+		Description: "In seconds. The default backupstore poll interval determines how often Longhorn checks the backupstore for new backups. Set to 0 to disable the polling.",
 		Category:    SettingCategoryBackup,
 		Type:        SettingTypeInt,
 		Required:    true,
