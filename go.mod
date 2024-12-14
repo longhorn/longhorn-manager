@@ -43,7 +43,7 @@ replace (
 	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.31.3
 	k8s.io/kubectl => k8s.io/kubectl v0.31.3
 	k8s.io/kubelet => k8s.io/kubelet v0.31.3
-	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.7
+	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.8
 	k8s.io/metrics => k8s.io/metrics v0.31.3
 	k8s.io/mount-utils => k8s.io/mount-utils v0.31.3
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.31.3
@@ -66,7 +66,7 @@ require (
 	github.com/longhorn/backupstore v0.0.0-20241208150358-e44f7d35fe1f
 	github.com/longhorn/go-common-libs v0.0.0-20241208100509-e1932c65c078
 	github.com/longhorn/go-iscsi-helper v0.0.0-20241208120713-c4ac270fbe7e
-	github.com/longhorn/go-spdk-helper v0.0.0-20241208150421-1582c36b5523
+	github.com/longhorn/go-spdk-helper v0.0.0-20241210055426-92898a883955
 	github.com/longhorn/longhorn-engine v1.8.0-dev-20241201
 	github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241201
 	github.com/longhorn/longhorn-share-manager v1.8.0-dev-20241201
@@ -94,7 +94,7 @@ require (
 	k8s.io/kubernetes v1.31.3
 	k8s.io/metrics v0.31.3
 	k8s.io/mount-utils v0.31.3
-	k8s.io/utils v0.0.0-20241104163129-6fe5fd82f078
+	k8s.io/utils v0.0.0-20241210054802-24370beab758
 	sigs.k8s.io/controller-runtime v0.19.3
 )
 

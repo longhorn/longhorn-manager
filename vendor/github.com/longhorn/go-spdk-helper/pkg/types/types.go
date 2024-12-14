@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -23,6 +24,11 @@ const (
 	ShallowCopyStateError      = "error"
 
 	ExecuteTimeout = 60 * time.Second
+)
+
+const (
+	ErrorMessageCannotFindValidNvmeDevice = "cannot find a valid NVMe device"
+	ErrorMessageDeviceOrResourceBusy      = "device or resource busy"
 )
 
 const (
@@ -68,4 +74,12 @@ type DiskStatus struct {
 	Numa         string
 	Device       string
 	BlockDevices string
+}
+
+func ErrorIsDeviceOrResourceBusy(err error) bool {
+	return strings.Contains(strings.ToLower(err.Error()), ErrorMessageDeviceOrResourceBusy)
+}
+
+func ErrorIsValidNvmeDeviceNotFound(err error) bool {
+	return strings.Contains(err.Error(), ErrorMessageCannotFindValidNvmeDevice)
 }
