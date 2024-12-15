@@ -74,6 +74,14 @@ type BackupVolumeListerExpansion interface{}
 // BackupVolumeNamespaceLister.
 type BackupVolumeNamespaceListerExpansion interface{}
 
+// DataEngineUpgradeManagerListerExpansion allows custom methods to be added to
+// DataEngineUpgradeManagerLister.
+type DataEngineUpgradeManagerListerExpansion interface{}
+
+// DataEngineUpgradeManagerNamespaceListerExpansion allows custom methods to be added to
+// DataEngineUpgradeManagerNamespaceLister.
+type DataEngineUpgradeManagerNamespaceListerExpansion interface{}
+
 // EngineListerExpansion allows custom methods to be added to
 // EngineLister.
 type EngineListerExpansion interface{}
@@ -105,6 +113,14 @@ type NodeListerExpansion interface{}
 // NodeNamespaceListerExpansion allows custom methods to be added to
 // NodeNamespaceLister.
 type NodeNamespaceListerExpansion interface{}
+
+// NodeDataEngineUpgradeListerExpansion allows custom methods to be added to
+// NodeDataEngineUpgradeLister.
+type NodeDataEngineUpgradeListerExpansion interface{}
+
+// NodeDataEngineUpgradeNamespaceListerExpansion allows custom methods to be added to
+// NodeDataEngineUpgradeNamespaceLister.
+type NodeDataEngineUpgradeNamespaceListerExpansion interface{}
 
 // OrphanListerExpansion allows custom methods to be added to
 // OrphanLister.

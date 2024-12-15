@@ -19,7 +19,8 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - description: The current state of the pod used to provision the backing image file from source
+    - description: The current state of the pod used to provision the backing image
+        file from source
       jsonPath: .status.currentState
       name: State
       type: string
@@ -41,7 +42,8 @@ spec:
     name: v1beta1
     schema:
       openAPIV3Schema:
-        description: BackingImageDataSource is where Longhorn stores backing image data source object.
+        description: BackingImageDataSource is where Longhorn stores backing image
+          data source object.
         properties:
           apiVersion:
             description: |-
@@ -74,7 +76,8 @@ spec:
       jsonPath: .spec.uuid
       name: UUID
       type: string
-    - description: The current state of the pod used to provision the backing image file from source
+    - description: The current state of the pod used to provision the backing image
+        file from source
       jsonPath: .status.currentState
       name: State
       type: string
@@ -100,7 +103,8 @@ spec:
     name: v1beta2
     schema:
       openAPIV3Schema:
-        description: BackingImageDataSource is where Longhorn stores backing image data source object.
+        description: BackingImageDataSource is where Longhorn stores backing image
+          data source object.
         properties:
           apiVersion:
             description: |-
@@ -120,7 +124,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: BackingImageDataSourceSpec defines the desired state of the Longhorn backing image data source
+            description: BackingImageDataSourceSpec defines the desired state of the
+              Longhorn backing image data source
             properties:
               checksum:
                 type: string
@@ -148,7 +153,8 @@ spec:
                 type: string
             type: object
           status:
-            description: BackingImageDataSourceStatus defines the observed state of the Longhorn backing image data source
+            description: BackingImageDataSourceStatus defines the observed state of
+              the Longhorn backing image data source
             properties:
               checksum:
                 type: string
@@ -225,7 +231,8 @@ spec:
     name: v1beta1
     schema:
       openAPIV3Schema:
-        description: BackingImageManager is where Longhorn stores backing image manager object.
+        description: BackingImageManager is where Longhorn stores backing image manager
+          object.
         properties:
           apiVersion:
             description: |-
@@ -280,7 +287,8 @@ spec:
     name: v1beta2
     schema:
       openAPIV3Schema:
-        description: BackingImageManager is where Longhorn stores backing image manager object.
+        description: BackingImageManager is where Longhorn stores backing image manager
+          object.
         properties:
           apiVersion:
             description: |-
@@ -300,7 +308,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: BackingImageManagerSpec defines the desired state of the Longhorn backing image manager
+            description: BackingImageManagerSpec defines the desired state of the
+              Longhorn backing image manager
             properties:
               backingImages:
                 additionalProperties:
@@ -316,7 +325,8 @@ spec:
                 type: string
             type: object
           status:
-            description: BackingImageManagerStatus defines the observed state of the Longhorn backing image manager
+            description: BackingImageManagerStatus defines the observed state of the
+              Longhorn backing image manager
             properties:
               apiMinVersion:
                 type: integer
@@ -481,7 +491,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: BackingImageSpec defines the desired state of the Longhorn backing image
+            description: BackingImageSpec defines the desired state of the Longhorn
+              backing image
             properties:
               checksum:
                 type: string
@@ -499,7 +510,8 @@ spec:
               disks:
                 additionalProperties:
                   type: string
-                description: Deprecated. We are now using DiskFileSpecMap to assign different spec to the file on different disks.
+                description: Deprecated. We are now using DiskFileSpecMap to assign
+                  different spec to the file on different disks.
                 type: object
               minNumberOfCopies:
                 type: integer
@@ -525,7 +537,8 @@ spec:
                 type: string
             type: object
           status:
-            description: BackingImageStatus defines the observed state of the Longhorn backing image status
+            description: BackingImageStatus defines the observed state of the Longhorn
+              backing image status
             properties:
               checksum:
                 type: string
@@ -551,7 +564,9 @@ spec:
               ownerID:
                 type: string
               realSize:
-                description: Real size of image in bytes, which may be smaller than the size when the file is a sparse file. Will be zero until known (e.g. while a backing image is uploading)
+                description: Real size of image in bytes, which may be smaller than
+                  the size when the file is a sparse file. Will be zero until known
+                  (e.g. while a backing image is uploading)
                 format: int64
                 type: integer
               size:
@@ -560,7 +575,9 @@ spec:
               uuid:
                 type: string
               virtualSize:
-                description: Virtual size of image in bytes, which may be larger than physical size. Will be zero until known (e.g. while a backing image is uploading)
+                description: Virtual size of image in bytes, which may be larger than
+                  physical size. Will be zero until known (e.g. while a backing image
+                  is uploading)
                 format: int64
                 type: integer
             type: object
@@ -613,7 +630,8 @@ spec:
     name: v1beta2
     schema:
       openAPIV3Schema:
-        description: BackupBackingImage is where Longhorn stores backing image backup object.
+        description: BackupBackingImage is where Longhorn stores backing image backup
+          object.
         properties:
           apiVersion:
             description: |-
@@ -633,7 +651,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: BackupBackingImageSpec defines the desired state of the Longhorn backing image backup
+            description: BackupBackingImageSpec defines the desired state of the Longhorn
+              backing image backup
             properties:
               labels:
                 additionalProperties:
@@ -641,7 +660,8 @@ spec:
                 description: The labels of backing image backup.
                 type: object
               syncRequestedAt:
-                description: The time to request run sync the remote backing image backup.
+                description: The time to request run sync the remote backing image
+                  backup.
                 format: date-time
                 nullable: true
                 type: string
@@ -654,7 +674,8 @@ spec:
             - userCreated
             type: object
           status:
-            description: BackupBackingImageStatus defines the observed state of the Longhorn backing image backup
+            description: BackupBackingImageStatus defines the observed state of the
+              Longhorn backing image backup
             properties:
               backingImage:
                 description: The backing image name.
@@ -678,21 +699,25 @@ spec:
                 nullable: true
                 type: object
               lastSyncedAt:
-                description: The last time that the backing image backup was synced with the remote backup target.
+                description: The last time that the backing image backup was synced
+                  with the remote backup target.
                 format: date-time
                 nullable: true
                 type: string
               managerAddress:
-                description: The address of the backing image manager that runs backing image backup.
+                description: The address of the backing image manager that runs backing
+                  image backup.
                 type: string
               messages:
                 additionalProperties:
                   type: string
-                description: The error messages when listing or inspecting backing image backup.
+                description: The error messages when listing or inspecting backing
+                  image backup.
                 nullable: true
                 type: object
               ownerID:
-                description: The node ID on which the controller is responsible to reconcile this CR.
+                description: The node ID on which the controller is responsible to
+                  reconcile this CR.
                 type: string
               progress:
                 description: The backing image backup progress.
@@ -701,7 +726,8 @@ spec:
                 description: Record the secret if this backup backing image is encrypted
                 type: string
               secretNamespace:
-                description: Record the secret namespace if this backup backing image is encrypted
+                description: Record the secret namespace if this backup backing image
+                  is encrypted
                 type: string
               size:
                 description: The backing image size.
@@ -881,21 +907,24 @@ spec:
                 nullable: true
                 type: object
               lastSyncedAt:
-                description: The last time that the backup was synced with the remote backup target.
+                description: The last time that the backup was synced with the remote
+                  backup target.
                 format: date-time
                 nullable: true
                 type: string
               messages:
                 additionalProperties:
                   type: string
-                description: The error messages when calling longhorn engine on listing or inspecting backups.
+                description: The error messages when calling longhorn engine on listing
+                  or inspecting backups.
                 nullable: true
                 type: object
               newlyUploadDataSize:
                 description: Size in bytes of newly uploaded data
                 type: string
               ownerID:
-                description: The node ID on which the controller is responsible to reconcile this backup CR.
+                description: The node ID on which the controller is responsible to
+                  reconcile this backup CR.
                 type: string
               progress:
                 description: The snapshot backup progress.
@@ -1069,7 +1098,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: BackupTargetSpec defines the desired state of the Longhorn backup target
+            description: BackupTargetSpec defines the desired state of the Longhorn
+              backup target
             properties:
               backupTargetURL:
                 description: The backup target URL.
@@ -1078,7 +1108,8 @@ spec:
                 description: The backup target credential secret.
                 type: string
               pollInterval:
-                description: The interval that the cluster needs to run sync with the backup target.
+                description: The interval that the cluster needs to run sync with
+                  the backup target.
                 type: string
               syncRequestedAt:
                 description: The time to request run sync the remote backup target.
@@ -1087,10 +1118,12 @@ spec:
                 type: string
             type: object
           status:
-            description: BackupTargetStatus defines the observed state of the Longhorn backup target
+            description: BackupTargetStatus defines the observed state of the Longhorn
+              backup target
             properties:
               available:
-                description: Available indicates if the remote backup target is available or not.
+                description: Available indicates if the remote backup target is available
+                  or not.
                 type: boolean
               conditions:
                 description: Records the reason on why the backup target is unavailable.
@@ -1100,13 +1133,16 @@ spec:
                       description: Last time we probed the condition.
                       type: string
                     lastTransitionTime:
-                      description: Last time the condition transitioned from one status to another.
+                      description: Last time the condition transitioned from one status
+                        to another.
                       type: string
                     message:
-                      description: Human-readable message indicating details about last transition.
+                      description: Human-readable message indicating details about
+                        last transition.
                       type: string
                     reason:
-                      description: Unique, one-word, CamelCase reason for the condition's last transition.
+                      description: Unique, one-word, CamelCase reason for the condition's
+                        last transition.
                       type: string
                     status:
                       description: |-
@@ -1120,12 +1156,14 @@ spec:
                 nullable: true
                 type: array
               lastSyncedAt:
-                description: The last time that the controller synced with the remote backup target.
+                description: The last time that the controller synced with the remote
+                  backup target.
                 format: date-time
                 nullable: true
                 type: string
               ownerID:
-                description: The node ID on which the controller is responsible to reconcile this backup target CR.
+                description: The node ID on which the controller is responsible to
+                  reconcile this backup target CR.
                 type: string
             type: object
         type: object
@@ -1241,7 +1279,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: BackupVolumeSpec defines the desired state of the Longhorn backup volume
+            description: BackupVolumeSpec defines the desired state of the Longhorn
+              backup volume
             properties:
               syncRequestedAt:
                 description: The time to request run sync the remote backup volume.
@@ -1250,7 +1289,8 @@ spec:
                 type: string
             type: object
           status:
-            description: BackupVolumeStatus defines the observed state of the Longhorn backup volume
+            description: BackupVolumeStatus defines the observed state of the Longhorn
+              backup volume
             properties:
               backingImageChecksum:
                 description: the backing image checksum.
@@ -1282,24 +1322,136 @@ spec:
                 nullable: true
                 type: string
               lastSyncedAt:
-                description: The last time that the backup volume was synced into the cluster.
+                description: The last time that the backup volume was synced into
+                  the cluster.
                 format: date-time
                 nullable: true
                 type: string
               messages:
                 additionalProperties:
                   type: string
-                description: The error messages when call longhorn engine on list or inspect backup volumes.
+                description: The error messages when call longhorn engine on list
+                  or inspect backup volumes.
                 nullable: true
                 type: object
               ownerID:
-                description: The node ID on which the controller is responsible to reconcile this backup volume CR.
+                description: The node ID on which the controller is responsible to
+                  reconcile this backup volume CR.
                 type: string
               size:
                 description: The backup volume size.
                 type: string
               storageClassName:
                 description: the storage class name of pv/pvc binding with the volume.
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.15.0
+  labels:
+    longhorn-manager: ""
+  name: dataengineupgrademanagers.longhorn.io
+spec:
+  group: longhorn.io
+  names:
+    kind: DataEngineUpgradeManager
+    listKind: DataEngineUpgradeManagerList
+    plural: dataengineupgrademanagers
+    shortNames:
+    - lhum
+    singular: dataengineupgrademanager
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: The node that the upgrade manager is being performed on
+      jsonPath: .status.ownerID
+      name: Node
+      type: string
+    - description: The data engine targeted for upgrade
+      jsonPath: .spec.dataEngine
+      name: Data Engine
+      type: string
+    - description: The current state of the upgrade process
+      jsonPath: .status.state
+      name: State
+      type: string
+    - description: The node that is currently being upgraded
+      jsonPath: .status.upgradingNode
+      name: Upgrading Node
+      type: string
+    name: v1beta2
+    schema:
+      openAPIV3Schema:
+        description: DataEngineUpgradeManager is where Longhorn stores upgrade manager
+          object.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: DataEngineUpgradeManagerSpec defines the desired state of
+              the upgrade manager resource
+            properties:
+              dataEngine:
+                description: DataEngine specifies the data engine type to upgrade
+                  to.
+                enum:
+                - v2
+                type: string
+              nodes:
+                description: |-
+                  Nodes specifies the list of nodes to perform the data engine upgrade on.
+                  If empty, the upgrade will be performed on all available nodes.
+                items:
+                  type: string
+                type: array
+            type: object
+          status:
+            description: DataEngineUpgradeManagerStatus defines the observed state
+              of the upgrade manager resource
+            properties:
+              instanceManagerImage:
+                type: string
+              message:
+                type: string
+              ownerID:
+                type: string
+              state:
+                type: string
+              upgradeNodes:
+                additionalProperties:
+                  description: UpgradeState defines the state of the node upgrade
+                    process
+                  properties:
+                    message:
+                      type: string
+                    state:
+                      type: string
+                  type: object
+                type: object
+              upgradingNode:
                 type: string
             type: object
         type: object
@@ -1438,7 +1590,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: EngineImageSpec defines the desired state of the Longhorn engine image
+            description: EngineImageSpec defines the desired state of the Longhorn
+              engine image
             properties:
               image:
                 minLength: 1
@@ -1447,7 +1600,8 @@ spec:
             - image
             type: object
           status:
-            description: EngineImageStatus defines the observed state of the Longhorn engine image
+            description: EngineImageStatus defines the observed state of the Longhorn
+              engine image
             properties:
               buildDate:
                 type: string
@@ -1462,13 +1616,16 @@ spec:
                       description: Last time we probed the condition.
                       type: string
                     lastTransitionTime:
-                      description: Last time the condition transitioned from one status to another.
+                      description: Last time the condition transitioned from one status
+                        to another.
                       type: string
                     message:
-                      description: Human-readable message indicating details about last transition.
+                      description: Human-readable message indicating details about
+                        last transition.
                       type: string
                     reason:
-                      description: Unique, one-word, CamelCase reason for the condition's last transition.
+                      description: Unique, one-word, CamelCase reason for the condition's
+                        last transition.
                       type: string
                     status:
                       description: |-
@@ -1684,6 +1841,10 @@ spec:
               snapshotMaxSize:
                 format: int64
                 type: string
+              targetNodeIDForLiveUpgrade:
+                description: TargetNodeID is specifies the node where the volume's
+                  initiator instance should be scheduled during data engine live upgrade.
+                type: string
               unmapMarkSnapChainRemovedEnabled:
                 type: boolean
               upgradedReplicaAddressMap:
@@ -1742,13 +1903,16 @@ spec:
                       description: Last time we probed the condition.
                       type: string
                     lastTransitionTime:
-                      description: Last time the condition transitioned from one status to another.
+                      description: Last time the condition transitioned from one status
+                        to another.
                       type: string
                     message:
-                      description: Human-readable message indicating details about last transition.
+                      description: Human-readable message indicating details about
+                        last transition.
                       type: string
                     reason:
-                      description: Unique, one-word, CamelCase reason for the condition's last transition.
+                      description: Unique, one-word, CamelCase reason for the condition's
+                        last transition.
                       type: string
                     status:
                       description: |-
@@ -1772,6 +1936,8 @@ spec:
                 format: int64
                 type: string
               currentState:
+                type: string
+              currentTargetNodeIDForLiveUpgrade:
                 type: string
               endpoint:
                 type: string
@@ -1899,6 +2065,14 @@ spec:
                 type: boolean
               storageIP:
                 type: string
+              storageTargetIP:
+                type: string
+              targetIP:
+                type: string
+              targetInstanceReplacementCreated:
+                type: boolean
+              targetPort:
+                type: integer
               unmapMarkSnapChainRemovedEnabled:
                 type: boolean
             type: object
@@ -1992,6 +2166,10 @@ spec:
       jsonPath: .spec.nodeID
       name: Node
       type: string
+    - description: The image used by the instance manager
+      jsonPath: .spec.image
+      name: Image
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -2018,7 +2196,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: InstanceManagerSpec defines the desired state of the Longhorn instance manager
+            description: InstanceManagerSpec defines the desired state of the Longhorn
+              instance manager
             properties:
               dataEngine:
                 type: string
@@ -2042,7 +2221,8 @@ spec:
                 type: string
             type: object
           status:
-            description: InstanceManagerStatus defines the observed state of the Longhorn instance manager
+            description: InstanceManagerStatus defines the observed state of the Longhorn
+              instance manager
             properties:
               apiMinVersion:
                 type: integer
@@ -2093,6 +2273,12 @@ spec:
                         resourceVersion:
                           format: int64
                           type: integer
+                        standbyTargetPortEnd:
+                          format: int32
+                          type: integer
+                        standbyTargetPortStart:
+                          format: int32
+                          type: integer
                         state:
                           type: string
                         targetPortEnd:
@@ -2141,6 +2327,12 @@ spec:
                           type: integer
                         resourceVersion:
                           format: int64
+                          type: integer
+                        standbyTargetPortEnd:
+                          format: int32
+                          type: integer
+                        standbyTargetPortStart:
+                          format: int32
                           type: integer
                         state:
                           type: string
@@ -2191,6 +2383,12 @@ spec:
                         resourceVersion:
                           format: int64
                           type: integer
+                        standbyTargetPortEnd:
+                          format: int32
+                          type: integer
+                        standbyTargetPortStart:
+                          format: int32
+                          type: integer
                         state:
                           type: string
                         targetPortEnd:
@@ -2214,6 +2412,109 @@ spec:
                 type: integer
               proxyApiVersion:
                 type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.15.0
+  labels:
+    longhorn-manager: ""
+  name: nodedataengineupgrades.longhorn.io
+spec:
+  group: longhorn.io
+  names:
+    kind: NodeDataEngineUpgrade
+    listKind: NodeDataEngineUpgradeList
+    plural: nodedataengineupgrades
+    shortNames:
+    - lhnu
+    singular: nodedataengineupgrade
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: The node that the upgrade is being performed on
+      jsonPath: .status.ownerID
+      name: Node
+      type: string
+    - description: The data engine targeted for node upgrade
+      jsonPath: .spec.dataEngine
+      name: Data Engine
+      type: string
+    - description: The current state of the node upgrade process
+      jsonPath: .status.state
+      name: State
+      type: string
+    name: v1beta2
+    schema:
+      openAPIV3Schema:
+        description: NodeDataEngineUpgrade is where Longhorn stores node upgrade object.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: NodeDataEngineUpgradeSpec defines the desired state of the
+              node data engine upgrade resource
+            properties:
+              dataEngine:
+                description: DataEngine specifies the data engine type to upgrade
+                  to.
+                enum:
+                - v2
+                type: string
+              dataEngineUpgradeManager:
+                description: DataEngineUpgradeManager specifies the name of the upgrade
+                  manager resource that is managing the upgrade process.
+                type: string
+              instanceManagerImage:
+                description: InstanceManagerImage specifies the image to use for the
+                  instance manager upgrade.
+                type: string
+              nodeID:
+                description: NodeID specifies the ID of the node where the data engine
+                  upgrade will take place.
+                type: string
+            type: object
+          status:
+            description: NodeDataEngineUpgradeStatus defines the observed state of
+              the node upgrade resource
+            properties:
+              message:
+                type: string
+              ownerID:
+                type: string
+              state:
+                type: string
+              volumes:
+                additionalProperties:
+                  properties:
+                    message:
+                      type: string
+                    state:
+                      type: string
+                  type: object
+                type: object
             type: object
         type: object
     served: true
@@ -2258,7 +2559,8 @@ spec:
       jsonPath: .status.conditions['Ready']['status']
       name: Ready
       type: string
-    - description: Indicate whether the user disabled/enabled replica scheduling for the node
+    - description: Indicate whether the user disabled/enabled replica scheduling for
+        the node
       jsonPath: .spec.allowScheduling
       name: AllowScheduling
       type: boolean
@@ -2305,7 +2607,8 @@ spec:
       jsonPath: .status.conditions[?(@.type=='Ready')].status
       name: Ready
       type: string
-    - description: Indicate whether the user disabled/enabled replica scheduling for the node
+    - description: Indicate whether the user disabled/enabled replica scheduling for
+        the node
       jsonPath: .spec.allowScheduling
       name: AllowScheduling
       type: boolean
@@ -2395,13 +2698,16 @@ spec:
                       description: Last time we probed the condition.
                       type: string
                     lastTransitionTime:
-                      description: Last time the condition transitioned from one status to another.
+                      description: Last time the condition transitioned from one status
+                        to another.
                       type: string
                     message:
-                      description: Human-readable message indicating details about last transition.
+                      description: Human-readable message indicating details about
+                        last transition.
                       type: string
                     reason:
-                      description: Unique, one-word, CamelCase reason for the condition's last transition.
+                      description: Unique, one-word, CamelCase reason for the condition's
+                        last transition.
                       type: string
                     status:
                       description: |-
@@ -2424,13 +2730,16 @@ spec:
                             description: Last time we probed the condition.
                             type: string
                           lastTransitionTime:
-                            description: Last time the condition transitioned from one status to another.
+                            description: Last time the condition transitioned from
+                              one status to another.
                             type: string
                           message:
-                            description: Human-readable message indicating details about last transition.
+                            description: Human-readable message indicating details
+                              about last transition.
                             type: string
                           reason:
-                            description: Unique, one-word, CamelCase reason for the condition's last transition.
+                            description: Unique, one-word, CamelCase reason for the
+                              condition's last transition.
                             type: string
                           status:
                             description: |-
@@ -2549,10 +2858,12 @@ spec:
           metadata:
             type: object
           spec:
-            description: OrphanSpec defines the desired state of the Longhorn orphaned data
+            description: OrphanSpec defines the desired state of the Longhorn orphaned
+              data
             properties:
               nodeID:
-                description: The node ID on which the controller is responsible to reconcile this orphan CR.
+                description: The node ID on which the controller is responsible to
+                  reconcile this orphan CR.
                 type: string
               orphanType:
                 description: |-
@@ -2566,7 +2877,8 @@ spec:
                 type: object
             type: object
           status:
-            description: OrphanStatus defines the observed state of the Longhorn orphaned data
+            description: OrphanStatus defines the observed state of the Longhorn orphaned
+              data
             properties:
               conditions:
                 items:
@@ -2575,13 +2887,16 @@ spec:
                       description: Last time we probed the condition.
                       type: string
                     lastTransitionTime:
-                      description: Last time the condition transitioned from one status to another.
+                      description: Last time the condition transitioned from one status
+                        to another.
                       type: string
                     message:
-                      description: Human-readable message indicating details about last transition.
+                      description: Human-readable message indicating details about
+                        last transition.
                       type: string
                     reason:
-                      description: Unique, one-word, CamelCase reason for the condition's last transition.
+                      description: Unique, one-word, CamelCase reason for the condition's
+                        last transition.
                       type: string
                     status:
                       description: |-
@@ -2623,7 +2938,8 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - description: Sets groupings to the jobs. When set to "default" group will be added to the volume label when no other job label exist in volume
+    - description: Sets groupings to the jobs. When set to "default" group will be
+        added to the volume label when no other job label exist in volume
       jsonPath: .spec.groups
       name: Groups
       type: string
@@ -2682,11 +2998,13 @@ spec:
     subresources:
       status: {}
   - additionalPrinterColumns:
-    - description: Sets groupings to the jobs. When set to "default" group will be added to the volume label when no other job label exist in volume
+    - description: Sets groupings to the jobs. When set to "default" group will be
+        added to the volume label when no other job label exist in volume
       jsonPath: .spec.groups
       name: Groups
       type: string
-    - description: Should be one of "snapshot", "snapshot-force-create", "snapshot-cleanup", "snapshot-delete", "backup", "backup-force-create" or "filesystem-trim"
+    - description: Should be one of "snapshot", "snapshot-force-create", "snapshot-cleanup",
+        "snapshot-delete", "backup", "backup-force-create" or "filesystem-trim"
       jsonPath: .spec.task
       name: Task
       type: string
@@ -2732,7 +3050,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: RecurringJobSpec defines the desired state of the Longhorn recurring job
+            description: RecurringJobSpec defines the desired state of the Longhorn
+              recurring job
             properties:
               concurrency:
                 description: The concurrency of taking the snapshot/backup.
@@ -2778,13 +3097,15 @@ spec:
                 type: string
             type: object
           status:
-            description: RecurringJobStatus defines the observed state of the Longhorn recurring job
+            description: RecurringJobStatus defines the observed state of the Longhorn
+              recurring job
             properties:
               executionCount:
                 description: The number of jobs that have been triggered.
                 type: integer
               ownerID:
-                description: The owner ID which is responsible to reconcile this recurring job CR.
+                description: The owner ID which is responsible to reconcile this recurring
+                  job CR.
                 type: string
             type: object
         type: object
@@ -3007,6 +3328,10 @@ spec:
               snapshotMaxSize:
                 format: int64
                 type: string
+              targetNodeIDForLiveUpgrade:
+                description: TargetNodeID is specifies the node where the volume's
+                  initiator instance should be scheduled during data engine live upgrade.
+                type: string
               unmapMarkDiskChainRemovedEnabled:
                 type: boolean
               volumeName:
@@ -3016,7 +3341,8 @@ spec:
                 type: string
             type: object
           status:
-            description: ReplicaStatus defines the observed state of the Longhorn replica
+            description: ReplicaStatus defines the observed state of the Longhorn
+              replica
             properties:
               conditions:
                 items:
@@ -3025,13 +3351,16 @@ spec:
                       description: Last time we probed the condition.
                       type: string
                     lastTransitionTime:
-                      description: Last time the condition transitioned from one status to another.
+                      description: Last time the condition transitioned from one status
+                        to another.
                       type: string
                     message:
-                      description: Human-readable message indicating details about last transition.
+                      description: Human-readable message indicating details about
+                        last transition.
                       type: string
                     reason:
-                      description: Unique, one-word, CamelCase reason for the condition's last transition.
+                      description: Unique, one-word, CamelCase reason for the condition's
+                        last transition.
                       type: string
                     status:
                       description: |-
@@ -3047,6 +3376,8 @@ spec:
               currentImage:
                 type: string
               currentState:
+                type: string
+              currentTargetNodeIDForLiveUpgrade:
                 type: string
               evictionRequested:
                 description: 'Deprecated: Replaced by field `spec.evictionRequested`.'
@@ -3067,6 +3398,14 @@ spec:
                 type: boolean
               storageIP:
                 type: string
+              storageTargetIP:
+                type: string
+              targetIP:
+                type: string
+              targetInstanceReplacementCreated:
+                type: boolean
+              targetPort:
+                type: integer
             type: object
         type: object
     served: true
@@ -3284,20 +3623,25 @@ spec:
           metadata:
             type: object
           spec:
-            description: ShareManagerSpec defines the desired state of the Longhorn share manager
+            description: ShareManagerSpec defines the desired state of the Longhorn
+              share manager
             properties:
               image:
-                description: Share manager image used for creating a share manager pod
+                description: Share manager image used for creating a share manager
+                  pod
                 type: string
             type: object
           status:
-            description: ShareManagerStatus defines the observed state of the Longhorn share manager
+            description: ShareManagerStatus defines the observed state of the Longhorn
+              share manager
             properties:
               endpoint:
-                description: NFS endpoint that can access the mounted filesystem of the volume
+                description: NFS endpoint that can access the mounted filesystem of
+                  the volume
                 type: string
               ownerID:
-                description: The node ID on which the controller is responsible to reconcile this share manager resource
+                description: The node ID on which the controller is responsible to
+                  reconcile this share manager resource
                 type: string
               state:
                 description: The state of the share manager resource
@@ -3337,11 +3681,13 @@ spec:
       jsonPath: .status.creationTime
       name: CreationTime
       type: string
-    - description: Indicates if the snapshot is ready to be used to restore/backup a volume
+    - description: Indicates if the snapshot is ready to be used to restore/backup
+        a volume
       jsonPath: .status.readyToUse
       name: ReadyToUse
       type: boolean
-    - description: Represents the minimum size of volume required to rehydrate from this snapshot
+    - description: Represents the minimum size of volume required to rehydrate from
+        this snapshot
       jsonPath: .status.restoreSize
       name: RestoreSize
       type: string
@@ -3495,7 +3841,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: SupportBundleSpec defines the desired state of the Longhorn SupportBundle
+            description: SupportBundleSpec defines the desired state of the Longhorn
+              SupportBundle
             properties:
               description:
                 description: A brief description of the issue
@@ -3511,7 +3858,8 @@ spec:
             - description
             type: object
           status:
-            description: SupportBundleStatus defines the observed state of the Longhorn SupportBundle
+            description: SupportBundleStatus defines the observed state of the Longhorn
+              SupportBundle
             properties:
               conditions:
                 items:
@@ -3520,13 +3868,16 @@ spec:
                       description: Last time we probed the condition.
                       type: string
                     lastTransitionTime:
-                      description: Last time the condition transitioned from one status to another.
+                      description: Last time the condition transitioned from one status
+                        to another.
                       type: string
                     message:
-                      description: Human-readable message indicating details about last transition.
+                      description: Human-readable message indicating details about
+                        last transition.
                       type: string
                     reason:
-                      description: Unique, one-word, CamelCase reason for the condition's last transition.
+                      description: Unique, one-word, CamelCase reason for the condition's
+                        last transition.
                       type: string
                     status:
                       description: |-
@@ -3622,7 +3973,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: SystemBackupSpec defines the desired state of the Longhorn SystemBackup
+            description: SystemBackupSpec defines the desired state of the Longhorn
+              SystemBackup
             properties:
               volumeBackupPolicy:
                 description: |-
@@ -3632,7 +3984,8 @@ spec:
                 type: string
             type: object
           status:
-            description: SystemBackupStatus defines the observed state of the Longhorn SystemBackup
+            description: SystemBackupStatus defines the observed state of the Longhorn
+              SystemBackup
             properties:
               conditions:
                 items:
@@ -3641,13 +3994,16 @@ spec:
                       description: Last time we probed the condition.
                       type: string
                     lastTransitionTime:
-                      description: Last time the condition transitioned from one status to another.
+                      description: Last time the condition transitioned from one status
+                        to another.
                       type: string
                     message:
-                      description: Human-readable message indicating details about last transition.
+                      description: Human-readable message indicating details about
+                        last transition.
                       type: string
                     reason:
-                      description: Unique, one-word, CamelCase reason for the condition's last transition.
+                      description: Unique, one-word, CamelCase reason for the condition's
+                        last transition.
                       type: string
                     status:
                       description: |-
@@ -3669,7 +4025,8 @@ spec:
                 nullable: true
                 type: string
               lastSyncedAt:
-                description: The last time that the system backup was synced into the cluster.
+                description: The last time that the system backup was synced into
+                  the cluster.
                 format: date-time
                 nullable: true
                 type: string
@@ -3677,7 +4034,8 @@ spec:
                 description: The saved manager image.
                 type: string
               ownerID:
-                description: The node ID of the responsible controller to reconcile this SystemBackup.
+                description: The node ID of the responsible controller to reconcile
+                  this SystemBackup.
                 type: string
               state:
                 description: The system backup state.
@@ -3743,7 +4101,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: SystemRestoreSpec defines the desired state of the Longhorn SystemRestore
+            description: SystemRestoreSpec defines the desired state of the Longhorn
+              SystemRestore
             properties:
               systemBackup:
                 description: The system backup name in the object store.
@@ -3752,7 +4111,8 @@ spec:
             - systemBackup
             type: object
           status:
-            description: SystemRestoreStatus defines the observed state of the Longhorn SystemRestore
+            description: SystemRestoreStatus defines the observed state of the Longhorn
+              SystemRestore
             properties:
               conditions:
                 items:
@@ -3761,13 +4121,16 @@ spec:
                       description: Last time we probed the condition.
                       type: string
                     lastTransitionTime:
-                      description: Last time the condition transitioned from one status to another.
+                      description: Last time the condition transitioned from one status
+                        to another.
                       type: string
                     message:
-                      description: Human-readable message indicating details about last transition.
+                      description: Human-readable message indicating details about
+                        last transition.
                       type: string
                     reason:
-                      description: Unique, one-word, CamelCase reason for the condition's last transition.
+                      description: Unique, one-word, CamelCase reason for the condition's
+                        last transition.
                       type: string
                     status:
                       description: |-
@@ -3781,7 +4144,8 @@ spec:
                 nullable: true
                 type: array
               ownerID:
-                description: The node ID of the responsible controller to reconcile this SystemRestore.
+                description: The node ID of the responsible controller to reconcile
+                  this SystemRestore.
                 type: string
               sourceURL:
                 description: The source system backup URL.
@@ -3822,7 +4186,8 @@ spec:
     name: v1beta2
     schema:
       openAPIV3Schema:
-        description: VolumeAttachment stores attachment information of a Longhorn volume
+        description: VolumeAttachment stores attachment information of a Longhorn
+          volume
         properties:
           apiVersion:
             description: |-
@@ -3842,7 +4207,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: VolumeAttachmentSpec defines the desired state of Longhorn VolumeAttachment
+            description: VolumeAttachmentSpec defines the desired state of Longhorn
+              VolumeAttachment
             properties:
               attachmentTickets:
                 additionalProperties:
@@ -3854,7 +4220,8 @@ spec:
                       format: int64
                       type: integer
                     id:
-                      description: The unique ID of this attachment. Used to differentiate different attachments of the same volume.
+                      description: The unique ID of this attachment. Used to differentiate
+                        different attachments of the same volume.
                       type: string
                     nodeID:
                       description: The node that this attachment is requesting
@@ -3875,7 +4242,8 @@ spec:
             - volume
             type: object
           status:
-            description: VolumeAttachmentStatus defines the observed state of Longhorn VolumeAttachment
+            description: VolumeAttachmentStatus defines the observed state of Longhorn
+              VolumeAttachment
             properties:
               attachmentTicketStatuses:
                 additionalProperties:
@@ -3888,13 +4256,16 @@ spec:
                             description: Last time we probed the condition.
                             type: string
                           lastTransitionTime:
-                            description: Last time the condition transitioned from one status to another.
+                            description: Last time the condition transitioned from
+                              one status to another.
                             type: string
                           message:
-                            description: Human-readable message indicating details about last transition.
+                            description: Human-readable message indicating details
+                              about last transition.
                             type: string
                           reason:
-                            description: Unique, one-word, CamelCase reason for the condition's last transition.
+                            description: Unique, one-word, CamelCase reason for the
+                              condition's last transition.
                             type: string
                           status:
                             description: |-
@@ -3914,10 +4285,12 @@ spec:
                       format: int64
                       type: integer
                     id:
-                      description: The unique ID of this attachment. Used to differentiate different attachments of the same volume.
+                      description: The unique ID of this attachment. Used to differentiate
+                        different attachments of the same volume.
                       type: string
                     satisfied:
-                      description: Indicate whether this attachment ticket has been satisfied
+                      description: Indicate whether this attachment ticket has been
+                        satisfied
                       type: boolean
                   required:
                   - conditions
@@ -4114,7 +4487,8 @@ spec:
                 description: 'Deprecated: Replaced by field `image`.'
                 type: string
               freezeFilesystemForSnapshot:
-                description: Setting that freezes the filesystem on the root partition before a snapshot is created.
+                description: Setting that freezes the filesystem on the root partition
+                  before a snapshot is created.
                 enum:
                 - ignored
                 - enabled
@@ -4153,21 +4527,24 @@ spec:
                 - best-effort
                 type: string
               replicaDiskSoftAntiAffinity:
-                description: Replica disk soft anti affinity of the volume. Set enabled to allow replicas to be scheduled in the same disk.
+                description: Replica disk soft anti affinity of the volume. Set enabled
+                  to allow replicas to be scheduled in the same disk.
                 enum:
                 - ignored
                 - enabled
                 - disabled
                 type: string
               replicaSoftAntiAffinity:
-                description: Replica soft anti affinity of the volume. Set enabled to allow replicas to be scheduled on the same node.
+                description: Replica soft anti affinity of the volume. Set enabled
+                  to allow replicas to be scheduled on the same node.
                 enum:
                 - ignored
                 - enabled
                 - disabled
                 type: string
               replicaZoneSoftAntiAffinity:
-                description: Replica zone soft anti affinity of the volume. Set enabled to allow replicas to be scheduled in the same zone.
+                description: Replica zone soft anti affinity of the volume. Set enabled
+                  to allow replicas to be scheduled in the same zone.
                 enum:
                 - ignored
                 - enabled
@@ -4198,6 +4575,11 @@ spec:
                 type: string
               staleReplicaTimeout:
                 type: integer
+              targetNodeIDForLiveUpgrade:
+                description: TargetNodeIDForLiveUpgrade is specifies the node where
+                  the volume's initiator instance should be scheduled during data
+                  engine live upgrade.
+                type: string
               unmapMarkSnapChainRemoved:
                 enum:
                 - ignored
@@ -4231,13 +4613,16 @@ spec:
                       description: Last time we probed the condition.
                       type: string
                     lastTransitionTime:
-                      description: Last time the condition transitioned from one status to another.
+                      description: Last time the condition transitioned from one status
+                        to another.
                       type: string
                     message:
-                      description: Human-readable message indicating details about last transition.
+                      description: Human-readable message indicating details about
+                        last transition.
                       type: string
                     reason:
-                      description: Unique, one-word, CamelCase reason for the condition's last transition.
+                      description: Unique, one-word, CamelCase reason for the condition's
+                        last transition.
                       type: string
                     status:
                       description: |-
@@ -4256,6 +4641,8 @@ spec:
                 description: the node that this volume is currently migrating to
                 type: string
               currentNodeID:
+                type: string
+              currentTargetNodeIDForLiveUpgrade:
                 type: string
               expansionRequired:
                 type: boolean
