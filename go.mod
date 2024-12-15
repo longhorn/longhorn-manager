@@ -62,14 +62,14 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.19.0
-	github.com/longhorn/backing-image-manager v1.8.0-dev-20241201
+	github.com/longhorn/backing-image-manager v1.8.0-dev-20241215
 	github.com/longhorn/backupstore v0.0.0-20241208150358-e44f7d35fe1f
 	github.com/longhorn/go-common-libs v0.0.0-20241208100509-e1932c65c078
 	github.com/longhorn/go-iscsi-helper v0.0.0-20241208120713-c4ac270fbe7e
 	github.com/longhorn/go-spdk-helper v0.0.0-20241210055426-92898a883955
-	github.com/longhorn/longhorn-engine v1.8.0-dev-20241201
-	github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241201
-	github.com/longhorn/longhorn-share-manager v1.8.0-dev-20241201
+	github.com/longhorn/longhorn-engine v1.8.0-dev-20241215
+	github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241215
+	github.com/longhorn/longhorn-share-manager v1.8.0-dev-20241215
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.20.5
 	github.com/rancher/dynamiclistener v0.6.1
@@ -110,7 +110,7 @@ require (
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
-	github.com/longhorn/types v0.0.0-20241208031854-891e672bc453 // indirect
+	github.com/longhorn/types v0.0.0-20241214151852-cf9e27d3d0a9 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/moby/term v0.5.0 // indirect
