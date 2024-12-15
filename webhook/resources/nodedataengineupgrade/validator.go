@@ -1,8 +1,12 @@
 package nodedataengineupgrade
 
 import (
+	"context"
 	"fmt"
+	"time"
 
+	"github.com/jrhouston/k8slock"
+	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
@@ -16,11 +20,15 @@ import (
 
 type nodeDataEngineUpgradeValidator struct {
 	admission.DefaultValidator
-	ds *datastore.DataStore
+	ds     *datastore.DataStore
+	locker *k8slock.Locker
 }
 
-func NewValidator(ds *datastore.DataStore) admission.Validator {
-	return &nodeDataEngineUpgradeValidator{ds: ds}
+func NewValidator(ds *datastore.DataStore, locker *k8slock.Locker) admission.Validator {
+	return &nodeDataEngineUpgradeValidator{
+		ds:     ds,
+		locker: locker,
+	}
 }
 
 func (u *nodeDataEngineUpgradeValidator) Resource() admission.Resource {
@@ -42,6 +50,21 @@ func (u *nodeDataEngineUpgradeValidator) Create(request *admission.Request, newO
 	if !ok {
 		return werror.NewInvalidError("object is not a *longhorn.NodeDataEngineUpgrade", "")
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	err := u.locker.LockContext(ctx)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to lock for nodeDataEngineUpgrade %v", nodeUpgrade.Name)
+		return werror.NewInternalError(err.Error())
+	}
+	defer func() {
+		err = u.locker.UnlockContext(ctx)
+		if err != nil {
+			err = errors.Wrapf(err, "failed to unlock for nodeDataEngineUpgrade %v", nodeUpgrade.Name)
+		}
+	}()
 
 	if nodeUpgrade.Spec.NodeID == "" {
 		return werror.NewInvalidError("nodeID is required", "spec.nodeID")

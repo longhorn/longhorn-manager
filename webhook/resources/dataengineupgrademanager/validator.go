@@ -1,9 +1,13 @@
 package dataengineupgrademanager
 
 import (
+	"context"
 	"fmt"
 	"reflect"
+	"time"
 
+	"github.com/jrhouston/k8slock"
+	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
@@ -17,11 +21,15 @@ import (
 
 type dataEngineUpgradeManagerValidator struct {
 	admission.DefaultValidator
-	ds *datastore.DataStore
+	ds     *datastore.DataStore
+	locker *k8slock.Locker
 }
 
-func NewValidator(ds *datastore.DataStore) admission.Validator {
-	return &dataEngineUpgradeManagerValidator{ds: ds}
+func NewValidator(ds *datastore.DataStore, locker *k8slock.Locker) admission.Validator {
+	return &dataEngineUpgradeManagerValidator{
+		ds:     ds,
+		locker: locker,
+	}
 }
 
 func (u *dataEngineUpgradeManagerValidator) Resource() admission.Resource {
@@ -38,10 +46,49 @@ func (u *dataEngineUpgradeManagerValidator) Resource() admission.Resource {
 	}
 }
 
+func (u *dataEngineUpgradeManagerValidator) areAllDataEngineUpgradeManagerStopped() (bool, error) {
+	upgradeManagers, err := u.ds.ListDataEngineUpgradeManagers()
+	if err != nil {
+		return false, err
+	}
+	for _, upgradeManager := range upgradeManagers {
+		if upgradeManager.Status.State != longhorn.UpgradeStateCompleted &&
+			upgradeManager.Status.State != longhorn.UpgradeStateError {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 func (u *dataEngineUpgradeManagerValidator) Create(request *admission.Request, newObj runtime.Object) error {
 	upgradeManager, ok := newObj.(*longhorn.DataEngineUpgradeManager)
 	if !ok {
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.DataEngineUpgradeManager", newObj), "")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	err := u.locker.LockContext(ctx)
+	if err != nil {
+		err = errors.Wrapf(err, "failed to lock for dataEngineUpgradeManager %v", upgradeManager.Name)
+		return werror.NewInternalError(err.Error())
+	}
+	defer func() {
+		err = u.locker.UnlockContext(ctx)
+		if err != nil {
+			err = errors.Wrapf(err, "failed to unlock for dataEngineUpgradeManager %v", upgradeManager.Name)
+		}
+	}()
+
+	allStopped, err := u.areAllDataEngineUpgradeManagerStopped()
+	if err != nil {
+		err = errors.Wrapf(err, "failed to check if all dataEngineUpgradeManager are stopped")
+		return werror.NewInternalError(err.Error())
+	}
+	if !allStopped {
+		err = fmt.Errorf("another dataEngineUpgradeManager is in progress")
+		return werror.NewBadRequest(err.Error())
 	}
 
 	nodes, err := u.ds.ListNodes()

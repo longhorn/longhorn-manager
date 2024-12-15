@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 
+	"github.com/jrhouston/k8slock"
 	"github.com/rancher/wrangler/v3/pkg/webhook"
 
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -26,9 +27,11 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/resources/systemrestore"
 	"github.com/longhorn/longhorn-manager/webhook/resources/volume"
 	"github.com/longhorn/longhorn-manager/webhook/resources/volumeattachment"
+
+	webhooktypes "github.com/longhorn/longhorn-manager/webhook/types"
 )
 
-func Validation(ds *datastore.DataStore) (http.Handler, []admission.Resource, error) {
+func Validation(ds *datastore.DataStore, lockers map[string]*k8slock.Locker) (http.Handler, []admission.Resource, error) {
 	currentNodeID, err := util.GetRequiredEnv(types.EnvNodeName)
 	if err != nil {
 		return nil, nil, err
@@ -51,8 +54,8 @@ func Validation(ds *datastore.DataStore) (http.Handler, []admission.Resource, er
 		replica.NewValidator(ds),
 		instancemanager.NewValidator(ds),
 		persistentvolumeclaim.NewValidator(ds),
-		dataengineupgrademanager.NewValidator(ds),
-		nodedataengineupgrade.NewValidator(ds),
+		dataengineupgrademanager.NewValidator(ds, lockers[webhooktypes.PascalToKebab(types.LonghornKindDataEngineUpgradeManager)]),
+		nodedataengineupgrade.NewValidator(ds, lockers[webhooktypes.PascalToKebab(types.LonghornKindNodeDataEngineUpgrade)]),
 	}
 
 	router := webhook.NewRouter()

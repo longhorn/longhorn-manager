@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
 	"github.com/longhorn/longhorn-manager/types"
@@ -20,7 +21,7 @@ var (
 	defaultStartTimeout = 60 * time.Second
 )
 
-func StartWebhook(ctx context.Context, webhookType string, clients *client.Clients) error {
+func StartWebhook(ctx context.Context, nodeName, webhookType string, clients *client.Clients) error {
 	logrus.Infof("Starting longhorn %s webhook server", webhookType)
 
 	var webhookLocalEndpoint string
@@ -33,7 +34,11 @@ func StartWebhook(ctx context.Context, webhookType string, clients *client.Clien
 		return fmt.Errorf("unexpected webhook server type %v", webhookType)
 	}
 
-	s := server.New(ctx, clients.Namespace, webhookType, clients)
+	s, err := server.New(ctx, clients.Namespace, nodeName, webhookType, clients)
+	if err != nil {
+		return errors.Wrapf(err, "failed to create %v webhook server", webhookType)
+	}
+
 	go func() {
 		if err := s.ListenAndServe(); err != nil {
 			logrus.Fatalf("Error %v webhook server failed: %v", webhookType, err)
