@@ -191,6 +191,19 @@ func NewNodeController(
 	}
 	nc.cacheSyncs = append(nc.cacheSyncs, ds.KubeNodeInformer.HasSynced)
 
+	if _, err = ds.NodeDataEngineUpgradeInformer.AddEventHandlerWithResyncPeriod(
+		cache.FilteringResourceEventHandler{
+			FilterFunc: nc.isResponsibleForNodeDataEngineUpgrade,
+			Handler: cache.ResourceEventHandlerFuncs{
+				AddFunc:    nc.enqueueManagerNodeDataEngineUpgrade,
+				UpdateFunc: func(old, cur interface{}) { nc.enqueueManagerNodeDataEngineUpgrade(cur) },
+				DeleteFunc: nc.enqueueManagerNodeDataEngineUpgrade,
+			},
+		}, 0); err != nil {
+		return nil, err
+	}
+	nc.cacheSyncs = append(nc.cacheSyncs, ds.NodeDataEngineUpgradeInformer.HasSynced)
+
 	return nc, nil
 }
 
@@ -282,6 +295,43 @@ func (nc *NodeController) snapshotHashRequired(volume *longhorn.Volume) bool {
 	}
 
 	return true
+}
+
+func (nc *NodeController) isResponsibleForNodeDataEngineUpgrade(obj interface{}) bool {
+	upgrade, ok := obj.(*longhorn.NodeDataEngineUpgrade)
+	if !ok {
+		return false
+	}
+
+	return upgrade.Status.OwnerID == nc.controllerID
+}
+
+func (nc *NodeController) enqueueManagerNodeDataEngineUpgrade(obj interface{}) {
+	upgrade, ok := obj.(*longhorn.NodeDataEngineUpgrade)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		upgrade, ok = deletedState.Obj.(*longhorn.NodeDataEngineUpgrade)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	node, err := nc.ds.GetNodeRO(upgrade.Spec.NodeID)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			utilruntime.HandleError(fmt.Errorf("failed to get node %v for upgrade %v: %v ",
+				upgrade.Spec.NodeID, upgrade.Name, err))
+		}
+		return
+	}
+	nc.enqueueNode(node)
 }
 
 func isManagerPod(obj interface{}) bool {
@@ -431,6 +481,10 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	}
 
 	if err = nc.setReadyAndSchedulableConditions(node, kubeNode, managerPods); err != nil {
+		return err
+	}
+
+	if err = nc.setDataEngineUpgradeRequestedCondition(node); err != nil {
 		return err
 	}
 
@@ -1446,6 +1500,13 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 						cleanupRequired = false
 						log.Debugf("Skipping cleaning up non-default unknown instance manager %s", im.Name)
 					}
+
+					if types.IsDataEngineV2(dataEngine) {
+						dataEngineUpgradeRequestedCondition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeDataEngineUpgradeRequested)
+						if dataEngineUpgradeRequestedCondition.Status == longhorn.ConditionStatusTrue {
+							cleanupRequired = false
+						}
+					}
 				}
 				if cleanupRequired {
 					log.Infof("Cleaning up the redundant instance manager %v when there is no running/starting instance", im.Name)
@@ -2129,6 +2190,43 @@ func (nc *NodeController) setReadyAndSchedulableConditions(node *longhorn.Node, 
 	return nil
 }
 
+func (nc *NodeController) setDataEngineUpgradeRequestedCondition(node *longhorn.Node) error {
+	nodeUpgrades, err := nc.ds.ListNodeDataEngineUpgradesByNodeRO(node.Name)
+	if err != nil {
+		return err
+	}
+
+	nodeUpgradeRequested := false
+	nodeUpgradeName := ""
+	for _, upgrade := range nodeUpgrades {
+		if upgrade.Status.State != longhorn.UpgradeStateRebuildingReplica &&
+			upgrade.Status.State != longhorn.UpgradeStateFinalizing &&
+			upgrade.Status.State != longhorn.UpgradeStateError &&
+			upgrade.Status.State != longhorn.UpgradeStateCompleted {
+			nodeUpgradeRequested = true
+			nodeUpgradeName = upgrade.Name
+			break
+		}
+	}
+
+	if nodeUpgradeRequested {
+		node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
+			longhorn.NodeConditionTypeDataEngineUpgradeRequested,
+			longhorn.ConditionStatusTrue,
+			string(longhorn.NodeConditionReasonNodeDataEngineUpgradeRequested),
+			fmt.Sprintf("nodeDataeEngineUpgrade %v is in progress", nodeUpgradeName),
+			nc.eventRecorder, node, corev1.EventTypeNormal)
+	} else {
+		node.Status.Conditions = types.SetConditionAndRecord(node.Status.Conditions,
+			longhorn.NodeConditionTypeDataEngineUpgradeRequested,
+			longhorn.ConditionStatusFalse,
+			"",
+			"",
+			nc.eventRecorder, node, corev1.EventTypeNormal)
+	}
+	return nil
+}
+
 func (nc *NodeController) setReadyConditionForManagerPod(node *longhorn.Node, managerPods []*corev1.Pod, nodeReady bool) bool {
 	nodeManagerFound := false
 	for _, pod := range managerPods {
@@ -2208,11 +2306,13 @@ func (nc *NodeController) SetSchedulableCondition(node *longhorn.Node, kubeNode 
 	message := ""
 	disableScheduling := false
 
+	dataEngineUpgradeRequestedCondition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeDataEngineUpgradeRequested)
+
 	if disableSchedulingOnCordonedNode && kubeSpec.Unschedulable {
 		disableScheduling = true
 		reason = string(longhorn.NodeConditionReasonKubernetesNodeCordoned)
 		message = fmt.Sprintf("Node %v is cordoned", node.Name)
-	} else if node.Spec.DataEngineUpgradeRequested {
+	} else if dataEngineUpgradeRequestedCondition.Status == longhorn.ConditionStatusTrue {
 		disableScheduling = true
 		reason = string(longhorn.NodeConditionReasonNodeDataEngineUpgradeRequested)
 		message = fmt.Sprintf("Data engine of node %v is being upgraded", node.Name)

@@ -25,13 +25,13 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
-	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
-
 	lhns "github.com/longhorn/go-common-libs/ns"
+	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -55,6 +55,8 @@ type ReplicaController struct {
 
 	rebuildingLock          *sync.Mutex
 	inProgressRebuildingMap map[string]struct{}
+
+	proxyConnCounter util.Counter
 }
 
 func NewReplicaController(
@@ -62,7 +64,8 @@ func NewReplicaController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
-	namespace string, controllerID string) (*ReplicaController, error) {
+	namespace string, controllerID string,
+	proxyConnCounter util.Counter) (*ReplicaController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -79,6 +82,8 @@ func NewReplicaController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-replica-controller"}),
 
 		ds: ds,
+
+		proxyConnCounter: proxyConnCounter,
 
 		rebuildingLock:          &sync.Mutex{},
 		inProgressRebuildingMap: map[string]struct{}{},
@@ -576,6 +581,21 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) (err error) {
 		cleanupRequired = true
 	}
 
+	if types.IsDataEngineV2(r.Spec.DataEngine) && r.Spec.FailedAt != "" {
+		upgradeRequested, err := rc.ds.IsNodeDataEngineUpgradeRequested(r.Spec.NodeID)
+		if err != nil {
+			return err
+		}
+		if upgradeRequested {
+			log.Infof("Deleting failed replica instance %v from its engine instance without cleanup since the node %v is requested to upgrade data engine",
+				r.Name, r.Spec.NodeID)
+			err = rc.removeFailedReplicaInstanceFromEngineInstance(r)
+			if err != nil {
+				return errors.Wrapf(err, "failed to remove failed replica instance %v from engine instance", r.Name)
+			}
+		}
+	}
+
 	log.WithField("cleanupRequired", cleanupRequired).Infof("Deleting replica instance on disk %v", r.Spec.DiskPath)
 
 	err = c.InstanceDelete(r.Spec.DataEngine, r.Name, string(longhorn.InstanceManagerTypeReplica), r.Spec.DiskID, cleanupRequired)
@@ -594,6 +614,36 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) (err error) {
 		if _, err := rc.ds.UpdateInstanceManagerStatus(im); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+func (rc *ReplicaController) removeFailedReplicaInstanceFromEngineInstance(r *longhorn.Replica) error {
+	e, err := rc.ds.GetVolumeCurrentEngine(r.Spec.VolumeName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	engineCliClient, err := GetBinaryClientForEngine(e, &engineapi.EngineCollection{}, e.Status.CurrentImage)
+	if err != nil {
+		return err
+	}
+
+	engineClientProxy, err := engineapi.GetCompatibleClient(e, engineCliClient, rc.ds, rc.logger, rc.proxyConnCounter)
+	if err != nil {
+		return err
+	}
+	defer engineClientProxy.Close()
+
+	if err := engineClientProxy.ReplicaRemove(e, "", r.Name); err != nil {
+		if strings.Contains(err.Error(), "cannot find replica") {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to remove failed replica %v from engine instance", r.Name)
 	}
 
 	return nil

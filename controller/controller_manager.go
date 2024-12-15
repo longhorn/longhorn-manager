@@ -41,7 +41,7 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	stopCh := clients.StopCh
 
 	// Longhorn controllers
-	replicaController, err := NewReplicaController(logger, ds, scheme, kubeClient, namespace, controllerID)
+	replicaController, err := NewReplicaController(logger, ds, scheme, kubeClient, namespace, controllerID, proxyConnCounter)
 	if err != nil {
 		return nil, err
 	}
