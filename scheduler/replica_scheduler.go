@@ -92,7 +92,7 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 // - MultiError for non-fatal errors encountered.
 // - Error for any fatal errors encountered.
 func (rcs *ReplicaScheduler) FindDiskCandidates(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume) (map[string]*Disk, util.MultiError, error) {
-	nodesInfo, err := rcs.getNodeInfo()
+	nodesInfo, err := rcs.getNodeInfo(volume.Spec.DataEngine)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -489,7 +489,7 @@ func filterDisksWithMatchingReplicas(disks map[string]*Disk, replicas map[string
 	return disks
 }
 
-func (rcs *ReplicaScheduler) getNodeInfo() (map[string]*longhorn.Node, error) {
+func (rcs *ReplicaScheduler) getNodeInfo(dataEngine longhorn.DataEngineType) (map[string]*longhorn.Node, error) {
 	nodeInfo, err := rcs.ds.ListNodes()
 	if err != nil {
 		return nil, err
@@ -511,6 +511,14 @@ func (rcs *ReplicaScheduler) getNodeInfo() (map[string]*longhorn.Node, error) {
 		if nodeSchedulableCondition.Status != longhorn.ConditionStatusTrue {
 			continue
 		}
+
+		if types.IsDataEngineV2(dataEngine) {
+			dataEngineUpgradeRequestedCondition := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeDataEngineUpgradeRequested)
+			if dataEngineUpgradeRequestedCondition.Status != longhorn.ConditionStatusTrue {
+				continue
+			}
+		}
+
 		if !node.Spec.AllowScheduling {
 			continue
 		}
@@ -573,7 +581,7 @@ func (rcs *ReplicaScheduler) CheckAndReuseFailedReplica(replicas map[string]*lon
 
 	replicas = filterActiveReplicas(replicas)
 
-	allNodesInfo, err := rcs.getNodeInfo()
+	allNodesInfo, err := rcs.getNodeInfo(volume.Spec.DataEngine)
 	if err != nil {
 		return nil, err
 	}
