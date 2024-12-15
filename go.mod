@@ -61,6 +61,7 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/jinzhu/copier v0.4.0
+	github.com/jrhouston/k8slock v0.2.0
 	github.com/kubernetes-csi/csi-lib-utils v0.19.0
 	github.com/longhorn/backing-image-manager v1.8.0-dev-20241215
 	github.com/longhorn/backupstore v0.0.0-20241208150358-e44f7d35fe1f
@@ -68,7 +69,7 @@ require (
 	github.com/longhorn/go-iscsi-helper v0.0.0-20241208120713-c4ac270fbe7e
 	github.com/longhorn/go-spdk-helper v0.0.0-20241210055426-92898a883955
 	github.com/longhorn/longhorn-engine v1.8.0-dev-20241215
-	github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241215
+	github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241215.0.20241215041917-483e7a8c95d3
 	github.com/longhorn/longhorn-share-manager v1.8.0-dev-20241215
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.20.5
