@@ -1414,12 +1414,14 @@ func checkSizeBeforeRestoration(log logrus.FieldLogger, engine *longhorn.Engine,
 }
 
 func (m *EngineMonitor) restoreBackup(engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, cliAPIVersion int, engineClientProxy engineapi.EngineClientProxy) error {
-	backupTarget, err := m.ds.GetBackupTargetRO(types.DefaultBackupTargetName)
+	backupVolume, err := m.ds.GetBackupVolumeRO(engine.Spec.BackupVolume)
 	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return err
-		}
-		return fmt.Errorf("cannot find the backup target %s", types.DefaultBackupTargetName)
+		return errors.Wrapf(err, "failed to get backup volume %v for backup restoration of engine %v", engine.Spec.BackupVolume, engine.Name)
+	}
+
+	backupTarget, err := m.ds.GetBackupTargetRO(backupVolume.Spec.BackupTargetName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get backup target %s", backupVolume.Spec.BackupTargetName)
 	}
 
 	backupTargetClient, err := newBackupTargetClientFromDefaultEngineImage(m.ds, backupTarget)
@@ -1440,18 +1442,15 @@ func (m *EngineMonitor) restoreBackup(engine *longhorn.Engine, rsMap map[string]
 	}
 
 	mlog.Info("Restoring backup")
+	lastRestoredBackup := ""
+	restoreErrorHandler := handleRestoreError
 	if cliAPIVersion < engineapi.CLIVersionFour {
-		// For compatible engines, `LastRestoredBackup` is required to indicate if the restore is incremental restore
-		if err = engineClientProxy.BackupRestore(engine, backupTargetClient.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, engine.Status.LastRestoredBackup, backupTargetClient.Credential, int(concurrentLimit)); err != nil {
-			if extraErr := handleRestoreErrorForCompatibleEngine(mlog, engine, rsMap, m.restoreBackoff, err); extraErr != nil {
-				return extraErr
-			}
-		}
-	} else {
-		if err = engineClientProxy.BackupRestore(engine, backupTargetClient.URL, engine.Spec.RequestedBackupRestore, engine.Spec.BackupVolume, "", backupTargetClient.Credential, int(concurrentLimit)); err != nil {
-			if extraErr := handleRestoreError(mlog, engine, rsMap, m.restoreBackoff, err); extraErr != nil {
-				return extraErr
-			}
+		lastRestoredBackup = engine.Status.LastRestoredBackup
+		restoreErrorHandler = handleRestoreErrorForCompatibleEngine
+	}
+	if err = engineClientProxy.BackupRestore(engine, backupTargetClient.URL, engine.Spec.RequestedBackupRestore, backupVolume.Spec.VolumeName, lastRestoredBackup, backupTargetClient.Credential, int(concurrentLimit)); err != nil {
+		if extraErr := restoreErrorHandler(mlog, engine, rsMap, m.restoreBackoff, err); extraErr != nil {
+			return extraErr
 		}
 	}
 	if err == nil {
