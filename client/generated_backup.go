@@ -7,6 +7,8 @@ const (
 type Backup struct {
 	Resource `yaml:"-"`
 
+	BackupTargetName string `json:"backupTargetName,omitempty" yaml:"backup_target_name,omitempty"`
+
 	CompressionMethod string `json:"compressionMethod,omitempty" yaml:"compression_method,omitempty"`
 
 	Created string `json:"created,omitempty" yaml:"created,omitempty"`
