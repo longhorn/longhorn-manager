@@ -259,6 +259,10 @@ func NewRouter(s *Server) *mux.Router {
 	r.Path("/v1/ws/backupvolumes").Handler(f(schemas, backupVolumeStream))
 	r.Path("/v1/ws/{period}/backupvolumes").Handler(f(schemas, backupVolumeStream))
 
+	backupTargetStream := NewStreamHandlerFunc("backuptargets", s.wsc.NewWatcher("backupTarget"), s.backupTargetList)
+	r.Path("/v1/ws/backuptargets").Handler(f(schemas, backupTargetStream))
+	r.Path("/v1/ws/{period}/backuptargets").Handler(f(schemas, backupTargetStream))
+
 	// TODO:
 	// We haven't found a way to allow passing the volume name as a parameter to filter
 	// per-backup volume's backups change thru. WebSocket endpoint. Either by:

@@ -35,12 +35,21 @@ func (s *Server) BackupTargetGet(w http.ResponseWriter, req *http.Request) error
 func (s *Server) BackupTargetList(w http.ResponseWriter, req *http.Request) error {
 	apiContext := api.GetApiContext(req)
 
-	backupTargets, err := s.m.ListBackupTargetsSorted()
+	bts, err := s.backupTargetList(apiContext)
 	if err != nil {
 		return err
 	}
-	apiContext.Write(toBackupTargetCollection(backupTargets, apiContext))
+
+	apiContext.Write(bts)
 	return nil
+}
+
+func (s *Server) backupTargetList(apiContext *api.ApiContext) (*client.GenericCollection, error) {
+	bts, err := s.m.ListBackupTargetsSorted()
+	if err != nil {
+		return nil, err
+	}
+	return toBackupTargetCollection(bts, apiContext), nil
 }
 
 func (s *Server) BackupTargetCreate(rw http.ResponseWriter, req *http.Request) error {
