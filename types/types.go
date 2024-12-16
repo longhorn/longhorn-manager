@@ -1040,15 +1040,9 @@ func CreateDisksFromAnnotation(annotation string, storageReservedPercentage int6
 		}
 		if disk.StorageReserved == 0 {
 			if disk.Type == longhorn.DiskTypeBlock {
-				file, err := os.Open(ReplicaHostPrefix + disk.Path)
+				size, err := getBlockDeviceSize(ReplicaHostPrefix + disk.Path)
 				if err != nil {
-					return nil, fmt.Errorf("failed to open block device at %s: %w", disk.Path, err)
-				}
-				defer file.Close()
-				var size uint64
-				_, _, errno := unix.Syscall(unix.SYS_IOCTL, file.Fd(), 0x80081272, uintptr(unsafe.Pointer(&size)))
-				if errno != 0 {
-					return nil, fmt.Errorf("failed to get block device size for %s: errno=%v", disk.Path, errno)
+					return nil, err
 				}
 				disk.StorageReserved = int64(size) * storageReservedPercentage / 100
 			} else {
@@ -1068,6 +1062,21 @@ func CreateDisksFromAnnotation(annotation string, storageReservedPercentage int6
 	}
 
 	return validDisks, nil
+}
+
+func getBlockDeviceSize(devicePath string) (uint64, error) {
+	file, err := os.Open(devicePath)
+	if err != nil {
+		return 0, fmt.Errorf("failed to open block device at %s: %w", devicePath, err)
+	}
+	defer file.Close()
+	var size uint64
+	_, _, errno := unix.Syscall(unix.SYS_IOCTL, file.Fd(), 0x80081272, uintptr(unsafe.Pointer(&size)))
+	if errno != 0 {
+		return 0, fmt.Errorf("failed to get block device size for %s: errno=%v", devicePath, errno)
+	}
+
+	return size, nil
 }
 
 func GetNodeTagsFromAnnotation(annotation string) ([]string, error) {
@@ -1135,6 +1144,10 @@ func IsPotentialBlockDisk(path string) bool {
 
 func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[string]longhorn.DiskSpec, error) {
 	if IsPotentialBlockDisk(dataPath) {
+		size, err := getBlockDeviceSize(dataPath)
+		if err != nil {
+			return nil, err
+		}
 		return map[string]longhorn.DiskSpec{
 			DefaultDiskPrefix + util.RandomID(): {
 				Type:              longhorn.DiskTypeBlock,
@@ -1142,7 +1155,7 @@ func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[st
 				DiskDriver:        longhorn.DiskDriverAuto,
 				AllowScheduling:   true,
 				EvictionRequested: false,
-				StorageReserved:   0,
+				StorageReserved:   int64(size) * storageReservedPercentage / 100,
 				Tags:              []string{},
 			},
 		}, nil
