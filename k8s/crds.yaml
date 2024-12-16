@@ -847,6 +847,9 @@ spec:
                 - full
                 - incremental
                 - ""
+              backupTargetName:
+                description: The backup target name.
+                nullable: true
                 type: string
               labels:
                 additionalProperties:
