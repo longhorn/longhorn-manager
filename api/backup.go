@@ -3,23 +3,115 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
+
+	"github.com/longhorn/longhorn-manager/util"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
+
+func (s *Server) BackupTargetGet(w http.ResponseWriter, req *http.Request) error {
+	apiContext := api.GetApiContext(req)
+
+	backupTargetName := mux.Vars(req)["name"]
+	backupTarget, err := s.m.GetBackupTarget(backupTargetName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get backup target %v", backupTargetName)
+	}
+	apiContext.Write(toBackupTargetResource(backupTarget, apiContext))
+	return nil
+}
 
 func (s *Server) BackupTargetList(w http.ResponseWriter, req *http.Request) error {
 	apiContext := api.GetApiContext(req)
 
 	backupTargets, err := s.m.ListBackupTargetsSorted()
 	if err != nil {
-		return errors.Wrap(err, "failed to list backup targets")
+		return err
 	}
 	apiContext.Write(toBackupTargetCollection(backupTargets, apiContext))
+	return nil
+}
+
+func (s *Server) BackupTargetCreate(rw http.ResponseWriter, req *http.Request) error {
+	var input BackupTarget
+	apiContext := api.GetApiContext(req)
+
+	if err := apiContext.Read(&input); err != nil {
+		return err
+	}
+
+	backupTargetSpec, err := newBackupTarget(input)
+	if err != nil {
+		return err
+	}
+
+	obj, err := s.m.CreateBackupTarget(input.Name, backupTargetSpec)
+	if err != nil {
+		return errors.Wrapf(err, "failed to create backup target %v", input.Name)
+	}
+	apiContext.Write(toBackupTargetResource(obj, apiContext))
+	return nil
+}
+
+func newBackupTarget(input BackupTarget) (*longhorn.BackupTargetSpec, error) {
+	pollInterval, err := strconv.ParseInt(input.PollInterval, 10, 64)
+	if err != nil {
+		return nil, errors.Wrapf(err, "invalid backup target polling interval '%s'", input.PollInterval)
+	}
+
+	return &longhorn.BackupTargetSpec{
+		BackupTargetURL:  input.BackupTargetURL,
+		CredentialSecret: input.CredentialSecret,
+		PollInterval:     metav1.Duration{Duration: time.Duration(pollInterval) * time.Second}}, nil
+}
+
+func (s *Server) BackupTargetUpdate(rw http.ResponseWriter, req *http.Request) error {
+	var input BackupTarget
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return err
+	}
+
+	name := input.Name
+	backupTargetSpec, err := newBackupTarget(input)
+	if err != nil {
+		return err
+	}
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.UpdateBackupTarget(name, backupTargetSpec)
+	})
+	if err != nil {
+		return errors.Wrapf(err, "failed to update backup target %v", name)
+	}
+
+	backupTarget, ok := obj.(*longhorn.BackupTarget)
+	if !ok {
+		return fmt.Errorf("failed to convert %v to backup target", name)
+	}
+
+	apiContext.Write(toBackupTargetResource(backupTarget, apiContext))
+	return nil
+}
+
+func (s *Server) BackupTargetDelete(rw http.ResponseWriter, req *http.Request) error {
+	backupTargetName := mux.Vars(req)["name"]
+	if err := s.m.DeleteBackupTarget(backupTargetName); err != nil {
+		return errors.Wrapf(err, "failed to delete backup target %v", backupTargetName)
+	}
+
 	return nil
 }
 
@@ -172,6 +264,17 @@ func (s *Server) BackupVolumeDelete(w http.ResponseWriter, req *http.Request) er
 }
 
 func (s *Server) BackupList(w http.ResponseWriter, req *http.Request) error {
+	apiContext := api.GetApiContext(req)
+
+	bs, err := s.m.ListAllBackupsSorted()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list all backups")
+	}
+	apiContext.Write(toBackupCollection(bs))
+	return nil
+}
+
+func (s *Server) BackupListByVolumeName(w http.ResponseWriter, req *http.Request) error {
 	apiContext := api.GetApiContext(req)
 
 	volName := mux.Vars(req)["volName"]
