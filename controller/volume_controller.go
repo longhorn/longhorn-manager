@@ -3621,15 +3621,20 @@ func (c *VolumeController) createEngine(v *longhorn.Volume, currentEngineName st
 	}
 
 	if v.Spec.FromBackup != "" && v.Status.RestoreRequired {
-		backupVolumeName, backupName, err := c.getInfoFromBackupURL(v)
+		canonicalBVName, backupVolumeName, backupName, err := c.getBackupVolumeInfo(v)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to get backup volume when creating engine object of restored volume %v", v.Name)
+			return nil, errors.Wrapf(err, "failed to get backup volume information for restoring volume %v", v.Name)
 		}
+
 		engine.Spec.BackupVolume = backupVolumeName
 		engine.Spec.RequestedBackupRestore = backupName
 
-		log.Infof("Creating engine %v for restored volume, BackupVolume is %v, RequestedBackupRestore is %v",
-			engine.Name, engine.Spec.BackupVolume, engine.Spec.RequestedBackupRestore)
+		log.WithFields(logrus.Fields{
+			"backupVolume":       engine.Spec.BackupVolume,
+			"backupVolumeRemote": canonicalBVName,
+			"engine":             engine.Name,
+			"restoreBackup":      engine.Spec.RequestedBackupRestore,
+		}).Info("Creating engine for restored volume")
 	}
 
 	unmapMarkEnabled, err := c.isUnmapMarkSnapChainRemovedEnabled(v)
@@ -3643,6 +3648,25 @@ func (c *VolumeController) createEngine(v *longhorn.Volume, currentEngineName st
 	}
 
 	return c.ds.CreateEngine(engine)
+}
+
+func (c *VolumeController) getBackupVolumeInfo(v *longhorn.Volume) (string, string, string, error) {
+	canonicalBVName, backupName, err := c.getInfoFromBackupURL(v)
+	if err != nil {
+		return "", "", "", errors.Wrapf(err, "failed to parse backup URL %v for restoring volume %v", v.Spec.FromBackup, v.Name)
+	}
+
+	backup, err := c.ds.GetBackupRO(backupName)
+	if err != nil {
+		return "", "", "", errors.Wrapf(err, "failed to get backup %v for restoring volume %v", backupName, v.Name)
+	}
+
+	backupVolume, err := c.ds.GetBackupVolumeWithBackupTargetAndVolumeRO(backup.Spec.BackupTargetName, canonicalBVName)
+	if err != nil {
+		return "", "", "", errors.Wrapf(err, "failed to get backup volume %v with backup target %v for restoring volume %v", canonicalBVName, backup.Spec.BackupTargetName, v.Name)
+	}
+
+	return canonicalBVName, backupVolume.Name, backupName, nil
 }
 
 func (c *VolumeController) newReplica(v *longhorn.Volume, e *longhorn.Engine, hardNodeAffinity string) *longhorn.Replica {
