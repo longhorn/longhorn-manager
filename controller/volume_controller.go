@@ -3661,9 +3661,9 @@ func (c *VolumeController) getBackupVolumeInfo(v *longhorn.Volume) (string, stri
 		return "", "", "", errors.Wrapf(err, "failed to get backup %v for restoring volume %v", backupName, v.Name)
 	}
 
-	backupVolume, err := c.ds.GetBackupVolumeByBackupTargetAndVolumeRO(backup.Spec.BackupTargetName, canonicalBVName)
+	backupVolume, err := c.ds.GetBackupVolumeByBackupTargetAndVolumeRO(backup.Status.BackupTargetName, canonicalBVName)
 	if err != nil {
-		return "", "", "", errors.Wrapf(err, "failed to get backup volume %v with backup target %v for restoring volume %v", canonicalBVName, backup.Spec.BackupTargetName, v.Name)
+		return "", "", "", errors.Wrapf(err, "failed to get backup volume %v with backup target %v for restoring volume %v", canonicalBVName, backup.Status.BackupTargetName, v.Name)
 	}
 
 	return canonicalBVName, backupVolume.Name, backupName, nil
