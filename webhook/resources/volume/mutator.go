@@ -138,20 +138,22 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 
 	moreLabels := map[string]string{}
 	size := volume.Spec.Size
+	backupTargetName := volume.Spec.BackupTargetName
 	if volume.Spec.FromBackup != "" {
-		bName, bvName, _, err := backupstore.DecodeBackupURL(volume.Spec.FromBackup)
+		bName, canonicalBVName, _, err := backupstore.DecodeBackupURL(volume.Spec.FromBackup)
 		if err != nil {
 			return nil, werror.NewInvalidError(fmt.Sprintf("cannot get backup and volume name from backup URL %v: %v", volume.Spec.FromBackup, err), "")
-		}
-
-		bv, err := v.ds.GetBackupVolumeRO(bvName)
-		if err != nil {
-			return nil, werror.NewInvalidError(fmt.Sprintf("cannot get backup volume %s: %v", bvName, err), "")
 		}
 
 		backup, err := v.ds.GetBackupRO(bName)
 		if err != nil {
 			return nil, werror.NewInvalidError(fmt.Sprintf("cannot get backup %s: %v", bName, err), "")
+		}
+		backupTargetName = backup.Status.BackupTargetName
+
+		bv, err := v.ds.GetBackupVolumeByBackupTargetAndVolumeRO(backupTargetName, canonicalBVName)
+		if err != nil {
+			return nil, werror.NewInvalidError(fmt.Sprintf("cannot get backup volume for backup target %s and volume %s: %v", backupTargetName, canonicalBVName, err), "")
 		}
 
 		if bv != nil && backup != nil && backup.Status.VolumeBackingImageName != "" {
@@ -165,7 +167,7 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 				patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backingImage", "value": "%s"}`, bv.Status.BackingImageName))
 				logrus.Debugf("Since the backing image is not specified during the restore, "+
 					"the previous backing image %v used by backup volume %v will be set for volume %v creation",
-					bv.Status.BackingImageName, bvName, name)
+					bv.Status.BackingImageName, canonicalBVName, name)
 			}
 			bi, err := v.ds.GetBackingImage(volume.Spec.BackingImage)
 			if err != nil {
@@ -189,8 +191,13 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 			return nil, werror.NewInvalidError(fmt.Sprintf("get invalid size for volume %v: %v", backup.Status.VolumeSize, err), "")
 		}
 
-		moreLabels[types.LonghornLabelBackupVolume] = bvName
+		moreLabels[types.LonghornLabelBackupVolume] = canonicalBVName
 	}
+	if backupTargetName == "" {
+		backupTargetName = types.DefaultBackupTargetName
+	}
+	moreLabels[types.LonghornLabelBackupTarget] = backupTargetName
+	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupTargetName", "value": "%s"}`, backupTargetName))
 
 	// Round up the size to the unit in bytes
 	newSize := util.RoundUpSize(size)
@@ -313,9 +320,14 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/snapshotMaxSize", "value": "%s"}`, strconv.FormatInt(volume.Spec.Size*2, 10)))
 	}
 
+	moreLabels := map[string]string{}
+	if oldVolume.Spec.BackupTargetName != volume.Spec.BackupTargetName {
+		moreLabels[types.LonghornLabelBackupTarget] = volume.Spec.BackupTargetName
+	}
+
 	var patchOpsInCommon admission.PatchOps
 	var err error
-	if patchOpsInCommon, err = mutate(newObj, nil); err != nil {
+	if patchOpsInCommon, err = mutate(newObj, moreLabels); err != nil {
 		return nil, err
 	}
 	patchOps = append(patchOps, patchOpsInCommon...)
