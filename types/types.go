@@ -11,11 +11,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
-	"unsafe"
 
 	lhns "github.com/longhorn/go-common-libs/ns"
 
