@@ -32,6 +32,8 @@ type BackupTargetExpansion interface{}
 
 type BackupVolumeExpansion interface{}
 
+type DataEngineUpgradeManagerExpansion interface{}
+
 type EngineExpansion interface{}
 
 type EngineImageExpansion interface{}
@@ -39,6 +41,8 @@ type EngineImageExpansion interface{}
 type InstanceManagerExpansion interface{}
 
 type NodeExpansion interface{}
+
+type NodeDataEngineUpgradeExpansion interface{}
 
 type OrphanExpansion interface{}
 

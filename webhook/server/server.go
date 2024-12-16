@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/jrhouston/k8slock"
 	"github.com/rancher/dynamiclistener"
 	"github.com/rancher/dynamiclistener/server"
 	"github.com/sirupsen/logrus"
@@ -19,6 +22,8 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util/client"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
+
+	webhooktypes "github.com/longhorn/longhorn-manager/webhook/types"
 )
 
 var (
@@ -38,19 +43,45 @@ type WebhookServer struct {
 	namespace   string
 	webhookType string
 	clients     *client.Clients
+	lockers     map[string]*k8slock.Locker
 }
 
-func New(ctx context.Context, namespace, webhookType string, clients *client.Clients) *WebhookServer {
+func New(ctx context.Context, namespace, nodeName, webhookType string, clients *client.Clients) (*WebhookServer, error) {
+	lockerNames := []string{
+		webhooktypes.PascalToKebab(types.LonghornKindDataEngineUpgradeManager),
+		webhooktypes.PascalToKebab(types.LonghornKindNodeDataEngineUpgrade),
+	}
+	lockers := map[string]*k8slock.Locker{}
+
+	for _, name := range lockerNames {
+		clientID := nodeName + "_" + uuid.New().String()
+
+		logrus.Infof("Creating locker for resource %v with clientID %v", name, clientID)
+		locker, err := k8slock.NewLocker(
+			name,
+			k8slock.Namespace(namespace),
+			k8slock.ClientID(clientID),
+			k8slock.InClusterConfig(),
+			k8slock.TTL(180*time.Second),
+		)
+
+		if err != nil {
+			return nil, err
+		}
+		lockers[name] = locker
+	}
+
 	return &WebhookServer{
 		context:     ctx,
 		namespace:   namespace,
 		webhookType: webhookType,
 		clients:     clients,
-	}
+		lockers:     lockers,
+	}, nil
 }
 
 func (s *WebhookServer) admissionWebhookListenAndServe() error {
-	validationHandler, validationResources, err := Validation(s.clients.Datastore)
+	validationHandler, validationResources, err := Validation(s.clients.Datastore, s.lockers)
 	if err != nil {
 		return err
 	}

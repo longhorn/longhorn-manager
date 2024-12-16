@@ -302,6 +302,9 @@ type VolumeSpec struct {
 	// Setting that freezes the filesystem on the root partition before a snapshot is created.
 	// +optional
 	FreezeFilesystemForSnapshot FreezeFilesystemForSnapshot `json:"freezeFilesystemForSnapshot"`
+	// TargetNodeIDForLiveUpgrade is specifies the node where the volume's initiator instance should be scheduled during data engine live upgrade.
+	// +optional
+	TargetNodeIDForLiveUpgrade string `json:"targetNodeIDForLiveUpgrade"`
 }
 
 // VolumeStatus defines the observed state of the Longhorn volume
@@ -353,6 +356,8 @@ type VolumeStatus struct {
 	ShareEndpoint string `json:"shareEndpoint"`
 	// +optional
 	ShareState ShareManagerState `json:"shareState"`
+	// +optional
+	CurrentTargetNodeIDForLiveUpgrade string `json:"currentTargetNodeIDForLiveUpgrade"`
 }
 
 // +genclient

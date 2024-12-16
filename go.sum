@@ -130,6 +130,8 @@ github.com/jonboulle/clockwork v0.4.0 h1:p4Cf1aMWXnXAUh8lVfewRBx1zaTSYKrKMF2g3ST
 github.com/jonboulle/clockwork v0.4.0/go.mod h1:xgRqUGwRcjKCO1vbZUEtSLrqKoPSsUpK7fnezOII0kc=
 github.com/josharian/intern v1.0.0 h1:vlS4z54oSdjm0bgjRigI+G1HpF+tI+9rE5LLzOg8HmY=
 github.com/josharian/intern v1.0.0/go.mod h1:5DoeVV0s6jJacbCEi61lwdGj/aVlrQvzHFFd8Hwg//Y=
+github.com/jrhouston/k8slock v0.2.0 h1:/303qjpwpTeNh0pCKj+yA1qUdYDoGxZ+kL/Ecu5p0AY=
+github.com/jrhouston/k8slock v0.2.0/go.mod h1:olQjuryLy6Q32mFUlBJrVyJKm4S8JFKFUFPXWrsO6x8=
 github.com/json-iterator/go v1.1.12 h1:PV8peI4a0ysnczrg+LtxykD8LfKY9ML6u2jnxaEnrnM=
 github.com/json-iterator/go v1.1.12/go.mod h1:e30LSqwooZae/UwlEbR2852Gd8hjQvJoHmT4TnhNGBo=
 github.com/kisielk/errcheck v1.5.0/go.mod h1:pFxgyoBC7bSaBwPgfKdkLd5X25qrDl4LWUI2bnpBCr8=
@@ -163,8 +165,8 @@ github.com/longhorn/go-spdk-helper v0.0.0-20241210055426-92898a883955 h1:QcnR9b2
 github.com/longhorn/go-spdk-helper v0.0.0-20241210055426-92898a883955/go.mod h1:isAM1U36SWOh7XWfktlbveHWSLXV3HfEF7p/tyNqAUQ=
 github.com/longhorn/longhorn-engine v1.8.0-dev-20241215 h1:sTQn2kHZqgwycM9Y3n3fuiSaURxeIS4h98ACJbbJDl8=
 github.com/longhorn/longhorn-engine v1.8.0-dev-20241215/go.mod h1:fcQI1dyu1KcQDvxrnHJ3rsSSauCKV1+IzaCLTbtdVY0=
-github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241215 h1:Q4rOIUWqEgwYDxVPLtrFrRBwxh6RTbMPuflwMxxa1qc=
-github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241215/go.mod h1:rZXKK0fs2avpeDONPfyR46N8xqnLv0Hnp/m0C8sYbWw=
+github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241215.0.20241215041917-483e7a8c95d3 h1:VNDjeT733DsSKvSv37B3IPmVVLI56MHf8/ZCseTsRBs=
+github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241215.0.20241215041917-483e7a8c95d3/go.mod h1:8CEoeY03OrSg/gbXlg7aC6MmVgI3T7TUEvAqZtMZIVo=
 github.com/longhorn/longhorn-share-manager v1.8.0-dev-20241215 h1:UBdkcAFfE1ipvtQZCyOIGZNdfw6rmMayyQKC+qHl5/M=
 github.com/longhorn/longhorn-share-manager v1.8.0-dev-20241215/go.mod h1:/EfupmQMayDFanwroXFLVqRbWI46M6e1iJypf1Oa7p8=
 github.com/longhorn/types v0.0.0-20241214151852-cf9e27d3d0a9 h1:mgIwf1do39qeJWwZDK+MhGMZmeNIbEluQITZ2TsDUGg=

@@ -23,23 +23,25 @@ import (
 )
 
 const (
-	LonghornKindNode                = "Node"
-	LonghornKindVolume              = "Volume"
-	LonghornKindVolumeAttachment    = "VolumeAttachment"
-	LonghornKindEngine              = "Engine"
-	LonghornKindReplica             = "Replica"
-	LonghornKindBackup              = "Backup"
-	LonghornKindSnapshot            = "Snapshot"
-	LonghornKindEngineImage         = "EngineImage"
-	LonghornKindInstanceManager     = "InstanceManager"
-	LonghornKindShareManager        = "ShareManager"
-	LonghornKindBackingImage        = "BackingImage"
-	LonghornKindBackingImageManager = "BackingImageManager"
-	LonghornKindRecurringJob        = "RecurringJob"
-	LonghornKindSetting             = "Setting"
-	LonghornKindSupportBundle       = "SupportBundle"
-	LonghornKindSystemRestore       = "SystemRestore"
-	LonghornKindOrphan              = "Orphan"
+	LonghornKindNode                     = "Node"
+	LonghornKindVolume                   = "Volume"
+	LonghornKindVolumeAttachment         = "VolumeAttachment"
+	LonghornKindEngine                   = "Engine"
+	LonghornKindReplica                  = "Replica"
+	LonghornKindBackup                   = "Backup"
+	LonghornKindSnapshot                 = "Snapshot"
+	LonghornKindEngineImage              = "EngineImage"
+	LonghornKindInstanceManager          = "InstanceManager"
+	LonghornKindShareManager             = "ShareManager"
+	LonghornKindBackingImage             = "BackingImage"
+	LonghornKindBackingImageManager      = "BackingImageManager"
+	LonghornKindRecurringJob             = "RecurringJob"
+	LonghornKindSetting                  = "Setting"
+	LonghornKindSupportBundle            = "SupportBundle"
+	LonghornKindSystemRestore            = "SystemRestore"
+	LonghornKindOrphan                   = "Orphan"
+	LonghornKindDataEngineUpgradeManager = "DataEngineUpgradeManager"
+	LonghornKindNodeDataEngineUpgrade    = "NodeDataEngineUpgrade"
 
 	LonghornKindBackingImageDataSource = "BackingImageDataSource"
 
@@ -158,6 +160,8 @@ const (
 	LonghornLabelManagedBy                  = "managed-by"
 	LonghornLabelSnapshotForCloningVolume   = "for-cloning-volume"
 	LonghornLabelBackingImageDataSource     = "backing-image-data-source"
+	LonghornLabelDataEngineUpgradeManager   = "data-engine-upgrade-manager"
+	LonghornLabelNodeDataEngineUpgrade      = "node-data-engine-upgrade"
 	LonghornLabelBackupVolume               = "backup-volume"
 	LonghornLabelRecurringJob               = "job"
 	LonghornLabelRecurringJobGroup          = "job-group"
@@ -186,6 +190,7 @@ const (
 
 	LonghornLabelExportFromVolume                 = "export-from-volume"
 	LonghornLabelSnapshotForExportingBackingImage = "for-exporting-backing-image"
+	LonghornLabelSnapshotForDataEngineLiveUpgrade = "for-data-engine-live-upgrade"
 
 	KubernetesFailureDomainRegionLabelKey = "failure-domain.beta.kubernetes.io/region"
 	KubernetesFailureDomainZoneLabelKey   = "failure-domain.beta.kubernetes.io/zone"
@@ -1268,4 +1273,26 @@ func MergeStringMaps(baseMap, overwriteMap map[string]string) map[string]string 
 		result[k] = v
 	}
 	return result
+}
+
+func GenerateNodeDataEngineUpgradeName(prefix, nodeID string) string {
+	return prefix + "-" + nodeID + "-" + util.RandomID()
+}
+
+func GetDataEngineUpgradeManagerLabels() map[string]string {
+	labels := GetBaseLabelsForSystemManagedComponent()
+	labels[GetLonghornLabelComponentKey()] = LonghornLabelDataEngineUpgradeManager
+	return labels
+}
+
+func GetNodeDataEngineUpgradeLabels(upgradeManagerID, nodeID string) map[string]string {
+	labels := GetBaseLabelsForSystemManagedComponent()
+	labels[GetLonghornLabelComponentKey()] = LonghornLabelNodeDataEngineUpgrade
+	if upgradeManagerID != "" {
+		labels[GetLonghornLabelKey(LonghornLabelDataEngineUpgradeManager)] = upgradeManagerID
+	}
+	if nodeID != "" {
+		labels[GetLonghornLabelKey(LonghornLabelNode)] = nodeID
+	}
+	return labels
 }

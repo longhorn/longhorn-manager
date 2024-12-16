@@ -38,6 +38,8 @@ type Interface interface {
 	BackupTargets() BackupTargetInformer
 	// BackupVolumes returns a BackupVolumeInformer.
 	BackupVolumes() BackupVolumeInformer
+	// DataEngineUpgradeManagers returns a DataEngineUpgradeManagerInformer.
+	DataEngineUpgradeManagers() DataEngineUpgradeManagerInformer
 	// Engines returns a EngineInformer.
 	Engines() EngineInformer
 	// EngineImages returns a EngineImageInformer.
@@ -46,6 +48,8 @@ type Interface interface {
 	InstanceManagers() InstanceManagerInformer
 	// Nodes returns a NodeInformer.
 	Nodes() NodeInformer
+	// NodeDataEngineUpgrades returns a NodeDataEngineUpgradeInformer.
+	NodeDataEngineUpgrades() NodeDataEngineUpgradeInformer
 	// Orphans returns a OrphanInformer.
 	Orphans() OrphanInformer
 	// RecurringJobs returns a RecurringJobInformer.
@@ -116,6 +120,11 @@ func (v *version) BackupVolumes() BackupVolumeInformer {
 	return &backupVolumeInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
+// DataEngineUpgradeManagers returns a DataEngineUpgradeManagerInformer.
+func (v *version) DataEngineUpgradeManagers() DataEngineUpgradeManagerInformer {
+	return &dataEngineUpgradeManagerInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
 // Engines returns a EngineInformer.
 func (v *version) Engines() EngineInformer {
 	return &engineInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
@@ -134,6 +143,11 @@ func (v *version) InstanceManagers() InstanceManagerInformer {
 // Nodes returns a NodeInformer.
 func (v *version) Nodes() NodeInformer {
 	return &nodeInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
+}
+
+// NodeDataEngineUpgrades returns a NodeDataEngineUpgradeInformer.
+func (v *version) NodeDataEngineUpgrades() NodeDataEngineUpgradeInformer {
+	return &nodeDataEngineUpgradeInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // Orphans returns a OrphanInformer.

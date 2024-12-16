@@ -169,7 +169,7 @@ func startManager(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := webhook.StartWebhook(ctx, types.WebhookTypeConversion, clientsWithoutDatastore); err != nil {
+	if err := webhook.StartWebhook(ctx, currentNodeID, types.WebhookTypeConversion, clientsWithoutDatastore); err != nil {
 		return err
 	}
 
@@ -195,7 +195,7 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
-	if err := webhook.StartWebhook(ctx, types.WebhookTypeAdmission, clients); err != nil {
+	if err := webhook.StartWebhook(ctx, currentNodeID, types.WebhookTypeAdmission, clients); err != nil {
 		return err
 	}
 	if err := clients.Datastore.AddLabelToManagerPod(currentNodeID, types.GetAdmissionWebhookLabel()); err != nil {

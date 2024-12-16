@@ -177,7 +177,7 @@ func (e *EngineBinary) ReplicaAdd(engine *longhorn.Engine, replicaName, url stri
 
 // ReplicaRemove calls engine binary
 // TODO: Deprecated, replaced by gRPC proxy
-func (e *EngineBinary) ReplicaRemove(engine *longhorn.Engine, url string) error {
+func (e *EngineBinary) ReplicaRemove(engine *longhorn.Engine, url, replicaName string) error {
 	if err := ValidateReplicaURL(url); err != nil {
 		return err
 	}

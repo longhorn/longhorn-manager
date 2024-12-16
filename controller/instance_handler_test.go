@@ -36,7 +36,7 @@ const (
 
 type MockInstanceManagerHandler struct{}
 
-func (imh *MockInstanceManagerHandler) GetInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
+func (imh *MockInstanceManagerHandler) GetInstance(obj interface{}, isInstanceOnRemoteNode bool) (*longhorn.InstanceProcess, error) {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
 		return nil, err
@@ -48,7 +48,7 @@ func (imh *MockInstanceManagerHandler) GetInstance(obj interface{}) (*longhorn.I
 	return &longhorn.InstanceProcess{}, nil
 }
 
-func (imh *MockInstanceManagerHandler) CreateInstance(obj interface{}) (*longhorn.InstanceProcess, error) {
+func (imh *MockInstanceManagerHandler) CreateInstance(obj interface{}, isInstanceOnRemoteNode bool) (*longhorn.InstanceProcess, error) {
 	metadata, err := meta.Accessor(obj)
 	if err != nil {
 		return nil, err
@@ -72,8 +72,33 @@ func (imh *MockInstanceManagerHandler) DeleteInstance(obj interface{}) error {
 	return nil
 }
 
+func (imh *MockInstanceManagerHandler) SuspendInstance(obj interface{}) error {
+	return fmt.Errorf("SuspendInstance is not mocked")
+}
+
+func (imh *MockInstanceManagerHandler) ResumeInstance(obj interface{}) error {
+	return fmt.Errorf("ResumeInstance is not mocked")
+}
+
+func (imh *MockInstanceManagerHandler) SwitchOverTarget(obj interface{}) error {
+	return fmt.Errorf("SwitchOverTarget is not mocked")
+}
+
+func (imh *MockInstanceManagerHandler) DeleteTarget(obj interface{}) error {
+	return fmt.Errorf("DeleteTarget is not mocked")
+}
+
+func (imh *MockInstanceManagerHandler) IsEngine(obj interface{}) bool {
+	_, ok := obj.(*longhorn.Engine)
+	return ok
+}
+
 func (imh *MockInstanceManagerHandler) LogInstance(ctx context.Context, obj interface{}) (*engineapi.InstanceManagerClient, *imapi.LogStream, error) {
 	return nil, nil, fmt.Errorf("LogInstance is not mocked")
+}
+
+func (imh *MockInstanceManagerHandler) RequireRemoteTargetInstance(obj interface{}) (bool, error) {
+	return false, nil
 }
 
 func newEngine(name, currentImage, imName, nodeName, ip string, port int, started bool, currentState, desireState longhorn.InstanceState) *longhorn.Engine {
@@ -108,8 +133,11 @@ func newEngine(name, currentImage, imName, nodeName, ip string, port int, starte
 				CurrentImage:        currentImage,
 				InstanceManagerName: imName,
 				IP:                  ip,
+				TargetIP:            ip,
 				StorageIP:           ip,
+				StorageTargetIP:     ip,
 				Port:                port,
+				TargetPort:          0, // v1 volume doesn't set target port
 				Started:             started,
 				Conditions:          conditions,
 			},
