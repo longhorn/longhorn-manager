@@ -10,6 +10,7 @@ const (
 	NodeConditionTypeRequiredPackages    = "RequiredPackages"
 	NodeConditionTypeNFSClientInstalled  = "NFSClientInstalled"
 	NodeConditionTypeSchedulable         = "Schedulable"
+	NodeConditionTypeHugePagesAvailable  = "HugePagesAvailable"
 )
 
 const (
@@ -29,6 +30,8 @@ const (
 	NodeConditionReasonNFSClientIsNotFound       = "NFSClientIsNotFound"
 	NodeConditionReasonNFSClientIsMisconfigured  = "NFSClientIsMisconfigured"
 	NodeConditionReasonKubernetesNodeCordoned    = "KubernetesNodeCordoned"
+	NodeConditionReasonHugePagesNotConfigured    = "HugePagesNotConfigured"
+	NodeConditionReasonInsufficientHugePages     = "InsufficientHugePages"
 )
 
 const (
