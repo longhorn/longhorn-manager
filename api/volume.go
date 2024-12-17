@@ -200,6 +200,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		ReplicaDiskSoftAntiAffinity: volume.ReplicaDiskSoftAntiAffinity,
 		DataEngine:                  volume.DataEngine,
 		FreezeFilesystemForSnapshot: volume.FreezeFilesystemForSnapshot,
+		BackupTargetName:            volume.BackupTargetName,
 	}, volume.RecurringJobSelector)
 	if err != nil {
 		return errors.Wrap(err, "failed to create volume")
