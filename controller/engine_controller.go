@@ -1655,7 +1655,7 @@ func (ec *EngineController) removeUnknownReplica(e *longhorn.Engine) error {
 			defer engineClientProxy.Close()
 
 			ec.eventRecorder.Eventf(e, corev1.EventTypeNormal, constant.EventReasonDelete, "Removing unknown replica %v in mode %v from engine", url, unknownReplicaMap[url])
-			if err := engineClientProxy.ReplicaRemove(e, url); err != nil {
+			if err := engineClientProxy.ReplicaRemove(e, url, ""); err != nil {
 				ec.eventRecorder.Eventf(e, corev1.EventTypeWarning, constant.EventReasonFailedDeleting, "Failed to remove unknown replica %v in mode %v from engine: %v", url, unknownReplicaMap[url], err)
 			} else {
 				ec.eventRecorder.Eventf(e, corev1.EventTypeNormal, constant.EventReasonDelete, "Removed unknown replica %v in mode %v from engine", url, unknownReplicaMap[url])
@@ -1858,7 +1858,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 			// the replica to failed.
 			// user can decide to delete it then we will try again
 			log.Infof("Removing failed rebuilding replica %v", addr)
-			if err := engineClientProxy.ReplicaRemove(e, replicaURL); err != nil {
+			if err := engineClientProxy.ReplicaRemove(e, replicaURL, replicaName); err != nil {
 				log.WithError(err).Warnf("Failed to remove rebuilding replica %v", addr)
 				ec.eventRecorder.Eventf(e, corev1.EventTypeWarning, constant.EventReasonFailedDeleting,
 					"Failed to remove rebuilding replica %v with address %v for engine %v and volume %v due to rebuilding failure: %v",
