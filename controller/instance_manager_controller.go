@@ -1444,6 +1444,13 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			podSpec.Spec.Containers[0].Resources.Limits = corev1.ResourceList{}
 		}
 		podSpec.Spec.Containers[0].Resources.Limits[corev1.ResourceName("hugepages-2Mi")] = resource.MustParse(fmt.Sprintf("%vMi", hugepage))
+
+		podSpec.Spec.Containers[0].Lifecycle = &corev1.Lifecycle{
+			PreStop: &corev1.LifecycleHandler{
+				Exec: &corev1.ExecAction{
+					Command: []string{"instance-manager-v2-prestop"},
+				}},
+		}
 	} else {
 		podSpec.Spec.Containers[0].Args = []string{
 			"instance-manager", "--debug", "daemon", "--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort),
