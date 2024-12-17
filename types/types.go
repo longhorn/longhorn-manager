@@ -738,15 +738,11 @@ func GetShareManagerNameFromShareManagerPodName(podName string) string {
 }
 
 func GetBackupVolumeNameFromVolumeName(volumeName string) string {
-	return generateBackupResourceName(volumeName)
-}
-
-func generateBackupResourceName(resourceName string) string {
-	return util.GetStringChecksum(strings.TrimSpace(resourceName))[:util.RandomIDLength] + "-" + util.RandomID()
+	return volumeName + "-" + util.RandomID()
 }
 
 func GetBackupBackingImageNameFromBIName(backingImageName string) string {
-	return generateBackupResourceName(backingImageName)
+	return backingImageName + "-" + util.RandomID()
 }
 
 func ValidateEngineImageChecksumName(name string) bool {
