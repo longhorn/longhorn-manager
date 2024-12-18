@@ -53,7 +53,7 @@ func (b *backupTargetValidator) Create(request *admission.Request, newObj runtim
 		return werror.NewInvalidError(fmt.Sprintf("invalid name %v", backupTarget.Name), "")
 	}
 
-	if err := b.ds.ValidateBackupTargetURL(backupTarget.Spec.BackupTargetURL); err != nil {
+	if err := b.ds.ValidateBackupTargetURL(backupTarget.Name, backupTarget.Spec.BackupTargetURL); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
@@ -100,7 +100,7 @@ func (b *backupTargetValidator) Update(request *admission.Request, oldObj runtim
 	secretChanged := oldBackupTarget.Spec.CredentialSecret != newBackupTarget.Spec.CredentialSecret
 
 	if urlChanged {
-		if err := b.ds.ValidateBackupTargetURL(newBackupTarget.Spec.BackupTargetURL); err != nil {
+		if err := b.ds.ValidateBackupTargetURL(newBackupTarget.Name, newBackupTarget.Spec.BackupTargetURL); err != nil {
 			return werror.NewInvalidError(err.Error(), "")
 		}
 	}

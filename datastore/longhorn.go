@@ -301,7 +301,7 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			}
 			return fmt.Errorf("cannot modify BackupTarget since there are existing standby volumes: %v", standbyVolumeNames)
 		}
-		if err := s.ValidateBackupTargetURL(value); err != nil {
+		if err := s.ValidateBackupTargetURL(types.DefaultBackupTargetName, value); err != nil {
 			return err
 		}
 	case types.SettingNameBackupTargetCredentialSecret:
@@ -4289,7 +4289,7 @@ func (s *DataStore) RemoveFinalizerForBackupTarget(backupTarget *longhorn.Backup
 }
 
 // ValidateBackupTargetURL checks if the given backup target URL is already used by other backup targets
-func (s *DataStore) ValidateBackupTargetURL(backupTargetURL string) error {
+func (s *DataStore) ValidateBackupTargetURL(backupTargetName, backupTargetURL string) error {
 	if backupTargetURL == "" {
 		return nil
 	}
@@ -4301,7 +4301,7 @@ func (s *DataStore) ValidateBackupTargetURL(backupTargetURL string) error {
 	if err := checkBackupTargetURLFormat(u); err != nil {
 		return err
 	}
-	if err := s.validateBackupTargetURLExisting(u); err != nil {
+	if err := s.validateBackupTargetURLExisting(backupTargetName, u); err != nil {
 		return err
 	}
 
@@ -4325,7 +4325,7 @@ func checkBackupTargetURLFormat(u *url.URL) error {
 }
 
 // validateBackupTargetURLExisting checks if the given backup target URL is already used by other backup targets
-func (s *DataStore) validateBackupTargetURLExisting(u *url.URL) error {
+func (s *DataStore) validateBackupTargetURLExisting(backupTargetName string, u *url.URL) error {
 	newBackupTargetPath, err := getBackupTargetPath(u)
 	if err != nil {
 		return err
@@ -4348,7 +4348,7 @@ func (s *DataStore) validateBackupTargetURLExisting(u *url.URL) error {
 		if err != nil {
 			return err
 		}
-		if oldBackupTargetPath == newBackupTargetPath {
+		if oldBackupTargetPath == newBackupTargetPath && backupTargetName != bt.Name {
 			return fmt.Errorf("url %s is the same to backup target %v", u.String(), bt.Name)
 		}
 	}
