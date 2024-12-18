@@ -758,6 +758,26 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 			healthyCount++
 		}
 	}
+
+	if areAllReplicaUnknownAndErrored(e.Status.ReplicaModeMap) {
+		shouldLogWarning := false
+		for _, r := range rs {
+			if r.Spec.EngineName != e.Name {
+				continue
+			}
+			if r.Spec.FailedAt == "" {
+				setReplicaFailedAt(r, c.nowHandler())
+				e.Spec.LogRequested = true
+				r.Spec.LogRequested = true
+				shouldLogWarning = true
+			}
+			r.Spec.DesireState = longhorn.InstanceStateStopped
+		}
+		if shouldLogWarning {
+			log.Warn("All replica in engine's ReplicaModeMap are unknown and errored. Marking all replicas of the engine as failed")
+		}
+	}
+
 	// If a replica failed at attaching/migrating stage,
 	// there is no record in e.Status.ReplicaModeMap
 	for _, r := range rs {
@@ -852,6 +872,18 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 	}
 
 	return nil
+}
+
+func areAllReplicaUnknownAndErrored(replicaModeMap map[string]longhorn.ReplicaMode) bool {
+	for rName, mode := range replicaModeMap {
+		if !strings.HasPrefix(rName, unknownReplicaPrefix) {
+			return false
+		}
+		if mode != longhorn.ReplicaModeERR {
+			return false
+		}
+	}
+	return true
 }
 
 func isAutoSalvageNeeded(rs map[string]*longhorn.Replica) bool {
