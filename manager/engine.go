@@ -505,6 +505,9 @@ func (m *VolumeManager) ListBackupsForVolumeSorted(volumeName string) ([]*longho
 func (m *VolumeManager) ListBackupsForBackupVolumeSorted(backupVolumeName string) ([]*longhorn.Backup, error) {
 	bv, err := m.ds.GetBackupVolumeRO(backupVolumeName)
 	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return []*longhorn.Backup{}, nil
+		}
 		return []*longhorn.Backup{}, err
 	}
 

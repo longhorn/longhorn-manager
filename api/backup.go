@@ -286,7 +286,7 @@ func (s *Server) BackupList(w http.ResponseWriter, req *http.Request) error {
 func (s *Server) BackupListByBackupVolume(w http.ResponseWriter, req *http.Request) error {
 	apiContext := api.GetApiContext(req)
 
-	backupVolumeName := mux.Vars(req)["name"]
+	backupVolumeName := mux.Vars(req)["backupVolumeName"]
 
 	bs, err := s.m.ListBackupsForBackupVolumeSorted(backupVolumeName)
 	if err != nil {

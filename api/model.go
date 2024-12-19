@@ -1988,9 +1988,9 @@ func toBackupResource(b *longhorn.Backup) *Backup {
 	// This field is empty probably because the backup state is not Ready
 	// or the content of the backup config is empty.
 	if ret.VolumeName == "" {
-		backupVolumeName, ok := b.Labels[types.LonghornLabelBackupVolume]
+		volumeName, ok := b.Labels[types.LonghornLabelBackupVolume]
 		if ok {
-			ret.VolumeName = backupVolumeName
+			ret.VolumeName = volumeName
 		}
 	}
 	return ret
