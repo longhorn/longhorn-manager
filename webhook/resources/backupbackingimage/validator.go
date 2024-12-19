@@ -42,7 +42,7 @@ func (bbi *backupBackingImageValidator) Create(request *admission.Request, newOb
 	if !ok {
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.BackupBackingImage", newObj), "")
 	}
-	backingImageName := backupBackingImage.Name
+	backingImageName := backupBackingImage.Spec.BackingImage
 
 	backingImage, err := bbi.ds.GetBackingImageRO(backingImageName)
 	if err != nil {
