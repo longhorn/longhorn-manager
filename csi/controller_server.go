@@ -129,6 +129,9 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 					backupVolume, backupName := sourceVolumeName, id
 					bv, err := cs.getBackupVolume(backupVolume)
 					if err != nil {
+						return nil, status.Errorf(codes.Internal, "failed to retrieve backup volume %s: %v", backupVolume, err)
+					}
+					if bv == nil {
 						return nil, status.Errorf(codes.NotFound, "failed to restore CSI snapshot %s backup volume %s unavailable", snapshot.SnapshotId, backupVolume)
 					}
 
@@ -266,6 +269,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 }
 
 func (cs *ControllerServer) getBackupVolume(volumeName string) (*longhornclient.BackupVolume, error) {
+	log := cs.log.WithFields(logrus.Fields{"function": "getBackupVolume"})
 	vol, err := cs.apiClient.Volume.ById(volumeName)
 	if err != nil {
 		return nil, errors.Wrapf(err, "getBackupVolume: fail to get source volume %v", volumeName)
@@ -280,11 +284,12 @@ func (cs *ControllerServer) getBackupVolume(volumeName string) (*longhornclient.
 		return nil, errors.Wrap(err, "failed to list backup volumes")
 	}
 
-	if len(list.Data) >= 2 {
+	if len(list.Data) > 1 {
 		return nil, fmt.Errorf("found multiple backup volumes for backup target %s and volume %s", vol.BackupTargetName, volumeName)
 	}
 	if len(list.Data) == 0 {
-		return nil, fmt.Errorf("failed to find backup volume for backup target %s and volume %s", vol.BackupTargetName, volumeName)
+		log.Debugf("cannot find backup volume with backup target %s and volume %s", vol.BackupTargetName, volumeName)
+		return nil, nil
 	}
 
 	return &list.Data[0], nil
@@ -1245,7 +1250,7 @@ func (cs *ControllerServer) waitForBackupControllerSync(volumeName, snapshotName
 	if err != nil {
 		return nil, err
 	}
-	if backup.SnapshotCreated != "" {
+	if backup != nil && backup.SnapshotCreated != "" {
 		// The backup controller sets the snapshot creation time at first sync. If we do not wait to return until
 		// this is done, we may see timestamp related errors in csi-snapshotter logs.
 		return backup, nil
@@ -1270,7 +1275,7 @@ func (cs *ControllerServer) waitForBackupControllerSync(volumeName, snapshotName
 			if err != nil {
 				return nil, err
 			}
-			if backup.SnapshotCreated != "" {
+			if backup != nil && backup.SnapshotCreated != "" {
 				return backup, nil
 			}
 		}
@@ -1287,6 +1292,10 @@ func (cs *ControllerServer) getBackup(volumeName, snapshotName string) (*longhor
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+	if backupVolume == nil {
+		return nil, nil
+	}
+
 	backupListOutput, err := cs.apiClient.BackupVolume.ActionBackupList(backupVolume)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
