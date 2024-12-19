@@ -655,11 +655,11 @@ func (bc *BackupController) getBackupTargetName(backup *longhorn.Backup) (string
 }
 
 func (bc *BackupController) getBackupVolumeName(backup *longhorn.Backup) (string, error) {
-	backupVolumeName, ok := backup.Labels[types.LonghornLabelBackupVolume]
+	volumeName, ok := backup.Labels[types.LonghornLabelBackupVolume]
 	if !ok {
 		return "", fmt.Errorf("cannot find the backup volume label")
 	}
-	return backupVolumeName, nil
+	return volumeName, nil
 }
 
 func (bc *BackupController) getEngineBinaryClient(volumeName string) (*engineapi.EngineBinary, error) {

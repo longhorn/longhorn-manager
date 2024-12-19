@@ -433,29 +433,29 @@ func (m *VolumeManager) Activate(volumeName string, frontend string) (v *longhor
 
 func (m *VolumeManager) triggerBackupVolumeToSync(volume *longhorn.Volume) error {
 	if volume.Spec.BackupTargetName == "" {
-		return errors.Errorf("cannot find the backup target label for volume: %v", volume.Name)
+		return errors.Errorf("failed to find the backup target label for volume: %v", volume.Name)
 	}
 	backupTargetName := volume.Spec.BackupTargetName
 
-	backupVolumeName, isExist := volume.Labels[types.LonghornLabelBackupVolume]
-	if !isExist || backupVolumeName == "" {
-		return errors.Errorf("cannot find the backup volume label for volume: %v", volume.Name)
+	volumeName, isExist := volume.Labels[types.LonghornLabelBackupVolume]
+	if !isExist || volumeName == "" {
+		return errors.Errorf("failed to find the backup volume label for volume: %v", volume.Name)
 	}
 
-	backupVolume, err := m.ds.GetBackupVolumeByBackupTargetAndVolume(backupTargetName, backupVolumeName)
+	backupVolume, err := m.ds.GetBackupVolumeByBackupTargetAndVolume(backupTargetName, volumeName)
 	if err != nil {
 		// The backup volume may be deleted already.
 		// hence it's better not to block the caller to continue the handlings like DR volume activation.
 		if apierrors.IsNotFound(err) {
-			logrus.Infof("Cannot find backup volume %v of backup target %s to trigger the sync-up, will skip it", backupVolumeName, backupTargetName)
+			logrus.Infof("failed to find backup volume %v of backup target %s to trigger the sync-up, will skip it", volumeName, backupTargetName)
 			return nil
 		}
-		return errors.Wrapf(err, "failed to get backup volume: %v", backupVolumeName)
+		return errors.Wrapf(err, "failed to get backup volume: %v", volumeName)
 	}
 	requestSyncTime := metav1.Time{Time: time.Now().UTC()}
 	backupVolume.Spec.SyncRequestedAt = requestSyncTime
 	if _, err = m.ds.UpdateBackupVolume(backupVolume); err != nil {
-		return errors.Wrapf(err, "failed to update backup volume: %v", backupVolumeName)
+		return errors.Wrapf(err, "failed to update backup volume: %v", backupVolume.Name)
 	}
 
 	return nil
