@@ -1273,3 +1273,29 @@ func (m *VolumeManager) UpdateFreezeFilesystemForSnapshot(name string,
 		oldFreezeFilesystemForSnapshot, freezeFilesystemForSnapshot)
 	return v, nil
 }
+
+func (m *VolumeManager) UpdateVolumeBackupTarget(name string, backupTargetName string) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to update field BackupTargetName for volume %v", name)
+	}()
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if v.Spec.BackupTargetName == backupTargetName {
+		logrus.Debugf("Volume %v already set field BackupTargetName to %v", v.Name, backupTargetName)
+		return v, nil
+	}
+
+	oldBackupTargetName := v.Spec.BackupTargetName
+	v.Spec.BackupTargetName = backupTargetName
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+
+	logrus.Infof("Updated volume %v field BackupTargetName from %v to %v", v.Name, oldBackupTargetName, backupTargetName)
+	return v, nil
+}

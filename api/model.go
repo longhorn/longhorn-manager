@@ -398,6 +398,10 @@ type UpdateFreezeFilesystemForSnapshotInput struct {
 	FreezeFilesystemForSnapshot string `json:"freezeFilesystemForSnapshot"`
 }
 
+type UpdateBackupTargetInput struct {
+	BackupTargetName string `json:"backupTargetName"`
+}
+
 type PVCreateInput struct {
 	PVName string `json:"pvName"`
 	FSType string `json:"fsType"`
@@ -658,6 +662,7 @@ func NewSchema() *client.Schemas {
 	schemas.AddType("UpdateReplicaZoneSoftAntiAffinityInput", UpdateReplicaZoneSoftAntiAffinityInput{})
 	schemas.AddType("UpdateReplicaDiskSoftAntiAffinityInput", UpdateReplicaDiskSoftAntiAffinityInput{})
 	schemas.AddType("UpdateFreezeFilesystemForSnapshotInput", UpdateFreezeFilesystemForSnapshotInput{})
+	schemas.AddType("UpdateBackupTargetInput", UpdateBackupTargetInput{})
 	schemas.AddType("workloadStatus", longhorn.WorkloadStatus{})
 	schemas.AddType("cloneStatus", longhorn.VolumeCloneStatus{})
 	schemas.AddType("empty", Empty{})
@@ -1096,6 +1101,10 @@ func volumeSchema(volume *client.Schema) {
 
 		"updateFreezeFilesystemForSnapshot": {
 			Input: "UpdateFreezeFilesystemForSnapshotInput",
+		},
+
+		"updateBackupTarget": {
+			Input: "UpdateBackupTargetInput",
 		},
 
 		"pvCreate": {
@@ -1671,6 +1680,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["updateReplicaZoneSoftAntiAffinity"] = struct{}{}
 			actions["updateReplicaDiskSoftAntiAffinity"] = struct{}{}
 			actions["updateFreezeFilesystemForSnapshot"] = struct{}{}
+			actions["updateBackupTarget"] = struct{}{}
 			actions["recurringJobAdd"] = struct{}{}
 			actions["recurringJobDelete"] = struct{}{}
 			actions["recurringJobList"] = struct{}{}
@@ -1702,6 +1712,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["updateReplicaZoneSoftAntiAffinity"] = struct{}{}
 			actions["updateReplicaDiskSoftAntiAffinity"] = struct{}{}
 			actions["updateFreezeFilesystemForSnapshot"] = struct{}{}
+			actions["updateBackupTarget"] = struct{}{}
 			actions["pvCreate"] = struct{}{}
 			actions["pvcCreate"] = struct{}{}
 			actions["cancelExpansion"] = struct{}{}

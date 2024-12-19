@@ -434,14 +434,14 @@ func (m *VolumeManager) ListBackupVolumesSorted() ([]*longhorn.BackupVolume, err
 	return backupVolumes, nil
 }
 
-func (m *VolumeManager) GetBackupVolume(volumeName string) (*longhorn.BackupVolume, error) {
-	backupVolume, err := m.ds.GetBackupVolumeRO(volumeName)
+func (m *VolumeManager) GetBackupVolume(backupVolumeName string) (*longhorn.BackupVolume, error) {
+	backupVolume, err := m.ds.GetBackupVolumeRO(backupVolumeName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			// If the BackupVolume CR is not found, return succeeded result
 			// This is to compatible with the Longhorn CSI plugin
 			// https://github.com/longhorn/longhorn-manager/blob/v1.1.2/csi/controller_server.go#L446-L455
-			return &longhorn.BackupVolume{ObjectMeta: metav1.ObjectMeta{Name: volumeName}}, nil
+			return &longhorn.BackupVolume{ObjectMeta: metav1.ObjectMeta{Name: backupVolumeName}}, nil
 		}
 		return nil, err
 	}
@@ -458,8 +458,8 @@ func (m *VolumeManager) SyncBackupVolume(backupVolume *longhorn.BackupVolume) (*
 	return m.ds.UpdateBackupVolume(backupVolume)
 }
 
-func (m *VolumeManager) DeleteBackupVolume(volumeName string) error {
-	return m.ds.DeleteBackupVolume(volumeName)
+func (m *VolumeManager) DeleteBackupVolume(backupVolumeName string) error {
+	return m.ds.DeleteBackupVolume(backupVolumeName)
 }
 
 func (m *VolumeManager) ListAllBackupsSorted() ([]*longhorn.Backup, error) {
@@ -500,6 +500,15 @@ func (m *VolumeManager) ListBackupsForVolumeSorted(volumeName string) ([]*longho
 		backups[i] = backupMap[backupName]
 	}
 	return backups, nil
+}
+
+func (m *VolumeManager) ListBackupsForBackupVolumeSorted(backupVolumeName string) ([]*longhorn.Backup, error) {
+	bv, err := m.ds.GetBackupVolumeRO(backupVolumeName)
+	if err != nil {
+		return []*longhorn.Backup{}, err
+	}
+
+	return m.ListBackupsForVolumeSorted(bv.Spec.VolumeName)
 }
 
 func (m *VolumeManager) GetBackup(backupName, volumeName string) (*longhorn.Backup, error) {
