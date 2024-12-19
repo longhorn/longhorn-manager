@@ -835,3 +835,25 @@ func (s *Server) VolumeUpdateFreezeFilesystemForSnapshot(rw http.ResponseWriter,
 	}
 	return s.responseWithVolume(rw, req, "", v)
 }
+
+func (s *Server) VolumeUpdateBackupTargetName(rw http.ResponseWriter, req *http.Request) error {
+	var input UpdateBackupTargetInput
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrap(err, "failed to read BackupTarget input")
+	}
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.UpdateVolumeBackupTarget(id, input.BackupTargetName)
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("failed to convert to volume %v object", id)
+	}
+	return s.responseWithVolume(rw, req, "", v)
+}
