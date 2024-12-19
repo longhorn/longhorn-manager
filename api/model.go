@@ -1103,7 +1103,7 @@ func volumeSchema(volume *client.Schema) {
 			Input: "UpdateFreezeFilesystemForSnapshotInput",
 		},
 
-		"updateBackupTarget": {
+		"updateBackupTargetName": {
 			Input: "UpdateBackupTargetInput",
 		},
 
@@ -1680,7 +1680,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["updateReplicaZoneSoftAntiAffinity"] = struct{}{}
 			actions["updateReplicaDiskSoftAntiAffinity"] = struct{}{}
 			actions["updateFreezeFilesystemForSnapshot"] = struct{}{}
-			actions["updateBackupTarget"] = struct{}{}
+			actions["updateBackupTargetName"] = struct{}{}
 			actions["recurringJobAdd"] = struct{}{}
 			actions["recurringJobDelete"] = struct{}{}
 			actions["recurringJobList"] = struct{}{}
@@ -1712,7 +1712,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["updateReplicaZoneSoftAntiAffinity"] = struct{}{}
 			actions["updateReplicaDiskSoftAntiAffinity"] = struct{}{}
 			actions["updateFreezeFilesystemForSnapshot"] = struct{}{}
-			actions["updateBackupTarget"] = struct{}{}
+			actions["updateBackupTargetName"] = struct{}{}
 			actions["pvCreate"] = struct{}{}
 			actions["pvcCreate"] = struct{}{}
 			actions["cancelExpansion"] = struct{}{}
