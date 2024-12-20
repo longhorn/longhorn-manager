@@ -32,7 +32,7 @@ import (
 )
 
 const (
-	EnvironmentCheckMonitorSyncPeriod = 300 * time.Second
+	EnvironmentCheckMonitorSyncPeriod = 1800 * time.Second
 
 	kernelConfigDir = "/host/boot/"
 	systemConfigDir = "/host/etc/"
