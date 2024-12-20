@@ -265,7 +265,7 @@ func (m *BackupBackingImageMonitor) GetBackupBackingImageStatus() longhorn.Backu
 	return m.backupBackingImageStatus
 }
 
-func (m *BackupBackingImageMonitor) Close() {
+func (m *BackupBackingImageMonitor) Stop() {
 	m.quit()
 }
 
