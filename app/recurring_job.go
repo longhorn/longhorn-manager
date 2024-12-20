@@ -702,23 +702,20 @@ func (job *Job) doRecurringBackup() (err error) {
 }
 
 func (job *Job) getBackupVolume(backupTargetName string) (*longhornclient.BackupVolume, error) {
-	list, err := job.api.BackupVolume.List(&longhornclient.ListOpts{
-		Filters: map[string]interface{}{
-			types.LonghornLabelBackupTarget: backupTargetName,
-			types.LonghornLabelBackupVolume: job.volumeName,
-		}})
+	list, err := job.api.BackupVolume.List(&longhornclient.ListOpts{})
 	if err != nil {
 		return nil, err
 	}
 
-	if len(list.Data) > 1 {
-		return nil, fmt.Errorf("found more than one backup volume %v of the backup target %v", job.volumeName, backupTargetName)
-	}
-	if len(list.Data) == 0 {
-		return nil, fmt.Errorf("failed to find backup volume %s of the backup target %s", job.volumeName, backupTargetName)
+	backupVolumeName := ""
+	for _, bv := range list.Data {
+		if bv.BackupTargetName == backupTargetName && bv.VolumeName == job.volumeName {
+			backupVolumeName = bv.Name
+			break
+		}
 	}
 
-	return &list.Data[0], nil
+	return job.api.BackupVolume.ById(backupVolumeName)
 }
 
 func (job *Job) doRecurringFilesystemTrim(volume *longhornclient.Volume) (err error) {

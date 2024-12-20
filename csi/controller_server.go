@@ -270,29 +270,26 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 func (cs *ControllerServer) getBackupVolume(volumeName string) (*longhornclient.BackupVolume, error) {
 	log := cs.log.WithFields(logrus.Fields{"function": "getBackupVolume"})
+	list, err := cs.apiClient.BackupVolume.List(&longhornclient.ListOpts{})
+	if err != nil {
+		return nil, err
+	}
+	if len(list.Data) == 0 {
+		return nil, nil
+	}
+
 	vol, err := cs.apiClient.Volume.ById(volumeName)
 	if err != nil {
 		return nil, errors.Wrapf(err, "getBackupVolume: fail to get source volume %v", volumeName)
 	}
 
-	list, err := cs.apiClient.BackupVolume.List(&longhornclient.ListOpts{
-		Filters: map[string]interface{}{
-			types.LonghornLabelBackupTarget: vol.BackupTargetName,
-			types.LonghornLabelBackupVolume: volumeName,
-		}})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to list backup volumes")
+	for _, bv := range list.Data {
+		if bv.BackupTargetName == vol.BackupTargetName && bv.VolumeName == volumeName {
+			return &bv, nil
+		}
 	}
-
-	if len(list.Data) > 1 {
-		return nil, fmt.Errorf("found multiple backup volumes for backup target %s and volume %s", vol.BackupTargetName, volumeName)
-	}
-	if len(list.Data) == 0 {
-		log.Debugf("cannot find backup volume with backup target %s and volume %s", vol.BackupTargetName, volumeName)
-		return nil, nil
-	}
-
-	return &list.Data[0], nil
+	log.Debugf("cannot find backup volume with backup target %s and volume %s", vol.BackupTargetName, volumeName)
+	return nil, nil
 }
 
 func (cs *ControllerServer) checkAndPrepareBackingImage(volumeName, backingImageName string, volumeParameters map[string]string) error {
