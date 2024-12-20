@@ -469,7 +469,7 @@ func (bc *BackupBackingImageController) disableBackupMonitor(backupName string) 
 	bc.monitorLock.Lock()
 	defer bc.monitorLock.Unlock()
 	delete(bc.monitors, backupName)
-	monitor.Close()
+	monitor.Stop()
 }
 
 func (bc *BackupBackingImageController) enqueueBackupBackingImageForMonitor(key string) {
