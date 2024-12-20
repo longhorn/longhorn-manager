@@ -464,7 +464,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	collectedDiskInfo, err := nc.syncWithDiskMonitor(node)
 	if err != nil {
 		if strings.Contains(err.Error(), "mismatching disks") {
-			log.WithError(err).Info("Failed to sync with disk monitor due to mismatching disks")
+			log.WithError(err).Warn("Failed to sync with disk monitor due to mismatching disks")
 			return nil
 		}
 		return err
