@@ -242,7 +242,7 @@ func (m *SnapshotMonitor) snapshotCheckWorker(id int) {
 	}
 }
 
-func (m *SnapshotMonitor) Close() {
+func (m *SnapshotMonitor) Stop() {
 	m.logger.WithField("monitor", monitorName).Info("Closing snapshot monitor")
 
 	m.snapshotCheckTaskQueue.ShutDown()
