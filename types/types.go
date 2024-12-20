@@ -138,6 +138,8 @@ const (
 
 	// const value `DeleteBackupTargetFromLonghorn` is used for annotation to note that deleting backup target is by Longhorn during uninstalling.
 	DeleteBackupTargetFromLonghorn = "delete-backup-target-from-longhorn"
+	// const value `BackupTargetSync` is used for note that backup related objects are synchronzed from remote backup target.
+	BackupTargetSync = "backup-target-sync"
 
 	KubernetesStatusLabel = "KubernetesStatus"
 	KubernetesReplicaSet  = "ReplicaSet"

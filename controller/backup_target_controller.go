@@ -660,8 +660,9 @@ func (btc *BackupTargetController) syncBackupBackingImage(backupTarget *longhorn
 			ObjectMeta: metav1.ObjectMeta{
 				Name: backupBackingImageName,
 				Labels: map[string]string{
-					types.LonghornLabelBackupTarget: backupTarget.Name,
-					types.LonghornLabelBackingImage: canonicalBackingImageName,
+					types.LonghornLabelBackupTarget:                   backupTarget.Name,
+					types.LonghornLabelBackingImage:                   canonicalBackingImageName,
+					types.GetLonghornLabelKey(types.BackupTargetSync): "",
 				},
 				OwnerReferences: datastore.GetOwnerReferencesForBackupTarget(backupTarget),
 			},
