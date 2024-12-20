@@ -25,14 +25,6 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
-	iscsiutil "github.com/longhorn/go-iscsi-helper/util"
-
-	lhexec "github.com/longhorn/go-common-libs/exec"
-	lhnfs "github.com/longhorn/go-common-libs/nfs"
-	lhns "github.com/longhorn/go-common-libs/ns"
-	lhsys "github.com/longhorn/go-common-libs/sys"
-	lhtypes "github.com/longhorn/go-common-libs/types"
-
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -51,16 +43,16 @@ const (
 
 	unknownDiskID = "UNKNOWN_DISKID"
 
-	kernelConfigDir = "/host/boot/"
-	systemConfigDir = "/host/etc/"
-
 	snapshotChangeEventQueueMax = 1048576
+<<<<<<< HEAD
 )
 
 var (
 	kernelModules       = map[string]string{"CONFIG_DM_CRYPT": "dm_crypt"}
 	nfsClientVersions   = map[string]string{"CONFIG_NFS_V4_2": "nfs", "CONFIG_NFS_V4_1": "nfs", "CONFIG_NFS_V4": "nfs"}
 	nfsProtocolVersions = map[string]bool{"4.0": true, "4.1": true, "4.2": true}
+=======
+>>>>>>> 0864a9fd (fix: move environment checks to a dedicated monitor)
 )
 
 type NodeController struct {
@@ -73,7 +65,8 @@ type NodeController struct {
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
 
-	diskMonitor monitor.Monitor
+	diskMonitor             monitor.Monitor
+	environmentCheckMonitor monitor.Monitor
 
 	snapshotMonitor              monitor.Monitor
 	snapshotChangeEventQueue     workqueue.TypedInterface[any]
@@ -391,6 +384,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 
 	if node.DeletionTimestamp != nil {
 		nc.eventRecorder.Eventf(node, corev1.EventTypeWarning, constant.EventReasonDelete, "Deleting node %v", node.Name)
+
 		return nc.ds.RemoveFinalizerForNode(node)
 	}
 
@@ -452,6 +446,11 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		return err
 	}
 
+	// Create a monitor for collecting environment check information
+	if _, err := nc.createEnvironmentCheckMonitor(); err != nil {
+		return err
+	}
+
 	collectedDiskInfo, err := nc.syncWithDiskMonitor(node)
 	if err != nil {
 		if strings.Contains(err.Error(), "mismatching disks") {
@@ -464,6 +463,12 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	// sync disks status on current node
 	if err := nc.syncDiskStatus(node, collectedDiskInfo); err != nil {
 		return err
+	}
+
+	collectedEnvironmentCheckConditions, err := nc.syncWithEnvironmentCheckMonitor()
+	if err == nil {
+		// Best effort to update the environment check conditions
+		nc.syncEnvironmentCheckConditions(node, collectedEnvironmentCheckConditions)
 	}
 
 	_, err = nc.createSnapshotMonitor()
@@ -489,9 +494,6 @@ func (nc *NodeController) syncNode(key string) (err error) {
 			}
 		}
 	}
-
-	// check if environment settings meet the requirements on current node
-	nc.environmentCheck(kubeNode, node)
 
 	if err := nc.syncInstanceManagers(node); err != nil {
 		return err
@@ -673,6 +675,35 @@ func (nc *NodeController) syncDiskStatus(node *longhorn.Node, collectedDataInfo 
 	}
 
 	return nc.updateDiskStatusSchedulableCondition(node)
+}
+
+func (nc *NodeController) syncEnvironmentCheckConditions(node *longhorn.Node, conditions []longhorn.Condition) {
+	// Add condition to node.status.conditions if it is not already there
+	// Update the condition status and reason if it is already in the node.status.conditions
+	for _, condition := range conditions {
+		found := false
+		for _, existingCondition := range node.Status.Conditions {
+			if existingCondition.Type == condition.Type {
+				node.Status.Conditions = types.SetCondition(node.Status.Conditions, condition.Type, condition.Status, condition.Reason, condition.Message)
+				found = true
+				break
+			}
+		}
+		if !found {
+			// Add condition to node.status.conditions if it is not already there
+			node.Status.Conditions = append(node.Status.Conditions, condition)
+		}
+	}
+
+	isV2DataEngine, err := nc.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
+	if err != nil {
+		nc.logger.WithError(err).Debug("Failed to fetch v2-data-engine setting")
+		isV2DataEngine = false
+	}
+
+	if !isV2DataEngine {
+		node.Status.Conditions = types.RemoveCondition(node.Status.Conditions, longhorn.NodeConditionTypeHugePagesAvailable)
+	}
 }
 
 func (nc *NodeController) findNotReadyAndReadyDiskMaps(node *longhorn.Node, collectedDataInfo map[string]*monitor.CollectedDiskInfo) (notReadyDiskInfoMap, readyDiskInfoMap map[string]map[string]*monitor.CollectedDiskInfo) {
@@ -930,6 +961,7 @@ func (nc *NodeController) syncNodeStatus(pod *corev1.Pod, node *longhorn.Node) e
 	return nil
 }
 
+<<<<<<< HEAD
 func (nc *NodeController) environmentCheck(kubeNode *corev1.Node, node *longhorn.Node) {
 	// Need to find the better way to check if various kernel versions are supported
 	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceNet}
@@ -1280,6 +1312,8 @@ func (nc *NodeController) syncNFSClientVersion(kubeNode *corev1.Node, node *long
 	node.Status.Conditions = types.SetCondition(node.Status.Conditions, longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusTrue, "", "")
 }
 
+=======
+>>>>>>> 0864a9fd (fix: move environment checks to a dedicated monitor)
 func (nc *NodeController) getImTypeDataEngines(node *longhorn.Node) map[longhorn.InstanceManagerType][]longhorn.DataEngineType {
 	log := getLoggerForNode(nc.logger, node)
 
@@ -1597,6 +1631,21 @@ func (nc *NodeController) createDiskMonitor() (monitor.Monitor, error) {
 	return monitor, nil
 }
 
+func (nc *NodeController) createEnvironmentCheckMonitor() (monitor.Monitor, error) {
+	if nc.environmentCheckMonitor != nil {
+		return nc.environmentCheckMonitor, nil
+	}
+
+	monitor, err := monitor.NewEnvironmentCheckMonitor(nc.logger, nc.ds, nc.controllerID, nc.enqueueNodeForMonitor)
+	if err != nil {
+		return nil, err
+	}
+
+	nc.environmentCheckMonitor = monitor
+
+	return monitor, nil
+}
+
 func (nc *NodeController) enqueueNodeForMonitor(key string) {
 	nc.queue.Add(key)
 }
@@ -1745,6 +1794,20 @@ func (nc *NodeController) syncWithDiskMonitor(node *longhorn.Node) (map[string]*
 	}
 
 	return collectedDiskInfo, nil
+}
+
+func (nc *NodeController) syncWithEnvironmentCheckMonitor() ([]longhorn.Condition, error) {
+	v, err := nc.environmentCheckMonitor.GetCollectedData()
+	if err != nil {
+		return []longhorn.Condition{}, err
+	}
+
+	conditions, ok := v.([]longhorn.Condition)
+	if !ok {
+		return []longhorn.Condition{}, errors.New("failed to convert the collected data to conditions")
+	}
+
+	return conditions, nil
 }
 
 // Check all disks in the same filesystem ID are in ready status
