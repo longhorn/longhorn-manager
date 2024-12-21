@@ -220,8 +220,8 @@ github.com/kylelemons/godebug/diff
 # github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de
 ## explicit
 github.com/liggitt/tabwriter
-# github.com/longhorn/backing-image-manager v1.8.0-dev-20241215
-## explicit; go 1.22.7
+# github.com/longhorn/backing-image-manager v1.8.0-rc1
+## explicit; go 1.23.0
 github.com/longhorn/backing-image-manager/api
 github.com/longhorn/backing-image-manager/pkg/client
 github.com/longhorn/backing-image-manager/pkg/meta
@@ -250,7 +250,7 @@ github.com/longhorn/go-common-libs/sys
 github.com/longhorn/go-common-libs/test/fake
 github.com/longhorn/go-common-libs/types
 github.com/longhorn/go-common-libs/utils
-# github.com/longhorn/go-iscsi-helper v0.0.0-20241216162435-a9bda5faf8b8
+# github.com/longhorn/go-iscsi-helper v0.0.0-20241218002831-b9829a236cd2
 ## explicit; go 1.22.7
 github.com/longhorn/go-iscsi-helper/iscsi
 github.com/longhorn/go-iscsi-helper/iscsidev
@@ -260,21 +260,21 @@ github.com/longhorn/go-iscsi-helper/util
 # github.com/longhorn/go-spdk-helper v0.0.0-20241218003628-6c9c87b76aa0
 ## explicit; go 1.22.7
 github.com/longhorn/go-spdk-helper/pkg/types
-# github.com/longhorn/longhorn-engine v1.8.0-dev-20241215
+# github.com/longhorn/longhorn-engine v1.8.0-rc1
 ## explicit; go 1.23.0
 github.com/longhorn/longhorn-engine/pkg/interceptor
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241215.0.20241218065256-ab4c0e0f94fc
+# github.com/longhorn/longhorn-instance-manager v1.8.0-rc1
 ## explicit; go 1.23.0
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
 github.com/longhorn/longhorn-instance-manager/pkg/meta
 github.com/longhorn/longhorn-instance-manager/pkg/types
 github.com/longhorn/longhorn-instance-manager/pkg/util
-# github.com/longhorn/longhorn-share-manager v1.8.0-dev-20241215
+# github.com/longhorn/longhorn-share-manager v1.8.0-rc1
 ## explicit; go 1.23.0
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
@@ -653,7 +653,7 @@ google.golang.org/genproto/googleapis/api/httpbody
 ## explicit; go 1.21
 google.golang.org/genproto/googleapis/rpc/errdetails
 google.golang.org/genproto/googleapis/rpc/status
-# google.golang.org/grpc v1.69.0
+# google.golang.org/grpc v1.69.2
 ## explicit; go 1.22
 google.golang.org/grpc
 google.golang.org/grpc/attributes
