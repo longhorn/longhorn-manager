@@ -60,8 +60,8 @@ require (
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.6.4-dev-20241215.0.20241218085450-dd0498d863a8
-	github.com/longhorn/backupstore v0.0.0-20241218004307-b75ee1322085
-	github.com/longhorn/go-common-libs v0.0.0-20241218045609-c76c9e237a7d
+	github.com/longhorn/backupstore v0.0.0-20241221024741-8f5cb407f62b
+	github.com/longhorn/go-common-libs v0.0.0-20241221040404-3f84afedcca8
 	github.com/longhorn/go-iscsi-helper v0.0.0-20241218002831-b9829a236cd2
 	github.com/longhorn/go-spdk-helper v0.0.0-20240308030201-9b252d6f7250
 	github.com/longhorn/longhorn-engine v1.6.4-dev-20241215.0.20241218060904-a74d4bfe51f7
@@ -109,7 +109,7 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.etcd.io/bbolt v1.3.8 // indirect
 	go.uber.org/goleak v1.3.0 // indirect
-	golang.org/x/exp v0.0.0-20241215155358-4a5509556b9e // indirect
+	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67 // indirect
 	golang.org/x/tools v0.28.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240903143218-8af14fe29dc1 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241015192408-796eee8c2d53 // indirect
