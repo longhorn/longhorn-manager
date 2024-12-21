@@ -105,7 +105,7 @@ func (m *NodeMonitor) Start() {
 	}
 }
 
-func (m *NodeMonitor) Close() {
+func (m *NodeMonitor) Stop() {
 	m.quit()
 }
 

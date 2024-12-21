@@ -11,7 +11,7 @@ import (
 
 type Monitor interface {
 	Start()
-	Close()
+	Stop()
 	UpdateConfiguration(map[string]interface{}) error
 	GetCollectedData() (interface{}, error)
 	RunOnce() error
