@@ -62,14 +62,14 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.20.0
-	github.com/longhorn/backing-image-manager v1.8.0-dev-20241215
+	github.com/longhorn/backing-image-manager v1.8.0-rc1
 	github.com/longhorn/backupstore v0.0.0-20241221053416-1143c265f7b7
 	github.com/longhorn/go-common-libs v0.0.0-20241221040404-3f84afedcca8
 	github.com/longhorn/go-iscsi-helper v0.0.0-20241221094330-a9d2760ee13b
 	github.com/longhorn/go-spdk-helper v0.0.0-20241218003628-6c9c87b76aa0
-	github.com/longhorn/longhorn-engine v1.8.0-dev-20241215
-	github.com/longhorn/longhorn-instance-manager v1.8.0-dev-20241215.0.20241218065256-ab4c0e0f94fc
-	github.com/longhorn/longhorn-share-manager v1.8.0-dev-20241215
+	github.com/longhorn/longhorn-engine v1.8.0-rc1
+	github.com/longhorn/longhorn-instance-manager v1.8.0-rc1
+	github.com/longhorn/longhorn-share-manager v1.8.0-rc1
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.20.5
 	github.com/rancher/dynamiclistener v0.6.1
