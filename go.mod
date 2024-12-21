@@ -61,9 +61,9 @@ require (
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.7.2
-	github.com/longhorn/backupstore v0.0.0-20241217122650-1663643255d4
-	github.com/longhorn/go-common-libs v0.0.0-20241217111348-5bad87d5320c
-	github.com/longhorn/go-iscsi-helper v0.0.0-20241216162435-a9bda5faf8b8
+	github.com/longhorn/backupstore v0.0.0-20241221024741-8f5cb407f62b
+	github.com/longhorn/go-common-libs v0.0.0-20241221040404-3f84afedcca8
+	github.com/longhorn/go-iscsi-helper v0.0.0-20241218002831-b9829a236cd2
 	github.com/longhorn/go-spdk-helper v0.0.0-20241216160651-bcce92add55b
 	github.com/longhorn/longhorn-engine v1.7.2
 	github.com/longhorn/longhorn-instance-manager v1.7.2
@@ -81,7 +81,7 @@ require (
 	golang.org/x/net v0.32.0
 	golang.org/x/sys v0.28.0
 	golang.org/x/time v0.7.0
-	google.golang.org/grpc v1.69.0
+	google.golang.org/grpc v1.69.2
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.31.3
@@ -106,7 +106,7 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/jonboulle/clockwork v0.4.0 // indirect
-	github.com/longhorn/types v0.0.0-20241217083824-2e0ecb487ccf // indirect
+	github.com/longhorn/types v0.0.0-20241220104939-0d566342b51d // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/moby/term v0.5.0 // indirect
 	github.com/opencontainers/runc v1.1.14 // indirect
@@ -115,7 +115,7 @@ require (
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	golang.org/x/exp v0.0.0-20241215155358-4a5509556b9e // indirect
+	golang.org/x/exp v0.0.0-20241217172543-b2144cdd0a67 // indirect
 	golang.org/x/tools v0.28.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20241015192408-796eee8c2d53 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241015192408-796eee8c2d53 // indirect
