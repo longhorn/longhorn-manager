@@ -44,13 +44,21 @@ func (bbi *backupBackingImageValidator) Create(request *admission.Request, newOb
 	}
 	backingImageName := backupBackingImage.Spec.BackingImage
 
-	backingImage, err := bbi.ds.GetBackingImageRO(backingImageName)
-	if err != nil {
-		return werror.NewInvalidError(fmt.Sprintf("failed to get the backing image %v for backup: %v", backingImageName, err), "")
+	// The backup backing image might be created by the backup target controller synchronized from the remote backup target,
+	// and the backing image might not exist in the local cluster
+	exists := false
+	if backupBackingImage.Labels != nil {
+		_, exists = backupBackingImage.Labels[types.GetLonghornLabelKey(types.BackupTargetSync)]
 	}
-	// TODO: support backup for v2 data engine in the future
-	if types.IsDataEngineV2(backingImage.Spec.DataEngine) {
-		return werror.NewInvalidError(fmt.Sprintf("backing image %v uses v2 data engine which doesn't support backup operations", backingImageName), "")
+	if !exists {
+		backingImage, err := bbi.ds.GetBackingImageRO(backingImageName)
+		if err != nil {
+			return werror.NewInvalidError(fmt.Sprintf("failed to get the backing image %v for backup: %v", backingImageName, err), "")
+		}
+		// TODO: support backup for v2 data engine in the future
+		if types.IsDataEngineV2(backingImage.Spec.DataEngine) {
+			return werror.NewInvalidError(fmt.Sprintf("backing image %v uses v2 data engine which doesn't support backup operations", backingImageName), "")
+		}
 	}
 
 	return nil
