@@ -63,7 +63,7 @@ require (
 	github.com/longhorn/backing-image-manager v1.7.2
 	github.com/longhorn/backupstore v0.0.0-20241221053416-1143c265f7b7
 	github.com/longhorn/go-common-libs v0.0.0-20241221040404-3f84afedcca8
-	github.com/longhorn/go-iscsi-helper v0.0.0-20241218002831-b9829a236cd2
+	github.com/longhorn/go-iscsi-helper v0.0.0-20241221094330-a9d2760ee13b
 	github.com/longhorn/go-spdk-helper v0.0.0-20241216160651-bcce92add55b
 	github.com/longhorn/longhorn-engine v1.7.2
 	github.com/longhorn/longhorn-instance-manager v1.7.2
