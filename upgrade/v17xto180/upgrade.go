@@ -222,7 +222,64 @@ func upgradeBackingImages(namespace string, lhClient *lhclientset.Clientset, res
 				bi.Spec.DiskFileSpecMap[diskUUID].DataEngine = longhorn.DataEngineTypeV1
 			}
 		}
+	}
 
+	return nil
+}
+
+func UpgradeResourcesStatus(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) error {
+	if err := upgradeBackingImageStatus(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	return upgradeBackupStatus(namespace, lhClient, resourceMaps)
+}
+
+func upgradeBackupStatus(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade backups failed")
+	}()
+
+	backupMap, err := upgradeutil.ListAndUpdateBackupsInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn backups during the backup status upgrade")
+	}
+
+	for _, b := range backupMap {
+		backupTargetName := types.DefaultBackupTargetName
+		vol, err := lhClient.LonghornV1beta2().Volumes(namespace).Get(context.TODO(), b.Status.VolumeName, metav1.GetOptions{})
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				return errors.Wrapf(err, "failed to get volume %v of backup %v", b.Status.VolumeName, b.Name)
+			}
+		} else {
+			if vol.Spec.BackupTargetName != "" {
+				backupTargetName = vol.Spec.BackupTargetName
+			}
+		}
+
+		b.Status.BackupTargetName = backupTargetName
+	}
+	return nil
+}
+
+func upgradeBackingImageStatus(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade backing image failed")
+	}()
+
+	backingImageMap, err := upgradeutil.ListAndUpdateBackingImagesInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn backing images during the backing image upgrade")
+	}
+
+	for _, bi := range backingImageMap {
 		// before v1.8.0, there should not have any v2 data engine disk in the backing image.
 		if bi.Status.DiskFileStatusMap != nil {
 			for diskUUID := range bi.Status.DiskFileStatusMap {
@@ -231,11 +288,5 @@ func upgradeBackingImages(namespace string, lhClient *lhclientset.Clientset, res
 		}
 	}
 
-	return nil
-}
-
-func UpgradeResourcesStatus(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) error {
-	// Currently there are no statuses to upgrade. See UpgradeResources -> upgradeVolumes or previous Longhorn versions
-	// for examples.
 	return nil
 }
