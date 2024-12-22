@@ -135,7 +135,9 @@ func upgradeBackups(namespace string, lhClient *lhclientset.Clientset, resourceM
 				return errors.Wrapf(err, "failed to get volume %v of backup %v", b.Status.VolumeName, b.Name)
 			}
 		} else {
-			backupTargetName = vol.Spec.BackupTargetName
+			if vol.Spec.BackupTargetName != "" {
+				backupTargetName = vol.Spec.BackupTargetName
+			}
 		}
 		b.Labels = addLabel(b.Labels, types.LonghornLabelBackupTarget, backupTargetName)
 	}
