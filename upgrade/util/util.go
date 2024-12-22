@@ -1240,6 +1240,10 @@ func UpdateResourcesStatus(namespace string, lhClient *lhclientset.Clientset, re
 			err = updateEngineStatus(namespace, lhClient, resourceMap.(map[string]*longhorn.Engine))
 		case types.LonghornKindSetting:
 			err = updateSettingStatus(namespace, lhClient, resourceMap.(map[string]*longhorn.Setting))
+		case types.LonghornKindBackup:
+			err = updateBackupStatus(namespace, lhClient, resourceMap.(map[string]*longhorn.Backup))
+		case types.LonghornKindBackingImage:
+			err = updateBackingImageStatus(namespace, lhClient, resourceMap.(map[string]*longhorn.BackingImage))
 		default:
 			return fmt.Errorf("resource kind %v is not able to updated", resourceKind)
 		}
@@ -1319,6 +1323,42 @@ func updateSettingStatus(namespace string, lhClient *lhclientset.Clientset, sett
 		}
 
 		if _, err = lhClient.LonghornV1beta2().Settings(namespace).UpdateStatus(context.TODO(), setting, metav1.UpdateOptions{}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func updateBackupStatus(namespace string, lhClient *lhclientset.Clientset, backups map[string]*longhorn.Backup) error {
+	existingBackupList, err := lhClient.LonghornV1beta2().Backups(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, existingBackup := range existingBackupList.Items {
+		backup, ok := backups[existingBackup.Name]
+		if !ok {
+			continue
+		}
+
+		if _, err = lhClient.LonghornV1beta2().Backups(namespace).UpdateStatus(context.TODO(), backup, metav1.UpdateOptions{}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func updateBackingImageStatus(namespace string, lhClient *lhclientset.Clientset, backingImages map[string]*longhorn.BackingImage) error {
+	existingBackingImageList, err := lhClient.LonghornV1beta2().BackingImages(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, existingBackingImage := range existingBackingImageList.Items {
+		bi, ok := backingImages[existingBackingImage.Name]
+		if !ok {
+			continue
+		}
+
+		if _, err = lhClient.LonghornV1beta2().BackingImages(namespace).UpdateStatus(context.TODO(), bi, metav1.UpdateOptions{}); err != nil {
 			return err
 		}
 	}
