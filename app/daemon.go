@@ -1,16 +1,25 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	_ "net/http/pprof" // for runtime profiling
 	"os"
+	"time"
 
 	"github.com/gorilla/handlers"
 	"github.com/pkg/errors"
 	"github.com/rancher/wrangler/pkg/signals"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
+
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/leaderelection"
+	"k8s.io/client-go/tools/leaderelection/resourcelock"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clientset "k8s.io/client-go/kubernetes"
 
 	"github.com/longhorn/go-iscsi-helper/iscsi"
 
@@ -44,6 +53,10 @@ const (
 	FlagServiceAccount            = "service-account"
 	FlagKubeConfig                = "kube-config"
 	FlagUpgradeVersionCheck       = "upgrade-version-check"
+)
+
+const (
+	LeaseLockNameWebhook = "longhorn-manager-webhook-lock"
 )
 
 func DaemonCmd() cli.Command {
@@ -93,6 +106,105 @@ func DaemonCmd() cli.Command {
 			}
 		},
 	}
+}
+
+// startWebhooksByLeaderElection starts the webhooks by using Kubernetes leader
+// election. It ensures that only one webhook server is initializing at a time in
+// the cluster.
+//
+// https://github.com/longhorn/longhorn/issues/10054
+//
+// Parameters:
+// - ctx: The context used to manage the webhook servers lifecycle.
+// - kubeconfigPath: The path to the kubeconfig file.
+// - currentNodeID: The ID of the current node attempting to acquire the leadership.
+func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentNodeID string) error {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return errors.Wrap(err, "failed to get client config")
+	}
+
+	kubeClient, err := clientset.NewForConfig(config)
+	if err != nil {
+		return errors.Wrap(err, "failed to get k8s client")
+	}
+
+	podNamespace, err := util.GetRequiredEnv(types.EnvPodNamespace)
+	if err != nil {
+		return fmt.Errorf("failed to detect the manager pod namespace")
+	}
+
+	lock := &resourcelock.LeaseLock{
+		LeaseMeta: metav1.ObjectMeta{
+			Name:      LeaseLockNameWebhook,
+			Namespace: podNamespace,
+		},
+		Client: kubeClient.CoordinationV1(),
+		LockConfig: resourcelock.ResourceLockConfig{
+			Identity: currentNodeID,
+		},
+	}
+
+	fnStartWebhook := func(ctx context.Context) error {
+		// Conversion webhook needs to be started first since we use its port 9501 as readiness port.
+		// longhorn-manager pod becomes ready only when conversion webhook is running.
+		// The services in the longhorn-manager can then start to receive the requests.
+		// Conversion webhook does not longhorn datastore.
+		clientsWithoutDatastore, err := client.NewClients(kubeconfigPath, false, ctx.Done())
+		if err != nil {
+			return err
+		}
+		if err := webhook.StartWebhook(ctx, types.WebhookTypeConversion, clientsWithoutDatastore); err != nil {
+			return err
+		}
+		if err := webhook.CheckWebhookServiceAvailability(types.WebhookTypeConversion); err != nil {
+			return err
+		}
+
+		clients, err := client.NewClients(kubeconfigPath, true, ctx.Done())
+		if err != nil {
+			return err
+		}
+		if err := webhook.StartWebhook(ctx, types.WebhookTypeAdmission, clients); err != nil {
+			return err
+		}
+		if err := webhook.CheckWebhookServiceAvailability(types.WebhookTypeAdmission); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	leaderCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	leaderelection.RunOrDie(leaderCtx, leaderelection.LeaderElectionConfig{
+		Lock:            lock,
+		ReleaseOnCancel: true,
+		LeaseDuration:   20 * time.Second,
+		RenewDeadline:   10 * time.Second,
+		RetryPeriod:     2 * time.Second,
+		Callbacks: leaderelection.LeaderCallbacks{
+			OnStartedLeading: func(leaderCtx context.Context) {
+				if err := fnStartWebhook(ctx); err != nil {
+					logrus.Fatalf("Error starting webhooks: %v", err)
+				}
+
+				cancel()
+			},
+			OnStoppedLeading: func() {
+				logrus.Infof("Webhook leader lost: %s", currentNodeID)
+			},
+			OnNewLeader: func(identity string) {
+				if identity == currentNodeID {
+					return
+				}
+				logrus.Infof("Webhook leader elected: %s", identity)
+			},
+		},
+	})
+
+	return nil
 }
 
 func startManager(c *cli.Context) error {
@@ -148,29 +260,13 @@ func startManager(c *cli.Context) error {
 
 	logger := logrus.StandardLogger().WithField("node", currentNodeID)
 
-	// Conversion webhook needs to be started first since we use its port 9501 as readiness port.
-	// longhorn-manager pod becomes ready only when conversion webhook is running.
-	// The services in the longhorn-manager can then start to receive the requests.
-	// Conversion webhook does not longhorn datastore.
-	clientsWithoutDatastore, err := client.NewClients(kubeconfigPath, false, ctx.Done())
+	err = startWebhooksByLeaderElection(ctx, kubeconfigPath, currentNodeID)
 	if err != nil {
-		return err
-	}
-	if err := webhook.StartWebhook(ctx, types.WebhookTypeConversion, clientsWithoutDatastore); err != nil {
-		return err
-	}
-	if err := webhook.CheckWebhookServiceAvailability(types.WebhookTypeConversion); err != nil {
 		return err
 	}
 
 	clients, err := client.NewClients(kubeconfigPath, true, ctx.Done())
 	if err != nil {
-		return err
-	}
-	if err := webhook.StartWebhook(ctx, types.WebhookTypeAdmission, clients); err != nil {
-		return err
-	}
-	if err := webhook.CheckWebhookServiceAvailability(types.WebhookTypeAdmission); err != nil {
 		return err
 	}
 
