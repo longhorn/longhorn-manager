@@ -1340,19 +1340,12 @@ func (bic *BackingImageController) syncBackingImageFileInfo(bi *longhorn.Backing
 				}
 			}
 		}
+		// We found that the real size may change when syncing with other nodes, while the checksum remains the same
+		// Since we have already verified that the checksum is correct, we can ignore the discrepancy in the real size.
 		if info.RealSize > 0 {
 			if bi.Status.RealSize == 0 {
 				bi.Status.RealSize = info.RealSize
 				bic.eventRecorder.Eventf(bi, corev1.EventTypeNormal, constant.EventReasonUpdate, "Set realSize to %v", bi.Status.RealSize)
-			}
-			if bi.Status.RealSize != info.RealSize {
-				if bi.Status.DiskFileStatusMap[bim.Spec.DiskUUID].State != longhorn.BackingImageStateFailed {
-					msg := fmt.Sprintf("found mismatching realSize %v reported by backing image manager %v in disk %v, the realSize recorded in status is %v",
-						info.RealSize, bim.Name, bim.Spec.DiskUUID, bi.Status.RealSize)
-					bic.eventRecorder.Eventf(bi, corev1.EventTypeWarning, constant.EventReasonUpdate, msg)
-					bi.Status.DiskFileStatusMap[bim.Spec.DiskUUID].State = longhorn.BackingImageStateFailed
-					bi.Status.DiskFileStatusMap[bim.Spec.DiskUUID].Message = msg
-				}
 			}
 		}
 	}
