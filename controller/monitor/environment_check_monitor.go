@@ -12,7 +12,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	corev1 "k8s.io/api/core/v1"
@@ -26,7 +25,6 @@ import (
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
-	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -164,10 +162,6 @@ func (m *EnvironmentCheckMonitor) environmentCheck(kubeNode *corev1.Node) *Colle
 	}
 
 	m.checkKernelModulesLoaded(kubeNode, isV2DataEngine, collectedData)
-
-	if isV2DataEngine {
-		m.checkHugePages(kubeNode, collectedData)
-	}
 
 	return collectedData
 }
@@ -354,40 +348,6 @@ func (m *EnvironmentCheckMonitor) syncMultipathd(namespaces []lhtypes.Namespace,
 	}
 
 	collectedData.conditions = types.SetCondition(collectedData.conditions, longhorn.NodeConditionTypeMultipathd, longhorn.ConditionStatusTrue, "", "")
-}
-
-func (m *EnvironmentCheckMonitor) checkHugePages(kubeNode *corev1.Node, collectedData *CollectedEnvironmentCheckInfo) {
-	hugePageLimitInMiB, err := m.ds.GetSettingAsInt(types.SettingNameV2DataEngineHugepageLimit)
-	if err != nil {
-		m.logger.Debugf("Failed to fetch v2-data-engine-hugepage-limit setting, using default value: %d", 2048)
-		hugePageLimitInMiB = 2048
-	}
-
-	capacity := kubeNode.Status.Capacity
-	hugepages2MiCapacity := capacity["hugepages-2Mi"]
-	if hugepages2MiCapacity.IsZero() {
-		collectedData.conditions = types.SetCondition(collectedData.conditions, longhorn.NodeConditionTypeHugePagesAvailable, longhorn.ConditionStatusFalse,
-			string(longhorn.NodeConditionReasonHugePagesNotConfigured),
-			"HugePages (2Mi) are not configured",
-		)
-		return
-	}
-
-	requiredHugePages := resource.NewQuantity(int64(hugePageLimitInMiB*util.MiB), resource.BinarySI)
-	if hugepages2MiCapacity.Cmp(*requiredHugePages) < 0 {
-		collectedData.conditions = types.SetCondition(collectedData.conditions, longhorn.NodeConditionTypeHugePagesAvailable, longhorn.ConditionStatusFalse,
-			string(longhorn.NodeConditionReasonInsufficientHugePages),
-			fmt.Sprintf("Insufficient HugePages (2Mi): Required %s, Capacity %s", requiredHugePages.String(), hugepages2MiCapacity.String()))
-		return
-	}
-
-	collectedData.conditions = types.SetCondition(
-		collectedData.conditions,
-		longhorn.NodeConditionTypeHugePagesAvailable,
-		longhorn.ConditionStatusTrue,
-		"",
-		"HugePages (2Mi) are properly configured",
-	)
 }
 
 func (m *EnvironmentCheckMonitor) checkKernelModulesLoaded(kubeNode *corev1.Node, isV2DataEngine bool, collectedData *CollectedEnvironmentCheckInfo) {
