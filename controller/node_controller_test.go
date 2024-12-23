@@ -9,16 +9,17 @@ import (
 	"github.com/sirupsen/logrus"
 	. "gopkg.in/check.v1"
 
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
+	"k8s.io/kubernetes/pkg/controller"
+
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	fake "k8s.io/client-go/kubernetes/fake"
-	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/record"
-	"k8s.io/kubernetes/pkg/controller"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -211,6 +212,8 @@ func (s *NodeControllerSuite) TestManagerPodUp(c *C) {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -298,6 +301,8 @@ func (s *NodeControllerSuite) TestManagerPodDown(c *C) {
 	for _, node := range fixture.lhNodes {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -387,6 +392,8 @@ func (s *NodeControllerSuite) TestKubeNodeDown(c *C) {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -474,6 +481,8 @@ func (s *NodeControllerSuite) TestKubeNodePressure(c *C) {
 	for _, node := range fixture.lhNodes {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -630,6 +639,8 @@ func (s *NodeControllerSuite) TestUpdateDiskStatus(c *C) {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -777,6 +788,8 @@ func (s *NodeControllerSuite) TestCleanDiskStatus(c *C) {
 	for _, node := range fixture.lhNodes {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -936,6 +949,8 @@ func (s *NodeControllerSuite) TestDisableDiskOnFilesystemChange(c *C) {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -1058,6 +1073,8 @@ func (s *NodeControllerSuite) TestCreateDefaultInstanceManager(c *C) {
 	for _, node := range fixture.lhNodes {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -1206,6 +1223,8 @@ func (s *NodeControllerSuite) TestCleanupRedundantInstanceManagers(c *C) {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -1302,6 +1321,8 @@ func (s *NodeControllerSuite) TestCleanupAllInstanceManagers(c *C) {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -1394,6 +1415,8 @@ func (s *NodeControllerSuite) TestEventOnNotReady(c *C) {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -1480,6 +1503,8 @@ func (s *NodeControllerSuite) TestEventOnDiskPressure(c *C) {
 	for _, node := range fixture.lhNodes {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -1568,6 +1593,8 @@ func (s *NodeControllerSuite) TestEventOnMemoryPressure(c *C) {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -1655,6 +1682,8 @@ func (s *NodeControllerSuite) TestEventOnPidPressure(c *C) {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
 			c.Assert(err, IsNil)
+			err = s.controller.environmentCheckMonitor.RunOnce()
+			c.Assert(err, IsNil)
 		}
 
 		err = s.controller.syncNode(getKey(node, c))
@@ -1741,6 +1770,8 @@ func (s *NodeControllerSuite) TestEventOnNetworkPressure(c *C) {
 	for _, node := range fixture.lhNodes {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -1834,6 +1865,8 @@ func (s *NodeControllerSuite) TestNoEventOnUnknownTrueNodeCondition(c *C) {
 	for _, node := range fixture.lhNodes {
 		if s.controller.controllerID == node.Name {
 			err = s.controller.diskMonitor.RunOnce()
+			c.Assert(err, IsNil)
+			err = s.controller.environmentCheckMonitor.RunOnce()
 			c.Assert(err, IsNil)
 		}
 
@@ -2134,6 +2167,8 @@ CONFIG_NFS_V4_2=y`
 				if s.controller.controllerID == node.Name {
 					err = s.controller.diskMonitor.RunOnce()
 					c.Assert(err, IsNil)
+					err = s.controller.environmentCheckMonitor.RunOnce()
+					c.Assert(err, IsNil)
 				}
 
 				err = s.controller.syncNode(getKey(node, c))
@@ -2335,11 +2370,17 @@ func newTestNodeController(lhClient *lhfake.Clientset, kubeClient *fake.Clientse
 	enqueueNodeForMonitor := func(key string) {
 		nc.queue.Add(key)
 	}
-	mon, err := monitor.NewFakeNodeMonitor(nc.logger, nc.ds, controllerID, enqueueNodeForMonitor)
+	diskMonitor, err := monitor.NewFakeDiskMonitor(nc.logger, nc.ds, controllerID, enqueueNodeForMonitor)
 	if err != nil {
 		return nil, err
 	}
-	nc.diskMonitor = mon
+	nc.diskMonitor = diskMonitor
+
+	environmentCheckMonitor, err := monitor.NewFakeEnvironmentCheckMonitor(nc.logger, nc.ds, controllerID, enqueueNodeForMonitor)
+	if err != nil {
+		return nil, err
+	}
+	nc.environmentCheckMonitor = environmentCheckMonitor
 
 	for index := range nc.cacheSyncs {
 		nc.cacheSyncs[index] = alwaysReady
