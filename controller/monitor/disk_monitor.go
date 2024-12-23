@@ -101,7 +101,11 @@ func (m *NodeMonitor) Start() {
 		}
 		return false, nil
 	}); err != nil {
-		m.logger.WithError(err).Error("Failed to start node monitor")
+		if errors.Is(err, context.Canceled) {
+			m.logger.WithError(err).Warning("Disk monitor is stopped")
+		} else {
+			m.logger.WithError(err).Error("Failed to start disk monitor")
+		}
 	}
 }
 
@@ -132,6 +136,7 @@ func (m *NodeMonitor) GetCollectedData() (interface{}, error) {
 func (m *NodeMonitor) run(value interface{}) error {
 	node, err := m.ds.GetNode(m.nodeName)
 	if err != nil {
+		logrus.WithError(err).Errorf("Failed to get longhorn node %v", m.nodeName)
 		return errors.Wrapf(err, "failed to get longhorn node %v", m.nodeName)
 	}
 
