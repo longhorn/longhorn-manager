@@ -378,14 +378,17 @@ func (nc *NodeController) syncNode(key string) (err error) {
 
 		if nc.diskMonitor != nil {
 			nc.diskMonitor.Stop()
+			nc.diskMonitor = nil
 		}
 
 		if nc.environmentCheckMonitor != nil {
 			nc.environmentCheckMonitor.Stop()
+			nc.environmentCheckMonitor = nil
 		}
 
 		if nc.snapshotMonitor != nil {
 			nc.snapshotMonitor.Stop()
+			nc.snapshotMonitor = nil
 		}
 
 		return nc.ds.RemoveFinalizerForNode(node)
