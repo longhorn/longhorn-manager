@@ -511,7 +511,20 @@ func (m *VolumeManager) ListBackupsForBackupVolumeSorted(backupVolumeName string
 		return []*longhorn.Backup{}, err
 	}
 
-	return m.ListBackupsForVolumeSorted(bv.Spec.VolumeName)
+	backupMap, err := m.ds.ListBackupsWithBackupTargetAndBackupVolumeRO(bv.Spec.BackupTargetName, bv.Spec.VolumeName)
+	if err != nil {
+		return []*longhorn.Backup{}, err
+	}
+	backupNames, err := util.SortKeys(backupMap)
+	if err != nil {
+		return []*longhorn.Backup{}, err
+	}
+	backups := make([]*longhorn.Backup, len(backupMap))
+	for i, backupName := range backupNames {
+		backups[i] = backupMap[backupName]
+	}
+
+	return backups, nil
 }
 
 func (m *VolumeManager) GetBackup(backupName, volumeName string) (*longhorn.Backup, error) {
