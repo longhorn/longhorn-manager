@@ -12,16 +12,16 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/sirupsen/logrus"
+
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/kubernetes/pkg/controller"
+
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsfake "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/fake"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	fake "k8s.io/client-go/kubernetes/fake"
-	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/record"
-	"k8s.io/kubernetes/pkg/controller"
 
 	. "gopkg.in/check.v1"
 )
@@ -2041,11 +2041,11 @@ func newTestNodeController(lhClient *lhfake.Clientset, kubeClient *fake.Clientse
 	enqueueNodeForMonitor := func(key string) {
 		nc.queue.Add(key)
 	}
-	mon, err := monitor.NewFakeNodeMonitor(nc.logger, nc.ds, controllerID, enqueueNodeForMonitor)
+	diskMonitor, err := monitor.NewFakeNodeMonitor(nc.logger, nc.ds, controllerID, enqueueNodeForMonitor)
 	if err != nil {
 		return nil, err
 	}
-	nc.diskMonitor = mon
+	nc.diskMonitor = diskMonitor
 
 	for index := range nc.cacheSyncs {
 		nc.cacheSyncs[index] = alwaysReady

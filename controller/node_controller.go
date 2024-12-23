@@ -376,6 +376,17 @@ func (nc *NodeController) syncNode(key string) (err error) {
 
 	if node.DeletionTimestamp != nil {
 		nc.eventRecorder.Eventf(node, corev1.EventTypeWarning, constant.EventReasonDelete, "Deleting node %v", node.Name)
+
+		if nc.diskMonitor != nil {
+			nc.diskMonitor.Close()
+			nc.diskMonitor = nil
+		}
+
+		if nc.snapshotMonitor != nil {
+			nc.snapshotMonitor.Close()
+			nc.snapshotMonitor = nil
+		}
+
 		return nc.ds.RemoveFinalizerForNode(node)
 	}
 

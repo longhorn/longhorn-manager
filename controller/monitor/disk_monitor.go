@@ -133,7 +133,6 @@ func (m *NodeMonitor) GetCollectedData() (interface{}, error) {
 func (m *NodeMonitor) run(value interface{}) error {
 	node, err := m.ds.GetNode(m.nodeName)
 	if err != nil {
-		logrus.WithError(err).Errorf("Failed to get longhorn node %v", m.nodeName)
 		return errors.Wrapf(err, "failed to get longhorn node %v", m.nodeName)
 	}
 
