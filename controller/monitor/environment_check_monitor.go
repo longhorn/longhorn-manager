@@ -64,7 +64,7 @@ func NewEnvironmentCheckMonitor(logger logrus.FieldLogger, ds *datastore.DataSto
 	ctx, quit := context.WithCancel(context.Background())
 
 	m := &EnvironmentCheckMonitor{
-		baseMonitor: newBaseMonitor(ctx, quit, logger, ds, NodeMonitorSyncPeriod),
+		baseMonitor: newBaseMonitor(ctx, quit, logger, ds, EnvironmentCheckMonitorSyncPeriod),
 
 		nodeName: nodeName,
 
