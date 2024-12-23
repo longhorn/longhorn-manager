@@ -295,6 +295,7 @@ type UpdateMinNumberOfCopiesInput struct {
 type BackingImageRestoreInput struct {
 	Secret          string `json:"secret"`
 	SecretNamespace string `json:"secretNamespace"`
+	DataEngine      string `json:"dataEngine"`
 }
 
 type AttachInput struct {
