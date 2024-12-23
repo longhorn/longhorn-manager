@@ -86,7 +86,11 @@ func (m *EnvironmentCheckMonitor) Start() {
 		}
 		return false, nil
 	}); err != nil {
-		m.logger.WithError(err).Error("Failed to start monitoring environment check")
+		if errors.Is(err, context.Canceled) {
+			m.logger.WithError(err).Warning("Environment check monitor is stopped")
+		} else {
+			m.logger.WithError(err).Error("Failed to start environment check monitor")
+		}
 	}
 }
 
