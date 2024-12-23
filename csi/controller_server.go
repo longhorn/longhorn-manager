@@ -289,6 +289,7 @@ func (cs *ControllerServer) getBackupVolume(volumeName string) (*longhornclient.
 		}
 	}
 	log.Debugf("cannot find backup volume with backup target %s and volume %s", vol.BackupTargetName, volumeName)
+	// return no error if no backup volume found as backup is not completed and backup volume is not created yet.
 	return nil, nil
 }
 
