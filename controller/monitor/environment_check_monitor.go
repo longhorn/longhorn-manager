@@ -80,7 +80,7 @@ func NewEnvironmentCheckMonitor(logger logrus.FieldLogger, ds *datastore.DataSto
 }
 
 func (m *EnvironmentCheckMonitor) Start() {
-	if err := wait.PollUntilContextCancel(m.ctx, m.syncPeriod, false, func(context.Context) (bool, error) {
+	if err := wait.PollUntilContextCancel(m.ctx, m.syncPeriod, true, func(context.Context) (bool, error) {
 		if err := m.run(struct{}{}); err != nil {
 			m.logger.WithError(err).Error("Stopped monitoring environment check")
 		}
