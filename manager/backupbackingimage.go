@@ -41,9 +41,9 @@ func (m *VolumeManager) DeleteBackupBackingImage(name string) error {
 	return m.ds.DeleteBackupBackingImage(name)
 }
 
-func (m *VolumeManager) RestoreBackupBackingImage(name string, secret, secretNamespace string) error {
-	if name == "" {
-		return fmt.Errorf("restore backing image name is not given")
+func (m *VolumeManager) RestoreBackupBackingImage(name, secret, secretNamespace, dataEngine string) error {
+	if name == "" || dataEngine == "" {
+		return fmt.Errorf("missing parameters for restoring backing image, name=%v dataEngine=%v", name, dataEngine)
 	}
 
 	bbi, err := m.ds.GetBackupBackingImageRO(name)
@@ -62,7 +62,7 @@ func (m *VolumeManager) RestoreBackupBackingImage(name string, secret, secretNam
 		return fmt.Errorf("backing image %v already exists", biName)
 	}
 
-	return m.restoreBackingImage(bbi.Spec.BackupTargetName, biName, secret, secretNamespace)
+	return m.restoreBackingImage(bbi.Spec.BackupTargetName, biName, secret, secretNamespace, dataEngine)
 }
 
 func (m *VolumeManager) CreateBackupBackingImage(name, backingImageName, backupTargetName string) error {

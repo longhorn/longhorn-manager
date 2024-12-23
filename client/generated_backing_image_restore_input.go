@@ -7,6 +7,8 @@ const (
 type BackingImageRestoreInput struct {
 	Resource `yaml:"-"`
 
+	DataEngine string `json:"dataEngine,omitempty" yaml:"data_engine,omitempty"`
+
 	Secret string `json:"secret,omitempty" yaml:"secret,omitempty"`
 
 	SecretNamespace string `json:"secretNamespace,omitempty" yaml:"secret_namespace,omitempty"`

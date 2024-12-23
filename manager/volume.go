@@ -158,7 +158,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 	// TODO: We should record the secret and secret namespace in the backing image
 	// so we can auto fill in the secret and namespace when auto restore the backing image in volume creation api.
 	// Currently, if the backing image is encrypted, users need to restore it first so they can specifically assign the secret and namespace
-	if err := m.restoreBackingImage(backupTargetName, spec.BackingImage, "", ""); err != nil {
+	if err := m.restoreBackingImage(backupTargetName, spec.BackingImage, "", "", string(spec.DataEngine)); err != nil {
 		return nil, errors.Wrapf(err, "failed to restore backing image %v when create volume %v", spec.BackingImage, name)
 	}
 
@@ -1189,12 +1189,20 @@ func (m *VolumeManager) UpdateSnapshotMaxSize(name string, snapshotMaxSize int64
 	return v, nil
 }
 
-func (m *VolumeManager) restoreBackingImage(backupTargetName, biName, secret, secretNamespace string) error {
+func (m *VolumeManager) restoreBackingImage(backupTargetName, biName, secret, secretNamespace, dataEngine string) error {
 	if secret != "" || secretNamespace != "" {
 		_, err := m.ds.GetSecretRO(secretNamespace, secret)
 		if err != nil {
 			return errors.Wrapf(err, "failed to get secret %v in namespace %v for the backing image %v", secret, secretNamespace, biName)
 		}
+	}
+
+	if dataEngine == "" {
+		dataEngine = string(longhorn.DataEngineTypeV1)
+	}
+
+	if longhorn.DataEngineType(dataEngine) != longhorn.DataEngineTypeV1 && longhorn.DataEngineType(dataEngine) != longhorn.DataEngineTypeV2 {
+		return fmt.Errorf("invalid data engine type %v", dataEngine)
 	}
 
 	if biName == "" {
@@ -1208,10 +1216,13 @@ func (m *VolumeManager) restoreBackingImage(backupTargetName, biName, secret, se
 	}
 	// backing image already exists
 	if bi != nil {
+		if bi.Spec.DataEngine != longhorn.DataEngineType(dataEngine) {
+			return fmt.Errorf("backing image %v already exists with different data engine type %v", biName, bi.Spec.DataEngine)
+		}
 		return nil
 	}
 
-	// try find the backup backing image
+	// try to find the backup backing image
 	bbi, err := m.ds.GetBackupBackingImagesWithBackupTargetNameRO(backupTargetName, biName)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get backup backing image %v", biName)
@@ -1228,6 +1239,7 @@ func (m *VolumeManager) restoreBackingImage(backupTargetName, biName, secret, se
 			Name: biName,
 		},
 		Spec: longhorn.BackingImageSpec{
+			DataEngine: longhorn.DataEngineType(dataEngine),
 			Checksum:   bbi.Status.Checksum,
 			SourceType: longhorn.BackingImageDataSourceTypeRestore,
 			SourceParameters: map[string]string{
