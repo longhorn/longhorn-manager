@@ -53,5 +53,15 @@ func (bbi *backupBackingImageValidator) Create(request *admission.Request, newOb
 		return werror.NewInvalidError(fmt.Sprintf("backing image %v uses v2 data engine which doesn't support backup operations", backingImageName), "")
 	}
 
+	backupBackingImages, err := bbi.ds.ListBackupBackingImagesRO()
+	if err != nil {
+		return werror.NewInternalError(fmt.Sprintf("failed to list backup backing images: %v", err))
+	}
+	for _, otherBackupBackingImage := range backupBackingImages {
+		if otherBackupBackingImage.Spec.BackingImage == backingImageName && otherBackupBackingImage.Spec.BackupTargetName == backupBackingImage.Spec.BackupTargetName {
+			return werror.NewInvalidError(fmt.Sprintf("backup backing image %v for backup target %v already exists", backingImageName, backupBackingImage.Spec.BackupTargetName), "")
+		}
+	}
+
 	return nil
 }
