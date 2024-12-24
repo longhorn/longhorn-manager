@@ -12,7 +12,8 @@ import (
 	"github.com/rancher/wrangler/v3/pkg/signals"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/go-iscsi-helper/iscsi"
 
@@ -174,7 +175,7 @@ func startManager(c *cli.Context) error {
 	}
 
 	// This adds the label for the conversion webhook's selector.  We do it the hard way without datastore to avoid chicken-and-egg.
-	pod, err := clientsWithoutDatastore.Clients.K8s.CoreV1().Pods(podNamespace).Get(context.Background(), podName, v1.GetOptions{})
+	pod, err := clientsWithoutDatastore.Clients.K8s.CoreV1().Pods(podNamespace).Get(context.Background(), podName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -182,7 +183,7 @@ func startManager(c *cli.Context) error {
 	for key, value := range labels {
 		pod.Labels[key] = value
 	}
-	_, err = clientsWithoutDatastore.Clients.K8s.CoreV1().Pods(podNamespace).Update(context.Background(), pod, v1.UpdateOptions{})
+	_, err = clientsWithoutDatastore.Clients.K8s.CoreV1().Pods(podNamespace).Update(context.Background(), pod, metav1.UpdateOptions{})
 	if err != nil {
 		return err
 	}
