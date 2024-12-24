@@ -178,10 +178,8 @@ func (m *EnvironmentCheckMonitor) environmentCheck(kubeNode *corev1.Node) *Colle
 
 func (m *EnvironmentCheckMonitor) syncPackagesInstalled(kubeNode *corev1.Node, namespaces []lhtypes.Namespace, collectedData *CollectedEnvironmentCheckInfo) {
 	osImage := strings.ToLower(kubeNode.Status.NodeInfo.OSImage)
-	queryPackagesCmd := ""
-	options := []string{}
-	packages := []string{}
-	pipeFlag := false
+
+	packageProbeExecutables := make(map[string]string)
 
 	switch {
 	case strings.Contains(osImage, "talos"):
@@ -190,10 +188,10 @@ func (m *EnvironmentCheckMonitor) syncPackagesInstalled(kubeNode *corev1.Node, n
 	case strings.Contains(osImage, "ubuntu"):
 		fallthrough
 	case strings.Contains(osImage, "debian"):
-		queryPackagesCmd = "dpkg"
-		options = append(options, "-l")
-		packages = append(packages, "nfs-common", "open-iscsi", "cryptsetup", "dmsetup")
-		pipeFlag = true
+		packageProbeExecutables["nfs-common"] = "mount.nfs"
+		packageProbeExecutables["open-iscsi"] = "iscsiadm"
+		packageProbeExecutables["cryptsetup"] = "cryptsetup"
+		packageProbeExecutables["dmsetup"] = "dmsetup"
 	case strings.Contains(osImage, "centos"):
 		fallthrough
 	case strings.Contains(osImage, "fedora"):
@@ -203,21 +201,25 @@ func (m *EnvironmentCheckMonitor) syncPackagesInstalled(kubeNode *corev1.Node, n
 	case strings.Contains(osImage, "rocky"):
 		fallthrough
 	case strings.Contains(osImage, "ol"):
-		queryPackagesCmd = "rpm"
-		options = append(options, "-q")
-		packages = append(packages, "nfs-utils", "iscsi-initiator-utils", "cryptsetup", "device-mapper")
+		packageProbeExecutables["nfs-utils"] = "mount.nfs"
+		packageProbeExecutables["iscsi-initiator-utils"] = "iscsiadm"
+		packageProbeExecutables["cryptsetup"] = "cryptsetup"
+		packageProbeExecutables["device-mapper"] = "dmsetup"
 	case strings.Contains(osImage, "suse"):
-		queryPackagesCmd = "rpm"
-		options = append(options, "-q")
-		packages = append(packages, "nfs-client", "open-iscsi", "cryptsetup", "device-mapper")
+		packageProbeExecutables["nfs-client"] = "mount.nfs"
+		packageProbeExecutables["open-iscsi"] = "iscsiadm"
+		packageProbeExecutables["cryptsetup"] = "cryptsetup"
+		packageProbeExecutables["device-mapper"] = "dmsetup"
 	case strings.Contains(osImage, "arch"):
-		queryPackagesCmd = "pacman"
-		options = append(options, "-Q")
-		packages = append(packages, "nfs-utils", "open-iscsi", "cryptsetup", "device-mapper")
+		packageProbeExecutables["nfs-utils"] = "mount.nfs"
+		packageProbeExecutables["open-iscsi"] = "iscsiadm"
+		packageProbeExecutables["cryptsetup"] = "cryptsetup"
+		packageProbeExecutables["device-mapper"] = "dmsetup"
 	case strings.Contains(osImage, "gentoo"):
-		queryPackagesCmd = "qlist"
-		options = append(options, "-I")
-		packages = append(packages, "net-fs/nfs-utils", "sys-block/open-iscsi", "sys-fs/cryptsetup", "sys-fs/lvm2")
+		packageProbeExecutables["net-fs/nfs-utils"] = "mount.nfs"
+		packageProbeExecutables["sys-block/open-iscsi"] = "iscsiadm"
+		packageProbeExecutables["sys-fs/cryptsetup"] = "cryptsetup"
+		packageProbeExecutables["sys-fs/lvm2"] = "dmsetup"
 	default:
 		collectedData.conditions = types.SetCondition(collectedData.conditions, longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusFalse,
 			string(longhorn.NodeConditionReasonUnknownOS),
@@ -225,7 +227,7 @@ func (m *EnvironmentCheckMonitor) syncPackagesInstalled(kubeNode *corev1.Node, n
 		return
 	}
 
-	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	installedPackages, notInstalledPackages, err := m.checkPackageInstalled(packageProbeExecutables, namespaces)
 	if err != nil {
 		collectedData.conditions = types.SetCondition(collectedData.conditions, longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusFalse,
 			string(longhorn.NodeConditionReasonNamespaceExecutorErr),
@@ -233,36 +235,15 @@ func (m *EnvironmentCheckMonitor) syncPackagesInstalled(kubeNode *corev1.Node, n
 		return
 	}
 
-	notFoundPkgs := []string{}
-	for _, pkg := range packages {
-		args := options
-		if !pipeFlag {
-			args = append(args, pkg)
-		}
-		queryResult, err := nsexec.Execute(nil, queryPackagesCmd, args, lhtypes.ExecuteDefaultTimeout)
-		if err != nil {
-			m.logger.WithError(err).Debugf("Package %v is not found", pkg)
-			notFoundPkgs = append(notFoundPkgs, pkg)
-			continue
-		}
-		if pipeFlag {
-			if _, err := lhexec.NewExecutor().ExecuteWithStdinPipe("grep", []string{"-w", pkg}, queryResult, lhtypes.ExecuteDefaultTimeout); err != nil {
-				m.logger.WithError(err).Debugf("Package %v is not found", pkg)
-				notFoundPkgs = append(notFoundPkgs, pkg)
-				continue
-			}
-		}
-	}
-
-	if len(notFoundPkgs) > 0 {
+	if len(notInstalledPackages) > 0 {
 		collectedData.conditions = types.SetCondition(collectedData.conditions, longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusFalse,
 			string(longhorn.NodeConditionReasonPackagesNotInstalled),
-			fmt.Sprintf("Missing packages: %v", notFoundPkgs))
+			fmt.Sprintf("Missing packages: %v", notInstalledPackages))
 		return
 	}
 
 	collectedData.conditions = types.SetCondition(collectedData.conditions, longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusTrue, "",
-		fmt.Sprintf("All required packages %v are installed", packages))
+		fmt.Sprintf("All required packages %v are installed", installedPackages))
 }
 
 func (m *EnvironmentCheckMonitor) syncPackagesInstalledTalosLinux(namespaces []lhtypes.Namespace, collectedData *CollectedEnvironmentCheckInfo) {
@@ -358,6 +339,24 @@ func (m *EnvironmentCheckMonitor) syncMultipathd(namespaces []lhtypes.Namespace,
 	}
 
 	collectedData.conditions = types.SetCondition(collectedData.conditions, longhorn.NodeConditionTypeMultipathd, longhorn.ConditionStatusTrue, "", "")
+}
+
+func (m *EnvironmentCheckMonitor) checkPackageInstalled(packageProbeExecutables map[string]string, namespaces []lhtypes.Namespace) (installed, notInstalled []string, err error) {
+	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for pkg, executable := range packageProbeExecutables {
+		shellCmd := fmt.Sprintf("command -v %s", executable)
+		if _, err := nsexec.Execute(nil, "sh", []string{"-c", shellCmd}, lhtypes.ExecuteDefaultTimeout); err != nil {
+			m.logger.WithError(err).Debugf("Package %v is not found", pkg)
+			notInstalled = append(notInstalled, pkg)
+		} else {
+			installed = append(installed, pkg)
+		}
+	}
+	return installed, notInstalled, nil
 }
 
 func (m *EnvironmentCheckMonitor) checkHugePages(kubeNode *corev1.Node, collectedData *CollectedEnvironmentCheckInfo) {
