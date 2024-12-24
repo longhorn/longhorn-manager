@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	defaultBlockSize = 4096
+	defaultBlockSize = 512
 )
 
 // GetDiskStat returns the disk stat of the given directory
