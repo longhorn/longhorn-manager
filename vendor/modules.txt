@@ -71,9 +71,10 @@ github.com/evanphx/json-patch
 # github.com/felixge/httpsnoop v1.0.4
 ## explicit; go 1.13
 github.com/felixge/httpsnoop
-# github.com/fsnotify/fsnotify v1.7.0
+# github.com/fsnotify/fsnotify v1.8.0
 ## explicit; go 1.17
 github.com/fsnotify/fsnotify
+github.com/fsnotify/fsnotify/internal
 # github.com/fxamacker/cbor/v2 v2.7.0
 ## explicit; go 1.17
 github.com/fxamacker/cbor/v2
@@ -267,7 +268,7 @@ github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.8.0-rc1
+# github.com/longhorn/longhorn-instance-manager v1.8.0-rc1 => github.com/shuo-wu/longhorn-instance-manager v0.0.0-20241221010736-e78d54cf1bdf
 ## explicit; go 1.23.0
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -1605,6 +1606,8 @@ sigs.k8s.io/structured-merge-diff/v4/value
 ## explicit; go 1.12
 sigs.k8s.io/yaml
 sigs.k8s.io/yaml/goyaml.v2
+# github.com/longhorn/longhorn-instance-manager => github.com/shuo-wu/longhorn-instance-manager v0.0.0-20241221010736-e78d54cf1bdf
+# github.com/longhorn/longhorn-spdk-engine => github.com/shuo-wu/longhorn-spdk-engine v0.0.0-20241220193646-793fe7001495
 # k8s.io/api => k8s.io/api v0.32.0
 # k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.32.0
 # k8s.io/apimachinery => k8s.io/apimachinery v0.32.0

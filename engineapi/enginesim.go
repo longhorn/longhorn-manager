@@ -145,7 +145,7 @@ func (e *EngineSimulator) ReplicaAdd(engine *longhorn.Engine, replicaName, url s
 	return nil
 }
 
-func (e *EngineSimulator) ReplicaRemove(engine *longhorn.Engine, addr string) error {
+func (e *EngineSimulator) ReplicaRemove(engine *longhorn.Engine, addr, replicaName string) error {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 
