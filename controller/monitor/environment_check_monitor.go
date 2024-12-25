@@ -11,7 +11,6 @@ import (
 	"github.com/jinzhu/copier"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	corev1 "k8s.io/api/core/v1"
@@ -211,9 +210,7 @@ func (m *EnvironmentCheckMonitor) syncPackagesInstalled(kubeNode *corev1.Node, n
 		packageProbeExecutables["sys-fs/cryptsetup"] = "cryptsetup"
 		packageProbeExecutables["sys-fs/lvm2"] = "dmsetup"
 	default:
-		collectedData.conditions = types.SetCondition(collectedData.conditions, longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusFalse,
-			string(longhorn.NodeConditionReasonUnknownOS),
-			fmt.Sprintf("Unable to verify the required packages because the OS image '%v' is unknown to the Longhorn system. Please ensure the required packages are installed.", osImage))
+		// unsupported host platform, skip environment check condition
 		return
 	}
 
@@ -331,8 +328,6 @@ func (m *EnvironmentCheckMonitor) syncMultipathd(namespaces []lhtypes.Namespace,
 	collectedData.conditions = types.SetCondition(collectedData.conditions, longhorn.NodeConditionTypeMultipathd, longhorn.ConditionStatusTrue, "", "")
 }
 
-<<<<<<< HEAD
-=======
 func (m *EnvironmentCheckMonitor) checkPackageInstalled(packageProbeExecutables map[string]string, namespaces []lhtypes.Namespace) (installed, notInstalled []string, err error) {
 	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
 	if err != nil {
@@ -351,41 +346,6 @@ func (m *EnvironmentCheckMonitor) checkPackageInstalled(packageProbeExecutables 
 	return installed, notInstalled, nil
 }
 
-func (m *EnvironmentCheckMonitor) checkHugePages(kubeNode *corev1.Node, collectedData *CollectedEnvironmentCheckInfo) {
-	hugePageLimitInMiB, err := m.ds.GetSettingAsInt(types.SettingNameV2DataEngineHugepageLimit)
-	if err != nil {
-		m.logger.Debugf("Failed to fetch v2-data-engine-hugepage-limit setting, using default value: %d", 2048)
-		hugePageLimitInMiB = 2048
-	}
-
-	capacity := kubeNode.Status.Capacity
-	hugepages2MiCapacity := capacity["hugepages-2Mi"]
-	if hugepages2MiCapacity.IsZero() {
-		collectedData.conditions = types.SetCondition(collectedData.conditions, longhorn.NodeConditionTypeHugePagesAvailable, longhorn.ConditionStatusFalse,
-			string(longhorn.NodeConditionReasonHugePagesNotConfigured),
-			"HugePages (2Mi) are not configured",
-		)
-		return
-	}
-
-	requiredHugePages := resource.NewQuantity(int64(hugePageLimitInMiB*util.MiB), resource.BinarySI)
-	if hugepages2MiCapacity.Cmp(*requiredHugePages) < 0 {
-		collectedData.conditions = types.SetCondition(collectedData.conditions, longhorn.NodeConditionTypeHugePagesAvailable, longhorn.ConditionStatusFalse,
-			string(longhorn.NodeConditionReasonInsufficientHugePages),
-			fmt.Sprintf("Insufficient HugePages (2Mi): Required %s, Capacity %s", requiredHugePages.String(), hugepages2MiCapacity.String()))
-		return
-	}
-
-	collectedData.conditions = types.SetCondition(
-		collectedData.conditions,
-		longhorn.NodeConditionTypeHugePagesAvailable,
-		longhorn.ConditionStatusTrue,
-		"",
-		"HugePages (2Mi) are properly configured",
-	)
-}
-
->>>>>>> 1d6fc2c0 (feat(env-check): check package installation without system package manager)
 func (m *EnvironmentCheckMonitor) checkKernelModulesLoaded(kubeNode *corev1.Node, isV2DataEngine bool, collectedData *CollectedEnvironmentCheckInfo) {
 	modulesToCheck := make(map[string]string)
 	for k, v := range kernelModules {
