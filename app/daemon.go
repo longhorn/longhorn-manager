@@ -189,6 +189,15 @@ func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentN
 		if err := webhook.StartWebhook(ctx, types.WebhookTypeAdmission, clients); err != nil {
 			return err
 		}
+
+		if err := clients.Datastore.AddLabelToManagerPod(currentNodeID, types.GetAdmissionWebhookLabel()); err != nil {
+			return err
+		}
+
+		if err := webhook.CheckWebhookServiceAvailability(types.WebhookTypeAdmission); err != nil {
+			return err
+		}
+
 		return nil
 	}
 
@@ -284,13 +293,6 @@ func startManager(c *cli.Context) error {
 
 	clients, err := client.NewClients(kubeconfigPath, true, ctx.Done())
 	if err != nil {
-		return err
-	}
-
-	if err := clients.Datastore.AddLabelToManagerPod(currentNodeID, types.GetAdmissionWebhookLabel()); err != nil {
-		return err
-	}
-	if err := webhook.CheckWebhookServiceAvailability(types.WebhookTypeAdmission); err != nil {
 		return err
 	}
 
