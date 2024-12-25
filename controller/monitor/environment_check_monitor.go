@@ -221,9 +221,7 @@ func (m *EnvironmentCheckMonitor) syncPackagesInstalled(kubeNode *corev1.Node, n
 		packageProbeExecutables["sys-fs/cryptsetup"] = "cryptsetup"
 		packageProbeExecutables["sys-fs/lvm2"] = "dmsetup"
 	default:
-		collectedData.conditions = types.SetCondition(collectedData.conditions, longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusFalse,
-			string(longhorn.NodeConditionReasonUnknownOS),
-			fmt.Sprintf("Unable to verify the required packages because the OS image '%v' is unknown to the Longhorn system. Please ensure the required packages are installed.", osImage))
+		// unsupported host platform, skip environment check condition
 		return
 	}
 
