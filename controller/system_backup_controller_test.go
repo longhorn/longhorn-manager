@@ -259,7 +259,13 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 
 			for _, backup := range backups {
 				backup.Status.State = longhorn.BackupStateCompleted
+				backup.Status.SnapshotName = backup.Spec.SnapshotName
+				snapshot, err := lhClient.LonghornV1beta2().Snapshots(TestNamespace).Get(context.TODO(), backup.Status.SnapshotName, metav1.GetOptions{})
+				c.Assert(err, IsNil)
+				tc.existVolumes[SystemRolloutCRName(snapshot.Spec.Volume)].Status.LastBackup = backup.Name
+				fakeSystemRolloutSnapshot(snapshot, c, informerFactories.LhInformerFactory, lhClient)
 			}
+			fakeSystemRolloutVolumes(tc.existVolumes, c, informerFactories.LhInformerFactory, lhClient)
 			fakeSystemRolloutBackups(backups, c, informerFactories.LhInformerFactory, lhClient)
 			err = systemBackupController.WaitForVolumeBackupToComplete(backups, systemBackup)
 			c.Assert(err, IsNil)
