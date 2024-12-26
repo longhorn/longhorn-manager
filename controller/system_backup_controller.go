@@ -834,7 +834,7 @@ func (c *SystemBackupController) WaitForVolumeBackupToComplete(backups map[strin
 		for name := range backups {
 			// Retrieve the latest backup
 			var backup *longhorn.Backup
-			backup, err = c.ds.GetBackup(name)
+			backup, err = c.ds.GetBackupRO(name)
 			if err != nil {
 				if apierrors.IsNotFound(err) {
 					log.Warnf("Backup %v not found when checking the volume backup status in system backup", name)
@@ -845,6 +845,9 @@ func (c *SystemBackupController) WaitForVolumeBackupToComplete(backups map[strin
 
 			switch backup.Status.State {
 			case longhorn.BackupStateCompleted:
+				if !c.isVolumeLastBackupSynced(backup) {
+					continue
+				}
 				delete(backups, name)
 			case longhorn.BackupStateError:
 				return errors.Wrapf(fmt.Errorf("%s", backup.Status.Error), "failed creating Volume backup %v", name)
@@ -862,6 +865,21 @@ func (c *SystemBackupController) WaitForVolumeBackupToComplete(backups map[strin
 	}
 	// This should never be reached, return this error just in case.
 	return fmt.Errorf("unexpected error: stopped waiting for Volume backups without completing, failing or timing out")
+}
+
+func (c *SystemBackupController) isVolumeLastBackupSynced(backup *longhorn.Backup) bool {
+	snapshot, err := c.ds.GetSnapshotRO(backup.Status.SnapshotName)
+	if err != nil {
+		c.logger.WithError(err).Warnf("Failed to get snapshot %v for backup %v", backup.Status.SnapshotName, backup.Name)
+		return false
+	}
+	volume, err := c.ds.GetVolumeRO(snapshot.Spec.Volume)
+	if err != nil {
+		c.logger.WithError(err).Warnf("Failed to get volume %v for snapshot %v", snapshot.Spec.Volume, snapshot.Name)
+		return false
+	}
+
+	return volume.Status.LastBackup == backup.Name
 }
 
 func (c *SystemBackupController) isVolumeBackupUpToDate(volume *longhorn.Volume, systemBackup *longhorn.SystemBackup) (bool, error) {

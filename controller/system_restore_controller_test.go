@@ -891,6 +891,38 @@ func fakeSystemRolloutSettingDefaultEngineImage(c *C, informerFactory lhinformer
 	fakeSystemRolloutSettings(setting, c, informerFactory, client)
 }
 
+func fakeSystemRolloutSnapshot(fakeObj *longhorn.Snapshot, c *C, informerFactory lhinformers.SharedInformerFactory, client *lhfake.Clientset) {
+	indexer := informerFactory.Longhorn().V1beta2().Snapshots().Informer().GetIndexer()
+
+	clientInterface := client.LonghornV1beta2().Snapshots(TestNamespace)
+
+	exists, err := clientInterface.List(context.TODO(), metav1.ListOptions{})
+	c.Assert(err, IsNil)
+
+	for _, exist := range exists.Items {
+		if exist.Name != fakeObj.Name {
+			continue
+		}
+		exist, err := clientInterface.Get(context.TODO(), exist.Name, metav1.GetOptions{})
+		c.Assert(err, IsNil)
+
+		err = clientInterface.Delete(context.TODO(), exist.Name, metav1.DeleteOptions{})
+		c.Assert(err, IsNil)
+
+		err = indexer.Delete(exist)
+		c.Assert(err, IsNil)
+	}
+
+	snap := newSnapshot(fakeObj.Name)
+	snap.Spec.Volume = fakeObj.Spec.Volume
+	snap.Status = fakeObj.Status
+	exist, err := clientInterface.Create(context.TODO(), snap, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	err = indexer.Add(exist)
+	c.Assert(err, IsNil)
+}
+
 func fakeSystemRolloutStorageClasses(fakeObjs map[SystemRolloutCRName]*storagev1.StorageClass, c *C, informerFactory informers.SharedInformerFactory, client *fake.Clientset) {
 	indexer := informerFactory.Storage().V1().StorageClasses().Informer().GetIndexer()
 

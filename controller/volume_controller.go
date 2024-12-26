@@ -4694,21 +4694,26 @@ func (c *VolumeController) enqueueVolumesForBackupVolume(obj interface{}) {
 
 	// Update last backup for the volume name matches backup volume name
 	var matchedVolumeName string
-	_, err := c.ds.GetVolumeRO(bv.Name)
+	canonicalBackupVolumeName := bv.Spec.VolumeName
+	backupTargetName := bv.Spec.BackupTargetName
+	_, err := c.ds.GetVolumeRO(canonicalBackupVolumeName)
 	if err == nil {
-		matchedVolumeName = bv.Name
-		key := bv.Namespace + "/" + bv.Name
+		matchedVolumeName = canonicalBackupVolumeName
+		key := bv.Namespace + "/" + canonicalBackupVolumeName
 		c.queue.Add(key)
 	}
 
 	// Update last backup for DR volumes
-	volumes, err := c.ds.ListDRVolumesWithBackupVolumeNameRO(bv.Name)
+	volumes, err := c.ds.ListDRVolumesWithBackupVolumeNameRO(canonicalBackupVolumeName)
 	if err != nil {
 		return
 	}
-	for volumeName := range volumes {
+	for volumeName, volume := range volumes {
 		if volumeName == matchedVolumeName {
 			// Skip the volume which be enqueued already
+			continue
+		}
+		if backupTargetName != volume.Spec.BackupTargetName {
 			continue
 		}
 
