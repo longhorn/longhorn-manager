@@ -464,6 +464,15 @@ func newStorageClass(name, provisioner string) *storagev1.StorageClass {
 	}
 }
 
+func newSnapshot(name string) *longhorn.Snapshot {
+	return &longhorn.Snapshot{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: TestNamespace,
+		},
+	}
+}
+
 func newBackup(name string) *longhorn.Backup {
 	return &longhorn.Backup{
 		ObjectMeta: metav1.ObjectMeta{
