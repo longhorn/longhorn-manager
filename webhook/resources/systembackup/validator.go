@@ -54,5 +54,6 @@ func (v *systemBackupValidator) Create(request *admission.Request, newObj runtim
 			return werror.NewBadRequest(fmt.Sprintf("cannot access %s without credential secret", backupType))
 		}
 	}
+
 	return nil
 }
