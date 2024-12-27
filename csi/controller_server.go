@@ -230,7 +230,7 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	if err = cs.checkAndPrepareBackingImage(volumeID, vol.BackingImage, volumeParameters); err != nil {
+	if err = cs.checkAndPrepareBackingImage(volumeID, vol.BackingImage, volumeParameters, vol.DataEngine); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
@@ -293,7 +293,7 @@ func (cs *ControllerServer) getBackupVolume(volumeName string) (*longhornclient.
 	return nil, nil
 }
 
-func (cs *ControllerServer) checkAndPrepareBackingImage(volumeName, backingImageName string, volumeParameters map[string]string) error {
+func (cs *ControllerServer) checkAndPrepareBackingImage(volumeName, backingImageName string, volumeParameters map[string]string, dataEngine string) error {
 	if backingImageName == "" {
 		return nil
 	}
@@ -337,6 +337,7 @@ func (cs *ControllerServer) checkAndPrepareBackingImage(volumeName, backingImage
 			ExpectedChecksum: biChecksum,
 			SourceType:       bidsType,
 			Parameters:       bidsParameters,
+			DataEngine:       dataEngine,
 		}
 
 		if minNumberOfCopies, ok := volumeParameters[longhorn.BackingImageParameterMinNumberOfCopies]; ok {
