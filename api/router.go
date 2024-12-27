@@ -126,8 +126,8 @@ func NewRouter(s *Server) *mux.Router {
 	r.Methods("PUT").Path("/v1/backuptargets").Handler(f(schemas, s.BackupTargetSyncAll))
 	r.Methods("DELETE").Path("/v1/backuptargets/{backupTargetName}").Handler(f(schemas, s.BackupTargetDelete))
 	backupTargetActions := map[string]func(http.ResponseWriter, *http.Request) error{
-		"backupTargetSync":   s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupTargetSync),
-		"backupTargetUpdate": s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(NodeHasDefaultEngineImage(s.m)), s.BackupTargetUpdate),
+		"backupTargetSync":   s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(OwnerIDFromBackupTarget(s.m)), s.BackupTargetSync),
+		"backupTargetUpdate": s.fwd.Handler(s.fwd.HandleProxyRequestByNodeID, s.fwd.GetHTTPAddressByNodeID(OwnerIDFromBackupTarget(s.m)), s.BackupTargetUpdate),
 	}
 	for name, action := range backupTargetActions {
 		r.Methods("POST").Path("/v1/backuptargets/{backupTargetName}").Queries("action", name).Handler(f(schemas, action))
