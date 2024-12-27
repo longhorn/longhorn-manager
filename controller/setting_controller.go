@@ -241,10 +241,6 @@ func (sc *SettingController) syncNonDangerZoneSettingsForManagedComponents(setti
 		if err := sc.syncUpgradeChecker(); err != nil {
 			return err
 		}
-	case types.SettingNameBackupTarget, types.SettingNameBackupTargetCredentialSecret, types.SettingNameBackupstorePollInterval:
-		if err := sc.syncDefaultBackupTarget(); err != nil {
-			return err
-		}
 	case types.SettingNameKubernetesClusterAutoscalerEnabled:
 		if err := sc.updateKubernetesClusterAutoscalerEnabled(); err != nil {
 			return err
@@ -399,65 +395,6 @@ func getResponsibleNodeID(ds *datastore.DataStore) (string, error) {
 	}
 	sort.Strings(responsibleNodes)
 	return responsibleNodes[0], nil
-}
-
-func (sc *SettingController) syncDefaultBackupTarget() (err error) {
-	defer func() {
-		err = errors.Wrap(err, "failed to sync backup target")
-	}()
-
-	// Get default backup target settings
-	targetSetting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameBackupTarget)
-	if err != nil {
-		return err
-	}
-
-	secretSetting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameBackupTargetCredentialSecret)
-	if err != nil {
-		return err
-	}
-
-	interval, err := sc.ds.GetSettingAsInt(types.SettingNameBackupstorePollInterval)
-	if err != nil {
-		return err
-	}
-	pollInterval := time.Duration(interval) * time.Second
-
-	backupTarget, err := sc.ds.GetBackupTarget(types.DefaultBackupTargetName)
-	if err != nil {
-		if !datastore.ErrorIsNotFound(err) {
-			return err
-		}
-
-		// Create the default BackupTarget CR if not present
-		backupTarget, err = sc.ds.CreateBackupTarget(&longhorn.BackupTarget{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: types.DefaultBackupTargetName,
-			},
-			Spec: longhorn.BackupTargetSpec{
-				BackupTargetURL:  targetSetting.Value,
-				CredentialSecret: secretSetting.Value,
-				PollInterval:     metav1.Duration{Duration: pollInterval},
-			},
-		})
-		if err != nil {
-			return errors.Wrap(err, "failed to create backup target")
-		}
-	}
-
-	existingBackupTarget := backupTarget.DeepCopy()
-	backupTarget.Spec.BackupTargetURL = targetSetting.Value
-	backupTarget.Spec.CredentialSecret = secretSetting.Value
-	backupTarget.Spec.PollInterval = metav1.Duration{Duration: pollInterval}
-	if !reflect.DeepEqual(existingBackupTarget.Spec, backupTarget.Spec) {
-		// Force sync backup target once the BackupTarget spec be updated
-		backupTarget.Spec.SyncRequestedAt = metav1.Time{Time: time.Now().UTC()}
-		if _, err = sc.ds.UpdateBackupTarget(backupTarget); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 // updateTaintToleration deletes all user-deployed and system-managed components immediately with the updated taint toleration.
@@ -1605,7 +1542,6 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameBackingImageCleanupWaitInterval:                          true,
 		types.SettingNameBackingImageRecoveryWaitInterval:                         true,
 		types.SettingNameBackupCompressionMethod:                                  true,
-		types.SettingNameBackupstorePollInterval:                                  true,
 		types.SettingNameBackupConcurrentLimit:                                    true,
 		types.SettingNameConcurrentAutomaticEngineUpgradePerNodeLimit:             true,
 		types.SettingNameConcurrentBackupRestorePerNodeLimit:                      true,
@@ -1663,10 +1599,6 @@ func (info *ClusterInfo) collectSettings() error {
 		settingName := types.SettingName(setting.Name)
 
 		switch {
-		// Setting that require extra processing to identify their general purpose
-		case settingName == types.SettingNameBackupTarget:
-			settingMap[setting.Name] = types.GetBackupTargetSchemeFromURL(setting.Value)
-
 		// Setting that should be collected as boolean (true if configured, false if not)
 		case includeAsBoolean[settingName]:
 			definition, ok := types.GetSettingDefinition(types.SettingName(setting.Name))
