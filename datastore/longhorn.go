@@ -6,6 +6,7 @@ import (
 	"math/bits"
 	"math/rand"
 	"net/url"
+	"reflect"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -55,7 +56,7 @@ func (s *DataStore) UpdateCustomizedSettings(defaultImages map[types.SettingName
 		return err
 	}
 
-	customizedDefaultSettings, err := types.GetCustomizedDefaultSettings(defaultSettingCM)
+	customizedDefaultSettings, customizedDefaultBackupTargetSettings, err := types.GetCustomizedDefaultSettings(defaultSettingCM)
 	if err != nil {
 		return err
 	}
@@ -71,6 +72,10 @@ func (s *DataStore) UpdateCustomizedSettings(defaultImages map[types.SettingName
 	}
 
 	if err := s.createNonExistingSettingCRsWithDefaultSetting(defaultSettingCM.ResourceVersion); err != nil {
+		return err
+	}
+
+	if err := s.syncDefaultBackupTargetResourceWithCustomizedSettings(customizedDefaultBackupTargetSettings); err != nil {
 		return err
 	}
 
@@ -210,9 +215,57 @@ func (s *DataStore) applyCustomizedDefaultSettingsToDefinitions(customizedDefaul
 	return nil
 }
 
+func (s *DataStore) syncDefaultBackupTargetResourceWithCustomizedSettings(customizedDefaultBackupTargetSettings map[string]string) error {
+	backupTarget := &longhorn.BackupTarget{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: types.DefaultBackupTargetName,
+		},
+		Spec: longhorn.BackupTargetSpec{
+			PollInterval: metav1.Duration{Duration: types.DefaultBackupstorePollInterval},
+		},
+	}
+	backupTargetURL := customizedDefaultBackupTargetSettings[string(types.SettingNameBackupTarget)]
+	backupTargetCredentialSecret := customizedDefaultBackupTargetSettings[string(types.SettingNameBackupTargetCredentialSecret)]
+	pollIntervalStr := customizedDefaultBackupTargetSettings[string(types.SettingNameBackupstorePollInterval)]
+
+	if backupTargetURL != "" {
+		backupTarget.Spec.BackupTargetURL = backupTargetURL
+	}
+	if backupTargetCredentialSecret != "" {
+		backupTarget.Spec.CredentialSecret = backupTargetCredentialSecret
+	}
+
+	if pollIntervalStr != "" {
+		pollIntervalAsInt, err := strconv.ParseInt(pollIntervalStr, 10, 64)
+		if err != nil {
+			return err
+		}
+		backupTarget.Spec.PollInterval = metav1.Duration{Duration: time.Duration(pollIntervalAsInt) * time.Second}
+	}
+
+	existingBackupTarget, err := s.GetBackupTarget(types.DefaultBackupTargetName)
+	if err != nil {
+		if !ErrorIsNotFound(err) {
+			return err
+		}
+		_, err = s.CreateBackupTarget(backupTarget)
+		if apierrors.IsAlreadyExists(err) {
+			return nil // Already exists, no need to return error
+		}
+		return err
+	}
+
+	if reflect.DeepEqual(existingBackupTarget.Spec, backupTarget.Spec) {
+		return nil // No changes, no need to update
+	}
+
+	existingBackupTarget.Spec = backupTarget.Spec
+	_, err = s.UpdateBackupTarget(existingBackupTarget)
+	return err
+}
+
 func (s *DataStore) syncSettingCRsWithCustomizedDefaultSettings(customizedDefaultSettings map[string]string, defaultSettingCMResourceVersion string) error {
 	for _, sName := range types.SettingNameList {
-
 		definition, ok := types.GetSettingDefinition(sName)
 		if !ok {
 			return fmt.Errorf("BUG: setting %v is not defined", sName)
@@ -289,65 +342,6 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 	}
 
 	switch sName {
-	case types.SettingNameBackupTarget:
-		vs, err := s.ListDRVolumesRO()
-		if err != nil {
-			return errors.Wrapf(err, "failed to list standby volume when modifying BackupTarget")
-		}
-		if len(vs) != 0 {
-			standbyVolumeNames := make([]string, len(vs))
-			for k := range vs {
-				standbyVolumeNames = append(standbyVolumeNames, k)
-			}
-			return fmt.Errorf("cannot modify BackupTarget since there are existing standby volumes: %v", standbyVolumeNames)
-		}
-		if err := s.ValidateBackupTargetURL(types.DefaultBackupTargetName, value); err != nil {
-			return err
-		}
-	case types.SettingNameBackupTargetCredentialSecret:
-		secret, err := s.GetSecretRO(s.namespace, value)
-		if err != nil {
-			if !apierrors.IsNotFound(err) {
-				return errors.Wrapf(err, "failed to get the secret before modifying backup target credential secret setting")
-			}
-			return nil
-		}
-		checkKeyList := []string{
-			types.AWSAccessKey,
-			types.AWSIAMRoleAnnotation,
-			types.AWSIAMRoleArn,
-			types.AWSAccessKey,
-			types.AWSSecretKey,
-			types.AWSEndPoint,
-			types.AWSCert,
-			types.CIFSUsername,
-			types.CIFSPassword,
-			types.AZBlobAccountName,
-			types.AZBlobAccountKey,
-			types.AZBlobEndpoint,
-			types.AZBlobCert,
-			types.HTTPSProxy,
-			types.HTTPProxy,
-			types.NOProxy,
-			types.VirtualHostedStyle,
-		}
-		for _, checkKey := range checkKeyList {
-			if value, ok := secret.Data[checkKey]; ok {
-				if strings.TrimSpace(string(value)) != string(value) {
-					switch {
-					case strings.TrimLeft(string(value), " ") != string(value):
-						return fmt.Errorf("invalid leading white space in %s", checkKey)
-					case strings.TrimRight(string(value), " ") != string(value):
-						return fmt.Errorf("invalid trailing white space in %s", checkKey)
-					case strings.TrimLeft(string(value), "\n") != string(value):
-						return fmt.Errorf("invalid leading new line in %s", checkKey)
-					case strings.TrimRight(string(value), "\n") != string(value):
-						return fmt.Errorf("invalid trailing new line in %s", checkKey)
-					}
-					return fmt.Errorf("invalid white space or new line in %s", checkKey)
-				}
-			}
-		}
 	case types.SettingNamePriorityClass:
 		if value != "" {
 			if _, err := s.GetPriorityClass(value); err != nil {
