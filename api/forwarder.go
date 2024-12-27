@@ -42,6 +42,20 @@ func OwnerIDFromVolume(m *manager.VolumeManager) func(req *http.Request) (string
 	}
 }
 
+func OwnerIDFromBackupTarget(m *manager.VolumeManager) func(req *http.Request) (string, error) {
+	return func(req *http.Request) (string, error) {
+		backupTargetName := mux.Vars(req)["backupTargetName"]
+		backupTarget, err := m.GetBackupTarget(backupTargetName)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to get backup target '%s'", backupTargetName)
+		}
+		if backupTarget == nil {
+			return "", nil
+		}
+		return backupTarget.Status.OwnerID, nil
+	}
+}
+
 // NodeHasDefaultEngineImage picks a node that is ready and has default engine image deployed.
 // To prevent the repeatedly forwarding the request around, prioritize the current node if it meets the requirement.
 func NodeHasDefaultEngineImage(m *manager.VolumeManager) func(req *http.Request) (string, error) {
