@@ -224,9 +224,9 @@ func (s *DataStore) syncDefaultBackupTargetResourceWithCustomizedSettings(custom
 			PollInterval: metav1.Duration{Duration: types.DefaultBackupstorePollInterval},
 		},
 	}
-	backupTargetURL := customizedDefaultBackupTargetSettings[string(types.SettingNameBackupTarget)]
-	backupTargetCredentialSecret := customizedDefaultBackupTargetSettings[string(types.SettingNameBackupTargetCredentialSecret)]
-	pollIntervalStr := customizedDefaultBackupTargetSettings[string(types.SettingNameBackupstorePollInterval)]
+	backupTargetURL, urlExists := customizedDefaultBackupTargetSettings[string(types.SettingNameBackupTarget)]
+	backupTargetCredentialSecret, secretExists := customizedDefaultBackupTargetSettings[string(types.SettingNameBackupTargetCredentialSecret)]
+	pollIntervalStr, pollInterExists := customizedDefaultBackupTargetSettings[string(types.SettingNameBackupstorePollInterval)]
 
 	if backupTargetURL != "" {
 		backupTarget.Spec.BackupTargetURL = backupTargetURL
@@ -254,6 +254,20 @@ func (s *DataStore) syncDefaultBackupTargetResourceWithCustomizedSettings(custom
 		}
 		return err
 	}
+
+	// If the settings are not in the longhorn-default-setting ConfigMap, use the existing values.
+	if !urlExists {
+		backupTarget.Spec.BackupTargetURL = existingBackupTarget.Spec.BackupTargetURL
+	}
+	if !secretExists {
+		backupTarget.Spec.CredentialSecret = existingBackupTarget.Spec.CredentialSecret
+	}
+	if !pollInterExists {
+		backupTarget.Spec.PollInterval = existingBackupTarget.Spec.PollInterval
+	}
+	syncTime := metav1.Time{Time: time.Now().UTC()}
+	backupTarget.Spec.SyncRequestedAt = syncTime
+	existingBackupTarget.Spec.SyncRequestedAt = syncTime
 
 	if reflect.DeepEqual(existingBackupTarget.Spec, backupTarget.Spec) {
 		return nil // No changes, no need to update
