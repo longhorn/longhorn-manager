@@ -63,9 +63,9 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.20.0
 	github.com/longhorn/backing-image-manager v1.8.0-rc1
-	github.com/longhorn/backupstore v0.0.0-20241221053416-1143c265f7b7
-	github.com/longhorn/go-common-libs v0.0.0-20241221040404-3f84afedcca8
-	github.com/longhorn/go-iscsi-helper v0.0.0-20241221094330-a9d2760ee13b
+	github.com/longhorn/backupstore v0.0.0-20241227145911-8de988de7eff
+	github.com/longhorn/go-common-libs v0.0.0-20241227132452-5a6ca245288a
+	github.com/longhorn/go-iscsi-helper v0.0.0-20241227145851-edeefa73a30d
 	github.com/longhorn/go-spdk-helper v0.0.0-20241218003628-6c9c87b76aa0
 	github.com/longhorn/longhorn-engine v1.8.0-rc1
 	github.com/longhorn/longhorn-instance-manager v1.8.0-rc1
@@ -110,7 +110,7 @@ require (
 	github.com/google/gnostic-models v0.6.9 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
-	github.com/longhorn/types v0.0.0-20241220104939-0d566342b51d // indirect
+	github.com/longhorn/types v0.0.0-20241225162202-00d3a5fd7502 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/moby/term v0.5.0 // indirect
@@ -206,7 +206,7 @@ require (
 	golang.org/x/term v0.27.0 // indirect
 	golang.org/x/text v0.21.0
 	google.golang.org/genproto v0.0.0-20240401170217-c3f982113cda // indirect
-	google.golang.org/protobuf v1.36.0
+	google.golang.org/protobuf v1.36.1
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	k8s.io/apiserver v0.32.0 // indirect
