@@ -56,10 +56,10 @@ type NodeController struct {
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
 
-	diskMonitor             monitor.Monitor
-	environmentCheckMonitor monitor.Monitor
+	diskMonitor             monitor.DiskMonitor
+	environmentCheckMonitor monitor.EnvironmentCheckMonitor
 
-	snapshotMonitor              monitor.Monitor
+	snapshotMonitor              monitor.SnapshotMonitor
 	snapshotChangeEventQueue     workqueue.TypedInterface[any]
 	snapshotChangeEventQueueLock sync.Mutex
 
@@ -474,10 +474,9 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	}
 
 	if nc.snapshotMonitor != nil {
-		data, _ := nc.snapshotMonitor.GetCollectedData()
-		status, ok := data.(monitor.SnapshotMonitorStatus)
-		if !ok {
-			log.Errorf("Failed to assert value from snapshot monitor: %v", data)
+		status, err := nc.snapshotMonitor.GetCollectedData()
+		if err != nil {
+			log.WithError(err).Errorf("Failed to collect status from snapshot monitor")
 		} else {
 			node.Status.SnapshotCheckStatus.LastPeriodicCheckedAt = status.LastSnapshotPeriodicCheckedAt
 		}
@@ -1274,34 +1273,36 @@ func BackingImageDiskFileCleanup(node *longhorn.Node, bi *longhorn.BackingImage,
 	}
 }
 
-func (nc *NodeController) createDiskMonitor() (monitor.Monitor, error) {
+func (nc *NodeController) createDiskMonitor() (monitor.DiskMonitor, error) {
 	if nc.diskMonitor != nil {
 		return nc.diskMonitor, nil
 	}
 
-	monitor, err := monitor.NewDiskMonitor(nc.logger, nc.ds, nc.controllerID, nc.enqueueNodeForMonitor)
+	mon, err := monitor.NewDiskMonitor(nc.logger, nc.ds, nc.controllerID, nc.enqueueNodeForMonitor)
 	if err != nil {
 		return nil, err
 	}
+	mon.Start()
 
-	nc.diskMonitor = monitor
+	nc.diskMonitor = mon
 
-	return monitor, nil
+	return mon, nil
 }
 
-func (nc *NodeController) createEnvironmentCheckMonitor() (monitor.Monitor, error) {
+func (nc *NodeController) createEnvironmentCheckMonitor() (monitor.EnvironmentCheckMonitor, error) {
 	if nc.environmentCheckMonitor != nil {
 		return nc.environmentCheckMonitor, nil
 	}
 
-	monitor, err := monitor.NewEnvironmentCheckMonitor(nc.logger, nc.ds, nc.controllerID, nc.enqueueNodeForMonitor)
+	mon, err := monitor.NewEnvironmentCheckMonitor(nc.logger, nc.ds, nc.controllerID, nc.enqueueNodeForMonitor)
 	if err != nil {
 		return nil, err
 	}
+	mon.Start()
 
-	nc.environmentCheckMonitor = monitor
+	nc.environmentCheckMonitor = mon
 
-	return monitor, nil
+	return mon, nil
 }
 
 func (nc *NodeController) enqueueNodeForMonitor(key string) {
@@ -1440,12 +1441,11 @@ func (nc *NodeController) createOrphan(node *longhorn.Node, diskName, replicaDat
 }
 
 func (nc *NodeController) syncWithDiskMonitor(node *longhorn.Node) (map[string]*monitor.CollectedDiskInfo, error) {
-	v, err := nc.diskMonitor.GetCollectedData()
+	collectedDiskInfo, err := nc.diskMonitor.GetCollectedData()
 	if err != nil {
 		return map[string]*monitor.CollectedDiskInfo{}, err
 	}
 
-	collectedDiskInfo := v.(map[string]*monitor.CollectedDiskInfo)
 	if matched := isDiskMatched(node, collectedDiskInfo); !matched {
 		return map[string]*monitor.CollectedDiskInfo{},
 			errors.New("mismatching disks in node resource object and monitor collected data")
@@ -1455,14 +1455,9 @@ func (nc *NodeController) syncWithDiskMonitor(node *longhorn.Node) (map[string]*
 }
 
 func (nc *NodeController) syncWithEnvironmentCheckMonitor() ([]longhorn.Condition, error) {
-	v, err := nc.environmentCheckMonitor.GetCollectedData()
+	conditions, err := nc.environmentCheckMonitor.GetCollectedData()
 	if err != nil {
-		return []longhorn.Condition{}, err
-	}
-
-	conditions, ok := v.([]longhorn.Condition)
-	if !ok {
-		return []longhorn.Condition{}, errors.New("failed to convert the collected data to conditions")
+		return nil, errors.Wrapf(err, "failed to convert the collected data to conditions")
 	}
 
 	return conditions, nil
@@ -1582,7 +1577,7 @@ func isDiskMatched(node *longhorn.Node, collectedDiskInfo map[string]*monitor.Co
 	return true
 }
 
-func (nc *NodeController) createSnapshotMonitor() (mon monitor.Monitor, err error) {
+func (nc *NodeController) createSnapshotMonitor() (mon monitor.SnapshotMonitor, err error) {
 	defer func() {
 		if err == nil {
 			err = nc.snapshotMonitor.UpdateConfiguration(map[string]interface{}{})
@@ -1597,6 +1592,7 @@ func (nc *NodeController) createSnapshotMonitor() (mon monitor.Monitor, err erro
 	if err != nil {
 		return nil, err
 	}
+	mon.Start()
 
 	nc.snapshotMonitor = mon
 

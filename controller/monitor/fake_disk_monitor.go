@@ -21,10 +21,10 @@ const (
 	TestOrphanedReplicaDirectoryName = "test-volume-r-000000000"
 )
 
-func NewFakeDiskMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName string, syncCallback func(key string)) (*DiskMonitor, error) {
+func NewFakeDiskMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName string, syncCallback func(key string)) (DiskMonitor, error) {
 	ctx, quit := context.WithCancel(context.Background())
 
-	m := &DiskMonitor{
+	m := &diskMonitorImpl{
 		baseMonitor: newBaseMonitor(ctx, quit, logger, ds, DiskMonitorSyncPeriod),
 
 		nodeName:        nodeName,

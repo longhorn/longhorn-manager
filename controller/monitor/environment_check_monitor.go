@@ -45,11 +45,16 @@ var (
 	nfsProtocolVersions = map[string]bool{"4.0": true, "4.1": true, "4.2": true}
 )
 
-type EnvironmentCheckMonitor struct {
+type EnvironmentCheckMonitor Monitor[[]longhorn.Condition]
+
+var _ EnvironmentCheckMonitor = &environmentCheckMonitorImpl{}
+
+type environmentCheckMonitorImpl struct {
 	*baseMonitor
 
 	nodeName string
 
+	startOnce         sync.Once
 	collectedDataLock sync.RWMutex
 	collectedData     *CollectedEnvironmentCheckInfo
 
@@ -60,10 +65,10 @@ type CollectedEnvironmentCheckInfo struct {
 	conditions []longhorn.Condition
 }
 
-func NewEnvironmentCheckMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName string, syncCallback func(key string)) (*EnvironmentCheckMonitor, error) {
+func NewEnvironmentCheckMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName string, syncCallback func(key string)) (EnvironmentCheckMonitor, error) {
 	ctx, quit := context.WithCancel(context.Background())
 
-	m := &EnvironmentCheckMonitor{
+	m := &environmentCheckMonitorImpl{
 		baseMonitor: newBaseMonitor(ctx, quit, logger, ds, EnvironmentCheckMonitorSyncPeriod),
 
 		nodeName: nodeName,
@@ -74,39 +79,44 @@ func NewEnvironmentCheckMonitor(logger logrus.FieldLogger, ds *datastore.DataSto
 		syncCallback: syncCallback,
 	}
 
-	go m.Start()
-
 	return m, nil
 }
 
-func (m *EnvironmentCheckMonitor) Start() {
-	if err := wait.PollUntilContextCancel(m.ctx, m.syncPeriod, true, func(context.Context) (bool, error) {
-		if err := m.run(struct{}{}); err != nil {
-			m.logger.WithError(err).Error("Stopped monitoring environment check")
+func (m *environmentCheckMonitorImpl) Start() {
+	m.startOnce.Do(func() {
+		if err := m.run(); err != nil {
+			m.logger.WithError(err).Error("Initial environment monitoring failed")
 		}
-		return false, nil
-	}); err != nil {
-		if errors.Is(err, context.Canceled) {
-			m.logger.WithError(err).Warning("Environment check monitor is stopped")
-		} else {
-			m.logger.WithError(err).Error("Failed to start environment check monitor")
-		}
-	}
+		go func() {
+			if err := wait.PollUntilContextCancel(m.ctx, m.syncPeriod, false, func(context.Context) (bool, error) {
+				if err := m.run(); err != nil {
+					m.logger.WithError(err).Error("Stopped monitoring environment check")
+				}
+				return false, nil
+			}); err != nil {
+				if errors.Is(err, context.Canceled) {
+					m.logger.WithError(err).Warning("Environment check monitor is stopped")
+				} else {
+					m.logger.WithError(err).Error("Failed to start environment check monitor")
+				}
+			}
+		}()
+	})
 }
 
-func (m *EnvironmentCheckMonitor) Stop() {
+func (m *environmentCheckMonitorImpl) Stop() {
 	m.quit()
 }
 
-func (m *EnvironmentCheckMonitor) RunOnce() error {
-	return m.run(struct{}{})
+func (m *environmentCheckMonitorImpl) RunOnce() error {
+	return m.run()
 }
 
-func (m *EnvironmentCheckMonitor) UpdateConfiguration(map[string]interface{}) error {
+func (m *environmentCheckMonitorImpl) UpdateConfiguration(map[string]interface{}) error {
 	return nil
 }
 
-func (m *EnvironmentCheckMonitor) GetCollectedData() (interface{}, error) {
+func (m *environmentCheckMonitorImpl) GetCollectedData() ([]longhorn.Condition, error) {
 	m.collectedDataLock.RLock()
 	defer m.collectedDataLock.RUnlock()
 
@@ -118,7 +128,7 @@ func (m *EnvironmentCheckMonitor) GetCollectedData() (interface{}, error) {
 	return data, nil
 }
 
-func (m *EnvironmentCheckMonitor) run(value interface{}) error {
+func (m *environmentCheckMonitorImpl) run() error {
 	node, err := m.ds.GetNode(m.nodeName)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get longhorn node %v", m.nodeName)
@@ -139,7 +149,7 @@ func (m *EnvironmentCheckMonitor) run(value interface{}) error {
 	return nil
 }
 
-func (m *EnvironmentCheckMonitor) collectEnvironmentCheckData(node *longhorn.Node) *CollectedEnvironmentCheckInfo {
+func (m *environmentCheckMonitorImpl) collectEnvironmentCheckData(node *longhorn.Node) *CollectedEnvironmentCheckInfo {
 	kubeNode, err := m.ds.GetKubernetesNodeRO(node.Name)
 	if err != nil {
 		return &CollectedEnvironmentCheckInfo{
@@ -150,7 +160,7 @@ func (m *EnvironmentCheckMonitor) collectEnvironmentCheckData(node *longhorn.Nod
 	return m.environmentCheck(kubeNode)
 }
 
-func (m *EnvironmentCheckMonitor) environmentCheck(kubeNode *corev1.Node) *CollectedEnvironmentCheckInfo {
+func (m *environmentCheckMonitorImpl) environmentCheck(kubeNode *corev1.Node) *CollectedEnvironmentCheckInfo {
 	collectedData := &CollectedEnvironmentCheckInfo{
 		conditions: []longhorn.Condition{},
 	}
@@ -176,7 +186,7 @@ func (m *EnvironmentCheckMonitor) environmentCheck(kubeNode *corev1.Node) *Colle
 	return collectedData
 }
 
-func (m *EnvironmentCheckMonitor) syncPackagesInstalled(kubeNode *corev1.Node, namespaces []lhtypes.Namespace, collectedData *CollectedEnvironmentCheckInfo) {
+func (m *environmentCheckMonitorImpl) syncPackagesInstalled(kubeNode *corev1.Node, namespaces []lhtypes.Namespace, collectedData *CollectedEnvironmentCheckInfo) {
 	osImage := strings.ToLower(kubeNode.Status.NodeInfo.OSImage)
 
 	packageProbeExecutables := make(map[string]string)
@@ -244,7 +254,7 @@ func (m *EnvironmentCheckMonitor) syncPackagesInstalled(kubeNode *corev1.Node, n
 		fmt.Sprintf("All required packages %v are installed", installedPackages))
 }
 
-func (m *EnvironmentCheckMonitor) syncPackagesInstalledTalosLinux(namespaces []lhtypes.Namespace, collectedData *CollectedEnvironmentCheckInfo) {
+func (m *environmentCheckMonitorImpl) syncPackagesInstalledTalosLinux(namespaces []lhtypes.Namespace, collectedData *CollectedEnvironmentCheckInfo) {
 	type validateCommand struct {
 		binary string
 		args   []string
@@ -320,7 +330,7 @@ func (m *EnvironmentCheckMonitor) syncPackagesInstalledTalosLinux(namespaces []l
 	}
 }
 
-func (m *EnvironmentCheckMonitor) syncMultipathd(namespaces []lhtypes.Namespace, collectedData *CollectedEnvironmentCheckInfo) {
+func (m *environmentCheckMonitorImpl) syncMultipathd(namespaces []lhtypes.Namespace, collectedData *CollectedEnvironmentCheckInfo) {
 	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
 	if err != nil {
 		collectedData.conditions = types.SetCondition(collectedData.conditions, longhorn.NodeConditionTypeMultipathd, longhorn.ConditionStatusFalse,
@@ -339,7 +349,7 @@ func (m *EnvironmentCheckMonitor) syncMultipathd(namespaces []lhtypes.Namespace,
 	collectedData.conditions = types.SetCondition(collectedData.conditions, longhorn.NodeConditionTypeMultipathd, longhorn.ConditionStatusTrue, "", "")
 }
 
-func (m *EnvironmentCheckMonitor) checkPackageInstalled(packageProbeExecutables map[string]string, namespaces []lhtypes.Namespace) (installed, notInstalled []string, err error) {
+func (m *environmentCheckMonitorImpl) checkPackageInstalled(packageProbeExecutables map[string]string, namespaces []lhtypes.Namespace) (installed, notInstalled []string, err error) {
 	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
 	if err != nil {
 		return nil, nil, err
@@ -357,7 +367,7 @@ func (m *EnvironmentCheckMonitor) checkPackageInstalled(packageProbeExecutables 
 	return installed, notInstalled, nil
 }
 
-func (m *EnvironmentCheckMonitor) checkHugePages(kubeNode *corev1.Node, collectedData *CollectedEnvironmentCheckInfo) {
+func (m *environmentCheckMonitorImpl) checkHugePages(kubeNode *corev1.Node, collectedData *CollectedEnvironmentCheckInfo) {
 	hugePageLimitInMiB, err := m.ds.GetSettingAsInt(types.SettingNameV2DataEngineHugepageLimit)
 	if err != nil {
 		m.logger.Debugf("Failed to fetch v2-data-engine-hugepage-limit setting, using default value: %d", 2048)
@@ -391,7 +401,7 @@ func (m *EnvironmentCheckMonitor) checkHugePages(kubeNode *corev1.Node, collecte
 	)
 }
 
-func (m *EnvironmentCheckMonitor) checkKernelModulesLoaded(kubeNode *corev1.Node, isV2DataEngine bool, collectedData *CollectedEnvironmentCheckInfo) {
+func (m *environmentCheckMonitorImpl) checkKernelModulesLoaded(kubeNode *corev1.Node, isV2DataEngine bool, collectedData *CollectedEnvironmentCheckInfo) {
 	modulesToCheck := make(map[string]string)
 	for k, v := range kernelModules {
 		modulesToCheck[k] = v
@@ -452,7 +462,7 @@ func checkModulesLoadedUsingkmod(modules map[string]string) (map[string]string, 
 	return notFoundModules, nil
 }
 
-func (m *EnvironmentCheckMonitor) checkModulesLoadedByConfigFile(modules map[string]string, kernelVersion string) ([]string, error) {
+func (m *environmentCheckMonitorImpl) checkModulesLoadedByConfigFile(modules map[string]string, kernelVersion string) ([]string, error) {
 	kernelConfigMap, err := lhsys.GetBootKernelConfigMap(kernelConfigDir, kernelVersion)
 	if err != nil {
 		if kernelConfigMap, err = lhsys.GetProcKernelConfigMap(lhtypes.HostProcDirectory); err != nil {
@@ -474,7 +484,7 @@ func (m *EnvironmentCheckMonitor) checkModulesLoadedByConfigFile(modules map[str
 	return notLoadedModules, nil
 }
 
-func (m *EnvironmentCheckMonitor) checkNFSMountConfigFile(supported map[string]bool, configFilePathPrefix string) (actualDefaultVer string, isAllowed bool, err error) {
+func (m *environmentCheckMonitorImpl) checkNFSMountConfigFile(supported map[string]bool, configFilePathPrefix string) (actualDefaultVer string, isAllowed bool, err error) {
 	var nfsVer string
 	nfsMajor, nfsMinor, err := lhnfs.GetSystemDefaultNFSVersion(configFilePathPrefix)
 	if err == nil {
@@ -490,7 +500,7 @@ func (m *EnvironmentCheckMonitor) checkNFSMountConfigFile(supported map[string]b
 	return actualDefaultVer, supported[nfsVer], nil
 }
 
-func (m *EnvironmentCheckMonitor) checkKernelModuleEnabled(module, kmodName string, kernelConfigMap map[string]string) (bool, error) {
+func (m *environmentCheckMonitorImpl) checkKernelModuleEnabled(module, kmodName string, kernelConfigMap map[string]string) (bool, error) {
 	enabled, exists := kernelConfigMap[module]
 	if !exists {
 		return false, nil
@@ -526,7 +536,7 @@ func getModulesConfigsList(modulesMap map[string]string, needModules bool) []str
 	return modulesConfigs
 }
 
-func (m *EnvironmentCheckMonitor) syncNFSClientVersion(kubeNode *corev1.Node, collectedData *CollectedEnvironmentCheckInfo) {
+func (m *environmentCheckMonitorImpl) syncNFSClientVersion(kubeNode *corev1.Node, collectedData *CollectedEnvironmentCheckInfo) {
 	notLoadedModules, err := m.checkModulesLoadedByConfigFile(nfsClientVersions, kubeNode.Status.NodeInfo.KernelVersion)
 	if err != nil {
 		collectedData.conditions = types.SetCondition(collectedData.conditions, longhorn.NodeConditionTypeNFSClientInstalled, longhorn.ConditionStatusFalse,

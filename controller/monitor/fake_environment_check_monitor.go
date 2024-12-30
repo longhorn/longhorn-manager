@@ -26,7 +26,7 @@ type FakeEnvironmentCheckMonitor struct {
 	syncCallback func(key string)
 }
 
-func NewFakeEnvironmentCheckMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName string, syncCallback func(key string)) (*FakeEnvironmentCheckMonitor, error) {
+func NewFakeEnvironmentCheckMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName string, syncCallback func(key string)) (EnvironmentCheckMonitor, error) {
 	ctx, quit := context.WithCancel(context.Background())
 
 	m := &FakeEnvironmentCheckMonitor{
@@ -45,7 +45,7 @@ func NewFakeEnvironmentCheckMonitor(logger logrus.FieldLogger, ds *datastore.Dat
 
 func (m *FakeEnvironmentCheckMonitor) Start() {
 	if err := wait.PollUntilContextCancel(m.ctx, m.syncPeriod, true, func(context.Context) (bool, error) {
-		if err := m.run(struct{}{}); err != nil {
+		if err := m.run(); err != nil {
 			m.logger.WithError(err).Error("Stopped monitoring environment check")
 		}
 		return false, nil
@@ -63,14 +63,14 @@ func (m *FakeEnvironmentCheckMonitor) Stop() {
 }
 
 func (m *FakeEnvironmentCheckMonitor) RunOnce() error {
-	return m.run(struct{}{})
+	return m.run()
 }
 
 func (m *FakeEnvironmentCheckMonitor) UpdateConfiguration(map[string]interface{}) error {
 	return nil
 }
 
-func (m *FakeEnvironmentCheckMonitor) GetCollectedData() (interface{}, error) {
+func (m *FakeEnvironmentCheckMonitor) GetCollectedData() ([]longhorn.Condition, error) {
 	m.collectedDataLock.RLock()
 	defer m.collectedDataLock.RUnlock()
 
@@ -82,7 +82,7 @@ func (m *FakeEnvironmentCheckMonitor) GetCollectedData() (interface{}, error) {
 	return data, nil
 }
 
-func (m *FakeEnvironmentCheckMonitor) run(value interface{}) error {
+func (m *FakeEnvironmentCheckMonitor) run() error {
 	node, err := m.ds.GetNode(m.nodeName)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get longhorn node %v", m.nodeName)
