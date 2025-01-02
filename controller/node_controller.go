@@ -810,10 +810,13 @@ func (nc *NodeController) updateReadyDiskStatusReadyCondition(node *longhorn.Nod
 		diskStatus := diskStatusMap[diskName]
 
 		if diskStatus.DiskUUID == info.DiskUUID {
-			// on the default disks this will be updated constantly since there is always something generating new disk usage (logs, etc)
-			// We also don't need byte/block precisions for this instead we can round down to the next 10/100mb
-			const truncateTo = 100 * 1024 * 1024
-			usableStorage := (diskInfoMap[diskName].DiskStat.StorageAvailable / truncateTo) * truncateTo
+			usableStorage := diskInfoMap[diskName].DiskStat.StorageAvailable
+			if diskStatus.Type == longhorn.DiskTypeFilesystem {
+				// on the default disks this will be updated constantly since there is always something generating new disk usage (logs, etc)
+				// We also don't need byte/block precisions for this instead we can round down to the next 10/100mb
+				const truncateTo = 100 * 1024 * 1024
+				usableStorage = (diskInfoMap[diskName].DiskStat.StorageAvailable / truncateTo) * truncateTo
+			}
 			diskStatus.StorageAvailable = usableStorage
 			diskStatus.StorageMaximum = diskInfoMap[diskName].DiskStat.StorageMaximum
 			diskStatus.InstanceManagerName = diskInfoMap[diskName].InstanceManagerName
