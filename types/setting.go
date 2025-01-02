@@ -10,19 +10,20 @@ import (
 	"github.com/pkg/errors"
 	"github.com/robfig/cron"
 	"github.com/sirupsen/logrus"
-	"gopkg.in/yaml.v2"
 
 	corev1 "k8s.io/api/core/v1"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/longhorn/longhorn-manager/meta"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 const (
-	DefaultSettingYAMLFileName = "default-setting.yaml"
+	DefaultSettingYAMLFileName  = "default-setting.yaml"
+	DefaultResourceYAMLFileName = "default-resource.yaml"
 
 	ValueEmpty   = "none"
 	ValueUnknown = "unknown"
@@ -138,9 +139,9 @@ const (
 	SettingNameDefaultMinNumberOfBackingImageCopies                     = SettingName("default-min-number-of-backing-image-copies")
 	SettingNameBackupExecutionTimeout                                   = SettingName("backup-execution-timeout")
 	SettingNameRWXVolumeFastFailover                                    = SettingName("rwx-volume-fast-failover")
-	// These three backup target settings are used in the "longhorn-default-setting" ConfigMap
+	// These three backup target parameters are used in the "longhorn-default-resource" ConfigMap
 	// to update the default BackupTarget resource.
-	// Longhorn won't create the Setting resources for the three settings.
+	// Longhorn won't create the Setting resources for these three parameters.
 	SettingNameBackupTarget                 = SettingName("backup-target")
 	SettingNameBackupTargetCredentialSecret = SettingName("backup-target-credential-secret")
 	SettingNameBackupstorePollInterval      = SettingName("backupstore-poll-interval")
@@ -1569,25 +1570,16 @@ func isValidChoice(choices []string, value string) bool {
 	return len(choices) == 0
 }
 
-func GetCustomizedDefaultSettings(defaultSettingCM *corev1.ConfigMap) (defaultSettings, defaultBackupTargetSettings map[string]string, err error) {
+func GetCustomizedDefaultSettings(defaultSettingCM *corev1.ConfigMap) (defaultSettings map[string]string, err error) {
 	defaultSettingYAMLData := []byte(defaultSettingCM.Data[DefaultSettingYAMLFileName])
 
-	defaultBackupTargetSettings = map[string]string{}
-
-	defaultSettings, err = getDefaultSettingFromYAML(defaultSettingYAMLData)
+	defaultSettings, err = util.GetDataContentFromYAML(defaultSettingYAMLData)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// won't accept partially valid result
 	for name, value := range defaultSettings {
-		if name == string(SettingNameBackupTarget) ||
-			name == string(SettingNameBackupTargetCredentialSecret) ||
-			name == string(SettingNameBackupstorePollInterval) {
-			defaultBackupTargetSettings[name] = value
-			continue
-		}
-
 		value = strings.Trim(value, " ")
 		definition, exist := GetSettingDefinition(SettingName(name))
 		if !exist {
@@ -1634,17 +1626,6 @@ func GetCustomizedDefaultSettings(defaultSettingCM *corev1.ConfigMap) (defaultSe
 	}
 	if err := ValidateCPUReservationValues(SettingNameV2DataEngineGuaranteedInstanceManagerCPU, v2DataEngineGuaranteedInstanceManagerCPU); err != nil {
 		logrus.WithError(err).Error("Customized settings V2DataEngineGuaranteedInstanceManagerCPU is invalid, will give up using it")
-		defaultSettings = map[string]string{}
-	}
-
-	return defaultSettings, defaultBackupTargetSettings, nil
-}
-
-func getDefaultSettingFromYAML(defaultSettingYAMLData []byte) (map[string]string, error) {
-	defaultSettings := map[string]string{}
-
-	if err := yaml.Unmarshal(defaultSettingYAMLData, &defaultSettings); err != nil {
-		logrus.WithError(err).Errorf("Failed to unmarshal customized default settings from yaml data %v, will give up using them", string(defaultSettingYAMLData))
 		defaultSettings = map[string]string{}
 	}
 

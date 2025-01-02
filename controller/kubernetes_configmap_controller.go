@@ -211,6 +211,11 @@ func (kc *KubernetesConfigMapController) reconcile(namespace, cfmName string) er
 		if err := kc.ds.UpdateCustomizedSettings(nil); err != nil {
 			return errors.Wrap(err, "failed to update built-in settings with customized values")
 		}
+	// Users tries to update the default backup target with customized values using Helm at runtime.
+	case types.DefaultDefaultResourceConfigMapName:
+		if err := kc.ds.CreateOrUpdateDefaultBackupTarget(); err != nil {
+			return errors.Wrap(err, "failed to create or update default backup target with customized values")
+		}
 	}
 
 	return nil

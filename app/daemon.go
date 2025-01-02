@@ -331,6 +331,10 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
+	if err := clients.Datastore.CreateOrUpdateDefaultBackupTarget(); err != nil {
+		return err
+	}
+
 	if err := updateRegistrySecretName(m); err != nil {
 		return err
 	}
