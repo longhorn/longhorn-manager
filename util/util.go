@@ -877,3 +877,16 @@ func GetDataEngineForDiskType(diskType longhorn.DiskType) longhorn.DataEngineTyp
 	return longhorn.DataEngineTypeV1
 
 }
+
+// GetDataContentFromYAML unmarshals the data content YAML data into a map
+func GetDataContentFromYAML(configMapYAMLData []byte) (map[string]string, error) {
+	customizedDataMap := map[string]string{}
+
+	if err := yaml.Unmarshal(configMapYAMLData, &customizedDataMap); err != nil {
+		logrus.WithError(err).Errorf("Failed to unmarshal customized data content from yaml data %v, will give up using them", string(configMapYAMLData))
+		customizedDataMap = map[string]string{}
+		return nil, err
+	}
+
+	return customizedDataMap, nil
+}
