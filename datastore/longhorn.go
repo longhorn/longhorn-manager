@@ -4473,7 +4473,7 @@ func (s *DataStore) ListBackupVolumesWithVolumeNameRO(volumeName string) (map[st
 // GetBackupVolumeByBackupTargetAndVolumeRO returns a backup volume object using the given backup target and volume name in the cluster
 func (s *DataStore) GetBackupVolumeByBackupTargetAndVolumeRO(backupTargetName, volumeName string) (*longhorn.BackupVolume, error) {
 	if backupTargetName == "" || volumeName == "" {
-		return nil, fmt.Errorf("backup target name and volume name cannot be empty")
+		return nil, apierrors.NewNotFound(schema.GroupResource{Resource: "backupVolumes"}, "")
 	}
 	selector, err := getBackupVolumeWithBackupTargetSelector(backupTargetName, volumeName)
 	if err != nil {
@@ -4485,7 +4485,7 @@ func (s *DataStore) GetBackupVolumeByBackupTargetAndVolumeRO(backupTargetName, v
 		return nil, err
 	}
 
-	if len(list) >= 2 {
+	if len(list) > 1 {
 		return nil, fmt.Errorf("datastore: found more than one backup volume with backup target %v and volume %v", backupTargetName, volumeName)
 	}
 

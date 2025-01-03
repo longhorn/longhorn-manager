@@ -285,7 +285,9 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 			systemBackupController.UploadSystemBackup(systemBackup, archievePath, tempDir, backupTargetClient)
 
 		default:
-			err = systemBackupController.reconcile(tc.systemBackupName, backupTargetClient, nil)
+			defaultBackupTarget, err := lhClient.LonghornV1beta2().BackupTargets(TestNamespace).Get(context.TODO(), types.DefaultBackupTargetName, metav1.GetOptions{})
+			c.Assert(err, IsNil)
+			err = systemBackupController.reconcile(tc.systemBackupName, backupTargetClient, defaultBackupTarget)
 			if tc.expectError {
 				c.Assert(err, NotNil)
 			} else {

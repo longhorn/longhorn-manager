@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -41,6 +42,10 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 	}
 
 	if err := upgradeBackingImageDataSources(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	if err := upgradeSystemBackups(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
 
@@ -221,6 +226,33 @@ func upgradeBackingImages(namespace string, lhClient *lhclientset.Clientset, res
 			for diskUUID := range bi.Spec.DiskFileSpecMap {
 				bi.Spec.DiskFileSpecMap[diskUUID].DataEngine = longhorn.DataEngineTypeV1
 			}
+		}
+	}
+
+	return nil
+}
+
+func upgradeSystemBackups(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade system backup failed")
+	}()
+
+	sbMap, err := upgradeutil.ListAndUpdateSystemBackupsInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn system backups during the system backup upgrade")
+	}
+
+	defaultBackupTarget, err := lhClient.LonghornV1beta2().BackupTargets(namespace).Get(context.TODO(), types.DefaultBackupTargetName, metav1.GetOptions{})
+	if err != nil {
+		return errors.Wrapf(err, "failed to get default backup target")
+	}
+
+	for _, sb := range sbMap {
+		if sb.OwnerReferences == nil {
+			sb.OwnerReferences = datastore.GetOwnerReferencesForBackupTarget(defaultBackupTarget)
 		}
 	}
 

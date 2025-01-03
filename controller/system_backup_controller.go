@@ -62,6 +62,7 @@ const (
 	SystemBackupErrTimeoutUpload   = "timeout uploading system backup"
 	SystemBackupErrUpload          = "failed to upload system backup file"
 	SystemBackupErrVolumeBackup    = "failed to backup volumes"
+	SystemBackupErrBackupTarget    = "failed to get default backup target"
 
 	SystemBackupMsgCreatedArchieveFmt  = "Created system backup file: %v"
 	SystemBackupMsgDeletingRemote      = "Deleting system backup in backup target"
@@ -268,13 +269,16 @@ func (c *SystemBackupController) syncSystemBackup(key string) (err error) {
 	}
 
 	backupTarget, err := c.ds.GetDefaultBackupTargetRO()
-	if err != nil {
+	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
 
-	backupTargetClient, err := newBackupTargetClientFromDefaultEngineImage(c.ds, backupTarget)
-	if err != nil {
-		return err
+	var backupTargetClient *engineapi.BackupTargetClient
+	if backupTarget != nil {
+		backupTargetClient, err = newBackupTargetClientFromDefaultEngineImage(c.ds, backupTarget)
+		if err != nil {
+			return err
+		}
 	}
 
 	return c.reconcile(name, backupTargetClient, backupTarget)
@@ -360,6 +364,15 @@ func (c *SystemBackupController) reconcile(name string, backupTargetClient engin
 			constant.EventReasonDeleting, SystemBackupMsgDeletingRemote,
 		)
 		return
+	}
+
+	// If the system backup is in the final state, we don't need to do anything for the backup target not found.
+	if backupTarget == nil && !systemBackupInFinalState(systemBackup) {
+		c.updateSystemBackupRecord(record,
+			systemBackupRecordTypeError, longhorn.SystemBackupStateError,
+			constant.EventReasonFailedStarting, SystemBackupErrBackupTarget,
+		)
+		return fmt.Errorf("default backup target not found")
 	}
 
 	tempBackupArchivePath := filepath.Join(SystemBackupTempDir, systemBackup.Name+types.SystemBackupExtension)
@@ -470,6 +483,12 @@ func (c *SystemBackupController) reconcile(name string, backupTargetClient engin
 	}
 
 	return nil
+}
+
+func systemBackupInFinalState(sb *longhorn.SystemBackup) bool {
+	return sb.Status.State == longhorn.SystemBackupStateDeleting ||
+		sb.Status.State == longhorn.SystemBackupStateReady ||
+		sb.Status.State == longhorn.SystemBackupStateError
 }
 
 func getSystemBackupVersionExistInRemoteBackupTarget(systemBackup *longhorn.SystemBackup, backupTargetClient engineapi.SystemBackupOperationInterface) (string, error) {
