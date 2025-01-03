@@ -43,6 +43,7 @@ const (
 	LonghornKindRecurringJob        = "RecurringJob"
 	LonghornKindSetting             = "Setting"
 	LonghornKindSupportBundle       = "SupportBundle"
+	LonghornKindSystemBackup        = "SystemBackup"
 	LonghornKindSystemRestore       = "SystemRestore"
 	LonghornKindOrphan              = "Orphan"
 
