@@ -771,13 +771,15 @@ func (c *UninstallController) deleteReplicas(replicas map[string]*longhorn.Repli
 // deleteLeftBackups deletes the backup having no backup volume
 func (c *UninstallController) deleteLeftBackups(backup *longhorn.Backup) (err error) {
 	volumeName, ok := backup.Labels[types.LonghornLabelBackupVolume]
-	if !ok {
+	if !ok || backup.Status.BackupTargetName == "" {
 		// directly delete it if there is even no backup volume label
+		// or backup status is not updated (backup state is not BackupStateCompleted)
 		if err = c.ds.DeleteBackup(backup.Name); err != nil {
 			if !apierrors.IsNotFound(err) {
 				return errors.Wrapf(err, "failed to delete backup %v", backup.Name)
 			}
 		}
+		return nil
 	}
 	_, err = c.ds.GetBackupVolumeByBackupTargetAndVolumeRO(backup.Status.BackupTargetName, volumeName)
 	if err != nil && apierrors.IsNotFound(err) {
