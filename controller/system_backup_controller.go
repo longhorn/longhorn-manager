@@ -53,6 +53,7 @@ const (
 	SystemBackupErrGenerateYAML    = "failed to generate resource YAMLs"
 	SystemBackupErrGetFmt          = "failed to get %v"
 	SystemBackupErrGetConfig       = "failed to get system backup config"
+	SystemBackupErrGetBackupTarget = "failed to get backup target"
 	SystemBackupErrMkdir           = "failed to create system backup file directory"
 	SystemBackupErrRemoveAll       = "failed to remove system backup directory"
 	SystemBackupErrRemove          = "failed to remove system backup file"
@@ -268,13 +269,16 @@ func (c *SystemBackupController) syncSystemBackup(key string) (err error) {
 	}
 
 	backupTarget, err := c.ds.GetDefaultBackupTargetRO()
-	if err != nil {
+	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
 
-	backupTargetClient, err := newBackupTargetClientFromDefaultEngineImage(c.ds, backupTarget)
-	if err != nil {
-		return err
+	var backupTargetClient *engineapi.BackupTargetClient
+	if backupTarget != nil {
+		backupTargetClient, err = newBackupTargetClientFromDefaultEngineImage(c.ds, backupTarget)
+		if err != nil {
+			return err
+		}
 	}
 
 	return c.reconcile(name, backupTargetClient, backupTarget)
@@ -360,6 +364,15 @@ func (c *SystemBackupController) reconcile(name string, backupTargetClient engin
 			constant.EventReasonDeleting, SystemBackupMsgDeletingRemote,
 		)
 		return
+	}
+
+	// If the system backup is in the final state, we don't need to do anything for the backup target not found.
+	if backupTarget == nil && !systemBackupInFinalState(systemBackup) {
+		c.updateSystemBackupRecord(record,
+			systemBackupRecordTypeError, longhorn.SystemBackupStateError,
+			constant.EventReasonFailedStarting, SystemBackupErrGetBackupTarget,
+		)
+		return fmt.Errorf(string(SystemBackupErrGetBackupTarget)+": %v", types.DefaultBackupTargetName)
 	}
 
 	tempBackupArchivePath := filepath.Join(SystemBackupTempDir, systemBackup.Name+types.SystemBackupExtension)
@@ -470,6 +483,14 @@ func (c *SystemBackupController) reconcile(name string, backupTargetClient engin
 	}
 
 	return nil
+}
+
+func systemBackupInFinalState(sb *longhorn.SystemBackup) bool {
+	// The state SystemBackupStateDeleting, as a final state, will clean up the system backup files locally and remotely if necessary,
+	// and the system backup will be deleted once the finalizer is removed.
+	return sb.Status.State == longhorn.SystemBackupStateDeleting ||
+		sb.Status.State == longhorn.SystemBackupStateReady ||
+		sb.Status.State == longhorn.SystemBackupStateError
 }
 
 func getSystemBackupVersionExistInRemoteBackupTarget(systemBackup *longhorn.SystemBackup, backupTargetClient engineapi.SystemBackupOperationInterface) (string, error) {
