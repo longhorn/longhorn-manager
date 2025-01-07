@@ -369,14 +369,9 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	if !backupTarget.DeletionTimestamp.IsZero() {
 		stopTimer(backupTarget.Name)
 
-		if err := btc.cleanupBackupVolumes(backupTarget.Name); err != nil {
-			return errors.Wrap(err, "failed to clean up BackupVolumes")
+		if err := btc.cleanUpAllBackupRelatedResources(backupTarget.Name); err != nil {
+			return err
 		}
-
-		if err := btc.cleanupBackupBackingImages(backupTarget.Name); err != nil {
-			return errors.Wrap(err, "failed to clean up BackupBackingImages")
-		}
-
 		return btc.ds.RemoveFinalizerForBackupTarget(backupTarget)
 	}
 
@@ -437,20 +432,9 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 			longhorn.BackupTargetConditionTypeUnavailable, longhorn.ConditionStatusTrue,
 			longhorn.BackupTargetConditionReasonUnavailable, "backup target URL is empty")
 
-		if err := btc.cleanupBackupVolumes(backupTarget.Name); err != nil {
-			return errors.Wrap(err, "failed to clean up BackupVolumes")
+		if err := btc.cleanUpAllBackupRelatedResources(backupTarget.Name); err != nil {
+			return err
 		}
-
-		if err := btc.cleanupBackupBackingImages(backupTarget.Name); err != nil {
-			return errors.Wrap(err, "failed to clean up BackupBackingImages")
-		}
-
-		if backupTarget.Name == types.DefaultBackupTargetName {
-			if err := btc.cleanupSystemBackups(); err != nil {
-				return errors.Wrap(err, "failed to clean up SystemBackups")
-			}
-		}
-
 		return nil
 	}
 
@@ -479,8 +463,25 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	}
 
 	if backupTarget.Name == types.DefaultBackupTargetName {
-		if err = btc.syncSystemBackup(info.backupStoreSystemBackups, log); err != nil {
+		if err = btc.syncSystemBackup(backupTarget, info.backupStoreSystemBackups, log); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+func (btc *BackupTargetController) cleanUpAllBackupRelatedResources(backupTargetName string) error {
+	if err := btc.cleanupBackupVolumes(backupTargetName); err != nil {
+		return errors.Wrap(err, "failed to clean up BackupVolumes")
+	}
+
+	if err := btc.cleanupBackupBackingImages(backupTargetName); err != nil {
+		return errors.Wrap(err, "failed to clean up BackupBackingImages")
+	}
+
+	if backupTargetName == types.DefaultBackupTargetName {
+		if err := btc.cleanupSystemBackups(); err != nil {
+			return errors.Wrap(err, "failed to clean up SystemBackups")
 		}
 	}
 
@@ -700,7 +701,7 @@ func (btc *BackupTargetController) syncBackupBackingImage(backupTarget *longhorn
 	return nil
 }
 
-func (btc *BackupTargetController) syncSystemBackup(backupStoreSystemBackups systembackupstore.SystemBackups, log logrus.FieldLogger) error {
+func (btc *BackupTargetController) syncSystemBackup(backupTarget *longhorn.BackupTarget, backupStoreSystemBackups systembackupstore.SystemBackups, log logrus.FieldLogger) error {
 	clusterSystemBackups, err := btc.ds.ListSystemBackups()
 	if err != nil {
 		return errors.Wrap(err, "failed to list SystemBackups")
@@ -734,6 +735,7 @@ func (btc *BackupTargetController) syncSystemBackup(backupStoreSystemBackups sys
 					// to get the config from the backup target.
 					types.GetVersionLabelKey(): longhornVersion,
 				},
+				OwnerReferences: datastore.GetOwnerReferencesForBackupTarget(backupTarget),
 			},
 		}
 		_, err = btc.ds.CreateSystemBackup(systemBackup)

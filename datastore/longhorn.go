@@ -4485,7 +4485,7 @@ func (s *DataStore) GetBackupVolumeByBackupTargetAndVolumeRO(backupTargetName, v
 		return nil, err
 	}
 
-	if len(list) >= 2 {
+	if len(list) > 1 {
 		return nil, fmt.Errorf("datastore: found more than one backup volume with backup target %v and volume %v", backupTargetName, volumeName)
 	}
 
