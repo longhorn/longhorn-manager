@@ -747,8 +747,14 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 
 	snapshot, err := bc.ds.GetSnapshotRO(backup.Spec.SnapshotName)
 	if err != nil {
-		backup.Status.State = longhorn.BackupStatePending
-		backup.Status.Messages[MessageTypeReconcileInfo] = fmt.Sprintf(FailedToGetSnapshotMessage, backup.Spec.SnapshotName)
+		if apierrors.IsNotFound(err) {
+			backup.Status.Error = fmt.Sprintf("Snapshot %v not found", backup.Spec.SnapshotName)
+			backup.Status.State = longhorn.BackupStateError
+			backup.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
+		} else {
+			backup.Status.State = longhorn.BackupStatePending
+			backup.Status.Messages[MessageTypeReconcileInfo] = fmt.Sprintf(FailedToGetSnapshotMessage, backup.Spec.SnapshotName)
+		}
 		return nil, errors.Wrapf(err, "failed to get the snapshot %v before enabling backup monitor", backup.Spec.SnapshotName)
 	}
 	if snapshot != nil {
