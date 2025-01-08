@@ -656,7 +656,7 @@ func (job *Job) doRecurringBackup() (err error) {
 		case string(longhorn.BackupStateCompleted):
 			complete = true
 			job.logger.Infof("Completed creating backup %v", info.Id)
-		case string(longhorn.BackupStateNew), string(longhorn.BackupStateInProgress):
+		case string(longhorn.BackupStateNew), string(longhorn.BackupStatePending), string(longhorn.BackupStateInProgress):
 			job.logger.Infof("Creating backup %v, current progress %v", info.Id, info.Progress)
 		case string(longhorn.BackupStateError), string(longhorn.BackupStateUnknown):
 			return fmt.Errorf("failed to create backup %v: %v", info.Id, info.Error)
