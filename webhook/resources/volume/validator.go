@@ -167,9 +167,6 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 
 	// TODO: remove this check when we support the following features for SPDK volumes
 	if types.IsDataEngineV2(volume.Spec.DataEngine) {
-		if volume.Spec.Encrypted {
-			return werror.NewInvalidError("encrypted volume is not supported for data engine v2", "")
-		}
 		if types.IsDataFromVolume(volume.Spec.DataSource) {
 			return werror.NewInvalidError("clone is not supported for data engine v2", "")
 		}
