@@ -46,6 +46,7 @@ const (
 )
 
 type Job struct {
+	name           string
 	logger         logrus.FieldLogger
 	lhClient       lhclientset.Interface
 	namespace      string
@@ -195,20 +196,19 @@ func startVolumeJob(
 	log.Info("Creating job")
 
 	snapshotName := sliceStringSafely(types.GetCronJobNameForRecurringJob(jobName), 0, 8) + "-" + util.UUID()
-	job, err := newJob(
-		logger,
-		managerURL,
-		volumeName,
-		snapshotName,
-		jobLabelMap,
-		jobParameterMap,
-		jobRetain,
-		jobTask,
-		jobExecutionCount)
+
+	job, err := newJob(jobName, logger, managerURL, jobRetain, jobTask, jobExecutionCount)
 	if err != nil {
 		log.WithError(err).Error("Failed to create new job for volume")
 		return err
 	}
+
+	job, err = initializeVolumeJob(job, volumeName, snapshotName, jobLabelMap, jobParameterMap)
+	if err != nil {
+		log.WithError(err).Error("Failed to initialize job for volume")
+		return err
+	}
+
 	err = job.run()
 	if err != nil {
 		log.WithError(err).Errorf("Failed to run job for volume")
@@ -229,7 +229,7 @@ func sliceStringSafely(s string, begin, end int) string {
 	return s[begin:end]
 }
 
-func newJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName string, labels map[string]string, parameters map[string]string, retain int, task longhorn.RecurringJobType, executionCount int) (*Job, error) {
+func newJob(name string, logger logrus.FieldLogger, managerURL string, retain int, task longhorn.RecurringJobType, executionCount int) (*Job, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		return nil, fmt.Errorf("failed detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
@@ -253,16 +253,6 @@ func newJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName stri
 		return nil, errors.Wrap(err, "could not create longhorn-manager api client")
 	}
 
-	logger = logger.WithFields(logrus.Fields{
-		"namespace":      namespace,
-		"volumeName":     volumeName,
-		"snapshotName":   snapshotName,
-		"labels":         labels,
-		"retain":         retain,
-		"task":           task,
-		"executionCount": executionCount,
-	})
-
 	scheme := runtime.NewScheme()
 	if err := longhorn.SchemeBuilder.AddToScheme(scheme); err != nil {
 		return nil, errors.Wrap(err, "failed to create scheme")
@@ -274,13 +264,10 @@ func newJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName stri
 	}
 
 	return &Job{
+		name:           name,
 		logger:         logger,
 		lhClient:       lhClient,
 		namespace:      namespace,
-		volumeName:     volumeName,
-		snapshotName:   snapshotName,
-		labels:         labels,
-		parameters:     parameters,
 		executionCount: executionCount,
 		retain:         retain,
 		task:           task,
@@ -288,6 +275,30 @@ func newJob(logger logrus.FieldLogger, managerURL, volumeName, snapshotName stri
 
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-recurring-job"}),
 	}, nil
+}
+
+func initializeVolumeJob(job *Job, volumeName, snapshotName string, labels map[string]string, parameters map[string]string) (*Job, error) {
+	labelJSON, err := json.Marshal(labels)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get JSON encoding for labels")
+	}
+	logger := job.logger.WithFields(logrus.Fields{
+		"job":            job.name,
+		"namespace":      job.namespace,
+		"volumeName":     volumeName,
+		"snapshotName":   snapshotName,
+		"labels":         string(labelJSON),
+		"retain":         job.retain,
+		"task":           job.task,
+		"executionCount": job.executionCount,
+	})
+	job.logger = logger
+	job.volumeName = volumeName
+	job.snapshotName = snapshotName
+	job.labels = labels
+	job.parameters = parameters
+
+	return job, nil
 }
 
 func (job *Job) run() (err error) {
