@@ -13,6 +13,8 @@ import (
 
 	"github.com/longhorn/longhorn-manager/app/recurringjob"
 	"github.com/longhorn/longhorn-manager/types"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 func RecurringJobCmd() cli.Command {
@@ -71,5 +73,10 @@ func recurringJob(c *cli.Context) (err error) {
 		return errors.Wrap(err, "failed to initialize job")
 	}
 
-	return recurringjob.StartVolumeJobs(job, recurringJob)
+	switch recurringJob.Spec.Task {
+	case longhorn.RecurringJobTypeSystemBackup:
+		return recurringjob.StartSystemBackupJob(job, recurringJob)
+	default:
+		return recurringjob.StartVolumeJobs(job, recurringJob)
+	}
 }
