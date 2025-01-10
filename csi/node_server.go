@@ -488,7 +488,8 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Errorf(codes.Internal, "failed to evaluate device filesystem %v format: %v", devicePath, err)
 	}
 
-	log.Infof("Volume %v device %v contains filesystem of format %v", volumeID, devicePath, diskFormat)
+	dataEngine := volume.DataEngine
+	log.Infof("Volume %v (%v) device %v contains filesystem of format %v", volumeID, dataEngine, devicePath, diskFormat)
 
 	if volume.Encrypted {
 		secrets := req.GetSecrets()
@@ -515,7 +516,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 			}
 		}
 
-		cryptoDevice := crypto.VolumeMapper(volumeID)
+		cryptoDevice := crypto.VolumeMapper(volumeID, dataEngine)
 		log.Infof("Volume %s requires crypto device %s", volumeID, cryptoDevice)
 
 		// check if the crypto device is open at the null path.
@@ -525,12 +526,12 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 			return nil, status.Errorf(codes.Internal, "failed to check if the crypto device %s for volume %s is mapped to the null path: %v", cryptoDevice, volumeID, err.Error())
 		} else if mappedToNullPath {
 			log.Warnf("Closing active crypto device %s for volume %s since the volume is not closed properly before", cryptoDevice, volumeID)
-			if err := crypto.CloseVolume(volumeID); err != nil {
+			if err := crypto.CloseVolume(volumeID, dataEngine); err != nil {
 				return nil, status.Errorf(codes.Internal, "failed to close active crypto device %s for volume %s: %v ", cryptoDevice, volumeID, err.Error())
 			}
 		}
 
-		if err := crypto.OpenVolume(volumeID, devicePath, passphrase); err != nil {
+		if err := crypto.OpenVolume(volumeID, dataEngine, devicePath, passphrase); err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
 
@@ -628,19 +629,20 @@ func (ns *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstag
 	// optionally try to retrieve the volume and check if it's an RWX volume
 	// if it is we let the share-manager clean up the crypto device
 	volume, _ := ns.apiClient.Volume.ById(volumeID)
-	if volume == nil || types.IsDataEngineV1(longhorn.DataEngineType(volume.DataEngine)) {
-		// Currently, only "RWO v1 volumes" and "block device with v1 volume.Migratable is true" supports encryption.
-		sharedAccess := requiresSharedAccess(volume, nil)
-		cleanupCryptoDevice := !sharedAccess || (sharedAccess && volume.Migratable)
-		if cleanupCryptoDevice {
-			cryptoDevice := crypto.VolumeMapper(volumeID)
-			if isOpen, err := crypto.IsDeviceOpen(cryptoDevice); err != nil {
+	dataEngine := string(longhorn.DataEngineTypeV1)
+	if volume != nil {
+		dataEngine = volume.DataEngine
+	}
+	sharedAccess := requiresSharedAccess(volume, nil)
+	cleanupCryptoDevice := !sharedAccess || (sharedAccess && volume.Migratable)
+	if cleanupCryptoDevice {
+		cryptoDevice := crypto.VolumeMapper(volumeID, dataEngine)
+		if isOpen, err := crypto.IsDeviceOpen(cryptoDevice); err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		} else if isOpen {
+			log.Infof("Volume %s closing active crypto device %s", volumeID, cryptoDevice)
+			if err := crypto.CloseVolume(volumeID, dataEngine); err != nil {
 				return nil, status.Error(codes.Internal, err.Error())
-			} else if isOpen {
-				log.Infof("Volume %s closing active crypto device %s", volumeID, cryptoDevice)
-				if err := crypto.CloseVolume(volumeID); err != nil {
-					return nil, status.Error(codes.Internal, err.Error())
-				}
 			}
 		}
 	}
@@ -820,6 +822,7 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 		return nil, fmt.Errorf("unknown filesystem type for volume %v node expansion", volumeID)
 	}
 
+	dataEngine := volume.DataEngine
 	devicePath, err = func() (string, error) {
 		if !volume.Encrypted {
 			return devicePath, nil
@@ -827,7 +830,7 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 		if diskFormat != "crypto_LUKS" {
 			return "", status.Errorf(codes.InvalidArgument, "unsupported disk encryption format %v", diskFormat)
 		}
-		devicePath = crypto.VolumeMapper(volumeID)
+		devicePath = crypto.VolumeMapper(volumeID, dataEngine)
 
 		// Need to enable feature gate in v1.25:
 		// https://github.com/kubernetes/enhancements/issues/3107
@@ -847,7 +850,7 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 		}
 
 		// blindly resize the encrypto device
-		if err := crypto.ResizeEncryptoDevice(volumeID, passphrase); err != nil {
+		if err := crypto.ResizeEncryptoDevice(volumeID, dataEngine, passphrase); err != nil {
 			return "", status.Errorf(codes.InvalidArgument, "failed to resize crypto device %v for volume %v node expansion: %v", devicePath, volumeID, err)
 		}
 
