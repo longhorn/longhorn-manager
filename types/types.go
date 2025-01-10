@@ -235,7 +235,7 @@ const (
 )
 
 const (
-	RecurringJobBackupParameterFullBackupInterval = "full-backup-interval"
+	RecurringJobParameterFullBackupInterval = "full-backup-interval"
 )
 
 const (

@@ -5012,7 +5012,7 @@ func ValidateRecurringJobParameters(task longhorn.RecurringJobType, parameters m
 
 func validateRecurringJobBackupParameter(key, value string) error {
 	switch key {
-	case types.RecurringJobBackupParameterFullBackupInterval:
+	case types.RecurringJobParameterFullBackupInterval:
 		_, err := strconv.Atoi(value)
 		if err != nil {
 			return errors.Wrapf(err, "%v:%v is not number", key, value)
