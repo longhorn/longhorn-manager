@@ -741,9 +741,15 @@ func (job *Job) waitForBackupProcessStart(timeout int) error {
 	snapshot := job.snapshotName
 
 	for i := 0; i < timeout; i++ {
+		time.Sleep(WaitInterval)
+
 		volume, err := volumeAPI.ById(volumeName)
 		if err != nil {
 			return err
+		}
+
+		if volume.BackupStatus == nil {
+			continue
 		}
 
 		for _, status := range volume.BackupStatus {
@@ -751,7 +757,6 @@ func (job *Job) waitForBackupProcessStart(timeout int) error {
 				return nil
 			}
 		}
-		time.Sleep(WaitInterval)
 	}
 	return fmt.Errorf("timeout waiting for the backup of the snapshot %v of volume %v to start", snapshot, volumeName)
 }
