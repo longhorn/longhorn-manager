@@ -133,18 +133,8 @@ func upgradeBackups(namespace string, lhClient *lhclientset.Clientset, resourceM
 	}
 
 	for _, b := range backupMap {
-		backupTargetName := types.DefaultBackupTargetName
-		vol, err := lhClient.LonghornV1beta2().Volumes(namespace).Get(context.TODO(), b.Status.VolumeName, metav1.GetOptions{})
-		if err != nil {
-			if !apierrors.IsNotFound(err) {
-				return errors.Wrapf(err, "failed to get volume %v of backup %v", b.Status.VolumeName, b.Name)
-			}
-		} else {
-			if vol.Spec.BackupTargetName != "" {
-				backupTargetName = vol.Spec.BackupTargetName
-			}
-		}
-		b.Labels = addLabel(b.Labels, types.LonghornLabelBackupTarget, backupTargetName)
+		// all backups from v1.7.x should only have the one backup target, default backup target `default`.
+		b.Labels = addLabel(b.Labels, types.LonghornLabelBackupTarget, types.DefaultBackupTargetName)
 	}
 
 	return nil
@@ -281,19 +271,8 @@ func upgradeBackupStatus(namespace string, lhClient *lhclientset.Clientset, reso
 	}
 
 	for _, b := range backupMap {
-		backupTargetName := types.DefaultBackupTargetName
-		vol, err := lhClient.LonghornV1beta2().Volumes(namespace).Get(context.TODO(), b.Status.VolumeName, metav1.GetOptions{})
-		if err != nil {
-			if !apierrors.IsNotFound(err) {
-				return errors.Wrapf(err, "failed to get volume %v of backup %v", b.Status.VolumeName, b.Name)
-			}
-		} else {
-			if vol.Spec.BackupTargetName != "" {
-				backupTargetName = vol.Spec.BackupTargetName
-			}
-		}
-
-		b.Status.BackupTargetName = backupTargetName
+		// all backups from v1.7.x should only have the one backup target, default backup target `default`.
+		b.Status.BackupTargetName = types.DefaultBackupTargetName
 	}
 	return nil
 }
