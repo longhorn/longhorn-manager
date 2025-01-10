@@ -103,3 +103,25 @@ func (job *Job) GetSettingAsBool(name types.SettingName) (bool, error) {
 
 	return value, nil
 }
+
+func (job *Job) CreateSystemBackup(systemBackup *longhorn.SystemBackup) (*longhorn.SystemBackup, error) {
+	return job.lhClient.LonghornV1beta2().SystemBackups(job.namespace).Create(context.TODO(), systemBackup, metav1.CreateOptions{})
+}
+
+func (job *Job) DeleteSystemBackup(name string) error {
+	return job.lhClient.LonghornV1beta2().SystemBackups(job.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+}
+
+func (job *Job) GetSystemBackup(name string) (*longhorn.SystemBackup, error) {
+	return job.lhClient.LonghornV1beta2().SystemBackups(job.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+func (job *Job) ListSystemBackup() (*longhorn.SystemBackupList, error) {
+	labelKey := types.GetRecurringJobLabelKey(types.LonghornLabelRecurringJob, string(longhorn.RecurringJobTypeSystemBackup))
+	label := fmt.Sprintf("%s=%s", labelKey, job.name)
+
+	job.logger.Infof("Getting SystemBackups by label %v", label)
+	return job.lhClient.LonghornV1beta2().SystemBackups(job.namespace).List(context.TODO(), metav1.ListOptions{
+		LabelSelector: label,
+	})
+}

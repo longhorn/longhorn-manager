@@ -42,6 +42,17 @@ type VolumeJob struct {
 	concurrent   int               // Number of concurrent operations allowed for the job.
 }
 
+// SystemBackupJob is a job for system backup tasks.
+// It embeds the Job struct and includes additional fields specific to system backup operations.
+type SystemBackupJob struct {
+	*Job // Embedding the base Job struct.
+
+	logger logrus.FieldLogger // Log messages related to the volume job.
+
+	systemBackupName   string                                        // Name of the SystemBackup.
+	volumeBackupPolicy longhorn.SystemBackupCreateVolumeBackupPolicy // backup policy used for the SystemBackup.Spec.
+}
+
 // NameWithTimestamp for resource cleanup.
 type NameWithTimestamp struct {
 	Name      string

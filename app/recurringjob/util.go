@@ -155,3 +155,14 @@ func sliceStringSafely(s string, begin, end int) string {
 	}
 	return s[begin:end]
 }
+
+func systemBackupsToNameWithTimestamps(systemBackupList *longhorn.SystemBackupList) []NameWithTimestamp {
+	result := []NameWithTimestamp{}
+	for _, systemBackup := range systemBackupList.Items {
+		result = append(result, NameWithTimestamp{
+			Name:      systemBackup.Name,
+			Timestamp: systemBackup.Status.CreatedAt.Time,
+		})
+	}
+	return result
+}
