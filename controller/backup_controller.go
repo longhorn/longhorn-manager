@@ -36,12 +36,16 @@ import (
 
 const (
 	MessageTypeReconcileInfo = "info"
-)
 
-const (
-	WaitForSnapshotMessage     = "Waiting for the snapshot %v to be ready"
-	WaitForEngineMessage       = "Waiting for the engine %v to be ready"
-	FailedToGetSnapshotMessage = "Failed to get the Snapshot %v"
+	WaitForSnapshotMessage          = "Waiting for the snapshot %v to be ready"
+	FailedWaitingForSnapshotMessage = "Failed waiting for the snapshot %v to be ready"
+	WaitForEngineMessage            = "Waiting for the engine %v to be ready"
+	FailedWaitingForEngineMessage   = "Failed waiting for the engine %v to be ready"
+	FailedToGetSnapshotMessage      = "Failed to get the Snapshot %v"
+
+	creationRetryCounterExpiredDuration = 10 * time.Minute
+	creationRetryCounterGCDuration      = 45 * time.Second
+	maxCreationRetry                    = 5
 )
 
 type BackupController struct {
@@ -63,6 +67,8 @@ type BackupController struct {
 	cacheSyncs []cache.InformerSynced
 
 	proxyConnCounter util.Counter
+
+	creationRetryCounter *util.TimedCounter
 }
 
 func NewBackupController(
@@ -96,6 +102,8 @@ func NewBackupController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-backup-controller"}),
 
 		proxyConnCounter: proxyConnCounter,
+
+		creationRetryCounter: util.NewTimedCounter(creationRetryCounterExpiredDuration),
 	}
 
 	var err error
@@ -138,6 +146,7 @@ func (bc *BackupController) Run(workers int, stopCh <-chan struct{}) {
 	for i := 0; i < workers; i++ {
 		go wait.Until(bc.worker, time.Second, stopCh)
 	}
+	go bc.creationRetryCounter.RunGC(creationRetryCounterGCDuration, stopCh)
 	<-stopCh
 }
 
@@ -316,6 +325,8 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 
 		// Disable monitor regardless of backup state
 		bc.disableBackupMonitor(backup.Name)
+
+		bc.creationRetryCounter.DeleteEntry(backup.Name)
 
 		if backup.Status.State == longhorn.BackupStateError || backup.Status.State == longhorn.BackupStateUnknown {
 			bc.eventRecorder.Eventf(backup, corev1.EventTypeWarning, string(backup.Status.State), "Failed backup %s has been deleted: %s", backup.Name, backup.Status.Error)
@@ -740,6 +751,14 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 	if engine.Status.CurrentState != longhorn.InstanceStateRunning ||
 		engine.Spec.DesireState != longhorn.InstanceStateRunning ||
 		volume.Status.State != longhorn.VolumeStateAttached {
+		bc.creationRetryCounter.IncreaseCount(backup.Name)
+		if bc.creationRetryCounter.GetCount(backup.Name) >= maxCreationRetry {
+			backup.Status.Error = fmt.Sprintf(FailedWaitingForEngineMessage, engine.Name)
+			backup.Status.State = longhorn.BackupStateError
+			backup.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
+			bc.creationRetryCounter.DeleteEntry(backup.Name)
+			return nil, fmt.Errorf("failed waiting for the engine %v to be running before enabling backup monitor", engine.Name)
+		}
 		backup.Status.State = longhorn.BackupStatePending
 		backup.Status.Messages[MessageTypeReconcileInfo] = fmt.Sprintf(WaitForEngineMessage, engine.Name)
 		return nil, fmt.Errorf("waiting for the engine %v to be running before enabling backup monitor", engine.Name)
@@ -747,10 +766,13 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 
 	snapshot, err := bc.ds.GetSnapshotRO(backup.Spec.SnapshotName)
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			backup.Status.Error = fmt.Sprintf("Snapshot %v not found", backup.Spec.SnapshotName)
+		bc.creationRetryCounter.IncreaseCount(backup.Name)
+		msg := fmt.Sprintf(FailedToGetSnapshotMessage, backup.Spec.SnapshotName)
+		if bc.creationRetryCounter.GetCount(backup.Name) >= maxCreationRetry {
+			backup.Status.Error = msg
 			backup.Status.State = longhorn.BackupStateError
 			backup.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
+			bc.creationRetryCounter.DeleteEntry(backup.Name)
 		} else {
 			backup.Status.State = longhorn.BackupStatePending
 			backup.Status.Messages[MessageTypeReconcileInfo] = fmt.Sprintf(FailedToGetSnapshotMessage, backup.Spec.SnapshotName)
@@ -759,6 +781,14 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 	}
 	if snapshot != nil {
 		if !snapshot.Status.ReadyToUse {
+			bc.creationRetryCounter.IncreaseCount(backup.Name)
+			if bc.creationRetryCounter.GetCount(backup.Name) >= maxCreationRetry {
+				backup.Status.Error = fmt.Sprintf(FailedWaitingForSnapshotMessage, backup.Spec.SnapshotName)
+				backup.Status.State = longhorn.BackupStateError
+				backup.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
+				bc.creationRetryCounter.DeleteEntry(backup.Name)
+				return nil, fmt.Errorf("failed waiting for the snapshot %v to be ready before enabling backup monitor", backup.Spec.SnapshotName)
+			}
 			backup.Status.State = longhorn.BackupStatePending
 			backup.Status.Messages[MessageTypeReconcileInfo] = fmt.Sprintf(WaitForSnapshotMessage, backup.Spec.SnapshotName)
 			return nil, fmt.Errorf("waiting for the snapshot %v to be ready before enabling backup monitor", backup.Spec.SnapshotName)
@@ -774,6 +804,9 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 		backup.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
 		return nil, err
 	}
+
+	// backup creation is succeeded, remove it from the counter
+	bc.creationRetryCounter.DeleteEntry(backup.Name)
 	return monitor, nil
 }
 
