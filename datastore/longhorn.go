@@ -33,6 +33,7 @@ import (
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
+	lhutils "github.com/longhorn/go-common-libs/utils"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
@@ -5017,6 +5018,16 @@ func validateRecurringJobBackupParameter(key, value string) error {
 		if err != nil {
 			return errors.Wrapf(err, "%v:%v is not number", key, value)
 		}
+	case types.RecurringJobParameterVolumeBackupPolicy:
+		validValues := []longhorn.SystemBackupCreateVolumeBackupPolicy{
+			longhorn.SystemBackupCreateVolumeBackupPolicyAlways,
+			longhorn.SystemBackupCreateVolumeBackupPolicyIfNotPresent,
+			longhorn.SystemBackupCreateVolumeBackupPolicyDisabled,
+		}
+		if !lhutils.Contains(validValues, longhorn.SystemBackupCreateVolumeBackupPolicy(value)) {
+			return fmt.Errorf("%v:%v is not a valid value: supported values: %v", key, value, validValues)
+		}
+
 	default:
 		return fmt.Errorf("%v:%v is not a valid parameter", key, value)
 	}
@@ -5031,7 +5042,8 @@ func isValidRecurringJobTask(task longhorn.RecurringJobType) bool {
 		task == longhorn.RecurringJobTypeSnapshot ||
 		task == longhorn.RecurringJobTypeSnapshotForceCreate ||
 		task == longhorn.RecurringJobTypeSnapshotCleanup ||
-		task == longhorn.RecurringJobTypeSnapshotDelete
+		task == longhorn.RecurringJobTypeSnapshotDelete ||
+		task == longhorn.RecurringJobTypeSystemBackup
 }
 
 // ValidateRecurringJobs validates data and formats for recurring jobs

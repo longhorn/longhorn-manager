@@ -236,6 +236,7 @@ const (
 
 const (
 	RecurringJobParameterFullBackupInterval = "full-backup-interval"
+	RecurringJobParameterVolumeBackupPolicy = "volume-backup-policy"
 )
 
 const (
