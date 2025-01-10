@@ -1,4 +1,4 @@
-package app
+package util
 
 import (
 	"github.com/pkg/errors"
@@ -11,7 +11,7 @@ import (
 	typedv1core "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
-func createEventBroadcaster(config *rest.Config) (record.EventBroadcaster, error) {
+func CreateEventBroadcaster(config *rest.Config) (record.EventBroadcaster, error) {
 	kubeClient, err := clientset.NewForConfig(config)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get k8s client")

@@ -1,0 +1,105 @@
+package recurringjob
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"strconv"
+
+	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
+
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/rest"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/longhorn/longhorn-manager/types"
+
+	apputil "github.com/longhorn/longhorn-manager/app/util"
+	longhornclient "github.com/longhorn/longhorn-manager/client"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
+)
+
+func NewJob(name string, logger logrus.FieldLogger, managerURL string, recurringJob *longhorn.RecurringJob) (*Job, error) {
+	namespace := os.Getenv(types.EnvPodNamespace)
+	if namespace == "" {
+		return nil, fmt.Errorf("failed detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
+	}
+
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get client config")
+	}
+	lhClient, err := lhclientset.NewForConfig(config)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get clientset")
+	}
+
+	clientOpts := &longhornclient.ClientOpts{
+		Url:     managerURL,
+		Timeout: HTTPClientTimout,
+	}
+	apiClient, err := longhornclient.NewRancherClient(clientOpts)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not create longhorn-manager api client")
+	}
+
+	scheme := runtime.NewScheme()
+	if err := longhorn.SchemeBuilder.AddToScheme(scheme); err != nil {
+		return nil, errors.Wrap(err, "failed to create scheme")
+	}
+
+	eventBroadcaster, err := apputil.CreateEventBroadcaster(config)
+	if err != nil {
+		return nil, err
+	}
+
+	parameters := map[string]string{}
+	if recurringJob.Spec.Parameters != nil {
+		parameters = recurringJob.Spec.Parameters
+	}
+
+	return &Job{
+		api:      apiClient,
+		lhClient: lhClient,
+
+		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-recurring-job"}),
+		logger:        logger,
+
+		name:           name,
+		namespace:      namespace,
+		retain:         recurringJob.Spec.Retain,
+		task:           recurringJob.Spec.Task,
+		parameters:     parameters,
+		executionCount: recurringJob.Status.ExecutionCount,
+	}, nil
+}
+
+func (job *Job) GetVolume(name string) (*longhorn.Volume, error) {
+	return job.lhClient.LonghornV1beta2().Volumes(job.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+func (job *Job) GetEngineImage(name string) (*longhorn.EngineImage, error) {
+	return job.lhClient.LonghornV1beta2().EngineImages(job.namespace).Get(context.TODO(), name, metav1.GetOptions{})
+}
+
+func (job *Job) UpdateVolumeStatus(v *longhorn.Volume) (*longhorn.Volume, error) {
+	return job.lhClient.LonghornV1beta2().Volumes(job.namespace).UpdateStatus(context.TODO(), v, metav1.UpdateOptions{})
+}
+
+// GetSettingAsBool returns boolean of the setting value searching by name.
+func (job *Job) GetSettingAsBool(name types.SettingName) (bool, error) {
+	obj, err := job.lhClient.LonghornV1beta2().Settings(job.namespace).Get(context.TODO(), string(name), metav1.GetOptions{})
+	if err != nil {
+		return false, err
+	}
+	value, err := strconv.ParseBool(obj.Value)
+	if err != nil {
+		return false, err
+	}
+
+	return value, nil
+}

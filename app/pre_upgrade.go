@@ -16,6 +16,7 @@ import (
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/types"
 
+	apputil "github.com/longhorn/longhorn-manager/app/util"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
@@ -59,7 +60,7 @@ func preUpgrade(c *cli.Context) error {
 		return errors.Wrap(err, "failed to get client config")
 	}
 
-	eventBroadcaster, err := createEventBroadcaster(config)
+	eventBroadcaster, err := apputil.CreateEventBroadcaster(config)
 	if err != nil {
 		return errors.Wrap(err, "failed to create event broadcaster")
 	}
