@@ -209,9 +209,9 @@ func (m *EnvironmentCheckMonitor) syncPackagesInstalled(kubeNode *corev1.Node, n
 		options = append(options, "-I")
 		packages = append(packages, "net-fs/nfs-utils", "sys-block/open-iscsi", "sys-fs/cryptsetup", "sys-fs/lvm2")
 	default:
-		collectedData.conditions = types.SetCondition(collectedData.conditions, longhorn.NodeConditionTypeRequiredPackages, longhorn.ConditionStatusFalse,
-			string(longhorn.NodeConditionReasonUnknownOS),
-			fmt.Sprintf("Unable to verify the required packages because the OS image '%v' is unknown to the Longhorn system. Please ensure the required packages are installed.", osImage))
+		// Skip environment check condition when
+		// 1.The OS is unknown to Longhorn
+		// 2.The OS that already has all packages installed such as Harvester
 		return
 	}
 
