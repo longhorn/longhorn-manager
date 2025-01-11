@@ -9,11 +9,11 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 )
 
-type Monitor interface {
+type Monitor[CollectedDataType any] interface {
 	Start()
 	Stop()
 	UpdateConfiguration(map[string]interface{}) error
-	GetCollectedData() (interface{}, error)
+	GetCollectedData() (CollectedDataType, error)
 	RunOnce() error
 }
 

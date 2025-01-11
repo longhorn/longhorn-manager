@@ -61,7 +61,11 @@ type SnapshotMonitorStatus struct {
 	LastSnapshotPeriodicCheckedAt metav1.Time
 }
 
-type SnapshotMonitor struct {
+type SnapshotMonitor Monitor[SnapshotMonitorStatus]
+
+var _ SnapshotMonitor = &snapshotMonitorImpl{}
+
+type snapshotMonitorImpl struct {
 	sync.RWMutex
 	*baseMonitor
 
@@ -73,6 +77,7 @@ type SnapshotMonitor struct {
 	snapshotChangeEventQueue workqueue.TypedInterface[any]
 	snapshotCheckTaskQueue   workqueue.TypedRateLimitingInterface[any]
 
+	startOnce                        sync.Once
 	inProgressSnapshotCheckTasks     map[string]struct{}
 	inProgressSnapshotCheckTasksLock sync.RWMutex
 
@@ -86,11 +91,11 @@ type SnapshotMonitor struct {
 }
 
 func NewSnapshotMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName string, eventRecorder record.EventRecorder,
-	snapshotChangeEventQueue workqueue.TypedInterface[any], syncCallback func(key string)) (*SnapshotMonitor, error) {
+	snapshotChangeEventQueue workqueue.TypedInterface[any], syncCallback func(key string)) (*snapshotMonitorImpl, error) {
 
 	ctx, quit := context.WithCancel(context.Background())
 
-	m := &SnapshotMonitor{
+	m := &snapshotMonitorImpl{
 		baseMonitor: newBaseMonitor(ctx, quit, logger, ds, 0),
 
 		nodeName:      nodeName,
@@ -114,20 +119,20 @@ func NewSnapshotMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, node
 
 	m.checkScheduler.SingletonModeAll()
 
-	go m.Start()
-
 	return m, nil
 }
 
-func (m *SnapshotMonitor) Start() {
-	for i := 0; i < snapshotCheckWorkerMax; i++ {
-		go m.snapshotCheckWorker(i)
-	}
+func (m *snapshotMonitorImpl) Start() {
+	m.startOnce.Do(func() {
+		for i := 0; i < snapshotCheckWorkerMax; i++ {
+			go m.snapshotCheckWorker(i)
+		}
 
-	go m.processSnapshotChangeEvent()
+		go m.processSnapshotChangeEvent()
+	})
 }
 
-func (m *SnapshotMonitor) processNextEvent() bool {
+func (m *snapshotMonitorImpl) processNextEvent() bool {
 	key, quit := m.snapshotChangeEventQueue.Get()
 	if quit {
 		return false
@@ -145,12 +150,12 @@ func (m *SnapshotMonitor) processNextEvent() bool {
 	return true
 }
 
-func (m *SnapshotMonitor) processSnapshotChangeEvent() {
+func (m *snapshotMonitorImpl) processSnapshotChangeEvent() {
 	for m.processNextEvent() {
 	}
 }
 
-func (m *SnapshotMonitor) checkSnapshots() {
+func (m *snapshotMonitorImpl) checkSnapshots() {
 	m.logger.WithField("monitor", monitorName).Info("Starting checking snapshots")
 	defer m.logger.WithField("monitor", monitorName).Infof("Finished checking snapshots")
 
@@ -172,7 +177,7 @@ func (m *SnapshotMonitor) checkSnapshots() {
 	}
 }
 
-func (m *SnapshotMonitor) populateEngineSnapshots(engine *longhorn.Engine) {
+func (m *snapshotMonitorImpl) populateEngineSnapshots(engine *longhorn.Engine) {
 	snapshots := engine.Status.Snapshots
 	for _, snapshot := range snapshots {
 		// Skip volume-head because it is not a real snapshot.
@@ -190,7 +195,7 @@ func (m *SnapshotMonitor) populateEngineSnapshots(engine *longhorn.Engine) {
 	}
 }
 
-func (m *SnapshotMonitor) processNextWorkItem(id int) bool {
+func (m *snapshotMonitorImpl) processNextWorkItem(id int) bool {
 	key, quit := m.snapshotCheckTaskQueue.Get()
 	if quit {
 		return false
@@ -214,7 +219,7 @@ func (m *SnapshotMonitor) processNextWorkItem(id int) bool {
 	return true
 }
 
-func (m *SnapshotMonitor) handleErr(err error, key interface{}) {
+func (m *snapshotMonitorImpl) handleErr(err error, key interface{}) {
 	if err == nil {
 		m.snapshotCheckTaskQueue.Forget(key)
 		return
@@ -237,12 +242,12 @@ func (m *SnapshotMonitor) handleErr(err error, key interface{}) {
 	m.snapshotCheckTaskQueue.Forget(key)
 }
 
-func (m *SnapshotMonitor) snapshotCheckWorker(id int) {
+func (m *snapshotMonitorImpl) snapshotCheckWorker(id int) {
 	for m.processNextWorkItem(id) {
 	}
 }
 
-func (m *SnapshotMonitor) Stop() {
+func (m *snapshotMonitorImpl) Stop() {
 	m.logger.WithField("monitor", monitorName).Info("Closing snapshot monitor")
 
 	m.snapshotCheckTaskQueue.ShutDown()
@@ -250,11 +255,11 @@ func (m *SnapshotMonitor) Stop() {
 	m.quit()
 }
 
-func (m *SnapshotMonitor) RunOnce() error {
+func (m *snapshotMonitorImpl) RunOnce() error {
 	return fmt.Errorf("RunOnce is not implemented")
 }
 
-func (m *SnapshotMonitor) UpdateConfiguration(map[string]interface{}) error {
+func (m *snapshotMonitorImpl) UpdateConfiguration(map[string]interface{}) error {
 	dataIntegrityCronJob, err := m.ds.GetSettingValueExisted(types.SettingNameSnapshotDataIntegrityCronJob)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameSnapshotDataIntegrityCronJob)
@@ -289,13 +294,13 @@ func (m *SnapshotMonitor) UpdateConfiguration(map[string]interface{}) error {
 	return nil
 }
 
-func (m *SnapshotMonitor) GetCollectedData() (interface{}, error) {
+func (m *snapshotMonitorImpl) GetCollectedData() (SnapshotMonitorStatus, error) {
 	m.RLock()
 	defer m.RUnlock()
 	return m.SnapshotMonitorStatus, nil
 }
 
-func (m *SnapshotMonitor) shouldAddToInProgressSnapshotCheckTasks(snapshotName string) bool {
+func (m *snapshotMonitorImpl) shouldAddToInProgressSnapshotCheckTasks(snapshotName string) bool {
 	m.inProgressSnapshotCheckTasksLock.Lock()
 	defer m.inProgressSnapshotCheckTasksLock.Unlock()
 
@@ -309,14 +314,14 @@ func (m *SnapshotMonitor) shouldAddToInProgressSnapshotCheckTasks(snapshotName s
 	return true
 }
 
-func (m *SnapshotMonitor) deleteFromInProgressSnapshotCheckTasks(snapshotName string) {
+func (m *snapshotMonitorImpl) deleteFromInProgressSnapshotCheckTasks(snapshotName string) {
 	m.inProgressSnapshotCheckTasksLock.Lock()
 	defer m.inProgressSnapshotCheckTasksLock.Unlock()
 
 	delete(m.inProgressSnapshotCheckTasks, snapshotName)
 }
 
-func (m *SnapshotMonitor) run(arg interface{}) error {
+func (m *snapshotMonitorImpl) run(arg interface{}) error {
 	task, ok := arg.(snapshotCheckTask)
 	if !ok {
 		return fmt.Errorf("failed to assert value: %v", arg)
@@ -355,7 +360,7 @@ func (m *SnapshotMonitor) run(arg interface{}) error {
 	return m.waitAndHandleSnapshotHashing(engine, engineClientProxy, task.snapshotName)
 }
 
-func (m *SnapshotMonitor) canRequestSnapshotHash(engine *longhorn.Engine) error {
+func (m *snapshotMonitorImpl) canRequestSnapshotHash(engine *longhorn.Engine) error {
 	if err := m.checkVolumeIsNotPurging(engine); err != nil {
 		return err
 	}
@@ -375,7 +380,7 @@ func (m *SnapshotMonitor) canRequestSnapshotHash(engine *longhorn.Engine) error 
 	return nil
 }
 
-func (m *SnapshotMonitor) requestSnapshotHashing(engine *longhorn.Engine, engineClientProxy engineapi.EngineClientProxy,
+func (m *snapshotMonitorImpl) requestSnapshotHashing(engine *longhorn.Engine, engineClientProxy engineapi.EngineClientProxy,
 	snapshotName string, changeEvent bool) error {
 	// One snapshot CR might be updated many times in a short period.
 	// The checksum calculation is expected to run once if it is triggered by snapshot update event.
@@ -395,7 +400,7 @@ func (m *SnapshotMonitor) requestSnapshotHashing(engine *longhorn.Engine, engine
 	return engineClientProxy.SnapshotHash(engine, snapshotName, rehash)
 }
 
-func (m *SnapshotMonitor) waitAndHandleSnapshotHashing(engine *longhorn.Engine, engineClientProxy engineapi.EngineClientProxy,
+func (m *snapshotMonitorImpl) waitAndHandleSnapshotHashing(engine *longhorn.Engine, engineClientProxy engineapi.EngineClientProxy,
 	snapshotName string) error {
 	opts := []retry.Option{
 		retry.Context(m.ctx),
@@ -421,7 +426,7 @@ func (m *SnapshotMonitor) waitAndHandleSnapshotHashing(engine *longhorn.Engine, 
 	return nil
 }
 
-func (m *SnapshotMonitor) checkVolumeNotInMigration(volumeName string) error {
+func (m *snapshotMonitorImpl) checkVolumeNotInMigration(volumeName string) error {
 	v, err := m.ds.GetVolume(volumeName)
 	if err != nil {
 		return err
@@ -432,7 +437,7 @@ func (m *SnapshotMonitor) checkVolumeNotInMigration(volumeName string) error {
 	return nil
 }
 
-func (m *SnapshotMonitor) checkVolumeIsNotPurging(engine *longhorn.Engine) error {
+func (m *snapshotMonitorImpl) checkVolumeIsNotPurging(engine *longhorn.Engine) error {
 	for _, status := range engine.Status.PurgeStatus {
 		if status.IsPurging {
 			return fmt.Errorf("cannot hash snapshot during purging")
@@ -441,7 +446,7 @@ func (m *SnapshotMonitor) checkVolumeIsNotPurging(engine *longhorn.Engine) error
 	return nil
 }
 
-func (m *SnapshotMonitor) checkVolumeIsNotRestoring(engine *longhorn.Engine) error {
+func (m *snapshotMonitorImpl) checkVolumeIsNotRestoring(engine *longhorn.Engine) error {
 	for _, status := range engine.Status.RestoreStatus {
 		if status.IsRestoring {
 			return fmt.Errorf("cannot hash snapshot during restoring")
@@ -450,7 +455,7 @@ func (m *SnapshotMonitor) checkVolumeIsNotRestoring(engine *longhorn.Engine) err
 	return nil
 }
 
-func (m *SnapshotMonitor) syncHashStatusFromEngineReplicas(engine *longhorn.Engine, engineClientProxy engineapi.EngineClientProxy,
+func (m *snapshotMonitorImpl) syncHashStatusFromEngineReplicas(engine *longhorn.Engine, engineClientProxy engineapi.EngineClientProxy,
 	snapshotName string) error {
 	hashStatus, err := engineClientProxy.SnapshotHashStatus(engine, snapshotName)
 	if err != nil {
@@ -493,7 +498,7 @@ func (m *SnapshotMonitor) syncHashStatusFromEngineReplicas(engine *longhorn.Engi
 	return nil
 }
 
-func (m *SnapshotMonitor) kickOutCorruptedReplicas(engine *longhorn.Engine, engineClientProxy engineapi.EngineClientProxy,
+func (m *snapshotMonitorImpl) kickOutCorruptedReplicas(engine *longhorn.Engine, engineClientProxy engineapi.EngineClientProxy,
 	checksum string, hashStatus map[string]*longhorn.HashStatus) {
 	for address, status := range hashStatus {
 		if status.Checksum == checksum {
@@ -572,7 +577,7 @@ func determineChecksum(checksums map[string][]string) (bool, string, int) {
 	return found, checksum, maxVotes
 }
 
-func (m *SnapshotMonitor) getSnapshotDataIntegrity(volumeName string) (longhorn.SnapshotDataIntegrity, error) {
+func (m *snapshotMonitorImpl) getSnapshotDataIntegrity(volumeName string) (longhorn.SnapshotDataIntegrity, error) {
 	volume, err := m.ds.GetVolumeRO(volumeName)
 	if err != nil {
 		return "", err

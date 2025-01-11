@@ -35,12 +35,17 @@ type DiskServiceClient struct {
 	err error
 }
 
-type DiskMonitor struct {
+type DiskMonitor Monitor[map[string]*CollectedDiskInfo]
+
+var _ DiskMonitor = &diskMonitorImpl{}
+
+type diskMonitorImpl struct {
 	*baseMonitor
 
 	nodeName        string
 	checkVolumeMeta bool
 
+	startOnce         sync.Once
 	collectedDataLock sync.RWMutex
 	collectedData     map[string]*CollectedDiskInfo
 
@@ -69,10 +74,10 @@ type GetDiskConfigHandler func(longhorn.DiskType, string, string, longhorn.DiskD
 type GenerateDiskConfigHandler func(longhorn.DiskType, string, string, string, string, *DiskServiceClient) (*util.DiskConfig, error)
 type GetReplicaDataStoresHandler func(longhorn.DiskType, *longhorn.Node, string, string, string, string, *DiskServiceClient) (map[string]string, error)
 
-func NewDiskMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName string, syncCallback func(key string)) (*DiskMonitor, error) {
+func NewDiskMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName string, syncCallback func(key string)) (DiskMonitor, error) {
 	ctx, quit := context.WithCancel(context.Background())
 
-	m := &DiskMonitor{
+	m := &diskMonitorImpl{
 		baseMonitor: newBaseMonitor(ctx, quit, logger, ds, DiskMonitorSyncPeriod),
 
 		nodeName:        nodeName,
@@ -89,39 +94,44 @@ func NewDiskMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName
 		getReplicaDataStoresHandler: getReplicaDataStores,
 	}
 
-	go m.Start()
-
 	return m, nil
 }
 
-func (m *DiskMonitor) Start() {
-	if err := wait.PollUntilContextCancel(m.ctx, m.syncPeriod, false, func(context.Context) (bool, error) {
-		if err := m.run(struct{}{}); err != nil {
-			m.logger.WithError(err).Error("Stopped monitoring disks")
+func (m *diskMonitorImpl) Start() {
+	m.startOnce.Do(func() {
+		if err := m.run(); err != nil {
+			m.logger.WithError(err).Error("Initial disk monitoring failed")
 		}
-		return false, nil
-	}); err != nil {
-		if errors.Is(err, context.Canceled) {
-			m.logger.WithError(err).Warning("Disk monitor is stopped")
-		} else {
-			m.logger.WithError(err).Error("Failed to start disk monitor")
-		}
-	}
+		go func() {
+			if err := wait.PollUntilContextCancel(m.ctx, m.syncPeriod, false, func(context.Context) (bool, error) {
+				if err := m.run(); err != nil {
+					m.logger.WithError(err).Error("Stopped monitoring disks")
+				}
+				return false, nil
+			}); err != nil {
+				if errors.Is(err, context.Canceled) {
+					m.logger.WithError(err).Warning("Disk monitor is stopped")
+				} else {
+					m.logger.WithError(err).Error("Failed to start disk monitor")
+				}
+			}
+		}()
+	})
 }
 
-func (m *DiskMonitor) Stop() {
+func (m *diskMonitorImpl) Stop() {
 	m.quit()
 }
 
-func (m *DiskMonitor) RunOnce() error {
-	return m.run(struct{}{})
+func (m *diskMonitorImpl) RunOnce() error {
+	return m.run()
 }
 
-func (m *DiskMonitor) UpdateConfiguration(map[string]interface{}) error {
+func (m *diskMonitorImpl) UpdateConfiguration(map[string]interface{}) error {
 	return nil
 }
 
-func (m *DiskMonitor) GetCollectedData() (interface{}, error) {
+func (m *diskMonitorImpl) GetCollectedData() (map[string]*CollectedDiskInfo, error) {
 	m.collectedDataLock.RLock()
 	defer m.collectedDataLock.RUnlock()
 
@@ -133,7 +143,7 @@ func (m *DiskMonitor) GetCollectedData() (interface{}, error) {
 	return data, nil
 }
 
-func (m *DiskMonitor) run(value interface{}) error {
+func (m *diskMonitorImpl) run() error {
 	node, err := m.ds.GetNode(m.nodeName)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get longhorn node %v", m.nodeName)
@@ -154,7 +164,7 @@ func (m *DiskMonitor) run(value interface{}) error {
 	return nil
 }
 
-func (m *DiskMonitor) getRunningInstanceManagerRO(dataEngine longhorn.DataEngineType) (*longhorn.InstanceManager, error) {
+func (m *diskMonitorImpl) getRunningInstanceManagerRO(dataEngine longhorn.DataEngineType) (*longhorn.InstanceManager, error) {
 	switch dataEngine {
 	case longhorn.DataEngineTypeV1:
 		return m.ds.GetDefaultInstanceManagerByNodeRO(m.nodeName, dataEngine)
@@ -180,7 +190,7 @@ func (m *DiskMonitor) getRunningInstanceManagerRO(dataEngine longhorn.DataEngine
 	return nil, fmt.Errorf("unknown data engine %v", dataEngine)
 }
 
-func (m *DiskMonitor) newDiskServiceClients() map[longhorn.DataEngineType]*DiskServiceClient {
+func (m *diskMonitorImpl) newDiskServiceClients() map[longhorn.DataEngineType]*DiskServiceClient {
 	clients := map[longhorn.DataEngineType]*DiskServiceClient{}
 
 	dataEngines := m.ds.GetDataEngines()
@@ -207,7 +217,7 @@ func (m *DiskMonitor) newDiskServiceClients() map[longhorn.DataEngineType]*DiskS
 	return clients
 }
 
-func (m *DiskMonitor) closeDiskServiceClients(clients map[longhorn.DataEngineType]*DiskServiceClient) {
+func (m *diskMonitorImpl) closeDiskServiceClients(clients map[longhorn.DataEngineType]*DiskServiceClient) {
 	for _, client := range clients {
 		if client.c != nil {
 			client.c.Close()
@@ -217,7 +227,7 @@ func (m *DiskMonitor) closeDiskServiceClients(clients map[longhorn.DataEngineTyp
 }
 
 // Collect disk data and generate disk UUID blindly.
-func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*CollectedDiskInfo {
+func (m *diskMonitorImpl) collectDiskData(node *longhorn.Node) map[string]*CollectedDiskInfo {
 	diskInfoMap := make(map[string]*CollectedDiskInfo, 0)
 
 	diskServiceClients := m.newDiskServiceClients()
@@ -392,7 +402,7 @@ func NewDiskInfo(diskName, diskUUID, diskPath string, diskDriver longhorn.DiskDr
 	return diskInfo
 }
 
-func (m *DiskMonitor) getOrphanedReplicaDataStores(diskType longhorn.DiskType, diskUUID, diskPath string, replicaDataStores map[string]string) (map[string]string, error) {
+func (m *diskMonitorImpl) getOrphanedReplicaDataStores(diskType longhorn.DiskType, diskUUID, diskPath string, replicaDataStores map[string]string) (map[string]string, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
 		return m.getOrphanedReplicaDirectoryNames(diskUUID, diskPath, replicaDataStores)
@@ -403,7 +413,7 @@ func (m *DiskMonitor) getOrphanedReplicaDataStores(diskType longhorn.DiskType, d
 	}
 }
 
-func (m *DiskMonitor) getOrphanedReplicaLvolNames(replicaDataStores map[string]string) (map[string]string, error) {
+func (m *diskMonitorImpl) getOrphanedReplicaLvolNames(replicaDataStores map[string]string) (map[string]string, error) {
 	if len(replicaDataStores) == 0 {
 		return map[string]string{}, nil
 	}
@@ -418,7 +428,7 @@ func (m *DiskMonitor) getOrphanedReplicaLvolNames(replicaDataStores map[string]s
 	return replicaDataStores, nil
 }
 
-func (m *DiskMonitor) getOrphanedReplicaDirectoryNames(diskUUID, diskPath string, replicaDataStores map[string]string) (map[string]string, error) {
+func (m *diskMonitorImpl) getOrphanedReplicaDirectoryNames(diskUUID, diskPath string, replicaDataStores map[string]string) (map[string]string, error) {
 	if len(replicaDataStores) == 0 {
 		return map[string]string{}, nil
 	}
