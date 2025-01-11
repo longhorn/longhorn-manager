@@ -795,6 +795,11 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		if err != nil {
+			engineClientProxy.Close()
+		}
+	}()
 
 	// get storage class of the pvc binding with the volume
 	kubernetesStatus := &volume.Status.KubernetesStatus
@@ -830,11 +835,13 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 			backup.Status.State = longhorn.BackupStateError
 			backup.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
 			bc.creationRetryCounter.DeleteEntry(backup.Name)
-			return nil, fmt.Errorf("failed waiting for the engine %v to be running before enabling backup monitor", engine.Name)
+			err = fmt.Errorf("failed waiting for the engine %v to be running before enabling backup monitor", engine.Name)
+			return nil, err
 		}
 		backup.Status.State = longhorn.BackupStatePending
 		backup.Status.Messages[MessageTypeReconcileInfo] = fmt.Sprintf(WaitForEngineMessage, engine.Name)
-		return nil, fmt.Errorf("waiting for the engine %v to be running before enabling backup monitor", engine.Name)
+		err = fmt.Errorf("waiting for the engine %v to be running before enabling backup monitor", engine.Name)
+		return nil, err
 	}
 
 	snapshot, err := bc.ds.GetSnapshotRO(backup.Spec.SnapshotName)
@@ -850,7 +857,8 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 			backup.Status.State = longhorn.BackupStatePending
 			backup.Status.Messages[MessageTypeReconcileInfo] = fmt.Sprintf(FailedToGetSnapshotMessage, backup.Spec.SnapshotName)
 		}
-		return nil, errors.Wrapf(err, "failed to get the snapshot %v before enabling backup monitor", backup.Spec.SnapshotName)
+		err = errors.Wrapf(err, "failed to get the snapshot %v before enabling backup monitor", backup.Spec.SnapshotName)
+		return nil, err
 	}
 	if snapshot != nil {
 		if !snapshot.Status.ReadyToUse {
@@ -860,23 +868,27 @@ func (bc *BackupController) checkMonitor(backup *longhorn.Backup, volume *longho
 				backup.Status.State = longhorn.BackupStateError
 				backup.Status.LastSyncedAt = metav1.Time{Time: time.Now().UTC()}
 				bc.creationRetryCounter.DeleteEntry(backup.Name)
-				return nil, fmt.Errorf("failed waiting for the snapshot %v to be ready before enabling backup monitor", backup.Spec.SnapshotName)
+				err = fmt.Errorf("failed waiting for the snapshot %v to be ready before enabling backup monitor", backup.Spec.SnapshotName)
+				return nil, err
 			}
 			backup.Status.State = longhorn.BackupStatePending
 			backup.Status.Messages[MessageTypeReconcileInfo] = fmt.Sprintf(WaitForSnapshotMessage, backup.Spec.SnapshotName)
-			return nil, fmt.Errorf("waiting for the snapshot %v to be ready before enabling backup monitor", backup.Spec.SnapshotName)
+			err = fmt.Errorf("waiting for the snapshot %v to be ready before enabling backup monitor", backup.Spec.SnapshotName)
+			return nil, err
 		}
 	}
 
 	clusterBackups, err := bc.ds.ListBackupsWithBackupVolumeName(backupTarget.Name, volume.Name)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to list backups in the cluster")
+		err = errors.Wrapf(err, "failed to list backups in the cluster")
+		return nil, err
 	}
 	for _, b := range clusterBackups {
 		if b.Status.State == longhorn.BackupStateDeleting {
 			backup.Status.State = longhorn.BackupStatePending
 			backup.Status.Messages[MessageTypeReconcileInfo] = fmt.Sprintf(WaitForBackupDeletionIsCompleteMessage, b.Name)
-			return nil, fmt.Errorf("waiting for the backup %v to be deleted before enabling backup monitor", b.Name)
+			err = fmt.Errorf("waiting for the backup %v to be deleted before enabling backup monitor", b.Name)
+			return nil, err
 		}
 	}
 
