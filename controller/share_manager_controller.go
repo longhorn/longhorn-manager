@@ -1298,7 +1298,7 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 			string(secret.Data[types.CryptoPBKDF]))
 	}
 
-	manifest := c.createPodManifest(sm, annotations, tolerations, affinity, imagePullPolicy, nil, registrySecret,
+	manifest := c.createPodManifest(sm, volume.Spec.DataEngine, annotations, tolerations, affinity, imagePullPolicy, nil, registrySecret,
 		priorityClass, nodeSelector, fsType, mountOptions, cryptoKey, cryptoParams, nfsConfig)
 
 	storageNetwork, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
@@ -1411,13 +1411,13 @@ func (c *ShareManagerController) createLeaseManifest(sm *longhorn.ShareManager) 
 	return lease
 }
 
-func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, annotations map[string]string, tolerations []corev1.Toleration,
+func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, dataEngine longhorn.DataEngineType, annotations map[string]string, tolerations []corev1.Toleration,
 	affinity *corev1.Affinity, pullPolicy corev1.PullPolicy, resourceReq *corev1.ResourceRequirements, registrySecret, priorityClass string,
 	nodeSelector map[string]string, fsType string, mountOptions []string, cryptoKey string, cryptoParams *crypto.EncryptParams,
 	nfsConfig *nfsServerConfig) *corev1.Pod {
 
 	// command args for the share-manager
-	args := []string{"--debug", "daemon", "--volume", sm.Name}
+	args := []string{"--debug", "daemon", "--volume", sm.Name, "--data-engine", string(dataEngine)}
 
 	if len(fsType) > 0 {
 		args = append(args, "--fs", fsType)
