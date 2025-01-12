@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -46,7 +47,8 @@ type BackupTargetController struct {
 	eventRecorder record.EventRecorder
 
 	// backup store timer map is responsible for updating the backupTarget.spec.syncRequestAt
-	bsTimerMap map[string]*BackupStoreTimer
+	bsTimerMap     map[string]*BackupStoreTimer
+	bsTimerMapLock *sync.RWMutex
 
 	ds *datastore.DataStore
 
@@ -87,7 +89,8 @@ func NewBackupTargetController(
 		namespace:    namespace,
 		controllerID: controllerID,
 
-		bsTimerMap: map[string]*BackupStoreTimer{},
+		bsTimerMap:     map[string]*BackupStoreTimer{},
+		bsTimerMapLock: &sync.RWMutex{},
 
 		ds: ds,
 
@@ -367,6 +370,9 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 	}
 
 	if !backupTarget.DeletionTimestamp.IsZero() {
+		btc.bsTimerMapLock.Lock()
+		defer btc.bsTimerMapLock.Unlock()
+
 		stopTimer(backupTarget.Name)
 
 		if err := btc.cleanUpAllBackupRelatedResources(backupTarget.Name); err != nil {
@@ -375,7 +381,9 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 		return btc.ds.RemoveFinalizerForBackupTarget(backupTarget)
 	}
 
-	if backupTarget.Spec.PollInterval.Duration == time.Duration(0) || (btc.bsTimerMap[name] != nil && btc.bsTimerMap[name].pollInterval != backupTarget.Spec.PollInterval.Duration) {
+	btc.bsTimerMapLock.Lock()
+	if backupTarget.Spec.PollInterval.Duration == time.Duration(0) ||
+		(btc.bsTimerMap[name] != nil && btc.bsTimerMap[name].pollInterval != backupTarget.Spec.PollInterval.Duration) {
 		stopTimer(backupTarget.Name)
 	}
 	if btc.bsTimerMap[name] == nil && backupTarget.Spec.PollInterval.Duration != time.Duration(0) && backupTarget.Spec.BackupTargetURL != "" {
@@ -393,6 +401,7 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 		}
 		go btc.bsTimerMap[name].Start()
 	}
+	btc.bsTimerMapLock.Unlock()
 
 	// Check the controller should run synchronization
 	if !backupTarget.Status.LastSyncedAt.IsZero() &&
