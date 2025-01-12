@@ -132,7 +132,7 @@ type BackupStatus struct {
 // +kubebuilder:printcolumn:name="SnapshotName",type=string,JSONPath=`.status.snapshotName`,description="The snapshot name"
 // +kubebuilder:printcolumn:name="SnapshotSize",type=string,JSONPath=`.status.size`,description="The snapshot size"
 // +kubebuilder:printcolumn:name="SnapshotCreatedAt",type=string,JSONPath=`.status.snapshotCreatedAt`,description="The snapshot creation time"
-// +kubebuilder:printcolumn:name="BackupTarget",type=string,JSONPath=`.status.backupTarget`,description="The backup target name"
+// +kubebuilder:printcolumn:name="BackupTarget",type=string,JSONPath=`.status.backupTargetName`,description="The backup target name"
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`,description="The backup state"
 // +kubebuilder:printcolumn:name="LastSyncedAt",type=string,JSONPath=`.status.lastSyncedAt`,description="The backup last synced time"
 
