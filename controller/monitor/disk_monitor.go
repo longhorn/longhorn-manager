@@ -102,7 +102,7 @@ func (m *DiskMonitor) Start() {
 		return false, nil
 	}); err != nil {
 		if errors.Is(err, context.Canceled) {
-			m.logger.WithError(err).Warning("Disk monitor is stopped")
+			m.logger.WithError(err).Warn("Disk monitor is stopped")
 		} else {
 			m.logger.WithError(err).Error("Failed to start disk monitor")
 		}
