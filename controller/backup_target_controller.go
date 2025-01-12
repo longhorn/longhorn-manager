@@ -904,7 +904,11 @@ func (bst *BackupStoreTimer) Start() {
 		}
 		return false, nil
 	}); err != nil {
-		log.WithError(err).Error("Failed to sync backup target")
+		if errors.Is(err, context.Canceled) {
+			log.WithError(err).Warnf("Backup store timer for backup target %v is stopped", bst.btName)
+		} else {
+			log.WithError(err).Errorf("Failed to sync backup target %v", bst.btName)
+		}
 	}
 
 	bst.logger.Info("Stopped backup store timer")

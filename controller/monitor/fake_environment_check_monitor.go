@@ -51,7 +51,7 @@ func (m *FakeEnvironmentCheckMonitor) Start() {
 		return false, nil
 	}); err != nil {
 		if errors.Is(err, context.Canceled) {
-			m.logger.WithError(err).Warning("Environment check monitor is stopped")
+			m.logger.WithError(err).Warn("Environment check monitor is stopped")
 		} else {
 			m.logger.WithError(err).Error("Failed to start environment check monitor")
 		}
