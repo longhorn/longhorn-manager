@@ -1274,6 +1274,10 @@ spec:
     subresources:
       status: {}
   - additionalPrinterColumns:
+    - description: The backup target name
+      jsonPath: .spec.backupTargetName
+      name: BackupTarget
+      type: string
     - description: The backup volume creation time
       jsonPath: .status.createdAt
       name: CreatedAt
