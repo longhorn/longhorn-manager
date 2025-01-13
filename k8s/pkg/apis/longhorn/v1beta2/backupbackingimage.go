@@ -5,7 +5,6 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 // BackupBackingImageSpec defines the desired state of the Longhorn backing image backup
 type BackupBackingImageSpec struct {
 	// The backing image name.
-	// Required
 	// +kubebuilder:validation:Required
 	BackingImage string `json:"backingImage"`
 	// The backup target name.
@@ -17,7 +16,6 @@ type BackupBackingImageSpec struct {
 	// +nullable
 	SyncRequestedAt metav1.Time `json:"syncRequestedAt"`
 	// Is this CR created by user through API or UI.
-	// Required
 	UserCreated bool `json:"userCreated"`
 	// The labels of backing image backup.
 	// +optional
