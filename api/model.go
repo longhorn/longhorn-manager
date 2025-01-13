@@ -1951,6 +1951,19 @@ func toBackupResource(b *longhorn.Backup) *Backup {
 		return nil
 	}
 
+	// For frontend, it will use the backup target name and volume name to tell this backup is belong to which backup volume.
+	// The backup not in `completed` state will not have the backup target name and volume name in `Status`.
+	backupTargetName := b.Status.BackupTargetName
+	volumeName := b.Status.VolumeName
+	if b.Labels != nil {
+		if backupTargetName == "" {
+			backupTargetName = b.Labels[types.LonghornLabelBackupTarget]
+		}
+		if volumeName == "" {
+			volumeName = b.Labels[types.LonghornLabelBackupVolume]
+		}
+	}
+
 	getSnapshotNameFromBackup := func(b *longhorn.Backup) string {
 		if b.Spec.SnapshotName != "" {
 			return b.Spec.SnapshotName
@@ -1976,14 +1989,14 @@ func toBackupResource(b *longhorn.Backup) *Backup {
 		Labels:                 b.Status.Labels,
 		BackupMode:             b.Spec.BackupMode,
 		Messages:               b.Status.Messages,
-		VolumeName:             b.Status.VolumeName,
+		VolumeName:             volumeName,
 		VolumeSize:             b.Status.VolumeSize,
 		VolumeCreated:          b.Status.VolumeCreated,
 		VolumeBackingImageName: b.Status.VolumeBackingImageName,
 		CompressionMethod:      string(b.Status.CompressionMethod),
 		NewlyUploadedDataSize:  b.Status.NewlyUploadedDataSize,
 		ReUploadedDataSize:     b.Status.ReUploadedDataSize,
-		BackupTargetName:       b.Status.BackupTargetName,
+		BackupTargetName:       backupTargetName,
 	}
 	// Set the volume name from backup CR's label if it's empty.
 	// This field is empty probably because the backup state is not Ready
