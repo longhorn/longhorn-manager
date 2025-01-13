@@ -676,9 +676,7 @@ spec:
               backing image backup
             properties:
               backingImage:
-                description: |-
-                  The backing image name.
-                  Required
+                description: The backing image name.
                 type: string
               backupTargetName:
                 description: The backup target name.
@@ -696,9 +694,7 @@ spec:
                 nullable: true
                 type: string
               userCreated:
-                description: |-
-                  Is this CR created by user through API or UI.
-                  Required
+                description: Is this CR created by user through API or UI.
                 type: boolean
             required:
             - backingImage
@@ -3542,7 +3538,6 @@ spec:
                 description: |-
                   the volume that this snapshot belongs to.
                   This field is immutable after creation.
-                  Required
                 type: string
             required:
             - volume
