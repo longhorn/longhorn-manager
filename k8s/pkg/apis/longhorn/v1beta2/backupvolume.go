@@ -69,6 +69,7 @@ type BackupVolumeStatus struct {
 // +kubebuilder:resource:shortName=lhbv
 // +kubebuilder:subresource:status
 // +kubebuilder:storageversion
+// +kubebuilder:printcolumn:name="BackupTarget",type=string,JSONPath=`.spec.backupTargetName`,description="The backup target name"
 // +kubebuilder:printcolumn:name="CreatedAt",type=string,JSONPath=`.status.createdAt`,description="The backup volume creation time"
 // +kubebuilder:printcolumn:name="LastBackupName",type=string,JSONPath=`.status.lastBackupName`,description="The backup volume last backup name"
 // +kubebuilder:printcolumn:name="LastBackupAt",type=string,JSONPath=`.status.lastBackupAt`,description="The backup volume last backup time"
