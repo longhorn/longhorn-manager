@@ -2824,7 +2824,7 @@ spec:
       name: Groups
       type: string
     - description: Should be one of "snapshot", "snapshot-force-create", "snapshot-cleanup",
-        "snapshot-delete", "backup", "backup-force-create" or "filesystem-trim"
+        "snapshot-delete", "backup", "backup-force-create", "filesystem-trim" or "system-backup"
       jsonPath: .spec.task
       name: Task
       type: string
@@ -2897,7 +2897,7 @@ spec:
                   type: string
                 description: |-
                   The parameters of the snapshot/backup.
-                  Support parameters: "full-backup-interval".
+                  Support parameters: "full-backup-interval", "volume-backup-policy".
                 type: object
               retain:
                 description: The retain count of the snapshot/backup.
@@ -2905,7 +2905,7 @@ spec:
               task:
                 description: |-
                   The recurring job task.
-                  Can be "snapshot", "snapshot-force-create", "snapshot-cleanup", "snapshot-delete", "backup", "backup-force-create" or "filesystem-trim"
+                  Can be "snapshot", "snapshot-force-create", "snapshot-cleanup", "snapshot-delete", "backup", "backup-force-create", "filesystem-trim" or "system-backup".
                 enum:
                 - snapshot
                 - snapshot-force-create
@@ -2914,6 +2914,7 @@ spec:
                 - backup
                 - backup-force-create
                 - filesystem-trim
+                - system-backup
                 type: string
             type: object
           status:
