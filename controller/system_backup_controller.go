@@ -920,6 +920,10 @@ func (c *SystemBackupController) isVolumeBackupUpToDate(volume *longhorn.Volume,
 
 	lastBackupSnapshot, err := c.ds.GetSnapshot(lastBackup.Status.SnapshotName)
 	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Warnf("Snapshot %v not found for backup %v", lastBackup.Status.SnapshotName, lastBackup.Name)
+			return false, nil
+		}
 		return false, err
 	}
 
