@@ -235,7 +235,7 @@ github.com/longhorn/backing-image-manager/pkg/client
 github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20241227145911-8de988de7eff
+# github.com/longhorn/backupstore v0.0.0-20250115162037-d046737d09dc
 ## explicit; go 1.22.7
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/backupbackingimage
@@ -684,7 +684,7 @@ google.golang.org/genproto/googleapis/api/httpbody
 ## explicit; go 1.21
 google.golang.org/genproto/googleapis/rpc/errdetails
 google.golang.org/genproto/googleapis/rpc/status
-# google.golang.org/grpc v1.69.2
+# google.golang.org/grpc v1.69.4
 ## explicit; go 1.22
 google.golang.org/grpc
 google.golang.org/grpc/attributes
@@ -1642,7 +1642,7 @@ sigs.k8s.io/yaml/goyaml.v2
 # k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.31.3
 # k8s.io/kubectl => k8s.io/kubectl v0.31.3
 # k8s.io/kubelet => k8s.io/kubelet v0.31.3
-# k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.8
+# k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.9
 # k8s.io/metrics => k8s.io/metrics v0.31.3
 # k8s.io/mount-utils => k8s.io/mount-utils v0.31.3
 # k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.31.3
