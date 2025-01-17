@@ -324,7 +324,7 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 			}
 		case types.SettingNameStorageNetwork:
 			funcPreupdate := func() error {
-				detached, _, err := sc.ds.AreAllVolumesDetached(longhorn.DataEngineTypeAll)
+				detached, err := sc.ds.AreAllVolumesDetachedState()
 				if err != nil {
 					return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameStorageNetwork)
 				}
@@ -642,7 +642,7 @@ func (sc *SettingController) updateTaintToleration() error {
 		return nil
 	}
 
-	detached, _, err := sc.ds.AreAllVolumesDetached(longhorn.DataEngineTypeAll)
+	detached, err := sc.ds.AreAllVolumesDetachedState()
 	if err != nil {
 		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameTaintToleration)
 	}
@@ -813,7 +813,7 @@ func (sc *SettingController) updatePriorityClass() error {
 		return nil
 	}
 
-	detached, _, err := sc.ds.AreAllVolumesDetached(longhorn.DataEngineTypeAll)
+	detached, err := sc.ds.AreAllVolumesDetachedState()
 	if err != nil {
 		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNamePriorityClass)
 	}
@@ -1214,7 +1214,7 @@ func (sc *SettingController) updateNodeSelector() error {
 		return nil
 	}
 
-	detached, _, err := sc.ds.AreAllVolumesDetached(longhorn.DataEngineTypeAll)
+	detached, err := sc.ds.AreAllVolumesDetachedState()
 	if err != nil {
 		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameSystemManagedComponentsNodeSelector)
 	}
@@ -1522,12 +1522,12 @@ func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn
 		return nil
 	}
 
-	detached, _, err := sc.ds.AreAllVolumesDetached(dataEngine)
+	stopped, _, err := sc.ds.AreAllEngineInstancesStopped(dataEngine)
 	if err != nil {
-		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", settingName)
+		return errors.Wrapf(err, "failed to check engine instances for %v setting update", settingName)
 	}
-	if !detached {
-		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting to Longhorn components when there are attached volumes. It will be eventually applied", settingName)}
+	if !stopped {
+		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting to Longhorn components when there are running engine instances. It will be eventually applied", settingName)}
 	}
 
 	for _, pod := range notUpdatedPods {
