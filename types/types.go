@@ -852,7 +852,8 @@ func ValidateV2DataEngineLogFlags(flags string) error {
 		return nil
 	}
 
-	pattern := "^[a-zA-Z,]+$"
+	// A valid string is like "all,bdev_raid,vbdev_zone_block"
+	pattern := "^(([a-zA-Z]+_?)+[a-zA-Z]+,?)+$"
 	reg := regexp.MustCompile(pattern)
 
 	if !reg.MatchString(flags) {
