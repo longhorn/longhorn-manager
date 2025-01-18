@@ -62,14 +62,14 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.20.0
-	github.com/longhorn/backing-image-manager v1.8.0-rc3
+	github.com/longhorn/backing-image-manager v1.8.0-rc4
 	github.com/longhorn/backupstore v0.0.0-20250115162037-d046737d09dc
 	github.com/longhorn/go-common-libs v0.0.0-20250107022351-ec79818ce8db
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250111093313-7e1930499625
-	github.com/longhorn/go-spdk-helper v0.0.0-20241227145830-6187c6354129
-	github.com/longhorn/longhorn-engine v1.8.0-rc3
-	github.com/longhorn/longhorn-instance-manager v1.8.0-rc3
-	github.com/longhorn/longhorn-share-manager v1.8.0-rc3
+	github.com/longhorn/go-spdk-helper v0.0.0-20250116051812-eabe34a4219e
+	github.com/longhorn/longhorn-engine v1.8.0-rc4
+	github.com/longhorn/longhorn-instance-manager v1.8.0-rc4
+	github.com/longhorn/longhorn-share-manager v1.8.0-rc4
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.20.5
 	github.com/rancher/dynamiclistener v0.6.1
@@ -80,8 +80,8 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli v1.22.16
 	golang.org/x/mod v0.22.0
-	golang.org/x/net v0.33.0
-	golang.org/x/sys v0.28.0
+	golang.org/x/net v0.34.0
+	golang.org/x/sys v0.29.0
 	golang.org/x/time v0.8.0
 	google.golang.org/grpc v1.69.4
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
@@ -200,10 +200,10 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/crypto v0.31.0 // indirect
+	golang.org/x/crypto v0.32.0 // indirect
 	golang.org/x/oauth2 v0.24.0 // indirect
 	golang.org/x/sync v0.10.0
-	golang.org/x/term v0.27.0 // indirect
+	golang.org/x/term v0.28.0 // indirect
 	golang.org/x/text v0.21.0
 	google.golang.org/genproto v0.0.0-20240401170217-c3f982113cda // indirect
 	google.golang.org/protobuf v1.36.3
