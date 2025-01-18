@@ -2,7 +2,7 @@ module github.com/longhorn/longhorn-manager
 
 go 1.23.1
 
-toolchain go1.23.4
+toolchain go1.23.5
 
 // Replace directives are required for dependencies in this section because:
 // - This module imports k8s.io/kubernetes.
@@ -177,7 +177,7 @@ require (
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.61.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
-	github.com/rancher/lasso v0.0.0-20250116001102-9e2b68739ccc
+	github.com/rancher/lasso v0.0.0-20250116175138-91795f788942
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect

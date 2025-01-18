@@ -374,7 +374,7 @@ github.com/rancher/dynamiclistener/storage/memory
 ## explicit
 github.com/rancher/go-rancher/api
 github.com/rancher/go-rancher/client
-# github.com/rancher/lasso v0.0.0-20250116001102-9e2b68739ccc
+# github.com/rancher/lasso v0.0.0-20250116175138-91795f788942
 ## explicit; go 1.22.0
 github.com/rancher/lasso/pkg/cache
 github.com/rancher/lasso/pkg/client
