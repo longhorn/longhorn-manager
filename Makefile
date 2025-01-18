@@ -9,6 +9,8 @@ TARGETS := $(shell ls scripts)
 
 $(TARGETS): .dapper
 	./.dapper $@
+generate:
+	bash k8s/generate_code.sh
 
 .DEFAULT_GOAL := ci
 
