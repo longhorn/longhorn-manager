@@ -129,6 +129,9 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 					backupVolume, backupName := sourceVolumeName, id
 					bv, err := cs.apiClient.BackupVolume.ById(backupVolume)
 					if err != nil {
+						return nil, status.Errorf(codes.Internal, "failed to retrieve backup volume %s: %v", backupVolume, err)
+					}
+					if bv == nil {
 						return nil, status.Errorf(codes.NotFound, "failed to restore CSI snapshot %s backup volume %s unavailable", snapshot.SnapshotId, backupVolume)
 					}
 
@@ -1220,7 +1223,7 @@ func (cs *ControllerServer) waitForBackupControllerSync(volumeName, snapshotName
 	if err != nil {
 		return nil, err
 	}
-	if backup.SnapshotCreated != "" {
+	if backup != nil && backup.SnapshotCreated != "" {
 		// The backup controller sets the snapshot creation time at first sync. If we do not wait to return until
 		// this is done, we may see timestamp related errors in csi-snapshotter logs.
 		return backup, nil
@@ -1245,7 +1248,7 @@ func (cs *ControllerServer) waitForBackupControllerSync(volumeName, snapshotName
 			if err != nil {
 				return nil, err
 			}
-			if backup.SnapshotCreated != "" {
+			if backup != nil && backup.SnapshotCreated != "" {
 				return backup, nil
 			}
 		}
@@ -1262,6 +1265,10 @@ func (cs *ControllerServer) getBackup(volumeName, snapshotName string) (*longhor
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+	if backupVolume == nil {
+		return nil, nil
+	}
+
 	backupListOutput, err := cs.apiClient.BackupVolume.ActionBackupList(backupVolume)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
