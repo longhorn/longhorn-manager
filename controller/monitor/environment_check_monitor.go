@@ -210,7 +210,9 @@ func (m *EnvironmentCheckMonitor) syncPackagesInstalled(kubeNode *corev1.Node, n
 		packageProbeExecutables["sys-fs/cryptsetup"] = "cryptsetup"
 		packageProbeExecutables["sys-fs/lvm2"] = "dmsetup"
 	default:
-		// unsupported host platform, skip environment check condition
+		// Skip environment check condition when
+		// 1.The OS is unknown to Longhorn
+		// 2.The OS that already has all packages installed such as Harvester
 		return
 	}
 
