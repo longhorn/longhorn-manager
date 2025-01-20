@@ -163,8 +163,9 @@ func (ns *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublis
 		}
 	}
 
-	if !volume.Ready {
-		return nil, status.Errorf(codes.Aborted, "volume %s is not ready for workloads", volumeID)
+	ready := volume.Ready.(longhorn.Condition)
+	if ready.Status != longhorn.ConditionStatusTrue {
+		return nil, status.Errorf(codes.Aborted, "volume %s is not ready for workloads since %s", volumeID, ready.Message)
 	}
 
 	podsStatus := ns.collectWorkloadPodsStatus(volume, log)
@@ -454,8 +455,9 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 		return nil, status.Errorf(codes.InvalidArgument, "volume %s hasn't been attached yet", volumeID)
 	}
 
-	if !volume.Ready {
-		return nil, status.Errorf(codes.Aborted, "volume %s is not ready for workloads", volumeID)
+	ready := volume.Ready.(longhorn.Condition)
+	if ready.Status != longhorn.ConditionStatusTrue {
+		return nil, status.Errorf(codes.Aborted, "volume %s is not ready for workloads since %s", volumeID, ready.Message)
 	}
 
 	if requiresSharedAccess(volume, volumeCapability) && !volume.Migratable {

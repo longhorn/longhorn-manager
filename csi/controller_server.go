@@ -487,8 +487,9 @@ func (cs *ControllerServer) ControllerPublishVolume(ctx context.Context, req *cs
 	// TODO: JM should readiness be handled by the caller?
 	//  Most of the readiness conditions are covered by the attach, except auto attachment which requires changes to the design
 	//  should be handled by the processing of the api return codes
-	if !volume.Ready {
-		return nil, status.Errorf(codes.Aborted, "volume %s is not ready for workloads", volumeID)
+	ready := volume.Ready.(longhorn.Condition)
+	if ready.Status != longhorn.ConditionStatusTrue {
+		return nil, status.Errorf(codes.Aborted, "volume %s is not ready for workloads since %s", volumeID, ready.Message)
 	}
 
 	attachmentID := generateAttachmentID(volumeID, nodeID)

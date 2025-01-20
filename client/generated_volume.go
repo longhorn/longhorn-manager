@@ -65,7 +65,7 @@ type Volume struct {
 
 	PurgeStatus []PurgeStatus `json:"purgeStatus,omitempty" yaml:"purge_status,omitempty"`
 
-	Ready bool `json:"ready,omitempty" yaml:"ready,omitempty"`
+	Ready interface{} `json:"ready,omitempty" yaml:"ready,omitempty"`
 
 	RebuildStatus []RebuildStatus `json:"rebuildStatus,omitempty" yaml:"rebuild_status,omitempty"`
 

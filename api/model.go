@@ -73,7 +73,7 @@ type Volume struct {
 	Conditions       map[string]longhorn.Condition `json:"conditions"`
 	KubernetesStatus longhorn.KubernetesStatus     `json:"kubernetesStatus"`
 	CloneStatus      longhorn.VolumeCloneStatus    `json:"cloneStatus"`
-	Ready            bool                          `json:"ready"`
+	Ready            longhorn.Condition            `json:"ready"`
 
 	AccessMode    longhorn.AccessMode        `json:"accessMode"`
 	ShareEndpoint string                     `json:"shareEndpoint"`
@@ -1373,6 +1373,35 @@ func toEmptyResource() *Empty {
 	}
 }
 
+func toVolumeReadyCondition(v *longhorn.Volume) longhorn.Condition {
+	scheduledCondition := types.GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeScheduled)
+	isCloningDesired := types.IsDataFromVolume(v.Spec.DataSource)
+	isCloningCompleted := v.Status.CloneStatus.State == longhorn.VolumeCloneStateCompleted
+
+	status := longhorn.ConditionStatusFalse
+	message := ""
+	if v.Spec.NodeID == "" && v.Status.State != longhorn.VolumeStateDetached {
+		message = "volume is not attached to any node"
+	} else if v.Status.State == longhorn.VolumeStateDetached && scheduledCondition.Status != longhorn.ConditionStatusTrue {
+		message = fmt.Sprintf("volume is detached but not scheduled with reason %v", scheduledCondition.Reason)
+	} else if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
+		message = "volume is in faulted state"
+	} else if v.Status.RestoreRequired {
+		message = "volume requires restore"
+	} else if isCloningDesired && !isCloningCompleted {
+		message = "volume is cloning"
+	} else {
+		status = longhorn.ConditionStatusTrue
+	}
+
+	return longhorn.Condition{
+		Type:    longhorn.VolumeConditionTypeReady,
+		Status:  status,
+		Reason:  "",
+		Message: message,
+	}
+}
+
 func toSettingResource(setting *longhorn.Setting) *Setting {
 	definition, _ := types.GetSettingDefinition(types.SettingName(setting.Name))
 
@@ -1563,18 +1592,6 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	//   3. It's faulted.
 	//   4. It's restore pending.
 	//   5. It's failed to clone
-	ready := true
-	scheduledCondition := types.GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeScheduled)
-	isCloningDesired := types.IsDataFromVolume(v.Spec.DataSource)
-	isCloningCompleted := v.Status.CloneStatus.State == longhorn.VolumeCloneStateCompleted
-	if (v.Spec.NodeID == "" && v.Status.State != longhorn.VolumeStateDetached) ||
-		(v.Status.State == longhorn.VolumeStateDetached && scheduledCondition.Status != longhorn.ConditionStatusTrue) ||
-		v.Status.Robustness == longhorn.VolumeRobustnessFaulted ||
-		v.Status.RestoreRequired ||
-		(isCloningDesired && !isCloningCompleted) {
-		ready = false
-	}
-
 	r := &Volume{
 		Resource: client.Resource{
 			Id:      v.Name,
@@ -1620,7 +1637,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		ReplicaZoneSoftAntiAffinity: v.Spec.ReplicaZoneSoftAntiAffinity,
 		ReplicaDiskSoftAntiAffinity: v.Spec.ReplicaDiskSoftAntiAffinity,
 		DataEngine:                  v.Spec.DataEngine,
-		Ready:                       ready,
+		Ready:                       toVolumeReadyCondition(v),
 
 		AccessMode:    v.Spec.AccessMode,
 		ShareEndpoint: v.Status.ShareEndpoint,
