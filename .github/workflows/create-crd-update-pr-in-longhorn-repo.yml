@@ -40,7 +40,7 @@ jobs:
       uses: peter-evans/create-pull-request@v7
       with:
         token: ${{ secrets.CUSTOM_GITHUB_TOKEN }}
-        branch: "update-image-tags-${{ inputs.branch }}"
+        branch: "update-crds-and-manifests-longhorn-manager-${{ github.event.pull_request.number }}"
         delete-branch: true
         sign-commits: true
         signoff: true
