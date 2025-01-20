@@ -1392,6 +1392,7 @@ func (s *TestSuite) TestFilterDisksWithMatchingReplicas(c *C) {
 		inputDiskUUIDs       []string
 		inputReplicas        map[string]*longhorn.Replica
 		diskSoftAntiAffinity bool
+		ignoreFailedReplicas bool
 
 		expectDiskUUIDs []string
 	}
@@ -1454,6 +1455,7 @@ func (s *TestSuite) TestFilterDisksWithMatchingReplicas(c *C) {
 		replica4.Name: replica4,
 	}
 	tc.diskSoftAntiAffinity = true
+	tc.ignoreFailedReplicas = false
 	tc.expectDiskUUIDs = []string{diskUUID5} // Only disk5 has no matching replica.
 	tests["only schedule to disk without matching replica"] = tc
 
@@ -1463,7 +1465,7 @@ func (s *TestSuite) TestFilterDisksWithMatchingReplicas(c *C) {
 		for _, UUID := range tc.inputDiskUUIDs {
 			inputDisks[UUID] = &Disk{}
 		}
-		outputDiskUUIDs := filterDisksWithMatchingReplicas(inputDisks, tc.inputReplicas, tc.diskSoftAntiAffinity)
+		outputDiskUUIDs := filterDisksWithMatchingReplicas(inputDisks, tc.inputReplicas, tc.diskSoftAntiAffinity, tc.ignoreFailedReplicas)
 		c.Assert(len(outputDiskUUIDs), Equals, len(tc.expectDiskUUIDs))
 		for _, UUID := range tc.expectDiskUUIDs {
 			_, ok := outputDiskUUIDs[UUID]
