@@ -23,19 +23,10 @@ import (
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 )
 
-func NewJob(name string, logger logrus.FieldLogger, managerURL string, recurringJob *longhorn.RecurringJob) (*Job, error) {
+func NewJob(name string, logger logrus.FieldLogger, managerURL string, recurringJob *longhorn.RecurringJob, lhClient *lhclientset.Clientset) (*Job, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		return nil, fmt.Errorf("failed detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
-	}
-
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get client config")
-	}
-	lhClient, err := lhclientset.NewForConfig(config)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get clientset")
 	}
 
 	clientOpts := &longhornclient.ClientOpts{
@@ -52,6 +43,10 @@ func NewJob(name string, logger logrus.FieldLogger, managerURL string, recurring
 		return nil, errors.Wrap(err, "failed to create scheme")
 	}
 
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get client config")
+	}
 	eventBroadcaster, err := apputil.CreateEventBroadcaster(config)
 	if err != nil {
 		return nil, err

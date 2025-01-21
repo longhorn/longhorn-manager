@@ -68,7 +68,7 @@ func recurringJob(c *cli.Context) (err error) {
 		return errors.Wrap(err, "failed to update job execution count")
 	}
 
-	job, err := recurringjob.NewJob(jobName, logger, managerURL, recurringJob)
+	job, err := recurringjob.NewJob(jobName, logger, managerURL, recurringJob, lhClient)
 	if err != nil {
 		return errors.Wrap(err, "failed to initialize job")
 	}
