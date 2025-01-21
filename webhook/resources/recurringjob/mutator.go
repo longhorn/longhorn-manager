@@ -52,6 +52,9 @@ func (r *recurringJobMutator) Create(request *admission.Request, newObj runtime.
 	if name != recurringjob.Name {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/metadata/name", "value": "%s"}`, name))
 	}
+	if recurringjob.Spec.Name == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/name", "value": "%s"}`, recurringjob.Name))
+	}
 	if recurringjob.Spec.Groups == nil {
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/groups", "value": []}`)
 	}
