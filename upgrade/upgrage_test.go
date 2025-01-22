@@ -53,6 +53,16 @@ func TestIsOldManagerPod(t *testing.T) {
 			deployManagerImage:  "longhornio/longhorn-manager:v1.9.0",
 			isOld:               true,
 		},
+		{
+			runningManagerImage: "some.local.oci:5000/longhornio/longhorn-manager:v1.8.0-xyz423434.4.5.6.4",
+			deployManagerImage:  "longhornio/longhorn-manager:some-non-semver",
+			isOld:               true,
+		},
+		{
+			runningManagerImage: "some.local.oci:5000/longhornio/longhorn-manager:some-non-semver",
+			deployManagerImage:  "longhornio/longhorn-manager:some-non-semver-xx.xx.xx",
+			isOld:               false,
+		},
 	}
 
 	for _, tt := range tests {
