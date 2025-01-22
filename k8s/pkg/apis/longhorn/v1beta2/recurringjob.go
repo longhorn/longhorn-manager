@@ -51,6 +51,9 @@ type RecurringJobSpec struct {
 	// The concurrency of taking the snapshot/backup.
 	// +optional
 	Concurrency int `json:"concurrency"`
+	// The flag of cleaning up the corresponding snapshot after the backup is completed.
+	// +optional
+	CleanupBackupSnapshot bool `json:"cleanupBackupSnapshot"`
 	// The label of the snapshot/backup.
 	// +optional
 	Labels map[string]string `json:"labels,omitempty"`

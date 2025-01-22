@@ -20,12 +20,13 @@ type Job struct {
 	eventRecorder record.EventRecorder // Used to record events related to the job.
 	logger        logrus.FieldLogger   // Log messages related to the job.
 
-	name           string                    // Name for the RecurringJob.
-	namespace      string                    // Kubernetes namespace in which the RecurringJob is running.
-	retain         int                       // Number of task CRs to retain.
-	task           longhorn.RecurringJobType // Type of task to be executed.
-	parameters     map[string]string         // Additional parameters for the task.
-	executionCount int                       // Number of times the job has been executed.
+	name                  string // Name for the RecurringJob.
+	namespace             string // Kubernetes namespace in which the RecurringJob is running.
+	retain                int    // Number of task CRs to retain.+
+	cleanupBackupSnapshot bool
+	task                  longhorn.RecurringJobType // Type of task to be executed.
+	parameters            map[string]string         // Additional parameters for the task.
+	executionCount        int                       // Number of times the job has been executed.
 }
 
 // VolumeJob is a job for volume tasks.
