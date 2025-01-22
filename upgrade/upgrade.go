@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"time"
 
 	"github.com/pkg/errors"
@@ -354,10 +355,17 @@ func waitForOldLonghornManagersToBeFullyRemoved(namespace, managerImage string, 
 func isOldManagerPod(pod corev1.Pod, managerImage string) (bool, string) {
 	for _, container := range pod.Spec.Containers {
 		if container.Name == "longhorn-manager" {
-			if container.Image != managerImage {
+			if extractSemver(container.Image) != extractSemver(managerImage) {
 				return true, container.Image
 			}
 		}
 	}
 	return false, ""
+}
+
+func extractSemver(input string) string {
+	regex := regexp.MustCompile(`v\d+\.\d+\.\d+`)
+	match := regex.FindString(input)
+
+	return match
 }
