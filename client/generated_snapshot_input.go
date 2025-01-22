@@ -7,6 +7,8 @@ const (
 type SnapshotInput struct {
 	Resource `yaml:"-"`
 
+	CleanupSnapshot bool `json:"cleanupSnapshot,omitempty" yaml:"cleanupSnapshot,omitempty"`
+
 	BackupMode string `json:"backupMode,omitempty" yaml:"backupMode,omitempty"`
 
 	Labels map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
