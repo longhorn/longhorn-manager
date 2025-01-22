@@ -64,12 +64,13 @@ func NewJob(name string, logger logrus.FieldLogger, managerURL string, recurring
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-recurring-job"}),
 		logger:        logger,
 
-		name:           name,
-		namespace:      namespace,
-		retain:         recurringJob.Spec.Retain,
-		task:           recurringJob.Spec.Task,
-		parameters:     parameters,
-		executionCount: recurringJob.Status.ExecutionCount,
+		name:                  name,
+		namespace:             namespace,
+		cleanupBackupSnapshot: recurringJob.Spec.CleanupBackupSnapshot,
+		retain:                recurringJob.Spec.Retain,
+		task:                  recurringJob.Spec.Task,
+		parameters:            parameters,
+		executionCount:        recurringJob.Status.ExecutionCount,
 	}, nil
 }
 
