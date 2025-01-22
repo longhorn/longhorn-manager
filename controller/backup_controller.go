@@ -499,6 +499,14 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		return nil
 	}
 
+	defer func() {
+		if backup.Spec.CleanupSnapshot {
+			if err := bc.ds.DeleteSnapshot(backup.Spec.SnapshotName); err != nil {
+				log.WithError(err).Error("Failed to delete the snapshot")
+			}
+		}
+	}()
+
 	// Remove the Backup Volume recurring jobs/groups information.
 	// Only record the latest recurring jobs/groups information in backup volume CR and volume.cfg on remote backup target.
 	delete(backupInfo.Labels, types.VolumeRecurringJobInfoLabel)
