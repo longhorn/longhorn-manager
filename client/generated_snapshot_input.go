@@ -7,7 +7,7 @@ const (
 type SnapshotInput struct {
 	Resource `yaml:"-"`
 
-	CleanupSnapshot bool `json:"cleanupSnapshot,omitempty" yaml:"cleanupSnapshot,omitempty"`
+	CleanupBackupSnapshot bool `json:"cleanupBackupSnapshot,omitempty" yaml:"cleanupBackupSnapshot,omitempty"`
 
 	BackupMode string `json:"backupMode,omitempty" yaml:"backupMode,omitempty"`
 
