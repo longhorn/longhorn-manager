@@ -6,15 +6,20 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func newDummyPod(name string, image string) *corev1.Pod {
+func newDummyPod(name string, version string) *corev1.Pod {
 	return &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				"app.kubernetes.io/version": version,
+			},
+		},
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
 				{
-					Name:  name,
-					Image: image,
+					Name: name,
 				},
 			},
 		},
@@ -23,55 +28,54 @@ func newDummyPod(name string, image string) *corev1.Pod {
 
 func TestIsOldManagerPod(t *testing.T) {
 	tests := []struct {
-		runningManagerImage string
-		deployManagerImage  string
-		isOld               bool
+		runningPodVersionLabel string
+		deployingManagerImage  string
+		isOld                  bool
 	}{
 		{
-			runningManagerImage: "127.0.0.1:31999/longhornio/longhorn-manager:v1.8.0-zarf-4048341149",
-			deployManagerImage:  "longhornio/longhorn-manager:v1.8.0",
-			isOld:               false,
+			runningPodVersionLabel: "v1.8.0",
+			deployingManagerImage:  "longhornio/longhorn-manager:v1.8.0",
+			isOld:                  false,
 		},
 		{
-			runningManagerImage: "some.local.oci:5000/longhornio/longhorn-manager:v1.8.0-xyz423434.4.5.6.4-3-5",
-			deployManagerImage:  "longhornio/longhorn-manager:v1.8.0",
-			isOld:               false,
-		},
-
-		{
-			runningManagerImage: "longhornio/longhorn-manager:v1.8.0",
-			deployManagerImage:  "longhornio/longhorn-manager:v1.8.0",
-			isOld:               false,
+			runningPodVersionLabel: "v1.8.0",
+			deployingManagerImage:  "some.local.oci:5000/longhornio/longhorn-manager:v1.8.0",
+			isOld:                  false,
 		},
 		{
-			runningManagerImage: "longhornio/longhorn-manager:v1.8.0",
-			deployManagerImage:  "longhornio/longhorn-manager:v1.9.0",
-			isOld:               true,
+			runningPodVersionLabel: "v1.8.0",
+			deployingManagerImage:  "longhornio/longhorn-manager:v1.8.0-patched4.5.6.4",
+			isOld:                  false,
 		},
 		{
-			runningManagerImage: "some.local.oci:5000/longhornio/longhorn-manager:v1.8.0-xyz423434.4.5.6.4",
-			deployManagerImage:  "longhornio/longhorn-manager:v1.9.0",
-			isOld:               true,
+			runningPodVersionLabel: "v1.8.0-dev-20250112",
+			deployingManagerImage:  "longhornio/longhorn-manager:-v1.8.0-dev-20250112",
+			isOld:                  false,
 		},
 		{
-			runningManagerImage: "some.local.oci:5000/longhornio/longhorn-manager:v1.8.0-xyz423434.4.5.6.4",
-			deployManagerImage:  "longhornio/longhorn-manager:some-non-semver",
-			isOld:               true,
+			runningPodVersionLabel: "v1.8.0",
+			deployingManagerImage:  "longhornio/longhorn-manager:v1.9.0",
+			isOld:                  true,
 		},
 		{
-			runningManagerImage: "some.local.oci:5000/longhornio/longhorn-manager:some-non-semver",
-			deployManagerImage:  "longhornio/longhorn-manager:some-non-semver-xx.xx.xx",
-			isOld:               false,
+			runningPodVersionLabel: "",
+			deployingManagerImage:  "some.local.oci:5000/longhornio/longhorn-manager:v1.8.0-dev-20250112",
+			isOld:                  true,
+		},
+		{
+			runningPodVersionLabel: "",
+			deployingManagerImage:  "longhornio/longhorn-manager:some-non-semver",
+			isOld:                  true,
 		},
 	}
 
 	for _, tt := range tests {
-		runningPods := newDummyPod("longhorn-manager", tt.runningManagerImage)
-		isOld, _ := isOldManagerPod(*runningPods, tt.deployManagerImage)
+		runningPods := newDummyPod("longhorn-manager", tt.runningPodVersionLabel)
+		isOld, _ := isOldManagerPod(*runningPods, tt.deployingManagerImage)
+
 		assert.Equal(t, tt.isOld, isOld,
-			fmt.Sprintf("compering both images version \n	-%s (%s)\n	-%s (%s)",
-				tt.runningManagerImage, extractSemver(tt.runningManagerImage),
-				tt.deployManagerImage, extractSemver(tt.deployManagerImage),
+			fmt.Sprintf("compering both Label: %s to Image %s",
+				tt.runningPodVersionLabel, tt.deployingManagerImage,
 			),
 		)
 	}
