@@ -20,38 +20,3 @@ jobs:
         chmod 700 get_helm.sh
         ./get_helm.sh
 
-    - name: Log triggering PR information
-      shell: bash
-      run: |
-        echo "Triggered by PR: #${{ github.event.pull_request.number }}"
-        echo "PR Title: ${{ github.event.pull_request.title }}"
-        echo "PR URL: ${{ github.event.pull_request.html_url }}"
-        echo "PR was merged into branch: ${{ github.event.pull_request.base.ref }}"
-    - uses: actions/checkout@v4
-      with:
-        repository: longhorn/longhorn
-        ref: ${{ github.event.pull_request.base.ref }}
-
-    - name: Update crds.yaml and manifests
-      shell: bash
-      run: |
-        curl -L https://github.com/longhorn/longhorn-manager/raw/master/k8s/crds.yaml -o chart/templates/crds.yaml
-        bash scripts/generate-longhorn-yaml.sh
-        bash scripts/helm-docs.sh
-
-    - name: Create Pull Request
-      id: cpr
-      uses: peter-evans/create-pull-request@v7
-      with:
-        token: ${{ env.CUSTOM_TOKEN }}
-        branch: "update-crds-and-manifests-longhorn-manager-${{ github.event.pull_request.number }}"
-        delete-branch: true
-        sign-commits: true
-        signoff: true
-        author: ${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>
-        committer: Longhorn GitHub Bot <67932897+longhorn-io-github-bot@users.noreply.github.com>
-        commit-message: "chore(crd): update crds.yaml and manifests"
-        title: "chore(crd): update crds.yaml and manifests (PR longhorn/longhorn-manager#${{ github.event.pull_request.number}})"
-        body: |
-          This PR updates the crds.yaml and manifests.
-          It was triggered by longhorn/longhorn-manager#${{ github.event.pull_request.number}}.
