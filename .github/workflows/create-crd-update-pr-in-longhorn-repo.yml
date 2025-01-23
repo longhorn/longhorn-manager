@@ -8,7 +8,7 @@ on:
       - synchronize
 
 env:
-  CUSTOM_TOKEN: ${{ secrets.CUSTOM_GITHUB_TOKEN }}
+  CUSTOM_TOKEN: ${{ secrets.CUSTOM_GITHUB_ACTION_TOKEN }}
 
 jobs:
   create-pr:
