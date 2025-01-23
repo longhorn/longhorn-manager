@@ -482,6 +482,13 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		return nil, err
 	}
 
+	instanceManagerPod, err := ec.ds.GetPod(im.Name)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get pod for instance manager %v", im.Name)
+	}
+
+	instanceManagerStorageIP := ec.ds.GetStorageIPFromPod(instanceManagerPod)
+
 	return c.EngineInstanceCreate(&engineapi.EngineInstanceCreateRequest{
 		Engine:                           e,
 		VolumeFrontend:                   frontend,
@@ -490,8 +497,8 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		DataLocality:                     v.Spec.DataLocality,
 		EngineCLIAPIVersion:              cliAPIVersion,
 		UpgradeRequired:                  false,
-		InitiatorAddress:                 im.Status.IP,
-		TargetAddress:                    im.Status.IP,
+		InitiatorAddress:                 instanceManagerStorageIP,
+		TargetAddress:                    instanceManagerStorageIP,
 	})
 }
 
