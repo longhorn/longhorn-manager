@@ -10,6 +10,8 @@ on:
 jobs:
   create-pr:
     runs-on: ubuntu-latest
+    env:
+      CUSTOM_TOKEN: ${{ secrets.CUSTOM_GITHUB_ACTION_TOKEN }}
     steps:
     - name: Prepare Packages
       run: |
@@ -40,7 +42,7 @@ jobs:
       id: cpr
       uses: peter-evans/create-pull-request@v7
       with:
-        token: ${{ secrets.CUSTOM_GITHUB_ACTION_TOKEN }}
+        token: ${{ env.CUSTOM_TOKEN }}
         branch: "update-crds-and-manifests-longhorn-manager-${{ github.event.pull_request.number }}"
         delete-branch: true
         sign-commits: true
