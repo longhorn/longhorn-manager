@@ -3,11 +3,12 @@ name: Create CRD Update PR in Longhorn Repo
 on:
   pull_request:
     types:
-      - closed
+      - opened
+      - edited
+      - synchronize
 
 jobs:
-  if_merged:
-    if: github.event.pull_request.merged == true
+  create-pr:
     runs-on: ubuntu-latest
     steps:
     - name: Prepare Packages
@@ -39,7 +40,7 @@ jobs:
       id: cpr
       uses: peter-evans/create-pull-request@v7
       with:
-        token: ${{ secrets.CUSTOM_GITHUB_TOKEN }}
+        token: ${{ secrets.CUSTOM_GITHUB_ACTION_TOKEN }}
         branch: "update-crds-and-manifests-longhorn-manager-${{ github.event.pull_request.number }}"
         delete-branch: true
         sign-commits: true
