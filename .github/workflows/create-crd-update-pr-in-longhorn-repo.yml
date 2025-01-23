@@ -11,7 +11,7 @@ jobs:
   create-pr:
     runs-on: ubuntu-latest
     env:
-      CUSTOM_TOKEN: ${{ secrets.CUSTOM_GITHUB_ACTION_TOKEN }}
+      CUSTOM_TOKEN: ${{ secrets.CUSTOM_GITHUB_TOKEN }}
     steps:
     - name: Prepare Packages
       run: |
