@@ -71,7 +71,7 @@ fi
 popd
 
 rm -rf ${GOPATH}/src/${LH_MANAGER_DIR}/k8s/crds.yaml
-echo "# Generating crds.yaml from ${APIS_DIR} and the crds.yaml will be copied to longhorn/longhorn chart/templates and cannot be directly used by kubectl apply." > ${GOPATH}/src/${LH_MANAGER_DIR}/k8s/crds.yaml
+echo "# Generated crds.yaml from ${APIS_DIR} and the crds.yaml will be copied to longhorn/longhorn chart/templates and cannot be directly used by kubectl apply." > ${GOPATH}/src/${LH_MANAGER_DIR}/k8s/crds.yaml
 kustomize build ${CRDS_DIR} >> ${GOPATH}/src/${LH_MANAGER_DIR}/k8s/crds.yaml
 rm -r ${CRDS_DIR}
 
