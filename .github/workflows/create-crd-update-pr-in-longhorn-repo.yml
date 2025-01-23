@@ -1,12 +1,14 @@
-name: Create CRD Update PR in Longhorn Repo
+name: Create CRD and Manifest Update PR in Longhorn Repo
 
 on:
-  pull_request:
-    types:
-      - closed
+  pull_request_target:
+    types: [closed]
+    branches:
+      - master
+      - "v*"
 
 jobs:
-  if_merged:
+  create-pull-request:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
@@ -45,7 +47,7 @@ jobs:
         sign-commits: true
         signoff: true
         author: ${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>
-        committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+        committer: Longhorn GitHub Bot <67932897+longhorn-io-github-bot@users.noreply.github.com>
         commit-message: "chore(crd): update crds.yaml and manifests"
         title: "chore(crd): update crds.yaml and manifests (PR longhorn/longhorn-manager#${{ github.event.pull_request.number}})"
         body: |
