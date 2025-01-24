@@ -37,6 +37,14 @@ jobs:
         bash scripts/generate-longhorn-yaml.sh
         bash scripts/helm-docs.sh
 
+    - name: Get Head Commit Name
+      id: get_head_commit_name
+      run: echo "::set-output name=commit_name::$(git log -1 --pretty=format:'%an')"
+
+    - name: Get Head Commit Email
+      id: get_head_commit_email
+      run: echo "::set-output name=commit_email::$(git log -1 --pretty=format:'%ae')"
+
     - name: Create Pull Request
       id: cpr
       uses: peter-evans/create-pull-request@v7
@@ -46,9 +54,8 @@ jobs:
         delete-branch: true
         sign-commits: true
         signoff: true
-        author: ${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>
-        committer: Longhorn GitHub Bot <67932897+longhorn-io-github-bot@users.noreply.github.com>
-        commit-message: "chore(crd): update crds.yaml and manifests"
+        author: ${{ steps.get_head_commit_name.outputs.commit_name }} <${{ steps.get_head_commit_email.outputs.commit_email }}>
+        committer: ${{ steps.get_head_commit_name.outputs.commit_name }} <${{ steps.get_head_commit_email.outputs.commit_email }}>
         title: "chore(crd): update crds.yaml and manifests (PR longhorn/longhorn-manager#${{ github.event.pull_request.number}})"
         body: |
           This PR updates the crds.yaml and manifests.
