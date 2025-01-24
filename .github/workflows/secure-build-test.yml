@@ -1,0 +1,71 @@
+name: secure-build-test
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "The image TAG of ${REGISTRY}/${REPO}/longhorn-manager:${TAG}"
+        required: true
+jobs:
+  build:
+    name: Build binaries
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # Build binaries
+    - name: Run build
+      run: make build
+
+    - name: Upload binaries
+      uses: actions/upload-artifact@v4
+      with:
+        name: binaries_artifact
+        path: ./bin/*
+
+  build_push_image:
+    name: Build and push image
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: read
+      id-token: write # required for reading vault secrets and for cosign's use in ecm-distro-tools/publish-image
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download binaries
+      uses: actions/download-artifact@v4
+      with:
+        name: binaries_artifact
+        path: ./bin/
+
+    - name: Add executable permission
+      run: |
+        chmod +x ./bin/*
+
+    - name: Copy bin folder to package
+      run: |
+        cp -r ./bin ./package/
+
+    - name: Read secrets
+      uses: rancher-eio/read-vault-secrets@main
+      with:
+        secrets: |
+          secret/data/github/repo/${{ github.repository }}/rancher-prime-registry/credentials registry | PRIME_REGISTRY ;
+          secret/data/github/repo/${{ github.repository }}/rancher-prime-registry/credentials username | PRIME_REGISTRY_USERNAME ;
+          secret/data/github/repo/${{ github.repository }}/rancher-prime-registry/credentials password | PRIME_REGISTRY_PASSWORD ;
+
+    - name: Publish images
+      uses: rancher/ecm-distro-tools/actions/publish-image@master
+      with:
+        image: longhorn-manager
+        tag: gha-test
+        platforms: linux/amd64,linux/arm64
+        prime-registry: ${{ env.PRIME_REGISTRY }}
+        prime-repo: longhorn
+        prime-username: ${{ env.PRIME_REGISTRY_USERNAME }}
+        prime-password: ${{ env.PRIME_REGISTRY_PASSWORD }}
+        make-target: workflow-image-build-push-secure
+        push-to-prime: true
+        push-to-public: false

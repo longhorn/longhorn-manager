@@ -1,0 +1,44 @@
+#!/bin/bash
+set -e
+
+source $(dirname $0)/version
+
+cd $(dirname $0)/..
+
+REPO=${REPO:-docker.io/longhornio/longhorn-manager}
+TAG=${TAG:-test-build}
+IMAGE=${IMAGE:-${REPO}:${TAG}}
+MACHINE=${MACHINE:-rancher}
+TARGET_PLATFORMS=${TARGET_PLATFORMS:-linux/amd64,linux/arm64}
+IFS=' ' read -r -a IID_FILE_FLAG <<<"$IID_FILE_FLAG"
+
+if [ ! -e ./bin/longhorn-manager-amd64 ] || [ ! -e ./bin/longhorn-manager-arm64 ]; then
+    echo "Error: building longhorn-manager binary before packaging"
+    exit 1
+fi
+
+if [[ -n "$IID_FILE" && ${#IID_FILE_FLAG} == 0 ]]; then
+    IID_FILE_FLAG=(--iidfile "$IID_FILE")
+fi
+
+buildx_args=()
+if [[ "$1" == "secure" ]]; then
+    buildx_args+=('--sbom=true' '--attest' 'type=provenance,mode=max')
+fi
+
+cp -r bin package/
+
+trap 'rm -rf ./package/bin' exit
+
+# update base image to get latest changes
+BASE_IMAGE=$(grep FROM package/Dockerfile  | awk '{print $2}')
+docker pull ${BASE_IMAGE}
+
+docker buildx build -f package/Dockerfile \
+    --builder "$MACHINE" \
+    "${IID_FILE_FLAG[@]}" \
+    "${BUILDX_ARGS[@]}" \
+    --platform="$TARGET_PLATFORMS" \
+    -t "$IMAGE" -f package/Dockerfile --push .
+
+echo "Built and pushed ${IMAGE}"
