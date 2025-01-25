@@ -313,9 +313,10 @@ type DetachInput struct {
 }
 
 type SnapshotInput struct {
-	Name       string            `json:"name"`
-	Labels     map[string]string `json:"labels"`
-	BackupMode string            `json:"backupMode"`
+	Name                  string            `json:"name"`
+	Labels                map[string]string `json:"labels"`
+	BackupMode            string            `json:"backupMode"`
+	CleanupBackupSnapshot bool              `json:"cleanupBackupSnapshot"`
 }
 
 type SnapshotCRInput struct {
