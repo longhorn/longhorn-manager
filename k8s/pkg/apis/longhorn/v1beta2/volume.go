@@ -107,6 +107,7 @@ const (
 	VolumeConditionTypeRestore             = "Restore"
 	VolumeConditionTypeTooManySnapshots    = "TooManySnapshots"
 	VolumeConditionTypeWaitForBackingImage = "WaitForBackingImage"
+	VolumeConditionTypeReady               = "Ready"
 )
 
 const (
