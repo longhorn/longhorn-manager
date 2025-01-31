@@ -317,7 +317,7 @@ func (s *Server) BackupGet(w http.ResponseWriter, req *http.Request) error {
 	}
 	backupVolumeName := mux.Vars(req)["backupVolumeName"]
 
-	backup, err := s.m.GetBackup(input.Name, backupVolumeName)
+	backup, err := s.m.GetBackup(input.Name)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get backup '%v' of volume '%v'", input.Name, backupVolumeName)
 	}
@@ -344,13 +344,13 @@ func (s *Server) BackupDelete(w http.ResponseWriter, req *http.Request) error {
 
 	backupVolumeName := mux.Vars(req)["backupVolumeName"]
 
-	backup, err := s.m.GetBackup(input.Name, backupVolumeName)
+	backup, err := s.m.GetBackup(input.Name)
 	if err != nil {
 		logrus.WithError(err).Warnf("failed to get backup '%v' of volume '%v'", input.Name, backupVolumeName)
 	}
 
 	if backup != nil {
-		if err := s.m.DeleteBackup(input.Name, backupVolumeName); err != nil {
+		if err := s.m.DeleteBackup(input.Name); err != nil {
 			return errors.Wrapf(err, "failed to delete backup '%v' of volume '%v'", input.Name, backupVolumeName)
 		}
 	}
