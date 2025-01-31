@@ -527,10 +527,10 @@ func (m *VolumeManager) ListBackupsForBackupVolumeSorted(backupVolumeName string
 	return backups, nil
 }
 
-func (m *VolumeManager) GetBackup(backupName, volumeName string) (*longhorn.Backup, error) {
+func (m *VolumeManager) GetBackup(backupName string) (*longhorn.Backup, error) {
 	return m.ds.GetBackupRO(backupName)
 }
 
-func (m *VolumeManager) DeleteBackup(backupName, volumeName string) error {
+func (m *VolumeManager) DeleteBackup(backupName string) error {
 	return m.ds.DeleteBackup(backupName)
 }
