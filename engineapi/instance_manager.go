@@ -451,7 +451,6 @@ type EngineInstanceCreateRequest struct {
 	EngineReplicaTimeout             int64
 	ReplicaFileSyncHTTPClientTimeout int64
 	DataLocality                     longhorn.DataLocality
-	ImIP                             string
 	EngineCLIAPIVersion              int
 	UpgradeRequired                  bool
 	InitiatorAddress                 string
@@ -529,7 +528,6 @@ type ReplicaInstanceCreateRequest struct {
 	DataPath            string
 	BackingImagePath    string
 	DataLocality        longhorn.DataLocality
-	ImIP                string
 	EngineCLIAPIVersion int
 }
 

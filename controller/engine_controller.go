@@ -488,7 +488,6 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		EngineReplicaTimeout:             engineReplicaTimeout,
 		ReplicaFileSyncHTTPClientTimeout: fileSyncHTTPClientTimeout,
 		DataLocality:                     v.Spec.DataLocality,
-		ImIP:                             im.Status.IP,
 		EngineCLIAPIVersion:              cliAPIVersion,
 		UpgradeRequired:                  false,
 		InitiatorAddress:                 im.Status.IP,
