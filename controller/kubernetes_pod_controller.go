@@ -464,7 +464,7 @@ func (kc *KubernetesPodController) getAssociatedVolumes(pod *corev1.Pod) ([]*lon
 		}
 
 		if pv.Spec.CSI != nil && pv.Spec.CSI.Driver == types.LonghornDriverName {
-			vol, err := kc.ds.GetVolume(pv.GetName())
+			vol, err := kc.ds.GetVolume(pv.Spec.CSI.VolumeHandle)
 			if datastore.ErrorIsNotFound(err) {
 				log.WithError(err).Warn("Cannot auto-delete Pod when the associated Volume is not found")
 				continue
