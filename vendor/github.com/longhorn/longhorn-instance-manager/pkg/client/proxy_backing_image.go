@@ -13,12 +13,13 @@ import (
 	rpc "github.com/longhorn/types/pkg/generated/imrpc"
 )
 
-func (c *ProxyClient) SPDKBackingImageCreate(name, backingImageUUID, diskUUID, checksum, fromAddress, srcLvsUUID string, size uint64) (*api.BackingImage, error) {
+func (c *ProxyClient) SPDKBackingImageCreate(name, backingImageUUID, diskUUID, checksum, fromAddress, srcLvsUUID, srcBackingImageName, encryption string, size uint64, credential map[string]string) (*api.BackingImage, error) {
 	input := map[string]string{
-		"name":             name,
-		"backingImageUUID": backingImageUUID,
-		"checksum":         checksum,
-		"diskUUID":         diskUUID,
+		"name":                name,
+		"backingImageUUID":    backingImageUUID,
+		"diskUUID":            diskUUID,
+		"srcBackingImageName": srcBackingImageName,
+		"encryption":          encryption,
 	}
 
 	if err := validateProxyMethodParameters(input); err != nil {
@@ -34,13 +35,16 @@ func (c *ProxyClient) SPDKBackingImageCreate(name, backingImageUUID, diskUUID, c
 	defer cancel()
 
 	resp, err := client.SPDKBackingImageCreate(ctx, &rpc.SPDKBackingImageCreateRequest{
-		Name:             name,
-		BackingImageUuid: backingImageUUID,
-		DiskUuid:         diskUUID,
-		Size:             size,
-		Checksum:         checksum,
-		FromAddress:      fromAddress,
-		SrcLvsUuid:       srcLvsUUID,
+		Name:                name,
+		BackingImageUuid:    backingImageUUID,
+		DiskUuid:            diskUUID,
+		Size:                size,
+		Checksum:            checksum,
+		FromAddress:         fromAddress,
+		SrcLvsUuid:          srcLvsUUID,
+		SrcBackingImageName: srcBackingImageName,
+		Encryption:          encryption,
+		Credential:          credential,
 	})
 	if err != nil {
 		return nil, err

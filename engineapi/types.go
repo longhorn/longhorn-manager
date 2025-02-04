@@ -111,7 +111,7 @@ type EngineClient interface {
 	BackupRestore(engine *longhorn.Engine, backupTarget, backupName, backupVolume, lastRestored string, credential map[string]string, concurrentLimit int) error
 	BackupRestoreStatus(engine *longhorn.Engine) (map[string]*longhorn.RestoreStatus, error)
 
-	SPDKBackingImageCreate(name, backingImageUUID, diskUUID, checksum, fromAddress, srcDiskUUID string, size uint64) (*imapi.BackingImage, error)
+	SPDKBackingImageCreate(name, backingImageUUID, diskUUID, checksum, fromAddress, srcDiskUUID, srcBackingImageName, encryption string, size uint64, credential map[string]string) (*imapi.BackingImage, error)
 	SPDKBackingImageDelete(name, diskUUID string) error
 	SPDKBackingImageGet(name, diskUUID string) (*imapi.BackingImage, error)
 	SPDKBackingImageList() (map[string]longhorn.BackingImageV2CopyInfo, error)

@@ -268,7 +268,7 @@ github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.8.0-rc4
+# github.com/longhorn/longhorn-instance-manager v1.8.0-rc4 => github.com/chanyilin/longhorn-instance-manager v1.4.0-rc1.0.20250207093629-76fd6751a6d3
 ## explicit; go 1.23.0
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -279,7 +279,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/util
 ## explicit; go 1.23.0
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/types v0.0.0-20241225162202-00d3a5fd7502
+# github.com/longhorn/types v0.0.0-20241225162202-00d3a5fd7502 => github.com/chanyilin/types v0.0.0-20250122064930-c1b9017c2968
 ## explicit; go 1.22.7
 github.com/longhorn/types/pkg/generated/bimrpc
 github.com/longhorn/types/pkg/generated/enginerpc

@@ -72,9 +72,8 @@ func (b *backingImageValidator) Create(request *admission.Request, newObj runtim
 		if err != nil {
 			return werror.NewInvalidError(fmt.Sprintf("invalid parameter %+v for source type %v", backingImage.Spec.SourceParameters, backingImage.Spec.SourceType), "")
 		}
-		if types.IsDataEngineV2(sourceBackingImage.Spec.DataEngine) {
-			// TODO: support clone from v2 backing image in the future.
-			return werror.NewInvalidError("clone from a v2 backing image is not supported", "")
+		if types.IsDataEngineV2(sourceBackingImage.Spec.DataEngine) && types.IsDataEngineV1(backingImage.Spec.DataEngine) {
+			return werror.NewInvalidError("clone from a v2 backing image to v1 is not supported", "")
 		}
 		return b.validateCloneParameters(sourceBackingImage, backingImage)
 	case longhorn.BackingImageDataSourceTypeDownload:

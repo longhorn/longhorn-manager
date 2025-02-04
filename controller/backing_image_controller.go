@@ -27,12 +27,15 @@ import (
 	typedv1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	"github.com/longhorn/longhorn-manager/constant"
+	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+
+	bimtypes "github.com/longhorn/backing-image-manager/pkg/types"
 )
 
 type BackingImageController struct {
@@ -431,58 +434,72 @@ func (bic *BackingImageController) prepareFirstV2Copy(bi *longhorn.BackingImage)
 
 	// The preparation state transition: Pending -> InProgress -> Ready/Failed
 	// we retry when failed by deleting the failed copy and cleanup the state.
-
-	// If the first v2 copy is ready, we can delete all the v1 file copies and return.
-	isPrepared := bic.isFirstV2CopyInState(bi, longhorn.BackingImageStateReady)
-	if isPrepared {
-		bi.Status.V2FirstCopyStatus = longhorn.BackingImageStateReady
-		bic.deleteAllV1FileCopies(bi)
-		bic.v2CopyBackoff.DeleteEntry(bi.Status.V2FirstCopyDisk)
-		return nil
-	}
-
-	// If the first v2 copy is failed, we cleanup the failed copy and retry the preparation.
-	// If the first v2 copy is in unknown, that means the instance manager may crahsh when creating the first v2 copy.
-	// We cleanup the unknown copy and retry the preparation.
-	isFailedToPrepare := bic.isFirstV2CopyInState(bi, longhorn.BackingImageStateFailed)
-	isUnknown := bic.isFirstV2CopyInState(bi, longhorn.BackingImageStateUnknown)
-	if isFailedToPrepare || isUnknown {
-		bi.Status.V2FirstCopyStatus = longhorn.BackingImageStateFailed
-		return bic.cleanupFirstFailedV2Copy(bi)
-	}
-
-	// If the first v2 copy is in progress, we wait for the next reconciliation
-	isInProgress := bic.isFirstV2CopyInState(bi, longhorn.BackingImageStateInProgress)
-	if isInProgress {
-		bi.Status.V2FirstCopyStatus = longhorn.BackingImageStateInProgress
-		bi.Spec.DiskFileSpecMap[bi.Status.V2FirstCopyDisk] = &longhorn.BackingImageDiskFileSpec{DataEngine: longhorn.DataEngineTypeV2}
-		return nil
-	}
-
-	// Wait for the first v1 file to be ready.
-	bids, err := bic.ds.GetBackingImageDataSource(bi.Name)
+	needsToPrepare, err := bic.needsToPrepareFirstV2Copy(bi)
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			log.Warn("Backing image data source not found when preparing first v2 copy, reconcile later")
+		return errors.Wrap(err, "failed to check if it needs to prepare the first v2 backing image copy")
+	}
+	if !needsToPrepare {
+		return nil
+	}
+
+	// We need to wait for the first v1 file to be ready.
+	// However, for cloning from v2 backing image, we don't need first v1 file but need to find one ready copy from the source backing image
+	preferredDisk := ""
+	fileDownloadAddress := ""
+	sourceV2BackingImageName := ""
+	sourceV2BackingImageDisk := ""
+	sourceV2BackingImageNode := &longhorn.Node{}
+	sourceV2InstanceManagerIP := ""
+	isClonedFromV2, err := bic.isClonedFromV2BackingImage(bi)
+	if err != nil {
+		return errors.Wrap(err, "failed to check if the backing image is cloned from a v2 backing image")
+	}
+	if !isClonedFromV2 {
+		bids, err := bic.ds.GetBackingImageDataSource(bi.Name)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				log.Warn("Backing image data source not found when preparing first v2 copy, reconcile later")
+				return nil
+			}
+			return errors.Wrap(err, "failed to get the backing image data source when preparing first v2 copy")
+		}
+		if !bids.Spec.FileTransferred {
+			log.Info("Backing image data source has not prepared the first v1 file, reconcile later")
 			return nil
 		}
-		return errors.Wrap(err, "failed to get the backing image data source when preparing first v2 copy")
-	}
-	if !bids.Spec.FileTransferred {
-		log.Info("Backing image data source has not prepared the first v1 file, reconcile later")
-		return nil
-	}
-	firstV1FileDiskUUID := bids.Spec.DiskUUID
-	if status, exists := bi.Status.DiskFileStatusMap[firstV1FileDiskUUID]; exists && status.State != longhorn.BackingImageStateReady {
-		log.Infof("The first v1 file copy is not ready, reconcile later")
-		return nil
+		firstV1FileDiskUUID := bids.Spec.DiskUUID
+		if status, exists := bi.Status.DiskFileStatusMap[firstV1FileDiskUUID]; exists && status.State != longhorn.BackingImageStateReady {
+			log.Infof("The first v1 file copy is not ready, reconcile later")
+			return nil
+		}
+
+		// Create v2 backing image copy by downloading the data from first file copy
+		fileDownloadAddress, err = bic.getFileDownloadAddress(bi, firstV1FileDiskUUID)
+		if err != nil {
+			return errors.Wrap(err, "failed to get the v1 file download address when preparing first v2 copy")
+		}
+		preferredDisk = firstV1FileDiskUUID
+	} else {
+		// Sync from source v2 backing image copy disk
+		sourceV2BackingImageName = bi.Spec.SourceParameters[longhorn.DataSourceTypeCloneParameterBackingImage]
+		sourceV2BackingImageNode, sourceV2BackingImageDisk, err = bic.chooseSourceBackingImageDisk(bi.Spec.SourceParameters[longhorn.DataSourceTypeCloneParameterBackingImage])
+		if err != nil {
+			return errors.Wrap(err, "failed to choose the source backing image disk when preparing first v2 copy")
+		}
+
+		srcInstanceManager, err := bic.ds.GetRunningInstanceManagerByNodeRO(sourceV2BackingImageNode.Name, longhorn.DataEngineTypeV2)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get the default instance manager for node %v", sourceV2BackingImageNode.Name)
+		}
+		sourceV2InstanceManagerIP = srcInstanceManager.Status.IP
+
+		preferredDisk = sourceV2BackingImageDisk
 	}
 
-	firstV2CopyNode, firstV2CopyDiskName, err := bic.findReadyNodeAndDiskForFirstV2Copy(bi, firstV1FileDiskUUID, log)
+	firstV2CopyNode, firstV2CopyDiskName, err := bic.findReadyNodeAndDiskForFirstV2Copy(bi, preferredDisk, log)
 	if err != nil {
 		return errors.Wrap(err, "failed to find a ready disk for the first v2 backing image copy")
 	}
-
 	firstV2CopyNodeName := firstV2CopyNode.Name
 	firstV2CopyDiskUUID := firstV2CopyNode.Status.DiskStatus[firstV2CopyDiskName].DiskUUID
 	log.Infof("Found the ready node %v disk %v for the first v2 backing image copy", firstV2CopyNodeName, firstV2CopyDiskUUID)
@@ -499,18 +516,58 @@ func (bic *BackingImageController) prepareFirstV2Copy(bi *longhorn.BackingImage)
 	}
 	defer engineClientProxy.Close()
 
-	// Create v2 backing image copy by downloading the data from first file copy
-	fileDownloadAddress, err := bic.getFileDownloadAddress(bi, firstV1FileDiskUUID)
-	if err != nil {
-		return errors.Wrap(err, "failed to get the v1 file download address when preparing first v2 copy")
-	}
-	_, err = engineClientProxy.SPDKBackingImageCreate(bi.Name, bi.Status.UUID, firstV2CopyDiskUUID, bi.Status.Checksum, fileDownloadAddress, "", uint64(bi.Status.Size))
-	if err != nil {
-		if types.ErrorAlreadyExists(err) {
-			log.Infof("backing image already exists when preparing first v2 copy on disk %v", firstV2CopyDiskUUID)
+	if !isClonedFromV2 {
+		// Download from v1 first file backing image managre
+		_, err = engineClientProxy.SPDKBackingImageCreate(bi.Name, bi.Status.UUID, firstV2CopyDiskUUID, bi.Status.Checksum, fileDownloadAddress, "", bi.Name, string(bimtypes.EncryptionTypeIgnore), uint64(bi.Status.Size), nil)
+		if err != nil {
+			if types.ErrorAlreadyExists(err) {
+				log.Infof("backing image already exists when preparing first v2 copy on disk %v", firstV2CopyDiskUUID)
+			}
+			bic.v2CopyBackoff.Next(firstV2CopyDiskUUID, time.Now())
+			return errors.Wrapf(err, "failed to create backing image on disk %v when preparing first v2 copy for backing image %v", firstV2CopyDiskUUID, bi.Name)
+
 		}
-		bic.v2CopyBackoff.Next(firstV2CopyDiskUUID, time.Now())
-		return errors.Wrapf(err, "failed to create backing image on disk %v when preparing first v2 copy for backing image %v", firstV2CopyDiskUUID, bi.Name)
+	} else {
+		// Clone by syncing from source v2 backing image copy disk
+		encryption := string(bi.Spec.SourceParameters[longhorn.DataSourceTypeCloneParameterEncryption])
+		credential := map[string]string{}
+		if bic.secretExists(bi) {
+			credential, err = bic.ds.GetEncryptionSecret(
+				bi.Spec.SourceParameters[longhorn.DataSourceTypeCloneParameterSecretNamespace],
+				bi.Spec.SourceParameters[longhorn.DataSourceTypeCloneParameterSecret],
+			)
+			if err != nil {
+				return errors.Wrapf(err, "failed to get the encryption secret for clonging backing image %v with encryption: %v", sourceV2BackingImageName, encryption)
+			}
+		}
+
+		log.Infof("[DEBUG]: encryption: %v, credential: %v", encryption, credential)
+
+		sourceBackingImage, err := bic.ds.GetBackingImageRO(sourceV2BackingImageName)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get the source backing image %v when preparing first v2 copy", sourceV2BackingImageName)
+		}
+		size := uint64(sourceBackingImage.Status.Size)
+		if encryption == string(bimtypes.EncryptionTypeEncrypt) {
+			size = size + crypto.Luks2MinimalVolumeSize
+		}
+		if encryption == string(bimtypes.EncryptionTypeDecrypt) {
+			size = size - crypto.Luks2MinimalVolumeSize
+		}
+
+		log.Infof("[DEBUG]: size: %v", size)
+
+		log.Infof("[DEBUG]: request spdk server to create backing image")
+		_, err = engineClientProxy.SPDKBackingImageCreate(bi.Name, bi.Status.UUID, firstV2CopyDiskUUID, "", net.JoinHostPort(sourceV2InstanceManagerIP, strconv.Itoa(engineapi.InstanceManagerSpdkServiceDefaultPort)), sourceV2BackingImageDisk, sourceV2BackingImageName, encryption, size, credential)
+		log.Infof("[DEBUG]: err: %v", err)
+		if err != nil {
+			if types.ErrorAlreadyExists(err) {
+				log.Infof("backing image already exists when preparing first v2 copy on disk %v", firstV2CopyDiskUUID)
+			}
+			bic.v2CopyBackoff.Next(firstV2CopyDiskUUID, time.Now())
+			return errors.Wrapf(err, "failed to create backing image on disk %v when preparing first v2 copy for backing image %v", firstV2CopyDiskUUID, bi.Name)
+
+		}
 	}
 
 	bi.Status.V2FirstCopyDisk = firstV2CopyDiskUUID
@@ -1018,7 +1075,7 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 			}
 
 			// For clone, we choose the same node and disk as the source backing image
-			if bi.Spec.SourceType == longhorn.BackingImageDataSourceTypeClone {
+			if bi.Spec.SourceType == longhorn.BackingImageDataSourceTypeClone && !types.IsDataEngineV2(bi.Spec.DataEngine) {
 				readyNode, readyDiskName, err = bic.findReadyNodeAndDiskForClone(bi)
 				if err != nil {
 					return err
@@ -1049,7 +1106,13 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 				Parameters: bi.Spec.SourceParameters,
 			},
 		}
-		if isReadyFile {
+
+		// If it is cloned from v2, we don't need to prepare the first file with data source pod.
+		isClonedFromV2, err := bic.isClonedFromV2BackingImage(bi)
+		if err != nil {
+			return errors.Wrap(err, "failed to check if the backing image is cloned from a v2 backing image")
+		}
+		if isReadyFile || isClonedFromV2 {
 			bids.Spec.FileTransferred = true
 		}
 		if bids.Spec.Parameters == nil {
@@ -1142,7 +1205,12 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 			bids.Spec.DiskUUID = ""
 			bids.Spec.DiskPath = ""
 
-			if types.IsDataEngineV2(bi.Spec.DataEngine) {
+			isClonedFromV2, err := bic.isClonedFromV2BackingImage(bi)
+			if err != nil {
+				return errors.Wrap(err, "failed to check if the backing image is cloned from a v2 backing image")
+			}
+
+			if types.IsDataEngineV2(bi.Spec.DataEngine) && !isClonedFromV2 {
 				log.Info("Prepare to re-prepare the first v2 copy")
 				bi.Status.V2FirstCopyDisk = ""
 				bi.Status.V2FirstCopyStatus = longhorn.BackingImageStatePending
@@ -1164,7 +1232,7 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 			}
 
 			// For clone, we choose the same node and disk as the source backing image
-			if bi.Spec.SourceType == longhorn.BackingImageDataSourceTypeClone {
+			if bi.Spec.SourceType == longhorn.BackingImageDataSourceTypeClone && !types.IsDataEngineV2(bi.Spec.DataEngine) {
 				readyNode, readyDiskName, err = bic.findReadyNodeAndDiskForClone(bi)
 				if err != nil {
 					return nil
@@ -1592,20 +1660,21 @@ func (bic *BackingImageController) findReadyNodeAndDiskForClone(bi *longhorn.Bac
 
 // For first v2 copy, we choose the same node and disk as the v1 file first to reduce the network overhead.
 // If not found, we will fallback to use random v2 disk
-func (bic *BackingImageController) findReadyNodeAndDiskForFirstV2Copy(bi *longhorn.BackingImage, firstV1FileDiskUUID string, log logrus.FieldLogger) (*longhorn.Node, string, error) {
-	node, _, err := bic.ds.GetReadyDiskNodeRO(firstV1FileDiskUUID)
-	if err != nil {
-		return nil, "", errors.Wrapf(err, "failed to get the ready disk node for first v2 file disk %v", firstV1FileDiskUUID)
-	}
-	nodeList := []*longhorn.Node{node}
-	firstV2CopyNode, firstV2CopyDiskName, err := bic.ds.GetReadyNodeDiskForBackingImage(bi, longhorn.DataEngineTypeV2, nodeList)
-	if err == nil {
-		return firstV2CopyNode, firstV2CopyDiskName, nil
+func (bic *BackingImageController) findReadyNodeAndDiskForFirstV2Copy(bi *longhorn.BackingImage, preferredDisk string, log logrus.FieldLogger) (*longhorn.Node, string, error) {
+	if preferredDisk != "" {
+		node, _, err := bic.ds.GetReadyDiskNodeRO(preferredDisk)
+		if err != nil {
+			return nil, "", errors.Wrapf(err, "failed to get the ready disk node for first v2 file disk %v", preferredDisk)
+		}
+		nodeList := []*longhorn.Node{node}
+		firstV2CopyNode, firstV2CopyDiskName, err := bic.ds.GetReadyNodeDiskForBackingImage(bi, longhorn.DataEngineTypeV2, nodeList)
+		if err == nil {
+			return firstV2CopyNode, firstV2CopyDiskName, nil
+		}
+		log.WithError(err).Warnf("Failed to find a ready v2 disk on the same node %v as v1 file for the first v2 copy, will fallback to use random v2 disk", node.Name)
 	}
 
-	log.WithError(err).Warnf("Failed to find a ready v2 disk on the same node %v as v1 file for the first v2 copy, will fallback to use random v2 disk", node.Name)
-
-	firstV2CopyNode, firstV2CopyDiskName, err = bic.ds.GetReadyNodeDiskForBackingImage(bi, longhorn.DataEngineTypeV2, nil)
+	firstV2CopyNode, firstV2CopyDiskName, err := bic.ds.GetReadyNodeDiskForBackingImage(bi, longhorn.DataEngineTypeV2, nil)
 	if err != nil {
 		return nil, "", err
 	}
@@ -1645,7 +1714,7 @@ func (bic *BackingImageController) syncV2Copies(bi *longhorn.BackingImage, sourc
 	}
 
 	// Create the backing image by syncing the backing image data from the SPDK server inside the instance manager holding the source disk
-	_, err = engineClientProxy.SPDKBackingImageCreate(bi.Name, bi.Status.UUID, v2DiskUUID, bi.Status.Checksum, net.JoinHostPort(srcInstanceManager.Status.IP, strconv.Itoa(engineapi.InstanceManagerSpdkServiceDefaultPort)), sourceV2DiskUUID, uint64(bi.Status.Size))
+	_, err = engineClientProxy.SPDKBackingImageCreate(bi.Name, bi.Status.UUID, v2DiskUUID, bi.Status.Checksum, net.JoinHostPort(srcInstanceManager.Status.IP, strconv.Itoa(engineapi.InstanceManagerSpdkServiceDefaultPort)), sourceV2DiskUUID, bi.Name, string(bimtypes.EncryptionTypeIgnore), uint64(bi.Status.Size), nil)
 	if err != nil {
 		bic.v2CopyBackoff.Next(v2DiskUUID, time.Now())
 		return errors.Wrapf(err, "failed to create the v2 backing image on diskUUID %v", v2DiskUUID)
@@ -1771,4 +1840,71 @@ func (bic *BackingImageController) deleteUnknownV2Copy(bi *longhorn.BackingImage
 		return false, errors.Wrapf(err, "failed to delete the v2 copy on diskUUID %v", v2DiskUUID)
 	}
 	return true, nil
+}
+
+func (bic *BackingImageController) needsToPrepareFirstV2Copy(bi *longhorn.BackingImage) (bool, error) {
+	// If the first v2 copy is ready, we can delete all the v1 file copies and return.
+	isPrepared := bic.isFirstV2CopyInState(bi, longhorn.BackingImageStateReady)
+	if isPrepared {
+		bi.Status.V2FirstCopyStatus = longhorn.BackingImageStateReady
+		bic.deleteAllV1FileCopies(bi)
+		bic.v2CopyBackoff.DeleteEntry(bi.Status.V2FirstCopyDisk)
+		return false, nil
+	}
+
+	// If the first v2 copy is failed, we cleanup the failed copy and retry the preparation.
+	// If the first v2 copy is in unknown, that means the instance manager may crahsh when creating the first v2 copy.
+	// We cleanup the unknown copy and retry the preparation.
+	isFailedToPrepare := bic.isFirstV2CopyInState(bi, longhorn.BackingImageStateFailed)
+	isUnknown := bic.isFirstV2CopyInState(bi, longhorn.BackingImageStateUnknown)
+	if isFailedToPrepare || isUnknown {
+		bi.Status.V2FirstCopyStatus = longhorn.BackingImageStateFailed
+		err := bic.cleanupFirstFailedV2Copy(bi)
+		return false, err
+	}
+
+	// If the first v2 copy is in progress, we wait for the next reconciliation
+	isInProgress := bic.isFirstV2CopyInState(bi, longhorn.BackingImageStateInProgress)
+	if isInProgress {
+		bi.Status.V2FirstCopyStatus = longhorn.BackingImageStateInProgress
+		bi.Spec.DiskFileSpecMap[bi.Status.V2FirstCopyDisk] = &longhorn.BackingImageDiskFileSpec{DataEngine: longhorn.DataEngineTypeV2}
+		return false, nil
+	}
+
+	return true, nil
+}
+
+func (bic *BackingImageController) isClonedFromV2BackingImage(bi *longhorn.BackingImage) (bool, error) {
+	if bi.Spec.SourceType != longhorn.BackingImageDataSourceTypeClone {
+		return false, nil
+	}
+	sourceBackingImageName := bi.Spec.SourceParameters[longhorn.DataSourceTypeCloneParameterBackingImage]
+	sourceBackingImage, err := bic.ds.GetBackingImageRO(sourceBackingImageName)
+	if err != nil {
+		return false, err
+	}
+	return types.IsDataEngineV2(sourceBackingImage.Spec.DataEngine), nil
+}
+
+func (bic *BackingImageController) chooseSourceBackingImageDisk(sourceBackingImageName string) (*longhorn.Node, string, error) {
+	sourceBackingImage, err := bic.ds.GetBackingImageRO(sourceBackingImageName)
+	if err != nil {
+		return nil, "", errors.Wrapf(err, "failed to get the source backing image %v when preparing first v2 copy", sourceBackingImageName)
+	}
+
+	for diskUUID, status := range sourceBackingImage.Status.DiskFileStatusMap {
+		if status.State == longhorn.BackingImageStateReady {
+			node, _, err := bic.ds.GetReadyDiskNodeRO(diskUUID)
+			if err != nil {
+				continue
+			}
+			return node, diskUUID, nil
+		}
+	}
+	return nil, "", fmt.Errorf("failed to find the ready disk for source backing image %v", sourceBackingImageName)
+}
+
+func (bic *BackingImageController) secretExists(bi *longhorn.BackingImage) bool {
+	return bi.Spec.SourceParameters[longhorn.DataSourceTypeCloneParameterSecretNamespace] != "" &&
+		bi.Spec.SourceParameters[longhorn.DataSourceTypeCloneParameterSecret] != ""
 }

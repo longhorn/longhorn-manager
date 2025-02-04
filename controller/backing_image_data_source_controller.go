@@ -702,7 +702,7 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 		cmd = append(cmd, "--checksum", bids.Spec.Checksum)
 	}
 
-	if bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeClone && secretExists(bids) {
+	if bids.Spec.SourceType == longhorn.BackingImageDataSourceTypeClone && c.secretExists(bids) {
 
 		credential, err := c.ds.GetEncryptionSecret(
 			bids.Spec.Parameters[longhorn.DataSourceTypeCloneParameterSecretNamespace],
@@ -1254,7 +1254,7 @@ func isEncryptionRequire(bi *longhorn.BackingImage) bool {
 	return bi.Spec.SourceType == longhorn.BackingImageDataSourceTypeClone && encryptionType == bimtypes.EncryptionTypeEncrypt
 }
 
-func secretExists(bids *longhorn.BackingImageDataSource) bool {
+func (c *BackingImageDataSourceController) secretExists(bids *longhorn.BackingImageDataSource) bool {
 	return bids.Spec.Parameters[longhorn.DataSourceTypeCloneParameterSecretNamespace] != "" &&
 		bids.Spec.Parameters[longhorn.DataSourceTypeCloneParameterSecret] != ""
 }

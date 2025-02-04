@@ -10,8 +10,8 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
-func (p *Proxy) SPDKBackingImageCreate(name, backingImageUUID, diskUUID, checksum, fromAddress, srcDiskUUID string, size uint64) (*imapi.BackingImage, error) {
-	return p.grpcClient.SPDKBackingImageCreate(name, backingImageUUID, diskUUID, checksum, fromAddress, srcDiskUUID, size)
+func (p *Proxy) SPDKBackingImageCreate(name, backingImageUUID, diskUUID, checksum, fromAddress, srcDiskUUID, srcBackingImageName, encryption string, size uint64, credential map[string]string) (*imapi.BackingImage, error) {
+	return p.grpcClient.SPDKBackingImageCreate(name, backingImageUUID, diskUUID, checksum, fromAddress, srcDiskUUID, srcBackingImageName, encryption, size, credential)
 }
 
 func (p *Proxy) SPDKBackingImageDelete(name, diskUUID string) error {
@@ -55,7 +55,7 @@ func parseBackingImage(bi *imapi.BackingImage) *longhorn.BackingImageV2CopyInfo 
 	}
 }
 
-func (e *EngineBinary) SPDKBackingImageCreate(name, backingImageUUID, diskUUID, checksum, fromAddress, srcDiskUUID string, size uint64) (*imapi.BackingImage, error) {
+func (e *EngineBinary) SPDKBackingImageCreate(name, backingImageUUID, diskUUID, checksum, fromAddress, srcDiskUUID, srcBackingImageName, encryption string, size uint64, credential map[string]string) (*imapi.BackingImage, error) {
 	return nil, errors.New(ErrNotImplement)
 }
 

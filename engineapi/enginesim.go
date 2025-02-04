@@ -287,7 +287,7 @@ func (e *EngineSimulator) RemountReadOnlyVolume(*longhorn.Engine) error {
 	return errors.New(ErrNotImplement)
 }
 
-func (e *EngineSimulator) SPDKBackingImageCreate(name, backingImageUUID, diskUUID, checksum, fromAddress, srcDiskUUID string, size uint64) (*imapi.BackingImage, error) {
+func (e *EngineSimulator) SPDKBackingImageCreate(name, backingImageUUID, diskUUID, checksum, fromAddress, srcDiskUUID, srcBackingImageName, encryption string, size uint64, credential map[string]string) (*imapi.BackingImage, error) {
 	return nil, errors.New(ErrNotImplement)
 }
 

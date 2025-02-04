@@ -4,6 +4,10 @@ go 1.23.1
 
 toolchain go1.23.5
 
+replace github.com/longhorn/types v0.0.0-20241225162202-00d3a5fd7502 => github.com/chanyilin/types v0.0.0-20250122064930-c1b9017c2968
+
+replace github.com/longhorn/longhorn-instance-manager v1.8.0-rc4 => github.com/chanyilin/longhorn-instance-manager v1.4.0-rc1.0.20250207093629-76fd6751a6d3
+
 // Replace directives are required for dependencies in this section because:
 // - This module imports k8s.io/kubernetes.
 // - The development for all of these dependencies is done at kubernetes/staging and then synced to other repos.
