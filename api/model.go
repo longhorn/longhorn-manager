@@ -1491,8 +1491,16 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		}
 	}
 
+	allReplicaScheduled := true
+	if len(vrs) == 0 {
+		allReplicaScheduled = false
+	}
 	replicas := []Replica{}
 	for _, r := range vrs {
+		if r.Spec.NodeID == "" {
+			allReplicaScheduled = false
+		}
+
 		mode := ""
 		if ve != nil && ve.Status.ReplicaModeMap != nil {
 			mode = string(ve.Status.ReplicaModeMap[r.Name])
@@ -1568,7 +1576,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	isCloningDesired := types.IsDataFromVolume(v.Spec.DataSource)
 	isCloningCompleted := v.Status.CloneStatus.State == longhorn.VolumeCloneStateCompleted
 	if (v.Spec.NodeID == "" && v.Status.State != longhorn.VolumeStateDetached) ||
-		(v.Status.State == longhorn.VolumeStateDetached && scheduledCondition.Status != longhorn.ConditionStatusTrue) ||
+		(v.Status.State == longhorn.VolumeStateDetached && (scheduledCondition.Status != longhorn.ConditionStatusTrue && !allReplicaScheduled)) ||
 		v.Status.Robustness == longhorn.VolumeRobustnessFaulted ||
 		v.Status.RestoreRequired ||
 		(isCloningDesired && !isCloningCompleted) {
