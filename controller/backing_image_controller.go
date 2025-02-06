@@ -1644,8 +1644,15 @@ func (bic *BackingImageController) syncV2Copies(bi *longhorn.BackingImage, sourc
 		return errors.Wrapf(err, "failed to get the default instance manager for node %v", node.Name)
 	}
 
+	instanceManagerPod, err := bic.ds.GetPod(srcInstanceManager.Name)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get pod for instance manager %v", srcInstanceManager.Name)
+	}
+
+	instanceManagerStorageIP := bic.ds.GetStorageIPFromPod(instanceManagerPod)
+
 	// Create the backing image by syncing the backing image data from the SPDK server inside the instance manager holding the source disk
-	_, err = engineClientProxy.SPDKBackingImageCreate(bi.Name, bi.Status.UUID, v2DiskUUID, bi.Status.Checksum, net.JoinHostPort(srcInstanceManager.Status.IP, strconv.Itoa(engineapi.InstanceManagerSpdkServiceDefaultPort)), sourceV2DiskUUID, uint64(bi.Status.Size))
+	_, err = engineClientProxy.SPDKBackingImageCreate(bi.Name, bi.Status.UUID, v2DiskUUID, bi.Status.Checksum, net.JoinHostPort(instanceManagerStorageIP, strconv.Itoa(engineapi.InstanceManagerSpdkServiceDefaultPort)), sourceV2DiskUUID, uint64(bi.Status.Size))
 	if err != nil {
 		bic.v2CopyBackoff.Next(v2DiskUUID, time.Now())
 		return errors.Wrapf(err, "failed to create the v2 backing image on diskUUID %v", v2DiskUUID)
