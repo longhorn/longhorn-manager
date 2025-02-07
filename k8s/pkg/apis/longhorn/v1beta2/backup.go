@@ -84,7 +84,7 @@ type BackupStatus struct {
 	// +optional
 	BackupCreatedAt string `json:"backupCreatedAt"`
 	// The snapshot size.
-	// +optional
+	// +kubebuilder:default="0"
 	Size string `json:"size"`
 	// The labels of snapshot backup.
 	// +optional
