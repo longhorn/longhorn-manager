@@ -1,4 +1,9 @@
 TARGETS := $(shell ls scripts)
+MACHINE := longhorn
+# Define the target platforms that can be used across the ecosystem.
+# Note that what would actually be used for a given project will be
+# defined in TARGET_PLATFORMS, and must be a subset of the below:
+DEFAULT_PLATFORMS := linux/amd64,linux/arm64
 
 .dapper:
 	@echo Downloading dapper
@@ -9,6 +14,25 @@ TARGETS := $(shell ls scripts)
 
 $(TARGETS): .dapper
 	./.dapper $@
+
+.PHONY: buildx-machine
+buildx-machine:
+	@docker buildx create --name=$(MACHINE) --platform=$(DEFAULT_PLATFORMS) 2>/dev/null || true
+	docker buildx inspect $(MACHINE)
+
+# variables needed from GHA caller:
+# - REPO: image repo, include $registry/$repo_path
+# - TAG: image tag
+# - TARGET_PLATFORMS: optional, to be passed for buildx's --platform option
+# - IID_FILE_FLAG: optional, options to generate image ID file
+.PHONY: workflow-image-build-push workflow-image-build-push-secure
+workflow-image-build-push: buildx-machine
+	MACHINE=$(MACHINE) PUSH='true' bash scripts/package
+workflow-image-build-push-secure: buildx-machine
+	MACHINE=$(MACHINE) PUSH='true' IS_SECURE=true bash scripts/package
+
+generate:
+	bash k8s/generate_code.sh
 
 .DEFAULT_GOAL := ci
 
