@@ -56,6 +56,7 @@ jobs:
         signoff: true
         author: ${{ steps.get_head_commit_name.outputs.commit_name }} <${{ steps.get_head_commit_email.outputs.commit_email }}>
         committer: ${{ steps.get_head_commit_name.outputs.commit_name }} <${{ steps.get_head_commit_email.outputs.commit_email }}>
+        commit-message: "chore(crd): update crds.yaml and manifests (PR longhorn/longhorn-manager#${{ github.event.pull_request.number}})"
         title: "chore(crd): update crds.yaml and manifests (PR longhorn/longhorn-manager#${{ github.event.pull_request.number}})"
         body: |
           This PR updates the crds.yaml and manifests.
