@@ -30,6 +30,7 @@ import (
 	"github.com/longhorn/longhorn-manager/upgrade/v15xto160"
 	"github.com/longhorn/longhorn-manager/upgrade/v160to161"
 	"github.com/longhorn/longhorn-manager/upgrade/v162to163"
+	"github.com/longhorn/longhorn-manager/upgrade/v164to165"
 	"github.com/longhorn/longhorn-manager/upgrade/v1beta1"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -274,6 +275,12 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 			return err
 		}
 	}
+	if semver.Compare(lhVersionBeforeUpgrade, "v1.6.5") < 0 {
+		logrus.Info("Walking through the resource upgrade path v1.6.4 to v1.6.5")
+		if err := v164to165.UpgradeResources(namespace, lhClient, kubeClient, resourceMaps); err != nil {
+			return err
+		}
+	}
 	if err := upgradeutil.UpdateResources(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
@@ -296,6 +303,12 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 	if semver.Compare(lhVersionBeforeUpgrade, "v1.6.1") < 0 {
 		logrus.Info("Walking through the resource status upgrade path v1.6.0 to v1.6.1")
 		if err := v160to161.UpgradeResourcesStatus(namespace, lhClient, kubeClient, resourceMaps); err != nil {
+			return err
+		}
+	}
+	if semver.Compare(lhVersionBeforeUpgrade, "v1.6.5") < 0 {
+		logrus.Info("Walking through the resource status upgrade path v1.6.4 to v1.6.5")
+		if err := v164to165.UpgradeResourcesStatus(namespace, lhClient, kubeClient, resourceMaps); err != nil {
 			return err
 		}
 	}
