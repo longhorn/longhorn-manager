@@ -6,9 +6,12 @@ cd $(dirname $0)
 ./build
 ./validate
 ./test -cover
-./package
 
-image=`cat ../bin/latest_image`
+if [[ -z "${NO_PACKAGE}" ]]; then
+  ./package
 
-echo
-echo Longhorn Manager image: ${image}
+  IMAGE=$(cat ../bin/latest_image)
+
+  echo
+  echo "Longhorn Manager IMAGE: ${IMAGE}"
+fi

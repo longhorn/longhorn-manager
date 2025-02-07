@@ -8,7 +8,7 @@ ENV HOST_ARCH=${DAPPER_HOST_ARCH} ARCH=${DAPPER_HOST_ARCH}
 ENV DAPPER_SOURCE /go/src/github.com/longhorn/longhorn-manager
 ENV DAPPER_OUTPUT ./bin coverage.out
 ENV DAPPER_DOCKER_SOCKET true
-ENV DAPPER_ENV IMAGE REPO VERSION TAG TESTS DRONE_REPO DRONE_PULL_REQUEST DRONE_COMMIT_REF
+ENV DAPPER_ENV IMAGE REPO VERSION TAG TESTS DRONE_REPO DRONE_PULL_REQUEST DRONE_COMMIT_REF NO_PACKAGE ARCHS
 ENV DAPPER_RUN_ARGS --privileged --tmpfs /go/src/github.com/longhorn/longhorn/integration/.venv:exec --tmpfs /go/src/github.com/longhorn/longhorn/integration/.tox:exec -v /dev:/host/dev
 ENV TRASH_CACHE ${DAPPER_SOURCE}/.trash-cache
 ENV HOME ${DAPPER_SOURCE}
