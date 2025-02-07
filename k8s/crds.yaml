@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.17.1
   labels:
     longhorn-manager: ""
   name: backingimagedatasources.longhorn.io
@@ -189,7 +189,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.17.1
   labels:
     longhorn-manager: ""
   name: backingimagemanagers.longhorn.io
@@ -379,7 +379,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.17.1
   labels:
     longhorn-manager: ""
   name: backingimages.longhorn.io
@@ -581,7 +581,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.17.1
   labels:
     longhorn-manager: ""
   name: backupbackingimages.longhorn.io
@@ -735,7 +735,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.17.1
   labels:
     longhorn-manager: ""
   name: backups.longhorn.io
@@ -919,6 +919,7 @@ spec:
                 description: The address of the replica that runs snapshot backup.
                 type: string
               size:
+                default: "0"
                 description: The snapshot size.
                 type: string
               snapshotCreatedAt:
@@ -947,6 +948,8 @@ spec:
               volumeSize:
                 description: The volume size.
                 type: string
+            required:
+            - size
             type: object
         type: object
     served: true
@@ -958,7 +961,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.17.1
   labels:
     longhorn-manager: ""
   name: backuptargets.longhorn.io
@@ -1159,7 +1162,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.17.1
   labels:
     longhorn-manager: ""
   name: backupvolumes.longhorn.io
@@ -1338,7 +1341,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.17.1
   labels:
     longhorn-manager: ""
   name: engineimages.longhorn.io
@@ -1550,7 +1553,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.17.1
   labels:
     longhorn-manager: ""
   name: engines.longhorn.io
@@ -1946,7 +1949,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.17.1
   labels:
     longhorn-manager: ""
   name: instancemanagers.longhorn.io
@@ -2245,7 +2248,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.17.1
   labels:
     longhorn-manager: ""
   name: nodes.longhorn.io
@@ -2524,7 +2527,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.17.1
   labels:
     longhorn-manager: ""
   name: orphans.longhorn.io
@@ -2635,7 +2638,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.17.1
   labels:
     longhorn-manager: ""
   name: recurringjobs.longhorn.io
@@ -2831,7 +2834,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.17.1
   labels:
     longhorn-manager: ""
   name: replicas.longhorn.io
@@ -3111,7 +3114,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.17.1
   labels:
     longhorn-manager: ""
   name: settings.longhorn.io
@@ -3224,7 +3227,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.17.1
   labels:
     longhorn-manager: ""
   name: sharemanagers.longhorn.io
@@ -3351,7 +3354,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.17.1
   labels:
     longhorn-manager: ""
   name: snapshots.longhorn.io
@@ -3481,7 +3484,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.17.1
   labels:
     longhorn-manager: ""
   name: supportbundles.longhorn.io
@@ -3612,7 +3615,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.17.1
   labels:
     longhorn-manager: ""
   name: systembackups.longhorn.io
@@ -3749,7 +3752,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.17.1
   labels:
     longhorn-manager: ""
   name: systemrestores.longhorn.io
@@ -3858,7 +3861,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.17.1
   labels:
     longhorn-manager: ""
   name: volumeattachments.longhorn.io
@@ -4002,7 +4005,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.15.0
+    controller-gen.kubebuilder.io/version: v0.17.1
   labels:
     longhorn-manager: ""
   name: volumes.longhorn.io
