@@ -55,7 +55,7 @@ jobs:
 
     # Build binaries
     - name: Run ci
-      run: make ci
+      run: make ci-workflow
 
     - uses: codecov/codecov-action@v4
       with:
