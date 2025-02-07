@@ -5,25 +5,55 @@ source $(dirname $0)/version
 
 cd $(dirname $0)/..
 
-TAG=${TAG:-${IMAGE_TAG_PREFIX}}
-REPO=${REPO:-longhornio}
-IMAGE=${IMAGE:-${REPO}/longhorn-manager:${TAG}}
+command -v buildx >/dev/null && BUILD_CMD=(buildx) || BUILD_CMD=(docker buildx)
 
-if [ ! -e ./bin/longhorn-manager-amd64 ] || [ ! -e ./bin/longhorn-manager-arm64 ]; then
-    echo "Building longhorn-manager binary before packaging"
-    ./scripts/build
+# read configurable parameters
+REPO=${REPO:-longhornio}
+IMAGE_NAME=${IMAGE_NAME:-'longhorn-manager'}
+TAG=${TAG:-${IMAGE_TAG_PREFIX}}
+PUSH=${PUSH:-'false'}
+IS_SECURE=${IS_SECURE:-'false'}
+MACHINE=${MACHINE:-''}
+TARGET_PLATFORMS=${TARGET_PLATFORMS:-''}
+IID_FILE=${IID_FILE:-''}
+IID_FILE_FLAG=${IID_FILE_FLAG:-''}
+
+IMAGE="${REPO}/${IMAGE_NAME}:${TAG}"
+
+BUILDER_ARGS=()
+[[ ${MACHINE} ]] && BUILDER_ARGS+=('--builder' "${MACHINE}")
+
+IFS=' ' read -r -a IID_FILE_ARGS <<<"${IID_FILE_FLAG}"
+[[ -n "${IID_FILE}" && ${#IID_FILE_ARGS} == 0 ]] && IID_FILE_ARGS=('--iidfile' "${IID_FILE}")
+
+BUILDX_ARGS=()
+
+if [[ "${PUSH}" == 'true' ]]; then
+    BUILDX_ARGS+=('--push')
+else
+    BUILDX_ARGS+=('--load')
 fi
 
-cp -r bin package/
+[[ ${IS_SECURE} == 'true' ]] && BUILDX_ARGS+=('--sbom=true' '--attest' 'type=provenance,mode=max')
+[[ ${TARGET_PLATFORMS} ]] && BUILDX_ARGS+=('--platform' "${TARGET_PLATFORMS}")
 
-trap 'rm -rf ./package/bin' exit
+# update base IMAGE to get latest changes
+grep 'FROM.*/' package/Dockerfile | awk '{print $2}' | while read -r BASE_IMAGE
+do
+    docker pull "${BASE_IMAGE}"
+done
 
-# update base image to get latest changes
-BASE_IMAGE=`grep FROM package/Dockerfile  | awk '{print $2}'`
-docker pull ${BASE_IMAGE}
+IMAGE_BUILD_CMD_ARGS=(
+    build --no-cache \
+    "${BUILDER_ARGS[@]}" \
+    "${IID_FILE_ARGS[@]}" \
+    "${BUILDX_ARGS[@]}" \
+    -t "${IMAGE}" -f package/Dockerfile .
+)
+echo "${BUILD_CMD[@]}" "${IMAGE_BUILD_CMD_ARGS[@]}"
+"${BUILD_CMD[@]}" "${IMAGE_BUILD_CMD_ARGS[@]}"
 
-buildx build --load -t ${IMAGE} -f package/Dockerfile .
+echo "Built ${IMAGE}"
 
-echo Built ${IMAGE}
-
-echo ${IMAGE} > ./bin/latest_image
+mkdir ./bin || true
+echo "${IMAGE}" > ./bin/latest_image
