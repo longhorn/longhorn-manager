@@ -11,25 +11,57 @@ jobs:
   build:
     name: Build binaries
     runs-on: ubuntu-latest
+    outputs:
+      version_major: ${{ steps.build_info.outputs.version_major }}
+      version_minor: ${{ steps.build_info.outputs.version_minor }}
+      version_patch: ${{ steps.build_info.outputs.version_patch }}
+      image_tag: ${{ steps.build_info.outputs.image_tag }}
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    # Build binaries
+    - id: build_info
+      name: Declare build info
+      run: |
+        version_major=''
+        version_minor=''
+        version_patch=''
+        image_tag=''
+
+        branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}
+        ref=${{ github.ref }}
+        if [[ "$ref" =~ 'refs/tags/' ]]; then
+          version=$(sed -E 's/^v([0-9]*\.[0-9]*\.[0-9]*).*$/\1/' <<<${{ github.ref_name }} )
+          version_major=$(cut -d. -f1 <<<$version)
+          version_minor=$(cut -d. -f2 <<<$version)
+          version_patch=$(cut -d. -f3 <<<$version)
+          image_tag=${{ github.ref_name }}
+        elif [[ "$ref" =~ 'refs/heads/' ]]; then
+          image_tag="${branch}-head"
+        fi
+
+        echo "version_major=${version_major}" >>$GITHUB_OUTPUT
+        echo "version_minor=${version_minor}" >>$GITHUB_OUTPUT
+        echo "version_patch=${version_patch}" >>$GITHUB_OUTPUT
+        echo "image_tag=${image_tag}" >>$GITHUB_OUTPUT
+
+        cat <<EOF
+        version_major=${version_major}
+        version_minor=${version_minor}
+        version_patch=${version_patch}
+        image_tag=${image_tag}
+        EOF
+
+    # Build and verify binaries
     - name: Run ci
-      run: make ci
+      run: NO_PACKAGE=true make ci
 
     - uses: codecov/codecov-action@v4
       with:
         files: ./coverage.out
         flags: unittests
         token: ${{ secrets.CODECOV_TOKEN }}
-
-    - name: Upload binaries
-      uses: actions/upload-artifact@v4
-      with:
-        name: binaries_artifact
-        path: ./bin/*
 
   build_push_image:
     name: Build and push image
@@ -40,19 +72,11 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Download binaries
-      uses: actions/download-artifact@v4
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
       with:
-        name: binaries_artifact
-        path: ./bin/
-
-    - name: Add executable permission
-      run: |
-        chmod +x ./bin/*
-
-    - name: Copy bin folder to package
-      run: |
-        cp -r ./bin ./package/
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
 
     # For multi-platform support
     - name: Set up QEMU
@@ -60,35 +84,10 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    - name: Declare branch
-      run: |
-        echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> "$GITHUB_ENV"
-
-    - name: Login to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
-
     # longhornio/longhorn-manager image
-    - name: docker-publish
-      if: ${{ startsWith(github.ref, 'refs/heads/') }}
-      uses: docker/build-push-action@v5
-      with:
-        context: ./
-        push: true
-        platforms: linux/amd64,linux/arm64
-        tags: longhornio/longhorn-manager:${{ env.branch }}-head
-        file: package/Dockerfile
-        sbom: true
-
-    - name: docker-publish-with-tag
-      if: ${{ startsWith(github.ref, 'refs/tags/') }}
-      uses: docker/build-push-action@v5
-      with:
-        context: ./
-        push: true
-        platforms: linux/amd64,linux/arm64
-        tags: longhornio/longhorn-manager:${{ github.ref_name }}
-        file: package/Dockerfile
-        sbom: true
+    - name: Build and publish image
+      env:
+        REPO: docker.io/longhornio
+        TAG: ${{ needs.build.outputs.image_tag }}
+        TARGET_PLATFORMS: linux/amd64,linux/arm64
+      run: make workflow-image-build-push
