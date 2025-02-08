@@ -90,7 +90,7 @@ require (
 	k8s.io/apiextensions-apiserver v0.32.1
 	k8s.io/apimachinery v0.32.1
 	k8s.io/cli-runtime v0.32.1
-	k8s.io/client-go v1.5.2
+	k8s.io/client-go v0.32.1
 	k8s.io/kubernetes v1.32.1
 	k8s.io/metrics v0.32.1
 	k8s.io/mount-utils v0.32.1
