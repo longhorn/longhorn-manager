@@ -459,9 +459,10 @@ func (job *VolumeJob) doRecurringBackup() (err error) {
 	}
 
 	if _, err := job.api.Volume.ActionSnapshotBackup(volume, &longhornclient.SnapshotInput{
-		Labels:     job.specLabels,
-		Name:       job.snapshotName,
-		BackupMode: string(backupMode),
+		Labels:                job.specLabels,
+		Name:                  job.snapshotName,
+		BackupMode:            string(backupMode),
+		CleanupBackupSnapshot: job.cleanupBackupSnapshot,
 	}); err != nil {
 		return err
 	}
