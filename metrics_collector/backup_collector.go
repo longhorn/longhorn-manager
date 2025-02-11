@@ -72,8 +72,10 @@ func (bc *BackupCollector) Collect(ch chan<- prometheus.Metric) {
 	for _, backup := range backupLists {
 		if backup.Status.OwnerID == bc.currentNodeID {
 			var size float64
-			if size, err = strconv.ParseFloat(backup.Status.Size, 64); err != nil {
-				bc.logger.WithError(err).Warn("Error get size")
+			if backup.Status.Size != "" {
+				if size, err = strconv.ParseFloat(backup.Status.Size, 64); err != nil {
+					bc.logger.WithError(err).Warn("Error get size")
+				}
 			}
 			backupVolumeName, ok := backup.Labels[types.LonghornLabelBackupVolume]
 			if !ok {
