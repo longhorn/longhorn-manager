@@ -2966,7 +2966,9 @@ func (c *VolumeController) getNodeCandidatesForAutoBalanceZone(v *longhorn.Volum
 	}
 
 	if v.Status.Robustness != longhorn.VolumeRobustnessHealthy {
-		log.Warnf("Failed to auto-balance volume in %s state", v.Status.Robustness)
+		if v.Status.State != longhorn.VolumeStateDetached { // Detached volumes are not "healthy". Hence, it would cause excessive logging periodically for detached volumes
+			log.Warnf("Failed to auto-balance volume in %s robustness and %s state", v.Status.Robustness, v.Status.State)
+		}
 		return candidateNames
 	}
 
