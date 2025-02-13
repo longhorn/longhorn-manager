@@ -171,6 +171,12 @@ func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir strin
 			// Issue: https://github.com/longhorn/longhorn/issues/3303
 			// TODO: Remove this after upgrading the CSI resizer version that contains the fix of https://github.com/kubernetes-csi/external-resizer/issues/175
 			"--handle-volume-inuse-error=false",
+			// Since v1.13.1, the CSI resizer enabled features.RecoverVolumeExpansionFailure
+			// by default. This silently requeues the PVC without logging the error.
+			// https://github.com/longhorn/longhorn/issues/10411#issuecomment-2655252262
+			// TODO: Investigate and fix potential cause of the failure if we want
+			// to use this feature.
+			"--feature-gates=RecoverVolumeExpansionFailure=false",
 		},
 		int32(replicaCount),
 		tolerations,
