@@ -443,8 +443,8 @@ k8s.io/kube-openapi v0.0.0-20241212222426-2c72e554b1e7 h1:hcha5B1kVACrLujCKLbr8X
 k8s.io/kube-openapi v0.0.0-20241212222426-2c72e554b1e7/go.mod h1:GewRfANuJ70iYzvn+i4lezLDAFzvjxZYK1gn1lWcfas=
 k8s.io/kubelet v0.32.1 h1:bB91GvMsZb+LfzBxnjPEr1Fal/sdxZtYphlfwAaRJGw=
 k8s.io/kubelet v0.32.1/go.mod h1:4sAEZ6PlewD0GroV3zscY7llym6kmNNTVmUI/Qshm6w=
-k8s.io/kubernetes v1.32.1 h1:46YPpIBCT9dkmeglstZ2Gg4LGaAdro1/3IQ+1AfbF1s=
-k8s.io/kubernetes v1.32.1/go.mod h1:tiIKO63GcdPRBHW2WiUFm3C0eoLczl3f7qi56Dm1W8I=
+k8s.io/kubernetes v1.32.2 h1:mShetlA102UpjRVSGzB+5vjJwy8oPy8FMWrkTH5f37o=
+k8s.io/kubernetes v1.32.2/go.mod h1:tiIKO63GcdPRBHW2WiUFm3C0eoLczl3f7qi56Dm1W8I=
 k8s.io/metrics v0.32.1 h1:Ou4nrEtZS2vFf7OJCf9z3+2kr0A00kQzfoSwxg0gXps=
 k8s.io/metrics v0.32.1/go.mod h1:cLnai9XKYby1tNMX+xe8p9VLzTqrxYPcmqfCBoWObcM=
 k8s.io/mount-utils v0.32.1 h1:RJOD6xXzEJT/OOJoG1KstfVa8ZXJJPlHb+t2MoulPHM=
