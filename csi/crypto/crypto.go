@@ -10,12 +10,6 @@ import (
 
 	lhns "github.com/longhorn/go-common-libs/ns"
 	lhtypes "github.com/longhorn/go-common-libs/types"
-<<<<<<< HEAD
-=======
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
-
-	"github.com/longhorn/longhorn-manager/types"
->>>>>>> 72c91734 (fix: data lost caused by Longhorn CSI plugin doing a wrong re-encryption of volume in rare)
 )
 
 const (
