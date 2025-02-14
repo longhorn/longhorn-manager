@@ -10,6 +10,12 @@ import (
 
 	lhns "github.com/longhorn/go-common-libs/ns"
 	lhtypes "github.com/longhorn/go-common-libs/types"
+<<<<<<< HEAD
+=======
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+
+	"github.com/longhorn/longhorn-manager/types"
+>>>>>>> 72c91734 (fix: data lost caused by Longhorn CSI plugin doing a wrong re-encryption of volume in rare)
 )
 
 const (
@@ -75,12 +81,21 @@ func VolumeMapper(volume string) string {
 
 // EncryptVolume encrypts provided device with LUKS.
 func EncryptVolume(devicePath, passphrase string, cryptoParams *EncryptParams) error {
+	isEncrypted, err := isDeviceEncrypted(devicePath)
+	if err != nil {
+		logrus.WithError(err).Warnf("Failed to check IsDeviceEncrypted before encrypting volume %v", devicePath)
+		return err
+	}
+	if isEncrypted {
+		logrus.Infof("The device %v is already encrypted. Skipping the encryption to avoid data lost", devicePath)
+		return nil
+	}
+
 	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceIpc}
 	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
 	if err != nil {
 		return err
 	}
-
 	logrus.Infof("Encrypting device %s with LUKS", devicePath)
 	if _, err := nsexec.LuksFormat(
 		devicePath, passphrase,
@@ -159,6 +174,15 @@ func IsDeviceMappedToNullPath(device string) (bool, error) {
 func IsDeviceOpen(device string) (bool, error) {
 	_, mappedFile, err := DeviceEncryptionStatus(device)
 	return mappedFile != "", err
+}
+
+func isDeviceEncrypted(devicePath string) (bool, error) {
+	namespaces := []lhtypes.Namespace{lhtypes.NamespaceMnt, lhtypes.NamespaceIpc}
+	nsexec, err := lhns.NewNamespaceExecutor(lhtypes.ProcessNone, lhtypes.HostProcDirectory, namespaces)
+	if err != nil {
+		return false, err
+	}
+	return nsexec.IsLuks(devicePath, lhtypes.LuksTimeout)
 }
 
 // DeviceEncryptionStatus looks to identify if the passed device is a LUKS mapping
