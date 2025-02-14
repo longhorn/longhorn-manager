@@ -244,7 +244,7 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20250204050409-8ebd4432fd70
+# github.com/longhorn/go-common-libs v0.0.0-20250210035242-5fafd2e6171a
 ## explicit; go 1.22.7
 github.com/longhorn/go-common-libs/backup
 github.com/longhorn/go-common-libs/exec
@@ -286,7 +286,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/util
 ## explicit; go 1.22.2
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/types v0.0.0-20241225162202-00d3a5fd7502
+# github.com/longhorn/types v0.0.0-20250210001806-5ef312749bee
 ## explicit; go 1.22.7
 github.com/longhorn/types/pkg/generated/bimrpc
 github.com/longhorn/types/pkg/generated/enginerpc
@@ -594,7 +594,7 @@ golang.org/x/crypto/internal/alias
 golang.org/x/crypto/internal/poly1305
 golang.org/x/crypto/nacl/secretbox
 golang.org/x/crypto/salsa20/salsa
-# golang.org/x/exp v0.0.0-20250128182459-e0ece0dbea4c
+# golang.org/x/exp v0.0.0-20250207012021-f9890c6ad9f3
 ## explicit; go 1.22.0
 golang.org/x/exp/constraints
 golang.org/x/exp/slices
@@ -1642,7 +1642,7 @@ sigs.k8s.io/yaml/goyaml.v2
 # k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.31.3
 # k8s.io/kubectl => k8s.io/kubectl v0.31.3
 # k8s.io/kubelet => k8s.io/kubelet v0.31.3
-# k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.9
+# k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.10
 # k8s.io/metrics => k8s.io/metrics v0.31.3
 # k8s.io/mount-utils => k8s.io/mount-utils v0.31.3
 # k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.31.3
