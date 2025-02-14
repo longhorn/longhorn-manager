@@ -41,7 +41,7 @@ replace (
 	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.31.3
 	k8s.io/kubectl => k8s.io/kubectl v0.31.3
 	k8s.io/kubelet => k8s.io/kubelet v0.31.3
-	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.9
+	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.10
 	k8s.io/metrics => k8s.io/metrics v0.31.3
 	k8s.io/mount-utils => k8s.io/mount-utils v0.31.3
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.31.3
@@ -62,7 +62,7 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.7.2
 	github.com/longhorn/backupstore v0.0.0-20250209090923-c552364ab3ac
-	github.com/longhorn/go-common-libs v0.0.0-20250204050409-8ebd4432fd70
+	github.com/longhorn/go-common-libs v0.0.0-20250210035242-5fafd2e6171a
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250111093313-7e1930499625
 	github.com/longhorn/go-spdk-helper v0.0.0-20241216160651-bcce92add55b
 	github.com/longhorn/longhorn-engine v1.7.2
@@ -106,7 +106,7 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/jonboulle/clockwork v0.4.0 // indirect
-	github.com/longhorn/types v0.0.0-20241225162202-00d3a5fd7502 // indirect
+	github.com/longhorn/types v0.0.0-20250210001806-5ef312749bee // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/moby/term v0.5.0 // indirect
 	github.com/opencontainers/runc v1.1.14 // indirect
@@ -115,7 +115,7 @@ require (
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	golang.org/x/exp v0.0.0-20250128182459-e0ece0dbea4c // indirect
+	golang.org/x/exp v0.0.0-20250207012021-f9890c6ad9f3 // indirect
 	golang.org/x/tools v0.29.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20241015192408-796eee8c2d53 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241015192408-796eee8c2d53 // indirect
