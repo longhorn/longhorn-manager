@@ -308,6 +308,10 @@ func (ns *NodeServer) nodeStageMountVolume(volumeID, devicePath, stagingTargetPa
 		return nil
 	}
 
+	if _, err := os.Stat(devicePath); err != nil {
+		return status.Error(codes.Internal, errors.Wrapf(err, "failed to check if device %v exists", devicePath).Error())
+	}
+
 	log.Infof("Formatting device %v with fsType %v and mounting at %v with mount flags %v", devicePath, fsType, stagingTargetPath, mountFlags)
 	if err := mounter.FormatAndMount(devicePath, stagingTargetPath, fsType, mountFlags); err != nil {
 		return status.Error(codes.Internal, err.Error())
