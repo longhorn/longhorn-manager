@@ -63,7 +63,7 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.20.0
 	github.com/longhorn/backing-image-manager v1.8.0
-	github.com/longhorn/backupstore v0.0.0-20250209090923-c552364ab3ac
+	github.com/longhorn/backupstore v0.0.0-20250215022153-7ee3a979f2a9
 	github.com/longhorn/go-common-libs v0.0.0-20250214070119-c86a06c781f5
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250111093313-7e1930499625
 	github.com/longhorn/go-spdk-helper v0.0.0-20250116051812-eabe34a4219e
@@ -95,7 +95,7 @@ require (
 	k8s.io/metrics v0.32.2
 	k8s.io/mount-utils v0.32.2
 	k8s.io/utils v0.0.0-20241210054802-24370beab758
-	sigs.k8s.io/controller-runtime v0.20.1
+	sigs.k8s.io/controller-runtime v0.20.2
 )
 
 require (
