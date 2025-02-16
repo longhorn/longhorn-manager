@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -209,7 +210,11 @@ func (m *BackupMonitor) linerTimer() {
 		m.syncCallBack(currentBackupStatus)
 		return false, nil
 	}); err != nil {
-		m.logger.WithError(err).Error("Failed to sync backup status")
+		if errors.Is(err, context.Canceled) {
+			m.logger.WithError(err).Warn("Sync backup status canceled")
+		} else {
+			m.logger.WithError(err).Error("Failed to sync backup status")
+		}
 	}
 }
 
