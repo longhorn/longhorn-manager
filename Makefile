@@ -1,3 +1,4 @@
+PROJECT := longhorn-manager
 TARGETS := $(shell ls scripts)
 MACHINE := longhorn
 # Define the target platforms that can be used across the ecosystem.
@@ -27,9 +28,9 @@ buildx-machine:
 # - IID_FILE_FLAG: optional, options to generate image ID file
 .PHONY: workflow-image-build-push workflow-image-build-push-secure
 workflow-image-build-push: buildx-machine
-	MACHINE=$(MACHINE) PUSH='true' bash scripts/package
+	MACHINE=$(MACHINE) PUSH='true' IMAGE_NAME=$(PROJECT) bash scripts/package
 workflow-image-build-push-secure: buildx-machine
-	MACHINE=$(MACHINE) PUSH='true' IS_SECURE=true bash scripts/package
+	MACHINE=$(MACHINE) PUSH='true' IMAGE_NAME=$(PROJECT) IS_SECURE=true bash scripts/package
 
 generate:
 	bash k8s/generate_code.sh
