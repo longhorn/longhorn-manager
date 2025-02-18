@@ -2395,7 +2395,9 @@ func (c *VolumeController) getReplicaCountForAutoBalanceLeastEffort(v *longhorn.
 	}
 
 	if v.Status.Robustness != longhorn.VolumeRobustnessHealthy {
-		log.Warnf("Failed to auto-balance volume in %s state", v.Status.Robustness)
+		if v.Status.State != longhorn.VolumeStateDetached {
+			log.Warnf("Failed to auto-balance volume in %s state", v.Status.Robustness)
+		}
 		return 0
 	}
 
