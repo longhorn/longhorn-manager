@@ -590,7 +590,7 @@ var (
 
 	SettingDefinitionUpgradeResponderURL = SettingDefinition{
 		DisplayName: "Upgrade Responder URL",
-		Description: "The upgrade responder notifies users the available versions of Longhorn for upgrade",
+		Description: "The Upgrade Responder sends a notification whenever a new Longhorn version that you can upgrade to becomes available",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeString,
 		Required:    true,
