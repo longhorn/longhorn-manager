@@ -53,7 +53,6 @@ const (
 var (
 	upgradeCheckInterval          = time.Hour
 	settingControllerResyncPeriod = time.Hour
-	checkUpgradeURL               = "https://longhorn-upgrade-responder.rancher.io/v1/checkupgrade"
 )
 
 type SettingController struct {
@@ -1157,7 +1156,13 @@ func (sc *SettingController) CheckLatestAndStableLonghornVersions() (string, str
 	if err := json.NewEncoder(&content).Encode(req); err != nil {
 		return "", "", err
 	}
-	r, err := http.Post(checkUpgradeURL, "application/json", &content)
+
+	upgradeResponderURL, err := sc.ds.GetSettingValueExisted(types.SettingNameUpgradeResponderURL)
+	if err != nil {
+		return "", "", err
+	}
+
+	r, err := http.Post(upgradeResponderURL, "application/json", &content)
 	if err != nil {
 		return "", "", err
 	}
