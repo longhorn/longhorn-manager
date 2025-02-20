@@ -1601,7 +1601,7 @@ func (nc *NodeController) syncBackingImageEvictionRequested(node *longhorn.Node)
 			}
 		} else {
 			for _, backingImage := range diskBackingImageMap[diskUUID] {
-				if backingImage.Spec.DiskFileSpecMap[diskUUID].EvictionRequested {
+				if diskFileSpec, ok := backingImage.Spec.DiskFileSpecMap[diskUUID]; ok && diskFileSpec.EvictionRequested {
 					// if it is previously set to true, cancel the eviction request
 					backingImage.Spec.DiskFileSpecMap[diskUUID].EvictionRequested = false
 					backingImagesToSync = append(backingImagesToSync, backingImageToSync{backingImage, diskUUID, false})
