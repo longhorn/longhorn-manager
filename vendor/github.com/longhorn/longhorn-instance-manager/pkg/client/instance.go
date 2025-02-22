@@ -470,7 +470,7 @@ func (c *InstanceServiceClient) VersionGet() (*meta.VersionOutput, error) {
 	}, nil
 }
 
-// LogSetLevel sets the log level of the service.
+// LogSetLevel sets the log level.
 func (c *InstanceServiceClient) LogSetLevel(dataEngine, service, level string) error {
 	client := c.getControllerServiceClient()
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
@@ -488,7 +488,7 @@ func (c *InstanceServiceClient) LogSetLevel(dataEngine, service, level string) e
 	return err
 }
 
-// LogSetFlags sets the log flags of the service.x
+// LogSetFlags sets the log flags.
 func (c *InstanceServiceClient) LogSetFlags(dataEngine, service, flags string) error {
 	client := c.getControllerServiceClient()
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
@@ -506,7 +506,7 @@ func (c *InstanceServiceClient) LogSetFlags(dataEngine, service, flags string) e
 	return err
 }
 
-// LogGetLevel returns the log level of the service.
+// LogGetLevel returns the log level.
 func (c *InstanceServiceClient) LogGetLevel(dataEngine, service string) (string, error) {
 	client := c.getControllerServiceClient()
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
@@ -526,7 +526,7 @@ func (c *InstanceServiceClient) LogGetLevel(dataEngine, service string) (string,
 	return resp.Level, nil
 }
 
-// LogGetFlags returns the log flags of the service.
+// LogGetFlags returns the log flags.
 func (c *InstanceServiceClient) LogGetFlags(dataEngine, service string) (string, error) {
 	client := c.getControllerServiceClient()
 	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
