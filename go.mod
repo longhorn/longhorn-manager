@@ -61,7 +61,7 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/jinzhu/copier v0.4.0
-	github.com/kubernetes-csi/csi-lib-utils v0.20.0
+	github.com/kubernetes-csi/csi-lib-utils v0.21.0
 	github.com/longhorn/backing-image-manager v1.8.0
 	github.com/longhorn/backupstore v0.0.0-20250215022153-7ee3a979f2a9
 	github.com/longhorn/go-common-libs v0.0.0-20250215052214-151615b29f8e

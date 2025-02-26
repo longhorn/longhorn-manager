@@ -212,7 +212,7 @@ github.com/kr/pretty
 # github.com/kr/text v0.2.0
 ## explicit
 github.com/kr/text
-# github.com/kubernetes-csi/csi-lib-utils v0.20.0
+# github.com/kubernetes-csi/csi-lib-utils v0.21.0
 ## explicit; go 1.23.1
 github.com/kubernetes-csi/csi-lib-utils/protosanitizer
 # github.com/kylelemons/godebug v1.1.0
