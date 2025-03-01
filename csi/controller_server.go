@@ -705,9 +705,12 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornBackingImage(req *csi.C
 		}
 	}
 
-	exportType, exist := req.Parameters["export-type"]
+	exportType, exist := req.Parameters["exportType"]
 	if !exist {
-		exportType = "raw"
+		exportType, exist = req.Parameters["export-type"]
+		if !exist {
+			exportType = "raw"
+		}
 	}
 
 	if backingImage == nil {
@@ -805,6 +808,11 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornBackup(req *csi.CreateS
 		return nil, status.Error(codes.InvalidArgument, "Snapshot name must be provided")
 	}
 
+	backupMode, exist := req.Parameters["backupMode"]
+	if !exist {
+		backupMode = string(longhorn.BackupModeIncremental)
+	}
+
 	// We check for backup existence first, since it's possible that the actual volume is no longer available but the
 	// backup still is.
 	backup, err := cs.getBackup(csiVolumeName, csiSnapshotName)
@@ -880,8 +888,9 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornBackup(req *csi.CreateS
 	// create backup based on local volume snapshot
 	log.Infof("Creating volume %s backup for snapshot %s", existVol.Name, csiSnapshotName)
 	existVol, err = cs.apiClient.Volume.ActionSnapshotBackup(existVol, &longhornclient.SnapshotInput{
-		Labels: csiLabels,
-		Name:   csiSnapshotName,
+		Labels:     csiLabels,
+		Name:       csiSnapshotName,
+		BackupMode: backupMode,
 	})
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
