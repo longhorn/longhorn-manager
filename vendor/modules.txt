@@ -228,7 +228,7 @@ github.com/longhorn/backing-image-manager/pkg/client
 github.com/longhorn/backing-image-manager/pkg/meta
 github.com/longhorn/backing-image-manager/pkg/types
 github.com/longhorn/backing-image-manager/pkg/util
-# github.com/longhorn/backupstore v0.0.0-20250215022153-7ee3a979f2a9
+# github.com/longhorn/backupstore v0.0.0-20250227220202-651bd33886fe
 ## explicit; go 1.22.7
 github.com/longhorn/backupstore
 github.com/longhorn/backupstore/backupbackingimage
@@ -258,7 +258,7 @@ github.com/longhorn/go-iscsi-helper/iscsidev
 github.com/longhorn/go-iscsi-helper/longhorndev
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.0.0-20250116051812-eabe34a4219e
+# github.com/longhorn/go-spdk-helper v0.0.0-20250227072252-dae1360f31f6
 ## explicit; go 1.22.7
 github.com/longhorn/go-spdk-helper/pkg/types
 # github.com/longhorn/longhorn-engine v1.8.0
