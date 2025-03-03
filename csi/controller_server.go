@@ -1303,22 +1303,32 @@ func (cs *ControllerServer) waitForBackupControllerSync(volumeName, snapshotName
 // (and in particular, its name) as quickly as possible and in any state.
 // Note: if the backup doesn't exist it will return nil for the backup and nil for the error
 func (cs *ControllerServer) getBackup(volumeName, snapshotName string) (*longhornclient.Backup, error) {
-	backupVolumes, err := cs.getBackupVolumes(volumeName)
+	backupTargetName := ""
+	v, err := cs.apiClient.Volume.ById(volumeName)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	if v != nil {
+		backupTargetName = v.BackupTargetName
+	}
+
+	bv, err := cs.apiClient.BackupVolume.ById(volumeName)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	var backup *longhornclient.Backup
-	for _, bv := range backupVolumes {
-		backupListOutput, err := cs.apiClient.BackupVolume.ActionBackupList(bv)
-		if err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
-		}
-		for _, b := range backupListOutput.Data {
-			if b.SnapshotName == snapshotName {
-				backup = &b
-				return backup, nil
+	backupListOutput, err := cs.apiClient.BackupVolume.ActionBackupListByVolume(bv, &longhornclient.Volume{Name: volumeName})
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	for _, b := range backupListOutput.Data {
+		if b.SnapshotName == snapshotName {
+			if backupTargetName != "" && b.BackupTargetName != backupTargetName {
+				continue
 			}
+			backup = &b
+			return backup, nil
 		}
 	}
 
