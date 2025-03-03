@@ -2634,6 +2634,10 @@ func (c *VolumeController) checkReplicaDiskPressuredSchedulableCandidates(volume
 			continue
 		}
 
+		if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
+			continue
+		}
+
 		diskInfo, err := c.scheduler.GetDiskSchedulingInfo(diskSpec, diskStatus)
 		if err != nil {
 			log.WithError(err).Debugf("Failed to get disk scheduling info for disk %v on node %v", diskName, nodeCandidate.Name)
