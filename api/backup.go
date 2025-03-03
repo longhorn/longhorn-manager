@@ -296,6 +296,21 @@ func (s *Server) BackupListByBackupVolume(w http.ResponseWriter, req *http.Reque
 	return nil
 }
 
+func (s *Server) BackupListByVolume(w http.ResponseWriter, req *http.Request) error {
+	var input Volume
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return err
+	}
+
+	bs, err := s.m.ListBackupsForVolumeNameSorted(input.Name)
+	if err != nil {
+		return errors.Wrapf(err, "failed to list backups for volume '%s'", input.Name)
+	}
+	apiContext.Write(toBackupCollection(bs))
+	return nil
+}
+
 func (s *Server) backupListAll(apiContext *api.ApiContext) (*client.GenericCollection, error) {
 	bs, err := s.m.ListAllBackupsSorted()
 	if err != nil {
