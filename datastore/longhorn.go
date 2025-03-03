@@ -4615,6 +4615,35 @@ func (s *DataStore) CreateBackup(backup *longhorn.Backup, backupVolumeName strin
 	return ret.DeepCopy(), nil
 }
 
+func (s *DataStore) listBackupsWithVolNameRO(volName, btName string) ([]*longhorn.Backup, error) {
+	selector, err := getBackupVolumeSelector(volName)
+	if err != nil {
+		return nil, err
+	}
+	if btName != "" {
+		selector, err = getBackupVolumeWithBackupTargetSelector(btName, volName)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return s.backupLister.Backups(s.namespace).List(selector)
+}
+
+// ListBackupsWithVolumeNameRO returns an object contains all read-only backups in the cluster Backups CR
+// of a given volume name and a optional backup target name
+func (s *DataStore) ListBackupsWithVolumeNameRO(volumeName, backupTargetName string) (map[string]*longhorn.Backup, error) {
+	list, err := s.listBackupsWithVolNameRO(volumeName, backupTargetName)
+	if err != nil {
+		return nil, err
+	}
+
+	itemMap := map[string]*longhorn.Backup{}
+	for _, itemRO := range list {
+		itemMap[itemRO.Name] = itemRO
+	}
+	return itemMap, nil
+}
+
 func (s *DataStore) listBackupsWithBTAndVolNameRO(btName, volName string) ([]*longhorn.Backup, error) {
 	selector, err := getBackupVolumeWithBackupTargetSelector(btName, volName)
 	if err != nil {
