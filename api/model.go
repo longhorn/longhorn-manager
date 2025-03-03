@@ -928,6 +928,10 @@ func backupVolumeSchema(backupVolume *client.Schema) {
 		"backupList": {
 			Output: "backupListOutput",
 		},
+		"backupListByVolume": {
+			Input:  "volume",
+			Output: "backupListOutput",
+		},
 		"backupGet": {
 			Input:  "backupInput",
 			Output: "backup",
@@ -1887,10 +1891,11 @@ func toBackupVolumeResource(bv *longhorn.BackupVolume, apiContext *api.ApiContex
 		VolumeName:           bv.Spec.VolumeName,
 	}
 	b.Actions = map[string]string{
-		"backupList":       apiContext.UrlBuilder.ActionLink(b.Resource, "backupList"),
-		"backupGet":        apiContext.UrlBuilder.ActionLink(b.Resource, "backupGet"),
-		"backupDelete":     apiContext.UrlBuilder.ActionLink(b.Resource, "backupDelete"),
-		"backupVolumeSync": apiContext.UrlBuilder.ActionLink(b.Resource, "backupVolumeSync"),
+		"backupList":         apiContext.UrlBuilder.ActionLink(b.Resource, "backupList"),
+		"backupListByVolume": apiContext.UrlBuilder.ActionLink(b.Resource, "backupListByVolume"),
+		"backupGet":          apiContext.UrlBuilder.ActionLink(b.Resource, "backupGet"),
+		"backupDelete":       apiContext.UrlBuilder.ActionLink(b.Resource, "backupDelete"),
+		"backupVolumeSync":   apiContext.UrlBuilder.ActionLink(b.Resource, "backupVolumeSync"),
 	}
 	return b
 }
