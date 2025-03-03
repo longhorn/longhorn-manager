@@ -1616,6 +1616,75 @@ func (s *TestSuite) TestGetCurrentNodesAndZones(c *C) {
 	}
 }
 
+func (s *TestSuite) TestIsSchedulableToDiskConsiderDiskPressure(c *C) {
+	diskPressurePercentage := int64(80)
+	diskUUID := "disk-1"
+	minimalAvailablePercentage := int64(25)
+	overProvisioningPercentage := int64(100)
+
+	replicaScheduler := NewReplicaScheduler(nil)
+
+	type TestCase struct {
+		size            int64
+		requiredStorage int64
+		info            *DiskSchedulingInfo
+
+		expectedIsSchedulable bool
+	}
+
+	testCases := map[string]TestCase{
+		"schedulable under pressure": {
+			size:            500,
+			requiredStorage: 100,
+			info: &DiskSchedulingInfo{
+				StorageScheduled:           200,
+				StorageReserved:            100,
+				StorageMaximum:             1000,
+				StorageAvailable:           600,
+				MinimalAvailablePercentage: minimalAvailablePercentage,
+				OverProvisioningPercentage: overProvisioningPercentage,
+				DiskUUID:                   diskUUID,
+			},
+			expectedIsSchedulable: true, // newDiskUsagePercentage = (100 + 200 + 100) * 100 / 1000 = 40% < 80%
+		},
+		"not schedulable due to new disk under pressure": {
+			size:            500,
+			requiredStorage: 400,
+			info: &DiskSchedulingInfo{
+				StorageScheduled:           200,
+				StorageReserved:            100,
+				StorageMaximum:             1000,
+				StorageAvailable:           600,
+				MinimalAvailablePercentage: minimalAvailablePercentage,
+				OverProvisioningPercentage: overProvisioningPercentage,
+				DiskUUID:                   diskUUID,
+			},
+			expectedIsSchedulable: false, // newDiskUsagePercentage = (100 + 200 + 100 + 400) * 100 / 1000 = 80% >= 80%
+		},
+		"integer divide by zero": {
+			size:            500,
+			requiredStorage: 400,
+			info: &DiskSchedulingInfo{
+				StorageScheduled:           200,
+				StorageReserved:            100,
+				StorageMaximum:             0,
+				StorageAvailable:           600,
+				MinimalAvailablePercentage: minimalAvailablePercentage,
+				OverProvisioningPercentage: overProvisioningPercentage,
+				DiskUUID:                   diskUUID,
+			},
+			expectedIsSchedulable: false, // newDiskUsagePercentage = (100 + 200 + 100 + 400) * 100 / 1000 = 80% >= 80%
+		},
+	}
+
+	for name, tc := range testCases {
+		fmt.Printf("testing %v\n", name)
+
+		isSchedulable := replicaScheduler.IsSchedulableToDiskConsiderDiskPressure(diskPressurePercentage, tc.size, tc.requiredStorage, tc.info)
+		c.Assert(isSchedulable, Equals, tc.expectedIsSchedulable)
+	}
+}
+
 func getTestNow() time.Time {
 	now, _ := time.Parse(time.RFC3339, TestTimeNow)
 	return now
