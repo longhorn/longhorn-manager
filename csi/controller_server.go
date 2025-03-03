@@ -835,6 +835,17 @@ func (cs *ControllerServer) createCSISnapshotTypeLonghornBackup(req *csi.CreateS
 		return nil, status.Errorf(codes.NotFound, "volume %s not found", csiVolumeName)
 	}
 
+	existBackupTarget, err := cs.apiClient.BackupTarget.ById(existVol.BackupTargetName)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	if existBackupTarget == nil {
+		return nil, status.Errorf(codes.NotFound, "backup target %s not found", existVol.BackupTargetName)
+	}
+	if !existBackupTarget.Available {
+		return nil, status.Errorf(codes.Aborted, "backup target %s is not available", existVol.BackupTargetName)
+	}
+
 	var snapshotCR *longhornclient.SnapshotCR
 	snapshotCRs, err := cs.apiClient.Volume.ActionSnapshotCRList(existVol)
 	if err != nil {
