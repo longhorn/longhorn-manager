@@ -1,11 +1,11 @@
 /*
-Copyright The Kubernetes Authors.
+Copyright The Longhorn Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,13 +19,13 @@ limitations under the License.
 package v1beta1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	longhornv1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	apislonghornv1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	versioned "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/internalinterfaces"
-	v1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/client/listers/longhorn/v1beta1"
+	longhornv1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/client/listers/longhorn/v1beta1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -36,7 +36,7 @@ import (
 // Engines.
 type EngineInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1beta1.EngineLister
+	Lister() longhornv1beta1.EngineLister
 }
 
 type engineInformer struct {
@@ -71,7 +71,7 @@ func NewFilteredEngineInformer(client versioned.Interface, namespace string, res
 				return client.LonghornV1beta1().Engines(namespace).Watch(context.TODO(), options)
 			},
 		},
-		&longhornv1beta1.Engine{},
+		&apislonghornv1beta1.Engine{},
 		resyncPeriod,
 		indexers,
 	)
@@ -82,9 +82,9 @@ func (f *engineInformer) defaultInformer(client versioned.Interface, resyncPerio
 }
 
 func (f *engineInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&longhornv1beta1.Engine{}, f.defaultInformer)
+	return f.factory.InformerFor(&apislonghornv1beta1.Engine{}, f.defaultInformer)
 }
 
-func (f *engineInformer) Lister() v1beta1.EngineLister {
-	return v1beta1.NewEngineLister(f.Informer().GetIndexer())
+func (f *engineInformer) Lister() longhornv1beta1.EngineLister {
+	return longhornv1beta1.NewEngineLister(f.Informer().GetIndexer())
 }

@@ -6,6 +6,7 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+SCRIPT_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 LH_MANAGER_DIR="github.com/longhorn/longhorn-manager"
 OUTPUT_DIR="${LH_MANAGER_DIR}/k8s/pkg/client"
 APIS_DIR="${LH_MANAGER_DIR}/k8s/pkg/apis"
@@ -33,6 +34,9 @@ if [[ ! -d "${GOPATH}/src/k8s.io/code-generator" ]]; then
 	mkdir -p ${GOPATH}/src/k8s.io
 	pushd ${GOPATH}/src/k8s.io
 	git clone -b ${CODE_GENERATOR_VERSION} https://github.com/kubernetes/code-generator 2>/dev/null || true
+  cd code-generator
+  go mod tidy
+  go mod vendor
 	popd
 fi
 
@@ -50,14 +54,20 @@ if ! command -v kustomize > /dev/null; then
   GOFLAGS= go install sigs.k8s.io/kustomize/kustomize/v5@${KUSTOMIZE_VERSION}
 fi
 
-# The generators use GOPATH when locating boilerplate.go.txt, so it must be made available in the child shell.
-export GOPATH
-bash ${GOPATH}/src/k8s.io/code-generator/kube_codegen.sh \
-  deepcopy,client,lister,informer \
-  ${OUTPUT_DIR} \
-  ${APIS_DIR} \
-  ${GROUP_VERSION} \
-  $@
+# Generate clientset, informers, listers, ...
+source ${GOPATH}/src/k8s.io/code-generator/kube_codegen.sh
+
+kube::codegen::gen_client \
+  --with-watch \
+  --with-applyconfig \
+  --output-dir "${SCRIPT_ROOT}/k8s/pkg/client" \
+  --output-pkg "${OUTPUT_DIR}" \
+  --boilerplate "${SCRIPT_ROOT}/k8s/hack/boilerplate.go.txt" \
+  "${SCRIPT_ROOT}/k8s/pkg/apis"
+
+kube::codegen::gen_helpers \
+  --boilerplate "${SCRIPT_ROOT}/k8s/hack/boilerplate.go.txt" \
+  "${SCRIPT_ROOT}/k8s/pkg/apis"
 
 echo Generating CRD
 controller-gen crd paths=${APIS_DIR}/... output:crd:dir=${CRDS_DIR}

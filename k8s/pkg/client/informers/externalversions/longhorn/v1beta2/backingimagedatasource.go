@@ -1,11 +1,11 @@
 /*
-Copyright The Kubernetes Authors.
+Copyright The Longhorn Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,13 +19,13 @@ limitations under the License.
 package v1beta2
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	longhornv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	apislonghornv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	versioned "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/internalinterfaces"
-	v1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/client/listers/longhorn/v1beta2"
+	longhornv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/client/listers/longhorn/v1beta2"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -36,7 +36,7 @@ import (
 // BackingImageDataSources.
 type BackingImageDataSourceInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1beta2.BackingImageDataSourceLister
+	Lister() longhornv1beta2.BackingImageDataSourceLister
 }
 
 type backingImageDataSourceInformer struct {
@@ -71,7 +71,7 @@ func NewFilteredBackingImageDataSourceInformer(client versioned.Interface, names
 				return client.LonghornV1beta2().BackingImageDataSources(namespace).Watch(context.TODO(), options)
 			},
 		},
-		&longhornv1beta2.BackingImageDataSource{},
+		&apislonghornv1beta2.BackingImageDataSource{},
 		resyncPeriod,
 		indexers,
 	)
@@ -82,9 +82,9 @@ func (f *backingImageDataSourceInformer) defaultInformer(client versioned.Interf
 }
 
 func (f *backingImageDataSourceInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&longhornv1beta2.BackingImageDataSource{}, f.defaultInformer)
+	return f.factory.InformerFor(&apislonghornv1beta2.BackingImageDataSource{}, f.defaultInformer)
 }
 
-func (f *backingImageDataSourceInformer) Lister() v1beta2.BackingImageDataSourceLister {
-	return v1beta2.NewBackingImageDataSourceLister(f.Informer().GetIndexer())
+func (f *backingImageDataSourceInformer) Lister() longhornv1beta2.BackingImageDataSourceLister {
+	return longhornv1beta2.NewBackingImageDataSourceLister(f.Informer().GetIndexer())
 }

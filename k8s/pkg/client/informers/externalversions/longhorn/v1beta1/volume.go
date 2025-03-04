@@ -1,11 +1,11 @@
 /*
-Copyright The Kubernetes Authors.
+Copyright The Longhorn Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,13 +19,13 @@ limitations under the License.
 package v1beta1
 
 import (
-	"context"
+	context "context"
 	time "time"
 
-	longhornv1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
+	apislonghornv1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	versioned "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	internalinterfaces "github.com/longhorn/longhorn-manager/k8s/pkg/client/informers/externalversions/internalinterfaces"
-	v1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/client/listers/longhorn/v1beta1"
+	longhornv1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/client/listers/longhorn/v1beta1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -36,7 +36,7 @@ import (
 // Volumes.
 type VolumeInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() v1beta1.VolumeLister
+	Lister() longhornv1beta1.VolumeLister
 }
 
 type volumeInformer struct {
@@ -71,7 +71,7 @@ func NewFilteredVolumeInformer(client versioned.Interface, namespace string, res
 				return client.LonghornV1beta1().Volumes(namespace).Watch(context.TODO(), options)
 			},
 		},
-		&longhornv1beta1.Volume{},
+		&apislonghornv1beta1.Volume{},
 		resyncPeriod,
 		indexers,
 	)
@@ -82,9 +82,9 @@ func (f *volumeInformer) defaultInformer(client versioned.Interface, resyncPerio
 }
 
 func (f *volumeInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&longhornv1beta1.Volume{}, f.defaultInformer)
+	return f.factory.InformerFor(&apislonghornv1beta1.Volume{}, f.defaultInformer)
 }
 
-func (f *volumeInformer) Lister() v1beta1.VolumeLister {
-	return v1beta1.NewVolumeLister(f.Informer().GetIndexer())
+func (f *volumeInformer) Lister() longhornv1beta1.VolumeLister {
+	return longhornv1beta1.NewVolumeLister(f.Informer().GetIndexer())
 }

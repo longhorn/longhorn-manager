@@ -1,11 +1,11 @@
 /*
-Copyright The Kubernetes Authors.
+Copyright The Longhorn Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -29,63 +29,63 @@ type FakeLonghornV1beta1 struct {
 }
 
 func (c *FakeLonghornV1beta1) BackingImages(namespace string) v1beta1.BackingImageInterface {
-	return &FakeBackingImages{c, namespace}
+	return newFakeBackingImages(c, namespace)
 }
 
 func (c *FakeLonghornV1beta1) BackingImageDataSources(namespace string) v1beta1.BackingImageDataSourceInterface {
-	return &FakeBackingImageDataSources{c, namespace}
+	return newFakeBackingImageDataSources(c, namespace)
 }
 
 func (c *FakeLonghornV1beta1) BackingImageManagers(namespace string) v1beta1.BackingImageManagerInterface {
-	return &FakeBackingImageManagers{c, namespace}
+	return newFakeBackingImageManagers(c, namespace)
 }
 
 func (c *FakeLonghornV1beta1) Backups(namespace string) v1beta1.BackupInterface {
-	return &FakeBackups{c, namespace}
+	return newFakeBackups(c, namespace)
 }
 
 func (c *FakeLonghornV1beta1) BackupTargets(namespace string) v1beta1.BackupTargetInterface {
-	return &FakeBackupTargets{c, namespace}
+	return newFakeBackupTargets(c, namespace)
 }
 
 func (c *FakeLonghornV1beta1) BackupVolumes(namespace string) v1beta1.BackupVolumeInterface {
-	return &FakeBackupVolumes{c, namespace}
+	return newFakeBackupVolumes(c, namespace)
 }
 
 func (c *FakeLonghornV1beta1) Engines(namespace string) v1beta1.EngineInterface {
-	return &FakeEngines{c, namespace}
+	return newFakeEngines(c, namespace)
 }
 
 func (c *FakeLonghornV1beta1) EngineImages(namespace string) v1beta1.EngineImageInterface {
-	return &FakeEngineImages{c, namespace}
+	return newFakeEngineImages(c, namespace)
 }
 
 func (c *FakeLonghornV1beta1) InstanceManagers(namespace string) v1beta1.InstanceManagerInterface {
-	return &FakeInstanceManagers{c, namespace}
+	return newFakeInstanceManagers(c, namespace)
 }
 
 func (c *FakeLonghornV1beta1) Nodes(namespace string) v1beta1.NodeInterface {
-	return &FakeNodes{c, namespace}
+	return newFakeNodes(c, namespace)
 }
 
 func (c *FakeLonghornV1beta1) RecurringJobs(namespace string) v1beta1.RecurringJobInterface {
-	return &FakeRecurringJobs{c, namespace}
+	return newFakeRecurringJobs(c, namespace)
 }
 
 func (c *FakeLonghornV1beta1) Replicas(namespace string) v1beta1.ReplicaInterface {
-	return &FakeReplicas{c, namespace}
+	return newFakeReplicas(c, namespace)
 }
 
 func (c *FakeLonghornV1beta1) Settings(namespace string) v1beta1.SettingInterface {
-	return &FakeSettings{c, namespace}
+	return newFakeSettings(c, namespace)
 }
 
 func (c *FakeLonghornV1beta1) ShareManagers(namespace string) v1beta1.ShareManagerInterface {
-	return &FakeShareManagers{c, namespace}
+	return newFakeShareManagers(c, namespace)
 }
 
 func (c *FakeLonghornV1beta1) Volumes(namespace string) v1beta1.VolumeInterface {
-	return &FakeVolumes{c, namespace}
+	return newFakeVolumes(c, namespace)
 }
 
 // RESTClient returns a RESTClient that is used to communicate
