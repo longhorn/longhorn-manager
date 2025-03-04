@@ -1902,7 +1902,7 @@ func (s *NodeControllerSuite) TestSyncInstanceManagers(c *C) {
 			if err != nil && !apierrors.IsNotFound(err) {
 				c.Assert(err, IsNil)
 			}
-			if im != nil {
+			if im != nil && err == nil {
 				err := s.lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Delete(context.TODO(), instanceManager.Name, metav1.DeleteOptions{})
 				c.Assert(err, IsNil)
 			}
