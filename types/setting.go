@@ -1361,7 +1361,7 @@ var (
 	SettingDefinitionV2DataEngineHugepageLimit = SettingDefinition{
 		DisplayName: "Hugepage Size for V2 Data Engine",
 		Description: "Hugepage size in MiB for v2 data engine",
-		Category:    SettingCategoryV2DataEngine,
+		Category:    SettingCategoryDangerZone,
 		Type:        SettingTypeInt,
 		Required:    true,
 		ReadOnly:    true,
