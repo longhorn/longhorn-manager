@@ -832,61 +832,50 @@ func CreateAndUpdateBackingImageInProvidedCache(namespace string, lhClient *lhcl
 	return obj, nil
 }
 
+type untypedResourceUpdater func(namespace string, lhClient *lhclientset.Clientset, resourceMap any, forceWrite bool) error
+
+func toUntypedResourceUpdater[K any](kind string, updater func(namespace string, lhClient *lhclientset.Clientset, resourceMap map[string]K, forceWrite bool) error) untypedResourceUpdater {
+	return func(namespace string, lhClient *lhclientset.Clientset, resourceMap any, forceWrite bool) error {
+		typedResourceMap, ok := resourceMap.(map[string]K)
+		if !ok {
+			return fmt.Errorf("unexpected type %T to resource updater %s", resourceMap, kind)
+		}
+		return updater(namespace, lhClient, typedResourceMap, forceWrite)
+	}
+}
+
+var resourceUpdaters = map[string]untypedResourceUpdater{
+	types.LonghornKindNode:                   toUntypedResourceUpdater(types.LonghornKindNode, updateNodes),
+	types.LonghornKindVolume:                 toUntypedResourceUpdater(types.LonghornKindVolume, updateVolumes),
+	types.LonghornKindEngine:                 toUntypedResourceUpdater(types.LonghornKindEngine, updateEngines),
+	types.LonghornKindReplica:                toUntypedResourceUpdater(types.LonghornKindReplica, updateReplicas),
+	types.LonghornKindBackupTarget:           toUntypedResourceUpdater(types.LonghornKindBackupTarget, updateBackupTargets),
+	types.LonghornKindBackupVolume:           toUntypedResourceUpdater(types.LonghornKindBackupVolume, updateBackupVolumes),
+	types.LonghornKindBackup:                 toUntypedResourceUpdater(types.LonghornKindBackup, updateBackups),
+	types.LonghornKindBackupBackingImage:     toUntypedResourceUpdater(types.LonghornKindBackupBackingImage, updateBackupBackingImages),
+	types.LonghornKindBackingImageDataSource: toUntypedResourceUpdater(types.LonghornKindBackingImageDataSource, updateBackingImageDataSources),
+	types.LonghornKindEngineImage:            toUntypedResourceUpdater(types.LonghornKindEngineImage, updateEngineImages),
+	types.LonghornKindInstanceManager:        toUntypedResourceUpdater(types.LonghornKindInstanceManager, updateInstanceManagers),
+	types.LonghornKindShareManager:           toUntypedResourceUpdater(types.LonghornKindShareManager, updateShareManagers),
+	types.LonghornKindBackingImage:           toUntypedResourceUpdater(types.LonghornKindBackingImage, updateBackingImages),
+	types.LonghornKindBackingImageManager:    toUntypedResourceUpdater(types.LonghornKindBackingImageManager, updateBackingImagesManager),
+	types.LonghornKindRecurringJob:           toUntypedResourceUpdater(types.LonghornKindRecurringJob, updateRecurringJobs),
+	types.LonghornKindSetting:                toUntypedResourceUpdater(types.LonghornKindSetting, updateSettings),
+	types.LonghornKindVolumeAttachment:       toUntypedResourceUpdater(types.LonghornKindVolumeAttachment, createOrUpdateVolumeAttachments),
+	types.LonghornKindSnapshot:               toUntypedResourceUpdater(types.LonghornKindSnapshot, updateSnapshots),
+	types.LonghornKindOrphan:                 toUntypedResourceUpdater(types.LonghornKindOrphan, updateOrphans),
+	types.LonghornKindSystemBackup:           toUntypedResourceUpdater(types.LonghornKindSystemBackup, updateSystemBackups),
+}
+
 // UpdateResources persists all the resources' spec changes in provided cached `resourceMap`. This method is not thread-safe.
 func UpdateResources(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, forceWrite bool) error {
-	var err error
-
 	for resourceKind, resourceMap := range resourceMaps {
-		switch resourceKind {
-		case types.LonghornKindNode:
-			err = updateNodes(namespace, lhClient, resourceMap.(map[string]*longhorn.Node), forceWrite)
-		case types.LonghornKindVolume:
-			err = updateVolumes(namespace, lhClient, resourceMap.(map[string]*longhorn.Volume), forceWrite)
-		case types.LonghornKindEngine:
-			err = updateEngines(namespace, lhClient, resourceMap.(map[string]*longhorn.Engine), forceWrite)
-		case types.LonghornKindReplica:
-			err = updateReplicas(namespace, lhClient, resourceMap.(map[string]*longhorn.Replica), forceWrite)
-		case types.LonghornKindBackupTarget:
-			err = updateBackupTargets(namespace, lhClient, resourceMap.(map[string]*longhorn.BackupTarget), forceWrite)
-		case types.LonghornKindBackupVolume:
-			err = updateBackupVolumes(namespace, lhClient, resourceMap.(map[string]*longhorn.BackupVolume), forceWrite)
-		case types.LonghornKindBackup:
-			err = updateBackups(namespace, lhClient, resourceMap.(map[string]*longhorn.Backup), forceWrite)
-		case types.LonghornKindBackupBackingImage:
-			err = updateBackupBackingImages(namespace, lhClient, resourceMap.(map[string]*longhorn.BackupBackingImage), forceWrite)
-		case types.LonghornKindBackingImageDataSource:
-			err = updateBackingImageDataSources(namespace, lhClient, resourceMap.(map[string]*longhorn.BackingImageDataSource), forceWrite)
-		case types.LonghornKindEngineImage:
-			err = updateEngineImages(namespace, lhClient, resourceMap.(map[string]*longhorn.EngineImage), forceWrite)
-		case types.LonghornKindInstanceManager:
-			err = updateInstanceManagers(namespace, lhClient, resourceMap.(map[string]*longhorn.InstanceManager), forceWrite)
-		case types.LonghornKindShareManager:
-			err = updateShareManagers(namespace, lhClient, resourceMap.(map[string]*longhorn.ShareManager), forceWrite)
-		case types.LonghornKindBackingImage:
-			err = updateBackingImages(namespace, lhClient, resourceMap.(map[string]*longhorn.BackingImage), forceWrite)
-		case types.LonghornKindBackingImageManager:
-			err = updateBackingImagesManager(namespace, lhClient, resourceMap.(map[string]*longhorn.BackingImageManager), forceWrite)
-		case types.LonghornKindRecurringJob:
-			err = updateRecurringJobs(namespace, lhClient, resourceMap.(map[string]*longhorn.RecurringJob), forceWrite)
-		case types.LonghornKindSetting:
-			err = updateSettings(namespace, lhClient, resourceMap.(map[string]*longhorn.Setting), forceWrite)
-		case types.LonghornKindVolumeAttachment:
-			err = createOrUpdateVolumeAttachments(namespace, lhClient, resourceMap.(map[string]*longhorn.VolumeAttachment), forceWrite)
-		case types.LonghornKindSnapshot:
-			err = updateSnapshots(namespace, lhClient, resourceMap.(map[string]*longhorn.Snapshot), forceWrite)
-		case types.LonghornKindOrphan:
-			err = updateOrphans(namespace, lhClient, resourceMap.(map[string]*longhorn.Orphan), forceWrite)
-		case types.LonghornKindSystemBackup:
-			err = updateSystemBackups(namespace, lhClient, resourceMap.(map[string]*longhorn.SystemBackup), forceWrite)
-		default:
+		if updater, ok := resourceUpdaters[resourceKind]; !ok {
 			return fmt.Errorf("resource kind %v is not able to updated", resourceKind)
-		}
-
-		if err != nil {
+		} else if err := updater(namespace, lhClient, resourceMap, forceWrite); err != nil {
 			return err
 		}
 	}
-
 	return nil
 }
 
