@@ -1391,6 +1391,7 @@ const (
 	ClusterInfoVolumeAccessModeCountFmt                  = "LonghornVolumeAccessMode%sCount"
 	ClusterInfoVolumeDataEngineCountFmt                  = "LonghornVolumeDataEngine%sCount"
 	ClusterInfoVolumeDataLocalityCountFmt                = "LonghornVolumeDataLocality%sCount"
+	ClusterInfoVolumeEncryptedCountFmt                   = "LonghornVolumeEncrypted%sCount"
 	ClusterInfoVolumeFrontendCountFmt                    = "LonghornVolumeFrontend%sCount"
 	ClusterInfoVolumeReplicaAutoBalanceCountFmt          = "LonghornVolumeReplicaAutoBalance%sCount"
 	ClusterInfoVolumeReplicaSoftAntiAffinityCountFmt     = "LonghornVolumeReplicaSoftAntiAffinity%sCount"
@@ -1678,6 +1679,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	accessModeCountStruct := newStruct()
 	dataEngineCountStruct := newStruct()
 	dataLocalityCountStruct := newStruct()
+	encryptedCountStruct := newStruct()
 	frontendCountStruct := newStruct()
 	replicaAutoBalanceCountStruct := newStruct()
 	replicaSoftAntiAffinityCountStruct := newStruct()
@@ -1715,6 +1717,9 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 		}
 		dataLocalityCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeDataLocalityCountFmt, dataLocality))]++
 
+		encrypted := util.ConvertToCamel(strconv.FormatBool(volume.Spec.Encrypted), "-")
+		encryptedCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeEncryptedCountFmt, encrypted))]++
+
 		if volume.Spec.Frontend != "" && !isVolumeUsingV2DataEngine {
 			frontend := util.ConvertToCamel(string(volume.Spec.Frontend), "-")
 			frontendCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeFrontendCountFmt, frontend))]++
@@ -1747,6 +1752,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	info.structFields.fields.AppendCounted(accessModeCountStruct)
 	info.structFields.fields.AppendCounted(dataEngineCountStruct)
 	info.structFields.fields.AppendCounted(dataLocalityCountStruct)
+	info.structFields.fields.AppendCounted(encryptedCountStruct)
 	info.structFields.fields.AppendCounted(frontendCountStruct)
 	info.structFields.fields.AppendCounted(replicaAutoBalanceCountStruct)
 	info.structFields.fields.AppendCounted(replicaSoftAntiAffinityCountStruct)
