@@ -55,5 +55,5 @@ echo "${BUILD_CMD[@]}" "${IMAGE_BUILD_CMD_ARGS[@]}"
 
 echo "Built ${IMAGE}"
 
-mkdir ./bin || true
+mkdir -p ./bin
 echo "${IMAGE}" > ./bin/latest_image
