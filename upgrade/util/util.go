@@ -712,6 +712,26 @@ func ListAndUpdateBackingImageDataSourcesInProvidedCache(namespace string, lhCli
 	return bidss, nil
 }
 
+// ListAndUpdateBackingImageManagersInProvidedCache list all backingImageManagers and save them into the provided cached `resourceMap`. This method is not thread-safe.
+func ListAndUpdateBackingImageManagersInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*longhorn.BackingImageManager, error) {
+	if v, ok := resourceMaps[types.LonghornKindBackingImageManager]; ok {
+		return v.(map[string]*longhorn.BackingImageManager), nil
+	}
+
+	bims := map[string]*longhorn.BackingImageManager{}
+	bimList, err := lhClient.LonghornV1beta2().BackingImageManagers(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	for i, bids := range bimList.Items {
+		bims[bids.Name] = &bimList.Items[i]
+	}
+
+	resourceMaps[types.LonghornKindBackingImageManager] = bims
+
+	return bims, nil
+}
+
 // ListAndUpdateRecurringJobsInProvidedCache list all recurringJobs and save them into the provided cached `resourceMap`. This method is not thread-safe.
 func ListAndUpdateRecurringJobsInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*longhorn.RecurringJob, error) {
 	if v, ok := resourceMaps[types.LonghornKindRecurringJob]; ok {
@@ -813,49 +833,51 @@ func CreateAndUpdateBackingImageInProvidedCache(namespace string, lhClient *lhcl
 }
 
 // UpdateResources persists all the resources' spec changes in provided cached `resourceMap`. This method is not thread-safe.
-func UpdateResources(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) error {
+func UpdateResources(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, forceWrite bool) error {
 	var err error
 
 	for resourceKind, resourceMap := range resourceMaps {
 		switch resourceKind {
 		case types.LonghornKindNode:
-			err = updateNodes(namespace, lhClient, resourceMap.(map[string]*longhorn.Node))
+			err = updateNodes(namespace, lhClient, resourceMap.(map[string]*longhorn.Node), forceWrite)
 		case types.LonghornKindVolume:
-			err = updateVolumes(namespace, lhClient, resourceMap.(map[string]*longhorn.Volume))
+			err = updateVolumes(namespace, lhClient, resourceMap.(map[string]*longhorn.Volume), forceWrite)
 		case types.LonghornKindEngine:
-			err = updateEngines(namespace, lhClient, resourceMap.(map[string]*longhorn.Engine))
+			err = updateEngines(namespace, lhClient, resourceMap.(map[string]*longhorn.Engine), forceWrite)
 		case types.LonghornKindReplica:
-			err = updateReplicas(namespace, lhClient, resourceMap.(map[string]*longhorn.Replica))
+			err = updateReplicas(namespace, lhClient, resourceMap.(map[string]*longhorn.Replica), forceWrite)
 		case types.LonghornKindBackupTarget:
-			err = updateBackupTargets(namespace, lhClient, resourceMap.(map[string]*longhorn.BackupTarget))
+			err = updateBackupTargets(namespace, lhClient, resourceMap.(map[string]*longhorn.BackupTarget), forceWrite)
 		case types.LonghornKindBackupVolume:
-			err = updateBackupVolumes(namespace, lhClient, resourceMap.(map[string]*longhorn.BackupVolume))
+			err = updateBackupVolumes(namespace, lhClient, resourceMap.(map[string]*longhorn.BackupVolume), forceWrite)
 		case types.LonghornKindBackup:
-			err = updateBackups(namespace, lhClient, resourceMap.(map[string]*longhorn.Backup))
+			err = updateBackups(namespace, lhClient, resourceMap.(map[string]*longhorn.Backup), forceWrite)
 		case types.LonghornKindBackupBackingImage:
-			err = updateBackupBackingImages(namespace, lhClient, resourceMap.(map[string]*longhorn.BackupBackingImage))
+			err = updateBackupBackingImages(namespace, lhClient, resourceMap.(map[string]*longhorn.BackupBackingImage), forceWrite)
 		case types.LonghornKindBackingImageDataSource:
-			err = updateBackingImageDataSources(namespace, lhClient, resourceMap.(map[string]*longhorn.BackingImageDataSource))
+			err = updateBackingImageDataSources(namespace, lhClient, resourceMap.(map[string]*longhorn.BackingImageDataSource), forceWrite)
 		case types.LonghornKindEngineImage:
-			err = updateEngineImages(namespace, lhClient, resourceMap.(map[string]*longhorn.EngineImage))
+			err = updateEngineImages(namespace, lhClient, resourceMap.(map[string]*longhorn.EngineImage), forceWrite)
 		case types.LonghornKindInstanceManager:
-			err = updateInstanceManagers(namespace, lhClient, resourceMap.(map[string]*longhorn.InstanceManager))
+			err = updateInstanceManagers(namespace, lhClient, resourceMap.(map[string]*longhorn.InstanceManager), forceWrite)
 		case types.LonghornKindShareManager:
-			err = updateShareManagers(namespace, lhClient, resourceMap.(map[string]*longhorn.ShareManager))
+			err = updateShareManagers(namespace, lhClient, resourceMap.(map[string]*longhorn.ShareManager), forceWrite)
 		case types.LonghornKindBackingImage:
-			err = updateBackingImages(namespace, lhClient, resourceMap.(map[string]*longhorn.BackingImage))
+			err = updateBackingImages(namespace, lhClient, resourceMap.(map[string]*longhorn.BackingImage), forceWrite)
+		case types.LonghornKindBackingImageManager:
+			err = updateBackingImagesManager(namespace, lhClient, resourceMap.(map[string]*longhorn.BackingImageManager), forceWrite)
 		case types.LonghornKindRecurringJob:
-			err = updateRecurringJobs(namespace, lhClient, resourceMap.(map[string]*longhorn.RecurringJob))
+			err = updateRecurringJobs(namespace, lhClient, resourceMap.(map[string]*longhorn.RecurringJob), forceWrite)
 		case types.LonghornKindSetting:
-			err = updateSettings(namespace, lhClient, resourceMap.(map[string]*longhorn.Setting))
+			err = updateSettings(namespace, lhClient, resourceMap.(map[string]*longhorn.Setting), forceWrite)
 		case types.LonghornKindVolumeAttachment:
-			err = createOrUpdateVolumeAttachments(namespace, lhClient, resourceMap.(map[string]*longhorn.VolumeAttachment))
+			err = createOrUpdateVolumeAttachments(namespace, lhClient, resourceMap.(map[string]*longhorn.VolumeAttachment), forceWrite)
 		case types.LonghornKindSnapshot:
-			err = updateSnapshots(namespace, lhClient, resourceMap.(map[string]*longhorn.Snapshot))
+			err = updateSnapshots(namespace, lhClient, resourceMap.(map[string]*longhorn.Snapshot), forceWrite)
 		case types.LonghornKindOrphan:
-			err = updateOrphans(namespace, lhClient, resourceMap.(map[string]*longhorn.Orphan))
+			err = updateOrphans(namespace, lhClient, resourceMap.(map[string]*longhorn.Orphan), forceWrite)
 		case types.LonghornKindSystemBackup:
-			err = updateSystemBackups(namespace, lhClient, resourceMap.(map[string]*longhorn.SystemBackup))
+			err = updateSystemBackups(namespace, lhClient, resourceMap.(map[string]*longhorn.SystemBackup), forceWrite)
 		default:
 			return fmt.Errorf("resource kind %v is not able to updated", resourceKind)
 		}
@@ -868,7 +890,7 @@ func UpdateResources(namespace string, lhClient *lhclientset.Clientset, resource
 	return nil
 }
 
-func updateNodes(namespace string, lhClient *lhclientset.Clientset, nodes map[string]*longhorn.Node) error {
+func updateNodes(namespace string, lhClient *lhclientset.Clientset, nodes map[string]*longhorn.Node, forceWrite bool) error {
 	existingNodeList, err := lhClient.LonghornV1beta2().Nodes(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -878,7 +900,8 @@ func updateNodes(namespace string, lhClient *lhclientset.Clientset, nodes map[st
 		if !ok {
 			continue
 		}
-		if !reflect.DeepEqual(existingNode.Spec, node.Spec) ||
+		if forceWrite ||
+			!reflect.DeepEqual(existingNode.Spec, node.Spec) ||
 			!reflect.DeepEqual(existingNode.ObjectMeta, node.ObjectMeta) {
 			if _, err = lhClient.LonghornV1beta2().Nodes(namespace).Update(context.TODO(), node, metav1.UpdateOptions{}); err != nil {
 				return err
@@ -888,7 +911,7 @@ func updateNodes(namespace string, lhClient *lhclientset.Clientset, nodes map[st
 	return nil
 }
 
-func updateVolumes(namespace string, lhClient *lhclientset.Clientset, volumes map[string]*longhorn.Volume) error {
+func updateVolumes(namespace string, lhClient *lhclientset.Clientset, volumes map[string]*longhorn.Volume, forceWrite bool) error {
 	existingVolumeList, err := lhClient.LonghornV1beta2().Volumes(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -898,7 +921,8 @@ func updateVolumes(namespace string, lhClient *lhclientset.Clientset, volumes ma
 		if !ok {
 			continue
 		}
-		if !reflect.DeepEqual(existingVolume.Spec, volume.Spec) ||
+		if forceWrite ||
+			!reflect.DeepEqual(existingVolume.Spec, volume.Spec) ||
 			!reflect.DeepEqual(existingVolume.ObjectMeta, volume.ObjectMeta) {
 			if _, err = lhClient.LonghornV1beta2().Volumes(namespace).Update(context.TODO(), volume, metav1.UpdateOptions{}); err != nil {
 				return err
@@ -908,7 +932,7 @@ func updateVolumes(namespace string, lhClient *lhclientset.Clientset, volumes ma
 	return nil
 }
 
-func updateReplicas(namespace string, lhClient *lhclientset.Clientset, replicas map[string]*longhorn.Replica) error {
+func updateReplicas(namespace string, lhClient *lhclientset.Clientset, replicas map[string]*longhorn.Replica, forceWrite bool) error {
 	existingReplicaList, err := lhClient.LonghornV1beta2().Replicas(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -918,7 +942,8 @@ func updateReplicas(namespace string, lhClient *lhclientset.Clientset, replicas 
 		if !ok {
 			continue
 		}
-		if !reflect.DeepEqual(existingReplica.Spec, replica.Spec) ||
+		if forceWrite ||
+			!reflect.DeepEqual(existingReplica.Spec, replica.Spec) ||
 			!reflect.DeepEqual(existingReplica.ObjectMeta, replica.ObjectMeta) {
 			if _, err = lhClient.LonghornV1beta2().Replicas(namespace).Update(context.TODO(), replica, metav1.UpdateOptions{}); err != nil {
 				return err
@@ -928,7 +953,7 @@ func updateReplicas(namespace string, lhClient *lhclientset.Clientset, replicas 
 	return nil
 }
 
-func updateEngines(namespace string, lhClient *lhclientset.Clientset, engines map[string]*longhorn.Engine) error {
+func updateEngines(namespace string, lhClient *lhclientset.Clientset, engines map[string]*longhorn.Engine, forceWrite bool) error {
 	existingEngineList, err := lhClient.LonghornV1beta2().Engines(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -938,7 +963,8 @@ func updateEngines(namespace string, lhClient *lhclientset.Clientset, engines ma
 		if !ok {
 			continue
 		}
-		if !reflect.DeepEqual(existingEngine.Spec, engine.Spec) ||
+		if forceWrite ||
+			!reflect.DeepEqual(existingEngine.Spec, engine.Spec) ||
 			!reflect.DeepEqual(existingEngine.ObjectMeta, engine.ObjectMeta) {
 			if _, err = lhClient.LonghornV1beta2().Engines(namespace).Update(context.TODO(), engine, metav1.UpdateOptions{}); err != nil {
 				return err
@@ -948,7 +974,7 @@ func updateEngines(namespace string, lhClient *lhclientset.Clientset, engines ma
 	return nil
 }
 
-func updateBackupTargets(namespace string, lhClient *lhclientset.Clientset, backupTargets map[string]*longhorn.BackupTarget) error {
+func updateBackupTargets(namespace string, lhClient *lhclientset.Clientset, backupTargets map[string]*longhorn.BackupTarget, forceWrite bool) error {
 	existingBackupTargetList, err := lhClient.LonghornV1beta2().BackupTargets(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -958,7 +984,8 @@ func updateBackupTargets(namespace string, lhClient *lhclientset.Clientset, back
 		if !ok {
 			continue
 		}
-		if !reflect.DeepEqual(existingBackupTarget.Spec, backupTarget.Spec) ||
+		if forceWrite ||
+			!reflect.DeepEqual(existingBackupTarget.Spec, backupTarget.Spec) ||
 			!reflect.DeepEqual(existingBackupTarget.ObjectMeta, backupTarget.ObjectMeta) {
 			if _, err = lhClient.LonghornV1beta2().BackupTargets(namespace).Update(context.TODO(), backupTarget, metav1.UpdateOptions{}); err != nil {
 				return err
@@ -968,7 +995,7 @@ func updateBackupTargets(namespace string, lhClient *lhclientset.Clientset, back
 	return nil
 }
 
-func updateBackupVolumes(namespace string, lhClient *lhclientset.Clientset, backupVolumes map[string]*longhorn.BackupVolume) error {
+func updateBackupVolumes(namespace string, lhClient *lhclientset.Clientset, backupVolumes map[string]*longhorn.BackupVolume, forceWrite bool) error {
 	existingBackupVolumeList, err := lhClient.LonghornV1beta2().BackupVolumes(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -978,7 +1005,8 @@ func updateBackupVolumes(namespace string, lhClient *lhclientset.Clientset, back
 		if !ok {
 			continue
 		}
-		if !reflect.DeepEqual(existingBackupVolume.Spec, backupVolume.Spec) ||
+		if forceWrite ||
+			!reflect.DeepEqual(existingBackupVolume.Spec, backupVolume.Spec) ||
 			!reflect.DeepEqual(existingBackupVolume.ObjectMeta, backupVolume.ObjectMeta) {
 			if _, err = lhClient.LonghornV1beta2().BackupVolumes(namespace).Update(context.TODO(), backupVolume, metav1.UpdateOptions{}); err != nil {
 				return err
@@ -988,7 +1016,7 @@ func updateBackupVolumes(namespace string, lhClient *lhclientset.Clientset, back
 	return nil
 }
 
-func updateBackups(namespace string, lhClient *lhclientset.Clientset, backups map[string]*longhorn.Backup) error {
+func updateBackups(namespace string, lhClient *lhclientset.Clientset, backups map[string]*longhorn.Backup, forceWrite bool) error {
 	existingBackupList, err := lhClient.LonghornV1beta2().Backups(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -999,7 +1027,8 @@ func updateBackups(namespace string, lhClient *lhclientset.Clientset, backups ma
 		if !ok {
 			continue
 		}
-		if !reflect.DeepEqual(existingBackup.Spec, backup.Spec) ||
+		if forceWrite ||
+			!reflect.DeepEqual(existingBackup.Spec, backup.Spec) ||
 			!reflect.DeepEqual(existingBackup.ObjectMeta, backup.ObjectMeta) {
 			if _, err = lhClient.LonghornV1beta2().Backups(namespace).Update(context.TODO(), backup, metav1.UpdateOptions{}); err != nil {
 				return err
@@ -1009,7 +1038,7 @@ func updateBackups(namespace string, lhClient *lhclientset.Clientset, backups ma
 	return nil
 }
 
-func updateBackupBackingImages(namespace string, lhClient *lhclientset.Clientset, backupBackingImages map[string]*longhorn.BackupBackingImage) error {
+func updateBackupBackingImages(namespace string, lhClient *lhclientset.Clientset, backupBackingImages map[string]*longhorn.BackupBackingImage, forceWrite bool) error {
 	existingBackupBackingImageList, err := lhClient.LonghornV1beta2().BackupBackingImages(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -1019,7 +1048,8 @@ func updateBackupBackingImages(namespace string, lhClient *lhclientset.Clientset
 		if !ok {
 			continue
 		}
-		if !reflect.DeepEqual(existingBackupBackingImage.Spec, backupBackingImage.Spec) ||
+		if forceWrite ||
+			!reflect.DeepEqual(existingBackupBackingImage.Spec, backupBackingImage.Spec) ||
 			!reflect.DeepEqual(existingBackupBackingImage.ObjectMeta, backupBackingImage.ObjectMeta) {
 			if _, err = lhClient.LonghornV1beta2().BackupBackingImages(namespace).Update(context.TODO(), backupBackingImage, metav1.UpdateOptions{}); err != nil {
 				return err
@@ -1029,7 +1059,7 @@ func updateBackupBackingImages(namespace string, lhClient *lhclientset.Clientset
 	return nil
 }
 
-func updateBackingImageDataSources(namespace string, lhClient *lhclientset.Clientset, backingImageDataSources map[string]*longhorn.BackingImageDataSource) error {
+func updateBackingImageDataSources(namespace string, lhClient *lhclientset.Clientset, backingImageDataSources map[string]*longhorn.BackingImageDataSource, forceWrite bool) error {
 	existingBackingImageDataSourceList, err := lhClient.LonghornV1beta2().BackingImageDataSources(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -1039,7 +1069,8 @@ func updateBackingImageDataSources(namespace string, lhClient *lhclientset.Clien
 		if !ok {
 			continue
 		}
-		if !reflect.DeepEqual(existingBackingImageDataSource.Spec, backingImageDataSource.Spec) ||
+		if forceWrite ||
+			!reflect.DeepEqual(existingBackingImageDataSource.Spec, backingImageDataSource.Spec) ||
 			!reflect.DeepEqual(existingBackingImageDataSource.ObjectMeta, backingImageDataSource.ObjectMeta) {
 			if _, err = lhClient.LonghornV1beta2().BackingImageDataSources(namespace).Update(context.TODO(), backingImageDataSource, metav1.UpdateOptions{}); err != nil {
 				return err
@@ -1049,7 +1080,7 @@ func updateBackingImageDataSources(namespace string, lhClient *lhclientset.Clien
 	return nil
 }
 
-func updateEngineImages(namespace string, lhClient *lhclientset.Clientset, engineImages map[string]*longhorn.EngineImage) error {
+func updateEngineImages(namespace string, lhClient *lhclientset.Clientset, engineImages map[string]*longhorn.EngineImage, forceWrite bool) error {
 	existingEngineImageList, err := lhClient.LonghornV1beta2().EngineImages(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -1059,7 +1090,8 @@ func updateEngineImages(namespace string, lhClient *lhclientset.Clientset, engin
 		if !ok {
 			continue
 		}
-		if !reflect.DeepEqual(existingEngineImage.Spec, engineImage.Spec) ||
+		if forceWrite ||
+			!reflect.DeepEqual(existingEngineImage.Spec, engineImage.Spec) ||
 			!reflect.DeepEqual(existingEngineImage.ObjectMeta, engineImage.ObjectMeta) {
 			if _, err = lhClient.LonghornV1beta2().EngineImages(namespace).Update(context.TODO(), engineImage, metav1.UpdateOptions{}); err != nil {
 				return err
@@ -1069,7 +1101,7 @@ func updateEngineImages(namespace string, lhClient *lhclientset.Clientset, engin
 	return nil
 }
 
-func updateInstanceManagers(namespace string, lhClient *lhclientset.Clientset, instanceManagers map[string]*longhorn.InstanceManager) error {
+func updateInstanceManagers(namespace string, lhClient *lhclientset.Clientset, instanceManagers map[string]*longhorn.InstanceManager, forceWrite bool) error {
 	existingInstanceManagerList, err := lhClient.LonghornV1beta2().InstanceManagers(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -1079,7 +1111,8 @@ func updateInstanceManagers(namespace string, lhClient *lhclientset.Clientset, i
 		if !ok {
 			continue
 		}
-		if !reflect.DeepEqual(existingInstanceManager.Spec, instanceManager.Spec) ||
+		if forceWrite ||
+			!reflect.DeepEqual(existingInstanceManager.Spec, instanceManager.Spec) ||
 			!reflect.DeepEqual(existingInstanceManager.ObjectMeta, instanceManager.ObjectMeta) {
 			if _, err = lhClient.LonghornV1beta2().InstanceManagers(namespace).Update(context.TODO(), instanceManager, metav1.UpdateOptions{}); err != nil {
 				return err
@@ -1089,7 +1122,7 @@ func updateInstanceManagers(namespace string, lhClient *lhclientset.Clientset, i
 	return nil
 }
 
-func updateShareManagers(namespace string, lhClient *lhclientset.Clientset, shareManagers map[string]*longhorn.ShareManager) error {
+func updateShareManagers(namespace string, lhClient *lhclientset.Clientset, shareManagers map[string]*longhorn.ShareManager, forceWrite bool) error {
 	existingShareManagerList, err := lhClient.LonghornV1beta2().ShareManagers(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -1099,7 +1132,8 @@ func updateShareManagers(namespace string, lhClient *lhclientset.Clientset, shar
 		if !ok {
 			continue
 		}
-		if !reflect.DeepEqual(existingShareManager.Spec, shareManager.Spec) ||
+		if forceWrite ||
+			!reflect.DeepEqual(existingShareManager.Spec, shareManager.Spec) ||
 			!reflect.DeepEqual(existingShareManager.ObjectMeta, shareManager.ObjectMeta) {
 			if _, err = lhClient.LonghornV1beta2().ShareManagers(namespace).Update(context.TODO(), shareManager, metav1.UpdateOptions{}); err != nil {
 				return err
@@ -1109,7 +1143,7 @@ func updateShareManagers(namespace string, lhClient *lhclientset.Clientset, shar
 	return nil
 }
 
-func updateBackingImages(namespace string, lhClient *lhclientset.Clientset, backingImages map[string]*longhorn.BackingImage) error {
+func updateBackingImages(namespace string, lhClient *lhclientset.Clientset, backingImages map[string]*longhorn.BackingImage, forceWrite bool) error {
 	existingBackingImagesList, err := lhClient.LonghornV1beta2().BackingImages(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -1119,7 +1153,8 @@ func updateBackingImages(namespace string, lhClient *lhclientset.Clientset, back
 		if !ok {
 			continue
 		}
-		if !reflect.DeepEqual(existingBackingImage.Spec, backingImage.Spec) ||
+		if forceWrite ||
+			!reflect.DeepEqual(existingBackingImage.Spec, backingImage.Spec) ||
 			!reflect.DeepEqual(existingBackingImage.ObjectMeta, backingImage.ObjectMeta) {
 			if _, err = lhClient.LonghornV1beta2().BackingImages(namespace).Update(context.TODO(), backingImage, metav1.UpdateOptions{}); err != nil {
 				return err
@@ -1129,7 +1164,28 @@ func updateBackingImages(namespace string, lhClient *lhclientset.Clientset, back
 	return nil
 }
 
-func updateRecurringJobs(namespace string, lhClient *lhclientset.Clientset, recurringJobs map[string]*longhorn.RecurringJob) error {
+func updateBackingImagesManager(namespace string, lhClient *lhclientset.Clientset, backingImageManagers map[string]*longhorn.BackingImageManager, forceWrite bool) error {
+	existingBackingImageManagersList, err := lhClient.LonghornV1beta2().BackingImageManagers(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, existingBackingImageManager := range existingBackingImageManagersList.Items {
+		backingImageManager, ok := backingImageManagers[existingBackingImageManager.Name]
+		if !ok {
+			continue
+		}
+		if forceWrite ||
+			!reflect.DeepEqual(existingBackingImageManager.Spec, backingImageManager.Spec) ||
+			!reflect.DeepEqual(existingBackingImageManager.ObjectMeta, backingImageManager.ObjectMeta) {
+			if _, err = lhClient.LonghornV1beta2().BackingImageManagers(namespace).Update(context.TODO(), backingImageManager, metav1.UpdateOptions{}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func updateRecurringJobs(namespace string, lhClient *lhclientset.Clientset, recurringJobs map[string]*longhorn.RecurringJob, forceWrite bool) error {
 	existingRecurringJobList, err := lhClient.LonghornV1beta2().RecurringJobs(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -1139,7 +1195,8 @@ func updateRecurringJobs(namespace string, lhClient *lhclientset.Clientset, recu
 		if !ok {
 			continue
 		}
-		if !reflect.DeepEqual(existingRecurringJob.Spec, recurringJob.Spec) ||
+		if forceWrite ||
+			!reflect.DeepEqual(existingRecurringJob.Spec, recurringJob.Spec) ||
 			!reflect.DeepEqual(existingRecurringJob.ObjectMeta, recurringJob.ObjectMeta) {
 			if _, err = lhClient.LonghornV1beta2().RecurringJobs(namespace).Update(context.TODO(), recurringJob, metav1.UpdateOptions{}); err != nil {
 				return err
@@ -1149,7 +1206,7 @@ func updateRecurringJobs(namespace string, lhClient *lhclientset.Clientset, recu
 	return nil
 }
 
-func updateSettings(namespace string, lhClient *lhclientset.Clientset, settings map[string]*longhorn.Setting) error {
+func updateSettings(namespace string, lhClient *lhclientset.Clientset, settings map[string]*longhorn.Setting, forceWrite bool) error {
 	existingSettingList, err := lhClient.LonghornV1beta2().Settings(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -1161,7 +1218,7 @@ func updateSettings(namespace string, lhClient *lhclientset.Clientset, settings 
 			continue
 		}
 
-		if !reflect.DeepEqual(existingSetting.Value, setting.Value) {
+		if forceWrite || !reflect.DeepEqual(existingSetting.Value, setting.Value) {
 			if setting.Annotations == nil {
 				setting.Annotations = make(map[string]string)
 			}
@@ -1180,7 +1237,7 @@ func updateSettings(namespace string, lhClient *lhclientset.Clientset, settings 
 	return nil
 }
 
-func updateSnapshots(namespace string, lhClient *lhclientset.Clientset, snapshots map[string]*longhorn.Snapshot) error {
+func updateSnapshots(namespace string, lhClient *lhclientset.Clientset, snapshots map[string]*longhorn.Snapshot, forceWrite bool) error {
 	existingSnapshotList, err := lhClient.LonghornV1beta2().Snapshots(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -1190,7 +1247,8 @@ func updateSnapshots(namespace string, lhClient *lhclientset.Clientset, snapshot
 		if !ok {
 			continue
 		}
-		if !reflect.DeepEqual(existingSnapshot.Spec, snapshot.Spec) ||
+		if forceWrite ||
+			!reflect.DeepEqual(existingSnapshot.Spec, snapshot.Spec) ||
 			!reflect.DeepEqual(existingSnapshot.ObjectMeta, snapshot.ObjectMeta) {
 			if _, err = lhClient.LonghornV1beta2().Snapshots(namespace).Update(context.TODO(), snapshot, metav1.UpdateOptions{}); err != nil {
 				return err
@@ -1200,7 +1258,7 @@ func updateSnapshots(namespace string, lhClient *lhclientset.Clientset, snapshot
 	return nil
 }
 
-func updateOrphans(namespace string, lhClient *lhclientset.Clientset, orphans map[string]*longhorn.Orphan) error {
+func updateOrphans(namespace string, lhClient *lhclientset.Clientset, orphans map[string]*longhorn.Orphan, forceWrite bool) error {
 	existingOrphanList, err := lhClient.LonghornV1beta2().Orphans(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -1210,7 +1268,8 @@ func updateOrphans(namespace string, lhClient *lhclientset.Clientset, orphans ma
 		if !ok {
 			continue
 		}
-		if !reflect.DeepEqual(existingOrphan.Spec, orphan.Spec) ||
+		if forceWrite ||
+			!reflect.DeepEqual(existingOrphan.Spec, orphan.Spec) ||
 			!reflect.DeepEqual(existingOrphan.ObjectMeta, orphan.ObjectMeta) {
 			if _, err = lhClient.LonghornV1beta2().Orphans(namespace).Update(context.TODO(), orphan, metav1.UpdateOptions{}); err != nil {
 				return err
@@ -1220,7 +1279,7 @@ func updateOrphans(namespace string, lhClient *lhclientset.Clientset, orphans ma
 	return nil
 }
 
-func updateSystemBackups(namespace string, lhClient *lhclientset.Clientset, systemBackups map[string]*longhorn.SystemBackup) error {
+func updateSystemBackups(namespace string, lhClient *lhclientset.Clientset, systemBackups map[string]*longhorn.SystemBackup, forceWrite bool) error {
 	existingSystemBackupList, err := lhClient.LonghornV1beta2().SystemBackups(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -1230,7 +1289,8 @@ func updateSystemBackups(namespace string, lhClient *lhclientset.Clientset, syst
 		if !ok {
 			continue
 		}
-		if !reflect.DeepEqual(existingSystemBackup.Spec, sb.Spec) ||
+		if forceWrite ||
+			!reflect.DeepEqual(existingSystemBackup.Spec, sb.Spec) ||
 			!reflect.DeepEqual(existingSystemBackup.ObjectMeta, sb.ObjectMeta) {
 			if _, err = lhClient.LonghornV1beta2().SystemBackups(namespace).Update(context.TODO(), sb, metav1.UpdateOptions{}); err != nil {
 				return err
@@ -1240,7 +1300,7 @@ func updateSystemBackups(namespace string, lhClient *lhclientset.Clientset, syst
 	return nil
 }
 
-func createOrUpdateVolumeAttachments(namespace string, lhClient *lhclientset.Clientset, volumeAttachments map[string]*longhorn.VolumeAttachment) error {
+func createOrUpdateVolumeAttachments(namespace string, lhClient *lhclientset.Clientset, volumeAttachments map[string]*longhorn.VolumeAttachment, forceWrite bool) error {
 	existingVolumeAttachmentList, err := lhClient.LonghornV1beta2().VolumeAttachments(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
