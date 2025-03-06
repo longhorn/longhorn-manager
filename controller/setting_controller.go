@@ -1407,6 +1407,7 @@ const (
 	ClusterInfoKubernetesVersion      = util.StructName("KubernetesVersion")
 	ClusterInfoKubernetesNodeProvider = util.StructName("KubernetesNodeProvider")
 
+	ClusterInfoHostArch          = util.StructName("HostArch")
 	ClusterInfoHostKernelRelease = util.StructName("HostKernelRelease")
 	ClusterInfoHostOsDistro      = util.StructName("HostOsDistro")
 
@@ -1799,6 +1800,10 @@ func (info *ClusterInfo) collectSettingInVolume(volumeSpecValue, ignoredValue st
 }
 
 func (info *ClusterInfo) collectNodeScope() {
+	if err := info.collectHostArch(); err != nil {
+		info.logger.WithError(err).Warn("Failed to collect host architecture")
+	}
+
 	if err := info.collectHostKernelRelease(); err != nil {
 		info.logger.WithError(err).Warn("Failed to collect host kernel release")
 	}
@@ -1814,6 +1819,14 @@ func (info *ClusterInfo) collectNodeScope() {
 	if err := info.collectKubernetesNodeProvider(); err != nil {
 		info.logger.WithError(err).Warn("Failed to collect node provider")
 	}
+}
+
+func (info *ClusterInfo) collectHostArch() error {
+	arch, err := lhns.GetArch()
+	if err == nil {
+		info.structFields.tags.Append(ClusterInfoHostArch, arch)
+	}
+	return err
 }
 
 func (info *ClusterInfo) collectHostKernelRelease() error {
