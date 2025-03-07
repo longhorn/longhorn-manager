@@ -350,7 +350,7 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 			c.eventRecorder.Eventf(volume, corev1.EventTypeNormal, constant.EventReasonDelete, "Deleting volume %v", volume.Name)
 		}
 
-		if volume.Spec.AccessMode == longhorn.AccessModeReadWriteMany {
+		if volume.Spec.AccessMode == longhorn.AccessModeReadWriteMany && !volume.Spec.Migratable {
 			log.Info("Removing share manager for deleted volume")
 			if err := c.ds.DeleteShareManager(volume.Name); err != nil && !datastore.ErrorIsNotFound(err) {
 				return err
