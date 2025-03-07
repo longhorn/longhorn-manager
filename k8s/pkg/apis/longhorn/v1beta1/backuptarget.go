@@ -45,6 +45,7 @@ type BackupTargetStatus struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:resource:shortName=lhbt
 // +kubebuilder:subresource:status
+// +kubebuilder:unservedversion
 // +kubebuilder:deprecatedversion
 // +kubebuilder:deprecatedversion:warning="longhorn.io/v1beta1 BackupTarget is deprecated; use longhorn.io/v1beta2 BackupTarget instead"
 // +kubebuilder:printcolumn:name="URL",type=string,JSONPath=`.spec.backupTargetURL`,description="The backup target URL"

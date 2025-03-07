@@ -29,6 +29,7 @@ type ShareManagerStatus struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:resource:shortName=lhsm
 // +kubebuilder:subresource:status
+// +kubebuilder:unservedversion
 // +kubebuilder:deprecatedversion
 // +kubebuilder:deprecatedversion:warning="longhorn.io/v1beta1 ShareManager is deprecated; use longhorn.io/v1beta2 ShareManager instead"
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`,description="The state of the share manager"

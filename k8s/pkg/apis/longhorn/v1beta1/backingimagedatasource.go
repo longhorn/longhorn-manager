@@ -40,6 +40,7 @@ type BackingImageDataSourceStatus struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:resource:shortName=lhbids
 // +kubebuilder:subresource:status
+// +kubebuilder:unservedversion
 // +kubebuilder:deprecatedversion
 // +kubebuilder:deprecatedversion:warning="longhorn.io/v1beta1 BackingImageDataSource is deprecated; use longhorn.io/v1beta2 BackingImageDataSource instead"
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.currentState`,description="The current state of the pod used to provision the backing image file from source"
