@@ -80,6 +80,7 @@ type NodeStatus struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:resource:shortName=lhn
 // +kubebuilder:subresource:status
+// +kubebuilder:unservedversion
 // +kubebuilder:deprecatedversion
 // +kubebuilder:deprecatedversion:warning="longhorn.io/v1beta1 Node is deprecated; use longhorn.io/v1beta2 Node instead"
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions['Ready']['status']`,description="Indicate whether the node is ready"
