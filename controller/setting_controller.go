@@ -1380,6 +1380,7 @@ const (
 	ClusterInfoNamespaceUID = util.StructName("LonghornNamespaceUid")
 	ClusterInfoNodeCount    = util.StructName("LonghornNodeCount")
 
+	ClusterInfoBackingImageCount      = util.StructName("LonghornBackingImageCount")
 	ClusterInfoVolumeAvgActualSize    = util.StructName("LonghornVolumeAverageActualSizeBytes")
 	ClusterInfoVolumeAvgSize          = util.StructName("LonghornVolumeAverageSizeBytes")
 	ClusterInfoVolumeAvgSnapshotCount = util.StructName("LonghornVolumeAverageSnapshotCount")
@@ -1460,6 +1461,10 @@ func (info *ClusterInfo) collectClusterScope() {
 
 	if err := info.collectSettings(); err != nil {
 		info.logger.WithError(err).Warn("Failed to collect Longhorn settings")
+	}
+
+	if err := info.collectBackingImageInfo(); err != nil {
+		info.logger.WithError(err).Warn("Failed to collect Longhorn backing images info")
 	}
 }
 
@@ -1809,6 +1814,14 @@ func (info *ClusterInfo) collectSettingInVolume(volumeSpecValue, ignoredValue st
 		return globalSetting.Value
 	}
 	return volumeSpecValue
+}
+
+func (info *ClusterInfo) collectBackingImageInfo() error {
+	backingImages, err := info.ds.ListBackingImagesRO()
+	if err == nil {
+		info.structFields.fields.Append(ClusterInfoBackingImageCount, len(backingImages))
+	}
+	return err
 }
 
 func (info *ClusterInfo) collectNodeScope() {
