@@ -1384,6 +1384,7 @@ const (
 	ClusterInfoVolumeAvgSize          = util.StructName("LonghornVolumeAverageSizeBytes")
 	ClusterInfoVolumeAvgSnapshotCount = util.StructName("LonghornVolumeAverageSnapshotCount")
 	ClusterInfoVolumeAvgNumOfReplicas = util.StructName("LonghornVolumeAverageNumberOfReplicas")
+	ClusterInfoVolumeNumOfReplicas    = util.StructName("LonghornVolumeNumberOfReplicas")
 
 	ClusterInfoPodAvgCPUUsageFmt                         = "Longhorn%sAverageCpuUsageMilliCores"
 	ClusterInfoPodAvgMemoryUsageFmt                      = "Longhorn%sAverageMemoryUsageBytes"
@@ -1749,6 +1750,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 		freezeFilesystemForSnapshot := info.collectSettingInVolume(string(volume.Spec.FreezeFilesystemForSnapshot), string(longhorn.FreezeFilesystemForSnapshotDefault), types.SettingNameFreezeFilesystemForSnapshot)
 		freezeFilesystemForSnapshotCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeFreezeFilesystemForSnapshotCountFmt, util.ConvertToCamel(string(freezeFilesystemForSnapshot), "-")))]++
 	}
+	info.structFields.fields.Append(ClusterInfoVolumeNumOfReplicas, totalVolumeNumOfReplicas)
 	info.structFields.fields.AppendCounted(accessModeCountStruct)
 	info.structFields.fields.AppendCounted(dataEngineCountStruct)
 	info.structFields.fields.AppendCounted(dataLocalityCountStruct)
