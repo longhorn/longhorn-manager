@@ -316,6 +316,16 @@ func (m *SnapshotMonitor) deleteFromInProgressSnapshotCheckTasks(snapshotName st
 	delete(m.inProgressSnapshotCheckTasks, snapshotName)
 }
 
+func getNumberOfHealthyReplicas(e *longhorn.Engine) int {
+	numOfHealthyReplicas := 0
+	for _, mode := range e.Status.ReplicaModeMap {
+		if mode == longhorn.ReplicaModeRW {
+			numOfHealthyReplicas++
+		}
+	}
+	return numOfHealthyReplicas
+}
+
 func (m *SnapshotMonitor) run(arg interface{}) error {
 	task, ok := arg.(snapshotCheckTask)
 	if !ok {
@@ -330,6 +340,13 @@ func (m *SnapshotMonitor) run(arg interface{}) error {
 	engine, err := m.ds.GetVolumeCurrentEngine(task.volumeName)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get engine for volume %v", task.volumeName)
+	}
+
+	// Skip snapshot hashing if the volume has less than 2 healthy replicas
+	numOfHealthyReplicas := getNumberOfHealthyReplicas(engine)
+	if numOfHealthyReplicas < 2 {
+		m.logger.WithField("monitor", monitorName).Debugf("Skipping snapshot calculation for volume %v since it has less than 2 healthy replicas", task.volumeName)
+		return nil
 	}
 
 	if err := m.canRequestSnapshotHash(engine); err != nil {
