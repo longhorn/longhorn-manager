@@ -1385,6 +1385,7 @@ const (
 	ClusterInfoVolumeAvgSnapshotCount = util.StructName("LonghornVolumeAverageSnapshotCount")
 	ClusterInfoVolumeAvgNumOfReplicas = util.StructName("LonghornVolumeAverageNumberOfReplicas")
 	ClusterInfoVolumeNumOfReplicas    = util.StructName("LonghornVolumeNumberOfReplicas")
+	ClusterInfoVolumeNumOfSnapshots   = util.StructName("LonghornVolumeNumberOfSnapshots")
 
 	ClusterInfoPodAvgCPUUsageFmt                         = "Longhorn%sAverageCpuUsageMilliCores"
 	ClusterInfoPodAvgMemoryUsageFmt                      = "Longhorn%sAverageMemoryUsageBytes"
@@ -1779,6 +1780,7 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 
 	var avgVolumeSnapshotCount int
 	var avgVolumeNumOfReplicas int
+	var totalVolumeNumOfSnapshots int
 	if volumeCount > 0 {
 		avgVolumeNumOfReplicas = totalVolumeNumOfReplicas / volumeCount
 
@@ -1786,12 +1788,14 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 		if err != nil {
 			return errors.Wrapf(err, "failed to list Longhorn Snapshots")
 		}
-		avgVolumeSnapshotCount = len(snapshotsRO) / volumeCount
+		totalVolumeNumOfSnapshots = len(snapshotsRO)
+		avgVolumeSnapshotCount = totalVolumeNumOfSnapshots / volumeCount
 	}
 	info.structFields.fields.Append(ClusterInfoVolumeAvgSize, avgVolumeSize)
 	info.structFields.fields.Append(ClusterInfoVolumeAvgActualSize, avgVolumeActualSize)
 	info.structFields.fields.Append(ClusterInfoVolumeAvgSnapshotCount, avgVolumeSnapshotCount)
 	info.structFields.fields.Append(ClusterInfoVolumeAvgNumOfReplicas, avgVolumeNumOfReplicas)
+	info.structFields.fields.Append(ClusterInfoVolumeNumOfSnapshots, totalVolumeNumOfSnapshots)
 
 	return nil
 }
