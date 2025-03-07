@@ -1456,7 +1456,7 @@ func (info *ClusterInfo) collectClusterScope() {
 	}
 
 	if err := info.collectVolumesInfo(); err != nil {
-		info.logger.WithError(err).Warn("Failed to collect Longhorn Volumes info")
+		info.logger.WithError(err).Warn("Failed to collect Longhorn volumes info")
 	}
 
 	if err := info.collectSettings(); err != nil {
