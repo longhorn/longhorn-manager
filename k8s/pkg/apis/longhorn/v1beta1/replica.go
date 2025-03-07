@@ -33,6 +33,7 @@ type ReplicaStatus struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:resource:shortName=lhr
 // +kubebuilder:subresource:status
+// +kubebuilder:unservedversion
 // +kubebuilder:deprecatedversion
 // +kubebuilder:deprecatedversion:warning="longhorn.io/v1beta1 Replica is deprecated; use longhorn.io/v1beta2 Replica instead"
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.currentState`,description="The current state of the replica"
