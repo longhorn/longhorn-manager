@@ -6,10 +6,11 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-SCRIPT_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
-LH_MANAGER_DIR="github.com/longhorn/longhorn-manager"
-OUTPUT_DIR="${LH_MANAGER_DIR}/k8s/pkg/client"
-APIS_DIR="${LH_MANAGER_DIR}/k8s/pkg/apis"
+SCRIPT_ROOT=$(cd $(dirname "${BASH_SOURCE[0]}")/.. && pwd)
+LH_MANAGER_PKG="github.com/longhorn/longhorn-manager"
+OUTPUT_PKG="${LH_MANAGER_PKG}/k8s/pkg/client"
+APIS_PATH="k8s/pkg/apis"
+APIS_DIR="${SCRIPT_ROOT}/${APIS_PATH}"
 GROUP_VERSION="longhorn:v1beta1,v1beta2"
 CODE_GENERATOR_VERSION="v0.32.1"
 CRDS_DIR="crds"
@@ -61,7 +62,7 @@ kube::codegen::gen_client \
   --with-watch \
   --with-applyconfig \
   --output-dir "${SCRIPT_ROOT}/k8s/pkg/client" \
-  --output-pkg "${OUTPUT_DIR}" \
+  --output-pkg "${OUTPUT_PKG}" \
   --boilerplate "${SCRIPT_ROOT}/k8s/hack/boilerplate.go.txt" \
   "${SCRIPT_ROOT}/k8s/pkg/apis"
 
@@ -74,18 +75,18 @@ controller-gen crd paths=${APIS_DIR}/... output:crd:dir=${CRDS_DIR}
 pushd ${CRDS_DIR}
 kustomize create --autodetect 2>/dev/null || true
 kustomize edit add label longhorn-manager: 2>/dev/null || true
-if [ -e ${GOPATH}/src/${LH_MANAGER_DIR}/k8s/patches/crd ]; then
-  cp -a ${GOPATH}/src/${LH_MANAGER_DIR}/k8s/patches/crd patches
+if [ -e ${SCRIPT_ROOT}/k8s/patches/crd ]; then
+  cp -a ${SCRIPT_ROOT}/k8s/patches/crd patches
   find patches -type f | xargs -i sh -c 'kustomize edit add patch --path {}'
 fi
 popd
 
-rm -rf ${GOPATH}/src/${LH_MANAGER_DIR}/k8s/crds.yaml
-echo "# Generated crds.yaml from ${APIS_DIR} and the crds.yaml will be copied to longhorn/longhorn chart/templates and cannot be directly used by kubectl apply." > ${GOPATH}/src/${LH_MANAGER_DIR}/k8s/crds.yaml
-kustomize build ${CRDS_DIR} >> ${GOPATH}/src/${LH_MANAGER_DIR}/k8s/crds.yaml
+rm -rf ${SCRIPT_ROOT}/k8s/crds.yaml
+echo "# Generated crds.yaml from ${LH_MANAGER_PKG}/${APIS_PATH} and the crds.yaml will be copied to longhorn/longhorn chart/templates and cannot be directly used by kubectl apply." > ${SCRIPT_ROOT}/k8s/crds.yaml
+kustomize build ${CRDS_DIR} >> ${SCRIPT_ROOT}/k8s/crds.yaml
 rm -r ${CRDS_DIR}
 
 # Replace labels and namespace in crds.yaml. The crds.yaml is used by helm chart and used for generating the installation manifests.
 echo "Replacing labels and namespace in crds.yaml..."
-sed -i 's/^  labels:/  labels: {{- include "longhorn.labels" . | nindent 4 }}/g' ${GOPATH}/src/${LH_MANAGER_DIR}/k8s/crds.yaml
-sed -i 's/^          namespace: longhorn-system/          namespace: {{ include "release_namespace" . }}/g' ${GOPATH}/src/${LH_MANAGER_DIR}/k8s/crds.yaml
+sed -i 's/^  labels:/  labels: {{- include "longhorn.labels" . | nindent 4 }}/g' ${SCRIPT_ROOT}/k8s/crds.yaml
+sed -i 's/^          namespace: longhorn-system/          namespace: {{ include "release_namespace" . }}/g' ${SCRIPT_ROOT}/k8s/crds.yaml
