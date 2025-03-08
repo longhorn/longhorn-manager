@@ -5,147 +5,50 @@ import (
 
 	clientset "k8s.io/client-go/kubernetes"
 
+	"github.com/longhorn/longhorn-manager/types"
+
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
 )
 
-const (
-	upgradeLogPrefix = "upgrade from v1.8.x to v1.9.0: "
-)
+type listAndUpdateResourcesInProvidedCacheFunc func(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) error
+type typedListAndUpdateResourcesInProvidedCacheFunc[K any] func(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*K, error)
+
+func toListAndUpdateResourcesInProvidedCacheFunc[K any](listUpdateFunc typedListAndUpdateResourcesInProvidedCacheFunc[K]) listAndUpdateResourcesInProvidedCacheFunc {
+	return func(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) error {
+		_, err := listUpdateFunc(namespace, lhClient, resourceMaps)
+		return err
+	}
+}
 
 func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) error {
 	if resourceMaps == nil {
 		return errors.New("resourceMaps cannot be nil")
 	}
 
-	// From v1.9.0, the v1beta1 API is deprecated. Load all resource and write back into v1beta2.
+	// From v1.9.0, the v1beta1 API is deprecated, and v1beta2 is the storage version. Load all resource and write back into v1beta2.
 
-	updates := []func(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) error{
-		upgradeSettings,
-		upgradeNodes,
-		upgradeInstanceManagers,
-		upgradeShareManagers,
-		upgradeEngines,
-		upgradeEngineImages,
-		upgradeReplicas,
-		upgradeVolumes,
-		upgradeBackupVolumes,
-		upgradeBackups,
-		upgradeBackupTargets,
-		upgradeBackingImageManagers,
-		upgradeBackingImageDataSources,
-		upgradeBackingImages,
-		upgradeRecurringJobs,
+	updates := map[string]listAndUpdateResourcesInProvidedCacheFunc{
+		types.LonghornKindSetting:                toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateSettingsInProvidedCache),
+		types.LonghornKindNode:                   toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateNodesInProvidedCache),
+		types.LonghornKindInstanceManager:        toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateInstanceManagersInProvidedCache),
+		types.LonghornKindShareManager:           toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateShareManagersInProvidedCache),
+		types.LonghornKindEngine:                 toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateEnginesInProvidedCache),
+		types.LonghornKindEngineImage:            toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateEngineImagesInProvidedCache),
+		types.LonghornKindReplica:                toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateReplicasInProvidedCache),
+		types.LonghornKindVolume:                 toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateVolumesInProvidedCache),
+		types.LonghornKindBackupVolume:           toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateBackupVolumesInProvidedCache),
+		types.LonghornKindBackup:                 toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateBackupsInProvidedCache),
+		types.LonghornKindBackupTarget:           toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateBackupTargetsInProvidedCache),
+		types.LonghornKindBackingImageManager:    toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateBackingImageManagersInProvidedCache),
+		types.LonghornKindBackingImageDataSource: toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateBackingImageDataSourcesInProvidedCache),
+		types.LonghornKindBackingImage:           toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateBackingImagesInProvidedCache),
+		types.LonghornKindRecurringJob:           toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateRecurringJobsInProvidedCache),
 	}
-	for _, updateResource := range updates {
-		if err := updateResource(namespace, lhClient, resourceMaps); err != nil {
-			return err
+	for resourceKind, listUpdateFunc := range updates {
+		if err := listUpdateFunc(namespace, lhClient, resourceMaps); err != nil {
+			return errors.Wrapf(err, "upgrade from v1.8.x to v1.9.0: failed to list all existing Longhorn %s during the %s upgrade", resourceKind, resourceKind)
 		}
-	}
-	return nil
-}
-
-func upgradeSettings(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
-	if _, err := upgradeutil.ListAndUpdateSettingsInProvidedCache(namespace, lhClient, resourceMaps); err != nil {
-		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing Longhorn settings during the settings upgrade")
-	}
-	return nil
-}
-
-func upgradeNodes(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
-	if _, err := upgradeutil.ListAndUpdateNodesInProvidedCache(namespace, lhClient, resourceMaps); err != nil {
-		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing Longhorn nodes during the nodes upgrade")
-	}
-	return nil
-}
-
-func upgradeInstanceManagers(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
-	if _, err := upgradeutil.ListAndUpdateInstanceManagersInProvidedCache(namespace, lhClient, resourceMaps); err != nil {
-		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing Longhorn instance managers during the instance manager upgrade")
-	}
-	return nil
-}
-
-func upgradeShareManagers(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
-	if _, err := upgradeutil.ListAndUpdateShareManagersInProvidedCache(namespace, lhClient, resourceMaps); err != nil {
-		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing Longhorn share managers during the share manager upgrade")
-	}
-	return nil
-}
-
-func upgradeEngines(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
-	if _, err := upgradeutil.ListAndUpdateEnginesInProvidedCache(namespace, lhClient, resourceMaps); err != nil {
-		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing Longhorn engines during the engine upgrade")
-	}
-	return nil
-}
-
-func upgradeEngineImages(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
-	if _, err := upgradeutil.ListAndUpdateEngineImagesInProvidedCache(namespace, lhClient, resourceMaps); err != nil {
-		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing Longhorn engine images during the engine image upgrade")
-	}
-	return nil
-}
-
-func upgradeReplicas(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
-	if _, err := upgradeutil.ListAndUpdateReplicasInProvidedCache(namespace, lhClient, resourceMaps); err != nil {
-		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing Longhorn replicas during the replica upgrade")
-	}
-	return nil
-}
-
-func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
-	if _, err := upgradeutil.ListAndUpdateVolumesInProvidedCache(namespace, lhClient, resourceMaps); err != nil {
-		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing Longhorn volumes during the volume upgrade")
-	}
-	return nil
-}
-
-func upgradeBackupVolumes(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
-	if _, err := upgradeutil.ListAndUpdateBackupVolumesInProvidedCache(namespace, lhClient, resourceMaps); err != nil {
-		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing Longhorn backup volumes during the backup volume upgrade")
-	}
-	return nil
-}
-
-func upgradeBackups(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
-	if _, err := upgradeutil.ListAndUpdateBackupsInProvidedCache(namespace, lhClient, resourceMaps); err != nil {
-		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing Longhorn backups during the backup upgrade")
-	}
-	return nil
-}
-
-func upgradeBackupTargets(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
-	if _, err := upgradeutil.ListAndUpdateBackupTargetsInProvidedCache(namespace, lhClient, resourceMaps); err != nil {
-		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing Longhorn backup targets during the backup target upgrade")
-	}
-	return nil
-}
-
-func upgradeBackingImageManagers(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
-	if _, err := upgradeutil.ListAndUpdateBackingImageManagersInProvidedCache(namespace, lhClient, resourceMaps); err != nil {
-		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing Longhorn backing image manager during the backing image manager upgrade")
-	}
-	return nil
-}
-
-func upgradeBackingImageDataSources(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
-	if _, err := upgradeutil.ListAndUpdateBackingImageDataSourcesInProvidedCache(namespace, lhClient, resourceMaps); err != nil {
-		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing Longhorn backing image data sources during the backing image data source upgrade")
-	}
-	return nil
-}
-
-func upgradeBackingImages(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
-	if _, err := upgradeutil.ListAndUpdateBackingImagesInProvidedCache(namespace, lhClient, resourceMaps); err != nil {
-		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing Longhorn backing images during the backing image upgrade")
-	}
-	return nil
-}
-
-func upgradeRecurringJobs(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
-	if _, err := upgradeutil.ListAndUpdateRecurringJobsInProvidedCache(namespace, lhClient, resourceMaps); err != nil {
-		return errors.Wrapf(err, upgradeLogPrefix+"failed to list all existing Longhorn recurring jobs during the recurring job upgrade")
 	}
 	return nil
 }
