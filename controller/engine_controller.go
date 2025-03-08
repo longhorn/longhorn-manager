@@ -1864,6 +1864,7 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 		// It is not necessary to check the value of DisableSnapshotPurge here because the webhook prevents enabling
 		// AutoCleanupSystemGeneratedSnapshot and DisableSnapshot purge simultaneously.
 		if autoCleanupSystemGeneratedSnapshot {
+			log.Info("Starting snapshot purge before rebuilding")
 			if err := engineClientProxy.SnapshotPurge(e); err != nil {
 				log.WithError(err).Error("Failed to start snapshot purge before rebuilding")
 				ec.eventRecorder.Eventf(e, corev1.EventTypeWarning, constant.EventReasonFailedStartingSnapshotPurge,
