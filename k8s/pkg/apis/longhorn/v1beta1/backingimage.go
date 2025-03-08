@@ -62,7 +62,10 @@ type BackingImageStatus struct {
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:resource:shortName=lhbi
+// +kubebuilder:unservedversion
 // +kubebuilder:subresource:status
+// +kubebuilder:deprecatedversion
+// +kubebuilder:deprecatedversion:warning="longhorn.io/v1beta1 BackingImage is deprecated; use longhorn.io/v1beta2 BackingImage instead"
 // +kubebuilder:printcolumn:name="Image",type=string,JSONPath=`.spec.image`,description="The backing image name"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
