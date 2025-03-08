@@ -63,10 +63,10 @@ func GetCompatibleClient(e *longhorn.Engine, fallBack interface{}, ds *datastore
 		return nil, errors.Errorf("BUG: invalid engine client proxy fallback client: %v", fallBack)
 	}
 
-	return NewEngineClientProxy(im, log, proxyConnCounter)
+	return NewEngineClientProxy(im, log, proxyConnCounter, ds)
 }
 
-func NewEngineClientProxy(im *longhorn.InstanceManager, logger logrus.FieldLogger, proxyConnCounter util.Counter) (c EngineClientProxy, err error) {
+func NewEngineClientProxy(im *longhorn.InstanceManager, logger logrus.FieldLogger, proxyConnCounter util.Counter, ds *datastore.DataStore) (c EngineClientProxy, err error) {
 	defer func() {
 		err = errors.Wrap(err, "failed to get engine client proxy")
 	}()
@@ -143,12 +143,14 @@ func NewEngineClientProxy(im *longhorn.InstanceManager, logger logrus.FieldLogge
 		logger:           logger,
 		grpcClient:       proxyClient,
 		proxyConnCounter: proxyConnCounter,
+		ds:               ds,
 	}, nil
 }
 
 type Proxy struct {
 	logger     logrus.FieldLogger
 	grpcClient *imclient.ProxyClient
+	ds         *datastore.DataStore
 
 	proxyConnCounter util.Counter
 }

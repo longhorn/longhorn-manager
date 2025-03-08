@@ -1617,7 +1617,7 @@ func (imc *InstanceManagerController) startBackingImageMonitoring(im *longhorn.I
 		return
 	}
 
-	engineClientProxy, err := engineapi.NewEngineClientProxy(im, log, imc.proxyConnCounter)
+	engineClientProxy, err := engineapi.NewEngineClientProxy(im, log, imc.proxyConnCounter, imc.ds)
 	if err != nil {
 		log.Errorf("failed to get the engine client proxy for instance manager %v", im.Name)
 		return
