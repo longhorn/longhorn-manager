@@ -1618,7 +1618,7 @@ func (bic *BackingImageController) getEngineClientProxy(nodeName string, dataEng
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get the default instance manager for node %v", nodeName)
 	}
-	engineClientProxy, err := engineapi.NewEngineClientProxy(instanceManager, log, bic.proxyConnCounter)
+	engineClientProxy, err := engineapi.NewEngineClientProxy(instanceManager, log, bic.proxyConnCounter, bic.ds)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get the engine client proxy for instance manager %v", instanceManager.Name)
 	}
