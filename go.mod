@@ -1,8 +1,8 @@
 module github.com/longhorn/longhorn-manager
 
-go 1.22.7
+go 1.23.0
 
-toolchain go1.23.6
+toolchain go1.24.1
 
 // Replace directives are required for dependencies in this section because:
 // - This module imports k8s.io/kubernetes.
@@ -62,9 +62,9 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.7.3
 	github.com/longhorn/backupstore v0.0.0-20250227220202-651bd33886fe
-	github.com/longhorn/go-common-libs v0.0.0-20250215052214-151615b29f8e
+	github.com/longhorn/go-common-libs v0.0.0-20250306071949-f040e0263527
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250111093313-7e1930499625
-	github.com/longhorn/go-spdk-helper v0.0.0-20241216160651-bcce92add55b
+	github.com/longhorn/go-spdk-helper v0.0.2-0.20250305082704-6f5842bff0c5
 	github.com/longhorn/longhorn-engine v1.7.3
 	github.com/longhorn/longhorn-instance-manager v1.7.3
 	github.com/longhorn/longhorn-share-manager v1.7.3
@@ -115,7 +115,7 @@ require (
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	golang.org/x/exp v0.0.0-20250210185358-939b2ce775ac // indirect
+	golang.org/x/exp v0.0.0-20250228200357-dead58393ab7 // indirect
 	golang.org/x/tools v0.30.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20241015192408-796eee8c2d53 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241015192408-796eee8c2d53 // indirect
