@@ -265,7 +265,7 @@ func getBackupTarget(controllerID string, backupTarget *longhorn.BackupTarget, d
 		return nil, nil, errors.Wrap(err, "failed to get running instance manager for proxy client")
 	}
 
-	engineClientProxy, err = engineapi.NewEngineClientProxy(instanceManager, log, proxyConnCounter)
+	engineClientProxy, err = engineapi.NewEngineClientProxy(instanceManager, log, proxyConnCounter, ds)
 	if err != nil {
 		return nil, nil, err
 	}
