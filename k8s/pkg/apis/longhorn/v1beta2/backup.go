@@ -51,6 +51,9 @@ type BackupSpec struct {
 	// Can be "full" or "incremental"
 	// +optional
 	BackupMode BackupMode `json:"backupMode"`
+	// Whether to cleanup the snapshot after the backup is done.
+	// +optional
+	CleanupSnapshot bool `json:"cleanupSnapshot"`
 }
 
 // BackupStatus defines the observed state of the Longhorn backup
