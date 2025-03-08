@@ -832,9 +832,9 @@ func CreateAndUpdateBackingImageInProvidedCache(namespace string, lhClient *lhcl
 	return obj, nil
 }
 
-type untypedResourceUpdater func(namespace string, lhClient *lhclientset.Clientset, resourceMap any, forceWrite bool) error
+type untypedUpdateResourceFunc func(namespace string, lhClient *lhclientset.Clientset, resourceMap any, forceWrite bool) error
 
-func toUntypedResourceUpdater[K any](kind string, updater func(namespace string, lhClient *lhclientset.Clientset, resourceMap map[string]K, forceWrite bool) error) untypedResourceUpdater {
+func toUntypedUpdateResourceFunc[K any](kind string, updater func(namespace string, lhClient *lhclientset.Clientset, resourceMap map[string]K, forceWrite bool) error) untypedUpdateResourceFunc {
 	return func(namespace string, lhClient *lhclientset.Clientset, resourceMap any, forceWrite bool) error {
 		typedResourceMap, ok := resourceMap.(map[string]K)
 		if !ok {
@@ -844,27 +844,27 @@ func toUntypedResourceUpdater[K any](kind string, updater func(namespace string,
 	}
 }
 
-var resourceUpdaters = map[string]untypedResourceUpdater{
-	types.LonghornKindNode:                   toUntypedResourceUpdater(types.LonghornKindNode, updateNodes),
-	types.LonghornKindVolume:                 toUntypedResourceUpdater(types.LonghornKindVolume, updateVolumes),
-	types.LonghornKindEngine:                 toUntypedResourceUpdater(types.LonghornKindEngine, updateEngines),
-	types.LonghornKindReplica:                toUntypedResourceUpdater(types.LonghornKindReplica, updateReplicas),
-	types.LonghornKindBackupTarget:           toUntypedResourceUpdater(types.LonghornKindBackupTarget, updateBackupTargets),
-	types.LonghornKindBackupVolume:           toUntypedResourceUpdater(types.LonghornKindBackupVolume, updateBackupVolumes),
-	types.LonghornKindBackup:                 toUntypedResourceUpdater(types.LonghornKindBackup, updateBackups),
-	types.LonghornKindBackupBackingImage:     toUntypedResourceUpdater(types.LonghornKindBackupBackingImage, updateBackupBackingImages),
-	types.LonghornKindBackingImageDataSource: toUntypedResourceUpdater(types.LonghornKindBackingImageDataSource, updateBackingImageDataSources),
-	types.LonghornKindEngineImage:            toUntypedResourceUpdater(types.LonghornKindEngineImage, updateEngineImages),
-	types.LonghornKindInstanceManager:        toUntypedResourceUpdater(types.LonghornKindInstanceManager, updateInstanceManagers),
-	types.LonghornKindShareManager:           toUntypedResourceUpdater(types.LonghornKindShareManager, updateShareManagers),
-	types.LonghornKindBackingImage:           toUntypedResourceUpdater(types.LonghornKindBackingImage, updateBackingImages),
-	types.LonghornKindBackingImageManager:    toUntypedResourceUpdater(types.LonghornKindBackingImageManager, updateBackingImagesManager),
-	types.LonghornKindRecurringJob:           toUntypedResourceUpdater(types.LonghornKindRecurringJob, updateRecurringJobs),
-	types.LonghornKindSetting:                toUntypedResourceUpdater(types.LonghornKindSetting, updateSettings),
-	types.LonghornKindVolumeAttachment:       toUntypedResourceUpdater(types.LonghornKindVolumeAttachment, createOrUpdateVolumeAttachments),
-	types.LonghornKindSnapshot:               toUntypedResourceUpdater(types.LonghornKindSnapshot, updateSnapshots),
-	types.LonghornKindOrphan:                 toUntypedResourceUpdater(types.LonghornKindOrphan, updateOrphans),
-	types.LonghornKindSystemBackup:           toUntypedResourceUpdater(types.LonghornKindSystemBackup, updateSystemBackups),
+var resourceUpdaters = map[string]untypedUpdateResourceFunc{
+	types.LonghornKindNode:                   toUntypedUpdateResourceFunc(types.LonghornKindNode, updateNodes),
+	types.LonghornKindVolume:                 toUntypedUpdateResourceFunc(types.LonghornKindVolume, updateVolumes),
+	types.LonghornKindEngine:                 toUntypedUpdateResourceFunc(types.LonghornKindEngine, updateEngines),
+	types.LonghornKindReplica:                toUntypedUpdateResourceFunc(types.LonghornKindReplica, updateReplicas),
+	types.LonghornKindBackupTarget:           toUntypedUpdateResourceFunc(types.LonghornKindBackupTarget, updateBackupTargets),
+	types.LonghornKindBackupVolume:           toUntypedUpdateResourceFunc(types.LonghornKindBackupVolume, updateBackupVolumes),
+	types.LonghornKindBackup:                 toUntypedUpdateResourceFunc(types.LonghornKindBackup, updateBackups),
+	types.LonghornKindBackupBackingImage:     toUntypedUpdateResourceFunc(types.LonghornKindBackupBackingImage, updateBackupBackingImages),
+	types.LonghornKindBackingImageDataSource: toUntypedUpdateResourceFunc(types.LonghornKindBackingImageDataSource, updateBackingImageDataSources),
+	types.LonghornKindEngineImage:            toUntypedUpdateResourceFunc(types.LonghornKindEngineImage, updateEngineImages),
+	types.LonghornKindInstanceManager:        toUntypedUpdateResourceFunc(types.LonghornKindInstanceManager, updateInstanceManagers),
+	types.LonghornKindShareManager:           toUntypedUpdateResourceFunc(types.LonghornKindShareManager, updateShareManagers),
+	types.LonghornKindBackingImage:           toUntypedUpdateResourceFunc(types.LonghornKindBackingImage, updateBackingImages),
+	types.LonghornKindBackingImageManager:    toUntypedUpdateResourceFunc(types.LonghornKindBackingImageManager, updateBackingImagesManager),
+	types.LonghornKindRecurringJob:           toUntypedUpdateResourceFunc(types.LonghornKindRecurringJob, updateRecurringJobs),
+	types.LonghornKindSetting:                toUntypedUpdateResourceFunc(types.LonghornKindSetting, updateSettings),
+	types.LonghornKindVolumeAttachment:       toUntypedUpdateResourceFunc(types.LonghornKindVolumeAttachment, createOrUpdateVolumeAttachments),
+	types.LonghornKindSnapshot:               toUntypedUpdateResourceFunc(types.LonghornKindSnapshot, updateSnapshots),
+	types.LonghornKindOrphan:                 toUntypedUpdateResourceFunc(types.LonghornKindOrphan, updateOrphans),
+	types.LonghornKindSystemBackup:           toUntypedUpdateResourceFunc(types.LonghornKindSystemBackup, updateSystemBackups),
 }
 
 // UpdateResources persists all the resources' spec changes in provided cached `resourceMap`. This method is not thread-safe.
