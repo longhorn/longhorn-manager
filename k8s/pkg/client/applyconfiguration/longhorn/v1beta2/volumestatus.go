@@ -34,7 +34,6 @@ type VolumeStatusApplyConfiguration struct {
 	Conditions             []ConditionApplyConfiguration        `json:"conditions,omitempty"`
 	LastBackup             *string                              `json:"lastBackup,omitempty"`
 	LastBackupAt           *string                              `json:"lastBackupAt,omitempty"`
-	PendingNodeID          *string                              `json:"pendingNodeID,omitempty"`
 	CurrentMigrationNodeID *string                              `json:"currentMigrationNodeID,omitempty"`
 	FrontendDisabled       *bool                                `json:"frontendDisabled,omitempty"`
 	RestoreRequired        *bool                                `json:"restoreRequired,omitempty"`
@@ -129,14 +128,6 @@ func (b *VolumeStatusApplyConfiguration) WithLastBackup(value string) *VolumeSta
 // If called multiple times, the LastBackupAt field is set to the value of the last call.
 func (b *VolumeStatusApplyConfiguration) WithLastBackupAt(value string) *VolumeStatusApplyConfiguration {
 	b.LastBackupAt = &value
-	return b
-}
-
-// WithPendingNodeID sets the PendingNodeID field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the PendingNodeID field is set to the value of the last call.
-func (b *VolumeStatusApplyConfiguration) WithPendingNodeID(value string) *VolumeStatusApplyConfiguration {
-	b.PendingNodeID = &value
 	return b
 }
 
