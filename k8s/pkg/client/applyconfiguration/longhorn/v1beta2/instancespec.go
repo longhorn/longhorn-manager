@@ -25,16 +25,14 @@ import (
 // InstanceSpecApplyConfiguration represents a declarative configuration of the InstanceSpec type for use
 // with apply.
 type InstanceSpecApplyConfiguration struct {
-	VolumeName         *string                                 `json:"volumeName,omitempty"`
-	VolumeSize         *int64                                  `json:"volumeSize,omitempty"`
-	NodeID             *string                                 `json:"nodeID,omitempty"`
-	EngineImage        *string                                 `json:"engineImage,omitempty"`
-	Image              *string                                 `json:"image,omitempty"`
-	DesireState        *longhornv1beta2.InstanceState          `json:"desireState,omitempty"`
-	LogRequested       *bool                                   `json:"logRequested,omitempty"`
-	SalvageRequested   *bool                                   `json:"salvageRequested,omitempty"`
-	BackendStoreDriver *longhornv1beta2.BackendStoreDriverType `json:"backendStoreDriver,omitempty"`
-	DataEngine         *longhornv1beta2.DataEngineType         `json:"dataEngine,omitempty"`
+	VolumeName       *string                         `json:"volumeName,omitempty"`
+	VolumeSize       *int64                          `json:"volumeSize,omitempty"`
+	NodeID           *string                         `json:"nodeID,omitempty"`
+	Image            *string                         `json:"image,omitempty"`
+	DesireState      *longhornv1beta2.InstanceState  `json:"desireState,omitempty"`
+	LogRequested     *bool                           `json:"logRequested,omitempty"`
+	SalvageRequested *bool                           `json:"salvageRequested,omitempty"`
+	DataEngine       *longhornv1beta2.DataEngineType `json:"dataEngine,omitempty"`
 }
 
 // InstanceSpecApplyConfiguration constructs a declarative configuration of the InstanceSpec type for use with
@@ -67,14 +65,6 @@ func (b *InstanceSpecApplyConfiguration) WithNodeID(value string) *InstanceSpecA
 	return b
 }
 
-// WithEngineImage sets the EngineImage field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the EngineImage field is set to the value of the last call.
-func (b *InstanceSpecApplyConfiguration) WithEngineImage(value string) *InstanceSpecApplyConfiguration {
-	b.EngineImage = &value
-	return b
-}
-
 // WithImage sets the Image field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Image field is set to the value of the last call.
@@ -104,14 +94,6 @@ func (b *InstanceSpecApplyConfiguration) WithLogRequested(value bool) *InstanceS
 // If called multiple times, the SalvageRequested field is set to the value of the last call.
 func (b *InstanceSpecApplyConfiguration) WithSalvageRequested(value bool) *InstanceSpecApplyConfiguration {
 	b.SalvageRequested = &value
-	return b
-}
-
-// WithBackendStoreDriver sets the BackendStoreDriver field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the BackendStoreDriver field is set to the value of the last call.
-func (b *InstanceSpecApplyConfiguration) WithBackendStoreDriver(value longhornv1beta2.BackendStoreDriverType) *InstanceSpecApplyConfiguration {
-	b.BackendStoreDriver = &value
 	return b
 }
 

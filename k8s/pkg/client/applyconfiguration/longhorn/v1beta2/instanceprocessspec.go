@@ -25,9 +25,8 @@ import (
 // InstanceProcessSpecApplyConfiguration represents a declarative configuration of the InstanceProcessSpec type for use
 // with apply.
 type InstanceProcessSpecApplyConfiguration struct {
-	Name               *string                                 `json:"name,omitempty"`
-	BackendStoreDriver *longhornv1beta2.BackendStoreDriverType `json:"backendStoreDriver,omitempty"`
-	DataEngine         *longhornv1beta2.DataEngineType         `json:"dataEngine,omitempty"`
+	Name       *string                         `json:"name,omitempty"`
+	DataEngine *longhornv1beta2.DataEngineType `json:"dataEngine,omitempty"`
 }
 
 // InstanceProcessSpecApplyConfiguration constructs a declarative configuration of the InstanceProcessSpec type for use with
@@ -41,14 +40,6 @@ func InstanceProcessSpec() *InstanceProcessSpecApplyConfiguration {
 // If called multiple times, the Name field is set to the value of the last call.
 func (b *InstanceProcessSpecApplyConfiguration) WithName(value string) *InstanceProcessSpecApplyConfiguration {
 	b.Name = &value
-	return b
-}
-
-// WithBackendStoreDriver sets the BackendStoreDriver field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the BackendStoreDriver field is set to the value of the last call.
-func (b *InstanceProcessSpecApplyConfiguration) WithBackendStoreDriver(value longhornv1beta2.BackendStoreDriverType) *InstanceProcessSpecApplyConfiguration {
-	b.BackendStoreDriver = &value
 	return b
 }
 
