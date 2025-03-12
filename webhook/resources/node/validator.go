@@ -184,8 +184,8 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 	for name, disk := range oldNode.Spec.Disks {
 		if _, ok := newNode.Spec.Disks[name]; !ok {
 			if disk.AllowScheduling || oldNode.Status.DiskStatus[name].StorageScheduled != 0 {
-				logrus.Infof("Delete Disk on node %v error: Please disable the disk %v and remove all replicas first ", name, disk.Path)
-				return werror.NewInvalidError(fmt.Sprintf("Delete Disk on node %v error: Please disable the disk %v and remove all replicas first ", name, disk.Path), "")
+				logrus.Infof("Delete Disk on node %v error: Please disable the disk %v and remove all replicas and backing images first", name, disk.Path)
+				return werror.NewInvalidError(fmt.Sprintf("Delete Disk on node %v error: Please disable the disk %v and remove all replicas and backing images first ", name, disk.Path), "")
 			}
 		}
 	}
