@@ -346,7 +346,7 @@ func (c *SystemRolloutController) recordErrorState(record *systemRolloutRecord, 
 		fmt.Sprintf("%v: %v", record.message, err),
 	)
 
-	log.WithError(fmt.Errorf(err)).Error(record.message)
+	log.WithError(fmt.Errorf("%v", err)).Error(record.message)
 	c.eventRecorder.Event(systemRestore, corev1.EventTypeWarning, constant.EventReasonFailed, util.CapitalizeFirstLetter(record.message))
 
 	c.cacheErrors.Reset()

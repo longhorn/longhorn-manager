@@ -674,7 +674,7 @@ func isCSIPluginPod(obj interface{}) bool {
 		}
 	}
 
-	if pod.OwnerReferences != nil && len(pod.OwnerReferences) > 0 {
+	if len(pod.OwnerReferences) > 0 {
 		for _, ownerRef := range pod.OwnerReferences {
 			if ownerRef.Kind != types.KubernetesKindDaemonSet {
 				continue

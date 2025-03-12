@@ -218,7 +218,7 @@ func getPodLogAsString(kubeClient *clientset.Clientset, namespace, name string) 
 		return "", nil
 	} else if !strings.HasPrefix(strLogs[0], "Proc found") {
 		// unexpected result
-		return "", fmt.Errorf(string(logs))
+		return "", fmt.Errorf("%s", string(logs))
 	}
 	logrus.Info(strLogs[0])
 	return strLogs[1], nil
