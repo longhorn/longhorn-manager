@@ -78,6 +78,7 @@ const (
 	SPDKService_LogGetLevel_FullMethodName                          = "/spdkrpc.SPDKService/LogGetLevel"
 	SPDKService_LogGetFlags_FullMethodName                          = "/spdkrpc.SPDKService/LogGetFlags"
 	SPDKService_VersionDetailGet_FullMethodName                     = "/spdkrpc.SPDKService/VersionDetailGet"
+	SPDKService_MetricsGet_FullMethodName                           = "/spdkrpc.SPDKService/MetricsGet"
 )
 
 // SPDKServiceClient is the client API for SPDKService service.
@@ -142,6 +143,7 @@ type SPDKServiceClient interface {
 	LogGetLevel(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*LogGetLevelResponse, error)
 	LogGetFlags(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*LogGetFlagsResponse, error)
 	VersionDetailGet(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*VersionDetailGetReply, error)
+	MetricsGet(ctx context.Context, in *MetricsRequest, opts ...grpc.CallOption) (*Metrics, error)
 }
 
 type sPDKServiceClient struct {
@@ -743,6 +745,15 @@ func (c *sPDKServiceClient) VersionDetailGet(ctx context.Context, in *emptypb.Em
 	return out, nil
 }
 
+func (c *sPDKServiceClient) MetricsGet(ctx context.Context, in *MetricsRequest, opts ...grpc.CallOption) (*Metrics, error) {
+	out := new(Metrics)
+	err := c.cc.Invoke(ctx, SPDKService_MetricsGet_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SPDKServiceServer is the server API for SPDKService service.
 // All implementations must embed UnimplementedSPDKServiceServer
 // for forward compatibility
@@ -805,6 +816,7 @@ type SPDKServiceServer interface {
 	LogGetLevel(context.Context, *emptypb.Empty) (*LogGetLevelResponse, error)
 	LogGetFlags(context.Context, *emptypb.Empty) (*LogGetFlagsResponse, error)
 	VersionDetailGet(context.Context, *emptypb.Empty) (*VersionDetailGetReply, error)
+	MetricsGet(context.Context, *MetricsRequest) (*Metrics, error)
 	mustEmbedUnimplementedSPDKServiceServer()
 }
 
@@ -985,6 +997,9 @@ func (UnimplementedSPDKServiceServer) LogGetFlags(context.Context, *emptypb.Empt
 }
 func (UnimplementedSPDKServiceServer) VersionDetailGet(context.Context, *emptypb.Empty) (*VersionDetailGetReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method VersionDetailGet not implemented")
+}
+func (UnimplementedSPDKServiceServer) MetricsGet(context.Context, *MetricsRequest) (*Metrics, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method MetricsGet not implemented")
 }
 func (UnimplementedSPDKServiceServer) mustEmbedUnimplementedSPDKServiceServer() {}
 
@@ -2052,6 +2067,24 @@ func _SPDKService_VersionDetailGet_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SPDKService_MetricsGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MetricsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).MetricsGet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_MetricsGet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).MetricsGet(ctx, req.(*MetricsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SPDKService_ServiceDesc is the grpc.ServiceDesc for SPDKService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -2278,6 +2311,10 @@ var SPDKService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "VersionDetailGet",
 			Handler:    _SPDKService_VersionDetailGet_Handler,
+		},
+		{
+			MethodName: "MetricsGet",
+			Handler:    _SPDKService_MetricsGet_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
