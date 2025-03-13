@@ -3,9 +3,10 @@ package client
 import (
 	"fmt"
 
+	"github.com/pkg/errors"
+
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	rpc "github.com/longhorn/types/pkg/generated/imrpc"
-	"github.com/pkg/errors"
 )
 
 func (c *ProxyClient) ReplicaAdd(dataEngine, engineName, volumeName, serviceAddress, replicaName,
