@@ -277,12 +277,6 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 			return werror.NewInvalidError(err.Error(), "")
 		}
 
-		if oldVolume.Spec.SnapshotDataIntegrity != newVolume.Spec.SnapshotDataIntegrity {
-			err := fmt.Errorf("changing snapshot data integrity for volume %v is not supported for data engine %v",
-				newVolume.Name, newVolume.Spec.DataEngine)
-			return werror.NewInvalidError(err.Error(), "")
-		}
-
 		if oldVolume.Spec.ReplicaAutoBalance != newVolume.Spec.ReplicaAutoBalance {
 			err := fmt.Errorf("changing replica auto balance for volume %v is not supported for data engine %v",
 				newVolume.Name, newVolume.Spec.DataEngine)
