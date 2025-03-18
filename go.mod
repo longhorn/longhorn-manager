@@ -18,6 +18,7 @@ toolchain go1.24.2
 // example, if we import k8s.io/kubernetes v1.28.5, we should use v0.28.5 of all the replace directives. Depending on
 // the portions of k8s.io/kubernetes code this module actually uses, not all of the replace directives may strictly be
 // necessary. However, it is better to include all of them for consistency.
+
 replace (
 	k8s.io/api => k8s.io/api v0.32.3
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.32.3
@@ -66,9 +67,9 @@ require (
 	github.com/longhorn/backupstore v0.0.0-20250331142654-de3610ff9c89
 	github.com/longhorn/go-common-libs v0.0.0-20250401013213-15c69217876e
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250401083635-4aa07fb05716
-	github.com/longhorn/go-spdk-helper v0.0.2-0.20250402013425-f54098d7face
+	github.com/longhorn/go-spdk-helper v0.0.2-0.20250408063223-764bfd3a07c5
 	github.com/longhorn/longhorn-engine v1.9.0-dev-20250223.0.20250225091521-921f63f3a87d
-	github.com/longhorn/longhorn-instance-manager v1.9.0-dev-20250309.0.20250313063805-e9308657287f
+	github.com/longhorn/longhorn-instance-manager v1.9.0-dev-20250406.0.20250411021930-1e198cc322f4
 	github.com/longhorn/longhorn-share-manager v1.8.1
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.21.1
@@ -110,7 +111,7 @@ require (
 	github.com/google/gnostic-models v0.6.9 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
-	github.com/longhorn/types v0.0.0-20250311092239-23a07a51e0ba // indirect
+	github.com/longhorn/types v0.0.0-20250407153258-74fbf95c1346 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/moby/term v0.5.0 // indirect
