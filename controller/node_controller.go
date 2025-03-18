@@ -248,23 +248,12 @@ func (nc *NodeController) snapshotHashRequired(volume *longhorn.Volume) bool {
 		return false
 	}
 
-	if volume.Spec.SnapshotDataIntegrity == longhorn.SnapshotDataIntegrityDisabled {
+	dataIntegrity, err := nc.ds.GetVolumeSnapshotDataIntegrity(volume.Name)
+	if err != nil {
 		return false
 	}
 
-	if volume.Spec.SnapshotDataIntegrity == longhorn.SnapshotDataIntegrityIgnored {
-		dataIntegrity, err := nc.ds.GetSettingValueExisted(types.SettingNameSnapshotDataIntegrity)
-		if err != nil {
-			nc.logger.WithError(err).Warnf("Failed to get %v setting", types.SettingNameSnapshotDataIntegrity)
-			return false
-		}
-
-		if longhorn.SnapshotDataIntegrity(dataIntegrity) == longhorn.SnapshotDataIntegrityDisabled {
-			return false
-		}
-	}
-
-	return true
+	return dataIntegrity != longhorn.SnapshotDataIntegrityDisabled
 }
 
 func isManagerPod(obj interface{}) bool {
