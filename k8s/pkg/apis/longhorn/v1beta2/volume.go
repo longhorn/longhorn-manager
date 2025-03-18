@@ -305,6 +305,9 @@ type VolumeSpec struct {
 	// The backup target name that the volume will be backed up to or is synced.
 	// +optional
 	BackupTargetName string `json:"backupTargetName"`
+	// The flag that trigger the offline replica rebuilding when volume is detached.
+	// +optional
+	OfflineRebuild bool `json:"offlineRebuild"`
 }
 
 // VolumeStatus defines the observed state of the Longhorn volume
