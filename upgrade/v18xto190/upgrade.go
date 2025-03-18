@@ -11,10 +11,10 @@ import (
 	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
 )
 
-type listAndUpdateResourcesInProvidedCacheFunc func(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) error
-type typedListAndUpdateResourcesInProvidedCacheFunc[K any] func(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*K, error)
+type listAndUpdateFunc func(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) error
+type typedListAndUpdateFunc[K any] func(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (map[string]*K, error)
 
-func toListAndUpdateResourcesInProvidedCacheFunc[K any](listUpdateFunc typedListAndUpdateResourcesInProvidedCacheFunc[K]) listAndUpdateResourcesInProvidedCacheFunc {
+func listAndUpdateResources[K any](listUpdateFunc typedListAndUpdateFunc[K]) listAndUpdateFunc {
 	return func(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) error {
 		_, err := listUpdateFunc(namespace, lhClient, resourceMaps)
 		return err
@@ -28,22 +28,22 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 
 	// From v1.9.0, the v1beta1 API is deprecated, and v1beta2 is the storage version. Load all resource and write back into v1beta2.
 
-	updates := map[string]listAndUpdateResourcesInProvidedCacheFunc{
-		types.LonghornKindSetting:                toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateSettingsInProvidedCache),
-		types.LonghornKindNode:                   toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateNodesInProvidedCache),
-		types.LonghornKindInstanceManager:        toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateInstanceManagersInProvidedCache),
-		types.LonghornKindShareManager:           toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateShareManagersInProvidedCache),
-		types.LonghornKindEngine:                 toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateEnginesInProvidedCache),
-		types.LonghornKindEngineImage:            toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateEngineImagesInProvidedCache),
-		types.LonghornKindReplica:                toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateReplicasInProvidedCache),
-		types.LonghornKindVolume:                 toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateVolumesInProvidedCache),
-		types.LonghornKindBackupVolume:           toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateBackupVolumesInProvidedCache),
-		types.LonghornKindBackup:                 toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateBackupsInProvidedCache),
-		types.LonghornKindBackupTarget:           toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateBackupTargetsInProvidedCache),
-		types.LonghornKindBackingImageManager:    toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateBackingImageManagersInProvidedCache),
-		types.LonghornKindBackingImageDataSource: toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateBackingImageDataSourcesInProvidedCache),
-		types.LonghornKindBackingImage:           toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateBackingImagesInProvidedCache),
-		types.LonghornKindRecurringJob:           toListAndUpdateResourcesInProvidedCacheFunc(upgradeutil.ListAndUpdateRecurringJobsInProvidedCache),
+	updates := map[string]listAndUpdateFunc{
+		types.LonghornKindSetting:                listAndUpdateResources(upgradeutil.ListAndUpdateSettingsInProvidedCache),
+		types.LonghornKindNode:                   listAndUpdateResources(upgradeutil.ListAndUpdateNodesInProvidedCache),
+		types.LonghornKindInstanceManager:        listAndUpdateResources(upgradeutil.ListAndUpdateInstanceManagersInProvidedCache),
+		types.LonghornKindShareManager:           listAndUpdateResources(upgradeutil.ListAndUpdateShareManagersInProvidedCache),
+		types.LonghornKindEngine:                 listAndUpdateResources(upgradeutil.ListAndUpdateEnginesInProvidedCache),
+		types.LonghornKindEngineImage:            listAndUpdateResources(upgradeutil.ListAndUpdateEngineImagesInProvidedCache),
+		types.LonghornKindReplica:                listAndUpdateResources(upgradeutil.ListAndUpdateReplicasInProvidedCache),
+		types.LonghornKindVolume:                 listAndUpdateResources(upgradeutil.ListAndUpdateVolumesInProvidedCache),
+		types.LonghornKindBackupVolume:           listAndUpdateResources(upgradeutil.ListAndUpdateBackupVolumesInProvidedCache),
+		types.LonghornKindBackup:                 listAndUpdateResources(upgradeutil.ListAndUpdateBackupsInProvidedCache),
+		types.LonghornKindBackupTarget:           listAndUpdateResources(upgradeutil.ListAndUpdateBackupTargetsInProvidedCache),
+		types.LonghornKindBackingImageManager:    listAndUpdateResources(upgradeutil.ListAndUpdateBackingImageManagersInProvidedCache),
+		types.LonghornKindBackingImageDataSource: listAndUpdateResources(upgradeutil.ListAndUpdateBackingImageDataSourcesInProvidedCache),
+		types.LonghornKindBackingImage:           listAndUpdateResources(upgradeutil.ListAndUpdateBackingImagesInProvidedCache),
+		types.LonghornKindRecurringJob:           listAndUpdateResources(upgradeutil.ListAndUpdateRecurringJobsInProvidedCache),
 	}
 	for resourceKind, listUpdateFunc := range updates {
 		if err := listUpdateFunc(namespace, lhClient, resourceMaps); err != nil {
