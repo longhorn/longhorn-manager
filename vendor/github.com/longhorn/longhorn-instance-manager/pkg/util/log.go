@@ -124,7 +124,9 @@ func (l LonghornWriter) StreamLog(done chan struct{}) (chan string, error) {
 			}
 		}
 		close(logChan)
-		file.Close()
+		if closeErr := file.Close(); closeErr != nil {
+			logrus.WithError(closeErr).Warn("Failed to close file")
+		}
 	}()
 	return logChan, nil
 }

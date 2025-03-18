@@ -18,6 +18,13 @@ toolchain go1.24.1
 // example, if we import k8s.io/kubernetes v1.28.5, we should use v0.28.5 of all the replace directives. Depending on
 // the portions of k8s.io/kubernetes code this module actually uses, not all of the replace directives may strictly be
 // necessary. However, it is better to include all of them for consistency.
+
+replace (
+	github.com/longhorn/longhorn-instance-manager => github.com/shuo-wu/longhorn-instance-manager v0.0.0-20250401191007-ba5f3837f0d1
+	github.com/longhorn/longhorn-spdk-engine => github.com/shuo-wu/longhorn-spdk-engine v0.0.0-20250401181205-6f454815a45c
+	github.com/longhorn/types => github.com/shuo-wu/types v0.0.0-20250318192055-112d63e40c32
+)
+
 replace (
 	k8s.io/api => k8s.io/api v0.32.3
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.32.3

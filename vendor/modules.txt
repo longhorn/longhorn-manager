@@ -268,7 +268,7 @@ github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.9.0-dev-20250309.0.20250313063805-e9308657287f
+# github.com/longhorn/longhorn-instance-manager v1.9.0-dev-20250309.0.20250313063805-e9308657287f => github.com/shuo-wu/longhorn-instance-manager v0.0.0-20250401191007-ba5f3837f0d1
 ## explicit; go 1.23.0
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -279,7 +279,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/util
 ## explicit; go 1.23.0
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/types v0.0.0-20250311092239-23a07a51e0ba
+# github.com/longhorn/types v0.0.0-20250311092239-23a07a51e0ba => github.com/shuo-wu/types v0.0.0-20250318192055-112d63e40c32
 ## explicit; go 1.22.7
 github.com/longhorn/types/pkg/generated/bimrpc
 github.com/longhorn/types/pkg/generated/enginerpc
@@ -1607,6 +1607,9 @@ sigs.k8s.io/structured-merge-diff/v4/value
 ## explicit; go 1.12
 sigs.k8s.io/yaml
 sigs.k8s.io/yaml/goyaml.v2
+# github.com/longhorn/longhorn-instance-manager => github.com/shuo-wu/longhorn-instance-manager v0.0.0-20250401191007-ba5f3837f0d1
+# github.com/longhorn/longhorn-spdk-engine => github.com/shuo-wu/longhorn-spdk-engine v0.0.0-20250401181205-6f454815a45c
+# github.com/longhorn/types => github.com/shuo-wu/types v0.0.0-20250318192055-112d63e40c32
 # k8s.io/api => k8s.io/api v0.32.3
 # k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.32.3
 # k8s.io/apimachinery => k8s.io/apimachinery v0.32.3
