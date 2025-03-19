@@ -297,9 +297,6 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 		}
 	}()
 
-	// Deprecated and no longer used by Longhorn, but maybe someone's external tooling uses it? Remove in v1.7.0.
-	replica.Status.EvictionRequested = replica.Spec.EvictionRequested // nolint: staticcheck
-
 	return rc.instanceHandler.ReconcileInstanceState(replica, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus)
 }
 
