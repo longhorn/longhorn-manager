@@ -14,6 +14,7 @@ const (
 	subsystemDisk               = "disk"
 	subsystemInstanceManager    = "instance_manager"
 	subsystemManager            = "manager"
+	subsystemEngine             = "engine"
 	subsystemBackup             = "backup"
 	subsystemSnapshot           = "snapshot"
 	subsystemBackingImage       = "backing_image"
@@ -35,6 +36,9 @@ const (
 	backingImageLabel       = "backing_image"
 	backupBackingImageLabel = "backup_backing_image"
 	recurringJobLabel       = "recurring_job"
+	engineLabel             = "engine"
+	rebuildSrcLabel         = "rebuild_src"
+	rebuildDstLabel         = "rebuild_dst"
 )
 
 type metricInfo struct {
