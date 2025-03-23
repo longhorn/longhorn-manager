@@ -65,7 +65,7 @@ github.com/docker/go-connections/sockets
 ## explicit; go 1.13
 github.com/emicklei/go-restful/v3
 github.com/emicklei/go-restful/v3/log
-# github.com/evanphx/json-patch v5.9.0+incompatible
+# github.com/evanphx/json-patch v5.9.11+incompatible
 ## explicit
 github.com/evanphx/json-patch
 # github.com/felixge/httpsnoop v1.0.4
@@ -384,8 +384,8 @@ github.com/rancher/lasso/pkg/log
 github.com/rancher/lasso/pkg/mapper
 github.com/rancher/lasso/pkg/metrics
 github.com/rancher/lasso/pkg/scheme
-# github.com/rancher/wrangler/v3 v3.1.0
-## explicit; go 1.22.0
+# github.com/rancher/wrangler/v3 v3.2.0
+## explicit; go 1.23.0
 github.com/rancher/wrangler/v3/pkg/apply
 github.com/rancher/wrangler/v3/pkg/apply/injectors
 github.com/rancher/wrangler/v3/pkg/clients
@@ -1503,7 +1503,7 @@ k8s.io/kms/apis/v1beta1
 k8s.io/kms/apis/v2
 k8s.io/kms/pkg/service
 k8s.io/kms/pkg/util
-# k8s.io/kube-aggregator v0.31.1 => k8s.io/kube-aggregator v0.32.3
+# k8s.io/kube-aggregator v0.32.1 => k8s.io/kube-aggregator v0.32.3
 ## explicit; go 1.23.0
 k8s.io/kube-aggregator/pkg/apis/apiregistration
 k8s.io/kube-aggregator/pkg/apis/apiregistration/v1
