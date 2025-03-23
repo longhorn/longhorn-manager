@@ -66,7 +66,7 @@ require (
 	github.com/longhorn/backupstore v0.0.0-20250315040513-2fb98aebc16a
 	github.com/longhorn/go-common-libs v0.0.0-20250319033109-764d1dea35f3
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250111093313-7e1930499625
-	github.com/longhorn/go-spdk-helper v0.0.2-0.20250313071458-3dd5863e9249
+	github.com/longhorn/go-spdk-helper v0.0.2-0.20250317050445-36b195dfc91f
 	github.com/longhorn/longhorn-engine v1.9.0-dev-20250223.0.20250225091521-921f63f3a87d
 	github.com/longhorn/longhorn-instance-manager v1.9.0-dev-20250309.0.20250313063805-e9308657287f
 	github.com/longhorn/longhorn-share-manager v1.8.1
@@ -94,7 +94,7 @@ require (
 	k8s.io/kubernetes v1.32.3
 	k8s.io/metrics v0.32.3
 	k8s.io/mount-utils v0.32.3
-	k8s.io/utils v0.0.0-20241210054802-24370beab758
+	k8s.io/utils v0.0.0-20250321185631-1f6e0b77f77e
 	sigs.k8s.io/controller-runtime v0.20.3
 )
 
