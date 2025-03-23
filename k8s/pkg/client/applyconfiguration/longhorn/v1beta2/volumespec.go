@@ -34,7 +34,6 @@ type VolumeSpecApplyConfiguration struct {
 	StaleReplicaTimeout         *int                                           `json:"staleReplicaTimeout,omitempty"`
 	NodeID                      *string                                        `json:"nodeID,omitempty"`
 	MigrationNodeID             *string                                        `json:"migrationNodeID,omitempty"`
-	EngineImage                 *string                                        `json:"engineImage,omitempty"`
 	Image                       *string                                        `json:"image,omitempty"`
 	BackingImage                *string                                        `json:"backingImage,omitempty"`
 	Standby                     *bool                                          `json:"Standby,omitempty"`
@@ -54,7 +53,6 @@ type VolumeSpecApplyConfiguration struct {
 	ReplicaAutoBalance          *longhornv1beta2.ReplicaAutoBalance            `json:"replicaAutoBalance,omitempty"`
 	SnapshotDataIntegrity       *longhornv1beta2.SnapshotDataIntegrity         `json:"snapshotDataIntegrity,omitempty"`
 	BackupCompressionMethod     *longhornv1beta2.BackupCompressionMethod       `json:"backupCompressionMethod,omitempty"`
-	BackendStoreDriver          *longhornv1beta2.BackendStoreDriverType        `json:"backendStoreDriver,omitempty"`
 	DataEngine                  *longhornv1beta2.DataEngineType                `json:"dataEngine,omitempty"`
 	SnapshotMaxCount            *int                                           `json:"snapshotMaxCount,omitempty"`
 	SnapshotMaxSize             *int64                                         `json:"snapshotMaxSize,omitempty"`
@@ -137,14 +135,6 @@ func (b *VolumeSpecApplyConfiguration) WithNodeID(value string) *VolumeSpecApply
 // If called multiple times, the MigrationNodeID field is set to the value of the last call.
 func (b *VolumeSpecApplyConfiguration) WithMigrationNodeID(value string) *VolumeSpecApplyConfiguration {
 	b.MigrationNodeID = &value
-	return b
-}
-
-// WithEngineImage sets the EngineImage field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the EngineImage field is set to the value of the last call.
-func (b *VolumeSpecApplyConfiguration) WithEngineImage(value string) *VolumeSpecApplyConfiguration {
-	b.EngineImage = &value
 	return b
 }
 
@@ -301,14 +291,6 @@ func (b *VolumeSpecApplyConfiguration) WithSnapshotDataIntegrity(value longhornv
 // If called multiple times, the BackupCompressionMethod field is set to the value of the last call.
 func (b *VolumeSpecApplyConfiguration) WithBackupCompressionMethod(value longhornv1beta2.BackupCompressionMethod) *VolumeSpecApplyConfiguration {
 	b.BackupCompressionMethod = &value
-	return b
-}
-
-// WithBackendStoreDriver sets the BackendStoreDriver field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the BackendStoreDriver field is set to the value of the last call.
-func (b *VolumeSpecApplyConfiguration) WithBackendStoreDriver(value longhornv1beta2.BackendStoreDriverType) *VolumeSpecApplyConfiguration {
-	b.BackendStoreDriver = &value
 	return b
 }
 
