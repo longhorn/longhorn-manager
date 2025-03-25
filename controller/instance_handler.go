@@ -74,6 +74,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.IP = ""
 		status.StorageIP = ""
 		status.Port = 0
+		status.UblkID = 0
 		h.resetInstanceErrorCondition(status)
 		return
 	}
@@ -93,6 +94,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.IP = ""
 		status.StorageIP = ""
 		status.Port = 0
+		status.UblkID = 0
 		h.resetInstanceErrorCondition(status)
 		return
 	}
@@ -107,6 +109,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			status.IP = ""
 			status.StorageIP = ""
 			status.Port = 0
+			status.UblkID = 0
 			h.resetInstanceErrorCondition(status)
 		}
 		return
@@ -126,6 +129,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.IP = ""
 		status.StorageIP = ""
 		status.Port = 0
+		status.UblkID = 0
 		h.resetInstanceErrorCondition(status)
 		return
 	}
@@ -148,6 +152,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.IP = ""
 		status.StorageIP = ""
 		status.Port = 0
+		status.UblkID = 0
 		h.resetInstanceErrorCondition(status)
 	case longhorn.InstanceStateRunning:
 		status.CurrentState = longhorn.InstanceStateRunning
@@ -177,6 +182,9 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 			status.Port = int(instance.Status.PortStart)
 			logrus.Warnf("Instance %v starts running, Port %d", instanceName, status.Port)
 		}
+		if status.UblkID != instance.Status.UblkID {
+			status.UblkID = instance.Status.UblkID
+		}
 		// only set CurrentImage when first started, since later we may specify
 		// different spec.Image for upgrade
 		if status.CurrentImage == "" {
@@ -194,6 +202,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.IP = ""
 		status.StorageIP = ""
 		status.Port = 0
+		status.UblkID = 0
 		h.resetInstanceErrorCondition(status)
 	case longhorn.InstanceStateStopped:
 		if status.Started {
@@ -205,6 +214,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.IP = ""
 		status.StorageIP = ""
 		status.Port = 0
+		status.UblkID = 0
 		h.resetInstanceErrorCondition(status)
 	default:
 		if status.CurrentState != longhorn.InstanceStateError {
@@ -215,6 +225,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(im *longhorn.InstanceMan
 		status.IP = ""
 		status.StorageIP = ""
 		status.Port = 0
+		status.UblkID = 0
 		h.resetInstanceErrorCondition(status)
 	}
 }

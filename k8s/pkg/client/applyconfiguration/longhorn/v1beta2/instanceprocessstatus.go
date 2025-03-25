@@ -36,6 +36,7 @@ type InstanceProcessStatusApplyConfiguration struct {
 	State           *longhornv1beta2.InstanceState `json:"state,omitempty"`
 	Type            *longhornv1beta2.InstanceType  `json:"type,omitempty"`
 	ResourceVersion *int64                         `json:"resourceVersion,omitempty"`
+	UblkID          *int32                         `json:"ublkID,omitempty"`
 }
 
 // InstanceProcessStatusApplyConfiguration constructs a declarative configuration of the InstanceProcessStatus type for use with
@@ -135,5 +136,13 @@ func (b *InstanceProcessStatusApplyConfiguration) WithType(value longhornv1beta2
 // If called multiple times, the ResourceVersion field is set to the value of the last call.
 func (b *InstanceProcessStatusApplyConfiguration) WithResourceVersion(value int64) *InstanceProcessStatusApplyConfiguration {
 	b.ResourceVersion = &value
+	return b
+}
+
+// WithUblkID sets the UblkID field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the UblkID field is set to the value of the last call.
+func (b *InstanceProcessStatusApplyConfiguration) WithUblkID(value int32) *InstanceProcessStatusApplyConfiguration {
+	b.UblkID = &value
 	return b
 }

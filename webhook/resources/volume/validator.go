@@ -121,10 +121,16 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 	}
 
 	if !volume.Spec.Standby {
-		if volume.Spec.Frontend != longhorn.VolumeFrontendBlockDev &&
-			volume.Spec.Frontend != longhorn.VolumeFrontendISCSI &&
-			volume.Spec.Frontend != longhorn.VolumeFrontendNvmf {
-			return werror.NewInvalidError(fmt.Sprintf("invalid volume frontend specified: %v", volume.Spec.Frontend), "")
+		if types.IsDataEngineV1(volume.Spec.DataEngine) &&
+			volume.Spec.Frontend != longhorn.VolumeFrontendBlockDev &&
+			volume.Spec.Frontend != longhorn.VolumeFrontendISCSI {
+			return werror.NewInvalidError(fmt.Sprintf("invalid volume frontend specified: %v for data engine %v ", volume.Spec.Frontend, volume.Spec.DataEngine), "")
+		}
+		if types.IsDataEngineV2(volume.Spec.DataEngine) &&
+			volume.Spec.Frontend != longhorn.VolumeFrontendBlockDev &&
+			volume.Spec.Frontend != longhorn.VolumeFrontendNvmf &&
+			volume.Spec.Frontend != longhorn.VolumeFrontendUblk {
+			return werror.NewInvalidError(fmt.Sprintf("invalid volume frontend specified: %v for data engine %v ", volume.Spec.Frontend, volume.Spec.DataEngine), "")
 		}
 	}
 
