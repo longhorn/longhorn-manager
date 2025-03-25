@@ -123,7 +123,8 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 	if !volume.Spec.Standby {
 		if volume.Spec.Frontend != longhorn.VolumeFrontendBlockDev &&
 			volume.Spec.Frontend != longhorn.VolumeFrontendISCSI &&
-			volume.Spec.Frontend != longhorn.VolumeFrontendNvmf {
+			volume.Spec.Frontend != longhorn.VolumeFrontendNvmf &&
+			volume.Spec.Frontend != longhorn.VolumeFrontendUblk {
 			return werror.NewInvalidError(fmt.Sprintf("invalid volume frontend specified: %v", volume.Spec.Frontend), "")
 		}
 	}

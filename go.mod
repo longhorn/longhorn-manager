@@ -52,6 +52,8 @@ replace (
 	k8s.io/sample-controller => k8s.io/sample-controller v0.32.3
 )
 
+replace github.com/longhorn/go-spdk-helper => ../go-spdk-helper
+
 require (
 	github.com/container-storage-interface/spec v1.11.0
 	github.com/docker/go-connections v0.5.0

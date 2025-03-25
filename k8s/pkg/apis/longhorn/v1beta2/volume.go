@@ -24,13 +24,14 @@ const (
 	VolumeRobustnessUnknown  = VolumeRobustness("unknown")
 )
 
-// +kubebuilder:validation:Enum=blockdev;iscsi;nvmf;""
+// +kubebuilder:validation:Enum=blockdev;iscsi;nvmf;ublk;""
 type VolumeFrontend string
 
 const (
 	VolumeFrontendBlockDev = VolumeFrontend("blockdev")
 	VolumeFrontendISCSI    = VolumeFrontend("iscsi")
 	VolumeFrontendNvmf     = VolumeFrontend("nvmf")
+	VolumeFrontendUblk     = VolumeFrontend("ublk")
 	VolumeFrontendEmpty    = VolumeFrontend("")
 )
 

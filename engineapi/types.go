@@ -284,6 +284,8 @@ func GetEngineInstanceFrontend(dataEngine longhorn.DataEngineType, volumeFronten
 		frontend = string(iscsidevtypes.FrontendTGTISCSI)
 	case longhorn.VolumeFrontendNvmf:
 		frontend = string(spdkdevtypes.FrontendSPDKTCPNvmf)
+	case longhorn.VolumeFrontendUblk:
+		frontend = string(spdkdevtypes.FrontendSPDKUblk)
 	case longhorn.VolumeFrontendEmpty:
 		frontend = ""
 	default:
@@ -309,7 +311,7 @@ func GetEngineEndpoint(volume *Volume, ip string) (string, error) {
 		// it will looks like this in the end
 		// iscsi://10.42.0.12:3260/iqn.2014-09.com.rancher:vol-name/1
 		return EndpointISCSIPrefix + ip + ":" + DefaultISCSIPort + "/" + volume.Endpoint + "/" + DefaultISCSILUN, nil
-	case spdkdevtypes.FrontendSPDKTCPNvmf:
+	case spdkdevtypes.FrontendSPDKTCPNvmf, spdkdevtypes.FrontendSPDKUblk:
 		return volume.Endpoint, nil
 	}
 
