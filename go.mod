@@ -67,9 +67,9 @@ require (
 	github.com/longhorn/backupstore v0.0.0-20250413092739-f882c9e5606b
 	github.com/longhorn/go-common-libs v0.0.0-20250412054242-0dd2ad39fd02
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250413065808-b76b395d7da9
-	github.com/longhorn/go-spdk-helper v0.0.2-0.20250413065740-52d1caf5f7a7
+	github.com/longhorn/go-spdk-helper v0.0.0-20250416235331-b97c02bd0b57
 	github.com/longhorn/longhorn-engine v1.9.0-dev-20250223.0.20250225091521-921f63f3a87d
-	github.com/longhorn/longhorn-instance-manager v1.9.0-dev-20250406.0.20250411021930-1e198cc322f4
+	github.com/longhorn/longhorn-instance-manager v1.9.0-dev-20250406.0.20250417035732-f6ee9fca32ba
 	github.com/longhorn/longhorn-share-manager v1.8.1
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.22.0
@@ -110,7 +110,7 @@ require (
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/gnostic-models v0.6.9 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
-	github.com/longhorn/types v0.0.0-20250410134731-b46ad9302858 // indirect
+	github.com/longhorn/types v0.0.0-20250416235128-0c407ad2b792 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/moby/term v0.5.0 // indirect

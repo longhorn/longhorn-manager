@@ -291,6 +291,7 @@ func parseInstance(p *imapi.Instance) *longhorn.InstanceProcess {
 			PortEnd:         p.InstanceStatus.PortEnd,
 			TargetPortStart: p.InstanceStatus.TargetPortStart,
 			TargetPortEnd:   p.InstanceStatus.TargetPortEnd,
+			UblkID:          p.InstanceStatus.UblkID,
 
 			// FIXME: These fields are not used, maybe we can deprecate them later.
 			Listen:   "",
