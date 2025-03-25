@@ -924,13 +924,7 @@ func (sc *SettingController) updateVolumesOffileReplicaRebuilding() error {
 			if err != nil {
 				return err
 			}
-			healthyCount := 0
-			for _, replica := range replicas {
-				if replica.Spec.FailedAt == "" && replica.Spec.HealthyAt != "" {
-					healthyCount++
-				}
-			}
-			if healthyCount < vol.Spec.NumberOfReplicas && healthyCount < len(readyNodes) {
+			if isReplicaHealthyCountNotEnough(vol, replicas, len(readyNodes)) {
 				vol.Spec.OfflineRebuild = true
 				if _, err := sc.ds.UpdateVolume(vol); err != nil {
 					return err

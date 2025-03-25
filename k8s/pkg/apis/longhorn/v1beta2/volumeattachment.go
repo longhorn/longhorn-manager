@@ -66,7 +66,7 @@ const (
 	AttacherPriorityLevelVolumeCloneController            = 800
 	AttacherPriorityLevelVolumeEvictionController         = 800
 	AttacherPriorityLevelBackingImageDataSourceController = 800
-	AttachedPriorityLevelVolumeRebuildingController       = 800
+	AttachedPriorityLevelVolumeRebuildingController       = 1000
 )
 
 const (
