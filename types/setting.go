@@ -141,6 +141,7 @@ const (
 	SettingNameDefaultMinNumberOfBackingImageCopies                     = SettingName("default-min-number-of-backing-image-copies")
 	SettingNameBackupExecutionTimeout                                   = SettingName("backup-execution-timeout")
 	SettingNameRWXVolumeFastFailover                                    = SettingName("rwx-volume-fast-failover")
+	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
 	// These three backup target parameters are used in the "longhorn-default-resource" ConfigMap
 	// to update the default BackupTarget resource.
 	// Longhorn won't create the Setting resources for these three parameters.
@@ -241,6 +242,7 @@ var (
 		SettingNameDefaultMinNumberOfBackingImageCopies,
 		SettingNameBackupExecutionTimeout,
 		SettingNameRWXVolumeFastFailover,
+		SettingNameOfflineReplicaRebuilding,
 	}
 )
 
@@ -363,6 +365,7 @@ var (
 		SettingNameDefaultMinNumberOfBackingImageCopies:                     SettingDefinitionDefaultMinNumberOfBackingImageCopies,
 		SettingNameBackupExecutionTimeout:                                   SettingDefinitionBackupExecutionTimeout,
 		SettingNameRWXVolumeFastFailover:                                    SettingDefinitionRWXVolumeFastFailover,
+		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -1508,6 +1511,16 @@ var (
 	SettingDefinitionRWXVolumeFastFailover = SettingDefinition{
 		DisplayName: "RWX Volume Fast Failover",
 		Description: "Turn on logic to detect and move stale RWX volumes quickly (Experimental)",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "false",
+	}
+
+	SettingDefinitionOfflineReplicaRebuilding = SettingDefinition{
+		DisplayName: "Offline Replica Rebuilding",
+		Description: "Rebuild replicas of detached volumes which need to be rebuilt",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeBool,
 		Required:    true,
