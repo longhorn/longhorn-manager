@@ -88,7 +88,7 @@ func NewVolumeCollector(
 		Type: prometheus.GaugeValue,
 	}
 
-	vc.volumePerfMetrics.throughputMetrics.read = metricInfo{
+	vc.throughputMetrics.read = metricInfo{
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "read_throughput"),
 			"Read throughput of this volume (Bytes/s)",
@@ -98,7 +98,7 @@ func NewVolumeCollector(
 		Type: prometheus.GaugeValue,
 	}
 
-	vc.volumePerfMetrics.throughputMetrics.write = metricInfo{
+	vc.throughputMetrics.write = metricInfo{
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "write_throughput"),
 			"Write throughput of this volume (Bytes/s)",
@@ -108,7 +108,7 @@ func NewVolumeCollector(
 		Type: prometheus.GaugeValue,
 	}
 
-	vc.volumePerfMetrics.iopsMetrics.read = metricInfo{
+	vc.iopsMetrics.read = metricInfo{
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "read_iops"),
 			"Read IOPS of this volume",
@@ -118,7 +118,7 @@ func NewVolumeCollector(
 		Type: prometheus.GaugeValue,
 	}
 
-	vc.volumePerfMetrics.iopsMetrics.write = metricInfo{
+	vc.iopsMetrics.write = metricInfo{
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "write_iops"),
 			"Write IOPS of this volume",
@@ -128,7 +128,7 @@ func NewVolumeCollector(
 		Type: prometheus.GaugeValue,
 	}
 
-	vc.volumePerfMetrics.latencyMetrics.read = metricInfo{
+	vc.latencyMetrics.read = metricInfo{
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "read_latency"),
 			"Read latency of this volume (ns)",
@@ -138,7 +138,7 @@ func NewVolumeCollector(
 		Type: prometheus.GaugeValue,
 	}
 
-	vc.volumePerfMetrics.latencyMetrics.write = metricInfo{
+	vc.latencyMetrics.write = metricInfo{
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "write_latency"),
 			"Write latency of this volume (ns)",

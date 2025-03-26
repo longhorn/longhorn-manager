@@ -1293,7 +1293,11 @@ func getObjectsAndPrintToYAML(dir, name string, getListFunc GetRuntimeObjectList
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil {
+			logrus.WithError(closeErr).Warnf("Failed to close YAML file: %s", path)
+		}
+	}()
 
 	printer := printers.YAMLPrinter{}
 	err = printer.PrintObj(obj, f)

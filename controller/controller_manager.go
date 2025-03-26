@@ -34,7 +34,7 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	controllerID, serviceAccount, managerImage, backingImageManagerImage, shareManagerImage,
 	kubeconfigPath, version string, proxyConnCounter util.Counter) (*WebsocketController, error) {
 	namespace := clients.Namespace
-	kubeClient := clients.Clients.K8s
+	kubeClient := clients.K8s
 	metricsClient := clients.MetricsClient
 	ds := clients.Datastore
 	scheme := clients.Scheme

@@ -1446,7 +1446,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		}
 	}
 
-	allReplicaScheduled := true
+	var allReplicaScheduled = true
 	if len(vrs) == 0 {
 		allReplicaScheduled = false
 	}

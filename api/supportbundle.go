@@ -8,6 +8,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	"github.com/rancher/go-rancher/api"
 	"github.com/rancher/go-rancher/client"
@@ -73,7 +74,11 @@ func (s *Server) SupportBundleDownload(w http.ResponseWriter, req *http.Request)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func(body io.Closer) {
+		if closeErr := body.Close(); closeErr != nil {
+			logrus.WithError(closeErr).Warn("Failed to close support bundle body download stream")
+		}
+	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return err

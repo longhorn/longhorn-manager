@@ -359,7 +359,7 @@ func GetDefaultManagerURL() string {
 }
 
 func GetImageCanonicalName(image string) string {
-	return strings.Replace(strings.Replace(image, ":", "-", -1), "/", "-", -1)
+	return strings.ReplaceAll(strings.ReplaceAll(image, ":", "-"), "/", "-")
 }
 
 func GetEngineBinaryDirectoryOnHostForImage(image string) string {

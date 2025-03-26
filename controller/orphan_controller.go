@@ -411,8 +411,7 @@ func (oc *OrphanController) updateDataCleanableCondition(orphan *longhorn.Orphan
 		return nil
 	}
 
-	switch {
-	case orphan.Spec.Type == longhorn.OrphanTypeReplica:
+	if orphan.Spec.Type == longhorn.OrphanTypeReplica {
 		reason = oc.checkOrphanedReplicaDataCleanable(node, orphan)
 	}
 

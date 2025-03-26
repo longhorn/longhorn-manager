@@ -71,7 +71,7 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 
 	// there's no disk that fit for current replica
 	if len(diskCandidates) == 0 {
-		logrus.Errorf("There's no available disk for replica %v, size %v", replica.ObjectMeta.Name, replica.Spec.VolumeSize)
+		logrus.Errorf("There's no available disk for replica %v, size %v", replica.Name, replica.Spec.VolumeSize)
 		return nil, multiError, nil
 	}
 
@@ -99,7 +99,7 @@ func (rcs *ReplicaScheduler) FindDiskCandidates(replica *longhorn.Replica, repli
 
 	nodeCandidates, multiError := rcs.getNodeCandidates(nodesInfo, replica)
 	if len(nodeCandidates) == 0 {
-		logrus.Errorf("There's no available node for replica %v, size %v", replica.ObjectMeta.Name, replica.Spec.VolumeSize)
+		logrus.Errorf("There's no available node for replica %v, size %v", replica.Name, replica.Spec.VolumeSize)
 		return nil, multiError, nil
 	}
 
@@ -403,8 +403,9 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 			continue
 		}
 
-		if !(types.IsDataEngineV1(volume.Spec.DataEngine) && diskSpec.Type == longhorn.DiskTypeFilesystem) &&
-			!(types.IsDataEngineV2(volume.Spec.DataEngine) && diskSpec.Type == longhorn.DiskTypeBlock) {
+		isV1EngineFilesystemDisk := types.IsDataEngineV1(volume.Spec.DataEngine) && diskSpec.Type == longhorn.DiskTypeFilesystem
+		isV2EngineBlockDisk := types.IsDataEngineV2(volume.Spec.DataEngine) && diskSpec.Type == longhorn.DiskTypeBlock
+		if !isV1EngineFilesystemDisk && !isV2EngineBlockDisk {
 			logrus.Debugf("Volume %v is not compatible with disk %v", volume.Name, diskName)
 			continue
 		}
