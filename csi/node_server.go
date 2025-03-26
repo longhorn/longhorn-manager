@@ -3,6 +3,7 @@ package csi
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -747,7 +748,11 @@ func (ns *NodeServer) NodeExpandSharedVolume(volumeName string) error {
 	if err != nil {
 		return errors.Wrapf(err, "failed to launch gRPC client for share manager before resizing volume %v", volumeName)
 	}
-	defer client.Close()
+	defer func(client io.Closer) {
+		if closeErr := client.Close(); closeErr != nil {
+			ns.log.WithError(closeErr).Warn("Failed to close share manager client")
+		}
+	}(client)
 
 	// Each node with a workload pod will send an RPC request.  The first will win, and the others are no-ops.
 	err = client.FilesystemResize()

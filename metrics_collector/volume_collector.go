@@ -101,7 +101,7 @@ func NewVolumeCollector(
 		Type: prometheus.GaugeValue,
 	}
 
-	vc.volumePerfMetrics.throughputMetrics.read = metricInfo{
+	vc.throughputMetrics.read = metricInfo{
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "read_throughput"),
 			"Read throughput of this volume (Bytes/s)",
@@ -111,7 +111,7 @@ func NewVolumeCollector(
 		Type: prometheus.GaugeValue,
 	}
 
-	vc.volumePerfMetrics.throughputMetrics.write = metricInfo{
+	vc.throughputMetrics.write = metricInfo{
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "write_throughput"),
 			"Write throughput of this volume (Bytes/s)",
@@ -121,7 +121,7 @@ func NewVolumeCollector(
 		Type: prometheus.GaugeValue,
 	}
 
-	vc.volumePerfMetrics.iopsMetrics.read = metricInfo{
+	vc.iopsMetrics.read = metricInfo{
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "read_iops"),
 			"Read IOPS of this volume",
@@ -131,7 +131,7 @@ func NewVolumeCollector(
 		Type: prometheus.GaugeValue,
 	}
 
-	vc.volumePerfMetrics.iopsMetrics.write = metricInfo{
+	vc.iopsMetrics.write = metricInfo{
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "write_iops"),
 			"Write IOPS of this volume",
@@ -141,7 +141,7 @@ func NewVolumeCollector(
 		Type: prometheus.GaugeValue,
 	}
 
-	vc.volumePerfMetrics.latencyMetrics.read = metricInfo{
+	vc.latencyMetrics.read = metricInfo{
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "read_latency"),
 			"Read latency of this volume (ns)",
@@ -151,7 +151,7 @@ func NewVolumeCollector(
 		Type: prometheus.GaugeValue,
 	}
 
-	vc.volumePerfMetrics.latencyMetrics.write = metricInfo{
+	vc.latencyMetrics.write = metricInfo{
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "write_latency"),
 			"Write latency of this volume (ns)",
@@ -222,12 +222,12 @@ func (vc *VolumeCollector) collectMetrics(ch chan<- prometheus.Metric, v *longho
 		vc.logger.WithError(err).Debugf("Failed to get metrics from volume %v from engine %v", e.Spec.VolumeName, e.Name)
 	}
 
-	ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.throughputMetrics.read.Desc, vc.volumePerfMetrics.throughputMetrics.read.Type, float64(vc.getVolumeReadThroughput(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
-	ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.throughputMetrics.write.Desc, vc.volumePerfMetrics.throughputMetrics.write.Type, float64(vc.getVolumeWriteThroughput(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
-	ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.iopsMetrics.read.Desc, vc.volumePerfMetrics.iopsMetrics.read.Type, float64(vc.getVolumeReadIOPS(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
-	ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.iopsMetrics.write.Desc, vc.volumePerfMetrics.iopsMetrics.write.Type, float64(vc.getVolumeWriteIOPS(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
-	ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.latencyMetrics.read.Desc, vc.volumePerfMetrics.latencyMetrics.read.Type, float64(vc.getVolumeReadLatency(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
-	ch <- prometheus.MustNewConstMetric(vc.volumePerfMetrics.latencyMetrics.write.Desc, vc.volumePerfMetrics.latencyMetrics.write.Type, float64(vc.getVolumeWriteLatency(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
+	ch <- prometheus.MustNewConstMetric(vc.throughputMetrics.read.Desc, vc.throughputMetrics.read.Type, float64(vc.getVolumeReadThroughput(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
+	ch <- prometheus.MustNewConstMetric(vc.throughputMetrics.write.Desc, vc.throughputMetrics.write.Type, float64(vc.getVolumeWriteThroughput(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
+	ch <- prometheus.MustNewConstMetric(vc.iopsMetrics.read.Desc, vc.iopsMetrics.read.Type, float64(vc.getVolumeReadIOPS(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
+	ch <- prometheus.MustNewConstMetric(vc.iopsMetrics.write.Desc, vc.iopsMetrics.write.Type, float64(vc.getVolumeWriteIOPS(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
+	ch <- prometheus.MustNewConstMetric(vc.latencyMetrics.read.Desc, vc.latencyMetrics.read.Type, float64(vc.getVolumeReadLatency(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
+	ch <- prometheus.MustNewConstMetric(vc.latencyMetrics.write.Desc, vc.latencyMetrics.write.Type, float64(vc.getVolumeWriteLatency(metrics)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
 
 	fileSystemReadOnlyCondition := types.GetCondition(e.Status.Conditions, imtypes.EngineConditionFilesystemReadOnly)
 	isPVMountOptionReadOnly, err := vc.ds.IsPVMountOptionReadOnly(v)

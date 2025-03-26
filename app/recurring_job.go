@@ -37,7 +37,7 @@ func RecurringJobCmd() cli.Command {
 func recurringJob(c *cli.Context) (err error) {
 	logger := logrus.StandardLogger()
 
-	var managerURL string = c.String(FlagManagerURL)
+	var managerURL = c.String(FlagManagerURL)
 	if managerURL == "" {
 		return fmt.Errorf("require %v", FlagManagerURL)
 	}

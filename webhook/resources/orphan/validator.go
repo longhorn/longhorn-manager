@@ -44,8 +44,8 @@ func (o *orphanValidator) Create(request *admission.Request, newObj runtime.Obje
 	}
 
 	var err error
-	switch {
-	case orphan.Spec.Type == longhorn.OrphanTypeReplica:
+	switch orphan.Spec.Type {
+	case longhorn.OrphanTypeReplica:
 		err = checkOrphanForReplicaDataStore(orphan)
 	default:
 		return werror.NewInvalidError(fmt.Sprintf("unknown orphan type %v for orphan %v", orphan.Spec.Type, orphan.Name), "")
@@ -71,8 +71,7 @@ func (o *orphanValidator) Update(request *admission.Request, oldObj runtime.Obje
 }
 
 func checkOrphanParameters(orphan *longhorn.Orphan) error {
-	switch {
-	case orphan.Spec.Type == longhorn.OrphanTypeReplica:
+	if orphan.Spec.Type == longhorn.OrphanTypeReplica {
 		return checkOrphanForReplicaDataStore(orphan)
 	}
 

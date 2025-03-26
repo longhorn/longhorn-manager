@@ -421,7 +421,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			if !apierrors.IsNotFound(err) {
 				return err
 			}
-			err = fmt.Errorf("Cannot find the corresponding volume: %v", err)
+			err = fmt.Errorf("cannot find the corresponding volume: %w", err)
 			log.WithError(err).Error()
 			backup.Status.Error = err.Error()
 			backup.Status.State = longhorn.BackupStateError
@@ -643,7 +643,7 @@ func (bc *BackupController) getBackupTarget(backup *longhorn.Backup) (*longhorn.
 		return nil, errors.Wrapf(err, "failed to get the backup target %v", backupTargetName)
 	}
 	if backupTarget == nil && backup.DeletionTimestamp == nil {
-		return nil, fmt.Errorf("Failed to find the backup target %v for the backup %v", backupTargetName, backup.Name)
+		return nil, fmt.Errorf("failed to find the backup target %v for the backup %v", backupTargetName, backup.Name)
 	}
 
 	return backupTarget, nil

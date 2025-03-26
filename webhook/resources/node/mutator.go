@@ -90,9 +90,10 @@ func mutate(newObj runtime.Object) (admission.PatchOps, error) {
 				}
 			}
 
-			if disk.Type == "" {
+			switch disk.Type {
+			case "":
 				patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/disks/%s/diskType", "value": "filesystem"}`, name))
-			} else if disk.Type == longhorn.DiskTypeBlock {
+			case longhorn.DiskTypeBlock:
 				if disk.DiskDriver == longhorn.DiskDriverNone {
 					patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/disks/%s/diskDriver", "value": "auto"}`, name))
 				}

@@ -433,7 +433,11 @@ func (h *InstanceHandler) printInstanceLogs(instanceName string, obj runtime.Obj
 	if err != nil {
 		return err
 	}
-	defer client.Close()
+	defer func(client io.Closer) {
+		if closeErr := client.Close(); closeErr != nil {
+			logrus.WithError(closeErr).Warn("Failed to close instance manager client")
+		}
+	}(client)
 	for {
 		line, err := stream.Recv()
 		if err == io.EOF {
@@ -452,7 +456,8 @@ func (h *InstanceHandler) createInstance(instanceName string, dataEngine longhor
 	if err == nil {
 		return nil
 	}
-	if !types.ErrorIsNotFound(err) && !(types.IsDataEngineV2(dataEngine) && types.ErrorIsStopped(err)) {
+	isStoppedV2Engine := types.IsDataEngineV2(dataEngine) && types.ErrorIsStopped(err)
+	if !types.ErrorIsNotFound(err) && !isStoppedV2Engine {
 		return errors.Wrapf(err, "Failed to get instance process %v", instanceName)
 	}
 

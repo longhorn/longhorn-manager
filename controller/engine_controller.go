@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"io"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -460,7 +461,11 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 	if err != nil {
 		return nil, err
 	}
-	defer c.Close()
+	defer func(c io.Closer) {
+		if closeErr := c.Close(); closeErr != nil {
+			ec.logger.WithError(closeErr).Warn("Failed to close instance manager client")
+		}
+	}(c)
 
 	engineReplicaTimeout, err := ec.ds.GetSettingAsInt(types.SettingNameEngineReplicaTimeout)
 	if err != nil {
@@ -588,7 +593,11 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 	if err != nil {
 		return err
 	}
-	defer c.Close()
+	defer func(c io.Closer) {
+		if closeErr := c.Close(); closeErr != nil {
+			ec.logger.WithError(closeErr).Warn("Failed to close instance manager client")
+		}
+	}(c)
 
 	err = c.InstanceDelete(e.Spec.DataEngine, e.Name, string(longhorn.InstanceManagerTypeEngine), "", true)
 	if err != nil && !types.ErrorIsNotFound(err) {
@@ -623,7 +632,11 @@ func (ec *EngineController) GetInstance(obj interface{}) (*longhorn.InstanceProc
 	if err != nil {
 		return nil, err
 	}
-	defer c.Close()
+	defer func(c io.Closer) {
+		if closeErr := c.Close(); closeErr != nil {
+			ec.logger.WithError(closeErr).Warn("Failed to close instance manager client")
+		}
+	}(c)
 
 	return c.InstanceGet(e.Spec.DataEngine, e.Name, string(longhorn.InstanceManagerTypeEngine))
 }
@@ -1939,12 +1952,12 @@ func (ec *EngineController) getFileLocalSync(targetReplica *longhorn.Replica, en
 
 	// Check if there are multiple replicas on the target replica's node,
 	// do nothing if there is no other available replica to sync locally from.
-	if len(replicaMapByNode[targetReplica.Spec.InstanceSpec.NodeID]) <= 1 {
+	if len(replicaMapByNode[targetReplica.Spec.NodeID]) <= 1 {
 		return nil, nil
 	}
 
 	var localSync *etypes.FileLocalSync
-	for _, nodeReplica := range replicaMapByNode[targetReplica.Spec.InstanceSpec.NodeID] {
+	for _, nodeReplica := range replicaMapByNode[targetReplica.Spec.NodeID] {
 		// Skip the target replica itself
 		if nodeReplica.Name == targetReplica.Name {
 			continue
@@ -2140,7 +2153,11 @@ func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logru
 	if err != nil {
 		return err
 	}
-	defer c.Close()
+	defer func(c io.Closer) {
+		if closeErr := c.Close(); closeErr != nil {
+			ec.logger.WithError(closeErr).Warn("Failed to close instance manager client")
+		}
+	}(c)
 
 	engineReplicaTimeout, err := ec.ds.GetSettingAsInt(types.SettingNameEngineReplicaTimeout)
 	if err != nil {

@@ -12,7 +12,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -83,7 +82,7 @@ func NewBackupBackingImageController(
 		ds: ds,
 
 		kubeClient:    kubeClient,
-		eventRecorder: eventBroadcaster.NewRecorder(scheme, v1.EventSource{Component: "longhorn-backup-backing-image-controller"}),
+		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-backup-backing-image-controller"}),
 
 		proxyConnCounter: proxyConnCounter,
 	}
@@ -265,7 +264,7 @@ func (bc *BackupBackingImageController) reconcile(backupBackingImageName string)
 			if !apierrors.IsNotFound(err) {
 				return err
 			}
-			err = fmt.Errorf("Cannot find the corresponding backing image: %v", err)
+			err = fmt.Errorf("cannot find the corresponding backing image: %w", err)
 			log.WithError(err).Error()
 			bbi.Status.Error = err.Error()
 			bbi.Status.State = longhorn.BackupStateError

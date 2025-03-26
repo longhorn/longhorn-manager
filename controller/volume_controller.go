@@ -3419,8 +3419,7 @@ func (c *VolumeController) checkAndFinishVolumeRestore(v *longhorn.Volume, e *lo
 			break
 		}
 	}
-	if !(e.Spec.RequestedBackupRestore != "" && e.Spec.RequestedBackupRestore == e.Status.LastRestoredBackup &&
-		!v.Spec.Standby) {
+	if e.Spec.RequestedBackupRestore == "" || e.Spec.RequestedBackupRestore != e.Status.LastRestoredBackup || v.Spec.Standby {
 		return nil
 	}
 
@@ -4642,7 +4641,7 @@ func (c *VolumeController) ReconcileShareManagerState(volume *longhorn.Volume) e
 
 	if sm.Spec.Image != c.smImage {
 		sm.Spec.Image = c.smImage
-		sm.ObjectMeta.Labels = types.GetShareManagerLabels(volume.Name, c.smImage)
+		sm.Labels = types.GetShareManagerLabels(volume.Name, c.smImage)
 		if sm, err = c.ds.UpdateShareManager(sm); err != nil {
 			return err
 		}
