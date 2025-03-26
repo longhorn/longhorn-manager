@@ -187,7 +187,9 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager, allowUnknown bool) (
 		processManagerClient, err = initProcessManagerTLSClient(endpoint)
 		defer func() {
 			if err != nil && processManagerClient != nil {
-				processManagerClient.Close()
+				if closeErr := processManagerClient.Close(); closeErr != nil {
+					logrus.WithError(closeErr).WithField("endpoint", endpoint).Warn("Failed to close process manager client")
+				}
 				processManagerClient = nil
 			}
 		}()
@@ -228,7 +230,9 @@ func NewInstanceManagerClient(im *longhorn.InstanceManager, allowUnknown bool) (
 	instanceServiceClient, err := initInstanceServiceTLSClient(endpoint)
 	defer func() {
 		if err != nil && instanceServiceClient != nil {
-			instanceServiceClient.Close()
+			if closeErr := instanceServiceClient.Close(); closeErr != nil {
+				logrus.WithError(closeErr).WithField("endpoint", endpoint).Warn("Failed to close instance service client")
+			}
 			instanceServiceClient = nil
 		}
 	}()

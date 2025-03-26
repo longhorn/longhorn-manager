@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"reflect"
 	"strings"
 	"sync"
@@ -91,7 +92,11 @@ func updateInstanceManagerVersion(im *longhorn.InstanceManager) error {
 	if err != nil {
 		return err
 	}
-	defer cli.Close()
+	defer func(cli io.Closer) {
+		if closeErr := cli.Close(); closeErr != nil {
+			logrus.WithError(closeErr).Warn("Failed to close instance manager client")
+		}
+	}(cli)
 	apiMinVersion, apiVersion, proxyAPIMinVersion, proxyAPIVersion, err := cli.VersionGet()
 	if err != nil {
 		return err
@@ -538,7 +543,11 @@ func (imc *InstanceManagerController) syncLogSettingsToInstanceManagerPod(im *lo
 	if err != nil {
 		return errors.Wrapf(err, "failed to create instance manager client for %v", im.Name)
 	}
-	defer client.Close()
+	defer func(client io.Closer) {
+		if closeErr := client.Close(); closeErr != nil {
+			imc.logger.WithError(closeErr).Warn("Failed to close instance manager client")
+		}
+	}(client)
 
 	settingNames := []types.SettingName{
 		types.SettingNameLogLevel,
@@ -1406,7 +1415,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	}
 
 	secretIsOptional := true
-	podSpec.ObjectMeta.Labels = types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, longhorn.InstanceManagerTypeAllInOne, dataEngine)
+	podSpec.Labels = types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, longhorn.InstanceManagerTypeAllInOne, dataEngine)
 	podSpec.Spec.Containers[0].Name = "instance-manager"
 
 	if types.IsDataEngineV2(dataEngine) {
@@ -1831,7 +1840,9 @@ func (imc *InstanceManagerController) startMonitoring(im *longhorn.InstanceManag
 
 	go func() {
 		<-monitorVoluntaryStopCh
-		client.Close()
+		if closeErr := client.Close(); closeErr != nil {
+			imc.logger.WithError(closeErr).Warn("Failed to close instance manager client during stopping instance manager monitor")
+		}
 		imc.instanceManagerMonitorMutex.Lock()
 		delete(imc.instanceManagerMonitorMap, im.Name)
 		imc.instanceManagerMonitorMutex.Unlock()

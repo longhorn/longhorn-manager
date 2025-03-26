@@ -379,7 +379,7 @@ func GetDefaultManagerURL() string {
 }
 
 func GetImageCanonicalName(image string) string {
-	return strings.Replace(strings.Replace(image, ":", "-", -1), "/", "-", -1)
+	return strings.ReplaceAll(strings.ReplaceAll(image, ":", "-"), "/", "-")
 }
 
 func GetEngineBinaryDirectoryOnHostForImage(image string) string {
@@ -1077,7 +1077,11 @@ func getBlockDeviceSize(devicePath string) (uint64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to open block device at %s: %w", devicePath, err)
 	}
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			logrus.WithError(closeErr).Warnf("Failed to close block device %s", devicePath)
+		}
+	}()
 	var size uint64
 	_, _, errno := unix.Syscall(unix.SYS_IOCTL, file.Fd(), 0x80081272, uintptr(unsafe.Pointer(&size)))
 	if errno != 0 {

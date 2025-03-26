@@ -1166,7 +1166,11 @@ func (sc *SettingController) CheckLatestAndStableLonghornVersions() (string, str
 	if err != nil {
 		return "", "", err
 	}
-	defer r.Body.Close()
+	defer func(body io.ReadCloser) {
+		if closeErr := body.Close(); closeErr != nil {
+			sc.logger.WithError(closeErr).Warn("Failed to close upgrade responder response body")
+		}
+	}(r.Body)
 	if r.StatusCode != http.StatusOK {
 		message := ""
 		messageBytes, err := io.ReadAll(r.Body)

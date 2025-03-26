@@ -257,7 +257,11 @@ func syncMountPointDirectory(targetPath string) error {
 	if err != nil {
 		return err
 	}
-	defer d.Close()
+	defer func() {
+		if closeErr := d.Close(); closeErr != nil {
+			logrus.WithError(closeErr).Warnf("Failed to close mount point %v", targetPath)
+		}
+	}()
 
 	if _, err := d.Readdirnames(1); err != nil {
 		if !errors.Is(err, io.EOF) {

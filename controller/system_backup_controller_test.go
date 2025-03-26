@@ -281,7 +281,7 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 					Spec:       longhorn.SnapshotSpec{Volume: TestVolumeName},
 					Status: longhorn.SnapshotStatus{
 						ReadyToUse:   true,
-						CreationTime: metav1.Now().Time.Format(time.RFC3339),
+						CreationTime: metav1.Now().Format(time.RFC3339),
 					},
 				}
 				fakeSystemRolloutSnapshot(existBackupSnap, c, informerFactories.LhInformerFactory, lhClient)

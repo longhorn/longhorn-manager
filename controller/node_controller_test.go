@@ -1944,7 +1944,11 @@ func (s *NodeControllerSuite) TestKubeNodeNFSCapabilityCondition(c *C) {
 	// Create a mock kernel config file
 	err = os.MkdirAll(TestKernelConfigDIR, 0755)
 	c.Assert(err, IsNil)
-	defer os.RemoveAll(TestKernelConfigFilePath)
+	defer func() {
+		if closeErr := os.RemoveAll(TestKernelConfigFilePath); closeErr != nil {
+			c.Logf("Warning: failed to remove %s: %v", TestKernelConfigFilePath, closeErr)
+		}
+	}()
 
 	// The content of the mock kernel config
 	mockKernelConfigContent := `CONFIG_DM_CRYPT=y
@@ -1960,7 +1964,11 @@ CONFIG_NFS_V4_2=y`
 	// Create a mock NFS mount config file
 	err = os.MkdirAll(TestSystemEtcDIR, 0755)
 	c.Assert(err, IsNil)
-	defer os.RemoveAll(TestSystemEtcDIR)
+	defer func() {
+		if closeErr := os.RemoveAll(TestSystemEtcDIR); closeErr != nil {
+			c.Logf("Warning: failed to remove %s: %v", TestSystemEtcDIR, closeErr)
+		}
+	}()
 
 	// The content of the mock NFS mount config
 	genNFSMountConf := func(nfsVer string) {
@@ -2104,7 +2112,11 @@ CONFIG_NFS_V4_2=y`
 		fmt.Printf("testing %v", testName)
 		func(setup func(), expectConditionStatus longhorn.ConditionStatus, expectConditionReason string) {
 			setup()
-			defer os.Remove(TestNFSMountConfigPath)
+			defer func() {
+				if closeErr := os.Remove(TestNFSMountConfigPath); closeErr != nil {
+					c.Logf("Warning: failed to remove %s: %v", TestNFSMountConfigPath, closeErr)
+				}
+			}()
 
 			expectation := &NodeControllerExpectation{
 				nodeStatus: map[string]*longhorn.NodeStatus{

@@ -2,6 +2,7 @@ package manager
 
 import (
 	"fmt"
+	"io"
 	"strconv"
 	"time"
 
@@ -657,7 +658,11 @@ func (m *VolumeManager) trimRWXVolumeFilesystem(volumeName string, encryptedDevi
 	if err != nil {
 		return errors.Wrapf(err, "failed to launch gRPC client for share manager before trimming volume %v", volumeName)
 	}
-	defer client.Close()
+	defer func(client io.Closer) {
+		if closeErr := client.Close(); closeErr != nil {
+			logrus.WithError(closeErr).Warn("Failed to close share manager client")
+		}
+	}(client)
 
 	return client.FilesystemTrim(encryptedDevice)
 }

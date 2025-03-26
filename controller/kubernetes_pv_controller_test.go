@@ -284,7 +284,7 @@ func (s *TestSuite) TestSyncKubernetesStatus(c *C) {
 	tc.pods = append(tc.pods, newPodWithPVC(TestPod2))
 	workloads = []longhorn.WorkloadStatus{}
 	for _, p := range tc.pods {
-		p.ObjectMeta.OwnerReferences = nil
+		p.OwnerReferences = nil
 		ws := longhorn.WorkloadStatus{
 			PodName:   p.Name,
 			PodStatus: string(p.Status.Phase),

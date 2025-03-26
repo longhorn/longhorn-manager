@@ -86,7 +86,9 @@ func NewEngineClientProxy(im *longhorn.InstanceManager, logger logrus.FieldLogge
 	initProxyTLSClient := func(ip string) (proxyClient *imclient.ProxyClient, err error) {
 		defer func() {
 			if err != nil && proxyClient != nil {
-				proxyClient.Close()
+				if closeErr := proxyClient.Close(); closeErr != nil {
+					logrus.WithError(closeErr).WithField("ip", ip).Warn("Failed to close proxy client")
+				}
 				proxyClient = nil
 			}
 		}()
@@ -115,7 +117,9 @@ func NewEngineClientProxy(im *longhorn.InstanceManager, logger logrus.FieldLogge
 	proxyClient, err := initProxyTLSClient(im.Status.IP)
 	defer func() {
 		if err != nil && proxyClient != nil {
-			proxyClient.Close()
+			if closeErr := proxyClient.Close(); closeErr != nil {
+				logrus.WithError(closeErr).WithField("ip", im.Status.IP).Warn("Failed to close proxy client")
+			}
 			proxyClient = nil
 		}
 	}()
