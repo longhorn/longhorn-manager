@@ -301,7 +301,7 @@ func (kc *KubernetesPVController) enqueuePodChange(obj interface{}) {
 	}
 
 	for _, v := range pod.Spec.Volumes {
-		claim := v.VolumeSource.PersistentVolumeClaim
+		claim := v.PersistentVolumeClaim
 		if claim == nil {
 			continue
 		}

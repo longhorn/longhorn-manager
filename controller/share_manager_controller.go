@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"reflect"
 	"strings"
 	"time"
@@ -579,7 +580,11 @@ func (c *ShareManagerController) unmountShareManagerVolume(sm *longhorn.ShareMan
 		log.WithError(err).Errorf("Failed to create share manager client for pod %v", podName)
 		return
 	}
-	defer client.Close()
+	defer func(client io.Closer) {
+		if closeErr := client.Close(); closeErr != nil {
+			c.logger.WithError(closeErr).Warn("Failed to close share manager client")
+		}
+	}(client)
 
 	if err := client.Unmount(); err != nil {
 		log.WithError(err).Warnf("Failed to unmount share manager pod %v", podName)
@@ -602,7 +607,11 @@ func (c *ShareManagerController) mountShareManagerVolume(sm *longhorn.ShareManag
 	if err != nil {
 		return errors.Wrapf(err, "failed to create share manager client for pod %v", podName)
 	}
-	defer client.Close()
+	defer func(client io.Closer) {
+		if closeErr := client.Close(); closeErr != nil {
+			c.logger.WithError(closeErr).Warn("Failed to close share manager client")
+		}
+	}(client)
 
 	if err := client.Mount(); err != nil {
 		return errors.Wrapf(err, "failed to mount share manager pod %v", podName)

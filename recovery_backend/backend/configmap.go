@@ -93,7 +93,7 @@ func (rb *RecoveryBackend) EndGrace(hostname, version string) error {
 		annotations := map[string]string{
 			"version": version,
 		}
-		cm.ObjectMeta.Annotations = annotations
+		cm.Annotations = annotations
 
 		// Remove old data
 		delete(cm.Data, oldVersion)

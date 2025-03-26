@@ -56,8 +56,7 @@ func (o *orphanMutator) Create(request *admission.Request, newObj runtime.Object
 
 	// Add labels according to the orphan type
 	var longhornLabels map[string]string
-	switch {
-	case orphan.Spec.Type == longhorn.OrphanTypeReplica:
+	if orphan.Spec.Type == longhorn.OrphanTypeReplica {
 		longhornLabels = types.GetOrphanLabelsForOrphanedDirectory(orphan.Spec.NodeID, orphan.Spec.Parameters[longhorn.OrphanDiskUUID])
 	}
 	if longhornLabels == nil {

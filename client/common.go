@@ -165,7 +165,11 @@ func setupRancherBaseClient(rancherClient *RancherBaseClientImpl, opts *ClientOp
 		return err
 	}
 
-	defer resp.Body.Close()
+	defer func(body io.Closer) {
+		if closeErr := body.Close(); closeErr != nil && debug {
+			fmt.Printf("Warning: failed to close schema response body: %v\n", closeErr)
+		}
+	}(resp.Body)
 
 	if resp.StatusCode != 200 {
 		return newApiError(resp, opts.Url)
@@ -188,7 +192,11 @@ func setupRancherBaseClient(rancherClient *RancherBaseClientImpl, opts *ClientOp
 			return err
 		}
 
-		defer resp.Body.Close()
+		defer func(body io.Closer) {
+			if closeErr := body.Close(); closeErr != nil && debug {
+				fmt.Printf("Warning: failed to close redirected schema response body: %v\n", closeErr)
+			}
+		}(resp.Body)
 
 		if resp.StatusCode != 200 {
 			return newApiError(resp, opts.Url)
@@ -246,7 +254,11 @@ func (rancherClient *RancherBaseClientImpl) doDelete(url string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func(body io.Closer) {
+		if closeErr := body.Close(); closeErr != nil && debug {
+			fmt.Printf("Warning: failed to close doDelete response body: %v\n", closeErr)
+		}
+	}(resp.Body)
 
 	_, err = io.Copy(io.Discard, resp.Body)
 	if err != nil {
@@ -299,7 +311,11 @@ func (rancherClient *RancherBaseClientImpl) doGet(url string, opts *ListOpts, re
 		return err
 	}
 
-	defer resp.Body.Close()
+	defer func(body io.Closer) {
+		if closeErr := body.Close(); closeErr != nil && debug {
+			fmt.Printf("Warning: failed to close doGet response body: %v\n", closeErr)
+		}
+	}(resp.Body)
 
 	if resp.StatusCode != 200 {
 		return newApiError(resp, url)
@@ -385,7 +401,11 @@ func (rancherClient *RancherBaseClientImpl) doModify(method string, url string, 
 		return err
 	}
 
-	defer resp.Body.Close()
+	defer func(body io.Closer) {
+		if closeErr := body.Close(); closeErr != nil && debug {
+			fmt.Printf("Warning: failed to close doModify response body: %v\n", closeErr)
+		}
+	}(resp.Body)
 
 	if resp.StatusCode >= 300 {
 		return newApiError(resp, url)
@@ -580,7 +600,11 @@ func (rancherClient *RancherBaseClientImpl) doAction(schemaType string, action s
 		return err
 	}
 
-	defer resp.Body.Close()
+	defer func(body io.Closer) {
+		if closeErr := body.Close(); closeErr != nil && debug {
+			fmt.Printf("Warning: failed to close doAction response body: %v\n", closeErr)
+		}
+	}(resp.Body)
 
 	if resp.StatusCode >= 300 {
 		return newApiError(resp, actionUrl)

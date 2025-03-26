@@ -191,7 +191,7 @@ func (c *KubernetesEndpointController) reconcile(endpointName string) (err error
 
 	log := getLoggerForKubernetesEndpoint(c.logger, endpoint)
 
-	if endpoint.ObjectMeta.OwnerReferences == nil {
+	if endpoint.OwnerReferences == nil {
 		log.Debug("Aborting Kubernetes Endpoint reconcile due to missing owner references")
 		return nil
 	}
@@ -220,7 +220,7 @@ func (c *KubernetesEndpointController) reconcile(endpointName string) (err error
 		}
 	}()
 
-	for _, ownerRef := range endpoint.ObjectMeta.OwnerReferences {
+	for _, ownerRef := range endpoint.OwnerReferences {
 		switch ownerRef.Kind {
 		case types.LonghornKindShareManager:
 			err := c.syncShareManager(endpoint)

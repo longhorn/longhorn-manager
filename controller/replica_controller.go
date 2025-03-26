@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -363,7 +364,11 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 	if err != nil {
 		return nil, err
 	}
-	defer c.Close()
+	defer func(c io.Closer) {
+		if closeErr := c.Close(); closeErr != nil {
+			rc.logger.WithError(closeErr).Warn("Failed to close instance manager client")
+		}
+	}(c)
 
 	v, err := rc.ds.GetVolumeRO(r.Spec.VolumeName)
 	if err != nil {
@@ -425,7 +430,7 @@ func (rc *ReplicaController) GetBackingImagePathForReplicaStarting(r *longhorn.R
 			log.WithError(err).Warnf("Failed to check if backing image %v can be put on disk %v", bi.Name, r.Spec.DiskID)
 		}
 		if !res {
-			return "", fmt.Errorf("The backing image %v can not be put on the disk %v", bi.Name, r.Spec.DiskID)
+			return "", fmt.Errorf("backing image %v can not be put on the disk %v", bi.Name, r.Spec.DiskID)
 		}
 		bi.Spec.DiskFileSpecMap[r.Spec.DiskID] = &longhorn.BackingImageDiskFileSpec{}
 		log.Infof("Asking backing image %v to download file to node %v disk %v", bi.Name, r.Spec.NodeID, r.Spec.DiskID)
@@ -576,10 +581,14 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) (err error) {
 	if err != nil {
 		return err
 	}
-	defer c.Close()
+	defer func(c io.Closer) {
+		if closeErr := c.Close(); closeErr != nil {
+			rc.logger.WithError(closeErr).Warn("Failed to close instance manager client")
+		}
+	}(c)
 
 	// No need to delete the instance if the replica is backed by a SPDK lvol
-	cleanupRequired := false
+	var cleanupRequired = false
 	if canDeleteInstance(r) {
 		cleanupRequired = true
 	}
@@ -699,7 +708,11 @@ func (rc *ReplicaController) GetInstance(obj interface{}) (*longhorn.InstancePro
 	if err != nil {
 		return nil, err
 	}
-	defer c.Close()
+	defer func(c io.Closer) {
+		if closeErr := c.Close(); closeErr != nil {
+			rc.logger.WithError(closeErr).Warn("Failed to close instance manager client")
+		}
+	}(c)
 
 	instance, err := c.InstanceGet(r.Spec.DataEngine, r.Name, string(longhorn.InstanceManagerTypeReplica))
 	if err != nil {

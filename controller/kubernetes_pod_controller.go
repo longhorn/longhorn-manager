@@ -410,11 +410,11 @@ func (kc *KubernetesPodController) getVolumeAttachmentsOfPod(pod *corev1.Pod) ([
 	pvs := make(map[string]bool)
 
 	for _, vol := range pod.Spec.Volumes {
-		if vol.VolumeSource.PersistentVolumeClaim == nil {
+		if vol.PersistentVolumeClaim == nil {
 			continue
 		}
 
-		pvc, err := kc.ds.GetPersistentVolumeClaimRO(pod.Namespace, vol.VolumeSource.PersistentVolumeClaim.ClaimName)
+		pvc, err := kc.ds.GetPersistentVolumeClaimRO(pod.Namespace, vol.PersistentVolumeClaim.ClaimName)
 		if err != nil {
 			if datastore.ErrorIsNotFound(err) {
 				continue
@@ -573,11 +573,11 @@ func (kc *KubernetesPodController) enqueuePodChange(obj interface{}) {
 	}
 
 	for _, v := range pod.Spec.Volumes {
-		if v.VolumeSource.PersistentVolumeClaim == nil {
+		if v.PersistentVolumeClaim == nil {
 			continue
 		}
 
-		pvc, err := kc.ds.GetPersistentVolumeClaimRO(pod.Namespace, v.VolumeSource.PersistentVolumeClaim.ClaimName)
+		pvc, err := kc.ds.GetPersistentVolumeClaimRO(pod.Namespace, v.PersistentVolumeClaim.ClaimName)
 		if datastore.ErrorIsNotFound(err) {
 			continue
 		}
@@ -611,11 +611,11 @@ func (kc *KubernetesPodController) getAssociatedVolumes(pod *corev1.Pod) ([]*lon
 	log := getLoggerForPod(kc.logger, pod)
 	var volumeList []*longhorn.Volume
 	for _, v := range pod.Spec.Volumes {
-		if v.VolumeSource.PersistentVolumeClaim == nil {
+		if v.PersistentVolumeClaim == nil {
 			continue
 		}
 
-		pvc, err := kc.ds.GetPersistentVolumeClaimRO(pod.Namespace, v.VolumeSource.PersistentVolumeClaim.ClaimName)
+		pvc, err := kc.ds.GetPersistentVolumeClaimRO(pod.Namespace, v.PersistentVolumeClaim.ClaimName)
 		if datastore.ErrorIsNotFound(err) {
 			log.WithError(err).Warn("Cannot auto-delete Pod when the associated PersistentVolumeClaim is not found")
 			continue
