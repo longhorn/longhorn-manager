@@ -603,6 +603,69 @@ func (m *VolumeManager) CancelExpansion(volumeName string) (v *longhorn.Volume, 
 	return v, nil
 }
 
+func (m *VolumeManager) OfflineRebuild(volumeName string) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to rebuild the offline volume %v", volumeName)
+	}()
+
+	v, err = m.ds.GetVolume(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	if v.Status.State != longhorn.VolumeStateDetached {
+		return nil, fmt.Errorf("volume %v is not offline", volumeName)
+	}
+	if v.Spec.OfflineRebuild {
+		return v, nil
+	}
+
+	v.Spec.OfflineRebuild = true
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+
+	logrus.Infof("Volume %v offline rebuilding is requested", volumeName)
+	return v, nil
+}
+
+func (m *VolumeManager) CancelOfflineRebuild(volumeName string) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to cancel rebuilding the offline volume %v", volumeName)
+	}()
+
+	v, err = m.ds.GetVolume(volumeName)
+	if err != nil {
+		return nil, err
+	}
+
+	if !v.Spec.OfflineRebuild {
+		return v, nil
+	}
+	v.Spec.OfflineRebuild = false
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+
+	va, err := m.ds.GetLHVolumeAttachmentByVolumeName(volumeName)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return v, err
+		}
+		return v, nil
+	}
+
+	rebuildingAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeRebuildingController, volumeName)
+	delete(va.Spec.AttachmentTickets, rebuildingAttachmentTicketID)
+	if _, err = m.ds.UpdateLHVolumeAttachment(va); err != nil {
+		return v, err
+	}
+
+	logrus.Infof("Cancel volume %s offline rebuilding is requested", volumeName)
+	return v, nil
+}
+
 func (m *VolumeManager) TrimFilesystem(name string) (v *longhorn.Volume, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "unable to trim filesystem for volume %v", name)
