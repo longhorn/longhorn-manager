@@ -177,7 +177,7 @@ func CreateOrUpdateLonghornVersionSetting(namespace string, lhClient *lhclientse
 			},
 			Value: meta.Version,
 		}
-		_, err := lhClient.LonghornV1beta2().Settings(namespace).Create(context.TODO(), s, metav1.CreateOptions{})
+		_, err := lhClient.LonghornV1beta2().Settings(namespace).Create(context.TODO(), s, metav1.CreateOptions{FieldValidation: metav1.FieldValidationStrict})
 		return err
 	}
 
@@ -187,12 +187,12 @@ func CreateOrUpdateLonghornVersionSetting(namespace string, lhClient *lhclientse
 			s.Annotations = make(map[string]string)
 		}
 		s.Annotations[types.GetLonghornLabelKey(types.UpdateSettingFromLonghorn)] = ""
-		s, err = lhClient.LonghornV1beta2().Settings(namespace).Update(context.TODO(), s, metav1.UpdateOptions{})
+		s, err = lhClient.LonghornV1beta2().Settings(namespace).Update(context.TODO(), s, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict})
 		if err != nil {
 			return err
 		}
 		delete(s.Annotations, types.GetLonghornLabelKey(types.UpdateSettingFromLonghorn))
-		_, err = lhClient.LonghornV1beta2().Settings(namespace).Update(context.TODO(), s, metav1.UpdateOptions{})
+		_, err = lhClient.LonghornV1beta2().Settings(namespace).Update(context.TODO(), s, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict})
 		return err
 	}
 	return nil
@@ -774,7 +774,7 @@ func ListAndUpdateSystemBackupsInProvidedCache(namespace string, lhClient *lhcli
 
 // CreateAndUpdateRecurringJobInProvidedCache creates a recurringJob and saves it into the provided cached `resourceMap`. This method is not thread-safe.
 func CreateAndUpdateRecurringJobInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, job *longhorn.RecurringJob) (*longhorn.RecurringJob, error) {
-	obj, err := lhClient.LonghornV1beta2().RecurringJobs(namespace).Create(context.TODO(), job, metav1.CreateOptions{})
+	obj, err := lhClient.LonghornV1beta2().RecurringJobs(namespace).Create(context.TODO(), job, metav1.CreateOptions{FieldValidation: metav1.FieldValidationStrict})
 	if err != nil {
 		return obj, err
 	}
@@ -794,7 +794,7 @@ func CreateAndUpdateRecurringJobInProvidedCache(namespace string, lhClient *lhcl
 
 // CreateAndUpdateBackingImageInProvidedCache creates a backingImage and saves it into the provided cached `resourceMap`. This method is not thread-safe.
 func CreateAndUpdateBackingImageInProvidedCache(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}, bid *longhorn.BackingImageDataSource) (*longhorn.BackingImageDataSource, error) {
-	obj, err := lhClient.LonghornV1beta2().BackingImageDataSources(namespace).Create(context.TODO(), bid, metav1.CreateOptions{})
+	obj, err := lhClient.LonghornV1beta2().BackingImageDataSources(namespace).Create(context.TODO(), bid, metav1.CreateOptions{FieldValidation: metav1.FieldValidationStrict})
 	if err != nil {
 		return obj, err
 	}
@@ -880,7 +880,7 @@ func updateNodes(namespace string, lhClient *lhclientset.Clientset, nodes map[st
 		}
 		if !reflect.DeepEqual(existingNode.Spec, node.Spec) ||
 			!reflect.DeepEqual(existingNode.ObjectMeta, node.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().Nodes(namespace).Update(context.TODO(), node, metav1.UpdateOptions{}); err != nil {
+			if _, err = lhClient.LonghornV1beta2().Nodes(namespace).Update(context.TODO(), node, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 				return err
 			}
 		}
@@ -900,7 +900,7 @@ func updateVolumes(namespace string, lhClient *lhclientset.Clientset, volumes ma
 		}
 		if !reflect.DeepEqual(existingVolume.Spec, volume.Spec) ||
 			!reflect.DeepEqual(existingVolume.ObjectMeta, volume.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().Volumes(namespace).Update(context.TODO(), volume, metav1.UpdateOptions{}); err != nil {
+			if _, err = lhClient.LonghornV1beta2().Volumes(namespace).Update(context.TODO(), volume, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 				return err
 			}
 		}
@@ -920,7 +920,7 @@ func updateReplicas(namespace string, lhClient *lhclientset.Clientset, replicas 
 		}
 		if !reflect.DeepEqual(existingReplica.Spec, replica.Spec) ||
 			!reflect.DeepEqual(existingReplica.ObjectMeta, replica.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().Replicas(namespace).Update(context.TODO(), replica, metav1.UpdateOptions{}); err != nil {
+			if _, err = lhClient.LonghornV1beta2().Replicas(namespace).Update(context.TODO(), replica, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 				return err
 			}
 		}
@@ -940,7 +940,7 @@ func updateEngines(namespace string, lhClient *lhclientset.Clientset, engines ma
 		}
 		if !reflect.DeepEqual(existingEngine.Spec, engine.Spec) ||
 			!reflect.DeepEqual(existingEngine.ObjectMeta, engine.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().Engines(namespace).Update(context.TODO(), engine, metav1.UpdateOptions{}); err != nil {
+			if _, err = lhClient.LonghornV1beta2().Engines(namespace).Update(context.TODO(), engine, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 				return err
 			}
 		}
@@ -960,7 +960,7 @@ func updateBackupTargets(namespace string, lhClient *lhclientset.Clientset, back
 		}
 		if !reflect.DeepEqual(existingBackupTarget.Spec, backupTarget.Spec) ||
 			!reflect.DeepEqual(existingBackupTarget.ObjectMeta, backupTarget.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().BackupTargets(namespace).Update(context.TODO(), backupTarget, metav1.UpdateOptions{}); err != nil {
+			if _, err = lhClient.LonghornV1beta2().BackupTargets(namespace).Update(context.TODO(), backupTarget, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 				return err
 			}
 		}
@@ -980,7 +980,7 @@ func updateBackupVolumes(namespace string, lhClient *lhclientset.Clientset, back
 		}
 		if !reflect.DeepEqual(existingBackupVolume.Spec, backupVolume.Spec) ||
 			!reflect.DeepEqual(existingBackupVolume.ObjectMeta, backupVolume.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().BackupVolumes(namespace).Update(context.TODO(), backupVolume, metav1.UpdateOptions{}); err != nil {
+			if _, err = lhClient.LonghornV1beta2().BackupVolumes(namespace).Update(context.TODO(), backupVolume, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 				return err
 			}
 		}
@@ -1001,7 +1001,7 @@ func updateBackups(namespace string, lhClient *lhclientset.Clientset, backups ma
 		}
 		if !reflect.DeepEqual(existingBackup.Spec, backup.Spec) ||
 			!reflect.DeepEqual(existingBackup.ObjectMeta, backup.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().Backups(namespace).Update(context.TODO(), backup, metav1.UpdateOptions{}); err != nil {
+			if _, err = lhClient.LonghornV1beta2().Backups(namespace).Update(context.TODO(), backup, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 				return err
 			}
 		}
@@ -1021,7 +1021,7 @@ func updateBackupBackingImages(namespace string, lhClient *lhclientset.Clientset
 		}
 		if !reflect.DeepEqual(existingBackupBackingImage.Spec, backupBackingImage.Spec) ||
 			!reflect.DeepEqual(existingBackupBackingImage.ObjectMeta, backupBackingImage.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().BackupBackingImages(namespace).Update(context.TODO(), backupBackingImage, metav1.UpdateOptions{}); err != nil {
+			if _, err = lhClient.LonghornV1beta2().BackupBackingImages(namespace).Update(context.TODO(), backupBackingImage, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 				return err
 			}
 		}
@@ -1041,7 +1041,7 @@ func updateBackingImageDataSources(namespace string, lhClient *lhclientset.Clien
 		}
 		if !reflect.DeepEqual(existingBackingImageDataSource.Spec, backingImageDataSource.Spec) ||
 			!reflect.DeepEqual(existingBackingImageDataSource.ObjectMeta, backingImageDataSource.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().BackingImageDataSources(namespace).Update(context.TODO(), backingImageDataSource, metav1.UpdateOptions{}); err != nil {
+			if _, err = lhClient.LonghornV1beta2().BackingImageDataSources(namespace).Update(context.TODO(), backingImageDataSource, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 				return err
 			}
 		}
@@ -1061,7 +1061,7 @@ func updateEngineImages(namespace string, lhClient *lhclientset.Clientset, engin
 		}
 		if !reflect.DeepEqual(existingEngineImage.Spec, engineImage.Spec) ||
 			!reflect.DeepEqual(existingEngineImage.ObjectMeta, engineImage.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().EngineImages(namespace).Update(context.TODO(), engineImage, metav1.UpdateOptions{}); err != nil {
+			if _, err = lhClient.LonghornV1beta2().EngineImages(namespace).Update(context.TODO(), engineImage, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 				return err
 			}
 		}
@@ -1081,7 +1081,7 @@ func updateInstanceManagers(namespace string, lhClient *lhclientset.Clientset, i
 		}
 		if !reflect.DeepEqual(existingInstanceManager.Spec, instanceManager.Spec) ||
 			!reflect.DeepEqual(existingInstanceManager.ObjectMeta, instanceManager.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().InstanceManagers(namespace).Update(context.TODO(), instanceManager, metav1.UpdateOptions{}); err != nil {
+			if _, err = lhClient.LonghornV1beta2().InstanceManagers(namespace).Update(context.TODO(), instanceManager, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 				return err
 			}
 		}
@@ -1101,7 +1101,7 @@ func updateShareManagers(namespace string, lhClient *lhclientset.Clientset, shar
 		}
 		if !reflect.DeepEqual(existingShareManager.Spec, shareManager.Spec) ||
 			!reflect.DeepEqual(existingShareManager.ObjectMeta, shareManager.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().ShareManagers(namespace).Update(context.TODO(), shareManager, metav1.UpdateOptions{}); err != nil {
+			if _, err = lhClient.LonghornV1beta2().ShareManagers(namespace).Update(context.TODO(), shareManager, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 				return err
 			}
 		}
@@ -1121,7 +1121,7 @@ func updateBackingImages(namespace string, lhClient *lhclientset.Clientset, back
 		}
 		if !reflect.DeepEqual(existingBackingImage.Spec, backingImage.Spec) ||
 			!reflect.DeepEqual(existingBackingImage.ObjectMeta, backingImage.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().BackingImages(namespace).Update(context.TODO(), backingImage, metav1.UpdateOptions{}); err != nil {
+			if _, err = lhClient.LonghornV1beta2().BackingImages(namespace).Update(context.TODO(), backingImage, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 				return err
 			}
 		}
@@ -1141,7 +1141,7 @@ func updateRecurringJobs(namespace string, lhClient *lhclientset.Clientset, recu
 		}
 		if !reflect.DeepEqual(existingRecurringJob.Spec, recurringJob.Spec) ||
 			!reflect.DeepEqual(existingRecurringJob.ObjectMeta, recurringJob.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().RecurringJobs(namespace).Update(context.TODO(), recurringJob, metav1.UpdateOptions{}); err != nil {
+			if _, err = lhClient.LonghornV1beta2().RecurringJobs(namespace).Update(context.TODO(), recurringJob, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 				return err
 			}
 		}
@@ -1166,12 +1166,12 @@ func updateSettings(namespace string, lhClient *lhclientset.Clientset, settings 
 				setting.Annotations = make(map[string]string)
 			}
 			setting.Annotations[types.GetLonghornLabelKey(types.UpdateSettingFromLonghorn)] = ""
-			setting, err = lhClient.LonghornV1beta2().Settings(namespace).Update(context.TODO(), setting, metav1.UpdateOptions{})
+			setting, err = lhClient.LonghornV1beta2().Settings(namespace).Update(context.TODO(), setting, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict})
 			if err != nil {
 				return err
 			}
 			delete(setting.Annotations, types.GetLonghornLabelKey(types.UpdateSettingFromLonghorn))
-			if _, err = lhClient.LonghornV1beta2().Settings(namespace).Update(context.TODO(), setting, metav1.UpdateOptions{}); err != nil {
+			if _, err = lhClient.LonghornV1beta2().Settings(namespace).Update(context.TODO(), setting, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 				return err
 			}
 		}
@@ -1192,7 +1192,7 @@ func updateSnapshots(namespace string, lhClient *lhclientset.Clientset, snapshot
 		}
 		if !reflect.DeepEqual(existingSnapshot.Spec, snapshot.Spec) ||
 			!reflect.DeepEqual(existingSnapshot.ObjectMeta, snapshot.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().Snapshots(namespace).Update(context.TODO(), snapshot, metav1.UpdateOptions{}); err != nil {
+			if _, err = lhClient.LonghornV1beta2().Snapshots(namespace).Update(context.TODO(), snapshot, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 				return err
 			}
 		}
@@ -1212,7 +1212,7 @@ func updateOrphans(namespace string, lhClient *lhclientset.Clientset, orphans ma
 		}
 		if !reflect.DeepEqual(existingOrphan.Spec, orphan.Spec) ||
 			!reflect.DeepEqual(existingOrphan.ObjectMeta, orphan.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().Orphans(namespace).Update(context.TODO(), orphan, metav1.UpdateOptions{}); err != nil {
+			if _, err = lhClient.LonghornV1beta2().Orphans(namespace).Update(context.TODO(), orphan, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 				return err
 			}
 		}
@@ -1232,7 +1232,7 @@ func updateSystemBackups(namespace string, lhClient *lhclientset.Clientset, syst
 		}
 		if !reflect.DeepEqual(existingSystemBackup.Spec, sb.Spec) ||
 			!reflect.DeepEqual(existingSystemBackup.ObjectMeta, sb.ObjectMeta) {
-			if _, err = lhClient.LonghornV1beta2().SystemBackups(namespace).Update(context.TODO(), sb, metav1.UpdateOptions{}); err != nil {
+			if _, err = lhClient.LonghornV1beta2().SystemBackups(namespace).Update(context.TODO(), sb, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 				return err
 			}
 		}
@@ -1254,12 +1254,12 @@ func createOrUpdateVolumeAttachments(namespace string, lhClient *lhclientset.Cli
 		if existingVolumeAttachment, ok := existingVolumeAttachmentMap[va.Name]; ok {
 			if !reflect.DeepEqual(existingVolumeAttachment.Spec, va.Spec) ||
 				!reflect.DeepEqual(existingVolumeAttachment.ObjectMeta, va.ObjectMeta) {
-				if _, err = lhClient.LonghornV1beta2().VolumeAttachments(namespace).Update(context.TODO(), va, metav1.UpdateOptions{}); err != nil {
+				if _, err = lhClient.LonghornV1beta2().VolumeAttachments(namespace).Update(context.TODO(), va, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 					return err
 				}
 			}
 		} else {
-			if _, err = lhClient.LonghornV1beta2().VolumeAttachments(namespace).Create(context.TODO(), va, metav1.CreateOptions{}); err != nil {
+			if _, err = lhClient.LonghornV1beta2().VolumeAttachments(namespace).Create(context.TODO(), va, metav1.CreateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 				return err
 			}
 		}
@@ -1309,7 +1309,7 @@ func updateNodesStatus(namespace string, lhClient *lhclientset.Clientset, nodes 
 			continue
 		}
 		if !reflect.DeepEqual(existingNode.Status, node.Status) {
-			if _, err = lhClient.LonghornV1beta2().Nodes(namespace).UpdateStatus(context.TODO(), node, metav1.UpdateOptions{}); err != nil {
+			if _, err = lhClient.LonghornV1beta2().Nodes(namespace).UpdateStatus(context.TODO(), node, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 				return err
 			}
 		}
@@ -1328,7 +1328,7 @@ func updateEngineImageStatus(namespace string, lhClient *lhclientset.Clientset, 
 			continue
 		}
 
-		if _, err = lhClient.LonghornV1beta2().EngineImages(namespace).UpdateStatus(context.TODO(), ei, metav1.UpdateOptions{}); err != nil {
+		if _, err = lhClient.LonghornV1beta2().EngineImages(namespace).UpdateStatus(context.TODO(), ei, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 			return err
 		}
 	}
@@ -1346,7 +1346,7 @@ func updateEngineStatus(namespace string, lhClient *lhclientset.Clientset, engin
 			continue
 		}
 
-		if _, err = lhClient.LonghornV1beta2().Engines(namespace).UpdateStatus(context.TODO(), engine, metav1.UpdateOptions{}); err != nil {
+		if _, err = lhClient.LonghornV1beta2().Engines(namespace).UpdateStatus(context.TODO(), engine, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 			return err
 		}
 	}
@@ -1364,7 +1364,7 @@ func updateSettingStatus(namespace string, lhClient *lhclientset.Clientset, sett
 			continue
 		}
 
-		if _, err = lhClient.LonghornV1beta2().Settings(namespace).UpdateStatus(context.TODO(), setting, metav1.UpdateOptions{}); err != nil {
+		if _, err = lhClient.LonghornV1beta2().Settings(namespace).UpdateStatus(context.TODO(), setting, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 			return err
 		}
 	}
@@ -1382,7 +1382,7 @@ func updateBackupStatus(namespace string, lhClient *lhclientset.Clientset, backu
 			continue
 		}
 
-		if _, err = lhClient.LonghornV1beta2().Backups(namespace).UpdateStatus(context.TODO(), backup, metav1.UpdateOptions{}); err != nil {
+		if _, err = lhClient.LonghornV1beta2().Backups(namespace).UpdateStatus(context.TODO(), backup, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 			return err
 		}
 	}
@@ -1400,7 +1400,7 @@ func updateBackingImageStatus(namespace string, lhClient *lhclientset.Clientset,
 			continue
 		}
 
-		if _, err = lhClient.LonghornV1beta2().BackingImages(namespace).UpdateStatus(context.TODO(), bi, metav1.UpdateOptions{}); err != nil {
+		if _, err = lhClient.LonghornV1beta2().BackingImages(namespace).UpdateStatus(context.TODO(), bi, metav1.UpdateOptions{FieldValidation: metav1.FieldValidationStrict}); err != nil {
 			return err
 		}
 	}
