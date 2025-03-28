@@ -499,6 +499,24 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		return nil
 	}
 
+	defer func() {
+		// If the backup is in the final state, delete the snapshot if needed
+		if _, ok := backupInfo.Labels[types.RecurringJobLabel]; ok {
+			// leave the snapshot management for recurring jobs to the `SettingNameAutoCleanupRecurringJobBackupSnapshot` setting.
+			return
+		}
+
+		cleaupupSnap, err := bc.ds.GetSettingAsBool(types.SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted)
+		if err != nil {
+			log.WithError(err).Errorf("Failed to get the setting %v", types.SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted)
+		}
+		if cleaupupSnap && backup.Spec.SnapshotName != "" {
+			if err := bc.ds.DeleteSnapshot(backup.Spec.SnapshotName); err != nil {
+				log.WithError(err).Error("Failed to delete the snapshot")
+			}
+		}
+	}()
+
 	// Remove the Backup Volume recurring jobs/groups information.
 	// Only record the latest recurring jobs/groups information in backup volume CR and volume.cfg on remote backup target.
 	delete(backupInfo.Labels, types.VolumeRecurringJobInfoLabel)
