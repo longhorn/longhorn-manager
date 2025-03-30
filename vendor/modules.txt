@@ -258,7 +258,7 @@ github.com/longhorn/go-iscsi-helper/iscsidev
 github.com/longhorn/go-iscsi-helper/longhorndev
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.0.2-0.20250317050445-36b195dfc91f
+# github.com/longhorn/go-spdk-helper v0.0.2-0.20250323153743-04304276ed8b
 ## explicit; go 1.23.0
 github.com/longhorn/go-spdk-helper/pkg/types
 # github.com/longhorn/longhorn-engine v1.9.0-dev-20250223.0.20250225091521-921f63f3a87d
@@ -361,8 +361,8 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/rancher/dynamiclistener v0.6.1
-## explicit; go 1.22.0
+# github.com/rancher/dynamiclistener v0.6.2
+## explicit; go 1.23.0
 github.com/rancher/dynamiclistener
 github.com/rancher/dynamiclistener/cert
 github.com/rancher/dynamiclistener/factory
@@ -720,8 +720,8 @@ google.golang.org/grpc/serviceconfig
 google.golang.org/grpc/stats
 google.golang.org/grpc/status
 google.golang.org/grpc/tap
-# google.golang.org/protobuf v1.36.5
-## explicit; go 1.21
+# google.golang.org/protobuf v1.36.6
+## explicit; go 1.22
 google.golang.org/protobuf/encoding/protodelim
 google.golang.org/protobuf/encoding/protojson
 google.golang.org/protobuf/encoding/prototext
@@ -1589,7 +1589,7 @@ sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client/metrics
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/common/metrics
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client/proto/client
-# sigs.k8s.io/controller-runtime v0.20.3
+# sigs.k8s.io/controller-runtime v0.20.4
 ## explicit; go 1.23.0
 sigs.k8s.io/controller-runtime/pkg/conversion
 # sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8
