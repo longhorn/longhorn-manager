@@ -499,6 +499,27 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		return nil
 	}
 
+	defer func() {
+		// If the backup is in the final state, delete the snapshot if needed
+		if _, ok := backupInfo.Labels[types.RecurringJobLabel]; ok {
+			// leave the snapshot management for recurring jobs to the `SettingNameAutoCleanupRecurringJobBackupSnapshot` setting.
+			return
+		}
+
+		cleanupSnap, err := bc.ds.GetSettingAsBool(types.SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted)
+		if err != nil {
+			log.WithError(err).Errorf("Failed to get the setting %v", types.SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted)
+			return
+		}
+		if cleanupSnap && backup.Spec.SnapshotName != "" {
+			if errDel := bc.ds.DeleteSnapshot(backup.Spec.SnapshotName); errDel != nil && !apierrors.IsNotFound(errDel) {
+				err = errDel
+				log.WithError(err).Error("Failed to delete the snapshot")
+				return
+			}
+		}
+	}()
+
 	// Remove the Backup Volume recurring jobs/groups information.
 	// Only record the latest recurring jobs/groups information in backup volume CR and volume.cfg on remote backup target.
 	delete(backupInfo.Labels, types.VolumeRecurringJobInfoLabel)
@@ -521,7 +542,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 	backup.Status.LastSyncedAt = syncTime
 	backup.Status.NewlyUploadedDataSize = backupInfo.NewlyUploadedDataSize
 	backup.Status.ReUploadedDataSize = backupInfo.ReUploadedDataSize
-	return nil
+	return err
 }
 
 // handleAttachmentTicketDeletion check and delete attachment so that the source volume is detached if needed
