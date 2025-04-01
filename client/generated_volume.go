@@ -63,6 +63,8 @@ type Volume struct {
 
 	NumberOfReplicas int64 `json:"numberOfReplicas,omitempty" yaml:"number_of_replicas,omitempty"`
 
+	OfflineRebuild bool `json:"offlineRebuild,omitempty" yaml:"offline_rebuild,omitempty"`
+
 	PurgeStatus []PurgeStatus `json:"purgeStatus,omitempty" yaml:"purge_status,omitempty"`
 
 	Ready bool `json:"ready,omitempty" yaml:"ready,omitempty"`
@@ -138,6 +140,10 @@ type VolumeOperations interface {
 	ActionAttach(*Volume, *AttachInput) (*Volume, error)
 
 	ActionCancelExpansion(*Volume) (*Volume, error)
+
+	ActionOfflineRebuilding(*Volume) (*Volume, error)
+
+	ActionCancelOfflineRebuilding(*Volume) (*Volume, error)
 
 	ActionDetach(*Volume, *DetachInput) (*Volume, error)
 
@@ -257,6 +263,24 @@ func (c *VolumeClient) ActionCancelExpansion(resource *Volume) (*Volume, error) 
 	resp := &Volume{}
 
 	err := c.rancherClient.doAction(VOLUME_TYPE, "cancelExpansion", &resource.Resource, nil, resp)
+
+	return resp, err
+}
+
+func (c *VolumeClient) ActionOfflineRebuilding(resource *Volume) (*Volume, error) {
+
+	resp := &Volume{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "offlineRebuilding", &resource.Resource, nil, resp)
+
+	return resp, err
+}
+
+func (c *VolumeClient) ActionCancelOfflineRebuilding(resource *Volume) (*Volume, error) {
+
+	resp := &Volume{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "cancelOfflineRebuilding", &resource.Resource, nil, resp)
 
 	return resp, err
 }

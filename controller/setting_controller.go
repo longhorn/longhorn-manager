@@ -256,6 +256,10 @@ func (sc *SettingController) syncNonDangerZoneSettingsForManagedComponents(setti
 		if err := sc.syncDefaultLonghornStaticStorageClass(); err != nil {
 			return err
 		}
+	case types.SettingNameOfflineReplicaRebuilding:
+		if err := sc.updateVolumesOffileReplicaRebuilding(); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -894,6 +898,53 @@ func (sc *SettingController) syncDefaultLonghornStaticStorageClass() error {
 	}
 
 	return err
+}
+
+func (sc *SettingController) updateVolumesOffileReplicaRebuilding() error {
+	offlineRebuildFlag, err := sc.ds.GetSettingAsBool(types.SettingNameOfflineReplicaRebuilding)
+	if err != nil {
+		return err
+	}
+
+	vs, err := sc.ds.ListVolumes()
+	if err != nil {
+		return err
+	}
+
+	if offlineRebuildFlag {
+		readyNodes, err := sc.ds.ListReadyAndSchedulableNodesRO()
+		if err != nil {
+			return err
+		}
+		for _, vol := range vs {
+			if vol.Status.State != longhorn.VolumeStateDetached {
+				continue
+			}
+			replicas, err := sc.ds.ListVolumeReplicasRO(vol.Name)
+			if err != nil {
+				return err
+			}
+			if isReplicaHealthyCountNotEnough(vol, replicas, len(readyNodes)) {
+				vol.Spec.OfflineRebuild = true
+				if _, err := sc.ds.UpdateVolume(vol); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+
+	for _, vol := range vs {
+		if !vol.Spec.OfflineRebuild {
+			continue
+		}
+		vol.Spec.OfflineRebuild = false
+		if _, err := sc.ds.UpdateVolume(vol); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // updateDataEngine deletes the corresponding instance manager pods immediately if the data engine setting is disabled.
