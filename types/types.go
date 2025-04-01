@@ -1208,9 +1208,8 @@ func ValidateCPUReservationValues(settingName SettingName, instanceManagerCPUStr
 	switch settingName {
 	case SettingNameGuaranteedInstanceManagerCPU, SettingNameV2DataEngineGuaranteedInstanceManagerCPU:
 		isUnderLimit := instanceManagerCPU < valueIntRange[ValueIntRangeMinimum]
-		isOverLimit := instanceManagerCPU > valueIntRange[ValueIntRangeMaximum]
-		if isUnderLimit || isOverLimit {
-			return fmt.Errorf("invalid requested instance manager CPUs. Valid instance manager CPU range between %v - %v millicpu", valueIntRange[ValueIntRangeMinimum], valueIntRange[ValueIntRangeMaximum])
+		if isUnderLimit {
+			return fmt.Errorf("invalid requested instance manager CPUs. Valid instance manager CPU range is larger than %v millicpu", valueIntRange[ValueIntRangeMinimum])
 		}
 	}
 	return nil
