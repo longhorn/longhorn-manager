@@ -21,6 +21,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -73,6 +74,17 @@ func NewVolumeRebuildingController(
 	}
 	vbc.cacheSyncs = append(vbc.cacheSyncs, ds.VolumeInformer.HasSynced)
 
+	if _, err = ds.SettingInformer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+		FilterFunc: isSettingRelatedToOffLineRebuilding,
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc:    vbc.enqueueSettingChange,
+			UpdateFunc: func(old, cur interface{}) { vbc.enqueueSettingChange(cur) },
+		},
+	}, 0); err != nil {
+		return nil, err
+	}
+	vbc.cacheSyncs = append(vbc.cacheSyncs, ds.SettingInformer.HasSynced)
+
 	return vbc, nil
 }
 
@@ -94,6 +106,64 @@ func (vbc *VolumeRebuildingController) enqueueVolumeAfter(obj interface{}, durat
 	}
 
 	vbc.queue.AddAfter(key, duration)
+}
+
+func isSettingRelatedToOffLineRebuilding(obj interface{}) bool {
+	setting, ok := obj.(*longhorn.Setting)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			return false
+		}
+
+		// use the last known state, to enqueue, dependent objects
+		setting, ok = deletedState.Obj.(*longhorn.Setting)
+		if !ok {
+			return false
+		}
+	}
+
+	return setting.Name == string(types.SettingNameOfflineReplicaRebuilding)
+}
+
+func (vbc *VolumeRebuildingController) enqueueSettingChange(obj interface{}) {
+	_, ok := obj.(*longhorn.Setting)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+
+		// use the last known state, to requeue the claimed volumes
+		_, ok = deletedState.Obj.(*longhorn.Setting)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained non Setting object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	offlineRebuildFlag, err := vbc.ds.GetSettingAsBool(types.SettingNameOfflineReplicaRebuilding)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to get setting %v: %v", types.SettingNameOfflineReplicaRebuilding, err))
+		return
+	}
+
+	vs, err := vbc.ds.ListVolumesRO()
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to list volumes: %v", err))
+		return
+	}
+
+	for _, v := range vs {
+		if offlineRebuildFlag && v.Status.State != longhorn.VolumeStateDetached {
+			continue
+		}
+		if !offlineRebuildFlag && v.Status.State != longhorn.VolumeStateAttached {
+			continue
+		}
+		vbc.enqueueVolume(v)
+	}
 }
 
 func (vbc *VolumeRebuildingController) Run(workers int, stopCh <-chan struct{}) {
@@ -190,12 +260,117 @@ func (vbc *VolumeRebuildingController) reconcile(volName string) (err error) {
 			return
 		}
 	}()
+	existingVol := vol.DeepCopy()
+	defer func() {
+		if err != nil {
+			return
+		}
+		if reflect.DeepEqual(existingVol.Spec, vol.Spec) {
+			return
+		}
+
+		if _, err = vbc.ds.UpdateVolume(vol); err != nil {
+			return
+		}
+	}()
 
 	rebuildingAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeRebuildingController, volName)
+	csiTicketExists := checkIfCSIAttachmentTicketExists(va)
+	if vol.Spec.OfflineRebuild && vol.Status.Robustness != longhorn.VolumeRobustnessFaulted && !csiTicketExists {
+		readyNodes, err := vbc.ds.ListReadyAndSchedulableNodesRO()
+		if err != nil {
+			return err
+		}
+		if vol.Status.State == longhorn.VolumeStateDetached {
+			va, err = vbc.updateVAIfRebuildingNeed(vol, va, rebuildingAttachmentTicketID, len(readyNodes))
+			if err != nil {
+				return err
+			}
+			return nil
+		}
+		if vol.Status.State == longhorn.VolumeStateAttaching {
+			return nil
+		}
 
+		isVolumeInRebuilding, err := vbc.checkifVolumeInRebuilding(vol, len(readyNodes))
+		if err != nil {
+			return err
+		}
+		if isVolumeInRebuilding {
+			return nil
+		}
+	}
+
+	if vol.Spec.OfflineRebuild && vol.Status.Robustness == longhorn.VolumeRobustnessFaulted {
+		warnMsg := fmt.Sprintf("Volume %v is faulted, skip rebuilding", volName)
+		vbc.logger.Info(warnMsg)
+		vbc.eventRecorder.Event(vol, corev1.EventTypeWarning, constant.EventReasonCanceledOfflineRebuild, warnMsg)
+	}
+
+	vol.Spec.OfflineRebuild = false
 	delete(va.Spec.AttachmentTickets, rebuildingAttachmentTicketID)
-
 	return nil
+}
+
+func (vbc *VolumeRebuildingController) updateVAIfRebuildingNeed(vol *longhorn.Volume, va *longhorn.VolumeAttachment, attachmentID string, readyNodeCount int) (*longhorn.VolumeAttachment, error) {
+	replicas, err := vbc.ds.ListVolumeReplicasRO(vol.Name)
+	if err != nil {
+		return va, err
+	}
+	if isReplicaHealthyCountNotEnough(vol, replicas, readyNodeCount) {
+		createOrUpdateAttachmentTicket(va, attachmentID, vol.Status.OwnerID, longhorn.AnyValue, longhorn.AttacherTypeVolumeRebuildingController)
+	}
+	return va, nil
+}
+
+func isReplicaHealthyCountNotEnough(vol *longhorn.Volume, replicas map[string]*longhorn.Replica, readyNodeCount int) bool {
+	healthyCount := 0
+	for _, replica := range replicas {
+		if replica.Spec.FailedAt == "" && replica.Spec.HealthyAt != "" {
+			healthyCount++
+		}
+	}
+
+	return healthyCount < vol.Spec.NumberOfReplicas && healthyCount < readyNodeCount
+}
+
+func (vbc *VolumeRebuildingController) checkifVolumeInRebuilding(vol *longhorn.Volume, readyNodeCount int) (bool, error) {
+	engines, err := vbc.ds.ListVolumeEngines(vol.Name)
+	if err != nil {
+		return false, err
+	}
+	engine, err := vbc.ds.PickVolumeCurrentEngine(vol, engines)
+	if err != nil {
+		return false, err
+	}
+	if engine == nil || engine.Status.ReplicaModeMap == nil {
+		return true, nil
+	}
+
+	healthyCount := 0
+	for _, mode := range engine.Status.ReplicaModeMap {
+		if mode == longhorn.ReplicaModeRW {
+			healthyCount++
+		}
+	}
+
+	if healthyCount < vol.Spec.NumberOfReplicas && healthyCount < readyNodeCount {
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func checkIfCSIAttachmentTicketExists(va *longhorn.VolumeAttachment) bool {
+	if va != nil && len(va.Spec.AttachmentTickets) > 0 {
+		for _, ticket := range va.Spec.AttachmentTickets {
+			if ticket.Type == longhorn.AttacherTypeCSIAttacher {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func (vbc *VolumeRebuildingController) isResponsibleFor(vol *longhorn.Volume) bool {

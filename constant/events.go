@@ -33,6 +33,8 @@ const (
 	EventReasonSucceededExpansion = "SucceededExpansion"
 	EventReasonCanceledExpansion  = "CanceledExpansion"
 
+	EventReasonCanceledOfflineRebuild = "CanceledOfflineRebuild"
+
 	EventReasonAttached = "Attached"
 	EventReasonDetached = "Detached"
 	EventReasonHealthy  = "Healthy"
