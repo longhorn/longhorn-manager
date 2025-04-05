@@ -135,6 +135,7 @@ const (
 	SettingNameV2DataEngineLogLevel                                     = SettingName("v2-data-engine-log-level")
 	SettingNameV2DataEngineLogFlags                                     = SettingName("v2-data-engine-log-flags")
 	SettingNameV2DataEngineFastReplicaRebuilding                        = SettingName("v2-data-engine-fast-replica-rebuilding")
+	SettingNameV2DataEngineSnapshotDataIntegrity                        = SettingName("v2-data-engine-snapshot-data-integrity")
 	SettingNameFreezeFilesystemForSnapshot                              = SettingName("freeze-filesystem-for-snapshot")
 	SettingNameAutoCleanupSnapshotWhenDeleteBackup                      = SettingName("auto-cleanup-when-delete-backup")
 	SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted          = SettingName("auto-cleanup-snapshot-after-on-demand-backup-completed")
@@ -231,6 +232,7 @@ var (
 		SettingNameV2DataEngineLogLevel,
 		SettingNameV2DataEngineLogFlags,
 		SettingNameV2DataEngineFastReplicaRebuilding,
+		SettingNameV2DataEngineSnapshotDataIntegrity,
 		SettingNameReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume,
@@ -353,6 +355,7 @@ var (
 		SettingNameV2DataEngineLogLevel:                                     SettingDefinitionV2DataEngineLogLevel,
 		SettingNameV2DataEngineLogFlags:                                     SettingDefinitionV2DataEngineLogFlags,
 		SettingNameV2DataEngineFastReplicaRebuilding:                        SettingDefinitionV2DataEngineFastReplicaRebuilding,
+		SettingNameV2DataEngineSnapshotDataIntegrity:                        SettingDefinitionV2DataEngineSnapshotDataIntegrity,
 		SettingNameReplicaDiskSoftAntiAffinity:                              SettingDefinitionReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume:                             SettingDefinitionAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume:                             SettingDefinitionAllowEmptyDiskSelectorVolume,
@@ -1470,6 +1473,23 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "false",
+	}
+
+	SettingDefinitionV2DataEngineSnapshotDataIntegrity = SettingDefinition{
+		DisplayName: "V2 Data Engine Snapshot Data Integrity",
+		Description: "This setting allows users to enable or disable snapshot hashing and data integrity checking for v2 data engine. \n\n" +
+			"Available options are: \n\n" +
+			"- **disabled**: Disable snapshot logical volume data hashing and data integrity checking. \n\n" +
+			"- **fast-check**: Enable snapshot logical volume data hashing and fast data integrity checking. Longhorn system only hashes snapshot that are not hashed. In this mode, filesystem-unaware corruption cannot be detected, but the impact on system performance can be minimized.",
+		Category: SettingCategoryV2DataEngine,
+		Type:     SettingTypeString,
+		Required: true,
+		ReadOnly: false,
+		Default:  string(longhorn.SnapshotDataIntegrityFastCheck),
+		Choices: []string{
+			string(longhorn.SnapshotDataIntegrityDisabled),
+			string(longhorn.SnapshotDataIntegrityFastCheck),
+		},
 	}
 
 	SettingDefinitionAutoCleanupSnapshotWhenDeleteBackup = SettingDefinition{
