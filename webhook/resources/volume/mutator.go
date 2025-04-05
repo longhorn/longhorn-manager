@@ -250,9 +250,6 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 
 	// TODO: Remove the mutations below after they are implemented for SPDK volumes
 	if types.IsDataEngineV2(volume.Spec.DataEngine) {
-		if volume.Spec.SnapshotDataIntegrity != longhorn.SnapshotDataIntegrityDisabled {
-			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/snapshotDataIntegrity", "value": "%s"}`, longhorn.SnapshotDataIntegrityDisabled))
-		}
 		if volume.Spec.ReplicaAutoBalance != longhorn.ReplicaAutoBalanceDisabled {
 			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaAutoBalance", "value": "%s"}`, longhorn.ReplicaAutoBalanceIgnored))
 		}
