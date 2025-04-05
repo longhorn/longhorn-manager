@@ -599,9 +599,20 @@ func (m *SnapshotMonitor) getSnapshotDataIntegrity(volumeName string) (longhorn.
 		return volume.Spec.SnapshotDataIntegrity, nil
 	}
 
-	dataIntegrity, err := m.ds.GetSettingValueExisted(types.SettingNameSnapshotDataIntegrity)
-	if err != nil {
-		return "", errors.Wrapf(err, "failed to assert %v value", types.SettingNameSnapshotDataIntegrity)
+	var dataIntegrity string
+	switch volume.Spec.DataEngine {
+	case longhorn.DataEngineTypeV1:
+		dataIntegrity, err = m.ds.GetSettingValueExisted(types.SettingNameSnapshotDataIntegrity)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to assert %v value", types.SettingNameSnapshotDataIntegrity)
+		}
+	case longhorn.DataEngineTypeV2:
+		dataIntegrity, err = m.ds.GetSettingValueExisted(types.SettingNameV2DataEngineSnapshotDataIntegrity)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to assert %v value", types.SettingNameV2DataEngineSnapshotDataIntegrity)
+		}
+	default:
+		return "", fmt.Errorf("unknown data engine type %v for snapshot data integrity get", volume.Spec.DataEngine)
 	}
 
 	return longhorn.SnapshotDataIntegrity(dataIntegrity), nil
