@@ -3,12 +3,12 @@ package types
 import (
 	"bufio"
 	"fmt"
-	"github.com/sirupsen/logrus"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	lhtypes "github.com/longhorn/go-common-libs/types"
 )
