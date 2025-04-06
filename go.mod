@@ -2,7 +2,7 @@ module github.com/longhorn/longhorn-manager
 
 go 1.23.1
 
-toolchain go1.24.1
+toolchain go1.24.2
 
 // Replace directives are required for dependencies in this section because:
 // - This module imports k8s.io/kubernetes.
@@ -63,10 +63,10 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.21.0
 	github.com/longhorn/backing-image-manager v1.8.1
-	github.com/longhorn/backupstore v0.0.0-20250315040513-2fb98aebc16a
-	github.com/longhorn/go-common-libs v0.0.0-20250319033109-764d1dea35f3
-	github.com/longhorn/go-iscsi-helper v0.0.0-20250111093313-7e1930499625
-	github.com/longhorn/go-spdk-helper v0.0.2-0.20250323153743-04304276ed8b
+	github.com/longhorn/backupstore v0.0.0-20250331142654-de3610ff9c89
+	github.com/longhorn/go-common-libs v0.0.0-20250401013213-15c69217876e
+	github.com/longhorn/go-iscsi-helper v0.0.0-20250401083635-4aa07fb05716
+	github.com/longhorn/go-spdk-helper v0.0.2-0.20250402013425-f54098d7face
 	github.com/longhorn/longhorn-engine v1.9.0-dev-20250223.0.20250225091521-921f63f3a87d
 	github.com/longhorn/longhorn-instance-manager v1.9.0-dev-20250309.0.20250313063805-e9308657287f
 	github.com/longhorn/longhorn-share-manager v1.8.1
@@ -83,7 +83,7 @@ require (
 	golang.org/x/net v0.38.0
 	golang.org/x/sys v0.31.0
 	golang.org/x/time v0.11.0
-	google.golang.org/grpc v1.71.0
+	google.golang.org/grpc v1.71.1
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.32.3

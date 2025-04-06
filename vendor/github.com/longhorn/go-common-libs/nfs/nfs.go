@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	"github.com/longhorn/go-common-libs/types"
 )
@@ -63,7 +64,11 @@ func getSystemNFSMountConfigMap(configDir string) (map[string]map[string]string,
 	if err != nil {
 		return nil, err
 	}
-	defer configFile.Close()
+	defer func() {
+		if errClose := configFile.Close(); errClose != nil {
+			logrus.WithError(errClose).Errorf("Failed to close config file %s", configFilePath)
+		}
+	}()
 
 	configMap := make(map[string]map[string]string)
 	scanner := bufio.NewScanner(configFile)
