@@ -106,9 +106,9 @@ func recurringJob(c *cli.Context) (err error) {
 		return nil
 	}
 
-	var jobGroups []string = recurringJob.Spec.Groups
-	var jobRetain int = recurringJob.Spec.Retain
-	var jobConcurrent int = recurringJob.Spec.Concurrency
+	jobGroups := recurringJob.Spec.Groups
+	jobRetain := recurringJob.Spec.Retain
+	jobConcurrent := recurringJob.Spec.Concurrency
 	jobTask := recurringJob.Spec.Task
 
 	recurringJob.Status.ExecutionCount += 1

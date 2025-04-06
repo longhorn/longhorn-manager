@@ -4298,7 +4298,8 @@ func (c *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Volu
 			continue
 		}
 		dataPath := types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName)
-		if r.Spec.EngineName == currentEngine.Name {
+		switch r.Spec.EngineName {
+		case currentEngine.Name:
 			switch currentEngine.Status.ReplicaModeMap[r.Name] {
 			case longhorn.ReplicaModeWO:
 				log.Infof("Need to revert rather than starting migration since the current replica %v is mode WriteOnly, which means the rebuilding is in progress", r.Name)
@@ -4314,9 +4315,9 @@ func (c *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Volu
 			default:
 				log.Warnf("Unexpected mode %v for the current replica %v, will ignore it and continue migration", currentEngine.Status.ReplicaModeMap[r.Name], r.Name)
 			}
-		} else if r.Spec.EngineName == migrationEngine.Name {
+		case migrationEngine.Name:
 			migrationReplicas[dataPath] = r
-		} else {
+		default:
 			log.Warnf("During migration found unknown replica with engine %v, will directly remove it", r.Spec.EngineName)
 			if err := c.deleteReplica(r, rs); err != nil {
 				return false, false, err
