@@ -69,7 +69,7 @@ func (p *Proxy) SnapshotPurge(e *longhorn.Engine) (err error) {
 	}
 
 	if util.IsVolumeMigrating(v) {
-		return errors.Wrapf(err, "failed to start snapshot purge for engine %v and volume %v because the volume is migrating", e.Name, e.Spec.VolumeName)
+		return errors.Errorf("failed to start snapshot purge for engine %v and volume %v because the volume is migrating", e.Name, e.Spec.VolumeName)
 	}
 
 	return p.grpcClient.SnapshotPurge(string(e.Spec.DataEngine), e.Name, e.Spec.VolumeName, p.DirectToURL(e),
