@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	DefaulCmdTimeout = time.Minute * 30 // 30 minutes by default
+	DefaulCmdTimeout = time.Minute * 3 // 3 minutes by default
 
 	GRPCHealthProbe = "/usr/local/bin/grpc_health_probe"
 )
