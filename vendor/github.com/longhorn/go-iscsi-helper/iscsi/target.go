@@ -17,8 +17,9 @@ import (
 )
 
 var (
-	TgtdRetryCounts   = 5
-	TgtdRetryInterval = 1 * time.Second
+	TgtdRetryCounts           = 5
+	TgtdRetryInterval         = 1 * time.Second
+	ScsiTargetExtendedTimeout = lhtypes.ExecuteDefaultTimeout * 20
 )
 
 const (
@@ -40,7 +41,7 @@ func CreateTarget(tid int, name string) error {
 		"--tid", strconv.Itoa(tid),
 		"-T", name,
 	}
-	_, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, lhtypes.ExecuteDefaultTimeout)
+	_, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, ScsiTargetExtendedTimeout)
 	return err
 }
 
@@ -52,7 +53,7 @@ func DeleteTarget(tid int) error {
 		"--mode", "target",
 		"--tid", strconv.Itoa(tid),
 	}
-	_, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, lhtypes.ExecuteDefaultTimeout)
+	_, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, ScsiTargetExtendedTimeout)
 	return err
 }
 
@@ -67,7 +68,7 @@ func AddLunBackedByFile(tid int, lun int, backingFile string) error {
 		"--lun", strconv.Itoa(lun),
 		"-b", backingFile,
 	}
-	_, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, lhtypes.ExecuteDefaultTimeout)
+	_, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, ScsiTargetExtendedTimeout)
 	return err
 }
 
@@ -89,7 +90,7 @@ func AddLun(tid int, lun int, backingFile string, bstype string, bsopts string) 
 	if bsopts != "" {
 		opts = append(opts, "--bsopts", bsopts)
 	}
-	_, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, lhtypes.ExecuteDefaultTimeout)
+	_, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, ScsiTargetExtendedTimeout)
 	return err
 }
 
@@ -109,7 +110,7 @@ func UpdateLun(tid int, lun int, params map[string]string) error {
 		}
 		opts = append(opts, "--params", strings.TrimSuffix(paramStr, ","))
 	}
-	_, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, lhtypes.ExecuteDefaultTimeout)
+	_, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, ScsiTargetExtendedTimeout)
 	return err
 }
 
@@ -136,7 +137,7 @@ func DeleteLun(tid int, lun int) error {
 		"--tid", strconv.Itoa(tid),
 		"--lun", strconv.Itoa(lun),
 	}
-	_, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, lhtypes.ExecuteDefaultTimeout)
+	_, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, ScsiTargetExtendedTimeout)
 	return err
 }
 
@@ -151,7 +152,7 @@ func ExpandLun(tid, lun int, size int64) error {
 		"--lun", strconv.Itoa(lun),
 		"--params", fmt.Sprintf("bsopts=size=%d", size),
 	}
-	_, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, lhtypes.ExecuteDefaultTimeout)
+	_, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, ScsiTargetExtendedTimeout)
 	return err
 }
 
@@ -165,7 +166,7 @@ func BindInitiator(tid int, initiator string) error {
 		"--tid", strconv.Itoa(tid),
 		"-I", initiator,
 	}
-	_, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, lhtypes.ExecuteDefaultTimeout)
+	_, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, ScsiTargetExtendedTimeout)
 	return err
 }
 
@@ -179,7 +180,7 @@ func UnbindInitiator(tid int, initiator string) error {
 		"--tid", strconv.Itoa(tid),
 		"-I", initiator,
 	}
-	_, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, lhtypes.ExecuteDefaultTimeout)
+	_, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, ScsiTargetExtendedTimeout)
 	return err
 }
 
@@ -241,7 +242,7 @@ func CheckTargetForBackingStore(name string) bool {
 		"--op", "show",
 		"--mode", "system",
 	}
-	output, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, lhtypes.ExecuteDefaultTimeout)
+	output, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, ScsiTargetExtendedTimeout)
 	if err != nil {
 		return false
 	}
@@ -256,7 +257,7 @@ func GetTargetTid(name string) (int, error) {
 		"--op", "show",
 		"--mode", "target",
 	}
-	output, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, lhtypes.ExecuteDefaultTimeout)
+	output, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, ScsiTargetExtendedTimeout)
 	if err != nil {
 		return -1, err
 	}
@@ -286,7 +287,7 @@ func GetTargetTid(name string) (int, error) {
 func ShutdownTgtd() error {
 	// Step 1: Show all targets
 	showOpts := []string{"--op", "show", "--mode", "target"}
-	output, err := lhexec.NewExecutor().Execute(nil, tgtBinary, showOpts, lhtypes.ExecuteDefaultTimeout)
+	output, err := lhexec.NewExecutor().Execute(nil, tgtBinary, showOpts, ScsiTargetExtendedTimeout)
 	if err != nil {
 
 		return fmt.Errorf("failed to show targets: %v", err)
@@ -312,7 +313,7 @@ func ShutdownTgtd() error {
 	// Step 3: Delete each target
 	for _, tid := range targetIDs {
 		deleteOpts := []string{"--op", "delete", "--mode", "target", "--tid", tid}
-		_, err := lhexec.NewExecutor().Execute(nil, tgtBinary, deleteOpts, lhtypes.ExecuteDefaultTimeout)
+		_, err := lhexec.NewExecutor().Execute(nil, tgtBinary, deleteOpts, ScsiTargetExtendedTimeout)
 		if err != nil {
 			return errors.Wrapf(err, "failed to delete target %s", tid)
 		}
@@ -328,7 +329,7 @@ func GetTargetConnections(tid int) (map[string][]string, error) {
 		"--mode", "conn",
 		"--tid", strconv.Itoa(tid),
 	}
-	output, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, lhtypes.ExecuteDefaultTimeout)
+	output, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, ScsiTargetExtendedTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -391,7 +392,7 @@ func CloseConnection(tid int, sid, cid string) error {
 		"--sid", sid,
 		"--cid", cid,
 	}
-	_, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, lhtypes.ExecuteDefaultTimeout)
+	_, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, ScsiTargetExtendedTimeout)
 	return err
 }
 
@@ -402,7 +403,7 @@ func FindNextAvailableTargetID() (int, error) {
 		"--op", "show",
 		"--mode", "target",
 	}
-	output, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, lhtypes.ExecuteDefaultTimeout)
+	output, err := lhexec.NewExecutor().Execute(nil, tgtBinary, opts, ScsiTargetExtendedTimeout)
 	if err != nil {
 		return -1, err
 	}
