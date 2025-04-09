@@ -170,6 +170,10 @@ func (kc *KubernetesPodController) syncHandler(key string) (err error) {
 		return kc.handleWorkloadPodDeletionIfCSIPluginPodIsDown(pod)
 	}
 
+	if err := kc.cleanupForceDeletedPodResources(pod); err != nil {
+		return err
+	}
+
 	if err := kc.handlePodDeletionIfNodeDown(pod, nodeID, namespace); err != nil {
 		return err
 	}
@@ -317,6 +321,45 @@ func (kc *KubernetesPodController) handleWorkloadPodDeletionIfCSIPluginPodIsDown
 			}
 			return err
 		}
+	}
+
+	return nil
+}
+
+// cleanupForceDeletedPodResources removes stale resources left behind when a pod
+// is force-deleted (i.e., deletion grace period is zero).
+func (kc *KubernetesPodController) cleanupForceDeletedPodResources(pod *corev1.Pod) error {
+	if pod.DeletionTimestamp == nil {
+		return nil
+	}
+
+	if *pod.DeletionGracePeriodSeconds != 0 {
+		return nil
+	}
+
+	// Cleanup volume attachments associated with the force-deleted pod.
+	// Ref: https://github.com/longhorn/longhorn/issues/10689
+	volumeAttachments, err := kc.getVolumeAttachmentsOfPod(pod)
+	if err != nil {
+		return err
+	}
+
+	for _, va := range volumeAttachments {
+		if va.DeletionTimestamp != nil {
+			continue
+		}
+
+		kc.logger.Infof("%v: deleting volume attachment %q for force-deleted pod %q", controllerAgentName, va.Name, pod.Name)
+
+		err := kc.kubeClient.StorageV1().VolumeAttachments().Delete(context.TODO(), va.Name, metav1.DeleteOptions{})
+		if err != nil {
+			if datastore.ErrorIsNotFound(err) {
+				continue
+			}
+			return errors.Wrapf(err, "failed to delete volume attachment %q for force-deleted pod %q", va.Name, pod.Name)
+		}
+
+		kc.logger.Infof("%v: deleted volume attachment %q for force-deleted pod %q", controllerAgentName, va.Name, pod.Name)
 	}
 
 	return nil
