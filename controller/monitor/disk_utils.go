@@ -11,8 +11,8 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
-	lhns "github.com/TykTechnologies/longhorn-go-common-libs/ns"
-	lhtypes "github.com/TykTechnologies/longhorn-go-common-libs/types"
+	lhns "github.com/longhorn/go-common-libs/ns"
+	lhtypes "github.com/longhorn/go-common-libs/types"
 
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/util"

@@ -3,7 +3,7 @@ package ns
 import (
 	"time"
 
-	"github.com/TykTechnologies/longhorn-go-common-libs/types"
+	"github.com/longhorn/go-common-libs/types"
 )
 
 // LuksOpen runs cryptsetup luksOpen with the given passphrase and

@@ -10,7 +10,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	lhbackup "github.com/TykTechnologies/longhorn-go-common-libs/backup"
+	lhbackup "github.com/longhorn/go-common-libs/backup"
 
 	"github.com/longhorn/backupstore"
 	"github.com/longhorn/backupstore/common"

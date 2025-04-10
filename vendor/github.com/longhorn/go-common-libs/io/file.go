@@ -14,7 +14,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 
-	"github.com/TykTechnologies/longhorn-go-common-libs/types"
+	"github.com/longhorn/go-common-libs/types"
 )
 
 // CreateDirectory creates a directory at the specified path, and sets the modification time.

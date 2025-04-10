@@ -240,19 +240,19 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/TykTechnologies/longhorn-go-common-libs v0.0.0-20241227132452-5a6ca245288a
+# github.com/longhorn/go-common-libs v0.0.0-20241227132452-5a6ca245288a
 ## explicit; go 1.22.7
-github.com/TykTechnologies/longhorn-go-common-libs/backup
-github.com/TykTechnologies/longhorn-go-common-libs/exec
-github.com/TykTechnologies/longhorn-go-common-libs/io
-github.com/TykTechnologies/longhorn-go-common-libs/kubernetes
-github.com/TykTechnologies/longhorn-go-common-libs/ns
-github.com/TykTechnologies/longhorn-go-common-libs/proc
-github.com/TykTechnologies/longhorn-go-common-libs/sync
-github.com/TykTechnologies/longhorn-go-common-libs/sys
-github.com/TykTechnologies/longhorn-go-common-libs/test/fake
-github.com/TykTechnologies/longhorn-go-common-libs/types
-github.com/TykTechnologies/longhorn-go-common-libs/utils
+github.com/longhorn/go-common-libs/backup
+github.com/longhorn/go-common-libs/exec
+github.com/longhorn/go-common-libs/io
+github.com/longhorn/go-common-libs/kubernetes
+github.com/longhorn/go-common-libs/ns
+github.com/longhorn/go-common-libs/proc
+github.com/longhorn/go-common-libs/sync
+github.com/longhorn/go-common-libs/sys
+github.com/longhorn/go-common-libs/test/fake
+github.com/longhorn/go-common-libs/types
+github.com/longhorn/go-common-libs/utils
 # github.com/longhorn/go-iscsi-helper v0.0.0-20241227145851-edeefa73a30d
 ## explicit; go 1.22.7
 github.com/longhorn/go-iscsi-helper/iscsi

@@ -24,7 +24,7 @@ import (
 	"github.com/longhorn/longhorn-manager/csi/crypto"
 	"github.com/longhorn/longhorn-manager/datastore"
 
-	lhns "github.com/TykTechnologies/longhorn-go-common-libs/ns"
+	lhns "github.com/longhorn/go-common-libs/ns"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"

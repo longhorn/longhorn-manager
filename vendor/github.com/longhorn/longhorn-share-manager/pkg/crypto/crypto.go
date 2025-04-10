@@ -7,8 +7,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	lhns "github.com/TykTechnologies/longhorn-go-common-libs/ns"
-	lhtypes "github.com/TykTechnologies/longhorn-go-common-libs/types"
+	lhns "github.com/longhorn/go-common-libs/ns"
+	lhtypes "github.com/longhorn/go-common-libs/types"
 
 	"github.com/longhorn/longhorn-share-manager/pkg/types"
 )

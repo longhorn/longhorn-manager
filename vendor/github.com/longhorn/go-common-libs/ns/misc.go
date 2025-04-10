@@ -3,7 +3,7 @@ package ns
 import (
 	"github.com/sirupsen/logrus"
 
-	"github.com/TykTechnologies/longhorn-go-common-libs/types"
+	"github.com/longhorn/go-common-libs/types"
 )
 
 // GetDefaultProcessName returns the default process name for namespace switching based on the OS distro.

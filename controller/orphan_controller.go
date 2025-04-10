@@ -22,7 +22,7 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
-	lhns "github.com/TykTechnologies/longhorn-go-common-libs/ns"
+	lhns "github.com/longhorn/go-common-libs/ns"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"

@@ -59,13 +59,14 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
-	github.com/longhorn/backing-image-manager v1.6.4-rc1
+	github.com/longhorn/backing-image-manager v1.6.4
 	github.com/longhorn/backupstore v0.0.0-20241227145911-8de988de7eff
+	github.com/longhorn/go-common-libs v0.0.0-20241227132452-5a6ca245288a
 	github.com/longhorn/go-iscsi-helper v0.0.0-20241227145851-edeefa73a30d
 	github.com/longhorn/go-spdk-helper v0.0.0-20240308030201-9b252d6f7250
-	github.com/longhorn/longhorn-engine v1.6.4-rc1
-	github.com/longhorn/longhorn-instance-manager v1.6.4-rc1
-	github.com/longhorn/longhorn-share-manager v1.6.4-rc1
+	github.com/longhorn/longhorn-engine v1.6.4
+	github.com/longhorn/longhorn-instance-manager v1.6.4
+	github.com/longhorn/longhorn-share-manager v1.6.4
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.17.0
 	github.com/rancher/dynamiclistener v0.3.6
@@ -95,7 +96,6 @@ require (
 )
 
 require (
-	github.com/TykTechnologies/longhorn-go-common-libs v0.0.0-20250410190139-d95617c8b451 // indirect
 	github.com/antlr/antlr4/runtime/Go/antlr/v4 v4.0.0-20230305170008-8188dc5388df // indirect
 	github.com/benbjohnson/clock v1.3.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect

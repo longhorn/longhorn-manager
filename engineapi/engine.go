@@ -10,8 +10,8 @@ import (
 
 	"github.com/pkg/errors"
 
-	lhexec "github.com/TykTechnologies/longhorn-go-common-libs/exec"
-	lhtypes "github.com/TykTechnologies/longhorn-go-common-libs/types"
+	lhexec "github.com/longhorn/go-common-libs/exec"
+	lhtypes "github.com/longhorn/go-common-libs/types"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
 
 	"github.com/longhorn/longhorn-manager/types"

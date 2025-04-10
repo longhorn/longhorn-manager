@@ -7,7 +7,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	lhtypes "github.com/TykTechnologies/longhorn-go-common-libs/types"
+	lhtypes "github.com/longhorn/go-common-libs/types"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/util"

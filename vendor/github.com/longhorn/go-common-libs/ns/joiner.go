@@ -13,9 +13,9 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 
-	"github.com/TykTechnologies/longhorn-go-common-libs/proc"
-	"github.com/TykTechnologies/longhorn-go-common-libs/types"
-	"github.com/TykTechnologies/longhorn-go-common-libs/utils"
+	"github.com/longhorn/go-common-libs/proc"
+	"github.com/longhorn/go-common-libs/types"
+	"github.com/longhorn/go-common-libs/utils"
 )
 
 type Joiners []*Joiner
