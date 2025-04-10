@@ -30,6 +30,8 @@ const (
 	backupStateError      = "error"
 )
 
+var backupExtendedTimeout = lhtypes.ExecuteDefaultTimeout * 30
+
 type BackupTargetClient struct {
 	Image      string
 	URL        string
@@ -130,7 +132,7 @@ func (btc *BackupTargetClient) ExecuteEngineBinary(args ...string) (string, erro
 	if err != nil {
 		return "", err
 	}
-	return lhexec.NewExecutor().Execute(envs, btc.LonghornEngineBinary(), args, lhtypes.BackupExecuteDefaultTimeout)
+	return lhexec.NewExecutor().Execute(envs, btc.LonghornEngineBinary(), args, backupExtendedTimeout)
 }
 
 func (btc *BackupTargetClient) ExecuteEngineBinaryWithTimeout(timeout time.Duration, args ...string) (string, error) {
