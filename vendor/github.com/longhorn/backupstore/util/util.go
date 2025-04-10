@@ -36,9 +36,9 @@ const (
 )
 
 var (
-	cmdTimeout = time.Minute // one minute by default
+	cmdTimeout = time.Minute * 5 // five minute by default
 
-	forceCleanupMountTimeout = 30 * time.Second
+	forceCleanupMountTimeout = 60 * time.Second
 )
 
 // NopCloser wraps an io.Witer as io.WriteCloser

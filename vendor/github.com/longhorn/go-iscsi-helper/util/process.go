@@ -3,7 +3,7 @@ package util
 import (
 	"fmt"
 
-	lhproc "github.com/longhorn/go-common-libs/proc"
+	lhproc "github.com/TykTechnologies/longhorn-go-common-libs/proc"
 )
 
 const ISCSIdProcess = "iscsid"

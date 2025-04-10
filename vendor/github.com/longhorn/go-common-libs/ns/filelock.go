@@ -9,8 +9,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	csync "github.com/longhorn/go-common-libs/sync"
-	"github.com/longhorn/go-common-libs/types"
+	csync "github.com/TykTechnologies/longhorn-go-common-libs/sync"
+	"github.com/TykTechnologies/longhorn-go-common-libs/types"
 )
 
 // LockFile switches to the host namespace and locks a file at the specified path.

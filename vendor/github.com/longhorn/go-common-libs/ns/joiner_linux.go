@@ -5,7 +5,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 
-	"github.com/longhorn/go-common-libs/types"
+	"github.com/TykTechnologies/longhorn-go-common-libs/types"
 )
 
 // Join joins all the namespaces in the Joiners.

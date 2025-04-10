@@ -9,8 +9,8 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/longhorn/go-common-libs/io"
-	"github.com/longhorn/go-common-libs/types"
+	"github.com/TykTechnologies/longhorn-go-common-libs/io"
+	"github.com/TykTechnologies/longhorn-go-common-libs/types"
 )
 
 // CopyDirectory switches to the host namespace and copies the content from
