@@ -13,10 +13,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
+	lhbackup "github.com/TykTechnologies/longhorn-go-common-libs/backup"
 	. "github.com/longhorn/backupstore/logging"
 	"github.com/longhorn/backupstore/types"
 	"github.com/longhorn/backupstore/util"
-	lhbackup "github.com/longhorn/go-common-libs/backup"
 )
 
 type DeltaBackupConfig struct {

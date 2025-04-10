@@ -29,8 +29,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
-	lhexec "github.com/longhorn/go-common-libs/exec"
-	lhtypes "github.com/longhorn/go-common-libs/types"
+	lhexec "github.com/TykTechnologies/longhorn-go-common-libs/exec"
+	lhtypes "github.com/TykTechnologies/longhorn-go-common-libs/types"
 
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"

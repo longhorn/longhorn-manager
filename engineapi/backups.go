@@ -12,9 +12,9 @@ import (
 
 	"github.com/longhorn/backupstore"
 
+	lhexec "github.com/TykTechnologies/longhorn-go-common-libs/exec"
+	lhtypes "github.com/TykTechnologies/longhorn-go-common-libs/types"
 	btypes "github.com/longhorn/backupstore/types"
-	lhexec "github.com/longhorn/go-common-libs/exec"
-	lhtypes "github.com/longhorn/go-common-libs/types"
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 
 	"github.com/longhorn/longhorn-manager/datastore"

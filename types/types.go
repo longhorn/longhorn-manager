@@ -15,7 +15,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	lhns "github.com/longhorn/go-common-libs/ns"
+	lhns "github.com/TykTechnologies/longhorn-go-common-libs/ns"
 
 	"github.com/longhorn/longhorn-manager/util"
 

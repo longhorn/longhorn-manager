@@ -5,9 +5,9 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/longhorn/go-common-libs/io"
-	"github.com/longhorn/go-common-libs/sys"
-	"github.com/longhorn/go-common-libs/types"
+	"github.com/TykTechnologies/longhorn-go-common-libs/io"
+	"github.com/TykTechnologies/longhorn-go-common-libs/sys"
+	"github.com/TykTechnologies/longhorn-go-common-libs/types"
 )
 
 // GetKernelRelease switches to the host namespace and retrieves the kernel release.

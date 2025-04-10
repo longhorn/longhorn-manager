@@ -9,7 +9,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	lhtypes "github.com/longhorn/go-common-libs/types"
+	lhtypes "github.com/TykTechnologies/longhorn-go-common-libs/types"
 )
 
 func GetDeviceTypeOf(mountPath string) (string, error) {

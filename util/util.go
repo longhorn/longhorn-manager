@@ -43,9 +43,9 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	clientset "k8s.io/client-go/kubernetes"
 
-	lhio "github.com/longhorn/go-common-libs/io"
-	lhns "github.com/longhorn/go-common-libs/ns"
-	lhtypes "github.com/longhorn/go-common-libs/types"
+	lhio "github.com/TykTechnologies/longhorn-go-common-libs/io"
+	lhns "github.com/TykTechnologies/longhorn-go-common-libs/ns"
+	lhtypes "github.com/TykTechnologies/longhorn-go-common-libs/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )

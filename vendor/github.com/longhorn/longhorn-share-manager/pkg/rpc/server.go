@@ -19,8 +19,8 @@ import (
 	grpcstatus "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	lhexec "github.com/longhorn/go-common-libs/exec"
-	lhtypes "github.com/longhorn/go-common-libs/types"
+	lhexec "github.com/TykTechnologies/longhorn-go-common-libs/exec"
+	lhtypes "github.com/TykTechnologies/longhorn-go-common-libs/types"
 
 	"github.com/longhorn/longhorn-share-manager/pkg/server"
 	"github.com/longhorn/longhorn-share-manager/pkg/server/nfs"

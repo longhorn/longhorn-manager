@@ -28,7 +28,7 @@ import (
 
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 
-	lhns "github.com/longhorn/go-common-libs/ns"
+	lhns "github.com/TykTechnologies/longhorn-go-common-libs/ns"
 
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"

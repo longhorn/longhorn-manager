@@ -14,8 +14,8 @@ import (
 
 	. "gopkg.in/check.v1"
 
-	lhfake "github.com/longhorn/go-common-libs/test/fake"
-	lhtypes "github.com/longhorn/go-common-libs/types"
+	lhfake "github.com/TykTechnologies/longhorn-go-common-libs/test/fake"
+	lhtypes "github.com/TykTechnologies/longhorn-go-common-libs/types"
 )
 
 const (
