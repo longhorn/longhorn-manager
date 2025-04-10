@@ -6,9 +6,9 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/TykTechnologies/longhorn-go-common-libs/exec"
-	"github.com/TykTechnologies/longhorn-go-common-libs/proc"
-	"github.com/TykTechnologies/longhorn-go-common-libs/types"
+	"github.com/longhorn/go-common-libs/exec"
+	"github.com/longhorn/go-common-libs/proc"
+	"github.com/longhorn/go-common-libs/types"
 )
 
 // Executor is a struct resonpsible for executing commands in a specific

@@ -12,7 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
-	"github.com/TykTechnologies/longhorn-go-common-libs/types"
+	"github.com/longhorn/go-common-libs/types"
 )
 
 // ProcessFinder is a struct to find process information.

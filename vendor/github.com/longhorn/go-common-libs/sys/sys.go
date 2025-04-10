@@ -14,9 +14,9 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 
-	"github.com/TykTechnologies/longhorn-go-common-libs/types"
+	"github.com/longhorn/go-common-libs/types"
 
-	commonio "github.com/TykTechnologies/longhorn-go-common-libs/io"
+	commonio "github.com/longhorn/go-common-libs/io"
 )
 
 // GetKernelRelease returns the kernel release string.

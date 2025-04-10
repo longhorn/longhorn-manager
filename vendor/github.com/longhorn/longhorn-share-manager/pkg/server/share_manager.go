@@ -16,7 +16,7 @@ import (
 	"github.com/longhorn/longhorn-share-manager/pkg/types"
 	"github.com/longhorn/longhorn-share-manager/pkg/volume"
 
-	lhKubernetes "github.com/TykTechnologies/longhorn-go-common-libs/kubernetes"
+	lhKubernetes "github.com/longhorn/go-common-libs/kubernetes"
 )
 
 const waitBetweenChecks = time.Second * 5

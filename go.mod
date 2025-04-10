@@ -51,6 +51,7 @@ replace (
 )
 
 require (
+	github.com/TykTechnologies/longhorn-go-common-libs v0.0.0-20250410190139-d95617c8b451
 	github.com/container-storage-interface/spec v1.8.0
 	github.com/docker/go-connections v0.4.0
 	github.com/google/uuid v1.6.0
@@ -59,13 +60,13 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
-	github.com/longhorn/backing-image-manager v1.6.4-rc1
+	github.com/longhorn/backing-image-manager v1.6.4
 	github.com/longhorn/backupstore v0.0.0-20241227145911-8de988de7eff
 	github.com/longhorn/go-iscsi-helper v0.0.0-20241227145851-edeefa73a30d
 	github.com/longhorn/go-spdk-helper v0.0.0-20240308030201-9b252d6f7250
-	github.com/longhorn/longhorn-engine v1.6.4-rc1
-	github.com/longhorn/longhorn-instance-manager v1.6.4-rc1
-	github.com/longhorn/longhorn-share-manager v1.6.4-rc1
+	github.com/longhorn/longhorn-engine v1.6.4
+	github.com/longhorn/longhorn-instance-manager v1.6.4
+	github.com/longhorn/longhorn-share-manager v1.6.4
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.17.0
 	github.com/rancher/dynamiclistener v0.3.6
@@ -95,7 +96,6 @@ require (
 )
 
 require (
-	github.com/TykTechnologies/longhorn-go-common-libs v0.0.0-20250410190139-d95617c8b451 // indirect
 	github.com/antlr/antlr4/runtime/Go/antlr/v4 v4.0.0-20230305170008-8188dc5388df // indirect
 	github.com/benbjohnson/clock v1.3.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
@@ -103,6 +103,7 @@ require (
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/google/pprof v0.0.0-20230817174616-7a8ec2ada47b // indirect
 	github.com/jonboulle/clockwork v0.4.0 // indirect
+	github.com/longhorn/go-common-libs v0.0.0-20241227132452-5a6ca245288a // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect

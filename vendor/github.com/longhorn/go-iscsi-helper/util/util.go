@@ -12,7 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 
-	lhtypes "github.com/TykTechnologies/longhorn-go-common-libs/types"
+	lhtypes "github.com/longhorn/go-common-libs/types"
 )
 
 func getIPFromAddrs(addrs []net.Addr) string {
