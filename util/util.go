@@ -896,3 +896,15 @@ func GetDataContentFromYAML(configMapYAMLData []byte) (map[string]string, error)
 
 	return customizedDataMap, nil
 }
+
+// IsVolumeReplicasHealthy checks if the volume replicas are healthy
+// Returns true if the number of healthy replicas is equal to or greater than the number of replicas
+func IsVolumeReplicasHealthy(numberOfReplicas int, replicas map[string]*longhorn.Replica) bool {
+	healthyCount := 0
+	for _, replica := range replicas {
+		if replica.Spec.FailedAt == "" && replica.Spec.HealthyAt != "" {
+			healthyCount++
+		}
+	}
+	return healthyCount >= numberOfReplicas
+}

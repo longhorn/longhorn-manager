@@ -985,6 +985,15 @@ func ValidateFreezeFilesystemForSnapshot(value longhorn.FreezeFilesystemForSnaps
 	return nil
 }
 
+func ValidateOfflineRebuild(value longhorn.VolumeOfflineRebuild) error {
+	if value != longhorn.VolumeOfflineRebuildDisabled &&
+		value != longhorn.VolumeOfflineRebuildEnabled &&
+		value != longhorn.VolumeOfflineRebuildIgnored {
+		return fmt.Errorf("invalid OfflineRebuild setting: %v", value)
+	}
+	return nil
+}
+
 func GetDaemonSetNameFromEngineImageName(engineImageName string) string {
 	return "engine-image-" + engineImageName
 }

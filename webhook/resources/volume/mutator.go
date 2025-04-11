@@ -388,6 +388,9 @@ func mutate(newObj runtime.Object, moreLabels map[string]string) (admission.Patc
 	if string(volume.Spec.FreezeFilesystemForSnapshot) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/freezeFilesystemForSnapshot", "value": "%s"}`, longhorn.FreezeFilesystemForSnapshotDefault))
 	}
+	if string(volume.Spec.OfflineRebuild) == "" {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/offlineRebuild", "value": "%s"}`, longhorn.VolumeOfflineRebuildIgnored))
+	}
 
 	labels := volume.Labels
 	if labels == nil {

@@ -653,6 +653,30 @@ func (s *Server) VolumeCancelExpansion(rw http.ResponseWriter, req *http.Request
 	return s.responseWithVolume(rw, req, "", v)
 }
 
+func (s *Server) VolumeOfflineRebuild(rw http.ResponseWriter, req *http.Request) error {
+	var input UpdateOfflineRebuildInput
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return err
+	}
+
+	id := mux.Vars(req)["name"]
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.UpdateOfflineRebuild(id, longhorn.VolumeOfflineRebuild(input.OfflineRebuild))
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("failed to convert to volume %v object", id)
+	}
+
+	return s.responseWithVolume(rw, req, "", v)
+}
+
 func (s *Server) VolumeFilesystemTrim(rw http.ResponseWriter, req *http.Request) error {
 	id := mux.Vars(req)["name"]
 

@@ -58,6 +58,7 @@ type VolumeSpecApplyConfiguration struct {
 	SnapshotMaxSize             *int64                                         `json:"snapshotMaxSize,omitempty"`
 	FreezeFilesystemForSnapshot *longhornv1beta2.FreezeFilesystemForSnapshot   `json:"freezeFilesystemForSnapshot,omitempty"`
 	BackupTargetName            *string                                        `json:"backupTargetName,omitempty"`
+	OfflineRebuild              *longhornv1beta2.VolumeOfflineRebuild          `json:"offlineRebuild,omitempty"`
 }
 
 // VolumeSpecApplyConfiguration constructs a declarative configuration of the VolumeSpec type for use with
@@ -331,5 +332,13 @@ func (b *VolumeSpecApplyConfiguration) WithFreezeFilesystemForSnapshot(value lon
 // If called multiple times, the BackupTargetName field is set to the value of the last call.
 func (b *VolumeSpecApplyConfiguration) WithBackupTargetName(value string) *VolumeSpecApplyConfiguration {
 	b.BackupTargetName = &value
+	return b
+}
+
+// WithOfflineRebuild sets the OfflineRebuild field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the OfflineRebuild field is set to the value of the last call.
+func (b *VolumeSpecApplyConfiguration) WithOfflineRebuild(value longhornv1beta2.VolumeOfflineRebuild) *VolumeSpecApplyConfiguration {
+	b.OfflineRebuild = &value
 	return b
 }

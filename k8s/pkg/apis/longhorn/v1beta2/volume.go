@@ -80,6 +80,14 @@ const (
 	UnmapMarkSnapChainRemovedEnabled  = UnmapMarkSnapChainRemoved("enabled")
 )
 
+type VolumeOfflineRebuild string
+
+const (
+	VolumeOfflineRebuildEnabled  = VolumeOfflineRebuild("enabled")
+	VolumeOfflineRebuildDisabled = VolumeOfflineRebuild("disabled")
+	VolumeOfflineRebuildIgnored  = VolumeOfflineRebuild("ignored")
+)
+
 type VolumeCloneState string
 
 const (
@@ -290,6 +298,9 @@ type VolumeSpec struct {
 	// The backup target name that the volume will be backed up to or is synced.
 	// +optional
 	BackupTargetName string `json:"backupTargetName"`
+	// +kubebuilder:validation:Enum=ignored;disabled;enabled
+	// +optional
+	OfflineRebuild VolumeOfflineRebuild `json:"offlineRebuild"`
 }
 
 // VolumeStatus defines the observed state of the Longhorn volume
