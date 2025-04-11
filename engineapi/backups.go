@@ -130,7 +130,7 @@ func (btc *BackupTargetClient) ExecuteEngineBinary(args ...string) (string, erro
 	if err != nil {
 		return "", err
 	}
-	return lhexec.NewExecutor().Execute(envs, btc.LonghornEngineBinary(), args, BackupDefaultTimeout)
+	return lhexec.NewExecutor().Execute(envs, btc.LonghornEngineBinary(), args, lhtypes.BackupDefaultTimeout)
 }
 
 func (btc *BackupTargetClient) ExecuteEngineBinaryWithTimeout(timeout time.Duration, args ...string) (string, error) {
