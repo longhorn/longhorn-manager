@@ -16,10 +16,10 @@ import (
 )
 
 var (
-	DeviceWaitRetryCounts        = 10
-	DeviceWaitRetryInterval      = 1 * time.Second
-	ScsiInitiatorExtendedTimeout = lhtypes.ExecuteDefaultTimeout * 10
-	ScsiNodesDirs                = []string{
+	DeviceWaitRetryCounts   = 10
+	DeviceWaitRetryInterval = 1 * time.Second
+
+	ScsiNodesDirs = []string{
 		"/etc/iscsi/nodes/",
 		"/var/lib/iscsi/nodes/",
 	}
@@ -36,7 +36,7 @@ func CheckForInitiatorExistence(nsexec *lhns.Executor) error {
 	opts := []string{
 		"--version",
 	}
-	_, err := nsexec.Execute(nil, iscsiBinary, opts, ScsiInitiatorExtendedTimeout)
+	_, err := nsexec.Execute(nil, iscsiBinary, opts, lhtypes.ExecuteDefaultTimeout)
 	return err
 }
 
@@ -53,7 +53,7 @@ func UpdateIscsiDeviceAbortTimeout(target string, timeout int64, nsexec *lhns.Ex
 		"-n", "node.session.err_timeo.abort_timeout",
 		"-v", strconv.FormatInt(timeout, 10),
 	}
-	_, err := nsexec.Execute(nil, iscsiBinary, opts, ScsiInitiatorExtendedTimeout)
+	_, err := nsexec.Execute(nil, iscsiBinary, opts, lhtypes.ExecuteDefaultTimeout)
 	return err
 }
 
@@ -63,7 +63,7 @@ func DiscoverTarget(ip, target string, nsexec *lhns.Executor) error {
 		"-t", "sendtargets",
 		"-p", ip,
 	}
-	output, err := nsexec.Execute(nil, iscsiBinary, opts, ScsiInitiatorExtendedTimeout)
+	output, err := nsexec.Execute(nil, iscsiBinary, opts, lhtypes.ExecuteDefaultTimeout)
 	if err != nil {
 		return err
 	}
@@ -91,7 +91,7 @@ func DeleteDiscoveredTarget(ip, target string, nsexec *lhns.Executor) error {
 	if ip != "" {
 		opts = append(opts, "-p", ip)
 	}
-	_, err := nsexec.Execute(nil, iscsiBinary, opts, ScsiInitiatorExtendedTimeout)
+	_, err := nsexec.Execute(nil, iscsiBinary, opts, lhtypes.ExecuteDefaultTimeout)
 	return err
 }
 
@@ -103,7 +103,7 @@ func IsTargetDiscovered(ip, target string, nsexec *lhns.Executor) bool {
 	if ip != "" {
 		opts = append(opts, "-p", ip)
 	}
-	_, err := nsexec.Execute(nil, iscsiBinary, opts, ScsiInitiatorExtendedTimeout)
+	_, err := nsexec.Execute(nil, iscsiBinary, opts, lhtypes.ExecuteDefaultTimeout)
 	return err == nil
 }
 
@@ -114,7 +114,7 @@ func LoginTarget(ip, target string, nsexec *lhns.Executor) error {
 		"-p", ip,
 		"--login",
 	}
-	_, err := nsexec.Execute(nil, iscsiBinary, opts, ScsiInitiatorExtendedTimeout)
+	_, err := nsexec.Execute(nil, iscsiBinary, opts, lhtypes.ExecuteDefaultTimeout)
 	if err != nil {
 		return err
 	}
@@ -146,7 +146,7 @@ func LogoutTarget(ip, target string, nsexec *lhns.Executor) error {
 	if ip != "" {
 		opts = append(opts, "-p", ip)
 	}
-	_, err := nsexec.Execute(nil, iscsiBinary, opts, ScsiInitiatorExtendedTimeout)
+	_, err := nsexec.Execute(nil, iscsiBinary, opts, lhtypes.ExecuteDefaultTimeout)
 	return err
 }
 
@@ -173,7 +173,7 @@ func IsTargetLoggedIn(ip, target string, nsexec *lhns.Executor) bool {
 		"-m", "session",
 	}
 
-	output, err := nsexec.Execute(nil, iscsiBinary, opts, ScsiInitiatorExtendedTimeout)
+	output, err := nsexec.Execute(nil, iscsiBinary, opts, lhtypes.ExecuteDefaultTimeout)
 	if err != nil {
 		return false
 	}
@@ -233,7 +233,7 @@ func findScsiDevice(ip, target string, lun int, nsexec *lhns.Executor) (*lhtypes
 		"-m", "session",
 		"-P", "3",
 	}
-	output, err := nsexec.Execute(nil, iscsiBinary, opts, ScsiInitiatorExtendedTimeout)
+	output, err := nsexec.Execute(nil, iscsiBinary, opts, lhtypes.ExecuteDefaultTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -362,6 +362,6 @@ func RescanTarget(ip, target string, nsexec *lhns.Executor) error {
 	if ip != "" {
 		opts = append(opts, "-p", ip)
 	}
-	_, err := nsexec.Execute(nil, iscsiBinary, opts, ScsiInitiatorExtendedTimeout)
+	_, err := nsexec.Execute(nil, iscsiBinary, opts, lhtypes.ExecuteDefaultTimeout)
 	return err
 }

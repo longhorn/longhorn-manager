@@ -28,8 +28,6 @@ const (
 	ErrNotImplement = "not implemented"
 )
 
-var engineExtendedTimeout = lhtypes.ExecuteDefaultTimeout * 30
-
 type EngineCollection struct{}
 
 type EngineBinary struct {
@@ -73,7 +71,7 @@ func (e *EngineBinary) ExecuteEngineBinary(args ...string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return lhexec.NewExecutor().Execute([]string{}, e.LonghornEngineBinary(), args, engineExtendedTimeout)
+	return lhexec.NewExecutor().Execute([]string{}, e.LonghornEngineBinary(), args, lhtypes.ExecuteDefaultTimeout)
 }
 
 func (e *EngineBinary) ExecuteEngineBinaryWithTimeout(timeout time.Duration, args ...string) (string, error) {
