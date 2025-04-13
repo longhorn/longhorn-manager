@@ -162,8 +162,8 @@ github.com/longhorn/go-spdk-helper v0.0.2-0.20250413065740-52d1caf5f7a7 h1:ep5IX
 github.com/longhorn/go-spdk-helper v0.0.2-0.20250413065740-52d1caf5f7a7/go.mod h1:k1MUTmyAIXuabuyviT3shOnN618449WqmamtCJlsh4c=
 github.com/longhorn/longhorn-engine v1.9.0-dev-20250223.0.20250225091521-921f63f3a87d h1:JdkTIIaKT0uUU80Ncl26JeAqT727PgPJMaqjf0OUfAE=
 github.com/longhorn/longhorn-engine v1.9.0-dev-20250223.0.20250225091521-921f63f3a87d/go.mod h1:qTsHK0nU6Myh4XGnuqfsPG4FpeLh7Vki2hLl/1P0iuc=
-github.com/longhorn/longhorn-instance-manager v1.9.0-dev-20250309.0.20250313063805-e9308657287f h1:tYQtDVKdds2M+zzpo50ZUAzl4YF9zHKLwjTUMhuFIX0=
-github.com/longhorn/longhorn-instance-manager v1.9.0-dev-20250309.0.20250313063805-e9308657287f/go.mod h1:9YwEs5NaeUI5BOeUHCZjnGrY2J1Hc3x+uMZcxbXN0Oo=
+github.com/longhorn/longhorn-instance-manager v1.9.0-dev-20250406.0.20250411021930-1e198cc322f4 h1:XwvwCccoCInrn8DbioVQvGOAN8V1HL2Tf6Fyhtu9YF4=
+github.com/longhorn/longhorn-instance-manager v1.9.0-dev-20250406.0.20250411021930-1e198cc322f4/go.mod h1:zZyWs7FJewyof5J3X4Fa7TygRoDBNBHrVSMAa/UxyEA=
 github.com/longhorn/longhorn-share-manager v1.8.1 h1:WJkn4kLXWcROTOeZ17zVe6MxwFkzF6KaEKq7ZelobZM=
 github.com/longhorn/longhorn-share-manager v1.8.1/go.mod h1:3GpCj+P339UeCUsAvinlmq2tn8+qD7yaq6I/El/STfQ=
 github.com/longhorn/types v0.0.0-20250410134731-b46ad9302858 h1:1Qe0hwY5i5NMipBg91O2ON4lp3OLO0V1AW7ynQdBtjY=
