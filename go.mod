@@ -18,6 +18,7 @@ toolchain go1.24.2
 // example, if we import k8s.io/kubernetes v1.28.5, we should use v0.28.5 of all the replace directives. Depending on
 // the portions of k8s.io/kubernetes code this module actually uses, not all of the replace directives may strictly be
 // necessary. However, it is better to include all of them for consistency.
+
 replace (
 	k8s.io/api => k8s.io/api v0.32.3
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.32.3
@@ -68,7 +69,7 @@ require (
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250413065808-b76b395d7da9
 	github.com/longhorn/go-spdk-helper v0.0.2-0.20250413065740-52d1caf5f7a7
 	github.com/longhorn/longhorn-engine v1.9.0-dev-20250223.0.20250225091521-921f63f3a87d
-	github.com/longhorn/longhorn-instance-manager v1.9.0-dev-20250309.0.20250313063805-e9308657287f
+	github.com/longhorn/longhorn-instance-manager v1.9.0-dev-20250406.0.20250411021930-1e198cc322f4
 	github.com/longhorn/longhorn-share-manager v1.8.1
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.22.0
