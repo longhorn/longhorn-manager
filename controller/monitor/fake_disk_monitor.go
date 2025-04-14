@@ -102,7 +102,7 @@ func fakeGetDiskConfig(diskType longhorn.DiskType, name, path string, diskDriver
 	}
 }
 
-func fakeGenerateDiskConfig(diskType longhorn.DiskType, name, uuid, path, diskDriver string, client *DiskServiceClient) (*util.DiskConfig, error) {
+func fakeGenerateDiskConfig(diskType longhorn.DiskType, name, uuid, path, diskDriver string, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
 	return &util.DiskConfig{
 		DiskName: name,
 		DiskUUID: TestDiskID1,
