@@ -417,6 +417,35 @@ func (s *DataStore) ListPodsRO(namespace string) ([]*corev1.Pod, error) {
 	return s.podLister.Pods(namespace).List(labels.Everything())
 }
 
+// ListPodsByPersistentVolumeClaimName returns a list of pods that are using the
+// specified PersistentVolumeClaim in the given namespace.
+func (s *DataStore) ListPodsByPersistentVolumeClaimName(claimName string, namespace string) ([]*corev1.Pod, error) {
+	pods, err := s.ListPodsRO(namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	matchedPods := []*corev1.Pod{}
+	for _, pod := range pods {
+		if pod.Spec.NodeName == "" {
+			continue
+		}
+
+		for _, volume := range pod.Spec.Volumes {
+			if volume.PersistentVolumeClaim == nil {
+				continue
+			}
+
+			if volume.PersistentVolumeClaim.ClaimName == claimName {
+				matchedPods = append(matchedPods, pod)
+				break
+			}
+		}
+	}
+
+	return matchedPods, nil
+}
+
 // GetPod returns a mutable Pod object for the given name and namespace
 func (s *DataStore) GetPod(name string) (*corev1.Pod, error) {
 	var pod *corev1.Pod
