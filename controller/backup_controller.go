@@ -405,6 +405,10 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 				log.Warnf("failed to sync backup volume %v for backup target %v", canonicalBackupVolumeName, backupTargetName)
 				return
 			}
+			if err := bc.deleteSnapshotAfterBackupCompleted(backup); err != nil {
+				log.WithError(err).Warn("Failed to delete snapshot after backup completed")
+				return
+			}
 		}
 	}()
 
@@ -498,27 +502,6 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		log.Warn("Backup info is nil")
 		return nil
 	}
-
-	defer func() {
-		// If the backup is in the final state, delete the snapshot if needed
-		if _, ok := backupInfo.Labels[types.RecurringJobLabel]; ok {
-			// leave the snapshot management for recurring jobs to the `SettingNameAutoCleanupRecurringJobBackupSnapshot` setting.
-			return
-		}
-
-		cleanupSnap, err := bc.ds.GetSettingAsBool(types.SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted)
-		if err != nil {
-			log.WithError(err).Errorf("Failed to get the setting %v", types.SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted)
-			return
-		}
-		if cleanupSnap && backup.Spec.SnapshotName != "" {
-			if errDel := bc.ds.DeleteSnapshot(backup.Spec.SnapshotName); errDel != nil && !apierrors.IsNotFound(errDel) {
-				err = errDel
-				log.WithError(err).Error("Failed to delete the snapshot")
-				return
-			}
-		}
-	}()
 
 	// Remove the Backup Volume recurring jobs/groups information.
 	// Only record the latest recurring jobs/groups information in backup volume CR and volume.cfg on remote backup target.
@@ -1173,4 +1156,25 @@ func (bc *BackupController) setInprogressDeletionMap(backupURL string, state lon
 
 	bc.inProgressDeletingMap[backupURL].State = state
 	bc.inProgressDeletingMap[backupURL].ErrorMessage = errMsg
+}
+
+func (bc *BackupController) deleteSnapshotAfterBackupCompleted(backup *longhorn.Backup) error {
+	// If the backup is in the final state, delete the snapshot if needed
+	if _, ok := backup.Status.Labels[types.RecurringJobLabel]; ok {
+		// leave the snapshot management for recurring jobs to the `SettingNameAutoCleanupRecurringJobBackupSnapshot` setting.
+		return nil
+	}
+
+	cleanupSnap, err := bc.ds.GetSettingAsBool(types.SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted)
+	if err != nil {
+		bc.logger.WithError(err).Errorf("Failed to get the setting %v", types.SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted)
+		return err
+	}
+	if cleanupSnap && backup.Spec.SnapshotName != "" && backup.Status.State == longhorn.BackupStateCompleted {
+		if err := bc.ds.DeleteSnapshot(backup.Spec.SnapshotName); err != nil && !apierrors.IsNotFound(err) {
+			bc.logger.WithError(err).Error("Failed to delete the snapshot")
+			return err
+		}
+	}
+	return nil
 }
