@@ -329,6 +329,10 @@ func (kc *KubernetesPodController) handleWorkloadPodDeletionIfCSIPluginPodIsDown
 // cleanupForceDeletedPodResources removes stale resources left behind when a pod
 // is force-deleted (i.e., deletion grace period is zero).
 func (kc *KubernetesPodController) cleanupForceDeletedPodResources(pod *corev1.Pod) error {
+	if !isControllerResponsibleFor(kc.controllerID, kc.ds, pod.Name, "", pod.Spec.NodeName) {
+		return nil
+	}
+
 	if pod.DeletionTimestamp == nil {
 		return nil
 	}
