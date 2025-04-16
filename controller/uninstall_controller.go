@@ -629,6 +629,13 @@ func (c *UninstallController) deleteCRs() (bool, error) {
 		return true, c.deleteSystemRestores(systemRestores)
 	}
 
+	if supportBundles, err := c.ds.ListSupportBundles(); err != nil {
+		return true, err
+	} else if len(supportBundles) > 0 {
+		c.logger.Infof("Found %d SupportBundles remaining", len(supportBundles))
+		return true, c.deleteSupportBundles(supportBundles)
+	}
+
 	return false, nil
 }
 
@@ -1169,6 +1176,32 @@ func (c *UninstallController) deleteSystemRestores(systemRestores map[string]*lo
 				log.Info("Marked for deletion")
 			}
 		}
+	}
+	return nil
+}
+
+func (c *UninstallController) deleteSupportBundles(supportBundles map[string]*longhorn.SupportBundle) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to delete support bundles")
+	}()
+
+	for _, supportBundle := range supportBundles {
+		log := getLoggerForSupportBundle(c.logger, supportBundle.Name)
+
+		if supportBundle.DeletionTimestamp != nil {
+			continue
+		}
+
+		if errDelete := c.ds.DeleteSupportBundle(supportBundle.Name); errDelete != nil {
+			if datastore.ErrorIsNotFound(errDelete) {
+				log.Info("SupportBundle is not found")
+				continue
+			}
+			err = errors.Wrap(errDelete, "failed to mark for deletion")
+			return
+		}
+
+		log.Info("Marked for deletion")
 	}
 	return nil
 }
