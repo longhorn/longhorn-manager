@@ -15,6 +15,7 @@ const (
 	subsystemInstanceManager    = "instance_manager"
 	subsystemManager            = "manager"
 	subsystemEngine             = "engine"
+	subsystemReplica            = "replica"
 	subsystemBackup             = "backup"
 	subsystemSnapshot           = "snapshot"
 	subsystemBackingImage       = "backing_image"
@@ -22,6 +23,7 @@ const (
 
 	nodeLabel               = "node"
 	diskLabel               = "disk"
+	diskPathLabel           = "disk_path"
 	volumeLabel             = "volume"
 	conditionLabel          = "condition"
 	conditionReasonLabel    = "condition_reason"
@@ -39,6 +41,12 @@ const (
 	engineLabel             = "engine"
 	rebuildSrcLabel         = "rebuild_src"
 	rebuildDstLabel         = "rebuild_dst"
+	replicaLabel            = "replica"
+	dataEngineLabel         = "data_engine"
+	stateLabel              = "state"
+	frontendLabel           = "frontend"
+	imageLabel              = "image"
+	modeLabel               = "mode"
 )
 
 type metricInfo struct {

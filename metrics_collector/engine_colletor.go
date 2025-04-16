@@ -18,7 +18,11 @@ import (
 type EngineCollector struct {
 	*baseCollector
 
-	rebuildMetric         metricInfo
+	infoMetric        metricInfo
+	stateMetric       metricInfo
+	replicaModeMetric metricInfo
+	rebuildMetric     metricInfo
+
 	pendingRebuildMetrics map[string]prometheus.Metric
 	mutex                 sync.Mutex
 }
@@ -31,6 +35,36 @@ func NewEngineCollector(
 	ec := &EngineCollector{
 		baseCollector:         newBaseCollector(subsystemEngine, logger, nodeID, ds),
 		pendingRebuildMetrics: make(map[string]prometheus.Metric),
+	}
+
+	ec.infoMetric = metricInfo{
+		Desc: prometheus.NewDesc(
+			prometheus.BuildFQName(longhornName, subsystemEngine, "info"),
+			"Static information about this engine",
+			[]string{engineLabel, volumeLabel, nodeLabel, dataEngineLabel, frontendLabel, imageLabel},
+			nil,
+		),
+		Type: prometheus.GaugeValue,
+	}
+
+	ec.stateMetric = metricInfo{
+		Desc: prometheus.NewDesc(
+			prometheus.BuildFQName(longhornName, subsystemEngine, "state"),
+			"The current state of this engine",
+			[]string{engineLabel, volumeLabel, nodeLabel, stateLabel},
+			nil,
+		),
+		Type: prometheus.GaugeValue,
+	}
+
+	ec.replicaModeMetric = metricInfo{
+		Desc: prometheus.NewDesc(
+			prometheus.BuildFQName(longhornName, subsystemEngine, "replica_mode"),
+			"Reported replica mode from the engine",
+			[]string{engineLabel, volumeLabel, replicaLabel, modeLabel},
+			nil,
+		),
+		Type: prometheus.GaugeValue,
 	}
 
 	ec.rebuildMetric = metricInfo{
@@ -47,6 +81,9 @@ func NewEngineCollector(
 }
 
 func (ec *EngineCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- ec.infoMetric.Desc
+	ch <- ec.stateMetric.Desc
+	ch <- ec.replicaModeMetric.Desc
 	ch <- ec.rebuildMetric.Desc
 }
 
@@ -64,10 +101,68 @@ func (ec *EngineCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	for _, e := range engineList {
+		ec.collectEngineInfo(ch, e)
+		ec.collectEngineState(ch, e)
+		ec.collectReplicaModes(ch, e)
 		ec.collectRebuildProgress(ch, e)
 	}
 
 	ec.finalizeCompletedRebuilds(ch)
+}
+
+func (ec *EngineCollector) collectEngineInfo(ch chan<- prometheus.Metric, e *longhorn.Engine) {
+	ch <- prometheus.MustNewConstMetric(
+		ec.infoMetric.Desc,
+		ec.infoMetric.Type,
+		1,
+		e.Name,
+		e.Spec.VolumeName,
+		e.Spec.NodeID,
+		string(e.Spec.DataEngine),
+		string(e.Spec.Frontend),
+		e.Spec.Image,
+	)
+}
+
+func (ec *EngineCollector) collectEngineState(ch chan<- prometheus.Metric, e *longhorn.Engine) {
+	states := []longhorn.InstanceState{
+		longhorn.InstanceStateRunning,
+		longhorn.InstanceStateStopped,
+		longhorn.InstanceStateError,
+		longhorn.InstanceStateStarting,
+		longhorn.InstanceStateStopping,
+		longhorn.InstanceStateUnknown,
+	}
+
+	for _, s := range states {
+		val := 0.0
+		if e.Status.CurrentState == s {
+			val = 1.0
+		}
+		ch <- prometheus.MustNewConstMetric(
+			ec.stateMetric.Desc,
+			ec.stateMetric.Type,
+			val,
+			e.Name,
+			e.Spec.VolumeName,
+			e.Spec.NodeID,
+			string(s),
+		)
+	}
+}
+
+func (ec *EngineCollector) collectReplicaModes(ch chan<- prometheus.Metric, e *longhorn.Engine) {
+	for rName, mode := range e.Status.ReplicaModeMap {
+		ch <- prometheus.MustNewConstMetric(
+			ec.replicaModeMetric.Desc,
+			ec.replicaModeMetric.Type,
+			1,
+			e.Name,
+			e.Spec.VolumeName,
+			rName,
+			string(mode),
+		)
+	}
 }
 
 func (ec *EngineCollector) collectRebuildProgress(ch chan<- prometheus.Metric, e *longhorn.Engine) {
