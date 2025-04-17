@@ -2056,7 +2056,7 @@ func (ec *EngineController) waitForV2EngineRebuild(e *longhorn.Engine, replicaNa
 			if err != nil {
 				// There is no need to continue if the engine is not found
 				if apierrors.IsNotFound(err) {
-					return err
+					return errors.Wrapf(err, "engine %v not found during v2 replica %s rebuild wait", e.Name, replicaName)
 				}
 				// There may be something wrong with the indexer or the API sever, will retry
 				continue
@@ -2087,7 +2087,7 @@ func (ec *EngineController) waitForV2EngineRebuild(e *longhorn.Engine, replicaNa
 				continue
 			}
 			if rebuildingStatus.State == engineapi.ProcessStateError || rebuildingStatus.Error != "" {
-				return errors.New(rebuildingStatus.Error)
+				return fmt.Errorf("failed to wait for v2 replica %s rebuild, rebuilding state %s, error: %v", replicaName, rebuildingStatus.State, rebuildingStatus.Error)
 			}
 			if rebuildingStatus.State == engineapi.ProcessStateComplete {
 				return nil
