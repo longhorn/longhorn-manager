@@ -93,6 +93,15 @@ func NewOrphanController(
 	}
 	oc.cacheSyncs = append(oc.cacheSyncs, ds.NodeInformer.HasSynced)
 
+	if _, err = ds.InstanceManagerInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		AddFunc:    func(cur interface{}) { oc.enqueueForInstanceManager(cur) },
+		UpdateFunc: func(old, cur interface{}) { oc.enqueueForInstanceManager(cur) },
+		DeleteFunc: func(cur interface{}) { oc.enqueueForInstanceManager(cur) },
+	}, 0); err != nil {
+		return nil, err
+	}
+	oc.cacheSyncs = append(oc.cacheSyncs, ds.InstanceManagerInformer.HasSynced)
+
 	return oc, nil
 }
 
@@ -125,6 +134,33 @@ func (oc *OrphanController) enqueueForLonghornNode(obj interface{}) {
 	orphans, err := oc.ds.ListOrphansByNodeRO(node.Name)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("failed to list orphans on node %v since %v", node.Name, err))
+		return
+	}
+
+	for _, orphan := range orphans {
+		oc.enqueueOrphan(orphan)
+	}
+}
+
+func (oc *OrphanController) enqueueForInstanceManager(obj interface{}) {
+	im, ok := obj.(*longhorn.InstanceManager)
+	if !ok {
+		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", obj))
+			return
+		}
+		// use the last known state, to enqueue, dependent objects
+		im, ok = deletedState.Obj.(*longhorn.InstanceManager)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("DeletedFinalStateUnknown contained invalid object: %#v", deletedState.Obj))
+			return
+		}
+	}
+
+	orphans, err := oc.ds.ListOrphansByNodeRO(im.Spec.NodeID)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to list orphans on instance manager %v since %v", im.Name, err))
 		return
 	}
 
@@ -227,13 +263,11 @@ func (oc *OrphanController) reconcile(orphanName string) (err error) {
 	}
 
 	if !orphan.DeletionTimestamp.IsZero() {
-		defer func() {
-			if err == nil {
-				err = oc.ds.RemoveFinalizerForOrphan(orphan)
-			}
-		}()
-
-		return oc.cleanupOrphanedData(orphan)
+		isCleanupComplete, err := oc.cleanupOrphanedResource(orphan)
+		if isCleanupComplete {
+			return oc.ds.RemoveFinalizerForOrphan(orphan)
+		}
+		return err
 	}
 
 	existingOrphan := orphan.DeepCopy()
@@ -269,7 +303,7 @@ func (oc *OrphanController) isResponsibleFor(orphan *longhorn.Orphan) bool {
 	return isControllerResponsibleFor(oc.controllerID, oc.ds, orphan.Name, orphan.Spec.NodeID, orphan.Status.OwnerID)
 }
 
-func (oc *OrphanController) cleanupOrphanedData(orphan *longhorn.Orphan) (err error) {
+func (oc *OrphanController) cleanupOrphanedResource(orphan *longhorn.Orphan) (isCleanupComplete bool, err error) {
 	log := getLoggerForOrphan(oc.logger, orphan)
 
 	defer func() {
@@ -277,7 +311,7 @@ func (oc *OrphanController) cleanupOrphanedData(orphan *longhorn.Orphan) (err er
 			return
 		}
 
-		err = errors.Wrapf(err, "failed to delete orphan %v data", orphan.Name)
+		err = errors.Wrapf(err, "failed to delete %v orphan %v", orphan.Spec.Type, orphan.Name)
 		orphan.Status.Conditions = types.SetCondition(orphan.Status.Conditions,
 			longhorn.OrphanConditionTypeError, longhorn.ConditionStatusTrue, "", err.Error())
 	}()
@@ -285,32 +319,179 @@ func (oc *OrphanController) cleanupOrphanedData(orphan *longhorn.Orphan) (err er
 	// Make sure if the orphan nodeID and controller ID are same.
 	// If NO, just delete the orphan resource object and don't touch the data.
 	if orphan.Spec.NodeID != oc.controllerID {
-		log.Infof("Orphan nodeID %v is different from controllerID %v, so just delete the orphan resource object",
-			orphan.Name, oc.controllerID)
-		return nil
-	}
-
-	if types.GetCondition(orphan.Status.Conditions, longhorn.OrphanConditionTypeDataCleanable).Status !=
-		longhorn.ConditionStatusTrue {
-		log.Infof("Only delete orphan %v resource object and do not delete the orphaned data", orphan.Name)
-		return nil
+		log.WithFields(logrus.Fields{
+			"orphanType": orphan.Spec.Type,
+			"orphanName": orphan.Name,
+			"orphanNode": orphan.Spec.NodeID,
+		}).Infof("Orphan does not belong to this controller. Skipping resource cleanup")
+		return true, nil
 	}
 
 	switch orphan.Spec.Type {
-	case longhorn.OrphanTypeReplica:
-		err = oc.deleteOrphanedReplica(orphan)
+	case longhorn.OrphanTypeEngineInstance:
+		isCleanupComplete, err = oc.cleanupOrphanedEngineInstance(orphan)
+	case longhorn.OrphanTypeReplicaInstance:
+		isCleanupComplete, err = oc.cleanupOrphanedReplicaInstance(orphan)
+	case longhorn.OrphanTypeReplicaDataStore:
+		if types.GetCondition(orphan.Status.Conditions, longhorn.OrphanConditionTypeDataCleanable).Status !=
+			longhorn.ConditionStatusTrue {
+			log.Infof("Only delete orphan %v resource object and do not delete the orphaned data store", orphan.Name)
+			return true, nil
+		}
+		err = oc.deleteOrphanedReplicaDataStore(orphan)
+		if err == nil || (err != nil && apierrors.IsNotFound(err)) {
+			isCleanupComplete = true
+			err = nil
+		}
 	default:
-		err = fmt.Errorf("unknown orphan type %v", orphan.Spec.Type)
+		return false, fmt.Errorf("unknown orphan type %v to clear orphan %v", orphan.Spec.Type, orphan.Name)
 	}
 
-	if err == nil || (err != nil && apierrors.IsNotFound(err)) {
-		return nil
-	}
-
-	return err
+	return isCleanupComplete, err
 }
 
-func (oc *OrphanController) deleteOrphanedReplica(orphan *longhorn.Orphan) error {
+func (oc *OrphanController) cleanupOrphanedEngineInstance(orphan *longhorn.Orphan) (isCleanupComplete bool, err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Wrapf(err, "cannot cleanup orphan engine instance %v", orphan.Name)
+		}
+	}()
+
+	instance, deType, err := oc.extractOrphanedInstanceInfo(orphan)
+	if err != nil {
+		return false, err
+	}
+
+	var spec *longhorn.InstanceSpec
+	if engineCR, err := oc.ds.GetEngineRO(instance); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return false, err
+		}
+		spec = nil
+	} else {
+		spec = &engineCR.Spec.InstanceSpec
+	}
+	return oc.cleanupOrphanedInstance(orphan, instance, longhorn.InstanceManagerTypeEngine, deType, spec)
+}
+
+func (oc *OrphanController) cleanupOrphanedReplicaInstance(orphan *longhorn.Orphan) (isCleanupComplete bool, err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Wrapf(err, "cannot cleanup orphan replica instance %v", orphan.Name)
+		}
+	}()
+
+	instance, deType, err := oc.extractOrphanedInstanceInfo(orphan)
+	if err != nil {
+		return false, err
+	}
+
+	var spec *longhorn.InstanceSpec
+	if replicaCR, err := oc.ds.GetReplicaRO(instance); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return false, err
+		}
+		spec = nil
+	} else {
+		spec = &replicaCR.Spec.InstanceSpec
+	}
+	return oc.cleanupOrphanedInstance(orphan, instance, longhorn.InstanceManagerTypeReplica, deType, spec)
+}
+
+func (oc *OrphanController) cleanupOrphanedInstance(orphan *longhorn.Orphan, instance string, imType longhorn.InstanceManagerType, deType longhorn.DataEngineType, instanceCRSpec *longhorn.InstanceSpec) (isCleanupComplete bool, err error) {
+	if instanceCRSpec != nil && instanceCRSpec.NodeID == oc.controllerID {
+		// Instance is scheduled back to current node and is no longer considered orphaned.
+		// Finalize the orphan CR directly without terminating the instance process.
+		return true, nil
+	}
+
+	im, err := oc.ds.GetRunningInstanceManagerByNodeRO(oc.controllerID, deType)
+	if err != nil {
+		oc.logger.WithError(err).Infof("No running instance manager for node %v for deleting orphan instance %v", oc.controllerID, orphan.Name)
+		return true, nil
+	}
+	imc, err := engineapi.NewInstanceManagerClient(im, false)
+	if err != nil {
+		return false, err
+	}
+	defer func() {
+		if closeErr := imc.Close(); closeErr != nil {
+			oc.logger.WithError(closeErr).Error("failed to close instance manager client")
+		}
+	}()
+
+	instanceExist := types.GetCondition(orphan.Status.Conditions, longhorn.OrphanConditionTypeInstanceState).Status == longhorn.ConditionStatusTrue
+	if instanceExist {
+		if err = oc.deleteInstance(imc, instance, imType, deType); err != nil {
+			return false, err
+		}
+	}
+	return oc.confirmOrphanInstanceCleanup(imc, instance, imType, deType)
+}
+
+func (oc *OrphanController) extractOrphanedInstanceInfo(orphan *longhorn.Orphan) (name string, dataEngineType longhorn.DataEngineType, err error) {
+	name, ok := orphan.Spec.Parameters[longhorn.OrphanInstanceName]
+	if !ok {
+		return "", "", fmt.Errorf("failed to get instance name for instance orphan %v", orphan.Name)
+	}
+
+	dataEngineTypeStr, ok := orphan.Spec.Parameters[longhorn.OrphanDataEngineType]
+	if !ok {
+		return "", "", fmt.Errorf("failed to get data engine type for instance orphan %v", orphan.Name)
+	}
+	switch dataEngineType = longhorn.DataEngineType(dataEngineTypeStr); dataEngineType {
+	case longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2:
+		// supported data engine type
+	default:
+		return "", "", fmt.Errorf("unknown data engine type %v for instance orphan %v", dataEngineTypeStr, orphan.Name)
+	}
+
+	return name, dataEngineType, nil
+}
+
+func (oc *OrphanController) deleteInstance(imc *engineapi.InstanceManagerClient, instanceName string, instanceKind longhorn.InstanceManagerType, engineType longhorn.DataEngineType) (err error) {
+	// There is a delay between deletion initiation and state/InstanceManager update,
+	// this function may be called multiple times before given instance exits.
+
+	oc.logger.Infof("Orphan controller deleting instance %v", instanceName)
+
+	defer func() {
+		if err != nil {
+			err = errors.Wrapf(err, "cannot delete instance %v", instanceName)
+		}
+	}()
+
+	err = imc.InstanceDelete(engineType, instanceName, string(instanceKind), "", false)
+	if err != nil && !types.ErrorIsNotFound(err) {
+		return err
+	}
+
+	return nil
+}
+
+func (oc *OrphanController) confirmOrphanInstanceCleanup(imc *engineapi.InstanceManagerClient, instanceName string, imType longhorn.InstanceManagerType, engineType longhorn.DataEngineType) (isCleanupComplete bool, err error) {
+	defer func() {
+		if err != nil {
+			err = errors.Wrapf(err, "cannot confirm cleanup result of instance %v", instanceName)
+		}
+	}()
+
+	_, err = imc.InstanceGet(engineType, instanceName, string(imType))
+	switch {
+	case err == nil:
+		// Instance still exists - cleanup not complete
+		// Cleanup will continue after the instance state update.
+		return false, nil
+	case types.ErrorIsNotFound(err):
+		// instance not found - cleanup completed.
+		return true, nil
+	default:
+		// Unexpected error - cleanup status unknown.
+		return false, err
+	}
+}
+
+func (oc *OrphanController) deleteOrphanedReplicaDataStore(orphan *longhorn.Orphan) error {
 	oc.logger.Infof("Deleting orphan %v replica data store %v in disk %v on node %v",
 		orphan.Name, orphan.Spec.Parameters[longhorn.OrphanDataName],
 		orphan.Spec.Parameters[longhorn.OrphanDiskPath], orphan.Status.OwnerID)
@@ -327,22 +508,24 @@ func (oc *OrphanController) deleteOrphanedReplica(orphan *longhorn.Orphan) error
 		err := lhns.DeletePath(filepath.Join(diskPath, "replicas", replicaDirectoryName))
 		return errors.Wrapf(err, "failed to delete orphan replica directory %v in disk %v", replicaDirectoryName, diskPath)
 	case longhorn.DiskTypeBlock:
-		return oc.DeleteV2ReplicaInstance(orphan.Spec.Parameters[longhorn.OrphanDiskName], orphan.Spec.Parameters[longhorn.OrphanDiskUUID], "", orphan.Spec.Parameters[longhorn.OrphanDataName])
+		return oc.DeleteV2ReplicaStore(orphan.Spec.Parameters[longhorn.OrphanDiskName], orphan.Spec.Parameters[longhorn.OrphanDiskUUID], "", orphan.Spec.Parameters[longhorn.OrphanDataName])
 	default:
 		return fmt.Errorf("unknown disk type %v for orphan %v", diskType, orphan.Name)
 	}
 }
 
-func (oc *OrphanController) DeleteV2ReplicaInstance(diskName, diskUUID, diskDriver, replicaInstanceName string) (err error) {
-	logrus.Infof("Deleting SPDK replica instance %v on disk %v on node %v", replicaInstanceName, diskUUID, oc.controllerID)
+func (oc *OrphanController) DeleteV2ReplicaStore(diskName, diskUUID, diskDriver, replicaInstanceName string) (err error) {
+	logrus.Infof("Deleting SPDK replica store %v on disk %v on node %v", replicaInstanceName, diskUUID, oc.controllerID)
 
 	defer func() {
-		err = errors.Wrapf(err, "cannot delete v2 replica instance %v", replicaInstanceName)
+		if err != nil {
+			err = errors.Wrapf(err, "cannot delete v2 replica store %v", replicaInstanceName)
+		}
 	}()
 
 	im, err := oc.ds.GetRunningInstanceManagerByNodeRO(oc.controllerID, longhorn.DataEngineTypeV2)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get running instance manager for node %v for deleting v2 replica instance %v", oc.controllerID, replicaInstanceName)
+		return errors.Wrapf(err, "failed to get running instance manager for node %v for deleting v2 replica store %v", oc.controllerID, replicaInstanceName)
 	}
 
 	c, err := engineapi.NewDiskServiceClient(im, oc.logger)
@@ -360,8 +543,15 @@ func (oc *OrphanController) DeleteV2ReplicaInstance(diskName, diskUUID, diskDriv
 }
 
 func (oc *OrphanController) updateConditions(orphan *longhorn.Orphan) error {
-	if err := oc.updateDataCleanableCondition(orphan); err != nil {
-		return err
+	switch orphan.Spec.Type {
+	case longhorn.OrphanTypeEngineInstance, longhorn.OrphanTypeReplicaInstance:
+		// No condition update needed. Instance state is tracked by instance manager monitor.
+	case longhorn.OrphanTypeReplicaDataStore:
+		if err := oc.updateDataCleanableCondition(orphan); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unknown orphan type %v to update conditions on orphan %v", orphan.Spec.Type, orphan.Name)
 	}
 
 	if types.GetCondition(orphan.Status.Conditions, longhorn.OrphanConditionTypeError).Status != longhorn.ConditionStatusTrue {
@@ -411,7 +601,7 @@ func (oc *OrphanController) updateDataCleanableCondition(orphan *longhorn.Orphan
 		return nil
 	}
 
-	if orphan.Spec.Type == longhorn.OrphanTypeReplica {
+	if orphan.Spec.Type == longhorn.OrphanTypeReplicaDataStore {
 		reason = oc.checkOrphanedReplicaDataCleanable(node, orphan)
 	}
 
