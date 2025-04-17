@@ -256,6 +256,10 @@ func (sc *SettingController) syncNonDangerZoneSettingsForManagedComponents(setti
 		if err := sc.syncDefaultLonghornStaticStorageClass(); err != nil {
 			return err
 		}
+	case types.SettingNameOrphanResourceAutoDeletion:
+		if err := sc.syncOrphanResourceAutoDeletion(); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -891,6 +895,32 @@ func (sc *SettingController) syncDefaultLonghornStaticStorageClass() error {
 			return err
 		}
 		return nil
+	}
+
+	return err
+}
+
+func (sc *SettingController) syncOrphanResourceAutoDeletion() error {
+	setting, err := sc.ds.GetSettingOrphanResourceAutoDeletion()
+	if err != nil {
+		return err
+	}
+	var replicaDataCleanupValue string
+	if setting[types.OrphanResourceTypeReplicaData] {
+		replicaDataCleanupValue = "true"
+	} else {
+		replicaDataCleanupValue = "false"
+	}
+
+	deprecatedSetting, err := sc.ds.GetSetting(types.SettingNameOrphanAutoDeletion)
+	if err != nil {
+		return err
+	}
+	if replicaDataCleanupValue != deprecatedSetting.Value {
+		deprecatedSetting.Value = replicaDataCleanupValue
+		if _, err := sc.ds.UpdateSetting(deprecatedSetting); err != nil {
+			return err
+		}
 	}
 
 	return err
@@ -1585,6 +1615,7 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameNodeDownPodDeletionPolicy:                                true,
 		types.SettingNameNodeDrainPolicy:                                          true,
 		types.SettingNameOrphanAutoDeletion:                                       true,
+		types.SettingNameOrphanResourceAutoDeletion:                               true,
 		types.SettingNameRecurringFailedJobsHistoryLimit:                          true,
 		types.SettingNameRecurringSuccessfulJobsHistoryLimit:                      true,
 		types.SettingNameRemoveSnapshotsDuringFilesystemTrim:                      true,

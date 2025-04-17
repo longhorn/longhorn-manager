@@ -61,6 +61,8 @@ const (
 	InstanceStateStarting = InstanceState("starting")
 	InstanceStateStopping = InstanceState("stopping")
 	InstanceStateUnknown  = InstanceState("unknown")
+	// InstanceStateTerminated indicates the instance is deleted and not found
+	InstanceStateTerminated = InstanceState("terminated")
 )
 
 type InstanceSpec struct {

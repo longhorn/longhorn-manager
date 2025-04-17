@@ -45,8 +45,10 @@ func (o *orphanValidator) Create(request *admission.Request, newObj runtime.Obje
 
 	var err error
 	switch orphan.Spec.Type {
-	case longhorn.OrphanTypeReplica:
-		err = checkOrphanForReplicaDataStore(orphan)
+	case longhorn.OrphanTypeReplicaData:
+		err = checkOrphanForReplicaData(orphan)
+	case longhorn.OrphanTypeEngineInstance, longhorn.OrphanTypeReplicaInstance:
+		err = checkOrphanForInstance(orphan)
 	default:
 		return werror.NewInvalidError(fmt.Sprintf("unknown orphan type %v for orphan %v", orphan.Spec.Type, orphan.Name), "")
 	}
@@ -71,14 +73,17 @@ func (o *orphanValidator) Update(request *admission.Request, oldObj runtime.Obje
 }
 
 func checkOrphanParameters(orphan *longhorn.Orphan) error {
-	if orphan.Spec.Type == longhorn.OrphanTypeReplica {
-		return checkOrphanForReplicaDataStore(orphan)
+	switch orphan.Spec.Type {
+	case longhorn.OrphanTypeReplicaData:
+		return checkOrphanForReplicaData(orphan)
+	case longhorn.OrphanTypeEngineInstance, longhorn.OrphanTypeReplicaInstance:
+		return checkOrphanForInstance(orphan)
 	}
 
 	return werror.NewInvalidError(fmt.Sprintf("unknown orphan type %v for orphan %v", orphan.Spec.Type, orphan.Name), "")
 }
 
-func checkOrphanForReplicaDataStore(orphan *longhorn.Orphan) error {
+func checkOrphanForReplicaData(orphan *longhorn.Orphan) error {
 	params := []string{
 		longhorn.OrphanDataName,
 		longhorn.OrphanDiskName,
@@ -92,6 +97,32 @@ func checkOrphanForReplicaDataStore(orphan *longhorn.Orphan) error {
 		if !ok {
 			return fmt.Errorf("parameter %v for orphan %v is missing", param, orphan.Name)
 		}
+	}
+
+	return nil
+}
+
+func checkOrphanForInstance(orphan *longhorn.Orphan) error {
+	params := []string{
+		longhorn.OrphanInstanceName,
+		longhorn.OrphanInstanceManager,
+	}
+
+	for _, param := range params {
+		val, ok := orphan.Spec.Parameters[param]
+		if !ok {
+			return fmt.Errorf("parameter %v for orphan %v is missing", param, orphan.Name)
+		}
+		if val == "" {
+			return fmt.Errorf("parameter %v for orphan %v is empty", param, orphan.Name)
+		}
+	}
+
+	switch orphan.Spec.DataEngine {
+	case longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2:
+		break
+	default:
+		return fmt.Errorf("invalid data engine type %v for orphan %v", orphan.Spec.DataEngine, orphan.Name)
 	}
 
 	return nil

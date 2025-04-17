@@ -40,7 +40,7 @@ var (
 	DefaultOrphanTestNode1 = newOrphan(
 		longhorn.OrphanSpec{
 			NodeID: TestNode1,
-			Type:   longhorn.OrphanTypeReplica,
+			Type:   longhorn.OrphanTypeReplicaData,
 			Parameters: map[string]string{
 				longhorn.OrphanDataName: monitor.TestOrphanedReplicaDirectoryName,
 				longhorn.OrphanDiskName: TestDiskID1,

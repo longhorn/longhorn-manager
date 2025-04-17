@@ -25,9 +25,10 @@ import (
 // OrphanSpecApplyConfiguration represents a declarative configuration of the OrphanSpec type for use
 // with apply.
 type OrphanSpecApplyConfiguration struct {
-	NodeID     *string                     `json:"nodeID,omitempty"`
-	Type       *longhornv1beta2.OrphanType `json:"orphanType,omitempty"`
-	Parameters map[string]string           `json:"parameters,omitempty"`
+	NodeID     *string                         `json:"nodeID,omitempty"`
+	Type       *longhornv1beta2.OrphanType     `json:"orphanType,omitempty"`
+	DataEngine *longhornv1beta2.DataEngineType `json:"dataEngine,omitempty"`
+	Parameters map[string]string               `json:"parameters,omitempty"`
 }
 
 // OrphanSpecApplyConfiguration constructs a declarative configuration of the OrphanSpec type for use with
@@ -49,6 +50,14 @@ func (b *OrphanSpecApplyConfiguration) WithNodeID(value string) *OrphanSpecApply
 // If called multiple times, the Type field is set to the value of the last call.
 func (b *OrphanSpecApplyConfiguration) WithType(value longhornv1beta2.OrphanType) *OrphanSpecApplyConfiguration {
 	b.Type = &value
+	return b
+}
+
+// WithDataEngine sets the DataEngine field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the DataEngine field is set to the value of the last call.
+func (b *OrphanSpecApplyConfiguration) WithDataEngine(value longhornv1beta2.DataEngineType) *OrphanSpecApplyConfiguration {
+	b.DataEngine = &value
 	return b
 }
 
