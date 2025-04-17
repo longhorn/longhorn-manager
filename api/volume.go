@@ -201,6 +201,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		DataEngine:                  volume.DataEngine,
 		FreezeFilesystemForSnapshot: volume.FreezeFilesystemForSnapshot,
 		BackupTargetName:            volume.BackupTargetName,
+		OfflineRebuilding:           volume.OfflineRebuilding,
 	}, volume.RecurringJobSelector)
 	if err != nil {
 		return errors.Wrap(err, "failed to create volume")
@@ -641,6 +642,30 @@ func (s *Server) VolumeCancelExpansion(rw http.ResponseWriter, req *http.Request
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
 		return s.m.CancelExpansion(id)
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("failed to convert to volume %v object", id)
+	}
+
+	return s.responseWithVolume(rw, req, "", v)
+}
+
+func (s *Server) VolumeOfflineRebuilding(rw http.ResponseWriter, req *http.Request) error {
+	var input UpdateOfflineRebuildingInput
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return err
+	}
+
+	id := mux.Vars(req)["name"]
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.UpdateOfflineRebuilding(id, longhorn.VolumeOfflineRebuilding(input.OfflineRebuilding))
 	})
 	if err != nil {
 		return err
