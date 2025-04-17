@@ -896,3 +896,20 @@ func GetDataContentFromYAML(configMapYAMLData []byte) (map[string]string, error)
 
 	return customizedDataMap, nil
 }
+
+// IsHigherPriorityVATicketExisting checks if there is a higher priority volume attachment ticket
+// existing in the volume attachment
+func IsHigherPriorityVATicketExisting(va *longhorn.VolumeAttachment, ticketType longhorn.AttacherType) bool {
+	if va == nil || len(va.Spec.AttachmentTickets) == 0 {
+		return false
+	}
+
+	ticketPriorityLevel := longhorn.GetAttacherPriorityLevel(ticketType)
+	for _, ticket := range va.Spec.AttachmentTickets {
+		existVAPriorityLevel := longhorn.GetAttacherPriorityLevel(ticket.Type)
+		if existVAPriorityLevel > ticketPriorityLevel {
+			return true
+		}
+	}
+	return false
+}
