@@ -2400,6 +2400,7 @@ func toOrphanResource(orphan *longhorn.Orphan) *Orphan {
 		OrphanSpec: longhorn.OrphanSpec{
 			NodeID:     orphan.Spec.NodeID,
 			Type:       orphan.Spec.Type,
+			DataEngine: orphan.Spec.DataEngine,
 			Parameters: orphan.Spec.Parameters,
 		},
 	}

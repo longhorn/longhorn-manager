@@ -194,7 +194,7 @@ func (nc *NodeController) isResponsibleForSetting(obj interface{}) bool {
 
 	return types.SettingName(setting.Name) == types.SettingNameStorageMinimalAvailablePercentage ||
 		types.SettingName(setting.Name) == types.SettingNameBackingImageCleanupWaitInterval ||
-		types.SettingName(setting.Name) == types.SettingNameOrphanAutoDeletion ||
+		types.SettingName(setting.Name) == types.SettingNameOrphanResourceAutoDeletion ||
 		types.SettingName(setting.Name) == types.SettingNameNodeDrainPolicy
 }
 
@@ -1328,7 +1328,9 @@ func (nc *NodeController) getNewAndMissingOrphanedReplicaDataStores(diskName, di
 	}
 	orphanMap := make(map[string]*longhorn.Orphan, len(orphanList))
 	for _, o := range orphanList {
-		orphanMap[o.Name] = o
+		if o.Spec.Type == longhorn.OrphanTypeReplicaData {
+			orphanMap[o.Name] = o
+		}
 	}
 
 	for dataStore := range replicaDataStores {
@@ -1355,10 +1357,11 @@ func (nc *NodeController) getNewAndMissingOrphanedReplicaDataStores(diskName, di
 }
 
 func (nc *NodeController) deleteOrphans(node *longhorn.Node, diskName string, diskInfo *monitor.CollectedDiskInfo, missingOrphanedReplicaDataStores map[string]string) error {
-	autoDeletionEnabled, err := nc.ds.GetSettingAsBool(types.SettingNameOrphanAutoDeletion)
+	autoDeletionResourceTypes, err := nc.ds.GetSettingOrphanResourceAutoDeletion()
 	if err != nil {
-		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameOrphanAutoDeletion)
+		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameOrphanResourceAutoDeletion)
 	}
+	autoDeletionEnabled := autoDeletionResourceTypes[types.OrphanResourceTypeReplicaData]
 
 	for dataStore := range missingOrphanedReplicaDataStores {
 		orphanName := types.GetOrphanChecksumNameForOrphanedDataStore(node.Name, diskName, diskInfo.Path, diskInfo.DiskUUID, dataStore)
@@ -1415,7 +1418,7 @@ func (nc *NodeController) createOrphan(node *longhorn.Node, diskName, replicaDat
 		},
 		Spec: longhorn.OrphanSpec{
 			NodeID: node.Name,
-			Type:   longhorn.OrphanTypeReplica,
+			Type:   longhorn.OrphanTypeReplicaData,
 			Parameters: map[string]string{
 				longhorn.OrphanDataName: replicaDataStore,
 				longhorn.OrphanDiskName: diskName,

@@ -3523,6 +3523,21 @@ func (s *DataStore) GetSettingSystemManagedComponentsNodeSelector() (map[string]
 	return nodeSelector, nil
 }
 
+// GetSettingOrphanResourceAutoDeletion get the setting and return a flag collection of orphaned resource types.
+// Flag is true when the auto deletion is enabled to an orphaned resource type.
+// Returns error if the setting is invalid
+func (s *DataStore) GetSettingOrphanResourceAutoDeletion() (map[types.OrphanResourceType]bool, error) {
+	setting, err := s.GetSettingWithAutoFillingRO(types.SettingNameOrphanResourceAutoDeletion)
+	if err != nil {
+		return nil, err
+	}
+	resourceTypes, err := types.UnmarshalOrphanResourceTypes(setting.Value)
+	if err != nil {
+		return nil, err
+	}
+	return resourceTypes, nil
+}
+
 // ResetMonitoringEngineStatus clean and update Engine status
 func (s *DataStore) ResetMonitoringEngineStatus(e *longhorn.Engine) (*longhorn.Engine, error) {
 	e.Status.Endpoint = ""
@@ -5255,6 +5270,23 @@ func (s *DataStore) ListOrphansByNodeRO(name string) ([]*longhorn.Orphan, error)
 	return s.orphanLister.Orphans(s.namespace).List(nodeSelector)
 }
 
+// ListOrphansForEngineAndReplicaInstancesRO returns a list of all engine and replica instance Orphans on node Name for the given namespace,
+// the list contains direct references to the internal cache objects and should not be mutated.
+// Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
+func (s *DataStore) ListOrphansForEngineAndReplicaInstancesRO(name string) (orphanList []*longhorn.Orphan, err error) {
+	existOrphans, err := s.ListOrphansByNode(name)
+	if err != nil {
+		return nil, err
+	}
+	for _, orphan := range existOrphans {
+		switch orphan.Spec.Type {
+		case longhorn.OrphanTypeEngineInstance, longhorn.OrphanTypeReplicaInstance:
+			orphanList = append(orphanList, orphan)
+		}
+	}
+	return orphanList, nil
+}
+
 // DeleteOrphan won't result in immediately deletion since finalizer was set by default
 func (s *DataStore) DeleteOrphan(orphanName string) error {
 	return s.lhClient.LonghornV1beta2().Orphans(s.namespace).Delete(context.TODO(), orphanName, metav1.DeleteOptions{})
@@ -6072,7 +6104,7 @@ func (s *DataStore) GetRunningInstanceManagerByNodeRO(node string, dataEngine lo
 		}
 	}
 
-	return nil, fmt.Errorf("failed to find a running instance manager for node %v", node)
+	return nil, &types.NotFoundError{Name: "a running instance manager for node " + node}
 }
 
 func (s *DataStore) GetFreezeFilesystemForSnapshotSetting(e *longhorn.Engine) (bool, error) {
