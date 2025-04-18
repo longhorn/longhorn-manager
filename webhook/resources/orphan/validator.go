@@ -45,8 +45,10 @@ func (o *orphanValidator) Create(request *admission.Request, newObj runtime.Obje
 
 	var err error
 	switch orphan.Spec.Type {
-	case longhorn.OrphanTypeReplica:
+	case longhorn.OrphanTypeReplicaDataStore:
 		err = checkOrphanForReplicaDataStore(orphan)
+	case longhorn.OrphanTypeEngineInstance, longhorn.OrphanTypeReplicaInstance:
+		err = checkOrphanForInstance(orphan)
 	default:
 		return werror.NewInvalidError(fmt.Sprintf("unknown orphan type %v for orphan %v", orphan.Spec.Type, orphan.Name), "")
 	}
@@ -71,8 +73,11 @@ func (o *orphanValidator) Update(request *admission.Request, oldObj runtime.Obje
 }
 
 func checkOrphanParameters(orphan *longhorn.Orphan) error {
-	if orphan.Spec.Type == longhorn.OrphanTypeReplica {
+	switch orphan.Spec.Type {
+	case longhorn.OrphanTypeReplicaDataStore:
 		return checkOrphanForReplicaDataStore(orphan)
+	case longhorn.OrphanTypeEngineInstance, longhorn.OrphanTypeReplicaInstance:
+		return checkOrphanForInstance(orphan)
 	}
 
 	return werror.NewInvalidError(fmt.Sprintf("unknown orphan type %v for orphan %v", orphan.Spec.Type, orphan.Name), "")
@@ -92,6 +97,33 @@ func checkOrphanForReplicaDataStore(orphan *longhorn.Orphan) error {
 		if !ok {
 			return fmt.Errorf("parameter %v for orphan %v is missing", param, orphan.Name)
 		}
+	}
+
+	return nil
+}
+
+func checkOrphanForInstance(orphan *longhorn.Orphan) error {
+	params := []string{
+		longhorn.OrphanInstanceName,
+		longhorn.OrphanDataEngineType,
+	}
+
+	for _, param := range params {
+		_, ok := orphan.Spec.Parameters[param]
+		if !ok {
+			return fmt.Errorf("parameter %v for orphan %v is missing", param, orphan.Name)
+		}
+	}
+
+	if orphan.Spec.Parameters[longhorn.OrphanDataEngineType] == "" {
+		return fmt.Errorf("invalid instance %v for orphan %v", orphan.Spec.Parameters[longhorn.OrphanDataEngineType], orphan.Name)
+	}
+
+	switch deType := longhorn.DataEngineType(orphan.Spec.Parameters[longhorn.OrphanDataEngineType]); deType {
+	case longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2:
+		break
+	default:
+		return fmt.Errorf("invalid data engine type %v for orphan %v", deType, orphan.Name)
 	}
 
 	return nil

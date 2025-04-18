@@ -5,12 +5,15 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 type OrphanType string
 
 const (
-	OrphanTypeReplica = OrphanType("replica")
+	OrphanTypeReplicaDataStore = OrphanType("replica")
+	OrphanTypeEngineInstance   = OrphanType("engine-instance")
+	OrphanTypeReplicaInstance  = OrphanType("replica-instance")
 )
 
 const (
 	OrphanConditionTypeError         = "Error"
 	OrphanConditionTypeDataCleanable = "DataCleanable"
+	OrphanConditionTypeInstanceState = "InstanceState"
 
 	OrphanConditionTypeDataCleanableReasonNodeUnavailable = "NodeUnavailable"
 	OrphanConditionTypeDataCleanableReasonNodeEvicted     = "NodeEvicted"
@@ -20,6 +23,9 @@ const (
 )
 
 const (
+	OrphanInstanceName   = "InstanceName"
+	OrphanDataEngineType = "DataEngineType"
+
 	OrphanDataName = "DataName"
 	OrphanDiskName = "DiskName"
 	OrphanDiskUUID = "DiskUUID"

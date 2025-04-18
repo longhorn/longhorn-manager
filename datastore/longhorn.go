@@ -3495,6 +3495,18 @@ func (s *DataStore) GetSettingSystemManagedComponentsNodeSelector() (map[string]
 	return nodeSelector, nil
 }
 
+func (s *DataStore) GetSettingOrphanResourceAutoDeletion() (map[types.OrphanResourceType]bool, error) {
+	setting, err := s.GetSettingWithAutoFillingRO(types.SettingNameOrphanResourceAutoDeletion)
+	if err != nil {
+		return nil, err
+	}
+	resourceTypes, err := types.UnmarshalOrphanResourceTypes(setting.Value)
+	if err != nil {
+		return nil, err
+	}
+	return resourceTypes, nil
+}
+
 // ResetMonitoringEngineStatus clean and update Engine status
 func (s *DataStore) ResetMonitoringEngineStatus(e *longhorn.Engine) (*longhorn.Engine, error) {
 	e.Status.Endpoint = ""

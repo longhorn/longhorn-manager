@@ -194,7 +194,7 @@ func (nc *NodeController) isResponsibleForSetting(obj interface{}) bool {
 
 	return types.SettingName(setting.Name) == types.SettingNameStorageMinimalAvailablePercentage ||
 		types.SettingName(setting.Name) == types.SettingNameBackingImageCleanupWaitInterval ||
-		types.SettingName(setting.Name) == types.SettingNameOrphanAutoDeletion ||
+		types.SettingName(setting.Name) == types.SettingNameOrphanResourceAutoDeletion ||
 		types.SettingName(setting.Name) == types.SettingNameNodeDrainPolicy
 }
 
@@ -1316,10 +1316,10 @@ func (nc *NodeController) syncOrphans(node *longhorn.Node, collectedDataInfo map
 		newOrphanedReplicaDataStores, missingOrphanedReplicaDataStores :=
 			nc.getNewAndMissingOrphanedReplicaDataStores(diskName, diskInfo.DiskUUID, diskInfo.Path, diskInfo.OrphanedReplicaDataStores)
 
-		if err := nc.createOrphans(node, diskName, diskInfo, newOrphanedReplicaDataStores); err != nil {
+		if err := nc.createDataStoreOrphans(node, diskName, diskInfo, newOrphanedReplicaDataStores); err != nil {
 			return errors.Wrapf(err, "failed to create orphans for disk %v", diskName)
 		}
-		if err := nc.deleteOrphans(node, diskName, diskInfo, missingOrphanedReplicaDataStores); err != nil {
+		if err := nc.deleteDataStoreOrphans(node, diskName, diskInfo, missingOrphanedReplicaDataStores); err != nil {
 			return errors.Wrapf(err, "failed to delete orphans for disk %v", diskName)
 		}
 	}
@@ -1339,7 +1339,9 @@ func (nc *NodeController) getNewAndMissingOrphanedReplicaDataStores(diskName, di
 	}
 	orphanMap := make(map[string]*longhorn.Orphan, len(orphanList))
 	for _, o := range orphanList {
-		orphanMap[o.Name] = o
+		if o.Spec.Type == longhorn.OrphanTypeReplicaDataStore {
+			orphanMap[o.Name] = o
+		}
 	}
 
 	for dataStore := range replicaDataStores {
@@ -1365,11 +1367,12 @@ func (nc *NodeController) getNewAndMissingOrphanedReplicaDataStores(diskName, di
 	return newOrphanedReplicaDataStores, missingOrphanedReplicaDataStores
 }
 
-func (nc *NodeController) deleteOrphans(node *longhorn.Node, diskName string, diskInfo *monitor.CollectedDiskInfo, missingOrphanedReplicaDataStores map[string]string) error {
-	autoDeletionEnabled, err := nc.ds.GetSettingAsBool(types.SettingNameOrphanAutoDeletion)
+func (nc *NodeController) deleteDataStoreOrphans(node *longhorn.Node, diskName string, diskInfo *monitor.CollectedDiskInfo, missingOrphanedReplicaDataStores map[string]string) error {
+	autoDeletionResourceTypes, err := nc.ds.GetSettingOrphanResourceAutoDeletion()
 	if err != nil {
-		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameOrphanAutoDeletion)
+		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameOrphanResourceAutoDeletion)
 	}
+	autoDeletionEnabled := autoDeletionResourceTypes[types.OrphanResourceTypeReplicaData]
 
 	for dataStore := range missingOrphanedReplicaDataStores {
 		orphanName := types.GetOrphanChecksumNameForOrphanedDataStore(node.Name, diskName, diskInfo.Path, diskInfo.DiskUUID, dataStore)
@@ -1402,7 +1405,7 @@ func (nc *NodeController) deleteOrphans(node *longhorn.Node, diskName string, di
 	return nil
 }
 
-func (nc *NodeController) createOrphans(node *longhorn.Node, diskName string, diskInfo *monitor.CollectedDiskInfo, newOrphanedReplicaDataStores map[string]string) error {
+func (nc *NodeController) createDataStoreOrphans(node *longhorn.Node, diskName string, diskInfo *monitor.CollectedDiskInfo, newOrphanedReplicaDataStores map[string]string) error {
 	for dataStore := range newOrphanedReplicaDataStores {
 		if err := nc.createOrphan(node, diskName, dataStore, diskInfo); err != nil && !apierrors.IsAlreadyExists(err) {
 			return errors.Wrapf(err, "failed to create orphan for orphaned replica data store %v in disk %v on node %v",
@@ -1426,7 +1429,7 @@ func (nc *NodeController) createOrphan(node *longhorn.Node, diskName, replicaDat
 		},
 		Spec: longhorn.OrphanSpec{
 			NodeID: node.Name,
-			Type:   longhorn.OrphanTypeReplica,
+			Type:   longhorn.OrphanTypeReplicaDataStore,
 			Parameters: map[string]string{
 				longhorn.OrphanDataName: replicaDataStore,
 				longhorn.OrphanDiskName: diskName,
