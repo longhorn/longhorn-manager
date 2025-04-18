@@ -249,6 +249,8 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 		vol.FreezeFilesystemForSnapshot = freezeFilesystemForSnapshot
 	}
 
+	vol.Frontend = volOptions["frontend"]
+
 	return vol, nil
 }
 
