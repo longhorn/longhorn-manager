@@ -75,9 +75,10 @@ type Volume struct {
 	CloneStatus      longhorn.VolumeCloneStatus    `json:"cloneStatus"`
 	Ready            bool                          `json:"ready"`
 
-	AccessMode    longhorn.AccessMode        `json:"accessMode"`
-	ShareEndpoint string                     `json:"shareEndpoint"`
-	ShareState    longhorn.ShareManagerState `json:"shareState"`
+	AccessMode        longhorn.AccessMode              `json:"accessMode"`
+	ShareEndpoint     string                           `json:"shareEndpoint"`
+	ShareState        longhorn.ShareManagerState       `json:"shareState"`
+	OfflineRebuilding longhorn.VolumeOfflineRebuilding `json:"offlineRebuilding"`
 
 	Migratable bool `json:"migratable"`
 
@@ -401,6 +402,10 @@ type UpdateFreezeFilesystemForSnapshotInput struct {
 
 type UpdateBackupTargetInput struct {
 	BackupTargetName string `json:"backupTargetName"`
+}
+
+type UpdateOfflineRebuildingInput struct {
+	OfflineRebuilding string `json:"offlineRebuilding"`
 }
 
 type PVCreateInput struct {
@@ -994,10 +999,12 @@ func volumeSchema(volume *client.Schema) {
 		"cancelExpansion": {
 			Output: "volume",
 		},
+		"offlineReplicaRebuilding": {
+			Output: "volume",
+		},
 		"trimFilesystem": {
 			Output: "volume",
 		},
-
 		"snapshotPurge": {
 			Output: "volume",
 		},
@@ -1634,9 +1641,10 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		DataEngine:                  v.Spec.DataEngine,
 		Ready:                       ready,
 
-		AccessMode:    v.Spec.AccessMode,
-		ShareEndpoint: v.Status.ShareEndpoint,
-		ShareState:    v.Status.ShareState,
+		AccessMode:        v.Spec.AccessMode,
+		ShareEndpoint:     v.Status.ShareEndpoint,
+		ShareState:        v.Status.ShareState,
+		OfflineRebuilding: v.Spec.OfflineRebuilding,
 
 		Migratable: v.Spec.Migratable,
 
@@ -1677,6 +1685,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["activate"] = struct{}{}
 			actions["expand"] = struct{}{}
 			actions["cancelExpansion"] = struct{}{}
+			actions["offlineReplicaRebuilding"] = struct{}{}
 			actions["replicaRemove"] = struct{}{}
 			actions["engineUpgrade"] = struct{}{}
 			actions["pvCreate"] = struct{}{}
@@ -1699,6 +1708,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["recurringJobList"] = struct{}{}
 		case longhorn.VolumeStateAttaching:
 			actions["cancelExpansion"] = struct{}{}
+			actions["offlineReplicaRebuilding"] = struct{}{}
 			actions["recurringJobAdd"] = struct{}{}
 			actions["recurringJobDelete"] = struct{}{}
 			actions["recurringJobList"] = struct{}{}
@@ -1729,6 +1739,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["pvCreate"] = struct{}{}
 			actions["pvcCreate"] = struct{}{}
 			actions["cancelExpansion"] = struct{}{}
+			actions["offlineReplicaRebuilding"] = struct{}{}
 			actions["trimFilesystem"] = struct{}{}
 			actions["recurringJobAdd"] = struct{}{}
 			actions["recurringJobDelete"] = struct{}{}
