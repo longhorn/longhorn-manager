@@ -53,7 +53,7 @@ func (v *pvcValidator) Update(request *admission.Request, oldObj runtime.Object,
 	// Handle only PVC size expansion.
 	oldSize := oldPVC.Spec.Resources.Requests[corev1.ResourceStorage]
 	newSize := newPVC.Spec.Resources.Requests[corev1.ResourceStorage]
-	if oldSize == newSize {
+	if oldSize.Cmp(newSize) == 0 {
 		// Size has not changed; no further validation needed.
 		return nil
 	}
