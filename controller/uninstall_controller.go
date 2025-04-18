@@ -1173,21 +1173,45 @@ func (c *UninstallController) deleteSupportBundles(supportBundles map[string]*lo
 
 	for _, supportBundle := range supportBundles {
 		log := getLoggerForSupportBundle(c.logger, supportBundle.Name)
+		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 
-		if supportBundle.DeletionTimestamp != nil {
+		// Initial deletion
+		if supportBundle.DeletionTimestamp.IsZero() {
+			if err := c.ds.DeleteSupportBundle(supportBundle.Name); err != nil {
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("SupportBundle is not found")
+					continue
+				}
+				return errors.Wrap(err, "failed to mark for deletion")
+			}
+			log.Info("Marked for deletion")
 			continue
 		}
 
-		if errDelete := c.ds.DeleteSupportBundle(supportBundle.Name); errDelete != nil {
-			if datastore.ErrorIsNotFound(errDelete) {
-				log.Info("SupportBundle is not found")
-				continue
-			}
-			err = errors.Wrap(errDelete, "failed to mark for deletion")
-			return
-		}
+		// Cleanup stale SupportBundle
+		if supportBundle.DeletionTimestamp.Before(&timeout) {
+			supportBundleManagerName := GetSupportBundleManagerName(supportBundle)
 
-		log.Info("Marked for deletion")
+			if err := c.ds.DeleteDeployment(supportBundleManagerName); err != nil {
+				if apierrors.IsNotFound(err) {
+					log.Info("SupportBundleManager is not found")
+				} else {
+					return errors.Wrap(err, "failed to delete SupportBundleManager pod")
+				}
+			} else {
+				log.Infof("Deleted SupportBundleManager pod %v", supportBundleManagerName)
+			}
+
+			if err := c.ds.RemoveFinalizerForSupportBundle(supportBundle); err != nil {
+				if datastore.ErrorIsNotFound(err) {
+					log.Info("SupportBundle is not found")
+				} else {
+					return errors.Wrap(err, "failed to remove finalizer")
+				}
+			} else {
+				log.Info("Removed finalizer")
+			}
+		}
 	}
 	return nil
 }
