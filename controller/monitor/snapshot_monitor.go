@@ -199,7 +199,7 @@ func (m *SnapshotMonitor) processNextWorkItem(id int) bool {
 
 	task := key.(snapshotCheckTask)
 
-	dataIntegrity, err := m.getSnapshotDataIntegrity(task.volumeName)
+	dataIntegrity, err := m.ds.GetVolumeSnapshotDataIntegrity(task.volumeName)
 	if err != nil {
 		return true
 	}
@@ -401,7 +401,7 @@ func (m *SnapshotMonitor) requestSnapshotHashing(engine *longhorn.Engine, engine
 	// In other words, the full hash will be issued by the cron job only, no matter if the field is enabled or fast-check.
 	rehash := false
 	if !changeEvent {
-		dataIntegrity, err := m.getSnapshotDataIntegrity(engine.Spec.VolumeName)
+		dataIntegrity, err := m.ds.GetVolumeSnapshotDataIntegrity(engine.Spec.VolumeName)
 		if err != nil {
 			return err
 		}
@@ -587,33 +587,4 @@ func determineChecksum(checksums map[string][]string) (bool, string, int) {
 	}
 
 	return found, checksum, maxVotes
-}
-
-func (m *SnapshotMonitor) getSnapshotDataIntegrity(volumeName string) (longhorn.SnapshotDataIntegrity, error) {
-	volume, err := m.ds.GetVolumeRO(volumeName)
-	if err != nil {
-		return "", err
-	}
-
-	if volume.Spec.SnapshotDataIntegrity != longhorn.SnapshotDataIntegrityIgnored {
-		return volume.Spec.SnapshotDataIntegrity, nil
-	}
-
-	var dataIntegrity string
-	switch volume.Spec.DataEngine {
-	case longhorn.DataEngineTypeV1:
-		dataIntegrity, err = m.ds.GetSettingValueExisted(types.SettingNameSnapshotDataIntegrity)
-		if err != nil {
-			return "", errors.Wrapf(err, "failed to assert %v value", types.SettingNameSnapshotDataIntegrity)
-		}
-	case longhorn.DataEngineTypeV2:
-		dataIntegrity, err = m.ds.GetSettingValueExisted(types.SettingNameV2DataEngineSnapshotDataIntegrity)
-		if err != nil {
-			return "", errors.Wrapf(err, "failed to assert %v value", types.SettingNameV2DataEngineSnapshotDataIntegrity)
-		}
-	default:
-		return "", fmt.Errorf("unknown data engine type %v for snapshot data integrity get", volume.Spec.DataEngine)
-	}
-
-	return longhorn.SnapshotDataIntegrity(dataIntegrity), nil
 }

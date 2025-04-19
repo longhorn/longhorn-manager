@@ -426,6 +426,26 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 			return err
 		}
 
+		// Best-effort cleanup.
+		// The child snapshot data content will change since the deleting parent snapshot data will be coalesced into its child.
+		for childSnapshotName := range snapshot.Status.Children {
+			if childSnapshotName == "volume-head" {
+				continue
+			}
+			childSnapshot, err := sc.ds.GetSnapshot(childSnapshotName)
+			if err != nil {
+				sc.logger.WithError(err).Errorf("Failed to get the child snapshot %s during snapshot %s deletion", childSnapshotName, snapshotName)
+				continue
+			}
+			if childSnapshot.Status.Checksum != "" {
+				childSnapshot.Status.Checksum = ""
+				if _, err = sc.ds.UpdateSnapshotStatus(childSnapshot); err != nil {
+					sc.logger.WithError(err).Errorf("Failed to clean up the child snapshot %s checksum during snapshot %s deletion", childSnapshotName, snapshotName)
+					continue
+				}
+			}
+		}
+
 		// Wait for the snapshot to be removed from engine.Status.Snapshots
 		engine, err = sc.ds.GetEngineRO(engine.Name)
 		if err != nil {

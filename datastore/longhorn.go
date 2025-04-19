@@ -748,6 +748,35 @@ func (s *DataStore) GetAutoBalancedReplicasSetting(volume *longhorn.Volume, logg
 	return setting
 }
 
+func (s *DataStore) GetVolumeSnapshotDataIntegrity(volumeName string) (longhorn.SnapshotDataIntegrity, error) {
+	volume, err := s.GetVolumeRO(volumeName)
+	if err != nil {
+		return "", err
+	}
+
+	if volume.Spec.SnapshotDataIntegrity != longhorn.SnapshotDataIntegrityIgnored {
+		return volume.Spec.SnapshotDataIntegrity, nil
+	}
+
+	var dataIntegrity string
+	switch volume.Spec.DataEngine {
+	case longhorn.DataEngineTypeV1:
+		dataIntegrity, err = s.GetSettingValueExisted(types.SettingNameSnapshotDataIntegrity)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to assert %v value", types.SettingNameSnapshotDataIntegrity)
+		}
+	case longhorn.DataEngineTypeV2:
+		dataIntegrity, err = s.GetSettingValueExisted(types.SettingNameV2DataEngineSnapshotDataIntegrity)
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to assert %v value", types.SettingNameV2DataEngineSnapshotDataIntegrity)
+		}
+	default:
+		return "", fmt.Errorf("unknown data engine type %v for snapshot data integrity get", volume.Spec.DataEngine)
+	}
+
+	return longhorn.SnapshotDataIntegrity(dataIntegrity), nil
+}
+
 func (s *DataStore) GetEncryptionSecret(secretNamespace, secretName string) (map[string]string, error) {
 	secret, err := s.GetSecretRO(secretNamespace, secretName)
 	if err != nil {
