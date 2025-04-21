@@ -22,12 +22,8 @@ import (
 )
 
 const (
-<<<<<<< HEAD
-	defaultBlockSize = 4096
-=======
-	defaultBlockSize      = 512
+	defaultBlockSize      = 4096
 	uuidGenerationRetries = 20
->>>>>>> 6134e8f5 (fix: fix naming collision when creating bim based on the prefix of the disk uuid)
 )
 
 // GetDiskStat returns the disk stat of the given directory
