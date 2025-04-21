@@ -3,12 +3,18 @@ package v18xto190
 import (
 	"github.com/pkg/errors"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	clientset "k8s.io/client-go/kubernetes"
 
 	"github.com/longhorn/longhorn-manager/types"
 
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
+)
+
+const (
+	upgradeLogPrefix = "upgrade from v1.8.x to v1.9.0: "
 )
 
 type listAndUpdateFunc func(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) error
@@ -50,5 +56,32 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 			return errors.Wrapf(err, "upgrade from v1.8.x to v1.9.0: failed to list all existing Longhorn %s during the %s upgrade", resourceKind, resourceKind)
 		}
 	}
+
+	if err := upgradeVolumes(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade volume failed")
+	}()
+
+	volumesMap, err := upgradeutil.ListAndUpdateVolumesInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn volumes during the volume upgrade")
+	}
+
+	for _, v := range volumesMap {
+		if v.Spec.OfflineRebuilding == "" {
+			v.Spec.OfflineRebuilding = longhorn.VolumeOfflineRebuildingIgnored
+		}
+	}
+
 	return nil
 }
