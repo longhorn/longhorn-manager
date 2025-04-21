@@ -142,6 +142,7 @@ const (
 	SettingNameDefaultMinNumberOfBackingImageCopies                     = SettingName("default-min-number-of-backing-image-copies")
 	SettingNameBackupExecutionTimeout                                   = SettingName("backup-execution-timeout")
 	SettingNameRWXVolumeFastFailover                                    = SettingName("rwx-volume-fast-failover")
+	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
 	// These three backup target parameters are used in the "longhorn-default-resource" ConfigMap
 	// to update the default BackupTarget resource.
 	// Longhorn won't create the Setting resources for these three parameters.
@@ -243,6 +244,7 @@ var (
 		SettingNameDefaultMinNumberOfBackingImageCopies,
 		SettingNameBackupExecutionTimeout,
 		SettingNameRWXVolumeFastFailover,
+		SettingNameOfflineReplicaRebuilding,
 	}
 )
 
@@ -366,6 +368,7 @@ var (
 		SettingNameDefaultMinNumberOfBackingImageCopies:                     SettingDefinitionDefaultMinNumberOfBackingImageCopies,
 		SettingNameBackupExecutionTimeout:                                   SettingDefinitionBackupExecutionTimeout,
 		SettingNameRWXVolumeFastFailover:                                    SettingDefinitionRWXVolumeFastFailover,
+		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -1533,6 +1536,20 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "false",
+	}
+
+	SettingDefinitionOfflineReplicaRebuilding = SettingDefinition{
+		DisplayName: "Offline Replica Rebuilding",
+		Description: "Enables automatic rebuilding of degraded replicas while the volume is detached. This setting only takes effect if the individual volume setting is set to `ignored` or `enabled`. \n\n" +
+			"Available options: \n\n" +
+			"- **true**: Enables offline replica rebuilding for all detached volumes, unless overridden by individual volume settings. \n\n" +
+			"- **false**: Disables offline replica rebuilding globally, unless overridden by individual volume settings. \n\n" +
+			"**Note:** Offline rebuilding applies only when a volume is detached. Volumes in a faulted state will not trigger offline rebuilding.",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeBool,
+		Required: true,
+		ReadOnly: false,
+		Default:  "false",
 	}
 )
 
