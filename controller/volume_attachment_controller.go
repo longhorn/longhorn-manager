@@ -600,15 +600,7 @@ func (vac *VolumeAttachmentController) shouldDoDetach(va *longhorn.VolumeAttachm
 	// Check if there is any workload ticket regardless of frontend on other nodes
 	// If exist, detach and interrupt the current ticket.
 	if !hasUninterruptibleTicket(currentAttachmentTickets) && hasWorkloadTicket(attachmentTicketsOnOtherNodes, longhorn.AnyValue) {
-		log.Info("Workload attachment ticket interrupted snapshot/backup/rebuilding-controller attachment tickets")
-		return true
-	}
-
-	// If there is an interruptible ticket and frontend disabled ticket on the current node (currently, only offline rebuilding ticket)
-	// need to check if there is any workload ticket with frontend enabled (disableFrontend=false) on the same node.
-	// If exist, detach and interrupt the rebuilding ticket.
-	if hasInterruptibleAndFrontendDisabledTicket(currentAttachmentTickets) && hasWorkloadTicket(currentAttachmentTickets, longhorn.FalseValue) {
-		log.Info("Workload attachment ticket interrupted rebuilding-controller attachment tickets")
+		log.Info("Workload attachment ticket interrupted snapshot/backup attachment tickets")
 		return true
 	}
 
@@ -618,17 +610,7 @@ func (vac *VolumeAttachmentController) shouldDoDetach(va *longhorn.VolumeAttachm
 func hasUninterruptibleTicket(attachmentTickets map[string]*longhorn.AttachmentTicket) bool {
 	for _, ticket := range attachmentTickets {
 		if ticket.Type != longhorn.AttacherTypeSnapshotController &&
-			ticket.Type != longhorn.AttacherTypeBackupController &&
-			ticket.Type != longhorn.AttacherTypeVolumeRebuildingController {
-			return true
-		}
-	}
-	return false
-}
-
-func hasInterruptibleAndFrontendDisabledTicket(attachmentTickets map[string]*longhorn.AttachmentTicket) bool {
-	for _, ticket := range attachmentTickets {
-		if ticket.Type == longhorn.AttacherTypeVolumeRebuildingController {
+			ticket.Type != longhorn.AttacherTypeBackupController {
 			return true
 		}
 	}
@@ -673,7 +655,7 @@ func (vac *VolumeAttachmentController) handleVolumeAttachment(va *longhorn.Volum
 		return
 	}
 
-	log.Infof("Volume %v is selected to attach to node %v, ticket +%v", vol.Name, attachmentTicket.NodeID, attachmentTicket)
+	log.Infof("Volume %v is selected to attach to node %v, ticket %+v", vol.Name, attachmentTicket.NodeID, attachmentTicket)
 
 	vol.Spec.NodeID = attachmentTicket.NodeID
 	setAttachmentParameter(attachmentTicket.Parameters, vol)
