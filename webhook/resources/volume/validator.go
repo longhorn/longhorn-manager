@@ -98,6 +98,10 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
+	if err := types.ValidateOfflineRebuild(volume.Spec.OfflineRebuilding); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
 	if volume.Spec.BackingImage != "" {
 		backingImage, err := v.ds.GetBackingImage(volume.Spec.BackingImage)
 		if err != nil {
@@ -224,6 +228,10 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 	}
 
 	if err := types.ValidateReplicaDiskSoftAntiAffinity(newVolume.Spec.ReplicaDiskSoftAntiAffinity); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
+	if err := types.ValidateOfflineRebuild(newVolume.Spec.OfflineRebuilding); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
