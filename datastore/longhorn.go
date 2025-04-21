@@ -5666,3 +5666,24 @@ func (s *DataStore) IsStorageNetworkForRWXVolume() (bool, error) {
 
 	return types.IsStorageNetworkForRWXVolume(storageNetworkSetting, storageNetworkForRWXVolumeEnabled), nil
 }
+<<<<<<< HEAD
+=======
+
+func (s *DataStore) GetAllDiskUUIDFirstFourChar() (map[string]bool, error) {
+	firstFourCharSet := make(map[string]bool)
+	nodes, err := s.ListNodesRO()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, node := range nodes {
+		for _, diskStatus := range node.Status.DiskStatus {
+			if len(diskStatus.DiskUUID) >= 4 {
+				firstFourCharSet[diskStatus.DiskUUID[:4]] = true
+			}
+		}
+	}
+
+	return firstFourCharSet, nil
+}
+>>>>>>> 97ed2e62 (fix: fix empty diskUUID crashed)
