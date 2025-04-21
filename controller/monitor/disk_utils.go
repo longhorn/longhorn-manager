@@ -14,6 +14,7 @@ import (
 	lhns "github.com/longhorn/go-common-libs/ns"
 	lhtypes "github.com/longhorn/go-common-libs/types"
 
+	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -21,7 +22,8 @@ import (
 )
 
 const (
-	defaultBlockSize = 4096
+	defaultBlockSize      = 4096
+	uuidGenerationRetries = 20
 )
 
 // GetDiskStat returns the disk stat of the given directory
@@ -119,10 +121,10 @@ func getBlockTypeDiskConfig(client *DiskServiceClient, diskName, diskPath string
 }
 
 // GenerateDiskConfig generates a disk config for the given directory
-func generateDiskConfig(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient) (*util.DiskConfig, error) {
+func generateDiskConfig(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string, client *DiskServiceClient, ds *datastore.DataStore) (*util.DiskConfig, error) {
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
-		return generateFilesystemTypeDiskConfig(diskName, diskPath)
+		return generateFilesystemTypeDiskConfig(diskName, diskPath, ds)
 	case longhorn.DiskTypeBlock:
 		return generateBlockTypeDiskConfig(client, diskName, diskUUID, diskPath, diskDriver, defaultBlockSize)
 	default:
@@ -130,15 +132,25 @@ func generateDiskConfig(diskType longhorn.DiskType, diskName, diskUUID, diskPath
 	}
 }
 
-func generateFilesystemTypeDiskConfig(diskName, diskPath string) (*util.DiskConfig, error) {
+func generateFilesystemTypeDiskConfig(diskName, diskPath string, ds *datastore.DataStore) (*util.DiskConfig, error) {
 	var err error
 	defer func() {
 		err = errors.Wrapf(err, "failed to generate disk config for %v", diskPath)
 	}()
 
+	allDiskUUIDFirstFourCharSet, err := ds.GetAllDiskUUIDFirstFourChar()
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get all diskUUIDs first four char set")
+	}
+
+	uuid, err := generateUniqueFirstFourCharUUID(allDiskUUIDFirstFourCharSet)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to generate unique disk UUID")
+	}
+
 	cfg := &util.DiskConfig{
 		DiskName: diskName,
-		DiskUUID: util.UUID(),
+		DiskUUID: uuid,
 	}
 	encoded, err := json.Marshal(cfg)
 	if err != nil {
@@ -223,4 +235,15 @@ func getSpdkReplicaInstanceNames(client *DiskServiceClient, diskType, diskName, 
 	}
 
 	return instanceNames, nil
+}
+
+func generateUniqueFirstFourCharUUID(allDiskUUIDFirstFourCharSet map[string]bool) (string, error) {
+	for i := 0; i < uuidGenerationRetries; i++ {
+		uuid := util.UUID()
+		prefix := uuid[:4]
+		if !allDiskUUIDFirstFourCharSet[prefix] {
+			return uuid, nil
+		}
+	}
+	return "", fmt.Errorf("failed to generate UUID with unique prefix after %v attempts", uuidGenerationRetries)
 }

@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -329,7 +330,11 @@ func (kc *KubernetesPodController) handleWorkloadPodDeletionIfCSIPluginPodIsDown
 // cleanupForceDeletedPodResources removes stale resources left behind when a pod
 // is force-deleted (i.e., deletion grace period is zero).
 func (kc *KubernetesPodController) cleanupForceDeletedPodResources(pod *corev1.Pod) error {
-	if pod.DeletionTimestamp == nil {
+	if !isControllerResponsibleFor(kc.controllerID, kc.ds, pod.Name, "", pod.Spec.NodeName) {
+		return nil
+	}
+
+	if pod.DeletionTimestamp.IsZero() {
 		return nil
 	}
 
@@ -344,22 +349,108 @@ func (kc *KubernetesPodController) cleanupForceDeletedPodResources(pod *corev1.P
 		return err
 	}
 
-	for _, va := range volumeAttachments {
-		if va.DeletionTimestamp != nil {
+	for _, volumeAttachment := range volumeAttachments {
+		shouldDeleteVolumeAttachment, err := kc.shouldDeleteVolumeAttachmentForForceDeletedPod(pod, volumeAttachment)
+		if err != nil {
+			logrus.WithError(err).Errorf("%v: failed to check if volume attachment %q for force-deleted pod %q should be deleted", controllerAgentName, volumeAttachment.Name, pod.Name)
 			continue
 		}
 
-		kc.logger.Infof("%v: deleting volume attachment %q for force-deleted pod %q", controllerAgentName, va.Name, pod.Name)
+		if !shouldDeleteVolumeAttachment {
+			continue
+		}
 
-		err := kc.kubeClient.StorageV1().VolumeAttachments().Delete(context.TODO(), va.Name, metav1.DeleteOptions{})
+		kc.logger.Infof("%v: deleting volume attachment %q for force-deleted pod %q", controllerAgentName, volumeAttachment.Name, pod.Name)
+
+		err = kc.kubeClient.StorageV1().VolumeAttachments().Delete(context.TODO(), volumeAttachment.Name, metav1.DeleteOptions{})
 		if err != nil {
 			if datastore.ErrorIsNotFound(err) {
 				continue
 			}
-			return errors.Wrapf(err, "failed to delete volume attachment %q for force-deleted pod %q", va.Name, pod.Name)
+			return errors.Wrapf(err, "failed to delete volume attachment %q for force-deleted pod %q", volumeAttachment.Name, pod.Name)
 		}
 
-		kc.logger.Infof("%v: deleted volume attachment %q for force-deleted pod %q", controllerAgentName, va.Name, pod.Name)
+		kc.logger.Infof("%v: deleted volume attachment %q for force-deleted pod %q", controllerAgentName, volumeAttachment.Name, pod.Name)
+	}
+
+	return nil
+}
+
+// shouldDeleteVolumeAttachmentForForceDeletedPod checks whether the VolumeAttachment
+// associated with a force-deleted Pod should be deleted.
+func (kc *KubernetesPodController) shouldDeleteVolumeAttachmentForForceDeletedPod(pod *corev1.Pod, volumeAttachment *storagev1.VolumeAttachment) (bool, error) {
+	if !volumeAttachment.DeletionTimestamp.IsZero() {
+		return false, nil // Already marked for deletion.
+	}
+
+	if !volumeAttachment.Status.Attached {
+		return false, nil // Not currently attached, let Kubernetes handle its lifecycle.
+	}
+
+	persistentVolumeName := volumeAttachment.Spec.Source.PersistentVolumeName
+	if persistentVolumeName == nil {
+		kc.logger.Infof("%v: volume attachment %q has no associated persistent volume; skipping cleanup for force-deleted pod %q",
+			controllerAgentName, volumeAttachment.Name, pod.Name)
+		return false, nil // No persistent volume, let Kubernetes handle its lifecycle.
+	}
+
+	persistentVolume, err := kc.ds.GetPersistentVolumeRO(*volumeAttachment.Spec.Source.PersistentVolumeName)
+	if err != nil {
+		return false, err
+	}
+
+	claimRef := persistentVolume.Spec.ClaimRef
+	if claimRef == nil {
+		kc.logger.Infof("%v: persistent volume %q has no claimRef; cleaning up volume attachment %q for force-deleted pod %q",
+			controllerAgentName, persistentVolume.Name, volumeAttachment.Name, pod.Name)
+		return true, nil // No claim, safe to delete.
+	}
+
+	pods, err := kc.ds.ListPodsByPersistentVolumeClaimName(claimRef.Name, pod.Namespace)
+	if err != nil {
+		return false, err
+	}
+
+	if conflictingPod := kc.getPodWithConflictedAttachment(pods, pod); conflictingPod != nil {
+		kc.logger.Infof("%v: found conflicting pod %q with attachment for volume %q; cleaning up volume attachment %q for force-deleted pod %q",
+			controllerAgentName, conflictingPod.Name, persistentVolume.Name, volumeAttachment.Name, pod.Name)
+		return true, nil // There are pods that require the volume and run on another node.
+	}
+
+	return false, nil
+}
+
+// getPodWithConflictedAttachment returns the first pod in Pending phase from the
+// given list of pods that has a "Multi-Attach error" event caused by the specified
+// conflictingPod
+func (kc *KubernetesPodController) getPodWithConflictedAttachment(pods []*corev1.Pod, conflictingPod *corev1.Pod) *corev1.Pod {
+	for _, pod := range pods {
+		if pod.DeletionTimestamp != nil {
+			continue
+		}
+
+		if pod.Status.Phase != corev1.PodPending {
+			continue
+		}
+
+		events, err := kc.ds.GetResourceEventList("Pod", pod.Name, pod.Namespace)
+		if err != nil {
+			logrus.WithError(err).Warnf("%v: failed to get events for pod %v", controllerAgentName, pod.Name)
+			continue
+		}
+
+		for _, event := range events.Items {
+			if !strings.Contains(event.Message, "Multi-Attach error") {
+				continue
+			}
+
+			if strings.Contains(event.Message, conflictingPod.Name) {
+				return pod
+			}
+
+			logrus.Debugf("%s: pod %v has Multi-Attach error, but not caused by pod %v, skipping cleanup",
+				controllerAgentName, pod.Name, conflictingPod.Name)
+		}
 	}
 
 	return nil
