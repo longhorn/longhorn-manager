@@ -333,6 +333,10 @@ func (c *UninstallController) uninstall() error {
 		}
 	}
 
+	if waitForUpdate, err := c.deleteManagerDependentResources(); err != nil || waitForUpdate {
+		return err
+	}
+
 	// A race condition exists where manager may attempt to recreate certain CRs after their deletion, e.g. BackupTarget.
 	// We must delete manager first and then delete those CRs.
 	if waitForUpdate, err := c.deleteManager(); err != nil || waitForUpdate {
@@ -627,13 +631,6 @@ func (c *UninstallController) deleteCRs() (bool, error) {
 	} else if len(systemRestores) > 0 {
 		c.logger.Infof("Found %d SystemRestores remaining", len(systemRestores))
 		return true, c.deleteSystemRestores(systemRestores)
-	}
-
-	if supportBundles, err := c.ds.ListSupportBundles(); err != nil {
-		return true, err
-	} else if len(supportBundles) > 0 {
-		c.logger.Infof("Found %d SupportBundles remaining", len(supportBundles))
-		return true, c.deleteSupportBundles(supportBundles)
 	}
 
 	return false, nil
@@ -1228,6 +1225,16 @@ func (c *UninstallController) deleteSupportBundles(supportBundles map[string]*lo
 		}
 	}
 	return nil
+}
+
+func (c *UninstallController) deleteManagerDependentResources() (bool, error) {
+	if supportBundles, err := c.ds.ListSupportBundles(); err != nil {
+		return true, err
+	} else if len(supportBundles) > 0 {
+		c.logger.Infof("Found %d SupportBundles remaining", len(supportBundles))
+		return true, c.deleteSupportBundles(supportBundles)
+	}
+	return false, nil
 }
 
 func (c *UninstallController) deleteManager() (bool, error) {
