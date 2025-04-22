@@ -5676,7 +5676,9 @@ func (s *DataStore) GetAllDiskUUIDFirstFourChar() (map[string]bool, error) {
 
 	for _, node := range nodes {
 		for _, diskStatus := range node.Status.DiskStatus {
-			firstFourCharSet[diskStatus.DiskUUID[:4]] = true
+			if len(diskStatus.DiskUUID) >= 4 {
+				firstFourCharSet[diskStatus.DiskUUID[:4]] = true
+			}
 		}
 	}
 
