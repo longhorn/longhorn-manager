@@ -591,13 +591,14 @@ type DriverObjectDeployment struct {
 }
 
 func NewCSIDriverObject() *DriverObjectDeployment {
-	falseFlag := true
+	trueFlag := true
 	obj := &storagev1.CSIDriver{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: types.LonghornDriverName,
 		},
 		Spec: storagev1.CSIDriverSpec{
-			PodInfoOnMount: &falseFlag,
+			PodInfoOnMount:  &trueFlag,
+			StorageCapacity: &trueFlag,
 		},
 	}
 	return &DriverObjectDeployment{
