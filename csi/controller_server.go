@@ -65,6 +65,7 @@ func NewControllerServer(apiClient *longhornclient.RancherClient, nodeID string)
 				csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
 				csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
 				csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
+				csi.ControllerServiceCapability_RPC_GET_CAPACITY,
 			}),
 		accessModes: getVolumeCapabilityAccessModes(
 			[]csi.VolumeCapability_AccessMode_Mode{
