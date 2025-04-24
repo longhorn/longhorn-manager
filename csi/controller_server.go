@@ -642,8 +642,20 @@ func (cs *ControllerServer) ListVolumes(context.Context, *csi.ListVolumesRequest
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-func (cs *ControllerServer) GetCapacity(context.Context, *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
+	log := cs.log.WithFields(logrus.Fields{"function": "GetCapacity"})
+
+	log.Infof("GetCapacity is called with req %+v", req)
+
+	var rsp *csi.GetCapacityResponse
+	var err error
+	defer func() {
+		if err != nil {
+			log.WithError(err).Errorf("Failed to get capacity")
+		}
+	}()
+
+	return rsp, err
 }
 
 func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
