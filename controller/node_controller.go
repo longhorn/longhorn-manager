@@ -388,7 +388,7 @@ func (nc *NodeController) syncNode(key string) (err error) {
 
 	kubeNode, err := nc.ds.GetKubernetesNodeRO(name)
 	if err != nil {
-		if apierrors.IsNotFound(err) {
+		if datastore.ErrorIsNotFound(err) {
 			// Directly record condition and return. The Kubernetes node controller should delete this Longhorn node
 			// very soon. If we continue to reconcile with a nil pointer (e.g. on a node that is being removed), we are
 			// guaranteed to run into an exception later on anyways.
@@ -555,7 +555,7 @@ func (nc *NodeController) enqueueReplica(obj interface{}) {
 
 	node, err := nc.ds.GetNodeRO(replica.Spec.NodeID)
 	if err != nil {
-		if !apierrors.IsNotFound(err) {
+		if !datastore.ErrorIsNotFound(err) {
 			utilruntime.HandleError(fmt.Errorf("failed to get node %v for replica %v: %v ",
 				replica.Spec.NodeID, replica.Name, err))
 		}
@@ -638,7 +638,7 @@ func (nc *NodeController) enqueueKubernetesNode(obj interface{}) {
 
 	nodeRO, err := nc.ds.GetNodeRO(kubernetesNode.Name)
 	if err != nil {
-		if !apierrors.IsNotFound(err) {
+		if !datastore.ErrorIsNotFound(err) {
 			utilruntime.HandleError(fmt.Errorf("failed to get longhorn node %v: %v ", kubernetesNode.Name, err))
 		}
 		return
@@ -1165,7 +1165,7 @@ func (nc *NodeController) cleanUpBackingImagesInDisks(node *longhorn.Node) error
 	for _, bi := range backingImages {
 		log := getLoggerForBackingImage(nc.logger, bi).WithField("node", node.Name)
 		bids, err := nc.ds.GetBackingImageDataSource(bi.Name)
-		if err != nil && !apierrors.IsNotFound(err) {
+		if err != nil && !datastore.ErrorIsNotFound(err) {
 			log.WithError(err).Warn("Failed to get the backing image data source when cleaning up the images in disks")
 			continue
 		}
@@ -1305,12 +1305,16 @@ func (nc *NodeController) syncOrphans(node *longhorn.Node, collectedDataInfo map
 		newOrphanedReplicaDataStores, missingOrphanedReplicaDataStores :=
 			nc.getNewAndMissingOrphanedReplicaDataStores(diskName, diskInfo.DiskUUID, diskInfo.Path, diskInfo.OrphanedReplicaDataStores)
 
-		if err := nc.createOrphans(node, diskName, diskInfo, newOrphanedReplicaDataStores); err != nil {
+		if err := nc.createOrphansForReplicaDataStore(node, diskName, diskInfo, newOrphanedReplicaDataStores); err != nil {
 			return errors.Wrapf(err, "failed to create orphans for disk %v", diskName)
 		}
-		if err := nc.deleteOrphans(node, diskName, diskInfo, missingOrphanedReplicaDataStores); err != nil {
+		if err := nc.deleteOrphansForReplicaDataStore(node, diskName, diskInfo, missingOrphanedReplicaDataStores); err != nil {
 			return errors.Wrapf(err, "failed to delete orphans for disk %v", diskName)
 		}
+	}
+
+	if node.Spec.EvictionRequested {
+		return nc.deleteOrphansForEngineAndReplicaInstances(node)
 	}
 
 	return nil
@@ -1356,7 +1360,30 @@ func (nc *NodeController) getNewAndMissingOrphanedReplicaDataStores(diskName, di
 	return newOrphanedReplicaDataStores, missingOrphanedReplicaDataStores
 }
 
-func (nc *NodeController) deleteOrphans(node *longhorn.Node, diskName string, diskInfo *monitor.CollectedDiskInfo, missingOrphanedReplicaDataStores map[string]string) error {
+func (nc *NodeController) deleteOrphansForEngineAndReplicaInstances(node *longhorn.Node) error {
+	nc.logger.Infof("Deleting orphans on evicted node %v", node.Name)
+
+	orphans, err := nc.ds.ListOrphansByNodeRO(node.Name)
+	if err != nil {
+		return errors.Wrapf(err, "failed to list orphans to evict node %v", node.Name)
+	}
+
+	multiError := util.NewMultiError()
+	for _, orphan := range orphans {
+		switch orphan.Spec.Type {
+		case longhorn.OrphanTypeEngineInstance, longhorn.OrphanTypeReplicaInstance:
+			if err := nc.ds.DeleteOrphan(orphan.Name); err != nil && !datastore.ErrorIsNotFound(err) {
+				multiError.Append(util.NewMultiError(fmt.Sprintf("%v: %v", orphan.Name, err)))
+			}
+		}
+	}
+	if len(multiError) > 0 {
+		return fmt.Errorf("node controller failed to delete instance orphans: %v", multiError.Join())
+	}
+	return nil
+}
+
+func (nc *NodeController) deleteOrphansForReplicaDataStore(node *longhorn.Node, diskName string, diskInfo *monitor.CollectedDiskInfo, missingOrphanedReplicaDataStores map[string]string) error {
 	autoDeletionResourceTypes, err := nc.ds.GetSettingOrphanResourceAutoDeletion()
 	if err != nil {
 		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameOrphanResourceAutoDeletion)
@@ -1365,7 +1392,7 @@ func (nc *NodeController) deleteOrphans(node *longhorn.Node, diskName string, di
 
 	for dataStore := range missingOrphanedReplicaDataStores {
 		orphanName := types.GetOrphanChecksumNameForOrphanedDataStore(node.Name, diskName, diskInfo.Path, diskInfo.DiskUUID, dataStore)
-		if err := nc.ds.DeleteOrphan(orphanName); err != nil && !apierrors.IsNotFound(err) {
+		if err := nc.ds.DeleteOrphan(orphanName); err != nil && !datastore.ErrorIsNotFound(err) {
 			return errors.Wrapf(err, "failed to delete orphan %v", orphanName)
 		}
 	}
@@ -1386,7 +1413,7 @@ func (nc *NodeController) deleteOrphans(node *longhorn.Node, diskName string, di
 		}
 
 		if autoDeletionEnabled || dataCleanableCondition.Status == longhorn.ConditionStatusFalse {
-			if err := nc.ds.DeleteOrphan(orphan.Name); err != nil && !apierrors.IsNotFound(err) {
+			if err := nc.ds.DeleteOrphan(orphan.Name); err != nil && !datastore.ErrorIsNotFound(err) {
 				return errors.Wrapf(err, "failed to delete orphan %v", orphan.Name)
 			}
 		}
@@ -1394,7 +1421,7 @@ func (nc *NodeController) deleteOrphans(node *longhorn.Node, diskName string, di
 	return nil
 }
 
-func (nc *NodeController) createOrphans(node *longhorn.Node, diskName string, diskInfo *monitor.CollectedDiskInfo, newOrphanedReplicaDataStores map[string]string) error {
+func (nc *NodeController) createOrphansForReplicaDataStore(node *longhorn.Node, diskName string, diskInfo *monitor.CollectedDiskInfo, newOrphanedReplicaDataStores map[string]string) error {
 	for dataStore := range newOrphanedReplicaDataStores {
 		if err := nc.createOrphan(node, diskName, dataStore, diskInfo); err != nil && !apierrors.IsAlreadyExists(err) {
 			return errors.Wrapf(err, "failed to create orphan for orphaned replica data store %v in disk %v on node %v",
@@ -1408,7 +1435,7 @@ func (nc *NodeController) createOrphan(node *longhorn.Node, diskName, replicaDat
 	name := types.GetOrphanChecksumNameForOrphanedDataStore(node.Name, diskName, diskInfo.Path, diskInfo.DiskUUID, replicaDataStore)
 
 	_, err := nc.ds.GetOrphanRO(name)
-	if err == nil || (err != nil && !apierrors.IsNotFound(err)) {
+	if err == nil || (err != nil && !datastore.ErrorIsNotFound(err)) {
 		return err
 	}
 
