@@ -41,7 +41,7 @@ replace (
 	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.31.3
 	k8s.io/kubectl => k8s.io/kubectl v0.31.3
 	k8s.io/kubelet => k8s.io/kubelet v0.31.3
-	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.11
+	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.12
 	k8s.io/metrics => k8s.io/metrics v0.31.3
 	k8s.io/mount-utils => k8s.io/mount-utils v0.31.3
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.31.3
@@ -61,9 +61,9 @@ require (
 	github.com/jinzhu/copier v0.3.5
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.7.3
-	github.com/longhorn/backupstore v0.0.0-20250419065723-9289038cc8a5
+	github.com/longhorn/backupstore v0.0.0-20250421031654-0ef762b84472
 	github.com/longhorn/go-common-libs v0.0.0-20250419062810-2bdafe8e7f4e
-	github.com/longhorn/go-iscsi-helper v0.0.0-20250413065808-b76b395d7da9
+	github.com/longhorn/go-iscsi-helper v0.0.0-20250425050615-1de428a1281a
 	github.com/longhorn/go-spdk-helper v0.0.2-0.20250313071458-3dd5863e9249
 	github.com/longhorn/longhorn-engine v1.7.3
 	github.com/longhorn/longhorn-instance-manager v1.7.3
