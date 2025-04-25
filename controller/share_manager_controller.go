@@ -1377,17 +1377,17 @@ func (c *ShareManagerController) createServiceManifest(sm *longhorn.ShareManager
 	return service
 }
 
-func (c *ShareManagerController) createEndpoint(sm *longhorn.ShareManager) (*corev1.Endpoints, error) {
+func (c *ShareManagerController) createEndpoint(sm *longhorn.ShareManager) (*corev1.Endpoints, error) { // nolint: staticcheck
 	labels := types.GetShareManagerInstanceLabel(sm.Name)
 
-	newObj := &corev1.Endpoints{
+	newObj := &corev1.Endpoints{ // nolint: staticcheck
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            sm.Name,
 			Namespace:       sm.Namespace,
 			OwnerReferences: datastore.GetOwnerReferencesForShareManager(sm, false),
 			Labels:          labels,
 		},
-		Subsets: []corev1.EndpointSubset{},
+		Subsets: []corev1.EndpointSubset{}, // nolint: staticcheck
 	}
 
 	c.logger.Infof("Creating Endpoint for share manager %v", sm.Name)

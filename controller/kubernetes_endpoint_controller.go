@@ -175,7 +175,7 @@ func (c *KubernetesEndpointController) sync(key string) (err error) {
 	return c.reconcile(name)
 }
 
-func getLoggerForKubernetesEndpoint(logger logrus.FieldLogger, endpoint *corev1.Endpoints) *logrus.Entry {
+func getLoggerForKubernetesEndpoint(logger logrus.FieldLogger, endpoint *corev1.Endpoints) *logrus.Entry { // nolint: staticcheck
 	return logger.WithField("endpoint", endpoint.Name)
 }
 
@@ -233,7 +233,7 @@ func (c *KubernetesEndpointController) reconcile(endpointName string) (err error
 	return nil
 }
 
-func (c *KubernetesEndpointController) syncShareManager(endpoint *corev1.Endpoints) (err error) {
+func (c *KubernetesEndpointController) syncShareManager(endpoint *corev1.Endpoints) (err error) { // nolint: staticcheck
 	// Retrieve a list of share manager pod by the Endpoint
 	shareManagerPods, err := c.ds.ListShareManagerPodsRO(endpoint.Name)
 	if err != nil {
@@ -278,7 +278,7 @@ func (c *KubernetesEndpointController) syncShareManager(endpoint *corev1.Endpoin
 	return nil
 }
 
-func (c *KubernetesEndpointController) identifyIPSubsetToDelete(endpoint *corev1.Endpoints, desiredIPPod map[string]*corev1.Pod) map[string]bool {
+func (c *KubernetesEndpointController) identifyIPSubsetToDelete(endpoint *corev1.Endpoints, desiredIPPod map[string]*corev1.Pod) map[string]bool { // nolint: staticcheck
 	addressToDelete := make(map[string]bool)
 	for _, subset := range endpoint.Subsets {
 		for _, address := range subset.Addresses {
@@ -292,9 +292,9 @@ func (c *KubernetesEndpointController) identifyIPSubsetToDelete(endpoint *corev1
 	return addressToDelete
 }
 
-func (c *KubernetesEndpointController) identifyIPSubsetToAddOrUpdate(existingIPEndpointAddress map[string]corev1.EndpointAddress, desiredIPPod map[string]*corev1.Pod, fnCreateDesiredSubset func(pod *corev1.Pod, storageIP string) corev1.EndpointSubset) (ipSubsetToAdd map[string]corev1.EndpointSubset, ipSubsetToUpdate map[string]corev1.EndpointSubset) {
-	ipSubsetToAdd = make(map[string]corev1.EndpointSubset)
-	ipSubsetToUpdate = make(map[string]corev1.EndpointSubset)
+func (c *KubernetesEndpointController) identifyIPSubsetToAddOrUpdate(existingIPEndpointAddress map[string]corev1.EndpointAddress, desiredIPPod map[string]*corev1.Pod, fnCreateDesiredSubset func(pod *corev1.Pod, storageIP string) corev1.EndpointSubset) (ipSubsetToAdd map[string]corev1.EndpointSubset, ipSubsetToUpdate map[string]corev1.EndpointSubset) { // nolint: staticcheck
+	ipSubsetToAdd = make(map[string]corev1.EndpointSubset)    // nolint: staticcheck
+	ipSubsetToUpdate = make(map[string]corev1.EndpointSubset) // nolint: staticcheck
 
 	for desiredIP, pod := range desiredIPPod {
 		desiredSubset := fnCreateDesiredSubset(pod, desiredIP)
@@ -315,8 +315,8 @@ func (c *KubernetesEndpointController) identifyIPSubsetToAddOrUpdate(existingIPE
 	return ipSubsetToAdd, ipSubsetToUpdate
 }
 
-func createDesiredSubsetForShareManager(pod *corev1.Pod, storageIP string) corev1.EndpointSubset {
-	return corev1.EndpointSubset{
+func createDesiredSubsetForShareManager(pod *corev1.Pod, storageIP string) corev1.EndpointSubset { // nolint: staticcheck
+	return corev1.EndpointSubset{ // nolint: staticcheck
 		Addresses: []corev1.EndpointAddress{
 			{
 				IP:       storageIP,
@@ -339,8 +339,8 @@ func createDesiredSubsetForShareManager(pod *corev1.Pod, storageIP string) corev
 	}
 }
 
-func updateEndpointSubsets(endpoint *corev1.Endpoints, ipSubsetToDelete map[string]bool, ipSubsetToAdd, ipSubsetToUpdate map[string]corev1.EndpointSubset, log logrus.FieldLogger) {
-	desireSubsets := []corev1.EndpointSubset{}
+func updateEndpointSubsets(endpoint *corev1.Endpoints, ipSubsetToDelete map[string]bool, ipSubsetToAdd, ipSubsetToUpdate map[string]corev1.EndpointSubset, log logrus.FieldLogger) { // nolint: staticcheck
+	desireSubsets := []corev1.EndpointSubset{} // nolint: staticcheck
 
 	// Add subsets to desiredSubsets that marked to add.
 	for _, desireSubset := range ipSubsetToAdd {
