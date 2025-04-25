@@ -727,8 +727,9 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 	} else {
 		return nil, status.Errorf(codes.InvalidArgument, "unknown data engine type %v", dataEngine)
 	}
+
 	log.Infof("dataEngine %s, node %s, v1VolumeSize %s, v2VolumeSize %s", dataEngine, node.Name, v1VolumeSize, v2VolumeSize)
-	return rsp, err
+	return rsp, nil
 }
 
 func parseDataEngine(parameters map[string]string) (longhorn.DataEngineType, error) {
