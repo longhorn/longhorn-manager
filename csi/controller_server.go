@@ -720,11 +720,12 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 	}
 
 	rsp := &csi.GetCapacityResponse{}
-	if dataEngine == longhorn.DataEngineTypeV1 {
+	switch dataEngine {
+	case longhorn.DataEngineTypeV1:
 		rsp.AvailableCapacity = v1VolumeSize.Value()
-	} else if dataEngine == longhorn.DataEngineTypeV2 {
+	case longhorn.DataEngineTypeV2:
 		rsp.AvailableCapacity = v2VolumeSize.Value()
-	} else {
+	default:
 		return nil, status.Errorf(codes.InvalidArgument, "unknown data engine type %v", dataEngine)
 	}
 
