@@ -1070,7 +1070,7 @@ func (s *DataStore) UpdateService(namespace string, service *corev1.Service) (*c
 }
 
 // CreateKubernetesEndpoint creates a Kubernetes Endpoint resource.
-func (s *DataStore) CreateKubernetesEndpoint(endpoint *corev1.Endpoints) (*corev1.Endpoints, error) {
+func (s *DataStore) CreateKubernetesEndpoint(endpoint *corev1.Endpoints) (*corev1.Endpoints, error) { // nolint: staticcheck
 	return s.kubeClient.CoreV1().Endpoints(endpoint.Namespace).Create(context.TODO(), endpoint, metav1.CreateOptions{})
 }
 
@@ -1080,12 +1080,12 @@ func (s *DataStore) DeleteKubernetesEndpoint(namespace, name string) error {
 }
 
 // UpdateKubernetesEndpoint updates the Kubernetes Endpoint of the given name in the Longhorn namespace.
-func (s *DataStore) UpdateKubernetesEndpoint(endpoint *corev1.Endpoints) (*corev1.Endpoints, error) {
+func (s *DataStore) UpdateKubernetesEndpoint(endpoint *corev1.Endpoints) (*corev1.Endpoints, error) { // nolint: staticcheck
 	return s.kubeClient.CoreV1().Endpoints(s.namespace).Update(context.TODO(), endpoint, metav1.UpdateOptions{})
 }
 
 // GetKubernetesEndpointRO gets the Kubernetes Endpoint of the given name in the Longhorn namespace.
-func (s *DataStore) GetKubernetesEndpointRO(name string) (*corev1.Endpoints, error) {
+func (s *DataStore) GetKubernetesEndpointRO(name string) (*corev1.Endpoints, error) { // nolint: staticcheck
 	return s.endpointLister.Endpoints(s.namespace).Get(name)
 }
 
