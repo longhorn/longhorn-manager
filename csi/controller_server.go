@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/rest"
 	"net/url"
 	"os"
@@ -25,13 +25,11 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	longhornclient "github.com/longhorn/longhorn-manager/client"
 	"github.com/longhorn/longhorn-manager/datastore"
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
-	clientset "k8s.io/client-go/kubernetes"
-
-	longhornclient "github.com/longhorn/longhorn-manager/client"
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 const (
@@ -59,7 +57,6 @@ type ControllerServer struct {
 	caps        []*csi.ControllerServiceCapability
 	accessModes []*csi.VolumeCapability_AccessMode
 	log         *logrus.Entry
-	kubeClient  *clientset.Clientset
 	lhClient    *lhclientset.Clientset
 	lhNamespace string
 }
@@ -73,11 +70,6 @@ func NewControllerServer(apiClient *longhornclient.RancherClient, nodeID string)
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get client config")
-	}
-
-	kubeClient, err := clientset.NewForConfig(config)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get k8s client")
 	}
 
 	lhClient, err := lhclientset.NewForConfig(config)
@@ -103,7 +95,6 @@ func NewControllerServer(apiClient *longhornclient.RancherClient, nodeID string)
 				csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
 			}),
 		log:         logrus.StandardLogger().WithField("component", "csi-controller-server"),
-		kubeClient:  kubeClient,
 		lhClient:    lhClient,
 		lhNamespace: lhNamespace,
 	}, nil
@@ -687,49 +678,44 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 			log.WithError(err).Errorf("Failed to get capacity")
 		}
 	}()
+
 	dataEngine, err := parseDataEngine(req.GetParameters())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "failed to parse engine type: %v", err)
 	}
-	nodeList, err := cs.kubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{
-		LabelSelector: labels.Set(req.AccessibleTopology.Segments).String(),
-	})
+	nodeID, err := parseNodeID(req.GetAccessibleTopology())
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "%v", err)
-	}
-	if len(nodeList.Items) == 0 {
-		return nil, status.Errorf(codes.NotFound, "didn't find any nodes in the requested topology %v", req.AccessibleTopology.Segments)
-	} else if len(nodeList.Items) >= 2 {
-		// not sure what to do if there are several nodes in the requested topology, please leave a comment during PR review
-		return nil, status.Error(codes.InvalidArgument, "exactly one node must be located in the requested topology")
+		return nil, status.Errorf(codes.InvalidArgument, "failed to parse node id: %v", err)
 	}
 
-	node, err := cs.lhClient.LonghornV1beta2().Nodes(cs.lhNamespace).Get(context.TODO(), nodeList.Items[0].Name, metav1.GetOptions{})
+	node, err := cs.lhClient.LonghornV1beta2().Nodes(cs.lhNamespace).Get(context.TODO(), nodeID, metav1.GetOptions{})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "%v", err)
+	} else if apierrors.IsNotFound(err) {
+		return nil, status.Errorf(codes.NotFound, "node %s not found", nodeID)
 	}
-	v1VolumeSize := resource.NewQuantity(0, resource.BinarySI)
-	v2VolumeSize := resource.NewQuantity(0, resource.BinarySI)
+	v1CapacitySize := resource.NewQuantity(0, resource.BinarySI)
+	v2CapacitySize := resource.NewQuantity(0, resource.BinarySI)
 	for _, diskStatus := range node.Status.DiskStatus {
 		if diskStatus.Type == longhorn.DiskTypeFilesystem {
-			v1VolumeSize.Add(*resource.NewQuantity(diskStatus.StorageAvailable, resource.BinarySI))
+			v1CapacitySize.Add(*resource.NewQuantity(diskStatus.StorageAvailable, resource.BinarySI))
 		}
 		if diskStatus.Type == longhorn.DiskTypeBlock {
-			v2VolumeSize.Add(*resource.NewQuantity(diskStatus.StorageAvailable, resource.BinarySI))
+			v2CapacitySize.Add(*resource.NewQuantity(diskStatus.StorageAvailable, resource.BinarySI))
 		}
 	}
 
 	rsp := &csi.GetCapacityResponse{}
 	switch dataEngine {
 	case longhorn.DataEngineTypeV1:
-		rsp.AvailableCapacity = v1VolumeSize.Value()
+		rsp.AvailableCapacity = v1CapacitySize.Value()
 	case longhorn.DataEngineTypeV2:
-		rsp.AvailableCapacity = v2VolumeSize.Value()
+		rsp.AvailableCapacity = v2CapacitySize.Value()
 	default:
 		return nil, status.Errorf(codes.InvalidArgument, "unknown data engine type %v", dataEngine)
 	}
 
-	log.Infof("dataEngine %s, node %s, v1VolumeSize %s, v2VolumeSize %s", dataEngine, node.Name, v1VolumeSize, v2VolumeSize)
+	log.Infof("Node %s, DataEngine %s, v1CapacitySize %s, v2CapacitySize %s", nodeID, dataEngine, v1CapacitySize, v2CapacitySize)
 	return rsp, nil
 }
 
@@ -742,6 +728,17 @@ func parseDataEngine(parameters map[string]string) (longhorn.DataEngineType, err
 		return "", fmt.Errorf("storage class parameters missing data engine key")
 	}
 	return longhorn.DataEngineType(dataEngine), nil
+}
+
+func parseNodeID(topology *csi.Topology) (string, error) {
+	if topology == nil {
+		return "", fmt.Errorf("missing accessible topology request parameter")
+	}
+	nodeId, ok := topology.Segments[nodeTopologyKey]
+	if !ok {
+		return "", fmt.Errorf("accessible topology request parameter is missing %s key", nodeTopologyKey)
+	}
+	return nodeId, nil
 }
 
 func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
