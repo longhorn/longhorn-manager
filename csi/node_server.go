@@ -37,7 +37,8 @@ import (
 )
 
 const (
-	defaultFsType = "ext4"
+	defaultFsType   = "ext4"
+	nodeTopologyKey = "kubernetes.io/hostname"
 )
 
 type fsParameters struct {
@@ -890,15 +891,13 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 }
 
 func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
-	node, err := ns.kubeClient.CoreV1().Nodes().Get(ctx, ns.nodeID, metav1.GetOptions{})
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "%v", err)
-	}
 	return &csi.NodeGetInfoResponse{
 		NodeId:            ns.nodeID,
 		MaxVolumesPerNode: 0, // technically the scsi kernel limit is the max limit of volumes
 		AccessibleTopology: &csi.Topology{
-			Segments: node.Labels,
+			Segments: map[string]string{
+				nodeTopologyKey: ns.nodeID,
+			},
 		},
 	}, nil
 }
