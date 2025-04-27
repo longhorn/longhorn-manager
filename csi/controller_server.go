@@ -715,7 +715,7 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 		return nil, status.Errorf(codes.InvalidArgument, "unknown data engine type %v", dataEngine)
 	}
 
-	log.Infof("Node %s, DataEngine %s, v1CapacitySize %s, v2CapacitySize %s", nodeID, dataEngine, v1CapacitySize, v2CapacitySize)
+	log.Infof("Node: %s, DataEngine: %s, v1CapacitySize: %s, v2CapacitySize: %s", nodeID, dataEngine, v1CapacitySize, v2CapacitySize)
 	return rsp, nil
 }
 
