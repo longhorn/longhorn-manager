@@ -119,8 +119,8 @@ github.com/longhorn/go-iscsi-helper v0.0.0-20250425050615-1de428a1281a h1:rvUgmO
 github.com/longhorn/go-iscsi-helper v0.0.0-20250425050615-1de428a1281a/go.mod h1:6otI70HGdPUKJTRHCU9qlcpFJO6b5LXSrVWy3pciNww=
 github.com/longhorn/go-spdk-helper v0.0.0-20250422073040-bb5fe0ae1d17 h1:zkhXghEfmRNpyI6qZACc2LvpQqF3VEZF2Z40veEeEZY=
 github.com/longhorn/go-spdk-helper v0.0.0-20250422073040-bb5fe0ae1d17/go.mod h1:92fHXPUhed51zY2ZzlaNDwN5+p3n/iJgBz4C0Y1ADgc=
-github.com/longhorn/longhorn-engine v1.9.0-dev-20250223.0.20250225091521-921f63f3a87d h1:JdkTIIaKT0uUU80Ncl26JeAqT727PgPJMaqjf0OUfAE=
-github.com/longhorn/longhorn-engine v1.9.0-dev-20250223.0.20250225091521-921f63f3a87d/go.mod h1:qTsHK0nU6Myh4XGnuqfsPG4FpeLh7Vki2hLl/1P0iuc=
+github.com/longhorn/longhorn-engine v1.9.0-dev-20250420 h1:/X9iL0Mnj9SBhQ/HBhaD95C489hvWewgLF+35rqdjns=
+github.com/longhorn/longhorn-engine v1.9.0-dev-20250420/go.mod h1:XNzVRcOdJHxy3QmDjAYDEKWgdD/+U6qM6BVj3UiPaHo=
 github.com/longhorn/longhorn-instance-manager v1.9.0-dev-20250420.0.20250421223422-3c87f4a9aaa5 h1:T4qxmnrWHtv+GXTradhuf8z+5o9p6W2HvnUrmgRf88s=
 github.com/longhorn/longhorn-instance-manager v1.9.0-dev-20250420.0.20250421223422-3c87f4a9aaa5/go.mod h1:F/3UgM1ms5B+SfbOY4qWMqYwW+8NNiaVs2FrotTsiJc=
 github.com/longhorn/longhorn-share-manager v1.8.1 h1:WJkn4kLXWcROTOeZ17zVe6MxwFkzF6KaEKq7ZelobZM=
