@@ -71,11 +71,19 @@ func (s *DataStore) UpdateCustomizedSettings(defaultImages map[types.SettingName
 		return err
 	}
 
+	if err := s.syncSettingOrphanResourceAutoDeletionSettings(); err != nil {
+		return err
+	}
+
 	if err := s.createNonExistingSettingCRsWithDefaultSetting(defaultSettingCM.ResourceVersion); err != nil {
 		return err
 	}
 
-	return s.syncSettingCRsWithCustomizedDefaultSettings(availableCustomizedDefaultSettings, defaultSettingCM.ResourceVersion)
+	if err := s.syncSettingCRsWithCustomizedDefaultSettings(availableCustomizedDefaultSettings, defaultSettingCM.ResourceVersion); err != nil {
+		return err
+	}
+
+	return s.deleteReplacedSettings()
 }
 
 func (s *DataStore) createNonExistingSettingCRsWithDefaultSetting(configMapResourceVersion string) error {
@@ -153,6 +161,31 @@ func (s *DataStore) syncSettingsWithDefaultImages(defaultImages map[types.Settin
 		}
 	}
 	return nil
+}
+
+func (s *DataStore) syncSettingOrphanResourceAutoDeletionSettings() error {
+	oldOrphanReplicaDataAutoDeletionSettingRO, err := s.getSettingRO(string(types.SettingNameOrphanAutoDeletion))
+	switch {
+	case ErrorIsNotFound(err):
+		logrus.Infof("No old setting %v to be replaced.", types.SettingNameOrphanAutoDeletion)
+		return nil
+	case err != nil:
+		return errors.Wrapf(err, "failed to get replaced setting %v", types.SettingNameOrphanAutoDeletion)
+	}
+
+	resourceTypes, err := s.GetSettingOrphanResourceAutoDeletion()
+	if err != nil {
+		return errors.Wrapf(err, "failed to get setting %v", types.SettingNameOrphanResourceAutoDeletion)
+	}
+	resourceTypes[types.OrphanResourceTypeReplicaData] = oldOrphanReplicaDataAutoDeletionSettingRO.Value == "true"
+	enabledResourceType := make([]string, 0, len(resourceTypes))
+	for rt, enabled := range resourceTypes {
+		if enabled {
+			enabledResourceType = append(enabledResourceType, string(rt))
+		}
+	}
+	value := strings.Join(enabledResourceType, ";")
+	return s.createOrUpdateSetting(types.SettingNameOrphanResourceAutoDeletion, value, "")
 }
 
 func (s *DataStore) createOrUpdateSetting(name types.SettingName, value, defaultSettingCMResourceVersion string) error {
@@ -235,6 +268,23 @@ func (s *DataStore) syncSettingCRsWithCustomizedDefaultSettings(customizedDefaul
 	return nil
 }
 
+func (s *DataStore) deleteReplacedSettings() error {
+	settings, err := s.settingLister.Settings(s.namespace).List(labels.Everything())
+	if err != nil {
+		return err
+	}
+	for _, setting := range settings {
+		if !types.IsSettingReplaced(types.SettingName(setting.Name)) {
+			continue
+		}
+		if err := s.deleteSetting(setting.Name); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // CreateSetting create a Longhorn Settings resource for the given setting and
 // namespace
 func (s *DataStore) CreateSetting(setting *longhorn.Setting) (*longhorn.Setting, error) {
@@ -275,6 +325,10 @@ func (s *DataStore) UpdateSettingStatus(setting *longhorn.Setting) (*longhorn.Se
 		return s.getSettingRO(name)
 	})
 	return obj, nil
+}
+
+func (s *DataStore) deleteSetting(name string) error {
+	return s.lhClient.LonghornV1beta2().Settings(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 }
 
 // ValidateSetting checks the given setting value types and condition
