@@ -163,7 +163,7 @@ func checkError(t *testing.T, expected, actual error) {
 		}
 	} else {
 		if actual == nil {
-			t.Errorf("expected error: %v, but got: %v", expected, actual)
+			t.Errorf("expected error: %v, but got no error", expected)
 		}
 		if expected.Error() != actual.Error() {
 			t.Errorf("expected error: %v, but got: %v", expected, actual)
