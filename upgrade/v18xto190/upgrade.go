@@ -1,12 +1,12 @@
 package v18xto190
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/pkg/errors"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 
 	"github.com/longhorn/longhorn-manager/types"
@@ -122,31 +122,55 @@ func upgradeSettings(namespace string, lhClient *lhclientset.Clientset, resource
 }
 
 func updateOrphanResourceAutoDeletionSetting(settingsMap map[string]*longhorn.Setting) (err error) {
-	oldSetting, exist := settingsMap[string(types.SettingNameOrphanAutoDeletion)]
+	oldOrphanReplicaDataAutoDeletionSetting, exist := settingsMap[string(types.SettingNameOrphanAutoDeletion)]
 	if !exist {
 		return nil
 	}
-	newSetting, exist := settingsMap[string(types.SettingNameOrphanResourceAutoDeletion)]
-	if !exist {
-		newSetting = &longhorn.Setting{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: string(types.SettingNameOrphanResourceAutoDeletion),
-			},
-		}
-		settingsMap[string(types.SettingNameOrphanResourceAutoDeletion)] = newSetting
+	replicaDataEnabled := oldOrphanReplicaDataAutoDeletionSetting.Value == "true"
+
+	if err := updateOrphanResourceAutoDeletionSettingDefaultValue(replicaDataEnabled); err != nil {
+		return errors.Wrapf(err, "failed to update orphan resource auto deletion default setting")
 	}
-	resourceTypes, err := types.UnmarshalOrphanResourceTypes(newSetting.Value)
+
+	// Update stage updates only the existing resources. New settings are created later.
+	if setting, exist := settingsMap[string(types.SettingNameOrphanResourceAutoDeletion)]; exist {
+		if err := updateOrphanReplicaDataAutoDeletion(setting, replicaDataEnabled); err != nil {
+			return errors.Wrapf(err, "failed to update orphan resource auto deletion setting")
+		}
+	}
+
+	return nil
+}
+
+func updateOrphanResourceAutoDeletionSettingDefaultValue(replicaDataEnabled bool) (err error) {
+	var newDefaultValue = ""
+	if replicaDataEnabled {
+		newDefaultValue = string(types.OrphanResourceTypeReplicaData)
+	}
+
+	settingDefinition, ok := types.GetSettingDefinition(types.SettingNameOrphanResourceAutoDeletion)
+	if !ok {
+		return fmt.Errorf("bug: setting %v is not defined", types.SettingNameOrphanResourceAutoDeletion)
+	}
+	settingDefinition.Default = newDefaultValue
+	types.SetSettingDefinition(types.SettingNameOrphanResourceAutoDeletion, settingDefinition)
+
+	return nil
+}
+
+func updateOrphanReplicaDataAutoDeletion(setting *longhorn.Setting, replicaDataEnabled bool) (err error) {
+	resourceTypes, err := types.UnmarshalOrphanResourceTypes(setting.Value)
 	if err != nil {
 		return err
 	}
+	resourceTypes[types.OrphanResourceTypeReplicaData] = replicaDataEnabled
 
-	resourceTypes[types.OrphanResourceTypeReplicaData] = oldSetting.Value == "true"
 	enabledResourceType := make([]string, 0, len(resourceTypes))
 	for rt, enabled := range resourceTypes {
 		if enabled {
 			enabledResourceType = append(enabledResourceType, string(rt))
 		}
 	}
-	newSetting.Value = strings.Join(enabledResourceType, ";")
+	setting.Value = strings.Join(enabledResourceType, ";")
 	return nil
 }
