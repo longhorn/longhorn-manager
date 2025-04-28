@@ -57,7 +57,7 @@ type ControllerServer struct {
 	caps        []*csi.ControllerServiceCapability
 	accessModes []*csi.VolumeCapability_AccessMode
 	log         *logrus.Entry
-	lhClient    *lhclientset.Clientset
+	lhClient    lhclientset.Interface
 	lhNamespace string
 }
 
@@ -689,10 +689,10 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 	}
 
 	node, err := cs.lhClient.LonghornV1beta2().Nodes(cs.lhNamespace).Get(context.TODO(), nodeID, metav1.GetOptions{})
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "%v", err)
-	} else if apierrors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		return nil, status.Errorf(codes.NotFound, "node %s not found", nodeID)
+	} else if err != nil {
+		return nil, status.Errorf(codes.Internal, "unexpecter error: %v", err)
 	}
 	v1CapacitySize := resource.NewQuantity(0, resource.BinarySI)
 	v2CapacitySize := resource.NewQuantity(0, resource.BinarySI)
@@ -731,7 +731,7 @@ func parseDataEngine(parameters map[string]string) (longhorn.DataEngineType, err
 }
 
 func parseNodeID(topology *csi.Topology) (string, error) {
-	if topology == nil {
+	if topology == nil || topology.Segments == nil {
 		return "", fmt.Errorf("missing accessible topology request parameter")
 	}
 	nodeId, ok := topology.Segments[nodeTopologyKey]
