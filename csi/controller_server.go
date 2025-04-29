@@ -20,7 +20,6 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/client-go/rest"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -682,55 +681,78 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 		}
 	}()
 
-	dataEngine, err := parseDataEngine(req.GetParameters())
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "failed to parse engine type: %v", err)
-	}
 	nodeID, err := parseNodeID(req.GetAccessibleTopology())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "failed to parse node id: %v", err)
 	}
-
 	node, err := cs.lhClient.LonghornV1beta2().Nodes(cs.lhNamespace).Get(ctx, nodeID, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		return nil, status.Errorf(codes.NotFound, "node %s not found", nodeID)
 	} else if err != nil {
 		return nil, status.Errorf(codes.Internal, "unexpected error: %v", err)
 	}
-	v1CapacitySize := resource.NewQuantity(0, resource.BinarySI)
-	v2CapacitySize := resource.NewQuantity(0, resource.BinarySI)
-	for _, diskStatus := range node.Status.DiskStatus {
+
+	scParameters := req.GetParameters()
+	if scParameters == nil {
+		scParameters = map[string]string{}
+	}
+	var diskSelector []string
+	if diskSelectorRaw, ok := scParameters["diskSelector"]; ok && len(diskSelectorRaw) > 0 {
+		diskSelector = strings.Split(diskSelectorRaw, ",")
+	}
+	allowEmptyDiskSelectorVolume, err := cs.getSettingAsBoolean(types.SettingNameAllowEmptyDiskSelectorVolume)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get %v setting, err: %v", types.SettingNameAllowEmptyDiskSelectorVolume, err)
+	}
+
+	var v1AvailableCapacity int64 = 0
+	var v2AvailableCapacity int64 = 0
+	for diskName, diskStatus := range node.Status.DiskStatus {
+		diskSpec, exists := node.Spec.Disks[diskName]
+		if !exists {
+			continue
+		}
+		if !diskSpec.AllowScheduling || diskSpec.EvictionRequested {
+			continue
+		}
+		if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
+			continue
+		}
+		if !types.IsSelectorsInTags(diskSpec.Tags, diskSelector, allowEmptyDiskSelectorVolume) {
+			continue
+		}
+		storageSchedulable := diskStatus.StorageAvailable - diskSpec.StorageReserved
 		if diskStatus.Type == longhorn.DiskTypeFilesystem {
-			v1CapacitySize.Add(*resource.NewQuantity(diskStatus.StorageAvailable, resource.BinarySI))
+			v1AvailableCapacity = max(v1AvailableCapacity, storageSchedulable)
 		}
 		if diskStatus.Type == longhorn.DiskTypeBlock {
-			v2CapacitySize.Add(*resource.NewQuantity(diskStatus.StorageAvailable, resource.BinarySI))
+			v2AvailableCapacity = max(v2AvailableCapacity, storageSchedulable)
 		}
 	}
 
+	dataEngine, ok := scParameters["dataEngine"]
+	if !ok {
+		return nil, status.Error(codes.InvalidArgument, "storage class parameters missing 'dataEngine' key")
+	}
 	rsp := &csi.GetCapacityResponse{}
-	switch dataEngine {
+	switch longhorn.DataEngineType(dataEngine) {
 	case longhorn.DataEngineTypeV1:
-		rsp.AvailableCapacity = v1CapacitySize.Value()
+		rsp.AvailableCapacity = v1AvailableCapacity
 	case longhorn.DataEngineTypeV2:
-		rsp.AvailableCapacity = v2CapacitySize.Value()
+		rsp.AvailableCapacity = v2AvailableCapacity
 	default:
 		return nil, status.Errorf(codes.InvalidArgument, "unknown data engine type %v", dataEngine)
 	}
 
-	log.Infof("Node: %s, DataEngine: %s, v1CapacitySize: %s, v2CapacitySize: %s", nodeID, dataEngine, v1CapacitySize, v2CapacitySize)
+	log.Infof("Node: %s, DataEngine: %s, v1AvailableCapacity: %d, v2AvailableCapacity: %d", nodeID, dataEngine, v1AvailableCapacity, v2AvailableCapacity)
 	return rsp, nil
 }
 
-func parseDataEngine(parameters map[string]string) (longhorn.DataEngineType, error) {
-	if parameters == nil {
-		return "", fmt.Errorf("missing storage class parameters")
+func max(x, y int64) int64 {
+	if x > y {
+		return x
 	}
-	dataEngine, ok := parameters["dataEngine"]
-	if !ok {
-		return "", fmt.Errorf("storage class parameters missing data engine key")
-	}
-	return longhorn.DataEngineType(dataEngine), nil
+	return y
 }
 
 func parseNodeID(topology *csi.Topology) (string, error) {
@@ -742,6 +764,18 @@ func parseNodeID(topology *csi.Topology) (string, error) {
 		return "", fmt.Errorf("accessible topology request parameter is missing %s key", nodeTopologyKey)
 	}
 	return nodeId, nil
+}
+
+func (cs *ControllerServer) getSettingAsBoolean(name types.SettingName) (bool, error) {
+	obj, err := cs.lhClient.LonghornV1beta2().Settings(cs.lhNamespace).Get(context.TODO(), string(name), metav1.GetOptions{})
+	if err != nil {
+		return false, err
+	}
+	value, err := strconv.ParseBool(obj.Value)
+	if err != nil {
+		return false, err
+	}
+	return value, nil
 }
 
 func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
