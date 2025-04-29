@@ -1455,13 +1455,10 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 			return nil
 		}
 
-		// Reattach volume if
-		// - volume is detached unexpectedly and there are still healthy replicas
-		// - engine dead unexpectedly and there are still healthy replicas when the volume is not attached
 		if e.Status.CurrentState == longhorn.InstanceStateError {
 			if v.Status.CurrentNodeID != "" || (v.Spec.NodeID != "" && v.Status.CurrentNodeID == "" && v.Status.State != longhorn.VolumeStateAttached) {
-				log.Warn("Reattaching the volume since engine of volume dead unexpectedly")
-				msg := fmt.Sprintf("Engine of volume %v dead unexpectedly, reattach the volume", v.Name)
+				log.Warn("Engine of volume dead unexpectedly, setting v.Status.Robustness to faulted")
+				msg := fmt.Sprintf("Engine of volume %v dead unexpectedly, setting v.Status.Robustness to faulted", v.Name)
 				c.eventRecorder.Event(v, corev1.EventTypeWarning, constant.EventReasonDetachedUnexpectedly, msg)
 				e.Spec.LogRequested = true
 				for _, r := range rs {
