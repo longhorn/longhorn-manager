@@ -699,12 +699,19 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 	}
 	v1CapacitySize := resource.NewQuantity(0, resource.BinarySI)
 	v2CapacitySize := resource.NewQuantity(0, resource.BinarySI)
-	for _, diskStatus := range node.Status.DiskStatus {
+	for diskName, diskStatus := range node.Status.DiskStatus {
+		diskSpec, ok := node.Spec.Disks[diskName]
+		if !ok {
+			// This should never be reached, return this error just in case.
+			return nil, status.Errorf(codes.Internal, "disk %s found in node %s's status but absent in spec", diskName, nodeID)
+		}
 		if diskStatus.Type == longhorn.DiskTypeFilesystem {
-			v1CapacitySize.Add(*resource.NewQuantity(diskStatus.StorageAvailable, resource.BinarySI))
+			storageSchedulable := diskStatus.StorageAvailable - diskSpec.StorageReserved
+			v1CapacitySize.Add(*resource.NewQuantity(storageSchedulable, resource.BinarySI))
 		}
 		if diskStatus.Type == longhorn.DiskTypeBlock {
-			v2CapacitySize.Add(*resource.NewQuantity(diskStatus.StorageAvailable, resource.BinarySI))
+			storageSchedulable := diskStatus.StorageAvailable - diskSpec.StorageReserved
+			v2CapacitySize.Add(*resource.NewQuantity(storageSchedulable, resource.BinarySI))
 		}
 	}
 

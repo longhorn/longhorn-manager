@@ -22,11 +22,12 @@ func TestGetCapacity(t *testing.T) {
 		log:         logrus.StandardLogger().WithField("component", "test-get-capacity"),
 	}
 	for _, test := range []struct {
-		nodeID            string
-		createNode        bool
-		dataEngine        string
-		availableCapacity int64
-		err               error
+		nodeID           string
+		createNode       bool
+		dataEngine       string
+		storageAvailable int64
+		storageReserved  int64
+		err              error
 	}{
 		{
 			nodeID:     "node-0",
@@ -40,21 +41,23 @@ func TestGetCapacity(t *testing.T) {
 			err:        status.Errorf(codes.InvalidArgument, "unknown data engine type v5"),
 		},
 		{
-			nodeID:            "node-0",
-			createNode:        true,
-			dataEngine:        "v1",
-			availableCapacity: 1028,
+			nodeID:           "node-0",
+			createNode:       true,
+			dataEngine:       "v1",
+			storageAvailable: 1450,
+			storageReserved:  300,
 		},
 		{
-			nodeID:            "node-0",
-			createNode:        true,
-			dataEngine:        "v2",
-			availableCapacity: 1028,
+			nodeID:           "node-0",
+			createNode:       true,
+			dataEngine:       "v2",
+			storageAvailable: 1900,
+			storageReserved:  350,
 		},
 	} {
 		cs.lhClient = lhfake.NewSimpleClientset()
 		if test.createNode {
-			node := newNode(test.nodeID, cs.lhNamespace, test.dataEngine, test.availableCapacity)
+			node := newNode(test.nodeID, cs.lhNamespace, test.dataEngine, test.storageAvailable, test.storageReserved)
 			_, err := cs.lhClient.LonghornV1beta2().Nodes(cs.lhNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
 			if err != nil {
 				t.Errorf("failed to create mock node: %v", err)
@@ -79,8 +82,9 @@ func TestGetCapacity(t *testing.T) {
 		} else if expectedStatus.Message() != actualStatus.Message() {
 			t.Errorf("expected error message: '%s', but got: '%s'", expectedStatus.Message(), actualStatus.Message())
 		}
-		if res != nil && res.AvailableCapacity != test.availableCapacity {
-			t.Errorf("expected available capacity: %d, but got: %d", res.AvailableCapacity, test.availableCapacity)
+		storageSchedulable := test.storageAvailable - test.storageReserved
+		if res != nil && res.AvailableCapacity != storageSchedulable {
+			t.Errorf("expected available capacity: %d, but got: %d", res.AvailableCapacity, storageSchedulable)
 		}
 	}
 }
@@ -174,7 +178,7 @@ func checkError(t *testing.T, expected, actual error) {
 	}
 }
 
-func newNode(name, namespace, dataEngine string, storageSize int64) *longhorn.Node {
+func newNode(name, namespace, dataEngine string, storageAvailable, storageReserved int64) *longhorn.Node {
 	diskType := longhorn.DiskTypeFilesystem
 	if dataEngine == "v2" {
 		diskType = longhorn.DiskTypeBlock
@@ -184,10 +188,17 @@ func newNode(name, namespace, dataEngine string, storageSize int64) *longhorn.No
 			Name:      name,
 			Namespace: namespace,
 		},
+		Spec: longhorn.NodeSpec{
+			Disks: map[string]longhorn.DiskSpec{
+				"disk": {
+					StorageReserved: storageReserved,
+				},
+			},
+		},
 		Status: longhorn.NodeStatus{
 			DiskStatus: map[string]*longhorn.DiskStatus{
 				"disk": {
-					StorageAvailable: storageSize,
+					StorageAvailable: storageAvailable,
 					Type:             diskType,
 				},
 			},
