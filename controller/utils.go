@@ -115,3 +115,14 @@ func isBackupTargetAvailable(backupTarget *longhorn.BackupTarget) bool {
 		backupTarget.Spec.BackupTargetURL != "" &&
 		backupTarget.Status.Available
 }
+
+// isEnginePurging returns true if the given Longhorn engine is purging.
+func isEnginePurging(engine *longhorn.Engine) bool {
+	for _, status := range engine.Status.PurgeStatus {
+		if status.IsPurging {
+			return true
+		}
+	}
+
+	return false
+}
