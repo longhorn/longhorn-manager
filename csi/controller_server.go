@@ -695,7 +695,7 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 	if apierrors.IsNotFound(err) {
 		return nil, status.Errorf(codes.NotFound, "node %s not found", nodeID)
 	} else if err != nil {
-		return nil, status.Errorf(codes.Internal, "unexpecter error: %v", err)
+		return nil, status.Errorf(codes.Internal, "unexpected error: %v", err)
 	}
 	v1CapacitySize := resource.NewQuantity(0, resource.BinarySI)
 	v2CapacitySize := resource.NewQuantity(0, resource.BinarySI)
