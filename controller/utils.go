@@ -107,3 +107,14 @@ func checkIfRemoteDataCleanupIsNeeded(obj runtime.Object, bt *longhorn.BackupTar
 
 	return !exists && bt.Spec.BackupTargetURL != "", nil
 }
+
+// isEnginePurging returns true if the given Longhorn engine is purging.
+func isEnginePurging(engine *longhorn.Engine) bool {
+	for _, status := range engine.Status.PurgeStatus {
+		if status.IsPurging {
+			return true
+		}
+	}
+
+	return false
+}
