@@ -691,7 +691,7 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 		return nil, status.Errorf(codes.InvalidArgument, "failed to parse node id: %v", err)
 	}
 
-	node, err := cs.lhClient.LonghornV1beta2().Nodes(cs.lhNamespace).Get(context.TODO(), nodeID, metav1.GetOptions{})
+	node, err := cs.lhClient.LonghornV1beta2().Nodes(cs.lhNamespace).Get(ctx, nodeID, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		return nil, status.Errorf(codes.NotFound, "node %s not found", nodeID)
 	} else if err != nil {
