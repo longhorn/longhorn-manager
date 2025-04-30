@@ -944,6 +944,10 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		if err != nil {
 			return err
 		}
+
+		if err := m.checkAndApplyRebuildQoS(engine, engineClientProxy, rebuildStatus); err != nil {
+			return err
+		}
 		engine.Status.RebuildStatus = rebuildStatus
 
 		// It's meaningless to sync the trim related field for old engines or engines in old engine instance managers
@@ -1127,6 +1131,62 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 
 	return nil
+}
+
+func (m *EngineMonitor) checkAndApplyRebuildQoS(engine *longhorn.Engine, engineClientProxy engineapi.EngineClientProxy, rebuildStatus map[string]*longhorn.RebuildStatus) error {
+	if !types.IsDataEngineV2(engine.Spec.DataEngine) {
+		return nil
+	}
+
+	expectedQoSValue, err := m.getEffectiveRebuildQoS(engine)
+	if err != nil {
+		return err
+	}
+
+	for replica, newStatus := range rebuildStatus {
+		if newStatus == nil {
+			continue
+		}
+
+		var appliedQoS int64
+		if oldStatus, exists := engine.Status.RebuildStatus[replica]; exists && oldStatus != nil {
+			appliedQoS = oldStatus.AppliedRebuildingMBps
+		}
+
+		if appliedQoS == expectedQoSValue {
+			newStatus.AppliedRebuildingMBps = appliedQoS
+			continue
+		}
+
+		if !newStatus.IsRebuilding {
+			continue
+		}
+
+		if err := engineClientProxy.ReplicaRebuildQosSet(engine, expectedQoSValue); err != nil {
+			m.logger.WithError(err).Warnf("[qos] Failed to set QoS for volume %s, replica %s", engine.Spec.VolumeName, replica)
+			continue
+		}
+		newStatus.AppliedRebuildingMBps = expectedQoSValue
+	}
+	return nil
+}
+
+func (m *EngineMonitor) getEffectiveRebuildQoS(engine *longhorn.Engine) (int64, error) {
+	globalQoS, err := m.ds.GetSettingAsInt(types.SettingNameV2DataEngineRebuildingMbytesPerSecond)
+	if err != nil {
+		return 0, err
+	}
+
+	volume, err := m.ds.GetVolumeRO(engine.Spec.VolumeName)
+	if err != nil {
+		return 0, err
+	}
+
+	if volume.Spec.RebuildingMbytesPerSecond > 0 {
+		return volume.Spec.RebuildingMbytesPerSecond, nil
+	}
+
+	return globalQoS, nil
 }
 
 func isBackupRestoreFailed(rsMap map[string]*longhorn.RestoreStatus) bool {
@@ -1616,7 +1676,6 @@ func (ec *EngineController) ReconcileEngineState(e *longhorn.Engine) error {
 	if err := ec.rebuildNewReplica(e); err != nil {
 		return err
 	}
-
 	return nil
 }
 
