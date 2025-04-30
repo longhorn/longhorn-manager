@@ -240,6 +240,10 @@ func (e *EngineSimulator) ReplicaRebuildStatus(*longhorn.Engine) (map[string]*lo
 	return nil, errors.New(ErrNotImplement)
 }
 
+func (e *EngineSimulator) ReplicaRebuildQosSet(engine *longhorn.Engine, qosLimitMbps int64) error {
+	return errors.New(ErrNotImplement)
+}
+
 func (e *EngineSimulator) VolumeFrontendStart(*longhorn.Engine) error {
 	return errors.New(ErrNotImplement)
 }
