@@ -460,6 +460,10 @@ func (oc *OrphanController) getRunningInstanceManagerClientForOrphan(orphan *lon
 		oc.logger.WithField("instanceManager", imName).Warnf("Orphan instance %v is not managed by current running instance manager %v", orphan.Name, im.Name)
 		return nil, nil
 	}
+	if !im.DeletionTimestamp.IsZero() {
+		oc.logger.WithField("instanceManager", imName).Warnf("Orphan instance %v is managed by a deleted instance manager %v", orphan.Name, im.Name)
+		return nil, nil
+	}
 	return engineapi.NewInstanceManagerClient(im, false)
 }
 
