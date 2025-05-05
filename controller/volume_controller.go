@@ -3431,7 +3431,7 @@ func (c *VolumeController) checkAndFinishVolumeRestore(v *longhorn.Volume, e *lo
 		if err != nil {
 			return errors.Wrapf(err, "failed to get backup name from volume %s backup URL %v", v.Name, v.Spec.FromBackup)
 		}
-		bv, err := c.ds.GetBackupVolumeRO(bvName)
+		bv, err := c.ds.GetBackupVolumeByBackupTargetAndVolumeRO(v.Spec.BackupTargetName, bvName)
 		if err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
