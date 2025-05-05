@@ -116,13 +116,21 @@ func isBackupTargetAvailable(backupTarget *longhorn.BackupTarget) bool {
 		backupTarget.Status.Available
 }
 
-// isEnginePurging returns true if the given Longhorn engine is purging.
-func isEnginePurging(engine *longhorn.Engine) bool {
-	for _, status := range engine.Status.PurgeStatus {
-		if status.IsPurging {
+// isSnapshotExistInEngine checks if a snapshot with the given name exists in the specified engine.
+// It returns true if the snapshot is found, otherwise false.
+func isSnapshotExistInEngine(snapshotName string, engine *longhorn.Engine) bool {
+	if engine == nil {
+		return false
+	}
+
+	if engine.Status.Snapshots == nil {
+		return false
+	}
+
+	for name := range engine.Status.Snapshots {
+		if name == snapshotName {
 			return true
 		}
 	}
-
 	return false
 }
