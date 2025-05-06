@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/rancher/lasso/pkg/log"
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -1553,7 +1552,7 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 }
 
 func (nc *NodeController) deleteDisk(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string) error {
-	log.Infof("Deleting disk %v with diskUUID %v", diskName, diskUUID)
+	nc.logger.Infof("Deleting disk %v with diskUUID %v", diskName, diskUUID)
 
 	dataEngine := util.GetDataEngineForDiskType(diskType)
 
