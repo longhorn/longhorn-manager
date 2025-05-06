@@ -6,7 +6,7 @@ source $(dirname $0)/version
 cd $(dirname $0)/..
 
 TAG=${TAG:-${IMAGE_TAG_PREFIX}}
-REPO=${REPO:-longhornio}
+REPO=${REPO:-tykio}
 IMAGE=${IMAGE:-${REPO}/longhorn-manager:${TAG}}
 
 if [ ! -e ./bin/longhorn-manager-amd64 ] || [ ! -e ./bin/longhorn-manager-arm64 ]; then
@@ -22,7 +22,14 @@ trap 'rm -rf ./package/bin' exit
 BASE_IMAGE=`grep FROM package/Dockerfile  | awk '{print $2}'`
 docker pull ${BASE_IMAGE}
 
-buildx build --load -t ${IMAGE} -f package/Dockerfile .
+buildx create --name multiarch --use
+buildx inspect --bootstrap
+
+#buildx build --platform linux/amd64,linux/arm64 -t ${IMAGE} -f package/Dockerfile --load .
+buildx build --platform linux/amd64 -t ${REPO}/longhorn-manager:amd64 -f package/Dockerfile --load .
+buildx build --platform linux/arm64 -t ${REPO}/longhorn-manager:arm64 -f package/Dockerfile --load .
+
+
 
 echo Built ${IMAGE}
 
