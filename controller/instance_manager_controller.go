@@ -1415,7 +1415,7 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            im.Name,
 			Namespace:       imc.namespace,
-			OwnerReferences: datastore.GetOwnerReferencesForInstanceManager(im),
+			OwnerReferences: datastore.GetOwnerReferencesForInstanceManager(im, true),
 			Annotations:     map[string]string{types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix): string(tolerationsByte)},
 		},
 		Spec: corev1.PodSpec{
@@ -2300,7 +2300,7 @@ func (m *InstanceManagerMonitor) createOrphan(name string, im *longhorn.Instance
 	orphan := &longhorn.Orphan{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            name,
-			OwnerReferences: datastore.GetOwnerReferencesForInstanceManager(im),
+			OwnerReferences: datastore.GetOwnerReferencesForInstanceManager(im, false),
 		},
 		Spec: longhorn.OrphanSpec{
 			NodeID:     m.controllerID,

@@ -3634,9 +3634,8 @@ func (s *DataStore) ListEnginesByNodeRO(name string) ([]*longhorn.Engine, error)
 
 // GetOwnerReferencesForInstanceManager returns OwnerReference for the given
 // instance Manager name and UID
-func GetOwnerReferencesForInstanceManager(im *longhorn.InstanceManager) []metav1.OwnerReference {
+func GetOwnerReferencesForInstanceManager(im *longhorn.InstanceManager, blockOwnerDeletion bool) []metav1.OwnerReference {
 	controller := true
-	blockOwnerDeletion := true
 	return []metav1.OwnerReference{
 		{
 			APIVersion: longhorn.SchemeGroupVersion.String(),
