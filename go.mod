@@ -62,8 +62,8 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.6.1
 	github.com/longhorn/backing-image-manager v1.7.3
 	github.com/longhorn/backupstore v0.0.0-20250421031654-0ef762b84472
-	github.com/longhorn/go-common-libs v0.0.0-20250419062810-2bdafe8e7f4e
-	github.com/longhorn/go-iscsi-helper v0.0.0-20250425050615-1de428a1281a
+	github.com/longhorn/go-common-libs v0.0.0-20250510103049-801acb30430c
+	github.com/longhorn/go-iscsi-helper v0.0.0-20250507091512-6de0af5cd997
 	github.com/longhorn/go-spdk-helper v0.0.2-0.20250313071458-3dd5863e9249
 	github.com/longhorn/longhorn-engine v1.7.3
 	github.com/longhorn/longhorn-instance-manager v1.7.3
@@ -78,8 +78,8 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli v1.22.16
 	golang.org/x/mod v0.24.0
-	golang.org/x/net v0.39.0
-	golang.org/x/sys v0.32.0
+	golang.org/x/net v0.40.0
+	golang.org/x/sys v0.33.0
 	golang.org/x/time v0.7.0
 	google.golang.org/grpc v1.69.4
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
@@ -118,8 +118,8 @@ require (
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
-	golang.org/x/tools v0.32.0 // indirect
+	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6 // indirect
+	golang.org/x/tools v0.33.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20241015192408-796eee8c2d53 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241015192408-796eee8c2d53 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
@@ -205,11 +205,11 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.26.0 // indirect
-	golang.org/x/crypto v0.37.0 // indirect
+	golang.org/x/crypto v0.38.0 // indirect
 	golang.org/x/oauth2 v0.23.0 // indirect
-	golang.org/x/sync v0.13.0
-	golang.org/x/term v0.31.0 // indirect
-	golang.org/x/text v0.24.0
+	golang.org/x/sync v0.14.0
+	golang.org/x/term v0.32.0 // indirect
+	golang.org/x/text v0.25.0
 	google.golang.org/genproto v0.0.0-20240401170217-c3f982113cda // indirect
 	google.golang.org/protobuf v1.35.2
 	gopkg.in/inf.v0 v0.9.1 // indirect
