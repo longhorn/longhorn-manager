@@ -181,13 +181,13 @@ func (sc *SnapshotController) enqueueEngineChange(oldObj, curObj interface{}) {
 		return
 	}
 
-	snapshots = filterSnapshotsForEngineEnqueuing(oldEngine, curEngine, snapshots)
+	snapshots = sc.filterSnapshotsForEngineEnqueuing(oldEngine, curEngine, snapshots)
 	for _, snap := range snapshots {
 		sc.enqueueSnapshot(snap)
 	}
 }
 
-func filterSnapshotsForEngineEnqueuing(oldEngine, curEngine *longhorn.Engine, snapshots map[string]*longhorn.Snapshot) map[string]*longhorn.Snapshot {
+func (sc *SnapshotController) filterSnapshotsForEngineEnqueuing(oldEngine, curEngine *longhorn.Engine, snapshots map[string]*longhorn.Snapshot) map[string]*longhorn.Snapshot {
 	targetSnapshots := make(map[string]*longhorn.Snapshot)
 
 	if curEngine.Status.CurrentState != oldEngine.Status.CurrentState {
@@ -202,9 +202,24 @@ func filterSnapshotsForEngineEnqueuing(oldEngine, curEngine *longhorn.Engine, sn
 		}
 	}
 
+	va, err := sc.ds.GetLHVolumeAttachmentByVolumeName(curEngine.Spec.VolumeName)
+	if err != nil {
+		sc.logger.WithError(err).Warnf("Failed to get volume attachment for volume %s", curEngine.Spec.VolumeName)
+	}
+
 	for snapName, snap := range snapshots {
 		if !reflect.DeepEqual(oldEngine.Status.Snapshots[snapName], curEngine.Status.Snapshots[snapName]) {
 			targetSnapshots[snapName] = snap
+		}
+
+		// Longhorn#10874:
+		// Requeueue the snapshot if there is an attachment ticket for it to ensure
+		// the volumeattachment can be cleaned up after the snapshot is created.
+		if va != nil && va.Spec.AttachmentTickets != nil {
+			attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeSnapshotController, snap.Name)
+			if va.Spec.AttachmentTickets[attachmentTicketID] != nil {
+				targetSnapshots[snapName] = snap
+			}
 		}
 	}
 
