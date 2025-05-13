@@ -507,7 +507,7 @@ func (bic *BackingImageController) prepareFirstV2Copy(bi *longhorn.BackingImage)
 	_, err = engineClientProxy.SPDKBackingImageCreate(bi.Name, bi.Status.UUID, firstV2CopyDiskUUID, bi.Status.Checksum, fileDownloadAddress, "", uint64(bi.Status.Size))
 	if err != nil {
 		if types.ErrorAlreadyExists(err) {
-			log.Infof("backing image already exists when preparing first v2 copy on disk %v", firstV2CopyDiskUUID)
+			log.Infof("Backing image already exists when preparing first v2 copy on disk %v", firstV2CopyDiskUUID)
 		}
 		bic.v2CopyBackoff.Next(firstV2CopyDiskUUID, time.Now())
 		return errors.Wrapf(err, "failed to create backing image on disk %v when preparing first v2 copy for backing image %v", firstV2CopyDiskUUID, bi.Name)
