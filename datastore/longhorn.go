@@ -3168,6 +3168,14 @@ func getLonghornNodeSelector(nodeName string) (labels.Selector, error) {
 	})
 }
 
+func getInstanceManagerSelector(name string) (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			types.LonghornInstanceManagerKey: name,
+		},
+	})
+}
+
 // ListReplicasByNode gets a map of Replicas on the node Name for the given namespace.
 func (s *DataStore) ListReplicasByNode(name string) (map[string]*longhorn.Replica, error) {
 	nodeSelector, err := getNodeSelector(name)
@@ -5299,9 +5307,9 @@ func (s *DataStore) ListOrphans() (map[string]*longhorn.Orphan, error) {
 	return s.listOrphans(labels.Everything())
 }
 
-// ListOrphansByNode gets a map of Orphans on the node Name for the given namespace.
-func (s *DataStore) ListOrphansByNode(name string) (map[string]*longhorn.Orphan, error) {
-	nodeSelector, err := getNodeSelector(name)
+// ListOrphansByInstanceManager gets a map of Orphans managed by instance manager Name for the given namespace.
+func (s *DataStore) ListOrphansByInstanceManager(name string) (map[string]*longhorn.Orphan, error) {
+	nodeSelector, err := getInstanceManagerSelector(name)
 	if err != nil {
 		return nil, err
 	}
@@ -5324,11 +5332,11 @@ func (s *DataStore) ListOrphansByNodeRO(name string) ([]*longhorn.Orphan, error)
 	return s.orphanLister.Orphans(s.namespace).List(nodeSelector)
 }
 
-// ListOrphansForEngineAndReplicaInstancesRO returns a list of all engine and replica instance Orphans on node Name for the given namespace,
+// ListInstanceOrphansByInstanceManagerRO returns a list of all engine and replica instance Orphans on instance manager Name for the given namespace,
 // the list contains direct references to the internal cache objects and should not be mutated.
 // Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
-func (s *DataStore) ListOrphansForEngineAndReplicaInstancesRO(name string) (orphanList []*longhorn.Orphan, err error) {
-	existOrphans, err := s.ListOrphansByNode(name)
+func (s *DataStore) ListInstanceOrphansByInstanceManagerRO(instanceManager string) (orphanList []*longhorn.Orphan, err error) {
+	existOrphans, err := s.ListOrphansByInstanceManager(instanceManager)
 	if err != nil {
 		return nil, err
 	}
