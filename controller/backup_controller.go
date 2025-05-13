@@ -371,8 +371,17 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 			return
 		}
 		if backup.Status.State == longhorn.BackupStateCompleted && existingBackupState != backup.Status.State {
+<<<<<<< HEAD
 			if err := bc.syncBackupVolume(backupVolumeName); err != nil {
 				log.Warnf("failed to sync Backup Volume: %v", backupVolumeName)
+=======
+			if err := bc.syncBackupVolume(backupTargetName, canonicalBackupVolumeName); err != nil {
+				log.Warnf("Failed to sync backup volume %v for backup target %v", canonicalBackupVolumeName, backupTargetName)
+				return
+			}
+			if err := bc.deleteSnapshotAfterBackupCompleted(backup); err != nil {
+				log.WithError(err).Warn("Failed to delete snapshot after backup completed")
+>>>>>>> 96d7e664 (chore: update log messages)
 				return
 			}
 		}
