@@ -70,4 +70,6 @@ const (
 	EventReasonRolloutSkippedFmt = "RolloutSkipped: %v %v"
 
 	EventReasonMigrationFailed = "MigrationFailed"
+
+	EventReasonOrphanCleanupCompleted = "OrphanCleanupCompleted"
 )

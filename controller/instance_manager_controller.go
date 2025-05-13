@@ -1660,18 +1660,23 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	return podSpec, nil
 }
 
+// deleteOrphans examines existing instance orphan CRs, and initiates CR deletion if needed.
+//
+// Orphan CRs will be deleted under any of the following conditions:
+//   - The instance manager is terminating or has terminated, which results in the removal of its managed instances.
+//   - An instance is missing from the instance manager.
+//   - An instance has been rescheduled to the instance manager and is no longer considered orphaned.
+//   - Automatic deletion of orphan resources is enabled.
 func (imc *InstanceManagerController) deleteOrphans(im *longhorn.InstanceManager, isInstanceManagerTerminating bool) error {
 	autoDeletionTypes, err := imc.ds.GetSettingOrphanResourceAutoDeletion()
-	var autoDeleteEngine = false
-	var autoDeleteReplica = false
+	var autoDeleteEnabled = false
 	if err != nil {
 		imc.logger.WithError(err).Warnf("Failed to fetch orphan auto deletion setting, disabled by default")
 	} else {
-		autoDeleteEngine = autoDeletionTypes[types.OrphanResourceTypeEngineInstance]
-		autoDeleteReplica = autoDeletionTypes[types.OrphanResourceTypeReplicaInstance]
+		autoDeleteEnabled = autoDeletionTypes[types.OrphanResourceTypeInstance]
 	}
 
-	orphanList, err := imc.ds.ListOrphansForEngineAndReplicaInstancesRO(im.Spec.NodeID)
+	orphanList, err := imc.ds.ListInstanceOrphansByInstanceManagerRO(im.Name)
 	if err != nil {
 		return err
 	}
@@ -1681,17 +1686,25 @@ func (imc *InstanceManagerController) deleteOrphans(im *longhorn.InstanceManager
 			continue
 		}
 
-		var isDeletable = false
+		instanceManager := orphan.Spec.Parameters[longhorn.OrphanInstanceManager]
+		instanceName := orphan.Spec.Parameters[longhorn.OrphanInstanceName]
+		var instanceExist = false
+		var instanceCRScheduledBack = false
 		switch orphan.Spec.Type {
 		case longhorn.OrphanTypeEngineInstance:
-			isDeletable, err = imc.isOrphanDeletable(orphan, isInstanceManagerTerminating || autoDeleteEngine, im.Status.InstanceEngines, imc.isEngineScheduledOnCurrentNode)
+			_, instanceExist = im.Status.InstanceEngines[instanceName]
+			instanceCRScheduledBack, err = imc.isEngineOnInstanceManager(instanceManager, instanceName)
 		case longhorn.OrphanTypeReplicaInstance:
-			isDeletable, err = imc.isOrphanDeletable(orphan, isInstanceManagerTerminating || autoDeleteReplica, im.Status.InstanceReplicas, imc.isReplicaScheduledOnCurrentNode)
+			_, instanceExist = im.Status.InstanceReplicas[instanceName]
+			instanceCRScheduledBack, err = imc.isReplicaOnInstanceManager(instanceManager, instanceName)
 		}
 		if err != nil {
 			multiError.Append(util.NewMultiError(fmt.Sprintf("%v: %v", orphan.Name, err)))
-		} else if isDeletable {
-			if err := imc.ds.DeleteOrphan(orphan.Name); err != nil && !apierrors.IsNotFound(err) {
+			continue
+		}
+
+		if imc.canDeleteOrphanCR(isInstanceManagerTerminating, autoDeleteEnabled, instanceExist, instanceCRScheduledBack) {
+			if err := imc.deleteOrphan(orphan); err != nil {
 				multiError.Append(util.NewMultiError(fmt.Sprintf("%v: %v", orphan.Name, err)))
 			}
 		}
@@ -1702,76 +1715,68 @@ func (imc *InstanceManagerController) deleteOrphans(im *longhorn.InstanceManager
 	return nil
 }
 
-func (imc *InstanceManagerController) isOrphanDeletable(orphan *longhorn.Orphan, autoDelete bool, instanceMap instanceProcessMap, isInstanceScheduledOnNode func(node, instance string) (bool, error)) (isDeletable bool, err error) {
-	if autoDelete {
-		return true, nil
+func (imc *InstanceManagerController) deleteOrphan(orphan *longhorn.Orphan) error {
+	imc.logger.Infof("Deleting Orphan %q", orphan.Name)
+	if err := imc.ds.DeleteOrphan(orphan.Name); err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to delete orphan %q", orphan.Name)
 	}
-
-	instanceName := orphan.Spec.Parameters[longhorn.OrphanInstanceName]
-	instanceProc, instanceExist := instanceMap[instanceName]
-	instanceCRScheduledBack, err := isInstanceScheduledOnNode(orphan.Spec.NodeID, instanceName)
-	if err != nil {
-		return false, errors.Wrapf(err, "failed to check CR scheduled node for %v orphan %v", orphan.Spec.Type, instanceName)
-	}
-
-	var instanceState longhorn.InstanceState
-	if instanceExist {
-		instanceState = instanceProc.Status.State
-	} else {
-		instanceState = longhorn.InstanceStateTerminated
-	}
-
-	imc.logger.WithFields(logrus.Fields{
-		"instanceExist":           instanceExist,
-		"instanceState":           instanceState,
-		"instanceCRScheduledBack": instanceCRScheduledBack,
-	}).Debugf("Checked deletable for %s orphan instance %s", orphan.Spec.Type, orphan.Name)
-	if !instanceExist || instanceCRScheduledBack {
-		return true, nil
-	}
-	return false, nil
+	return nil
 }
 
-func (imc *InstanceManagerController) isEngineScheduledOnCurrentNode(node string, instance string) (bool, error) {
+func (imc *InstanceManagerController) canDeleteOrphanCR(imTerminating, autoDeleteEnabled, instanceExist, instanceCRScheduledBack bool) bool {
+	return imTerminating || autoDeleteEnabled || !instanceExist || instanceCRScheduledBack
+}
+
+func (imc *InstanceManagerController) isEngineOnInstanceManager(instanceManager string, instance string) (bool, error) {
 	existEngine, err := imc.ds.GetEngineRO(instance)
-	switch {
-	case err == nil:
-		// Engine CR still exists - check the ownership
-		return imc.isInstanceScheduledOnCurrentNode(node, &existEngine.Spec.InstanceSpec, &existEngine.Status.InstanceStatus), nil
-	case apierrors.IsNotFound(err):
-		// Engine CR not found - instance is orphaned
-		return false, nil
-	default:
-		// Unexpected error - unable to check if engine instance is orphaned or not
-		return false, err
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			// Engine CR not found - instance is orphaned
+			return false, nil
+		}
+		return false, errors.Wrapf(err, "failed to check if engine instance %q is scheduled on instance manager %q", instance, instanceManager)
 	}
+	return imc.isInstanceOnInstanceManager(instanceManager, &existEngine.ObjectMeta, &existEngine.Spec.InstanceSpec, &existEngine.Status.InstanceStatus), nil
 }
 
-func (imc *InstanceManagerController) isReplicaScheduledOnCurrentNode(node string, instance string) (bool, error) {
+func (imc *InstanceManagerController) isReplicaOnInstanceManager(instanceManager string, instance string) (bool, error) {
 	existReplica, err := imc.ds.GetReplicaRO(instance)
-	switch {
-	case err == nil:
-		// Replica CR still exists - check the ownership
-		return imc.isInstanceScheduledOnCurrentNode(node, &existReplica.Spec.InstanceSpec, &existReplica.Status.InstanceStatus), nil
-	case apierrors.IsNotFound(err):
-		// Replica CR not found - instance is orphaned
-		return false, nil
-	default:
-		// Unexpected error - unable to check if replica instance is orphaned or not
-		return false, err
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			// Replica CR not found - instance is orphaned
+			return false, nil
+		}
+		return false, errors.Wrapf(err, "failed to check if replica instance %q is scheduled on instance manager %q", instance, instanceManager)
 	}
+	return imc.isInstanceOnInstanceManager(instanceManager, &existReplica.ObjectMeta, &existReplica.Spec.InstanceSpec, &existReplica.Status.InstanceStatus), nil
 }
 
-// isInstanceScheduledOnCurrentNode returns true only when it is very certain that an instance is scheduled on this node
-func (imc *InstanceManagerController) isInstanceScheduledOnCurrentNode(node string, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus) bool {
-	if status.CurrentState != spec.DesireState {
+// isInstanceOnInstanceManager returns true only when it is very certain that an instance is scheduled in a given instance manager
+func (imc *InstanceManagerController) isInstanceOnInstanceManager(instanceManager string, meta *metav1.ObjectMeta, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus) bool {
+	if !meta.DeletionTimestamp.IsZero() {
+		imc.logger.Debugf("Skipping check if Instance %q is scheduled on instance manager %q; instance is marked for deletion", meta.Name, instanceManager)
 		return false
 	}
+
+	if status.CurrentState != spec.DesireState || status.OwnerID != spec.NodeID {
+		imc.logger.WithFields(logrus.Fields{
+			"currentState": status.CurrentState,
+			"desiredState": spec.DesireState,
+			"currentNode":  status.OwnerID,
+			"desiredNode":  spec.NodeID,
+		}).Debugf("Skipping check if instance %q is scheduled on instance manager %q; instance is in state transition", meta.Name, instanceManager)
+		return false
+	}
+
 	switch status.CurrentState {
 	case longhorn.InstanceStateRunning:
-		return status.OwnerID == spec.NodeID && spec.NodeID == node
+		return status.InstanceManagerName == instanceManager
 	case longhorn.InstanceStateStopped:
-		return spec.NodeID == node
+		// Instance manager is not assigned in the stopped state. Instance is not expected to live in any instance manager.
+		return false
 	default:
 		return false
 	}
@@ -2211,7 +2216,7 @@ func (m *InstanceManagerMonitor) StopMonitorWithLock() {
 
 func (m *InstanceManagerMonitor) syncOrphans(im *longhorn.InstanceManager, instanceMap instanceProcessMap) {
 	engineProcesses, replicaProcesses := m.categorizeProcesses(instanceMap)
-	existOrphansList, err := m.ds.ListOrphansForEngineAndReplicaInstancesRO(im.Spec.NodeID)
+	existOrphansList, err := m.ds.ListInstanceOrphansByInstanceManagerRO(im.Name)
 	if err != nil {
 		m.logger.WithError(err).Errorf("Failed to list orphans on node %s", im.Spec.NodeID)
 		return
@@ -2226,12 +2231,12 @@ func (m *InstanceManagerMonitor) syncOrphans(im *longhorn.InstanceManager, insta
 	m.createOrphanForInstances(existOrphans, im, replicaProcesses, longhorn.OrphanTypeReplicaInstance, m.isReplicaOrphaned)
 }
 
-func (m *InstanceManagerMonitor) isEngineOrphaned(instanceName, node string) (bool, error) {
+func (m *InstanceManagerMonitor) isEngineOrphaned(instanceName, instanceManager string) (bool, error) {
 	existEngine, err := m.ds.GetEngineRO(instanceName)
 	switch {
 	case err == nil:
 		// Engine CR still exists - check the ownership
-		return m.isInstanceOrphanedOnNode(&existEngine.Spec.InstanceSpec, &existEngine.Status.InstanceStatus, node), nil
+		return m.isInstanceOrphanedInInstanceManager(&existEngine.ObjectMeta, &existEngine.Spec.InstanceSpec, &existEngine.Status.InstanceStatus, instanceManager), nil
 	case apierrors.IsNotFound(err):
 		// Engine CR not found - instance is orphaned
 		return true, nil
@@ -2241,12 +2246,12 @@ func (m *InstanceManagerMonitor) isEngineOrphaned(instanceName, node string) (bo
 	}
 }
 
-func (m *InstanceManagerMonitor) isReplicaOrphaned(instanceName, node string) (bool, error) {
+func (m *InstanceManagerMonitor) isReplicaOrphaned(instanceName, instanceManager string) (bool, error) {
 	existReplica, err := m.ds.GetReplicaRO(instanceName)
 	switch {
 	case err == nil:
 		// Replica CR still exists - check the ownership
-		return m.isInstanceOrphanedOnNode(&existReplica.Spec.InstanceSpec, &existReplica.Status.InstanceStatus, node), nil
+		return m.isInstanceOrphanedInInstanceManager(&existReplica.ObjectMeta, &existReplica.Spec.InstanceSpec, &existReplica.Status.InstanceStatus, instanceManager), nil
 	case apierrors.IsNotFound(err):
 		// Replica CR not found - instance is orphaned
 		return true, nil
@@ -2256,31 +2261,52 @@ func (m *InstanceManagerMonitor) isReplicaOrphaned(instanceName, node string) (b
 	}
 }
 
-// isInstanceOrphanedOnNode returns true only when it is very certain that an instance is scheduled on another node
-func (m *InstanceManagerMonitor) isInstanceOrphanedOnNode(spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus, node string) bool {
-	if status.CurrentState != spec.DesireState {
+// isInstanceOrphanedInInstanceManager returns true only when it is very certain that an instance is scheduled on another instance manager
+func (m *InstanceManagerMonitor) isInstanceOrphanedInInstanceManager(meta *metav1.ObjectMeta, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus, instanceManager string) bool {
+	if !meta.DeletionTimestamp.IsZero() {
+		m.logger.Debugf("Skipping orphan check; Instance %s is marked for deletion", meta.Name)
 		return false
 	}
+
+	if status.CurrentState != spec.DesireState || status.OwnerID != spec.NodeID {
+		m.logger.WithFields(logrus.Fields{
+			"currentState": status.CurrentState,
+			"desiredState": spec.DesireState,
+			"currentNode":  status.OwnerID,
+			"desiredNode":  spec.NodeID,
+		}).Debugf("Skipping orphan check; Instance %s is in state transition", meta.Name)
+		return false
+	}
+
 	switch status.CurrentState {
 	case longhorn.InstanceStateRunning:
-		return status.OwnerID == spec.NodeID && spec.NodeID != node
+		return status.InstanceManagerName != instanceManager
 	case longhorn.InstanceStateStopped:
-		return spec.NodeID != node
+		// Instance manager is not assigned in the stopped state. Instance is not expected to live in any instance manager.
+		return true
 	default:
 		return false
 	}
 }
 
-func (m *InstanceManagerMonitor) createOrphanForInstances(existOrphans map[string]bool, im *longhorn.InstanceManager, instanceMap instanceProcessMap, orphanType longhorn.OrphanType, orphanFilter func(instanceName, node string) (bool, error)) {
+func (m *InstanceManagerMonitor) createOrphanForInstances(existOrphans map[string]bool, im *longhorn.InstanceManager, instanceMap instanceProcessMap, orphanType longhorn.OrphanType, orphanFilter func(instanceName, instanceManager string) (bool, error)) {
 	for instanceName, instance := range instanceMap {
-		orphanName := types.GetOrphanChecksumNameForOrphanedInstance(instanceName, m.controllerID, string(instance.Spec.DataEngine))
+		if instance.Status.State == longhorn.InstanceStateStarting ||
+			instance.Status.State == longhorn.InstanceStateStopping ||
+			instance.Status.State == longhorn.InstanceStateStopped {
+			// Starting: Status transitioning. Will handle this after running.
+			// Stopping, Stopped: Terminating. No orphan CR needed, and the orphaned instances will be cleanup by instance manager after stopped.
+			continue
+		}
+
+		orphanName := types.GetOrphanChecksumNameForOrphanedInstance(instanceName, im.Name, string(instance.Spec.DataEngine))
 		if _, isExist := existOrphans[orphanName]; isExist {
 			continue
 		}
-		if isOrphaned, err := orphanFilter(instanceName, im.Spec.NodeID); err != nil {
+		if isOrphaned, err := orphanFilter(instanceName, im.Name); err != nil {
 			m.logger.WithError(err).Errorf("Failed to check %v orphan for instance %v", orphanType, instanceName)
 		} else if isOrphaned {
-			m.logger.Infof("Instance %v is orphaned", instanceName)
+			m.logger.WithField("instanceState", instance.Status.State).Infof("Creating %s Orphan %q for orphaned instance %q", orphanType, orphanName, instanceName)
 			newOrphan, err := m.createOrphan(orphanName, im, instanceName, orphanType, instance.Spec.DataEngine)
 			if err != nil {
 				m.logger.WithError(err).Errorf("Failed to create %v orphan for instance %v", orphanType, instanceName)
