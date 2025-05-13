@@ -402,7 +402,7 @@ func (bc *BackupController) reconcile(backupName string) (err error) {
 		}
 		if backup.Status.State == longhorn.BackupStateCompleted && existingBackupState != backup.Status.State {
 			if err := bc.syncBackupVolume(backupTargetName, canonicalBackupVolumeName); err != nil {
-				log.Warnf("failed to sync backup volume %v for backup target %v", canonicalBackupVolumeName, backupTargetName)
+				log.Warnf("Failed to sync backup volume %v for backup target %v", canonicalBackupVolumeName, backupTargetName)
 				return
 			}
 			if err := bc.deleteSnapshotAfterBackupCompleted(backup); err != nil {
