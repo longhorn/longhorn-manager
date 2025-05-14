@@ -192,8 +192,8 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 	return api.RPCToInstance(p), nil
 }
 
-// InstanceDelete deletes the instance by name.
-func (c *InstanceServiceClient) InstanceDelete(dataEngine, name, instanceType, diskUUID string, cleanupRequired bool) (*api.Instance, error) {
+// InstanceDelete deletes the instance by name. UUID will be validated if not empty.
+func (c *InstanceServiceClient) InstanceDelete(dataEngine, name, uuid, instanceType, diskUUID string, cleanupRequired bool) (*api.Instance, error) {
 	if name == "" {
 		return nil, fmt.Errorf("failed to delete instance: missing required parameter name")
 	}
@@ -209,6 +209,7 @@ func (c *InstanceServiceClient) InstanceDelete(dataEngine, name, instanceType, d
 
 	p, err := client.InstanceDelete(ctx, &rpc.InstanceDeleteRequest{
 		Name: name,
+		Uuid: uuid,
 		Type: instanceType,
 		// nolint:all replaced with DataEngine
 		BackendStoreDriver: rpc.BackendStoreDriver(driver),
