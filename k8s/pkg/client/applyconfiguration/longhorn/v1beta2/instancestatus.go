@@ -37,6 +37,7 @@ type InstanceStatusApplyConfiguration struct {
 	SalvageExecuted     *bool                          `json:"salvageExecuted,omitempty"`
 	Conditions          []ConditionApplyConfiguration  `json:"conditions,omitempty"`
 	UblkID              *int32                         `json:"ublkID,omitempty"`
+	UUID                *string                        `json:"uuid,omitempty"`
 }
 
 // InstanceStatusApplyConfiguration constructs a declarative configuration of the InstanceStatus type for use with
@@ -143,5 +144,13 @@ func (b *InstanceStatusApplyConfiguration) WithConditions(values ...*ConditionAp
 // If called multiple times, the UblkID field is set to the value of the last call.
 func (b *InstanceStatusApplyConfiguration) WithUblkID(value int32) *InstanceStatusApplyConfiguration {
 	b.UblkID = &value
+	return b
+}
+
+// WithUUID sets the UUID field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the UUID field is set to the value of the last call.
+func (b *InstanceStatusApplyConfiguration) WithUUID(value string) *InstanceStatusApplyConfiguration {
+	b.UUID = &value
 	return b
 }
