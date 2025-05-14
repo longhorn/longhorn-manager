@@ -25,6 +25,7 @@ const (
 const (
 	OrphanInstanceName    = "InstanceName"
 	OrphanInstanceManager = "InstanceManager"
+	OrphanInstanceUUID    = "InstanceUID"
 
 	OrphanDataName = "DataName"
 	OrphanDiskName = "DiskName"
