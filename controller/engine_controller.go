@@ -2201,6 +2201,7 @@ func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logru
 	}
 
 	e.Status.Port = int(engineInstance.Status.PortStart)
+	e.Status.UUID = engineInstance.Status.UUID
 	return nil
 }
 

@@ -292,6 +292,7 @@ func parseInstance(p *imapi.Instance) *longhorn.InstanceProcess {
 			TargetPortStart: p.InstanceStatus.TargetPortStart,
 			TargetPortEnd:   p.InstanceStatus.TargetPortEnd,
 			UblkID:          p.InstanceStatus.UblkID,
+			UUID:            p.InstanceStatus.UUID,
 
 			// FIXME: These fields are not used, maybe we can deprecate them later.
 			Listen:   "",
@@ -317,6 +318,7 @@ func parseProcess(p *imapi.Process) *longhorn.InstanceProcess {
 			Conditions: p.ProcessStatus.Conditions,
 			PortStart:  p.ProcessStatus.PortStart,
 			PortEnd:    p.ProcessStatus.PortEnd,
+			UUID:       p.ProcessStatus.UUID,
 
 			// FIXME: These fields are not used, maybe we can deprecate them later.
 			Listen:   "",
