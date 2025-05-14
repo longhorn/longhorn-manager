@@ -2324,8 +2324,11 @@ func (m *InstanceManagerMonitor) createOrphanForInstances(existOrphans map[strin
 		if isOrphaned, err := orphanFilter(instanceName, im.Name); err != nil {
 			m.logger.WithError(err).Errorf("Failed to check %v orphan for instance %v", orphanType, instanceName)
 		} else if isOrphaned {
-			m.logger.WithField("instanceState", instance.Status.State).Infof("Creating %s Orphan %v for orphaned instance %v", orphanType, orphanName, instanceName)
-			newOrphan, err := m.createOrphan(orphanName, im, instanceName, orphanType, instance.Spec.DataEngine)
+			m.logger.WithFields(logrus.Fields{
+				"instanceState": instance.Status.State,
+				"instanceUUID":  instance.Status.UUID,
+			}).Infof("Creating %s Orphan %v for orphaned instance %v", orphanType, orphanName, instanceName)
+			newOrphan, err := m.createOrphan(orphanName, im, instanceName, instance.Status.UUID, orphanType, instance.Spec.DataEngine)
 			if err != nil {
 				m.logger.WithError(err).Errorf("Failed to create %v orphan for instance %v", orphanType, instanceName)
 			} else if newOrphan != nil {
@@ -2335,7 +2338,7 @@ func (m *InstanceManagerMonitor) createOrphanForInstances(existOrphans map[strin
 	}
 }
 
-func (m *InstanceManagerMonitor) createOrphan(name string, im *longhorn.InstanceManager, instanceName string, orphanType longhorn.OrphanType, dataEngineType longhorn.DataEngineType) (*longhorn.Orphan, error) {
+func (m *InstanceManagerMonitor) createOrphan(name string, im *longhorn.InstanceManager, instanceName, instanceUUID string, orphanType longhorn.OrphanType, dataEngineType longhorn.DataEngineType) (*longhorn.Orphan, error) {
 	if _, err := m.ds.GetOrphanRO(name); err == nil || !apierrors.IsNotFound(err) {
 		return nil, err
 	}
@@ -2352,6 +2355,7 @@ func (m *InstanceManagerMonitor) createOrphan(name string, im *longhorn.Instance
 			Parameters: map[string]string{
 				longhorn.OrphanInstanceName:    instanceName,
 				longhorn.OrphanInstanceManager: im.Name,
+				longhorn.OrphanInstanceUUID:    instanceUUID,
 			},
 		},
 	}
