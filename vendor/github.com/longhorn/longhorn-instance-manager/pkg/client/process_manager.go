@@ -116,7 +116,7 @@ func (c *ProcessManagerClient) ProcessCreate(name, binary string, portCount int,
 	})
 }
 
-func (c *ProcessManagerClient) ProcessDelete(name string) (*rpc.ProcessResponse, error) {
+func (c *ProcessManagerClient) ProcessDelete(name, uuid string) (*rpc.ProcessResponse, error) {
 	if name == "" {
 		return nil, fmt.Errorf("failed to delete process: missing required parameter name")
 	}
@@ -127,6 +127,7 @@ func (c *ProcessManagerClient) ProcessDelete(name string) (*rpc.ProcessResponse,
 
 	return client.ProcessDelete(ctx, &rpc.ProcessDeleteRequest{
 		Name: name,
+		Uuid: uuid,
 	})
 }
 
