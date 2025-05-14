@@ -112,6 +112,8 @@ type InstanceStatus struct {
 	Conditions []Condition `json:"conditions"`
 	// +optional
 	UblkID int32 `json:"ublkID,omitempty"`
+	// +optional
+	UUID string `json:"uuid,omitempty"`
 }
 
 type InstanceProcessStatus struct {
@@ -140,6 +142,8 @@ type InstanceProcessStatus struct {
 	ResourceVersion int64 `json:"resourceVersion"`
 	// +optional
 	UblkID int32 `json:"ublkID,omitempty"`
+	// +optional
+	UUID string `json:"uuid,omitempty"`
 }
 
 type V2DataEngineSpec struct {
