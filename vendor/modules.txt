@@ -179,7 +179,7 @@ github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.9.0-rc2 => github.com/derekbit/longhorn-instance-manager v0.0.0-20250514045420-e31edeb5b2f7
+# github.com/longhorn/longhorn-instance-manager v1.9.0-rc2 => github.com/derekbit/longhorn-instance-manager v0.0.0-20250514145216-c3e08accb3e4
 ## explicit; go 1.24.0
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client

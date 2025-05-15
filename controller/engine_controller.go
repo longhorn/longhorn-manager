@@ -599,7 +599,7 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 		}
 	}(c)
 
-	err = c.InstanceDelete(e.Spec.DataEngine, e.Name, string(longhorn.InstanceManagerTypeEngine), "", true)
+	err = c.InstanceDelete(e.Spec.DataEngine, e.Name, "", string(longhorn.InstanceManagerTypeEngine), "", true)
 	if err != nil && !types.ErrorIsNotFound(err) {
 		return err
 	}

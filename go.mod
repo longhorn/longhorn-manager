@@ -191,4 +191,4 @@ require (
 
 replace github.com/longhorn/types v0.0.0-20250416235128-0c407ad2b792 => github.com/derekbit/longhorn-types v0.0.0-20250514045121-483ff03273ba
 
-replace github.com/longhorn/longhorn-instance-manager v1.9.0-rc2 => github.com/derekbit/longhorn-instance-manager v0.0.0-20250514045420-e31edeb5b2f7
+replace github.com/longhorn/longhorn-instance-manager v1.9.0-rc2 => github.com/derekbit/longhorn-instance-manager v0.0.0-20250514145216-c3e08accb3e4

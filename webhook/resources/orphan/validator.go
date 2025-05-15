@@ -105,6 +105,7 @@ func checkOrphanForReplicaData(orphan *longhorn.Orphan) error {
 func checkOrphanForInstance(orphan *longhorn.Orphan) error {
 	params := []string{
 		longhorn.OrphanInstanceName,
+		longhorn.OrphanInstanceUUID,
 		longhorn.OrphanInstanceManager,
 	}
 
