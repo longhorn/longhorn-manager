@@ -292,6 +292,7 @@ func parseInstance(p *imapi.Instance) *longhorn.InstanceProcess {
 			TargetPortStart: p.InstanceStatus.TargetPortStart,
 			TargetPortEnd:   p.InstanceStatus.TargetPortEnd,
 			UblkID:          p.InstanceStatus.UblkID,
+			UUID:            p.InstanceStatus.UUID,
 
 			// FIXME: These fields are not used, maybe we can deprecate them later.
 			Listen:   "",
@@ -317,6 +318,7 @@ func parseProcess(p *imapi.Process) *longhorn.InstanceProcess {
 			Conditions: p.ProcessStatus.Conditions,
 			PortStart:  p.ProcessStatus.PortStart,
 			PortEnd:    p.ProcessStatus.PortEnd,
+			UUID:       p.ProcessStatus.UUID,
 
 			// FIXME: These fields are not used, maybe we can deprecate them later.
 			Listen:   "",
@@ -587,13 +589,13 @@ func (c *InstanceManagerClient) ReplicaInstanceCreate(req *ReplicaInstanceCreate
 	return parseInstance(instance), nil
 }
 
-// InstanceDelete deletes the instance
-func (c *InstanceManagerClient) InstanceDelete(dataEngine longhorn.DataEngineType, name, kind, diskUUID string, cleanupRequired bool) (err error) {
+// InstanceDelete deletes the instance by name. UUID will be validated if not empty.
+func (c *InstanceManagerClient) InstanceDelete(dataEngine longhorn.DataEngineType, name, uuid, kind, diskUUID string, cleanupRequired bool) (err error) {
 	if c.GetAPIVersion() < 4 {
 		/* Fall back to the old way of deleting process */
-		_, err = c.processManagerGrpcClient.ProcessDelete(name)
+		_, err = c.processManagerGrpcClient.ProcessDelete(name, uuid)
 	} else {
-		_, err = c.instanceServiceGrpcClient.InstanceDelete(string(dataEngine), name, kind, diskUUID, cleanupRequired)
+		_, err = c.instanceServiceGrpcClient.InstanceDelete(string(dataEngine), name, uuid, kind, diskUUID, cleanupRequired)
 	}
 
 	return err

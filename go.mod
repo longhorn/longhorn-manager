@@ -68,7 +68,7 @@ require (
 	github.com/longhorn/backupstore v0.0.0-20250421031654-0ef762b84472
 	github.com/longhorn/go-common-libs v0.0.0-20250510103049-801acb30430c
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250511111123-ceffe5d4a273
-	github.com/longhorn/go-spdk-helper v0.0.0-20250511111201-ed9e6caeaf23
+	github.com/longhorn/go-spdk-helper v0.0.0-20250513010708-f55efaeb7369
 	github.com/longhorn/longhorn-engine v1.9.0-rc2
 	github.com/longhorn/longhorn-instance-manager v1.9.0-rc2
 	github.com/longhorn/longhorn-share-manager v1.8.1
@@ -127,7 +127,7 @@ require (
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/c9s/goprocinfo v0.0.0-20210130143923-c95fcf8c64a8 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/cpuguy83/go-md2man/v2 v2.0.5 // indirect
+	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emicklei/go-restful/v3 v3.12.1 // indirect
 	github.com/evanphx/json-patch v5.9.11+incompatible // indirect
@@ -188,3 +188,7 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.7.0
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
+
+replace github.com/longhorn/types v0.0.0-20250416235128-0c407ad2b792 => github.com/derekbit/longhorn-types v0.0.0-20250514045121-483ff03273ba
+
+replace github.com/longhorn/longhorn-instance-manager v1.9.0-rc2 => github.com/derekbit/longhorn-instance-manager v0.0.0-20250514145216-c3e08accb3e4

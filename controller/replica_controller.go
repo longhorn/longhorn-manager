@@ -585,7 +585,7 @@ func (rc *ReplicaController) DeleteInstance(obj interface{}) (err error) {
 
 	log.WithField("cleanupRequired", cleanupRequired).Infof("Deleting replica instance on disk %v", r.Spec.DiskPath)
 
-	err = c.InstanceDelete(r.Spec.DataEngine, r.Name, string(longhorn.InstanceManagerTypeReplica), r.Spec.DiskID, cleanupRequired)
+	err = c.InstanceDelete(r.Spec.DataEngine, r.Name, "", string(longhorn.InstanceManagerTypeReplica), r.Spec.DiskID, cleanupRequired)
 	if err != nil && !types.ErrorIsNotFound(err) {
 		return err
 	}

@@ -2273,15 +2273,20 @@ func (m *InstanceManagerMonitor) isInstanceOrphanedOnNode(spec *longhorn.Instanc
 
 func (m *InstanceManagerMonitor) createOrphanForInstances(existOrphans map[string]bool, im *longhorn.InstanceManager, instanceMap instanceProcessMap, orphanType longhorn.OrphanType, orphanFilter func(instanceName, node string) (bool, error)) {
 	for instanceName, instance := range instanceMap {
-		orphanName := types.GetOrphanChecksumNameForOrphanedInstance(instanceName, m.controllerID, string(instance.Spec.DataEngine))
+		if instance.Status.UUID == "" {
+			// skip the instance without UUID to prevent accidental deletion on processes
+			continue
+		}
+
+		orphanName := types.GetOrphanChecksumNameForOrphanedInstance(instanceName, instance.Status.UUID, m.controllerID, string(instance.Spec.DataEngine))
 		if _, isExist := existOrphans[orphanName]; isExist {
 			continue
 		}
 		if isOrphaned, err := orphanFilter(instanceName, im.Spec.NodeID); err != nil {
 			m.logger.WithError(err).Errorf("Failed to check %v orphan for instance %v", orphanType, instanceName)
 		} else if isOrphaned {
-			m.logger.Infof("Instance %v is orphaned", instanceName)
-			newOrphan, err := m.createOrphan(orphanName, im, instanceName, orphanType, instance.Spec.DataEngine)
+			m.logger.WithField("processState", instance.Status.State).Infof("Instance %v is orphaned", instanceName)
+			newOrphan, err := m.createOrphan(orphanName, im, instanceName, instance.Status.UUID, orphanType, instance.Spec.DataEngine)
 			if err != nil {
 				m.logger.WithError(err).Errorf("Failed to create %v orphan for instance %v", orphanType, instanceName)
 			} else if newOrphan != nil {
@@ -2291,7 +2296,7 @@ func (m *InstanceManagerMonitor) createOrphanForInstances(existOrphans map[strin
 	}
 }
 
-func (m *InstanceManagerMonitor) createOrphan(name string, im *longhorn.InstanceManager, instanceName string, orphanType longhorn.OrphanType, dataEngineType longhorn.DataEngineType) (*longhorn.Orphan, error) {
+func (m *InstanceManagerMonitor) createOrphan(name string, im *longhorn.InstanceManager, instanceName, instanceUUID string, orphanType longhorn.OrphanType, dataEngineType longhorn.DataEngineType) (*longhorn.Orphan, error) {
 	if _, err := m.ds.GetOrphanRO(name); err == nil || !apierrors.IsNotFound(err) {
 		return nil, err
 	}
@@ -2303,11 +2308,12 @@ func (m *InstanceManagerMonitor) createOrphan(name string, im *longhorn.Instance
 			OwnerReferences: datastore.GetOwnerReferencesForInstanceManager(im),
 		},
 		Spec: longhorn.OrphanSpec{
-			NodeID:     m.controllerID,
-			Type:       orphanType,
-			DataEngine: dataEngineType,
+			NodeID:            m.controllerID,
+			Type:              orphanType,
+			DataEngine:        dataEngineType,
 			Parameters: map[string]string{
 				longhorn.OrphanInstanceName:    instanceName,
+				longhorn.OrphanInstanceUUID:    instanceUUID,
 				longhorn.OrphanInstanceManager: im.Name,
 			},
 		},
