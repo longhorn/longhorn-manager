@@ -2299,8 +2299,7 @@ func (m *InstanceManagerMonitor) createOrphan(name string, im *longhorn.Instance
 	// labels will be attached by mutator webhook
 	orphan := &longhorn.Orphan{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            name,
-			OwnerReferences: datastore.GetOwnerReferencesForInstanceManager(im),
+			Name: name,
 		},
 		Spec: longhorn.OrphanSpec{
 			NodeID:     m.controllerID,
