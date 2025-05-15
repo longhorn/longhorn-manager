@@ -2316,8 +2316,16 @@ func (m *InstanceManagerMonitor) createOrphanForInstances(existOrphans map[strin
 			// Stopping, Stopped: Terminating. No orphan CR needed, and the orphaned instances will be cleanup by instance manager after stopped.
 			continue
 		}
+		if instance.Spec.DataEngine != longhorn.DataEngineTypeV1 {
+			m.logger.Debugf("Skipping orphan check; Instance %s is not data engine v1", instanceName)
+			continue
+		}
+		if instance.Status.UUID == "" {
+			// skip the instance without UUID to prevent accidental deletion on processes
+			continue
+		}
 
-		orphanName := types.GetOrphanChecksumNameForOrphanedInstance(instanceName, im.Name, string(instance.Spec.DataEngine))
+		orphanName := types.GetOrphanChecksumNameForOrphanedInstance(instanceName, instance.Status.UUID, im.Name, string(instance.Spec.DataEngine))
 		if _, isExist := existOrphans[orphanName]; isExist {
 			continue
 		}
@@ -2354,8 +2362,8 @@ func (m *InstanceManagerMonitor) createOrphan(name string, im *longhorn.Instance
 			DataEngine: dataEngineType,
 			Parameters: map[string]string{
 				longhorn.OrphanInstanceName:    instanceName,
-				longhorn.OrphanInstanceManager: im.Name,
 				longhorn.OrphanInstanceUUID:    instanceUUID,
+				longhorn.OrphanInstanceManager: im.Name,
 			},
 		},
 	}
