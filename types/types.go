@@ -749,8 +749,8 @@ func GetOrphanChecksumNameForOrphanedDataStore(nodeID, diskName, diskPath, diskU
 	return orphanPrefix + util.GetStringChecksumSHA256(strings.TrimSpace(fmt.Sprintf("%s-%s-%s-%s-%s", nodeID, diskName, diskPath, diskUUID, dataStore)))
 }
 
-func GetOrphanChecksumNameForOrphanedInstance(instanceName, instanceManager, dataEngine string) string {
-	return orphanPrefix + util.GetStringChecksumSHA256(strings.TrimSpace(fmt.Sprintf("%s-%s-%s", instanceName, instanceManager, dataEngine)))
+func GetOrphanChecksumNameForOrphanedInstance(instanceName, instanceUUID, instanceManager, dataEngine string) string {
+	return orphanPrefix + util.GetStringChecksumSHA256(strings.TrimSpace(fmt.Sprintf("%s-%s-%s-%s", instanceName, instanceUUID, instanceManager, dataEngine)))
 }
 
 func GetShareManagerPodNameFromShareManagerName(smName string) string {
