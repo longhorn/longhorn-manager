@@ -465,7 +465,7 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 	alreadyCreatedBefore := snapshot.Status.CreationTime != ""
 
 	defer func() {
-		if !requestCreateNewSnapshot || alreadyCreatedBefore {
+		if !requestCreateNewSnapshot || snapshot.Status.CreationTime != "" {
 			err = sc.handleAttachmentTicketDeletion(snapshot)
 		}
 	}()
