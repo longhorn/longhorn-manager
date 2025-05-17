@@ -43,7 +43,7 @@ replace (
 	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.32.3
 	k8s.io/kubectl => k8s.io/kubectl v0.32.3
 	k8s.io/kubelet => k8s.io/kubelet v0.32.3
-	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.12
+	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.13
 	k8s.io/metrics => k8s.io/metrics v0.32.3
 	k8s.io/mount-utils => k8s.io/mount-utils v0.32.3
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.32.3
@@ -63,7 +63,7 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.20.0
 	github.com/longhorn/backing-image-manager v1.8.1
-	github.com/longhorn/backupstore v0.0.0-20250421031654-0ef762b84472
+	github.com/longhorn/backupstore v0.0.0-20250513044119-966fecd6b927
 	github.com/longhorn/go-common-libs v0.0.0-20250510103049-801acb30430c
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250511111123-ceffe5d4a273
 	github.com/longhorn/go-spdk-helper v0.0.2-0.20250313071458-3dd5863e9249
@@ -74,7 +74,7 @@ require (
 	github.com/prometheus/client_golang v1.20.5
 	github.com/rancher/dynamiclistener v0.6.2
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
-	github.com/rancher/wrangler/v3 v3.2.0
+	github.com/rancher/wrangler/v3 v3.2.1
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.10.0
@@ -177,7 +177,7 @@ require (
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.61.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
-	github.com/rancher/lasso v0.2.1
+	github.com/rancher/lasso v0.2.2
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
