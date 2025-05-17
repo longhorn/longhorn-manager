@@ -21,7 +21,8 @@ package v1beta2
 // SettingStatusApplyConfiguration represents a declarative configuration of the SettingStatus type for use
 // with apply.
 type SettingStatusApplyConfiguration struct {
-	Applied *bool `json:"applied,omitempty"`
+	Applied       *bool   `json:"applied,omitempty"`
+	LastAppliedAt *string `json:"lastAppliedAt,omitempty"`
 }
 
 // SettingStatusApplyConfiguration constructs a declarative configuration of the SettingStatus type for use with
@@ -35,5 +36,13 @@ func SettingStatus() *SettingStatusApplyConfiguration {
 // If called multiple times, the Applied field is set to the value of the last call.
 func (b *SettingStatusApplyConfiguration) WithApplied(value bool) *SettingStatusApplyConfiguration {
 	b.Applied = &value
+	return b
+}
+
+// WithLastAppliedAt sets the LastAppliedAt field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the LastAppliedAt field is set to the value of the last call.
+func (b *SettingStatusApplyConfiguration) WithLastAppliedAt(value string) *SettingStatusApplyConfiguration {
+	b.LastAppliedAt = &value
 	return b
 }
