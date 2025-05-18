@@ -101,6 +101,7 @@ const (
 	SettingNameKubernetesClusterAutoscalerEnabled                       = SettingName("kubernetes-cluster-autoscaler-enabled")
 	SettingNameOrphanAutoDeletion                                       = SettingName("orphan-auto-deletion") // replaced by SettingNameOrphanResourceAutoDeletion
 	SettingNameOrphanResourceAutoDeletion                               = SettingName("orphan-resource-auto-deletion")
+	SettingNameOrphanResourceAutoDeletionGracePeriod                    = SettingName("orphan-resource-auto-deletion-grace-period")
 	SettingNameStorageNetwork                                           = SettingName("storage-network")
 	SettingNameStorageNetworkForRWXVolumeEnabled                        = SettingName("storage-network-for-rwx-volume-enabled")
 	SettingNameFailedBackupTTL                                          = SettingName("failed-backup-ttl")
@@ -203,6 +204,7 @@ var (
 		SettingNameGuaranteedInstanceManagerCPU,
 		SettingNameKubernetesClusterAutoscalerEnabled,
 		SettingNameOrphanResourceAutoDeletion,
+		SettingNameOrphanResourceAutoDeletionGracePeriod,
 		SettingNameStorageNetwork,
 		SettingNameStorageNetworkForRWXVolumeEnabled,
 		SettingNameFailedBackupTTL,
@@ -331,6 +333,7 @@ var (
 		SettingNameGuaranteedInstanceManagerCPU:                             SettingDefinitionGuaranteedInstanceManagerCPU,
 		SettingNameKubernetesClusterAutoscalerEnabled:                       SettingDefinitionKubernetesClusterAutoscalerEnabled,
 		SettingNameOrphanResourceAutoDeletion:                               SettingDefinitionOrphanResourceAutoDeletion,
+		SettingNameOrphanResourceAutoDeletionGracePeriod:                    SettingDefinitionOrphanResourceAutoDeletionGracePeriod,
 		SettingNameStorageNetwork:                                           SettingDefinitionStorageNetwork,
 		SettingNameStorageNetworkForRWXVolumeEnabled:                        SettingDefinitionStorageNetworkForRWXVolumeEnabled,
 		SettingNameFailedBackupTTL:                                          SettingDefinitionFailedBackupTTL,
@@ -1070,6 +1073,20 @@ var (
 		Required: false,
 		ReadOnly: false,
 		Default:  "",
+	}
+
+	SettingDefinitionOrphanResourceAutoDeletionGracePeriod = SettingDefinition{
+		DisplayName: "Orphan Resource Auto-Deletion Grace Period",
+		Description: "Specifies the wait time, in seconds, before Longhorn automatically deletes an orphaned Custom Resource (CR) and its associated resources. \n\n" +
+			"**Note:** If a user manually deletes an orphaned CR, the deletion occurs immediately and does not respect this grace period. \n\n",
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeInt,
+		Required: true,
+		ReadOnly: false,
+		Default:  "300",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
 	}
 
 	SettingDefinitionStorageNetwork = SettingDefinition{
