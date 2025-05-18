@@ -1669,11 +1669,17 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 //   - Automatic deletion of orphan resources is enabled.
 func (imc *InstanceManagerController) deleteOrphans(im *longhorn.InstanceManager, isInstanceManagerTerminating bool) error {
 	autoDeletionTypes, err := imc.ds.GetSettingOrphanResourceAutoDeletion()
-	var autoDeleteEnabled = false
 	if err != nil {
-		imc.logger.WithError(err).Warnf("Failed to fetch orphan auto deletion setting, disabled by default")
-	} else {
-		autoDeleteEnabled = autoDeletionTypes[types.OrphanResourceTypeInstance]
+		return errors.Wrapf(err, "failed to get setting %v", types.SettingNameOrphanResourceAutoDeletion)
+	}
+	autoDeleteEnabled, ok := autoDeletionTypes[types.OrphanResourceTypeInstance]
+	if !ok {
+		autoDeleteEnabled = false
+	}
+
+	autoDeleteGracePeriod, err := imc.ds.GetSettingAsInt(types.SettingNameOrphanResourceAutoDeletionGracePeriod)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get setting %v", types.SettingNameOrphanResourceAutoDeletionGracePeriod)
 	}
 
 	orphanList, err := imc.ds.ListInstanceOrphansByInstanceManagerRO(im.Name)
@@ -1703,20 +1709,20 @@ func (imc *InstanceManagerController) deleteOrphans(im *longhorn.InstanceManager
 			continue
 		}
 
-		if imc.canDeleteOrphanCR(isInstanceManagerTerminating, autoDeleteEnabled, instanceExist, instanceCRScheduledBack) {
+		if imc.canDeleteOrphan(orphan, isInstanceManagerTerminating, autoDeleteEnabled, instanceExist, instanceCRScheduledBack, autoDeleteGracePeriod) {
 			if err := imc.deleteOrphan(orphan); err != nil {
 				multiError.Append(util.NewMultiError(fmt.Sprintf("%v: %v", orphan.Name, err)))
 			}
 		}
 	}
 	if len(multiError) > 0 {
-		return fmt.Errorf("instance manager failed to delete orphan CR: %v", multiError.Join())
+		return fmt.Errorf("failed to delete orphans: %v", multiError.Join())
 	}
 	return nil
 }
 
 func (imc *InstanceManagerController) deleteOrphan(orphan *longhorn.Orphan) error {
-	imc.logger.Infof("Deleting Orphan %q", orphan.Name)
+	imc.logger.Infof("Deleting Orphan %v", orphan.Name)
 	if err := imc.ds.DeleteOrphan(orphan.Name); err != nil {
 		if datastore.ErrorIsNotFound(err) {
 			return nil
@@ -1726,8 +1732,21 @@ func (imc *InstanceManagerController) deleteOrphan(orphan *longhorn.Orphan) erro
 	return nil
 }
 
-func (imc *InstanceManagerController) canDeleteOrphanCR(imTerminating, autoDeleteEnabled, instanceExist, instanceCRScheduledBack bool) bool {
-	return imTerminating || autoDeleteEnabled || !instanceExist || instanceCRScheduledBack
+func (imc *InstanceManagerController) canDeleteOrphan(orphan *longhorn.Orphan, imTerminating, autoDeleteEnabled, instanceExist, instanceCRScheduledBack bool, autoDeleteGracePeriod int64) bool {
+	autoDeleteAllowed := false
+	if autoDeleteEnabled {
+		elapsedTime := time.Since(orphan.CreationTimestamp.Time).Seconds()
+		if elapsedTime > float64(autoDeleteGracePeriod) {
+			autoDeleteAllowed = true
+		}
+	}
+
+	canDelete := imTerminating || autoDeleteAllowed || !instanceExist || instanceCRScheduledBack
+	if !canDelete {
+		imc.logger.Debugf("Orphan %v is not ready to be deleted, imTerminating: %v, autoDeleteAllowed: %v, instanceExist: %v, instanceCRScheduledBack: %v", orphan.Name, imTerminating, autoDeleteAllowed, instanceExist, instanceCRScheduledBack)
+	}
+
+	return canDelete
 }
 
 func (imc *InstanceManagerController) isEngineOnInstanceManager(instanceManager string, instance string) (bool, error) {
@@ -2235,8 +2254,8 @@ func (m *InstanceManagerMonitor) isEngineOrphaned(instanceName, instanceManager 
 	existEngine, err := m.ds.GetEngineRO(instanceName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-		// Engine CR not found - instance is orphaned
-		return true, nil
+			// Engine CR not found - instance is orphaned
+			return true, nil
 		}
 		// Unexpected error - unable to check if engine instance is orphaned or not
 		return false, err
@@ -2249,8 +2268,8 @@ func (m *InstanceManagerMonitor) isReplicaOrphaned(instanceName, instanceManager
 	existReplica, err := m.ds.GetReplicaRO(instanceName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-		// Replica CR not found - instance is orphaned
-		return true, nil
+			// Replica CR not found - instance is orphaned
+			return true, nil
 		}
 		// Unexpected error - unable to check if replica instance is orphaned or not
 		return false, err
@@ -2305,7 +2324,7 @@ func (m *InstanceManagerMonitor) createOrphanForInstances(existOrphans map[strin
 		if isOrphaned, err := orphanFilter(instanceName, im.Name); err != nil {
 			m.logger.WithError(err).Errorf("Failed to check %v orphan for instance %v", orphanType, instanceName)
 		} else if isOrphaned {
-			m.logger.WithField("instanceState", instance.Status.State).Infof("Creating %s Orphan %q for orphaned instance %q", orphanType, orphanName, instanceName)
+			m.logger.WithField("instanceState", instance.Status.State).Infof("Creating %s Orphan %v for orphaned instance %v", orphanType, orphanName, instanceName)
 			newOrphan, err := m.createOrphan(orphanName, im, instanceName, orphanType, instance.Spec.DataEngine)
 			if err != nil {
 				m.logger.WithError(err).Errorf("Failed to create %v orphan for instance %v", orphanType, instanceName)
