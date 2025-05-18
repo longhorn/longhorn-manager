@@ -2233,32 +2233,31 @@ func (m *InstanceManagerMonitor) syncOrphans(im *longhorn.InstanceManager, insta
 
 func (m *InstanceManagerMonitor) isEngineOrphaned(instanceName, instanceManager string) (bool, error) {
 	existEngine, err := m.ds.GetEngineRO(instanceName)
-	switch {
-	case err == nil:
-		// Engine CR still exists - check the ownership
-		return m.isInstanceOrphanedInInstanceManager(&existEngine.ObjectMeta, &existEngine.Spec.InstanceSpec, &existEngine.Status.InstanceStatus, instanceManager), nil
-	case apierrors.IsNotFound(err):
+	if err != nil {
+		if apierrors.IsNotFound(err) {
 		// Engine CR not found - instance is orphaned
 		return true, nil
-	default:
+		}
 		// Unexpected error - unable to check if engine instance is orphaned or not
 		return false, err
 	}
+	// Engine CR still exists - check the ownership
+	return m.isInstanceOrphanedInInstanceManager(&existEngine.ObjectMeta, &existEngine.Spec.InstanceSpec, &existEngine.Status.InstanceStatus, instanceManager), nil
 }
 
 func (m *InstanceManagerMonitor) isReplicaOrphaned(instanceName, instanceManager string) (bool, error) {
 	existReplica, err := m.ds.GetReplicaRO(instanceName)
-	switch {
-	case err == nil:
-		// Replica CR still exists - check the ownership
-		return m.isInstanceOrphanedInInstanceManager(&existReplica.ObjectMeta, &existReplica.Spec.InstanceSpec, &existReplica.Status.InstanceStatus, instanceManager), nil
-	case apierrors.IsNotFound(err):
+	if err != nil {
+		if apierrors.IsNotFound(err) {
 		// Replica CR not found - instance is orphaned
 		return true, nil
-	default:
+		}
 		// Unexpected error - unable to check if replica instance is orphaned or not
 		return false, err
 	}
+
+	// Replica CR still exists - check the ownership
+	return m.isInstanceOrphanedInInstanceManager(&existReplica.ObjectMeta, &existReplica.Spec.InstanceSpec, &existReplica.Status.InstanceStatus, instanceManager), nil
 }
 
 // isInstanceOrphanedInInstanceManager returns true only when it is very certain that an instance is scheduled on another instance manager
