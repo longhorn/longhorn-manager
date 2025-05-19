@@ -373,10 +373,10 @@ func (oc *OrphanController) cleanupOrphanedEngineInstance(orphan *longhorn.Orpha
 		}
 	}()
 
-	instanceName, instanceUUID, imName := oc.extractOrphanedInstanceInfo(orphan)
+	instanceParameters := getOrphanedInstanceParameters(orphan)
 
 	var status *longhorn.InstanceStatus
-	if engine, err := oc.ds.GetEngineRO(instanceName); err != nil {
+	if engine, err := oc.ds.GetEngineRO(instanceParameters.name); err != nil {
 		if !datastore.ErrorIsNotFound(err) {
 			return false, err
 		}
@@ -384,7 +384,7 @@ func (oc *OrphanController) cleanupOrphanedEngineInstance(orphan *longhorn.Orpha
 	} else {
 		status = &engine.Status.InstanceStatus
 	}
-	oc.cleanupOrphanedInstance(orphan, instanceName, instanceUUID, imName, longhorn.InstanceManagerTypeEngine, status)
+	oc.cleanupOrphanedInstance(orphan, instanceParameters.name, instanceParameters.uuid, instanceParameters.instanceManager, longhorn.InstanceManagerTypeEngine, status)
 	return true, nil
 }
 
@@ -395,10 +395,10 @@ func (oc *OrphanController) cleanupOrphanedReplicaInstance(orphan *longhorn.Orph
 		}
 	}()
 
-	instanceName, instanceUUID, imName := oc.extractOrphanedInstanceInfo(orphan)
+	instanceParameters := getOrphanedInstanceParameters(orphan)
 
 	var status *longhorn.InstanceStatus
-	if replica, err := oc.ds.GetReplicaRO(instanceName); err != nil {
+	if replica, err := oc.ds.GetReplicaRO(instanceParameters.name); err != nil {
 		if !datastore.ErrorIsNotFound(err) {
 			return false, err
 		}
@@ -406,15 +406,8 @@ func (oc *OrphanController) cleanupOrphanedReplicaInstance(orphan *longhorn.Orph
 	} else {
 		status = &replica.Status.InstanceStatus
 	}
-	oc.cleanupOrphanedInstance(orphan, instanceName, instanceUUID, imName, longhorn.InstanceManagerTypeReplica, status)
+	oc.cleanupOrphanedInstance(orphan, instanceParameters.name, instanceParameters.uuid, instanceParameters.instanceManager, longhorn.InstanceManagerTypeReplica, status)
 	return true, nil
-}
-
-func (oc *OrphanController) extractOrphanedInstanceInfo(orphan *longhorn.Orphan) (name, uuid, instanceManager string) {
-	name = orphan.Spec.Parameters[longhorn.OrphanInstanceName]
-	uuid = orphan.Spec.Parameters[longhorn.OrphanInstanceUUID]
-	instanceManager = orphan.Spec.Parameters[longhorn.OrphanInstanceManager]
-	return name, uuid, instanceManager
 }
 
 func (oc *OrphanController) cleanupOrphanedInstance(orphan *longhorn.Orphan, instanceName, instanceUUID, imName string, imType longhorn.InstanceManagerType, instanceCRStatus *longhorn.InstanceStatus) {
@@ -550,8 +543,8 @@ func (oc *OrphanController) updateInstanceStateCondition(orphan *longhorn.Orphan
 		orphan.Status.Conditions = types.SetCondition(orphan.Status.Conditions, longhorn.OrphanConditionTypeInstanceExist, status, string(instanceState), "")
 	}()
 
-	instanceName, _, instanceManager := oc.extractOrphanedInstanceInfo(orphan)
-	im, err := oc.ds.GetInstanceManager(instanceManager)
+	instanceParameter := getOrphanedInstanceParameters(orphan)
+	im, err := oc.ds.GetInstanceManager(instanceParameter.instanceManager)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
 			oc.logger.WithError(err).Infof("No instance manager for node %v for update instance state of orphan instance %v", oc.controllerID, orphan.Name)
@@ -570,12 +563,12 @@ func (oc *OrphanController) updateInstanceStateCondition(orphan *longhorn.Orphan
 		}
 	}()
 
-	instance, err := imc.InstanceGet(orphan.Spec.DataEngine, instanceName, string(instanceType))
+	instance, err := imc.InstanceGet(orphan.Spec.DataEngine, instanceParameter.name, string(instanceType))
 	if err != nil {
 		if types.ErrorIsNotFound(err) {
 			instanceState = longhorn.InstanceStateTerminated
 		} else {
-			return errors.Wrapf(err, "failed to get instance %v", instanceName)
+			return errors.Wrapf(err, "failed to get instance %v", instanceParameter.name)
 		}
 	} else if instance == nil {
 		instanceState = longhorn.InstanceStateTerminated
@@ -655,4 +648,18 @@ func (oc *OrphanController) checkOrphanedReplicaDataCleanable(node *longhorn.Nod
 	}
 
 	return ""
+}
+
+type orphanedInstanceParameters struct {
+	name            string
+	uuid            string
+	instanceManager string
+}
+
+func getOrphanedInstanceParameters(orphan *longhorn.Orphan) orphanedInstanceParameters {
+	return orphanedInstanceParameters{
+		name:            orphan.Spec.Parameters[longhorn.OrphanInstanceName],
+		uuid:            orphan.Spec.Parameters[longhorn.OrphanInstanceUUID],
+		instanceManager: orphan.Spec.Parameters[longhorn.OrphanInstanceManager],
+	}
 }
