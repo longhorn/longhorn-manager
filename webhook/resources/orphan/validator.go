@@ -2,6 +2,7 @@ package orphan
 
 import (
 	"fmt"
+	"reflect"
 
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -60,27 +61,20 @@ func (o *orphanValidator) Create(request *admission.Request, newObj runtime.Obje
 }
 
 func (o *orphanValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
+	oldOrphan, ok := oldObj.(*longhorn.Orphan)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Orphan", oldObj), "")
+	}
 	newOrphan, ok := newObj.(*longhorn.Orphan)
 	if !ok {
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Orphan", newObj), "")
 	}
 
-	if err := checkOrphanParameters(newOrphan); err != nil {
+	if err := checkOrphanImmutable(oldOrphan, newOrphan); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
 	return nil
-}
-
-func checkOrphanParameters(orphan *longhorn.Orphan) error {
-	switch orphan.Spec.Type {
-	case longhorn.OrphanTypeReplicaData:
-		return checkOrphanForReplicaData(orphan)
-	case longhorn.OrphanTypeEngineInstance, longhorn.OrphanTypeReplicaInstance:
-		return checkOrphanForInstance(orphan)
-	}
-
-	return werror.NewInvalidError(fmt.Sprintf("unknown orphan type %v for orphan %v", orphan.Spec.Type, orphan.Name), "")
 }
 
 func checkOrphanForReplicaData(orphan *longhorn.Orphan) error {
@@ -126,5 +120,12 @@ func checkOrphanForInstance(orphan *longhorn.Orphan) error {
 		return fmt.Errorf("invalid data engine type %v for orphan %v", orphan.Spec.DataEngine, orphan.Name)
 	}
 
+	return nil
+}
+
+func checkOrphanImmutable(oldOrphan, newOrphan *longhorn.Orphan) error {
+	if !reflect.DeepEqual(oldOrphan.Spec, newOrphan.Spec) {
+		return fmt.Errorf("orphan %s spec is immutable", oldOrphan.Name)
+	}
 	return nil
 }
