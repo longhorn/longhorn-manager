@@ -373,20 +373,16 @@ func (oc *OrphanController) cleanupOrphanedEngineInstance(orphan *longhorn.Orpha
 		}
 	}()
 
-	instanceName, instanceUUID, imName, err := oc.extractOrphanedInstanceInfo(orphan)
-	if err != nil {
-		oc.logger.WithError(err).Warnf("Illegal engine orphan %v, deleting the CR without cleaning up the instance", orphan.Name)
-		return true, nil
-	}
+	instanceName, instanceUUID, imName := oc.extractOrphanedInstanceInfo(orphan)
 
 	var status *longhorn.InstanceStatus
-	if engineCR, err := oc.ds.GetEngineRO(instanceName); err != nil {
+	if engine, err := oc.ds.GetEngineRO(instanceName); err != nil {
 		if !datastore.ErrorIsNotFound(err) {
 			return false, err
 		}
 		status = nil
 	} else {
-		status = &engineCR.Status.InstanceStatus
+		status = &engine.Status.InstanceStatus
 	}
 	oc.cleanupOrphanedInstance(orphan, instanceName, instanceUUID, imName, longhorn.InstanceManagerTypeEngine, status)
 	return true, nil
@@ -399,54 +395,31 @@ func (oc *OrphanController) cleanupOrphanedReplicaInstance(orphan *longhorn.Orph
 		}
 	}()
 
-	instanceName, instanceUUID, imName, err := oc.extractOrphanedInstanceInfo(orphan)
-	if err != nil {
-		oc.logger.WithError(err).Warnf("Illegal replica orphan %v, deleting the CR without cleaning up the instance", orphan.Name)
-		return true, nil
-	}
+	instanceName, instanceUUID, imName := oc.extractOrphanedInstanceInfo(orphan)
 
 	var status *longhorn.InstanceStatus
-	if replicaCR, err := oc.ds.GetReplicaRO(instanceName); err != nil {
+	if replica, err := oc.ds.GetReplicaRO(instanceName); err != nil {
 		if !datastore.ErrorIsNotFound(err) {
 			return false, err
 		}
 		status = nil
 	} else {
-		status = &replicaCR.Status.InstanceStatus
+		status = &replica.Status.InstanceStatus
 	}
 	oc.cleanupOrphanedInstance(orphan, instanceName, instanceUUID, imName, longhorn.InstanceManagerTypeReplica, status)
 	return true, nil
 }
 
-func (oc *OrphanController) extractOrphanedInstanceInfo(orphan *longhorn.Orphan) (name, uuid, instanceManager string, err error) {
-	name, ok := orphan.Spec.Parameters[longhorn.OrphanInstanceName]
-	if !ok {
-		return "", "", "", fmt.Errorf("failed to get instance name for instance orphan %v", orphan.Name)
-	}
-
-	instanceManager, ok = orphan.Spec.Parameters[longhorn.OrphanInstanceManager]
-	if !ok {
-		return "", "", "", fmt.Errorf("failed to get instance manager for instance orphan %v", orphan.Name)
-	}
-
-	switch orphan.Spec.DataEngine {
-	case longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2:
-		// supported data engine type
-	default:
-		return "", "", "", fmt.Errorf("unknown data engine type %v for instance orphan %v", orphan.Spec.DataEngine, orphan.Name)
-	}
-
-	uuid, exist := orphan.Spec.Parameters[longhorn.OrphanInstanceUUID]
-	if !exist || uuid == "" {
-		return "", "", "", fmt.Errorf("failed to get instance UUID for instance orphan %v", orphan.Name)
-	}
-
-	return name, uuid, instanceManager, nil
+func (oc *OrphanController) extractOrphanedInstanceInfo(orphan *longhorn.Orphan) (name, uuid, instanceManager string) {
+	name = orphan.Spec.Parameters[longhorn.OrphanInstanceName]
+	uuid = orphan.Spec.Parameters[longhorn.OrphanInstanceUUID]
+	instanceManager = orphan.Spec.Parameters[longhorn.OrphanInstanceManager]
+	return name, uuid, instanceManager
 }
 
-func (oc *OrphanController) cleanupOrphanedInstance(orphan *longhorn.Orphan, instance, instanceUUID, imName string, imType longhorn.InstanceManagerType, instanceCRStatus *longhorn.InstanceStatus) {
+func (oc *OrphanController) cleanupOrphanedInstance(orphan *longhorn.Orphan, instanceName, instanceUUID, imName string, imType longhorn.InstanceManagerType, instanceCRStatus *longhorn.InstanceStatus) {
 	if instanceCRStatus != nil && instanceCRStatus.InstanceManagerName == imName {
-		oc.logger.Infof("Orphan instance %v is scheduled back to instance manager %v. Skip cleaning up the instance resource and finalize the orphan CR.", instance, imName)
+		oc.logger.Infof("Orphan instance %v is scheduled back to instance manager %v. Skip cleaning up the instance resource and finalize the orphan CR.", instanceName, imName)
 		return
 	}
 
@@ -454,7 +427,7 @@ func (oc *OrphanController) cleanupOrphanedInstance(orphan *longhorn.Orphan, ins
 	// Later if the orphaned instance is still reachable, the orphan will be recreated.
 	imc, err := oc.getRunningInstanceManagerClientForOrphan(orphan, imName)
 	if err != nil {
-		oc.logger.WithError(err).Warnf("Failed to delete orphan instance %v due to instance manager client initialization failure. Continue to finalize orphan %v", instance, orphan.Name)
+		oc.logger.WithError(err).Warnf("Failed to delete orphan instance %v due to instance manager client initialization failure. Continue to finalize orphan %v", instanceName, orphan.Name)
 		return
 	} else if imc == nil {
 		oc.logger.WithField("instanceManager", imName).Warnf("No running instance manager for deleting orphan instance %v", orphan.Name)
@@ -466,9 +439,9 @@ func (oc *OrphanController) cleanupOrphanedInstance(orphan *longhorn.Orphan, ins
 		}
 	}()
 
-	err = imc.InstanceDelete(orphan.Spec.DataEngine, instance, instanceUUID, string(imType), "", false)
+	err = imc.InstanceDelete(orphan.Spec.DataEngine, instanceName, instanceUUID, string(imType), "", false)
 	if err != nil && !types.ErrorIsNotFound(err) {
-		oc.logger.WithError(err).Warnf("Failed to delete orphan instance %v with UUID %v. Continue to finalize orphan %v", instance, instanceUUID, orphan.Name)
+		oc.logger.WithError(err).Warnf("Failed to delete orphan instance %v with UUID %v. Continue to finalize orphan %v", instanceName, instanceUUID, orphan.Name)
 	}
 }
 
@@ -577,7 +550,7 @@ func (oc *OrphanController) updateInstanceStateCondition(orphan *longhorn.Orphan
 		orphan.Status.Conditions = types.SetCondition(orphan.Status.Conditions, longhorn.OrphanConditionTypeInstanceExist, status, string(instanceState), "")
 	}()
 
-	instanceName, _, instanceManager, err := oc.extractOrphanedInstanceInfo(orphan)
+	instanceName, _, instanceManager := oc.extractOrphanedInstanceInfo(orphan)
 	im, err := oc.ds.GetInstanceManager(instanceManager)
 	if err != nil {
 		if datastore.ErrorIsNotFound(err) {
