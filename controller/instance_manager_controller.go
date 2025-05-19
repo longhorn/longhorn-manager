@@ -2317,7 +2317,7 @@ func (m *InstanceManagerMonitor) createOrphanForInstances(existOrphans map[strin
 			continue
 		}
 		if instance.Spec.DataEngine != longhorn.DataEngineTypeV1 {
-			m.logger.Debugf("Skipping orphan check; Instance %s is not data engine v1", instanceName)
+			m.logger.Debugf("Skipping orphan creation, instance %s is not data engine v1", instanceName)
 			continue
 		}
 		if instance.Status.UUID == "" {
