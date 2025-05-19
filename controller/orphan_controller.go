@@ -373,13 +373,14 @@ func (oc *OrphanController) cleanupOrphanedEngineInstance(orphan *longhorn.Orpha
 		}
 	}()
 
-	instance, instanceUUID, imName, err := oc.extractOrphanedInstanceInfo(orphan)
+	instanceName, instanceUUID, imName, err := oc.extractOrphanedInstanceInfo(orphan)
 	if err != nil {
-		return false, err
+		oc.logger.WithError(err).Warnf("Illegal engine orphan %v, deleting the CR without cleaning up the instance", orphan.Name)
+		return true, nil
 	}
 
 	var status *longhorn.InstanceStatus
-	if engineCR, err := oc.ds.GetEngineRO(instance); err != nil {
+	if engineCR, err := oc.ds.GetEngineRO(instanceName); err != nil {
 		if !datastore.ErrorIsNotFound(err) {
 			return false, err
 		}
@@ -387,7 +388,7 @@ func (oc *OrphanController) cleanupOrphanedEngineInstance(orphan *longhorn.Orpha
 	} else {
 		status = &engineCR.Status.InstanceStatus
 	}
-	oc.cleanupOrphanedInstance(orphan, instance, instanceUUID, imName, longhorn.InstanceManagerTypeEngine, status)
+	oc.cleanupOrphanedInstance(orphan, instanceName, instanceUUID, imName, longhorn.InstanceManagerTypeEngine, status)
 	return true, nil
 }
 
@@ -398,13 +399,14 @@ func (oc *OrphanController) cleanupOrphanedReplicaInstance(orphan *longhorn.Orph
 		}
 	}()
 
-	instance, instanceUUID, imName, err := oc.extractOrphanedInstanceInfo(orphan)
+	instanceName, instanceUUID, imName, err := oc.extractOrphanedInstanceInfo(orphan)
 	if err != nil {
-		return false, err
+		oc.logger.WithError(err).Warnf("Illegal replica orphan %v, deleting the CR without cleaning up the instance", orphan.Name)
+		return true, nil
 	}
 
 	var status *longhorn.InstanceStatus
-	if replicaCR, err := oc.ds.GetReplicaRO(instance); err != nil {
+	if replicaCR, err := oc.ds.GetReplicaRO(instanceName); err != nil {
 		if !datastore.ErrorIsNotFound(err) {
 			return false, err
 		}
@@ -412,7 +414,7 @@ func (oc *OrphanController) cleanupOrphanedReplicaInstance(orphan *longhorn.Orph
 	} else {
 		status = &replicaCR.Status.InstanceStatus
 	}
-	oc.cleanupOrphanedInstance(orphan, instance, instanceUUID, imName, longhorn.InstanceManagerTypeReplica, status)
+	oc.cleanupOrphanedInstance(orphan, instanceName, instanceUUID, imName, longhorn.InstanceManagerTypeReplica, status)
 	return true, nil
 }
 
