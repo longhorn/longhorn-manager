@@ -16,18 +16,24 @@ import (
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
 )
 
+type disk struct {
+	storageAvailable int64
+	storageReserved  int64
+	diskType         longhorn.DiskType
+}
+
 func TestGetCapacity(t *testing.T) {
 	cs := &ControllerServer{
 		lhNamespace: "longhorn-system-test",
 		log:         logrus.StandardLogger().WithField("component", "test-get-capacity"),
 	}
 	for _, test := range []struct {
-		nodeID           string
-		createNode       bool
-		dataEngine       string
-		storageAvailable int64
-		storageReserved  int64
-		err              error
+		nodeID            string
+		createNode        bool
+		dataEngine        string
+		availableCapacity int64
+		disks             []*disk
+		err               error
 	}{
 		{
 			nodeID:     "node-0",
@@ -41,23 +47,35 @@ func TestGetCapacity(t *testing.T) {
 			err:        status.Errorf(codes.InvalidArgument, "unknown data engine type v5"),
 		},
 		{
-			nodeID:           "node-0",
-			createNode:       true,
-			dataEngine:       "v1",
-			storageAvailable: 1450,
-			storageReserved:  300,
+			nodeID:            "node-0",
+			createNode:        true,
+			dataEngine:        "v1",
+			availableCapacity: 0,
 		},
 		{
-			nodeID:           "node-0",
-			createNode:       true,
-			dataEngine:       "v2",
-			storageAvailable: 1900,
-			storageReserved:  350,
+			nodeID:            "node-0",
+			createNode:        true,
+			dataEngine:        "v2",
+			availableCapacity: 0,
+		},
+		{
+			nodeID:            "node-0",
+			createNode:        true,
+			dataEngine:        "v1",
+			availableCapacity: 1150,
+			disks:             []*disk{{1450, 300, longhorn.DiskTypeFilesystem}, {1000, 500, longhorn.DiskTypeFilesystem}, {2000, 0, longhorn.DiskTypeBlock}},
+		},
+		{
+			nodeID:            "node-0",
+			createNode:        true,
+			dataEngine:        "v2",
+			availableCapacity: 1650,
+			disks:             []*disk{{1950, 300, longhorn.DiskTypeBlock}, {1000, 500, longhorn.DiskTypeBlock}, {2000, 0, longhorn.DiskTypeFilesystem}},
 		},
 	} {
 		cs.lhClient = lhfake.NewSimpleClientset()
 		if test.createNode {
-			node := newNode(test.nodeID, cs.lhNamespace, test.dataEngine, test.storageAvailable, test.storageReserved)
+			node := newNode(test.nodeID, cs.lhNamespace, test.disks)
 			_, err := cs.lhClient.LonghornV1beta2().Nodes(cs.lhNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
 			if err != nil {
 				t.Errorf("failed to create mock node: %v", err)
@@ -82,9 +100,8 @@ func TestGetCapacity(t *testing.T) {
 		} else if expectedStatus.Message() != actualStatus.Message() {
 			t.Errorf("expected error message: '%s', but got: '%s'", expectedStatus.Message(), actualStatus.Message())
 		}
-		storageSchedulable := test.storageAvailable - test.storageReserved
-		if res != nil && res.AvailableCapacity != storageSchedulable {
-			t.Errorf("expected available capacity: %d, but got: %d", res.AvailableCapacity, storageSchedulable)
+		if res != nil && res.AvailableCapacity != test.availableCapacity {
+			t.Errorf("expected available capacity: %d, but got: %d", res.AvailableCapacity, test.availableCapacity)
 		}
 	}
 }
@@ -178,30 +195,23 @@ func checkError(t *testing.T, expected, actual error) {
 	}
 }
 
-func newNode(name, namespace, dataEngine string, storageAvailable, storageReserved int64) *longhorn.Node {
-	diskType := longhorn.DiskTypeFilesystem
-	if dataEngine == "v2" {
-		diskType = longhorn.DiskTypeBlock
-	}
-	return &longhorn.Node{
+func newNode(name, namespace string, disks []*disk) *longhorn.Node {
+	node := &longhorn.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
 		Spec: longhorn.NodeSpec{
-			Disks: map[string]longhorn.DiskSpec{
-				"disk": {
-					StorageReserved: storageReserved,
-				},
-			},
+			Disks: map[string]longhorn.DiskSpec{},
 		},
 		Status: longhorn.NodeStatus{
-			DiskStatus: map[string]*longhorn.DiskStatus{
-				"disk": {
-					StorageAvailable: storageAvailable,
-					Type:             diskType,
-				},
-			},
+			DiskStatus: map[string]*longhorn.DiskStatus{},
 		},
 	}
+	for i, disk := range disks {
+		name := fmt.Sprintf("disk-%d", i)
+		node.Spec.Disks[name] = longhorn.DiskSpec{StorageReserved: disk.storageReserved}
+		node.Status.DiskStatus[name] = &longhorn.DiskStatus{StorageAvailable: disk.storageAvailable, Type: disk.diskType}
+	}
+	return node
 }
