@@ -1079,7 +1079,7 @@ var (
 		DisplayName: "Orphan Resource Auto-Deletion Grace Period",
 		Description: "Specifies the wait time, in seconds, before Longhorn automatically deletes an orphaned Custom Resource (CR) and its associated resources. \n\n" +
 			"**Note:** If a user manually deletes an orphaned CR, the deletion occurs immediately and does not respect this grace period. \n\n",
-		Category: SettingCategoryGeneral,
+		Category: SettingCategoryOrphan,
 		Type:     SettingTypeInt,
 		Required: true,
 		ReadOnly: false,
