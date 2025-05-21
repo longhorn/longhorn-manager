@@ -20,7 +20,6 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/client-go/rest"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -697,36 +696,42 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 	} else if err != nil {
 		return nil, status.Errorf(codes.Internal, "unexpected error: %v", err)
 	}
-	v1CapacitySize := resource.NewQuantity(0, resource.BinarySI)
-	v2CapacitySize := resource.NewQuantity(0, resource.BinarySI)
+	var v1AvailableCapacity int64 = 0
+	var v2AvailableCapacity int64 = 0
 	for diskName, diskStatus := range node.Status.DiskStatus {
 		diskSpec, ok := node.Spec.Disks[diskName]
 		if !ok {
 			// This should never be reached, return this error just in case.
 			return nil, status.Errorf(codes.Internal, "disk %s found in node %s's status but absent in spec", diskName, nodeID)
 		}
+		storageSchedulable := diskStatus.StorageAvailable - diskSpec.StorageReserved
 		if diskStatus.Type == longhorn.DiskTypeFilesystem {
-			storageSchedulable := diskStatus.StorageAvailable - diskSpec.StorageReserved
-			v1CapacitySize.Add(*resource.NewQuantity(storageSchedulable, resource.BinarySI))
+			v1AvailableCapacity = max(v1AvailableCapacity, storageSchedulable)
 		}
 		if diskStatus.Type == longhorn.DiskTypeBlock {
-			storageSchedulable := diskStatus.StorageAvailable - diskSpec.StorageReserved
-			v2CapacitySize.Add(*resource.NewQuantity(storageSchedulable, resource.BinarySI))
+			v2AvailableCapacity = max(v2AvailableCapacity, storageSchedulable)
 		}
 	}
 
 	rsp := &csi.GetCapacityResponse{}
 	switch dataEngine {
 	case longhorn.DataEngineTypeV1:
-		rsp.AvailableCapacity = v1CapacitySize.Value()
+		rsp.AvailableCapacity = v1AvailableCapacity
 	case longhorn.DataEngineTypeV2:
-		rsp.AvailableCapacity = v2CapacitySize.Value()
+		rsp.AvailableCapacity = v2AvailableCapacity
 	default:
 		return nil, status.Errorf(codes.InvalidArgument, "unknown data engine type %v", dataEngine)
 	}
 
-	log.Infof("Node: %s, DataEngine: %s, v1CapacitySize: %s, v2CapacitySize: %s", nodeID, dataEngine, v1CapacitySize, v2CapacitySize)
+	log.Infof("Node: %s, DataEngine: %s, v1AvailableCapacity: %d, v2AvailableCapacity: %d", nodeID, dataEngine, v1AvailableCapacity, v2AvailableCapacity)
 	return rsp, nil
+}
+
+func max(x, y int64) int64 {
+	if x > y {
+		return x
+	}
+	return y
 }
 
 func parseDataEngine(parameters map[string]string) (longhorn.DataEngineType, error) {
