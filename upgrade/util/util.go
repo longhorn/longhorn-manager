@@ -339,7 +339,8 @@ func DeleteRemovedSettings(namespace string, lhClient *lhclientset.Clientset) er
 				return true
 			}
 		}
-		return false
+		// replaced settings will be deleted after replaced
+		return types.IsSettingReplaced(name)
 	}
 
 	existingSettingList, err := lhClient.LonghornV1beta2().Settings(namespace).List(context.TODO(), metav1.ListOptions{})
@@ -400,6 +401,10 @@ func ListAndUpdateSettingsInProvidedCache(namespace string, lhClient *lhclientse
 		return nil, err
 	}
 	for _, setting := range settingList.Items {
+		if _, exist := types.GetSettingDefinition(types.SettingName(setting.Name)); !exist {
+			logrus.Warnf("Found unknown setting %v, skipping", setting.Name)
+			continue
+		}
 		settingCopy := longhorn.Setting{}
 		if err := copier.Copy(&settingCopy, setting); err != nil {
 			return nil, err

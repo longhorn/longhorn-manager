@@ -71,11 +71,19 @@ func (s *DataStore) UpdateCustomizedSettings(defaultImages map[types.SettingName
 		return err
 	}
 
+	if err := s.syncSettingOrphanResourceAutoDeletionSettings(); err != nil {
+		return err
+	}
+
 	if err := s.createNonExistingSettingCRsWithDefaultSetting(defaultSettingCM.ResourceVersion); err != nil {
 		return err
 	}
 
-	return s.syncSettingCRsWithCustomizedDefaultSettings(availableCustomizedDefaultSettings, defaultSettingCM.ResourceVersion)
+	if err := s.syncSettingCRsWithCustomizedDefaultSettings(availableCustomizedDefaultSettings, defaultSettingCM.ResourceVersion); err != nil {
+		return err
+	}
+
+	return s.deleteReplacedSettings()
 }
 
 func (s *DataStore) createNonExistingSettingCRsWithDefaultSetting(configMapResourceVersion string) error {
@@ -153,6 +161,31 @@ func (s *DataStore) syncSettingsWithDefaultImages(defaultImages map[types.Settin
 		}
 	}
 	return nil
+}
+
+func (s *DataStore) syncSettingOrphanResourceAutoDeletionSettings() error {
+	oldOrphanReplicaDataAutoDeletionSettingRO, err := s.getSettingRO(string(types.SettingNameOrphanAutoDeletion))
+	switch {
+	case ErrorIsNotFound(err):
+		logrus.Infof("No old setting %v to be replaced.", types.SettingNameOrphanAutoDeletion)
+		return nil
+	case err != nil:
+		return errors.Wrapf(err, "failed to get replaced setting %v", types.SettingNameOrphanAutoDeletion)
+	}
+
+	resourceTypes, err := s.GetSettingOrphanResourceAutoDeletion()
+	if err != nil {
+		return errors.Wrapf(err, "failed to get setting %v", types.SettingNameOrphanResourceAutoDeletion)
+	}
+	resourceTypes[types.OrphanResourceTypeReplicaData] = oldOrphanReplicaDataAutoDeletionSettingRO.Value == "true"
+	enabledResourceType := make([]string, 0, len(resourceTypes))
+	for rt, enabled := range resourceTypes {
+		if enabled {
+			enabledResourceType = append(enabledResourceType, string(rt))
+		}
+	}
+	value := strings.Join(enabledResourceType, ";")
+	return s.createOrUpdateSetting(types.SettingNameOrphanResourceAutoDeletion, value, "")
 }
 
 func (s *DataStore) createOrUpdateSetting(name types.SettingName, value, defaultSettingCMResourceVersion string) error {
@@ -235,6 +268,23 @@ func (s *DataStore) syncSettingCRsWithCustomizedDefaultSettings(customizedDefaul
 	return nil
 }
 
+func (s *DataStore) deleteReplacedSettings() error {
+	settings, err := s.settingLister.Settings(s.namespace).List(labels.Everything())
+	if err != nil {
+		return err
+	}
+	for _, setting := range settings {
+		if !types.IsSettingReplaced(types.SettingName(setting.Name)) {
+			continue
+		}
+		if err := s.deleteSetting(setting.Name); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // CreateSetting create a Longhorn Settings resource for the given setting and
 // namespace
 func (s *DataStore) CreateSetting(setting *longhorn.Setting) (*longhorn.Setting, error) {
@@ -275,6 +325,10 @@ func (s *DataStore) UpdateSettingStatus(setting *longhorn.Setting) (*longhorn.Se
 		return s.getSettingRO(name)
 	})
 	return obj, nil
+}
+
+func (s *DataStore) deleteSetting(name string) error {
+	return s.lhClient.LonghornV1beta2().Settings(s.namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 }
 
 // ValidateSetting checks the given setting value types and condition
@@ -3114,6 +3168,14 @@ func getLonghornNodeSelector(nodeName string) (labels.Selector, error) {
 	})
 }
 
+func getInstanceManagerSelector(name string) (labels.Selector, error) {
+	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			types.LonghornInstanceManagerKey: name,
+		},
+	})
+}
+
 // ListReplicasByNode gets a map of Replicas on the node Name for the given namespace.
 func (s *DataStore) ListReplicasByNode(name string) (map[string]*longhorn.Replica, error) {
 	nodeSelector, err := getNodeSelector(name)
@@ -5245,9 +5307,9 @@ func (s *DataStore) ListOrphans() (map[string]*longhorn.Orphan, error) {
 	return s.listOrphans(labels.Everything())
 }
 
-// ListOrphansByNode gets a map of Orphans on the node Name for the given namespace.
-func (s *DataStore) ListOrphansByNode(name string) (map[string]*longhorn.Orphan, error) {
-	nodeSelector, err := getNodeSelector(name)
+// ListOrphansByInstanceManager gets a map of Orphans managed by instance manager Name for the given namespace.
+func (s *DataStore) ListOrphansByInstanceManager(name string) (map[string]*longhorn.Orphan, error) {
+	nodeSelector, err := getInstanceManagerSelector(name)
 	if err != nil {
 		return nil, err
 	}
@@ -5270,11 +5332,11 @@ func (s *DataStore) ListOrphansByNodeRO(name string) ([]*longhorn.Orphan, error)
 	return s.orphanLister.Orphans(s.namespace).List(nodeSelector)
 }
 
-// ListOrphansForEngineAndReplicaInstancesRO returns a list of all engine and replica instance Orphans on node Name for the given namespace,
+// ListInstanceOrphansByInstanceManagerRO returns a list of all engine and replica instance Orphans on instance manager Name for the given namespace,
 // the list contains direct references to the internal cache objects and should not be mutated.
 // Consider using this function when you can guarantee read only access and don't want the overhead of deep copies
-func (s *DataStore) ListOrphansForEngineAndReplicaInstancesRO(name string) (orphanList []*longhorn.Orphan, err error) {
-	existOrphans, err := s.ListOrphansByNode(name)
+func (s *DataStore) ListInstanceOrphansByInstanceManagerRO(instanceManager string) (orphanList []*longhorn.Orphan, err error) {
+	existOrphans, err := s.ListOrphansByInstanceManager(instanceManager)
 	if err != nil {
 		return nil, err
 	}

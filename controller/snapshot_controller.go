@@ -475,8 +475,15 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 		return err
 	}
 
-	// newly created snapshotCR by user
-	if requestCreateNewSnapshot && !alreadyCreatedBefore {
+	// Skip handing new snapshot if they already exist in the engine CR.
+	// The engine may be purging, and the snapshot may be deleted mid-reconciliation,
+	// potentially lead to a mis-recreation.
+	//
+	// https://github.com/longhorn/longhorn/issues/10808
+	snapshotExistInEngine := isSnapshotExistInEngine(snapshotName, engine)
+
+	// Newly created snapshot CR by user
+	if requestCreateNewSnapshot && !alreadyCreatedBefore && !snapshotExistInEngine {
 		if err := sc.handleAttachmentTicketCreation(snapshot, false); err != nil {
 			return err
 		}

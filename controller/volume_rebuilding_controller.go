@@ -286,51 +286,58 @@ func (vbc *VolumeRebuildingController) reconcile(volName string) (err error) {
 		}
 	}()
 
+	isOfflineRebuildEnabled, err := vbc.isVolumeOfflineRebuildEnabled(vol.Spec.OfflineRebuilding)
+	if err != nil {
+		return err
+	}
+	if !isOfflineRebuildEnabled {
+		return nil
+	}
+
 	if !vol.DeletionTimestamp.IsZero() {
 		vbc.logger.Infof("Volume %v is deleting, skip offline rebuilding", volName)
 		return nil
 	}
+
 	if vol.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 		vbc.logger.Warnf("Volume %v is faulted, skip offline rebuilding", volName)
 		return nil
 	}
 
-	isOfflineRebuildEnabled, err := vbc.isVolumeOfflineRebuildEnabled(vol.Spec.OfflineRebuilding)
-	if err != nil {
-		return err
+	if util.IsHigherPriorityVATicketExisting(va, longhorn.AttacherTypeVolumeRebuildingController) {
+		return nil
 	}
-	if isOfflineRebuildEnabled && !util.IsHigherPriorityVATicketExisting(va, longhorn.AttacherTypeVolumeRebuildingController) {
-		if vol.Status.State == longhorn.VolumeStateDetached {
-			_, err = vbc.syncLHVolumeAttachmentForOfflineRebuild(vol, va, rebuildingAttachmentTicketID)
-			if err != nil {
-				return err
-			}
-			deleteVATicketRequired = false
-			return nil
-		}
-		if vol.Status.State == longhorn.VolumeStateAttaching {
-			deleteVATicketRequired = false
-			return nil
-		}
 
-		engine, err := vbc.getVolumeEngine(vol)
+	if vol.Status.State == longhorn.VolumeStateDetached {
+		_, err = vbc.syncLHVolumeAttachmentForOfflineRebuild(vol, va, rebuildingAttachmentTicketID)
 		if err != nil {
 			return err
 		}
-		if engine == nil {
-			vbc.logger.Warnf("Volume %v engine not found, skip offline rebuilding", volName)
-			return nil
-		}
+		deleteVATicketRequired = false
+		return nil
+	}
+	if vol.Status.State == longhorn.VolumeStateAttaching {
+		deleteVATicketRequired = false
+		return nil
+	}
 
-		if engine.Status.ReplicaModeMap == nil {
-			// wait for engine status synced
-			deleteVATicketRequired = false
-			return nil
-		}
-		if vbc.isVolumeReplicasRebuilding(vol, engine) {
-			deleteVATicketRequired = false
-			return nil
-		}
+	engine, err := vbc.getVolumeEngine(vol)
+	if err != nil {
+		return err
+	}
+	if engine == nil {
+		vbc.logger.Warnf("Volume %v engine not found, skip offline rebuilding", volName)
+		return nil
+	}
+
+	if engine.Status.ReplicaModeMap == nil {
+		// wait for engine status synced
+		deleteVATicketRequired = false
+		return nil
+	}
+	if vbc.isVolumeReplicasRebuilding(vol, engine) {
+		deleteVATicketRequired = false
+		return nil
 	}
 
 	return nil

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/rancher/lasso/pkg/log"
 	"github.com/sirupsen/logrus"
 
 	corev1 "k8s.io/api/core/v1"
@@ -197,7 +196,7 @@ func (bc *BackupBackingImageController) reconcile(backupBackingImageName string)
 			}
 			return err
 		}
-		log.Infof("Backup backing image got new owner %v", bc.controllerID)
+		bc.logger.Infof("Backup backing image got new owner %v", bc.controllerID)
 	}
 
 	log := getLoggerForBackupBackingImage(bc.logger, bbi)

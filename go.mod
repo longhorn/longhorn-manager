@@ -2,7 +2,7 @@ module github.com/longhorn/longhorn-manager
 
 go 1.24.0
 
-toolchain go1.24.2
+toolchain go1.24.3
 
 // Replace directives are required for dependencies in this section because:
 // - This module imports k8s.io/kubernetes.
@@ -20,38 +20,38 @@ toolchain go1.24.2
 // necessary. However, it is better to include all of them for consistency.
 
 replace (
-	k8s.io/api => k8s.io/api v0.33.0
-	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.33.0
-	k8s.io/apimachinery => k8s.io/apimachinery v0.33.0
-	k8s.io/apiserver => k8s.io/apiserver v0.33.0
-	k8s.io/cli-runtime => k8s.io/cli-runtime v0.33.0
-	k8s.io/client-go => k8s.io/client-go v0.33.0
-	k8s.io/cloud-provider => k8s.io/cloud-provider v0.33.0
-	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.33.0
-	k8s.io/code-generator => k8s.io/code-generator v0.33.0
-	k8s.io/component-base => k8s.io/component-base v0.33.0
-	k8s.io/component-helpers => k8s.io/component-helpers v0.33.0
-	k8s.io/controller-manager => k8s.io/controller-manager v0.33.0
-	k8s.io/cri-api => k8s.io/cri-api v0.33.0
-	k8s.io/cri-client => k8s.io/cri-client v0.33.0
-	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.33.0
-	k8s.io/dynamic-resource-allocation => k8s.io/dynamic-resource-allocation v0.33.0
-	k8s.io/endpointslice => k8s.io/endpointslice v0.33.0
-	k8s.io/externaljwt => k8s.io/externaljwt v0.33.0
-	k8s.io/kms => k8s.io/kms v0.33.0
-	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.33.0
-	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.33.0
-	k8s.io/kube-proxy => k8s.io/kube-proxy v0.33.0
-	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.33.0
-	k8s.io/kubectl => k8s.io/kubectl v0.33.0
-	k8s.io/kubelet => k8s.io/kubelet v0.33.0
-	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.12
-	k8s.io/metrics => k8s.io/metrics v0.33.0
-	k8s.io/mount-utils => k8s.io/mount-utils v0.33.0
-	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.33.0
-	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.33.0
-	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.33.0
-	k8s.io/sample-controller => k8s.io/sample-controller v0.33.0
+	k8s.io/api => k8s.io/api v0.33.1
+	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.33.1
+	k8s.io/apimachinery => k8s.io/apimachinery v0.33.1
+	k8s.io/apiserver => k8s.io/apiserver v0.33.1
+	k8s.io/cli-runtime => k8s.io/cli-runtime v0.33.1
+	k8s.io/client-go => k8s.io/client-go v0.33.1
+	k8s.io/cloud-provider => k8s.io/cloud-provider v0.33.1
+	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.33.1
+	k8s.io/code-generator => k8s.io/code-generator v0.33.1
+	k8s.io/component-base => k8s.io/component-base v0.33.1
+	k8s.io/component-helpers => k8s.io/component-helpers v0.33.1
+	k8s.io/controller-manager => k8s.io/controller-manager v0.33.1
+	k8s.io/cri-api => k8s.io/cri-api v0.33.1
+	k8s.io/cri-client => k8s.io/cri-client v0.33.1
+	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.33.1
+	k8s.io/dynamic-resource-allocation => k8s.io/dynamic-resource-allocation v0.33.1
+	k8s.io/endpointslice => k8s.io/endpointslice v0.33.1
+	k8s.io/externaljwt => k8s.io/externaljwt v0.33.1
+	k8s.io/kms => k8s.io/kms v0.33.1
+	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.33.1
+	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.33.1
+	k8s.io/kube-proxy => k8s.io/kube-proxy v0.33.1
+	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.33.1
+	k8s.io/kubectl => k8s.io/kubectl v0.33.1
+	k8s.io/kubelet => k8s.io/kubelet v0.33.1
+	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.13
+	k8s.io/metrics => k8s.io/metrics v0.33.1
+	k8s.io/mount-utils => k8s.io/mount-utils v0.33.1
+	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.33.1
+	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.33.1
+	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.33.1
+	k8s.io/sample-controller => k8s.io/sample-controller v0.33.1
 )
 
 require (
@@ -65,38 +65,38 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.21.0
 	github.com/longhorn/backing-image-manager v1.8.1
-	github.com/longhorn/backupstore v0.0.0-20250421031654-0ef762b84472
-	github.com/longhorn/go-common-libs v0.0.0-20250419062810-2bdafe8e7f4e
-	github.com/longhorn/go-iscsi-helper v0.0.0-20250425050615-1de428a1281a
-	github.com/longhorn/go-spdk-helper v0.0.0-20250422073040-bb5fe0ae1d17
-	github.com/longhorn/longhorn-engine v1.9.0-dev-20250420
-	github.com/longhorn/longhorn-instance-manager v1.9.0-dev-20250420.0.20250421223422-3c87f4a9aaa5
+	github.com/longhorn/backupstore v0.0.0-20250513044119-966fecd6b927
+	github.com/longhorn/go-common-libs v0.0.0-20250510103049-801acb30430c
+	github.com/longhorn/go-iscsi-helper v0.0.0-20250511111123-ceffe5d4a273
+	github.com/longhorn/go-spdk-helper v0.0.0-20250513010708-f55efaeb7369
+	github.com/longhorn/longhorn-engine v1.9.0-rc2
+	github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250518.0.20250519060809-955e286a739c
 	github.com/longhorn/longhorn-share-manager v1.8.1
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.22.0
 	github.com/rancher/dynamiclistener v0.6.2
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
-	github.com/rancher/wrangler/v3 v3.2.0
+	github.com/rancher/wrangler/v3 v3.2.1
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli v1.22.16
 	golang.org/x/mod v0.24.0
-	golang.org/x/net v0.39.0
-	golang.org/x/sys v0.32.0
+	golang.org/x/net v0.40.0
+	golang.org/x/sys v0.33.0
 	golang.org/x/time v0.11.0
-	google.golang.org/grpc v1.72.0
+	google.golang.org/grpc v1.72.1
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
-	k8s.io/api v0.33.0
-	k8s.io/apiextensions-apiserver v0.33.0
-	k8s.io/apimachinery v0.33.0
-	k8s.io/cli-runtime v0.33.0
-	k8s.io/client-go v0.33.0
-	k8s.io/kubernetes v1.33.0
-	k8s.io/metrics v0.33.0
-	k8s.io/mount-utils v0.33.0
-	k8s.io/utils v0.0.0-20250321185631-1f6e0b77f77e
+	k8s.io/api v0.33.1
+	k8s.io/apiextensions-apiserver v0.33.1
+	k8s.io/apimachinery v0.33.1
+	k8s.io/cli-runtime v0.33.1
+	k8s.io/client-go v0.33.1
+	k8s.io/kubernetes v1.33.1
+	k8s.io/metrics v0.33.1
+	k8s.io/mount-utils v0.33.1
+	k8s.io/utils v0.0.0-20250502105355-0f33e8f1c979
 	sigs.k8s.io/controller-runtime v0.20.4
 )
 
@@ -106,14 +106,14 @@ require (
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/google/gnostic-models v0.6.9 // indirect
-	github.com/longhorn/types v0.0.0-20250416235128-0c407ad2b792 // indirect
+	github.com/longhorn/types v0.0.0-20250519005747-57ce2e5a3ee5 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/moby/term v0.5.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
+	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250218202821-56aae31c358a // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
@@ -127,7 +127,7 @@ require (
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/c9s/goprocinfo v0.0.0-20210130143923-c95fcf8c64a8 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/cpuguy83/go-md2man/v2 v2.0.5 // indirect
+	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emicklei/go-restful/v3 v3.12.1 // indirect
 	github.com/evanphx/json-patch v5.9.11+incompatible // indirect
@@ -159,7 +159,7 @@ require (
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.62.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
-	github.com/rancher/lasso v0.2.1
+	github.com/rancher/lasso v0.2.2 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
@@ -169,15 +169,15 @@ require (
 	go.opentelemetry.io/otel/trace v1.34.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0
-	golang.org/x/crypto v0.37.0 // indirect
+	golang.org/x/crypto v0.38.0 // indirect
 	golang.org/x/oauth2 v0.27.0 // indirect
-	golang.org/x/sync v0.13.0
-	golang.org/x/term v0.31.0 // indirect
-	golang.org/x/text v0.24.0
+	golang.org/x/sync v0.14.0
+	golang.org/x/term v0.32.0 // indirect
+	golang.org/x/text v0.25.0
 	google.golang.org/protobuf v1.36.6
 	gopkg.in/inf.v0 v0.9.1 // indirect
-	k8s.io/apiserver v0.33.0 // indirect
-	k8s.io/component-base v0.33.0 // indirect
+	k8s.io/apiserver v0.33.1 // indirect
+	k8s.io/component-base v0.33.1 // indirect
 	k8s.io/component-helpers v0.33.0 // indirect
 	k8s.io/controller-manager v0.33.0 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect

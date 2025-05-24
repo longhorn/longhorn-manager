@@ -99,8 +99,9 @@ const (
 	SettingNameBackingImageRecoveryWaitInterval                         = SettingName("backing-image-recovery-wait-interval")
 	SettingNameGuaranteedInstanceManagerCPU                             = SettingName("guaranteed-instance-manager-cpu")
 	SettingNameKubernetesClusterAutoscalerEnabled                       = SettingName("kubernetes-cluster-autoscaler-enabled")
-	SettingNameOrphanAutoDeletion                                       = SettingName("orphan-auto-deletion")
+	SettingNameOrphanAutoDeletion                                       = SettingName("orphan-auto-deletion") // replaced by SettingNameOrphanResourceAutoDeletion
 	SettingNameOrphanResourceAutoDeletion                               = SettingName("orphan-resource-auto-deletion")
+	SettingNameOrphanResourceAutoDeletionGracePeriod                    = SettingName("orphan-resource-auto-deletion-grace-period")
 	SettingNameStorageNetwork                                           = SettingName("storage-network")
 	SettingNameStorageNetworkForRWXVolumeEnabled                        = SettingName("storage-network-for-rwx-volume-enabled")
 	SettingNameFailedBackupTTL                                          = SettingName("failed-backup-ttl")
@@ -202,8 +203,8 @@ var (
 		SettingNameBackingImageRecoveryWaitInterval,
 		SettingNameGuaranteedInstanceManagerCPU,
 		SettingNameKubernetesClusterAutoscalerEnabled,
-		SettingNameOrphanAutoDeletion,
 		SettingNameOrphanResourceAutoDeletion,
+		SettingNameOrphanResourceAutoDeletionGracePeriod,
 		SettingNameStorageNetwork,
 		SettingNameStorageNetworkForRWXVolumeEnabled,
 		SettingNameFailedBackupTTL,
@@ -249,6 +250,10 @@ var (
 		SettingNameOfflineReplicaRebuilding,
 	}
 )
+
+var replacedSettingNames = map[SettingName]bool{
+	SettingNameOrphanAutoDeletion: true, // SettingNameOrphanResourceAutoDeletion
+}
 
 type SettingCategory string
 
@@ -327,8 +332,8 @@ var (
 		SettingNameBackingImageRecoveryWaitInterval:                         SettingDefinitionBackingImageRecoveryWaitInterval,
 		SettingNameGuaranteedInstanceManagerCPU:                             SettingDefinitionGuaranteedInstanceManagerCPU,
 		SettingNameKubernetesClusterAutoscalerEnabled:                       SettingDefinitionKubernetesClusterAutoscalerEnabled,
-		SettingNameOrphanAutoDeletion:                                       SettingDefinitionOrphanAutoDeletion,
 		SettingNameOrphanResourceAutoDeletion:                               SettingDefinitionOrphanResourceAutoDeletion,
+		SettingNameOrphanResourceAutoDeletionGracePeriod:                    SettingDefinitionOrphanResourceAutoDeletionGracePeriod,
 		SettingNameStorageNetwork:                                           SettingDefinitionStorageNetwork,
 		SettingNameStorageNetworkForRWXVolumeEnabled:                        SettingDefinitionStorageNetworkForRWXVolumeEnabled,
 		SettingNameFailedBackupTTL:                                          SettingDefinitionFailedBackupTTL,
@@ -1055,32 +1060,33 @@ var (
 		Default:  "false",
 	}
 
-	SettingDefinitionOrphanAutoDeletion = SettingDefinition{
-		DisplayName: "Orphan Auto-Deletion",
-		Description: "This setting allows Longhorn to delete the orphan resource and its corresponding orphaned data automatically. \n\n" +
-			"Orphan resources on down or unknown nodes will not be cleaned up automatically. \n\n" +
-			fmt.Sprintf("Deprecated: enable \"%s\" in %s instead. \n\n", OrphanResourceTypeReplicaData, SettingNameOrphanResourceAutoDeletion),
-		Category: SettingCategoryOrphan,
-		Type:     SettingTypeBool,
-		Required: true,
-		ReadOnly: true,
-		Default:  "false",
-	}
-
 	SettingDefinitionOrphanResourceAutoDeletion = SettingDefinition{
 		DisplayName: "Orphan Resource Auto-Deletion",
 		Description: "This setting allows Longhorn to automatically delete orphan resources and their corresponding orphaned resources. \n\n" +
 			"Orphan resources located on nodes that are in down or unknown state will not be cleaned up automatically. \n\n" +
 			"List the enabled resource types in a semicolon-separated list. \n\n" +
 			"Available items are: \n\n" +
-			"- **replicaData**: replica data store \n\n" +
-			"- **engineInstance**: engine runtime instance \n\n" +
-			"- **replicaInstance**: replica runtime instance \n\n",
+			"- **replica-data**: replica data store \n\n" +
+			"- **instance**: engine and replica runtime instance \n\n",
 		Category: SettingCategoryOrphan,
 		Type:     SettingTypeString,
 		Required: false,
 		ReadOnly: false,
 		Default:  "",
+	}
+
+	SettingDefinitionOrphanResourceAutoDeletionGracePeriod = SettingDefinition{
+		DisplayName: "Orphan Resource Auto-Deletion Grace Period",
+		Description: "Specifies the wait time, in seconds, before Longhorn automatically deletes an orphaned Custom Resource (CR) and its associated resources. \n\n" +
+			"**Note:** If a user manually deletes an orphaned CR, the deletion occurs immediately and does not respect this grace period. \n\n",
+		Category: SettingCategoryOrphan,
+		Type:     SettingTypeInt,
+		Required: true,
+		ReadOnly: false,
+		Default:  "300",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
 	}
 
 	SettingDefinitionStorageNetwork = SettingDefinition{
@@ -1615,9 +1621,8 @@ const (
 type OrphanResourceType string
 
 const (
-	OrphanResourceTypeReplicaData     = OrphanResourceType("replicaData")
-	OrphanResourceTypeEngineInstance  = OrphanResourceType("engineInstance")
-	OrphanResourceTypeReplicaInstance = OrphanResourceType("replicaInstance")
+	OrphanResourceTypeReplicaData = OrphanResourceType("replica-data")
+	OrphanResourceTypeInstance    = OrphanResourceType("instance")
 )
 
 func ValidateSetting(name, value string) (err error) {
@@ -1801,9 +1806,8 @@ func UnmarshalNodeSelector(nodeSelectorSetting string) (map[string]string, error
 
 func UnmarshalOrphanResourceTypes(resourceTypesSetting string) (map[OrphanResourceType]bool, error) {
 	resourceTypes := map[OrphanResourceType]bool{
-		OrphanResourceTypeReplicaData:     false,
-		OrphanResourceTypeEngineInstance:  false,
-		OrphanResourceTypeReplicaInstance: false,
+		OrphanResourceTypeReplicaData: false,
+		OrphanResourceTypeInstance:    false,
 	}
 
 	resourceTypesSetting = strings.Trim(resourceTypesSetting, " ")
@@ -1823,6 +1827,10 @@ func UnmarshalOrphanResourceTypes(resourceTypesSetting string) (map[OrphanResour
 		return nil, fmt.Errorf("invalid orphan resource types: %s", strings.Join(invalidItems, ", "))
 	}
 	return resourceTypes, nil
+}
+
+func IsSettingReplaced(name SettingName) bool {
+	return replacedSettingNames[name]
 }
 
 // GetSettingDefinition gets the setting definition in `settingDefinitions` by the parameter `name`

@@ -119,10 +119,11 @@ const (
 
 	DefaultBackupTargetName = "default"
 
-	LonghornNodeKey     = "longhornnode"
-	LonghornEngineKey   = "longhornengine"
-	LonghornReplicaKey  = "longhornreplica"
-	LonghornDiskUUIDKey = "longhorndiskuuid"
+	LonghornNodeKey            = "longhornnode"
+	LonghornInstanceManagerKey = "longhorninstancemanager"
+	LonghornEngineKey          = "longhornengine"
+	LonghornReplicaKey         = "longhornreplica"
+	LonghornDiskUUIDKey        = "longhorndiskuuid"
 
 	NodeCreateDefaultDiskLabelKey             = "node.longhorn.io/create-default-disk"
 	NodeCreateDefaultDiskLabelValueTrue       = "true"
@@ -660,19 +661,21 @@ func GetOrphanLabelsForOrphanedDirectory(nodeID, diskUUID string) map[string]str
 	return labels
 }
 
-func GetOrphanLabelsForOrphanedEngineInstance(nodeID, engineName string) map[string]string {
+func GetOrphanLabelsForOrphanedEngineInstance(nodeID, instanceManager, engineName string) map[string]string {
 	labels := GetBaseLabelsForSystemManagedComponent()
 	labels[GetLonghornLabelComponentKey()] = LonghornLabelOrphan
 	labels[LonghornNodeKey] = nodeID
+	labels[LonghornInstanceManagerKey] = instanceManager
 	labels[LonghornEngineKey] = engineName
 	labels[GetLonghornLabelKey(LonghornLabelOrphanType)] = string(longhorn.OrphanTypeEngineInstance)
 	return labels
 }
 
-func GetOrphanLabelsForOrphanedReplicaInstance(nodeID, replicaName string) map[string]string {
+func GetOrphanLabelsForOrphanedReplicaInstance(nodeID, instanceManager, replicaName string) map[string]string {
 	labels := GetBaseLabelsForSystemManagedComponent()
 	labels[GetLonghornLabelComponentKey()] = LonghornLabelOrphan
 	labels[LonghornNodeKey] = nodeID
+	labels[LonghornInstanceManagerKey] = instanceManager
 	labels[LonghornReplicaKey] = replicaName
 	labels[GetLonghornLabelKey(LonghornLabelOrphanType)] = string(longhorn.OrphanTypeReplicaInstance)
 	return labels
@@ -746,8 +749,8 @@ func GetOrphanChecksumNameForOrphanedDataStore(nodeID, diskName, diskPath, diskU
 	return orphanPrefix + util.GetStringChecksumSHA256(strings.TrimSpace(fmt.Sprintf("%s-%s-%s-%s-%s", nodeID, diskName, diskPath, diskUUID, dataStore)))
 }
 
-func GetOrphanChecksumNameForOrphanedInstance(instanceName, nodeID, dataEngine string) string {
-	return orphanPrefix + util.GetStringChecksumSHA256(strings.TrimSpace(fmt.Sprintf("%s-%s-%s", instanceName, nodeID, dataEngine)))
+func GetOrphanChecksumNameForOrphanedInstance(instanceName, instanceUUID, instanceManager, dataEngine string) string {
+	return orphanPrefix + util.GetStringChecksumSHA256(strings.TrimSpace(fmt.Sprintf("%s-%s-%s-%s", instanceName, instanceUUID, instanceManager, dataEngine)))
 }
 
 func GetShareManagerPodNameFromShareManagerName(smName string) string {
