@@ -63,7 +63,7 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/jinzhu/copier v0.4.0
-	github.com/kubernetes-csi/csi-lib-utils v0.21.0
+	github.com/kubernetes-csi/csi-lib-utils v0.22.0
 	github.com/longhorn/backing-image-manager v1.8.1
 	github.com/longhorn/backupstore v0.0.0-20250513044119-966fecd6b927
 	github.com/longhorn/go-common-libs v0.0.0-20250524033713-74041234ac93
@@ -97,7 +97,7 @@ require (
 	k8s.io/metrics v0.33.1
 	k8s.io/mount-utils v0.33.1
 	k8s.io/utils v0.0.0-20250502105355-0f33e8f1c979
-	sigs.k8s.io/controller-runtime v0.20.4
+	sigs.k8s.io/controller-runtime v0.21.0
 )
 
 require (

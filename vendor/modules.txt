@@ -126,8 +126,8 @@ github.com/kr/pretty
 # github.com/kr/text v0.2.0
 ## explicit
 github.com/kr/text
-# github.com/kubernetes-csi/csi-lib-utils v0.21.0
-## explicit; go 1.23.1
+# github.com/kubernetes-csi/csi-lib-utils v0.22.0
+## explicit; go 1.24.0
 github.com/kubernetes-csi/csi-lib-utils/protosanitizer
 # github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de
 ## explicit
@@ -1146,8 +1146,8 @@ k8s.io/utils/net
 k8s.io/utils/pointer
 k8s.io/utils/ptr
 k8s.io/utils/trace
-# sigs.k8s.io/controller-runtime v0.20.4
-## explicit; go 1.23.0
+# sigs.k8s.io/controller-runtime v0.21.0
+## explicit; go 1.24.0
 sigs.k8s.io/controller-runtime/pkg/conversion
 # sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8
 ## explicit; go 1.23
