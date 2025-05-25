@@ -66,9 +66,9 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.21.0
 	github.com/longhorn/backing-image-manager v1.8.1
 	github.com/longhorn/backupstore v0.0.0-20250513044119-966fecd6b927
-	github.com/longhorn/go-common-libs v0.0.0-20250510103049-801acb30430c
+	github.com/longhorn/go-common-libs v0.0.0-20250524033713-74041234ac93
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250511111123-ceffe5d4a273
-	github.com/longhorn/go-spdk-helper v0.0.0-20250422073040-bb5fe0ae1d17
+	github.com/longhorn/go-spdk-helper v0.0.2
 	github.com/longhorn/longhorn-engine v1.9.0-rc2
 	github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250518.0.20250519060809-955e286a739c
 	github.com/longhorn/longhorn-share-manager v1.8.1
@@ -82,8 +82,8 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli v1.22.16
 	golang.org/x/mod v0.24.0
-	golang.org/x/net v0.39.0
-	golang.org/x/sys v0.32.0
+	golang.org/x/net v0.40.0
+	golang.org/x/sys v0.33.0
 	golang.org/x/time v0.11.0
 	google.golang.org/grpc v1.72.1
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
@@ -169,11 +169,11 @@ require (
 	go.opentelemetry.io/otel/trace v1.34.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0
-	golang.org/x/crypto v0.37.0 // indirect
+	golang.org/x/crypto v0.38.0 // indirect
 	golang.org/x/oauth2 v0.27.0 // indirect
 	golang.org/x/sync v0.14.0
-	golang.org/x/term v0.31.0 // indirect
-	golang.org/x/text v0.24.0
+	golang.org/x/term v0.32.0 // indirect
+	golang.org/x/text v0.25.0
 	google.golang.org/protobuf v1.36.6
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/apiserver v0.33.1 // indirect
