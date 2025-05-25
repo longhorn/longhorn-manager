@@ -18,6 +18,7 @@ const (
 
 	FrontendSPDKTCPNvmf     = "spdk-tcp-nvmf"
 	FrontendSPDKTCPBlockdev = "spdk-tcp-blockdev"
+	FrontendSPDKUblk        = "ublk"
 
 	ShallowCopyStateInProgress = "in progress"
 	ShallowCopyStateComplete   = "complete"
