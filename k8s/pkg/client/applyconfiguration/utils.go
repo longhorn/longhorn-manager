@@ -19,10 +19,8 @@ limitations under the License.
 package applyconfiguration
 
 import (
-	v1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
 	v1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	internal "github.com/longhorn/longhorn-manager/k8s/pkg/client/applyconfiguration/internal"
-	longhornv1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/client/applyconfiguration/longhorn/v1beta1"
 	longhornv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/client/applyconfiguration/longhorn/v1beta2"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
@@ -33,137 +31,7 @@ import (
 // apply configuration type exists for the given GroupVersionKind.
 func ForKind(kind schema.GroupVersionKind) interface{} {
 	switch kind {
-	// Group=longhorn.io, Version=v1beta1
-	case v1beta1.SchemeGroupVersion.WithKind("BackingImage"):
-		return &longhornv1beta1.BackingImageApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("BackingImageDataSource"):
-		return &longhornv1beta1.BackingImageDataSourceApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("BackingImageDataSourceSpec"):
-		return &longhornv1beta1.BackingImageDataSourceSpecApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("BackingImageDataSourceStatus"):
-		return &longhornv1beta1.BackingImageDataSourceStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("BackingImageDiskFileStatus"):
-		return &longhornv1beta1.BackingImageDiskFileStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("BackingImageFileInfo"):
-		return &longhornv1beta1.BackingImageFileInfoApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("BackingImageManager"):
-		return &longhornv1beta1.BackingImageManagerApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("BackingImageManagerSpec"):
-		return &longhornv1beta1.BackingImageManagerSpecApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("BackingImageManagerStatus"):
-		return &longhornv1beta1.BackingImageManagerStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("BackingImageSpec"):
-		return &longhornv1beta1.BackingImageSpecApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("BackingImageStatus"):
-		return &longhornv1beta1.BackingImageStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("Backup"):
-		return &longhornv1beta1.BackupApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("BackupSpec"):
-		return &longhornv1beta1.BackupSpecApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("BackupStatus"):
-		return &longhornv1beta1.BackupStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("BackupTarget"):
-		return &longhornv1beta1.BackupTargetApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("BackupTargetSpec"):
-		return &longhornv1beta1.BackupTargetSpecApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("BackupTargetStatus"):
-		return &longhornv1beta1.BackupTargetStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("BackupVolume"):
-		return &longhornv1beta1.BackupVolumeApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("BackupVolumeSpec"):
-		return &longhornv1beta1.BackupVolumeSpecApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("BackupVolumeStatus"):
-		return &longhornv1beta1.BackupVolumeStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("Condition"):
-		return &longhornv1beta1.ConditionApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("DiskSpec"):
-		return &longhornv1beta1.DiskSpecApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("DiskStatus"):
-		return &longhornv1beta1.DiskStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("Engine"):
-		return &longhornv1beta1.EngineApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("EngineBackupStatus"):
-		return &longhornv1beta1.EngineBackupStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("EngineImage"):
-		return &longhornv1beta1.EngineImageApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("EngineImageSpec"):
-		return &longhornv1beta1.EngineImageSpecApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("EngineImageStatus"):
-		return &longhornv1beta1.EngineImageStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("EngineSpec"):
-		return &longhornv1beta1.EngineSpecApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("EngineStatus"):
-		return &longhornv1beta1.EngineStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("EngineVersionDetails"):
-		return &longhornv1beta1.EngineVersionDetailsApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("InstanceManager"):
-		return &longhornv1beta1.InstanceManagerApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("InstanceManagerSpec"):
-		return &longhornv1beta1.InstanceManagerSpecApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("InstanceManagerStatus"):
-		return &longhornv1beta1.InstanceManagerStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("InstanceProcess"):
-		return &longhornv1beta1.InstanceProcessApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("InstanceProcessSpec"):
-		return &longhornv1beta1.InstanceProcessSpecApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("InstanceProcessStatus"):
-		return &longhornv1beta1.InstanceProcessStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("InstanceSpec"):
-		return &longhornv1beta1.InstanceSpecApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("InstanceStatus"):
-		return &longhornv1beta1.InstanceStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("KubernetesStatus"):
-		return &longhornv1beta1.KubernetesStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("Node"):
-		return &longhornv1beta1.NodeApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("NodeSpec"):
-		return &longhornv1beta1.NodeSpecApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("NodeStatus"):
-		return &longhornv1beta1.NodeStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("PurgeStatus"):
-		return &longhornv1beta1.PurgeStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("RebuildStatus"):
-		return &longhornv1beta1.RebuildStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("RecurringJob"):
-		return &longhornv1beta1.RecurringJobApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("RecurringJobSpec"):
-		return &longhornv1beta1.RecurringJobSpecApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("RecurringJobStatus"):
-		return &longhornv1beta1.RecurringJobStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("Replica"):
-		return &longhornv1beta1.ReplicaApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("ReplicaSpec"):
-		return &longhornv1beta1.ReplicaSpecApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("ReplicaStatus"):
-		return &longhornv1beta1.ReplicaStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("RestoreStatus"):
-		return &longhornv1beta1.RestoreStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("Setting"):
-		return &longhornv1beta1.SettingApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("ShareManager"):
-		return &longhornv1beta1.ShareManagerApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("ShareManagerSpec"):
-		return &longhornv1beta1.ShareManagerSpecApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("ShareManagerStatus"):
-		return &longhornv1beta1.ShareManagerStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("SnapshotCloneStatus"):
-		return &longhornv1beta1.SnapshotCloneStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("SnapshotInfo"):
-		return &longhornv1beta1.SnapshotInfoApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("Volume"):
-		return &longhornv1beta1.VolumeApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("VolumeCloneStatus"):
-		return &longhornv1beta1.VolumeCloneStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("VolumeRecurringJobSpec"):
-		return &longhornv1beta1.VolumeRecurringJobSpecApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("VolumeSpec"):
-		return &longhornv1beta1.VolumeSpecApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("VolumeStatus"):
-		return &longhornv1beta1.VolumeStatusApplyConfiguration{}
-	case v1beta1.SchemeGroupVersion.WithKind("WorkloadStatus"):
-		return &longhornv1beta1.WorkloadStatusApplyConfiguration{}
-
-		// Group=longhorn.io, Version=v1beta2
+	// Group=longhorn.io, Version=v1beta2
 	case v1beta2.SchemeGroupVersion.WithKind("AttachmentTicket"):
 		return &longhornv1beta2.AttachmentTicketApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("AttachmentTicketStatus"):
