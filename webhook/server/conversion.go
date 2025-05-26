@@ -4,20 +4,11 @@ import (
 	"net/http"
 
 	"github.com/longhorn/longhorn-manager/webhook/conversion"
-	"github.com/longhorn/longhorn-manager/webhook/resources/backingimage"
-	"github.com/longhorn/longhorn-manager/webhook/resources/backuptarget"
-	"github.com/longhorn/longhorn-manager/webhook/resources/engineimage"
-	"github.com/longhorn/longhorn-manager/webhook/resources/node"
-	"github.com/longhorn/longhorn-manager/webhook/resources/volume"
 )
 
 func Conversion() (http.Handler, []string, error) {
 	conversions := []string{
-		backingimage.NewConversion(),
-		backuptarget.NewConversion(),
-		engineimage.NewConversion(),
-		node.NewConversion(),
-		volume.NewConversion(),
+		// TODO: add Conversions for Longhorn APIs
 	}
 
 	router, err := conversion.NewHandler()
