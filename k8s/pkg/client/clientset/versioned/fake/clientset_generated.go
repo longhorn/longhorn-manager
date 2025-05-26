@@ -21,8 +21,6 @@ package fake
 import (
 	applyconfiguration "github.com/longhorn/longhorn-manager/k8s/pkg/client/applyconfiguration"
 	clientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
-	longhornv1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/typed/longhorn/v1beta1"
-	fakelonghornv1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/typed/longhorn/v1beta1/fake"
 	longhornv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/typed/longhorn/v1beta2"
 	fakelonghornv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/typed/longhorn/v1beta2/fake"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -117,11 +115,6 @@ var (
 	_ clientset.Interface = &Clientset{}
 	_ testing.FakeClient  = &Clientset{}
 )
-
-// LonghornV1beta1 retrieves the LonghornV1beta1Client
-func (c *Clientset) LonghornV1beta1() longhornv1beta1.LonghornV1beta1Interface {
-	return &fakelonghornv1beta1.FakeLonghornV1beta1{Fake: &c.Fake}
-}
 
 // LonghornV1beta2 retrieves the LonghornV1beta2Client
 func (c *Clientset) LonghornV1beta2() longhornv1beta2.LonghornV1beta2Interface {
