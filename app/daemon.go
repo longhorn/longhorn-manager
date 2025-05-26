@@ -59,6 +59,10 @@ const (
 	LeaseLockNameWebhook = "longhorn-manager-webhook-lock"
 )
 
+const (
+	enableConversionWebhook = false
+)
+
 func DaemonCmd() cli.Command {
 	return cli.Command{
 		Name: "daemon",
@@ -151,34 +155,36 @@ func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentN
 	}
 
 	fnStartWebhook := func(ctx context.Context) error {
-		// Conversion webhook needs to be started first since we use its port 9501 as readiness port.
-		// longhorn-manager pod becomes ready only when conversion webhook is running.
-		// The services in the longhorn-manager can then start to receive the requests.
-		// Conversion webhook does not use datastore, since it is a prerequisite for
-		// datastore operation.
-		clientsWithoutDatastore, err := client.NewClients(kubeconfigPath, false, ctx.Done())
-		if err != nil {
-			return err
-		}
-		if err := webhook.StartWebhook(ctx, types.WebhookTypeConversion, clientsWithoutDatastore); err != nil {
-			return err
-		}
+		if enableConversionWebhook {
+			// Conversion webhook needs to be started first since we use its port 9501 as readiness port.
+			// longhorn-manager pod becomes ready only when conversion webhook is running.
+			// The services in the longhorn-manager can then start to receive the requests.
+			// Conversion webhook does not use datastore, since it is a prerequisite for
+			// datastore operation.
+			clientsWithoutDatastore, err := client.NewClients(kubeconfigPath, false, ctx.Done())
+			if err != nil {
+				return err
+			}
+			if err := webhook.StartWebhook(ctx, types.WebhookTypeConversion, clientsWithoutDatastore); err != nil {
+				return err
+			}
 
-		// This adds the label for the conversion webhook's selector.  We do it the hard way without datastore to avoid chicken-and-egg.
-		pod, err := clientsWithoutDatastore.Clients.K8s.CoreV1().Pods(podNamespace).Get(context.Background(), podName, metav1.GetOptions{})
-		if err != nil {
-			return err
-		}
-		labels := types.GetConversionWebhookLabel()
-		for key, value := range labels {
-			pod.Labels[key] = value
-		}
-		_, err = clientsWithoutDatastore.Clients.K8s.CoreV1().Pods(podNamespace).Update(context.Background(), pod, metav1.UpdateOptions{})
-		if err != nil {
-			return err
-		}
-		if err := webhook.CheckWebhookServiceAvailability(types.WebhookTypeConversion); err != nil {
-			return err
+			// This adds the label for the conversion webhook's selector.  We do it the hard way without datastore to avoid chicken-and-egg.
+			pod, err := clientsWithoutDatastore.Clients.K8s.CoreV1().Pods(podNamespace).Get(context.Background(), podName, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+			labels := types.GetConversionWebhookLabel()
+			for key, value := range labels {
+				pod.Labels[key] = value
+			}
+			_, err = clientsWithoutDatastore.Clients.K8s.CoreV1().Pods(podNamespace).Update(context.Background(), pod, metav1.UpdateOptions{})
+			if err != nil {
+				return err
+			}
+			if err := webhook.CheckWebhookServiceAvailability(types.WebhookTypeConversion); err != nil {
+				return err
+			}
 		}
 
 		clients, err := client.NewClients(kubeconfigPath, true, ctx.Done())
