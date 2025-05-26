@@ -16,8 +16,7 @@ import (
 	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	longhornV1beta1 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta1"
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	longhornV1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 type Handler struct {
@@ -28,12 +27,13 @@ type Handler struct {
 
 func NewHandler() (*Handler, error) {
 	scheme := runtime.NewScheme()
-	if err := longhornV1beta1.SchemeBuilder.AddToScheme(scheme); err != nil {
+
+	// Register the Longhorn v1beta2 API scheme
+	if err := longhornV1beta2.SchemeBuilder.AddToScheme(scheme); err != nil {
 		return nil, err
 	}
-	if err := longhorn.SchemeBuilder.AddToScheme(scheme); err != nil {
-		return nil, err
-	}
+
+	// TODO: Register the Longhorn new API scheme
 
 	return &Handler{
 		scheme:  scheme,
