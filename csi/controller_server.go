@@ -704,6 +704,7 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 			// This should never be reached, return this error just in case.
 			return nil, status.Errorf(codes.Internal, "disk %s found in node %s's status but absent in spec", diskName, nodeID)
 		}
+		// TODO: should consider diskSelector parameter of storage class -> IsSelectorsInTags(diskSpec.Tags, diskSelector, true)
 		storageSchedulable := diskStatus.StorageAvailable - diskSpec.StorageReserved
 		if diskStatus.Type == longhorn.DiskTypeFilesystem {
 			v1AvailableCapacity = max(v1AvailableCapacity, storageSchedulable)
