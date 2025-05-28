@@ -700,6 +700,10 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 	if diskSelectorRaw, ok := scParameters["diskSelector"]; ok && len(diskSelectorRaw) > 0 {
 		diskSelector = strings.Split(diskSelectorRaw, ",")
 	}
+	allowEmptyDiskSelectorVolume, err := cs.getSettingAsBoolean(types.SettingNameAllowEmptyDiskSelectorVolume)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get %v setting, err: %v", types.SettingNameAllowEmptyDiskSelectorVolume, err)
+	}
 
 	var v1AvailableCapacity int64 = 0
 	var v2AvailableCapacity int64 = 0
@@ -714,8 +718,7 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 		if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
 			continue
 		}
-		// TODO: get value of allowEmptyDiskSelectorVolume from settings
-		if !types.IsSelectorsInTags(diskSpec.Tags, diskSelector, true) {
+		if !types.IsSelectorsInTags(diskSpec.Tags, diskSelector, allowEmptyDiskSelectorVolume) {
 			continue
 		}
 		storageSchedulable := diskStatus.StorageAvailable - diskSpec.StorageReserved
@@ -761,6 +764,18 @@ func parseNodeID(topology *csi.Topology) (string, error) {
 		return "", fmt.Errorf("accessible topology request parameter is missing %s key", nodeTopologyKey)
 	}
 	return nodeId, nil
+}
+
+func (cs *ControllerServer) getSettingAsBoolean(name types.SettingName) (bool, error) {
+	obj, err := cs.lhClient.LonghornV1beta2().Settings(cs.lhNamespace).Get(context.TODO(), string(name), metav1.GetOptions{})
+	if err != nil {
+		return false, err
+	}
+	value, err := strconv.ParseBool(obj.Value)
+	if err != nil {
+		return false, err
+	}
+	return value, nil
 }
 
 func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {

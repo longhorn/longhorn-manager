@@ -3,6 +3,7 @@ package csi
 import (
 	"context"
 	"fmt"
+	"github.com/longhorn/longhorn-manager/types"
 	"strings"
 	"testing"
 
@@ -109,6 +110,7 @@ func TestGetCapacity(t *testing.T) {
 		},
 	} {
 		cs.lhClient = lhfake.NewSimpleClientset()
+		cs.lhClient.LonghornV1beta2().Settings(cs.lhNamespace).Create(context.TODO(), newSetting(string(types.SettingNameAllowEmptyDiskSelectorVolume), "true"), metav1.CreateOptions{})
 		if test.createNode {
 			node := newNode(test.nodeID, cs.lhNamespace, test.disks)
 			_, err := cs.lhClient.LonghornV1beta2().Nodes(cs.lhNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
@@ -239,4 +241,13 @@ func newNode(name, namespace string, disks []*disk) *longhorn.Node {
 		node.Status.DiskStatus[name] = &disk.status
 	}
 	return node
+}
+
+func newSetting(name, value string) *longhorn.Setting {
+	return &longhorn.Setting{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Value: value,
+	}
 }
