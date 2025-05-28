@@ -697,7 +697,7 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 		scParameters = map[string]string{}
 	}
 	var diskSelector []string
-	if diskSelectorRaw, ok := scParameters["diskSelector"]; ok {
+	if diskSelectorRaw, ok := scParameters["diskSelector"]; ok && len(diskSelectorRaw) > 0 {
 		diskSelector = strings.Split(diskSelectorRaw, ",")
 	}
 
