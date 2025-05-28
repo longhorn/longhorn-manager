@@ -29,99 +29,152 @@ func TestGetCapacity(t *testing.T) {
 		log:         logrus.StandardLogger().WithField("component", "test-get-capacity"),
 	}
 	for _, test := range []struct {
-		nodeID            string
-		createNode        bool
-		dataEngine        string
-		diskSelector      string
-		availableCapacity int64
-		disks             []*disk
-		err               error
+		node                    *longhorn.Node
+		skipNodeCreation        bool
+		skipNodeSettingCreation bool
+		skipDiskSettingCreation bool
+		dataEngine              string
+		diskSelector            string
+		nodeSelector            string
+		availableCapacity       int64
+		disks                   []*disk
+		err                     error
 	}{
 		{
-			nodeID:     "node-0",
-			dataEngine: "v1",
-			err:        status.Errorf(codes.NotFound, "node node-0 not found"),
+			skipNodeCreation: true,
+			node:             newNode("node-0", "storage", true, true, true, false),
+			err:              status.Errorf(codes.NotFound, "node node-0 not found"),
 		},
 		{
-			nodeID:     "node-0",
-			createNode: true,
-			err:        status.Errorf(codes.InvalidArgument, "storage class parameters missing 'dataEngine' key"),
+			skipNodeSettingCreation: true,
+			node:                    newNode("node-0", "storage", true, true, true, false),
+			err:                     status.Errorf(codes.Internal, "failed to get setting, err: settings.longhorn.io \"allow-empty-node-selector-volume\" not found"),
 		},
 		{
-			nodeID:     "node-0",
-			createNode: true,
+			skipDiskSettingCreation: true,
+			node:                    newNode("node-0", "storage", true, true, true, false),
+			err:                     status.Errorf(codes.Internal, "failed to get setting, err: settings.longhorn.io \"allow-empty-disk-selector-volume\" not found"),
+		},
+		{
+			node: newNode("node-0", "storage", true, true, true, false),
+			err:  status.Errorf(codes.InvalidArgument, "storage class parameters missing 'dataEngine' key"),
+		},
+		{
+			node:       newNode("node-0", "storage", true, true, true, false),
 			dataEngine: "v5",
 			err:        status.Errorf(codes.InvalidArgument, "unknown data engine type v5"),
 		},
 		{
-			nodeID:            "node-0",
-			createNode:        true,
+			node:              newNode("node-0", "storage", true, true, true, false),
 			dataEngine:        "v1",
 			availableCapacity: 0,
 		},
 		{
-			nodeID:            "node-0",
-			createNode:        true,
+			node:              newNode("node-0", "storage", true, true, true, false),
 			dataEngine:        "v2",
 			availableCapacity: 0,
 		},
 		{
-			nodeID:            "node-0",
-			createNode:        true,
+			node:              newNode("node-0", "storage", false, true, true, false),
+			dataEngine:        "v1",
+			disks:             []*disk{newDisk(1450, 300, "ssd", false, true, true, false), newDisk(1000, 500, "", false, true, true, false)},
+			availableCapacity: 0,
+		},
+		{
+			node:              newNode("node-0", "storage", true, false, true, false),
+			dataEngine:        "v1",
+			disks:             []*disk{newDisk(1450, 300, "ssd", false, true, true, false), newDisk(1000, 500, "", false, true, true, false)},
+			availableCapacity: 0,
+		},
+		{
+			node:              newNode("node-0", "storage", true, true, false, false),
+			dataEngine:        "v1",
+			disks:             []*disk{newDisk(1450, 300, "ssd", false, true, true, false), newDisk(1000, 500, "", false, true, true, false)},
+			availableCapacity: 0,
+		},
+		{
+			node:              newNode("node-0", "storage", true, true, true, true),
+			dataEngine:        "v1",
+			disks:             []*disk{newDisk(1450, 300, "ssd", false, true, true, false), newDisk(1000, 500, "", false, true, true, false)},
+			availableCapacity: 0,
+		},
+		{
+			node:              newNode("node-0", "large,fast,linux", true, true, true, false),
+			nodeSelector:      "fast,storage",
+			dataEngine:        "v1",
+			disks:             []*disk{newDisk(1450, 300, "ssd", false, true, true, false), newDisk(1000, 500, "", false, true, true, false)},
+			availableCapacity: 0,
+		},
+		{
+			node:              newNode("node-0", "storage,large,fast,linux", true, true, true, false),
+			nodeSelector:      "fast,storage",
+			dataEngine:        "v1",
+			disks:             []*disk{newDisk(1450, 300, "ssd", false, true, true, false), newDisk(1000, 500, "", false, true, true, false)},
+			availableCapacity: 1150,
+		},
+		{
+			node:              newNode("node-0", "storage", true, true, true, false),
 			dataEngine:        "v1",
 			availableCapacity: 1150,
 			disks:             []*disk{newDisk(1450, 300, "ssd", false, true, true, false), newDisk(1000, 500, "", false, true, true, false), newDisk(2000, 100, "", true, true, true, false)},
 		},
 		{
-			nodeID:            "node-0",
-			createNode:        true,
+			node:              newNode("node-0", "storage", true, true, true, false),
 			dataEngine:        "v2",
 			availableCapacity: 1650,
 			disks:             []*disk{newDisk(1950, 300, "", true, true, true, false), newDisk(1500, 500, "", true, true, true, false), newDisk(2000, 100, "", false, true, true, false)},
 		},
 		{
-			nodeID:            "node-0",
-			createNode:        true,
+			node:              newNode("node-0", "storage", true, true, true, false),
 			dataEngine:        "v2",
 			diskSelector:      "ssd,fast",
 			availableCapacity: 1000,
 			disks:             []*disk{newDisk(1100, 100, "fast,nvmf,ssd,hot", true, true, true, false), newDisk(2500, 500, "ssd,slow,green", true, true, true, false), newDisk(2000, 100, "hdd,fast", true, true, true, false)},
 		},
 		{
-			nodeID:            "node-0",
-			createNode:        true,
+			node:              newNode("node-0", "storage", true, true, true, false),
 			dataEngine:        "v2",
 			availableCapacity: 400,
 			disks:             []*disk{newDisk(1100, 100, "ssd", true, false, true, false), newDisk(500, 100, "hdd", true, true, true, false)},
 		},
 		{
-			nodeID:            "node-0",
-			createNode:        true,
+			node:              newNode("node-0", "storage", true, true, true, false),
 			dataEngine:        "v2",
 			availableCapacity: 400,
 			disks:             []*disk{newDisk(1100, 100, "ssd", true, true, false, false), newDisk(500, 100, "hdd", true, true, true, false)},
 		},
 		{
-			nodeID:            "node-0",
-			createNode:        true,
+			node:              newNode("node-0", "storage", true, true, true, false),
 			dataEngine:        "v2",
 			availableCapacity: 400,
 			disks:             []*disk{newDisk(1100, 100, "ssd", true, true, true, true), newDisk(500, 100, "hdd", true, true, true, false)},
 		},
 	} {
 		cs.lhClient = lhfake.NewSimpleClientset()
-		cs.lhClient.LonghornV1beta2().Settings(cs.lhNamespace).Create(context.TODO(), newSetting(string(types.SettingNameAllowEmptyDiskSelectorVolume), "true"), metav1.CreateOptions{})
-		if test.createNode {
-			node := newNode(test.nodeID, cs.lhNamespace, test.disks)
-			_, err := cs.lhClient.LonghornV1beta2().Nodes(cs.lhNamespace).Create(context.TODO(), node, metav1.CreateOptions{})
+		if !test.skipNodeCreation {
+			addDisksToNode(test.node, test.disks)
+			_, err := cs.lhClient.LonghornV1beta2().Nodes(cs.lhNamespace).Create(context.TODO(), test.node, metav1.CreateOptions{})
 			if err != nil {
-				t.Errorf("failed to create mock node: %v", err)
+				t.Error("failed to create node")
 			}
 		}
+		if !test.skipNodeSettingCreation {
+			_, err := cs.lhClient.LonghornV1beta2().Settings(cs.lhNamespace).Create(context.TODO(), newSetting(string(types.SettingNameAllowEmptyNodeSelectorVolume), "true"), metav1.CreateOptions{})
+			if err != nil {
+				t.Errorf("failed to create setting %v", types.SettingNameAllowEmptyNodeSelectorVolume)
+			}
+		}
+		if !test.skipDiskSettingCreation {
+			_, err := cs.lhClient.LonghornV1beta2().Settings(cs.lhNamespace).Create(context.TODO(), newSetting(string(types.SettingNameAllowEmptyDiskSelectorVolume), "true"), metav1.CreateOptions{})
+			if err != nil {
+				t.Errorf("failed to create setting %v", types.SettingNameAllowEmptyDiskSelectorVolume)
+			}
+		}
+
 		req := &csi.GetCapacityRequest{
 			AccessibleTopology: &csi.Topology{
 				Segments: map[string]string{
-					nodeTopologyKey: test.nodeID,
+					nodeTopologyKey: test.node.Name,
 				},
 			},
 			Parameters: map[string]string{},
@@ -130,6 +183,7 @@ func TestGetCapacity(t *testing.T) {
 			req.Parameters["dataEngine"] = test.dataEngine
 		}
 		req.Parameters["diskSelector"] = test.diskSelector
+		req.Parameters["nodeSelector"] = test.nodeSelector
 		res, err := cs.GetCapacity(context.TODO(), req)
 
 		expectedStatus := status.Convert(test.err)
@@ -222,25 +276,36 @@ func newDisk(storageAvailable, storageReserved int64, tags string, isBlockType, 
 	return disk
 }
 
-func newNode(name, namespace string, disks []*disk) *longhorn.Node {
+func newNode(name, tags string, isCondReady, isCondSchedulable, allowScheduling, evictionRequested bool) *longhorn.Node {
 	node := &longhorn.Node{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
+			Name: name,
 		},
 		Spec: longhorn.NodeSpec{
-			Disks: map[string]longhorn.DiskSpec{},
+			Disks:             map[string]longhorn.DiskSpec{},
+			Tags:              strings.Split(tags, ","),
+			AllowScheduling:   allowScheduling,
+			EvictionRequested: evictionRequested,
 		},
 		Status: longhorn.NodeStatus{
 			DiskStatus: map[string]*longhorn.DiskStatus{},
 		},
 	}
+	if isCondReady {
+		node.Status.Conditions = append(node.Status.Conditions, longhorn.Condition{Type: longhorn.NodeConditionTypeReady, Status: longhorn.ConditionStatusTrue})
+	}
+	if isCondSchedulable {
+		node.Status.Conditions = append(node.Status.Conditions, longhorn.Condition{Type: longhorn.NodeConditionTypeSchedulable, Status: longhorn.ConditionStatusTrue})
+	}
+	return node
+}
+
+func addDisksToNode(node *longhorn.Node, disks []*disk) {
 	for i, disk := range disks {
 		name := fmt.Sprintf("disk-%d", i)
 		node.Spec.Disks[name] = disk.spec
 		node.Status.DiskStatus[name] = &disk.status
 	}
-	return node
 }
 
 func newSetting(name, value string) *longhorn.Setting {
