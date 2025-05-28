@@ -681,30 +681,43 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 		}
 	}()
 
-	dataEngine, err := parseDataEngine(req.GetParameters())
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "failed to parse engine type: %v", err)
-	}
 	nodeID, err := parseNodeID(req.GetAccessibleTopology())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "failed to parse node id: %v", err)
 	}
-
 	node, err := cs.lhClient.LonghornV1beta2().Nodes(cs.lhNamespace).Get(ctx, nodeID, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		return nil, status.Errorf(codes.NotFound, "node %s not found", nodeID)
 	} else if err != nil {
 		return nil, status.Errorf(codes.Internal, "unexpected error: %v", err)
 	}
+
+	scParameters := req.GetParameters()
+	if scParameters == nil {
+		scParameters = map[string]string{}
+	}
+	var diskSelector []string
+	if diskSelectorRaw, ok := scParameters["diskSelector"]; ok {
+		diskSelector = strings.Split(diskSelectorRaw, ",")
+	}
+
 	var v1AvailableCapacity int64 = 0
 	var v2AvailableCapacity int64 = 0
 	for diskName, diskStatus := range node.Status.DiskStatus {
-		diskSpec, ok := node.Spec.Disks[diskName]
-		if !ok {
-			// This should never be reached, return this error just in case.
-			return nil, status.Errorf(codes.Internal, "disk %s found in node %s's status but absent in spec", diskName, nodeID)
+		diskSpec, exists := node.Spec.Disks[diskName]
+		if !exists {
+			continue
 		}
-		// TODO: should consider diskSelector parameter of storage class -> IsSelectorsInTags(diskSpec.Tags, diskSelector, true)
+		if !diskSpec.AllowScheduling || diskSpec.EvictionRequested {
+			continue
+		}
+		if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
+			continue
+		}
+		// TODO: get value of allowEmptyDiskSelectorVolume from settings
+		if !types.IsSelectorsInTags(diskSpec.Tags, diskSelector, true) {
+			continue
+		}
 		storageSchedulable := diskStatus.StorageAvailable - diskSpec.StorageReserved
 		if diskStatus.Type == longhorn.DiskTypeFilesystem {
 			v1AvailableCapacity = max(v1AvailableCapacity, storageSchedulable)
@@ -714,8 +727,12 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 		}
 	}
 
+	dataEngine, ok := scParameters["dataEngine"]
+	if !ok {
+		return nil, status.Error(codes.InvalidArgument, "storage class parameters missing 'dataEngine' key")
+	}
 	rsp := &csi.GetCapacityResponse{}
-	switch dataEngine {
+	switch longhorn.DataEngineType(dataEngine) {
 	case longhorn.DataEngineTypeV1:
 		rsp.AvailableCapacity = v1AvailableCapacity
 	case longhorn.DataEngineTypeV2:
@@ -733,17 +750,6 @@ func max(x, y int64) int64 {
 		return x
 	}
 	return y
-}
-
-func parseDataEngine(parameters map[string]string) (longhorn.DataEngineType, error) {
-	if parameters == nil {
-		return "", fmt.Errorf("missing storage class parameters")
-	}
-	dataEngine, ok := parameters["dataEngine"]
-	if !ok {
-		return "", fmt.Errorf("storage class parameters missing data engine key")
-	}
-	return longhorn.DataEngineType(dataEngine), nil
 }
 
 func parseNodeID(topology *csi.Topology) (string, error) {
