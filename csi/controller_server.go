@@ -708,7 +708,7 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 
 	allowEmptyNodeSelectorVolume, err := cs.getSettingAsBoolean(types.SettingNameAllowEmptyNodeSelectorVolume)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get %v setting, err: %v", types.SettingNameAllowEmptyNodeSelectorVolume, err)
+		return nil, status.Errorf(codes.Internal, "failed to get setting, err: %v", err)
 	}
 	var nodeSelector []string
 	if nodeSelectorRaw, ok := scParameters["nodeSelector"]; ok && len(nodeSelectorRaw) > 0 {
@@ -724,7 +724,7 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 	}
 	allowEmptyDiskSelectorVolume, err := cs.getSettingAsBoolean(types.SettingNameAllowEmptyDiskSelectorVolume)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get %v setting, err: %v", types.SettingNameAllowEmptyDiskSelectorVolume, err)
+		return nil, status.Errorf(codes.Internal, "failed to get setting, err: %v", err)
 	}
 
 	var v1AvailableCapacity int64 = 0
