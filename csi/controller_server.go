@@ -681,6 +681,11 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 		}
 	}()
 
+	scParameters := req.GetParameters()
+	if scParameters == nil {
+		scParameters = map[string]string{}
+	}
+
 	nodeID, err := parseNodeID(req.GetAccessibleTopology())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "failed to parse node id: %v", err)
@@ -691,18 +696,35 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 	} else if err != nil {
 		return nil, status.Errorf(codes.Internal, "unexpected error: %v", err)
 	}
-
-	scParameters := req.GetParameters()
-	if scParameters == nil {
-		scParameters = map[string]string{}
+	if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady).Status != longhorn.ConditionStatusTrue {
+		return &csi.GetCapacityResponse{}, nil
 	}
+	if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
+		return &csi.GetCapacityResponse{}, nil
+	}
+	if !node.Spec.AllowScheduling || node.Spec.EvictionRequested {
+		return &csi.GetCapacityResponse{}, nil
+	}
+
+	allowEmptyNodeSelectorVolume, err := cs.getSettingAsBoolean(types.SettingNameAllowEmptyNodeSelectorVolume)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get setting, err: %v", err)
+	}
+	var nodeSelector []string
+	if nodeSelectorRaw, ok := scParameters["nodeSelector"]; ok && len(nodeSelectorRaw) > 0 {
+		nodeSelector = strings.Split(nodeSelectorRaw, ",")
+	}
+	if !types.IsSelectorsInTags(node.Spec.Tags, nodeSelector, allowEmptyNodeSelectorVolume) {
+		return &csi.GetCapacityResponse{}, nil
+	}
+
 	var diskSelector []string
 	if diskSelectorRaw, ok := scParameters["diskSelector"]; ok && len(diskSelectorRaw) > 0 {
 		diskSelector = strings.Split(diskSelectorRaw, ",")
 	}
 	allowEmptyDiskSelectorVolume, err := cs.getSettingAsBoolean(types.SettingNameAllowEmptyDiskSelectorVolume)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get %v setting, err: %v", types.SettingNameAllowEmptyDiskSelectorVolume, err)
+		return nil, status.Errorf(codes.Internal, "failed to get setting, err: %v", err)
 	}
 
 	var v1AvailableCapacity int64 = 0
