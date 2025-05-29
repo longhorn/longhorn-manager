@@ -9,6 +9,7 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 // +kubebuilder:storageversion
 // +kubebuilder:printcolumn:name="Value",type=string,JSONPath=`.value`,description="The value of the setting"
 // +kubebuilder:printcolumn:name="Applied",type=boolean,JSONPath=`.status.applied`,description="The setting is applied"
+// +kubebuilder:printcolumn:name="LastAppliedAt",type=string,JSONPath=`.status.lastAppliedAt`,description="Last time the setting is applied at"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Setting is where Longhorn stores setting object.
@@ -27,6 +28,9 @@ type Setting struct {
 type SettingStatus struct {
 	// The setting is applied.
 	Applied bool `json:"applied"`
+	// +optional
+	// Last time the setting is applied at.
+	LastAppliedAt string `json:"lastAppliedAt"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
