@@ -138,6 +138,7 @@ const (
 	SettingNameV2DataEngineLogFlags                                     = SettingName("v2-data-engine-log-flags")
 	SettingNameV2DataEngineFastReplicaRebuilding                        = SettingName("v2-data-engine-fast-replica-rebuilding")
 	SettingNameV2DataEngineSnapshotDataIntegrity                        = SettingName("v2-data-engine-snapshot-data-integrity")
+	SettingNameV2DataEngineRebuildingMbytesPerSecond                    = SettingName("v2-data-engine-rebuilding-mbytes-per-second")
 	SettingNameFreezeFilesystemForSnapshot                              = SettingName("freeze-filesystem-for-snapshot")
 	SettingNameAutoCleanupSnapshotWhenDeleteBackup                      = SettingName("auto-cleanup-when-delete-backup")
 	SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted          = SettingName("auto-cleanup-snapshot-after-on-demand-backup-completed")
@@ -237,6 +238,7 @@ var (
 		SettingNameV2DataEngineLogFlags,
 		SettingNameV2DataEngineFastReplicaRebuilding,
 		SettingNameV2DataEngineSnapshotDataIntegrity,
+		SettingNameV2DataEngineRebuildingMbytesPerSecond,
 		SettingNameReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume,
@@ -366,6 +368,7 @@ var (
 		SettingNameV2DataEngineLogFlags:                                     SettingDefinitionV2DataEngineLogFlags,
 		SettingNameV2DataEngineFastReplicaRebuilding:                        SettingDefinitionV2DataEngineFastReplicaRebuilding,
 		SettingNameV2DataEngineSnapshotDataIntegrity:                        SettingDefinitionV2DataEngineSnapshotDataIntegrity,
+		SettingNameV2DataEngineRebuildingMbytesPerSecond:                    SettingDefinitionV2DataEngineRebuildingMbytesPerSecond,
 		SettingNameReplicaDiskSoftAntiAffinity:                              SettingDefinitionReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume:                             SettingDefinitionAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume:                             SettingDefinitionAllowEmptyDiskSelectorVolume,
@@ -1519,6 +1522,18 @@ var (
 			string(longhorn.SnapshotDataIntegrityDisabled),
 			string(longhorn.SnapshotDataIntegrityFastCheck),
 		},
+	}
+
+	SettingDefinitionV2DataEngineRebuildingMbytesPerSecond = SettingDefinition{
+		DisplayName: "V2 Data Engine Rebuilding MBytes Per Second",
+		Description: "This setting specifies the default write bandwidth limit (in megabytes per second) for volume replica rebuilding when using the v2 data engine (SPDK). " +
+			"If this value is set to 0, there will be no write bandwidth limitation. " +
+			"Individual volumes can override this setting by specifying their own rebuilding bandwidth limit.",
+		Category: SettingCategoryV2DataEngine,
+		Type:     SettingTypeInt,
+		Required: false,
+		ReadOnly: false,
+		Default:  "0",
 	}
 
 	SettingDefinitionAutoCleanupSnapshotWhenDeleteBackup = SettingDefinition{
