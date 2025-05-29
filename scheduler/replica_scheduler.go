@@ -86,6 +86,7 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 			}
 			if r.Spec.NodeID == localNodeID {
 				foundLocalReplica = true
+				break
 			}
 		}
 		if !foundLocalReplica {
@@ -103,7 +104,7 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 	if replica.Spec.NodeID == "" {
 		rcs.scheduleReplicaToDisk(replica, diskCandidates)
 	}
-	
+
 	return replica, nil, nil
 }
 
