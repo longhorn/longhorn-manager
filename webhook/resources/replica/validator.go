@@ -74,10 +74,10 @@ func (r *replicaValidator) Update(request *admission.Request, oldObj runtime.Obj
 	return nil
 }
 
-func (r *replicaValidator) Delete(request *admission.Request, oldObj runtime.Object) error {
-	replica, ok := oldObj.(*longhorn.Replica)
+func (r *replicaValidator) Delete(request *admission.Request, obj runtime.Object) error {
+	replica, ok := obj.(*longhorn.Replica)
 	if !ok {
-		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Replica", oldObj), "")
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Replica", obj), "")
 	}
 
 	if err := r.validateReplicaDeletion(replica); err != nil {
@@ -106,7 +106,7 @@ func (r *replicaValidator) validateReplicaDeletion(replica *longhorn.Replica) er
 
 	replicas, err := r.ds.ListVolumeReplicasRO(volume.Name)
 	if err != nil {
-		return errors.Wrapf(err, "failed to list replicas for volume %v before deleting replica", volume.Name)
+		return errors.Wrapf(err, "failed to list replicas for volume %v before deleting replica %v", volume.Name, replica.Name)
 	}
 
 	availableReplicas := map[string]struct{}{}
@@ -114,9 +114,14 @@ func (r *replicaValidator) validateReplicaDeletion(replica *longhorn.Replica) er
 		// If the healthyAt as well as failedAt are set to non-empty string,
 		// the replica is still regarded as **available** because its data is probably
 		// intact and can be used for rescue if other replicas are not available anymore.
-		if r.Spec.HealthyAt != "" && r.DeletionTimestamp == nil {
-			availableReplicas[r.Name] = struct{}{}
+		if !datastore.IsAvailableHealthyReplica(r) {
+			continue
 		}
+		if r.Spec.EvictionRequested {
+			continue
+		}
+
+		availableReplicas[r.Name] = struct{}{}
 	}
 	if len(availableReplicas) == 1 {
 		if _, ok := availableReplicas[replica.Name]; ok {

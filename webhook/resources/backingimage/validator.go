@@ -48,6 +48,14 @@ func (b *backingImageValidator) Create(request *admission.Request, newObj runtim
 	if !ok {
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.BackingImage", newObj), "")
 	}
+
+	if backingImage.Spec.Secret != "" || backingImage.Spec.SecretNamespace != "" {
+		_, err := b.ds.GetSecretRO(backingImage.Spec.SecretNamespace, backingImage.Spec.Secret)
+		if err != nil {
+			return werror.NewInvalidError(fmt.Sprintf("failed to get secret %v in namespace %v for the backing image %v", backingImage.Spec.Secret, backingImage.Spec.SecretNamespace, backingImage.Name), "")
+		}
+	}
+
 	if !util.ValidateName(backingImage.Name) {
 		return werror.NewInvalidError(fmt.Sprintf("invalid name %v", backingImage.Name), "")
 	}

@@ -743,34 +743,10 @@ func (m *VolumeManager) DeleteVolumeRecurringJob(volumeName string, name string,
 }
 
 func (m *VolumeManager) DeleteReplica(volumeName, replicaName string) error {
-	healthyReplica := ""
-	rs, err := m.ds.ListVolumeReplicas(volumeName)
-	if err != nil {
-		return err
-	}
-	if _, exists := rs[replicaName]; !exists {
-		return fmt.Errorf("cannot find replica %v of volume %v", replicaName, volumeName)
-	}
-	for _, r := range rs {
-		if r.Name == replicaName {
-			continue
-		}
-		if !datastore.IsAvailableHealthyReplica(r) {
-			continue
-		}
-		if r.Spec.EvictionRequested {
-			continue
-		}
-		healthyReplica = r.Name
-		break
-	}
-	if healthyReplica == "" {
-		return fmt.Errorf("no other healthy replica available, cannot delete replica %v since it may still contain data for recovery", replicaName)
-	}
 	if err := m.ds.DeleteReplica(replicaName); err != nil {
 		return err
 	}
-	logrus.Infof("Deleted replica %v of volume %v, there is still at least one available healthy replica %v", replicaName, volumeName, healthyReplica)
+	logrus.Infof("Deleted replica %v of volume %v", replicaName, volumeName)
 	return nil
 }
 
