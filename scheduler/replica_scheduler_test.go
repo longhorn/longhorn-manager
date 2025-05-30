@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -1688,4 +1689,193 @@ func (s *TestSuite) TestIsSchedulableToDiskConsiderDiskPressure(c *C) {
 func getTestNow() time.Time {
 	now, _ := time.Parse(time.RFC3339, TestTimeNow)
 	return now
+}
+
+func (s *TestSuite) setupSchedulerTestEnvironment(c *C) (*ReplicaScheduler, *datastore.DataStore, *lhfake.Clientset, cache.Indexer, cache.Indexer, cache.Indexer, cache.Indexer) {
+	kubeClient := fake.NewSimpleClientset()
+	lhClient := lhfake.NewSimpleClientset()
+	extensionsClient := apiextensionsfake.NewSimpleClientset()
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+	eiIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().EngineImages().Informer().GetIndexer()
+	nIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+	imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+
+	ei := newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed)
+	ei.Status.NodeDeploymentMap[TestNode1] = true
+	ei.Status.NodeDeploymentMap[TestNode2] = true
+	ei.Status.NodeDeploymentMap[TestNode3] = true
+	createdEI, err := lhClient.LonghornV1beta2().EngineImages(TestNamespace).Create(context.TODO(), ei, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = eiIndexer.Add(createdEI)
+	c.Assert(err, IsNil)
+
+	settings := []*longhorn.Setting{
+		initSettings(string(types.SettingNameReplicaSoftAntiAffinity), "true"),
+		initSettings(string(types.SettingNameReplicaZoneSoftAntiAffinity), "true"),
+		initSettings(string(types.SettingNameReplicaDiskSoftAntiAffinity), "true"),
+		initSettings(string(types.SettingNameAllowEmptyNodeSelectorVolume), "true"),
+		initSettings(string(types.SettingNameAllowEmptyDiskSelectorVolume), "true"),
+		initSettings(string(types.SettingNameStorageOverProvisioningPercentage), "200"),
+		initSettings(string(types.SettingNameStorageMinimalAvailablePercentage), "10"),
+		initSettings(string(types.SettingNameV2DataEngineFastReplicaRebuilding), "false"),
+		initSettings(string(types.SettingNameDefaultInstanceManagerImage), TestInstanceManagerImage), // Added default IM image
+	}
+	for _, setting := range settings {
+		createdSetting, err := lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), setting, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(createdSetting)
+		c.Assert(err, IsNil)
+	}
+
+	datastore.SkipListerCheck = true
+
+	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+
+	rcs := NewReplicaScheduler(ds)
+	rcs.nowHandler = getTestNow
+	return rcs, ds, lhClient, sIndexer, eiIndexer, nIndexer, imIndexer
+}
+
+
+func (s *TestSuite) TestScheduleReplica_MultipleDiskFailuresOnOneNode(c *C) {
+	rcs, _, lhClient, _, _, nIndexer, imIndexer := s.setupSchedulerTestEnvironment(c)
+
+	volume := newVolume(TestVolumeName, 1)
+	volume.Spec.DiskSelector = []string{"hdd"} // volume wants "hdd"
+	createdVol, err := lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), volume, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	volume = createdVol
+
+	node1 := newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+	node1.Spec.Disks = map[string]longhorn.DiskSpec{
+		"disk1": newDisk(TestDefaultDataPath+"/disk1", true, 0),                                                                 // Full
+		"disk2": {Path: TestDefaultDataPath + "/disk2", AllowScheduling: true, Tags: []string{"ssd"}, Type: longhorn.DiskTypeFilesystem}, // Tag mismatch, type correct
+		"disk3": {Path: TestDefaultDataPath + "/disk3", AllowScheduling: true, Type: longhorn.DiskTypeBlock},                         // Type mismatch
+	}
+	node1.Status.DiskStatus = map[string]*longhorn.DiskStatus{
+		"disk1": {DiskUUID: "disk1-uuid", StorageMaximum: TestDiskSize, StorageAvailable: 0, StorageScheduled: TestDiskSize, Conditions: []longhorn.Condition{newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue)}, FSType: "ext4", Type: longhorn.DiskTypeFilesystem},
+		"disk2": {DiskUUID: "disk2-uuid", StorageMaximum: TestDiskSize, StorageAvailable: TestDiskAvailableSize, Conditions: []longhorn.Condition{newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue)}, FSType: "ext4", Type: longhorn.DiskTypeFilesystem},
+		"disk3": {DiskUUID: "disk3-uuid", StorageMaximum: TestDiskSize, StorageAvailable: TestDiskAvailableSize, Conditions: []longhorn.Condition{newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue)}, FSType: "", Type: longhorn.DiskTypeBlock},
+	}
+	createdNode, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), node1, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = nIndexer.Add(createdNode)
+	c.Assert(err, IsNil)
+
+	im1 := newInstanceManager(TestNode1)
+	im1.Spec.DataEngine = longhorn.DataEngineTypeV1
+	createdIM, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), im1, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = imIndexer.Add(createdIM)
+	c.Assert(err, IsNil)
+
+	replicaToSchedule := newReplicaForVolume(volume)
+
+	scheduledReplica, multiErr, errSchedule := rcs.ScheduleReplica(replicaToSchedule, map[string]*longhorn.Replica{}, volume)
+	c.Assert(errSchedule, IsNil)
+	c.Assert(scheduledReplica, IsNil)
+	c.Assert(multiErr, NotNil)
+	c.Assert(len(multiErr) > 0, Equals, true)
+
+	joinedErrors := multiErr.Join()
+	fmt.Printf("TestScheduleReplica_MultipleDiskFailuresOnOneNode Errors: %s\n", joinedErrors)
+
+	c.Assert(strings.Contains(joinedErrors, "disk disk1") || strings.Contains(joinedErrors, "disk1-uuid"), Equals, true, Commentf("Error for disk1 missing: %s", joinedErrors))
+	c.Assert(strings.Contains(joinedErrors, longhorn.ErrorReplicaScheduleInsufficientStorage), Equals, true, Commentf("Insufficient storage error for disk1 missing: %s", joinedErrors))
+
+	c.Assert(strings.Contains(joinedErrors, "disk disk2") || strings.Contains(joinedErrors, "disk2-uuid"), Equals, true, Commentf("Error for disk2 missing: %s", joinedErrors))
+	// This assertion should now pass because "disk2" is Type: Filesystem
+	c.Assert(strings.Contains(joinedErrors, "volume disk selector 'hdd' not fulfilled by disk tags [ssd]"), Equals, true, Commentf("Tag mismatch error for disk2 missing: %s", joinedErrors))
+
+	c.Assert(strings.Contains(joinedErrors, "disk disk3") || strings.Contains(joinedErrors, "disk3-uuid"), Equals, true, Commentf("Error for disk3 missing: %s", joinedErrors))
+	c.Assert(strings.Contains(joinedErrors, "incompatible disk type 'block' for volume data engine 'v1'"), Equals, true, Commentf("Type mismatch error for disk3 missing: %s", joinedErrors))
+}
+
+
+func (s *TestSuite) TestScheduleReplica_MultipleNodeFailures(c *C) {
+	rcs, ds, lhClient, _, eiIndexer, nIndexer, imIndexer := s.setupSchedulerTestEnvironment(c)
+
+	volume := newVolume(TestVolumeName, 1)
+	volume.Spec.NodeSelector = []string{"compute"}
+	createdVol, err := lhClient.LonghornV1beta2().Volumes(TestNamespace).Create(context.TODO(), volume, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	volume = createdVol
+
+	// Node A: IM not ready
+	nodeA := newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+	nodeA.Spec.Tags = []string{"compute"}
+	nodeA.Spec.Disks = map[string]longhorn.DiskSpec{"diskA1": newDisk(TestDefaultDataPath+"/diskA1", true, 0)}
+	nodeA.Status.DiskStatus = map[string]*longhorn.DiskStatus{"diskA1": {DiskUUID: "diskA1-uuid", StorageMaximum: TestDiskSize, StorageAvailable: TestDiskAvailableSize, Conditions: []longhorn.Condition{newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue)}, Type: longhorn.DiskTypeFilesystem}}
+	createdNodeA, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), nodeA, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = nIndexer.Add(createdNodeA)
+	c.Assert(err, IsNil)
+
+	imA := newInstanceManager(TestNode1)
+	imA.Spec.DataEngine = longhorn.DataEngineTypeV1
+	imA.Status.CurrentState = longhorn.InstanceManagerStateError
+	createdIMA, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), imA, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = imIndexer.Add(createdIMA)
+	c.Assert(err, IsNil)
+
+	// Node B: EI not ready on this node
+	nodeB := newNode(TestNode2, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+	nodeB.Spec.Tags = []string{"compute"}
+	nodeB.Spec.Disks = map[string]longhorn.DiskSpec{"diskB1": newDisk(TestDefaultDataPath+"/diskB1", true, 0)}
+	nodeB.Status.DiskStatus = map[string]*longhorn.DiskStatus{"diskB1": {DiskUUID: "diskB1-uuid", StorageMaximum: TestDiskSize, StorageAvailable: TestDiskAvailableSize, Conditions: []longhorn.Condition{newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue)}, Type: longhorn.DiskTypeFilesystem}}
+	createdNodeB, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), nodeB, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = nIndexer.Add(createdNodeB)
+	c.Assert(err, IsNil)
+
+	imB := newInstanceManager(TestNode2)
+	imB.Spec.DataEngine = longhorn.DataEngineTypeV1
+	createdIMB, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), imB, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = imIndexer.Add(createdIMB)
+	c.Assert(err, IsNil)
+
+	eiFromDS, err := ds.GetEngineImageRO(types.GetEngineImageChecksumName(TestEngineImage))
+	c.Assert(err, IsNil)
+	eiCopy := eiFromDS.DeepCopy()
+	eiCopy.Status.NodeDeploymentMap[TestNode2] = false
+	updatedEi, err := lhClient.LonghornV1beta2().EngineImages(TestNamespace).Update(context.TODO(), eiCopy, metav1.UpdateOptions{})
+	c.Assert(err, IsNil)
+	err = eiIndexer.Update(updatedEi)
+	c.Assert(err, IsNil)
+
+	// Node C: Node selector mismatch
+	nodeC := newNode(TestNode3, TestNamespace, TestZone2, true, longhorn.ConditionStatusTrue)
+	nodeC.Spec.Tags = []string{"storage"}
+	nodeC.Spec.Disks = map[string]longhorn.DiskSpec{"diskC1": newDisk(TestDefaultDataPath+"/diskC1", true, 0)}
+	nodeC.Status.DiskStatus = map[string]*longhorn.DiskStatus{"diskC1": {DiskUUID: "diskC1-uuid", StorageMaximum: TestDiskSize, StorageAvailable: TestDiskAvailableSize, Conditions: []longhorn.Condition{newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue)}, Type: longhorn.DiskTypeFilesystem}}
+	createdNodeC, err := lhClient.LonghornV1beta2().Nodes(TestNamespace).Create(context.TODO(), nodeC, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = nIndexer.Add(createdNodeC)
+	c.Assert(err, IsNil)
+
+	imC := newInstanceManager(TestNode3)
+	imC.Spec.DataEngine = longhorn.DataEngineTypeV1
+	createdIMC, err := lhClient.LonghornV1beta2().InstanceManagers(TestNamespace).Create(context.TODO(), imC, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = imIndexer.Add(createdIMC)
+	c.Assert(err, IsNil)
+
+	replicaToSchedule := newReplicaForVolume(volume)
+	scheduledReplica, multiErr, errSchedule := rcs.ScheduleReplica(replicaToSchedule, map[string]*longhorn.Replica{}, volume)
+	c.Assert(errSchedule, IsNil)
+	c.Assert(scheduledReplica, IsNil)
+	c.Assert(multiErr, NotNil)
+	c.Assert(len(multiErr) > 0, Equals, true)
+
+	joinedErrors := multiErr.Join()
+	fmt.Printf("TestScheduleReplica_MultipleNodeFailures Errors: %s\n", joinedErrors)
+
+	c.Assert(strings.Contains(joinedErrors, fmt.Sprintf("node %s: instance manager not ready", TestNode1)), Equals, true, Commentf("Missing IM not ready error for %s: %s", TestNode1, joinedErrors))
+	c.Assert(strings.Contains(joinedErrors, fmt.Sprintf("node %s: data engine image %s not ready", TestNode2, TestEngineImage)), Equals, true, Commentf("Missing EI not ready error for %s: %s", TestNode2, joinedErrors))
+	expectedNodeCError := fmt.Sprintf("node %s: volume node selector '%s' not fulfilled by node tags [storage]", TestNode3, strings.Join(volume.Spec.NodeSelector, ","))
+	c.Assert(strings.Contains(joinedErrors, expectedNodeCError), Equals, true, Commentf("Missing node selector error for %s: %s", TestNode3, joinedErrors))
 }

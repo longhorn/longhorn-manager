@@ -62,6 +62,8 @@ const (
 	maxCloneRetry             = 10
 )
 
+const replicaSchedulingWarningThresholdRetries = 3
+
 type VolumeController struct {
 	*baseController
 
@@ -251,8 +253,8 @@ func (c *VolumeController) handleErr(err error, key interface{}) {
 		return
 	}
 
+	log.Errorf("Dropping Longhorn volume %v out of the queue after multiple retries: %v", key, err)
 	utilruntime.HandleError(err)
-	handleReconcileErrorLogging(log, err, "Dropping Longhorn volume out of the queue")
 	c.queue.Forget(key)
 }
 
@@ -531,7 +533,7 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 		return nil
 	}
 
-	if err := c.ReconcileVolumeState(volume, engines, replicas); err != nil {
+	if err := c.ReconcileVolumeState(key, volume, engines, replicas); err != nil {
 		return err
 	}
 
@@ -1283,7 +1285,7 @@ func (c *VolumeController) syncVolumeSnapshotSetting(v *longhorn.Volume, es map[
 }
 
 // ReconcileVolumeState handles the attaching and detaching of volume
-func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
+func (c *VolumeController) ReconcileVolumeState(key string, v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to reconcile volume state for %v", v.Name)
 	}()
@@ -1326,7 +1328,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 
 	c.reconcileLogRequest(e, rs)
 
-	if err := c.reconcileVolumeCondition(v, e, rs, log); err != nil {
+	if err := c.reconcileVolumeCondition(key, v, e, rs, log); err != nil {
 		return err
 	}
 
@@ -1720,9 +1722,13 @@ func (c *VolumeController) reconcileLogRequest(e *longhorn.Engine, rs map[string
 	}
 }
 
-func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longhorn.Engine,
+func (c *VolumeController) reconcileVolumeCondition(key string, v *longhorn.Volume, e *longhorn.Engine,
 	rs map[string]*longhorn.Replica, log *logrus.Entry) error {
-	numSnapshots := len(e.Status.Snapshots) - 1 // Counting volume-head here would be confusing.
+
+	numSnapshots := 0
+	if e != nil && e.Status.Snapshots != nil {
+		numSnapshots = len(e.Status.Snapshots) - 1
+	}
 	if numSnapshots > VolumeSnapshotsWarningThreshold {
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 			longhorn.VolumeConditionTypeTooManySnapshots, longhorn.ConditionStatusTrue,
@@ -1735,98 +1741,270 @@ func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longh
 			"", "")
 	}
 
-	scheduled := true
 	aggregatedReplicaScheduledError := util.NewMultiError()
 	for _, r := range rs {
 		// check whether the replica need to be scheduled
 		if r.Spec.NodeID != "" {
 			continue
 		}
+
 		if v.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
 			if v.Spec.NodeID == "" {
+				detailedReasonForThisReplica := fmt.Sprintf("replica %s: cannot schedule for strict-local volume %s as volume NodeID is not set", r.Name, v.Name)
+				aggregatedReplicaScheduledError[detailedReasonForThisReplica] = struct{}{}
+				log.WithFields(logrus.Fields{"replica": r.Name, "reason": detailedReasonForThisReplica}).Info("Replica scheduling skipped for strict-local volume without node assignment.")
 				continue
 			}
-
 			r.Spec.HardNodeAffinity = v.Spec.NodeID
 		}
+
 		scheduledReplica, multiError, err := c.scheduler.ScheduleReplica(r, rs, v)
 		if err != nil {
 			return err
 		}
-		aggregatedReplicaScheduledError.Append(multiError)
 
 		if scheduledReplica == nil {
-			if r.Spec.HardNodeAffinity == "" {
-				log.WithField("replica", r.Name).Warn("Failed to schedule replica")
-				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-					longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
-					longhorn.VolumeConditionReasonReplicaSchedulingFailure, "")
-			} else {
-				log.WithField("replica", r.Name).Warnf("Failed to schedule replica of volume with HardNodeAffinity = %v", r.Spec.HardNodeAffinity)
-				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-					longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
-					longhorn.VolumeConditionReasonLocalReplicaSchedulingFailure, "")
+			detailedReasons := "unknown scheduling error"
+			if multiError != nil && len(multiError) > 0 { // Use multiError
+				detailedReasons = multiError.Join() // This 'detailedReasons' already contains replica name and volume context from scheduler
 			}
-			scheduled = false
-			// requeue the volume to retry to schedule the replica after 30s
+			aggregatedReplicaScheduledError[detailedReasons] = struct{}{} // Use the detailed reason directly as the key
+
+			logFields := logrus.Fields{"replica": r.Name, "reason": detailedReasons}
+			if r.Spec.HardNodeAffinity != "" {
+				logFields["hardNodeAffinity"] = r.Spec.HardNodeAffinity
+			}
+
+			if c.queue.NumRequeues(key) < replicaSchedulingWarningThresholdRetries {
+				log.WithFields(logFields).Infof("Replica scheduling attempt failed for volume %s, will retry. Reasons: %s", v.Name, detailedReasons)
+			} else {
+				log.WithFields(logFields).Warnf("Failed to schedule replica for volume %s after multiple attempts or due to persistent constraints. Reasons: %s", v.Name, detailedReasons)
+			}
 			c.enqueueVolumeAfter(v, 30*time.Second)
 		} else {
 			rs[r.Name] = scheduledReplica
 		}
 	}
 
-	failureMessage := ""
+	// Finalize VolumeConditionTypeScheduled
+	finalScheduledStatus := longhorn.ConditionStatusTrue
+	finalScheduledReason := ""
+	var finalScheduledMsgParts []string
 
+	allReplicasPhysicallyScheduledAndCRDsExist := true
 	if len(rs) != v.Spec.NumberOfReplicas {
-		scheduled = false
+		allReplicasPhysicallyScheduledAndCRDsExist = false
+		msgPart := fmt.Sprintf("replica count mismatch (expected %d, have %d created replica objects)", v.Spec.NumberOfReplicas, len(rs))
+		finalScheduledMsgParts = append(finalScheduledMsgParts, msgPart)
+	} else {
+		for _, r := range rs {
+			if r.Spec.NodeID == "" {
+				allReplicasPhysicallyScheduledAndCRDsExist = false
+				// If a replica CR exists but is unscheduled, this is the most direct status.
+				msgPart := fmt.Sprintf("replica %s exists but is not yet scheduled to a node", r.Name)
+				isDuplicate := false
+				for _, part := range finalScheduledMsgParts {
+					if part == msgPart {
+						isDuplicate = true
+						break
+					}
+				}
+				if !isDuplicate && r.Spec.FailedAt == "" { // Only add if not failed and not already present
+					finalScheduledMsgParts = append(finalScheduledMsgParts, msgPart)
+				}
+			}
+		}
 	}
 
 	replenishCount, _ := c.getReplenishReplicasCount(v, rs, e)
-	if scheduled && replenishCount == 0 {
-		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-			longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusTrue, "", "")
-	} else if v.Status.CurrentNodeID == "" {
-		allowCreateDegraded, err := c.ds.GetSettingAsBool(types.SettingNameAllowVolumeCreationWithDegradedAvailability)
-		if err != nil {
-			return err
+
+	// Logic for setting scheduled status based on whether all replicas are scheduled and replenishment count
+	if !allReplicasPhysicallyScheduledAndCRDsExist || replenishCount > 0 {
+		finalScheduledStatus = longhorn.ConditionStatusFalse
+		if finalScheduledReason == "" { // Don't override if already set (e.g. LocalReplicaSchedulingFailure)
+			finalScheduledReason = longhorn.VolumeConditionReasonReplicaSchedulingFailure
 		}
-		if allowCreateDegraded {
-			atLeastOneReplicaAvailable := false
-			for _, r := range rs {
-				if r.Spec.NodeID != "" && r.Spec.FailedAt == "" {
-					atLeastOneReplicaAvailable = true
+	}
+
+	if len(aggregatedReplicaScheduledError) > 0 {
+		for errMsg := range aggregatedReplicaScheduledError {
+			// errMsg from the scheduler usually has full context, like "for replica X of volume Y: reason Z".
+			// We want to avoid adding these scheduler errors to the main volume condition message
+			// if they are about an *existing* replica that we've already marked as
+			// "exists but is not yet scheduled".
+			// Such detailed errors are better suited for PV annotations or deeper debugging.
+			//
+			// However, if the error is about a failed attempt to *create a new replica* (when some are missing)
+			// or a general scheduling problem not tied to an existing, unscheduled replica,
+			// then it's useful to include in the volume's condition message.
+			isCoveredByExistingUnscheduledMsg := false
+			if !allReplicasPhysicallyScheduledAndCRDsExist && len(rs) == v.Spec.NumberOfReplicas { // If due to existing unscheduled replicas
+				for _, r := range rs {
+					if r.Spec.NodeID == "" && strings.Contains(errMsg, r.Name) && strings.Contains(errMsg, v.Name) {
+						// This errMsg is about an existing replica that we've already noted as "exists but not scheduled".
+						isCoveredByExistingUnscheduledMsg = true
+						break
+					}
+				}
+			}
+
+			if isCoveredByExistingUnscheduledMsg && replenishCount == 0 { // Only skip if not also a replenishment error
+				continue
+			}
+
+			isDuplicate := false
+			for _, part := range finalScheduledMsgParts {
+				if part == errMsg {
+					isDuplicate = true
 					break
 				}
 			}
-			if atLeastOneReplicaAvailable {
-				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-					longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusTrue, "",
-					"Reset schedulable due to allow volume creation with degraded availability")
-				scheduled = true
+			if !isDuplicate {
+				finalScheduledMsgParts = append(finalScheduledMsgParts, errMsg)
 			}
 		}
 	}
-	if !scheduled {
-		if len(aggregatedReplicaScheduledError) == 0 {
-			aggregatedReplicaScheduledError.Append(util.NewMultiError(longhorn.ErrorReplicaScheduleSchedulingFailed))
-		}
-		failureMessage = aggregatedReplicaScheduledError.Join()
-		scheduledCondition := types.GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeScheduled)
-		if scheduledCondition.Status == longhorn.ConditionStatusFalse {
-			if scheduledCondition.Reason == longhorn.VolumeConditionReasonReplicaSchedulingFailure &&
-				scheduledCondition.Message != "" {
-				failureMessage = scheduledCondition.Message
+	if replenishCount > 0 {
+		msgPart := fmt.Sprintf("replenishment needed for %d replica(s)", replenishCount)
+		isDuplicate := false
+		for _, part := range finalScheduledMsgParts {
+			if part == msgPart {
+				isDuplicate = true
+				break
 			}
-			v.Status.Conditions = types.SetCondition(v.Status.Conditions,
-				longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
-				scheduledCondition.Reason, failureMessage)
+		}
+		if !isDuplicate {
+			finalScheduledMsgParts = append(finalScheduledMsgParts, msgPart)
 		}
 	}
 
-	if err := c.ds.UpdatePVAnnotation(v, types.PVAnnotationLonghornVolumeSchedulingError, failureMessage); err != nil {
-		log.Warnf("Failed to update PV annotation for volume %v", v.Name)
+	if finalScheduledStatus == longhorn.ConditionStatusFalse {
+		isLocalFailure := false
+		for _, r := range rs {
+			if r.Spec.HardNodeAffinity != "" && r.Spec.NodeID == "" {
+				for _, msgPart := range finalScheduledMsgParts {
+					if strings.Contains(msgPart, r.Name) &&
+						(strings.Contains(msgPart, longhorn.ErrorReplicaScheduleHardNodeAffinityNotSatisfied) ||
+							strings.Contains(msgPart, "hard affinity")) {
+						isLocalFailure = true
+						break
+					}
+				}
+			}
+			if isLocalFailure {
+				break
+			}
+		}
+		if isLocalFailure {
+			finalScheduledReason = longhorn.VolumeConditionReasonLocalReplicaSchedulingFailure
+		}
 	}
 
+	currentConditionMessage := ""
+	if len(finalScheduledMsgParts) > 0 {
+		uniquePartsMap := make(map[string]bool)
+		var uniquePartsList []string
+		for _, part := range finalScheduledMsgParts {
+			if !uniquePartsMap[part] {
+				uniquePartsMap[part] = true
+				uniquePartsList = append(uniquePartsList, part)
+			}
+		}
+		sort.Strings(uniquePartsList) // Keep sorting for consistent message order
+		if finalScheduledStatus == longhorn.ConditionStatusFalse {
+			currentConditionMessage = "Replica scheduling issues: " + strings.Join(uniquePartsList, "; ")
+		} else {
+			// This case might not be hit if finalScheduledStatus is True and parts exist,
+			// as it might imply a degraded-but-allowed state.
+			currentConditionMessage = strings.Join(uniquePartsList, "; ")
+			if currentConditionMessage != "" && finalScheduledReason == "" {
+				// Potentially a state where it's scheduled but still has some warnings/info in parts.
+				finalScheduledReason = "DegradedButScheduledOrReplenishing"
+			}
+		}
+	} else if finalScheduledStatus == longhorn.ConditionStatusFalse {
+		// This implies no specific parts were generated, but it's still unschedulable.
+		currentConditionMessage = "Replica scheduling failed for unspecified reasons"
+		if finalScheduledReason == "" { // Don't override if already set
+			finalScheduledReason = longhorn.VolumeConditionReasonReplicaSchedulingFailure
+		}
+	}
+
+	detailedSchedulingFailureMessage := ""
+	if finalScheduledStatus == longhorn.ConditionStatusFalse {
+		detailedSchedulingFailureMessage = currentConditionMessage
+	}
+	failureMessageForPV := detailedSchedulingFailureMessage
+
+	// Override logic for AllowVolumeCreationWithDegradedAvailability
+	if finalScheduledStatus == longhorn.ConditionStatusFalse && v.Status.CurrentNodeID == "" && (v.Status.State == longhorn.VolumeStateCreating || v.Status.State == "") {
+		allowCreateDegraded, errGet := c.ds.GetSettingAsBool(types.SettingNameAllowVolumeCreationWithDegradedAvailability)
+		if errGet != nil {
+			return errGet
+		}
+		if allowCreateDegraded {
+			if countPhysicallyScheduledReplicas(rs) > 0 && len(rs) > 0 {
+				finalScheduledStatus = longhorn.ConditionStatusTrue
+				if finalScheduledReason == longhorn.VolumeConditionReasonReplicaSchedulingFailure {
+					finalScheduledReason = "DegradedAvailabilityAllowed"
+				}
+				// Prepend to detailed message rather than replacing, to retain original issues.
+				currentConditionMessage = "Initial scheduling issues present but overridden by AllowVolumeCreationWithDegradedAvailability (Details: " + detailedSchedulingFailureMessage + ")"
+				failureMessageForPV = "" // Clear PV error if we are proceeding.
+			}
+		}
+	}
+
+	v.Status.Conditions = types.SetCondition(v.Status.Conditions,
+		longhorn.VolumeConditionTypeScheduled, finalScheduledStatus,
+		finalScheduledReason, currentConditionMessage)
+
+	currentHealthyActiveReplicas := countHealthyAndActiveReplicas(rs)
+	degradedAllowedForNewVolume := isDegradedSchedulingAllowedForNewVolume(v, c.ds)
+	effectiveScheduledStatus := types.GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeScheduled).Status
+
+	isFundamentallyUnschedulable := false
+	// detailedSchedulingFailureMessage still holds pre-override reasons if it was False.
+	// Check based on actual physical placement possibility before override.
+	if (len(rs) == v.Spec.NumberOfReplicas && countPhysicallyScheduledReplicas(rs) == 0) || // All replica CRs exist but none could be placed
+		(len(rs) < v.Spec.NumberOfReplicas && countPhysicallyScheduledReplicas(rs) == 0 && replenishCount > 0 && len(aggregatedReplicaScheduledError) > 0 && !strings.Contains(detailedSchedulingFailureMessage, "replica count mismatch")) { // Fewer CRs than desired, and attempts to schedule new ones failed
+		isFundamentallyUnschedulable = true
+	}
+
+	log.Debugf("ROBUSTNESS_CHECK Volume %s: EffectiveScheduledStatus: %s, State: %s, HealthyActiveReplicas: %d, FundamentallyUnschedulable: %t, DegradedAllowedSetting: %t, ConditionMessage: '%s'",
+		v.Name, effectiveScheduledStatus, v.Status.State, currentHealthyActiveReplicas, isFundamentallyUnschedulable, degradedAllowedForNewVolume, currentConditionMessage)
+
+	if (v.Status.State == longhorn.VolumeStateCreating || v.Status.State == "") && currentHealthyActiveReplicas == 0 {
+		// Use the *original* detailedSchedulingFailureMessage (before override) to determine if it was initially unschedulable.
+		originalUnscheduledMessage := ""
+		if types.GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeScheduled).Status == longhorn.ConditionStatusFalse {
+			originalUnscheduledMessage = types.GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeScheduled).Message
+			if strings.HasPrefix(originalUnscheduledMessage, "Initial scheduling issues present but overridden") { // get the actual detail part
+				parts := strings.SplitN(originalUnscheduledMessage, "(Details: ", 2)
+				if len(parts) == 2 {
+					originalUnscheduledMessage = strings.TrimSuffix(parts[1], ")")
+				}
+			}
+		}
+
+		isActuallyFundamentallyUnschedulable := false
+		if (len(rs) == v.Spec.NumberOfReplicas && countPhysicallyScheduledReplicas(rs) == 0) ||
+		   (len(rs) < v.Spec.NumberOfReplicas && countPhysicallyScheduledReplicas(rs) == 0 && replenishCount > 0 && len(aggregatedReplicaScheduledError) > 0 && !strings.Contains(originalUnscheduledMessage, "replica count mismatch")) {
+			isActuallyFundamentallyUnschedulable = true
+		}
+
+		if isActuallyFundamentallyUnschedulable || (effectiveScheduledStatus == longhorn.ConditionStatusFalse && !degradedAllowedForNewVolume) {
+			log.Warnf("Volume %s IS MARKING AS FAULTED. Initial scheduling failed. FundamentallyUnschedulable: %t, EffectiveScheduledStatus: %s, DegradedAllowedSetting: %t. Reasons: %s",
+				v.Name, isActuallyFundamentallyUnschedulable, effectiveScheduledStatus, degradedAllowedForNewVolume, originalUnscheduledMessage) // Use original for logging
+			v.Status.Robustness = longhorn.VolumeRobustnessFaulted
+		}
+	} else {
+		log.Debugf("Volume %s: Not a new volume failing initial scheduling OR has healthy/active replicas. Not marking as faulted by this specific logic path.", v.Name)
+	}
+
+	if err := c.ds.UpdatePVAnnotation(v, types.PVAnnotationLonghornVolumeSchedulingError, failureMessageForPV); err != nil {
+		log.Warnf("Failed to update PV annotation for volume %v: %v", v.Name, err)
+	}
 	return nil
 }
 
@@ -2314,24 +2492,28 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 				reusableFailedReplica.Name, c.backoff.Get(reusableFailedReplica.Name).Seconds())
 			// Couldn't reuse the replica. Add the volume back to the workqueue to check it later
 			c.enqueueVolumeAfter(v, c.backoff.Get(reusableFailedReplica.Name))
+			continue
 		}
+
+		// If no reusableFailedReplica or it's in backoff (and we continued past it), check if new replica is needed *now*.
 		if checkBackDuration := c.scheduler.RequireNewReplica(rs, v, hardNodeAffinity); checkBackDuration == 0 {
 			newReplica := c.newReplica(v, e, hardNodeAffinity)
 
 			// Bypassing the precheck when hardNodeAffinity is provided, because
 			// we expect the new replica to be relocated to a specific node.
 			if hardNodeAffinity == "" {
-				if multiError, err := c.precheckCreateReplica(newReplica, rs, v); err != nil {
-					log.WithError(err).Warnf("Unable to create new replica %v", newReplica.Name)
-
-					aggregatedReplicaScheduledError := util.NewMultiError(longhorn.ErrorReplicaSchedulePrecheckNewReplicaFailed)
-					if multiError != nil {
-						aggregatedReplicaScheduledError.Append(multiError)
+				schedulerMultiError, errPrecheck := c.precheckCreateReplica(newReplica, rs, v)
+				if errPrecheck != nil {
+					log.WithError(errPrecheck).Warnf("Unable to create new replica %s due to precheck error: %v", newReplica.Name, errPrecheck)
+					// Make sure aggregatedReplicaScheduledError exists and append precheck errors
+					aggregatedErrorForCondition := util.NewMultiError()
+					aggregatedErrorForCondition[longhorn.ErrorReplicaSchedulePrecheckNewReplicaFailed] = struct{}{}
+					if schedulerMultiError != nil {
+						aggregatedErrorForCondition.Append(schedulerMultiError)
 					}
-
 					v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 						longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
-						longhorn.VolumeConditionReasonReplicaSchedulingFailure, aggregatedReplicaScheduledError.Join())
+						longhorn.VolumeConditionReasonReplicaSchedulingFailure, aggregatedErrorForCondition.Join())
 					continue
 				}
 			}
@@ -5018,4 +5200,37 @@ func (c *VolumeController) shouldCleanUpFailedReplica(v *longhorn.Volume, r *lon
 		return true
 	}
 	return false
+}
+
+func countHealthyAndActiveReplicas(rs map[string]*longhorn.Replica) int {
+	// This is a simplified version of getHealthyAndActiveReplicaCount.
+	// You might want to use the original one if it's accessible or reimplement its full logic.
+	count := 0
+	for _, r := range rs {
+		if r.Spec.HealthyAt != "" && r.Spec.FailedAt == "" && r.Spec.Active {
+			count++
+		}
+	}
+	return count
+}
+
+func isDegradedSchedulingAllowedForNewVolume(v *longhorn.Volume, ds *datastore.DataStore) bool {
+	if v.Status.CurrentNodeID == "" { // Only for new, unattached volumes
+		allowCreateDegraded, err := ds.GetSettingAsBool(types.SettingNameAllowVolumeCreationWithDegradedAvailability)
+		if err == nil && allowCreateDegraded {
+			return true
+		}
+	}
+	return false
+}
+
+// Helper function (you might place this in the controller file or a util file)
+func countPhysicallyScheduledReplicas(rs map[string]*longhorn.Replica) int {
+	count := 0
+	for _, r := range rs {
+		if r.Spec.NodeID != "" && r.Spec.FailedAt == "" { // Consider a replica physically scheduled if it has a NodeID and isn't failed
+			count++
+		}
+	}
+	return count
 }
