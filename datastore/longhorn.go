@@ -2107,7 +2107,7 @@ func (s *DataStore) CheckDataEngineImageReadyOnAtLeastOneVolumeReplica(image, vo
 		return false, errors.Wrapf(err, "failed to check data engine image readiness of node %v", nodeID)
 	}
 
-	if !isReady || dataLocality == longhorn.DataLocalityStrictLocal {
+	if !isReady || dataLocality == longhorn.DataLocalityStrictLocal || dataLocality == longhorn.DataLocalityBestEffort {
 		return isReady, nil
 	}
 

@@ -1742,12 +1742,17 @@ func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longh
 		if r.Spec.NodeID != "" {
 			continue
 		}
-		if v.Spec.DataLocality == longhorn.DataLocalityStrictLocal {
+		switch v.Spec.DataLocality {
+		case longhorn.DataLocalityStrictLocal:
 			if v.Spec.NodeID == "" {
 				continue
 			}
-
 			r.Spec.HardNodeAffinity = v.Spec.NodeID
+		case longhorn.DataLocalityBestEffort:
+			// For best-effort locality, wait until the volume is attached to a node before scheduling the replica.
+			if v.Spec.NodeID == "" {
+				continue
+			}
 		}
 		scheduledReplica, multiError, err := c.scheduler.ScheduleReplica(r, rs, v)
 		if err != nil {
