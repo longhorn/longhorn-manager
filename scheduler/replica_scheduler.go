@@ -76,28 +76,8 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 	}
 
 	// If data locality is set to best-effort, try to schedule at least one replica on the local node.
-	// The local node refers to the node where the volume is attached.
 	if volume.Spec.DataLocality == longhorn.DataLocalityBestEffort {
-		localNodeID := volume.Spec.NodeID
-		foundLocalReplica := false
-		for _, r := range replicas {
-			if r.Spec.HealthyAt == "" && r.Spec.FailedAt != "" {
-				continue
-			}
-			if r.Spec.NodeID == localNodeID {
-				foundLocalReplica = true
-				break
-			}
-		}
-		if !foundLocalReplica {
-			diskCandidatesOnLocalNode := map[string]*Disk{}
-			for diskName, disk := range diskCandidates {
-				if disk.NodeID == localNodeID {
-					diskCandidatesOnLocalNode[diskName] = disk
-				}
-			}
-			rcs.scheduleReplicaToDisk(replica, diskCandidatesOnLocalNode)
-		}
+		rcs.scheduleReplicaToDiskOnLocalNode(replica, replicas, volume, diskCandidates)
 	}
 
 	// Data locality is not best-effort, or a local replica already exists, or there are no valid disk candidates on the local node.
@@ -106,6 +86,28 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 	}
 
 	return replica, nil, nil
+}
+
+// If no replicas are scheduled on the local node, try to schedule one there.
+// The local node refers to the node where the volume is attached.
+func (rcs *ReplicaScheduler) scheduleReplicaToDiskOnLocalNode(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume, diskCandidates map[string]*Disk) {
+	localNodeID := volume.Spec.NodeID
+	// See if any healthy replicas are already scheduled on the local node.
+	for _, r := range replicas {
+		if r.Spec.NodeID == localNodeID && r.Spec.HealthyAt != "" && r.Spec.FailedAt == "" {
+			return
+		}
+	}
+	// No replicas found on the local node, so try to schedule this replica on the local node.
+	diskCandidatesOnLocalNode := map[string]*Disk{}
+	for diskName, disk := range diskCandidates {
+		if disk.NodeID == localNodeID {
+			diskCandidatesOnLocalNode[diskName] = disk
+		}
+	}
+	if len(diskCandidatesOnLocalNode) > 0 {
+		rcs.scheduleReplicaToDisk(replica, diskCandidatesOnLocalNode)
+	}
 }
 
 // FindDiskCandidates identifies suitable disks on eligible nodes for the replica.
