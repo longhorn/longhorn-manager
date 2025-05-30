@@ -153,13 +153,22 @@ func TestGetCapacity(t *testing.T) {
 		cs.lhClient = lhfake.NewSimpleClientset()
 		if !test.skipNodeCreation {
 			addDisksToNode(test.node, test.disks)
-			cs.lhClient.LonghornV1beta2().Nodes(cs.lhNamespace).Create(context.TODO(), test.node, metav1.CreateOptions{})
+			_, err := cs.lhClient.LonghornV1beta2().Nodes(cs.lhNamespace).Create(context.TODO(), test.node, metav1.CreateOptions{})
+			if err != nil {
+				t.Error("failed to create node")
+			}
 		}
 		if !test.skipNodeSettingCreation {
-			cs.lhClient.LonghornV1beta2().Settings(cs.lhNamespace).Create(context.TODO(), newSetting(string(types.SettingNameAllowEmptyNodeSelectorVolume), "true"), metav1.CreateOptions{})
+			_, err := cs.lhClient.LonghornV1beta2().Settings(cs.lhNamespace).Create(context.TODO(), newSetting(string(types.SettingNameAllowEmptyNodeSelectorVolume), "true"), metav1.CreateOptions{})
+			if err != nil {
+				t.Errorf("failed to create setting %v", types.SettingNameAllowEmptyNodeSelectorVolume)
+			}
 		}
 		if !test.skipDiskSettingCreation {
-			cs.lhClient.LonghornV1beta2().Settings(cs.lhNamespace).Create(context.TODO(), newSetting(string(types.SettingNameAllowEmptyDiskSelectorVolume), "true"), metav1.CreateOptions{})
+			_, err := cs.lhClient.LonghornV1beta2().Settings(cs.lhNamespace).Create(context.TODO(), newSetting(string(types.SettingNameAllowEmptyDiskSelectorVolume), "true"), metav1.CreateOptions{})
+			if err != nil {
+				t.Errorf("failed to create setting %v", types.SettingNameAllowEmptyDiskSelectorVolume)
+			}
 		}
 
 		req := &csi.GetCapacityRequest{
