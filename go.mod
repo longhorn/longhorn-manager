@@ -65,7 +65,7 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.21.0
 	github.com/longhorn/backing-image-manager v1.8.1
-	github.com/longhorn/backupstore v0.0.0-20250513044119-966fecd6b927
+	github.com/longhorn/backupstore v0.0.0-20250527024523-a4ed00f29b86
 	github.com/longhorn/go-common-libs v0.0.0-20250524033713-74041234ac93
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250511111123-ceffe5d4a273
 	github.com/longhorn/go-spdk-helper v0.0.2
@@ -85,7 +85,7 @@ require (
 	golang.org/x/net v0.40.0
 	golang.org/x/sys v0.33.0
 	golang.org/x/time v0.11.0
-	google.golang.org/grpc v1.72.1
+	google.golang.org/grpc v1.72.2
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.33.1
