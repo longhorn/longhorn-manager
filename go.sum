@@ -112,8 +112,8 @@ github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de h1:9TO3cAIGXtEhn
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de/go.mod h1:zAbeS9B/r2mtpb6U+EI2rYA5OAXxsYw6wTamcNW+zcE=
 github.com/longhorn/backing-image-manager v1.8.1 h1:Va/Ncu1YCksUelegLF7HmawgZqt9/lfpLV/Rcbh09O8=
 github.com/longhorn/backing-image-manager v1.8.1/go.mod h1:SC3vqkxf6ntuMQmZ902IBExROqGy7JSMlqyE4tf4c6o=
-github.com/longhorn/backupstore v0.0.0-20250513044119-966fecd6b927 h1:rl+KQLvX2z1phmQZZlYw7FQRunjoKyvhZOQGtu10IL4=
-github.com/longhorn/backupstore v0.0.0-20250513044119-966fecd6b927/go.mod h1:CKu0htElojScVPs1/yWnsfnbxZYGuQqleXagi8YrlP0=
+github.com/longhorn/backupstore v0.0.0-20250527024523-a4ed00f29b86 h1:k9oduuwbuUy7WIC+A8DHURixxWvQrtSGv6dCg8JwvN4=
+github.com/longhorn/backupstore v0.0.0-20250527024523-a4ed00f29b86/go.mod h1:IEJpxpZcm3E0XqWgfH2a381yGkNiisnolEITcxsoscw=
 github.com/longhorn/go-common-libs v0.0.0-20250524033713-74041234ac93 h1:YLD6fHVjGUYbi/uRDSPBchx4GWaGOCa0lRda/y8lPFk=
 github.com/longhorn/go-common-libs v0.0.0-20250524033713-74041234ac93/go.mod h1:ir7esRrt15nyxMnAHvuijoZCMukB8C1rDN7t4oH2a2U=
 github.com/longhorn/go-iscsi-helper v0.0.0-20250511111123-ceffe5d4a273 h1:JbAv8suyObcgZFo/m+LrnsnWvzivuf6CKZWooLnLYAs=
@@ -308,8 +308,8 @@ golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543/go.mod h1:I/5z698sn9Ka8T
 golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
 google.golang.org/genproto/googleapis/rpc v0.0.0-20250218202821-56aae31c358a h1:51aaUVRocpvUOSQKM6Q7VuoaktNIaMCLuhZB6DKksq4=
 google.golang.org/genproto/googleapis/rpc v0.0.0-20250218202821-56aae31c358a/go.mod h1:uRxBH1mhmO8PGhU89cMcHaXKZqO+OfakD8QQO0oYwlQ=
-google.golang.org/grpc v1.72.1 h1:HR03wO6eyZ7lknl75XlxABNVLLFc2PAb6mHlYh756mA=
-google.golang.org/grpc v1.72.1/go.mod h1:wH5Aktxcg25y1I3w7H69nHfXdOG3UiadoBtjh3izSDM=
+google.golang.org/grpc v1.72.2 h1:TdbGzwb82ty4OusHWepvFWGLgIbNo1/SUynEN0ssqv8=
+google.golang.org/grpc v1.72.2/go.mod h1:wH5Aktxcg25y1I3w7H69nHfXdOG3UiadoBtjh3izSDM=
 google.golang.org/protobuf v1.36.6 h1:z1NpPI8ku2WgiWnf+t9wTPsn6eP1L7ksHUlkfLvd9xY=
 google.golang.org/protobuf v1.36.6/go.mod h1:jduwjTPXsFjZGTmRluh+L6NjiWu7pchiJ2/5YcXBHnY=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
