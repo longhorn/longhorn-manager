@@ -63,7 +63,7 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.20.0
 	github.com/longhorn/backing-image-manager v1.8.1
-	github.com/longhorn/backupstore v0.0.0-20250513044119-966fecd6b927
+	github.com/longhorn/backupstore v0.0.0-20250527024523-a4ed00f29b86
 	github.com/longhorn/go-common-libs v0.0.0-20250524033713-74041234ac93
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250511111123-ceffe5d4a273
 	github.com/longhorn/go-spdk-helper v0.0.2
