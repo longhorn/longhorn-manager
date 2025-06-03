@@ -43,6 +43,7 @@ const (
 	PodProbeTimeoutSeconds           = PodProbePeriodSeconds - 1
 	PodProbePeriodSeconds            = 5
 	PodLivenessProbeFailureThreshold = 3
+	PodStartupProbeFailureThreshold  = 36
 
 	IMPodProbeInitialDelay             = 3
 	IMPodProbeTimeoutSeconds           = IMPodProbePeriodSeconds - 1
