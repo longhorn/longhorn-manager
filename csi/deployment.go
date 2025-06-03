@@ -359,6 +359,18 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 									Protocol:      corev1.ProtocolTCP,
 								},
 							},
+							StartupProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									HTTPGet: &corev1.HTTPGetAction{
+										Path: "/healthz",
+										Port: intstr.FromInt(DefaultCSILivenessProbePort),
+									},
+								},
+								InitialDelaySeconds: datastore.PodProbeInitialDelay,
+								TimeoutSeconds:      datastore.PodProbeTimeoutSeconds,
+								PeriodSeconds:       datastore.PodProbePeriodSeconds,
+								FailureThreshold:    datastore.PodStartupProbeFailureThreshold,
+							},
 							LivenessProbe: &corev1.Probe{
 								ProbeHandler: corev1.ProbeHandler{
 									HTTPGet: &corev1.HTTPGetAction{
