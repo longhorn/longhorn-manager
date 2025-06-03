@@ -5420,7 +5420,7 @@ func (s *DataStore) IsV2DataEngineDisabledForNode(nodeName string) (bool, error)
 	return false, nil
 }
 
-func (s *DataStore) GetDiskBackingImageMap() (map[string][]*longhorn.BackingImage, error) {
+func (s *DataStore) GetCurrentDiskBackingImageMap() (map[string][]*longhorn.BackingImage, error) {
 	diskBackingImageMap := map[string][]*longhorn.BackingImage{}
 	backingImages, err := s.ListBackingImages()
 	if err != nil {
