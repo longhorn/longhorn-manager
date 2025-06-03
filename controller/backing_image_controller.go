@@ -1527,7 +1527,7 @@ func (bic *BackingImageController) enqueueBackingImageForNodeUpdate(oldObj, curr
 		}
 	}
 
-	diskBackingImageMap, err := bic.ds.GetDiskBackingImageMap()
+	diskBackingImageMap, err := bic.ds.GetCurrentDiskBackingImageMap()
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("failed to get disk backing image map when handling node update"))
 		return
