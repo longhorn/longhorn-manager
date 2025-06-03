@@ -1658,7 +1658,7 @@ func (nc *NodeController) syncBackingImageEvictionRequested(node *longhorn.Node)
 	}
 	log := getLoggerForNode(nc.logger, node)
 
-	diskBackingImageMap, err := nc.ds.GetDiskBackingImageMap()
+	diskBackingImageMap, err := nc.ds.GetCurrentDiskBackingImageMap()
 	if err != nil {
 		return err
 	}
@@ -1670,25 +1670,25 @@ func (nc *NodeController) syncBackingImageEvictionRequested(node *longhorn.Node)
 	}
 	backingImagesToSync := []backingImageToSync{}
 
+	var diskFileSpecNotSync = false
 	for diskName, diskSpec := range node.Spec.Disks {
 		diskStatus := node.Status.DiskStatus[diskName]
 		diskUUID := diskStatus.DiskUUID
 
-		if diskSpec.EvictionRequested || node.Spec.EvictionRequested {
-			for _, backingImage := range diskBackingImageMap[diskUUID] {
-				// trigger eviction request
-				backingImage.Spec.DiskFileSpecMap[diskUUID].EvictionRequested = true
-				backingImagesToSync = append(backingImagesToSync, backingImageToSync{backingImage, diskUUID, true})
-			}
-		} else {
-			for _, backingImage := range diskBackingImageMap[diskUUID] {
-				if diskFileSpec, ok := backingImage.Spec.DiskFileSpecMap[diskUUID]; ok && diskFileSpec.EvictionRequested {
-					// if it is previously set to true, cancel the eviction request
-					backingImage.Spec.DiskFileSpecMap[diskUUID].EvictionRequested = false
-					backingImagesToSync = append(backingImagesToSync, backingImageToSync{backingImage, diskUUID, false})
-				}
+		requireDiskFileEviction := diskSpec.EvictionRequested || node.Spec.EvictionRequested
+		for _, backingImage := range diskBackingImageMap[diskUUID] {
+			// trigger or cancel the eviction request on disks
+			if diskFileSpec, ok := backingImage.Spec.DiskFileSpecMap[diskUUID]; ok && diskFileSpec.EvictionRequested != requireDiskFileEviction {
+				diskFileSpec.EvictionRequested = requireDiskFileEviction
+				backingImagesToSync = append(backingImagesToSync, backingImageToSync{backingImage, diskUUID, requireDiskFileEviction})
+			} else if !ok {
+				log.Infof("Evicting missing disk %s from backing image %s. Will enqueue then resync the node %s", diskUUID, backingImage.Name, node.Name)
+				diskFileSpecNotSync = true
 			}
 		}
+	}
+	if diskFileSpecNotSync {
+		nc.enqueueNodeRateLimited(node)
 	}
 
 	for _, backingImageToSync := range backingImagesToSync {
