@@ -125,7 +125,7 @@ func NewSettingController(
 	var err error
 	if _, err = ds.SettingInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    sc.enqueueSetting,
-		UpdateFunc: sc.enqueueUpdatedSetting,
+		UpdateFunc: func(old, cur interface{}) { sc.enqueueSetting(cur) },
 		DeleteFunc: sc.enqueueSetting,
 	}, settingControllerResyncPeriod); err != nil {
 		return nil, err
@@ -214,14 +214,13 @@ func (sc *SettingController) syncSetting(key string) (err error) {
 			sc.logger.WithError(dsErr).Warnf("Failed to get setting: %v", name)
 			return
 		}
-		existingStatus := setting.Status
-		if err != nil {
-			setting.Status.Applied = false
-		} else {
+		existingApplied := setting.Status.Applied
+		if !setting.Status.Applied && err == nil {
 			setting.Status.Applied = true
-			setting.Status.LastAppliedAt = util.Now()
+		} else if err != nil {
+			setting.Status.Applied = false
 		}
-		if !reflect.DeepEqual(setting.Status, existingStatus) {
+		if setting.Status.Applied != existingApplied {
 			if _, dsErr := sc.ds.UpdateSettingStatus(setting); dsErr != nil {
 				sc.logger.WithError(dsErr).Warnf("Failed to update setting: %v", name)
 			}
@@ -1209,31 +1208,6 @@ func (sc *SettingController) enqueueSetting(obj interface{}) {
 	key, err := controller.KeyFunc(obj)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("failed to get key for object %#v: %v", obj, err))
-		return
-	}
-
-	sc.queue.Add(key)
-}
-
-func (sc *SettingController) enqueueUpdatedSetting(old, modified interface{}) {
-	oldSetting, ok := old.(*longhorn.Setting)
-	if !ok {
-		utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", old))
-		return
-	}
-	newSetting, ok := modified.(*longhorn.Setting)
-	if !ok {
-		utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", modified))
-		return
-	}
-
-	if oldSetting.Value == newSetting.Value && newSetting.Status.Applied {
-		return
-	}
-
-	key, err := controller.KeyFunc(modified)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("failed to get key for object %#v: %v", modified, err))
 		return
 	}
 
