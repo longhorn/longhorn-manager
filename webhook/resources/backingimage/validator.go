@@ -156,7 +156,7 @@ func (b *backingImageValidator) Delete(request *admission.Request, oldObj runtim
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.BackingImage", oldObj), "")
 	}
 
-	replicas, err := b.ds.ListReplicasByBackingImage(backingImage.Name)
+	replicas, err := b.ds.ListReplicasByBackingImage(backingImage.Name, "")
 	if err != nil {
 		return werror.NewInvalidError(fmt.Sprintf("cannot delete backing image %v since the error %v", backingImage.Name, err.Error()), "")
 	}
