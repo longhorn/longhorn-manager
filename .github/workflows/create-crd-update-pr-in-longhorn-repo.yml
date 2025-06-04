@@ -33,7 +33,7 @@ jobs:
     - name: Update crds.yaml and manifests
       shell: bash
       run: |
-        curl -L https://github.com/longhorn/longhorn-manager/raw/${{ github.event.pull_request.base.ref }}/k8s/crds.yaml -o chart/templates/crds.yaml
+        curl -fL "https://github.com/longhorn/longhorn-manager/raw/${{ github.event.pull_request.base.ref }}/k8s/crds.yaml" -o chart/templates/crds.yaml
         bash scripts/generate-longhorn-yaml.sh
         bash scripts/helm-docs.sh
 
