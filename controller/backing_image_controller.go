@@ -281,7 +281,7 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 	}()
 
 	if backingImage.DeletionTimestamp != nil {
-		replicas, err := bic.ds.ListReplicasByBackingImage(backingImage.Name)
+		replicas, err := bic.ds.ListReplicasByBackingImage(backingImage.Name, "")
 		if err != nil {
 			return err
 		}
@@ -345,7 +345,9 @@ func (bic *BackingImageController) syncBackingImage(key string) (err error) {
 		return err
 	}
 
-	bic.cleanupEvictionRequestedBackingImageCopies(backingImage)
+	if err := bic.cleanupEvictionRequestedBackingImageCopies(backingImage); err != nil {
+		return err
+	}
 
 	if types.IsDataEngineV2(backingImage.Spec.DataEngine) {
 		return bic.handleV2BackingImage(backingImage)
@@ -863,7 +865,7 @@ func (bic *BackingImageController) replenishBackingImageCopies(bi *longhorn.Back
 	return nil
 }
 
-func (bic *BackingImageController) cleanupEvictionRequestedBackingImageCopies(bi *longhorn.BackingImage) {
+func (bic *BackingImageController) cleanupEvictionRequestedBackingImageCopies(bi *longhorn.BackingImage) error {
 	log := getLoggerForBackingImage(bic.logger, bi)
 
 	// If there is no non-evicting healthy backing image copy,
@@ -901,9 +903,30 @@ func (bic *BackingImageController) cleanupEvictionRequestedBackingImageCopies(bi
 		// only this controller can gather all the information of all the copies of this backing image at once.
 		// By deleting the disk from the spec, backing image manager controller will delete the copy on that disk.
 		// TODO: introduce a new CRD for the backing image copy so we can delete the copy like volume controller deletes replicas.
+		isUsed, err := bic.isBIDiskFileUsedByReplicas(bi.Name, diskUUID)
+		if err != nil {
+			return errors.Wrapf(err, "Failed to check if the backing image copy on disk %v is used by replicas", diskUUID)
+		}
+		if isUsed {
+			log.Debugf("Backing image copy on disk %v is used by replicas. Copy eviction is blocked", diskUUID)
+			continue
+		}
 		delete(bi.Spec.DiskFileSpecMap, diskUUID)
 		log.Infof("Evicted backing image copy on disk %v", diskUUID)
 	}
+
+	return nil
+}
+
+func (bic *BackingImageController) isBIDiskFileUsedByReplicas(biName, diskUUID string) (used bool, err error) {
+	replicas, err := bic.ds.ListReplicasByBackingImage(biName, diskUUID)
+	if err != nil {
+		if datastore.ErrorIsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return len(replicas) > 0, nil
 }
 
 func (bic *BackingImageController) IsBackingImageDataSourceCleaned(bi *longhorn.BackingImage) (cleaned bool, err error) {
@@ -1409,7 +1432,7 @@ func (bic *BackingImageController) updateStatusWithFileInfo(bi *longhorn.Backing
 }
 
 func (bic *BackingImageController) updateDiskLastReferenceMap(bi *longhorn.BackingImage) error {
-	replicas, err := bic.ds.ListReplicasByBackingImage(bi.Name)
+	replicas, err := bic.ds.ListReplicasByBackingImage(bi.Name, "")
 	if err != nil {
 		return err
 	}
