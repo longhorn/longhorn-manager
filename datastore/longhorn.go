@@ -3074,17 +3074,22 @@ func (s *DataStore) ListReplicasByDiskUUID(uuid string) (map[string]*longhorn.Re
 	return s.listReplicas(diskSelector)
 }
 
-func getBackingImageSelector(backingImageName string) (labels.Selector, error) {
+func getBackingImageSelector(backingImageName, diskUUID string) (labels.Selector, error) {
+	matchLabels := map[string]string{
+		types.GetLonghornLabelKey(types.LonghornLabelBackingImage): backingImageName,
+	}
+	if diskUUID != "" {
+		matchLabels[types.LonghornDiskUUIDKey] = diskUUID
+	}
 	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
-		MatchLabels: map[string]string{
-			types.GetLonghornLabelKey(types.LonghornLabelBackingImage): backingImageName,
-		},
+		MatchLabels: matchLabels,
 	})
 }
 
 // ListReplicasByBackingImage gets a list of Replicas using a specific backing image the given namespace.
-func (s *DataStore) ListReplicasByBackingImage(backingImageName string) ([]*longhorn.Replica, error) {
-	backingImageSelector, err := getBackingImageSelector(backingImageName)
+// If diskUUID is not empty, it will also filter the replicas by the diskUUID.
+func (s *DataStore) ListReplicasByBackingImage(backingImageName, diskUUID string) ([]*longhorn.Replica, error) {
+	backingImageSelector, err := getBackingImageSelector(backingImageName, diskUUID)
 	if err != nil {
 		return nil, err
 	}
