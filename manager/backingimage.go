@@ -166,7 +166,7 @@ func (m *VolumeManager) CleanUpBackingImageDiskFiles(name string, diskFileList [
 		}
 	}()
 
-	replicas, err := m.ds.ListReplicasByBackingImage(name)
+	replicas, err := m.ds.ListReplicasByBackingImage(name, "")
 	if err != nil {
 		return nil, err
 	}
