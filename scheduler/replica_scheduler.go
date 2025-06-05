@@ -77,7 +77,7 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 
 	// If data locality is set to best-effort, try to schedule at least one replica on the local node.
 	if volume.Spec.DataLocality == longhorn.DataLocalityBestEffort {
-		rcs.scheduleReplicaLocally(replica, replicas, volume, diskCandidates)
+		rcs.scheduleReplicaToDiskOnLocalNode(replica, replicas, volume, diskCandidates)
 	}
 
 	// Data locality is not best-effort, or a local replica already exists, or there are no valid disk candidates on the local node.
@@ -89,8 +89,8 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 }
 
 // If no replicas are scheduled on the local node, try to schedule one there.
-// The local node refers to the node where the volume is (or will be) attached.
-func (rcs *ReplicaScheduler) scheduleReplicaLocally(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume, diskCandidates map[string]*Disk) {
+// The local node refers to the node where the volume is attached.
+func (rcs *ReplicaScheduler) scheduleReplicaToDiskOnLocalNode(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume, diskCandidates map[string]*Disk) {
 	localNodeID := volume.Spec.NodeID
 	// See if any healthy replicas are already scheduled on the local node.
 	for _, r := range replicas {
