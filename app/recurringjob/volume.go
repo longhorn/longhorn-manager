@@ -96,7 +96,10 @@ func startVolumeJob(job *Job, recurringJob *longhorn.RecurringJob,
 func newVolumeJob(job *Job, recurringJob *longhorn.RecurringJob, volumeName string, groups []string) (*VolumeJob, error) {
 	specLabels := map[string]string{}
 	if recurringJob.Spec.Labels != nil {
-		specLabels = recurringJob.Spec.Labels
+		specLabels = make(map[string]string, len(recurringJob.Spec.Labels))
+		for k, v := range recurringJob.Spec.Labels {
+			specLabels[k] = v
+		}
 	}
 	specLabels[types.RecurringJobLabel] = recurringJob.Name
 
