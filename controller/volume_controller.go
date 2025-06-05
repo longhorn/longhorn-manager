@@ -253,7 +253,7 @@ func (c *VolumeController) handleErr(err error, key interface{}) {
 		return
 	}
 
-	log.Errorf("Dropping Longhorn volume %v out of the queue after multiple retries: %v", key, err)
+	handleReconcileErrorLogging(log, err, "Dropping Longhorn volume out of the queue after multiple retries")
 	utilruntime.HandleError(err)
 	c.queue.Forget(key)
 }
@@ -533,7 +533,7 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 		return nil
 	}
 
-	if err := c.ReconcileVolumeState(key, volume, engines, replicas); err != nil {
+	if err := c.ReconcileVolumeState(volume, engines, replicas); err != nil {
 		return err
 	}
 
@@ -1285,7 +1285,7 @@ func (c *VolumeController) syncVolumeSnapshotSetting(v *longhorn.Volume, es map[
 }
 
 // ReconcileVolumeState handles the attaching and detaching of volume
-func (c *VolumeController) ReconcileVolumeState(key string, v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
+func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
 	defer func() {
 		err = errors.Wrapf(err, "failed to reconcile volume state for %v", v.Name)
 	}()
@@ -1328,7 +1328,7 @@ func (c *VolumeController) ReconcileVolumeState(key string, v *longhorn.Volume, 
 
 	c.reconcileLogRequest(e, rs)
 
-	if err := c.reconcileVolumeCondition(key, v, e, rs, log); err != nil {
+	if err := c.reconcileVolumeCondition(v, e, rs, log); err != nil {
 		return err
 	}
 
@@ -1722,11 +1722,16 @@ func (c *VolumeController) reconcileLogRequest(e *longhorn.Engine, rs map[string
 	}
 }
 
-func (c *VolumeController) reconcileVolumeCondition(key string, v *longhorn.Volume, e *longhorn.Engine,
+func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longhorn.Engine,
 	rs map[string]*longhorn.Replica, log *logrus.Entry) error {
 
+	key, err := controller.KeyFunc(v)
+	if err != nil {
+		return err
+	}
+
 	numSnapshots := 0
-	if e != nil && e.Status.Snapshots != nil {
+	if e.Status.Snapshots != nil {
 		numSnapshots = len(e.Status.Snapshots) - 1
 	}
 	if numSnapshots > VolumeSnapshotsWarningThreshold {
@@ -1765,10 +1770,12 @@ func (c *VolumeController) reconcileVolumeCondition(key string, v *longhorn.Volu
 
 		if scheduledReplica == nil {
 			detailedReasons := "unknown scheduling error"
-			if multiError != nil && len(multiError) > 0 { // Use multiError
-				detailedReasons = multiError.Join() // This 'detailedReasons' already contains replica name and volume context from scheduler
+			if len(multiError) > 0 {
+				detailedReasons = multiError.Join()
+				aggregatedReplicaScheduledError.Append(multiError)
+			} else {
+				aggregatedReplicaScheduledError[detailedReasons] = struct{}{}
 			}
-			aggregatedReplicaScheduledError[detailedReasons] = struct{}{} // Use the detailed reason directly as the key
 
 			logFields := logrus.Fields{"replica": r.Name, "reason": detailedReasons}
 			if r.Spec.HardNodeAffinity != "" {
@@ -1787,8 +1794,8 @@ func (c *VolumeController) reconcileVolumeCondition(key string, v *longhorn.Volu
 	}
 
 	// Finalize VolumeConditionTypeScheduled
-	finalScheduledStatus := longhorn.ConditionStatusTrue
-	finalScheduledReason := ""
+	var finalScheduledStatus = longhorn.ConditionStatusTrue
+	var finalScheduledReason = ""
 	var finalScheduledMsgParts []string
 
 	allReplicasPhysicallyScheduledAndCRDsExist := true
@@ -1900,7 +1907,7 @@ func (c *VolumeController) reconcileVolumeCondition(key string, v *longhorn.Volu
 		}
 	}
 
-	currentConditionMessage := ""
+	var currentConditionMessage = ""
 	if len(finalScheduledMsgParts) > 0 {
 		uniquePartsMap := make(map[string]bool)
 		var uniquePartsList []string
@@ -1930,11 +1937,11 @@ func (c *VolumeController) reconcileVolumeCondition(key string, v *longhorn.Volu
 		}
 	}
 
-	detailedSchedulingFailureMessage := ""
+	var detailedSchedulingFailureMessage = ""
 	if finalScheduledStatus == longhorn.ConditionStatusFalse {
 		detailedSchedulingFailureMessage = currentConditionMessage
 	}
-	failureMessageForPV := detailedSchedulingFailureMessage
+	var failureMessageForPV = detailedSchedulingFailureMessage
 
 	// Override logic for AllowVolumeCreationWithDegradedAvailability
 	if finalScheduledStatus == longhorn.ConditionStatusFalse && v.Status.CurrentNodeID == "" && (v.Status.State == longhorn.VolumeStateCreating || v.Status.State == "") {
@@ -1989,7 +1996,7 @@ func (c *VolumeController) reconcileVolumeCondition(key string, v *longhorn.Volu
 
 		isActuallyFundamentallyUnschedulable := false
 		if (len(rs) == v.Spec.NumberOfReplicas && countPhysicallyScheduledReplicas(rs) == 0) ||
-		   (len(rs) < v.Spec.NumberOfReplicas && countPhysicallyScheduledReplicas(rs) == 0 && replenishCount > 0 && len(aggregatedReplicaScheduledError) > 0 && !strings.Contains(originalUnscheduledMessage, "replica count mismatch")) {
+			(len(rs) < v.Spec.NumberOfReplicas && countPhysicallyScheduledReplicas(rs) == 0 && replenishCount > 0 && len(aggregatedReplicaScheduledError) > 0 && !strings.Contains(originalUnscheduledMessage, "replica count mismatch")) {
 			isActuallyFundamentallyUnschedulable = true
 		}
 
