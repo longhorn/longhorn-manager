@@ -23,7 +23,7 @@ import (
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 )
 
-func NewJob(name string, logger logrus.FieldLogger, managerURL string, recurringJob *longhorn.RecurringJob, lhClient *lhclientset.Clientset) (*Job, error) {
+func NewJob(name string, logger *logrus.Logger, managerURL string, recurringJob *longhorn.RecurringJob, lhClient *lhclientset.Clientset) (*Job, error) {
 	namespace := os.Getenv(types.EnvPodNamespace)
 	if namespace == "" {
 		return nil, fmt.Errorf("failed detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
