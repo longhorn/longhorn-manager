@@ -70,16 +70,16 @@ func StartVolumeJobs(job *Job, recurringJob *longhorn.RecurringJob) error {
 func startVolumeJob(job *Job, recurringJob *longhorn.RecurringJob,
 	volumeName string, concurrentLimiter chan struct{}, jobGroups []string) error {
 
+	concurrentLimiter <- struct{}{}
+	defer func() {
+		<-concurrentLimiter
+	}()
+
 	volumeJob, err := newVolumeJob(job, recurringJob, volumeName, jobGroups)
 	if err != nil {
 		job.logger.WithError(err).Errorf("Failed to initialize job for volume %v", volumeName)
 		return err
 	}
-
-	concurrentLimiter <- struct{}{}
-	defer func() {
-		<-concurrentLimiter
-	}()
 
 	volumeJob.logger.Info("Creating volume job")
 
