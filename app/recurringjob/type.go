@@ -18,7 +18,7 @@ type Job struct {
 	lhClient *lhclientset.Clientset        // Kubernetes clientset for Longhorn resources.
 
 	eventRecorder record.EventRecorder // Used to record events related to the job.
-	logger        logrus.FieldLogger   // Log messages related to the job.
+	logger        *logrus.Logger       // Log messages related to the job.
 
 	name           string                    // Name for the RecurringJob.
 	namespace      string                    // Kubernetes namespace in which the RecurringJob is running.
@@ -33,7 +33,7 @@ type Job struct {
 type VolumeJob struct {
 	*Job // Embedding the base Job struct.
 
-	logger logrus.FieldLogger // Log messages related to the volume job.
+	logger *logrus.Entry // Log messages related to the volume job.
 
 	volumeName   string            // Name of the volume on which the job operates.
 	snapshotName string            // Name of the snapshot associated with the job.
@@ -47,7 +47,7 @@ type VolumeJob struct {
 type SystemBackupJob struct {
 	*Job // Embedding the base Job struct.
 
-	logger logrus.FieldLogger // Log messages related to the volume job.
+	logger *logrus.Entry // Log messages related to the volume job.
 
 	systemBackupName   string                                        // Name of the SystemBackup.
 	volumeBackupPolicy longhorn.SystemBackupCreateVolumeBackupPolicy // backup policy used for the SystemBackup.Spec.
