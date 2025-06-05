@@ -724,23 +724,27 @@ func (rcs *ReplicaScheduler) scheduleReplicaToDisk(replica *longhorn.Replica, di
 		replica.Name, volumeName, replica.Spec.DiskID, replica.Spec.DiskPath, replica.Spec.NodeID)
 }
 
-// Investigate
 func (rcs *ReplicaScheduler) getDiskWithMostUsableStorage(disks map[string]*Disk) *Disk {
-	var diskWithMostUsableStorage *Disk // Initialize to nil
-	// Initialize with the first disk encountered to handle the case of a single candidate
+	var diskWithMostUsableStorage *Disk
+	var maxUsableStorage int64
+
 	for _, disk := range disks {
+		// If this is the first disk, initialize diskWithMostUsableStorage and maxUsableStorage.
+		// This ensures that diskWithMostUsableStorage is not nil for subsequent comparisons
+		// and correctly handles the case of a single candidate disk.
 		if diskWithMostUsableStorage == nil {
 			diskWithMostUsableStorage = disk
+			maxUsableStorage = disk.StorageAvailable - disk.StorageScheduled - disk.StorageReserved
+			continue
 		}
-		// Calculate usable storage for the current diskWithMostUsableStorage
-		// Ensure diskWithMostUsableStorage is not nil before accessing its fields
-		currentMaxUsableStorage := diskWithMostUsableStorage.StorageAvailable - diskWithMostUsableStorage.StorageScheduled - diskWithMostUsableStorage.StorageReserved
 
-		// Calculate usable storage for the current disk in the loop
+		// Calculate usable storage for the candidate disk.
 		candidateDiskUsableStorage := disk.StorageAvailable - disk.StorageScheduled - disk.StorageReserved
 
-		if candidateDiskUsableStorage > currentMaxUsableStorage {
+		// If the candidate disk has more usable storage, it becomes the new best disk.
+		if candidateDiskUsableStorage > maxUsableStorage {
 			diskWithMostUsableStorage = disk
+			maxUsableStorage = candidateDiskUsableStorage
 		}
 	}
 	return diskWithMostUsableStorage

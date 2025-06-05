@@ -119,54 +119,6 @@ func (s *TestSuite) TestVolumeLifeCycle(c *C) {
 	tc.expectVolume.Status.State = longhorn.VolumeStateCreating
 	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.Image // Should be set by controller.
 	tc.expectVolume.Status.Robustness = longhorn.VolumeRobustnessFaulted // Controller marks it faulted.
-
-	// Expected message when prechecks fail, preventing any replicas from being created (e.g., no schedulable nodes).
-	// The controller sees 0 replica objects but expects 2, so it reports that it needs to create more.
-	expectedMessageReplicaCreationFailure := "Replica scheduling issues: replica count mismatch (expected 2, have 0 created replica objects); replenishment needed for 2 replica(s)"
-	tc.expectVolume.Status.Conditions = setVolumeConditionWithoutTimestamp(tc.expectVolume.Status.Conditions,
-		longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse, longhorn.VolumeConditionReasonReplicaSchedulingFailure,
-		expectedMessageReplicaCreationFailure)
-
-	// Controller WILL create an engine CRD.
-	// tc.expectEngines was populated by copyCurrentToExpect() with one engine template.
-	// Adjust its spec for a newly created engine.
-	var firstExpectedEngineCreationFailure *longhorn.Engine
-	for _, e := range tc.expectEngines { // Should be only one from the template
-		firstExpectedEngineCreationFailure = e
-		break
-	}
-	if firstExpectedEngineCreationFailure != nil {
-		firstExpectedEngineCreationFailure.Spec.Image = tc.expectVolume.Status.CurrentImage // Match volume's current image.
-		firstExpectedEngineCreationFailure.Spec.DesireState = longhorn.InstanceStateStopped
-		firstExpectedEngineCreationFailure.Spec.Active = true
-		// Other fields like VolumeName, VolumeSize are from newEngineForVolume via template.
-	} else {
-		panic("Expected tc.expectEngines to have a template engine after copyCurrentToExpect for 'replica creation failure'")
-	}
-
-	// Controller will ATTEMPT to create replica CRDs but will fail precheck.
-	// Therefore, no replica CRDs should exist in the datastore after the sync.
-	tc.expectReplicas = map[string]*longhorn.Replica{} // Expect an empty map of replicas.
-
-	testCases["volume create - replica creation failure"] = tc
-
-	// unable to create volume because no node to schedule, and no replica CRDs exist initially.
-	// Controller attempts to create replicas but fails precheck.
-	tc = generateVolumeTestCaseTemplate()
-	for i := range tc.nodes {
-		tc.nodes[i].Spec.AllowScheduling = false // Nodes are made unschedulable
-	}
-	tc.copyCurrentToExpect() // This populates tc.expectVolume, tc.expectEngines, tc.expectReplicas
-	                        // with copies of the template's defaults.
-
-	// Scenario: Controller starts with no existing replica or engine CRDs.
-	tc.replicas = nil // Controller will find no existing replica CRDs.
-	tc.engines = nil  // Controller will find no existing engine CRDs; it will create one.
-
-	// Adjust expectations for what the controller will achieve/create:
-	tc.expectVolume.Status.State = longhorn.VolumeStateCreating
-	tc.expectVolume.Status.CurrentImage = tc.volume.Spec.Image // Should be set by controller.
-	tc.expectVolume.Status.Robustness = longhorn.VolumeRobustnessFaulted // Controller marks it faulted.
       
 	// Expected message when no replicas can be created because of precheck failures (e.g., no schedulable nodes).
 	// The controller finds 0 existing replica objects but expects 2, so it knows more replicas are needed.

@@ -1729,8 +1729,6 @@ func (s *TestSuite) setupSchedulerTestEnvironment(c *C) (*ReplicaScheduler, *dat
 		c.Assert(err, IsNil)
 	}
 
-	datastore.SkipListerCheck = true
-
 	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
 
 	rcs := NewReplicaScheduler(ds)
@@ -1740,6 +1738,11 @@ func (s *TestSuite) setupSchedulerTestEnvironment(c *C) (*ReplicaScheduler, *dat
 
 
 func (s *TestSuite) TestScheduleReplica_MultipleDiskFailuresOnOneNode(c *C) {
+	originalSkipListerCheck := datastore.SkipListerCheck
+	datastore.SkipListerCheck = true
+	defer func() {
+		datastore.SkipListerCheck = originalSkipListerCheck
+	}()
 	rcs, _, lhClient, _, _, nIndexer, imIndexer := s.setupSchedulerTestEnvironment(c)
 
 	volume := newVolume(TestVolumeName, 1)
@@ -1795,6 +1798,11 @@ func (s *TestSuite) TestScheduleReplica_MultipleDiskFailuresOnOneNode(c *C) {
 
 
 func (s *TestSuite) TestScheduleReplica_MultipleNodeFailures(c *C) {
+	originalSkipListerCheck := datastore.SkipListerCheck
+	datastore.SkipListerCheck = true
+	defer func() {
+		datastore.SkipListerCheck = originalSkipListerCheck
+	}()
 	rcs, ds, lhClient, _, eiIndexer, nIndexer, imIndexer := s.setupSchedulerTestEnvironment(c)
 
 	volume := newVolume(TestVolumeName, 1)
