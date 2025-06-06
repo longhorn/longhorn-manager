@@ -100,7 +100,9 @@ func NewSnapshotController(
 	sc.cacheSyncs = append(sc.cacheSyncs, ds.EngineInformer.HasSynced)
 
 	if _, err = ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
-		DeleteFunc: sc.enqueueVolumeChange,
+		UpdateFunc: sc.enqueueVolumeChange,
+		DeleteFunc: sc.enqueueVolumeDeleted,
+		//DeleteFunc: sc.enqueueVolumeChange,
 	}, 0); err != nil {
 		return nil, err
 	}
@@ -211,7 +213,51 @@ func filterSnapshotsForEngineEnqueuing(oldEngine, curEngine *longhorn.Engine, sn
 	return targetSnapshots
 }
 
-func (sc *SnapshotController) enqueueVolumeChange(obj interface{}) {
+func (sc *SnapshotController) enqueueVolumeChange(old, new interface{}) {
+	oldVol, ok := old.(*longhorn.Volume)
+	if !ok {
+		utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", old))
+		return
+	}
+	newVol, ok := new.(*longhorn.Volume)
+	if !ok {
+		utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", new))
+		return
+	}
+	if !newVol.DeletionTimestamp.IsZero() {
+		return
+	}
+	if oldVol.Status.OwnerID == newVol.Status.OwnerID {
+		return
+	}
+
+	va, err := sc.ds.GetLHVolumeAttachmentByVolumeName(newVol.Name)
+	if err != nil {
+		sc.logger.WithError(err).Warnf("Failed to get volume attachment for volume %s", newVol.Name)
+		return
+	}
+	if va == nil || va.Spec.AttachmentTickets == nil {
+		return
+	}
+
+	snapshots, err := sc.ds.ListVolumeSnapshotsRO(newVol.Name)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("snapshot controller failed to list snapshots when enqueuing volume %v: %v", newVol.Name, err))
+		return
+	}
+	for _, snap := range snapshots {
+		// Longhorn#10874:
+		// Requeueue the snapshot if there is an attachment ticket for it to ensure
+		// the volumeattachment can be cleaned up after the snapshot is created.
+		attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeSnapshotController, snap.Name)
+		if va.Spec.AttachmentTickets[attachmentTicketID] != nil {
+			sc.enqueueSnapshot(snap)
+		}
+	}
+}
+
+func (sc *SnapshotController) enqueueVolumeDeleted(obj interface{}) {
+	//func (sc *SnapshotController) enqueueVolumeChange(obj interface{}) {
 	vol, ok := obj.(*longhorn.Volume)
 	if !ok {
 		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
@@ -350,6 +396,18 @@ func (sc *SnapshotController) reconcile(snapshotName string) (err error) {
 	}
 	if !isResponsible {
 		return nil
+	}
+	if snapshot.Status.OwnerID != sc.controllerID {
+		snapshot.Status.OwnerID = sc.controllerID
+		snapshot, err = sc.ds.UpdateSnapshotStatus(snapshot)
+		if err != nil {
+			// we don't mind others coming first
+			if apierrors.IsConflict(errors.Cause(err)) {
+				return nil
+			}
+			return err
+		}
+		sc.logger.Infof("Snapshot %v got new owner %v", snapshot.Name, sc.controllerID)
 	}
 
 	existingSnapshot := snapshot.DeepCopy()
@@ -760,7 +818,27 @@ func (sc *SnapshotController) isResponsibleFor(snap *longhorn.Snapshot) (bool, e
 		}
 		return false, err
 	}
-	return sc.controllerID == volume.Status.OwnerID, nil
+
+	defaultEngineImage, err := sc.ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
+	if err != nil {
+		return false, err
+	}
+
+	isResponsible := isControllerResponsibleFor(sc.controllerID, sc.ds, snap.Name, volume.Status.OwnerID, snap.Status.OwnerID)
+	currentOwnerDataEngineAvailable, err := sc.ds.CheckDataEngineImageReadiness(defaultEngineImage, volume.Spec.DataEngine, snap.Status.OwnerID)
+	if err != nil {
+		return false, err
+	}
+	currentNodeDataEngineAvailable, err := sc.ds.CheckDataEngineImageReadiness(defaultEngineImage, volume.Spec.DataEngine, sc.controllerID)
+	if err != nil {
+		return false, err
+	}
+
+	isPreferredOwner := currentNodeDataEngineAvailable && isResponsible
+	continueToBeOwner := currentNodeDataEngineAvailable && sc.controllerID == snap.Status.OwnerID
+	requiresNewOwner := currentNodeDataEngineAvailable && !currentOwnerDataEngineAvailable
+
+	return isPreferredOwner || continueToBeOwner || requiresNewOwner, nil
 }
 
 func getLoggerForSnapshot(logger logrus.FieldLogger, snap *longhorn.Snapshot) *logrus.Entry {
