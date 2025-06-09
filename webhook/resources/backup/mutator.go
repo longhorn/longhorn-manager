@@ -60,10 +60,32 @@ func (b *backupMutator) Create(request *admission.Request, newObj runtime.Object
 		backupLabels = make(map[string]string)
 	}
 
+	labels := backup.Labels
+	if labels == nil {
+		labels = map[string]string{}
+	}
+
+	//check snapshot name, if not exist, return error
+	snapshotName := backup.Spec.SnapshotName
+	if snapshotName == "" {
+		err := fmt.Errorf("missing snapshot for backup %v", backup.Name)
+		return nil, werror.NewInvalidError(err.Error(), "")
+	}
+
 	volumeName, isExist := backup.Labels[types.LonghornLabelBackupVolume]
 	if !isExist {
-		err := errors.Wrapf(err, "cannot find the backup volume label for backup %v", backup.Name)
-		return nil, werror.NewInvalidError(err.Error(), "")
+		snapshot, err := b.ds.GetSnapshot(backup.Spec.SnapshotName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get the snapshot %v", backup.Spec.SnapshotName)
+		}
+
+		volume, err := b.ds.GetVolume(snapshot.Spec.Volume)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get the volume %v of the snapshot %v of the backup %v", snapshot.Spec.Volume, snapshot.Name, backup.Name)
+		}
+
+		volumeName = volume.Name
+		labels[types.LonghornLabelBackupVolume] = volumeName
 	}
 
 	if _, isExist := backupLabels[types.GetLonghornLabelKey(types.LonghornLabelVolumeAccessMode)]; !isExist {
@@ -96,10 +118,6 @@ func (b *backupMutator) Create(request *admission.Request, newObj runtime.Object
 		backupTargetName = volume.Spec.BackupTargetName
 	}
 
-	labels := backup.Labels
-	if labels == nil {
-		labels = map[string]string{}
-	}
 	labels[types.LonghornLabelBackupTarget] = backupTargetName
 
 	patchOp, err := common.GetLonghornLabelsPatchOp(backup, labels, nil)
