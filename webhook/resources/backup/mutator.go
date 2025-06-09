@@ -55,28 +55,50 @@ func (b *backupMutator) Create(request *admission.Request, newObj runtime.Object
 		return nil, err
 	}
 
-	backupLabels := backup.Spec.Labels
-	if backupLabels == nil {
-		backupLabels = make(map[string]string)
+	specLabels := backup.Spec.Labels
+	if specLabels == nil {
+		specLabels = make(map[string]string)
+	}
+
+	metaLabels := backup.Labels
+	if metaLabels == nil {
+		metaLabels = map[string]string{}
+	}
+
+	//check snapshot name, if not exist, return error
+	snapshotName := backup.Spec.SnapshotName
+	if snapshotName == "" {
+		err := fmt.Errorf("missing snapshot for backup %v", backup.Name)
+		return nil, werror.NewInvalidError(err.Error(), "")
 	}
 
 	volumeName, isExist := backup.Labels[types.LonghornLabelBackupVolume]
 	if !isExist {
-		err := errors.Wrapf(err, "cannot find the backup volume label for backup %v", backup.Name)
-		return nil, werror.NewInvalidError(err.Error(), "")
+		snapshot, err := b.ds.GetSnapshotRO(backup.Spec.SnapshotName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get the snapshot %v", backup.Spec.SnapshotName)
+		}
+
+		volume, err := b.ds.GetVolumeRO(snapshot.Spec.Volume)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get the volume %v of the snapshot %v of the backup %v", snapshot.Spec.Volume, snapshot.Name, backup.Name)
+		}
+
+		volumeName = volume.Name
+		metaLabels[types.LonghornLabelBackupVolume] = volumeName
 	}
 
-	if _, isExist := backupLabels[types.GetLonghornLabelKey(types.LonghornLabelVolumeAccessMode)]; !isExist {
+	if _, isExist := specLabels[types.GetLonghornLabelKey(types.LonghornLabelVolumeAccessMode)]; !isExist {
 		volumeAccessMode := longhorn.AccessModeReadWriteOnce
 		if volume, err := b.ds.GetVolumeRO(volumeName); err == nil {
 			if volume.Spec.AccessMode != "" {
 				volumeAccessMode = volume.Spec.AccessMode
 			}
 		}
-		backupLabels[types.GetLonghornLabelKey(types.LonghornLabelVolumeAccessMode)] = string(volumeAccessMode)
+		specLabels[types.GetLonghornLabelKey(types.LonghornLabelVolumeAccessMode)] = string(volumeAccessMode)
 	}
 
-	valueBackupLabels, err := json.Marshal(backupLabels)
+	valueBackupLabels, err := json.Marshal(specLabels)
 	if err != nil {
 		return nil, werror.NewInvalidError(errors.Wrapf(err, "failed to convert backup labels into JSON string").Error(), "")
 	}
@@ -96,13 +118,9 @@ func (b *backupMutator) Create(request *admission.Request, newObj runtime.Object
 		backupTargetName = volume.Spec.BackupTargetName
 	}
 
-	labels := backup.Labels
-	if labels == nil {
-		labels = map[string]string{}
-	}
-	labels[types.LonghornLabelBackupTarget] = backupTargetName
+	metaLabels[types.LonghornLabelBackupTarget] = backupTargetName
 
-	patchOp, err := common.GetLonghornLabelsPatchOp(backup, labels, nil)
+	patchOp, err := common.GetLonghornLabelsPatchOp(backup, metaLabels, nil)
 	if err != nil {
 		err := errors.Wrapf(err, "failed to get label patch for backup %v", backup.Name)
 		return nil, werror.NewInvalidError(err.Error(), "")
