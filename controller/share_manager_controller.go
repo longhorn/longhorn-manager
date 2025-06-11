@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"regexp"
 	"strings"
 	"time"
 
@@ -1249,6 +1250,8 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 
 	var affinity *corev1.Affinity
 
+	var formatOptions []string
+
 	if pv.Spec.StorageClassName != "" {
 		sc, err := c.ds.GetStorageClass(pv.Spec.StorageClassName)
 		if err != nil {
@@ -1271,6 +1274,9 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 			}
 			tolerationsFromStorageClass := c.getShareManagerTolerationsFromStorageClass(sc)
 			tolerations = append(tolerations, tolerationsFromStorageClass...)
+
+			// A storage class can override mkfs parameters which need to be passed to the share manager
+			formatOptions = c.splitFormatOptions(sc)
 		}
 	}
 
@@ -1308,7 +1314,7 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 	}
 
 	manifest := c.createPodManifest(sm, volume.Spec.DataEngine, annotations, tolerations, affinity, imagePullPolicy, nil, registrySecret,
-		priorityClass, nodeSelector, fsType, mountOptions, cryptoKey, cryptoParams, nfsConfig)
+		priorityClass, nodeSelector, fsType, formatOptions, mountOptions, cryptoKey, cryptoParams, nfsConfig)
 
 	storageNetwork, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
 	if err != nil {
@@ -1333,6 +1339,29 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 	}
 	log.WithField("pod", pod.Name).Infof("Created pod for share manager on node %v", pod.Spec.NodeName)
 	return pod, nil
+}
+
+func (c *ShareManagerController) splitFormatOptions(sc *storagev1.StorageClass) []string {
+	if mkfsParams, ok := sc.Parameters["mkfsParams"]; ok {
+		regex, err := regexp.Compile("-[a-zA-Z_]+(?:\\s*=?\\s*(?:\"[^\"]*\"|'[^']*'|[^\\r\\n\\t\\f\\v -]+))?")
+
+		if err != nil {
+			c.logger.WithError(err).Warnf("Failed to compile regex for mkfsParams %v, will continue the share manager pod creation", mkfsParams)
+			return nil
+		}
+
+		matches := regex.FindAllString(mkfsParams, -1)
+
+		if matches == nil {
+			c.logger.Warnf("No valid mkfs parameters found in \"%v\", will continue the share manager pod creation", mkfsParams)
+			return nil
+		}
+
+		return matches
+	}
+
+	c.logger.Debug("No mkfs parameters found, will continue the share manager pod creation")
+	return nil
 }
 
 func (c *ShareManagerController) createServiceManifest(sm *longhorn.ShareManager) *corev1.Service {
@@ -1422,7 +1451,7 @@ func (c *ShareManagerController) createLeaseManifest(sm *longhorn.ShareManager) 
 
 func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, dataEngine longhorn.DataEngineType, annotations map[string]string, tolerations []corev1.Toleration,
 	affinity *corev1.Affinity, pullPolicy corev1.PullPolicy, resourceReq *corev1.ResourceRequirements, registrySecret, priorityClass string,
-	nodeSelector map[string]string, fsType string, mountOptions []string, cryptoKey string, cryptoParams *crypto.EncryptParams,
+	nodeSelector map[string]string, fsType string, formatOptions []string, mountOptions []string, cryptoKey string, cryptoParams *crypto.EncryptParams,
 	nfsConfig *nfsServerConfig) *corev1.Pod {
 
 	// command args for the share-manager
@@ -1491,6 +1520,15 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, da
 			Name:  "GRACE_PERIOD",
 			Value: fmt.Sprint(nfsConfig.gracePeriod),
 		},
+	}
+
+	if len(formatOptions) > 0 {
+		podSpec.Spec.Containers[0].Env = append(podSpec.Spec.Containers[0].Env, []corev1.EnvVar{
+			{
+				Name:  "FS_FORMAT_OPTIONS",
+				Value: fmt.Sprint(strings.Join(formatOptions, ":")),
+			},
+		}...)
 	}
 
 	// this is an encrypted volume the cryptoKey is base64 encoded
