@@ -873,8 +873,8 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 					Command: []string{
 						"backing-image-manager", "--debug",
 						"daemon",
-						"--listen", fmt.Sprintf("%s:%d", "0.0.0.0", engineapi.BackingImageManagerDefaultPort),
-						"--sync-listen", fmt.Sprintf("%s:%d", "0.0.0.0", engineapi.BackingImageSyncServerDefaultPort),
+						"--listen", fmt.Sprintf(":%d", engineapi.BackingImageManagerDefaultPort),
+						"--sync-listen", fmt.Sprintf(":%d", engineapi.BackingImageSyncServerDefaultPort),
 					},
 					ReadinessProbe: &corev1.Probe{
 						ProbeHandler: corev1.ProbeHandler{
