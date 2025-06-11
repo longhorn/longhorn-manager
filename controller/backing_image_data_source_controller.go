@@ -676,8 +676,8 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 	cmd := []string{
 		"backing-image-manager", "--debug",
 		"data-source",
-		"--listen", fmt.Sprintf("%s:%d", "0.0.0.0", engineapi.BackingImageDataSourceDefaultPort),
-		"--sync-listen", fmt.Sprintf("%s:%d", "0.0.0.0", engineapi.BackingImageSyncServerDefaultPort),
+		"--listen", fmt.Sprintf(":%d", engineapi.BackingImageDataSourceDefaultPort),
+		"--sync-listen", fmt.Sprintf(":%d", engineapi.BackingImageSyncServerDefaultPort),
 		"--name", bids.Name,
 		"--uuid", bids.Spec.UUID,
 		"--source-type", string(bids.Spec.SourceType),
