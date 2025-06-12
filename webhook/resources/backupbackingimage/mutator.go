@@ -56,8 +56,15 @@ func (b *backupBackingImageMutator) Create(request *admission.Request, newObj ru
 	}
 	patchOps = append(patchOps, mutatePatchOps...)
 
-	backupTarget, err := b.ds.GetBackupTargetRO(backupBackingImage.Spec.BackupTargetName)
-	if apierrors.IsNotFound(err) {
+	backupTargetName := backupBackingImage.Spec.BackupTargetName
+	if backupTargetName == "" {
+		backupTargetName = types.DefaultBackupTargetName
+	}
+	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupTargetName", "value": "%s"}`, backupTargetName))
+
+	backupTarget, err := b.ds.GetBackupTargetRO(backupTargetName)
+	if apierrors.IsNotFound(err) && backupTargetName != types.DefaultBackupTargetName {
+		// If the backup target is not found, we will try to use the default backup target.
 		backupTarget, err = b.ds.GetDefaultBackupTargetRO()
 		if err != nil {
 			return nil, werror.NewInvalidError(errors.Wrapf(err, "failed to get default backup target").Error(), "")
