@@ -74,7 +74,7 @@ func (s *Server) EngineImageCreate(rw http.ResponseWriter, req *http.Request) er
 
 func (s *Server) EngineImageDelete(rw http.ResponseWriter, req *http.Request) error {
 	id := mux.Vars(req)["name"]
-	if err := s.m.DeleteEngineImageByName(id); err != nil {
+	if err := s.m.DeleteEngineImage(id); err != nil {
 		return errors.Wrap(err, "failed to delete engine image")
 	}
 
