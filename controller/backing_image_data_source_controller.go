@@ -3,6 +3,7 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"reflect"
 	"strconv"
 	"strings"
@@ -942,7 +943,7 @@ func (c *BackingImageDataSourceController) prepareRunningParametersForExport(bid
 			continue
 		}
 		rAddress := e.Status.CurrentReplicaAddressMap[rName]
-		if rAddress == "" || rAddress != fmt.Sprintf("%s:%d", r.Status.StorageIP, r.Status.Port) {
+		if rAddress == "" || rAddress != net.JoinHostPort(r.Status.StorageIP, strconv.Itoa(r.Status.Port)) {
 			continue
 		}
 		bids.Status.RunningParameters[longhorn.DataSourceTypeExportFromVolumeParameterSenderAddress] = rAddress
