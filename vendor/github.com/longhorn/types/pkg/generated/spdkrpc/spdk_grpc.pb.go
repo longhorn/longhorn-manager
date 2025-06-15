@@ -20,73 +20,76 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	SPDKService_ReplicaCreate_FullMethodName                        = "/spdkrpc.SPDKService/ReplicaCreate"
-	SPDKService_ReplicaDelete_FullMethodName                        = "/spdkrpc.SPDKService/ReplicaDelete"
-	SPDKService_ReplicaGet_FullMethodName                           = "/spdkrpc.SPDKService/ReplicaGet"
-	SPDKService_ReplicaSnapshotCreate_FullMethodName                = "/spdkrpc.SPDKService/ReplicaSnapshotCreate"
-	SPDKService_ReplicaSnapshotDelete_FullMethodName                = "/spdkrpc.SPDKService/ReplicaSnapshotDelete"
-	SPDKService_ReplicaSnapshotRevert_FullMethodName                = "/spdkrpc.SPDKService/ReplicaSnapshotRevert"
-	SPDKService_ReplicaSnapshotPurge_FullMethodName                 = "/spdkrpc.SPDKService/ReplicaSnapshotPurge"
-	SPDKService_ReplicaSnapshotHash_FullMethodName                  = "/spdkrpc.SPDKService/ReplicaSnapshotHash"
-	SPDKService_ReplicaSnapshotHashStatus_FullMethodName            = "/spdkrpc.SPDKService/ReplicaSnapshotHashStatus"
-	SPDKService_ReplicaSnapshotHashCancel_FullMethodName            = "/spdkrpc.SPDKService/ReplicaSnapshotHashCancel"
-	SPDKService_ReplicaSnapshotHashLockState_FullMethodName         = "/spdkrpc.SPDKService/ReplicaSnapshotHashLockState"
-	SPDKService_ReplicaList_FullMethodName                          = "/spdkrpc.SPDKService/ReplicaList"
-	SPDKService_ReplicaWatch_FullMethodName                         = "/spdkrpc.SPDKService/ReplicaWatch"
-	SPDKService_ReplicaRebuildingSrcStart_FullMethodName            = "/spdkrpc.SPDKService/ReplicaRebuildingSrcStart"
-	SPDKService_ReplicaRebuildingSrcFinish_FullMethodName           = "/spdkrpc.SPDKService/ReplicaRebuildingSrcFinish"
-	SPDKService_ReplicaRebuildingSrcShallowCopyStart_FullMethodName = "/spdkrpc.SPDKService/ReplicaRebuildingSrcShallowCopyStart"
-	SPDKService_ReplicaRebuildingSrcShallowCopyCheck_FullMethodName = "/spdkrpc.SPDKService/ReplicaRebuildingSrcShallowCopyCheck"
-	SPDKService_ReplicaRebuildingDstStart_FullMethodName            = "/spdkrpc.SPDKService/ReplicaRebuildingDstStart"
-	SPDKService_ReplicaRebuildingDstFinish_FullMethodName           = "/spdkrpc.SPDKService/ReplicaRebuildingDstFinish"
-	SPDKService_ReplicaRebuildingDstShallowCopyStart_FullMethodName = "/spdkrpc.SPDKService/ReplicaRebuildingDstShallowCopyStart"
-	SPDKService_ReplicaRebuildingDstShallowCopyCheck_FullMethodName = "/spdkrpc.SPDKService/ReplicaRebuildingDstShallowCopyCheck"
-	SPDKService_ReplicaRebuildingDstSnapshotCreate_FullMethodName   = "/spdkrpc.SPDKService/ReplicaRebuildingDstSnapshotCreate"
-	SPDKService_ReplicaBackupCreate_FullMethodName                  = "/spdkrpc.SPDKService/ReplicaBackupCreate"
-	SPDKService_ReplicaBackupStatus_FullMethodName                  = "/spdkrpc.SPDKService/ReplicaBackupStatus"
-	SPDKService_ReplicaBackupRestore_FullMethodName                 = "/spdkrpc.SPDKService/ReplicaBackupRestore"
-	SPDKService_ReplicaRestoreStatus_FullMethodName                 = "/spdkrpc.SPDKService/ReplicaRestoreStatus"
-	SPDKService_EngineCreate_FullMethodName                         = "/spdkrpc.SPDKService/EngineCreate"
-	SPDKService_EngineDelete_FullMethodName                         = "/spdkrpc.SPDKService/EngineDelete"
-	SPDKService_EngineGet_FullMethodName                            = "/spdkrpc.SPDKService/EngineGet"
-	SPDKService_EngineSuspend_FullMethodName                        = "/spdkrpc.SPDKService/EngineSuspend"
-	SPDKService_EngineResume_FullMethodName                         = "/spdkrpc.SPDKService/EngineResume"
-	SPDKService_EngineSwitchOverTarget_FullMethodName               = "/spdkrpc.SPDKService/EngineSwitchOverTarget"
-	SPDKService_EngineDeleteTarget_FullMethodName                   = "/spdkrpc.SPDKService/EngineDeleteTarget"
-	SPDKService_EngineSnapshotCreate_FullMethodName                 = "/spdkrpc.SPDKService/EngineSnapshotCreate"
-	SPDKService_EngineSnapshotDelete_FullMethodName                 = "/spdkrpc.SPDKService/EngineSnapshotDelete"
-	SPDKService_EngineSnapshotRevert_FullMethodName                 = "/spdkrpc.SPDKService/EngineSnapshotRevert"
-	SPDKService_EngineSnapshotPurge_FullMethodName                  = "/spdkrpc.SPDKService/EngineSnapshotPurge"
-	SPDKService_EngineSnapshotHash_FullMethodName                   = "/spdkrpc.SPDKService/EngineSnapshotHash"
-	SPDKService_EngineSnapshotHashStatus_FullMethodName             = "/spdkrpc.SPDKService/EngineSnapshotHashStatus"
-	SPDKService_EngineSnapshotHashCancel_FullMethodName             = "/spdkrpc.SPDKService/EngineSnapshotHashCancel"
-	SPDKService_EngineSnapshotHashLockState_FullMethodName          = "/spdkrpc.SPDKService/EngineSnapshotHashLockState"
-	SPDKService_EngineList_FullMethodName                           = "/spdkrpc.SPDKService/EngineList"
-	SPDKService_EngineWatch_FullMethodName                          = "/spdkrpc.SPDKService/EngineWatch"
-	SPDKService_EngineReplicaList_FullMethodName                    = "/spdkrpc.SPDKService/EngineReplicaList"
-	SPDKService_EngineReplicaAdd_FullMethodName                     = "/spdkrpc.SPDKService/EngineReplicaAdd"
-	SPDKService_EngineReplicaDelete_FullMethodName                  = "/spdkrpc.SPDKService/EngineReplicaDelete"
-	SPDKService_EngineBackupCreate_FullMethodName                   = "/spdkrpc.SPDKService/EngineBackupCreate"
-	SPDKService_EngineBackupStatus_FullMethodName                   = "/spdkrpc.SPDKService/EngineBackupStatus"
-	SPDKService_EngineBackupRestore_FullMethodName                  = "/spdkrpc.SPDKService/EngineBackupRestore"
-	SPDKService_EngineBackupRestoreFinish_FullMethodName            = "/spdkrpc.SPDKService/EngineBackupRestoreFinish"
-	SPDKService_EngineRestoreStatus_FullMethodName                  = "/spdkrpc.SPDKService/EngineRestoreStatus"
-	SPDKService_BackingImageCreate_FullMethodName                   = "/spdkrpc.SPDKService/BackingImageCreate"
-	SPDKService_BackingImageDelete_FullMethodName                   = "/spdkrpc.SPDKService/BackingImageDelete"
-	SPDKService_BackingImageGet_FullMethodName                      = "/spdkrpc.SPDKService/BackingImageGet"
-	SPDKService_BackingImageList_FullMethodName                     = "/spdkrpc.SPDKService/BackingImageList"
-	SPDKService_BackingImageWatch_FullMethodName                    = "/spdkrpc.SPDKService/BackingImageWatch"
-	SPDKService_BackingImageExpose_FullMethodName                   = "/spdkrpc.SPDKService/BackingImageExpose"
-	SPDKService_BackingImageUnexpose_FullMethodName                 = "/spdkrpc.SPDKService/BackingImageUnexpose"
-	SPDKService_DiskCreate_FullMethodName                           = "/spdkrpc.SPDKService/DiskCreate"
-	SPDKService_DiskDelete_FullMethodName                           = "/spdkrpc.SPDKService/DiskDelete"
-	SPDKService_DiskGet_FullMethodName                              = "/spdkrpc.SPDKService/DiskGet"
-	SPDKService_LogSetLevel_FullMethodName                          = "/spdkrpc.SPDKService/LogSetLevel"
-	SPDKService_LogSetFlags_FullMethodName                          = "/spdkrpc.SPDKService/LogSetFlags"
-	SPDKService_LogGetLevel_FullMethodName                          = "/spdkrpc.SPDKService/LogGetLevel"
-	SPDKService_LogGetFlags_FullMethodName                          = "/spdkrpc.SPDKService/LogGetFlags"
-	SPDKService_VersionDetailGet_FullMethodName                     = "/spdkrpc.SPDKService/VersionDetailGet"
-	SPDKService_MetricsGet_FullMethodName                           = "/spdkrpc.SPDKService/MetricsGet"
+	SPDKService_ReplicaCreate_FullMethodName                             = "/spdkrpc.SPDKService/ReplicaCreate"
+	SPDKService_ReplicaDelete_FullMethodName                             = "/spdkrpc.SPDKService/ReplicaDelete"
+	SPDKService_ReplicaGet_FullMethodName                                = "/spdkrpc.SPDKService/ReplicaGet"
+	SPDKService_ReplicaSnapshotCreate_FullMethodName                     = "/spdkrpc.SPDKService/ReplicaSnapshotCreate"
+	SPDKService_ReplicaSnapshotDelete_FullMethodName                     = "/spdkrpc.SPDKService/ReplicaSnapshotDelete"
+	SPDKService_ReplicaSnapshotRevert_FullMethodName                     = "/spdkrpc.SPDKService/ReplicaSnapshotRevert"
+	SPDKService_ReplicaSnapshotPurge_FullMethodName                      = "/spdkrpc.SPDKService/ReplicaSnapshotPurge"
+	SPDKService_ReplicaSnapshotHash_FullMethodName                       = "/spdkrpc.SPDKService/ReplicaSnapshotHash"
+	SPDKService_ReplicaSnapshotHashStatus_FullMethodName                 = "/spdkrpc.SPDKService/ReplicaSnapshotHashStatus"
+	SPDKService_ReplicaSnapshotHashCancel_FullMethodName                 = "/spdkrpc.SPDKService/ReplicaSnapshotHashCancel"
+	SPDKService_ReplicaSnapshotHashLockState_FullMethodName              = "/spdkrpc.SPDKService/ReplicaSnapshotHashLockState"
+	SPDKService_ReplicaSnapshotRangeHashGet_FullMethodName               = "/spdkrpc.SPDKService/ReplicaSnapshotRangeHashGet"
+	SPDKService_ReplicaList_FullMethodName                               = "/spdkrpc.SPDKService/ReplicaList"
+	SPDKService_ReplicaWatch_FullMethodName                              = "/spdkrpc.SPDKService/ReplicaWatch"
+	SPDKService_ReplicaRebuildingSrcStart_FullMethodName                 = "/spdkrpc.SPDKService/ReplicaRebuildingSrcStart"
+	SPDKService_ReplicaRebuildingSrcFinish_FullMethodName                = "/spdkrpc.SPDKService/ReplicaRebuildingSrcFinish"
+	SPDKService_ReplicaRebuildingSrcShallowCopyStart_FullMethodName      = "/spdkrpc.SPDKService/ReplicaRebuildingSrcShallowCopyStart"
+	SPDKService_ReplicaRebuildingSrcRangeShallowCopyStart_FullMethodName = "/spdkrpc.SPDKService/ReplicaRebuildingSrcRangeShallowCopyStart"
+	SPDKService_ReplicaRebuildingSrcShallowCopyCheck_FullMethodName      = "/spdkrpc.SPDKService/ReplicaRebuildingSrcShallowCopyCheck"
+	SPDKService_ReplicaRebuildingDstStart_FullMethodName                 = "/spdkrpc.SPDKService/ReplicaRebuildingDstStart"
+	SPDKService_ReplicaRebuildingDstFinish_FullMethodName                = "/spdkrpc.SPDKService/ReplicaRebuildingDstFinish"
+	SPDKService_ReplicaRebuildingDstShallowCopyStart_FullMethodName      = "/spdkrpc.SPDKService/ReplicaRebuildingDstShallowCopyStart"
+	SPDKService_ReplicaRebuildingDstShallowCopyCheck_FullMethodName      = "/spdkrpc.SPDKService/ReplicaRebuildingDstShallowCopyCheck"
+	SPDKService_ReplicaRebuildingDstSnapshotCreate_FullMethodName        = "/spdkrpc.SPDKService/ReplicaRebuildingDstSnapshotCreate"
+	SPDKService_ReplicaRebuildingDstSetQosLimit_FullMethodName           = "/spdkrpc.SPDKService/ReplicaRebuildingDstSetQosLimit"
+	SPDKService_ReplicaBackupCreate_FullMethodName                       = "/spdkrpc.SPDKService/ReplicaBackupCreate"
+	SPDKService_ReplicaBackupStatus_FullMethodName                       = "/spdkrpc.SPDKService/ReplicaBackupStatus"
+	SPDKService_ReplicaBackupRestore_FullMethodName                      = "/spdkrpc.SPDKService/ReplicaBackupRestore"
+	SPDKService_ReplicaRestoreStatus_FullMethodName                      = "/spdkrpc.SPDKService/ReplicaRestoreStatus"
+	SPDKService_EngineCreate_FullMethodName                              = "/spdkrpc.SPDKService/EngineCreate"
+	SPDKService_EngineDelete_FullMethodName                              = "/spdkrpc.SPDKService/EngineDelete"
+	SPDKService_EngineGet_FullMethodName                                 = "/spdkrpc.SPDKService/EngineGet"
+	SPDKService_EngineSuspend_FullMethodName                             = "/spdkrpc.SPDKService/EngineSuspend"
+	SPDKService_EngineResume_FullMethodName                              = "/spdkrpc.SPDKService/EngineResume"
+	SPDKService_EngineSwitchOverTarget_FullMethodName                    = "/spdkrpc.SPDKService/EngineSwitchOverTarget"
+	SPDKService_EngineDeleteTarget_FullMethodName                        = "/spdkrpc.SPDKService/EngineDeleteTarget"
+	SPDKService_EngineSnapshotCreate_FullMethodName                      = "/spdkrpc.SPDKService/EngineSnapshotCreate"
+	SPDKService_EngineSnapshotDelete_FullMethodName                      = "/spdkrpc.SPDKService/EngineSnapshotDelete"
+	SPDKService_EngineSnapshotRevert_FullMethodName                      = "/spdkrpc.SPDKService/EngineSnapshotRevert"
+	SPDKService_EngineSnapshotPurge_FullMethodName                       = "/spdkrpc.SPDKService/EngineSnapshotPurge"
+	SPDKService_EngineSnapshotHash_FullMethodName                        = "/spdkrpc.SPDKService/EngineSnapshotHash"
+	SPDKService_EngineSnapshotHashStatus_FullMethodName                  = "/spdkrpc.SPDKService/EngineSnapshotHashStatus"
+	SPDKService_EngineSnapshotHashCancel_FullMethodName                  = "/spdkrpc.SPDKService/EngineSnapshotHashCancel"
+	SPDKService_EngineSnapshotHashLockState_FullMethodName               = "/spdkrpc.SPDKService/EngineSnapshotHashLockState"
+	SPDKService_EngineList_FullMethodName                                = "/spdkrpc.SPDKService/EngineList"
+	SPDKService_EngineWatch_FullMethodName                               = "/spdkrpc.SPDKService/EngineWatch"
+	SPDKService_EngineReplicaList_FullMethodName                         = "/spdkrpc.SPDKService/EngineReplicaList"
+	SPDKService_EngineReplicaAdd_FullMethodName                          = "/spdkrpc.SPDKService/EngineReplicaAdd"
+	SPDKService_EngineReplicaDelete_FullMethodName                       = "/spdkrpc.SPDKService/EngineReplicaDelete"
+	SPDKService_EngineBackupCreate_FullMethodName                        = "/spdkrpc.SPDKService/EngineBackupCreate"
+	SPDKService_EngineBackupStatus_FullMethodName                        = "/spdkrpc.SPDKService/EngineBackupStatus"
+	SPDKService_EngineBackupRestore_FullMethodName                       = "/spdkrpc.SPDKService/EngineBackupRestore"
+	SPDKService_EngineBackupRestoreFinish_FullMethodName                 = "/spdkrpc.SPDKService/EngineBackupRestoreFinish"
+	SPDKService_EngineRestoreStatus_FullMethodName                       = "/spdkrpc.SPDKService/EngineRestoreStatus"
+	SPDKService_BackingImageCreate_FullMethodName                        = "/spdkrpc.SPDKService/BackingImageCreate"
+	SPDKService_BackingImageDelete_FullMethodName                        = "/spdkrpc.SPDKService/BackingImageDelete"
+	SPDKService_BackingImageGet_FullMethodName                           = "/spdkrpc.SPDKService/BackingImageGet"
+	SPDKService_BackingImageList_FullMethodName                          = "/spdkrpc.SPDKService/BackingImageList"
+	SPDKService_BackingImageWatch_FullMethodName                         = "/spdkrpc.SPDKService/BackingImageWatch"
+	SPDKService_BackingImageExpose_FullMethodName                        = "/spdkrpc.SPDKService/BackingImageExpose"
+	SPDKService_BackingImageUnexpose_FullMethodName                      = "/spdkrpc.SPDKService/BackingImageUnexpose"
+	SPDKService_DiskCreate_FullMethodName                                = "/spdkrpc.SPDKService/DiskCreate"
+	SPDKService_DiskDelete_FullMethodName                                = "/spdkrpc.SPDKService/DiskDelete"
+	SPDKService_DiskGet_FullMethodName                                   = "/spdkrpc.SPDKService/DiskGet"
+	SPDKService_LogSetLevel_FullMethodName                               = "/spdkrpc.SPDKService/LogSetLevel"
+	SPDKService_LogSetFlags_FullMethodName                               = "/spdkrpc.SPDKService/LogSetFlags"
+	SPDKService_LogGetLevel_FullMethodName                               = "/spdkrpc.SPDKService/LogGetLevel"
+	SPDKService_LogGetFlags_FullMethodName                               = "/spdkrpc.SPDKService/LogGetFlags"
+	SPDKService_VersionDetailGet_FullMethodName                          = "/spdkrpc.SPDKService/VersionDetailGet"
+	SPDKService_MetricsGet_FullMethodName                                = "/spdkrpc.SPDKService/MetricsGet"
 )
 
 // SPDKServiceClient is the client API for SPDKService service.
@@ -104,17 +107,20 @@ type SPDKServiceClient interface {
 	ReplicaSnapshotHashStatus(ctx context.Context, in *SnapshotHashStatusRequest, opts ...grpc.CallOption) (*ReplicaSnapshotHashStatusResponse, error)
 	ReplicaSnapshotHashCancel(ctx context.Context, in *SnapshotHashCancelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ReplicaSnapshotHashLockState(ctx context.Context, in *SnapshotHashLockStateRequest, opts ...grpc.CallOption) (*SnapshotHashLockStateResponse, error)
+	ReplicaSnapshotRangeHashGet(ctx context.Context, in *ReplicaSnapshotRangeHashGetRequest, opts ...grpc.CallOption) (*ReplicaSnapshotRangeHashGetResponse, error)
 	ReplicaList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ReplicaListResponse, error)
 	ReplicaWatch(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (SPDKService_ReplicaWatchClient, error)
 	ReplicaRebuildingSrcStart(ctx context.Context, in *ReplicaRebuildingSrcStartRequest, opts ...grpc.CallOption) (*ReplicaRebuildingSrcStartResponse, error)
 	ReplicaRebuildingSrcFinish(ctx context.Context, in *ReplicaRebuildingSrcFinishRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ReplicaRebuildingSrcShallowCopyStart(ctx context.Context, in *ReplicaRebuildingSrcShallowCopyStartRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ReplicaRebuildingSrcRangeShallowCopyStart(ctx context.Context, in *ReplicaRebuildingSrcRangeShallowCopyStartRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ReplicaRebuildingSrcShallowCopyCheck(ctx context.Context, in *ReplicaRebuildingSrcShallowCopyCheckRequest, opts ...grpc.CallOption) (*ReplicaRebuildingSrcShallowCopyCheckResponse, error)
 	ReplicaRebuildingDstStart(ctx context.Context, in *ReplicaRebuildingDstStartRequest, opts ...grpc.CallOption) (*ReplicaRebuildingDstStartResponse, error)
 	ReplicaRebuildingDstFinish(ctx context.Context, in *ReplicaRebuildingDstFinishRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ReplicaRebuildingDstShallowCopyStart(ctx context.Context, in *ReplicaRebuildingDstShallowCopyStartRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ReplicaRebuildingDstShallowCopyCheck(ctx context.Context, in *ReplicaRebuildingDstShallowCopyCheckRequest, opts ...grpc.CallOption) (*ReplicaRebuildingDstShallowCopyCheckResponse, error)
 	ReplicaRebuildingDstSnapshotCreate(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ReplicaRebuildingDstSetQosLimit(ctx context.Context, in *ReplicaRebuildingDstSetQosLimitRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ReplicaBackupCreate(ctx context.Context, in *BackupCreateRequest, opts ...grpc.CallOption) (*BackupCreateResponse, error)
 	ReplicaBackupStatus(ctx context.Context, in *BackupStatusRequest, opts ...grpc.CallOption) (*BackupStatusResponse, error)
 	ReplicaBackupRestore(ctx context.Context, in *ReplicaBackupRestoreRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -269,6 +275,15 @@ func (c *sPDKServiceClient) ReplicaSnapshotHashLockState(ctx context.Context, in
 	return out, nil
 }
 
+func (c *sPDKServiceClient) ReplicaSnapshotRangeHashGet(ctx context.Context, in *ReplicaSnapshotRangeHashGetRequest, opts ...grpc.CallOption) (*ReplicaSnapshotRangeHashGetResponse, error) {
+	out := new(ReplicaSnapshotRangeHashGetResponse)
+	err := c.cc.Invoke(ctx, SPDKService_ReplicaSnapshotRangeHashGet_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *sPDKServiceClient) ReplicaList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ReplicaListResponse, error) {
 	out := new(ReplicaListResponse)
 	err := c.cc.Invoke(ctx, SPDKService_ReplicaList_FullMethodName, in, out, opts...)
@@ -337,6 +352,15 @@ func (c *sPDKServiceClient) ReplicaRebuildingSrcShallowCopyStart(ctx context.Con
 	return out, nil
 }
 
+func (c *sPDKServiceClient) ReplicaRebuildingSrcRangeShallowCopyStart(ctx context.Context, in *ReplicaRebuildingSrcRangeShallowCopyStartRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_ReplicaRebuildingSrcRangeShallowCopyStart_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *sPDKServiceClient) ReplicaRebuildingSrcShallowCopyCheck(ctx context.Context, in *ReplicaRebuildingSrcShallowCopyCheckRequest, opts ...grpc.CallOption) (*ReplicaRebuildingSrcShallowCopyCheckResponse, error) {
 	out := new(ReplicaRebuildingSrcShallowCopyCheckResponse)
 	err := c.cc.Invoke(ctx, SPDKService_ReplicaRebuildingSrcShallowCopyCheck_FullMethodName, in, out, opts...)
@@ -385,6 +409,15 @@ func (c *sPDKServiceClient) ReplicaRebuildingDstShallowCopyCheck(ctx context.Con
 func (c *sPDKServiceClient) ReplicaRebuildingDstSnapshotCreate(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, SPDKService_ReplicaRebuildingDstSnapshotCreate_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ReplicaRebuildingDstSetQosLimit(ctx context.Context, in *ReplicaRebuildingDstSetQosLimitRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_ReplicaRebuildingDstSetQosLimit_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -857,17 +890,20 @@ type SPDKServiceServer interface {
 	ReplicaSnapshotHashStatus(context.Context, *SnapshotHashStatusRequest) (*ReplicaSnapshotHashStatusResponse, error)
 	ReplicaSnapshotHashCancel(context.Context, *SnapshotHashCancelRequest) (*emptypb.Empty, error)
 	ReplicaSnapshotHashLockState(context.Context, *SnapshotHashLockStateRequest) (*SnapshotHashLockStateResponse, error)
+	ReplicaSnapshotRangeHashGet(context.Context, *ReplicaSnapshotRangeHashGetRequest) (*ReplicaSnapshotRangeHashGetResponse, error)
 	ReplicaList(context.Context, *emptypb.Empty) (*ReplicaListResponse, error)
 	ReplicaWatch(*emptypb.Empty, SPDKService_ReplicaWatchServer) error
 	ReplicaRebuildingSrcStart(context.Context, *ReplicaRebuildingSrcStartRequest) (*ReplicaRebuildingSrcStartResponse, error)
 	ReplicaRebuildingSrcFinish(context.Context, *ReplicaRebuildingSrcFinishRequest) (*emptypb.Empty, error)
 	ReplicaRebuildingSrcShallowCopyStart(context.Context, *ReplicaRebuildingSrcShallowCopyStartRequest) (*emptypb.Empty, error)
+	ReplicaRebuildingSrcRangeShallowCopyStart(context.Context, *ReplicaRebuildingSrcRangeShallowCopyStartRequest) (*emptypb.Empty, error)
 	ReplicaRebuildingSrcShallowCopyCheck(context.Context, *ReplicaRebuildingSrcShallowCopyCheckRequest) (*ReplicaRebuildingSrcShallowCopyCheckResponse, error)
 	ReplicaRebuildingDstStart(context.Context, *ReplicaRebuildingDstStartRequest) (*ReplicaRebuildingDstStartResponse, error)
 	ReplicaRebuildingDstFinish(context.Context, *ReplicaRebuildingDstFinishRequest) (*emptypb.Empty, error)
 	ReplicaRebuildingDstShallowCopyStart(context.Context, *ReplicaRebuildingDstShallowCopyStartRequest) (*emptypb.Empty, error)
 	ReplicaRebuildingDstShallowCopyCheck(context.Context, *ReplicaRebuildingDstShallowCopyCheckRequest) (*ReplicaRebuildingDstShallowCopyCheckResponse, error)
 	ReplicaRebuildingDstSnapshotCreate(context.Context, *SnapshotRequest) (*emptypb.Empty, error)
+	ReplicaRebuildingDstSetQosLimit(context.Context, *ReplicaRebuildingDstSetQosLimitRequest) (*emptypb.Empty, error)
 	ReplicaBackupCreate(context.Context, *BackupCreateRequest) (*BackupCreateResponse, error)
 	ReplicaBackupStatus(context.Context, *BackupStatusRequest) (*BackupStatusResponse, error)
 	ReplicaBackupRestore(context.Context, *ReplicaBackupRestoreRequest) (*emptypb.Empty, error)
@@ -953,6 +989,9 @@ func (UnimplementedSPDKServiceServer) ReplicaSnapshotHashCancel(context.Context,
 func (UnimplementedSPDKServiceServer) ReplicaSnapshotHashLockState(context.Context, *SnapshotHashLockStateRequest) (*SnapshotHashLockStateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReplicaSnapshotHashLockState not implemented")
 }
+func (UnimplementedSPDKServiceServer) ReplicaSnapshotRangeHashGet(context.Context, *ReplicaSnapshotRangeHashGetRequest) (*ReplicaSnapshotRangeHashGetResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReplicaSnapshotRangeHashGet not implemented")
+}
 func (UnimplementedSPDKServiceServer) ReplicaList(context.Context, *emptypb.Empty) (*ReplicaListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReplicaList not implemented")
 }
@@ -967,6 +1006,9 @@ func (UnimplementedSPDKServiceServer) ReplicaRebuildingSrcFinish(context.Context
 }
 func (UnimplementedSPDKServiceServer) ReplicaRebuildingSrcShallowCopyStart(context.Context, *ReplicaRebuildingSrcShallowCopyStartRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReplicaRebuildingSrcShallowCopyStart not implemented")
+}
+func (UnimplementedSPDKServiceServer) ReplicaRebuildingSrcRangeShallowCopyStart(context.Context, *ReplicaRebuildingSrcRangeShallowCopyStartRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReplicaRebuildingSrcRangeShallowCopyStart not implemented")
 }
 func (UnimplementedSPDKServiceServer) ReplicaRebuildingSrcShallowCopyCheck(context.Context, *ReplicaRebuildingSrcShallowCopyCheckRequest) (*ReplicaRebuildingSrcShallowCopyCheckResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReplicaRebuildingSrcShallowCopyCheck not implemented")
@@ -985,6 +1027,9 @@ func (UnimplementedSPDKServiceServer) ReplicaRebuildingDstShallowCopyCheck(conte
 }
 func (UnimplementedSPDKServiceServer) ReplicaRebuildingDstSnapshotCreate(context.Context, *SnapshotRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReplicaRebuildingDstSnapshotCreate not implemented")
+}
+func (UnimplementedSPDKServiceServer) ReplicaRebuildingDstSetQosLimit(context.Context, *ReplicaRebuildingDstSetQosLimitRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReplicaRebuildingDstSetQosLimit not implemented")
 }
 func (UnimplementedSPDKServiceServer) ReplicaBackupCreate(context.Context, *BackupCreateRequest) (*BackupCreateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReplicaBackupCreate not implemented")
@@ -1332,6 +1377,24 @@ func _SPDKService_ReplicaSnapshotHashLockState_Handler(srv interface{}, ctx cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SPDKService_ReplicaSnapshotRangeHashGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReplicaSnapshotRangeHashGetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ReplicaSnapshotRangeHashGet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ReplicaSnapshotRangeHashGet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ReplicaSnapshotRangeHashGet(ctx, req.(*ReplicaSnapshotRangeHashGetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _SPDKService_ReplicaList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
@@ -1421,6 +1484,24 @@ func _SPDKService_ReplicaRebuildingSrcShallowCopyStart_Handler(srv interface{}, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SPDKServiceServer).ReplicaRebuildingSrcShallowCopyStart(ctx, req.(*ReplicaRebuildingSrcShallowCopyStartRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ReplicaRebuildingSrcRangeShallowCopyStart_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReplicaRebuildingSrcRangeShallowCopyStartRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ReplicaRebuildingSrcRangeShallowCopyStart(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ReplicaRebuildingSrcRangeShallowCopyStart_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ReplicaRebuildingSrcRangeShallowCopyStart(ctx, req.(*ReplicaRebuildingSrcRangeShallowCopyStartRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1529,6 +1610,24 @@ func _SPDKService_ReplicaRebuildingDstSnapshotCreate_Handler(srv interface{}, ct
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SPDKServiceServer).ReplicaRebuildingDstSnapshotCreate(ctx, req.(*SnapshotRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ReplicaRebuildingDstSetQosLimit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReplicaRebuildingDstSetQosLimitRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ReplicaRebuildingDstSetQosLimit(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ReplicaRebuildingDstSetQosLimit_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ReplicaRebuildingDstSetQosLimit(ctx, req.(*ReplicaRebuildingDstSetQosLimitRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2401,6 +2500,10 @@ var SPDKService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _SPDKService_ReplicaSnapshotHashLockState_Handler,
 		},
 		{
+			MethodName: "ReplicaSnapshotRangeHashGet",
+			Handler:    _SPDKService_ReplicaSnapshotRangeHashGet_Handler,
+		},
+		{
 			MethodName: "ReplicaList",
 			Handler:    _SPDKService_ReplicaList_Handler,
 		},
@@ -2415,6 +2518,10 @@ var SPDKService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReplicaRebuildingSrcShallowCopyStart",
 			Handler:    _SPDKService_ReplicaRebuildingSrcShallowCopyStart_Handler,
+		},
+		{
+			MethodName: "ReplicaRebuildingSrcRangeShallowCopyStart",
+			Handler:    _SPDKService_ReplicaRebuildingSrcRangeShallowCopyStart_Handler,
 		},
 		{
 			MethodName: "ReplicaRebuildingSrcShallowCopyCheck",
@@ -2439,6 +2546,10 @@ var SPDKService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReplicaRebuildingDstSnapshotCreate",
 			Handler:    _SPDKService_ReplicaRebuildingDstSnapshotCreate_Handler,
+		},
+		{
+			MethodName: "ReplicaRebuildingDstSetQosLimit",
+			Handler:    _SPDKService_ReplicaRebuildingDstSetQosLimit_Handler,
 		},
 		{
 			MethodName: "ReplicaBackupCreate",
