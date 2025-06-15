@@ -80,7 +80,7 @@ require (
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.10.0
-	github.com/urfave/cli v1.22.16
+	github.com/urfave/cli v1.22.17
 	golang.org/x/mod v0.25.0
 	golang.org/x/net v0.41.0
 	golang.org/x/sys v0.33.0
