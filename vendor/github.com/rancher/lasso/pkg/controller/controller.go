@@ -6,6 +6,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -36,6 +37,11 @@ type HandlerFunc func(key string, obj runtime.Object) error
 
 func (h HandlerFunc) OnChange(key string, obj runtime.Object) error {
 	return h(key, obj)
+}
+
+type retryAfterError struct {
+	error
+	duration time.Duration
 }
 
 type Controller interface {
@@ -215,6 +221,11 @@ func (c *controller) processSingleItem(obj interface{}) error {
 		return nil
 	}
 	if err := c.syncHandler(key); err != nil {
+		var retryAfter *retryAfterError
+		if errors.As(err, &retryAfter) {
+			c.workqueue.AddAfter(key, retryAfter.duration)
+			return retryAfter.error
+		}
 		c.workqueue.AddRateLimited(key)
 		return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 	}
