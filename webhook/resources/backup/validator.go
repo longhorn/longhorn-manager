@@ -51,5 +51,15 @@ func (b *backupValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(fmt.Sprintf("BackupMode %v is not a valid option", backup.Spec.BackupMode), "")
 	}
 
+	// Check if backup target exists and is available
+	backupTarget, err := b.ds.GetBackupTarget(backup.ObjectMeta.Name)
+	if err != nil {
+		return werror.NewInvalidError(fmt.Sprintf("failed to get backup target %s: %v", backup.ObjectMeta.Name, err), "")
+	}
+
+	if !backupTarget.Status.Available {
+		return werror.NewInvalidError(fmt.Sprintf("backup target %s is not available", backup.ObjectMeta.Name), "")
+	}
+
 	return nil
 }
