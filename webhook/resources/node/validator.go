@@ -143,6 +143,11 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 		}
 	}
 
+	// We need to ensure that the name is not empty because it can lead to errors in the Longhorn
+	if newNode.Spec.Name == "" {
+		return werror.NewInvalidError("node name is invalid. You can't have a Spec.Name empty", "")
+	}
+
 	// Only scheduling disabled disk can be evicted
 	// Can not enable scheduling on an evicting disk
 	for diskName, diskSpec := range newNode.Spec.Disks {
