@@ -845,8 +845,21 @@ func (c *UninstallController) deleteEngineImages(engineImages map[string]*longho
 	for _, ei := range engineImages {
 		log := getLoggerForEngineImage(c.logger, ei)
 
+		if ei.Annotations == nil {
+			ei.Annotations = make(map[string]string)
+		}
+
 		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if ei.DeletionTimestamp == nil {
+			if defaultImage, errGetSetting := c.ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage); errGetSetting != nil {
+				return errors.Wrap(errGetSetting, "failed to get default engine image setting")
+			} else if ei.Spec.Image == defaultImage {
+				log.Infof("Adding annotation %v to engine image %s to mark for deletion", types.GetLonghornLabelKey(types.DeleteEngineImageFromLonghorn), ei.Name)
+				ei.Annotations[types.GetLonghornLabelKey(types.DeleteEngineImageFromLonghorn)] = ""
+				if _, err := c.ds.UpdateEngineImage(ei); err != nil {
+					return errors.Wrap(err, "failed to update engine image annotations to mark for deletion")
+				}
+			}
 			if errDelete := c.ds.DeleteEngineImage(ei.Name); errDelete != nil {
 				if datastore.ErrorIsNotFound(errDelete) {
 					log.Info("EngineImage is not found")

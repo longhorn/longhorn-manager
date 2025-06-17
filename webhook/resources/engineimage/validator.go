@@ -49,7 +49,15 @@ func (e *engineImageValidator) Delete(request *admission.Request, obj runtime.Ob
 	}
 
 	if ei.Spec.Image == defaultImage {
-		return werror.NewInvalidError(fmt.Sprintf("deleting the default engine image %v (%v) is not allowed", defaultImage, ei.Spec.Image), "")
+		exists := false
+		if ei.Annotations != nil {
+			// Annotations `DeleteEngineImageFromLonghorn` is used to note that deleting engine image is by Longhorn during uninstalling.
+			// When `exists` is true, the engine image is deleted by Longhorn.
+			_, exists = ei.Annotations[types.GetLonghornLabelKey(types.DeleteEngineImageFromLonghorn)]
+		}
+		if !exists {
+			return werror.NewInvalidError(fmt.Sprintf("deleting the default engine image %v (%v) is not allowed", defaultImage, ei.Spec.Image), "")
+		}
 	}
 
 	if ei.Status.RefCount != 0 {

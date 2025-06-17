@@ -140,8 +140,9 @@ const (
 
 	DeleteCustomResourceOnly = "delete-custom-resource-only"
 
-	// const value `DeleteBackupTargetFromLonghorn` is used for annotation to note that deleting backup target is by Longhorn during uninstalling.
+	// annotations to note that deleting backup target is by Longhorn during uninstalling.
 	DeleteBackupTargetFromLonghorn = "delete-backup-target-from-longhorn"
+	DeleteEngineImageFromLonghorn  = "delete-engine-image-from-longhorn"
 
 	KubernetesStatusLabel = "KubernetesStatus"
 	KubernetesReplicaSet  = "ReplicaSet"
