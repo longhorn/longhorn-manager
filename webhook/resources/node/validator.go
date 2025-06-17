@@ -228,7 +228,18 @@ func (n *nodeValidator) Delete(request *admission.Request, obj runtime.Object) e
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Node", obj), "")
 	}
 
-	// only remove node from longhorn without any volumes on it
+	// Annotations `DeleteNodeFromLonghorn` is used to note that deleting node is by Longhorn during uninstalling.
+	// When `isUninstalling` is true, the node is deleted by Longhorn, allows the deletion;
+	// otherwise, continue to validate the instance and the node status.
+	isUninstalling := false
+	if node.Annotations != nil {
+		_, isUninstalling = node.Annotations[types.GetLonghornLabelKey(types.DeleteNodeFromLonghorn)]
+	}
+	if isUninstalling {
+		return nil
+	}
+
+	// If not uninstalling, only remove node from longhorn without any volumes on it
 	replicas, err := n.ds.ListReplicasByNodeRO(node.Name)
 	if err != nil {
 		return werror.NewInvalidError(fmt.Sprintf("failed to list replicas on node %v: %v", node.Name, err), "")

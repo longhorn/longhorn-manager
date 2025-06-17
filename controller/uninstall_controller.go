@@ -904,7 +904,16 @@ func (c *UninstallController) deleteNodes(nodes map[string]*longhorn.Node) (err 
 	for _, node := range nodes {
 		log := getLoggerForNode(c.logger, node)
 
+		if node.Annotations == nil {
+			node.Annotations = make(map[string]string)
+		}
+
 		if node.DeletionTimestamp == nil {
+			log.Infof("Adding annotation %v to node %s to mark for deletion", types.GetLonghornLabelKey(types.DeleteNodeFromLonghorn), node.Name)
+			node.Annotations[types.GetLonghornLabelKey(types.DeleteNodeFromLonghorn)] = ""
+			if _, err := c.ds.UpdateNode(node); err != nil {
+				return errors.Wrap(err, "failed to update node annotations to mark for deletion")
+			}
 			if errDelete := c.ds.DeleteNode(node.Name); errDelete != nil {
 				if datastore.ErrorIsNotFound(errDelete) {
 					log.Info("Node is not found")
