@@ -143,6 +143,7 @@ const (
 	// annotations to note that deleting backup target is by Longhorn during uninstalling.
 	DeleteBackupTargetFromLonghorn = "delete-backup-target-from-longhorn"
 	DeleteEngineImageFromLonghorn  = "delete-engine-image-from-longhorn"
+	DeleteNodeFromLonghorn         = "delete-node-from-longhorn"
 
 	KubernetesStatusLabel = "KubernetesStatus"
 	KubernetesReplicaSet  = "ReplicaSet"
