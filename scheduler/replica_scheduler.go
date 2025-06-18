@@ -92,6 +92,10 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 // The local node refers to the node where the volume is attached.
 func (rcs *ReplicaScheduler) scheduleReplicaToDiskOnLocalNode(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume, diskCandidates map[string]*Disk) {
 	localNodeID := volume.Spec.NodeID
+	if localNodeID == "" {
+		logrus.Warnf("Failed to schedule replica %s on local node because volume %s is not attached", replica.Name, volume.Name)
+		return
+	}
 	// See if any healthy replicas are already scheduled on the local node.
 	for _, r := range replicas {
 		if r.Spec.NodeID == localNodeID && r.Spec.HealthyAt != "" && r.Spec.FailedAt == "" {
