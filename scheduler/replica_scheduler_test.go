@@ -1718,7 +1718,7 @@ func (s *TestSuite) TestScheduleReplicaToDiskOnLocalNode(c *C) {
 	rs.scheduleReplicaToDiskOnLocalNode(replica1, replicas, volume, diskCandidates)
 	c.Assert(replica1.Spec.NodeID, Equals, TestNode1)
 
-	// Case 4: Another replica (replica2) should not be scheduled to the local node 
+	// Case 4: Another replica (replica2) should not be scheduled to the local node
 	// because there is already a healthy replica (replica1) on that node.
 	rs.scheduleReplicaToDiskOnLocalNode(replica2, replicas, volume, diskCandidates)
 	c.Assert(replica2.Spec.NodeID, Equals, "")
