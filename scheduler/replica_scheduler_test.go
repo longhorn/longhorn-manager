@@ -1689,3 +1689,43 @@ func getTestNow() time.Time {
 	now, _ := time.Parse(time.RFC3339, TestTimeNow)
 	return now
 }
+
+func (s *TestSuite) TestScheduleReplicaToDiskOnLocalNode(c *C) {
+	rs := NewReplicaScheduler(nil)
+	volume := newVolume(TestVolumeName, 2)
+	replica1 := newReplicaForVolume(volume)
+	replica1.Spec.HealthyAt = getTestNow().String()
+	replica2 := newReplicaForVolume(volume)
+	replica2.Spec.HealthyAt = getTestNow().String()
+	replicas := map[string]*longhorn.Replica{}
+	replicas[replica1.Name] = replica1
+	replicas[replica2.Name] = replica2
+	diskCandidates := map[string]*Disk{}
+	diskCandidates["disk2"] = &Disk{NodeID: TestNode2, DiskSpec: longhorn.DiskSpec{}, DiskStatus: &longhorn.DiskStatus{}}
+	diskCandidates["disk3"] = &Disk{NodeID: TestNode3, DiskSpec: longhorn.DiskSpec{}, DiskStatus: &longhorn.DiskStatus{}}
+
+	// Case 1: Volume not attached, skip scheduling
+	rs.scheduleReplicaToDiskOnLocalNode(replica1, replicas, volume, diskCandidates)
+	c.Assert(replica1.Spec.NodeID, Equals, "")
+
+	// Case 2: Volume attached but no disks available on local node
+	volume.Spec.NodeID = TestNode1
+	rs.scheduleReplicaToDiskOnLocalNode(replica1, replicas, volume, diskCandidates)
+	c.Assert(replica1.Spec.NodeID, Equals, "")
+
+	// Case 3: Schedule to available local disk
+	diskCandidates["disk1"] = &Disk{NodeID: TestNode1, DiskSpec: longhorn.DiskSpec{}, DiskStatus: &longhorn.DiskStatus{}}
+	rs.scheduleReplicaToDiskOnLocalNode(replica1, replicas, volume, diskCandidates)
+	c.Assert(replica1.Spec.NodeID, Equals, TestNode1)
+
+	// Case 4: Another replica (replica2) should not be scheduled to the local node
+	// because there is already a healthy replica (replica1) on that node.
+	rs.scheduleReplicaToDiskOnLocalNode(replica2, replicas, volume, diskCandidates)
+	c.Assert(replica2.Spec.NodeID, Equals, "")
+
+	// Case 5: replica1 is marked as failed. In this case, replica2 is allowed to be
+	// scheduled to the local node.
+	replica1.Spec.FailedAt = getTestNow().String()
+	rs.scheduleReplicaToDiskOnLocalNode(replica2, replicas, volume, diskCandidates)
+	c.Assert(replica2.Spec.NodeID, Equals, TestNode1)
+}
