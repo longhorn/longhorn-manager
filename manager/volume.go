@@ -237,7 +237,7 @@ func (m *VolumeManager) Attach(name, nodeID string, disableFrontend bool, attach
 		return nil, err
 	}
 
-	if isReady, err := m.ds.CheckDataEngineImageReadyOnAtLeastOneVolumeReplica(v.Spec.Image, v.Name, node.Name, v.Spec.DataLocality, v.Spec.DataEngine); !isReady {
+	if isReady, err := m.ds.IsDataEngineImageReady(v.Spec.Image, v.Name, node.Name, v.Spec.DataLocality, v.Spec.DataEngine); !isReady {
 		if err != nil {
 			return nil, errors.Wrapf(err, "cannot attach volume %v with image %v", v.Name, v.Spec.Image)
 		}
