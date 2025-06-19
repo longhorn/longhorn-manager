@@ -57,19 +57,19 @@ func (eb *ExponentialBackoff) runCleaner() {
 	}
 }
 
-// AllowAttempt returns true if time elapsed since last attempt is greater than current interval.
+// CanRun returns true if time elapsed since last attempt is greater than current interval.
 // Always allows the first attempt. Also returns how long to wait if not allowed.
-func (eb *ExponentialBackoff) AllowAttempt(key string) (bool, time.Duration) {
+func (eb *ExponentialBackoff) CanRun(key string) (bool, time.Duration) {
 	eb.mu.Lock()
 	defer eb.mu.Unlock()
 
 	lastAttempt := eb.lastAttempt[key]
 	interval := eb.interval[key]
 	retryAfter := interval - time.Since(lastAttempt)
-	isAllowed := retryAfter <= 0
+	canRun := retryAfter <= 0
 
 	// if attempt is allowed update interval and lastAttempt
-	if isAllowed {
+	if canRun {
 		if interval == 0 {
 			interval = initBackoffInterval
 		} else {
@@ -82,7 +82,7 @@ func (eb *ExponentialBackoff) AllowAttempt(key string) (bool, time.Duration) {
 		eb.lastAttempt[key] = time.Now()
 	}
 
-	return isAllowed, retryAfter
+	return canRun, retryAfter
 }
 
 func hasReplicaEvictionRequested(rs map[string]*longhorn.Replica) bool {
