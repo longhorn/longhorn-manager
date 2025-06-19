@@ -2,6 +2,8 @@ package controller
 
 import (
 	"github.com/sirupsen/logrus"
+	"sync"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -12,6 +14,90 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
+
+const (
+	defaultInitBackoffInterval = 1 * time.Second
+	defaultMaxBackoffInterval  = 1 * time.Hour
+)
+
+type ExponentialBackoff struct {
+	interval            map[string]time.Duration
+	lastAttempt         map[string]time.Time
+	initBackoffInterval time.Duration
+	maxBackoffInterval  time.Duration
+	mu                  sync.Mutex
+}
+
+func NewDefaultExponentialBackoff() *ExponentialBackoff {
+	eb := &ExponentialBackoff{
+		interval:            map[string]time.Duration{},
+		lastAttempt:         map[string]time.Time{},
+		initBackoffInterval: defaultInitBackoffInterval,
+		maxBackoffInterval:  defaultMaxBackoffInterval,
+	}
+	// periodically clean up expired entries
+	go eb.runCleaner()
+
+	return eb
+}
+
+func NewExponentialBackoff(initBackoffInterval, maxBackoffInterval time.Duration) *ExponentialBackoff {
+	eb := &ExponentialBackoff{
+		interval:            map[string]time.Duration{},
+		lastAttempt:         map[string]time.Time{},
+		initBackoffInterval: initBackoffInterval,
+		maxBackoffInterval:  maxBackoffInterval,
+	}
+	// periodically clean up expired entries
+	go eb.runCleaner()
+
+	return eb
+}
+
+func (eb *ExponentialBackoff) runCleaner() {
+	ticker := time.NewTicker(eb.maxBackoffInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		eb.mu.Lock()
+		for key, lastAttempt := range eb.lastAttempt {
+			interval := eb.interval[key]
+			// remove entry after if it was inactive for interval + maxBackoffInterval since last attempt
+			if time.Since(lastAttempt) > interval+eb.maxBackoffInterval {
+				delete(eb.lastAttempt, key)
+				delete(eb.interval, key)
+			}
+		}
+		eb.mu.Unlock()
+	}
+}
+
+// CanRun returns true if time elapsed since last attempt is greater than current interval.
+// Always allows the first attempt. Also returns how long to wait if not allowed.
+func (eb *ExponentialBackoff) CanRun(key string) (bool, time.Duration) {
+	eb.mu.Lock()
+	defer eb.mu.Unlock()
+
+	lastAttempt := eb.lastAttempt[key]
+	interval := eb.interval[key]
+	retryAfter := interval - time.Since(lastAttempt)
+	canRun := retryAfter <= 0
+
+	// if attempt is allowed update interval and lastAttempt
+	if canRun {
+		if interval == 0 {
+			interval = eb.initBackoffInterval
+		} else {
+			interval *= 2
+		}
+		if interval > eb.maxBackoffInterval {
+			interval = eb.maxBackoffInterval
+		}
+		eb.interval[key] = interval
+		eb.lastAttempt[key] = time.Now()
+	}
+
+	return canRun, retryAfter
+}
 
 func hasReplicaEvictionRequested(rs map[string]*longhorn.Replica) bool {
 	for _, r := range rs {
