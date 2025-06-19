@@ -1694,9 +1694,7 @@ func (s *TestSuite) TestScheduleReplicaToDiskOnLocalNode(c *C) {
 	rs := NewReplicaScheduler(nil)
 	volume := newVolume(TestVolumeName, 2)
 	replica1 := newReplicaForVolume(volume)
-	replica1.Spec.HealthyAt = getTestNow().String()
 	replica2 := newReplicaForVolume(volume)
-	replica2.Spec.HealthyAt = getTestNow().String()
 	replicas := map[string]*longhorn.Replica{}
 	replicas[replica1.Name] = replica1
 	replicas[replica2.Name] = replica2

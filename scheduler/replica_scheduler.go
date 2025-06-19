@@ -98,7 +98,7 @@ func (rcs *ReplicaScheduler) scheduleReplicaToDiskOnLocalNode(replica *longhorn.
 	}
 	// See if any healthy replicas are already scheduled on the local node.
 	for _, r := range replicas {
-		if r.Spec.NodeID == localNodeID && r.Spec.HealthyAt != "" && r.Spec.FailedAt == "" {
+		if r.Spec.NodeID == localNodeID && r.Spec.FailedAt == "" {
 			return
 		}
 	}

@@ -2100,8 +2100,8 @@ func (s *DataStore) CheckDataEngineImageReadiness(image string, dataEngine longh
 	return s.CheckEngineImageReadiness(image, nodes...)
 }
 
-// CheckDataEngineImageReadyOnAtLeastOneVolumeReplica checks if the IMAGE is deployed on the NODEID and on at least one of the the volume's replicas
-func (s *DataStore) CheckDataEngineImageReadyOnAtLeastOneVolumeReplica(image, volumeName, nodeID string, dataLocality longhorn.DataLocality, dataEngine longhorn.DataEngineType) (bool, error) {
+// IsDataEngineImageReady checks if the IMAGE is deployed on the NODEID and, if data locality is disabled, also on at least one replica node of the volume.
+func (s *DataStore) IsDataEngineImageReady(image, volumeName, nodeID string, dataLocality longhorn.DataLocality, dataEngine longhorn.DataEngineType) (bool, error) {
 	isReady, err := s.CheckDataEngineImageReadiness(image, dataEngine, nodeID)
 	if err != nil {
 		return false, errors.Wrapf(err, "failed to check data engine image readiness of node %v", nodeID)
@@ -2111,6 +2111,11 @@ func (s *DataStore) CheckDataEngineImageReadyOnAtLeastOneVolumeReplica(image, vo
 		return isReady, nil
 	}
 
+	return s.checkDataEngineImageReadyOnAtLeastOneVolumeReplica(image, volumeName)
+}
+
+// checkDataEngineImageReadyOnAtLeastOneVolumeReplica checks if the IMAGE is deployed on at least one replica node of the volume.
+func (s *DataStore) checkDataEngineImageReadyOnAtLeastOneVolumeReplica(image, volumeName string) (bool, error) {
 	replicas, err := s.ListVolumeReplicas(volumeName)
 	if err != nil {
 		return false, errors.Wrapf(err, "failed to get replicas for volume %v", volumeName)
@@ -2129,6 +2134,7 @@ func (s *DataStore) CheckDataEngineImageReadyOnAtLeastOneVolumeReplica(image, vo
 	if !hasScheduledReplica {
 		return false, errors.Errorf("volume %v has no scheduled replicas", volumeName)
 	}
+
 	return false, nil
 }
 
