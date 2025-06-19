@@ -2,6 +2,8 @@ package controller
 
 import (
 	"github.com/sirupsen/logrus"
+	"sync"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -12,6 +14,76 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
+
+const (
+	initBackoffInterval = 1 * time.Second
+	maxBackoffInterval  = 1 * time.Hour
+	cleanupPeriod       = 10 * time.Minute
+)
+
+type ExponentialBackoff struct {
+	interval    map[string]time.Duration
+	lastAttempt map[string]time.Time
+	mu          sync.Mutex
+}
+
+func NewExponentialBackoff() *ExponentialBackoff {
+	eb := &ExponentialBackoff{
+		interval:    map[string]time.Duration{},
+		lastAttempt: map[string]time.Time{},
+	}
+	// periodically clean up expired entries
+	go eb.runCleaner()
+
+	return eb
+}
+
+func (eb *ExponentialBackoff) runCleaner() {
+	ticker := time.NewTicker(cleanupPeriod)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			eb.mu.Lock()
+			for key, lastAttempt := range eb.lastAttempt {
+				interval := eb.interval[key]
+				if time.Since(lastAttempt) > interval {
+					delete(eb.lastAttempt, key)
+					delete(eb.interval, key)
+				}
+			}
+			eb.mu.Unlock()
+		}
+	}
+}
+
+// AllowAttempt returns true if time elapsed since last attempt is greater than current interval.
+// Always allows the first attempt. Also returns how long to wait if not allowed.
+func (eb *ExponentialBackoff) AllowAttempt(key string) (bool, time.Duration) {
+	eb.mu.Lock()
+	defer eb.mu.Unlock()
+
+	lastAttempt := eb.lastAttempt[key]
+	interval := eb.interval[key]
+	retryAfter := interval - time.Since(lastAttempt)
+	isAllowed := retryAfter <= 0
+
+	// if attempt is allowed update interval and lastAttempt
+	if isAllowed {
+		if interval == 0 {
+			interval = initBackoffInterval
+		} else {
+			interval *= 2
+		}
+		if interval > maxBackoffInterval {
+			interval = maxBackoffInterval
+		}
+		eb.interval[key] = interval
+		eb.lastAttempt[key] = time.Now()
+	}
+
+	return isAllowed, retryAfter
+}
 
 func hasReplicaEvictionRequested(rs map[string]*longhorn.Replica) bool {
 	for _, r := range rs {
