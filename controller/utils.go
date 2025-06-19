@@ -41,19 +41,16 @@ func NewExponentialBackoff() *ExponentialBackoff {
 func (eb *ExponentialBackoff) runCleaner() {
 	ticker := time.NewTicker(cleanupPeriod)
 	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			eb.mu.Lock()
-			for key, lastAttempt := range eb.lastAttempt {
-				interval := eb.interval[key]
-				if time.Since(lastAttempt) > interval {
-					delete(eb.lastAttempt, key)
-					delete(eb.interval, key)
-				}
+	for range ticker.C {
+		eb.mu.Lock()
+		for key, lastAttempt := range eb.lastAttempt {
+			interval := eb.interval[key]
+			if time.Since(lastAttempt) > interval {
+				delete(eb.lastAttempt, key)
+				delete(eb.interval, key)
 			}
-			eb.mu.Unlock()
 		}
+		eb.mu.Unlock()
 	}
 }
 
