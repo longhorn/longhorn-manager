@@ -143,7 +143,7 @@ func NewInstanceManagerController(
 
 		versionUpdater: updateInstanceManagerVersion,
 
-		exponentialBackoff: NewExponentialBackoff(),
+		exponentialBackoff: NewDefaultExponentialBackoff(),
 	}
 
 	var err error
