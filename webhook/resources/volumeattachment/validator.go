@@ -1,6 +1,7 @@
 package volumeattachment
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 
@@ -119,7 +120,8 @@ func (v *volumeAttachmentValidator) verifyTicketCountForMigratableVolume(va *lon
 		}
 		return nil
 	default:
-		msg := fmt.Sprintf("cannot attach migratable volume %v to more than two nodes", vol.Name)
+		ticketsJson, _ := json.Marshal(va.Spec.AttachmentTickets)
+		msg := fmt.Sprintf("cannot attach migratable volume %v to more than two nodes: %s", vol.Name, ticketsJson)
 		return werror.NewInvalidError(msg, "spec.attachmentTickets")
 	}
 }
