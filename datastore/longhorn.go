@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/bits"
 	"math/rand"
+	"net"
 	"net/url"
 	"reflect"
 	"regexp"
@@ -1783,13 +1784,21 @@ func (s *DataStore) ListVolumeReplicasROMapByNode(volumeName string) (map[string
 // ReplicaAddressToReplicaName will directly return the address if the format
 // is invalid or the replica is not found.
 func ReplicaAddressToReplicaName(address string, rs []*longhorn.Replica) string {
-	addressComponents := strings.Split(strings.TrimPrefix(address, "tcp://"), ":")
-	// The address format should be `<IP>:<Port>` after removing the prefix "tcp://".
-	if len(addressComponents) != 2 {
+	// Remove the "tcp://" prefix if it exists
+	addr := strings.TrimPrefix(address, "tcp://")
+
+	var host, port string
+	var err error
+
+	// Handle both IPv4 and IPv6 formats
+	host, port, err = net.SplitHostPort(addr)
+	if err != nil {
+		// If parsing fails, return the original address
 		return address
 	}
+
 	for _, r := range rs {
-		if addressComponents[0] == r.Status.StorageIP && addressComponents[1] == strconv.Itoa(r.Status.Port) {
+		if host == r.Status.StorageIP && port == strconv.Itoa(r.Status.Port) {
 			return r.Name
 		}
 	}
