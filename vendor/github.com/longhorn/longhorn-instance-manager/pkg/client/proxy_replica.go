@@ -159,6 +159,41 @@ func (c *ProxyClient) ReplicaRebuildingStatus(dataEngine, engineName, volumeName
 	return status, nil
 }
 
+func (c *ProxyClient) ReplicaRebuildingQosSet(dataEngine, engineName, volumeName,
+	serviceAddress string, qosLimitMbps int64) (err error) {
+	input := map[string]string{
+		"engineName":     engineName,
+		"volumeName":     volumeName,
+		"serviceAddress": serviceAddress,
+	}
+	if err := validateProxyMethodParameters(input); err != nil {
+		return errors.Wrap(err, "failed to set replicas rebuilding qos set")
+	}
+
+	driver, ok := rpc.DataEngine_value[getDataEngine(dataEngine)]
+	if !ok {
+		return fmt.Errorf("failed to set replicas rebuilding qos set: invalid data engine %v", dataEngine)
+	}
+
+	defer func() {
+		err = errors.Wrapf(err, "%v failed to set replicas rebuilding qos set", c.getProxyErrorPrefix(serviceAddress))
+	}()
+
+	req := &rpc.EngineReplicaRebuildingQosSetRequest{
+		ProxyEngineRequest: &rpc.ProxyEngineRequest{
+			Address:    serviceAddress,
+			EngineName: engineName,
+			// nolint:all replaced with DataEngine
+			BackendStoreDriver: rpc.BackendStoreDriver(driver),
+			DataEngine:         rpc.DataEngine(driver),
+			VolumeName:         volumeName,
+		},
+		QosLimitMbps: qosLimitMbps,
+	}
+	_, err = c.service.ReplicaRebuildingQosSet(getContextWithGRPCTimeout(c.ctx), req)
+	return err
+}
+
 func (c *ProxyClient) ReplicaVerifyRebuild(dataEngine, engineName, volumeName, serviceAddress,
 	replicaAddress, replicaName string) (err error) {
 	input := map[string]string{
