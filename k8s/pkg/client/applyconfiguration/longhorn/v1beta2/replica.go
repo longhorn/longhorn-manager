@@ -19,6 +19,7 @@ limitations under the License.
 package v1beta2
 
 import (
+	longhornv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
@@ -29,8 +30,8 @@ import (
 type ReplicaApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
-	Spec                             *ReplicaSpecApplyConfiguration   `json:"spec,omitempty"`
-	Status                           *ReplicaStatusApplyConfiguration `json:"status,omitempty"`
+	Spec                             *ReplicaSpecApplyConfiguration `json:"spec,omitempty"`
+	Status                           *longhornv1beta2.ReplicaStatus `json:"status,omitempty"`
 }
 
 // Replica constructs a declarative configuration of the Replica type for use with
@@ -213,8 +214,8 @@ func (b *ReplicaApplyConfiguration) WithSpec(value *ReplicaSpecApplyConfiguratio
 // WithStatus sets the Status field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Status field is set to the value of the last call.
-func (b *ReplicaApplyConfiguration) WithStatus(value *ReplicaStatusApplyConfiguration) *ReplicaApplyConfiguration {
-	b.Status = value
+func (b *ReplicaApplyConfiguration) WithStatus(value longhornv1beta2.ReplicaStatus) *ReplicaApplyConfiguration {
+	b.Status = &value
 	return b
 }
 
