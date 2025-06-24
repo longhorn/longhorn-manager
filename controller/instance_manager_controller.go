@@ -1529,7 +1529,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		}
 	} else {
 		podSpec.Spec.Containers[0].Args = []string{
-			"instance-manager", "--debug", "daemon", "--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort),
+			"instance-manager", "--debug", "daemon", "--listen", fmt.Sprintf(":%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort),
 		}
 	}
 
