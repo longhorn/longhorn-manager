@@ -2,9 +2,11 @@ package api
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
@@ -205,7 +207,7 @@ func UploadParametersForBackingImage(m *manager.VolumeManager) func(req *http.Re
 		if bids.Status.CurrentState != longhorn.BackingImageStatePending {
 			return nil, fmt.Errorf("upload server for backing image %s has not been initiated", name)
 		}
-		return map[string]string{ParameterKeyAddress: fmt.Sprintf("%s:%d", pod.Status.PodIP, engineapi.BackingImageDataSourceDefaultPort)}, nil
+		return map[string]string{ParameterKeyAddress: net.JoinHostPort(pod.Status.PodIP, strconv.Itoa(engineapi.BackingImageDataSourceDefaultPort))}, nil
 	}
 }
 
