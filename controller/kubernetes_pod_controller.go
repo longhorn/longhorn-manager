@@ -26,6 +26,7 @@ import (
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -264,6 +265,11 @@ func (kc *KubernetesPodController) handleWorkloadPodDeletionIfCSIPluginPodIsDown
 		// Exclude non-RWX volumes.
 		if volume.Spec.AccessMode != longhorn.AccessModeReadWriteMany {
 			_log.Debugf("%s. Volume access mode is %v", logSkip, volume.Spec.AccessMode)
+			continue
+		}
+
+		if util.IsMigratableVolume(volume) {
+			_log.Debugf("%s. Volume is migratable RWX volume", logSkip)
 			continue
 		}
 
