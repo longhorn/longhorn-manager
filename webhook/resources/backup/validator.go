@@ -7,6 +7,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
@@ -52,13 +53,18 @@ func (b *backupValidator) Create(request *admission.Request, newObj runtime.Obje
 	}
 
 	// Check if backup target exists and is available
-	backupTarget, err := b.ds.GetBackupTarget(backup.ObjectMeta.Name)
+	backupTargetName, ok := backup.Labels[types.LonghornLabelBackupTarget]
+	if !ok || backupTargetName == "" {
+		return werror.NewInvalidError("missing backup target label on backup object", "")
+	}
+
+	backupTarget, err := b.ds.GetBackupTarget(backupTargetName)
 	if err != nil {
-		return werror.NewInvalidError(fmt.Sprintf("failed to get backup target %s: %v", backup.ObjectMeta.Name, err), "")
+		return werror.NewInvalidError(fmt.Sprintf("failed to get backup target %s: %v", backupTargetName, err), "")
 	}
 
 	if !backupTarget.Status.Available {
-		return werror.NewInvalidError(fmt.Sprintf("backup target %s is not available", backup.ObjectMeta.Name), "")
+		return werror.NewInvalidError(fmt.Sprintf("backup target %s is not available", backupTargetName), "")
 	}
 
 	return nil
