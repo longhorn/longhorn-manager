@@ -201,7 +201,6 @@ func (c *SupportBundleController) handleErr(err error, key interface{}) {
 }
 
 func (c *SupportBundleController) handleStatusUpdate(record *supportBundleRecord, supportBundle *longhorn.SupportBundle, existing *longhorn.SupportBundle, log logrus.FieldLogger) {
-	var err error
 	switch record.recordType {
 	case supportBundleRecordError:
 		c.recordErrorState(record, supportBundle, log)
@@ -234,11 +233,19 @@ func (c *SupportBundleController) handleStatusUpdate(record *supportBundleRecord
 
 	isStatusChange := !reflect.DeepEqual(existing.Status, supportBundle.Status)
 	if isStatusChange {
-		supportBundle, err = c.ds.UpdateSupportBundleStatus(supportBundle)
-		if apierrors.IsConflict(errors.Cause(err)) {
+		_supportBundle, err := c.ds.UpdateSupportBundleStatus(supportBundle)
+		if err != nil && apierrors.IsConflict(errors.Cause(err)) {
 			log.WithError(err).Warnf(SupportBundleMsgRequeueOnConflictFmt, supportBundle.Name)
 			c.enqueue(supportBundle)
 		}
+		// Avoid requeue if the object is nil to avoid unnecessary requeue loops.
+		// This can happen if the update failed, for example, when the object was
+		// deleted during reconciliation.
+		if _supportBundle == nil {
+			log.WithError(err).Warnf("SupportBundle %v is nil after update, skipping requeue", supportBundle.Name)
+			return
+		}
+		supportBundle = _supportBundle
 
 		if supportBundle.Status.State != existing.Status.State {
 			log.Infof(SupportBundleMsgRequeueNextPhaseFmt, supportBundle.Name, supportBundle.Status.State)
