@@ -17,7 +17,7 @@ import (
 
 const (
 	defaultInitBackoffInterval = 1 * time.Second
-	defaultMaxBackoffInterval  = 1 * time.Hour
+	defaultMaxBackoffInterval  = 300 * time.Second
 )
 
 type ExponentialBackoff struct {
