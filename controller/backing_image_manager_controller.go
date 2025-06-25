@@ -3,7 +3,9 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"reflect"
+	"strconv"
 	"sync"
 	"time"
 
@@ -709,7 +711,7 @@ func (c *BackingImageManagerController) prepareBackingImageFiles(currentBIM *lon
 				continue
 			}
 			log.Infof("Starting to fetch the data source file from the backing image data source work directory %v", bimtypes.DataSourceDirectoryName)
-			if _, err := cli.Fetch(biRO.Name, biRO.Status.UUID, bids.Status.Checksum, fmt.Sprintf("%s:%d", bids.Status.StorageIP, engineapi.BackingImageDataSourceDefaultPort), bids.Status.Size); err != nil {
+			if _, err := cli.Fetch(biRO.Name, biRO.Status.UUID, bids.Status.Checksum, net.JoinHostPort(bids.Status.StorageIP, strconv.Itoa(engineapi.BackingImageDataSourceDefaultPort)), bids.Status.Size); err != nil {
 				if types.ErrorAlreadyExists(err) {
 					continue
 				}
