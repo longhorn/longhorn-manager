@@ -80,6 +80,7 @@ func (eb *ExponentialBackoff) CanRun(key string) (bool, time.Duration) {
 	lastAttempt := eb.lastAttempt[key]
 	interval := eb.interval[key]
 	retryAfter := interval - time.Since(lastAttempt)
+	// On the first attempt, retryAfter is always negative, so canRun is true
 	canRun := retryAfter <= 0
 
 	// if attempt is allowed update interval and lastAttempt
@@ -94,6 +95,8 @@ func (eb *ExponentialBackoff) CanRun(key string) (bool, time.Duration) {
 		}
 		eb.interval[key] = interval
 		eb.lastAttempt[key] = time.Now()
+		// don't return negative value
+		retryAfter = 0
 	}
 
 	return canRun, retryAfter
