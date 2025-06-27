@@ -100,7 +100,8 @@ func NewSnapshotController(
 	sc.cacheSyncs = append(sc.cacheSyncs, ds.EngineInformer.HasSynced)
 
 	if _, err = ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
-		DeleteFunc: sc.enqueueVolumeChange,
+		UpdateFunc: sc.enqueueVolumeChange,
+		DeleteFunc: sc.enqueueVolumeDeleted,
 	}, 0); err != nil {
 		return nil, err
 	}
@@ -211,7 +212,52 @@ func filterSnapshotsForEngineEnqueuing(oldEngine, curEngine *longhorn.Engine, sn
 	return targetSnapshots
 }
 
-func (sc *SnapshotController) enqueueVolumeChange(obj interface{}) {
+// There is a race condition for that all snapshot controllers will not process some snapshots when the volume owner ID changes.
+// https://github.com/longhorn/longhorn/issues/10874#issuecomment-2870915401
+// In that case, snapshot controllers should enqueue the snapshots again when the volume owner ID changes.
+func (sc *SnapshotController) enqueueVolumeChange(old, new interface{}) {
+	oldVol, ok := old.(*longhorn.Volume)
+	if !ok {
+		utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", old))
+		return
+	}
+	newVol, ok := new.(*longhorn.Volume)
+	if !ok {
+		utilruntime.HandleError(fmt.Errorf("received unexpected obj: %#v", new))
+		return
+	}
+	if !newVol.DeletionTimestamp.IsZero() {
+		return
+	}
+	if oldVol.Status.OwnerID == newVol.Status.OwnerID {
+		return
+	}
+
+	va, err := sc.ds.GetLHVolumeAttachmentByVolumeName(newVol.Name)
+	if err != nil {
+		sc.logger.WithError(err).Warnf("Failed to get volume attachment for volume %s", newVol.Name)
+		return
+	}
+	if va == nil || va.Spec.AttachmentTickets == nil {
+		return
+	}
+
+	snapshots, err := sc.ds.ListVolumeSnapshotsRO(newVol.Name)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("snapshot controller failed to list snapshots when enqueuing volume %v: %v", newVol.Name, err))
+		return
+	}
+	for _, snap := range snapshots {
+		// Longhorn#10874:
+		// Requeue the snapshot if there is an attachment ticket for it to ensure the volumeattachment can be cleaned up after the snapshot is created.
+		attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeSnapshotController, snap.Name)
+		if va.Spec.AttachmentTickets[attachmentTicketID] != nil {
+			sc.enqueueSnapshot(snap)
+		}
+	}
+}
+
+func (sc *SnapshotController) enqueueVolumeDeleted(obj interface{}) {
 	vol, ok := obj.(*longhorn.Volume)
 	if !ok {
 		deletedState, ok := obj.(cache.DeletedFinalStateUnknown)
