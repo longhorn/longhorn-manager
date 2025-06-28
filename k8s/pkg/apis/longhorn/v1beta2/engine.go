@@ -77,6 +77,8 @@ type RebuildStatus struct {
 	State string `json:"state"`
 	// +optional
 	FromReplicaAddress string `json:"fromReplicaAddress"`
+	// +optional
+	AppliedRebuildingMbps int64 `json:"appliedRebuildingMbps"`
 }
 
 type SnapshotCloneStatus struct {
