@@ -63,9 +63,9 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.20.0
 	github.com/longhorn/backing-image-manager v1.8.2
-	github.com/longhorn/backupstore v0.0.0-20250615123957-ffd0212901a3
-	github.com/longhorn/go-common-libs v0.0.0-20250615123925-72e27d7660fa
-	github.com/longhorn/go-iscsi-helper v0.0.0-20250605024026-2bccf377d28d
+	github.com/longhorn/backupstore v0.0.0-20250624115502-f6e828377c27
+	github.com/longhorn/go-common-libs v0.0.0-20250624104228-81fc0ee0e090
+	github.com/longhorn/go-iscsi-helper v0.0.0-20250628151415-4c3f08918bb0
 	github.com/longhorn/go-spdk-helper v0.0.2
 	github.com/longhorn/longhorn-engine v1.9.0-dev-20241215.0.20250225130735-e63c1afeb26b
 	github.com/longhorn/longhorn-instance-manager v1.8.2
@@ -119,7 +119,7 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
-	golang.org/x/exp v0.0.0-20250606033433-dcc06ee1d476 // indirect
+	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20241202173237-19429a94021a // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241216192217-9240e9c98484 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
