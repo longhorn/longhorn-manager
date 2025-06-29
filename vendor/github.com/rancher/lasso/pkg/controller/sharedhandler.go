@@ -134,6 +134,12 @@ func wasFinalized(obj runtime.Object) bool {
 
 // observeDeletedObjectAfterFinalize will temporarily store the UID of an object, so successive executions of the handlers have "memory" of this event
 func (h *SharedHandler) observeDeletedObjectAfterFinalize(obj runtime.Object) {
+	// Corner-case: Register was never called, so recentDeletions was not initialized
+	// Currently, since there is no constructor for SharedHandler, the only place where we can initialize this cache is the Register hook
+	if h.recentDeletions == nil {
+		return
+	}
+
 	meta, err := meta.Accessor(obj)
 	if err != nil {
 		return
@@ -143,6 +149,12 @@ func (h *SharedHandler) observeDeletedObjectAfterFinalize(obj runtime.Object) {
 
 // deletedInPreviousExecution returns whether an object has been deleted in earlier executions of the controller.
 func (h *SharedHandler) deletedInPreviousExecution(obj runtime.Object) bool {
+	// Corner-case: Register was never called, so recentDeletions was not initialized
+	// Currently, since there is no constructor for SharedHandler, the only place where we can initialize this cache is the Register hook
+	if h.recentDeletions == nil {
+		return false
+	}
+
 	meta, err := meta.Accessor(obj)
 	if err != nil {
 		return false
