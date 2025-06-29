@@ -528,7 +528,7 @@ func (c *VolumeController) syncVolume(key string) (err error) {
 	}
 
 	if err := c.ReconcileBackupVolumeState(volume); err != nil {
-		return nil
+		return err
 	}
 
 	if err := c.ReconcileVolumeState(volume, engines, replicas); err != nil {
