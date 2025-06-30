@@ -58,7 +58,7 @@ type EngineImageController struct {
 
 	// for unit test
 	nowHandler                func() string
-	engineBinaryChecker       func(string) bool
+	engineBinaryChecker       func(string) (bool, error)
 	engineImageVersionUpdater func(*longhorn.EngineImage) error
 }
 
@@ -321,8 +321,9 @@ func (ic *EngineImageController) syncEngineImage(key string) (err error) {
 		return err
 	}
 
-	if !ic.engineBinaryChecker(engineImage.Spec.Image) {
-		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions, longhorn.EngineImageConditionTypeReady, longhorn.ConditionStatusFalse, longhorn.EngineImageConditionTypeReadyReasonDaemonSet, "engine binary check failed")
+	ok, err := ic.engineBinaryChecker(engineImage.Spec.Image)
+	if !ok {
+		engineImage.Status.Conditions = types.SetCondition(engineImage.Status.Conditions, longhorn.EngineImageConditionTypeReady, longhorn.ConditionStatusFalse, longhorn.EngineImageConditionTypeReadyReasonDaemonSet, errors.Errorf("engine binary check failed: %v", err).Error())
 		engineImage.Status.State = longhorn.EngineImageStateDeploying
 		return nil
 	}
