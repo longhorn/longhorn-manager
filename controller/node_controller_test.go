@@ -1364,7 +1364,7 @@ func (s *NodeControllerSuite) TestEventOnNotReady(c *C) {
 			"": {
 				Type:    "Warning",
 				Reason:  "Schedulable",
-				Message: "Disk fsid (/var/lib/longhorn) on the node test-node-name-1 has 0 available, but requires reserved 0, minimal 25% to schedule more replicas",
+				Message: "Disk fsid (/var/lib/longhorn) on the node test-node-name-1 is not schedulable for more replica",
 			},
 			"node1-not-ready": {
 				Type:    "Warning",
@@ -1453,7 +1453,7 @@ func (s *NodeControllerSuite) TestEventOnDiskPressure(c *C) {
 			"": {
 				Type:    "Warning",
 				Reason:  "Schedulable",
-				Message: "Disk fsid (/var/lib/longhorn) on the node test-node-name-1 has 0 available, but requires reserved 0, minimal 25% to schedule more replicas",
+				Message: "Disk fsid (/var/lib/longhorn) on the node test-node-name-1 is not schedulable for more replica",
 			},
 			"node1-disk-pressure": {
 				Type:    "Warning",
@@ -1542,7 +1542,7 @@ func (s *NodeControllerSuite) TestEventOnMemoryPressure(c *C) {
 			"": {
 				Type:    "Warning",
 				Reason:  "Schedulable",
-				Message: "Disk fsid (/var/lib/longhorn) on the node test-node-name-1 has 0 available, but requires reserved 0, minimal 25% to schedule more replicas",
+				Message: "Disk fsid (/var/lib/longhorn) on the node test-node-name-1 is not schedulable for more replica",
 			},
 			"node1-memory-pressure": {
 				Type:    "Warning",
@@ -1631,7 +1631,7 @@ func (s *NodeControllerSuite) TestEventOnPidPressure(c *C) {
 			"": {
 				Type:    "Warning",
 				Reason:  "Schedulable",
-				Message: "Disk fsid (/var/lib/longhorn) on the node test-node-name-1 has 0 available, but requires reserved 0, minimal 25% to schedule more replicas",
+				Message: "Disk fsid (/var/lib/longhorn) on the node test-node-name-1 is not schedulable for more replica",
 			},
 			"node1-pid-pressure": {
 				Type:    "Warning",
@@ -1720,7 +1720,7 @@ func (s *NodeControllerSuite) TestEventOnNetworkPressure(c *C) {
 			"": {
 				Type:    "Warning",
 				Reason:  "Schedulable",
-				Message: "Disk fsid (/var/lib/longhorn) on the node test-node-name-1 has 0 available, but requires reserved 0, minimal 25% to schedule more replicas",
+				Message: "Disk fsid (/var/lib/longhorn) on the node test-node-name-1 is not schedulable for more replica",
 			},
 			"node1-network-pressure": {
 				Type:    "Warning",
@@ -1820,7 +1820,7 @@ func (s *NodeControllerSuite) TestNoEventOnUnknownTrueNodeCondition(c *C) {
 			"": {
 				Type:    "Warning",
 				Reason:  "Schedulable",
-				Message: "Disk fsid (/var/lib/longhorn) on the node test-node-name-1 has 0 available, but requires reserved 0, minimal 25% to schedule more replicas",
+				Message: "Disk fsid (/var/lib/longhorn) on the node test-node-name-1 is not schedulable for more replica",
 			},
 		},
 	}
