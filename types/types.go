@@ -400,9 +400,16 @@ func GetEngineBinaryDirectoryForReplicaManagerContainer(image string) string {
 	return filepath.Join(filepath.Join(ReplicaHostPrefix, EngineBinaryDirectoryOnHost), cname)
 }
 
-func EngineBinaryExistOnHostForImage(image string) bool {
-	st, err := os.Stat(filepath.Join(GetEngineBinaryDirectoryOnHostForImage(image), "longhorn"))
-	return err == nil && !st.IsDir()
+func EngineBinaryExistOnHostForImage(image string) (bool, error) {
+	engineBinaryPath := filepath.Join(GetEngineBinaryDirectoryOnHostForImage(image), "longhorn")
+	st, err := os.Stat(engineBinaryPath)
+	if err != nil {
+		return false, err
+	}
+	if st.IsDir() {
+		return false, errors.Errorf("expected %s to be a file, but it is a directory", engineBinaryPath)
+	}
+	return true, nil
 }
 
 func GetBackingImageManagerName(image, diskUUID string) string {

@@ -620,8 +620,8 @@ func randomPort() int {
 	return rand.Int() % 30000
 }
 
-func fakeEngineBinaryChecker(image string) bool {
-	return true
+func fakeEngineBinaryChecker(image string) (bool, error) {
+	return true, nil
 }
 
 func fakeEngineImageUpdater(ei *longhorn.EngineImage) error {
