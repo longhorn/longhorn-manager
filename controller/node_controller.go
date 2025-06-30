@@ -834,10 +834,6 @@ func (nc *NodeController) updateDiskStatusSchedulableCondition(node *longhorn.No
 	diskStatusMap := node.Status.DiskStatus
 
 	// update Schedulable condition
-	minimalAvailablePercentage, err := nc.ds.GetSettingAsInt(types.SettingNameStorageMinimalAvailablePercentage)
-	if err != nil {
-		return err
-	}
 	backingImages, err := nc.ds.ListBackingImagesRO()
 	if err != nil {
 		return err
@@ -910,12 +906,13 @@ func (nc *NodeController) updateDiskStatusSchedulableCondition(node *longhorn.No
 			if err != nil {
 				return err
 			}
-			if !nc.scheduler.IsSchedulableToDisk(0, 0, info) {
+
+			isSchedulableToDisk, message := nc.scheduler.IsSchedulableToDisk(0, 0, info)
+			if !isSchedulableToDisk {
 				diskStatus.Conditions = types.SetConditionAndRecord(diskStatus.Conditions,
 					longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusFalse,
 					string(longhorn.DiskConditionReasonDiskPressure),
-					fmt.Sprintf("Disk %v (%v) on the node %v has %v available, but requires reserved %v, minimal %v%s to schedule more replicas",
-						diskName, disk.Path, node.Name, diskStatus.StorageAvailable, disk.StorageReserved, minimalAvailablePercentage, "%"),
+					fmt.Sprintf("Disk %v (%v) on the node %v is not schedulable for more replica; %s", diskName, disk.Path, node.Name, message),
 					nc.eventRecorder, node, corev1.EventTypeWarning)
 			} else {
 				diskStatus.Conditions = types.SetConditionAndRecord(diskStatus.Conditions,
