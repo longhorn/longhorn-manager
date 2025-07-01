@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -269,6 +270,7 @@ type ReplicaSchedulerTestCase struct {
 	replicaNodeSoftAntiAffinity       string
 	replicaZoneSoftAntiAffinity       string
 	replicaDiskSoftAntiAffinity       string
+	replicaAutoBalance                string
 	ReplicaReplenishmentWaitInterval  string
 
 	// some test cases only try to schedule a subset of a volume's replicas
@@ -1156,6 +1158,11 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 	tc.firstNilReplica = -1
 	testCases["non-reusable replica after interval expires"] = tc
 
+	// Test scheduling on the right node when "best-effort" auto balancing is enabled and an incorrect node has a
+	// node with less load.
+	tc = generateBestEffortAutoBalanceScheduleTestCase()
+	testCases["scheduling on the right node with \"best-effort\" auto balancing"] = tc
+
 	for name, tc := range testCases {
 		fmt.Printf("testing %v\n", name)
 
@@ -1323,6 +1330,107 @@ func generateFailedReplicaTestCase(
 	return
 }
 
+// Test scheduling on the right node when "best-effort" auto balancing is enabled and an incorrect node has a
+// node with less load.
+func generateBestEffortAutoBalanceScheduleTestCase() *ReplicaSchedulerTestCase {
+	tc := &ReplicaSchedulerTestCase{
+		engineImage:        newEngineImage(TestEngineImage, longhorn.EngineImageStateDeployed),
+		allReplicas:        make(map[string]*longhorn.Replica),
+		replicasToSchedule: map[string]struct{}{},
+		firstNilReplica:    -1,
+	}
+
+	daemon1 := newDaemonPod(corev1.PodRunning, TestDaemon1, TestNamespace, TestNode1, TestIP1)
+	daemon2 := newDaemonPod(corev1.PodRunning, TestDaemon2, TestNamespace, TestNode2, TestIP2)
+	tc.daemons = []*corev1.Pod{
+		daemon1,
+		daemon2,
+	}
+
+	// Create 2 nodes in the same zone
+	node1 := newNode(TestNode1, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+	node2 := newNode(TestNode2, TestNamespace, TestZone1, true, longhorn.ConditionStatusTrue)
+	tc.engineImage.Status.NodeDeploymentMap[node1.Name] = true
+	tc.engineImage.Status.NodeDeploymentMap[node2.Name] = true
+
+	// For the test create a volume that requires 2 replicas
+	tc.volume = newVolume(TestVolumeName, 2)
+
+	// Give each node 2 disks
+	addDisks := func(node *longhorn.Node, index int64, disk longhorn.DiskSpec, storageAvailable int64, hasReplica bool) (diskID string) {
+		if node.Spec.Disks == nil {
+			node.Spec.Disks = make(map[string]longhorn.DiskSpec)
+		}
+		if node.Status.DiskStatus == nil {
+			node.Status.DiskStatus = make(map[string]*longhorn.DiskStatus)
+		}
+
+		var scheduledReplica map[string]int64
+		if hasReplica {
+			replica := newReplicaForVolume(tc.volume)
+			replica.Spec.NodeID = node.Name
+			tc.allReplicas[replica.Name] = replica
+			scheduledReplica = map[string]int64{replica.Name: TestVolumeSize}
+		}
+
+		id := getDiskID(node.Name, strconv.FormatInt(index, 10))
+		node.Spec.Disks[id] = disk
+		node.Status.DiskStatus[id] = &longhorn.DiskStatus{
+			StorageAvailable: storageAvailable,
+			StorageScheduled: 0,
+			StorageMaximum:   TestDiskSize,
+			Conditions: []longhorn.Condition{
+				newCondition(longhorn.DiskConditionTypeSchedulable, longhorn.ConditionStatusTrue),
+			},
+			DiskUUID:         id,
+			Type:             longhorn.DiskTypeFilesystem,
+			ScheduledReplica: scheduledReplica,
+		}
+		return id
+	}
+
+	node1disk1 := newDisk(TestDefaultDataPath, true, 0)
+	node1disk2 := newDisk(TestDefaultDataPath, true, 0)
+	addDisks(node1, 1, node1disk1, TestDiskAvailableSize, true)  // Later we schedule a replica on this disk
+	addDisks(node1, 2, node1disk2, TestDiskAvailableSize, false) // No replica
+
+	node2disk1 := newDisk(TestDefaultDataPath, true, 0)
+	node2disk2 := newDisk(TestDefaultDataPath, true, 0)
+	addDisks(node2, 1, node2disk1, TestDiskAvailableSize/2-100, false)               // No replica
+	expectedDiskID := addDisks(node2, 2, node2disk2, TestDiskAvailableSize/2, false) // No replica, scheduler should choose this since it has the most storage available from the valid options.
+
+	tc.replicaAutoBalance = "best-effort"
+	tc.replicaDiskSoftAntiAffinity = "false" // Do not allow scheduling of replicas on the same disk.
+	tc.replicaNodeSoftAntiAffinity = "false" // Do not allow scheduling of replica on the same node.
+	tc.replicaZoneSoftAntiAffinity = "true"  // Allow scheduling in the same zone, both nodes are in the same one. The scheduler takes a shortcut otherwise.
+
+	tc.nodes = map[string]*longhorn.Node{
+		TestNode1: node1,
+		TestNode2: node2,
+	}
+
+	// Add replica that still needs to be scheduled
+	replicaToSchedule := newReplicaForVolume(tc.volume)
+	tc.allReplicas[replicaToSchedule.Name] = replicaToSchedule
+
+	// Only test scheduling for the replicaToSchedule, we don't want to schedule the replica that is already on node1disk1 again
+	tc.replicasToSchedule[replicaToSchedule.Name] = struct{}{}
+
+	// Expect replica to be scheduled on node2disk2.
+	// - node1disk1 should not be possible, there is already a replica on the node and on the disk
+	// - node1disk2 should not be possible, there is already a replica on the node
+	// - node2disk1 is possible, but does not have the most available storage space left
+	// - node2disk2 is possible, and has the most storage left of all valid options. This should be the candidate.
+	tc.expectedNodes = map[string]*longhorn.Node{
+		TestNode2: node2,
+	}
+	tc.expectedDisks = map[string]struct{}{
+		expectedDiskID: {},
+	}
+
+	return tc
+}
+
 func setSettings(tc *ReplicaSchedulerTestCase, lhClient *lhfake.Clientset, sIndexer cache.Indexer, c *C) {
 	// Set default-instance-manager-image setting
 	s := initSettings(string(types.SettingNameDefaultInstanceManagerImage), TestInstanceManagerImage)
@@ -1372,6 +1480,17 @@ func setSettings(tc *ReplicaSchedulerTestCase, lhClient *lhfake.Clientset, sInde
 		s := initSettings(
 			string(types.SettingNameReplicaDiskSoftAntiAffinity),
 			tc.replicaDiskSoftAntiAffinity)
+		setting, err :=
+			lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
+		c.Assert(err, IsNil)
+		err = sIndexer.Add(setting)
+		c.Assert(err, IsNil)
+	}
+	// Set replica auto-balance setting
+	if tc.replicaAutoBalance != "" {
+		s := initSettings(
+			string(types.SettingNameReplicaAutoBalance),
+			tc.replicaAutoBalance)
 		setting, err :=
 			lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), s, metav1.CreateOptions{})
 		c.Assert(err, IsNil)
