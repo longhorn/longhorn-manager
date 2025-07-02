@@ -832,10 +832,7 @@ func (rcs *ReplicaScheduler) IsSchedulableToDisk(size int64, requiredStorage int
 	minimalAvailable := int64(float64(info.StorageMaximum) * float64(info.MinimalAvailablePercentage) / 100)
 	if currentAvailable <= minimalAvailable {
 		return false, fmt.Sprintf(
-			"Actual space usage condition failed: CurrentAvailable = %d (StorageAvailable - Required) is less than or equal to MinimalAvailable = %d (%d%% of Storage Max). "+
-				"Potential solution: reduce the 'Storage Minimal Available Percentage' setting or free up disk space."+
-				"See 'References/Settings Reference' at https://longhorn.io/docs/ for details."+
-				"e.g., use: kubectl edit settings storage-minimal-available-percentage -n longhorn-system",
+			"Actual space usage condition failed: CurrentAvailable = %d (StorageAvailable - Required) is less than or equal to MinimalAvailable = %d (%d%% of Storage Max).",
 			currentAvailable, minimalAvailable, info.MinimalAvailablePercentage,
 		)
 	}
@@ -847,10 +844,7 @@ func (rcs *ReplicaScheduler) IsSchedulableToDisk(size int64, requiredStorage int
 	overProvisionLimit := int64(float64(info.StorageMaximum-info.StorageReserved) * float64(info.OverProvisioningPercentage) / 100)
 	if scheduledTotal > overProvisionLimit {
 		return false, fmt.Sprintf(
-			"Scheduling space condition failed: ScheduledTotal = %d (Size + StorageScheduled) is greater than ProvisionedLimit = %d (%d%% of StorageMax - StorageReserved). "+
-				"Potential solution: reduce 'Storage Reserved' in the LH UI or reduce 'Storage Over Provisioning Percentage'. "+
-				"See 'References/Settings Reference' at https://longhorn.io/docs/ for details."+
-				"e.g., use: kubectl edit settings storage-over-provisioning-percentage -n longhorn-system",
+			"Scheduling space condition failed: ScheduledTotal = %d (Size + StorageScheduled) is greater than ProvisionedLimit = %d (%d%% of StorageMax - StorageReserved). ",
 			scheduledTotal, overProvisionLimit, info.OverProvisioningPercentage,
 		)
 	}
