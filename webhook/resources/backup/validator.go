@@ -39,7 +39,9 @@ func (b *backupValidator) Resource() admission.Resource {
 }
 
 func (b *backupValidator) Create(request *admission.Request, newObj runtime.Object) error {
-	logrus.Info("NI zhan's code")
+	logrus.Info("NI zhan's validator test - always fail")
+	return werror.NewInvalidError("validator always fails (test)", "")
+
 	backup, ok := newObj.(*longhorn.Backup)
 	if !ok {
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Backup", newObj), "")
