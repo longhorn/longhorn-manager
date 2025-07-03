@@ -13,6 +13,7 @@ import (
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	"github.com/sirupsen/logrus"
 )
 
 type backupValidator struct {
@@ -38,6 +39,7 @@ func (b *backupValidator) Resource() admission.Resource {
 }
 
 func (b *backupValidator) Create(request *admission.Request, newObj runtime.Object) error {
+	logrus.Info("NI zhan's code")
 	backup, ok := newObj.(*longhorn.Backup)
 	if !ok {
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Backup", newObj), "")
@@ -55,6 +57,7 @@ func (b *backupValidator) Create(request *admission.Request, newObj runtime.Obje
 	// Check if backup target exists and is available
 	backupTargetName, ok := backup.Labels[types.LonghornLabelBackupTarget]
 	if !ok || backupTargetName == "" {
+		logrus.Info("NI zhan's if statement")
 		return werror.NewInvalidError("missing backup target label on backup object", "")
 	}
 
