@@ -41,11 +41,15 @@ type SettingType string
 const (
 	SettingTypeString     = SettingType("string")
 	SettingTypeInt        = SettingType("int")
+	SettingTypeFloat      = SettingType("float")
 	SettingTypeBool       = SettingType("bool")
 	SettingTypeDeprecated = SettingType("deprecated")
 
 	ValueIntRangeMinimum = "minimum"
 	ValueIntRangeMaximum = "maximum"
+
+	ValueFloatRangeMinimum = "minimum"
+	ValueFloatRangeMaximum = "maximum"
 )
 
 type SettingName string
@@ -279,7 +283,8 @@ type SettingDefinition struct {
 	Default     string          `json:"default"`
 	Choices     []string        `json:"options,omitempty"` // +optional
 	// Use map to present minimum and maximum value instead of using int directly, so we can omitempy and distinguish 0 or nil at the same time.
-	ValueIntRange map[string]int `json:"range,omitempty"` // +optional
+	ValueIntRange   map[string]int     `json:"range,omitempty"`      // +optional
+	ValueFloatRange map[string]float64 `json:"floatRange,omitempty"` // +optional
 }
 
 var settingDefinitionsLock sync.RWMutex
@@ -1033,18 +1038,18 @@ var (
 			"If it's hard to estimate the usage now, you can leave it with the default value, which is 12%. Then you can tune it when there is no running workload using Longhorn volumes. \n\n" +
 			"WARNING: \n\n" +
 			"  - Value 0 means unsetting CPU requests for instance manager pods. \n\n" +
-			"  - Considering the possible new instance manager pods in the further system upgrade, this integer value is range from 0 to 40. \n\n" +
+			"  - Considering the possible new instance manager pods in the further system upgrade, this float value ranges from 0 to 40. \n\n" +
 			"  - One more set of instance manager pods may need to be deployed when the Longhorn system is upgraded. If current available CPUs of the nodes are not enough for the new instance manager pods, you need to detach the volumes using the oldest instance manager pods so that Longhorn can clean up the old pods automatically and release the CPU resources. And the new pods with the latest instance manager image will be launched then. \n\n" +
 			"  - This global setting will be ignored for a node if the field \"InstanceManagerCPURequest\" on the node is set. \n\n" +
 			"  - After this setting is changed, the v1 instance manager pod using this global setting will be automatically restarted without instances running on the v1 instance manager. \n\n",
 		Category: SettingCategoryDangerZone,
-		Type:     SettingTypeInt,
+		Type:     SettingTypeFloat,
 		Required: true,
 		ReadOnly: false,
 		Default:  "12",
-		ValueIntRange: map[string]int{
-			ValueIntRangeMinimum: 0,
-			ValueIntRangeMaximum: 40,
+		ValueFloatRange: map[string]float64{
+			ValueFloatRangeMinimum: 0,
+			ValueFloatRangeMaximum: 40,
 		},
 	}
 
@@ -1662,6 +1667,10 @@ func ValidateSetting(name, value string) (err error) {
 		return errors.Wrapf(err, "failed to validate the setting %v", sName)
 	}
 
+	if err := validateFloat(definition, value); err != nil {
+		return errors.Wrapf(err, "failed to validate the setting %v", sName)
+	}
+
 	if err := validateString(sName, definition, value); err != nil {
 		return errors.Wrapf(err, "failed to validate the setting %v", sName)
 	}
@@ -1905,6 +1914,31 @@ func validateInt(definition SettingDefinition, value string) error {
 	if maxValue, exists := valueIntRange[ValueIntRangeMaximum]; exists {
 		if intValue > maxValue {
 			return fmt.Errorf("value %v should be less than %v", intValue, maxValue)
+		}
+	}
+	return nil
+}
+
+func validateFloat(definition SettingDefinition, value string) error {
+	if definition.Type != SettingTypeFloat {
+		return nil
+	}
+
+	floatValue, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return errors.Wrapf(err, "value %v is not a valid floating point number", value)
+	}
+
+	valueFloatRange := definition.ValueFloatRange
+	if minValue, exists := valueFloatRange[ValueFloatRangeMinimum]; exists {
+		if floatValue < minValue {
+			return fmt.Errorf("value %v should be larger than or equal to %v", floatValue, minValue)
+		}
+	}
+
+	if maxValue, exists := valueFloatRange[ValueFloatRangeMaximum]; exists {
+		if floatValue > maxValue {
+			return fmt.Errorf("value %v should be less than or equal to %v", floatValue, maxValue)
 		}
 	}
 	return nil
