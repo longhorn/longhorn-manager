@@ -142,8 +142,6 @@ func NewInstanceManagerController(
 		proxyConnCounter: proxyConnCounter,
 
 		versionUpdater: updateInstanceManagerVersion,
-
-		exponentialBackoff: NewDefaultExponentialBackoff(),
 	}
 
 	var err error
@@ -193,6 +191,12 @@ func NewInstanceManagerController(
 		return nil, err
 	}
 	imc.cacheSyncs = append(imc.cacheSyncs, ds.SettingInformer.HasSynced)
+
+	maxPodRecreateBackoff, err := ds.GetSettingAsInt(types.SettingNameMaxPodRecreateBackoff)
+	if err != nil {
+		return nil, err
+	}
+	imc.exponentialBackoff = NewExponentialBackoff(maxPodRecreateBackoff)
 
 	return imc, nil
 }

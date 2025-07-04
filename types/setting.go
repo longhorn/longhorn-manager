@@ -146,6 +146,7 @@ const (
 	SettingNameBackupExecutionTimeout                                   = SettingName("backup-execution-timeout")
 	SettingNameRWXVolumeFastFailover                                    = SettingName("rwx-volume-fast-failover")
 	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
+	SettingNameMaxPodRecreateBackoff                                    = SettingName("max-pod-recreate-backoff")
 	// These three backup target parameters are used in the "longhorn-default-resource" ConfigMap
 	// to update the default BackupTarget resource.
 	// Longhorn won't create the Setting resources for these three parameters.
@@ -250,6 +251,7 @@ var (
 		SettingNameBackupExecutionTimeout,
 		SettingNameRWXVolumeFastFailover,
 		SettingNameOfflineReplicaRebuilding,
+		SettingNameMaxPodRecreateBackoff,
 	}
 )
 
@@ -380,6 +382,7 @@ var (
 		SettingNameBackupExecutionTimeout:                                   SettingDefinitionBackupExecutionTimeout,
 		SettingNameRWXVolumeFastFailover:                                    SettingDefinitionRWXVolumeFastFailover,
 		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
+		SettingNameMaxPodRecreateBackoff:                                    SettingDefinitionMaxPodRecreateBackoff,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -1591,6 +1594,16 @@ var (
 		Required: true,
 		ReadOnly: false,
 		Default:  "false",
+	}
+
+	SettingDefinitionMaxPodRecreateBackoff = SettingDefinition{
+		DisplayName: "Max Pod Recreate Backoff",
+		Description: "Maximum backoff duration (in seconds) between pod recreation attempts. The interval doubles after each failure, up to this limit. Default is 120 seconds.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeInt,
+		Required:    false,
+		ReadOnly:    false,
+		Default:     "120",
 	}
 )
 

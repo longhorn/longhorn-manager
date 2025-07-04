@@ -9,7 +9,7 @@ import (
 func TestExponentialBackoff(t *testing.T) {
 	assert := assert.New(t)
 
-	eb := NewExponentialBackoff(time.Second, 10*time.Second)
+	eb := NewExponentialBackoff(10)
 	start := time.Now()
 	runCount := 0
 	backoffKey := "key"

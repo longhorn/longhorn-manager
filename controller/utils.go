@@ -15,38 +15,18 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
-const (
-	defaultInitBackoffInterval = 1 * time.Second
-	defaultMaxBackoffInterval  = 300 * time.Second
-)
-
 type ExponentialBackoff struct {
-	interval            map[string]time.Duration
-	lastAttempt         map[string]time.Time
-	initBackoffInterval time.Duration
-	maxBackoffInterval  time.Duration
-	mu                  sync.Mutex
+	interval           map[string]time.Duration
+	lastAttempt        map[string]time.Time
+	maxBackoffInterval time.Duration
+	mu                 sync.Mutex
 }
 
-func NewDefaultExponentialBackoff() *ExponentialBackoff {
+func NewExponentialBackoff(maxBackoffInSeconds int64) *ExponentialBackoff {
 	eb := &ExponentialBackoff{
-		interval:            map[string]time.Duration{},
-		lastAttempt:         map[string]time.Time{},
-		initBackoffInterval: defaultInitBackoffInterval,
-		maxBackoffInterval:  defaultMaxBackoffInterval,
-	}
-	// periodically clean up expired entries
-	go eb.runCleaner()
-
-	return eb
-}
-
-func NewExponentialBackoff(initBackoffInterval, maxBackoffInterval time.Duration) *ExponentialBackoff {
-	eb := &ExponentialBackoff{
-		interval:            map[string]time.Duration{},
-		lastAttempt:         map[string]time.Time{},
-		initBackoffInterval: initBackoffInterval,
-		maxBackoffInterval:  maxBackoffInterval,
+		interval:           map[string]time.Duration{},
+		lastAttempt:        map[string]time.Time{},
+		maxBackoffInterval: time.Duration(maxBackoffInSeconds) * time.Second,
 	}
 	// periodically clean up expired entries
 	go eb.runCleaner()
@@ -86,7 +66,7 @@ func (eb *ExponentialBackoff) CanRun(key string) (bool, time.Duration) {
 	// if attempt is allowed update interval and lastAttempt
 	if canRun {
 		if interval == 0 {
-			interval = eb.initBackoffInterval
+			interval = 1 * time.Second
 		} else {
 			interval *= 2
 		}
