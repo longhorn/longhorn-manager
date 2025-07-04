@@ -137,8 +137,6 @@ func NewBackingImageManagerController(
 
 		replenishLock:             &sync.Mutex{},
 		inProgressReplenishingMap: map[string]string{},
-
-		exponentialBackoff: NewDefaultExponentialBackoff(),
 	}
 
 	var err error
@@ -179,6 +177,12 @@ func NewBackingImageManagerController(
 		return nil, err
 	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.PodInformer.HasSynced)
+
+	maxPodRecreateBackoff, err := ds.GetSettingAsInt(types.SettingNameMaxPodRecreateBackoff)
+	if err != nil {
+		return nil, err
+	}
+	c.exponentialBackoff = NewExponentialBackoff(maxPodRecreateBackoff)
 
 	return c, nil
 }
