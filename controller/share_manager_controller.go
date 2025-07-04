@@ -59,6 +59,8 @@ type ShareManagerController struct {
 	ds *datastore.DataStore
 
 	cacheSyncs []cache.InformerSynced
+
+	exponentialBackoff *ExponentialBackoff
 }
 
 func NewShareManagerController(
@@ -123,6 +125,12 @@ func NewShareManagerController(
 		return nil, err
 	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.PodInformer.HasSynced)
+
+	maxPodRecreateBackoff, err := ds.GetSettingAsInt(types.SettingNameMaxPodRecreateBackoff)
+	if err != nil {
+		return nil, err
+	}
+	c.exponentialBackoff = NewExponentialBackoff(maxPodRecreateBackoff)
 
 	return c, nil
 }
@@ -876,8 +884,14 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 			return nil
 		}
 
-		if pod, err = c.createShareManagerPod(sm); err != nil {
-			return errors.Wrap(err, "failed to create pod for share manager")
+		backoffKey := sm.Name
+		if canRun, retryAfter := c.exponentialBackoff.CanRun(backoffKey); canRun {
+			log.Infof("Creating pod for share manager %s", sm.Name)
+			if pod, err = c.createShareManagerPod(sm); err != nil {
+				return errors.Wrap(err, "failed to create pod for share manager")
+			}
+		} else {
+			log.Infof("Retrying to create pod for share manager %s after %s", sm.Name, retryAfter)
 		}
 	}
 
