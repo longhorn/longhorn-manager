@@ -92,6 +92,7 @@ type EngineClient interface {
 	ReplicaAdd(engine *longhorn.Engine, replicaName, url string, isRestoreVolume, fastSync bool, localSync *etypes.FileLocalSync, replicaFileSyncHTTPClientTimeout, grpcTimeoutSeconds int64) error
 	ReplicaRemove(engine *longhorn.Engine, url, replicaName string) error
 	ReplicaRebuildStatus(*longhorn.Engine) (map[string]*longhorn.RebuildStatus, error)
+	ReplicaRebuildQosSet(engine *longhorn.Engine, qosLimitMbps int64) error
 	ReplicaRebuildVerify(engine *longhorn.Engine, replicaName, url string) error
 	ReplicaModeUpdate(engine *longhorn.Engine, url string, mode string) error
 

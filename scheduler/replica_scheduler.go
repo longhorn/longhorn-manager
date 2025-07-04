@@ -75,9 +75,43 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 		return nil, multiError, nil
 	}
 
-	rcs.scheduleReplicaToDisk(replica, diskCandidates)
+	// If data locality is set to best-effort, try to schedule at least one replica on the local node.
+	if volume.Spec.DataLocality == longhorn.DataLocalityBestEffort {
+		rcs.scheduleReplicaToDiskOnLocalNode(replica, replicas, volume, diskCandidates)
+	}
+
+	// Data locality is not best-effort, or a local replica already exists, or there are no valid disk candidates on the local node.
+	if replica.Spec.NodeID == "" {
+		rcs.scheduleReplicaToDisk(replica, diskCandidates)
+	}
 
 	return replica, nil, nil
+}
+
+// If no replicas are scheduled on the local node, try to schedule one there.
+// The local node refers to the node where the volume is attached.
+func (rcs *ReplicaScheduler) scheduleReplicaToDiskOnLocalNode(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume, diskCandidates map[string]*Disk) {
+	localNodeID := volume.Spec.NodeID
+	if localNodeID == "" {
+		logrus.Warnf("Failed to schedule replica %s on local node because volume %s is not attached", replica.Name, volume.Name)
+		return
+	}
+	// See if any healthy replicas are already scheduled on the local node.
+	for _, r := range replicas {
+		if r.Spec.NodeID == localNodeID && r.Spec.FailedAt == "" {
+			return
+		}
+	}
+	// No replicas found on the local node, so try to schedule this replica on the local node.
+	diskCandidatesOnLocalNode := map[string]*Disk{}
+	for diskName, disk := range diskCandidates {
+		if disk.NodeID == localNodeID {
+			diskCandidatesOnLocalNode[diskName] = disk
+		}
+	}
+	if len(diskCandidatesOnLocalNode) > 0 {
+		rcs.scheduleReplicaToDisk(replica, diskCandidatesOnLocalNode)
+	}
 }
 
 // FindDiskCandidates identifies suitable disks on eligible nodes for the replica.
@@ -433,7 +467,7 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 			if storageScheduled > 0 {
 				info.StorageScheduled += storageScheduled
 			}
-			if !rcs.IsSchedulableToDisk(volume.Spec.Size, volume.Status.ActualSize, info) {
+			if isSchedulableToDisk, _ := rcs.IsSchedulableToDisk(volume.Spec.Size, volume.Status.ActualSize, info); !isSchedulableToDisk {
 				multiError.Append(util.NewMultiError(longhorn.ErrorReplicaScheduleInsufficientStorage))
 				continue
 			}
@@ -814,13 +848,43 @@ func GetLatestFailedReplica(rs ...*longhorn.Replica) (res *longhorn.Replica) {
 	return res
 }
 
-func (rcs *ReplicaScheduler) IsSchedulableToDisk(size int64, requiredStorage int64, info *DiskSchedulingInfo) bool {
+func (rcs *ReplicaScheduler) IsSchedulableToDisk(size int64, requiredStorage int64, info *DiskSchedulingInfo) (isSchedulable bool, message string) {
 	// StorageReserved = the space is already used by 3rd party + the space will be used by 3rd party.
 	// StorageAvailable = the space can be used by 3rd party or Longhorn system.
 	// There is no (direct) relationship between StorageReserved and StorageAvailable.
-	return info.StorageMaximum > 0 && info.StorageAvailable > 0 &&
-		info.StorageAvailable-requiredStorage > int64(float64(info.StorageMaximum)*float64(info.MinimalAvailablePercentage)/100) &&
-		(size+info.StorageScheduled) <= int64(float64(info.StorageMaximum-info.StorageReserved)*float64(info.OverProvisioningPercentage)/100)
+	if info.StorageMaximum <= 0 {
+		return false, "Storage Max must be greater than 0"
+	}
+
+	if info.StorageAvailable <= 0 {
+		return false, "Storage Available must be greater than 0"
+	}
+
+	// Actual Space Usage Condition:
+	// Ensure that after scheduling the replica, the disk still has enough available space left.
+	// This prevents the disk from being completely filled.
+	currentAvailable := info.StorageAvailable - requiredStorage
+	minimalAvailable := int64(float64(info.StorageMaximum) * float64(info.MinimalAvailablePercentage) / 100)
+	if currentAvailable <= minimalAvailable {
+		return false, fmt.Sprintf(
+			"Actual space usage condition failed: CurrentAvailable = %d (StorageAvailable - Required) is less than or equal to MinimalAvailable = %d (%d%% of Storage Max).",
+			currentAvailable, minimalAvailable, info.MinimalAvailablePercentage,
+		)
+	}
+
+	// Scheduling Space Condition:
+	// Ensure that the total scheduled size (including this replica) does not exceed the allowed over-provisioning limit.
+	// This prevents excessive over-commitment of the disk capacity.
+	scheduledTotal := size + info.StorageScheduled
+	overProvisionLimit := int64(float64(info.StorageMaximum-info.StorageReserved) * float64(info.OverProvisioningPercentage) / 100)
+	if scheduledTotal > overProvisionLimit {
+		return false, fmt.Sprintf(
+			"Scheduling space condition failed: ScheduledTotal = %d (Size + StorageScheduled) is greater than ProvisionedLimit = %d (%d%% of StorageMax - StorageReserved). ",
+			scheduledTotal, overProvisionLimit, info.OverProvisioningPercentage,
+		)
+	}
+
+	return true, ""
 }
 
 func (rcs *ReplicaScheduler) IsSchedulableToDiskConsiderDiskPressure(diskPressurePercentage, size, requiredStorage int64, info *DiskSchedulingInfo) bool {
@@ -841,7 +905,8 @@ func (rcs *ReplicaScheduler) IsSchedulableToDiskConsiderDiskPressure(diskPressur
 	newDiskUsagePercentage := (requiredStorage + info.StorageScheduled + info.StorageReserved) * 100 / info.StorageMaximum
 	log.Debugf("Evaluated new disk usage percentage after scheduling replica: %v%%", newDiskUsagePercentage)
 
-	return rcs.IsSchedulableToDisk(size, requiredStorage, info) &&
+	isSchedulableToDisk, _ := rcs.IsSchedulableToDisk(size, requiredStorage, info)
+	return isSchedulableToDisk &&
 		newDiskUsagePercentage < int64(diskPressurePercentage)
 }
 
@@ -874,7 +939,7 @@ func (rcs *ReplicaScheduler) FilterNodesSchedulableForVolume(nodes map[string]*l
 				continue
 			}
 
-			if rcs.IsSchedulableToDisk(volume.Spec.Size, volume.Status.ActualSize, diskInfo) {
+			if isSchedulableToDisk, _ := rcs.IsSchedulableToDisk(volume.Spec.Size, volume.Status.ActualSize, diskInfo); isSchedulableToDisk {
 				isSchedulable = true
 				break
 			}
@@ -956,8 +1021,8 @@ func (rcs *ReplicaScheduler) CheckReplicasSizeExpansion(v *longhorn.Volume, oldS
 	expandingSize := newSize - oldSize
 	for diskID, diskInfo := range diskIDToDiskInfo {
 		requestingSizeExpansionOnDisk := expandingSize * diskIDToReplicaCount[diskID]
-		if !rcs.IsSchedulableToDisk(requestingSizeExpansionOnDisk, 0, diskInfo) {
-			logrus.Errorf("Cannot schedule %v more bytes to disk %v with %+v", requestingSizeExpansionOnDisk, diskID, diskInfo)
+		if isSchedulableToDisk, reason := rcs.IsSchedulableToDisk(requestingSizeExpansionOnDisk, 0, diskInfo); !isSchedulableToDisk {
+			logrus.Errorf("Cannot schedule %v more bytes to disk %v with %+v; %s", requestingSizeExpansionOnDisk, diskID, diskInfo, reason)
 			return util.NewMultiError(longhorn.ErrorReplicaScheduleInsufficientStorage),
 				fmt.Errorf("cannot schedule %v more bytes to disk %v with %+v", requestingSizeExpansionOnDisk, diskID, diskInfo)
 		}

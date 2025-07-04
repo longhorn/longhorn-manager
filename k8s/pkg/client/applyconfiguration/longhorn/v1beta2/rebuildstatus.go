@@ -21,11 +21,12 @@ package v1beta2
 // RebuildStatusApplyConfiguration represents a declarative configuration of the RebuildStatus type for use
 // with apply.
 type RebuildStatusApplyConfiguration struct {
-	Error              *string `json:"error,omitempty"`
-	IsRebuilding       *bool   `json:"isRebuilding,omitempty"`
-	Progress           *int    `json:"progress,omitempty"`
-	State              *string `json:"state,omitempty"`
-	FromReplicaAddress *string `json:"fromReplicaAddress,omitempty"`
+	Error                 *string `json:"error,omitempty"`
+	IsRebuilding          *bool   `json:"isRebuilding,omitempty"`
+	Progress              *int    `json:"progress,omitempty"`
+	State                 *string `json:"state,omitempty"`
+	FromReplicaAddress    *string `json:"fromReplicaAddress,omitempty"`
+	AppliedRebuildingMBps *int64  `json:"appliedRebuildingMBps,omitempty"`
 }
 
 // RebuildStatusApplyConfiguration constructs a declarative configuration of the RebuildStatus type for use with
@@ -71,5 +72,13 @@ func (b *RebuildStatusApplyConfiguration) WithState(value string) *RebuildStatus
 // If called multiple times, the FromReplicaAddress field is set to the value of the last call.
 func (b *RebuildStatusApplyConfiguration) WithFromReplicaAddress(value string) *RebuildStatusApplyConfiguration {
 	b.FromReplicaAddress = &value
+	return b
+}
+
+// WithAppliedRebuildingMBps sets the AppliedRebuildingMBps field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the AppliedRebuildingMBps field is set to the value of the last call.
+func (b *RebuildStatusApplyConfiguration) WithAppliedRebuildingMBps(value int64) *RebuildStatusApplyConfiguration {
+	b.AppliedRebuildingMBps = &value
 	return b
 }
