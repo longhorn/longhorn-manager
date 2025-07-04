@@ -7,11 +7,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
 	werror "github.com/longhorn/longhorn-manager/webhook/error"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	"github.com/sirupsen/logrus"
 )
 
 type backupValidator struct {
@@ -37,6 +39,9 @@ func (b *backupValidator) Resource() admission.Resource {
 }
 
 func (b *backupValidator) Create(request *admission.Request, newObj runtime.Object) error {
+	logrus.Info("NI zhan's validator test - always fail")
+	return werror.NewInvalidError("validator always fails (test)", "")
+
 	backup, ok := newObj.(*longhorn.Backup)
 	if !ok {
 		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Backup", newObj), "")
@@ -49,6 +54,22 @@ func (b *backupValidator) Create(request *admission.Request, newObj runtime.Obje
 	if backup.Spec.BackupMode != longhorn.BackupModeFull &&
 		backup.Spec.BackupMode != longhorn.BackupModeIncremental {
 		return werror.NewInvalidError(fmt.Sprintf("BackupMode %v is not a valid option", backup.Spec.BackupMode), "")
+	}
+
+	// Check if backup target exists and is available
+	backupTargetName, ok := backup.Labels[types.LonghornLabelBackupTarget]
+	if !ok || backupTargetName == "" {
+		logrus.Info("NI zhan's if statement")
+		return werror.NewInvalidError("missing backup target label on backup object", "")
+	}
+
+	backupTarget, err := b.ds.GetBackupTarget(backupTargetName)
+	if err != nil {
+		return werror.NewInvalidError(fmt.Sprintf("failed to get backup target %s: %v", backupTargetName, err), "")
+	}
+
+	if !backupTarget.Status.Available {
+		return werror.NewInvalidError(fmt.Sprintf("backup target %s is not available", backupTargetName), "")
 	}
 
 	return nil
