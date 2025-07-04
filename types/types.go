@@ -1242,19 +1242,25 @@ func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[st
 }
 
 func ValidateCPUReservationValues(settingName SettingName, instanceManagerCPUStr string) error {
-	instanceManagerCPU, err := strconv.Atoi(instanceManagerCPUStr)
-	if err != nil {
-		return errors.Wrapf(err, "invalid guaranteed/requested instance manager CPU value (%v)", instanceManagerCPUStr)
-	}
-
-	definition, _ := GetSettingDefinition(settingName)
-	valueIntRange := definition.ValueIntRange
-
 	switch settingName {
-	case SettingNameGuaranteedInstanceManagerCPU, SettingNameV2DataEngineGuaranteedInstanceManagerCPU:
-		isUnderLimit := instanceManagerCPU < valueIntRange[ValueIntRangeMinimum]
-		if isUnderLimit {
-			return fmt.Errorf("invalid requested instance manager CPUs. Valid instance manager CPU range is larger than %v millicpu", valueIntRange[ValueIntRangeMinimum])
+	case SettingNameGuaranteedInstanceManagerCPU:
+		instanceManagerCPU, err := strconv.ParseFloat(instanceManagerCPUStr, 64)
+		if err != nil {
+			return errors.Wrapf(err, "invalid requested instance manager CPU percentage value (%v)", instanceManagerCPUStr)
+		}
+
+		if instanceManagerCPU < 0 || instanceManagerCPU > 40 {
+			return fmt.Errorf("invalid requested instance manager CPU percentage. Valid range is 0 to 40, got %v", instanceManagerCPU)
+		}
+
+	case SettingNameV2DataEngineGuaranteedInstanceManagerCPU:
+		instanceManagerCPU, err := strconv.Atoi(instanceManagerCPUStr)
+		if err != nil {
+			return errors.Wrapf(err, "invalid requested instance manager CPU millicpu value (%v)", instanceManagerCPUStr)
+		}
+
+		if instanceManagerCPU != 0 && instanceManagerCPU < 1000 {
+			return fmt.Errorf("invalid requested instance manager CPU millicpu. Valid range is 0 or >= 1000, got %v", instanceManagerCPU)
 		}
 	}
 	return nil
