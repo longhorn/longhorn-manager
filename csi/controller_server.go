@@ -691,9 +691,10 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 		return nil, status.Errorf(codes.InvalidArgument, "failed to parse node id: %v", err)
 	}
 	node, err := cs.lhClient.LonghornV1beta2().Nodes(cs.lhNamespace).Get(ctx, nodeID, metav1.GetOptions{})
-	if apierrors.IsNotFound(err) {
-		return nil, status.Errorf(codes.NotFound, "node %s not found", nodeID)
-	} else if err != nil {
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, status.Errorf(codes.NotFound, "node %s not found", nodeID)
+		}
 		return nil, status.Errorf(codes.Internal, "unexpected error: %v", err)
 	}
 	if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady).Status != longhorn.ConditionStatusTrue {
@@ -708,7 +709,7 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 
 	allowEmptyNodeSelectorVolume, err := cs.getSettingAsBoolean(types.SettingNameAllowEmptyNodeSelectorVolume)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get setting, err: %v", err)
+		return nil, status.Errorf(codes.Internal, "failed to get setting %v: %v", types.SettingNameAllowEmptyNodeSelectorVolume, err)
 	}
 	var nodeSelector []string
 	if nodeSelectorRaw, ok := scParameters["nodeSelector"]; ok && len(nodeSelectorRaw) > 0 {
@@ -724,7 +725,7 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 	}
 	allowEmptyDiskSelectorVolume, err := cs.getSettingAsBoolean(types.SettingNameAllowEmptyDiskSelectorVolume)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get setting, err: %v", err)
+		return nil, status.Errorf(codes.Internal, "failed to get setting %v: %v", types.SettingNameAllowEmptyDiskSelectorVolume, err)
 	}
 
 	var v1AvailableCapacity int64 = 0
