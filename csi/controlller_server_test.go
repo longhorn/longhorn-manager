@@ -48,12 +48,12 @@ func TestGetCapacity(t *testing.T) {
 		{
 			skipNodeSettingCreation: true,
 			node:                    newNode("node-0", "storage", true, true, true, false),
-			err:                     status.Errorf(codes.Internal, "failed to get setting, err: settings.longhorn.io \"allow-empty-node-selector-volume\" not found"),
+			err:                     status.Errorf(codes.Internal, "failed to get setting allow-empty-node-selector-volume: settings.longhorn.io \"allow-empty-node-selector-volume\" not found"),
 		},
 		{
 			skipDiskSettingCreation: true,
 			node:                    newNode("node-0", "storage", true, true, true, false),
-			err:                     status.Errorf(codes.Internal, "failed to get setting, err: settings.longhorn.io \"allow-empty-disk-selector-volume\" not found"),
+			err:                     status.Errorf(codes.Internal, "failed to get setting allow-empty-disk-selector-volume: settings.longhorn.io \"allow-empty-disk-selector-volume\" not found"),
 		},
 		{
 			node: newNode("node-0", "storage", true, true, true, false),
