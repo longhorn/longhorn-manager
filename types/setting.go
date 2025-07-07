@@ -1597,8 +1597,8 @@ var (
 	}
 
 	SettingDefinitionMaxPodRecreateBackoff = SettingDefinition{
-		DisplayName: "Max Pod Recreate Backoff",
-		Description: "Maximum backoff duration (in seconds) between pod recreation attempts. The interval doubles after each failure, up to this limit. Default is 120 seconds.",
+		DisplayName: "Maximum Pod Recreate Backoff",
+		Description: "Specifies the maximum duration (in seconds) to wait between pod recreation attempts. After each failed attempt, the backoff interval doubles until it reaches this limit. The default value is 120 seconds.",
 		Category:    SettingCategoryGeneral,
 		Type:        SettingTypeInt,
 		Required:    false,
