@@ -3,7 +3,6 @@ package csi
 import (
 	"context"
 	"fmt"
-	"github.com/longhorn/longhorn-manager/types"
 	"strings"
 	"testing"
 
@@ -13,6 +12,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/longhorn/longhorn-manager/types"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhfake "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned/fake"
@@ -48,12 +49,12 @@ func TestGetCapacity(t *testing.T) {
 		{
 			skipNodeSettingCreation: true,
 			node:                    newNode("node-0", "storage", true, true, true, false),
-			err:                     status.Errorf(codes.Internal, "failed to get setting, err: settings.longhorn.io \"allow-empty-node-selector-volume\" not found"),
+			err:                     status.Errorf(codes.Internal, "failed to get setting allow-empty-node-selector-volume: settings.longhorn.io \"allow-empty-node-selector-volume\" not found"),
 		},
 		{
 			skipDiskSettingCreation: true,
 			node:                    newNode("node-0", "storage", true, true, true, false),
-			err:                     status.Errorf(codes.Internal, "failed to get setting, err: settings.longhorn.io \"allow-empty-disk-selector-volume\" not found"),
+			err:                     status.Errorf(codes.Internal, "failed to get setting allow-empty-disk-selector-volume: settings.longhorn.io \"allow-empty-disk-selector-volume\" not found"),
 		},
 		{
 			node: newNode("node-0", "storage", true, true, true, false),
