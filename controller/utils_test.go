@@ -9,7 +9,10 @@ import (
 func TestExponentialBackoff(t *testing.T) {
 	assert := assert.New(t)
 
-	eb := NewExponentialBackoff(10)
+	var maxBackoff int64 = 10 // seconds
+	setMaxBackoff(maxBackoff)
+
+	eb := NewExponentialBackoff()
 	start := time.Now()
 	runCount := 0
 	backoffKey := "key"
@@ -32,7 +35,7 @@ func TestExponentialBackoff(t *testing.T) {
 	assert.Equal(runCount, 9)
 
 	// make sure entry is removed after staying inactive for long enough
-	time.Sleep(3 * eb.maxBackoffInterval)
+	time.Sleep(time.Duration(3*maxBackoff) * time.Second)
 	eb.mu.Lock()
 	_, exists := eb.interval[backoffKey]
 	assert.False(exists)

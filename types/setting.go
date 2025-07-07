@@ -1604,6 +1604,9 @@ var (
 		Required:    false,
 		ReadOnly:    false,
 		Default:     "120",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 1,
+		},
 	}
 )
 

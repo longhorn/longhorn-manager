@@ -2,6 +2,7 @@ package controller
 
 import (
 	"github.com/sirupsen/logrus"
+	"strconv"
 	"sync"
 	"time"
 
@@ -15,18 +16,49 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
+var (
+	maxBackoff      int64
+	maxBackoffMutex sync.RWMutex
+)
+
 type ExponentialBackoff struct {
-	interval           map[string]time.Duration
-	lastAttempt        map[string]time.Time
-	maxBackoffInterval time.Duration
-	mu                 sync.Mutex
+	interval    map[string]time.Duration
+	lastAttempt map[string]time.Time
+	mu          sync.Mutex
 }
 
-func NewExponentialBackoff(maxBackoffInSeconds int64) *ExponentialBackoff {
+func init() {
+	maxBackoffMutex.RLock()
+	defer maxBackoffMutex.RUnlock()
+
+	maxBackoff, _ = strconv.ParseInt(types.SettingDefinitionMaxPodRecreateBackoff.Default, 10, 64)
+}
+
+func getMaxBackoff() int64 {
+	maxBackoffMutex.RLock()
+	defer maxBackoffMutex.RUnlock()
+
+	return maxBackoff
+}
+
+func getMaxBackoffInterval() time.Duration {
+	maxBackoffMutex.RLock()
+	defer maxBackoffMutex.RUnlock()
+
+	return time.Duration(maxBackoff) * time.Second
+}
+
+func setMaxBackoff(newMaxBackoff int64) {
+	maxBackoffMutex.Lock()
+	defer maxBackoffMutex.Unlock()
+
+	maxBackoff = newMaxBackoff
+}
+
+func NewExponentialBackoff() *ExponentialBackoff {
 	eb := &ExponentialBackoff{
-		interval:           map[string]time.Duration{},
-		lastAttempt:        map[string]time.Time{},
-		maxBackoffInterval: time.Duration(maxBackoffInSeconds) * time.Second,
+		interval:    map[string]time.Duration{},
+		lastAttempt: map[string]time.Time{},
 	}
 	// periodically clean up expired entries
 	go eb.runCleaner()
@@ -35,14 +67,14 @@ func NewExponentialBackoff(maxBackoffInSeconds int64) *ExponentialBackoff {
 }
 
 func (eb *ExponentialBackoff) runCleaner() {
-	ticker := time.NewTicker(eb.maxBackoffInterval)
+	ticker := time.NewTicker(getMaxBackoffInterval())
 	defer ticker.Stop()
 	for range ticker.C {
 		eb.mu.Lock()
 		for key, lastAttempt := range eb.lastAttempt {
 			interval := eb.interval[key]
 			// remove entry after if it was inactive for interval + maxBackoffInterval since last attempt
-			if time.Since(lastAttempt) > interval+eb.maxBackoffInterval {
+			if time.Since(lastAttempt) > interval+getMaxBackoffInterval() {
 				delete(eb.lastAttempt, key)
 				delete(eb.interval, key)
 			}
@@ -70,8 +102,8 @@ func (eb *ExponentialBackoff) CanRun(key string) (bool, time.Duration) {
 		} else {
 			interval *= 2
 		}
-		if interval > eb.maxBackoffInterval {
-			interval = eb.maxBackoffInterval
+		if interval > getMaxBackoffInterval() {
+			interval = getMaxBackoffInterval()
 		}
 		eb.interval[key] = interval
 		eb.lastAttempt[key] = time.Now()

@@ -90,6 +90,8 @@ func NewShareManagerController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-share-manager-controller"}),
 
 		ds: ds,
+
+		exponentialBackoff: NewExponentialBackoff(),
 	}
 
 	var err error
@@ -125,12 +127,6 @@ func NewShareManagerController(
 		return nil, err
 	}
 	c.cacheSyncs = append(c.cacheSyncs, ds.PodInformer.HasSynced)
-
-	maxPodRecreateBackoff, err := ds.GetSettingAsInt(types.SettingNameMaxPodRecreateBackoff)
-	if err != nil {
-		return nil, err
-	}
-	c.exponentialBackoff = NewExponentialBackoff(maxPodRecreateBackoff)
 
 	return c, nil
 }
