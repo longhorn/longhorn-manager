@@ -47,6 +47,7 @@ type SystemBackupTestCase struct {
 	existVolumes           map[SystemRolloutCRName]*longhorn.Volume
 	existBackingImages     map[SystemRolloutCRName]*longhorn.BackingImage
 	existBackups           map[string]*longhorn.Backup
+	existSnapshots         map[string]*longhorn.Snapshot
 
 	expectError                 bool
 	expectErrorConditionMessage string
@@ -114,6 +115,70 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 			},
 			expectState:               longhorn.SystemBackupStateBackingImageBackup,
 			expectNewVolumBackupCount: 0,
+		},
+		"system backup create volume backup if-not-present when snapshot creationTime is not set": {
+			state:              longhorn.SystemBackupStateVolumeBackup,
+			volumeBackupPolicy: longhorn.SystemBackupCreateVolumeBackupPolicyIfNotPresent,
+			existVolumes: map[SystemRolloutCRName]*longhorn.Volume{
+				SystemRolloutCRName(TestVolumeName): {
+					Status: longhorn.VolumeStatus{
+						LastBackup: "exists",
+					},
+				},
+			},
+			existBackups: map[string]*longhorn.Backup{
+				"exists": {
+					Status: longhorn.BackupStatus{
+						State:        longhorn.BackupStateCompleted,
+						SnapshotName: "exists",
+						VolumeName:   TestVolumeName,
+					},
+				},
+			},
+			existSnapshots: map[string]*longhorn.Snapshot{
+				"exists": {
+					ObjectMeta: metav1.ObjectMeta{Name: "exists"},
+					Spec:       longhorn.SnapshotSpec{Volume: TestVolumeName},
+					Status: longhorn.SnapshotStatus{
+						ReadyToUse: true,
+						// CreationTime is not set
+					},
+				},
+			},
+			expectState:               longhorn.SystemBackupStateBackingImageBackup,
+			expectNewVolumBackupCount: 1,
+		},
+		"system backup create volume backup if-not-present when snapshot creationTime is null": {
+			state:              longhorn.SystemBackupStateVolumeBackup,
+			volumeBackupPolicy: longhorn.SystemBackupCreateVolumeBackupPolicyIfNotPresent,
+			existVolumes: map[SystemRolloutCRName]*longhorn.Volume{
+				SystemRolloutCRName(TestVolumeName): {
+					Status: longhorn.VolumeStatus{
+						LastBackup: "exists",
+					},
+				},
+			},
+			existBackups: map[string]*longhorn.Backup{
+				"exists": {
+					Status: longhorn.BackupStatus{
+						State:        longhorn.BackupStateCompleted,
+						SnapshotName: "exists",
+						VolumeName:   TestVolumeName,
+					},
+				},
+			},
+			existSnapshots: map[string]*longhorn.Snapshot{
+				"exists": {
+					ObjectMeta: metav1.ObjectMeta{Name: "exists"},
+					Spec:       longhorn.SnapshotSpec{Volume: TestVolumeName},
+					Status: longhorn.SnapshotStatus{
+						ReadyToUse:   true,
+						CreationTime: "null",
+					},
+				},
+			},
+			expectState:               longhorn.SystemBackupStateBackingImageBackup,
+			expectNewVolumBackupCount: 1,
 		},
 		"system backup create volume backup always": {
 			state:              longhorn.SystemBackupStateVolumeBackup,
@@ -276,15 +341,25 @@ func (s *TestSuite) TestReconcileSystemBackup(c *C) {
 		switch systemBackup.Status.State {
 		case longhorn.SystemBackupStateVolumeBackup:
 			if tc.existBackups != nil {
-				existBackupSnap := &longhorn.Snapshot{
-					ObjectMeta: metav1.ObjectMeta{Name: "exists"},
-					Spec:       longhorn.SnapshotSpec{Volume: TestVolumeName},
-					Status: longhorn.SnapshotStatus{
-						ReadyToUse:   true,
-						CreationTime: metav1.Now().Time.Format(time.RFC3339),
-					},
+				existBackupSnapshots := make(map[string]*longhorn.Snapshot)
+				if tc.existSnapshots == nil {
+					for _, backup := range tc.existBackups {
+						existBackupSnapshots[backup.Status.SnapshotName] = &longhorn.Snapshot{
+							ObjectMeta: metav1.ObjectMeta{Name: backup.Status.SnapshotName},
+							Spec:       longhorn.SnapshotSpec{Volume: TestVolumeName},
+							Status: longhorn.SnapshotStatus{
+								ReadyToUse:   true,
+								CreationTime: metav1.Now().Format(time.RFC3339),
+							},
+						}
+					}
+				} else {
+					existBackupSnapshots = tc.existSnapshots
 				}
-				fakeSystemRolloutSnapshot(existBackupSnap, c, informerFactories.LhInformerFactory, lhClient)
+
+				for _, existBackupSnap := range existBackupSnapshots {
+					fakeSystemRolloutSnapshot(existBackupSnap, c, informerFactories.LhInformerFactory, lhClient)
+				}
 			}
 			backups, _ := systemBackupController.BackupVolumes(systemBackup)
 
