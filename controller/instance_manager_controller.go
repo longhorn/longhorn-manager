@@ -460,12 +460,14 @@ func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceMan
 			im.Status.CurrentState = longhorn.InstanceManagerStateStopped
 			return nil
 		}
+		imc.logger.Warnf("Instance manager pod %v is not found, updating the instance manager state from %s to error", im.Name, im.Status.CurrentState)
 		im.Status.CurrentState = longhorn.InstanceManagerStateError
 		return nil
 	}
 
 	// By design instance manager pods should not be terminated.
 	if pod.DeletionTimestamp != nil {
+		imc.logger.Warnf("Instance manager pod %v is being deleted, updating the instance manager state from %s to error", im.Name, im.Status.CurrentState)
 		im.Status.CurrentState = longhorn.InstanceManagerStateError
 		return nil
 	}
@@ -488,6 +490,7 @@ func (imc *InstanceManagerController) syncStatusWithPod(im *longhorn.InstanceMan
 			im.Status.CurrentState = longhorn.InstanceManagerStateStarting
 		}
 	default:
+		imc.logger.Warnf("Instance manager pod %v is in phase %s, updating the instance manager state from %s to error", im.Name, pod.Status.Phase, im.Status.CurrentState)
 		im.Status.CurrentState = longhorn.InstanceManagerStateError
 	}
 
