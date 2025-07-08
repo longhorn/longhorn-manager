@@ -776,8 +776,9 @@ func GetShareManagerNameFromShareManagerPodName(podName string) string {
 	return strings.TrimPrefix(podName, shareManagerPrefix)
 }
 
-func GetBackupVolumeNameFromVolumeName(volumeName string) string {
-	return volumeName + "-" + util.RandomID()
+func GetBackupVolumeNameFromVolumeName(volumeName, backupTargetName string) string {
+	// Generate a unique backup volume name based on the volume name and backup target name to prevent re-creation from a split-brain scenario.
+	return volumeName + "-" + util.GetStringChecksumSHA256(strings.TrimSpace(fmt.Sprintf("%s-%s", volumeName, backupTargetName)))[:util.RandomIDLength]
 }
 
 func GetBackupBackingImageNameFromBIName(backingImageName string) string {
