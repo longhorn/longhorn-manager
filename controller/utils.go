@@ -1,10 +1,11 @@
 package controller
 
 import (
-	"github.com/sirupsen/logrus"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/runtime"
 
