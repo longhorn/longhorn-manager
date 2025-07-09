@@ -41,12 +41,12 @@ jobs:
       id: cpr
       uses: peter-evans/create-pull-request@v7
       with:
-        token: ${{ secrets.CUSTOM_GITHUB_TOKEN }}
+        token: ${{ secrets.LONGHORN_GITHUB_BOT_TOKEN }}
         branch: "update-crds-and-manifests-longhorn-manager-${{ github.event.pull_request.number }}"
         delete-branch: true
         sign-commits: true
         signoff: true
-        author: ${{ github.event.pull_request.user.login }} <${{ github.event.pull_request.user.login }}@users.noreply.github.com>
+        author: Longhorn GitHub Bot <67932897+longhorn-io-github-bot@users.noreply.github.com>
         committer: Longhorn GitHub Bot <67932897+longhorn-io-github-bot@users.noreply.github.com>
         commit-message: "chore(crd): update crds.yaml and manifests (PR longhorn/longhorn-manager#${{ github.event.pull_request.number}})"
         title: "chore(crd): update crds.yaml and manifests (PR longhorn/longhorn-manager#${{ github.event.pull_request.number}})"
