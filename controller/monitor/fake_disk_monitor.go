@@ -10,6 +10,7 @@ import (
 	lhtypes "github.com/longhorn/go-common-libs/types"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -39,6 +40,7 @@ func NewFakeDiskMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, node
 		getDiskConfigHandler:        fakeGetDiskConfig,
 		generateDiskConfigHandler:   fakeGenerateDiskConfig,
 		getReplicaDataStoresHandler: fakeGetReplicaDataStores,
+		getDiskMetricsHandler:       fakeGetDiskMetrics,
 	}
 
 	return m, nil
@@ -83,6 +85,11 @@ func fakeGetDiskStat(diskType longhorn.DiskType, name, directory string, diskDri
 	default:
 		return nil, fmt.Errorf("unknown disk type %v", diskType)
 	}
+}
+
+func fakeGetDiskMetrics(diskType longhorn.DiskType, name, directory string, diskDriver longhorn.DiskDriver, client *DiskServiceClient) (*engineapi.Metrics, error) {
+	// Return nil metrics for fake implementation - consistent with filesystem disk behavior where metrics are not supported
+	return nil, nil
 }
 
 func fakeGetDiskConfig(diskType longhorn.DiskType, name, path string, diskDriver longhorn.DiskDriver, client *DiskServiceClient) (*util.DiskConfig, error) {

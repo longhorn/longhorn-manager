@@ -104,6 +104,21 @@ type DiskSpec struct {
 	Tags []string `json:"tags"`
 }
 
+type DiskMetrics struct {
+	// +optional
+	ReadThroughput uint64 `json:"readThroughput"`
+	// +optional
+	WriteThroughput uint64 `json:"writeThroughput"`
+	// +optional
+	ReadIOPS uint64 `json:"readIOPS"`
+	// +optional
+	WriteIOPS uint64 `json:"writeIOPS"`
+	// +optional
+	ReadLatency uint64 `json:"readLatency"`
+	// +optional
+	WriteLatency uint64 `json:"writeLatency"`
+}
+
 type DiskStatus struct {
 	// +optional
 	// +nullable
@@ -134,6 +149,9 @@ type DiskStatus struct {
 	FSType string `json:"filesystemType"`
 	// +optional
 	InstanceManagerName string `json:"instanceManagerName"`
+	// +optional
+	// +nullable
+	DiskMetrics *DiskMetrics `json:"diskMetrics"`
 }
 
 // NodeSpec defines the desired state of the Longhorn node

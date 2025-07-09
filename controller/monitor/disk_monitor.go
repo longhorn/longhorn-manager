@@ -47,6 +47,7 @@ type DiskMonitor struct {
 	syncCallback func(key string)
 
 	getDiskStatHandler          GetDiskStatHandler
+	getDiskMetricsHandler       GetDiskMetricsHandler
 	getDiskConfigHandler        GetDiskConfigHandler
 	generateDiskConfigHandler   GenerateDiskConfigHandler
 	getReplicaDataStoresHandler GetReplicaDataStoresHandler
@@ -56,6 +57,7 @@ type CollectedDiskInfo struct {
 	Path                      string
 	NodeOrDiskEvicted         bool
 	DiskStat                  *lhtypes.DiskStat
+	DiskMetrics               *engineapi.Metrics
 	DiskName                  string
 	DiskUUID                  string
 	DiskDriver                longhorn.DiskDriver
@@ -65,6 +67,7 @@ type CollectedDiskInfo struct {
 }
 
 type GetDiskStatHandler func(longhorn.DiskType, string, string, longhorn.DiskDriver, *DiskServiceClient) (*lhtypes.DiskStat, error)
+type GetDiskMetricsHandler func(longhorn.DiskType, string, string, longhorn.DiskDriver, *DiskServiceClient) (*engineapi.Metrics, error)
 type GetDiskConfigHandler func(longhorn.DiskType, string, string, longhorn.DiskDriver, *DiskServiceClient) (*util.DiskConfig, error)
 type GenerateDiskConfigHandler func(longhorn.DiskType, string, string, string, string, *DiskServiceClient, *datastore.DataStore) (*util.DiskConfig, error)
 type GetReplicaDataStoresHandler func(longhorn.DiskType, *longhorn.Node, string, string, string, string, *DiskServiceClient) (map[string]string, error)
@@ -84,6 +87,7 @@ func NewDiskMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName
 		syncCallback: syncCallback,
 
 		getDiskStatHandler:          getDiskStat,
+		getDiskMetricsHandler:       getDiskMetrics,
 		getDiskConfigHandler:        getDiskConfig,
 		generateDiskConfigHandler:   generateDiskConfig,
 		getReplicaDataStoresHandler: getReplicaDataStores,
@@ -262,13 +266,13 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 			instanceManagerName = diskServiceClient.c.GetInstanceManagerName()
 		}
 
-		diskInfoMap[diskName] = NewDiskInfo(diskName, "", disk.Path, diskDriver, nodeOrDiskEvicted, nil,
+		diskInfoMap[diskName] = NewDiskInfo(diskName, "", disk.Path, diskDriver, nodeOrDiskEvicted, nil, nil,
 			orphanedReplicaDataStores, instanceManagerName, errReason, errMsg)
 
 		diskConfig, err := m.getDiskConfigHandler(disk.Type, diskName, disk.Path, diskDriver, diskServiceClient)
 		if err != nil {
 			if !types.ErrorIsNotFound(err) {
-				diskInfoMap[diskName] = NewDiskInfo(diskName, "", disk.Path, diskDriver, nodeOrDiskEvicted, nil,
+				diskInfoMap[diskName] = NewDiskInfo(diskName, "", disk.Path, diskDriver, nodeOrDiskEvicted, nil, nil,
 					orphanedReplicaDataStores, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo),
 					fmt.Sprintf("Disk %v(%v) on node %v is not ready: failed to get disk config: error: %v",
 						diskName, disk.Path, node.Name, err))
@@ -292,7 +296,7 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 			// Block-type disk
 			//   Create a bdev lvstore
 			if diskConfig, err = m.generateDiskConfigHandler(disk.Type, diskName, diskUUID, disk.Path, string(diskDriver), diskServiceClient, m.ds); err != nil {
-				diskInfoMap[diskName] = NewDiskInfo(diskName, diskUUID, disk.Path, diskDriver, nodeOrDiskEvicted, nil,
+				diskInfoMap[diskName] = NewDiskInfo(diskName, diskUUID, disk.Path, diskDriver, nodeOrDiskEvicted, nil, nil,
 					orphanedReplicaDataStores, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo),
 					fmt.Sprintf("Disk %v(%v) on node %v is not ready: failed to generate disk config: error: %v",
 						diskName, disk.Path, node.Name, err))
@@ -302,10 +306,16 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 
 		stat, err := m.getDiskStatHandler(disk.Type, diskName, disk.Path, diskDriver, diskServiceClient)
 		if err != nil {
-			diskInfoMap[diskName] = NewDiskInfo(diskName, "", disk.Path, diskDriver, nodeOrDiskEvicted, nil,
+			diskInfoMap[diskName] = NewDiskInfo(diskName, "", disk.Path, diskDriver, nodeOrDiskEvicted, nil, nil,
 				orphanedReplicaDataStores, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo),
 				fmt.Sprintf("Disk %v(%v) on node %v is not ready: Get disk information error: %v",
 					diskName, node.Spec.Disks[diskName].Path, node.Name, err))
+			continue
+		}
+
+		metrics, err := m.getDiskMetricsHandler(disk.Type, diskName, disk.Path, diskDriver, diskServiceClient)
+		if err != nil {
+			m.logger.WithError(err).Warnf("Failed to get disk metrics for disk %v(%v) on node %v", diskName, disk.Path, node.Name)
 			continue
 		}
 
@@ -321,7 +331,7 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 			continue
 		}
 
-		diskInfoMap[diskName] = NewDiskInfo(diskConfig.DiskName, diskConfig.DiskUUID, disk.Path, diskConfig.DiskDriver, nodeOrDiskEvicted, stat,
+		diskInfoMap[diskName] = NewDiskInfo(diskConfig.DiskName, diskConfig.DiskUUID, disk.Path, diskConfig.DiskDriver, nodeOrDiskEvicted, stat, metrics,
 			orphanedReplicaDataStores, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo), "")
 	}
 
@@ -367,7 +377,7 @@ func canCollectDiskData(node *longhorn.Node, diskName, diskUUID, diskPath string
 		types.GetCondition(node.Status.DiskStatus[diskName].Conditions, longhorn.DiskConditionTypeReady).Status == longhorn.ConditionStatusTrue
 }
 
-func NewDiskInfo(diskName, diskUUID, diskPath string, diskDriver longhorn.DiskDriver, nodeOrDiskEvicted bool, stat *lhtypes.DiskStat,
+func NewDiskInfo(diskName, diskUUID, diskPath string, diskDriver longhorn.DiskDriver, nodeOrDiskEvicted bool, stat *lhtypes.DiskStat, metrics *engineapi.Metrics,
 	orphanedReplicaDataStores map[string]string, instanceManagerName string, errorReason, errorMessage string) *CollectedDiskInfo {
 	diskInfo := &CollectedDiskInfo{
 		DiskName:                  diskName,
@@ -376,6 +386,7 @@ func NewDiskInfo(diskName, diskUUID, diskPath string, diskDriver longhorn.DiskDr
 		NodeOrDiskEvicted:         nodeOrDiskEvicted,
 		DiskDriver:                diskDriver,
 		DiskStat:                  stat,
+		DiskMetrics:               metrics,
 		OrphanedReplicaDataStores: orphanedReplicaDataStores,
 		InstanceManagerName:       instanceManagerName,
 	}
