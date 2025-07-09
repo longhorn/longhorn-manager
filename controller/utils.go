@@ -28,8 +28,8 @@ type ExponentialBackoff struct {
 }
 
 func init() {
-	maxBackoffMutex.RLock()
-	defer maxBackoffMutex.RUnlock()
+	maxBackoffMutex.Lock()
+	defer maxBackoffMutex.Unlock()
 
 	maxBackoff, _ = strconv.ParseInt(types.SettingDefinitionMaxPodRecreateBackoff.Default, 10, 64)
 }
