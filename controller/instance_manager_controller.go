@@ -20,6 +20,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kubernetes/pkg/controller"
+	"k8s.io/utils/ptr"
 
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -1397,7 +1398,7 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 	return nil
 }
 
-func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.InstanceManager, tolerations []corev1.Toleration, registrySecret string, nodeSelector map[string]string) (*corev1.Pod, error) {
+func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.InstanceManager, tolerations []corev1.Toleration, registrySecret string, nodeSelector map[string]string, dataEngine longhorn.DataEngineType) (*corev1.Pod, error) {
 	tolerationsByte, err := json.Marshal(tolerations)
 	if err != nil {
 		return nil, err
@@ -1413,13 +1414,13 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 		return nil, err
 	}
 
-	privileged := true
 	podSpec := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            im.Name,
 			Namespace:       imc.namespace,
 			OwnerReferences: datastore.GetOwnerReferencesForInstanceManager(im),
 			Annotations:     map[string]string{types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix): string(tolerationsByte)},
+			Labels:          types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, longhorn.InstanceManagerTypeAllInOne, dataEngine),
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: imc.serviceAccount,
@@ -1428,10 +1429,11 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 			PriorityClassName:  priorityClass.Value,
 			Containers: []corev1.Container{
 				{
+					Name:            "instance-manager",
 					Image:           im.Spec.Image,
 					ImagePullPolicy: imagePullPolicy,
 					SecurityContext: &corev1.SecurityContext{
-						Privileged: &privileged,
+						Privileged: ptr.To(true),
 					},
 				},
 			},
@@ -1461,15 +1463,32 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 	return podSpec, nil
 }
 
+func getLivenessProbeCommand(dataEngine longhorn.DataEngineType) string {
+	var livenessProbes []string
+
+	ports := []int{
+		engineapi.InstanceManagerProcessManagerServiceDefaultPort,
+		engineapi.InstanceManagerProxyServiceDefaultPort,
+		engineapi.InstanceManagerDiskServiceDefaultPort,
+		engineapi.InstanceManagerInstanceServiceDefaultPort,
+	}
+	for _, port := range ports {
+		livenessProbes = append(livenessProbes, fmt.Sprintf("nc -zv localhost %d > /dev/null 2>&1", port))
+	}
+	if types.IsDataEngineV2(dataEngine) {
+		livenessProbes = append(livenessProbes, fmt.Sprintf("nc -zv localhost %d > /dev/null 2>&1", engineapi.InstanceManagerSpdkServiceDefaultPort))
+
+		processProbe := "[ $(ps aux | grep 'spdk_tgt' | grep -v 'grep' | grep -v 'tee' | wc -l) != 0 ]"
+		livenessProbes = append(livenessProbes, processProbe)
+	}
+	return fmt.Sprintf("test $(%s; echo $?) -eq 0", strings.Join(livenessProbes, " && "))
+}
+
 func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.InstanceManager, tolerations []corev1.Toleration, registrySecret string, nodeSelector map[string]string, dataEngine longhorn.DataEngineType) (*corev1.Pod, error) {
-	podSpec, err := imc.createGenericManagerPodSpec(im, tolerations, registrySecret, nodeSelector)
+	podSpec, err := imc.createGenericManagerPodSpec(im, tolerations, registrySecret, nodeSelector, dataEngine)
 	if err != nil {
 		return nil, err
 	}
-
-	secretIsOptional := true
-	podSpec.Labels = types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, longhorn.InstanceManagerTypeAllInOne, dataEngine)
-	podSpec.Spec.Containers[0].Name = "instance-manager"
 
 	if types.IsDataEngineV2(dataEngine) {
 		// spdk_tgt doesn't support log level option, so we don't need to pass the log level to the instance manager.
@@ -1536,32 +1555,13 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		}
 	}
 
-	// Create a liveness probe to check if all the required ports and processes are open.
-	var livenessProbes []string
-	ports := []int{
-		engineapi.InstanceManagerProcessManagerServiceDefaultPort,
-		engineapi.InstanceManagerProxyServiceDefaultPort,
-		engineapi.InstanceManagerDiskServiceDefaultPort,
-		engineapi.InstanceManagerInstanceServiceDefaultPort,
-	}
-	for _, port := range ports {
-		livenessProbes = append(livenessProbes, fmt.Sprintf("nc -zv localhost %d > /dev/null 2>&1", port))
-	}
-	if types.IsDataEngineV2(dataEngine) {
-		livenessProbes = append(livenessProbes, fmt.Sprintf("nc -zv localhost %d > /dev/null 2>&1", engineapi.InstanceManagerSpdkServiceDefaultPort))
-
-		processProbe := "[ $(ps aux | grep 'spdk_tgt' | grep -v 'grep' | grep -v 'tee' | wc -l) != 0 ]"
-		livenessProbes = append(livenessProbes, processProbe)
-	}
-	livenessProbeCommand := fmt.Sprintf("test $(%s; echo $?) -eq 0", strings.Join(livenessProbes, " && "))
-
 	podSpec.Spec.Containers[0].LivenessProbe = &corev1.Probe{
 		ProbeHandler: corev1.ProbeHandler{
 			Exec: &corev1.ExecAction{
 				Command: []string{
 					"/bin/sh",
 					"-c",
-					livenessProbeCommand,
+					getLivenessProbeCommand(dataEngine),
 				},
 			},
 		},
@@ -1586,6 +1586,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			},
 		},
 	}
+
 	// Set volume mounts
 	podSpec.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
 		{
@@ -1637,7 +1638,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName: types.TLSSecretName,
-					Optional:   &secretIsOptional,
+					Optional:   ptr.To(true),
 				},
 			},
 		},
