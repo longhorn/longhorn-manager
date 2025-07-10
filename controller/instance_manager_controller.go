@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -1485,6 +1486,11 @@ func getLivenessProbeCommand(dataEngine longhorn.DataEngineType) string {
 }
 
 func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.InstanceManager, tolerations []corev1.Toleration, registrySecret string, nodeSelector map[string]string, dataEngine longhorn.DataEngineType) (*corev1.Pod, error) {
+	logDirectory, err := imc.ds.GetSettingValueExisted(types.SettingNameLogDirectory)
+	if err != nil {
+		return nil, err
+	}
+
 	podSpec, err := imc.createGenericManagerPodSpec(im, tolerations, registrySecret, nodeSelector, dataEngine)
 	if err != nil {
 		return nil, err
@@ -1607,6 +1613,11 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			MountPath: types.TLSDirectoryInContainer,
 			Name:      "longhorn-grpc-tls",
 		},
+		{
+			Name:             "log",
+			MountPath:        "/log",
+			MountPropagation: &mountPropagationHostToContainer,
+		},
 	}
 	podSpec.Spec.Volumes = []corev1.Volume{
 		{
@@ -1639,6 +1650,15 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 				Secret: &corev1.SecretVolumeSource{
 					SecretName: types.TLSSecretName,
 					Optional:   ptr.To(true),
+				},
+			},
+		},
+		{
+			Name: "log",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: filepath.Join(logDirectory, "log"),
+					Type: &[]corev1.HostPathType{corev1.HostPathDirectoryOrCreate}[0],
 				},
 			},
 		},
