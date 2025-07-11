@@ -1590,7 +1590,7 @@ var (
 		Type:     SettingTypeBool,
 		Required: true,
 		ReadOnly: false,
-		Default:  "true",
+		Default:  "false",
 	}
 )
 
