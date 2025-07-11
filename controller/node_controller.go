@@ -733,7 +733,7 @@ func (nc *NodeController) findNotReadyAndReadyDiskMaps(node *longhorn.Node, coll
 			if errorMessage != "" {
 				notReadyDiskInfoMap[diskID][diskName] =
 					monitor.NewDiskInfo(diskInfo.DiskName, diskInfo.DiskUUID, diskInfo.Path, diskInfo.DiskDriver,
-						diskInfo.NodeOrDiskEvicted, diskInfo.DiskStat, diskInfo.DiskMetrics,
+						diskInfo.NodeOrDiskEvicted, diskInfo.DiskStat,
 						diskInfo.OrphanedReplicaDataStores,
 						diskInfo.InstanceManagerName,
 						string(longhorn.DiskConditionReasonDiskFilesystemChanged), errorMessage)
@@ -754,7 +754,7 @@ func (nc *NodeController) findNotReadyAndReadyDiskMaps(node *longhorn.Node, coll
 			if nc.isDiskIDDuplicatedWithExistingReadyDisk(diskName, diskInfoMap, node.Status.DiskStatus) ||
 				isReadyDiskFound(readyDiskInfoMap[diskID]) {
 				notReadyDiskInfoMap[diskID][diskName] =
-					monitor.NewDiskInfo(diskInfo.DiskName, diskInfo.DiskUUID, diskInfo.Path, diskInfo.DiskDriver, diskInfo.NodeOrDiskEvicted, diskInfo.DiskStat, diskInfo.DiskMetrics,
+					monitor.NewDiskInfo(diskInfo.DiskName, diskInfo.DiskUUID, diskInfo.Path, diskInfo.DiskDriver, diskInfo.NodeOrDiskEvicted, diskInfo.DiskStat,
 						diskInfo.OrphanedReplicaDataStores,
 						diskInfo.InstanceManagerName,
 						string(longhorn.DiskConditionReasonDiskFilesystemChanged),
@@ -767,18 +767,6 @@ func (nc *NodeController) findNotReadyAndReadyDiskMaps(node *longhorn.Node, coll
 			node.Status.DiskStatus[diskName].DiskDriver = diskInfo.DiskDriver
 			node.Status.DiskStatus[diskName].DiskName = diskInfo.DiskName
 			node.Status.DiskStatus[diskName].DiskPath = diskInfo.Path
-
-			// Update disk metrics if available
-			if diskInfo.DiskMetrics != nil {
-				node.Status.DiskStatus[diskName].DiskMetrics = &longhorn.DiskMetrics{
-					ReadThroughput:  diskInfo.DiskMetrics.ReadThroughput,
-					WriteThroughput: diskInfo.DiskMetrics.WriteThroughput,
-					ReadLatency:     diskInfo.DiskMetrics.ReadLatency,
-					WriteLatency:    diskInfo.DiskMetrics.WriteLatency,
-					ReadIOPS:        diskInfo.DiskMetrics.ReadIOPS,
-					WriteIOPS:       diskInfo.DiskMetrics.WriteIOPS,
-				}
-			}
 
 			readyDiskInfoMap[diskID][diskName] = diskInfo
 		}
