@@ -7,44 +7,58 @@ on:
       - master
       - "v*"
 
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Pull request number from longhorn/longhorn-manager'
+        required: true
+        type: number
+      base_branch:
+        description: 'Base branch the PR was merged into'
+        required: true
+        default: 'master'
+        type: string
+
 jobs:
   create-pull-request:
-    if: github.event.pull_request.merged == true
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
-    - name: Prepare Packages
-      run: |
-        curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
-        chmod 700 get_helm.sh
-        ./get_helm.sh
+      - name: Prepare Helm
+        run: |
+          curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+          chmod 700 get_helm.sh
+          ./get_helm.sh
 
-    - name: Log triggering PR information
-      shell: bash
-      run: |
-        echo "Triggered by PR: #${{ github.event.pull_request.number }}"
-        echo "PR Title: ${{ github.event.pull_request.title }}"
-        echo "PR URL: ${{ github.event.pull_request.html_url }}"
-        echo "PR was merged into branch: ${{ github.event.pull_request.base.ref }}"
+      - name: Determine PR info
+        id: pr_info
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "PR_NUMBER=${{ inputs.pr_number }}" >> $GITHUB_OUTPUT
+            echo "BASE_BRANCH=${{ inputs.base_branch }}" >> $GITHUB_OUTPUT
+          else
+            echo "PR_NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+            echo "BASE_BRANCH=${{ github.event.pull_request.base.ref }}" >> $GITHUB_OUTPUT
+          fi
 
-    - id: generate_token
-      uses: tibdex/github-app-token@v2
-      with:
-        app_id: ${{ secrets.LONGHORN_GITHUB_BOT_APP_ID }}
-        private_key: ${{ secrets.LONGHORN_GITHUB_BOT_PRIVATE_KEY }}
+      - name: Log triggering PR information
+        run: |
+          echo "Triggered by PR: #${{ steps.pr_info.outputs.PR_NUMBER }}"
+          echo "Base branch: ${{ steps.pr_info.outputs.BASE_BRANCH }}"
 
-    - uses: actions/checkout@v4
-      with:
-        repository: longhorn/longhorn
-        token: ${{ steps.generate_token.outputs.token }}
-        ref: ${{ github.event.pull_request.base.ref }}
+      - id: generate_token
+        uses: tibdex/github-app-token@v2
+        with:
+          app_id: ${{ secrets.LONGHORN_GITHUB_BOT_APP_ID }}
+          private_key: ${{ secrets.LONGHORN_GITHUB_BOT_PRIVATE_KEY }}
 
-    - name: Update crds.yaml and manifests
-      shell: bash
-      run: |
-        curl -fL "https://github.com/longhorn/longhorn-manager/raw/${{ github.event.pull_request.base.ref }}/k8s/crds.yaml" -o chart/templates/crds.yaml
-        bash scripts/generate-longhorn-yaml.sh
-        bash scripts/helm-docs.sh
+      - uses: actions/checkout@v4
+        with:
+          repository: longhorn/longhorn
+          token: ${{ steps.generate_token.outputs.token }}
+          ref: ${{ steps.pr_info.outputs.BASE_BRANCH }}
 
+<<<<<<< HEAD
     - name: Get Head Commit Name
       id: get_head_commit_name
       run: echo "::set-output name=commit_name::$(git log -1 --pretty=format:'%an')"
@@ -73,3 +87,27 @@ jobs:
         body: |
           This PR updates the crds.yaml and manifests.
           It was triggered by longhorn/longhorn-manager#${{ github.event.pull_request.number}}.
+=======
+      - name: Update crds.yaml and manifests
+        run: |
+          curl -fL "https://github.com/longhorn/longhorn-manager/raw/${{ steps.pr_info.outputs.BASE_BRANCH }}/k8s/crds.yaml" -o chart/templates/crds.yaml
+          bash scripts/generate-longhorn-yaml.sh
+          bash scripts/helm-docs.sh
+
+      - name: Create Pull Request
+        id: cpr
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ steps.generate_token.outputs.token }}
+          branch: "update-crds-and-manifests-longhorn-manager-${{ steps.pr_info.outputs.PR_NUMBER }}"
+          delete-branch: true
+          sign-commits: true
+          signoff: true
+          author: Longhorn GitHub Bot <67932897+longhorn-io-github-bot@users.noreply.github.com>
+          committer: Longhorn GitHub Bot <67932897+longhorn-io-github-bot@users.noreply.github.com>
+          commit-message: "chore(crd): update crds.yaml and manifests (PR longhorn/longhorn-manager#${{ steps.pr_info.outputs.PR_NUMBER }})"
+          title: "chore(crd): update crds.yaml and manifests (PR longhorn/longhorn-manager#${{ steps.pr_info.outputs.PR_NUMBER }})"
+          body: |
+            This PR updates the crds.yaml and manifests.
+            It was triggered by longhorn/longhorn-manager#${{ steps.pr_info.outputs.PR_NUMBER }}.
+>>>>>>> 4ddb6cb7 (chore(workflow): add workflow_dispatch for create-crd-update-pr-in-longhorn-repo.yml)
