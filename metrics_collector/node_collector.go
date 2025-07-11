@@ -300,9 +300,9 @@ func (nc *NodeCollector) collectNodeStorage(ch chan<- prometheus.Metric) {
 	var storageUsage int64 = 0
 	var storageReservation int64 = 0
 	for _, disk := range disks {
-		storageCapacity += disk.StorageMaximum
-		storageUsage += disk.StorageMaximum - disk.StorageAvailable
-		storageReservation += disk.StorageReserved
+		storageCapacity += disk.Status.StorageMaximum
+		storageUsage += disk.Status.StorageMaximum - disk.Status.StorageAvailable
+		storageReservation += disk.Spec.StorageReserved
 	}
 
 	ch <- prometheus.MustNewConstMetric(nc.storageCapacityMetric.Desc, nc.storageCapacityMetric.Type, float64(storageCapacity), nc.currentNodeID)

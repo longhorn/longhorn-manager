@@ -55,8 +55,8 @@ type metricInfo struct {
 }
 
 type diskInfo struct {
-	longhorn.DiskSpec   `json:"diskSpec"`
-	longhorn.DiskStatus `json:"diskStatus"`
+	Spec   longhorn.DiskSpec   `json:"diskSpec"`
+	Status longhorn.DiskStatus `json:"diskStatus"`
 }
 
 func getDiskListFromNode(node *longhorn.Node) map[string]diskInfo {
@@ -67,10 +67,10 @@ func getDiskListFromNode(node *longhorn.Node) map[string]diskInfo {
 
 	for diskName, diskSpec := range node.Spec.Disks {
 		di := diskInfo{
-			DiskSpec: diskSpec,
+			Spec: diskSpec,
 		}
 		if diskStatus, ok := node.Status.DiskStatus[diskName]; ok {
-			di.DiskStatus = *diskStatus
+			di.Status = *diskStatus
 		}
 		disks[diskName] = di
 	}

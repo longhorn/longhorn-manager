@@ -38,18 +38,6 @@ func getDiskStat(diskType longhorn.DiskType, diskName, diskPath string, diskDriv
 	}
 }
 
-func getDiskMetrics(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, client *DiskServiceClient) (metrics *engineapi.Metrics, err error) {
-	switch diskType {
-	case longhorn.DiskTypeFilesystem:
-		// For filesystem type, metrics collection is not supported yet
-		return nil, nil
-	case longhorn.DiskTypeBlock:
-		return getBlockTypeDiskMetrics(client, diskName, diskPath, diskDriver)
-	default:
-		return nil, fmt.Errorf("unknown disk type %v", diskType)
-	}
-}
-
 func getBlockTypeDiskStat(client *DiskServiceClient, diskName, diskPath string, diskDriver longhorn.DiskDriver) (stat *lhtypes.DiskStat, err error) {
 	if client == nil || client.c == nil {
 		return nil, errors.New("disk service client is nil")
@@ -71,26 +59,6 @@ func getBlockTypeDiskStat(client *DiskServiceClient, diskName, diskPath string, 
 		BlockSize:        info.BlockSize,
 		StorageMaximum:   info.TotalSize,
 		StorageAvailable: info.FreeSize,
-	}, nil
-}
-
-func getBlockTypeDiskMetrics(client *DiskServiceClient, diskName, diskPath string, diskDriver longhorn.DiskDriver) (metrics *engineapi.Metrics, err error) {
-	if client == nil || client.c == nil {
-		return nil, errors.New("disk service client is nil")
-	}
-
-	diskMetrics, err := client.c.MetricsGet(string(longhorn.DiskTypeBlock), diskName, diskPath, string(diskDriver))
-	if err != nil {
-		return nil, err
-	}
-
-	return &engineapi.Metrics{
-		ReadThroughput:  diskMetrics.ReadThroughput,
-		WriteThroughput: diskMetrics.WriteThroughput,
-		ReadIOPS:        diskMetrics.ReadIOPS,
-		WriteIOPS:       diskMetrics.WriteIOPS,
-		ReadLatency:     diskMetrics.ReadLatency,
-		WriteLatency:    diskMetrics.WriteLatency,
 	}, nil
 }
 
