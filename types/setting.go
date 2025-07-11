@@ -150,6 +150,7 @@ const (
 	SettingNameBackupExecutionTimeout                                   = SettingName("backup-execution-timeout")
 	SettingNameRWXVolumeFastFailover                                    = SettingName("rwx-volume-fast-failover")
 	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
+	SettingNameMaxPodRecreateBackoff                                    = SettingName("max-pod-recreate-backoff")
 	// These three backup target parameters are used in the "longhorn-default-resource" ConfigMap
 	// to update the default BackupTarget resource.
 	// Longhorn won't create the Setting resources for these three parameters.
@@ -254,6 +255,7 @@ var (
 		SettingNameBackupExecutionTimeout,
 		SettingNameRWXVolumeFastFailover,
 		SettingNameOfflineReplicaRebuilding,
+		SettingNameMaxPodRecreateBackoff,
 	}
 )
 
@@ -385,6 +387,7 @@ var (
 		SettingNameBackupExecutionTimeout:                                   SettingDefinitionBackupExecutionTimeout,
 		SettingNameRWXVolumeFastFailover:                                    SettingDefinitionRWXVolumeFastFailover,
 		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
+		SettingNameMaxPodRecreateBackoff:                                    SettingDefinitionMaxPodRecreateBackoff,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -1596,6 +1599,19 @@ var (
 		Required: true,
 		ReadOnly: false,
 		Default:  "false",
+	}
+
+	SettingDefinitionMaxPodRecreateBackoff = SettingDefinition{
+		DisplayName: "Maximum Pod Recreate Backoff",
+		Description: "Specifies the maximum duration (in seconds) to wait between pod recreation attempts. After each failed attempt, the backoff interval doubles until it reaches this limit. The default value is 120 seconds.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeInt,
+		Required:    false,
+		ReadOnly:    false,
+		Default:     "120",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 1,
+		},
 	}
 )
 

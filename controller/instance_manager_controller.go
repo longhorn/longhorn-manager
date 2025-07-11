@@ -64,6 +64,8 @@ type InstanceManagerController struct {
 
 	// for unit test
 	versionUpdater func(*longhorn.InstanceManager) error
+
+	exponentialBackoff *ExponentialBackoff
 }
 
 type InstanceManagerMonitor struct {
@@ -140,6 +142,8 @@ func NewInstanceManagerController(
 		proxyConnCounter: proxyConnCounter,
 
 		versionUpdater: updateInstanceManagerVersion,
+
+		exponentialBackoff: NewExponentialBackoff(),
 	}
 
 	var err error
@@ -655,8 +659,14 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		return err
 	}
 
-	if err := imc.createInstanceManagerPod(im); err != nil {
-		return err
+	backoffKey := im.Name
+	if canRun, retryAfter := imc.exponentialBackoff.CanRun(backoffKey); canRun {
+		log.Infof("Creating pod for instance manager %s", im.Name)
+		if err := imc.createInstanceManagerPod(im); err != nil {
+			return err
+		}
+	} else {
+		log.Infof("Retrying to create pod for instance manager %s after %s", im.Name, retryAfter)
 	}
 
 	return nil

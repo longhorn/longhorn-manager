@@ -256,6 +256,10 @@ func (sc *SettingController) syncNonDangerZoneSettingsForManagedComponents(setti
 		if err := sc.syncDefaultLonghornStaticStorageClass(); err != nil {
 			return err
 		}
+	case types.SettingNameMaxPodRecreateBackoff:
+		if err := sc.syncMaxPodRecreateBackoff(settingName); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -836,6 +840,20 @@ func (sc *SettingController) getDaemonSetsWithIncorrectCNI(storageNetwork *longh
 	}
 
 	return incorrectCNIDaemonSets, nil
+}
+
+func (sc *SettingController) syncMaxPodRecreateBackoff(settingName types.SettingName) error {
+	newMaxBackoff, err := sc.ds.GetSettingAsInt(settingName)
+	if err != nil {
+		return err
+	}
+
+	if newMaxBackoff != getMaxBackoff() {
+		logrus.Infof("Updating maximum pod recreate backoff from %d seconds to %d seconds", getMaxBackoff(), newMaxBackoff)
+		setMaxBackoff(newMaxBackoff)
+	}
+
+	return nil
 }
 
 func (sc *SettingController) updateLogLevel(settingName types.SettingName) error {
