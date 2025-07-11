@@ -25,3 +25,12 @@ type ReplicaStorageInstance struct {
 	SpecSize   uint64
 	ActualSize uint64
 }
+
+type DiskMetrics struct {
+	ReadThroughput  uint64
+	WriteThroughput uint64
+	ReadLatency     uint64
+	WriteLatency    uint64
+	ReadIOPS        uint64
+	WriteIOPS       uint64
+}

@@ -70,7 +70,7 @@ require (
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250628151415-4c3f08918bb0
 	github.com/longhorn/go-spdk-helper v0.0.3-0.20250628151439-b5bf3dd40b0e
 	github.com/longhorn/longhorn-engine v1.9.0
-	github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250629.0.20250703154654-ce049b97ccc0
+	github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250629.0.20250711075830-f3729b840178
 	github.com/longhorn/longhorn-share-manager v1.9.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.22.0
@@ -106,7 +106,7 @@ require (
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/google/gnostic-models v0.6.9 // indirect
-	github.com/longhorn/types v0.0.0-20250613005741-b79d2bcff04b // indirect
+	github.com/longhorn/types v0.0.0-20250710112743-e3a1e9e2a9c1 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/moby/term v0.5.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
