@@ -150,6 +150,7 @@ const (
 	SettingNameBackupExecutionTimeout                                   = SettingName("backup-execution-timeout")
 	SettingNameRWXVolumeFastFailover                                    = SettingName("rwx-volume-fast-failover")
 	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
+	SettingNameLogDirectory                                             = SettingName("log-directory")
 	// These three backup target parameters are used in the "longhorn-default-resource" ConfigMap
 	// to update the default BackupTarget resource.
 	// Longhorn won't create the Setting resources for these three parameters.
@@ -254,6 +255,7 @@ var (
 		SettingNameBackupExecutionTimeout,
 		SettingNameRWXVolumeFastFailover,
 		SettingNameOfflineReplicaRebuilding,
+		SettingNameLogDirectory,
 	}
 )
 
@@ -385,6 +387,7 @@ var (
 		SettingNameBackupExecutionTimeout:                                   SettingDefinitionBackupExecutionTimeout,
 		SettingNameRWXVolumeFastFailover:                                    SettingDefinitionRWXVolumeFastFailover,
 		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
+		SettingNameLogDirectory:                                             SettingDefinitionLogDirectory,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -1596,6 +1599,16 @@ var (
 		Required: true,
 		ReadOnly: false,
 		Default:  "false",
+	}
+
+	SettingDefinitionLogDirectory = SettingDefinition{
+		DisplayName: "Log Directory",
+		Description: "This setting specifies the directory where Longhorn stores the log files of the instance manager for the v2 data engine.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "/var/lib/longhorn/",
 	}
 )
 
