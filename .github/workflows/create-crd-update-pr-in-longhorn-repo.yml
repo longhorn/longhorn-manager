@@ -46,48 +46,21 @@ jobs:
           echo "Triggered by PR: #${{ steps.pr_info.outputs.PR_NUMBER }}"
           echo "Base branch: ${{ steps.pr_info.outputs.BASE_BRANCH }}"
 
-      - id: generate_token
-        uses: tibdex/github-app-token@v2
+      - id: app-token
+        uses: actions/create-github-app-token@v2
         with:
-          app_id: ${{ secrets.LONGHORN_GITHUB_BOT_APP_ID }}
-          private_key: ${{ secrets.LONGHORN_GITHUB_BOT_PRIVATE_KEY }}
+          app-id: ${{ secrets.LONGHORN_GITHUB_BOT_APP_ID }}
+          private-key: ${{ secrets.LONGHORN_GITHUB_BOT_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          permission-contents: write
+          permission-pull-requests: write
 
       - uses: actions/checkout@v4
         with:
           repository: longhorn/longhorn
-          token: ${{ steps.generate_token.outputs.token }}
+          token: ${{ steps.app-token.outputs.token }}
           ref: ${{ steps.pr_info.outputs.BASE_BRANCH }}
 
-<<<<<<< HEAD
-    - name: Get Head Commit Name
-      id: get_head_commit_name
-      run: echo "::set-output name=commit_name::$(git log -1 --pretty=format:'%an')"
-
-    - name: Get Head Commit Email
-      id: get_head_commit_email
-      run: echo "::set-output name=commit_email::$(git log -1 --pretty=format:'%ae')"
-
-    - name: Create Pull Request
-      id: cpr
-      uses: peter-evans/create-pull-request@v7
-      with:
-<<<<<<< HEAD
-        token: ${{ secrets.CUSTOM_GITHUB_TOKEN }}
-=======
-        token: ${{ steps.generate_token.outputs.token }}
->>>>>>> e4e7f35a (chore(workflow): generate longhorn-github-bot token for create-crd-update-pr-in-longhorn-repo.yml)
-        branch: "update-crds-and-manifests-longhorn-manager-${{ github.event.pull_request.number }}"
-        delete-branch: true
-        sign-commits: true
-        signoff: true
-        author: ${{ steps.get_head_commit_name.outputs.commit_name }} <${{ steps.get_head_commit_email.outputs.commit_email }}>
-        committer: ${{ steps.get_head_commit_name.outputs.commit_name }} <${{ steps.get_head_commit_email.outputs.commit_email }}>
-        commit-message: "chore(crd): update crds.yaml and manifests (PR longhorn/longhorn-manager#${{ github.event.pull_request.number}})"
-        title: "chore(crd): update crds.yaml and manifests (PR longhorn/longhorn-manager#${{ github.event.pull_request.number}})"
-        body: |
-          This PR updates the crds.yaml and manifests.
-          It was triggered by longhorn/longhorn-manager#${{ github.event.pull_request.number}}.
-=======
       - name: Update crds.yaml and manifests
         run: |
           curl -fL "https://github.com/longhorn/longhorn-manager/raw/${{ steps.pr_info.outputs.BASE_BRANCH }}/k8s/crds.yaml" -o chart/templates/crds.yaml
@@ -98,7 +71,7 @@ jobs:
         id: cpr
         uses: peter-evans/create-pull-request@v7
         with:
-          token: ${{ steps.generate_token.outputs.token }}
+          token: ${{ steps.app-token.outputs.token }}
           branch: "update-crds-and-manifests-longhorn-manager-${{ steps.pr_info.outputs.PR_NUMBER }}"
           delete-branch: true
           sign-commits: true
@@ -110,4 +83,3 @@ jobs:
           body: |
             This PR updates the crds.yaml and manifests.
             It was triggered by longhorn/longhorn-manager#${{ steps.pr_info.outputs.PR_NUMBER }}.
->>>>>>> 4ddb6cb7 (chore(workflow): add workflow_dispatch for create-crd-update-pr-in-longhorn-repo.yml)
