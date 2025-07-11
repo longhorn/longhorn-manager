@@ -46,16 +46,16 @@ jobs:
           echo "Triggered by PR: #${{ steps.pr_info.outputs.PR_NUMBER }}"
           echo "Base branch: ${{ steps.pr_info.outputs.BASE_BRANCH }}"
 
-      - id: generate_token
-        uses: tibdex/github-app-token@v2
+      - id: app-token
+        uses: actions/create-github-app-token@v2
         with:
-          app_id: ${{ secrets.LONGHORN_GITHUB_BOT_APP_ID }}
-          private_key: ${{ secrets.LONGHORN_GITHUB_BOT_PRIVATE_KEY }}
+          app-id: ${{ secrets.LONGHORN_GITHUB_BOT_APP_ID }}
+          private-key: ${{ secrets.LONGHORN_GITHUB_BOT_PRIVATE_KEY }}
 
       - uses: actions/checkout@v4
         with:
           repository: longhorn/longhorn
-          token: ${{ steps.generate_token.outputs.token }}
+          token: ${{ steps.app-token.outputs.token }}
           ref: ${{ steps.pr_info.outputs.BASE_BRANCH }}
 
       - name: Update crds.yaml and manifests
@@ -68,7 +68,7 @@ jobs:
         id: cpr
         uses: peter-evans/create-pull-request@v7
         with:
-          token: ${{ steps.generate_token.outputs.token }}
+          token: ${{ steps.app-token.outputs.token }}
           branch: "update-crds-and-manifests-longhorn-manager-${{ steps.pr_info.outputs.PR_NUMBER }}"
           delete-branch: true
           sign-commits: true
