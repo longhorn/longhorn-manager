@@ -56,6 +56,7 @@ type controller struct {
 	startLock sync.Mutex
 
 	name        string
+	ctxID       string
 	workqueue   workqueue.RateLimitingInterface
 	rateLimiter workqueue.RateLimiter
 	informer    cache.SharedIndexInformer
@@ -180,6 +181,7 @@ func (c *controller) Start(ctx context.Context, workers int) error {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
+	c.ctxID = metrics.ContextID(ctx)
 	go c.run(workers, ctx.Done())
 	c.started = true
 	return nil
@@ -237,7 +239,7 @@ func (c *controller) processSingleItem(obj interface{}) error {
 func (c *controller) syncHandler(key string) error {
 	obj, exists, err := c.informer.GetStore().GetByKey(key)
 	if err != nil {
-		metrics.IncTotalHandlerExecutions(c.name, "", true)
+		metrics.IncTotalHandlerExecutions(c.ctxID, c.name, "", true)
 		return err
 	}
 	if !exists {

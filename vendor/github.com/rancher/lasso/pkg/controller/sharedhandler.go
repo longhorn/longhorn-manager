@@ -34,9 +34,13 @@ type handlerEntry struct {
 }
 
 type SharedHandler struct {
+	// Used for metrics recording
+	// They are exported because this SharedHandler is sometimes embedded used as a field in other packages, like dynamic
+	ControllerName string
+	CtxID          string
+
 	// keep first because arm32 needs atomic.AddInt64 target to be mem aligned
-	idCounter     int64
-	controllerGVR string
+	idCounter int64
 
 	lock            sync.RWMutex
 	handlers        []handlerEntry
@@ -99,9 +103,9 @@ func (h *SharedHandler) OnChange(key string, obj runtime.Object) error {
 			})
 			hasError = true
 		}
-		metrics.IncTotalHandlerExecutions(h.controllerGVR, handler.name, hasError)
+		metrics.IncTotalHandlerExecutions(h.CtxID, h.ControllerName, handler.name, hasError)
 		reconcileTime := time.Since(reconcileStartTS)
-		metrics.ReportReconcileTime(h.controllerGVR, handler.name, hasError, reconcileTime.Seconds())
+		metrics.ReportReconcileTime(h.CtxID, h.ControllerName, handler.name, hasError, reconcileTime.Seconds())
 
 		if newObj != nil && !reflect.ValueOf(newObj).IsNil() {
 			meta, err := meta.Accessor(newObj)
