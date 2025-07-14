@@ -1322,7 +1322,7 @@ func (nc *NodeController) syncOrphans(node *longhorn.Node, collectedDataInfo map
 	return nil
 }
 
-func (nc *NodeController) getNewAndMissingOrphanedReplicaDataStores(diskName, diskUUID, diskPath string, replicaDataStores map[string]string) (map[string]string, map[string]string) {
+func (nc *NodeController) getNewAndMissingOrphanedReplicaDataStores(diskName, diskUUID, diskPath string, orphanedReplicaDataStores map[string]string) (map[string]string, map[string]string) {
 	newOrphanedReplicaDataStores := map[string]string{}
 	missingOrphanedReplicaDataStores := map[string]string{}
 
@@ -1339,11 +1339,17 @@ func (nc *NodeController) getNewAndMissingOrphanedReplicaDataStores(diskName, di
 		}
 	}
 
-	for dataStore := range replicaDataStores {
+	for dataStore := range orphanedReplicaDataStores {
 		orphanName := types.GetOrphanChecksumNameForOrphanedDataStore(nc.controllerID, diskName, diskPath, diskUUID, dataStore)
 		if _, ok := orphanMap[orphanName]; !ok {
 			newOrphanedReplicaDataStores[dataStore] = ""
 		}
+	}
+
+	replicas, err := nc.ds.ListReplicasByDiskUUIDRO(diskUUID)
+	if err != nil {
+		nc.logger.WithError(err).Warnf("Failed to list replicas for disk %v", diskUUID)
+		return map[string]string{}, map[string]string{}
 	}
 
 	for _, orphan := range orphanMap {
@@ -1354,9 +1360,25 @@ func (nc *NodeController) getNewAndMissingOrphanedReplicaDataStores(diskName, di
 		}
 
 		dataStore := orphan.Spec.Parameters[longhorn.OrphanDataName]
-		if _, ok := replicaDataStores[dataStore]; !ok {
+		reused := false
+		for _, r := range replicas {
+			if r.Spec.DataDirectoryName == dataStore {
+				reused = true
+				break
+			}
+		}
+		_, ok := orphanedReplicaDataStores[dataStore]
+
+		if !ok {
+			if reused {
+				if err := datastore.AddOrphanDeleteCustomResourceOnlyLabel(nc.ds, orphan.Name); err != nil {
+					nc.logger.Infof("failed to add label delete-custom-resource-only to orphan %v ", orphan.Name)
+					return map[string]string{}, map[string]string{}
+				}
+			}
 			missingOrphanedReplicaDataStores[dataStore] = ""
 		}
+
 	}
 
 	return newOrphanedReplicaDataStores, missingOrphanedReplicaDataStores
@@ -1437,7 +1459,12 @@ func (nc *NodeController) canDeleteOrphan(orphan *longhorn.Orphan, autoDeleteEna
 
 	// When dataCleanableCondition is false, it means the associated node is not ready, missing or evicted (check updateDataCleanableCondition()).
 	// In this case, we can delete the orphan directly because the data is not reachable and no need to keep the orphan resource.
-	canDelete := autoDeleteAllowed || dataCleanableCondition.Status == longhorn.ConditionStatusFalse
+	isReasonNodeOrDisk := (dataCleanableCondition.Reason == longhorn.OrphanConditionTypeDataCleanableReasonNodeUnavailable) ||
+		(dataCleanableCondition.Reason == longhorn.OrphanConditionTypeDataCleanableReasonNodeEvicted) ||
+		(dataCleanableCondition.Reason == longhorn.OrphanConditionTypeDataCleanableReasonDiskInvalid) ||
+		(dataCleanableCondition.Reason == longhorn.OrphanConditionTypeDataCleanableReasonDiskEvicted) ||
+		(dataCleanableCondition.Reason == longhorn.OrphanConditionTypeDataCleanableReasonDiskChanged)
+	canDelete := autoDeleteAllowed || ((dataCleanableCondition.Status == longhorn.ConditionStatusFalse) && isReasonNodeOrDisk)
 	if !canDelete {
 		nc.logger.Debugf("Orphan %v is not ready to be deleted, autoDeleteAllowed: %v, dataCleanableCondition: %v", orphan.Name, autoDeleteAllowed, dataCleanableCondition.Status)
 	}

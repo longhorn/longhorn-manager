@@ -3213,6 +3213,18 @@ func (s *DataStore) ListReplicasByDiskUUID(uuid string) (map[string]*longhorn.Re
 	return s.listReplicas(diskSelector)
 }
 
+func (s *DataStore) ListReplicasByDiskUUIDRO(uuid string) ([]*longhorn.Replica, error) {
+	diskSelector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			types.LonghornDiskUUIDKey: uuid,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.replicaLister.Replicas(s.namespace).List(diskSelector)
+}
+
 func getBackingImageSelector(backingImageName, diskUUID string) (labels.Selector, error) {
 	matchLabels := map[string]string{
 		types.GetLonghornLabelKey(types.LonghornLabelBackingImage): backingImageName,
@@ -3455,6 +3467,27 @@ func AddSystemBackupDeleteCustomResourceOnlyLabel(ds *DataStore, systemBackupNam
 		return err
 	}
 	if _, err = ds.UpdateSystemBackup(sb); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// AddOrphanDeleteCustomResourceOnlyLabel adds the label `longhorn.io/delete-custom-resource-only: true` to the Orphan
+func AddOrphanDeleteCustomResourceOnlyLabel(ds *DataStore, OrphanName string) error {
+	orphan, err := ds.GetOrphan(OrphanName)
+	if err != nil {
+		return err
+	}
+	if exists, err := IsLabelLonghornDeleteCustomResourceOnlyExisting(orphan); err != nil {
+		return err
+	} else if exists {
+		return nil
+	}
+	if err := labelLonghornDeleteCustomResourceOnly(orphan); err != nil {
+		return err
+	}
+	if _, err = ds.UpdateOrphan(orphan); err != nil {
 		return err
 	}
 
