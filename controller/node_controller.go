@@ -1326,7 +1326,7 @@ func (nc *NodeController) syncOrphans(node *longhorn.Node, collectedDataInfo map
 	return nc.deleteOrphansForEngineAndReplicaInstances(node)
 }
 
-func (nc *NodeController) getNewAndMissingOrphanedReplicaDataStores(diskName, diskUUID, diskPath string, replicaDataStores map[string]string) (map[string]string, map[string]string) {
+func (nc *NodeController) getNewAndMissingOrphanedReplicaDataStores(diskName, diskUUID, diskPath string, orphanedReplicaDataStores map[string]string) (map[string]string, map[string]string) {
 	newOrphanedReplicaDataStores := map[string]string{}
 	missingOrphanedReplicaDataStores := map[string]string{}
 
@@ -1343,11 +1343,17 @@ func (nc *NodeController) getNewAndMissingOrphanedReplicaDataStores(diskName, di
 		}
 	}
 
-	for dataStore := range replicaDataStores {
+	for dataStore := range orphanedReplicaDataStores {
 		orphanName := types.GetOrphanChecksumNameForOrphanedDataStore(nc.controllerID, diskName, diskPath, diskUUID, dataStore)
 		if _, ok := orphanMap[orphanName]; !ok {
 			newOrphanedReplicaDataStores[dataStore] = ""
 		}
+	}
+
+	replicas, err := nc.ds.ListReplicasByDiskUUIDRO(diskUUID)
+	if err != nil {
+		nc.logger.WithError(err).Warnf("Failed to list replicas for disk %v", diskUUID)
+		return map[string]string{}, map[string]string{}
 	}
 
 	for _, orphan := range orphanMap {
@@ -1358,7 +1364,19 @@ func (nc *NodeController) getNewAndMissingOrphanedReplicaDataStores(diskName, di
 		}
 
 		dataStore := orphan.Spec.Parameters[longhorn.OrphanDataName]
-		if _, ok := replicaDataStores[dataStore]; !ok {
+		for _, r := range replicas {
+			if r.Spec.DataDirectoryName == dataStore {
+				if err := datastore.AddOrphanDeleteCustomResourceOnlyLabel(nc.ds, orphan.Name); err != nil {
+					nc.logger.Infof("failed to add label delete-custom-resource-only to orphan %v ", orphan.Name)
+					return map[string]string{}, map[string]string{}
+				}
+
+				break
+			}
+		}
+		_, ok := orphanedReplicaDataStores[dataStore]
+
+		if !ok {
 			missingOrphanedReplicaDataStores[dataStore] = ""
 		}
 	}
