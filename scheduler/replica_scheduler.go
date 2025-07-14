@@ -55,13 +55,12 @@ func NewReplicaScheduler(ds *datastore.DataStore) *ReplicaScheduler {
 func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume) (*longhorn.Replica, util.MultiError, error) {
 	// only called when replica is starting for the first time
 	if replica.Spec.NodeID != "" {
-		return nil, nil, fmt.Errorf("BUG: Replica %v has been scheduled to node %v", replica.Name, replica.Spec.NodeID)
+		return nil, nil, fmt.Errorf("replica %v has been scheduled to node %v", replica.Name, replica.Spec.NodeID)
 	}
 
 	// not to schedule a replica failed and unused before.
 	if replica.Spec.HealthyAt == "" && replica.Spec.FailedAt != "" {
-		logrus.WithField("replica", replica.Name).Warn("Failed replica is not scheduled")
-		return nil, nil, nil
+		return nil, util.NewMultiError(fmt.Sprintf("failed replica %v is not scheduled", replica.Name)), nil
 	}
 
 	diskCandidates, multiError, err := rcs.FindDiskCandidates(replica, replicas, volume)
@@ -71,7 +70,11 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 
 	// there's no disk that fit for current replica
 	if len(diskCandidates) == 0 {
-		logrus.Errorf("There's no available disk for replica %v, size %v", replica.Name, replica.Spec.VolumeSize)
+		if len(multiError) == 0 {
+			return nil, util.NewMultiError(fmt.Sprintf("no disk candidates found for replica %v with size %v and with hardNodeAffinity %q",
+				replica.Name, replica.Spec.VolumeSize, replica.Spec.HardNodeAffinity)), nil
+		}
+
 		return nil, multiError, nil
 	}
 
@@ -133,7 +136,9 @@ func (rcs *ReplicaScheduler) FindDiskCandidates(replica *longhorn.Replica, repli
 
 	nodeCandidates, multiError := rcs.getNodeCandidates(nodesInfo, replica)
 	if len(nodeCandidates) == 0 {
-		logrus.Errorf("There's no available node for replica %v, size %v", replica.Name, replica.Spec.VolumeSize)
+		if len(multiError) == 0 {
+			return nil, util.NewMultiError(fmt.Errorf("no node candidates found for replica %v with size %v", replica.Name, replica.Spec.VolumeSize).Error()), nil
+		}
 		return nil, multiError, nil
 	}
 
