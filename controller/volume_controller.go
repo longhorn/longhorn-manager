@@ -1762,12 +1762,12 @@ func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longh
 
 		if scheduledReplica == nil {
 			if r.Spec.HardNodeAffinity == "" {
-				log.WithField("replica", r.Name).Warn("Failed to schedule replica")
+				log.WithField("replica", r.Name).Debug("Failed to schedule replica")
 				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 					longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
 					longhorn.VolumeConditionReasonReplicaSchedulingFailure, "")
 			} else {
-				log.WithField("replica", r.Name).Warnf("Failed to schedule replica of volume with HardNodeAffinity = %v", r.Spec.HardNodeAffinity)
+				log.WithField("replica", r.Name).Debugf("Failed to schedule replica of volume with HardNodeAffinity = %v", r.Spec.HardNodeAffinity)
 				v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 					longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
 					longhorn.VolumeConditionReasonLocalReplicaSchedulingFailure, "")
