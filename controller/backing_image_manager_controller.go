@@ -66,6 +66,8 @@ type BackingImageManagerController struct {
 
 	replenishLock             *sync.Mutex
 	inProgressReplenishingMap map[string]string
+
+	podRecreateBackoff *flowcontrol.Backoff
 }
 
 type BackingImageManagerMonitor struct {
@@ -135,6 +137,8 @@ func NewBackingImageManagerController(
 
 		replenishLock:             &sync.Mutex{},
 		inProgressReplenishingMap: map[string]string{},
+
+		podRecreateBackoff: newBackoff(),
 	}
 
 	var err error
@@ -546,9 +550,16 @@ func (c *BackingImageManagerController) syncBackingImageManagerPod(bim *longhorn
 			// Similar to InstanceManagerController.
 			// Longhorn shouldn't create the pod when users set taints with NoExecute effect on a node the bim is preferred.
 			if c.controllerID == bim.Spec.NodeID {
-				log.Info("Creating backing image manager pod")
-				if err := c.createBackingImageManagerPod(bim); err != nil {
-					return err
+				backoffID := bim.Name
+				if c.podRecreateBackoff.IsInBackOffSinceUpdate(backoffID, time.Now()) {
+					log.Infof("Skipping pod creation for backing image manager %s, will retry after backoff of %s", bim.Name, c.podRecreateBackoff.Get(backoffID))
+				} else {
+					log.Infof("Creating pod for backing image manager %s", bim.Name)
+					c.podRecreateBackoff.Next(backoffID, time.Now())
+
+					if err := c.createBackingImageManagerPod(bim); err != nil {
+						return errors.Wrap(err, "failed to create pod for backing image manager")
+					}
 				}
 				bim.Status.CurrentState = longhorn.BackingImageManagerStateStarting
 				c.eventRecorder.Eventf(bim, corev1.EventTypeNormal, constant.EventReasonCreate, "Creating backing image manager pod %v for disk %v on node %v. Backing image manager state will become %v", bim.Name, bim.Spec.DiskUUID, bim.Spec.NodeID, longhorn.BackingImageManagerStateStarting)

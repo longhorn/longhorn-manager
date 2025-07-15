@@ -1,9 +1,12 @@
 package controller
 
 import (
+	"time"
+
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/flowcontrol"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
@@ -12,6 +15,28 @@ import (
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
+
+const (
+	podRecreateInitBackoff = 1 * time.Second
+	podRecreateMaxBackoff  = 120 * time.Second
+	backoffGCPeriod        = 12 * time.Hour
+)
+
+// newBackoff returns a flowcontrol.Backoff and starts a background GC loop.
+func newBackoff() *flowcontrol.Backoff {
+	backoff := flowcontrol.NewBackOff(podRecreateInitBackoff, podRecreateMaxBackoff)
+
+	// Start a background GC loop.
+	go func() {
+		ticker := time.NewTicker(backoffGCPeriod)
+		defer ticker.Stop()
+		for range ticker.C {
+			backoff.GC()
+		}
+	}()
+
+	return backoff
+}
 
 func hasReplicaEvictionRequested(rs map[string]*longhorn.Replica) bool {
 	for _, r := range rs {

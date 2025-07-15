@@ -19,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/controller"
 
 	corev1 "k8s.io/api/core/v1"
@@ -61,6 +62,8 @@ type InstanceManagerController struct {
 	instanceManagerMonitorMap   map[string]chan struct{}
 
 	proxyConnCounter util.Counter
+
+	backoff *flowcontrol.Backoff
 
 	// for unit test
 	versionUpdater func(*longhorn.InstanceManager) error
@@ -140,6 +143,8 @@ func NewInstanceManagerController(
 		proxyConnCounter: proxyConnCounter,
 
 		versionUpdater: updateInstanceManagerVersion,
+
+		backoff: newBackoff(),
 	}
 
 	var err error
@@ -655,8 +660,16 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		return err
 	}
 
-	if err := imc.createInstanceManagerPod(im); err != nil {
-		return err
+	backoffID := im.Name
+	if imc.backoff.IsInBackOffSinceUpdate(backoffID, time.Now()) {
+		log.Infof("Skipping pod creation for instance manager %s, will retry after backoff of %s", im.Name, imc.backoff.Get(backoffID))
+	} else {
+		log.Infof("Creating pod for instance manager %s", im.Name)
+		imc.backoff.Next(backoffID, time.Now())
+
+		if err := imc.createInstanceManagerPod(im); err != nil {
+			return errors.Wrap(err, "failed to create pod for instance manager")
+		}
 	}
 
 	return nil
