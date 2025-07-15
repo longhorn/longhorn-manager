@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/controller"
 
@@ -59,6 +60,8 @@ type ShareManagerController struct {
 	ds *datastore.DataStore
 
 	cacheSyncs []cache.InformerSynced
+
+	backoff *flowcontrol.Backoff
 }
 
 func NewShareManagerController(
@@ -88,6 +91,8 @@ func NewShareManagerController(
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-share-manager-controller"}),
 
 		ds: ds,
+
+		backoff: newBackoff(),
 	}
 
 	var err error
@@ -876,8 +881,16 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 			return nil
 		}
 
-		if pod, err = c.createShareManagerPod(sm); err != nil {
-			return errors.Wrap(err, "failed to create pod for share manager")
+		backoffID := sm.Name
+		if c.backoff.IsInBackOffSinceUpdate(backoffID, time.Now()) {
+			log.Infof("Skipping pod creation for share manager %s, will retry after backoff of %s", sm.Name, c.backoff.Get(backoffID))
+		} else {
+			log.Infof("Creating pod for share manager %s", sm.Name)
+			c.backoff.Next(backoffID, time.Now())
+
+			if pod, err = c.createShareManagerPod(sm); err != nil {
+				return errors.Wrap(err, "failed to create pod for share manager")
+			}
 		}
 	}
 
