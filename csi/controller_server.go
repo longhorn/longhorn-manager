@@ -771,24 +771,6 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 	return rsp, nil
 }
 
-func max(x, y int64) int64 {
-	if x > y {
-		return x
-	}
-	return y
-}
-
-func parseNodeID(topology *csi.Topology) (string, error) {
-	if topology == nil || topology.Segments == nil {
-		return "", fmt.Errorf("missing accessible topology request parameter")
-	}
-	nodeId, ok := topology.Segments[nodeTopologyKey]
-	if !ok {
-		return "", fmt.Errorf("accessible topology request parameter is missing %s key", nodeTopologyKey)
-	}
-	return nodeId, nil
-}
-
 func (cs *ControllerServer) getSettingAsBoolean(name types.SettingName) (bool, error) {
 	obj, err := cs.lhClient.LonghornV1beta2().Settings(cs.lhNamespace).Get(context.TODO(), string(name), metav1.GetOptions{})
 	if err != nil {
