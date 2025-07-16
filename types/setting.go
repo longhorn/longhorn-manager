@@ -146,6 +146,7 @@ const (
 	SettingNameDataEngineCPUMask                                        = SettingName("data-engine-cpu-mask")
 	SettingNameDataEngineLogLevel                                       = SettingName("data-engine-log-level")
 	SettingNameDataEngineLogFlags                                       = SettingName("data-engine-log-flags")
+	SettingNameDataEngineInterruptModeEnabled                           = SettingName("data-engine-interrupt-mode-enabled")
 	SettingNameFreezeFilesystemForSnapshot                              = SettingName("freeze-filesystem-for-snapshot")
 	SettingNameAutoCleanupSnapshotWhenDeleteBackup                      = SettingName("auto-cleanup-when-delete-backup")
 	SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted          = SettingName("auto-cleanup-snapshot-after-on-demand-backup-completed")
@@ -258,6 +259,7 @@ var (
 		SettingNameDataEngineLogLevel,
 		SettingNameDataEngineLogFlags,
 		SettingNameSnapshotDataIntegrity,
+		SettingNameDataEngineInterruptModeEnabled,
 		SettingNameReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume,
@@ -401,6 +403,7 @@ var (
 		SettingNameDataEngineCPUMask:                                        SettingDefinitionDataEngineCPUMask,
 		SettingNameDataEngineLogLevel:                                       SettingDefinitionDataEngineLogLevel,
 		SettingNameDataEngineLogFlags:                                       SettingDefinitionDataEngineLogFlags,
+		SettingNameDataEngineInterruptModeEnabled:                           SettingDefinitionDataEngineInterruptModeEnabled,
 		SettingNameReplicaDiskSoftAntiAffinity:                              SettingDefinitionReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume:                             SettingDefinitionAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume:                             SettingDefinitionAllowEmptyDiskSelectorVolume,
@@ -1569,6 +1572,21 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: true,
 		Default:            fmt.Sprintf("{%q:\"0x1\"}", longhorn.DataEngineTypeV2),
+	}
+
+	SettingDefinitionDataEngineInterruptModeEnabled = SettingDefinition{
+		DisplayName: "Enable Interrupt Mode for Data Engine",
+		Description: "Specifies whether the Storage Performance Development Kit (SPDK) target daemon should run in interrupt mode. " +
+			"This setting is applicable only when the V2 Data Engine is enabled. \n\n" +
+			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached v2 volumes. \n\n" +
+			"  - `true`: Enables interrupt mode, which may reduce CPU usage. \n\n" +
+			"  - `false`: Uses polling mode for maximum performance. \n\n",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"false\"}", longhorn.DataEngineTypeV2),
 	}
 
 	SettingDefinitionReplicaDiskSoftAntiAffinity = SettingDefinition{
