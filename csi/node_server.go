@@ -37,8 +37,7 @@ import (
 )
 
 const (
-	defaultFsType   = "ext4"
-	nodeTopologyKey = "kubernetes.io/hostname"
+	defaultFsType = "ext4"
 )
 
 type fsParameters struct {
