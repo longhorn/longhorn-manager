@@ -768,6 +768,8 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 			if types.IsDataEngineV2(im.Spec.DataEngine) {
 				isSettingSynced, err = imc.isSettingLogPathSynced(setting, pod)
 			}
+		case types.SettingNameDataEngineInterruptModeEnabled:
+			isSettingSynced, err = imc.isSettingInterruptModeEnabledSynced(setting, im)
 		}
 		if err != nil {
 			return false, false, false, err
@@ -895,6 +897,19 @@ func (imc *InstanceManagerController) isSettingDataEngineSynced(settingName type
 	}
 
 	return true, nil
+}
+
+func (imc *InstanceManagerController) isSettingInterruptModeEnabledSynced(setting *longhorn.Setting, im *longhorn.InstanceManager) (bool, error) {
+	if types.IsDataEngineV1(im.Spec.DataEngine) {
+		return true, nil
+	}
+
+	settingValue, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineInterruptModeEnabled, im.Spec.DataEngine)
+	if err != nil {
+		return false, err
+	}
+
+	return im.Status.DataEngineStatus.V2.InterruptModeEnabled == settingValue, nil
 }
 
 func (imc *InstanceManagerController) syncInstanceManagerAPIVersion(im *longhorn.InstanceManager) error {
@@ -1628,7 +1643,6 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 				return nil, fmt.Errorf("failed to get CPU mask setting for data engine %v", dataEngine)
 			}
 		}
-
 		im.Status.DataEngineStatus.V2.CPUMask = cpuMask
 
 		args := []string{
@@ -1639,6 +1653,17 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			"daemon",
 			"--spdk-enabled",
 			"--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort)}
+
+		interruptMode, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineInterruptModeEnabled, dataEngine)
+		if err != nil {
+			return nil, err
+		}
+
+		im.Status.DataEngineStatus.V2.InterruptModeEnabled = interruptMode
+
+		if im.Status.DataEngineStatus.V2.InterruptModeEnabled == "true" {
+			args = append(args, "--spdk-interrupt-mode")
+		}
 
 		imc.logger.Infof("Creating instance manager pod %v with args %+v", podSpec.Name, args)
 
