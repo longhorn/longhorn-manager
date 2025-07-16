@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -750,6 +751,8 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 			isSettingSynced, err = imc.isSettingStorageNetworkSynced(setting, pod)
 		case types.SettingNameV1DataEngine, types.SettingNameV2DataEngine:
 			isSettingSynced, err = imc.isSettingDataEngineSynced(settingName, im)
+		case types.SettingNameV2DataEngineInterruptModeEnabled:
+			isSettingSynced, err = imc.isSettingInterruptModeEnabledSynced(setting, im)
 		}
 		if err != nil {
 			return false, false, false, err
@@ -831,6 +834,19 @@ func (imc *InstanceManagerController) isSettingDataEngineSynced(settingName type
 		return false, nil
 	}
 	return true, nil
+}
+
+func (imc *InstanceManagerController) isSettingInterruptModeEnabledSynced(setting *longhorn.Setting, im *longhorn.InstanceManager) (bool, error) {
+	if types.IsDataEngineV1(im.Spec.DataEngine) {
+		return true, nil
+	}
+
+	settingValue, err := strconv.ParseBool(setting.Value)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to convert setting %v value %v to bool", types.SettingNameV2DataEngineInterruptModeEnabled, setting.Value)
+	}
+
+	return im.Status.DataEngineStatus.V2.InterruptModeEnabled == settingValue, nil
 }
 
 func (imc *InstanceManagerController) syncInstanceManagerAPIVersion(im *longhorn.InstanceManager) error {
@@ -1506,8 +1522,13 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 
 			cpuMask = value.Value
 		}
-
 		im.Status.DataEngineStatus.V2.CPUMask = cpuMask
+
+		interruptMode, err := imc.ds.GetSettingAsBool(types.SettingNameV2DataEngineInterruptModeEnabled)
+		if err != nil {
+			return nil, err
+		}
+		im.Status.DataEngineStatus.V2.InterruptModeEnabled = interruptMode
 
 		args := []string{
 			"instance-manager",
@@ -1517,6 +1538,10 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			"daemon",
 			"--spdk-enabled",
 			"--listen", fmt.Sprintf("0.0.0.0:%d", engineapi.InstanceManagerProcessManagerServiceDefaultPort)}
+
+		if im.Status.DataEngineStatus.V2.InterruptModeEnabled {
+			args = append(args, "--spdk-interrupt-mode", "--spdk-interrupt-mode-enabled")
+		}
 
 		imc.logger.Infof("Creating instance manager pod %v with args %+v", podSpec.Name, args)
 
