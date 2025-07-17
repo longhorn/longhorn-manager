@@ -21,7 +21,8 @@ package v1beta2
 // V2DataEngineStatusApplyConfiguration represents a declarative configuration of the V2DataEngineStatus type for use
 // with apply.
 type V2DataEngineStatusApplyConfiguration struct {
-	CPUMask *string `json:"cpuMask,omitempty"`
+	CPUMask              *string `json:"cpuMask,omitempty"`
+	InterruptModeEnabled *string `json:"interruptModeEnabled,omitempty"`
 }
 
 // V2DataEngineStatusApplyConfiguration constructs a declarative configuration of the V2DataEngineStatus type for use with
@@ -35,5 +36,13 @@ func V2DataEngineStatus() *V2DataEngineStatusApplyConfiguration {
 // If called multiple times, the CPUMask field is set to the value of the last call.
 func (b *V2DataEngineStatusApplyConfiguration) WithCPUMask(value string) *V2DataEngineStatusApplyConfiguration {
 	b.CPUMask = &value
+	return b
+}
+
+// WithInterruptModeEnabled sets the InterruptModeEnabled field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the InterruptModeEnabled field is set to the value of the last call.
+func (b *V2DataEngineStatusApplyConfiguration) WithInterruptModeEnabled(value string) *V2DataEngineStatusApplyConfiguration {
+	b.InterruptModeEnabled = &value
 	return b
 }
