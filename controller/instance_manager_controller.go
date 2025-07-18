@@ -144,7 +144,7 @@ func NewInstanceManagerController(
 
 		versionUpdater: updateInstanceManagerVersion,
 
-		backoff: newBackoff(),
+		backoff: newBackoff(context.TODO()),
 	}
 
 	var err error

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -23,15 +24,19 @@ const (
 )
 
 // newBackoff returns a flowcontrol.Backoff and starts a background GC loop.
-func newBackoff() *flowcontrol.Backoff {
+func newBackoff(ctx context.Context) *flowcontrol.Backoff {
 	backoff := flowcontrol.NewBackOff(podRecreateInitBackoff, podRecreateMaxBackoff)
 
-	// Start a background GC loop.
 	go func() {
 		ticker := time.NewTicker(backoffGCPeriod)
 		defer ticker.Stop()
-		for range ticker.C {
-			backoff.GC()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				backoff.GC()
+			}
 		}
 	}()
 
