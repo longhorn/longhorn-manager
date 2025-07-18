@@ -39,15 +39,9 @@ func (v *systemBackupValidator) Resource() admission.Resource {
 }
 
 func (v *systemBackupValidator) Create(request *admission.Request, newObj runtime.Object) error {
-
 	backupTarget, err := v.ds.GetBackupTargetRO(types.DefaultBackupTargetName)
-
 	if err != nil {
 		return werror.NewBadRequest(err.Error())
-	}
-
-	if !backupTarget.Status.Available {
-		return werror.NewInvalidError(fmt.Sprintf("backup target %s is not available", types.DefaultBackupTargetName), "")
 	}
 
 	backupType, err := util.CheckBackupType(backupTarget.Spec.BackupTargetURL)
