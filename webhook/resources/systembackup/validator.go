@@ -39,15 +39,14 @@ func (v *systemBackupValidator) Resource() admission.Resource {
 }
 
 func (v *systemBackupValidator) Create(request *admission.Request, newObj runtime.Object) error {
-
-	backupTarget, err := v.ds.GetBackupTargetRO(types.DefaultBackupTargetName)
-
-	if err != nil {
-		return werror.NewBadRequest(err.Error())
+	systemBackup, ok := newObj.(*longhorn.SystemBackup)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.BackupBackingImage", newObj), "")
 	}
 
-	if !backupTarget.Status.Available {
-		return werror.NewInvalidError(fmt.Sprintf("backup target %s is not available", types.DefaultBackupTargetName), "")
+	backupTarget, err := v.ds.GetBackupTargetRO(types.DefaultBackupTargetName)
+	if err != nil {
+		return werror.NewBadRequest(err.Error())
 	}
 
 	backupType, err := util.CheckBackupType(backupTarget.Spec.BackupTargetURL)
@@ -59,6 +58,14 @@ func (v *systemBackupValidator) Create(request *admission.Request, newObj runtim
 		if backupTarget.Spec.CredentialSecret == "" {
 			return werror.NewBadRequest(fmt.Sprintf("cannot access %s without credential secret", backupType))
 		}
+	}
+
+	isLonghornCreated, err := datastore.IsLabelLonghornCreateCustomResourceFromLonghornExisting(systemBackup)
+	if err != nil {
+		return werror.NewInvalidError(fmt.Sprintf("failed to get system backup %s label: %v, ", systemBackup.Name, err), "")
+	}
+	if !isLonghornCreated && !backupTarget.Status.Available {
+		return werror.NewInvalidError(fmt.Sprintf("backup target %s is not available", types.DefaultBackupTargetName), "")
 	}
 
 	return nil

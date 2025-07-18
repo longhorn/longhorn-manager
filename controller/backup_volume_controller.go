@@ -338,7 +338,8 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 			ObjectMeta: metav1.ObjectMeta{
 				Name: backupName,
 				Labels: map[string]string{
-					types.LonghornLabelBackupTarget: backupTarget.Name,
+					types.LonghornLabelBackupTarget:                                   backupTarget.Name,
+					types.GetLonghornLabelKey(types.CreateCustomResourceFromLonghorn): "true",
 				},
 				OwnerReferences: datastore.GetOwnerReferencesForBackupVolume(backupVolume),
 			},
