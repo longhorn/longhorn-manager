@@ -92,7 +92,7 @@ func NewShareManagerController(
 
 		ds: ds,
 
-		backoff: newBackoff(),
+		backoff: newBackoff(context.TODO()),
 	}
 
 	var err error

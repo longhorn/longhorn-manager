@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -138,7 +139,7 @@ func NewBackingImageManagerController(
 		replenishLock:             &sync.Mutex{},
 		inProgressReplenishingMap: map[string]string{},
 
-		podRecreateBackoff: newBackoff(),
+		podRecreateBackoff: newBackoff(context.TODO()),
 	}
 
 	var err error
