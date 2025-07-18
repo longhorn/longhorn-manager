@@ -3346,6 +3346,24 @@ func labelBackupVolume(backupVolumeName string, obj k8sruntime.Object) error {
 	return nil
 }
 
+// get obj's label value for "longhorn.io/delete-custom-resource-only"
+func GetLonghornDeleteCustomResourceOnlyValue(obj k8sruntime.Object) (string, error) {
+	metadata, err := meta.Accessor(obj)
+	if err != nil {
+		return "", err
+	}
+
+	labels := metadata.GetLabels()
+	if labels == nil {
+		return "", nil
+	}
+	value, ok := labels[types.GetLonghornLabelKey(types.DeleteCustomResourceOnly)]
+	if !ok {
+		return "", fmt.Errorf("label %q not found", types.GetLonghornLabelKey(types.DeleteCustomResourceOnly))
+	}
+	return value, nil
+}
+
 // labelLonghornDeleteCustomResourceOnly labels the object with the label `longhorn.io/delete-custom-resource-only: true`
 func labelLonghornDeleteCustomResourceOnly(obj k8sruntime.Object) error {
 	metadata, err := meta.Accessor(obj)
