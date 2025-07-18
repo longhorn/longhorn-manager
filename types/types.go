@@ -138,7 +138,8 @@ const (
 	ConfigMapResourceVersionKey = "configmap-resource-version"
 	UpdateSettingFromLonghorn   = "update-setting-from-longhorn"
 
-	DeleteCustomResourceOnly = "delete-custom-resource-only"
+	CreateCustomResourceFromLonghorn = "create-custom-resource-from-longhorn"
+	DeleteCustomResourceOnly         = "delete-custom-resource-only"
 
 	// annotations to note that deleting backup target is by Longhorn during uninstalling.
 	DeleteBackupTargetFromLonghorn = "delete-backup-target-from-longhorn"

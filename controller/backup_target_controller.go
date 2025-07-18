@@ -653,8 +653,9 @@ func (btc *BackupTargetController) pullBackupVolumeFromBackupTarget(backupTarget
 			ObjectMeta: metav1.ObjectMeta{
 				Name: backupVolumeName,
 				Labels: map[string]string{
-					types.LonghornLabelBackupTarget: backupTarget.Name,
-					types.LonghornLabelBackupVolume: remoteVolumeName,
+					types.LonghornLabelBackupTarget:                                   backupTarget.Name,
+					types.LonghornLabelBackupVolume:                                   remoteVolumeName,
+					types.GetLonghornLabelKey(types.CreateCustomResourceFromLonghorn): "true",
 				},
 				OwnerReferences: datastore.GetOwnerReferencesForBackupTarget(backupTarget),
 			},
@@ -759,8 +760,9 @@ func (btc *BackupTargetController) syncBackupBackingImage(backupTarget *longhorn
 			ObjectMeta: metav1.ObjectMeta{
 				Name: backupBackingImageName,
 				Labels: map[string]string{
-					types.LonghornLabelBackupTarget: backupTarget.Name,
-					types.LonghornLabelBackingImage: canonicalBackingImageName,
+					types.LonghornLabelBackupTarget:                                   backupTarget.Name,
+					types.LonghornLabelBackingImage:                                   canonicalBackingImageName,
+					types.GetLonghornLabelKey(types.CreateCustomResourceFromLonghorn): "true",
 				},
 				OwnerReferences: datastore.GetOwnerReferencesForBackupTarget(backupTarget),
 			},
@@ -831,7 +833,8 @@ func (btc *BackupTargetController) syncSystemBackup(backupTarget *longhorn.Backu
 				Labels: map[string]string{
 					// Label with the version to be used by the system-backup controller
 					// to get the config from the backup target.
-					types.GetVersionLabelKey(): longhornVersion,
+					types.GetVersionLabelKey():                                        longhornVersion,
+					types.GetLonghornLabelKey(types.CreateCustomResourceFromLonghorn): "true",
 				},
 				OwnerReferences: datastore.GetOwnerReferencesForBackupTarget(backupTarget),
 			},
