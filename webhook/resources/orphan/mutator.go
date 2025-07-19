@@ -79,7 +79,15 @@ func (o *orphanMutator) Create(request *admission.Request, newObj runtime.Object
 }
 
 func (o *orphanMutator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) (admission.PatchOps, error) {
-	return mutate(newObj)
+	patchOps, err := mutate(newObj)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to update orphan")
+	}
+	orphan, _ := newObj.(*longhorn.Orphan)
+
+	newDeleteLabel, _ := datastore.GetLonghornDeleteCustomResourceOnlyValue(orphan)
+	patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/metadata/labels/delete-custom-resource-only", "value": "%s"}`, newDeleteLabel))
+	return patchOps, nil
 }
 
 // mutate contains functionality shared by Create and Update.

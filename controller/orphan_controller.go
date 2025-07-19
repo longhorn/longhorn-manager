@@ -623,6 +623,14 @@ func (oc *OrphanController) updateDataCleanableCondition(orphan *longhorn.Orphan
 		reason = oc.checkOrphanedReplicaDataCleanable(node, orphan)
 	}
 
+	value, err := datastore.GetLonghornDeleteCustomResourceOnlyValue(orphan)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get value for label longhorn.io/delete-custom-resource-only")
+	}
+	if value == "true" {
+		reason = longhorn.OrphanConditionTypeDataCleanableReasonSkipped
+	}
+
 	return nil
 }
 

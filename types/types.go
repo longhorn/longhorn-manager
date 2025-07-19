@@ -667,6 +667,7 @@ func GetOrphanLabelsForOrphanedDirectory(nodeID, diskUUID string) map[string]str
 	labels[GetLonghornLabelComponentKey()] = LonghornLabelOrphan
 	labels[LonghornNodeKey] = nodeID
 	labels[GetLonghornLabelKey(LonghornLabelOrphanType)] = string(longhorn.OrphanTypeReplicaData)
+	labels[GetLonghornLabelKey(DeleteCustomResourceOnly)] = string("false")
 	return labels
 }
 
