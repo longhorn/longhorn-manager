@@ -142,7 +142,6 @@ const (
 	SettingNameV2DataEngineLogFlags                                     = SettingName("v2-data-engine-log-flags")
 	SettingNameV2DataEngineFastReplicaRebuilding                        = SettingName("v2-data-engine-fast-replica-rebuilding")
 	SettingNameV2DataEngineSnapshotDataIntegrity                        = SettingName("v2-data-engine-snapshot-data-integrity")
-	SettingNameV2DataEngineRebuildingMbytesPerSecond                    = SettingName("v2-data-engine-rebuilding-mbytes-per-second")
 	SettingNameFreezeFilesystemForSnapshot                              = SettingName("freeze-filesystem-for-snapshot")
 	SettingNameAutoCleanupSnapshotWhenDeleteBackup                      = SettingName("auto-cleanup-when-delete-backup")
 	SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted          = SettingName("auto-cleanup-snapshot-after-on-demand-backup-completed")
@@ -150,6 +149,7 @@ const (
 	SettingNameBackupExecutionTimeout                                   = SettingName("backup-execution-timeout")
 	SettingNameRWXVolumeFastFailover                                    = SettingName("rwx-volume-fast-failover")
 	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
+	SettingNameReplicaRebuildBandwidthLimit                             = SettingName("replica-rebuild-bandwidth-limit")
 	// These three backup target parameters are used in the "longhorn-default-resource" ConfigMap
 	// to update the default BackupTarget resource.
 	// Longhorn won't create the Setting resources for these three parameters.
@@ -242,7 +242,6 @@ var (
 		SettingNameV2DataEngineLogFlags,
 		SettingNameV2DataEngineFastReplicaRebuilding,
 		SettingNameV2DataEngineSnapshotDataIntegrity,
-		SettingNameV2DataEngineRebuildingMbytesPerSecond,
 		SettingNameReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume,
@@ -254,6 +253,7 @@ var (
 		SettingNameBackupExecutionTimeout,
 		SettingNameRWXVolumeFastFailover,
 		SettingNameOfflineReplicaRebuilding,
+		SettingNameReplicaRebuildBandwidthLimit,
 	}
 )
 
@@ -373,7 +373,6 @@ var (
 		SettingNameV2DataEngineLogFlags:                                     SettingDefinitionV2DataEngineLogFlags,
 		SettingNameV2DataEngineFastReplicaRebuilding:                        SettingDefinitionV2DataEngineFastReplicaRebuilding,
 		SettingNameV2DataEngineSnapshotDataIntegrity:                        SettingDefinitionV2DataEngineSnapshotDataIntegrity,
-		SettingNameV2DataEngineRebuildingMbytesPerSecond:                    SettingDefinitionV2DataEngineRebuildingMbytesPerSecond,
 		SettingNameReplicaDiskSoftAntiAffinity:                              SettingDefinitionReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume:                             SettingDefinitionAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume:                             SettingDefinitionAllowEmptyDiskSelectorVolume,
@@ -385,6 +384,7 @@ var (
 		SettingNameBackupExecutionTimeout:                                   SettingDefinitionBackupExecutionTimeout,
 		SettingNameRWXVolumeFastFailover:                                    SettingDefinitionRWXVolumeFastFailover,
 		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
+		SettingNameReplicaRebuildBandwidthLimit:                             SettingDefinitionReplicaRebuildBandwidthLimit,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -1529,8 +1529,8 @@ var (
 		},
 	}
 
-	SettingDefinitionV2DataEngineRebuildingMbytesPerSecond = SettingDefinition{
-		DisplayName: "V2 Data Engine Rebuilding MBytes Per Second",
+	SettingDefinitionReplicaRebuildBandwidthLimit = SettingDefinition{
+		DisplayName: "Replica Rebuild Bandwidth Limit",
 		Description: "This setting specifies the default write bandwidth limit (in megabytes per second) for volume replica rebuilding when using the v2 data engine (SPDK). " +
 			"If this value is set to 0, there will be no write bandwidth limitation. " +
 			"Individual volumes can override this setting by specifying their own rebuilding bandwidth limit.",
