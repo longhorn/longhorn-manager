@@ -1172,7 +1172,7 @@ func (m *EngineMonitor) checkAndApplyRebuildQoS(engine *longhorn.Engine, engineC
 }
 
 func (m *EngineMonitor) getEffectiveRebuildQoS(engine *longhorn.Engine) (int64, error) {
-	globalQoS, err := m.ds.GetSettingAsInt(types.SettingNameV2DataEngineRebuildingMbytesPerSecond)
+	globalQoS, err := m.ds.GetSettingAsInt(types.SettingNameReplicaRebuildBandwidthLimit)
 	if err != nil {
 		return 0, err
 	}
