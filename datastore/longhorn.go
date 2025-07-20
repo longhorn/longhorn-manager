@@ -736,6 +736,31 @@ func (s *DataStore) GetSettingValueExisted(sName types.SettingName) (string, err
 	return setting.Value, nil
 }
 
+func (s *DataStore) GetSettingValueExistedByDataEngine(sName types.SettingName, dataEngine longhorn.DataEngineType) (string, error) {
+	if string(dataEngine) == "" {
+		// Fall back to the default data engine type if data engine is not specified
+		dataEngine = longhorn.DataEngineTypeV1
+	}
+
+	setting, err := s.GetSettingWithAutoFillingRO(sName)
+	if err != nil {
+		return "", err
+	}
+
+	value := setting.Value
+	if setting.DefaultsByEngine != nil {
+		valueByEngine, ok := setting.DefaultsByEngine[dataEngine]
+		if ok {
+			value = valueByEngine
+		}
+	}
+
+	if value == "" {
+		return "", fmt.Errorf("setting %v is empty", sName)
+	}
+	return value, nil
+}
+
 // ListSettings lists all Settings in the namespace, and fill with default
 // values of any missing entry
 func (s *DataStore) ListSettings() (map[types.SettingName]*longhorn.Setting, error) {
@@ -3524,6 +3549,91 @@ func GetOwnerReferencesForNode(node *longhorn.Node) []metav1.OwnerReference {
 	}
 }
 
+// GetSettingAsFloatWithAutoFilling gets the setting for the given name, returns as float
+// Returns error if the definition type is not float
+func (s *DataStore) GetSettingAsFloatWithAutoFilling(settingName types.SettingName) (float64, error) {
+	definition, ok := types.GetSettingDefinition(settingName)
+	if !ok {
+		return -1, fmt.Errorf("setting %v is not supported", settingName)
+	}
+	settings, err := s.GetSettingWithAutoFillingRO(settingName)
+	if err != nil {
+		return -1, err
+	}
+	value := settings.Value
+
+	if definition.Type == types.SettingTypeFloat {
+		result, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return -1, err
+		}
+		return result, nil
+	}
+
+	return -1, fmt.Errorf("the %v setting value couldn't change to float, value is %v ", string(settingName), value)
+}
+
+// GetSettingAsFloatWithAutoFillingByDataEngine gets the setting for the given name and data engine type, returns as float
+// Returns error if the definition type is not float or if the setting is not applicable to the data engine type
+func (s *DataStore) GetSettingAsFloatWithAutoFillingByDataEngine(settingName types.SettingName, dataEngine longhorn.DataEngineType) (float64, error) {
+	if string(dataEngine) == "" {
+		// Fall back to the default data engine type if data engine is not specified
+		dataEngine = longhorn.DataEngineTypeV1
+	}
+
+	definition, ok := types.GetSettingDefinition(settingName)
+	if !ok {
+		return -1, fmt.Errorf("setting %v is not supported", settingName)
+	}
+
+	setting, err := s.GetSettingWithAutoFillingRO(settingName)
+	if err != nil {
+		return -1, err
+	}
+
+	value := setting.Value
+	if setting.DefaultsByEngine != nil {
+		valueByEngine, ok := setting.DefaultsByEngine[dataEngine]
+		if ok {
+			value = valueByEngine
+		}
+	}
+
+	if definition.Type == types.SettingTypeFloat {
+		result, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return -1, errors.Wrapf(err, "failed to parse %v setting value %v as float", string(settingName), value)
+		}
+		return result, nil
+	}
+
+	return -1, fmt.Errorf("the %v setting value couldn't change to float, value is %v ", string(settingName), value)
+}
+
+// GetSettingAsFloat gets the setting for the given name, returns as float
+// Returns error if the definition type is not float
+func (s *DataStore) GetSettingAsFloat(settingName types.SettingName) (float64, error) {
+	definition, ok := types.GetSettingDefinition(settingName)
+	if !ok {
+		return -1, fmt.Errorf("setting %v is not supported", settingName)
+	}
+	settings, err := s.GetSettingWithAutoFillingRO(settingName)
+	if err != nil {
+		return -1, err
+	}
+	value := settings.Value
+
+	if definition.Type == types.SettingTypeFloat {
+		result, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return -1, err
+		}
+		return result, nil
+	}
+
+	return -1, fmt.Errorf("the %v setting value couldn't change to float, value is %v ", string(settingName), value)
+}
+
 // GetSettingAsInt gets the setting for the given name, returns as integer
 // Returns error if the definition type is not integer
 func (s *DataStore) GetSettingAsInt(settingName types.SettingName) (int64, error) {
@@ -3548,6 +3658,41 @@ func (s *DataStore) GetSettingAsInt(settingName types.SettingName) (int64, error
 	return -1, fmt.Errorf("the %v setting value couldn't change to integer, value is %v ", string(settingName), value)
 }
 
+func (s *DataStore) GetSettingAsIntByDataEngine(settingName types.SettingName, dataEngine longhorn.DataEngineType) (int64, error) {
+	if string(dataEngine) == "" {
+		// Fall back to the default data engine type if data engine is not specified
+		dataEngine = longhorn.DataEngineTypeV1
+	}
+
+	definition, ok := types.GetSettingDefinition(settingName)
+	if !ok {
+		return -1, fmt.Errorf("setting %v is not supported", settingName)
+	}
+
+	setting, err := s.GetSettingWithAutoFillingRO(settingName)
+	if err != nil {
+		return -1, err
+	}
+
+	value := setting.Value
+	if setting.DefaultsByEngine != nil {
+		valueByEngine, ok := setting.DefaultsByEngine[dataEngine]
+		if ok {
+			value = valueByEngine
+		}
+	}
+
+	if definition.Type == types.SettingTypeInt {
+		result, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return -1, err
+		}
+		return result, nil
+	}
+
+	return -1, fmt.Errorf("the %v setting value couldn't change to integer, value is %v ", string(settingName), value)
+}
+
 // GetSettingAsBool gets the setting for the given name, returns as boolean
 // Returns error if the definition type is not boolean
 func (s *DataStore) GetSettingAsBool(settingName types.SettingName) (bool, error) {
@@ -3555,11 +3700,49 @@ func (s *DataStore) GetSettingAsBool(settingName types.SettingName) (bool, error
 	if !ok {
 		return false, fmt.Errorf("setting %v is not supported", settingName)
 	}
-	settings, err := s.GetSettingWithAutoFillingRO(settingName)
+	setting, err := s.GetSettingWithAutoFillingRO(settingName)
 	if err != nil {
 		return false, err
 	}
-	value := settings.Value
+	value := setting.Value
+
+	if definition.Type == types.SettingTypeBool {
+		result, err := strconv.ParseBool(value)
+		if err != nil {
+			return false, err
+		}
+		return result, nil
+	}
+
+	return false, fmt.Errorf("the %v setting value couldn't be converted to bool, value is %v ", string(settingName), value)
+}
+
+// GetSettingAsBoolByDataEngine retrieves the boolean value of the specified setting for a given data engine type.
+// Returns an error if the setting is not of boolean type or is not applicable to the specified data engine.
+// If the setting is not explicitly defined for the data engine, the default value will be returned.
+func (s *DataStore) GetSettingAsBoolByDataEngine(settingName types.SettingName, dataEngine longhorn.DataEngineType) (bool, error) {
+	if string(dataEngine) == "" {
+		// Fall back to the default data engine type if data engine is not specified
+		dataEngine = longhorn.DataEngineTypeV1
+	}
+
+	definition, ok := types.GetSettingDefinition(settingName)
+	if !ok {
+		return false, fmt.Errorf("setting %v is not supported", settingName)
+	}
+
+	setting, err := s.GetSettingWithAutoFillingRO(settingName)
+	if err != nil {
+		return false, err
+	}
+
+	value := setting.Value
+	if setting.DefaultsByEngine != nil {
+		valueByEngine, ok := setting.DefaultsByEngine[dataEngine]
+		if ok {
+			value = valueByEngine
+		}
+	}
 
 	if definition.Type == types.SettingTypeBool {
 		result, err := strconv.ParseBool(value)
@@ -6208,7 +6391,7 @@ func (s *DataStore) GetFreezeFilesystemForSnapshotSetting(e *longhorn.Engine) (b
 		return volume.Spec.FreezeFilesystemForSnapshot == longhorn.FreezeFilesystemForSnapshotEnabled, nil
 	}
 
-	return s.GetSettingAsBool(types.SettingNameFreezeFilesystemForSnapshot)
+	return s.GetSettingAsBoolByDataEngine(types.SettingNameFreezeFilesystemForSnapshot, e.Spec.DataEngine)
 }
 
 func (s *DataStore) CanPutBackingImageOnDisk(backingImage *longhorn.BackingImage, diskUUID string) (bool, error) {
