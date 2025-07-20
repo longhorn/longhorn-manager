@@ -19,6 +19,7 @@ limitations under the License.
 package v1beta2
 
 import (
+	longhornv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
@@ -29,8 +30,10 @@ import (
 type SettingApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
-	Value                            *string                          `json:"value,omitempty"`
-	Status                           *SettingStatusApplyConfiguration `json:"status,omitempty"`
+	Value                            *string                                   `json:"value,omitempty"`
+	Status                           *SettingStatusApplyConfiguration          `json:"status,omitempty"`
+	DefaultsByEngine                 map[longhornv1beta2.DataEngineType]string `json:"defaultsByEngine,omitempty"`
+	ApplicableEngines                map[longhornv1beta2.DataEngineType]bool   `json:"applicableEngines,omitempty"`
 }
 
 // Setting constructs a declarative configuration of the Setting type for use with
@@ -215,6 +218,34 @@ func (b *SettingApplyConfiguration) WithValue(value string) *SettingApplyConfigu
 // If called multiple times, the Status field is set to the value of the last call.
 func (b *SettingApplyConfiguration) WithStatus(value *SettingStatusApplyConfiguration) *SettingApplyConfiguration {
 	b.Status = value
+	return b
+}
+
+// WithDefaultsByEngine puts the entries into the DefaultsByEngine field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, the entries provided by each call will be put on the DefaultsByEngine field,
+// overwriting an existing map entries in DefaultsByEngine field with the same key.
+func (b *SettingApplyConfiguration) WithDefaultsByEngine(entries map[longhornv1beta2.DataEngineType]string) *SettingApplyConfiguration {
+	if b.DefaultsByEngine == nil && len(entries) > 0 {
+		b.DefaultsByEngine = make(map[longhornv1beta2.DataEngineType]string, len(entries))
+	}
+	for k, v := range entries {
+		b.DefaultsByEngine[k] = v
+	}
+	return b
+}
+
+// WithApplicableEngines puts the entries into the ApplicableEngines field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, the entries provided by each call will be put on the ApplicableEngines field,
+// overwriting an existing map entries in ApplicableEngines field with the same key.
+func (b *SettingApplyConfiguration) WithApplicableEngines(entries map[longhornv1beta2.DataEngineType]bool) *SettingApplyConfiguration {
+	if b.ApplicableEngines == nil && len(entries) > 0 {
+		b.ApplicableEngines = make(map[longhornv1beta2.DataEngineType]bool, len(entries))
+	}
+	for k, v := range entries {
+		b.ApplicableEngines[k] = v
+	}
 	return b
 }
 

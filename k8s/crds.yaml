@@ -2612,6 +2612,20 @@ spec:
               may reject unrecognized values.
               More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
+          applicableEngines:
+            additionalProperties:
+              type: boolean
+            description: |-
+              ApplicableEngines defines which data engines the setting is applicable to.
+              If empty, the setting is applicable to all data engines.
+            type: object
+          defaultsByEngine:
+            additionalProperties:
+              type: string
+            description: |-
+              Default values for the setting based on the data engine type.
+              If the value for a specific data engine type is not set, the default value will be used.
+            type: object
           kind:
             description: |-
               Kind is a string value representing the REST resource this object represents.
