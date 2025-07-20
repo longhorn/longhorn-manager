@@ -1236,7 +1236,7 @@ func (c *VolumeController) isUnmapMarkSnapChainRemovedEnabled(v *longhorn.Volume
 		return v.Spec.UnmapMarkSnapChainRemoved == longhorn.UnmapMarkSnapChainRemovedEnabled, nil
 	}
 
-	return c.ds.GetSettingAsBool(types.SettingNameRemoveSnapshotsDuringFilesystemTrim)
+	return c.ds.GetSettingAsBoolByDataEngine(types.SettingNameRemoveSnapshotsDuringFilesystemTrim, v.Spec.DataEngine)
 }
 
 func (c *VolumeController) syncVolumeUnmapMarkSnapChainRemovedSetting(v *longhorn.Volume, es map[string]*longhorn.Engine, rs map[string]*longhorn.Replica) error {
@@ -1351,7 +1351,7 @@ func (c *VolumeController) ReconcileVolumeState(v *longhorn.Volume, es map[strin
 			return err
 		}
 
-		autoSalvage, err := c.ds.GetSettingAsBool(types.SettingNameAutoSalvage)
+		autoSalvage, err := c.ds.GetSettingAsBoolByDataEngine(types.SettingNameAutoSalvage, v.Spec.DataEngine)
 		if err != nil {
 			return err
 		}
@@ -1791,7 +1791,7 @@ func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longh
 		v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 			longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusTrue, "", "")
 	} else if v.Status.CurrentNodeID == "" {
-		allowCreateDegraded, err := c.ds.GetSettingAsBool(types.SettingNameAllowVolumeCreationWithDegradedAvailability)
+		allowCreateDegraded, err := c.ds.GetSettingAsBoolByDataEngine(types.SettingNameAllowVolumeCreationWithDegradedAvailability, v.Spec.DataEngine)
 		if err != nil {
 			return err
 		}
@@ -2245,7 +2245,7 @@ func hasLocalReplicaOnSameNodeAsEngine(e *longhorn.Engine, rs map[string]*longho
 // It will count all the potentially usable replicas, since some replicas maybe
 // blank or in rebuilding state
 func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica, hardNodeAffinity string) error {
-	concurrentRebuildingLimit, err := c.ds.GetSettingAsInt(types.SettingNameConcurrentReplicaRebuildPerNodeLimit)
+	concurrentRebuildingLimit, err := c.ds.GetSettingAsIntByDataEngine(types.SettingNameConcurrentReplicaRebuildPerNodeLimit, v.Spec.DataEngine)
 	if err != nil {
 		return err
 	}
@@ -2473,7 +2473,7 @@ func (c *VolumeController) getReplicaCountForAutoBalanceBestEffort(v *longhorn.V
 	}
 
 	if adjustCount == 0 {
-		replicasUnderDiskPressure, err := c.getReplicasUnderDiskPressure()
+		replicasUnderDiskPressure, err := c.getReplicasUnderDiskPressure(v.Spec.DataEngine)
 		if err != nil {
 			log.WithError(err).Warn("Failed to get replicas in disk pressure")
 			return 0, nil, []string{}
@@ -2505,8 +2505,8 @@ func (c *VolumeController) getReplicaCountForAutoBalanceBestEffort(v *longhorn.V
 	return adjustCount, mostExtraRList, leastExtraROwners
 }
 
-func (c *VolumeController) getReplicasUnderDiskPressure() (map[string]bool, error) {
-	settingDiskPressurePercentage, err := c.ds.GetSettingAsInt(types.SettingNameReplicaAutoBalanceDiskPressurePercentage)
+func (c *VolumeController) getReplicasUnderDiskPressure(dataEngine longhorn.DataEngineType) (map[string]bool, error) {
+	settingDiskPressurePercentage, err := c.ds.GetSettingAsIntByDataEngine(types.SettingNameReplicaAutoBalanceDiskPressurePercentage, dataEngine)
 	if err != nil {
 		return nil, err
 	}
@@ -2530,7 +2530,7 @@ func (c *VolumeController) getReplicasUnderDiskPressure() (map[string]bool, erro
 		for diskName, diskStatus := range node.Status.DiskStatus {
 			diskSpec := node.Spec.Disks[diskName]
 
-			diskInfo, err := c.scheduler.GetDiskSchedulingInfo(diskSpec, diskStatus)
+			diskInfo, err := c.scheduler.GetDiskSchedulingInfo(diskSpec, diskStatus, dataEngine)
 			if err != nil {
 				return nil, err
 			}
@@ -2574,7 +2574,7 @@ func (c *VolumeController) checkReplicaDiskPressuredSchedulableCandidates(volume
 		"replica": replica.Name,
 	})
 
-	diskPressurePercentage, err := c.ds.GetSettingAsInt(types.SettingNameReplicaAutoBalanceDiskPressurePercentage)
+	diskPressurePercentage, err := c.ds.GetSettingAsIntByDataEngine(types.SettingNameReplicaAutoBalanceDiskPressurePercentage, volume.Spec.DataEngine)
 	if err != nil {
 		return err
 	}
@@ -2626,9 +2626,9 @@ func (c *VolumeController) checkReplicaDiskPressuredSchedulableCandidates(volume
 			continue
 		}
 
-		diskInfo, err := c.scheduler.GetDiskSchedulingInfo(diskSpec, diskStatus)
+		diskInfo, err := c.scheduler.GetDiskSchedulingInfo(diskSpec, diskStatus, volume.Spec.DataEngine)
 		if err != nil {
-			log.WithError(err).Debugf("Failed to get disk scheduling info for disk %v on node %v", diskName, nodeCandidate.Name)
+			log.WithError(err).Debugf("Failed to get disk scheduling info for disk %v for data engine %v on node %v", diskName, nodeCandidate.Name, volume.Spec.DataEngine)
 			continue
 		}
 
@@ -2762,9 +2762,9 @@ func (c *VolumeController) listReadySchedulableAndScheduledNodesRO(volume *longh
 
 	readyNodes = c.scheduler.FilterNodesSchedulableForVolume(readyNodes, volume)
 
-	allowEmptyNodeSelectorVolume, err := c.ds.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
+	allowEmptyNodeSelectorVolume, err := c.ds.GetSettingAsBoolByDataEngine(types.SettingNameAllowEmptyNodeSelectorVolume, volume.Spec.DataEngine)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyNodeSelectorVolume)
+		return nil, errors.Wrapf(err, "failed to get %v setting for date engine %v", types.SettingNameAllowEmptyNodeSelectorVolume, volume.Spec.DataEngine)
 	}
 
 	filteredReadyNodes := readyNodes
@@ -3465,7 +3465,7 @@ func (c *VolumeController) checkAndFinishVolumeRestore(v *longhorn.Volume, e *lo
 		return err
 	}
 
-	degradedVolumeSupported, err := c.ds.GetSettingAsBool(types.SettingNameAllowVolumeCreationWithDegradedAvailability)
+	degradedVolumeSupported, err := c.ds.GetSettingAsBoolByDataEngine(types.SettingNameAllowVolumeCreationWithDegradedAvailability, v.Spec.DataEngine)
 	if err != nil {
 		return err
 	}
@@ -3991,9 +3991,9 @@ func (c *VolumeController) shouldRestoreRecurringJobs(v *longhorn.Volume) bool {
 		}
 	}
 
-	restoringRecurringJobs, err := c.ds.GetSettingAsBool(types.SettingNameRestoreVolumeRecurringJobs)
+	restoringRecurringJobs, err := c.ds.GetSettingAsBoolByDataEngine(types.SettingNameRestoreVolumeRecurringJobs, v.Spec.DataEngine)
 	if err != nil {
-		c.logger.WithError(err).Warnf("Failed to get %v setting", types.SettingNameRestoreVolumeRecurringJobs)
+		c.logger.WithError(err).Warnf("Failed to get %v setting for data engine %v", types.SettingNameRestoreVolumeRecurringJobs, v.Spec.DataEngine)
 	}
 
 	return restoringRecurringJobs
@@ -5001,13 +5001,15 @@ func (c *VolumeController) shouldCleanUpFailedReplica(v *longhorn.Volume, r *lon
 	}
 
 	if types.IsDataEngineV2(v.Spec.DataEngine) {
-		V2DataEngineFastReplicaRebuilding, err := c.ds.GetSettingAsBool(types.SettingNameV2DataEngineFastReplicaRebuilding)
+		fastReplicaRebuilding, err := c.ds.GetSettingAsBoolByDataEngine(types.SettingNameFastReplicaRebuildEnabled, v.Spec.DataEngine)
 		if err != nil {
-			log.WithError(err).Warnf("Failed to get the setting %v, will consider it as false", types.SettingDefinitionV2DataEngineFastReplicaRebuilding)
-			V2DataEngineFastReplicaRebuilding = false
+			log.WithError(err).Warnf("Failed to get %v setting for data engine %v, will consider it as false",
+				types.SettingNameFastReplicaRebuildEnabled, v.Spec.DataEngine)
+			fastReplicaRebuilding = false
 		}
-		if !V2DataEngineFastReplicaRebuilding {
-			log.Infof("Failed replica %v should be cleaned up blindly since setting %v is not enabled", r.Name, types.SettingNameV2DataEngineFastReplicaRebuilding)
+		if !fastReplicaRebuilding {
+			log.Infof("Failed replica %v should be cleaned up blindly since setting %v for data engine %v is not enabled",
+				r.Name, types.SettingNameFastReplicaRebuildEnabled, v.Spec.DataEngine)
 			return true
 		}
 	}

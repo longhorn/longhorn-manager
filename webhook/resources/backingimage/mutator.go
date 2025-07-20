@@ -86,9 +86,10 @@ func (b *backingImageMutator) Create(request *admission.Request, newObj runtime.
 
 	if longhorn.BackingImageDataSourceType(backingImage.Spec.SourceType) == longhorn.BackingImageDataSourceTypeRestore {
 		if parameters[longhorn.DataSourceTypeRestoreParameterConcurrentLimit] == "" {
-			concurrentLimit, err := b.ds.GetSettingAsInt(types.SettingNameBackupConcurrentLimit)
+			concurrentLimit, err := b.ds.GetSettingAsIntByDataEngine(types.SettingNameBackupConcurrentLimit, backingImage.Spec.DataEngine)
 			if err != nil {
-				return nil, errors.Wrapf(err, "failed to get %v value", types.SettingNameBackupConcurrentLimit)
+				return nil, errors.Wrapf(err, "failed to get %v setting for data engine %v",
+					types.SettingNameBackupConcurrentLimit, backingImage.Spec.DataEngine)
 			}
 			parameters[longhorn.DataSourceTypeRestoreParameterConcurrentLimit] = strconv.FormatInt(concurrentLimit, 10)
 		}
@@ -155,7 +156,7 @@ func (b *backingImageMutator) Create(request *admission.Request, newObj runtime.
 	}
 
 	if backingImage.Spec.MinNumberOfCopies == 0 {
-		minNumberOfCopies, err := b.getDefaultMinNumberOfBackingImageCopies()
+		minNumberOfCopies, err := b.getDefaultMinNumberOfBackingImageCopies(backingImage.Spec.DataEngine)
 		if err != nil {
 			err = errors.Wrap(err, "failed to get valid number for setting default min number of backing image copies")
 			return nil, werror.NewInvalidError(err.Error(), "")
@@ -292,8 +293,8 @@ func mutate(newObj runtime.Object) (admission.PatchOps, error) {
 	return patchOps, nil
 }
 
-func (b *backingImageMutator) getDefaultMinNumberOfBackingImageCopies() (int, error) {
-	c, err := b.ds.GetSettingAsInt(types.SettingNameDefaultMinNumberOfBackingImageCopies)
+func (b *backingImageMutator) getDefaultMinNumberOfBackingImageCopies(dataEngine longhorn.DataEngineType) (int, error) {
+	c, err := b.ds.GetSettingAsIntByDataEngine(types.SettingNameDefaultMinNumberOfBackingImageCopies, dataEngine)
 	if err != nil {
 		return 0, err
 	}

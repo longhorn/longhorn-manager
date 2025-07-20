@@ -248,9 +248,9 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		biDiskSelector = bi.Spec.DiskSelector
 	}
 
-	nodeSoftAntiAffinity, err := rcs.ds.GetSettingAsBool(types.SettingNameReplicaSoftAntiAffinity)
+	nodeSoftAntiAffinity, err := rcs.ds.GetSettingAsBoolByDataEngine(types.SettingNameReplicaSoftAntiAffinity, volume.Spec.DataEngine)
 	if err != nil {
-		err = errors.Wrapf(err, "failed to get %v setting", types.SettingNameReplicaSoftAntiAffinity)
+		err = errors.Wrapf(err, "failed to get %v setting for data engine %v", types.SettingNameReplicaSoftAntiAffinity, volume.Spec.DataEngine)
 		multiError.Append(util.NewMultiError(err.Error()))
 		return map[string]*Disk{}, multiError
 	}
@@ -260,9 +260,9 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		nodeSoftAntiAffinity = volume.Spec.ReplicaSoftAntiAffinity == longhorn.ReplicaSoftAntiAffinityEnabled
 	}
 
-	zoneSoftAntiAffinity, err := rcs.ds.GetSettingAsBool(types.SettingNameReplicaZoneSoftAntiAffinity)
+	zoneSoftAntiAffinity, err := rcs.ds.GetSettingAsBoolByDataEngine(types.SettingNameReplicaZoneSoftAntiAffinity, volume.Spec.DataEngine)
 	if err != nil {
-		err = errors.Wrapf(err, "failed to get %v setting", types.SettingNameReplicaZoneSoftAntiAffinity)
+		err = errors.Wrapf(err, "failed to get %v setting for data engine %v", types.SettingNameReplicaZoneSoftAntiAffinity, volume.Spec.DataEngine)
 		multiError.Append(util.NewMultiError(err.Error()))
 		return map[string]*Disk{}, multiError
 	}
@@ -271,9 +271,9 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 		zoneSoftAntiAffinity = volume.Spec.ReplicaZoneSoftAntiAffinity == longhorn.ReplicaZoneSoftAntiAffinityEnabled
 	}
 
-	diskSoftAntiAffinity, err := rcs.ds.GetSettingAsBool(types.SettingNameReplicaDiskSoftAntiAffinity)
+	diskSoftAntiAffinity, err := rcs.ds.GetSettingAsBoolByDataEngine(types.SettingNameReplicaDiskSoftAntiAffinity, volume.Spec.DataEngine)
 	if err != nil {
-		err = errors.Wrapf(err, "failed to get %v setting", types.SettingNameReplicaDiskSoftAntiAffinity)
+		err = errors.Wrapf(err, "failed to get %v setting for data engine %v", types.SettingNameReplicaDiskSoftAntiAffinity, volume.Spec.DataEngine)
 		multiError.Append(util.NewMultiError(err.Error()))
 		return map[string]*Disk{}, multiError
 	}
@@ -311,9 +311,9 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 	usedNodes, usedZones, onlyEvictingNodes, onlyEvictingZones := getCurrentNodesAndZones(replicas, nodeInfo,
 		ignoreFailedReplicas, creatingNewReplicasForReplenishment)
 
-	allowEmptyNodeSelectorVolume, err := rcs.ds.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
+	allowEmptyNodeSelectorVolume, err := rcs.ds.GetSettingAsBoolByDataEngine(types.SettingNameAllowEmptyNodeSelectorVolume, volume.Spec.DataEngine)
 	if err != nil {
-		err = errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyNodeSelectorVolume)
+		err = errors.Wrapf(err, "failed to get %v setting for data engine %v", types.SettingNameAllowEmptyNodeSelectorVolume, volume.Spec.DataEngine)
 		multiError.Append(util.NewMultiError(err.Error()))
 		return map[string]*Disk{}, multiError
 	}
@@ -408,9 +408,9 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 	multiError = util.NewMultiError()
 	preferredDisks = map[string]*Disk{}
 
-	allowEmptyDiskSelectorVolume, err := rcs.ds.GetSettingAsBool(types.SettingNameAllowEmptyDiskSelectorVolume)
+	allowEmptyDiskSelectorVolume, err := rcs.ds.GetSettingAsBoolByDataEngine(types.SettingNameAllowEmptyDiskSelectorVolume, volume.Spec.DataEngine)
 	if err != nil {
-		err = errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyDiskSelectorVolume)
+		err = errors.Wrapf(err, "failed to get %v setting for data engine %v", types.SettingNameAllowEmptyDiskSelectorVolume, volume.Spec.DataEngine)
 		multiError.Append(util.NewMultiError(err.Error()))
 		return preferredDisks, multiError
 	}
@@ -455,7 +455,7 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 		}
 
 		if requireSchedulingCheck {
-			info, err := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus)
+			info, err := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus, volume.Spec.DataEngine)
 			if err != nil {
 				logrus.Errorf("Failed to get settings when scheduling replica: %v", err)
 				multiError.Append(util.NewMultiError(longhorn.ErrorReplicaScheduleSchedulingSettingsRetrieveFailed))
@@ -615,13 +615,15 @@ func filterActiveReplicas(replicas map[string]*longhorn.Replica) map[string]*lon
 
 func (rcs *ReplicaScheduler) CheckAndReuseFailedReplica(replicas map[string]*longhorn.Replica, volume *longhorn.Volume, hardNodeAffinity string) (*longhorn.Replica, error) {
 	if types.IsDataEngineV2(volume.Spec.DataEngine) {
-		V2DataEngineFastReplicaRebuilding, err := rcs.ds.GetSettingAsBool(types.SettingNameV2DataEngineFastReplicaRebuilding)
+		fastReplicaRebuilding, err := rcs.ds.GetSettingAsBoolByDataEngine(types.SettingNameFastReplicaRebuildEnabled, volume.Spec.DataEngine)
 		if err != nil {
-			logrus.WithError(err).Warnf("Failed to get the setting %v, will consider it as false", types.SettingDefinitionV2DataEngineFastReplicaRebuilding)
-			V2DataEngineFastReplicaRebuilding = false
+			logrus.WithError(err).Warnf("Failed to get %v setting for data engine %v, will consider it as false",
+				types.SettingNameFastReplicaRebuildEnabled, volume.Spec.DataEngine)
+			fastReplicaRebuilding = false
 		}
-		if !V2DataEngineFastReplicaRebuilding {
-			logrus.Infof("Skip checking and reusing replicas for volume %v since setting %v is not enabled", volume.Name, types.SettingNameV2DataEngineFastReplicaRebuilding)
+		if !fastReplicaRebuilding {
+			logrus.Infof("Skip checking and reusing replicas for volume %v since setting %v for data engine %v is not enabled",
+				volume.Name, types.SettingNameFastReplicaRebuildEnabled, volume.Spec.DataEngine)
 			return nil, nil
 		}
 	}
@@ -715,13 +717,15 @@ func (rcs *ReplicaScheduler) RequireNewReplica(replicas map[string]*longhorn.Rep
 	}
 
 	if types.IsDataEngineV2(volume.Spec.DataEngine) {
-		V2DataEngineFastReplicaRebuilding, err := rcs.ds.GetSettingAsBool(types.SettingNameV2DataEngineFastReplicaRebuilding)
+		fastReplicaRebuilding, err := rcs.ds.GetSettingAsBoolByDataEngine(types.SettingNameFastReplicaRebuildEnabled, volume.Spec.DataEngine)
 		if err != nil {
-			logrus.WithError(err).Warnf("Failed to get the setting %v, will consider it as false", types.SettingDefinitionV2DataEngineFastReplicaRebuilding)
-			V2DataEngineFastReplicaRebuilding = false
+			logrus.WithError(err).Warnf("Failed to get %v setting for data engine %v, will consider it as false",
+				types.SettingNameFastReplicaRebuildEnabled, volume.Spec.DataEngine)
+			fastReplicaRebuilding = false
 		}
-		if !V2DataEngineFastReplicaRebuilding {
-			logrus.Infof("Skip checking potentially reusable replicas for volume %v since setting %v is not enabled", volume.Name, types.SettingNameV2DataEngineFastReplicaRebuilding)
+		if !fastReplicaRebuilding {
+			logrus.Infof("Skip checking potentially reusable replicas for volume %v since setting %v for data engine %v is not enabled",
+				volume.Name, types.SettingNameFastReplicaRebuildEnabled, volume.Spec.DataEngine)
 			return 0
 		}
 	}
@@ -753,9 +757,9 @@ func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *lon
 		return false, nil
 	}
 
-	allowEmptyDiskSelectorVolume, err := rcs.ds.GetSettingAsBool(types.SettingNameAllowEmptyDiskSelectorVolume)
+	allowEmptyDiskSelectorVolume, err := rcs.ds.GetSettingAsBoolByDataEngine(types.SettingNameAllowEmptyDiskSelectorVolume, v.Spec.DataEngine)
 	if err != nil {
-		return false, errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyDiskSelectorVolume)
+		return false, errors.Wrapf(err, "failed to get %v setting for data engine %v", types.SettingNameAllowEmptyDiskSelectorVolume, v.Spec.DataEngine)
 	}
 
 	node, exists := nodeInfo[r.Spec.NodeID]
@@ -777,7 +781,7 @@ func (rcs *ReplicaScheduler) isFailedReplicaReusable(r *longhorn.Replica, v *lon
 			if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Reason != longhorn.DiskConditionReasonDiskPressure {
 				continue
 			}
-			schedulingInfo, err := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus)
+			schedulingInfo, err := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus, v.Spec.DataEngine)
 			if err != nil {
 				logrus.Warnf("failed to GetDiskSchedulingInfo of disk %v on node %v when checking replica %v is reusable: %v", diskName, node.Name, r.Name, err)
 			}
@@ -938,7 +942,7 @@ func (rcs *ReplicaScheduler) FilterNodesSchedulableForVolume(nodes map[string]*l
 				continue
 			}
 
-			diskInfo, err := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus)
+			diskInfo, err := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus, volume.Spec.DataEngine)
 			if err != nil {
 				logrus.WithError(err).Debugf("Failed to get disk scheduling info for disk %v on node %v", diskName, node.Name)
 				continue
@@ -968,13 +972,13 @@ func (rcs *ReplicaScheduler) isDiskNotFull(info *DiskSchedulingInfo) bool {
 		info.StorageAvailable > int64(float64(info.StorageMaximum)*float64(info.MinimalAvailablePercentage)/100)
 }
 
-func (rcs *ReplicaScheduler) GetDiskSchedulingInfo(disk longhorn.DiskSpec, diskStatus *longhorn.DiskStatus) (*DiskSchedulingInfo, error) {
+func (rcs *ReplicaScheduler) GetDiskSchedulingInfo(disk longhorn.DiskSpec, diskStatus *longhorn.DiskStatus, dataEngine longhorn.DataEngineType) (*DiskSchedulingInfo, error) {
 	// get StorageOverProvisioningPercentage and StorageMinimalAvailablePercentage settings
-	overProvisioningPercentage, err := rcs.ds.GetSettingAsInt(types.SettingNameStorageOverProvisioningPercentage)
+	overProvisioningPercentage, err := rcs.ds.GetSettingAsIntByDataEngine(types.SettingNameStorageOverProvisioningPercentage, dataEngine)
 	if err != nil {
 		return nil, err
 	}
-	minimalAvailablePercentage, err := rcs.ds.GetSettingAsInt(types.SettingNameStorageMinimalAvailablePercentage)
+	minimalAvailablePercentage, err := rcs.ds.GetSettingAsIntByDataEngine(types.SettingNameStorageMinimalAvailablePercentage, dataEngine)
 	if err != nil {
 		return nil, err
 	}
@@ -1014,7 +1018,7 @@ func (rcs *ReplicaScheduler) CheckReplicasSizeExpansion(v *longhorn.Volume, oldS
 			return util.NewMultiError(longhorn.ErrorReplicaScheduleDiskNotFound),
 				fmt.Errorf("cannot find the disk %v in node %v", r.Spec.DiskID, node.Name)
 		}
-		diskInfo, err := rcs.GetDiskSchedulingInfo(diskSpec, &diskStatus)
+		diskInfo, err := rcs.GetDiskSchedulingInfo(diskSpec, &diskStatus, v.Spec.DataEngine)
 		if err != nil {
 			return util.NewMultiError(longhorn.ErrorReplicaScheduleDiskUnavailable),
 				fmt.Errorf("failed to GetDiskSchedulingInfo %v", err)
