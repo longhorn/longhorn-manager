@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -334,5 +335,6 @@ func (m *BackupMonitor) Close() {
 func getBackupParameters(backup *longhorn.Backup) map[string]string {
 	parameters := map[string]string{}
 	parameters[lhbackup.LonghornBackupParameterBackupMode] = string(backup.Spec.BackupMode)
+	parameters[lhbackup.LonghornBackupParameterBackupBlockSize] = strconv.FormatInt(backup.Spec.BackupBlockSize, 10)
 	return parameters
 }
