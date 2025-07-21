@@ -58,6 +58,7 @@ require (
 	github.com/container-storage-interface/spec v1.11.0
 	github.com/docker/go-connections v0.5.0
 	github.com/go-co-op/gocron v1.37.0
+	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/handlers v1.5.2
 	github.com/gorilla/mux v1.8.1
@@ -139,7 +140,6 @@ require (
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/gorilla/context v1.1.2 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
