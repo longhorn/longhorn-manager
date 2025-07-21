@@ -153,6 +153,16 @@ const (
 	SettingNameBackupTarget                 = SettingName("backup-target")
 	SettingNameBackupTargetCredentialSecret = SettingName("backup-target-credential-secret")
 	SettingNameBackupstorePollInterval      = SettingName("backupstore-poll-interval")
+
+	// The settings are deprecated and Longhorn won't create Setting Resources for these parameters.
+	// TODO: Remove these settings in the future releases.
+	SettingNameV2DataEngineHugepageLimit                = SettingName("v2-data-engine-hugepage-limit")
+	SettingNameV2DataEngineGuaranteedInstanceManagerCPU = SettingName("v2-data-engine-guaranteed-instance-manager-cpu")
+	SettingNameV2DataEngineCPUMask                      = SettingName("v2-data-engine-cpu-mask")
+	SettingNameV2DataEngineLogLevel                     = SettingName("v2-data-engine-log-level")
+	SettingNameV2DataEngineLogFlags                     = SettingName("v2-data-engine-log-flags")
+	SettingNameV2DataEngineFastReplicaRebuilding        = SettingName("v2-data-engine-fast-replica-rebuilding")
+	SettingNameV2DataEngineSnapshotDataIntegrity        = SettingName("v2-data-engine-snapshot-data-integrity")
 )
 
 var (
@@ -253,7 +263,14 @@ var (
 )
 
 var replacedSettingNames = map[SettingName]bool{
-	SettingNameOrphanAutoDeletion: true, // SettingNameOrphanResourceAutoDeletion
+	SettingNameOrphanAutoDeletion:                       true, // SettingNameOrphanResourceAutoDeletion
+	SettingNameV2DataEngineHugepageLimit:                true, // SettingNameHugepageLimit
+	SettingNameV2DataEngineGuaranteedInstanceManagerCPU: true, // SettingNameGuaranteedInstanceManagerCPU
+	SettingNameV2DataEngineCPUMask:                      true, // SettingNameCPUMask
+	SettingNameV2DataEngineLogLevel:                     true, // SettingNameDataEngineLogLevel
+	SettingNameV2DataEngineLogFlags:                     true, // SettingNameDataEngineLogFlags
+	SettingNameV2DataEngineFastReplicaRebuilding:        true, // SettingNameFastReplicaRebuildEnabled
+	SettingNameV2DataEngineSnapshotDataIntegrity:        true, // SettingNameSnapshotDataIntegrity
 }
 
 type SettingCategory string
