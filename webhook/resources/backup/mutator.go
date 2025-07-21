@@ -3,9 +3,8 @@ package backup
 import (
 	"encoding/json"
 	"fmt"
-
+	lhutil "github.com/longhorn/longhorn-manager/util"
 	"github.com/pkg/errors"
-
 	"k8s.io/apimachinery/pkg/runtime"
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
@@ -153,6 +152,15 @@ func mutate(newObj runtime.Object) (admission.PatchOps, error) {
 	}
 	if patchOp != "" {
 		patchOps = append(patchOps, patchOp)
+	}
+
+	// Mutate the backup block size to the legacy default one if not set
+	blockSize, err := lhutil.ConvertSize(backup.Spec.BackupBlockSize)
+	if err != nil {
+		return nil, werror.NewInvalidError(err.Error(), "spec.backupBlockSize")
+	}
+	if blockSize == 0 {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupBlockSize", "value": "%d"}`, types.BackupBlockSize2Mi))
 	}
 
 	return patchOps, nil

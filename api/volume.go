@@ -172,6 +172,11 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		return errors.Wrap(err, "failed to parse snapshot max size")
 	}
 
+	backupBlockSize, err := util.ConvertSize(volume.BackupBlockSize)
+	if err != nil {
+		return errors.Wrap(err, "failed to parse backup block size %v")
+	}
+
 	v, err := s.m.Create(volume.Name, &longhorn.VolumeSpec{
 		Size:                        size,
 		AccessMode:                  volume.AccessMode,
@@ -194,6 +199,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		SnapshotMaxCount:            volume.SnapshotMaxCount,
 		SnapshotMaxSize:             snapshotMaxSize,
 		BackupCompressionMethod:     volume.BackupCompressionMethod,
+		BackupBlockSize:             backupBlockSize,
 		UnmapMarkSnapChainRemoved:   volume.UnmapMarkSnapChainRemoved,
 		ReplicaSoftAntiAffinity:     volume.ReplicaSoftAntiAffinity,
 		ReplicaZoneSoftAntiAffinity: volume.ReplicaZoneSoftAntiAffinity,

@@ -34,6 +34,9 @@ const (
 	DefaultMinNumberOfCopies = 3
 
 	DefaultBackupstorePollInterval = 300 * time.Second
+
+	BackupBlockSize2Mi  int64 = 2 * 1024 * 1024
+	BackupBlockSize16Mi int64 = 16 * 1024 * 1024
 )
 
 type SettingType string
@@ -150,6 +153,7 @@ const (
 	SettingNameRWXVolumeFastFailover                                    = SettingName("rwx-volume-fast-failover")
 	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
 	SettingNameReplicaRebuildingBandwidthLimit                          = SettingName("replica-rebuilding-bandwidth-limit")
+	SettingNameDefaultBackupBlockSize                                   = SettingName("default-backup-block-size")
 	// These three backup target parameters are used in the "longhorn-default-resource" ConfigMap
 	// to update the default BackupTarget resource.
 	// Longhorn won't create the Setting resources for these three parameters.
@@ -254,6 +258,7 @@ var (
 		SettingNameRWXVolumeFastFailover,
 		SettingNameOfflineReplicaRebuilding,
 		SettingNameReplicaRebuildingBandwidthLimit,
+		SettingNameDefaultBackupBlockSize,
 	}
 )
 
@@ -385,6 +390,7 @@ var (
 		SettingNameRWXVolumeFastFailover:                                    SettingDefinitionRWXVolumeFastFailover,
 		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
 		SettingNameReplicaRebuildingBandwidthLimit:                          SettingDefinitionReplicaRebuildingBandwidthLimit,
+		SettingNameDefaultBackupBlockSize:                                   SettingDefinitionDefaultBackupBlockSize,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -1365,6 +1371,17 @@ var (
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 1,
 		},
+	}
+
+	SettingDefinitionDefaultBackupBlockSize = SettingDefinition{
+		DisplayName: "Default Backup Block Size",
+		Description: "This setting controls the default backup block size to create the new volume.",
+		Category:    SettingCategoryBackup,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "2Mi",
+		Choices:     []string{"2Mi", "16Mi"},
 	}
 
 	SettingDefinitionLogLevel = SettingDefinition{

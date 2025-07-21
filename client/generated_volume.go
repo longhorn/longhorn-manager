@@ -11,6 +11,8 @@ type Volume struct {
 
 	BackingImage string `json:"backingImage,omitempty" yaml:"backing_image,omitempty"`
 
+	BackupBlockSize string `json:"backupBlockSize,omitempty" yaml:"backup_block_size,omitempty"`
+
 	BackupCompressionMethod string `json:"backupCompressionMethod,omitempty" yaml:"backup_compression_method,omitempty"`
 
 	BackupStatus []BackupStatus `json:"backupStatus,omitempty" yaml:"backup_status,omitempty"`
@@ -141,8 +143,6 @@ type VolumeOperations interface {
 
 	ActionCancelExpansion(*Volume) (*Volume, error)
 
-	ActionOfflineReplicaRebuilding(*Volume) (*Volume, error)
-
 	ActionDetach(*Volume, *DetachInput) (*Volume, error)
 
 	ActionExpand(*Volume, *ExpandInput) (*Volume, error)
@@ -261,15 +261,6 @@ func (c *VolumeClient) ActionCancelExpansion(resource *Volume) (*Volume, error) 
 	resp := &Volume{}
 
 	err := c.rancherClient.doAction(VOLUME_TYPE, "cancelExpansion", &resource.Resource, nil, resp)
-
-	return resp, err
-}
-
-func (c *VolumeClient) ActionOfflineReplicaRebuilding(resource *Volume) (*Volume, error) {
-
-	resp := &Volume{}
-
-	err := c.rancherClient.doAction(VOLUME_TYPE, "offlineReplicaRebuilding", &resource.Resource, nil, resp)
 
 	return resp, err
 }
