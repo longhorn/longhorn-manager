@@ -7,6 +7,10 @@ const (
 type BackupBackingImage struct {
 	Resource `yaml:"-"`
 
+	BackingImageName string `json:"backingImageName,omitempty" yaml:"backing_image_name,omitempty"`
+
+	BackupTargetName string `json:"backupTargetName,omitempty" yaml:"backup_target_name,omitempty"`
+
 	CompressionMethod string `json:"compressionMethod,omitempty" yaml:"compression_method,omitempty"`
 
 	Created string `json:"created,omitempty" yaml:"created,omitempty"`
@@ -23,7 +27,7 @@ type BackupBackingImage struct {
 
 	Secret string `json:"secret,omitempty" yaml:"secret,omitempty"`
 
-	SecretNamespace string `json:"secretNamespace,omitempty" yaml:"secretNamespace,omitempty"`
+	SecretNamespace string `json:"secretNamespace,omitempty" yaml:"secret_namespace,omitempty"`
 
 	Size int64 `json:"size,omitempty" yaml:"size,omitempty"`
 

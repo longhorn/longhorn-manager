@@ -7,6 +7,8 @@ const (
 type Backup struct {
 	Resource `yaml:"-"`
 
+	BackupMode string `json:"backupMode,omitempty" yaml:"backup_mode,omitempty"`
+
 	BackupTargetName string `json:"backupTargetName,omitempty" yaml:"backup_target_name,omitempty"`
 
 	CompressionMethod string `json:"compressionMethod,omitempty" yaml:"compression_method,omitempty"`
@@ -21,7 +23,11 @@ type Backup struct {
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 
+	NewlyUploadDataSize string `json:"newlyUploadDataSize,omitempty" yaml:"newly_upload_data_size,omitempty"`
+
 	Progress int64 `json:"progress,omitempty" yaml:"progress,omitempty"`
+
+	ReUploadedDataSize string `json:"reUploadedDataSize,omitempty" yaml:"re_uploaded_data_size,omitempty"`
 
 	Size string `json:"size,omitempty" yaml:"size,omitempty"`
 
