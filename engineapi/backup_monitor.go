@@ -334,5 +334,6 @@ func (m *BackupMonitor) Close() {
 func getBackupParameters(backup *longhorn.Backup) map[string]string {
 	parameters := map[string]string{}
 	parameters[lhbackup.LonghornBackupParameterBackupMode] = string(backup.Spec.BackupMode)
+	parameters[lhbackup.LonghornBackupParameterBackupBlockSize] = string(backup.Spec.BackupBlockSize)
 	return parameters
 }

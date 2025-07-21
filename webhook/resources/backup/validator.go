@@ -2,7 +2,6 @@ package backup
 
 import (
 	"fmt"
-
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -33,6 +32,7 @@ func (b *backupValidator) Resource() admission.Resource {
 		ObjectType: &longhorn.Backup{},
 		OperationTypes: []admissionregv1.OperationType{
 			admissionregv1.Create,
+			admissionregv1.Update,
 		},
 	}
 }
@@ -63,8 +63,35 @@ func (b *backupValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(fmt.Sprintf("failed to get backup target %s: %v", backupTargetName, err), "")
 	}
 
+	if err := types.ValidateBackupBlockSize(-1, backup.Spec.BackupBlockSize); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
 	if !backupTarget.Status.Available {
 		return werror.NewInvalidError(fmt.Sprintf("backup target %s is not available", backupTargetName), "")
+	}
+
+	return nil
+}
+
+func (b *backupValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
+	oldBackup, ok := oldObj.(*longhorn.Backup)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Backup", oldObj), "")
+	}
+	newBackup, ok := newObj.(*longhorn.Backup)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("%v is not a *longhorn.Backup", newObj), "")
+	}
+
+	// Allow backup block size mutation only when the existing obj is not set, or correcting the existed invalid value
+	isValidOldBackupBlockSize := types.ValidateBackupBlockSize(-1, oldBackup.Spec.BackupBlockSize) == nil
+	if isValidOldBackupBlockSize && oldBackup.Spec.BackupBlockSize != newBackup.Spec.BackupBlockSize {
+		err := fmt.Errorf("changing backup block size for backup %v is not supported", oldBackup.Name)
+		return werror.NewInvalidError(err.Error(), "")
+	}
+	if err := types.ValidateBackupBlockSize(-1, newBackup.Spec.BackupBlockSize); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
 	}
 
 	return nil

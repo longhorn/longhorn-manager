@@ -2,6 +2,7 @@ package volume
 
 import (
 	"fmt"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"strconv"
 
 	"github.com/pkg/errors"
@@ -387,6 +388,15 @@ func mutate(newObj runtime.Object, moreLabels map[string]string) (admission.Patc
 	}
 	if string(volume.Spec.OfflineRebuilding) == "" {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/offlineRebuilding", "value": "%s"}`, longhorn.VolumeOfflineRebuildingIgnored))
+	}
+
+	// Mutate the backup block size to the default one if not set
+	backupBlockSize := volume.Spec.BackupBlockSize
+	if convertedBlockSize, convertBlockSizeErr := util.ConvertSize(string(backupBlockSize)); convertBlockSizeErr == nil && convertedBlockSize == 0 {
+		backupBlockSize = longhorn.BackupBlockSize(resource.NewQuantity(backupstore.DEFAULT_BLOCK_SIZE, resource.BinarySI).String())
+	}
+	if volume.Spec.BackupBlockSize != backupBlockSize {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupBlockSize", "value": "%s"}`, backupBlockSize))
 	}
 
 	labels := volume.Labels

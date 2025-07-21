@@ -1031,6 +1031,21 @@ func ValidateOfflineRebuild(value longhorn.VolumeOfflineRebuilding) error {
 	return nil
 }
 
+// ValidateBackupBlockSize skips the volume size check if volSize set to negative.
+func ValidateBackupBlockSize(volSize int64, backupBlockSize longhorn.BackupBlockSize) error {
+	if backupBlockSize != longhorn.BackupBlockSize2Mi && backupBlockSize != longhorn.BackupBlockSize16Mi {
+		return fmt.Errorf("unrecognized of BackupBlockSize setting: %v", backupBlockSize)
+	}
+	blockSize, convertErr := util.ConvertSize(string(backupBlockSize))
+	if convertErr != nil {
+		return fmt.Errorf("invalid value of BackupBlockSize setting: %v", convertErr.Error())
+	}
+	if volSize >= 0 && volSize%blockSize != 0 {
+		return fmt.Errorf("invalid value of Size setting: size %v must be an integer multiple of the backup block size %v", volSize, backupBlockSize)
+	}
+	return nil
+}
+
 func GetDaemonSetNameFromEngineImageName(engineImageName string) string {
 	return "engine-image-" + engineImageName
 }

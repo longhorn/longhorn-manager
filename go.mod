@@ -66,7 +66,7 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.22.0
 	github.com/longhorn/backing-image-manager v1.9.0
 	github.com/longhorn/backupstore v0.0.0-20250624115502-f6e828377c27
-	github.com/longhorn/go-common-libs v0.0.0-20250712065607-11215ac4de96
+	github.com/longhorn/go-common-libs v0.0.0-20250722040045-f7fd23383de5
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250713130221-69ce6f3960fa
 	github.com/longhorn/go-spdk-helper v0.0.3-0.20250712161648-42d38592f838
 	github.com/longhorn/longhorn-engine v1.9.0
@@ -113,7 +113,7 @@ require (
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	golang.org/x/exp v0.0.0-20250711185948-6ae5c78190dc // indirect
+	golang.org/x/exp v0.0.0-20250718183923-645b1fa84792 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250528174236-200df99c418a // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
@@ -188,8 +188,6 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.7.0
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
-
-replace github.com/longhorn/go-common-libs => github.com/COLDTURNIP/longhorn-go-common-libs v0.0.0-20250718014604-aa4c0c7ca10d
 
 replace github.com/longhorn/backupstore => github.com/COLDTURNIP/longhorn-backupstore v0.0.0-20250718065324-849563782471
 

@@ -194,6 +194,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		SnapshotMaxCount:            volume.SnapshotMaxCount,
 		SnapshotMaxSize:             snapshotMaxSize,
 		BackupCompressionMethod:     volume.BackupCompressionMethod,
+		BackupBlockSize:             volume.BackupBlockSize,
 		UnmapMarkSnapChainRemoved:   volume.UnmapMarkSnapChainRemoved,
 		ReplicaSoftAntiAffinity:     volume.ReplicaSoftAntiAffinity,
 		ReplicaZoneSoftAntiAffinity: volume.ReplicaZoneSoftAntiAffinity,

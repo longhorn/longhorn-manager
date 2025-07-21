@@ -3,8 +3,10 @@ package backup
 import (
 	"encoding/json"
 	"fmt"
-
+	"github.com/longhorn/backupstore"
+	"github.com/longhorn/longhorn-manager/util"
 	"github.com/pkg/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -135,6 +137,15 @@ func mutate(newObj runtime.Object) (admission.PatchOps, error) {
 	}
 	if patchOp != "" {
 		patchOps = append(patchOps, patchOp)
+	}
+
+	// Mutate the backup block size to the default one if not set
+	backupBlockSize := backup.Spec.BackupBlockSize
+	if convertedBlockSize, convertBlockSizeErr := util.ConvertSize(string(backupBlockSize)); convertBlockSizeErr == nil && convertedBlockSize == 0 {
+		backupBlockSize = longhorn.BackupBlockSize(resource.NewQuantity(backupstore.DEFAULT_BLOCK_SIZE, resource.BinarySI).String())
+	}
+	if backup.Spec.BackupBlockSize != backupBlockSize {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupBlockSize", "value": "%s"}`, backupBlockSize))
 	}
 
 	return patchOps, nil

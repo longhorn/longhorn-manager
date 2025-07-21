@@ -285,6 +285,9 @@ type VolumeSpec struct {
 	// +kubebuilder:validation:Enum=none;lz4;gzip
 	// +optional
 	BackupCompressionMethod BackupCompressionMethod `json:"backupCompressionMethod"`
+	// +kubebuilder:validation:Enum="2Mi";"16Mi"
+	// +optional
+	BackupBlockSize BackupBlockSize `json:"backupBlockSize"`
 	// +kubebuilder:validation:Enum=v1;v2
 	// +optional
 	DataEngine DataEngineType `json:"dataEngine"`

@@ -26,6 +26,13 @@ const (
 	BackupCompressionMethodGzip = BackupCompressionMethod("gzip")
 )
 
+type BackupBlockSize string
+
+const (
+	BackupBlockSize2Mi  = BackupBlockSize("2Mi")
+	BackupBlockSize16Mi = BackupBlockSize("16Mi")
+)
+
 // +kubebuilder:validation:Enum=full;incremental;""
 type BackupMode string
 
@@ -51,6 +58,9 @@ type BackupSpec struct {
 	// Can be "full" or "incremental"
 	// +optional
 	BackupMode BackupMode `json:"backupMode"`
+	// The backup block size
+	// +optional
+	BackupBlockSize BackupBlockSize `json:"backupBlockSize"`
 }
 
 // BackupStatus defines the observed state of the Longhorn backup

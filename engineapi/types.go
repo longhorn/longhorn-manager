@@ -186,6 +186,7 @@ type Backup struct {
 	SnapshotCreated        string               `json:"snapshotCreated"`
 	Created                string               `json:"created"`
 	Size                   string               `json:"size"`
+	BlockSize              string               `json:"blockSize"`
 	Labels                 map[string]string    `json:"labels"`
 	VolumeName             string               `json:"volumeName"`
 	VolumeSize             string               `json:"volumeSize"`

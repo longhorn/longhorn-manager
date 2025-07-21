@@ -102,6 +102,10 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "")
 	}
 
+	if err := types.ValidateBackupBlockSize(volume.Spec.Size, volume.Spec.BackupBlockSize); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
 	if volume.Spec.BackingImage != "" {
 		backingImage, err := v.ds.GetBackingImage(volume.Spec.BackingImage)
 		if err != nil {
@@ -262,6 +266,16 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 			err := fmt.Errorf("changing backup compression method for volume %v is not supported", oldVolume.Name)
 			return werror.NewInvalidError(err.Error(), "")
 		}
+	}
+
+	// Allow backup block size mutation only when the existing obj is not set, or correcting the existed invalid value
+	isValidOldBackupBlockSize := types.ValidateBackupBlockSize(oldVolume.Spec.Size, oldVolume.Spec.BackupBlockSize) == nil
+	if isValidOldBackupBlockSize && oldVolume.Spec.BackupBlockSize != newVolume.Spec.BackupBlockSize {
+		err := fmt.Errorf("changing backup block size for volume %v is not supported", oldVolume.Name)
+		return werror.NewInvalidError(err.Error(), "")
+	}
+	if err := types.ValidateBackupBlockSize(newVolume.Spec.Size, newVolume.Spec.BackupBlockSize); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
 	}
 
 	if oldVolume.Spec.DataEngine != "" {

@@ -263,6 +263,11 @@ func (m *VolumeManager) BackupSnapshot(backupName, backupTargetName, volumeName,
 		return err
 	}
 
+	blockSize, err := m.getVolumeBackupBlockSize(volumeName)
+	if err != nil {
+		return err
+	}
+
 	backupCR := &longhorn.Backup{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: backupName,
@@ -271,12 +276,13 @@ func (m *VolumeManager) BackupSnapshot(backupName, backupTargetName, volumeName,
 			},
 		},
 		Spec: longhorn.BackupSpec{
-			SnapshotName: snapshotName,
-			Labels:       labels,
-			BackupMode:   longhorn.BackupMode(backupMode),
+			SnapshotName:    snapshotName,
+			Labels:          labels,
+			BackupMode:      longhorn.BackupMode(backupMode),
+			BackupBlockSize: blockSize,
 		},
 	}
-	_, err := m.ds.CreateBackup(backupCR, volumeName)
+	_, err = m.ds.CreateBackup(backupCR, volumeName)
 	return err
 }
 
@@ -289,6 +295,14 @@ func (m *VolumeManager) checkVolumeNotInMigration(volumeName string) error {
 		return fmt.Errorf("cannot operate during migration")
 	}
 	return nil
+}
+
+func (m *VolumeManager) getVolumeBackupBlockSize(volumeName string) (longhorn.BackupBlockSize, error) {
+	v, err := m.ds.GetVolume(volumeName)
+	if err != nil {
+		return "", err
+	}
+	return v.Spec.BackupBlockSize, nil
 }
 
 func (m *VolumeManager) GetRunningEngineByVolume(name string) (e *longhorn.Engine, err error) {
