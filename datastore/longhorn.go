@@ -76,6 +76,10 @@ func (s *DataStore) UpdateCustomizedSettings(defaultImages map[types.SettingName
 		return err
 	}
 
+	if err := s.syncConsolidatedV2DataEngineSettings(); err != nil {
+		return err
+	}
+
 	if err := s.createNonExistingSettingCRsWithDefaultSetting(defaultSettingCM.ResourceVersion); err != nil {
 		return err
 	}
@@ -168,12 +172,12 @@ func (s *DataStore) syncSettingsWithDefaultImages(defaultImages map[types.Settin
 
 func (s *DataStore) syncSettingOrphanResourceAutoDeletionSettings() error {
 	oldOrphanReplicaDataAutoDeletionSettingRO, err := s.getSettingRO(string(types.SettingNameOrphanAutoDeletion))
-	switch {
-	case ErrorIsNotFound(err):
-		logrus.Infof("No old setting %v to be replaced.", types.SettingNameOrphanAutoDeletion)
-		return nil
-	case err != nil:
-		return errors.Wrapf(err, "failed to get replaced setting %v", types.SettingNameOrphanAutoDeletion)
+	if err != nil {
+		if ErrorIsNotFound(err) {
+			logrus.Infof("No old setting %v to be replaced.", types.SettingNameOrphanAutoDeletion)
+			return nil
+		}
+		return errors.Wrapf(err, "failed to get old setting %v", types.SettingNameOrphanAutoDeletion)
 	}
 
 	resourceTypes, err := s.GetSettingOrphanResourceAutoDeletion()
@@ -189,6 +193,36 @@ func (s *DataStore) syncSettingOrphanResourceAutoDeletionSettings() error {
 	}
 	value := strings.Join(enabledResourceType, ";")
 	return s.createOrUpdateSetting(types.SettingNameOrphanResourceAutoDeletion, value, "")
+}
+
+func (s *DataStore) syncConsolidatedV2DataEngineSetting(oldSettingName, newSettingName types.SettingName) error {
+	oldSetting, err := s.getSettingRO(string(oldSettingName))
+	if err != nil {
+		if ErrorIsNotFound(err) {
+			logrus.Infof("No old setting %v to be replaced.", oldSettingName)
+			return nil
+		}
+		return errors.Wrapf(err, "failed to get old setting %v", oldSettingName)
+	}
+
+	return s.createOrUpdateSetting(newSettingName, oldSetting.Value, "")
+}
+
+func (s *DataStore) syncConsolidatedV2DataEngineSettings() error {
+	settings := map[types.SettingName]types.SettingName{
+		types.SettingNameV2DataEngineHugepageLimit: types.SettingNameHugepageLimit,
+		types.SettingNameV2DataEngineCPUMask:       types.SettingNameCPUMask,
+		types.SettingNameV2DataEngineLogLevel:      types.SettingNameDataEngineLogLevel,
+		types.SettingNameV2DataEngineLogFlags:      types.SettingNameDataEngineLogFlags,
+	}
+
+	for oldSettingName, newSettingName := range settings {
+		if err := s.syncConsolidatedV2DataEngineSetting(oldSettingName, newSettingName); err != nil {
+			return errors.Wrapf(err, "failed to sync consolidated v2 data engine setting %v to %v", oldSettingName, newSettingName)
+		}
+	}
+
+	return nil
 }
 
 func (s *DataStore) createOrUpdateSetting(name types.SettingName, value, defaultSettingCMResourceVersion string) error {
