@@ -150,12 +150,6 @@ const (
 	SettingNameBackupExecutionTimeout                                   = SettingName("backup-execution-timeout")
 	SettingNameRWXVolumeFastFailover                                    = SettingName("rwx-volume-fast-failover")
 	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
-	// These three backup target parameters are used in the "longhorn-default-resource" ConfigMap
-	// to update the default BackupTarget resource.
-	// Longhorn won't create the Setting resources for these three parameters.
-	SettingNameBackupTarget                 = SettingName("backup-target")
-	SettingNameBackupTargetCredentialSecret = SettingName("backup-target-credential-secret")
-	SettingNameBackupstorePollInterval      = SettingName("backupstore-poll-interval")
 )
 
 var (

@@ -1675,8 +1675,6 @@ var systemRolloutIgnoredSettings = [...]string{
 	string(types.SettingNameConcurrentBackupRestorePerNodeLimit),
 	string(types.SettingNameConcurrentReplicaRebuildPerNodeLimit),
 	string(types.SettingNameConcurrentBackingImageCopyReplenishPerNodeLimit),
-	string(types.SettingNameBackupTarget),
-	string(types.SettingNameBackupTargetCredentialSecret),
 }
 
 func isSystemRolloutIgnoredSetting(name string) bool {
