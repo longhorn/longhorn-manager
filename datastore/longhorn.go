@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"reflect"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -592,7 +591,11 @@ func (s *DataStore) ValidateCPUMask(kubeNode *corev1.Node, value string) error {
 	}
 
 	// Validate the mask value is not larger than the number of available CPUs
-	numCPUs := runtime.NumCPU()
+	numCPUs, err := s.getMinNumCPUs()
+	if err != nil {
+		return errors.Wrap(err, "failed to get minimum number of CPUs for CPU mask validation")
+	}
+
 	maxCPUMaskValue := (1 << numCPUs) - 1
 	if maskValue > uint64(maxCPUMaskValue) {
 		return fmt.Errorf("CPU mask exceeds the maximum allowed value %v for the current system: %s", maxCPUMaskValue, value)
@@ -613,6 +616,24 @@ func (s *DataStore) ValidateCPUMask(kubeNode *corev1.Node, value string) error {
 	}
 
 	return nil
+}
+
+func (s *DataStore) getMinNumCPUs() (int64, error) {
+	kubeNodes, err := s.ListKubeNodesRO()
+	if err != nil {
+		return -1, errors.Wrapf(err, "failed to list Kubernetes nodes for CPU mask validation")
+	}
+
+	// Assign max value to minNumCPUs of the max value of int64
+	minNumCPUs := int64(^uint64(0) >> 1)
+	for _, node := range kubeNodes {
+		numCPUs := node.Status.Allocatable.Cpu().Value()
+		if numCPUs < minNumCPUs {
+			minNumCPUs = numCPUs
+		}
+	}
+
+	return minNumCPUs, nil
 }
 
 func calculateMilliCPUs(mask uint64) int {
