@@ -2612,6 +2612,20 @@ spec:
               may reject unrecognized values.
               More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
+          applicableEngines:
+            additionalProperties:
+              type: boolean
+            description: |-
+              ApplicableEngines defines which data engines the setting is applicable to.
+              If empty, the setting is applicable to all data engines.
+            type: object
+          defaultsByEngine:
+            additionalProperties:
+              type: string
+            description: |-
+              Default values for the setting based on the data engine type.
+              If the value for a specific data engine type is not set, the default value will be used.
+            type: object
           kind:
             description: |-
               Kind is a string value representing the REST resource this object represents.
@@ -3533,13 +3547,6 @@ spec:
                 - disabled
                 - enabled
                 type: string
-              rebuildingMbytesPerSecond:
-                description: RebuildingMBytesPerSecond limits the write bandwidth
-                  (in megabytes per second) on the destination replica during rebuilding.
-                  Set to 0 to disable bandwidth limiting.
-                format: int64
-                minimum: 0
-                type: integer
               replicaAutoBalance:
                 enum:
                 - ignored
@@ -3555,6 +3562,13 @@ spec:
                 - enabled
                 - disabled
                 type: string
+              replicaRebuildBandwidthLimit:
+                description: ReplicaRebuildBandwidthLimit limits the write bandwidth
+                  (in megabytes per second) on the destination replica during rebuilding.
+                  Set to 0 to disable bandwidth limiting.
+                format: int64
+                minimum: 0
+                type: integer
               replicaSoftAntiAffinity:
                 description: Replica soft anti affinity of the volume. Set enabled
                   to allow replicas to be scheduled on the same node.

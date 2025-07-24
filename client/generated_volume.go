@@ -141,11 +141,11 @@ type VolumeOperations interface {
 
 	ActionCancelExpansion(*Volume) (*Volume, error)
 
-	ActionOfflineReplicaRebuilding(*Volume) (*Volume, error)
-
 	ActionDetach(*Volume, *DetachInput) (*Volume, error)
 
 	ActionExpand(*Volume, *ExpandInput) (*Volume, error)
+
+	ActionOfflineReplicaRebuilding(*Volume, *UpdateOfflineRebuildingInput) (*Volume, error)
 
 	ActionPvCreate(*Volume, *PVCreateInput) (*Volume, error)
 
@@ -265,15 +265,6 @@ func (c *VolumeClient) ActionCancelExpansion(resource *Volume) (*Volume, error) 
 	return resp, err
 }
 
-func (c *VolumeClient) ActionOfflineReplicaRebuilding(resource *Volume) (*Volume, error) {
-
-	resp := &Volume{}
-
-	err := c.rancherClient.doAction(VOLUME_TYPE, "offlineReplicaRebuilding", &resource.Resource, nil, resp)
-
-	return resp, err
-}
-
 func (c *VolumeClient) ActionDetach(resource *Volume, input *DetachInput) (*Volume, error) {
 
 	resp := &Volume{}
@@ -288,6 +279,15 @@ func (c *VolumeClient) ActionExpand(resource *Volume, input *ExpandInput) (*Volu
 	resp := &Volume{}
 
 	err := c.rancherClient.doAction(VOLUME_TYPE, "expand", &resource.Resource, input, resp)
+
+	return resp, err
+}
+
+func (c *VolumeClient) ActionOfflineReplicaRebuilding(resource *Volume, input *UpdateOfflineRebuildingInput) (*Volume, error) {
+
+	resp := &Volume{}
+
+	err := c.rancherClient.doAction(VOLUME_TYPE, "offlineReplicaRebuilding", &resource.Resource, input, resp)
 
 	return resp, err
 }

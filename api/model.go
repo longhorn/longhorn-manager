@@ -198,10 +198,12 @@ type BackupBackingImage struct {
 
 type Setting struct {
 	client.Resource
-	Applied    bool                    `json:"applied"`
-	Name       string                  `json:"name"`
-	Value      string                  `json:"value"`
-	Definition types.SettingDefinition `json:"definition"`
+	Applied           bool                               `json:"applied"`
+	Name              string                             `json:"name"`
+	Value             string                             `json:"value"`
+	Definition        types.SettingDefinition            `json:"definition"`
+	DefaultsByEngine  map[longhorn.DataEngineType]string `json:"defaultsByEngine"`
+	ApplicableEngines map[longhorn.DataEngineType]bool   `json:"applicableEngines"`
 }
 
 type Instance struct {
@@ -1395,9 +1397,11 @@ func toSettingResource(setting *longhorn.Setting) *Setting {
 			Type:  "setting",
 			Links: map[string]string{},
 		},
-		Applied: setting.Status.Applied,
-		Name:    setting.Name,
-		Value:   setting.Value,
+		Applied:           setting.Status.Applied,
+		Name:              setting.Name,
+		Value:             setting.Value,
+		DefaultsByEngine:  setting.DefaultsByEngine,
+		ApplicableEngines: setting.ApplicableEngines,
 
 		Definition: definition,
 	}

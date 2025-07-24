@@ -7,6 +7,8 @@ const (
 type Orphan struct {
 	Resource `yaml:"-"`
 
+	DataEngine string `json:"dataEngine,omitempty" yaml:"data_engine,omitempty"`
+
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 
 	NodeID string `json:"nodeID,omitempty" yaml:"node_id,omitempty"`

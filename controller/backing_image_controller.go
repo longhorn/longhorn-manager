@@ -813,7 +813,7 @@ func (bic *BackingImageController) replenishBackingImageCopies(bi *longhorn.Back
 		}
 	}
 
-	concurrentReplenishLimit, err := bic.ds.GetSettingAsInt(types.SettingNameConcurrentBackingImageCopyReplenishPerNodeLimit)
+	concurrentReplenishLimit, err := bic.ds.GetSettingAsIntByDataEngine(types.SettingNameConcurrentBackingImageCopyReplenishPerNodeLimit, bi.Spec.DataEngine)
 	if err != nil {
 		return err
 	}
@@ -1091,7 +1091,7 @@ func (bic *BackingImageController) handleBackingImageDataSource(bi *longhorn.Bac
 		bids.Spec.UUID = bi.Status.UUID
 	}
 
-	recoveryWaitIntervalSettingValue, err := bic.ds.GetSettingAsInt(types.SettingNameBackingImageRecoveryWaitInterval)
+	recoveryWaitIntervalSettingValue, err := bic.ds.GetSettingAsIntByDataEngine(types.SettingNameBackingImageRecoveryWaitInterval, bi.Spec.DataEngine)
 	if err != nil {
 		return err
 	}
