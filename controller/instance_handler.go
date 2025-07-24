@@ -280,6 +280,13 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 
 	log := logrus.WithField("instance", instanceName)
 
+	stateBeforeReconcile := status.CurrentState
+	defer func() {
+		if stateBeforeReconcile != status.CurrentState {
+			log.Infof("Instance %v state is updated from %v to %v", instanceName, stateBeforeReconcile, status.CurrentState)
+		}
+	}()
+
 	var im *longhorn.InstanceManager
 	if status.InstanceManagerName != "" {
 		im, err = h.ds.GetInstanceManagerRO(status.InstanceManagerName)
