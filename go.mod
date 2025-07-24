@@ -74,7 +74,7 @@ require (
 	github.com/prometheus/client_golang v1.22.0
 	github.com/rancher/dynamiclistener v0.6.2
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
-	github.com/rancher/wrangler/v3 v3.2.2
+	github.com/rancher/wrangler/v3 v3.2.1
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.10.0
@@ -86,11 +86,11 @@ require (
 	google.golang.org/grpc v1.73.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
-	k8s.io/api v0.33.1
-	k8s.io/apiextensions-apiserver v0.33.1
-	k8s.io/apimachinery v0.33.1
+	k8s.io/api v0.32.3
+	k8s.io/apiextensions-apiserver v0.32.3
+	k8s.io/apimachinery v0.32.3
 	k8s.io/cli-runtime v0.32.3
-	k8s.io/client-go v0.33.1
+	k8s.io/client-go v0.32.3
 	k8s.io/kubernetes v1.32.3
 	k8s.io/metrics v0.32.3
 	k8s.io/mount-utils v0.32.3
@@ -177,7 +177,7 @@ require (
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.62.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
-	github.com/rancher/lasso v0.2.3
+	github.com/rancher/lasso v0.2.2
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
@@ -209,14 +209,14 @@ require (
 	google.golang.org/protobuf v1.36.6
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
-	k8s.io/apiserver v0.33.1 // indirect
+	k8s.io/apiserver v0.32.3 // indirect
 	k8s.io/cloud-provider v0.0.0 // indirect
-	k8s.io/component-base v0.33.1 // indirect
+	k8s.io/component-base v0.32.3 // indirect
 	k8s.io/component-helpers v0.32.3 // indirect
 	k8s.io/controller-manager v0.32.3 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kms v0.32.3 // indirect
-	k8s.io/kube-aggregator v0.33.1 // indirect
+	k8s.io/kube-aggregator v0.32.3 // indirect
 	k8s.io/kube-openapi v0.0.0-20250318190949-c8a335a9a2ff // indirect
 	k8s.io/kubelet v0.0.0 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.2 // indirect

@@ -182,7 +182,7 @@ func (s *sharedControllerFactory) ForResourceKind(gvr schema.GroupVersionResourc
 
 	client := s.sharedCacheFactory.SharedClientFactory().ForResourceKind(gvr, kind, namespaced)
 
-	handler := &SharedHandler{ControllerName: gvr.String()}
+	handler := &SharedHandler{controllerGVR: gvr.String()}
 
 	controllerResult = &sharedController{
 		deferredController: func() (Controller, error) {
