@@ -11,6 +11,8 @@ import (
 	"github.com/rancher/go-rancher/client"
 
 	"github.com/longhorn/longhorn-manager/types"
+
+	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
 func (s *Server) SettingList(w http.ResponseWriter, req *http.Request) error {
@@ -60,6 +62,14 @@ func (s *Server) SettingSet(w http.ResponseWriter, req *http.Request) error {
 	}
 
 	si.Value = strings.TrimSpace(setting.Value)
+
+	if si.DefaultsByEngine == nil {
+		si.DefaultsByEngine = make(map[longhorn.DataEngineType]string)
+	}
+	for dataEngine, value := range setting.DefaultsByEngine {
+		si.DefaultsByEngine[dataEngine] = strings.TrimSpace(value)
+	}
+
 	si, err = s.m.CreateOrUpdateSetting(si)
 	if err != nil {
 		return err
