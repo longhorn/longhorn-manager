@@ -117,6 +117,8 @@ func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootD
 			"--leader-election",
 			"--leader-election-namespace=$(POD_NAMESPACE)",
 			"--default-fstype=ext4",
+			"--enable-capacity",
+			"--capacity-ownerref-level=2",
 			fmt.Sprintf("--kube-api-qps=%v", types.KubeAPIQPS),
 			fmt.Sprintf("--kube-api-burst=%v", types.KubeAPIBurst),
 			fmt.Sprintf("--http-endpoint=:%v", types.CSISidecarMetricsPort),
@@ -591,13 +593,13 @@ type DriverObjectDeployment struct {
 }
 
 func NewCSIDriverObject() *DriverObjectDeployment {
-	falseFlag := true
 	obj := &storagev1.CSIDriver{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: types.LonghornDriverName,
 		},
 		Spec: storagev1.CSIDriverSpec{
-			PodInfoOnMount: &falseFlag,
+			PodInfoOnMount:  ptr.To(true),
+			StorageCapacity: ptr.To(true),
 		},
 	}
 	return &DriverObjectDeployment{

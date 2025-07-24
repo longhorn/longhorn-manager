@@ -35,6 +35,8 @@ const (
 	defaultForceUmountTimeout = 30 * time.Second
 
 	tempTestMountPointValidStatusFile = ".longhorn-volume-mount-point-test.tmp"
+
+	nodeTopologyKey = "kubernetes.io/hostname"
 )
 
 // NewForcedParamsExec creates a osExecutor that allows for adding additional params to later occurring Run calls
@@ -465,4 +467,15 @@ func requiresSharedAccess(vol *longhornclient.Volume, cap *csi.VolumeCapability)
 
 func getStageBlockVolumePath(stagingTargetPath, volumeID string) string {
 	return filepath.Join(stagingTargetPath, volumeID)
+}
+
+func parseNodeID(topology *csi.Topology) (string, error) {
+	if topology == nil || topology.Segments == nil {
+		return "", fmt.Errorf("missing accessible topology request parameter")
+	}
+	nodeId, ok := topology.Segments[nodeTopologyKey]
+	if !ok {
+		return "", fmt.Errorf("accessible topology request parameter is missing %s key", nodeTopologyKey)
+	}
+	return nodeId, nil
 }
