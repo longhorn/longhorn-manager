@@ -63,5 +63,17 @@ func (bbi *backupBackingImageValidator) Create(request *admission.Request, newOb
 		}
 	}
 
+	// Check if backup target exists and is available
+	backupTargetName := backupBackingImage.Labels[types.LonghornLabelBackupTarget]
+
+	backupTarget, err := bbi.ds.GetBackupTarget(backupTargetName)
+	if err != nil {
+		return werror.NewInvalidError(fmt.Sprintf("failed to get backup target %s: %v", backupTargetName, err), "")
+	}
+
+	if !backupTarget.Status.Available {
+		return werror.NewInvalidError(fmt.Sprintf("backup target %s is not available", backupTargetName), "")
+	}
+
 	return nil
 }
