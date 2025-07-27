@@ -111,10 +111,10 @@ github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de h1:9TO3cAIGXtEhn
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de/go.mod h1:zAbeS9B/r2mtpb6U+EI2rYA5OAXxsYw6wTamcNW+zcE=
 github.com/longhorn/backing-image-manager v1.9.1 h1:amT5BDkBJnnmlJYfPfA2m0o3zdvArf7e/DSsbgOquX0=
 github.com/longhorn/backing-image-manager v1.9.1/go.mod h1:a9UGK3bsd1Gj0kbN5tKev5/uaSwjOvoHqZzLqMMqnU0=
-github.com/longhorn/backupstore v0.0.0-20250716050439-d920cc13cf0f h1:fxgi/MLL2RjMUgaodx6pxPsqRRbDOTjd/0MabqbowrE=
-github.com/longhorn/backupstore v0.0.0-20250716050439-d920cc13cf0f/go.mod h1:zVJtOEHBCFmboACEjy8rtbUVYrrtknN4DIVJ9gd1TJQ=
-github.com/longhorn/go-common-libs v0.0.0-20250712065607-11215ac4de96 h1:+SN5T/B6WvJjlzKWDqswziq9k11XOxK27KlCTrbalW0=
-github.com/longhorn/go-common-libs v0.0.0-20250712065607-11215ac4de96/go.mod h1:WJowu2xRMEZ2B9K+SPQCUQpFoiC6yZiAHLZx2cR34QE=
+github.com/longhorn/backupstore v0.0.0-20250722065859-712d1ff30a8d h1:rLXoohWZCFymEqFkpTqMEmL2VW6DDgGN6qCRWPGbn1U=
+github.com/longhorn/backupstore v0.0.0-20250722065859-712d1ff30a8d/go.mod h1:5LSqduOv22ArpVWIhgtg53rpkwvlMxeGqc+MBGSy4HU=
+github.com/longhorn/go-common-libs v0.0.0-20250725014231-2c0bac610814 h1:9qcRV8oIOS2J+QWLIk//BxsTMTaM63LceKCXTPG3f8Y=
+github.com/longhorn/go-common-libs v0.0.0-20250725014231-2c0bac610814/go.mod h1:c7BqzWJP4iuRwl/Di+OPGIfC18SoIXy5+SokJsmmKMg=
 github.com/longhorn/go-iscsi-helper v0.0.0-20250713130221-69ce6f3960fa h1:J0DyOSate7Vf+zlHYB5WrCTWJfshEsSJDp161GjBmhI=
 github.com/longhorn/go-iscsi-helper v0.0.0-20250713130221-69ce6f3960fa/go.mod h1:fN9H878mLjAqSbPxEXpOCwvTlt43h+/CZxXrQlX/iMQ=
 github.com/longhorn/go-spdk-helper v0.0.2 h1:cK7obTyCI1ytm0SMaUEjwsHeX6hK+82kPjuAQkf+Tvg=
@@ -255,8 +255,8 @@ golang.org/x/crypto v0.0.0-20191011191535-87dc89f01550/go.mod h1:yigFU9vqHzYiE8U
 golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9/go.mod h1:LzIPMQfyMNhhGPhUkYOs5KpL4U8rLKemX1yGLhDgUto=
 golang.org/x/crypto v0.38.0 h1:jt+WWG8IZlBnVbomuhg2Mdq0+BBQaHbtqHEFEigjUV8=
 golang.org/x/crypto v0.38.0/go.mod h1:MvrbAqul58NNYPKnOra203SB9vpuZW0e+RRZV+Ggqjw=
-golang.org/x/exp v0.0.0-20250711185948-6ae5c78190dc h1:TS73t7x3KarrNd5qAipmspBDS1rkMcgVG/fS1aRb4Rc=
-golang.org/x/exp v0.0.0-20250711185948-6ae5c78190dc/go.mod h1:A+z0yzpGtvnG90cToK5n2tu8UJVP2XUATh+r+sfOOOc=
+golang.org/x/exp v0.0.0-20250718183923-645b1fa84792 h1:R9PFI6EUdfVKgwKjZef7QIwGcBKu86OEFpJ9nUEP2l4=
+golang.org/x/exp v0.0.0-20250718183923-645b1fa84792/go.mod h1:A+z0yzpGtvnG90cToK5n2tu8UJVP2XUATh+r+sfOOOc=
 golang.org/x/mod v0.2.0/go.mod h1:s0Qsj1ACt9ePp/hMypM3fl4fZqREWJwdYDEqhRiZZUA=
 golang.org/x/mod v0.3.0/go.mod h1:s0Qsj1ACt9ePp/hMypM3fl4fZqREWJwdYDEqhRiZZUA=
 golang.org/x/mod v0.26.0 h1:EGMPT//Ezu+ylkCijjPc+f4Aih7sZvaAr+O3EHBxvZg=
