@@ -159,7 +159,6 @@ github.com/longhorn/go-common-libs/ns
 github.com/longhorn/go-common-libs/proc
 github.com/longhorn/go-common-libs/sync
 github.com/longhorn/go-common-libs/sys
-github.com/longhorn/go-common-libs/test/fake
 github.com/longhorn/go-common-libs/types
 github.com/longhorn/go-common-libs/utils
 # github.com/longhorn/go-iscsi-helper v0.0.0-20250713130221-69ce6f3960fa

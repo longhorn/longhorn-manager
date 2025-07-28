@@ -14,8 +14,9 @@ import (
 
 	. "gopkg.in/check.v1"
 
-	lhfake "github.com/longhorn/go-common-libs/test/fake"
 	lhtypes "github.com/longhorn/go-common-libs/types"
+
+	"github.com/longhorn/longhorn-manager/util/fake"
 )
 
 const (
@@ -91,7 +92,7 @@ func (s *TestSuite) TestGetValidMountPoint(c *C) {
 		}()
 	}
 
-	fakeDir := lhfake.CreateTempDirectory("", c)
+	fakeDir := fake.CreateTempDirectory("", c)
 	defer func() {
 		_ = os.RemoveAll(fakeDir)
 	}()
@@ -105,7 +106,7 @@ func (s *TestSuite) TestGetValidMountPoint(c *C) {
 		c.Assert(err, IsNil)
 
 		// Create a mount file
-		fakeProcMountFile := lhfake.CreateTempFile(procPidDir, "mounts", "mock\n", c)
+		fakeProcMountFile := fake.CreateTempFile(procPidDir, "mounts", "mock\n", c)
 
 		// Seek to the end of the file and write a byte
 		_, err = fakeProcMountFile.Seek(0, io.SeekEnd)
@@ -160,7 +161,7 @@ func (s *TestSuite) TestGetValidMountPoint(c *C) {
 	for testName, testCase := range testCases {
 		c.Logf("testing util.%v", testName)
 
-		fakeProcDir := lhfake.CreateTempDirectory(fakeDir, c)
+		fakeProcDir := fake.CreateTempDirectory(fakeDir, c)
 
 		expectedMountPointPath := filepath.Join(fakeProcDir, fakeMountFileName)
 
@@ -169,7 +170,7 @@ func (s *TestSuite) TestGetValidMountPoint(c *C) {
 		}
 
 		if !testCase.isInvalidMountPointPath {
-			fakeMountFile := lhfake.CreateTempFile(fakeProcDir, fakeMountFileName, "mock", c)
+			fakeMountFile := fake.CreateTempFile(fakeProcDir, fakeMountFileName, "mock", c)
 			err := fakeMountFile.Close()
 			c.Assert(err, IsNil)
 		}
