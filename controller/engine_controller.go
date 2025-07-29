@@ -494,6 +494,11 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 
 	instanceManagerStorageIP := ec.ds.GetStorageIPFromPod(instanceManagerPod)
 
+	e.Status.Starting = true
+	if e, err = ec.ds.UpdateEngineStatus(e); err != nil {
+		return nil, errors.Wrapf(err, "failed to update engine %v status.starting to true before sending instance create request", e.Name)
+	}
+
 	return c.EngineInstanceCreate(&engineapi.EngineInstanceCreateRequest{
 		Engine:                           e,
 		VolumeFrontend:                   frontend,

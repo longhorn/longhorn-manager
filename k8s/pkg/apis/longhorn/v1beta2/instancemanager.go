@@ -102,6 +102,8 @@ type InstanceStatus struct {
 	// +optional
 	Port int `json:"port"`
 	// +optional
+	Starting bool `json:"starting"`
+	// +optional
 	Started bool `json:"started"`
 	// +optional
 	LogFetched bool `json:"logFetched"`
