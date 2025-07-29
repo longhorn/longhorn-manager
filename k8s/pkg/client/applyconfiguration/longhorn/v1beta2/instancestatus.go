@@ -32,6 +32,7 @@ type InstanceStatusApplyConfiguration struct {
 	IP                  *string                        `json:"ip,omitempty"`
 	StorageIP           *string                        `json:"storageIP,omitempty"`
 	Port                *int                           `json:"port,omitempty"`
+	Starting            *bool                          `json:"starting,omitempty"`
 	Started             *bool                          `json:"started,omitempty"`
 	LogFetched          *bool                          `json:"logFetched,omitempty"`
 	SalvageExecuted     *bool                          `json:"salvageExecuted,omitempty"`
@@ -99,6 +100,14 @@ func (b *InstanceStatusApplyConfiguration) WithStorageIP(value string) *Instance
 // If called multiple times, the Port field is set to the value of the last call.
 func (b *InstanceStatusApplyConfiguration) WithPort(value int) *InstanceStatusApplyConfiguration {
 	b.Port = &value
+	return b
+}
+
+// WithStarting sets the Starting field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Starting field is set to the value of the last call.
+func (b *InstanceStatusApplyConfiguration) WithStarting(value bool) *InstanceStatusApplyConfiguration {
+	b.Starting = &value
 	return b
 }
 
