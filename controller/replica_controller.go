@@ -380,6 +380,11 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		return nil, err
 	}
 
+	r.Status.Starting = true
+	if r, err = rc.ds.UpdateReplicaStatus(r); err != nil {
+		return nil, errors.Wrapf(err, "failed to update replica %v status.starting to true before sending instance create request", r.Name)
+	}
+
 	return c.ReplicaInstanceCreate(&engineapi.ReplicaInstanceCreateRequest{
 		Replica:             r,
 		DiskName:            diskName,
