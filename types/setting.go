@@ -555,14 +555,15 @@ var (
 	}
 
 	SettingDefinitionFreezeFilesystemForSnapshot = SettingDefinition{
-		DisplayName:          "Freeze Filesystem For Snapshot",
-		Description:          "Setting that freezes the filesystem on the root partition before a snapshot is created.",
-		Category:             SettingCategorySnapshot,
-		Type:                 SettingTypeBool,
-		Required:             true,
-		ReadOnly:             false,
-		Default:              "false",
-		DefaultsByDataEngine: map[longhorn.DataEngineType]string{},
+		DisplayName: "Freeze Filesystem For Snapshot",
+		Description: "Setting that freezes the filesystem on the root partition before a snapshot is created.",
+		Category:    SettingCategorySnapshot,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		DefaultsByDataEngine: map[longhorn.DataEngineType]string{
+			longhorn.DataEngineTypeV1: "false",
+		},
 		ApplicableDataEngines: map[longhorn.DataEngineType]bool{
 			longhorn.DataEngineTypeV1: true,
 			longhorn.DataEngineTypeV2: false,
@@ -750,7 +751,6 @@ var (
 		Type:        SettingTypeInt,
 		Required:    true,
 		ReadOnly:    false,
-		Default:     "3",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 1,
 			ValueIntRangeMaximum: 20,
@@ -1000,14 +1000,15 @@ var (
 	}
 
 	SettingDefinitionDisableRevisionCounter = SettingDefinition{
-		DisplayName:          "Disable Revision Counter",
-		Description:          "This setting is only for volumes created by UI. By default, this is true meaning Longhorn will not have revision counter file to track every write to the volume. During the salvage recovering, Longhorn will use the 'volume-head-xxx.img' file last modification time and file size to pick the replica candidate to recover the whole volume. If this setting is false, there will be a revision counter file to track every write to the volume. During salvage recovering Longhorn will pick the replica with largest revision counter as candidate to recover the whole volume.",
-		Category:             SettingCategoryGeneral,
-		Type:                 SettingTypeBool,
-		Required:             true,
-		ReadOnly:             false,
-		Default:              "true",
-		DefaultsByDataEngine: map[longhorn.DataEngineType]string{},
+		DisplayName: "Disable Revision Counter",
+		Description: "This setting is only for volumes created by UI. By default, this is true meaning Longhorn will not have revision counter file to track every write to the volume. During the salvage recovering, Longhorn will use the 'volume-head-xxx.img' file last modification time and file size to pick the replica candidate to recover the whole volume. If this setting is false, there will be a revision counter file to track every write to the volume. During salvage recovering Longhorn will pick the replica with largest revision counter as candidate to recover the whole volume.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		DefaultsByDataEngine: map[longhorn.DataEngineType]string{
+			longhorn.DataEngineTypeV1: "true",
+		},
 		ApplicableDataEngines: map[longhorn.DataEngineType]bool{
 			longhorn.DataEngineTypeV1: true,
 			longhorn.DataEngineTypeV2: false,
@@ -1216,7 +1217,6 @@ var (
 		Type:     SettingTypeFloat,
 		Required: true,
 		ReadOnly: false,
-		Default:  "12",
 		ValueFloatRange: map[string]float64{
 			ValueFloatRangeMinimum: 0,
 			ValueFloatRangeMaximum: 40,
@@ -1261,7 +1261,6 @@ var (
 		Type:     SettingTypeString,
 		Required: false,
 		ReadOnly: false,
-		Default:  "",
 		DefaultsByDataEngine: map[longhorn.DataEngineType]string{
 			longhorn.DataEngineTypeV1: "",
 			longhorn.DataEngineTypeV2: "",
@@ -1431,12 +1430,13 @@ var (
 		Type:        SettingTypeInt,
 		Required:    true,
 		ReadOnly:    false,
-		Default:     "8",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 8,
 			ValueIntRangeMaximum: 30,
 		},
-		DefaultsByDataEngine: map[longhorn.DataEngineType]string{},
+		DefaultsByDataEngine: map[longhorn.DataEngineType]string{
+			longhorn.DataEngineTypeV1: "8",
+		},
 		ApplicableDataEngines: map[longhorn.DataEngineType]bool{
 			longhorn.DataEngineTypeV1: true,
 			longhorn.DataEngineTypeV2: false,
@@ -1466,14 +1466,15 @@ var (
 	}
 
 	SettingDefinitionSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation = SettingDefinition{
-		DisplayName:          "Immediate Snapshot Data Integrity Check After Creating a Snapshot",
-		Description:          "Hashing snapshot disk files impacts the performance of the system. The immediate snapshot hashing and checking can be disabled to minimize the impact after creating a snapshot.",
-		Category:             SettingCategorySnapshot,
-		Type:                 SettingTypeBool,
-		Required:             true,
-		ReadOnly:             false,
-		Default:              "false",
-		DefaultsByDataEngine: map[longhorn.DataEngineType]string{},
+		DisplayName: "Immediate Snapshot Data Integrity Check After Creating a Snapshot",
+		Description: "Hashing snapshot disk files impacts the performance of the system. The immediate snapshot hashing and checking can be disabled to minimize the impact after creating a snapshot.",
+		Category:    SettingCategorySnapshot,
+		Type:        SettingTypeBool,
+		Required:    true,
+		ReadOnly:    false,
+		DefaultsByDataEngine: map[longhorn.DataEngineType]string{
+			longhorn.DataEngineTypeV1: "false",
+		},
 		ApplicableDataEngines: map[longhorn.DataEngineType]bool{
 			longhorn.DataEngineTypeV1: true,
 			longhorn.DataEngineTypeV2: false,
@@ -1484,12 +1485,13 @@ var (
 		DisplayName: "Snapshot Data Integrity Check CronJob",
 		Description: "Unix-cron string format. The setting specifies when Longhorn checks the data integrity of snapshot disk files. \n\n" +
 			"Warning: Hashing snapshot disk files impacts the performance of the system. It is recommended to run data integrity checks during off-peak times and to reduce the frequency of checks.",
-		Category:             SettingCategorySnapshot,
-		Type:                 SettingTypeString,
-		Required:             true,
-		ReadOnly:             false,
-		Default:              "0 0 */7 * *",
-		DefaultsByDataEngine: map[longhorn.DataEngineType]string{},
+		Category: SettingCategorySnapshot,
+		Type:     SettingTypeString,
+		Required: true,
+		ReadOnly: false,
+		DefaultsByDataEngine: map[longhorn.DataEngineType]string{
+			longhorn.DataEngineTypeV1: "0 0 */7 * *",
+		},
 		ApplicableDataEngines: map[longhorn.DataEngineType]bool{
 			longhorn.DataEngineTypeV1: true,
 			longhorn.DataEngineTypeV2: false,
@@ -1531,7 +1533,6 @@ var (
 		Type:        SettingTypeBool,
 		Required:    true,
 		ReadOnly:    false,
-		Default:     "true",
 		DefaultsByDataEngine: map[longhorn.DataEngineType]string{
 			longhorn.DataEngineTypeV1: "true",
 			longhorn.DataEngineTypeV2: "false",
@@ -1648,12 +1649,13 @@ var (
 		DisplayName: "V1 Data Engine",
 		Description: "Setting that allows you to enable the V1 Data Engine. \n\n" +
 			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached v1 volumes. \n\n",
-		Category:             SettingCategoryDangerZone,
-		Type:                 SettingTypeBool,
-		Required:             true,
-		ReadOnly:             false,
-		Default:              "true",
-		DefaultsByDataEngine: map[longhorn.DataEngineType]string{},
+		Category: SettingCategoryDangerZone,
+		Type:     SettingTypeBool,
+		Required: true,
+		ReadOnly: false,
+		DefaultsByDataEngine: map[longhorn.DataEngineType]string{
+			longhorn.DataEngineTypeV1: "true",
+		},
 		ApplicableDataEngines: map[longhorn.DataEngineType]bool{
 			longhorn.DataEngineTypeV1: true,
 			longhorn.DataEngineTypeV2: false,
@@ -1665,12 +1667,13 @@ var (
 		Description: "This setting allows users to activate v2 data engine which is based on SPDK. Currently, it is in the experimental phase and should not be utilized in a production environment.\n\n" +
 			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached v2 volumes. \n\n" +
 			"  - When the V2 Data Engine is enabled, each instance-manager pod utilizes 1 CPU core. This high CPU usage is attributed to the spdk_tgt process running within each instance-manager pod. The spdk_tgt process is responsible for handling input/output (IO) operations and requires intensive polling. As a result, it consumes 100% of a dedicated CPU core to efficiently manage and process the IO requests, ensuring optimal performance and responsiveness for storage operations. \n\n",
-		Category:             SettingCategoryDangerZone,
-		Type:                 SettingTypeBool,
-		Required:             true,
-		ReadOnly:             false,
-		Default:              "false",
-		DefaultsByDataEngine: map[longhorn.DataEngineType]string{},
+		Category: SettingCategoryDangerZone,
+		Type:     SettingTypeBool,
+		Required: true,
+		ReadOnly: false,
+		DefaultsByDataEngine: map[longhorn.DataEngineType]string{
+			longhorn.DataEngineTypeV2: "false",
+		},
 		ApplicableDataEngines: map[longhorn.DataEngineType]bool{
 			longhorn.DataEngineTypeV1: false,
 			longhorn.DataEngineTypeV2: true,
@@ -1684,11 +1687,12 @@ var (
 		Type:        SettingTypeInt,
 		Required:    true,
 		ReadOnly:    true,
-		Default:     "2048",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 		},
-		DefaultsByDataEngine: map[longhorn.DataEngineType]string{},
+		DefaultsByDataEngine: map[longhorn.DataEngineType]string{
+			longhorn.DataEngineTypeV2: "2048",
+		},
 		ApplicableDataEngines: map[longhorn.DataEngineType]bool{
 			longhorn.DataEngineTypeV1: false,
 			longhorn.DataEngineTypeV2: true,
@@ -1696,14 +1700,15 @@ var (
 	}
 
 	SettingDefinitionCPUMask = SettingDefinition{
-		DisplayName:          "CPU Mask",
-		Description:          "CPU cores on which the Storage Performance Development Kit (SPDK) target daemon should run. The SPDK target daemon is located in each Instance Manager pod. Ensure that the number of cores is less than or equal to the guaranteed Instance Manager CPUs for the V2 Data Engine. The default value is 0x1. \n\n",
-		Category:             SettingCategoryDangerZone,
-		Type:                 SettingTypeString,
-		Required:             true,
-		ReadOnly:             false,
-		Default:              "0x1",
-		DefaultsByDataEngine: map[longhorn.DataEngineType]string{},
+		DisplayName: "CPU Mask",
+		Description: "CPU cores on which the Storage Performance Development Kit (SPDK) target daemon should run. The SPDK target daemon is located in each Instance Manager pod. Ensure that the number of cores is less than or equal to the guaranteed Instance Manager CPUs for the V2 Data Engine. The default value is 0x1. \n\n",
+		Category:    SettingCategoryDangerZone,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    false,
+		DefaultsByDataEngine: map[longhorn.DataEngineType]string{
+			longhorn.DataEngineTypeV2: "0x1",
+		},
 		ApplicableDataEngines: map[longhorn.DataEngineType]bool{
 			longhorn.DataEngineTypeV1: false,
 			longhorn.DataEngineTypeV2: true,
@@ -1763,15 +1768,16 @@ var (
 	}
 
 	SettingDefinitionDataEngineLogLevel = SettingDefinition{
-		DisplayName:          "Data Engine Log Level",
-		Description:          "The log level used in SPDK target daemon (spdk_tgt) of V2 Data Engine. Supported values are: Error, Warning, Notice, Info and Debug. By default Notice.",
-		Category:             SettingCategoryGeneral,
-		Type:                 SettingTypeString,
-		Required:             true,
-		ReadOnly:             false,
-		Default:              "Notice",
-		Choices:              []string{"Error", "Warning", "Notice", "Info", "Debug"},
-		DefaultsByDataEngine: map[longhorn.DataEngineType]string{},
+		DisplayName: "Data Engine Log Level",
+		Description: "The log level used in SPDK target daemon (spdk_tgt) of V2 Data Engine. Supported values are: Error, Warning, Notice, Info and Debug. By default Notice.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    true,
+		ReadOnly:    false,
+		Choices:     []string{"Error", "Warning", "Notice", "Info", "Debug"},
+		DefaultsByDataEngine: map[longhorn.DataEngineType]string{
+			longhorn.DataEngineTypeV2: "Notice",
+		},
 		ApplicableDataEngines: map[longhorn.DataEngineType]bool{
 			longhorn.DataEngineTypeV1: false,
 			longhorn.DataEngineTypeV2: true,
@@ -1779,14 +1785,15 @@ var (
 	}
 
 	SettingDefinitionDataEngineLogFlags = SettingDefinition{
-		DisplayName:          "Data Engine Log Flags",
-		Description:          "The log flags used in SPDK target daemon (spdk_tgt) of V2 Data Engine.",
-		Category:             SettingCategoryGeneral,
-		Type:                 SettingTypeString,
-		Required:             false,
-		ReadOnly:             false,
-		Default:              "",
-		DefaultsByDataEngine: map[longhorn.DataEngineType]string{},
+		DisplayName: "Data Engine Log Flags",
+		Description: "The log flags used in SPDK target daemon (spdk_tgt) of V2 Data Engine.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeString,
+		Required:    false,
+		ReadOnly:    false,
+		DefaultsByDataEngine: map[longhorn.DataEngineType]string{
+			longhorn.DataEngineTypeV2: "",
+		},
 		ApplicableDataEngines: map[longhorn.DataEngineType]bool{
 			longhorn.DataEngineTypeV1: false,
 			longhorn.DataEngineTypeV2: true,
@@ -1798,12 +1805,13 @@ var (
 		Description: "This setting specifies the default write bandwidth limit (in megabytes per second) for volume replica rebuilding. " +
 			"If this value is set to 0, there will be no write bandwidth limitation. " +
 			"Individual volumes can override this setting by specifying their own rebuilding bandwidth limit.",
-		Category:             SettingCategoryGeneral,
-		Type:                 SettingTypeInt,
-		Required:             false,
-		ReadOnly:             false,
-		Default:              "0",
-		DefaultsByDataEngine: map[longhorn.DataEngineType]string{},
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeInt,
+		Required: false,
+		ReadOnly: false,
+		DefaultsByDataEngine: map[longhorn.DataEngineType]string{
+			longhorn.DataEngineTypeV2: "0",
+		},
 		ApplicableDataEngines: map[longhorn.DataEngineType]bool{
 			longhorn.DataEngineTypeV1: false,
 			longhorn.DataEngineTypeV2: true,
@@ -1872,12 +1880,13 @@ var (
 			"- **true**: Enables offline replica rebuilding for all detached volumes, unless overridden by individual volume settings. \n\n" +
 			"- **false**: Disables offline replica rebuilding globally, unless overridden by individual volume settings. \n\n" +
 			"**Note:** Offline rebuilding applies only when a volume is detached. Volumes in a faulted state will not trigger offline rebuilding.",
-		Category:             SettingCategoryGeneral,
-		Type:                 SettingTypeBool,
-		Required:             true,
-		ReadOnly:             false,
-		Default:              "false",
-		DefaultsByDataEngine: map[longhorn.DataEngineType]string{},
+		Category: SettingCategoryGeneral,
+		Type:     SettingTypeBool,
+		Required: true,
+		ReadOnly: false,
+		DefaultsByDataEngine: map[longhorn.DataEngineType]string{
+			longhorn.DataEngineTypeV1: "false",
+		},
 		ApplicableDataEngines: map[longhorn.DataEngineType]bool{
 			longhorn.DataEngineTypeV1: true,
 			longhorn.DataEngineTypeV2: false,
