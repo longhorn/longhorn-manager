@@ -925,16 +925,7 @@ func (c *UninstallController) deleteNodes(nodes map[string]*longhorn.Node) (err 
 				log.Info("Marked for deletion")
 			}
 		} else {
-			if errRemove := c.ds.RemoveFinalizerForNode(node); errRemove != nil {
-				if datastore.ErrorIsNotFound(errRemove) {
-					log.Info("Node is not found")
-				} else {
-					err = errors.Wrap(errRemove, "failed to remove finalizer")
-					return
-				}
-			} else {
-				log.Info("Removed finalizer")
-			}
+			log.Info("Node is marked for deletion, waiting for controller to gracefully delete it")
 		}
 	}
 	return
