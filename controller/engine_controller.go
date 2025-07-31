@@ -1318,16 +1318,21 @@ func IsValidForExpansion(engine *longhorn.Engine, cliAPIVersion, imAPIVersion in
 		return false, fmt.Errorf("the expected size %v of engine %v should not be smaller than the current size %v", engine.Spec.VolumeSize, engine.Name, engine.Status.CurrentSize)
 	}
 
-	if cliAPIVersion < engineapi.CLIAPIMinVersionForExistingEngineBeforeUpgrade {
-		return false, nil
-	}
-
 	if !engineapi.IsEndpointTGTBlockDev(engine.Status.Endpoint) {
 		return true, nil
 	}
-	if cliAPIVersion < 7 {
-		return false, fmt.Errorf("failed to do online expansion for the old engine %v with cli API version %v", engine.Name, cliAPIVersion)
+
+	// data engine cli api version only for v1
+	if types.IsDataEngineV1(engine.Spec.DataEngine) {
+		if cliAPIVersion < engineapi.CLIAPIMinVersionForExistingEngineBeforeUpgrade {
+			return false, nil
+		}
+
+		if cliAPIVersion < 7 {
+			return false, fmt.Errorf("failed to do online expansion for the old engine %v with cli API version %v", engine.Name, cliAPIVersion)
+		}
 	}
+
 	if imAPIVersion < 3 {
 		return false, fmt.Errorf("failed do online expansion for the engine %v in the instance manager with API version %v", engine.Name, imAPIVersion)
 	}
