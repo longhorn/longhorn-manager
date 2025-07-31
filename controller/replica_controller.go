@@ -453,7 +453,7 @@ func IsRebuildingReplica(r *longhorn.Replica) bool {
 func (rc *ReplicaController) CanStartRebuildingReplica(r *longhorn.Replica) (bool, error) {
 	log := getLoggerForReplica(rc.logger, r)
 
-	concurrentRebuildingLimit, err := rc.ds.GetSettingAsInt(types.SettingNameConcurrentReplicaRebuildPerNodeLimit)
+	concurrentRebuildingLimit, err := rc.ds.GetSettingAsIntByDataEngine(types.SettingNameConcurrentReplicaRebuildPerNodeLimit, r.Spec.DataEngine)
 	if err != nil {
 		return false, err
 	}

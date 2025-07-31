@@ -214,7 +214,7 @@ func (imc *InstanceManagerController) isResponsibleForSetting(obj interface{}) b
 	}
 
 	return types.SettingName(setting.Name) == types.SettingNameKubernetesClusterAutoscalerEnabled ||
-		types.SettingName(setting.Name) == types.SettingNameV2DataEngineCPUMask ||
+		types.SettingName(setting.Name) == types.SettingNameCPUMask ||
 		types.SettingName(setting.Name) == types.SettingNameOrphanResourceAutoDeletion
 }
 
@@ -549,9 +549,9 @@ func (imc *InstanceManagerController) isDateEngineCPUMaskApplied(im *longhorn.In
 		return im.Spec.DataEngineSpec.V2.CPUMask == im.Status.DataEngineStatus.V2.CPUMask, nil
 	}
 
-	setting, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngineCPUMask)
+	setting, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameCPUMask)
 	if err != nil {
-		return true, errors.Wrapf(err, "failed to get %v setting for updating data engine CPU mask", types.SettingNameV2DataEngineCPUMask)
+		return true, errors.Wrapf(err, "failed to get %v setting for updating data engine CPU mask", types.SettingNameCPUMask)
 	}
 
 	return setting.Value == im.Status.DataEngineStatus.V2.CPUMask, nil
@@ -574,8 +574,8 @@ func (imc *InstanceManagerController) syncLogSettingsToInstanceManagerPod(im *lo
 
 	settingNames := []types.SettingName{
 		types.SettingNameLogLevel,
-		types.SettingNameV2DataEngineLogLevel,
-		types.SettingNameV2DataEngineLogFlags,
+		types.SettingNameDataEngineLogLevel,
+		types.SettingNameDataEngineLogFlags,
 	}
 
 	for _, settingName := range settingNames {
@@ -591,7 +591,7 @@ func (imc *InstanceManagerController) syncLogSettingsToInstanceManagerPod(im *lo
 			if err != nil {
 				return errors.Wrapf(err, "failed to set instance-manager log level to setting %v value: %v", settingName, setting.Value)
 			}
-		case types.SettingNameV2DataEngineLogLevel:
+		case types.SettingNameDataEngineLogLevel:
 			// We use this to set the spdk_tgt log level independently of the instance-manager's.
 			if types.IsDataEngineV2(im.Spec.DataEngine) {
 				err = client.LogSetLevel(longhorn.DataEngineTypeV2, "", setting.Value)
@@ -599,7 +599,7 @@ func (imc *InstanceManagerController) syncLogSettingsToInstanceManagerPod(im *lo
 					return errors.Wrapf(err, "failed to set spdk_tgt log level to setting %v value: %v", settingName, setting.Value)
 				}
 			}
-		case types.SettingNameV2DataEngineLogFlags:
+		case types.SettingNameDataEngineLogFlags:
 			if types.IsDataEngineV2(im.Spec.DataEngine) {
 				err = client.LogSetFlags(longhorn.DataEngineTypeV2, "spdk_tgt", setting.Value)
 				if err != nil {
@@ -684,7 +684,7 @@ func (imc *InstanceManagerController) annotateCASafeToEvict(im *longhorn.Instanc
 		return nil
 	}
 
-	clusterAutoscalerEnabled, err := imc.ds.GetSettingAsBool(types.SettingNameKubernetesClusterAutoscalerEnabled)
+	clusterAutoscalerEnabled, err := imc.ds.GetSettingAsBoolByDataEngine(types.SettingNameKubernetesClusterAutoscalerEnabled, im.Spec.DataEngine)
 	if err != nil {
 		return err
 	}
@@ -742,7 +742,7 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 			isSettingSynced, err = imc.isSettingTaintTolerationSynced(setting, pod)
 		case types.SettingNameSystemManagedComponentsNodeSelector:
 			isSettingSynced, err = imc.isSettingNodeSelectorSynced(setting, pod)
-		case types.SettingNameGuaranteedInstanceManagerCPU, types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU:
+		case types.SettingNameGuaranteedInstanceManagerCPU:
 			isSettingSynced, err = imc.isSettingGuaranteedInstanceManagerCPUSynced(setting, pod)
 		case types.SettingNamePriorityClass:
 			isSettingSynced, err = imc.isSettingPriorityClassSynced(setting, pod)
@@ -818,7 +818,7 @@ func (imc *InstanceManagerController) isSettingStorageNetworkSynced(setting *lon
 func (imc *InstanceManagerController) isSettingDataEngineSynced(settingName types.SettingName, im *longhorn.InstanceManager) (bool, error) {
 	enabled, err := imc.ds.GetSettingAsBool(settingName)
 	if err != nil {
-		return false, errors.Wrapf(err, "failed to get %v setting for updating data engine", settingName)
+		return false, errors.Wrapf(err, "failed to get %v setting for checking data engine sync", settingName)
 	}
 	var dataEngine longhorn.DataEngineType
 	switch settingName {
@@ -830,6 +830,7 @@ func (imc *InstanceManagerController) isSettingDataEngineSynced(settingName type
 	if !enabled && im.Spec.DataEngine == dataEngine {
 		return false, nil
 	}
+
 	return true, nil
 }
 
@@ -934,7 +935,7 @@ func (imc *InstanceManagerController) syncInstanceManagerPDB(im *longhorn.Instan
 	//
 	// If the setting is disabled, Longhorn will blindly create IM PDBs for all
 	// engine and replica IMs.
-	clusterAutoscalerEnabled, err := imc.ds.GetSettingAsBool(types.SettingNameKubernetesClusterAutoscalerEnabled)
+	clusterAutoscalerEnabled, err := imc.ds.GetSettingAsBoolByDataEngine(types.SettingNameKubernetesClusterAutoscalerEnabled, im.Spec.DataEngine)
 	if err != nil {
 		return err
 	}
@@ -1487,7 +1488,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	if types.IsDataEngineV2(dataEngine) {
 		// spdk_tgt doesn't support log level option, so we don't need to pass the log level to the instance manager.
 		// The log level will be applied in the reconciliation of instance manager controller.
-		logFlagsSetting, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngineLogFlags)
+		logFlagsSetting, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameDataEngineLogFlags)
 		if err != nil {
 			return nil, err
 		}
@@ -1499,7 +1500,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 
 		cpuMask := im.Spec.DataEngineSpec.V2.CPUMask
 		if cpuMask == "" {
-			value, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngineCPUMask)
+			value, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameCPUMask)
 			if err != nil {
 				return nil, err
 			}
@@ -1522,7 +1523,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 
 		podSpec.Spec.Containers[0].Args = args
 
-		hugepage, err := imc.ds.GetSettingAsInt(types.SettingNameV2DataEngineHugepageLimit)
+		hugepage, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameHugepageLimit, im.Spec.DataEngine)
 		if err != nil {
 			return nil, err
 		}
@@ -1693,9 +1694,9 @@ func (imc *InstanceManagerController) deleteOrphans(im *longhorn.InstanceManager
 		autoDeleteEnabled = false
 	}
 
-	autoDeleteGracePeriod, err := imc.ds.GetSettingAsInt(types.SettingNameOrphanResourceAutoDeletionGracePeriod)
+	autoDeleteGracePeriod, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameOrphanResourceAutoDeletionGracePeriod, im.Spec.DataEngine)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get setting %v", types.SettingNameOrphanResourceAutoDeletionGracePeriod)
+		return errors.Wrapf(err, "failed to get %v setting for date engine %v", types.SettingNameOrphanResourceAutoDeletionGracePeriod, im.Spec.DataEngine)
 	}
 
 	orphanList, err := imc.ds.ListInstanceOrphansByInstanceManagerRO(im.Name)
@@ -2196,9 +2197,9 @@ func (m *InstanceManagerMonitor) syncInstances(im *longhorn.InstanceManager, ins
 		return
 	}
 
-	clusterAutoscalerEnabled, err := m.ds.GetSettingAsBool(types.SettingNameKubernetesClusterAutoscalerEnabled)
+	clusterAutoscalerEnabled, err := m.ds.GetSettingAsBoolByDataEngine(types.SettingNameKubernetesClusterAutoscalerEnabled, im.Spec.DataEngine)
 	if err != nil {
-		utilruntime.HandleError(errors.Wrapf(err, "failed to get %v setting for instance manager %v", types.SettingNameKubernetesClusterAutoscalerEnabled, m.Name))
+		utilruntime.HandleError(errors.Wrapf(err, "failed to get %v setting for data engine %v for instance manager %v", types.SettingNameKubernetesClusterAutoscalerEnabled, im.Spec.DataEngine, m.Name))
 		return
 	}
 

@@ -467,12 +467,12 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		}
 	}(c)
 
-	engineReplicaTimeout, err := ec.ds.GetSettingAsInt(types.SettingNameEngineReplicaTimeout)
+	engineReplicaTimeout, err := ec.ds.GetSettingAsIntByDataEngine(types.SettingNameEngineReplicaTimeout, e.Spec.DataEngine)
 	if err != nil {
 		return nil, err
 	}
 
-	fileSyncHTTPClientTimeout, err := ec.ds.GetSettingAsInt(types.SettingNameReplicaFileSyncHTTPClientTimeout)
+	fileSyncHTTPClientTimeout, err := ec.ds.GetSettingAsIntByDataEngine(types.SettingNameReplicaFileSyncHTTPClientTimeout, e.Spec.DataEngine)
 	if err != nil {
 		return nil, err
 	}
@@ -1171,19 +1171,19 @@ func (m *EngineMonitor) checkAndApplyRebuildQoS(engine *longhorn.Engine, engineC
 	return nil
 }
 
-func (m *EngineMonitor) getEffectiveRebuildQoS(engine *longhorn.Engine) (int64, error) {
-	globalQoS, err := m.ds.GetSettingAsInt(types.SettingNameReplicaRebuildBandwidthLimit)
+func (m *EngineMonitor) getEffectiveRebuildQoS(e *longhorn.Engine) (int64, error) {
+	globalQoS, err := m.ds.GetSettingAsIntByDataEngine(types.SettingNameReplicaRebuildBandwidthLimit, e.Spec.DataEngine)
 	if err != nil {
 		return 0, err
 	}
 
-	volume, err := m.ds.GetVolumeRO(engine.Spec.VolumeName)
+	volume, err := m.ds.GetVolumeRO(e.Spec.VolumeName)
 	if err != nil {
 		return 0, err
 	}
 
-	if volume.Spec.RebuildingMbytesPerSecond > 0 {
-		return volume.Spec.RebuildingMbytesPerSecond, nil
+	if volume.Spec.ReplicaRebuildBandwidthLimit > 0 {
+		return volume.Spec.ReplicaRebuildBandwidthLimit, nil
 	}
 
 	return globalQoS, nil
@@ -1492,10 +1492,10 @@ func checkSizeBeforeRestoration(log logrus.FieldLogger, engine *longhorn.Engine,
 	return true, nil
 }
 
-func (m *EngineMonitor) restoreBackup(engine *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, cliAPIVersion int, engineClientProxy engineapi.EngineClientProxy) error {
-	backupVolume, err := m.ds.GetBackupVolumeRO(engine.Spec.BackupVolume)
+func (m *EngineMonitor) restoreBackup(e *longhorn.Engine, rsMap map[string]*longhorn.RestoreStatus, cliAPIVersion int, engineClientProxy engineapi.EngineClientProxy) error {
+	backupVolume, err := m.ds.GetBackupVolumeRO(e.Spec.BackupVolume)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get backup volume %v for backup restoration of engine %v", engine.Spec.BackupVolume, engine.Name)
+		return errors.Wrapf(err, "failed to get backup volume %v for backup restoration of engine %v", e.Spec.BackupVolume, e.Name)
 	}
 
 	backupTarget, err := m.ds.GetBackupTargetRO(backupVolume.Spec.BackupTargetName)
@@ -1505,35 +1505,36 @@ func (m *EngineMonitor) restoreBackup(engine *longhorn.Engine, rsMap map[string]
 
 	backupTargetClient, err := newBackupTargetClientFromDefaultEngineImage(m.ds, backupTarget)
 	if err != nil {
-		return errors.Wrapf(err, "cannot get backup target config for backup restoration of engine %v", engine.Name)
+		return errors.Wrapf(err, "failed to get backup target client for backup restoration of engine %v", e.Name)
 	}
 
 	mlog := m.logger.WithFields(logrus.Fields{
 		"backupTarget":                backupTargetClient.URL,
-		"backupVolume":                engine.Spec.BackupVolume,
-		"requestedRestoredBackupName": engine.Spec.RequestedBackupRestore,
-		"lastRestoredBackupName":      engine.Status.LastRestoredBackup,
+		"backupVolume":                e.Spec.BackupVolume,
+		"requestedRestoredBackupName": e.Spec.RequestedBackupRestore,
+		"lastRestoredBackupName":      e.Status.LastRestoredBackup,
 	})
 
-	concurrentLimit, err := m.ds.GetSettingAsInt(types.SettingNameRestoreConcurrentLimit)
+	concurrentLimit, err := m.ds.GetSettingAsIntByDataEngine(types.SettingNameRestoreConcurrentLimit, e.Spec.DataEngine)
 	if err != nil {
-		return errors.Wrapf(err, "failed to assert %v value", types.SettingNameRestoreConcurrentLimit)
+		return errors.Wrapf(err, "failed to get %v setting for data engine %v for backup restoration of engine %v",
+			types.SettingNameRestoreConcurrentLimit, e.Spec.DataEngine, e.Name)
 	}
 
 	mlog.Info("Restoring backup")
 	lastRestoredBackup := ""
 	restoreErrorHandler := handleRestoreError
 	if cliAPIVersion < engineapi.CLIVersionFour {
-		lastRestoredBackup = engine.Status.LastRestoredBackup
+		lastRestoredBackup = e.Status.LastRestoredBackup
 		restoreErrorHandler = handleRestoreErrorForCompatibleEngine
 	}
-	if err = engineClientProxy.BackupRestore(engine, backupTargetClient.URL, engine.Spec.RequestedBackupRestore, backupVolume.Spec.VolumeName, lastRestoredBackup, backupTargetClient.Credential, int(concurrentLimit)); err != nil {
-		if extraErr := restoreErrorHandler(mlog, engine, rsMap, m.restoreBackoff, err); extraErr != nil {
+	if err = engineClientProxy.BackupRestore(e, backupTargetClient.URL, e.Spec.RequestedBackupRestore, backupVolume.Spec.VolumeName, lastRestoredBackup, backupTargetClient.Credential, int(concurrentLimit)); err != nil {
+		if extraErr := restoreErrorHandler(mlog, e, rsMap, m.restoreBackoff, err); extraErr != nil {
 			return extraErr
 		}
 	}
 	if err == nil {
-		m.restoreBackoff.DeleteEntry(engine.Name)
+		m.restoreBackoff.DeleteEntry(e.Name)
 	}
 
 	return nil
@@ -1644,12 +1645,12 @@ func cloneSnapshot(engine *longhorn.Engine, engineClientProxy engineapi.EngineCl
 		sourceEngine = e
 	}
 
-	fileSyncHTTPClientTimeout, err := ds.GetSettingAsInt(types.SettingNameReplicaFileSyncHTTPClientTimeout)
+	fileSyncHTTPClientTimeout, err := ds.GetSettingAsIntByDataEngine(types.SettingNameReplicaFileSyncHTTPClientTimeout, engine.Spec.DataEngine)
 	if err != nil {
 		return err
 	}
 
-	grpcTimeoutSeconds, err := ds.GetSettingAsInt(types.SettingNameLongGPRCTimeOut)
+	grpcTimeoutSeconds, err := ds.GetSettingAsIntByDataEngine(types.SettingNameLongGPRCTimeOut, engine.Spec.DataEngine)
 	if err != nil {
 		return err
 	}
@@ -1809,27 +1810,27 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 
 	replicaURL := engineapi.GetBackendReplicaURL(addr)
 	go func() {
-		autoCleanupSystemGeneratedSnapshot, err := ec.ds.GetSettingAsBool(types.SettingNameAutoCleanupSystemGeneratedSnapshot)
+		autoCleanupSystemGeneratedSnapshot, err := ec.ds.GetSettingAsBoolByDataEngine(types.SettingNameAutoCleanupSystemGeneratedSnapshot, e.Spec.DataEngine)
 		if err != nil {
-			log.WithError(err).Errorf("Failed to get %v setting", types.SettingDefinitionAutoCleanupSystemGeneratedSnapshot)
+			log.WithError(err).Errorf("Failed to get %v setting for data engine %v", types.SettingNameAutoCleanupSystemGeneratedSnapshot, e.Spec.DataEngine)
 			return
 		}
 
-		fastReplicaRebuild, err := ec.ds.GetSettingAsBool(types.SettingNameFastReplicaRebuildEnabled)
+		fastReplicaRebuild, err := ec.ds.GetSettingAsBoolByDataEngine(types.SettingNameFastReplicaRebuildEnabled, e.Spec.DataEngine)
 		if err != nil {
-			log.WithError(err).Errorf("Failed to get %v setting", types.SettingNameFastReplicaRebuildEnabled)
+			log.WithError(err).Errorf("Failed to get %v setting for data engine %v", types.SettingNameFastReplicaRebuildEnabled, e.Spec.DataEngine)
 			return
 		}
 
-		fileSyncHTTPClientTimeout, err := ec.ds.GetSettingAsInt(types.SettingNameReplicaFileSyncHTTPClientTimeout)
+		fileSyncHTTPClientTimeout, err := ec.ds.GetSettingAsIntByDataEngine(types.SettingNameReplicaFileSyncHTTPClientTimeout, e.Spec.DataEngine)
 		if err != nil {
-			log.WithError(err).Errorf("Failed to get %v setting", types.SettingNameReplicaFileSyncHTTPClientTimeout)
+			log.WithError(err).Errorf("Failed to get %v setting for data engine %v", types.SettingNameReplicaFileSyncHTTPClientTimeout, e.Spec.DataEngine)
 			return
 		}
 
-		grpcTimeoutSeconds, err := ec.ds.GetSettingAsInt(types.SettingNameLongGPRCTimeOut)
+		grpcTimeoutSeconds, err := ec.ds.GetSettingAsIntByDataEngine(types.SettingNameLongGPRCTimeOut, e.Spec.DataEngine)
 		if err != nil {
-			log.WithError(err).Errorf("Failed to get %v setting", types.SettingNameLongGPRCTimeOut)
+			log.WithError(err).Errorf("Failed to get %v setting for data engine %v", types.SettingNameLongGPRCTimeOut, e.Spec.DataEngine)
 			return
 		}
 
@@ -2218,12 +2219,12 @@ func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logru
 		}
 	}(c)
 
-	engineReplicaTimeout, err := ec.ds.GetSettingAsInt(types.SettingNameEngineReplicaTimeout)
+	engineReplicaTimeout, err := ec.ds.GetSettingAsIntByDataEngine(types.SettingNameEngineReplicaTimeout, e.Spec.DataEngine)
 	if err != nil {
 		return err
 	}
 
-	fileSyncHTTPClientTimeout, err := ec.ds.GetSettingAsInt(types.SettingNameReplicaFileSyncHTTPClientTimeout)
+	fileSyncHTTPClientTimeout, err := ec.ds.GetSettingAsIntByDataEngine(types.SettingNameReplicaFileSyncHTTPClientTimeout, e.Spec.DataEngine)
 	if err != nil {
 		return err
 	}

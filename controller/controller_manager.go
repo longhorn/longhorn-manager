@@ -3,7 +3,6 @@ package controller
 import (
 	"fmt"
 	"math"
-	"strconv"
 	"time"
 
 	"github.com/pkg/errors"
@@ -262,11 +261,7 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 	case longhorn.DataEngineTypeV1:
 		cpuRequest = lhNode.Spec.InstanceManagerCPURequest
 		if cpuRequest == 0 {
-			guaranteedCPUSetting, err := ds.GetSettingWithAutoFillingRO(types.SettingNameGuaranteedInstanceManagerCPU)
-			if err != nil {
-				return nil, err
-			}
-			guaranteedCPUPercentage, err := strconv.ParseFloat(guaranteedCPUSetting.Value, 64)
+			guaranteedCPUPercentage, err := ds.GetSettingAsFloatWithAutoFillingByDataEngine(types.SettingNameGuaranteedInstanceManagerCPU, im.Spec.DataEngine)
 			if err != nil {
 				return nil, err
 			}
@@ -274,16 +269,17 @@ func GetInstanceManagerCPURequirement(ds *datastore.DataStore, imName string) (*
 			cpuRequest = int(math.Round(allocatableMilliCPU * guaranteedCPUPercentage / 100.0))
 		}
 	case longhorn.DataEngineTypeV2:
-		// TODO: Support CPU request per node for v2 volumes
-		guaranteedCPUSetting, err := ds.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU)
-		if err != nil {
-			return nil, err
+		// TODO: Currently lhNode.Spec.InstanceManagerCPURequest is applied to both v1 and v2 data engines.
+		// In the future, we may want to support different CPU requests for them.
+		cpuRequest = lhNode.Spec.InstanceManagerCPURequest
+		if cpuRequest == 0 {
+			guaranteedCPUPercentage, err := ds.GetSettingAsFloatWithAutoFillingByDataEngine(types.SettingNameGuaranteedInstanceManagerCPU, im.Spec.DataEngine)
+			if err != nil {
+				return nil, err
+			}
+			allocatableMilliCPU := float64(kubeNode.Status.Allocatable.Cpu().MilliValue())
+			cpuRequest = int(math.Round(allocatableMilliCPU * guaranteedCPUPercentage / 100.0))
 		}
-		guaranteedCPURequest, err := strconv.ParseFloat(guaranteedCPUSetting.Value, 64)
-		if err != nil {
-			return nil, err
-		}
-		cpuRequest = int(guaranteedCPURequest)
 	default:
 		return nil, fmt.Errorf("unknown data engine %v", im.Spec.DataEngine)
 	}

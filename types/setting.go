@@ -1923,23 +1923,18 @@ func GetCustomizedDefaultSettings(defaultSettingCM *corev1.ConfigMap) (defaultSe
 		defaultSettings[name] = value
 	}
 
-	// GuaranteedInstanceManagerCPU for v1 data engine
-	guaranteedInstanceManagerCPU := SettingDefinitionGuaranteedInstanceManagerCPU.Default
+	guaranteedInstanceManagerCPUStr := SettingDefinitionGuaranteedInstanceManagerCPU.Default
 	if defaultSettings[string(SettingNameGuaranteedInstanceManagerCPU)] != "" {
-		guaranteedInstanceManagerCPU = defaultSettings[string(SettingNameGuaranteedInstanceManagerCPU)]
+		guaranteedInstanceManagerCPUStr = defaultSettings[string(SettingNameGuaranteedInstanceManagerCPU)]
 	}
-	if err := ValidateCPUReservationValues(SettingNameGuaranteedInstanceManagerCPU, guaranteedInstanceManagerCPU); err != nil {
-		logrus.WithError(err).Error("Customized settings GuaranteedInstanceManagerCPU is invalid, will give up using it")
-		defaultSettings = map[string]string{}
+	// Convert string to float64
+	guaranteedInstanceManagerCPU, err := strconv.ParseFloat(guaranteedInstanceManagerCPUStr, 64)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to parse GuaranteedInstanceManagerCPU value %v", guaranteedInstanceManagerCPUStr)
 	}
 
-	// GuaranteedInstanceManagerCPU for v2 data engine
-	v2DataEngineGuaranteedInstanceManagerCPU := SettingDefinitionV2DataEngineGuaranteedInstanceManagerCPU.Default
-	if defaultSettings[string(SettingNameV2DataEngineGuaranteedInstanceManagerCPU)] != "" {
-		v2DataEngineGuaranteedInstanceManagerCPU = defaultSettings[string(SettingNameV2DataEngineGuaranteedInstanceManagerCPU)]
-	}
-	if err := ValidateCPUReservationValues(SettingNameV2DataEngineGuaranteedInstanceManagerCPU, v2DataEngineGuaranteedInstanceManagerCPU); err != nil {
-		logrus.WithError(err).Error("Customized settings V2DataEngineGuaranteedInstanceManagerCPU is invalid, will give up using it")
+	if err := ValidateGuaranteedInstanceManagerCPUValue(guaranteedInstanceManagerCPU); err != nil {
+		logrus.WithError(err).Error("Customized settings GuaranteedInstanceManagerCPU is invalid, will give up using it")
 		defaultSettings = map[string]string{}
 	}
 

@@ -286,7 +286,7 @@ func (vbc *VolumeRebuildingController) reconcile(volName string) (err error) {
 		}
 	}()
 
-	isOfflineRebuildEnabled, err := vbc.isVolumeOfflineRebuildEnabled(vol.Spec.OfflineRebuilding)
+	isOfflineRebuildEnabled, err := vbc.isVolumeOfflineRebuildEnabled(vol)
 	if err != nil {
 		return err
 	}
@@ -343,16 +343,16 @@ func (vbc *VolumeRebuildingController) reconcile(volName string) (err error) {
 	return nil
 }
 
-func (vbc *VolumeRebuildingController) isVolumeOfflineRebuildEnabled(offlineRebuilding longhorn.VolumeOfflineRebuilding) (bool, error) {
-	if offlineRebuilding == longhorn.VolumeOfflineRebuildingEnabled {
+func (vbc *VolumeRebuildingController) isVolumeOfflineRebuildEnabled(vol *longhorn.Volume) (bool, error) {
+	if vol.Spec.OfflineRebuilding == longhorn.VolumeOfflineRebuildingEnabled {
 		return true, nil
 	}
 
-	globalOfflineRebuildingEnabled, err := vbc.ds.GetSettingAsBool(types.SettingNameOfflineReplicaRebuilding)
+	globalOfflineRebuildingEnabled, err := vbc.ds.GetSettingAsBoolByDataEngine(types.SettingNameOfflineReplicaRebuilding, vol.Spec.DataEngine)
 	if err != nil {
 		return false, err
 	}
-	return globalOfflineRebuildingEnabled && offlineRebuilding != longhorn.VolumeOfflineRebuildingDisabled, nil
+	return globalOfflineRebuildingEnabled && vol.Spec.OfflineRebuilding != longhorn.VolumeOfflineRebuildingDisabled, nil
 }
 
 func (vbc *VolumeRebuildingController) syncLHVolumeAttachmentForOfflineRebuild(vol *longhorn.Volume, va *longhorn.VolumeAttachment, attachmentID string) (*longhorn.VolumeAttachment, error) {
