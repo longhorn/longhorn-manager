@@ -100,7 +100,8 @@ func (s *DataStore) createNonExistingSettingCRsWithDefaultSetting(configMapResou
 					Name:        string(sName),
 					Annotations: map[string]string{types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey): configMapResourceVersion},
 				},
-				Value: definition.Default,
+				Value:                definition.Default,
+				DefaultsByDataEngine: definition.DefaultsByDataEngine,
 			}
 
 			if _, err := s.CreateSetting(setting); err != nil && !apierrors.IsAlreadyExists(err) {
@@ -196,12 +197,18 @@ func (s *DataStore) createOrUpdateSetting(name types.SettingName, value, default
 			return err
 		}
 
+		definition, ok := types.GetSettingDefinition(name)
+		if !ok {
+			return fmt.Errorf("BUG: setting %v is not defined", name)
+		}
+
 		setting = &longhorn.Setting{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:        string(name),
 				Annotations: map[string]string{types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey): defaultSettingCMResourceVersion},
 			},
-			Value: value,
+			Value:                value,
+			DefaultsByDataEngine: definition.DefaultsByDataEngine,
 		}
 
 		if _, err = s.CreateSetting(setting); err != nil && !apierrors.IsAlreadyExists(err) {
