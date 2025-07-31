@@ -549,12 +549,12 @@ func (imc *InstanceManagerController) isDateEngineCPUMaskApplied(im *longhorn.In
 		return im.Spec.DataEngineSpec.V2.CPUMask == im.Status.DataEngineStatus.V2.CPUMask, nil
 	}
 
-	setting, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameCPUMask)
+	value, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameCPUMask, im.Spec.DataEngine)
 	if err != nil {
 		return true, errors.Wrapf(err, "failed to get %v setting for updating data engine CPU mask", types.SettingNameCPUMask)
 	}
 
-	return setting.Value == im.Status.DataEngineStatus.V2.CPUMask, nil
+	return value == im.Status.DataEngineStatus.V2.CPUMask, nil
 }
 
 func (imc *InstanceManagerController) syncLogSettingsToInstanceManagerPod(im *longhorn.InstanceManager) error {
@@ -594,16 +594,22 @@ func (imc *InstanceManagerController) syncLogSettingsToInstanceManagerPod(im *lo
 		case types.SettingNameDataEngineLogLevel:
 			// We use this to set the spdk_tgt log level independently of the instance-manager's.
 			if types.IsDataEngineV2(im.Spec.DataEngine) {
-				err = client.LogSetLevel(longhorn.DataEngineTypeV2, "", setting.Value)
-				if err != nil {
-					return errors.Wrapf(err, "failed to set spdk_tgt log level to setting %v value: %v", settingName, setting.Value)
+				value, ok := setting.ValuesByDataEngine[longhorn.DataEngineTypeV2]
+				if ok {
+					err = client.LogSetLevel(longhorn.DataEngineTypeV2, "", value)
+					if err != nil {
+						return errors.Wrapf(err, "failed to set spdk_tgt log level to setting %v value: %v", settingName, setting.Value)
+					}
 				}
 			}
 		case types.SettingNameDataEngineLogFlags:
 			if types.IsDataEngineV2(im.Spec.DataEngine) {
-				err = client.LogSetFlags(longhorn.DataEngineTypeV2, "spdk_tgt", setting.Value)
-				if err != nil {
-					return errors.Wrapf(err, "failed to set spdk_tgt log flags to setting %v value: %v", settingName, setting.Value)
+				value, ok := setting.ValuesByDataEngine[longhorn.DataEngineTypeV2]
+				if ok {
+					err = client.LogSetFlags(longhorn.DataEngineTypeV2, "spdk_tgt", value)
+					if err != nil {
+						return errors.Wrapf(err, "failed to set spdk_tgt log flags to setting %v value: %v", settingName, setting.Value)
+					}
 				}
 			}
 		}
@@ -1488,24 +1494,27 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	if types.IsDataEngineV2(dataEngine) {
 		// spdk_tgt doesn't support log level option, so we don't need to pass the log level to the instance manager.
 		// The log level will be applied in the reconciliation of instance manager controller.
-		logFlagsSetting, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameDataEngineLogFlags)
+		logFlagsSetting, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineLogFlags, dataEngine)
 		if err != nil {
 			return nil, err
 		}
 
 		logFlags := "all"
-		if logFlagsSetting.Value != "" {
-			logFlags = strings.ToLower(logFlagsSetting.Value)
+		if logFlagsSetting != "" {
+			logFlags = strings.ToLower(logFlagsSetting)
 		}
 
 		cpuMask := im.Spec.DataEngineSpec.V2.CPUMask
 		if cpuMask == "" {
-			value, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameCPUMask)
+			value, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameCPUMask, dataEngine)
 			if err != nil {
 				return nil, err
 			}
 
-			cpuMask = value.Value
+			cpuMask = value
+			if cpuMask == "" {
+				return nil, fmt.Errorf("failed to get CPU mask setting for data engine %v", dataEngine)
+			}
 		}
 
 		im.Status.DataEngineStatus.V2.CPUMask = cpuMask
@@ -1694,9 +1703,9 @@ func (imc *InstanceManagerController) deleteOrphans(im *longhorn.InstanceManager
 		autoDeleteEnabled = false
 	}
 
-	autoDeleteGracePeriod, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameOrphanResourceAutoDeletionGracePeriod, im.Spec.DataEngine)
+	autoDeleteGracePeriod, err := imc.ds.GetSettingAsInt(types.SettingNameOrphanResourceAutoDeletionGracePeriod)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get %v setting for date engine %v", types.SettingNameOrphanResourceAutoDeletionGracePeriod, im.Spec.DataEngine)
+		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameOrphanResourceAutoDeletionGracePeriod)
 	}
 
 	orphanList, err := imc.ds.ListInstanceOrphansByInstanceManagerRO(im.Name)

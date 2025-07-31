@@ -1253,10 +1253,10 @@ func ValidateGuaranteedInstanceManagerCPUSetting(instanceManagerCPUSetting *long
 	valueToBeValidated["default"] = defaultValue
 
 	// per data engine value
-	for dataEngine, str := range instanceManagerCPUSetting.DefaultsByDataEngine {
+	for dataEngine, str := range instanceManagerCPUSetting.ValuesByDataEngine {
 		value, err := strconv.ParseFloat(str, 64)
 		if err != nil {
-			return errors.Wrapf(err, "failed to parse instance manager CPU setting default value %v for data engine %v", str, dataEngine)
+			return errors.Wrapf(err, "failed to parse instance manager CPU setting value %v for data engine %v", str, dataEngine)
 		}
 		valueToBeValidated[string(dataEngine)] = value
 	}

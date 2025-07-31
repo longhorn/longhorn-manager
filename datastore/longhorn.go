@@ -2,6 +2,7 @@ package datastore
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/bits"
 	"math/rand"
@@ -22,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/client-go/util/retry"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -103,8 +105,8 @@ func (s *DataStore) createNonExistingSettingCRsWithDefaultSetting(configMapResou
 					Name:        string(sName),
 					Annotations: map[string]string{types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey): configMapResourceVersion},
 				},
-				Value:                definition.Default,
-				DefaultsByDataEngine: definition.DefaultsByDataEngine,
+				Value:              definition.Default,
+				ValuesByDataEngine: definition.DefaultsByDataEngine,
 			}
 
 			if _, err := s.CreateSetting(setting); err != nil && !apierrors.IsAlreadyExists(err) {
@@ -223,25 +225,76 @@ func (s *DataStore) syncConsolidatedV2DataEngineSettings() error {
 	return nil
 }
 
+func (s *DataStore) GetValuesByDataEngineFromValue(name types.SettingName, value string) (map[longhorn.DataEngineType]string, error) {
+	definition, ok := types.GetSettingDefinition(name)
+	if !ok {
+		return nil, fmt.Errorf("failed to get setting definition for %v", name)
+	}
+
+	defaultsByDataEngine := make(map[longhorn.DataEngineType]string)
+
+	if strings.HasPrefix(strings.TrimSpace(value), "{") {
+		var jsonValues map[longhorn.DataEngineType]string
+		if err := json.Unmarshal([]byte(value), &jsonValues); err != nil {
+			return nil, errors.Wrap(err, "failed to parse JSON format")
+		}
+
+		for dataEngine, valueStr := range jsonValues {
+			applicable, exist := definition.ApplicableDataEngines[dataEngine]
+			if exist && applicable {
+				defaultsByDataEngine[dataEngine] = valueStr
+			}
+		}
+	} else {
+		applicableDataEngines := definition.ApplicableDataEngines
+
+		perDataEngineDefaultsSupported, err := s.IsPerDataEngineDefaultsSupported(name)
+		if err != nil {
+			return nil, err
+		}
+
+		if perDataEngineDefaultsSupported {
+			for dataEngine, applicable := range applicableDataEngines {
+				if applicable {
+					defaultsByDataEngine[dataEngine] = value
+				}
+			}
+		}
+	}
+
+	return defaultsByDataEngine, nil
+}
+
+// createOrUpdateSetting creates or updates a Longhorn Setting resource with the given name and value.
+// The value can be a string or a JSON object with data engine specific values.
+// If the value is a json object, it is expected to be in the format:
+// {"v1": "value1", "v2": "value2", ...}
 func (s *DataStore) createOrUpdateSetting(name types.SettingName, value, defaultSettingCMResourceVersion string) error {
+	settingValue := ""
+
+	if perDataEngineDefaultsSupported, err := s.IsPerDataEngineDefaultsSupported(name); err != nil {
+		return err
+	} else if !perDataEngineDefaultsSupported {
+		settingValue = value
+	}
+
+	settingValuesByDataEngine, err := s.GetValuesByDataEngineFromValue(name, value)
+	if err != nil {
+		return err
+	}
+
 	setting, err := s.GetSettingExact(name)
 	if err != nil {
 		if !ErrorIsNotFound(err) {
 			return err
 		}
-
-		definition, ok := types.GetSettingDefinition(name)
-		if !ok {
-			return fmt.Errorf("BUG: setting %v is not defined", name)
-		}
-
 		setting = &longhorn.Setting{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:        string(name),
 				Annotations: map[string]string{types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey): defaultSettingCMResourceVersion},
 			},
-			Value:                value,
-			DefaultsByDataEngine: definition.DefaultsByDataEngine,
+			Value:              settingValue,
+			ValuesByDataEngine: settingValuesByDataEngine,
 		}
 
 		if _, err = s.CreateSetting(setting); err != nil && !apierrors.IsAlreadyExists(err) {
@@ -260,7 +313,8 @@ func (s *DataStore) createOrUpdateSetting(name types.SettingName, value, default
 		}
 	}
 	setting.Annotations[types.GetLonghornLabelKey(types.ConfigMapResourceVersionKey)] = defaultSettingCMResourceVersion
-	setting.Value = value
+	setting.Value = settingValue
+	setting.ValuesByDataEngine = settingValuesByDataEngine
 
 	_, err = s.UpdateSetting(setting)
 	return err
@@ -285,22 +339,49 @@ func (s *DataStore) applyCustomizedDefaultSettingsToDefinitions(customizedDefaul
 	return nil
 }
 
+func (s *DataStore) IsPerDataEngineDefaultsSupported(sName types.SettingName) (bool, error) {
+	definition, ok := types.GetSettingDefinition(sName)
+	if !ok {
+		return false, fmt.Errorf("setting %v is not defined", sName)
+	}
+
+	for dataEngine, applicable := range definition.ApplicableDataEngines {
+		if dataEngine == longhorn.DataEngineTypeAll {
+			return false, nil
+		}
+
+		if applicable {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 func (s *DataStore) syncSettingCRsWithCustomizedDefaultSettings(customizedDefaultSettings map[string]string, defaultSettingCMResourceVersion string) error {
 	for _, sName := range types.SettingNameList {
 		definition, ok := types.GetSettingDefinition(sName)
 		if !ok {
-			return fmt.Errorf("BUG: setting %v is not defined", sName)
+			return fmt.Errorf("setting %v is not supported", sName)
 		}
 
 		value, exist := customizedDefaultSettings[string(sName)]
 		if !exist {
+			logrus.Infof("Debug --> skipping setting %v as it is not in the customized default settings", sName)
 			continue
 		}
 
-		if definition.Required && value == "" {
+		perDataEngineDefaultsSupported, err := s.IsPerDataEngineDefaultsSupported(sName)
+		if err != nil {
+			return err
+		}
+
+		if definition.Required && !perDataEngineDefaultsSupported && value == "" {
+			logrus.Infof("Debug --> skipping setting %v as it is required but has no value", sName)
 			continue
 		}
 
+		logrus.Infof("Debug --> setting %v with value %v", sName, value)
 		if err := s.createOrUpdateSetting(sName, value, defaultSettingCMResourceVersion); err != nil {
 			return err
 		}
@@ -341,13 +422,21 @@ func (s *DataStore) UpdateSetting(setting *longhorn.Setting) (*longhorn.Setting,
 	setting.Annotations[types.GetLonghornLabelKey(types.UpdateSettingFromLonghorn)] = ""
 	obj, err := s.lhClient.LonghornV1beta2().Settings(s.namespace).Update(context.TODO(), setting, metav1.UpdateOptions{})
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "AAAAAAAA failed to update setting %v", setting.Name)
 	}
 
-	delete(obj.Annotations, types.GetLonghornLabelKey(types.UpdateSettingFromLonghorn))
-	obj, err = s.lhClient.LonghornV1beta2().Settings(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest, getErr := s.lhClient.LonghornV1beta2().Settings(s.namespace).Get(context.TODO(), setting.Name, metav1.GetOptions{})
+		if getErr != nil {
+			return getErr
+		}
+
+		delete(latest.Annotations, types.GetLonghornLabelKey(types.UpdateSettingFromLonghorn))
+		obj, err = s.lhClient.LonghornV1beta2().Settings(s.namespace).Update(context.TODO(), latest, metav1.UpdateOptions{})
+		return err
+	})
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "BBBBBBB failed to update setting %v", setting.Name)
 	}
 
 	verifyUpdate(setting.Name, obj, func(name string) (k8sruntime.Object, error) {
@@ -390,14 +479,14 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 				return errors.Wrapf(err, "failed to get priority class %v before modifying priority class setting", value)
 			}
 		}
-	case types.SettingNameGuaranteedInstanceManagerCPU:
-		guaranteedInstanceManagerCPU, err := s.GetSettingWithAutoFillingRO(sName)
-		if err != nil {
-			return err
-		}
-		if err := types.ValidateGuaranteedInstanceManagerCPUSetting(guaranteedInstanceManagerCPU); err != nil {
-			return err
-		}
+	// case types.SettingNameGuaranteedInstanceManagerCPU:
+	// 	guaranteedInstanceManagerCPU, err := s.GetSettingWithAutoFillingRO(sName)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	if err := types.ValidateGuaranteedInstanceManagerCPUSetting(guaranteedInstanceManagerCPU); err != nil {
+	// 		return err
+	// 	}
 	case types.SettingNameV1DataEngine:
 		old, err := s.GetSettingWithAutoFillingRO(types.SettingNameV1DataEngine)
 		if err != nil {
@@ -811,31 +900,24 @@ func (s *DataStore) GetSettingValueExisted(sName types.SettingName) (string, err
 	return setting.Value, nil
 }
 
-// GetSettingValueExistedByDataEngine returns the value of the given setting name and data engine.
-// If the per-data-engine value is not specified, it will return the default value.
+// GetSettingValueExistedByDataEngine returns the value of the given setting name for a specific data engine.
+// Returns error if the setting does not have a value for the given data engine.
 func (s *DataStore) GetSettingValueExistedByDataEngine(sName types.SettingName, dataEngine longhorn.DataEngineType) (string, error) {
-	if string(dataEngine) == "" {
-		// Fall back to the default data engine type if data engine is not specified
-		dataEngine = longhorn.DataEngineTypeV1
-	}
-
 	setting, err := s.GetSettingWithAutoFillingRO(sName)
 	if err != nil {
 		return "", err
 	}
 
-	value := setting.Value
-	if setting.DefaultsByDataEngine != nil {
-		valueByEngine, ok := setting.DefaultsByDataEngine[dataEngine]
-		if ok && valueByEngine != "" {
-			value = valueByEngine
-		}
+	if setting.ValuesByDataEngine == nil {
+		return "", fmt.Errorf("defaultsByDataEngine is not set for setting %v", sName)
 	}
 
-	if value == "" {
-		return "", fmt.Errorf("setting %v is empty", sName)
+	valueByEngine, ok := setting.ValuesByDataEngine[dataEngine]
+	if ok {
+		return valueByEngine, nil
 	}
-	return value, nil
+
+	return "", fmt.Errorf("setting %v does not have a value for data engine %v", sName, dataEngine)
 }
 
 // ListSettings lists all Settings in the namespace, and fill with default
@@ -3634,8 +3716,8 @@ func (s *DataStore) GetSettingAsFloatWithAutoFillingByDataEngine(settingName typ
 	}
 
 	value := setting.Value
-	if setting.DefaultsByDataEngine != nil {
-		valueByEngine, ok := setting.DefaultsByDataEngine[dataEngine]
+	if setting.ValuesByDataEngine != nil {
+		valueByEngine, ok := setting.ValuesByDataEngine[dataEngine]
 		if ok && valueByEngine != "" {
 			value = valueByEngine
 		}
@@ -3717,8 +3799,8 @@ func (s *DataStore) GetSettingAsIntByDataEngine(settingName types.SettingName, d
 	}
 
 	value := setting.Value
-	if setting.DefaultsByDataEngine != nil {
-		valueByEngine, ok := setting.DefaultsByDataEngine[dataEngine]
+	if setting.ValuesByDataEngine != nil {
+		valueByEngine, ok := setting.ValuesByDataEngine[dataEngine]
 		if ok && valueByEngine != "" {
 			value = valueByEngine
 		}
@@ -3779,8 +3861,8 @@ func (s *DataStore) GetSettingAsBoolByDataEngine(settingName types.SettingName, 
 	}
 
 	value := setting.Value
-	if setting.DefaultsByDataEngine != nil {
-		valueByEngine, ok := setting.DefaultsByDataEngine[dataEngine]
+	if setting.ValuesByDataEngine != nil {
+		valueByEngine, ok := setting.ValuesByDataEngine[dataEngine]
 		if ok && valueByEngine != "" {
 			value = valueByEngine
 		}

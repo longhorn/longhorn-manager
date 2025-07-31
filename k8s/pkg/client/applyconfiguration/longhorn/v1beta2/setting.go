@@ -32,7 +32,7 @@ type SettingApplyConfiguration struct {
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
 	Value                            *string                                   `json:"value,omitempty"`
 	Status                           *SettingStatusApplyConfiguration          `json:"status,omitempty"`
-	DefaultsByDataEngine             map[longhornv1beta2.DataEngineType]string `json:"defaultsByDataEngine,omitempty"`
+	ValuesByDataEngine               map[longhornv1beta2.DataEngineType]string `json:"defaultsByDataEngine,omitempty"`
 }
 
 // Setting constructs a declarative configuration of the Setting type for use with
@@ -220,16 +220,16 @@ func (b *SettingApplyConfiguration) WithStatus(value *SettingStatusApplyConfigur
 	return b
 }
 
-// WithDefaultsByDataEngine puts the entries into the DefaultsByDataEngine field in the declarative configuration
+// WithValuesByDataEngine puts the entries into the ValuesByDataEngine field in the declarative configuration
 // and returns the receiver, so that objects can be build by chaining "With" function invocations.
-// If called multiple times, the entries provided by each call will be put on the DefaultsByDataEngine field,
-// overwriting an existing map entries in DefaultsByDataEngine field with the same key.
-func (b *SettingApplyConfiguration) WithDefaultsByDataEngine(entries map[longhornv1beta2.DataEngineType]string) *SettingApplyConfiguration {
-	if b.DefaultsByDataEngine == nil && len(entries) > 0 {
-		b.DefaultsByDataEngine = make(map[longhornv1beta2.DataEngineType]string, len(entries))
+// If called multiple times, the entries provided by each call will be put on the ValuesByDataEngine field,
+// overwriting an existing map entries in ValuesByDataEngine field with the same key.
+func (b *SettingApplyConfiguration) WithValuesByDataEngine(entries map[longhornv1beta2.DataEngineType]string) *SettingApplyConfiguration {
+	if b.ValuesByDataEngine == nil && len(entries) > 0 {
+		b.ValuesByDataEngine = make(map[longhornv1beta2.DataEngineType]string, len(entries))
 	}
 	for k, v := range entries {
-		b.DefaultsByDataEngine[k] = v
+		b.ValuesByDataEngine[k] = v
 	}
 	return b
 }

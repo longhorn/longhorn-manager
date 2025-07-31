@@ -19,9 +19,9 @@ type Setting struct {
 	Value string `json:"value"`
 	// The status of the setting.
 	Status SettingStatus `json:"status,omitempty"`
-	// Default values for the setting based on the data engine type.
+	// Values for the setting based on the data engine type.
 	// If the value for a specific data engine type is not set, the default value will be used.
-	DefaultsByDataEngine map[DataEngineType]string `json:"defaultsByDataEngine,omitempty"`
+	ValuesByDataEngine map[DataEngineType]string `json:"defaultsByDataEngine,omitempty"`
 }
 
 // SettingStatus defines the observed state of the Longhorn setting

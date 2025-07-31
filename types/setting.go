@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -1261,13 +1262,9 @@ var (
 		Type:     SettingTypeString,
 		Required: false,
 		ReadOnly: false,
-		DefaultsByDataEngine: map[longhorn.DataEngineType]string{
-			longhorn.DataEngineTypeV1: "",
-			longhorn.DataEngineTypeV2: "",
-		},
+		Default:  "",
 		ApplicableDataEngines: map[longhorn.DataEngineType]bool{
-			longhorn.DataEngineTypeV1: true,
-			longhorn.DataEngineTypeV2: true,
+			longhorn.DataEngineTypeAll: true,
 		},
 	}
 
@@ -1489,12 +1486,9 @@ var (
 		Type:     SettingTypeString,
 		Required: true,
 		ReadOnly: false,
-		DefaultsByDataEngine: map[longhorn.DataEngineType]string{
-			longhorn.DataEngineTypeV1: "0 0 */7 * *",
-		},
+		Default:  "0 0 */7 * *",
 		ApplicableDataEngines: map[longhorn.DataEngineType]bool{
-			longhorn.DataEngineTypeV1: true,
-			longhorn.DataEngineTypeV2: false,
+			longhorn.DataEngineTypeAll: true,
 		},
 	}
 
@@ -1653,12 +1647,9 @@ var (
 		Type:     SettingTypeBool,
 		Required: true,
 		ReadOnly: false,
-		DefaultsByDataEngine: map[longhorn.DataEngineType]string{
-			longhorn.DataEngineTypeV1: "true",
-		},
+		Default:  "true",
 		ApplicableDataEngines: map[longhorn.DataEngineType]bool{
-			longhorn.DataEngineTypeV1: true,
-			longhorn.DataEngineTypeV2: false,
+			longhorn.DataEngineTypeAll: true,
 		},
 	}
 
@@ -1671,12 +1662,9 @@ var (
 		Type:     SettingTypeBool,
 		Required: true,
 		ReadOnly: false,
-		DefaultsByDataEngine: map[longhorn.DataEngineType]string{
-			longhorn.DataEngineTypeV2: "false",
-		},
+		Default:  "false",
 		ApplicableDataEngines: map[longhorn.DataEngineType]bool{
-			longhorn.DataEngineTypeV1: false,
-			longhorn.DataEngineTypeV2: true,
+			longhorn.DataEngineTypeAll: true,
 		},
 	}
 
@@ -1950,7 +1938,9 @@ func ValidateSetting(name, value string) (err error) {
 	if !ok {
 		return fmt.Errorf("setting %v is not supported", sName)
 	}
-	if definition.Required && value == "" {
+	_, applyToAllDataEngines := definition.ApplicableDataEngines[longhorn.DataEngineTypeAll]
+
+	if definition.Required && applyToAllDataEngines && value == "" {
 		return fmt.Errorf("required setting %v shouldn't be empty", sName)
 	}
 
@@ -2021,21 +2011,6 @@ func GetCustomizedDefaultSettings(defaultSettingCM *corev1.ConfigMap) (defaultSe
 			break
 		}
 		defaultSettings[name] = value
-	}
-
-	guaranteedInstanceManagerCPUStr := SettingDefinitionGuaranteedInstanceManagerCPU.Default
-	if defaultSettings[string(SettingNameGuaranteedInstanceManagerCPU)] != "" {
-		guaranteedInstanceManagerCPUStr = defaultSettings[string(SettingNameGuaranteedInstanceManagerCPU)]
-	}
-	// Convert string to float64
-	guaranteedInstanceManagerCPU, err := strconv.ParseFloat(guaranteedInstanceManagerCPUStr, 64)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to parse GuaranteedInstanceManagerCPU value %v", guaranteedInstanceManagerCPUStr)
-	}
-
-	if err := ValidateGuaranteedInstanceManagerCPUValue(guaranteedInstanceManagerCPU); err != nil {
-		logrus.WithError(err).Error("Customized settings GuaranteedInstanceManagerCPU is invalid, will give up using it")
-		defaultSettings = map[string]string{}
 	}
 
 	return defaultSettings, nil
@@ -2178,9 +2153,49 @@ func validateBool(definition SettingDefinition, value string) error {
 		return nil
 	}
 
-	if value != "true" && value != "false" {
-		return fmt.Errorf("value %v should be true or false", value)
+	values := make(map[longhorn.DataEngineType]bool)
+	for dataEngine, value := range definition.DefaultsByDataEngine {
+		if value != "" {
+			boolValue, err := strconv.ParseBool(value)
+			if err != nil {
+				return errors.Wrapf(err, "failed to parse default bool value %v for data engine %s", value, dataEngine)
+			}
+			values[dataEngine] = boolValue
+		}
 	}
+
+	if strings.HasPrefix(strings.TrimSpace(value), "{") {
+		var jsonValues map[longhorn.DataEngineType]string
+		if err := json.Unmarshal([]byte(value), &jsonValues); err != nil {
+			return errors.Wrap(err, "failed to parse JSON format")
+		}
+
+		for dataEngine, valueStr := range jsonValues {
+			boolValue, err := strconv.ParseBool(valueStr)
+			if err != nil {
+				return errors.Wrapf(err, "failed to parse bool value %s for data engine %s", valueStr, dataEngine)
+			}
+			values[dataEngine] = boolValue
+		}
+	} else {
+		boolValue, err := strconv.ParseBool(value)
+		if err != nil {
+			return errors.Wrapf(err, "failed to parse single bool value %s", value)
+		}
+
+		for dataEngine, applicable := range definition.ApplicableDataEngines {
+			if applicable {
+				values[dataEngine] = boolValue
+			}
+		}
+	}
+
+	for _, boolValue := range values {
+		if boolValue != true && boolValue != false {
+			return fmt.Errorf("value %v should be true or false", boolValue)
+		}
+	}
+
 	return nil
 }
 
@@ -2189,21 +2204,55 @@ func validateInt(definition SettingDefinition, value string) error {
 		return nil
 	}
 
-	intValue, err := strconv.Atoi(value)
-	if err != nil {
-		return errors.Wrapf(err, "value %v is not a number", value)
-	}
-
-	valueIntRange := definition.ValueIntRange
-	if minValue, exists := valueIntRange[ValueIntRangeMinimum]; exists {
-		if intValue < minValue {
-			return fmt.Errorf("value %v should be larger than %v", intValue, minValue)
+	values := make(map[longhorn.DataEngineType]int)
+	for dataEngine, value := range definition.DefaultsByDataEngine {
+		if value != "" {
+			intValue, err := strconv.Atoi(value)
+			if err != nil {
+				return errors.Wrapf(err, "failed to parse int default value %v for data engine %s", value, dataEngine)
+			}
+			values[dataEngine] = intValue
 		}
 	}
 
-	if maxValue, exists := valueIntRange[ValueIntRangeMaximum]; exists {
-		if intValue > maxValue {
-			return fmt.Errorf("value %v should be less than %v", intValue, maxValue)
+	if strings.HasPrefix(strings.TrimSpace(value), "{") {
+		var jsonValues map[longhorn.DataEngineType]string
+		if err := json.Unmarshal([]byte(value), &jsonValues); err != nil {
+			return errors.Wrap(err, "failed to parse JSON format")
+		}
+
+		for dataEngine, valueStr := range jsonValues {
+			intValue, err := strconv.Atoi(valueStr)
+			if err != nil {
+				return errors.Wrapf(err, "failed to parse int value %s for data engine %s", valueStr, dataEngine)
+			}
+			values[dataEngine] = intValue
+		}
+	} else {
+		intValue, err := strconv.Atoi(value)
+		if err != nil {
+			return errors.Wrapf(err, "failed to parse single int value %s", value)
+		}
+
+		for dataEngine, applicable := range definition.ApplicableDataEngines {
+			if applicable {
+				values[dataEngine] = intValue
+			}
+		}
+	}
+
+	for _, intValue := range values {
+		valueIntRange := definition.ValueIntRange
+		if minValue, exists := valueIntRange[ValueIntRangeMinimum]; exists {
+			if intValue < minValue {
+				return fmt.Errorf("value %v should be larger than %v", intValue, minValue)
+			}
+		}
+
+		if maxValue, exists := valueIntRange[ValueIntRangeMaximum]; exists {
+			if intValue > maxValue {
+				return fmt.Errorf("value %v should be less than %v", intValue, maxValue)
+			}
 		}
 	}
 	return nil
@@ -2214,21 +2263,55 @@ func validateFloat(definition SettingDefinition, value string) error {
 		return nil
 	}
 
-	floatValue, err := strconv.ParseFloat(value, 64)
-	if err != nil {
-		return errors.Wrapf(err, "value %v is not a valid floating point number", value)
-	}
-
-	valueFloatRange := definition.ValueFloatRange
-	if minValue, exists := valueFloatRange[ValueFloatRangeMinimum]; exists {
-		if floatValue < minValue {
-			return fmt.Errorf("value %v should be larger than or equal to %v", floatValue, minValue)
+	values := make(map[longhorn.DataEngineType]float64)
+	for dataEngine, value := range definition.DefaultsByDataEngine {
+		if value != "" {
+			floatValue, err := strconv.ParseFloat(value, 64)
+			if err != nil {
+				return errors.Wrapf(err, "failed to parse float default value %v for data engine %s", value, dataEngine)
+			}
+			values[dataEngine] = floatValue
 		}
 	}
 
-	if maxValue, exists := valueFloatRange[ValueFloatRangeMaximum]; exists {
-		if floatValue > maxValue {
-			return fmt.Errorf("value %v should be less than or equal to %v", floatValue, maxValue)
+	if strings.HasPrefix(strings.TrimSpace(value), "{") {
+		var jsonValues map[longhorn.DataEngineType]string
+		if err := json.Unmarshal([]byte(value), &jsonValues); err != nil {
+			return errors.Wrap(err, "failed to parse JSON format")
+		}
+
+		for dataEngine, valueStr := range jsonValues {
+			floatValue, err := strconv.ParseFloat(valueStr, 64)
+			if err != nil {
+				return errors.Wrapf(err, "failed to parse float value %s for data engine %s", valueStr, dataEngine)
+			}
+			values[dataEngine] = floatValue
+		}
+	} else {
+		floatValue, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return errors.Wrapf(err, "failed to parse single float value %s", value)
+		}
+
+		for dataEngine, applicable := range definition.ApplicableDataEngines {
+			if applicable {
+				values[dataEngine] = floatValue
+			}
+		}
+	}
+
+	for _, floatValue := range values {
+		valueFloatRange := definition.ValueFloatRange
+		if minValue, exists := valueFloatRange[ValueFloatRangeMinimum]; exists {
+			if floatValue < minValue {
+				return fmt.Errorf("value %v should be larger than or equal to %v", floatValue, minValue)
+			}
+		}
+
+		if maxValue, exists := valueFloatRange[ValueFloatRangeMaximum]; exists {
+			if floatValue > maxValue {
+				return fmt.Errorf("value %v should be less than or equal to %v", floatValue, maxValue)
+			}
 		}
 	}
 	return nil

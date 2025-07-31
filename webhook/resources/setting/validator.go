@@ -65,23 +65,21 @@ func (v *settingValidator) Update(request *admission.Request, oldObj runtime.Obj
 		return werror.NewInvalidError(fmt.Sprintf("setting %s definition does not have applicable engines defined", newSetting.Name), "metadata.name")
 	}
 
-	if ok := settingDefinition.ApplicableDataEngines[longhorn.DataEngineTypeAll]; ok {
-		if len(newSetting.DefaultsByDataEngine) > 0 {
-			return werror.NewInvalidError("defaultsByDataEngine cannot be set when applicableDataEngines includes 'all'. Use the 'default' field instead", "defaultsByDataEngine")
-		}
+	perDataEngineDefaultsSupported, err := v.ds.IsPerDataEngineDefaultsSupported(types.SettingName(newSetting.Name))
+	if err != nil {
+		return werror.NewInvalidError(fmt.Sprintf("failed to check if per data engine defaults are supported for setting %s: %v", newSetting.Name, err), "metadata.name")
 	}
-
-	numOfApplicableDataEngines := getNumOfApplicableDataEngines(settingDefinition.ApplicableDataEngines)
-	if numOfApplicableDataEngines == 1 {
-		if len(newSetting.DefaultsByDataEngine) > 0 {
-			return werror.NewInvalidError("defaultsByDataEngine cannot be set when there is only one applicable engine. Use the 'default' field instead", "defaultsByDataEngine")
+	if perDataEngineDefaultsSupported {
+		for dataEngine := range newSetting.ValuesByDataEngine {
+			if applicable, ok := settingDefinition.ApplicableDataEngines[dataEngine]; ok {
+				if !applicable {
+					return werror.NewInvalidError(fmt.Sprintf("valuesByDataEngine for %s cannot be set for data engine %s as it is not applicable", newSetting.Name, dataEngine), "valuesByDataEngine")
+				}
+			}
 		}
-	}
-
-	for engine := range newSetting.DefaultsByDataEngine {
-		_, applicable := settingDefinition.ApplicableDataEngines[engine]
-		if !applicable {
-			return werror.NewInvalidError(fmt.Sprintf("defaultsByDataEngine for %s cannot be set because the setting is not applicable to %s", engine, engine), "defaultsByDataEngine")
+	} else {
+		if len(newSetting.ValuesByDataEngine) > 0 {
+			return werror.NewInvalidError("valuesByDataEngine cannot be set when applicableDataEngines includes 'all'. Use the 'default' field instead", "valuesByDataEngine")
 		}
 	}
 
@@ -119,17 +117,38 @@ func (v *settingValidator) validateSetting(newObj runtime.Object) error {
 		return werror.NewInvalidError(fmt.Sprintf("newObj %v is not a *longhorn.Setting", newObj), "")
 	}
 
+	definition, exists := types.GetSettingDefinition(types.SettingName(setting.Name))
+	if !exists {
+		return werror.NewInvalidError(fmt.Sprintf("setting %s definition does not exist", setting.Name), "metadata.name")
+	}
+
 	multiError := util.NewMultiError()
 
 	// Validate the default value
-	if err := v.ds.ValidateSetting(setting.Name, setting.Value); err != nil {
-		multiError.Append(util.NewMultiError(err.Error()))
+	if applicable, ok := definition.ApplicableDataEngines[longhorn.DataEngineTypeAll]; ok {
+		if applicable {
+			if err := v.ds.ValidateSetting(setting.Name, setting.Value); err != nil {
+				multiError.Append(util.NewMultiError(err.Error()))
+			}
+		}
 	}
 
 	// Validate the per data engine defaults
-	for engine, value := range setting.DefaultsByDataEngine {
-		if err := v.ds.ValidateSetting(setting.Name, value); err != nil {
-			multiError.Append(util.NewMultiError(fmt.Sprintf("defaultsByDataEngine for data engine %s is invalid: %s", engine, err.Error())))
+	for dataEngine, applicable := range definition.ApplicableDataEngines {
+		if dataEngine == longhorn.DataEngineTypeAll {
+			continue
+		}
+		if !applicable {
+			continue
+		}
+
+		value, ok := setting.ValuesByDataEngine[dataEngine]
+		if !ok {
+			multiError.Append(util.NewMultiError(fmt.Sprintf("valuesByDataEngine for data engine %s is not set", dataEngine)))
+		} else {
+			if err := v.ds.ValidateSetting(setting.Name, value); err != nil {
+				multiError.Append(util.NewMultiError(fmt.Sprintf("valuesByDataEngine for data engine %s is invalid: %s", dataEngine, err.Error())))
+			}
 		}
 	}
 	if len(multiError) == 0 {
@@ -148,17 +167,4 @@ func (v *settingValidator) validateSetting(newObj runtime.Object) error {
 	}
 
 	return werror.NewInvalidError(err.Error(), "value")
-}
-
-func getNumOfApplicableDataEngines(applicableDataEngines map[longhorn.DataEngineType]bool) int {
-	count := 0
-	for dataEngine, applicable := range applicableDataEngines {
-		if dataEngine == longhorn.DataEngineTypeAll {
-			continue
-		}
-		if applicable {
-			count++
-		}
-	}
-	return count
 }

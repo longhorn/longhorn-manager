@@ -2616,7 +2616,7 @@ spec:
             additionalProperties:
               type: string
             description: |-
-              Default values for the setting based on the data engine type.
+              Values for the setting based on the data engine type.
               If the value for a specific data engine type is not set, the default value will be used.
             type: object
           kind:
