@@ -63,11 +63,11 @@ func (s *Server) SettingSet(w http.ResponseWriter, req *http.Request) error {
 
 	si.Value = strings.TrimSpace(setting.Value)
 
-	if si.DefaultsByEngine == nil {
-		si.DefaultsByEngine = make(map[longhorn.DataEngineType]string)
+	if si.DefaultsByDataEngine == nil {
+		si.DefaultsByDataEngine = make(map[longhorn.DataEngineType]string)
 	}
-	for dataEngine, value := range setting.DefaultsByEngine {
-		si.DefaultsByEngine[dataEngine] = strings.TrimSpace(value)
+	for dataEngine, value := range setting.DefaultsByDataEngine {
+		si.DefaultsByDataEngine[dataEngine] = strings.TrimSpace(value)
 	}
 
 	si, err = s.m.CreateOrUpdateSetting(si)

@@ -198,11 +198,11 @@ type BackupBackingImage struct {
 
 type Setting struct {
 	client.Resource
-	Applied          bool                               `json:"applied"`
-	Name             string                             `json:"name"`
-	Value            string                             `json:"value"`
-	Definition       types.SettingDefinition            `json:"definition"`
-	DefaultsByEngine map[longhorn.DataEngineType]string `json:"defaultsByEngine"`
+	Applied              bool                               `json:"applied"`
+	Name                 string                             `json:"name"`
+	Value                string                             `json:"value"`
+	Definition           types.SettingDefinition            `json:"definition"`
+	DefaultsByDataEngine map[longhorn.DataEngineType]string `json:"defaultsByDataEngine"`
 }
 
 type Instance struct {
@@ -1390,9 +1390,9 @@ func toEmptyResource() *Empty {
 func toSettingResource(setting *longhorn.Setting) *Setting {
 	definition, _ := types.GetSettingDefinition(types.SettingName(setting.Name))
 
-	defaultsByEngine := setting.DefaultsByEngine
-	if defaultsByEngine == nil {
-		defaultsByEngine = map[longhorn.DataEngineType]string{}
+	defaultsByDataEngine := setting.DefaultsByDataEngine
+	if defaultsByDataEngine == nil {
+		defaultsByDataEngine = map[longhorn.DataEngineType]string{}
 	}
 
 	return &Setting{
@@ -1401,10 +1401,10 @@ func toSettingResource(setting *longhorn.Setting) *Setting {
 			Type:  "setting",
 			Links: map[string]string{},
 		},
-		Applied:          setting.Status.Applied,
-		Name:             setting.Name,
-		Value:            setting.Value,
-		DefaultsByEngine: defaultsByEngine,
+		Applied:              setting.Status.Applied,
+		Name:                 setting.Name,
+		Value:                setting.Value,
+		DefaultsByDataEngine: defaultsByDataEngine,
 
 		Definition: definition,
 	}
