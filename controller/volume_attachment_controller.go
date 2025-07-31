@@ -343,9 +343,9 @@ func (vac *VolumeAttachmentController) reconcile(vaName string) (err error) {
 func (vac *VolumeAttachmentController) handleNodeCordoned(va *longhorn.VolumeAttachment, vol *longhorn.Volume) {
 	log := getLoggerForLHVolumeAttachment(vac.logger, va)
 
-	detachManuallyAttachedVolumesWhenCordoned, err := vac.ds.GetSettingAsBool(types.SettingNameDetachManuallyAttachedVolumesWhenCordoned)
+	detachManuallyAttachedVolumesWhenCordoned, err := vac.ds.GetSettingAsBoolByDataEngine(types.SettingNameDetachManuallyAttachedVolumesWhenCordoned, vol.Spec.DataEngine)
 	if err != nil {
-		log.WithError(err).Warnf("Failed to get setting %v", types.SettingNameDetachManuallyAttachedVolumesWhenCordoned)
+		log.WithError(err).Warnf("Failed to get %v setting for data engine %v", types.SettingNameDetachManuallyAttachedVolumesWhenCordoned, vol.Spec.DataEngine)
 		return
 	}
 

@@ -885,7 +885,7 @@ func ValidateMinNumberOfBackingIamgeCopies(number int) error {
 	return nil
 }
 
-func ValidateV2DataEngineLogFlags(flags string) error {
+func ValidateDataEngineLogFlags(flags string) error {
 	if flags == "" {
 		return nil
 	}
@@ -1242,36 +1242,60 @@ func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[st
 	}, nil
 }
 
-func ValidateCPUReservationValues(settingName SettingName, instanceManagerCPUStr string) error {
+func ValidateGuaranteedInstanceManagerCPUSetting(instanceManagerCPUSetting *longhorn.Setting) error {
+	valueToBeValidated := map[string]float64{}
 
-	definition, _ := GetSettingDefinition(settingName)
-	valueIntRange := definition.ValueIntRange
-	valueFloatRange := definition.ValueFloatRange
+	// default value
+	defaultValue, err := strconv.ParseFloat(instanceManagerCPUSetting.Value, 64)
+	if err != nil {
+		return errors.Wrapf(err, "failed to parse instance manager CPU setting value %v", instanceManagerCPUSetting.Value)
+	}
+	valueToBeValidated["default"] = defaultValue
 
-	switch settingName {
-	case SettingNameGuaranteedInstanceManagerCPU:
-		instanceManagerCPU, err := strconv.ParseFloat(instanceManagerCPUStr, 64)
+	// per data engine value
+	for dataEngine, str := range instanceManagerCPUSetting.ValuesByDataEngine {
+		value, err := strconv.ParseFloat(str, 64)
 		if err != nil {
-			return errors.Wrapf(err, "invalid requested instance manager CPU percentage value (%v)", instanceManagerCPUStr)
+			return errors.Wrapf(err, "failed to parse instance manager CPU setting value %v for data engine %v", str, dataEngine)
 		}
+		valueToBeValidated[string(dataEngine)] = value
+	}
 
-		isUnderLimit := instanceManagerCPU < valueFloatRange[ValueFloatRangeMinimum]
-		isOverLimit := instanceManagerCPU > valueFloatRange[ValueFloatRangeMaximum]
-		if isUnderLimit || isOverLimit {
-			return fmt.Errorf("invalid requested instance manager CPU percentage. Valid range is %v to %v", valueFloatRange[ValueFloatRangeMinimum], valueFloatRange[ValueFloatRangeMaximum])
-		}
-
-	case SettingNameV2DataEngineGuaranteedInstanceManagerCPU:
-		instanceManagerCPU, err := strconv.Atoi(instanceManagerCPUStr)
-		if err != nil {
-			return errors.Wrapf(err, "invalid requested instance manager CPU millicpu value (%v)", instanceManagerCPUStr)
-		}
-
-		isUnderLimit := instanceManagerCPU < valueIntRange[ValueIntRangeMinimum]
-		if isUnderLimit {
-			return fmt.Errorf("invalid requested instance manager CPUs. Valid instance manager CPU range is larger than %v millicpu", valueIntRange[ValueIntRangeMinimum])
+	// Validate each value against the defined float range
+	for _, value := range valueToBeValidated {
+		if err := ValidateGuaranteedInstanceManagerCPUValue(value); err != nil {
+			return errors.Wrapf(err, "invalid instance manager CPU value %v for setting %v", value, instanceManagerCPUSetting.Name)
 		}
 	}
+
+	return nil
+}
+
+func ValidateGuaranteedInstanceManagerCPUValue(instanceManagerCPU float64) error {
+	definition, ok := GetSettingDefinition(SettingNameGuaranteedInstanceManagerCPU)
+	if !ok {
+		return fmt.Errorf("setting definition for %v does not exist", SettingNameGuaranteedInstanceManagerCPU)
+	}
+
+	if definition.ValueFloatRange == nil {
+		return fmt.Errorf("setting definition for %v does not have a valid value float range", SettingNameGuaranteedInstanceManagerCPU)
+	}
+
+	if _, ok := definition.ValueFloatRange[ValueFloatRangeMinimum]; !ok {
+		return fmt.Errorf("setting definition for %v does not have a valid value float range minimum", SettingNameGuaranteedInstanceManagerCPU)
+	}
+
+	if _, ok := definition.ValueFloatRange[ValueFloatRangeMaximum]; !ok {
+		return fmt.Errorf("setting definition for %v does not have a valid value float range maximum", SettingNameGuaranteedInstanceManagerCPU)
+	}
+
+	isUnderLimit := instanceManagerCPU < definition.ValueFloatRange[ValueFloatRangeMinimum]
+	isOverLimit := instanceManagerCPU > definition.ValueFloatRange[ValueFloatRangeMaximum]
+	if isUnderLimit || isOverLimit {
+		return fmt.Errorf("invalid requested instance manager CPU percentage. Valid range is %v to %v",
+			definition.ValueFloatRange[ValueFloatRangeMinimum], definition.ValueFloatRange[ValueFloatRangeMaximum])
+	}
+
 	return nil
 }
 

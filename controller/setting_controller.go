@@ -350,7 +350,6 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 		types.SettingNameV1DataEngine,
 		types.SettingNameV2DataEngine,
 		types.SettingNameGuaranteedInstanceManagerCPU,
-		types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU,
 	}
 
 	if slices.Contains(dangerSettingsRequiringSpecificDataEngineVolumesDetached, settingName) {
@@ -360,14 +359,11 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 				return errors.Wrapf(err, "failed to apply %v setting to Longhorn instance managers when there are attached volumes. "+
 					"It will be eventually applied", settingName)
 			}
-		case types.SettingNameGuaranteedInstanceManagerCPU, types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU:
-			dataEngine := longhorn.DataEngineTypeV1
-			if settingName == types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU {
-				dataEngine = longhorn.DataEngineTypeV2
-			}
-
-			if err := sc.updateInstanceManagerCPURequest(dataEngine); err != nil {
-				return err
+		case types.SettingNameGuaranteedInstanceManagerCPU:
+			for _, dataEngine := range []longhorn.DataEngineType{longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2} {
+				if err := sc.updateInstanceManagerCPURequest(dataEngine); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -1225,10 +1221,6 @@ func (sc *SettingController) enqueueSettingForNode(obj interface{}) {
 
 // updateInstanceManagerCPURequest deletes all instance manager pods immediately with the updated CPU request.
 func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn.DataEngineType) error {
-	settingName := types.SettingNameGuaranteedInstanceManagerCPU
-	if types.IsDataEngineV2(dataEngine) {
-		settingName = types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU
-	}
 	imPodList, err := sc.ds.ListInstanceManagerPodsBy("", "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
 	if err != nil {
 		return errors.Wrap(err, "failed to list instance manager pods for toleration update")
@@ -1269,10 +1261,10 @@ func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn
 
 	stopped, _, err := sc.ds.AreAllEngineInstancesStopped(dataEngine)
 	if err != nil {
-		return errors.Wrapf(err, "failed to check engine instances for %v setting update", settingName)
+		return errors.Wrapf(err, "failed to check engine instances for %v setting update for data engine %v", types.SettingNameGuaranteedInstanceManagerCPU, dataEngine)
 	}
 	if !stopped {
-		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting to Longhorn components when there are running engine instances. It will be eventually applied", settingName)}
+		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting for data engine %v to Longhorn components when there are running engine instances. It will be eventually applied", types.SettingNameGuaranteedInstanceManagerCPU, dataEngine)}
 	}
 
 	for _, pod := range notUpdatedPods {
@@ -1609,7 +1601,6 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameSystemManagedPodsImagePullPolicy:                         true,
 		types.SettingNameV1DataEngine:                                             true,
 		types.SettingNameV2DataEngine:                                             true,
-		types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU:                 true,
 	}
 
 	settings, err := info.ds.ListSettings()

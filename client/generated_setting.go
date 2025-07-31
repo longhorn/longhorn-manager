@@ -7,6 +7,8 @@ const (
 type Setting struct {
 	Resource `yaml:"-"`
 
+	Applied bool `json:"applied,omitempty" yaml:"applied,omitempty"`
+
 	Definition SettingDefinition `json:"definition,omitempty" yaml:"definition,omitempty"`
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`

@@ -7,15 +7,23 @@ const (
 type SettingDefinition struct {
 	Resource `yaml:"-"`
 
+	ApplicableDataEngines map[string]string `json:"applicableDataEngines,omitempty" yaml:"applicable_data_engines,omitempty"`
+
 	Category string `json:"category,omitempty" yaml:"category,omitempty"`
 
 	Default string `json:"default,omitempty" yaml:"default,omitempty"`
+
+	DefaultsByDataEngine map[string]string `json:"defaultsByDataEngine,omitempty" yaml:"defaults_by_data_engine,omitempty"`
 
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
 
 	DisplayName string `json:"displayName,omitempty" yaml:"display_name,omitempty"`
 
+	FloatRange map[string]string `json:"floatRange,omitempty" yaml:"float_range,omitempty"`
+
 	Options []string `json:"options,omitempty" yaml:"options,omitempty"`
+
+	Range map[string]string `json:"range,omitempty" yaml:"range,omitempty"`
 
 	ReadOnly bool `json:"readOnly,omitempty" yaml:"read_only,omitempty"`
 

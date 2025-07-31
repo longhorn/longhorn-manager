@@ -58,6 +58,8 @@ type BackupVolumeOperations interface {
 	ActionBackupList(*BackupVolume) (*BackupListOutput, error)
 
 	ActionBackupListByVolume(*BackupVolume, *Volume) (*BackupListOutput, error)
+
+	ActionBackupVolumeSync(*BackupVolume, *SyncBackupResource) (*BackupVolumeListOutput, error)
 }
 
 func newBackupVolumeClient(rancherClient *RancherClient) *BackupVolumeClient {
@@ -142,6 +144,15 @@ func (c *BackupVolumeClient) ActionBackupListByVolume(resource *BackupVolume, in
 	resp := &BackupListOutput{}
 
 	err := c.rancherClient.doAction(BACKUP_VOLUME_TYPE, "backupListByVolume", &resource.Resource, input, resp)
+
+	return resp, err
+}
+
+func (c *BackupVolumeClient) ActionBackupVolumeSync(resource *BackupVolume, input *SyncBackupResource) (*BackupVolumeListOutput, error) {
+
+	resp := &BackupVolumeListOutput{}
+
+	err := c.rancherClient.doAction(BACKUP_VOLUME_TYPE, "backupVolumeSync", &resource.Resource, input, resp)
 
 	return resp, err
 }

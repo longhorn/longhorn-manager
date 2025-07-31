@@ -45,9 +45,13 @@ func (m *VolumeManager) CreateOrUpdateSetting(s *longhorn.Setting) (*longhorn.Se
 	if err != nil {
 		return nil, err
 	}
+
+	logrus.Infof("Degug ------>AA UpdateSetting setting %v with value %v", s.Name, s.Value)
+
 	setting, err := m.ds.UpdateSetting(s)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
+			logrus.Infof("Degug ------>AA Creating setting %v with value %v", s.Name, s.Value)
 			return m.ds.CreateSetting(s)
 		}
 		return nil, err
