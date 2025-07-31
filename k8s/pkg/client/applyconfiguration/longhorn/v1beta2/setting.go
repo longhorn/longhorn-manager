@@ -19,6 +19,7 @@ limitations under the License.
 package v1beta2
 
 import (
+	longhornv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
@@ -29,8 +30,9 @@ import (
 type SettingApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
-	Value                            *string                          `json:"value,omitempty"`
-	Status                           *SettingStatusApplyConfiguration `json:"status,omitempty"`
+	Value                            *string                                   `json:"value,omitempty"`
+	Status                           *SettingStatusApplyConfiguration          `json:"status,omitempty"`
+	DefaultsByDataEngine             map[longhornv1beta2.DataEngineType]string `json:"defaultsByDataEngine,omitempty"`
 }
 
 // Setting constructs a declarative configuration of the Setting type for use with
@@ -215,6 +217,20 @@ func (b *SettingApplyConfiguration) WithValue(value string) *SettingApplyConfigu
 // If called multiple times, the Status field is set to the value of the last call.
 func (b *SettingApplyConfiguration) WithStatus(value *SettingStatusApplyConfiguration) *SettingApplyConfiguration {
 	b.Status = value
+	return b
+}
+
+// WithDefaultsByDataEngine puts the entries into the DefaultsByDataEngine field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, the entries provided by each call will be put on the DefaultsByDataEngine field,
+// overwriting an existing map entries in DefaultsByDataEngine field with the same key.
+func (b *SettingApplyConfiguration) WithDefaultsByDataEngine(entries map[longhornv1beta2.DataEngineType]string) *SettingApplyConfiguration {
+	if b.DefaultsByDataEngine == nil && len(entries) > 0 {
+		b.DefaultsByDataEngine = make(map[longhornv1beta2.DataEngineType]string, len(entries))
+	}
+	for k, v := range entries {
+		b.DefaultsByDataEngine[k] = v
+	}
 	return b
 }
 

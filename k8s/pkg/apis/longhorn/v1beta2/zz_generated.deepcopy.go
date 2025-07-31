@@ -2154,6 +2154,13 @@ func (in *Setting) DeepCopyInto(out *Setting) {
 	out.TypeMeta = in.TypeMeta
 	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
 	out.Status = in.Status
+	if in.DefaultsByDataEngine != nil {
+		in, out := &in.DefaultsByDataEngine, &out.DefaultsByDataEngine
+		*out = make(map[DataEngineType]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
 	return
 }
 
