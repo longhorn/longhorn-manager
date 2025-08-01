@@ -149,7 +149,7 @@ const (
 	SettingNameBackupExecutionTimeout                                   = SettingName("backup-execution-timeout")
 	SettingNameRWXVolumeFastFailover                                    = SettingName("rwx-volume-fast-failover")
 	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
-	SettingNameReplicaRebuildBandwidthLimit                             = SettingName("replica-rebuild-bandwidth-limit")
+	SettingNameReplicaRebuildingBandwidthLimit                          = SettingName("replica-rebuilding-bandwidth-limit")
 	// These three backup target parameters are used in the "longhorn-default-resource" ConfigMap
 	// to update the default BackupTarget resource.
 	// Longhorn won't create the Setting resources for these three parameters.
@@ -253,7 +253,7 @@ var (
 		SettingNameBackupExecutionTimeout,
 		SettingNameRWXVolumeFastFailover,
 		SettingNameOfflineReplicaRebuilding,
-		SettingNameReplicaRebuildBandwidthLimit,
+		SettingNameReplicaRebuildingBandwidthLimit,
 	}
 )
 
@@ -384,7 +384,7 @@ var (
 		SettingNameBackupExecutionTimeout:                                   SettingDefinitionBackupExecutionTimeout,
 		SettingNameRWXVolumeFastFailover:                                    SettingDefinitionRWXVolumeFastFailover,
 		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
-		SettingNameReplicaRebuildBandwidthLimit:                             SettingDefinitionReplicaRebuildBandwidthLimit,
+		SettingNameReplicaRebuildingBandwidthLimit:                          SettingDefinitionReplicaRebuildingBandwidthLimit,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -1529,8 +1529,8 @@ var (
 		},
 	}
 
-	SettingDefinitionReplicaRebuildBandwidthLimit = SettingDefinition{
-		DisplayName: "Replica Rebuild Bandwidth Limit",
+	SettingDefinitionReplicaRebuildingBandwidthLimit = SettingDefinition{
+		DisplayName: "Replica Rebuilding Bandwidth Limit",
 		Description: "This setting specifies the default write bandwidth limit (in megabytes per second) for volume replica rebuilding when using the v2 data engine (SPDK). " +
 			"If this value is set to 0, there will be no write bandwidth limitation. " +
 			"Individual volumes can override this setting by specifying their own rebuilding bandwidth limit.",

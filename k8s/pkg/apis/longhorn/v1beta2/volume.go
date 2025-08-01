@@ -306,10 +306,10 @@ type VolumeSpec struct {
 	// - disabled: Disable offline rebuilding for this volume, regardless of the global setting
 	// +optional
 	OfflineRebuilding VolumeOfflineRebuilding `json:"offlineRebuilding"`
-	// RebuildingMBytesPerSecond limits the write bandwidth (in megabytes per second) on the destination replica during rebuilding. Set to 0 to disable bandwidth limiting.
+	// ReplicaRebuildingBandwidthLimit limits the write bandwidth (in megabytes per second) on the destination replica during rebuilding. Set to 0 to disable bandwidth limiting.
 	// +kubebuilder:validation:Minimum=0
 	// +optional
-	RebuildingMbytesPerSecond int64 `json:"rebuildingMbytesPerSecond,omitempty"`
+	ReplicaRebuildingBandwidthLimit int64 `json:"replicaRebuildingBandwidthLimit,omitempty"`
 }
 
 // VolumeStatus defines the observed state of the Longhorn volume

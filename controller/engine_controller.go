@@ -1172,7 +1172,7 @@ func (m *EngineMonitor) checkAndApplyRebuildQoS(engine *longhorn.Engine, engineC
 }
 
 func (m *EngineMonitor) getEffectiveRebuildQoS(engine *longhorn.Engine) (int64, error) {
-	globalQoS, err := m.ds.GetSettingAsInt(types.SettingNameReplicaRebuildBandwidthLimit)
+	globalQoS, err := m.ds.GetSettingAsInt(types.SettingNameReplicaRebuildingBandwidthLimit)
 	if err != nil {
 		return 0, err
 	}
@@ -1182,8 +1182,8 @@ func (m *EngineMonitor) getEffectiveRebuildQoS(engine *longhorn.Engine) (int64, 
 		return 0, err
 	}
 
-	if volume.Spec.RebuildingMbytesPerSecond > 0 {
-		return volume.Spec.RebuildingMbytesPerSecond, nil
+	if volume.Spec.ReplicaRebuildingBandwidthLimit > 0 {
+		return volume.Spec.ReplicaRebuildingBandwidthLimit, nil
 	}
 
 	return globalQoS, nil

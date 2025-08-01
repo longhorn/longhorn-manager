@@ -25,41 +25,41 @@ import (
 // VolumeSpecApplyConfiguration represents a declarative configuration of the VolumeSpec type for use
 // with apply.
 type VolumeSpecApplyConfiguration struct {
-	Size                        *int64                                         `json:"size,omitempty"`
-	Frontend                    *longhornv1beta2.VolumeFrontend                `json:"frontend,omitempty"`
-	FromBackup                  *string                                        `json:"fromBackup,omitempty"`
-	RestoreVolumeRecurringJob   *longhornv1beta2.RestoreVolumeRecurringJobType `json:"restoreVolumeRecurringJob,omitempty"`
-	DataSource                  *longhornv1beta2.VolumeDataSource              `json:"dataSource,omitempty"`
-	DataLocality                *longhornv1beta2.DataLocality                  `json:"dataLocality,omitempty"`
-	StaleReplicaTimeout         *int                                           `json:"staleReplicaTimeout,omitempty"`
-	NodeID                      *string                                        `json:"nodeID,omitempty"`
-	MigrationNodeID             *string                                        `json:"migrationNodeID,omitempty"`
-	Image                       *string                                        `json:"image,omitempty"`
-	BackingImage                *string                                        `json:"backingImage,omitempty"`
-	Standby                     *bool                                          `json:"Standby,omitempty"`
-	DiskSelector                []string                                       `json:"diskSelector,omitempty"`
-	NodeSelector                []string                                       `json:"nodeSelector,omitempty"`
-	DisableFrontend             *bool                                          `json:"disableFrontend,omitempty"`
-	RevisionCounterDisabled     *bool                                          `json:"revisionCounterDisabled,omitempty"`
-	UnmapMarkSnapChainRemoved   *longhornv1beta2.UnmapMarkSnapChainRemoved     `json:"unmapMarkSnapChainRemoved,omitempty"`
-	ReplicaSoftAntiAffinity     *longhornv1beta2.ReplicaSoftAntiAffinity       `json:"replicaSoftAntiAffinity,omitempty"`
-	ReplicaZoneSoftAntiAffinity *longhornv1beta2.ReplicaZoneSoftAntiAffinity   `json:"replicaZoneSoftAntiAffinity,omitempty"`
-	ReplicaDiskSoftAntiAffinity *longhornv1beta2.ReplicaDiskSoftAntiAffinity   `json:"replicaDiskSoftAntiAffinity,omitempty"`
-	LastAttachedBy              *string                                        `json:"lastAttachedBy,omitempty"`
-	AccessMode                  *longhornv1beta2.AccessMode                    `json:"accessMode,omitempty"`
-	Migratable                  *bool                                          `json:"migratable,omitempty"`
-	Encrypted                   *bool                                          `json:"encrypted,omitempty"`
-	NumberOfReplicas            *int                                           `json:"numberOfReplicas,omitempty"`
-	ReplicaAutoBalance          *longhornv1beta2.ReplicaAutoBalance            `json:"replicaAutoBalance,omitempty"`
-	SnapshotDataIntegrity       *longhornv1beta2.SnapshotDataIntegrity         `json:"snapshotDataIntegrity,omitempty"`
-	BackupCompressionMethod     *longhornv1beta2.BackupCompressionMethod       `json:"backupCompressionMethod,omitempty"`
-	DataEngine                  *longhornv1beta2.DataEngineType                `json:"dataEngine,omitempty"`
-	SnapshotMaxCount            *int                                           `json:"snapshotMaxCount,omitempty"`
-	SnapshotMaxSize             *int64                                         `json:"snapshotMaxSize,omitempty"`
-	FreezeFilesystemForSnapshot *longhornv1beta2.FreezeFilesystemForSnapshot   `json:"freezeFilesystemForSnapshot,omitempty"`
-	BackupTargetName            *string                                        `json:"backupTargetName,omitempty"`
-	OfflineRebuilding           *longhornv1beta2.VolumeOfflineRebuilding       `json:"offlineRebuilding,omitempty"`
-	RebuildingMbytesPerSecond   *int64                                         `json:"rebuildingMbytesPerSecond,omitempty"`
+	Size                            *int64                                         `json:"size,omitempty"`
+	Frontend                        *longhornv1beta2.VolumeFrontend                `json:"frontend,omitempty"`
+	FromBackup                      *string                                        `json:"fromBackup,omitempty"`
+	RestoreVolumeRecurringJob       *longhornv1beta2.RestoreVolumeRecurringJobType `json:"restoreVolumeRecurringJob,omitempty"`
+	DataSource                      *longhornv1beta2.VolumeDataSource              `json:"dataSource,omitempty"`
+	DataLocality                    *longhornv1beta2.DataLocality                  `json:"dataLocality,omitempty"`
+	StaleReplicaTimeout             *int                                           `json:"staleReplicaTimeout,omitempty"`
+	NodeID                          *string                                        `json:"nodeID,omitempty"`
+	MigrationNodeID                 *string                                        `json:"migrationNodeID,omitempty"`
+	Image                           *string                                        `json:"image,omitempty"`
+	BackingImage                    *string                                        `json:"backingImage,omitempty"`
+	Standby                         *bool                                          `json:"Standby,omitempty"`
+	DiskSelector                    []string                                       `json:"diskSelector,omitempty"`
+	NodeSelector                    []string                                       `json:"nodeSelector,omitempty"`
+	DisableFrontend                 *bool                                          `json:"disableFrontend,omitempty"`
+	RevisionCounterDisabled         *bool                                          `json:"revisionCounterDisabled,omitempty"`
+	UnmapMarkSnapChainRemoved       *longhornv1beta2.UnmapMarkSnapChainRemoved     `json:"unmapMarkSnapChainRemoved,omitempty"`
+	ReplicaSoftAntiAffinity         *longhornv1beta2.ReplicaSoftAntiAffinity       `json:"replicaSoftAntiAffinity,omitempty"`
+	ReplicaZoneSoftAntiAffinity     *longhornv1beta2.ReplicaZoneSoftAntiAffinity   `json:"replicaZoneSoftAntiAffinity,omitempty"`
+	ReplicaDiskSoftAntiAffinity     *longhornv1beta2.ReplicaDiskSoftAntiAffinity   `json:"replicaDiskSoftAntiAffinity,omitempty"`
+	LastAttachedBy                  *string                                        `json:"lastAttachedBy,omitempty"`
+	AccessMode                      *longhornv1beta2.AccessMode                    `json:"accessMode,omitempty"`
+	Migratable                      *bool                                          `json:"migratable,omitempty"`
+	Encrypted                       *bool                                          `json:"encrypted,omitempty"`
+	NumberOfReplicas                *int                                           `json:"numberOfReplicas,omitempty"`
+	ReplicaAutoBalance              *longhornv1beta2.ReplicaAutoBalance            `json:"replicaAutoBalance,omitempty"`
+	SnapshotDataIntegrity           *longhornv1beta2.SnapshotDataIntegrity         `json:"snapshotDataIntegrity,omitempty"`
+	BackupCompressionMethod         *longhornv1beta2.BackupCompressionMethod       `json:"backupCompressionMethod,omitempty"`
+	DataEngine                      *longhornv1beta2.DataEngineType                `json:"dataEngine,omitempty"`
+	SnapshotMaxCount                *int                                           `json:"snapshotMaxCount,omitempty"`
+	SnapshotMaxSize                 *int64                                         `json:"snapshotMaxSize,omitempty"`
+	FreezeFilesystemForSnapshot     *longhornv1beta2.FreezeFilesystemForSnapshot   `json:"freezeFilesystemForSnapshot,omitempty"`
+	BackupTargetName                *string                                        `json:"backupTargetName,omitempty"`
+	OfflineRebuilding               *longhornv1beta2.VolumeOfflineRebuilding       `json:"offlineRebuilding,omitempty"`
+	ReplicaRebuildingBandwidthLimit *int64                                         `json:"replicaRebuildingBandwidthLimit,omitempty"`
 }
 
 // VolumeSpecApplyConfiguration constructs a declarative configuration of the VolumeSpec type for use with
@@ -344,10 +344,10 @@ func (b *VolumeSpecApplyConfiguration) WithOfflineRebuilding(value longhornv1bet
 	return b
 }
 
-// WithRebuildingMbytesPerSecond sets the RebuildingMbytesPerSecond field in the declarative configuration to the given value
+// WithReplicaRebuildingBandwidthLimit sets the ReplicaRebuildingBandwidthLimit field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the RebuildingMbytesPerSecond field is set to the value of the last call.
-func (b *VolumeSpecApplyConfiguration) WithRebuildingMbytesPerSecond(value int64) *VolumeSpecApplyConfiguration {
-	b.RebuildingMbytesPerSecond = &value
+// If called multiple times, the ReplicaRebuildingBandwidthLimit field is set to the value of the last call.
+func (b *VolumeSpecApplyConfiguration) WithReplicaRebuildingBandwidthLimit(value int64) *VolumeSpecApplyConfiguration {
+	b.ReplicaRebuildingBandwidthLimit = &value
 	return b
 }
