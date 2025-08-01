@@ -62,7 +62,11 @@ func (b *backupValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(fmt.Sprintf("failed to get backup target %s: %v", backupTargetName, err), "")
 	}
 
-	if !backupTarget.Status.Available {
+	isLonghornCreated, err := datastore.IsLabelLonghornCreateCustomResourceFromLonghornExisting(backup)
+	if err != nil {
+		return werror.NewInvalidError(fmt.Sprintf("failed to get backup %s label: %v, ", backup.Name, err), "")
+	}
+	if !isLonghornCreated && !backupTarget.Status.Available {
 		return werror.NewInvalidError(fmt.Sprintf("backup target %s is not available", backupTargetName), "")
 	}
 
