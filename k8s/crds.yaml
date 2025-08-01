@@ -684,6 +684,9 @@ spec:
           spec:
             description: BackupSpec defines the desired state of the Longhorn backup
             properties:
+              backupBlockSize:
+                description: The backup block size
+                type: string
               backupMode:
                 description: |-
                   The backup mode of this backup.
@@ -3456,6 +3459,12 @@ spec:
                 - rwx
                 type: string
               backingImage:
+                type: string
+              backupBlockSize:
+                enum:
+                - "2097152"
+                - "16777216"
+                format: int64
                 type: string
               backupCompressionMethod:
                 enum:

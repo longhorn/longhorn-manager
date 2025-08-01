@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 	"time"
 
 	"github.com/pkg/errors"
@@ -23,6 +24,8 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	"github.com/longhorn/backupstore"
+
+	lhbackup "github.com/longhorn/go-common-libs/backup"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -321,6 +324,7 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		backupLabelMap := map[string]string{}
 
 		backupURL := backupstore.EncodeBackupURL(backupName, canonicalBVName, backupTargetClient.URL)
+		var blockSize = types.BackupBlockSize2Mi
 		if backupInfo, err := backupTargetClient.BackupGet(backupURL, backupTargetClient.Credential); err != nil && !types.ErrorIsNotFound(err) {
 			log.WithError(err).WithFields(logrus.Fields{
 				"backup":       backupName,
@@ -330,6 +334,16 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 			if backupInfo != nil && backupInfo.Labels != nil {
 				if accessMode, exist := backupInfo.Labels[types.GetLonghornLabelKey(types.LonghornLabelVolumeAccessMode)]; exist {
 					backupLabelMap[types.GetLonghornLabelKey(types.LonghornLabelVolumeAccessMode)] = accessMode
+				}
+				backupBlockSizeParam := backupInfo.Parameters[lhbackup.LonghornBackupParameterBackupBlockSize]
+				if blockSizeBytes, convertErr := util.ConvertSize(backupBlockSizeParam); convertErr != nil {
+					log.WithError(convertErr).Warnf("Invalid backup block size string from remote backup %v: %v", backupName, backupBlockSizeParam)
+				} else {
+					if blockSizeBytes == 0 {
+						blockSize = types.BackupBlockSize2Mi
+					} else {
+						blockSize = blockSizeBytes
+					}
 				}
 			}
 		}
@@ -343,7 +357,8 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 				OwnerReferences: datastore.GetOwnerReferencesForBackupVolume(backupVolume),
 			},
 			Spec: longhorn.BackupSpec{
-				Labels: backupLabelMap,
+				Labels:          backupLabelMap,
+				BackupBlockSize: strconv.FormatInt(blockSize, 10),
 			},
 		}
 		if _, err = bvc.ds.CreateBackup(backup, canonicalBVName); err != nil && !apierrors.IsAlreadyExists(err) {
