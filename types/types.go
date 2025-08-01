@@ -885,7 +885,7 @@ func ValidateMinNumberOfBackingIamgeCopies(number int) error {
 	return nil
 }
 
-func ValidateV2DataEngineLogFlags(flags string) error {
+func ValidateSpdkTgtLogFlags(flags string) error {
 	if flags == "" {
 		return nil
 	}
