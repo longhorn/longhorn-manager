@@ -276,13 +276,12 @@ var replacedSettingNames = map[SettingName]bool{
 type SettingCategory string
 
 const (
-	SettingCategoryGeneral      = SettingCategory("general")
-	SettingCategoryBackup       = SettingCategory("backup")
-	SettingCategoryOrphan       = SettingCategory("orphan")
-	SettingCategoryScheduling   = SettingCategory("scheduling")
-	SettingCategoryDangerZone   = SettingCategory("danger Zone")
-	SettingCategorySnapshot     = SettingCategory("snapshot")
-	SettingCategoryV2DataEngine = SettingCategory("v2 data engine (Experimental Feature)")
+	SettingCategoryGeneral    = SettingCategory("general")
+	SettingCategoryBackup     = SettingCategory("backup")
+	SettingCategoryOrphan     = SettingCategory("orphan")
+	SettingCategoryScheduling = SettingCategory("scheduling")
+	SettingCategoryDangerZone = SettingCategory("danger Zone")
+	SettingCategorySnapshot   = SettingCategory("snapshot")
 )
 
 type SettingDefinition struct {
@@ -294,9 +293,14 @@ type SettingDefinition struct {
 	ReadOnly    bool            `json:"readOnly"`
 	Default     string          `json:"default"`
 	Choices     []string        `json:"options,omitempty"` // +optional
+
 	// Use map to present minimum and maximum value instead of using int directly, so we can omitempy and distinguish 0 or nil at the same time.
 	ValueIntRange   map[string]int     `json:"range,omitempty"`      // +optional
 	ValueFloatRange map[string]float64 `json:"floatRange,omitempty"` // +optional
+
+	// If DataEngineSpecific is false, the setting is applicable to both V1 and V2 Data Engine, and Default is a non-JSON string.
+	// If DataEngineSpecific is true, the setting is only applicable to V1 or V2 Data Engine, and Default is a JSON string.
+	DataEngineSpecific bool `json:"dataEngineSpecific,omitempty"` // +optional
 }
 
 var settingDefinitionsLock sync.RWMutex
@@ -401,11 +405,12 @@ var (
 		Description: "If this setting is enabled, Longhorn will automatically attaches the volume and takes snapshot/backup when it is the time to do recurring snapshot/backup. \n\n" +
 			"Note that the volume is not ready for workload during the period when the volume was automatically attached. " +
 			"Workload will have to wait until the recurring job finishes.",
-		Category: SettingCategoryBackup,
-		Type:     SettingTypeBool,
-		Required: true,
-		ReadOnly: false,
-		Default:  "false",
+		Category:           SettingCategoryBackup,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
 	}
 
 	SettingDefinitionFailedBackupTTL = SettingDefinition{
@@ -414,24 +419,26 @@ var (
 			"Failed backups will be checked and cleaned up during backupstore polling which is controlled by **Backupstore Poll Interval** setting.\n" +
 			"Hence this value determines the minimal wait interval of the cleanup. And the actual cleanup interval is multiple of **Backupstore Poll Interval**.\n" +
 			"Disabling **Backupstore Poll Interval** also means to disable failed backup auto-deletion.\n\n",
-		Category: SettingCategoryBackup,
-		Type:     SettingTypeInt,
-		Required: true,
-		ReadOnly: false,
-		Default:  "1440",
+		Category:           SettingCategoryBackup,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "1440",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 		},
 	}
 
 	SettingDefinitionBackupExecutionTimeout = SettingDefinition{
-		DisplayName: "Backup Execution Timeout",
-		Description: "Number of minutes that Longhorn allows for the backup execution. The default value is 1.",
-		Category:    SettingCategoryBackup,
-		Type:        SettingTypeInt,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "1",
+		DisplayName:        "Backup Execution Timeout",
+		Description:        "Number of minutes that Longhorn allows for the backup execution. The default value is 1.",
+		Category:           SettingCategoryBackup,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "1",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 1,
 		},
@@ -445,11 +452,12 @@ var (
 			"- **ignored**. This is the default option that instructs Longhorn to inherit from the global setting.\n" +
 			"- **enabled**. This option instructs Longhorn to restore recurring jobs/groups from the backup target forcibly.\n" +
 			"- **disabled**. This option instructs Longhorn no restoring recurring jobs/groups should be done.\n",
-		Category: SettingCategoryBackup,
-		Type:     SettingTypeBool,
-		Required: true,
-		ReadOnly: false,
-		Default:  "false",
+		Category:           SettingCategoryBackup,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
 	}
 
 	SettingDefinitionCreateDefaultDiskLabeledNodes = SettingDefinition{
@@ -457,77 +465,85 @@ var (
 		Description: "Create default Disk automatically only on Nodes with the label " +
 			"\"node.longhorn.io/create-default-disk=true\" if no other disks exist. If disabled, the default disk will " +
 			"be created on all new nodes when each node is first added.",
-		Category: SettingCategoryGeneral,
-		Type:     SettingTypeBool,
-		Required: true,
-		ReadOnly: false,
-		Default:  "false",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
 	}
 
 	SettingDefinitionDefaultDataPath = SettingDefinition{
-		DisplayName: "Default Data Path",
-		Description: "Default path to use for storing data on a host",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeString,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "/var/lib/longhorn/",
+		DisplayName:        "Default Data Path",
+		Description:        "Default path to use for storing data on a host",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "/var/lib/longhorn/",
 	}
 
 	SettingDefinitionDefaultEngineImage = SettingDefinition{
-		DisplayName: "Default Engine Image",
-		Description: "The default engine image used by the manager. Can be changed on the manager starting command line only",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeString,
-		Required:    true,
-		ReadOnly:    true,
+		DisplayName:        "Default Engine Image",
+		Description:        "The default engine image used by the manager. Can be changed on the manager starting command line only",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           true,
+		ReadOnly:           true,
+		DataEngineSpecific: false,
 	}
 
 	SettingDefinitionDefaultInstanceManagerImage = SettingDefinition{
-		DisplayName: "Default Instance Manager Image",
-		Description: "The default instance manager image used by the manager. Can be changed on the manager starting command line only",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeDeprecated,
-		Required:    true,
-		ReadOnly:    true,
+		DisplayName:        "Default Instance Manager Image",
+		Description:        "The default instance manager image used by the manager. Can be changed on the manager starting command line only",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeDeprecated,
+		Required:           true,
+		ReadOnly:           true,
+		DataEngineSpecific: false,
 	}
 
 	SettingDefinitionDefaultBackingImageManagerImage = SettingDefinition{
-		DisplayName: "Default Backing Image Manager Image",
-		Description: "The default backing image manager image used by the manager. Can be changed on the manager starting command line only",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeDeprecated,
-		Required:    true,
-		ReadOnly:    true,
+		DisplayName:        "Default Backing Image Manager Image",
+		Description:        "The default backing image manager image used by the manager. Can be changed on the manager starting command line only",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeDeprecated,
+		Required:           true,
+		ReadOnly:           true,
+		DataEngineSpecific: false,
 	}
 
 	SettingDefinitionSupportBundleManagerImage = SettingDefinition{
-		DisplayName: "Support Bundle Manager Image",
-		Description: "The support bundle manager image for the support bundle generation.",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeString,
-		Required:    true,
-		ReadOnly:    false,
+		DisplayName:        "Support Bundle Manager Image",
+		Description:        "The support bundle manager image for the support bundle generation.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
 	}
 
 	SettingDefinitionReplicaSoftAntiAffinity = SettingDefinition{
-		DisplayName: "Replica Node Level Soft Anti-Affinity",
-		Description: "Allow scheduling on nodes with existing healthy replicas of the same volume",
-		Category:    SettingCategoryScheduling,
-		Type:        SettingTypeBool,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "false",
+		DisplayName:        "Replica Node Level Soft Anti-Affinity",
+		Description:        "Allow scheduling on nodes with existing healthy replicas of the same volume",
+		Category:           SettingCategoryScheduling,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
 	}
 
 	SettingDefinitionFreezeFilesystemForSnapshot = SettingDefinition{
-		DisplayName: "Freeze Filesystem For Snapshot",
-		Description: "Setting that freezes the filesystem on the root partition before a snapshot is created.",
-		Category:    SettingCategorySnapshot,
-		Type:        SettingTypeBool,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "false",
+		DisplayName:        "Freeze Filesystem For Snapshot",
+		Description:        "Setting that freezes the filesystem on the root partition before a snapshot is created.",
+		Category:           SettingCategorySnapshot,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"false\"}", longhorn.DataEngineTypeV1),
 	}
 
 	SettingDefinitionReplicaAutoBalance = SettingDefinition{
@@ -543,11 +559,12 @@ var (
 			"- **disabled**. This option instructs Longhorn no replica auto-balance should be done.\n" +
 			"- **least-effort**. This option instructs Longhorn to balance replicas for minimal redundancy.\n" +
 			"- **best-effort**. This option instructs Longhorn to balance replicas for even redundancy.\n",
-		Category: SettingCategoryScheduling,
-		Type:     SettingTypeString,
-		Required: true,
-		ReadOnly: false,
-		Default:  string(longhorn.ReplicaAutoBalanceDisabled),
+		Category:           SettingCategoryScheduling,
+		Type:               SettingTypeString,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            string(longhorn.ReplicaAutoBalanceDisabled),
 		Choices: []string{
 			string(longhorn.ReplicaAutoBalanceDisabled),
 			string(longhorn.ReplicaAutoBalanceLeastEffort),
@@ -564,34 +581,37 @@ var (
 			"- **Replica Auto Balance** is set to **best-effort**.\n" +
 			"- At least one other disk on the node has sufficient available space.\n\n" +
 			"**Note:** This feature is not affected by the **Replica Node Level Soft Anti-Affinity** setting.",
-		Category: SettingCategoryScheduling,
-		Type:     SettingTypeInt,
-		Required: true,
-		ReadOnly: false,
-		Default:  "90",
+		Category:           SettingCategoryScheduling,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "90",
 	}
 
 	SettingDefinitionStorageOverProvisioningPercentage = SettingDefinition{
-		DisplayName: "Storage Over Provisioning Percentage",
-		Description: "The over-provisioning percentage defines how much storage can be allocated relative to the hard drive's capacity",
-		Category:    SettingCategoryScheduling,
-		Type:        SettingTypeInt,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "100",
+		DisplayName:        "Storage Over Provisioning Percentage",
+		Description:        "The over-provisioning percentage defines how much storage can be allocated relative to the hard drive's capacity",
+		Category:           SettingCategoryScheduling,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "100",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 		},
 	}
 
 	SettingDefinitionStorageMinimalAvailablePercentage = SettingDefinition{
-		DisplayName: "Storage Minimal Available Percentage",
-		Description: "If the minimum available disk capacity exceeds the actual percentage of available disk capacity, the disk becomes unschedulable until more space is freed up.",
-		Category:    SettingCategoryScheduling,
-		Type:        SettingTypeInt,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "25",
+		DisplayName:        "Storage Minimal Available Percentage",
+		Description:        "If the minimum available disk capacity exceeds the actual percentage of available disk capacity, the disk becomes unschedulable until more space is freed up.",
+		Category:           SettingCategoryScheduling,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "25",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 			ValueIntRangeMaximum: 100,
@@ -599,13 +619,14 @@ var (
 	}
 
 	SettingDefinitionStorageReservedPercentageForDefaultDisk = SettingDefinition{
-		DisplayName: "Storage Reserved Percentage For Default Disk",
-		Description: "The reserved percentage specifies the percentage of disk space that will not be allocated to the default disk on each new Longhorn node",
-		Category:    SettingCategoryScheduling,
-		Type:        SettingTypeInt,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "30",
+		DisplayName:        "Storage Reserved Percentage For Default Disk",
+		Description:        "The reserved percentage specifies the percentage of disk space that will not be allocated to the default disk on each new Longhorn node",
+		Category:           SettingCategoryScheduling,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "30",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 			ValueIntRangeMaximum: 100,
@@ -613,72 +634,79 @@ var (
 	}
 
 	SettingDefinitionUpgradeChecker = SettingDefinition{
-		DisplayName: "Enable Upgrade Checker",
-		Description: "Upgrade Checker will check for new Longhorn version periodically. When there is a new version available, a notification will appear in the UI",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeBool,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "true",
+		DisplayName:        "Enable Upgrade Checker",
+		Description:        "Upgrade Checker will check for new Longhorn version periodically. When there is a new version available, a notification will appear in the UI",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "true",
 	}
 
 	SettingDefinitionUpgradeResponderURL = SettingDefinition{
-		DisplayName: "Upgrade Responder URL",
-		Description: "The Upgrade Responder sends a notification whenever a new Longhorn version that you can upgrade to becomes available",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeString,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "https://longhorn-upgrade-responder.rancher.io/v1/checkupgrade",
+		DisplayName:        "Upgrade Responder URL",
+		Description:        "The Upgrade Responder sends a notification whenever a new Longhorn version that you can upgrade to becomes available",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "https://longhorn-upgrade-responder.rancher.io/v1/checkupgrade",
 	}
 
 	SettingDefinitionAllowCollectingLonghornUsageMetrics = SettingDefinition{
 		DisplayName: "Allow Collecting Longhorn Usage Metrics",
 		Description: "Enabling this setting will allow Longhorn to provide additional usage metrics to https://metrics.longhorn.io/.\n" +
 			"This information will help us better understand how Longhorn is being used, which will ultimately contribute to future improvements.\n",
-		Category: SettingCategoryGeneral,
-		Type:     SettingTypeBool,
-		Required: true,
-		ReadOnly: false,
-		Default:  "true",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "true",
 	}
 
 	SettingDefinitionCurrentLonghornVersion = SettingDefinition{
-		DisplayName: "Current Longhorn Version",
-		Description: "The current Longhorn version.",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeString,
-		Required:    false,
-		ReadOnly:    true,
-		Default:     meta.Version,
+		DisplayName:        "Current Longhorn Version",
+		Description:        "The current Longhorn version.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           true,
+		DataEngineSpecific: false,
+		Default:            meta.Version,
 	}
 
 	SettingDefinitionLatestLonghornVersion = SettingDefinition{
-		DisplayName: "Latest Longhorn Version",
-		Description: "The latest version of Longhorn available. Updated by Upgrade Checker automatically",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeString,
-		Required:    false,
-		ReadOnly:    true,
+		DisplayName:        "Latest Longhorn Version",
+		Description:        "The latest version of Longhorn available. Updated by Upgrade Checker automatically",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           true,
+		DataEngineSpecific: false,
 	}
 
 	SettingDefinitionStableLonghornVersions = SettingDefinition{
-		DisplayName: "Stable Longhorn Versions",
-		Description: "The latest stable version of every minor release line. Updated by Upgrade Checker automatically",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeString,
-		Required:    false,
-		ReadOnly:    true,
+		DisplayName:        "Stable Longhorn Versions",
+		Description:        "The latest stable version of every minor release line. Updated by Upgrade Checker automatically",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           true,
+		DataEngineSpecific: false,
 	}
 
 	SettingDefinitionDefaultReplicaCount = SettingDefinition{
-		DisplayName: "Default Replica Count",
-		Description: "The default number of replicas when a volume is created from the Longhorn UI. For Kubernetes configuration, update the `numberOfReplicas` in the StorageClass",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeInt,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "3",
+		DisplayName:        "Default Replica Count",
+		Description:        "The default number of replicas when a volume is created from the Longhorn UI. For Kubernetes configuration, update the `numberOfReplicas` in the StorageClass",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"3\",%q:\"3\"}", longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2),
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 1,
 			ValueIntRangeMaximum: 20,
@@ -693,11 +721,12 @@ var (
 			"- **disabled**. This is the default option. There may or may not be a replica on the same node as the attached volume (workload)\n" +
 			"- **best-effort**. This option instructs Longhorn to try to keep a replica on the same node as the attached volume (workload). Longhorn will not stop the volume, even if it cannot keep a replica local to the attached volume (workload) due to environment limitation, e.g. not enough disk space, incompatible disk tags, etc.\n" +
 			"- **strict-local**. This option enforces Longhorn keep the only one replica on the same node as the attached volume.\n",
-		Category: SettingCategoryGeneral,
-		Type:     SettingTypeString,
-		Required: true,
-		ReadOnly: false,
-		Default:  string(longhorn.DataLocalityDisabled),
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            string(longhorn.DataLocalityDisabled),
 		Choices: []string{
 			string(longhorn.DataLocalityDisabled),
 			string(longhorn.DataLocalityBestEffort),
@@ -706,13 +735,14 @@ var (
 	}
 
 	SettingDefinitionDefaultLonghornStaticStorageClass = SettingDefinition{
-		DisplayName: "Default Longhorn Static StorageClass Name",
-		Description: "The 'storageClassName' is given to PVs and PVCs that are created for an existing Longhorn volume. The StorageClass name can also be used as a label, so it is possible to use a Longhorn StorageClass to bind a workload to an existing PV without creating a Kubernetes StorageClass object.",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeString,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "longhorn-static",
+		DisplayName:        "Default Longhorn Static StorageClass Name",
+		Description:        "The 'storageClassName' is given to PVs and PVCs that are created for an existing Longhorn volume. The StorageClass name can also be used as a label, so it is possible to use a Longhorn StorageClass to bind a workload to an existing PV without creating a Kubernetes StorageClass object.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "longhorn-static",
 	}
 
 	SettingDefinitionTaintToleration = SettingDefinition{
@@ -728,10 +758,11 @@ var (
 			"* `:` this toleration tolerates everything because an empty key with operator `Exists` matches all keys, values and effects \n\n" +
 			"* `key1=value1:`  this toleration has empty effect. It matches all effects with key `key1` \n\n" +
 			"Because `kubernetes.io` is used as the key of all Kubernetes default tolerations, it should not be used in the toleration settings.\n\n",
-		Category: SettingCategoryDangerZone,
-		Type:     SettingTypeString,
-		Required: false,
-		ReadOnly: false,
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
 	}
 
 	SettingDefinitionSystemManagedComponentsNodeSelector = SettingDefinition{
@@ -746,29 +777,32 @@ var (
 			"Multiple label key-value pairs are separated by semicolon. For example: \n\n" +
 			"* `label-key1=label-value1; label-key2=label-value2` \n\n" +
 			"Please see the documentation at https://longhorn.io for more detailed instructions about changing node selector",
-		Category: SettingCategoryDangerZone,
-		Type:     SettingTypeString,
-		Required: false,
-		ReadOnly: false,
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
 	}
 
 	SettingDefinitionCRDAPIVersion = SettingDefinition{
-		DisplayName: "Custom Resource API Version",
-		Description: "The current customer resource's API version, e.g. longhorn.io/v1beta2. Set by manager automatically",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeString,
-		Required:    true,
-		ReadOnly:    true,
+		DisplayName:        "Custom Resource API Version",
+		Description:        "The current customer resource's API version, e.g. longhorn.io/v1beta2. Set by manager automatically",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           true,
+		ReadOnly:           true,
+		DataEngineSpecific: false,
 	}
 
 	SettingDefinitionAutoSalvage = SettingDefinition{
-		DisplayName: "Automatic salvage",
-		Description: "If enabled, volumes will be automatically salvaged when all the replicas become faulty e.g. due to network disconnection. Longhorn will try to figure out which replica(s) are usable, then use them for the volume.",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeBool,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "true",
+		DisplayName:        "Automatic salvage",
+		Description:        "If enabled, volumes will be automatically salvaged when all the replicas become faulty e.g. due to network disconnection. Longhorn will try to figure out which replica(s) are usable, then use them for the volume.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "true",
 	}
 
 	SettingDefinitionAutoDeletePodWhenVolumeDetachedUnexpectedly = SettingDefinition{
@@ -777,41 +811,45 @@ var (
 			"By deleting the pod, its controller restarts the pod and Kubernetes handles volume reattachment and remount. \n\n" +
 			"If disabled, Longhorn will not delete the workload pod that is managed by a controller. You will have to manually restart the pod to reattach and remount the volume. \n\n" +
 			"**Note:** This setting doesn't apply to the workload pods that don't have a controller. Longhorn never deletes them.",
-		Category: SettingCategoryGeneral,
-		Type:     SettingTypeBool,
-		Required: true,
-		ReadOnly: false,
-		Default:  "true",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "true",
 	}
 
 	SettingDefinitionRegistrySecret = SettingDefinition{
-		DisplayName: "Registry secret",
-		Description: "The Kubernetes Secret name",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeString,
-		Required:    false,
-		ReadOnly:    false,
-		Default:     "",
+		DisplayName:        "Registry secret",
+		Description:        "The Kubernetes Secret name",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "",
 	}
 
 	SettingDefinitionDisableSchedulingOnCordonedNode = SettingDefinition{
-		DisplayName: "Disable Scheduling On Cordoned Node",
-		Description: `Disable Longhorn manager to schedule replica on Kubernetes cordoned node`,
-		Category:    SettingCategoryScheduling,
-		Type:        SettingTypeBool,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "true",
+		DisplayName:        "Disable Scheduling On Cordoned Node",
+		Description:        `Disable Longhorn manager to schedule replica on Kubernetes cordoned node`,
+		Category:           SettingCategoryScheduling,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "true",
 	}
 
 	SettingDefinitionReplicaZoneSoftAntiAffinity = SettingDefinition{
-		DisplayName: "Replica Zone Level Soft Anti-Affinity",
-		Description: "Allow scheduling new Replicas of Volume to the Nodes in the same Zone as existing healthy Replicas. Nodes don't belong to any Zone will be treated as in the same Zone. Notice that Longhorn relies on label `topology.kubernetes.io/zone=<Zone name of the node>` in the Kubernetes node object to identify the zone.",
-		Category:    SettingCategoryScheduling,
-		Type:        SettingTypeBool,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "true",
+		DisplayName:        "Replica Zone Level Soft Anti-Affinity",
+		Description:        "Allow scheduling new Replicas of Volume to the Nodes in the same Zone as existing healthy Replicas. Nodes don't belong to any Zone will be treated as in the same Zone. Notice that Longhorn relies on label `topology.kubernetes.io/zone=<Zone name of the node>` in the Kubernetes node object to identify the zone.",
+		Category:           SettingCategoryScheduling,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "true",
 	}
 
 	SettingDefinitionNodeDownPodDeletionPolicy = SettingDefinition{
@@ -821,11 +859,12 @@ var (
 			"- **delete-statefulset-pod** Longhorn will force delete StatefulSet terminating pods on nodes that are down to release Longhorn volumes so that Kubernetes can spin up replacement pods.\n" +
 			"- **delete-deployment-pod** Longhorn will force delete Deployment terminating pods on nodes that are down to release Longhorn volumes so that Kubernetes can spin up replacement pods.\n" +
 			"- **delete-both-statefulset-and-deployment-pod** Longhorn will force delete StatefulSet/Deployment terminating pods on nodes that are down to release Longhorn volumes so that Kubernetes can spin up replacement pods.\n",
-		Category: SettingCategoryGeneral,
-		Type:     SettingTypeString,
-		Required: true,
-		ReadOnly: false,
-		Default:  string(NodeDownPodDeletionPolicyDoNothing),
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            string(NodeDownPodDeletionPolicyDoNothing),
 		Choices: []string{
 			string(NodeDownPodDeletionPolicyDoNothing),
 			string(NodeDownPodDeletionPolicyDeleteStatefulSetPod),
@@ -842,11 +881,12 @@ var (
 			"- **block-if-contains-last-replica** Longhorn will block the drain when the node contains the last healthy replica of a volume.\n" +
 			"- **allow-if-replica-is-stopped** Longhorn will allow the drain when the node contains the last healthy replica of a volume but the replica is stopped. WARNING: possible data loss if the node is removed after draining. Select this option if you want to drain the node and do in-place upgrade/maintenance.\n" +
 			"- **always-allow** Longhorn will allow the drain even though the node contains the last healthy replica of a volume. WARNING: possible data loss if the node is removed after draining. Also possible data corruption if the last replica was running during the draining.\n",
-		Category: SettingCategoryGeneral,
-		Type:     SettingTypeString,
-		Required: true,
-		ReadOnly: false,
-		Default:  string(NodeDrainPolicyBlockIfContainsLastReplica),
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            string(NodeDrainPolicyBlockIfContainsLastReplica),
 		Choices: []string{
 			string(NodeDrainPolicyBlockForEviction),
 			string(NodeDrainPolicyBlockForEvictionIfContainsLastReplica),
@@ -857,13 +897,14 @@ var (
 	}
 
 	SettingDefinitionDetachManuallyAttachedVolumesWhenCordoned = SettingDefinition{
-		DisplayName: "Detach Manually Attached Volumes When Cordoned",
-		Description: "Automatically detach volumes that are attached manually when node is cordoned.",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeBool,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "false",
+		DisplayName:        "Detach Manually Attached Volumes When Cordoned",
+		Description:        "Automatically detach volumes that are attached manually when node is cordoned.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
 	}
 
 	SettingDefinitionPriorityClass = SettingDefinition{
@@ -872,30 +913,33 @@ var (
 			"Longhorn system contains user deployed components (e.g, Longhorn manager, Longhorn driver, Longhorn UI) and system managed components (e.g, instance manager, engine image, CSI driver, etc.) " +
 			"Note that this setting only sets Priority Class for system managed components. " +
 			"Depending on how you deployed Longhorn, you need to set Priority Class for user deployed components in Helm chart or deployment YAML file. \n",
-		Category: SettingCategoryDangerZone,
-		Required: false,
-		ReadOnly: false,
+		Category:           SettingCategoryDangerZone,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
 	}
 
 	SettingDefinitionDisableRevisionCounter = SettingDefinition{
-		DisplayName: "Disable Revision Counter",
-		Description: "This setting is only for volumes created by UI. By default, this is true meaning Longhorn will not have revision counter file to track every write to the volume. During the salvage recovering, Longhorn will use the 'volume-head-xxx.img' file last modification time and file size to pick the replica candidate to recover the whole volume. If this setting is false, there will be a revision counter file to track every write to the volume. During salvage recovering Longhorn will pick the replica with largest revision counter as candidate to recover the whole volume.",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeBool,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "true",
+		DisplayName:        "Disable Revision Counter",
+		Description:        "This setting is only for volumes created by UI. By default, this is true meaning Longhorn will not have revision counter file to track every write to the volume. During the salvage recovering, Longhorn will use the 'volume-head-xxx.img' file last modification time and file size to pick the replica candidate to recover the whole volume. If this setting is false, there will be a revision counter file to track every write to the volume. During salvage recovering Longhorn will pick the replica with largest revision counter as candidate to recover the whole volume.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"true\"}", longhorn.DataEngineTypeV1),
 	}
 
 	SettingDefinitionReplicaReplenishmentWaitInterval = SettingDefinition{
 		DisplayName: "Replica Replenishment Wait Interval",
 		Description: "In seconds. The interval determines how long Longhorn will wait at least in order to reuse the existing data on a failed replica rather than directly creating a new replica for a degraded volume.\n" +
 			"Warning: This option works only when there is a failed replica in the volume. And this option may block the rebuilding for a while in the case.",
-		Category: SettingCategoryGeneral,
-		Type:     SettingTypeInt,
-		Required: true,
-		ReadOnly: false,
-		Default:  "600",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "600",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 		},
@@ -909,11 +953,12 @@ var (
 			"  - The old setting \"Disable Replica Rebuild\" is replaced by this setting. \n\n" +
 			"  - Different from relying on replica starting delay to limit the concurrent rebuilding, if the rebuilding is disabled, replica object replenishment will be directly skipped. \n\n" +
 			"  - When the value is 0, the eviction and data locality feature won't work. But this shouldn't have any impact to any current replica rebuild and backup restore.",
-		Category: SettingCategoryDangerZone,
-		Type:     SettingTypeInt,
-		Required: true,
-		ReadOnly: false,
-		Default:  "5",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "5",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 		},
@@ -923,11 +968,12 @@ var (
 		DisplayName: "Concurrent Backing Image Replenish Per Node Limit",
 		Description: "This setting controls how many backing images copy on a node can be replenished simultaneously. \n\n" +
 			"Typically, Longhorn can block the backing image copy starting once the current replenishing count on a node exceeds the limit. But when the value is 0, it means disabling the backing image replenish.",
-		Category: SettingCategoryDangerZone,
-		Type:     SettingTypeInt,
-		Required: true,
-		ReadOnly: false,
-		Default:  "5",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "5",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 		},
@@ -938,11 +984,12 @@ var (
 		Description: "This setting controls how many volumes on a node can restore the backup concurrently.\n\n" +
 			"Longhorn blocks the backup restore once the restoring volume count exceeds the limit.\n\n" +
 			"Set the value to **0** to disable backup restore.\n\n",
-		Category: SettingCategoryGeneral,
-		Type:     SettingTypeInt,
-		Required: true,
-		ReadOnly: false,
-		Default:  "5",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "5",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 		},
@@ -952,11 +999,12 @@ var (
 		DisplayName: "System Managed Pod Image Pull Policy",
 		Description: "This setting defines the Image Pull Policy of Longhorn system managed pods, e.g. instance manager, engine image, CSI driver, etc. " +
 			"The new Image Pull Policy will only apply after the system managed pods restart.",
-		Category: SettingCategoryGeneral,
-		Type:     SettingTypeString,
-		Required: true,
-		ReadOnly: false,
-		Default:  string(SystemManagedPodsImagePullPolicyIfNotPresent),
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            string(SystemManagedPodsImagePullPolicyIfNotPresent),
 		Choices: []string{
 			string(SystemManagedPodsImagePullPolicyIfNotPresent),
 			string(SystemManagedPodsImagePullPolicyNever),
@@ -965,33 +1013,36 @@ var (
 	}
 
 	SettingDefinitionAllowVolumeCreationWithDegradedAvailability = SettingDefinition{
-		DisplayName: "Allow Volume Creation with Degraded Availability",
-		Description: "This setting allows user to create and attach a volume that doesn't have all the replicas scheduled at the time of creation.",
-		Category:    SettingCategoryScheduling,
-		Type:        SettingTypeBool,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "true",
+		DisplayName:        "Allow Volume Creation with Degraded Availability",
+		Description:        "This setting allows user to create and attach a volume that doesn't have all the replicas scheduled at the time of creation.",
+		Category:           SettingCategoryScheduling,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "true",
 	}
 
 	SettingDefinitionAutoCleanupSystemGeneratedSnapshot = SettingDefinition{
-		DisplayName: "Automatically Cleanup System Generated Snapshot",
-		Description: "This setting enables Longhorn to automatically cleanup the system generated snapshot before and after replica rebuilding.",
-		Category:    SettingCategorySnapshot,
-		Type:        SettingTypeBool,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "true",
+		DisplayName:        "Automatically Cleanup System Generated Snapshot",
+		Description:        "This setting enables Longhorn to automatically cleanup the system generated snapshot before and after replica rebuilding.",
+		Category:           SettingCategorySnapshot,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "true",
 	}
 
 	SettingDefinitionAutoCleanupRecurringJobBackupSnapshot = SettingDefinition{
-		DisplayName: "Automatically Cleanup Recurring Job Backup Snapshot",
-		Description: "This setting enables Longhorn to automatically cleanup the snapshot generated by a recurring backup job.",
-		Category:    SettingCategorySnapshot,
-		Type:        SettingTypeBool,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "true",
+		DisplayName:        "Automatically Cleanup Recurring Job Backup Snapshot",
+		Description:        "This setting enables Longhorn to automatically cleanup the snapshot generated by a recurring backup job.",
+		Category:           SettingCategorySnapshot,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "true",
 	}
 
 	SettingDefinitionConcurrentAutomaticEngineUpgradePerNodeLimit = SettingDefinition{
@@ -999,24 +1050,26 @@ var (
 		Description: "This setting controls how Longhorn automatically upgrades volumes' engines after upgrading Longhorn manager. " +
 			"The value of this setting specifies the maximum number of engines per node that are allowed to upgrade to the default engine image at the same time. " +
 			"If the value is 0, Longhorn will not automatically upgrade volumes' engines to default version.",
-		Category: SettingCategoryGeneral,
-		Type:     SettingTypeInt,
-		Required: true,
-		ReadOnly: false,
-		Default:  "0",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "0",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 		},
 	}
 
 	SettingDefinitionBackingImageCleanupWaitInterval = SettingDefinition{
-		DisplayName: "Backing Image Cleanup Wait Interval",
-		Description: "In minutes. The interval determines how long Longhorn will wait before cleaning up the backing image file when there is no replica in the disk using it.",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeInt,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "60",
+		DisplayName:        "Backing Image Cleanup Wait Interval",
+		Description:        "In minutes. The interval determines how long Longhorn will wait before cleaning up the backing image file when there is no replica in the disk using it.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "60",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 		},
@@ -1028,19 +1081,20 @@ var (
 			"WARNING: \n\n" +
 			"  - This recovery only works for the backing image of which the creation type is \"download\". \n\n" +
 			"  - File state \"unknown\" means the related manager pods on the pod is not running or the node itself is down/disconnected.",
-		Category: SettingCategoryGeneral,
-		Type:     SettingTypeInt,
-		Required: true,
-		ReadOnly: false,
-		Default:  "300",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "300",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 		},
 	}
 
 	SettingDefinitionGuaranteedInstanceManagerCPU = SettingDefinition{
-		DisplayName: "Guaranteed Instance Manager CPU for V1 Data Engine",
-		Description: "Percentage of the total allocatable CPU resources on each node to be reserved for each instance manager pod when the V1 Data Engine is enabled. For example, 10 means 10% of the total CPU on a node will be allocated to each instance manager pod on this node. This will help maintain engine and replica stability during high node workload. \n\n" +
+		DisplayName: "Guaranteed Instance Manager CPU",
+		Description: "Percentage of the total allocatable CPU resources on each node to be reserved for each instance manager pod. For example, 10 means 10% of the total CPU on a node will be allocated to each instance manager pod on this node. This will help maintain engine and replica stability during high node workload. \n\n" +
 			"In order to prevent unexpected volume instance (engine/replica) crash as well as guarantee a relative acceptable IO performance, you can use the following formula to calculate a value for this setting: \n\n" +
 			"`Guaranteed Instance Manager CPU = The estimated max Longhorn volume engine and replica count on a node * 0.1 / The total allocatable CPUs on the node * 100` \n\n" +
 			"The result of above calculation doesn't mean that's the maximum CPU resources the Longhorn workloads require. To fully exploit the Longhorn volume I/O performance, you can allocate/guarantee more CPU resources via this setting. \n\n" +
@@ -1050,12 +1104,14 @@ var (
 			"  - Considering the possible new instance manager pods in the further system upgrade, this float value ranges from 0 to 40. \n\n" +
 			"  - One more set of instance manager pods may need to be deployed when the Longhorn system is upgraded. If current available CPUs of the nodes are not enough for the new instance manager pods, you need to detach the volumes using the oldest instance manager pods so that Longhorn can clean up the old pods automatically and release the CPU resources. And the new pods with the latest instance manager image will be launched then. \n\n" +
 			"  - This global setting will be ignored for a node if the field \"InstanceManagerCPURequest\" on the node is set. \n\n" +
-			"  - After this setting is changed, the v1 instance manager pod using this global setting will be automatically restarted without instances running on the v1 instance manager. \n\n",
-		Category: SettingCategoryDangerZone,
-		Type:     SettingTypeFloat,
-		Required: true,
-		ReadOnly: false,
-		Default:  "12",
+			"  - After this setting is changed, the instance manager pod using this global setting will be automatically restarted without instances running on the instance manager. \n\n" +
+			"  - For the v2 Data Engine, the spdk_tgt process inside each instance manager pod uses one or more dedicated CPU cores. Setting a minimum CPU usage is critical to maintaining stability during periods of high node load.",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeFloat,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"12\",%q:\"12\"}", longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2),
 		ValueFloatRange: map[string]float64{
 			ValueFloatRangeMinimum: 0,
 			ValueFloatRangeMaximum: 40,
@@ -1070,11 +1126,12 @@ var (
 			"  - Is not the last node containing the replica of any volume. \n\n" +
 			"  - Is not running backing image components pod. \n\n" +
 			"  - Is not running share manager components pod. \n\n",
-		Category: SettingCategoryGeneral,
-		Type:     SettingTypeBool,
-		Required: true,
-		ReadOnly: false,
-		Default:  "false",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
 	}
 
 	SettingDefinitionOrphanResourceAutoDeletion = SettingDefinition{
@@ -1085,22 +1142,24 @@ var (
 			"Available items are: \n\n" +
 			"- **replica-data**: replica data store \n\n" +
 			"- **instance**: engine and replica runtime instance \n\n",
-		Category: SettingCategoryOrphan,
-		Type:     SettingTypeString,
-		Required: false,
-		ReadOnly: false,
-		Default:  "",
+		Category:           SettingCategoryOrphan,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "",
 	}
 
 	SettingDefinitionOrphanResourceAutoDeletionGracePeriod = SettingDefinition{
 		DisplayName: "Orphan Resource Auto-Deletion Grace Period",
 		Description: "Specifies the wait time, in seconds, before Longhorn automatically deletes an orphaned Custom Resource (CR) and its associated resources. \n\n" +
 			"**Note:** If a user manually deletes an orphaned CR, the deletion occurs immediately and does not respect this grace period. \n\n",
-		Category: SettingCategoryOrphan,
-		Type:     SettingTypeInt,
-		Required: true,
-		ReadOnly: false,
-		Default:  "300",
+		Category:           SettingCategoryOrphan,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "300",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 		},
@@ -1114,11 +1173,12 @@ var (
 			"WARNING: \n\n" +
 			"  - The cluster must have pre-existing Multus installed, and NetworkAttachmentDefinition IPs are reachable between nodes. \n\n" +
 			"  - When applying the setting, Longhorn will try to restart all instance-manager, and backing-image-manager pods if all volumes are detached and eventually restart the instance manager pod without instances running on the instance manager. \n\n",
-		Category: SettingCategoryDangerZone,
-		Type:     SettingTypeString,
-		Required: false,
-		ReadOnly: false,
-		Default:  CniNetworkNone,
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            CniNetworkNone,
 	}
 
 	SettingDefinitionStorageNetworkForRWXVolumeEnabled = SettingDefinition{
@@ -1127,22 +1187,24 @@ var (
 			"WARNING: \n\n" +
 			"  - This setting should change after all Longhorn RWX volumes are detached because some Longhorn component pods will be recreated to apply the setting. \n\n" +
 			"  - When this setting is enabled, the RWX volumes are mounted with the storage network within the CSI plugin pod container network namespace. As a result, restarting the CSI plugin pod when there are attached RWX volumes may lead to its data path become unresponsive. When this occurs, you must restart the workload pod to re-establish the mount connection. Alternatively, you can enable the 'Automatically Delete Workload Pod when The Volume Is Detached Unexpectedly' setting to allow Longhorn to automatically delete the workload pod.\n\n",
-		Category: SettingCategoryDangerZone,
-		Type:     SettingTypeBool,
-		Required: false,
-		ReadOnly: false,
-		Default:  "false",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeBool,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
 	}
 
 	SettingDefinitionRecurringSuccessfulJobsHistoryLimit = SettingDefinition{
 		DisplayName: "Cronjob Successful Jobs History Limit",
 		Description: "This setting specifies how many successful backup or snapshot job histories should be retained. \n\n" +
 			"History will not be retained if the value is 0.",
-		Category: SettingCategoryBackup,
-		Type:     SettingTypeInt,
-		Required: false,
-		ReadOnly: false,
-		Default:  "1",
+		Category:           SettingCategoryBackup,
+		Type:               SettingTypeInt,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "1",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 		},
@@ -1152,24 +1214,26 @@ var (
 		DisplayName: "Cronjob Failed Jobs History Limit",
 		Description: "This setting specifies how many failed backup or snapshot job histories should be retained.\n\n" +
 			"History will not be retained if the value is 0.",
-		Category: SettingCategoryBackup,
-		Type:     SettingTypeInt,
-		Required: false,
-		ReadOnly: false,
-		Default:  "1",
+		Category:           SettingCategoryBackup,
+		Type:               SettingTypeInt,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "1",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 		},
 	}
 
 	SettingDefinitionRecurringJobMaxRetention = SettingDefinition{
-		DisplayName: "Maximum Retention Number for Recurring Job",
-		Description: "This setting specifies how many snapshots or backups should be retained.",
-		Category:    SettingCategoryBackup,
-		Type:        SettingTypeInt,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "100",
+		DisplayName:        "Maximum Retention Number for Recurring Job",
+		Description:        "This setting specifies how many snapshots or backups should be retained.",
+		Category:           SettingCategoryBackup,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "100",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 1,
 			ValueIntRangeMaximum: MaxSnapshotNum,
@@ -1181,11 +1245,12 @@ var (
 		Description: "This setting specifies how many failed support bundles can exist in the cluster.\n\n" +
 			"The retained failed support bundle is for analysis purposes and needs to clean up manually.\n\n" +
 			"Set this value to **0** to have Longhorn automatically purge all failed support bundles.\n\n",
-		Category: SettingCategoryGeneral,
-		Type:     SettingTypeInt,
-		Required: false,
-		ReadOnly: false,
-		Default:  "1",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeInt,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "1",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 		},
@@ -1195,11 +1260,12 @@ var (
 		DisplayName: "Timeout for Support Bundle Node Collection",
 		Description: "In minutes. The timeout for collecting node bundles for support bundle generation. The default value is 30.\n\n" +
 			"When the timeout is reached, the support bundle generation will proceed without requiring the collection of node bundles. \n\n",
-		Category: SettingCategoryGeneral,
-		Type:     SettingTypeInt,
-		Required: true,
-		ReadOnly: false,
-		Default:  "30",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "30",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 		},
@@ -1210,21 +1276,23 @@ var (
 		Description: "This flag is designed to prevent Longhorn from being accidentally uninstalled which will lead to data lost. \n\n" +
 			"Set this flag to **true** to allow Longhorn uninstallation. " +
 			"If this flag **false**, Longhorn uninstallation job will fail.",
-		Category: SettingCategoryGeneral,
-		Type:     SettingTypeBool,
-		Required: true,
-		ReadOnly: false,
-		Default:  "false",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
 	}
 
 	SettingDefinitionEngineReplicaTimeout = SettingDefinition{
-		DisplayName: "Timeout between Engine and Replica",
-		Description: "In seconds. The setting specifies the timeout between the engine and replica(s), and the value should be between 8 to 30 seconds. The default value is 8 seconds.",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeInt,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "8",
+		DisplayName:        "Timeout between Engine and Replica",
+		Description:        "In seconds. The setting specifies the timeout between the engine and replica(s), and the value should be between 8 to 30 seconds. The default value is 8 seconds.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"8\",%q:\"8\"}", longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2),
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 8,
 			ValueIntRangeMaximum: 30,
@@ -1238,11 +1306,12 @@ var (
 			"- **disabled**: Disable snapshot disk file hashing and data integrity checking. \n\n" +
 			"- **enabled**: Enables periodic snapshot disk file hashing and data integrity checking. To detect the filesystem-unaware corruption caused by bit rot or other issues in snapshot disk files, Longhorn system periodically hashes files and finds corrupted ones. Hence, the system performance will be impacted during the periodical checking. \n\n" +
 			"- **fast-check**: Enable snapshot disk file hashing and fast data integrity checking. Longhorn system only hashes snapshot disk files if their are not hashed or the modification time are changed. In this mode, filesystem-unaware corruption cannot be detected, but the impact on system performance can be minimized.",
-		Category: SettingCategorySnapshot,
-		Type:     SettingTypeString,
-		Required: true,
-		ReadOnly: false,
-		Default:  string(longhorn.SnapshotDataIntegrityFastCheck),
+		Category:           SettingCategorySnapshot,
+		Type:               SettingTypeString,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            string(longhorn.SnapshotDataIntegrityFastCheck),
 		Choices: []string{
 			string(longhorn.SnapshotDataIntegrityDisabled),
 			string(longhorn.SnapshotDataIntegrityEnabled),
@@ -1251,34 +1320,37 @@ var (
 	}
 
 	SettingDefinitionSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation = SettingDefinition{
-		DisplayName: "Immediate Snapshot Data Integrity Check After Creating a Snapshot",
-		Description: "Hashing snapshot disk files impacts the performance of the system. The immediate snapshot hashing and checking can be disabled to minimize the impact after creating a snapshot.",
-		Category:    SettingCategorySnapshot,
-		Type:        SettingTypeBool,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "false",
+		DisplayName:        "Immediate Snapshot Data Integrity Check After Creating a Snapshot",
+		Description:        "Hashing snapshot disk files impacts the performance of the system. The immediate snapshot hashing and checking can be disabled to minimize the impact after creating a snapshot.",
+		Category:           SettingCategorySnapshot,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"false\",%q:\"false\"}", longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2),
 	}
 
 	SettingDefinitionSnapshotDataIntegrityCronJob = SettingDefinition{
 		DisplayName: "Snapshot Data Integrity Check CronJob",
 		Description: "Unix-cron string format. The setting specifies when Longhorn checks the data integrity of snapshot disk files. \n\n" +
 			"Warning: Hashing snapshot disk files impacts the performance of the system. It is recommended to run data integrity checks during off-peak times and to reduce the frequency of checks.",
-		Category: SettingCategorySnapshot,
-		Type:     SettingTypeString,
-		Required: true,
-		ReadOnly: false,
-		Default:  "0 0 */7 * *",
+		Category:           SettingCategorySnapshot,
+		Type:               SettingTypeString,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "0 0 */7 * *",
 	}
 
 	SettingDefinitionSnapshotMaxCount = SettingDefinition{
-		DisplayName: "Snapshot Maximum Count",
-		Description: "Maximum snapshot count for a volume. The value should be between 2 to 250",
-		Category:    SettingCategorySnapshot,
-		Type:        SettingTypeInt,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     strconv.Itoa(MaxSnapshotNum),
+		DisplayName:        "Snapshot Maximum Count",
+		Description:        "Maximum snapshot count for a volume. The value should be between 2 to 250",
+		Category:           SettingCategorySnapshot,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            strconv.Itoa(MaxSnapshotNum),
 	}
 
 	SettingDefinitionRemoveSnapshotsDuringFilesystemTrim = SettingDefinition{
@@ -1286,31 +1358,34 @@ var (
 		Description: "This setting allows Longhorn filesystem trim feature to automatically mark the latest snapshot and its ancestors as removed and stops at the snapshot containing multiple children.\n\n" +
 			"Since Longhorn filesystem trim feature can be applied to the volume head and the followed continuous removed or system snapshots only, trying to trim a removed file from a valid snapshot will do nothing but the filesystem will discard this kind of in-memory trimmable file info. " +
 			"Later on if you mark the snapshot as removed and want to retry the trim, you may need to unmount and remount the filesystem so that the filesystem can recollect the trimmable file info.",
-		Category: SettingCategoryGeneral,
-		Type:     SettingTypeBool,
-		Required: true,
-		ReadOnly: false,
-		Default:  "false",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
 	}
 
 	SettingDefinitionFastReplicaRebuildEnabled = SettingDefinition{
-		DisplayName: "Fast Replica Rebuild Enabled",
-		Description: "This setting enables the fast replica rebuilding feature. It relies on the checksums of snapshot disk files, so setting the snapshot-data-integrity to **enable** or **fast-check** is a prerequisite.",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeBool,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "true",
+		DisplayName:        "Fast Replica Rebuild Enabled",
+		Description:        "This setting enables the fast replica rebuilding feature. It relies on the checksums of snapshot disk files, so setting the snapshot-data-integrity to **enable** or **fast-check** is a prerequisite.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"true\",%q:\"false\"}", longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2),
 	}
 
 	SettingDefinitionReplicaFileSyncHTTPClientTimeout = SettingDefinition{
-		DisplayName: "Timeout of HTTP Client to Replica File Sync Server",
-		Description: "In seconds. The setting specifies the HTTP client timeout to the file sync server.",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeInt,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "30",
+		DisplayName:        "Timeout of HTTP Client to Replica File Sync Server",
+		Description:        "In seconds. The setting specifies the HTTP client timeout to the file sync server.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "30",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 5,
 			ValueIntRangeMaximum: 120,
@@ -1318,13 +1393,14 @@ var (
 	}
 
 	SettingDefinitionLongGPRCTimeOut = SettingDefinition{
-		DisplayName: "Long gRPC Timeout",
-		Description: "Number of seconds that Longhorn allows for the completion of replica rebuilding and snapshot cloning operations.",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeInt,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "86400",
+		DisplayName:        "Long gRPC Timeout",
+		Description:        "Number of seconds that Longhorn allows for the completion of replica rebuilding and snapshot cloning operations.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "86400",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 1,
 			ValueIntRangeMaximum: 604800,
@@ -1338,11 +1414,12 @@ var (
 			"- **none**: Disable the compression method. Suitable for multimedia data such as encoded images and videos. \n\n" +
 			"- **lz4**: Fast compression method. Suitable for flat files. \n\n" +
 			"- **gzip**: A bit of higher compression ratio but relatively slow.",
-		Category: SettingCategoryBackup,
-		Type:     SettingTypeString,
-		Required: true,
-		ReadOnly: false,
-		Default:  string(longhorn.BackupCompressionMethodLz4),
+		Category:           SettingCategoryBackup,
+		Type:               SettingTypeString,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            string(longhorn.BackupCompressionMethodLz4),
 		Choices: []string{
 			string(longhorn.BackupCompressionMethodNone),
 			string(longhorn.BackupCompressionMethodLz4),
@@ -1351,51 +1428,55 @@ var (
 	}
 
 	SettingDefinitionBackupConcurrentLimit = SettingDefinition{
-		DisplayName: "Backup Concurrent Limit Per Backup",
-		Description: "This setting controls how many worker threads per backup concurrently.",
-		Category:    SettingCategoryBackup,
-		Type:        SettingTypeInt,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "2",
+		DisplayName:        "Backup Concurrent Limit Per Backup",
+		Description:        "This setting controls how many worker threads per backup concurrently.",
+		Category:           SettingCategoryBackup,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "2",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 1,
 		},
 	}
 
 	SettingDefinitionRestoreConcurrentLimit = SettingDefinition{
-		DisplayName: "Restore Concurrent Limit Per Backup",
-		Description: "This setting controls how many worker threads per restore concurrently.",
-		Category:    SettingCategoryBackup,
-		Type:        SettingTypeInt,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "2",
+		DisplayName:        "Restore Concurrent Limit Per Backup",
+		Description:        "This setting controls how many worker threads per restore concurrently.",
+		Category:           SettingCategoryBackup,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "2",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 1,
 		},
 	}
 
 	SettingDefinitionLogLevel = SettingDefinition{
-		DisplayName: "Log Level",
-		Description: "The log level Panic, Fatal, Error, Warn, Info, Debug, Trace used in longhorn manager. By default Info.",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeString,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "Info",
-		Choices:     []string{"Panic", "Fatal", "Error", "Warn", "Info", "Debug", "Trace"},
+		DisplayName:        "Log Level",
+		Description:        "The log level Panic, Fatal, Error, Warn, Info, Debug, Trace used in longhorn manager. By default Info.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "Info",
+		Choices:            []string{"Panic", "Fatal", "Error", "Warn", "Info", "Debug", "Trace"},
 	}
 
 	SettingDefinitionV1DataEngine = SettingDefinition{
 		DisplayName: "V1 Data Engine",
 		Description: "Setting that allows you to enable the V1 Data Engine. \n\n" +
 			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached v1 volumes. \n\n",
-		Category: SettingCategoryDangerZone,
-		Type:     SettingTypeBool,
-		Required: true,
-		ReadOnly: false,
-		Default:  "true",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "true",
 	}
 
 	SettingDefinitionV2DataEngine = SettingDefinition{
@@ -1403,139 +1484,104 @@ var (
 		Description: "This setting allows users to activate v2 data engine which is based on SPDK. Currently, it is in the experimental phase and should not be utilized in a production environment.\n\n" +
 			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached v2 volumes. \n\n" +
 			"  - When the V2 Data Engine is enabled, each instance-manager pod utilizes 1 CPU core. This high CPU usage is attributed to the spdk_tgt process running within each instance-manager pod. The spdk_tgt process is responsible for handling input/output (IO) operations and requires intensive polling. As a result, it consumes 100% of a dedicated CPU core to efficiently manage and process the IO requests, ensuring optimal performance and responsiveness for storage operations. \n\n",
-		Category: SettingCategoryDangerZone,
-		Type:     SettingTypeBool,
-		Required: true,
-		ReadOnly: false,
-		Default:  "false",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
 	}
 
-	SettingDefinitionV2DataEngineHugepageLimit = SettingDefinition{
-		DisplayName: "Hugepage Size for V2 Data Engine",
-		Description: "Hugepage size in MiB for v2 data engine",
-		Category:    SettingCategoryDangerZone,
-		Type:        SettingTypeInt,
-		Required:    true,
-		ReadOnly:    true,
-		Default:     "2048",
+	SettingDefinitionHugepageLimit = SettingDefinition{
+		DisplayName:        "Hugepage Size",
+		Description:        "Hugepage size in MiB for v2 data engine",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"2048\"}", longhorn.DataEngineTypeV2),
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 0,
 		},
 	}
 
-	SettingDefinitionV2DataEngineGuaranteedInstanceManagerCPU = SettingDefinition{
-		DisplayName: "Guaranteed Instance Manager CPU for V2 Data Engine",
-		Description: "Number of millicpus on each node to be reserved for each instance manager pod when the V2 Data Engine is enabled. The Storage Performance Development Kit (SPDK) target daemon within each instance manager pod uses 1 or multiple CPU cores. Configuring a minimum CPU usage value is essential for maintaining engine and replica stability, especially during periods of high node workload. \n\n" +
-			"WARNING: \n\n" +
-			"  - Value 0 means unsetting CPU requests for instance manager pods for v2 data engine. \n\n" +
-			"  - The smallest acceptable integer value is 1000. \n\n" +
-			"  - After this setting is changed, the v2 instance manager pod using this global setting will be automatically restarted without instances running on the v2 instance manager. \n\n",
-		Category: SettingCategoryDangerZone,
-		Type:     SettingTypeInt,
-		Required: true,
-		ReadOnly: false,
-		Default:  "1250",
-		ValueIntRange: map[string]int{
-			ValueIntRangeMinimum: 1000,
-		},
-	}
-
-	SettingDefinitionV2DataEngineCPUMask = SettingDefinition{
-		DisplayName: "CPU Mask for V2 Data Engine",
-		Description: "CPU cores on which the Storage Performance Development Kit (SPDK) target daemon should run. The SPDK target daemon is located in each Instance Manager pod. Ensure that the number of cores is less than or equal to the guaranteed Instance Manager CPUs for the V2 Data Engine. The default value is 0x1. \n\n",
-		Category:    SettingCategoryDangerZone,
-		Type:        SettingTypeString,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "0x1",
+	SettingDefinitionCPUMask = SettingDefinition{
+		DisplayName:        "CPU Mask",
+		Description:        "CPU cores on which the Storage Performance Development Kit (SPDK) target daemon should run. The SPDK target daemon is located in each Instance Manager pod. Ensure that the number of cores is less than or equal to the guaranteed Instance Manager CPUs for the V2 Data Engine. The default value is 0x1. \n\n",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeString,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"0x1\"}", longhorn.DataEngineTypeV2),
 	}
 
 	SettingDefinitionReplicaDiskSoftAntiAffinity = SettingDefinition{
-		DisplayName: "Replica Disk Level Soft Anti-Affinity",
-		Description: "Allow scheduling on disks with existing healthy replicas of the same volume",
-		Category:    SettingCategoryScheduling,
-		Type:        SettingTypeBool,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "true",
+		DisplayName:        "Replica Disk Level Soft Anti-Affinity",
+		Description:        "Allow scheduling on disks with existing healthy replicas of the same volume",
+		Category:           SettingCategoryScheduling,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "true",
 	}
 
 	SettingDefinitionAllowEmptyNodeSelectorVolume = SettingDefinition{
-		DisplayName: "Allow Scheduling Empty Node Selector Volumes To Any Node",
-		Description: "Allow replica of the volume without node selector to be scheduled on node with tags, default true",
-		Category:    SettingCategoryScheduling,
-		Type:        SettingTypeBool,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "true",
+		DisplayName:        "Allow Scheduling Empty Node Selector Volumes To Any Node",
+		Description:        "Allow replica of the volume without node selector to be scheduled on node with tags, default true",
+		Category:           SettingCategoryScheduling,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "true",
 	}
 
 	SettingDefinitionAllowEmptyDiskSelectorVolume = SettingDefinition{
-		DisplayName: "Allow Scheduling Empty Disk Selector Volumes To Any Disk",
-		Description: "Allow replica of the volume without disk selector to be scheduled on disk with tags, default true",
-		Category:    SettingCategoryScheduling,
-		Type:        SettingTypeBool,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "true",
+		DisplayName:        "Allow Scheduling Empty Disk Selector Volumes To Any Disk",
+		Description:        "Allow replica of the volume without disk selector to be scheduled on disk with tags, default true",
+		Category:           SettingCategoryScheduling,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "true",
 	}
 
 	SettingDefinitionDisableSnapshotPurge = SettingDefinition{
-		DisplayName: "Disable Snapshot Purge",
-		Description: "Temporarily prevent all attempts to purge volume snapshots",
-		Category:    SettingCategoryDangerZone,
-		Type:        SettingTypeBool,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "false",
+		DisplayName:        "Disable Snapshot Purge",
+		Description:        "Temporarily prevent all attempts to purge volume snapshots",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
 	}
 
-	SettingDefinitionV2DataEngineLogLevel = SettingDefinition{
-		DisplayName: "V2 Data Engine Log Level",
-		Description: "The log level used in SPDK target daemon (spdk_tgt) of V2 Data Engine. Supported values are: Error, Warning, Notice, Info and Debug. By default Notice.",
-		Category:    SettingCategoryV2DataEngine,
-		Type:        SettingTypeString,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "Notice",
-		Choices:     []string{"Error", "Warning", "Notice", "Info", "Debug"},
+	SettingDefinitionDataEngineLogLevel = SettingDefinition{
+		DisplayName:        "Data Engine Log Level",
+		Description:        "The log level used in the Data Engine. Supported values are: Error, Warning, Notice, Info and Debug. By default Notice.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Choices:            []string{"Error", "Warning", "Notice", "Info", "Debug"},
+		Default:            fmt.Sprintf("{%q:\"Notice\"}", longhorn.DataEngineTypeV2),
 	}
 
-	SettingDefinitionV2DataEngineLogFlags = SettingDefinition{
-		DisplayName: "V2 Data Engine Log Flags",
-		Description: "The log flags used in SPDK target daemon (spdk_tgt) of V2 Data Engine.",
-		Category:    SettingCategoryV2DataEngine,
-		Type:        SettingTypeString,
-		Required:    false,
-		ReadOnly:    false,
-		Default:     "",
-	}
-
-	SettingDefinitionV2DataEngineFastReplicaRebuilding = SettingDefinition{
-		DisplayName: "V2 Data Engine Fast Replica Rebuilding",
-		Description: "This setting enables the fast replica rebuilding feature for v2 data engine. It relies on the snapshot checksums, so setting the snapshot-data-integrity to **enable** or **fast-check** is a prerequisite.",
-		Category:    SettingCategoryV2DataEngine,
-		Type:        SettingTypeBool,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "false",
-	}
-
-	SettingDefinitionV2DataEngineSnapshotDataIntegrity = SettingDefinition{
-		DisplayName: "V2 Data Engine Snapshot Data Integrity",
-		Description: "This setting allows users to enable or disable snapshot hashing and data integrity checking for v2 data engine. \n\n" +
-			"Available options are: \n\n" +
-			"- **disabled**: Disable snapshot logical volume data hashing and data integrity checking. \n\n" +
-			"- **fast-check**: Enable snapshot logical volume data hashing and fast data integrity checking. Longhorn system only hashes snapshot that are not hashed. In this mode, filesystem-unaware corruption cannot be detected, but the impact on system performance can be minimized.",
-		Category: SettingCategoryV2DataEngine,
-		Type:     SettingTypeString,
-		Required: true,
-		ReadOnly: false,
-		Default:  string(longhorn.SnapshotDataIntegrityFastCheck),
-		Choices: []string{
-			string(longhorn.SnapshotDataIntegrityDisabled),
-			string(longhorn.SnapshotDataIntegrityFastCheck),
-		},
+	SettingDefinitionDataEngineLogFlags = SettingDefinition{
+		DisplayName:        "Data Engine Log Flags",
+		Description:        "The log flags used in the Data Engine.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"\"}", longhorn.DataEngineTypeV2),
 	}
 
 	SettingDefinitionReplicaRebuildingBandwidthLimit = SettingDefinition{
@@ -1543,54 +1589,59 @@ var (
 		Description: "This setting specifies the default write bandwidth limit (in megabytes per second) for volume replica rebuilding when using the v2 data engine (SPDK). " +
 			"If this value is set to 0, there will be no write bandwidth limitation. " +
 			"Individual volumes can override this setting by specifying their own rebuilding bandwidth limit.",
-		Category: SettingCategoryV2DataEngine,
-		Type:     SettingTypeInt,
-		Required: false,
-		ReadOnly: false,
-		Default:  "0",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeInt,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"0\"}", longhorn.DataEngineTypeV2),
 	}
 
 	SettingDefinitionAutoCleanupSnapshotWhenDeleteBackup = SettingDefinition{
-		DisplayName: "Automatically Cleanup Snapshot When Deleting Backup",
-		Description: "This setting enables Longhorn to automatically cleanup snapshots when removing backup.",
-		Category:    SettingCategorySnapshot,
-		Type:        SettingTypeBool,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "false",
+		DisplayName:        "Automatically Cleanup Snapshot When Deleting Backup",
+		Description:        "This setting enables Longhorn to automatically cleanup snapshots when removing backup.",
+		Category:           SettingCategorySnapshot,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
 	}
 
 	SettingDefinitionAutoCleanupSnapshotAfterOnDemandBackupCompleted = SettingDefinition{
-		DisplayName: "Automatically Cleanup Snapshot After On-Demand Backup Completed",
-		Description: "This setting allows users to trigger automatically delete the backup snapshot after the on-demand backup is completed.",
-		Category:    SettingCategorySnapshot,
-		Type:        SettingTypeBool,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "false",
+		DisplayName:        "Automatically Cleanup Snapshot After On-Demand Backup Completed",
+		Description:        "This setting allows users to trigger automatically delete the backup snapshot after the on-demand backup is completed.",
+		Category:           SettingCategorySnapshot,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
 	}
 
 	SettingDefinitionDefaultMinNumberOfBackingImageCopies = SettingDefinition{
-		DisplayName: "Default Minimum Number of BackingImage Copies",
-		Description: "The default minimum number of backing image copies Longhorn maintains",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeInt,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     strconv.Itoa(DefaultMinNumberOfCopies),
+		DisplayName:        "Default Minimum Number of BackingImage Copies",
+		Description:        "The default minimum number of backing image copies Longhorn maintains",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            strconv.Itoa(DefaultMinNumberOfCopies),
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 1,
 		},
 	}
 
 	SettingDefinitionRWXVolumeFastFailover = SettingDefinition{
-		DisplayName: "RWX Volume Fast Failover",
-		Description: "Turn on logic to detect and move stale RWX volumes quickly (Experimental)",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeBool,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "false",
+		DisplayName:        "RWX Volume Fast Failover",
+		Description:        "Turn on logic to detect and move stale RWX volumes quickly (Experimental)",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
 	}
 
 	SettingDefinitionOfflineReplicaRebuilding = SettingDefinition{
@@ -1600,11 +1651,12 @@ var (
 			"- **true**: Enables offline replica rebuilding for all detached volumes, unless overridden by individual volume settings. \n\n" +
 			"- **false**: Disables offline replica rebuilding globally, unless overridden by individual volume settings. \n\n" +
 			"**Note:** Offline rebuilding applies only when a volume is detached. Volumes in a faulted state will not trigger offline rebuilding.",
-		Category: SettingCategoryGeneral,
-		Type:     SettingTypeBool,
-		Required: true,
-		ReadOnly: false,
-		Default:  "false",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"false\",%q:\"false\"}", longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2),
 	}
 )
 
