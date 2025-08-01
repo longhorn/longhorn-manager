@@ -286,6 +286,13 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 
 	log := logrus.WithFields(logrus.Fields{"instance": instanceName, "volumeName": spec.VolumeName, "dataEngine": spec.DataEngine, "specNodeID": spec.NodeID})
 
+	stateBeforeReconcile := status.CurrentState
+	defer func() {
+		if stateBeforeReconcile != status.CurrentState {
+			log.Infof("Instance %v state is updated from %v to %v", instanceName, stateBeforeReconcile, status.CurrentState)
+		}
+	}()
+
 	var im *longhorn.InstanceManager
 	if status.InstanceManagerName != "" {
 		im, err = h.ds.GetInstanceManagerRO(status.InstanceManagerName)
@@ -361,6 +368,7 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 
 		if i, exists := instances[instanceName]; exists && i.Status.State == longhorn.InstanceStateRunning {
 			status.Started = true
+			status.Starting = false
 			break
 		}
 
@@ -381,18 +389,24 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		}
 
 	case longhorn.InstanceStateStopped:
+		shouldDelete := false
 		if im != nil && im.DeletionTimestamp == nil {
+			if _, exists := instances[instanceName]; exists {
+				shouldDelete = true
+			}
+		}
+		if status.Starting {
+			shouldDelete = true
+		}
+		if shouldDelete {
 			// there is a delay between deleteInstance() invocation and state/InstanceManager update,
 			// deleteInstance() may be called multiple times.
-			if instance, exists := instances[instanceName]; exists {
-				if shouldDeleteInstance(&instance) {
-					if err := h.deleteInstance(instanceName, runtimeObj); err != nil {
-						return err
-					}
-				}
+			if err := h.deleteInstance(instanceName, runtimeObj); err != nil {
+				return err
 			}
 		}
 		status.Started = false
+		status.Starting = false
 	default:
 		return fmt.Errorf("unknown instance desire state: desire %v", spec.DesireState)
 	}
@@ -436,17 +450,6 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 		}
 	}
 	return nil
-}
-
-func shouldDeleteInstance(instance *longhorn.InstanceProcess) bool {
-	// For a replica of a SPDK volume, a stopped replica means the lvol is not exposed,
-	// but the lvol is still there. We don't need to delete it.
-	if types.IsDataEngineV2(instance.Spec.DataEngine) {
-		if instance.Status.State == longhorn.InstanceStateStopped {
-			return false
-		}
-	}
-	return true
 }
 
 func (h *InstanceHandler) getInstancesFromInstanceManager(obj runtime.Object, instanceManager *longhorn.InstanceManager) (map[string]longhorn.InstanceProcess, error) {
