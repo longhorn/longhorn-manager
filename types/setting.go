@@ -135,13 +135,10 @@ const (
 	SettingNameDisableSnapshotPurge                                     = SettingName("disable-snapshot-purge")
 	SettingNameV1DataEngine                                             = SettingName("v1-data-engine")
 	SettingNameV2DataEngine                                             = SettingName("v2-data-engine")
-	SettingNameV2DataEngineHugepageLimit                                = SettingName("v2-data-engine-hugepage-limit")
-	SettingNameV2DataEngineGuaranteedInstanceManagerCPU                 = SettingName("v2-data-engine-guaranteed-instance-manager-cpu")
-	SettingNameV2DataEngineCPUMask                                      = SettingName("v2-data-engine-cpu-mask")
-	SettingNameV2DataEngineLogLevel                                     = SettingName("v2-data-engine-log-level")
-	SettingNameV2DataEngineLogFlags                                     = SettingName("v2-data-engine-log-flags")
-	SettingNameV2DataEngineFastReplicaRebuilding                        = SettingName("v2-data-engine-fast-replica-rebuilding")
-	SettingNameV2DataEngineSnapshotDataIntegrity                        = SettingName("v2-data-engine-snapshot-data-integrity")
+	SettingNameHugepageLimit                                            = SettingName("hugepage-limit")
+	SettingNameCPUMask                                                  = SettingName("cpu-mask")
+	SettingNameDataEngineLogLevel                                       = SettingName("data-engine-log-level")
+	SettingNameDataEngineLogFlags                                       = SettingName("data-engine-log-flags")
 	SettingNameFreezeFilesystemForSnapshot                              = SettingName("freeze-filesystem-for-snapshot")
 	SettingNameAutoCleanupSnapshotWhenDeleteBackup                      = SettingName("auto-cleanup-when-delete-backup")
 	SettingNameAutoCleanupSnapshotAfterOnDemandBackupCompleted          = SettingName("auto-cleanup-snapshot-after-on-demand-backup-completed")
@@ -156,6 +153,16 @@ const (
 	SettingNameBackupTarget                 = SettingName("backup-target")
 	SettingNameBackupTargetCredentialSecret = SettingName("backup-target-credential-secret")
 	SettingNameBackupstorePollInterval      = SettingName("backupstore-poll-interval")
+
+	// The settings are deprecated and Longhorn won't create Setting Resources for these parameters.
+	// TODO: Remove these settings in the future releases.
+	SettingNameV2DataEngineHugepageLimit                = SettingName("v2-data-engine-hugepage-limit")
+	SettingNameV2DataEngineGuaranteedInstanceManagerCPU = SettingName("v2-data-engine-guaranteed-instance-manager-cpu")
+	SettingNameV2DataEngineCPUMask                      = SettingName("v2-data-engine-cpu-mask")
+	SettingNameV2DataEngineLogLevel                     = SettingName("v2-data-engine-log-level")
+	SettingNameV2DataEngineLogFlags                     = SettingName("v2-data-engine-log-flags")
+	SettingNameV2DataEngineFastReplicaRebuilding        = SettingName("v2-data-engine-fast-replica-rebuilding")
+	SettingNameV2DataEngineSnapshotDataIntegrity        = SettingName("v2-data-engine-snapshot-data-integrity")
 )
 
 var (
@@ -235,13 +242,11 @@ var (
 		SettingNameLogLevel,
 		SettingNameV1DataEngine,
 		SettingNameV2DataEngine,
-		SettingNameV2DataEngineHugepageLimit,
-		SettingNameV2DataEngineGuaranteedInstanceManagerCPU,
-		SettingNameV2DataEngineCPUMask,
-		SettingNameV2DataEngineLogLevel,
-		SettingNameV2DataEngineLogFlags,
-		SettingNameV2DataEngineFastReplicaRebuilding,
-		SettingNameV2DataEngineSnapshotDataIntegrity,
+		SettingNameHugepageLimit,
+		SettingNameCPUMask,
+		SettingNameDataEngineLogLevel,
+		SettingNameDataEngineLogFlags,
+		SettingNameSnapshotDataIntegrity,
 		SettingNameReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume,
@@ -258,7 +263,14 @@ var (
 )
 
 var replacedSettingNames = map[SettingName]bool{
-	SettingNameOrphanAutoDeletion: true, // SettingNameOrphanResourceAutoDeletion
+	SettingNameOrphanAutoDeletion:                       true, // SettingNameOrphanResourceAutoDeletion
+	SettingNameV2DataEngineHugepageLimit:                true, // SettingNameHugepageLimit
+	SettingNameV2DataEngineGuaranteedInstanceManagerCPU: true, // SettingNameGuaranteedInstanceManagerCPU
+	SettingNameV2DataEngineCPUMask:                      true, // SettingNameCPUMask
+	SettingNameV2DataEngineLogLevel:                     true, // SettingNameDataEngineLogLevel
+	SettingNameV2DataEngineLogFlags:                     true, // SettingNameDataEngineLogFlags
+	SettingNameV2DataEngineFastReplicaRebuilding:        true, // SettingNameFastReplicaRebuildEnabled
+	SettingNameV2DataEngineSnapshotDataIntegrity:        true, // SettingNameSnapshotDataIntegrity
 }
 
 type SettingCategory string
@@ -366,13 +378,10 @@ var (
 		SettingNameLogLevel:                                                 SettingDefinitionLogLevel,
 		SettingNameV1DataEngine:                                             SettingDefinitionV1DataEngine,
 		SettingNameV2DataEngine:                                             SettingDefinitionV2DataEngine,
-		SettingNameV2DataEngineHugepageLimit:                                SettingDefinitionV2DataEngineHugepageLimit,
-		SettingNameV2DataEngineGuaranteedInstanceManagerCPU:                 SettingDefinitionV2DataEngineGuaranteedInstanceManagerCPU,
-		SettingNameV2DataEngineCPUMask:                                      SettingDefinitionV2DataEngineCPUMask,
-		SettingNameV2DataEngineLogLevel:                                     SettingDefinitionV2DataEngineLogLevel,
-		SettingNameV2DataEngineLogFlags:                                     SettingDefinitionV2DataEngineLogFlags,
-		SettingNameV2DataEngineFastReplicaRebuilding:                        SettingDefinitionV2DataEngineFastReplicaRebuilding,
-		SettingNameV2DataEngineSnapshotDataIntegrity:                        SettingDefinitionV2DataEngineSnapshotDataIntegrity,
+		SettingNameHugepageLimit:                                            SettingDefinitionHugepageLimit,
+		SettingNameCPUMask:                                                  SettingDefinitionCPUMask,
+		SettingNameDataEngineLogLevel:                                       SettingDefinitionDataEngineLogLevel,
+		SettingNameDataEngineLogFlags:                                       SettingDefinitionDataEngineLogFlags,
 		SettingNameReplicaDiskSoftAntiAffinity:                              SettingDefinitionReplicaDiskSoftAntiAffinity,
 		SettingNameAllowEmptyNodeSelectorVolume:                             SettingDefinitionAllowEmptyNodeSelectorVolume,
 		SettingNameAllowEmptyDiskSelectorVolume:                             SettingDefinitionAllowEmptyDiskSelectorVolume,
