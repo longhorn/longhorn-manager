@@ -167,11 +167,11 @@ func (s *DataStore) syncSettingsWithDefaultImages(defaultImages map[types.Settin
 
 func (s *DataStore) syncSettingOrphanResourceAutoDeletionSettings() error {
 	oldOrphanReplicaDataAutoDeletionSettingRO, err := s.getSettingRO(string(types.SettingNameOrphanAutoDeletion))
-	switch {
-	case ErrorIsNotFound(err):
+	if err != nil {
+		if ErrorIsNotFound(err) {
 		logrus.Infof("No old setting %v to be replaced.", types.SettingNameOrphanAutoDeletion)
 		return nil
-	case err != nil:
+		}
 		return errors.Wrapf(err, "failed to get replaced setting %v", types.SettingNameOrphanAutoDeletion)
 	}
 
