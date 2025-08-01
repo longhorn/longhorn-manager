@@ -23,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/client-go/util/retry"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -304,8 +305,16 @@ func (s *DataStore) UpdateSetting(setting *longhorn.Setting) (*longhorn.Setting,
 		return nil, err
 	}
 
-	delete(obj.Annotations, types.GetLonghornLabelKey(types.UpdateSettingFromLonghorn))
-	obj, err = s.lhClient.LonghornV1beta2().Settings(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest, getErr := s.lhClient.LonghornV1beta2().Settings(s.namespace).Get(context.TODO(), setting.Name, metav1.GetOptions{})
+		if getErr != nil {
+			return getErr
+		}
+
+		delete(latest.Annotations, types.GetLonghornLabelKey(types.UpdateSettingFromLonghorn))
+		obj, err = s.lhClient.LonghornV1beta2().Settings(s.namespace).Update(context.TODO(), latest, metav1.UpdateOptions{})
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}

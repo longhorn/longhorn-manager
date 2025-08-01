@@ -1242,39 +1242,6 @@ func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[st
 	}, nil
 }
 
-func ValidateCPUReservationValues(settingName SettingName, instanceManagerCPUStr string) error {
-
-	definition, _ := GetSettingDefinition(settingName)
-	valueIntRange := definition.ValueIntRange
-	valueFloatRange := definition.ValueFloatRange
-
-	switch settingName {
-	case SettingNameGuaranteedInstanceManagerCPU:
-		instanceManagerCPU, err := strconv.ParseFloat(instanceManagerCPUStr, 64)
-		if err != nil {
-			return errors.Wrapf(err, "invalid requested instance manager CPU percentage value (%v)", instanceManagerCPUStr)
-		}
-
-		isUnderLimit := instanceManagerCPU < valueFloatRange[ValueFloatRangeMinimum]
-		isOverLimit := instanceManagerCPU > valueFloatRange[ValueFloatRangeMaximum]
-		if isUnderLimit || isOverLimit {
-			return fmt.Errorf("invalid requested instance manager CPU percentage. Valid range is %v to %v", valueFloatRange[ValueFloatRangeMinimum], valueFloatRange[ValueFloatRangeMaximum])
-		}
-
-	case SettingNameV2DataEngineGuaranteedInstanceManagerCPU:
-		instanceManagerCPU, err := strconv.Atoi(instanceManagerCPUStr)
-		if err != nil {
-			return errors.Wrapf(err, "invalid requested instance manager CPU millicpu value (%v)", instanceManagerCPUStr)
-		}
-
-		isUnderLimit := instanceManagerCPU < valueIntRange[ValueIntRangeMinimum]
-		if isUnderLimit {
-			return fmt.Errorf("invalid requested instance manager CPUs. Valid instance manager CPU range is larger than %v millicpu", valueIntRange[ValueIntRangeMinimum])
-		}
-	}
-	return nil
-}
-
 type CniNetwork struct {
 	Name string   `json:"name"`
 	IPs  []string `json:"ips,omitempty"`
