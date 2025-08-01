@@ -890,8 +890,7 @@ func isAutoSalvageNeeded(rs map[string]*longhorn.Replica) bool {
 	if isFirstAttachment(rs) {
 		return areAllReplicasFailed(rs)
 	}
-	// We need to auto-salvage if there are no healthy and active replicas including those marked for deletion,
-	return getHealthyAndActiveReplicaCount(rs, true) == 0 && getFailedReplicaCount(rs) > 0
+	return getHealthyAndActiveReplicaCount(rs) == 0 && getFailedReplicaCount(rs) > 0
 }
 
 func areAllReplicasFailed(rs map[string]*longhorn.Replica) bool {
@@ -914,7 +913,7 @@ func isFirstAttachment(rs map[string]*longhorn.Replica) bool {
 	return true
 }
 
-func isHealthyAndActiveReplica(r *longhorn.Replica, includeMarkedForDeletion bool) bool {
+func isHealthyAndActiveReplica(r *longhorn.Replica) bool {
 	if r.Spec.FailedAt != "" {
 		return false
 	}
@@ -923,11 +922,6 @@ func isHealthyAndActiveReplica(r *longhorn.Replica, includeMarkedForDeletion boo
 	}
 	if !r.Spec.Active {
 		return false
-	}
-	if !includeMarkedForDeletion {
-		if !r.DeletionTimestamp.IsZero() {
-			return false
-		}
 	}
 	return true
 }
@@ -943,7 +937,7 @@ func isHealthyAndActiveReplica(r *longhorn.Replica, includeMarkedForDeletion boo
 // it successfully became read/write in an engine) after spec.LastFailedAt. If the replica does not meet this condition,
 // it is not "safe as last replica", and we should not clean up the other replicas for its volume.
 func isSafeAsLastReplica(r *longhorn.Replica) bool {
-	if !isHealthyAndActiveReplica(r, false) {
+	if !isHealthyAndActiveReplica(r) {
 		return false
 	}
 	// We know r.Spec.LastHealthyAt != "" because r.Spec.HealthyAt != "" from isHealthyAndActiveReplica.
@@ -959,10 +953,10 @@ func isSafeAsLastReplica(r *longhorn.Replica) bool {
 	return true
 }
 
-func getHealthyAndActiveReplicaCount(rs map[string]*longhorn.Replica, includeMarkedForDeletion bool) int {
+func getHealthyAndActiveReplicaCount(rs map[string]*longhorn.Replica) int {
 	count := 0
 	for _, r := range rs {
-		if isHealthyAndActiveReplica(r, includeMarkedForDeletion) {
+		if isHealthyAndActiveReplica(r) {
 			count++
 		}
 	}
@@ -1068,7 +1062,7 @@ func (c *VolumeController) cleanupCorruptedOrStaleReplicas(v *longhorn.Volume, r
 }
 
 func (c *VolumeController) cleanupFailedToScheduleReplicas(v *longhorn.Volume, rs map[string]*longhorn.Replica) (err error) {
-	healthyCount := getHealthyAndActiveReplicaCount(rs, false)
+	healthyCount := getHealthyAndActiveReplicaCount(rs)
 	var replicasToCleanUp []*longhorn.Replica
 
 	if hasReplicaEvictionRequested(rs) {
@@ -1101,7 +1095,7 @@ func (c *VolumeController) cleanupFailedToScheduleReplicas(v *longhorn.Volume, r
 }
 
 func (c *VolumeController) cleanupExtraHealthyReplicas(v *longhorn.Volume, e *longhorn.Engine, rs map[string]*longhorn.Replica) (err error) {
-	healthyCount := getHealthyAndActiveReplicaCount(rs, false)
+	healthyCount := getHealthyAndActiveReplicaCount(rs)
 	if healthyCount <= v.Spec.NumberOfReplicas {
 		return nil
 	}
