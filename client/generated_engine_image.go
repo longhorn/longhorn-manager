@@ -29,6 +29,8 @@ type EngineImage struct {
 
 	Image string `json:"image,omitempty" yaml:"image,omitempty"`
 
+	Incompatible bool `json:"incompatible,omitempty" yaml:"incompatible,omitempty"`
+
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 
 	NoRefSince string `json:"noRefSince,omitempty" yaml:"no_ref_since,omitempty"`

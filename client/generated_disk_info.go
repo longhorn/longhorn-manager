@@ -11,6 +11,8 @@ type DiskInfo struct {
 
 	Conditions map[string]interface{} `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 
+	DiskDriver string `json:"diskDriver,omitempty" yaml:"disk_driver,omitempty"`
+
 	DiskType string `json:"diskType,omitempty" yaml:"disk_type,omitempty"`
 
 	DiskUUID string `json:"diskUUID,omitempty" yaml:"disk_uuid,omitempty"`

@@ -9,10 +9,10 @@ type RancherClient struct {
 	DetachInput                            DetachInputOperations
 	SnapshotInput                          SnapshotInputOperations
 	SnapshotCRInput                        SnapshotCRInputOperations
-	BackupTarget                           BackupTargetOperations
 	Backup                                 BackupOperations
 	BackupInput                            BackupInputOperations
 	BackupStatus                           BackupStatusOperations
+	SyncBackupResource                     SyncBackupResourceOperations
 	Orphan                                 OrphanOperations
 	RestoreStatus                          RestoreStatusOperations
 	PurgeStatus                            PurgeStatusOperations
@@ -38,6 +38,8 @@ type RancherClient struct {
 	UpdateReplicaZoneSoftAntiAffinityInput UpdateReplicaZoneSoftAntiAffinityInputOperations
 	UpdateReplicaDiskSoftAntiAffinityInput UpdateReplicaDiskSoftAntiAffinityInputOperations
 	UpdateFreezeFSForSnapshotInput         UpdateFreezeFSForSnapshotInputOperations
+	UpdateBackupTargetInput                UpdateBackupTargetInputOperations
+	UpdateOfflineRebuildingInput           UpdateOfflineRebuildingInputOperations
 	WorkloadStatus                         WorkloadStatusOperations
 	CloneStatus                            CloneStatusOperations
 	Empty                                  EmptyOperations
@@ -56,13 +58,14 @@ type RancherClient struct {
 	InstanceManager                        InstanceManagerOperations
 	BackingImageDiskFileStatus             BackingImageDiskFileStatusOperations
 	BackingImageCleanupInput               BackingImageCleanupInputOperations
-	BackingImageRestoreInput               BackingImageRestoreInputOperations
 	UpdateMinNumberOfCopiesInput           UpdateMinNumberOfCopiesInputOperations
+	BackingImageRestoreInput               BackingImageRestoreInputOperations
 	Attachment                             AttachmentOperations
 	VolumeAttachment                       VolumeAttachmentOperations
 	Volume                                 VolumeOperations
 	Snapshot                               SnapshotOperations
 	SnapshotCR                             SnapshotCROperations
+	BackupTarget                           BackupTargetOperations
 	BackupVolume                           BackupVolumeOperations
 	BackupBackingImage                     BackupBackingImageOperations
 	Setting                                SettingOperations
@@ -73,6 +76,8 @@ type RancherClient struct {
 	DiskUpdateInput                        DiskUpdateInputOperations
 	DiskInfo                               DiskInfoOperations
 	KubernetesStatus                       KubernetesStatusOperations
+	BackupTargetListOutput                 BackupTargetListOutputOperations
+	BackupVolumeListOutput                 BackupVolumeListOutputOperations
 	BackupListOutput                       BackupListOutputOperations
 	SnapshotListOutput                     SnapshotListOutputOperations
 	SystemBackup                           SystemBackupOperations
@@ -91,10 +96,10 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.DetachInput = newDetachInputClient(client)
 	client.SnapshotInput = newSnapshotInputClient(client)
 	client.SnapshotCRInput = newSnapshotCRInputClient(client)
-	client.BackupTarget = newBackupTargetClient(client)
 	client.Backup = newBackupClient(client)
 	client.BackupInput = newBackupInputClient(client)
 	client.BackupStatus = newBackupStatusClient(client)
+	client.SyncBackupResource = newSyncBackupResourceClient(client)
 	client.Orphan = newOrphanClient(client)
 	client.RestoreStatus = newRestoreStatusClient(client)
 	client.PurgeStatus = newPurgeStatusClient(client)
@@ -120,6 +125,8 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.UpdateReplicaZoneSoftAntiAffinityInput = newUpdateReplicaZoneSoftAntiAffinityInputClient(client)
 	client.UpdateReplicaDiskSoftAntiAffinityInput = newUpdateReplicaDiskSoftAntiAffinityInputClient(client)
 	client.UpdateFreezeFSForSnapshotInput = newUpdateFreezeFSForSnapshotInputClient(client)
+	client.UpdateBackupTargetInput = newUpdateBackupTargetInputClient(client)
+	client.UpdateOfflineRebuildingInput = newUpdateOfflineRebuildingInputClient(client)
 	client.WorkloadStatus = newWorkloadStatusClient(client)
 	client.CloneStatus = newCloneStatusClient(client)
 	client.Empty = newEmptyClient(client)
@@ -145,6 +152,7 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.Volume = newVolumeClient(client)
 	client.Snapshot = newSnapshotClient(client)
 	client.SnapshotCR = newSnapshotCRClient(client)
+	client.BackupTarget = newBackupTargetClient(client)
 	client.BackupVolume = newBackupVolumeClient(client)
 	client.BackupBackingImage = newBackupBackingImageClient(client)
 	client.Setting = newSettingClient(client)
@@ -155,6 +163,8 @@ func constructClient(rancherBaseClient *RancherBaseClientImpl) *RancherClient {
 	client.DiskUpdateInput = newDiskUpdateInputClient(client)
 	client.DiskInfo = newDiskInfoClient(client)
 	client.KubernetesStatus = newKubernetesStatusClient(client)
+	client.BackupTargetListOutput = newBackupTargetListOutputClient(client)
+	client.BackupVolumeListOutput = newBackupVolumeListOutputClient(client)
 	client.BackupListOutput = newBackupListOutputClient(client)
 	client.SnapshotListOutput = newSnapshotListOutputClient(client)
 	client.SystemBackup = newSystemBackupClient(client)

@@ -19,6 +19,10 @@ type RecurringJob struct {
 
 	Name string `json:"name,omitempty" yaml:"name,omitempty"`
 
+	OwnerID string `json:"ownerID,omitempty" yaml:"owner_id,omitempty"`
+
+	Parameters map[string]string `json:"parameters,omitempty" yaml:"parameters,omitempty"`
+
 	Retain int64 `json:"retain,omitempty" yaml:"retain,omitempty"`
 
 	Task string `json:"task,omitempty" yaml:"task,omitempty"`
