@@ -7,6 +7,10 @@ const (
 type CloneStatus struct {
 	Resource `yaml:"-"`
 
+	AttemptCount int64 `json:"attemptCount,omitempty" yaml:"attempt_count,omitempty"`
+
+	NextAllowedAttemptAt string `json:"nextAllowedAttemptAt,omitempty" yaml:"next_allowed_attempt_at,omitempty"`
+
 	Snapshot string `json:"snapshot,omitempty" yaml:"snapshot,omitempty"`
 
 	SourceVolume string `json:"sourceVolume,omitempty" yaml:"source_volume,omitempty"`
