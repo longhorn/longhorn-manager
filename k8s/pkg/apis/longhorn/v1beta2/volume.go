@@ -306,7 +306,7 @@ type VolumeSpec struct {
 	// - disabled: Disable offline rebuilding for this volume, regardless of the global setting
 	// +optional
 	OfflineRebuilding VolumeOfflineRebuilding `json:"offlineRebuilding"`
-	// ReplicaRebuildingBandwidthLimit limits the write bandwidth (in megabytes per second) on the destination replica during rebuilding. Set to 0 to disable bandwidth limiting.
+	// ReplicaRebuildingBandwidthLimit controls the maximum write bandwidth (in megabytes per second) allowed on the destination replica during the rebuilding process. Set this value to 0 to disable bandwidth limiting.
 	// +kubebuilder:validation:Minimum=0
 	// +optional
 	ReplicaRebuildingBandwidthLimit int64 `json:"replicaRebuildingBandwidthLimit"`
