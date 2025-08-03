@@ -88,7 +88,7 @@ func (b *backingImageMutator) Create(request *admission.Request, newObj runtime.
 		if parameters[longhorn.DataSourceTypeRestoreParameterConcurrentLimit] == "" {
 			concurrentLimit, err := b.ds.GetSettingAsInt(types.SettingNameBackupConcurrentLimit)
 			if err != nil {
-				return nil, errors.Wrapf(err, "failed to get %v value", types.SettingNameBackupConcurrentLimit)
+				return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameBackupConcurrentLimit)
 			}
 			parameters[longhorn.DataSourceTypeRestoreParameterConcurrentLimit] = strconv.FormatInt(concurrentLimit, 10)
 		}

@@ -238,9 +238,9 @@ func (nc *NodeController) isResponsibleForSnapshot(obj interface{}) bool {
 }
 
 func (nc *NodeController) snapshotHashRequired(volume *longhorn.Volume) bool {
-	dataIntegrityImmediateChecking, err := nc.ds.GetSettingAsBool(types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation)
+	dataIntegrityImmediateChecking, err := nc.ds.GetSettingAsBoolByDataEngine(types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation, volume.Spec.DataEngine)
 	if err != nil {
-		nc.logger.WithError(err).Warnf("Failed to get %v setting", types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation)
+		nc.logger.WithError(err).Warnf("Failed to get %v setting for data engine %v", types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation, volume.Spec.DataEngine)
 		return false
 	}
 	if !dataIntegrityImmediateChecking {
@@ -902,6 +902,7 @@ func (nc *NodeController) updateDiskStatusSchedulableCondition(node *longhorn.No
 			diskStatus.StorageScheduled = storageScheduled
 			diskStatus.ScheduledReplica = scheduledReplica
 			diskStatus.ScheduledBackingImage = scheduledBackingImage
+
 			// check disk pressure
 			info, err := nc.scheduler.GetDiskSchedulingInfo(disk, diskStatus)
 			if err != nil {
@@ -1150,7 +1151,7 @@ func (nc *NodeController) cleanUpBackingImagesInDisks(node *longhorn.Node) error
 
 	settingValue, err := nc.ds.GetSettingAsInt(types.SettingNameBackingImageCleanupWaitInterval)
 	if err != nil {
-		log.WithError(err).Warnf("Failed to get setting %v, won't do cleanup for backing images", types.SettingNameBackingImageCleanupWaitInterval)
+		log.WithError(err).Warnf("Failed to get %v setting, won't do cleanup for backing images", types.SettingNameBackingImageCleanupWaitInterval)
 		return nil
 	}
 	waitInterval := time.Duration(settingValue) * time.Minute
@@ -1300,7 +1301,7 @@ func (nc *NodeController) enqueueNodeForMonitor(key string) {
 func (nc *NodeController) syncOrphans(node *longhorn.Node, collectedDataInfo map[string]*monitor.CollectedDiskInfo) error {
 	autoDeleteGracePeriod, err := nc.ds.GetSettingAsInt(types.SettingNameOrphanResourceAutoDeletionGracePeriod)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get setting %v", types.SettingNameOrphanResourceAutoDeletionGracePeriod)
+		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameOrphanResourceAutoDeletionGracePeriod)
 	}
 
 	for diskName, diskInfo := range collectedDataInfo {
@@ -1845,8 +1846,7 @@ func (nc *NodeController) setReadyAndSchedulableConditions(node *longhorn.Node, 
 			nc.eventRecorder, node, corev1.EventTypeNormal)
 	}
 
-	disableSchedulingOnCordonedNode, err :=
-		nc.ds.GetSettingAsBool(types.SettingNameDisableSchedulingOnCordonedNode)
+	disableSchedulingOnCordonedNode, err := nc.ds.GetSettingAsBool(types.SettingNameDisableSchedulingOnCordonedNode)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameDisableSchedulingOnCordonedNode)
 	}
@@ -1955,7 +1955,7 @@ func (nc *NodeController) SetSchedulableCondition(node *longhorn.Node, kubeNode 
 func (nc *NodeController) clearDelinquentLeasesIfNodeNotReady(node *longhorn.Node) error {
 	enabled, err := nc.ds.GetSettingAsBool(types.SettingNameRWXVolumeFastFailover)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get setting %v", types.SettingNameRWXVolumeFastFailover)
+		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameRWXVolumeFastFailover)
 	}
 	if !enabled {
 		return nil

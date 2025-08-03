@@ -125,19 +125,19 @@ func (n *nodeValidator) Update(request *admission.Request, oldObj runtime.Object
 			if !datastore.ErrorIsNotFound(err) {
 				return werror.NewInvalidError(err.Error(), "")
 			}
-			logrus.Warnf("Kubernetes node %v has been deleted", oldNode.Name)
+			logrus.WithError(err).Warnf("Kubernetes node %v has been deleted", oldNode.Name)
 		} else {
-			allocatableCPU := float64(kubeNode.Status.Allocatable.Cpu().MilliValue())
-			instanceManagerCPUSetting, err := n.ds.GetSettingWithAutoFillingRO(types.SettingNameGuaranteedInstanceManagerCPU)
+			// TODO: Support v2 data engine
+			instanceManagerCPUInPercentage, err := n.ds.GetSettingAsFloatByDataEngine(types.SettingNameGuaranteedInstanceManagerCPU, longhorn.DataEngineTypeV1)
 			if err != nil {
 				return werror.NewInvalidError(err.Error(), "")
 			}
-			instanceManagerCPUInPercentage := instanceManagerCPUSetting.Value
 			if newNode.Spec.InstanceManagerCPURequest > 0 {
-				instanceManagerCPUInPercentage = fmt.Sprintf("%.0f", math.Round(float64(newNode.Spec.InstanceManagerCPURequest)/allocatableCPU*100.0))
+				allocatableCPU := float64(kubeNode.Status.Allocatable.Cpu().MilliValue())
+				instanceManagerCPUInPercentage = math.Round(float64(newNode.Spec.InstanceManagerCPURequest) / allocatableCPU * 100.0)
 			}
-			// TODO: Support v2 data engine
-			if err := types.ValidateCPUReservationValues(types.SettingNameGuaranteedInstanceManagerCPU, instanceManagerCPUInPercentage); err != nil {
+			instanceManagerCPUInPercentageStr := fmt.Sprintf("%.2f", instanceManagerCPUInPercentage)
+			if err := types.ValidateSetting(string(types.SettingNameGuaranteedInstanceManagerCPU), instanceManagerCPUInPercentageStr); err != nil {
 				return werror.NewInvalidError(err.Error(), "")
 			}
 		}
