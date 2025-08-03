@@ -29,6 +29,7 @@ import (
 	"github.com/longhorn/longhorn-manager/upgrade/v170to171"
 	"github.com/longhorn/longhorn-manager/upgrade/v17xto180"
 	"github.com/longhorn/longhorn-manager/upgrade/v18xto190"
+	"github.com/longhorn/longhorn-manager/upgrade/v19xto1100"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
@@ -247,7 +248,15 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 		if err := v18xto190.UpgradeResources(namespace, lhClient, kubeClient, resourceMaps); err != nil {
 			return err
 		}
+		// Upgrade all v1beta1 resources to v1beta2, so we need to force update all resources to make sure the resources are updated to v1beta2.
 		forceResourceUpdate = true
+	}
+	// When lhVersionBeforeUpgrade < v1.10.0, it is v1.9.x. The `CheckUpgradePath` method would have failed us out earlier if it was not v1.9.x.
+	if semver.Compare(lhVersionBeforeUpgrade, "v1.10.0") < 0 {
+		logrus.Info("Walking through the resource upgrade path v1.9.x to v1.10.0")
+		if err := v19xto1100.UpgradeResources(namespace, lhClient, kubeClient, resourceMaps); err != nil {
+			return err
+		}
 	}
 	if err := upgradeutil.UpdateResources(namespace, lhClient, resourceMaps, forceResourceUpdate); err != nil {
 		return err
