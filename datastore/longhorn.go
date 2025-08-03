@@ -697,6 +697,11 @@ func (s *DataStore) getSettingRO(name string) (*longhorn.Setting, error) {
 	return s.settingLister.Settings(s.namespace).Get(name)
 }
 
+// GetSettingWithAutoFillingRO retrieves a read-only setting from the datastore by its name.
+// If the setting does not exist, it automatically constructs and returns a default setting
+// object using the predefined default value from the setting's definition. If the setting
+// name is not recognized or an unexpected error occurs during retrieval, the function
+// returns an error.
 func (s *DataStore) GetSettingWithAutoFillingRO(sName types.SettingName) (*longhorn.Setting, error) {
 	definition, ok := types.GetSettingDefinition(sName)
 	if !ok {
@@ -768,6 +773,44 @@ func (s *DataStore) GetSettingValueExisted(sName types.SettingName) (string, err
 		return "", fmt.Errorf("setting %v is empty", sName)
 	}
 	return setting.Value, nil
+}
+
+// GetSettingValueExistedByDataEngine returns the value of the given setting name for a specific data engine.
+// Returns error if the setting does not have a value for the given data engine.
+func (s *DataStore) GetSettingValueExistedByDataEngine(settingName types.SettingName, dataEngine longhorn.DataEngineType) (string, error) {
+	definition, ok := types.GetSettingDefinition(settingName)
+	if !ok {
+		return "", fmt.Errorf("setting %v is not supported", settingName)
+	}
+
+	if !definition.DataEngineSpecific {
+		return s.GetSettingValueExisted(settingName)
+	}
+
+	if !types.IsJSONFormat(definition.Default) {
+		return "", fmt.Errorf("setting %v does not have a JSON-formatted default value", settingName)
+	}
+
+	setting, err := s.GetSettingWithAutoFillingRO(settingName)
+	if err != nil {
+		return "", err
+	}
+
+	values, err := types.ParseStringsInJSONFormat(definition, setting.Value)
+	if err != nil {
+		return "", err
+	}
+
+	value, ok := values[dataEngine]
+	if ok {
+		if strValue, ok := value.(string); ok {
+			return strValue, nil
+		} else {
+			return fmt.Sprintf("%v", value), nil
+		}
+	}
+
+	return "", fmt.Errorf("setting %v does not have a value for data engine %v", settingName, dataEngine)
 }
 
 // ListSettings lists all Settings in the namespace, and fill with default
@@ -3558,6 +3601,81 @@ func GetOwnerReferencesForNode(node *longhorn.Node) []metav1.OwnerReference {
 	}
 }
 
+// GetSettingAsFloat gets the setting for the given name, returns as float
+// Returns error if the definition type is not float
+func (s *DataStore) GetSettingAsFloat(settingName types.SettingName) (float64, error) {
+	definition, ok := types.GetSettingDefinition(settingName)
+	if !ok {
+		return -1, fmt.Errorf("setting %v is not supported", settingName)
+	}
+	settings, err := s.GetSettingWithAutoFillingRO(settingName)
+	if err != nil {
+		return -1, err
+	}
+	value := settings.Value
+
+	if definition.Type == types.SettingTypeFloat {
+		result, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return -1, err
+		}
+		return result, nil
+	}
+
+	return -1, fmt.Errorf("the %v setting value couldn't change to float, value is %v ", string(settingName), value)
+}
+
+// GetSettingAsFloatByDataEngine retrieves the float64 value of the given setting for the specified
+// DataEngineType. If the setting is not data-engine-specific, it falls back to GetSettingAsFloat.
+// For data-engine-specific settings, it expects the setting value to be in JSON format mapping
+// data engine types to float values.
+//
+// If the setting is not defined, not in the expected format, or the value for the given data engine
+// is missing or not a float, an error is returned.
+//
+// Example JSON format for a data-engine-specific setting:
+//
+//	{"v1": 50.0, "v2": 100.0}
+//
+// Returns the float value for the provided data engine type, or an error if validation or parsing fails.
+func (s *DataStore) GetSettingAsFloatByDataEngine(settingName types.SettingName, dataEngine longhorn.DataEngineType) (float64, error) {
+	definition, ok := types.GetSettingDefinition(settingName)
+	if !ok {
+		return -1, fmt.Errorf("setting %v is not supported", settingName)
+	}
+
+	if !definition.DataEngineSpecific {
+		return s.GetSettingAsFloat(settingName)
+	}
+	if !types.IsJSONFormat(definition.Default) {
+		return -1, fmt.Errorf("setting %v does not have a JSON-formatted default value", settingName)
+	}
+
+	// Get the setting value, which may be auto-filled
+	setting, err := s.GetSettingWithAutoFillingRO(settingName)
+	if err != nil {
+		return -1, err
+	}
+
+	// Parse the setting value as a map of floats map[dataEngine]float64]{...}
+	values, err := types.ParseFloatsInJSONFormat(definition, setting.Value)
+	if err != nil {
+		return -1, err
+	}
+
+	value, ok := values[dataEngine]
+	if !ok {
+		return -1, fmt.Errorf("the %v setting value for data engine %v is not defined, value is %v", string(settingName), dataEngine, values)
+	}
+
+	floatValue, ok := value.(float64)
+	if !ok {
+		return -1, fmt.Errorf("the %v setting value for data engine %v is not a float, value is %v", string(settingName), dataEngine, value)
+	}
+
+	return floatValue, nil
+}
+
 // GetSettingAsInt gets the setting for the given name, returns as integer
 // Returns error if the definition type is not integer
 func (s *DataStore) GetSettingAsInt(settingName types.SettingName) (int64, error) {
@@ -3582,6 +3700,55 @@ func (s *DataStore) GetSettingAsInt(settingName types.SettingName) (int64, error
 	return -1, fmt.Errorf("the %v setting value couldn't change to integer, value is %v ", string(settingName), value)
 }
 
+// GetSettingAsIntByDataEngine retrieves the int64 value of the given setting for the specified
+// DataEngineType. If the setting is not data-engine-specific, it falls back to GetSettingAsInt.
+// For data-engine-specific settings, it expects the setting value to be in JSON format mapping
+// data engine types to integer values.
+//
+// If the setting is not defined, not in the expected format, or the value for the given data engine
+// is missing or not an integer, an error is returned.
+//
+// Example JSON format for a data-engine-specific setting:
+//
+//	{"v1": 1024, "v2": 2048}
+//
+// Returns the int64 value for the provided data engine type, or an error if validation or parsing fails.
+func (s *DataStore) GetSettingAsIntByDataEngine(settingName types.SettingName, dataEngine longhorn.DataEngineType) (int64, error) {
+	definition, ok := types.GetSettingDefinition(settingName)
+	if !ok {
+		return -1, fmt.Errorf("setting %v is not supported", settingName)
+	}
+
+	if !definition.DataEngineSpecific {
+		return s.GetSettingAsInt(settingName)
+	}
+	if !types.IsJSONFormat(definition.Default) {
+		return -1, fmt.Errorf("setting %v does not have a JSON-formatted default value", settingName)
+	}
+
+	setting, err := s.GetSettingWithAutoFillingRO(settingName)
+	if err != nil {
+		return -1, err
+	}
+
+	values, err := types.ParseIntsInJSONFormat(definition, setting.Value)
+	if err != nil {
+		return -1, err
+	}
+
+	value, ok := values[dataEngine]
+	if !ok {
+		return -1, fmt.Errorf("the %v setting value for data engine %v is not defined, value is %v", string(settingName), dataEngine, values)
+	}
+
+	intValue, ok := value.(int64)
+	if !ok {
+		return -1, fmt.Errorf("the %v setting value for data engine %v is not an integer, value is %v", string(settingName), dataEngine, value)
+	}
+
+	return intValue, nil
+}
+
 // GetSettingAsBool gets the setting for the given name, returns as boolean
 // Returns error if the definition type is not boolean
 func (s *DataStore) GetSettingAsBool(settingName types.SettingName) (bool, error) {
@@ -3589,11 +3756,11 @@ func (s *DataStore) GetSettingAsBool(settingName types.SettingName) (bool, error
 	if !ok {
 		return false, fmt.Errorf("setting %v is not supported", settingName)
 	}
-	settings, err := s.GetSettingWithAutoFillingRO(settingName)
+	setting, err := s.GetSettingWithAutoFillingRO(settingName)
 	if err != nil {
 		return false, err
 	}
-	value := settings.Value
+	value := setting.Value
 
 	if definition.Type == types.SettingTypeBool {
 		result, err := strconv.ParseBool(value)
@@ -3604,6 +3771,55 @@ func (s *DataStore) GetSettingAsBool(settingName types.SettingName) (bool, error
 	}
 
 	return false, fmt.Errorf("the %v setting value couldn't be converted to bool, value is %v ", string(settingName), value)
+}
+
+// GetSettingAsBoolByDataEngine retrieves the bool value of the given setting for the specified
+// DataEngineType. If the setting is not data-engine-specific, it falls back to GetSettingAsBool.
+// For data-engine-specific settings, it expects the setting value to be in JSON format mapping
+// data engine types to boolean values.
+//
+// If the setting is not defined, not in the expected format, or the value for the given data engine
+// is missing or not a boolean, an error is returned.
+//
+// Example JSON format for a data-engine-specific setting:
+//
+//	{"v1": true, "v2": false}
+//
+// Returns the boolean value for the provided data engine type, or an error if validation or parsing fails.
+func (s *DataStore) GetSettingAsBoolByDataEngine(settingName types.SettingName, dataEngine longhorn.DataEngineType) (bool, error) {
+	definition, ok := types.GetSettingDefinition(settingName)
+	if !ok {
+		return false, fmt.Errorf("setting %v is not supported", settingName)
+	}
+
+	if !definition.DataEngineSpecific {
+		return s.GetSettingAsBool(settingName)
+	}
+	if !types.IsJSONFormat(definition.Default) {
+		return false, fmt.Errorf("setting %v does not have a JSON-formatted default value", settingName)
+	}
+
+	setting, err := s.GetSettingWithAutoFillingRO(settingName)
+	if err != nil {
+		return false, err
+	}
+
+	values, err := types.ParseSettingBoolsInJSONFormat(definition, setting.Value)
+	if err != nil {
+		return false, err
+	}
+
+	value, ok := values[dataEngine]
+	if !ok {
+		return false, fmt.Errorf("the %v setting value for data engine %v is not defined, value is %v", string(settingName), dataEngine, values)
+	}
+
+	boolValue, ok := value.(bool)
+	if !ok {
+		return false, fmt.Errorf("the %v setting value for data engine %v is not an boolean, value is %v", string(settingName), dataEngine, value)
+	}
+
+	return boolValue, nil
 }
 
 // GetSettingImagePullPolicy get the setting and return one of Kubernetes ImagePullPolicy definition
