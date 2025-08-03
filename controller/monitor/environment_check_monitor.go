@@ -32,7 +32,9 @@ import (
 )
 
 const (
-	EnvironmentCheckMonitorSyncPeriod = 1800 * time.Second
+	environmentCheckMonitorSyncPeriod = 1800 * time.Second
+
+	defaultHugePageLimitInMiB = 2048
 
 	kernelConfigDir = "/host/boot/"
 	systemConfigDir = "/host/etc/"
@@ -64,7 +66,7 @@ func NewEnvironmentCheckMonitor(logger logrus.FieldLogger, ds *datastore.DataSto
 	ctx, quit := context.WithCancel(context.Background())
 
 	m := &EnvironmentCheckMonitor{
-		baseMonitor: newBaseMonitor(ctx, quit, logger, ds, EnvironmentCheckMonitorSyncPeriod),
+		baseMonitor: newBaseMonitor(ctx, quit, logger, ds, environmentCheckMonitorSyncPeriod),
 
 		nodeName: nodeName,
 
@@ -360,10 +362,11 @@ func (m *EnvironmentCheckMonitor) checkPackageInstalled(packageProbeExecutables 
 }
 
 func (m *EnvironmentCheckMonitor) checkHugePages(kubeNode *corev1.Node, collectedData *CollectedEnvironmentCheckInfo) {
-	hugePageLimitInMiB, err := m.ds.GetSettingAsInt(types.SettingNameV2DataEngineHugepageLimit)
+	hugePageLimitInMiB, err := m.ds.GetSettingAsIntByDataEngine(types.SettingNameHugepageLimit, longhorn.DataEngineTypeV2)
 	if err != nil {
-		m.logger.Debugf("Failed to fetch v2-data-engine-hugepage-limit setting, using default value: %d", 2048)
-		hugePageLimitInMiB = 2048
+		m.logger.Warnf("Failed to get setting %v for data engine %v, using default value %d",
+			types.SettingNameHugepageLimit, longhorn.DataEngineTypeV2, defaultHugePageLimitInMiB)
+		hugePageLimitInMiB = defaultHugePageLimitInMiB
 	}
 
 	capacity := kubeNode.Status.Capacity

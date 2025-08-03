@@ -30,7 +30,7 @@ func NewFakeEnvironmentCheckMonitor(logger logrus.FieldLogger, ds *datastore.Dat
 	ctx, quit := context.WithCancel(context.Background())
 
 	m := &FakeEnvironmentCheckMonitor{
-		baseMonitor: newBaseMonitor(ctx, quit, logger, ds, EnvironmentCheckMonitorSyncPeriod),
+		baseMonitor: newBaseMonitor(ctx, quit, logger, ds, environmentCheckMonitorSyncPeriod),
 
 		nodeName: nodeName,
 

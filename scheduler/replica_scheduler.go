@@ -457,7 +457,7 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 		if requireSchedulingCheck {
 			info, err := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus)
 			if err != nil {
-				logrus.Errorf("Failed to get settings when scheduling replica: %v", err)
+				logrus.WithError(err).Error("Failed to get settings when scheduling replica")
 				multiError.Append(util.NewMultiError(longhorn.ErrorReplicaScheduleSchedulingSettingsRetrieveFailed))
 				return preferredDisks, multiError
 			}
@@ -615,13 +615,15 @@ func filterActiveReplicas(replicas map[string]*longhorn.Replica) map[string]*lon
 
 func (rcs *ReplicaScheduler) CheckAndReuseFailedReplica(replicas map[string]*longhorn.Replica, volume *longhorn.Volume, hardNodeAffinity string) (*longhorn.Replica, error) {
 	if types.IsDataEngineV2(volume.Spec.DataEngine) {
-		V2DataEngineFastReplicaRebuilding, err := rcs.ds.GetSettingAsBool(types.SettingNameV2DataEngineFastReplicaRebuilding)
+		fastReplicaRebuilding, err := rcs.ds.GetSettingAsBoolByDataEngine(types.SettingNameFastReplicaRebuildEnabled, volume.Spec.DataEngine)
 		if err != nil {
-			logrus.WithError(err).Warnf("Failed to get the setting %v, will consider it as false", types.SettingDefinitionV2DataEngineFastReplicaRebuilding)
-			V2DataEngineFastReplicaRebuilding = false
+			logrus.WithError(err).Warnf("Failed to get %v setting for data engine %v, will consider it as false",
+				types.SettingNameFastReplicaRebuildEnabled, volume.Spec.DataEngine)
+			fastReplicaRebuilding = false
 		}
-		if !V2DataEngineFastReplicaRebuilding {
-			logrus.Infof("Skip checking and reusing replicas for volume %v since setting %v is not enabled", volume.Name, types.SettingNameV2DataEngineFastReplicaRebuilding)
+		if !fastReplicaRebuilding {
+			logrus.Infof("Skip checking and reusing replicas for volume %v since setting %v for data engine %v is not enabled",
+				volume.Name, types.SettingNameFastReplicaRebuildEnabled, volume.Spec.DataEngine)
 			return nil, nil
 		}
 	}
@@ -715,13 +717,15 @@ func (rcs *ReplicaScheduler) RequireNewReplica(replicas map[string]*longhorn.Rep
 	}
 
 	if types.IsDataEngineV2(volume.Spec.DataEngine) {
-		V2DataEngineFastReplicaRebuilding, err := rcs.ds.GetSettingAsBool(types.SettingNameV2DataEngineFastReplicaRebuilding)
+		fastReplicaRebuilding, err := rcs.ds.GetSettingAsBoolByDataEngine(types.SettingNameFastReplicaRebuildEnabled, volume.Spec.DataEngine)
 		if err != nil {
-			logrus.WithError(err).Warnf("Failed to get the setting %v, will consider it as false", types.SettingDefinitionV2DataEngineFastReplicaRebuilding)
-			V2DataEngineFastReplicaRebuilding = false
+			logrus.WithError(err).Warnf("Failed to get %v setting for data engine %v, will consider it as false",
+				types.SettingNameFastReplicaRebuildEnabled, volume.Spec.DataEngine)
+			fastReplicaRebuilding = false
 		}
-		if !V2DataEngineFastReplicaRebuilding {
-			logrus.Infof("Skip checking potentially reusable replicas for volume %v since setting %v is not enabled", volume.Name, types.SettingNameV2DataEngineFastReplicaRebuilding)
+		if !fastReplicaRebuilding {
+			logrus.Infof("Skip checking potentially reusable replicas for volume %v since setting %v for data engine %v is not enabled",
+				volume.Name, types.SettingNameFastReplicaRebuildEnabled, volume.Spec.DataEngine)
 			return 0
 		}
 	}

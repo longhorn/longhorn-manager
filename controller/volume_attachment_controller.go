@@ -345,7 +345,7 @@ func (vac *VolumeAttachmentController) handleNodeCordoned(va *longhorn.VolumeAtt
 
 	detachManuallyAttachedVolumesWhenCordoned, err := vac.ds.GetSettingAsBool(types.SettingNameDetachManuallyAttachedVolumesWhenCordoned)
 	if err != nil {
-		log.WithError(err).Warnf("Failed to get setting %v", types.SettingNameDetachManuallyAttachedVolumesWhenCordoned)
+		log.WithError(err).Warnf("Failed to get %v setting", types.SettingNameDetachManuallyAttachedVolumesWhenCordoned)
 		return
 	}
 
