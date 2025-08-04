@@ -596,7 +596,7 @@ func (oc *OrphanController) updateDataCleanableCondition(orphan *longhorn.Orphan
 		orphan.Status.Conditions = types.SetCondition(orphan.Status.Conditions, longhorn.OrphanConditionTypeDataCleanable, status, reason, "")
 	}()
 
-	isUnavailable, err := oc.ds.IsNodeDownOrDeletedOrMissingManager(orphan.Spec.NodeID)
+	isUnavailable, err := oc.ds.IsNodeDownOrMissingManager(orphan.Spec.NodeID)
 	if err != nil {
 		return errors.Wrapf(err, "failed to check node down or missing manager for node %v", orphan.Spec.NodeID)
 	}
@@ -610,7 +610,7 @@ func (oc *OrphanController) updateDataCleanableCondition(orphan *longhorn.Orphan
 		if !datastore.ErrorIsNotFound(err) {
 			return fmt.Errorf("failed to get node %v", orphan.Spec.NodeID)
 		}
-		reason = longhorn.OrphanConditionTypeDataCleanableReasonNodeUnavailable
+		reason = longhorn.OrphanConditionTypeDataCleanableReasonNodeDeleted
 		return nil
 	}
 

@@ -3050,6 +3050,24 @@ func (s *DataStore) RemoveFinalizerForNode(obj *longhorn.Node) error {
 	return nil
 }
 
+func (s *DataStore) IsNodeDownOrMissingManager(name string) (bool, error) {
+	if name == "" {
+		return false, errors.New("no node name provided to IsNodeDownOrMissingManager")
+	}
+	node, err := s.GetNodeRO(name)
+	if err != nil {
+		return false, err
+	}
+	cond := types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady)
+	if cond.Status == longhorn.ConditionStatusFalse &&
+		(cond.Reason == string(longhorn.NodeConditionReasonKubernetesNodeGone) ||
+			cond.Reason == string(longhorn.NodeConditionReasonKubernetesNodeNotReady) ||
+			cond.Reason == string(longhorn.NodeConditionReasonManagerPodMissing)) {
+		return true, nil
+	}
+	return false, nil
+}
+
 func (s *DataStore) IsNodeDownOrDeletedOrMissingManager(name string) (bool, error) {
 	if name == "" {
 		return false, errors.New("no node name provided to IsNodeDownOrDeletedOrMissingManager")

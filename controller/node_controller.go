@@ -1458,13 +1458,10 @@ func (nc *NodeController) canDeleteOrphan(orphan *longhorn.Orphan, autoDeleteEna
 	}
 
 	// When dataCleanableCondition is false, it means the associated node is not ready, missing or evicted (check updateDataCleanableCondition()).
-	// In this case, we can delete the orphan directly because the data is not reachable and no need to keep the orphan resource.
-	isReasonNodeOrDisk := (dataCleanableCondition.Reason == longhorn.OrphanConditionTypeDataCleanableReasonNodeUnavailable) ||
-		(dataCleanableCondition.Reason == longhorn.OrphanConditionTypeDataCleanableReasonNodeEvicted) ||
-		(dataCleanableCondition.Reason == longhorn.OrphanConditionTypeDataCleanableReasonDiskInvalid) ||
-		(dataCleanableCondition.Reason == longhorn.OrphanConditionTypeDataCleanableReasonDiskEvicted) ||
-		(dataCleanableCondition.Reason == longhorn.OrphanConditionTypeDataCleanableReasonDiskChanged)
-	canDelete := autoDeleteAllowed || ((dataCleanableCondition.Status == longhorn.ConditionStatusFalse) && isReasonNodeOrDisk)
+	// In this case, we delete orphan CR when node is deleted or evicting
+	canDelete := autoDeleteAllowed || ((dataCleanableCondition.Status == longhorn.ConditionStatusFalse) &&
+		((dataCleanableCondition.Reason == longhorn.OrphanConditionTypeDataCleanableReasonNodeEvicted) ||
+			(dataCleanableCondition.Reason == longhorn.OrphanConditionTypeDataCleanableReasonNodeDeleted)))
 	if !canDelete {
 		nc.logger.Debugf("Orphan %v is not ready to be deleted, autoDeleteAllowed: %v, dataCleanableCondition: %v", orphan.Name, autoDeleteAllowed, dataCleanableCondition.Status)
 	}
