@@ -1658,12 +1658,15 @@ func (info *ClusterInfo) convertSettingValueType(setting *longhorn.Setting) (con
 
 	switch definition.Type {
 	case types.SettingTypeInt:
-		return strconv.ParseInt(setting.Value, 10, 64)
+		if !definition.DataEngineSpecific {
+			return strconv.ParseInt(setting.Value, 10, 64)
+		}
 	case types.SettingTypeBool:
-		return strconv.ParseBool(setting.Value)
-	default:
-		return setting.Value, nil
+		if !definition.DataEngineSpecific {
+			return strconv.ParseBool(setting.Value)
+		}
 	}
+	return setting.Value, nil
 }
 
 func (info *ClusterInfo) collectVolumesInfo() error {
