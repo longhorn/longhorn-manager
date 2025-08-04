@@ -2021,8 +2021,8 @@ func getReplicaRebuildFailedReasonFromError(errMsg string) (string, longhorn.Con
 	}
 }
 
-func (ec *EngineController) waitForV2EngineRebuild(e *longhorn.Engine, replicaName string, timeout int64) (err error) {
-	if !types.IsDataEngineV2(e.Spec.DataEngine) {
+func (ec *EngineController) waitForV2EngineRebuild(engine *longhorn.Engine, replicaName string, timeout int64) (err error) {
+	if !types.IsDataEngineV2(engine.Spec.DataEngine) {
 		return nil
 	}
 
@@ -2033,11 +2033,11 @@ func (ec *EngineController) waitForV2EngineRebuild(e *longhorn.Engine, replicaNa
 	for {
 		select {
 		case <-ticker.C:
-			e, err = ec.ds.GetEngineRO(e.Name)
+			e, err := ec.ds.GetEngineRO(engine.Name)
 			if err != nil {
 				// There is no need to continue if the engine is not found
 				if apierrors.IsNotFound(err) {
-					return err
+					return errors.Wrapf(err, "engine %v not found during v2 replica %s rebuild wait", engine.Name, replicaName)
 				}
 				// There may be something wrong with the indexer or the API sever, will retry
 				continue
