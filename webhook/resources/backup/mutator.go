@@ -66,14 +66,15 @@ func (b *backupMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 
 	//check snapshot name, if not exist, return error
-	snapshotName := backup.Spec.SnapshotName
-	if snapshotName == "" {
-		err := fmt.Errorf("missing snapshot for backup %v", backup.Name)
-		return nil, werror.NewInvalidError(err.Error(), "")
-	}
 
 	volumeName, isExist := backup.Labels[types.LonghornLabelBackupVolume]
 	if !isExist {
+		if backup.Spec.SnapshotName == "" {
+			err := errors.Wrapf(err, "cannot find the backup volume label for backup %v", backup.Name)
+			return nil, werror.NewInvalidError(err.Error(), "")
+		}
+
+		// Try to get volume name from snapshot
 		snapshot, err := b.ds.GetSnapshotRO(backup.Spec.SnapshotName)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get the snapshot %v", backup.Spec.SnapshotName)

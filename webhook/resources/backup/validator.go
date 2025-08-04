@@ -66,26 +66,28 @@ func (b *backupValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(fmt.Sprintf("backup target %s is not available", backupTargetName), "")
 	}
 
-	//check if label volume name matches snapshot volume name
-	labelVolumeName := backup.Labels[types.LonghornLabelBackupVolume]
-	snapshot, err := b.ds.GetSnapshotRO(backup.Spec.SnapshotName)
-	if err != nil {
-		return werror.NewInvalidError(fmt.Sprintf("snapshot %v is invalid", snapshot), "")
-	}
-	volume, err := b.ds.GetVolumeRO(snapshot.Spec.Volume)
-	if err != nil {
-		return werror.NewInvalidError(fmt.Sprintf("volume %v is invalid", snapshot), "")
-	}
-	snapshotVolumeName := volume.Name
+	if backup.Spec.SnapshotName != "" {
+		//check if label volume name matches snapshot volume name
+		labelVolumeName := backup.Labels[types.LonghornLabelBackupVolume]
+		snapshot, err := b.ds.GetSnapshotRO(backup.Spec.SnapshotName)
+		if err != nil {
+			return werror.NewInvalidError(fmt.Sprintf("snapshot %v is invalid", snapshot), "")
+		}
+		volume, err := b.ds.GetVolumeRO(snapshot.Spec.Volume)
+		if err != nil {
+			return werror.NewInvalidError(fmt.Sprintf("volume %v is invalid", snapshot), "")
+		}
+		snapshotVolumeName := volume.Name
 
-	if labelVolumeName != snapshotVolumeName {
-		return werror.NewInvalidError(fmt.Sprintf("snapshot volume name %s and label volume name %s does not match", snapshotVolumeName, labelVolumeName), "")
-	}
+		if labelVolumeName != snapshotVolumeName {
+			return werror.NewInvalidError(fmt.Sprintf("snapshot volume name %s and label volume name %s does not match", snapshotVolumeName, labelVolumeName), "")
+		}
 
-	//check if volume backup target matches labelbackup target
-	volumeBackupTargetName := volume.Spec.BackupTargetName
-	if volumeBackupTargetName != backupTargetName {
-		return werror.NewInvalidError(fmt.Sprintf("volume backup target %s and label backup target %s does not match", volumeBackupTargetName, backupTargetName), "")
+		//check if volume backup target matches labelbackup target
+		volumeBackupTargetName := volume.Spec.BackupTargetName
+		if volumeBackupTargetName != backupTargetName {
+			return werror.NewInvalidError(fmt.Sprintf("volume backup target %s and label backup target %s does not match", volumeBackupTargetName, backupTargetName), "")
+		}
 	}
 
 	return nil
