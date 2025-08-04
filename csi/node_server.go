@@ -893,6 +893,11 @@ func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 	return &csi.NodeGetInfoResponse{
 		NodeId:            ns.nodeID,
 		MaxVolumesPerNode: 0, // technically the scsi kernel limit is the max limit of volumes
+		AccessibleTopology: &csi.Topology{
+			Segments: map[string]string{
+				nodeTopologyKey: ns.nodeID,
+			},
+		},
 	}, nil
 }
 

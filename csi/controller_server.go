@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"os"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -19,12 +20,18 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"k8s.io/client-go/rest"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 )
 
 const (
@@ -52,9 +59,26 @@ type ControllerServer struct {
 	caps        []*csi.ControllerServiceCapability
 	accessModes []*csi.VolumeCapability_AccessMode
 	log         *logrus.Entry
+	lhClient    lhclientset.Interface
+	lhNamespace string
 }
 
-func NewControllerServer(apiClient *longhornclient.RancherClient, nodeID string) *ControllerServer {
+func NewControllerServer(apiClient *longhornclient.RancherClient, nodeID string) (*ControllerServer, error) {
+	lhNamespace := os.Getenv(types.EnvPodNamespace)
+	if lhNamespace == "" {
+		return nil, fmt.Errorf("failed to detect pod namespace, environment variable %v is missing", types.EnvPodNamespace)
+	}
+
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get client config")
+	}
+
+	lhClient, err := lhclientset.NewForConfig(config)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get longhorn clientset")
+	}
+
 	return &ControllerServer{
 		apiClient: apiClient,
 		nodeID:    nodeID,
@@ -65,14 +89,17 @@ func NewControllerServer(apiClient *longhornclient.RancherClient, nodeID string)
 				csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
 				csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
 				csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
+				csi.ControllerServiceCapability_RPC_GET_CAPACITY,
 			}),
 		accessModes: getVolumeCapabilityAccessModes(
 			[]csi.VolumeCapability_AccessMode_Mode{
 				csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
 				csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
 			}),
-		log: logrus.StandardLogger().WithField("component", "csi-controller-server"),
-	}
+		log:         logrus.StandardLogger().WithField("component", "csi-controller-server"),
+		lhClient:    lhClient,
+		lhNamespace: lhNamespace,
+	}, nil
 }
 
 func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
@@ -642,8 +669,118 @@ func (cs *ControllerServer) ListVolumes(context.Context, *csi.ListVolumesRequest
 	return nil, status.Error(codes.Unimplemented, "")
 }
 
-func (cs *ControllerServer) GetCapacity(context.Context, *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "")
+func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
+	log := cs.log.WithFields(logrus.Fields{"function": "GetCapacity"})
+
+	log.Infof("GetCapacity is called with req %+v", req)
+
+	var err error
+	defer func() {
+		if err != nil {
+			log.WithError(err).Errorf("Failed to get capacity")
+		}
+	}()
+
+	scParameters := req.GetParameters()
+	if scParameters == nil {
+		scParameters = map[string]string{}
+	}
+
+	nodeID, err := parseNodeID(req.GetAccessibleTopology())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to parse node id: %v", err)
+	}
+	node, err := cs.lhClient.LonghornV1beta2().Nodes(cs.lhNamespace).Get(ctx, nodeID, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, status.Errorf(codes.NotFound, "node %s not found", nodeID)
+		}
+		return nil, status.Errorf(codes.Internal, "unexpected error: %v", err)
+	}
+	if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeReady).Status != longhorn.ConditionStatusTrue {
+		return &csi.GetCapacityResponse{}, nil
+	}
+	if types.GetCondition(node.Status.Conditions, longhorn.NodeConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
+		return &csi.GetCapacityResponse{}, nil
+	}
+	if !node.Spec.AllowScheduling || node.Spec.EvictionRequested {
+		return &csi.GetCapacityResponse{}, nil
+	}
+
+	allowEmptyNodeSelectorVolume, err := cs.getSettingAsBoolean(types.SettingNameAllowEmptyNodeSelectorVolume)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get setting %v: %v", types.SettingNameAllowEmptyNodeSelectorVolume, err)
+	}
+	var nodeSelector []string
+	if nodeSelectorRaw, ok := scParameters["nodeSelector"]; ok && len(nodeSelectorRaw) > 0 {
+		nodeSelector = strings.Split(nodeSelectorRaw, ",")
+	}
+	if !types.IsSelectorsInTags(node.Spec.Tags, nodeSelector, allowEmptyNodeSelectorVolume) {
+		return &csi.GetCapacityResponse{}, nil
+	}
+
+	var diskSelector []string
+	if diskSelectorRaw, ok := scParameters["diskSelector"]; ok && len(diskSelectorRaw) > 0 {
+		diskSelector = strings.Split(diskSelectorRaw, ",")
+	}
+	allowEmptyDiskSelectorVolume, err := cs.getSettingAsBoolean(types.SettingNameAllowEmptyDiskSelectorVolume)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get setting %v: %v", types.SettingNameAllowEmptyDiskSelectorVolume, err)
+	}
+
+	var v1AvailableCapacity int64 = 0
+	var v2AvailableCapacity int64 = 0
+	for diskName, diskStatus := range node.Status.DiskStatus {
+		diskSpec, exists := node.Spec.Disks[diskName]
+		if !exists {
+			continue
+		}
+		if !diskSpec.AllowScheduling || diskSpec.EvictionRequested {
+			continue
+		}
+		if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
+			continue
+		}
+		if !types.IsSelectorsInTags(diskSpec.Tags, diskSelector, allowEmptyDiskSelectorVolume) {
+			continue
+		}
+		storageSchedulable := diskStatus.StorageAvailable - diskSpec.StorageReserved
+		if diskStatus.Type == longhorn.DiskTypeFilesystem {
+			v1AvailableCapacity = max(v1AvailableCapacity, storageSchedulable)
+		}
+		if diskStatus.Type == longhorn.DiskTypeBlock {
+			v2AvailableCapacity = max(v2AvailableCapacity, storageSchedulable)
+		}
+	}
+
+	dataEngine, ok := scParameters["dataEngine"]
+	if !ok {
+		return nil, status.Error(codes.InvalidArgument, "storage class parameters missing 'dataEngine' key")
+	}
+	rsp := &csi.GetCapacityResponse{}
+	switch longhorn.DataEngineType(dataEngine) {
+	case longhorn.DataEngineTypeV1:
+		rsp.AvailableCapacity = v1AvailableCapacity
+	case longhorn.DataEngineTypeV2:
+		rsp.AvailableCapacity = v2AvailableCapacity
+	default:
+		return nil, status.Errorf(codes.InvalidArgument, "unknown data engine type %v", dataEngine)
+	}
+
+	log.Infof("Node: %s, DataEngine: %s, v1AvailableCapacity: %d, v2AvailableCapacity: %d", nodeID, dataEngine, v1AvailableCapacity, v2AvailableCapacity)
+	return rsp, nil
+}
+
+func (cs *ControllerServer) getSettingAsBoolean(name types.SettingName) (bool, error) {
+	obj, err := cs.lhClient.LonghornV1beta2().Settings(cs.lhNamespace).Get(context.TODO(), string(name), metav1.GetOptions{})
+	if err != nil {
+		return false, err
+	}
+	value, err := strconv.ParseBool(obj.Value)
+	if err != nil {
+		return false, err
+	}
+	return value, nil
 }
 
 func (cs *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {

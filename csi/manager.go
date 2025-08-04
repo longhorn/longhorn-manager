@@ -41,7 +41,11 @@ func (m *Manager) Run(driverName, nodeID, endpoint, identityVersion, managerURL 
 		return errors.Wrap(err, "Failed to create CSI node server ")
 	}
 
-	m.cs = NewControllerServer(apiClient, nodeID)
+	m.cs, err = NewControllerServer(apiClient, nodeID)
+	if err != nil {
+		return errors.Wrap(err, "failed to create CSI controller server")
+	}
+
 	s := NewNonBlockingGRPCServer()
 	s.Start(endpoint, m.ids, m.cs, m.ns)
 	s.Wait()

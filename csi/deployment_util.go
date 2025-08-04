@@ -105,6 +105,24 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 										},
 									},
 								},
+								{
+									// required by external-provisioner to set owner references for CSIStorageCapacity objects
+									Name: "NAMESPACE",
+									ValueFrom: &corev1.EnvVarSource{
+										FieldRef: &corev1.ObjectFieldSelector{
+											FieldPath: "metadata.namespace",
+										},
+									},
+								},
+								{
+									// required by external-provisioner to set owner references for CSIStorageCapacity objects
+									Name: "POD_NAME",
+									ValueFrom: &corev1.EnvVarSource{
+										FieldRef: &corev1.ObjectFieldSelector{
+											FieldPath: "metadata.name",
+										},
+									},
+								},
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{
