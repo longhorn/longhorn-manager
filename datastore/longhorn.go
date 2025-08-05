@@ -173,7 +173,7 @@ func (s *DataStore) syncSettingOrphanResourceAutoDeletionSettings() error {
 	oldOrphanReplicaDataAutoDeletionSettingRO, err := s.getSettingRO(string(types.SettingNameOrphanAutoDeletion))
 	if err != nil {
 		if ErrorIsNotFound(err) {
-			logrus.Infof("No old setting %v to be replaced.", types.SettingNameOrphanAutoDeletion)
+			logrus.Debugf("No old setting %v to be replaced.", types.SettingNameOrphanAutoDeletion)
 			return nil
 		}
 		return errors.Wrapf(err, "failed to get replaced setting %v", types.SettingNameOrphanAutoDeletion)
@@ -198,7 +198,7 @@ func (s *DataStore) syncConsolidatedV2DataEngineSetting(oldSettingName, newSetti
 	oldSetting, err := s.getSettingRO(string(oldSettingName))
 	if err != nil {
 		if ErrorIsNotFound(err) {
-			logrus.Infof("No old setting %v to be replaced.", oldSettingName)
+			logrus.Debugf("No old setting %v to be replaced.", oldSettingName)
 			return nil
 		}
 		return errors.Wrapf(err, "failed to get old setting %v", oldSettingName)
