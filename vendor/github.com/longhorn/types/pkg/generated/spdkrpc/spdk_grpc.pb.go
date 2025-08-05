@@ -23,6 +23,7 @@ const (
 	SPDKService_ReplicaCreate_FullMethodName                             = "/spdkrpc.SPDKService/ReplicaCreate"
 	SPDKService_ReplicaDelete_FullMethodName                             = "/spdkrpc.SPDKService/ReplicaDelete"
 	SPDKService_ReplicaGet_FullMethodName                                = "/spdkrpc.SPDKService/ReplicaGet"
+	SPDKService_ReplicaExpand_FullMethodName                             = "/spdkrpc.SPDKService/ReplicaExpand"
 	SPDKService_ReplicaSnapshotCreate_FullMethodName                     = "/spdkrpc.SPDKService/ReplicaSnapshotCreate"
 	SPDKService_ReplicaSnapshotDelete_FullMethodName                     = "/spdkrpc.SPDKService/ReplicaSnapshotDelete"
 	SPDKService_ReplicaSnapshotRevert_FullMethodName                     = "/spdkrpc.SPDKService/ReplicaSnapshotRevert"
@@ -54,6 +55,7 @@ const (
 	SPDKService_EngineGet_FullMethodName                                 = "/spdkrpc.SPDKService/EngineGet"
 	SPDKService_EngineSuspend_FullMethodName                             = "/spdkrpc.SPDKService/EngineSuspend"
 	SPDKService_EngineResume_FullMethodName                              = "/spdkrpc.SPDKService/EngineResume"
+	SPDKService_EngineExpand_FullMethodName                              = "/spdkrpc.SPDKService/EngineExpand"
 	SPDKService_EngineSwitchOverTarget_FullMethodName                    = "/spdkrpc.SPDKService/EngineSwitchOverTarget"
 	SPDKService_EngineDeleteTarget_FullMethodName                        = "/spdkrpc.SPDKService/EngineDeleteTarget"
 	SPDKService_EngineSnapshotCreate_FullMethodName                      = "/spdkrpc.SPDKService/EngineSnapshotCreate"
@@ -99,6 +101,7 @@ type SPDKServiceClient interface {
 	ReplicaCreate(ctx context.Context, in *ReplicaCreateRequest, opts ...grpc.CallOption) (*Replica, error)
 	ReplicaDelete(ctx context.Context, in *ReplicaDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ReplicaGet(ctx context.Context, in *ReplicaGetRequest, opts ...grpc.CallOption) (*Replica, error)
+	ReplicaExpand(ctx context.Context, in *ReplicaExpandRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ReplicaSnapshotCreate(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*Replica, error)
 	ReplicaSnapshotDelete(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ReplicaSnapshotRevert(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -130,6 +133,7 @@ type SPDKServiceClient interface {
 	EngineGet(ctx context.Context, in *EngineGetRequest, opts ...grpc.CallOption) (*Engine, error)
 	EngineSuspend(ctx context.Context, in *EngineSuspendRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineResume(ctx context.Context, in *EngineResumeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	EngineExpand(ctx context.Context, in *EngineExpandRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineSwitchOverTarget(ctx context.Context, in *EngineSwitchOverTargetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineDeleteTarget(ctx context.Context, in *EngineDeleteTargetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineSnapshotCreate(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*SnapshotResponse, error)
@@ -197,6 +201,15 @@ func (c *sPDKServiceClient) ReplicaDelete(ctx context.Context, in *ReplicaDelete
 func (c *sPDKServiceClient) ReplicaGet(ctx context.Context, in *ReplicaGetRequest, opts ...grpc.CallOption) (*Replica, error) {
 	out := new(Replica)
 	err := c.cc.Invoke(ctx, SPDKService_ReplicaGet_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ReplicaExpand(ctx context.Context, in *ReplicaExpandRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_ReplicaExpand_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -499,6 +512,15 @@ func (c *sPDKServiceClient) EngineSuspend(ctx context.Context, in *EngineSuspend
 func (c *sPDKServiceClient) EngineResume(ctx context.Context, in *EngineResumeRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, SPDKService_EngineResume_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) EngineExpand(ctx context.Context, in *EngineExpandRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_EngineExpand_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -882,6 +904,7 @@ type SPDKServiceServer interface {
 	ReplicaCreate(context.Context, *ReplicaCreateRequest) (*Replica, error)
 	ReplicaDelete(context.Context, *ReplicaDeleteRequest) (*emptypb.Empty, error)
 	ReplicaGet(context.Context, *ReplicaGetRequest) (*Replica, error)
+	ReplicaExpand(context.Context, *ReplicaExpandRequest) (*emptypb.Empty, error)
 	ReplicaSnapshotCreate(context.Context, *SnapshotRequest) (*Replica, error)
 	ReplicaSnapshotDelete(context.Context, *SnapshotRequest) (*emptypb.Empty, error)
 	ReplicaSnapshotRevert(context.Context, *SnapshotRequest) (*emptypb.Empty, error)
@@ -913,6 +936,7 @@ type SPDKServiceServer interface {
 	EngineGet(context.Context, *EngineGetRequest) (*Engine, error)
 	EngineSuspend(context.Context, *EngineSuspendRequest) (*emptypb.Empty, error)
 	EngineResume(context.Context, *EngineResumeRequest) (*emptypb.Empty, error)
+	EngineExpand(context.Context, *EngineExpandRequest) (*emptypb.Empty, error)
 	EngineSwitchOverTarget(context.Context, *EngineSwitchOverTargetRequest) (*emptypb.Empty, error)
 	EngineDeleteTarget(context.Context, *EngineDeleteTargetRequest) (*emptypb.Empty, error)
 	EngineSnapshotCreate(context.Context, *SnapshotRequest) (*SnapshotResponse, error)
@@ -964,6 +988,9 @@ func (UnimplementedSPDKServiceServer) ReplicaDelete(context.Context, *ReplicaDel
 }
 func (UnimplementedSPDKServiceServer) ReplicaGet(context.Context, *ReplicaGetRequest) (*Replica, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReplicaGet not implemented")
+}
+func (UnimplementedSPDKServiceServer) ReplicaExpand(context.Context, *ReplicaExpandRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReplicaExpand not implemented")
 }
 func (UnimplementedSPDKServiceServer) ReplicaSnapshotCreate(context.Context, *SnapshotRequest) (*Replica, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReplicaSnapshotCreate not implemented")
@@ -1057,6 +1084,9 @@ func (UnimplementedSPDKServiceServer) EngineSuspend(context.Context, *EngineSusp
 }
 func (UnimplementedSPDKServiceServer) EngineResume(context.Context, *EngineResumeRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EngineResume not implemented")
+}
+func (UnimplementedSPDKServiceServer) EngineExpand(context.Context, *EngineExpandRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineExpand not implemented")
 }
 func (UnimplementedSPDKServiceServer) EngineSwitchOverTarget(context.Context, *EngineSwitchOverTargetRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EngineSwitchOverTarget not implemented")
@@ -1229,6 +1259,24 @@ func _SPDKService_ReplicaGet_Handler(srv interface{}, ctx context.Context, dec f
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SPDKServiceServer).ReplicaGet(ctx, req.(*ReplicaGetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ReplicaExpand_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReplicaExpandRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ReplicaExpand(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ReplicaExpand_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ReplicaExpand(ctx, req.(*ReplicaExpandRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1790,6 +1838,24 @@ func _SPDKService_EngineResume_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SPDKServiceServer).EngineResume(ctx, req.(*EngineResumeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_EngineExpand_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EngineExpandRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).EngineExpand(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_EngineExpand_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).EngineExpand(ctx, req.(*EngineExpandRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2468,6 +2534,10 @@ var SPDKService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _SPDKService_ReplicaGet_Handler,
 		},
 		{
+			MethodName: "ReplicaExpand",
+			Handler:    _SPDKService_ReplicaExpand_Handler,
+		},
+		{
 			MethodName: "ReplicaSnapshotCreate",
 			Handler:    _SPDKService_ReplicaSnapshotCreate_Handler,
 		},
@@ -2586,6 +2656,10 @@ var SPDKService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "EngineResume",
 			Handler:    _SPDKService_EngineResume_Handler,
+		},
+		{
+			MethodName: "EngineExpand",
+			Handler:    _SPDKService_EngineExpand_Handler,
 		},
 		{
 			MethodName: "EngineSwitchOverTarget",
