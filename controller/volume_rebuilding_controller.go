@@ -336,7 +336,7 @@ func (vbc *VolumeRebuildingController) reconcile(volName string) (err error) {
 		return nil
 	}
 	if vbc.isVolumeReplicasRebuilding(vol, engine) {
-		deleteVATicketRequired = false
+		deleteVATicketRequired = types.GetCondition(vol.Status.Conditions, longhorn.VolumeConditionTypeScheduled).Status == longhorn.ConditionStatusFalse
 		return nil
 	}
 
