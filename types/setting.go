@@ -3,6 +3,7 @@ package types
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -293,7 +294,7 @@ type SettingDefinition struct {
 	Required    bool            `json:"required"`
 	ReadOnly    bool            `json:"readOnly"`
 	Default     string          `json:"default"`
-	Choices     []string        `json:"options,omitempty"` // +optional
+	Choices     []any           `json:"options,omitempty"` // +optional
 
 	// Use map to present minimum and maximum value instead of using int directly, so we can omitempy and distinguish 0 or nil at the same time.
 	ValueIntRange   map[string]int     `json:"range,omitempty"`      // +optional
@@ -567,7 +568,7 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            string(longhorn.ReplicaAutoBalanceDisabled),
-		Choices: []string{
+		Choices: []any{
 			string(longhorn.ReplicaAutoBalanceDisabled),
 			string(longhorn.ReplicaAutoBalanceLeastEffort),
 			string(longhorn.ReplicaAutoBalanceBestEffort),
@@ -729,7 +730,7 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            string(longhorn.DataLocalityDisabled),
-		Choices: []string{
+		Choices: []any{
 			string(longhorn.DataLocalityDisabled),
 			string(longhorn.DataLocalityBestEffort),
 			string(longhorn.DataLocalityStrictLocal),
@@ -867,7 +868,7 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            string(NodeDownPodDeletionPolicyDoNothing),
-		Choices: []string{
+		Choices: []any{
 			string(NodeDownPodDeletionPolicyDoNothing),
 			string(NodeDownPodDeletionPolicyDeleteStatefulSetPod),
 			string(NodeDownPodDeletionPolicyDeleteDeploymentPod),
@@ -889,7 +890,7 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            string(NodeDrainPolicyBlockIfContainsLastReplica),
-		Choices: []string{
+		Choices: []any{
 			string(NodeDrainPolicyBlockForEviction),
 			string(NodeDrainPolicyBlockForEvictionIfContainsLastReplica),
 			string(NodeDrainPolicyBlockIfContainsLastReplica),
@@ -1007,7 +1008,7 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            string(SystemManagedPodsImagePullPolicyIfNotPresent),
-		Choices: []string{
+		Choices: []any{
 			string(SystemManagedPodsImagePullPolicyIfNotPresent),
 			string(SystemManagedPodsImagePullPolicyNever),
 			string(SystemManagedPodsImagePullPolicyAlways),
@@ -1314,7 +1315,7 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            string(longhorn.SnapshotDataIntegrityFastCheck),
-		Choices: []string{
+		Choices: []any{
 			string(longhorn.SnapshotDataIntegrityDisabled),
 			string(longhorn.SnapshotDataIntegrityEnabled),
 			string(longhorn.SnapshotDataIntegrityFastCheck),
@@ -1422,7 +1423,7 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            string(longhorn.BackupCompressionMethodLz4),
-		Choices: []string{
+		Choices: []any{
 			string(longhorn.BackupCompressionMethodNone),
 			string(longhorn.BackupCompressionMethodLz4),
 			string(longhorn.BackupCompressionMethodGzip),
@@ -1466,7 +1467,7 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            "Info",
-		Choices:            []string{"Panic", "Fatal", "Error", "Warn", "Info", "Debug", "Trace"},
+		Choices:            []any{"Panic", "Fatal", "Error", "Warn", "Info", "Debug", "Trace"},
 	}
 
 	SettingDefinitionV1DataEngine = SettingDefinition{
@@ -1571,7 +1572,7 @@ var (
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: true,
-		Choices:            []string{"Error", "Warning", "Notice", "Info", "Debug"},
+		Choices:            []any{"Error", "Warning", "Notice", "Info", "Debug"},
 		Default:            fmt.Sprintf("{%q:\"Notice\"}", longhorn.DataEngineTypeV2),
 	}
 
@@ -1739,11 +1740,9 @@ func ValidateSetting(name, value string) (err error) {
 
 // isValidChoice checks if the passed value is part of the choices array,
 // an empty choices array allows for all values
-func isValidChoice(choices []string, value string) bool {
-	for _, c := range choices {
-		if value == c {
-			return true
-		}
+func isValidChoice(choices []any, value any) bool {
+	if slices.Contains(choices, value) {
+		return true
 	}
 	return len(choices) == 0
 }
@@ -2151,6 +2150,13 @@ func validateSettingIntValues(definition SettingDefinition, values map[longhorn.
 				errs = append(errs, fmt.Errorf("value %v for data engine %v should be less than or equal to %v", intValue, dataEngine, maxValue))
 				continue
 			}
+		}
+
+		if len(definition.Choices) > 0 {
+			if !isValidChoice(definition.Choices, value) {
+				return fmt.Errorf("value %v is not a valid choice, available choices %v", value, definition.Choices)
+			}
+			return nil
 		}
 	}
 
