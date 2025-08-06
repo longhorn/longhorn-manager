@@ -250,6 +250,8 @@ type Attachment struct {
 }
 
 type VolumeAttachment struct {
+	client.Resource
+
 	Attachments map[string]Attachment `json:"attachments"`
 	Volume      string                `json:"volume"`
 }
@@ -2429,6 +2431,47 @@ func toOrphanCollection(orphans map[string]*longhorn.Orphan) *client.GenericColl
 		data = append(data, toOrphanResource(orphan))
 	}
 	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "orphan"}}
+}
+
+func toVolumeAttachmentResource(volumeAttachment *longhorn.VolumeAttachment) *VolumeAttachment {
+	attachments := make(map[string]Attachment)
+
+	for ticketName, ticket := range volumeAttachment.Spec.AttachmentTickets {
+		status := volumeAttachment.Status.AttachmentTicketStatuses[ticketName]
+
+		attachment := Attachment{
+			AttachmentID:   ticket.ID,
+			AttachmentType: string(ticket.Type),
+			NodeID:         ticket.NodeID,
+			Parameters:     ticket.Parameters,
+			Satisfied:      false,
+			Conditions:     nil,
+		}
+
+		if status != nil {
+			attachment.Satisfied = status.Satisfied
+			attachment.Conditions = status.Conditions
+		}
+
+		attachments[ticketName] = attachment
+	}
+
+	return &VolumeAttachment{
+		Resource: client.Resource{
+			Id:   volumeAttachment.Name,
+			Type: "volumeAttachment",
+		},
+		Volume:      volumeAttachment.Spec.Volume,
+		Attachments: attachments,
+	}
+}
+
+func toVolumeAttachmentCollection(attachments []*longhorn.VolumeAttachment, apiContext *api.ApiContext) *client.GenericCollection {
+	data := []interface{}{}
+	for _, attachment := range attachments {
+		data = append(data, toVolumeAttachmentResource(attachment))
+	}
+	return &client.GenericCollection{Data: data, Collection: client.Collection{ResourceType: "volumeAttachment"}}
 }
 
 func sliceToMap(conditions []longhorn.Condition) map[string]longhorn.Condition {

@@ -292,5 +292,9 @@ func NewRouter(s *Server) *mux.Router {
 	r.Path("/v1/ws/events").Handler(f(schemas, eventListStream))
 	r.Path("/v1/ws/{period}/events").Handler(f(schemas, eventListStream))
 
+	// VolumeAttachment routes
+	r.Methods("GET").Path("/v1/volumeattachments").Handler(f(schemas, s.VolumeAttachmentList))
+	r.Methods("GET").Path("/v1/volumeattachments/{name}").Handler(f(schemas, s.VolumeAttachmentGet))
+
 	return r
 }
