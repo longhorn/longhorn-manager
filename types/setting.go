@@ -1916,6 +1916,13 @@ func validateInt(definition SettingDefinition, value string) error {
 			return fmt.Errorf("value %v should be less than %v", intValue, maxValue)
 		}
 	}
+
+	if len(definition.Choices) > 0 {
+		if !isValidChoice(definition.Choices, value) {
+			return fmt.Errorf("value %v is not a valid choice, available choices %v", value, definition.Choices)
+		}
+		return nil
+	}
 	return nil
 }
 
