@@ -5446,6 +5446,21 @@ func (s *DataStore) GetLHVolumeAttachmentByVolumeName(volName string) (*longhorn
 	return s.GetLHVolumeAttachment(vaName)
 }
 
+// ListLHVolumeAttachments returns all VolumeAttachments in the cluster
+func (s *DataStore) ListLHVolumeAttachments() ([]*longhorn.VolumeAttachment, error) {
+	vaList, err := s.lhVolumeAttachmentLister.VolumeAttachments(s.namespace).List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]*longhorn.VolumeAttachment, 0, len(vaList))
+	for _, va := range vaList {
+		result = append(result, va.DeepCopy())
+	}
+
+	return result, nil
+}
+
 // ListSupportBundles returns an object contains all SupportBundles
 func (s *DataStore) ListSupportBundles() (map[string]*longhorn.SupportBundle, error) {
 	itemMap := make(map[string]*longhorn.SupportBundle)
