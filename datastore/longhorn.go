@@ -298,16 +298,16 @@ func GetSettingValidValue(definition types.SettingDefinition, value string) (str
 	var err error
 
 	// Get default values from definition
-	defaultValues, err := types.ParseDataEngineSpecificSettingStrings(definition, definition.Default)
+	defaultValues, err := types.ParseDataEngineSpecificSetting(definition, definition.Default)
 	if err != nil {
 		return "", err
 	}
 
 	// Get values from customized value
 	if types.IsJSONFormat(value) {
-		values, err = types.ParseDataEngineSpecificSettingStrings(definition, value)
+		values, err = types.ParseDataEngineSpecificSetting(definition, value)
 	} else {
-		values, err = types.ParseSettingSingleString(definition, value)
+		values, err = types.ParseSettingSingleValue(definition, value)
 	}
 	if err != nil {
 		return "", err
@@ -510,9 +510,9 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 		}
 		var values map[longhorn.DataEngineType]any
 		if types.IsJSONFormat(value) {
-			values, err = types.ParseDataEngineSpecificSettingStrings(definition, value)
+			values, err = types.ParseDataEngineSpecificSetting(definition, value)
 		} else {
-			values, err = types.ParseSettingSingleString(definition, value)
+			values, err = types.ParseSettingSingleValue(definition, value)
 		}
 		if err != nil {
 			return errors.Wrapf(err, "failed to parse value %v for setting %v", value, types.SettingNameCPUMask)
@@ -958,7 +958,7 @@ func (s *DataStore) GetSettingValueExistedByDataEngine(settingName types.Setting
 		return "", err
 	}
 
-	values, err := types.ParseDataEngineSpecificSettingStrings(definition, setting.Value)
+	values, err := types.ParseDataEngineSpecificSetting(definition, setting.Value)
 	if err != nil {
 		return "", err
 	}
@@ -3809,7 +3809,7 @@ func (s *DataStore) GetSettingAsFloatByDataEngine(settingName types.SettingName,
 	}
 
 	// Parse the setting value as a map of floats map[dataEngine]float64]{...}
-	values, err := types.ParseDataEngineSpecificSettingFloats(definition, setting.Value)
+	values, err := types.ParseDataEngineSpecificSetting(definition, setting.Value)
 	if err != nil {
 		return -1, err
 	}
@@ -3882,7 +3882,7 @@ func (s *DataStore) GetSettingAsIntByDataEngine(settingName types.SettingName, d
 		return -1, err
 	}
 
-	values, err := types.ParseDataEngineSpecificSettingInts(definition, setting.Value)
+	values, err := types.ParseDataEngineSpecificSetting(definition, setting.Value)
 	if err != nil {
 		return -1, err
 	}
@@ -3955,7 +3955,7 @@ func (s *DataStore) GetSettingAsBoolByDataEngine(settingName types.SettingName, 
 		return false, err
 	}
 
-	values, err := types.ParseDataEngineSpecificSettingBools(definition, setting.Value)
+	values, err := types.ParseDataEngineSpecificSetting(definition, setting.Value)
 	if err != nil {
 		return false, err
 	}
