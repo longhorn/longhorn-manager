@@ -1936,7 +1936,7 @@ func validateSettingBool(definition SettingDefinition, value string) (err error)
 	var defaultValues map[longhorn.DataEngineType]any
 
 	if IsJSONFormat(strings.TrimSpace(value)) {
-		values, err = ParseDataEngineSpecificSettingBools(definition, value)
+		values, err = ParseDataEngineSpecificSetting(definition, value)
 	} else {
 		values, err = parseSettingSingleBool(definition, value)
 	}
@@ -1949,7 +1949,7 @@ func validateSettingBool(definition SettingDefinition, value string) (err error)
 	}
 
 	if IsJSONFormat(strings.TrimSpace(definition.Default)) {
-		defaultValues, err = ParseDataEngineSpecificSettingBools(definition, definition.Default)
+		defaultValues, err = ParseDataEngineSpecificSetting(definition, definition.Default)
 	} else {
 		defaultValues, err = parseSettingSingleBool(definition, definition.Default)
 	}
@@ -1966,20 +1966,32 @@ func validateSettingBool(definition SettingDefinition, value string) (err error)
 	return err
 }
 
-// ParseDataEngineSpecificSettingBools processes JSON-formatted input for data-engine-specific boolean settings.
-func ParseDataEngineSpecificSettingBools(definition SettingDefinition, value string) (map[longhorn.DataEngineType]any, error) {
-	trimmedValue := strings.TrimSpace(value)
-
-	values := make(map[longhorn.DataEngineType]any)
-
+func ParseDataEngineSpecificSetting(definition SettingDefinition, value string) (map[longhorn.DataEngineType]any, error) {
 	if !definition.DataEngineSpecific {
-		return values, fmt.Errorf("JSON-formatted value is not supported for non-data-engine-specific setting")
+		return map[longhorn.DataEngineType]any{}, fmt.Errorf("JSON-formatted value is not supported for non-data-engine-specific setting")
 	}
 
 	var jsonValues map[longhorn.DataEngineType]string
-	if err := json.Unmarshal([]byte(trimmedValue), &jsonValues); err != nil {
-		return values, errors.Wrapf(err, "failed to parse JSON-formatted value %v", trimmedValue)
+	if err := json.Unmarshal([]byte(value), &jsonValues); err != nil {
+		return map[longhorn.DataEngineType]any{}, errors.Wrapf(err, "failed to parse JSON-formatted value %v", value)
 	}
+
+	switch definition.Type {
+	case SettingTypeBool:
+		return parseDataEngineSpecificSettingBools(jsonValues)
+	case SettingTypeInt:
+		return parseDataEngineSpecificSettingInts(jsonValues)
+	case SettingTypeFloat:
+		return parseDataEngineSpecificSettingFloats(jsonValues)
+	case SettingTypeString:
+		return parseDataEngineSpecificSettingStrings(jsonValues)
+	default:
+		return nil, fmt.Errorf("unsupported setting type %s for data-engine-specific settings", definition.Type)
+	}
+}
+
+func parseDataEngineSpecificSettingBools(jsonValues map[longhorn.DataEngineType]string) (map[longhorn.DataEngineType]any, error) {
+	values := make(map[longhorn.DataEngineType]any)
 
 	var errs []error
 	for dataEngine, valueStr := range jsonValues {
@@ -1992,6 +2004,22 @@ func ParseDataEngineSpecificSettingBools(definition SettingDefinition, value str
 	}
 
 	return values, errors.Join(errs...)
+}
+
+// ParseSettingSingleValue parses a single value for a setting based on its definition.
+func ParseSettingSingleValue(definition SettingDefinition, value string) (map[longhorn.DataEngineType]any, error) {
+	switch definition.Type {
+	case SettingTypeBool:
+		return parseSettingSingleBool(definition, value)
+	case SettingTypeInt:
+		return parseSettingSingleInt(definition, value)
+	case SettingTypeFloat:
+		return parseSettingSingleFloat(definition, value)
+	case SettingTypeString:
+		return parseSettingSingleString(definition, value)
+	default:
+		return nil, fmt.Errorf("unsupported setting type %s for single value parsing", definition.Type)
+	}
 }
 
 // parseSettingSingleBool processes a single boolean value for both general and data-engine-specific settings.
@@ -2027,9 +2055,9 @@ func validateSettingInt(definition SettingDefinition, value string) (err error) 
 	var defaultValues map[longhorn.DataEngineType]any
 
 	if IsJSONFormat(strings.TrimSpace(value)) {
-		values, err = ParseDataEngineSpecificSettingInts(definition, value)
+		values, err = ParseDataEngineSpecificSetting(definition, value)
 	} else {
-		values, err = parseSettingSingleInt(definition, value)
+		values, err = ParseSettingSingleValue(definition, value)
 	}
 	if err != nil {
 		return errors.Wrapf(err, "failed to parse value %s for setting %s", value, definition.DisplayName)
@@ -2040,9 +2068,9 @@ func validateSettingInt(definition SettingDefinition, value string) (err error) 
 	}
 
 	if IsJSONFormat(strings.TrimSpace(definition.Default)) {
-		defaultValues, err = ParseDataEngineSpecificSettingInts(definition, definition.Default)
+		defaultValues, err = ParseDataEngineSpecificSetting(definition, definition.Default)
 	} else {
-		defaultValues, err = parseSettingSingleInt(definition, definition.Default)
+		defaultValues, err = ParseSettingSingleValue(definition, definition.Default)
 	}
 	if err != nil {
 		return errors.Wrapf(err, "failed to parse default value %s for setting %s", definition.Default, definition.DisplayName)
@@ -2057,20 +2085,8 @@ func validateSettingInt(definition SettingDefinition, value string) (err error) 
 	return validateSettingIntValues(definition, values)
 }
 
-// ParseDataEngineSpecificSettingInts processes JSON-formatted input for data-engine-specific integer settings.
-func ParseDataEngineSpecificSettingInts(definition SettingDefinition, value string) (map[longhorn.DataEngineType]any, error) {
-	trimmedValue := strings.TrimSpace(value)
-
+func parseDataEngineSpecificSettingInts(jsonValues map[longhorn.DataEngineType]string) (map[longhorn.DataEngineType]any, error) {
 	values := make(map[longhorn.DataEngineType]any)
-
-	if !definition.DataEngineSpecific {
-		return values, fmt.Errorf("JSON-formatted value is not supported for non-data-engine-specific setting")
-	}
-
-	var jsonValues map[longhorn.DataEngineType]string
-	if err := json.Unmarshal([]byte(trimmedValue), &jsonValues); err != nil {
-		return values, errors.Wrapf(err, "failed to parse JSON-formatted value %v", trimmedValue)
-	}
 
 	var errs []error
 	for dataEngine, valueStr := range jsonValues {
@@ -2147,9 +2163,9 @@ func validateSettingFloat(definition SettingDefinition, value string) (err error
 	var defaultValues map[longhorn.DataEngineType]any
 
 	if IsJSONFormat(strings.TrimSpace(value)) {
-		values, err = ParseDataEngineSpecificSettingFloats(definition, value)
+		values, err = ParseDataEngineSpecificSetting(definition, value)
 	} else {
-		values, err = parseSettingSingleFloat(definition, value)
+		values, err = ParseSettingSingleValue(definition, value)
 	}
 	if err != nil {
 		return errors.Wrapf(err, "failed to parse value %s for setting %s", value, definition.DisplayName)
@@ -2160,7 +2176,7 @@ func validateSettingFloat(definition SettingDefinition, value string) (err error
 	}
 
 	if IsJSONFormat(strings.TrimSpace(definition.Default)) {
-		defaultValues, err = ParseDataEngineSpecificSettingFloats(definition, definition.Default)
+		defaultValues, err = ParseDataEngineSpecificSetting(definition, definition.Default)
 	} else {
 		defaultValues, err = parseSettingSingleFloat(definition, definition.Default)
 	}
@@ -2177,20 +2193,8 @@ func validateSettingFloat(definition SettingDefinition, value string) (err error
 	return validateSettingFloatValues(definition, values)
 }
 
-// ParseDataEngineSpecificSettingFloats processes JSON-formatted input for data-engine-specific float64 settings.
-func ParseDataEngineSpecificSettingFloats(definition SettingDefinition, value string) (map[longhorn.DataEngineType]any, error) {
-	trimmedValue := strings.TrimSpace(value)
-
+func parseDataEngineSpecificSettingFloats(jsonValues map[longhorn.DataEngineType]string) (map[longhorn.DataEngineType]any, error) {
 	values := make(map[longhorn.DataEngineType]any)
-
-	if !definition.DataEngineSpecific {
-		return values, fmt.Errorf("JSON-formatted value is not supported for non-data-engine-specific setting")
-	}
-
-	var jsonValues map[longhorn.DataEngineType]string
-	if err := json.Unmarshal([]byte(trimmedValue), &jsonValues); err != nil {
-		return values, errors.Wrapf(err, "failed to parse JSON-formatted value %v", trimmedValue)
-	}
 
 	var errs []error
 	for dataEngine, valueStr := range jsonValues {
@@ -2268,9 +2272,9 @@ func validateSettingString(name SettingName, definition SettingDefinition, value
 	var defaultValues map[longhorn.DataEngineType]any
 
 	if IsJSONFormat(strings.TrimSpace(value)) {
-		values, err = ParseDataEngineSpecificSettingStrings(definition, value)
+		values, err = ParseDataEngineSpecificSetting(definition, value)
 	} else {
-		values, err = ParseSettingSingleString(definition, value)
+		values, err = ParseSettingSingleValue(definition, value)
 	}
 	if err != nil {
 		return errors.Wrapf(err, "failed to parse value %s for setting %s", value, definition.DisplayName)
@@ -2281,9 +2285,9 @@ func validateSettingString(name SettingName, definition SettingDefinition, value
 	}
 
 	if IsJSONFormat(strings.TrimSpace(definition.Default)) {
-		defaultValues, err = ParseDataEngineSpecificSettingStrings(definition, definition.Default)
+		defaultValues, err = ParseDataEngineSpecificSetting(definition, definition.Default)
 	} else {
-		defaultValues, err = ParseSettingSingleString(definition, definition.Default)
+		defaultValues, err = ParseSettingSingleValue(definition, definition.Default)
 	}
 	if err != nil {
 		return errors.Wrapf(err, "failed to parse default value %s for setting %s", definition.Default, definition.DisplayName)
@@ -2350,20 +2354,8 @@ func validateSettingString(name SettingName, definition SettingDefinition, value
 	return nil
 }
 
-// ParseDataEngineSpecificSettingStrings processes JSON-formatted input for data-engine-specific string settings.
-func ParseDataEngineSpecificSettingStrings(definition SettingDefinition, value string) (map[longhorn.DataEngineType]any, error) {
-	trimmedValue := strings.TrimSpace(value)
-
+func parseDataEngineSpecificSettingStrings(jsonValues map[longhorn.DataEngineType]string) (map[longhorn.DataEngineType]any, error) {
 	values := make(map[longhorn.DataEngineType]any)
-
-	if !definition.DataEngineSpecific {
-		return values, fmt.Errorf("JSON-formatted value is not supported for non-data-engine-specific setting")
-	}
-
-	var jsonValues map[longhorn.DataEngineType]string
-	if err := json.Unmarshal([]byte(trimmedValue), &jsonValues); err != nil {
-		return values, errors.Wrapf(err, "failed to parse JSON-formatted value %v", trimmedValue)
-	}
 
 	for dataEngine, valueStr := range jsonValues {
 		values[dataEngine] = valueStr
@@ -2372,8 +2364,8 @@ func ParseDataEngineSpecificSettingStrings(definition SettingDefinition, value s
 	return values, nil
 }
 
-// ParseSettingSingleString processes a single string value for both general and data-engine-specific settings.
-func ParseSettingSingleString(definition SettingDefinition, value string) (map[longhorn.DataEngineType]any, error) {
+// parseSettingSingleString processes a single string value for both general and data-engine-specific settings.
+func parseSettingSingleString(definition SettingDefinition, value string) (map[longhorn.DataEngineType]any, error) {
 	trimmedValue := strings.TrimSpace(value)
 
 	values := make(map[longhorn.DataEngineType]any)
