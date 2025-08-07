@@ -466,12 +466,18 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 		log.WithError(err).Error("Failed to get info from backup store")
 		return nil // Ignore error to allow status update as well as preventing enqueue
 	}
-	syncTimeRequired = true // Errors beyond this point are NOT backup target related.
 
-	backupTarget.Status.Available = true
-	backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
-		longhorn.BackupTargetConditionTypeUnavailable, longhorn.ConditionStatusFalse,
-		"", "")
+	if !backupTarget.Status.Available {
+		backupTarget.Status.Available = true
+		backupTarget.Status.Conditions = types.SetCondition(backupTarget.Status.Conditions,
+			longhorn.BackupTargetConditionTypeUnavailable, longhorn.ConditionStatusFalse,
+			"", "")
+		// If the controller can communicate with the remote backup target while "backupTarget.Status.Available" is "false",
+		// Longhorn should update the field to "true" first rather than continuing to fetch info from the target.
+		// related issue: https://github.com/longhorn/longhorn/issues/11337
+		return nil
+	}
+	syncTimeRequired = true // Errors beyond this point are NOT backup target related.
 
 	if err = btc.syncBackupVolume(backupTarget, info.backupStoreBackupVolumeNames, clusterVolumeBVMap, syncTime, log); err != nil {
 		return err
@@ -540,6 +546,14 @@ func (btc *BackupTargetController) getInfoFromBackupStore(backupTarget *longhorn
 	defer engineClientProxy.Close()
 
 	// Get required information using backup target client.
+	// Get SystemBackups first to update the backup target to `available` while minimizing requests to S3.
+	info.backupStoreSystemBackups, err = backupTargetClient.ListSystemBackup()
+	if err != nil {
+		return backupStoreInfo{}, errors.Wrapf(err, "failed to list system backups in %v", backupTargetClient.URL)
+	}
+	if !backupTarget.Status.Available {
+		return info, nil
+	}
 	info.backupStoreBackupVolumeNames, err = backupTargetClient.BackupVolumeNameList()
 	if err != nil {
 		return backupStoreInfo{}, errors.Wrapf(err, "failed to list backup volumes in %v", backupTargetClient.URL)
@@ -547,10 +561,6 @@ func (btc *BackupTargetController) getInfoFromBackupStore(backupTarget *longhorn
 	info.backupStoreBackingImageNames, err = backupTargetClient.BackupBackingImageNameList()
 	if err != nil {
 		return backupStoreInfo{}, errors.Wrapf(err, "failed to list backup backing images in %v", backupTargetClient.URL)
-	}
-	info.backupStoreSystemBackups, err = backupTargetClient.ListSystemBackup()
-	if err != nil {
-		return backupStoreInfo{}, errors.Wrapf(err, "failed to list system backups in %v", backupTargetClient.URL)
 	}
 
 	return info, nil
