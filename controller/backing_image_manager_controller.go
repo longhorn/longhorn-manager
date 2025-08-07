@@ -329,6 +329,9 @@ func (c *BackingImageManagerController) syncBackingImageManager(key string) (err
 			bim.Status.CurrentState = longhorn.BackingImageManagerStateUnknown
 			c.updateForUnknownBackingImageManager(bim)
 		}
+		if noReadyDisk {
+			return c.evictMissingDiskBackingImageManager(bim)
+		}
 		return nil
 	}
 
@@ -385,6 +388,38 @@ func (c *BackingImageManagerController) cleanupBackingImageManager(bim *longhorn
 		return err
 	}
 
+	return nil
+}
+
+// evictMissingDiskBackingImageManager trigger image manager eviction for missing disks
+func (c *BackingImageManagerController) evictMissingDiskBackingImageManager(bim *longhorn.BackingImageManager) error {
+	isDiskExist, err := c.ds.IsNodeHasDiskUUID(bim.Spec.NodeID, bim.Spec.DiskUUID)
+	if err != nil {
+		return errors.Wrapf(err, "cannot check if backing image manager %v is serving on a existing disk %v", bim.Name, bim.Spec.DiskUUID)
+	} else if isDiskExist {
+		return nil
+	}
+
+	// Backing image manager is serving on the disk that no longer belongs to any node. Trigger the manager eviction.
+	for imageName := range bim.Spec.BackingImages {
+		bi, getImageErr := c.ds.GetBackingImageRO(imageName)
+		if getImageErr != nil {
+			if datastore.ErrorIsNotFound(getImageErr) {
+				c.logger.Warnf("No corresponding backing image %v for missing disk backing image manager %v", imageName, bim.Name)
+				continue
+			}
+			return errors.Wrapf(getImageErr, "failed to get backing image %v for missing disk backing image manager %v", bi.Name, bim.Name)
+		}
+		if bi.Spec.DiskFileSpecMap != nil {
+			if bimDiskFileSpec, exist := bi.Spec.DiskFileSpecMap[bim.Spec.DiskUUID]; exist && !bimDiskFileSpec.EvictionRequested {
+				c.logger.Infof("Evicting backing image manager %v because of missing disk %v", bim.Name, bim.Spec.DiskUUID)
+				bimDiskFileSpec.EvictionRequested = true
+				if _, updateErr := c.ds.UpdateBackingImage(bi); updateErr != nil {
+					return errors.Wrapf(updateErr, "failed to evict missing disk backing image manager %v from backing image %v", bim.Name, bi.Name)
+				}
+			}
+		}
+	}
 	return nil
 }
 

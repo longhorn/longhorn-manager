@@ -3404,6 +3404,22 @@ func (s *DataStore) IsNodeSchedulable(name string) bool {
 	return nodeSchedulableCondition.Status == longhorn.ConditionStatusTrue
 }
 
+func (s *DataStore) IsNodeHasDiskUUID(nodeName, diskUUID string) (bool, error) {
+	node, err := s.GetNodeRO(nodeName)
+	if err != nil {
+		if ErrorIsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	for _, diskStatus := range node.Status.DiskStatus {
+		if diskStatus.DiskUUID == diskUUID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func getNodeSelector(nodeName string) (labels.Selector, error) {
 	return metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
 		MatchLabels: map[string]string{
