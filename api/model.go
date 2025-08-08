@@ -54,6 +54,7 @@ type Volume struct {
 	SnapshotDataIntegrity       longhorn.SnapshotDataIntegrity         `json:"snapshotDataIntegrity"`
 	UnmapMarkSnapChainRemoved   longhorn.UnmapMarkSnapChainRemoved     `json:"unmapMarkSnapChainRemoved"`
 	BackupCompressionMethod     longhorn.BackupCompressionMethod       `json:"backupCompressionMethod"`
+	BackupBlockSize             string                                 `json:"backupBlockSize"`
 	ReplicaSoftAntiAffinity     longhorn.ReplicaSoftAntiAffinity       `json:"replicaSoftAntiAffinity"`
 	ReplicaZoneSoftAntiAffinity longhorn.ReplicaZoneSoftAntiAffinity   `json:"replicaZoneSoftAntiAffinity"`
 	ReplicaDiskSoftAntiAffinity longhorn.ReplicaDiskSoftAntiAffinity   `json:"replicaDiskSoftAntiAffinity"`
@@ -176,6 +177,7 @@ type Backup struct {
 	NewlyUploadedDataSize  string               `json:"newlyUploadDataSize"`
 	ReUploadedDataSize     string               `json:"reUploadedDataSize"`
 	BackupTargetName       string               `json:"backupTargetName"`
+	BlockSize              string               `json:"blockSize"`
 }
 
 type BackupBackingImage struct {
@@ -1617,6 +1619,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		SnapshotMaxCount:            v.Spec.SnapshotMaxCount,
 		SnapshotMaxSize:             strconv.FormatInt(v.Spec.SnapshotMaxSize, 10),
 		BackupCompressionMethod:     v.Spec.BackupCompressionMethod,
+		BackupBlockSize:             strconv.FormatInt(v.Spec.BackupBlockSize, 10),
 		StaleReplicaTimeout:         v.Spec.StaleReplicaTimeout,
 		Created:                     v.CreationTimestamp.String(),
 		Image:                       v.Spec.Image,
@@ -2023,6 +2026,7 @@ func toBackupResource(b *longhorn.Backup) *Backup {
 		NewlyUploadedDataSize:  b.Status.NewlyUploadedDataSize,
 		ReUploadedDataSize:     b.Status.ReUploadedDataSize,
 		BackupTargetName:       backupTargetName,
+		BlockSize:              strconv.FormatInt(b.Spec.BackupBlockSize, 10),
 	}
 	// Set the volume name from backup CR's label if it's empty.
 	// This field is empty probably because the backup state is not Ready

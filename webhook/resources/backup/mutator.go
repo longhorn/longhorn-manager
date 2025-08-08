@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
-
 	"k8s.io/apimachinery/pkg/runtime"
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
@@ -65,28 +64,29 @@ func (b *backupMutator) Create(request *admission.Request, newObj runtime.Object
 		metaLabels = map[string]string{}
 	}
 
-	//check snapshot name, if not exist, return error
-
-	volumeName, isExist := backup.Labels[types.LonghornLabelBackupVolume]
-	if !isExist {
-		if backup.Spec.SnapshotName == "" {
-			err := errors.Wrapf(err, "cannot find the backup volume label for backup %v", backup.Name)
-			return nil, werror.NewInvalidError(err.Error(), "")
-		}
-
+	var volume *longhorn.Volume
+	if backup.Spec.SnapshotName != "" {
 		// Try to get volume name from snapshot
 		snapshot, err := b.ds.GetSnapshotRO(backup.Spec.SnapshotName)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get the snapshot %v", backup.Spec.SnapshotName)
 		}
 
-		volume, err := b.ds.GetVolumeRO(snapshot.Spec.Volume)
+		volume, err = b.ds.GetVolumeRO(snapshot.Spec.Volume)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to get the volume %v of the snapshot %v of the backup %v", snapshot.Spec.Volume, snapshot.Name, backup.Name)
 		}
+	}
 
-		volumeName = volume.Name
-		metaLabels[types.LonghornLabelBackupVolume] = volumeName
+	//check snapshot name, if not exist, return error
+
+	volumeName, isExist := backup.Labels[types.LonghornLabelBackupVolume]
+	if !isExist {
+		if volume == nil {
+			err := errors.Wrapf(err, "cannot find the backup volume label for backup %v", backup.Name)
+			return nil, werror.NewInvalidError(err.Error(), "")
+		}
+		metaLabels[types.LonghornLabelBackupVolume] = volume.Name
 	}
 
 	if _, isExist := specLabels[types.GetLonghornLabelKey(types.LonghornLabelVolumeAccessMode)]; !isExist {
@@ -107,6 +107,12 @@ func (b *backupMutator) Create(request *admission.Request, newObj runtime.Object
 
 	if backup.Spec.BackupMode == longhorn.BackupModeIncrementalNone {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupMode", "value": "%s"}`, string(longhorn.BackupModeIncremental)))
+	}
+
+	if backup.Spec.BackupBlockSize == 0 {
+		if volume != nil {
+			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupBlockSize", "value": "%d"}`, volume.Spec.BackupBlockSize))
+		}
 	}
 
 	backupTargetName, ok := backup.Labels[types.LonghornLabelBackupTarget]

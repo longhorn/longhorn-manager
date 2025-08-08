@@ -34,6 +34,11 @@ const (
 	DefaultMinNumberOfCopies = 3
 
 	DefaultBackupstorePollInterval = 300 * time.Second
+
+	BackupBlockSizeMi      int64 = 1 * 1024 * 1024
+	BackupBlockSize2Mi           = 2 * BackupBlockSizeMi
+	BackupBlockSize16Mi          = 16 * BackupBlockSizeMi
+	BackupBlockSizeInvalid int64 = -1
 )
 
 type SettingType string
@@ -150,6 +155,7 @@ const (
 	SettingNameRWXVolumeFastFailover                                    = SettingName("rwx-volume-fast-failover")
 	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
 	SettingNameReplicaRebuildingBandwidthLimit                          = SettingName("replica-rebuilding-bandwidth-limit")
+	SettingNameDefaultBackupBlockSize                                   = SettingName("default-backup-block-size")
 	// These three backup target parameters are used in the "longhorn-default-resource" ConfigMap
 	// to update the default BackupTarget resource.
 	// Longhorn won't create the Setting resources for these three parameters.
@@ -254,6 +260,7 @@ var (
 		SettingNameRWXVolumeFastFailover,
 		SettingNameOfflineReplicaRebuilding,
 		SettingNameReplicaRebuildingBandwidthLimit,
+		SettingNameDefaultBackupBlockSize,
 	}
 )
 
@@ -385,6 +392,7 @@ var (
 		SettingNameRWXVolumeFastFailover:                                    SettingDefinitionRWXVolumeFastFailover,
 		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
 		SettingNameReplicaRebuildingBandwidthLimit:                          SettingDefinitionReplicaRebuildingBandwidthLimit,
+		SettingNameDefaultBackupBlockSize:                                   SettingDefinitionDefaultBackupBlockSize,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -1367,6 +1375,17 @@ var (
 		},
 	}
 
+	SettingDefinitionDefaultBackupBlockSize = SettingDefinition{
+		DisplayName: "Default Backup Block Size",
+		Description: "In MiB. This setting controls the default backup block size to create the new volume.",
+		Category:    SettingCategoryBackup,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "2",
+		Choices:     []string{"2", "16"},
+	}
+
 	SettingDefinitionLogLevel = SettingDefinition{
 		DisplayName: "Log Level",
 		Description: "The log level Panic, Fatal, Error, Warn, Info, Debug, Trace used in longhorn manager. By default Info.",
@@ -1915,6 +1934,13 @@ func validateInt(definition SettingDefinition, value string) error {
 		if intValue > maxValue {
 			return fmt.Errorf("value %v should be less than %v", intValue, maxValue)
 		}
+	}
+
+	if len(definition.Choices) > 0 {
+		if !isValidChoice(definition.Choices, value) {
+			return fmt.Errorf("value %v is not a valid choice, available choices %v", value, definition.Choices)
+		}
+		return nil
 	}
 	return nil
 }
