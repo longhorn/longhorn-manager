@@ -36,6 +36,10 @@ type BackupTargetOperations interface {
 	Update(existing *BackupTarget, updates interface{}) (*BackupTarget, error)
 	ById(id string) (*BackupTarget, error)
 	Delete(container *BackupTarget) error
+
+	ActionBackupTargetSync(*BackupTarget, *SyncBackupResource) (*BackupTargetListOutput, error)
+
+	ActionBackupTargetUpdate(*BackupTarget, *BackupTarget) (*BackupTargetListOutput, error)
 }
 
 func newBackupTargetClient(rancherClient *RancherClient) *BackupTargetClient {
@@ -86,4 +90,22 @@ func (c *BackupTargetClient) ById(id string) (*BackupTarget, error) {
 
 func (c *BackupTargetClient) Delete(container *BackupTarget) error {
 	return c.rancherClient.doResourceDelete(BACKUP_TARGET_TYPE, &container.Resource)
+}
+
+func (c *BackupTargetClient) ActionBackupTargetSync(resource *BackupTarget, input *SyncBackupResource) (*BackupTargetListOutput, error) {
+
+	resp := &BackupTargetListOutput{}
+
+	err := c.rancherClient.doAction(BACKUP_TARGET_TYPE, "backupTargetSync", &resource.Resource, input, resp)
+
+	return resp, err
+}
+
+func (c *BackupTargetClient) ActionBackupTargetUpdate(resource *BackupTarget, input *BackupTarget) (*BackupTargetListOutput, error) {
+
+	resp := &BackupTargetListOutput{}
+
+	err := c.rancherClient.doAction(BACKUP_TARGET_TYPE, "backupTargetUpdate", &resource.Resource, input, resp)
+
+	return resp, err
 }

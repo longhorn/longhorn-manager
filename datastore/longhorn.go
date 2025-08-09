@@ -2,6 +2,7 @@ package datastore
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/bits"
 	"math/rand"
@@ -9,7 +10,6 @@ import (
 	"net/url"
 	"reflect"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/client-go/util/retry"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -73,6 +74,10 @@ func (s *DataStore) UpdateCustomizedSettings(defaultImages map[types.SettingName
 	}
 
 	if err := s.syncSettingOrphanResourceAutoDeletionSettings(); err != nil {
+		return err
+	}
+
+	if err := s.syncConsolidatedV2DataEngineSettings(); err != nil {
 		return err
 	}
 
@@ -166,11 +171,11 @@ func (s *DataStore) syncSettingsWithDefaultImages(defaultImages map[types.Settin
 
 func (s *DataStore) syncSettingOrphanResourceAutoDeletionSettings() error {
 	oldOrphanReplicaDataAutoDeletionSettingRO, err := s.getSettingRO(string(types.SettingNameOrphanAutoDeletion))
-	switch {
-	case ErrorIsNotFound(err):
-		logrus.Infof("No old setting %v to be replaced.", types.SettingNameOrphanAutoDeletion)
-		return nil
-	case err != nil:
+	if err != nil {
+		if ErrorIsNotFound(err) {
+			logrus.Debugf("No old setting %v to be replaced.", types.SettingNameOrphanAutoDeletion)
+			return nil
+		}
 		return errors.Wrapf(err, "failed to get replaced setting %v", types.SettingNameOrphanAutoDeletion)
 	}
 
@@ -187,6 +192,36 @@ func (s *DataStore) syncSettingOrphanResourceAutoDeletionSettings() error {
 	}
 	value := strings.Join(enabledResourceType, ";")
 	return s.createOrUpdateSetting(types.SettingNameOrphanResourceAutoDeletion, value, "")
+}
+
+func (s *DataStore) syncConsolidatedV2DataEngineSetting(oldSettingName, newSettingName types.SettingName) error {
+	oldSetting, err := s.getSettingRO(string(oldSettingName))
+	if err != nil {
+		if ErrorIsNotFound(err) {
+			logrus.Debugf("No old setting %v to be replaced.", oldSettingName)
+			return nil
+		}
+		return errors.Wrapf(err, "failed to get old setting %v", oldSettingName)
+	}
+
+	return s.createOrUpdateSetting(newSettingName, oldSetting.Value, "")
+}
+
+func (s *DataStore) syncConsolidatedV2DataEngineSettings() error {
+	settings := map[types.SettingName]types.SettingName{
+		types.SettingNameV2DataEngineHugepageLimit: types.SettingNameHugepageLimit,
+		types.SettingNameV2DataEngineCPUMask:       types.SettingNameCPUMask,
+		types.SettingNameV2DataEngineLogLevel:      types.SettingNameSpdkTgtLogLevel,
+		types.SettingNameV2DataEngineLogFlags:      types.SettingNameSpdkTgtLogFlags,
+	}
+
+	for oldSettingName, newSettingName := range settings {
+		if err := s.syncConsolidatedV2DataEngineSetting(oldSettingName, newSettingName); err != nil {
+			return errors.Wrapf(err, "failed to sync consolidated v2 data engine setting %v to %v", oldSettingName, newSettingName)
+		}
+	}
+
+	return nil
 }
 
 func (s *DataStore) createOrUpdateSetting(name types.SettingName, value, defaultSettingCMResourceVersion string) error {
@@ -237,12 +272,86 @@ func (s *DataStore) applyCustomizedDefaultSettingsToDefinitions(customizedDefaul
 			continue
 		}
 
-		if value, ok := customizedDefaultSettings[string(sName)]; ok {
+		if raw, ok := customizedDefaultSettings[string(sName)]; ok {
+			value, err := GetSettingValidValue(definition, raw)
+			if err != nil {
+				return err
+			}
+			logrus.Infof("Setting %v default value is updated to a customized value %v (raw value %v)", sName, value, raw)
 			definition.Default = value
 			types.SetSettingDefinition(sName, definition)
 		}
 	}
 	return nil
+}
+
+func GetSettingValidValue(definition types.SettingDefinition, value string) (string, error) {
+	if !definition.DataEngineSpecific {
+		return value, nil
+	}
+
+	if !types.IsJSONFormat(definition.Default) {
+		return "", fmt.Errorf("setting %v is data engine specific but default value %v is not in JSON-formatted string", definition.DisplayName, definition.Default)
+	}
+
+	var values map[longhorn.DataEngineType]any
+	var err error
+
+	// Get default values from definition
+	defaultValues, err := types.ParseDataEngineSpecificSetting(definition, definition.Default)
+	if err != nil {
+		return "", err
+	}
+
+	// Get values from customized value
+	if types.IsJSONFormat(value) {
+		values, err = types.ParseDataEngineSpecificSetting(definition, value)
+	} else {
+		values, err = types.ParseSettingSingleValue(definition, value)
+	}
+	if err != nil {
+		return "", err
+	}
+
+	// Remove any data engine types that are not in the default values
+	for dataEngine := range values {
+		if _, ok := defaultValues[dataEngine]; !ok {
+			delete(values, dataEngine)
+		}
+	}
+
+	return convertDataEngineValuesToJSONString(values)
+}
+
+func convertDataEngineValuesToJSONString(values map[longhorn.DataEngineType]any) (string, error) {
+	converted := make(map[longhorn.DataEngineType]string)
+
+	for dataEngine, raw := range values {
+		var value string
+		switch v := raw.(type) {
+		case string:
+			value = v
+		case bool:
+			value = strconv.FormatBool(v)
+		case int:
+			value = strconv.Itoa(v)
+		case int64:
+			value = strconv.FormatInt(v, 10)
+		case float64:
+			value = strconv.FormatFloat(v, 'f', -1, 64)
+		default:
+			return "", fmt.Errorf("unsupported value type: %T", v)
+		}
+
+		converted[dataEngine] = value
+	}
+
+	jsonBytes, err := json.Marshal(converted)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsonBytes), nil
 }
 
 func (s *DataStore) syncSettingCRsWithCustomizedDefaultSettings(customizedDefaultSettings map[string]string, defaultSettingCMResourceVersion string) error {
@@ -304,8 +413,16 @@ func (s *DataStore) UpdateSetting(setting *longhorn.Setting) (*longhorn.Setting,
 		return nil, err
 	}
 
-	delete(obj.Annotations, types.GetLonghornLabelKey(types.UpdateSettingFromLonghorn))
-	obj, err = s.lhClient.LonghornV1beta2().Settings(s.namespace).Update(context.TODO(), obj, metav1.UpdateOptions{})
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest, getErr := s.lhClient.LonghornV1beta2().Settings(s.namespace).Get(context.TODO(), setting.Name, metav1.GetOptions{})
+		if getErr != nil {
+			return getErr
+		}
+
+		delete(latest.Annotations, types.GetLonghornLabelKey(types.UpdateSettingFromLonghorn))
+		obj, err = s.lhClient.LonghornV1beta2().Settings(s.namespace).Update(context.TODO(), latest, metav1.UpdateOptions{})
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -335,30 +452,21 @@ func (s *DataStore) deleteSetting(name string) error {
 // ValidateSetting checks the given setting value types and condition
 func (s *DataStore) ValidateSetting(name, value string) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "failed to set the setting %v with invalid value %v", name, value)
+		err = errors.Wrapf(err, "failed to validate setting %v with invalid value %v", name, value)
 	}()
-	sName := types.SettingName(name)
 
 	if err := types.ValidateSetting(name, value); err != nil {
 		return err
 	}
 
-	switch sName {
+	switch types.SettingName(name) {
 	case types.SettingNamePriorityClass:
 		if value != "" {
 			if _, err := s.GetPriorityClass(value); err != nil {
 				return errors.Wrapf(err, "failed to get priority class %v before modifying priority class setting", value)
 			}
 		}
-	case types.SettingNameGuaranteedInstanceManagerCPU, types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU:
-		guaranteedInstanceManagerCPU, err := s.GetSettingWithAutoFillingRO(sName)
-		if err != nil {
-			return err
-		}
-		guaranteedInstanceManagerCPU.Value = value
-		if err := types.ValidateCPUReservationValues(sName, guaranteedInstanceManagerCPU.Value); err != nil {
-			return err
-		}
+
 	case types.SettingNameV1DataEngine:
 		old, err := s.GetSettingWithAutoFillingRO(types.SettingNameV1DataEngine)
 		if err != nil {
@@ -394,13 +502,49 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 				return err
 			}
 		}
-	case types.SettingNameV2DataEngineCPUMask:
-		if value == "" {
-			return errors.Errorf("cannot set %v setting to empty value", name)
+
+	case types.SettingNameCPUMask:
+		definition, ok := types.GetSettingDefinition(types.SettingNameCPUMask)
+		if !ok {
+			return fmt.Errorf("setting %v is not found", types.SettingNameCPUMask)
 		}
-		if err := s.ValidateCPUMask(value); err != nil {
-			return err
+		var values map[longhorn.DataEngineType]any
+		if types.IsJSONFormat(value) {
+			values, err = types.ParseDataEngineSpecificSetting(definition, value)
+		} else {
+			values, err = types.ParseSettingSingleValue(definition, value)
 		}
+		if err != nil {
+			return errors.Wrapf(err, "failed to parse value %v for setting %v", value, types.SettingNameCPUMask)
+		}
+		for dataEngine, raw := range values {
+			cpuMask, ok := raw.(string)
+			if !ok {
+				return fmt.Errorf("setting %v value %v is not a string for data engine %v", types.SettingNameCPUMask, raw, dataEngine)
+			}
+
+			lhNodes, err := s.ListNodesRO()
+			if err != nil {
+				return errors.Wrapf(err, "failed to list nodes for %v setting validation for data engine %v", types.SettingNameCPUMask, dataEngine)
+			}
+
+			// Ensure if the CPU mask can be satisfied on each node
+			for _, lhnode := range lhNodes {
+				kubeNode, err := s.GetKubernetesNodeRO(lhnode.Name)
+				if err != nil {
+					if apierrors.IsNotFound(err) {
+						logrus.Warnf("Kubernetes node %s not found, skipping CPU mask validation for this node for data engine %v", lhnode.Name, dataEngine)
+						continue
+					}
+					return errors.Wrapf(err, "failed to get Kubernetes node %s for %v setting validation for data engine %v", lhnode.Name, types.SettingNameCPUMask, dataEngine)
+				}
+
+				if err := s.ValidateCPUMask(kubeNode, cpuMask); err != nil {
+					return err
+				}
+			}
+		}
+
 	case types.SettingNameAutoCleanupSystemGeneratedSnapshot:
 		disablePurgeValue, err := s.GetSettingAsBool(types.SettingNameDisableSnapshotPurge)
 		if err != nil {
@@ -409,6 +553,7 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 		if value == "true" && disablePurgeValue {
 			return errors.Errorf("cannot set %v setting to true when %v setting is true", name, types.SettingNameDisableSnapshotPurge)
 		}
+
 	case types.SettingNameDisableSnapshotPurge:
 		autoCleanupValue, err := s.GetSettingAsBool(types.SettingNameAutoCleanupSystemGeneratedSnapshot)
 		if err != nil {
@@ -417,6 +562,7 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 		if value == "true" && autoCleanupValue {
 			return errors.Errorf("cannot set %v setting to true when %v setting is true", name, types.SettingNameAutoCleanupSystemGeneratedSnapshot)
 		}
+
 	case types.SettingNameSnapshotMaxCount:
 		v, err := strconv.Atoi(value)
 		if err != nil {
@@ -425,6 +571,7 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 		if v < 2 || v > 250 {
 			return fmt.Errorf("%s should be between 2 and 250", name)
 		}
+
 	case types.SettingNameDefaultLonghornStaticStorageClass:
 		definition, ok := types.GetSettingDefinition(types.SettingNameDefaultLonghornStaticStorageClass)
 		if !ok {
@@ -476,45 +623,53 @@ func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) (ims []*
 	}
 
 	// Check if there is enough hugepages-2Mi capacity for all nodes
-	hugepageRequestedInMiB, err := s.GetSettingWithAutoFillingRO(types.SettingNameV2DataEngineHugepageLimit)
+	hugepageRequestedInMiB, err := s.GetSettingAsIntByDataEngine(types.SettingNameHugepageLimit, longhorn.DataEngineTypeV2)
 	if err != nil {
 		return nil, err
 	}
 
-	{
-		hugepageRequested := resource.MustParse(hugepageRequestedInMiB.Value + "Mi")
+	// hugepageRequestedInMiB is integer
+	hugepageRequested, err := resource.ParseQuantity(fmt.Sprintf("%dMi", hugepageRequestedInMiB))
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to parse hugepage value %qMi", hugepageRequestedInMiB)
+	}
 
-		_ims, err := s.ListInstanceManagersRO()
+	_ims, err := s.ListInstanceManagersRO()
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to list instance managers for %v setting update", types.SettingNameV2DataEngine)
+	}
+
+	for _, im := range _ims {
+		if types.IsDataEngineV1(im.Spec.DataEngine) {
+			continue
+		}
+		node, err := s.GetKubernetesNodeRO(im.Spec.NodeID)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to list instance managers for %v setting update", types.SettingNameV2DataEngine)
+			if !apierrors.IsNotFound(err) {
+				return nil, errors.Wrapf(err, "failed to get Kubernetes node %v for %v setting update", im.Spec.NodeID, types.SettingNameV2DataEngine)
+			}
+
+			continue
 		}
 
-		for _, im := range _ims {
-			node, err := s.GetKubernetesNodeRO(im.Spec.NodeID)
+		if val, ok := node.Labels[types.NodeDisableV2DataEngineLabelKey]; ok && val == types.NodeDisableV2DataEngineLabelKeyTrue {
+			// V2 data engine is disabled on this node, don't worry about hugepages
+			continue
+		}
+
+		if dataEngineEnabled {
+			capacity, ok := node.Status.Capacity["hugepages-2Mi"]
+			if !ok {
+				return nil, errors.Errorf("failed to get hugepages-2Mi capacity for node %v", node.Name)
+			}
+
+			hugepageCapacity, err := resource.ParseQuantity(capacity.String())
 			if err != nil {
-				if !apierrors.IsNotFound(err) {
-					return nil, errors.Wrapf(err, "failed to get Kubernetes node %v for %v setting update", im.Spec.NodeID, types.SettingNameV2DataEngine)
-				}
-
-				continue
+				return nil, errors.Wrapf(err, "failed to parse hugepage value %qMi", hugepageRequestedInMiB)
 			}
 
-			if val, ok := node.Labels[types.NodeDisableV2DataEngineLabelKey]; ok && val == types.NodeDisableV2DataEngineLabelKeyTrue {
-				// V2 data engine is disabled on this node, don't worry about hugepages
-				continue
-			}
-
-			if dataEngineEnabled {
-				capacity, ok := node.Status.Capacity["hugepages-2Mi"]
-				if !ok {
-					return nil, errors.Errorf("failed to get hugepages-2Mi capacity for node %v", node.Name)
-				}
-
-				hugepageCapacity := resource.MustParse(capacity.String())
-
-				if hugepageCapacity.Cmp(hugepageRequested) < 0 {
-					return nil, errors.Errorf("not enough hugepages-2Mi capacity for node %v, requested %v, capacity %v", node.Name, hugepageRequested.String(), hugepageCapacity.String())
-				}
+			if hugepageCapacity.Cmp(hugepageRequested) < 0 {
+				return nil, errors.Errorf("not enough hugepages-2Mi capacity for node %v, requested %v, capacity %v", node.Name, hugepageRequested.String(), hugepageCapacity.String())
 			}
 		}
 	}
@@ -522,7 +677,11 @@ func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) (ims []*
 	return
 }
 
-func (s *DataStore) ValidateCPUMask(value string) error {
+func (s *DataStore) ValidateCPUMask(kubeNode *corev1.Node, value string) error {
+	if value == "" {
+		return fmt.Errorf("failed to validate CPU mask: cannot be empty")
+	}
+
 	// CPU mask must start with 0x
 	cpuMaskRegex := regexp.MustCompile(`^0x[1-9a-fA-F][0-9a-fA-F]*$`)
 	if !cpuMaskRegex.MatchString(value) {
@@ -531,28 +690,74 @@ func (s *DataStore) ValidateCPUMask(value string) error {
 
 	maskValue, err := strconv.ParseUint(value[2:], 16, 64) // skip 0x prefix
 	if err != nil {
-		return fmt.Errorf("failed to parse CPU mask: %s", value)
+		return errors.Wrapf(err, "failed to parse CPU mask %v", value)
 	}
 
 	// Validate the mask value is not larger than the number of available CPUs
-	numCPUs := runtime.NumCPU()
+	numCPUs, err := s.getMinNumCPUsFromAvailableNodes()
+	if err != nil {
+		return errors.Wrap(err, "failed to get minimum number of CPUs for CPU mask validation")
+	}
+
 	maxCPUMaskValue := (1 << numCPUs) - 1
 	if maskValue > uint64(maxCPUMaskValue) {
 		return fmt.Errorf("CPU mask exceeds the maximum allowed value %v for the current system: %s", maxCPUMaskValue, value)
 	}
 
-	guaranteedInstanceManagerCPU, err := s.GetSettingAsInt(types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU)
+	// CPU mask currently only supports v2 data engine
+	guaranteedInstanceManagerCPUInPercentage, err := s.GetSettingAsFloatByDataEngine(types.SettingNameGuaranteedInstanceManagerCPU, longhorn.DataEngineTypeV2)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get %v setting for CPU mask validation", types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU)
+		return errors.Wrapf(err, "failed to get %v setting for guaranteed instance manager CPU validation for data engine %v",
+			types.SettingNameGuaranteedInstanceManagerCPU, longhorn.DataEngineTypeV2)
 	}
+
+	guaranteedInstanceManagerCPU := float64(kubeNode.Status.Allocatable.Cpu().MilliValue()) * guaranteedInstanceManagerCPUInPercentage
 
 	numMilliCPUsRequrestedByMaskValue := calculateMilliCPUs(maskValue)
 	if numMilliCPUsRequrestedByMaskValue > int(guaranteedInstanceManagerCPU) {
 		return fmt.Errorf("number of CPUs (%v) requested by CPU mask (%v) is larger than the %v setting value (%v)",
-			numMilliCPUsRequrestedByMaskValue, value, types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU, guaranteedInstanceManagerCPU)
+			numMilliCPUsRequrestedByMaskValue, value, types.SettingNameGuaranteedInstanceManagerCPU, guaranteedInstanceManagerCPU)
 	}
 
 	return nil
+}
+
+func (s *DataStore) getMinNumCPUsFromAvailableNodes() (int64, error) {
+	kubeNodes, err := s.ListKubeNodesRO()
+	if err != nil {
+		return -1, errors.Wrapf(err, "failed to list Kubernetes nodes")
+	}
+
+	// Assign max value to minNumCPUs of the max value of int64
+	minNumCPUs := int64(^uint64(0) >> 1)
+	for _, kubeNode := range kubeNodes {
+		lhNode, err := s.GetNodeRO(kubeNode.Name)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return -1, errors.Wrapf(err, "failed to get Longhorn node %v", kubeNode.Name)
+		}
+		// Skip node that is down, deleted, or missing manager
+		if isUnavailable, err := s.IsNodeDownOrDeletedOrMissingManager(lhNode.Name); err != nil {
+			return -1, errors.Wrapf(err, "failed to check if node %v is down or deleted", lhNode.Name)
+		} else if isUnavailable {
+			continue
+		}
+		// Skip node that disables v2 data engine
+		if val, ok := kubeNode.Labels[types.NodeDisableV2DataEngineLabelKey]; ok {
+			if val == types.NodeDisableV2DataEngineLabelKeyTrue {
+				continue
+			}
+		}
+
+		numCPUs := kubeNode.Status.Allocatable.Cpu().Value()
+		if numCPUs < minNumCPUs {
+			minNumCPUs = numCPUs
+		}
+	}
+
+	return minNumCPUs, nil
 }
 
 func calculateMilliCPUs(mask uint64) int {
@@ -654,6 +859,11 @@ func (s *DataStore) getSettingRO(name string) (*longhorn.Setting, error) {
 	return s.settingLister.Settings(s.namespace).Get(name)
 }
 
+// GetSettingWithAutoFillingRO retrieves a read-only setting from the datastore by its name.
+// If the setting does not exist, it automatically constructs and returns a default setting
+// object using the predefined default value from the setting's definition. If the setting
+// name is not recognized or an unexpected error occurs during retrieval, the function
+// returns an error.
 func (s *DataStore) GetSettingWithAutoFillingRO(sName types.SettingName) (*longhorn.Setting, error) {
 	definition, ok := types.GetSettingDefinition(sName)
 	if !ok {
@@ -727,6 +937,44 @@ func (s *DataStore) GetSettingValueExisted(sName types.SettingName) (string, err
 	return setting.Value, nil
 }
 
+// GetSettingValueExistedByDataEngine returns the value of the given setting name for a specific data engine.
+// Returns error if the setting does not have a value for the given data engine.
+func (s *DataStore) GetSettingValueExistedByDataEngine(settingName types.SettingName, dataEngine longhorn.DataEngineType) (string, error) {
+	definition, ok := types.GetSettingDefinition(settingName)
+	if !ok {
+		return "", fmt.Errorf("setting %v is not supported", settingName)
+	}
+
+	if !definition.DataEngineSpecific {
+		return s.GetSettingValueExisted(settingName)
+	}
+
+	if !types.IsJSONFormat(definition.Default) {
+		return "", fmt.Errorf("setting %v does not have a JSON-formatted default value", settingName)
+	}
+
+	setting, err := s.GetSettingWithAutoFillingRO(settingName)
+	if err != nil {
+		return "", err
+	}
+
+	values, err := types.ParseDataEngineSpecificSetting(definition, setting.Value)
+	if err != nil {
+		return "", err
+	}
+
+	value, ok := values[dataEngine]
+	if ok {
+		if strValue, ok := value.(string); ok {
+			return strValue, nil
+		} else {
+			return fmt.Sprintf("%v", value), nil
+		}
+	}
+
+	return "", fmt.Errorf("setting %v does not have a value for data engine %v", settingName, dataEngine)
+}
+
 // ListSettings lists all Settings in the namespace, and fill with default
 // values of any missing entry
 func (s *DataStore) ListSettings() (map[types.SettingName]*longhorn.Setting, error) {
@@ -785,7 +1033,7 @@ func (s *DataStore) GetAutoBalancedReplicasSetting(volume *longhorn.Volume, logg
 
 	var err error
 	if setting == "" {
-		globalSetting, _ := s.GetSettingValueExisted(types.SettingNameReplicaAutoBalance)
+		globalSetting, _ := s.GetSettingValueExistedByDataEngine(types.SettingNameReplicaAutoBalance, volume.Spec.DataEngine)
 
 		if globalSetting == string(longhorn.ReplicaAutoBalanceIgnored) {
 			globalSetting = string(longhorn.ReplicaAutoBalanceDisabled)
@@ -812,20 +1060,9 @@ func (s *DataStore) GetVolumeSnapshotDataIntegrity(volumeName string) (longhorn.
 		return volume.Spec.SnapshotDataIntegrity, nil
 	}
 
-	var dataIntegrity string
-	switch volume.Spec.DataEngine {
-	case longhorn.DataEngineTypeV1:
-		dataIntegrity, err = s.GetSettingValueExisted(types.SettingNameSnapshotDataIntegrity)
-		if err != nil {
-			return "", errors.Wrapf(err, "failed to assert %v value", types.SettingNameSnapshotDataIntegrity)
-		}
-	case longhorn.DataEngineTypeV2:
-		dataIntegrity, err = s.GetSettingValueExisted(types.SettingNameV2DataEngineSnapshotDataIntegrity)
-		if err != nil {
-			return "", errors.Wrapf(err, "failed to assert %v value", types.SettingNameV2DataEngineSnapshotDataIntegrity)
-		}
-	default:
-		return "", fmt.Errorf("unknown data engine type %v for snapshot data integrity get", volume.Spec.DataEngine)
+	dataIntegrity, err := s.GetSettingValueExistedByDataEngine(types.SettingNameSnapshotDataIntegrity, volume.Spec.DataEngine)
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to assert %v value for data engine %v", types.SettingNameSnapshotDataIntegrity, volume.Spec.DataEngine)
 	}
 
 	return longhorn.SnapshotDataIntegrity(dataIntegrity), nil
@@ -3515,6 +3752,81 @@ func GetOwnerReferencesForNode(node *longhorn.Node) []metav1.OwnerReference {
 	}
 }
 
+// GetSettingAsFloat gets the setting for the given name, returns as float
+// Returns error if the definition type is not float
+func (s *DataStore) GetSettingAsFloat(settingName types.SettingName) (float64, error) {
+	definition, ok := types.GetSettingDefinition(settingName)
+	if !ok {
+		return -1, fmt.Errorf("setting %v is not supported", settingName)
+	}
+	settings, err := s.GetSettingWithAutoFillingRO(settingName)
+	if err != nil {
+		return -1, err
+	}
+	value := settings.Value
+
+	if definition.Type == types.SettingTypeFloat {
+		result, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return -1, err
+		}
+		return result, nil
+	}
+
+	return -1, fmt.Errorf("the %v setting value couldn't change to float, value is %v ", string(settingName), value)
+}
+
+// GetSettingAsFloatByDataEngine retrieves the float64 value of the given setting for the specified
+// DataEngineType. If the setting is not data-engine-specific, it falls back to GetSettingAsFloat.
+// For data-engine-specific settings, it expects the setting value to be in JSON format mapping
+// data engine types to float values.
+//
+// If the setting is not defined, not in the expected format, or the value for the given data engine
+// is missing or not a float, an error is returned.
+//
+// Example JSON format for a data-engine-specific setting:
+//
+//	{"v1": 50.0, "v2": 100.0}
+//
+// Returns the float value for the provided data engine type, or an error if validation or parsing fails.
+func (s *DataStore) GetSettingAsFloatByDataEngine(settingName types.SettingName, dataEngine longhorn.DataEngineType) (float64, error) {
+	definition, ok := types.GetSettingDefinition(settingName)
+	if !ok {
+		return -1, fmt.Errorf("setting %v is not supported", settingName)
+	}
+
+	if !definition.DataEngineSpecific {
+		return s.GetSettingAsFloat(settingName)
+	}
+	if !types.IsJSONFormat(definition.Default) {
+		return -1, fmt.Errorf("setting %v does not have a JSON-formatted default value", settingName)
+	}
+
+	// Get the setting value, which may be auto-filled
+	setting, err := s.GetSettingWithAutoFillingRO(settingName)
+	if err != nil {
+		return -1, err
+	}
+
+	// Parse the setting value as a map of floats map[dataEngine]float64]{...}
+	values, err := types.ParseDataEngineSpecificSetting(definition, setting.Value)
+	if err != nil {
+		return -1, err
+	}
+
+	value, ok := values[dataEngine]
+	if !ok {
+		return -1, fmt.Errorf("the %v setting value for data engine %v is not defined, value is %v", string(settingName), dataEngine, values)
+	}
+
+	floatValue, ok := value.(float64)
+	if !ok {
+		return -1, fmt.Errorf("the %v setting value for data engine %v is not a float, value is %v", string(settingName), dataEngine, value)
+	}
+
+	return floatValue, nil
+}
+
 // GetSettingAsInt gets the setting for the given name, returns as integer
 // Returns error if the definition type is not integer
 func (s *DataStore) GetSettingAsInt(settingName types.SettingName) (int64, error) {
@@ -3539,6 +3851,55 @@ func (s *DataStore) GetSettingAsInt(settingName types.SettingName) (int64, error
 	return -1, fmt.Errorf("the %v setting value couldn't change to integer, value is %v ", string(settingName), value)
 }
 
+// GetSettingAsIntByDataEngine retrieves the int64 value of the given setting for the specified
+// DataEngineType. If the setting is not data-engine-specific, it falls back to GetSettingAsInt.
+// For data-engine-specific settings, it expects the setting value to be in JSON format mapping
+// data engine types to integer values.
+//
+// If the setting is not defined, not in the expected format, or the value for the given data engine
+// is missing or not an integer, an error is returned.
+//
+// Example JSON format for a data-engine-specific setting:
+//
+//	{"v1": 1024, "v2": 2048}
+//
+// Returns the int64 value for the provided data engine type, or an error if validation or parsing fails.
+func (s *DataStore) GetSettingAsIntByDataEngine(settingName types.SettingName, dataEngine longhorn.DataEngineType) (int64, error) {
+	definition, ok := types.GetSettingDefinition(settingName)
+	if !ok {
+		return -1, fmt.Errorf("setting %v is not supported", settingName)
+	}
+
+	if !definition.DataEngineSpecific {
+		return s.GetSettingAsInt(settingName)
+	}
+	if !types.IsJSONFormat(definition.Default) {
+		return -1, fmt.Errorf("setting %v does not have a JSON-formatted default value", settingName)
+	}
+
+	setting, err := s.GetSettingWithAutoFillingRO(settingName)
+	if err != nil {
+		return -1, err
+	}
+
+	values, err := types.ParseDataEngineSpecificSetting(definition, setting.Value)
+	if err != nil {
+		return -1, err
+	}
+
+	value, ok := values[dataEngine]
+	if !ok {
+		return -1, fmt.Errorf("the %v setting value for data engine %v is not defined, value is %v", string(settingName), dataEngine, values)
+	}
+
+	intValue, ok := value.(int64)
+	if !ok {
+		return -1, fmt.Errorf("the %v setting value for data engine %v is not an integer, value is %v", string(settingName), dataEngine, value)
+	}
+
+	return intValue, nil
+}
+
 // GetSettingAsBool gets the setting for the given name, returns as boolean
 // Returns error if the definition type is not boolean
 func (s *DataStore) GetSettingAsBool(settingName types.SettingName) (bool, error) {
@@ -3546,11 +3907,11 @@ func (s *DataStore) GetSettingAsBool(settingName types.SettingName) (bool, error
 	if !ok {
 		return false, fmt.Errorf("setting %v is not supported", settingName)
 	}
-	settings, err := s.GetSettingWithAutoFillingRO(settingName)
+	setting, err := s.GetSettingWithAutoFillingRO(settingName)
 	if err != nil {
 		return false, err
 	}
-	value := settings.Value
+	value := setting.Value
 
 	if definition.Type == types.SettingTypeBool {
 		result, err := strconv.ParseBool(value)
@@ -3561,6 +3922,55 @@ func (s *DataStore) GetSettingAsBool(settingName types.SettingName) (bool, error
 	}
 
 	return false, fmt.Errorf("the %v setting value couldn't be converted to bool, value is %v ", string(settingName), value)
+}
+
+// GetSettingAsBoolByDataEngine retrieves the bool value of the given setting for the specified
+// DataEngineType. If the setting is not data-engine-specific, it falls back to GetSettingAsBool.
+// For data-engine-specific settings, it expects the setting value to be in JSON format mapping
+// data engine types to boolean values.
+//
+// If the setting is not defined, not in the expected format, or the value for the given data engine
+// is missing or not a boolean, an error is returned.
+//
+// Example JSON format for a data-engine-specific setting:
+//
+//	{"v1": true, "v2": false}
+//
+// Returns the boolean value for the provided data engine type, or an error if validation or parsing fails.
+func (s *DataStore) GetSettingAsBoolByDataEngine(settingName types.SettingName, dataEngine longhorn.DataEngineType) (bool, error) {
+	definition, ok := types.GetSettingDefinition(settingName)
+	if !ok {
+		return false, fmt.Errorf("setting %v is not supported", settingName)
+	}
+
+	if !definition.DataEngineSpecific {
+		return s.GetSettingAsBool(settingName)
+	}
+	if !types.IsJSONFormat(definition.Default) {
+		return false, fmt.Errorf("setting %v does not have a JSON-formatted default value", settingName)
+	}
+
+	setting, err := s.GetSettingWithAutoFillingRO(settingName)
+	if err != nil {
+		return false, err
+	}
+
+	values, err := types.ParseDataEngineSpecificSetting(definition, setting.Value)
+	if err != nil {
+		return false, err
+	}
+
+	value, ok := values[dataEngine]
+	if !ok {
+		return false, fmt.Errorf("the %v setting value for data engine %v is not defined, value is %v", string(settingName), dataEngine, values)
+	}
+
+	boolValue, ok := value.(bool)
+	if !ok {
+		return false, fmt.Errorf("the %v setting value for data engine %v is not an boolean, value is %v", string(settingName), dataEngine, value)
+	}
+
+	return boolValue, nil
 }
 
 // GetSettingImagePullPolicy get the setting and return one of Kubernetes ImagePullPolicy definition
@@ -6190,6 +6600,10 @@ func (s *DataStore) GetRunningInstanceManagerByNodeRO(node string, dataEngine lo
 }
 
 func (s *DataStore) GetFreezeFilesystemForSnapshotSetting(e *longhorn.Engine) (bool, error) {
+	if types.IsDataEngineV2(e.Spec.DataEngine) {
+		return false, nil
+	}
+
 	volume, err := s.GetVolumeRO(e.Spec.VolumeName)
 	if err != nil {
 		return false, err
@@ -6199,7 +6613,7 @@ func (s *DataStore) GetFreezeFilesystemForSnapshotSetting(e *longhorn.Engine) (b
 		return volume.Spec.FreezeFilesystemForSnapshot == longhorn.FreezeFilesystemForSnapshotEnabled, nil
 	}
 
-	return s.GetSettingAsBool(types.SettingNameFreezeFilesystemForSnapshot)
+	return s.GetSettingAsBoolByDataEngine(types.SettingNameFreezeFilesystemForSnapshot, e.Spec.DataEngine)
 }
 
 func (s *DataStore) CanPutBackingImageOnDisk(backingImage *longhorn.BackingImage, diskUUID string) (bool, error) {

@@ -350,7 +350,6 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 		types.SettingNameV1DataEngine,
 		types.SettingNameV2DataEngine,
 		types.SettingNameGuaranteedInstanceManagerCPU,
-		types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU,
 	}
 
 	if slices.Contains(dangerSettingsRequiringSpecificDataEngineVolumesDetached, settingName) {
@@ -360,14 +359,11 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 				return errors.Wrapf(err, "failed to apply %v setting to Longhorn instance managers when there are attached volumes. "+
 					"It will be eventually applied", settingName)
 			}
-		case types.SettingNameGuaranteedInstanceManagerCPU, types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU:
-			dataEngine := longhorn.DataEngineTypeV1
-			if settingName == types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU {
-				dataEngine = longhorn.DataEngineTypeV2
-			}
-
-			if err := sc.updateInstanceManagerCPURequest(dataEngine); err != nil {
-				return err
+		case types.SettingNameGuaranteedInstanceManagerCPU:
+			for _, dataEngine := range []longhorn.DataEngineType{longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2} {
+				if err := sc.updateInstanceManagerCPURequest(dataEngine); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -1225,10 +1221,6 @@ func (sc *SettingController) enqueueSettingForNode(obj interface{}) {
 
 // updateInstanceManagerCPURequest deletes all instance manager pods immediately with the updated CPU request.
 func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn.DataEngineType) error {
-	settingName := types.SettingNameGuaranteedInstanceManagerCPU
-	if types.IsDataEngineV2(dataEngine) {
-		settingName = types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU
-	}
 	imPodList, err := sc.ds.ListInstanceManagerPodsBy("", "", longhorn.InstanceManagerTypeAllInOne, dataEngine)
 	if err != nil {
 		return errors.Wrap(err, "failed to list instance manager pods for toleration update")
@@ -1269,10 +1261,10 @@ func (sc *SettingController) updateInstanceManagerCPURequest(dataEngine longhorn
 
 	stopped, _, err := sc.ds.AreAllEngineInstancesStopped(dataEngine)
 	if err != nil {
-		return errors.Wrapf(err, "failed to check engine instances for %v setting update", settingName)
+		return errors.Wrapf(err, "failed to check engine instances for %v setting update for data engine %v", types.SettingNameGuaranteedInstanceManagerCPU, dataEngine)
 	}
 	if !stopped {
-		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting to Longhorn components when there are running engine instances. It will be eventually applied", settingName)}
+		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting for data engine %v to Longhorn components when there are running engine instances. It will be eventually applied", types.SettingNameGuaranteedInstanceManagerCPU, dataEngine)}
 	}
 
 	for _, pod := range notUpdatedPods {
@@ -1393,22 +1385,22 @@ const (
 	ClusterInfoVolumeNumOfReplicas    = util.StructName("LonghornVolumeNumberOfReplicas")
 	ClusterInfoVolumeNumOfSnapshots   = util.StructName("LonghornVolumeNumberOfSnapshots")
 
-	ClusterInfoPodAvgCPUUsageFmt                         = "Longhorn%sAverageCpuUsageMilliCores"
-	ClusterInfoPodAvgMemoryUsageFmt                      = "Longhorn%sAverageMemoryUsageBytes"
-	ClusterInfoSettingFmt                                = "LonghornSetting%s"
-	ClusterInfoVolumeAccessModeCountFmt                  = "LonghornVolumeAccessMode%sCount"
-	ClusterInfoVolumeDataEngineCountFmt                  = "LonghornVolumeDataEngine%sCount"
-	ClusterInfoVolumeDataLocalityCountFmt                = "LonghornVolumeDataLocality%sCount"
-	ClusterInfoVolumeEncryptedCountFmt                   = "LonghornVolumeEncrypted%sCount"
-	ClusterInfoVolumeFrontendCountFmt                    = "LonghornVolumeFrontend%sCount"
-	ClusterInfoVolumeReplicaAutoBalanceCountFmt          = "LonghornVolumeReplicaAutoBalance%sCount"
-	ClusterInfoVolumeReplicaSoftAntiAffinityCountFmt     = "LonghornVolumeReplicaSoftAntiAffinity%sCount"
-	ClusterInfoVolumeReplicaZoneSoftAntiAffinityCountFmt = "LonghornVolumeReplicaZoneSoftAntiAffinity%sCount"
-	ClusterInfoVolumeReplicaDiskSoftAntiAffinityCountFmt = "LonghornVolumeReplicaDiskSoftAntiAffinity%sCount"
-	ClusterInfoVolumeRestoreVolumeRecurringJobCountFmt   = "LonghornVolumeRestoreVolumeRecurringJob%sCount"
-	ClusterInfoVolumeSnapshotDataIntegrityCountFmt       = "LonghornVolumeSnapshotDataIntegrity%sCount"
-	ClusterInfoVolumeUnmapMarkSnapChainRemovedCountFmt   = "LonghornVolumeUnmapMarkSnapChainRemoved%sCount"
-	ClusterInfoVolumeFreezeFilesystemForSnapshotCountFmt = "LonghornVolumeFreezeFilesystemForSnapshot%sCount"
+	ClusterInfoPodAvgCPUUsageFmt                                     = "Longhorn%sAverageCpuUsageMilliCores"
+	ClusterInfoPodAvgMemoryUsageFmt                                  = "Longhorn%sAverageMemoryUsageBytes"
+	ClusterInfoSettingFmt                                            = "LonghornSetting%s"
+	ClusterInfoVolumeAccessModeCountFmt                              = "LonghornVolumeAccessMode%sCount"
+	ClusterInfoVolumeDataEngineCountFmt                              = "LonghornVolumeDataEngine%sCount"
+	ClusterInfoVolumeDataLocalityCountFmt                            = "LonghornVolumeDataLocality%sCount"
+	ClusterInfoVolumeEncryptedCountFmt                               = "LonghornVolumeEncrypted%sCount"
+	ClusterInfoVolumeFrontendCountFmt                                = "LonghornVolumeFrontend%sCount"
+	ClusterInfoVolumeReplicaAutoBalanceCountFmt                      = "LonghornVolumeReplicaAutoBalance%sCount"
+	ClusterInfoVolumeReplicaSoftAntiAffinityCountFmt                 = "LonghornVolumeReplicaSoftAntiAffinity%sCount"
+	ClusterInfoVolumeReplicaZoneSoftAntiAffinityCountFmt             = "LonghornVolumeReplicaZoneSoftAntiAffinity%sCount"
+	ClusterInfoVolumeReplicaDiskSoftAntiAffinityCountFmt             = "LonghornVolumeReplicaDiskSoftAntiAffinity%sCount"
+	ClusterInfoVolumeRestoreVolumeRecurringJobCountFmt               = "LonghornVolumeRestoreVolumeRecurringJob%sCount"
+	ClusterInfoVolumeSnapshotDataIntegrityCountFmt                   = "LonghornVolumeSnapshotDataIntegrity%sCount"
+	ClusterInfoVolumeUnmapMarkSnapChainRemovedCountFmt               = "LonghornVolumeUnmapMarkSnapChainRemoved%sCount"
+	ClusterInfoVolumeFreezeFilesystemForV1DataEngineSnapshotCountFmt = "LonghornVolumeFreezeFilesystemForV1DataEngineSnapshot%sCount"
 )
 
 // Node Scope Info: will be sent from all Longhorn cluster nodes
@@ -1609,7 +1601,6 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameSystemManagedPodsImagePullPolicy:                         true,
 		types.SettingNameV1DataEngine:                                             true,
 		types.SettingNameV2DataEngine:                                             true,
-		types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU:                 true,
 	}
 
 	settings, err := info.ds.ListSettings()
@@ -1667,12 +1658,15 @@ func (info *ClusterInfo) convertSettingValueType(setting *longhorn.Setting) (con
 
 	switch definition.Type {
 	case types.SettingTypeInt:
-		return strconv.ParseInt(setting.Value, 10, 64)
+		if !definition.DataEngineSpecific {
+			return strconv.ParseInt(setting.Value, 10, 64)
+		}
 	case types.SettingTypeBool:
-		return strconv.ParseBool(setting.Value)
-	default:
-		return setting.Value, nil
+		if !definition.DataEngineSpecific {
+			return strconv.ParseBool(setting.Value)
+		}
 	}
+	return setting.Value, nil
 }
 
 func (info *ClusterInfo) collectVolumesInfo() error {
@@ -1741,29 +1735,31 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 			frontendCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeFrontendCountFmt, frontend))]++
 		}
 
-		replicaAutoBalance := info.collectSettingInVolume(string(volume.Spec.ReplicaAutoBalance), string(longhorn.ReplicaAutoBalanceIgnored), types.SettingNameReplicaAutoBalance)
+		replicaAutoBalance := info.collectSettingInVolume(string(volume.Spec.ReplicaAutoBalance), string(longhorn.ReplicaAutoBalanceIgnored), volume.Spec.DataEngine, types.SettingNameReplicaAutoBalance)
 		replicaAutoBalanceCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeReplicaAutoBalanceCountFmt, util.ConvertToCamel(string(replicaAutoBalance), "-")))]++
 
-		replicaSoftAntiAffinity := info.collectSettingInVolume(string(volume.Spec.ReplicaSoftAntiAffinity), string(longhorn.ReplicaSoftAntiAffinityDefault), types.SettingNameReplicaSoftAntiAffinity)
+		replicaSoftAntiAffinity := info.collectSettingInVolume(string(volume.Spec.ReplicaSoftAntiAffinity), string(longhorn.ReplicaSoftAntiAffinityDefault), volume.Spec.DataEngine, types.SettingNameReplicaSoftAntiAffinity)
 		replicaSoftAntiAffinityCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeReplicaSoftAntiAffinityCountFmt, util.ConvertToCamel(string(replicaSoftAntiAffinity), "-")))]++
 
-		replicaZoneSoftAntiAffinity := info.collectSettingInVolume(string(volume.Spec.ReplicaZoneSoftAntiAffinity), string(longhorn.ReplicaZoneSoftAntiAffinityDefault), types.SettingNameReplicaZoneSoftAntiAffinity)
+		replicaZoneSoftAntiAffinity := info.collectSettingInVolume(string(volume.Spec.ReplicaZoneSoftAntiAffinity), string(longhorn.ReplicaZoneSoftAntiAffinityDefault), volume.Spec.DataEngine, types.SettingNameReplicaZoneSoftAntiAffinity)
 		replicaZoneSoftAntiAffinityCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeReplicaZoneSoftAntiAffinityCountFmt, util.ConvertToCamel(string(replicaZoneSoftAntiAffinity), "-")))]++
 
-		replicaDiskSoftAntiAffinity := info.collectSettingInVolume(string(volume.Spec.ReplicaDiskSoftAntiAffinity), string(longhorn.ReplicaDiskSoftAntiAffinityDefault), types.SettingNameReplicaDiskSoftAntiAffinity)
+		replicaDiskSoftAntiAffinity := info.collectSettingInVolume(string(volume.Spec.ReplicaDiskSoftAntiAffinity), string(longhorn.ReplicaDiskSoftAntiAffinityDefault), volume.Spec.DataEngine, types.SettingNameReplicaDiskSoftAntiAffinity)
 		replicaDiskSoftAntiAffinityCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeReplicaDiskSoftAntiAffinityCountFmt, util.ConvertToCamel(string(replicaDiskSoftAntiAffinity), "-")))]++
 
-		restoreVolumeRecurringJob := info.collectSettingInVolume(string(volume.Spec.RestoreVolumeRecurringJob), string(longhorn.RestoreVolumeRecurringJobDefault), types.SettingNameRestoreVolumeRecurringJobs)
+		restoreVolumeRecurringJob := info.collectSettingInVolume(string(volume.Spec.RestoreVolumeRecurringJob), string(longhorn.RestoreVolumeRecurringJobDefault), volume.Spec.DataEngine, types.SettingNameRestoreVolumeRecurringJobs)
 		restoreVolumeRecurringJobCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeRestoreVolumeRecurringJobCountFmt, util.ConvertToCamel(string(restoreVolumeRecurringJob), "-")))]++
 
-		snapshotDataIntegrity := info.collectSettingInVolume(string(volume.Spec.SnapshotDataIntegrity), string(longhorn.SnapshotDataIntegrityIgnored), types.SettingNameSnapshotDataIntegrity)
+		snapshotDataIntegrity := info.collectSettingInVolume(string(volume.Spec.SnapshotDataIntegrity), string(longhorn.SnapshotDataIntegrityIgnored), volume.Spec.DataEngine, types.SettingNameSnapshotDataIntegrity)
 		snapshotDataIntegrityCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeSnapshotDataIntegrityCountFmt, util.ConvertToCamel(string(snapshotDataIntegrity), "-")))]++
 
-		unmapMarkSnapChainRemoved := info.collectSettingInVolume(string(volume.Spec.UnmapMarkSnapChainRemoved), string(longhorn.UnmapMarkSnapChainRemovedIgnored), types.SettingNameRemoveSnapshotsDuringFilesystemTrim)
+		unmapMarkSnapChainRemoved := info.collectSettingInVolume(string(volume.Spec.UnmapMarkSnapChainRemoved), string(longhorn.UnmapMarkSnapChainRemovedIgnored), volume.Spec.DataEngine, types.SettingNameRemoveSnapshotsDuringFilesystemTrim)
 		unmapMarkSnapChainRemovedCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeUnmapMarkSnapChainRemovedCountFmt, util.ConvertToCamel(string(unmapMarkSnapChainRemoved), "-")))]++
 
-		freezeFilesystemForSnapshot := info.collectSettingInVolume(string(volume.Spec.FreezeFilesystemForSnapshot), string(longhorn.FreezeFilesystemForSnapshotDefault), types.SettingNameFreezeFilesystemForSnapshot)
-		freezeFilesystemForSnapshotCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeFreezeFilesystemForSnapshotCountFmt, util.ConvertToCamel(string(freezeFilesystemForSnapshot), "-")))]++
+		if types.IsDataEngineV1(volume.Spec.DataEngine) {
+			freezeFilesystemForSnapshot := info.collectSettingInVolume(string(volume.Spec.FreezeFilesystemForSnapshot), string(longhorn.FreezeFilesystemForSnapshotDefault), volume.Spec.DataEngine, types.SettingNameFreezeFilesystemForSnapshot)
+			freezeFilesystemForSnapshotCountStruct[util.StructName(fmt.Sprintf(ClusterInfoVolumeFreezeFilesystemForV1DataEngineSnapshotCountFmt, util.ConvertToCamel(string(freezeFilesystemForSnapshot), "-")))]++
+		}
 	}
 	info.structFields.fields.Append(ClusterInfoVolumeNumOfReplicas, totalVolumeNumOfReplicas)
 	info.structFields.fields.AppendCounted(accessModeCountStruct)
@@ -1814,13 +1810,14 @@ func (info *ClusterInfo) collectVolumesInfo() error {
 	return nil
 }
 
-func (info *ClusterInfo) collectSettingInVolume(volumeSpecValue, ignoredValue string, settingName types.SettingName) string {
+func (info *ClusterInfo) collectSettingInVolume(volumeSpecValue, ignoredValue string, dataEngine longhorn.DataEngineType, settingName types.SettingName) string {
 	if volumeSpecValue == ignoredValue {
-		globalSetting, err := info.ds.GetSettingWithAutoFillingRO(settingName)
+		globalSettingValue, err := info.ds.GetSettingValueExistedByDataEngine(settingName, dataEngine)
 		if err != nil {
 			info.logger.WithError(err).Warnf("Failed to get Longhorn Setting %v", settingName)
 		}
-		return globalSetting.Value
+
+		return globalSettingValue
 	}
 	return volumeSpecValue
 }

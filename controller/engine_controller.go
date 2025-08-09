@@ -467,7 +467,7 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		}
 	}(c)
 
-	engineReplicaTimeout, err := ec.ds.GetSettingAsInt(types.SettingNameEngineReplicaTimeout)
+	engineReplicaTimeout, err := ec.ds.GetSettingAsIntByDataEngine(types.SettingNameEngineReplicaTimeout, e.Spec.DataEngine)
 	if err != nil {
 		return nil, err
 	}
@@ -1172,7 +1172,11 @@ func (m *EngineMonitor) checkAndApplyRebuildQoS(engine *longhorn.Engine, engineC
 }
 
 func (m *EngineMonitor) getEffectiveRebuildQoS(engine *longhorn.Engine) (int64, error) {
-	globalQoS, err := m.ds.GetSettingAsInt(types.SettingNameReplicaRebuildingBandwidthLimit)
+	if types.IsDataEngineV1(engine.Spec.DataEngine) {
+		return 0, nil
+	}
+
+	globalQoS, err := m.ds.GetSettingAsIntByDataEngine(types.SettingNameReplicaRebuildingBandwidthLimit, engine.Spec.DataEngine)
 	if err != nil {
 		return 0, err
 	}
@@ -1505,7 +1509,7 @@ func (m *EngineMonitor) restoreBackup(engine *longhorn.Engine, rsMap map[string]
 
 	backupTargetClient, err := newBackupTargetClientFromDefaultEngineImage(m.ds, backupTarget)
 	if err != nil {
-		return errors.Wrapf(err, "cannot get backup target config for backup restoration of engine %v", engine.Name)
+		return errors.Wrapf(err, "failed to get backup target client for backup restoration of engine %v", engine.Name)
 	}
 
 	mlog := m.logger.WithFields(logrus.Fields{
@@ -1517,7 +1521,8 @@ func (m *EngineMonitor) restoreBackup(engine *longhorn.Engine, rsMap map[string]
 
 	concurrentLimit, err := m.ds.GetSettingAsInt(types.SettingNameRestoreConcurrentLimit)
 	if err != nil {
-		return errors.Wrapf(err, "failed to assert %v value", types.SettingNameRestoreConcurrentLimit)
+		return errors.Wrapf(err, "failed to get %v setting for backup restoration of engine %v",
+			types.SettingNameRestoreConcurrentLimit, engine.Name)
 	}
 
 	mlog.Info("Restoring backup")
@@ -1811,13 +1816,13 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 	go func() {
 		autoCleanupSystemGeneratedSnapshot, err := ec.ds.GetSettingAsBool(types.SettingNameAutoCleanupSystemGeneratedSnapshot)
 		if err != nil {
-			log.WithError(err).Errorf("Failed to get %v setting", types.SettingDefinitionAutoCleanupSystemGeneratedSnapshot)
+			log.WithError(err).Errorf("Failed to get %v setting", types.SettingNameAutoCleanupSystemGeneratedSnapshot)
 			return
 		}
 
-		fastReplicaRebuild, err := ec.ds.GetSettingAsBool(types.SettingNameFastReplicaRebuildEnabled)
+		fastReplicaRebuild, err := ec.ds.GetSettingAsBoolByDataEngine(types.SettingNameFastReplicaRebuildEnabled, e.Spec.DataEngine)
 		if err != nil {
-			log.WithError(err).Errorf("Failed to get %v setting", types.SettingNameFastReplicaRebuildEnabled)
+			log.WithError(err).Errorf("Failed to get %v setting for data engine %v", types.SettingNameFastReplicaRebuildEnabled, e.Spec.DataEngine)
 			return
 		}
 
@@ -2218,7 +2223,7 @@ func (ec *EngineController) UpgradeEngineInstance(e *longhorn.Engine, log *logru
 		}
 	}(c)
 
-	engineReplicaTimeout, err := ec.ds.GetSettingAsInt(types.SettingNameEngineReplicaTimeout)
+	engineReplicaTimeout, err := ec.ds.GetSettingAsIntByDataEngine(types.SettingNameEngineReplicaTimeout, e.Spec.DataEngine)
 	if err != nil {
 		return err
 	}

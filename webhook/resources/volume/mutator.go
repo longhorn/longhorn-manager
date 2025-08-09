@@ -98,19 +98,19 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	}
 
 	if volume.Spec.NumberOfReplicas == 0 {
-		numberOfReplicas, err := v.getDefaultReplicaCount()
+		numberOfReplicas, err := v.getDefaultReplicaCount(volume.Spec.DataEngine)
 		if err != nil {
-			err = errors.Wrap(err, "BUG: cannot get valid number for setting default replica count")
+			err = errors.Wrap(err, "failed to get valid number for setting default replica count")
 			return nil, werror.NewInvalidError(err.Error(), "")
 		}
-		logrus.Infof("Use the default number of replicas %v", numberOfReplicas)
+		logrus.Infof("Using the default number of replicas %v", numberOfReplicas)
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/numberOfReplicas", "value": %v}`, numberOfReplicas))
 	}
 
 	if string(volume.Spec.DataLocality) == "" {
 		defaultDataLocality, err := v.ds.GetSettingValueExisted(types.SettingNameDefaultDataLocality)
 		if err != nil {
-			err = errors.Wrapf(err, "cannot get valid mode for setting default data locality for volume: %v", name)
+			err = errors.Wrapf(err, "failed to get valid mode for setting default data locality for volume: %v", name)
 			return nil, werror.NewInvalidError(err.Error(), "")
 		}
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/dataLocality", "value": "%s"}`, defaultDataLocality))
@@ -237,10 +237,10 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 	if volume.Spec.SnapshotMaxCount == 0 {
 		snapshotMaxCount, err := v.getSnapshotMaxCount()
 		if err != nil {
-			err = errors.Wrap(err, "BUG: cannot get valid number for setting snapshot max count")
+			err = errors.Wrap(err, "failed to get valid number for setting snapshot max count")
 			return nil, werror.NewInvalidError(err.Error(), "")
 		}
-		logrus.Infof("Use the default snapshot max count %v", snapshotMaxCount)
+		logrus.Infof("Using the default snapshot max count %v", snapshotMaxCount)
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/snapshotMaxCount", "value": %v}`, snapshotMaxCount))
 	}
 
@@ -305,10 +305,10 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 	if volume.Spec.SnapshotMaxCount == 0 {
 		snapshotMaxCount, err := v.getSnapshotMaxCount()
 		if err != nil {
-			err = errors.Wrap(err, "BUG: cannot get valid number for setting snapshot max count")
+			err = errors.Wrap(err, "failed to get valid number for setting snapshot max count")
 			return nil, werror.NewInvalidError(err.Error(), "")
 		}
-		logrus.Infof("Use the default snapshot max count %v", snapshotMaxCount)
+		logrus.Infof("Using the default snapshot max count %v", snapshotMaxCount)
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/snapshotMaxCount", "value": %v}`, snapshotMaxCount))
 	}
 
@@ -410,8 +410,8 @@ func mutate(newObj runtime.Object, moreLabels map[string]string) (admission.Patc
 	return patchOps, nil
 }
 
-func (v *volumeMutator) getDefaultReplicaCount() (int, error) {
-	c, err := v.ds.GetSettingAsInt(types.SettingNameDefaultReplicaCount)
+func (v *volumeMutator) getDefaultReplicaCount(dataEngine longhorn.DataEngineType) (int, error) {
+	c, err := v.ds.GetSettingAsIntByDataEngine(types.SettingNameDefaultReplicaCount, dataEngine)
 	if err != nil {
 		return 0, err
 	}
