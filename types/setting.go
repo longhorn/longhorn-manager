@@ -476,7 +476,7 @@ var (
 
 	SettingDefinitionDefaultDataPath = SettingDefinition{
 		DisplayName:        "Default Data Path",
-		Description:        "Default path to use for storing data on a host",
+		Description:        "Default path to use for storing data on a host. An absolute directory path indicates a filesystem-type disk used by the V1 Data Engine, while a path to a block device indicates a block-type disk used by the V2 Data Engine.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeString,
 		Required:           true,
@@ -486,8 +486,9 @@ var (
 	}
 
 	SettingDefinitionDefaultEngineImage = SettingDefinition{
-		DisplayName:        "Default Engine Image",
-		Description:        "The default engine image used by the manager. Can be changed on the manager starting command line only",
+		DisplayName: "Default Engine Image",
+		Description: "The default engine image used by the manager. Can be changed on the manager starting command line only.\n\n" +
+			"**Note:** This engine image is required only for the V1 Data Engine and is not used by the V2 Data Engine.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeString,
 		Required:           true,
