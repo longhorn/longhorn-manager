@@ -2,7 +2,7 @@ module github.com/longhorn/longhorn-manager
 
 go 1.24.0
 
-toolchain go1.24.5
+toolchain go1.24.6
 
 // Replace directives are required for dependencies in this section because:
 // - This module imports k8s.io/kubernetes.
@@ -65,10 +65,10 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.22.0
 	github.com/longhorn/backing-image-manager v1.9.1
-	github.com/longhorn/backupstore v0.0.0-20250728024545-3d2abce3e32f
-	github.com/longhorn/go-common-libs v0.0.0-20250725014231-2c0bac610814
+	github.com/longhorn/backupstore v0.0.0-20250804022317-794abf817297
+	github.com/longhorn/go-common-libs v0.0.0-20250809060702-aec53ac032f0
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250713130221-69ce6f3960fa
-	github.com/longhorn/go-spdk-helper v0.0.3-0.20250728015531-59051d40ad88
+	github.com/longhorn/go-spdk-helper v0.0.3-0.20250809103353-695fd752a98b
 	github.com/longhorn/longhorn-engine v1.9.1
 	github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250629.0.20250711075830-f3729b840178
 	github.com/longhorn/longhorn-share-manager v1.9.1
@@ -81,7 +81,7 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli v1.22.17
-	golang.org/x/mod v0.26.0
+	golang.org/x/mod v0.27.0
 	golang.org/x/net v0.42.0
 	golang.org/x/sys v0.34.0
 	golang.org/x/time v0.12.0
@@ -113,7 +113,7 @@ require (
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	golang.org/x/exp v0.0.0-20250718183923-645b1fa84792 // indirect
+	golang.org/x/exp v0.0.0-20250808145144-a408d31f581a // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250528174236-200df99c418a // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
@@ -174,7 +174,7 @@ require (
 	golang.org/x/sync v0.16.0
 	golang.org/x/term v0.33.0 // indirect
 	golang.org/x/text v0.27.0
-	google.golang.org/protobuf v1.36.6
+	google.golang.org/protobuf v1.36.7
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/apiserver v0.33.3 // indirect
 	k8s.io/component-base v0.33.3 // indirect
