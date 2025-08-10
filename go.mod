@@ -56,7 +56,7 @@ replace (
 
 require (
 	github.com/container-storage-interface/spec v1.11.0
-	github.com/docker/go-connections v0.5.0
+	github.com/docker/go-connections v0.6.0
 	github.com/go-co-op/gocron v1.37.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/handlers v1.5.2
@@ -82,8 +82,8 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli v1.22.17
 	golang.org/x/mod v0.27.0
-	golang.org/x/net v0.42.0
-	golang.org/x/sys v0.34.0
+	golang.org/x/net v0.43.0
+	golang.org/x/sys v0.35.0
 	golang.org/x/time v0.12.0
 	google.golang.org/grpc v1.74.2
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
@@ -169,11 +169,11 @@ require (
 	go.opentelemetry.io/otel/trace v1.36.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0
-	golang.org/x/crypto v0.40.0 // indirect
+	golang.org/x/crypto v0.41.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sync v0.16.0
-	golang.org/x/term v0.33.0 // indirect
-	golang.org/x/text v0.27.0
+	golang.org/x/term v0.34.0 // indirect
+	golang.org/x/text v0.28.0
 	google.golang.org/protobuf v1.36.7
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/apiserver v0.33.3 // indirect
