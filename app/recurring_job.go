@@ -41,8 +41,8 @@ const (
 	WaitInterval              = 5 * time.Second
 	DetachingWaitInterval     = 10 * time.Second
 	VolumeAttachTimeout       = 300 // 5 minutes
-	BackupProcessStartTimeout = 90  // 1.5 minutes
-	SnapshotReadyTimeout      = 390 // 6.5 minutes
+	BackupProcessStartTimeout = 300 // 1.5 minutes
+	SnapshotReadyTimeout      = 600 // 6.5 minutes
 )
 
 type Job struct {

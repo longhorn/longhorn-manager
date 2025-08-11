@@ -11,6 +11,5 @@ const (
 
 const (
 	ExecuteNoTimeout      = time.Duration(-1)
-	ExecuteDefaultTimeout = time.Minute * 5
-	BackupDefaultTimeout  = time.Minute * 30
+	ExecuteDefaultTimeout = time.Minute * 20
 )

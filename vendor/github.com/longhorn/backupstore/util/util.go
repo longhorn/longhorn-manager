@@ -36,7 +36,7 @@ const (
 )
 
 var (
-	cmdTimeout = time.Minute * 5 // five minute by default
+	cmdTimeout = time.Minute * 20 // five minute by default
 
 	forceCleanupMountTimeout = 60 * time.Second
 )
