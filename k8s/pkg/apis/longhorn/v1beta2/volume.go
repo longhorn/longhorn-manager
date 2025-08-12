@@ -309,7 +309,7 @@ type VolumeSpec struct {
 	// ReplicaRebuildingBandwidthLimit limits the write bandwidth (in megabytes per second) on the destination replica during rebuilding. Set to 0 to disable bandwidth limiting.
 	// +kubebuilder:validation:Minimum=0
 	// +optional
-	ReplicaRebuildingBandwidthLimit int64 `json:"replicaRebuildingBandwidthLimit,omitempty"`
+	ReplicaRebuildingBandwidthLimit int64 `json:"replicaRebuildingBandwidthLimit,string"`
 }
 
 // VolumeStatus defines the observed state of the Longhorn volume
