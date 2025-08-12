@@ -1743,6 +1743,9 @@ func (imc *InstanceManagerController) deleteOrphans(im *longhorn.InstanceManager
 
 		if imc.canDeleteOrphan(orphan, isInstanceManagerTerminating, autoDeleteEnabled, instanceExist, instanceCRScheduledBack, autoDeleteGracePeriod) {
 			if err := imc.deleteOrphan(orphan); err != nil {
+				if datastore.ErrorIsNotFound(err) {
+					continue
+				}
 				errs.Append("errors", errors.Wrapf(err, "failed to delete orphan %v", orphan.Name))
 			}
 		}
