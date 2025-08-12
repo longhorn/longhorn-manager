@@ -614,6 +614,8 @@ func filterActiveReplicas(replicas map[string]*longhorn.Replica) map[string]*lon
 }
 
 func (rcs *ReplicaScheduler) CheckAndReuseFailedReplica(replicas map[string]*longhorn.Replica, volume *longhorn.Volume, hardNodeAffinity string) (*longhorn.Replica, error) {
+	// No need the check for v1 data engine since the v1 data engine can reuse failed replicas
+	// for delta rebuilding although the fast replica rebuilding is not enabled.
 	if types.IsDataEngineV2(volume.Spec.DataEngine) {
 		fastReplicaRebuilding, err := rcs.ds.GetSettingAsBoolByDataEngine(types.SettingNameFastReplicaRebuildEnabled, volume.Spec.DataEngine)
 		if err != nil {
@@ -716,6 +718,8 @@ func (rcs *ReplicaScheduler) RequireNewReplica(replicas map[string]*longhorn.Rep
 		return 0
 	}
 
+	// No need the check for v1 data engine since the v1 data engine can reuse failed replicas
+	// for delta rebuilding although the fast replica rebuilding is not enabled.
 	if types.IsDataEngineV2(volume.Spec.DataEngine) {
 		fastReplicaRebuilding, err := rcs.ds.GetSettingAsBoolByDataEngine(types.SettingNameFastReplicaRebuildEnabled, volume.Spec.DataEngine)
 		if err != nil {
