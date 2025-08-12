@@ -5006,19 +5006,6 @@ func (c *VolumeController) shouldCleanUpFailedReplica(v *longhorn.Volume, r *lon
 		return true
 	}
 
-	if types.IsDataEngineV2(v.Spec.DataEngine) {
-		fastReplicaRebuilding, err := c.ds.GetSettingAsBoolByDataEngine(types.SettingNameFastReplicaRebuildEnabled, v.Spec.DataEngine)
-		if err != nil {
-			log.WithError(err).Warnf("Failed to get %v setting for data engine %v, will consider it as false",
-				types.SettingNameFastReplicaRebuildEnabled, v.Spec.DataEngine)
-			fastReplicaRebuilding = false
-		}
-		if !fastReplicaRebuilding {
-			log.Infof("Failed replica %v should be cleaned up blindly since setting %v for data engine %v is not enabled",
-				r.Name, types.SettingNameFastReplicaRebuildEnabled, v.Spec.DataEngine)
-			return true
-		}
-	}
 	// Failed too long ago to be useful during a rebuild.
 	if v.Spec.StaleReplicaTimeout > 0 &&
 		util.TimestampAfterTimeout(r.Spec.FailedAt, time.Duration(v.Spec.StaleReplicaTimeout)*time.Minute) {
