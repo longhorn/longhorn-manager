@@ -25,8 +25,9 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	"github.com/longhorn/go-common-libs/multierr"
+
 	systembackupstore "github.com/longhorn/backupstore/systembackup"
-	multierr "github.com/longhorn/go-common-libs/multierr"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -425,7 +426,7 @@ func (btc *BackupTargetController) reconcile(name string) (err error) {
 		}
 	}()
 
-	// clean up invalid backup volumes that are created during split-brain
+	// clean up invalid BackupVolumes that are created during split-brain
 	// https://github.com/longhorn/longhorn/issues/11154
 	clusterVolumeBVMap, duplicatedBackupVolumeSet, err := btc.getClusterBVsDuplicatedBVs(backupTarget)
 	if err != nil {
@@ -548,7 +549,7 @@ func (btc *BackupTargetController) getInfoFromBackupStore(backupTarget *longhorn
 	}
 	info.backupStoreBackupVolumeNames, err = backupTargetClient.BackupVolumeNameList()
 	if err != nil {
-		return backupStoreInfo{}, errors.Wrapf(err, "failed to list backup volumes in %v", backupTargetClient.URL)
+		return backupStoreInfo{}, errors.Wrapf(err, "failed to list BackupVolumes in %v", backupTargetClient.URL)
 	}
 	info.backupStoreBackingImageNames, err = backupTargetClient.BackupBackingImageNameList()
 	if err != nil {
@@ -562,7 +563,7 @@ func (btc *BackupTargetController) getClusterBVsDuplicatedBVs(backupTarget *long
 	log := getLoggerForBackupTarget(btc.logger, backupTarget)
 	backupTargetName := backupTarget.Name
 
-	// Get a list of the backup volumes of the backup target that exist as custom resources in the cluster
+	// Get a list of the BackupVolumes of the backup target that exist as custom resources in the cluster
 	backupVolumeList, err := btc.ds.ListBackupVolumesWithBackupTargetNameRO(backupTargetName)
 	if err != nil {
 		return nil, nil, err
@@ -609,36 +610,35 @@ func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.Backu
 	}
 
 	// TODO: add a unit test
-	// Get a list of backup volumes that *are* in the backup target and *aren't* in the cluster
+	// Get a list of BackupVolumes that *are* in the backup target and *aren't* in the cluster
 	// and create the BackupVolume CR in the cluster
 	if err := btc.pullBackupVolumeFromBackupTarget(backupTarget, backupStoreBackupVolumes, clusterBackupVolumesSet, log); err != nil {
-		log.WithError(err).Error("Failed to pull backup volumes that do not exist in the cluster")
+		log.WithError(err).Error("Failed to pull BackupVolumes that do not exist in the cluster")
 		return err
 	}
 
 	// TODO: add a unit test
-	// Get a list of backup volumes that *are* in the cluster and *aren't* in the backup target
+	// Get a list of BackupVolumes that *are* in the cluster and *aren't* in the backup target
 	// and delete the BackupVolume CR in the cluster
 	if err := btc.cleanupBackupVolumeNotExistOnBackupTarget(clusterVolumeBVMap, backupStoreBackupVolumes, clusterBackupVolumesSet, log); err != nil {
-		log.WithError(err).Error("Failed to clean up backup volumes that do not exist on the backup target server")
+		log.WithError(err).Error("Failed to clean up BackupVolumes that do not exist on the backup target server")
 		return err
 	}
 
 	// Update the BackupVolume CR spec.syncRequestAt to request the
 	// backup_volume_controller to reconcile the BackupVolume CR
-	multiError := util.NewMultiError()
+	errs := multierr.NewMultiError()
 	for volumeName, backupVolume := range clusterVolumeBVMap {
 		if !backupStoreBackupVolumes.Has(volumeName) {
 			continue
 		}
 		backupVolume.Spec.SyncRequestedAt = syncTime
 		if _, err := btc.ds.UpdateBackupVolume(backupVolume); err != nil && !apierrors.IsConflict(errors.Cause(err)) {
-			log.WithError(err).Errorf("Failed to update backup volume %s", backupVolume.Name)
-			multiError.Append(util.NewMultiError(fmt.Sprintf("%v: %v", backupVolume.Name, err)))
+			errs.Append("errors", errors.Wrapf(err, "failed to update BackupVolume %v", backupVolume.Name))
 		}
 	}
-	if len(multiError) > 0 {
-		return fmt.Errorf("failed to update backup volumes: %v", multiError.Join())
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to update syncRequestedAt for BackupVolumes: %v", errs.ErrorByReason("errors"))
 	}
 
 	return nil
@@ -647,7 +647,7 @@ func (btc *BackupTargetController) syncBackupVolume(backupTarget *longhorn.Backu
 func (btc *BackupTargetController) pullBackupVolumeFromBackupTarget(backupTarget *longhorn.BackupTarget, backupStoreBackupVolumes, clusterBackupVolumesSet sets.Set[string], log logrus.FieldLogger) (err error) {
 	backupVolumesToPull := backupStoreBackupVolumes.Difference(clusterBackupVolumesSet)
 	if count := backupVolumesToPull.Len(); count > 0 {
-		log.Infof("Found %d backup volumes in the backup target that do not exist in the cluster and need to be pulled", count)
+		log.Infof("Found %d BackupVolumes in the backup target that do not exist in the cluster and need to be pulled", count)
 	}
 	for remoteVolumeName := range backupVolumesToPull {
 		backupVolumeName := types.GetBackupVolumeNameFromVolumeName(remoteVolumeName, backupTarget.Name)
@@ -666,7 +666,7 @@ func (btc *BackupTargetController) pullBackupVolumeFromBackupTarget(backupTarget
 			},
 		}
 		if _, err = btc.ds.CreateBackupVolume(backupVolume); err != nil && !apierrors.IsAlreadyExists(err) {
-			return errors.Wrapf(err, "failed to create backup volume %s/%s in the cluster from backup target %s", backupVolumeName, remoteVolumeName, backupTarget.Name)
+			return errors.Wrapf(err, "failed to create BackupVolume %s/%s in the cluster from backup target %s", backupVolumeName, remoteVolumeName, backupTarget.Name)
 		}
 	}
 	return nil
@@ -675,14 +675,14 @@ func (btc *BackupTargetController) pullBackupVolumeFromBackupTarget(backupTarget
 func (btc *BackupTargetController) cleanupBackupVolumeNotExistOnBackupTarget(clusterVolumeBVMap map[string]*longhorn.BackupVolume, backupStoreBackupVolumes, clusterBackupVolumesSet sets.Set[string], log logrus.FieldLogger) (err error) {
 	backupVolumesToDelete := clusterBackupVolumesSet.Difference(backupStoreBackupVolumes)
 	if count := backupVolumesToDelete.Len(); count > 0 {
-		log.Infof("Found %d backup volumes in the backup target that do not exist in the cluster and need to be deleted from the cluster", count)
+		log.Infof("Found %d BackupVolumes in the backup target that do not exist in the cluster and need to be deleted from the cluster", count)
 	}
 
-	multiError := util.NewMultiError()
+	errs := multierr.NewMultiError()
 	for volumeName := range backupVolumesToDelete {
 		bv, exists := clusterVolumeBVMap[volumeName]
 		if !exists {
-			log.WithField("volume", volumeName).Warnf("Failed to find the BackupVolume CR in the cluster backup volume map")
+			log.WithField("volume", volumeName).Warnf("Failed to find the BackupVolume CR in the cluster BackupVolume map")
 			continue
 		}
 
@@ -692,12 +692,12 @@ func (btc *BackupTargetController) cleanupBackupVolumeNotExistOnBackupTarget(clu
 			if apierrors.IsNotFound(err) {
 				continue
 			}
-			multiError.Append(util.NewMultiError(fmt.Sprintf("%v: %v", backupVolumeName, err)))
+			errs.Append("errors", errors.Wrapf(err, "failed to only delete BackupVolume CR %s", backupVolumeName))
 		}
 	}
 
-	if len(multiError) > 0 {
-		return fmt.Errorf("failed to delete backup volumes from cluster: %v", multiError.Join())
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to delete BackupVolumes not exist in backupstore: %v", errs.ErrorByReason("errors"))
 	}
 	return nil
 }
@@ -715,22 +715,22 @@ func (btc *BackupTargetController) deleteBackupVolumeCROnly(backupVolumeName str
 func (btc *BackupTargetController) cleanupDuplicateBackupVolumeForBackupTarget(backupTarget *longhorn.BackupTarget, duplicateBackupVolumesSet sets.Set[string]) (err error) {
 	log := getLoggerForBackupTarget(btc.logger, backupTarget)
 	if count := duplicateBackupVolumesSet.Len(); count > 0 {
-		log.Infof("Found %d duplicated backup volume CRs for the backup target and need to be deleted from the cluster", count)
+		log.Infof("Found %d duplicated BackupVolume CRs for the backup target and need to be deleted from the cluster", count)
 	}
 
-	multiError := util.NewMultiError()
+	errs := multierr.NewMultiError()
 	for bvName := range duplicateBackupVolumesSet {
 		log.WithField("backupVolume", bvName).Info("Deleting BackupVolume that has duplicate volume name in cluster")
 		if err := btc.deleteBackupVolumeCROnly(bvName, log); err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
 			}
-			multiError.Append(util.NewMultiError(fmt.Sprintf("%v: %v", bvName, err)))
+			errs.Append("errors", errors.Wrapf(err, "failed to only delete BackupVolume CR %s", bvName))
 		}
 	}
 
-	if len(multiError) > 0 {
-		return fmt.Errorf("failed to delete backup volumes: %v", multiError.Join())
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to delete duplicated BackupVolumes from cluster: %v", errs.ErrorByReason("errors"))
 	}
 	return nil
 }
@@ -738,7 +738,7 @@ func (btc *BackupTargetController) cleanupDuplicateBackupVolumeForBackupTarget(b
 func (btc *BackupTargetController) syncBackupBackingImage(backupTarget *longhorn.BackupTarget, backupStoreBackingImageNames []string, syncTime metav1.Time, log logrus.FieldLogger) error {
 	backupStoreBackupBackingImages := sets.New[string](backupStoreBackingImageNames...)
 
-	// Get a list of all the backup volumes that exist as custom resources in the cluster
+	// Get a list of all the BackupVolumes that exist as custom resources in the cluster
 	clusterBackupBackingImages, err := btc.ds.ListBackupBackingImagesWithBackupTargetNameRO(backupTarget.Name)
 	if err != nil {
 		return err

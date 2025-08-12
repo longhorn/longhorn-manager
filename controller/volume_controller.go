@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -29,6 +29,7 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	"github.com/longhorn/backupstore"
+	"github.com/longhorn/go-common-libs/multierr"
 
 	imtypes "github.com/longhorn/longhorn-instance-manager/pkg/types"
 	imutil "github.com/longhorn/longhorn-instance-manager/pkg/util"
@@ -622,20 +623,20 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 	}()
 
 	// Aggregate replica wait for backing image condition
-	aggregatedReplicaWaitForBackingImageError := util.NewMultiError()
+	aggregatedReplicaWaitForBackingImageError := multierr.NewMultiError()
 	waitForBackingImage := false
 	for _, r := range rs {
 		waitForBackingImageCondition := types.GetCondition(r.Status.Conditions, longhorn.ReplicaConditionTypeWaitForBackingImage)
 		if waitForBackingImageCondition.Status == longhorn.ConditionStatusTrue {
 			waitForBackingImage = true
 			if waitForBackingImageCondition.Reason == longhorn.ReplicaConditionReasonWaitForBackingImageFailed {
-				aggregatedReplicaWaitForBackingImageError.Append(util.NewMultiError(waitForBackingImageCondition.Message))
+				aggregatedReplicaWaitForBackingImageError.Append("errors", fmt.Errorf("%v", waitForBackingImageCondition.Message))
 			}
 		}
 	}
 	if waitForBackingImage {
 		if len(aggregatedReplicaWaitForBackingImageError) > 0 {
-			failureMessage := aggregatedReplicaWaitForBackingImageError.Join()
+			failureMessage := aggregatedReplicaWaitForBackingImageError.ErrorByReason("errors")
 			v.Status.Conditions = types.SetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeWaitForBackingImage,
 				longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonWaitForBackingImageFailed, failureMessage)
 		} else {
@@ -1742,7 +1743,7 @@ func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longh
 	}
 
 	scheduled := true
-	aggregatedReplicaScheduledError := util.NewMultiError()
+	aggregatedScheduledErrs := multierr.NewMultiError()
 	for _, r := range rs {
 		// check whether the replica need to be scheduled
 		if r.Spec.NodeID != "" {
@@ -1760,11 +1761,11 @@ func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longh
 				continue
 			}
 		}
-		scheduledReplica, multiError, err := c.scheduler.ScheduleReplica(r, rs, v)
-		if err != nil {
-			return err
+
+		scheduledReplica, scheduleErrs := c.scheduler.ScheduleReplica(r, rs, v)
+		if scheduleErrs != nil {
+			aggregatedScheduledErrs.AppendMultiError(scheduleErrs)
 		}
-		aggregatedReplicaScheduledError.Append(multiError)
 
 		if scheduledReplica == nil {
 			if r.Spec.HardNodeAffinity == "" {
@@ -1818,10 +1819,17 @@ func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longh
 		}
 	}
 	if !scheduled {
-		if len(aggregatedReplicaScheduledError) == 0 {
-			aggregatedReplicaScheduledError.Append(util.NewMultiError(longhorn.ErrorReplicaScheduleSchedulingFailed))
+		if len(aggregatedScheduledErrs) == 0 {
+			aggregatedScheduledErrs.Append(longhorn.ErrorReplicaScheduleSchedulingFailed,
+				fmt.Errorf("failed to schedule volume %v, no replica scheduled", v.Name))
 		}
-		failureMessage = aggregatedReplicaScheduledError.Join()
+
+		c.logger.WithFields(logrus.Fields{"volume": v.Name}).Debugf("Failed to schedule replica for volume %v: %v", v.Name, aggregatedScheduledErrs.Error())
+
+		// Consolidate all the precheck errors and set the volume condition
+		// We don't set the reasons to condition, because we want to avoid
+		// spamming the condition with too lengthy messages.
+		failureMessage = aggregatedScheduledErrs.JoinReasons()
 		scheduledCondition := types.GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeScheduled)
 		if scheduledCondition.Status == longhorn.ConditionStatusFalse {
 			if scheduledCondition.Reason == longhorn.VolumeConditionReasonReplicaSchedulingFailure &&
@@ -1835,7 +1843,7 @@ func (c *VolumeController) reconcileVolumeCondition(v *longhorn.Volume, e *longh
 	}
 
 	if err := c.ds.UpdatePVAnnotation(v, types.PVAnnotationLonghornVolumeSchedulingError, failureMessage); err != nil {
-		log.Warnf("Failed to update PV annotation for volume %v", v.Name)
+		log.WithError(err).Warnf("Failed to update PV annotation for volume %v", v.Name)
 	}
 
 	return nil
@@ -2070,9 +2078,9 @@ func (c *VolumeController) reconcileVolumeSize(v *longhorn.Volume, e *longhorn.E
 		if diskScheduleMultiError, err := c.scheduler.CheckReplicasSizeExpansion(v, e.Spec.VolumeSize, v.Spec.Size); err != nil {
 			log.WithError(err).Warnf("Failed to start volume expansion")
 			if diskScheduleMultiError != nil {
-				failureMessage := diskScheduleMultiError.Join()
+				failureMessage := diskScheduleMultiError.JoinReasons()
 				if err := c.ds.UpdatePVAnnotation(v, types.PVAnnotationLonghornVolumeSchedulingError, failureMessage); err != nil {
-					log.Warnf("Cannot update PV annotation for volume %v", v.Name)
+					log.WithError(err).Warnf("Cannot update PV annotation for volume %v", v.Name)
 				}
 			}
 			return nil
@@ -2332,17 +2340,13 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 			// Bypassing the precheck when hardNodeAffinity is provided, because
 			// we expect the new replica to be relocated to a specific node.
 			if hardNodeAffinity == "" {
-				if multiError, err := c.precheckCreateReplica(newReplica, rs, v); err != nil {
-					log.WithError(err).Warnf("Unable to create new replica %v", newReplica.Name)
-
-					aggregatedReplicaScheduledError := util.NewMultiError(longhorn.ErrorReplicaSchedulePrecheckNewReplicaFailed)
-					if multiError != nil {
-						aggregatedReplicaScheduledError.Append(multiError)
-					}
+				if precheckErrs := c.precheckCreateReplica(newReplica, rs, v); len(precheckErrs) > 0 {
+					log.Warnf("Precheck failed for creating new replica %v: %v", newReplica.Name, precheckErrs.Error())
 
 					v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 						longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
-						longhorn.VolumeConditionReasonReplicaSchedulingFailure, aggregatedReplicaScheduledError.Join())
+						longhorn.VolumeConditionReasonReplicaSchedulingFailure,
+						fmt.Sprintf("%v: %v", longhorn.ErrorReplicaSchedulePrecheckNewReplicaFailed, precheckErrs.JoinReasons()))
 					continue
 				}
 			}
@@ -3744,17 +3748,12 @@ func (c *VolumeController) newReplica(v *longhorn.Volume, e *longhorn.Engine, ha
 	}
 }
 
-func (c *VolumeController) precheckCreateReplica(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume) (util.MultiError, error) {
-	diskCandidates, multiError, err := c.scheduler.FindDiskCandidates(replica, replicas, volume)
-	if err != nil {
-		return nil, err
-	}
-
+func (c *VolumeController) precheckCreateReplica(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume) multierr.MultiError {
+	diskCandidates, errs := c.scheduler.FindDiskCandidates(replica, replicas, volume)
 	if len(diskCandidates) == 0 {
-		return multiError, errors.Errorf("No available disk candidates to create a new replica of size %v", replica.Spec.VolumeSize)
+		return errs
 	}
-
-	return nil, nil
+	return nil
 }
 
 func (c *VolumeController) createReplica(replica *longhorn.Replica, v *longhorn.Volume, rs map[string]*longhorn.Replica, isRebuildingReplica bool) error {

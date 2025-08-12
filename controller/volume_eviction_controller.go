@@ -19,10 +19,11 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientset "k8s.io/client-go/kubernetes"
 
+	"github.com/longhorn/go-common-libs/multierr"
+
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/scheduler"
-	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -221,18 +222,14 @@ func (vec *VolumeEvictionController) hasDiskCandidateForReplicaEviction(replicas
 		replicaCopy := replica.DeepCopy()
 		replicaCopy.Spec.HardNodeAffinity = ""
 
-		diskCandidates, multiError, err := vec.scheduler.FindDiskCandidates(replicaCopy, replicas, volume)
-		if err != nil {
-			vec.logger.WithError(err).Warnf("Failed to find disk candidates for evicting replica %q", replica.Name)
-			return false
-		}
-
+		diskCandidates, errs := vec.scheduler.FindDiskCandidates(replicaCopy, replicas, volume)
 		if len(diskCandidates) == 0 {
-			aggregatedReplicaScheduledError := util.NewMultiError(longhorn.ErrorReplicaScheduleEvictReplicaFailed)
-			if multiError != nil {
-				aggregatedReplicaScheduledError.Append(multiError)
+			if len(errs) == 0 {
+				errs = multierr.NewMultiError()
+				errs.Append(longhorn.ErrorReplicaScheduleEvictReplicaFailed, fmt.Errorf("no disk candidates found for evicting replica %q", replica.Name))
 			}
-			vec.logger.Warnf("No disk candidates for evicting replica %q: %v", replica.Name, aggregatedReplicaScheduledError.Join())
+
+			vec.logger.Warnf("No disk candidates for evicting replica %q: %v", replica.Name, errs.Error())
 			return false
 		}
 	}

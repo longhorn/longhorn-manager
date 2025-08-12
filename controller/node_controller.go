@@ -24,6 +24,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	"github.com/longhorn/go-common-libs/multierr"
+
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -1371,17 +1373,17 @@ func (nc *NodeController) deleteOrphansForEngineAndReplicaInstances(node *longho
 		return errors.Wrapf(err, "failed to list orphans to evict node %v", node.Name)
 	}
 
-	multiError := util.NewMultiError()
+	errs := multierr.NewMultiError()
 	for _, orphan := range orphans {
 		switch orphan.Spec.Type {
 		case longhorn.OrphanTypeEngineInstance, longhorn.OrphanTypeReplicaInstance:
 			if err := nc.ds.DeleteOrphan(orphan.Name); err != nil && !datastore.ErrorIsNotFound(err) {
-				multiError.Append(util.NewMultiError(fmt.Sprintf("%v: %v", orphan.Name, err)))
+				errs.Append("errors", errors.Wrapf(err, "failed to delete orphan %v", orphan.Name))
 			}
 		}
 	}
-	if len(multiError) > 0 {
-		return fmt.Errorf("node controller failed to delete instance orphans: %v", multiError.Join())
+	if len(errs) > 0 {
+		return fmt.Errorf("node controller failed to delete instance orphans: %v", errs.ErrorByReason("errors"))
 	}
 	return nil
 }
