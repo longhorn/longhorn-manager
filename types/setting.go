@@ -138,6 +138,7 @@ const (
 	SettingNameV2DataEngineHugepageLimit                                = SettingName("v2-data-engine-hugepage-limit")
 	SettingNameV2DataEngineGuaranteedInstanceManagerCPU                 = SettingName("v2-data-engine-guaranteed-instance-manager-cpu")
 	SettingNameV2DataEngineCPUMask                                      = SettingName("v2-data-engine-cpu-mask")
+	SettingNameV2DataEngineInterruptModeEnabled                         = SettingName("v2-data-engine-interrupt-mode-enabled")
 	SettingNameV2DataEngineLogLevel                                     = SettingName("v2-data-engine-log-level")
 	SettingNameV2DataEngineLogFlags                                     = SettingName("v2-data-engine-log-flags")
 	SettingNameV2DataEngineFastReplicaRebuilding                        = SettingName("v2-data-engine-fast-replica-rebuilding")
@@ -238,6 +239,7 @@ var (
 		SettingNameV2DataEngineHugepageLimit,
 		SettingNameV2DataEngineGuaranteedInstanceManagerCPU,
 		SettingNameV2DataEngineCPUMask,
+		SettingNameV2DataEngineInterruptModeEnabled,
 		SettingNameV2DataEngineLogLevel,
 		SettingNameV2DataEngineLogFlags,
 		SettingNameV2DataEngineFastReplicaRebuilding,
@@ -369,6 +371,7 @@ var (
 		SettingNameV2DataEngineHugepageLimit:                                SettingDefinitionV2DataEngineHugepageLimit,
 		SettingNameV2DataEngineGuaranteedInstanceManagerCPU:                 SettingDefinitionV2DataEngineGuaranteedInstanceManagerCPU,
 		SettingNameV2DataEngineCPUMask:                                      SettingDefinitionV2DataEngineCPUMask,
+		SettingNameV2DataEngineInterruptModeEnabled:                         SettingDefinitionV2DataEngineInterruptModeEnabled,
 		SettingNameV2DataEngineLogLevel:                                     SettingDefinitionV2DataEngineLogLevel,
 		SettingNameV2DataEngineLogFlags:                                     SettingDefinitionV2DataEngineLogFlags,
 		SettingNameV2DataEngineFastReplicaRebuilding:                        SettingDefinitionV2DataEngineFastReplicaRebuilding,
@@ -1439,6 +1442,20 @@ var (
 		Required:    true,
 		ReadOnly:    false,
 		Default:     "0x1",
+	}
+
+	SettingDefinitionV2DataEngineInterruptModeEnabled = SettingDefinition{
+		DisplayName: "Enable Interrupt Mode for V2 Data Engine",
+		Description: "Specifies whether the Storage Performance Development Kit (SPDK) target daemon should run in interrupt mode. " +
+			"This setting is applicable only when the V2 Data Engine is enabled. \n\n" +
+			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached v2 volumes. \n\n" +
+			"  - `true`: Enables interrupt mode, which may reduce CPU usage. \n\n" +
+			"  - `false`: Uses polling mode for maximum performance. \n\n",
+		Category: SettingCategoryDangerZone,
+		Type:     SettingTypeBool,
+		Required: true,
+		ReadOnly: false,
+		Default:  "false",
 	}
 
 	SettingDefinitionReplicaDiskSoftAntiAffinity = SettingDefinition{

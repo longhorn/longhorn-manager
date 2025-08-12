@@ -173,6 +173,12 @@ type InstanceManagerSpec struct {
 type V2DataEngineStatus struct {
 	// +optional
 	CPUMask string `json:"cpuMask"`
+
+	// InterruptModeEnabled indicates whether the V2 data engine is running in
+	// interrupt mode (true) or polling mode (false). Set by Longhorn manager;
+	// read-only to users.
+	// +optional
+	InterruptModeEnabled bool `json:"interruptModeEnabled"`
 }
 
 type DataEngineStatus struct {
