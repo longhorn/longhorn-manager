@@ -1376,7 +1376,7 @@ var (
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: true,
-		Default:            fmt.Sprintf("{%q:\"true\",%q:\"false\"}", longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2),
+		Default:            fmt.Sprintf("{%q:\"true\",%q:\"true\"}", longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2),
 	}
 
 	SettingDefinitionReplicaFileSyncHTTPClientTimeout = SettingDefinition{
