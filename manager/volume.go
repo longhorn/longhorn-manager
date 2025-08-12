@@ -1195,6 +1195,32 @@ func (m *VolumeManager) UpdateSnapshotMaxSize(name string, snapshotMaxSize int64
 	return v, nil
 }
 
+func (m *VolumeManager) UpdateReplicaRebuildingBandwidthLimit(name string, replicaRebuildingBandwidthLimit int64) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to update field ReplicaRebuildingBandwidthLimit for volume %s", name)
+	}()
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if v.Spec.ReplicaRebuildingBandwidthLimit == replicaRebuildingBandwidthLimit {
+		logrus.Debugf("Volume %s already set field ReplicaRebuildingBandwidthLimit to %d", v.Name, replicaRebuildingBandwidthLimit)
+		return v, nil
+	}
+
+	oldReplicaRebuildingBandwidthLimit := v.Spec.ReplicaRebuildingBandwidthLimit
+	v.Spec.ReplicaRebuildingBandwidthLimit = replicaRebuildingBandwidthLimit
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+
+	logrus.Infof("Updated volume %s field ReplicaRebuildingBandwidthLimit from %d to %d", v.Name, oldReplicaRebuildingBandwidthLimit, replicaRebuildingBandwidthLimit)
+	return v, nil
+}
+
 func (m *VolumeManager) restoreBackingImage(backupTargetName, biName, secret, secretNamespace, dataEngine string) error {
 	if secret != "" || secretNamespace != "" {
 		_, err := m.ds.GetSecretRO(secretNamespace, secret)

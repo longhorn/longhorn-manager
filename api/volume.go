@@ -173,35 +173,36 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 	}
 
 	v, err := s.m.Create(volume.Name, &longhorn.VolumeSpec{
-		Size:                        size,
-		AccessMode:                  volume.AccessMode,
-		Migratable:                  volume.Migratable,
-		Encrypted:                   volume.Encrypted,
-		Frontend:                    volume.Frontend,
-		FromBackup:                  volume.FromBackup,
-		RestoreVolumeRecurringJob:   volume.RestoreVolumeRecurringJob,
-		DataSource:                  volume.DataSource,
-		NumberOfReplicas:            volume.NumberOfReplicas,
-		ReplicaAutoBalance:          volume.ReplicaAutoBalance,
-		DataLocality:                volume.DataLocality,
-		StaleReplicaTimeout:         volume.StaleReplicaTimeout,
-		BackingImage:                volume.BackingImage,
-		Standby:                     volume.Standby,
-		RevisionCounterDisabled:     volume.RevisionCounterDisabled,
-		DiskSelector:                volume.DiskSelector,
-		NodeSelector:                volume.NodeSelector,
-		SnapshotDataIntegrity:       volume.SnapshotDataIntegrity,
-		SnapshotMaxCount:            volume.SnapshotMaxCount,
-		SnapshotMaxSize:             snapshotMaxSize,
-		BackupCompressionMethod:     volume.BackupCompressionMethod,
-		UnmapMarkSnapChainRemoved:   volume.UnmapMarkSnapChainRemoved,
-		ReplicaSoftAntiAffinity:     volume.ReplicaSoftAntiAffinity,
-		ReplicaZoneSoftAntiAffinity: volume.ReplicaZoneSoftAntiAffinity,
-		ReplicaDiskSoftAntiAffinity: volume.ReplicaDiskSoftAntiAffinity,
-		DataEngine:                  volume.DataEngine,
-		FreezeFilesystemForSnapshot: volume.FreezeFilesystemForSnapshot,
-		BackupTargetName:            volume.BackupTargetName,
-		OfflineRebuilding:           volume.OfflineRebuilding,
+		Size:                            size,
+		AccessMode:                      volume.AccessMode,
+		Migratable:                      volume.Migratable,
+		Encrypted:                       volume.Encrypted,
+		Frontend:                        volume.Frontend,
+		FromBackup:                      volume.FromBackup,
+		RestoreVolumeRecurringJob:       volume.RestoreVolumeRecurringJob,
+		DataSource:                      volume.DataSource,
+		NumberOfReplicas:                volume.NumberOfReplicas,
+		ReplicaAutoBalance:              volume.ReplicaAutoBalance,
+		DataLocality:                    volume.DataLocality,
+		StaleReplicaTimeout:             volume.StaleReplicaTimeout,
+		BackingImage:                    volume.BackingImage,
+		Standby:                         volume.Standby,
+		RevisionCounterDisabled:         volume.RevisionCounterDisabled,
+		DiskSelector:                    volume.DiskSelector,
+		NodeSelector:                    volume.NodeSelector,
+		SnapshotDataIntegrity:           volume.SnapshotDataIntegrity,
+		SnapshotMaxCount:                volume.SnapshotMaxCount,
+		SnapshotMaxSize:                 snapshotMaxSize,
+		ReplicaRebuildingBandwidthLimit: volume.ReplicaRebuildingBandwidthLimit,
+		BackupCompressionMethod:         volume.BackupCompressionMethod,
+		UnmapMarkSnapChainRemoved:       volume.UnmapMarkSnapChainRemoved,
+		ReplicaSoftAntiAffinity:         volume.ReplicaSoftAntiAffinity,
+		ReplicaZoneSoftAntiAffinity:     volume.ReplicaZoneSoftAntiAffinity,
+		ReplicaDiskSoftAntiAffinity:     volume.ReplicaDiskSoftAntiAffinity,
+		DataEngine:                      volume.DataEngine,
+		FreezeFilesystemForSnapshot:     volume.FreezeFilesystemForSnapshot,
+		BackupTargetName:                volume.BackupTargetName,
+		OfflineRebuilding:               volume.OfflineRebuilding,
 	}, volume.RecurringJobSelector)
 	if err != nil {
 		return errors.Wrap(err, "failed to create volume")
@@ -828,6 +829,33 @@ func (s *Server) VolumeUpdateSnapshotMaxSize(rw http.ResponseWriter, req *http.R
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
 		return s.m.UpdateSnapshotMaxSize(id, snapshotMaxSize)
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("failed to convert to volume %v object", id)
+	}
+	return s.responseWithVolume(rw, req, "", v)
+}
+
+func (s *Server) VolumeUpdateReplicaRebuildingBandwidthLimit(rw http.ResponseWriter, req *http.Request) error {
+	var input UpdateReplicaRebuildingBandwidthLimit
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrap(err, "failed to read ReplicaRebuildingBandwidthLimit input")
+	}
+
+	replicaRebuildingBandwidthLimit, err := util.ConvertSize(input.ReplicaRebuildingBandwidthLimit)
+	if err != nil {
+		return fmt.Errorf("failed to parse replica rebuilding bandwidth limit %v", err)
+	}
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.UpdateReplicaRebuildingBandwidthLimit(id, replicaRebuildingBandwidthLimit)
 	})
 	if err != nil {
 		return err
