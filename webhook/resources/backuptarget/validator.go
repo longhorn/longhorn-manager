@@ -13,6 +13,8 @@ import (
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
+	"github.com/longhorn/go-common-libs/multierr"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -151,30 +153,30 @@ func (b *backupTargetValidator) validateCredentialSecret(secretName string) erro
 		types.VirtualHostedStyle,
 	}
 
-	multiErr := util.NewMultiError()
+	errs := multierr.NewMultiError()
 	for _, checkKey := range checkKeyList {
 		if value, ok := secret.Data[checkKey]; ok {
 			if strings.TrimSpace(string(value)) != string(value) {
 				//ref: longhorn/longhorn#7159: appropriate warning messages for credential data
 				s := string(value)
 				if strings.HasPrefix(s, " ") {
-					multiErr[fmt.Sprintf("invalid leading whitespace in %s", checkKey)] = struct{}{}
+					errs.Append("errors", fmt.Errorf("invalid leading whitespace in %s", checkKey))
 				}
 				if strings.HasSuffix(s, " ") {
-					multiErr[fmt.Sprintf("invalid trailing whitespace in %s", checkKey)] = struct{}{}
+					errs.Append("errors", fmt.Errorf("invalid trailing whitespace in %s", checkKey))
 				}
 				if strings.HasPrefix(s, "\n") {
-					multiErr[fmt.Sprintf("invalid leading newline in %s", checkKey)] = struct{}{}
+					errs.Append("errors", fmt.Errorf("invalid leading newline in %s", checkKey))
 				}
 				if strings.HasSuffix(s, "\n") {
-					multiErr[fmt.Sprintf("invalid trailing newline in %s", checkKey)] = struct{}{}
+					errs.Append("errors", fmt.Errorf("invalid trailing newline in %s", checkKey))
 				}
 			}
 		}
 	}
 
-	if len(multiErr) > 0 {
-		return fmt.Errorf("credential validation error(s): %s", multiErr.Join())
+	if len(errs) > 0 {
+		return fmt.Errorf("credential validation error(s): %s", errs.ErrorByReason("errors"))
 	}
 
 	return nil

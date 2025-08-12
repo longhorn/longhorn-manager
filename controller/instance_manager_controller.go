@@ -30,6 +30,8 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
+	"github.com/longhorn/go-common-libs/multierr"
+
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -1711,7 +1713,7 @@ func (imc *InstanceManagerController) deleteOrphans(im *longhorn.InstanceManager
 	if err != nil {
 		return err
 	}
-	multiError := util.NewMultiError()
+	errs := multierr.NewMultiError()
 	for _, orphan := range orphanList {
 		if !orphan.DeletionTimestamp.IsZero() {
 			continue
@@ -1730,18 +1732,18 @@ func (imc *InstanceManagerController) deleteOrphans(im *longhorn.InstanceManager
 			instanceCRScheduledBack, err = imc.isReplicaOnInstanceManager(instanceManager, instanceName)
 		}
 		if err != nil {
-			multiError.Append(util.NewMultiError(fmt.Sprintf("%v: %v", orphan.Name, err)))
+			errs.Append("errors", errors.Wrapf(err, "failed to check if instance %v is scheduled on instance manager %v", instanceName, instanceManager))
 			continue
 		}
 
 		if imc.canDeleteOrphan(orphan, isInstanceManagerTerminating, autoDeleteEnabled, instanceExist, instanceCRScheduledBack, autoDeleteGracePeriod) {
 			if err := imc.deleteOrphan(orphan); err != nil {
-				multiError.Append(util.NewMultiError(fmt.Sprintf("%v: %v", orphan.Name, err)))
+				errs.Append("errors", errors.Wrapf(err, "failed to delete orphan %v", orphan.Name))
 			}
 		}
 	}
-	if len(multiError) > 0 {
-		return fmt.Errorf("failed to delete orphans: %v", multiError.Join())
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to delete orphans: %v", errs.ErrorByReason("errors"))
 	}
 	return nil
 }
