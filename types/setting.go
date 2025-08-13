@@ -36,6 +36,11 @@ const (
 	DefaultMinNumberOfCopies = 3
 
 	DefaultBackupstorePollInterval = 300 * time.Second
+
+	BackupBlockSizeMi      int64 = 1 * 1024 * 1024
+	BackupBlockSize2Mi           = 2 * BackupBlockSizeMi
+	BackupBlockSize16Mi          = 16 * BackupBlockSizeMi
+	BackupBlockSizeInvalid int64 = -1
 )
 
 type SettingType string
@@ -149,6 +154,7 @@ const (
 	SettingNameRWXVolumeFastFailover                                    = SettingName("rwx-volume-fast-failover")
 	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
 	SettingNameReplicaRebuildingBandwidthLimit                          = SettingName("replica-rebuilding-bandwidth-limit")
+	SettingNameDefaultBackupBlockSize                                   = SettingName("default-backup-block-size")
 	// These three backup target parameters are used in the "longhorn-default-resource" ConfigMap
 	// to update the default BackupTarget resource.
 	// Longhorn won't create the Setting resources for these three parameters.
@@ -261,6 +267,7 @@ var (
 		SettingNameRWXVolumeFastFailover,
 		SettingNameOfflineReplicaRebuilding,
 		SettingNameReplicaRebuildingBandwidthLimit,
+		SettingNameDefaultBackupBlockSize,
 	}
 )
 
@@ -400,6 +407,7 @@ var (
 		SettingNameRWXVolumeFastFailover:                                    SettingDefinitionRWXVolumeFastFailover,
 		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
 		SettingNameReplicaRebuildingBandwidthLimit:                          SettingDefinitionReplicaRebuildingBandwidthLimit,
+		SettingNameDefaultBackupBlockSize:                                   SettingDefinitionDefaultBackupBlockSize,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -1456,6 +1464,18 @@ var (
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 1,
 		},
+	}
+
+	SettingDefinitionDefaultBackupBlockSize = SettingDefinition{
+		DisplayName:        "Default Backup Block Size",
+		Description:        "Specifies the default backup block size, in MiB, used when creating a new volume. Supported values are 2 or 16.",
+		Category:           SettingCategoryBackup,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Choices:            []any{int64(2), int64(16)},
+		Default:            "2",
 	}
 
 	SettingDefinitionLogLevel = SettingDefinition{

@@ -3,16 +3,17 @@ package backup
 import (
 	"fmt"
 
-	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	admissionregv1 "k8s.io/api/admissionregistration/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 	"github.com/longhorn/longhorn-manager/webhook/admission"
-	werror "github.com/longhorn/longhorn-manager/webhook/error"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	werror "github.com/longhorn/longhorn-manager/webhook/error"
 )
 
 type backupValidator struct {
@@ -33,6 +34,7 @@ func (b *backupValidator) Resource() admission.Resource {
 		ObjectType: &longhorn.Backup{},
 		OperationTypes: []admissionregv1.OperationType{
 			admissionregv1.Create,
+			admissionregv1.Update,
 		},
 	}
 }
@@ -60,6 +62,10 @@ func (b *backupValidator) Create(request *admission.Request, newObj runtime.Obje
 	backupTarget, err := b.ds.GetBackupTarget(backupTargetName)
 	if err != nil {
 		return werror.NewInvalidError(fmt.Sprintf("failed to get backup target %s: %v", backupTargetName, err), "")
+	}
+
+	if err := b.validateBackupBlockSize(backup, true); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
 	}
 
 	if !backupTarget.Status.Available {
@@ -91,4 +97,43 @@ func (b *backupValidator) Create(request *admission.Request, newObj runtime.Obje
 	}
 
 	return nil
+}
+
+func (b *backupValidator) Update(request *admission.Request, oldObj runtime.Object, newObj runtime.Object) error {
+	oldBackup, ok := oldObj.(*longhorn.Backup)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("oldObj %v is not a longhorn.Backup", oldObj), "")
+	}
+	newBackup, ok := newObj.(*longhorn.Backup)
+	if !ok {
+		return werror.NewInvalidError(fmt.Sprintf("newObj %v is not a longhorn.Backup", newObj), "")
+	}
+
+	// Allow backup block size mutation only when the existing obj is not set, or correcting the existed invalid value
+	isValidOldBackupBlockSize := b.validateBackupBlockSize(oldBackup, false) == nil
+	if isValidOldBackupBlockSize && oldBackup.Spec.BackupBlockSize != newBackup.Spec.BackupBlockSize {
+		err := fmt.Errorf("changing backup block size for backup %v is not supported", oldBackup.Name)
+		return werror.NewInvalidError(err.Error(), "")
+	}
+	if err := b.validateBackupBlockSize(newBackup, false); err != nil {
+		return werror.NewInvalidError(err.Error(), "")
+	}
+
+	return nil
+}
+
+func (b *backupValidator) validateBackupBlockSize(backup *longhorn.Backup, allowInvalid bool) error {
+	// types.BackupBlockSizeInvalid indicates the block size information is unavailable. This broken backup exists but is unable to restore a volume.
+	if allowInvalid && backup.Spec.BackupBlockSize == types.BackupBlockSizeInvalid {
+		return nil
+	}
+
+	var volumeSize int64 = -1
+	if backupVolumeName, exist := backup.Labels[types.LonghornLabelBackupVolume]; exist {
+		volume, err := b.ds.GetVolumeRO(backupVolumeName)
+		if err == nil {
+			volumeSize = volume.Spec.Size
+		}
+	}
+	return types.ValidateBackupBlockSize(volumeSize, backup.Spec.BackupBlockSize)
 }

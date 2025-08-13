@@ -24,6 +24,8 @@ import (
 
 	"github.com/longhorn/backupstore"
 
+	lhbackup "github.com/longhorn/go-common-libs/backup"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -321,6 +323,11 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 		backupLabelMap := map[string]string{}
 
 		backupURL := backupstore.EncodeBackupURL(backupName, canonicalBVName, backupTargetClient.URL)
+
+		// If the block size is unavailable from legacy remote backup, the size fallback to legacy default value 2MiB.
+		// If the size value is invalid, it still creates a backup with invalid block size, but the volume restoring will be rejected by the volume validator.
+		var blockSize = types.BackupBlockSizeInvalid
+
 		if backupInfo, err := backupTargetClient.BackupGet(backupURL, backupTargetClient.Credential); err != nil && !types.ErrorIsNotFound(err) {
 			log.WithError(err).WithFields(logrus.Fields{
 				"backup":       backupName,
@@ -330,6 +337,18 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 			if backupInfo != nil && backupInfo.Labels != nil {
 				if accessMode, exist := backupInfo.Labels[types.GetLonghornLabelKey(types.LonghornLabelVolumeAccessMode)]; exist {
 					backupLabelMap[types.GetLonghornLabelKey(types.LonghornLabelVolumeAccessMode)] = accessMode
+				}
+				backupBlockSizeParam := backupInfo.Parameters[lhbackup.LonghornBackupParameterBackupBlockSize]
+				if blockSizeBytes, convertErr := util.ConvertSize(backupBlockSizeParam); convertErr != nil {
+					log.WithError(convertErr).Warnf("Invalid backup block size string from the remote backup %v: %v", backupName, backupBlockSizeParam)
+				} else if sizeErr := types.ValidateBackupBlockSize(-1, blockSizeBytes); sizeErr != nil {
+					log.WithError(sizeErr).Warnf("Invalid backup block size from the remote backup %v: %v", backupName, backupBlockSizeParam)
+				} else {
+					if blockSizeBytes == 0 {
+						blockSize = types.BackupBlockSize2Mi
+					} else {
+						blockSize = blockSizeBytes
+					}
 				}
 			}
 		}
@@ -343,7 +362,8 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 				OwnerReferences: datastore.GetOwnerReferencesForBackupVolume(backupVolume),
 			},
 			Spec: longhorn.BackupSpec{
-				Labels: backupLabelMap,
+				Labels:          backupLabelMap,
+				BackupBlockSize: blockSize,
 			},
 		}
 		if _, err = bvc.ds.CreateBackup(backup, canonicalBVName); err != nil && !apierrors.IsAlreadyExists(err) {

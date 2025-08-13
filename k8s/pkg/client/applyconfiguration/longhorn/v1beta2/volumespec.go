@@ -53,6 +53,7 @@ type VolumeSpecApplyConfiguration struct {
 	ReplicaAutoBalance              *longhornv1beta2.ReplicaAutoBalance            `json:"replicaAutoBalance,omitempty"`
 	SnapshotDataIntegrity           *longhornv1beta2.SnapshotDataIntegrity         `json:"snapshotDataIntegrity,omitempty"`
 	BackupCompressionMethod         *longhornv1beta2.BackupCompressionMethod       `json:"backupCompressionMethod,omitempty"`
+	BackupBlockSize                 *int64                                         `json:"backupBlockSize,omitempty"`
 	DataEngine                      *longhornv1beta2.DataEngineType                `json:"dataEngine,omitempty"`
 	SnapshotMaxCount                *int                                           `json:"snapshotMaxCount,omitempty"`
 	SnapshotMaxSize                 *int64                                         `json:"snapshotMaxSize,omitempty"`
@@ -293,6 +294,14 @@ func (b *VolumeSpecApplyConfiguration) WithSnapshotDataIntegrity(value longhornv
 // If called multiple times, the BackupCompressionMethod field is set to the value of the last call.
 func (b *VolumeSpecApplyConfiguration) WithBackupCompressionMethod(value longhornv1beta2.BackupCompressionMethod) *VolumeSpecApplyConfiguration {
 	b.BackupCompressionMethod = &value
+	return b
+}
+
+// WithBackupBlockSize sets the BackupBlockSize field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the BackupBlockSize field is set to the value of the last call.
+func (b *VolumeSpecApplyConfiguration) WithBackupBlockSize(value int64) *VolumeSpecApplyConfiguration {
+	b.BackupBlockSize = &value
 	return b
 }
 

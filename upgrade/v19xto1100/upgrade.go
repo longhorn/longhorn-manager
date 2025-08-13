@@ -38,6 +38,12 @@ func updateCRs(namespace string, lhClient *lhclientset.Clientset, kubeClient *cl
 	if err := upgradeSettings(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
+	if err := upgradeVolumes(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
+	if err := upgradeBackups(namespace, lhClient, resourceMaps); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -77,4 +83,48 @@ func upgradeSettings(namespace string, lhClient *lhclientset.Clientset, resource
 	}
 
 	return errors.Join(errs...)
+}
+
+func upgradeVolumes(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade volume failed")
+	}()
+
+	volumesMap, err := upgradeutil.ListAndUpdateVolumesInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn volumes during the volume upgrade")
+	}
+
+	for _, v := range volumesMap {
+		if v.Spec.BackupBlockSize == 0 {
+			v.Spec.BackupBlockSize = types.BackupBlockSize2Mi
+		}
+	}
+
+	return nil
+}
+
+func upgradeBackups(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade backup failed")
+	}()
+
+	backupsMap, err := upgradeutil.ListAndUpdateBackupsInProvidedCache(namespace, lhClient, resourceMaps)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrapf(err, "failed to list all existing Longhorn backups during the backup upgrade")
+	}
+
+	for _, b := range backupsMap {
+		if b.Spec.BackupBlockSize == 0 {
+			b.Spec.BackupBlockSize = types.BackupBlockSize2Mi
+		}
+	}
+
+	return nil
 }
