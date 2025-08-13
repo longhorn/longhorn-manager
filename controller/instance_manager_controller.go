@@ -214,7 +214,7 @@ func (imc *InstanceManagerController) isResponsibleForSetting(obj interface{}) b
 	}
 
 	return types.SettingName(setting.Name) == types.SettingNameKubernetesClusterAutoscalerEnabled ||
-		types.SettingName(setting.Name) == types.SettingNameCPUMask ||
+		types.SettingName(setting.Name) == types.SettingNameDataEngineCPUMask ||
 		types.SettingName(setting.Name) == types.SettingNameOrphanResourceAutoDeletion
 }
 
@@ -549,9 +549,9 @@ func (imc *InstanceManagerController) isDateEngineCPUMaskApplied(im *longhorn.In
 		return im.Spec.DataEngineSpec.V2.CPUMask == im.Status.DataEngineStatus.V2.CPUMask, nil
 	}
 
-	value, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameCPUMask, im.Spec.DataEngine)
+	value, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineCPUMask, im.Spec.DataEngine)
 	if err != nil {
-		return true, errors.Wrapf(err, "failed to get %v setting for updating data engine CPU mask", types.SettingNameCPUMask)
+		return true, errors.Wrapf(err, "failed to get %v setting for updating data engine CPU mask", types.SettingNameDataEngineCPUMask)
 	}
 
 	return value == im.Status.DataEngineStatus.V2.CPUMask, nil
@@ -1505,7 +1505,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 
 		cpuMask := im.Spec.DataEngineSpec.V2.CPUMask
 		if cpuMask == "" {
-			value, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameCPUMask, dataEngine)
+			value, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineCPUMask, dataEngine)
 			if err != nil {
 				return nil, err
 			}
@@ -1531,7 +1531,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 
 		podSpec.Spec.Containers[0].Args = args
 
-		hugepage, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameHugepageLimit, im.Spec.DataEngine)
+		hugepage, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineHugepageLimit, im.Spec.DataEngine)
 		if err != nil {
 			return nil, err
 		}

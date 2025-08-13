@@ -209,8 +209,8 @@ func (s *DataStore) syncConsolidatedV2DataEngineSetting(oldSettingName, newSetti
 
 func (s *DataStore) syncConsolidatedV2DataEngineSettings() error {
 	settings := map[types.SettingName]types.SettingName{
-		types.SettingNameV2DataEngineHugepageLimit: types.SettingNameHugepageLimit,
-		types.SettingNameV2DataEngineCPUMask:       types.SettingNameCPUMask,
+		types.SettingNameV2DataEngineHugepageLimit: types.SettingNameDataEngineHugepageLimit,
+		types.SettingNameV2DataEngineCPUMask:       types.SettingNameDataEngineCPUMask,
 		types.SettingNameV2DataEngineLogLevel:      types.SettingNameDataEngineLogLevel,
 		types.SettingNameV2DataEngineLogFlags:      types.SettingNameDataEngineLogFlags,
 	}
@@ -503,10 +503,10 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			}
 		}
 
-	case types.SettingNameCPUMask:
-		definition, ok := types.GetSettingDefinition(types.SettingNameCPUMask)
+	case types.SettingNameDataEngineCPUMask:
+		definition, ok := types.GetSettingDefinition(types.SettingNameDataEngineCPUMask)
 		if !ok {
-			return fmt.Errorf("setting %v is not found", types.SettingNameCPUMask)
+			return fmt.Errorf("setting %v is not found", types.SettingNameDataEngineCPUMask)
 		}
 		var values map[longhorn.DataEngineType]any
 		if types.IsJSONFormat(value) {
@@ -515,17 +515,17 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			values, err = types.ParseSettingSingleValue(definition, value)
 		}
 		if err != nil {
-			return errors.Wrapf(err, "failed to parse value %v for setting %v", value, types.SettingNameCPUMask)
+			return errors.Wrapf(err, "failed to parse value %v for setting %v", value, types.SettingNameDataEngineCPUMask)
 		}
 		for dataEngine, raw := range values {
 			cpuMask, ok := raw.(string)
 			if !ok {
-				return fmt.Errorf("setting %v value %v is not a string for data engine %v", types.SettingNameCPUMask, raw, dataEngine)
+				return fmt.Errorf("setting %v value %v is not a string for data engine %v", types.SettingNameDataEngineCPUMask, raw, dataEngine)
 			}
 
 			lhNodes, err := s.ListNodesRO()
 			if err != nil {
-				return errors.Wrapf(err, "failed to list nodes for %v setting validation for data engine %v", types.SettingNameCPUMask, dataEngine)
+				return errors.Wrapf(err, "failed to list nodes for %v setting validation for data engine %v", types.SettingNameDataEngineCPUMask, dataEngine)
 			}
 
 			// Ensure if the CPU mask can be satisfied on each node
@@ -536,7 +536,7 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 						logrus.Warnf("Kubernetes node %s not found, skipping CPU mask validation for this node for data engine %v", lhnode.Name, dataEngine)
 						continue
 					}
-					return errors.Wrapf(err, "failed to get Kubernetes node %s for %v setting validation for data engine %v", lhnode.Name, types.SettingNameCPUMask, dataEngine)
+					return errors.Wrapf(err, "failed to get Kubernetes node %s for %v setting validation for data engine %v", lhnode.Name, types.SettingNameDataEngineCPUMask, dataEngine)
 				}
 
 				if err := s.ValidateCPUMask(kubeNode, cpuMask); err != nil {
@@ -623,7 +623,7 @@ func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) (ims []*
 	}
 
 	// Check if there is enough hugepages-2Mi capacity for all nodes
-	hugepageRequestedInMiB, err := s.GetSettingAsIntByDataEngine(types.SettingNameHugepageLimit, longhorn.DataEngineTypeV2)
+	hugepageRequestedInMiB, err := s.GetSettingAsIntByDataEngine(types.SettingNameDataEngineHugepageLimit, longhorn.DataEngineTypeV2)
 	if err != nil {
 		return nil, err
 	}
