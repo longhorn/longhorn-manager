@@ -214,6 +214,10 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 		vol.BackupTargetName = backupTargetName
 	}
 
+	if backupBlockSize, ok := volOptions["backupBlockSize"]; ok {
+		vol.BackupBlockSize = backupBlockSize
+	}
+
 	if dataSource, ok := volOptions["dataSource"]; ok {
 		vol.DataSource = dataSource
 	}

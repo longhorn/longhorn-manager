@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
-
 	"k8s.io/apimachinery/pkg/runtime"
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
@@ -107,6 +106,16 @@ func (b *backupMutator) Create(request *admission.Request, newObj runtime.Object
 
 	if backup.Spec.BackupMode == longhorn.BackupModeIncrementalNone {
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupMode", "value": "%s"}`, string(longhorn.BackupModeIncremental)))
+	}
+
+	if backup.Spec.SnapshotName != "" {
+		volume, err := b.ds.GetVolumeRO(volumeName)
+		if err != nil {
+			return nil, werror.NewInvalidError(errors.Wrapf(err, "failed to get backup block size from the volume %v of backup %v", volumeName, backup.Name).Error(), "")
+		}
+		if backup.Spec.BackupBlockSize != volume.Spec.BackupBlockSize {
+			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupBlockSize", "value": "%d"}`, volume.Spec.BackupBlockSize))
+		}
 	}
 
 	backupTargetName, ok := backup.Labels[types.LonghornLabelBackupTarget]

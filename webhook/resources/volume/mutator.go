@@ -269,7 +269,7 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 
 	var patchOpsInCommon admission.PatchOps
 	var err error
-	if patchOpsInCommon, err = mutate(newObj, moreLabels); err != nil {
+	if patchOpsInCommon, err = v.mutate(newObj, moreLabels); err != nil {
 		return nil, err
 	}
 	patchOps = append(patchOps, patchOpsInCommon...)
@@ -324,7 +324,7 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 
 	var patchOpsInCommon admission.PatchOps
 	var err error
-	if patchOpsInCommon, err = mutate(newObj, moreLabels); err != nil {
+	if patchOpsInCommon, err = v.mutate(newObj, moreLabels); err != nil {
 		return nil, err
 	}
 	patchOps = append(patchOps, patchOpsInCommon...)
@@ -334,7 +334,7 @@ func (v *volumeMutator) Update(request *admission.Request, oldObj runtime.Object
 
 // mutate contains functionality shared by Create and Update.
 // Unlike mutate for other resources, this mutate takes a moreLabels map, as Create may want to add some.
-func mutate(newObj runtime.Object, moreLabels map[string]string) (admission.PatchOps, error) {
+func (v *volumeMutator) mutate(newObj runtime.Object, moreLabels map[string]string) (admission.PatchOps, error) {
 	volume := newObj.(*longhorn.Volume)
 	var patchOps admission.PatchOps
 
@@ -389,6 +389,15 @@ func mutate(newObj runtime.Object, moreLabels map[string]string) (admission.Patc
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/offlineRebuilding", "value": "%s"}`, longhorn.VolumeOfflineRebuildingIgnored))
 	}
 
+	// Mutate the backup block size to the default one if not set
+	if volume.Spec.BackupBlockSize == 0 {
+		defaultBackupBlockSize, settingErr := v.getDefaultBackupBlockSize()
+		if settingErr != nil {
+			return nil, werror.NewInvalidError(fmt.Sprintf("invalid default backup block size setting: %s", settingErr.Error()), "")
+		}
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupBlockSize", "value": "%d"}`, defaultBackupBlockSize))
+	}
+
 	labels := volume.Labels
 	if labels == nil {
 		labels = map[string]string{}
@@ -424,4 +433,15 @@ func (v *volumeMutator) getSnapshotMaxCount() (int, error) {
 		return 0, err
 	}
 	return int(c), nil
+}
+
+func (v *volumeMutator) getDefaultBackupBlockSize() (int64, error) {
+	sizeMB, err := v.ds.GetSettingAsInt(types.SettingNameDefaultBackupBlockSize)
+	if err != nil {
+		return 0, err
+	}
+	if sizeMB == 0 {
+		return types.BackupBlockSize2Mi, nil
+	}
+	return sizeMB * types.BackupBlockSizeMi, nil
 }

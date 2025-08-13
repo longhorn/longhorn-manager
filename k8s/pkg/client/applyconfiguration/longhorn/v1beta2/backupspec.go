@@ -30,6 +30,7 @@ type BackupSpecApplyConfiguration struct {
 	SnapshotName    *string                     `json:"snapshotName,omitempty"`
 	Labels          map[string]string           `json:"labels,omitempty"`
 	BackupMode      *longhornv1beta2.BackupMode `json:"backupMode,omitempty"`
+	BackupBlockSize *int64                      `json:"backupBlockSize,omitempty"`
 }
 
 // BackupSpecApplyConfiguration constructs a declarative configuration of the BackupSpec type for use with
@@ -73,5 +74,13 @@ func (b *BackupSpecApplyConfiguration) WithLabels(entries map[string]string) *Ba
 // If called multiple times, the BackupMode field is set to the value of the last call.
 func (b *BackupSpecApplyConfiguration) WithBackupMode(value longhornv1beta2.BackupMode) *BackupSpecApplyConfiguration {
 	b.BackupMode = &value
+	return b
+}
+
+// WithBackupBlockSize sets the BackupBlockSize field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the BackupBlockSize field is set to the value of the last call.
+func (b *BackupSpecApplyConfiguration) WithBackupBlockSize(value int64) *BackupSpecApplyConfiguration {
+	b.BackupBlockSize = &value
 	return b
 }

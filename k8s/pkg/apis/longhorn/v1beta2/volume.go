@@ -285,6 +285,11 @@ type VolumeSpec struct {
 	// +kubebuilder:validation:Enum=none;lz4;gzip
 	// +optional
 	BackupCompressionMethod BackupCompressionMethod `json:"backupCompressionMethod"`
+	// BackupBlockSize indicate the block size to create backups. The block size is immutable.
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Enum="2097152";"16777216"
+	// +optional
+	BackupBlockSize int64 `json:"backupBlockSize,string"`
 	// +kubebuilder:validation:Enum=v1;v2
 	// +optional
 	DataEngine DataEngineType `json:"dataEngine"`

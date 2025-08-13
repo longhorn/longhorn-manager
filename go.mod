@@ -70,7 +70,7 @@ require (
 	github.com/longhorn/go-common-libs v0.0.0-20250809060702-aec53ac032f0
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250713130221-69ce6f3960fa
 	github.com/longhorn/go-spdk-helper v0.0.3-0.20250809103353-695fd752a98b
-	github.com/longhorn/longhorn-engine v1.9.1
+	github.com/longhorn/longhorn-engine v1.10.0-dev-20250713.0.20250728071833-3932ded2f139
 	github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250629.0.20250711075830-f3729b840178
 	github.com/longhorn/longhorn-share-manager v1.9.1
 	github.com/pkg/errors v0.9.1
