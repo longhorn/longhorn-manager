@@ -136,8 +136,8 @@ const (
 	SettingNameDisableSnapshotPurge                                     = SettingName("disable-snapshot-purge")
 	SettingNameV1DataEngine                                             = SettingName("v1-data-engine")
 	SettingNameV2DataEngine                                             = SettingName("v2-data-engine")
-	SettingNameHugepageLimit                                            = SettingName("hugepage-limit")
-	SettingNameCPUMask                                                  = SettingName("cpu-mask")
+	SettingNameDataEngineHugepageLimit                                  = SettingName("data-engine-hugepage-limit")
+	SettingNameDataEngineCPUMask                                        = SettingName("data-engine-cpu-mask")
 	SettingNameDataEngineLogLevel                                       = SettingName("data-engine-log-level")
 	SettingNameDataEngineLogFlags                                       = SettingName("data-engine-log-flags")
 	SettingNameFreezeFilesystemForSnapshot                              = SettingName("freeze-filesystem-for-snapshot")
@@ -243,8 +243,8 @@ var (
 		SettingNameLogLevel,
 		SettingNameV1DataEngine,
 		SettingNameV2DataEngine,
-		SettingNameHugepageLimit,
-		SettingNameCPUMask,
+		SettingNameDataEngineHugepageLimit,
+		SettingNameDataEngineCPUMask,
 		SettingNameDataEngineLogLevel,
 		SettingNameDataEngineLogFlags,
 		SettingNameSnapshotDataIntegrity,
@@ -267,7 +267,7 @@ var replacedSettingNames = map[SettingName]bool{
 	SettingNameOrphanAutoDeletion:                       true, // SettingNameOrphanResourceAutoDeletion
 	SettingNameV2DataEngineHugepageLimit:                true, // SettingNameHugepageLimit
 	SettingNameV2DataEngineGuaranteedInstanceManagerCPU: true, // SettingNameGuaranteedInstanceManagerCPU
-	SettingNameV2DataEngineCPUMask:                      true, // SettingNameCPUMask
+	SettingNameV2DataEngineCPUMask:                      true, // SettingNameDataEngineCPUMask
 	SettingNameV2DataEngineLogLevel:                     true, // SettingNameDataEngineLogLevel
 	SettingNameV2DataEngineLogFlags:                     true, // SettingNameDataEngineLogFlags
 	SettingNameV2DataEngineFastReplicaRebuilding:        true, // SettingNameFastReplicaRebuildEnabled
@@ -383,8 +383,8 @@ var (
 		SettingNameLogLevel:                                                 SettingDefinitionLogLevel,
 		SettingNameV1DataEngine:                                             SettingDefinitionV1DataEngine,
 		SettingNameV2DataEngine:                                             SettingDefinitionV2DataEngine,
-		SettingNameHugepageLimit:                                            SettingDefinitionHugepageLimit,
-		SettingNameCPUMask:                                                  SettingDefinitionCPUMask,
+		SettingNameDataEngineHugepageLimit:                                  SettingDefinitionDataEngineHugepageLimit,
+		SettingNameDataEngineCPUMask:                                        SettingDefinitionDataEngineCPUMask,
 		SettingNameDataEngineLogLevel:                                       SettingDefinitionDataEngineLogLevel,
 		SettingNameDataEngineLogFlags:                                       SettingDefinitionDataEngineLogFlags,
 		SettingNameReplicaDiskSoftAntiAffinity:                              SettingDefinitionReplicaDiskSoftAntiAffinity,
@@ -1494,9 +1494,9 @@ var (
 		Default:            "false",
 	}
 
-	SettingDefinitionHugepageLimit = SettingDefinition{
-		DisplayName:        "Hugepage Size",
-		Description:        "Hugepage size in MiB for v2 data engine",
+	SettingDefinitionDataEngineHugepageLimit = SettingDefinition{
+		DisplayName:        "Data Engine Hugepage Limit",
+		Description:        "Applies only to the V2 Data Engine. Specifies the hugepage size, in MiB, for the Storage Performance Development Kit (SPDK) target daemon. The default value is 2048 MiB.\n\n",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeInt,
 		Required:           true,
@@ -1508,9 +1508,9 @@ var (
 		},
 	}
 
-	SettingDefinitionCPUMask = SettingDefinition{
-		DisplayName:        "CPU Mask",
-		Description:        "CPU cores on which the Storage Performance Development Kit (SPDK) target daemon should run. The SPDK target daemon is located in each Instance Manager pod. Ensure that the number of cores is less than or equal to the guaranteed Instance Manager CPUs for the V2 Data Engine. The default value is 0x1. \n\n",
+	SettingDefinitionDataEngineCPUMask = SettingDefinition{
+		DisplayName:        "Data Engine CPU Mask",
+		Description:        "Applies only to the V2 Data Engine. Specifies the CPU cores on which the Storage Performance Development Kit (SPDK) target daemon runs. The daemon is deployed in each Instance Manager pod. Ensure that the number of assigned cores does not exceed the guaranteed Instance Manager CPUs for the V2 Data Engine. The default value is 0x1.\n\n",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeString,
 		Required:           true,
@@ -1565,7 +1565,7 @@ var (
 
 	SettingDefinitionDataEngineLogLevel = SettingDefinition{
 		DisplayName:        "Data Engine Log Level",
-		Description:        "The log level used in the Data Engine. Supported values are: Error, Warning, Notice, Info and Debug. By default Notice.",
+		Description:        "Applies only to the V2 Data Engine. Specifies the log level for the Storage Performance Development Kit (SPDK) target daemon. Supported values are: Error, Warning, Notice, Info, and Debug. The default is Notice.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeString,
 		Required:           true,
@@ -1577,7 +1577,7 @@ var (
 
 	SettingDefinitionDataEngineLogFlags = SettingDefinition{
 		DisplayName:        "Data Engine Log Flags",
-		Description:        "The log flags used in the Data Engine.",
+		Description:        "Applies only to the V2 Data Engine. Specifies the log flags for the Storage Performance Development Kit (SPDK) target daemon.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeString,
 		Required:           false,
@@ -1588,7 +1588,7 @@ var (
 
 	SettingDefinitionReplicaRebuildingBandwidthLimit = SettingDefinition{
 		DisplayName: "Replica Rebuilding Bandwidth Limit",
-		Description: "This setting specifies the default write bandwidth limit (in megabytes per second) for volume replica rebuilding when using the v2 data engine (SPDK). " +
+		Description: "Applies only to the V2 Data Engine. Specifies the default write bandwidth limit, in megabytes per second (MB/s), for volume replica rebuilding." +
 			"If this value is set to 0, there will be no write bandwidth limitation. " +
 			"Individual volumes can override this setting by specifying their own rebuilding bandwidth limit.",
 		Category:           SettingCategoryGeneral,
