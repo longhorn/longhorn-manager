@@ -113,8 +113,8 @@ github.com/longhorn/backing-image-manager v1.9.1 h1:amT5BDkBJnnmlJYfPfA2m0o3zdvA
 github.com/longhorn/backing-image-manager v1.9.1/go.mod h1:a9UGK3bsd1Gj0kbN5tKev5/uaSwjOvoHqZzLqMMqnU0=
 github.com/longhorn/backupstore v0.0.0-20250804022317-794abf817297 h1:KVnOHFT3wuwgyhV7/Rue8NMt13NkpIkZ3B7eVR0C8yM=
 github.com/longhorn/backupstore v0.0.0-20250804022317-794abf817297/go.mod h1:j5TiUyvRBYaSaPY/p6GIFOk1orfWcngk9hIWxDDJ5mg=
-github.com/longhorn/go-common-libs v0.0.0-20250809060702-aec53ac032f0 h1:AwMOBDw2ZwQb6rlUh8eHJVaaoUNq82160klizoo+l6o=
-github.com/longhorn/go-common-libs v0.0.0-20250809060702-aec53ac032f0/go.mod h1:Vnwia0RtGsDJ/lgYCXtIGgMTtpROsHQcDi7Hs7+BZgM=
+github.com/longhorn/go-common-libs v0.0.0-20250812101836-470cb7301942 h1:H9hPMP02ZJSzXa7/0TOG3HQAhieDAGQuqnePSlj+BbQ=
+github.com/longhorn/go-common-libs v0.0.0-20250812101836-470cb7301942/go.mod h1:fuYzrb6idZgLrh8yePy6fA+LVB+z5fl4zZbBAU09+0g=
 github.com/longhorn/go-iscsi-helper v0.0.0-20250713130221-69ce6f3960fa h1:J0DyOSate7Vf+zlHYB5WrCTWJfshEsSJDp161GjBmhI=
 github.com/longhorn/go-iscsi-helper v0.0.0-20250713130221-69ce6f3960fa/go.mod h1:fN9H878mLjAqSbPxEXpOCwvTlt43h+/CZxXrQlX/iMQ=
 github.com/longhorn/go-spdk-helper v0.0.2 h1:cK7obTyCI1ytm0SMaUEjwsHeX6hK+82kPjuAQkf+Tvg=
@@ -125,8 +125,8 @@ github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250518.0.20250519060
 github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250518.0.20250519060809-955e286a739c/go.mod h1:8gfwbZRPzNazr3eLPm3/JS2pQIdflj0yFn1J4E4vLy8=
 github.com/longhorn/longhorn-share-manager v1.9.1 h1:ObRP8lnNOncRg9podwrPrqObBXJsQDlPfNwslxkBRhM=
 github.com/longhorn/longhorn-share-manager v1.9.1/go.mod h1:vYqc2o+6xTlgdlweIeED4Do/n+0/4I3AbD6jQ5OHfcg=
-github.com/longhorn/types v0.0.0-20250710112743-e3a1e9e2a9c1 h1:Lox/NlebN9jOc9JXokB270iyeMlyUw9gRePBy5LKwz0=
-github.com/longhorn/types v0.0.0-20250710112743-e3a1e9e2a9c1/go.mod h1:3bhH8iUZGZT3kA/B1DYMGzpdzfacqeexOt4SHo4/C2I=
+github.com/longhorn/types v0.0.0-20250810143617-8a478c078cb8 h1:NkYbz5Bs+zNW7l3lS9xG9ktUPcNCgmG1tEYzOCk7rdM=
+github.com/longhorn/types v0.0.0-20250810143617-8a478c078cb8/go.mod h1:jbvGQ66V//M9Jp2DC6k+BR74QxSK0Hp/L2FRJ/SBxFA=
 github.com/mailru/easyjson v0.9.0 h1:PrnmzHw7262yW8sTBwxi1PdJA3Iw/EKBa8psRf7d9a4=
 github.com/mailru/easyjson v0.9.0/go.mod h1:1+xMtQp2MRNVL/V1bOzuP3aP8VNwRW55fQUto+XFtTU=
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
