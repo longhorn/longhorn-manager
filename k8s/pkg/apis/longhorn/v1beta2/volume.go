@@ -45,6 +45,15 @@ const (
 	VolumeDataSourceTypeVolume   = VolumeDataSourceType("volume")
 )
 
+// +kubebuilder:validation:Enum="";full-copy;linked-clone
+type CloneMode string
+
+const (
+	CloneModeNone        = CloneMode("")
+	CloneModeFullCopy    = CloneMode("full-copy")
+	CloneModeLinkedClone = CloneMode("linked-clone")
+)
+
 // +kubebuilder:validation:Enum=disabled;best-effort;strict-local
 type DataLocality string
 
@@ -92,10 +101,11 @@ const (
 type VolumeCloneState string
 
 const (
-	VolumeCloneStateEmpty     = VolumeCloneState("")
-	VolumeCloneStateInitiated = VolumeCloneState("initiated")
-	VolumeCloneStateCompleted = VolumeCloneState("completed")
-	VolumeCloneStateFailed    = VolumeCloneState("failed")
+	VolumeCloneStateEmpty                        = VolumeCloneState("")
+	VolumeCloneStateInitiated                    = VolumeCloneState("initiated")
+	VolumeCloneStateCopyCompletedAwaitingHealthy = VolumeCloneState("copy-completed-awaiting-healthy")
+	VolumeCloneStateCompleted                    = VolumeCloneState("completed")
+	VolumeCloneStateFailed                       = VolumeCloneState("failed")
 )
 
 type VolumeCloneStatus struct {
@@ -234,6 +244,8 @@ type VolumeSpec struct {
 	RestoreVolumeRecurringJob RestoreVolumeRecurringJobType `json:"restoreVolumeRecurringJob"`
 	// +optional
 	DataSource VolumeDataSource `json:"dataSource"`
+	// +optional
+	CloneMode CloneMode `json:"cloneMode,omitempty"`
 	// +optional
 	DataLocality DataLocality `json:"dataLocality"`
 	// +optional
