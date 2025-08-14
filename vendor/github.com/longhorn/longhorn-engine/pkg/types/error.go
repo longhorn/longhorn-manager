@@ -2,7 +2,6 @@ package types
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"google.golang.org/grpc/status"
@@ -19,11 +18,7 @@ const (
 
 const (
 	CannotRequestHashingSnapshotPrefix = "cannot request hashing snapshot"
-
-	ErrorStringNoSpaceLeftOnDevice = "no space left on device"
 )
-
-var ErrNoSpaceLeftOnDevice = errors.New(ErrorStringNoSpaceLeftOnDevice)
 
 type Error struct {
 	Code            ErrorCode `json:"code"`

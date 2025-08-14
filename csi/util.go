@@ -225,6 +225,7 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 
 	if dataSource, ok := volOptions["dataSource"]; ok {
 		vol.DataSource = dataSource
+		vol.CloneMode = volOptions["cloneMode"]
 	}
 
 	if backingImage, ok := volOptions[longhorn.BackingImageParameterName]; ok {

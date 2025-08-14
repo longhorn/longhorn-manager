@@ -216,8 +216,8 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 
 	expectedAttachmentTickets := make(map[string]bool)
 
-	// case 1: this volume is target of a clone
-	if isTargetVolumeOfAnActiveCloning(vol) {
+	// case 1: this volume is target of a clone and the cloning hasn't completed
+	if isCloneTargetActive(vol) {
 		cloningAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, volName)
 		createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, vol.Status.OwnerID, longhorn.TrueValue, longhorn.AttacherTypeVolumeCloneController)
 		expectedAttachmentTickets[cloningAttachmentTicketID] = true
@@ -230,7 +230,7 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 	}
 	for _, v := range vols {
 		attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
-		if isTargetVolumeOfAnActiveCloning(v) && types.GetVolumeName(v.Spec.DataSource) == vol.Name {
+		if isCloneTargetCopyInProgress(v) && types.GetVolumeName(v.Spec.DataSource) == vol.Name {
 			createOrUpdateAttachmentTicket(va, attachmentTicketID, vol.Status.OwnerID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
 			expectedAttachmentTickets[attachmentTicketID] = true
 		}
