@@ -128,3 +128,5 @@ func upgradeBackups(namespace string, lhClient *lhclientset.Clientset, resourceM
 
 	return nil
 }
+
+// TODO: upgrade clondeMode from "" to full-clone
