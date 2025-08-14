@@ -155,6 +155,8 @@ const (
 	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
 	SettingNameReplicaRebuildingBandwidthLimit                          = SettingName("replica-rebuilding-bandwidth-limit")
 	SettingNameDefaultBackupBlockSize                                   = SettingName("default-backup-block-size")
+	SettingNameInstanceManagerPodLivenessProbeTimeout                   = SettingName("instance-manager-pod-liveness-probe-timeout")
+
 	// These three backup target parameters are used in the "longhorn-default-resource" ConfigMap
 	// to update the default BackupTarget resource.
 	// Longhorn won't create the Setting resources for these three parameters.
@@ -268,6 +270,7 @@ var (
 		SettingNameOfflineReplicaRebuilding,
 		SettingNameReplicaRebuildingBandwidthLimit,
 		SettingNameDefaultBackupBlockSize,
+		SettingNameInstanceManagerPodLivenessProbeTimeout,
 	}
 )
 
@@ -408,6 +411,7 @@ var (
 		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
 		SettingNameReplicaRebuildingBandwidthLimit:                          SettingDefinitionReplicaRebuildingBandwidthLimit,
 		SettingNameDefaultBackupBlockSize:                                   SettingDefinitionDefaultBackupBlockSize,
+		SettingNameInstanceManagerPodLivenessProbeTimeout:                   SettingDefinitionInstanceManagerPodLivenessProbeTimeout,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -1476,6 +1480,27 @@ var (
 		DataEngineSpecific: false,
 		Choices:            []any{int64(2), int64(16)},
 		Default:            "2",
+	}
+
+<<<<<<< Updated upstream
+	SettingDefinitionInstanceManagerPodProbeTimeout = SettingDefinition{
+		DisplayName:        "Instance Manager Pod Probe Timeout",
+		Description:        "In seconds. The setting specifies the timeout for the instance manager pod probe. The default value is 4 seconds.",
+=======
+	SettingDefinitionInstanceManagerPodLivenessProbeTimeout = SettingDefinition{
+		DisplayName:        "Instance Manager Pod Liveness Probe Timeout",
+		Description:        "In seconds. The setting specifies the timeout for the instance manager pod liveness probe. The default value is 10 seconds.",
+>>>>>>> Stashed changes
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "4",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 1,
+			ValueIntRangeMaximum: 60,
+		},
 	}
 
 	SettingDefinitionLogLevel = SettingDefinition{

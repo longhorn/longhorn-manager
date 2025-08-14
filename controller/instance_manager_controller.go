@@ -1577,6 +1577,11 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 	}
 	livenessProbeCommand := fmt.Sprintf("test $(%s; echo $?) -eq 0", strings.Join(livenessProbes, " && "))
 
+	podProbeTimeout, err := imc.ds.GetSettingAsInt(types.SettingNameInstanceManagerPodLivenessProbeTimeout)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameInstanceManagerPodLivenessProbeTimeout)
+	}
+
 	podSpec.Spec.Containers[0].LivenessProbe = &corev1.Probe{
 		ProbeHandler: corev1.ProbeHandler{
 			Exec: &corev1.ExecAction{
@@ -1588,8 +1593,8 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			},
 		},
 		InitialDelaySeconds: datastore.IMPodProbeInitialDelay,
-		TimeoutSeconds:      datastore.IMPodProbeTimeoutSeconds,
-		PeriodSeconds:       datastore.IMPodProbePeriodSeconds,
+		TimeoutSeconds:      int32(podProbeTimeout),
+		PeriodSeconds:       int32(podProbeTimeout + 1),
 		FailureThreshold:    datastore.IMPodLivenessProbeFailureThreshold,
 	}
 
