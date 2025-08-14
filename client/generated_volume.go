@@ -19,6 +19,8 @@ type Volume struct {
 
 	BackupTargetName string `json:"backupTargetName,omitempty" yaml:"backup_target_name,omitempty"`
 
+	CloneMode string `json:"cloneMode,omitempty" yaml:"clone_mode,omitempty"`
+
 	CloneStatus CloneStatus `json:"cloneStatus,omitempty" yaml:"clone_status,omitempty"`
 
 	Conditions map[string]interface{} `json:"conditions,omitempty" yaml:"conditions,omitempty"`

@@ -178,6 +178,7 @@ func (m *VolumeManager) Create(name string, spec *longhorn.VolumeSpec, recurring
 			FromBackup:                      spec.FromBackup,
 			RestoreVolumeRecurringJob:       spec.RestoreVolumeRecurringJob,
 			DataSource:                      spec.DataSource,
+			CloneMode:                       spec.CloneMode,
 			NumberOfReplicas:                spec.NumberOfReplicas,
 			ReplicaAutoBalance:              spec.ReplicaAutoBalance,
 			DataLocality:                    spec.DataLocality,

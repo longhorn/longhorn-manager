@@ -770,6 +770,11 @@ func (c *SystemBackupController) backupVolumesAlways(systemBackup *longhorn.Syst
 			continue
 		}
 
+		if volume.Spec.CloneMode == longhorn.CloneModeLinkedClone {
+			c.logger.Infof("Skip backup for linked-clone volume %v", volume.Name)
+			continue
+		}
+
 		volumeBackupName := bsutil.GenerateName("system-backup")
 
 		snapshot, err := c.createVolumeSnapshot(ctx, volume, volumeBackupName)
@@ -803,6 +808,11 @@ func (c *SystemBackupController) backupVolumesIfNotPresent(systemBackup *longhor
 		// be restored from the source volume's backup.
 		if volume.Status.IsStandby {
 			c.logger.Infof("Skip backup for standby volume %v", volume.Name)
+			continue
+		}
+
+		if volume.Spec.CloneMode == longhorn.CloneModeLinkedClone {
+			c.logger.Infof("Skip backup for linked-clone volume %v", volume.Name)
 			continue
 		}
 
