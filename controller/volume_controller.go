@@ -858,17 +858,33 @@ func (c *VolumeController) ReconcileEngineReplicaState(v *longhorn.Volume, es ma
 			continue
 		}
 
-		if status.State == engineapi.ProcessStateComplete && v.Status.CloneStatus.State != longhorn.VolumeCloneStateCompleted {
-			v.Status.CloneStatus.State = longhorn.VolumeCloneStateCompleted
-			c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonVolumeCloneCompleted,
-				"finished cloning snapshot %v from source volume %v",
-				v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume)
-		} else if status.State == engineapi.ProcessStateError && v.Status.CloneStatus.State != longhorn.VolumeCloneStateFailed {
-			v.Status.CloneStatus.State = longhorn.VolumeCloneStateFailed
-			c.eventRecorder.Eventf(v, corev1.EventTypeWarning, constant.EventReasonVolumeCloneFailed,
-				"failed to clone snapshot %v from source volume %v: %v",
-				v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume, status.Error)
+		if !isCloneTargetCopyInProgress(v) {
+			// No longer need to sync up with the engine
+			continue
 		}
+
+		switch status.State {
+		case engineapi.ProcessStateComplete:
+			v.Status.CloneStatus.State = longhorn.VolumeCloneStateCopyCompletedAwaitingHealthy
+			c.eventRecorder.Eventf(
+				v, corev1.EventTypeWarning, constant.EventReasonVolumeCloneCopyCompleteAwaitingHealthy,
+				"copied the data from snapshot %v of the source volume %v. Waiting for volume to be fully HA before marking the clone as completed",
+				v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume)
+		case engineapi.ProcessStateError:
+			v.Status.CloneStatus.State = longhorn.VolumeCloneStateFailed
+			c.eventRecorder.Eventf(
+				v, corev1.EventTypeWarning, constant.EventReasonVolumeCloneFailed,
+				"failed to clone snapshot %v from source volume %v: %v",
+				v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume, status.Error,
+			)
+		}
+	}
+	if v.Status.CloneStatus.State == longhorn.VolumeCloneStateCopyCompletedAwaitingHealthy &&
+		v.Status.Robustness == longhorn.VolumeRobustnessHealthy {
+		v.Status.CloneStatus.State = longhorn.VolumeCloneStateCompleted
+		c.eventRecorder.Eventf(v, corev1.EventTypeNormal, constant.EventReasonVolumeCloneCompleted,
+			"finished cloning snapshot %v from source volume %v",
+			v.Status.CloneStatus.Snapshot, v.Status.CloneStatus.SourceVolume)
 	}
 
 	return nil
@@ -2924,10 +2940,15 @@ func (c *VolumeController) getReplenishReplicasCount(v *longhorn.Volume, rs map[
 	}
 
 	// Only create 1 replica while volume is in cloning process
-	if isCloningRequiredAndNotCompleted(v) {
+	if isCloneTargetNotCompletedAndNotCopyCompleted(v) {
 		if usableCount == 0 {
 			return 1, ""
 		}
+		return 0, ""
+	}
+	newVolume := len(rs) == 0
+	// For linked-cloned volume, never create new replica after the first time
+	if v.Spec.CloneMode == longhorn.CloneModeLinkedClone && !newVolume {
 		return 0, ""
 	}
 
@@ -3518,11 +3539,11 @@ func (c *VolumeController) updateRequestedDataSourceForVolumeCloning(v *longhorn
 		return nil
 	}
 
-	if !isCloningRequiredAndNotCompleted(v) {
+	if !isCloneTargetNotCompletedAndNotCopyCompleted(v) {
 		e.Spec.RequestedDataSource = ""
 	}
 
-	if isTargetVolumeOfAnActiveCloning(v) && v.Status.CloneStatus.State == longhorn.VolumeCloneStateInitiated {
+	if isCloneTargetCopyInProgress(v) && v.Status.CloneStatus.State == longhorn.VolumeCloneStateInitiated {
 		ds, err := types.NewVolumeDataSource(longhorn.VolumeDataSourceTypeSnapshot, map[string]string{
 			types.VolumeNameKey:   v.Status.CloneStatus.SourceVolume,
 			types.SnapshotNameKey: v.Status.CloneStatus.Snapshot,

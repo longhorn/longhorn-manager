@@ -224,7 +224,8 @@ func (e *EngineSimulator) BackupRestore(engine *longhorn.Engine, backupTarget, b
 }
 
 func (e *EngineSimulator) SnapshotClone(engine *longhorn.Engine, snapshotName, fromEngineAddress, fromVolumeName,
-	fromEngineName string, fileSyncHTTPClientTimeout, grpcTimeoutSeconds int64) error {
+	fromEngineName string, fileSyncHTTPClientTimeout, grpcTimeoutSeconds int64,
+	srcReplicaName, srcReplicaAddress, dstReplicaName, dstReplicaAddress, cloneMode string) error {
 	return errors.New(ErrNotImplement)
 }
 

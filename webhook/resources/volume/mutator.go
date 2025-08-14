@@ -248,6 +248,12 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/revisionCounterDisabled", "value": true}`)
 	}
 
+	if volume.Spec.DataSource != "" {
+		if volume.Spec.CloneMode == longhorn.CloneModeEmpty {
+			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/cloneMode", "value": "%s"}`, longhorn.CloneModeFullCopy))
+		}
+	}
+
 	// TODO: Remove the mutations below after they are implemented for SPDK volumes
 	if types.IsDataEngineV2(volume.Spec.DataEngine) {
 		if volume.Spec.ReplicaAutoBalance != longhorn.ReplicaAutoBalanceDisabled {

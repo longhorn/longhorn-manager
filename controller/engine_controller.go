@@ -1117,7 +1117,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 
 	var snapshotCloneStatusMap map[string]*longhorn.SnapshotCloneStatus
-	if cliAPIVersion >= engineapi.CLIVersionFive {
+	if types.IsDataEngineV2(engine.Spec.DataEngine) || cliAPIVersion >= engineapi.CLIVersionFive {
 		if snapshotCloneStatusMap, err = engineClientProxy.SnapshotCloneStatus(engine); err != nil {
 			return err
 		}
@@ -1665,8 +1665,31 @@ func cloneSnapshot(engine *longhorn.Engine, engineClientProxy engineapi.EngineCl
 	}
 
 	sourceEngineControllerURL := imutil.GetURL(sourceEngine.Status.StorageIP, sourceEngine.Status.Port)
+
+	vol, err := ds.GetVolumeRO(engine.Spec.VolumeName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get volume %v for cloneSnapshot", engine.Spec.VolumeName)
+	}
+
+	dstReplicaName, dstReplicaAddress := "", ""
+	srcReplicaName, srcReplicaAddress := "", ""
+	if types.IsDataEngineV2(engine.Spec.DataEngine) {
+		dstR, err := singleReplicaForVolume(ds, engine.Spec.VolumeName)
+		if err != nil {
+			return err
+		}
+		srcVolName := types.GetVolumeName(vol.Spec.DataSource)
+		srcR, err := chooseSrcReplica(ds, dstR, vol.Spec.CloneMode, srcVolName)
+		if err != nil {
+			return err
+		}
+		dstReplicaName, dstReplicaAddress = dstR.Name, imutil.GetURL(dstR.Status.StorageIP, dstR.Status.Port)
+		srcReplicaName, srcReplicaAddress = srcR.Name, imutil.GetURL(srcR.Status.StorageIP, srcR.Status.Port)
+	}
+
 	if err := engineClientProxy.SnapshotClone(engine, snapshotName, sourceEngineControllerURL,
-		sourceEngine.Spec.VolumeName, sourceEngine.Name, fileSyncHTTPClientTimeout, grpcTimeoutSeconds); err != nil {
+		sourceEngine.Spec.VolumeName, sourceEngine.Name, fileSyncHTTPClientTimeout, grpcTimeoutSeconds,
+		srcReplicaName, srcReplicaAddress, dstReplicaName, dstReplicaAddress, string(vol.Spec.CloneMode)); err != nil {
 		// There is only 1 replica during volume cloning,
 		// so if the cloning failed, it must be that the replica failed to clone.
 		for _, status := range engine.Status.CloneStatus {
@@ -1676,6 +1699,49 @@ func cloneSnapshot(engine *longhorn.Engine, engineClientProxy engineapi.EngineCl
 		return err
 	}
 	return nil
+}
+
+func singleReplicaForVolume(ds *datastore.DataStore, volName string) (*longhorn.Replica, error) {
+	rs, err := ds.ListVolumeReplicasRO(volName)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to list replicas for volume %s", volName)
+	}
+	if len(rs) != 1 {
+		return nil, errors.Errorf("expected exactly 1 replica for volume %s, got %d", volName, len(rs))
+	}
+	for _, r := range rs {
+		return r, nil
+	}
+	return nil, errors.Errorf("no replicas found for volume %s", volName)
+}
+
+func chooseSrcReplica(ds *datastore.DataStore, dstR *longhorn.Replica, cloneMode longhorn.CloneMode, srcVolName string) (*longhorn.Replica, error) {
+	srcRs, err := ds.ListVolumeReplicasRO(srcVolName)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get replicas of src volume %v", srcVolName)
+	}
+	for rName, r := range srcRs {
+		if r.Spec.NodeID == "" ||
+			r.Spec.DiskID == "" ||
+			r.Spec.FailedAt != "" ||
+			r.Spec.HealthyAt == "" {
+			delete(srcRs, rName)
+		}
+	}
+	for _, r := range srcRs {
+		if r.Spec.NodeID == dstR.Spec.NodeID && r.Spec.DiskID == dstR.Spec.DiskID {
+			return r, nil
+		}
+	}
+	if cloneMode == longhorn.CloneModeLinkedClone {
+		return nil, fmt.Errorf("can not find the src replica on the same "+
+			"node %v and same disk %v as the dst replica", dstR.Spec.NodeID, dstR.Spec.DiskID)
+	}
+	// Not linked-clone mode, any replica is good
+	for _, r := range srcRs {
+		return r, nil
+	}
+	return nil, fmt.Errorf("can not find any healthy src replica")
 }
 
 func (ec *EngineController) ReconcileEngineState(e *longhorn.Engine) error {

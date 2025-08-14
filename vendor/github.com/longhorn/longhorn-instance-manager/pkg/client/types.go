@@ -10,6 +10,10 @@ import (
 const (
 	dataEngineV1 = "v1"
 	dataEngineV2 = "v2"
+
+	cloneModeEmpty       = ""
+	cloneModeFullCopy    = "full-copy"
+	cloneModeLinkedClone = "linked-clone"
 )
 
 type TaskError struct {
@@ -44,4 +48,11 @@ func getDataEngine(dataEngine string) string {
 	}
 
 	return rpc.DataEngine_name[int32(rpc.DataEngine_DATA_ENGINE_V1)]
+}
+
+func getCloneMode(cloneMode string) rpc.CloneMode {
+	if cloneMode == cloneModeLinkedClone {
+		return rpc.CloneMode_CLONE_MODE_SNAPSHOT_LINKED
+	}
+	return rpc.CloneMode_CLONE_MODE_FULL_COPY
 }

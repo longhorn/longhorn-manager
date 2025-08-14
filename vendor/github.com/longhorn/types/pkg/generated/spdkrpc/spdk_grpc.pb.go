@@ -49,6 +49,11 @@ const (
 	SPDKService_ReplicaBackupStatus_FullMethodName                       = "/spdkrpc.SPDKService/ReplicaBackupStatus"
 	SPDKService_ReplicaBackupRestore_FullMethodName                      = "/spdkrpc.SPDKService/ReplicaBackupRestore"
 	SPDKService_ReplicaRestoreStatus_FullMethodName                      = "/spdkrpc.SPDKService/ReplicaRestoreStatus"
+	SPDKService_ReplicaSnapshotCloneDstStart_FullMethodName              = "/spdkrpc.SPDKService/ReplicaSnapshotCloneDstStart"
+	SPDKService_ReplicaSnapshotCloneDstStatusCheck_FullMethodName        = "/spdkrpc.SPDKService/ReplicaSnapshotCloneDstStatusCheck"
+	SPDKService_ReplicaSnapshotCloneSrcStart_FullMethodName              = "/spdkrpc.SPDKService/ReplicaSnapshotCloneSrcStart"
+	SPDKService_ReplicaSnapshotCloneSrcStatusCheck_FullMethodName        = "/spdkrpc.SPDKService/ReplicaSnapshotCloneSrcStatusCheck"
+	SPDKService_ReplicaSnapshotCloneSrcFinish_FullMethodName             = "/spdkrpc.SPDKService/ReplicaSnapshotCloneSrcFinish"
 	SPDKService_EngineCreate_FullMethodName                              = "/spdkrpc.SPDKService/EngineCreate"
 	SPDKService_EngineDelete_FullMethodName                              = "/spdkrpc.SPDKService/EngineDelete"
 	SPDKService_EngineGet_FullMethodName                                 = "/spdkrpc.SPDKService/EngineGet"
@@ -64,6 +69,7 @@ const (
 	SPDKService_EngineSnapshotHashStatus_FullMethodName                  = "/spdkrpc.SPDKService/EngineSnapshotHashStatus"
 	SPDKService_EngineSnapshotHashCancel_FullMethodName                  = "/spdkrpc.SPDKService/EngineSnapshotHashCancel"
 	SPDKService_EngineSnapshotHashLockState_FullMethodName               = "/spdkrpc.SPDKService/EngineSnapshotHashLockState"
+	SPDKService_EngineSnapshotClone_FullMethodName                       = "/spdkrpc.SPDKService/EngineSnapshotClone"
 	SPDKService_EngineList_FullMethodName                                = "/spdkrpc.SPDKService/EngineList"
 	SPDKService_EngineWatch_FullMethodName                               = "/spdkrpc.SPDKService/EngineWatch"
 	SPDKService_EngineReplicaList_FullMethodName                         = "/spdkrpc.SPDKService/EngineReplicaList"
@@ -125,6 +131,11 @@ type SPDKServiceClient interface {
 	ReplicaBackupStatus(ctx context.Context, in *BackupStatusRequest, opts ...grpc.CallOption) (*BackupStatusResponse, error)
 	ReplicaBackupRestore(ctx context.Context, in *ReplicaBackupRestoreRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ReplicaRestoreStatus(ctx context.Context, in *ReplicaRestoreStatusRequest, opts ...grpc.CallOption) (*ReplicaRestoreStatusResponse, error)
+	ReplicaSnapshotCloneDstStart(ctx context.Context, in *ReplicaSnapshotCloneDstStartRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ReplicaSnapshotCloneDstStatusCheck(ctx context.Context, in *ReplicaSnapshotCloneDstStatusCheckRequest, opts ...grpc.CallOption) (*ReplicaSnapshotCloneDstStatusCheckResponse, error)
+	ReplicaSnapshotCloneSrcStart(ctx context.Context, in *ReplicaSnapshotCloneSrcStartRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ReplicaSnapshotCloneSrcStatusCheck(ctx context.Context, in *ReplicaSnapshotCloneSrcStatusCheckRequest, opts ...grpc.CallOption) (*ReplicaSnapshotCloneSrcStatusCheckResponse, error)
+	ReplicaSnapshotCloneSrcFinish(ctx context.Context, in *ReplicaSnapshotCloneSrcFinishRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineCreate(ctx context.Context, in *EngineCreateRequest, opts ...grpc.CallOption) (*Engine, error)
 	EngineDelete(ctx context.Context, in *EngineDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineGet(ctx context.Context, in *EngineGetRequest, opts ...grpc.CallOption) (*Engine, error)
@@ -140,6 +151,7 @@ type SPDKServiceClient interface {
 	EngineSnapshotHashStatus(ctx context.Context, in *SnapshotHashStatusRequest, opts ...grpc.CallOption) (*EngineSnapshotHashStatusResponse, error)
 	EngineSnapshotHashCancel(ctx context.Context, in *SnapshotHashCancelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineSnapshotHashLockState(ctx context.Context, in *SnapshotHashLockStateRequest, opts ...grpc.CallOption) (*SnapshotHashLockStateResponse, error)
+	EngineSnapshotClone(ctx context.Context, in *EngineSnapshotCloneRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	EngineList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*EngineListResponse, error)
 	EngineWatch(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (SPDKService_EngineWatchClient, error)
 	EngineReplicaList(ctx context.Context, in *EngineReplicaListRequest, opts ...grpc.CallOption) (*EngineReplicaListResponse, error)
@@ -460,6 +472,51 @@ func (c *sPDKServiceClient) ReplicaRestoreStatus(ctx context.Context, in *Replic
 	return out, nil
 }
 
+func (c *sPDKServiceClient) ReplicaSnapshotCloneDstStart(ctx context.Context, in *ReplicaSnapshotCloneDstStartRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_ReplicaSnapshotCloneDstStart_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ReplicaSnapshotCloneDstStatusCheck(ctx context.Context, in *ReplicaSnapshotCloneDstStatusCheckRequest, opts ...grpc.CallOption) (*ReplicaSnapshotCloneDstStatusCheckResponse, error) {
+	out := new(ReplicaSnapshotCloneDstStatusCheckResponse)
+	err := c.cc.Invoke(ctx, SPDKService_ReplicaSnapshotCloneDstStatusCheck_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ReplicaSnapshotCloneSrcStart(ctx context.Context, in *ReplicaSnapshotCloneSrcStartRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_ReplicaSnapshotCloneSrcStart_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ReplicaSnapshotCloneSrcStatusCheck(ctx context.Context, in *ReplicaSnapshotCloneSrcStatusCheckRequest, opts ...grpc.CallOption) (*ReplicaSnapshotCloneSrcStatusCheckResponse, error) {
+	out := new(ReplicaSnapshotCloneSrcStatusCheckResponse)
+	err := c.cc.Invoke(ctx, SPDKService_ReplicaSnapshotCloneSrcStatusCheck_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) ReplicaSnapshotCloneSrcFinish(ctx context.Context, in *ReplicaSnapshotCloneSrcFinishRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_ReplicaSnapshotCloneSrcFinish_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *sPDKServiceClient) EngineCreate(ctx context.Context, in *EngineCreateRequest, opts ...grpc.CallOption) (*Engine, error) {
 	out := new(Engine)
 	err := c.cc.Invoke(ctx, SPDKService_EngineCreate_FullMethodName, in, out, opts...)
@@ -589,6 +646,15 @@ func (c *sPDKServiceClient) EngineSnapshotHashCancel(ctx context.Context, in *Sn
 func (c *sPDKServiceClient) EngineSnapshotHashLockState(ctx context.Context, in *SnapshotHashLockStateRequest, opts ...grpc.CallOption) (*SnapshotHashLockStateResponse, error) {
 	out := new(SnapshotHashLockStateResponse)
 	err := c.cc.Invoke(ctx, SPDKService_EngineSnapshotHashLockState_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *sPDKServiceClient) EngineSnapshotClone(ctx context.Context, in *EngineSnapshotCloneRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, SPDKService_EngineSnapshotClone_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -908,6 +974,11 @@ type SPDKServiceServer interface {
 	ReplicaBackupStatus(context.Context, *BackupStatusRequest) (*BackupStatusResponse, error)
 	ReplicaBackupRestore(context.Context, *ReplicaBackupRestoreRequest) (*emptypb.Empty, error)
 	ReplicaRestoreStatus(context.Context, *ReplicaRestoreStatusRequest) (*ReplicaRestoreStatusResponse, error)
+	ReplicaSnapshotCloneDstStart(context.Context, *ReplicaSnapshotCloneDstStartRequest) (*emptypb.Empty, error)
+	ReplicaSnapshotCloneDstStatusCheck(context.Context, *ReplicaSnapshotCloneDstStatusCheckRequest) (*ReplicaSnapshotCloneDstStatusCheckResponse, error)
+	ReplicaSnapshotCloneSrcStart(context.Context, *ReplicaSnapshotCloneSrcStartRequest) (*emptypb.Empty, error)
+	ReplicaSnapshotCloneSrcStatusCheck(context.Context, *ReplicaSnapshotCloneSrcStatusCheckRequest) (*ReplicaSnapshotCloneSrcStatusCheckResponse, error)
+	ReplicaSnapshotCloneSrcFinish(context.Context, *ReplicaSnapshotCloneSrcFinishRequest) (*emptypb.Empty, error)
 	EngineCreate(context.Context, *EngineCreateRequest) (*Engine, error)
 	EngineDelete(context.Context, *EngineDeleteRequest) (*emptypb.Empty, error)
 	EngineGet(context.Context, *EngineGetRequest) (*Engine, error)
@@ -923,6 +994,7 @@ type SPDKServiceServer interface {
 	EngineSnapshotHashStatus(context.Context, *SnapshotHashStatusRequest) (*EngineSnapshotHashStatusResponse, error)
 	EngineSnapshotHashCancel(context.Context, *SnapshotHashCancelRequest) (*emptypb.Empty, error)
 	EngineSnapshotHashLockState(context.Context, *SnapshotHashLockStateRequest) (*SnapshotHashLockStateResponse, error)
+	EngineSnapshotClone(context.Context, *EngineSnapshotCloneRequest) (*emptypb.Empty, error)
 	EngineList(context.Context, *emptypb.Empty) (*EngineListResponse, error)
 	EngineWatch(*emptypb.Empty, SPDKService_EngineWatchServer) error
 	EngineReplicaList(context.Context, *EngineReplicaListRequest) (*EngineReplicaListResponse, error)
@@ -1043,6 +1115,21 @@ func (UnimplementedSPDKServiceServer) ReplicaBackupRestore(context.Context, *Rep
 func (UnimplementedSPDKServiceServer) ReplicaRestoreStatus(context.Context, *ReplicaRestoreStatusRequest) (*ReplicaRestoreStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReplicaRestoreStatus not implemented")
 }
+func (UnimplementedSPDKServiceServer) ReplicaSnapshotCloneDstStart(context.Context, *ReplicaSnapshotCloneDstStartRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReplicaSnapshotCloneDstStart not implemented")
+}
+func (UnimplementedSPDKServiceServer) ReplicaSnapshotCloneDstStatusCheck(context.Context, *ReplicaSnapshotCloneDstStatusCheckRequest) (*ReplicaSnapshotCloneDstStatusCheckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReplicaSnapshotCloneDstStatusCheck not implemented")
+}
+func (UnimplementedSPDKServiceServer) ReplicaSnapshotCloneSrcStart(context.Context, *ReplicaSnapshotCloneSrcStartRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReplicaSnapshotCloneSrcStart not implemented")
+}
+func (UnimplementedSPDKServiceServer) ReplicaSnapshotCloneSrcStatusCheck(context.Context, *ReplicaSnapshotCloneSrcStatusCheckRequest) (*ReplicaSnapshotCloneSrcStatusCheckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReplicaSnapshotCloneSrcStatusCheck not implemented")
+}
+func (UnimplementedSPDKServiceServer) ReplicaSnapshotCloneSrcFinish(context.Context, *ReplicaSnapshotCloneSrcFinishRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReplicaSnapshotCloneSrcFinish not implemented")
+}
 func (UnimplementedSPDKServiceServer) EngineCreate(context.Context, *EngineCreateRequest) (*Engine, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EngineCreate not implemented")
 }
@@ -1087,6 +1174,9 @@ func (UnimplementedSPDKServiceServer) EngineSnapshotHashCancel(context.Context, 
 }
 func (UnimplementedSPDKServiceServer) EngineSnapshotHashLockState(context.Context, *SnapshotHashLockStateRequest) (*SnapshotHashLockStateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EngineSnapshotHashLockState not implemented")
+}
+func (UnimplementedSPDKServiceServer) EngineSnapshotClone(context.Context, *EngineSnapshotCloneRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EngineSnapshotClone not implemented")
 }
 func (UnimplementedSPDKServiceServer) EngineList(context.Context, *emptypb.Empty) (*EngineListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EngineList not implemented")
@@ -1704,6 +1794,96 @@ func _SPDKService_ReplicaRestoreStatus_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SPDKService_ReplicaSnapshotCloneDstStart_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReplicaSnapshotCloneDstStartRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ReplicaSnapshotCloneDstStart(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ReplicaSnapshotCloneDstStart_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ReplicaSnapshotCloneDstStart(ctx, req.(*ReplicaSnapshotCloneDstStartRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ReplicaSnapshotCloneDstStatusCheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReplicaSnapshotCloneDstStatusCheckRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ReplicaSnapshotCloneDstStatusCheck(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ReplicaSnapshotCloneDstStatusCheck_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ReplicaSnapshotCloneDstStatusCheck(ctx, req.(*ReplicaSnapshotCloneDstStatusCheckRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ReplicaSnapshotCloneSrcStart_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReplicaSnapshotCloneSrcStartRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ReplicaSnapshotCloneSrcStart(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ReplicaSnapshotCloneSrcStart_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ReplicaSnapshotCloneSrcStart(ctx, req.(*ReplicaSnapshotCloneSrcStartRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ReplicaSnapshotCloneSrcStatusCheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReplicaSnapshotCloneSrcStatusCheckRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ReplicaSnapshotCloneSrcStatusCheck(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ReplicaSnapshotCloneSrcStatusCheck_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ReplicaSnapshotCloneSrcStatusCheck(ctx, req.(*ReplicaSnapshotCloneSrcStatusCheckRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_ReplicaSnapshotCloneSrcFinish_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReplicaSnapshotCloneSrcFinishRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).ReplicaSnapshotCloneSrcFinish(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_ReplicaSnapshotCloneSrcFinish_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).ReplicaSnapshotCloneSrcFinish(ctx, req.(*ReplicaSnapshotCloneSrcFinishRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _SPDKService_EngineCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(EngineCreateRequest)
 	if err := dec(in); err != nil {
@@ -1970,6 +2150,24 @@ func _SPDKService_EngineSnapshotHashLockState_Handler(srv interface{}, ctx conte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SPDKServiceServer).EngineSnapshotHashLockState(ctx, req.(*SnapshotHashLockStateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SPDKService_EngineSnapshotClone_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EngineSnapshotCloneRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).EngineSnapshotClone(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_EngineSnapshotClone_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).EngineSnapshotClone(ctx, req.(*EngineSnapshotCloneRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2568,6 +2766,26 @@ var SPDKService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _SPDKService_ReplicaRestoreStatus_Handler,
 		},
 		{
+			MethodName: "ReplicaSnapshotCloneDstStart",
+			Handler:    _SPDKService_ReplicaSnapshotCloneDstStart_Handler,
+		},
+		{
+			MethodName: "ReplicaSnapshotCloneDstStatusCheck",
+			Handler:    _SPDKService_ReplicaSnapshotCloneDstStatusCheck_Handler,
+		},
+		{
+			MethodName: "ReplicaSnapshotCloneSrcStart",
+			Handler:    _SPDKService_ReplicaSnapshotCloneSrcStart_Handler,
+		},
+		{
+			MethodName: "ReplicaSnapshotCloneSrcStatusCheck",
+			Handler:    _SPDKService_ReplicaSnapshotCloneSrcStatusCheck_Handler,
+		},
+		{
+			MethodName: "ReplicaSnapshotCloneSrcFinish",
+			Handler:    _SPDKService_ReplicaSnapshotCloneSrcFinish_Handler,
+		},
+		{
 			MethodName: "EngineCreate",
 			Handler:    _SPDKService_EngineCreate_Handler,
 		},
@@ -2626,6 +2844,10 @@ var SPDKService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "EngineSnapshotHashLockState",
 			Handler:    _SPDKService_EngineSnapshotHashLockState_Handler,
+		},
+		{
+			MethodName: "EngineSnapshotClone",
+			Handler:    _SPDKService_EngineSnapshotClone_Handler,
 		},
 		{
 			MethodName: "EngineList",

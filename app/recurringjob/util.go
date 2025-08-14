@@ -96,6 +96,11 @@ func filterVolumesForJob(allowDetached bool, volumes []longhorn.Volume, filterNa
 			continue
 		}
 
+		if volume.Spec.CloneMode == longhorn.CloneModeLinkedClone {
+			logger.Infof("Skipping linked-clone volume %v", volume.Name)
+			continue
+		}
+
 		if volume.Status.RestoreRequired {
 			logger.Infof("Bypassed to create job for %v volume during restoring from the backup", volume.Name)
 			continue

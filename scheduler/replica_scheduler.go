@@ -71,8 +71,8 @@ func (rcs *ReplicaScheduler) ScheduleReplica(replica *longhorn.Replica, replicas
 	// there's no disk that fit for current replica
 	if len(diskCandidates) == 0 {
 		if len(multiError) == 0 {
-			return nil, util.NewMultiError(fmt.Sprintf("no disk candidates found for replica %v with size %v and with hardNodeAffinity %q",
-				replica.Name, replica.Spec.VolumeSize, replica.Spec.HardNodeAffinity)), nil
+			return nil, util.NewMultiError(fmt.Sprintf("no disk candidates found for replica %v with size %v, hardNodeAffinity %v, data source %v",
+				replica.Name, replica.Spec.VolumeSize, replica.Spec.HardNodeAffinity, volume.Spec.DataSource)), nil
 		}
 
 		return nil, multiError, nil
@@ -134,6 +134,24 @@ func (rcs *ReplicaScheduler) FindDiskCandidates(replica *longhorn.Replica, repli
 		return nil, nil, err
 	}
 
+	linkedClone := volume.Spec.CloneMode == longhorn.CloneModeLinkedClone
+	linkedCloneSrcReplicaNodes := map[string]bool{}
+	linkedCloneSrcReplicaDisks := map[string]bool{}
+	if linkedClone {
+		linkedCloneSrcReplicaNodes, linkedCloneSrcReplicaDisks, err = rcs.getSrcReplicaNodesAndDisks(volume)
+		if err != nil {
+			return nil, nil, err
+		}
+		for nodeName := range nodesInfo {
+			if _, ok := linkedCloneSrcReplicaNodes[nodeName]; !ok {
+				delete(nodesInfo, nodeName)
+			}
+		}
+		if len(nodesInfo) == 0 {
+			return nil, util.NewMultiError("no eligible nodes for linked-clone (no healthy source replica nodes available)"), nil
+		}
+	}
+
 	nodeCandidates, multiError := rcs.getNodeCandidates(nodesInfo, replica)
 	if len(nodeCandidates) == 0 {
 		if len(multiError) == 0 {
@@ -156,6 +174,11 @@ func (rcs *ReplicaScheduler) FindDiskCandidates(replica *longhorn.Replica, repli
 			if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
 				continue
 			}
+			if linkedClone {
+				if _, ok := linkedCloneSrcReplicaDisks[diskStatus.DiskUUID]; !ok {
+					continue // only disks that host the source replicas
+				}
+			}
 			disks[diskStatus.DiskUUID] = struct{}{}
 		}
 		nodeDisksMap[node.Name] = disks
@@ -163,6 +186,26 @@ func (rcs *ReplicaScheduler) FindDiskCandidates(replica *longhorn.Replica, repli
 
 	diskCandidates, multiError := rcs.getDiskCandidates(nodeCandidates, nodeDisksMap, replicas, volume, true, false)
 	return diskCandidates, multiError, nil
+}
+
+func (rcs *ReplicaScheduler) getSrcReplicaNodesAndDisks(volume *longhorn.Volume) (map[string]bool, map[string]bool, error) {
+	srcRNodes := map[string]bool{}
+	srcRDisks := map[string]bool{}
+	srcVolName := types.GetVolumeName(volume.Spec.DataSource)
+	srcRs, err := rcs.ds.ListVolumeReplicasRO(srcVolName)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, r := range srcRs {
+		if r.Spec.NodeID != "" &&
+			r.Spec.DiskID != "" &&
+			r.Spec.FailedAt == "" &&
+			r.Spec.HealthyAt != "" {
+			srcRNodes[r.Spec.NodeID] = true
+			srcRDisks[r.Spec.DiskID] = true
+		}
+	}
+	return srcRNodes, srcRDisks, nil
 }
 
 func (rcs *ReplicaScheduler) getNodeCandidates(nodesInfo map[string]*longhorn.Node, schedulingReplica *longhorn.Replica) (nodeCandidates map[string]*longhorn.Node, multiError util.MultiError) {

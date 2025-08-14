@@ -109,3 +109,5 @@ func upgradeSettings(namespace string, lhClient *lhclientset.Clientset, resource
 
 	return errors.Join(errs...)
 }
+
+// TODO: upgrade clondeMode from "" to full-clone

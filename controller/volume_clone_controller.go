@@ -216,23 +216,26 @@ func (vcc *VolumeCloneController) reconcile(volName string) (err error) {
 
 	expectedAttachmentTickets := make(map[string]bool)
 
-	// case 1: this volume is target of a clone
-	if isTargetVolumeOfAnActiveCloning(vol) {
+	// case 1: this volume is target of a clone and the cloning hasn't completed
+	if isCloneTargetActive(vol) {
 		cloningAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, volName)
 		createOrUpdateAttachmentTicket(va, cloningAttachmentTicketID, vol.Status.OwnerID, longhorn.TrueValue, longhorn.AttacherTypeVolumeCloneController)
 		expectedAttachmentTickets[cloningAttachmentTicketID] = true
 	}
 
 	// case 2: this volume is source of a clone
-	vols, err := vcc.ds.ListVolumes()
-	if err != nil {
-		return err
-	}
-	for _, v := range vols {
-		attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
-		if isTargetVolumeOfAnActiveCloning(v) && types.GetVolumeName(v.Spec.DataSource) == vol.Name {
-			createOrUpdateAttachmentTicket(va, attachmentTicketID, vol.Status.OwnerID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
-			expectedAttachmentTickets[attachmentTicketID] = true
+	// Only need to auto attach source volume when doing cloning of v1 volume
+	if types.IsDataEngineV1(vol.Spec.DataEngine) {
+		vols, err := vcc.ds.ListVolumes()
+		if err != nil {
+			return err
+		}
+		for _, v := range vols {
+			attachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeCloneController, v.Name)
+			if isCloneTargetCopyInProgress(v) && types.GetVolumeName(v.Spec.DataSource) == vol.Name {
+				createOrUpdateAttachmentTicket(va, attachmentTicketID, vol.Status.OwnerID, longhorn.AnyValue, longhorn.AttacherTypeVolumeCloneController)
+				expectedAttachmentTickets[attachmentTicketID] = true
+			}
 		}
 	}
 

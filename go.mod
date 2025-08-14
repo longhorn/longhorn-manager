@@ -20,6 +20,11 @@ toolchain go1.24.6
 // necessary. However, it is better to include all of them for consistency.
 
 replace (
+	github.com/longhorn/longhorn-instance-manager => ../longhorn-instance-manager
+	github.com/longhorn/types => ../types
+)
+
+replace (
 	k8s.io/api => k8s.io/api v0.33.3
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.33.3
 	k8s.io/apimachinery => k8s.io/apimachinery v0.33.3
@@ -67,7 +72,7 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.22.0
 	github.com/longhorn/backing-image-manager v1.9.1
 	github.com/longhorn/backupstore v0.0.0-20250804022317-794abf817297
-	github.com/longhorn/go-common-libs v0.0.0-20250809060702-aec53ac032f0
+	github.com/longhorn/go-common-libs v0.0.0-20250810153634-32dffea4c15d
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250713130221-69ce6f3960fa
 	github.com/longhorn/go-spdk-helper v0.0.3-0.20250809103353-695fd752a98b
 	github.com/longhorn/longhorn-engine v1.9.1
@@ -111,7 +116,7 @@ require (
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/google/gnostic-models v0.6.9 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/longhorn/types v0.0.0-20250710112743-e3a1e9e2a9c1 // indirect
+	github.com/longhorn/types v0.0.0-20250812040111-bee68b0a4c07 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/moby/term v0.5.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
