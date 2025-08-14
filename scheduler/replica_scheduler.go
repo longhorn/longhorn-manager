@@ -136,7 +136,20 @@ func (rcs *ReplicaScheduler) FindDiskCandidates(replica *longhorn.Replica, repli
 		return nil, errs
 	}
 
-	nodeCandidates, errs := rcs.getNodeCandidates(nodes, replica)
+	linkedClone := volume.Spec.CloneMode == longhorn.CloneModeLinkedClone
+	linkedCloneSrcReplicaNodes := map[string]bool{}
+	linkedCloneSrcReplicaDisks := map[string]bool{}
+	if linkedClone {
+		linkedCloneSrcReplicaNodes, linkedCloneSrcReplicaDisks, err = rcs.getSrcReplicaNodesAndDisks(volume)
+		if err != nil {
+			errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed,
+				errors.Wrapf(err, "failed to list replicas of the src volume of volume %v", replica.Spec.VolumeName))
+			return nil, errs
+		}
+	}
+
+	nodeCandidates, errs := rcs.getNodeCandidates(nodes, replica, linkedClone, linkedCloneSrcReplicaNodes)
+
 	if len(nodeCandidates) == 0 {
 		return nil, errs
 	}
@@ -155,6 +168,11 @@ func (rcs *ReplicaScheduler) FindDiskCandidates(replica *longhorn.Replica, repli
 			if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
 				continue
 			}
+			if linkedClone {
+				if _, ok := linkedCloneSrcReplicaDisks[diskStatus.DiskUUID]; !ok {
+					continue // only disks that host the source replicas
+				}
+			}
 			disks[diskStatus.DiskUUID] = struct{}{}
 		}
 		nodeDisksMap[node.Name] = disks
@@ -163,7 +181,27 @@ func (rcs *ReplicaScheduler) FindDiskCandidates(replica *longhorn.Replica, repli
 	return rcs.getDiskCandidates(nodeCandidates, nodeDisksMap, replicas, volume, true, false)
 }
 
-func (rcs *ReplicaScheduler) getNodeCandidates(nodes map[string]*longhorn.Node, schedulingReplica *longhorn.Replica) (nodeCandidates map[string]*longhorn.Node, errs multierr.MultiError) {
+func (rcs *ReplicaScheduler) getSrcReplicaNodesAndDisks(volume *longhorn.Volume) (map[string]bool, map[string]bool, error) {
+	srcRNodes := map[string]bool{}
+	srcRDisks := map[string]bool{}
+	srcVolName := types.GetVolumeName(volume.Spec.DataSource)
+	srcRs, err := rcs.ds.ListVolumeReplicasRO(srcVolName)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, r := range srcRs {
+		if r.Spec.NodeID != "" &&
+			r.Spec.DiskID != "" &&
+			r.Spec.FailedAt == "" &&
+			r.Spec.HealthyAt != "" {
+			srcRNodes[r.Spec.NodeID] = true
+			srcRDisks[r.Spec.DiskID] = true
+		}
+	}
+	return srcRNodes, srcRDisks, nil
+}
+
+func (rcs *ReplicaScheduler) getNodeCandidates(nodes map[string]*longhorn.Node, schedulingReplica *longhorn.Replica, linkedClone bool, linkedCloneSrcReplicaNodes map[string]bool) (nodeCandidates map[string]*longhorn.Node, errs multierr.MultiError) {
 	errs = multierr.NewMultiError()
 
 	// If the replica has a hard node affinity, filter nodes based on that.
@@ -176,6 +214,19 @@ func (rcs *ReplicaScheduler) getNodeCandidates(nodes map[string]*longhorn.Node, 
 		}
 		nodes = map[string]*longhorn.Node{}
 		nodes[schedulingReplica.Spec.HardNodeAffinity] = node
+	}
+
+	if linkedClone {
+		for nodeName := range nodes {
+			if _, ok := linkedCloneSrcReplicaNodes[nodeName]; !ok {
+				delete(nodeCandidates, nodeName)
+			}
+		}
+		if len(nodes) == 0 {
+			errs.Append(longhorn.ErrorReplicaScheduleLinkedCloneNotSatisfied,
+				fmt.Errorf("failed to find nodes for scheduling linked-cloned replica %v", schedulingReplica.Name))
+			return map[string]*longhorn.Node{}, errs
+		}
 	}
 
 	if len(nodes) == 0 {
