@@ -36,6 +36,7 @@ type Volume struct {
 	FromBackup                      string                                 `json:"fromBackup"`
 	RestoreVolumeRecurringJob       longhorn.RestoreVolumeRecurringJobType `json:"restoreVolumeRecurringJob"`
 	DataSource                      longhorn.VolumeDataSource              `json:"dataSource"`
+	CloneMode                       longhorn.CloneMode                     `json:"cloneMode"`
 	DataLocality                    longhorn.DataLocality                  `json:"dataLocality"`
 	StaleReplicaTimeout             int                                    `json:"staleReplicaTimeout"`
 	State                           longhorn.VolumeState                   `json:"state"`
@@ -1188,6 +1189,10 @@ func volumeSchema(volume *client.Schema) {
 	volumeDataSource.Create = true
 	volume.ResourceFields["dataSource"] = volumeDataSource
 
+	volumeCloneMode := volume.ResourceFields["cloneMode"]
+	volumeCloneMode.Create = true
+	volume.ResourceFields["cloneMode"] = volumeCloneMode
+
 	volumeNumberOfReplicas := volume.ResourceFields["numberOfReplicas"]
 	volumeNumberOfReplicas.Create = true
 	volumeNumberOfReplicas.Required = true
@@ -1628,6 +1633,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		LastAttachedBy:                  v.Spec.LastAttachedBy,
 		FromBackup:                      v.Spec.FromBackup,
 		DataSource:                      v.Spec.DataSource,
+		CloneMode:                       v.Spec.CloneMode,
 		NumberOfReplicas:                v.Spec.NumberOfReplicas,
 		ReplicaAutoBalance:              v.Spec.ReplicaAutoBalance,
 		DataLocality:                    v.Spec.DataLocality,

@@ -7,6 +7,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -66,7 +67,7 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.accessMode")
 	}
 
-	if err := validateReplicaCount(volume.Spec.DataLocality, volume.Spec.NumberOfReplicas); err != nil {
+	if err := validateReplicaCount(volume.Spec.CloneMode, volume.Spec.DataLocality, volume.Spec.NumberOfReplicas); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.numberOfReplicas")
 	}
 
@@ -132,6 +133,17 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError("BUG: Invalid empty Setting.EngineImage", "")
 	}
 
+	if volume.Spec.DataSource == "" && volume.Spec.CloneMode != longhorn.CloneModeEmpty {
+		return werror.NewInvalidError("BUG: CloneMode is non-empty while DataSource is empty", ".spec.cloneMode")
+	}
+	if types.IsDataEngineV1(volume.Spec.DataEngine) && volume.Spec.CloneMode == longhorn.CloneModeLinkedClone {
+		return werror.NewInvalidError(fmt.Sprintf("BUG: v1 data engine does not support clone mode %v", longhorn.CloneModeLinkedClone), ".spec.cloneMode")
+	}
+
+	if err := verifyVolumeDataSource(v.ds, volume); err != nil {
+		return err
+	}
+
 	if !volume.Spec.Standby {
 		if types.IsDataEngineV1(volume.Spec.DataEngine) &&
 			volume.Spec.Frontend != longhorn.VolumeFrontendBlockDev &&
@@ -183,13 +195,6 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.backupTargetName")
 	}
 
-	// TODO: remove this check when we support the following features for SPDK volumes
-	if types.IsDataEngineV2(volume.Spec.DataEngine) {
-		if types.IsDataFromVolume(volume.Spec.DataSource) {
-			return werror.NewInvalidError("clone is not supported for data engine v2", "")
-		}
-	}
-
 	return nil
 }
 
@@ -211,7 +216,7 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.dataLocality")
 	}
 
-	if err := validateReplicaCount(newVolume.Spec.DataLocality, newVolume.Spec.NumberOfReplicas); err != nil {
+	if err := validateReplicaCount(newVolume.Spec.CloneMode, newVolume.Spec.DataLocality, newVolume.Spec.NumberOfReplicas); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.numberOfReplicas")
 	}
 
@@ -241,6 +246,14 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 
 	if err := types.ValidateOfflineRebuild(newVolume.Spec.OfflineRebuilding); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.offlineRebuilding")
+	}
+
+	if err := validateImmutable(".spec.dataSource", oldVolume.Spec.DataSource, newVolume.Spec.DataSource); err != nil {
+		return werror.NewInvalidError(err.Error(), ".spec.dataSource")
+	}
+
+	if err := validateImmutable(".spec.cloneMode", oldVolume.Spec.CloneMode, newVolume.Spec.CloneMode); err != nil {
+		return werror.NewInvalidError(err.Error(), ".spec.cloneMode")
 	}
 
 	if oldVolume.Spec.Image != newVolume.Spec.Image {
@@ -482,13 +495,18 @@ func validateDataLocalityUpdate(oldVolume *longhorn.Volume, newVolume *longhorn.
 	return nil
 }
 
-func validateReplicaCount(dataLocality longhorn.DataLocality, replicaCount int) error {
+func validateReplicaCount(cloneMode longhorn.CloneMode, dataLocality longhorn.DataLocality, replicaCount int) error {
 	if err := types.ValidateReplicaCount(replicaCount); err != nil {
 		return werror.NewInvalidError(err.Error(), "")
 	}
 	if dataLocality == longhorn.DataLocalityStrictLocal {
 		if replicaCount != 1 {
 			return werror.NewInvalidError(fmt.Sprintf("number of replica count should be 1 when data locality is %v", longhorn.DataLocalityStrictLocal), "")
+		}
+	}
+	if cloneMode == longhorn.CloneModeLinkedClone {
+		if replicaCount != 1 {
+			return werror.NewInvalidError(fmt.Sprintf("number of replica count must be 1 when clone mode %v", longhorn.CloneModeLinkedClone), "")
 		}
 	}
 	return nil
@@ -584,5 +602,47 @@ func (v *volumeValidator) validateUpdatingSnapshotMaxCountAndSize(oldVolume, new
 	if currentSnapshotCount > newVolume.Spec.SnapshotMaxCount || (newVolume.Spec.SnapshotMaxSize != 0 && currentTotalSnapshotSize > newVolume.Spec.SnapshotMaxSize) {
 		return werror.NewInvalidError("can't make snapshotMaxCount or snapshotMaxSize be smaller than current usage, please remove snapshots first", "")
 	}
+	return nil
+}
+
+func validateImmutable(field string, oldVal, newVal any) error {
+	if !apiequality.Semantic.DeepEqual(oldVal, newVal) {
+		return fmt.Errorf("%s is immutable (old=%+v, new=%+v)", field, oldVal, newVal)
+	}
+	return nil
+}
+
+func verifyVolumeDataSource(ds *datastore.DataStore, vol *longhorn.Volume) error {
+	if vol.Spec.DataSource == "" {
+		return nil
+	}
+	if !types.IsValidVolumeDataSource(vol.Spec.DataSource) {
+		return werror.NewInvalidError(fmt.Sprintf("invalid volume data source %v", vol.Spec.DataSource), ".spec.dataSource")
+	}
+	srcVolName := types.GetVolumeName(vol.Spec.DataSource) // Note that srcVolName is non empty
+	srcVol, err := ds.GetVolumeRO(srcVolName)
+	if err != nil {
+		return err
+	}
+	if vol.Spec.DataEngine != srcVol.Spec.DataEngine {
+		return werror.NewInvalidError(fmt.Sprintf("canot clone volume with data engine %v into a volume with data engine %v", srcVol.Spec.DataEngine, vol.Spec.DataEngine), ".spec.dataSource")
+	}
+	isLinkedClone, err := ds.IsVolumeLinkedCloneVolume(srcVolName)
+	if err != nil {
+		return werror.NewInvalidError(err.Error(), ".spec.dataSource")
+	}
+	if isLinkedClone {
+		return werror.NewInvalidError(fmt.Sprintf("cannot create a new volume from a linked-clone volume %v", srcVolName), ".spec.dataSource")
+	}
+	volumesRO, err := ds.ListVolumesRO()
+	if err != nil {
+		return werror.NewInvalidError(err.Error(), ".spec.dataSource")
+	}
+	for _, v := range volumesRO {
+		if types.GetVolumeName(v.Spec.DataSource) == srcVolName && v.Spec.CloneMode == longhorn.CloneModeLinkedClone {
+			return werror.NewInvalidError(fmt.Sprintf("BUG: there already exist a linked-cloned volume %v from the source volume %v", v.Name, srcVolName), ".spec.dataSource")
+		}
+	}
+
 	return nil
 }
