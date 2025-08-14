@@ -26,6 +26,7 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	systembackupstore "github.com/longhorn/backupstore/systembackup"
+	multierr "github.com/longhorn/go-common-libs/multierr"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
@@ -241,28 +242,19 @@ func getLoggerForBackupTarget(logger logrus.FieldLogger, backupTarget *longhorn.
 	)
 }
 
-func getAvailableDataEngine(ds *datastore.DataStore) (longhorn.DataEngineType, error) {
+func getBackupTarget(nodeID string, backupTarget *longhorn.BackupTarget, ds *datastore.DataStore, log logrus.FieldLogger, proxyConnCounter util.Counter) (engineClientProxy engineapi.EngineClientProxy, backupTargetClient *engineapi.BackupTargetClient, err error) {
+	var instanceManager *longhorn.InstanceManager
+	errs := multierr.NewMultiError()
 	dataEngines := ds.GetDataEngines()
-	if len(dataEngines) > 0 {
-		for _, dataEngine := range []longhorn.DataEngineType{longhorn.DataEngineTypeV2, longhorn.DataEngineTypeV1} {
-			if _, ok := dataEngines[dataEngine]; ok {
-				return dataEngine, nil
-			}
+	for dataEngine := range dataEngines {
+		instanceManager, err = ds.GetRunningInstanceManagerByNodeRO(nodeID, dataEngine)
+		if err == nil {
+			break
 		}
+		errs.Append("errors", errors.Wrapf(err, "failed to get running instance manager for node %v and data engine %v", nodeID, dataEngine))
 	}
-
-	return "", errors.New("no data engine available")
-}
-
-func getBackupTarget(controllerID string, backupTarget *longhorn.BackupTarget, ds *datastore.DataStore, log logrus.FieldLogger, proxyConnCounter util.Counter) (engineClientProxy engineapi.EngineClientProxy, backupTargetClient *engineapi.BackupTargetClient, err error) {
-	dataEngine, err := getAvailableDataEngine(ds)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to get available data engine for getting backup target")
-	}
-
-	instanceManager, err := ds.GetRunningInstanceManagerByNodeRO(controllerID, dataEngine)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to get running instance manager for proxy client")
+	if instanceManager == nil {
+		return nil, nil, fmt.Errorf("failed to find a running instance manager for node %v: %v", nodeID, errs.Error())
 	}
 
 	engineClientProxy, err = engineapi.NewEngineClientProxy(instanceManager, log, proxyConnCounter, ds)
