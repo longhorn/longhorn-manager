@@ -140,14 +140,8 @@ const (
 	SettingNameDefaultMinNumberOfBackingImageCopies                     = SettingName("default-min-number-of-backing-image-copies")
 	SettingNameBackupExecutionTimeout                                   = SettingName("backup-execution-timeout")
 	SettingNameRWXVolumeFastFailover                                    = SettingName("rwx-volume-fast-failover")
-<<<<<<< HEAD
-=======
-	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
-	SettingNameReplicaRebuildingBandwidthLimit                          = SettingName("replica-rebuilding-bandwidth-limit")
-	SettingNameDefaultBackupBlockSize                                   = SettingName("default-backup-block-size")
 	SettingNameInstanceManagerPodLivenessProbeTimeout                   = SettingName("instance-manager-pod-liveness-probe-timeout")
 
->>>>>>> 9ac51acb (feat(setting): add instance-manager-pod-probe-timeout)
 	// These three backup target parameters are used in the "longhorn-default-resource" ConfigMap
 	// to update the default BackupTarget resource.
 	// Longhorn won't create the Setting resources for these three parameters.
@@ -247,13 +241,7 @@ var (
 		SettingNameDefaultMinNumberOfBackingImageCopies,
 		SettingNameBackupExecutionTimeout,
 		SettingNameRWXVolumeFastFailover,
-<<<<<<< HEAD
-=======
-		SettingNameOfflineReplicaRebuilding,
-		SettingNameReplicaRebuildingBandwidthLimit,
-		SettingNameDefaultBackupBlockSize,
 		SettingNameInstanceManagerPodLivenessProbeTimeout,
->>>>>>> 9ac51acb (feat(setting): add instance-manager-pod-probe-timeout)
 	}
 )
 
@@ -375,13 +363,7 @@ var (
 		SettingNameDefaultMinNumberOfBackingImageCopies:                     SettingDefinitionDefaultMinNumberOfBackingImageCopies,
 		SettingNameBackupExecutionTimeout:                                   SettingDefinitionBackupExecutionTimeout,
 		SettingNameRWXVolumeFastFailover:                                    SettingDefinitionRWXVolumeFastFailover,
-<<<<<<< HEAD
-=======
-		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
-		SettingNameReplicaRebuildingBandwidthLimit:                          SettingDefinitionReplicaRebuildingBandwidthLimit,
-		SettingNameDefaultBackupBlockSize:                                   SettingDefinitionDefaultBackupBlockSize,
 		SettingNameInstanceManagerPodLivenessProbeTimeout:                   SettingDefinitionInstanceManagerPodLivenessProbeTimeout,
->>>>>>> 9ac51acb (feat(setting): add instance-manager-pod-probe-timeout)
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -1346,42 +1328,20 @@ var (
 		},
 	}
 
-<<<<<<< HEAD
-=======
-	SettingDefinitionDefaultBackupBlockSize = SettingDefinition{
-		DisplayName:        "Default Backup Block Size",
-		Description:        "Specifies the default backup block size, in MiB, used when creating a new volume. Supported values are 2 or 16.",
-		Category:           SettingCategoryBackup,
-		Type:               SettingTypeInt,
-		Required:           true,
-		ReadOnly:           false,
-		DataEngineSpecific: false,
-		Choices:            []any{int64(2), int64(16)},
-		Default:            "2",
-	}
-
-<<<<<<< Updated upstream
-	SettingDefinitionInstanceManagerPodProbeTimeout = SettingDefinition{
-		DisplayName:        "Instance Manager Pod Probe Timeout",
-		Description:        "In seconds. The setting specifies the timeout for the instance manager pod probe. The default value is 4 seconds.",
-=======
 	SettingDefinitionInstanceManagerPodLivenessProbeTimeout = SettingDefinition{
-		DisplayName:        "Instance Manager Pod Liveness Probe Timeout",
-		Description:        "In seconds. The setting specifies the timeout for the instance manager pod liveness probe. The default value is 10 seconds.",
->>>>>>> Stashed changes
-		Category:           SettingCategoryGeneral,
-		Type:               SettingTypeInt,
-		Required:           true,
-		ReadOnly:           false,
-		DataEngineSpecific: false,
-		Default:            "4",
+		DisplayName: "Instance Manager Pod Liveness Probe Timeout",
+		Description: "In seconds. The setting specifies the timeout for the instance manager pod liveness probe. The default value is 10 seconds.",
+		Category:    SettingCategoryGeneral,
+		Type:        SettingTypeInt,
+		Required:    true,
+		ReadOnly:    false,
+		Default:     "10",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 1,
 			ValueIntRangeMaximum: 60,
 		},
 	}
 
->>>>>>> 9ac51acb (feat(setting): add instance-manager-pod-probe-timeout)
 	SettingDefinitionLogLevel = SettingDefinition{
 		DisplayName: "Log Level",
 		Description: "The log level Panic, Fatal, Error, Warn, Info, Debug, Trace used in longhorn manager. By default Info.",
