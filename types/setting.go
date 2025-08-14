@@ -1482,21 +1482,15 @@ var (
 		Default:            "2",
 	}
 
-<<<<<<< Updated upstream
-	SettingDefinitionInstanceManagerPodProbeTimeout = SettingDefinition{
-		DisplayName:        "Instance Manager Pod Probe Timeout",
-		Description:        "In seconds. The setting specifies the timeout for the instance manager pod probe. The default value is 4 seconds.",
-=======
 	SettingDefinitionInstanceManagerPodLivenessProbeTimeout = SettingDefinition{
 		DisplayName:        "Instance Manager Pod Liveness Probe Timeout",
 		Description:        "In seconds. The setting specifies the timeout for the instance manager pod liveness probe. The default value is 10 seconds.",
->>>>>>> Stashed changes
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeInt,
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: false,
-		Default:            "4",
+		Default:            "10",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 1,
 			ValueIntRangeMaximum: 60,
