@@ -110,13 +110,15 @@ func (b *backupValidator) Update(request *admission.Request, oldObj runtime.Obje
 	}
 
 	// Allow backup block size mutation only when the existing obj is not set, or correcting the existed invalid value
-	isValidOldBackupBlockSize := b.validateBackupBlockSize(oldBackup, false) == nil
-	if isValidOldBackupBlockSize && oldBackup.Spec.BackupBlockSize != newBackup.Spec.BackupBlockSize {
-		err := fmt.Errorf("changing backup block size for backup %v is not supported", oldBackup.Name)
-		return werror.NewInvalidError(err.Error(), "")
-	}
-	if err := b.validateBackupBlockSize(newBackup, false); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+	if oldBackup.Spec.BackupBlockSize != newBackup.Spec.BackupBlockSize {
+		if b.validateBackupBlockSize(oldBackup, false) == nil {
+			err := fmt.Errorf("changing backup block size for backup %v is not supported; only changing invalid backup block size is supported", oldBackup.Name)
+			return werror.NewInvalidError(err.Error(), "")
+		}
+		if b.validateBackupBlockSize(newBackup, false) != nil {
+			err := fmt.Errorf("invalid backup block size %v for backup %v", newBackup.Spec.BackupBlockSize, oldBackup.Name)
+			return werror.NewInvalidError(err.Error(), "")
+		}
 	}
 
 	return nil
