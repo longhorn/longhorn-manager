@@ -46,8 +46,6 @@ const (
 	PodStartupProbeFailureThreshold  = 36
 
 	IMPodProbeInitialDelay             = 3
-	IMPodProbeTimeoutSeconds           = IMPodProbePeriodSeconds - 1
-	IMPodProbePeriodSeconds            = 5
 	IMPodLivenessProbeFailureThreshold = 6
 )
 
