@@ -22,6 +22,7 @@ import (
 	utilexec "k8s.io/utils/exec"
 
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
@@ -215,7 +216,11 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 	}
 
 	if backupBlockSize, ok := volOptions["backupBlockSize"]; ok {
-		vol.BackupBlockSize = backupBlockSize
+		blockSize, err := util.ConvertSize(backupBlockSize)
+		if err != nil {
+			return nil, errors.Wrap(err, "invalid parameter backupBlockSize")
+		}
+		vol.BackupBlockSize = strconv.FormatInt(blockSize, 10)
 	}
 
 	if dataSource, ok := volOptions["dataSource"]; ok {
