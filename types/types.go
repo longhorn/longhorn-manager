@@ -1042,6 +1042,18 @@ func ValidateBackupBlockSize(volSize int64, backupBlockSize int64) error {
 	return nil
 }
 
+func ValidateReplicaRebuildingBandwidthLimit(dataEengine longhorn.DataEngineType, replicaRebuildingBandwidthLimit int64) error {
+	if replicaRebuildingBandwidthLimit == 0 {
+		return nil
+	}
+
+	if IsDataEngineV2(dataEengine) {
+		return nil
+	}
+
+	return fmt.Errorf("replicaRebuildingBandwidthLimit is not supported for data engine %v", dataEengine)
+}
+
 func GetDaemonSetNameFromEngineImageName(engineImageName string) string {
 	return "engine-image-" + engineImageName
 }
