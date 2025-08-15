@@ -59,51 +59,55 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 	}
 
 	if err := types.ValidateDataLocality(volume.Spec.DataLocality); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.dataLocality")
 	}
 
 	if err := types.ValidateAccessMode(volume.Spec.AccessMode); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.accessMode")
 	}
 
 	if err := validateReplicaCount(volume.Spec.DataLocality, volume.Spec.NumberOfReplicas); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.numberOfReplicas")
 	}
 
 	if err := types.ValidateDataLocalityAndReplicaCount(volume.Spec.DataLocality, volume.Spec.NumberOfReplicas); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.dataLocality and spec.numberOfReplicas")
 	}
 
 	if err := types.ValidateDataLocalityAndAccessMode(volume.Spec.DataLocality, volume.Spec.Migratable, volume.Spec.AccessMode); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.dataLocality and spec.migratable and spec.accessMode")
 	}
 
 	if err := types.ValidateReplicaAutoBalance(volume.Spec.ReplicaAutoBalance); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.replicaAutoBalance")
 	}
 
 	if err := types.ValidateUnmapMarkSnapChainRemoved(volume.Spec.DataEngine, volume.Spec.UnmapMarkSnapChainRemoved); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.unmapMarkSnapChainRemoved")
 	}
 
 	if err := types.ValidateReplicaSoftAntiAffinity(volume.Spec.ReplicaSoftAntiAffinity); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.replicaSoftAntiAffinity")
 	}
 
 	if err := types.ValidateReplicaZoneSoftAntiAffinity(volume.Spec.ReplicaZoneSoftAntiAffinity); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.replicaZoneSoftAntiAffinity")
 	}
 
 	if err := types.ValidateReplicaDiskSoftAntiAffinity(volume.Spec.ReplicaDiskSoftAntiAffinity); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.replicaDiskSoftAntiAffinity")
 	}
 
 	if err := types.ValidateOfflineRebuild(volume.Spec.OfflineRebuilding); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.offlineRebuilding")
 	}
 
 	if err := types.ValidateBackupBlockSize(volume.Spec.Size, volume.Spec.BackupBlockSize); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.backupBlockSize")
+	}
+
+	if err := types.ValidateReplicaRebuildingBandwidthLimit(volume.Spec.DataEngine, volume.Spec.ReplicaRebuildingBandwidthLimit); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.replicaRebuildingBandwidthLimit")
 	}
 
 	if volume.Spec.BackingImage != "" {
@@ -200,43 +204,43 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 	}
 
 	if err := v.validateExpansionSize(oldVolume, newVolume); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.size")
 	}
 
 	if err := validateDataLocalityUpdate(oldVolume, newVolume); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.dataLocality")
 	}
 
 	if err := validateReplicaCount(newVolume.Spec.DataLocality, newVolume.Spec.NumberOfReplicas); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.numberOfReplicas")
 	}
 
 	if err := types.ValidateAccessMode(newVolume.Spec.AccessMode); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.accessMode")
 	}
 
 	if err := types.ValidateReplicaAutoBalance(newVolume.Spec.ReplicaAutoBalance); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.replicaAutoBalance")
 	}
 
 	if err := types.ValidateUnmapMarkSnapChainRemoved(newVolume.Spec.DataEngine, newVolume.Spec.UnmapMarkSnapChainRemoved); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.unmapMarkSnapChainRemoved")
 	}
 
 	if err := types.ValidateReplicaSoftAntiAffinity(newVolume.Spec.ReplicaSoftAntiAffinity); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.replicaSoftAntiAffinity")
 	}
 
 	if err := types.ValidateReplicaZoneSoftAntiAffinity(newVolume.Spec.ReplicaZoneSoftAntiAffinity); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.replicaZoneSoftAntiAffinity")
 	}
 
 	if err := types.ValidateReplicaDiskSoftAntiAffinity(newVolume.Spec.ReplicaDiskSoftAntiAffinity); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.replicaDiskSoftAntiAffinity")
 	}
 
 	if err := types.ValidateOfflineRebuild(newVolume.Spec.OfflineRebuilding); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.offlineRebuilding")
 	}
 
 	if oldVolume.Spec.Image != newVolume.Spec.Image {
@@ -264,7 +268,7 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 	if oldVolume.Spec.BackupCompressionMethod != "" {
 		if oldVolume.Spec.BackupCompressionMethod != newVolume.Spec.BackupCompressionMethod {
 			err := fmt.Errorf("changing backup compression method for volume %v is not supported", oldVolume.Name)
-			return werror.NewInvalidError(err.Error(), "")
+			return werror.NewInvalidError(err.Error(), "spec.backupCompressionMethod")
 		}
 	}
 
@@ -272,10 +276,14 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 	isValidOldBackupBlockSize := types.ValidateBackupBlockSize(oldVolume.Spec.Size, oldVolume.Spec.BackupBlockSize) == nil
 	if isValidOldBackupBlockSize && oldVolume.Spec.BackupBlockSize != newVolume.Spec.BackupBlockSize {
 		err := fmt.Errorf("changing backup block size for volume %v is not supported", oldVolume.Name)
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.backupBlockSize")
 	}
 	if err := types.ValidateBackupBlockSize(newVolume.Spec.Size, newVolume.Spec.BackupBlockSize); err != nil {
-		return werror.NewInvalidError(err.Error(), "")
+		return werror.NewInvalidError(err.Error(), "spec.backupBlockSize")
+	}
+
+	if err := types.ValidateReplicaRebuildingBandwidthLimit(newVolume.Spec.DataEngine, newVolume.Spec.ReplicaRebuildingBandwidthLimit); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.replicaRebuildingBandwidthLimit")
 	}
 
 	if oldVolume.Spec.DataEngine != "" {
