@@ -1117,10 +1117,16 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 
 	var snapshotCloneStatusMap map[string]*longhorn.SnapshotCloneStatus
-	if cliAPIVersion >= engineapi.CLIVersionFive {
-		if snapshotCloneStatusMap, err = engineClientProxy.SnapshotCloneStatus(engine); err != nil {
-			return err
-		}
+	// TODO: Fix me so it only check for v1 data engine
+	//if cliAPIVersion >= engineapi.CLIVersionFive {
+	logrus.Infof("======================> getting clone status")
+	if snapshotCloneStatusMap, err = engineClientProxy.SnapshotCloneStatus(engine); err != nil {
+		return err
+	}
+	//}
+
+	for rName, stat := range snapshotCloneStatusMap {
+		logrus.Infof("======================> snapshotCloneStatus rName: %v, stat:  %+v", rName, stat)
 	}
 
 	engine.Status.CloneStatus = snapshotCloneStatusMap
