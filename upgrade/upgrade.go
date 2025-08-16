@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -314,12 +315,18 @@ func waitForOldLonghornManagersToBeFullyRemoved(namespace, managerImage string, 
 }
 
 func isOldManagerPod(pod corev1.Pod, managerImage string) (bool, string) {
+	runningPodVersion, exists := pod.GetLabels()["app.kubernetes.io/version"]
+
 	for _, container := range pod.Spec.Containers {
 		if container.Name == "longhorn-manager" {
-			if container.Image != managerImage {
+			// if the pod has a version label and the label does not match
+			// the image version, then the running pod (Manger) is old
+			// we are doing this since images can be mutated by webhooks
+			if exists && !strings.Contains(managerImage, runningPodVersion) || runningPodVersion == "" {
 				return true, container.Image
 			}
 		}
 	}
+
 	return false, ""
 }
