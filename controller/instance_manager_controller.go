@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -710,6 +711,8 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 			isSettingSynced, err = imc.isSettingStorageNetworkSynced(setting, pod)
 		case types.SettingNameV1DataEngine, types.SettingNameV2DataEngine:
 			isSettingSynced, err = imc.isSettingDataEngineSynced(settingName, im)
+		case types.SettingNameInstanceManagerPodLivenessProbeTimeout:
+			isSettingSynced, err = imc.isSettingInstanceManagerPodLivenessProbeTimeoutSynced(setting, pod)
 		}
 		if err != nil {
 			return false, false, false, err
@@ -767,6 +770,21 @@ func (imc *InstanceManagerController) isSettingGuaranteedInstanceManagerCPUSynce
 
 func (imc *InstanceManagerController) isSettingPriorityClassSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
 	return pod.Spec.PriorityClassName == setting.Value, nil
+}
+
+func (imc *InstanceManagerController) isSettingInstanceManagerPodLivenessProbeTimeoutSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
+	if pod.Spec.Containers[0].LivenessProbe == nil {
+		// If the liveness probe is not set, we consider it synced.
+		return true, nil
+	}
+
+	timeoutSeconds, err := strconv.Atoi(setting.Value)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to convert %v setting value %v to int",
+			types.SettingNameInstanceManagerPodLivenessProbeTimeout, setting.Value)
+	}
+
+	return pod.Spec.Containers[0].LivenessProbe.TimeoutSeconds == int32(timeoutSeconds), nil
 }
 
 func (imc *InstanceManagerController) isSettingStorageNetworkSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
