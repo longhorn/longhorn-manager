@@ -1330,12 +1330,14 @@ var (
 
 	SettingDefinitionInstanceManagerPodLivenessProbeTimeout = SettingDefinition{
 		DisplayName: "Instance Manager Pod Liveness Probe Timeout",
-		Description: "In seconds. The setting specifies the timeout for the instance manager pod liveness probe. The default value is 10 seconds.",
-		Category:    SettingCategoryGeneral,
-		Type:        SettingTypeInt,
-		Required:    true,
-		ReadOnly:    false,
-		Default:     "10",
+		Description: "In seconds. The setting specifies the timeout for the instance manager pod liveness probe. The default value is 10 seconds.\n\n" +
+			"WARNING: \n\n" +
+			"  - When applying the setting, Longhorn will try to restart all instance-manager pods if all volumes are detached and eventually restart the instance manager pod without instances running on the instance manager. \n\n",
+		Category: SettingCategoryDangerZone,
+		Type:     SettingTypeInt,
+		Required: true,
+		ReadOnly: false,
+		Default:  "10",
 		ValueIntRange: map[string]int{
 			ValueIntRangeMinimum: 1,
 			ValueIntRangeMaximum: 60,
