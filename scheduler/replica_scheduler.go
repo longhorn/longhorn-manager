@@ -131,7 +131,7 @@ func (rcs *ReplicaScheduler) FindDiskCandidates(replica *longhorn.Replica, repli
 
 	nodes, err := rcs.listSchedulableNodes()
 	if err != nil {
-		errs.Append(longhorn.ErrorReplicaScheduleDataStoreOperationFailed,
+		errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed,
 			errors.Wrapf(err, "failed to list schedulable nodes for scheduling replica %v", replica.Name))
 		return nil, errs
 	}
@@ -251,7 +251,7 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 	if volume.Spec.BackingImage != "" {
 		bi, err := rcs.ds.GetBackingImageRO(volume.Spec.BackingImage)
 		if err != nil {
-			errs.Append(longhorn.ErrorReplicaScheduleDataStoreOperationFailed,
+			errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed,
 				errors.Wrapf(err, "failed to get backing image %v", volume.Spec.BackingImage))
 			return map[string]*Disk{}, errs
 		}
@@ -261,7 +261,7 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 
 	nodeSoftAntiAffinity, err := rcs.ds.GetSettingAsBool(types.SettingNameReplicaSoftAntiAffinity)
 	if err != nil {
-		errs.Append(longhorn.ErrorReplicaScheduleDataStoreOperationFailed,
+		errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed,
 			errors.Wrapf(err, "failed to get %v setting", types.SettingNameReplicaSoftAntiAffinity))
 		return map[string]*Disk{}, errs
 	}
@@ -273,7 +273,7 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 
 	zoneSoftAntiAffinity, err := rcs.ds.GetSettingAsBool(types.SettingNameReplicaZoneSoftAntiAffinity)
 	if err != nil {
-		errs.Append(longhorn.ErrorReplicaScheduleDataStoreOperationFailed,
+		errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed,
 			errors.Wrapf(err, "failed to get %v setting", types.SettingNameReplicaZoneSoftAntiAffinity))
 		return map[string]*Disk{}, errs
 	}
@@ -284,7 +284,7 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 
 	diskSoftAntiAffinity, err := rcs.ds.GetSettingAsBool(types.SettingNameReplicaDiskSoftAntiAffinity)
 	if err != nil {
-		errs.Append(longhorn.ErrorReplicaScheduleDataStoreOperationFailed,
+		errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed,
 			errors.Wrapf(err, "failed to get %v setting", types.SettingNameReplicaDiskSoftAntiAffinity))
 		return map[string]*Disk{}, errs
 	}
@@ -297,7 +297,7 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 	if volume.Status.Robustness == longhorn.VolumeRobustnessDegraded {
 		timeToReplacementReplica, _, err := rcs.timeToReplacementReplica(volume)
 		if err != nil {
-			errs.Append(longhorn.ErrorReplicaScheduleDataStoreOperationFailed,
+			errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed,
 				errors.Wrap(err, "failed to get time until replica replacement"))
 			return map[string]*Disk{}, errs
 		}
@@ -325,7 +325,7 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 
 	allowEmptyNodeSelectorVolume, err := rcs.ds.GetSettingAsBool(types.SettingNameAllowEmptyNodeSelectorVolume)
 	if err != nil {
-		errs.Append(longhorn.ErrorReplicaScheduleDataStoreOperationFailed,
+		errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed,
 			errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyNodeSelectorVolume))
 		return map[string]*Disk{}, errs
 	}
@@ -429,7 +429,7 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 
 	allowEmptyDiskSelectorVolume, err := rcs.ds.GetSettingAsBool(types.SettingNameAllowEmptyDiskSelectorVolume)
 	if err != nil {
-		errs.Append(longhorn.ErrorReplicaScheduleDataStoreOperationFailed,
+		errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed,
 			errors.Wrapf(err, "failed to get %v setting", types.SettingNameAllowEmptyDiskSelectorVolume))
 		return preferredDisks, errs
 	}
@@ -474,7 +474,7 @@ func (rcs *ReplicaScheduler) filterNodeDisksForReplica(node *longhorn.Node, disk
 		if requireSchedulingCheck {
 			info, err := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus)
 			if err != nil {
-				errs.Append(longhorn.ErrorReplicaScheduleDataStoreOperationFailed,
+				errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed,
 					errors.Wrapf(err, "failed to get disk scheduling info for disk %v", diskName))
 				return preferredDisks, errs
 			}
@@ -1051,7 +1051,7 @@ func (rcs *ReplicaScheduler) CheckReplicasSizeExpansion(v *longhorn.Volume, oldS
 		diskInfo, err := rcs.GetDiskSchedulingInfo(diskSpec, &diskStatus)
 		if err != nil {
 			errs := multierr.NewMultiError()
-			errs.Append(longhorn.ErrorReplicaScheduleDataStoreOperationFailed, fmt.Errorf("failed to get disk scheduling info for disk %v on node %v: %v", r.Spec.DiskID, node.Name, err))
+			errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed, fmt.Errorf("failed to get disk scheduling info for disk %v on node %v: %v", r.Spec.DiskID, node.Name, err))
 			return errs, errors.Wrapf(err, "failed to get disk scheduling info for disk %v on node %v", r.Spec.DiskID, node.Name)
 		}
 		diskIDToDiskInfo[r.Spec.DiskID] = diskInfo
