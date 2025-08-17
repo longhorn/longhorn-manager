@@ -61,7 +61,7 @@ const (
 	ErrorReplicaScheduleSchedulingFailed                  = "replica scheduling failed"
 	ErrorReplicaScheduleUnusedFailedReplicaIsNotSupported = "unused failed replica is not supported"
 	ErrorReplicaScheduleReplicaAlreadyScheduled           = "replica already scheduled"
-	ErrorReplicaScheduleDataStoreOperationFailed          = "data store operation failed"
+	ErrorReplicaScheduleLonghornClientOperationFailed     = "longhorn client operation failed"
 	ErrorReplicaScheduleIncompatibleVolumeSize            = "incompatible volume size"
 )
 
