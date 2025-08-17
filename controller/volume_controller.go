@@ -2346,7 +2346,7 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 					v.Status.Conditions = types.SetCondition(v.Status.Conditions,
 						longhorn.VolumeConditionTypeScheduled, longhorn.ConditionStatusFalse,
 						longhorn.VolumeConditionReasonReplicaSchedulingFailure,
-						fmt.Sprintf("%v: %v", longhorn.ErrorReplicaSchedulePrecheckNewReplicaFailed, precheckErrs.JoinReasons()))
+						fmt.Sprintf("%v: %v", "precheck new replica failed", precheckErrs.JoinReasons()))
 					continue
 				}
 			}

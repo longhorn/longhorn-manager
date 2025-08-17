@@ -226,7 +226,7 @@ func (vec *VolumeEvictionController) hasDiskCandidateForReplicaEviction(replicas
 		if len(diskCandidates) == 0 {
 			if len(errs) == 0 {
 				errs = multierr.NewMultiError()
-				errs.Append(longhorn.ErrorReplicaScheduleEvictReplicaFailed, fmt.Errorf("no disk candidates found for evicting replica %q", replica.Name))
+				errs.Append("errors", fmt.Errorf("no disk candidates found for evicting replica %q", replica.Name))
 			}
 
 			vec.logger.Warnf("No disk candidates for evicting replica %q: %v", replica.Name, errs.Error())
