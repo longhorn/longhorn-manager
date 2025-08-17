@@ -1366,24 +1366,29 @@ func (nc *NodeController) getNewAndMissingOrphanedReplicaDataStores(diskName, di
 }
 
 func (nc *NodeController) deleteOrphansForEngineAndReplicaInstances(node *longhorn.Node) error {
-	nc.logger.Infof("Deleting orphans on evicted node %v", node.Name)
+	nc.logger.Debugf("Deleting orphans on evicted node %v", node.Name)
 
 	orphans, err := nc.ds.ListOrphansByNodeRO(node.Name)
 	if err != nil {
 		return errors.Wrapf(err, "failed to list orphans to evict node %v", node.Name)
 	}
 
+	if len(orphans) > 0 {
+		nc.logger.Infof("Found %v orphans to be deleted on evicted node %v", len(orphans), node.Name)
+	}
+
 	errs := multierr.NewMultiError()
 	for _, orphan := range orphans {
 		switch orphan.Spec.Type {
 		case longhorn.OrphanTypeEngineInstance, longhorn.OrphanTypeReplicaInstance:
+			nc.logger.Infof("Deleting orphan %v on evicted node %v", orphan.Name, node.Name)
 			if err := nc.ds.DeleteOrphan(orphan.Name); err != nil && !datastore.ErrorIsNotFound(err) {
 				errs.Append("errors", errors.Wrapf(err, "failed to delete orphan %v", orphan.Name))
 			}
 		}
 	}
 	if len(errs) > 0 {
-		return fmt.Errorf("node controller failed to delete instance orphans: %v", errs.ErrorByReason("errors"))
+		return fmt.Errorf("failed to delete instance orphans on evicted node %v: %v", node.Name, errs.ErrorByReason("errors"))
 	}
 	return nil
 }
