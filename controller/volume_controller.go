@@ -3751,8 +3751,18 @@ func (c *VolumeController) newReplica(v *longhorn.Volume, e *longhorn.Engine, ha
 func (c *VolumeController) precheckCreateReplica(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume) multierr.MultiError {
 	diskCandidates, errs := c.scheduler.FindDiskCandidates(replica, replicas, volume)
 	if len(diskCandidates) == 0 {
+		if errs == nil {
+			errs = multierr.NewMultiError()
+		}
+		if len(errs) == 0 {
+			// If there are no disk candidates and no errors, it means that the scheduler
+			// didn't find any disks which might be due to the anti-affinity rules
+			errs.Append(longhorn.ErrorReplicaScheduleDiskUnavailable,
+				fmt.Errorf("no disk candidates found for replica %v", replica.Name))
+		}
 		return errs
 	}
+	// If there are disk candidates, we can create the replica
 	return nil
 }
 
