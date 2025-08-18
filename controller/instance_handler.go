@@ -51,7 +51,7 @@ func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler Instance
 
 func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *longhorn.InstanceManager, instanceName string, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus, instances map[string]longhorn.InstanceProcess) {
 	defer func() {
-		if status.CurrentState == longhorn.InstanceStateStopped {
+		if status.CurrentState == longhorn.InstanceStateStopped && !status.Starting {
 			status.InstanceManagerName = ""
 		}
 	}()
