@@ -840,6 +840,9 @@ func (imc *InstanceManagerController) isSettingStorageNetworkSynced(setting *lon
 	return pod.Annotations[nadAnnot] == nadAnnotValue, nil
 }
 
+// isSettingDataEngineSynced checks if the data engine setting is synced with the instance manager.
+// If the data engine setting is disabled, it checks if the instance manager's data engine type is equal to the disabled data engine type.
+// If YES, this instance manager pod should be removed if no running instances are found.
 func (imc *InstanceManagerController) isSettingDataEngineSynced(settingName types.SettingName, im *longhorn.InstanceManager) (bool, error) {
 	enabled, err := imc.ds.GetSettingAsBool(settingName)
 	if err != nil {
