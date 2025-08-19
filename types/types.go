@@ -108,6 +108,8 @@ const (
 	UnixDomainSocketDirectoryInContainer = "/host/var/lib/longhorn/unix-domain-socket/"
 	UnixDomainSocketDirectoryOnHost      = "/var/lib/longhorn/unix-domain-socket/"
 
+	DefaultLogDirectoryOnHost = "/var/lib/longhorn/logs/"
+
 	BackingImageManagerDirectory = "/backing-images/"
 	BackingImageFileName         = "backing"
 
@@ -254,6 +256,7 @@ const (
 	EnvPodNamespace   = "POD_NAMESPACE"
 	EnvPodIP          = "POD_IP"
 	EnvServiceAccount = "SERVICE_ACCOUNT"
+	EnvDataEngine     = "DATA_ENGINE"
 
 	BackupStoreTypeS3     = "s3"
 	BackupStoreTypeCIFS   = "cifs"
