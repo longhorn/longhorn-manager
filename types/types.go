@@ -1072,16 +1072,17 @@ func CreateDisksFromAnnotation(annotation string, storageReservedPercentage int6
 		return nil, errors.Wrapf(err, "failed to unmarshal the default disks annotation")
 	}
 	for _, disk := range disks {
-		if disk.Path == "" {
-			return nil, fmt.Errorf("invalid disk %+v", disk)
+		spec := disk.DiskSpec
+		if spec.Path == "" {
+			return nil, fmt.Errorf("invalid disk %+v", spec)
 		}
-		diskStat, err := lhns.GetDiskStat(disk.Path)
+		diskStat, err := lhns.GetDiskStat(spec.Path)
 		if err != nil {
 			return nil, err
 		}
 		for _, vDisk := range validDisks {
-			if vDisk.Path == disk.Path {
-				return nil, fmt.Errorf("duplicate disk path %v", disk.Path)
+			if vDisk.Path == spec.Path {
+				return nil, fmt.Errorf("duplicate disk path %v", spec.Path)
 			}
 		}
 
@@ -1094,36 +1095,38 @@ func CreateDisksFromAnnotation(annotation string, storageReservedPercentage int6
 			return nil, fmt.Errorf(
 				"the disk %v is the same"+
 					"file system with %v, diskID %v",
-				disk.Path, existDiskID[diskStat.DiskID],
+				spec.Path, existDiskID[diskStat.DiskID],
 				diskStat.DiskID)
 		}
 
-		existDiskID[diskStat.DiskID] = disk.Path
+		existDiskID[diskStat.DiskID] = spec.Path
 
-		if disk.StorageReserved < 0 || disk.StorageReserved > diskStat.StorageMaximum {
-			return nil, fmt.Errorf("the storageReserved setting of disk %v is not valid, should be positive and no more than storageMaximum and storageAvailable", disk.Path)
-		}
-		if disk.StorageReserved == 0 {
+		if disk.StorageReserved != nil {
+			spec.StorageReserved = *disk.StorageReserved
+		} else {
 			if disk.Type == longhorn.DiskTypeBlock {
 				size, err := getBlockDeviceSize(ReplicaHostPrefix + disk.Path)
 				if err != nil {
 					return nil, err
 				}
-				disk.StorageReserved = int64(size) * storageReservedPercentage / 100
+				spec.StorageReserved = int64(size) * storageReservedPercentage / 100
 			} else {
-				disk.StorageReserved = diskStat.StorageMaximum * storageReservedPercentage / 100
+				spec.StorageReserved = diskStat.StorageMaximum * storageReservedPercentage / 100
 			}
+		}
+		if spec.StorageReserved < 0 || spec.StorageReserved > diskStat.StorageMaximum {
+			return nil, fmt.Errorf("the storageReserved setting of disk %v is not valid, should be positive and no more than storageMaximum and storageAvailable", disk.Path)
 		}
 		tags, err := util.ValidateTags(disk.Tags)
 		if err != nil {
 			return nil, err
 		}
-		disk.Tags = tags
+		spec.Tags = tags
 		_, exists := validDisks[disk.Name]
 		if exists {
 			return nil, fmt.Errorf("the disk name %v has duplicated", disk.Name)
 		}
-		validDisks[disk.Name] = disk.DiskSpec
+		validDisks[disk.Name] = spec
 	}
 
 	return validDisks, nil
@@ -1163,7 +1166,8 @@ func GetNodeTagsFromAnnotation(annotation string) ([]string, error) {
 
 type DiskSpecWithName struct {
 	longhorn.DiskSpec
-	Name string `json:"name"`
+	Name            string `json:"name"`
+	StorageReserved *int64 `json:"storageReserved"`
 }
 
 // UnmarshalToDisks input format should be:
