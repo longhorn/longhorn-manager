@@ -529,14 +529,20 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			}
 
 			// Ensure if the CPU mask can be satisfied on each node
-			for _, lhnode := range lhNodes {
-				kubeNode, err := s.GetKubernetesNodeRO(lhnode.Name)
+			for _, lhNode := range lhNodes {
+				if isUnavailable, err := s.IsNodeDownOrDeletedOrMissingManager(lhNode.Name); err != nil {
+					return errors.Wrapf(err, "failed to check if node %v is down or deleted", lhNode.Name)
+				} else if isUnavailable {
+					continue
+				}
+
+				kubeNode, err := s.GetKubernetesNodeRO(lhNode.Name)
 				if err != nil {
 					if apierrors.IsNotFound(err) {
-						logrus.Warnf("Kubernetes node %s not found, skipping CPU mask validation for this node for data engine %v", lhnode.Name, dataEngine)
+						logrus.Warnf("Kubernetes node %s not found, skipping CPU mask validation for this node for data engine %v", lhNode.Name, dataEngine)
 						continue
 					}
-					return errors.Wrapf(err, "failed to get Kubernetes node %s for %v setting validation for data engine %v", lhnode.Name, types.SettingNameDataEngineCPUMask, dataEngine)
+					return errors.Wrapf(err, "failed to get Kubernetes node %s for %v setting validation for data engine %v", lhNode.Name, types.SettingNameDataEngineCPUMask, dataEngine)
 				}
 
 				if err := s.ValidateCPUMask(kubeNode, cpuMask); err != nil {
@@ -634,33 +640,36 @@ func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) (ims []*
 		return nil, errors.Wrapf(err, "failed to parse hugepage value %qMi", hugepageRequestedInMiB)
 	}
 
-	_ims, err := s.ListInstanceManagersRO()
+	lhNodes, err := s.ListNodes()
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to list instance managers for %v setting update", types.SettingNameV2DataEngine)
 	}
 
-	for _, im := range _ims {
-		if types.IsDataEngineV1(im.Spec.DataEngine) {
+	for _, lhNode := range lhNodes {
+		if isUnavailable, err := s.IsNodeDownOrDeletedOrMissingManager(lhNode.Name); err != nil {
+			return nil, errors.Wrapf(err, "failed to check if node %v is down or deleted", lhNode.Name)
+		} else if isUnavailable {
 			continue
 		}
-		node, err := s.GetKubernetesNodeRO(im.Spec.NodeID)
+
+		kubeNode, err := s.GetKubernetesNodeRO(lhNode.Name)
 		if err != nil {
 			if !apierrors.IsNotFound(err) {
-				return nil, errors.Wrapf(err, "failed to get Kubernetes node %v for %v setting update", im.Spec.NodeID, types.SettingNameV2DataEngine)
+				return nil, errors.Wrapf(err, "failed to get Kubernetes node %v for %v setting update", lhNode.Name, types.SettingNameV2DataEngine)
 			}
 
 			continue
 		}
 
-		if val, ok := node.Labels[types.NodeDisableV2DataEngineLabelKey]; ok && val == types.NodeDisableV2DataEngineLabelKeyTrue {
+		if val, ok := kubeNode.Labels[types.NodeDisableV2DataEngineLabelKey]; ok && val == types.NodeDisableV2DataEngineLabelKeyTrue {
 			// V2 data engine is disabled on this node, don't worry about hugepages
 			continue
 		}
 
 		if dataEngineEnabled {
-			capacity, ok := node.Status.Capacity["hugepages-2Mi"]
+			capacity, ok := kubeNode.Status.Capacity["hugepages-2Mi"]
 			if !ok {
-				return nil, errors.Errorf("failed to get hugepages-2Mi capacity for node %v", node.Name)
+				return nil, errors.Errorf("failed to get hugepages-2Mi capacity for node %v", kubeNode.Name)
 			}
 
 			hugepageCapacity, err := resource.ParseQuantity(capacity.String())
@@ -669,7 +678,7 @@ func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) (ims []*
 			}
 
 			if hugepageCapacity.Cmp(hugepageRequested) < 0 {
-				return nil, errors.Errorf("not enough hugepages-2Mi capacity for node %v, requested %v, capacity %v", node.Name, hugepageRequested.String(), hugepageCapacity.String())
+				return nil, errors.Errorf("not enough hugepages-2Mi capacity for node %v, requested %v, capacity %v", kubeNode.Name, hugepageRequested.String(), hugepageCapacity.String())
 			}
 		}
 	}
