@@ -2,7 +2,7 @@ module github.com/longhorn/longhorn-manager
 
 go 1.24.0
 
-toolchain go1.24.6
+toolchain go1.25.0
 
 // Replace directives are required for dependencies in this section because:
 // - This module imports k8s.io/kubernetes.
@@ -20,38 +20,38 @@ toolchain go1.24.6
 // necessary. However, it is better to include all of them for consistency.
 
 replace (
-	k8s.io/api => k8s.io/api v0.33.3
-	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.33.3
-	k8s.io/apimachinery => k8s.io/apimachinery v0.33.3
-	k8s.io/apiserver => k8s.io/apiserver v0.33.3
-	k8s.io/cli-runtime => k8s.io/cli-runtime v0.33.3
-	k8s.io/client-go => k8s.io/client-go v0.33.3
-	k8s.io/cloud-provider => k8s.io/cloud-provider v0.33.3
-	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.33.3
-	k8s.io/code-generator => k8s.io/code-generator v0.33.3
-	k8s.io/component-base => k8s.io/component-base v0.33.3
-	k8s.io/component-helpers => k8s.io/component-helpers v0.33.3
-	k8s.io/controller-manager => k8s.io/controller-manager v0.33.3
-	k8s.io/cri-api => k8s.io/cri-api v0.33.3
-	k8s.io/cri-client => k8s.io/cri-client v0.33.3
-	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.33.3
-	k8s.io/dynamic-resource-allocation => k8s.io/dynamic-resource-allocation v0.33.3
-	k8s.io/endpointslice => k8s.io/endpointslice v0.33.3
-	k8s.io/externaljwt => k8s.io/externaljwt v0.33.3
-	k8s.io/kms => k8s.io/kms v0.33.3
-	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.33.3
-	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.33.3
-	k8s.io/kube-proxy => k8s.io/kube-proxy v0.33.3
-	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.33.3
-	k8s.io/kubectl => k8s.io/kubectl v0.33.3
-	k8s.io/kubelet => k8s.io/kubelet v0.33.3
+	k8s.io/api => k8s.io/api v0.33.4
+	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.33.4
+	k8s.io/apimachinery => k8s.io/apimachinery v0.33.4
+	k8s.io/apiserver => k8s.io/apiserver v0.33.4
+	k8s.io/cli-runtime => k8s.io/cli-runtime v0.33.4
+	k8s.io/client-go => k8s.io/client-go v0.33.4
+	k8s.io/cloud-provider => k8s.io/cloud-provider v0.33.4
+	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.33.4
+	k8s.io/code-generator => k8s.io/code-generator v0.33.4
+	k8s.io/component-base => k8s.io/component-base v0.33.4
+	k8s.io/component-helpers => k8s.io/component-helpers v0.33.4
+	k8s.io/controller-manager => k8s.io/controller-manager v0.33.4
+	k8s.io/cri-api => k8s.io/cri-api v0.33.4
+	k8s.io/cri-client => k8s.io/cri-client v0.33.4
+	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.33.4
+	k8s.io/dynamic-resource-allocation => k8s.io/dynamic-resource-allocation v0.33.4
+	k8s.io/endpointslice => k8s.io/endpointslice v0.33.4
+	k8s.io/externaljwt => k8s.io/externaljwt v0.33.4
+	k8s.io/kms => k8s.io/kms v0.33.4
+	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.33.4
+	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.33.4
+	k8s.io/kube-proxy => k8s.io/kube-proxy v0.33.4
+	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.33.4
+	k8s.io/kubectl => k8s.io/kubectl v0.33.4
+	k8s.io/kubelet => k8s.io/kubelet v0.33.4
 	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.30.14
-	k8s.io/metrics => k8s.io/metrics v0.33.3
-	k8s.io/mount-utils => k8s.io/mount-utils v0.33.3
-	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.33.3
-	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.33.3
-	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.33.3
-	k8s.io/sample-controller => k8s.io/sample-controller v0.33.3
+	k8s.io/metrics => k8s.io/metrics v0.33.4
+	k8s.io/mount-utils => k8s.io/mount-utils v0.33.4
+	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.33.4
+	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.33.4
+	k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.33.4
+	k8s.io/sample-controller => k8s.io/sample-controller v0.33.4
 )
 
 require (
@@ -67,9 +67,9 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.22.0
 	github.com/longhorn/backing-image-manager v1.9.1
 	github.com/longhorn/backupstore v0.0.0-20250804022317-794abf817297
-	github.com/longhorn/go-common-libs v0.0.0-20250812101836-470cb7301942
-	github.com/longhorn/go-iscsi-helper v0.0.0-20250713130221-69ce6f3960fa
-	github.com/longhorn/go-spdk-helper v0.0.3-0.20250809103353-695fd752a98b
+	github.com/longhorn/go-common-libs v0.0.0-20250819144703-ff4997b6fd80
+	github.com/longhorn/go-iscsi-helper v0.0.0-20250810143507-5c5f9a0060b4
+	github.com/longhorn/go-spdk-helper v0.0.3-0.20250817153310-ee0422b8d319
 	github.com/longhorn/longhorn-engine v1.10.0-dev-20250713.0.20250728071833-3932ded2f139
 	github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250629.0.20250711075830-f3729b840178
 	github.com/longhorn/longhorn-share-manager v1.9.1
@@ -77,7 +77,7 @@ require (
 	github.com/prometheus/client_golang v1.23.0
 	github.com/rancher/dynamiclistener v0.7.0
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
-	github.com/rancher/wrangler/v3 v3.2.2
+	github.com/rancher/wrangler/v3 v3.2.3
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.10.0
@@ -89,14 +89,14 @@ require (
 	google.golang.org/grpc v1.74.2
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
-	k8s.io/api v0.33.3
-	k8s.io/apiextensions-apiserver v0.33.3
-	k8s.io/apimachinery v0.33.3
-	k8s.io/cli-runtime v0.33.3
-	k8s.io/client-go v0.33.3
-	k8s.io/kubernetes v1.33.3
-	k8s.io/metrics v0.33.3
-	k8s.io/mount-utils v0.33.3
+	k8s.io/api v0.33.4
+	k8s.io/apiextensions-apiserver v0.33.4
+	k8s.io/apimachinery v0.33.4
+	k8s.io/cli-runtime v0.33.4
+	k8s.io/client-go v0.33.4
+	k8s.io/kubernetes v1.33.4
+	k8s.io/metrics v0.33.4
+	k8s.io/mount-utils v0.33.4
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397
 	sigs.k8s.io/controller-runtime v0.21.0
 )
@@ -180,8 +180,8 @@ require (
 	golang.org/x/text v0.28.0
 	google.golang.org/protobuf v1.36.7
 	gopkg.in/inf.v0 v0.9.1 // indirect
-	k8s.io/apiserver v0.33.3 // indirect
-	k8s.io/component-base v0.33.3 // indirect
+	k8s.io/apiserver v0.33.4 // indirect
+	k8s.io/component-base v0.33.4 // indirect
 	k8s.io/component-helpers v0.33.0 // indirect
 	k8s.io/controller-manager v0.33.0 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect

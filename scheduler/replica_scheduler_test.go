@@ -1218,14 +1218,15 @@ func (s *TestSuite) TestReplicaScheduler(c *C) {
 			err = rIndexer.Add(r)
 			c.Assert(err, IsNil)
 
-			sr, _, err := s.ScheduleReplica(r, tc.allReplicas, volume)
+			sr, errs := s.ScheduleReplica(r, tc.allReplicas, volume)
 			if tc.err {
-				c.Assert(err, NotNil)
+				// TODO:
+				c.Assert(len(errs), Not(Equals), 0)
 			} else {
 				if numScheduled == tc.firstNilReplica {
 					c.Assert(sr, IsNil)
 				} else {
-					c.Assert(err, IsNil)
+					c.Assert(len(errs), Equals, 0)
 					c.Assert(sr, NotNil)
 					c.Assert(sr.Spec.NodeID, Not(Equals), "")
 					c.Assert(sr.Spec.DiskID, Not(Equals), "")

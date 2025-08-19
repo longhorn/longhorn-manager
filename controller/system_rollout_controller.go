@@ -38,6 +38,7 @@ import (
 
 	"github.com/longhorn/backupstore"
 	"github.com/longhorn/backupstore/backupbackingimage"
+	"github.com/longhorn/go-common-libs/multierr"
 
 	systembackupstore "github.com/longhorn/backupstore/systembackup"
 
@@ -149,7 +150,7 @@ type SystemRolloutController struct {
 
 	extractedResources
 
-	cacheErrors util.MultiError
+	cacheErrors multierr.MultiError
 	cacheSyncs  []cache.InformerSynced
 }
 
@@ -292,11 +293,11 @@ func (c *SystemRolloutController) handleErr(err error, key interface{}) {
 
 func (c *SystemRolloutController) handleStatusUpdate(record *systemRolloutRecord, existing *longhorn.SystemRestore, err error, log logrus.FieldLogger) {
 	if err != nil {
-		c.cacheErrors.Append(util.NewMultiError(err.Error()))
+		c.cacheErrors.Append("errors", err)
 	}
 
 	if record.recordType == systemRolloutRecordTypeError && err != nil {
-		c.cacheErrors.Append(util.NewMultiError(err.Error()))
+		c.cacheErrors.Append("errors", err)
 	}
 
 	if len(c.cacheErrors) != 0 {
@@ -308,10 +309,10 @@ func (c *SystemRolloutController) handleStatusUpdate(record *systemRolloutRecord
 			record.message = longhorn.SystemRestoreConditionMessageFailed
 		}
 
-		c.recordErrorState(record, c.systemRestore, c.cacheErrors.Join(), log)
+		c.recordErrorState(record, c.systemRestore, c.cacheErrors.ErrorByReason("errors"), log)
 
 	} else if record.recordType == systemRolloutRecordTypeNormal {
-		c.recordNormalState(record, c.systemRestore, c.cacheErrors.Join(), log)
+		c.recordNormalState(record, c.systemRestore, c.cacheErrors.ErrorByReason("errors"), log)
 	}
 
 	if !reflect.DeepEqual(existing.Status, c.systemRestore.Status) {
@@ -562,7 +563,7 @@ func (c *SystemRolloutController) syncController() error {
 	c.backupTargetURL = backupTargetClient.URL
 	c.engineImage = systemBackupCfg.EngineImage
 
-	c.cacheErrors = util.MultiError{}
+	c.cacheErrors = multierr.NewMultiError()
 
 	return nil
 }
@@ -809,7 +810,7 @@ func (c *SystemRolloutController) postRestoreHandle(kind string, restoreError er
 
 	systemRestore, err := c.ds.GetSystemRestoreInProgress(c.systemRestoreName)
 	if err != nil {
-		c.cacheErrors.Append(util.NewMultiError(err.Error()))
+		c.cacheErrors.Append("errors", err)
 		return
 	}
 
@@ -818,7 +819,7 @@ func (c *SystemRolloutController) postRestoreHandle(kind string, restoreError er
 	}
 
 	if restoreError != nil {
-		c.cacheErrors.Append(util.NewMultiError(restoreError.Error()))
+		c.cacheErrors.Append("errors", restoreError)
 		return
 	}
 

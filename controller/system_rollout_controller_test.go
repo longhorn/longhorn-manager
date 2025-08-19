@@ -26,6 +26,8 @@ import (
 	apiextensionsinformers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/longhorn/go-common-libs/multierr"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -1019,7 +1021,7 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 		controller, err := newFakeSystemRolloutController(tc.systemRestoreName, controllerID, ds, doneCh, kubeClient, extensionsClient)
 		c.Assert(err, IsNil)
 		controller.systemRestoreVersion = TestSystemBackupLonghornVersion
-		controller.cacheErrors = util.MultiError{}
+		controller.cacheErrors = multierr.MultiError{}
 
 		fakeSystemRestore(tc.systemRestoreName, systemRolloutOwnerID, tc.isInProgress, false, tc.state, c, informerFactories.LhInformerFactory, lhClient, controller.ds)
 
@@ -1066,7 +1068,10 @@ func (s *TestSuite) TestSystemRollout(c *C) {
 
 		if tc.systemRestoreName == TestSystemRestoreNameRestoreMultipleFailures {
 			tc.restoreErrors = []string{"err-1", "err-2"}
-			controller.cacheErrors = util.NewMultiError(tc.restoreErrors...)
+			controller.cacheErrors = multierr.NewMultiError()
+			for _, err := range tc.restoreErrors {
+				controller.cacheErrors.Append("errors", fmt.Errorf("%v", err))
+			}
 		}
 
 		err = controller.systemRollout()

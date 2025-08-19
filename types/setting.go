@@ -155,6 +155,9 @@ const (
 	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
 	SettingNameReplicaRebuildingBandwidthLimit                          = SettingName("replica-rebuilding-bandwidth-limit")
 	SettingNameDefaultBackupBlockSize                                   = SettingName("default-backup-block-size")
+	SettingNameInstanceManagerPodLivenessProbeTimeout                   = SettingName("instance-manager-pod-liveness-probe-timeout")
+	SettingNameLogPath                                                  = SettingName("log-path")
+
 	// These three backup target parameters are used in the "longhorn-default-resource" ConfigMap
 	// to update the default BackupTarget resource.
 	// Longhorn won't create the Setting resources for these three parameters.
@@ -268,6 +271,8 @@ var (
 		SettingNameOfflineReplicaRebuilding,
 		SettingNameReplicaRebuildingBandwidthLimit,
 		SettingNameDefaultBackupBlockSize,
+		SettingNameInstanceManagerPodLivenessProbeTimeout,
+		SettingNameLogPath,
 	}
 )
 
@@ -408,6 +413,8 @@ var (
 		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
 		SettingNameReplicaRebuildingBandwidthLimit:                          SettingDefinitionReplicaRebuildingBandwidthLimit,
 		SettingNameDefaultBackupBlockSize:                                   SettingDefinitionDefaultBackupBlockSize,
+		SettingNameInstanceManagerPodLivenessProbeTimeout:                   SettingDefinitionInstanceManagerPodLivenessProbeTimeout,
+		SettingNameLogPath:                                                  SettingDefinitionLogPath,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -1478,6 +1485,23 @@ var (
 		Default:            "2",
 	}
 
+	SettingDefinitionInstanceManagerPodLivenessProbeTimeout = SettingDefinition{
+		DisplayName: "Instance Manager Pod Liveness Probe Timeout",
+		Description: "In seconds. The setting specifies the timeout for the instance manager pod liveness probe. The default value is 10 seconds.\n\n" +
+			"WARNING: \n\n" +
+			"  - When applying the setting, Longhorn will try to restart all instance-manager pods if all volumes are detached and eventually restart the instance manager pod without instances running on the instance manager. \n\n",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "10",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 1,
+			ValueIntRangeMaximum: 60,
+		},
+	}
+
 	SettingDefinitionLogLevel = SettingDefinition{
 		DisplayName:        "Log Level",
 		Description:        "The log level Panic, Fatal, Error, Warn, Info, Debug, Trace used in longhorn manager. By default Info.",
@@ -1680,6 +1704,17 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: true,
 		Default:            fmt.Sprintf("{%q:\"false\",%q:\"false\"}", longhorn.DataEngineTypeV1, longhorn.DataEngineTypeV2),
+	}
+
+	SettingDefinitionLogPath = SettingDefinition{
+		DisplayName:        "Log Path",
+		Description:        "Specifies the directory on the host where Longhorn stores log files for the instance manager pod. Currently, it is only used for instance manager pods in the v2 data engine.",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeString,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            DefaultLogDirectoryOnHost,
 	}
 )
 
