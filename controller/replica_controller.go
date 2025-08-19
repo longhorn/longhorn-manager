@@ -355,6 +355,13 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		return nil, err
 	}
 
+	if r.Status.InstanceManagerName == "" {
+		r.Status.InstanceManagerName = im.Name
+	}
+	if r.Status.InstanceManagerName != im.Name {
+		return nil, fmt.Errorf("found instance manager name conflict %s vs %s during replica instance creation", r.Status.InstanceManagerName, im.Name)
+	}
+
 	c, err := engineapi.NewInstanceManagerClient(im, false)
 	if err != nil {
 		return nil, err
