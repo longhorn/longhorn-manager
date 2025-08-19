@@ -457,6 +457,13 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		return nil, err
 	}
 
+	if e.Status.InstanceManagerName == "" {
+		e.Status.InstanceManagerName = im.Name
+	}
+	if e.Status.InstanceManagerName != im.Name {
+		return nil, fmt.Errorf("found instance manager name conflict %s vs %s during engine instance creation", e.Status.InstanceManagerName, im.Name)
+	}
+
 	c, err := engineapi.NewInstanceManagerClient(im, false)
 	if err != nil {
 		return nil, err
