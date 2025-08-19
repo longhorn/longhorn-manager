@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -36,6 +35,7 @@ import (
 
 	"github.com/longhorn/go-common-libs/multierr"
 
+	lhns "github.com/longhorn/go-common-libs/ns"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -764,7 +764,10 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 		case types.SettingNameInstanceManagerPodLivenessProbeTimeout:
 			isSettingSynced, err = imc.isSettingInstanceManagerPodLivenessProbeTimeoutSynced(setting, pod)
 		case types.SettingNameLogPath:
-			isSettingSynced, err = imc.isSettingLogPathSynced(setting, pod)
+			// TODO: Support log path for v1 data engine.
+			if types.IsDataEngineV2(im.Spec.DataEngine) {
+				isSettingSynced, err = imc.isSettingLogPathSynced(setting, pod)
+			}
 		}
 		if err != nil {
 			return false, false, false, err
@@ -1557,38 +1560,43 @@ func getLivenessProbeCommand(dataEngine longhorn.DataEngineType) string {
 	return fmt.Sprintf("test $(%s; echo $?) -eq 0", strings.Join(livenessProbes, " && "))
 }
 
-func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.InstanceManager, tolerations []corev1.Toleration, registrySecret string, nodeSelector map[string]string, dataEngine longhorn.DataEngineType) (*corev1.Pod, error) {
+func (imc *InstanceManagerController) getLogPath() (string, error) {
 	logPath, err := imc.ds.GetSettingValueExisted(types.SettingNameLogPath)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
-	logPath = filepath.Clean(logPath)
 	if logPath == "" || logPath == string(filepath.Separator) {
+		logPath = types.DefaultLogDirectoryOnHost
+	} else {
+		logPath = filepath.Clean(logPath)
+	}
+
+	parent := filepath.Dir(logPath)
+	if parent == "." || parent == string(filepath.Separator) {
+		imc.logger.Warnf("Log path %q is not a valid directory, using default log directory", logPath)
 		logPath = types.DefaultLogDirectoryOnHost
 	}
 
-	validatePathAndFallback := func(p string) string {
-		parent := filepath.Dir(p)
-		if parent == "." || parent == string(filepath.Separator) {
-			imc.logger.Warnf("Log path %q is not a valid directory, using default log directory", p)
-			return types.DefaultLogDirectoryOnHost
-		}
-
-		st, err := os.Stat(parent)
-		if err != nil {
-			imc.logger.WithError(err).Warnf("Failed to stat parent of log path %q, using default log directory", p)
-			return types.DefaultLogDirectoryOnHost
-		}
+	if st, err := lhns.Stat(parent); err != nil {
+		imc.logger.WithError(err).Warnf("Failed to stat parent of log path %q, using default log directory", logPath)
+		logPath = types.DefaultLogDirectoryOnHost
+	} else {
 		if !st.IsDir() {
-			imc.logger.Warnf("Parent of log path %q is not a directory, using default log directory", p)
-			return types.DefaultLogDirectoryOnHost
+			imc.logger.Warnf("Parent of log path %q is not a directory, using default log directory", logPath)
+			logPath = types.DefaultLogDirectoryOnHost
 		}
-
-		return p
+		imc.logger.Infof("Using log path %q", logPath)
 	}
 
-	logPath = validatePathAndFallback(logPath)
+	return logPath, nil
+}
+
+func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.InstanceManager, tolerations []corev1.Toleration, registrySecret string, nodeSelector map[string]string, dataEngine longhorn.DataEngineType) (*corev1.Pod, error) {
+	logPath, err := imc.getLogPath()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get log path for instance manager pod")
+	}
 
 	podSpec, err := imc.createGenericManagerPodSpec(im, tolerations, registrySecret, nodeSelector, dataEngine)
 	if err != nil {
