@@ -7,6 +7,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/rancher/go-rancher/api"
+	"github.com/rancher/go-rancher/client"
 )
 
 func (s *Server) VolumeAttachmentGet(rw http.ResponseWriter, req *http.Request) error {
@@ -31,4 +32,12 @@ func (s *Server) VolumeAttachmentList(rw http.ResponseWriter, req *http.Request)
 	}
 	apiContext.Write(toVolumeAttachmentCollection(volumeAttachmentList, apiContext))
 	return nil
+}
+
+func (s *Server) volumeAttachmentList(apiContext *api.ApiContext) (*client.GenericCollection, error) {
+	volumeAttachmentList, err := s.m.ListVolumeAttachment()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list volume attachments")
+	}
+	return toVolumeAttachmentCollection(volumeAttachmentList, apiContext), nil
 }
