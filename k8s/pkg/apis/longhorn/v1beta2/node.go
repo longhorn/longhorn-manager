@@ -52,7 +52,6 @@ const (
 	ErrorReplicaScheduleInsufficientStorage               = "insufficient storage"
 	ErrorReplicaScheduleDiskNotFound                      = "disk not found"
 	ErrorReplicaScheduleDiskUnavailable                   = "disks are unavailable"
-	ErrorReplicaScheduleSchedulingSettingsRetrieveFailed  = "failed to retrieve scheduling settings failed to retrieve"
 	ErrorReplicaScheduleTagsNotFulfilled                  = "tags not fulfilled"
 	ErrorReplicaScheduleNodeNotFound                      = "node not found"
 	ErrorReplicaScheduleNodeUnavailable                   = "nodes are unavailable"
