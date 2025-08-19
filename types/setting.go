@@ -1714,7 +1714,7 @@ var (
 		Required:           true,
 		ReadOnly:           false,
 		DataEngineSpecific: false,
-		Default:            "/var/lib/longhorn/logs/",
+		Default:            DefaultLogDirectoryOnHost,
 	}
 )
 
