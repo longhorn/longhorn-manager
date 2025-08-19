@@ -18,6 +18,9 @@ WORKDIR ${DAPPER_SOURCE}
 ENTRYPOINT ["./scripts/entry"]
 CMD ["ci"]
 
+RUN zypper -n ref && \
+    zypper update -y
+
 RUN zypper -n install gcc ca-certificates git wget curl vim less file python3-tox python3-devel iptables libdevmapper1_03 libltdl7 awk docker zip unzip && \
     rm -rf /var/cache/zypp/*
 

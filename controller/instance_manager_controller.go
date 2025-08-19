@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -22,6 +24,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/controller"
+	"k8s.io/utils/ptr"
 
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -760,6 +763,8 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 			isSettingSynced, err = imc.isSettingDataEngineSynced(settingName, im)
 		case types.SettingNameInstanceManagerPodLivenessProbeTimeout:
 			isSettingSynced, err = imc.isSettingInstanceManagerPodLivenessProbeTimeoutSynced(setting, pod)
+		case types.SettingNameLogPath:
+			isSettingSynced, err = imc.isSettingLogPathSynced(setting, pod)
 		}
 		if err != nil {
 			return false, false, false, err
@@ -817,6 +822,33 @@ func (imc *InstanceManagerController) isSettingGuaranteedInstanceManagerCPUSynce
 
 func (imc *InstanceManagerController) isSettingPriorityClassSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
 	return pod.Spec.PriorityClassName == setting.Value, nil
+}
+
+func (imc *InstanceManagerController) isSettingLogPathSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
+	if pod.Spec.Containers[0].VolumeMounts == nil {
+		// If there are no volume mounts, we consider it synced.
+		return true, nil
+	}
+
+	logPath := setting.Value
+	if logPath == "" {
+		logPath = types.DefaultLogDirectoryOnHost
+	}
+
+	normalizedLogPath := filepath.Clean(logPath)
+	for _, v := range pod.Spec.Volumes {
+		if v.Name == "log" {
+			if filepath.Clean(v.HostPath.Path) == normalizedLogPath {
+				return true, nil
+			}
+			imc.logger.Warnf("Instance manager pod %v log path %v is not synced with setting %v value %v",
+				pod.Name, filepath.Clean(v.HostPath.Path), types.SettingNameLogPath, normalizedLogPath)
+			return false, nil
+		}
+	}
+
+	// If the log volume is not found, we consider it is synced.
+	return true, nil
 }
 
 func (imc *InstanceManagerController) isSettingInstanceManagerPodLivenessProbeTimeoutSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
@@ -1439,7 +1471,7 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 	return nil
 }
 
-func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.InstanceManager, tolerations []corev1.Toleration, registrySecret string, nodeSelector map[string]string) (*corev1.Pod, error) {
+func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.InstanceManager, tolerations []corev1.Toleration, registrySecret string, nodeSelector map[string]string, dataEngine longhorn.DataEngineType) (*corev1.Pod, error) {
 	tolerationsByte, err := json.Marshal(tolerations)
 	if err != nil {
 		return nil, err
@@ -1455,13 +1487,13 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 		return nil, err
 	}
 
-	privileged := true
 	podSpec := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            im.Name,
 			Namespace:       imc.namespace,
 			OwnerReferences: datastore.GetOwnerReferencesForInstanceManager(im),
 			Annotations:     map[string]string{types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix): string(tolerationsByte)},
+			Labels:          types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, longhorn.InstanceManagerTypeAllInOne, dataEngine),
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: imc.serviceAccount,
@@ -1470,10 +1502,11 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 			PriorityClassName:  priorityClass.Value,
 			Containers: []corev1.Container{
 				{
+					Name:            "instance-manager",
 					Image:           im.Spec.Image,
 					ImagePullPolicy: imagePullPolicy,
 					SecurityContext: &corev1.SecurityContext{
-						Privileged: &privileged,
+						Privileged: ptr.To(true),
 					},
 				},
 			},
@@ -1503,15 +1536,64 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 	return podSpec, nil
 }
 
+func getLivenessProbeCommand(dataEngine longhorn.DataEngineType) string {
+	var livenessProbes []string
+
+	ports := []int{
+		engineapi.InstanceManagerProcessManagerServiceDefaultPort,
+		engineapi.InstanceManagerProxyServiceDefaultPort,
+		engineapi.InstanceManagerDiskServiceDefaultPort,
+		engineapi.InstanceManagerInstanceServiceDefaultPort,
+	}
+	for _, port := range ports {
+		livenessProbes = append(livenessProbes, fmt.Sprintf("nc -zv localhost %d > /dev/null 2>&1", port))
+	}
+	if types.IsDataEngineV2(dataEngine) {
+		livenessProbes = append(livenessProbes, fmt.Sprintf("nc -zv localhost %d > /dev/null 2>&1", engineapi.InstanceManagerSpdkServiceDefaultPort))
+
+		processProbe := "[ $(ps aux | grep 'spdk_tgt' | grep -v 'grep' | grep -v 'tee' | wc -l) != 0 ]"
+		livenessProbes = append(livenessProbes, processProbe)
+	}
+	return fmt.Sprintf("test $(%s; echo $?) -eq 0", strings.Join(livenessProbes, " && "))
+}
+
 func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.InstanceManager, tolerations []corev1.Toleration, registrySecret string, nodeSelector map[string]string, dataEngine longhorn.DataEngineType) (*corev1.Pod, error) {
-	podSpec, err := imc.createGenericManagerPodSpec(im, tolerations, registrySecret, nodeSelector)
+	logPath, err := imc.ds.GetSettingValueExisted(types.SettingNameLogPath)
 	if err != nil {
 		return nil, err
 	}
 
-	secretIsOptional := true
-	podSpec.Labels = types.GetInstanceManagerLabels(imc.controllerID, im.Spec.Image, longhorn.InstanceManagerTypeAllInOne, dataEngine)
-	podSpec.Spec.Containers[0].Name = "instance-manager"
+	logPath = filepath.Clean(logPath)
+	if logPath == "" || logPath == string(filepath.Separator) {
+		logPath = types.DefaultLogDirectoryOnHost
+	}
+
+	validatePathAndFallback := func(p string) string {
+		parent := filepath.Dir(p)
+		if parent == "." || parent == string(filepath.Separator) {
+			imc.logger.Warnf("Log path %q is not a valid directory, using default log directory", p)
+			return types.DefaultLogDirectoryOnHost
+		}
+
+		st, err := os.Stat(parent)
+		if err != nil {
+			imc.logger.WithError(err).Warnf("Failed to stat parent of log path %q, using default log directory", p)
+			return types.DefaultLogDirectoryOnHost
+		}
+		if !st.IsDir() {
+			imc.logger.Warnf("Parent of log path %q is not a directory, using default log directory", p)
+			return types.DefaultLogDirectoryOnHost
+		}
+
+		return p
+	}
+
+	logPath = validatePathAndFallback(logPath)
+
+	podSpec, err := imc.createGenericManagerPodSpec(im, tolerations, registrySecret, nodeSelector, dataEngine)
+	if err != nil {
+		return nil, err
+	}
 
 	if types.IsDataEngineV2(dataEngine) {
 		// spdk_tgt doesn't support log level option, so we don't need to pass the log level to the instance manager.
@@ -1581,25 +1663,6 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		}
 	}
 
-	// Create a liveness probe to check if all the required ports and processes are open.
-	var livenessProbes []string
-	ports := []int{
-		engineapi.InstanceManagerProcessManagerServiceDefaultPort,
-		engineapi.InstanceManagerProxyServiceDefaultPort,
-		engineapi.InstanceManagerDiskServiceDefaultPort,
-		engineapi.InstanceManagerInstanceServiceDefaultPort,
-	}
-	for _, port := range ports {
-		livenessProbes = append(livenessProbes, fmt.Sprintf("nc -zv localhost %d > /dev/null 2>&1", port))
-	}
-	if types.IsDataEngineV2(dataEngine) {
-		livenessProbes = append(livenessProbes, fmt.Sprintf("nc -zv localhost %d > /dev/null 2>&1", engineapi.InstanceManagerSpdkServiceDefaultPort))
-
-		processProbe := "[ $(ps aux | grep 'spdk_tgt' | grep -v 'grep' | grep -v 'tee' | wc -l) != 0 ]"
-		livenessProbes = append(livenessProbes, processProbe)
-	}
-	livenessProbeCommand := fmt.Sprintf("test $(%s; echo $?) -eq 0", strings.Join(livenessProbes, " && "))
-
 	podProbeTimeout, err := imc.ds.GetSettingAsInt(types.SettingNameInstanceManagerPodLivenessProbeTimeout)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameInstanceManagerPodLivenessProbeTimeout)
@@ -1611,7 +1674,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 				Command: []string{
 					"/bin/sh",
 					"-c",
-					livenessProbeCommand,
+					getLivenessProbeCommand(dataEngine),
 				},
 			},
 		},
@@ -1635,7 +1698,12 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 				},
 			},
 		},
+		{
+			Name:  types.EnvDataEngine,
+			Value: string(dataEngine),
+		},
 	}
+
 	// Set volume mounts
 	podSpec.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
 		{
@@ -1655,6 +1723,11 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		{
 			MountPath: types.TLSDirectoryInContainer,
 			Name:      "longhorn-grpc-tls",
+		},
+		{
+			Name:             "log",
+			MountPath:        "/log",
+			MountPropagation: &mountPropagationHostToContainer,
 		},
 	}
 	podSpec.Spec.Volumes = []corev1.Volume{
@@ -1687,7 +1760,16 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName: types.TLSSecretName,
-					Optional:   &secretIsOptional,
+					Optional:   ptr.To(true),
+				},
+			},
+		},
+		{
+			Name: "log",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: logPath,
+					Type: &[]corev1.HostPathType{corev1.HostPathDirectoryOrCreate}[0],
 				},
 			},
 		},
