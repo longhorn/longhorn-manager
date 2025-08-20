@@ -1599,6 +1599,8 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameSupportBundleFailedHistoryLimit:                          true,
 		types.SettingNameSupportBundleNodeCollectionTimeout:                       true,
 		types.SettingNameSystemManagedPodsImagePullPolicy:                         true,
+		types.SettingNameDefaultBackupBlockSize:                                   true,
+		types.SettingNameReplicaRebuildingBandwidthLimit:                          true,
 		types.SettingNameV1DataEngine:                                             true,
 		types.SettingNameV2DataEngine:                                             true,
 	}
