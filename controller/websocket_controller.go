@@ -106,6 +106,11 @@ func NewWebsocketController(
 	}
 	wc.cacheSyncs = append(wc.cacheSyncs, ds.BackupBackingImageInformer.HasSynced)
 
+	if _, err = ds.LHVolumeAttachmentInformer.AddEventHandler(wc.notifyWatchersHandler("volumeAttachment")); err != nil {
+		return nil, err
+	}
+	wc.cacheSyncs = append(wc.cacheSyncs, ds.LHVolumeAttachmentInformer.HasSynced)
+
 	return wc, nil
 }
 
