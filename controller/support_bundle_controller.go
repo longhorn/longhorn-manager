@@ -684,6 +684,11 @@ func (c *SupportBundleController) newSupportBundleManager(supportBundle *longhor
 		return nil, err
 	}
 
+	logPath, err := c.ds.GetSettingValueExisted(types.SettingNameLogPath)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get %v setting", types.SettingNameLogPath)
+	}
+
 	supportBundleManagerName := GetSupportBundleManagerName(supportBundle)
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -775,6 +780,10 @@ func (c *SupportBundleController) newSupportBundleManager(supportBundle *longhor
 								{
 									Name:  "SUPPORT_BUNDLE_NODE_TIMEOUT",
 									Value: fmt.Sprintf("%dm", nodeCollectionTimeoutMinute),
+								},
+								{
+									Name:  "LONGHORN_LOG_PATH",
+									Value: strings.TrimSuffix(logPath, "/"),
 								},
 							},
 							Ports: []corev1.ContainerPort{
