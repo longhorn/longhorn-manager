@@ -1739,6 +1739,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 			actions["activate"] = struct{}{}
 			actions["expand"] = struct{}{}
 			actions["snapshotPurge"] = struct{}{}
+			// Deprecated, replaced by snapshotCRCreate
 			actions["snapshotCreate"] = struct{}{}
 			actions["snapshotList"] = struct{}{}
 			actions["snapshotGet"] = struct{}{}
