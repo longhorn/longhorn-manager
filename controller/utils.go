@@ -10,6 +10,7 @@ import (
 	"k8s.io/client-go/util/flowcontrol"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -163,4 +164,30 @@ func isSnapshotExistInEngine(snapshotName string, engine *longhorn.Engine) bool 
 		}
 	}
 	return false
+}
+
+func newReplicaCR(v *longhorn.Volume, e *longhorn.Engine, hardNodeAffinity string) *longhorn.Replica {
+	return &longhorn.Replica{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            types.GenerateReplicaNameForVolume(v.Name),
+			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
+		},
+		Spec: longhorn.ReplicaSpec{
+			InstanceSpec: longhorn.InstanceSpec{
+				VolumeName:  v.Name,
+				VolumeSize:  v.Spec.Size,
+				Image:       v.Status.CurrentImage,
+				DataEngine:  v.Spec.DataEngine,
+				DesireState: longhorn.InstanceStateStopped,
+			},
+			EngineName:                       e.Name,
+			Active:                           true,
+			BackingImage:                     v.Spec.BackingImage,
+			HardNodeAffinity:                 hardNodeAffinity,
+			RevisionCounterDisabled:          v.Spec.RevisionCounterDisabled,
+			UnmapMarkDiskChainRemovedEnabled: e.Spec.UnmapMarkSnapChainRemovedEnabled,
+			SnapshotMaxCount:                 v.Spec.SnapshotMaxCount,
+			SnapshotMaxSize:                  v.Spec.SnapshotMaxSize,
+		},
+	}
 }

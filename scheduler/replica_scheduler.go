@@ -129,7 +129,7 @@ func (rcs *ReplicaScheduler) scheduleReplicaToDiskOnLocalNode(replica *longhorn.
 func (rcs *ReplicaScheduler) FindDiskCandidates(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume) (map[string]*Disk, multierr.MultiError) {
 	errs := multierr.NewMultiError()
 
-	nodes, err := rcs.listSchedulableNodes()
+	nodes, err := rcs.ListSchedulableNodes()
 	if err != nil {
 		errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed,
 			errors.Wrapf(err, "failed to list schedulable nodes for scheduling replica %v", replica.Name))
@@ -562,7 +562,7 @@ func filterDisksWithMatchingReplicas(disks map[string]*Disk, replicas map[string
 	return disks
 }
 
-func (rcs *ReplicaScheduler) listSchedulableNodes() (map[string]*longhorn.Node, error) {
+func (rcs *ReplicaScheduler) ListSchedulableNodes() (map[string]*longhorn.Node, error) {
 	nodeInfo, err := rcs.ds.ListNodes()
 	if err != nil {
 		return nil, err
@@ -657,7 +657,7 @@ func (rcs *ReplicaScheduler) CheckAndReuseFailedReplica(replicas map[string]*lon
 
 	replicas = filterActiveReplicas(replicas)
 
-	allNodesInfo, err := rcs.listSchedulableNodes()
+	allNodesInfo, err := rcs.ListSchedulableNodes()
 	if err != nil {
 		return nil, err
 	}

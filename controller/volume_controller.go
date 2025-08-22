@@ -2335,7 +2335,7 @@ func (c *VolumeController) replenishReplicas(v *longhorn.Volume, e *longhorn.Eng
 			c.enqueueVolumeAfter(v, c.backoff.Get(reusableFailedReplica.Name))
 		}
 		if checkBackDuration := c.scheduler.RequireNewReplica(rs, v, hardNodeAffinity); checkBackDuration == 0 {
-			newReplica := c.newReplica(v, e, hardNodeAffinity)
+			newReplica := newReplicaCR(v, e, hardNodeAffinity)
 
 			// Bypassing the precheck when hardNodeAffinity is provided, because
 			// we expect the new replica to be relocated to a specific node.
@@ -3720,32 +3720,6 @@ func (c *VolumeController) getBackupVolumeInfo(v *longhorn.Volume) (string, stri
 	}
 
 	return canonicalBVName, backupVolume.Name, backupName, nil
-}
-
-func (c *VolumeController) newReplica(v *longhorn.Volume, e *longhorn.Engine, hardNodeAffinity string) *longhorn.Replica {
-	return &longhorn.Replica{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            types.GenerateReplicaNameForVolume(v.Name),
-			OwnerReferences: datastore.GetOwnerReferencesForVolume(v),
-		},
-		Spec: longhorn.ReplicaSpec{
-			InstanceSpec: longhorn.InstanceSpec{
-				VolumeName:  v.Name,
-				VolumeSize:  v.Spec.Size,
-				Image:       v.Status.CurrentImage,
-				DataEngine:  v.Spec.DataEngine,
-				DesireState: longhorn.InstanceStateStopped,
-			},
-			EngineName:                       e.Name,
-			Active:                           true,
-			BackingImage:                     v.Spec.BackingImage,
-			HardNodeAffinity:                 hardNodeAffinity,
-			RevisionCounterDisabled:          v.Spec.RevisionCounterDisabled,
-			UnmapMarkDiskChainRemovedEnabled: e.Spec.UnmapMarkSnapChainRemovedEnabled,
-			SnapshotMaxCount:                 v.Spec.SnapshotMaxCount,
-			SnapshotMaxSize:                  v.Spec.SnapshotMaxSize,
-		},
-	}
 }
 
 func (c *VolumeController) precheckCreateReplica(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume) multierr.MultiError {
