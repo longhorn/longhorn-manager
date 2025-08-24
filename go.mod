@@ -97,7 +97,7 @@ require (
 	k8s.io/kubernetes v1.33.4
 	k8s.io/metrics v0.33.4
 	k8s.io/mount-utils v0.33.4
-	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397
+	k8s.io/utils v0.0.0-20250820121507-0af2bda4dd1d
 	sigs.k8s.io/controller-runtime v0.21.0
 )
 
@@ -178,7 +178,7 @@ require (
 	golang.org/x/sync v0.16.0
 	golang.org/x/term v0.34.0 // indirect
 	golang.org/x/text v0.28.0
-	google.golang.org/protobuf v1.36.7
+	google.golang.org/protobuf v1.36.8
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/apiserver v0.33.4 // indirect
 	k8s.io/component-base v0.33.4 // indirect
