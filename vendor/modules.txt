@@ -148,7 +148,7 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20250812101836-470cb7301942
+# github.com/longhorn/go-common-libs v0.0.0-20250819144703-ff4997b6fd80
 ## explicit; go 1.23.0
 github.com/longhorn/go-common-libs/backup
 github.com/longhorn/go-common-libs/exec
@@ -505,8 +505,8 @@ google.golang.org/grpc/serviceconfig
 google.golang.org/grpc/stats
 google.golang.org/grpc/status
 google.golang.org/grpc/tap
-# google.golang.org/protobuf v1.36.7
-## explicit; go 1.22
+# google.golang.org/protobuf v1.36.8
+## explicit; go 1.23
 google.golang.org/protobuf/encoding/protodelim
 google.golang.org/protobuf/encoding/protojson
 google.golang.org/protobuf/encoding/prototext
@@ -1134,7 +1134,7 @@ k8s.io/metrics/pkg/client/clientset/versioned/typed/metrics/v1beta1
 # k8s.io/mount-utils v0.33.4 => k8s.io/mount-utils v0.33.4
 ## explicit; go 1.24.0
 k8s.io/mount-utils
-# k8s.io/utils v0.0.0-20250604170112-4c0f3b243397
+# k8s.io/utils v0.0.0-20250820121507-0af2bda4dd1d
 ## explicit; go 1.18
 k8s.io/utils/buffer
 k8s.io/utils/clock

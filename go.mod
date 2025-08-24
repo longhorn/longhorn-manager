@@ -66,7 +66,7 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.21.0
 	github.com/longhorn/backing-image-manager v1.9.1
 	github.com/longhorn/backupstore v0.0.0-20250804022317-794abf817297
-	github.com/longhorn/go-common-libs v0.0.0-20250812101836-470cb7301942
+	github.com/longhorn/go-common-libs v0.0.0-20250819144703-ff4997b6fd80
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250810143507-5c5f9a0060b4
 	github.com/longhorn/go-spdk-helper v0.0.2
 	github.com/longhorn/longhorn-engine v1.9.1
@@ -96,7 +96,7 @@ require (
 	k8s.io/kubernetes v1.33.4
 	k8s.io/metrics v0.33.4
 	k8s.io/mount-utils v0.33.4
-	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397
+	k8s.io/utils v0.0.0-20250820121507-0af2bda4dd1d
 	sigs.k8s.io/controller-runtime v0.20.4
 )
 
@@ -174,7 +174,7 @@ require (
 	golang.org/x/sync v0.16.0
 	golang.org/x/term v0.32.0 // indirect
 	golang.org/x/text v0.25.0
-	google.golang.org/protobuf v1.36.7
+	google.golang.org/protobuf v1.36.8
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/apiserver v0.33.4 // indirect
 	k8s.io/component-base v0.33.4 // indirect
