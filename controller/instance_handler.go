@@ -382,8 +382,13 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 	case longhorn.InstanceStateStopped:
 		shouldDelete := false
 		if im != nil && im.DeletionTimestamp == nil {
-			if _, exists := instances[instanceName]; exists {
+			if instance, exists := instances[instanceName]; exists {
 				shouldDelete = true
+				if types.IsDataEngineV2(instance.Spec.DataEngine) {
+					if instance.Status.State == longhorn.InstanceStateStopped {
+						shouldDelete = false
+					}
+				}
 			}
 		}
 		if status.Starting {
