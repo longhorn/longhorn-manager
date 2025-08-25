@@ -306,31 +306,26 @@ func (m *SnapshotMonitor) UpdateConfiguration(map[string]interface{}) error {
 		longhorn.DataEngineTypeV1,
 		longhorn.DataEngineTypeV2,
 	} {
-		if dataIntegrityCronJobs[dataEngine] != m.existingDataIntegrityCronJobs[dataEngine] || m.checkSchedulers[dataEngine].Len() == 0 {
-			if m.checkSchedulers[dataEngine].Len() > 0 {
-				m.checkSchedulers[dataEngine].Remove(m.scheduledJobs[dataEngine])
-
-			}
-			job, err := m.checkSchedulers[dataEngine].Cron(dataIntegrityCronJobs[dataEngine]).Do(func() {
-				m.checkSnapshots(dataEngine)
-			})
-
-			if err != nil {
-				return errors.Wrap(err, "failed to schedule snapshot check job")
-			}
-			m.scheduledJobs[dataEngine] = job
-
-			m.Lock()
-			previousDataIntegrityCronJob := m.existingDataIntegrityCronJobs[dataEngine]
-			m.existingDataIntegrityCronJobs[dataEngine] = dataIntegrityCronJobs[dataEngine]
-			m.Unlock()
-
-			m.checkSchedulers[dataEngine].StartAsync()
-
-			m.logger.WithField("monitor", monitorName).Infof("Cron is changed from %v to %v for all volumes with %s. Next snapshot check job will be executed at %v",
-				previousDataIntegrityCronJob, m.existingDataIntegrityCronJobs[dataEngine], dataEngine, job.NextRun())
-
+		if m.checkSchedulers[dataEngine].Len() > 0 {
+			m.checkSchedulers[dataEngine].Remove(m.checkSnapshots)
 		}
+		job, err := m.checkSchedulers[dataEngine].Cron(dataIntegrityCronJobs[dataEngine]).Do(m.checkSnapshots, dataEngine)
+
+		if err != nil {
+			return errors.Wrap(err, "failed to schedule snapshot check job")
+		}
+		m.scheduledJobs[dataEngine] = job
+
+		m.Lock()
+		previousDataIntegrityCronJob := m.existingDataIntegrityCronJobs[dataEngine]
+		m.existingDataIntegrityCronJobs[dataEngine] = dataIntegrityCronJobs[dataEngine]
+		m.Unlock()
+
+		m.checkSchedulers[dataEngine].StartAsync()
+
+		m.logger.WithField("monitor", monitorName).Infof("Cron is changed from %v to %v for all volumes with %s. Next snapshot check job will be executed at %v",
+			previousDataIntegrityCronJob, m.existingDataIntegrityCronJobs[dataEngine], dataEngine, job.NextRun())
+
 	}
 
 	return nil
