@@ -1369,8 +1369,8 @@ var (
 		Type:               SettingTypeString,
 		Required:           true,
 		ReadOnly:           false,
-		DataEngineSpecific: false,
-		Default:            "0 0 */7 * *",
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:%q,%q:%q}", longhorn.DataEngineTypeV1, string("0 0 */7 * *"), longhorn.DataEngineTypeV2, string("0 0 */7 * *")),
 	}
 
 	SettingDefinitionSnapshotMaxCount = SettingDefinition{
