@@ -1328,8 +1328,9 @@ var (
 		Type:               SettingTypeString,
 		Required:           true,
 		ReadOnly:           false,
-		DataEngineSpecific: false,
-		Default:            string(longhorn.SnapshotDataIntegrityFastCheck),
+		DataEngineSpecific: true,
+		Default: fmt.Sprintf("{%q:%q,%q:%q}", longhorn.DataEngineTypeV1, string(longhorn.SnapshotDataIntegrityFastCheck),
+			longhorn.DataEngineTypeV2, string(longhorn.SnapshotDataIntegrityFastCheck)),
 		Choices: []any{
 			string(longhorn.SnapshotDataIntegrityDisabled),
 			string(longhorn.SnapshotDataIntegrityEnabled),
