@@ -341,11 +341,11 @@ func (bvc *BackupVolumeController) reconcile(backupVolumeName string) (err error
 				backupBlockSizeParam := backupInfo.Parameters[lhbackup.LonghornBackupParameterBackupBlockSize]
 				if blockSizeBytes, convertErr := util.ConvertSize(backupBlockSizeParam); convertErr != nil {
 					log.WithError(convertErr).Warnf("Invalid backup block size string from the remote backup %v: %v", backupName, backupBlockSizeParam)
-				} else if sizeErr := types.ValidateBackupBlockSize(-1, blockSizeBytes); sizeErr != nil {
-					log.WithError(sizeErr).Warnf("Invalid backup block size from the remote backup %v: %v", backupName, backupBlockSizeParam)
 				} else {
 					if blockSizeBytes == 0 {
 						blockSize = types.BackupBlockSize2Mi
+					} else if sizeErr := types.ValidateBackupBlockSize(-1, blockSizeBytes); sizeErr != nil {
+						log.WithError(sizeErr).Warnf("Invalid backup block size from the remote backup %v: %v", backupName, backupBlockSizeParam)
 					} else {
 						blockSize = blockSizeBytes
 					}
