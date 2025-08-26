@@ -368,7 +368,6 @@ func (nc *NodeController) syncNode(key string) (err error) {
 		// before deleting the node. This ensures that SPDK devices can be reused on future node joins.
 		if err := nc.cleanupDisksBeforeNodeDeletion(node); err != nil {
 			nc.logger.WithError(err).Errorf("Cleanup spdk disk driver")
-			return err
 		}
 
 		nc.eventRecorder.Eventf(node, corev1.EventTypeWarning, constant.EventReasonDelete, "Deleting node %v", node.Name)
@@ -1630,7 +1629,7 @@ func (nc *NodeController) cleanupDisksBeforeNodeDeletion(node *longhorn.Node) er
 	for diskName, diskInfo := range node.Spec.Disks {
 		nc.logger.Infof("Cleaning up disk %s", diskName)
 		// Skip non-SPDK disks
-		if diskInfo.DiskDriver == "" {
+		if diskInfo.Type != longhorn.DiskTypeBlock {
 			continue
 		}
 
