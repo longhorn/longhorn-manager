@@ -338,6 +338,7 @@ const (
 	engineImagePrefix          = "ei-"
 	instanceManagerImagePrefix = "imi-"
 	shareManagerImagePrefix    = "smi-"
+	backingImageManagerPrefix  = "bim-"
 	orphanPrefix               = "orphan-"
 
 	BackingImageDataSourcePodNamePrefix = "backing-image-ds-"
@@ -413,7 +414,7 @@ func EngineBinaryExistOnHostForImage(image string) (bool, error) {
 }
 
 func GetBackingImageManagerName(image, diskUUID string) string {
-	return fmt.Sprintf("backing-image-manager-%s-%s", util.GetStringChecksum(image)[:4], diskUUID[:4])
+	return backingImageManagerPrefix + util.GetStringChecksumSHA256(strings.TrimSpace(fmt.Sprintf("%s-%s", image, diskUUID)))
 }
 
 func GetBackingImageDirectoryName(backingImageName, backingImageUUID string) string {
