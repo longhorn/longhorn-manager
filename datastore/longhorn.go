@@ -1348,7 +1348,7 @@ func GetNewCurrentEngineAndExtras(v *longhorn.Volume, es map[string]*longhorn.En
 	// 3. Set the new current engine to active (might fail, preventing everything below).
 	// 4. Set the volume.Status.CurrentNodeID (might fail).
 	// So we might delete the active engine, fail to set the new current engine to active, and fail to set the
-	// volume.Spec.CurrentNodeID. Then, the volume attachment controller might try to do a full detachment, setting
+	// volume.Status.CurrentNodeID. Then, the volume attachment controller might try to do a full detachment, setting
 	// volume.Spec.NodeID == "". At this point, there is no engine that can ever be considered active again by the rules
 	// above, but we want to use the new current engine. It's engine.Spec.NodeID ==
 	// volume.Status.CurrentMigrationNodeID.
@@ -1360,6 +1360,19 @@ func GetNewCurrentEngineAndExtras(v *longhorn.Volume, es map[string]*longhorn.En
 				currentEngine = e
 			} else {
 				extras = append(extras, e)
+			}
+		}
+	}
+
+	// If volume only has 1 active engine left and it does not have spec nodeID, it cannot pass the above rules.
+	// However, we want to use it as the current engine
+	if currentEngine == nil {
+		if len(es) == 1 {
+			for _, e := range es {
+				if e.Spec.Active && e.Spec.NodeID == "" {
+					currentEngine = e
+					extras = []*longhorn.Engine{}
+				}
 			}
 		}
 	}
