@@ -21,6 +21,7 @@ import (
 
 	"github.com/longhorn/longhorn-manager/constant"
 	"github.com/longhorn/longhorn-manager/datastore"
+	"github.com/longhorn/longhorn-manager/scheduler"
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -34,6 +35,9 @@ type VolumeRebuildingController struct {
 	namespace string
 	// use as the OwnerID of the controller
 	controllerID string
+
+	// replica scheduler to check if there is a schedulable disk
+	scheduler *scheduler.ReplicaScheduler
 
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
@@ -64,6 +68,7 @@ func NewVolumeRebuildingController(
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-volume-rebuilding-controller"}),
 	}
+	vbc.scheduler = scheduler.NewReplicaScheduler(ds)
 
 	var err error
 	if _, err = ds.VolumeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
@@ -96,6 +101,13 @@ func NewVolumeRebuildingController(
 		return nil, err
 	}
 	vbc.cacheSyncs = append(vbc.cacheSyncs, ds.ReplicaInformer.HasSynced)
+
+	if _, err = ds.NodeInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: vbc.enqueueVolumeNodeReady,
+	}, 0); err != nil {
+		return nil, err
+	}
+	vbc.cacheSyncs = append(vbc.cacheSyncs, ds.NodeInformer.HasSynced)
 
 	return vbc, nil
 }
@@ -181,6 +193,95 @@ func (vbc *VolumeRebuildingController) enqueueVolumeForReplica(obj interface{}) 
 	}
 
 	vbc.enqueueVolume(v)
+}
+
+func (vbc *VolumeRebuildingController) enqueueVolumeNodeReady(old, cur interface{}) {
+	oldNode, ok := old.(*longhorn.Node)
+	if !ok {
+		utilruntime.HandleError(fmt.Errorf("received unexpected old object: %#v", old))
+		return
+	}
+	curNode, ok := cur.(*longhorn.Node)
+	if !ok {
+		utilruntime.HandleError(fmt.Errorf("received unexpected current object: %#v", cur))
+		return
+	}
+
+	if curNode == nil || curNode.Status.Conditions == nil || curNode.Status.DiskStatus == nil {
+		return
+	}
+
+	if !hasNodeBecomeSchedulable(oldNode, curNode) && !hasDiskBecomeSchedulable(oldNode, curNode) && !hasDiskStatusBecomeSchedulable(oldNode, curNode) {
+		return
+	}
+
+	// When a node gets ready, enqueue degraded volumes
+	vs, err := vbc.ds.ListVolumesRO()
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("failed to list volumes: %w", err))
+		return
+	}
+	for _, v := range vs {
+		if v.Spec.OfflineRebuilding == longhorn.VolumeOfflineRebuildingDisabled {
+			continue
+		}
+		if v.Status.State != longhorn.VolumeStateDetached {
+			continue
+		}
+
+		vbc.enqueueVolume(v)
+	}
+}
+
+func hasNodeBecomeSchedulable(oldNode, curNode *longhorn.Node) bool {
+	oldReadyStatus := types.GetCondition(oldNode.Status.Conditions, longhorn.NodeConditionTypeReady).Status
+	curReadyStatus := types.GetCondition(curNode.Status.Conditions, longhorn.NodeConditionTypeReady).Status
+	oldSchedulableStatus := types.GetCondition(oldNode.Status.Conditions, longhorn.NodeConditionTypeSchedulable).Status
+	curSchedulableStatus := types.GetCondition(curNode.Status.Conditions, longhorn.NodeConditionTypeSchedulable).Status
+
+	readyChanged := oldReadyStatus != curReadyStatus && curReadyStatus == longhorn.ConditionStatusTrue
+	schedulableChanged := oldSchedulableStatus != curSchedulableStatus && curSchedulableStatus == longhorn.ConditionStatusTrue
+	schedulingChanged := oldNode.Spec.AllowScheduling != curNode.Spec.AllowScheduling && curNode.Spec.AllowScheduling
+	evictedChanged := oldNode.Spec.EvictionRequested != curNode.Spec.EvictionRequested && curNode.Spec.EvictionRequested
+
+	return readyChanged || schedulableChanged || schedulingChanged || evictedChanged
+}
+
+func hasDiskBecomeSchedulable(oldNode, curNode *longhorn.Node) bool {
+	for diskName, diskSpec := range curNode.Spec.Disks {
+		if !diskSpec.AllowScheduling || diskSpec.EvictionRequested {
+			continue
+		}
+		oldDiskSpec, exists := oldNode.Spec.Disks[diskName]
+		if !exists || !oldDiskSpec.AllowScheduling || oldDiskSpec.EvictionRequested {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasDiskStatusBecomeSchedulable(oldNode, curNode *longhorn.Node) bool {
+	for diskName, diskStatus := range curNode.Status.DiskStatus {
+		if !isDiskSchedulable(diskStatus) {
+			continue
+		}
+		if _, exists := oldNode.Status.DiskStatus[diskName]; !exists {
+			return true
+		}
+		if !isDiskSchedulable(oldNode.Status.DiskStatus[diskName]) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func isDiskSchedulable(diskStatus *longhorn.DiskStatus) bool {
+	ready := types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeReady).Status == longhorn.ConditionStatusTrue
+	schedulable := types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status == longhorn.ConditionStatusTrue
+
+	return ready && schedulable
 }
 
 func (vbc *VolumeRebuildingController) Run(workers int, stopCh <-chan struct{}) {
@@ -365,6 +466,13 @@ func (vbc *VolumeRebuildingController) syncLHVolumeAttachmentForOfflineRebuild(v
 		if va.Spec.AttachmentTickets == nil {
 			va.Spec.AttachmentTickets = map[string]*longhorn.AttachmentTicket{}
 		}
+		replicaReusableOrSchedulable, err := vbc.canReuseOrScheduleReplicas(vol, replicas)
+		if err != nil {
+			return va, err
+		}
+		if !replicaReusableOrSchedulable {
+			return va, nil
+		}
 		createOrUpdateAttachmentTicket(va, attachmentID, vol.Status.OwnerID, longhorn.AnyValue, longhorn.AttacherTypeVolumeRebuildingController)
 	}
 	return va, nil
@@ -389,6 +497,52 @@ func (vbc *VolumeRebuildingController) isVolumeReplicasHealthy(numberOfReplicas 
 		}
 	}
 	return healthyCount >= numberOfReplicas
+}
+
+func (vbc *VolumeRebuildingController) canReuseOrScheduleReplicas(vol *longhorn.Volume, rs map[string]*longhorn.Replica) (bool, error) {
+	reusableFailedReplica, err := vbc.scheduler.CheckAndReuseFailedReplica(rs, vol, "")
+	if err != nil {
+		return false, err
+	}
+	if reusableFailedReplica != nil {
+		vbc.logger.Infof("Reusing failed replica %v for volume %v", reusableFailedReplica.Name, vol.Name)
+		return true, nil
+	}
+
+	nodes, err := vbc.scheduler.ListSchedulableNodes()
+	if err != nil {
+		return false, err
+	}
+	// After a node reboot or uncordoned, it might be listed in the nodeInfo but its instance manager pod is not ready.
+	// Return an error if nodes are scheduled but their pods are not ready to requeue the volume.
+	for nodeName := range nodes {
+		if isReady, err := vbc.ds.CheckInstanceManagersReadiness(vol.Spec.DataEngine, nodeName); !isReady {
+			if err != nil {
+				return false, err
+			}
+			return false, fmt.Errorf("instance manager on node %s is not ready", nodeName)
+		}
+	}
+
+	return vbc.hasReplicaDiskCandidates(vol, rs)
+}
+
+func (vbc *VolumeRebuildingController) hasReplicaDiskCandidates(vol *longhorn.Volume, rs map[string]*longhorn.Replica) (bool, error) {
+	engine, err := vbc.getVolumeEngine(vol)
+	if err != nil {
+		return false, err
+	}
+	if engine == nil {
+		vbc.logger.Warnf("Volume %v engine not found, skip offline rebuilding", vol.Name)
+		return false, nil
+	}
+	newReplica := newReplicaCR(vol, engine, "")
+	replicaDiskCandidates, multiError := vbc.scheduler.FindDiskCandidates(newReplica, rs, vol)
+	if reason := multiError.JoinReasons(); reason != "" {
+		return false, fmt.Errorf("failed to get replica disk candidates for volume %v: %v", vol.Name, reason)
+	}
+
+	return len(replicaDiskCandidates) > 0, nil
 }
 
 func (vbc *VolumeRebuildingController) getVolumeEngine(vol *longhorn.Volume) (*longhorn.Engine, error) {
