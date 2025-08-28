@@ -389,13 +389,32 @@ func (v *volumeMutator) mutate(newObj runtime.Object, moreLabels map[string]stri
 		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/offlineRebuilding", "value": "%s"}`, longhorn.VolumeOfflineRebuildingIgnored))
 	}
 
-	// Mutate the backup block size to the default one if not set
-	if volume.Spec.BackupBlockSize == 0 {
+	var backupBlockSize = volume.Spec.BackupBlockSize
+	if volume.Spec.Standby {
+		// The backup block size of a DR volume is always copied from the latest backup
+		bName, _, _, err := backupstore.DecodeBackupURL(volume.Spec.FromBackup)
+		if err != nil {
+			return nil, werror.NewInvalidError(fmt.Sprintf("failed to get backup name from backup URL %s: %s", volume.Spec.FromBackup, err.Error()), "spec.fromBackup")
+		}
+		backup, err := v.ds.GetBackupRO(bName)
+		if err != nil {
+			return nil, werror.NewInvalidError(fmt.Sprintf("failed to inspect the backup config %s: %s", volume.Spec.FromBackup, err.Error()), "spec.fromBackup")
+		}
+		backupBlockSize = backup.Spec.BackupBlockSize
+		if backupBlockSize == 0 {
+			// fall back to legacy default 2 MiB
+			backupBlockSize = types.BackupBlockSize2Mi
+		}
+	} else if backupBlockSize == 0 {
+		// For non-DR volumes, mutate the backup block size to the default one if not set
 		defaultBackupBlockSize, settingErr := v.getDefaultBackupBlockSize()
 		if settingErr != nil {
 			return nil, werror.NewInvalidError(fmt.Sprintf("invalid default backup block size setting: %s", settingErr.Error()), "")
 		}
-		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupBlockSize", "value": "%d"}`, defaultBackupBlockSize))
+		backupBlockSize = defaultBackupBlockSize
+	}
+	if backupBlockSize != volume.Spec.BackupBlockSize {
+		patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/backupBlockSize", "value": "%d"}`, backupBlockSize))
 	}
 
 	labels := volume.Labels
