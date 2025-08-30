@@ -20,6 +20,12 @@ toolchain go1.25.0
 // necessary. However, it is better to include all of them for consistency.
 
 replace (
+	github.com/longhorn/go-spdk-helper => ../go-spdk-helper
+	github.com/longhorn/longhorn-instance-manager => ../longhorn-instance-manager
+	github.com/longhorn/types => ../types
+)
+
+replace (
 	k8s.io/api => k8s.io/api v0.33.4
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.33.4
 	k8s.io/apimachinery => k8s.io/apimachinery v0.33.4
@@ -111,7 +117,7 @@ require (
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/google/gnostic-models v0.6.9 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/longhorn/types v0.0.0-20250810143617-8a478c078cb8 // indirect
+	github.com/longhorn/types v0.0.0-20250812040111-bee68b0a4c07 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/moby/term v0.5.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect

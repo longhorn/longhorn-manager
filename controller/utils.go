@@ -58,19 +58,30 @@ func isVolumeUpgrading(v *longhorn.Volume) bool {
 	return v.Status.CurrentImage != v.Spec.Image
 }
 
-// isTargetVolumeOfAnActiveCloning checks if the input volume is the target volume of an on-going cloning process
-func isTargetVolumeOfAnActiveCloning(v *longhorn.Volume) bool {
-	isCloningDesired := types.IsDataFromVolume(v.Spec.DataSource)
-	isCloningCompletedOrFailed := v.Status.CloneStatus.State == longhorn.VolumeCloneStateCompleted ||
-		v.Status.CloneStatus.State == longhorn.VolumeCloneStateFailed
-	return isCloningDesired && !isCloningCompletedOrFailed
+// The flow is: VolumeCloneStateEmpty => VolumeCloneStateInitiated => VolumeCloneStateCopyCompletedAwaitingHealthy => VolumeCloneStateFailed or VolumeCloneStateCompleted
+// isCloneTargetCopyInProgress returns true if the volume is a clone target and has not reached copy-complete yet
+func isCloneTargetCopyInProgress(v *longhorn.Volume) bool {
+	isCloneTarget := types.IsDataFromVolume(v.Spec.DataSource)
+	reachedOrAfterCopyComplete := v.Status.CloneStatus.State == longhorn.VolumeCloneStateCopyCompletedAwaitingHealthy ||
+		v.Status.CloneStatus.State == longhorn.VolumeCloneStateFailed ||
+		v.Status.CloneStatus.State == longhorn.VolumeCloneStateCompleted
+	return isCloneTarget && !reachedOrAfterCopyComplete
 }
 
-// isCloningRequiredAndNotCompleted returns true if the volume requires cloning and the cloning hasn't completed
-func isCloningRequiredAndNotCompleted(v *longhorn.Volume) bool {
-	isCloningDesired := types.IsDataFromVolume(v.Spec.DataSource)
-	isCloningCompleted := v.Status.CloneStatus.State == longhorn.VolumeCloneStateCompleted
-	return isCloningDesired && !isCloningCompleted
+// isCloneTargetActive returns true if the volume is a clone target and has not reached a terminal state
+func isCloneTargetActive(v *longhorn.Volume) bool {
+	isCloneTarget := types.IsDataFromVolume(v.Spec.DataSource)
+	isTerminal := v.Status.CloneStatus.State == longhorn.VolumeCloneStateFailed ||
+		v.Status.CloneStatus.State == longhorn.VolumeCloneStateCompleted
+	return isCloneTarget && !isTerminal
+}
+
+// isCloneTargetNotCompletedAndNotCopyCompleted returns true if v is a clone target and not in copy-complete or completed state
+func isCloneTargetNotCompletedAndNotCopyCompleted(v *longhorn.Volume) bool {
+	isCloneTarget := types.IsDataFromVolume(v.Spec.DataSource)
+	completedOrCopyCompleted := v.Status.CloneStatus.State == longhorn.VolumeCloneStateCopyCompletedAwaitingHealthy ||
+		v.Status.CloneStatus.State == longhorn.VolumeCloneStateCompleted
+	return isCloneTarget && !completedOrCopyCompleted
 }
 
 func isVolumeFullyDetached(vol *longhorn.Volume) bool {
