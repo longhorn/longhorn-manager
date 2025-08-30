@@ -13,6 +13,8 @@ import (
 	"github.com/longhorn/longhorn-manager/meta"
 )
 
+const RFC3339MicroUTC = "2006-01-02T15:04:05.000000Z"
+
 func cmdNotFound(c *cli.Context, command string) {
 	panic(fmt.Errorf("unrecognized command: %s", command))
 }
@@ -29,7 +31,8 @@ func main() {
 			funcName := path.Base(f.Function)
 			return funcName, fileName
 		},
-		FullTimestamp: true,
+		TimestampFormat: RFC3339MicroUTC,
+		FullTimestamp:   true,
 	})
 
 	a := cli.NewApp()
