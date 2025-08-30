@@ -9,11 +9,11 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
+	lhtypes "github.com/longhorn/go-common-libs/types"
+
 	"github.com/longhorn/longhorn-manager/app"
 	"github.com/longhorn/longhorn-manager/meta"
 )
-
-const RFC3339MicroUTC = "2006-01-02T15:04:05.000000Z"
 
 func cmdNotFound(c *cli.Context, command string) {
 	panic(fmt.Errorf("unrecognized command: %s", command))
@@ -31,7 +31,7 @@ func main() {
 			funcName := path.Base(f.Function)
 			return funcName, fileName
 		},
-		TimestampFormat: RFC3339MicroUTC,
+		TimestampFormat: lhtypes.RFC3339NanoUTC,
 		FullTimestamp:   true,
 	})
 
