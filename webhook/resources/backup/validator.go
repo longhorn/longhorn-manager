@@ -72,9 +72,10 @@ func (b *backupValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(fmt.Sprintf("backup target %s is not available", backupTargetName), "")
 	}
 
+	labelVolumeName := backup.Labels[types.LonghornLabelBackupVolume]
+
 	if backup.Spec.SnapshotName != "" {
 		//check if label volume name matches snapshot volume name
-		labelVolumeName := backup.Labels[types.LonghornLabelBackupVolume]
 		snapshot, err := b.ds.GetSnapshotRO(backup.Spec.SnapshotName)
 		if err != nil {
 			return werror.NewInvalidError(fmt.Sprintf("snapshot %v is invalid", snapshot), "")
@@ -94,6 +95,12 @@ func (b *backupValidator) Create(request *admission.Request, newObj runtime.Obje
 		if volumeBackupTargetName != backupTargetName {
 			return werror.NewInvalidError(fmt.Sprintf("volume backup target %s and label backup target %s does not match", volumeBackupTargetName, backupTargetName), "")
 		}
+	}
+
+	if isLinkedClone, err := b.ds.IsVolumeLinkedCloneVolume(labelVolumeName); err != nil {
+		return werror.NewInvalidError(fmt.Sprintf("failed to to check IsVolumeLinkedCloneVolume: %v", err), "")
+	} else if isLinkedClone {
+		return werror.NewInvalidError(fmt.Sprintf("backup is not allowed for linked-clone volume %v", labelVolumeName), "")
 	}
 
 	return nil
