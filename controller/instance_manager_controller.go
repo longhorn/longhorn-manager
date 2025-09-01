@@ -1895,6 +1895,7 @@ func (imc *InstanceManagerController) canDeleteOrphan(orphan *longhorn.Orphan, i
 	return canDelete
 }
 
+// isEngineOnInstanceManager returns true only when it is very certain that an engine is scheduled in a given instance manager
 func (imc *InstanceManagerController) isEngineOnInstanceManager(instanceManager string, instance string) (bool, error) {
 	existEngine, err := imc.ds.GetEngineRO(instance)
 	if err != nil {
@@ -1904,9 +1905,20 @@ func (imc *InstanceManagerController) isEngineOnInstanceManager(instanceManager 
 		}
 		return false, errors.Wrapf(err, "failed to check if engine instance %q is scheduled on instance manager %q", instance, instanceManager)
 	}
-	return imc.isInstanceOnInstanceManager(instanceManager, &existEngine.ObjectMeta, &existEngine.Spec.InstanceSpec, &existEngine.Status.InstanceStatus), nil
+	if isEngineInTransitionState(existEngine) {
+		imc.logger.WithFields(logrus.Fields{
+			"isDeleted":    !existEngine.DeletionTimestamp.IsZero(),
+			"currentState": existEngine.Status.CurrentState,
+			"desiredState": existEngine.Spec.DesireState,
+			"currentNode":  existEngine.Status.OwnerID,
+			"desiredNode":  existEngine.Spec.NodeID,
+		}).Debugf("Skipping check if engine %q is scheduled on instance manager %q; instance is in state transition", existEngine.Name, instanceManager)
+		return false, nil
+	}
+	return imc.isInstanceOnInstanceManager(instanceManager, &existEngine.Status.InstanceStatus), nil
 }
 
+// isReplicaOnInstanceManager returns true only when it is very certain that a replica is scheduled in a given instance manager
 func (imc *InstanceManagerController) isReplicaOnInstanceManager(instanceManager string, instance string) (bool, error) {
 	existReplica, err := imc.ds.GetReplicaRO(instance)
 	if err != nil {
@@ -1916,26 +1928,20 @@ func (imc *InstanceManagerController) isReplicaOnInstanceManager(instanceManager
 		}
 		return false, errors.Wrapf(err, "failed to check if replica instance %q is scheduled on instance manager %q", instance, instanceManager)
 	}
-	return imc.isInstanceOnInstanceManager(instanceManager, &existReplica.ObjectMeta, &existReplica.Spec.InstanceSpec, &existReplica.Status.InstanceStatus), nil
+	if isReplicaInTransitionState(existReplica) {
+		imc.logger.WithFields(logrus.Fields{
+			"isDeleted":    !existReplica.DeletionTimestamp.IsZero(),
+			"currentState": existReplica.Status.CurrentState,
+			"desiredState": existReplica.Spec.DesireState,
+			"currentNode":  existReplica.Status.OwnerID,
+			"desiredNode":  existReplica.Spec.NodeID,
+		}).Debugf("Skipping check if replica %q is scheduled on instance manager %q; instance is in state transition", existReplica.Name, instanceManager)
+		return false, nil
+	}
+	return imc.isInstanceOnInstanceManager(instanceManager, &existReplica.Status.InstanceStatus), nil
 }
 
-// isInstanceOnInstanceManager returns true only when it is very certain that an instance is scheduled in a given instance manager
-func (imc *InstanceManagerController) isInstanceOnInstanceManager(instanceManager string, meta *metav1.ObjectMeta, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus) bool {
-	if !meta.DeletionTimestamp.IsZero() {
-		imc.logger.Debugf("Skipping check if Instance %q is scheduled on instance manager %q; instance is marked for deletion", meta.Name, instanceManager)
-		return false
-	}
-
-	if status.CurrentState != spec.DesireState || status.OwnerID != spec.NodeID {
-		imc.logger.WithFields(logrus.Fields{
-			"currentState": status.CurrentState,
-			"desiredState": spec.DesireState,
-			"currentNode":  status.OwnerID,
-			"desiredNode":  spec.NodeID,
-		}).Debugf("Skipping check if instance %q is scheduled on instance manager %q; instance is in state transition", meta.Name, instanceManager)
-		return false
-	}
-
+func (imc *InstanceManagerController) isInstanceOnInstanceManager(instanceManager string, status *longhorn.InstanceStatus) bool {
 	switch status.CurrentState {
 	case longhorn.InstanceStateRunning:
 		return status.InstanceManagerName == instanceManager
@@ -2396,6 +2402,7 @@ func (m *InstanceManagerMonitor) syncOrphans(im *longhorn.InstanceManager, insta
 	m.createOrphanForInstances(existOrphans, im, replicaProcesses, longhorn.OrphanTypeReplicaInstance, m.isReplicaOrphaned)
 }
 
+// isEngineOrphaned returns true only when it is very certain that an engine is scheduled on another instance manager
 func (m *InstanceManagerMonitor) isEngineOrphaned(instanceName, instanceManager string) (bool, error) {
 	existEngine, err := m.ds.GetEngineRO(instanceName)
 	if err != nil {
@@ -2407,9 +2414,20 @@ func (m *InstanceManagerMonitor) isEngineOrphaned(instanceName, instanceManager 
 		return false, err
 	}
 	// Engine CR still exists - check the ownership
-	return m.isInstanceOrphanedInInstanceManager(&existEngine.ObjectMeta, &existEngine.Spec.InstanceSpec, &existEngine.Status.InstanceStatus, instanceManager), nil
+	if isEngineInTransitionState(existEngine) {
+		m.logger.WithFields(logrus.Fields{
+			"isDeleted":    !existEngine.DeletionTimestamp.IsZero(),
+			"currentState": existEngine.Status.CurrentState,
+			"desiredState": existEngine.Spec.DesireState,
+			"currentNode":  existEngine.Status.OwnerID,
+			"desiredNode":  existEngine.Spec.NodeID,
+		}).Debugf("Skipping orphan check; Engine %s is in state transition", existEngine.Name)
+		return false, nil
+	}
+	return m.isInstanceOrphanedInInstanceManager(&existEngine.Status.InstanceStatus, instanceManager), nil
 }
 
+// isReplicaOrphaned returns true only when it is very certain that a replica is scheduled on another instance manager
 func (m *InstanceManagerMonitor) isReplicaOrphaned(instanceName, instanceManager string) (bool, error) {
 	existReplica, err := m.ds.GetReplicaRO(instanceName)
 	if err != nil {
@@ -2422,26 +2440,20 @@ func (m *InstanceManagerMonitor) isReplicaOrphaned(instanceName, instanceManager
 	}
 
 	// Replica CR still exists - check the ownership
-	return m.isInstanceOrphanedInInstanceManager(&existReplica.ObjectMeta, &existReplica.Spec.InstanceSpec, &existReplica.Status.InstanceStatus, instanceManager), nil
+	if isReplicaInTransitionState(existReplica) {
+		m.logger.WithFields(logrus.Fields{
+			"isDeleted":    !existReplica.DeletionTimestamp.IsZero(),
+			"currentState": existReplica.Status.CurrentState,
+			"desiredState": existReplica.Spec.DesireState,
+			"currentNode":  existReplica.Status.OwnerID,
+			"desiredNode":  existReplica.Spec.NodeID,
+		}).Debugf("Skipping orphan check; Replica %s is in state transition", existReplica.Name)
+		return false, nil
+	}
+	return m.isInstanceOrphanedInInstanceManager(&existReplica.Status.InstanceStatus, instanceManager), nil
 }
 
-// isInstanceOrphanedInInstanceManager returns true only when it is very certain that an instance is scheduled on another instance manager
-func (m *InstanceManagerMonitor) isInstanceOrphanedInInstanceManager(meta *metav1.ObjectMeta, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus, instanceManager string) bool {
-	if !meta.DeletionTimestamp.IsZero() {
-		m.logger.Debugf("Skipping orphan check; Instance %s is marked for deletion", meta.Name)
-		return false
-	}
-
-	if status.CurrentState != spec.DesireState || status.OwnerID != spec.NodeID {
-		m.logger.WithFields(logrus.Fields{
-			"currentState": status.CurrentState,
-			"desiredState": spec.DesireState,
-			"currentNode":  status.OwnerID,
-			"desiredNode":  spec.NodeID,
-		}).Debugf("Skipping orphan check; Instance %s is in state transition", meta.Name)
-		return false
-	}
-
+func (m *InstanceManagerMonitor) isInstanceOrphanedInInstanceManager(status *longhorn.InstanceStatus, instanceManager string) bool {
 	switch status.CurrentState {
 	case longhorn.InstanceStateRunning:
 		return status.InstanceManagerName != instanceManager
@@ -2533,4 +2545,57 @@ func (m *InstanceManagerMonitor) categorizeProcesses(instanceMap instanceProcess
 
 func (imc *InstanceManagerController) isResponsibleFor(im *longhorn.InstanceManager) bool {
 	return isControllerResponsibleFor(imc.controllerID, imc.ds, im.Name, im.Spec.NodeID, im.Status.OwnerID)
+}
+
+func isEngineInTransitionState(engine *longhorn.Engine) bool {
+	if !engine.DeletionTimestamp.IsZero() {
+		return true
+	}
+
+	spec := &engine.Spec
+	status := &engine.Status
+	if status.OwnerID == "" || status.CurrentState == "" {
+		// status has not been reconciled yet
+		return true
+	}
+
+	if status.CurrentState != spec.DesireState {
+		// not in desired state
+		return true
+	}
+
+	requireAttach := spec.NodeID != ""
+	isScheduledToOwner := spec.NodeID == status.OwnerID
+	if requireAttach && !isScheduledToOwner {
+		// The engine was previously detached from a node, and is required to attach to another node by the volume controller;
+		// The ownership will be transferred to the new node.
+		return true
+	}
+
+	return false
+}
+
+func isReplicaInTransitionState(replica *longhorn.Replica) bool {
+	if !replica.DeletionTimestamp.IsZero() {
+		return true
+	}
+
+	spec := &replica.Spec
+	status := &replica.Status
+	if status.OwnerID == "" || status.CurrentState == "" {
+		// status has not been reconciled yet
+		return true
+	}
+
+	if status.CurrentState != spec.DesireState {
+		// not in desired state
+		return true
+	}
+
+	if spec.NodeID != status.OwnerID {
+		// not on desired node
+		return true
+	}
+
+	return false
 }
