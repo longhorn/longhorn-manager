@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 	"runtime"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
@@ -29,7 +30,8 @@ func main() {
 			funcName := path.Base(f.Function)
 			return funcName, fileName
 		},
-		FullTimestamp: true,
+		TimestampFormat: time.RFC3339Nano,
+		FullTimestamp:   true,
 	})
 
 	a := cli.NewApp()
