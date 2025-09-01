@@ -25,9 +25,13 @@ import (
 
 	"github.com/longhorn/longhorn-manager/meta"
 	"github.com/longhorn/longhorn-manager/types"
+<<<<<<< HEAD
 	"github.com/longhorn/longhorn-manager/upgrade/v14xto150"
 	"github.com/longhorn/longhorn-manager/upgrade/v151to152"
 	"github.com/longhorn/longhorn-manager/upgrade/v15xto160"
+=======
+	"github.com/longhorn/longhorn-manager/upgrade/v110xto1110"
+>>>>>>> d5dd9e77 (fix(env-check): correct outdated unsupported os condition removal logic)
 	"github.com/longhorn/longhorn-manager/upgrade/v16xto170"
 	"github.com/longhorn/longhorn-manager/upgrade/v170to171"
 	"github.com/longhorn/longhorn-manager/upgrade/v17xto180"
@@ -321,6 +325,13 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 	if semver.Compare(lhVersionBeforeUpgrade, "v1.8.0") < 0 {
 		logrus.Info("Walking through the resource status upgrade path v1.7.x to v1.8.0")
 		if err := v17xto180.UpgradeResourcesStatus(namespace, lhClient, kubeClient, resourceMaps); err != nil {
+			return err
+		}
+	}
+	// When lhVersionBeforeUpgrade < v1.11.0, it is v1.10.x. The `CheckUpgradePath` method would have failed us out earlier if it was not v1.10.x.
+	if semver.Compare(lhVersionBeforeUpgrade, "v1.11.0") < 0 {
+		logrus.Info("Walking through the resource status upgrade path v1.10.x to v1.11.0")
+		if err := v110xto1110.UpgradeResourcesStatus(namespace, lhClient, kubeClient, resourceMaps); err != nil {
 			return err
 		}
 	}
