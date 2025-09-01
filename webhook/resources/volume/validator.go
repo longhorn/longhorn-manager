@@ -312,38 +312,6 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 				newVolume.Name, newVolume.Spec.DataEngine)
 			return werror.NewInvalidError(err.Error(), "")
 		}
-
-		if oldVolume.Spec.ReplicaAutoBalance != newVolume.Spec.ReplicaAutoBalance {
-			err := fmt.Errorf("changing replica auto balance for volume %v is not supported for data engine %v",
-				newVolume.Name, newVolume.Spec.DataEngine)
-			return werror.NewInvalidError(err.Error(), "")
-		}
-
-		if oldVolume.Spec.RestoreVolumeRecurringJob != newVolume.Spec.RestoreVolumeRecurringJob {
-			err := fmt.Errorf("changing restore volume recurring job for volume %v is not supported for data engine %v",
-				newVolume.Name, newVolume.Spec.DataEngine)
-			return werror.NewInvalidError(err.Error(), "")
-		}
-
-		if oldVolume.Spec.ReplicaSoftAntiAffinity != newVolume.Spec.ReplicaSoftAntiAffinity {
-			err := fmt.Errorf("changing replica soft anti-affinity for volume %v is not supported for data engine %v",
-				newVolume.Name, newVolume.Spec.DataEngine)
-			return werror.NewInvalidError(err.Error(), "")
-		}
-
-		if oldVolume.Spec.ReplicaZoneSoftAntiAffinity != newVolume.Spec.ReplicaZoneSoftAntiAffinity {
-			err := fmt.Errorf("changing replica zone soft anti-affinity for volume %v is not supported for data engine %v",
-				newVolume.Name, newVolume.Spec.DataEngine)
-			return werror.NewInvalidError(err.Error(), "")
-		}
-
-		if oldVolume.Spec.ReplicaDiskSoftAntiAffinity != newVolume.Spec.ReplicaDiskSoftAntiAffinity {
-			if oldVolume.Spec.ReplicaDiskSoftAntiAffinity != "" && newVolume.Spec.ReplicaDiskSoftAntiAffinity != longhorn.ReplicaDiskSoftAntiAffinityDefault {
-				err := fmt.Errorf("changing replica disk soft anti-affinity for volume %v is not supported for data engine %v",
-					newVolume.Name, newVolume.Spec.DataEngine)
-				return werror.NewInvalidError(err.Error(), "")
-			}
-		}
 	}
 
 	// prevent the changing v.Spec.MigrationNodeID to different node when the volume is doing live migration (when v.Status.CurrentMigrationNodeID != "")
