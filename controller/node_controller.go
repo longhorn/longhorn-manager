@@ -1314,11 +1314,7 @@ func (nc *NodeController) syncOrphans(node *longhorn.Node, collectedDataInfo map
 		}
 	}
 
-	if node.Spec.EvictionRequested {
-		return nc.deleteOrphansForEngineAndReplicaInstances(node)
-	}
-
-	return nil
+	return nc.deleteOrphansForEngineAndReplicaInstances(node)
 }
 
 func (nc *NodeController) getNewAndMissingOrphanedReplicaDataStores(diskName, diskUUID, diskPath string, replicaDataStores map[string]string) (map[string]string, map[string]string) {
@@ -1362,22 +1358,36 @@ func (nc *NodeController) getNewAndMissingOrphanedReplicaDataStores(diskName, di
 }
 
 func (nc *NodeController) deleteOrphansForEngineAndReplicaInstances(node *longhorn.Node) error {
-	nc.logger.Debugf("Deleting orphans on evicted node %v", node.Name)
-
 	orphans, err := nc.ds.ListOrphansByNodeRO(node.Name)
 	if err != nil {
-		return errors.Wrapf(err, "failed to list orphans to evict node %v", node.Name)
-	}
-
-	if len(orphans) > 0 {
-		nc.logger.Infof("Found %v orphans to be deleted on evicted node %v", len(orphans), node.Name)
+		return errors.Wrapf(err, "failed to list orphans for node %v", node.Name)
 	}
 
 	multiError := util.NewMultiError()
 	for _, orphan := range orphans {
-		switch orphan.Spec.Type {
-		case longhorn.OrphanTypeEngineInstance, longhorn.OrphanTypeReplicaInstance:
+		if orphan.Spec.Type != longhorn.OrphanTypeEngineInstance && orphan.Spec.Type != longhorn.OrphanTypeReplicaInstance {
+			continue
+		}
+
+		deleteOrphan := false
+		if node.Spec.EvictionRequested {
 			nc.logger.Infof("Deleting orphan %v on evicted node %v", orphan.Name, node.Name)
+			deleteOrphan = true
+		} else {
+			instanceParameter := getOrphanedInstanceParameters(orphan)
+			if im, errGetInstanceManager := nc.ds.GetInstanceManager(instanceParameter.instanceManager); errGetInstanceManager != nil {
+				if !datastore.ErrorIsNotFound(errGetInstanceManager) {
+					return errors.Wrapf(errGetInstanceManager, "node controller failed to check instance manager for orphan %v", orphan.Name)
+				}
+				nc.logger.Infof("Deleting orphan %v for missing instance manager %v", orphan.Name, instanceParameter.instanceManager)
+				deleteOrphan = true
+			} else if im != nil && !im.DeletionTimestamp.IsZero() {
+				nc.logger.Infof("Deleting orphan %v for deleted instance manager %v", orphan.Name, instanceParameter.instanceManager)
+				deleteOrphan = true
+			}
+		}
+
+		if deleteOrphan {
 			if err := nc.ds.DeleteOrphan(orphan.Name); err != nil && !datastore.ErrorIsNotFound(err) {
 				multiError.Append(util.NewMultiError(fmt.Sprintf("%v: %v", orphan.Name, err)))
 			}
