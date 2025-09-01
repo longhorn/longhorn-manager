@@ -10,7 +10,6 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
 
-	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 	upgradeutil "github.com/longhorn/longhorn-manager/upgrade/util"
 )
@@ -32,9 +31,6 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 }
 
 func updateCRs(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) (err error) {
-	if err := upgradeNodes(namespace, lhClient, resourceMaps); err != nil {
-		return err
-	}
 	if err := upgradeSettings(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
@@ -43,27 +39,6 @@ func updateCRs(namespace string, lhClient *lhclientset.Clientset, kubeClient *cl
 	}
 	if err := upgradeBackups(namespace, lhClient, resourceMaps); err != nil {
 		return err
-	}
-
-	return nil
-}
-
-func upgradeNodes(namespace string, lhClient *lhclientset.Clientset, resourceMaps map[string]interface{}) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, upgradeLogPrefix+"upgrade node failed")
-	}()
-
-	nodeMap, err := upgradeutil.ListAndUpdateNodesInProvidedCache(namespace, lhClient, resourceMaps)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return errors.Wrapf(err, "failed to list all existing Longhorn nodes during the node upgrade")
-	}
-
-	for _, n := range nodeMap {
-		// Blindly clean up the legacy package checking condition. The node controller will attach this condition back during runtime if necessary.
-		n.Status.Conditions = types.RemoveCondition(n.Status.Conditions, longhorn.NodeConditionTypeRequiredPackages)
 	}
 
 	return nil
