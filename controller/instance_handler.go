@@ -51,7 +51,7 @@ func NewInstanceHandler(ds *datastore.DataStore, instanceManagerHandler Instance
 
 func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *longhorn.InstanceManager, instanceName string, spec *longhorn.InstanceSpec, status *longhorn.InstanceStatus, instances map[string]longhorn.InstanceProcess) {
 	defer func() {
-		if status.CurrentState == longhorn.InstanceStateStopped {
+		if status.CurrentState == longhorn.InstanceStateStopped && !status.Starting {
 			status.InstanceManagerName = ""
 		}
 	}()
@@ -391,8 +391,13 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 	case longhorn.InstanceStateStopped:
 		shouldDelete := false
 		if im != nil && im.DeletionTimestamp == nil {
-			if _, exists := instances[instanceName]; exists {
+			if instance, exists := instances[instanceName]; exists {
 				shouldDelete = true
+				if types.IsDataEngineV2(instance.Spec.DataEngine) {
+					if instance.Status.State == longhorn.InstanceStateStopped {
+						shouldDelete = false
+					}
+				}
 			}
 		}
 		if status.Starting {
