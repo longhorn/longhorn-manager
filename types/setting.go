@@ -554,8 +554,11 @@ var (
 	}
 
 	SettingDefinitionFreezeFilesystemForSnapshot = SettingDefinition{
-		DisplayName:        "Freeze Filesystem For Snapshot",
-		Description:        "Setting that freezes the filesystem on the root partition before a snapshot is created.",
+		DisplayName: "Freeze Filesystem For Snapshot",
+		Description: "This setting only applies to volumes with the Kubernetes volume mode `Filesystem`. When enabled, Longhorn freezes the volume's filesystem immediately before creating a user-initiated snapshot. When disabled or when the Kubernetes volume mode is `Block`, Longhorn instead attempts a system sync before creating a user-initiated snapshot. \n\n" +
+			"When this setting is disabled, all data is flushed to disk just before the snapshot is created, but Longhorn cannot completely block write attempts during the brief interval between the system sync and snapshot creation. I/O is not paused during the system sync, so workloads likely do not notice that a snapshot is being created.\n\n" +
+			"The default option for this setting is `false` because kernels with version `v5.17` or earlier may not respond correctly when a volume crashes while a freeze is ongoing. This is not likely to happen but if it does, an affected kernel will not allow you to unmount the filesystem or stop processes using the filesystem without rebooting the node. Only enable this setting if you plan to use kernels with version `5.17` or later, and ext4 or XFS filesystems.\n\n" +
+			"You can override this setting (using the field freezeFilesystemForSnapshot) for specific volumes through the Longhorn UI, a StorageClass, or direct changes to an existing volume.",
 		Category:           SettingCategorySnapshot,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -1303,8 +1306,11 @@ var (
 	}
 
 	SettingDefinitionEngineReplicaTimeout = SettingDefinition{
-		DisplayName:        "Timeout between Engine and Replica",
-		Description:        "In seconds. The setting specifies the timeout between the engine and replica(s), and the value should be between 8 to 30 seconds. The default value is 8 seconds.",
+		DisplayName: "Engine Replica Timeout",
+		Description: "The time in seconds will wait for a response from a replica before marking it as failed. Values between 8 and 30 are allowed. The engine replica timeout is only in effect while there are I/O requests outstanding.\n\n" +
+			"This setting only applies to additional replicas. A V1 engine marks the last active replica as failed only after twice the configured number of seconds (timeout value x 2) have passed. This behavior is intended to balance volume responsiveness with volume availability.\n\n" +
+			"- The engine can quickly (after the configured timeout) ignore individual replicas that become unresponsive in favor of other available ones. This ensures future I/O will not be held up. \n\n" +
+			"- The engine waits on the last replica (until twice the configured timeout) to prevent unnecessarily crashing as a result of having no available backends. \n\n",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeInt,
 		Required:           true,
