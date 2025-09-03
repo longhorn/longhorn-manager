@@ -6454,6 +6454,32 @@ func (s *DataStore) IsV2DataEngineDisabledForNode(nodeName string) (bool, error)
 	return false, nil
 }
 
+func (s *DataStore) IsVolumeCompatibleWithNodeEngine(volumeName string, nodeName string) (bool, error) {
+	// v1 volumes are always considered compatible.
+	// v2 volumes are compatible only if the node has NOT disabled v2 engine.
+
+	volume, err := s.GetVolumeRO(volumeName)
+	if err != nil {
+		return false, err
+	}
+
+	// If it's a v1 volume, v1 data engine is enabled in cluster
+	// no option for disable v1 engine on the specific node
+	// always compatible
+	if !types.IsDataEngineV2(volume.Spec.DataEngine) {
+		return true, nil
+	}
+
+	// For v2 volumes, check if the node has v2 engine disabled
+	v2Disabled, err := s.IsV2DataEngineDisabledForNode(nodeName)
+	if err != nil {
+		return false, errors.Wrapf(err, "failed to check v2 engine label for node %s", nodeName)
+	}
+
+	// v2 volume is only compatible if node has NOT disabled v2
+	return !v2Disabled, nil
+}
+
 func (s *DataStore) GetCurrentDiskBackingImageMap() (map[string][]*longhorn.BackingImage, error) {
 	diskBackingImageMap := map[string][]*longhorn.BackingImage{}
 	backingImages, err := s.ListBackingImages()
