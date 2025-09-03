@@ -619,6 +619,19 @@ func (bc *BackupController) isResponsibleFor(b *longhorn.Backup, defaultEngineIm
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
+	volumeName, err := bc.getBackupVolumeName(b)
+	if err != nil {
+		return false, err
+	}
+
+	compatible, err := bc.ds.IsVolumeCompatibleWithNodeEngine(volumeName, bc.controllerID)
+	if err != nil {
+		return false, err
+	}
+	if !compatible {
+		return false, nil
+	}
+
 	isResponsible := isControllerResponsibleFor(bc.controllerID, bc.ds, b.Name, "", b.Status.OwnerID)
 
 	currentOwnerEngineAvailable, err := bc.ds.CheckEngineImageReadiness(defaultEngineImage, b.Status.OwnerID)
