@@ -290,6 +290,7 @@ var replacedSettingNames = map[SettingName]bool{
 type SettingCategory string
 
 const (
+	SettingCategorySystemInfo = SettingCategory("system info")
 	SettingCategoryGeneral    = SettingCategory("general")
 	SettingCategoryBackup     = SettingCategory("backup")
 	SettingCategoryOrphan     = SettingCategory("orphan")
@@ -505,7 +506,7 @@ var (
 		DisplayName: "Default Engine Image",
 		Description: "The default engine image used by the manager. Can be changed on the manager starting command line only.\n\n" +
 			"**Note:** This engine image is required only for the V1 Data Engine and is not used by the V2 Data Engine.",
-		Category:           SettingCategoryGeneral,
+		Category:           SettingCategorySystemInfo,
 		Type:               SettingTypeString,
 		Required:           true,
 		ReadOnly:           true,
@@ -515,7 +516,7 @@ var (
 	SettingDefinitionDefaultInstanceManagerImage = SettingDefinition{
 		DisplayName:        "Default Instance Manager Image",
 		Description:        "The default instance manager image used by the manager. Can be changed on the manager starting command line only",
-		Category:           SettingCategoryGeneral,
+		Category:           SettingCategorySystemInfo,
 		Type:               SettingTypeDeprecated,
 		Required:           true,
 		ReadOnly:           true,
@@ -525,7 +526,7 @@ var (
 	SettingDefinitionDefaultBackingImageManagerImage = SettingDefinition{
 		DisplayName:        "Default Backing Image Manager Image",
 		Description:        "The default backing image manager image used by the manager. Can be changed on the manager starting command line only",
-		Category:           SettingCategoryGeneral,
+		Category:           SettingCategorySystemInfo,
 		Type:               SettingTypeDeprecated,
 		Required:           true,
 		ReadOnly:           true,
@@ -535,7 +536,7 @@ var (
 	SettingDefinitionSupportBundleManagerImage = SettingDefinition{
 		DisplayName:        "Support Bundle Manager Image",
 		Description:        "The support bundle manager image for the support bundle generation.",
-		Category:           SettingCategoryGeneral,
+		Category:           SettingCategorySystemInfo,
 		Type:               SettingTypeString,
 		Required:           true,
 		ReadOnly:           false,
@@ -691,7 +692,7 @@ var (
 	SettingDefinitionCurrentLonghornVersion = SettingDefinition{
 		DisplayName:        "Current Longhorn Version",
 		Description:        "The current Longhorn version.",
-		Category:           SettingCategoryGeneral,
+		Category:           SettingCategorySystemInfo,
 		Type:               SettingTypeString,
 		Required:           false,
 		ReadOnly:           true,
@@ -702,7 +703,7 @@ var (
 	SettingDefinitionLatestLonghornVersion = SettingDefinition{
 		DisplayName:        "Latest Longhorn Version",
 		Description:        "The latest version of Longhorn available. Updated by Upgrade Checker automatically",
-		Category:           SettingCategoryGeneral,
+		Category:           SettingCategorySystemInfo,
 		Type:               SettingTypeString,
 		Required:           false,
 		ReadOnly:           true,
@@ -712,7 +713,7 @@ var (
 	SettingDefinitionStableLonghornVersions = SettingDefinition{
 		DisplayName:        "Stable Longhorn Versions",
 		Description:        "The latest stable version of every minor release line. Updated by Upgrade Checker automatically",
-		Category:           SettingCategoryGeneral,
+		Category:           SettingCategorySystemInfo,
 		Type:               SettingTypeString,
 		Required:           false,
 		ReadOnly:           true,
@@ -775,8 +776,7 @@ var (
 			"All Longhorn volumes should be detached before modifying toleration settings. " +
 			"We recommend setting tolerations during Longhorn deployment because the Longhorn system cannot be operated during the update. " +
 			"Multiple tolerations can be set here, and these tolerations are separated by semicolon. For example: \n\n" +
-			"* `key1=value1:NoSchedule; key2:NoExecute` \n\n" +
-			"* `:` this toleration tolerates everything because an empty key with operator `Exists` matches all keys, values and effects \n\n" +
+			"* `key1=value1:NoSchedule; key2:NoExecute:` this toleration tolerates everything because an empty key with operator `Exists` matches all keys, values and effects \n\n" +
 			"* `key1=value1:`  this toleration has empty effect. It matches all effects with key `key1` \n\n" +
 			"Because `kubernetes.io` is used as the key of all Kubernetes default tolerations, it should not be used in the toleration settings.\n\n",
 		Category:           SettingCategoryDangerZone,
@@ -808,7 +808,7 @@ var (
 	SettingDefinitionCRDAPIVersion = SettingDefinition{
 		DisplayName:        "Custom Resource API Version",
 		Description:        "The current customer resource's API version, e.g. longhorn.io/v1beta2. Set by manager automatically",
-		Category:           SettingCategoryGeneral,
+		Category:           SettingCategorySystemInfo,
 		Type:               SettingTypeString,
 		Required:           true,
 		ReadOnly:           true,
