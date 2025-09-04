@@ -6466,7 +6466,7 @@ func (s *DataStore) IsVolumeCompatibleWithNodeEngine(volumeName string, nodeName
 	// If it's a v1 volume, v1 data engine is enabled in cluster
 	// no option for disable v1 engine on the specific node
 	// always compatible
-	if !types.IsDataEngineV2(volume.Spec.DataEngine) {
+	if types.IsDataEngineV1(volume.Spec.DataEngine) {
 		return true, nil
 	}
 
@@ -6477,7 +6477,7 @@ func (s *DataStore) IsVolumeCompatibleWithNodeEngine(volumeName string, nodeName
 	}
 
 	// v2 volume is only compatible if node has NOT disabled v2
-	return !v2Disabled, nil
+	return types.IsDataEngineV2(volume.Spec.DataEngine) && !v2Disabled, nil
 }
 
 func (s *DataStore) GetCurrentDiskBackingImageMap() (map[string][]*longhorn.BackingImage, error) {
