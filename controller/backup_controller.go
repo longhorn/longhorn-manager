@@ -624,12 +624,8 @@ func (bc *BackupController) isResponsibleFor(b *longhorn.Backup, defaultEngineIm
 		return false, err
 	}
 
-	compatible, err := bc.ds.IsVolumeCompatibleWithNodeEngine(volumeName, bc.controllerID)
-	if err != nil {
+	if compatible, err := bc.ds.IsVolumeCompatibleWithNodeEngine(volumeName, bc.controllerID); err != nil || !compatible {
 		return false, err
-	}
-	if !compatible {
-		return false, nil
 	}
 
 	isResponsible := isControllerResponsibleFor(bc.controllerID, bc.ds, b.Name, "", b.Status.OwnerID)
