@@ -364,23 +364,9 @@ func (bc *BackupBackingImageController) checkMonitor(bbi *longhorn.BackupBacking
 	}
 
 	// pick one backing image manager to do backup
-	var targetBim *longhorn.BackingImageManager
-	for diskUUID := range backingImage.Spec.DiskFileSpecMap {
-		bimMap, err := bc.ds.ListBackingImageManagersByDiskUUID(diskUUID)
-		if err != nil {
-			return nil, err
-		}
-		for _, bim := range bimMap {
-			if bim.DeletionTimestamp == nil {
-				if uuidInManager, exists := bim.Status.BackingImageFileMap[backingImage.Name]; exists && uuidInManager.UUID == backingImage.Status.UUID {
-					targetBim = bim
-					break
-				}
-			}
-		}
-		if targetBim != nil {
-			break
-		}
+	targetBim, err := bc.findSuitableBackingImageManager(backingImage)
+	if err != nil {
+		return nil, err
 	}
 	if targetBim == nil {
 		return nil, fmt.Errorf("failed to find backing image manager to backup backing image %v", bbi.Name)
@@ -484,4 +470,32 @@ func (bc *BackupBackingImageController) backupNotInFinalState(bbi *longhorn.Back
 	return bbi.Status.State != longhorn.BackupStateCompleted &&
 		bbi.Status.State != longhorn.BackupStateError &&
 		bbi.Status.State != longhorn.BackupStateUnknown
+}
+
+func (bc *BackupBackingImageController) findSuitableBackingImageManager(backingImage *longhorn.BackingImage) (*longhorn.BackingImageManager, error) {
+	for diskUUID := range backingImage.Spec.DiskFileSpecMap {
+		bimMap, err := bc.ds.ListBackingImageManagersByDiskUUID(diskUUID)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, bim := range bimMap {
+			// Skip deleted managers
+			if bim.DeletionTimestamp != nil {
+				continue
+			}
+
+			// Check if this manager has the backing image file
+			uuidInManager, exists := bim.Status.BackingImageFileMap[backingImage.Name]
+			if !exists {
+				continue
+			}
+
+			// Check if UUID matches and state is ready
+			if uuidInManager.UUID == backingImage.Status.UUID && uuidInManager.State == longhorn.BackingImageStateReady {
+				return bim, nil
+			}
+		}
+	}
+	return nil, nil
 }
