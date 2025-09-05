@@ -68,7 +68,8 @@ type SnapshotMonitor struct {
 	nodeName      string
 	eventRecorder record.EventRecorder
 
-	checkScheduler *gocron.Scheduler
+	checkSchedulerV1 *gocron.Scheduler
+	checkSchedulerV2 *gocron.Scheduler
 
 	snapshotChangeEventQueue workqueue.TypedInterface[any]
 	snapshotCheckTaskQueue   workqueue.TypedRateLimitingInterface[any]
@@ -76,7 +77,8 @@ type SnapshotMonitor struct {
 	inProgressSnapshotCheckTasks     map[string]struct{}
 	inProgressSnapshotCheckTasksLock sync.RWMutex
 
-	existingDataIntegrityCronJob string
+	existingDataIntegrityCronJobV1 string
+	existingDataIntegrityCronJobV2 string
 
 	syncCallback func(key string)
 
@@ -97,7 +99,8 @@ func NewSnapshotMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, node
 		eventRecorder: eventRecorder,
 
 		// Periodically check snapshot disk files
-		checkScheduler: gocron.NewScheduler(time.Local),
+		checkSchedulerV1: gocron.NewScheduler(time.Local),
+		checkSchedulerV2: gocron.NewScheduler(time.Local),
 
 		snapshotChangeEventQueue: snapshotChangeEventQueue,
 
@@ -112,7 +115,8 @@ func NewSnapshotMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, node
 		proxyConnCounter: util.NewAtomicCounter(),
 	}
 
-	m.checkScheduler.SingletonModeAll()
+	m.checkSchedulerV1.SingletonModeAll()
+	m.checkSchedulerV2.SingletonModeAll()
 
 	go m.Start()
 
@@ -150,7 +154,7 @@ func (m *SnapshotMonitor) processSnapshotChangeEvent() {
 	}
 }
 
-func (m *SnapshotMonitor) checkSnapshots() {
+func (m *SnapshotMonitor) checkSnapshotsV1() {
 	m.logger.WithField("monitor", monitorName).Info("Starting checking snapshots")
 	defer m.logger.WithField("monitor", monitorName).Infof("Finished checking snapshots")
 
@@ -167,8 +171,34 @@ func (m *SnapshotMonitor) checkSnapshots() {
 	}()
 
 	for _, engine := range engines {
-		m.logger.WithField("monitor", monitorName).Infof("Populating engine %v snapshots", engine.Name)
-		m.populateEngineSnapshots(engine)
+		if engine.Spec.DataEngine == longhorn.DataEngineTypeV1 {
+			m.logger.WithField("monitor", monitorName).Infof("Populating engine %v snapshots", engine.Name)
+			m.populateEngineSnapshots(engine)
+		}
+	}
+}
+
+func (m *SnapshotMonitor) checkSnapshotsV2() {
+	m.logger.WithField("monitor", monitorName).Info("Starting checking snapshots")
+	defer m.logger.WithField("monitor", monitorName).Infof("Finished checking snapshots")
+
+	engines, err := m.ds.ListEnginesByNodeRO(m.nodeName)
+	if err != nil {
+		m.logger.WithField("monitor", monitorName).WithError(err).Errorf("failed to list engines on node %v", m.nodeName)
+		return
+	}
+
+	defer func() {
+		m.Lock()
+		defer m.Unlock()
+		m.LastSnapshotPeriodicCheckedAt = metav1.Time{Time: time.Now().UTC()}
+	}()
+
+	for _, engine := range engines {
+		if engine.Spec.DataEngine == longhorn.DataEngineTypeV2 {
+			m.logger.WithField("monitor", monitorName).Infof("Populating engine %v snapshots", engine.Name)
+			m.populateEngineSnapshots(engine)
+		}
 	}
 }
 
@@ -246,7 +276,8 @@ func (m *SnapshotMonitor) Stop() {
 	m.logger.WithField("monitor", monitorName).Info("Closing snapshot monitor")
 
 	m.snapshotCheckTaskQueue.ShutDown()
-	m.checkScheduler.Stop()
+	m.checkSchedulerV1.Stop()
+	m.checkSchedulerV2.Stop()
 	m.quit()
 }
 
@@ -255,36 +286,65 @@ func (m *SnapshotMonitor) RunOnce() error {
 }
 
 func (m *SnapshotMonitor) UpdateConfiguration(map[string]interface{}) error {
-	dataIntegrityCronJob, err := m.ds.GetSettingValueExisted(types.SettingNameSnapshotDataIntegrityCronJob)
+	dataIntegrityCronJobv1, err := m.ds.GetSettingValueExistedByDataEngine(types.SettingNameSnapshotDataIntegrityCronJob, longhorn.DataEngineTypeV1)
 	if err != nil {
-		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameSnapshotDataIntegrityCronJob)
+		return errors.Wrapf(err, "failed to get %v setting for %s", types.SettingNameSnapshotDataIntegrityCronJob, longhorn.DataEngineTypeV1)
+	}
+	dataIntegrityCronJobv2, err := m.ds.GetSettingValueExistedByDataEngine(types.SettingNameSnapshotDataIntegrityCronJob, longhorn.DataEngineTypeV2)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get %v setting for %s", types.SettingNameSnapshotDataIntegrityCronJob, longhorn.DataEngineTypeV2)
 	}
 
 	m.RLock()
-	if dataIntegrityCronJob == m.existingDataIntegrityCronJob && m.checkScheduler.Len() > 0 {
+	if dataIntegrityCronJobv1 == m.existingDataIntegrityCronJobV1 && m.checkSchedulerV1.Len() > 0 &&
+		dataIntegrityCronJobv2 == m.existingDataIntegrityCronJobV2 && m.checkSchedulerV2.Len() > 0 {
 		m.RUnlock()
 		return nil
 	}
 	m.RUnlock()
+	if dataIntegrityCronJobv1 != m.existingDataIntegrityCronJobV1 || m.checkSchedulerV1.Len() == 0 {
+		if m.checkSchedulerV1.Len() > 0 {
+			m.checkSchedulerV1.Remove(m.checkSnapshotsV1)
+		}
 
-	if m.checkScheduler.Len() > 0 {
-		m.checkScheduler.Remove(m.checkSnapshots)
+		job1, err := m.checkSchedulerV1.Cron(dataIntegrityCronJobv1).Do(m.checkSnapshotsV1)
+		if err != nil {
+			return errors.Wrap(err, "failed to schedule snapshot check job")
+		}
+
+		m.Lock()
+		previousDataIntegrityCronJob := m.existingDataIntegrityCronJobV1
+		m.existingDataIntegrityCronJobV1 = dataIntegrityCronJobv1
+		m.Unlock()
+
+		m.checkSchedulerV1.StartAsync()
+
+		m.logger.WithField("monitor", monitorName).Infof("Cron is changed from %v to %v for all volumes with %s. Next snapshot check job will be executed at %v",
+			previousDataIntegrityCronJob, m.existingDataIntegrityCronJobV1, longhorn.DataEngineTypeV1, job1.NextRun())
+
 	}
 
-	job, err := m.checkScheduler.Cron(dataIntegrityCronJob).Do(m.checkSnapshots)
-	if err != nil {
-		return errors.Wrap(err, "failed to schedule snapshot check job")
+	if dataIntegrityCronJobv2 != m.existingDataIntegrityCronJobV2 || m.checkSchedulerV2.Len() == 0 {
+		if m.checkSchedulerV2.Len() > 0 {
+			m.checkSchedulerV2.Remove(m.checkSnapshotsV2)
+		}
+
+		job2, err := m.checkSchedulerV2.Cron(dataIntegrityCronJobv2).Do(m.checkSnapshotsV2)
+		if err != nil {
+			return errors.Wrap(err, "failed to schedule snapshot check job")
+		}
+
+		m.Lock()
+		previousDataIntegrityCronJob := m.existingDataIntegrityCronJobV2
+		m.existingDataIntegrityCronJobV2 = dataIntegrityCronJobv2
+		m.Unlock()
+
+		m.checkSchedulerV2.StartAsync()
+
+		m.logger.WithField("monitor", monitorName).Infof("Cron is changed from %v to %v for all volumes with %s. Next snapshot check job will be executed at %v",
+			previousDataIntegrityCronJob, m.existingDataIntegrityCronJobV2, longhorn.DataEngineTypeV2, job2.NextRun())
+
 	}
-
-	m.Lock()
-	previousDataIntegrityCronJob := m.existingDataIntegrityCronJob
-	m.existingDataIntegrityCronJob = dataIntegrityCronJob
-	m.Unlock()
-
-	m.checkScheduler.StartAsync()
-
-	m.logger.WithField("monitor", monitorName).Infof("Cron is changed from %v to %v. Next snapshot check job will be executed at %v",
-		previousDataIntegrityCronJob, m.existingDataIntegrityCronJob, job.NextRun())
 
 	return nil
 }
