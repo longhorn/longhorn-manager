@@ -142,7 +142,8 @@ const (
 	SettingNameDisableSnapshotPurge                                     = SettingName("disable-snapshot-purge")
 	SettingNameV1DataEngine                                             = SettingName("v1-data-engine")
 	SettingNameV2DataEngine                                             = SettingName("v2-data-engine")
-	SettingNameDataEngineHugepageLimit                                  = SettingName("data-engine-hugepage-limit")
+	SettingNameDataEngineHugepageEnabled                                = SettingName("data-engine-hugepage-enabled")
+	SettingNameDataEngineMemorySize                                     = SettingName("data-engine-memory-size")
 	SettingNameDataEngineCPUMask                                        = SettingName("data-engine-cpu-mask")
 	SettingNameDataEngineLogLevel                                       = SettingName("data-engine-log-level")
 	SettingNameDataEngineLogFlags                                       = SettingName("data-engine-log-flags")
@@ -254,7 +255,8 @@ var (
 		SettingNameLogLevel,
 		SettingNameV1DataEngine,
 		SettingNameV2DataEngine,
-		SettingNameDataEngineHugepageLimit,
+		SettingNameDataEngineHugepageEnabled,
+		SettingNameDataEngineMemorySize,
 		SettingNameDataEngineCPUMask,
 		SettingNameDataEngineLogLevel,
 		SettingNameDataEngineLogFlags,
@@ -399,7 +401,8 @@ var (
 		SettingNameLogLevel:                                                 SettingDefinitionLogLevel,
 		SettingNameV1DataEngine:                                             SettingDefinitionV1DataEngine,
 		SettingNameV2DataEngine:                                             SettingDefinitionV2DataEngine,
-		SettingNameDataEngineHugepageLimit:                                  SettingDefinitionDataEngineHugepageLimit,
+		SettingNameDataEngineHugepageEnabled:                                SettingDefinitionDataEngineHugepageEnabled,
+		SettingNameDataEngineMemorySize:                                     SettingDefinitionDataEngineMemorySize,
 		SettingNameDataEngineCPUMask:                                        SettingDefinitionDataEngineCPUMask,
 		SettingNameDataEngineLogLevel:                                       SettingDefinitionDataEngineLogLevel,
 		SettingNameDataEngineLogFlags:                                       SettingDefinitionDataEngineLogFlags,
@@ -1549,9 +1552,20 @@ var (
 		Default:            "false",
 	}
 
-	SettingDefinitionDataEngineHugepageLimit = SettingDefinition{
-		DisplayName:        "Data Engine Hugepage Limit",
-		Description:        "Applies only to the V2 Data Engine. Specifies the hugepage size, in MiB, for the Storage Performance Development Kit (SPDK) target daemon. The default value is 2048 MiB.\n\n",
+	SettingDefinitionDataEngineHugepageEnabled = SettingDefinition{
+		DisplayName:        "Data Engine Hugepage Enabled",
+		Description:        "Applies only to the V2 Data Engine. Enables hugepages for the Storage Performance Development Kit (SPDK) target daemon. If disabled, legacy memory is used. Allocation size is set via the Data Engine Memory Size setting.",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"true\"}", longhorn.DataEngineTypeV2),
+	}
+
+	SettingDefinitionDataEngineMemorySize = SettingDefinition{
+		DisplayName:        "Data Engine Memory Size",
+		Description:        "Applies only to the V2 Data Engine. Specifies the memory size, in MiB, allocated to the Storage Performance Development Kit (SPDK) target daemon. When hugepage is enabled, this defines the hugepage size; when legacy memory is used, hugepage is disabled.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeInt,
 		Required:           true,

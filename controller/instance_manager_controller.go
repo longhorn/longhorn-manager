@@ -1608,6 +1608,8 @@ func (imc *InstanceManagerController) getLogPath() (string, error) {
 }
 
 func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.InstanceManager, tolerations []corev1.Toleration, registrySecret string, nodeSelector map[string]string, dataEngine longhorn.DataEngineType) (*corev1.Pod, error) {
+	var err error
+
 	logPath, err := imc.getLogPath()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get log path for instance manager pod")
@@ -1631,6 +1633,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			logFlags = strings.ToLower(logFlagsSetting)
 		}
 
+		// CPU mask is required for SPDK.
 		cpuMask := im.Spec.DataEngineSpec.V2.CPUMask
 		if cpuMask == "" {
 			value, err := imc.ds.GetSettingValueExistedByDataEngine(types.SettingNameDataEngineCPUMask, dataEngine)
@@ -1645,10 +1648,30 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		}
 		im.Status.DataEngineStatus.V2.CPUMask = cpuMask
 
+		// Hugepage or legacy memory preallocation is required for SPDK.
+		hugepageEnabled, err := imc.ds.GetSettingAsBoolByDataEngine(types.SettingNameDataEngineHugepageEnabled, im.Spec.DataEngine)
+		if err != nil {
+			return nil, err
+		}
+
+		memory := int64(0)
+		memory, err = imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineMemorySize, im.Spec.DataEngine)
+		if err != nil {
+			return nil, err
+		}
+
+		// Use the same memory size for hugepage limit if hugepage is enabled.
+		// Otherwise, use legacy memory preallocation and don't set the hugepage limit.
+		hugepage := int64(0)
+		if hugepageEnabled {
+			hugepage = memory
+		}
+
 		args := []string{
 			"instance-manager",
 			"--spdk-log", logFlags,
 			"--spdk-cpumask", cpuMask,
+			"--spdk-memory-size", fmt.Sprintf("%d", memory),
 			"--enable-spdk", "--debug",
 			"daemon",
 			"--spdk-enabled",
@@ -1665,14 +1688,13 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 			args = append(args, "--spdk-interrupt-mode")
 		}
 
+		if !hugepageEnabled {
+			args = append(args, "--spdk-no-hugepage")
+		}
+
 		imc.logger.Infof("Creating instance manager pod %v with args %+v", podSpec.Name, args)
 
 		podSpec.Spec.Containers[0].Args = args
-
-		hugepage, err := imc.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineHugepageLimit, im.Spec.DataEngine)
-		if err != nil {
-			return nil, err
-		}
 
 		if podSpec.Spec.Containers[0].Resources.Requests == nil {
 			podSpec.Spec.Containers[0].Resources.Requests = corev1.ResourceList{}
@@ -1682,6 +1704,7 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		if podSpec.Spec.Containers[0].Resources.Limits == nil {
 			podSpec.Spec.Containers[0].Resources.Limits = corev1.ResourceList{}
 		}
+
 		podSpec.Spec.Containers[0].Resources.Limits[corev1.ResourceName("hugepages-2Mi")] = resource.MustParse(fmt.Sprintf("%vMi", hugepage))
 
 		podSpec.Spec.Containers[0].Lifecycle = &corev1.Lifecycle{
