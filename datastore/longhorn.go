@@ -6460,24 +6460,23 @@ func (s *DataStore) IsVolumeCompatibleWithNodeEngine(volumeName string, nodeName
 
 	volume, err := s.GetVolumeRO(volumeName)
 	if err != nil {
+		// Because the volume doesn't exist,
+		// we can skip the following node check for backupvolumes and backups synced from a remote backup target.
+		if apierrors.IsNotFound(err) {
+			return true, nil
+		}
 		return false, err
 	}
 
-	// If it's a v1 volume, v1 data engine is enabled in cluster
-	// no option for disable v1 engine on the specific node
-	// always compatible
-	if types.IsDataEngineV1(volume.Spec.DataEngine) {
-		return true, nil
+	if types.IsDataEngineV2(volume.Spec.DataEngine) {
+		v2Disabled, err := s.IsV2DataEngineDisabledForNode(nodeName)
+		if err != nil {
+			return false, errors.Wrapf(err, "failed to check v2 data engine disable label for node %s", nodeName)
+		}
+		return !v2Disabled, nil
 	}
 
-	// For v2 volumes, check if the node has v2 engine disabled
-	v2Disabled, err := s.IsV2DataEngineDisabledForNode(nodeName)
-	if err != nil {
-		return false, errors.Wrapf(err, "failed to check v2 engine label for node %s", nodeName)
-	}
-
-	// v2 volume is only compatible if node has NOT disabled v2
-	return types.IsDataEngineV2(volume.Spec.DataEngine) && !v2Disabled, nil
+	return true, nil
 }
 
 func (s *DataStore) GetCurrentDiskBackingImageMap() (map[string][]*longhorn.BackingImage, error) {
