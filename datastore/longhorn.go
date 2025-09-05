@@ -209,7 +209,7 @@ func (s *DataStore) syncConsolidatedV2DataEngineSetting(oldSettingName, newSetti
 
 func (s *DataStore) syncConsolidatedV2DataEngineSettings() error {
 	settings := map[types.SettingName]types.SettingName{
-		types.SettingNameV2DataEngineHugepageLimit: types.SettingNameDataEngineHugepageLimit,
+		types.SettingNameV2DataEngineHugepageLimit: types.SettingNameDataEngineMemorySize,
 		types.SettingNameV2DataEngineCPUMask:       types.SettingNameDataEngineCPUMask,
 		types.SettingNameV2DataEngineLogLevel:      types.SettingNameDataEngineLogLevel,
 		types.SettingNameV2DataEngineLogFlags:      types.SettingNameDataEngineLogFlags,
@@ -628,8 +628,13 @@ func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) (ims []*
 		}
 	}
 
+	hugepageEnabled, err := s.GetSettingAsBoolByDataEngine(types.SettingNameDataEngineHugepageEnabled, longhorn.DataEngineTypeV2)
+	if err != nil {
+		return nil, err
+	}
+
 	// Check if there is enough hugepages-2Mi capacity for all nodes
-	hugepageRequestedInMiB, err := s.GetSettingAsIntByDataEngine(types.SettingNameDataEngineHugepageLimit, longhorn.DataEngineTypeV2)
+	hugepageRequestedInMiB, err := s.GetSettingAsIntByDataEngine(types.SettingNameDataEngineMemorySize, longhorn.DataEngineTypeV2)
 	if err != nil {
 		return nil, err
 	}
@@ -666,7 +671,7 @@ func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) (ims []*
 			continue
 		}
 
-		if dataEngineEnabled {
+		if dataEngineEnabled && hugepageEnabled {
 			capacity, ok := kubeNode.Status.Capacity["hugepages-2Mi"]
 			if !ok {
 				return nil, errors.Errorf("failed to get hugepages-2Mi capacity for node %v", kubeNode.Name)
