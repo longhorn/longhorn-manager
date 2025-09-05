@@ -362,10 +362,10 @@ func (m *EnvironmentCheckMonitor) checkPackageInstalled(packageProbeExecutables 
 }
 
 func (m *EnvironmentCheckMonitor) checkHugePages(kubeNode *corev1.Node, collectedData *CollectedEnvironmentCheckInfo) {
-	hugePageLimitInMiB, err := m.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineHugepageLimit, longhorn.DataEngineTypeV2)
+	hugePageLimitInMiB, err := m.ds.GetSettingAsIntByDataEngine(types.SettingNameDataEngineMemorySize, longhorn.DataEngineTypeV2)
 	if err != nil {
 		m.logger.Warnf("Failed to get setting %v for data engine %v, using default value %d",
-			types.SettingNameDataEngineHugepageLimit, longhorn.DataEngineTypeV2, defaultHugePageLimitInMiB)
+			types.SettingNameDataEngineMemorySize, longhorn.DataEngineTypeV2, defaultHugePageLimitInMiB)
 		hugePageLimitInMiB = defaultHugePageLimitInMiB
 	}
 
