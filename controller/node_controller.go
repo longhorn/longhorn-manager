@@ -1360,25 +1360,21 @@ func (nc *NodeController) getNewAndMissingOrphanedReplicaDataStores(diskName, di
 		}
 
 		dataStore := orphan.Spec.Parameters[longhorn.OrphanDataName]
-		reused := false
 		for _, r := range replicas {
 			if r.Spec.DataDirectoryName == dataStore {
-				reused = true
+				if err := datastore.AddOrphanDeleteCustomResourceOnlyLabel(nc.ds, orphan.Name); err != nil {
+					nc.logger.Infof("failed to add label delete-custom-resource-only to orphan %v ", orphan.Name)
+					return map[string]string{}, map[string]string{}
+				}
+
 				break
 			}
 		}
 		_, ok := orphanedReplicaDataStores[dataStore]
 
 		if !ok {
-			if reused {
-				if err := datastore.AddOrphanDeleteCustomResourceOnlyLabel(nc.ds, orphan.Name); err != nil {
-					nc.logger.Infof("failed to add label delete-custom-resource-only to orphan %v ", orphan.Name)
-					return map[string]string{}, map[string]string{}
-				}
-			}
 			missingOrphanedReplicaDataStores[dataStore] = ""
 		}
-
 	}
 
 	return newOrphanedReplicaDataStores, missingOrphanedReplicaDataStores
@@ -1459,12 +1455,7 @@ func (nc *NodeController) canDeleteOrphan(orphan *longhorn.Orphan, autoDeleteEna
 
 	// When dataCleanableCondition is false, it means the associated node is not ready, missing or evicted (check updateDataCleanableCondition()).
 	// In this case, we can delete the orphan directly because the data is not reachable and no need to keep the orphan resource.
-	isReasonNodeOrDisk := (dataCleanableCondition.Reason == longhorn.OrphanConditionTypeDataCleanableReasonNodeUnavailable) ||
-		(dataCleanableCondition.Reason == longhorn.OrphanConditionTypeDataCleanableReasonNodeEvicted) ||
-		(dataCleanableCondition.Reason == longhorn.OrphanConditionTypeDataCleanableReasonDiskInvalid) ||
-		(dataCleanableCondition.Reason == longhorn.OrphanConditionTypeDataCleanableReasonDiskEvicted) ||
-		(dataCleanableCondition.Reason == longhorn.OrphanConditionTypeDataCleanableReasonDiskChanged)
-	canDelete := autoDeleteAllowed || ((dataCleanableCondition.Status == longhorn.ConditionStatusFalse) && isReasonNodeOrDisk)
+	canDelete := autoDeleteAllowed || dataCleanableCondition.Status == longhorn.ConditionStatusFalse
 	if !canDelete {
 		nc.logger.Debugf("Orphan %v is not ready to be deleted, autoDeleteAllowed: %v, dataCleanableCondition: %v", orphan.Name, autoDeleteAllowed, dataCleanableCondition.Status)
 	}
