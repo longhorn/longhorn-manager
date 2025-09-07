@@ -70,8 +70,8 @@ require (
 	github.com/longhorn/go-common-libs v0.0.0-20250831092333-eaa5dddf05b8
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250810143507-5c5f9a0060b4
 	github.com/longhorn/go-spdk-helper v0.0.3-0.20250826052257-da698775fdc6
-	github.com/longhorn/longhorn-engine v1.10.0-dev-20250713.0.20250728071833-3932ded2f139
-	github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250629.0.20250711075830-f3729b840178
+	github.com/longhorn/longhorn-engine v1.10.0-rc1
+	github.com/longhorn/longhorn-instance-manager v1.10.0-rc1
 	github.com/longhorn/longhorn-share-manager v1.9.1
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.23.0
@@ -91,12 +91,12 @@ require (
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.33.4
 	k8s.io/apiextensions-apiserver v0.33.4
-	k8s.io/apimachinery v0.33.4
+	k8s.io/apimachinery v0.34.0
 	k8s.io/cli-runtime v0.33.4
 	k8s.io/client-go v0.33.4
 	k8s.io/kubernetes v1.33.4
 	k8s.io/metrics v0.33.4
-	k8s.io/mount-utils v0.33.4
+	k8s.io/mount-utils v0.34.0
 	k8s.io/utils v0.0.0-20250820121507-0af2bda4dd1d
 	sigs.k8s.io/controller-runtime v0.21.0
 )
@@ -106,7 +106,7 @@ require (
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
-	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
+	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/getsentry/sentry-go v0.27.0 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/google/gnostic-models v0.6.9 // indirect
