@@ -148,7 +148,7 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20250831092333-eaa5dddf05b8
+# github.com/longhorn/go-common-libs v0.0.0-20250905093241-e9576a7c89fa
 ## explicit; go 1.24.0
 github.com/longhorn/go-common-libs/backup
 github.com/longhorn/go-common-libs/exec
@@ -169,8 +169,8 @@ github.com/longhorn/go-iscsi-helper/iscsidev
 github.com/longhorn/go-iscsi-helper/longhorndev
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.0.2
-## explicit; go 1.23.0
+# github.com/longhorn/go-spdk-helper v0.0.3
+## explicit; go 1.24.0
 github.com/longhorn/go-spdk-helper/pkg/types
 # github.com/longhorn/longhorn-engine v1.9.1
 ## explicit; go 1.23.0
