@@ -41,8 +41,8 @@ github.com/evanphx/json-patch v5.9.11+incompatible h1:ixHHqfcGvxhWkniF1tWxBHA0yb
 github.com/evanphx/json-patch v5.9.11+incompatible/go.mod h1:50XU6AFN0ol/bzJsmQLiYLvXMP4fmwYFNcr97nuDLSk=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
-github.com/fxamacker/cbor/v2 v2.7.0 h1:iM5WgngdRBanHcxugY4JySA0nk1wZorNOpTgCMedv5E=
-github.com/fxamacker/cbor/v2 v2.7.0/go.mod h1:pxXPTn3joSm21Gbwsv0w9OSA2y1HFR9qXEeXQVeNoDQ=
+github.com/fxamacker/cbor/v2 v2.9.0 h1:NpKPmjDBgUfBms6tr6JZkTHtfFGcMKsw3eGcmD/sapM=
+github.com/fxamacker/cbor/v2 v2.9.0/go.mod h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ=
 github.com/gammazero/deque v1.0.0 h1:LTmimT8H7bXkkCy6gZX7zNLtkbz4NdS2z8LZuor3j34=
 github.com/gammazero/deque v1.0.0/go.mod h1:iflpYvtGfM3U8S8j+sZEKIak3SAKYpA5/SQewgfXDKo=
 github.com/gammazero/workerpool v1.1.3 h1:WixN4xzukFoN0XSeXF6puqEqFTl2mECI9S6W44HWy9Q=
@@ -129,10 +129,10 @@ github.com/longhorn/go-iscsi-helper v0.0.0-20250810143507-5c5f9a0060b4 h1:i6Wac1
 github.com/longhorn/go-iscsi-helper v0.0.0-20250810143507-5c5f9a0060b4/go.mod h1:EIkghFAyqv+8ktznS4a+leJ6KKQLPt9zrcdS2Zsfk+M=
 github.com/longhorn/go-spdk-helper v0.0.3-0.20250826052257-da698775fdc6 h1:AuIh2jsyw2ReALZrN1aKZMs3l+6w0iJEZulhD6TIyKI=
 github.com/longhorn/go-spdk-helper v0.0.3-0.20250826052257-da698775fdc6/go.mod h1:jqbuvM5jfNraBqDl0PI507J4gtx85utAaoYuaDH6xg8=
-github.com/longhorn/longhorn-engine v1.10.0-dev-20250713.0.20250728071833-3932ded2f139 h1:qeR/Rt/Mmahgzf2Df2m00BLZibYZYs5+iTTvbHFfAXA=
-github.com/longhorn/longhorn-engine v1.10.0-dev-20250713.0.20250728071833-3932ded2f139/go.mod h1:kl2QVpLZeMoYYSAVOd2IDiP7JeLQFX/fujLA9MdyK6o=
-github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250629.0.20250711075830-f3729b840178 h1:JO7uffDjHufJZZxvXLdoLpIWUl1/QszoZlx9dzCRNKY=
-github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250629.0.20250711075830-f3729b840178/go.mod h1:dLZTouISlm8sUpSDDb4xbnSEbZOBnKCVFMf46Ybpr44=
+github.com/longhorn/longhorn-engine v1.10.0-rc1 h1:Nb91Zj4+XvNC2y4Xr+QbjVKLyuhUJWh61ChHyi/4NEM=
+github.com/longhorn/longhorn-engine v1.10.0-rc1/go.mod h1:dD5d3LOHBNqVeiflwXXp0szlrN+ZGGNbjOJ64PCuJtI=
+github.com/longhorn/longhorn-instance-manager v1.10.0-rc1 h1:BlYP2gIq8RDdMlqdMQ4uyny5717V0lCOuceQQPPKmSk=
+github.com/longhorn/longhorn-instance-manager v1.10.0-rc1/go.mod h1:4oM0/8Mh0Dmq6UequZ1WcYb+PMR6JSu6YSkx/q/K9fs=
 github.com/longhorn/longhorn-share-manager v1.9.1 h1:ObRP8lnNOncRg9podwrPrqObBXJsQDlPfNwslxkBRhM=
 github.com/longhorn/longhorn-share-manager v1.9.1/go.mod h1:vYqc2o+6xTlgdlweIeED4Do/n+0/4I3AbD6jQ5OHfcg=
 github.com/longhorn/types v0.0.0-20250831081209-ea63b0b5f6e1 h1:o8LLVyjNx12Tr+/I3ckweMQG1nT7JmGhcohHvweW5X8=

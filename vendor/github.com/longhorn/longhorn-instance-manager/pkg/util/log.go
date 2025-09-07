@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -69,6 +70,8 @@ func SetUpLogger(logsDir string) error {
 				funcName := path.Base(f.Function)
 				return funcName, fileName
 			},
+			TimestampFormat: time.RFC3339Nano,
+			FullTimestamp:   true,
 		},
 		LogsDir: logsDir,
 	})
