@@ -282,6 +282,7 @@ type BackingImage struct {
 
 	DiskFileStatusMap map[string]longhorn.BackingImageDiskFileStatus `json:"diskFileStatusMap"`
 	Size              int64                                          `json:"size"`
+	VirtualSize       int64                                          `json:"virtualSize"`
 	CurrentChecksum   string                                         `json:"currentChecksum"`
 
 	Secret          string `json:"secret"`
@@ -2130,6 +2131,7 @@ func toBackingImageResource(bi *longhorn.BackingImage, apiContext *api.ApiContex
 
 		DiskFileStatusMap: diskFileStatusMap,
 		Size:              bi.Status.Size,
+		VirtualSize:       bi.Status.VirtualSize,
 		CurrentChecksum:   bi.Status.Checksum,
 
 		Secret:          bi.Spec.Secret,
