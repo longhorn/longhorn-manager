@@ -364,6 +364,12 @@ func (nc *NodeController) syncNode(key string) (err error) {
 	log := getLoggerForNode(nc.logger, node)
 
 	if node.DeletionTimestamp != nil {
+		// If V2 engine is enabled, we must clean up SPDK-related drivers
+		// before deleting the node. This ensures that SPDK devices can be reused on future node joins.
+		if err := nc.cleanupDisksBeforeNodeDeletion(node); err != nil {
+			nc.logger.WithError(err).Warn("Failed to clean up disks during node deletion")
+		}
+
 		nc.eventRecorder.Eventf(node, corev1.EventTypeWarning, constant.EventReasonDelete, "Deleting node %v", node.Name)
 		return nc.ds.RemoveFinalizerForNode(node)
 	}
@@ -1605,6 +1611,53 @@ func (nc *NodeController) deleteDisk(diskType longhorn.DiskType, diskName, diskU
 
 	if err := monitor.DeleteDisk(diskType, diskName, diskUUID, diskPath, diskDriver, diskServiceClient); err != nil {
 		return errors.Wrapf(err, "failed to delete disk %v", diskName)
+	}
+
+	return nil
+}
+
+func (nc *NodeController) cleanupDisksBeforeNodeDeletion(node *longhorn.Node) error {
+	nc.logger.Info("Cleaning up disks before node deletion")
+
+	if _, settingExist := types.GetSettingDefinition(types.SettingNameV2DataEngine); !settingExist {
+		nc.logger.Info("Skipping disk cleanup as v2 data engine setting not exist")
+		return nil
+	}
+
+	v2DataEngineEnabled, err := nc.ds.GetSettingAsBool(types.SettingNameV2DataEngine)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get v2 data engine setting")
+	}
+
+	if !v2DataEngineEnabled {
+		nc.logger.Info("Skipping disk cleanup as v2 data engine is not enabled")
+		return nil
+	}
+
+	errs := multierr.NewMultiError()
+	for diskName, diskStatus := range node.Status.DiskStatus {
+		nc.logger.Infof("Cleaning up disk %s", diskName)
+		// Skip non-SPDK disks
+		if diskStatus.Type != longhorn.DiskTypeBlock {
+			continue
+		}
+
+		if diskStatus.DiskDriver == longhorn.DiskDriverNone {
+			continue
+		}
+
+		// Note: Use diskName instead of diskStatus.Name since they are different:
+		//   diskName:        default-disk-block-1
+		//   diskStatus.Name: default-disk-block-1n1
+		if err := nc.deleteDisk(diskStatus.Type, diskName, diskStatus.DiskUUID, diskStatus.DiskPath, string(diskStatus.DiskDriver)); err != nil {
+			nc.logger.WithError(err).Errorf("Failed to delete SPDK disk %v during node cleanup", diskStatus.DiskName)
+			errs.Append("errors", errors.Wrapf(err, "failed to delete SPDK disk %v during node cleanup", diskStatus.DiskName))
+			continue
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("cleanupDisksBeforeNodeDeletion: %v", errs.ErrorByReason("errors"))
 	}
 
 	return nil
