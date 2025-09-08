@@ -898,6 +898,14 @@ func (c *UninstallController) deleteEngineImages(engineImages map[string]*longho
 }
 
 func (c *UninstallController) deleteNodes(nodes map[string]*longhorn.Node) (err error) {
+	// For node deletion, if there are v2 volumes, we need to unbind the NVMe device first.
+	// To allow more time for the controller to handle NVMe unbinding,
+	// we add a grace period before removing the finalizer.
+
+	// If we directly update the node, delete it in one step, and remove the finalizer
+	// the instance manager controller may not be able to process the node deletion,
+	// since the instance manager would already be deleted.
+
 	defer func() {
 		err = errors.Wrapf(err, "failed to delete nodes")
 	}()
@@ -908,6 +916,7 @@ func (c *UninstallController) deleteNodes(nodes map[string]*longhorn.Node) (err 
 			node.Annotations = make(map[string]string)
 		}
 
+		timeout := metav1.NewTime(time.Now().Add(-gracePeriod))
 		if node.DeletionTimestamp == nil {
 			log.Infof("Adding annotation %v to node %s to mark for deletion", types.GetLonghornLabelKey(types.DeleteNodeFromLonghorn), node.Name)
 			node.Annotations[types.GetLonghornLabelKey(types.DeleteNodeFromLonghorn)] = ""
@@ -924,7 +933,8 @@ func (c *UninstallController) deleteNodes(nodes map[string]*longhorn.Node) (err 
 			} else {
 				log.Info("Marked for deletion")
 			}
-		} else {
+		} else if node.DeletionTimestamp.Before(&timeout) {
+			log.Warn("Node deletion did not finish within timeout, removing finalizer forcibly")
 			if errRemove := c.ds.RemoveFinalizerForNode(node); errRemove != nil {
 				if datastore.ErrorIsNotFound(errRemove) {
 					log.Info("Node is not found")
