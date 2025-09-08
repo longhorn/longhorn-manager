@@ -248,25 +248,6 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/revisionCounterDisabled", "value": true}`)
 	}
 
-	// TODO: Remove the mutations below after they are implemented for SPDK volumes
-	if types.IsDataEngineV2(volume.Spec.DataEngine) {
-		if volume.Spec.ReplicaAutoBalance != longhorn.ReplicaAutoBalanceDisabled {
-			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaAutoBalance", "value": "%s"}`, longhorn.ReplicaAutoBalanceIgnored))
-		}
-		if volume.Spec.RestoreVolumeRecurringJob != longhorn.RestoreVolumeRecurringJobDisabled {
-			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/restoreVolumeRecurringJob", "value": "%s"}`, longhorn.RestoreVolumeRecurringJobDefault))
-		}
-		if volume.Spec.ReplicaSoftAntiAffinity != longhorn.ReplicaSoftAntiAffinityDisabled {
-			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaSoftAntiAffinityDefault))
-		}
-		if volume.Spec.ReplicaZoneSoftAntiAffinity != longhorn.ReplicaZoneSoftAntiAffinityDisabled {
-			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaZoneSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaZoneSoftAntiAffinityDefault))
-		}
-		if volume.Spec.ReplicaDiskSoftAntiAffinity != longhorn.ReplicaDiskSoftAntiAffinityDisabled {
-			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/replicaDiskSoftAntiAffinity", "value": "%s"}`, longhorn.ReplicaDiskSoftAntiAffinityDefault))
-		}
-	}
-
 	var patchOpsInCommon admission.PatchOps
 	var err error
 	if patchOpsInCommon, err = v.mutate(newObj, moreLabels); err != nil {
