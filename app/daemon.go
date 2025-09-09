@@ -182,7 +182,7 @@ func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentN
 			if err != nil {
 				return err
 			}
-			if err := webhook.CheckWebhookServiceAvailability(types.WebhookTypeConversion); err != nil {
+			if err := webhook.CheckWebhookServiceAvailability(types.WebhookTypeConversion, clientsWithoutDatastore); err != nil {
 				return err
 			}
 		}
@@ -200,7 +200,7 @@ func startWebhooksByLeaderElection(ctx context.Context, kubeconfigPath, currentN
 			return err
 		}
 
-		if err := webhook.CheckWebhookServiceAvailability(types.WebhookTypeAdmission); err != nil {
+		if err := webhook.CheckWebhookServiceAvailability(types.WebhookTypeAdmission, clients); err != nil {
 			return err
 		}
 
