@@ -129,7 +129,7 @@ func (rcs *ReplicaScheduler) scheduleReplicaToDiskOnLocalNode(replica *longhorn.
 func (rcs *ReplicaScheduler) FindDiskCandidates(replica *longhorn.Replica, replicas map[string]*longhorn.Replica, volume *longhorn.Volume) (map[string]*Disk, multierr.MultiError) {
 	errs := multierr.NewMultiError()
 
-	nodes, err := rcs.ListSchedulableNodes()
+	nodes, err := rcs.ListSchedulableNodes(volume.Spec.DataEngine)
 	if err != nil {
 		errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed,
 			errors.Wrapf(err, "failed to list schedulable nodes for scheduling replica %v", replica.Name))
@@ -562,7 +562,7 @@ func filterDisksWithMatchingReplicas(disks map[string]*Disk, replicas map[string
 	return disks
 }
 
-func (rcs *ReplicaScheduler) ListSchedulableNodes() (map[string]*longhorn.Node, error) {
+func (rcs *ReplicaScheduler) ListSchedulableNodes(dataEngine longhorn.DataEngineType) (map[string]*longhorn.Node, error) {
 	nodeInfo, err := rcs.ds.ListNodes()
 	if err != nil {
 		return nil, err
@@ -587,6 +587,18 @@ func (rcs *ReplicaScheduler) ListSchedulableNodes() (map[string]*longhorn.Node, 
 		if !node.Spec.AllowScheduling {
 			continue
 		}
+		// Exclude nodes where the data engine is disabled.
+		if types.IsDataEngineV2(dataEngine) {
+			kubeNode, err := rcs.ds.GetKubernetesNodeRO(node.Name)
+			if err != nil {
+				logrus.WithField("node", node.Name).WithError(err).Warn("Skipping node because failed to get corresponding kubernetes node")
+				continue
+			}
+			if val, ok := kubeNode.Labels[types.NodeDisableV2DataEngineLabelKey]; ok && val == types.NodeDisableV2DataEngineLabelKeyTrue {
+				continue
+			}
+		}
+
 		scheduledNode[node.Name] = node
 	}
 
@@ -657,7 +669,7 @@ func (rcs *ReplicaScheduler) CheckAndReuseFailedReplica(replicas map[string]*lon
 
 	replicas = filterActiveReplicas(replicas)
 
-	allNodesInfo, err := rcs.ListSchedulableNodes()
+	allNodesInfo, err := rcs.ListSchedulableNodes(volume.Spec.DataEngine)
 	if err != nil {
 		return nil, err
 	}
