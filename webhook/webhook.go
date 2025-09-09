@@ -20,7 +20,7 @@ import (
 )
 
 var (
-	defaultStartTimeout = 60 * time.Second
+	defaultStartTimeout = 120 * time.Second
 )
 
 func StartWebhook(ctx context.Context, webhookType string, clients *client.Clients) error {
