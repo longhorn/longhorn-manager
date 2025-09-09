@@ -509,7 +509,7 @@ func (vbc *VolumeRebuildingController) canReuseOrScheduleReplicas(vol *longhorn.
 		return true, nil
 	}
 
-	nodes, err := vbc.scheduler.ListSchedulableNodes()
+	nodes, err := vbc.scheduler.ListSchedulableNodes(vol.Spec.DataEngine)
 	if err != nil {
 		return false, err
 	}
