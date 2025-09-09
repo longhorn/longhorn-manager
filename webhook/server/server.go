@@ -173,7 +173,7 @@ func (s *WebhookServer) runAdmissionWebhookListenAndServe(handler http.Handler, 
 					mutatingWebhookConfiguration,
 				)
 			},
-			retry.Attempts(30),
+			retry.Attempts(60),
 			retry.DelayType(retry.FixedDelay),
 			retry.Delay(2*time.Second),
 			retry.OnRetry(func(n uint, err error) {
