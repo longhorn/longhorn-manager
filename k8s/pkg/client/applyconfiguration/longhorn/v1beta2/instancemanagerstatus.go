@@ -36,7 +36,6 @@ type InstanceManagerStatusApplyConfiguration struct {
 	ProxyAPIMinVersion *int                                                `json:"proxyApiMinVersion,omitempty"`
 	ProxyAPIVersion    *int                                                `json:"proxyApiVersion,omitempty"`
 	DataEngineStatus   *DataEngineStatusApplyConfiguration                 `json:"dataEngineStatus,omitempty"`
-	Instances          map[string]InstanceProcessApplyConfiguration        `json:"instances,omitempty"`
 }
 
 // InstanceManagerStatusApplyConfiguration constructs a declarative configuration of the InstanceManagerStatus type for use with
@@ -148,19 +147,5 @@ func (b *InstanceManagerStatusApplyConfiguration) WithProxyAPIVersion(value int)
 // If called multiple times, the DataEngineStatus field is set to the value of the last call.
 func (b *InstanceManagerStatusApplyConfiguration) WithDataEngineStatus(value *DataEngineStatusApplyConfiguration) *InstanceManagerStatusApplyConfiguration {
 	b.DataEngineStatus = value
-	return b
-}
-
-// WithInstances puts the entries into the Instances field in the declarative configuration
-// and returns the receiver, so that objects can be build by chaining "With" function invocations.
-// If called multiple times, the entries provided by each call will be put on the Instances field,
-// overwriting an existing map entries in Instances field with the same key.
-func (b *InstanceManagerStatusApplyConfiguration) WithInstances(entries map[string]InstanceProcessApplyConfiguration) *InstanceManagerStatusApplyConfiguration {
-	if b.Instances == nil && len(entries) > 0 {
-		b.Instances = make(map[string]InstanceProcessApplyConfiguration, len(entries))
-	}
-	for k, v := range entries {
-		b.Instances[k] = v
-	}
 	return b
 }

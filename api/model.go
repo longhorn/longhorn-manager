@@ -2374,7 +2374,6 @@ func toInstanceManagerResource(im *longhorn.InstanceManager) *InstanceManager {
 		DataEngine:       string(im.Spec.DataEngine),
 		InstanceEngines:  im.Status.InstanceEngines,
 		InstanceReplicas: im.Status.InstanceReplicas,
-		Instances:        im.Status.Instances, // nolint: staticcheck
 	}
 }
 
