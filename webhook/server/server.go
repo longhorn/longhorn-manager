@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"time"
 
+	"github.com/avast/retry-go"
 	"github.com/gorilla/mux"
 	"github.com/rancher/dynamiclistener"
 	"github.com/rancher/dynamiclistener/server"
@@ -163,7 +165,28 @@ func (s *WebhookServer) runAdmissionWebhookListenAndServe(handler http.Handler, 
 			},
 		}
 
-		return secret, apply.WithOwner(secret).ApplyObjects(validatingWebhookConfiguration, mutatingWebhookConfiguration)
+		// Retry apply
+		err := retry.Do(
+			func() error {
+				return apply.WithOwner(secret).ApplyObjects(
+					validatingWebhookConfiguration,
+					mutatingWebhookConfiguration,
+				)
+			},
+			retry.Attempts(30),
+			retry.DelayType(retry.FixedDelay),
+			retry.Delay(2*time.Second),
+			retry.OnRetry(func(n uint, err error) {
+				logrus.WithError(err).Warnf("Failed to apply webhook configuration, retry %d", n+1)
+			}),
+		)
+		if err != nil {
+			logrus.WithError(err).Error("Exhausted retries applying webhook configurations")
+		} else {
+			logrus.Info("Successfully applied webhook configurations")
+		}
+
+		return secret, err
 	})
 
 	tlsName := fmt.Sprintf("%s.%s.svc", types.AdmissionWebhookServiceName, s.namespace)
