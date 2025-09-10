@@ -8,7 +8,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/longhorn/longhorn-manager/types"
 	"github.com/longhorn/longhorn-manager/util"
@@ -17,7 +20,7 @@ import (
 )
 
 var (
-	defaultStartTimeout = 60 * time.Second
+	defaultStartTimeout = 120 * time.Second
 )
 
 func StartWebhook(ctx context.Context, webhookType string, clients *client.Clients) error {
@@ -41,8 +44,9 @@ func StartWebhook(ctx context.Context, webhookType string, clients *client.Clien
 	}()
 
 	logrus.Infof("Waiting for %v webhook to become ready", webhookType)
-	if !isServiceAvailable(webhookLocalEndpoint, defaultStartTimeout) {
-		return fmt.Errorf("%v webhook is not ready on localhost after %v sec", webhookType, defaultStartTimeout)
+	available, err := isServiceAvailable(webhookType, webhookLocalEndpoint, defaultStartTimeout, clients)
+	if !available {
+		return errors.Wrapf(err, "%v webhook is not ready on localhost after %v sec", webhookType, defaultStartTimeout)
 	}
 	logrus.Infof("Started longhorn %s webhook server on localhost", webhookType)
 	return nil
@@ -50,21 +54,39 @@ func StartWebhook(ctx context.Context, webhookType string, clients *client.Clien
 
 // CheckWebhookServiceAvailability check if the service is available.
 // The server on the host is ready does not mean the service is accessible.
-func CheckWebhookServiceAvailability(webhookType string) error {
+func CheckWebhookServiceAvailability(webhookType string, clients *client.Clients) error {
 	webhookServiceEndpoint, err := getWebhookServiceEndpoint(webhookType)
 	if err != nil {
 		return err
 	}
 
-	if !isServiceAvailable(webhookServiceEndpoint, defaultStartTimeout) {
-		return fmt.Errorf("%v webhook service is not accessible after %v sec", webhookType, defaultStartTimeout)
+	available, err := isServiceAvailable(webhookType, webhookServiceEndpoint, defaultStartTimeout, clients)
+	if !available {
+		return errors.Wrapf(err, "%v webhook service is not accessible on cluster after %v sec", webhookType, defaultStartTimeout)
 
 	}
 	logrus.Infof("%s webhook service is now accessible", webhookType)
 	return nil
 }
 
-func isServiceAvailable(endpoint string, timeout time.Duration) bool {
+func isAdmissionConfigurationReady(clients *client.Clients) bool {
+	// Check if the webhook configurations are applied and not empty
+	validatingWebhookConfig, err := clients.K8s.AdmissionregistrationV1().ValidatingWebhookConfigurations().Get(context.Background(), types.ValidatingWebhookName, metav1.GetOptions{})
+	if err != nil || len(validatingWebhookConfig.Webhooks) == 0 {
+		logrus.WithError(err).Warnf("Validating webhook configuration %s is not ready", types.ValidatingWebhookName)
+		return false
+	}
+
+	mutatingWebhookConfig, err := clients.K8s.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.Background(), types.MutatingWebhookName, metav1.GetOptions{})
+	if err != nil || len(mutatingWebhookConfig.Webhooks) == 0 {
+		logrus.WithError(err).Warnf("Mutating webhook configuration %s is not ready", types.MutatingWebhookName)
+		return false
+	}
+
+	return true
+}
+
+func isServiceAvailable(webhookType string, endpoint string, timeout time.Duration, clients *client.Clients) (bool, error) {
 	cli := http.Client{
 		Timeout: time.Second,
 		Transport: &http.Transport{
@@ -73,6 +95,13 @@ func isServiceAvailable(endpoint string, timeout time.Duration) bool {
 	}
 	running := false
 	for start := time.Now(); time.Since(start) < timeout; {
+		if webhookType == types.WebhookTypeAdmission {
+			if !isAdmissionConfigurationReady(clients) {
+				time.Sleep(2 * time.Second)
+				continue
+			}
+		}
+
 		resp, err := cli.Get(endpoint)
 		if err != nil {
 			logrus.WithError(err).Warnf("Failed to check endpoint %v", endpoint)
@@ -90,7 +119,11 @@ func isServiceAvailable(endpoint string, timeout time.Duration) bool {
 		time.Sleep(2 * time.Second)
 	}
 
-	return running
+	if !running {
+		return false, fmt.Errorf("timed out waiting for endpoint %v to be available", endpoint)
+	}
+
+	return true, nil
 }
 
 func getWebhookServiceEndpoint(webhookType string) (string, error) {
