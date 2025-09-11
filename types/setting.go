@@ -1242,7 +1242,7 @@ var (
 
 	SettingDefinitionRecurringJobMaxRetention = SettingDefinition{
 		DisplayName:        "Maximum Retention Number for Recurring Job",
-		Description:        "This setting specifies the maximum number of backups or snapshots to be retained for each recurring job."
+		Description:        "This setting specifies the maximum number of backups or snapshots to be retained for each recurring job.",
 		Category:           SettingCategoryBackup,
 		Type:               SettingTypeInt,
 		Required:           true,
