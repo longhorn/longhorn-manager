@@ -71,7 +71,7 @@ require (
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250810143507-5c5f9a0060b4
 	github.com/longhorn/go-spdk-helper v0.0.3
 	github.com/longhorn/longhorn-engine v1.10.0-dev-20250713.0.20250728071833-3932ded2f139
-	github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250824.0.20250911025151-99e3e829e774
+	github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250824.0.20250911050458-a8103db2a55b
 	github.com/longhorn/longhorn-share-manager v1.9.1
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.23.2
@@ -86,7 +86,7 @@ require (
 	golang.org/x/net v0.44.0
 	golang.org/x/sys v0.36.0
 	golang.org/x/time v0.13.0
-	google.golang.org/grpc v1.75.0
+	google.golang.org/grpc v1.75.1
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.34.0
@@ -96,7 +96,7 @@ require (
 	k8s.io/client-go v0.34.0
 	k8s.io/kubernetes v1.34.0
 	k8s.io/metrics v0.34.0
-	k8s.io/mount-utils v0.34.0
+	k8s.io/mount-utils v0.34.1
 	k8s.io/utils v0.0.0-20250820121507-0af2bda4dd1d
 	sigs.k8s.io/controller-runtime v0.22.1
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0
@@ -181,7 +181,7 @@ require (
 	golang.org/x/sync v0.17.0
 	golang.org/x/term v0.35.0 // indirect
 	golang.org/x/text v0.29.0
-	google.golang.org/protobuf v1.36.8
+	google.golang.org/protobuf v1.36.9
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/apiserver v0.34.0 // indirect
 	k8s.io/component-base v0.34.0 // indirect
