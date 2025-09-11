@@ -313,9 +313,11 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 
 	if types.IsDataEngineV2(newVolume.Spec.DataEngine) {
 		if newVolume.Spec.Frontend == longhorn.VolumeFrontendUblk {
-			err := fmt.Errorf("changing volume size for ublk volume %v is not supported for data engine %v",
-				newVolume.Name, newVolume.Spec.DataEngine)
-			return werror.NewInvalidError(err.Error(), "")
+			if oldVolume.Spec.Size != newVolume.Spec.Size {
+				err := fmt.Errorf("changing volume size for ublk volume %v is not supported for data engine %v",
+					newVolume.Name, newVolume.Spec.DataEngine)
+				return werror.NewInvalidError(err.Error(), "")
+			}
 		}
 
 		if oldVolume.Spec.BackingImage != newVolume.Spec.BackingImage {
