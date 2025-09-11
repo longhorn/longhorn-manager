@@ -264,6 +264,8 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSource(key string
 	log := getLoggerForBackingImageDataSource(c.logger, bids)
 
 	if !c.isResponsibleFor(bids) {
+		// The data source is rescheduled to other node. Blindly clean up the monitor if any.
+		c.stopMonitoring(bids.Name)
 		return nil
 	}
 	if bids.Status.OwnerID != c.controllerID {
@@ -438,10 +440,18 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 	podReady := false
 	podFailed := false
 	podNotReadyMessage := ""
+	podSpecMismatch := false
 	if pod == nil {
 		podNotReadyMessage = "cannot find the pod dedicated to prepare the first backing image file"
 	} else if pod.Spec.NodeName != bids.Spec.NodeID {
+		podSpecMismatch = true
 		podNotReadyMessage = fmt.Sprintf("pod spec node ID %v doesn't match the desired node ID %v", pod.Spec.NodeName, bids.Spec.NodeID)
+	} else if pod.Labels == nil {
+		podSpecMismatch = true
+		podNotReadyMessage = "pod metadata does not contains disk information"
+	} else if podDiskUUID := pod.Labels[types.GetLonghornLabelKey(types.LonghornLabelDiskUUID)]; podDiskUUID != bids.Spec.DiskUUID {
+		podSpecMismatch = true
+		podNotReadyMessage = fmt.Sprintf("pod metadata disk UUID %v doesn't match the desired disk UUID %v", podDiskUUID, bids.Spec.DiskUUID)
 	} else if pod.DeletionTimestamp != nil {
 		podNotReadyMessage = "the pod dedicated to prepare the first backing image file is being deleted"
 	} else if pod.Spec.Containers[0].Image != c.bimImageName {
@@ -480,7 +490,12 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 		bids.Status.IP = ""
 		if bids.Status.CurrentState != longhorn.BackingImageStateFailed &&
 			bids.Status.CurrentState != longhorn.BackingImageStateFailedAndCleanUp {
-			if podFailed {
+			if podSpecMismatch {
+				// cleanup existing pod for recreation
+				log.WithField("statusMessage", podNotReadyMessage).Error("Backing image data source pod spec mismatch, deleting the outdated pod for recreation")
+				bids.Status.Message = podNotReadyMessage
+				bids.Status.CurrentState = longhorn.BackingImageStateFailed
+			} else if podFailed {
 				podLog := ""
 				podLogBytes, err := c.ds.GetPodContainerLog(podName, BackingImageDataSourcePodContainerName)
 				if err != nil {
