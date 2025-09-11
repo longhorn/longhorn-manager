@@ -1124,7 +1124,7 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 	}
 
 	var snapshotCloneStatusMap map[string]*longhorn.SnapshotCloneStatus
-	if cliAPIVersion >= engineapi.CLIVersionFive {
+	if types.IsDataEngineV2(engine.Spec.DataEngine) || cliAPIVersion >= engineapi.CLIVersionFive {
 		if snapshotCloneStatusMap, err = engineClientProxy.SnapshotCloneStatus(engine); err != nil {
 			return err
 		}
@@ -1318,16 +1318,21 @@ func IsValidForExpansion(engine *longhorn.Engine, cliAPIVersion, imAPIVersion in
 		return false, fmt.Errorf("the expected size %v of engine %v should not be smaller than the current size %v", engine.Spec.VolumeSize, engine.Name, engine.Status.CurrentSize)
 	}
 
-	if cliAPIVersion < engineapi.CLIAPIMinVersionForExistingEngineBeforeUpgrade {
-		return false, nil
-	}
-
 	if !engineapi.IsEndpointTGTBlockDev(engine.Status.Endpoint) {
 		return true, nil
 	}
-	if cliAPIVersion < 7 {
-		return false, fmt.Errorf("failed to do online expansion for the old engine %v with cli API version %v", engine.Name, cliAPIVersion)
+
+	// data engine cli api version only for v1
+	if types.IsDataEngineV1(engine.Spec.DataEngine) {
+		if cliAPIVersion < engineapi.CLIAPIMinVersionForExistingEngineBeforeUpgrade {
+			return false, nil
+		}
+
+		if cliAPIVersion < 7 {
+			return false, fmt.Errorf("failed to do online expansion for the old engine %v with cli API version %v", engine.Name, cliAPIVersion)
+		}
 	}
+
 	if imAPIVersion < 3 {
 		return false, fmt.Errorf("failed do online expansion for the engine %v in the instance manager with API version %v", engine.Name, imAPIVersion)
 	}
@@ -1672,8 +1677,14 @@ func cloneSnapshot(engine *longhorn.Engine, engineClientProxy engineapi.EngineCl
 	}
 
 	sourceEngineControllerURL := imutil.GetURL(sourceEngine.Status.StorageIP, sourceEngine.Status.Port)
+
+	vol, err := ds.GetVolumeRO(engine.Spec.VolumeName)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get volume %v for cloneSnapshot", engine.Spec.VolumeName)
+	}
+
 	if err := engineClientProxy.SnapshotClone(engine, snapshotName, sourceEngineControllerURL,
-		sourceEngine.Spec.VolumeName, sourceEngine.Name, fileSyncHTTPClientTimeout, grpcTimeoutSeconds); err != nil {
+		sourceEngine.Spec.VolumeName, sourceEngine.Name, fileSyncHTTPClientTimeout, grpcTimeoutSeconds, string(vol.Spec.CloneMode)); err != nil {
 		// There is only 1 replica during volume cloning,
 		// so if the cloning failed, it must be that the replica failed to clone.
 		for _, status := range engine.Status.CloneStatus {

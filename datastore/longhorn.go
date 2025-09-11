@@ -3286,7 +3286,6 @@ func (s *DataStore) GetReadyNodeDiskForBackingImage(backingImage *longhorn.Backi
 			if types.GetCondition(diskStatus.Conditions, longhorn.DiskConditionTypeSchedulable).Status != longhorn.ConditionStatusTrue {
 				continue
 			}
-
 			return node.DeepCopy(), diskName, nil
 		}
 	}
@@ -3742,6 +3741,11 @@ func AddSystemBackupDeleteCustomResourceOnlyLabel(ds *DataStore, systemBackupNam
 }
 
 func FixupRecurringJob(v *longhorn.Volume) error {
+	if v.Spec.CloneMode == longhorn.CloneModeLinkedClone {
+		// Do not add recurring job for linked-clone volume as these volumes do not support snapshot/backup operations
+		return nil
+	}
+
 	if err := labelRecurringJobDefault(v); err != nil {
 		return err
 	}
@@ -6778,6 +6782,14 @@ func (s *DataStore) IsStorageNetworkForRWXVolume() (bool, error) {
 	}
 
 	return types.IsStorageNetworkForRWXVolume(storageNetworkSetting, storageNetworkForRWXVolumeEnabled), nil
+}
+
+func (s *DataStore) IsVolumeLinkedCloneVolume(volName string) (bool, error) {
+	v, err := s.GetVolumeRO(volName)
+	if err != nil {
+		return false, err
+	}
+	return v.Spec.CloneMode == longhorn.CloneModeLinkedClone, nil
 }
 
 func (s *DataStore) GetAllDiskUUIDFirstFourChar() (map[string]bool, error) {

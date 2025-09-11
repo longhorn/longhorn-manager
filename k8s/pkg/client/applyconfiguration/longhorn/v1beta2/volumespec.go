@@ -30,6 +30,7 @@ type VolumeSpecApplyConfiguration struct {
 	FromBackup                      *string                                        `json:"fromBackup,omitempty"`
 	RestoreVolumeRecurringJob       *longhornv1beta2.RestoreVolumeRecurringJobType `json:"restoreVolumeRecurringJob,omitempty"`
 	DataSource                      *longhornv1beta2.VolumeDataSource              `json:"dataSource,omitempty"`
+	CloneMode                       *longhornv1beta2.CloneMode                     `json:"cloneMode,omitempty"`
 	DataLocality                    *longhornv1beta2.DataLocality                  `json:"dataLocality,omitempty"`
 	StaleReplicaTimeout             *int                                           `json:"staleReplicaTimeout,omitempty"`
 	NodeID                          *string                                        `json:"nodeID,omitempty"`
@@ -106,6 +107,14 @@ func (b *VolumeSpecApplyConfiguration) WithRestoreVolumeRecurringJob(value longh
 // If called multiple times, the DataSource field is set to the value of the last call.
 func (b *VolumeSpecApplyConfiguration) WithDataSource(value longhornv1beta2.VolumeDataSource) *VolumeSpecApplyConfiguration {
 	b.DataSource = &value
+	return b
+}
+
+// WithCloneMode sets the CloneMode field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the CloneMode field is set to the value of the last call.
+func (b *VolumeSpecApplyConfiguration) WithCloneMode(value longhornv1beta2.CloneMode) *VolumeSpecApplyConfiguration {
+	b.CloneMode = &value
 	return b
 }
 

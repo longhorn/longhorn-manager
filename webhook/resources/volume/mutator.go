@@ -248,6 +248,12 @@ func (v *volumeMutator) Create(request *admission.Request, newObj runtime.Object
 		patchOps = append(patchOps, `{"op": "replace", "path": "/spec/revisionCounterDisabled", "value": true}`)
 	}
 
+	if volume.Spec.DataSource != "" {
+		if volume.Spec.CloneMode == longhorn.CloneModeNone {
+			patchOps = append(patchOps, fmt.Sprintf(`{"op": "replace", "path": "/spec/cloneMode", "value": "%s"}`, longhorn.CloneModeFullCopy))
+		}
+	}
+
 	var patchOpsInCommon admission.PatchOps
 	var err error
 	if patchOpsInCommon, err = v.mutate(newObj, moreLabels); err != nil {

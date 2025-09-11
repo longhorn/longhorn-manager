@@ -186,6 +186,7 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		FromBackup:                      volume.FromBackup,
 		RestoreVolumeRecurringJob:       volume.RestoreVolumeRecurringJob,
 		DataSource:                      volume.DataSource,
+		CloneMode:                       volume.CloneMode,
 		NumberOfReplicas:                volume.NumberOfReplicas,
 		ReplicaAutoBalance:              volume.ReplicaAutoBalance,
 		DataLocality:                    volume.DataLocality,
