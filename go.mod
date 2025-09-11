@@ -66,7 +66,7 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.21.0
 	github.com/longhorn/backing-image-manager v1.9.1
 	github.com/longhorn/backupstore v0.0.0-20250804022317-794abf817297
-	github.com/longhorn/go-common-libs v0.0.0-20250905093241-e9576a7c89fa
+	github.com/longhorn/go-common-libs v0.0.0-20250908085655-4593e23015c0
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250810143507-5c5f9a0060b4
 	github.com/longhorn/go-spdk-helper v0.0.3
 	github.com/longhorn/longhorn-engine v1.9.1
@@ -76,7 +76,7 @@ require (
 	github.com/prometheus/client_golang v1.22.0
 	github.com/rancher/dynamiclistener v0.6.2
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
-	github.com/rancher/wrangler/v3 v3.2.3
+	github.com/rancher/wrangler/v3 v3.2.4
 	github.com/robfig/cron v1.2.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.10.0
@@ -85,7 +85,7 @@ require (
 	golang.org/x/net v0.41.0
 	golang.org/x/sys v0.33.0
 	golang.org/x/time v0.11.0
-	google.golang.org/grpc v1.75.0
+	google.golang.org/grpc v1.75.1
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.33.4
@@ -106,7 +106,7 @@ require (
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/google/gnostic-models v0.6.9 // indirect
-	github.com/longhorn/types v0.0.0-20250831081209-ea63b0b5f6e1 // indirect
+	github.com/longhorn/types v0.0.0-20250907125557-ef38b61560af // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/moby/term v0.5.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
@@ -174,7 +174,7 @@ require (
 	golang.org/x/sync v0.16.0
 	golang.org/x/term v0.32.0 // indirect
 	golang.org/x/text v0.26.0
-	google.golang.org/protobuf v1.36.8
+	google.golang.org/protobuf v1.36.9
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/apiserver v0.33.4 // indirect
 	k8s.io/component-base v0.33.4 // indirect
