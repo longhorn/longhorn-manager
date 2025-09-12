@@ -54,7 +54,7 @@ func (o *snapshotValidator) Create(request *admission.Request, newObj runtime.Ob
 	}
 
 	if isLinkedClone, err := o.ds.IsVolumeLinkedCloneVolume(snapshot.Spec.Volume); err != nil {
-		return werror.NewInvalidError(fmt.Sprintf("failed to to check IsVolumeLinkedCloneVolume: %v", err), "")
+		return werror.NewInvalidError(fmt.Sprintf("failed to check IsVolumeLinkedCloneVolume: %v", err), "")
 	} else if isLinkedClone {
 		return werror.NewInvalidError(fmt.Sprintf("snapshot is not allowed for linked-clone volume %v", snapshot.Spec.Volume), "")
 	}
