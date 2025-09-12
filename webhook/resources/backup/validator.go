@@ -6,6 +6,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 
 	admissionregv1 "k8s.io/api/admissionregistration/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/types"
@@ -98,7 +99,9 @@ func (b *backupValidator) Create(request *admission.Request, newObj runtime.Obje
 	}
 
 	if isLinkedClone, err := b.ds.IsVolumeLinkedCloneVolume(labelVolumeName); err != nil {
-		return werror.NewInvalidError(fmt.Sprintf("failed to to check IsVolumeLinkedCloneVolume: %v", err), "")
+		if !apierrors.IsNotFound(err) {
+			return werror.NewInvalidError(fmt.Sprintf("failed to check IsVolumeLinkedCloneVolume: %v", err), "")
+		}
 	} else if isLinkedClone {
 		return werror.NewInvalidError(fmt.Sprintf("backup is not allowed for linked-clone volume %v", labelVolumeName), "")
 	}
