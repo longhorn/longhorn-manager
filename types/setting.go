@@ -436,7 +436,7 @@ var (
 	}
 
 	SettingDefinitionFailedBackupTTL = SettingDefinition{
-		DisplayName:        "Failed Backup Time to Live",
+		DisplayName:        "Failed Backup Time To Live",
 		Description:        "In minutes. This setting determines how long Longhorn will keep a failed backup resource. Set to 0 to disable auto-deletion. Failed backups are checked and cleaned up during the backupstore polling interval (controlled by **Backupstore Poll Interval**). Therefore, the actual cleanup interval is a multiple of the polling interval. Disabling the **Backupstore Poll Interval** also disables this auto-deletion.",
 		Category:           SettingCategoryBackup,
 		Type:               SettingTypeInt,
@@ -451,7 +451,7 @@ var (
 
 	SettingDefinitionBackupExecutionTimeout = SettingDefinition{
 		DisplayName:        "Backup Execution Timeout",
-		Description:        "The number of minutes Longhorn allows for a backup operation to complete. If the backup does not finish within this time, it will be marked as a failure. The default value is 1 minute.",
+		Description:        "In minutes. This setting determines the number of minutes Longhorn allows for a backup operation to complete. If the backup does not finish within this time, it will be marked as a failure.",
 		Category:           SettingCategoryBackup,
 		Type:               SettingTypeInt,
 		Required:           true,
@@ -465,12 +465,12 @@ var (
 
 	SettingDefinitionRestoreVolumeRecurringJobs = SettingDefinition{
 		DisplayName: "Restore Volume Recurring Jobs",
-		Description: "Restore recurring jobs from the backup volume on the backup target and create recurring jobs if not exist during a backup restoration.\n\n" +
-			"Longhorn also supports individual volume setting. The setting can be specified on the Backup page when making a backup restoration, this overrules the global setting.\n\n" +
-			"The available volume setting options are:\n\n" +
-			"- **ignored**. This is the default option that instructs Longhorn to inherit from the global setting.\n" +
-			"- **enabled**. This option instructs Longhorn to restore recurring jobs/groups from the backup target forcibly.\n" +
-			"- **disabled**. This option instructs Longhorn no restoring recurring jobs/groups should be done.\n",
+		Description: "This setting allows restoring recurring jobs from the backup volume on the backup target and create recurring jobs if it does not already exist during a backup restoration." +
+			"\nLonghorn also supports individual volume setting. The setting can be specified on the Backup page when making a backup restoration, this overrules the global setting." +
+			"\n\n**The available options are**:\n" +
+			"\n- **ignored**: This is the default option that instructs Longhorn to inherit from the global setting." +
+			"\n- **enabled**: This option instructs Longhorn to restore recurring jobs/groups from the backup target forcibly." +
+			"\n- **disabled**: This option instructs Longhorn no restoring recurring jobs/groups should be done.",
 		Category:           SettingCategoryBackup,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -480,8 +480,8 @@ var (
 	}
 
 	SettingDefinitionCreateDefaultDiskLabeledNodes = SettingDefinition{
-		DisplayName:        "Create Default Disk on Labeled Nodes",
-		Description:        "When enabled, a default disk will be automatically created only on nodes with the label \"node.longhorn.io/create-default-disk=true\", and only if no other disks already exist on that node. If disabled, a default disk will be created on all new nodes when they are first added to the cluster.",
+		DisplayName:        "Create Default Disk On Labeled Nodes",
+		Description:        "When enabled, a default disk is automatically created only on nodes with the label \"node.longhorn.io/create-default-disk=true\", and only if no other disks already exist on that node. If disabled, a default disk will be created on all new nodes when they are first added to the cluster. This setting is useful for scaling your cluster without using storage on new nodes, or when you want to customize disks for specific Longhorn nodes.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -492,7 +492,7 @@ var (
 
 	SettingDefinitionDefaultDataPath = SettingDefinition{
 		DisplayName:        "Default Data Path",
-		Description:        "The default path used for storing data on a host. An absolute directory path indicates a filesystem-type disk used by the V1 Data Engine, while a path to a block device indicates a block-type disk used by the V2 Data Engine.",
+		Description:        "The default path on a host for storing Longhorn volume data. An absolute directory path, like \"/var/lib/longhorn/\", indicates a filesystem-type disk for the V1 Data Engine, while a path to a block device indicates a block-type disk for the V2 Data Engine. This setting can be used with \"Create Default Disk on Labeled Nodes\" to ensure Longhorn only utilizes specific storage when scaling the cluster.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeString,
 		Required:           true,
@@ -503,8 +503,8 @@ var (
 
 	SettingDefinitionDefaultEngineImage = SettingDefinition{
 		DisplayName: "Default Engine Image",
-		Description: "The default engine image used by the Longhorn manager. This setting can only be changed on the manager's command line at startup.\n\n" +
-			"**Note:** This engine image is required only for the V1 Data Engine and is not used by the V2 Data Engine.",
+		Description: "The default engine image used by the Longhorn manager. This image is required only for the V1 Data Engine and not for the V2 Data Engine. This setting can only be changed on the manager's command line at startup." +
+			"\n\n**NOTE**: An arrow in the Longhorn UI will indicate if existing volumes need to be upgraded to this default engine image.",
 		Category:           SettingCategorySystemInfo,
 		Type:               SettingTypeString,
 		Required:           true,
@@ -534,7 +534,7 @@ var (
 
 	SettingDefinitionSupportBundleManagerImage = SettingDefinition{
 		DisplayName:        "Support Bundle Manager Image",
-		Description:        "The support bundle manager image for the support bundle generation.",
+		Description:        "The support bundle manager image used by Longhorn to generate the support bundle.",
 		Category:           SettingCategorySystemInfo,
 		Type:               SettingTypeString,
 		Required:           true,
@@ -543,8 +543,9 @@ var (
 	}
 
 	SettingDefinitionReplicaSoftAntiAffinity = SettingDefinition{
-		DisplayName:        "Replica Node Level Soft Anti-Affinity",
-		Description:        "This setting allows Longhorn to schedule replicas on nodes that already have a healthy replica for the same volume.",
+		DisplayName: "Replica Node Level Soft Anti-Affinity",
+		Description: "When enabled, this setting allows Longhorn to schedule new replicas of a volume on nodes that already have a healthy replica for the same volume. If disabled, Longhorn will forbid scheduling new replicas on nodes with existing healthy replicas." +
+			"\n\n**NOTE**: This setting is superseded if replicas are forbidden from sharing a zone by the **Replica Zone Level Anti-Affinity** setting.",
 		Category:           SettingCategoryScheduling,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -555,10 +556,8 @@ var (
 
 	SettingDefinitionFreezeFilesystemForSnapshot = SettingDefinition{
 		DisplayName: "Freeze Filesystem For Snapshot",
-		Description: "This setting only applies to volumes with the Kubernetes volume mode `Filesystem`. When enabled, Longhorn freezes the volume's filesystem immediately before creating a user-initiated snapshot. When disabled or when the Kubernetes volume mode is `Block`, Longhorn instead attempts a system sync before creating a user-initiated snapshot.\n\n" +
-			"When this setting is disabled, all data is flushed to disk just before the snapshot is created, but Longhorn cannot completely block write attempts during the brief interval between the system sync and snapshot creation. I/O is not paused during the system sync, so workloads likely do not notice that a snapshot is being created.\n\n" +
-			"The default option for this setting is `false` because kernels with version `v5.17` or earlier may not respond correctly when a volume crashes while a freeze is ongoing. This is not likely to happen but if it does, an affected kernel will not allow you to unmount the filesystem or stop processes using the filesystem without rebooting the node. Only enable this setting if you plan to use kernels with version `5.17` or later, and ext4 or XFS filesystems.\n\n" +
-			"You can override this setting (using the field freezeFilesystemForSnapshot) for specific volumes through the Longhorn UI, a StorageClass, or direct changes to an existing volume.",
+		Description: "This setting applies only to volumes with the Kubernetes volume mode `Filesystem`. When enabled, Longhorn freezes the volume's filesystem immediately before creating a user-initiated snapshot. This results in more consistent snapshots but may pause workload activity under heavy I/O. If disabled or for volumes in `Block` mode, Longhorn instead performs a system sync before the snapshot, which is less likely to affect workloads. The default option is `false` due to potential kernel issues in versions older than `v5.17`. It is only recommended to enable this setting with ext4 or XFS filesystems on kernels `v5.17` or later." +
+			"\n\nThis setting can be overridden for specific volumes via the Longhorn UI, a StorageClass, or by directly modifying an existing volume. The override options are `ignored` (uses the global setting), `enabled` (forces freezing before snapshot), and `disabled` (prevents freezing before snapshot).",
 		Category:           SettingCategorySnapshot,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -569,17 +568,18 @@ var (
 
 	SettingDefinitionReplicaAutoBalance = SettingDefinition{
 		DisplayName: "Replica Auto Balance",
-		Description: "Enable this setting automatically rebalances replicas when discovered an available node.\n\n" +
-			"The available global options are:\n\n" +
-			"- **disabled**. This is the default option. No replica auto-balance will be done.\n" +
-			"- **least-effort**. This option instructs Longhorn to balance replicas for minimal redundancy.\n" +
-			"- **best-effort**. This option instructs Longhorn to balance replicas for even redundancy.\n\n" +
-			"Longhorn also support individual volume setting. The setting can be specified on Volume page, this overrules the global setting.\n\n" +
-			"The available volume setting options are:\n\n" +
-			"- **ignored**. This is the default option that instructs Longhorn to inherit from the global setting.\n" +
-			"- **disabled**. This option instructs Longhorn no replica auto-balance should be done.\n" +
-			"- **least-effort**. This option instructs Longhorn to balance replicas for minimal redundancy.\n" +
-			"- **best-effort**. This option instructs Longhorn to balance replicas for even redundancy.\n",
+		Description: "This setting automatically rebalances replicas when new, available nodes are discovered. This ensures optimal redundancy and resource utilization." +
+			"\n\n**Global Options**:" +
+			"\n- **disabled**: (Default) No replica auto-balance will be done." +
+			"\n- **least-effort**: Instructs Longhorn to balance replicas for minimal redundancy." +
+			"\n- **best-effort**: Instructs Longhorn to try to balance replicas for even redundancy. This does not force a balance at the zone level if there are not enough nodes; instead, Longhorn will rebalance at the node level." +
+			"\n\nLonghorn also supports customizing for individual volume. The setting can be specified in UI or with Kubernetes manifest `volume.spec.replicaAutoBalance`, this overrules the global setting." +
+			"\n\n**Individual Volume Setting**:" +
+			"\n- **ignored**: (Default) The volume will inherit the global setting." +
+			"\n- **disabled**: No replica auto-balance will be done for this volume." +
+			"\n- **least-effort**: Balance replicas for minimal redundancy for this volume." +
+			"\n- **best-effort**: Attempt to balance replicas for even redundancy at the node level for this volume." +
+			"\n\n**NOTE**: Longhorn does not forcefully re-schedule the replicas to a zone that does not have enough nodes to support even balance. Instead, Longhorn will re-schedule to balance at the node level.",
 		Category:           SettingCategoryScheduling,
 		Type:               SettingTypeString,
 		Required:           true,
@@ -595,13 +595,9 @@ var (
 
 	SettingDefinitionReplicaAutoBalanceDiskPressurePercentage = SettingDefinition{
 		DisplayName: "Replica Auto Balance Disk Pressure Threshold (%)",
-		Description: "Percentage of currently used storage that triggers automatic replica rebalancing.\n\n" +
-			"When the threshold is reached, Longhorn automatically rebuilds replicas that are under disk pressure on another disk within the same node.\n\n" +
-			"To disable this feature, set the value to 0.\n\n" +
-			"**Note:** This setting takes effect only when the following conditions are met:\n" +
-			"- **Replica Auto Balance** is set to **best-effort**.\n" +
-			"- At least one other disk on the node has sufficient available space.\n\n" +
-			"**Note:** This feature is not affected by the **Replica Node Level Soft Anti-Affinity** setting.",
+		Description: "The percentage of used storage that, when reached, triggers automatic replica rebalancing. When the threshold is met, Longhorn rebuilds replicas that are under disk pressure on a different disk within the same node. Set the value to `0` to disable this feature." +
+			"\n\nThis setting only takes effect when **Replica Auto Balance** is set to **best-effort** and at least one other disk on the node has sufficient available space." +
+			"\n\n**NOTE**: This setting is not affected by **Replica Node Level Soft Anti-Affinity**, which prevents Longhorn from scheduling replicas on the same node. This feature will still attempt to rebuild a replica on a different disk on the same node for migration purposes, regardless of that setting's value.",
 		Category:           SettingCategoryScheduling,
 		Type:               SettingTypeInt,
 		Required:           true,
@@ -611,8 +607,9 @@ var (
 	}
 
 	SettingDefinitionStorageOverProvisioningPercentage = SettingDefinition{
-		DisplayName:        "Storage Over Provisioning Percentage",
-		Description:        "This setting defines the ratio of allocated storage to the hard drive's actual physical capacity.",
+		DisplayName: "Storage Over Provisioning Percentage",
+		Description: "This setting defines the ratio of allocated storage to the hard drive’s actual physical capacity. Adjusting this allows Longhorn Manager to schedule new replicas on a disk as long as their combined size (of all replicas within the permitted over-provisioning percentage of the usable disk space) doesn't exceed the over-provisioning limit. This limit is based on the disk's usable space, which is calculated as the `Storage Maximum` minus the `Storage Reserved` amount." +
+			"\n\n**NOTE**: Replicas may consume more space than a volume's nominal size due to snapshot data. You can reclaim disk space by deleting snapshots that are no longer needed.",
 		Category:           SettingCategoryScheduling,
 		Type:               SettingTypeInt,
 		Required:           true,
@@ -626,7 +623,7 @@ var (
 
 	SettingDefinitionStorageMinimalAvailablePercentage = SettingDefinition{
 		DisplayName:        "Storage Minimal Available Percentage",
-		Description:        "This setting defines the minimum amount of disk space that must remain available on a disk. If the available disk space drops below this percentage, the disk is marked as unschedulable, and Longhorn will not schedule new replicas on it until more space is freed up.",
+		Description:        "This setting defines the minimum amount of disk space that must remain available on a disk before Longhorn can schedule a new replica. If adding a new replica would cause the available space to drop below this percentage, the disk is marked as unschedulable until more space is freed up. This helps protect your disks from becoming too full, preventing potential performance issues and storage failures.",
 		Category:           SettingCategoryScheduling,
 		Type:               SettingTypeInt,
 		Required:           true,
@@ -640,8 +637,9 @@ var (
 	}
 
 	SettingDefinitionStorageReservedPercentageForDefaultDisk = SettingDefinition{
-		DisplayName:        "Storage Reserved Percentage For Default Disk",
-		Description:        "This setting reserves a percentage of disk space that will not be allocated to the default disk on each new Longhorn node.",
+		DisplayName: "Storage Reserved Percentage For Default Disk",
+		Description: "This setting reserves a percentage of disk space that will not be allocated to the default disk on each new Longhorn node." +
+			"\n\nThis setting only affects the default disk of a new adding node or nodes when installing Longhorn.",
 		Category:           SettingCategoryScheduling,
 		Type:               SettingTypeInt,
 		Required:           true,
@@ -656,7 +654,7 @@ var (
 
 	SettingDefinitionUpgradeChecker = SettingDefinition{
 		DisplayName:        "Enable Upgrade Checker",
-		Description:        "Upgrade Checker will check for new Longhorn version periodically. When there is a new version available, a notification will appear in the UI.",
+		Description:        "Upgrade Checker will check for new Longhorn version periodically. When there is a new version available, a notification will appear in the Longhorn UI.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -678,8 +676,92 @@ var (
 
 	SettingDefinitionAllowCollectingLonghornUsageMetrics = SettingDefinition{
 		DisplayName: "Allow Collecting Longhorn Usage Metrics",
-		Description: "Enabling this setting will allow Longhorn to provide additional usage metrics to https://metrics.longhorn.io/.\n" +
-			"This information will help us better understand how Longhorn is being used, which will ultimately contribute to future improvements.",
+		Description: "Enabling this setting allows Longhorn to provide valuable usage metrics to `https://metrics.longhorn.io/`. This information helps us understand how Longhorn is being used, which will ultimately contribute to future improvements. The collected data is anonymized and includes details about the cluster, nodes, and volume configuration, but does not include any personal or sensitive information. It is important to note that the `Upgrade Checker` setting must be enabled for this data to be periodically sent." +
+			"\n\n---" +
+			"\n\n**Collected Metrics**:" +
+			"\n\nNode Information collected from all cluster nodes includes:" +
+			"\n- Number of disks of each device type (HDD, SSD, NVMe, unknown). This value may not be accurate for virtual machines." +
+			"\n- Number of disks for each Longhorn disk type (block, filesystem)." +
+			"\n- Host system architecture." +
+			"\n- Host kernel release." +
+			"\n- Host operating system (OS) distribution." +
+			"\n- Kubernetes node provider." +
+			"\n\nCluster Information collected from one of the cluster nodes includes:" +
+			"\n- Longhorn namespace UID." +
+			"\n- Number of Longhorn nodes." +
+			"\n- Number of volumes of each access mode (RWO, RWX, unknown)." +
+			"\n- Number of volumes of each data engine (V1, V2)." +
+			"\n- Number of volumes of each data locality type (disabled, best_effort, strict_local, unknown)." +
+			"\n- Number of volumes that are encrypted or unencrypted." +
+			"\n- Number of volumes of each frontend type (blockdev, iscsi)." +
+			"\n- Number of replicas." +
+			"\n- Number of snapshots." +
+			"\n- Number of backing images." +
+			"\n- Number of orphans." +
+			"\n- Average volume size in bytes." +
+			"\n- Average volume actual size in bytes." +
+			"\n- Average number of snapshots per volume." +
+			"\n- Average number of replicas per volume." +
+			"\n- Average Longhorn component CPU usage (instance manager, manager) in millicores." +
+			"\n- Average Longhorn component memory usage (instance manager, manager) in bytes." +
+			"\n\nLonghorn settings:" +
+			"\n- Partially included: Backup Target Type/Protocol (azblob, cifs, nfs, s3, none, unknown). This is from the Backup Target setting." +
+			"\n- Included as true or false to indicate if this setting is configured:" +
+			"\n  - Priority Class" +
+			"\n  - Registry Secret" +
+			"\n  - Snapshot Data Integrity CronJob" +
+			"\n  - Storage Network" +
+			"\n  - System Managed Components Node Selector" +
+			"\n  - Taint Toleration" +
+			"\n- Included as it is:" +
+			"\n  - Allow Recurring Job While Volume Is Detached" +
+			"\n  - Allow Volume Creation With Degraded Availability" +
+			"\n  - Automatically Clean up System Generated Snapshot" +
+			"\n  - Automatically Clean up Outdated Snapshots of Recurring Backup Jobs" +
+			"\n  - Automatically Delete Workload Pod when The Volume Is Detached Unexpectedly" +
+			"\n  - Automatic Salvage" +
+			"\n  - Backing Image Cleanup Wait Interval" +
+			"\n  - Backing Image Recovery Wait Interval" +
+			"\n  - Backup Compression Method" +
+			"\n  - Backupstore Poll Interval" +
+			"\n  - Backup Concurrent Limit" +
+			"\n  - Concurrent Automatic Engine Upgrade Per Node Limit" +
+			"\n  - Concurrent Backup Restore Per Node Limit" +
+			"\n  - Concurrent Replica Rebuild Per Node Limit" +
+			"\n  - CRD API Version" +
+			"\n  - Create Default Disk Labeled Nodes" +
+			"\n  - Default Data Locality" +
+			"\n  - Default Replica Count" +
+			"\n  - Disable Revision Counter" +
+			"\n  - Disable Scheduling On Cordoned Node" +
+			"\n  - Engine Replica Timeout" +
+			"\n  - Failed Backup TTL" +
+			"\n  - Fast Replica Rebuild Enabled" +
+			"\n  - Guaranteed Instance Manager CPU" +
+			"\n  - Kubernetes Cluster Autoscaler Enabled" +
+			"\n  - Node Down Pod Deletion Policy" +
+			"\n  - Node Drain Policy" +
+			"\n  - Orphan Auto Deletion" +
+			"\n  - Recurring Failed Jobs History Limit" +
+			"\n  - Recurring Successful Jobs History Limit" +
+			"\n  - Remove Snapshots During Filesystem Trim" +
+			"\n  - Replica Auto Balance" +
+			"\n  - Replica File Sync HTTP Client Timeout" +
+			"\n  - Replica Replenishment Wait Interval" +
+			"\n  - Replica Soft Anti Affinity" +
+			"\n  - Replica Zone Soft Anti Affinity" +
+			"\n  - Replica Disk Soft Anti Affinity" +
+			"\n  - Restore Concurrent Limit" +
+			"\n  - Restore Volume Recurring Jobs" +
+			"\n  - Snapshot Data Integrity" +
+			"\n  - Snapshot DataIntegrity Immediate Check After Snapshot Creation" +
+			"\n  - Storage Minimal Available Percentage" +
+			"\n  - Storage Network For RWX Volume Enabled" +
+			"\n  - Storage Over Provisioning Percentage" +
+			"\n  - Storage Reserved Percentage For Default Disk" +
+			"\n  - Support Bundle Failed History Limit" +
+			"\n  - Support Bundle Node Collection Timeout" +
+			"\n  - System Managed Pods Image Pull Policy",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -720,8 +802,9 @@ var (
 	}
 
 	SettingDefinitionDefaultReplicaCount = SettingDefinition{
-		DisplayName:        "Default Replica Count",
-		Description:        "The default number of replicas when a volume is created from the Longhorn UI. For Kubernetes configuration, update the `numberOfReplicas` in the StorageClass.",
+		DisplayName: "Default Replica Count",
+		Description: "The default number of replicas created when a volume is provisioned from the Longhorn UI. For Kubernetes, you should set this value in the `numberOfReplicas` field of the StorageClass." +
+			"\nThe recommended replica count is 3 for clusters with three or more storage nodes, and 2 for smaller clusters. While a single replica is possible on a single-node cluster, it will not provide high availability, though you can still use snapshots and backups.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeInt,
 		Required:           true,
@@ -736,12 +819,11 @@ var (
 
 	SettingDefinitionDefaultDataLocality = SettingDefinition{
 		DisplayName: "Default Data Locality",
-		Description: "We say a Longhorn volume has data locality if there is a local replica of the volume on the same node as the pod which is using the volume.\n\n" +
-			"This setting specifies the default data locality when a volume is created from the Longhorn UI. For Kubernetes configuration, update the `dataLocality` in the StorageClass.\n\n" +
-			"The available modes are:\n\n" +
-			"- **disabled**. This is the default option. There may or may not be a replica on the same node as the attached volume (workload)\n" +
-			"- **best-effort**. This option instructs Longhorn to try to keep a replica on the same node as the attached volume (workload). Longhorn will not stop the volume, even if it cannot keep a replica local to the attached volume (workload) due to environment limitation, for example, not enough disk space, incompatible disk tags, etc.\n" +
-			"- **strict-local**. This option enforces Longhorn keep the only one replica on the same node as the attached volume.\n",
+		Description: "A Longhorn volume has data locality if a replica of the volume is on the same node as the pod using it. This setting specifies the default data locality when a volume is created from the Longhorn UI. For Kubernetes, this is configured via the `dataLocality` in the StorageClass." +
+			"\n\n**The available modes are**:\n" +
+			"\n- **disabled**: (Default) There may or may not be a replica on the same node as the workload." +
+			"\n- **best-effort**: Longhorn will try to keep a replica on the same node as the workload. The volume will not be stopped if this cannot be achieved due to limitations like insufficient disk space." +
+			"\n- **strict-local**: Longhorn enforces having only one replica on the same node as the workload, which provides higher IOPS and lower latency.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeString,
 		Required:           true,
@@ -757,7 +839,7 @@ var (
 
 	SettingDefinitionDefaultLonghornStaticStorageClass = SettingDefinition{
 		DisplayName:        "Default Longhorn Static StorageClass Name",
-		Description:        "This setting specifies the StorageClass name assigned to PersistentVolumes (PVs) and PersistentVolumeClaims (PVCs) created for pre-existing Longhorn volumes. By using this name as a label, you can bind a workload to a pre-existing PV without creating a Kubernetes StorageClass object.",
+		Description:        "This setting specifies the StorageClass name used to bind an existing Longhorn volume to a PersistentVolume (PV) and PersistentVolumeClaim (PVC). The StorageClass is only used as a matching label for PVC binding purposes, so users don't need to manually create the object in Kubernetes. By default, only a StorageClass named `longhorn-static` will be automatically created by Longhorn if it does not already exist.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeString,
 		Required:           true,
@@ -768,16 +850,13 @@ var (
 
 	SettingDefinitionTaintToleration = SettingDefinition{
 		DisplayName: "Kubernetes Taint Toleration",
-		Description: "If you want to dedicate nodes to just store Longhorn replicas and reject other general workloads, you can set tolerations for **all** Longhorn components and add taints to the nodes dedicated for storage. " +
-			"Longhorn system contains user deployed components (for example, Longhorn manager, Longhorn driver, Longhorn UI) and system managed components (for example, instance manager, engine image, CSI driver, etc.) " +
-			"This setting only sets taint tolerations for system managed components. " +
-			"Depending on how you deployed Longhorn, you need to set taint tolerations for user deployed components in Helm chart or deployment YAML file. " +
-			"All Longhorn volumes should be detached before modifying toleration settings. " +
-			"We recommend setting tolerations during Longhorn deployment because the Longhorn system cannot be operated during the update. " +
-			"Multiple tolerations can be set here, and these tolerations are separated by semicolon. For example:\n\n" +
-			"* `key1=value1:NoSchedule; key2:NoExecute:` this toleration tolerates everything because an empty key with operator `Exists` matches all keys, values and effects\n\n" +
-			"* `key1=value1:`  this toleration has empty effect. It matches all effects with key `key1`\n\n" +
-			"Because `kubernetes.io` is used as the key of all Kubernetes default tolerations, it should not be used in the toleration settings.\n\n",
+		Description: "To dedicate nodes for Longhorn replicas and prevent other workloads from running on them, you can set tolerations for all Longhorn components and add taints to the dedicated nodes. This setting only applies to system-managed components (for example, instance manager, engine image, CSI driver). You must set tolerations for user-deployed components (for example, Longhorn manager, driver, UI) separately via the Helm chart or deployment YAML." +
+			"\n\nAll Longhorn volumes must be detached before modifying these settings. It is highly recommended to configure tolerations during initial deployment, as the system cannot be operated during the update. When volumes are in use, Longhorn components are not restarted, and you need to reconfigure the settings after detaching the remaining volumes; otherwise, you can wait for the setting change to be reconciled in an hour. We recommend setting tolerations during Longhorn deployment because the Longhorn system cannot be operated during the update." +
+			"\n\nMultiple tolerations can be set, separated by a semicolon. For example:" +
+			"\n- `key1=value1:NoSchedule; key2:NoExecute`" +
+			"\n- `:` (tolerates everything because an empty key with an `Exists` operator matches all keys, values, and effects)" +
+			"\n- `key1=value1:` (has an empty effect and matches all effects with key `key1`)" +
+			"\n\n**WARNING**: Do not use keys with the `kubernetes.io` prefix, as they are reserved for Kubernetes default tolerations.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeString,
 		Required:           false,
@@ -787,16 +866,12 @@ var (
 
 	SettingDefinitionSystemManagedComponentsNodeSelector = SettingDefinition{
 		DisplayName: "System Managed Components Node Selector",
-		Description: "If you want to restrict Longhorn components to only run on particular set of nodes, you can set node selector for **all** Longhorn components. " +
-			"Longhorn system contains user deployed components (for example, Longhorn manager, Longhorn driver, Longhorn UI) and system managed components (for example, instance manager, engine image, CSI driver, etc.) " +
-			"You must follow the below order when set the node selector:\n\n" +
-			"1. Set node selector for user deployed components in Helm chart or deployment YAML file depending on how you deployed Longhorn.\n\n" +
-			"2. Set node selector for system managed components in here.\n\n" +
-			"All Longhorn volumes should be detached before modifying node selector settings. " +
-			"We recommend setting node selector during Longhorn deployment because the Longhorn system cannot be operated during the update. " +
-			"Multiple label key-value pairs are separated by semicolon. For example:\n\n" +
-			"* `label-key1=label-value1; label-key2=label-value2`\n\n" +
-			"Please see the documentation at https://longhorn.io for more detailed instructions about changing node selector",
+		Description: "This setting restricts Longhorn's system-managed components to run only on a specific set of nodes. Longhorn's system includes user-deployed components (for example, Longhorn manager, driver, UI) and system-managed components (for example, instance manager, engine image, CSI driver, etc.). You must set node selectors for both." +
+			"\n\n**You must follow this order when setting the node selector**:" +
+			"\n\n1. Set the node selector for user-deployed components in the Helm chart or deployment YAML file." +
+			"\n2. Set the node selector for system-managed components here." +
+			"\n\nAll Longhorn volumes must be detached before modifying this setting. It is recommended to set node selectors during initial Longhorn deployment, as the system will be unavailable while components restart. Multiple label key-value pairs are separated by a semicolon. For example: `label-key1=label-value1; label-key2=label-value2`." +
+			"\n\nPlease see the documentation at https://longhorn.io for more detailed instructions about changing node selector.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeString,
 		Required:           false,
@@ -806,7 +881,7 @@ var (
 
 	SettingDefinitionCRDAPIVersion = SettingDefinition{
 		DisplayName:        "Custom Resource API Version",
-		Description:        "The current customer resource's API version, for example, longhorn.io/v1beta2. It is set by manager automatically.",
+		Description:        "The current customer resource's API version, for example, longhorn.io/v1beta2. It is set by the Longhorn manager automatically.",
 		Category:           SettingCategorySystemInfo,
 		Type:               SettingTypeString,
 		Required:           true,
@@ -815,7 +890,7 @@ var (
 	}
 
 	SettingDefinitionAutoSalvage = SettingDefinition{
-		DisplayName:        "Automatic salvage",
+		DisplayName:        "Automatic Salvage",
 		Description:        "If enabled, Longhorn will automatically attempt to recover a volume when all its replicas appear faulty. Longhorn will identify and use any salvageable replicas to restore the volume's functionality.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeBool,
@@ -826,11 +901,12 @@ var (
 	}
 
 	SettingDefinitionAutoDeletePodWhenVolumeDetachedUnexpectedly = SettingDefinition{
-		DisplayName: "Automatically Delete Workload Pod when The Volume Is Detached Unexpectedly",
-		Description: "If enabled, Longhorn will automatically delete the workload pod that is managed by a controller (for example, deployment, statefulset, daemonset, etc.) when Longhorn volume is detached unexpectedly (for example, during Kubernetes upgrade, Docker reboot, or network disconnect). " +
-			"By deleting the pod, its controller restarts the pod and Kubernetes handles volume reattachment and remount.\n\n" +
-			"If disabled, Longhorn will not delete the workload pod that is managed by a controller. You will have to manually restart the pod to reattach and remount the volume.\n\n" +
-			"**Note:** This setting doesn't apply to the workload pods that don't have a controller. Longhorn never deletes them.",
+		DisplayName: "Automatically Delete Workload Pod When The Volume Is Detached Unexpectedly",
+		Description: "If enabled, Longhorn automatically deletes a workload pod managed by a controller (for example, deployment, statefulset) when its Longhorn volume is unexpectedly detached (for example, during a Kubernetes upgrade, Docker reboot, or network disconnect). Deleting the pod allows its controller to restart it, and Kubernetes then handles volume reattachment and remount." +
+			"\n\nIf disabled, Longhorn will not delete the pod. You will have to manually restart it to reattach the volume." +
+			"\n\n**NOTE**: This setting does not apply in the following cases:" +
+			"\n- Workload pods without a controller; Longhorn never deletes them." +
+			"\n- Workload pods with **cluster network** RWX volumes. This is because the Longhorn Share Manager, which provides the RWX NFS service, has its own resilience mechanism. This setting does, however, apply to workload pods with **storage network** RWX volumes.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -840,8 +916,8 @@ var (
 	}
 
 	SettingDefinitionRegistrySecret = SettingDefinition{
-		DisplayName:        "Registry secret",
-		Description:        "The name of a Kubernetes Secret.",
+		DisplayName:        "Registry Secret",
+		Description:        "The name of the Kubernetes Secret.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeString,
 		Required:           false,
@@ -851,8 +927,9 @@ var (
 	}
 
 	SettingDefinitionDisableSchedulingOnCordonedNode = SettingDefinition{
-		DisplayName:        "Disable Scheduling On Cordoned Node",
-		Description:        "When enabled, Longhorn will not schedule new replicas on a Kubernetes cordoned node. Cordoning a node prevents new pods from being scheduled on it, which is often done in preparation for maintenance or decommissioning.",
+		DisplayName: "Disable Scheduling On Cordoned Node",
+		Description: "When this setting is enabled, the Longhorn manager will not schedule new replicas on a Kubernetes cordoned node. When this setting is disabled, the Longhorn Manager will schedule replicas on Kubernetes cordoned nodes." +
+			"\nCordoning a node prevents new pods from being scheduled on it, which is often done in preparation for maintenance or decommissioning.",
 		Category:           SettingCategoryScheduling,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -863,7 +940,7 @@ var (
 
 	SettingDefinitionReplicaZoneSoftAntiAffinity = SettingDefinition{
 		DisplayName:        "Replica Zone Level Soft Anti-Affinity",
-		Description:        "When enabled, this setting allows Longhorn to schedule new replicas of a volume on nodes within the same Kubernetes zone as existing healthy replicas. Nodes that do not belong to a zone are considered to be in the same zone. Longhorn identifies zones based on the `topology.kubernetes.io/zone` label on the Kubernetes node object.",
+		Description:        "When enabled, this setting allows Longhorn to schedule new replicas of a volume on nodes within the same Kubernetes zone as existing healthy replicas. If disabled, Longhorn will prevent replicas from being scheduled in the same zone. Nodes that don't belong to a zone are considered to be in the same zone. Longhorn identifies zones based on the `topology.kubernetes.io/zone` label on the Kubernetes node object.",
 		Category:           SettingCategoryScheduling,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -873,12 +950,13 @@ var (
 	}
 
 	SettingDefinitionNodeDownPodDeletionPolicy = SettingDefinition{
-		DisplayName: "Pod Deletion Policy When Node is Down",
-		Description: "Defines the Longhorn action when a Volume is stuck with a StatefulSet/Deployment Pod on a node that is down.\n" +
-			"- **do-nothing** is the default Kubernetes behavior of never force deleting StatefulSet/Deployment terminating pods. Since the pod on the node that is down isn't removed, Longhorn volumes are stuck on nodes that are down.\n" +
-			"- **delete-statefulset-pod** Longhorn will force delete StatefulSet terminating pods on nodes that are down to release Longhorn volumes so that Kubernetes can spin up replacement pods.\n" +
-			"- **delete-deployment-pod** Longhorn will force delete Deployment terminating pods on nodes that are down to release Longhorn volumes so that Kubernetes can spin up replacement pods.\n" +
-			"- **delete-both-statefulset-and-deployment-pod** Longhorn will force delete StatefulSet/Deployment terminating pods on nodes that are down to release Longhorn volumes so that Kubernetes can spin up replacement pods.\n",
+		DisplayName: "Pod Deletion Policy When Node Is Down",
+		Description: "This setting defines the Longhorn action when a Volume is stuck with a StatefulSet/Deployment Pod on a node that is down." +
+			"\n\n**The various available options are**:" +
+			"\n- **do-nothing** is the **default** Kubernetes behavior of never force deleting StatefulSet/Deployment terminating pods. Since the pod on the node that is down isn't removed, Longhorn volumes are stuck on nodes that are down." +
+			"\n- **delete-statefulset-pod** Longhorn will force delete StatefulSet terminating pods on nodes that are down to release Longhorn volumes so that Kubernetes can spin up replacement pods." +
+			"\n- **delete-deployment-pod** Longhorn will force delete Deployment terminating pods on nodes that are down to release Longhorn volumes so that Kubernetes can spin up replacement pods." +
+			"\n- **delete-both-statefulset-and-deployment-pod** Longhorn will force delete StatefulSet/Deployment terminating pods on nodes that are down to release Longhorn volumes so that Kubernetes can spin up replacement pods.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeString,
 		Required:           true,
@@ -895,12 +973,13 @@ var (
 
 	SettingDefinitionNodeDrainPolicy = SettingDefinition{
 		DisplayName: "Node Drain Policy",
-		Description: "Define the policy to use when a node with the last healthy replica of a volume is drained.\n" +
-			"- **block-for-eviction** Longhorn will automatically evict all replicas and block the drain until eviction is complete.\n" +
-			"- **block-for-eviction-if-contains-last-replica** Longhorn will automatically evict any replicas that don't have a healthy counterpart and block the drain until eviction is complete.\n" +
-			"- **block-if-contains-last-replica** Longhorn will block the drain when the node contains the last healthy replica of a volume.\n" +
-			"- **allow-if-replica-is-stopped** Longhorn will allow the drain when the node contains the last healthy replica of a volume but the replica is stopped. WARNING: possible data loss if the node is removed after draining. Select this option if you want to drain the node and do in-place upgrade/maintenance.\n" +
-			"- **always-allow** Longhorn will allow the drain even though the node contains the last healthy replica of a volume. WARNING: possible data loss if the node is removed after draining. Also possible data corruption if the last replica was running during the draining.\n",
+		Description: "This setting defines the policy to use when a node with the last healthy replica of a volume is drained." +
+			"\n\n**The various available options are**:" +
+			"\n- **block-for-eviction**: Longhorn will automatically evict all replicas and block the drain until eviction is complete." +
+			"\n- **block-for-eviction-if-contains-last-replica**: Longhorn will automatically evict any replicas that don't have a healthy counterpart and block the drain until eviction is complete." +
+			"\n- **block-if-contains-last-replica**: Longhorn will block the drain when the node contains the last healthy replica of a volume." +
+			"\n- **allow-if-replica-is-stopped**: Longhorn will allow the drain when the node contains the last healthy replica of a volume but the replica is stopped. **Warning*: There is a possibility of data loss if the node is removed after draining. Select this option if you want to drain the node and do in-place upgrade/maintenance." +
+			"\n- **always-allow**: Longhorn will allow the drain even though the node contains the last healthy replica of a volume. **WARNING**: There is a possibility of data loss if the node is removed after draining. Data corruption is also possible if the last replica was running during the draining.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeString,
 		Required:           true,
@@ -918,7 +997,7 @@ var (
 
 	SettingDefinitionDetachManuallyAttachedVolumesWhenCordoned = SettingDefinition{
 		DisplayName:        "Detach Manually Attached Volumes When Cordoned",
-		Description:        "When enabled, Longhorn will automatically detach volumes that were manually attached to a node once that node is cordoned.",
+		Description:        "When enabled, Longhorn will automatically detach volumes that were manually attached to a node once that node is cordoned. This prevent the draining process stuck by the PDB of instance-manager which still has running engine on the node.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -929,10 +1008,10 @@ var (
 
 	SettingDefinitionPriorityClass = SettingDefinition{
 		DisplayName: "Priority Class",
-		Description: "The name of the Priority Class to set on the Longhorn components. This can help prevent Longhorn components from being evicted under Node Pressure.\n" +
-			"Longhorn system contains user deployed components (for example, Longhorn manager, Longhorn driver, Longhorn UI) and system managed components (for example, instance manager, engine image, CSI driver, etc.) " +
-			"Note that this setting only sets Priority Class for system managed components. " +
-			"Depending on how you deployed Longhorn, you need to set Priority Class for user deployed components in Helm chart or deployment YAML file.\n",
+		Description: "This setting specifies the name of the Kubernetes PriorityClass to apply to Longhorn's system-managed components. This can help prevent Longhorn pods from being evicted under node pressure (for example, low memory)." +
+			"\n\nBy default, Longhorn workloads run with the same priority as other pods in the cluster, making them equally susceptible to eviction. This setting allows you to assign a higher priority to Longhorn workloads so they are not the first to be evicted." +
+			"\n\nThe Longhorn system includes both user-deployed components (for example, manager, driver, UI) and system-managed components (for example, instance manager, engine image, CSI driver). Note that this setting only applies to system-managed components. You must set the PriorityClass for user-deployed components separately in your Helm chart or deployment YAML." +
+			"\n\n**WARNING**: This setting should only be changed after all Longhorn volumes are detached, as system components will be restarted. The system will be unavailable during the update. It is recommended to set the PriorityClass during initial Longhorn deployment.",
 		Category:           SettingCategoryDangerZone,
 		Required:           false,
 		ReadOnly:           false,
@@ -941,7 +1020,7 @@ var (
 
 	SettingDefinitionDisableRevisionCounter = SettingDefinition{
 		DisplayName:        "Disable Revision Counter",
-		Description:        "This setting applies only to volumes created via the UI. When enabled (the default), Longhorn does not use a revision counter to track volume writes. Instead, during salvage recovery, it uses file modification time and size to select the best replica. When disabled, Longhorn maintains a revision counter, which allows it to pick the replica with the highest counter for more accurate recovery during salvage.",
+		Description:        "This setting applies only to volumes created via the Longhorn UI. When this setting is enabled (the default), Longhorn does not use a revision counter to track volume writes. Instead, during salvage recovery, it uses file modification time and size to select the best replica. When this setting is disabled, Longhorn maintains a revision counter, which allows it to pick the replica with the highest counter for more accurate recovery during salvage.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -951,8 +1030,9 @@ var (
 	}
 
 	SettingDefinitionReplicaReplenishmentWaitInterval = SettingDefinition{
-		DisplayName:        "Replica Replenishment Wait Interval",
-		Description:        "In seconds. This is the amount of time Longhorn will wait before creating a new replica for a degraded volume. During this waiting period, Longhorn will attempt to reuse the data from an existing failed replica to save rebuilding time and network bandwidth. Note that this setting only works when there is a failed replica, and it may temporarily delay the volume's recovery.",
+		DisplayName: "Replica Replenishment Wait Interval",
+		Description: "In seconds. This setting specifies how long Longhorn will wait before creating a new replica for a degraded volume. During this time, Longhorn attempts to reuse data from an existing failed replica to save rebuilding time and network bandwidth." +
+			"\n\n**WARNING**: This setting only takes effect when there is at least one failed replica in the volume, and it may temporarily delay the volume's recovery.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeInt,
 		Required:           true,
@@ -966,12 +1046,12 @@ var (
 
 	SettingDefinitionConcurrentReplicaRebuildPerNodeLimit = SettingDefinition{
 		DisplayName: "Concurrent Replica Rebuild Per Node Limit",
-		Description: "This setting controls how many replicas on a node can be rebuilt simultaneously.\n\n" +
-			"Typically, Longhorn can block the replica starting once the current rebuilding count on a node exceeds the limit. But when the value is 0, it means disabling the replica rebuilding.\n\n" +
-			"WARNING:\n\n" +
-			"  - The old setting \"Disable Replica Rebuild\" is replaced by this setting.\n\n" +
-			"  - Different from relying on replica starting delay to limit the concurrent rebuilding, if the rebuilding is disabled, replica object replenishment will be directly skipped.\n\n" +
-			"  - When the value is 0, the eviction and data locality feature won't work. But this shouldn't have any impact to any current replica rebuild and backup restore.",
+		Description: "This setting controls how many replicas on a node can be rebuilt simultaneously." +
+			"\n\nTypically, Longhorn can block the replica starting once the current rebuilding count on a node exceeds the limit. But when the value is 0, it means disabling the replica rebuilding." +
+			"\n\n**WARNING**:\n" +
+			"\n  - The old setting \"Disable Replica Rebuild\" is replaced by this setting." +
+			"\n  - Different from relying on replica starting delay to limit the concurrent rebuilding, if the rebuilding is disabled, replica object replenishment will be directly skipped." +
+			"\n  - When the value is 0, the eviction and data locality feature won't work. But this shouldn't have any impact to any current replica rebuild and backup restore.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeInt,
 		Required:           true,
@@ -985,8 +1065,8 @@ var (
 
 	SettingDefinitionConcurrentBackingImageCopyReplenishPerNodeLimit = SettingDefinition{
 		DisplayName: "Concurrent Backing Image Replenish Per Node Limit",
-		Description: "This setting controls how many backing images copy on a node can be replenished simultaneously.\n\n" +
-			"Typically, Longhorn can block the backing image copy starting once the current replenishing count on a node exceeds the limit. But when the value is 0, it means disabling the backing image replenish.",
+		Description: "This setting controls how many backing images copy on a node can be replenished simultaneously." +
+			"\n\nTypically, Longhorn can block the backing image copy starting once the current replenishing count on a node exceeds the limit. But when the value is **0**, it means disabling the backing image replenish.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeInt,
 		Required:           true,
@@ -1014,8 +1094,11 @@ var (
 
 	SettingDefinitionSystemManagedPodsImagePullPolicy = SettingDefinition{
 		DisplayName: "System Managed Pod Image Pull Policy",
-		Description: "This setting defines the Image Pull Policy of Longhorn system managed pods, for example, instance manager, engine image, CSI driver, etc. " +
-			"The new Image Pull Policy will only apply after the system managed pods restart.",
+		Description: "This setting defines the Image Pull Policy for Longhorn's system-managed pods, such as the instance manager, engine image, and CSI driver. The new policy will only apply after these pods restart." +
+			"\n\nThis setting is exactly the same as the one used in Kubernetes, and the available options are:" +
+			"\n\n- **always**: Every time a pod is launched, the kubelet will pull the image from the registry to ensure it has the latest version." +
+			"\n\n- **if-not-present**: (Default) The image is only pulled if it does not already exist locally on the node." +
+			"\n\n- **never**: The image is assumed to exist locally. No attempt is made to pull the image from the registry.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeString,
 		Required:           true,
@@ -1030,8 +1113,9 @@ var (
 	}
 
 	SettingDefinitionAllowVolumeCreationWithDegradedAvailability = SettingDefinition{
-		DisplayName:        "Allow Volume Creation with Degraded Availability",
-		Description:        "When enabled, this setting allows a volume to be created and attached to a workload even if not all of its replicas can be scheduled immediately.",
+		DisplayName: "Allow Volume Creation With Degraded Availability",
+		Description: "This setting allows user to create and attach a volume that does not have all the replicas scheduled at the time of creation." +
+			"\n\n**NOTE**: It is recommended to disable this setting when using Longhorn in the production environment.",
 		Category:           SettingCategoryScheduling,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -1042,7 +1126,7 @@ var (
 
 	SettingDefinitionAutoCleanupSystemGeneratedSnapshot = SettingDefinition{
 		DisplayName:        "Automatically Cleanup System Generated Snapshot",
-		Description:        "When enabled, this setting allows Longhorn to automatically cleanup the system generated snapshot before and after replica rebuilding.",
+		Description:        "This setting enables Longhorn to automatically clean up system-generated snapshots, which are created during replica rebuilding. If not cleaned up, these snapshots can accumulate and take up disk space, requiring manual deletion if a recurring snapshot schedule is not in place.",
 		Category:           SettingCategorySnapshot,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -1053,7 +1137,7 @@ var (
 
 	SettingDefinitionAutoCleanupRecurringJobBackupSnapshot = SettingDefinition{
 		DisplayName:        "Automatically Cleanup Recurring Job Backup Snapshot",
-		Description:        "When enabled, this setting allows Longhorn to automatically cleanup the snapshot generated by a recurring backup job.",
+		Description:        "When this setting is enabled, it allows Longhorn to automatically cleanup the snapshot generated by a recurring backup job.",
 		Category:           SettingCategorySnapshot,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -1064,9 +1148,9 @@ var (
 
 	SettingDefinitionConcurrentAutomaticEngineUpgradePerNodeLimit = SettingDefinition{
 		DisplayName: "Concurrent Automatic Engine Upgrade Per Node Limit",
-		Description: "This setting controls how Longhorn automatically upgrades volumes' engines after upgrading Longhorn manager. " +
-			"The value of this setting specifies the maximum number of engines per node that are allowed to upgrade to the default engine image at the same time. " +
-			"If the value is 0, Longhorn will not automatically upgrade volumes' engines to default version.",
+		Description: "This setting controls how Longhorn automatically upgrades volumes' engines after upgrading Longhorn manager." +
+			"The value of this setting specifies the maximum number of engines per node that are allowed to upgrade to the default engine image at the same time." +
+			"If the value is **0**, Longhorn will not automatically upgrade volumes' engines to default version.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeInt,
 		Required:           true,
@@ -1094,10 +1178,10 @@ var (
 
 	SettingDefinitionBackingImageRecoveryWaitInterval = SettingDefinition{
 		DisplayName: "Backing Image Recovery Wait Interval",
-		Description: "In seconds. The interval determines how long Longhorn will wait before re-downloading the backing image file when all disk files of this backing image become failed or unknown.\n\n" +
-			"WARNING:\n\n" +
-			"  - This recovery only works for the backing image of which the creation type is \"download\".\n\n" +
-			"  - File state \"unknown\" means the related manager pods on the pod is not running or the node itself is down/disconnected.",
+		Description: "In seconds. The interval determines how long Longhorn will wait before re-downloading the backing image file when all disk files of this backing image become failed or unknown." +
+			"\n\n**NOTE**:\n" +
+			"\n  - This recovery only works for the backing image of which the creation type is \"download\"." +
+			"\n  - File state \"unknown\" means the related manager pods on the pod is not running or the node itself is down/disconnected.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeInt,
 		Required:           true,
@@ -1111,18 +1195,19 @@ var (
 
 	SettingDefinitionGuaranteedInstanceManagerCPU = SettingDefinition{
 		DisplayName: "Guaranteed Instance Manager CPU",
-		Description: "Percentage of the total allocatable CPU resources on each node to be reserved for each instance manager pod. For example, 10 means 10% of the total CPU on a node will be allocated to each instance manager pod on this node. This will help maintain engine and replica stability during high node workload.\n\n" +
-			"In order to prevent unexpected volume instance (engine/replica) crash as well as guarantee a relative acceptable IO performance, you can use the following formula to calculate a value for this setting:\n\n" +
-			"`Guaranteed Instance Manager CPU = The estimated max Longhorn volume engine and replica count on a node * 0.1 / The total allocatable CPUs on the node * 100`\n\n" +
-			"The result of above calculation doesn't mean that's the maximum CPU resources the Longhorn workloads require. To fully exploit the Longhorn volume I/O performance, you can allocate/guarantee more CPU resources via this setting.\n\n" +
-			"If it's hard to estimate the usage now, you can leave it with the default value, which is 12%. Then you can tune it when there is no running workload using Longhorn volumes.\n\n" +
-			"WARNING:\n\n" +
-			"  - Value 0 means unsetting CPU requests for instance manager pods.\n\n" +
-			"  - Considering the possible new instance manager pods in the further system upgrade, this float value ranges from 0 to 40.\n\n" +
-			"  - One more set of instance manager pods may need to be deployed when the Longhorn system is upgraded. If current available CPUs of the nodes are not enough for the new instance manager pods, you need to detach the volumes using the oldest instance manager pods so that Longhorn can clean up the old pods automatically and release the CPU resources. And the new pods with the latest instance manager image will be launched then.\n\n" +
-			"  - This global setting will be ignored for a node if the field \"InstanceManagerCPURequest\" on the node is set.\n\n" +
-			"  - After this setting is changed, the instance manager pod using this global setting will be automatically restarted without instances running on the instance manager.\n\n" +
-			"  - For the v2 Data Engine, the Storage Performance Development Kit (SPDK) target daemon inside each instance manager pod uses one or more dedicated CPU cores. Setting a minimum CPU usage is critical to maintaining stability during periods of high node load.",
+		Description: "This setting reserves a percentage of a node's total allocatable CPU resources for each instance manager pod. For example, a value of **10** means 10 percent of the total CPU on a node is reserved for each instance manager. This helps maintain engine and replica stability during high node workload." +
+			"\n\n**V1 and V2 Data Engines**:\n" +
+			"\nThis setting applies to both data engines. For the V2 Data Engine, the Storage Performance Development Kit (SPDK) target daemon within each instance manager pod uses dedicated CPU cores, making it critical to reserve CPU for stability during high node load." +
+			"\n\n**Calculation and Tuning**:\n" +
+			"\nTo prevent unexpected volume instance crashes and ensure acceptable I/O performance, you can use the following formula to calculate a recommended value:" +
+			"\n`Guaranteed Instance Manager CPU = (Estimated max Longhorn volume engine and replica count on a node * 0.1) / (Total allocatable CPUs on the node) * 100`" +
+			"\nIf you cannot estimate the usage, you can use the default value of **12%** and tune it later when no workloads are running." +
+			"\n\n**Warnings and Notes**:\n" +
+			"\n- A value of **0** unsets CPU requests for instance manager pods." +
+			"\n- The value must be between 0 and 40." +
+			"\n- This global setting is ignored for any node where the **InstanceManagerCPURequest** field is manually set." +
+			"\n- Changing this setting will restart instance manager pods. To avoid disruption, ensure all volumes on the instance manager are detached before the update." +
+			"\n- During a system upgrade, new instance manager pods may be deployed. If the node's available CPU is insufficient, you must detach volumes using the oldest pods to release CPU resources so that the new pods can be launched.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeFloat,
 		Required:           true,
@@ -1137,12 +1222,12 @@ var (
 
 	SettingDefinitionKubernetesClusterAutoscalerEnabled = SettingDefinition{
 		DisplayName: "Kubernetes Cluster Autoscaler Enabled (Experimental)",
-		Description: "Setting that notifies Longhorn that the cluster is using the Kubernetes Cluster Autoscaler.\n\n" +
-			"Longhorn prevents data loss by only allowing the Cluster Autoscaler to scale down a node that met all conditions:\n\n" +
-			"  - No volume attached to the node\n\n" +
-			"  - Is not the last node containing the replica of any volume.\n\n" +
-			"  - Is not running backing image components pod.\n\n" +
-			"  - Is not running share manager components pod.\n\n",
+		Description: "This (Experimental) setting notifies Longhorn that the cluster is using the Kubernetes Cluster Autoscaler." +
+			"\n\nLonghorn prevents data loss by only allowing the Cluster Autoscaler to scale down a node that met all conditions:" +
+			"  \n- No volume attached to the node." +
+			"  \n- Is not the last node containing the replica of any volume." +
+			"  \n- Is not running backing image components pod." +
+			"  \n- Is not running share manager components pod.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -1152,13 +1237,12 @@ var (
 	}
 
 	SettingDefinitionOrphanResourceAutoDeletion = SettingDefinition{
-		DisplayName: "Orphan Resource Auto-Deletion",
-		Description: "This setting allows Longhorn to automatically delete orphan resources and their corresponding orphaned resources.\n\n" +
-			"Orphan resources located on nodes that are in down or unknown state will not be cleaned up automatically.\n\n" +
-			"List the enabled resource types in a semicolon-separated list.\n\n" +
-			"Available items are:\n\n" +
-			"- **replica-data**: replica data store\n\n" +
-			"- **instance**: engine and replica runtime instance\n\n",
+		DisplayName: "Orphan Resource Automatic Deletion",
+		Description: "This setting allows Longhorn to automatically delete orphan resources and their corresponding orphaned resources. Orphan resources located on nodes that are in down or unknown state will not be cleaned up automatically." +
+			"\nList the enabled resource types in a semicolon-separated list." +
+			"\n\n**The available options are**:\n" +
+			"\n- **replica-data**: replica data store." +
+			"\n- **instance**: engine and replica runtime instance.",
 		Category:           SettingCategoryOrphan,
 		Type:               SettingTypeString,
 		Required:           false,
@@ -1168,9 +1252,9 @@ var (
 	}
 
 	SettingDefinitionOrphanResourceAutoDeletionGracePeriod = SettingDefinition{
-		DisplayName: "Orphan Resource Auto-Deletion Grace Period",
-		Description: "Specifies the wait time, in seconds, before Longhorn automatically deletes an orphaned Custom Resource (CR) and its associated resources.\n\n" +
-			"**Note:** If a user manually deletes an orphaned CR, the deletion occurs immediately and does not respect this grace period.\n\n",
+		DisplayName: "Orphan Resource Automatic Deletion Grace Period",
+		Description: "In seconds. This setting specifies the wait time, before Longhorn automatically deletes an orphaned Custom Resource (CR) and its associated resources." +
+			"\n\n**NOTE**: If a user manually deletes an orphaned CR, the deletion occurs immediately and does not respect this grace period.",
 		Category:           SettingCategoryOrphan,
 		Type:               SettingTypeInt,
 		Required:           true,
@@ -1184,12 +1268,11 @@ var (
 
 	SettingDefinitionStorageNetwork = SettingDefinition{
 		DisplayName: "Storage Network",
-		Description: "Longhorn uses the storage network for in-cluster data traffic. Leave this blank to use the Kubernetes cluster network.\n\n" +
-			"To segregate the storage network, input the pre-existing NetworkAttachmentDefinition in **<namespace>/<name>** format.\n\n" +
-			"By default, this setting applies only to RWO (Read-Write-Once) volumes. For RWX (Read-Write-Many) volumes, enable 'Storage Network for RWX Volume' setting.\n\n" +
-			"WARNING:\n\n" +
-			"  - The cluster must have pre-existing Multus installed, and NetworkAttachmentDefinition IPs are reachable between nodes.\n\n" +
-			"  - When applying the setting, Longhorn will try to restart all instance-manager, and backing-image-manager pods if all volumes are detached and eventually restart the instance manager pod without instances running on the instance manager.\n\n",
+		Description: "Longhorn uses this setting to segregate in-cluster data traffic from the default Kubernetes cluster network. Leave this blank to use the Kubernetes cluster network. To use a dedicated storage network, input the pre-existing **Multus NetworkAttachmentDefinition** in **<namespace>/<name>** format." +
+			"\n\nBy default, this setting applies only to RWO (Read-Write-Once) volumes. For RWX (Read-Write-Many) volumes, you must also enable the **Storage Network for RWX Volume Enabled** setting." +
+			"\n\n**WARNING**:\n" +
+			"\n- The cluster must have **Multus** installed, and the IPs in the NetworkAttachmentDefinition must be reachable between nodes." +
+			"\n- This setting should only be changed after all Longhorn volumes are detached, as some system component pods will be recreated to apply the change. If volumes are in use, components will not restart immediately, and you will either need to re-apply the setting after detaching volumes or wait for the change to be reconciled in an hour.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeString,
 		Required:           false,
@@ -1200,10 +1283,10 @@ var (
 
 	SettingDefinitionStorageNetworkForRWXVolumeEnabled = SettingDefinition{
 		DisplayName: "Storage Network for RWX Volume Enabled",
-		Description: "This setting allows Longhorn to use the storage network for RWX (Read-Write-Many) volume.\n\n" +
-			"WARNING:\n\n" +
-			"  - This setting should change after all Longhorn RWX volumes are detached because some Longhorn component pods will be recreated to apply the setting.\n\n" +
-			"  - When this setting is enabled, the RWX volumes are mounted with the storage network within the CSI plugin pod container network namespace. As a result, restarting the CSI plugin pod when there are attached RWX volumes may lead to its data path become unresponsive. When this occurs, you must restart the workload pod to re-establish the mount connection. Alternatively, you can enable the 'Automatically Delete Workload Pod when The Volume Is Detached Unexpectedly' setting to allow Longhorn to automatically delete the workload pod.\n\n",
+		Description: "This setting allows Longhorn to use the dedicated storage network for RWX (Read-Write-Many) volumes. You must first enable the **Storage Network** setting before enabling this one." +
+			"\n\n**WARNING:**\n" +
+			"\n- This setting should only be changed after all Longhorn RWX volumes are detached, as some system component pods (like the CSI plugin pod) will be recreated to apply the change. If volumes are in use, these pods will not restart immediately, and you will either need to reapply the setting after detaching volumes or wait for the change to be reconciled on the hour." +
+			"\n- When this setting is enabled, RWX volumes are mounted with the storage network within the CSI plugin pod's network namespace. As a result, restarting the CSI plugin pod while volumes are attached may lead to unresponsive volume mounts. If this occurs, you must restart the workload pod to re-establish the mount connection. You can also enable the **Automatically Delete Workload Pod when The Volume Is Detached Unexpectedly** setting to have Longhorn perform this restart automatically.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeBool,
 		Required:           false,
@@ -1214,7 +1297,7 @@ var (
 
 	SettingDefinitionRecurringSuccessfulJobsHistoryLimit = SettingDefinition{
 		DisplayName:        "Cronjob Successful Jobs History Limit",
-		Description:        "This setting specifies how many successful recurring backup or snapshot job histories should be retained. History will not be retained if the value is 0.",
+		Description:        "This setting specifies how many successful recurring backup or snapshot job histories should be retained. History will not be retained if the value is **0**.",
 		Category:           SettingCategoryBackup,
 		Type:               SettingTypeInt,
 		Required:           false,
@@ -1228,7 +1311,7 @@ var (
 
 	SettingDefinitionRecurringFailedJobsHistoryLimit = SettingDefinition{
 		DisplayName:        "Cronjob Failed Jobs History Limit",
-		Description:        "This setting specifies how many successful recurring backup or snapshot job histories should be retained. History will not be retained if the value is 0.",
+		Description:        "This setting specifies how many failed recurring backup or snapshot job histories should be retained. History will not be retained if the value is **0**.",
 		Category:           SettingCategoryBackup,
 		Type:               SettingTypeInt,
 		Required:           false,
@@ -1256,10 +1339,8 @@ var (
 	}
 
 	SettingDefinitionSupportBundleFailedHistoryLimit = SettingDefinition{
-		DisplayName: "SupportBundle Failed History Limit",
-		Description: "This setting specifies how many failed support bundles can exist in the cluster.\n\n" +
-			"The retained failed support bundle is for analysis purposes and needs to clean up manually.\n\n" +
-			"Set this value to **0** to have Longhorn automatically purge all failed support bundles.\n\n",
+		DisplayName:        "Support Bundle Failed History Limit",
+		Description:        "This setting specifies the maximum number of failed support bundles that can exist in the cluster. Retained failed bundles are for analysis and must be cleaned up manually. Longhorn will block new support bundle creation when this limit is reached. You can set this value to **0** to have Longhorn automatically purge all failed support bundles.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeInt,
 		Required:           false,
@@ -1272,9 +1353,8 @@ var (
 	}
 
 	SettingDefinitionSupportBundleNodeCollectionTimeout = SettingDefinition{
-		DisplayName: "Timeout for Support Bundle Node Collection",
-		Description: "In minutes. The timeout for collecting node bundles for support bundle generation. The default value is 30.\n\n" +
-			"When the timeout is reached, the support bundle generation will proceed without requiring the collection of node bundles.\n\n",
+		DisplayName:        "Timeout For Support Bundle Node Collection",
+		Description:        "In minutes. The timeout for collecting node bundles for support bundle generation. When the timeout is reached, the support bundle generation will proceed without requiring the collection of node bundles.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeInt,
 		Required:           true,
@@ -1288,9 +1368,9 @@ var (
 
 	SettingDefinitionDeletingConfirmationFlag = SettingDefinition{
 		DisplayName: "Deleting Confirmation Flag",
-		Description: "This flag is designed to prevent Longhorn from being accidentally uninstalled which will lead to data lost.\n\n" +
-			"Set this flag to **true** to allow Longhorn uninstallation." +
-			"If this flag **false**, Longhorn uninstallation job will fail.",
+		Description: "This flag is designed to prevent Longhorn from being accidentally uninstalled which will lead to data lost" +
+			"\n\nSet this flag to **true** to allow Longhorn uninstallation." +
+			"\nIf this flag **false**, Longhorn uninstallation job will fail.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -1301,10 +1381,10 @@ var (
 
 	SettingDefinitionEngineReplicaTimeout = SettingDefinition{
 		DisplayName: "Engine Replica Timeout",
-		Description: "The time in seconds will wait for a response from a replica before marking it as failed. Values between 8 and 30 are allowed. The engine replica timeout is only in effect while there are I/O requests outstanding.\n\n" +
-			"This setting only applies to additional replicas. A V1 engine marks the last active replica as failed only after twice the configured number of seconds (timeout value x 2) have passed. This behavior is intended to balance volume responsiveness with volume availability.\n\n" +
-			"- The engine can quickly (after the configured timeout) ignore individual replicas that become unresponsive in favor of other available ones. This ensures future I/O will not be held up.\n\n" +
-			"- The engine waits on the last replica (until twice the configured timeout) to prevent unnecessarily crashing as a result of having no available backends.\n\n",
+		Description: "The time in seconds will wait for a response from a replica before marking it as failed. Values between 8 and 30 are allowed. The engine replica timeout is only in effect while there are I/O requests outstanding." +
+			"\n\nThis setting only applies to additional replicas. A V1 engine marks the last active replica as failed only after twice the configured number of seconds (timeout value x 2) have passed. This behavior is intended to balance volume responsiveness with volume availability.\n" +
+			"\n- The engine can quickly (after the configured timeout) ignore individual replicas that become unresponsive in favor of other available ones. This ensures future I/O will not be held up." +
+			"\n- The engine waits on the last replica (until twice the configured timeout) to prevent unnecessarily crashing as a result of having no available backends.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeInt,
 		Required:           true,
@@ -1319,11 +1399,11 @@ var (
 
 	SettingDefinitionSnapshotDataIntegrity = SettingDefinition{
 		DisplayName: "Snapshot Data Integrity",
-		Description: "This setting allows users to enable or disable snapshot hashing and data integrity checking.\n\n" +
-			"Available options are:\n\n" +
-			"- **disabled**: Disable snapshot disk file hashing and data integrity checking.\n\n" +
-			"- **enabled**: Enables periodic snapshot disk file hashing and data integrity checking. To detect the filesystem-unaware corruption caused by bit rot or other issues in snapshot disk files, Longhorn system periodically hashes files and finds corrupted ones. Hence, the system performance will be impacted during the periodical checking.\n\n" +
-			"- **fast-check**: Enable snapshot disk file hashing and fast data integrity checking. Longhorn system only hashes snapshot disk files if their are not hashed or the modification time are changed. In this mode, filesystem-unaware corruption cannot be detected, but the impact on system performance can be minimized.",
+		Description: "This setting allows users to enable or disable snapshot hashing and data integrity checking." +
+			"\n\n** The available options are**:\n" +
+			"\n- **disabled**: Disable snapshot disk file hashing and data integrity checking." +
+			"\n- **enabled**: Enables periodic snapshot disk file hashing and data integrity checking. To detect the filesystem-unaware corruption caused by bit rot or other issues in snapshot disk files, Longhorn system periodically hashes files and finds corrupted ones. Hence, the system performance will be impacted during the periodical checking." +
+			"\n- **fast-check**: Enable snapshot disk file hashing and fast data integrity checking. Longhorn system only hashes snapshot disk files if their are not hashed or the modification time are changed. In this mode, filesystem-unaware corruption cannot be detected, but the impact on system performance can be minimized.",
 		Category:           SettingCategorySnapshot,
 		Type:               SettingTypeString,
 		Required:           true,
@@ -1351,8 +1431,8 @@ var (
 
 	SettingDefinitionSnapshotDataIntegrityCronJob = SettingDefinition{
 		DisplayName: "Snapshot Data Integrity Check CronJob",
-		Description: "Unix-cron string format. The setting specifies when Longhorn checks the data integrity of snapshot disk files.\n\n" +
-			"Warning: Hashing snapshot disk files impacts the performance of the system. It is recommended to run data integrity checks during off-peak times and to reduce the frequency of checks.",
+		Description: "Unix-cron string format. The setting specifies when Longhorn checks the data integrity of snapshot disk files." +
+			"\n\n**WARNING**: Hashing snapshot disk files impacts the performance of the system. It is recommended to run data integrity checks during off-peak times and to reduce the frequency of checks.",
 		Category:           SettingCategorySnapshot,
 		Type:               SettingTypeString,
 		Required:           true,
@@ -1363,7 +1443,7 @@ var (
 
 	SettingDefinitionSnapshotMaxCount = SettingDefinition{
 		DisplayName:        "Snapshot Maximum Count",
-		Description:        "This setting specifies the maximum number of snapshots that can be retained for a volume. The value must be between 2 and 250.",
+		Description:        "This setting specifies the maximum number of snapshots that can be retained for a volume. The value must be between **2** and **250**.",
 		Category:           SettingCategorySnapshot,
 		Type:               SettingTypeInt,
 		Required:           true,
@@ -1373,10 +1453,8 @@ var (
 	}
 
 	SettingDefinitionRemoveSnapshotsDuringFilesystemTrim = SettingDefinition{
-		DisplayName: "Remove Snapshots During Filesystem Trim",
-		Description: "This setting allows Longhorn filesystem trim feature to automatically mark the latest snapshot and its ancestors as removed and stops at the snapshot containing multiple children.\n\n" +
-			"Since Longhorn filesystem trim feature can be applied to the volume head and the followed continuous removed or system snapshots only, trying to trim a removed file from a valid snapshot will do nothing but the filesystem will discard this kind of in-memory trimmable file info. " +
-			"Later on if you mark the snapshot as removed and want to retry the trim, you may need to unmount and remount the filesystem so that the filesystem can recollect the trimmable file info.",
+		DisplayName:        "Remove Snapshots During Filesystem Trim",
+		Description:        "This setting allows the Longhorn filesystem trim feature to automatically mark the latest snapshot and its ancestors as removed, stopping at any snapshot with multiple children. The filesystem trim feature only applies to the volume head and continuous removed or system snapshots. If you try to trim a removed file from a valid snapshot, the filesystem will do nothing and discard the in-memory trim information. To retry the trim after marking a snapshot as removed, you may need to unmount and remount the filesystem so it can recollect the trimmable file information.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -1397,7 +1475,7 @@ var (
 	}
 
 	SettingDefinitionReplicaFileSyncHTTPClientTimeout = SettingDefinition{
-		DisplayName:        "Timeout of HTTP Client to Replica File Sync Server",
+		DisplayName:        "Timeout Of HTTP Client To Replica File Sync Server",
 		Description:        "In seconds. This setting specifies the timeout for the HTTP client used to synchronize replica files.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeInt,
@@ -1428,11 +1506,11 @@ var (
 
 	SettingDefinitionBackupCompressionMethod = SettingDefinition{
 		DisplayName: "Backup Compression Method",
-		Description: "This setting allows users to specify backup compression method.\n\n" +
-			"Available options are:\n\n" +
-			"- **none**: Disable the compression method. Suitable for multimedia data such as encoded images and videos.\n\n" +
-			"- **lz4**: Fast compression method. Suitable for flat files.\n\n" +
-			"- **gzip**: A bit of higher compression ratio but relatively slow.",
+		Description: "This setting allows users to specify backup compression method." +
+			"\n\n**The available options are**:\n" +
+			"\n- **none**: Disable the compression method. Suitable for multimedia data such as encoded images and videos." +
+			"\n- **lz4**: Fast compression method. Suitable for flat files." +
+			"\n- **gzip**: A bit of higher compression ratio but relatively slow.",
 		Category:           SettingCategoryBackup,
 		Type:               SettingTypeString,
 		Required:           true,
@@ -1476,7 +1554,7 @@ var (
 
 	SettingDefinitionDefaultBackupBlockSize = SettingDefinition{
 		DisplayName:        "Default Backup Block Size",
-		Description:        "This setting specifies the default backup block size, in MiB, used when creating a new volume. Supported values are 2 or 16.",
+		Description:        "This setting specifies the default backup block size, in MiB, used when creating a new volume. Supported values are **2** or **16**.",
 		Category:           SettingCategoryBackup,
 		Type:               SettingTypeInt,
 		Required:           true,
@@ -1488,9 +1566,8 @@ var (
 
 	SettingDefinitionInstanceManagerPodLivenessProbeTimeout = SettingDefinition{
 		DisplayName: "Instance Manager Pod Liveness Probe Timeout",
-		Description: "In seconds. The setting specifies the timeout for the instance manager pod liveness probe. The default value is 10 seconds.\n\n" +
-			"WARNING:\n\n" +
-			"  - When applying the setting, Longhorn will try to restart all instance-manager pods if all volumes are detached and eventually restart the instance manager pod without instances running on the instance manager.\n\n",
+		Description: "In seconds. The setting specifies the timeout for the instance manager pod liveness probe. The default value is 10 seconds." +
+			"\n\n**WARNING**: When applying the setting, Longhorn will try to restart all instance-manager pods if all volumes are detached and eventually restart the instance manager pod without instances running on the instance manager.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeInt,
 		Required:           true,
@@ -1505,7 +1582,7 @@ var (
 
 	SettingDefinitionLogLevel = SettingDefinition{
 		DisplayName:        "Log Level",
-		Description:        "The log level Panic, Fatal, Error, Warn, Info, Debug, Trace used in longhorn manager. By default Info.",
+		Description:        "The log level `Panic`, `Fatal`, `Error`, `Warn`, `Info` (default), `Debug`, `Trace` used in the Longhorn manager.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeString,
 		Required:           true,
@@ -1517,8 +1594,9 @@ var (
 
 	SettingDefinitionV1DataEngine = SettingDefinition{
 		DisplayName: "V1 Data Engine",
-		Description: "Setting that allows you to enable the V1 Data Engine.\n\n" +
-			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached v1 volumes.\n\n",
+		Description: "Setting that allows you to enable the V1 Data Engine." +
+			"\n\n**WARNING**:\n" +
+			"\n - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached V1 volumes.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -1529,9 +1607,10 @@ var (
 
 	SettingDefinitionV2DataEngine = SettingDefinition{
 		DisplayName: "V2 Data Engine",
-		Description: "This setting allows users to activate v2 data engine which is based on SPDK. Currently, it is in the experimental phase and should not be utilized in a production environment.\n\n" +
-			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached v2 volumes.\n\n" +
-			"  - When the V2 Data Engine is enabled, each instance-manager pod utilizes 1 CPU core. This high CPU usage is attributed to the Storage Performance Development Kit (SPDK) target daemon running within each instance-manager pod. The the SPDK target daemon is responsible for handling input/output (IO) operations and requires intensive polling. As a result, it consumes 100% of a dedicated CPU core to efficiently manage and process the IO requests, ensuring optimal performance and responsiveness for storage operations.\n\n",
+		Description: "This setting allows you to enable the experimental V2 Data Engine, which is based on the Storage Performance Development Kit (SPDK). It should not be used in production environments." +
+			"\n\n**WARNING**:\n" +
+			"\n  - Do NOT change this setting with attached volumes. Longhorn will block the update when there are attached V2 volumes." +
+			"\n  - When enabled, each instance-manager pod utilizes 100 percent of a dedicated CPU core due to the intensive polling required by the SPDK target daemon. This ensures optimal performance and responsiveness for storage operations.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -1542,7 +1621,7 @@ var (
 
 	SettingDefinitionDataEngineHugepageEnabled = SettingDefinition{
 		DisplayName:        "Data Engine Hugepage Enabled",
-		Description:        "Applies only to the V2 Data Engine. Enables hugepages for the Storage Performance Development Kit (SPDK) target daemon. If disabled, legacy memory is used. Allocation size is set via the Data Engine Memory Size setting.",
+		Description:        "This setting applies only to the V2 Data Engine. It enables hugepages for the Storage Performance Development Kit (SPDK) target daemon. If disabled, legacy memory is used. Allocation size is set via the Data Engine Memory Size setting.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -1553,7 +1632,7 @@ var (
 
 	SettingDefinitionDataEngineMemorySize = SettingDefinition{
 		DisplayName:        "Data Engine Memory Size",
-		Description:        "Applies only to the V2 Data Engine. Specifies the memory size, in MiB, allocated to the Storage Performance Development Kit (SPDK) target daemon. When hugepage is enabled, this defines the hugepage size; when legacy memory is used, hugepage is disabled.",
+		Description:        "This setting applies only to the V2 Data Engine. It specifies the memory size, in MiB, allocated to the Storage Performance Development Kit (SPDK) target daemon. When hugepage is enabled, this defines the hugepage size; when legacy memory is used, hugepage is disabled.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeInt,
 		Required:           true,
@@ -1567,7 +1646,7 @@ var (
 
 	SettingDefinitionDataEngineCPUMask = SettingDefinition{
 		DisplayName:        "Data Engine CPU Mask",
-		Description:        "Applies only to the V2 Data Engine. Specifies the CPU cores on which the Storage Performance Development Kit (SPDK) target daemon runs. The daemon is deployed in each Instance Manager pod. Ensure that the number of assigned cores does not exceed the guaranteed Instance Manager CPUs for the V2 Data Engine. The default value is 0x1.\n\n",
+		Description:        "This setting applies only to the V2 Data Engine. It specifies the CPU cores on which the Storage Performance Development Kit (SPDK) target daemon runs. The daemon is deployed in each Instance Manager pod. Ensure that the number of assigned cores does not exceed the guaranteed Instance Manager CPUs for the V2 Data Engine.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeString,
 		Required:           true,
@@ -1577,12 +1656,15 @@ var (
 	}
 
 	SettingDefinitionDataEngineInterruptModeEnabled = SettingDefinition{
-		DisplayName: "Enable Interrupt Mode for Data Engine",
-		Description: "Specifies whether the Storage Performance Development Kit (SPDK) target daemon should run in interrupt mode. " +
-			"This setting is applicable only when the V2 Data Engine is enabled.\n\n" +
-			"  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached v2 volumes.\n\n" +
-			"  - `true`: Enables interrupt mode, which may reduce CPU usage.\n\n" +
-			"  - `false`: Uses polling mode for maximum performance.\n\n",
+		DisplayName: "Enable Interrupt Mode For Data Engine",
+		Description: "This setting applies only to the V2 Data Engine. It specifies whether the Storage Performance Development Kit (SPDK) target daemon should run in interrupt mode or polling mode (default)." +
+			"\n\n**The available options are**:\n" +
+			"\n  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached V2 volumes." +
+			"\n  - **true**: It enables interrupt mode, which may reduce CPU usage." +
+			"\n**WARNING**:\n" +
+			"\n  - DO NOT CHANGE THIS SETTING WITH ATTACHED VOLUMES. Longhorn will block this setting update when there are attached V2 volumes." +
+			"\n  - **true**: It enables interrupt mode, which may reduce CPU usage." +
+			"\n  - **false**: It uses polling mode for maximum performance.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -1592,8 +1674,9 @@ var (
 	}
 
 	SettingDefinitionReplicaDiskSoftAntiAffinity = SettingDefinition{
-		DisplayName:        "Replica Disk Level Soft Anti-Affinity",
-		Description:        "When enabled, this setting allows Longhorn to schedule new replicas on a disk that already has a healthy replica for the same volume.",
+		DisplayName: "Replica Disk Level Soft Anti-Affinity",
+		Description: "When enabled, this setting allows Longhorn to schedule new replicas of a volume on the same disk as existing healthy replicas. If disabled, Longhorn will forbid scheduling new replicas to the same disks" +
+			"\n\n**NOTE**: Even when this setting is enabled, Longhorn will still attempt to use a different disk if possible, even if it's on the same node. This setting is superseded if replicas are forbidden from sharing a zone or a node by either of the other Soft Anti-Affinity settings.",
 		Category:           SettingCategoryScheduling,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -1604,7 +1687,7 @@ var (
 
 	SettingDefinitionAllowEmptyNodeSelectorVolume = SettingDefinition{
 		DisplayName:        "Allow Scheduling Empty Node Selector Volumes To Any Node",
-		Description:        "When enabled, this setting allows a volume with no node selector to be scheduled on any node, including those with tags. The default value is true.",
+		Description:        "When enabled, this setting allows a volume with no node selector to be scheduled on any node, including those with tags.",
 		Category:           SettingCategoryScheduling,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -1615,7 +1698,7 @@ var (
 
 	SettingDefinitionAllowEmptyDiskSelectorVolume = SettingDefinition{
 		DisplayName:        "Allow Scheduling Empty Disk Selector Volumes To Any Disk",
-		Description:        "When enabled, this setting allows a volume with no disk selector to be scheduled on any disk, including those with tags. The default value is true.",
+		Description:        "When enabled, this setting allows a volume with no disk selector to be scheduled on any disk, including those with tags.",
 		Category:           SettingCategoryScheduling,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -1626,7 +1709,7 @@ var (
 
 	SettingDefinitionDisableSnapshotPurge = SettingDefinition{
 		DisplayName:        "Disable Snapshot Purge",
-		Description:        "This setting temporarily prevent all attempts to purge volume snapshots.",
+		Description:        "When enabled, this setting temporarily prevents all attempts to purge volume snapshots. Longhorn typically purges snapshots during replica rebuilding and user-initiated snapshot deletion to free up space. This process consumes temporary disk space, and if a disk has insufficient space, you may need to temporarily disable purging while moving data to another disk.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -1637,7 +1720,7 @@ var (
 
 	SettingDefinitionDataEngineLogLevel = SettingDefinition{
 		DisplayName:        "Data Engine Log Level",
-		Description:        "Applies only to the V2 Data Engine. Specifies the log level for the Storage Performance Development Kit (SPDK) target daemon. Supported values are: Error, Warning, Notice, Info, and Debug. The default is Notice.",
+		Description:        "This setting applies only to the V2 Data Engine. It specifies the log level for the Storage Performance Development Kit (SPDK) target daemon. Supported values are: `Error`, `Warning`, `Notice` (default), `Info`, and `Debug`.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeString,
 		Required:           true,
@@ -1649,7 +1732,7 @@ var (
 
 	SettingDefinitionDataEngineLogFlags = SettingDefinition{
 		DisplayName:        "Data Engine Log Flags",
-		Description:        "Applies only to the V2 Data Engine. Specifies the log flags for the Storage Performance Development Kit (SPDK) target daemon.",
+		Description:        "This setting applies only to the V2 Data Engine. It specifies the log flags for the Storage Performance Development Kit (SPDK) target daemon.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeString,
 		Required:           false,
@@ -1660,9 +1743,8 @@ var (
 
 	SettingDefinitionReplicaRebuildingBandwidthLimit = SettingDefinition{
 		DisplayName: "Replica Rebuilding Bandwidth Limit",
-		Description: "Applies only to the V2 Data Engine. Specifies the default write bandwidth limit, in megabytes per second (MB/s), for volume replica rebuilding." +
-			"If this value is set to 0, there will be no write bandwidth limitation. " +
-			"Individual volumes can override this setting by specifying their own rebuilding bandwidth limit.",
+		Description: "This setting applies only to the V2 Data Engine. It specifies the default write bandwidth limit, in megabytes per second (MB/s), for volume replica rebuilding." +
+			"\n\nIf this value is set to 0, there will be no write bandwidth limitation. Individual volumes can override this setting by specifying their own rebuilding bandwidth limit.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeInt,
 		Required:           false,
@@ -1694,7 +1776,7 @@ var (
 	}
 
 	SettingDefinitionDefaultMinNumberOfBackingImageCopies = SettingDefinition{
-		DisplayName:        "Default Minimum Number of BackingImage Copies",
+		DisplayName:        "Default Minimum Number Of Backing Image Copies",
 		Description:        "This setting specifies the minimum number of backing image copies that Longhorn will maintain in the cluster.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeInt,
@@ -1708,7 +1790,7 @@ var (
 	}
 
 	SettingDefinitionRWXVolumeFastFailover = SettingDefinition{
-		DisplayName:        "RWX Volume Fast Failover",
+		DisplayName:        "RWX Volume Fast Failover (Experimental)",
 		Description:        "This (Experimental) setting enables logic to quickly detect unresponsive RWX (Read-Write-Many) volumes and initiate a failover.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeBool,
@@ -1720,11 +1802,11 @@ var (
 
 	SettingDefinitionOfflineReplicaRebuilding = SettingDefinition{
 		DisplayName: "Offline Replica Rebuilding",
-		Description: "Enables automatic rebuilding of degraded replicas while the volume is detached. This setting only takes effect if the individual volume setting is set to `ignored` or `enabled`.\n\n" +
-			"Available options:\n\n" +
-			"- **true**: Enables offline replica rebuilding for all detached volumes, unless overridden by individual volume settings.\n\n" +
-			"- **false**: Disables offline replica rebuilding globally, unless overridden by individual volume settings.\n\n" +
-			"**Note:** Offline rebuilding applies only when a volume is detached. Volumes in a faulted state will not trigger offline rebuilding.",
+		Description: "This setting controls whether Longhorn automatically rebuilds degraded replicas while the volume is detached. This setting only takes effect if the individual volume setting is set to `ignored` or `enabled`." +
+			"\n\n**The available options are**:\n" +
+			"\n- **true**: Enables offline replica rebuilding for all detached volumes, unless overridden at the volume level." +
+			"\n- **false**: Disables offline replica rebuilding globally, unless overridden at the volume level." +
+			"\n\n**NOTE**: Offline rebuilding applies only when a volume is detached. Volumes in a faulted state will not trigger offline rebuilding.",
 		Category:           SettingCategoryGeneral,
 		Type:               SettingTypeBool,
 		Required:           true,
@@ -1735,7 +1817,7 @@ var (
 
 	SettingDefinitionLogPath = SettingDefinition{
 		DisplayName:        "Log Path",
-		Description:        "Specifies the directory on the host where Longhorn stores log files for the instance manager pod. Currently, it is only used for instance manager pods in the v2 data engine.",
+		Description:        "This setting specifies the directory on the host where Longhorn stores log files for the instance manager pod. Currently, it is only used for instance manager pods in the V2 data engine.",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeString,
 		Required:           true,
