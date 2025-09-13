@@ -1710,8 +1710,9 @@ func (imc *InstanceManagerController) createInstanceManagerPodSpec(im *longhorn.
 		podSpec.Spec.Containers[0].Lifecycle = &corev1.Lifecycle{
 			PreStop: &corev1.LifecycleHandler{
 				Exec: &corev1.ExecAction{
-					Command: []string{"instance-manager-v2-prestop"},
-				}},
+					Command: []string{"/bin/sh", "-c", fmt.Sprintf("instance-manager-v2-prestop >> /log/prestop-%v.log 2>&1", im.Spec.DataEngine)},
+				},
+			},
 		}
 	} else {
 		podSpec.Spec.Containers[0].Args = []string{
