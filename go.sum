@@ -128,10 +128,10 @@ github.com/longhorn/go-iscsi-helper v0.0.0-20250810143507-5c5f9a0060b4 h1:i6Wac1
 github.com/longhorn/go-iscsi-helper v0.0.0-20250810143507-5c5f9a0060b4/go.mod h1:EIkghFAyqv+8ktznS4a+leJ6KKQLPt9zrcdS2Zsfk+M=
 github.com/longhorn/go-spdk-helper v0.0.3 h1:uQR7UFlz0M9fn33wg3baDEpXrQGW12ynB2kVdwhzTUQ=
 github.com/longhorn/go-spdk-helper v0.0.3/go.mod h1:HHznCF6YCffVWor9q2qBrY15dsYTpxriqgYJ8kUeTFI=
-github.com/longhorn/longhorn-engine v1.10.0-dev-20250713.0.20250728071833-3932ded2f139 h1:qeR/Rt/Mmahgzf2Df2m00BLZibYZYs5+iTTvbHFfAXA=
-github.com/longhorn/longhorn-engine v1.10.0-dev-20250713.0.20250728071833-3932ded2f139/go.mod h1:kl2QVpLZeMoYYSAVOd2IDiP7JeLQFX/fujLA9MdyK6o=
-github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250824.0.20250911050458-a8103db2a55b h1:N40bvu6M3DMiDo6B9ITOnedyHHwHl/mXyiGcNJ3Xzjw=
-github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250824.0.20250911050458-a8103db2a55b/go.mod h1:vp17maDq4GBtLgLrGFDLwkH3ZfNjLINyLvkJ5ywCl3g=
+github.com/longhorn/longhorn-engine v1.10.0-rc2 h1:u2xgiCfQS2r9jt9T6qZthAzHq7QKr0F5f/adXNZMXUg=
+github.com/longhorn/longhorn-engine v1.10.0-rc2/go.mod h1:8IOIk/Mfpc4yAIzrz8KHFEbUwBR31ALMrQJtL2WtKHo=
+github.com/longhorn/longhorn-instance-manager v1.10.0-rc2 h1:hl4nNaJ8bHt15SeBSK+DFDDLEPOyu4YqR6XPiY9KftM=
+github.com/longhorn/longhorn-instance-manager v1.10.0-rc2/go.mod h1:apHRBXa+DfWheTa88K8bN9Ma2gGrwV7iMnpqFgxqW/I=
 github.com/longhorn/longhorn-share-manager v1.9.1 h1:ObRP8lnNOncRg9podwrPrqObBXJsQDlPfNwslxkBRhM=
 github.com/longhorn/longhorn-share-manager v1.9.1/go.mod h1:vYqc2o+6xTlgdlweIeED4Do/n+0/4I3AbD6jQ5OHfcg=
 github.com/longhorn/types v0.0.0-20250907125557-ef38b61560af h1:Ax/uYo3h8iUHlYYoiXnL2yWvwEQfgg1aqhtZKzLM+i4=
