@@ -354,7 +354,15 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 
 	if slices.Contains(dangerSettingsRequiringSpecificDataEngineVolumesDetached, settingName) {
 		switch settingName {
-		case types.SettingNameV1DataEngine, types.SettingNameV2DataEngine:
+		case types.SettingNameV1DataEngine:
+			if err := sc.updateDataEngine(settingName); err != nil {
+				return errors.Wrapf(err, "failed to apply %v setting to Longhorn instance managers when there are attached volumes. "+
+					"It will be eventually applied", settingName)
+			}
+			if err := sc.syncEngineImage(); err != nil {
+				return errors.Wrapf(err, "failed to sync engine image for v1 data engine")
+			}
+		case types.SettingNameV2DataEngine:
 			if err := sc.updateDataEngine(settingName); err != nil {
 				return errors.Wrapf(err, "failed to apply %v setting to Longhorn instance managers when there are attached volumes. "+
 					"It will be eventually applied", settingName)
@@ -921,6 +929,59 @@ func (sc *SettingController) updateDataEngine(setting types.SettingName) error {
 
 	if !enabled {
 		return sc.cleanupInstanceManager(ims, dataEngine)
+	}
+
+	return nil
+}
+
+// syncEngineImage deploys engine image when v1 engine is enabled and deletes engine image when v1 engine is disabled
+func (sc *SettingController) syncEngineImage() error {
+	v1EngineEnabled, err := sc.ds.GetSettingAsBool(types.SettingNameV1DataEngine)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get %v setting for syncing engine image", types.SettingNameV1DataEngine)
+	}
+
+	defaultEngineImage, err := sc.ds.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
+	if err != nil {
+		return err
+	}
+	engineImageName := types.GetEngineImageChecksumName(defaultEngineImage)
+	if v1EngineEnabled {
+		if _, err := sc.ds.GetEngineImage(engineImageName); err != nil {
+			if !apierrors.IsNotFound(err) {
+				return errors.Wrapf(err, "cannot get engine image %v", engineImageName)
+			}
+			ei := &longhorn.EngineImage{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   engineImageName,
+					Labels: types.GetEngineImageLabels(engineImageName),
+				},
+				Spec: longhorn.EngineImageSpec{
+					Image: defaultEngineImage,
+				},
+			}
+			if _, err = sc.ds.CreateEngineImage(ei); err != nil {
+				return errors.Wrapf(err, "cannot create engine image for %v", engineImageName)
+			}
+		}
+	} else {
+		ei, err := sc.ds.GetEngineImage(engineImageName)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			return errors.Wrapf(err, "cannot get engine image %v", engineImageName)
+		}
+		if ei.Annotations == nil {
+			ei.Annotations = make(map[string]string)
+		}
+		ei.Annotations[types.GetLonghornLabelKey(types.DeleteEngineImageFromLonghorn)] = ""
+		if _, err := sc.ds.UpdateEngineImage(ei); err != nil {
+			return errors.Wrap(err, "failed to update engine image annotations to mark for deletion")
+		}
+		if err := sc.ds.DeleteEngineImage(engineImageName); err != nil {
+			return err
+		}
 	}
 
 	return nil
