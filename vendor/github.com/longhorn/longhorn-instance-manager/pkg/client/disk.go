@@ -126,6 +126,7 @@ func (c *DiskServiceClient) DiskCreate(diskType, diskName, diskUUID, diskPath, d
 		FreeBlocks:  resp.GetFreeBlocks(),
 		BlockSize:   resp.GetBlockSize(),
 		ClusterSize: resp.GetClusterSize(),
+		State:       resp.GetState(),
 	}, nil
 }
 
@@ -167,6 +168,7 @@ func (c *DiskServiceClient) DiskGet(diskType, diskName, diskPath, diskDriver str
 		FreeBlocks:  resp.GetFreeBlocks(),
 		BlockSize:   resp.GetBlockSize(),
 		ClusterSize: resp.GetClusterSize(),
+		State:       resp.GetState(),
 	}, nil
 }
 
