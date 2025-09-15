@@ -1372,7 +1372,8 @@ func preRestoreCheckAndSync(log logrus.FieldLogger, engine *longhorn.Engine,
 		return false, fmt.Errorf("backup volume is empty for backup restoration of engine %v", engine.Name)
 	}
 
-	if cliAPIVersion >= engineapi.CLIAPIMinVersionForExistingEngineBeforeUpgrade {
+	if (types.IsDataEngineV1(engine.Spec.DataEngine) && cliAPIVersion >= engineapi.CLIAPIMinVersionForExistingEngineBeforeUpgrade) ||
+		types.IsDataEngineV2(engine.Spec.DataEngine) {
 		return checkSizeBeforeRestoration(log, engine, ds)
 	}
 
