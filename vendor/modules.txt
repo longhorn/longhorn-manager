@@ -1,3 +1,6 @@
+# github.com/0xPolygon/polygon-edge v1.3.3
+## explicit; go 1.20
+github.com/0xPolygon/polygon-edge/consensus/polybft/bitmap
 # github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161
 ## explicit; go 1.16
 github.com/Azure/go-ansiterm
@@ -9,12 +12,19 @@ github.com/Microsoft/go-winio/internal/fs
 github.com/Microsoft/go-winio/internal/socket
 github.com/Microsoft/go-winio/internal/stringbuffer
 github.com/Microsoft/go-winio/pkg/guid
+# github.com/RoaringBitmap/roaring v1.9.4
+## explicit; go 1.14
+github.com/RoaringBitmap/roaring
+github.com/RoaringBitmap/roaring/internal
 # github.com/avast/retry-go v3.0.0+incompatible
 ## explicit
 github.com/avast/retry-go
 # github.com/beorn7/perks v1.0.1
 ## explicit; go 1.11
 github.com/beorn7/perks/quantile
+# github.com/bits-and-blooms/bitset v1.16.0
+## explicit; go 1.16
+github.com/bits-and-blooms/bitset
 # github.com/blang/semver/v4 v4.0.0
 ## explicit; go 1.14
 github.com/blang/semver/v4
@@ -194,13 +204,15 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20250908085655-4593e23015c0
+# github.com/longhorn/go-common-libs v0.0.0-20250914160439-bed5f95658dc
 ## explicit; go 1.24.0
 github.com/longhorn/go-common-libs/backup
+github.com/longhorn/go-common-libs/bitmap
 github.com/longhorn/go-common-libs/exec
 github.com/longhorn/go-common-libs/io
 github.com/longhorn/go-common-libs/longhorn
 github.com/longhorn/go-common-libs/multierr
+github.com/longhorn/go-common-libs/net
 github.com/longhorn/go-common-libs/nfs
 github.com/longhorn/go-common-libs/ns
 github.com/longhorn/go-common-libs/proc
@@ -215,17 +227,31 @@ github.com/longhorn/go-iscsi-helper/iscsidev
 github.com/longhorn/go-iscsi-helper/longhorndev
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.0.3
+# github.com/longhorn/go-spdk-helper v0.0.4-0.20250915053338-daa8a47889b4
 ## explicit; go 1.24.0
+github.com/longhorn/go-spdk-helper/pkg/initiator
+github.com/longhorn/go-spdk-helper/pkg/jsonrpc
+github.com/longhorn/go-spdk-helper/pkg/spdk/client
+github.com/longhorn/go-spdk-helper/pkg/spdk/setup
+github.com/longhorn/go-spdk-helper/pkg/spdk/types
 github.com/longhorn/go-spdk-helper/pkg/types
+<<<<<<< HEAD
 # github.com/longhorn/longhorn-engine v1.10.0-rc2
+=======
+github.com/longhorn/go-spdk-helper/pkg/util
+# github.com/longhorn/longhorn-engine v1.10.0-dev-20250713.0.20250728071833-3932ded2f139
+>>>>>>> 57f582a1 (chore(vendor): update dependencies)
 ## explicit; go 1.24.0
 github.com/longhorn/longhorn-engine/pkg/interceptor
 github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
+<<<<<<< HEAD
 # github.com/longhorn/longhorn-instance-manager v1.10.0-rc2
+=======
+# github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250824.0.20250916035906-698d8ed06d8d
+>>>>>>> 57f582a1 (chore(vendor): update dependencies)
 ## explicit; go 1.24.0
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -236,7 +262,21 @@ github.com/longhorn/longhorn-instance-manager/pkg/util
 ## explicit; go 1.23.0
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/types v0.0.0-20250907125557-ef38b61560af
+# github.com/longhorn/longhorn-spdk-engine v0.0.0-20250916034519-7fdbb7b284f7
+## explicit; go 1.24.0
+github.com/longhorn/longhorn-spdk-engine/pkg/api
+github.com/longhorn/longhorn-spdk-engine/pkg/client
+github.com/longhorn/longhorn-spdk-engine/pkg/log
+github.com/longhorn/longhorn-spdk-engine/pkg/spdk
+github.com/longhorn/longhorn-spdk-engine/pkg/spdk/disk
+github.com/longhorn/longhorn-spdk-engine/pkg/spdk/disk/aio
+github.com/longhorn/longhorn-spdk-engine/pkg/spdk/disk/nvme
+github.com/longhorn/longhorn-spdk-engine/pkg/spdk/disk/virtio-blk
+github.com/longhorn/longhorn-spdk-engine/pkg/spdk/disk/virtio-scsi
+github.com/longhorn/longhorn-spdk-engine/pkg/types
+github.com/longhorn/longhorn-spdk-engine/pkg/util
+github.com/longhorn/longhorn-spdk-engine/pkg/util/broadcaster
+# github.com/longhorn/types v0.0.0-20250915085125-0638a2eac534
 ## explicit; go 1.23.0
 github.com/longhorn/types/pkg/generated/bimrpc
 github.com/longhorn/types/pkg/generated/enginerpc
@@ -270,6 +310,9 @@ github.com/modern-go/concurrent
 # github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee
 ## explicit; go 1.12
 github.com/modern-go/reflect2
+# github.com/mschoch/smat v0.2.0
+## explicit; go 1.13
+github.com/mschoch/smat
 # github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 ## explicit
 github.com/munnerz/goautoneg
@@ -441,7 +484,7 @@ go.yaml.in/yaml/v3
 ## explicit; go 1.24.0
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
-# golang.org/x/exp v0.0.0-20250819193227-8b4c13bb791b
+# golang.org/x/exp v0.0.0-20250911091902-df9299821621
 ## explicit; go 1.24.0
 golang.org/x/exp/constraints
 # golang.org/x/mod v0.27.0

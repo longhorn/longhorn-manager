@@ -13,6 +13,7 @@ type DiskInfo struct {
 	FreeBlocks  int64
 	BlockSize   int64
 	ClusterSize int64
+	State       string
 }
 
 // ReplicaStorageInstance is utilized to represent a replica directory of a legacy volume and
