@@ -314,9 +314,10 @@ func (m *SnapshotMonitor) UpdateConfiguration(map[string]interface{}) error {
 		if err != nil {
 			return errors.Wrap(err, "failed to schedule snapshot check job")
 		}
-		m.scheduledJobs[dataEngine] = job
 
 		m.Lock()
+		m.scheduledJobs[dataEngine] = job
+
 		previousDataIntegrityCronJob := m.existingDataIntegrityCronJobs[dataEngine]
 		m.existingDataIntegrityCronJobs[dataEngine] = dataIntegrityCronJobs[dataEngine]
 		m.Unlock()
