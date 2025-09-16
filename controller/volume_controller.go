@@ -2550,12 +2550,20 @@ func (c *VolumeController) getReplicasUnderDiskPressure() (map[string]bool, erro
 }
 
 func (c *VolumeController) checkDiskPressuredReplicaIsFirstCandidate(replica *longhorn.Replica, node *longhorn.Node) error {
+	if node == nil {
+		return errors.New("node is nil in checkDiskPressuredReplicaIsFirstCandidate")
+	}
+
 	var replicaScheduledDiskStatus *longhorn.DiskStatus
 	for _, diskStatus := range node.Status.DiskStatus {
 		if _, exist := diskStatus.ScheduledReplica[replica.Name]; exist {
 			replicaScheduledDiskStatus = diskStatus
 			break
 		}
+	}
+
+	if replicaScheduledDiskStatus == nil {
+		return errors.Errorf("replica %v is not scheduled on any disk", replica.Name)
 	}
 
 	scheduledReplicasSorted, err := util.SortKeys(replicaScheduledDiskStatus.ScheduledReplica)
