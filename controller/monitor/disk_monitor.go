@@ -16,6 +16,8 @@ import (
 
 	lhtypes "github.com/longhorn/go-common-libs/types"
 
+	spdkdisk "github.com/longhorn/longhorn-spdk-engine/pkg/spdk"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
@@ -291,13 +293,22 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 			//   The handling of all disks containing the same fsid will be done in NodeController.
 			// Block-type disk
 			//   Create a bdev lvstore
-			if diskConfig, err = m.generateDiskConfigHandler(disk.Type, diskName, diskUUID, disk.Path, string(diskDriver), diskServiceClient, m.ds); err != nil {
+			diskConfig, err = m.generateDiskConfigHandler(disk.Type, diskName, diskUUID, disk.Path, string(diskDriver), diskServiceClient, m.ds)
+			if err != nil {
 				diskInfoMap[diskName] = NewDiskInfo(diskName, diskUUID, disk.Path, diskDriver, nodeOrDiskEvicted, nil,
 					orphanedReplicaDataStores, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo),
 					fmt.Sprintf("Disk %v(%v) on node %v is not ready: failed to generate disk config: error: %v",
 						diskName, disk.Path, node.Name, err))
 				continue
 			}
+		}
+
+		if diskConfig.State != string(spdkdisk.DiskStateReady) {
+			diskInfoMap[diskName] = NewDiskInfo(diskName, "", disk.Path, diskDriver, nodeOrDiskEvicted, nil,
+				orphanedReplicaDataStores, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo),
+				fmt.Sprintf("Disk %v(%v) on node %v is not ready: current state: %v",
+					diskName, disk.Path, node.Name, diskConfig.State))
+			continue
 		}
 
 		stat, err := m.getDiskStatHandler(disk.Type, diskName, disk.Path, diskDriver, diskServiceClient)
