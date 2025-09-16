@@ -430,6 +430,13 @@ func (rc *ReplicaController) GetBackingImagePathForReplicaStarting(r *longhorn.R
 		log.Warnf("The requested backing image %v has not started disk file handling", bi.Name)
 		return "", nil
 	}
+	if bi.Spec.DataEngine == longhorn.DataEngineTypeV2 {
+		// To backing image v2, the first v2 copy is initialized from the temporary v1 copy.
+		if bi.Status.V2FirstCopyStatus != longhorn.BackingImageStateReady {
+			log.Warnf("The requested v2 backing image %v has not started the first copy handling", bi.Name)
+			return "", nil
+		}
+	}
 	if _, exists := bi.Spec.DiskFileSpecMap[r.Spec.DiskID]; !exists {
 		res, err := rc.ds.CanPutBackingImageOnDisk(bi, r.Spec.DiskID)
 		if err != nil {
