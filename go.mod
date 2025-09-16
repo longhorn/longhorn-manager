@@ -69,15 +69,9 @@ require (
 	github.com/longhorn/backupstore v0.0.0-20250804022317-794abf817297
 	github.com/longhorn/go-common-libs v0.0.0-20250914160439-bed5f95658dc
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250810143507-5c5f9a0060b4
-<<<<<<< HEAD
-	github.com/longhorn/go-spdk-helper v0.0.3
-	github.com/longhorn/longhorn-engine v1.10.0-rc2
-	github.com/longhorn/longhorn-instance-manager v1.10.0-rc2
-=======
 	github.com/longhorn/go-spdk-helper v0.0.4-0.20250915053338-daa8a47889b4
-	github.com/longhorn/longhorn-engine v1.10.0-dev-20250713.0.20250728071833-3932ded2f139
-	github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250824.0.20250916035906-698d8ed06d8d
->>>>>>> 57f582a1 (chore(vendor): update dependencies)
+	github.com/longhorn/longhorn-engine v1.9.1
+	github.com/longhorn/longhorn-instance-manager v1.10.0-rc2.0.20250916071225-88a4e1f6f719
 	github.com/longhorn/longhorn-share-manager v1.9.1
 	github.com/longhorn/longhorn-spdk-engine v0.0.0-20250916034519-7fdbb7b284f7
 	github.com/pkg/errors v0.9.1
@@ -89,7 +83,7 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.11.1
 	github.com/urfave/cli v1.22.17
-	golang.org/x/mod v0.27.0
+	golang.org/x/mod v0.28.0
 	golang.org/x/net v0.44.0
 	golang.org/x/sys v0.36.0
 	golang.org/x/time v0.12.0
