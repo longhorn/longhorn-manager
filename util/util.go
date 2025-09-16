@@ -638,6 +638,7 @@ type DiskConfig struct {
 	DiskName   string              `json:"diskName"`
 	DiskUUID   string              `json:"diskUUID"`
 	DiskDriver longhorn.DiskDriver `json:"diskDriver"`
+	State      string              `json:"state"`
 }
 
 func MinInt(a, b int) int {

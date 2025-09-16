@@ -14,6 +14,8 @@ import (
 	lhns "github.com/longhorn/go-common-libs/ns"
 	lhtypes "github.com/longhorn/go-common-libs/types"
 
+	spdkdisk "github.com/longhorn/longhorn-spdk-engine/pkg/spdk"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/util"
@@ -90,6 +92,10 @@ func getFilesystemTypeDiskConfig(path string) (*util.DiskConfig, error) {
 	if err := json.Unmarshal([]byte(output), cfg); err != nil {
 		return nil, errors.Wrapf(err, "failed to unmarshal host %v content: %v", diskCfgFilePath, output)
 	}
+
+	// Filesystem type disk is always ready if the config file exists
+	cfg.State = string(spdkdisk.DiskStateReady)
+
 	return cfg, nil
 }
 
@@ -117,6 +123,7 @@ func getBlockTypeDiskConfig(client *DiskServiceClient, diskName, diskPath string
 		DiskName:   getDiskName(),
 		DiskUUID:   info.UUID,
 		DiskDriver: longhorn.DiskDriver(info.Driver),
+		State:      info.State,
 	}, nil
 }
 
@@ -151,6 +158,7 @@ func generateFilesystemTypeDiskConfig(diskName, diskPath string, ds *datastore.D
 	cfg := &util.DiskConfig{
 		DiskName: diskName,
 		DiskUUID: uuid,
+		State:    string(spdkdisk.DiskStateReady),
 	}
 	encoded, err := json.Marshal(cfg)
 	if err != nil {
@@ -206,6 +214,7 @@ func generateBlockTypeDiskConfig(client *DiskServiceClient, diskName, diskUUID, 
 		DiskName:   getDiskName(),
 		DiskUUID:   info.UUID,
 		DiskDriver: longhorn.DiskDriver(info.Driver),
+		State:      info.State,
 	}, nil
 }
 

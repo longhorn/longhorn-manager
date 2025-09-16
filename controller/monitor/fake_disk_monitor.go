@@ -9,6 +9,8 @@ import (
 
 	lhtypes "github.com/longhorn/go-common-libs/types"
 
+	spdkdisk "github.com/longhorn/longhorn-spdk-engine/pkg/spdk"
+
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/util"
 
@@ -91,11 +93,13 @@ func fakeGetDiskConfig(diskType longhorn.DiskType, name, path string, diskDriver
 		return &util.DiskConfig{
 			DiskName: name,
 			DiskUUID: TestDiskID1,
+			State:    string(spdkdisk.DiskStateReady),
 		}, nil
 	case longhorn.DiskTypeBlock:
 		return &util.DiskConfig{
 			DiskName: name,
 			DiskUUID: TestDiskID1,
+			State:    string(spdkdisk.DiskStateReady),
 		}, nil
 	default:
 		return nil, fmt.Errorf("unknown disk type %v", diskType)
@@ -106,5 +110,6 @@ func fakeGenerateDiskConfig(diskType longhorn.DiskType, name, uuid, path, diskDr
 	return &util.DiskConfig{
 		DiskName: name,
 		DiskUUID: TestDiskID1,
+		State:    string(spdkdisk.DiskStateReady),
 	}, nil
 }
