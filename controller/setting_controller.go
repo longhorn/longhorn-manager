@@ -1412,6 +1412,8 @@ const (
 	ClusterInfoHostKernelRelease = util.StructName("HostKernelRelease")
 	ClusterInfoHostOsDistro      = util.StructName("HostOsDistro")
 
+	ClusterInfoLonghornImageRegistry = util.StructName("LonghornImageRegistry")
+
 	ClusterInfoDiskCountFmt     = "LonghornDisk%sCount"
 	ClusterInfoNodeDiskCountFmt = "LonghornNodeDisk%sCount"
 )
@@ -1432,6 +1434,8 @@ type ClusterInfo struct {
 	namespace    string
 
 	osDistro string
+
+	imageRegistry string
 }
 
 type ClusterInfoStructFields struct {
@@ -1442,6 +1446,10 @@ type ClusterInfoStructFields struct {
 func (info *ClusterInfo) collectClusterScope() {
 	if err := info.collectNamespace(); err != nil {
 		info.logger.WithError(err).Warn("Failed to collect Longhorn namespace")
+	}
+
+	if err := info.collectLonghornImageRegistry(); err != nil {
+		info.logger.WithError(err).Warn("Failed to collect Longhorn image registry")
 	}
 
 	if err := info.collectNodeCount(); err != nil {
@@ -1886,6 +1894,39 @@ func (info *ClusterInfo) collectHostOSDistro() (err error) {
 		}
 	}
 	info.structFields.tags.Append(ClusterInfoHostOsDistro, info.osDistro)
+	return nil
+}
+
+// getRegistry returns the registry + namespace from a container image string.
+func getRegistry(image string) string {
+	parts := strings.Split(image, "/")
+
+	switch len(parts) {
+	case 1:
+		// No registry and namespace, default to docker.io/library
+		return "docker.io/library"
+	case 2:
+		// No explicit registry, default to docker.io
+		return "docker.io/" + parts[0]
+	default:
+		// parts[0] is the registry, parts[1] is the namespace
+		return parts[0] + "/" + parts[1]
+	}
+}
+
+func (info *ClusterInfo) collectLonghornImageRegistry() (err error) {
+	if info.imageRegistry == "" {
+		pod, err := info.ds.GetManagerPodForNode(info.controllerID)
+		if err != nil {
+			return err
+		}
+		if len(pod.Spec.Containers) == 0 {
+			return fmt.Errorf("no container found in manager pod %v", pod.Name)
+		}
+
+		info.imageRegistry = getRegistry(pod.Spec.Containers[0].Image)
+	}
+	info.structFields.tags.Append(ClusterInfoLonghornImageRegistry, info.imageRegistry)
 	return nil
 }
 
