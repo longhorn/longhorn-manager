@@ -364,11 +364,21 @@ func (v *volumeValidator) validateExpansionSize(oldVolume *longhorn.Volume, newV
 		return fmt.Errorf("shrinking volume %v size from %v to %v is not supported", newVolume.Name, oldSize, newSize)
 	}
 
-	replicas, err := v.ds.ListVolumeReplicasRO(newVolume.Name)
+	replicaMap, err := v.ds.ListVolumeReplicasRO(newVolume.Name)
 	if err != nil {
 		return err
 	}
-	for _, replica := range replicas {
+
+	replicaList := make([]*longhorn.Replica, len(replicaMap))
+	for _, r := range replicaMap {
+		replicaList = append(replicaList, r)
+	}
+	ready, msg := types.IsVolumeReady(oldVolume, replicaList)
+	if !ready {
+		return fmt.Errorf("volume %v is not ready: %v", oldVolume.Name, msg)
+	}
+
+	for _, replica := range replicaMap {
 		diskUUID := replica.Spec.DiskID
 		node, diskName, err := v.ds.GetReadyDiskNode(diskUUID)
 		if err != nil {
