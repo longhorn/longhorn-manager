@@ -6458,10 +6458,11 @@ func (s *DataStore) IsV2DataEngineDisabledForNode(nodeName string) (bool, error)
 	return false, nil
 }
 
-func (s *DataStore) IsVolumeCompatibleWithNodeEngine(volumeName string, nodeName string) (bool, error) {
-	// v1 volumes are always considered compatible.
-	// v2 volumes are compatible only if the node has NOT disabled v2 engine.
-
+// IsNodeSupportingDataEngine returns true if the node supports the volume's data engine.
+//
+//	v1 volumes are always considered compatible.
+//	v2 volumes are supported only if the node has NOT disabled v2 engine.
+func (s *DataStore) IsNodeSupportingDataEngine(volumeName string, nodeName string) (bool, error) {
 	volume, err := s.GetVolumeRO(volumeName)
 	if err != nil {
 		// Because the volume doesn't exist,

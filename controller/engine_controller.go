@@ -2302,6 +2302,12 @@ func (ec *EngineController) isResponsibleFor(e *longhorn.Engine, defaultEngineIm
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
+	if types.IsDataEngineV2(e.Spec.DataEngine) {
+		if isV2DisabledForNode, err := ec.ds.IsV2DataEngineDisabledForNode(ec.controllerID); err != nil || isV2DisabledForNode {
+			return false, err
+		}
+	}
+
 	// If a regular RWX is delinquent, try to switch ownership quickly to the owner node of the share manager CR
 	isOwnerNodeDelinquent, err := ec.ds.IsNodeDelinquent(e.Status.OwnerID, e.Spec.VolumeName)
 	if err != nil {
