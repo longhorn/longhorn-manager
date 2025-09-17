@@ -1527,16 +1527,8 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 		}
 	}
 
-	var allReplicaScheduled = true
-	if len(vrs) == 0 {
-		allReplicaScheduled = false
-	}
 	replicas := []Replica{}
 	for _, r := range vrs {
-		if r.Spec.NodeID == "" {
-			allReplicaScheduled = false
-		}
-
 		mode := ""
 		if ve != nil && ve.Status.ReplicaModeMap != nil {
 			mode = string(ve.Status.ReplicaModeMap[r.Name])
@@ -1607,17 +1599,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	//   3. It's faulted.
 	//   4. It's restore pending.
 	//   5. It's failed to clone
-	ready := true
-	scheduledCondition := types.GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeScheduled)
-	isCloningDesired := types.IsDataFromVolume(v.Spec.DataSource)
-	isCloningCompleted := v.Status.CloneStatus.State == longhorn.VolumeCloneStateCompleted
-	if (v.Spec.NodeID == "" && v.Status.State != longhorn.VolumeStateDetached) ||
-		(v.Status.State == longhorn.VolumeStateDetached && (scheduledCondition.Status != longhorn.ConditionStatusTrue && !allReplicaScheduled)) ||
-		v.Status.Robustness == longhorn.VolumeRobustnessFaulted ||
-		v.Status.RestoreRequired ||
-		(isCloningDesired && !isCloningCompleted) {
-		ready = false
-	}
+	ready, _ := types.IsVolumeReady(v, vrs)
 
 	r := &Volume{
 		Resource: client.Resource{
