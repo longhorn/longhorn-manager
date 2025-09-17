@@ -369,7 +369,7 @@ func (v *volumeValidator) validateExpansionSize(oldVolume *longhorn.Volume, newV
 		return err
 	}
 
-	replicaList := make([]*longhorn.Replica, len(replicaMap))
+	replicaList := make([]*longhorn.Replica, 0, len(replicaMap))
 	for _, r := range replicaMap {
 		replicaList = append(replicaList, r)
 	}
