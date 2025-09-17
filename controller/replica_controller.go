@@ -885,6 +885,13 @@ func (rc *ReplicaController) enqueueAllRebuildingReplicaOnCurrentNode() {
 }
 
 func (rc *ReplicaController) isResponsibleFor(r *longhorn.Replica) (bool, error) {
+	// If the replica is not handled by this node, skip it.
+	if types.IsDataEngineV2(r.Spec.DataEngine) {
+		if isV2DisabledForNode, err := rc.ds.IsV2DataEngineDisabledForNode(rc.controllerID); err != nil || isV2DisabledForNode {
+			return false, err
+		}
+	}
+
 	// If a regular RWX is delinquent, try to switch ownership quickly to the owner node of the share manager CR
 	isOwnerNodeDelinquent, err := rc.ds.IsNodeDelinquent(r.Status.OwnerID, r.Spec.VolumeName)
 	if err != nil {
