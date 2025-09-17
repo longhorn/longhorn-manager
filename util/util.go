@@ -81,6 +81,8 @@ const (
 	RandomIDLength = 8
 
 	DeterministicUUIDNamespace = "08958d54-65cd-4d87-8627-9831a1eab170" // Arbitrarily generated.
+
+	KubernetesVersion1_33 = "v1.33.0"
 )
 
 var (

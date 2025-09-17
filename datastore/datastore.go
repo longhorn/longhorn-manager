@@ -13,6 +13,7 @@ import (
 	batchlisters_v1 "k8s.io/client-go/listers/batch/v1"
 	coordinationlisters "k8s.io/client-go/listers/coordination/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
+	discovery_v1 "k8s.io/client-go/listers/discovery/v1"
 	policylisters "k8s.io/client-go/listers/policy/v1"
 	schedulinglisters "k8s.io/client-go/listers/scheduling/v1"
 	storagelisters_v1 "k8s.io/client-go/listers/storage/v1"
@@ -126,6 +127,8 @@ type DataStore struct {
 	ServiceInformer               cache.SharedInformer
 	endpointLister                corelisters.EndpointsLister
 	EndpointInformer              cache.SharedInformer
+	endpointSlicesLister          discovery_v1.EndpointSliceLister
+	EndpointSlicesInformer        cache.SharedInformer
 	leaseLister                   coordinationlisters.LeaseLister
 	LeaseInformer                 cache.SharedInformer
 
@@ -213,6 +216,8 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 	cacheSyncs = append(cacheSyncs, serviceInformer.Informer().HasSynced)
 	endpointInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Core().V1().Endpoints()
 	cacheSyncs = append(cacheSyncs, endpointInformer.Informer().HasSynced)
+	endpointSlicesInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Discovery().V1().EndpointSlices()
+	cacheSyncs = append(cacheSyncs, endpointSlicesInformer.Informer().HasSynced)
 	podDisruptionBudgetInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Policy().V1().PodDisruptionBudgets()
 	cacheSyncs = append(cacheSyncs, podDisruptionBudgetInformer.Informer().HasSynced)
 	daemonSetInformer := informerFactories.KubeNamespaceFilteredInformerFactory.Apps().V1().DaemonSets()
@@ -301,6 +306,8 @@ func NewDataStore(namespace string, lhClient lhclientset.Interface, kubeClient c
 		ServiceInformer:             serviceInformer.Informer(),
 		endpointLister:              endpointInformer.Lister(),
 		EndpointInformer:            endpointInformer.Informer(),
+		endpointSlicesLister:        endpointSlicesInformer.Lister(),
+		EndpointSlicesInformer:      endpointSlicesInformer.Informer(),
 		podDisruptionBudgetLister:   podDisruptionBudgetInformer.Lister(),
 		PodDisruptionBudgetInformer: podDisruptionBudgetInformer.Informer(),
 		daemonSetLister:             daemonSetInformer.Lister(),

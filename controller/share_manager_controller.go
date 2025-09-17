@@ -23,6 +23,7 @@ import (
 
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -1140,34 +1141,65 @@ func (c *ShareManagerController) cleanupService(shareManager *longhorn.ShareMana
 	return nil
 }
 
-func (c *ShareManagerController) createServiceAndEndpoint(shareManager *longhorn.ShareManager) error {
+func (c *ShareManagerController) createServiceAndEndpointOrEndpointSlices(shareManager *longhorn.ShareManager) error {
 	// check if we need to create the service
-	_, err := c.ds.GetService(c.namespace, shareManager.Name)
+	var (
+		err     error
+		service *corev1.Service
+	)
+
+	service, err = c.ds.GetService(c.namespace, shareManager.Name)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return errors.Wrapf(err, "failed to get service for share manager %v", shareManager.Name)
 		}
 
 		c.logger.Infof("Creating Service for share manager %v", shareManager.Name)
-		_, err = c.ds.CreateService(c.namespace, c.createServiceManifest(shareManager))
+		service, err = c.ds.CreateService(c.namespace, c.createServiceManifest(shareManager))
 		if err != nil {
 			return errors.Wrapf(err, "failed to create service for share manager %v", shareManager.Name)
 		}
 	}
 
-	// Only create the Endpoint if it doesn't exist. For service using the selector, the Endpoint will be created by the service controller.
-	_, err = c.ds.GetKubernetesEndpointRO(shareManager.Name)
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			return errors.Wrapf(err, "failed to get Endpoint for share manager %v", shareManager.Name)
-		}
+	if service == nil {
+		return fmt.Errorf("service for share manager %v is nil after creation", shareManager.Name)
+	}
 
-		_, err := c.createEndpoint(shareManager)
+	isAtLeast1_33, err := util.IsKubernetesVersionAtLeast(c.kubeClient, util.KubernetesVersion1_33)
+	if err != nil {
+		return errors.Wrap(err, "failed to determine kubernetes version")
+	}
+	if isAtLeast1_33 {
+		_, err = c.ds.GetKubernetesEndpointSlices(shareManager.Namespace, shareManager.Name)
 		if err != nil {
-			if !apierrors.IsAlreadyExists(err) {
-				return errors.Wrapf(err, "failed to create Endpoint for share manager %v", shareManager.Name)
+			if !apierrors.IsNotFound(err) {
+				return errors.Wrapf(err, "failed to get EndpointSlice for share manager %v", shareManager.Name)
 			}
-			c.logger.Debugf("Found existing Endpoint for share manager %v", shareManager.Name)
+
+			_, err := c.createEndpointSlice(shareManager)
+			if err != nil {
+				if !apierrors.IsAlreadyExists(err) {
+					return errors.Wrapf(err, "failed to create EndpointSlice for share manager %v", shareManager.Name)
+				}
+				c.logger.Debugf("Found existing EndpointSlice for share manager %v", shareManager.Name)
+			}
+		}
+	} else {
+		// Endpoint is deprecated since v1.33, so we only create it for older versions
+		// Only create the Endpoint if it doesn't exist. For service using the selector, the Endpoint will be created by the service controller.
+		_, err = c.ds.GetKubernetesEndpointRO(shareManager.Name)
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				return errors.Wrapf(err, "failed to get Endpoint for share manager %v", shareManager.Name)
+			}
+
+			_, err := c.createEndpoint(shareManager)
+			if err != nil {
+				if !apierrors.IsAlreadyExists(err) {
+					return errors.Wrapf(err, "failed to create Endpoint for share manager %v", shareManager.Name)
+				}
+				c.logger.Debugf("Found existing Endpoint for share manager %v", shareManager.Name)
+			}
 		}
 	}
 
@@ -1217,7 +1249,7 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 		return nil, errors.Wrapf(err, "failed to cleanup service for share manager %v", sm.Name)
 	}
 
-	err = c.createServiceAndEndpoint(sm)
+	err = c.createServiceAndEndpointOrEndpointSlices(sm)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create service and endpoint for share manager %v", sm.Name)
 	}
@@ -1439,6 +1471,25 @@ func (c *ShareManagerController) createEndpoint(sm *longhorn.ShareManager) (*cor
 
 	c.logger.Infof("Creating Endpoint for share manager %v", sm.Name)
 	return c.ds.CreateKubernetesEndpoint(newObj)
+}
+
+func (c ShareManagerController) createEndpointSlice(sm *longhorn.ShareManager) (*discoveryv1.EndpointSlice, error) {
+	labels := types.GetShareManagerInstanceLabel(sm.Name)
+
+	newObj := &discoveryv1.EndpointSlice{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            sm.Name,
+			Namespace:       sm.Namespace,
+			OwnerReferences: datastore.GetOwnerReferencesForShareManager(sm, false),
+			Labels:          labels,
+		},
+		AddressType: discoveryv1.AddressTypeIPv4,
+		Endpoints:   []discoveryv1.Endpoint{},
+		Ports:       []discoveryv1.EndpointPort{},
+	}
+
+	c.logger.Infof("Creating EndpointSlice for share manager %v", sm.Name)
+	return c.ds.CreateKubernetesEndpointSlices(newObj)
 }
 
 func (c *ShareManagerController) createLeaseManifest(sm *longhorn.ShareManager) *coordinationv1.Lease {
