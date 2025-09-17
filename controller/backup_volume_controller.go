@@ -461,7 +461,7 @@ func (bvc *BackupVolumeController) isResponsibleFor(bv *longhorn.BackupVolume, d
 		err = errors.Wrap(err, "error while checking isResponsibleFor")
 	}()
 
-	if compatible, err := bvc.ds.IsVolumeCompatibleWithNodeEngine(bv.Spec.VolumeName, bvc.controllerID); err != nil || !compatible {
+	if compatible, err := bvc.ds.IsNodeSupportingDataEngine(bv.Spec.VolumeName, bvc.controllerID); err != nil || !compatible {
 		return false, err
 	}
 
