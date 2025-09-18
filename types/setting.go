@@ -1865,13 +1865,32 @@ func GetCustomizedDefaultSettings(defaultSettingCM *corev1.ConfigMap) (defaultSe
 		// Make sure the value of boolean setting is always "true" or "false" in Longhorn.
 		// Otherwise the Longhorn UI cannot display the boolean setting correctly.
 		if definition.Type == SettingTypeBool {
-			result, err := strconv.ParseBool(value)
-			if err != nil {
-				logrus.WithError(err).Errorf("Invalid value %v for the boolean setting %v", value, name)
-				defaultSettings = map[string]string{}
-				break
+			if IsJSONFormat(strings.TrimSpace(value)) {
+				values, err := ParseDataEngineSpecificSetting(definition, value)
+				if err != nil {
+					logrus.WithError(err).Errorf("Invalid value %v for the data engine specific boolean setting %v", value, name)
+					defaultSettings = map[string]string{}
+					break
+				}
+				for engineType, engineValue := range values {
+					values[engineType] = strconv.FormatBool(engineValue.(bool))
+				}
+				valueBytes, err := json.Marshal(values)
+				if err != nil {
+					logrus.WithError(err).Errorf("BUG: invalid normalized value %v for the data engine specific boolean setting %v", value, name)
+					defaultSettings = map[string]string{}
+					break
+				}
+				value = string(valueBytes)
+			} else {
+				result, err := strconv.ParseBool(value)
+				if err != nil {
+					logrus.WithError(err).Errorf("Invalid value %v for the boolean setting %v", value, name)
+					defaultSettings = map[string]string{}
+					break
+				}
+				value = strconv.FormatBool(result)
 			}
-			value = strconv.FormatBool(result)
 		}
 		if err := ValidateSetting(name, value); err != nil {
 			logrus.WithError(err).Errorf("Customized settings are invalid, will give up using them: the value of customized setting %v is invalid", name)
