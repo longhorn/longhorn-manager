@@ -385,7 +385,7 @@ func (v *volumeValidator) validateExpansionSize(oldVolume *longhorn.Volume, newV
 	for _, r := range replicaMap {
 		replicaList = append(replicaList, r)
 	}
-	ready, msg := types.IsVolumeReady(oldVolume, replicaList)
+	ready, msg := types.IsVolumeReady(oldVolume, replicaList, types.VolumeOperationSizeExpansion)
 	if !ready {
 		return fmt.Errorf("volume %v is not ready: %v", oldVolume.Name, msg)
 	}
