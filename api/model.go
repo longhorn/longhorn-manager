@@ -1576,7 +1576,7 @@ func toVolumeResource(v *longhorn.Volume, ves []*longhorn.Engine, vrs []*longhor
 	//   3. It's faulted.
 	//   4. It's restore pending.
 	//   5. It's failed to clone
-	ready, _ := types.IsVolumeReady(v, vrs)
+	ready, _ := types.IsVolumeReady(v, vrs, types.VolumeOperationGeneric)
 
 	r := &Volume{
 		Resource: client.Resource{
