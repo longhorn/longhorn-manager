@@ -2430,7 +2430,6 @@ func validateSettingString(name SettingName, definition SettingDefinition, value
 			if !isValidChoice(definition.Choices, strValue) {
 				return fmt.Errorf("value %v is not a valid choice, available choices %v", strValue, definition.Choices)
 			}
-			return nil
 		}
 
 		switch name {
