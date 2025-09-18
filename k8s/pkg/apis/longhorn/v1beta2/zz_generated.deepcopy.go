@@ -1527,13 +1527,6 @@ func (in *InstanceManagerStatus) DeepCopyInto(out *InstanceManagerStatus) {
 		}
 	}
 	out.DataEngineStatus = in.DataEngineStatus
-	if in.Instances != nil {
-		in, out := &in.Instances, &out.Instances
-		*out = make(map[string]InstanceProcess, len(*in))
-		for key, val := range *in {
-			(*out)[key] = *val.DeepCopy()
-		}
-	}
 	return
 }
 

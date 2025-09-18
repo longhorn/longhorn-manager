@@ -1053,8 +1053,7 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 
 				runningOrStartingInstanceFound := false
 				if im.Status.CurrentState == longhorn.InstanceManagerStateRunning && im.DeletionTimestamp == nil {
-					// nolint:all
-					for _, instance := range types.ConsolidateInstances(im.Status.InstanceEngines, im.Status.InstanceReplicas, im.Status.Instances) {
+					for _, instance := range types.ConsolidateInstances(im.Status.InstanceEngines, im.Status.InstanceReplicas) {
 						if instance.Status.State == longhorn.InstanceStateRunning || instance.Status.State == longhorn.InstanceStateStarting {
 							runningOrStartingInstanceFound = true
 							break
