@@ -17,6 +17,7 @@ import (
 	"github.com/longhorn/longhorn-manager/webhook/resources/engine"
 	"github.com/longhorn/longhorn-manager/webhook/resources/engineimage"
 	"github.com/longhorn/longhorn-manager/webhook/resources/instancemanager"
+	"github.com/longhorn/longhorn-manager/webhook/resources/kubernetesnode"
 	"github.com/longhorn/longhorn-manager/webhook/resources/node"
 	"github.com/longhorn/longhorn-manager/webhook/resources/orphan"
 	"github.com/longhorn/longhorn-manager/webhook/resources/persistentvolumeclaim"
@@ -59,6 +60,7 @@ func Validation(ds *datastore.DataStore) (http.Handler, []admission.Resource, er
 		instancemanager.NewValidator(ds),
 		persistentvolumeclaim.NewValidator(ds),
 		engineimage.NewValidator(ds),
+		kubernetesnode.NewValidator(ds),
 	}
 
 	router := webhook.NewRouter()
