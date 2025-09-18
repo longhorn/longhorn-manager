@@ -6,7 +6,12 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
-func IsVolumeReady(v *longhorn.Volume, vrs []*longhorn.Replica) (ready bool, msg string) {
+const (
+	VolumeOperationGeneric       = "generic"
+	VolumeOperationSizeExpansion = "size-expansion"
+)
+
+func IsVolumeReady(v *longhorn.Volume, vrs []*longhorn.Replica, volOp string) (ready bool, msg string) {
 	var allReplicaScheduled = true
 	if len(vrs) == 0 {
 		allReplicaScheduled = false
@@ -28,11 +33,23 @@ func IsVolumeReady(v *longhorn.Volume, vrs []*longhorn.Replica) (ready bool, msg
 	if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 		return false, "volume is faulted"
 	}
-	if v.Status.RestoreRequired {
-		return false, "restore is required"
-	}
 	if isCloningDesired && !isCloningCompleted {
 		return false, "volume has not finished cloning data"
+	}
+	switch volOp {
+	case VolumeOperationSizeExpansion:
+		// Allow DR volumes (standby) to expand even when RestoreRequired is true.
+		// Block non-DR volumes that are still restoring from backup.
+		if v.Status.RestoreRequired && !v.Status.IsStandby {
+			return false, "cannot expand size: volume is restoring data from backup"
+		}
+	case VolumeOperationGeneric:
+		fallthrough
+	default:
+		// For all other operations, disallow when restore is required.
+		if v.Status.RestoreRequired {
+			return false, "volume requires restoration"
+		}
 	}
 	return true, ""
 }
