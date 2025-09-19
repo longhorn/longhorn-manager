@@ -25,6 +25,7 @@ const (
 	DefaultCSIResizerReplicaCount     = 3
 	DefaultCSISnapshotterReplicaCount = 3
 
+	DefaultCSIPodAntiAffinityPreset      = CSIPodAntiAffinityPresetSoft
 	DefaultCSISocketFileName             = "csi.sock"
 	DefaultCSIRegistrationDirSuffix      = "/plugins_registry"
 	DefaultCSIPluginsDirSuffix           = "/plugins/"
@@ -35,6 +36,9 @@ const (
 
 	AnnotationCSIGitCommit = types.LonghornDriverName + "/git-commit"
 	AnnotationCSIVersion   = types.LonghornDriverName + "/version"
+
+	CSIPodAntiAffinityPresetSoft = "soft"
+	CSIPodAntiAffinityPresetHard = "hard"
 )
 
 var (
@@ -46,7 +50,7 @@ type AttacherDeployment struct {
 	deployment *appsv1.Deployment
 }
 
-func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir string, replicaCount int, tolerations []corev1.Toleration,
+func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir string, replicaCount int, podAntiAffinityPreset string, tolerations []corev1.Toleration,
 	tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string) *AttacherDeployment {
 
 	deployment := getCommonDeployment(
@@ -66,6 +70,7 @@ func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir str
 			fmt.Sprintf("--http-endpoint=:%v", types.CSISidecarMetricsPort),
 		},
 		int32(replicaCount),
+		podAntiAffinityPreset,
 		tolerations,
 		tolerationsString,
 		priorityClass,
@@ -101,7 +106,7 @@ type ProvisionerDeployment struct {
 	deployment *appsv1.Deployment
 }
 
-func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootDir string, replicaCount int, tolerations []corev1.Toleration,
+func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootDir string, replicaCount int, podAntiAffinityPreset string, tolerations []corev1.Toleration,
 	tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string) *ProvisionerDeployment {
 
 	deployment := getCommonDeployment(
@@ -124,6 +129,7 @@ func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootD
 			fmt.Sprintf("--http-endpoint=:%v", types.CSISidecarMetricsPort),
 		},
 		int32(replicaCount),
+		podAntiAffinityPreset,
 		tolerations,
 		tolerationsString,
 		priorityClass,
@@ -159,7 +165,7 @@ type ResizerDeployment struct {
 	deployment *appsv1.Deployment
 }
 
-func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir string, replicaCount int, tolerations []corev1.Toleration,
+func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir string, replicaCount int, podAntiAffinityPreset string, tolerations []corev1.Toleration,
 	tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string) *ResizerDeployment {
 
 	deployment := getCommonDeployment(
@@ -189,6 +195,7 @@ func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir strin
 			"--feature-gates=RecoverVolumeExpansionFailure=false",
 		},
 		int32(replicaCount),
+		podAntiAffinityPreset,
 		tolerations,
 		tolerationsString,
 		priorityClass,
@@ -224,7 +231,7 @@ type SnapshotterDeployment struct {
 	deployment *appsv1.Deployment
 }
 
-func NewSnapshotterDeployment(namespace, serviceAccount, snapshotterImage, rootDir string, replicaCount int, tolerations []corev1.Toleration,
+func NewSnapshotterDeployment(namespace, serviceAccount, snapshotterImage, rootDir string, replicaCount int, podAntiAffinityPreset string, tolerations []corev1.Toleration,
 	tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string) *SnapshotterDeployment {
 
 	deployment := getCommonDeployment(
@@ -244,6 +251,7 @@ func NewSnapshotterDeployment(namespace, serviceAccount, snapshotterImage, rootD
 			fmt.Sprintf("--http-endpoint=:%v", types.CSISidecarMetricsPort),
 		},
 		int32(replicaCount),
+		podAntiAffinityPreset,
 		tolerations,
 		tolerationsString,
 		priorityClass,

@@ -34,7 +34,7 @@ const (
 	maxRetryForDeletion                   = 120
 )
 
-func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir string, args []string, replicaCount int32,
+func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir string, args []string, replicaCount int32, podAntiAffinityPreset string,
 	tolerations []corev1.Toleration, tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string, ports []corev1.ContainerPort) *appsv1.Deployment {
 
 	deploymentLabels := types.GetBaseLabelsForSystemManagedComponent()
@@ -62,28 +62,7 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 					NodeSelector:       nodeSelector,
 					PriorityClassName:  priorityClass,
 					Affinity: &corev1.Affinity{
-						PodAntiAffinity: &corev1.PodAntiAffinity{
-							PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
-								{
-									Weight: 1,
-									PodAffinityTerm: corev1.PodAffinityTerm{
-										LabelSelector: &metav1.LabelSelector{
-											MatchExpressions: []metav1.LabelSelectorRequirement{
-												{
-													Key:      "app",
-													Operator: metav1.LabelSelectorOpIn,
-													Values: []string{
-														commonName,
-													},
-												},
-											},
-										},
-
-										TopologyKey: corev1.LabelHostname,
-									},
-								},
-							},
-						},
+						PodAntiAffinity: getAffinity(podAntiAffinityPreset, commonName),
 					},
 					Containers: []corev1.Container{
 						{
@@ -447,4 +426,37 @@ func GetCSIPluginsDir(kubeletRootDir string) string {
 
 func GetCSIEndpoint() string {
 	return "unix://" + GetInContainerCSISocketFilePath()
+}
+
+func getAffinity(podAntiAffinityPreset string, commonName string) *corev1.PodAntiAffinity {
+	podAffinityTerm := corev1.PodAffinityTerm{
+		LabelSelector: &metav1.LabelSelector{
+			MatchExpressions: []metav1.LabelSelectorRequirement{
+				{
+					Key:      "app",
+					Operator: metav1.LabelSelectorOpIn,
+					Values: []string{
+						commonName,
+					},
+				},
+			},
+		},
+
+		TopologyKey: corev1.LabelHostname,
+	}
+
+	if podAntiAffinityPreset == CSIPodAntiAffinityPresetHard {
+		return &corev1.PodAntiAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{podAffinityTerm},
+		}
+	}
+
+	return &corev1.PodAntiAffinity{
+		PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
+			{
+				Weight:          1,
+				PodAffinityTerm: podAffinityTerm,
+			},
+		},
+	}
 }
