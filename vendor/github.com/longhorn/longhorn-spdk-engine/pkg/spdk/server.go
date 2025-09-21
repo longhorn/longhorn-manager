@@ -345,7 +345,7 @@ func (s *Server) verify() (err error) {
 		}
 	}
 	if len(s.replicaMap) != len(replicaMap) {
-		logrus.Infof("spdk gRPC server: Replica map updated, map count is changed from %d to %d", len(s.replicaMap), len(replicaMap))
+		logrus.Infof("spdk gRPC server: replica map updated, map count is changed from %d to %d", len(s.replicaMap), len(replicaMap))
 	}
 	s.replicaMap = replicaMap
 	s.backingImageMap = backingImageMap
@@ -1842,7 +1842,7 @@ func (s *Server) DiskCreate(ctx context.Context, req *spdkrpc.DiskCreateRequest)
 				return
 			case <-ticker.C:
 				if err := s.verify(); err == nil {
-					logrus.Infof("SPDK gRPC server: scanned disk %s(%s) path %s",
+					logrus.Infof("SPDK gRPC server: successfully scanned disk %s(%s) path %s",
 						req.DiskName, req.DiskUuid, req.DiskPath)
 					return
 				}

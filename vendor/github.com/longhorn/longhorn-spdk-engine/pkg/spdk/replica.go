@@ -985,11 +985,17 @@ func (r *Replica) Delete(spdkClient *spdkclient.Client, cleanupRequired bool, su
 				r.ErrorMsg = err.Error()
 			}
 		} else {
-			if !r.isRestoring {
+			if r.State == types.InstanceStatePending {
 				if cleanupRequired {
 					r.State = types.InstanceStateTerminating
-				} else {
-					r.State = types.InstanceStateStopped
+				}
+			} else if r.State != types.InstanceStateTerminating {
+				if !r.isRestoring {
+					if cleanupRequired {
+						r.State = types.InstanceStateTerminating
+					} else {
+						r.State = types.InstanceStateStopped
+					}
 				}
 			}
 		}
@@ -1004,6 +1010,7 @@ func (r *Replica) Delete(spdkClient *spdkclient.Client, cleanupRequired bool, su
 
 		if prevState != r.State {
 			updateRequired = true
+			r.log.Infof("Replica state changed from %s to %s after deletion with cleanupRequired flag %v", prevState, r.State, cleanupRequired)
 		}
 
 		r.Unlock()
@@ -1012,6 +1019,12 @@ func (r *Replica) Delete(spdkClient *spdkclient.Client, cleanupRequired bool, su
 			r.UpdateCh <- nil
 		}
 	}()
+
+	if r.State == types.InstanceStatePending && !cleanupRequired {
+		// A pending replica without cleanup is a no-op
+		r.log.Info("Skipped deletion for a pending replica as cleanup is not required")
+		return nil
+	}
 
 	if r.isRestoring {
 		r.log.Info("Canceling volume restoration before replica deletion")
