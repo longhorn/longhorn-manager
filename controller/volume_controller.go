@@ -3210,7 +3210,7 @@ func (c *VolumeController) upgradeEngineForVolume(v *longhorn.Volume, es map[str
 			// the second engine upgrade will be blocked since len(e.Spec.UpgradedReplicaAddressMap) == 0.
 			// On the other hand, the engine controller blocks the engine's status from being refreshed
 			// and keep the e.Status.ReplicaModeMap to be empty map. The system enter a deadlock for the volume.
-			if len(replicaAddressMap) == v.Spec.NumberOfReplicas {
+			if len(replicaAddressMap) >= v.Spec.NumberOfReplicas {
 				e.Spec.UpgradedReplicaAddressMap = replicaAddressMap
 				e.Spec.Image = v.Spec.Image
 			}
