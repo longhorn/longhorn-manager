@@ -67,16 +67,16 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.22.0
 	github.com/longhorn/backing-image-manager v1.9.1
 	github.com/longhorn/backupstore v0.0.0-20250804022317-794abf817297
-	github.com/longhorn/go-common-libs v0.0.0-20250914160439-bed5f95658dc
+	github.com/longhorn/go-common-libs v0.0.0-20250921030719-16313e7f30b3
 	github.com/longhorn/go-iscsi-helper v0.0.0-20250810143507-5c5f9a0060b4
-	github.com/longhorn/go-spdk-helper v0.0.4-0.20250915053338-daa8a47889b4
+	github.com/longhorn/go-spdk-helper v0.0.4
 	github.com/longhorn/longhorn-engine v1.10.0-rc2
 	github.com/longhorn/longhorn-instance-manager v1.10.0-rc3
 	github.com/longhorn/longhorn-share-manager v1.9.1
 	github.com/longhorn/longhorn-spdk-engine v0.0.0-20250917004104-1a8c3b02ea6e
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.23.2
-	github.com/rancher/dynamiclistener v0.7.0
+	github.com/rancher/dynamiclistener v0.7.1
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
 	github.com/rancher/wrangler/v3 v3.2.4
 	github.com/robfig/cron v1.2.0
