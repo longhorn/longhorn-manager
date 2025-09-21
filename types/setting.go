@@ -1893,7 +1893,7 @@ func GetCustomizedDefaultSettings(defaultSettingCM *corev1.ConfigMap) (defaultSe
 			}
 		}
 		if err := ValidateSetting(name, value); err != nil {
-			logrus.WithError(err).Errorf("Customized settings are invalid, will give up using them: the value of customized setting %v is invalid", name)
+			logrus.WithError(err).Errorf("Customized settings are invalid, will give up using them: the value of customized setting %v is invalid: %v", name, value)
 			defaultSettings = map[string]string{}
 			break
 		}
@@ -2070,6 +2070,10 @@ func validateSettingBool(definition SettingDefinition, value string) (err error)
 		return errors.Wrapf(err, "failed to parse default value %s for setting %s", definition.Default, definition.DisplayName)
 	}
 
+	if len(values) != len(defaultValues) {
+		return fmt.Errorf("mismatched data engines for setting %s", definition.DisplayName)
+	}
+
 	for dataEngine := range values {
 		if _, ok := defaultValues[dataEngine]; !ok {
 			return fmt.Errorf("data engine %s is not supported for setting %s", dataEngine, definition.DisplayName)
@@ -2189,6 +2193,10 @@ func validateSettingInt(definition SettingDefinition, value string) (err error) 
 		return errors.Wrapf(err, "failed to parse default value %s for setting %s", definition.Default, definition.DisplayName)
 	}
 
+	if len(values) != len(defaultValues) {
+		return fmt.Errorf("mismatched data engines for setting %s", definition.DisplayName)
+	}
+
 	for dataEngine := range values {
 		if _, ok := defaultValues[dataEngine]; !ok {
 			return fmt.Errorf("data engine %s is not supported for setting %s", dataEngine, definition.DisplayName)
@@ -2304,6 +2312,10 @@ func validateSettingFloat(definition SettingDefinition, value string) (err error
 		return errors.Wrapf(err, "failed to parse default value %s for setting %s", definition.Default, definition.DisplayName)
 	}
 
+	if len(values) != len(defaultValues) {
+		return fmt.Errorf("mismatched data engines for setting %s", definition.DisplayName)
+	}
+
 	for dataEngine := range values {
 		if _, ok := defaultValues[dataEngine]; !ok {
 			return fmt.Errorf("data engine %s is not supported for setting %s", dataEngine, definition.DisplayName)
@@ -2411,6 +2423,10 @@ func validateSettingString(name SettingName, definition SettingDefinition, value
 	}
 	if err != nil {
 		return errors.Wrapf(err, "failed to parse default value %s for setting %s", definition.Default, definition.DisplayName)
+	}
+
+	if len(values) != len(defaultValues) {
+		return fmt.Errorf("mismatched data engines for setting %s", definition.DisplayName)
 	}
 
 	for dataEngine := range values {
