@@ -1856,8 +1856,7 @@ func GetCustomizedDefaultSettings(defaultSettingCM *corev1.ConfigMap) (defaultSe
 		definition, exist := GetSettingDefinition(SettingName(name))
 		if !exist {
 			logrus.Errorf("Customized settings are invalid, will give up using them: undefined setting %v", name)
-			defaultSettings = map[string]string{}
-			break
+			continue
 		}
 		if value == "" {
 			continue
@@ -1868,34 +1867,30 @@ func GetCustomizedDefaultSettings(defaultSettingCM *corev1.ConfigMap) (defaultSe
 			if IsJSONFormat(strings.TrimSpace(value)) {
 				values, err := ParseDataEngineSpecificSetting(definition, value)
 				if err != nil {
-					logrus.WithError(err).Errorf("Invalid value %v for the data engine specific boolean setting %v", value, name)
-					defaultSettings = map[string]string{}
-					break
+					logrus.WithError(err).Warnf("Failed to parse the data engine specific boolean setting %v with value %v, will skip using the customized default settings", name, value)
+					continue
 				}
 				for engineType, engineValue := range values {
 					values[engineType] = strconv.FormatBool(engineValue.(bool))
 				}
 				valueBytes, err := json.Marshal(values)
 				if err != nil {
-					logrus.WithError(err).Errorf("BUG: invalid normalized value %v for the data engine specific boolean setting %v", value, name)
-					defaultSettings = map[string]string{}
-					break
+					logrus.WithError(err).Warnf("Failed to marshal the data engine specific boolean setting %v with value %v, will skip using the customized default settings", name, values)
+					continue
 				}
 				value = string(valueBytes)
 			} else {
 				result, err := strconv.ParseBool(value)
 				if err != nil {
-					logrus.WithError(err).Errorf("Invalid value %v for the boolean setting %v", value, name)
-					defaultSettings = map[string]string{}
-					break
+					logrus.WithError(err).Warnf("Failed to parse the boolean setting %v with value %v, will skip using the customized default settings", name, value)
+					continue
 				}
 				value = strconv.FormatBool(result)
 			}
 		}
 		if err := ValidateSetting(name, value); err != nil {
-			logrus.WithError(err).Errorf("Customized settings are invalid, will give up using them: the value of customized setting %v is invalid: %v", name, value)
-			defaultSettings = map[string]string{}
-			break
+			logrus.WithError(err).Warnf("Customized setting %v is invalid with value %v, will skip using the customized default settings", name, value)
+			continue
 		}
 		defaultSettings[name] = value
 	}
