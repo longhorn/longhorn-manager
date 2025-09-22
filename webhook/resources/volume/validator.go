@@ -311,18 +311,6 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 		}
 	}
 
-	if oldVolume.Spec.BackingImage != newVolume.Spec.BackingImage {
-		err := fmt.Errorf("changing backing image for volume %v is not supported for data engine %v",
-			newVolume.Name, newVolume.Spec.DataEngine)
-		return werror.NewInvalidError(err.Error(), "")
-	}
-
-	if oldVolume.Spec.Encrypted != newVolume.Spec.Encrypted {
-		err := fmt.Errorf("changing encryption for volume %v is not supported for data engine %v",
-			newVolume.Name, newVolume.Spec.DataEngine)
-		return werror.NewInvalidError(err.Error(), "")
-	}
-
 	if types.IsDataEngineV2(newVolume.Spec.DataEngine) {
 		if newVolume.Spec.Frontend == longhorn.VolumeFrontendUblk {
 			if oldVolume.Spec.Size != newVolume.Spec.Size {
