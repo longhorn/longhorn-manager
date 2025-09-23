@@ -324,7 +324,14 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 		return nil, fmt.Errorf("missing parameters for replica instance creation: %v", r)
 	}
 
-	var err error
+	isReady, err := rc.ds.CheckDataEngineImageReadiness(r.Spec.Image, r.Spec.DataEngine, r.Spec.NodeID)
+	if err != nil {
+		return nil, err
+	}
+	if !isReady {
+		return nil, fmt.Errorf("data engine %v image %v is not ready on node %v for replica %s instance creation", r.Spec.DataEngine, r.Spec.Image, r.Spec.NodeID, r.Name)
+	}
+
 	backingImagePath := ""
 	if r.Spec.BackingImage != "" {
 		if backingImagePath, err = rc.GetBackingImagePathForReplicaStarting(r); err != nil {
