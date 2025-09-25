@@ -4146,22 +4146,86 @@ func (c *VolumeController) createAndStartMatchingReplicas(v *longhorn.Volume,
 	return nil
 }
 
-func (c *VolumeController) deleteInvalidMigrationReplicas(rs, pathToOldRs, pathToNewRs map[string]*longhorn.Replica, v *longhorn.Volume) error {
-	for path, r := range pathToNewRs {
-		matchTheOldReplica := pathToOldRs[path] != nil && r.Spec.DesireState == pathToOldRs[path].Spec.DesireState
-		newReplicaIsAvailable := r.DeletionTimestamp == nil && r.Spec.DesireState == longhorn.InstanceStateRunning &&
-			r.Status.CurrentState != longhorn.InstanceStateError && r.Status.CurrentState != longhorn.InstanceStateUnknown && r.Status.CurrentState != longhorn.InstanceStateStopping
-		if matchTheOldReplica && newReplicaIsAvailable {
-			continue
-		}
-		delete(pathToNewRs, path)
-		if types.IsDataEngineV1(v.Spec.DataEngine) {
-			if err := c.deleteReplica(r, rs); err != nil {
-				return errors.Wrapf(err, "failed to delete the new replica %v when there is no matching old replica in path %v", r.Name, path)
+// deleteInvalidMigrationReplicas selects one replica for each path and delete the rests.
+//
+//	Notice that the selected replica may not be valid.
+//	Returning invalid replicas (with deletion timestamp set) for some paths helps inform the caller that it should wait for the existing invalid replicas completely disappearing before creating a new one.
+func (c *VolumeController) deleteInvalidMigrationReplicas(rs, pathToOldRs map[string]*longhorn.Replica, pathToNewRLists map[string][]*longhorn.Replica, v *longhorn.Volume) (map[string]*longhorn.Replica, error) {
+	migrationReplicas := make(map[string]*longhorn.Replica)
+	for path, rList := range pathToNewRLists {
+		sort.Slice(rList, func(i, j int) bool {
+			return rList[i].Name < rList[j].Name
+		})
+		var chosenReplica *longhorn.Replica
+		isChosenReplicaValid, isChosenReplicaRunning := false, false
+		removedReplicaMap := make(map[string]bool)
+		for _, r := range rList {
+			isReplicaValid := isReplicaValidForMigration(pathToOldRs[path], r)
+			if chosenReplica == nil {
+				chosenReplica = r
+				isChosenReplicaValid = isReplicaValid
+				isChosenReplicaRunning = r.Status.CurrentState == longhorn.InstanceStateRunning
 			}
-		} else {
-			r.Spec.MigrationEngineName = ""
+
+			if isReplicaValid {
+				if !isChosenReplicaValid { // prefer a valid new replica
+					chosenReplica = r
+					isChosenReplicaValid = true
+					isChosenReplicaRunning = r.Status.CurrentState == longhorn.InstanceStateRunning
+				} else {
+					if !isChosenReplicaRunning && r.Status.CurrentState == longhorn.InstanceStateRunning { // when both are valid, prefer a running replica
+						chosenReplica = r
+						isChosenReplicaValid = true
+						isChosenReplicaRunning = true
+					}
+				}
+			} else { // for invalid replicas, do cleanup immediately
+				c.logger.Infof("Cleaning up the invalid migration replica %v (data engine %v) since it is state %s, or it is last failed at %s, or there is no matching old replica in path %v", r.Name, v.Spec.DataEngine, r.Status.CurrentState, r.Spec.LastFailedAt, path)
+				if err := c.migrationReplicaCleanup(r, rs, v.Spec.DataEngine); err != nil {
+					return nil, err
+				}
+				removedReplicaMap[r.Name] = true
+			}
 		}
+
+		// Even if there are multiple valid or running migration replicas, we still need to clean up the extra ones.
+		// Otherwise, those extra replicas for the same path would lead to the mismatching between migration replica list and the old replica list, then cause the migration engine restart.
+		for _, r := range rList {
+			if !removedReplicaMap[r.Name] && r.Name != chosenReplica.Name {
+				c.logger.Infof("Cleaning up the extra migration replica %v (data engine %v) since another migration replica %v is chosen for path %v", r.Name, v.Spec.DataEngine, chosenReplica.Name, path)
+				if err := c.migrationReplicaCleanup(r, rs, v.Spec.DataEngine); err != nil {
+					return nil, err
+				}
+			}
+		}
+
+		if chosenReplica != nil {
+			migrationReplicas[path] = chosenReplica
+		}
+	}
+
+	return migrationReplicas, nil
+}
+
+// isReplicaValidForMigration checks whether a new replica is considered valid if:
+//  1. it is not being deleted;
+//  2. its desired state is `running`;
+//  3. it has never failed to start. During migration, we always delete failed replicas and create new ones, rather than rebuilding them.
+func isReplicaValidForMigration(oldR, newR *longhorn.Replica) bool {
+	matchTheOldReplica := oldR != nil && newR.Spec.DesireState == oldR.Spec.DesireState
+	return matchTheOldReplica &&
+		newR.DeletionTimestamp == nil && newR.Spec.DesireState == longhorn.InstanceStateRunning &&
+		newR.Status.CurrentState != longhorn.InstanceStateError && newR.Status.CurrentState != longhorn.InstanceStateUnknown && newR.Status.CurrentState != longhorn.InstanceStateStopping &&
+		newR.Spec.LastFailedAt == ""
+}
+
+func (c *VolumeController) migrationReplicaCleanup(r *longhorn.Replica, rs map[string]*longhorn.Replica, dataEngineType longhorn.DataEngineType) error {
+	if types.IsDataEngineV1(dataEngineType) {
+		if err := c.deleteReplica(r, rs); err != nil {
+			return errors.Wrapf(err, "failed to delete migration replica %v", r.Name)
+		}
+	} else {
+		r.Spec.MigrationEngineName = ""
 	}
 	return nil
 }
@@ -4391,7 +4455,7 @@ func (c *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Volu
 
 	// Sync migration replicas with old replicas
 	currentAvailableReplicas := map[string]*longhorn.Replica{}
-	migrationReplicas := map[string]*longhorn.Replica{}
+	migrationReplicaLists := map[string][]*longhorn.Replica{}
 	for _, r := range rs {
 		isUnavailable, err := c.IsReplicaUnavailable(r)
 		if err != nil {
@@ -4417,10 +4481,11 @@ func (c *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Volu
 			default:
 				log.Warnf("Unexpected mode %v for the current replica %v, will ignore it and continue migration", currentEngine.Status.ReplicaModeMap[r.Name], r.Name)
 			}
-		} else if r.Spec.EngineName == migrationEngine.Name {
-			migrationReplicas[dataPath] = r
-		} else if r.Spec.MigrationEngineName == migrationEngine.Name {
-			migrationReplicas[dataPath] = r
+		} else if r.Spec.EngineName == migrationEngine.Name || r.Spec.MigrationEngineName == migrationEngine.Name {
+			if migrationReplicaLists[dataPath] == nil {
+				migrationReplicaLists[dataPath] = []*longhorn.Replica{}
+			}
+			migrationReplicaLists[dataPath] = append(migrationReplicaLists[dataPath], r)
 		} else {
 			log.Warnf("During migration found unknown replica with engine %v, will directly remove it", r.Spec.EngineName)
 			if err := c.deleteReplica(r, rs); err != nil {
@@ -4429,7 +4494,8 @@ func (c *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Volu
 		}
 	}
 
-	if err := c.deleteInvalidMigrationReplicas(rs, currentAvailableReplicas, migrationReplicas, v); err != nil {
+	migrationReplicas, err := c.deleteInvalidMigrationReplicas(rs, currentAvailableReplicas, migrationReplicaLists, v)
+	if err != nil {
 		return false, false, err
 	}
 
