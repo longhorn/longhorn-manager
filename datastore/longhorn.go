@@ -207,6 +207,61 @@ func (s *DataStore) syncConsolidatedV2DataEngineSetting(oldSettingName, newSetti
 	return s.createOrUpdateSetting(newSettingName, oldSetting.Value, "")
 }
 
+func (s *DataStore) syncV2DataEngineGuaranteedInstanceManagerCPU() error {
+	// Get old setting v2-data-engine-guaranteed-instance-manager-cpu
+	oldV2Setting, err := s.GetSettingExactRO(types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU)
+	if err != nil {
+		if ErrorIsNotFound(err) {
+			logrus.Warnf("Old setting %v not found, skipping the migration for guaranteed-instance-manager-cpu for v2 data engine",
+				types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU)
+			return nil
+		}
+		return errors.Wrapf(err, "failed to get old setting %v", types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU)
+	}
+
+	v2DataEngineGuaranteedInstanceManagerCPU, err := strconv.Atoi(oldV2Setting.Value)
+	if err != nil {
+		return errors.Wrapf(err, "failed to convert old setting %v value %v to integer",
+			types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU, oldV2Setting.Value)
+	}
+	if v2DataEngineGuaranteedInstanceManagerCPU < 0 {
+		return errors.Errorf("invalid negative value %d for setting %v",
+			v2DataEngineGuaranteedInstanceManagerCPU, types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU)
+	}
+
+	// Calculate the percentage based on the minimum number of CPUs among all nodes
+	numCPUs, err := s.getMinNumCPUsFromAvailableNodes()
+	if err != nil {
+		logrus.WithError(err).Warn("Failed to get the minimum number of CPUs among all nodes, skipping the migration for guaranteed-instance-manager-cpu for v2 data engine")
+		return nil
+	}
+
+	guaranteedInstanceManagerCPUInPercentage := int64(v2DataEngineGuaranteedInstanceManagerCPU*100) / (numCPUs * 1000)
+
+	// Get setting guaranteed-instance-manager-cpu
+	setting, err := s.GetSettingExact(types.SettingNameGuaranteedInstanceManagerCPU)
+	if err != nil {
+		return errors.Wrapf(err, "failed to get setting %v", types.SettingNameGuaranteedInstanceManagerCPU)
+	}
+
+	dataEngineValues := make(map[longhorn.DataEngineType]string)
+	if err := json.Unmarshal([]byte(setting.Value), &dataEngineValues); err != nil {
+		return errors.Wrapf(err, "failed to unmarshal setting %v value %v", types.SettingNameGuaranteedInstanceManagerCPU, setting.Value)
+	}
+
+	// Update the value for v2 data engine
+	dataEngineValues[longhorn.DataEngineTypeV2] = fmt.Sprintf("%d", guaranteedInstanceManagerCPUInPercentage)
+
+	// Update the value
+	valueBytes, err := json.Marshal(dataEngineValues)
+	if err != nil {
+		return errors.Wrapf(err, "failed to marshal new setting %v value %v",
+			types.SettingNameGuaranteedInstanceManagerCPU, dataEngineValues)
+	}
+
+	return s.createOrUpdateSetting(types.SettingNameGuaranteedInstanceManagerCPU, string(valueBytes), "")
+}
+
 func (s *DataStore) syncConsolidatedV2DataEngineSettings() error {
 	settings := map[types.SettingName]types.SettingName{
 		types.SettingNameV2DataEngineHugepageLimit: types.SettingNameDataEngineMemorySize,
@@ -219,6 +274,10 @@ func (s *DataStore) syncConsolidatedV2DataEngineSettings() error {
 		if err := s.syncConsolidatedV2DataEngineSetting(oldSettingName, newSettingName); err != nil {
 			return errors.Wrapf(err, "failed to sync consolidated v2 data engine setting %v to %v", oldSettingName, newSettingName)
 		}
+	}
+
+	if err := s.syncV2DataEngineGuaranteedInstanceManagerCPU(); err != nil {
+		return err
 	}
 
 	return nil
