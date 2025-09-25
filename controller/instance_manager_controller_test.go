@@ -424,7 +424,7 @@ func (s *TestSuite) TestHandlePodLogging(c *C) {
 	_, err = kubeClient.CoreV1().Pods(im2.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 	c.Assert(err, IsNil)
 
-	// Call handlePod directly  
+	// Call handlePod directly
 	err = imc.handlePod(im2)
 	c.Assert(err, IsNil)
 
@@ -432,7 +432,7 @@ func (s *TestSuite) TestHandlePodLogging(c *C) {
 	logStr = logOutput.String()
 	c.Assert(strings.Contains(logStr, "Deleting instance manager pod"), Equals, true,
 		Commentf("Expected warning log when pod exists with sync issues, but log was: %s", logStr))
-	
+
 	// Verify the misleading "pod is deleted or not running" part is NOT in the message
 	c.Assert(strings.Contains(logStr, "or the pod is deleted or not running"), Equals, false,
 		Commentf("Found misleading 'pod is deleted or not running' message that should be removed: %s", logStr))
