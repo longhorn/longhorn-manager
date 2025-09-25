@@ -653,9 +653,12 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 		return nil
 	}
 
-	log.Warnf("Deleting instance manager pod %v since one of the following conditions is met: "+
-		"setting is not synced (%v) or data engine CPU mask is not applied (%v), instances are running in the pod (%v), "+
-		"or the pod is deleted or not running (%v)", im.Name, !isSettingSynced, !dataEngineCPUMaskIsApplied, areInstancesRunningInPod, isPodDeletedOrNotRunning)
+	// Only log the warning if the pod exists. Avoid misleading messages when the pod doesn't exist yet.
+	if !isPodDeletedOrNotRunning {
+		log.Warnf("Deleting instance manager pod %v since one of the following conditions is met: "+
+			"setting is not synced (%v) or data engine CPU mask is not applied (%v), instances are running in the pod (%v)", 
+			im.Name, !isSettingSynced, !dataEngineCPUMaskIsApplied, areInstancesRunningInPod)
+	}
 
 	if err := imc.cleanupInstanceManagerPod(im.Name); err != nil {
 		return err
