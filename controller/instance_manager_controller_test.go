@@ -1,8 +1,10 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 
@@ -310,4 +312,128 @@ func (s *TestSuite) TestSyncInstanceManager(c *C) {
 		c.Assert(err, IsNil)
 		c.Assert(updatedIM.Status, DeepEquals, tc.expectedStatus)
 	}
+}
+
+func (s *TestSuite) TestHandlePodLogging(c *C) {
+	// Test that handlePod method logs correctly based on pod existence
+	var logOutput bytes.Buffer
+	logger := logrus.New()
+	logger.Out = &logOutput
+	logger.SetLevel(logrus.DebugLevel)
+
+	kubeClient := fake.NewSimpleClientset()
+	lhClient := lhfake.NewSimpleClientset()
+	extensionsClient := apiextensionsfake.NewSimpleClientset()
+
+	informerFactories := util.NewInformerFactories(TestNamespace, kubeClient, lhClient, controller.NoResyncPeriodFunc())
+
+	pIndexer := informerFactories.KubeInformerFactory.Core().V1().Pods().Informer().GetIndexer()
+	kubeNodeIndexer := informerFactories.KubeInformerFactory.Core().V1().Nodes().Informer().GetIndexer()
+	imIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().InstanceManagers().Informer().GetIndexer()
+	sIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Settings().Informer().GetIndexer()
+	lhNodeIndexer := informerFactories.LhInformerFactory.Longhorn().V1beta2().Nodes().Informer().GetIndexer()
+
+	// Create Instance Manager Controller with custom logger
+	ds := datastore.NewDataStore(TestNamespace, lhClient, kubeClient, extensionsClient, informerFactories)
+	proxyConnCounter := util.NewAtomicCounter()
+	imc, err := NewInstanceManagerController(logger, ds, scheme.Scheme, kubeClient, TestNamespace, TestNode1, TestServiceAccount, proxyConnCounter)
+	c.Assert(err, IsNil)
+
+	fakeRecorder := record.NewFakeRecorder(100)
+	imc.eventRecorder = fakeRecorder
+	for index := range imc.cacheSyncs {
+		imc.cacheSyncs[index] = alwaysReady
+	}
+	imc.versionUpdater = fakeInstanceManagerVersionUpdater
+
+	// Set up required settings
+	tolerationSetting := newTolerationSetting()
+	tolerationSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), tolerationSetting, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = sIndexer.Add(tolerationSetting)
+	c.Assert(err, IsNil)
+
+	imImageSetting := newDefaultInstanceManagerImageSetting()
+	imImageSetting, err = lhClient.LonghornV1beta2().Settings(TestNamespace).Create(context.TODO(), imImageSetting, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+	err = sIndexer.Add(imImageSetting)
+	c.Assert(err, IsNil)
+
+	// Set up nodes
+	kubeNode := newKubernetesNode(TestNode1, corev1.ConditionTrue, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionFalse, corev1.ConditionTrue)
+	err = kubeNodeIndexer.Add(kubeNode)
+	c.Assert(err, IsNil)
+	_, err = kubeClient.CoreV1().Nodes().Create(context.TODO(), kubeNode, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	lhNode := newNode(TestNode1, TestNamespace, true, longhorn.ConditionStatusTrue, "")
+	err = lhNodeIndexer.Add(lhNode)
+	c.Assert(err, IsNil)
+	_, err = lhClient.LonghornV1beta2().Nodes(lhNode.Namespace).Create(context.TODO(), lhNode, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	// Test Case 1: Instance Manager in Error state, no pod exists - should NOT log warning
+	logOutput.Reset()
+	im1 := newInstanceManager(
+		TestInstanceManagerName+"-no-pod", longhorn.InstanceManagerStateError,
+		TestNode1, TestNode1, "",
+		nil, nil,
+		longhorn.DataEngineTypeV1,
+		TestInstanceManagerImage,
+		false,
+	)
+	err = imIndexer.Add(im1)
+	c.Assert(err, IsNil)
+	_, err = lhClient.LonghornV1beta2().InstanceManagers(im1.Namespace).Create(context.TODO(), im1, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	// Call handlePod directly
+	err = imc.handlePod(im1)
+	c.Assert(err, IsNil)
+
+	// Verify no warning log was printed (the misleading message is avoided)
+	logStr := logOutput.String()
+	c.Assert(strings.Contains(logStr, "Deleting instance manager pod"), Equals, false,
+		Commentf("Expected no warning log when pod doesn't exist, but found: %s", logStr))
+
+	// Test Case 2: Instance Manager with existing pod but settings not synced - should log warning
+	logOutput.Reset()
+	im2 := newInstanceManager(
+		TestInstanceManagerName+"-with-pod", longhorn.InstanceManagerStateError,
+		TestNode1, TestNode1, TestIP1,
+		nil, nil,
+		longhorn.DataEngineTypeV1,
+		TestInstanceManagerImage,
+		false,
+	)
+	err = imIndexer.Add(im2)
+	c.Assert(err, IsNil)
+	_, err = lhClient.LonghornV1beta2().InstanceManagers(im2.Namespace).Create(context.TODO(), im2, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	// Create a pod for this instance manager
+	pod := newPod(&corev1.PodStatus{PodIP: TestIP1, Phase: corev1.PodRunning}, im2.Name, im2.Namespace, im2.Spec.NodeID)
+	var containers []corev1.Container
+	containers = append(containers, corev1.Container{
+		Name:      "instance-manager",
+		Resources: corev1.ResourceRequirements{Requests: corev1.ResourceList{"cpu": resource.MustParse("480m")}}},
+	)
+	pod.Spec.Containers = containers
+	err = pIndexer.Add(pod)
+	c.Assert(err, IsNil)
+	_, err = kubeClient.CoreV1().Pods(im2.Namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
+	c.Assert(err, IsNil)
+
+	// Call handlePod directly  
+	err = imc.handlePod(im2)
+	c.Assert(err, IsNil)
+
+	// Verify warning log was printed when pod exists but has sync issues
+	logStr = logOutput.String()
+	c.Assert(strings.Contains(logStr, "Deleting instance manager pod"), Equals, true,
+		Commentf("Expected warning log when pod exists with sync issues, but log was: %s", logStr))
+	
+	// Verify the misleading "pod is deleted or not running" part is NOT in the message
+	c.Assert(strings.Contains(logStr, "or the pod is deleted or not running"), Equals, false,
+		Commentf("Found misleading 'pod is deleted or not running' message that should be removed: %s", logStr))
 }
