@@ -576,6 +576,16 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 		if err != nil {
 			return errors.Wrapf(err, "failed to parse value %v for setting %v", value, types.SettingNameDataEngineCPUMask)
 		}
+
+		v2DataEngineEnabled, err := s.GetSettingAsBool(types.SettingNameV2DataEngine)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get setting %v for setting validation", types.SettingNameV2DataEngine)
+		}
+		if !v2DataEngineEnabled {
+			logrus.Infof("Skipping validating setting %v since v2 data engine is not enabled", types.SettingNameDataEngineCPUMask)
+			return nil
+		}
+
 		for dataEngine, raw := range values {
 			cpuMask, ok := raw.(string)
 			if !ok {
@@ -602,6 +612,11 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 						continue
 					}
 					return errors.Wrapf(err, "failed to get Kubernetes node %s for %v setting validation for data engine %v", lhNode.Name, types.SettingNameDataEngineCPUMask, dataEngine)
+				}
+
+				if val, ok := kubeNode.Labels[types.NodeDisableV2DataEngineLabelKey]; ok && val == types.NodeDisableV2DataEngineLabelKeyTrue {
+					// V2 data engine is disabled on this node, don't worry about cpu mask
+					continue
 				}
 
 				if err := s.ValidateCPUMask(kubeNode, cpuMask); err != nil {
