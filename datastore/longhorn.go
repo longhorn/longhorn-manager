@@ -799,7 +799,7 @@ func (s *DataStore) ValidateCPUMask(kubeNode *corev1.Node, value string) error {
 			types.SettingNameGuaranteedInstanceManagerCPU, longhorn.DataEngineTypeV2)
 	}
 
-	guaranteedInstanceManagerCPU := float64(kubeNode.Status.Allocatable.Cpu().MilliValue()) * guaranteedInstanceManagerCPUInPercentage
+	guaranteedInstanceManagerCPU := float64(kubeNode.Status.Allocatable.Cpu().MilliValue()) * guaranteedInstanceManagerCPUInPercentage / 100
 
 	numMilliCPUsRequrestedByMaskValue := calculateMilliCPUs(maskValue)
 	if numMilliCPUsRequrestedByMaskValue > int(guaranteedInstanceManagerCPU) {
