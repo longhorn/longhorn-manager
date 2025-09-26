@@ -911,7 +911,7 @@ func (s *DataStore) AreAllEngineInstancesStopped(dataEngine longhorn.DataEngineT
 
 		imMap := types.ConsolidateInstanceManagers(engineInstanceManagers, aioInstanceManagers)
 		for _, instanceManager := range imMap {
-			if len(instanceManager.Status.InstanceEngines)+len(instanceManager.Status.Instances) > 0 { // nolint: staticcheck
+			if len(instanceManager.Status.InstanceEngines) > 0 {
 				return false, ims, err
 			}
 
