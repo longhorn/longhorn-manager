@@ -26,13 +26,12 @@ const (
 	BackupCompressionMethodGzip = BackupCompressionMethod("gzip")
 )
 
-// +kubebuilder:validation:Enum=full;incremental;""
+// +kubebuilder:validation:Enum=full;incremental;
 type BackupMode string
 
 const (
-	BackupModeFull            = BackupMode("full")
-	BackupModeIncremental     = BackupMode("incremental")
-	BackupModeIncrementalNone = BackupMode("")
+	BackupModeFull        = BackupMode("full")
+	BackupModeIncremental = BackupMode("incremental")
 )
 
 // BackupSpec defines the desired state of the Longhorn backup
