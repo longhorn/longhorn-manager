@@ -1601,7 +1601,6 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameSnapshotDataIntegrity:                                    true,
 		types.SettingNameSnapshotDataIntegrityImmediateCheckAfterSnapshotCreation: true,
 		types.SettingNameStorageMinimalAvailablePercentage:                        true,
-		types.SettingNameStorageNetworkForRWXVolumeEnabled:                        true,
 		types.SettingNameStorageOverProvisioningPercentage:                        true,
 		types.SettingNameStorageReservedPercentageForDefaultDisk:                  true,
 		types.SettingNameSupportBundleFailedHistoryLimit:                          true,

@@ -1413,15 +1413,6 @@ func IsDataEngineV2(dataEngine longhorn.DataEngineType) bool {
 	return dataEngine == longhorn.DataEngineTypeV2
 }
 
-// IsStorageNetworkForRWXVolume returns true if the storage network setting value is not empty.
-// And isStorageNetworkForRWXVolumeEnabled is true.
-func IsStorageNetworkForRWXVolume(storageNetwork *longhorn.Setting, isStorageNetworkForRWXVolumeEnabled bool) bool {
-	if storageNetwork == nil {
-		return false
-	}
-	return storageNetwork.Value != CniNetworkNone && isStorageNetworkForRWXVolumeEnabled
-}
-
 func MergeStringMaps(baseMap, overwriteMap map[string]string) map[string]string {
 	result := map[string]string{}
 	for k, v := range baseMap {
