@@ -115,7 +115,6 @@ const (
 	SettingNameOrphanResourceAutoDeletion                               = SettingName("orphan-resource-auto-deletion")
 	SettingNameOrphanResourceAutoDeletionGracePeriod                    = SettingName("orphan-resource-auto-deletion-grace-period")
 	SettingNameStorageNetwork                                           = SettingName("storage-network")
-	SettingNameStorageNetworkForRWXVolumeEnabled                        = SettingName("storage-network-for-rwx-volume-enabled")
 	SettingNameEndpointNetworkForRWXVolume                              = SettingName("endpoint-network-for-rwx-volume")
 	SettingNameFailedBackupTTL                                          = SettingName("failed-backup-ttl")
 	SettingNameRecurringSuccessfulJobsHistoryLimit                      = SettingName("recurring-successful-jobs-history-limit")
@@ -171,6 +170,7 @@ const (
 
 	// The settings are deprecated and Longhorn won't create Setting Resources for these parameters.
 	// TODO: Remove these settings in the future releases.
+	SettingNameStorageNetworkForRWXVolumeEnabled        = SettingName("storage-network-for-rwx-volume-enabled")
 	SettingNameV2DataEngineHugepageLimit                = SettingName("v2-data-engine-hugepage-limit")
 	SettingNameV2DataEngineGuaranteedInstanceManagerCPU = SettingName("v2-data-engine-guaranteed-instance-manager-cpu")
 	SettingNameV2DataEngineCPUMask                      = SettingName("v2-data-engine-cpu-mask")
@@ -234,7 +234,7 @@ var (
 		SettingNameOrphanResourceAutoDeletion,
 		SettingNameOrphanResourceAutoDeletionGracePeriod,
 		SettingNameStorageNetwork,
-		SettingNameStorageNetworkForRWXVolumeEnabled,
+		SettingNameEndpointNetworkForRWXVolume,
 		SettingNameFailedBackupTTL,
 		SettingNameRecurringSuccessfulJobsHistoryLimit,
 		SettingNameRecurringFailedJobsHistoryLimit,
@@ -285,6 +285,7 @@ var (
 
 var replacedSettingNames = map[SettingName]bool{
 	SettingNameOrphanAutoDeletion:                       true, // SettingNameOrphanResourceAutoDeletion
+	SettingNameStorageNetworkForRWXVolumeEnabled:        true, // SettingNameEndpointNetworkForRWXVolume
 	SettingNameV2DataEngineHugepageLimit:                true, // SettingNameHugepageLimit
 	SettingNameV2DataEngineGuaranteedInstanceManagerCPU: true, // SettingNameGuaranteedInstanceManagerCPU
 	SettingNameV2DataEngineCPUMask:                      true, // SettingNameDataEngineCPUMask
@@ -381,7 +382,6 @@ var (
 		SettingNameOrphanResourceAutoDeletion:                               SettingDefinitionOrphanResourceAutoDeletion,
 		SettingNameOrphanResourceAutoDeletionGracePeriod:                    SettingDefinitionOrphanResourceAutoDeletionGracePeriod,
 		SettingNameStorageNetwork:                                           SettingDefinitionStorageNetwork,
-		SettingNameStorageNetworkForRWXVolumeEnabled:                        SettingDefinitionStorageNetworkForRWXVolumeEnabled,
 		SettingNameEndpointNetworkForRWXVolume:                              SettingDefinitionEndpointNetworkForRWXVolume,
 		SettingNameFailedBackupTTL:                                          SettingDefinitionFailedBackupTTL,
 		SettingNameRecurringSuccessfulJobsHistoryLimit:                      SettingDefinitionRecurringSuccessfulJobsHistoryLimit,
@@ -1225,20 +1225,6 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            CniNetworkNone,
-	}
-
-	SettingDefinitionStorageNetworkForRWXVolumeEnabled = SettingDefinition{
-		DisplayName: "Storage Network for RWX Volume Enabled",
-		Description: "This setting allows Longhorn to use the storage network for RWX (Read-Write-Many) volume.\n\n" +
-			"WARNING: \n\n" +
-			"  - This setting should change after all Longhorn RWX volumes are detached because some Longhorn component pods will be recreated to apply the setting. \n\n" +
-			"  - When this setting is enabled, the RWX volumes are mounted with the storage network within the CSI plugin pod container network namespace. As a result, restarting the CSI plugin pod when there are attached RWX volumes may lead to its data path become unresponsive. When this occurs, you must restart the workload pod to re-establish the mount connection. Alternatively, you can enable the 'Automatically Delete Workload Pod when The Volume Is Detached Unexpectedly' setting to allow Longhorn to automatically delete the workload pod.\n\n",
-		Category:           SettingCategoryDangerZone,
-		Type:               SettingTypeBool,
-		Required:           false,
-		ReadOnly:           false,
-		DataEngineSpecific: false,
-		Default:            "false",
 	}
 
 	SettingDefinitionEndpointNetworkForRWXVolume = SettingDefinition{
