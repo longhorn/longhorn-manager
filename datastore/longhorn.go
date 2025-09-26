@@ -240,6 +240,11 @@ func (s *DataStore) syncV2DataEngineGuaranteedInstanceManagerCPU() error {
 		return nil
 	}
 
+	if v2DataEngineGuaranteedInstanceManagerCPU > int(numCPUs*1000) {
+		logrus.Warnf("Skipping the migration for guaranteed-instance-manager-cpu for v2 data engine since old setting %v value %v milliCPUs is larger than the minimum number of CPUs %v among all nodes", types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU, oldV2Setting.Value, numCPUs)
+		return nil
+	}
+
 	guaranteedInstanceManagerCPUInPercentage := int64(v2DataEngineGuaranteedInstanceManagerCPU*100) / (numCPUs * 1000)
 
 	// Get setting guaranteed-instance-manager-cpu
