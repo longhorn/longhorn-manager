@@ -2255,7 +2255,7 @@ func (e *Engine) SnapshotPurge(spdkClient *spdkclient.Client) (err error) {
 }
 
 func (e *Engine) SnapshotHash(spdkClient *spdkclient.Client, snapshotName string, rehash bool) (err error) {
-	e.log.Infof("Hashing snapshot")
+	e.log.Infof("Hashing snapshot %s, rehash %v", snapshotName, rehash)
 
 	_, err = e.snapshotOperation(spdkClient, snapshotName, SnapshotOperationHash, rehash)
 	return err
