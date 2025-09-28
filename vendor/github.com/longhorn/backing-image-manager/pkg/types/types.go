@@ -22,7 +22,7 @@ const (
 	DefaultVolumeExportReceiverPort = 8002
 
 	GRPCServiceTimeout      = 1 * time.Minute
-	HTTPTimeout             = 4 * time.Second
+	HTTPTimeout             = 30 * time.Second
 	MonitorInterval         = 3 * time.Second
 	CommandExecutionTimeout = 10 * time.Second
 
