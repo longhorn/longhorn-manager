@@ -31,9 +31,6 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
-	lhexec "github.com/longhorn/go-common-libs/exec"
-	lhtypes "github.com/longhorn/go-common-libs/types"
-
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	imclient "github.com/longhorn/longhorn-instance-manager/pkg/client"
@@ -580,27 +577,6 @@ func (ec *EngineController) DeleteInstance(obj interface{}) (err error) {
 			}
 		}
 	}()
-
-	// For the engine instance in instance manager v0.7.0, we need to use the cmdline to delete the instance
-	// and stop the iscsi
-	if im.Status.APIVersion == engineapi.IncompatibleInstanceManagerAPIVersion {
-		url := imutil.GetURL(im.Status.IP, engineapi.InstanceManagerProcessManagerServiceDefaultPort)
-		args := []string{"--url", url, "engine", "delete", "--name", e.Name}
-
-		execute := lhexec.NewExecutor().Execute
-		deprecatedIMBinary := engineapi.GetDeprecatedInstanceManagerBinary(e.Status.CurrentImage)
-		_, err = execute([]string{}, deprecatedIMBinary, args, lhtypes.ExecuteNoTimeout)
-		if err != nil && !types.ErrorIsNotFound(err) {
-			return err
-		}
-
-		// Directly remove the instance from the map. Best effort.
-		delete(im.Status.Instances, e.Name) // nolint: staticcheck
-		if _, err := ec.ds.UpdateInstanceManagerStatus(im); err != nil {
-			return err
-		}
-		return nil
-	}
 
 	c, err := engineapi.NewInstanceManagerClient(im, true)
 	if err != nil {

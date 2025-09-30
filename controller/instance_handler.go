@@ -460,9 +460,9 @@ func (h *InstanceHandler) ReconcileInstanceState(obj interface{}, spec *longhorn
 func (h *InstanceHandler) getInstancesFromInstanceManager(obj runtime.Object, instanceManager *longhorn.InstanceManager) (map[string]longhorn.InstanceProcess, error) {
 	switch obj.(type) {
 	case *longhorn.Engine:
-		return types.ConsolidateInstances(instanceManager.Status.InstanceEngines, instanceManager.Status.Instances), nil // nolint: staticcheck
+		return types.ConsolidateInstances(instanceManager.Status.InstanceEngines), nil
 	case *longhorn.Replica:
-		return types.ConsolidateInstances(instanceManager.Status.InstanceReplicas, instanceManager.Status.Instances), nil // nolint: staticcheck
+		return types.ConsolidateInstances(instanceManager.Status.InstanceReplicas), nil
 	}
 	return nil, fmt.Errorf("unknown type for getInstancesFromInstanceManager: %+v", obj)
 }

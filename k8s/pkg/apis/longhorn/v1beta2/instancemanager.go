@@ -216,11 +216,6 @@ type InstanceManagerStatus struct {
 	ProxyAPIVersion int `json:"proxyApiVersion"`
 	// +optional
 	DataEngineStatus DataEngineStatus `json:"dataEngineStatus"`
-
-	// Deprecated: Replaced by InstanceEngines and InstanceReplicas
-	// +optional
-	// +nullable
-	Instances map[string]InstanceProcess `json:"instances,omitempty"`
 }
 
 // +genclient
