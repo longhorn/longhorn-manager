@@ -534,7 +534,6 @@ func (imc *InstanceManagerController) syncInstanceStatus(im *longhorn.InstanceMa
 		// In these states, instance processes either are not running or will soon not be running.
 		// This step prevents other controllers from being confused by stale information.
 		// InstanceManagerMonitor will change this when/if it polls.
-		im.Status.Instances = nil // nolint: staticcheck
 		im.Status.InstanceEngines = nil
 		im.Status.InstanceReplicas = nil
 		im.Status.BackingImages = nil
@@ -727,8 +726,7 @@ func (imc *InstanceManagerController) areDangerZoneSettingsSyncedToIMPod(im *lon
 		return false, true, false, nil
 	}
 
-	// nolint:all
-	for _, instance := range types.ConsolidateInstances(im.Status.InstanceEngines, im.Status.InstanceReplicas, im.Status.Instances) {
+	for _, instance := range types.ConsolidateInstances(im.Status.InstanceEngines, im.Status.InstanceReplicas) {
 		if instance.Status.State == longhorn.InstanceStateRunning || instance.Status.State == longhorn.InstanceStateStarting {
 			return false, false, true, nil
 		}
@@ -1128,28 +1126,11 @@ const ITERATE_NAME_LIMIT = 5
 
 func formatInstanceMessage(im *longhorn.InstanceManager) string {
 	msg := ""
-	ieFormated := false
 	if len(im.Status.InstanceEngines) > 0 {
 		msg = fmt.Sprintf("InstanceEngines count %v", len(im.Status.InstanceEngines))
-		ieFormated = true
 		i := 0
 		// only fetch the key, format: pvc-546894e9-d41a-4e34-bfa8-a4442f8dce20-e-0
 		for k := range im.Status.InstanceEngines {
-			msg = msg + " " + k
-			if i++; i >= ITERATE_NAME_LIMIT {
-				break
-			}
-		}
-	}
-
-	if len(im.Status.Instances) > 0 { // nolint: staticcheck
-		if ieFormated {
-			msg = fmt.Sprintf("%v Instances count %v", msg, len(im.Status.Instances)) // nolint: staticcheck
-		} else {
-			msg = fmt.Sprintf("Instances count %v", len(im.Status.Instances)) // nolint: staticcheck
-		}
-		i := 0
-		for k := range im.Status.Instances { // nolint: staticcheck
 			msg = msg + " " + k
 			if i++; i >= ITERATE_NAME_LIMIT {
 				break
@@ -1177,7 +1158,7 @@ func (imc *InstanceManagerController) canDeleteInstanceManagerPDB(im *longhorn.I
 	// it means that all volumes are detached.
 	// We can delete the PodDisruptionBudget for the engine instance manager.
 	if im.Spec.Type == longhorn.InstanceManagerTypeEngine {
-		if len(im.Status.InstanceEngines)+len(im.Status.Instances) == 0 { // nolint: staticcheck
+		if len(im.Status.InstanceEngines) == 0 {
 			return true, "", nil
 		}
 		return false, fmt.Sprintf("some instances are still running %v", formatInstanceMessage(im)), nil
@@ -1290,7 +1271,7 @@ func (imc *InstanceManagerController) areAllInstanceRemovedFromNodeByType(nodeNa
 	}
 
 	for _, im := range ims {
-		if len(im.Status.InstanceEngines)+len(im.Status.Instances) > 0 { // nolint: staticcheck
+		if len(im.Status.InstanceEngines) > 0 {
 			return false, formatInstanceMessage(im), nil
 		}
 	}
@@ -2400,12 +2381,6 @@ func (m *InstanceManagerMonitor) syncInstances(im *longhorn.InstanceManager, ins
 
 func (m *InstanceManagerMonitor) updateInstanceMap(im *longhorn.InstanceManager, instanceMap instanceProcessMap) bool {
 	switch {
-	case im.Status.APIVersion < 4:
-		if reflect.DeepEqual(im.Status.Instances, instanceMap) { // nolint: staticcheck
-			return false
-		}
-
-		im.Status.Instances = instanceMap // nolint: staticcheck
 	default:
 		engineProcesses, replicaProcesses := m.categorizeProcesses(instanceMap)
 
