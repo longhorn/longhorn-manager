@@ -35,6 +35,8 @@ const (
 	controllerAgentName = "longhorn-kubernetes-pod-controller"
 
 	remountRequestDelayDuration = 5 * time.Second
+
+	podDeletionAnnotation = "longhorn.io/allow-deletion"
 )
 
 type KubernetesPodController struct {
@@ -501,7 +503,7 @@ func (kc *KubernetesPodController) getPodWithConflictedAttachment(pods []*corev1
 //
 // Force delete a pod when all of the below conditions are meet:
 // 1. NodeDownPodDeletionPolicy is different than DoNothing
-// 2. pod belongs to a StatefulSet/Deployment depend on NodeDownPodDeletionPolicy
+// 2. pod belongs to a StatefulSet/Deployment depend on NodeDownPodDeletionPolicy OR is explicitly marked for deletion.
 // 3. node containing the pod is down
 // 4. the pod is terminating and the DeletionTimestamp has passed.
 // 5. pod has a PV with provisioner driver.longhorn.io
@@ -513,7 +515,8 @@ func (kc *KubernetesPodController) handlePodDeletionIfNodeDown(pod *corev1.Pod, 
 
 	shouldDelete := (deletionPolicy == types.NodeDownPodDeletionPolicyDeleteStatefulSetPod && isOwnedByStatefulSet(pod)) ||
 		(deletionPolicy == types.NodeDownPodDeletionPolicyDeleteDeploymentPod && isOwnedByDeployment(pod)) ||
-		(deletionPolicy == types.NodeDownPodDeletionPolicyDeleteBothStatefulsetAndDeploymentPod && (isOwnedByStatefulSet(pod) || isOwnedByDeployment(pod)))
+		(deletionPolicy == types.NodeDownPodDeletionPolicyDeleteBothStatefulsetAndDeploymentPod && (isOwnedByStatefulSet(pod) || isOwnedByDeployment(pod))) ||
+		(deletionPolicy == types.NodeDownPodDeletionPolicyDeleteBothStatefulsetAndDeploymentPodAndAnnotatedPods && (isOwnedByStatefulSet(pod) || isOwnedByDeployment(pod) || isAnnotatedWithDeletionAnnotation(pod)))
 
 	if !shouldDelete {
 		return nil
@@ -710,6 +713,15 @@ func isOwnedByDeployment(pod *corev1.Pod) bool {
 		return ownerRef.Kind == types.KubernetesKindReplicaSet
 	}
 	return false
+}
+
+func isAnnotatedWithDeletionAnnotation(pod *corev1.Pod) bool {
+	if val, ok := pod.ObjectMeta.Annotations[podDeletionAnnotation]; ok {
+		if strings.ToLower(val) == "true" {
+			return true
+		}
+	}
+	return false // We did not find the annotation, or the annotation is something else than "true" or "True"
 }
 
 // enqueuePodChange determines if the pod requires processing based on whether the pod has a PV created by us (driver.longhorn.io)
