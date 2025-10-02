@@ -319,18 +319,6 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 				return werror.NewInvalidError(err.Error(), "")
 			}
 		}
-
-		if oldVolume.Spec.BackingImage != newVolume.Spec.BackingImage {
-			err := fmt.Errorf("changing backing image for volume %v is not supported for data engine %v",
-				newVolume.Name, newVolume.Spec.DataEngine)
-			return werror.NewInvalidError(err.Error(), "")
-		}
-
-		if oldVolume.Spec.Encrypted != newVolume.Spec.Encrypted {
-			err := fmt.Errorf("changing encryption for volume %v is not supported for data engine %v",
-				newVolume.Name, newVolume.Spec.DataEngine)
-			return werror.NewInvalidError(err.Error(), "")
-		}
 	}
 
 	// prevent the changing v.Spec.MigrationNodeID to different node when the volume is doing live migration (when v.Status.CurrentMigrationNodeID != "")

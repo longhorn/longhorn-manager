@@ -257,6 +257,7 @@ type VolumeSpec struct {
 	// +optional
 	Image string `json:"image"`
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="BackingImage is immutable"
 	BackingImage string `json:"backingImage"`
 	// +optional
 	Standby bool `json:"Standby"`
@@ -286,6 +287,7 @@ type VolumeSpec struct {
 	// +optional
 	Migratable bool `json:"migratable"`
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Encrypted is immutable"
 	Encrypted bool `json:"encrypted"`
 	// +optional
 	NumberOfReplicas int `json:"numberOfReplicas"`
