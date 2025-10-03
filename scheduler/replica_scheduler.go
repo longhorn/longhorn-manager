@@ -2,6 +2,8 @@ package scheduler
 
 import (
 	"fmt"
+	"maps"
+	"math"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -18,6 +20,13 @@ import (
 
 const (
 	FailedReplicaMaxRetryCount = 5
+
+	// rebalanceWeightAlpha controls the weighting between absolute and ratio imbalance
+	// when computing the hybrid balance score for replica scheduling.
+	// - 1.0 means only absolute imbalance is considered (difference in usable bytes).
+	// - 0.0 means only ratio imbalance is considered (difference in usable/total ratio).
+	// - Values between 0 and 1 blend both metrics.
+	rebalanceWeightAlpha = 1.0
 )
 
 type ReplicaScheduler struct {
@@ -657,7 +666,8 @@ func (rcs *ReplicaScheduler) ListSchedulableNodes(dataEngine longhorn.DataEngine
 }
 
 func (rcs *ReplicaScheduler) scheduleReplicaToDisk(replica *longhorn.Replica, diskCandidates map[string]*Disk) {
-	disk := rcs.getDiskWithMostUsableStorage(diskCandidates)
+	disk := rcs.getDiskWithMostBalanceScore(diskCandidates, replica.Spec.VolumeSize)
+
 	replica.Spec.NodeID = disk.NodeID
 	replica.Spec.DiskID = disk.DiskUUID
 	replica.Spec.DiskPath = disk.Path
@@ -671,26 +681,245 @@ func (rcs *ReplicaScheduler) scheduleReplicaToDisk(replica *longhorn.Replica, di
 	}).Infof("Schedule replica to node %v", replica.Spec.NodeID)
 }
 
-// Investigate
-func (rcs *ReplicaScheduler) getDiskWithMostUsableStorage(disks map[string]*Disk) *Disk {
-	diskWithMostUsableStorage := &Disk{}
-	for _, disk := range disks {
-		diskWithMostUsableStorage = disk
+// getDiskWithMostBalanceScore selects a disk for a replica by minimizing imbalance.
+func (rcs *ReplicaScheduler) getDiskWithMostBalanceScore(candidateDisks map[string]*Disk, replicaSize int64) *Disk {
+	// It works in two stages:
+	//   1. Find the best node: simulate placing the replica on each candidate node,
+	//      and pick the one that leads to the most balanced usable storage distribution across nodes.
+	//   2. Within that node, find the best disk: simulate placing the replica on each candidate disk,
+	//      and pick the one that leads to the most balanced usable storage distribution among disks on that node.
+
+	var selectedDisk *Disk
+	for _, disk := range candidateDisks {
+		selectedDisk = disk
 		break
 	}
 
-	for _, disk := range disks {
-		diskWithMostStorageSize := diskWithMostUsableStorage.StorageAvailable - diskWithMostUsableStorage.StorageReserved
-		diskSize := disk.StorageAvailable - disk.StorageReserved
-		if diskWithMostStorageSize > diskSize {
+	if len(candidateDisks) == 1 {
+		return selectedDisk
+	}
+
+	nodeUsableStorage := map[string]int64{} // nodeID -> usable bytes
+	nodeTotalStorage := map[string]int64{}  // nodeID -> total schedulable bytes
+
+	diskUsableStorage := map[string]int64{} // diskUUID -> usable bytes
+	diskTotalStorage := map[string]int64{}  // diskUUID -> total schedulable bytes
+
+	for _, disk := range candidateDisks {
+		// Compute usable storage for this disk
+		usable := disk.StorageAvailable - disk.StorageReserved - disk.StorageScheduled
+		if usable < 0 {
+			usable = 0
+		}
+
+		// Compute effective total capacity for ratio
+		total := disk.StorageMaximum - disk.StorageReserved
+		if total < 0 {
+			total = 0
+		}
+
+		// Fill per-disk maps
+		diskUsableStorage[disk.DiskUUID] = usable
+		diskTotalStorage[disk.DiskUUID] = total
+
+		// Aggregate to per-node maps
+		nodeUsableStorage[disk.NodeID] += usable
+		nodeTotalStorage[disk.NodeID] += total
+	}
+
+	// 2. Pick the best node
+	bestNode, err := selectBestNode(nodeUsableStorage, nodeTotalStorage, replicaSize)
+	if err != nil {
+		logrus.WithError(err).Warnf("getDiskWithMostBalanceScore: failed to select best disk in node %s, using fallback disk", bestNode)
+		return selectedDisk
+	}
+
+	// 3. Pick the best disk within the best node
+	bestDisk, err := selectBestDisk(candidateDisks, diskUsableStorage, diskTotalStorage, bestNode, replicaSize)
+	if err != nil {
+		logrus.Warn("getDiskWithMostBalanceScore: bestDisk is nil, using fallback disk")
+		return selectedDisk
+	}
+
+	return bestDisk
+}
+
+func selectBestNode(nodeUsableStorage, nodeTotalStorage map[string]int64, replicaSize int64) (string, error) {
+	bestNode := ""
+	bestNodeScore := math.MaxFloat64
+	tmpNodeUsable := maps.Clone(nodeUsableStorage)
+
+	for nodeID := range nodeUsableStorage {
+		if tmpNodeUsable[nodeID] < replicaSize {
+			continue
+		}
+		originalUsable := tmpNodeUsable[nodeID]
+
+		tmpNodeUsable[nodeID] = originalUsable - replicaSize
+		nodeScore := computeHybridBalanceScore(tmpNodeUsable, nodeTotalStorage, rebalanceWeightAlpha)
+		tmpNodeUsable[nodeID] = originalUsable
+
+		if nodeScore < bestNodeScore {
+			bestNodeScore = nodeScore
+			bestNode = nodeID
+		}
+	}
+
+	if bestNodeScore == math.MaxFloat64 {
+		return "", fmt.Errorf("no candidate node found that can accommodate a replica of size %v", replicaSize)
+	}
+
+	if bestNode == "" {
+		return "", fmt.Errorf("no candidate node found")
+	}
+
+	return bestNode, nil
+}
+
+func selectBestDisk(candidateDisks map[string]*Disk, diskUsableStorage, diskTotalStorage map[string]int64, nodeID string, replicaSize int64) (*Disk, error) {
+	bestDisk := (*Disk)(nil)
+	bestDiskScore := math.MaxFloat64
+	tmpDiskUsable := maps.Clone(diskUsableStorage)
+
+	for _, disk := range candidateDisks {
+		if disk.NodeID != nodeID {
 			continue
 		}
 
-		diskWithMostUsableStorage = disk
+		if tmpDiskUsable[disk.DiskUUID] < replicaSize {
+			continue
+		}
+
+		originalUsable := tmpDiskUsable[disk.DiskUUID]
+
+		tmpDiskUsable[disk.DiskUUID] = originalUsable - replicaSize
+		diskScore := computeHybridBalanceScore(tmpDiskUsable, diskTotalStorage, rebalanceWeightAlpha)
+		tmpDiskUsable[disk.DiskUUID] = originalUsable
+
+		if diskScore < bestDiskScore {
+			bestDiskScore = diskScore
+			bestDisk = disk
+		}
 	}
 
-	return diskWithMostUsableStorage
+	if bestDisk == nil || bestDiskScore == math.MaxFloat64 {
+		return nil, fmt.Errorf("no candidate disk found for node %v", nodeID)
+	}
+
+	return bestDisk, nil
 }
+
+// computeHybridBalanceScore blends absolute imbalance and ratio imbalance.
+func computeHybridBalanceScore(
+	usableStorage map[string]int64,
+	totalStorage map[string]int64,
+	alpha float64,
+) float64 {
+
+	if alpha >= 1 {
+		// Only absolute imbalance is considered.
+		return computeBalanceScoreFromUsableStorage(usableStorage)
+	}
+
+	if alpha <= 0 {
+		// Only ratio imbalance is considered.
+		return computeBalanceScoreFromUsableStorageRatio(usableStorage, totalStorage)
+	}
+
+	// 0 < alpha < 1
+	// Both absolute and ratio imbalance are considered.
+	// Formula: hybrid = alpha*ratioImbalance + (1-alpha)*absoluteImbalance
+	absBalanceScore := computeBalanceScoreFromUsableStorage(usableStorage)
+	ratioBalanceScore := computeBalanceScoreFromUsableStorageRatio(usableStorage, totalStorage)
+
+	if absBalanceScore == math.MaxFloat64 || ratioBalanceScore == math.MaxFloat64 {
+		// If either absolute or ratio imbalance cannot be computed (e.g.:
+		//   - no entries to compare,
+		//   - total capacity <= 0 making ratios invalid,
+		//   - or all usable values are 0 meaning everything is full),
+		// then return MaxFloat64 to signal "worst possible balance".
+		// This effectively prevents the scheduler from selecting this node/disk.
+		return math.MaxFloat64
+	}
+
+	return alpha*absBalanceScore + (1.0-alpha)*ratioBalanceScore
+}
+
+// computeBalanceScoreFromUsableStorage calculates imbalance using absolute usable bytes.
+func computeBalanceScoreFromUsableStorage(usableStorage map[string]int64) float64 {
+	// Formula: (max(usable) - min(usable)) / mean(usable)
+	sum := int64(0)
+	maxBytes := int64(math.MinInt64)
+	minBytes := int64(math.MaxInt64)
+
+	// just in case to prevent division by zero, should not happen
+	if len(usableStorage) == 0 {
+		return math.MaxFloat64
+	}
+
+	for _, usableBytes := range usableStorage {
+		sum += usableBytes
+		if usableBytes > maxBytes {
+			maxBytes = usableBytes
+		}
+		if usableBytes < minBytes {
+			minBytes = usableBytes
+		}
+	}
+
+	mean := float64(sum) / float64(len(usableStorage))
+	if mean <= 0 {
+		// if all usable are zero, imbalance is undefined (everything is full).
+		// Safer to return math.MaxFloat64 so the scheduler avoids placing there
+		return math.MaxFloat64
+	}
+
+	return float64(maxBytes-minBytes) / mean
+}
+
+// computeBalanceScoreFromUsableStorageRatio calculates imbalance using usable ratios.
+func computeBalanceScoreFromUsableStorageRatio(usableStorage map[string]int64, totalStorage map[string]int64) float64 {
+	// Ratio = usable / total for each entry.
+	// Formula: (max(ratio) - min(ratio)) / mean(ratio)
+
+	if len(usableStorage) == 0 || len(totalStorage) == 0 {
+		return math.MaxFloat64
+	}
+
+	sumRatio := 0.0
+	maxRatio := math.Inf(-1)
+	minRatio := math.Inf(1)
+	count := 0
+
+	for id, usableBytes := range usableStorage {
+		total, ok := totalStorage[id]
+		if !ok || total <= 0 {
+			continue
+		}
+		ratio := float64(usableBytes) / float64(total)
+
+		sumRatio += ratio
+		if ratio > maxRatio {
+			maxRatio = ratio
+		}
+		if ratio < minRatio {
+			minRatio = ratio
+		}
+		count++
+	}
+
+	if count == 0 {
+		return math.MaxFloat64
+	}
+
+	meanRatio := sumRatio / float64(count)
+	if meanRatio <= 0 {
+		return math.MaxFloat64
+	}
+
+	return (maxRatio - minRatio) / meanRatio
+}
+
 func filterActiveReplicas(replicas map[string]*longhorn.Replica) map[string]*longhorn.Replica {
 	result := map[string]*longhorn.Replica{}
 	for _, r := range replicas {

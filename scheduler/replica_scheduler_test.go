@@ -48,8 +48,11 @@ const (
 	TestDaemon2 = "longhorn-manager-2"
 	TestDaemon3 = "longhorn-manager-3"
 
-	// TestDiskID1           = "diskID1"
-	// TestDiskID2           = "diskID2"
+	TestDisk1ID = "test-disk-id-1"
+	TestDisk2ID = "test-disk-id-2"
+	TestDisk3ID = "test-disk-id-3"
+	TestDisk4ID = "test-disk-id-4"
+
 	TestDiskSize          = 5000000000
 	TestDiskAvailableSize = 3000000000
 
@@ -1713,7 +1716,7 @@ func (s *TestSuite) TestScheduleReplicaToDiskOnLocalNode(c *C) {
 	c.Assert(replica1.Spec.NodeID, Equals, "")
 
 	// Case 3: Schedule to available local disk
-	diskCandidates["disk1"] = &Disk{NodeID: TestNode1, DiskSpec: longhorn.DiskSpec{}, DiskStatus: &longhorn.DiskStatus{}}
+	diskCandidates["disk1"] = &Disk{NodeID: TestNode1, DiskSpec: longhorn.DiskSpec{}, DiskStatus: &longhorn.DiskStatus{StorageAvailable: TestVolumeSize}}
 	rs.scheduleReplicaToDiskOnLocalNode(replica1, replicas, volume, diskCandidates)
 	c.Assert(replica1.Spec.NodeID, Equals, TestNode1)
 
@@ -1727,4 +1730,293 @@ func (s *TestSuite) TestScheduleReplicaToDiskOnLocalNode(c *C) {
 	replica1.Spec.FailedAt = getTestNow().String()
 	rs.scheduleReplicaToDiskOnLocalNode(replica2, replicas, volume, diskCandidates)
 	c.Assert(replica2.Spec.NodeID, Equals, TestNode1)
+}
+
+func (s *TestSuite) TestGetDiskWithMostBalanceScore(c *C) {
+	replicaScheduler := NewReplicaScheduler(nil)
+
+	// ------------------------------------------------------------------------
+	// Disk setup summary:
+	//   Node1: Disk1 (1000 avail), Disk3 (500 avail)
+	//   Node2: Disk2 (2000 avail)
+	//   Node3: Disk4 (0 avail)
+	// ------------------------------------------------------------------------
+	disk1 := &Disk{
+		DiskSpec: longhorn.DiskSpec{
+			StorageReserved: 0,
+		},
+		DiskStatus: &longhorn.DiskStatus{
+			DiskUUID:         TestDisk1ID,
+			StorageAvailable: 1000,
+			StorageScheduled: 0,
+			StorageMaximum:   1000,
+		},
+		NodeID: TestNode1,
+	}
+
+	disk2 := &Disk{
+		DiskSpec: longhorn.DiskSpec{
+			StorageReserved: 0,
+		},
+		DiskStatus: &longhorn.DiskStatus{
+			DiskUUID:         TestDisk2ID,
+			StorageAvailable: 2000,
+			StorageScheduled: 0,
+			StorageMaximum:   2000,
+		},
+		NodeID: TestNode2,
+	}
+
+	disk3 := &Disk{
+		DiskSpec: longhorn.DiskSpec{
+			StorageReserved: 0,
+		},
+		DiskStatus: &longhorn.DiskStatus{
+			DiskUUID:         TestDisk3ID,
+			StorageAvailable: 500,
+			StorageScheduled: 0,
+			StorageMaximum:   1000,
+		},
+		NodeID: TestNode1,
+	}
+
+	disk4 := &Disk{
+		DiskSpec: longhorn.DiskSpec{
+			StorageReserved: 0,
+		},
+		DiskStatus: &longhorn.DiskStatus{
+			DiskUUID:         TestDisk4ID,
+			StorageAvailable: 0,
+			StorageScheduled: 0,
+			StorageMaximum:   1000,
+		},
+		NodeID: TestNode3,
+	}
+
+	tests := []struct {
+		name           string
+		candidateDisks map[string]*Disk
+		replicaSize    int64
+		expectDisk     *Disk
+	}{
+		{
+			name: "Single candidate disk returns itself",
+			// Scenario:
+			// - Only Disk1 on Node1.
+			// Expectation: Disk1 selected directly.
+			candidateDisks: map[string]*Disk{
+				TestDisk1ID: disk1,
+			},
+			replicaSize: 100,
+			expectDisk:  disk1,
+		},
+		{
+			name: "Two disks on different nodes, select one with more usable capacity",
+			// Scenario:
+			// - Node1: Disk1 (1000 avail)
+			// - Node2: Disk2 (2000 avail)
+			// Expectation: Disk2 chosen due to higher usable capacity.
+			candidateDisks: map[string]*Disk{
+				TestDisk1ID: disk1,
+				TestDisk2ID: disk2,
+			},
+			replicaSize: 100,
+			expectDisk:  disk2,
+		},
+		{
+			name: "Disks on same node, select disk with higher available space",
+			// Scenario:
+			// - Node1: Disk1 (1000 avail), Disk3 (500 avail)
+			// Expectation: Disk1 chosen.
+			candidateDisks: map[string]*Disk{
+				TestDisk1ID: disk1,
+				TestDisk3ID: disk3,
+			},
+			replicaSize: 100,
+			expectDisk:  disk1,
+		},
+		{
+			name: "Disk with zero available capacity still returns a valid disk",
+			// Scenario:
+			// - Node3: Disk4 (0 avail)
+			// Expectation: still return Disk4 (no error).
+			candidateDisks: map[string]*Disk{
+				TestDisk4ID: disk4,
+			},
+			replicaSize: 100,
+			expectDisk:  disk4,
+		},
+	}
+
+	for _, tt := range tests {
+		c.Logf("Running scenario: %s", tt.name)
+		result := replicaScheduler.getDiskWithMostBalanceScore(tt.candidateDisks, tt.replicaSize)
+		c.Assert(result, NotNil)
+		c.Assert(result, Equals, tt.expectDisk)
+	}
+}
+
+func (s *TestSuite) TestSelectBestNode(c *C) {
+	tests := []struct {
+		name        string
+		nodeUsable  map[string]int64
+		nodeTotal   map[string]int64
+		replicaSize int64
+		expectNode  string
+		expectErr   bool
+	}{
+		{
+			name: "No nodes available",
+			// Scenario:
+			// - Empty cluster map.
+			// Expectation: error since no candidates exist.
+			nodeUsable:  map[string]int64{},
+			nodeTotal:   map[string]int64{},
+			replicaSize: 10,
+			expectNode:  "",
+			expectErr:   true,
+		},
+		{
+			name: "All nodes have insufficient capacity",
+			// Scenario:
+			// - Node1 usable: 5, Node2 usable: 8, replica requires 10.
+			// Expectation: no eligible node, expect error.
+			nodeUsable: map[string]int64{
+				TestNode1: 5,
+				TestNode2: 8,
+			},
+			nodeTotal: map[string]int64{
+				TestNode1: 10,
+				TestNode2: 10,
+			},
+			replicaSize: 10,
+			expectNode:  "",
+			expectErr:   true,
+		},
+		{
+			name: "Select node with lowest imbalance after placement",
+			// Scenario:
+			// - Node1 usable: 100, Node2 usable: 200
+			// Expectation: selects node with balanced post-placement ratio.
+			nodeUsable: map[string]int64{
+				TestNode1: 100,
+				TestNode2: 200,
+			},
+			nodeTotal: map[string]int64{
+				TestNode1: 100,
+				TestNode2: 200,
+			},
+			replicaSize: 50,
+			expectNode:  "non-empty",
+			expectErr:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		c.Logf("Running scenario: %s", tt.name)
+		node, err := selectBestNode(tt.nodeUsable, tt.nodeTotal, tt.replicaSize)
+		if tt.expectErr {
+			c.Assert(err, NotNil)
+			c.Assert(node, Equals, tt.expectNode)
+		} else {
+			c.Assert(err, IsNil)
+			c.Assert(node, Not(Equals), "")
+		}
+	}
+}
+
+func (s *TestSuite) TestSelectBestDisk(c *C) {
+	// ------------------------------------------------------------------------
+	// Disk setup: single node (Node1) hosting two disks
+	// ------------------------------------------------------------------------
+	disk1 := &Disk{
+		DiskStatus: &longhorn.DiskStatus{
+			DiskUUID: TestDisk1ID,
+		},
+		NodeID: TestNode1,
+	}
+	disk2 := &Disk{
+		DiskStatus: &longhorn.DiskStatus{
+			DiskUUID: TestDisk2ID,
+		},
+		NodeID: TestNode1,
+	}
+
+	tests := []struct {
+		name           string
+		candidateDisks map[string]*Disk
+		diskUsable     map[string]int64
+		diskTotal      map[string]int64
+		nodeID         string
+		replicaSize    int64
+		expectDisk     *Disk
+		expectErr      bool
+	}{
+		{
+			name: "No candidate disks",
+			// Scenario:
+			// - Empty disk map.
+			// Expectation: error since no disks can host replica.
+			candidateDisks: map[string]*Disk{},
+			diskUsable:     map[string]int64{},
+			diskTotal:      map[string]int64{},
+			nodeID:         TestNode1,
+			replicaSize:    10,
+			expectDisk:     nil,
+			expectErr:      true,
+		},
+		{
+			name: "All candidate disks have insufficient space",
+			// Scenario:
+			// - Disk1 usable: 5, replica requires 10.
+			// Expectation: error due to insufficient capacity.
+			candidateDisks: map[string]*Disk{
+				TestDisk1ID: disk1,
+			},
+			diskUsable: map[string]int64{
+				TestDisk1ID: 5,
+			},
+			diskTotal: map[string]int64{
+				TestDisk1ID: 10,
+			},
+			nodeID:      TestNode1,
+			replicaSize: 10,
+			expectDisk:  nil,
+			expectErr:   true,
+		},
+		{
+			name: "Select disk with highest available capacity within node",
+			// Scenario:
+			// - Disk1 usable: 100, Disk2 usable: 200
+			// Expectation: Disk2 selected.
+			candidateDisks: map[string]*Disk{
+				TestDisk1ID: disk1,
+				TestDisk2ID: disk2,
+			},
+			diskUsable: map[string]int64{
+				TestDisk1ID: 100,
+				TestDisk2ID: 200,
+			},
+			diskTotal: map[string]int64{
+				TestDisk1ID: 100,
+				TestDisk2ID: 200,
+			},
+			nodeID:      TestNode1,
+			replicaSize: 50,
+			expectDisk:  disk2,
+			expectErr:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		c.Logf("Running scenario: %s", tt.name)
+		disk, err := selectBestDisk(tt.candidateDisks, tt.diskUsable, tt.diskTotal, tt.nodeID, tt.replicaSize)
+		if tt.expectErr {
+			c.Assert(err, NotNil)
+			c.Assert(disk, IsNil)
+		} else {
+			c.Assert(err, IsNil)
+			c.Assert(disk, NotNil)
+		}
+	}
 }
