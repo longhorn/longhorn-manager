@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -1727,4 +1728,140 @@ func (s *TestSuite) TestScheduleReplicaToDiskOnLocalNode(c *C) {
 	replica1.Spec.FailedAt = getTestNow().String()
 	rs.scheduleReplicaToDiskOnLocalNode(replica2, replicas, volume, diskCandidates)
 	c.Assert(replica2.Spec.NodeID, Equals, TestNode1)
+}
+
+func (s *TestSuite) TestGetDiskWithMostBalanceScore(c *C) {
+	replicaScheduler := NewReplicaScheduler(nil)
+
+	// Case 1: Only one disk candidate, should return that disk
+	disk1 := &Disk{
+		DiskSpec:   longhorn.DiskSpec{Path: "/disk1", StorageReserved: 0},
+		DiskStatus: &longhorn.DiskStatus{DiskUUID: "disk1", StorageAvailable: 1000, StorageScheduled: 0, StorageMaximum: 1000},
+		NodeID:     "node1",
+	}
+	candidateDisks := map[string]*Disk{"disk1": disk1}
+	result, err := replicaScheduler.getDiskWithMostBalanceScore(candidateDisks, 100)
+	c.Assert(err, IsNil)
+	c.Assert(result, Equals, disk1)
+
+	// Case 2: Two disks on different nodes, one has more usable storage
+	disk2 := &Disk{
+		DiskSpec:   longhorn.DiskSpec{Path: "/disk2", StorageReserved: 0},
+		DiskStatus: &longhorn.DiskStatus{DiskUUID: "disk2", StorageAvailable: 2000, StorageScheduled: 0, StorageMaximum: 2000},
+		NodeID:     "node2",
+	}
+	candidateDisks = map[string]*Disk{
+		"disk1": disk1,
+		"disk2": disk2,
+	}
+	result, err = replicaScheduler.getDiskWithMostBalanceScore(candidateDisks, 100)
+	c.Assert(err, IsNil)
+	c.Assert(result, Equals, disk2)
+
+	// Case 3: Disks on same node, pick the one with more usable storage
+	disk3 := &Disk{
+		DiskSpec:   longhorn.DiskSpec{Path: "/disk3", StorageReserved: 0},
+		DiskStatus: &longhorn.DiskStatus{DiskUUID: "disk3", StorageAvailable: 500, StorageScheduled: 0, StorageMaximum: 1000},
+		NodeID:     "node1",
+	}
+	candidateDisks = map[string]*Disk{
+		"disk1": disk1,
+		"disk3": disk3,
+	}
+	result, err = replicaScheduler.getDiskWithMostBalanceScore(candidateDisks, 100)
+	c.Assert(err, IsNil)
+	c.Assert(result, Equals, disk1)
+}
+
+func (s *TestSuite) TestSelectBestNode(c *C) {
+	// Edge: no nodes
+	nodeUsable := map[string]int64{}
+	nodeTotal := map[string]int64{}
+	node, err := selectBestNode(nodeUsable, nodeTotal, 10)
+	c.Assert(node, Equals, "")
+	c.Assert(err, NotNil)
+
+	// Edge: all nodes have less than replicaSize
+	nodeUsable = map[string]int64{"n1": 5, "n2": 8}
+	nodeTotal = map[string]int64{"n1": 10, "n2": 10}
+	node, err = selectBestNode(nodeUsable, nodeTotal, 10)
+	c.Assert(node, Equals, "")
+	c.Assert(err, NotNil)
+
+	// Normal: pick node with best balance
+	nodeUsable = map[string]int64{"n1": 100, "n2": 200}
+	nodeTotal = map[string]int64{"n1": 100, "n2": 200}
+	node, err = selectBestNode(nodeUsable, nodeTotal, 50)
+	c.Assert(err, IsNil)
+	c.Assert(node, Not(Equals), "")
+}
+
+func (s *TestSuite) TestSelectBestDisk(c *C) {
+	// Edge: no disks
+	candidateDisks := map[string]*Disk{}
+	diskUsable := map[string]int64{}
+	diskTotal := map[string]int64{}
+	disk, err := selectBestDisk(candidateDisks, diskUsable, diskTotal, "n1", 10)
+	c.Assert(disk, IsNil)
+	c.Assert(err, NotNil)
+
+	// Edge: all disks have less than replicaSize
+	disk1 := &Disk{DiskStatus: &longhorn.DiskStatus{DiskUUID: "d1"}, NodeID: "n1"}
+	candidateDisks = map[string]*Disk{"d1": disk1}
+	diskUsable = map[string]int64{"d1": 5}
+	diskTotal = map[string]int64{"d1": 10}
+	disk, err = selectBestDisk(candidateDisks, diskUsable, diskTotal, "n1", 10)
+	c.Assert(disk, IsNil)
+	c.Assert(err, NotNil)
+
+	// Normal: pick disk with best balance
+	disk2 := &Disk{DiskStatus: &longhorn.DiskStatus{DiskUUID: "d2"}, NodeID: "n1"}
+	candidateDisks = map[string]*Disk{"d1": disk1, "d2": disk2}
+	diskUsable = map[string]int64{"d1": 100, "d2": 200}
+	diskTotal = map[string]int64{"d1": 100, "d2": 200}
+	disk, err = selectBestDisk(candidateDisks, diskUsable, diskTotal, "n1", 50)
+	c.Assert(err, IsNil)
+	c.Assert(disk, NotNil)
+}
+
+func (s *TestSuite) TestComputeHybridBalanceScore(c *C) {
+	// Edge: empty maps
+	usable := map[string]int64{}
+	total := map[string]int64{}
+	score := computeHybridBalanceScore(usable, total, 1.0)
+	c.Assert(score, Equals, math.MaxFloat64)
+
+	// Only absolute
+	usable = map[string]int64{"a": 100, "b": 200}
+	total = map[string]int64{"a": 100, "b": 200}
+	score = computeHybridBalanceScore(usable, total, 1.0)
+	c.Assert(score >= 0, Equals, true)
+
+	// Only ratio
+	score = computeHybridBalanceScore(usable, total, 0.0)
+	c.Assert(score >= 0, Equals, true)
+
+	// Hybrid
+	score = computeHybridBalanceScore(usable, total, 0.5)
+	c.Assert(score >= 0, Equals, true)
+}
+
+func (s *TestSuite) TestComputeBalanceScoreFromUsableStorageRatio(c *C) {
+	// Edge: empty
+	usable := map[string]int64{}
+	total := map[string]int64{}
+	score := computeBalanceScoreFromUsableStorageRatio(usable, total)
+	c.Assert(score, Equals, math.MaxFloat64)
+
+	// Edge: total is zero
+	usable = map[string]int64{"a": 100}
+	total = map[string]int64{"a": 0}
+	score = computeBalanceScoreFromUsableStorageRatio(usable, total)
+	c.Assert(score, Equals, math.MaxFloat64)
+
+	// Normal: two disks
+	usable = map[string]int64{"a": 100, "b": 200}
+	total = map[string]int64{"a": 100, "b": 200}
+	score = computeBalanceScoreFromUsableStorageRatio(usable, total)
+	c.Assert(score >= 0, Equals, true)
 }
