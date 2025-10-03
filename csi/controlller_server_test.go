@@ -61,11 +61,6 @@ func TestGetCapacity(t *testing.T) {
 			err:                     status.Errorf(codes.Internal, "failed to get setting allow-empty-disk-selector-volume: settings.longhorn.io \"allow-empty-disk-selector-volume\" not found"),
 		},
 		{
-			testName: "Missing data engine type",
-			node:     newNode("node-0", "storage", true, true, true, false),
-			err:      status.Errorf(codes.InvalidArgument, "storage class parameters missing 'dataEngine' key"),
-		},
-		{
 			testName:   "Unknown data engine type",
 			node:       newNode("node-0", "storage", true, true, true, false),
 			dataEngine: "v5",
@@ -118,6 +113,12 @@ func TestGetCapacity(t *testing.T) {
 			dataEngine:        "v1",
 			disks:             []*disk{newDisk(1450, 300, "ssd", false, true, true, false), newDisk(1000, 500, "", false, true, true, false)},
 			availableCapacity: 0,
+		},
+		{
+			testName:          "Must default to v1 engine when dataEngine key is missing",
+			node:              newNode("node-0", "storage", true, true, true, false),
+			disks:             []*disk{newDisk(1450, 300, "ssd", false, true, true, false), newDisk(1000, 500, "", false, true, true, false), newDisk(2000, 100, "", true, true, true, false)},
+			availableCapacity: 1150,
 		},
 		{
 			testName:          "v1 engine with two valid disks",
