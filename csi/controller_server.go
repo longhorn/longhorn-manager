@@ -753,12 +753,12 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 		}
 	}
 
-	dataEngine, ok := scParameters["dataEngine"]
-	if !ok {
-		return nil, status.Error(codes.InvalidArgument, "storage class parameters missing 'dataEngine' key")
-	}
 	rsp := &csi.GetCapacityResponse{}
-	switch longhorn.DataEngineType(dataEngine) {
+	dataEngine := longhorn.DataEngineTypeV1
+	if dataEngineType, ok := scParameters["dataEngine"]; ok {
+		dataEngine = longhorn.DataEngineType(dataEngineType)
+	}
+	switch dataEngine {
 	case longhorn.DataEngineTypeV1:
 		rsp.AvailableCapacity = v1AvailableCapacity
 	case longhorn.DataEngineTypeV2:
