@@ -76,7 +76,7 @@ require (
 	github.com/longhorn/longhorn-spdk-engine v0.0.0-20250916034519-7fdbb7b284f7
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.23.2
-	github.com/rancher/dynamiclistener v0.7.0
+	github.com/rancher/dynamiclistener v0.7.1
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
 	github.com/rancher/wrangler/v3 v3.2.4
 	github.com/robfig/cron v1.2.0
@@ -98,7 +98,7 @@ require (
 	k8s.io/kubernetes v1.34.1
 	k8s.io/metrics v0.34.1
 	k8s.io/mount-utils v0.34.1
-	k8s.io/utils v0.0.0-20250820121507-0af2bda4dd1d
+	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
 	sigs.k8s.io/controller-runtime v0.22.1
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0
 )
@@ -186,7 +186,7 @@ require (
 	golang.org/x/sync v0.17.0
 	golang.org/x/term v0.35.0 // indirect
 	golang.org/x/text v0.29.0
-	google.golang.org/protobuf v1.36.9
+	google.golang.org/protobuf v1.36.10
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/apiserver v0.34.1 // indirect
 	k8s.io/component-base v0.34.1 // indirect
