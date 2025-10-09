@@ -1,10 +1,11 @@
 package manager
 
 import (
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+
 	"github.com/longhorn/longhorn-manager/util"
 )
 

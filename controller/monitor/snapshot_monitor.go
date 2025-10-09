@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/avast/retry-go"
+	"github.com/cockroachdb/errors"
 	"github.com/go-co-op/gocron"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/time/rate"
 

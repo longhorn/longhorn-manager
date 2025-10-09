@@ -1,7 +1,7 @@
 package v170to171
 
 import (
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	clientset "k8s.io/client-go/kubernetes"

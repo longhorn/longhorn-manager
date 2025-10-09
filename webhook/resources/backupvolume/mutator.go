@@ -3,7 +3,7 @@ package backupvolume
 import (
 	"fmt"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 
 	"k8s.io/apimachinery/pkg/runtime"
 

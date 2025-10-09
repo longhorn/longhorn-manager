@@ -12,8 +12,8 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/gorilla/websocket"
-	"github.com/pkg/errors"
 )
 
 const (
