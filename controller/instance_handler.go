@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/api/meta"

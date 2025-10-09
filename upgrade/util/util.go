@@ -11,8 +11,8 @@ import (
 
 	"golang.org/x/mod/semver"
 
+	"github.com/cockroachdb/errors"
 	"github.com/jinzhu/copier"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/labels"

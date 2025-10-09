@@ -3,7 +3,7 @@ package engineapi
 import (
 	"encoding/json"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 
 	systembackupstore "github.com/longhorn/backupstore/systembackup"
 

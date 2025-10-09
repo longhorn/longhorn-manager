@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/cockroachdb/errors"
 	"github.com/docker/go-connections/sockets"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
 

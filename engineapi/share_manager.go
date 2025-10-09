@@ -4,7 +4,7 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 
 	corev1 "k8s.io/api/core/v1"
 

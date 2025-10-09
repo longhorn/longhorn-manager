@@ -8,8 +8,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/gorilla/handlers"
-	"github.com/pkg/errors"
 	"github.com/rancher/wrangler/v3/pkg/signals"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"

@@ -1,11 +1,12 @@
 package metricscollector
 
 import (
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 
 	"github.com/longhorn/longhorn-manager/datastore"
+
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 

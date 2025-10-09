@@ -5,7 +5,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 )
 
 func CmdOutLines(cmd *exec.Cmd, cancel <-chan interface{}) (<-chan string, <-chan error) {

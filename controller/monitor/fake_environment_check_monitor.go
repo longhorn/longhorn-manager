@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/cockroachdb/errors"
 	"github.com/jinzhu/copier"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/util/wait"
 

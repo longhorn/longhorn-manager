@@ -3,7 +3,7 @@ package csi
 import (
 	"time"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
 	longhornclient "github.com/longhorn/longhorn-manager/client"

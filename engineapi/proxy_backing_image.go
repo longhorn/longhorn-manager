@@ -3,7 +3,7 @@ package engineapi
 import (
 	"context"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 
 	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 
