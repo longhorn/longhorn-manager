@@ -883,14 +883,14 @@ func (c *ShareManagerController) syncShareManagerPod(sm *longhorn.ShareManager) 
 
 		backoffID := sm.Name
 		if c.backoff.IsInBackOffSinceUpdate(backoffID, time.Now()) {
-			log.Infof("Skipping pod creation for share manager %s, will retry after backoff of %s", sm.Name, c.backoff.Get(backoffID))
-		} else {
-			log.Infof("Creating pod for share manager %s", sm.Name)
-			c.backoff.Next(backoffID, time.Now())
-
-			if pod, err = c.createShareManagerPod(sm); err != nil {
-				return errors.Wrap(err, "failed to create pod for share manager")
-			}
+			backoffDuration := c.backoff.Get(backoffID)
+			log.Infof("Skipping pod creation for share manager %s, will retry after backoff of %s", sm.Name, backoffDuration)
+			return enqueueAfterDelay(c.queue, sm, backoffDuration)
+		}
+		log.Infof("Creating pod for share manager %s", sm.Name)
+		c.backoff.Next(backoffID, time.Now())
+		if pod, err = c.createShareManagerPod(sm); err != nil {
+			return errors.Wrap(err, "failed to create pod for share manager")
 		}
 	}
 
