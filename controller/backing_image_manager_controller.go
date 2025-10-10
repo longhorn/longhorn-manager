@@ -588,15 +588,16 @@ func (c *BackingImageManagerController) syncBackingImageManagerPod(bim *longhorn
 			if c.controllerID == bim.Spec.NodeID {
 				backoffID := bim.Name
 				if c.podRecreateBackoff.IsInBackOffSinceUpdate(backoffID, time.Now()) {
-					log.Infof("Skipping pod creation for backing image manager %s, will retry after backoff of %s", bim.Name, c.podRecreateBackoff.Get(backoffID))
-				} else {
-					log.Infof("Creating pod for backing image manager %s", bim.Name)
-					c.podRecreateBackoff.Next(backoffID, time.Now())
-
-					if err := c.createBackingImageManagerPod(bim); err != nil {
-						return errors.Wrap(err, "failed to create pod for backing image manager")
-					}
+					backoffDuration := c.podRecreateBackoff.Get(backoffID)
+					log.Infof("Skipping pod creation for backing image manager %s, will retry after backoff of %s", bim.Name, backoffDuration)
+					return enqueueAfterDelay(c.queue, bim, backoffDuration)
 				}
+				log.Infof("Creating pod for backing image manager %s", bim.Name)
+				c.podRecreateBackoff.Next(backoffID, time.Now())
+				if err := c.createBackingImageManagerPod(bim); err != nil {
+					return errors.Wrap(err, "failed to create pod for backing image manager")
+				}
+
 				bim.Status.CurrentState = longhorn.BackingImageManagerStateStarting
 				c.eventRecorder.Eventf(bim, corev1.EventTypeNormal, constant.EventReasonCreate, "Creating backing image manager pod %v for disk %v on node %v. Backing image manager state will become %v", bim.Name, bim.Spec.DiskUUID, bim.Spec.NodeID, longhorn.BackingImageManagerStateStarting)
 			}
