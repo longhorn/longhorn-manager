@@ -673,14 +673,14 @@ func (imc *InstanceManagerController) handlePod(im *longhorn.InstanceManager) er
 
 	backoffID := im.Name
 	if imc.backoff.IsInBackOffSinceUpdate(backoffID, time.Now()) {
-		log.Infof("Skipping pod creation for instance manager %s, will retry after backoff of %s", im.Name, imc.backoff.Get(backoffID))
-	} else {
-		log.Infof("Creating pod for instance manager %s", im.Name)
-		imc.backoff.Next(backoffID, time.Now())
-
-		if err := imc.createInstanceManagerPod(im); err != nil {
-			return errors.Wrap(err, "failed to create pod for instance manager")
-		}
+		backoffDuration := imc.backoff.Get(backoffID)
+		log.Infof("Skipping pod creation for instance manager %s, will retry after backoff of %s", im.Name, backoffDuration)
+		return enqueueAfterDelay(imc.queue, im, backoffDuration)
+	}
+	log.Infof("Creating pod for instance manager %s", im.Name)
+	imc.backoff.Next(backoffID, time.Now())
+	if err := imc.createInstanceManagerPod(im); err != nil {
+		return errors.Wrap(err, "failed to create pod for instance manager")
 	}
 
 	return nil

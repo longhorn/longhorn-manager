@@ -4,10 +4,13 @@ import (
 	"context"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/flowcontrol"
+	"k8s.io/client-go/util/workqueue"
+	"k8s.io/kubernetes/pkg/controller"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -202,4 +205,13 @@ func newReplicaCR(v *longhorn.Volume, e *longhorn.Engine, hardNodeAffinity strin
 			SnapshotMaxSize:                  v.Spec.SnapshotMaxSize,
 		},
 	}
+}
+
+func enqueueAfterDelay(queue workqueue.TypedRateLimitingInterface[any], obj interface{}, delay time.Duration) error {
+	key, err := controller.KeyFunc(obj)
+	if err != nil {
+		return errors.Wrapf(err, "couldn't get key for object %v", obj)
+	}
+	queue.AddAfter(key, delay)
+	return nil
 }
