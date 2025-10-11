@@ -588,7 +588,9 @@ func (c *BackingImageManagerController) syncBackingImageManagerPod(bim *longhorn
 			if c.controllerID == bim.Spec.NodeID {
 				backoffID := bim.Name
 				if c.podRecreateBackoff.IsInBackOffSinceUpdate(backoffID, time.Now()) {
-					log.Infof("Skipping pod creation for backing image manager %s, will retry after backoff of %s", bim.Name, c.podRecreateBackoff.Get(backoffID))
+					backoffDuration := c.podRecreateBackoff.Get(backoffID)
+					log.Infof("Skipping pod creation for backing image manager %s, will retry after backoff of %s", bim.Name, backoffDuration)
+					return enqueueAfterDelay(c.queue, bim, backoffDuration)
 				} else {
 					log.Infof("Creating pod for backing image manager %s", bim.Name)
 					c.podRecreateBackoff.Next(backoffID, time.Now())
