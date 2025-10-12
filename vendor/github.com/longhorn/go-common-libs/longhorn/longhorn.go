@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 )
 
 // GetVolumeNameFromReplicaDataDirectoryName extracts the volume name from the replica
