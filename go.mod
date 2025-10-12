@@ -2,7 +2,7 @@ module github.com/longhorn/longhorn-manager
 
 go 1.24.0
 
-toolchain go1.25.1
+toolchain go1.25.2
 
 // Replace directives are required for dependencies in this section because:
 // - This module imports k8s.io/kubernetes.
@@ -55,7 +55,7 @@ replace (
 )
 
 // dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
-replace github.com/rancher/dynamiclistener => github.com/rancher/dynamiclistener v0.7.0
+replace github.com/rancher/dynamiclistener => github.com/rancher/dynamiclistener v0.7.1
 
 require (
 	github.com/cockroachdb/errors v1.12.0
@@ -69,16 +69,16 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.22.0
 	github.com/longhorn/backing-image-manager v1.9.2
-	github.com/longhorn/backupstore v0.0.0-20250804022317-794abf817297
-	github.com/longhorn/go-common-libs v0.0.0-20250921030719-16313e7f30b3
-	github.com/longhorn/go-iscsi-helper v0.0.0-20250810143507-5c5f9a0060b4
+	github.com/longhorn/backupstore v0.0.0-20251009075049-1b6c3422a333
+	github.com/longhorn/go-common-libs v0.0.0-20251009070934-14b7c6b59be3
+	github.com/longhorn/go-iscsi-helper v0.0.0-20251009073425-68f54afcf47e
 	github.com/longhorn/go-spdk-helper v0.0.4
 	github.com/longhorn/longhorn-engine v1.10.0-dev-20250713.0.20250728071833-3932ded2f139
 	github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250824.0.20250916035906-698d8ed06d8d
 	github.com/longhorn/longhorn-share-manager v1.9.2
 	github.com/longhorn/longhorn-spdk-engine v0.0.0-20250916034519-7fdbb7b284f7
 	github.com/prometheus/client_golang v1.23.2
-	github.com/rancher/dynamiclistener v0.7.0
+	github.com/rancher/dynamiclistener v0.7.1
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
 	github.com/rancher/wrangler/v3 v3.3.1
 	github.com/robfig/cron v1.2.0
@@ -101,7 +101,7 @@ require (
 	k8s.io/metrics v0.34.1
 	k8s.io/mount-utils v0.34.1
 	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
-	sigs.k8s.io/controller-runtime v0.22.1
+	sigs.k8s.io/controller-runtime v0.22.3
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0
 )
 
