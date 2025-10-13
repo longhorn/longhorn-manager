@@ -30,6 +30,7 @@ type NodeCollector struct {
 	storageCapacityMetric    metricInfo
 	storageUsageMetric       metricInfo
 	storageReservationMetric metricInfo
+	storageScheduledMetric   metricInfo
 }
 
 func NewNodeCollector(
@@ -133,6 +134,16 @@ func NewNodeCollector(
 		Type: prometheus.GaugeValue,
 	}
 
+	nc.storageScheduledMetric = metricInfo{
+		Desc: prometheus.NewDesc(
+			prometheus.BuildFQName(longhornName, subsystemNode, "storage_scheduled_bytes"),
+			"The scheduled storage on this node",
+			[]string{nodeLabel},
+			nil,
+		),
+		Type: prometheus.GaugeValue,
+	}
+
 	return nc
 }
 
@@ -146,6 +157,7 @@ func (nc *NodeCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- nc.storageCapacityMetric.Desc
 	ch <- nc.storageUsageMetric.Desc
 	ch <- nc.storageReservationMetric.Desc
+	ch <- nc.storageScheduledMetric.Desc
 }
 
 func (nc *NodeCollector) Collect(ch chan<- prometheus.Metric) {
@@ -299,13 +311,16 @@ func (nc *NodeCollector) collectNodeStorage(ch chan<- prometheus.Metric) {
 	var storageCapacity int64 = 0
 	var storageUsage int64 = 0
 	var storageReservation int64 = 0
+	var storageScheduled int64 = 0
 	for _, disk := range disks {
 		storageCapacity += disk.Status.StorageMaximum
 		storageUsage += disk.Status.StorageMaximum - disk.Status.StorageAvailable
 		storageReservation += disk.Spec.StorageReserved
+		storageScheduled += disk.Status.StorageScheduled
 	}
 
 	ch <- prometheus.MustNewConstMetric(nc.storageCapacityMetric.Desc, nc.storageCapacityMetric.Type, float64(storageCapacity), nc.currentNodeID)
 	ch <- prometheus.MustNewConstMetric(nc.storageUsageMetric.Desc, nc.storageUsageMetric.Type, float64(storageUsage), nc.currentNodeID)
 	ch <- prometheus.MustNewConstMetric(nc.storageReservationMetric.Desc, nc.storageReservationMetric.Type, float64(storageReservation), nc.currentNodeID)
+	ch <- prometheus.MustNewConstMetric(nc.storageScheduledMetric.Desc, nc.storageScheduledMetric.Type, float64(storageScheduled), nc.currentNodeID)
 }
