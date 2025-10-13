@@ -349,7 +349,7 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/rancher/dynamiclistener v0.7.1 => github.com/rancher/dynamiclistener v0.7.1
+# github.com/rancher/dynamiclistener v0.7.0
 ## explicit; go 1.24.0
 github.com/rancher/dynamiclistener
 github.com/rancher/dynamiclistener/cert
@@ -404,6 +404,7 @@ github.com/rancher/wrangler/v3/pkg/patch
 github.com/rancher/wrangler/v3/pkg/ratelimit
 github.com/rancher/wrangler/v3/pkg/schemes
 github.com/rancher/wrangler/v3/pkg/signals
+github.com/rancher/wrangler/v3/pkg/start
 github.com/rancher/wrangler/v3/pkg/stringset
 github.com/rancher/wrangler/v3/pkg/webhook
 # github.com/robfig/cron v1.2.0
@@ -1128,7 +1129,6 @@ k8s.io/client-go/tools/pager
 k8s.io/client-go/tools/record
 k8s.io/client-go/tools/record/util
 k8s.io/client-go/tools/reference
-k8s.io/client-go/tools/watch
 k8s.io/client-go/transport
 k8s.io/client-go/util/apply
 k8s.io/client-go/util/cert
@@ -1288,4 +1288,3 @@ sigs.k8s.io/yaml/kyaml
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.34.1
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.34.1
 # k8s.io/sample-controller => k8s.io/sample-controller v0.34.1
-# github.com/rancher/dynamiclistener => github.com/rancher/dynamiclistener v0.7.1
