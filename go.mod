@@ -75,6 +75,7 @@ require (
 	github.com/longhorn/longhorn-share-manager v1.9.2
 	github.com/longhorn/longhorn-spdk-engine v0.0.0-20250916034519-7fdbb7b284f7
 	github.com/prometheus/client_golang v1.23.2
+	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
 	github.com/rancher/dynamiclistener v0.7.0
 	github.com/rancher/go-rancher v0.1.1-0.20220412083059-ff12399dd57b
 	github.com/rancher/wrangler/v3 v3.3.1
@@ -113,7 +114,6 @@ require (
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/getsentry/sentry-go v0.27.0 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
-	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/longhorn/types v0.0.0-20250915085125-0638a2eac534 // indirect
