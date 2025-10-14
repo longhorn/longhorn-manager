@@ -1579,14 +1579,8 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 				continue
 			}
 
-			// Blindly send disk deletion request to instance manager regardless of the disk type,
-			// because the disk type is not recorded in the disk status.
-			diskInstanceName := diskStatus.DiskName
-			if diskInstanceName == "" {
-				diskInstanceName = diskName
-			}
-			if err := nc.deleteDisk(diskStatus.Type, diskInstanceName, diskStatus.DiskUUID, diskStatus.DiskPath, string(diskStatus.DiskDriver)); err != nil {
-				nc.logger.WithError(err).Warnf("Failed to delete disk %v", diskInstanceName)
+			if err := nc.deleteDisk(diskStatus.Type, diskName, diskStatus.DiskUUID, diskStatus.DiskPath, string(diskStatus.DiskDriver)); err != nil {
+				nc.logger.WithError(err).Warnf("Failed to delete disk %v", diskName)
 			}
 			delete(node.Status.DiskStatus, diskName)
 		}
