@@ -272,6 +272,10 @@ func (s *DataStore) syncV2DataEngineGuaranteedInstanceManagerCPU() error {
 }
 
 func (s *DataStore) syncConsolidatedV2DataEngineSettings() error {
+	if err := s.syncV2DataEngineGuaranteedInstanceManagerCPU(); err != nil {
+		return err
+	}
+
 	settings := map[types.SettingName]types.SettingName{
 		types.SettingNameV2DataEngineHugepageLimit: types.SettingNameDataEngineMemorySize,
 		types.SettingNameV2DataEngineCPUMask:       types.SettingNameDataEngineCPUMask,
@@ -283,10 +287,6 @@ func (s *DataStore) syncConsolidatedV2DataEngineSettings() error {
 		if err := s.syncConsolidatedV2DataEngineSetting(oldSettingName, newSettingName); err != nil {
 			return errors.Wrapf(err, "failed to sync consolidated v2 data engine setting %v to %v", oldSettingName, newSettingName)
 		}
-	}
-
-	if err := s.syncV2DataEngineGuaranteedInstanceManagerCPU(); err != nil {
-		return err
 	}
 
 	return nil
