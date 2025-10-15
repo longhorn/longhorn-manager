@@ -288,46 +288,64 @@ func (ns *NodeServer) nodeStageSharedVolume(volumeID, shareEndpoint, targetPath 
 	exportPath := uri.Path
 	export := fmt.Sprintf("%s:%s", server, exportPath)
 
-	defaultMountOptions := []string{
-		"vers=4.1",
-		"noresvport",
-		//"sync",    // sync mode is prohibitively expensive on the client, so we allow for host defaults
-		//"intr",
-		//"hard",
-		//"softerr", // for this release we use soft mode, so we can always cleanup mount points
-		"timeo=600", // This is tenths of a second, so a 60 second timeout, each retrans the timeout will be linearly increased, 60s, 120s, 240s, 480s, 600s(max)
-		"retrans=5", // We try the io operation for a total of 5 times, before failing
-	}
-
-	mountOptions := append(defaultMountOptions, []string{"softerr"}...)
 	if len(customMountOptions) != 0 {
-		mountOptions = customMountOptions
-	}
-
-	log.Infof("Mounting shared volume %v on node %v via share endpoint %v with mount options %v", volumeID, ns.nodeID, shareEndpoint, mountOptions)
-	if err := mounter.Mount(export, targetPath, fsType, mountOptions); err != nil {
-		if len(customMountOptions) == 0 && strings.Contains(err.Error(), "an incorrect mount option was specified") {
-			log.WithError(err).Warnf("Failed to mount volume %v with default mount options, retrying with soft mount", volumeID)
-			mountOptions = append(defaultMountOptions, []string{"soft"}...)
-			err = mounter.Mount(export, targetPath, fsType, mountOptions)
-			if err == nil {
-				return nil
+		log.Infof("Mounting shared volume %v on node %v via share endpoint %v with custom mount options %v", volumeID, ns.nodeID, shareEndpoint, customMountOptions)
+		err = mounter.Mount(export, targetPath, fsType, customMountOptions)
+	} else {
+		genDefaultMountOptions := func(nfsVer, mountMode string) []string {
+			return []string{
+				"vers=" + nfsVer,
+				"noresvport",
+				//"sync",    // sync mode is prohibitively expensive on the client, so we allow for host defaults
+				//"intr",
+				//"hard",
+				//"softerr",
+				"timeo=600", // This is tenths of a second, so a 60 second timeout, each retrans the timeout will be linearly increased, 60s, 120s, 240s, 480s, 600s(max)
+				"retrans=5", // We try the io operation for a total of 5 times, before failing
+				mountMode,
 			}
 		}
-		// Log with mounting node and kernel version for possible troubleshooting.  Don't step on actual mount error.
-		kernelRelease, err1 := lhns.GetKernelRelease()
-		if err1 != nil {
-			kernelRelease = err1.Error()
+		nfsVersToTry := []string{"4.0", "4.1"}
+		for len(nfsVersToTry) > 0 {
+			nfsVer := nfsVersToTry[0]
+			nfsVersToTry = nfsVersToTry[1:]
+
+			mountOptions := genDefaultMountOptions(nfsVer, "softerr")
+			log.Infof("Mounting shared volume %v on node %v via share endpoint %v with default mount options %v", volumeID, ns.nodeID, shareEndpoint, mountOptions)
+			err = mounter.Mount(export, targetPath, fsType, mountOptions)
+			if err == nil {
+				break
+			} else if strings.Contains(err.Error(), "an incorrect mount option was specified") {
+				log.WithError(err).Warnf("Failed to mount volume %v with default mount options, retrying with soft mount", volumeID)
+				mountOptions = genDefaultMountOptions(nfsVer, "soft")
+				err = mounter.Mount(export, targetPath, fsType, mountOptions)
+				if err == nil {
+					break
+				}
+			}
+			if len(nfsVersToTry) > 0 {
+				log.WithError(err).Infof("Failed to mount volume %v on node %v with NFS version %v. Try the next NFS protocol version...", volumeID, ns.nodeID, nfsVer)
+			} else {
+				log.WithError(err).Errorf("Failed to mount volume %v on node %v with NFS version %v. No further NFS protocol version to try", volumeID, ns.nodeID, nfsVer)
+			}
 		}
-		osDistro, err2 := lhns.GetOSDistro()
-		if err2 != nil {
-			osDistro = err2.Error()
-		}
-		log.WithError(err).Warnf("Failed to mount volume %v on node %s with kernel release %s, os distro %s", volumeID, ns.nodeID, kernelRelease, osDistro)
-		return status.Error(codes.Internal, err.Error())
 	}
 
-	return nil
+	if err == nil {
+		return nil
+	}
+
+	// Log with mounting node and kernel version for possible troubleshooting.  Don't step on actual mount error.
+	kernelRelease, err1 := lhns.GetKernelRelease()
+	if err1 != nil {
+		kernelRelease = err1.Error()
+	}
+	osDistro, err2 := lhns.GetOSDistro()
+	if err2 != nil {
+		osDistro = err2.Error()
+	}
+	log.WithError(err).Warnf("Failed to mount volume %v on node %s with kernel release %s, os distro %s", volumeID, ns.nodeID, kernelRelease, osDistro)
+	return status.Error(codes.Internal, err.Error())
 }
 
 func (ns *NodeServer) nodeStageMountVolume(volumeID, devicePath, stagingTargetPath, fsType string, mountFlags []string, mounter *mount.SafeFormatAndMount) error {
