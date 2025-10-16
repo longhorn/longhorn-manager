@@ -144,7 +144,11 @@ func (job *VolumeJob) run() (err error) {
 	volumeName := job.volumeName
 	volume, err := volumeAPI.ById(volumeName)
 	if err != nil {
-		return errors.Wrapf(err, "could not get volume %v", volumeName)
+		return errors.Wrapf(err, "failed to get volume %v", volumeName)
+	}
+	if volume == nil {
+		job.logger.Infof("Volume %v not found, skipping", volumeName)
+		return nil
 	}
 
 	if len(volume.Controllers) > 1 {
