@@ -94,21 +94,19 @@ func AddGoCoverDirToDaemonSet(daemonset *appsv1.DaemonSet) {
 	)
 }
 
-func UpdateDaemonSetTemplateBasedOnStorageNetwork(daemonSet *appsv1.DaemonSet, storageNetwork *longhorn.Setting, isStorageNetworkForRWXVolumeEnabled bool) {
+func UpdateDaemonSetTemplateBasedOnCNISettings(daemonSet *appsv1.DaemonSet, endpointNetworkForRWXVolume *longhorn.Setting) {
 	if daemonSet == nil {
 		return
 	}
 
 	logger := logrus.WithField("daemonSet", daemonSet.Name)
-	logger.Infof("Updating DaemonSet template for storage network %v", storageNetwork)
-
-	isContainerNetworkNamespace := IsStorageNetworkForRWXVolume(storageNetwork, isStorageNetworkForRWXVolumeEnabled)
+	logger.Infof("Updating DaemonSet template for endpoint network for RWX volume %v", endpointNetworkForRWXVolume)
 
 	updateAnnotation := func() {
 		annotKey := string(CNIAnnotationNetworks)
 		annotValue := ""
-		if isContainerNetworkNamespace {
-			annotValue = CreateCniAnnotationFromSetting(storageNetwork, StorageNetworkInterface)
+		if endpointNetworkForRWXVolume.Value != string(CniNetworkNone) {
+			annotValue = CreateCniAnnotationFromSetting(endpointNetworkForRWXVolume, EndpointNetworkInterface)
 		}
 
 		logger.WithFields(logrus.Fields{

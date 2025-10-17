@@ -215,12 +215,12 @@ func (kc *KubernetesPodController) handleWorkloadPodDeletionIfCSIPluginPodIsDown
 		return nil
 	}
 
-	isStorageNetworkForRWXVolume, err := kc.ds.IsStorageNetworkForRWXVolume()
+	isEndpointNetworkForRWXVolumeInSetting, err := kc.ds.IsEndpointNetworkForRWXVolumeInSetting()
 	if err != nil {
-		log.WithError(err).Warnf("%s. Failed to check isStorageNetwork", logAbort)
+		log.WithError(err).Warnf("%s. Failed to check if endpoint network is set for RWX volumes", logAbort)
 		return nil
 	}
-	if !isStorageNetworkForRWXVolume {
+	if !isEndpointNetworkForRWXVolumeInSetting {
 		return nil
 	}
 
@@ -640,9 +640,9 @@ func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *
 		return err
 	}
 
-	isStorageNetworkForRWXVolume, err := kc.ds.IsStorageNetworkForRWXVolume()
+	isEndpointNetworkForRWXVolumeInSetting, err := kc.ds.IsEndpointNetworkForRWXVolumeInSetting()
 	if err != nil {
-		kc.logger.WithError(err).Warn("Failed to check isStorageNetwork, assuming not")
+		kc.logger.WithError(err).Warn("Failed to check if endpoint network is set for RWX volumes, assuming not")
 	}
 
 	// Only delete pod which has startTime < vol.Status.RemountRequestAt AND timeNow > vol.Status.RemountRequestAt + delayDuration
@@ -665,7 +665,7 @@ func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *
 
 		// NFS clients can generally recover without a restart/remount when the NFS server restarts using the same Cluster IP.
 		// A remount is required when the storage network for RWX is in use because the new NFS server has a different IP.
-		if isRegularRWXVolume(vol) && !isStorageNetworkForRWXVolume {
+		if isRegularRWXVolume(vol) && !isEndpointNetworkForRWXVolumeInSetting {
 			continue
 		}
 
