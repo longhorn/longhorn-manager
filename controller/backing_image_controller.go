@@ -1672,7 +1672,7 @@ func (bic *BackingImageController) syncV2Copies(bi *longhorn.BackingImage, sourc
 		return errors.Wrapf(err, "failed to get pod for instance manager %v", srcInstanceManager.Name)
 	}
 
-	instanceManagerStorageIP := bic.ds.GetStorageIPFromPod(instanceManagerPod)
+	instanceManagerStorageIP := bic.ds.GetIPFromPodByCNISetting(instanceManagerPod, types.SettingNameStorageNetwork)
 
 	// Create the backing image by syncing the backing image data from the SPDK server inside the instance manager holding the source disk
 	_, err = engineClientProxy.SPDKBackingImageCreate(bi.Name, bi.Status.UUID, v2DiskUUID, bi.Status.Checksum, net.JoinHostPort(instanceManagerStorageIP, strconv.Itoa(engineapi.InstanceManagerSpdkServiceDefaultPort)), sourceV2DiskUUID, uint64(bi.Status.Size))
