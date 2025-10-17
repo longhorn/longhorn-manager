@@ -116,6 +116,7 @@ const (
 	SettingNameOrphanResourceAutoDeletionGracePeriod                    = SettingName("orphan-resource-auto-deletion-grace-period")
 	SettingNameStorageNetwork                                           = SettingName("storage-network")
 	SettingNameStorageNetworkForRWXVolumeEnabled                        = SettingName("storage-network-for-rwx-volume-enabled")
+	SettingNameEndpointNetworkForRWXVolume                              = SettingName("endpoint-network-for-rwx-volume")
 	SettingNameFailedBackupTTL                                          = SettingName("failed-backup-ttl")
 	SettingNameRecurringSuccessfulJobsHistoryLimit                      = SettingName("recurring-successful-jobs-history-limit")
 	SettingNameRecurringFailedJobsHistoryLimit                          = SettingName("recurring-failed-jobs-history-limit")
@@ -381,6 +382,7 @@ var (
 		SettingNameOrphanResourceAutoDeletionGracePeriod:                    SettingDefinitionOrphanResourceAutoDeletionGracePeriod,
 		SettingNameStorageNetwork:                                           SettingDefinitionStorageNetwork,
 		SettingNameStorageNetworkForRWXVolumeEnabled:                        SettingDefinitionStorageNetworkForRWXVolumeEnabled,
+		SettingNameEndpointNetworkForRWXVolume:                              SettingDefinitionEndpointNetworkForRWXVolume,
 		SettingNameFailedBackupTTL:                                          SettingDefinitionFailedBackupTTL,
 		SettingNameRecurringSuccessfulJobsHistoryLimit:                      SettingDefinitionRecurringSuccessfulJobsHistoryLimit,
 		SettingNameRecurringFailedJobsHistoryLimit:                          SettingDefinitionRecurringFailedJobsHistoryLimit,
@@ -1213,7 +1215,7 @@ var (
 		DisplayName: "Storage Network",
 		Description: "Longhorn uses the storage network for in-cluster data traffic. Leave this blank to use the Kubernetes cluster network. \n\n" +
 			"To segregate the storage network, input the pre-existing NetworkAttachmentDefinition in **<namespace>/<name>** format. \n\n" +
-			"By default, this setting applies only to RWO (Read-Write-Once) volumes. For RWX (Read-Write-Many) volumes, enable 'Storage Network for RWX Volume' setting.\n\n" +
+			"This setting applies only to Longhorn's data-plan traffic. For RWX (Read-Write-Many) volume endpoint traffic, use the 'Endpoint Network for RWX Volume' setting.\n\n" +
 			"WARNING: \n\n" +
 			"  - The cluster must have pre-existing Multus installed, and NetworkAttachmentDefinition IPs are reachable between nodes. \n\n" +
 			"  - When applying the setting, Longhorn will try to restart all instance-manager, and backing-image-manager pods if all volumes are detached and eventually restart the instance manager pod without instances running on the instance manager. \n\n",
@@ -1237,6 +1239,22 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            "false",
+	}
+
+	SettingDefinitionEndpointNetworkForRWXVolume = SettingDefinition{
+		DisplayName: "Endpoint Network for RWX Volume",
+		Description: "Specifies a dedicated network for mounting RWX (ReadWriteMany) volumes. Leave this blank to use the default Kubernetes cluster network. \n\n" +
+			"To segregate the endpoint network for RWX volume, input the pre-existing NetworkAttachmentDefinition in **<namespace>/<name>** format. \n\n" +
+			"WARNING: \n\n" +
+			"  - The cluster must have pre-existing Multus installed, and NetworkAttachmentDefinition IPs are reachable between nodes. \n\n" +
+			"  - This setting should change after all Longhorn RWX volumes are detached because some Longhorn component pods will be recreated to apply the setting. \n\n" +
+			"  - When this setting is defined, RWX volumes are mounted using the specified network inside the CSI plugin pod's containernetwork namespace. As a result, restarting the CSI plugin pod when there are attached RWX volumes may lead to its data path become unresponsive. When this occurs, you must restart the workload pod to re-establish the mount connection. Alternatively, you can enable the 'Automatically Delete Workload Pod when The Volume Is Detached Unexpectedly' setting to allow Longhorn to automatically delete the workload pod.\n\n",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            CniNetworkNone,
 	}
 
 	SettingDefinitionRecurringSuccessfulJobsHistoryLimit = SettingDefinition{
@@ -2482,6 +2500,8 @@ func validateSettingString(name SettingName, definition SettingDefinition, value
 			}
 
 		case SettingNameStorageNetwork:
+			fallthrough
+		case SettingNameEndpointNetworkForRWXVolume:
 			if err := ValidateCNINetwork(strValue); err != nil {
 				return errors.Wrapf(err, "the value of %v is invalid", name)
 			}

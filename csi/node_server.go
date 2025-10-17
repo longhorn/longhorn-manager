@@ -925,7 +925,7 @@ func getNodeServiceCapabilities(cs []csi.NodeServiceCapability_RPC_Type) []*csi.
 	return nscs
 }
 
-func (ns *NodeServer) requireHostNamespaceMounter(volume *longhornclient.Volume, volumeCapability *csi.VolumeCapability) (bool, error) {
+func (ns *NodeServer) requireHostNamespaceMounter(volume *longhornclient.Volume, volumeCapability *csi.VolumeCapability, volumeContext map[string]string) (bool, error) {
 	if !requiresSharedAccess(volume, volumeCapability) {
 		return false, nil
 	}
@@ -933,24 +933,12 @@ func (ns *NodeServer) requireHostNamespaceMounter(volume *longhornclient.Volume,
 		return false, nil
 	}
 
-	storageNetworkSetting, err := ns.apiClient.Setting.ById(string(types.SettingNameStorageNetwork))
-	if err != nil {
-		return false, err
-	}
-	storageNetworkForRWXVolumeEnabledSetting, err := ns.apiClient.Setting.ById(string(types.SettingNameStorageNetworkForRWXVolumeEnabled))
-	if err != nil {
-		return false, err
-	}
-	storageNetworkForRWXVolumeEnabled, err := strconv.ParseBool(storageNetworkForRWXVolumeEnabledSetting.Value)
+	endpointNetworkForRWXVolumeSetting, err := ns.apiClient.Setting.ById(string(types.SettingNameEndpointNetworkForRWXVolume))
 	if err != nil {
 		return false, err
 	}
 
-	if storageNetworkSetting.Value != "" && storageNetworkForRWXVolumeEnabled {
-		return false, nil
-	}
-
-	return true, nil
+	return endpointNetworkForRWXVolumeSetting.Value == "", nil
 }
 
 func (ns *NodeServer) getMounter(volume *longhornclient.Volume, volumeCapability *csi.VolumeCapability, volumeContext map[string]string) (mount.Interface, error) {
@@ -959,8 +947,8 @@ func (ns *NodeServer) getMounter(volume *longhornclient.Volume, volumeCapability
 	}
 
 	// HACK: to nsenter host namespaces for the nfs mounts to stay available after csi plugin dies.
-	// Only do this for regular RWX volume with false storageNetworkForRWXVolumeEnabledSetting
-	requireHostNamespaceMounter, err := ns.requireHostNamespaceMounter(volume, volumeCapability)
+	// Only do this for regular RWX volume with SettingNameEndpointNetworkForRWXVolume not set
+	requireHostNamespaceMounter, err := ns.requireHostNamespaceMounter(volume, volumeCapability, volumeContext)
 	if err != nil {
 		return nil, err
 	}

@@ -231,8 +231,9 @@ const (
 
 	PVAnnotationLonghornVolumeSchedulingError = "longhorn.io/volume-scheduling-error"
 
-	CniNetworkNone          = ""
-	StorageNetworkInterface = "lhnet1"
+	CniNetworkNone           = ""
+	StorageNetworkInterface  = "lhnet1" // Data plane network
+	EndpointNetworkInterface = "lhnet2" // RWX volume nfs server endpoint
 
 	KubeAPIQPS   = 50
 	KubeAPIBurst = 100
