@@ -245,13 +245,12 @@ func (c *KubernetesEndpointController) syncShareManager(endpoint *corev1.Endpoin
 	// A map of desired share manager IP and its pod.
 	desiredIPPod := make(map[string]*corev1.Pod)
 	for _, pod := range shareManagerPods {
-		storageIP := c.ds.GetIPFromPodByCNISetting(pod, types.SettingNameStorageNetwork)
-		if _, exist := desiredIPPod[storageIP]; exist {
-			log.Warnf("Found duplicated share manager pod storage IP %v", storageIP)
+		endpointNetworkIP := c.ds.GetIPFromPodByCNISetting(pod, types.SettingNameEndpointNetworkForRWXVolume)
+		if _, exist := desiredIPPod[endpointNetworkIP]; exist {
+			log.Warnf("Found duplicated share manager pod endpoint network IP %v", endpointNetworkIP)
 			continue
 		}
-
-		desiredIPPod[storageIP] = pod
+		desiredIPPod[endpointNetworkIP] = pod
 	}
 
 	// A map of existing IP in the Endpoint and its endpoint address.

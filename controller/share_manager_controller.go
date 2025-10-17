@@ -458,12 +458,12 @@ func (c *ShareManagerController) syncShareManagerEndpoint(sm *longhorn.ShareMana
 		return nil
 	}
 
-	storageNetworkForRWXVolume, err := c.ds.IsStorageNetworkForRWXVolume()
+	isEndpointNetworkForRWXVolumeInSetting, err := c.ds.IsEndpointNetworkForRWXVolumeInSetting()
 	if err != nil {
 		return err
 	}
 
-	if storageNetworkForRWXVolume {
+	if isEndpointNetworkForRWXVolumeInSetting {
 		serviceFqdn := fmt.Sprintf("%v.%v.svc.cluster.local", sm.Name, sm.Namespace)
 		sm.Status.Endpoint = fmt.Sprintf("nfs://%v/%v", serviceFqdn, sm.Name)
 	} else {
@@ -1069,7 +1069,7 @@ func (c *ShareManagerController) getShareManagerTolerationsFromStorageClass(sc *
 }
 
 func (c *ShareManagerController) checkCNINetworksApplied() (bool, error) {
-	targetSettings := []types.SettingName{types.SettingNameStorageNetwork}
+	targetSettings := []types.SettingName{types.SettingNameStorageNetwork, types.SettingNameEndpointNetworkForRWXVolume}
 	for _, item := range targetSettings {
 		if applied, err := c.ds.GetSettingApplied(item); err != nil || !applied {
 			return applied, err
@@ -1100,13 +1100,13 @@ func (c *ShareManagerController) canCleanupService(shareManagerName string) (boo
 		return false, nil
 	}
 
-	storageNetworkForRWXVolume, err := c.ds.IsStorageNetworkForRWXVolume()
+	isEndpointNetworkForRWXVolumeInSetting, err := c.ds.IsEndpointNetworkForRWXVolumeInSetting()
 	if err != nil {
 		return false, err
 	}
 
 	// no need to cleanup because looks the service file is correct
-	if storageNetworkForRWXVolume {
+	if isEndpointNetworkForRWXVolumeInSetting {
 		if service.Spec.ClusterIP == core.ClusterIPNone {
 			return false, nil
 		}
@@ -1329,21 +1329,8 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 	manifest := c.createPodManifest(sm, volume.Spec.DataEngine, annotations, tolerations, affinity, imagePullPolicy, nil, registrySecret,
 		priorityClass, nodeSelector, fsType, formatOptions, mountOptions, cryptoKey, cryptoParams, nfsConfig)
 
-	storageNetwork, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
-	if err != nil {
+	if err = c.updateShareManagerPodManifestCNINetwork(manifest); err != nil {
 		return nil, err
-	}
-
-	storageNetworkForRWXVolumeEnabled, err := c.ds.GetSettingAsBool(types.SettingNameStorageNetworkForRWXVolumeEnabled)
-	if err != nil {
-		return nil, err
-	}
-
-	if types.IsStorageNetworkForRWXVolume(storageNetwork, storageNetworkForRWXVolumeEnabled) {
-		nadAnnot := string(types.CNIAnnotationNetworks)
-		if storageNetwork.Value != types.CniNetworkNone {
-			manifest.Annotations[nadAnnot] = types.CreateCniAnnotationFromSetting(storageNetwork, types.StorageNetworkInterface)
-		}
 	}
 
 	pod, err := c.ds.CreatePod(manifest)
@@ -1352,6 +1339,25 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 	}
 	log.WithField("pod", pod.Name).Infof("Created pod for share manager on node %v", pod.Spec.NodeName)
 	return pod, nil
+}
+
+func (c *ShareManagerController) updateShareManagerPodManifestCNINetwork(manifest *corev1.Pod) (err error) {
+	defer func() {
+		err = errors.Wrapf(err, "failed to update share manager pod manifest to handle extra network")
+	}()
+
+	endpointNetworkForRWXVolume, err := c.ds.GetSettingWithAutoFillingRO(types.SettingNameEndpointNetworkForRWXVolume)
+	if err != nil {
+		return err
+	}
+
+	nadAnnot := string(types.CNIAnnotationNetworks)
+	nadAnnotValue := types.CreateCniAnnotationFromSetting(endpointNetworkForRWXVolume, types.EndpointNetworkInterface)
+	if nadAnnotValue != "" {
+		manifest.Annotations[nadAnnot] = nadAnnotValue
+	}
+
+	return nil
 }
 
 func (c *ShareManagerController) splitFormatOptions(sc *storagev1.StorageClass) []string {
@@ -1398,13 +1404,12 @@ func (c *ShareManagerController) createServiceManifest(sm *longhorn.ShareManager
 	}
 
 	log := getLoggerForShareManager(c.logger, sm)
-
-	storageNetworkForRWXVolume, err := c.ds.IsStorageNetworkForRWXVolume()
+	isEndpointNetworkForRWXVolumeInSetting, err := c.ds.IsEndpointNetworkForRWXVolumeInSetting()
 	if err != nil {
-		log.WithError(err).Warnf("Failed to check storage network for RWX volume")
+		log.WithError(err).Warnf("Failed to check if endpoint network is set for RWX volumes")
 	}
 
-	if storageNetworkForRWXVolume {
+	if isEndpointNetworkForRWXVolumeInSetting {
 		// Create a headless service do it doesn't use a cluster IP. This allows
 		// directly reaching the share manager pods using their individual
 		// IP address.
