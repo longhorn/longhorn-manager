@@ -1068,8 +1068,8 @@ func (c *ShareManagerController) getShareManagerTolerationsFromStorageClass(sc *
 	return tolerations
 }
 
-func (c *ShareManagerController) checkStorageNetworkApplied() (bool, error) {
-	targetSettings := []types.SettingName{types.SettingNameStorageNetwork, types.SettingNameStorageNetworkForRWXVolumeEnabled}
+func (c *ShareManagerController) checkCNINetworksApplied() (bool, error) {
+	targetSettings := []types.SettingName{types.SettingNameStorageNetwork}
 	for _, item := range targetSettings {
 		if applied, err := c.ds.GetSettingApplied(item); err != nil || !applied {
 			return applied, err
@@ -1090,13 +1090,13 @@ func (c *ShareManagerController) canCleanupService(shareManagerName string) (boo
 		return false, errors.Wrap(err, "failed to get service")
 	}
 
-	// check the settings status of storage network and storage network for RWX volume
-	settingsApplied, err := c.checkStorageNetworkApplied()
+	// check the settings status of CNI network for RWX volume
+	settingsApplied, err := c.checkCNINetworksApplied()
 	if err != nil {
-		return false, errors.Wrap(err, "failed to check if the storage network settings are applied")
+		return false, errors.Wrap(err, "failed to check if the CNI network settings are applied")
 	}
 	if !settingsApplied {
-		c.logger.Warn("Storage network settings are not applied, do nothing")
+		c.logger.Warn("CNI network settings are not applied, do nothing")
 		return false, nil
 	}
 
