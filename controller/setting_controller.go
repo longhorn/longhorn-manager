@@ -777,7 +777,7 @@ func (sc *SettingController) updateCNI(funcPreupdate func() error) error {
 func (sc *SettingController) getPodsWithIncorrectCNI(storageNetwork *longhorn.Setting) ([]*corev1.Pod, error) {
 	// Retrieve annotation key and value for CNI.
 	annotKey := string(types.CNIAnnotationNetworks)
-	annotValue := types.CreateCniAnnotationFromSetting(storageNetwork)
+	annotValue := types.CreateCniAnnotationFromSetting(storageNetwork, types.StorageNetworkInterface)
 
 	var incorrectCNIPods []*corev1.Pod
 
@@ -812,7 +812,7 @@ func (sc *SettingController) getDaemonSetsWithIncorrectCNI(storageNetwork *longh
 
 	annotValue := ""
 	if isStorageNetworkForRWXVolumeEnabled {
-		annotValue = types.CreateCniAnnotationFromSetting(storageNetwork)
+		annotValue = types.CreateCniAnnotationFromSetting(storageNetwork, types.StorageNetworkInterface)
 	}
 
 	var incorrectCNIDaemonSets []*appsv1.DaemonSet

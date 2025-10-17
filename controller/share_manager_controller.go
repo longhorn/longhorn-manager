@@ -1342,7 +1342,7 @@ func (c *ShareManagerController) createShareManagerPod(sm *longhorn.ShareManager
 	if types.IsStorageNetworkForRWXVolume(storageNetwork, storageNetworkForRWXVolumeEnabled) {
 		nadAnnot := string(types.CNIAnnotationNetworks)
 		if storageNetwork.Value != types.CniNetworkNone {
-			manifest.Annotations[nadAnnot] = types.CreateCniAnnotationFromSetting(storageNetwork)
+			manifest.Annotations[nadAnnot] = types.CreateCniAnnotationFromSetting(storageNetwork, types.StorageNetworkInterface)
 		}
 	}
 

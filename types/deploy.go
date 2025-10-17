@@ -108,7 +108,7 @@ func UpdateDaemonSetTemplateBasedOnStorageNetwork(daemonSet *appsv1.DaemonSet, s
 		annotKey := string(CNIAnnotationNetworks)
 		annotValue := ""
 		if isContainerNetworkNamespace {
-			annotValue = CreateCniAnnotationFromSetting(storageNetwork)
+			annotValue = CreateCniAnnotationFromSetting(storageNetwork, StorageNetworkInterface)
 		}
 
 		logger.WithFields(logrus.Fields{
