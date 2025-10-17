@@ -1273,17 +1273,42 @@ func CreateDefaultDisk(dataPath string, storageReservedPercentage int64) (map[st
 }
 
 type CniNetwork struct {
-	Name string   `json:"name"`
-	IPs  []string `json:"ips,omitempty"`
+	Name      string   `json:"name"`
+	Interface string   `json:"interface,omitempty"`
+	IPs       []string `json:"ips,omitempty"`
 }
 
-func CreateCniAnnotationFromSetting(storageNetwork *longhorn.Setting) string {
-	if storageNetwork.Value == "" {
+func CreateCniAnnotation(networks ...CniNetwork) string {
+	var annotations []string
+
+	// Helper to convert "namespace/name" into JSON object
+	toJSON := func(network CniNetwork) string {
+		parts := strings.SplitN(network.Name, "/", 2)
+		if len(parts) != 2 {
+			return ""
+		}
+		return fmt.Sprintf(`{"namespace": "%s", "name": "%s", "interface": "%s"}`, parts[0], parts[1], network.Interface)
+	}
+
+	for _, network := range networks {
+		if json := toJSON(network); json != "" {
+			annotations = append(annotations, json)
+		}
+	}
+
+	if len(annotations) == 0 {
 		return ""
 	}
 
-	storageNetworkSplit := strings.Split(storageNetwork.Value, "/")
-	return fmt.Sprintf("[{\"namespace\": \"%s\", \"name\": \"%s\", \"interface\": \"%s\"}]", storageNetworkSplit[0], storageNetworkSplit[1], StorageNetworkInterface)
+	return fmt.Sprintf("[%s]", strings.Join(annotations, ", "))
+}
+
+func CreateCniAnnotationFromSetting(setting *longhorn.Setting, interfaceName string) string {
+	endpointNetworks := CniNetwork{
+		Name:      setting.Value,
+		Interface: interfaceName,
+	}
+	return CreateCniAnnotation(endpointNetworks)
 }
 
 func BackupStoreRequireCredential(backupType string) bool {

@@ -988,7 +988,7 @@ func (c *BackingImageManagerController) generateBackingImageManagerPodManifest(b
 
 	nadAnnot := string(types.CNIAnnotationNetworks)
 	if storageNetwork.Value != types.CniNetworkNone {
-		podSpec.Annotations[nadAnnot] = types.CreateCniAnnotationFromSetting(storageNetwork)
+		podSpec.Annotations[nadAnnot] = types.CreateCniAnnotationFromSetting(storageNetwork, types.StorageNetworkInterface)
 	}
 
 	types.AddGoCoverDirToPod(podSpec)

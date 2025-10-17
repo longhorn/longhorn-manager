@@ -871,7 +871,7 @@ func (imc *InstanceManagerController) isSettingInstanceManagerPodLivenessProbeTi
 
 func (imc *InstanceManagerController) isSettingStorageNetworkSynced(setting *longhorn.Setting, pod *corev1.Pod) (bool, error) {
 	nadAnnot := string(types.CNIAnnotationNetworks)
-	nadAnnotValue := types.CreateCniAnnotationFromSetting(setting)
+	nadAnnotValue := types.CreateCniAnnotationFromSetting(setting, types.StorageNetworkInterface)
 	return pod.Annotations[nadAnnot] == nadAnnotValue, nil
 }
 
@@ -1456,7 +1456,7 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 
 	nadAnnot := string(types.CNIAnnotationNetworks)
 	if storageNetwork.Value != types.CniNetworkNone {
-		podSpec.Annotations[nadAnnot] = types.CreateCniAnnotationFromSetting(storageNetwork)
+		podSpec.Annotations[nadAnnot] = types.CreateCniAnnotationFromSetting(storageNetwork, types.StorageNetworkInterface)
 	}
 
 	log.Info("Creating instance manager pod")
