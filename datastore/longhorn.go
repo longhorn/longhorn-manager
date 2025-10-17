@@ -212,6 +212,12 @@ func (s *DataStore) syncConsolidatedV2DataEngineSetting(oldSettingName, newSetti
 }
 
 func (s *DataStore) syncV2DataEngineGuaranteedInstanceManagerCPU() error {
+	defaultSetting, ok := types.GetSettingDefinition(types.SettingNameGuaranteedInstanceManagerCPU)
+	if !ok {
+		// Skip the sync if the setting is not defined
+		return nil
+	}
+
 	// Get old setting v2-data-engine-guaranteed-instance-manager-cpu
 	oldV2Setting, err := s.GetSettingExactRO(types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU)
 	if err != nil {
@@ -240,12 +246,12 @@ func (s *DataStore) syncV2DataEngineGuaranteedInstanceManagerCPU() error {
 		return nil
 	}
 
-	if v2DataEngineGuaranteedInstanceManagerCPU > int(numCPUs*1000) {
-		logrus.Warnf("Skipping the migration for guaranteed-instance-manager-cpu for v2 data engine since old setting %v value %v milliCPUs is larger than the minimum number of CPUs %v among all nodes", types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU, oldV2Setting.Value, numCPUs)
-		return nil
+	originalGuaranteedInstanceManagerCPUInPercentage := int64(v2DataEngineGuaranteedInstanceManagerCPU*100) / (numCPUs * 1000)
+	guaranteedInstanceManagerCPUInPercentage := originalGuaranteedInstanceManagerCPUInPercentage
+	if guaranteedInstanceManagerCPUInPercentage > 100 {
+		guaranteedInstanceManagerCPUInPercentage = 100
+		logrus.Warnf("The calculated guaranteed-instance-manager-cpu percentage %v from old setting %v is larger than 100%%, set it to 100%%", originalGuaranteedInstanceManagerCPUInPercentage, types.SettingNameV2DataEngineGuaranteedInstanceManagerCPU)
 	}
-
-	guaranteedInstanceManagerCPUInPercentage := int64(v2DataEngineGuaranteedInstanceManagerCPU*100) / (numCPUs * 1000)
 
 	// Get setting guaranteed-instance-manager-cpu
 	setting, err := s.GetSettingExact(types.SettingNameGuaranteedInstanceManagerCPU)
@@ -256,6 +262,16 @@ func (s *DataStore) syncV2DataEngineGuaranteedInstanceManagerCPU() error {
 	dataEngineValues := make(map[longhorn.DataEngineType]string)
 	if err := json.Unmarshal([]byte(setting.Value), &dataEngineValues); err != nil {
 		return errors.Wrapf(err, "failed to unmarshal setting %v value %v", types.SettingNameGuaranteedInstanceManagerCPU, setting.Value)
+	}
+
+	// The guaranteedInstanceManagerCPUInPercentage value should not exceed the maximum value allowed
+	valueMaximum, ok := defaultSetting.ValueFloatRange[types.ValueFloatRangeMaximum]
+	if ok {
+		if float64(guaranteedInstanceManagerCPUInPercentage) > valueMaximum {
+			originalGuaranteedInstanceManagerCPUInPercentage := guaranteedInstanceManagerCPUInPercentage
+			guaranteedInstanceManagerCPUInPercentage = int64(valueMaximum)
+			logrus.Warnf("The calculated guaranteed-instance-manager-cpu percentage %v for v2 data engine is larger than the maximum %v%%, set it to the maximum", originalGuaranteedInstanceManagerCPUInPercentage, valueMaximum)
+		}
 	}
 
 	// Update the value for v2 data engine
