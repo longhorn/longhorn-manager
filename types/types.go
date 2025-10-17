@@ -948,14 +948,14 @@ func ValidateAccessMode(mode longhorn.AccessMode) error {
 	return nil
 }
 
-func ValidateStorageNetwork(value string) (err error) {
+func ValidateCNINetwork(value string) (err error) {
 	if value == CniNetworkNone {
 		return nil
 	}
 
 	parts := strings.Split(value, "/")
 	if len(parts) != 2 {
-		return errors.Errorf("storage network must be in <NAMESPACE>/<NETWORK-ATTACHMENT-DEFINITION> format: %v", value)
+		return errors.Errorf("cni network must be in <NAMESPACE>/<NETWORK-ATTACHMENT-DEFINITION> format: %v", value)
 	}
 	return nil
 }

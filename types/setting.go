@@ -2482,7 +2482,7 @@ func validateSettingString(name SettingName, definition SettingDefinition, value
 			}
 
 		case SettingNameStorageNetwork:
-			if err := ValidateStorageNetwork(strValue); err != nil {
+			if err := ValidateCNINetwork(strValue); err != nil {
 				return errors.Wrapf(err, "the value of %v is invalid", name)
 			}
 
