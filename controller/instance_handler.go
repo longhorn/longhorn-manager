@@ -173,7 +173,7 @@ func (h *InstanceHandler) syncStatusWithInstanceManager(log *logrus.Entry, im *l
 			return
 		}
 
-		storageIP := h.ds.GetStorageIPFromPod(imPod)
+		storageIP := h.ds.GetIPFromPodByCNISetting(imPod, types.SettingNameStorageNetwork)
 		if status.StorageIP != storageIP {
 			if status.StorageIP != "" {
 				log.Warnf("Instance %v is state running in instance manager %s, but its status Storage IP %s does not match the instance manager recorded Storage IP %s", instanceName, im.Name, status.StorageIP, storageIP)
