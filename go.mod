@@ -56,7 +56,7 @@ replace (
 
 require (
 	github.com/cockroachdb/errors v1.12.0
-	github.com/container-storage-interface/spec v1.11.0
+	github.com/container-storage-interface/spec v1.12.0
 	github.com/docker/go-connections v0.6.0
 	github.com/go-co-op/gocron v1.37.0
 	github.com/google/uuid v1.6.0
