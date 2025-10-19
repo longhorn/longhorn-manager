@@ -194,7 +194,7 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20251012091539-422bbbd4c8b9
+# github.com/longhorn/go-common-libs v0.0.0-20251019060945-fb1eaf5233d1
 ## explicit; go 1.24.0
 github.com/longhorn/go-common-libs/backingimage
 github.com/longhorn/go-common-libs/backup
@@ -237,7 +237,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/util
 ## explicit; go 1.24.0
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/types v0.0.0-20250915085125-0638a2eac534
+# github.com/longhorn/types v0.0.0-20251012091916-f701e0df060f
 ## explicit; go 1.23.0
 github.com/longhorn/types/pkg/generated/bimrpc
 github.com/longhorn/types/pkg/generated/enginerpc
@@ -436,7 +436,7 @@ go.uber.org/multierr
 ## explicit; go 1.23.0
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
-# golang.org/x/exp v0.0.0-20251009144603-d2f985daa21b
+# golang.org/x/exp v0.0.0-20251017212417-90e834f514db
 ## explicit; go 1.24.0
 golang.org/x/exp/constraints
 # golang.org/x/mod v0.29.0
