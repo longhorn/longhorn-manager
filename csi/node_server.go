@@ -331,7 +331,7 @@ func (ns *NodeServer) nodeStageSharedVolume(volumeID, shareEndpoint, targetPath 
 }
 
 func (ns *NodeServer) nodeStageMountVolume(volumeID, devicePath, stagingTargetPath, fsType string, mountFlags []string, mounter *mount.SafeFormatAndMount) error {
-	log := ns.log.WithFields(logrus.Fields{"function": "NodePublishVolume"})
+	log := ns.log.WithFields(logrus.Fields{"function": "nodeStageMountVolume"})
 
 	isMnt, err := ensureMountPoint(stagingTargetPath, mounter)
 	if err != nil {
@@ -375,7 +375,7 @@ func (ns *NodeServer) nodePublishBlockVolume(volumeID, devicePath, targetPath st
 	log.Infof("Bind mounting device %v at %v", devicePath, targetPath)
 	if err := mounter.Mount(devicePath, targetPath, "", []string{"bind"}); err != nil {
 		if removeErr := os.Remove(targetPath); removeErr != nil {
-			return status.Errorf(codes.Internal, "failed to remove mount target %q: %v", targetPath, removeErr)
+			log.WithError(removeErr).Errorf("Failed to remove failed mount target %q", targetPath)
 		}
 		return status.Errorf(codes.Internal, "failed to bind mount %q at %q: %v", devicePath, targetPath, err)
 	}
@@ -548,6 +548,7 @@ func (ns *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVol
 
 	if volumeCapability.GetBlock() != nil {
 		if err := ns.nodeStageBlockVolume(volumeID, devicePath, stagingTargetPath, mounter); err != nil {
+			log.WithError(err).Errorf("Failed to stage BlockVolume %s device %s under staging target path %s", volumeID, devicePath, stagingTargetPath)
 			return nil, err
 		}
 
