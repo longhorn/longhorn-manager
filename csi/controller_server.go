@@ -707,7 +707,7 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 		return &csi.GetCapacityResponse{}, nil
 	}
 
-	allowEmptyNodeSelectorVolume, err := cs.getSettingAsBoolean(types.SettingNameAllowEmptyNodeSelectorVolume)
+	allowEmptyNodeSelectorVolume, err := cs.getSettingAsBoolean(ctx, types.SettingNameAllowEmptyNodeSelectorVolume)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get setting %v: %v", types.SettingNameAllowEmptyNodeSelectorVolume, err)
 	}
@@ -723,9 +723,13 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 	if diskSelectorRaw, ok := scParameters["diskSelector"]; ok && len(diskSelectorRaw) > 0 {
 		diskSelector = strings.Split(diskSelectorRaw, ",")
 	}
-	allowEmptyDiskSelectorVolume, err := cs.getSettingAsBoolean(types.SettingNameAllowEmptyDiskSelectorVolume)
+	allowEmptyDiskSelectorVolume, err := cs.getSettingAsBoolean(ctx, types.SettingNameAllowEmptyDiskSelectorVolume)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get setting %v: %v", types.SettingNameAllowEmptyDiskSelectorVolume, err)
+	}
+	overProvisioningPercentage, err := cs.getSettingAsInt(ctx, types.SettingNameStorageOverProvisioningPercentage)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get setting %v: %v", types.SettingNameStorageOverProvisioningPercentage, err)
 	}
 
 	var v1AvailableCapacity int64 = 0
@@ -744,7 +748,9 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 		if !types.IsSelectorsInTags(diskSpec.Tags, diskSelector, allowEmptyDiskSelectorVolume) {
 			continue
 		}
-		storageSchedulable := diskStatus.StorageAvailable - diskSpec.StorageReserved
+
+		overProvisionLimit := ((diskStatus.StorageMaximum - diskSpec.StorageReserved) * overProvisioningPercentage) / 100
+		storageSchedulable := overProvisionLimit - diskStatus.StorageScheduled
 		if diskStatus.Type == longhorn.DiskTypeFilesystem {
 			v1AvailableCapacity = max(v1AvailableCapacity, storageSchedulable)
 		}
@@ -771,14 +777,26 @@ func (cs *ControllerServer) GetCapacity(ctx context.Context, req *csi.GetCapacit
 	return rsp, nil
 }
 
-func (cs *ControllerServer) getSettingAsBoolean(name types.SettingName) (bool, error) {
-	obj, err := cs.lhClient.LonghornV1beta2().Settings(cs.lhNamespace).Get(context.TODO(), string(name), metav1.GetOptions{})
+func (cs *ControllerServer) getSettingAsBoolean(ctx context.Context, name types.SettingName) (bool, error) {
+	obj, err := cs.lhClient.LonghornV1beta2().Settings(cs.lhNamespace).Get(ctx, string(name), metav1.GetOptions{})
 	if err != nil {
 		return false, err
 	}
 	value, err := strconv.ParseBool(obj.Value)
 	if err != nil {
 		return false, err
+	}
+	return value, nil
+}
+
+func (cs *ControllerServer) getSettingAsInt(ctx context.Context, name types.SettingName) (int64, error) {
+	obj, err := cs.lhClient.LonghornV1beta2().Settings(cs.lhNamespace).Get(ctx, string(name), metav1.GetOptions{})
+	if err != nil {
+		return -1, err
+	}
+	value, err := strconv.ParseInt(obj.Value, 10, 64)
+	if err != nil {
+		return -1, err
 	}
 	return value, nil
 }
