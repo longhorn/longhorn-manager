@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/bits"
 	"math/rand"
 	"net"
 	"net/url"
@@ -587,69 +586,6 @@ func (s *DataStore) ValidateSetting(name, value string) (err error) {
 			}
 		}
 
-	case types.SettingNameDataEngineCPUMask:
-		definition, ok := types.GetSettingDefinition(types.SettingNameDataEngineCPUMask)
-		if !ok {
-			return fmt.Errorf("setting %v is not found", types.SettingNameDataEngineCPUMask)
-		}
-		var values map[longhorn.DataEngineType]any
-		if types.IsJSONFormat(value) {
-			values, err = types.ParseDataEngineSpecificSetting(definition, value)
-		} else {
-			values, err = types.ParseSettingSingleValue(definition, value)
-		}
-		if err != nil {
-			return errors.Wrapf(err, "failed to parse value %v for setting %v", value, types.SettingNameDataEngineCPUMask)
-		}
-
-		v2DataEngineEnabled, err := s.GetSettingAsBool(types.SettingNameV2DataEngine)
-		if err != nil {
-			return errors.Wrapf(err, "failed to get setting %v for setting validation", types.SettingNameV2DataEngine)
-		}
-		if !v2DataEngineEnabled {
-			logrus.Infof("Skipping validating setting %v since v2 data engine is not enabled", types.SettingNameDataEngineCPUMask)
-			return nil
-		}
-
-		for dataEngine, raw := range values {
-			cpuMask, ok := raw.(string)
-			if !ok {
-				return fmt.Errorf("setting %v value %v is not a string for data engine %v", types.SettingNameDataEngineCPUMask, raw, dataEngine)
-			}
-
-			lhNodes, err := s.ListNodesRO()
-			if err != nil {
-				return errors.Wrapf(err, "failed to list nodes for %v setting validation for data engine %v", types.SettingNameDataEngineCPUMask, dataEngine)
-			}
-
-			// Ensure if the CPU mask can be satisfied on each node
-			for _, lhNode := range lhNodes {
-				if isUnavailable, err := s.IsNodeDownOrDeletedOrMissingManager(lhNode.Name); err != nil {
-					return errors.Wrapf(err, "failed to check if node %v is down or deleted", lhNode.Name)
-				} else if isUnavailable {
-					continue
-				}
-
-				kubeNode, err := s.GetKubernetesNodeRO(lhNode.Name)
-				if err != nil {
-					if apierrors.IsNotFound(err) {
-						logrus.Warnf("Kubernetes node %s not found, skipping CPU mask validation for this node for data engine %v", lhNode.Name, dataEngine)
-						continue
-					}
-					return errors.Wrapf(err, "failed to get Kubernetes node %s for %v setting validation for data engine %v", lhNode.Name, types.SettingNameDataEngineCPUMask, dataEngine)
-				}
-
-				if val, ok := kubeNode.Labels[types.NodeDisableV2DataEngineLabelKey]; ok && val == types.NodeDisableV2DataEngineLabelKeyTrue {
-					// V2 data engine is disabled on this node, don't worry about cpu mask
-					continue
-				}
-
-				if err := s.ValidateCPUMask(kubeNode, cpuMask); err != nil {
-					return err
-				}
-			}
-		}
-
 	case types.SettingNameAutoCleanupSystemGeneratedSnapshot:
 		disablePurgeValue, err := s.GetSettingAsBool(types.SettingNameDisableSnapshotPurge)
 		if err != nil {
@@ -790,51 +726,6 @@ func (s *DataStore) ValidateV2DataEngineEnabled(dataEngineEnabled bool) (ims []*
 	return
 }
 
-func (s *DataStore) ValidateCPUMask(kubeNode *corev1.Node, value string) error {
-	if value == "" {
-		return fmt.Errorf("failed to validate CPU mask: cannot be empty")
-	}
-
-	// CPU mask must start with 0x
-	cpuMaskRegex := regexp.MustCompile(`^0x[1-9a-fA-F][0-9a-fA-F]*$`)
-	if !cpuMaskRegex.MatchString(value) {
-		return fmt.Errorf("invalid CPU mask: %s", value)
-	}
-
-	maskValue, err := strconv.ParseUint(value[2:], 16, 64) // skip 0x prefix
-	if err != nil {
-		return errors.Wrapf(err, "failed to parse CPU mask %v", value)
-	}
-
-	// Validate the mask value is not larger than the number of available CPUs
-	numCPUs, err := s.getMinNumCPUsFromAvailableNodes()
-	if err != nil {
-		return errors.Wrap(err, "failed to get minimum number of CPUs for CPU mask validation")
-	}
-
-	maxCPUMaskValue := (1 << numCPUs) - 1
-	if maskValue > uint64(maxCPUMaskValue) {
-		return fmt.Errorf("CPU mask exceeds the maximum allowed value %v for the current system: %s", maxCPUMaskValue, value)
-	}
-
-	// CPU mask currently only supports v2 data engine
-	guaranteedInstanceManagerCPUInPercentage, err := s.GetSettingAsFloatByDataEngine(types.SettingNameGuaranteedInstanceManagerCPU, longhorn.DataEngineTypeV2)
-	if err != nil {
-		return errors.Wrapf(err, "failed to get %v setting for guaranteed instance manager CPU validation for data engine %v",
-			types.SettingNameGuaranteedInstanceManagerCPU, longhorn.DataEngineTypeV2)
-	}
-
-	guaranteedInstanceManagerCPU := float64(kubeNode.Status.Allocatable.Cpu().MilliValue()) * guaranteedInstanceManagerCPUInPercentage / 100
-
-	numMilliCPUsRequrestedByMaskValue := calculateMilliCPUs(maskValue)
-	if numMilliCPUsRequrestedByMaskValue > int(guaranteedInstanceManagerCPU) {
-		return fmt.Errorf("number of CPUs (%v) requested by CPU mask (%v) is larger than the %v setting value (%v)",
-			numMilliCPUsRequrestedByMaskValue, value, types.SettingNameGuaranteedInstanceManagerCPU, guaranteedInstanceManagerCPU)
-	}
-
-	return nil
-}
-
 func (s *DataStore) getMinNumCPUsFromAvailableNodes() (int64, error) {
 	kubeNodes, err := s.ListKubeNodesRO()
 	if err != nil {
@@ -871,16 +762,6 @@ func (s *DataStore) getMinNumCPUsFromAvailableNodes() (int64, error) {
 	}
 
 	return minNumCPUs, nil
-}
-
-func calculateMilliCPUs(mask uint64) int {
-	// Count the number of set bits in the mask
-	setBits := bits.OnesCount64(mask)
-
-	// Each set bit represents 1000 milliCPUs
-	numMilliCPUsRequestedByMaskValue := setBits * 1000
-
-	return numMilliCPUsRequestedByMaskValue
 }
 
 func (s *DataStore) AreAllRWXVolumesDetached() (bool, error) {
