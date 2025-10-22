@@ -447,14 +447,6 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 	if e.Spec.VolumeName == "" || e.Spec.NodeID == "" {
 		return nil, fmt.Errorf("missing parameters for engine instance creation: %v", e)
 	}
-	isReady, err := ec.ds.CheckDataEngineImageReadiness(e.Spec.Image, e.Spec.DataEngine, e.Spec.NodeID)
-	if err != nil {
-		return nil, err
-	}
-	if !isReady {
-		return nil, fmt.Errorf("data engine %v image %v is not ready on node %v for engine %s instance creation", e.Spec.DataEngine, e.Spec.Image, e.Spec.NodeID, e.Name)
-	}
-
 	frontend := e.Spec.Frontend
 	if e.Spec.DisableFrontend {
 		frontend = longhorn.VolumeFrontendEmpty
