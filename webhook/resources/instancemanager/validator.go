@@ -79,16 +79,5 @@ func (i *instanceManagerValidator) validate(im *longhorn.InstanceManager) error 
 		return fmt.Errorf("data engine for instanceManager %s is not set", im.Name)
 	}
 
-	if im.Spec.DataEngineSpec.V2.CPUMask != "" {
-		kubeNode, err := i.ds.GetKubernetesNodeRO(im.Spec.NodeID)
-		if err != nil {
-			return werror.NewInvalidError(fmt.Sprintf("failed to get kube node %s: %v", im.Spec.NodeID, err), "")
-		}
-
-		if err := i.ds.ValidateCPUMask(kubeNode, im.Spec.DataEngineSpec.V2.CPUMask); err != nil {
-			return werror.NewInvalidError(err.Error(), "")
-		}
-	}
-
 	return nil
 }
