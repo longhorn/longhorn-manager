@@ -15,6 +15,7 @@ import (
 	lhns "github.com/longhorn/go-common-libs/ns"
 	lhtypes "github.com/longhorn/go-common-libs/types"
 
+	imapi "github.com/longhorn/longhorn-instance-manager/pkg/api"
 	spdkdisk "github.com/longhorn/longhorn-spdk-engine/pkg/spdk"
 
 	"github.com/longhorn/longhorn-manager/datastore"
@@ -90,7 +91,7 @@ func getBlockDiskHealth(diskName, diskPath string, diskDriver longhorn.DiskDrive
 		return getHealthDataFromBlockDevice(diskName, diskPath, lastCollectedAt, logger)
 	case longhorn.DiskDriverNvme:
 		// NVME driver claims device exclusively, use SPDK health info instead
-		return nil, lastCollectedAt, errors.New("not implemented")
+		return getHealthDataFromControllerHealthInfo(diskName, diskPath, client, lastCollectedAt, logger)
 	default:
 		return nil, lastCollectedAt, fmt.Errorf("unknown block disk driver %v", diskDriver)
 	}
@@ -114,6 +115,163 @@ func getHealthDataFromBlockDevice(diskName, diskPath string, lastCollectedAt tim
 	}
 
 	return healthData, time.Now(), nil
+}
+
+func getHealthDataFromControllerHealthInfo(diskName, diskPath string, client *DiskServiceClient, lastCollectedAt time.Time, logger logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error) {
+	if client == nil || client.c == nil {
+		return nil, lastCollectedAt, errors.New("disk service client is nil")
+	}
+
+	log := logger.WithFields(logrus.Fields{
+		"diskName": diskName,
+		"diskPath": diskPath,
+	})
+	log.Debugf("Collecting controller health info for NVME disk")
+
+	// Get health data from SPDK via disk service
+	health, err := client.c.DiskHealthGet(string(longhorn.DiskTypeBlock), diskName, diskPath, string(longhorn.DiskDriverNvme))
+	if err != nil {
+		log.WithError(err).Warnf("Failed to get controller health info")
+		return nil, lastCollectedAt, err
+	}
+
+	// Map SPDK NVMe health data to SmartData format
+	// Clamp temperature to non-negative and drop fractional part for schema compatibility
+	temp := health.TemperatureCelsius
+	if temp < 0 {
+		temp = 0
+	}
+	healthData := map[string]longhorn.HealthData{
+		diskName: {
+			Source:          longhorn.HealthDataSourceSPDK,
+			ModelName:       health.ModelNumber,
+			SerialNumber:    health.SerialNumber,
+			FirmwareVersion: health.FirmwareRevision,
+			DiskName:        diskName,
+			DiskType:        "nvme",
+			Temperature:     uint8(temp),
+			HealthStatus:    determineHealthStatus(health),
+			Attributes:      convertNvmeHealthToAttributes(health),
+		},
+	}
+
+	return healthData, time.Now(), nil
+}
+
+// determineHealthStatus evaluates NVMe health data to determine overall health status
+func determineHealthStatus(health *imapi.DiskHealth) longhorn.HealthDataHealthStatus {
+	// Critical warning bits indicate various health issues
+	if health.CriticalWarning != 0 {
+		return longhorn.HealthDataStatusFailed
+	}
+
+	// Check available spare threshold
+	if health.AvailableSparePercentage < health.AvailableSpareThresholdPercentage {
+		return longhorn.HealthDataStatusFailed
+	}
+
+	// Check media errors
+	if health.MediaErrors > 0 {
+		return longhorn.HealthDataStatusWarning
+	}
+
+	return longhorn.HealthDataStatusPassed
+}
+
+// convertNvmeHealthToAttributes converts NVMe health metrics to SMART attribute format
+func convertNvmeHealthToAttributes(health *imapi.DiskHealth) []*longhorn.HealthAttribute {
+	// TemperatureCelsius from SPDK is a float64 and may be negative when unavailable.
+	// The CRD schema expects an integer (int64) encoded value for RawValue. Casting a
+	// negative float directly to uint64 would overflow into a huge 1844.. number, which
+	// then fails Kubernetes validation (reported as type number vs integer). We clamp
+	// negatives to 0 and truncate fractional values toward zero.
+	tempVal := health.TemperatureCelsius
+	if tempVal < 0 {
+		tempVal = 0
+	}
+	temperatureCelsius := uint64(tempVal)
+
+	logrus.Infof("Converting NVMe health data to SMART attributes: %+v", health)
+
+	attributes := []*longhorn.HealthAttribute{
+		{
+			Name:     "Critical Warning",
+			RawValue: uint64(health.CriticalWarning),
+		},
+		{
+			Name:     "Temperature Celsius",
+			RawValue: temperatureCelsius,
+			RawString: func() string {
+				if health.TemperatureCelsius < 0 {
+					return "unknown"
+				}
+				// We intentionally drop any fractional part.
+				return fmt.Sprintf("%d Celsius", temperatureCelsius)
+			}(),
+		},
+		{
+			Name:     "Available Spare Percentage",
+			RawValue: uint64(health.AvailableSparePercentage),
+		},
+		{
+			Name:     "Available Spare Threshold Percentage",
+			RawValue: uint64(health.AvailableSpareThresholdPercentage),
+		},
+		{
+			Name:     "Percentage Used",
+			RawValue: uint64(health.PercentageUsed),
+		},
+		{
+			Name:     "Data Units Read",
+			RawValue: health.DataUnitsRead,
+		},
+		{
+			Name:     "Data Units Written",
+			RawValue: health.DataUnitsWritten,
+		},
+		{
+			Name:     "Host Read Commands",
+			RawValue: health.HostReadCommands,
+		},
+		{
+			Name:     "Host Write Commands",
+			RawValue: health.HostWriteCommands,
+		},
+		{
+			Name:     "Controller Busy Time",
+			RawValue: health.ControllerBusyTime,
+		},
+		{
+			Name:     "Power Cycles",
+			RawValue: health.PowerCycles,
+		},
+		{
+			Name:     "Power On Hours",
+			RawValue: health.PowerOnHours,
+		},
+		{
+			Name:     "Unsafe Shutdowns",
+			RawValue: health.UnsafeShutdowns,
+		},
+		{
+			Name:     "Media Errors",
+			RawValue: health.MediaErrors,
+		},
+		{
+			Name:     "Number of Error Log Entries",
+			RawValue: health.NumErrLogEntries,
+		},
+		{
+			Name:     "Warning Temperature Time Minutes",
+			RawValue: health.WarningTemperatureTimeMinutes,
+		},
+		{
+			Name:     "Critical Composite Temperature Time Minutes",
+			RawValue: health.CriticalCompositeTemperatureTimeMinutes,
+		},
+	}
+
+	return attributes
 }
 
 // getDiskConfig returns the disk config of the given directory

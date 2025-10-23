@@ -73,6 +73,10 @@ func (s *DiskService) DiskDelete(diskType, diskName, diskUUID, diskPath, diskDri
 	return s.grpcClient.DiskDelete(diskType, diskName, diskUUID, diskPath, diskDriver)
 }
 
+func (s *DiskService) DiskHealthGet(diskType, diskName, diskPath, diskDriver string) (*imapi.DiskHealth, error) {
+	return s.grpcClient.DiskHealthGet(diskType, diskName, diskPath, diskDriver)
+}
+
 func (s *DiskService) DiskReplicaInstanceList(diskType, diskName, diskDriver string) (map[string]*imapi.ReplicaStorageInstance, error) {
 	return s.grpcClient.DiskReplicaInstanceList(diskType, diskName, diskDriver)
 }
