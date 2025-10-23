@@ -131,7 +131,7 @@ const (
 	SettingNameRemoveSnapshotsDuringFilesystemTrim                      = SettingName("remove-snapshots-during-filesystem-trim")
 	SettingNameFastReplicaRebuildEnabled                                = SettingName("fast-replica-rebuild-enabled")
 	SettingNameReplicaFileSyncHTTPClientTimeout                         = SettingName("replica-file-sync-http-client-timeout")
-	SettingNameLongGPRCTimeOut                                          = SettingName("long-grpc-timeout")
+	SettingNameLongGRPCTimeOut                                          = SettingName("long-grpc-timeout")
 	SettingNameBackupCompressionMethod                                  = SettingName("backup-compression-method")
 	SettingNameBackupConcurrentLimit                                    = SettingName("backup-concurrent-limit")
 	SettingNameRestoreConcurrentLimit                                   = SettingName("restore-concurrent-limit")
@@ -248,7 +248,7 @@ var (
 		SettingNameRemoveSnapshotsDuringFilesystemTrim,
 		SettingNameFastReplicaRebuildEnabled,
 		SettingNameReplicaFileSyncHTTPClientTimeout,
-		SettingNameLongGPRCTimeOut,
+		SettingNameLongGRPCTimeOut,
 		SettingNameBackupCompressionMethod,
 		SettingNameBackupConcurrentLimit,
 		SettingNameRestoreConcurrentLimit,
@@ -394,7 +394,7 @@ var (
 		SettingNameRemoveSnapshotsDuringFilesystemTrim:                      SettingDefinitionRemoveSnapshotsDuringFilesystemTrim,
 		SettingNameFastReplicaRebuildEnabled:                                SettingDefinitionFastReplicaRebuildEnabled,
 		SettingNameReplicaFileSyncHTTPClientTimeout:                         SettingDefinitionReplicaFileSyncHTTPClientTimeout,
-		SettingNameLongGPRCTimeOut:                                          SettingDefinitionLongGPRCTimeOut,
+		SettingNameLongGRPCTimeOut:                                          SettingDefinitionLongGRPCTimeOut,
 		SettingNameBackupCompressionMethod:                                  SettingDefinitionBackupCompressionMethod,
 		SettingNameBackupConcurrentLimit:                                    SettingDefinitionBackupConcurrentLimit,
 		SettingNameRestoreConcurrentLimit:                                   SettingDefinitionRestoreConcurrentLimit,
@@ -1423,7 +1423,7 @@ var (
 		},
 	}
 
-	SettingDefinitionLongGPRCTimeOut = SettingDefinition{
+	SettingDefinitionLongGRPCTimeOut = SettingDefinition{
 		DisplayName:        "Long gRPC Timeout",
 		Description:        "Number of seconds that Longhorn allows for the completion of replica rebuilding and snapshot cloning operations.",
 		Category:           SettingCategoryGeneral,

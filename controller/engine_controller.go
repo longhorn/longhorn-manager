@@ -1649,7 +1649,7 @@ func cloneSnapshot(engine *longhorn.Engine, engineClientProxy engineapi.EngineCl
 		return err
 	}
 
-	grpcTimeoutSeconds, err := ds.GetSettingAsInt(types.SettingNameLongGPRCTimeOut)
+	grpcTimeoutSeconds, err := ds.GetSettingAsInt(types.SettingNameLongGRPCTimeOut)
 	if err != nil {
 		return err
 	}
@@ -1833,9 +1833,9 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 			return
 		}
 
-		grpcTimeoutSeconds, err := ec.ds.GetSettingAsInt(types.SettingNameLongGPRCTimeOut)
+		grpcTimeoutSeconds, err := ec.ds.GetSettingAsInt(types.SettingNameLongGRPCTimeOut)
 		if err != nil {
-			log.WithError(err).Errorf("Failed to get %v setting", types.SettingNameLongGPRCTimeOut)
+			log.WithError(err).Errorf("Failed to get %v setting", types.SettingNameLongGRPCTimeOut)
 			return
 		}
 
