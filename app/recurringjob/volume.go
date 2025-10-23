@@ -210,6 +210,10 @@ func (job *VolumeJob) doSnapshot() (err error) {
 	if err != nil {
 		return errors.Wrapf(err, "could not get volume %v", volumeName)
 	}
+	if volume == nil {
+		job.logger.Infof("Volume %v not found during snapshot creation, skipping", volumeName)
+		return nil
+	}
 
 	// get all snapshot CR belong to this recurring job
 	snapshotCRList, err := job.api.Volume.ActionSnapshotCRList(volume)
@@ -295,6 +299,10 @@ func (job *VolumeJob) doSnapshotCleanup(backupDone bool) (err error) {
 	if err != nil {
 		return errors.Wrapf(err, "could not get volume %v", volumeName)
 	}
+	if volume == nil {
+		job.logger.Infof("Volume %v not found during snapshot cleanup, skipping", volumeName)
+		return nil
+	}
 
 	collection, err := job.api.Volume.ActionSnapshotCRList(volume)
 	if err != nil {
@@ -346,9 +354,14 @@ func (job *VolumeJob) purgeSnapshots(volume *longhornclient.Volume, volumeAPI lo
 
 	for range ticker.C {
 		// Retrieve the latest volume state
-		volume, err := volumeAPI.ById(volume.Name)
+		volumeName := volume.Name
+		volume, err := volumeAPI.ById(volumeName)
 		if err != nil {
 			return err
+		}
+		if volume == nil {
+			job.logger.Infof("Volume %v not found during snapshbot purge, skipping", volumeName)
+			return nil
 		}
 
 		// Check if snapshot purge is completed
@@ -446,6 +459,10 @@ func (job *VolumeJob) doRecurringBackup() (err error) {
 	if err != nil {
 		return errors.Wrapf(err, "could not get volume %v", job.volumeName)
 	}
+	if volume == nil {
+		job.logger.Infof("Volume %v not found during backup, skipping", job.volumeName)
+		return nil
+	}
 
 	if err := job.doSnapshot(); err != nil {
 		return err
@@ -482,6 +499,10 @@ func (job *VolumeJob) doRecurringBackup() (err error) {
 		volume, err := job.api.Volume.ById(job.volumeName)
 		if err != nil {
 			return err
+		}
+		if volume == nil {
+			job.logger.Infof("Volume %v not found during waiting for backup complete, skipping", job.volumeName)
+			return nil
 		}
 
 		var info *longhornclient.BackupStatus
@@ -593,6 +614,10 @@ func (job *VolumeJob) waitForBackupProcessStart(timeout int) error {
 		if err != nil {
 			return err
 		}
+		if volume == nil {
+			job.logger.Infof("Volume %v not found during waiting for backup start, skipping", job.volumeName)
+			return nil
+		}
 
 		if volume.BackupStatus == nil {
 			continue
@@ -618,6 +643,9 @@ func (job *VolumeJob) getLastBackup() (*longhornclient.Backup, error) {
 	volume, err := job.api.Volume.ById(job.volumeName)
 	if err != nil {
 		return nil, err
+	}
+	if volume == nil {
+		return nil, fmt.Errorf("volume %v not found", job.volumeName)
 	}
 	if volume.LastBackup == "" {
 		return nil, nil
