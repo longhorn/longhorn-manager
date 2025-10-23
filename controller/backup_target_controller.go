@@ -877,12 +877,16 @@ func (btc *BackupTargetController) isResponsibleFor(bt *longhorn.BackupTarget, d
 		return false, err
 	}
 
-	instanceManager, err := btc.ds.GetRunningInstanceManagerByNodeRO(btc.controllerID, "")
-	if err != nil {
-		return false, err
-	}
-	if instanceManager == nil {
-		return false, errors.New("failed to get running instance manager")
+	// Avoid the situation where the instance manager pods are already deleted but the BackupTarget is still there, and try to delete the BackupTarget.
+	// For example, uninstall Longhorn after all data engines are disabled.
+	if bt.DeletionTimestamp.IsZero() {
+		instanceManager, err := btc.ds.GetRunningInstanceManagerByNodeRO(btc.controllerID, "")
+		if err != nil {
+			return false, err
+		}
+		if instanceManager == nil {
+			return false, errors.New("failed to get running instance manager")
+		}
 	}
 
 	isPreferredOwner := currentNodeEngineAvailable && isResponsible
