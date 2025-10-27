@@ -77,6 +77,7 @@ const (
 	SettingNameStorageReservedPercentageForDefaultDisk                  = SettingName("storage-reserved-percentage-for-default-disk")
 	SettingNameUpgradeChecker                                           = SettingName("upgrade-checker")
 	SettingNameUpgradeResponderURL                                      = SettingName("upgrade-responder-url")
+	SettingNameManagerURL                                               = SettingName("manager-url")
 	SettingNameAllowCollectingLonghornUsage                             = SettingName("allow-collecting-longhorn-usage-metrics")
 	SettingNameCurrentLonghornVersion                                   = SettingName("current-longhorn-version")
 	SettingNameLatestLonghornVersion                                    = SettingName("latest-longhorn-version")
@@ -348,6 +349,7 @@ var (
 		SettingNameStorageReservedPercentageForDefaultDisk:                  SettingDefinitionStorageReservedPercentageForDefaultDisk,
 		SettingNameUpgradeChecker:                                           SettingDefinitionUpgradeChecker,
 		SettingNameUpgradeResponderURL:                                      SettingDefinitionUpgradeResponderURL,
+		SettingNameManagerURL:                                               SettingDefinitionManagerURL,
 		SettingNameAllowCollectingLonghornUsage:                             SettingDefinitionAllowCollectingLonghornUsageMetrics,
 		SettingNameCurrentLonghornVersion:                                   SettingDefinitionCurrentLonghornVersion,
 		SettingNameLatestLonghornVersion:                                    SettingDefinitionLatestLonghornVersion,
@@ -694,6 +696,17 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            "https://longhorn-upgrade-responder.rancher.io/v1/checkupgrade",
+	}
+
+	SettingDefinitionManagerURL = SettingDefinition{
+		DisplayName:        "Manager URL",
+		Description:        "The external URL to access Longhorn Manager API. When set, this URL will be used in API responses (actions and links fields) instead of the internal pod IP. This is useful when accessing the API through Ingress or Gateway API HTTPRoute. Format: scheme://host[:port] (e.g., https://longhorn.example.com or https://longhorn.example.com:8443). Leave empty to use default behavior.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "",
 	}
 
 	SettingDefinitionAllowCollectingLonghornUsageMetrics = SettingDefinition{
