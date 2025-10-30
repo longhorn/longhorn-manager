@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
 	"github.com/longhorn/go-spdk-helper/pkg/types"
@@ -17,31 +19,32 @@ import (
 )
 
 func GetDevNameFromBDF(bdf string) (string, error) {
-	ne, err := helperutil.NewExecutor(commontypes.ProcDirectory)
+	const sysBlock = "/sys/block"
+
+	entries, err := os.ReadDir(sysBlock)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to create executor")
+		return "", errors.Wrapf(err, "failed to read %v", sysBlock)
 	}
 
-	cmdArgs := []string{"-n", "--nodeps", "--output", "NAME"}
-	output, err := ne.Execute(nil, "lsblk", cmdArgs, types.ExecuteTimeout)
-	if err != nil {
-		return "", errors.Wrap(err, "failed to list block devices")
-	}
+	re := regexp.MustCompile(`/` + regexp.QuoteMeta(bdf) + `(/|$)`)
 
-	devices := strings.Fields(string(output))
-	for _, dev := range devices {
-		link, err := os.Readlink("/sys/block/" + dev)
+	for _, entry := range entries {
+		dev := entry.Name()
+		devPath := filepath.Join(sysBlock, dev, "device")
+
+		absPath, err := filepath.EvalSymlinks(devPath)
 		if err != nil {
-			logrus.WithError(err).Warnf("Failed to read link for %s", dev)
+			// Ignore devices without a device symlink (like virtual devices: loop, ramdisk)
 			continue
 		}
 
-		if strings.Contains(link, bdf) {
+		logrus.Infof("Checking %s: resolved path %s", dev, absPath)
+		if re.MatchString(absPath) {
 			return dev, nil
 		}
 	}
 
-	return "", fmt.Errorf("failed to find device for BDF %s", bdf)
+	return "", fmt.Errorf("device not found for BDF %s", bdf)
 }
 
 type BlockDevice struct {

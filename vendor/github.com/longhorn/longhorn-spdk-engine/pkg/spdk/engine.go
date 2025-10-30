@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 	"go.uber.org/multierr"
 
@@ -2255,7 +2255,7 @@ func (e *Engine) SnapshotPurge(spdkClient *spdkclient.Client) (err error) {
 }
 
 func (e *Engine) SnapshotHash(spdkClient *spdkclient.Client, snapshotName string, rehash bool) (err error) {
-	e.log.Infof("Hashing snapshot")
+	e.log.Infof("Hashing snapshot %s, rehash %v", snapshotName, rehash)
 
 	_, err = e.snapshotOperation(spdkClient, snapshotName, SnapshotOperationHash, rehash)
 	return err
@@ -2391,12 +2391,6 @@ func (e *Engine) snapshotOperationPreCheckWithoutLock(replicaClients map[string]
 			e.checkAndUpdateInfoFromReplicaNoLock()
 			if len(e.SnapshotMap[snapshotName].Children) > 1 {
 				return "", fmt.Errorf("engine %s cannot delete snapshot %s since it contains multiple children %+v", e.Name, snapshotName, e.SnapshotMap[snapshotName].Children)
-			}
-			// TODO: SPDK allows deleting the parent of the volume head. To make the behavior consistent between v1 and v2 engines, we manually disable if for now.
-			for childName := range e.SnapshotMap[snapshotName].Children {
-				if childName == types.VolumeHead {
-					return "", fmt.Errorf("engine %s cannot delete snapshot %s since it is the parent of volume head", e.Name, snapshotName)
-				}
 			}
 		case SnapshotOperationRevert:
 			if snapshotName == "" {

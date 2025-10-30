@@ -142,8 +142,6 @@ github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250824.0.20250916035
 github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250824.0.20250916035906-698d8ed06d8d/go.mod h1:YT+dhFsUVMZ6zNMhKIaXbH3HpBi97mnzAzKLLshtRPM=
 github.com/longhorn/longhorn-share-manager v1.9.2 h1:qNISzuGG8JLjftq9Ob2dt/5MJ/0jbdqtTPSmZdcGiVg=
 github.com/longhorn/longhorn-share-manager v1.9.2/go.mod h1:NYJucwsOy3r+0DyoRdI9/osFyetBiOjZODZnRVgwijg=
-github.com/longhorn/longhorn-spdk-engine v0.0.0-20250916034519-7fdbb7b284f7 h1:SeFABE4QbSuQP1vIgaFBk6Hc7RD48c/qO+sDh4j6AWE=
-github.com/longhorn/longhorn-spdk-engine v0.0.0-20250916034519-7fdbb7b284f7/go.mod h1:K+ZIh0LEA03TQ8mBPv+YabbWdNVazCACHYY9RBSdqV0=
 github.com/longhorn/types v0.0.0-20251019113838-3455d9c2f5ca h1:PloBEw1MQHpbDzlg1IWMbGJOz0L2F7WzRXrAXwFEV6g=
 github.com/longhorn/types v0.0.0-20251019113838-3455d9c2f5ca/go.mod h1:WHi/J4TaEYhP5+34CAa+WkmICsnQ/6XO+lkU1dZqWZQ=
 github.com/mailru/easyjson v0.9.0 h1:PrnmzHw7262yW8sTBwxi1PdJA3Iw/EKBa8psRf7d9a4=
@@ -252,6 +250,8 @@ github.com/x448/float16 v0.8.4 h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=
 github.com/x448/float16 v0.8.4/go.mod h1:14CWIYCyZA/cWjXOioeEpHeN/83MdbZDRQHoFcYsOfg=
 github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
+github.com/yulken/longhorn-spdk-engine v0.0.0-e05509dbff19ffa9b4b48ceb3831654c1e44f899 h1:WeTZ9YWA9aHG8avVR9LK5PCEbC0rK0vG+bkhmTQM4BY=
+github.com/yulken/longhorn-spdk-engine v0.0.0-e05509dbff19ffa9b4b48ceb3831654c1e44f899/go.mod h1:GbQfjSCjLI1iAzTWlEEdVYKJkxo4Ya7p8tfBRiEUVxM=
 github.com/yusufpapurcu/wmi v1.2.4 h1:zFUKzehAFReQwLys1b/iSMl+JQGSCSjtVqQn9bBrPo0=
 github.com/yusufpapurcu/wmi v1.2.4/go.mod h1:SBZ9tNy3G9/m5Oi98Zks0QjeHVDvuK0qfxQmPyzfmi0=
 go.opentelemetry.io/auto/sdk v1.1.0 h1:cH53jehLUN6UFLY71z+NDOiNJqDdPRaXzTel0sJySYA=
