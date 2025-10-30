@@ -86,6 +86,8 @@ const (
 	SettingNameDefaultLonghornStaticStorageClass                        = SettingName("default-longhorn-static-storage-class")
 	SettingNameTaintToleration                                          = SettingName("taint-toleration")
 	SettingNameSystemManagedComponentsNodeSelector                      = SettingName("system-managed-components-node-selector")
+	SettingNameCSISidecarComponentTaintToleration                       = SettingName("csi-sidecar-taint-toleration")
+	SettingNameSystemManagedCSISidecarComponentsNodeSelector            = SettingName("system-managed-csi-sidecar-components-node-selector")
 	SettingNameCRDAPIVersion                                            = SettingName("crd-api-version")
 	SettingNameAutoSalvage                                              = SettingName("auto-salvage")
 	SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly              = SettingName("auto-delete-pod-when-volume-detached-unexpectedly")
@@ -202,6 +204,8 @@ var (
 		SettingNameDefaultLonghornStaticStorageClass,
 		SettingNameTaintToleration,
 		SettingNameSystemManagedComponentsNodeSelector,
+		SettingNameCSISidecarComponentTaintToleration,
+		SettingNameSystemManagedCSISidecarComponentsNodeSelector,
 		SettingNameCRDAPIVersion,
 		SettingNameAutoSalvage,
 		SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly,
@@ -353,6 +357,8 @@ var (
 		SettingNameDefaultLonghornStaticStorageClass:                        SettingDefinitionDefaultLonghornStaticStorageClass,
 		SettingNameTaintToleration:                                          SettingDefinitionTaintToleration,
 		SettingNameSystemManagedComponentsNodeSelector:                      SettingDefinitionSystemManagedComponentsNodeSelector,
+		SettingNameCSISidecarComponentTaintToleration:                       SettingDefinitionCSISidecarComponentTaintToleration,
+		SettingNameSystemManagedCSISidecarComponentsNodeSelector:            SettingDefinitionSystemManagedCSISidecarComponentsNodeSelector,
 		SettingNameCRDAPIVersion:                                            SettingDefinitionCRDAPIVersion,
 		SettingNameAutoSalvage:                                              SettingDefinitionAutoSalvage,
 		SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly:              SettingDefinitionAutoDeletePodWhenVolumeDetachedUnexpectedly,
@@ -784,7 +790,7 @@ var (
 		DisplayName: "Kubernetes Taint Toleration",
 		Description: "If you want to dedicate nodes to just store Longhorn replicas and reject other general workloads, you can set tolerations for **all** Longhorn components and add taints to the nodes dedicated for storage. " +
 			"Longhorn system contains user deployed components (e.g, Longhorn manager, Longhorn driver, Longhorn UI) and system managed components (e.g, instance manager, engine image, CSI driver, etc.) " +
-			"This setting only sets taint tolerations for system managed components. " +
+			"This setting only sets taint tolerations for all system managed components except for Kubernetes CSI sidecar components. " +
 			"Depending on how you deployed Longhorn, you need to set taint tolerations for user deployed components in Helm chart or deployment YAML file. " +
 			"All Longhorn volumes should be detached before modifying toleration settings. " +
 			"We recommend setting tolerations during Longhorn deployment because the Longhorn system cannot be operated during the update. " +
@@ -801,11 +807,50 @@ var (
 
 	SettingDefinitionSystemManagedComponentsNodeSelector = SettingDefinition{
 		DisplayName: "System Managed Components Node Selector",
+		Description: "If you want to restrict Longhorn components to only run on particular set of nodes, you can set node selector for **all** Longhorn components except for . " +
+			"Longhorn system contains user deployed components (e.g, Longhorn manager, Longhorn driver, Longhorn UI) and system managed components (e.g, instance manager, engine image, CSI driver, etc.) " +
+			"You must follow the below order when set the node selector:\n\n" +
+			"1. Set node selector for user deployed components in Helm chart or deployment YAML file depending on how you deployed Longhorn.\n\n" +
+			"2. Set node selector for system managed Kubernetes CSI components in system-managed-csi-sidecar-components-node-selector. \n\n" +
+			"3. Set node selector for other system managed components in here.\n\n" +
+			"All Longhorn volumes should be detached before modifying node selector settings. " +
+			"We recommend setting node selector during Longhorn deployment because the Longhorn system cannot be operated during the update. " +
+			"Multiple label key-value pairs are separated by semicolon. For example: \n\n" +
+			"* `label-key1=label-value1; label-key2=label-value2` \n\n" +
+			"Please see the documentation at https://longhorn.io for more detailed instructions about changing node selector",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+	}
+	SettingDefinitionCSISidecarComponentTaintToleration = SettingDefinition{
+		DisplayName: "Kubernetes Taint Toleration for Kubernetes CSI sidecar components",
+		Description: "If you want to dedicate nodes to just store Longhorn replicas and reject other general workloads, you can set tolerations for **all** Longhorn components and add taints to the nodes dedicated for storage. " +
+			"Longhorn system contains user deployed components (e.g, Longhorn manager, Longhorn driver, Longhorn UI) and system managed components (e.g, instance manager, engine image, CSI driver, etc.) " +
+			"This setting only sets taint tolerations for system managed Kubernetes CSI sidecar components. " +
+			"Depending on how you deployed Longhorn, you need to set taint tolerations for user deployed components in Helm chart or deployment YAML file. " +
+			"All Longhorn volumes should be detached before modifying toleration settings. " +
+			"We recommend setting tolerations during Longhorn deployment because the Longhorn system cannot be operated during the update. " +
+			"Multiple tolerations can be set here, and these tolerations are separated by semicolon. For example: \n\n" +
+			"* `key1=value1:NoSchedule; key2:NoExecute:` this toleration tolerates everything because an empty key with operator `Exists` matches all keys, values and effects \n\n" +
+			"* `key1=value1:`  this toleration has empty effect. It matches all effects with key `key1` \n\n" +
+			"Because `kubernetes.io` is used as the key of all Kubernetes default tolerations, it should not be used in the toleration settings.\n\n",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+	}
+
+	SettingDefinitionSystemManagedCSISidecarComponentsNodeSelector = SettingDefinition{
+		DisplayName: "System Managed Components Node Selector for Kubernetes CSI sidecar components",
 		Description: "If you want to restrict Longhorn components to only run on particular set of nodes, you can set node selector for **all** Longhorn components. " +
 			"Longhorn system contains user deployed components (e.g, Longhorn manager, Longhorn driver, Longhorn UI) and system managed components (e.g, instance manager, engine image, CSI driver, etc.) " +
 			"You must follow the below order when set the node selector:\n\n" +
 			"1. Set node selector for user deployed components in Helm chart or deployment YAML file depending on how you deployed Longhorn.\n\n" +
-			"2. Set node selector for system managed components in here.\n\n" +
+			"2. Set node selector for system managed Kubernetes CSI sidecar components in here.\n\n" +
+			"3. Set node selector for other system managed components in system-managed-components-node-selector.\n\n" +
 			"All Longhorn volumes should be detached before modifying node selector settings. " +
 			"We recommend setting node selector during Longhorn deployment because the Longhorn system cannot be operated during the update. " +
 			"Multiple label key-value pairs are separated by semicolon. For example: \n\n" +
@@ -2527,6 +2572,15 @@ func validateSettingString(name SettingName, definition SettingDefinition, value
 				return errors.Wrapf(err, "the value of %v is invalid", name)
 			}
 		case SettingNameSystemManagedComponentsNodeSelector:
+			if _, err := UnmarshalNodeSelector(strValue); err != nil {
+				return errors.Wrapf(err, "the value of %v is invalid", name)
+			}
+
+		case SettingNameCSISidecarComponentTaintToleration:
+			if _, err := UnmarshalTolerations(strValue); err != nil {
+				return errors.Wrapf(err, "the value of %v is invalid", name)
+			}
+		case SettingNameSystemManagedCSISidecarComponentsNodeSelector:
 			if _, err := UnmarshalNodeSelector(strValue); err != nil {
 				return errors.Wrapf(err, "the value of %v is invalid", name)
 			}

@@ -4096,6 +4096,30 @@ func (s *DataStore) GetSettingSystemManagedComponentsNodeSelector() (map[string]
 	return nodeSelector, nil
 }
 
+func (s *DataStore) GetSettingCSISidecarComponentTaintToleration() ([]corev1.Toleration, error) {
+	setting, err := s.GetSettingWithAutoFillingRO(types.SettingNameCSISidecarComponentTaintToleration)
+	if err != nil {
+		return nil, err
+	}
+	tolerationList, err := types.UnmarshalTolerations(setting.Value)
+	if err != nil {
+		return nil, err
+	}
+	return tolerationList, nil
+}
+
+func (s *DataStore) GetSettingSystemManagedCSISidecarComponentsNodeSelector() (map[string]string, error) {
+	setting, err := s.GetSettingWithAutoFillingRO(types.SettingNameSystemManagedCSISidecarComponentsNodeSelector)
+	if err != nil {
+		return nil, err
+	}
+	nodeSelector, err := types.UnmarshalNodeSelector(setting.Value)
+	if err != nil {
+		return nil, err
+	}
+	return nodeSelector, nil
+}
+
 // GetSettingOrphanResourceAutoDeletion get the setting and return a flag collection of orphaned resource types.
 // Flag is true when the auto deletion is enabled to an orphaned resource type.
 // Returns error if the setting is invalid
