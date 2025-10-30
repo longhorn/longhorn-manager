@@ -279,6 +279,8 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 	dangerSettingsRequiringAllVolumesDetached := []types.SettingName{
 		types.SettingNameTaintToleration,
 		types.SettingNameSystemManagedComponentsNodeSelector,
+		types.SettingNameTaintTolerationKubernetesCSI,
+		types.SettingNameSystemManagedComponentsNodeSelectorKubernetesCSI,
 		types.SettingNamePriorityClass,
 		types.SettingNameStorageNetwork,
 	}
@@ -291,6 +293,14 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 			}
 		case types.SettingNameSystemManagedComponentsNodeSelector:
 			if err := sc.updateNodeSelector(); err != nil {
+				return err
+			}
+		case types.SettingNameTaintTolerationKubernetesCSI:
+			if err := sc.updateTaintTolerationKubernetesCSI(); err != nil {
+				return err
+			}
+		case types.SettingNameSystemManagedComponentsNodeSelectorKubernetesCSI:
+			if err := sc.updateNodeSelectorKubernetesCSI(); err != nil {
 				return err
 			}
 		case types.SettingNamePriorityClass:
@@ -465,13 +475,78 @@ func (sc *SettingController) updateTaintToleration() error {
 	return nil
 }
 
+// updateTaintTolerationKubernetesCSI deletes all user-deployed and system-managed components immediately with the updated taint toleration.
+func (sc *SettingController) updateTaintTolerationKubernetesCSI() error {
+	setting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameTaintTolerationKubernetesCSI)
+	if err != nil {
+		return err
+	}
+	newTolerations := setting.Value
+	newTolerationsList, err := types.UnmarshalTolerations(newTolerations)
+	if err != nil {
+		return err
+	}
+	newTolerationsMap := util.TolerationListToMap(newTolerationsList)
+
+	updatingRuntimeObjects, err := sc.collectRuntimeObjectsKubernetesCSI()
+	if err != nil {
+		return errors.Wrap(err, "failed to collect runtime objects for toleration update")
+	}
+	notUpdatedTolerationObjs, err := getNotUpdatedTolerationList(newTolerationsMap, updatingRuntimeObjects...)
+	if err != nil {
+		return err
+	}
+	if len(notUpdatedTolerationObjs) == 0 {
+		return nil
+	}
+
+	detached, err := sc.ds.AreAllVolumesDetachedState()
+	if err != nil {
+		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameTaintTolerationKubernetesCSI)
+	}
+	if !detached {
+		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting to Longhorn components when there are attached volumes. It will be eventually applied", types.SettingNameTaintTolerationKubernetesCSI)}
+	}
+
+	for _, obj := range notUpdatedTolerationObjs {
+		lastAppliedTolerationsList, err := getLastAppliedTolerationsList(obj)
+		if err != nil {
+			return err
+		}
+		switch objType := obj.(type) {
+		case *appsv1.DaemonSet:
+			ds := obj.(*appsv1.DaemonSet)
+			sc.logger.Infof("Deleting daemonset %v to update tolerations from %v to %v", ds.Name, util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap)
+			if err := sc.updateTolerationForDaemonset(ds, lastAppliedTolerationsList, newTolerationsList); err != nil {
+				return err
+			}
+		case *appsv1.Deployment:
+			dp := obj.(*appsv1.Deployment)
+			sc.logger.Infof("Updating deployment %v to update tolerations from %v to %v", dp.Name, util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap)
+			if err := sc.updateTolerationForDeployment(dp, lastAppliedTolerationsList, newTolerationsList); err != nil {
+				return err
+			}
+		case *corev1.Pod:
+			pod := obj.(*corev1.Pod)
+			sc.logger.Infof("Deleting pod %v to update tolerations from %v to %v", pod.Name, util.TolerationListToMap(lastAppliedTolerationsList), newTolerationsMap)
+			if err := sc.ds.DeletePod(pod.Name); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unknown object type %v when updating %v setting", objType, types.SettingNameTaintTolerationKubernetesCSI)
+		}
+	}
+
+	return nil
+}
+
 func (sc *SettingController) collectRuntimeObjects() (returnCollectRuntimeObjects []runtime.Object, err error) {
-	dsList, err := sc.ds.ListDeploymentWithLabels(types.GetBaseLabelsForSystemManagedComponent())
+	dpList, err := sc.ds.ListDeploymentWithLabels(types.GetBaseLabelsForSystemManagedComponent())
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list Longhorn deployments for collecting runtime objects")
 	}
 
-	dpList, err := sc.ds.ListDaemonSetWithLabels(types.GetBaseLabelsForSystemManagedComponent())
+	dsList, err := sc.ds.ListDaemonSetWithLabels(types.GetBaseLabelsForSystemManagedComponent())
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list Longhorn daemonsets for collecting runtime objects")
 	}
@@ -491,14 +566,34 @@ func (sc *SettingController) collectRuntimeObjects() (returnCollectRuntimeObject
 	podList := append(imPodList, smPodList...)
 	podList = append(podList, bimPodList...)
 
+	for _, dp := range dpList {
+		// Exclude Kubernetes CSI deployments
+		if _, ok := types.KubernetesCSISidecarList[dp.Labels["app"]]; ok {
+			continue
+		}
+		returnCollectRuntimeObjects = append(returnCollectRuntimeObjects, runtime.Object(dp))
+	}
 	for _, ds := range dsList {
 		returnCollectRuntimeObjects = append(returnCollectRuntimeObjects, runtime.Object(ds))
 	}
-	for _, dp := range dpList {
-		returnCollectRuntimeObjects = append(returnCollectRuntimeObjects, runtime.Object(dp))
-	}
 	for _, pod := range podList {
 		returnCollectRuntimeObjects = append(returnCollectRuntimeObjects, runtime.Object(pod))
+	}
+
+	return returnCollectRuntimeObjects, nil
+}
+
+func (sc *SettingController) collectRuntimeObjectsKubernetesCSI() (returnCollectRuntimeObjects []runtime.Object, err error) {
+	dpList, err := sc.ds.ListDeploymentWithLabels(types.GetBaseLabelsForSystemManagedComponent())
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to list Longhorn deployments for collecting runtime objects")
+	}
+
+	for _, dp := range dpList {
+		// Include only Kubernetes CSI deployments
+		if _, ok := types.KubernetesCSISidecarList[dp.Labels["app"]]; ok {
+			returnCollectRuntimeObjects = append(returnCollectRuntimeObjects, runtime.Object(dp))
+		}
 	}
 
 	return returnCollectRuntimeObjects, nil
@@ -588,6 +683,14 @@ func (sc *SettingController) updatePriorityClass() error {
 	if err != nil {
 		return errors.Wrap(err, "failed to collect runtime objects for priority class update")
 	}
+
+	updatingRuntimeObjectsKubernetesCSI, err := sc.collectRuntimeObjectsKubernetesCSI()
+	if err != nil {
+		return errors.Wrap(err, "failed to collect runtime Kubernetes CSI objects for priority class update")
+	}
+
+	updatingRuntimeObjects = append(updatingRuntimeObjects, updatingRuntimeObjectsKubernetesCSI...)
+
 	notUpdatedPriorityClassObjs, err := getNotUpdatedPriorityClassList(newPriorityClass, updatingRuntimeObjects...)
 	if err != nil {
 		return err
@@ -1066,7 +1169,70 @@ func (sc *SettingController) updateNodeSelector() error {
 				}
 			}
 		default:
-			return fmt.Errorf("unknown object type %v when updating %v setting", objType, types.SettingNamePriorityClass)
+			return fmt.Errorf("unknown object type %v when updating %v setting", objType, types.SettingNameSystemManagedComponentsNodeSelector)
+		}
+	}
+
+	return nil
+}
+
+// updateNodeSelectorKubernetesCSI deletes all user-deployed and system-managed components immediately with the updated node selector.
+func (sc *SettingController) updateNodeSelectorKubernetesCSI() error {
+	setting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameSystemManagedComponentsNodeSelectorKubernetesCSI)
+	if err != nil {
+		return err
+	}
+	newNodeSelector, err := types.UnmarshalNodeSelector(setting.Value)
+	if err != nil {
+		return err
+	}
+
+	updatingRuntimeObjects, err := sc.collectRuntimeObjectsKubernetesCSI()
+	if err != nil {
+		return errors.Wrap(err, "failed to collect runtime objects for node selector update")
+	}
+	notUpdatedNodeSelectorObjs, err := getNotUpdatedNodeSelectorList(newNodeSelector, updatingRuntimeObjects...)
+	if err != nil {
+		return err
+	}
+	if len(notUpdatedNodeSelectorObjs) == 0 {
+		return nil
+	}
+
+	detached, err := sc.ds.AreAllVolumesDetachedState()
+	if err != nil {
+		return errors.Wrapf(err, "failed to check volume detachment for %v setting update", types.SettingNameSystemManagedComponentsNodeSelectorKubernetesCSI)
+	}
+	if !detached {
+		return &types.ErrorInvalidState{Reason: fmt.Sprintf("failed to apply %v setting to Longhorn components when there are attached volumes. It will be eventually applied", types.SettingNameSystemManagedComponentsNodeSelectorKubernetesCSI)}
+	}
+
+	for _, obj := range notUpdatedNodeSelectorObjs {
+		switch objType := obj.(type) {
+		case *appsv1.DaemonSet:
+			ds := obj.(*appsv1.DaemonSet)
+			sc.logger.Infof("Updating the node selector from %v to %v for %v", ds.Spec.Template.Spec.NodeSelector, newNodeSelector, ds.Name)
+			ds.Spec.Template.Spec.NodeSelector = newNodeSelector
+			if _, err := sc.ds.UpdateDaemonSet(ds); err != nil {
+				return err
+			}
+		case *appsv1.Deployment:
+			dp := obj.(*appsv1.Deployment)
+			sc.logger.Infof("Updating the node selector from %v to %v for %v", dp.Spec.Template.Spec.NodeSelector, newNodeSelector, dp.Name)
+			dp.Spec.Template.Spec.NodeSelector = newNodeSelector
+			if _, err := sc.ds.UpdateDeployment(dp); err != nil {
+				return err
+			}
+		case *corev1.Pod:
+			pod := obj.(*corev1.Pod)
+			if pod.DeletionTimestamp == nil {
+				sc.logger.Infof("Deleting pod %v to update the node selector from %v to %v", pod.Name, pod.Spec.NodeSelector, newNodeSelector)
+				if err := sc.ds.DeletePod(pod.Name); err != nil {
+					return err
+				}
+			}
+		default:
+			return fmt.Errorf("unknown object type %v when updating %v setting", objType, types.SettingNameSystemManagedComponentsNodeSelectorKubernetesCSI)
 		}
 	}
 
