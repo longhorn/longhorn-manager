@@ -640,6 +640,22 @@ func (m *VolumeManager) TrimFilesystem(name string) (v *longhorn.Volume, err err
 	if err != nil {
 		return nil, err
 	}
+
+	// Block mode volume does not support filesystem trim because Longhorn trims volume by fstrim command.
+	// The fstrim command applies to the mounted filesystem.
+	// If the volume is in block mode, Longhorn is unable to know where the filesystem is and cannot execute the fstrim command.
+	pvc, err := m.ds.GetPersistentVolumeClaimRO(v.Status.KubernetesStatus.Namespace, v.Status.KubernetesStatus.PVCName)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return nil, err
+		}
+	} else {
+		if pvc.Spec.VolumeMode != nil && *pvc.Spec.VolumeMode == corev1.PersistentVolumeBlock {
+			return nil, fmt.Errorf("filesystem trim is not supported on PVC %v in namespace %v with Block VolumeMode",
+				v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
+		}
+	}
+
 	if v.Status.State != longhorn.VolumeStateAttached {
 		return nil, fmt.Errorf("volume is not attached")
 	}
