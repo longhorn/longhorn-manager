@@ -466,7 +466,7 @@ func (c *BackingImageDataSourceController) syncBackingImageDataSourcePod(bids *l
 	}
 
 	if podReady {
-		storageIP := c.ds.GetStorageIPFromPod(pod)
+		storageIP := c.ds.GetIPFromPodByCNISetting(pod, types.SettingNameStorageNetwork)
 		if bids.Status.StorageIP != storageIP {
 			bids.Status.StorageIP = storageIP
 		}
@@ -858,7 +858,7 @@ func (c *BackingImageDataSourceController) generateBackingImageDataSourcePodMani
 
 	nadAnnot := string(types.CNIAnnotationNetworks)
 	if storageNetwork.Value != types.CniNetworkNone {
-		podSpec.Annotations[nadAnnot] = types.CreateCniAnnotationFromSetting(storageNetwork)
+		podSpec.Annotations[nadAnnot] = types.CreateCniAnnotationFromSetting(storageNetwork, types.StorageNetworkInterface)
 	}
 
 	types.AddGoCoverDirToPod(podSpec)

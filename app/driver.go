@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
@@ -274,20 +273,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	storageNetworkSetting, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameStorageNetwork), metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-
-	storageNetworkForRWXVolumeEnabledSetting, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameStorageNetworkForRWXVolumeEnabled), metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-
-	isStorageNetworkForRWXVolumeEnabled, err := strconv.ParseBool(storageNetworkForRWXVolumeEnabledSetting.Value)
-	if err != nil {
-		return err
-	}
+	endpointNetworkForRWXVolumeSetting, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameEndpointNetworkForRWXVolume), metav1.GetOptions{})
 
 	var imagePullPolicy corev1.PullPolicy
 	switch imagePullPolicySetting.Value {
@@ -346,7 +332,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, csiLivenessProbeImage, managerImage, managerURL, rootDir, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector, storageNetworkSetting, isStorageNetworkForRWXVolumeEnabled)
+	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, csiLivenessProbeImage, managerImage, managerURL, rootDir, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector, endpointNetworkForRWXVolumeSetting)
 	if err := pluginDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}

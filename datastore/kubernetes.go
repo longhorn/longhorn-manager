@@ -1178,8 +1178,8 @@ func NewPVCManifest(size int64, pvName, ns, pvcName, storageClassName string, ac
 	}
 }
 
-// GetStorageIPFromPod returns the given pod network-status IP of the name matching the storage-network setting value.
-// If the storage-network setting is empty or encountered an error, return the pod IP instead.
+// GetIPFromPodByCNISetting returns the given pod network-status IP of the name matching the setting value.
+// If the setting value is empty or encountered an error, return the pod IP instead.
 // For below example, given "kube-system/demo-192-168-0-0" will return "192.168.1.175".
 //
 // apiVersion: v1
@@ -1206,15 +1206,20 @@ func NewPVCManifest(size int64, pvName, ns, pvcName, storageClassName string, ac
 //	  	  "mac": "02:59:e5:d4:ae:ea",
 //	  	  "dns": {}
 //	    }]
-func (s *DataStore) GetStorageIPFromPod(pod *corev1.Pod) string {
-	storageNetwork, err := s.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
+func (s *DataStore) GetIPFromPodByCNISetting(pod *corev1.Pod, settingName types.SettingName) string {
+	log := logrus.WithFields(logrus.Fields{
+		"pod":         pod.Name,
+		"settingName": settingName,
+	})
+
+	setting, err := s.GetSettingWithAutoFillingRO(settingName)
 	if err != nil {
-		logrus.Warnf("Failed to get %v setting, use %v pod IP %v", types.SettingNameStorageNetwork, pod.Name, pod.Status.PodIP)
+		log.Warnf("Failed to get setting, use pod IP %v", pod.Status.PodIP)
 		return pod.Status.PodIP
 	}
 
-	if storageNetwork.Value == types.CniNetworkNone {
-		logrus.Tracef("Found %v setting is empty, use %v pod IP %v", types.SettingNameStorageNetwork, pod.Name, pod.Status.PodIP)
+	if setting.Value == types.CniNetworkNone {
+		log.Tracef("Found setting value is empty, use pod IP %v", pod.Status.PodIP)
 		return pod.Status.PodIP
 	}
 
@@ -1222,12 +1227,12 @@ func (s *DataStore) GetStorageIPFromPod(pod *corev1.Pod) string {
 	status, ok := pod.Annotations[string(types.CNIAnnotationNetworkStatus)]
 	if !ok {
 		// If the network-status annotation is missing, check the deprecated annotation.
-		logrus.Debugf("Missing %v annotation, checking deprecated %v annotation", types.CNIAnnotationNetworkStatus, types.CNIAnnotationNetworksStatus)
+		log.Debugf("Missing %v annotation, checking deprecated %v annotation", types.CNIAnnotationNetworkStatus, types.CNIAnnotationNetworksStatus)
 		status, ok = pod.Annotations[string(types.CNIAnnotationNetworksStatus)]
 
 		// If the deprecated annotation is also missing, use the pod IP.
 		if !ok {
-			logrus.Warnf("Missing %v annotation, use %v pod IP %v", types.CNIAnnotationNetworkStatus, pod.Name, pod.Status.PodIP)
+			log.Warnf("Missing %v annotation, use pod IP %v", types.CNIAnnotationNetworkStatus, pod.Status.PodIP)
 			return pod.Status.PodIP
 		}
 	}
@@ -1235,12 +1240,12 @@ func (s *DataStore) GetStorageIPFromPod(pod *corev1.Pod) string {
 	nets := []types.CniNetwork{}
 	err = json.Unmarshal([]byte(status), &nets)
 	if err != nil {
-		logrus.Warnf("Failed to unmarshal %v annotation, use %v pod IP %v", types.CNIAnnotationNetworkStatus, pod.Name, pod.Status.PodIP)
+		log.Warnf("Failed to unmarshal %v annotation, use pod IP %v", types.CNIAnnotationNetworkStatus, pod.Status.PodIP)
 		return pod.Status.PodIP
 	}
 
 	for _, net := range nets {
-		if net.Name != storageNetwork.Value {
+		if net.Name != setting.Value {
 			continue
 		}
 
@@ -1250,7 +1255,7 @@ func (s *DataStore) GetStorageIPFromPod(pod *corev1.Pod) string {
 		}
 	}
 
-	logrus.Warnf("Failed to get storage IP from %v pod, use IP %v", pod.Name, pod.Status.PodIP)
+	log.Warnf("Failed to get CNI IP from pod, use pod IP %v", pod.Status.PodIP)
 	return pod.Status.PodIP
 }
 
