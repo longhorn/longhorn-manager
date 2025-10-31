@@ -85,7 +85,7 @@ func NewVolumeCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "state"),
 			"State of this volume",
-			[]string{nodeLabel, volumeLabel, pvcLabel, pvcNamespaceLabel},
+			[]string{nodeLabel, volumeLabel, pvcLabel, pvcNamespaceLabel, stateLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -95,7 +95,7 @@ func NewVolumeCollector(
 		Desc: prometheus.NewDesc(
 			prometheus.BuildFQName(longhornName, subsystemVolume, "robustness"),
 			"Robustness of this volume",
-			[]string{nodeLabel, volumeLabel, pvcLabel, pvcNamespaceLabel},
+			[]string{nodeLabel, volumeLabel, pvcLabel, pvcNamespaceLabel, stateLabel},
 			nil,
 		),
 		Type: prometheus.GaugeValue,
@@ -201,8 +201,9 @@ func (vc *VolumeCollector) collectMetrics(ch chan<- prometheus.Metric, v *longho
 
 	ch <- prometheus.MustNewConstMetric(vc.capacityMetric.Desc, vc.capacityMetric.Type, float64(v.Spec.Size), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
 	ch <- prometheus.MustNewConstMetric(vc.sizeMetric.Desc, vc.sizeMetric.Type, float64(v.Status.ActualSize), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
-	ch <- prometheus.MustNewConstMetric(vc.stateMetric.Desc, vc.stateMetric.Type, float64(getVolumeStateValue(v)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
-	ch <- prometheus.MustNewConstMetric(vc.robustnessMetric.Desc, vc.robustnessMetric.Type, float64(getVolumeRobustnessValue(v)), vc.currentNodeID, v.Name, v.Status.KubernetesStatus.PVCName, v.Status.KubernetesStatus.Namespace)
+
+	vc.collectVolumeState(ch, v)
+	vc.collectVolumeRobustness(ch, v)
 
 	e, err := vc.ds.GetVolumeCurrentEngine(v.Name)
 	if err != nil {
@@ -251,38 +252,66 @@ func (vc *VolumeCollector) getEngineClientProxy(engine *longhorn.Engine) (c engi
 	return engineapi.GetCompatibleClient(engine, engineCliClient, vc.ds, nil, vc.proxyConnCounter)
 }
 
-func getVolumeStateValue(v *longhorn.Volume) int {
-	stateValue := 0
-	switch v.Status.State {
-	case longhorn.VolumeStateCreating:
-		stateValue = 1
-	case longhorn.VolumeStateAttached:
-		stateValue = 2
-	case longhorn.VolumeStateDetached:
-		stateValue = 3
-	case longhorn.VolumeStateAttaching:
-		stateValue = 4
-	case longhorn.VolumeStateDetaching:
-		stateValue = 5
-	case longhorn.VolumeStateDeleting:
-		stateValue = 6
+// collectVolumeState emits label-based state metrics - one metric per state with value 1 for current state, 0 for others
+func (vc *VolumeCollector) collectVolumeState(ch chan<- prometheus.Metric, v *longhorn.Volume) {
+	states := getAllVolumeStates()
+	for _, s := range states {
+		val := 0.0
+		if v.Status.State == s {
+			val = 1.0
+		}
+		ch <- prometheus.MustNewConstMetric(
+			vc.stateMetric.Desc,
+			vc.stateMetric.Type,
+			val,
+			vc.currentNodeID,
+			v.Name,
+			v.Status.KubernetesStatus.PVCName,
+			v.Status.KubernetesStatus.Namespace,
+			string(s),
+		)
 	}
-	return stateValue
 }
 
-func getVolumeRobustnessValue(v *longhorn.Volume) int {
-	robustnessValue := 0
-	switch v.Status.Robustness {
-	case longhorn.VolumeRobustnessUnknown:
-		robustnessValue = 0
-	case longhorn.VolumeRobustnessHealthy:
-		robustnessValue = 1
-	case longhorn.VolumeRobustnessDegraded:
-		robustnessValue = 2
-	case longhorn.VolumeRobustnessFaulted:
-		robustnessValue = 3
+// collectVolumeRobustness emits label-based robustness metrics - one metric per robustness state with value 1 for current state, 0 for others
+func (vc *VolumeCollector) collectVolumeRobustness(ch chan<- prometheus.Metric, v *longhorn.Volume) {
+	robustnessStates := getAllVolumeRobustnessStates()
+	for _, r := range robustnessStates {
+		val := 0.0
+		if v.Status.Robustness == r {
+			val = 1.0
+		}
+		ch <- prometheus.MustNewConstMetric(
+			vc.robustnessMetric.Desc,
+			vc.robustnessMetric.Type,
+			val,
+			vc.currentNodeID,
+			v.Name,
+			v.Status.KubernetesStatus.PVCName,
+			v.Status.KubernetesStatus.Namespace,
+			string(r),
+		)
 	}
-	return robustnessValue
+}
+
+func getAllVolumeStates() []longhorn.VolumeState {
+	return []longhorn.VolumeState{
+		longhorn.VolumeStateCreating,
+		longhorn.VolumeStateAttached,
+		longhorn.VolumeStateDetached,
+		longhorn.VolumeStateAttaching,
+		longhorn.VolumeStateDetaching,
+		longhorn.VolumeStateDeleting,
+	}
+}
+
+func getAllVolumeRobustnessStates() []longhorn.VolumeRobustness {
+	return []longhorn.VolumeRobustness{
+		longhorn.VolumeRobustnessUnknown,
+		longhorn.VolumeRobustnessHealthy,
+		longhorn.VolumeRobustnessDegraded,
+		longhorn.VolumeRobustnessFaulted,
+	}
 }
 
 func (vc *VolumeCollector) getVolumeReadThroughput(metrics *engineapi.Metrics) int64 {
