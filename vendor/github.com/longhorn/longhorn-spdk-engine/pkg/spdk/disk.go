@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -151,33 +151,26 @@ func (d *Disk) DiskDelete(spdkClient *spdkclient.Client, diskName, diskUUID, dis
 		return &emptypb.Empty{}, grpcstatus.Error(grpccodes.InvalidArgument, "disk name is required")
 	}
 
-	var lvstores []spdktypes.LvstoreInfo
-	bdevName := ""
-
 	if diskUUID != "" {
-		lvstores, err = spdkClient.BdevLvolGetLvstore("", diskUUID)
+		lvstores, err := spdkClient.BdevLvolGetLvstore("", diskUUID)
+		if err != nil {
+			if !jsonrpc.IsJSONRPCRespErrorNoSuchDevice(err) {
+				return nil, errors.Wrapf(err, "failed to get lvstore with UUID %v", diskUUID)
+			}
+		}
+
+		if len(lvstores) == 0 {
+			log.Infof("Lvstore not found for disk %v (UUID %v); treating as already deleted", diskName, diskUUID)
+		} else if lvstores[0].UUID != diskUUID {
+			log.Warnf("Lvstore UUID mismatch (expected %v, found %v); proceed with bdev deletion", diskUUID, lvstores[0].UUID)
+		}
 	} else {
 		// The disk is not successfully created in creation stage because the diskUUID is not provided,
 		// so we blindly use the diskName as the bdevName here.
-		log.Warn("Disk UUID is not provided, trying to get lvstore with disk name")
-		lvstores, err = spdkClient.BdevLvolGetLvstore(diskName, "")
-	}
-	if err != nil {
-		if !jsonrpc.IsJSONRPCRespErrorNoSuchDevice(err) {
-			return nil, errors.Wrapf(err, "failed to get lvstore with UUID %v", diskUUID)
-		}
-		log.WithError(err).Warn("Failed to get lvstore with UUID or disk name, blindly use disk name as bdev name")
-		bdevName = diskName
-	} else {
-		lvstore := &lvstores[0]
-		if lvstore.Name != diskName {
-			log.Warnf("Disk name %v does not match lvstore name %v", diskName, lvstore.Name)
-			return nil, grpcstatus.Errorf(grpccodes.NotFound, "disk name %v does not match lvstore name %v", diskName, lvstore.Name)
-		}
-		bdevName = lvstore.BaseBdev
+		log.Warn("Disk UUID is not provided, blindly delete the disk")
 	}
 
-	if _, err := spdkdisk.DiskDelete(spdkClient, bdevName, diskPath, diskDriver); err != nil {
+	if _, err := spdkdisk.DiskDelete(spdkClient, diskName, diskPath, diskDriver); err != nil {
 		return nil, errors.Wrapf(err, "failed to delete disk %v", diskName)
 	}
 
