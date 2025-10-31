@@ -4042,6 +4042,30 @@ func (s *DataStore) GetSettingSystemManagedComponentsNodeSelector() (map[string]
 	return nodeSelector, nil
 }
 
+func (s *DataStore) GetSettingTaintTolerationKubernetesCSI() ([]corev1.Toleration, error) {
+	setting, err := s.GetSettingWithAutoFillingRO(types.SettingNameTaintTolerationKubernetesCSI)
+	if err != nil {
+		return nil, err
+	}
+	tolerationList, err := types.UnmarshalTolerations(setting.Value)
+	if err != nil {
+		return nil, err
+	}
+	return tolerationList, nil
+}
+
+func (s *DataStore) GetSettingSystemManagedComponentsNodeSelectorKubernetesCSI() (map[string]string, error) {
+	setting, err := s.GetSettingWithAutoFillingRO(types.SettingNameSystemManagedComponentsNodeSelectorKubernetesCSI)
+	if err != nil {
+		return nil, err
+	}
+	nodeSelector, err := types.UnmarshalNodeSelector(setting.Value)
+	if err != nil {
+		return nil, err
+	}
+	return nodeSelector, nil
+}
+
 // GetSettingOrphanResourceAutoDeletion get the setting and return a flag collection of orphaned resource types.
 // Flag is true when the auto deletion is enabled to an orphaned resource type.
 // Returns error if the setting is invalid
