@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 
 	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
 )

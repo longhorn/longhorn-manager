@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
 	commonns "github.com/longhorn/go-common-libs/ns"
