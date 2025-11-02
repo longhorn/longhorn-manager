@@ -11,6 +11,10 @@ import (
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
 
+func (m *VolumeManager) GetSettingAsBool(sName types.SettingName) (bool, error) {
+	return m.ds.GetSettingAsBool(sName)
+}
+
 func (m *VolumeManager) GetSettingValueExisted(sName types.SettingName) (string, error) {
 	return m.ds.GetSettingValueExisted(sName)
 }
