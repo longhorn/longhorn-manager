@@ -60,17 +60,8 @@ func OwnerIDFromBackupTarget(m *manager.VolumeManager) func(req *http.Request) (
 
 // NodeHasDefaultEngineImage picks a node that is ready and has default engine image deployed.
 // To prevent the repeatedly forwarding the request around, prioritize the current node if it meets the requirement.
-// When v1 data engine is disabled just pick the current node.
 func NodeHasDefaultEngineImage(m *manager.VolumeManager) func(req *http.Request) (string, error) {
 	return func(req *http.Request) (string, error) {
-		v1EngineEnabled, err := m.GetSettingAsBool(types.SettingNameV1DataEngine)
-		if err != nil {
-			return "", errors.Wrapf(err, "failed to get %v setting", types.SettingNameV1DataEngine)
-		}
-		if !v1EngineEnabled {
-			return m.GetCurrentNodeID(), nil
-		}
-
 		engineImage, err := m.GetSettingValueExisted(types.SettingNameDefaultEngineImage)
 		if err != nil {
 			return "", err
