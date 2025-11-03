@@ -349,15 +349,8 @@ func startManager(c *cli.Context) error {
 		return err
 	}
 
-	// deploy engine image only if v1 engine is enabled
-	v1EngineEnabled, err := clients.Datastore.GetSettingAsBool(types.SettingNameV1DataEngine)
-	if err != nil {
-		return errors.Wrapf(err, "failed to get %v setting", types.SettingNameV1DataEngine)
-	}
-	if v1EngineEnabled {
-		if err := m.DeployEngineImage(engineImage); err != nil {
-			return err
-		}
+	if err := m.DeployEngineImage(engineImage); err != nil {
+		return err
 	}
 
 	server := api.NewServer(m, wsc)
