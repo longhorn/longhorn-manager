@@ -26,6 +26,7 @@ import (
 
 const (
 	LonghornKindNode                = "Node"
+	LonghornKindDiskSchedule        = "DiskSchedule"
 	LonghornKindVolume              = "Volume"
 	LonghornKindVolumeAttachment    = "VolumeAttachment"
 	LonghornKindEngine              = "Engine"
@@ -150,6 +151,7 @@ const (
 	DeleteBackupTargetFromLonghorn = "delete-backup-target-from-longhorn"
 	DeleteEngineImageFromLonghorn  = "delete-engine-image-from-longhorn"
 	DeleteNodeFromLonghorn         = "delete-node-from-longhorn"
+	DeleteDiskFromLonghorn         = "delete-disk-from-longhorn"
 
 	KubernetesStatusLabel = "KubernetesStatus"
 

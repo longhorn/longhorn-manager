@@ -122,6 +122,13 @@ func NewReplicaController(
 	}
 	rc.cacheSyncs = append(rc.cacheSyncs, ds.NodeInformer.HasSynced)
 
+	if _, err = ds.DiskScheduleInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: rc.enqueueDiskScheduleUpdate,
+	}, 0); err != nil {
+		return nil, err
+	}
+	rc.cacheSyncs = append(rc.cacheSyncs, ds.DiskScheduleInformer.HasSynced)
+
 	if _, err = ds.BackingImageInformer.AddEventHandlerWithResyncPeriod(cache.ResourceEventHandlerFuncs{
 		AddFunc:    rc.enqueueBackingImageChange,
 		UpdateFunc: func(old, cur interface{}) { rc.enqueueBackingImageChange(cur) },
@@ -301,6 +308,76 @@ func (rc *ReplicaController) syncReplica(key string) (err error) {
 	return rc.instanceHandler.ReconcileInstanceState(replica, &replica.Spec.InstanceSpec, &replica.Status.InstanceStatus)
 }
 
+func (rc *ReplicaController) syncReplicaDisk(replica *longhorn.Replica) (allocated bool, err error) {
+	existedCondition := types.GetCondition(replica.Status.Conditions, longhorn.ReplicaConditionTypeDiskAllocation)
+	if existedCondition.Status == longhorn.ConditionStatusTrue {
+		// once a replica has been successfully scheduled to a disk, the corresponding disk resource can be release only by deleting the replica
+		return true, nil
+	}
+
+	allocated = false
+	reason := longhorn.ReplicaConditionReasonDiskAllocationError
+	message := "Unexpected error"
+	defer func() {
+		status := longhorn.ConditionStatusFalse
+		if allocated {
+			status = longhorn.ConditionStatusTrue
+		}
+		replica.Status.Conditions = types.SetCondition(replica.Status.Conditions, longhorn.ReplicaConditionTypeDiskAllocation, status, reason, message)
+	}()
+
+	if replica.Spec.NodeID == "" {
+		reason = longhorn.ReplicaConditionReasonDiskAllocationPending
+		message = "Waiting for node assignment"
+		return false, nil
+	}
+	if replica.Spec.DiskID == "" {
+		reason = longhorn.ReplicaConditionReasonDiskAllocationPending
+		message = "Waiting for disk assignment"
+		return false, nil
+	}
+
+	diskSchedule, err := rc.ds.GetDiskSchedule(replica.Spec.DiskID)
+	if err != nil && !datastore.ErrorIsNotFound(err) {
+		reason = longhorn.ReplicaConditionReasonDiskAllocationError
+		message = fmt.Sprintf("Failed to get disk schedule %v: %v", replica.Spec.DiskID, err.Error())
+		return false, errors.Wrapf(err, "failed to get disk schedule %v for allocation", replica.Spec.DiskID)
+	}
+
+	if diskSchedule == nil {
+		reason = longhorn.ReplicaConditionReasonDiskAllocationRejected
+		message = fmt.Sprintf("Disk %v is not initialized", replica.Spec.DiskID)
+		return false, nil
+	}
+
+	lastAllocationResult := diskSchedule.GetReplicaScheduledStatus(replica.Name)
+	if lastAllocationResult == nil || lastAllocationResult.RequiredSize != replica.Spec.VolumeSize {
+		diskSchedule.SetReplicaScheduling(replica.Name, replica.Spec.VolumeSize)
+		_, updateErr := rc.ds.UpdateDiskSchedule(diskSchedule)
+		if updateErr != nil {
+			if apierrors.IsConflict(errors.Cause(updateErr)) {
+				reason = longhorn.ReplicaConditionReasonDiskAllocationPending
+				message = fmt.Sprintf("Disk schedule %v busy", replica.Spec.DiskID)
+				return false, nil
+			}
+			reason = longhorn.ReplicaConditionReasonDiskAllocationError
+			message = fmt.Sprintf("Failed to submit requirement on disk schedule %v: %v", replica.Spec.DiskID, updateErr.Error())
+			return false, errors.Wrapf(updateErr, "Failed to submit allocation on disk schedule %v", replica.Spec.DiskID)
+		}
+		reason = longhorn.ReplicaConditionReasonDiskAllocationWaiting
+		message = fmt.Sprintf("Waiting for scheduling %v bytes on disk %v", replica.Spec.VolumeSize, replica.Spec.DiskID)
+		return false, nil
+	}
+	if lastAllocationResult.Result != longhorn.DiskScheduledResultScheduled {
+		reason = longhorn.ReplicaConditionReasonDiskAllocationRejected
+		message = fmt.Sprintf("Rejected scheduling %v bytes by disk %v: %v", lastAllocationResult.RequiredSize, replica.Spec.DiskID, lastAllocationResult.Result)
+		return false, nil
+	}
+	reason = longhorn.ReplicaConditionReasonDiskAllocationAccepted
+	message = fmt.Sprintf("Scheduled %v bytes on disk %v", lastAllocationResult.ScheduledSize, replica.Spec.DiskID)
+	return true, nil
+}
+
 func (rc *ReplicaController) enqueueReplica(obj interface{}) {
 	key, err := controller.KeyFunc(obj)
 	if err != nil {
@@ -320,6 +397,14 @@ func (rc *ReplicaController) CreateInstance(obj interface{}) (*longhorn.Instance
 	dataPath := types.GetReplicaDataPath(r.Spec.DiskPath, r.Spec.DataDirectoryName)
 	if r.Spec.NodeID == "" || dataPath == "" || r.Spec.DiskID == "" || r.Spec.VolumeSize == 0 {
 		return nil, fmt.Errorf("missing parameters for replica instance creation: %v", r)
+	}
+
+	isScheduledOnDisk, schedulingErr := rc.syncReplicaDisk(r)
+	if schedulingErr != nil {
+		return nil, schedulingErr
+	}
+	if !isScheduledOnDisk {
+		return nil, nil
 	}
 
 	var err error
@@ -754,12 +839,13 @@ func (rc *ReplicaController) enqueueNodeAddOrDelete(obj interface{}) {
 	}
 
 	for diskName := range node.Spec.Disks {
-		if diskStatus, existed := node.Status.DiskStatus[diskName]; existed {
-			for replicaName := range diskStatus.ScheduledReplica {
-				if replica, err := rc.ds.GetReplicaRO(replicaName); err == nil {
-					rc.enqueueReplica(replica)
-				}
-			}
+		replicaList, listErr := rc.ds.ListReplicasByDiskUUID(node.Status.DiskStatus[diskName].DiskUUID)
+		if listErr != nil && !datastore.ErrorIsNotFound(listErr) {
+			getLoggerForNode(rc.logger, node).Warnf("Failed to list replicas on disk %v of node %v", diskName, node.Name)
+			return
+		}
+		for _, replica := range replicaList {
+			rc.enqueueReplica(replica)
 		}
 	}
 
@@ -804,14 +890,45 @@ func (rc *ReplicaController) enqueueNodeChange(oldObj, currObj interface{}) {
 		oldDiskSpec, ok := oldNode.Spec.Disks[diskName]
 		evictionRequestedChangeOnDiskLevel := !ok || (newDiskSpec.EvictionRequested != oldDiskSpec.EvictionRequested)
 		if diskStatus, existed := currNode.Status.DiskStatus[diskName]; existed && (evictionRequestedChangeOnNodeLevel || evictionRequestedChangeOnDiskLevel) {
-			for replicaName := range diskStatus.ScheduledReplica {
-				if replica, err := rc.ds.GetReplica(replicaName); err == nil {
-					rc.enqueueReplica(replica)
-				}
+			replicaList, listErr := rc.ds.ListReplicasByDiskUUID(diskStatus.DiskUUID)
+			if listErr != nil && !datastore.ErrorIsNotFound(listErr) {
+				getLoggerForNode(rc.logger, currNode).Warnf("Failed to list replicas on disk %v of node %v", diskName, currNode.Name)
+				return
+			}
+			for _, replica := range replicaList {
+				rc.enqueueReplica(replica)
 			}
 		}
 	}
+}
 
+func (rc *ReplicaController) enqueueDiskScheduleUpdate(old, cur interface{}) {
+	oldDs, err := eventObjToTypedObj[longhorn.DiskSchedule](old)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+
+	curDs, err := eventObjToTypedObj[longhorn.DiskSchedule](cur)
+	if err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+
+	for rName, curStatus := range curDs.Status.ScheduledReplicaStatus {
+		oldStatus := oldDs.Status.ScheduledReplicaStatus[rName]
+		if oldStatus == nil || *curStatus == *oldStatus {
+			continue
+		}
+		replica, err := rc.ds.GetReplicaRO(rName)
+		if err != nil {
+			if !datastore.ErrorIsNotFound(err) {
+				utilruntime.HandleError(fmt.Errorf("failed to get replica %v for disk schedule %v update: %v ", rName, curDs.Name, err))
+			}
+			return
+		}
+		rc.enqueueReplica(replica)
+	}
 }
 
 func (rc *ReplicaController) enqueueBackingImageChange(obj interface{}) {
