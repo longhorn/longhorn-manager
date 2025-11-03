@@ -672,22 +672,9 @@ func (ic *EngineImageController) cleanupExpiredEngineImage(ei *longhorn.EngineIm
 		if err != nil {
 			return err
 		}
-		// Delete the default image only if v1 data engine is disabled
+		// Don't delete the default image
 		if ei.Spec.Image == defaultEngineImageValue {
-			v1EngineEnabled, err := ic.ds.GetSettingAsBool(types.SettingNameV1DataEngine)
-			if err != nil {
-				return err
-			}
-			if v1EngineEnabled {
-				return nil
-			}
-			if ei.Annotations == nil {
-				ei.Annotations = make(map[string]string)
-			}
-			ei.Annotations[types.GetLonghornLabelKey(types.DeleteEngineImageFromLonghorn)] = ""
-			if _, err := ic.ds.UpdateEngineImage(ei); err != nil {
-				return errors.Wrap(err, "failed to update engine image annotations to mark for deletion")
-			}
+			return nil
 		}
 
 		log := getLoggerForEngineImage(ic.logger, ei)
