@@ -42,10 +42,13 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 
 	commonDeploymentSpec := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        commonName,
-			Namespace:   namespace,
-			Annotations: map[string]string{types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix): tolerationsString},
-			Labels:      deploymentLabels,
+			Name:      commonName,
+			Namespace: namespace,
+			Annotations: map[string]string{
+				types.GetLonghornLabelKey(types.LastAppliedTolerationAnnotationKeySuffix): tolerationsString,
+				AnnotationCSIPodAntiAffinityPreset:                                        podAntiAffinityPreset,
+			},
+			Labels: deploymentLabels,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Selector: &metav1.LabelSelector{
@@ -173,7 +176,8 @@ func deploy(kubeClient *clientset.Clientset, obj runtime.Object, resource string
 		if annos[AnnotationCSIGitCommit] == existingAnnos[AnnotationCSIGitCommit] &&
 			annos[AnnotationCSIVersion] == existingAnnos[AnnotationCSIVersion] &&
 			existingMeta.GetDeletionTimestamp() == nil &&
-			!needToUpdateImage(existing, obj) {
+			!needToUpdateImage(existing, obj) &&
+			!needToUpdatePodAntiAffinity(existing, obj) {
 			// deployment of correct version already deployed
 			logrus.Infof("Detected %v %v CSI Git commit %v version %v has already been deployed",
 				resource, name, annos[AnnotationCSIGitCommit], annos[AnnotationCSIVersion])
@@ -252,6 +256,41 @@ func needToUpdateDaemonSetImage(existingObj, newObj runtime.Object) bool {
 	}
 
 	return !reflect.DeepEqual(existingImages, newImages)
+}
+
+func needToUpdatePodAntiAffinity(existingObj, newObj runtime.Object) bool {
+	existingDeployment, ok := existingObj.(*appsv1.Deployment)
+	if !ok {
+		return false
+	}
+	newDeployment, ok := newObj.(*appsv1.Deployment)
+	if !ok {
+		return false
+	}
+
+	if existingDeployment == nil || newDeployment == nil {
+		return false
+	}
+
+	if newDeployment.Annotations == nil {
+		return false
+	}
+
+	newPreset, ok := newDeployment.Annotations[AnnotationCSIPodAntiAffinityPreset]
+	if !ok {
+		return false
+	}
+
+	if existingDeployment.Annotations == nil {
+		return newPreset != CSIPodAntiAffinityPresetSoft
+	}
+
+	existingPreset, ok := existingDeployment.Annotations[AnnotationCSIPodAntiAffinityPreset]
+	if !ok {
+		return newPreset != CSIPodAntiAffinityPresetSoft
+	}
+
+	return existingPreset != newPreset
 }
 
 func cleanup(kubeClient *clientset.Clientset, obj runtime.Object, resource string,
