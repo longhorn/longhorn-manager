@@ -1393,6 +1393,7 @@ const (
 	ClusterInfoVolumeNumOfReplicas    = util.StructName("LonghornVolumeNumberOfReplicas")
 	ClusterInfoVolumeNumOfSnapshots   = util.StructName("LonghornVolumeNumberOfSnapshots")
 
+	ClusterInfoBackupTargetSchemeCountFmt                = "LonghornBackupTarget%sCount"
 	ClusterInfoPodAvgCPUUsageFmt                         = "Longhorn%sAverageCpuUsageMilliCores"
 	ClusterInfoPodAvgMemoryUsageFmt                      = "Longhorn%sAverageMemoryUsageBytes"
 	ClusterInfoSettingFmt                                = "LonghornSetting%s"
@@ -1482,6 +1483,10 @@ func (info *ClusterInfo) collectClusterScope() {
 
 	if err := info.collectOrphanInfo(); err != nil {
 		info.logger.WithError(err).Warn("Failed to collect Longhorn orphan info")
+	}
+
+	if err := info.collectBackupTargetInfo(); err != nil {
+		info.logger.WithError(err).Warn("Failed to collect Longhorn backup target info")
 	}
 }
 
@@ -1842,10 +1847,26 @@ func (info *ClusterInfo) collectBackingImageInfo() error {
 }
 
 func (info *ClusterInfo) collectOrphanInfo() error {
-	orphans, err := info.ds.ListOrphans()
+	orphans, err := info.ds.ListOrphansRO()
 	if err == nil {
 		info.structFields.fields.Append(ClusterInfoOrphanCount, len(orphans))
 	}
+	return err
+}
+
+func (info *ClusterInfo) collectBackupTargetInfo() error {
+	backupTargets, err := info.ds.ListBackupTargetsRO()
+	if err != nil {
+		return errors.Wrapf(err, "failed to list Longhorn Backup Targets")
+	}
+
+	backupTargetDriverCountStruct := make(map[util.StructName]int, len(backupTargets))
+	for _, backupTarget := range backupTargets {
+		backupTargetScheme := types.GetBackupTargetSchemeFromURL(backupTarget.Spec.BackupTargetURL)
+		backupTargetDriverCountStruct[util.StructName(fmt.Sprintf(ClusterInfoBackupTargetSchemeCountFmt, util.ConvertToCamel(backupTargetScheme, "-")))]++
+	}
+	info.structFields.fields.AppendCounted(backupTargetDriverCountStruct)
+
 	return err
 }
 
