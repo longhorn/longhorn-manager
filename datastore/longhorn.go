@@ -1844,6 +1844,18 @@ func (s *DataStore) CreateReplica(r *longhorn.Replica) (*longhorn.Replica, error
 		return s.GetReplicaRO(name)
 	})
 	if err != nil {
+		// Verification failed: The replica CR exists in etcd but is not yet appeared
+		// in the local informer cache. This can happen during cluster instability
+		// (etcd delays, API server issues, network problems).
+		//
+		// During engine upgrades, this is particularly problematic as the cleanup
+		// is intentionally skipped.
+		//
+		// Ref: https://github.com/longhorn/longhorn/issues/12111
+		logrus.WithError(err).Warnf("Replica %v verification failed after creation, initiating cleanup to prevent accumulation", ret.Name)
+		if deleteErr := s.DeleteReplica(ret.Name); deleteErr != nil && !ErrorIsNotFound(deleteErr) {
+			logrus.WithError(deleteErr).Errorf("Failed to cleanup replica %v after verification failure", ret.Name)
+		}
 		return nil, err
 	}
 	ret, ok := obj.(*longhorn.Replica)
