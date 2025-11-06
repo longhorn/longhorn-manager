@@ -161,13 +161,6 @@ const (
 	SettingNameInstanceManagerPodLivenessProbeTimeout                   = SettingName("instance-manager-pod-liveness-probe-timeout")
 	SettingNameLogPath                                                  = SettingName("log-path")
 
-	// These three backup target parameters are used in the "longhorn-default-resource" ConfigMap
-	// to update the default BackupTarget resource.
-	// Longhorn won't create the Setting resources for these three parameters.
-	SettingNameBackupTarget                 = SettingName("backup-target")
-	SettingNameBackupTargetCredentialSecret = SettingName("backup-target-credential-secret")
-	SettingNameBackupstorePollInterval      = SettingName("backupstore-poll-interval")
-
 	// The settings are deprecated and Longhorn won't create Setting Resources for these parameters.
 	// TODO: Remove these settings in the future releases.
 	SettingNameStorageNetworkForRWXVolumeEnabled        = SettingName("storage-network-for-rwx-volume-enabled")
