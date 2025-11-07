@@ -61,6 +61,10 @@ const (
 	KubernetesKindConfigMap             = "ConfigMap"
 	KubernetesKindDaemonSet             = "DaemonSet"
 	KubernetesKindDeployment            = "Deployment"
+	KubernetesKindReplicaSet            = "ReplicaSet"
+	KubernetesKindReplicationController = "ReplicationController"
+	KubernetesKindStatefulSet           = "StatefulSet"
+	KubernetesKindCronJob               = "CronJob"
 	KubernetesKindJob                   = "Job"
 	KubernetesKindPersistentVolume      = "PersistentVolume"
 	KubernetesKindPersistentVolumeClaim = "PersistentVolumeClaim"
@@ -141,9 +145,8 @@ const (
 	DeleteBackupTargetFromLonghorn = "delete-backup-target-from-longhorn"
 
 	KubernetesStatusLabel = "KubernetesStatus"
-	KubernetesReplicaSet  = "ReplicaSet"
-	KubernetesStatefulSet = "StatefulSet"
-	RecurringJobLabel     = "RecurringJob"
+
+	RecurringJobLabel = "RecurringJob"
 
 	VolumeRecurringJobInfoLabel     = "VolumeRecurringJobInfo"
 	VolumeRecurringJobRestorePrefix = "restored-recurring-job-"
