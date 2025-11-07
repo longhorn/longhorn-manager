@@ -364,22 +364,24 @@ func (ns *NodeServer) nodePublishBlockVolume(volumeID, devicePath, targetPath st
 
 	// we ensure the parent directory exists and is valid
 	if _, err := ensureDirectory(filepath.Dir(targetPath)); err != nil {
-		return status.Errorf(codes.Internal, "failed to prepare mount point for block device %v: %v", devicePath, err)
+		return status.Errorf(codes.Internal, "failed to prepare mount point directory for block device %v: %v", devicePath, err)
 	}
 
-	// create file where we can bind mount the device to
-	if err := makeFile(targetPath); err != nil {
-		return status.Errorf(codes.Internal, "failed to create file %v: %v", targetPath, err)
+	// ensure the bind mount point is clear
+	if err := ensureBindMountPoint(targetPath, mounter); err != nil {
+		return status.Errorf(codes.Internal, "failed to prepare mount point file for block device %v: %v", devicePath, err)
 	}
 
 	log.Infof("Bind mounting device %v at %v", devicePath, targetPath)
-	if err := mounter.Mount(devicePath, targetPath, "", []string{"bind"}); err != nil {
-		if removeErr := os.Remove(targetPath); removeErr != nil {
-			log.WithError(removeErr).Errorf("Failed to remove failed mount target %q", targetPath)
-		}
-		return status.Errorf(codes.Internal, "failed to bind mount %q at %q: %v", devicePath, targetPath, err)
+	mountErr := mounter.Mount(devicePath, targetPath, "", []string{"bind"})
+	if mountErr == nil {
+		return nil
 	}
-	return nil
+	log.WithError(mountErr).Errorf("Clean up the mount target %s due to mount error", targetPath)
+	if removeErr := unmountAndCleanupMountPoint(targetPath, mount.New("")); removeErr != nil {
+		log.WithError(removeErr).Errorf("Failed to clean up the mount target %q for failed mounting", targetPath)
+	}
+	return status.Errorf(codes.Internal, "failed to bind mount %q at %q: %v", devicePath, targetPath, mountErr)
 }
 
 func (ns *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
