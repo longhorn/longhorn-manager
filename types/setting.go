@@ -2638,6 +2638,11 @@ func validateSettingString(name SettingName, definition SettingDefinition, value
 				return errors.Wrapf(err, "the value of %v is invalid", name)
 			}
 
+		case SettingNameManagerURL:
+			if err := ValidateManagerURL(strValue); err != nil {
+				return errors.Wrapf(err, "the value of %v is invalid", name)
+			}
+
 		case SettingNameDataEngineLogFlags:
 			if err := ValidateDataEngineLogFlags(strValue); err != nil {
 				return errors.Wrapf(err, "failed to validate data engine log flags %v", strValue)

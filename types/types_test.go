@@ -233,3 +233,83 @@ func (s *TestSuite) TestGenerateEngineNameForVolume(c *C) {
 		c.Assert(actual, Equals, testCase.expectedEngineName, Commentf(TestErrResultFmt, testName))
 	}
 }
+
+func (s *TestSuite) TestValidateManagerURL(c *C) {
+	type testCase struct {
+		input       string
+		expectError bool
+	}
+	testCases := map[string]testCase{
+		"empty URL is valid (disabled)": {
+			input:       "",
+			expectError: false,
+		},
+		"valid https URL": {
+			input:       "https://longhorn.example.com",
+			expectError: false,
+		},
+		"valid http URL": {
+			input:       "http://longhorn.example.com",
+			expectError: false,
+		},
+		"valid URL with custom port": {
+			input:       "https://longhorn.example.com:8443",
+			expectError: false,
+		},
+		"valid URL with default https port": {
+			input:       "https://longhorn.example.com:443",
+			expectError: false,
+		},
+		"valid URL with default http port": {
+			input:       "http://longhorn.example.com:80",
+			expectError: false,
+		},
+		"valid IPv6 URL": {
+			input:       "http://[2001:db8::1]:9500",
+			expectError: false,
+		},
+		"valid IPv6 URL without port": {
+			input:       "http://[::1]",
+			expectError: false,
+		},
+		"invalid scheme": {
+			input:       "ftp://longhorn.example.com",
+			expectError: true,
+		},
+		"missing scheme": {
+			input:       "longhorn.example.com",
+			expectError: true,
+		},
+		"URL with path": {
+			input:       "https://longhorn.example.com/api",
+			expectError: true,
+		},
+		"URL with query": {
+			input:       "https://longhorn.example.com?foo=bar",
+			expectError: true,
+		},
+		"URL with fragment": {
+			input:       "https://longhorn.example.com#section",
+			expectError: true,
+		},
+		"URL with trailing slash": {
+			input:       "https://longhorn.example.com/",
+			expectError: false,
+		},
+		"malformed URL": {
+			input:       "://invalid",
+			expectError: true,
+		},
+	}
+
+	for testName, testCase := range testCases {
+		fmt.Printf("testing %v\n", testName)
+
+		err := ValidateManagerURL(testCase.input)
+		if !testCase.expectError {
+			c.Assert(err, IsNil, Commentf(TestErrErrorFmt, testName, err))
+		} else {
+			c.Assert(err, NotNil, Commentf("Expected error for test case: %s", testName))
+		}
+	}
+}
