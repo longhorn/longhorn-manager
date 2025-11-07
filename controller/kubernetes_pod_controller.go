@@ -669,14 +669,14 @@ func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *
 
 func isOwnedByStatefulSet(pod *corev1.Pod) bool {
 	if ownerRef := metav1.GetControllerOf(pod); ownerRef != nil {
-		return ownerRef.Kind == types.KubernetesStatefulSet
+		return ownerRef.Kind == types.KubernetesKindStatefulSet
 	}
 	return false
 }
 
 func isOwnedByDeployment(pod *corev1.Pod) bool {
 	if ownerRef := metav1.GetControllerOf(pod); ownerRef != nil {
-		return ownerRef.Kind == types.KubernetesReplicaSet
+		return ownerRef.Kind == types.KubernetesKindReplicaSet
 	}
 	return false
 }
