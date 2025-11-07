@@ -1,7 +1,6 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
 	"net/url"
 
@@ -15,6 +14,8 @@ import (
 // the X-Forwarded-Proto, X-Forwarded-Host, and X-Forwarded-Port headers to ensure
 // API responses (actions and links fields) contain the correct external URL instead
 // of internal pod IPs.
+// Note: The manager-url value is validated when the setting is updated, so no
+// validation is performed here.
 func ManagerURLMiddleware(s *Server) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -31,12 +32,6 @@ func ManagerURLMiddleware(s *Server) func(http.Handler) http.Handler {
 				return
 			}
 
-			if err := validateManagerURL(managerURL); err != nil {
-				logrus.WithError(err).Warnf("Invalid manager-url setting value: %s", managerURL)
-				next.ServeHTTP(w, r)
-				return
-			}
-
 			if err := injectForwardedHeaders(r, managerURL); err != nil {
 				logrus.WithError(err).Warn("Failed to inject forwarded headers")
 				next.ServeHTTP(w, r)
@@ -46,38 +41,6 @@ func ManagerURLMiddleware(s *Server) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
-}
-
-// validateManagerURL validates the manager-url setting value.
-// Returns nil if the URL is valid or empty (disabled).
-// Returns error if the URL is invalid.
-func validateManagerURL(managerURL string) error {
-	if managerURL == "" {
-		return nil // Empty is valid (disabled)
-	}
-
-	u, err := url.Parse(managerURL)
-	if err != nil {
-		return fmt.Errorf("invalid URL format: %w", err)
-	}
-
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("scheme must be http or https, got: %s", u.Scheme)
-	}
-
-	if u.Host == "" {
-		return fmt.Errorf("host is required")
-	}
-
-	if u.Path != "" && u.Path != "/" {
-		return fmt.Errorf("URL must not contain path")
-	}
-
-	if u.RawQuery != "" || u.Fragment != "" {
-		return fmt.Errorf("URL must not contain query or fragment")
-	}
-
-	return nil
 }
 
 // injectForwardedHeaders extracts proto, host, and port from the managerURL
