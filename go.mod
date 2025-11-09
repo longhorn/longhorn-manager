@@ -1,6 +1,6 @@
 module github.com/longhorn/longhorn-manager
 
-go 1.24.0
+go 1.24.6
 
 toolchain go1.25.4
 
@@ -64,7 +64,7 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/jinzhu/copier v0.4.0
-	github.com/kubernetes-csi/csi-lib-utils v0.22.0
+	github.com/kubernetes-csi/csi-lib-utils v0.23.0
 	github.com/longhorn/backing-image-manager v1.9.2
 	github.com/longhorn/backupstore v0.0.0-20251009075049-1b6c3422a333
 	github.com/longhorn/go-common-libs v0.0.0-20251025140453-faa811992208
@@ -85,7 +85,7 @@ require (
 	github.com/urfave/cli v1.22.17
 	golang.org/x/mod v0.29.0
 	golang.org/x/net v0.46.0
-	golang.org/x/sys v0.37.0
+	golang.org/x/sys v0.38.0
 	golang.org/x/time v0.14.0
 	google.golang.org/grpc v1.76.0
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
@@ -184,7 +184,7 @@ require (
 	go.uber.org/multierr v1.11.0
 	golang.org/x/crypto v0.43.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
-	golang.org/x/sync v0.17.0
+	golang.org/x/sync v0.18.0
 	golang.org/x/term v0.36.0 // indirect
 	golang.org/x/text v0.30.0
 	google.golang.org/protobuf v1.36.10
