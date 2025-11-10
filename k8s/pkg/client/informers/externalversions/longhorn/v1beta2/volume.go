@@ -62,25 +62,13 @@ func NewFilteredVolumeInformer(client versioned.Interface, namespace string, res
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.LonghornV1beta2().Volumes(namespace).List(context.Background(), options)
+				return client.LonghornV1beta2().Volumes(namespace).List(context.TODO(), options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.LonghornV1beta2().Volumes(namespace).Watch(context.Background(), options)
-			},
-			ListWithContextFunc: func(ctx context.Context, options v1.ListOptions) (runtime.Object, error) {
-				if tweakListOptions != nil {
-					tweakListOptions(&options)
-				}
-				return client.LonghornV1beta2().Volumes(namespace).List(ctx, options)
-			},
-			WatchFuncWithContext: func(ctx context.Context, options v1.ListOptions) (watch.Interface, error) {
-				if tweakListOptions != nil {
-					tweakListOptions(&options)
-				}
-				return client.LonghornV1beta2().Volumes(namespace).Watch(ctx, options)
+				return client.LonghornV1beta2().Volumes(namespace).Watch(context.TODO(), options)
 			},
 		},
 		&apislonghornv1beta2.Volume{},
