@@ -32,7 +32,7 @@ func (s *storage) Get() (*v1.Secret, error) {
 }
 
 func (s *storage) Update(secret *v1.Secret) error {
-	f, err := os.OpenFile(s.file, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	f, err := os.Create(s.file)
 	if err != nil {
 		return err
 	}
