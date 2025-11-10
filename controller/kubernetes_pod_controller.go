@@ -333,6 +333,31 @@ func (kc *KubernetesPodController) handleWorkloadPodDeletionIfCSIPluginPodIsDown
 	return nil
 }
 
+// isControllerInBlacklist returns true if the owner reference kind is in the blacklist.
+func (kc *KubernetesPodController) isControllerInBlacklist(resource *metav1.OwnerReference) bool {
+	if resource == nil {
+		return false
+	}
+
+	blacklist, err := kc.ds.GetSettingBlacklistForAutoDeletePodWhenVolumeDetachedUnexpectedly()
+	if err != nil {
+		kc.logger.WithError(err).Warnf("%v: failed to get blacklist for auto-delete pod when volume detached unexpectedly, assuming no blacklist", controllerAgentName)
+		return false
+	}
+
+	if blacklist == nil {
+		return false
+	}
+
+	apiVersionKind := fmt.Sprintf("%s/%s", resource.APIVersion, resource.Kind)
+
+	if _, exists := blacklist[apiVersionKind]; exists {
+		return true
+	}
+
+	return false
+}
+
 // cleanupForceDeletedPodResources removes stale resources left behind when a pod
 // is force-deleted (i.e., deletion grace period is zero).
 func (kc *KubernetesPodController) cleanupForceDeletedPodResources(pod *corev1.Pod) error {
@@ -599,8 +624,10 @@ func (kc *KubernetesPodController) handlePodDeletionIfVolumeRequestRemount(pod *
 		return nil
 	}
 
-	// Only delete pod which has controller to make sure that the pod will be recreated by its controller
-	if metav1.GetControllerOf(pod) == nil {
+	// Only delete pod
+	// 1. which has controller to make sure that the pod will be recreated by its controller
+	// 2. whose controller kind is not in the blacklist
+	if ownerRef := metav1.GetControllerOf(pod); ownerRef == nil || kc.isControllerInBlacklist(ownerRef) {
 		return nil
 	}
 
