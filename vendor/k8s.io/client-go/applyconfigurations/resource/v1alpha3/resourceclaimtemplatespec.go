@@ -33,8 +33,34 @@ type ResourceClaimTemplateSpecApplyConfiguration struct {
 
 // ResourceClaimTemplateSpecApplyConfiguration constructs a declarative configuration of the ResourceClaimTemplateSpec type for use with
 // apply.
+<<<<<<< HEAD:vendor/k8s.io/client-go/applyconfigurations/resource/v1alpha3/resourceclaimtemplatespec.go
 func ResourceClaimTemplateSpec() *ResourceClaimTemplateSpecApplyConfiguration {
 	return &ResourceClaimTemplateSpecApplyConfiguration{}
+=======
+func Node(name, namespace string) *NodeApplyConfiguration {
+	b := &NodeApplyConfiguration{}
+	b.WithName(name)
+	b.WithNamespace(namespace)
+	b.WithKind("Node")
+	b.WithAPIVersion("longhorn.io/v1beta2")
+	return b
+}
+
+// WithKind sets the Kind field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Kind field is set to the value of the last call.
+func (b *NodeApplyConfiguration) WithKind(value string) *NodeApplyConfiguration {
+	b.TypeMetaApplyConfiguration.Kind = &value
+	return b
+}
+
+// WithAPIVersion sets the APIVersion field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the APIVersion field is set to the value of the last call.
+func (b *NodeApplyConfiguration) WithAPIVersion(value string) *NodeApplyConfiguration {
+	b.TypeMetaApplyConfiguration.APIVersion = &value
+	return b
+>>>>>>> 6201979e (chore(crd): regenerate codes):k8s/pkg/client/applyconfiguration/longhorn/v1beta2/node.go
 }
 
 // WithName sets the Name field in the declarative configuration to the given value
@@ -187,6 +213,17 @@ func (b *ResourceClaimTemplateSpecApplyConfiguration) WithSpec(value *ResourceCl
 	return b
 }
 
+<<<<<<< HEAD:vendor/k8s.io/client-go/applyconfigurations/resource/v1alpha3/resourceclaimtemplatespec.go
+=======
+// WithStatus sets the Status field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Status field is set to the value of the last call.
+func (b *NodeApplyConfiguration) WithStatus(value *NodeStatusApplyConfiguration) *NodeApplyConfiguration {
+	b.Status = value
+	return b
+}
+
+>>>>>>> 6201979e (chore(crd): regenerate codes):k8s/pkg/client/applyconfiguration/longhorn/v1beta2/node.go
 // GetName retrieves the value of the Name field in the declarative configuration.
 func (b *ResourceClaimTemplateSpecApplyConfiguration) GetName() *string {
 	b.ensureObjectMetaApplyConfigurationExists()

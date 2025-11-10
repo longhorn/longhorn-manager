@@ -45,6 +45,7 @@ func ServiceCIDR(name string) *ServiceCIDRApplyConfiguration {
 	b.WithAPIVersion("networking.k8s.io/v1alpha1")
 	return b
 }
+<<<<<<< HEAD:vendor/k8s.io/client-go/applyconfigurations/networking/v1alpha1/servicecidr.go
 
 // ExtractServiceCIDR extracts the applied configuration owned by fieldManager from
 // serviceCIDR. If no managedFields are found in serviceCIDR for fieldManager, a
@@ -80,6 +81,8 @@ func extractServiceCIDR(serviceCIDR *networkingv1alpha1.ServiceCIDR, fieldManage
 	b.WithAPIVersion("networking.k8s.io/v1alpha1")
 	return b, nil
 }
+=======
+>>>>>>> 6201979e (chore(crd): regenerate codes):k8s/pkg/client/applyconfiguration/longhorn/v1beta2/engineimage.go
 
 // WithKind sets the Kind field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.

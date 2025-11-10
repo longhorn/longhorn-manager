@@ -45,6 +45,7 @@ func ResourceClaimTemplate(name, namespace string) *ResourceClaimTemplateApplyCo
 	b.WithAPIVersion("resource.k8s.io/v1alpha3")
 	return b
 }
+<<<<<<< HEAD:vendor/k8s.io/client-go/applyconfigurations/resource/v1alpha3/resourceclaimtemplate.go
 
 // ExtractResourceClaimTemplate extracts the applied configuration owned by fieldManager from
 // resourceClaimTemplate. If no managedFields are found in resourceClaimTemplate for fieldManager, a
@@ -81,6 +82,8 @@ func extractResourceClaimTemplate(resourceClaimTemplate *resourcev1alpha3.Resour
 	b.WithAPIVersion("resource.k8s.io/v1alpha3")
 	return b, nil
 }
+=======
+>>>>>>> 6201979e (chore(crd): regenerate codes):k8s/pkg/client/applyconfiguration/longhorn/v1beta2/instancemanager.go
 
 // WithKind sets the Kind field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
@@ -248,6 +251,17 @@ func (b *ResourceClaimTemplateApplyConfiguration) WithSpec(value *ResourceClaimT
 	return b
 }
 
+<<<<<<< HEAD:vendor/k8s.io/client-go/applyconfigurations/resource/v1alpha3/resourceclaimtemplate.go
+=======
+// WithStatus sets the Status field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Status field is set to the value of the last call.
+func (b *InstanceManagerApplyConfiguration) WithStatus(value *InstanceManagerStatusApplyConfiguration) *InstanceManagerApplyConfiguration {
+	b.Status = value
+	return b
+}
+
+>>>>>>> 6201979e (chore(crd): regenerate codes):k8s/pkg/client/applyconfiguration/longhorn/v1beta2/instancemanager.go
 // GetName retrieves the value of the Name field in the declarative configuration.
 func (b *ResourceClaimTemplateApplyConfiguration) GetName() *string {
 	b.ensureObjectMetaApplyConfigurationExists()

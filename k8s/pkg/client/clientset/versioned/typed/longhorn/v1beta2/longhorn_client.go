@@ -147,9 +147,29 @@ func (c *LonghornV1beta2Client) VolumeAttachments(namespace string) VolumeAttach
 func NewForConfig(c *rest.Config) (*LonghornV1beta2Client, error) {
 	config := *c
 	if err := setConfigDefaults(&config); err != nil {
+<<<<<<< HEAD
 		return nil, err
 	}
 	client, err := rest.RESTClientFor(&config)
+=======
+		return nil, err
+	}
+	httpClient, err := rest.HTTPClientFor(&config)
+	if err != nil {
+		return nil, err
+	}
+	return NewForConfigAndClient(&config, httpClient)
+}
+
+// NewForConfigAndClient creates a new LonghornV1beta2Client for the given config and http client.
+// Note the http client provided takes precedence over the configured transport values.
+func NewForConfigAndClient(c *rest.Config, h *http.Client) (*LonghornV1beta2Client, error) {
+	config := *c
+	if err := setConfigDefaults(&config); err != nil {
+		return nil, err
+	}
+	client, err := rest.RESTClientForConfigAndClient(&config, h)
+>>>>>>> 6201979e (chore(crd): regenerate codes)
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +192,11 @@ func New(c rest.Interface) *LonghornV1beta2Client {
 }
 
 func setConfigDefaults(config *rest.Config) error {
+<<<<<<< HEAD
 	gv := v1beta2.SchemeGroupVersion
+=======
+	gv := longhornv1beta2.SchemeGroupVersion
+>>>>>>> 6201979e (chore(crd): regenerate codes)
 	config.GroupVersion = &gv
 	config.APIPath = "/apis"
 	config.NegotiatedSerializer = scheme.Codecs.WithoutConversion()

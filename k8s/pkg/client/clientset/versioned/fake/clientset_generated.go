@@ -78,9 +78,26 @@ func (c *Clientset) Tracker() testing.ObjectTracker {
 
 var _ clientset.Interface = &Clientset{}
 
+<<<<<<< HEAD
 // LonghornV1beta1 retrieves the LonghornV1beta1Client
 func (c *Clientset) LonghornV1beta1() longhornv1beta1.LonghornV1beta1Interface {
 	return &fakelonghornv1beta1.FakeLonghornV1beta1{Fake: &c.Fake}
+=======
+	cs := &Clientset{tracker: o}
+	cs.discovery = &fakediscovery.FakeDiscovery{Fake: &cs.Fake}
+	cs.AddReactor("*", "*", testing.ObjectReaction(o))
+	cs.AddWatchReactor("*", func(action testing.Action) (handled bool, ret watch.Interface, err error) {
+		gvr := action.GetResource()
+		ns := action.GetNamespace()
+		watch, err := o.Watch(gvr, ns)
+		if err != nil {
+			return false, nil, err
+		}
+		return true, watch, nil
+	})
+
+	return cs
+>>>>>>> 6201979e (chore(crd): regenerate codes)
 }
 
 // LonghornV1beta2 retrieves the LonghornV1beta2Client

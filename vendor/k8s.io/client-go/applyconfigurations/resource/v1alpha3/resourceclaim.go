@@ -46,6 +46,7 @@ func ResourceClaim(name, namespace string) *ResourceClaimApplyConfiguration {
 	b.WithAPIVersion("resource.k8s.io/v1alpha3")
 	return b
 }
+<<<<<<< HEAD:vendor/k8s.io/client-go/applyconfigurations/resource/v1alpha3/resourceclaim.go
 
 // ExtractResourceClaim extracts the applied configuration owned by fieldManager from
 // resourceClaim. If no managedFields are found in resourceClaim for fieldManager, a
@@ -82,6 +83,8 @@ func extractResourceClaim(resourceClaim *resourcev1alpha3.ResourceClaim, fieldMa
 	b.WithAPIVersion("resource.k8s.io/v1alpha3")
 	return b, nil
 }
+=======
+>>>>>>> 6201979e (chore(crd): regenerate codes):k8s/pkg/client/applyconfiguration/longhorn/v1beta2/supportbundle.go
 
 // WithKind sets the Kind field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
