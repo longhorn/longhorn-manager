@@ -4057,6 +4057,15 @@ func (s *DataStore) GetSettingOrphanResourceAutoDeletion() (map[types.OrphanReso
 	return resourceTypes, nil
 }
 
+func (s *DataStore) GetSettingBlacklistForAutoDeletePodWhenVolumeDetachedUnexpectedly() (map[string]struct{}, error) {
+	setting, err := s.GetSettingWithAutoFillingRO(types.SettingNameBlacklistForAutoDeletePodWhenVolumeDetachedUnexpectedly)
+	if err != nil {
+		return nil, err
+	}
+
+	return util.SplitStringToMap(setting.Value, ";"), nil
+}
+
 // ResetMonitoringEngineStatus clean and update Engine status
 func (s *DataStore) ResetMonitoringEngineStatus(e *longhorn.Engine) (*longhorn.Engine, error) {
 	e.Status.Endpoint = ""
