@@ -3527,6 +3527,33 @@ func (s *DataStore) GetSettingSystemManagedComponentsNodeSelector() (map[string]
 	return nodeSelector, nil
 }
 
+<<<<<<< HEAD
+=======
+// GetSettingOrphanResourceAutoDeletion get the setting and return a flag collection of orphaned resource types.
+// Flag is true when the auto deletion is enabled to an orphaned resource type.
+// Returns error if the setting is invalid
+func (s *DataStore) GetSettingOrphanResourceAutoDeletion() (map[types.OrphanResourceType]bool, error) {
+	setting, err := s.GetSettingWithAutoFillingRO(types.SettingNameOrphanResourceAutoDeletion)
+	if err != nil {
+		return nil, err
+	}
+	resourceTypes, err := types.UnmarshalOrphanResourceTypes(setting.Value)
+	if err != nil {
+		return nil, err
+	}
+	return resourceTypes, nil
+}
+
+func (s *DataStore) GetSettingBlacklistForAutoDeletePodWhenVolumeDetachedUnexpectedly() (map[string]struct{}, error) {
+	setting, err := s.GetSettingWithAutoFillingRO(types.SettingNameBlacklistForAutoDeletePodWhenVolumeDetachedUnexpectedly)
+	if err != nil {
+		return nil, err
+	}
+
+	return util.SplitStringToMap(setting.Value, ";"), nil
+}
+
+>>>>>>> 01573ddf (feat(setting): introduce blacklist-for-auto-delete-pod-when-volume-detached-unexpectedly)
 // ResetMonitoringEngineStatus clean and update Engine status
 func (s *DataStore) ResetMonitoringEngineStatus(e *longhorn.Engine) (*longhorn.Engine, error) {
 	e.Status.Endpoint = ""

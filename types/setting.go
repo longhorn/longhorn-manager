@@ -78,6 +78,7 @@ const (
 	SettingNameCRDAPIVersion                                            = SettingName("crd-api-version")
 	SettingNameAutoSalvage                                              = SettingName("auto-salvage")
 	SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly              = SettingName("auto-delete-pod-when-volume-detached-unexpectedly")
+	SettingNameBlacklistForAutoDeletePodWhenVolumeDetachedUnexpectedly  = SettingName("blacklist-for-auto-delete-pod-when-volume-detached-unexpectedly")
 	SettingNameRegistrySecret                                           = SettingName("registry-secret")
 	SettingNameDisableSchedulingOnCordonedNode                          = SettingName("disable-scheduling-on-cordoned-node")
 	SettingNameReplicaZoneSoftAntiAffinity                              = SettingName("replica-zone-soft-anti-affinity")
@@ -179,6 +180,7 @@ var (
 		SettingNameCRDAPIVersion,
 		SettingNameAutoSalvage,
 		SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly,
+		SettingNameBlacklistForAutoDeletePodWhenVolumeDetachedUnexpectedly,
 		SettingNameRegistrySecret,
 		SettingNameDisableSchedulingOnCordonedNode,
 		SettingNameReplicaZoneSoftAntiAffinity,
@@ -301,6 +303,7 @@ var (
 		SettingNameCRDAPIVersion:                                            SettingDefinitionCRDAPIVersion,
 		SettingNameAutoSalvage:                                              SettingDefinitionAutoSalvage,
 		SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly:              SettingDefinitionAutoDeletePodWhenVolumeDetachedUnexpectedly,
+		SettingNameBlacklistForAutoDeletePodWhenVolumeDetachedUnexpectedly:  SettingDefinitionBlacklistForAutoDeletePodWhenVolumeDetachedUnexpectedly,
 		SettingNameRegistrySecret:                                           SettingDefinitionRegistrySecret,
 		SettingNameDisableSchedulingOnCordonedNode:                          SettingDefinitionDisableSchedulingOnCordonedNode,
 		SettingNameReplicaZoneSoftAntiAffinity:                              SettingDefinitionReplicaZoneSoftAntiAffinity,
@@ -752,6 +755,20 @@ var (
 		Required: true,
 		ReadOnly: false,
 		Default:  "true",
+	}
+
+	SettingDefinitionBlacklistForAutoDeletePodWhenVolumeDetachedUnexpectedly = SettingDefinition{
+		DisplayName: "Blacklist for Automatically Delete Workload Pod when The Volume Is Detached Unexpectedly",
+		Description: "Blacklist of the controller apiVersion/kind for the setting 'Automatically Delete Workload Pod when The Volume Is Detached Unexpectedly'. " +
+			"If a workload pod is managed by a controller whose apiVersion/kind is in this blacklist, Longhorn will not automatically delete the pod when the volume is detached unexpectedly. \n\n" +
+			"Multiple controller kinds can be set here, and these apiVersion/kind are separated by semicolon. For example: `app/v1/StatefulSet;app/v1/DaemonSet` \n\n" +
+			"**Note:** The controller apiVersion/kind is case sensitive and must match the apiVersion/kind in the workload pod's owner reference.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "",
 	}
 
 	SettingDefinitionRegistrySecret = SettingDefinition{
