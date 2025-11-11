@@ -345,13 +345,17 @@ func (kc *KubernetesPodController) isControllerInBlacklist(resource *metav1.Owne
 		return false
 	}
 
-	if blacklist == nil {
+	if len(blacklist) == 0 {
 		return false
 	}
 
-	apiVersionKind := fmt.Sprintf("%s/%s", resource.APIVersion, resource.Kind)
+	api, _, ok := strings.Cut(resource.APIVersion, "/")
+	if !ok {
+		return false
+	}
 
-	if _, exists := blacklist[apiVersionKind]; exists {
+	apiKind := fmt.Sprintf("%s/%s", api, resource.Kind)
+	if _, exists := blacklist[apiKind]; exists {
 		return true
 	}
 
