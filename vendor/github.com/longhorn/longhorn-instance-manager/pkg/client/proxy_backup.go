@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	rpc "github.com/longhorn/types/pkg/generated/imrpc"

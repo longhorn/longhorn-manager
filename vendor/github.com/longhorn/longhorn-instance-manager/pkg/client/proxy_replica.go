@@ -3,7 +3,7 @@ package client
 import (
 	"fmt"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 
 	etypes "github.com/longhorn/longhorn-engine/pkg/types"
 	rpc "github.com/longhorn/types/pkg/generated/imrpc"

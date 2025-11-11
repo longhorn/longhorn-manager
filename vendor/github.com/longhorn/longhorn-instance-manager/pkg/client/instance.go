@@ -5,7 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -90,6 +90,8 @@ func NewInstanceServiceClientWithTLS(ctx context.Context, ctxCancel context.Canc
 type EngineCreateRequest struct {
 	ReplicaAddressMap map[string]string
 	Frontend          string
+	UblkQueueDepth    int
+	UblkNumberOfQueue int
 	InitiatorAddress  string
 	TargetAddress     string
 	UpgradeRequired   bool
@@ -152,6 +154,8 @@ func (c *InstanceServiceClient) InstanceCreate(req *InstanceCreateRequest) (*api
 				ReplicaAddressMap: req.Engine.ReplicaAddressMap,
 				Frontend:          req.Engine.Frontend,
 				SalvageRequested:  req.Engine.SalvageRequested,
+				UblkQueueDepth:    int32(req.Engine.UblkQueueDepth),
+				UblkNumberOfQueue: int32(req.Engine.UblkNumberOfQueue),
 			}
 		case types.InstanceTypeReplica:
 			spdkInstanceSpec = &rpc.SpdkInstanceSpec{

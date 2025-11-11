@@ -73,6 +73,14 @@ func (v *volumeValidator) Create(request *admission.Request, newObj runtime.Obje
 		return werror.NewInvalidError(err.Error(), "spec.numberOfReplicas")
 	}
 
+	if err := validateUblkQueueDepth(volume.Spec.UblkQueueDepth); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.ublkQueueDepth")
+	}
+
+	if err := validateUblkNumberOfQueue(volume.Spec.UblkNumberOfQueue); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.ublkNumberOfQueue")
+	}
+
 	if err := types.ValidateDataLocalityAndReplicaCount(volume.Spec.DataLocality, volume.Spec.NumberOfReplicas); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.dataLocality and spec.numberOfReplicas")
 	}
@@ -223,6 +231,14 @@ func (v *volumeValidator) Update(request *admission.Request, oldObj runtime.Obje
 
 	if err := validateReplicaCount(newVolume.Spec.CloneMode, newVolume.Spec.DataLocality, newVolume.Spec.NumberOfReplicas); err != nil {
 		return werror.NewInvalidError(err.Error(), "spec.numberOfReplicas")
+	}
+
+	if err := validateUblkQueueDepth(newVolume.Spec.UblkQueueDepth); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.ublkQueueDepth")
+	}
+
+	if err := validateUblkNumberOfQueue(newVolume.Spec.UblkNumberOfQueue); err != nil {
+		return werror.NewInvalidError(err.Error(), "spec.ublkNumberOfQueue")
 	}
 
 	if err := types.ValidateAccessMode(newVolume.Spec.AccessMode); err != nil {
@@ -483,6 +499,20 @@ func validateReplicaCount(cloneMode longhorn.CloneMode, dataLocality longhorn.Da
 		if replicaCount != 1 {
 			return werror.NewInvalidError(fmt.Sprintf("number of replica count must be 1 when clone mode %v", longhorn.CloneModeLinkedClone), "")
 		}
+	}
+	return nil
+}
+
+func validateUblkQueueDepth(d int) error {
+	if d != 0 && d < 32 {
+		return fmt.Errorf("ublk queue depth must be either 0 (meaning unspecified) or at least 32. Got %d", d)
+	}
+	return nil
+}
+
+func validateUblkNumberOfQueue(n int) error {
+	if n != 0 && n < 1 {
+		return fmt.Errorf("ublk number of queues must be either 0 (meaning unspecified) or at least 1. Got %d", n)
 	}
 	return nil
 }

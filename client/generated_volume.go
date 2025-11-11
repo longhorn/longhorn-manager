@@ -117,6 +117,10 @@ type Volume struct {
 
 	State string `json:"state,omitempty" yaml:"state,omitempty"`
 
+	UblkNumberOfQueue int64 `json:"ublkNumberOfQueue,omitempty" yaml:"ublk_number_of_queue,omitempty"`
+
+	UblkQueueDepth int64 `json:"ublkQueueDepth,omitempty" yaml:"ublk_queue_depth,omitempty"`
+
 	UnmapMarkSnapChainRemoved string `json:"unmapMarkSnapChainRemoved,omitempty" yaml:"unmap_mark_snap_chain_removed,omitempty"`
 
 	VolumeAttachment VolumeAttachment `json:"volumeAttachment,omitempty" yaml:"volume_attachment,omitempty"`

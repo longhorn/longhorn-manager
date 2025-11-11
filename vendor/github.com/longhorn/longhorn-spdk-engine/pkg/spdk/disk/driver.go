@@ -3,7 +3,7 @@ package disk
 import (
 	"fmt"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 
 	spdkclient "github.com/longhorn/go-spdk-helper/pkg/spdk/client"
 	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"

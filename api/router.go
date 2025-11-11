@@ -78,6 +78,8 @@ func NewRouter(s *Server) *mux.Router {
 		"updateSnapshotMaxCount":                s.VolumeUpdateSnapshotMaxCount,
 		"updateSnapshotMaxSize":                 s.VolumeUpdateSnapshotMaxSize,
 		"updateReplicaRebuildingBandwidthLimit": s.VolumeUpdateReplicaRebuildingBandwidthLimit,
+		"updateUblkQueueDepth":                  s.VolumeUpdateUblkQueueDepth,
+		"updateUblkNumberOfQueue":               s.VolumeUpdateUpdateUblkNumberOfQueue,
 		"updateReplicaSoftAntiAffinity":         s.VolumeUpdateReplicaSoftAntiAffinity,
 		"updateReplicaZoneSoftAntiAffinity":     s.VolumeUpdateReplicaZoneSoftAntiAffinity,
 		"updateReplicaDiskSoftAntiAffinity":     s.VolumeUpdateReplicaDiskSoftAntiAffinity,

@@ -27,6 +27,8 @@ import (
 type VolumeSpecApplyConfiguration struct {
 	Size                            *int64                                         `json:"size,omitempty"`
 	Frontend                        *longhornv1beta2.VolumeFrontend                `json:"frontend,omitempty"`
+	UblkQueueDepth                  *int                                           `json:"ublkQueueDepth,omitempty"`
+	UblkNumberOfQueue               *int                                           `json:"ublkNumberOfQueue,omitempty"`
 	FromBackup                      *string                                        `json:"fromBackup,omitempty"`
 	RestoreVolumeRecurringJob       *longhornv1beta2.RestoreVolumeRecurringJobType `json:"restoreVolumeRecurringJob,omitempty"`
 	DataSource                      *longhornv1beta2.VolumeDataSource              `json:"dataSource,omitempty"`
@@ -83,6 +85,22 @@ func (b *VolumeSpecApplyConfiguration) WithSize(value int64) *VolumeSpecApplyCon
 // If called multiple times, the Frontend field is set to the value of the last call.
 func (b *VolumeSpecApplyConfiguration) WithFrontend(value longhornv1beta2.VolumeFrontend) *VolumeSpecApplyConfiguration {
 	b.Frontend = &value
+	return b
+}
+
+// WithUblkQueueDepth sets the UblkQueueDepth field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the UblkQueueDepth field is set to the value of the last call.
+func (b *VolumeSpecApplyConfiguration) WithUblkQueueDepth(value int) *VolumeSpecApplyConfiguration {
+	b.UblkQueueDepth = &value
+	return b
+}
+
+// WithUblkNumberOfQueue sets the UblkNumberOfQueue field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the UblkNumberOfQueue field is set to the value of the last call.
+func (b *VolumeSpecApplyConfiguration) WithUblkNumberOfQueue(value int) *VolumeSpecApplyConfiguration {
+	b.UblkNumberOfQueue = &value
 	return b
 }
 

@@ -18,6 +18,10 @@ toolchain go1.25.4
 // example, if we import k8s.io/kubernetes v1.28.5, we should use v0.28.5 of all the replace directives. Depending on
 // the portions of k8s.io/kubernetes code this module actually uses, not all of the replace directives may strictly be
 // necessary. However, it is better to include all of them for consistency.
+replace (
+	github.com/longhorn/longhorn-instance-manager => ../longhorn-instance-manager
+	github.com/longhorn/types => ../types
+)
 
 replace (
 	k8s.io/api => k8s.io/api v0.34.1
@@ -70,10 +74,10 @@ require (
 	github.com/longhorn/go-common-libs v0.0.0-20251025140453-faa811992208
 	github.com/longhorn/go-iscsi-helper v0.0.0-20251102142448-23eedefc2b60
 	github.com/longhorn/go-spdk-helper v0.2.0
-	github.com/longhorn/longhorn-engine v1.10.0-dev-20250713.0.20250728071833-3932ded2f139
+	github.com/longhorn/longhorn-engine v1.10.0-dev-20250824.0.20251103012748-950f695edced
 	github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250824.0.20250916035906-698d8ed06d8d
 	github.com/longhorn/longhorn-share-manager v1.9.2
-	github.com/longhorn/longhorn-spdk-engine v0.0.0-20250916034519-7fdbb7b284f7
+	github.com/longhorn/longhorn-spdk-engine v0.0.0-20251023092409-3c3113c50437
 	github.com/prometheus/client_golang v1.23.2
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
 	github.com/rancher/dynamiclistener v0.7.0

@@ -1614,6 +1614,8 @@ func (info *ClusterInfo) collectSettings() error {
 		types.SettingNameSystemManagedPodsImagePullPolicy:                         true,
 		types.SettingNameDefaultBackupBlockSize:                                   true,
 		types.SettingNameReplicaRebuildingBandwidthLimit:                          true,
+		types.SettingNameDefaultUblkQueueDepth:                                    true,
+		types.SettingNameDefaultUblkNumberOfQueue:                                 true,
 		types.SettingNameV1DataEngine:                                             true,
 		types.SettingNameV2DataEngine:                                             true,
 	}

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/longhorn/longhorn-instance-manager/pkg/api"
