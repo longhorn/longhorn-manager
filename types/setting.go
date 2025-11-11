@@ -852,7 +852,7 @@ var (
 	SettingDefinitionBlacklistForAutoDeletePodWhenVolumeDetachedUnexpectedly = SettingDefinition{
 		DisplayName: "Blacklist for Automatically Delete Workload Pod when The Volume Is Detached Unexpectedly",
 		Description: "Blacklist of controller api/kind values for the setting Automatically Delete Workload Pod when the Volume Is Detached Unexpectedly" +
-			"If a workload pod is managed by a controller whose apiVersion/kind is listed in this blacklist, Longhorn will not automatically delete the pod when its volume is unexpectedly detached.\n\n" +
+			"If a workload pod is managed by a controller whose api/kind is listed in this blacklist, Longhorn will not automatically delete the pod when its volume is unexpectedly detached.\n\n" +
 			"Multiple controller apiVersion/kind entries can be specified, separated by semicolons. For example: `apps/StatefulSet;apps/DaemonSet`.\n\n" +
 			"**Note:** The controller api/kind is case sensitive and must exactly match the api/kind in the workload pod's owner reference.",
 		Category:           SettingCategoryGeneral,
