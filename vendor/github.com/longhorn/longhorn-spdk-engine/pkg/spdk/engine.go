@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 	"go.uber.org/multierr"
 
@@ -95,10 +95,15 @@ type NvmeTcpFrontend struct {
 }
 
 type UblkFrontend struct {
+	// spec
+	UblkQueueDepth    int32
+	UblkNumberOfQueue int32
+
+	// status
 	UblkID int32
 }
 
-func NewEngine(engineName, volumeName, frontend string, specSize uint64, engineUpdateCh chan interface{}) *Engine {
+func NewEngine(engineName, volumeName, frontend string, specSize uint64, engineUpdateCh chan interface{}, ublkQueueDepth, ublkNumberOfQueue int32) *Engine {
 	log := logrus.StandardLogger().WithFields(logrus.Fields{
 		"engineName": engineName,
 		"volumeName": volumeName,
@@ -114,7 +119,10 @@ func NewEngine(engineName, volumeName, frontend string, specSize uint64, engineU
 	var nvmeTcpFrontend *NvmeTcpFrontend
 	var ublkFrontend *UblkFrontend
 	if types.IsUblkFrontend(frontend) {
-		ublkFrontend = &UblkFrontend{}
+		ublkFrontend = &UblkFrontend{
+			UblkQueueDepth:    ublkQueueDepth,
+			UblkNumberOfQueue: ublkNumberOfQueue,
+		}
 	} else {
 		nvmeTcpFrontend = &NvmeTcpFrontend{}
 	}
@@ -701,8 +709,11 @@ func (e *Engine) handleUblkFrontend(spdkClient *spdkclient.Client) (err error) {
 	}
 	dmDeviceIsBusy := false
 	ublkInfo := &initiator.UblkInfo{
-		BdevName: e.Name,
-		UblkID:   initiator.UnInitializedUblkId,
+		BdevName:          e.Name,
+		UblkQueueDepth:    e.UblkFrontend.UblkQueueDepth,
+		UblkNumberOfQueue: e.UblkFrontend.UblkNumberOfQueue,
+
+		UblkID: initiator.UnInitializedUblkId,
 	}
 	i, err := initiator.NewInitiator(e.VolumeName, initiator.HostProc, nil, ublkInfo)
 	if err != nil {
@@ -2255,7 +2266,7 @@ func (e *Engine) SnapshotPurge(spdkClient *spdkclient.Client) (err error) {
 }
 
 func (e *Engine) SnapshotHash(spdkClient *spdkclient.Client, snapshotName string, rehash bool) (err error) {
-	e.log.Infof("Hashing snapshot")
+	e.log.Infof("Hashing snapshot %s, rehash %v", snapshotName, rehash)
 
 	_, err = e.snapshotOperation(spdkClient, snapshotName, SnapshotOperationHash, rehash)
 	return err

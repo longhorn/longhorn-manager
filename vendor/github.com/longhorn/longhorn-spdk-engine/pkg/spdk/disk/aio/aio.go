@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
 	commontypes "github.com/longhorn/go-common-libs/types"

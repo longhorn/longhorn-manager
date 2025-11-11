@@ -5,7 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -232,6 +232,8 @@ func (c *ProcessManagerClient) VersionGet() (*meta.VersionOutput, error) {
 
 func (c *ProcessManagerClient) CheckConnection() error {
 	req := &healthpb.HealthCheckRequest{}
-	_, err := c.health.Check(getContextWithGRPCTimeout(c.ctx), req)
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	_, err := c.health.Check(ctx, req)
 	return err
 }

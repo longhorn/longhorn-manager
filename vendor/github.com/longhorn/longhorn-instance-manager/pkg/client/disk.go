@@ -5,7 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -269,7 +269,9 @@ func (c *DiskServiceClient) VersionGet() (*meta.DiskServiceVersionOutput, error)
 
 func (c *DiskServiceClient) CheckConnection() error {
 	req := &healthpb.HealthCheckRequest{}
-	_, err := c.health.Check(getContextWithGRPCTimeout(c.ctx), req)
+	ctx, cancel := getContextWithGRPCTimeout(c.ctx)
+	defer cancel()
+	_, err := c.health.Check(ctx, req)
 	return err
 }
 
