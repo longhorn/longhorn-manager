@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 
 	commontypes "github.com/longhorn/go-common-libs/types"
 	spdksetup "github.com/longhorn/go-spdk-helper/pkg/spdk/setup"

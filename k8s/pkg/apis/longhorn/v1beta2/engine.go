@@ -122,6 +122,12 @@ type EngineSpec struct {
 	InstanceSpec `json:""`
 	// +optional
 	Frontend VolumeFrontend `json:"frontend"`
+	// ublkQueueDepth controls the depth of each queue for ublk frontend.
+	// +optional
+	UblkQueueDepth int `json:"ublkQueueDepth,omitempty"`
+	// ublkNumberOfQueue controls the number of queues for ublk frontend.
+	// +optional
+	UblkNumberOfQueue int `json:"ublkNumberOfQueue,omitempty"`
 	// +optional
 	ReplicaAddressMap map[string]string `json:"replicaAddressMap"`
 	// +optional

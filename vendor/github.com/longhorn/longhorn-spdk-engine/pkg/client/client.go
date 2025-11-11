@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 	"google.golang.org/grpc"
 
 	"github.com/longhorn/types/pkg/generated/spdkrpc"
@@ -660,7 +660,7 @@ func (c *SPDKClient) ReplicaRebuildingDstSetQosLimit(replicaName string, qosLimi
 }
 
 func (c *SPDKClient) EngineCreate(name, volumeName, frontend string, specSize uint64, replicaAddressMap map[string]string, portCount int32,
-	initiatorAddress, targetAddress string, salvageRequested bool) (*api.Engine, error) {
+	initiatorAddress, targetAddress string, salvageRequested bool, ublkQueueDepth, ublkNumberOfQueue int32) (*api.Engine, error) {
 	if name == "" || volumeName == "" || len(replicaAddressMap) == 0 {
 		return nil, fmt.Errorf("failed to start SPDK engine: missing required parameters")
 	}
@@ -679,6 +679,8 @@ func (c *SPDKClient) EngineCreate(name, volumeName, frontend string, specSize ui
 		TargetAddress:     targetAddress,
 		InitiatorAddress:  initiatorAddress,
 		SalvageRequested:  salvageRequested,
+		UblkQueueDepth:    ublkQueueDepth,
+		UblkNumberOfQueue: ublkNumberOfQueue,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to start SPDK engine")

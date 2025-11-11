@@ -157,6 +157,8 @@ const (
 	SettingNameRWXVolumeFastFailover                                    = SettingName("rwx-volume-fast-failover")
 	SettingNameOfflineReplicaRebuilding                                 = SettingName("offline-replica-rebuilding")
 	SettingNameReplicaRebuildingBandwidthLimit                          = SettingName("replica-rebuilding-bandwidth-limit")
+	SettingNameDefaultUblkQueueDepth                                    = SettingName("default-ublk-queue-depth")
+	SettingNameDefaultUblkNumberOfQueue                                 = SettingName("default-ublk-number-of-queue")
 	SettingNameDefaultBackupBlockSize                                   = SettingName("default-backup-block-size")
 	SettingNameInstanceManagerPodLivenessProbeTimeout                   = SettingName("instance-manager-pod-liveness-probe-timeout")
 	SettingNameLogPath                                                  = SettingName("log-path")
@@ -270,6 +272,8 @@ var (
 		SettingNameRWXVolumeFastFailover,
 		SettingNameOfflineReplicaRebuilding,
 		SettingNameReplicaRebuildingBandwidthLimit,
+		SettingNameDefaultUblkQueueDepth,
+		SettingNameDefaultUblkNumberOfQueue,
 		SettingNameDefaultBackupBlockSize,
 		SettingNameInstanceManagerPodLivenessProbeTimeout,
 		SettingNameLogPath,
@@ -417,6 +421,8 @@ var (
 		SettingNameRWXVolumeFastFailover:                                    SettingDefinitionRWXVolumeFastFailover,
 		SettingNameOfflineReplicaRebuilding:                                 SettingDefinitionOfflineReplicaRebuilding,
 		SettingNameReplicaRebuildingBandwidthLimit:                          SettingDefinitionReplicaRebuildingBandwidthLimit,
+		SettingNameDefaultUblkQueueDepth:                                    SettingDefinitionDefaultUblkQueueDepth,
+		SettingNameDefaultUblkNumberOfQueue:                                 SettingDefinitionDefaultUblkNumberOfQueue,
 		SettingNameDefaultBackupBlockSize:                                   SettingDefinitionDefaultBackupBlockSize,
 		SettingNameInstanceManagerPodLivenessProbeTimeout:                   SettingDefinitionInstanceManagerPodLivenessProbeTimeout,
 		SettingNameLogPath:                                                  SettingDefinitionLogPath,
@@ -1695,6 +1701,34 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: true,
 		Default:            fmt.Sprintf("{%q:\"0\"}", longhorn.DataEngineTypeV2),
+	}
+
+	SettingDefinitionDefaultUblkQueueDepth = SettingDefinition{
+		DisplayName:        "Default Ublk Queue Depth",
+		Description:        "The default depth of each queue for Ublk frontend. This setting applies to volumes using the V2 Data Engine with Ublk front end.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"128\"}", longhorn.DataEngineTypeV2),
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 32,
+		},
+	}
+
+	SettingDefinitionDefaultUblkNumberOfQueue = SettingDefinition{
+		DisplayName:        "Default Ublk Number Of Queue",
+		Description:        "The default the number of queues for ublk frontend. This setting applies to volumes using the V2 Data Engine with Ublk front end.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: true,
+		Default:            fmt.Sprintf("{%q:\"1\"}", longhorn.DataEngineTypeV2),
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 1,
+		},
 	}
 
 	SettingDefinitionAutoCleanupSnapshotWhenDeleteBackup = SettingDefinition{

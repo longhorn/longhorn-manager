@@ -455,6 +455,8 @@ func getBinaryAndArgsForReplicaProcessCreation(r *longhorn.Replica,
 type EngineInstanceCreateRequest struct {
 	Engine                           *longhorn.Engine
 	VolumeFrontend                   longhorn.VolumeFrontend
+	UblkQueueDepth                   int
+	UblkNumberOfQueue                int
 	EngineReplicaTimeout             int64
 	ReplicaFileSyncHTTPClientTimeout int64
 	DataLocality                     longhorn.DataLocality
@@ -516,6 +518,8 @@ func (c *InstanceManagerClient) EngineInstanceCreate(req *EngineInstanceCreateRe
 		Engine: imclient.EngineCreateRequest{
 			ReplicaAddressMap: replicaAddresses,
 			Frontend:          frontend,
+			UblkQueueDepth:    req.UblkQueueDepth,
+			UblkNumberOfQueue: req.UblkNumberOfQueue,
 			UpgradeRequired:   req.UpgradeRequired,
 			InitiatorAddress:  req.InitiatorAddress,
 			TargetAddress:     req.TargetAddress,

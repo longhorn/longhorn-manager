@@ -72,8 +72,13 @@ type NVMeTCPInfo struct {
 }
 
 type UblkInfo struct {
-	BdevName string
-	UblkID   int32
+	// spec
+	BdevName          string
+	UblkQueueDepth    int32
+	UblkNumberOfQueue int32
+
+	// status
+	UblkID int32
 }
 
 // NewInitiator creates a new initiator
@@ -441,7 +446,15 @@ func (i *Initiator) StartUblkInitiator(spdkClient *client.Client, dmDeviceAndEnd
 	if err != nil {
 		return false, err
 	}
-	if err := spdkClient.UblkStartDisk(i.UblkInfo.BdevName, availableUblkID, DefaultUblkQueueDepth, DefaultUblkNumberOfQueue); err != nil {
+	ublkQueueDepth := i.UblkInfo.UblkQueueDepth
+	if ublkQueueDepth <= 0 {
+		ublkQueueDepth = DefaultUblkQueueDepth
+	}
+	ublkNumberOfQueue := i.UblkInfo.UblkNumberOfQueue
+	if ublkNumberOfQueue <= 0 {
+		ublkNumberOfQueue = DefaultUblkNumberOfQueue
+	}
+	if err := spdkClient.UblkStartDisk(i.UblkInfo.BdevName, availableUblkID, ublkQueueDepth, ublkNumberOfQueue); err != nil {
 		return false, err
 	}
 	i.UblkInfo.UblkID = availableUblkID

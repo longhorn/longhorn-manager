@@ -1976,6 +1976,8 @@ func (c *VolumeController) openVolumeDependentResources(v *longhorn.Volume, e *l
 	// The volume may be activated
 	e.Spec.DisableFrontend = v.Status.FrontendDisabled
 	e.Spec.Frontend = v.Spec.Frontend
+	e.Spec.UblkQueueDepth = v.Spec.UblkQueueDepth
+	e.Spec.UblkNumberOfQueue = v.Spec.UblkNumberOfQueue
 
 	return nil
 }

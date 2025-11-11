@@ -39,13 +39,11 @@ func (b *Broadcaster) Subscribe(ctx context.Context, connect ConnectFunc) (<-cha
 func (b *Broadcaster) unsub(sub chan interface{}, lock bool) {
 	if lock {
 		b.Lock()
+		defer b.Unlock()
 	}
 	if _, ok := b.subs[sub]; ok {
 		close(sub)
 		delete(b.subs, sub)
-	}
-	if lock {
-		b.Unlock()
 	}
 }
 
@@ -75,9 +73,9 @@ func (b *Broadcaster) stream(input chan interface{}) {
 	}
 
 	b.Lock()
+	defer b.Unlock()
 	for sub := range b.subs {
 		b.unsub(sub, false)
 	}
 	b.running = false
-	b.Unlock()
 }

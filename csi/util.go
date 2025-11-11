@@ -154,6 +154,22 @@ func getVolumeOptions(volumeID string, volOptions map[string]string) (*longhornc
 		vol.NumberOfReplicas = int64(nor)
 	}
 
+	if ublkNumberOfQueue, ok := volOptions["ublkNumberOfQueue"]; ok {
+		noq, err := strconv.Atoi(ublkNumberOfQueue)
+		if err != nil {
+			return nil, errors.Wrap(err, "invalid parameter ublkNumberOfQueue")
+		}
+		vol.UblkNumberOfQueue = int64(noq)
+	}
+
+	if ublkQueueDepth, ok := volOptions["ublkQueueDepth"]; ok {
+		depth, err := strconv.Atoi(ublkQueueDepth)
+		if err != nil {
+			return nil, errors.Wrap(err, "invalid parameter ublkQueueDepth")
+		}
+		vol.UblkQueueDepth = int64(depth)
+	}
+
 	if replicaAutoBalance, ok := volOptions["replicaAutoBalance"]; ok {
 		err := types.ValidateReplicaAutoBalance(longhorn.ReplicaAutoBalance(replicaAutoBalance))
 		if err != nil {
