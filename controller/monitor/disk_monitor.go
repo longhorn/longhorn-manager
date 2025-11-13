@@ -141,6 +141,11 @@ func (m *DiskMonitor) run(value interface{}) error {
 		return errors.Wrapf(err, "failed to get longhorn node %v", m.nodeName)
 	}
 
+	if node.DeletionTimestamp != nil {
+		logrus.Infof("Skipping disk monitoring for node %v: node is being deleted", m.nodeName)
+		return nil
+	}
+
 	collectedData := m.collectDiskData(node)
 	if !reflect.DeepEqual(m.collectedData, collectedData) {
 		func() {
