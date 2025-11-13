@@ -1585,7 +1585,7 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 				continue
 			}
 
-			if err := nc.deleteDisk(diskStatus.Type, diskName, diskStatus.DiskUUID, diskStatus.DiskPath, string(diskStatus.DiskDriver)); err != nil {
+			if err := nc.deleteDisk(node.Name, diskStatus.Type, diskName, diskStatus.DiskUUID, diskStatus.DiskPath, string(diskStatus.DiskDriver)); err != nil {
 				nc.logger.WithError(err).Warnf("Failed to delete disk %v", diskName)
 			}
 			delete(node.Status.DiskStatus, diskName)
@@ -1593,12 +1593,14 @@ func (nc *NodeController) alignDiskSpecAndStatus(node *longhorn.Node) {
 	}
 }
 
-func (nc *NodeController) deleteDisk(diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string) error {
+func (nc *NodeController) deleteDisk(nodeName string, diskType longhorn.DiskType, diskName, diskUUID, diskPath, diskDriver string) error {
 	nc.logger.Infof("Deleting disk %v with diskUUID %v", diskName, diskUUID)
 
 	dataEngine := util.GetDataEngineForDiskType(diskType)
 
-	im, err := nc.ds.GetRunningInstanceManagerByNodeRO(nc.controllerID, dataEngine)
+	// use nodeName instead of nc.controllerID to get the instance manager
+	// allow to delete the non-own node disks
+	im, err := nc.ds.GetRunningInstanceManagerByNodeRO(nodeName, dataEngine)
 	if err != nil {
 		return errors.Wrapf(err, "failed to get running instance manager for data engine %v", dataEngine)
 	}
@@ -1613,6 +1615,7 @@ func (nc *NodeController) deleteDisk(diskType longhorn.DiskType, diskName, diskU
 		return errors.Wrapf(err, "failed to delete disk %v", diskName)
 	}
 
+	nc.logger.Infof("Deleted disk %v with diskUUID %v", diskName, diskUUID)
 	return nil
 }
 
@@ -1649,7 +1652,7 @@ func (nc *NodeController) cleanupDisksBeforeNodeDeletion(node *longhorn.Node) er
 		// Note: Use diskName instead of diskStatus.Name since they are different:
 		//   diskName:        default-disk-block-1
 		//   diskStatus.Name: default-disk-block-1n1
-		if err := nc.deleteDisk(diskStatus.Type, diskName, diskStatus.DiskUUID, diskStatus.DiskPath, string(diskStatus.DiskDriver)); err != nil {
+		if err := nc.deleteDisk(node.Name, diskStatus.Type, diskName, diskStatus.DiskUUID, diskStatus.DiskPath, string(diskStatus.DiskDriver)); err != nil {
 			nc.logger.WithError(err).Errorf("Failed to delete SPDK disk %v during node cleanup", diskStatus.DiskName)
 			errs.Append("errors", errors.Wrapf(err, "failed to delete SPDK disk %v during node cleanup", diskStatus.DiskName))
 			continue
