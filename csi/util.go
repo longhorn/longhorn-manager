@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -338,6 +339,24 @@ func ensureMountPoint(path string, mounter mount.Interface) (bool, error) {
 	return isMnt, err
 }
 
+// ensureBindMountPoint evaluates whether a path is a valid mount point for bind mount.
+// In case the path does not exist, it will create a regular file for bind mount.
+// In case where the mount point exists, the mount point will be cleared and replaced by a new regular file.
+func ensureBindMountPoint(path string, mounter mount.Interface) error {
+	logrus.Infof("Trying to ensure bind mount point %v", path)
+
+	// blindly clean up the target mount point for recreation
+	if cleanupErr := unmountAndCleanupMountPoint(path, mounter); cleanupErr != nil {
+		return errors.Wrapf(cleanupErr, "failed to remove corrupt bind mount point at %s", path)
+	}
+
+	// create regular file for bind mount
+	if makeFileErr := makeFile(path); makeFileErr != nil {
+		return errors.Wrapf(makeFileErr, "failed to create regular file for bind mount at %s", path)
+	}
+	return nil
+}
+
 // ensureDirectory checks if a folder exists at the specified path.
 // If not, it creates the folder and returns true, otherwise returns false.
 // If the path exists but is not a folder, it returns an error.
@@ -383,7 +402,16 @@ func unmount(path string, mounter mount.Interface) (err error) {
 	return err
 }
 
-// unmountAndCleanupMountPoint ensures all mount layers for the path are unmounted and the mount directory is removed
+func lazyUnmount(path string) error {
+	command := exec.Command("umount", "-l", path)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		return errors.Wrapf(err, "failed to lazy unmount a mount point %v, output: %s", path, output)
+	}
+	return nil
+}
+
+// unmountAndCleanupMountPoint ensures all mount layers for the path are unmounted and the mount point is removed
 func unmountAndCleanupMountPoint(path string, mounter mount.Interface) error {
 	// we just try to unmount since the path check would get stuck for nfs mounts
 	logrus.Infof("Trying to umount mount point %v", path)
@@ -392,8 +420,38 @@ func unmountAndCleanupMountPoint(path string, mounter mount.Interface) error {
 		return err
 	}
 
+	isMnt, validateUnmountErr := mounter.IsMountPoint(path)
+	if validateUnmountErr != nil {
+		if os.IsNotExist(validateUnmountErr) {
+			isMnt = false
+		} else {
+			return errors.Wrapf(validateUnmountErr, "failed to validate unmounted mount point %v", path)
+		}
+	}
+	if isMnt {
+		logrus.Warnf("Mount point %v is still busy after unmount, trying to lazy unmount to release mount point", path)
+		if lazyUnmountErr := lazyUnmount(path); lazyUnmountErr != nil {
+			return errors.Wrapf(lazyUnmountErr, "failed to to release mount point %v", path)
+		}
+	}
+
 	logrus.Infof("Trying to clean up mount point %v", path)
-	return mount.CleanupMountPoint(path, mounter, true)
+	if err := mount.CleanupMountPoint(path, mounter, true); err != nil {
+		return err
+	}
+	// ensure the file is removed even when it is a broken symbolic link
+	info, statErr := os.Lstat(path)
+	if statErr != nil {
+		if os.IsNotExist(statErr) {
+			return nil
+		}
+		return errors.Wrapf(statErr, "failed to check cleaned up mount point %v", path)
+	}
+	logrus.WithField("fileMode", info.Mode().String()).Infof("Mount point %v exists after mount-utils clean up, removing the file", path)
+	if rmErr := os.Remove(path); rmErr != nil {
+		return errors.Wrapf(rmErr, "failed to remove broken symbolic link mount point %v", path)
+	}
+	return nil
 }
 
 // isBlockDevice return true if volumePath file is a block device, false otherwise.
@@ -439,7 +497,7 @@ func getFilesystemStatistics(volumePath string) (*volumeFilesystemStatistics, er
 	return volStats, nil
 }
 
-// makeFile creates an empty file.
+// makeFile creates an empty regular file.
 // If pathname already exists, whether a file or directory, no error is returned.
 func makeFile(pathname string) error {
 	f, err := os.OpenFile(pathname, os.O_CREATE, os.FileMode(0644))
