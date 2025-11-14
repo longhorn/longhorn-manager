@@ -75,7 +75,7 @@ func getDiskHealth(diskType longhorn.DiskType, diskName, diskPath string, diskDr
 
 	switch diskType {
 	case longhorn.DiskTypeFilesystem:
-		return nil, lastCollectedAt, errors.New("not implemented")
+		return getHealthDataFromMountPath(diskName, diskPath, lastCollectedAt, logger)
 	case longhorn.DiskTypeBlock:
 		return getBlockDiskHealth(diskName, diskPath, diskDriver, lastCollectedAt, client, logger)
 	default:
@@ -94,6 +94,16 @@ func getBlockDiskHealth(diskName, diskPath string, diskDriver longhorn.DiskDrive
 	default:
 		return nil, lastCollectedAt, fmt.Errorf("unknown block disk driver %v", diskDriver)
 	}
+}
+
+func getHealthDataFromMountPath(diskName, diskPath string, lastCollectedAt time.Time, logger logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error) {
+	// Collect SMART data - resolves mount path to physical device(s)
+	healthData, err := util.CollectHealthDataFromMountPath(diskPath, diskName, logger)
+	if err != nil {
+		return nil, lastCollectedAt, err
+	}
+
+	return healthData, time.Now(), nil
 }
 
 // getDiskConfig returns the disk config of the given directory
