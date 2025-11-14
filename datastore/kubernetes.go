@@ -1149,8 +1149,11 @@ func NewPVManifest(size int64, pvName, volumeName, storageClassName, fsType stri
 // NewPVCManifestForVolume returns a new PersistentVolumeClaim object for a longhorn volume
 func NewPVCManifestForVolume(v *longhorn.Volume, pvName, ns, pvcName, storageClassName string) *corev1.PersistentVolumeClaim {
 	accessMode := corev1.ReadWriteOnce
-	if v.Spec.AccessMode == longhorn.AccessModeReadWriteMany {
+	switch v.Spec.AccessMode {
+	case longhorn.AccessModeReadWriteMany:
 		accessMode = corev1.ReadWriteMany
+	case longhorn.AccessModeReadWriteOncePod:
+		accessMode = corev1.ReadWriteOncePod
 	}
 
 	return NewPVCManifest(v.Spec.Size, pvName, ns, pvcName, storageClassName, accessMode)
