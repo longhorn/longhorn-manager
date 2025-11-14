@@ -215,3 +215,25 @@ func enqueueAfterDelay(queue workqueue.TypedRateLimitingInterface[any], obj inte
 	queue.AddAfter(key, delay)
 	return nil
 }
+
+// getAwsIAMRoleArnFromSecret retrieves the AWS IAM Role ARN from the specified secret in the given namespace.
+// returns the AWS IAM Role ARN string.
+func getAwsIAMRoleArnFromSecret(ds *datastore.DataStore, namespace, secretName string) (string, error) {
+	secret, err := ds.GetSecretRO(namespace, secretName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return "", nil
+		}
+		return "", err
+	}
+
+	if secret == nil || secret.Data == nil {
+		return "", nil
+	}
+
+	if arn, ok := secret.Data[types.AWSIAMRoleArn]; ok {
+		return string(arn), nil
+	}
+	// Key not found; clear the annotation if needed.
+	return "", nil
+}
