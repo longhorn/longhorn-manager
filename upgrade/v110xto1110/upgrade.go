@@ -30,10 +30,6 @@ func UpgradeResources(namespace string, lhClient *lhclientset.Clientset, kubeCli
 }
 
 func updateCRs(namespace string, lhClient *lhclientset.Clientset, kubeClient *clientset.Clientset, resourceMaps map[string]interface{}) (err error) {
-	if resourceMaps == nil {
-		return errors.New("resourceMaps cannot be nil")
-	}
-
 	if err := upgradeSettings(namespace, lhClient, resourceMaps); err != nil {
 		return err
 	}
