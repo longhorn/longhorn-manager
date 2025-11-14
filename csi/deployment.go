@@ -34,8 +34,9 @@ const (
 	DefaultInContainerCSIRegistrationDir = "/registration"
 	DefaultCSILivenessProbePort          = 9808
 
-	AnnotationCSIGitCommit = types.LonghornDriverName + "/git-commit"
-	AnnotationCSIVersion   = types.LonghornDriverName + "/version"
+	AnnotationCSIGitCommit             = types.LonghornDriverName + "/git-commit"
+	AnnotationCSIVersion               = types.LonghornDriverName + "/version"
+	AnnotationCSIPodAntiAffinityPreset = types.LonghornDriverName + "/pod-anti-affinity-preset"
 
 	CSIPodAntiAffinityPresetSoft = "soft"
 	CSIPodAntiAffinityPresetHard = "hard"
