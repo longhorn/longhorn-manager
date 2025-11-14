@@ -29,6 +29,10 @@ import (
 const (
 	DiskMonitorSyncPeriod = 30 * time.Second
 
+	// HealthDataUpdateInterval defines how often health data should be collected
+	// Health data changes slowly, so we don't need to check as frequently as other metrics
+	HealthDataUpdateInterval = 10 * time.Minute
+
 	volumeMetaData = "volume.meta"
 )
 
@@ -49,6 +53,7 @@ type DiskMonitor struct {
 	syncCallback func(key string)
 
 	getDiskStatHandler          GetDiskStatHandler
+	getDiskHealthHandler        GetDiskHealthHandler
 	getDiskConfigHandler        GetDiskConfigHandler
 	generateDiskConfigHandler   GenerateDiskConfigHandler
 	getReplicaDataStoresHandler GetReplicaDataStoresHandler
@@ -64,9 +69,12 @@ type CollectedDiskInfo struct {
 	Condition                 *longhorn.Condition
 	OrphanedReplicaDataStores map[string]string
 	InstanceManagerName       string
+	HealthData                map[string]longhorn.HealthData
+	HealthDataLastCollectedAt time.Time
 }
 
 type GetDiskStatHandler func(longhorn.DiskType, string, string, longhorn.DiskDriver, *DiskServiceClient) (*lhtypes.DiskStat, error)
+type GetDiskHealthHandler func(longhorn.DiskType, string, string, longhorn.DiskDriver, time.Time, *DiskServiceClient, logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error)
 type GetDiskConfigHandler func(longhorn.DiskType, string, string, longhorn.DiskDriver, *DiskServiceClient) (*util.DiskConfig, error)
 type GenerateDiskConfigHandler func(longhorn.DiskType, string, string, string, string, *DiskServiceClient, *datastore.DataStore) (*util.DiskConfig, error)
 type GetReplicaDataStoresHandler func(longhorn.DiskType, *longhorn.Node, string, string, string, string, *DiskServiceClient) (map[string]string, error)
@@ -86,6 +94,7 @@ func NewDiskMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, nodeName
 		syncCallback: syncCallback,
 
 		getDiskStatHandler:          getDiskStat,
+		getDiskHealthHandler:        getDiskHealth,
 		getDiskConfigHandler:        getDiskConfig,
 		generateDiskConfigHandler:   generateDiskConfig,
 		getReplicaDataStoresHandler: getReplicaDataStores,
@@ -339,6 +348,20 @@ func (m *DiskMonitor) collectDiskData(node *longhorn.Node) map[string]*Collected
 
 		diskInfoMap[diskName] = NewDiskInfo(diskConfig.DiskName, diskConfig.DiskUUID, disk.Path, diskConfig.DiskDriver, nodeOrDiskEvicted, stat,
 			orphanedReplicaDataStores, instanceManagerName, string(longhorn.DiskConditionReasonNoDiskInfo), "")
+
+		if node.Status.DiskStatus != nil {
+			if diskStatus, ok := node.Status.DiskStatus[diskName]; ok {
+				diskInfoMap[diskName].HealthDataLastCollectedAt = diskStatus.HealthDataLastCollectedAt.Time
+			}
+		}
+
+		healthData, collectedAt, err := m.getDiskHealthHandler(disk.Type, diskName, disk.Path, diskConfig.DiskDriver, diskInfoMap[diskName].HealthDataLastCollectedAt, diskServiceClient, m.logger)
+		if err != nil {
+			m.logger.WithError(err).Warnf("Failed to get disk health for disk %v(%v)", diskName, disk.Path)
+		} else if healthData != nil {
+			diskInfoMap[diskName].HealthData = healthData
+			diskInfoMap[diskName].HealthDataLastCollectedAt = collectedAt
+		}
 	}
 
 	return diskInfoMap

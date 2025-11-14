@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/sirupsen/logrus"
 
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
@@ -62,6 +63,37 @@ func getBlockTypeDiskStat(client *DiskServiceClient, diskName, diskPath string, 
 		StorageMaximum:   info.TotalSize,
 		StorageAvailable: info.FreeSize,
 	}, nil
+}
+
+func getDiskHealth(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, lastCollectedAt time.Time, client *DiskServiceClient, logger logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error) {
+	// Skip if health data was collected recently.
+	if time.Since(lastCollectedAt) < HealthDataUpdateInterval {
+		return nil, lastCollectedAt, nil
+	}
+
+	logger.WithField("diskType", diskType).Debugf("Collecting health data for disk %s", diskName)
+
+	switch diskType {
+	case longhorn.DiskTypeFilesystem:
+		return nil, lastCollectedAt, errors.New("not implemented")
+	case longhorn.DiskTypeBlock:
+		return getBlockDiskHealth(diskName, diskPath, diskDriver, lastCollectedAt, client, logger)
+	default:
+		return nil, lastCollectedAt, fmt.Errorf("unknown disk type %v", diskType)
+	}
+}
+
+func getBlockDiskHealth(diskName, diskPath string, diskDriver longhorn.DiskDriver, lastCollectedAt time.Time, client *DiskServiceClient, logger logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error) {
+	switch diskDriver {
+	case longhorn.DiskDriverAio:
+		// AIO driver doesn't claim device exclusively, so smartctl can access it directly
+		return nil, lastCollectedAt, errors.New("not implemented")
+	case longhorn.DiskDriverNvme:
+		// NVME driver claims device exclusively, use SPDK health info instead
+		return nil, lastCollectedAt, errors.New("not implemented")
+	default:
+		return nil, lastCollectedAt, fmt.Errorf("unknown block disk driver %v", diskDriver)
+	}
 }
 
 // getDiskConfig returns the disk config of the given directory
