@@ -1,6 +1,6 @@
 module github.com/longhorn/longhorn-manager
 
-go 1.24.6
+go 1.25.3
 
 toolchain go1.25.4
 
@@ -54,6 +54,8 @@ replace (
 	k8s.io/sample-controller => k8s.io/sample-controller v0.34.2
 )
 
+replace github.com/henrygd/beszel => github.com/c3y1huang/beszel v0.0.0-20251119090922-8c70e799d095
+
 require (
 	github.com/cockroachdb/errors v1.12.0
 	github.com/container-storage-interface/spec v1.12.0
@@ -63,11 +65,12 @@ require (
 	github.com/gorilla/handlers v1.5.2
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
+	github.com/henrygd/beszel v0.16.1
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.23.0
 	github.com/longhorn/backing-image-manager v1.9.2
 	github.com/longhorn/backupstore v0.0.0-20251123054148-021939243385
-	github.com/longhorn/go-common-libs v0.0.0-20251116145113-3788c6f8aba8
+	github.com/longhorn/go-common-libs v0.0.0-20251127015107-b85a43e5d5af
 	github.com/longhorn/go-iscsi-helper v0.0.0-20251102142448-23eedefc2b60
 	github.com/longhorn/go-spdk-helper v0.2.1-0.20251122081607-ba5a970c7558
 	github.com/longhorn/longhorn-engine v1.10.0-dev-20250824.0.20251103012748-950f695edced
@@ -107,22 +110,36 @@ require (
 	github.com/0xPolygon/polygon-edge v1.3.3 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 // indirect
 	github.com/RoaringBitmap/roaring v1.9.4 // indirect
+	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/bits-and-blooms/bitset v1.16.0 // indirect
+	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
 	github.com/cockroachdb/redact v1.1.5 // indirect
+	github.com/coreos/go-systemd/v22 v22.6.0 // indirect
+	github.com/distatus/battery v0.11.0 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
+	github.com/dolthub/maphash v0.1.0 // indirect
+	github.com/ebitengine/purego v0.9.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/getsentry/sentry-go v0.27.0 // indirect
+	github.com/gliderlabs/ssh v0.3.8 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
+	github.com/godbus/dbus/v5 v5.2.0 // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/klauspost/compress v1.18.1 // indirect
 	github.com/longhorn/types v0.0.0-20251114033314-2b0f01ee4a71 // indirect
+	github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 // indirect
+	github.com/lxzan/gws v1.8.9 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/moby/term v0.5.0 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
+	github.com/shirou/gopsutil/v4 v4.25.10 // indirect
+	github.com/tklauser/go-sysconf v0.3.16 // indirect
+	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
@@ -131,6 +148,7 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251022142026-3a174f9686a8 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	howett.net/plist v1.0.1 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 )
 
@@ -177,13 +195,13 @@ require (
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/slok/goresilience v0.2.0 // indirect
-	github.com/spf13/pflag v1.0.6 // indirect
+	github.com/spf13/pflag v1.0.10 // indirect
 	go.opentelemetry.io/otel v1.38.0 // indirect
 	go.opentelemetry.io/otel/trace v1.38.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0
 	golang.org/x/crypto v0.44.0 // indirect
-	golang.org/x/oauth2 v0.32.0 // indirect
+	golang.org/x/oauth2 v0.33.0 // indirect
 	golang.org/x/sync v0.18.0
 	golang.org/x/term v0.37.0 // indirect
 	golang.org/x/text v0.31.0

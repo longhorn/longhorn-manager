@@ -16,6 +16,9 @@ github.com/Microsoft/go-winio/pkg/guid
 ## explicit; go 1.14
 github.com/RoaringBitmap/roaring
 github.com/RoaringBitmap/roaring/internal
+# github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be
+## explicit; go 1.13
+github.com/anmitsu/go-shlex
 # github.com/avast/retry-go v3.0.0+incompatible
 ## explicit
 github.com/avast/retry-go
@@ -25,6 +28,9 @@ github.com/beorn7/perks/quantile
 # github.com/bits-and-blooms/bitset v1.16.0
 ## explicit; go 1.16
 github.com/bits-and-blooms/bitset
+# github.com/blang/semver v3.5.1+incompatible
+## explicit
+github.com/blang/semver
 # github.com/blang/semver/v4 v4.0.0
 ## explicit; go 1.14
 github.com/blang/semver/v4
@@ -72,18 +78,33 @@ github.com/cockroachdb/redact/internal/rfmt/fmtsort
 # github.com/container-storage-interface/spec v1.12.0
 ## explicit; go 1.23.0
 github.com/container-storage-interface/spec/lib/go/csi
+# github.com/coreos/go-systemd/v22 v22.6.0
+## explicit; go 1.23
+github.com/coreos/go-systemd/v22/dbus
 # github.com/cpuguy83/go-md2man/v2 v2.0.7
 ## explicit; go 1.12
 github.com/cpuguy83/go-md2man/v2/md2man
 # github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 ## explicit
 github.com/davecgh/go-spew/spew
+# github.com/distatus/battery v0.11.0
+## explicit; go 1.18
+github.com/distatus/battery
 # github.com/distribution/reference v0.6.0
 ## explicit; go 1.20
 github.com/distribution/reference
 # github.com/docker/go-connections v0.6.0
 ## explicit; go 1.18
 github.com/docker/go-connections/sockets
+# github.com/dolthub/maphash v0.1.0
+## explicit; go 1.18
+github.com/dolthub/maphash
+# github.com/ebitengine/purego v0.9.1
+## explicit; go 1.18
+github.com/ebitengine/purego
+github.com/ebitengine/purego/internal/cgo
+github.com/ebitengine/purego/internal/fakecgo
+github.com/ebitengine/purego/internal/strings
 # github.com/emicklei/go-restful/v3 v3.12.2
 ## explicit; go 1.13
 github.com/emicklei/go-restful/v3
@@ -111,6 +132,9 @@ github.com/getsentry/sentry-go/internal/otel/baggage
 github.com/getsentry/sentry-go/internal/otel/baggage/internal/baggage
 github.com/getsentry/sentry-go/internal/ratelimit
 github.com/getsentry/sentry-go/internal/traceparser
+# github.com/gliderlabs/ssh v0.3.8
+## explicit; go 1.17
+github.com/gliderlabs/ssh
 # github.com/go-co-op/gocron v1.37.0
 ## explicit; go 1.16
 github.com/go-co-op/gocron
@@ -131,6 +155,9 @@ github.com/go-openapi/jsonreference/internal
 # github.com/go-openapi/swag v0.23.0
 ## explicit; go 1.20
 github.com/go-openapi/swag
+# github.com/godbus/dbus/v5 v5.2.0
+## explicit; go 1.20
+github.com/godbus/dbus/v5
 # github.com/gogo/protobuf v1.3.2
 ## explicit; go 1.15
 github.com/gogo/protobuf/gogoproto
@@ -167,6 +194,19 @@ github.com/gorilla/mux
 # github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 ## explicit; go 1.20
 github.com/gorilla/websocket
+# github.com/henrygd/beszel v0.16.1 => github.com/c3y1huang/beszel v0.0.0-20251119090922-8c70e799d095
+## explicit; go 1.25.3
+github.com/henrygd/beszel
+github.com/henrygd/beszel/agent
+github.com/henrygd/beszel/agent/battery
+github.com/henrygd/beszel/agent/deltatracker
+github.com/henrygd/beszel/agent/health
+github.com/henrygd/beszel/internal/common
+github.com/henrygd/beszel/internal/entities/container
+github.com/henrygd/beszel/internal/entities/smart
+github.com/henrygd/beszel/internal/entities/system
+github.com/henrygd/beszel/internal/entities/systemd
+github.com/henrygd/beszel/internal/ghupdate
 # github.com/jinzhu/copier v0.4.0
 ## explicit; go 1.13
 github.com/jinzhu/copier
@@ -176,6 +216,10 @@ github.com/josharian/intern
 # github.com/json-iterator/go v1.1.12
 ## explicit; go 1.12
 github.com/json-iterator/go
+# github.com/klauspost/compress v1.18.1
+## explicit; go 1.23
+github.com/klauspost/compress/flate
+github.com/klauspost/compress/internal/le
 # github.com/kr/pretty v0.3.1
 ## explicit; go 1.12
 github.com/kr/pretty
@@ -204,7 +248,7 @@ github.com/longhorn/backupstore/logging
 github.com/longhorn/backupstore/systembackup
 github.com/longhorn/backupstore/types
 github.com/longhorn/backupstore/util
-# github.com/longhorn/go-common-libs v0.0.0-20251116145113-3788c6f8aba8
+# github.com/longhorn/go-common-libs v0.0.0-20251127015107-b85a43e5d5af
 ## explicit; go 1.24.0
 github.com/longhorn/go-common-libs/backingimage
 github.com/longhorn/go-common-libs/backup
@@ -276,6 +320,13 @@ github.com/longhorn/types/pkg/generated/enginerpc
 github.com/longhorn/types/pkg/generated/imrpc
 github.com/longhorn/types/pkg/generated/smrpc
 github.com/longhorn/types/pkg/generated/spdkrpc
+# github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3
+## explicit; go 1.21
+github.com/lufia/plan9stats
+# github.com/lxzan/gws v1.8.9
+## explicit; go 1.20
+github.com/lxzan/gws
+github.com/lxzan/gws/internal
 # github.com/mailru/easyjson v0.9.0
 ## explicit; go 1.20
 github.com/mailru/easyjson/buffer
@@ -423,6 +474,18 @@ github.com/russross/blackfriday/v2
 github.com/shirou/gopsutil/v3/common
 github.com/shirou/gopsutil/v3/disk
 github.com/shirou/gopsutil/v3/internal/common
+# github.com/shirou/gopsutil/v4 v4.25.10
+## explicit; go 1.24.0
+github.com/shirou/gopsutil/v4/common
+github.com/shirou/gopsutil/v4/cpu
+github.com/shirou/gopsutil/v4/disk
+github.com/shirou/gopsutil/v4/host
+github.com/shirou/gopsutil/v4/internal/common
+github.com/shirou/gopsutil/v4/load
+github.com/shirou/gopsutil/v4/mem
+github.com/shirou/gopsutil/v4/net
+github.com/shirou/gopsutil/v4/process
+github.com/shirou/gopsutil/v4/sensors
 # github.com/sirupsen/logrus v1.9.3
 ## explicit; go 1.13
 github.com/sirupsen/logrus
@@ -432,7 +495,7 @@ github.com/slok/goresilience
 github.com/slok/goresilience/errors
 github.com/slok/goresilience/metrics
 github.com/slok/goresilience/timeout
-# github.com/spf13/pflag v1.0.6
+# github.com/spf13/pflag v1.0.10
 ## explicit; go 1.12
 github.com/spf13/pflag
 # github.com/stretchr/testify v1.11.1
@@ -440,6 +503,12 @@ github.com/spf13/pflag
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/assert/yaml
 github.com/stretchr/testify/require
+# github.com/tklauser/go-sysconf v0.3.16
+## explicit; go 1.24.0
+github.com/tklauser/go-sysconf
+# github.com/tklauser/numcpus v0.11.0
+## explicit; go 1.24.0
+github.com/tklauser/numcpus
 # github.com/urfave/cli v1.22.17
 ## explicit; go 1.11
 github.com/urfave/cli
@@ -476,9 +545,20 @@ go.yaml.in/yaml/v3
 ## explicit; go 1.24.0
 golang.org/x/crypto/acme
 golang.org/x/crypto/acme/autocert
+golang.org/x/crypto/blowfish
+golang.org/x/crypto/chacha20
+golang.org/x/crypto/curve25519
+golang.org/x/crypto/internal/alias
+golang.org/x/crypto/internal/poly1305
+golang.org/x/crypto/ssh
+golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
 # golang.org/x/exp v0.0.0-20251113190631-e25ba8c21ef6
 ## explicit; go 1.24.0
 golang.org/x/exp/constraints
+golang.org/x/exp/slices
+golang.org/x/exp/slog
+golang.org/x/exp/slog/internal
+golang.org/x/exp/slog/internal/buffer
 # golang.org/x/mod v0.30.0
 ## explicit; go 1.24.0
 golang.org/x/mod/semver
@@ -494,7 +574,7 @@ golang.org/x/net/internal/socks
 golang.org/x/net/internal/timeseries
 golang.org/x/net/proxy
 golang.org/x/net/trace
-# golang.org/x/oauth2 v0.32.0
+# golang.org/x/oauth2 v0.33.0
 ## explicit; go 1.24.0
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
@@ -503,6 +583,7 @@ golang.org/x/oauth2/internal
 golang.org/x/sync/errgroup
 # golang.org/x/sys v0.38.0
 ## explicit; go 1.24.0
+golang.org/x/sys/cpu
 golang.org/x/sys/execabs
 golang.org/x/sys/plan9
 golang.org/x/sys/unix
@@ -646,6 +727,9 @@ gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
+# howett.net/plist v1.0.1
+## explicit; go 1.12
+howett.net/plist
 # k8s.io/api v0.34.2 => k8s.io/api v0.34.2
 ## explicit; go 1.24.0
 k8s.io/api/admission/v1
@@ -1288,3 +1372,4 @@ sigs.k8s.io/yaml/kyaml
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.34.2
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.34.2
 # k8s.io/sample-controller => k8s.io/sample-controller v0.34.2
+# github.com/henrygd/beszel => github.com/c3y1huang/beszel v0.0.0-20251119090922-8c70e799d095
