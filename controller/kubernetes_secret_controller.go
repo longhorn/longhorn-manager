@@ -179,13 +179,9 @@ func (ks *KubernetesSecretController) reconcileSecret(namespace, secretName stri
 		return nil
 	}
 
-	secret, err := ks.ds.GetSecretRO(namespace, secretName)
-	if err != nil && !apierrors.IsNotFound(err) {
+	awsIAMRoleArn, err := getAwsIAMRoleArnFromSecret(ks.ds, namespace, secretName)
+	if err != nil {
 		return err
-	}
-	awsIAMRoleArn := ""
-	if secret != nil {
-		awsIAMRoleArn = string(secret.Data[types.AWSIAMRoleArn])
 	}
 
 	// Annotates AWS IAM role arn to the manager as well as the replica instance managers

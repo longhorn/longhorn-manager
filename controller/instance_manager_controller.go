@@ -1449,16 +1449,6 @@ func (imc *InstanceManagerController) createInstanceManagerPod(im *longhorn.Inst
 		return err
 	}
 
-	storageNetwork, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
-	if err != nil {
-		return err
-	}
-
-	nadAnnot := string(types.CNIAnnotationNetworks)
-	if storageNetwork.Value != types.CniNetworkNone {
-		podSpec.Annotations[nadAnnot] = types.CreateCniAnnotationFromSetting(storageNetwork, types.StorageNetworkInterface)
-	}
-
 	log.Info("Creating instance manager pod")
 	if _, err := imc.ds.CreatePod(podSpec); err != nil {
 		if apierrors.IsAlreadyExists(err) {
@@ -1514,6 +1504,11 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 		},
 	}
 
+	err = imc.setPodExtraAnnotations(podSpec)
+	if err != nil {
+		return nil, err
+	}
+
 	if registrySecret != "" {
 		podSpec.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
 			{
@@ -1533,6 +1528,39 @@ func (imc *InstanceManagerController) createGenericManagerPodSpec(im *longhorn.I
 	}
 
 	return podSpec, nil
+}
+
+func (imc *InstanceManagerController) setPodExtraAnnotations(podSpec *corev1.Pod) error {
+	storageNetwork, err := imc.ds.GetSettingWithAutoFillingRO(types.SettingNameStorageNetwork)
+	if err != nil {
+		return err
+	}
+
+	nadAnnot := string(types.CNIAnnotationNetworks)
+	if storageNetwork.Value != types.CniNetworkNone {
+		podSpec.Annotations[nadAnnot] = types.CreateCniAnnotationFromSetting(storageNetwork, types.StorageNetworkInterface)
+	}
+
+	// Get default backup target
+	backupTarget, err := imc.ds.GetBackupTargetRO(types.DefaultBackupTargetName)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return err
+		}
+		imc.logger.WithError(err).Warnf("Failed to find the %s backup target", types.DefaultBackupTargetName)
+		return nil
+	}
+
+	awsIAMRoleArn, err := getAwsIAMRoleArnFromSecret(imc.ds, imc.namespace, backupTarget.Spec.CredentialSecret)
+	if err != nil {
+		return err
+	}
+	if awsIAMRoleArn != "" {
+		imc.logger.Infof("Setting AWS IAM Role ARN annotation for instance manager pod %s: %s", podSpec.Name, awsIAMRoleArn)
+		podSpec.Annotations[types.AWSIAMRoleAnnotation] = awsIAMRoleArn
+	}
+
+	return nil
 }
 
 func getLivenessProbeCommand(dataEngine longhorn.DataEngineType) string {
