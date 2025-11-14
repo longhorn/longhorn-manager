@@ -88,6 +88,66 @@ type SnapshotCheckStatus struct {
 	LastPeriodicCheckedAt metav1.Time `json:"lastPeriodicCheckedAt"`
 }
 
+type HealthDataSource string
+
+const (
+	HealthDataSourceSMART HealthDataSource = "SMART"
+	HealthDataSourceSPDK  HealthDataSource = "SPDK"
+)
+
+type HealthDataHealthStatus string
+
+const (
+	HealthDataStatusFailed  HealthDataHealthStatus = "FAILED"
+	HealthDataStatusPassed  HealthDataHealthStatus = "PASSED"
+	HealthDataStatusUnknown HealthDataHealthStatus = "UNKNOWN"
+	HealthDataStatusWarning HealthDataHealthStatus = "WARNING"
+)
+
+type HealthData struct {
+	// +kubebuilder:validation:Enum=SMART;SPDK
+	// +optional
+	Source HealthDataSource `json:"source,omitempty"`
+	// +optional
+	ModelName string `json:"modelName,omitempty"`
+	// +optional
+	SerialNumber string `json:"serialNumber,omitempty"`
+	// +optional
+	FirmwareVersion string `json:"firmwareVersion,omitempty"`
+	// +optional
+	Capacity uint64 `json:"capacity,omitempty"`
+	// +kubebuilder:validation:Enum=FAILED;PASSED;UNKNOWN;WARNING
+	// +optional
+	HealthStatus HealthDataHealthStatus `json:"healthStatus,omitempty"`
+	// +optional
+	DiskName string `json:"diskName,omitempty"`
+	// +optional
+	DiskType string `json:"diskType,omitempty"`
+	// +optional
+	Temperature uint8 `json:"temperature,omitempty"`
+	// +optional
+	Attributes []*HealthAttribute `json:"attributes,omitempty"`
+}
+
+type HealthAttribute struct {
+	// +optional
+	ID uint16 `json:"id,omitempty"`
+	// +optional
+	Name string `json:"name"`
+	// +optional
+	Value uint16 `json:"value,omitempty"`
+	// +optional
+	Worst uint16 `json:"worst,omitempty"`
+	// +optional
+	Threshold uint16 `json:"threshold,omitempty"`
+	// +optional
+	RawValue uint64 `json:"rawValue"`
+	// +optional
+	RawString string `json:"rawString,omitempty"`
+	// +optional
+	WhenFailed string `json:"whenFailed,omitempty"`
+}
+
 type DiskSpec struct {
 	// +kubebuilder:validation:Enum=filesystem;block
 	// +optional
@@ -137,6 +197,10 @@ type DiskStatus struct {
 	FSType string `json:"filesystemType"`
 	// +optional
 	InstanceManagerName string `json:"instanceManagerName"`
+	// +optional
+	HealthData map[string]HealthData `json:"healthData,omitempty"`
+	// +optional
+	HealthDataLastCollectedAt metav1.Time `json:"healthDataLastCollectedAt,omitempty"`
 }
 
 // NodeSpec defines the desired state of the Longhorn node
