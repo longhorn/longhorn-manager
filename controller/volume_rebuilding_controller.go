@@ -379,6 +379,20 @@ func (vbc *VolumeRebuildingController) reconcile(volName string) (err error) {
 		}
 	}()
 
+	existingVol := vol.DeepCopy()
+	defer func() {
+		if err != nil {
+			return
+		}
+		if reflect.DeepEqual(existingVol.Status.Conditions, vol.Status.Conditions) {
+			return
+		}
+
+		if _, err = vbc.ds.UpdateVolume(vol); err != nil {
+			return
+		}
+	}()
+
 	rebuildingAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeRebuildingController, volName)
 	deleteVATicketRequired := true
 	defer func() {
@@ -437,10 +451,21 @@ func (vbc *VolumeRebuildingController) reconcile(volName string) (err error) {
 		return nil
 	}
 	if vbc.isVolumeReplicasRebuilding(vol, engine) {
+		offlineRebuildingCondition := types.GetCondition(vol.Status.Conditions, longhorn.VolumeConditionTypeOfflineRebuilding)
+		if offlineRebuildingCondition.Status == longhorn.ConditionStatusFalse || offlineRebuildingCondition.Reason != longhorn.VolumeConditionReasonOfflineRebuildingInProgress {
+			vol.Status.Conditions = types.SetCondition(vol.Status.Conditions,
+				longhorn.VolumeConditionTypeOfflineRebuilding, longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonOfflineRebuildingInProgress, "")
+		}
 		deleteVATicketRequired = types.GetCondition(vol.Status.Conditions, longhorn.VolumeConditionTypeScheduled).Status == longhorn.ConditionStatusFalse
+		if deleteVATicketRequired {
+			vol.Status.Conditions = types.SetCondition(vol.Status.Conditions,
+				longhorn.VolumeConditionTypeOfflineRebuilding, longhorn.ConditionStatusFalse, longhorn.VolumeConditionReasonOfflineRebuildingCanceled, "")
+		}
+
 		return nil
 	}
 
+	vol.Status.Conditions = types.SetCondition(vol.Status.Conditions, longhorn.VolumeConditionTypeOfflineRebuilding, longhorn.ConditionStatusFalse, "", "")
 	return nil
 }
 
@@ -474,6 +499,8 @@ func (vbc *VolumeRebuildingController) syncLHVolumeAttachmentForOfflineRebuild(v
 			return va, nil
 		}
 		createOrUpdateAttachmentTicket(va, attachmentID, vol.Status.OwnerID, longhorn.AnyValue, longhorn.AttacherTypeVolumeRebuildingController)
+		vol.Status.Conditions = types.SetCondition(vol.Status.Conditions,
+			longhorn.VolumeConditionTypeOfflineRebuilding, longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonOfflineRebuildingStarting, "")
 	}
 	return va, nil
 }
