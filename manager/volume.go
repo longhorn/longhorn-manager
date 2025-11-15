@@ -1240,6 +1240,58 @@ func (m *VolumeManager) UpdateReplicaRebuildingBandwidthLimit(name string, repli
 	return v, nil
 }
 
+func (m *VolumeManager) UpdateUpdateUblkQueueDepth(name string, ublkQueueDepth int) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to update field UblkQueueDepth for volume %s", name)
+	}()
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if v.Spec.UblkQueueDepth == ublkQueueDepth {
+		logrus.Debugf("Volume %s already set field UblkQueueDepth to %d", v.Name, ublkQueueDepth)
+		return v, nil
+	}
+
+	oldUblkQueueDepth := v.Spec.UblkQueueDepth
+	v.Spec.UblkQueueDepth = ublkQueueDepth
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+
+	logrus.Infof("Updated volume %s field UblkQueueDepth from %d to %d", v.Name, oldUblkQueueDepth, ublkQueueDepth)
+	return v, nil
+}
+
+func (m *VolumeManager) UpdateUpdateUblkNumberOfQueue(name string, ublkNumberOfQueue int) (v *longhorn.Volume, err error) {
+	defer func() {
+		err = errors.Wrapf(err, "unable to update field UblkNumberOfQueue for volume %s", name)
+	}()
+
+	v, err = m.ds.GetVolume(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if v.Spec.UblkNumberOfQueue == ublkNumberOfQueue {
+		logrus.Debugf("Volume %s already set field UblkNumberOfQueue to %d", v.Name, ublkNumberOfQueue)
+		return v, nil
+	}
+
+	oldUblkNumberOfQueue := v.Spec.UblkNumberOfQueue
+	v.Spec.UblkNumberOfQueue = ublkNumberOfQueue
+	v, err = m.ds.UpdateVolume(v)
+	if err != nil {
+		return nil, err
+	}
+
+	logrus.Infof("Updated volume %s field UblkNumberOfQueue from %d to %d", v.Name, oldUblkNumberOfQueue, ublkNumberOfQueue)
+	return v, nil
+}
+
 func (m *VolumeManager) restoreBackingImage(backupTargetName, biName, secret, secretNamespace, dataEngine string) error {
 	if secret != "" || secretNamespace != "" {
 		_, err := m.ds.GetSecretRO(secretNamespace, secret)

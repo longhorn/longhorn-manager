@@ -481,6 +481,26 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 		return nil, err
 	}
 
+	ublkQueueDepth := e.Spec.UblkQueueDepth
+	ublkNumberOfQueue := e.Spec.UblkNumberOfQueue
+
+	if frontend == longhorn.VolumeFrontendUblk {
+		if ublkQueueDepth == 0 {
+			ublkQueueDepthInt64, err := ec.ds.GetSettingAsIntByDataEngine(types.SettingNameDefaultUblkQueueDepth, e.Spec.DataEngine)
+			if err != nil {
+				return nil, err
+			}
+			ublkQueueDepth = int(ublkQueueDepthInt64)
+		}
+		if ublkNumberOfQueue == 0 {
+			ublkNumberOfQueueInt64, err := ec.ds.GetSettingAsIntByDataEngine(types.SettingNameDefaultUblkNumberOfQueue, e.Spec.DataEngine)
+			if err != nil {
+				return nil, err
+			}
+			ublkNumberOfQueue = int(ublkNumberOfQueueInt64)
+		}
+	}
+
 	v, err := ec.ds.GetVolume(e.Spec.VolumeName)
 	if err != nil {
 		return nil, err
@@ -505,8 +525,11 @@ func (ec *EngineController) CreateInstance(obj interface{}) (*longhorn.InstanceP
 	}
 
 	return c.EngineInstanceCreate(&engineapi.EngineInstanceCreateRequest{
-		Engine:                           e,
-		VolumeFrontend:                   frontend,
+		Engine:         e,
+		VolumeFrontend: frontend,
+		// TODO: use default settings value if not set in engine spec
+		UblkQueueDepth:                   ublkQueueDepth,
+		UblkNumberOfQueue:                ublkNumberOfQueue,
 		EngineReplicaTimeout:             engineReplicaTimeout,
 		ReplicaFileSyncHTTPClientTimeout: fileSyncHTTPClientTimeout,
 		DataLocality:                     v.Spec.DataLocality,

@@ -12,9 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cockroachdb/errors"
 	"github.com/google/uuid"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+
 	"k8s.io/mount-utils"
 
 	spdkhelpertypes "github.com/longhorn/go-spdk-helper/pkg/types"

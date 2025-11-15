@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/0xPolygon/polygon-edge/consensus/polybft/bitmap"
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
 	"github.com/longhorn/backupstore"

@@ -200,6 +200,8 @@ func (s *Server) VolumeCreate(rw http.ResponseWriter, req *http.Request) error {
 		SnapshotMaxCount:                volume.SnapshotMaxCount,
 		SnapshotMaxSize:                 snapshotMaxSize,
 		ReplicaRebuildingBandwidthLimit: volume.ReplicaRebuildingBandwidthLimit,
+		UblkQueueDepth:                  volume.UblkQueueDepth,
+		UblkNumberOfQueue:               volume.UblkNumberOfQueue,
 		BackupCompressionMethod:         volume.BackupCompressionMethod,
 		BackupBlockSize:                 backupBlockSize,
 		UnmapMarkSnapChainRemoved:       volume.UnmapMarkSnapChainRemoved,
@@ -863,6 +865,50 @@ func (s *Server) VolumeUpdateReplicaRebuildingBandwidthLimit(rw http.ResponseWri
 
 	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
 		return s.m.UpdateReplicaRebuildingBandwidthLimit(id, replicaRebuildingBandwidthLimit)
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("failed to convert to volume %v object", id)
+	}
+	return s.responseWithVolume(rw, req, "", v)
+}
+
+func (s *Server) VolumeUpdateUblkQueueDepth(rw http.ResponseWriter, req *http.Request) error {
+	var input UpdateUblkQueueDepth
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrap(err, "failed to read UblkQueueDepth input")
+	}
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.UpdateUpdateUblkQueueDepth(id, input.UblkQueueDepth)
+	})
+	if err != nil {
+		return err
+	}
+	v, ok := obj.(*longhorn.Volume)
+	if !ok {
+		return fmt.Errorf("failed to convert to volume %v object", id)
+	}
+	return s.responseWithVolume(rw, req, "", v)
+}
+
+func (s *Server) VolumeUpdateUpdateUblkNumberOfQueue(rw http.ResponseWriter, req *http.Request) error {
+	var input UpdateUblkNumberOfQueue
+	id := mux.Vars(req)["name"]
+
+	apiContext := api.GetApiContext(req)
+	if err := apiContext.Read(&input); err != nil {
+		return errors.Wrap(err, "failed to read UblkNumberOfQueue input")
+	}
+
+	obj, err := util.RetryOnConflictCause(func() (interface{}, error) {
+		return s.m.UpdateUpdateUblkNumberOfQueue(id, input.UblkNumberOfQueue)
 	})
 	if err != nil {
 		return err

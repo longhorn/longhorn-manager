@@ -238,6 +238,12 @@ type VolumeSpec struct {
 	Size int64 `json:"size,string"`
 	// +optional
 	Frontend VolumeFrontend `json:"frontend"`
+	// ublkQueueDepth controls the depth of each queue for ublk frontend.
+	// +optional
+	UblkQueueDepth int `json:"ublkQueueDepth,omitempty"`
+	// ublkNumberOfQueue controls the number of queues for ublk frontend.
+	// +optional
+	UblkNumberOfQueue int `json:"ublkNumberOfQueue,omitempty"`
 	// +optional
 	FromBackup string `json:"fromBackup"`
 	// +optional

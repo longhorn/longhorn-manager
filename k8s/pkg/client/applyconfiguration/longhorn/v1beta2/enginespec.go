@@ -26,6 +26,8 @@ import (
 // with apply.
 type EngineSpecApplyConfiguration struct {
 	Frontend                         *longhornv1beta2.VolumeFrontend   `json:"frontend,omitempty"`
+	UblkQueueDepth                   *int                              `json:"ublkQueueDepth,omitempty"`
+	UblkNumberOfQueue                *int                              `json:"ublkNumberOfQueue,omitempty"`
 	ReplicaAddressMap                map[string]string                 `json:"replicaAddressMap,omitempty"`
 	UpgradedReplicaAddressMap        map[string]string                 `json:"upgradedReplicaAddressMap,omitempty"`
 	BackupVolume                     *string                           `json:"backupVolume,omitempty"`
@@ -50,6 +52,22 @@ func EngineSpec() *EngineSpecApplyConfiguration {
 // If called multiple times, the Frontend field is set to the value of the last call.
 func (b *EngineSpecApplyConfiguration) WithFrontend(value longhornv1beta2.VolumeFrontend) *EngineSpecApplyConfiguration {
 	b.Frontend = &value
+	return b
+}
+
+// WithUblkQueueDepth sets the UblkQueueDepth field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the UblkQueueDepth field is set to the value of the last call.
+func (b *EngineSpecApplyConfiguration) WithUblkQueueDepth(value int) *EngineSpecApplyConfiguration {
+	b.UblkQueueDepth = &value
+	return b
+}
+
+// WithUblkNumberOfQueue sets the UblkNumberOfQueue field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the UblkNumberOfQueue field is set to the value of the last call.
+func (b *EngineSpecApplyConfiguration) WithUblkNumberOfQueue(value int) *EngineSpecApplyConfiguration {
+	b.UblkNumberOfQueue = &value
 	return b
 }
 
