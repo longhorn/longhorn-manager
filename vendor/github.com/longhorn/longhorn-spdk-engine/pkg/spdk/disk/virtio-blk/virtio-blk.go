@@ -1,11 +1,12 @@
 package virtioblk
 
 import (
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
-	commontypes "github.com/longhorn/go-common-libs/types"
 	"github.com/longhorn/go-spdk-helper/pkg/jsonrpc"
+
+	commontypes "github.com/longhorn/go-common-libs/types"
 	spdkclient "github.com/longhorn/go-spdk-helper/pkg/spdk/client"
 	spdksetup "github.com/longhorn/go-spdk-helper/pkg/spdk/setup"
 	spdktypes "github.com/longhorn/go-spdk-helper/pkg/spdk/types"
