@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pkg/errors"
+	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 
@@ -38,6 +38,8 @@ const (
 type Server struct {
 	spdkrpc.UnimplementedSPDKServiceServer
 	sync.RWMutex
+
+	diskCreateLock sync.Mutex
 
 	ctx context.Context
 
@@ -1818,6 +1820,16 @@ func (s *Server) DiskCreate(ctx context.Context, req *spdkrpc.DiskCreateRequest)
 	s.Unlock()
 
 	go func(d *Disk, req *spdkrpc.DiskCreateRequest) {
+		// Serialize SPDK disk creation to avoid race conditions in global SPDK subsystems
+		// The upper-level DiskCreate() flow remains asynchronous — the gRPC call immediately returns and the creation
+		// runs in a background goroutine — but within that goroutine, we serialize the
+		// lower-level SPDK operations to ensure controller attach and lvstore operations
+		// are performed safely and deterministically without concurrent access issues.
+
+		// It may have issues if multiple disks are being created simultaneously without this lock
+		s.diskCreateLock.Lock()
+		defer s.diskCreateLock.Unlock()
+
 		if err := d.DiskCreate(spdkClient, req.DiskName, req.DiskUuid, req.DiskPath, req.DiskDriver, req.BlockSize); err != nil {
 			logrus.WithError(err).Errorf("Failed to create disk %s(%s) path %s", req.DiskName, req.DiskUuid, req.DiskPath)
 			return
@@ -1869,11 +1881,13 @@ func (s *Server) DiskDelete(ctx context.Context, req *spdkrpc.DiskDeleteRequest)
 		}
 	}()
 
-	if disk != nil {
-		return disk.DiskDelete(spdkClient, req.DiskName, req.DiskUuid, req.DiskPath, req.DiskDriver)
+	if disk == nil {
+		// If the specified disk does not exist, tlog a warning for visibility.
+		logrus.Warnf("Disk %s not found; skipping deletion", req.DiskName)
+		return &emptypb.Empty{}, nil
 	}
 
-	return &emptypb.Empty{}, nil
+	return disk.DiskDelete(spdkClient, req.DiskName, req.DiskUuid, req.DiskPath, req.DiskDriver)
 }
 
 func (s *Server) DiskGet(ctx context.Context, req *spdkrpc.DiskGetRequest) (ret *spdkrpc.Disk, err error) {

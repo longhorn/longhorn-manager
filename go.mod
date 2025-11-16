@@ -65,15 +65,15 @@ require (
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.22.0
-	github.com/longhorn/backing-image-manager v1.10.0
+	github.com/longhorn/backing-image-manager v1.10.1
 	github.com/longhorn/backupstore v0.0.0-20251114163648-53b736c32aef
 	github.com/longhorn/go-common-libs v0.0.0-20251025140453-faa811992208
 	github.com/longhorn/go-iscsi-helper v0.0.0-20251102142448-23eedefc2b60
 	github.com/longhorn/go-spdk-helper v0.2.0
-	github.com/longhorn/longhorn-engine v1.10.0
-	github.com/longhorn/longhorn-instance-manager v1.10.0
-	github.com/longhorn/longhorn-share-manager v1.10.0
-	github.com/longhorn/longhorn-spdk-engine v0.0.0-20250923024944-c9155af8f736
+	github.com/longhorn/longhorn-engine v1.10.1
+	github.com/longhorn/longhorn-instance-manager v1.10.1
+	github.com/longhorn/longhorn-share-manager v1.10.1
+	github.com/longhorn/longhorn-spdk-engine v0.0.0-20251023092409-3c3113c50437
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.23.2
 	// dynamiclistener v0.7.1 has nil pointer dereference issues, so temporarily pin to v0.7.0
