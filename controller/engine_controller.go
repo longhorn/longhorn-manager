@@ -100,6 +100,8 @@ type EngineController struct {
 
 	restoringCounter      util.Counter
 	restoringCounterMutex *sync.Mutex
+
+	snapshotConcurrentLimiter *SnapshotConcurrentLimiter
 }
 
 type EngineMonitor struct {
@@ -128,6 +130,8 @@ type EngineMonitor struct {
 	restoringCounterMutex    *sync.Mutex
 
 	sizeUpdateLimiter *rate.Limiter
+
+	snapshotConcurrentLimiter *SnapshotConcurrentLimiter
 }
 
 func NewEngineController(
@@ -137,7 +141,9 @@ func NewEngineController(
 	kubeClient clientset.Interface,
 	engines engineapi.EngineClientCollection,
 	namespace string, controllerID string,
-	proxyConnCounter util.Counter) (*EngineController, error) {
+	proxyConnCounter util.Counter,
+	snapshotConcurrentLimiter *SnapshotConcurrentLimiter,
+) (*EngineController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -163,6 +169,8 @@ func NewEngineController(
 		proxyConnCounter:      proxyConnCounter,
 		restoringCounter:      util.NewAtomicCounter(),
 		restoringCounterMutex: &sync.Mutex{},
+
+		snapshotConcurrentLimiter: snapshotConcurrentLimiter,
 	}
 	ec.instanceHandler = NewInstanceHandler(ds, ec, ec.eventRecorder)
 
@@ -701,6 +709,8 @@ func (ec *EngineController) startMonitoring(e *longhorn.Engine) {
 		restoringCounter:       ec.restoringCounter,
 		restoringCounterMutex:  ec.restoringCounterMutex,
 		sizeUpdateLimiter:      rate.NewLimiter(rate.Every(sizeUpdateLimit), sizeUpdateBurst),
+
+		snapshotConcurrentLimiter: ec.snapshotConcurrentLimiter,
 	}
 
 	ec.engineMonitorMutex.Lock()
@@ -1137,6 +1147,16 @@ func (m *EngineMonitor) refresh(engine *longhorn.Engine) error {
 		return err
 	}
 	if needClone {
+		allowSnapshotClone, err := m.snapshotConcurrentLimiter.CanStartSnapshotClone(engineClientProxy, engine, m.ds)
+		if err != nil {
+			return errors.Wrap(err, "failed to check CanStartSnapshotPurge")
+		}
+
+		if !allowSnapshotClone {
+			m.logger.Debugf("Delaying snapshot clone since snapshot purge is in progress beyond the concurrent limit")
+			return nil
+		}
+
 		if err = cloneSnapshot(engine, engineClientProxy, m.ds); err != nil {
 			return err
 		}
@@ -1875,6 +1895,17 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 		// It is not necessary to check the value of DisableSnapshotPurge here because the webhook prevents enabling
 		// AutoCleanupSystemGeneratedSnapshot and DisableSnapshot purge simultaneously.
 		if autoCleanupSystemGeneratedSnapshot {
+			allowSnapshotPurge, err := ec.snapshotConcurrentLimiter.CanStartSnapshotPurge(engineClientProxy, e, ec.ds)
+			if err != nil {
+				log.WithError(err).Error("Failed to check whether can start snapshot purge before rebuilding")
+				return
+			}
+
+			if !allowSnapshotPurge {
+				log.Debugf("Cannot start SnapshotPurge for engine %v before rebuilding because the concurrent limit is reached", e.Name)
+				return
+			}
+
 			log.Info("Starting snapshot purge before rebuilding")
 			if err := engineClientProxy.SnapshotPurge(e); err != nil {
 				log.WithError(err).Error("Failed to start snapshot purge before rebuilding")
@@ -2008,6 +2039,19 @@ func (ec *EngineController) startRebuilding(e *longhorn.Engine, replicaName, add
 		// It is not necessary to check the value of DisableSnapshotPurge here because the webhook prevents enabling
 		// AutoCleanupSystemGeneratedSnapshot and DisableSnapshot purge simultaneously.
 		if autoCleanupSystemGeneratedSnapshot {
+			// Ideally this purge should be retriable to avoid accumulating system-generated snapshots.
+			// However, since retry is not supported yet, we only enforce the concurrency limiter here.
+			allowSnapshotPurge, err := ec.snapshotConcurrentLimiter.CanStartSnapshotPurge(engineClientProxy, e, ec.ds)
+			if err != nil {
+				log.WithError(err).Error("Failed to check whether can start snapshot purge after rebuilding")
+				return
+			}
+
+			if !allowSnapshotPurge {
+				log.Debug("Cannot start SnapshotPurge for engine after rebuilding because the concurrent limit is reached")
+				return
+			}
+
 			log.Info("Starting snapshot purge after rebuilding")
 			if err := engineClientProxy.SnapshotPurge(e); err != nil {
 				log.WithError(err).Error("Failed to start snapshot purge after rebuilding")

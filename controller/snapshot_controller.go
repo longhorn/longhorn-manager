@@ -37,6 +37,7 @@ const (
 
 type SnapshotController struct {
 	*baseController
+	snapshotConcurrentLimiter *SnapshotConcurrentLimiter
 
 	// which namespace controller is running with
 	namespace string
@@ -62,6 +63,7 @@ func NewSnapshotController(
 	controllerID string,
 	engineClientCollection engineapi.EngineClientCollection,
 	proxyConnCounter util.Counter,
+	snapshotConcurrentLimiter *SnapshotConcurrentLimiter,
 ) (*SnapshotController, error) {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -71,7 +73,8 @@ func NewSnapshotController(
 	})
 
 	sc := &SnapshotController{
-		baseController: newBaseController("longhorn-snapshot", logger),
+		baseController:            newBaseController("longhorn-snapshot", logger),
+		snapshotConcurrentLimiter: snapshotConcurrentLimiter,
 
 		namespace:              namespace,
 		controllerID:           controllerID,
@@ -783,6 +786,16 @@ func (sc *SnapshotController) handleSnapshotDeletion(snapshot *longhorn.Snapshot
 		}
 	}
 	if !isPurging {
+		allowSnapshotPurge, err := sc.snapshotConcurrentLimiter.CanStartSnapshotPurge(engineClientProxy, engine, sc.ds)
+		if err != nil {
+			return errors.Wrapf(err, "failed to check CanStartSnapshotPurge")
+		}
+
+		if !allowSnapshotPurge {
+			sc.logger.Debugf("Cannot start SnapshotPurge to delete snapshot %v for engine %v because the concurrent limit is reached", snapshot.Name, engine.Name)
+			return nil
+		}
+
 		// We checked DisableSnapshotPurge at a higher level, so we do not need to check it again here.
 		sc.logger.Infof("Starting SnapshotPurge to delete snapshot %v", snapshot.Name)
 		if err := engineClientProxy.SnapshotPurge(engine); err != nil {

@@ -162,6 +162,7 @@ const (
 	SettingNameDefaultBackupBlockSize                                   = SettingName("default-backup-block-size")
 	SettingNameInstanceManagerPodLivenessProbeTimeout                   = SettingName("instance-manager-pod-liveness-probe-timeout")
 	SettingNameLogPath                                                  = SettingName("log-path")
+	SettingNameSnapshotHeavyTaskConcurrentLimit                         = SettingName("snapshot-heavy-task-concurrent-limit")
 
 	// The settings are deprecated and Longhorn won't create Setting Resources for these parameters.
 	// TODO: Remove these settings in the future releases.
@@ -277,6 +278,7 @@ var (
 		SettingNameDefaultBackupBlockSize,
 		SettingNameInstanceManagerPodLivenessProbeTimeout,
 		SettingNameLogPath,
+		SettingNameSnapshotHeavyTaskConcurrentLimit,
 	}
 )
 
@@ -426,6 +428,7 @@ var (
 		SettingNameDefaultBackupBlockSize:                                   SettingDefinitionDefaultBackupBlockSize,
 		SettingNameInstanceManagerPodLivenessProbeTimeout:                   SettingDefinitionInstanceManagerPodLivenessProbeTimeout,
 		SettingNameLogPath:                                                  SettingDefinitionLogPath,
+		SettingNameSnapshotHeavyTaskConcurrentLimit:                         SettingDefinitionSnapshotHeavyTaskConcurrentLimit,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -1802,6 +1805,22 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            DefaultLogDirectoryOnHost,
+	}
+
+	SettingDefinitionSnapshotHeavyTaskConcurrentLimit = SettingDefinition{
+		DisplayName: "Snapshot Heavy Task Concurrent Limit",
+		Description: "This setting controls how many snapshot heavy task operations (such as purge and clone) can run concurrently per node. " +
+			"This is a best-effort mechanism: due to the distributed nature of the system, temporary oversubscription may occur. " +
+			"The limiter reduces worst-case overload but does not guarantee perfect enforcement.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeInt,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "5",
+		ValueIntRange: map[string]int{
+			ValueIntRangeMinimum: 0,
+		},
 	}
 )
 
