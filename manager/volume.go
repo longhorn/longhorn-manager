@@ -15,6 +15,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/longhorn/longhorn-manager/controller"
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/scheduler"
@@ -25,22 +26,24 @@ import (
 )
 
 type VolumeManager struct {
-	ds        *datastore.DataStore
-	scheduler *scheduler.ReplicaScheduler
+	ds                        *datastore.DataStore
+	scheduler                 *scheduler.ReplicaScheduler
+	snapshotConcurrentLimiter *controller.SnapshotConcurrentLimiter
 
 	currentNodeID string
 
 	proxyConnCounter util.Counter
 }
 
-func NewVolumeManager(currentNodeID string, ds *datastore.DataStore, proxyConnCounter util.Counter) *VolumeManager {
+func NewVolumeManager(currentNodeID string, ds *datastore.DataStore, proxyConnCounter util.Counter, snapshotConcurrentLimiter *controller.SnapshotConcurrentLimiter) *VolumeManager {
 	return &VolumeManager{
 		ds:        ds,
 		scheduler: scheduler.NewReplicaScheduler(ds),
 
 		currentNodeID: currentNodeID,
 
-		proxyConnCounter: proxyConnCounter,
+		proxyConnCounter:          proxyConnCounter,
+		snapshotConcurrentLimiter: snapshotConcurrentLimiter,
 	}
 }
 

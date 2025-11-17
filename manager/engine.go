@@ -254,6 +254,15 @@ func (m *VolumeManager) PurgeSnapshot(volumeName string) error {
 	}
 	defer engineClientProxy.Close()
 
+	allowSnapshotPurge, err := m.snapshotConcurrentLimiter.CanStartSnapshotPurge(engineClientProxy, engine, m.ds)
+	if err != nil {
+		return err
+	}
+
+	if !allowSnapshotPurge {
+		return errors.Errorf("cannot start snapshot purge for volume %v: concurrent snapshot purge limit reached", volumeName)
+	}
+
 	if err := engineClientProxy.SnapshotPurge(engine); err != nil {
 		return err
 	}
