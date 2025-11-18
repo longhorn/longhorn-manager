@@ -1248,6 +1248,40 @@ func (rcs *ReplicaScheduler) IsSchedulableToDisk(size int64, requiredStorage int
 	return true, ""
 }
 
+func (rcs *ReplicaScheduler) ValidateDiskAvailableForExpansion(requiredBytes int64, info *DiskSchedulingInfo) error {
+	if requiredBytes <= 0 {
+		return nil
+	}
+
+	if info.StorageMaximum <= 0 {
+		return fmt.Errorf("storage maximum must be greater than 0")
+	}
+
+	if info.StorageAvailable <= 0 {
+		return fmt.Errorf("storage available must be greater than 0")
+	}
+
+	// Physical free space check
+	physicalUsed := info.StorageMaximum - info.StorageAvailable - info.StorageReserved
+	physicalAfter := physicalUsed + requiredBytes
+	physicalLeft := info.StorageMaximum - physicalAfter
+	minimalAvailable := int64(float64(info.StorageMaximum) * float64(info.MinimalAvailablePercentage) / 100)
+
+	if physicalLeft < minimalAvailable {
+		return fmt.Errorf("physical free space would drop below minimal: left=%d < minimal=%d", physicalLeft, minimalAvailable)
+	}
+
+	// Physical Over-Provisioning check
+	physicalUsable := info.StorageMaximum - info.StorageReserved
+	physicalLimit := int64(float64(physicalUsable) * float64(info.OverProvisioningPercentage) / 100)
+
+	if physicalAfter > physicalLimit {
+		return fmt.Errorf("expansion exceeds physical over-provisioning limit: usedAfter=%d > limit=%d", physicalAfter, physicalLimit)
+	}
+
+	return nil
+}
+
 func (rcs *ReplicaScheduler) IsSchedulableToDiskConsiderDiskPressure(diskPressurePercentage, size, requiredStorage int64, info *DiskSchedulingInfo) bool {
 	log := logrus.WithFields(logrus.Fields{
 		"diskUUID":               info.DiskUUID,
@@ -1367,15 +1401,17 @@ func (rcs *ReplicaScheduler) CheckReplicasSizeExpansion(v *longhorn.Volume, oldS
 		}
 		diskSpec, diskStatus, ok := findDiskSpecAndDiskStatusInNode(r.Spec.DiskID, node)
 		if !ok {
+			msg := fmt.Errorf("failed to find disk %v in node %v", r.Spec.DiskID, node.Name)
 			errs := multierr.NewMultiError()
 			errs.Append(longhorn.ErrorReplicaScheduleDiskNotFound, fmt.Errorf("failed to find disk %v in node %v", r.Spec.DiskID, node.Name))
-			return errs, fmt.Errorf("failed to find disk %v in node %v", r.Spec.DiskID, node.Name)
+			return errs, msg
 		}
 		diskInfo, err := rcs.GetDiskSchedulingInfo(diskSpec, &diskStatus)
 		if err != nil {
+			msg := errors.Wrapf(err, "failed to get disk scheduling info for disk %v on node %v", r.Spec.DiskID, node.Name)
 			errs := multierr.NewMultiError()
 			errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed, fmt.Errorf("failed to get disk scheduling info for disk %v on node %v: %v", r.Spec.DiskID, node.Name, err))
-			return errs, errors.Wrapf(err, "failed to get disk scheduling info for disk %v on node %v", r.Spec.DiskID, node.Name)
+			return errs, msg
 		}
 		diskIDToDiskInfo[r.Spec.DiskID] = diskInfo
 		diskIDToReplicaCount[r.Spec.DiskID] = diskIDToReplicaCount[r.Spec.DiskID] + 1
@@ -1384,11 +1420,23 @@ func (rcs *ReplicaScheduler) CheckReplicasSizeExpansion(v *longhorn.Volume, oldS
 	expandingSize := newSize - oldSize
 	for diskID, diskInfo := range diskIDToDiskInfo {
 		requestingSizeExpansionOnDisk := expandingSize * diskIDToReplicaCount[diskID]
+
+		// Check actual disk availability for expansion (real storage usage).
+		// This ensures the disk has enough *physical* free space after expansion,
+		if err := rcs.ValidateDiskAvailableForExpansion(requestingSizeExpansionOnDisk, diskInfo); err != nil {
+			msg := errors.Wrapf(err, "disk %v does not have sufficient physical space for expansion", diskID)
+			errs := multierr.NewMultiError()
+			errs.Append(longhorn.ErrorReplicaScheduleInsufficientStorage, msg)
+			return errs, msg
+		}
+
+		// Check scheduling constraints if the disk can schedule the size expansion
+		// Note: requiredStorage = 0 is intentional. This makes IsSchedulableToDisk perform only scheduling checks
 		if isSchedulableToDisk, reason := rcs.IsSchedulableToDisk(requestingSizeExpansionOnDisk, 0, diskInfo); !isSchedulableToDisk {
+			msg := fmt.Errorf("cannot schedule %v more bytes to disk %v with %+v; %s", requestingSizeExpansionOnDisk, diskID, diskInfo, reason)
 			errs := multierr.NewMultiError()
 			errs.Append(longhorn.ErrorReplicaScheduleInsufficientStorage, fmt.Errorf("cannot schedule %v more bytes to disk %v with %+v: %s", requestingSizeExpansionOnDisk, diskID, diskInfo, reason))
-			logrus.Errorf("Cannot schedule %v more bytes to disk %v with %+v; %s", requestingSizeExpansionOnDisk, diskID, diskInfo, reason)
-			return errs, fmt.Errorf("cannot schedule %v more bytes to disk %v with %+v", requestingSizeExpansionOnDisk, diskID, diskInfo)
+			return errs, msg
 		}
 	}
 	return nil, nil
