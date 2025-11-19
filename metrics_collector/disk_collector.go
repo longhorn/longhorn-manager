@@ -1,6 +1,7 @@
 package metricscollector
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -29,6 +30,10 @@ type DiskCollector struct {
 	writeIOPSMetric       metricInfo
 	readLatencyMetric     metricInfo
 	writeLatencyMetric    metricInfo
+
+	// Health metrics
+	healthMetric          metricInfo
+	healthAttributeMetric metricInfo
 }
 
 func NewDiskCollector(
@@ -141,6 +146,26 @@ func NewDiskCollector(
 		Type: prometheus.GaugeValue,
 	}
 
+	dc.healthMetric = metricInfo{
+		Desc: prometheus.NewDesc(
+			prometheus.BuildFQName(longhornName, subsystemDisk, "health"),
+			"Health status of this disk (1 = healthy, 0 = unhealthy)",
+			[]string{nodeLabel, diskLabel},
+			nil,
+		),
+		Type: prometheus.GaugeValue,
+	}
+
+	dc.healthAttributeMetric = metricInfo{
+		Desc: prometheus.NewDesc(
+			prometheus.BuildFQName(longhornName, subsystemDisk, "health_attribute_raw"),
+			"Health attribute raw value for this disk",
+			[]string{nodeLabel, diskLabel, "attribute", "attribute_id"},
+			nil,
+		),
+		Type: prometheus.GaugeValue,
+	}
+
 	return dc
 }
 
@@ -155,6 +180,8 @@ func (dc *DiskCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- dc.writeIOPSMetric.Desc
 	ch <- dc.readLatencyMetric.Desc
 	ch <- dc.writeLatencyMetric.Desc
+	ch <- dc.healthMetric.Desc
+	ch <- dc.healthAttributeMetric.Desc
 }
 
 func (dc *DiskCollector) Collect(ch chan<- prometheus.Metric) {
@@ -240,6 +267,35 @@ func (dc *DiskCollector) collectDiskStorage(ch chan<- prometheus.Metric) {
 				val = 1
 			}
 			ch <- prometheus.MustNewConstMetric(dc.statusMetric.Desc, dc.statusMetric.Type, float64(val), dc.currentNodeID, diskName, strings.ToLower(condition.Type), condition.Reason)
+		}
+
+		// Health metrics (best-effort)
+		if disk.Status.HealthData != nil {
+			for _, healthData := range disk.Status.HealthData {
+				if healthData.HealthStatus != "" {
+					val := 0.0
+					if healthData.HealthStatus == longhorn.HealthDataStatusPassed {
+						val = 1.0
+					}
+					ch <- prometheus.MustNewConstMetric(dc.healthMetric.Desc, dc.healthMetric.Type, val, dc.currentNodeID, diskName)
+				}
+
+				// Export raw attribute values.
+				for _, attr := range healthData.Attributes {
+					if attr == nil {
+						continue
+					}
+
+					// Some devices may expose multiple attributes with identical
+					// names. To ensure label uniqueness in Prometheus, include
+					// the attribute ID.
+					attrIDStr := ""
+					if attr.ID != 0 {
+						attrIDStr = strconv.FormatUint(uint64(attr.ID), 10)
+					}
+					ch <- prometheus.MustNewConstMetric(dc.healthAttributeMetric.Desc, dc.healthAttributeMetric.Type, float64(attr.RawValue), dc.currentNodeID, diskName, attr.Name, attrIDStr)
+				}
+			}
 		}
 	}
 }
