@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
+
+	"github.com/cockroachdb/errors"
 )
 
 // FindBlockDeviceForMount returns the block device associated with a given mount path.
@@ -22,7 +25,7 @@ func findBlockDeviceForMountWithFile(mountPath, mountsFile string) (string, erro
 	if err != nil {
 		return "", fmt.Errorf("failed to open %s: %v", mountsFile, err)
 	}
-	defer f.Close()
+	defer f.Close() // nolint: errcheck // we don't care about errors here, we just want to close the file.
 
 	mountPath = filepath.Clean(mountPath)
 
@@ -39,20 +42,6 @@ func findBlockDeviceForMountWithFile(mountPath, mountsFile string) (string, erro
 	return "", fmt.Errorf("mount path %s not found", mountPath)
 }
 
-// isNVMeController checks if the given device name is an NVMe controller (nvmeX)
-// rather than an NVMe namespace (nvmeXnY).
-// Controller pattern: nvme0, nvme1, etc. (nvme followed by digits only)
-// Namespace pattern: nvme0n1, nvme1n2, etc. (nvme followed by digits, then 'n', then more digits)
-func isNVMeController(devName string) bool {
-	if !strings.HasPrefix(devName, "nvme") {
-		return false
-	}
-	// Remove the "nvme" prefix and check if remaining part contains 'n'
-	// If it doesn't contain 'n', it's a controller (e.g., nvme0, nvme1)
-	// If it contains 'n', it's a namespace (e.g., nvme0n1, nvme1n2)
-	return !strings.Contains(strings.TrimPrefix(devName, "nvme"), "n")
-}
-
 // ResolveBlockDeviceToPhysicalDevice returns the physical block device
 // (e.g., /dev/nvme0 for NVMe, /dev/sda for SATA) corresponding to the given
 // block device (e.g., /dev/nvme0n1p2, /dev/nvme0n).
@@ -62,69 +51,53 @@ func ResolveBlockDeviceToPhysicalDevice(
 	return resolveBlockDeviceToPhysicalDeviceWithDeps(
 		blockDevice,
 		filepath.EvalSymlinks,
-		os.Readlink,
-		os.Stat,
 	)
 }
 
-// resolveBlockDeviceToPhysicalDeviceWithDeps resolves a block device to its
-// underlying physical device.
-//
-// For regular SATA/SAS drives: /dev/sda1 -> /dev/sda
-// For NVMe drives: /dev/nvme0n1p2 -> /dev/nvme0 (the controller)
+// deviceRegexp matches "block/<device>" or "nvme/<device>".
+// The second capturing group ([^/]+) isolates the device name.
+var deviceRegexp = regexp.MustCompile(`(block|nvme)/([^/]+)`)
+
+// resolveBlockDeviceToPhysicalDeviceWithDeps resolves a block device path
+// (e.g., /dev/nvme0n1p3 or /dev/sda2) to its top-level physical device
+// (e.g., /dev/nvme0 or /dev/sda).
 //
 // This function allows dependency injection for unit testing.
 func resolveBlockDeviceToPhysicalDeviceWithDeps(
 	blockDevice string,
 	evalSymlinks func(string) (string, error),
-	readlink func(string) (string, error),
-	statFn func(string) (os.FileInfo, error),
 ) (string, error) {
-	// Resolve symlinks to the actual block device
-	blockDevice, err := evalSymlinks(blockDevice)
+	// Resolve the device symlink (e.g., /dev/... -> actual device).
+	realDev, err := evalSymlinks(blockDevice)
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve symlink for %s: %v", blockDevice, err)
+		return "", errors.Wrapf(err, "failed to resolve symlink for %q", blockDevice)
 	}
 
-	// Extract the device name
-	devName := filepath.Base(blockDevice)
+	// Construct the sysfs path for the device.
+	devName := filepath.Base(realDev)
 	sysPath := filepath.Join("/sys/class/block", devName)
 
-	// Walk up until no "partition" file exists
-	for {
-		partitionFile := filepath.Join(sysPath, "partition")
-		if _, err := statFn(partitionFile); os.IsNotExist(err) {
-			break
-		}
-
-		// If "device" symlink exists, walk to parent
-		deviceLink := filepath.Join(sysPath, "device")
-		parentLink, err := readlink(deviceLink)
-		if err != nil || parentLink == "" {
-			break
-		}
-
-		devName = filepath.Base(parentLink)
-		sysPath = filepath.Join("/sys/class/block", devName)
-	}
-
-	// Special handling for NVMe: ensure we return the controller (nvmeX)
-	// Resolve the sysfs path to get the real device hierarchy
+	// Resolve the sysfs path to its full canonical path.
+	// (e.g., /sys/devices/.../nvme/nvme0/nvme0n1/nvme0n1p3).
 	realSysPath, err := evalSymlinks(sysPath)
-	if err == nil {
-		// Walk up the real sysfs path to find the NVMe controller
-		// For example: /sys/devices/.../nvme/nvme0/nvme0n1 -> walk up to nvme0
-		pathParts := strings.Split(realSysPath, "/")
-		for i := len(pathParts) - 1; i >= 0; i-- {
-			part := pathParts[i]
-			if isNVMeController(part) {
-				devName = part
-				break
-			}
-		}
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to resolve sysfs path for %q", sysPath)
 	}
 
-	return "/dev/" + devName, nil
+	// Extract all device layers from the sysfs path.
+	matches := deviceRegexp.FindAllStringSubmatch(realSysPath, -1)
+	if len(matches) == 0 {
+		return "", fmt.Errorf("failed to parse device layers for %q (resolved %s)", blockDevice, realDev)
+	}
+
+	// The last match is the lowest layer, usually the physical disk or NVMe controller.
+	lastMatch := matches[len(matches)-1]
+	topDevice := lastMatch[2]
+	if topDevice == "" {
+		return "", fmt.Errorf("failed to identify top-level device for %q (resolved %s)", blockDevice, realDev)
+	}
+
+	return "/dev/" + topDevice, nil
 }
 
 // ResolveMountPathToPhysicalDevice returns the physical block device (e.g., /dev/nvme0)
@@ -134,8 +107,6 @@ func ResolveMountPathToPhysicalDevice(mountPath string) (string, error) {
 		mountPath,
 		"/proc/mounts",
 		filepath.EvalSymlinks,
-		os.Readlink,
-		os.Stat,
 	)
 }
 
@@ -148,13 +119,11 @@ func resolveMountPathToPhysicalDeviceWithDeps(
 	mountPath string,
 	mountsFile string,
 	evalSymlinks func(string) (string, error),
-	readlink func(string) (string, error),
-	statFn func(string) (os.FileInfo, error),
 ) (string, error) {
 	blockDevice, err := findBlockDeviceForMountWithFile(mountPath, mountsFile)
 	if err != nil {
 		return "", err
 	}
 
-	return resolveBlockDeviceToPhysicalDeviceWithDeps(blockDevice, evalSymlinks, readlink, statFn)
+	return resolveBlockDeviceToPhysicalDeviceWithDeps(blockDevice, evalSymlinks)
 }

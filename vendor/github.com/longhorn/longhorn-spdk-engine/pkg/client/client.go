@@ -1332,6 +1332,24 @@ func (c *SPDKClient) DiskDelete(diskName, diskUUID, diskPath, diskDriver string)
 	return err
 }
 
+// DiskHealthGet retrieves the health info for a specified disk.
+func (c *SPDKClient) DiskHealthGet(diskName, diskPath, diskDriver string) (*spdkrpc.DiskHealthGetResponse, error) {
+	if diskName == "" {
+		return nil, fmt.Errorf("failed to get disk health: missing required parameter 'disk name'")
+	}
+
+	client := c.getSPDKServiceClient()
+	ctx, cancel := context.WithTimeout(context.Background(), GRPCServiceTimeout)
+	defer cancel()
+
+	req := &spdkrpc.DiskHealthGetRequest{
+		DiskName:   diskName,
+		DiskDriver: diskDriver,
+		DiskPath:   diskPath,
+	}
+	return client.DiskHealthGet(ctx, req)
+}
+
 func (c *SPDKClient) LogSetLevel(level string) error {
 	client := c.getSPDKServiceClient()
 	ctx, cancel := context.WithTimeout(context.Background(), GRPCServiceTimeout)
