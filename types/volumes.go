@@ -23,7 +23,8 @@ func IsVolumeReady(v *longhorn.Volume, vrs []*longhorn.Replica, volOp string) (r
 	}
 	scheduledCondition := GetCondition(v.Status.Conditions, longhorn.VolumeConditionTypeScheduled)
 	isCloningDesired := IsDataFromVolume(v.Spec.DataSource)
-	isCloningCompleted := v.Status.CloneStatus.State == longhorn.VolumeCloneStateCompleted
+	isCloneStateCompleted := v.Status.CloneStatus.State == longhorn.VolumeCloneStateCompleted
+	isCloneStateCopyCompletedAwaitingHealthy := v.Status.CloneStatus.State == longhorn.VolumeCloneStateCopyCompletedAwaitingHealthy
 	if v.Spec.NodeID == "" && v.Status.State != longhorn.VolumeStateDetached {
 		return false, fmt.Sprintf("waiting for the volume to fully detach. current state: %v", v.Status.State)
 	}
@@ -33,8 +34,8 @@ func IsVolumeReady(v *longhorn.Volume, vrs []*longhorn.Replica, volOp string) (r
 	if v.Status.Robustness == longhorn.VolumeRobustnessFaulted {
 		return false, "volume is faulted"
 	}
-	if isCloningDesired && !isCloningCompleted {
-		return false, "volume has not finished cloning data"
+	if isCloningDesired && !isCloneStateCompleted && !isCloneStateCopyCompletedAwaitingHealthy {
+		return false, "volume request cloning data but has not finished copying data"
 	}
 	switch volOp {
 	case VolumeOperationSizeExpansion:
