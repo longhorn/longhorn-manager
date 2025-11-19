@@ -54,7 +54,15 @@ replace (
 	k8s.io/sample-controller => k8s.io/sample-controller v0.34.2
 )
 
-replace github.com/longhorn/go-common-libs => github.com/c3y1huang/go-common-libs v0.0.0-20251119065700-3deddd57fbe7
+replace github.com/longhorn/go-common-libs => github.com/c3y1huang/go-common-libs v0.0.0-20251121102418-2934b0a57cd0
+
+replace github.com/longhorn/longhorn-instance-manager => github.com/c3y1huang/longhorn-instance-manager v1.10.0-dev-20250824.0.20251120010856-bc868ea72d63
+
+replace github.com/longhorn/longhorn-spdk-engine => github.com/c3y1huang/longhorn-spdk-engine v0.0.0-20251120010300-651cf4b95ba0
+
+replace github.com/longhorn/go-spdk-helper => github.com/c3y1huang/go-spdk-helper v0.0.0-20251120005748-74fdf9a77fef
+
+replace github.com/longhorn/types => github.com/c3y1huang/types v0.0.0-20251121004827-d9950b3b42ed
 
 replace github.com/henrygd/beszel => github.com/c3y1huang/beszel v0.0.0-20251119090922-8c70e799d095
 
