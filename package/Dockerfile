@@ -25,8 +25,19 @@ ENV ARCH=${TARGETPLATFORM#linux/}
 RUN zypper -n ref && \
     zypper update -y
 
-RUN zypper -n install iputils iproute2 nfs-client cifs-utils bind-utils e2fsprogs xfsprogs zip unzip kmod && \
-    rm -rf /var/cache/zypp/*
+RUN zypper -n install \
+    iputils \
+    iproute2 \
+    nfs-client \
+    cifs-utils \
+    bind-utils \
+    e2fsprogs \
+    xfsprogs \
+    zip \
+    unzip \
+    kmod \
+    smartmontools \
+    && rm -rf /var/cache/zypp/*
 
 COPY --from=builder /app/bin/longhorn-manager-${ARCH} /usr/local/sbin/longhorn-manager
 
