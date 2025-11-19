@@ -87,7 +87,7 @@ func getBlockDiskHealth(diskName, diskPath string, diskDriver longhorn.DiskDrive
 	switch diskDriver {
 	case longhorn.DiskDriverAio:
 		// AIO driver doesn't claim device exclusively, so smartctl can access it directly
-		return nil, lastCollectedAt, errors.New("not implemented")
+		return getHealthDataFromBlockDevice(diskName, diskPath, lastCollectedAt, logger)
 	case longhorn.DiskDriverNvme:
 		// NVME driver claims device exclusively, use SPDK health info instead
 		return nil, lastCollectedAt, errors.New("not implemented")
@@ -99,6 +99,16 @@ func getBlockDiskHealth(diskName, diskPath string, diskDriver longhorn.DiskDrive
 func getHealthDataFromMountPath(diskName, diskPath string, lastCollectedAt time.Time, logger logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error) {
 	// Collect SMART data - resolves mount path to physical device(s)
 	healthData, err := util.CollectHealthDataFromMountPath(diskPath, diskName, logger)
+	if err != nil {
+		return nil, lastCollectedAt, err
+	}
+
+	return healthData, time.Now(), nil
+}
+
+func getHealthDataFromBlockDevice(diskName, diskPath string, lastCollectedAt time.Time, logger logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error) {
+	// Collect health data directly from the block device without mount path resolution
+	healthData, err := util.CollectHealthDataForBlockDevice(diskPath, diskName, logger)
 	if err != nil {
 		return nil, lastCollectedAt, err
 	}
