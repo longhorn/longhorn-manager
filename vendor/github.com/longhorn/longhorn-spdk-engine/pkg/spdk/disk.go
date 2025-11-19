@@ -467,3 +467,24 @@ func (d *Disk) lvstoreToDisk(spdkClient *spdkclient.Client, lvstoreName, lvstore
 
 	return nil
 }
+
+func (d *Disk) diskHealthGet(spdkClient *spdkclient.Client, diskName, diskDriver string) (*spdktypes.BdevNvmeControllerHealthInfo, error) {
+	if diskName == "" {
+		return nil, grpcstatus.Error(grpccodes.InvalidArgument, "disk name is required")
+	}
+
+	// Currently, SPDK health info is only available for NVMe bdev controllers.
+	if diskDriver != "" && diskDriver != string(commontypes.DiskDriverNvme) {
+		return nil, grpcstatus.Errorf(grpccodes.Unimplemented, "disk driver %q does not support health info", diskDriver)
+	}
+
+	d.Lock()
+	defer d.Unlock()
+
+	healthInfo, err := spdkClient.BdevNvmeGetControllerHealthInfo(diskName)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get NVMe bdev controller health info for disk %q", diskName)
+	}
+
+	return &healthInfo, nil
+}

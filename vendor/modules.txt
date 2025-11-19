@@ -194,7 +194,7 @@ github.com/gorilla/mux
 # github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 ## explicit; go 1.20
 github.com/gorilla/websocket
-# github.com/henrygd/beszel v0.16.1 => github.com/c3y1huang/beszel v0.0.0-20251119090922-8c70e799d095
+# github.com/henrygd/beszel v0.16.1 => github.com/longhorn/beszel v0.16.2-0.20251127082443-9fe3c11f477f
 ## explicit; go 1.25.3
 github.com/henrygd/beszel
 github.com/henrygd/beszel/agent
@@ -272,7 +272,7 @@ github.com/longhorn/go-iscsi-helper/iscsidev
 github.com/longhorn/go-iscsi-helper/longhorndev
 github.com/longhorn/go-iscsi-helper/types
 github.com/longhorn/go-iscsi-helper/util
-# github.com/longhorn/go-spdk-helper v0.2.1-0.20251122081607-ba5a970c7558
+# github.com/longhorn/go-spdk-helper v0.2.1-0.20251127040022-2ab7a5b5c5a9
 ## explicit; go 1.24.0
 github.com/longhorn/go-spdk-helper/pkg/initiator
 github.com/longhorn/go-spdk-helper/pkg/jsonrpc
@@ -288,7 +288,7 @@ github.com/longhorn/longhorn-engine/pkg/meta
 github.com/longhorn/longhorn-engine/pkg/replica/client
 github.com/longhorn/longhorn-engine/pkg/types
 github.com/longhorn/longhorn-engine/pkg/util
-# github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250824.0.20251119014139-098406e68eae
+# github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250824.0.20251127074605-ce72ce2b82d1
 ## explicit; go 1.24.0
 github.com/longhorn/longhorn-instance-manager/pkg/api
 github.com/longhorn/longhorn-instance-manager/pkg/client
@@ -299,7 +299,7 @@ github.com/longhorn/longhorn-instance-manager/pkg/util
 ## explicit; go 1.24.0
 github.com/longhorn/longhorn-share-manager/pkg/client
 github.com/longhorn/longhorn-share-manager/pkg/types
-# github.com/longhorn/longhorn-spdk-engine v0.0.0-20251118131515-34b2841b20b1
+# github.com/longhorn/longhorn-spdk-engine v0.0.0-20251127071749-f580afb2158b
 ## explicit; go 1.24.0
 github.com/longhorn/longhorn-spdk-engine/pkg/api
 github.com/longhorn/longhorn-spdk-engine/pkg/client
@@ -313,7 +313,7 @@ github.com/longhorn/longhorn-spdk-engine/pkg/spdk/disk/virtio-scsi
 github.com/longhorn/longhorn-spdk-engine/pkg/types
 github.com/longhorn/longhorn-spdk-engine/pkg/util
 github.com/longhorn/longhorn-spdk-engine/pkg/util/broadcaster
-# github.com/longhorn/types v0.0.0-20251114033314-2b0f01ee4a71
+# github.com/longhorn/types v0.0.0-20251125140643-490b3f39dabd
 ## explicit; go 1.24.0
 github.com/longhorn/types/pkg/generated/bimrpc
 github.com/longhorn/types/pkg/generated/enginerpc
@@ -1340,6 +1340,7 @@ sigs.k8s.io/structured-merge-diff/v6/value
 ## explicit; go 1.22
 sigs.k8s.io/yaml
 sigs.k8s.io/yaml/kyaml
+# github.com/henrygd/beszel => github.com/longhorn/beszel v0.16.2-0.20251127082443-9fe3c11f477f
 # k8s.io/api => k8s.io/api v0.34.2
 # k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.34.2
 # k8s.io/apimachinery => k8s.io/apimachinery v0.34.2
@@ -1372,4 +1373,3 @@ sigs.k8s.io/yaml/kyaml
 # k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.34.2
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.34.2
 # k8s.io/sample-controller => k8s.io/sample-controller v0.34.2
-# github.com/henrygd/beszel => github.com/c3y1huang/beszel v0.0.0-20251119090922-8c70e799d095
