@@ -599,7 +599,7 @@ func (vac *VolumeAttachmentController) shouldDoDetach(va *longhorn.VolumeAttachm
 
 	// Check if there is any workload ticket regardless of frontend on other nodes
 	// If exist, detach and interrupt the current ticket.
-	if !hasUninterruptibleTicket(currentAttachmentTickets) && hasWorkloadTicket(attachmentTicketsOnOtherNodes, longhorn.AnyValue) {
+	if !hasUninterruptibleTicket(currentAttachmentTickets, vol) && hasWorkloadTicket(attachmentTicketsOnOtherNodes, longhorn.AnyValue) {
 		log.Info("Workload attachment ticket interrupted snapshot/backup attachment tickets")
 		return true
 	}
@@ -607,10 +607,18 @@ func (vac *VolumeAttachmentController) shouldDoDetach(va *longhorn.VolumeAttachm
 	return false
 }
 
-func hasUninterruptibleTicket(attachmentTickets map[string]*longhorn.AttachmentTicket) bool {
+func hasUninterruptibleTicket(attachmentTickets map[string]*longhorn.AttachmentTicket, vol *longhorn.Volume) bool {
+	isInterruptibleTicket := func(ticket *longhorn.AttachmentTicket) bool {
+		if ticket.Type == longhorn.AttacherTypeSnapshotController ||
+			ticket.Type == longhorn.AttacherTypeBackupController ||
+			// Allow interrupting clone copy-completed-awaiting-healthy state
+			(ticket.Type == longhorn.AttacherTypeVolumeCloneController && vol.Status.CloneStatus.State == longhorn.VolumeCloneStateCopyCompletedAwaitingHealthy) {
+			return true
+		}
+		return false
+	}
 	for _, ticket := range attachmentTickets {
-		if ticket.Type != longhorn.AttacherTypeSnapshotController &&
-			ticket.Type != longhorn.AttacherTypeBackupController {
+		if !isInterruptibleTicket(ticket) {
 			return true
 		}
 	}
