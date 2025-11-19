@@ -1903,6 +1903,46 @@ func (s *Server) DiskGet(ctx context.Context, req *spdkrpc.DiskGetRequest) (ret 
 	return disk.DiskGet(spdkClient, req.DiskName, req.DiskPath, req.DiskDriver)
 }
 
+func (s *Server) DiskHealthGet(ctx context.Context, req *spdkrpc.DiskHealthGetRequest) (ret *spdkrpc.DiskHealthGetResponse, err error) {
+	s.RLock()
+	disk := s.diskMap[req.DiskName]
+	spdkClient := s.spdkClient
+	s.RUnlock()
+
+	if disk == nil {
+		return nil, grpcstatus.Errorf(grpccodes.NotFound, "disk %q not found", req.DiskName)
+	}
+
+	diskHealth, err := disk.diskHealthGet(spdkClient, req.DiskName, req.DiskDriver)
+	if err != nil {
+		return nil, err
+	}
+
+	return &spdkrpc.DiskHealthGetResponse{
+		ModelNumber:                             diskHealth.ModelNumber,
+		SerialNumber:                            diskHealth.SerialNumber,
+		FirmwareRevision:                        diskHealth.FirmwareRevision,
+		Traddr:                                  diskHealth.Traddr,
+		CriticalWarning:                         diskHealth.CriticalWarning,
+		TemperatureCelsius:                      diskHealth.TemperatureCelsius,
+		AvailableSparePercentage:                diskHealth.AvailableSparePercentage,
+		AvailableSpareThresholdPercentage:       diskHealth.AvailableSpareThresholdPercentage,
+		PercentageUsed:                          diskHealth.PercentageUsed,
+		DataUnitsRead:                           diskHealth.DataUnitsRead,
+		DataUnitsWritten:                        diskHealth.DataUnitsWritten,
+		HostReadCommands:                        diskHealth.HostReadCommands,
+		HostWriteCommands:                       diskHealth.HostWriteCommands,
+		ControllerBusyTime:                      diskHealth.ControllerBusyTime,
+		PowerCycles:                             diskHealth.PowerCycles,
+		PowerOnHours:                            diskHealth.PowerOnHours,
+		UnsafeShutdowns:                         diskHealth.UnsafeShutdowns,
+		MediaErrors:                             diskHealth.MediaErrors,
+		NumErrLogEntries:                        diskHealth.NumErrLogEntries,
+		WarningTemperatureTimeMinutes:           diskHealth.WarningTemperatureTimeMinutes,
+		CriticalCompositeTemperatureTimeMinutes: diskHealth.CriticalCompositeTemperatureTimeMinutes,
+	}, nil
+}
+
 func (s *Server) LogSetLevel(ctx context.Context, req *spdkrpc.LogSetLevelRequest) (ret *emptypb.Empty, err error) {
 	s.RLock()
 	spdkClient := s.spdkClient
