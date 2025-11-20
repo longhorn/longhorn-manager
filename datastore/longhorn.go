@@ -80,6 +80,10 @@ func (s *DataStore) UpdateCustomizedSettings(defaultImages map[types.SettingName
 		return err
 	}
 
+	if err := s.syncSettingEndpointNetworkForRWXVolume(); err != nil {
+		return err
+	}
+
 	if err := s.deleteReplacedSettings(); err != nil {
 		return err
 	}
@@ -302,6 +306,44 @@ func (s *DataStore) syncConsolidatedV2DataEngineSettings() error {
 		if err := s.syncConsolidatedV2DataEngineSetting(oldSettingName, newSettingName); err != nil {
 			return errors.Wrapf(err, "failed to sync consolidated v2 data engine setting %v to %v", oldSettingName, newSettingName)
 		}
+	}
+
+	return nil
+}
+
+func (s *DataStore) syncSettingEndpointNetworkForRWXVolume() error {
+	storageNetwork, err := s.getSettingRO(string(types.SettingNameStorageNetwork))
+	if err != nil {
+		if ErrorIsNotFound(err) {
+			logrus.Debugf("Setting %v not found; skipping %v setting sync", types.SettingNameStorageNetwork, types.SettingNameEndpointNetworkForRWXVolume)
+			return nil
+		}
+		return errors.Wrapf(err, "failed to get setting %v", types.SettingNameStorageNetwork)
+	}
+
+	storageNetworkForRWXVolumeEnabled, err := s.getSettingRO(string(types.SettingNameStorageNetworkForRWXVolumeEnabled))
+	if err != nil {
+		if ErrorIsNotFound(err) {
+			logrus.Debugf("Setting %v not found; skipping %v setting sync", types.SettingNameStorageNetworkForRWXVolumeEnabled, types.SettingNameEndpointNetworkForRWXVolume)
+			return nil
+		}
+		return errors.Wrapf(err, "failed to get old setting %v", types.SettingNameStorageNetworkForRWXVolumeEnabled)
+	}
+
+	// Check if "endpoint-network-for-rwx-volume" setting already exists.
+	endpointNetworkForRWXVolume, err := s.GetSettingExact(types.SettingNameEndpointNetworkForRWXVolume)
+	if err != nil && !ErrorIsNotFound(err) {
+		return errors.Wrapf(err, "failed to get new setting %v", types.SettingNameEndpointNetworkForRWXVolume)
+	}
+
+	// Inherit the storage network to endpoint network for RWX volume if:
+	//  1. endpoint-network-for-rwx-volume is missing (first sync after upgrade)
+	//  2. storage network is set.
+	//  3. storage network for RWX volume is enabled
+	if (endpointNetworkForRWXVolume == nil) &&
+		storageNetwork.Value != string(types.CniNetworkNone) &&
+		storageNetworkForRWXVolumeEnabled.Value == "true" {
+		return s.createOrUpdateSetting(types.SettingNameEndpointNetworkForRWXVolume, storageNetwork.Value, "")
 	}
 
 	return nil
