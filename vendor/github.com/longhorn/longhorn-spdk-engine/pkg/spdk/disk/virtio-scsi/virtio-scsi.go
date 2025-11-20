@@ -23,7 +23,7 @@ func init() {
 	disk.RegisterDiskDriver(string(commontypes.DiskDriverVirtioScsi), driver)
 }
 
-func (d *DiskDriverVirtioScsi) DiskCreate(spdkClient *spdkclient.Client, diskName, diskPath string, blockSize uint64) (string, error) {
+func (d *DiskDriverVirtioScsi) DiskCreate(spdkClient *spdkclient.Client, diskName, diskPath string, blockSize uint64, denyInUseDisk bool) (string, error) {
 	// TODO: validate the diskPath
 	executor, err := helperutil.NewExecutor(commontypes.ProcDirectory)
 	if err != nil {

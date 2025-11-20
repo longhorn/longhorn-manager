@@ -162,6 +162,7 @@ const (
 	SettingNameDefaultBackupBlockSize                                   = SettingName("default-backup-block-size")
 	SettingNameInstanceManagerPodLivenessProbeTimeout                   = SettingName("instance-manager-pod-liveness-probe-timeout")
 	SettingNameLogPath                                                  = SettingName("log-path")
+	SettingNameDenyAddingInUseBlockDisk                                 = SettingName("deny-adding-in-use-block-disk")
 
 	// The settings are deprecated and Longhorn won't create Setting Resources for these parameters.
 	// TODO: Remove these settings in the future releases.
@@ -277,6 +278,7 @@ var (
 		SettingNameDefaultBackupBlockSize,
 		SettingNameInstanceManagerPodLivenessProbeTimeout,
 		SettingNameLogPath,
+		SettingNameDenyAddingInUseBlockDisk,
 	}
 )
 
@@ -426,6 +428,7 @@ var (
 		SettingNameDefaultBackupBlockSize:                                   SettingDefinitionDefaultBackupBlockSize,
 		SettingNameInstanceManagerPodLivenessProbeTimeout:                   SettingDefinitionInstanceManagerPodLivenessProbeTimeout,
 		SettingNameLogPath:                                                  SettingDefinitionLogPath,
+		SettingNameDenyAddingInUseBlockDisk:                                 SettingDefinitionDenyAddingInUseBlockDisk,
 	}
 
 	SettingDefinitionAllowRecurringJobWhileVolumeDetached = SettingDefinition{
@@ -1802,6 +1805,17 @@ var (
 		ReadOnly:           false,
 		DataEngineSpecific: false,
 		Default:            DefaultLogDirectoryOnHost,
+	}
+
+	SettingDefinitionDenyAddingInUseBlockDisk = SettingDefinition{
+		DisplayName:        "Deny Adding In-Use Block Disk",
+		Description:        "Deny adding a block disk if it is already in use (contains a filesystem or partition table). This setting is only applicable when the disk driver is set to AIO.",
+		Category:           SettingCategoryGeneral,
+		Type:               SettingTypeBool,
+		Required:           true,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+		Default:            "false",
 	}
 )
 

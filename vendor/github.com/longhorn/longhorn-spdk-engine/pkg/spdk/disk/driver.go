@@ -10,7 +10,7 @@ import (
 )
 
 type DiskDriver interface {
-	DiskCreate(*spdkclient.Client, string, string, uint64) (string, error)
+	DiskCreate(*spdkclient.Client, string, string, uint64, bool) (string, error)
 	DiskDelete(*spdkclient.Client, string, string) (bool, error)
 	DiskGet(*spdkclient.Client, string, string, uint64) ([]spdktypes.BdevInfo, error)
 }
@@ -27,13 +27,13 @@ func RegisterDiskDriver(diskDriver string, ops DiskDriver) {
 	diskDrivers[diskDriver] = ops
 }
 
-func DiskCreate(spdkClient *spdkclient.Client, diskName, diskPath, diskDriver string, blockSize uint64) (string, error) {
+func DiskCreate(spdkClient *spdkclient.Client, diskName, diskPath, diskDriver string, blockSize uint64, denyInUseDisk bool) (string, error) {
 	driver, ok := diskDrivers[diskDriver]
 	if !ok {
 		return "", fmt.Errorf("disk driver %s is not registered", diskDriver)
 	}
 
-	return driver.DiskCreate(spdkClient, diskName, diskPath, blockSize)
+	return driver.DiskCreate(spdkClient, diskName, diskPath, blockSize, denyInUseDisk)
 }
 
 func DiskDelete(spdkClient *spdkclient.Client, diskName, diskPath, diskDriver string) (bool, error) {
