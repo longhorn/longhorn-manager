@@ -24,8 +24,8 @@ func init() {
 	disk.RegisterDiskDriver(string(commontypes.DiskDriverAio), driver)
 }
 
-func (d *DiskDriverAio) DiskCreate(spdkClient *spdkclient.Client, diskName, diskPath string, blockSize uint64) (string, error) {
-	if err := validateDiskCreation(spdkClient, diskPath); err != nil {
+func (d *DiskDriverAio) DiskCreate(spdkClient *spdkclient.Client, diskName, diskPath string, blockSize uint64, denyInUseDisk bool) (string, error) {
+	if err := validateDiskCreation(spdkClient, diskPath, denyInUseDisk); err != nil {
 		return "", errors.Wrap(err, "failed to validate disk creation")
 	}
 
@@ -40,7 +40,7 @@ func (d *DiskDriverAio) DiskGet(spdkClient *spdkclient.Client, diskName, diskPat
 	return spdkClient.BdevAioGet(diskName, timeout)
 }
 
-func validateDiskCreation(spdkClient *spdkclient.Client, diskPath string) error {
+func validateDiskCreation(spdkClient *spdkclient.Client, diskPath string, denyInUseDisk bool) error {
 	ok, err := spdkutil.IsBlockDevice(diskPath)
 	if err != nil {
 		return errors.Wrap(err, "failed to check if disk is a block device")
@@ -56,6 +56,17 @@ func validateDiskCreation(spdkClient *spdkclient.Client, diskPath string) error 
 	if size == 0 {
 		return fmt.Errorf("disk %v size is 0", diskPath)
 	}
+
+	if denyInUseDisk {
+		executor, err := spdkutil.NewExecutor(commontypes.ProcDirectory)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get the executor for AIO disk %v", diskPath)
+		}
+		if spdkutil.IsBlockDeviceInUse(diskPath, executor) {
+			return fmt.Errorf("disk %v is in use (filesystem or partition table is detected). Set `deny-adding-in-use-block-disk` to false or wipe all data on the disk", diskPath)
+		}
+	}
+
 	return nil
 }
 

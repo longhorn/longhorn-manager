@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/longhorn/longhorn-manager/types"
+
 	"github.com/cockroachdb/errors"
 
 	grpccodes "google.golang.org/grpc/codes"
@@ -133,7 +135,7 @@ func generateDiskConfig(diskType longhorn.DiskType, diskName, diskUUID, diskPath
 	case longhorn.DiskTypeFilesystem:
 		return generateFilesystemTypeDiskConfig(diskName, diskPath, ds)
 	case longhorn.DiskTypeBlock:
-		return generateBlockTypeDiskConfig(client, diskName, diskUUID, diskPath, diskDriver, defaultBlockSize)
+		return generateBlockTypeDiskConfig(client, diskName, diskUUID, diskPath, diskDriver, defaultBlockSize, ds)
 	default:
 		return nil, fmt.Errorf("unknown disk type %v", diskType)
 	}
@@ -193,12 +195,17 @@ func generateFilesystemTypeDiskConfig(diskName, diskPath string, ds *datastore.D
 	return cfg, nil
 }
 
-func generateBlockTypeDiskConfig(client *DiskServiceClient, diskName, diskUUID, diskPath, diskDriver string, blockSize int64) (*util.DiskConfig, error) {
+func generateBlockTypeDiskConfig(client *DiskServiceClient, diskName, diskUUID, diskPath, diskDriver string, blockSize int64, ds *datastore.DataStore) (*util.DiskConfig, error) {
 	if client == nil || client.c == nil {
 		return nil, errors.New("disk service client is nil")
 	}
 
-	info, err := client.c.DiskCreate(string(longhorn.DiskTypeBlock), diskName, diskUUID, diskPath, diskDriver, blockSize)
+	denyInUseDisk, err := ds.GetSettingAsBool(types.SettingNameDenyAddingInUseBlockDisk)
+	if err != nil {
+		return nil, err
+	}
+
+	info, err := client.c.DiskCreate(string(longhorn.DiskTypeBlock), diskName, diskUUID, diskPath, diskDriver, blockSize, denyInUseDisk)
 	if err != nil {
 		return nil, err
 	}

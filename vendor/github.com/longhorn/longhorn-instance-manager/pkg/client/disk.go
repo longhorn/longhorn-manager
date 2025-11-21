@@ -87,7 +87,7 @@ func NewDiskServiceClientWithTLS(ctx context.Context, ctxCancel context.CancelFu
 
 // DiskCreate creates a disk with the given name and path.
 // diskUUID is optional, if not provided, it indicates the disk is newly added.
-func (c *DiskServiceClient) DiskCreate(diskType, diskName, diskUUID, diskPath, diskDriver string, blockSize int64) (*api.DiskInfo, error) {
+func (c *DiskServiceClient) DiskCreate(diskType, diskName, diskUUID, diskPath, diskDriver string, blockSize int64, denyInUseDisk bool) (*api.DiskInfo, error) {
 	if diskName == "" || diskPath == "" {
 		return nil, fmt.Errorf("failed to create disk: missing required parameters")
 	}
@@ -102,12 +102,13 @@ func (c *DiskServiceClient) DiskCreate(diskType, diskName, diskUUID, diskPath, d
 	defer cancel()
 
 	resp, err := client.DiskCreate(ctx, &rpc.DiskCreateRequest{
-		DiskType:   rpc.DiskType(t),
-		DiskName:   diskName,
-		DiskUuid:   diskUUID,
-		DiskPath:   diskPath,
-		BlockSize:  blockSize,
-		DiskDriver: diskDriver,
+		DiskType:      rpc.DiskType(t),
+		DiskName:      diskName,
+		DiskUuid:      diskUUID,
+		DiskPath:      diskPath,
+		BlockSize:     blockSize,
+		DiskDriver:    diskDriver,
+		DenyInUseDisk: denyInUseDisk,
 	})
 	if err != nil {
 		return nil, err
