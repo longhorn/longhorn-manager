@@ -379,11 +379,26 @@ func (vbc *VolumeRebuildingController) reconcile(volName string) (err error) {
 		}
 	}()
 
+	existingVol := vol.DeepCopy()
+	defer func() {
+		if err != nil {
+			return
+		}
+		if reflect.DeepEqual(existingVol.Status.Conditions, vol.Status.Conditions) {
+			return
+		}
+
+		if _, err = vbc.ds.UpdateVolume(vol); err != nil {
+			return
+		}
+	}()
+
 	rebuildingAttachmentTicketID := longhorn.GetAttachmentTicketID(longhorn.AttacherTypeVolumeRebuildingController, volName)
 	deleteVATicketRequired := true
 	defer func() {
 		if deleteVATicketRequired {
 			delete(va.Spec.AttachmentTickets, rebuildingAttachmentTicketID)
+			vol.Status.Conditions = types.SetCondition(vol.Status.Conditions, longhorn.VolumeConditionTypeOfflineRebuilding, longhorn.ConditionStatusFalse, "", "")
 		}
 	}()
 
@@ -438,6 +453,12 @@ func (vbc *VolumeRebuildingController) reconcile(volName string) (err error) {
 	}
 	if vbc.isVolumeReplicasRebuilding(vol, engine) {
 		deleteVATicketRequired = types.GetCondition(vol.Status.Conditions, longhorn.VolumeConditionTypeScheduled).Status == longhorn.ConditionStatusFalse
+
+		if vaStatus, offlineRebuildingVAexists := va.Status.AttachmentTicketStatuses[rebuildingAttachmentTicketID]; offlineRebuildingVAexists && vaStatus.Satisfied {
+			vol.Status.Conditions = types.SetCondition(vol.Status.Conditions,
+				longhorn.VolumeConditionTypeOfflineRebuilding, longhorn.ConditionStatusTrue, longhorn.VolumeConditionReasonOfflineRebuildingInProgress, "")
+		}
+
 		return nil
 	}
 
