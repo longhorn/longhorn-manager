@@ -37,7 +37,7 @@ RUN zypper -n install \
     unzip \
     kmod \
     smartmontools \
-    && rm -rf /var/cache/zypp/*
+    && zypper clean --all
 
 COPY --from=builder /app/bin/longhorn-manager-${ARCH} /usr/local/sbin/longhorn-manager
 
