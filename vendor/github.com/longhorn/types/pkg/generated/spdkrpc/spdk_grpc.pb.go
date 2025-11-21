@@ -92,6 +92,7 @@ const (
 	SPDKService_DiskCreate_FullMethodName                                = "/spdkrpc.SPDKService/DiskCreate"
 	SPDKService_DiskDelete_FullMethodName                                = "/spdkrpc.SPDKService/DiskDelete"
 	SPDKService_DiskGet_FullMethodName                                   = "/spdkrpc.SPDKService/DiskGet"
+	SPDKService_DiskHealthGet_FullMethodName                             = "/spdkrpc.SPDKService/DiskHealthGet"
 	SPDKService_LogSetLevel_FullMethodName                               = "/spdkrpc.SPDKService/LogSetLevel"
 	SPDKService_LogSetFlags_FullMethodName                               = "/spdkrpc.SPDKService/LogSetFlags"
 	SPDKService_LogGetLevel_FullMethodName                               = "/spdkrpc.SPDKService/LogGetLevel"
@@ -176,6 +177,9 @@ type SPDKServiceClient interface {
 	DiskCreate(ctx context.Context, in *DiskCreateRequest, opts ...grpc.CallOption) (*Disk, error)
 	DiskDelete(ctx context.Context, in *DiskDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	DiskGet(ctx context.Context, in *DiskGetRequest, opts ...grpc.CallOption) (*Disk, error)
+	// DiskHealthGet returns typed NVMe controller health information for the
+	// specified disk. Field names and types mirror SPDK's health output.
+	DiskHealthGet(ctx context.Context, in *DiskHealthGetRequest, opts ...grpc.CallOption) (*DiskHealthGetResponse, error)
 	LogSetLevel(ctx context.Context, in *LogSetLevelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	LogSetFlags(ctx context.Context, in *LogSetFlagsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	LogGetLevel(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*LogGetLevelResponse, error)
@@ -909,6 +913,15 @@ func (c *sPDKServiceClient) DiskGet(ctx context.Context, in *DiskGetRequest, opt
 	return out, nil
 }
 
+func (c *sPDKServiceClient) DiskHealthGet(ctx context.Context, in *DiskHealthGetRequest, opts ...grpc.CallOption) (*DiskHealthGetResponse, error) {
+	out := new(DiskHealthGetResponse)
+	err := c.cc.Invoke(ctx, SPDKService_DiskHealthGet_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *sPDKServiceClient) LogSetLevel(ctx context.Context, in *LogSetLevelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, SPDKService_LogSetLevel_FullMethodName, in, out, opts...)
@@ -1039,6 +1052,9 @@ type SPDKServiceServer interface {
 	DiskCreate(context.Context, *DiskCreateRequest) (*Disk, error)
 	DiskDelete(context.Context, *DiskDeleteRequest) (*emptypb.Empty, error)
 	DiskGet(context.Context, *DiskGetRequest) (*Disk, error)
+	// DiskHealthGet returns typed NVMe controller health information for the
+	// specified disk. Field names and types mirror SPDK's health output.
+	DiskHealthGet(context.Context, *DiskHealthGetRequest) (*DiskHealthGetResponse, error)
 	LogSetLevel(context.Context, *LogSetLevelRequest) (*emptypb.Empty, error)
 	LogSetFlags(context.Context, *LogSetFlagsRequest) (*emptypb.Empty, error)
 	LogGetLevel(context.Context, *emptypb.Empty) (*LogGetLevelResponse, error)
@@ -1267,6 +1283,9 @@ func (UnimplementedSPDKServiceServer) DiskDelete(context.Context, *DiskDeleteReq
 }
 func (UnimplementedSPDKServiceServer) DiskGet(context.Context, *DiskGetRequest) (*Disk, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DiskGet not implemented")
+}
+func (UnimplementedSPDKServiceServer) DiskHealthGet(context.Context, *DiskHealthGetRequest) (*DiskHealthGetResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DiskHealthGet not implemented")
 }
 func (UnimplementedSPDKServiceServer) LogSetLevel(context.Context, *LogSetLevelRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method LogSetLevel not implemented")
@@ -2604,6 +2623,24 @@ func _SPDKService_DiskGet_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SPDKService_DiskHealthGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DiskHealthGetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SPDKServiceServer).DiskHealthGet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SPDKService_DiskHealthGet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SPDKServiceServer).DiskHealthGet(ctx, req.(*DiskHealthGetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _SPDKService_LogSetLevel_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(LogSetLevelRequest)
 	if err := dec(in); err != nil {
@@ -2994,6 +3031,10 @@ var SPDKService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DiskGet",
 			Handler:    _SPDKService_DiskGet_Handler,
+		},
+		{
+			MethodName: "DiskHealthGet",
+			Handler:    _SPDKService_DiskHealthGet_Handler,
 		},
 		{
 			MethodName: "LogSetLevel",

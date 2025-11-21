@@ -20,24 +20,27 @@ package v1beta2
 
 import (
 	longhornv1beta2 "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // DiskStatusApplyConfiguration represents a declarative configuration of the DiskStatus type for use
 // with apply.
 type DiskStatusApplyConfiguration struct {
-	Conditions            []ConditionApplyConfiguration `json:"conditions,omitempty"`
-	StorageAvailable      *int64                        `json:"storageAvailable,omitempty"`
-	StorageScheduled      *int64                        `json:"storageScheduled,omitempty"`
-	StorageMaximum        *int64                        `json:"storageMaximum,omitempty"`
-	ScheduledReplica      map[string]int64              `json:"scheduledReplica,omitempty"`
-	ScheduledBackingImage map[string]int64              `json:"scheduledBackingImage,omitempty"`
-	DiskUUID              *string                       `json:"diskUUID,omitempty"`
-	DiskName              *string                       `json:"diskName,omitempty"`
-	DiskPath              *string                       `json:"diskPath,omitempty"`
-	Type                  *longhornv1beta2.DiskType     `json:"diskType,omitempty"`
-	DiskDriver            *longhornv1beta2.DiskDriver   `json:"diskDriver,omitempty"`
-	FSType                *string                       `json:"filesystemType,omitempty"`
-	InstanceManagerName   *string                       `json:"instanceManagerName,omitempty"`
+	Conditions                []ConditionApplyConfiguration           `json:"conditions,omitempty"`
+	StorageAvailable          *int64                                  `json:"storageAvailable,omitempty"`
+	StorageScheduled          *int64                                  `json:"storageScheduled,omitempty"`
+	StorageMaximum            *int64                                  `json:"storageMaximum,omitempty"`
+	ScheduledReplica          map[string]int64                        `json:"scheduledReplica,omitempty"`
+	ScheduledBackingImage     map[string]int64                        `json:"scheduledBackingImage,omitempty"`
+	DiskUUID                  *string                                 `json:"diskUUID,omitempty"`
+	DiskName                  *string                                 `json:"diskName,omitempty"`
+	DiskPath                  *string                                 `json:"diskPath,omitempty"`
+	Type                      *longhornv1beta2.DiskType               `json:"diskType,omitempty"`
+	DiskDriver                *longhornv1beta2.DiskDriver             `json:"diskDriver,omitempty"`
+	FSType                    *string                                 `json:"filesystemType,omitempty"`
+	InstanceManagerName       *string                                 `json:"instanceManagerName,omitempty"`
+	HealthData                map[string]HealthDataApplyConfiguration `json:"healthData,omitempty"`
+	HealthDataLastCollectedAt *v1.Time                                `json:"healthDataLastCollectedAt,omitempty"`
 }
 
 // DiskStatusApplyConfiguration constructs a declarative configuration of the DiskStatus type for use with
@@ -164,5 +167,27 @@ func (b *DiskStatusApplyConfiguration) WithFSType(value string) *DiskStatusApply
 // If called multiple times, the InstanceManagerName field is set to the value of the last call.
 func (b *DiskStatusApplyConfiguration) WithInstanceManagerName(value string) *DiskStatusApplyConfiguration {
 	b.InstanceManagerName = &value
+	return b
+}
+
+// WithHealthData puts the entries into the HealthData field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, the entries provided by each call will be put on the HealthData field,
+// overwriting an existing map entries in HealthData field with the same key.
+func (b *DiskStatusApplyConfiguration) WithHealthData(entries map[string]HealthDataApplyConfiguration) *DiskStatusApplyConfiguration {
+	if b.HealthData == nil && len(entries) > 0 {
+		b.HealthData = make(map[string]HealthDataApplyConfiguration, len(entries))
+	}
+	for k, v := range entries {
+		b.HealthData[k] = v
+	}
+	return b
+}
+
+// WithHealthDataLastCollectedAt sets the HealthDataLastCollectedAt field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the HealthDataLastCollectedAt field is set to the value of the last call.
+func (b *DiskStatusApplyConfiguration) WithHealthDataLastCollectedAt(value v1.Time) *DiskStatusApplyConfiguration {
+	b.HealthDataLastCollectedAt = &value
 	return b
 }

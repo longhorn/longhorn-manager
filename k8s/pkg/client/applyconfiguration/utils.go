@@ -112,6 +112,10 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &longhornv1beta2.EngineStatusApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("EngineVersionDetails"):
 		return &longhornv1beta2.EngineVersionDetailsApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("HealthAttribute"):
+		return &longhornv1beta2.HealthAttributeApplyConfiguration{}
+	case v1beta2.SchemeGroupVersion.WithKind("HealthData"):
+		return &longhornv1beta2.HealthDataApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("InstanceManager"):
 		return &longhornv1beta2.InstanceManagerApplyConfiguration{}
 	case v1beta2.SchemeGroupVersion.WithKind("InstanceManagerSpec"):

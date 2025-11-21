@@ -172,6 +172,56 @@ func (c *DiskServiceClient) DiskGet(diskType, diskName, diskPath, diskDriver str
 	}, nil
 }
 
+// DiskHealthGet returns the disk health info with the given name, path and driver.
+func (c *DiskServiceClient) DiskHealthGet(diskType, diskName, diskPath, diskDriver string) (*api.DiskHealth, error) {
+	if diskName == "" {
+		return nil, fmt.Errorf("failed to get disk health info: missing required parameter diskName")
+	}
+
+	t, ok := rpc.DiskType_value[diskType]
+	if !ok {
+		return nil, fmt.Errorf("failed to get disk health info: invalid disk type %v", diskType)
+	}
+
+	client := c.getDiskServiceClient()
+	ctx, cancel := context.WithTimeout(context.Background(), types.GRPCServiceTimeout)
+	defer cancel()
+
+	resp, err := client.DiskHealthGet(ctx, &rpc.DiskHealthGetRequest{
+		DiskType:   rpc.DiskType(t),
+		DiskName:   diskName,
+		DiskPath:   diskPath,
+		DiskDriver: diskDriver,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &api.DiskHealth{
+		ModelNumber:                             resp.GetModelNumber(),
+		SerialNumber:                            resp.GetSerialNumber(),
+		FirmwareRevision:                        resp.GetFirmwareRevision(),
+		Traddr:                                  resp.GetTraddr(),
+		CriticalWarning:                         resp.GetCriticalWarning(),
+		TemperatureCelsius:                      resp.GetTemperatureCelsius(),
+		AvailableSparePercentage:                resp.GetAvailableSparePercentage(),
+		AvailableSpareThresholdPercentage:       resp.GetAvailableSpareThresholdPercentage(),
+		PercentageUsed:                          resp.GetPercentageUsed(),
+		DataUnitsRead:                           resp.GetDataUnitsRead(),
+		DataUnitsWritten:                        resp.GetDataUnitsWritten(),
+		HostReadCommands:                        resp.GetHostReadCommands(),
+		HostWriteCommands:                       resp.GetHostWriteCommands(),
+		ControllerBusyTime:                      resp.GetControllerBusyTime(),
+		PowerCycles:                             resp.GetPowerCycles(),
+		PowerOnHours:                            resp.GetPowerOnHours(),
+		UnsafeShutdowns:                         resp.GetUnsafeShutdowns(),
+		MediaErrors:                             resp.GetMediaErrors(),
+		NumErrLogEntries:                        resp.GetNumErrLogEntries(),
+		WarningTemperatureTimeMinutes:           resp.GetWarningTemperatureTimeMinutes(),
+		CriticalCompositeTemperatureTimeMinutes: resp.GetCriticalCompositeTemperatureTimeMinutes(),
+	}, nil
+}
+
 // DiskDelete deletes the disk with the given name, disk name, disk UUID, disk path and disk driver.
 func (c *DiskServiceClient) DiskDelete(diskType, diskName, diskUUID, diskPath, diskDriver string) error {
 	if diskName == "" {

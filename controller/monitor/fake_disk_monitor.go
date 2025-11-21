@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
@@ -38,6 +39,7 @@ func NewFakeDiskMonitor(logger logrus.FieldLogger, ds *datastore.DataStore, node
 		syncCallback: syncCallback,
 
 		getDiskStatHandler:          fakeGetDiskStat,
+		getDiskHealthHandler:        fakeGetDiskHealth,
 		getDiskConfigHandler:        fakeGetDiskConfig,
 		generateDiskConfigHandler:   fakeGenerateDiskConfig,
 		getReplicaDataStoresHandler: fakeGetReplicaDataStores,
@@ -112,4 +114,10 @@ func fakeGenerateDiskConfig(diskType longhorn.DiskType, name, uuid, path, diskDr
 		DiskUUID: TestDiskID1,
 		State:    string(spdkdisk.DiskStateReady),
 	}, nil
+}
+
+// fakeGetDiskHealth is a no-op health handler used by tests to prevent nil pointer panics.
+// It pretends no new health data needs collection and returns immediately.
+func fakeGetDiskHealth(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, lastCollectedAt time.Time, client *DiskServiceClient, logger logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error) {
+	return nil, lastCollectedAt, nil
 }

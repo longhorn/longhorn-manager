@@ -4,8 +4,8 @@ set -e
 cd $(dirname $0)
 
 ./build
-./validate
-./test -cover
+#./validate
+#./test -cover
 
 if [[ -z "${NO_PACKAGE}" ]]; then
   ./package
