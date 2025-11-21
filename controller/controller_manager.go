@@ -31,7 +31,7 @@ var (
 // StartControllers initiates all Longhorn component controllers and monitors to manage the creating, updating, and deletion of Longhorn resources
 func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	controllerID, serviceAccount, managerImage, backingImageManagerImage, shareManagerImage,
-	kubeconfigPath, version string, proxyConnCounter util.Counter) (*WebsocketController, error) {
+	kubeconfigPath, version string, proxyConnCounter util.Counter, snapshotConcurrentLimiter *SnapshotConcurrentLimiter) (*WebsocketController, error) {
 	namespace := clients.Namespace
 	kubeClient := clients.K8s
 	metricsClient := clients.MetricsClient
@@ -44,7 +44,7 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	if err != nil {
 		return nil, err
 	}
-	engineController, err := NewEngineController(logger, ds, scheme, kubeClient, &engineapi.EngineCollection{}, namespace, controllerID, proxyConnCounter)
+	engineController, err := NewEngineController(logger, ds, scheme, kubeClient, &engineapi.EngineCollection{}, namespace, controllerID, proxyConnCounter, snapshotConcurrentLimiter)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +112,7 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	if err != nil {
 		return nil, err
 	}
-	snapshotController, err := NewSnapshotController(logger, ds, scheme, kubeClient, namespace, controllerID, &engineapi.EngineCollection{}, proxyConnCounter)
+	snapshotController, err := NewSnapshotController(logger, ds, scheme, kubeClient, namespace, controllerID, &engineapi.EngineCollection{}, proxyConnCounter, snapshotConcurrentLimiter)
 	if err != nil {
 		return nil, err
 	}

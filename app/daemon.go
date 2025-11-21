@@ -316,14 +316,16 @@ func startManager(c *cli.Context) error {
 
 	proxyConnCounter := util.NewAtomicCounter()
 
+	snapshotConcurrentLimiter := controller.NewSnapshotConcurrentLimiter()
+
 	wsc, err := controller.StartControllers(logger, clients,
 		currentNodeID, serviceAccount, managerImage, backingImageManagerImage, shareManagerImage,
-		kubeconfigPath, meta.Version, proxyConnCounter)
+		kubeconfigPath, meta.Version, proxyConnCounter, snapshotConcurrentLimiter)
 	if err != nil {
 		return err
 	}
 
-	m := manager.NewVolumeManager(currentNodeID, clients.Datastore, proxyConnCounter)
+	m := manager.NewVolumeManager(currentNodeID, clients.Datastore, proxyConnCounter, snapshotConcurrentLimiter)
 
 	metricscollector.InitMetricsCollectorSystem(logger, currentNodeID, clients.Datastore, kubeconfigPath, proxyConnCounter)
 
