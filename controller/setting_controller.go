@@ -344,6 +344,12 @@ func (sc *SettingController) syncDangerZoneSettingsForManagedComponents(settingN
 		return nil
 	}
 
+	// Other danger-zone settings not requiring volume detachment
+	switch settingName {
+	case types.SettingNameSystemManagedCSIComponentsResourceLimits:
+		return sc.updateSystemManagedCSIComponentsResourceLimits()
+	}
+
 	// These settings are also protected by webhook validators, when there are new updates.
 	// Updating them is only allowed when all volumes of the data engine are detached.
 	dangerSettingsRequiringSpecificDataEngineVolumesDetached := []types.SettingName{
@@ -1018,6 +1024,112 @@ func (sc *SettingController) updateNodeSelector() error {
 			}
 		default:
 			return fmt.Errorf("unknown object type %v when updating %v setting", objType, types.SettingNamePriorityClass)
+		}
+	}
+
+	return nil
+}
+
+// updateSystemManagedCSIComponentsResourceLimits updates CPU/Memory requests/limits for CSI components based on the setting.
+// It rolls deployments/daemonset by updating the PodTemplate resources, triggering a rolling update.
+func (sc *SettingController) updateSystemManagedCSIComponentsResourceLimits() error {
+	setting, err := sc.ds.GetSettingWithAutoFillingRO(types.SettingNameSystemManagedCSIComponentsResourceLimits)
+	if err != nil {
+		return err
+	}
+	limits, err := types.UnmarshalCSIComponentResourceLimits(setting.Value)
+	if err != nil {
+		return err
+	}
+
+	// Update CSI sidecar deployments
+	dpList, err := sc.ds.ListDeploymentWithLabels(types.GetBaseLabelsForSystemManagedComponent())
+	if err != nil {
+		return errors.Wrap(err, "failed to list Longhorn deployments for resource limits update")
+	}
+	for _, dp := range dpList {
+		var desired *corev1.ResourceRequirements
+		switch dp.Name {
+		case types.CSIAttacherName:
+			desired = limits.CSIAttacher
+		case types.CSIProvisionerName:
+			desired = limits.CSIProvisioner
+		case types.CSIResizerName:
+			desired = limits.CSIResizer
+		case types.CSISnapshotterName:
+			desired = limits.CSISnapshotter
+		default:
+			continue
+		}
+		// Find main container (same as deployment name)
+		for i, c := range dp.Spec.Template.Spec.Containers {
+			if c.Name != dp.Name {
+				continue
+			}
+			// Setting acts as source of truth: if component is not in setting, clear its resources
+			var targetResources corev1.ResourceRequirements
+			if desired == nil {
+				targetResources = corev1.ResourceRequirements{}
+			} else {
+				targetResources = *desired
+			}
+			if reflect.DeepEqual(c.Resources, targetResources) {
+				// Already matches, no update needed
+				break
+			}
+			sc.logger.Infof("Updating resources for deployment %v: %+v -> %+v", dp.Name, c.Resources, targetResources)
+			dp.Spec.Template.Spec.Containers[i].Resources = targetResources
+			if _, err := sc.ds.UpdateDeployment(dp); err != nil {
+				return err
+			}
+			break
+		}
+	}
+
+	// Update CSI plugin daemonset containers
+	dsList, err := sc.ds.ListDaemonSetWithLabels(types.GetBaseLabelsForSystemManagedComponent())
+	if err != nil {
+		return errors.Wrap(err, "failed to list Longhorn daemonsets for resource limits update")
+	}
+	for _, ds := range dsList {
+		if ds.Name != types.CSIPluginName {
+			continue
+		}
+		// Apply all container changes first, then update once if changed
+		changed := false
+		for i := range ds.Spec.Template.Spec.Containers {
+			c := &ds.Spec.Template.Spec.Containers[i]
+			var desired *corev1.ResourceRequirements
+			switch c.Name {
+			case "node-driver-registrar":
+				desired = limits.CSINodeDriverRegistrar
+			case "longhorn-liveness-probe":
+				desired = limits.CSILivenessProbe
+			case types.CSIPluginName:
+				desired = limits.CSIPlugin
+			default:
+				continue
+			}
+			// Setting acts as source of truth: if component is not in setting, clear its resources
+			var targetResources corev1.ResourceRequirements
+			if desired == nil {
+				targetResources = corev1.ResourceRequirements{}
+			} else {
+				targetResources = *desired
+			}
+			if reflect.DeepEqual(c.Resources, targetResources) {
+				// Already matches, no update needed
+				continue
+			}
+			sc.logger.Infof("Planned resource update for daemonset %v container %v: %+v -> %+v", ds.Name, c.Name, c.Resources, targetResources)
+			c.Resources = targetResources
+			changed = true
+		}
+		if changed {
+			sc.logger.Infof("Applying batched resource updates for daemonset %v", ds.Name)
+			if _, err := sc.ds.UpdateDaemonSet(ds); err != nil {
+				return err
+			}
 		}
 	}
 

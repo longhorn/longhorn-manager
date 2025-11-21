@@ -35,7 +35,7 @@ const (
 )
 
 func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir string, args []string, replicaCount int32, podAntiAffinityPreset string,
-	tolerations []corev1.Toleration, tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string, ports []corev1.ContainerPort) *appsv1.Deployment {
+	tolerations []corev1.Toleration, tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string, ports []corev1.ContainerPort, resources *corev1.ResourceRequirements) *appsv1.Deployment {
 
 	deploymentLabels := types.GetBaseLabelsForSystemManagedComponent()
 	deploymentLabels["app"] = commonName
@@ -135,6 +135,15 @@ func getCommonDeployment(commonName, namespace, serviceAccount, image, rootDir s
 			{
 				Name: registrySecret,
 			},
+		}
+	}
+
+	if resources != nil {
+		for i, container := range commonDeploymentSpec.Spec.Template.Spec.Containers {
+			if container.Name == commonName {
+				commonDeploymentSpec.Spec.Template.Spec.Containers[i].Resources = *resources
+				break
+			}
 		}
 	}
 
