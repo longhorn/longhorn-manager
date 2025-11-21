@@ -20,7 +20,7 @@ RUN if [ "$TARGETPLATFORM" != "linux/amd64" ] && [ "$TARGETPLATFORM" != "linux/a
     exit 1; \
     fi
 
-ENV ARCH ${TARGETPLATFORM#linux/}
+ENV ARCH=${TARGETPLATFORM#linux/}
 
 RUN zypper -n ref && \
     zypper update -y
