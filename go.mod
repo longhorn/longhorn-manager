@@ -66,10 +66,10 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.23.0
 	github.com/longhorn/backing-image-manager v1.9.2
-	github.com/longhorn/backupstore v0.0.0-20251114163648-53b736c32aef
-	github.com/longhorn/go-common-libs v0.0.0-20251025140453-faa811992208
+	github.com/longhorn/backupstore v0.0.0-20251123054148-021939243385
+	github.com/longhorn/go-common-libs v0.0.0-20251116145113-3788c6f8aba8
 	github.com/longhorn/go-iscsi-helper v0.0.0-20251102142448-23eedefc2b60
-	github.com/longhorn/go-spdk-helper v0.2.1-0.20251114033407-2b59bbd85cb8
+	github.com/longhorn/go-spdk-helper v0.2.1-0.20251122081607-ba5a970c7558
 	github.com/longhorn/longhorn-engine v1.10.0-dev-20250824.0.20251103012748-950f695edced
 	github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250824.0.20251119014139-098406e68eae
 	github.com/longhorn/longhorn-share-manager v1.9.2
@@ -100,7 +100,7 @@ require (
 	k8s.io/mount-utils v0.34.2
 	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
 	sigs.k8s.io/controller-runtime v0.22.4
-	sigs.k8s.io/structured-merge-diff/v6 v6.3.0
+	sigs.k8s.io/structured-merge-diff/v6 v6.3.1
 )
 
 require (
@@ -127,7 +127,7 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
+	golang.org/x/exp v0.0.0-20251113190631-e25ba8c21ef6 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251022142026-3a174f9686a8 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
