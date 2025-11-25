@@ -383,6 +383,13 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 
 	replicaAutoBalance := rcs.ds.GetAutoBalancedReplicasSetting(volume, &logrus.Entry{})
 
+	diskPressurePercentage, err := rcs.ds.GetSettingAsInt(types.SettingNameReplicaAutoBalanceDiskPressurePercentage)
+	if err != nil {
+		errs.Append(longhorn.ErrorReplicaScheduleLonghornClientOperationFailed,
+			errors.Wrapf(err, "failed to get %v setting", types.SettingNameReplicaAutoBalanceDiskPressurePercentage))
+		return map[string]*Disk{}, errs
+	}
+
 	unusedNodes := map[string]*longhorn.Node{}
 	unusedNodesInUnusedZones := map[string]*longhorn.Node{}
 
@@ -407,8 +414,32 @@ func (rcs *ReplicaScheduler) getDiskCandidates(nodeInfo map[string]*longhorn.Nod
 
 		if _, ok := usedNodes[nodeName]; !ok {
 			unusedNodes[nodeName] = node
-		} else if replicaAutoBalance == longhorn.ReplicaAutoBalanceBestEffort {
-			unusedNodes[nodeName] = node
+		} else if replicaAutoBalance == longhorn.ReplicaAutoBalanceBestEffort && diskPressurePercentage > 0 {
+			// Under best-effort auto-balance with disk pressure rebalancing enabled,
+			// check if this node has any disk under pressure. Only allow reusing nodes
+			// that have disks under pressure for disk pressure rebalancing scenarios
+			// (moving replicas between disks on the same node).
+			//
+			// Ref: https://github.com/longhorn/longhorn/issues/11189
+			hasDiskUnderPressure := false
+			for diskName, diskStatus := range node.Status.DiskStatus {
+				diskSpec, exists := node.Spec.Disks[diskName]
+				if !exists {
+					continue
+				}
+				diskInfo, err := rcs.GetDiskSchedulingInfo(diskSpec, diskStatus)
+				if err != nil {
+					logrus.WithError(err).Debugf("Failed to get disk scheduling info for disk %v on node %v when checking disk pressure for auto-balance", diskName, nodeName)
+					continue
+				}
+				if rcs.IsDiskUnderPressure(diskPressurePercentage, diskInfo) {
+					hasDiskUnderPressure = true
+					break
+				}
+			}
+			if hasDiskUnderPressure {
+				unusedNodes[nodeName] = node
+			}
 		}
 		if onlyEvictingNodes[nodeName] {
 			unusedNodesAfterEviction[nodeName] = node
