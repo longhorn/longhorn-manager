@@ -1533,6 +1533,14 @@ func (c *ShareManagerController) createPodManifest(sm *longhorn.ShareManager, da
 			Name:  "GRACE_PERIOD",
 			Value: fmt.Sprint(nfsConfig.gracePeriod),
 		},
+		{
+			Name:  types.EnvPodName,
+			Value: types.GetShareManagerPodNameFromShareManagerName(sm.Name),
+		},
+		{
+			Name:  types.EnvPodNamespace,
+			Value: sm.Namespace,
+		},
 	}
 
 	if len(formatOptions) > 0 {
