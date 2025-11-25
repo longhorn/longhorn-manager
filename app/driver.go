@@ -256,7 +256,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	tolerationSettingKubernetesCSI, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameTaintTolerationKubernetesCSI), metav1.GetOptions{})
+	tolerationSettingKubernetesCSI, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameCSISidecarComponentTaintToleration), metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -269,7 +269,7 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	nodeSelectorSettingKubernetesCSI, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameSystemManagedComponentsNodeSelectorKubernetesCSI), metav1.GetOptions{})
+	nodeSelectorSettingKubernetesCSI, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameSystemManagedCSISidecarComponentsNodeSelector), metav1.GetOptions{})
 	if err != nil {
 		return err
 	}

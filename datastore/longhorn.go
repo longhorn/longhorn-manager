@@ -4096,8 +4096,8 @@ func (s *DataStore) GetSettingSystemManagedComponentsNodeSelector() (map[string]
 	return nodeSelector, nil
 }
 
-func (s *DataStore) GetSettingTaintTolerationKubernetesCSI() ([]corev1.Toleration, error) {
-	setting, err := s.GetSettingWithAutoFillingRO(types.SettingNameTaintTolerationKubernetesCSI)
+func (s *DataStore) GetSettingCSISidecarComponentTaintToleration() ([]corev1.Toleration, error) {
+	setting, err := s.GetSettingWithAutoFillingRO(types.SettingNameCSISidecarComponentTaintToleration)
 	if err != nil {
 		return nil, err
 	}
@@ -4108,8 +4108,8 @@ func (s *DataStore) GetSettingTaintTolerationKubernetesCSI() ([]corev1.Toleratio
 	return tolerationList, nil
 }
 
-func (s *DataStore) GetSettingSystemManagedComponentsNodeSelectorKubernetesCSI() (map[string]string, error) {
-	setting, err := s.GetSettingWithAutoFillingRO(types.SettingNameSystemManagedComponentsNodeSelectorKubernetesCSI)
+func (s *DataStore) GetSettingSystemManagedCSISidecarComponentsNodeSelector() (map[string]string, error) {
+	setting, err := s.GetSettingWithAutoFillingRO(types.SettingNameSystemManagedCSISidecarComponentsNodeSelector)
 	if err != nil {
 		return nil, err
 	}
