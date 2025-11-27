@@ -286,6 +286,10 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 		return err
 	}
 
+	if err := upgradeutil.CopyCSISidecarSettings(namespace, lhClient); err != nil {
+		return err
+	}
+
 	return upgradeutil.CreateOrUpdateLonghornVersionSetting(namespace, lhClient)
 }
 
