@@ -298,14 +298,39 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		return nil, status.Error(codes.DeadlineExceeded, "failed to wait for volume creation to complete")
 	}
 
+	// When Longhorn is deployed only on selected nodes, we need to set accessible topology because volumes won't be accessible from nodes where Longhorn components are not deployed
+	nodeSelector, err := cs.getSettingSystemManagedComponentsNodeSelector(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get setting %v: %v", types.SettingNameSystemManagedComponentsNodeSelector, err)
+	}
+	var accessibleTopology []*csi.Topology
+	if len(nodeSelector) > 0 {
+		accessibleTopology = []*csi.Topology{
+			{Segments: nodeSelector},
+		}
+	}
+
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
-			VolumeId:      resVol.Id,
-			CapacityBytes: reqVolSizeBytes,
-			VolumeContext: volumeParameters,
-			ContentSource: volumeSource,
+			VolumeId:           resVol.Id,
+			CapacityBytes:      reqVolSizeBytes,
+			VolumeContext:      volumeParameters,
+			ContentSource:      volumeSource,
+			AccessibleTopology: accessibleTopology,
 		},
 	}, nil
+}
+
+func (cs *ControllerServer) getSettingSystemManagedComponentsNodeSelector(ctx context.Context) (map[string]string, error) {
+	setting, err := cs.lhClient.LonghornV1beta2().Settings(cs.lhNamespace).Get(ctx, string(types.SettingNameSystemManagedComponentsNodeSelector), metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	nodeSelector, err := types.UnmarshalNodeSelector(setting.Value)
+	if err != nil {
+		return nil, err
+	}
+	return nodeSelector, nil
 }
 
 func (cs *ControllerServer) getBackupVolumes(volumeName string) ([]*longhornclient.BackupVolume, error) {
