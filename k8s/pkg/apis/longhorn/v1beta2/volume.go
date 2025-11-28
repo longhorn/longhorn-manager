@@ -127,6 +127,7 @@ const (
 	VolumeConditionTypeRestore             = "Restore"
 	VolumeConditionTypeTooManySnapshots    = "TooManySnapshots"
 	VolumeConditionTypeWaitForBackingImage = "WaitForBackingImage"
+	VolumeConditionTypeOfflineRebuilding   = "OfflineRebuilding"
 )
 
 const (
@@ -137,6 +138,7 @@ const (
 	VolumeConditionReasonTooManySnapshots              = "TooManySnapshots"
 	VolumeConditionReasonWaitForBackingImageFailed     = "GetBackingImageFailed"
 	VolumeConditionReasonWaitForBackingImageWaiting    = "Waiting"
+	VolumeConditionReasonOfflineRebuildingInProgress   = "OfflineRebuildingInProgress"
 )
 
 type SnapshotDataIntegrity string
