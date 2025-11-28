@@ -5074,6 +5074,8 @@ func (c *VolumeController) ReconcilePersistentVolume(volume *longhorn.Volume) er
 	}()
 
 	if volume.Spec.DataLocality == longhorn.DataLocalityStrictLocal && volume.Spec.NodeID != "" {
+		// PV nodeAffinity may already be set via CSI accessibleTopology and is immutable.
+		// Ref: https://github.com/longhorn/longhorn/issues/12261
 		pv.Spec.NodeAffinity = &corev1.VolumeNodeAffinity{
 			Required: &corev1.NodeSelector{NodeSelectorTerms: []corev1.NodeSelectorTerm{
 				util.GetNodeSelectorTermMatchExpressionNodeName(volume.Spec.NodeID),
