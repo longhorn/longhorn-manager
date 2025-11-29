@@ -88,6 +88,7 @@ const (
 	SettingNameSystemManagedComponentsNodeSelector                      = SettingName("system-managed-components-node-selector")
 	SettingNameCSISidecarComponentTaintToleration                       = SettingName("csi-sidecar-taint-toleration")
 	SettingNameSystemManagedCSISidecarComponentsNodeSelector            = SettingName("system-managed-csi-sidecar-components-node-selector")
+	SettingNameSystemManagedCSIComponentsResourceLimits                 = SettingName("system-managed-csi-components-resource-limits")
 	SettingNameCRDAPIVersion                                            = SettingName("crd-api-version")
 	SettingNameAutoSalvage                                              = SettingName("auto-salvage")
 	SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly              = SettingName("auto-delete-pod-when-volume-detached-unexpectedly")
@@ -206,6 +207,7 @@ var (
 		SettingNameSystemManagedComponentsNodeSelector,
 		SettingNameCSISidecarComponentTaintToleration,
 		SettingNameSystemManagedCSISidecarComponentsNodeSelector,
+		SettingNameSystemManagedCSIComponentsResourceLimits,
 		SettingNameCRDAPIVersion,
 		SettingNameAutoSalvage,
 		SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly,
@@ -359,6 +361,7 @@ var (
 		SettingNameSystemManagedComponentsNodeSelector:                      SettingDefinitionSystemManagedComponentsNodeSelector,
 		SettingNameCSISidecarComponentTaintToleration:                       SettingDefinitionCSISidecarComponentTaintToleration,
 		SettingNameSystemManagedCSISidecarComponentsNodeSelector:            SettingDefinitionSystemManagedCSISidecarComponentsNodeSelector,
+		SettingNameSystemManagedCSIComponentsResourceLimits:                 SettingDefinitionSystemManagedCSIComponentsResourceLimits,
 		SettingNameCRDAPIVersion:                                            SettingDefinitionCRDAPIVersion,
 		SettingNameAutoSalvage:                                              SettingDefinitionAutoSalvage,
 		SettingNameAutoDeletePodWhenVolumeDetachedUnexpectedly:              SettingDefinitionAutoDeletePodWhenVolumeDetachedUnexpectedly,
@@ -856,6 +859,40 @@ var (
 			"Multiple label key-value pairs are separated by semicolon. For example: \n\n" +
 			"* `label-key1=label-value1; label-key2=label-value2` \n\n" +
 			"Please see the documentation at https://longhorn.io for more detailed instructions about changing node selector",
+		Category:           SettingCategoryDangerZone,
+		Type:               SettingTypeString,
+		Required:           false,
+		ReadOnly:           false,
+		DataEngineSpecific: false,
+	}
+
+	SettingDefinitionSystemManagedCSIComponentsResourceLimits = SettingDefinition{
+		DisplayName: "System Managed CSI Components Resource Limits",
+		Description: "Resource limits for system managed CSI components. " +
+			"This setting allows you to configure CPU and memory requests/limits for CSI attacher, provisioner, resizer, snapshotter, and plugin components. " +
+			"Changing resource limits will cause CSI components to restart, which may temporarily affect volume provisioning and attach/detach operations until the components are ready. " +
+			"The value should be a JSON object with component names as keys and ResourceRequirements as values. For example: \n\n" +
+			"```json\n" +
+			"{\n" +
+			"  \"csi-attacher\": {\n" +
+			"    \"requests\": {\"cpu\": \"100m\", \"memory\": \"128Mi\"},\n" +
+			"    \"limits\": {\"cpu\": \"200m\", \"memory\": \"256Mi\"}\n" +
+			"  },\n" +
+			"  \"csi-provisioner\": {\n" +
+			"    \"requests\": {\"cpu\": \"100m\", \"memory\": \"128Mi\"},\n" +
+			"    \"limits\": {\"cpu\": \"200m\", \"memory\": \"256Mi\"}\n" +
+			"  },\n" +
+			"  \"longhorn-csi-plugin\": {\n" +
+			"    \"requests\": {\"cpu\": \"100m\", \"memory\": \"128Mi\"},\n" +
+			"    \"limits\": {\"cpu\": \"200m\", \"memory\": \"256Mi\"}\n" +
+			"  },\n" +
+			"  \"node-driver-registrar\": {\n" +
+			"    \"requests\": {\"cpu\": \"50m\", \"memory\": \"64Mi\"},\n" +
+			"    \"limits\": {\"cpu\": \"100m\", \"memory\": \"128Mi\"}\n" +
+			"  }\n" +
+			"}\n" +
+			"```\n\n" +
+			"Supported components: csi-attacher, csi-provisioner, csi-resizer, csi-snapshotter, longhorn-csi-plugin, node-driver-registrar, longhorn-liveness-probe",
 		Category:           SettingCategoryDangerZone,
 		Type:               SettingTypeString,
 		Required:           false,
@@ -2088,6 +2125,31 @@ func UnmarshalNodeSelector(nodeSelectorSetting string) (map[string]string, error
 	return nodeSelector, nil
 }
 
+type ComponentResourceLimits struct {
+	CSIAttacher            *corev1.ResourceRequirements `json:"csi-attacher,omitempty"`
+	CSIProvisioner         *corev1.ResourceRequirements `json:"csi-provisioner,omitempty"`
+	CSIResizer             *corev1.ResourceRequirements `json:"csi-resizer,omitempty"`
+	CSISnapshotter         *corev1.ResourceRequirements `json:"csi-snapshotter,omitempty"`
+	CSIPlugin              *corev1.ResourceRequirements `json:"longhorn-csi-plugin,omitempty"`
+	CSINodeDriverRegistrar *corev1.ResourceRequirements `json:"node-driver-registrar,omitempty"`
+	CSILivenessProbe       *corev1.ResourceRequirements `json:"longhorn-liveness-probe,omitempty"`
+}
+
+func UnmarshalCSIComponentResourceLimits(resourceLimitsSetting string) (*ComponentResourceLimits, error) {
+	resourceLimitsSetting = strings.Trim(resourceLimitsSetting, " ")
+	if resourceLimitsSetting == "" {
+		// Return empty struct instead of nil to avoid nil checks in callers
+		return &ComponentResourceLimits{}, nil
+	}
+
+	var limits ComponentResourceLimits
+	if err := json.Unmarshal([]byte(resourceLimitsSetting), &limits); err != nil {
+		return nil, errors.Wrapf(err, "failed to unmarshal CSI component resource limits %v", resourceLimitsSetting)
+	}
+
+	return &limits, nil
+}
+
 func UnmarshalOrphanResourceTypes(resourceTypesSetting string) (map[OrphanResourceType]bool, error) {
 	resourceTypes := map[OrphanResourceType]bool{
 		OrphanResourceTypeReplicaData: false,
@@ -2155,7 +2217,7 @@ func validateSettingBool(definition SettingDefinition, value string) (err error)
 	var values map[longhorn.DataEngineType]any
 	var defaultValues map[longhorn.DataEngineType]any
 
-	if IsJSONFormat(strings.TrimSpace(value)) {
+	if definition.DataEngineSpecific && IsJSONFormat(strings.TrimSpace(value)) {
 		values, err = ParseDataEngineSpecificSetting(definition, value)
 	} else {
 		values, err = parseSettingSingleBool(definition, value)
@@ -2168,7 +2230,7 @@ func validateSettingBool(definition SettingDefinition, value string) (err error)
 		return fmt.Errorf("failed to parse value %s for setting %s, value cannot be empty", value, definition.DisplayName)
 	}
 
-	if IsJSONFormat(strings.TrimSpace(definition.Default)) {
+	if definition.DataEngineSpecific && IsJSONFormat(strings.TrimSpace(definition.Default)) {
 		defaultValues, err = ParseDataEngineSpecificSetting(definition, definition.Default)
 	} else {
 		defaultValues, err = parseSettingSingleBool(definition, definition.Default)
@@ -2278,7 +2340,7 @@ func validateSettingInt(definition SettingDefinition, value string) (err error) 
 	var values map[longhorn.DataEngineType]any
 	var defaultValues map[longhorn.DataEngineType]any
 
-	if IsJSONFormat(strings.TrimSpace(value)) {
+	if definition.DataEngineSpecific && IsJSONFormat(strings.TrimSpace(value)) {
 		values, err = ParseDataEngineSpecificSetting(definition, value)
 	} else {
 		values, err = ParseSettingSingleValue(definition, value)
@@ -2291,7 +2353,7 @@ func validateSettingInt(definition SettingDefinition, value string) (err error) 
 		return fmt.Errorf("failed to parse value %s for setting %s, value cannot be empty", value, definition.DisplayName)
 	}
 
-	if IsJSONFormat(strings.TrimSpace(definition.Default)) {
+	if definition.DataEngineSpecific && IsJSONFormat(strings.TrimSpace(definition.Default)) {
 		defaultValues, err = ParseDataEngineSpecificSetting(definition, definition.Default)
 	} else {
 		defaultValues, err = ParseSettingSingleValue(definition, definition.Default)
@@ -2397,7 +2459,7 @@ func validateSettingFloat(definition SettingDefinition, value string) (err error
 	var values map[longhorn.DataEngineType]any
 	var defaultValues map[longhorn.DataEngineType]any
 
-	if IsJSONFormat(strings.TrimSpace(value)) {
+	if definition.DataEngineSpecific && IsJSONFormat(strings.TrimSpace(value)) {
 		values, err = ParseDataEngineSpecificSetting(definition, value)
 	} else {
 		values, err = ParseSettingSingleValue(definition, value)
@@ -2410,7 +2472,7 @@ func validateSettingFloat(definition SettingDefinition, value string) (err error
 		return fmt.Errorf("failed to parse value %s for setting %s, value cannot be empty", value, definition.DisplayName)
 	}
 
-	if IsJSONFormat(strings.TrimSpace(definition.Default)) {
+	if definition.DataEngineSpecific && IsJSONFormat(strings.TrimSpace(definition.Default)) {
 		defaultValues, err = ParseDataEngineSpecificSetting(definition, definition.Default)
 	} else {
 		defaultValues, err = parseSettingSingleFloat(definition, definition.Default)
@@ -2510,7 +2572,7 @@ func validateSettingString(name SettingName, definition SettingDefinition, value
 	var values map[longhorn.DataEngineType]any
 	var defaultValues map[longhorn.DataEngineType]any
 
-	if IsJSONFormat(strings.TrimSpace(value)) {
+	if definition.DataEngineSpecific && IsJSONFormat(strings.TrimSpace(value)) {
 		values, err = ParseDataEngineSpecificSetting(definition, value)
 	} else {
 		values, err = ParseSettingSingleValue(definition, value)
@@ -2523,7 +2585,7 @@ func validateSettingString(name SettingName, definition SettingDefinition, value
 		return fmt.Errorf("failed to parse value %s for setting %s, value cannot be empty", value, definition.DisplayName)
 	}
 
-	if IsJSONFormat(strings.TrimSpace(definition.Default)) {
+	if definition.DataEngineSpecific && IsJSONFormat(strings.TrimSpace(definition.Default)) {
 		defaultValues, err = ParseDataEngineSpecificSetting(definition, definition.Default)
 	} else {
 		defaultValues, err = ParseSettingSingleValue(definition, definition.Default)
@@ -2580,8 +2642,14 @@ func validateSettingString(name SettingName, definition SettingDefinition, value
 			if _, err := UnmarshalTolerations(strValue); err != nil {
 				return errors.Wrapf(err, "the value of %v is invalid", name)
 			}
+
 		case SettingNameSystemManagedCSISidecarComponentsNodeSelector:
 			if _, err := UnmarshalNodeSelector(strValue); err != nil {
+				return errors.Wrapf(err, "the value of %v is invalid", name)
+			}
+
+		case SettingNameSystemManagedCSIComponentsResourceLimits:
+			if _, err := UnmarshalCSIComponentResourceLimits(strValue); err != nil {
 				return errors.Wrapf(err, "the value of %v is invalid", name)
 			}
 

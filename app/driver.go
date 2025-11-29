@@ -300,6 +300,15 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
+	resourceLimitsSetting, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameSystemManagedCSIComponentsResourceLimits), metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	resourceLimits, err := types.UnmarshalCSIComponentResourceLimits(resourceLimitsSetting.Value)
+	if err != nil {
+		return err
+	}
+
 	var imagePullPolicy corev1.PullPolicy
 	switch imagePullPolicySetting.Value {
 	case string(types.SystemManagedPodsImagePullPolicyNever):
@@ -337,27 +346,27 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
-	attacherDeployment := csi.NewAttacherDeployment(namespace, serviceAccountName, csiAttacherImage, rootDir, csiAttacherReplicaCount, csiPodAntiAffinityPreset, tolerationsKubernetesCSI, string(tolerationsByteKubernetesCSI), priorityClass, registrySecret, imagePullPolicy, nodeSelectorKubernetesCSI)
+	attacherDeployment := csi.NewAttacherDeployment(namespace, serviceAccountName, csiAttacherImage, rootDir, csiAttacherReplicaCount, csiPodAntiAffinityPreset, tolerationsKubernetesCSI, string(tolerationsByteKubernetesCSI), priorityClass, registrySecret, imagePullPolicy, nodeSelectorKubernetesCSI, resourceLimits.CSIAttacher)
 	if err := attacherDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
-	provisionerDeployment := csi.NewProvisionerDeployment(namespace, serviceAccountName, csiProvisionerImage, rootDir, csiProvisionerReplicaCount, csiPodAntiAffinityPreset, tolerationsKubernetesCSI, string(tolerationsByteKubernetesCSI), priorityClass, registrySecret, imagePullPolicy, nodeSelectorKubernetesCSI)
+	provisionerDeployment := csi.NewProvisionerDeployment(namespace, serviceAccountName, csiProvisionerImage, rootDir, csiProvisionerReplicaCount, csiPodAntiAffinityPreset, tolerationsKubernetesCSI, string(tolerationsByteKubernetesCSI), priorityClass, registrySecret, imagePullPolicy, nodeSelectorKubernetesCSI, resourceLimits.CSIProvisioner)
 	if err := provisionerDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
-	resizerDeployment := csi.NewResizerDeployment(namespace, serviceAccountName, csiResizerImage, rootDir, csiResizerReplicaCount, csiPodAntiAffinityPreset, tolerationsKubernetesCSI, string(tolerationsByteKubernetesCSI), priorityClass, registrySecret, imagePullPolicy, nodeSelectorKubernetesCSI)
+	resizerDeployment := csi.NewResizerDeployment(namespace, serviceAccountName, csiResizerImage, rootDir, csiResizerReplicaCount, csiPodAntiAffinityPreset, tolerationsKubernetesCSI, string(tolerationsByteKubernetesCSI), priorityClass, registrySecret, imagePullPolicy, nodeSelectorKubernetesCSI, resourceLimits.CSIResizer)
 	if err := resizerDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
-	snapshotterDeployment := csi.NewSnapshotterDeployment(namespace, serviceAccountName, csiSnapshotterImage, rootDir, csiSnapshotterReplicaCount, csiPodAntiAffinityPreset, tolerationsKubernetesCSI, string(tolerationsByteKubernetesCSI), priorityClass, registrySecret, imagePullPolicy, nodeSelectorKubernetesCSI)
+	snapshotterDeployment := csi.NewSnapshotterDeployment(namespace, serviceAccountName, csiSnapshotterImage, rootDir, csiSnapshotterReplicaCount, csiPodAntiAffinityPreset, tolerationsKubernetesCSI, string(tolerationsByteKubernetesCSI), priorityClass, registrySecret, imagePullPolicy, nodeSelectorKubernetesCSI, resourceLimits.CSISnapshotter)
 	if err := snapshotterDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}
 
-	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, csiLivenessProbeImage, managerImage, managerURL, rootDir, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector, endpointNetworkForRWXVolumeSetting)
+	pluginDeployment := csi.NewPluginDeployment(namespace, serviceAccountName, csiNodeDriverRegistrarImage, csiLivenessProbeImage, managerImage, managerURL, rootDir, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector, endpointNetworkForRWXVolumeSetting, resourceLimits)
 	if err := pluginDeployment.Deploy(kubeClient); err != nil {
 		return err
 	}

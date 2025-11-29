@@ -25,7 +25,6 @@ import (
 
 	"github.com/longhorn/longhorn-manager/meta"
 	"github.com/longhorn/longhorn-manager/types"
-	"github.com/longhorn/longhorn-manager/upgrade/v110xto1110"
 	"github.com/longhorn/longhorn-manager/upgrade/v16xto170"
 	"github.com/longhorn/longhorn-manager/upgrade/v170to171"
 	"github.com/longhorn/longhorn-manager/upgrade/v17xto180"
@@ -259,14 +258,6 @@ func doResourceUpgrade(namespace string, lhClient *lhclientset.Clientset, kubeCl
 			return err
 		}
 	}
-	// When lhVersionBeforeUpgrade < v1.11.0, it is v1.10.x. The `CheckUpgradePath` method would have failed us out earlier if it was not v1.10.x.
-	if semver.Compare(lhVersionBeforeUpgrade, "v1.11.0") < 0 {
-		logrus.Info("Walking through the resource upgrade path v1.10.x to v1.11.0")
-		if err := v110xto1110.UpgradeResources(namespace, lhClient, kubeClient, resourceMaps); err != nil {
-			return err
-		}
-	}
-
 	if err := upgradeutil.UpdateResources(namespace, lhClient, resourceMaps, forceResourceUpdate); err != nil {
 		return err
 	}
