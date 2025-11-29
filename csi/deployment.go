@@ -52,7 +52,7 @@ type AttacherDeployment struct {
 }
 
 func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir string, replicaCount int, podAntiAffinityPreset string, tolerations []corev1.Toleration,
-	tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string) *AttacherDeployment {
+	tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string, resources *corev1.ResourceRequirements) *AttacherDeployment {
 
 	deployment := getCommonDeployment(
 		types.CSIAttacherName,
@@ -84,6 +84,7 @@ func NewAttacherDeployment(namespace, serviceAccount, attacherImage, rootDir str
 				ContainerPort: types.CSISidecarMetricsPort,
 			},
 		},
+		resources,
 	)
 
 	return &AttacherDeployment{
@@ -108,7 +109,7 @@ type ProvisionerDeployment struct {
 }
 
 func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootDir string, replicaCount int, podAntiAffinityPreset string, tolerations []corev1.Toleration,
-	tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string) *ProvisionerDeployment {
+	tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string, resources *corev1.ResourceRequirements) *ProvisionerDeployment {
 
 	deployment := getCommonDeployment(
 		types.CSIProvisionerName,
@@ -143,6 +144,7 @@ func NewProvisionerDeployment(namespace, serviceAccount, provisionerImage, rootD
 				ContainerPort: types.CSISidecarMetricsPort,
 			},
 		},
+		resources,
 	)
 
 	return &ProvisionerDeployment{
@@ -167,7 +169,7 @@ type ResizerDeployment struct {
 }
 
 func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir string, replicaCount int, podAntiAffinityPreset string, tolerations []corev1.Toleration,
-	tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string) *ResizerDeployment {
+	tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string, resources *corev1.ResourceRequirements) *ResizerDeployment {
 
 	deployment := getCommonDeployment(
 		types.CSIResizerName,
@@ -209,6 +211,7 @@ func NewResizerDeployment(namespace, serviceAccount, resizerImage, rootDir strin
 				ContainerPort: types.CSISidecarMetricsPort,
 			},
 		},
+		resources,
 	)
 
 	return &ResizerDeployment{
@@ -233,7 +236,7 @@ type SnapshotterDeployment struct {
 }
 
 func NewSnapshotterDeployment(namespace, serviceAccount, snapshotterImage, rootDir string, replicaCount int, podAntiAffinityPreset string, tolerations []corev1.Toleration,
-	tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string) *SnapshotterDeployment {
+	tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string, resources *corev1.ResourceRequirements) *SnapshotterDeployment {
 
 	deployment := getCommonDeployment(
 		types.CSISnapshotterName,
@@ -265,6 +268,7 @@ func NewSnapshotterDeployment(namespace, serviceAccount, snapshotterImage, rootD
 				ContainerPort: types.CSISidecarMetricsPort,
 			},
 		},
+		resources,
 	)
 
 	return &SnapshotterDeployment{
@@ -290,7 +294,7 @@ type PluginDeployment struct {
 
 func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, livenessProbeImage, managerImage, managerURL, rootDir string,
 	tolerations []corev1.Toleration, tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string,
-	endpointNetworkForRWXVolumeSetting *longhorn.Setting) *PluginDeployment {
+	endpointNetworkForRWXVolumeSetting *longhorn.Setting, resourceLimits *types.ComponentResourceLimits) *PluginDeployment {
 
 	daemonSet := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -579,6 +583,26 @@ func NewPluginDeployment(namespace, serviceAccount, nodeDriverRegistrarImage, li
 	types.AddGoCoverDirToDaemonSet(daemonSet)
 
 	types.UpdateDaemonSetTemplateBasedOnCNISettings(daemonSet, endpointNetworkForRWXVolumeSetting)
+
+	// Set resources for each container if provided
+	if resourceLimits != nil {
+		for i, container := range daemonSet.Spec.Template.Spec.Containers {
+			var containerResources *corev1.ResourceRequirements
+
+			switch container.Name {
+			case "node-driver-registrar":
+				containerResources = resourceLimits.CSINodeDriverRegistrar
+			case "longhorn-liveness-probe":
+				containerResources = resourceLimits.CSILivenessProbe
+			case types.CSIPluginName: // "longhorn-csi-plugin"
+				containerResources = resourceLimits.CSIPlugin
+			}
+
+			if containerResources != nil {
+				daemonSet.Spec.Template.Spec.Containers[i].Resources = *containerResources
+			}
+		}
+	}
 
 	return &PluginDeployment{
 		daemonSet: daemonSet,
