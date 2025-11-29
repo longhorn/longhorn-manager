@@ -891,13 +891,28 @@ func (ns *NodeServer) NodeExpandVolume(ctx context.Context, req *csi.NodeExpandV
 }
 
 func (ns *NodeServer) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
+	// Default topology with hostname (fallback if node labels cannot be retrieved)
+	topologySegments := map[string]string{
+		nodeTopologyKey: ns.nodeID,
+	}
+
+	// Get Kubernetes node labels and add them to topology segments
+	// This enables StorageClass allowedTopologies to match node labels
+	kubeNode, err := ns.kubeClient.CoreV1().Nodes().Get(ctx, ns.nodeID, metav1.GetOptions{})
+	if err != nil {
+		ns.log.WithError(err).Warnf("Failed to get Kubernetes node %s for topology labels, using hostname only", ns.nodeID)
+	} else {
+		// Overwrite with all node labels (kubernetes.io/hostname will be overwritten if present in labels)
+		for key, value := range kubeNode.Labels {
+			topologySegments[key] = value
+		}
+	}
+
 	return &csi.NodeGetInfoResponse{
 		NodeId:            ns.nodeID,
 		MaxVolumesPerNode: 0, // technically the scsi kernel limit is the max limit of volumes
 		AccessibleTopology: &csi.Topology{
-			Segments: map[string]string{
-				nodeTopologyKey: ns.nodeID,
-			},
+			Segments: topologySegments,
 		},
 	}, nil
 }
