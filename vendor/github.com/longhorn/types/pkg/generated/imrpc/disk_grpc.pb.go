@@ -23,6 +23,7 @@ const (
 	DiskService_DiskCreate_FullMethodName                = "/imrpc.DiskService/DiskCreate"
 	DiskService_DiskDelete_FullMethodName                = "/imrpc.DiskService/DiskDelete"
 	DiskService_DiskGet_FullMethodName                   = "/imrpc.DiskService/DiskGet"
+	DiskService_DiskHealthGet_FullMethodName             = "/imrpc.DiskService/DiskHealthGet"
 	DiskService_DiskReplicaInstanceList_FullMethodName   = "/imrpc.DiskService/DiskReplicaInstanceList"
 	DiskService_DiskReplicaInstanceDelete_FullMethodName = "/imrpc.DiskService/DiskReplicaInstanceDelete"
 	DiskService_MetricsGet_FullMethodName                = "/imrpc.DiskService/MetricsGet"
@@ -36,6 +37,7 @@ type DiskServiceClient interface {
 	DiskCreate(ctx context.Context, in *DiskCreateRequest, opts ...grpc.CallOption) (*Disk, error)
 	DiskDelete(ctx context.Context, in *DiskDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	DiskGet(ctx context.Context, in *DiskGetRequest, opts ...grpc.CallOption) (*Disk, error)
+	DiskHealthGet(ctx context.Context, in *DiskHealthGetRequest, opts ...grpc.CallOption) (*DiskHealthGetResponse, error)
 	DiskReplicaInstanceList(ctx context.Context, in *DiskReplicaInstanceListRequest, opts ...grpc.CallOption) (*DiskReplicaInstanceListResponse, error)
 	DiskReplicaInstanceDelete(ctx context.Context, in *DiskReplicaInstanceDeleteRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	MetricsGet(ctx context.Context, in *DiskGetRequest, opts ...grpc.CallOption) (*DiskMetricsGetReply, error)
@@ -71,6 +73,15 @@ func (c *diskServiceClient) DiskDelete(ctx context.Context, in *DiskDeleteReques
 func (c *diskServiceClient) DiskGet(ctx context.Context, in *DiskGetRequest, opts ...grpc.CallOption) (*Disk, error) {
 	out := new(Disk)
 	err := c.cc.Invoke(ctx, DiskService_DiskGet_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *diskServiceClient) DiskHealthGet(ctx context.Context, in *DiskHealthGetRequest, opts ...grpc.CallOption) (*DiskHealthGetResponse, error) {
+	out := new(DiskHealthGetResponse)
+	err := c.cc.Invoke(ctx, DiskService_DiskHealthGet_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -120,6 +131,7 @@ type DiskServiceServer interface {
 	DiskCreate(context.Context, *DiskCreateRequest) (*Disk, error)
 	DiskDelete(context.Context, *DiskDeleteRequest) (*emptypb.Empty, error)
 	DiskGet(context.Context, *DiskGetRequest) (*Disk, error)
+	DiskHealthGet(context.Context, *DiskHealthGetRequest) (*DiskHealthGetResponse, error)
 	DiskReplicaInstanceList(context.Context, *DiskReplicaInstanceListRequest) (*DiskReplicaInstanceListResponse, error)
 	DiskReplicaInstanceDelete(context.Context, *DiskReplicaInstanceDeleteRequest) (*emptypb.Empty, error)
 	MetricsGet(context.Context, *DiskGetRequest) (*DiskMetricsGetReply, error)
@@ -139,6 +151,9 @@ func (UnimplementedDiskServiceServer) DiskDelete(context.Context, *DiskDeleteReq
 }
 func (UnimplementedDiskServiceServer) DiskGet(context.Context, *DiskGetRequest) (*Disk, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DiskGet not implemented")
+}
+func (UnimplementedDiskServiceServer) DiskHealthGet(context.Context, *DiskHealthGetRequest) (*DiskHealthGetResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DiskHealthGet not implemented")
 }
 func (UnimplementedDiskServiceServer) DiskReplicaInstanceList(context.Context, *DiskReplicaInstanceListRequest) (*DiskReplicaInstanceListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DiskReplicaInstanceList not implemented")
@@ -215,6 +230,24 @@ func _DiskService_DiskGet_Handler(srv interface{}, ctx context.Context, dec func
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DiskServiceServer).DiskGet(ctx, req.(*DiskGetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DiskService_DiskHealthGet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DiskHealthGetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DiskServiceServer).DiskHealthGet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DiskService_DiskHealthGet_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DiskServiceServer).DiskHealthGet(ctx, req.(*DiskHealthGetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -309,6 +342,10 @@ var DiskService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DiskGet",
 			Handler:    _DiskService_DiskGet_Handler,
+		},
+		{
+			MethodName: "DiskHealthGet",
+			Handler:    _DiskService_DiskHealthGet_Handler,
 		},
 		{
 			MethodName: "DiskReplicaInstanceList",
