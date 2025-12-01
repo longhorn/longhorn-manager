@@ -823,10 +823,16 @@ var (
 
 	SettingDefinitionSystemManagedCSIComponentsResourceLimits = SettingDefinition{
 		DisplayName: "System Managed CSI Components Resource Limits",
-		Description: "Resource limits for system managed CSI components. " +
-			"This setting allows you to configure CPU and memory requests/limits for CSI attacher, provisioner, resizer, snapshotter, and plugin components. " +
-			"Changing resource limits will cause CSI components to restart, which may temporarily affect volume provisioning and attach/detach operations until the components are ready. " +
-			"The value should be a JSON object with component names as keys and ResourceRequirements as values. For example: \n\n" +
+		Description: "This setting allows you to configure CPU and memory requests/limits for system-managed CSI components. " +
+			"Supported components include: csi-attacher, csi-provisioner, csi-resizer, csi-snapshotter, " +
+			"longhorn-csi-plugin, node-driver-registrar, and longhorn-liveness-probe. " +
+			"The value must be a JSON object with component names as keys and Kubernetes ResourceRequirements " +
+			"(requests and limits) as values. Only the components defined in the JSON object will have their " +
+			"resource requirements overridden; all others will continue using Longhorn's defaults. " +
+			"Updating resource limits will restart the affected CSI components. During this period, new volume " +
+			"provisioning, expansion, snapshot, or attach/detach operations may be temporarily delayed. Existing " +
+			"mounted volumes remain usable.\n\n" +
+			"Example:\n\n" +
 			"```json\n" +
 			"{\n" +
 			"  \"csi-attacher\": {\n" +
