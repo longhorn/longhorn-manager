@@ -245,6 +245,13 @@ const (
 	CSISidecarPortNameSnapshotter = "csi-snapshotter"
 )
 
+var KubernetesCSISidecarList = map[string]struct{}{
+	CSISidecarPortNameAttacher:    {},
+	CSISidecarPortNameProvisioner: {},
+	CSISidecarPortNameResizer:     {},
+	CSISidecarPortNameSnapshotter: {},
+}
+
 const (
 	RecurringJobParameterFullBackupInterval = "full-backup-interval"
 	RecurringJobParameterVolumeBackupPolicy = "volume-backup-policy"
