@@ -131,6 +131,10 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 	// Round up to multiple of 2 * 1024 * 1024
 	reqVolSizeBytes = util.RoundUpSize(reqVolSizeBytes)
 
+	// Extract AccessibleTopology from AccessibilityRequirements
+	// This will be used to set PV nodeAffinity via external-provisioner
+	accessibleTopology := cs.getAccessibleTopologyFromRequirements(req.GetAccessibilityRequirements())
+
 	volumeSource := req.GetVolumeContentSource()
 	if volumeSource != nil {
 		switch volumeSource.Type.(type) {
@@ -242,10 +246,11 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 		// We will wait for clone/restore to complete inside ControllerPublishVolume.
 		rsp := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
-				VolumeId:      existVol.Id,
-				CapacityBytes: exVolSize,
-				VolumeContext: volumeParameters,
-				ContentSource: volumeSource,
+				VolumeId:           existVol.Id,
+				CapacityBytes:      exVolSize,
+				VolumeContext:      volumeParameters,
+				ContentSource:      volumeSource,
+				AccessibleTopology: accessibleTopology,
 			},
 		}
 
@@ -300,10 +305,11 @@ func (cs *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVol
 
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
-			VolumeId:      resVol.Id,
-			CapacityBytes: reqVolSizeBytes,
-			VolumeContext: volumeParameters,
-			ContentSource: volumeSource,
+			VolumeId:           resVol.Id,
+			CapacityBytes:      reqVolSizeBytes,
+			VolumeContext:      volumeParameters,
+			ContentSource:      volumeSource,
+			AccessibleTopology: accessibleTopology,
 		},
 	}, nil
 }
@@ -1618,4 +1624,30 @@ func (cs *ControllerServer) ControllerModifyVolume(ctx context.Context, req *csi
 	log.Infof("ControllerModifyVolume: called with args %v", req)
 
 	return nil, status.Error(codes.Unimplemented, "")
+}
+
+// getAccessibleTopologyFromRequirements converts AccessibilityRequirements from CreateVolumeRequest
+// to AccessibleTopology for CreateVolumeResponse. This enables PV nodeAffinity to be set
+// based on StorageClass allowedTopologies.
+// According to CSI spec, Preferred topology takes precedence over Requisite topology.
+func (cs *ControllerServer) getAccessibleTopologyFromRequirements(accessibilityReqs *csi.TopologyRequirement) []*csi.Topology {
+	if accessibilityReqs == nil {
+		return nil
+	}
+
+	log := cs.log.WithFields(logrus.Fields{"function": "getAccessibleTopologyFromRequirements"})
+
+	var accessibleTopology []*csi.Topology
+
+	// Preferred topology takes precedence according to CSI spec
+	if len(accessibilityReqs.Preferred) > 0 {
+		accessibleTopology = accessibilityReqs.Preferred
+		log.Debugf("Using Preferred topology from AccessibilityRequirements: %+v", accessibleTopology)
+	} else if len(accessibilityReqs.Requisite) > 0 {
+		// If no Preferred topology, use Requisite topology
+		accessibleTopology = accessibilityReqs.Requisite
+		log.Debugf("Using Requisite topology from AccessibilityRequirements: %+v", accessibleTopology)
+	}
+
+	return accessibleTopology
 }
