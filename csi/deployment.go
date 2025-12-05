@@ -2,12 +2,15 @@ package csi
 
 import (
 	"fmt"
+	"path/filepath"
 
+	cbt "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned"
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 
+	snapshotmeta "github.com/kubernetes-csi/external-snapshot-metadata/client/apis/snapshotmetadataservice/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -285,6 +288,152 @@ func (p *SnapshotterDeployment) Cleanup(kubeClient *clientset.Clientset) {
 	if err := cleanup(kubeClient, p.deployment, "deployment",
 		deploymentDeleteFunc, deploymentGetFunc); err != nil {
 		logrus.WithError(err).Warn("Failed to cleanup deployment in snapshotter deployment")
+	}
+}
+
+type SnapshotMetadataDeployment struct {
+	deployment *appsv1.Deployment
+	service    *corev1.Service
+	smService  *snapshotmeta.SnapshotMetadataService
+}
+
+// TODO: adjust the parameters
+func NewSnapshotMetadataDeployment(namespace, serviceAccount, snapshotMetadataImage, rootDir string, replicaCount int, podAntiAffinityPreset string, tolerations []corev1.Toleration,
+	tolerationsString, priorityClass, registrySecret string, imagePullPolicy corev1.PullPolicy, nodeSelector map[string]string, resources *corev1.ResourceRequirements, tlsSecret *corev1.Secret) *SnapshotMetadataDeployment {
+
+	const snapshotMetadataGRPCPortName = "sms-grpc" // TODO
+	const snapshotMetadataGRPCPort = 50051          // TODO
+	deployment := getCommonDeployment(
+		types.CSISnapshotMetadataName,
+		namespace,
+		serviceAccount,
+		snapshotMetadataImage,
+		rootDir,
+		[]string{
+			"--v=2",
+			"--csi-address=$(ADDRESS)",
+			"--timeout=1m50s",
+			fmt.Sprintf("--port=%d", snapshotMetadataGRPCPort),
+			"--tls-cert=" + filepath.Join(types.TLSDirectoryInContainer, types.TLSCertFile),
+			"--tls-key=" + filepath.Join(types.TLSDirectoryInContainer, types.TLSKeyFile),
+		},
+		int32(replicaCount),
+		podAntiAffinityPreset,
+		tolerations,
+		tolerationsString,
+		priorityClass,
+		registrySecret,
+		imagePullPolicy,
+		nodeSelector,
+		[]corev1.ContainerPort{
+			{
+				ContainerPort: snapshotMetadataGRPCPort,
+				Name:          snapshotMetadataGRPCPortName,
+			},
+		},
+		resources,
+	)
+
+	deployment.Spec.Template.Spec.Containers[0].ImagePullPolicy = imagePullPolicy
+
+	const secretMountName = "sms-tls"
+	deployment.Spec.Template.Spec.Volumes = append(deployment.Spec.Template.Spec.Volumes, corev1.Volume{
+		Name: secretMountName,
+		VolumeSource: corev1.VolumeSource{
+			Secret: &corev1.SecretVolumeSource{
+				SecretName: tlsSecret.Name,
+				Optional:   ptr.To(true),
+			},
+		},
+	})
+	deployment.Spec.Template.Spec.Containers[0].VolumeMounts = append(deployment.Spec.Template.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+		MountPath: types.TLSDirectoryInContainer,
+		Name:      secretMountName,
+	})
+
+	const serviceName = "longhorn-csi-snapshot-metadata"
+
+	service := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      serviceName,
+			Namespace: namespace,
+		},
+		Spec: corev1.ServiceSpec{
+			Type:     corev1.ServiceTypeClusterIP,
+			Selector: map[string]string{"app": types.CSISnapshotMetadataName},
+			Ports: []corev1.ServicePort{
+				{
+					Name:       snapshotMetadataGRPCPortName,
+					Protocol:   corev1.ProtocolTCP,
+					Port:       snapshotMetadataGRPCPort,
+					TargetPort: intstr.FromString(snapshotMetadataGRPCPortName),
+				},
+			},
+		},
+	}
+	smService := &snapshotmeta.SnapshotMetadataService{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "driver.longhorn.io",
+		},
+		Spec: snapshotmeta.SnapshotMetadataServiceSpec{
+			Address:  fmt.Sprintf("%v.%v.svc.cluster.local:%v", serviceName, namespace, snapshotMetadataGRPCPort),
+			CACert:   tlsSecret.Data["ca.crt"],
+			Audience: "longhorn-cbt-backup",
+		},
+	}
+
+	return &SnapshotMetadataDeployment{
+		deployment: deployment,
+		service:    service,
+		smService:  smService,
+	}
+}
+
+func (smd *SnapshotMetadataDeployment) Deploy(kubeClient *clientset.Clientset, cbtClient *cbt.Clientset) error {
+	deployErr := deploy(kubeClient, smd.deployment, "deployment",
+		deploymentCreateFunc, deploymentDeleteFunc, deploymentGetFunc)
+	if deployErr != nil {
+		return deployErr
+	}
+
+	if obj, err := deploymentGetFunc(kubeClient, smd.deployment.Name, smd.deployment.Namespace); err != nil {
+		return err
+	} else if deployment, ok := obj.(*appsv1.Deployment); !ok {
+		return fmt.Errorf("expected Deployment from deploymentGetFunc, got %#v", obj)
+	} else {
+		ownerReferences := getOwnerReferencesForDeployment(deployment)
+		smd.service.OwnerReferences = ownerReferences
+		smd.smService.OwnerReferences = ownerReferences
+	}
+
+	serviceErr := deploy(kubeClient, smd.service, "service",
+		serviceCreateFunc, serviceDeleteFunc, serviceGetFunc)
+	if serviceErr != nil {
+		return serviceErr
+	}
+
+	smServiceErr := deploy(cbtClient, smd.smService, "snapshotMetadataService",
+		snapshotMetadataServiceCreateFunc, snapshotMetadataServiceDeleteFunc, snapshotMetadataServiceGetFunc)
+	if smServiceErr != nil {
+		return smServiceErr
+	}
+	return nil
+}
+
+func (smd *SnapshotMetadataDeployment) Cleanup(kubeClient *clientset.Clientset, cbtClient *cbt.Clientset) {
+	if err := cleanup(kubeClient, smd.deployment, "deployment",
+		deploymentDeleteFunc, deploymentGetFunc); err != nil {
+		logrus.WithError(err).Warn("Failed to cleanup deployment in snapshot metadata deployment")
+	}
+
+	if err := cleanup(kubeClient, smd.service, "service",
+		serviceDeleteFunc, serviceGetFunc); err != nil {
+		logrus.WithError(err).Warn("Failed to cleanup service in snapshot metadata deployment")
+	}
+
+	if err := cleanup(cbtClient, smd.deployment, "snapshotMetadataService",
+		snapshotMetadataServiceDeleteFunc, snapshotMetadataServiceGetFunc); err != nil {
+		logrus.WithError(err).Warn("Failed to cleanup snapshot metadata service in snapshot metadata deployment")
 	}
 }
 
@@ -649,5 +798,21 @@ func (d *DriverObjectDeployment) Cleanup(kubeClient *clientset.Clientset) {
 	if err := cleanup(kubeClient, d.obj, "CSI Driver",
 		csiDriverObjectDeleteFunc, csiDriverObjectGetFunc); err != nil {
 		logrus.WithError(err).Warn("Failed to cleanup CSI Driver object in CSI Driver object deployment")
+	}
+}
+
+func getOwnerReferencesForDeployment(deployment *appsv1.Deployment) []metav1.OwnerReference {
+	logrus.Infof("creating owner reference for deployment %v/%v with UID %v", deployment.Namespace, deployment.Name, deployment.UID)
+	controller := true
+	blockOwnerDeletion := false
+	return []metav1.OwnerReference{
+		{
+			APIVersion:         appsv1.SchemeGroupVersion.String(),
+			Kind:               appsv1.SchemeGroupVersion.WithKind("Deployment").Kind,
+			Name:               deployment.Name,
+			UID:                deployment.UID,
+			Controller:         &controller,
+			BlockOwnerDeletion: &blockOwnerDeletion,
+		},
 	}
 }

@@ -16,12 +16,13 @@ const (
 	LonghornManagerContainerName = LonghornManagerDaemonSetName
 	LonghornUIDeploymentName     = "longhorn-ui"
 
-	DriverDeployerName = "longhorn-driver-deployer"
-	CSIAttacherName    = "csi-attacher"
-	CSIProvisionerName = "csi-provisioner"
-	CSIResizerName     = "csi-resizer"
-	CSISnapshotterName = "csi-snapshotter"
-	CSIPluginName      = "longhorn-csi-plugin"
+	DriverDeployerName      = "longhorn-driver-deployer"
+	CSIAttacherName         = "csi-attacher"
+	CSIProvisionerName      = "csi-provisioner"
+	CSIResizerName          = "csi-resizer"
+	CSISnapshotterName      = "csi-snapshotter"
+	CSISnapshotMetadataName = "csi-snapshot-metadata"
+	CSIPluginName           = "longhorn-csi-plugin"
 )
 
 // AddGoCoverDirToPod adds GOCOVERDIR env and host path volume to a pod.

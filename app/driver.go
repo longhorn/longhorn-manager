@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/cockroachdb/errors"
+	cbt "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
@@ -35,12 +36,14 @@ const (
 	FlagCSIProvisionerImage         = "csi-provisioner-image"
 	FlagCSIResizerImage             = "csi-resizer-image"
 	FlagCSISnapshotterImage         = "csi-snapshotter-image"
+	FlagCSISnapshotMetadataImage    = "csi-snapshot-metadata-image"
 	FlagCSINodeDriverRegistrarImage = "csi-node-driver-registrar-image"
 	FlagCSILivenessProbeImage       = "csi-liveness-probe-image"
 	EnvCSIAttacherImage             = "CSI_ATTACHER_IMAGE"
 	EnvCSIProvisionerImage          = "CSI_PROVISIONER_IMAGE"
 	EnvCSIResizerImage              = "CSI_RESIZER_IMAGE"
 	EnvCSISnapshotterImage          = "CSI_SNAPSHOTTER_IMAGE"
+	EnvCSISnapshotMetadataImage     = "CSI_SNAPSHOT_METADATA_IMAGE"
 	EnvCSINodeDriverRegistrarImage  = "CSI_NODE_DRIVER_REGISTRAR_IMAGE"
 	EnvCSILivenessProbeImage        = "CSI_LIVENESS_PROBE_IMAGE"
 
@@ -112,6 +115,11 @@ func DeployDriverCmd() cli.Command {
 				Usage:  "Specify CSI snapshotter image",
 				EnvVar: EnvCSISnapshotterImage,
 			},
+			cli.StringFlag{
+				Name:   FlagCSISnapshotMetadataImage,
+				Usage:  "Specify CSI snapshot metadata image",
+				EnvVar: EnvCSISnapshotMetadataImage,
+			},
 			cli.IntFlag{
 				Name:   FlagCSISnapshotterReplicaCount,
 				Usage:  "Specify number of CSI snapshotter replicas",
@@ -159,6 +167,7 @@ func validateFlags(c *cli.Context) error {
 		FlagCSIProvisionerImage,
 		FlagCSIResizerImage,
 		FlagCSISnapshotterImage,
+		FlagCSISnapshotMetadataImage,
 		FlagCSINodeDriverRegistrarImage,
 		FlagCSILivenessProbeImage,
 	} {
@@ -184,6 +193,11 @@ func deployDriver(c *cli.Context) error {
 		return errors.Wrap(err, "failed to get k8s client")
 	}
 
+	cbtClient, err := cbt.NewForConfig(config)
+	if err != nil {
+		return errors.Wrap(err, "failed to get cbt client")
+	}
+
 	lhClient, err := lhclientset.NewForConfig(config)
 	if err != nil {
 		return errors.Wrap(err, "failed to get clientset")
@@ -199,7 +213,7 @@ func deployDriver(c *cli.Context) error {
 	}
 
 	logrus.Info("Deploying CSI driver")
-	return deployCSIDriver(kubeClient, lhClient, c, managerImage, managerURL)
+	return deployCSIDriver(kubeClient, cbtClient, lhClient, c, managerImage, managerURL)
 }
 
 func checkKubernetesVersion(kubeClient *clientset.Clientset) error {
@@ -215,7 +229,7 @@ func checkKubernetesVersion(kubeClient *clientset.Clientset) error {
 	return nil
 }
 
-func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clientset, c *cli.Context, managerImage, managerURL string) (err error) {
+func deployCSIDriver(kubeClient *clientset.Clientset, cbtClient *cbt.Clientset, lhClient *lhclientset.Clientset, c *cli.Context, managerImage, managerURL string) (err error) {
 	defer func() {
 		err = errors.Wrap(err, "failed to start CSI driver")
 	}()
@@ -223,6 +237,8 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 	csiProvisionerImage := c.String(FlagCSIProvisionerImage)
 	csiResizerImage := c.String(FlagCSIResizerImage)
 	csiSnapshotterImage := c.String(FlagCSISnapshotterImage)
+	csiSnapshotMetadataImage := c.String(FlagCSISnapshotMetadataImage)
+	csiSnapshotMetadataImage = "registry.k8s.io/sig-storage/csi-snapshot-metadata:v0.1.0" // TODO: change to configurable
 	csiNodeDriverRegistrarImage := c.String(FlagCSINodeDriverRegistrarImage)
 	csiLivenessProbeImage := c.String(FlagCSILivenessProbeImage)
 	csiAttacherReplicaCount := c.Int(FlagCSIAttacherReplicaCount)
@@ -287,6 +303,11 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 		return err
 	}
 
+	snapshotMetadataTlsSecret, err := kubeClient.CoreV1().Secrets(namespace).Get(context.TODO(), types.TLSSnapshotMetadataServiceSecretName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
 	var imagePullPolicy corev1.PullPolicy
 	switch imagePullPolicySetting.Value {
 	case string(types.SystemManagedPodsImagePullPolicyNever):
@@ -341,6 +362,11 @@ func deployCSIDriver(kubeClient *clientset.Clientset, lhClient *lhclientset.Clie
 
 	snapshotterDeployment := csi.NewSnapshotterDeployment(namespace, serviceAccountName, csiSnapshotterImage, rootDir, csiSnapshotterReplicaCount, csiPodAntiAffinityPreset, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector, resourceLimits.CSISnapshotter)
 	if err := snapshotterDeployment.Deploy(kubeClient); err != nil {
+		return err
+	}
+
+	snapshotMetadataDeployment := csi.NewSnapshotMetadataDeployment(namespace, serviceAccountName, csiSnapshotMetadataImage, rootDir, csiSnapshotterReplicaCount, csiPodAntiAffinityPreset, tolerations, string(tolerationsByte), priorityClass, registrySecret, imagePullPolicy, nodeSelector, resourceLimits.CSISnapshotter, snapshotMetadataTlsSecret)
+	if err := snapshotMetadataDeployment.Deploy(kubeClient, cbtClient); err != nil {
 		return err
 	}
 
