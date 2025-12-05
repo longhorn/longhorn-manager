@@ -864,11 +864,11 @@ func RemoveNewlines(input string) string {
 	return strings.ReplaceAll(input, "\n", "")
 }
 
-type ResourceGetFunc func(kubeClient *clientset.Clientset, name, namespace string) (runtime.Object, error)
+type ResourceGetFunc[ClientSetT any] func(clientSet ClientSetT, name, namespace string) (runtime.Object, error)
 
-func WaitForResourceDeletion(kubeClient *clientset.Clientset, name, namespace, resource string, maxRetryForDeletion int, getFunc ResourceGetFunc) error {
+func WaitForResourceDeletion[ClientSetT any](clientSet ClientSetT, name, namespace, resource string, maxRetryForDeletion int, getFunc ResourceGetFunc[ClientSetT]) error {
 	for i := 0; i < maxRetryForDeletion; i++ {
-		_, err := getFunc(kubeClient, name, namespace)
+		_, err := getFunc(clientSet, name, namespace)
 		if err != nil && apierrors.IsNotFound(err) {
 			return nil
 		}

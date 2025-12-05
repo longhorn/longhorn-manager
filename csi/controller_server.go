@@ -54,6 +54,7 @@ const (
 
 type ControllerServer struct {
 	csi.UnimplementedControllerServer
+	csi.UnimplementedSnapshotMetadataServer
 	apiClient   *longhornclient.RancherClient
 	nodeID      string
 	caps        []*csi.ControllerServiceCapability

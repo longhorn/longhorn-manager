@@ -13,6 +13,7 @@ type Manager struct {
 	ids *IdentityServer
 	ns  *NodeServer
 	cs  *ControllerServer
+	sms *SnapshotMetadataServer
 }
 
 // It can take up to 10s for each try. So total retry time would be 180s
@@ -46,8 +47,13 @@ func (m *Manager) Run(driverName, nodeID, endpoint, identityVersion, managerURL 
 		return errors.Wrap(err, "failed to create CSI controller server")
 	}
 
+	m.sms, err = NewSnapshotMetadataServer(apiClient, nodeID)
+	if err != nil {
+		return errors.Wrap(err, "failed to create CSI snapshot metadata server")
+	}
+
 	s := NewNonBlockingGRPCServer()
-	s.Start(endpoint, m.ids, m.cs, m.ns)
+	s.Start(endpoint, m.ids, m.cs, m.ns, m.sms)
 	s.Wait()
 
 	return nil
