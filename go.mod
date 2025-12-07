@@ -2,7 +2,7 @@ module github.com/longhorn/longhorn-manager
 
 go 1.25.3
 
-toolchain go1.25.4
+toolchain go1.25.5
 
 // Replace directives are required for dependencies in this section because:
 // - This module imports k8s.io/kubernetes.
@@ -20,7 +20,7 @@ toolchain go1.25.4
 // necessary. However, it is better to include all of them for consistency.
 
 replace (
-	github.com/henrygd/beszel => github.com/longhorn/beszel v0.16.2-0.20251127082443-9fe3c11f477f
+	github.com/henrygd/beszel => github.com/longhorn/beszel 162c548010d6
 	k8s.io/api => k8s.io/api v0.34.2
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.34.2
 	k8s.io/apimachinery => k8s.io/apimachinery v0.34.2
@@ -68,10 +68,10 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.23.0
 	github.com/longhorn/backing-image-manager v1.9.2
-	github.com/longhorn/backupstore v0.0.0-20251123054148-021939243385
-	github.com/longhorn/go-common-libs v0.0.0-20251127015107-b85a43e5d5af
-	github.com/longhorn/go-iscsi-helper v0.0.0-20251102142448-23eedefc2b60
-	github.com/longhorn/go-spdk-helper v0.2.1-0.20251127040022-2ab7a5b5c5a9
+	github.com/longhorn/backupstore 1140ccc38333
+	github.com/longhorn/go-common-libs 3332521977c9
+	github.com/longhorn/go-iscsi-helper 44edbb497d99
+	github.com/longhorn/go-spdk-helper 00546a63ae27
 	github.com/longhorn/longhorn-engine v1.10.0-dev-20250824.0.20251103012748-950f695edced
 	github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250824.0.20251127074605-ce72ce2b82d1
 	github.com/longhorn/longhorn-share-manager v1.9.2
