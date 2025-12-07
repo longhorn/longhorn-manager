@@ -40,8 +40,8 @@ type lhmProcess struct {
 	tempDir              string
 }
 
-// //go:embed all:lhm/bin/Release/net48
-// var lhmFs embed.FS
+//go:embed all:lhm/bin/Release/net48
+var lhmFs embed.FS
 
 var (
 	beszelLhm     *lhmProcess
