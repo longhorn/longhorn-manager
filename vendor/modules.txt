@@ -194,7 +194,7 @@ github.com/gorilla/mux
 # github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 ## explicit; go 1.20
 github.com/gorilla/websocket
-# github.com/henrygd/beszel v0.16.1 => github.com/longhorn/beszel v0.16.2-0.20251127082443-9fe3c11f477f
+# github.com/henrygd/beszel v0.17.0 => github.com/longhorn/beszel v0.16.2-0.20251127082443-9fe3c11f477f
 ## explicit; go 1.25.3
 github.com/henrygd/beszel
 github.com/henrygd/beszel/agent
