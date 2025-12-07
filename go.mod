@@ -20,7 +20,7 @@ toolchain go1.25.5
 // necessary. However, it is better to include all of them for consistency.
 
 replace (
-	github.com/henrygd/beszel => github.com/longhorn/beszel 162c548010d6
+	github.com/henrygd/beszel => github.com/longhorn/beszel v0.16.2-0.20251125001235-162c548010d6
 	k8s.io/api => k8s.io/api v0.34.2
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.34.2
 	k8s.io/apimachinery => k8s.io/apimachinery v0.34.2
@@ -68,10 +68,10 @@ require (
 	github.com/jinzhu/copier v0.4.0
 	github.com/kubernetes-csi/csi-lib-utils v0.23.0
 	github.com/longhorn/backing-image-manager v1.9.2
-	github.com/longhorn/backupstore 1140ccc38333
-	github.com/longhorn/go-common-libs 3332521977c9
-	github.com/longhorn/go-iscsi-helper 44edbb497d99
-	github.com/longhorn/go-spdk-helper 00546a63ae27
+	github.com/longhorn/backupstore v0.0.0-20251207100523-1140ccc38333
+	github.com/longhorn/go-common-libs v0.0.0-20251130104056-3332521977c9
+	github.com/longhorn/go-iscsi-helper v0.0.0-20251130062153-44edbb497d99
+	github.com/longhorn/go-spdk-helper v0.2.1-0.20251130143546-00546a63ae27
 	github.com/longhorn/longhorn-engine v1.10.0-dev-20250824.0.20251103012748-950f695edced
 	github.com/longhorn/longhorn-instance-manager v1.10.0-dev-20250824.0.20251127074605-ce72ce2b82d1
 	github.com/longhorn/longhorn-share-manager v1.9.2
@@ -127,7 +127,7 @@ require (
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/klauspost/compress v1.18.1 // indirect
-	github.com/longhorn/types v0.0.0-20251125140643-490b3f39dabd // indirect
+	github.com/longhorn/types v0.0.0-20251130061042-fc15b4776c60 // indirect
 	github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 // indirect
 	github.com/lxzan/gws v1.8.9 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
@@ -143,7 +143,7 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/exp v0.0.0-20251113190631-e25ba8c21ef6 // indirect
+	golang.org/x/exp v0.0.0-20251125195548-87e1e737ad39 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251022142026-3a174f9686a8 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.12.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

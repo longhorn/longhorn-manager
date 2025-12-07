@@ -10,8 +10,8 @@ import (
 	"sync"
 )
 
-// //go:embed smartmontools/smartctl.exe
-// var embeddedSmartctl []byte
+//go:embed smartmontools/smartctl.exe
+var embeddedSmartctl []byte
 
 var (
 	smartctlOnce sync.Once
