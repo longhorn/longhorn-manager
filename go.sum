@@ -128,8 +128,8 @@ github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de h1:9TO3cAIGXtEhn
 github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de/go.mod h1:zAbeS9B/r2mtpb6U+EI2rYA5OAXxsYw6wTamcNW+zcE=
 github.com/longhorn/backing-image-manager v1.10.1 h1:1k9+OBZ6yMVW67GIDAq8Wr1qWCk+4FUPCKC7mJ6HK/o=
 github.com/longhorn/backing-image-manager v1.10.1/go.mod h1:di2fDQ1wVA1A8SuffYFEGJ6ylqQ2AMndCq+FenOmeoY=
-github.com/longhorn/backupstore v0.0.0-20251130062045-a1de4c42df07 h1:EPKXjd4gncImFIcvUHuVaEUd0jripoJZIu+bc/q2nGY=
-github.com/longhorn/backupstore v0.0.0-20251130062045-a1de4c42df07/go.mod h1:U6Zg87XJCI6affgK3YCQVEXWhq6odH1xq+xDLajs+bM=
+github.com/longhorn/backupstore v0.0.0-20251130143517-bd9d3a1f688b h1:cUbb2DQ6wY9Wj9vryIuUnzvWdaojsbtp8hIASmHgb4M=
+github.com/longhorn/backupstore v0.0.0-20251130143517-bd9d3a1f688b/go.mod h1:SDYAWY3KkpJea9uHdyTSWN308Xmwp+BV3KJ4FzXN4eU=
 github.com/longhorn/go-common-libs v0.0.0-20251130104056-3332521977c9 h1:+3ISvbAUNEFgHhHsmhEl0FVWTtxUK3XzIiVE+yCpq80=
 github.com/longhorn/go-common-libs v0.0.0-20251130104056-3332521977c9/go.mod h1:P1127MQ9oyqVEuDtUjgAnS9wJtFnrCp889Ngry8t0yI=
 github.com/longhorn/go-iscsi-helper v0.0.0-20251130062153-44edbb497d99 h1:21omkhAhNEkvPF3xK6qIPYf7qS94+vvIusszQXq26V0=
