@@ -30,7 +30,7 @@ var (
 
 // StartControllers initiates all Longhorn component controllers and monitors to manage the creating, updating, and deletion of Longhorn resources
 func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
-	controllerID, serviceAccount, managerImage, backingImageManagerImage, shareManagerImage,
+	controllerID, serviceAccount, managerImage, backingImageManagerImage, shareManagerImage, instanceManagerImage,
 	kubeconfigPath, version string, proxyConnCounter util.Counter, snapshotConcurrentLimiter *SnapshotConcurrentLimiter) (*WebsocketController, error) {
 	namespace := clients.Namespace
 	kubeClient := clients.K8s
@@ -56,7 +56,7 @@ func StartControllers(logger logrus.FieldLogger, clients *client.Clients,
 	if err != nil {
 		return nil, err
 	}
-	nodeController, err := NewNodeController(logger, ds, scheme, kubeClient, namespace, controllerID)
+	nodeController, err := NewNodeController(logger, ds, scheme, kubeClient, namespace, controllerID, instanceManagerImage)
 	if err != nil {
 		return nil, err
 	}

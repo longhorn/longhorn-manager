@@ -319,7 +319,7 @@ func startManager(c *cli.Context) error {
 	snapshotConcurrentLimiter := controller.NewSnapshotConcurrentLimiter()
 
 	wsc, err := controller.StartControllers(logger, clients,
-		currentNodeID, serviceAccount, managerImage, backingImageManagerImage, shareManagerImage,
+		currentNodeID, serviceAccount, managerImage, backingImageManagerImage, shareManagerImage, instanceManagerImage,
 		kubeconfigPath, meta.Version, proxyConnCounter, snapshotConcurrentLimiter)
 	if err != nil {
 		return err

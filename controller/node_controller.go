@@ -51,8 +51,9 @@ type NodeController struct {
 	*baseController
 
 	// which namespace controller is running with
-	namespace    string
-	controllerID string
+	namespace            string
+	controllerID         string
+	instanceManagerImage string
 
 	kubeClient    clientset.Interface
 	eventRecorder record.EventRecorder
@@ -80,7 +81,7 @@ func NewNodeController(
 	ds *datastore.DataStore,
 	scheme *runtime.Scheme,
 	kubeClient clientset.Interface,
-	namespace, controllerID string) (*NodeController, error) {
+	namespace, controllerID, instanceManagerImage string) (*NodeController, error) {
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(logrus.Infof)
@@ -90,8 +91,9 @@ func NewNodeController(
 	nc := &NodeController{
 		baseController: newBaseController("longhorn-node", logger),
 
-		namespace:    namespace,
-		controllerID: controllerID,
+		namespace:            namespace,
+		controllerID:         controllerID,
+		instanceManagerImage: instanceManagerImage,
 
 		kubeClient:    kubeClient,
 		eventRecorder: eventBroadcaster.NewRecorder(scheme, corev1.EventSource{Component: "longhorn-node-controller"}),
@@ -1109,6 +1111,13 @@ func (nc *NodeController) syncInstanceManagers(node *longhorn.Node) error {
 				}
 			}
 			if !defaultInstanceManagerCreated && imType == longhorn.InstanceManagerTypeAllInOne {
+				// Only create instance manager when argument image matches setting image
+				if nc.instanceManagerImage != defaultInstanceManagerImage {
+					log.Debugf("Skipping instance manager creation for node %v: argument image (%v) != setting image (%v)",
+						node.Name, nc.instanceManagerImage, defaultInstanceManagerImage)
+					continue
+				}
+
 				imName, err := types.GetInstanceManagerName(imType, node.Name, defaultInstanceManagerImage, string(dataEngine))
 				if err != nil {
 					return err
