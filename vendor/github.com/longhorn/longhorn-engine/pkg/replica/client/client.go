@@ -1,13 +1,14 @@
 package client
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strconv"
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"golang.org/x/net/context"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -784,6 +785,8 @@ func (c *ReplicaClient) SnapshotHashStatus(snapshotName string) (*enginerpc.Snap
 }
 
 func (c *ReplicaClient) SnapshotHashCancel(snapshotName string) error {
+	logrus.Infof("Cancelling snapshot %s hash for %s", snapshotName, c.replicaServiceURL)
+
 	syncAgentServiceClient, err := c.getSyncServiceClient()
 	if err != nil {
 		return err
