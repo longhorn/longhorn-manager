@@ -2589,7 +2589,39 @@ func (c *VolumeController) checkDiskPressuredReplicaIsFirstCandidate(replica *lo
 		return errors.Errorf("replica %v is not scheduled on any disk", replica.Name)
 	}
 
-	scheduledReplicasSorted, err := util.SortKeys(replicaScheduledDiskStatus.ScheduledReplica)
+	log := getLoggerForReplica(c.logger, replica)
+
+	logSkip := func(replicaName string, err error) {
+		log.WithError(err).Tracef(
+			"Skipping replica %q during disk-pressure first-candidate check", replicaName,
+		)
+	}
+
+	// isVolumeHealthy checks if the volume associated with the replica is healthy.
+	isVolumeHealthy := func(replicaName string) bool {
+		scheduledReplica, err := c.ds.GetReplicaRO(replicaName)
+		if err != nil {
+			logSkip(replicaName, err)
+			return false
+		}
+
+		replicaVolume, err := c.ds.GetVolumeRO(scheduledReplica.Spec.VolumeName)
+		if err != nil {
+			logSkip(replicaName, err)
+			return false
+		}
+
+		return replicaVolume.Status.Robustness == longhorn.VolumeRobustnessHealthy
+	}
+
+	healthyVolumeReplicas := make(map[string]struct{})
+	for replicaName := range replicaScheduledDiskStatus.ScheduledReplica {
+		if isVolumeHealthy(replicaName) {
+			healthyVolumeReplicas[replicaName] = struct{}{}
+		}
+	}
+
+	scheduledReplicasSorted, err := util.SortKeys(healthyVolumeReplicas)
 	if err != nil {
 		return err
 	}
@@ -2598,7 +2630,6 @@ func (c *VolumeController) checkDiskPressuredReplicaIsFirstCandidate(replica *lo
 		return errors.Errorf("replica %v is not the first candidate for disk pressure rescheduling: %v", replica.Name, scheduledReplicasSorted)
 	}
 
-	log := getLoggerForReplica(c.logger, replica)
 	log.Tracef("Replica %v is the first candidate for disk pressure rescheduling: %v", replica.Name, scheduledReplicasSorted)
 
 	return nil
