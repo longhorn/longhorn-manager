@@ -2837,9 +2837,16 @@ func (e *Engine) BackupRestore(spdkClient *spdkclient.Client, backupUrl, engineN
 	e.Lock()
 	defer e.Unlock()
 
+	resp := &spdkrpc.EngineBackupRestoreResponse{
+		Errors: map[string]string{},
+	}
+
 	backupInfo, err := backupstore.InspectBackup(backupUrl)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to inspect backup %s", backupUrl)
+		for _, replicaStatus := range e.ReplicaStatusMap {
+			resp.Errors[replicaStatus.Address] = err.Error()
+		}
+		return resp, nil
 	}
 
 	if backupInfo.VolumeSize != int64(e.SpecSize) {
@@ -2884,9 +2891,6 @@ func (e *Engine) BackupRestore(spdkClient *spdkclient.Client, backupUrl, engineN
 		}()
 	}()
 
-	resp := &spdkrpc.EngineBackupRestoreResponse{
-		Errors: map[string]string{},
-	}
 	for replicaName, replicaStatus := range e.ReplicaStatusMap {
 		e.log.Infof("Restoring backup on replica %s address %s", replicaName, replicaStatus.Address)
 
