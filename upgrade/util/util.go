@@ -29,7 +29,6 @@ import (
 	"github.com/longhorn/longhorn-manager/meta"
 	"github.com/longhorn/longhorn-manager/types"
 
-	"github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 	lhclientset "github.com/longhorn/longhorn-manager/k8s/pkg/client/clientset/versioned"
 )
@@ -201,21 +200,21 @@ func CreateOrUpdateLonghornVersionSetting(namespace string, lhClient *lhclientse
 
 // copy the valules of the settings taint-toleration and system-managed-components-node-selector
 // to the new settings csi-sidecar-taint-toleration and system-managed-csi-sidecar-components-node-selector
-func CopyCSISidecarSettings(namespace string, lhClient *lhclientset.Clientset, settingMap map[string]*v1beta2.Setting) error {
-	if err := copyTaintTolerationCSISidecarSetting(namespace, lhClient, settingMap); err != nil {
+func CopyCSISidecarSettings(namespace string, lhClient *lhclientset.Clientset) error {
+	if err := copyTaintTolerationCSISidecarSetting(namespace, lhClient); err != nil {
 		return err
 	}
-	if err := copyNodeSelectorCSISidecarSetting(namespace, lhClient, settingMap); err != nil {
+	if err := copyNodeSelectorCSISidecarSetting(namespace, lhClient); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func copyTaintTolerationCSISidecarSetting(namespace string, lhClient *lhclientset.Clientset, settingMap map[string]*v1beta2.Setting) error {
-	s, ok := settingMap[string(types.SettingNameTaintToleration)]
-	if !ok {
-		return fmt.Errorf("setting %s cannot be found", string(types.SettingNameTaintToleration))
+func copyTaintTolerationCSISidecarSetting(namespace string, lhClient *lhclientset.Clientset) error {
+	s, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameTaintToleration), metav1.GetOptions{})
+	if err != nil {
+		return err
 	}
 
 	sCSI, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameCSISidecarComponentTaintToleration), metav1.GetOptions{})
@@ -247,10 +246,10 @@ func copyTaintTolerationCSISidecarSetting(namespace string, lhClient *lhclientse
 	return nil
 }
 
-func copyNodeSelectorCSISidecarSetting(namespace string, lhClient *lhclientset.Clientset, settingMap map[string]*v1beta2.Setting) error {
-	s, ok := settingMap[string(types.SettingNameSystemManagedComponentsNodeSelector)]
-	if !ok {
-		return fmt.Errorf("setting %s cannot be found", string(types.SettingNameSystemManagedComponentsNodeSelector))
+func copyNodeSelectorCSISidecarSetting(namespace string, lhClient *lhclientset.Clientset) error {
+	s, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameSystemManagedComponentsNodeSelector), metav1.GetOptions{})
+	if err != nil {
+		return err
 	}
 
 	sCSI, err := lhClient.LonghornV1beta2().Settings(namespace).Get(context.TODO(), string(types.SettingNameSystemManagedCSISidecarComponentsNodeSelector), metav1.GetOptions{})
