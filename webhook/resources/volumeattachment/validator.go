@@ -110,18 +110,25 @@ func (v *volumeAttachmentValidator) verifyTicketCountForMigratableVolume(va *lon
 		return nil
 	}
 
-	switch numTickets := len(va.Spec.AttachmentTickets); {
-	case numTickets < 2:
+	numCSITickets := 0
+	for _, ticket := range va.Spec.AttachmentTickets {
+		if ticket.Type == longhorn.AttacherTypeCSIAttacher {
+			numCSITickets++
+		}
+	}
+
+	switch {
+	case numCSITickets < 2:
 		return nil
-	case numTickets == 2:
+	case numCSITickets == 2:
 		if vol.Status.State != longhorn.VolumeStateAttached {
-			msg := fmt.Sprintf("cannot attach migratable volume %v to a second node while it is in state %v", vol.Name, vol.Status.State)
+			msg := fmt.Sprintf("cannot have second CSI ticket for migratable volume %v while it is in state %v", vol.Name, vol.Status.State)
 			return werror.NewInvalidError(msg, "spec.attachmentTickets")
 		}
 		return nil
 	default:
 		ticketsJson, _ := json.Marshal(va.Spec.AttachmentTickets)
-		msg := fmt.Sprintf("cannot attach migratable volume %v to more than two nodes: %s", vol.Name, ticketsJson)
+		msg := fmt.Sprintf("cannot have more than 2 CSI tickets for migratable volume %v: %s", vol.Name, ticketsJson)
 		return werror.NewInvalidError(msg, "spec.attachmentTickets")
 	}
 }
