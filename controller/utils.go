@@ -75,7 +75,8 @@ func isCloneTargetCopyInProgress(v *longhorn.Volume) bool {
 func isCloneTargetActive(v *longhorn.Volume) bool {
 	isCloneTarget := types.IsDataFromVolume(v.Spec.DataSource)
 	isTerminal := v.Status.CloneStatus.State == longhorn.VolumeCloneStateFailed ||
-		v.Status.CloneStatus.State == longhorn.VolumeCloneStateCompleted
+		v.Status.CloneStatus.State == longhorn.VolumeCloneStateCompleted ||
+		v.Status.CloneStatus.State == longhorn.VolumeCloneStateCopyCompletedAwaitingHealthy
 	return isCloneTarget && !isTerminal
 }
 
