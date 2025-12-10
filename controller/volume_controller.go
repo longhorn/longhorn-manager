@@ -4135,11 +4135,11 @@ func (c *VolumeController) createAndStartMatchingReplicas(v *longhorn.Volume,
 	return nil
 }
 
-// deleteInvalidMigrationReplicas selects one replica for each path and delete the rests.
+// deleteExtraInvalidMigrationReplicas selects one replica for each path and delete the rests.
 //
 //	Notice that the selected replica may not be valid.
 //	Returning invalid replicas (with deletion timestamp set) for some paths helps inform the caller that it should wait for the existing invalid replicas completely disappearing before creating a new one.
-func (c *VolumeController) deleteInvalidMigrationReplicas(rs, pathToOldRs map[string]*longhorn.Replica, pathToNewRLists map[string][]*longhorn.Replica, v *longhorn.Volume) (map[string]*longhorn.Replica, error) {
+func (c *VolumeController) deleteExtraInvalidMigrationReplicas(rs, pathToOldRs map[string]*longhorn.Replica, pathToNewRLists map[string][]*longhorn.Replica, v *longhorn.Volume) (map[string]*longhorn.Replica, error) {
 	migrationReplicas := make(map[string]*longhorn.Replica)
 	for path, rList := range pathToNewRLists {
 		sort.Slice(rList, func(i, j int) bool {
@@ -4199,13 +4199,13 @@ func (c *VolumeController) deleteInvalidMigrationReplicas(rs, pathToOldRs map[st
 // isReplicaValidForMigration checks whether a new replica is considered valid if:
 //  1. it is not being deleted;
 //  2. its desired state is `running`;
-//  3. it has never failed to start. During migration, we always delete failed replicas and create new ones, rather than rebuilding them.
+//  3. it has not failed to start. During migration, we always delete failed replicas and create new ones, rather than rebuilding them.
 func isReplicaValidForMigration(oldR, newR *longhorn.Replica) bool {
 	matchTheOldReplica := oldR != nil && newR.Spec.DesireState == oldR.Spec.DesireState
 	return matchTheOldReplica &&
 		newR.DeletionTimestamp == nil && newR.Spec.DesireState == longhorn.InstanceStateRunning &&
 		newR.Status.CurrentState != longhorn.InstanceStateError && newR.Status.CurrentState != longhorn.InstanceStateUnknown && newR.Status.CurrentState != longhorn.InstanceStateStopping &&
-		newR.Spec.LastFailedAt == ""
+		newR.Spec.FailedAt == ""
 }
 
 func (c *VolumeController) migrationReplicaCleanup(r *longhorn.Replica, rs map[string]*longhorn.Replica, dataEngineType longhorn.DataEngineType) error {
@@ -4483,7 +4483,7 @@ func (c *VolumeController) prepareReplicasAndEngineForMigration(v *longhorn.Volu
 		}
 	}
 
-	migrationReplicas, err := c.deleteInvalidMigrationReplicas(rs, currentAvailableReplicas, migrationReplicaLists, v)
+	migrationReplicas, err := c.deleteExtraInvalidMigrationReplicas(rs, currentAvailableReplicas, migrationReplicaLists, v)
 	if err != nil {
 		return false, false, err
 	}
