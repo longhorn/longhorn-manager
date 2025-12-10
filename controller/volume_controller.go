@@ -4131,7 +4131,18 @@ func (c *VolumeController) createAndStartMatchingReplicas(v *longhorn.Volume,
 		if pathToNewRs[path] != nil {
 			continue
 		}
+		if r.Spec.FailedAt != "" {
+			log.Infof("skip duplicating failed replica %v for migration", r.Name)
+			continue
+		}
 		clone := c.duplicateReplica(r, v)
+
+		// the chosen old replicas are confirmed to be healthy, hence reset the healthy/failure timestamps
+		clone.Spec.HealthyAt = ""
+		clone.Spec.LastHealthyAt = ""
+		clone.Spec.FailedAt = ""
+		clone.Spec.LastFailedAt = ""
+
 		clone.Spec.DesireState = longhorn.InstanceStateRunning
 		clone.Spec.Active = false
 		fixupFunc(clone, obj)
