@@ -4125,9 +4125,7 @@ func (c *VolumeController) createAndStartMatchingReplicas(v *longhorn.Volume,
 		}
 		clone := c.duplicateReplica(r, v)
 
-		// the chosen old replicas are confirmed to be healthy, hence reset the healthy/failure timestamps
-		clone.Spec.HealthyAt = ""
-		clone.Spec.LastHealthyAt = ""
+		// the chosen old replicas are confirmed to be healthy, hence reset the failure timestamps
 		clone.Spec.FailedAt = ""
 		clone.Spec.LastFailedAt = ""
 
