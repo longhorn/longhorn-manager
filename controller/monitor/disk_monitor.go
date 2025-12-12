@@ -69,12 +69,12 @@ type CollectedDiskInfo struct {
 	Condition                 *longhorn.Condition
 	OrphanedReplicaDataStores map[string]string
 	InstanceManagerName       string
-	HealthData                map[string]longhorn.HealthData
+	HealthData                map[string]map[string]longhorn.HealthData
 	HealthDataLastCollectedAt time.Time
 }
 
 type GetDiskStatHandler func(longhorn.DiskType, string, string, longhorn.DiskDriver, *DiskServiceClient) (*lhtypes.DiskStat, error)
-type GetDiskHealthHandler func(longhorn.DiskType, string, string, longhorn.DiskDriver, time.Time, *DiskServiceClient, logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error)
+type GetDiskHealthHandler func(longhorn.DiskType, string, string, longhorn.DiskDriver, time.Time, *DiskServiceClient, logrus.FieldLogger) (map[string]map[string]longhorn.HealthData, time.Time, error)
 type GetDiskConfigHandler func(longhorn.DiskType, string, string, longhorn.DiskDriver, *DiskServiceClient) (*util.DiskConfig, error)
 type GenerateDiskConfigHandler func(longhorn.DiskType, string, string, string, string, *DiskServiceClient, *datastore.DataStore) (*util.DiskConfig, error)
 type GetReplicaDataStoresHandler func(longhorn.DiskType, *longhorn.Node, string, string, string, string, *DiskServiceClient) (map[string]string, error)

@@ -116,7 +116,7 @@ func collectSmartDataForDevice(devicePath, diskName string, logger logrus.FieldL
 			}
 		}
 
-		result[diskName] = healthData
+		result[devicePath] = healthData
 		break // Found the device, no need to continue
 	}
 

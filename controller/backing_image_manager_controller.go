@@ -315,7 +315,7 @@ func (c *BackingImageManagerController) syncBackingImageManager(key string) (err
 		return err
 	}
 	noReadyDisk := node == nil
-	diskMigrated := node != nil && (node.Name != bim.Spec.NodeID || node.Spec.Disks[diskName].Path != bim.Spec.DiskPath)
+	diskMigrated := node != nil && (node.Name != bim.Spec.NodeID || !util.PathEqual(node.Spec.Disks[diskName].Path, bim.Spec.DiskPath))
 	if noReadyDisk || diskMigrated {
 		if bim.Status.CurrentState != longhorn.BackingImageManagerStateUnknown {
 			if noReadyDisk {

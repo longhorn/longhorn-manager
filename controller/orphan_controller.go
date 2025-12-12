@@ -27,6 +27,7 @@ import (
 	"github.com/longhorn/longhorn-manager/datastore"
 	"github.com/longhorn/longhorn-manager/engineapi"
 	"github.com/longhorn/longhorn-manager/types"
+	"github.com/longhorn/longhorn-manager/util"
 
 	longhorn "github.com/longhorn/longhorn-manager/k8s/pkg/apis/longhorn/v1beta2"
 )
@@ -638,8 +639,7 @@ func (oc *OrphanController) checkOrphanedReplicaDataCleanable(node *longhorn.Nod
 
 	disk := node.Spec.Disks[diskName]
 
-	if diskName != orphan.Spec.Parameters[longhorn.OrphanDiskName] ||
-		disk.Path != orphan.Spec.Parameters[longhorn.OrphanDiskPath] {
+	if diskName != orphan.Spec.Parameters[longhorn.OrphanDiskName] || !util.PathEqual(disk.Path, orphan.Spec.Parameters[longhorn.OrphanDiskPath]) {
 		return longhorn.OrphanConditionTypeDataCleanableReasonDiskChanged
 	}
 
