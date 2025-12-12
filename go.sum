@@ -44,6 +44,12 @@ github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSs
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/davidcheng0922/longhorn-instance-manager v0.0.0-20251212060923-87a6f5101e1a h1:RoKknEOj1hmds5akMa4qnfNXERXU2hplZACfR5dhJD8=
+github.com/davidcheng0922/longhorn-instance-manager v0.0.0-20251212060923-87a6f5101e1a/go.mod h1:wG5RG2EVOvdJDQfYlJsqrU1IUSR6fm0/ofg3eloeCuM=
+github.com/davidcheng0922/longhorn-spdk-engine v0.0.0-20251212060621-c16ab7a42ecb h1:LLDaXgP37z01WSYv6jALkRVlgzSnEK8o9aNS9LgxciU=
+github.com/davidcheng0922/longhorn-spdk-engine v0.0.0-20251212060621-c16ab7a42ecb/go.mod h1:/8K8OdUpBtm0Nh7fRmN3ZoNZxC062Sk779Lf7mGRBz0=
+github.com/davidcheng0922/types v0.0.0-20251128084033-ecdadc496e56 h1:dXDVZFz/kR+jqzWEJEAR36+cS7v4EmWD9aAmh50sldQ=
+github.com/davidcheng0922/types v0.0.0-20251128084033-ecdadc496e56/go.mod h1:qTXrHyxTIjNNhDgaTbxokUIU1tk6i/g1YOQCehzHDxw=
 github.com/distatus/battery v0.11.0 h1:KJk89gz90Iq/wJtbjjM9yUzBXV+ASV/EG2WOOL7N8lc=
 github.com/distatus/battery v0.11.0/go.mod h1:KmVkE8A8hpIX4T78QRdMktYpEp35QfOL8A8dwZBxq2k=
 github.com/distribution/reference v0.6.0 h1:0IXCQ5g4/QMHHkarYzh5l+u8T3t73zM5QvfrDyIgxBk=
@@ -157,14 +163,8 @@ github.com/longhorn/go-spdk-helper v0.2.1-0.20251209015154-e1ec321d72f5 h1:9FoXe
 github.com/longhorn/go-spdk-helper v0.2.1-0.20251209015154-e1ec321d72f5/go.mod h1:veT7ozn5BkR3c+hkPoTLn+2YP9NQWHCT9nC/7HN558E=
 github.com/longhorn/longhorn-engine v1.11.0-dev-20251130.0.20251207134944-819147eb34d2 h1:/79yxl+pP89IRzCS7HU+PPQLUPOFdLClD9jOur3oPCw=
 github.com/longhorn/longhorn-engine v1.11.0-dev-20251130.0.20251207134944-819147eb34d2/go.mod h1:4eCMBdikYwLFiYbgcX6ywoDAUp6G/mv88F0DTquN/4Q=
-github.com/longhorn/longhorn-instance-manager v1.11.0-dev-20251130.0.20251209091223-c9c9640f1991 h1:10y++ziUyjlEEMnGHrUUt++R4zNBIWeodd4a3RaPT6I=
-github.com/longhorn/longhorn-instance-manager v1.11.0-dev-20251130.0.20251209091223-c9c9640f1991/go.mod h1:mXyHvE9t+x1EJYyp4zB5SqH/8PUhb1lxZ3z7XeRC9V0=
 github.com/longhorn/longhorn-share-manager v1.9.2 h1:qNISzuGG8JLjftq9Ob2dt/5MJ/0jbdqtTPSmZdcGiVg=
 github.com/longhorn/longhorn-share-manager v1.9.2/go.mod h1:NYJucwsOy3r+0DyoRdI9/osFyetBiOjZODZnRVgwijg=
-github.com/longhorn/longhorn-spdk-engine v0.0.0-20251208054837-305e6396f6a7 h1:JQT01nPx/JU7C6rAAqwr32JTg0mCpbXVG1IBMITUT4Q=
-github.com/longhorn/longhorn-spdk-engine v0.0.0-20251208054837-305e6396f6a7/go.mod h1:3hXyz3Xeow3g5QASxmAF5i2vIQSJsDELL21OnvHrokM=
-github.com/longhorn/types v0.0.0-20251207085945-9c40bd62daff h1:iBHLm9SnBnm7RmJ3moM4cRoHjV3u9Hl8NsmFs2gUOKY=
-github.com/longhorn/types v0.0.0-20251207085945-9c40bd62daff/go.mod h1:mvUzZxxQLX6O5XXdDHkYYiMJjVSjmO3cak7U1bnSP+Q=
 github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 h1:PwQumkgq4/acIiZhtifTV5OUqqiP82UAl0h87xj/l9k=
 github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3/go.mod h1:autxFIvghDt3jPTLoqZ9OZ7s9qTGNAWmYCjVFWPX/zg=
 github.com/lxzan/gws v1.8.9 h1:VU3SGUeWlQrEwfUSfokcZep8mdg/BrUF+y73YYshdBM=

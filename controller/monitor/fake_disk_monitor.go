@@ -118,6 +118,6 @@ func fakeGenerateDiskConfig(diskType longhorn.DiskType, name, uuid, path, diskDr
 
 // fakeGetDiskHealth is a no-op health handler used by tests to prevent nil pointer panics.
 // It pretends no new health data needs collection and returns immediately.
-func fakeGetDiskHealth(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, lastCollectedAt time.Time, client *DiskServiceClient, logger logrus.FieldLogger) (map[string]longhorn.HealthData, time.Time, error) {
+func fakeGetDiskHealth(diskType longhorn.DiskType, diskName, diskPath string, diskDriver longhorn.DiskDriver, lastCollectedAt time.Time, client *DiskServiceClient, logger logrus.FieldLogger) (map[string]map[string]longhorn.HealthData, time.Time, error) {
 	return nil, lastCollectedAt, nil
 }

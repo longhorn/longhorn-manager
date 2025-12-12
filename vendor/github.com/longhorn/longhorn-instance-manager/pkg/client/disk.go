@@ -87,8 +87,8 @@ func NewDiskServiceClientWithTLS(ctx context.Context, ctxCancel context.CancelFu
 
 // DiskCreate creates a disk with the given name and path.
 // diskUUID is optional, if not provided, it indicates the disk is newly added.
-func (c *DiskServiceClient) DiskCreate(diskType, diskName, diskUUID, diskPath, diskDriver string, blockSize int64) (*api.DiskInfo, error) {
-	if diskName == "" || diskPath == "" {
+func (c *DiskServiceClient) DiskCreate(diskType, diskName, diskUUID, diskDriver string, diskPaths []string, blockSize int64) (*api.DiskInfo, error) {
+	if diskName == "" || len(diskPaths) == 0 {
 		return nil, fmt.Errorf("failed to create disk: missing required parameters")
 	}
 
@@ -105,7 +105,7 @@ func (c *DiskServiceClient) DiskCreate(diskType, diskName, diskUUID, diskPath, d
 		DiskType:   rpc.DiskType(t),
 		DiskName:   diskName,
 		DiskUuid:   diskUUID,
-		DiskPath:   diskPath,
+		DiskPath:   diskPaths,
 		BlockSize:  blockSize,
 		DiskDriver: diskDriver,
 	})
@@ -131,7 +131,7 @@ func (c *DiskServiceClient) DiskCreate(diskType, diskName, diskUUID, diskPath, d
 }
 
 // DiskGet returns the disk info with the given name and path.
-func (c *DiskServiceClient) DiskGet(diskType, diskName, diskPath, diskDriver string) (*api.DiskInfo, error) {
+func (c *DiskServiceClient) DiskGet(diskType, diskName, diskDriver string, diskPaths []string) (*api.DiskInfo, error) {
 	if diskName == "" {
 		return nil, fmt.Errorf("failed to get disk info: missing required parameter diskName")
 	}
@@ -148,7 +148,7 @@ func (c *DiskServiceClient) DiskGet(diskType, diskName, diskPath, diskDriver str
 	resp, err := client.DiskGet(ctx, &rpc.DiskGetRequest{
 		DiskType:   rpc.DiskType(t),
 		DiskName:   diskName,
-		DiskPath:   diskPath,
+		DiskPath:   diskPaths,
 		DiskDriver: diskDriver,
 	})
 	if err != nil {
@@ -223,7 +223,7 @@ func (c *DiskServiceClient) DiskHealthGet(diskType, diskName, diskPath, diskDriv
 }
 
 // DiskDelete deletes the disk with the given name, disk name, disk UUID, disk path and disk driver.
-func (c *DiskServiceClient) DiskDelete(diskType, diskName, diskUUID, diskPath, diskDriver string) error {
+func (c *DiskServiceClient) DiskDelete(diskType, diskName, diskUUID, diskDriver string, diskPaths []string) error {
 	if diskName == "" {
 		return fmt.Errorf("failed to delete disk: missing required diskName")
 	}
@@ -236,7 +236,7 @@ func (c *DiskServiceClient) DiskDelete(diskType, diskName, diskUUID, diskPath, d
 		DiskType:   rpc.DiskType(rpc.DiskType_value[diskType]),
 		DiskName:   diskName,
 		DiskUuid:   diskUUID,
-		DiskPath:   diskPath,
+		DiskPath:   diskPaths,
 		DiskDriver: diskDriver,
 	})
 	return err
@@ -326,7 +326,7 @@ func (c *DiskServiceClient) CheckConnection() error {
 }
 
 // MetricsGet returns the disk metrics with the given name and path.
-func (c *DiskServiceClient) MetricsGet(diskType, diskName, diskPath, diskDriver string) (*api.DiskMetrics, error) {
+func (c *DiskServiceClient) MetricsGet(diskType, diskName, diskDriver string, diskPaths []string) (*api.DiskMetrics, error) {
 	if diskName == "" {
 		return nil, fmt.Errorf("failed to get disk metrics: missing required parameter diskName")
 	}
@@ -343,7 +343,7 @@ func (c *DiskServiceClient) MetricsGet(diskType, diskName, diskPath, diskDriver 
 	resp, err := client.MetricsGet(ctx, &rpc.DiskGetRequest{
 		DiskType:   rpc.DiskType(t),
 		DiskName:   diskName,
-		DiskPath:   diskPath,
+		DiskPath:   diskPaths,
 		DiskDriver: diskDriver,
 	})
 	if err != nil {
